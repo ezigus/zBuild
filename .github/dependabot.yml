@@ -1,0 +1,31 @@
+# Dependabot — auto-PR for outdated dependencies.
+# Policy: GitHub Actions versions are bumped weekly; npm deps are monitored
+# but reviewed manually (no auto-merge). See docs/adr/ADR-008-dependency-policy.md.
+
+version: 2
+updates:
+  # GitHub Actions — keep runtime current (Node deprecations etc.)
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - dependencies
+      - github-actions
+
+  # npm (package.json)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - npm

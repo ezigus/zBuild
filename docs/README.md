@@ -14,6 +14,7 @@
 - **[ADR-005 — Claim Coordinator](adr/ADR-005-claim-coordinator.md)** — modular plugin contract; default `github-labels`, swap to `ttl-leases` later.
 - **[ADR-006 — Resume Contract](adr/ADR-006-resume-contract.md)** — explicit persisted vs. reconstructed state lists; plugin responsibilities.
 - **[ADR-007 — Test Strategy](adr/ADR-007-test-strategy.md)** — call-and-assert + golden-file diffing; the 5-test trial; the migration matrix.
+- **[ADR-008 — Dependency Policy](adr/ADR-008-dependency-policy.md)** — GitHub Actions, Node.js, and npm: Dependabot weekly, quarterly audit, pre-release checklist.
 
 ## Conventions
 

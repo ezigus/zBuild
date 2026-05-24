@@ -33,7 +33,8 @@
     "lint": "shellcheck scripts/zbuild scripts/lib/*.sh"
   },
   "engines": {
-    "bash": ">=5.0.0"
+    "bash": ">=5.0.0",
+    "node": ">=20.0.0"
   },
   "keywords": [
     "ai",
