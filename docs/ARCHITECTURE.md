@@ -281,6 +281,30 @@ Schema-as-warn: unknown event types are logged with a warning but never block th
 
 ---
 
+## 6.5. Two Memory Models (distinct, independent)
+
+zBuild has two distinct kinds of "memory." They share no storage and have independent failure modes; conflating them was a source of confusion in the early design rounds.
+
+| | **Pipeline-resume memory** | **Learning memory** |
+|---|---|---|
+| **Purpose** | Continue an interrupted pipeline at the failure point | Remember patterns / decisions / embeddings across pipelines |
+| **Lifetime** | Per pipeline run (created on `pipeline.start`, cleared on `pipeline.end:success`) | Spans pipelines and runs; accumulates over months |
+| **Data shape** | Stage statuses, CURRENT_ITERATION, claim lease, scope manifest hash, plugin state blobs | Vector embeddings, success patterns, skill-success scores, error signatures |
+| **Where it lives** | `~/.zbuild/state/pipeline-state.json` + `state/events.jsonl` + `state/artifacts/` | `~/.zbuild/state/memory.db` (default) or ruflo HNSW namespaces (optional) |
+| **Storage backend** | Always-on; baked into `core/state/` | Pluggable via [ADR-011](adr/ADR-011-pluggable-backends.md): sqlite default, ruflo optional |
+| **Cross-CI transport** | Via cache backend ([ADR-010](adr/ADR-010-ci-cli-parity.md)): local, gh-actions-cache, s3 | May share the same cache OR use its own remote (ruflo MCP); independent choice |
+| **Failure mode** | If lost → pipeline restarts from scratch (warns, continues) | If lost / unavailable → pipeline still works; loses optimization edge |
+| **Defining ADR** | [ADR-006](adr/ADR-006-resume-contract.md) | [ADR-011](adr/ADR-011-pluggable-backends.md) |
+| **In CI** | Bootstrap restores it; teardown snapshots it. **Auto-resume** detects in-progress state and continues. | Bootstrap restores it the same way; backends drive whether it persists across runners. |
+
+### Why this split matters
+
+- **Resume memory must always work.** Even with no learning memory backend installed, a pipeline that crashes at stage 4 of 7 must come back at stage 4 — not start over. This is non-negotiable; baked into core.
+- **Learning memory is optional polish.** It makes future runs faster and smarter, but its absence doesn't break correctness. Users can opt in to advanced backends (ruflo HNSW) at their own pace.
+- **CI/CLI parity holds for both.** Same `zbuild bootstrap` restores both; same `zbuild teardown` snapshots both. The pluggability is at the backend layer, not the lifecycle layer.
+
+---
+
 ## 7. Glossary
 
 - **Keeper** — a behavior we preserve from legacy (catalog in [KEEPERS.md](KEEPERS.md)). Each keeper has a citation and a 5-test trial.
@@ -293,6 +317,8 @@ Schema-as-warn: unknown event types are logged with a warning but never block th
 - **5-test trial** — the keeper acceptance gate: (1) behavior preserved, (2) regression test exists, (3) citation discoverable, (4) mapping matches, (5) removal reproduces symptom.
 - **Tombstone** — `legacy/migrated/<keeper-id>.md` written when a keeper passes its trial and its legacy source is removed.
 - **Admission gate** — sequence of checks before a pipeline starts: reap stale locks → count actives → memory floor → write lock → (eventually) release. Sequentially dependent, not parallel.
+- **Pipeline-resume memory** — operational state that lets an interrupted pipeline continue from the failure point. Defined by ADR-006; transported across CI runs by ADR-010 cache. Always-on, baked into core/state/. Distinct from learning memory.
+- **Learning memory** — patterns, embeddings, decisions, and success scores that accumulate across pipelines and runs. Defined by ADR-011; pluggable backends (sqlite default, ruflo HNSW optional). Distinct from pipeline-resume memory.
 
 ---
 

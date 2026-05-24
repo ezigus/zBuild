@@ -175,7 +175,10 @@ for i in $(seq 0 $((issue_count - 1))); do
     if echo "$existing_titles" | grep -qFx "$title"; then
         if [[ "$UPDATE_EXISTING" -eq 1 ]]; then
             # Find the issue number and update its body
-            issue_num="$(gh issue list --state all --limit 500 --search "in:title \"$title\"" --json number,title -q ".[] | select(.title == \"$title\") | .number" | head -1)"
+            # Use --arg to pass title safely; avoids jq parse errors on titles with quotes
+            issue_num="$(gh issue list --state all --limit 500 --json number,title \
+                | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' \
+                | head -1)"
             if [[ -z "$issue_num" ]]; then
                 warn "couldn't resolve issue number for: $title"
                 continue

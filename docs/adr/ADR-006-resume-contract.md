@@ -1,7 +1,21 @@
-# ADR-006: Resume Contract
+# ADR-006: Resume Contract — Pipeline-Resume Memory
 
 **Status:** Accepted
 **Date:** 2026-05-24
+
+> **Memory type:** This ADR governs **pipeline-resume memory** — the operational
+> state needed to continue an interrupted pipeline from where it stopped (which
+> stage failed, which iteration counter, which checkpoint, scope manifest hash,
+> plugin state, claim lease). It is one of zBuild's **two distinct memory models**:
+>
+> | Memory type | Purpose | Where defined | Backend |
+> |---|---|---|---|
+> | **Pipeline-resume memory** | Continue an interrupted pipeline at the failure point | ADR-006 (this), transported by ADR-010 cache | Always-on; baked into core/state/ |
+> | **Learning memory** | Remember patterns, embeddings, decisions across pipelines and runs | [ADR-011](ADR-011-pluggable-backends.md) | Pluggable: sqlite default, ruflo HNSW optional |
+>
+> The two are independent: a pipeline can resume cleanly with no learning
+> memory available, and learning memory persists across pipelines whether or
+> not a particular pipeline ever resumed.
 
 ## Context
 

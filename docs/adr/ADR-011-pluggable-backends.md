@@ -3,6 +3,22 @@
 **Status:** Accepted
 **Date:** 2026-05-24
 
+> **Memory split:** The "memory backend" in this ADR is **learning memory** —
+> patterns extracted from past runs, vector embeddings of source code,
+> architectural decisions, skill-success scores. It accumulates over time and
+> spans pipelines.
+>
+> It is **NOT** pipeline-resume memory (which is defined by
+> [ADR-006](ADR-006-resume-contract.md) and transported by
+> [ADR-010](ADR-010-ci-cli-parity.md) cache backends). Resume state is
+> operational ("continue at stage X iteration Y"); learning memory is
+> educational ("similar issues in the past took 3 cycles to converge").
+>
+> The two memory models share no storage and have independent failure modes:
+> learning memory can be totally unavailable and pipelines still resume
+> correctly; resume memory can be wiped and pipelines still benefit from
+> learned patterns on the next fresh run.
+
 ## Context
 
 Three cross-cutting capabilities can be implemented multiple ways, and zBuild should not pick one implementation in core:

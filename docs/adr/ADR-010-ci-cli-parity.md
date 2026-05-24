@@ -3,6 +3,17 @@
 **Status:** Accepted
 **Date:** 2026-05-24
 
+> **Memory split:** This ADR covers the **transport** for pipeline-resume memory
+> across CI runs. The state itself (which stage failed, which iteration was
+> active, etc.) is defined in [ADR-006](ADR-006-resume-contract.md). The cache
+> backend here is how that state moves between an ephemeral CI runner and the
+> next run.
+>
+> Learning memory (patterns, embeddings) is a **different memory model** —
+> see [ADR-011](ADR-011-pluggable-backends.md). Learning memory may ride
+> through the same cache backend or use its own (e.g., ruflo's remote MCP);
+> it's a backend choice, not a CI/CLI lifecycle choice.
+
 ## Context
 
 zBuild must run identically from a developer laptop and from GitHub Actions, regardless of the target repo's platform (Node, iOS, TypeScript, Python, etc.). Same command, same flags, same output. The only differences should be in **setup** (CI starts cold every run; the laptop has persistent state) and **teardown** (CI uploads artifacts to durable storage; laptop just persists locally).

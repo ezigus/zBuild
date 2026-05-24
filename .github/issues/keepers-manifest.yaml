@@ -2302,37 +2302,66 @@ issues:
 
   # ─── Phase 0.5 — CI/CLI parity (ADR-010, 6 issues) ────────────────────
   - id: cipar-1
-    title: "[Phase 0.5] zbuild bootstrap command (rehydrate state, verify auth, validate lockfile)"
+    title: "[Phase 0.5] zbuild bootstrap command (rehydrate state, verify auth, validate lockfile, detect resume)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation, cli-ux]
     body: |
       First half of the CI/CLI lifecycle (ADR-010). Run at the start of every
-      CI job and (no-op) locally. Restores state from cache, verifies prereqs
-      and auth, validates plugin lockfile.
+      CI job and (no-op'ish) locally. Restores state from cache, verifies
+      prereqs and auth, validates plugin lockfile, AND detects whether a
+      prior pipeline left interrupted resume state.
+
+      Two-memory-model awareness (ARCHITECTURE §6.5):
+      - PIPELINE-RESUME MEMORY: restores ~/.zbuild/state/{pipeline-state.json,
+        events.jsonl, artifacts/*} via cache backend (cipar-3). After restore,
+        checks pipeline-state.json's status field:
+          - status: in_progress AND last_event recent → AUTO-RESUME mode;
+            subsequent `zbuild pipeline start` continues from last good stage
+          - status: complete OR cache miss → FRESH-START mode; pipeline starts
+            from intake
+          - status: failed AND retry policy allows → AUTO-RESUME with retry
+            classification (uses adapt-8 failure classifier)
+        Emits pipeline.resume.detected | pipeline.fresh-start event.
+      - LEARNING MEMORY: ADR-011 backend init. Calls memory_capabilities() on
+        configured backend; degrades to sqlite default if optional backend
+        unreachable. Does NOT block pipeline run on learning memory issues.
 
       Scope:
       - scripts/zbuild: bootstrap subcommand
-      - core/bootstrap/bootstrap.sh: orchestrates restore + validate + auth-check
+      - core/bootstrap/bootstrap.sh: orchestrates the above
       - In CI: detects $GITHUB_ACTIONS, calls cache backend (cipar-3)
-      - Locally: detects ~/.zbuild/state/ exists, no-op
-      - Doctor-style report at end (green/yellow/red per check)
+      - Locally: cache-pull is local-noop but resume detection still runs
+      - Doctor-style report at end (green/yellow/red per check + resume status)
       - Reusable Actions composite: .github/actions/bootstrap/action.yml
 
   - id: cipar-2
-    title: "[Phase 0.5] zbuild teardown command (snapshot state, upload artifacts, summarize)"
+    title: "[Phase 0.5] zbuild teardown command (snapshot state, mark status, upload artifacts, summarize)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation, cli-ux]
     body: |
       Second half of the CI/CLI lifecycle (ADR-010). Run at end of every CI
-      job; no-op locally. Snapshots state to cache, uploads artifacts, posts
-      PR summary.
+      job (always-runs via `if: always()`); minimal locally.
+
+      Two-memory-model awareness (ARCHITECTURE §6.5):
+      - PIPELINE-RESUME MEMORY: marks pipeline-state.json.status appropriately
+        before snapshot:
+          - If pipeline.end emitted with status=success → status: complete,
+            cache slot eligible for reset on next run
+          - If pipeline aborted / runner OOMd / signal killed → status:
+            interrupted; next bootstrap auto-resumes from last good stage
+          - If explicit abort (operator) → status: aborted; next bootstrap
+            requires --force-resume to continue
+        Snapshots state directory to cache backend.
+      - LEARNING MEMORY: pushes learned patterns/embeddings to backend (only
+        if backend supports persistence; sqlite always does, ruflo persists
+        in its own store). Independent failure mode — learning push failure
+        does NOT fail the job.
 
       Scope:
       - scripts/zbuild: teardown subcommand
-      - core/bootstrap/teardown.sh: snapshot + upload + summary
+      - core/bootstrap/teardown.sh: status-mark + snapshot + uploads + summary
       - In CI: writes to $GITHUB_STEP_SUMMARY; uploads state/artifacts/* via
         actions/upload-artifact; updates PR comment marker (uses #56 contract)
-      - Always-runs in workflows (`if: always()`)
       - Reusable Actions composite: .github/actions/teardown/action.yml
 
   - id: cipar-3
@@ -2561,3 +2590,39 @@ issues:
       Live issue: https://github.com/ezigus/zBuild/issues/208
       Dependencies: plat-1, plat-2, plat-3, plat-4.
       Blocks: plat-9, plat-10, plat-11, MVP-3.
+
+  # ─── Phase 0.5 — Explicit resume CLI surface (1 issue) ─────────────────
+  - id: resume-1
+    title: "[Phase 0.5] zbuild pipeline resume CLI + auto-resume policy"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Explicit operator surface for resuming an interrupted pipeline. Most of
+      the resume mechanics are in #36 (CURRENT_ITERATION persistence), adapt-10
+      (checkpoint-based recovery), and cipar-1 (bootstrap auto-detection).
+      This issue ties them together with a clean CLI verb + auto-resume policy.
+
+      Two memory models (ARCHITECTURE §6.5) — this issue is PURELY about
+      pipeline-resume memory (ADR-006). Learning memory (ADR-011) is unaffected.
+
+      Scope:
+      - `zbuild pipeline resume [--run-id <id>] [--from-stage <stage>] [--force]`
+        - With no args: resume the most recent in_progress/interrupted run
+        - With --run-id: resume specific run
+        - With --from-stage: skip ahead (operator override; emits warning event)
+        - --force: ignore status=aborted; resume anyway
+      - Auto-resume policy in cipar-1 bootstrap:
+        - pipeline-state.json.status == in_progress AND last event < 24h ago
+          → bootstrap returns "resume mode"; subsequent `pipeline start`
+          auto-resumes unless --no-resume passed
+        - status == interrupted (clean teardown saw OOM/signal) → auto-resume
+        - status == aborted (operator-cancelled) → fresh-start unless --resume
+        - status == complete → always fresh-start
+      - In CI: cipar-1 bootstrap detects resume state in cache; runs pipeline
+        with --resume implicit; teardown updates status appropriately
+      - `zbuild pipeline status [--run-id <id>]` shows what would resume + why
+      - Tests: kill -9 mid-stage scenario; verify resume continues at the
+        failed stage (not at intake)
+
+      Dependencies: cipar-1 (bootstrap), cipar-2 (teardown), #36
+      (CURRENT_ITERATION), adapt-10 (checkpoint-based recovery).
