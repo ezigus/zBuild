@@ -14,3 +14,10 @@ dist/
 .env
 .env.local
 .claude/settings.local.json
+
+# Runtime artifacts (from local testing of runner/event-bus/etc.)
+.swarm/
+ruvector.db
+state/
+*.db-wal
+*.db-shm
