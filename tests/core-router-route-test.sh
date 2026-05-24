@@ -22,25 +22,8 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$TEST_TEMP_DIR/events"
 
 # ─── Mock: model-recording claude stub (tests 1-3, 7-8) ──────────────────────
-# Parses --model <id> from args, records it to last_model, echoes "OK-RESPONSE"
-mock_binary "claude" "$(cat <<'MOCK'
-#!/usr/bin/env bash
-model_id=""
-while [[ $# -gt 0 ]]; do
-    if [[ "$1" == "--model" && -n "${2:-}" ]]; then
-        model_id="$2"; shift 2
-    else
-        shift
-    fi
-done
-printf '%s\n' "$model_id" > "${TEST_TEMP_DIR}/last_model"
-echo "OK-RESPONSE"
-exit 0
-MOCK
-)"
-
-# TEST_TEMP_DIR must be visible inside the mock at runtime; embed it.
-# Rewrite with expanded TEST_TEMP_DIR:
+# Parses --model <id> from args (ignores -p and --print), records model to
+# last_model, echoes "OK-RESPONSE". TEST_TEMP_DIR embedded at mock creation time.
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 model_id=""
