@@ -2745,3 +2745,56 @@ issues:
 
       Dependencies: cipar-1 (bootstrap), cipar-2 (teardown), #36
       (CURRENT_ITERATION), adapt-10 (checkpoint-based recovery).
+
+  # ─── Phase 0.5 — Manifest-sync workflow (1 issue) ─────────────────────
+  - id: sync-1
+    title: "[Phase 0.5] Manifest-sync CI workflow (bidirectional drift detection + auto-PR)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Self-healing manifest. Catches drift caused by humans (web UI closes,
+      hand-merged PRs, issues opened outside the manifest) that the local
+      tooling can't see.
+
+      ## Triggers
+
+      Three triggers in `.github/workflows/manifest-sync.yml`:
+
+      1. **Scheduled (daily at 02:00 UTC)** — full reconcile pass. If drift
+         exists, open a PR with manifest updates.
+      2. **`pull_request.closed`** — if PR closed with `Closes #N` or
+         `Fixes #N`, mark the manifest entry for issue N as `state: closed`
+         with `closed_reason: "merged in PR #<num> on <date>"`.
+      3. **`issues.closed`** — if a human closed an issue via the web UI,
+         find its manifest entry and set `state: closed` with
+         `closed_reason: "closed via GitHub UI on <date>"`.
+
+      ## Script: scripts/manifest-sync.sh
+
+      Two modes:
+      - `--report` (read-only): prints drift to stdout
+      - `--apply` (default in CI): edits manifest.yaml, opens PR via
+        peter-evans/create-pull-request
+
+      What it detects:
+      - Live issues without a manifest entry → propose new manifest stub
+        with title + labels + milestone (operator review required)
+      - Manifest entries with `state: open` but live closed → propose
+        `state: closed` + `closed_reason`
+      - PRs that closed issues but the issue isn't in the manifest →
+        append entry to `.github/issues/orphan-prs.md` log
+      - Stale issues (no activity > 90 days, label: stale flag) → comment
+        on the issue suggesting close-or-update
+
+      ## Safety
+      - Never auto-closes a live issue (read-only on GitHub side; only
+        edits the local YAML and opens a PR)
+      - Never auto-reopens
+      - PR title prefixed `[manifest-sync]` so it's easy to filter / batch-review
+      - Workflow uses `GITHUB_TOKEN` for issue/PR reads; needs `contents:write`
+        + `pull-requests:write` for the auto-PR
+
+      ## Dependencies
+      - scripts/generate-issues.sh `--reconcile` mode (already implemented;
+        sync-1 builds on this with the write-back logic)
+      - peter-evans/create-pull-request@v6 action
