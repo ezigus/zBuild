@@ -16,6 +16,8 @@
 - **[ADR-007 — Test Strategy](adr/ADR-007-test-strategy.md)** — call-and-assert + golden-file diffing; the 5-test trial; the migration matrix.
 - **[ADR-008 — Dependency Policy](adr/ADR-008-dependency-policy.md)** — GitHub Actions, Node.js, and npm: Dependabot weekly, quarterly audit, pre-release checklist.
 - **[ADR-009 — Platform-Aware Modularity](adr/ADR-009-platform-aware-modularity.md)** — Platform identity in manifest, role-based templates with fallback chain, declarative detection signals, three orchestration strategies (fanout/composite/sequential).
+- **[ADR-010 — CI / CLI Parity](adr/ADR-010-ci-cli-parity.md)** — `zbuild bootstrap`/`teardown` lifecycle, state cache backends, output destination abstraction. Same command behaves identically on laptop and in CI regardless of target repo platform.
+- **[ADR-011 — Pluggable Backends](adr/ADR-011-pluggable-backends.md)** — Memory, orchestrator, cache backends as plugins. Defaults work with zero external deps; ruflo (HNSW, hive-mind) drops in via config.
 
 ## Conventions
 

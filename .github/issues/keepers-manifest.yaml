@@ -2299,3 +2299,265 @@ issues:
       Python platform pack: detection signals (pyproject.toml, requirements.txt,
       setup.py), specialized plugins (pytest-runner, ruff/mypy linters,
       bandit security). Most demand after Node + iOS.
+
+  # ─── Phase 0.5 — CI/CLI parity (ADR-010, 6 issues) ────────────────────
+  - id: cipar-1
+    title: "[Phase 0.5] zbuild bootstrap command (rehydrate state, verify auth, validate lockfile)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      First half of the CI/CLI lifecycle (ADR-010). Run at the start of every
+      CI job and (no-op) locally. Restores state from cache, verifies prereqs
+      and auth, validates plugin lockfile.
+
+      Scope:
+      - scripts/zbuild: bootstrap subcommand
+      - core/bootstrap/bootstrap.sh: orchestrates restore + validate + auth-check
+      - In CI: detects $GITHUB_ACTIONS, calls cache backend (cipar-3)
+      - Locally: detects ~/.zbuild/state/ exists, no-op
+      - Doctor-style report at end (green/yellow/red per check)
+      - Reusable Actions composite: .github/actions/bootstrap/action.yml
+
+  - id: cipar-2
+    title: "[Phase 0.5] zbuild teardown command (snapshot state, upload artifacts, summarize)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Second half of the CI/CLI lifecycle (ADR-010). Run at end of every CI
+      job; no-op locally. Snapshots state to cache, uploads artifacts, posts
+      PR summary.
+
+      Scope:
+      - scripts/zbuild: teardown subcommand
+      - core/bootstrap/teardown.sh: snapshot + upload + summary
+      - In CI: writes to $GITHUB_STEP_SUMMARY; uploads state/artifacts/* via
+        actions/upload-artifact; updates PR comment marker (uses #56 contract)
+      - Always-runs in workflows (`if: always()`)
+      - Reusable Actions composite: .github/actions/teardown/action.yml
+
+  - id: cipar-3
+    title: "[Phase 0.5] Cache backend contract + default (local) implementation"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Per ADR-010 + ADR-011: cache is a pluggable backend.
+
+      Contract (cache_pull, cache_push, cache_capabilities) lives in
+      core/cache/contract.sh. Default `local` backend at
+      plugins/tool/cache-local/ is a no-op (state already in ~/.zbuild/).
+
+      Scope:
+      - core/cache/contract.sh defines the function signatures
+      - plugins/tool/cache-local/ default implementation
+      - Selection via .zbuild/config.yaml: backends.cache: local|gh-actions-cache|s3
+      - Tests: cache_pull on empty restores cleanly; cache_push round-trips
+
+  - id: cipar-4
+    title: "[Phase 0.5] Cache backend: gh-actions-cache (for CI)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Backend implementing the cache contract over actions/cache@v4.
+
+      Scope:
+      - plugins/tool/cache-gh-actions/ implements cache_pull/push via
+        $RUNNER_TEMP + actions/cache key derived from repo+branch
+      - Handles GH cache size limits (10GB total, 5GB per item) with
+        warn-and-truncate of events.jsonl archives
+      - Tests: round-trip via local mock filesystem; verify key derivation
+
+  - id: cipar-5
+    title: "[Phase 0.5] Output destination abstraction (stdout / file / PR comment / check run / step summary)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      ADR-010 §3. Output stage (MVP-5 / #87) becomes destination-pluggable.
+
+      Scope:
+      - core/output/destinations.sh: dispatch table for destination kinds
+      - Destinations:
+        - stdout (always)
+        - state/report-<run_id>.md (always)
+        - gh-pr-comment (when ZBUILD_ISSUE is a PR + CI)
+        - gh-check-run (opt-in via ZBUILD_EMIT_CHECK_RUN)
+        - step-summary (when $GITHUB_STEP_SUMMARY set)
+      - Config in template or env: which destinations active for this run
+      - Tests with mocked gh CLI verify each destination
+
+  - id: cipar-6
+    title: "[Phase 0.5] CI/CLI parity test (same fixture, same output, both contexts)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    body: |
+      Golden test: run a fixture pipeline locally + simulate CI; diff outputs.
+
+      Scope:
+      - tests/golden/parity/run-fixture.sh: deterministic pipeline (mocked LLM
+        with canned responses)
+      - tests/parity-local-vs-ci-test.sh: runs the fixture twice (once with
+        GITHUB_ACTIONS=true mock), diffs state/artifacts/, events.jsonl tail
+      - Bootstrap + teardown should be the only steps differing in behavior
+      - Tests must pass deterministically — verifies parity contract
+
+  # ─── Phase 0.5 — Pluggable memory backend (ADR-011, 4 issues) ─────────
+  - id: mem-1
+    title: "[Phase 0.5] Memory backend contract (put/get/search/namespace API)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      ADR-011 contract for any memory backend implementation.
+
+      Required functions: memory_put, memory_get, memory_search,
+      memory_list_namespaces, memory_namespace_exists, memory_namespace_clear.
+
+      Optional: memory_search_vector (HNSW etc.), memory_capabilities.
+
+      Scope:
+      - core/memory/contract.sh defines signatures + helper for callers to
+        check `_capabilities` before requesting optional ops
+      - Plugin registry recognizes provides.role: memory-backend
+      - CLI: zbuild plugin list --role memory-backend
+      - Tests: a mock backend in tests/fixtures/ implements the contract
+
+  - id: mem-2
+    title: "[Phase 0.5] Default memory backend: SQLite (no external deps)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      plugins/tool/memory-sqlite/ — ships as default. Implements the
+      contract using local SQLite at ~/.zbuild/state/memory.db.
+
+      Scope:
+      - Manifest declares provides.role: memory-backend +
+        capabilities: [text_search, namespacing, persistence]
+      - memory_search uses LIKE %query% (TF-IDF-style — no vectors)
+      - Reuses AgentDB tables from db-1..6 issues
+      - Tests: contract conformance + roundtrip
+
+  - id: mem-3
+    title: "[Phase 0.5] Optional memory backend: ruflo HNSW vectors (plugin)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      plugins/tool/memory-ruflo/ — opt-in HNSW vector backend via ruflo MCP.
+
+      Scope:
+      - Manifest declares provides.role: memory-backend +
+        capabilities: [text_search, vector_search, hnsw, namespacing,
+                       persistence, distributed] +
+        requires.bin: [ruflo]
+      - Implementation proxies to ruflo memory search/store
+      - Per-repo namespace isolation (zbuild-repo-{hash} per ruf-4)
+      - fallback_to_default_on_error: true (degrade to sqlite if ruflo down)
+      - Tests: contract conformance (with ruflo mock); degraded mode
+
+  - id: mem-4
+    title: "[Phase 0.5] Backend selection: .zbuild/config.yaml schema"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Single config file picks all backends (memory + orchestrator + cache).
+
+      Schema (per ADR-011 §Backend selection):
+        backends:
+          memory: sqlite | ruflo
+          orchestrator: bash-parallel | ruflo-hive
+          cache: local | gh-actions-cache | s3
+        memory_ruflo: {...}
+        orchestrator_ruflo: {...}
+
+      Scope:
+      - core/config/config.sh parses + validates
+      - Resolution: backends loaded at startup via plugin registry lookup
+      - Doctor (#58) flags configured-but-missing backends
+      - Tests cover: default (no config), each opt-in backend, missing-backend
+        warning
+
+  # ─── Phase 0.5 — Pluggable orchestrator backend (ADR-011, 4 issues) ───
+  - id: orch-1
+    title: "[Phase 0.5] Orchestrator backend contract (spawn/dispatch/collect/shutdown)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      ADR-011 contract for parallel agent dispatch backends.
+
+      Required: orch_spawn, orch_dispatch, orch_collect, orch_shutdown,
+      orch_capabilities.
+
+      Scope:
+      - core/orch/contract.sh defines signatures
+      - Plugin registry: provides.role: orchestrator-backend
+      - Strategy implementations (plat-9 fanout, plat-10 composite, plat-11
+        sequential) consume this contract — they don't bind to a specific
+        backend
+      - Tests with a synchronous mock backend
+
+  - id: orch-2
+    title: "[Phase 0.5] Default orchestrator backend: bash-parallel (no external deps)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      plugins/tool/orch-bash-parallel/ — ships as default. Uses bash
+      subshells + `wait -n` for parallelism. No coordination beyond independent
+      execution.
+
+      Scope:
+      - Manifest provides.role: orchestrator-backend + capabilities:
+        [parallel_spawn, file_handoff]
+      - Implements fanout (subshells in parallel), sequential (serial), and
+        a degenerate composite (single subshell with bundled context)
+      - Tests: 2-worker fanout completes in ~max(worker_time) not sum
+
+  - id: orch-3
+    title: "[Phase 0.5] Optional orchestrator backend: ruflo hive-mind (plugin)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      plugins/tool/orch-ruflo-hive/ — opt-in. Wraps ruflo hive-mind init,
+      spawn, coordination, memory.
+
+      Scope:
+      - Manifest provides.role: orchestrator-backend + capabilities:
+        [parallel_spawn, hive_mind, queen_collapse, shared_memory,
+         distributed] + requires.bin: [ruflo]
+      - Implements all three strategies natively via ruflo coordination
+        orchestrate --mode <stage>
+      - Per-stage namespace: stage-${stage}-${platform}-${run_id}
+      - fallback_to_default_on_error: true (graceful → bash-parallel)
+      - Tests with ruflo mock + degraded fallback
+
+  - id: orch-4
+    title: "[Phase 0.5] Strategy implementations use orchestrator contract (refactor plat-9/10/11)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Refactor fanout (plat-9 / #198), composite (plat-10 / #199), sequential
+      (plat-11 / #200) to use core/orch/ contract instead of bash directly.
+
+      This decouples the strategies from a specific orchestration mechanism.
+      Switching from bash-parallel to ruflo-hive becomes a config flip; no
+      strategy code changes.
+
+      Dependencies: orch-1 (contract), orch-2 (default impl).
+
+  # ─── Phase 0.5 — Follow-up to closed #83 ───────────────────────────────
+  - id: mvp-1b
+    title: "[Phase 0.5] Pipeline runner: role-based templates + resolver (follow-up to #83)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Tracked separately in #208 (created out-of-band). Manifest copy so it
+      survives manifest regeneration.
+
+      #83 (MVP-1) was closed by a PR that landed a 158-LoC runner with a
+      hardcoded stage list + id-based plugin lookup. The body was then
+      revised to require ADR-009 role-based templates + resolver; that
+      revised scope is NOT in the merged code.
+
+      This follow-up tracks: template YAML reading, state/platforms.json
+      consumption, resolver-based role→plugin lookup, fanout dispatch,
+      extends:/disabled_stages: subtractive composition.
+
+      Live issue: https://github.com/ezigus/zBuild/issues/208
+      Dependencies: plat-1, plat-2, plat-3, plat-4.
+      Blocks: plat-9, plat-10, plat-11, MVP-3.
