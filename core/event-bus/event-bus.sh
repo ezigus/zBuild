@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  zBuild event-bus — emit_event with dual SQLite + JSONL writers           ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+#
+# Single-writer JSONL (flock-guarded) + optional SQLite mirror for durability.
+# Schema-as-warn: unknown event types log a warning but never block.
+# Events from ARCHITECTURE.md §6.
+
+[[ -n "${_ZBUILD_EVENT_BUS_LOADED:-}" ]] && return 0
+_ZBUILD_EVENT_BUS_LOADED=1
+
+_ZBUILD_EVENT_BUS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_ROOT_FOR_EVENTS="$(cd "$_ZBUILD_EVENT_BUS_DIR/../.." && pwd)"
+
+# shellcheck source=../../scripts/lib/compat.sh
+source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/compat.sh"
+
+# ─── Locations ──────────────────────────────────────────────────────────────
+ZBUILD_EVENTS_DIR="${ZBUILD_EVENTS_DIR:-${HOME}/.zbuild/state}"
+ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-${ZBUILD_EVENTS_DIR}/events.jsonl}"
+ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-${ZBUILD_EVENTS_DIR}/events.db}"
+ZBUILD_EVENT_SCHEMA="${ZBUILD_EVENT_SCHEMA:-${_ZBUILD_ROOT_FOR_EVENTS}/config/event-schema.json}"
+
+# ─── _eb_init — idempotent setup (dir, lockfile, SQLite schema) ─────────────
+_eb_init() {
+    mkdir -p "$ZBUILD_EVENTS_DIR"
+    : > "${ZBUILD_EVENTS_JSONL}.lock" 2>/dev/null || true
+    # SQLite is optional — only init if sqlite3 is present
+    if command -v sqlite3 >/dev/null 2>&1 && [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
+        sqlite3 "$ZBUILD_EVENTS_DB" <<'SQL' 2>/dev/null || true
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    run_id TEXT,
+    issue INTEGER,
+    type TEXT NOT NULL,
+    plugin TEXT,
+    kind TEXT,
+    payload TEXT,
+    schema_version INTEGER DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
+SQL
+    fi
+}
+
+# ─── _eb_known_type — schema-as-warn check ──────────────────────────────────
+# Returns 0 if known, 1 if unknown (but never blocks emission).
+_eb_known_type() {
+    local type="$1"
+    if [[ ! -f "$ZBUILD_EVENT_SCHEMA" ]]; then
+        return 0  # No schema yet; permissive.
+    fi
+    # Simple grep against the schema's known_types list.
+    if jq -e --arg t "$type" '.known_types | index($t)' "$ZBUILD_EVENT_SCHEMA" >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# ─── eb_emit_event — single source of truth for events ──────────────────────
+# Usage:
+#   eb_emit_event <type> [key1=val1] [key2=val2] ...
+#
+# Standard envelope fields are picked up from env vars:
+#   ZBUILD_RUN_ID, ZBUILD_ISSUE, ZBUILD_PLUGIN, ZBUILD_PLUGIN_KIND
+eb_emit_event() {
+    local type="$1"; shift
+    _eb_init
+
+    if ! _eb_known_type "$type"; then
+        # Schema-as-warn: log but don't block.
+        if [[ -n "${ZBUILD_DEBUG:-}" ]]; then
+            echo "[event-bus] WARN: unknown event type: $type" >&2
+        fi
+    fi
+
+    # Build payload from key=val args
+    local payload="{}"
+    local key val
+    for arg in "$@"; do
+        key="${arg%%=*}"
+        val="${arg#*=}"
+        payload="$(echo "$payload" | jq --arg k "$key" --arg v "$val" '. + {($k): $v}')"
+    done
+
+    # ISO 8601 timestamp with milliseconds
+    local ts
+    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
+        ts="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+    else
+        ts="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+    fi
+
+    local run_id="${ZBUILD_RUN_ID:-}"
+    local issue="${ZBUILD_ISSUE:-0}"
+    local plugin="${ZBUILD_PLUGIN:-}"
+    local kind="${ZBUILD_PLUGIN_KIND:-}"
+
+    local event_json
+    event_json="$(jq -cn \
+        --arg ts "$ts" \
+        --arg run_id "$run_id" \
+        --argjson issue "${issue:-0}" \
+        --arg type "$type" \
+        --arg plugin "$plugin" \
+        --arg kind "$kind" \
+        --argjson data "$payload" \
+        '{ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}')"
+
+    # Single-writer JSONL via flock
+    if zbuild_has_flock; then
+        (
+            flock -w 5 9 || exit 1
+            echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
+        ) 9>"${ZBUILD_EVENTS_JSONL}.lock"
+    else
+        # Best-effort fallback
+        echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
+    fi
+
+    # SQLite mirror (optional, fire-and-forget)
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$ZBUILD_EVENTS_DB" <<SQL 2>/dev/null || true
+INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version)
+VALUES ('$ts', '$run_id', $issue, '$type', '$plugin', '$kind', '$(echo "$payload" | sed "s/'/''/g")', 1);
+SQL
+    fi
+}
+
+# ─── eb_query_events — minimal read API ─────────────────────────────────────
+# Usage: eb_query_events [type_filter] [limit]
+eb_query_events() {
+    local type_filter="${1:-}"
+    local limit="${2:-100}"
+    if [[ ! -f "$ZBUILD_EVENTS_JSONL" ]]; then
+        return 0
+    fi
+    if [[ -n "$type_filter" ]]; then
+        jq -c --arg t "$type_filter" 'select(.type == $t)' "$ZBUILD_EVENTS_JSONL" | tail -"$limit"
+    else
+        tail -"$limit" "$ZBUILD_EVENTS_JSONL"
+    fi
+}
+
+# ─── Override emit_event from helpers.sh ────────────────────────────────────
+# The placeholder emit_event in scripts/lib/helpers.sh delegates here when
+# the event-bus is sourced. Just redefine the function.
+emit_event() {
+    eb_emit_event "$@"
+}
