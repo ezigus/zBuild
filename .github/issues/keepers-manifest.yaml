@@ -1157,3 +1157,783 @@ issues:
 
       Deliverable: docs/CI-INTEGRATION.md sections covering auth, common
       setups, troubleshooting. Plus a one-page quickstart in README.
+
+  # ─── Phase 0.5 — Claude CLI surface & Code hooks (12 issues) ───────────
+  - id: ccli-1
+    title: "[Phase 0.5] Claude CLI: --output-format json structured output"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Adopt `claude --output-format json` for all plugin LLM calls so responses
+      are parseable as structured data (vs free-text). Wire into core/router.
+      Legacy uses this in nearly every claude invocation; tracking explicitly so
+      we don't lose it.
+  - id: ccli-2
+    title: "[Phase 0.5] Claude CLI: prompt caching directives"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Use Anthropic's prompt-caching headers/flags for repeated context blocks
+      (scope manifest, repo summary, fixed system prompts). Reduces token spend
+      30-90% for long-running pipelines. Wire into core/router/route.sh.
+  - id: ccli-3
+    title: "[Phase 0.5] Claude CLI: --mcp server connection flags"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Pass through MCP server connections (claude-flow, ruflo, etc.) to plugin
+      agents that need them. Legacy connects via `.mcp.json`; zbuild needs the
+      same surface so plugins can use tools beyond plain LLM call.
+  - id: ccli-4
+    title: "[Phase 0.5] Claude CLI: model override resolution (config + flag)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Resolve effective model from cascade: --model flag > plugin config >
+      tier from config/models.json > default. Matches legacy get_effective_model
+      precedence. Already partial in MVP-2; this issue closes it out.
+  - id: ccli-5
+    title: "[Phase 0.5] Claude CLI: token-limit enforcement + budget cutoff"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Enforce per-run token cap based on budget remaining (cost ledger).
+      Refuse to dispatch further model calls when cap reached; emit
+      cost.budget_exceeded event; let recovery plugin decide abort vs degrade.
+  - id: ccli-6
+    title: "[Phase 0.5] Claude CLI: session attachment / interrupt-resume"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Support attaching to a long-running claude session (`--session-id`) so
+      pipelines that span multiple stages can share a conversational context
+      where useful (e.g., review stage seeing build's reasoning).
+  - id: hook-1
+    title: "[Phase 0.5] Claude Code hooks: PreToolUse (pre-bash, pre-edit validation)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      .claude/settings.json + handler at .claude/helpers/hook-handler.cjs.
+      Validates bash commands and edits before execution (block dangerous,
+      record audit trail, redact secrets). Lift legacy contract from
+      legacy/.claude/settings.json:2-23.
+  - id: hook-2
+    title: "[Phase 0.5] Claude Code hooks: PostToolUse (post-edit, post-bash)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Post-tool finalization: run formatters, update event log, persist
+      artifacts. Lift from legacy/.claude/settings.json:25-45.
+  - id: hook-3
+    title: "[Phase 0.5] Claude Code hooks: UserPromptSubmit routing"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Dynamic routing of user prompts to specialized handlers (route-handler.cjs).
+      Allows the daemon to inject context (e.g., relevant keepers, pipeline
+      status) before Claude Code processes the prompt.
+  - id: hook-4
+    title: "[Phase 0.5] Claude Code hooks: SessionStart/End memory restoration"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      auto-memory-hook.mjs equivalent. SessionStart restores conversation
+      memory; SessionEnd flushes new patterns to AgentDB. Required for the
+      'pick up where you left off' developer experience.
+  - id: hook-5
+    title: "[Phase 0.5] Claude Code hooks: PreCompact (context save before compaction)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Snapshot conversation state to disk before Claude Code compacts so
+      developers can recover important context. Lift from
+      legacy/.claude/settings.json:96-158.
+  - id: hook-6
+    title: "[Phase 0.5] Claude Code hooks: SubagentStart/Stop + Notification"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Track subagent lifecycles; emit events when teammates spawn/finish;
+      notify on idle. Foundation for the "what are my agents doing" UX.
+
+  # ─── Phase 1 — Ruflo MCP integration depth (5 issues) ──────────────────
+  - id: ruf-1
+    title: "[Phase 1] Ruflo daemon lifecycle (spawn / kill / restart)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, keeper]
+    body: |
+      Manage the ruflo MCP daemon process: detect-if-running, start-on-demand,
+      kill-on-shutdown, restart-on-crash. Required for #26 (memory recall) to
+      work reliably. Legacy: ruflo-adapter.sh lifecycle helpers.
+  - id: ruf-2
+    title: "[Phase 1] Ruflo MCP bridge wrapper (ruflo-mcp-call.sh)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, keeper]
+    body: |
+      Shell wrapper that handles MCP request/response framing, timeouts,
+      retries. Single chokepoint for all ruflo calls (similar to redaction
+      chokepoint pattern).
+  - id: ruf-3
+    title: "[Phase 1] Ruflo timeout / fault tolerance (circuit breaker)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, keeper]
+    body: |
+      Open circuit on repeated ruflo failures; fall back to native TF-IDF
+      memory recall. Emit ruflo.degraded event; recover when ruflo comes back.
+      Avoids cascading failure when MCP layer is flaky.
+  - id: ruf-4
+    title: "[Phase 1] Ruflo per-repo namespace isolation (zbuild-* vs legacy shipwright-*)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, keeper]
+    body: |
+      Use namespace zbuild-repo-{hash} and zbuild-{hash}-{ISSUE_NUMBER} so
+      zbuild doesn't read/write into the legacy shipwright-* namespaces. Hash
+      = sha256 of repo origin URL (unify the multiple repo-hash schemes per
+      KEEPERS §I).
+  - id: ruf-5
+    title: "[Phase 1] Multi-server MCP orchestration (.mcp.json with 4 servers)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, keeper]
+    body: |
+      Connect to multiple MCP servers (claude-flow, ruv-swarm, flow-nexus,
+      agentic-flow) per .mcp.json. Handle server lifecycle, health checks,
+      version pinning, error propagation, fallback routing when one's down.
+
+  # ─── Phase 3 — Daemon adaptive subsystems (12 issues) ──────────────────
+  - id: adapt-1
+    title: "[Phase 3] Adaptive poll intervals (queue depth + cost-per-job)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin, learning-loop]
+    body: |
+      POLL_INTERVAL adapts in 30s-120s range based on queue depth and rolling
+      cost-per-job. Avoids polling-storms when nothing's queued and CPU spend
+      when work is bursty. Legacy: daemon-adaptive.sh.
+  - id: adapt-2
+    title: "[Phase 3] Progress-based health verdicts (healthy/slowing/stalled/stuck ladder)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Compute verdict from progress signals (stage transitions, iteration
+      advance, git diff growth, file changes, child CPU). Distinct from #L-3
+      (wishlist: wire to KILL behavior); this issue computes the gradient and
+      emits events. Verdict consumers (kill steering, statusline) follow.
+  - id: adapt-3
+    title: "[Phase 3] Patrol limit adaptation (learn PATROL_MAX_ISSUES by hit rate)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin, learning-loop]
+    body: |
+      If patrol consistently hits the max-issues limit, increase it; if it
+      finds 0, decrease. Prevents resource waste on low-yield scans.
+  - id: adapt-4
+    title: "[Phase 3] Cost-aware auto-scaling (success rate at parallelism)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin, learning-loop]
+    body: |
+      Track success rate per parallelism level; lower MAX_PARALLEL when
+      success rate drops at higher concurrency (i.e., over-subscription).
+      Extends #49 (five ceilings) with a learning input.
+  - id: adapt-5
+    title: "[Phase 3] PID reuse detection (command signature + start time)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Before killing a stuck process, verify the PID's command signature still
+      matches the job AND the start time is consistent. Prevents killing
+      unrelated processes after PID recycling.
+  - id: adapt-6
+    title: "[Phase 3] Per-stage heartbeat timeouts via policy.json"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Operator-configurable timeouts: daemon.stage_timeouts.build=300s,
+      .test=180s, .review=180s, .lint=60s. Extends #55 (mechanism) with the
+      configuration surface.
+  - id: adapt-7
+    title: "[Phase 3] Auto-resume from pause flag (operator-pauseable daemon)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Pause flag with resume_after timestamp; daemon checks each cycle and
+      auto-clears when time passes. Enables maintenance windows without
+      manual restart.
+  - id: adapt-8
+    title: "[Phase 3] Failure class taxonomy + per-class retry policy"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, recovery-plugin]
+    body: |
+      Classify failures into 5+ classes (auth_error, api_error, invalid_issue,
+      context_exhaustion, build_failure); per-class max retries and backoff.
+      Distinct from #47 circuit breaker — this is classification, that's policy.
+  - id: adapt-9
+    title: "[Phase 3] Consecutive-failure auto-pause (5m→40m→320m, cap 8h)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      On 3+ consecutive failures in same class, auto-pause with exponential
+      resume. Prevents thrashing on persistent flakes (e.g., flaky external API).
+      Consumes adapt-8 classifier output.
+  - id: adapt-10
+    title: "[Phase 3] Checkpoint-based recovery (--resume from last good state)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      daemon-failure checks for pipeline-artifacts/checkpoints/ and passes
+      --resume on retry. Faster than restart-from-scratch when pipeline got
+      most of the way through.
+  - id: adapt-11
+    title: "[Phase 3] Intelligence-powered triage (semantic complexity/risk extraction)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin, learning-loop]
+    body: |
+      Call intelligence_analyze_issue() to extract complexity (1-10),
+      risk_level, success_probability, issue_type from issue body. Export as
+      INTELLIGENCE_COMPLEXITY for downstream stage decisions. Extends #48
+      label-based scoring.
+  - id: adapt-12
+    title: "[Phase 3] 10-part proactive patrol (sec-audit + deps + dead-code + ...)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Patrol substance for #51. Each check is a small plugin: security vuln
+      scan (npm/pip/cargo audit + Dependabot), stale deps (>2 major versions),
+      dead code (no importers), test coverage gaps, doc staleness, perf
+      regression, recurring failures, DORA degradation, untested scripts,
+      retry exhaustion patterns.
+
+  # ─── Phase 3 — Self-optimize learning loop wiring (3 issues) ───────────
+  - id: opt-1
+    title: "[Phase 3] Outcome → routing feedback loop (record_model_outcome wiring)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, learning-loop]
+    body: |
+      After each stage, record (model, tokens, cost, quality_score, success)
+      into the cost ledger and feed back into UCB1/Thompson posterior. Closes
+      the loop on #29/#30 routers (they have the algorithm; this is the data
+      pipeline that makes them learn).
+  - id: opt-2
+    title: "[Phase 3] Risk keyword learning (optimize_learn_risk_keywords)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, learning-loop]
+    body: |
+      Mine event-log for keywords that correlate with failure; update
+      classifier-rule weights so future issues get correctly tagged as
+      high-risk earlier. Feeds adapt-8 (failure classifier).
+  - id: opt-3
+    title: "[Phase 3] Memory evolution feedback (optimize_evolve_memory)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, learning-loop]
+    body: |
+      Prune stale skill-recommendation patterns; promote ones that correlated
+      with recent successes; feed updates back into the skill registry
+      (#22/#67) so older patterns decay rather than dominate.
+
+  # ─── Phase 3 — AgentDB multi-table persistence (6 issues) ──────────────
+  - id: db-1
+    title: "[Phase 3] AgentDB tables: pipeline_runs + pipeline_stages"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      Persist run history and per-stage outcomes. Enables status dashboards,
+      DORA computation, replay. Schema from legacy/scripts/sw-db.sh.
+  - id: db-2
+    title: "[Phase 3] AgentDB tables: cost_entries + budgets"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      Cost ledger backing store with per-budget tracking. Feeds opt-1 and
+      ccli-5 (token-limit enforcement). Extends #28 ledger spec with the
+      persistence layer.
+  - id: db-3
+    title: "[Phase 3] AgentDB tables: heartbeats (daemon state)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      Persisted heartbeat history. Survives daemon restart (so patient-kill
+      can verify staleness across restarts). Backing for adapt-2/adapt-7.
+  - id: db-4
+    title: "[Phase 3] AgentDB tables: memory_patterns + memory_decisions + memory_embeddings"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, learning-loop]
+    body: |
+      Three tables for the learning loop substrate: extracted patterns,
+      architectural decisions, ONNX embeddings. memory_failures (#32) is the
+      4th; this issue covers the other three.
+  - id: db-5
+    title: "[Phase 3] AgentDB tables: daemon_queue (durable job queue)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Persisted job queue so dispatched-but-not-completed jobs survive daemon
+      restart. Foundation for the daemon's correctness story.
+  - id: db-6
+    title: "[Phase 3] AgentDB cross-device HTTP sync (_sync_log + _sync_metadata)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      Replicate learned state across machines via HTTP sync. Enables fleet
+      operations (multiple developer machines share learned patterns).
+
+  # ─── Phase 3 — GitHub Actions workflows (8 critical) ───────────────────
+  - id: wf-1
+    title: "[Phase 3] Workflow: zbuild-patrol.yml (patrol-as-self-generated work)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Scheduled workflow that runs the patrol plugin and opens issues for
+      findings. Actions-native variant of the daemon's patrol cycle. Reuses
+      adapt-12 patrol checks. Substance for #51.
+  - id: wf-2
+    title: "[Phase 3] Workflow: zbuild-watchdog.yml (daemon health monitor)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Periodic health probe: is the daemon responsive, are heartbeats fresh,
+      is the queue draining. Opens an alert issue when health drops.
+  - id: wf-3
+    title: "[Phase 3] Workflow: zbuild-auto-retry.yml (failure-class aware retry)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, recovery-plugin]
+    body: |
+      Triggered on pipeline.failed event; consults adapt-8 classifier to
+      decide whether to retry, escalate, or close. Implements the retry
+      strategy escalation pattern from KEEPERS §D.4.
+  - id: wf-4
+    title: "[Phase 3] Workflows: zbuild-health.yml + zbuild-platform-health.yml"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      Two probes: zbuild itself (CLI works, plugins load) and the platform
+      (Anthropic API reachable, gh authenticated, ruflo MCP running).
+  - id: wf-5
+    title: "[Phase 3] Workflow: risk-policy-gate.yml"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      PR-level risk gate: scans diff against config/policy.json, fails the
+      check if scope-violation or high-risk patterns appear without explicit
+      approval. Server-side enforcement of scope manifest contract.
+  - id: wf-6
+    title: "[Phase 3] Workflow: review-remediation.yml (auto-fix on review)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      When review-stage emits actionable findings, kick off a remediation
+      sub-pipeline that fixes them automatically. Closes the loop between
+      review and self-heal.
+  - id: wf-7
+    title: "[Phase 3] Workflows: e2e-integration.yml + e2e-smoke.yml"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, test-migration]
+    body: |
+      End-to-end testing: spin up a fixture repo, run a real pipeline,
+      verify expected output. Smoke runs on every PR; integration nightly.
+  - id: wf-8
+    title: "[Phase 3] Workflow: pipeline-resume.yml (resume after failure)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      Resume a failed pipeline from its last checkpoint (works with adapt-10).
+      Operator-trigger or automatic-after-flake.
+
+  # ─── Phase 3 — Cross-repo / multi-repo (4 issues) ──────────────────────
+  - id: xrepo-1
+    title: "[Phase 3] Cross-repo isolation (per-repo state, no cross-contamination)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Daemon working across multiple repos: per-repo state directory, per-repo
+      lockfile, per-repo cost ledger. No bleed-through. Lift logic from
+      legacy/scripts/sw-cross-repo.sh.
+  - id: xrepo-2
+    title: "[Phase 3] Repository identity persistence (canonical repo-hash)"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper]
+    body: |
+      Single canonical repo-hash scheme (sha256 of git remote get-url origin |
+      cut -c1-12). Resolve KEEPERS §I 'multiple repo-hash schemes — unify on
+      one.' All consumers (memory namespace, state dir, cost ledger) use it.
+  - id: xrepo-3
+    title: "[Phase 3] Org-mode multi-repo cloning (~/.zbuild/repos/{owner}/{repo})"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Daemon clones repos into ~/.zbuild/repos/{owner}/{repo} on first claim;
+      enables org-wide patrol and automation from one host.
+  - id: xrepo-4
+    title: "[Phase 3] Failure-domain boundaries between repos"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
+    labels: [phase-3, keeper, daemon-plugin]
+    body: |
+      Failure in one repo's pipeline must not pause the daemon for other repos.
+      Per-repo circuit breakers (extends adapt-9).
+
+  # ─── Phase 4 — CLI subcommand gaps (12 issues) ─────────────────────────
+  - id: cmd-1
+    title: "[Phase 4] CLI: memory inspector (zbuild memory show|list|search|export|import|forget|stats)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      User-facing surface to inspect what zbuild has learned. Reads from
+      AgentDB memory tables (db-4). Critical for trust ('what did the
+      system memorize about my codebase?').
+  - id: cmd-2
+    title: "[Phase 4] CLI: worktree subcommands (zbuild worktree create|list|sync|remove|reset)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Per-agent git-worktree isolation as a first-class CLI verb. Branch
+      ahead/behind display. .worktrees/ auto-gitignore.
+  - id: cmd-3
+    title: "[Phase 4] CLI: cleanup (zbuild cleanup --force --prune-orphans --test-orphans)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Kill reparented PIDs, stale tmux panes, orphaned test processes.
+      Preserves _is_orphan() predicate from legacy.
+  - id: cmd-4
+    title: "[Phase 4] CLI: session (zbuild session --template --agents --roles --terminal --no-launch --goal)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Create a team session with tmux/iTerm2/WezTerm adapter. Multi-agent
+      scaffold from a template. --no-launch creates without auto-starting.
+  - id: cmd-5
+    title: "[Phase 4] CLI: cost dashboard (zbuild cost show|breakdown|budget|trends with --render/--render-plain)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      User-facing cost surface. --render = ASCII table with colors; --render-plain
+      = GitHub-comment-ready markdown. Extends #28 (ledger logic) with the
+      display.
+  - id: cmd-6
+    title: "[Phase 4] CLI: init vs setup distinction (one-shot vs guided wizard)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      `zbuild init` = one-shot install. `zbuild setup` = guided 4-phase
+      wizard (prereqs → repo analysis → config gen → validation). Both
+      surfaces preserved per legacy/scripts/sw-init.sh + sw-setup.sh.
+  - id: cmd-7
+    title: "[Phase 4] CLI: templates (zbuild templates list|show <name>)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      List available pipeline templates and show their stage composition.
+      Operator UX for picking the right template for a run.
+  - id: cmd-8
+    title: "[Phase 4] CLI: doctor flags (--fix, --json)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Extend #58 doctor with --fix (auto-remediate where safe) and --json
+      (machine-readable output for CI consumption).
+  - id: cmd-9
+    title: "[Phase 4] CLI: mission-control TUI (zbuild mission-control)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Top-level command for the curses-style operational dashboard.
+      Implementation in dash-2 (Phase 4 dashboard milestone); this issue is
+      the CLI surface that launches it.
+  - id: cmd-10
+    title: "[Phase 4] CLI: tab completions (zsh + bash + fish)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Shell completions with descriptions per command (KEEPERS §E #11:
+      'tab-completion file is also documentation'). Generate from the same
+      command metadata the CLI uses internally.
+  - id: cmd-11
+    title: "[Phase 4] CLI: --repair flag pattern + always-backup-before-overwrite"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Project convention: any destructive command gets a --repair counterpart
+      that restores from backup. Every overwrite first writes .bak. Applies
+      uniformly to init, setup, config commands.
+  - id: cmd-12
+    title: "[Phase 4] CLI: loop (zbuild loop \"<goal>\" --test-cmd \"...\")"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Continuous improvement loop command (distinct from pipeline). Runs an
+      agent in a tight edit-test-verify loop against a goal until passing.
+      Preserves shipwright's `loop` command UX.
+
+  # ─── Phase 4 — Personas beyond compound-audit (5 issues) ───────────────
+  - id: per-1
+    title: "[Phase 4] Persona: red-team / adversarial (sw-adversarial.sh, 3-round cap)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, agent-plugin]
+    body: |
+      Iterative red-team review with 3 max rounds; preserves _adversarial_security_context
+      and convergence-when-zero-critical-findings logic. Distinct from the
+      security lens (which is single-pass); this is iterative attack/defend.
+  - id: per-2
+    title: "[Phase 4] Persona: developer-simulation (3 personas with severity scoring)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, agent-plugin]
+    body: |
+      Three personas (security eng, performance eng, maintainability eng) each
+      reviewing the diff with persona-specific severity scoring. Per-persona
+      prompt + scoring rubric preserved verbatim.
+  - id: per-3
+    title: "[Phase 4] Persona: architecture-enforcer (per-repo shape-memory)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, agent-plugin]
+    body: |
+      Persistent per-repo 'architectural shape' learned from successful PRs;
+      flags diffs that violate the shape. Lift sw-architecture-enforcer.sh.
+      Stores shape in memory_decisions (db-4).
+  - id: per-4
+    title: "[Phase 4] Persona: recruit learning loop (drop AGI framing; keep loop)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, learning-loop]
+    body: |
+      Outcomes feed heuristic re-tuning of stage→persona assignments. Drop
+      the talent-database overhead and AGI framing per KEEPERS §F. Just keep
+      the (issue_type, stage) → success-rate sort.
+  - id: per-5
+    title: "[Phase 4] Persona: intelligence / predictive analysis"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, agent-plugin]
+    body: |
+      sw-intelligence.sh: predictive-analysis prompts that extract complexity,
+      risk_level, success_probability from an issue. Feeds adapt-11 triage.
+
+  # ─── Phase 4 — Compound-audit orchestration (3 issues) ─────────────────
+  - id: co-1
+    title: "[Phase 4] Compound-audit cascade orchestrator (parallel lens dispatch)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, orchestrator-plugin]
+    body: |
+      Run the 7 lens plugins in parallel (or batched), collect findings,
+      aggregate. The lens issues (#62-67) only migrate prompts; THIS migrates
+      the engine that runs them. Lift compound_audit_run_cycle().
+  - id: co-2
+    title: "[Phase 4] Compound-audit structural dedup (file + category + 5-line proximity)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, orchestrator-plugin]
+    body: |
+      Two findings in the same file + same category within 5 lines are the
+      same finding. Tier-1 dedup. Preserves compound_audit_dedup_structural.
+  - id: co-3
+    title: "[Phase 4] Compound-audit tier-2 escalation (low-confidence → specialist)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, orchestrator-plugin]
+    body: |
+      Low-confidence findings from a lens get re-checked by a specialist
+      (e.g., security ambiguity routes to red-team persona per-1). Escalation
+      policy is a small registry, not hardcoded.
+
+  # ─── Phase 4 — Skills batch (1 omnibus issue) ───────────────────────────
+  - id: skl-1
+    title: "[Phase 4] Migrate remaining 11 skill .md fragments (omnibus)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Beyond the 6 compound-audit lenses, legacy has 11 more skill fragments
+      in legacy/scripts/skills/*.md: product-thinking, brainstorming,
+      validation-thoroughness, observability, deploy-safety, adversarial-quality,
+      two-stage-review, architecture-quality, security-audit, ux-investigation,
+      and a few others (verify exact list before starting).
+
+      Each is a hardened prompt fragment used by the skill registry to suggest
+      retry strategies. Migrate as plugin/agent-skill manifests under
+      plugins/skill/<name>/.
+
+      Checkbox-driven; ~30 min per skill once the pattern is set.
+
+  # ─── Phase 4 — Dashboards & Observability UI (6 issues) ────────────────
+  # User note: dashboards are NOT top priority but should be done. Place
+  # toward the end of Phase 4 ordering.
+  - id: dash-1
+    title: "[Phase 4] Web dashboard (Bun + TypeScript + WebSocket + React frontend)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Full web dashboard from legacy/dashboard/. Bun SQLite backend, WebSocket
+      push at 2s intervals, OAuth/PAT auth, 50-client multi-broadcast. React
+      frontend with agent timelines, cost overlays, team states. NOT top
+      priority per user; ship after CLI and personas land.
+  - id: dash-2
+    title: "[Phase 4] Mission-control TUI (curses-style terminal dashboard)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      350+ LoC terminal UI: progress bars, health indicators, alerts tail,
+      stage tree drill-down. Lower-friction than the web dashboard for
+      power users. Launched via cmd-9.
+  - id: dash-3
+    title: "[Phase 4] Public-dashboard 3-tier sanitizer (public/anonymized/stages-only)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, safety-primitive]
+    body: |
+      Three privacy modes for shareable pipeline progress links. Strips
+      /Users/..., ghp_..., emails, internal paths. Preserve sanitize_for_privacy()
+      verbatim — privacy regression here is the bad kind.
+  - id: dash-4
+    title: "[Phase 4] Replay system (DVR over event store, narrative mode)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      `zbuild replay <run-id>`: timeline viewer with list/show/diff/export
+      subcommands. Narrative mode = story-form re-telling of the pipeline.
+      Reads from event-bus SQLite + JSONL.
+  - id: dash-5
+    title: "[Phase 4] Statusline Claude Code IDE integration (statusline.cjs)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      .claude/helpers/statusline.cjs — real-time Claude Code IDE statusline
+      showing current pipeline, agent count, health. Extends #60 (general
+      statusline) with the IDE-specific hook.
+  - id: dash-6
+    title: "[Phase 4] Activity stream sub-features (filters, snapshot, follow-mode, color hash, event icons)"
+    milestone: "Phase 4 — CLI, UX, Skills, Personas"
+    labels: [phase-4, keeper, cli-ux]
+    body: |
+      Extends #59 with: --type/--agent/--team/--stage filter flags;
+      snapshot (one-liner per event), follow-mode (live tail); 5-color
+      per-agent hash; 17 event-type → emoji map.
+
+
+  # ─── Wishlist additions (audit gaps deferred to post-stabilization) ────
+  - id: l-12
+    title: "[L] Webhook receiver infrastructure (HMAC, port 8765)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, daemon-plugin]
+    body: |
+      Long-running webhook receiver for instant issue processing (<1s) vs
+      60s polling. HMAC-SHA256 validated. Distinct from CI-2 (daemon-in-Actions)
+      and #53 (polling-canonical policy). For deployments wanting low-latency.
+  - id: l-13
+    title: "[L] Developer registry + invite tokens (team coordination)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, daemon-plugin]
+    body: |
+      ~/.zbuild/developer-registry.json + invite-tokens.json for team
+      membership: who can claim issues, cross-team auth, fleet roster. Not
+      needed for solo/small-team use; valuable at org scale.
+  - id: l-14
+    title: "[L] Cross-machine discovery via orphan branch (peer learning)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, learning-loop]
+    body: |
+      Push local discoveries to a `zbuild-discoveries` orphan branch with 30-min
+      TTL cache; peer machines pull and learn from each other. Complements
+      db-6 HTTP sync with a git-native alternative.
+  - id: l-15
+    title: "[L] AgentDB tables: developers + sessions + metrics (less-critical)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      Three less-critical AgentDB tables not covered by db-1..6. Wishlist
+      because the system works without them; they enrich dashboards and team
+      reporting.
+  - id: l-16
+    title: "[L] AgentDB tables: pipeline_outcomes + event_consumers"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      Two more AgentDB tables: pipeline_outcomes (post-merge success tracking,
+      DORA inputs) and event_consumers (subscription registry for the event
+      bus, enables fan-out). Wishlist; core works without.
+  - id: l-17
+    title: "[L] Workflow: zbuild-auto-resolve-threads.yml"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      Auto-resolve PR review threads when the underlying concern is addressed.
+      Nice-to-have automation; not core to the migration story.
+  - id: l-18
+    title: "[L] Workflow: zbuild-docs.yml + website.yml (docs + website automation)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      Auto-publish docs on push to main; rebuild the project website.
+      Bundle two related workflows.
+  - id: l-19
+    title: "[L] Workflow: zbuild-strategic.yml (STRATEGY.md → roadmap automation)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      Strategic intelligence agent reads STRATEGY.md, opens roadmap-tracking
+      issues, monitors progress against strategic goals. Requires R-1/R-2
+      groundwork.
+  - id: l-20
+    title: "[L] Workflows: zbuild-optimize + zbuild-dispatch + zbuild-auto-label + pipeline-smoke + regression"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      Remaining 5 GHA workflows from the legacy 22. Bundled because each is
+      small operational glue (self-tuning trigger, dispatch routing, label
+      automation, smoke gating, regression detection).
+  - id: l-21
+    title: "[L] Homebrew formula (brew install zbuild)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, cli-ux]
+    body: |
+      legacy/homebrew/shipwright.rb adapted for zbuild. Adds a Homebrew tap
+      distribution path alongside npm + curl installer.
+  - id: l-22
+    title: "[L] Docker / Devcontainer (containerized development)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, cli-ux]
+    body: |
+      Multi-stage Dockerfile + docker-compose + .devcontainer/. For users
+      who want zbuild without installing bash 5, jq, gh, claude CLI on host.
+  - id: l-23
+    title: "[L] Demo & examples (sample-usage assets)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, cli-ux]
+    body: |
+      legacy/demo/: full-demo.tape, hero.tape (asciinema), sample LinkedIn
+      post, package.json with sample workflows. Onboarding accelerant.
+  - id: l-24
+    title: "[L] Postinstall script (npm install side-effects)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, cli-ux]
+    body: |
+      `scripts/postinstall.mjs` behavior — PATH check, completion install,
+      first-run wizard offer. Polish for the `npm install -g zbuild` flow.
+  - id: l-25
+    title: "[L] Jira tracker adapter (bidirectional sync)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      `sw-tracker-jira.sh` + `sw-jira.sh` equivalents. GitHub ↔ Jira issue
+      sync, custom field mapping, status propagation. Not core; for orgs
+      using Jira as the source of truth.
+  - id: l-26
+    title: "[L] Linear tracker adapter"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      Same as l-25 for Linear. Bundled because both adapters share the
+      tracker-adapter pattern.
+  - id: l-27
+    title: "[L] OpenTelemetry instrumentation (sw-otel.sh)"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      OTEL trace emission for spans across pipeline stages. Collector endpoint,
+      sampling config. For users with OTEL infrastructure who want unified
+      observability.
+  - id: l-28
+    title: "[L] STRATEGY.md → strategic agent loop"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist, learning-loop]
+    body: |
+      Strategic intelligence agent reads STRATEGY.md and steers roadmap
+      decisions (open issues, sequence work, flag drift). Feedback loop
+      (agent → STRATEGY update) creates an autonomous strategy doc.
+  - id: l-29
+    title: "[L] Pipeline templates: tdd / enterprise / deployed / ios / ios-fast"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    body: |
+      5 extra templates from legacy/templates/pipelines/. tdd (test-first),
+      enterprise (multi-approval), deployed (post-merge deploy), ios + ios-fast
+      (mobile). iOS-specific is platform-bound; consider skipping unless an
+      iOS user appears.
