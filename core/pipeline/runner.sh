@@ -171,30 +171,35 @@ main() {
             fi
             set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
         else
-            local first_role; first_role="$(echo "$roles_out" | head -1)"
             if [[ "$strategy" == "composite" ]]; then
                 error "Stage $stage: composite strategy not implemented (Phase 1 — deferred)"
                 rc=1
             else
-                local success_count=0 fail_count=0 any_plugin_found=false
-                for platform in "${_DETECTED_PLATFORMS[@]}"; do
-                    plugin_dir="$(resolve_plugin_for_role "$first_role" "$platform" "$plugins_root" 2>/dev/null || true)"
-                    [[ -z "$plugin_dir" ]] && \
-                        plugin_dir="$(resolve_plugin_for_role "$first_role" "" "$plugins_root" 2>/dev/null || true)"
-                    [[ -z "$plugin_dir" ]] && continue
-                    any_plugin_found=true
-                    set +e
-                    ZBUILD_PLATFORM="$platform" plugin_hook_call "$plugin_dir" run "$stage" "$state_file"
-                    local prc=$?
-                    set -e
-                    if [[ $prc -eq 0 ]]; then
-                        success_count=$((success_count + 1))
-                    else
-                        fail_count=$((fail_count + 1))
-                        warn "Stage $stage failed on platform $platform (rc=$prc)"
-                        [[ "$strategy" == "sequential" ]] && break
-                    fi
-                done
+                local success_count=0 fail_count=0 any_plugin_found=false break_all=false role
+                while IFS= read -r role; do
+                    [[ -z "$role" ]] && continue
+                    $break_all && break
+                    for platform in "${_DETECTED_PLATFORMS[@]}"; do
+                        plugin_dir="$(resolve_plugin_for_role "$role" "$platform" "$plugins_root" 2>/dev/null || true)"
+                        [[ -z "$plugin_dir" ]] && \
+                            plugin_dir="$(resolve_plugin_for_role "$role" "" "$plugins_root" 2>/dev/null || true)"
+                        [[ -z "$plugin_dir" ]] && continue
+                        any_plugin_found=true
+                        set +e
+                        ZBUILD_TARGET_PLATFORM="$platform" plugin_hook_call "$plugin_dir" run "$stage" "$state_file"
+                        local prc=$?
+                        set -e
+                        if [[ $prc -eq 0 ]]; then
+                            success_count=$((success_count + 1))
+                        else
+                            fail_count=$((fail_count + 1))
+                            warn "Stage $stage role $role failed on platform $platform (rc=$prc)"
+                            if [[ "$strategy" == "sequential" ]]; then
+                                break_all=true; break
+                            fi
+                        fi
+                    done
+                done <<< "$roles_out"
 
                 if ! $any_plugin_found; then
                     # No role-based plugin found — fall back to direct ID match (backward-compat)
@@ -205,7 +210,7 @@ main() {
                         eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
                         _runner_ended=true
-                        error "No plugin registered for required stage '$stage' (role: $first_role)"
+                        error "No plugin registered for required stage '$stage' (roles: $roles_out)"
                         return 1
                     fi
                     set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
@@ -223,8 +228,9 @@ main() {
             eb_emit_event "stage.complete" "stage=$stage"
             success "Stage $stage complete"
         elif [[ $rc -eq 2 ]]; then
-            # Partial: at least one platform succeeded and at least one failed
-            _update_stage_status "$state_file" "$stage" "partial"
+            # Partial fanout: at least one platform succeeded and at least one failed.
+            # State uses "failed" (ADR-006 enum); partial detail is in the event payload.
+            _update_stage_status "$state_file" "$stage" "failed"
             eb_emit_event "stage.fail" "stage=$stage" "reason=partial"
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"

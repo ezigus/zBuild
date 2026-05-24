@@ -197,7 +197,12 @@ The following parts of this ADR are deferred to Phase 1:
 
 ### Backward-compatibility
 
-Stages in `standard.yaml` that reference roles (e.g., `roles: [intake]`) use the resolver. Existing plugins without a `provides.role` field are transparently found via `_find_plugin_for_stage` (direct ID match) — the fallback is triggered whenever `template_stage_roles` returns empty. This lets plugins migrate to role-based resolution incrementally.
+The runner falls back to `_find_plugin_for_stage` (direct stage-ID match) in two cases:
+
+1. **Template stage has no roles** — `template_stage_roles` returns empty (e.g., stage loaded from the built-in fallback list instead of a template).
+2. **No plugin declares `provides.role`** — template stage lists roles but none of the installed plugins have a matching `provides.role` field; the resolver finds no candidates across all platforms. The runner then tries the direct ID match as a migration aid.
+
+This lets existing plugins (without `provides.role`) continue working while new plugins adopt role-based manifests incrementally.
 
 ## References
 

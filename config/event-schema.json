@@ -42,6 +42,7 @@
     "cycle.divergence",
     "registry.discovery",
     "registry.lockfile.written",
+    "registry.role-unresolved",
     "state.write",
     "state.recover"
   ]

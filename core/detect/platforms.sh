@@ -60,7 +60,23 @@ detect_platforms() {
         local cached_sha
         cached_sha="$(jq -r '.repo_head_sha // empty' "$platforms_file" 2>/dev/null || echo "")"
         if [[ -n "$cached_sha" && "$cached_sha" == "$current_sha" ]]; then
-            jq -r '.detected[]' "$platforms_file" 2>/dev/null
+            local cached_platforms=()
+            while IFS= read -r p; do
+                [[ -n "$p" ]] && cached_platforms+=("$p")
+            done < <(jq -r '.detected[]' "$platforms_file" 2>/dev/null)
+            # Apply overrides even on cache hit so config changes take effect immediately
+            local overrides_file="$repo_root/.zbuild/platforms.json"
+            if [[ -f "$overrides_file" ]]; then
+                while IFS= read -r p; do
+                    [[ -z "$p" ]] && continue
+                    local already=false
+                    for cp in "${cached_platforms[@]+"${cached_platforms[@]}"}"; do
+                        [[ "$cp" == "$p" ]] && { already=true; break; }
+                    done
+                    $already || cached_platforms+=("$p")
+                done < <(jq -r '.platforms[]? // empty' "$overrides_file" 2>/dev/null)
+            fi
+            printf '%s\n' "${cached_platforms[@]+"${cached_platforms[@]}"}"
             return 0
         fi
     fi

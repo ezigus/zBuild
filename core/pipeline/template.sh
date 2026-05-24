@@ -45,17 +45,27 @@ _tpl_parse_stage_data() {
     local file="$1"
     awk '
     /^stages:/ { in_stages = 1; next }
-    in_stages && /^[a-zA-Z_]/ { in_stages = 0 }
+    in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; next }
     in_stages && /^[[:space:]]*-[[:space:]]*id:/ {
-        if (current_id != "") {
-            print current_id "|" current_roles "|" current_strategy
-        }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy }
+        in_roles = 0
         current_id = $0
         gsub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", current_id)
         gsub(/[[:space:]]*$/, "", current_id)
-        current_roles = ""
-        current_strategy = ""
+        current_roles = ""; current_strategy = ""
+        next
     }
+    in_stages && in_roles && /^[[:space:]]*-[[:space:]]/ {
+        item = $0
+        gsub(/^[[:space:]]*-[[:space:]]+/, "", item)
+        gsub(/[[:space:]]*$/, "", item)
+        if (item != "") {
+            if (current_roles == "") current_roles = item
+            else current_roles = current_roles "," item
+        }
+        next
+    }
+    in_stages && in_roles { in_roles = 0 }
     in_stages && current_id != "" && /roles:/ {
         roles_line = $0
         if (roles_line ~ /\[/) {
@@ -63,7 +73,8 @@ _tpl_parse_stage_data() {
             sub(/\].*$/, "", roles_line)
             gsub(/[[:space:]]/, "", roles_line)
             current_roles = roles_line
-        }
+        } else { in_roles = 1 }
+        next
     }
     in_stages && current_id != "" && /^[[:space:]]+strategy:/ {
         current_strategy = $0
@@ -71,9 +82,7 @@ _tpl_parse_stage_data() {
         gsub(/[[:space:]]*$/, "", current_strategy)
     }
     END {
-        if (current_id != "") {
-            print current_id "|" current_roles "|" current_strategy
-        }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy }
     }
     ' "$file"
 }
