@@ -29,11 +29,10 @@ Usage:
 Commands:
   --version, version     Print version
   --help, help, -h       Show this help
-  status                 Show pipeline status (not implemented in Phase 0)
-  plugin list            List discovered plugins (not implemented in Phase 0)
-  pipeline start         Start a pipeline (not implemented in Phase 0)
+  status                 Show pipeline status
+  plugin list            List discovered plugins
+  pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
 
-Phase 0 implementation is in progress. Most commands are stubs.
 See https://github.com/ezigus/zBuild/issues for the migration backlog.
 
 Documentation:
@@ -85,8 +84,18 @@ case "$cmd" in
         esac
         ;;
     pipeline)
-        info "zbuild pipeline ${2:-} — Phase 0 stub"
-        echo "(pipeline orchestration lands in Phase 1)"
+        REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        case "${2:-}" in
+            start)
+                shift 2
+                exec bash "$REPO_ROOT/core/pipeline/runner.sh" "$@"
+                ;;
+            *)
+                error "Unknown pipeline subcommand: ${2:-}"
+                echo "Available: start" >&2
+                exit 2
+                ;;
+        esac
         ;;
     *)
         error "Unknown command: $cmd"
