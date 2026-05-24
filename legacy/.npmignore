@@ -1,0 +1,43 @@
+# Test scripts (not needed for runtime)
+scripts/*-test.sh
+
+# Build & release tooling
+scripts/build-release.sh
+scripts/update-version.sh
+scripts/install-remote.sh
+scripts/install-completions.sh
+
+# Debug logs
+firebase-debug.log
+*.log
+
+# Build artifacts
+dist/
+*.tgz
+
+# Editor & OS files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Worktrees
+.worktrees/
+
+# Website (separate deployment)
+website/
+
+# Demo project
+demo/
+
+# Git metadata
+.git/
+.github/
+
+# Generated GIFs
+demo/*.gif
+
+# Dev config
+.gitignore
+CHANGELOG.md
+install.sh

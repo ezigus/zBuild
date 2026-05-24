@@ -1,0 +1,136 @@
+---
+title: Cost Intelligence
+description: Track token usage per pipeline stage, enforce daily budgets, and analyze spending trends across your autonomous workflows.
+---
+
+Cost intelligence (`shipwright cost`) tracks every token spent across your pipelines, calculates costs by model, and enforces daily budgets to prevent runaway spending. It gives you full visibility into where your AI budget goes.
+
+## How It Works
+
+1. Each pipeline stage records its input and output token counts
+2. Costs are calculated using model-specific pricing (Opus, Sonnet, Haiku)
+3. A daily budget gate checks spending before each pipeline starts — warning at 80% and blocking at 100%
+4. All cost entries are stored with timestamps for trend analysis
+
+## Quick Start
+
+```bash
+# View 7-day cost summary
+shipwright cost show
+
+# 30-day breakdown by pipeline stage
+shipwright cost show --period 30 --by-stage
+
+# Breakdown by GitHub issue
+shipwright cost show --by-issue
+
+# Set a daily budget of $50
+shipwright cost budget set 50.00
+
+# Check current budget usage
+shipwright cost budget show
+
+# Estimate cost for a specific workload
+shipwright cost calculate 50000 10000 opus
+# → $1.5000
+```
+
+## Model Pricing
+
+Costs are calculated using per-model rates (USD per 1M tokens):
+
+| Model      | Input  | Output |
+| ---------- | ------ | ------ |
+| **Opus**   | $15.00 | $75.00 |
+| **Sonnet** | $3.00  | $15.00 |
+| **Haiku**  | $0.25  | $1.25  |
+
+## Commands
+
+| Command                                | Description                              |
+| -------------------------------------- | ---------------------------------------- |
+| `shipwright cost show`                 | Show cost summary for the current period |
+| `shipwright cost show --period <days>` | Custom period (default: 7 days)          |
+| `shipwright cost show --by-stage`      | Breakdown by pipeline stage              |
+| `shipwright cost show --by-issue`      | Breakdown by GitHub issue                |
+| `shipwright cost show --json`          | JSON output for tooling                  |
+| `shipwright cost budget set <amount>`  | Set daily budget in USD                  |
+| `shipwright cost budget show`          | Show current budget and today's usage    |
+
+### Pipeline Integration Commands
+
+These are called automatically by the pipeline:
+
+| Command                                                     | Description                                                            |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `shipwright cost record <in> <out> <model> <stage> [issue]` | Record token usage                                                     |
+| `shipwright cost calculate <in> <out> <model>`              | Calculate cost without recording                                       |
+| `shipwright cost check-budget [estimated_usd]`              | Pre-flight budget check                                                |
+| `shipwright cost remaining-budget`                          | Return remaining daily budget as a number (used by daemon auto-scaler) |
+
+## Budget Enforcement
+
+Set a daily budget to prevent unexpected spending:
+
+```bash
+# Set a $50/day limit
+shipwright cost budget set 50.00
+```
+
+The budget system has two thresholds:
+
+| Threshold         | Behavior                           |
+| ----------------- | ---------------------------------- |
+| **80% used**      | Warning logged, pipeline continues |
+| **100% exceeded** | Pipeline blocked, event emitted    |
+
+The budget resets daily at midnight UTC.
+
+## Cost Dashboard
+
+`shipwright cost show` displays a summary with spending totals, token counts, and trend analysis:
+
+```
+━━━ Cost Intelligence ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Period: last 7 day(s)
+
+  SPENDING SUMMARY
+    Total cost          $42.18
+    Avg per pipeline    $3.52
+    Max single pipeline $8.91
+    Entries             12
+
+  TOKENS
+    Input tokens        1,240,000
+    Output tokens       380,000
+
+  TREND
+    ↓ 15% (decreasing)
+
+  DAILY BUDGET
+    ████████████░░░░░░░░ 62%
+    $31.05 / $50.00
+```
+
+## Trend Analysis
+
+The dashboard compares spending in the first and second halves of the period to detect trends:
+
+| Trend               | Meaning                           |
+| ------------------- | --------------------------------- |
+| `↑ N% (increasing)` | Spending grew by more than 10%    |
+| `↓ N% (decreasing)` | Spending dropped by more than 10% |
+| `→ stable`          | Change within 10%                 |
+
+## Cost Optimization Tips
+
+- **Use Sonnet for most stages** — It's 5x cheaper than Opus with strong results for build and test stages.
+- **Reserve Opus for planning** — The plan stage benefits most from Opus's deeper reasoning.
+- **Use Haiku for review** — Quick review passes can use the cheapest model effectively.
+- **Set budgets early** — A daily budget prevents surprises during autonomous daemon operation.
+- **Monitor by stage** — Use `--by-stage` to identify which stages consume the most tokens and optimize accordingly.
+- **Track by issue** — Use `--by-issue` to understand cost per feature and estimate future work.
+
+## Intelligent Cost Prediction
+
+With the intelligence layer enabled, the `intelligence_predict_cost` function estimates token usage and cost before a pipeline runs, based on issue complexity and historical data. The `intelligence_recommend_model` function routes each stage to the cheapest model that can handle the task — using haiku for simple stages and opus only when complexity warrants it. See the [Intelligence guide](/guides/intelligence/) for details.

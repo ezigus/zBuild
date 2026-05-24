@@ -1,0 +1,35 @@
+{
+  "name": "observability",
+  "description": "Monitoring and observability setup with instrumentation, dashboards, and validation agents",
+  "keywords": [
+    "monitoring",
+    "observability",
+    "metrics",
+    "tracing",
+    "logging",
+    "alerting",
+    "grafana",
+    "datadog",
+    "slo"
+  ],
+  "agents": [
+    {
+      "name": "instrumenter",
+      "role": "Add metrics, distributed traces, structured logging, health checks, SLI definitions",
+      "focus": "src/, lib/, src/middleware/, src/instrumentation/"
+    },
+    {
+      "name": "dashboarder",
+      "role": "Dashboard definitions, alert rules, SLO configurations, runbook templates, on-call documentation",
+      "focus": "monitoring/, dashboards/, alerts/, docs/, config/"
+    },
+    {
+      "name": "validator",
+      "role": "Verify alerts fire correctly, test runbooks, validate metric cardinality, load test instrumentation",
+      "focus": "*.test.*, scripts/, monitoring/tests/"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

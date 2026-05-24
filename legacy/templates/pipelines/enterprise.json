@@ -1,0 +1,133 @@
+{
+  "name": "enterprise",
+  "description": "Maximum safety pipeline: all stages enabled, all gates on approve, strict quality, auto-rollback",
+  "defaults": {
+    "model": "opus",
+    "agents": 1
+  },
+  "intelligence": {
+    "adversarial_enabled": true,
+    "architecture_enabled": true,
+    "simulation_enabled": true
+  },
+  "stages": [
+    {
+      "id": "intake",
+      "enabled": true,
+      "gate": "approve",
+      "config": {}
+    },
+    {
+      "id": "plan",
+      "enabled": true,
+      "gate": "approve",
+      "config": { "model": "opus" }
+    },
+    {
+      "id": "design",
+      "enabled": true,
+      "gate": "approve",
+      "config": { "model": "opus" }
+    },
+    {
+      "id": "build",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "max_iterations": 20,
+        "audit": true,
+        "quality_gates": true
+      }
+    },
+    {
+      "id": "test",
+      "enabled": true,
+      "gate": "approve",
+      "config": { "coverage_min": 90 }
+    },
+    {
+      "id": "review",
+      "enabled": true,
+      "gate": "approve",
+      "config": {}
+    },
+    {
+      "id": "compound_quality",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "adversarial": true,
+        "negative": true,
+        "e2e": true,
+        "dod_audit": true,
+        "max_cycles": 5,
+        "strict_quality": true,
+        "audit_intensity": "auto",
+        "compound_quality_blocking": true
+      }
+    },
+    {
+      "id": "resync",
+      "enabled": true,
+      "gate": "approve",
+      "config": {}
+    },
+    {
+      "id": "pr",
+      "enabled": true,
+      "gate": "approve",
+      "config": { "wait_ci": true }
+    },
+    {
+      "id": "merge",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "merge_method": "squash",
+        "wait_ci_timeout_s": 900,
+        "auto_delete_branch": true
+      }
+    },
+    {
+      "id": "deploy",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "staging_cmd": "",
+        "production_cmd": "",
+        "rollback_cmd": "",
+        "deploy_strategy": "direct",
+        "canary_cmd": "__CANARY_CMD__",
+        "promote_cmd": "__PROMOTE_CMD__",
+        "switch_cmd": "__SWITCH_CMD__",
+        "health_url": "__HEALTH_URL__",
+        "pre_deploy_ci_status": true,
+        "pre_deploy_min_coverage": 80
+      }
+    },
+    {
+      "id": "validate",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "smoke_cmd": "",
+        "health_url": "",
+        "close_issue": true
+      }
+    },
+    {
+      "id": "monitor",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "duration_minutes": 10,
+        "health_url": "",
+        "error_threshold": 3,
+        "log_pattern": "ERROR|FATAL|PANIC",
+        "log_cmd": "",
+        "rollback_cmd": "",
+        "auto_rollback": true
+      }
+    }
+  ]
+}

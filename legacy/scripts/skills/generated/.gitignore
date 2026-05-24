@@ -1,0 +1,4 @@
+# Generated skill files are runtime outputs — not tracked in git.
+# skill_analyze_issue() writes here; skill_apply_lifecycle_verdicts() can prune them.
+*
+!.gitignore

@@ -1,0 +1,78 @@
+{
+  "name": "tdd",
+  "description": "Test-first pipeline: plan → design → generate tests → build → test → review → PR",
+  "defaults": { "model": "sonnet", "agents": 1 },
+  "tdd": true,
+  "intelligence": {
+    "adversarial_enabled": true,
+    "architecture_enabled": true,
+    "simulation_enabled": true
+  },
+  "stages": [
+    { "id": "intake", "enabled": true, "gate": "auto", "config": {} },
+    {
+      "id": "plan",
+      "enabled": true,
+      "gate": "approve",
+      "config": { "model": "opus" }
+    },
+    {
+      "id": "design",
+      "enabled": true,
+      "gate": "approve",
+      "config": { "model": "opus" }
+    },
+    {
+      "id": "build",
+      "enabled": true,
+      "gate": "auto",
+      "config": { "max_iterations": 20, "audit": true, "quality_gates": true }
+    },
+    {
+      "id": "test",
+      "enabled": true,
+      "gate": "auto",
+      "config": { "coverage_min": 80 }
+    },
+    { "id": "review", "enabled": true, "gate": "approve", "config": {} },
+    {
+      "id": "compound_quality",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "adversarial": true,
+        "negative": true,
+        "e2e": true,
+        "dod_audit": true,
+        "max_cycles": 3,
+        "audit_intensity": "auto",
+        "compound_quality_blocking": true
+      }
+    },
+    {
+      "id": "resync",
+      "enabled": true,
+      "gate": "auto",
+      "config": {}
+    },
+    {
+      "id": "pr",
+      "enabled": true,
+      "gate": "approve",
+      "config": { "wait_ci": false }
+    },
+    {
+      "id": "merge",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "merge_method": "squash",
+        "wait_ci_timeout_s": 600,
+        "auto_delete_branch": true,
+        "auto_merge": false,
+        "auto_approve": false
+      }
+    },
+    { "id": "deploy", "enabled": false, "gate": "approve", "config": {} }
+  ]
+}

@@ -1,0 +1,67 @@
+# Platform health — runs hygiene platform-refactor; warns if counts exceed thresholds.
+# Optional gate: fail when hardcoded > 100 (configurable via env).
+name: Shipwright Platform Health
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "config/policy.json"
+      - "scripts/lib/policy.sh"
+      - "scripts/sw-hygiene.sh"
+      - "docs/AGI-PLATFORM-PLAN.md"
+
+permissions:
+  contents: read
+
+jobs:
+  platform-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate policy.json
+        run: |
+          jq empty config/policy.json || { echo "::error::config/policy.json invalid or missing"; exit 1; }
+
+      - name: Validate policy against schema (optional)
+        run: |
+          if command -v npx &>/dev/null && [[ -f config/policy.schema.json ]]; then
+            npx --yes ajv-cli validate -s config/policy.schema.json -d config/policy.json 2>/dev/null && echo "Policy valid against schema" || echo "::notice::Schema validation failed (non-blocking)"
+          else
+            echo "::notice::Schema validation skipped (ajv-cli or schema not available)"
+          fi
+
+      - name: Platform refactor scan
+        id: scan
+        run: |
+          ./scripts/sw-hygiene.sh platform-refactor 2>&1 || true
+          if [[ -f .claude/platform-hygiene.json ]]; then
+            echo "hardcoded=$(jq -r '.counts.hardcoded // 0' .claude/platform-hygiene.json)" >> "$GITHUB_OUTPUT"
+            echo "fallback=$(jq -r '.counts.fallback // 0' .claude/platform-hygiene.json)" >> "$GITHUB_OUTPUT"
+            echo "todo=$(jq -r '.counts.todo // 0' .claude/platform-hygiene.json)" >> "$GITHUB_OUTPUT"
+          else
+            echo "hardcoded=0" >> "$GITHUB_OUTPUT"
+            echo "fallback=0" >> "$GITHUB_OUTPUT"
+            echo "todo=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report
+        run: |
+          HC="${{ steps.scan.outputs.hardcoded }}"
+          FB="${{ steps.scan.outputs.fallback }}"
+          TODO="${{ steps.scan.outputs.todo }}"
+          [[ -z "$HC" || ! "$HC" =~ ^[0-9]+$ ]] && HC=0
+          [[ -z "$FB" || ! "$FB" =~ ^[0-9]+$ ]] && FB=0
+          [[ -z "$TODO" || ! "$TODO" =~ ^[0-9]+$ ]] && TODO=0
+          echo "Platform health: hardcoded=$HC fallback=$FB TODO=$TODO"
+          THRESHOLD="${HARDCODED_THRESHOLD:-100}"
+          [[ -z "$THRESHOLD" || ! "$THRESHOLD" =~ ^[0-9]+$ ]] && THRESHOLD=100
+          if [[ "$HC" -gt "$THRESHOLD" ]]; then
+            echo "::warning::Hardcoded count ($HC) exceeds threshold ($THRESHOLD). See docs/AGI-PLATFORM-PLAN.md"
+          fi

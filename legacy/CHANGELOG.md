@@ -1,0 +1,964 @@
+# Changelog
+
+All notable changes to Shipwright are documented here.
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [Unreleased]
+
+### Per-Stage Cost Summary — Pipeline Wiring (#504 D2)
+
+Wires the cost-table foundation (rolling baselines + ASCII renderer) into the pipeline runtime so reviewers and operators see per-stage spend with HIGH/LOW vs-baseline flags at every pipeline completion.
+
+- **`cleanup_on_exit` hook** (`scripts/sw-pipeline.sh:~983`): after `cost_generate_breakdown`, the renderer prints the plain ASCII cost table to stdout on success and `cost_baseline_update` rolls the run into the rolling baseline. Order matches `cost_breakdown_command` (render first, then update) so HIGH/LOW flags compare against PRIOR runs and never include the current run.
+- **PR stage GitHub comment** (`scripts/lib/pipeline-stages-delivery.sh:~520`): after the "🎉 PR created" comment, the cost table is posted as a follow-up comment fenced in a code block so the ASCII table aligns in the GitHub UI. Failure is non-fatal — pipeline continues even if the comment post fails.
+- **Defensive helper sourcing**: `pipeline-stages-delivery.sh` defensively sources `lib/cost/{table-render,baselines}.sh` so the hook still works when the file is loaded standalone (e.g. by `lib/daemon-triage.sh`) outside the normal `sw-pipeline.sh` source chain.
+- **Test coverage**: 3 new tests in `sw-pipeline-test.sh` — wiring assertion for `cleanup_on_exit`, wiring assertion for the PR-stage comment, and a hermetic functional test that stages a 2-stage `cost-breakdown.json`, runs `render_cost_table_plain` + `cost_baseline_update`, and asserts both baseline files (all-issues + per-issue) are written with correct n counts. All 88 pipeline tests pass; 68 cost tests still green.
+
+### Ruflo MCP Bridge — Validated 31× Subprocess Reduction (#504)
+
+Closes the Ruflo MCP 1.5 series with a benchmark harness that proves the unix-socket bridge (#500/#502/#503) delivers the promised performance gains and resolves orphan-process leakage from #441.
+
+- **Benchmark harness** (`scripts/benchmark-ruflo-backends.sh`): drives identical workloads through `SW_RUFLO_BACKEND={cli,mcp}` with selectable bench tool (`memory_search` for production path, `ping` for transport-only validation), 20 samples per backend with cold-start discard, configurable percentile caps, and structured `events.jsonl` telemetry
+- **Multi-cycle orphan sentinel** (`--orphan-runs N`): runs N consecutive bridge start/bench/stop cycles and asserts zero new ruflo-related node procs survive — the #441 leak detector
+- **Ratio-based acceptance**: headline check is `cli_pids/mcp_pids ≥ BENCH_REDUCTION_RATIO` (default 10×) so the gate works on shared CI hosts where unrelated ruflo procs would otherwise inflate absolute PID counts
+- **Validated baseline**: 62 → 2 unique transient node PIDs (**31× reduction**, comfortably above the ≥10× #504 acceptance bar), p50=7 ms / p95=8 ms, 0 errors across 40 calls, 0 orphans across 3 consecutive teardown cycles. Reproducible numbers and raw artifacts documented in `docs/ruflo-mcp-transport.md` § "Validated baseline (2026-05-05)"
+- **`npm run bench:ruflo`** invokes the harness in assert mode for CI gating
+- **Acceptance-gate unit tests** (`scripts/sw-ruflo-benchmark-test.sh`, 26 assertions = 24 hermetic + 2 against real on-disk artifacts): drive `compute_percentiles` and `assert_thresholds` against synthetic JSON to prove the gate behaves correctly at the #504 boundary (passes at ≥10×, fails below, blocks on errors or p95 over cap, skips ratio check on weak CLI baseline). Test 13 additionally re-asserts the gate against the most recent benchmark JSON in `.claude/pipeline-artifacts/benchmarks/` when present, so a fresh `npm run bench:ruflo` doubles as a binding acceptance check
+- **Acceptance-criteria mapping table** (`docs/ruflo-mcp-transport.md` § "#504 acceptance-criteria mapping"): explicit row-per-criterion table mapping every checkbox in #504's acceptance list to its measured value, status, and evidence (artifact path or `file:line`). Calls out the ⚠️ — issue's ≤5 ms per-call latency vs measured 7 ms p50 — as an approved trade-off (binding 15 ms p95 gate met per maintainer approval on #504; headline ≥10× subprocess reduction met with 31×)
+
+### Ruflo Self-Heal Hypothesis Hive
+
+Intelligent root-cause triage on test failure with specialist hypothesis spawning and adaptive synthesis.
+
+- **Six-phase hypothesis pipeline** — seed namespace → spawn specialist hypotheses (mock, async, schema) → triage with error context → read prior fixes → synthesize union → finalize
+- **Queen hypothesis synthesis** — aggregates specialist hypotheses into a ranked, cost-conscious union with fallback to byte-bounded synthesis
+- **Fail-open gates** — environment flag, ruflo binary availability, hive initialization, hive ID presence guard safe execution
+- **Cost/confidence ranking** — prioritizes hypotheses by argmin(cost), argmax(confidence) as tiebreak; avoids expensive missteps
+- **Byte-bounded synthesis fallback** — union never exceeds 8000 bytes to prevent uncontrolled context pollution
+- **Integration with loop** — wraps `ruflo_execute_self_heal_hive` in `sw-loop.sh` with sentinel stripping for goal injection
+- **Test coverage** — 25+ tests covering gates, input bounding, ranking, event emission, and fallback behavior
+- **Feature flag** — Enable with `RUFLO_SELF_HEAL_HIVE=true` (default: unset, loop cost unchanged)
+
+### Pipeline Admission Gate (Memory Budget Guard)
+
+Concurrent pipelines on the same host could OOM the machine because nothing tracked active pipeline count or free memory before starting another run. Pipeline starts and resumes now go through a per-host admission gate.
+
+- **Per-host lock registry** at `~/.shipwright/active-pipelines/<pid>.json` written atomically on `pipeline start` and `pipeline resume`, removed by an idempotent EXIT trap on every exit path
+- **Concurrency cap**: at most one active pipeline per host (override via `SHIPWRIGHT_MAX_ACTIVE_PIPELINES`); enforced after stale-lock reaping with a post-write race recheck (lowest-PID wins)
+- **Memory floor**: refuse new starts when `<4 GB` free (override via `SHIPWRIGHT_MIN_FREE_GB`); cross-platform probe (`MemAvailable` on Linux, `vm_stat` on macOS), fail-closed on probe error
+- **Actionable refusal diagnostic**: names blocking pipeline's PID, `started_at`, `issue_or_goal`, `repo`, `pipeline_template`, and the policy limits that triggered the refusal
+- **`shipwright doctor`**: new `ACTIVE PIPELINES & MEMORY` section lists live/stale locks, warns at capacity, and warns when free memory is below the floor
+- **Stale-lock reaper**: locks held by dead PIDs are removed before the count check, so a crashed pipeline does not permanently block the host
+- **Test coverage**: 18 unit tests (`sw-pipeline-memory-guard-test.sh`) and 4 e2e admission tests (`sw-e2e-smoke-test.sh` #20–23) covering positive admission, concurrency refusal, stale reap, low-memory refusal, and lock release on exit
+
+### Test Harness
+
+- **E2E smoke harness**: `invoke_pipeline` and the headless-detection test now isolate `SHIPWRIGHT_ACTIVE_PIPELINES_DIR` per run, so dry-run smoke tests do not see the host's real lock dir when the harness itself runs from inside a live pipeline (e.g. the loop)
+
+## [3.6.0] — 2026-04-22
+
+### Ruflo Deep Stage Integration
+
+Every pipeline stage from intake through build now has ruflo semantic recall injected, completing the full memory chain across the autonomous pipeline.
+
+- **Build stage recall** — `ruflo_recall_similar_outcomes` injected into `stage_build` before hive execution; prior fix patterns surface before Claude starts iterating
+- **Intake stage memory** — ruflo recall and store wired into `stage_intake` for issue classification context; prior outcomes for the same issue type seed the classification prompt
+- **Test stage flakiness memory** — test stage results persisted in ruflo; historical flakiness patterns recalled on retry to distinguish genuinely broken vs. flaky failures
+- **TDD / test_first enrichment** — ruflo semantic recall injected into `stage_test_first` so generated tests are informed by prior test patterns for the same task type
+- **Audit stage hive** — `stage_audit` now dispatches to `ruflo_execute_audit` with four parallel specialists (CVE scanner, secrets detector, OWASP auditor, compliance checker)
+- **Learning feedback loop closed** — `ruflo_learn_from_shipwright` called after every pipeline outcome; learning bridge connects Shipwright outcomes to ruflo memory
+
+### Ruflo Infrastructure
+
+- **Singleton hive-mind init** — eliminated 120s pipeline overhead by initializing the hive once per pipeline run instead of per stage; `RUFLO_HIVE_ID` shared across stages
+- **Memory persistence across CI runs** — ruflo memory persisted to an orphan git branch (`ruflo/memory`); CI runners inherit learning from prior runs without external storage
+- **Daemon recovery path** — `--force` recovery added when daemon start fails after init check passes
+- **Hive-mind stderr capture** — actionable diagnostics at all hive-mind init call sites
+- **TTY/pipe fixes** — `CI=true` injection, stdin redirect from `/dev/null`, and `cut: Broken pipe` elimination in `_ruflo_run`
+- **Timeout compatibility** — BSD/GNU `timeout` incompatibility fixed; recoverable circuit breaker added
+
+### Pipeline Reliability
+
+- **git-SHA artifact anchoring** — pipeline artifacts stamped with the git SHA at stage completion; stale artifacts from prior runs no longer cause false `AUDIT:FAIL`
+- **Dead cycle file cleanup** — stale lock and cycle files purged on fresh pipeline start
+- **Duration format validation** — `jq` partial-float corruption prevented by validating duration string before parsing
+- **Undefined stage guard** — `run_stage_with_retry` now guards against undefined stage functions instead of silently failing
+
+### Ruflo Queen-Collapse Roadmap (Issues Filed)
+
+A comprehensive analysis (three-session review) identified that all existing hive functions use raw union aggregation with no queen/collapse. The following issues were filed for Phase 01–03 implementation:
+
+- **#414** `[01.1]` Wire `RUFLO_COST_BUDGET_MULTIPLIER` into agent counts (dead config activated)
+- **#417** `[01.2]` Cross-stage drift detector — plan.md vs git diff
+- **#415** `[01.3]` Queen collapse for `ruflo_execute_review` — dedup and rank
+- **#416** `[01.4]` Queen collapse for `ruflo_execute_audit` — severity promotion
+- **#418** `[02.1]` Wire `ruflo_execute_compound_quality` into active stage
+- **#419** `[02.2]` Queen collapse for compound quality — conflict surfacing
+- **#420** `[02.3]` Seed hive specialists with historical recall
+- **#421** `[02.4]` PR stage ruflo memory bookend
+- **#422** `[03.1]` Self-heal hypothesis hive
+- **#423** `[03.2]` Plan stage multi-agent divergence with queen collapse
+- **#424** `[03.3]` Cost-routed queen — haiku specialists, opus queen [blocked on ruflo upstream]
+
+---
+
+## [3.5.0] — 2026-04-10
+
+### Loop Quality
+
+- **GOAL pollution fix** — GOAL mutations from error injection no longer leak into persisted pipeline state; GOAL is now read-only after the initial write
+- **Circuit-breaker escape hatch** — when the circuit breaker fires on a healthy run, a recovery path allows resumption without a full restart
+- **Zero-progress blindness** — stuckness detector now tracks diff hash, error hash, and exit code across iterations; identical triplets trigger escalation instead of silent retry
+- **25-iteration empty-diff cycling fix** — loop now detects when Claude produces no diff and terminates gracefully instead of consuming all remaining iterations
+
+### Compound Quality
+
+- **Hallucinated finding elimination** — structural verification pass drops findings that reference symbols not present in the actual diff; false positives from compound analysis eliminated
+- **Test exit code sidecar** — test pass/fail now recorded in a sidecar file, replacing fragile grep-based detection; eliminates false DoD failures from log-format variance
+- **Audit prompt enrichment** — full file contents injected into audit prompts for better context; previously only the diff was available
+- **Plateau defers to quality gate** — compound plateau detection now defers to the quality gate result instead of double-counting; fixes double-penalization of marginal diffs
+
+### Pipeline Hardening
+
+- **Newline escaping in GOAL** — newlines in GOAL escaped on write and unescaped on read; fixed JSON corruption in pipeline state files
+- **Stale artifact prevention** — pipeline artifacts validated against current git SHA before use; stale artifacts from interrupted runs no longer cause `AUDIT:FAIL`
+- **Checkpoint cleanup on fresh start** — `checkpoints/` directory purged on new pipeline run to prevent resume from stale state
+- **Heartbeat and stage-marker visibility** — pipeline progress comments now appear correctly in GitHub PR timeline
+- **Security findings fed back to build loop** — `stage_audit` findings injected into the build loop goal on re-entry; Claude now sees security issues on the next iteration
+- **YAML literal block scalar fix** — issue comment body newlines no longer break the GitHub Actions workflow YAML
+
+### Detection & Platform
+
+- **iOS/Xcode detection** — `ios_xcode` task type detection switched to positional args (was using `-t` flag, broke on certain git configurations)
+- **Dead code removal** — automated dead code patrol identified and removed 1 file with unused functions
+- **`REPO_DIR`/`PROJECT_ROOT` split** — 22 scripts fixed to use the correct root variable for PATH-installed vs. in-repo invocations; resolves intelligence engine failures on `PATH` installs
+
+### Ruflo Foundation (Prerequisites for 3.6)
+
+- **Adapter, scaffolding, MCP lifecycle** — ruflo 01/08: full adapter detection, health check, and circuit-breaker pattern
+- **Memory bridge** — ruflo 02/08: dual-path CLI and MCP integration for Shipwright↔ruflo memory exchange
+- **Single-agent and hive build execution** — ruflo 03a–03b/08: `ruflo_execute_build_single` and `ruflo_execute_build_hive` with Q-learning agent selection
+- **Parallel review and compound_quality hive** — ruflo 04/08: `ruflo_execute_review` and `ruflo_execute_compound_quality` with union aggregation
+- **Shipwright↔ruflo learning bridge** — ruflo 05/08: outcome learning connected bidirectionally
+- **Project-level defaults** — ruflo 06/08: `defaults.json` keys for all ruflo tunables (`max_agents`, `cost_budget_multiplier`, `circuit_breaker_timeout_s`, `learning_bridge`, `q_learning_routing`)
+- **CI runner install** — ruflo 07/08: ruflo installed and health-checked in CI runner before pipeline starts
+
+---
+
+## [3.2.0] — 2026-02-27
+
+### Context Engineering & Intelligence
+
+- Sandbox mode enabled (auto-allow) for reduced permission prompts
+- Context engineering principles injected into all agent prompts
+- Configurable context trimming tunables in defaults.json
+- Intelligent context pruning with sandwich truncation in pipeline stages
+- Context efficiency metrics in event stream, CLI cost dashboard, and web dashboard
+- Intelligence engine enabled by default (optimization + prediction)
+- Decision engine enabled with outcome learning
+- Self-optimization closed loop — auto-tunes context budgets from efficiency data
+- Claude-based discovery ranking for cross-pipeline learning
+
+### Platform Quality
+
+- Platform hygiene: extracted hardcoded values to config, 33% reduction in code smells
+- tmux fix command now handles all 5 doctor warnings (default-terminal, pane borders)
+- Stale heartbeat and orphan cleanup
+- Resolved remaining actionable TODOs
+
+### Documentation
+
+- Updated README, website guides, and configuration reference for all new features
+- Auto-synced CLAUDE.md documentation sections
+
+---
+
+## [3.1.0] — 2026-02-22
+
+### Loop Quality Intelligence
+
+- **Cumulative diff tracking**: Quality evaluators (DoD checker, audit agent, holistic gate) now see ALL work across every iteration, not just the latest commit. Eliminated the #1 cause of false rejections.
+- **Runtime fact injection**: DoD checker receives verified test results from the harness as ground truth — no more "I can't verify tests pass from a docs-only diff."
+- **Holistic final gate**: When all other gates pass, a project-level assessment evaluates the entire codebase against the original goal before accepting LOOP_COMPLETE.
+- **Gate-aware stuckness dampening**: When tests pass and a quality gate passes, stuckness signals are reduced. Prevents counterproductive "try a fundamentally different approach" when code is complete.
+- **`explore_alternative_strategy()` implemented**: Was called but never defined — caused `command not found` errors on every stuckness detection.
+
+### Pipeline Fixes
+
+- **Plan/design stage output rescue**: When Claude writes artifacts to disk via tools instead of stdout, the pipeline now rescues those files into the expected artifact path.
+- **Autonomous permissions**: `--dangerously-skip-permissions` added to plan, design, and review stages (was missing outside CI mode).
+- **`stage_compound_quality()` implemented**: Was missing — caused P0 pipeline crash when compound_quality stage ran.
+
+### Proven
+
+- **Production todo app built autonomously**: Full-stack TypeScript app (Express + React + SQLite + Drizzle ORM) with JWT auth, CRUD, drag-and-drop, dark mode — 154 tests, all passing.
+- **12-iteration hardening loop**: Security vulnerabilities found and fixed (timing attacks, JWT validation, CORS, rate limiting, cross-user isolation), all quality gates passed.
+
+### Added
+
+- Docker support with multi-stage build
+- Shell completions (bash, zsh, fish)
+- Decision engine signal routing in daemon patrol
+- 18 previously unregistered test suites wired into `npm test`
+
+### Fixed
+
+- Subshell variable mutation bugs in `sw-triage.sh` (pipe-to-while)
+- Unquoted variable in `sw-session.sh` heredoc
+- Dead code in `lib/helpers.sh`
+- SQL quote escaping on Bash 3.2 (macOS)
+- Homebrew formula SHA and postinstall path
+- CLI router missing command registrations
+
+---
+
+## [3.0.0] — 2026-02-16
+
+### Architecture Overhaul
+
+- **Configuration System**: Centralized all ~200+ magic numbers into `config/defaults.json` + `lib/config.sh` with 4-layer precedence (env var > daemon-config > policy > defaults)
+- **Database as Source of Truth**: SQLite is now the primary read/write path for daemon state, heartbeats, costs, pipeline runs, and memory (file fallback preserved)
+- **Unified Event System**: Consolidated 3 event stores (`events.jsonl`, `eventbus.jsonl`, `durable/event-log/events.jsonl`) into single SQLite `events` table with consumer offset tracking
+- **Durable Workflows**: Pipeline stages save durable checkpoints to DB for crash recovery and resume
+- **Real-time Event Streaming**: New `/ws/events` WebSocket endpoint streams raw events to the dashboard
+- **Thompson Sampling**: Template selection uses Beta distribution sampling over historical success rates per complexity tier
+- **UCB1 Model Routing**: Model selection balances exploration/exploitation across stages using upper confidence bounds
+- **Semantic Memory Search**: Keyword-relevance search over `memory_embeddings` table with stop-word filtering and scoring
+- **Reasoning Traces**: Multi-step autonomous reasoning (complexity analysis, template selection, similar issues, failure prediction) stored in DB
+- **Adaptive Thresholds**: Quality and anomaly thresholds computed from historical metric distributions (mean + N\*stddev)
+- **Dead Code Removal**: Removed duplicate `emit_event`, color definitions, and helpers from 90+ scripts; removed hygiene scanner artificial limits
+
+### Fixed
+
+- Fixed sw-adaptive.sh dead code: aligned event schema with actual pipeline emissions
+- Unified two disconnected model routing systems into single source of truth
+- Fixed jq -s JSONL parsing in sw-incident.sh
+- Fixed sw-deps.sh batch counters lost in subshells
+- Fixed checkpoint context variable mismatch for proper resume
+- Fixed cross-platform date compatibility (BSD/GNU) in sw-retro.sh
+- Fixed event emission consistency across pipeline lifecycle
+- Fixed autonomous-to-daemon label mismatch
+- Fixed distributed claim race condition with verification
+- Fixed silent error swallowing in critical git push/gh operations
+- Fixed /tmp collision issues in concurrent evidence collection
+- Restored config/policy.json and fixed color variable fallbacks across 12 scripts
+
+### Added
+
+- Auto-learning: self-optimize runs automatically after every pipeline completion
+- Unified feedback loop: predictions validated against actuals with bias correction
+- Claude-powered semantic quality audits (with grep fallback)
+- Claude-powered finding classification (with keyword fallback)
+- Strategic planning outcome tracking (learns which suggestions succeed)
+- SQLite dual-read adoption (transparent JSONL fallback)
+- Intelligence "auto" mode: enabled when Claude CLI is available
+- `sw doctor --intelligence` health check
+- `sw intelligence status` command
+- `sw strategic outcomes` command
+- Homebrew SHA256 automation in release workflow
+- Real agent spawning via tmux in sw-scale.sh
+- Queue-depth auto-scaling in sw-swarm.sh
+- Dashboard build-before-serve with --no-build flag
+- Codebase-aware autonomous fallback analysis
+- Stuckness detection with diff/error/exit-code tracking
+- /api/ws-status WebSocket status endpoint
+- Evidence verification before PR creation
+- Budget gate enforcement in loop and dispatch
+- Claude output validation before git commit
+- Cross-platform file_mtime() and date helpers in compat.sh
+- Checkpoint context preservation for meaningful resume
+
+### Testing
+
+- Added E2E system test proving full daemon→pipeline→loop→PR flow (17 tests)
+- Added daemon-dispatch.sh tests (20+ tests)
+- Added pipeline-stages.sh tests (29 tests)
+- Added real loop iteration behavior tests (7 new tests)
+- Added tracker provider tests for GitHub/Linear/Jira (26 tests)
+- Added sw-review-rerun.sh tests (14 tests)
+- Added dashboard view tests for overview/pipelines/team/metrics (21 tests)
+- Improved dashboard router coverage from 63% to 100%
+- Dashboard overall coverage: 98% statements, 92% branches
+- Shell test pass rate: 122/125 (97.6%)
+
+---
+
+## [2.5.0] — 2026-02-18
+
+### Fixed
+
+- **`sw-cleanup.sh` crash** — `file_mtime` undefined when cleaning stale heartbeats
+- **Daemon worktree creation** — Failures were being silently ignored
+- **Org-mode daemon** — Lost repo association when queuing issues
+- **Daemon issue polling** — Capped at 20 issues (now 100)
+- **Daemon shutdown** — Issue claim labels not released
+- **`with_retry` helper** — Returned wrong exit code after failed commands
+- **`emit_event`** — Produced corrupt JSON (incomplete escaping of backslashes, newlines, tabs)
+- **Tmux adapter** — Empty pane ID after failed tmux command could send keys to wrong pane
+- **`sw-loop.sh` multi-agent mode** — Sent keys to window instead of specific pane
+- **`sw-status.sh`** — `date -j` crashed on Linux (added portable date parsing)
+- **`sw-init.sh --deploy`** — Hung in non-interactive/CI environments
+- **`sw-cleanup.sh`** — Used relative paths (could delete wrong project data)
+- **`sw-status.sh`** — Used `local` outside function scope
+- **`daemon-patrol.sh`** — npm audit parsing failed on npm 7+
+- **Tmux adapter** — Pane map deleted while agents still running
+
+### Changed
+
+- **Portable arithmetic** — Replace `((var++))` with `$((var + 1))` across 18 scripts (bash 3.2 safety)
+- **`_curl_safe` and `_gh_safe`** — Timeout wrappers for network calls
+- **`_parse_iso_epoch`** — Portable date helper for cross-platform support
+- **Version consistency checker** — Skip dynamic version lines
+- **WINDOW_NAME validation** — In tmux adapter
+
+### Added
+
+- **Adapter smoke test suite** — `sw-adapters-test.sh` (72 tests)
+- **CLI routes** — `evidence` and `review-rerun` commands
+- **Shell completions** — In npm postinstall
+
+### Security
+
+- **install-remote.sh** — Remove last `eval` usage from HOME detection
+- **Webhook secret** — Redact full secret from console output
+- **Release manager** — Use `mktemp` instead of predictable `/tmp` paths
+
+---
+
+## [2.4.0] — 2026-02-17
+
+**Code Factory pattern — deterministic, risk-aware agent delivery with machine-verifiable evidence.**
+
+### Added
+
+- **Code Factory control plane** — Complete implementation of the Code Factory pattern for deterministic agent-driven delivery with auditable merge evidence
+- **Risk policy gate** — `risk-policy-gate.yml` workflow classifies PR risk tier from changed files before expensive CI runs; path-based rules in `config/policy.json`
+- **Current-head SHA discipline** — All checks, reviews, and approvals validated against current PR head SHA; stale evidence is never trusted (`sw-pr-lifecycle.sh`)
+- **Evidence framework** — `sw-evidence.sh` with 6 collector types: browser, API, database, CLI, webhook, custom; freshness enforcement and machine-readable manifests
+- **Policy contract extensions** — `riskTierRules`, `mergePolicy` (per-tier required checks and evidence types), `docsDriftRules`, `evidence` collectors, `harnessGapPolicy`, `codeReviewAgent` config
+- **Canonical rerun writer** — `sw-review-rerun.sh` with SHA-deduped comments; single writer prevents duplicate bot comments across workflows
+- **Review remediation workflow** — `review-remediation.yml` reads review findings, triggers agent to patch code, validates, pushes fix commit to same branch
+- **Auto-resolve bot threads** — `auto-resolve-threads.yml` resolves bot-only PR threads after clean rerun; never touches human-participated threads
+- **Harness-gap loop** — `shipwright incident gap` commands: every production regression creates a GitHub issue, tracks SLA (P0: 24h, P1: 72h, P2: 168h), requires test case before close
+- **Evidence npm scripts** — `harness:evidence:capture`, `harness:evidence:verify`, `harness:evidence:pre-pr`, type-specific variants for api/cli/database/browser
+- **Code Factory documentation** — Full guide on website (`/guides/code-factory/`), README section with comparison table, website index cards
+- **Docs drift detection** — `risk-policy-gate.yml` detects when control-plane files change without corresponding documentation updates
+
+### Changed
+
+- **Policy schema v2** — `config/policy.schema.json` extended with JSON Schema definitions for all new policy sections; validated by CI
+- **Merge policy** — Per-tier `requiredEvidence` array replaces boolean `requireBrowserEvidence`; critical tier requires CLI + API evidence
+- **PR lifecycle** — `sw-pr-lifecycle.sh` now validates check results and review freshness against current head SHA before allowing merge
+
+---
+
+## [2.3.1] — 2026-02-16
+
+**Autonomous feedback loops, testing foundation, and chaos resilience.**
+
+### Added
+
+- **Vitest test suite** — 113 unit tests across 6 files covering state store, API client, router, WebSocket, design tokens, and icons (`dashboard:test`)
+- **Server API test suite** — 46 endpoint tests for error handling, edge cases, lifecycle operations (`sw-server-api-test.sh`)
+- **Autonomous E2E test** — 20 tests validating daemon coordination, strategic ingestion, retro-optimize integration, oversight in merge stage (`sw-autonomous-e2e-test.sh`)
+- **Budget & chaos tests** — 16 tests for budget limits, missing files, corrupted data, large files, concurrent writes (`sw-budget-chaos-test.sh`)
+- **Memory & discovery E2E** — 16 tests for failure patterns, fix effectiveness, discovery broadcast/query/TTL, cross-pipeline learning (`sw-memory-discovery-e2e-test.sh`)
+- **`optimize_ingest_retro()`** — Self-optimize reads retro JSON reports, appends to outcomes, adjusts template weights when quality is low
+- **`analyze_with_ai()`** — AI-driven triage via intelligence engine with `--ai` flag and `TRIAGE_AI` config; falls back to keyword-based
+- **`ingest_strategic_findings()`** — Autonomous loop reads strategic agent events from last 24h, deduplicates, feeds into autonomous creation loop
+- **`autonomous_register_strategic_overlap()`** — Tracks acknowledged strategic issues to prevent re-processing
+- **`daemon_is_running()`** — Autonomous loop detects running daemon; delegates via `ready-to-build` label instead of direct pipeline start
+
+### Fixed
+
+- **Retro -> self-optimize** — `sw retro run` now calls `sw-self-optimize.sh ingest-retro` automatically after generating report
+- **Oversight before merge** — `stage_merge()` now has oversight gate (blocks on critical/security issues) + approval gate check
+- **Proactive feedback** — Monitor stage now always collects deploy logs via `sw-feedback.sh collect`, even on clean monitoring pass
+- **Dashboard E2E in CI** — `sw-dashboard-e2e-test.sh` added to `npm test` chain so it runs on every PR
+
+---
+
+## [2.3.0] — 2026-02-16
+
+**Fleet Command completeness overhaul + autonomous team oversight.**
+
+### Added
+
+- **Live diff/files panels** — Pipeline Theater and Agent Cockpit show real-time `git diff` and changed files (`GET /api/pipeline/:issue/diff`, `/files`)
+- **Agent reasoning tab** — Per-pipeline reasoning/thinking surfaced in pipeline detail (`GET /api/pipeline/:issue/reasoning`)
+- **Failure analysis tab** — Dedicated failure analysis view per pipeline (`GET /api/pipeline/:issue/failures`)
+- **Webhook notifications** — Configurable Slack/webhook alerts for pipeline completion, failure, and alerts with config UI in header
+- **Human approval gates** — Stage transitions can require human approval; approve/reject UI in pipeline detail
+- **Quality gates** — Configurable rules (test coverage, lint errors, type errors) displayed per pipeline (`GET /api/pipeline/:issue/quality`)
+- **Audit log** — All human interventions (pause, resume, abort, message, skip, emergency brake, daemon control) logged to `~/.shipwright/audit-log.jsonl` with who/when/action; viewable in Insights tab
+- **RBAC** — Viewer/operator/admin roles with permission enforcement; viewers see read-only UI
+- **Dark mode toggle** — Full light/dark theme switching via CSS custom properties with `localStorage` persistence
+- **Mobile responsive** — 12-tab bar horizontally scrollable on small screens, compressed header/layout
+- **Error boundaries** — Per-tab try-catch with visible error banner and retry button
+- **Offline resilience** — Stale data age indicator (30s threshold), connection-lost banner with manual reconnect
+- **Global learnings** — Insights tab shows `GET /api/memory/global` cross-pipeline learnings
+- **Triage reasoning** — Queue items expandable to show detailed triage reasoning from `/api/queue/detailed`
+- **Team invite UI** — Create invite link button on Team tab
+- **Linear integration status** — Team tab shows Linear/GitHub connection status
+- **Admin/debug panel** — Direct SQLite DB inspection via `/api/db/*` endpoints on Team tab
+- **Machine claim/release** — Issue claim/release UI for coordinating work among machines
+- **E2E test suite** — 15 new endpoint tests (37 total, all passing)
+
+### Fixed
+
+- **Daemon buttons** — Start/Stop/Patrol buttons wired via `addEventListener` (were dead `onclick` attributes)
+- **Select-all checkbox** — Pipeline select-all ID mismatch (`pipeline-select-all` vs `select-all-pipelines`) resolved
+- **Emergency brake counts** — Modal now shows live active/queue counts from fleet state
+- **Fleet map click** — Clicking a node navigates to that pipeline's detail view
+- **Predictions** — ETA/cost predictions use real historical stage durations instead of hardcoded averages
+- **Missing containers** — 7 missing metric container `div`s added to Metrics tab
+- **Pipeline sub-routes** — Fixed broad `/api/pipeline/` handler intercepting specific sub-routes (`/diff`, `/files`, etc.)
+
+### Changed
+
+- **Frontend** — Migrated from monolithic `app.js` to modular TypeScript (33 modules, 194KB bundle)
+- **Design system** — Full CSS custom property system with dark/light tokens
+- **Icons** — Lucide SVG icon library with 30+ inline icons
+
+---
+
+## [2.2.2] — 2026-02-16
+
+**CLI release automation, doctor version check, CLAUDE.md maintainer section.**
+
+### Added
+
+- **`shipwright version bump <x.y.z>`** — Bump version everywhere (scripts, package.json, README badge/TOC/What's New, hygiene-report)
+- **`shipwright version check`** — Verify version consistency (CI step; fails if package.json, README, or scripts drift)
+- **`shipwright release build`** — Build platform tarballs for GitHub Releases (runs `scripts/build-release.sh`)
+- **Doctor version consistency** — When run from the Shipwright repo, `shipwright doctor` runs version check and warns on drift
+- **CLAUDE.md Maintainer / Release** — Table of which CLI command (or script) to call for bump, check, build, publish; Setup & validation section
+
+### Changed
+
+- **Website footer** — Starlight footer shows "Shipwright CLI vX.Y.Z" from repo `package.json` at build time
+- **CI** — `.github/workflows/test.yml` runs `scripts/check-version-consistency.sh` on every push/PR
+
+---
+
+## [2.2.1] — 2026-02-16
+
+**Docs, libs, policy, release infra.**
+
+### Added
+
+- **Doc-fleet** — Five Cursor agents (doc-architect, claude-md, strategy-curator, pattern-writer, readme-optimizer) for docs, strategy, and README sync
+- **Shared libs** — `scripts/lib/pipeline-quality.sh`, `daemon-health.sh`, `policy.sh` for pipeline, daemon, and policy checks
+- **Policy schema** — `config/policy.json` and `docs/config-policy.md` for hygiene, quality, and platform rules
+- **Release workflow** — `.github/workflows/release.yml` builds darwin/linux/windows, publishes to npm and GitHub Releases; Homebrew tap (`sethdford/homebrew-shipwright`) updated for 2.2.x
+
+### Changed
+
+- **Build** — `scripts/build-release.sh` includes `config/` in tarball; Homebrew formula uses `libexec/scripts/sw` wrappers
+- **Docs** — `docs/README.md` hub, strategy/patterns/tmux-research reorganized; CLAUDE.md and README aligned with doc-fleet
+
+---
+
+## [2.2.0] — 2026-02-16
+
+Initial 2.2 release: doc-fleet, pipeline lib split, policy config, and multi-platform release automation (npm, GitHub Releases, Homebrew).
+
+---
+
+## [2.1.2] — 2026-02-16
+
+**Autonomy wiring — connect all feedback loops, kill zombie pipelines, clean up branches.**
+
+### Fixed
+
+- **Memory functions never executed** — `memory_finalize_pipeline()`, `memory_closed_loop_inject()`, and `optimize_analyze_outcome()` checked via `type` but scripts were never sourced; pipeline now sources `sw-memory.sh`, `sw-self-optimize.sh`, `sw-discovery.sh`
+- **`sw-memory.sh` missing source guard** — added `BASH_SOURCE[0]` guard so it can be sourced without executing the CLI dispatcher
+- **Error-summary.json lost on session restart** — `mv` changed to `cp` so fresh sessions retain error context from previous session
+- **Build failures not captured in error-summary** — `write_error_summary()` only ran on test failure; now also captures build-level errors
+- **Stale pipelines never killed** — daemon's legacy stale detection only logged warnings; now kills at 2x adaptive timeout with SIGTERM then SIGKILL
+- **Stale `pipeline-state.md` never cleaned** — stuck "running" states with no active jobs now marked failed by daemon after 2 hours
+- **Worktree cleanup left remote branches** — successful pipeline cleanup now deletes both local and remote `pipeline/*` branches
+- **`optimize_tune_templates()` never called** — template weight tuning now fires automatically after outcome recording
+- **`broadcast_discovery()` never called** — cross-pipeline learning now broadcasts on every pipeline completion
+- **Dead tmux panes not reaped** — wired `sw-reaper.sh` into daemon patrol checks
+- **Orphaned `pipeline/*` branches accumulate** — daemon stale reaper now cleans orphaned pipeline branches (local + remote)
+- **`sw-prep.sh` unbound variable** — `GENERATED_FILES[@]` crashed under `set -u` on idempotent runs without `--force`
+- **`sw-hygiene-test.sh` SIGPIPE flake** — replaced pipe-based `assert_contains` with bash string matching
+
+### Added
+
+- Pipeline completion now broadcasts discovery events for cross-pipeline learning
+- Daemon patrol now includes dead pane reaping when running inside tmux
+
+---
+
+## [2.1.1] — 2026-02-16
+
+**Pipeline E2E — headless execution fixes.**
+
+### Fixed
+
+- **`read -rp` kills script when headless** — gate approval prompts returned EOF (exit code 1) under `set -e` when stdin was not a terminal, instantly terminating backgrounded pipelines
+- **No non-interactive detection** — added `[[ ! -t 0 ]]` auto-detection that enables headless mode when running in background, pipe, nohup, or tmux send-keys
+- **Worktree cleanup destroys work on failure** — EXIT trap unconditionally removed worktrees; now preserves on failure for inspection
+- **Autonomous template `auto_merge: false`** — prevented fully autonomous pipelines from merging PRs; now `true`
+- **Template resolution missing project root** — `find_pipeline_config()` didn't search `$PROJECT_ROOT/templates/`, breaking worktree scenarios
+
+### Added
+
+- **`--headless` flag** — explicit headless mode (skip gates, no interactive prompts)
+- **Screen reader `FORCE_COLOR=0`** support in UX layer with tmux environment propagation
+- 4 new E2E smoke tests for headless behavior (19 total)
+
+---
+
+## [2.1.0] — 2026-02-15
+
+**tmux Visual Overhaul & Init Hardening.**
+
+### Added
+
+- **Active pane background lift** — subtle depth effect between active/inactive panes
+- **Role-colored pane borders** — border color reflects agent role (builder=blue, reviewer=orange, tester=yellow, etc.)
+- **Pipeline stage badge in status bar** — live `⚙ BUILD` / `⚡ TEST` / `↑ PR` widget with stage-colored badges
+- **Agent count widget in status bar** — shows `λN` active agents from heartbeat files
+- **`shipwright init --repair` flag** — force clean reinstall after OS upgrades
+- **Post-install verification step** in `shipwright init`
+- **Direct-clone fallback** for TPM plugins (works outside tmux)
+- **tmux adapter deployed by init** (`~/.shipwright/adapters/`)
+- **tmux status widgets deployed by init** (`~/.shipwright/scripts/`)
+- **`COLORTERM=truecolor`** set in tmux environment for Claude Code color fidelity
+- 6 new init test cases (21 total)
+
+### Fixed
+
+- **`pane-base-index 1 → 0`** — Claude Code expects 0-based pane indexing
+- **Shell `$()` expansion bug** in `M-a` and `M-s` capture bindings (evaluated at config load, not keypress)
+- **Duplicate unsafe `bind x/X`** — overlay's `confirm-before` is now sole definition
+- **Config reload (`prefix+r`)** now sources both tmux.conf and overlay
+- **tmux-yank clipboard conflicts** removed (plugin handles all clipboard)
+- **Duplicate `window-style` definitions** removed (overlay is authoritative)
+- **Legacy `claude-teams-overlay.conf`** auto-cleaned during init
+- **Legacy overlay `source-file` references** stripped from user's tmux.conf
+- **Near-white text (`#e4e4e7`)** replaced across all tmux chrome with warm grays
+- **`status-interval`** reduced from 1s to 3s (less CPU during agent streaming)
+
+---
+
+## [Unreleased — pre-2.1.0]
+
+### Added
+
+- **100% test coverage** — 22 new test suites (98 total) covering every command
+- **CLI architecture overhaul** — command grouping, repo support, improved help
+- **Strategic agent improvements** — Sonnet model, 4h cooldown, 5-issue batching, `--force` flag
+- **Cost tracking via JSON** — structured output format for token usage
+
+### Fixed
+
+- **Robust JSON extraction** in build loop + semantic dedup threshold tuning
+- **Generated artifact hygiene** — `.gitignore` patterns for runtime outputs
+- **`grep -c` pipefail bug** in `sw-templates.sh`
+- **`gh issue create` stdout corruption** in parse results
+- **Strategic agent** parser robustness and debug output
+
+---
+
+## [2.0.0] — 2026-02-15
+
+**The Autonomous Agent Platform.**
+
+Shipwright v2.0.0 is a major release that adds 18 autonomous agents organized in two waves, intelligence-driven pipeline composition, and comprehensive observability. This transforms Shipwright from a pipeline runner into a full autonomous development platform.
+
+### Added — Wave 1 (Organizational Agents)
+
+- **Dynamic agent swarm** (`swarm`) — Agent team orchestration with role specialization (#65)
+- **Autonomous PM** (`pm`) — Intelligent team orchestration, task scheduling, roadmap execution (#44)
+- **Knowledge guilds** (`guild`) — Cross-team learning, pattern capture, mentorship (#71)
+- **Agent recruitment** (`recruit`) — Talent acquisition and team composition optimization (#70)
+- **Automated standups** (`standup`) — Daily standups with progress tracking and blocker detection
+
+### Added — Wave 2 (Operational Backbone)
+
+- **Quality oversight board** (`oversight`) — Multi-agent review council with voting system
+- **Strategic intelligence** (`strategic`) — Long-term planning, goal decomposition, roadmap
+- **Code reviewer** (`code-review`) — Architecture analysis, clean code, best practices (#76)
+- **Security auditor** (`security-audit`) — Vulnerability detection, threat modeling, compliance
+- **Test generator** (`testgen`) — Coverage analysis, scenario discovery, regression (#75)
+- **Incident commander** (`incident`) — Autonomous triage, root cause, resolution (#67)
+- **Dependency manager** (`deps`) — Semantic versioning, updates, compatibility (#58)
+- **Release manager** (`release-manager`) — Release planning, changelog, deployment
+- **Adaptive tuner** (`adaptive`) — Data-driven pipeline tuning with DORA metrics (#62)
+- **Sprint retrospective** (`retro`) — Sprint retrospective engine (#68)
+- **Changelog engine** (`changelog`) — Automated release notes and migration guides
+
+### Added — Intelligence & Observability
+
+- **OpenTelemetry** (`otel`) — Prometheus metrics and distributed tracing (#35)
+- **Model router** (`model-router`) — Multi-model orchestration with intelligent routing (#56)
+- **Event bus** (`eventbus`) — Durable event-driven architecture (#51)
+- **Production feedback loop** (`feedback`) — Closed-loop learning from production (#52)
+- **Cross-pipeline learning** (`discovery`) — Real-time learning across pipelines (#53)
+- **Issue decomposition** (`decompose`) — Complexity analysis and subtask generation (#54)
+- **DORA dashboard** (`dora`) — DORA metrics with engineering intelligence (#30)
+- **Pipeline replay** (`replay`) — Pipeline run DVR and timeline viewing (#26)
+- **Pipeline vitals** — Real-time health scoring and monitoring
+- **Live activity stream** (`activity`) — Real-time agent monitoring (#31)
+- **Terminal streaming** (`stream`) — Live output from agent panes to dashboard (#42)
+
+### Added — Infrastructure & Operations
+
+- **GitHub App management** (`github-app`) — JWT auth, tokens, webhooks
+- **GitHub OAuth** (`auth`) — Dashboard authentication (#6)
+- **Public dashboard** (`public-dashboard`) — Shareable pipeline progress
+- **Mission control** (`mission-control`) — Terminal-based pipeline monitoring
+- **Team stages** (`team-stages`) — Multi-agent execution with leader/specialist roles
+- **Pipeline instrumentation** (`instrument`) — Predicted vs actual metrics (#63)
+- **Tracker abstraction** (`tracker`) — Provider-agnostic issue discovery (#61)
+- **CI orchestrator** (`ci`) — GitHub Actions workflow generation and management (#77)
+- **E2E test orchestrator** (`e2e-orchestrator`) — Test suite registry and execution (#80)
+- **Fleet visualization** (`fleet-viz`) — Multi-repo fleet dashboard (#32)
+- **tmux pipeline** (`tmux-pipeline`) — Spawn and manage pipelines in tmux (#41)
+- **Dynamic scaling** (`scale`) — Agent team scaling during execution (#46)
+- **UX layer** (`ux`) — Premium UX enhancements
+- **Widgets** (`widgets`) — Embeddable status widgets
+- **Regression detection** (`regression`) — Automated baseline comparison
+- **Release train** (`release`) — Release automation
+- **E2E traceability** (`trace`) — Issue → Commit → PR → Deploy
+- **Shell completions** — Full bash, zsh, and fish tab completion
+- **Pipeline dry-run** — CI validation mode
+
+### Changed
+
+- Renamed `ANTHROPIC_API_KEY` → `CLAUDE_CODE_OAUTH_TOKEN` everywhere
+- First-run onboarding experience completely overhauled
+- Documentation overhauled for v2.0.0 with 18 new autonomous agents
+- 22 test suites (up from 25 in 1.12.0) — comprehensive coverage
+
+---
+
+## [1.12.0] — 2026-02-14
+
+**Enterprise-Grade Platform Maturity.**
+
+Major expansion of Shipwright's core infrastructure: cross-platform service management, persistent database layer, intelligent issue processing, and hardened quality gates. First production-ready release for enterprise deployments.
+
+### Added
+
+- **Linux systemd support** (#16) — Dual-platform process supervision (macOS launchd + Linux systemd) with automatic service startup
+- **SQLite persistence layer** (#17) — Replaces fragile JSON files with ACID-safe database for daemon state, metrics, and job tracking
+- **Fleet auto-discovery** (#22) — Scan GitHub organizations to auto-populate fleet configuration and balance worker allocation
+- **Webhook receiver** (#23) — Instant issue processing via GitHub webhooks (replaces polling for lower latency)
+- **Autonomous PR lifecycle** (#36) — Auto-review, merge-gate checking, auto-merge, cleanup, and issue feedback loop
+- **Issue decomposer** (#54) — Complexity analysis and automatic subtask generation for epic breakdown
+- **Context engine** — Rich context bundles per pipeline stage with file diffs, blame history, and CODEOWNERS
+- **Hardened quality gates** — Bash 3.2 compatibility checks, coverage threshold enforcement, atomic write validation
+- **Issue complexity scoring** — Automated assessment of issue difficulty to route to appropriate pipeline templates
+- **SQLite schema migrations** — Version-safe database schema updates with rollback capability
+
+### New Test Suites
+
+- `sw-launchd-test.sh` — 20 tests for macOS launchd and Linux systemd service management
+- `sw-db-test.sh` — 18 tests for SQLite operations and schema migrations
+- `sw-webhook-test.sh` — 15 tests for webhook receiver and issue processing
+
+### Improvements
+
+- **Pipeline tests**: 50 → 58 tests (+8 for new quality gates)
+- **Daemon lifecycle**: Persistence layer reduces memory footprint by 40% on long-running instances
+- **Worker scaling**: Fleet auto-discovery eliminates manual config, auto-balances across repos
+- **Issue intake**: Webhook receiver reduces issue-to-pipeline latency from 1–5 minutes (polling) to <1 second
+- **Total test suites**: 22 → 25
+
+### Fixed
+
+- **Cross-platform service management**: Abstracted platform detection for launchd/systemd compatibility
+- **Race conditions in daemon**: SQLite transactions replace file-based state
+- **Memory leaks in long-running daemon**: Persistent state prevents unbounded JSON growth
+
+---
+
+## [1.10.0] — 2026-02-12
+
+**Closed-Loop Intelligence.**
+
+Complete the autonomous feedback loop: errors feed into memory, memory feeds into fixes, DORA metrics drive self-optimization. Plus C-compiler-level loop capabilities for maximum iteration resilience.
+
+### Added
+
+- **C-compiler-level loop** — Fault-tolerant iteration with progress persistence, restart lifecycle, and exhaustion detection
+- **Closed-loop learning** — Error → memory → fix cycle fully connected
+- **Progressive deployment** — Staged rollout with validation gates
+- **`--json` output flag** for `shipwright status`
+- **`hello` command** for quick CLI verification
+
+### Fixed
+
+- **Daemon queue deadlock** — Drain queued issues when no active jobs exist
+- **Daemon reliability** — Single-worker mode, stagger spawns, sort tiebreaker
+- **Template name corruption** in daemon spawning
+- **Progress.md** written on all loop exit paths
+- **Restart lifecycle** and fast-test double-run elimination
+
+---
+
+## [1.9.0] — 2026-02-12
+
+**Progress-Based Health Monitoring.**
+
+### Added
+
+- **Intelligent progress monitoring** — Pipeline health scoring based on iteration progress, not just timeouts
+
+### Fixed
+
+- **Production reliability hardening** — Locking, timeouts, cleanup, state safety
+
+---
+
+## [1.8.1] — 2026-02-11
+
+**Daemon Stability.**
+
+### Fixed
+
+- **Daemon signal handling** — Trap SIGPIPE, log ERR to file, guard sleep
+- **Daemon poll loop** — Error-guard to prevent crash on transient failures
+- **Daemon state** — Eliminate eval injection, enforce Bash 3.2 compatibility
+- **PID/issue_num validation** from JSON before use in daemon reaper
+- **`local` outside function** in `sw-status.sh`
+
+---
+
+## [1.8.0] — 2026-02-11
+
+**Intelligence Layer & Deep GitHub Integration.**
+
+Major capability expansion: full intelligence layer with adaptive thresholds, deep GitHub API integration (GraphQL, Checks, Deployments), agent heartbeat/checkpoint system, self-healing CI, and cross-platform compatibility.
+
+### Added
+
+- **Intelligence layer** — Adaptive thresholds, feedback loops, semantic detection
+- **GitHub GraphQL client** — Cached queries for file churn, blame, contributors, similar issues
+- **GitHub Checks API** — Native Check Runs per pipeline stage
+- **GitHub Deployments API** — Environment tracking with rollback support
+- **Agent heartbeat/checkpoint** — Persistent agent health monitoring
+- **Multi-machine workers** — Distributed execution across remote machines
+- **Self-healing CI** — Auto-retry with strategy engine and health dashboard
+- **AI triage gate** — Intelligent issue labeling in CI pipeline
+- **Cross-platform compat library** — `scripts/lib/compat.sh` for macOS + Linux
+- **Auto-launch Claude Code** with team prompt in session command
+- **Compound quality stage** in pipeline
+- **24/7 sweep cron** for missed pipeline triggers
+
+### Fixed
+
+- **Pipeline loop exits** from stdin consumption in while-read
+- **Daemon hardening** — Rate-limit circuit breaker, locked state ops, stale cleanup
+- **Daemon resilience** — State locking, FD leaks, zombie recovery, capacity bounds
+- **Daemon crash** on tmux attach and orphaned child processes
+- **PR quality gate** and title generation
+- **Bash 3.2 compatibility** — Install hardening, doctor enhancements
+- **Pipeline timeout** simplified — Watchdog handles stuck detection
+
+---
+
+## [1.7.0] — 2026-02-08
+
+**Superhuman Scale.**
+
+Scale from 2 concurrent pipelines to 8+ with resource-aware auto-scaling, cross-repo fleet worker distribution, and parallel-safe worktree isolation. First npm publish.
+
+### Added
+
+- **Auto-scaling daemon**: `daemon_auto_scale()` dynamically adjusts worker count based on CPU cores (75% cap), available memory, remaining budget, and queue depth — cross-platform (macOS + Linux)
+- **Fleet worker pool**: `worker_pool` config in fleet enables demand-based distribution of a total worker budget across repos, with a background rebalancer loop
+- **Pipeline `--worktree` flag**: `shipwright pipeline start --issue 42 --worktree` runs in an isolated git worktree for parallel-safe ad-hoc pipelines
+- **Cost `remaining-budget`**: `shipwright cost remaining-budget` returns remaining daily budget as a number (consumed by auto-scaler)
+- **Fleet config reload**: daemons pick up fleet-assigned worker counts via `daemon_reload_config()` and a flag file signal
+- **CLAUDE.md auto-install**: npm postinstall now installs Shipwright agent instructions to `~/.claude/CLAUDE.md` (idempotent — appends if file exists, creates if not)
+
+### Fixed
+
+- **npm symlink resolution**: CLI router now follows symlinks so all 19 subcommands resolve correctly when installed via `npm install -g`
+- **Version sync**: All 12 scripts + package.json aligned at v1.7.0
+- **npm package hygiene**: Excluded test scripts and dev tools from published package — 72 files, 192KB (down from 82 files, 229KB)
+- **vm_stat parsing** (macOS): Fixed page size extraction from `(page size of 16384 bytes)` format, added inactive + purgeable pages for accurate available memory
+- **Bash 3.2 compatibility**: Replaced associative arrays (`local -A`) in fleet rebalancer with indexed arrays for macOS default bash
+- **Fleet/auto-scale race condition**: Introduced `FLEET_MAX_PARALLEL` ceiling so auto-scale respects fleet-assigned worker limits
+- **Worker over-allocation**: Added budget correction loop in fleet rebalancer when rounding exceeds total
+- **Trap chaining**: Pipeline worktree cleanup now chains with existing exit handler instead of overwriting it
+- **Worktree cleanup**: Stores `ORIGINAL_REPO_DIR` before `cd` instead of fragile `git worktree list` parsing
+- **Numeric validation**: Added regex validation for load average, queue depth, budget values, and cost calculations
+- **Poll loop ordering**: Moved `POLL_CYCLE_COUNT` increment before all modulo checks for consistent timing
+- **Rebalancer shutdown**: Added flag file for clean loop exit when fleet stops
+
+### Changed
+
+- `npm test` now runs all 6 test suites (pipeline, daemon, prep, fleet, fix, memory) — 90 tests total
+- CLAUDE.md.shipwright template updated with auto-scale config, fleet worker pool, `--worktree` usage, daemon config reference table
+
+---
+
+## [1.6.0] — 2026-02-07
+
+**The Shipwright Launch.**
+
+The project formerly known as `shipwright` is now **Shipwright** — a proper CLI with professional distribution, shell completions, a documentation website, and CI/CD.
+
+### Added
+
+- **Brand identity**: Shipwright naming with `shipwright` and `sw` as CLI entry points
+- **npm distribution**: `npm install -g shipwright-cli` — bash scripts distributed via npm, zero Node dependencies at runtime
+- **curl installer**: `curl -fsSL https://raw.githubusercontent.com/sethdford/shipwright/main/scripts/install-remote.sh | sh` — self-contained, detects OS and architecture
+- **Homebrew tap**: `brew install sethdford/shipwright/shipwright`
+- **Shell completions**: Full tab completion for bash, zsh, and fish — all commands, subcommands, and flags
+- **Completion installer**: `scripts/install-completions.sh` auto-detects shell and installs to the right location
+- **Documentation website**: Astro Starlight site at sethdford.github.io/shipwright — landing page, CLI reference, guides for pipeline/daemon/prep/loop, template catalog, configuration, troubleshooting, FAQ
+- **CI/CD pipeline**: GitHub Actions for test matrix (macOS + Ubuntu), release automation (tarballs + npm + Homebrew), and website deployment
+- **Release tooling**: `scripts/build-release.sh` builds platform tarballs with SHA256 checksums; `scripts/update-version.sh` bumps version across all scripts atomically
+- **Postinstall setup**: `scripts/postinstall.mjs` copies templates to `~/.shipwright/` and migrates legacy `~/.claude-teams/` non-destructively
+
+### Changed
+
+- CLI help and version output now show "Shipwright" branding with alias hints
+- `install.sh` rebranded — creates `shipwright` and `sw` symlinks, copies templates to `~/.shipwright/`
+- README rewritten with multi-method install section, updated CLI examples, and website link
+
+---
+
+## [1.5.1] — 2026-02-07
+
+### Added
+
+- **Automatic pane reaper**: `shipwright reaper` watches for exited agent processes and cleans up their tmux panes automatically — no more dead panes cluttering your workspace
+
+---
+
+## [1.5.0] — 2026-02-06
+
+**The Autonomous Development Lifecycle.**
+
+This release turns Shipwright from a team session manager into a full autonomous development system. Point it at a GitHub issue and walk away.
+
+### Added
+
+- **Autonomous daemon** (`shipwright daemon`): Watches a GitHub repo for labeled issues, spawns delivery pipelines automatically, manages concurrent work, and reports results back to the issue thread
+- **Repo preparation** (`shipwright prep`): Analyzes any repository and generates agent-optimized `.claude/` configurations — CLAUDE.md, settings.json, hooks, and test commands. Supports `--with-claude` for deep AI-assisted analysis
+- **Compound quality stage**: Pipeline build stage now runs iterative quality cycles — lint, typecheck, test, and self-heal in a loop until the code is clean or the retry budget is exhausted
+- **DORA metrics dashboard** (`shipwright daemon metrics`): Deployment frequency, cycle time, change failure rate, and mean time to recovery — graded against Google's Elite/High/Medium/Low thresholds
+- **DX metrics**: First-pass quality rate, self-heal efficiency, and autonomy score alongside DORA
+- **Event logging**: All pipeline and daemon events written to `~/.shipwright/events.jsonl` for metrics, auditing, and debugging
+- **Autonomous pipeline template**: New `autonomous.json` pipeline — all stages auto-approved, designed for daemon-driven delivery
+- **Daemon test suite**: `shipwright daemon test` — comprehensive validation of daemon startup, polling, pipeline spawning, and metrics calculation
+- **Prep test suite**: `shipwright prep test` — validation of repo analysis, config generation, and Claude integration
+
+---
+
+## [1.4.0] — 2026-02-04
+
+**Full SDLC Template Catalog.**
+
+### Added
+
+- 8 new team templates covering the complete software development and product lifecycle:
+  - **security-audit** (3 agents): Code analysis, dependency scanning, config review
+  - **testing** (3 agents): Unit, integration, and end-to-end test generation
+  - **migration** (3 agents): Schema, adapter, and rollback coordination
+  - **bug-fix** (3 agents): Reproduce, fix, verify workflow
+  - **architecture** (2 agents): Research and spec writing
+  - **exploration** (2 agents): Codebase deep-dive and synthesis
+  - **devops** (2 agents): CI/CD pipeline and infrastructure
+  - **documentation** (2 agents): API reference and guides
+
+### Changed
+
+- Template count: 4 to 12 — covers build, quality, maintenance, planning, and operations phases
+- Demo GIFs re-recorded for the expanded template catalog
+- GIFs hosted on vhs.charm.sh to keep the repo lean
+
+---
+
+## [1.3.0] — 2026-02-03
+
+### Added
+
+- **`shipwright init`**: One-command tmux setup — installs config, overlay, and theme with zero prompts
+- **Continuous agent loop** (`shipwright loop`): Run Claude autonomously with test verification, audit modes (self-audit and separate auditor), quality gates, and definition-of-done checklists
+- **Layout presets**: Keybindings for main-horizontal (leader 65% left), main-vertical (leader 60% top), and tiled layouts
+- **jq dependency**: Required for JSON template parsing (replaces python3)
+
+### Fixed
+
+- Pane display rendering issues with agent name headers
+- Replaced python3 dependency with jq for broader compatibility
+
+---
+
+## [1.2.0] — 2026-02-02
+
+### Added
+
+- **Continuous agent loop** (`shipwright loop`): Autonomous multi-iteration development with test gates
+- **Git worktree management** (`shipwright worktree`): Isolate agent work in separate worktrees to prevent conflicts
+
+---
+
+## [1.1.0] — 2026-02-01
+
+### Added
+
+- **`shipwright upgrade`**: Check for updates from the repo, diff changes, apply selectively
+- **`shipwright doctor`**: Validate tmux version, jq, overlay hooks, color config, orphaned sessions
+- **`shipwright logs`**: View and search agent pane output with `--follow` mode
+- **`shipwright ps`**: Show running agent processes with status indicators
+- **`shipwright templates`**: Browse and inspect team composition templates
+- **Upgrade manifest**: `~/.shipwright/manifest.json` tracks installed files for safe upgrades
+
+### Fixed
+
+- tmux conditional syntax for version-dependent features
+
+---
+
+## [1.0.0] — 2026-01-31
+
+**Initial release.**
+
+### Added
+
+- Premium dark tmux theme with cyan accent (`#00d4ff`), agent-aware pane borders
+- `shipwright session` for creating team windows from templates
+- `shipwright status` dashboard for monitoring active teams
+- `shipwright cleanup` for orphaned session management
+- 4 team templates: feature-dev, full-stack, code-review, refactor
+- Quality gate hooks: teammate-idle (typecheck), task-completed (lint + test)
+- Notification hooks: desktop alerts on agent idle
+- Pre-compact hook: save git context before compaction
+- Claude Code settings template with agent teams, auto-compact, subagent model
+- Interactive installer with dry-run mode
+- vim-style pane navigation and copy mode
+- TPM plugin manager integration
+
+---
+
+[2.1.0]: https://github.com/sethdford/shipwright/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/sethdford/shipwright/compare/v1.10.0...v2.0.0
+[1.12.0]: https://github.com/sethdford/shipwright/compare/v1.10.0...v1.12.0
+[1.10.0]: https://github.com/sethdford/shipwright/compare/v1.9.0...v1.10.0
+[1.9.0]: https://github.com/sethdford/shipwright/compare/v1.8.1...v1.9.0
+[1.8.1]: https://github.com/sethdford/shipwright/compare/v1.8.0...v1.8.1
+[1.8.0]: https://github.com/sethdford/shipwright/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/sethdford/shipwright/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/sethdford/shipwright/compare/v1.5.1...v1.6.0
+[1.5.1]: https://github.com/sethdford/shipwright/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/sethdford/shipwright/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/sethdford/shipwright/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/sethdford/shipwright/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/sethdford/shipwright/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/sethdford/shipwright/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/sethdford/shipwright/releases/tag/v1.0.0

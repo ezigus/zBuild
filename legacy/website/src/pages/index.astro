@@ -1,0 +1,12 @@
+---
+// Marketing landing page — overrides Starlight's default splash page.
+// Reads the full HTML from public/index.html and serves it directly.
+// Starlight docs remain accessible at /quick-start/, /guides/*, /reference/*, etc.
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+const htmlPath = path.resolve('public/index.html');
+const html = fs.readFileSync(htmlPath, 'utf-8');
+---
+<Fragment set:html={html} />

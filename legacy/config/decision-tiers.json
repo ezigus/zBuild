@@ -1,0 +1,55 @@
+{
+  "$schema": "https://shipwright.dev/schemas/decision-tiers-v1.json",
+  "description": "Autonomy tiers for Shipwright decision engine. Controls which actions the engine takes automatically vs proposing for human review.",
+  "version": "1",
+  "tiers": {
+    "auto": {
+      "description": "Create issue and auto-spawn pipeline — no human approval needed",
+      "labels": ["shipwright", "shipwright:auto", "ready-to-build"],
+      "pipeline_template": "fast"
+    },
+    "propose": {
+      "description": "Create issue with proposed label — human approves before build",
+      "labels": ["shipwright", "shipwright:proposed"],
+      "pipeline_template": "standard"
+    },
+    "draft": {
+      "description": "Write to decision-drafts directory only — human reviews offline",
+      "labels": [],
+      "pipeline_template": null
+    }
+  },
+  "category_rules": {
+    "deps_patch": { "tier": "auto", "risk_ceiling": 30 },
+    "deps_minor": { "tier": "auto", "risk_ceiling": 40 },
+    "deps_major": { "tier": "propose", "risk_ceiling": 60 },
+    "security_patch": { "tier": "auto", "risk_ceiling": 50 },
+    "security_critical": { "tier": "propose", "risk_ceiling": 80 },
+    "test_coverage": { "tier": "auto", "risk_ceiling": 30 },
+    "doc_sync": { "tier": "auto", "risk_ceiling": 20 },
+    "dead_code": { "tier": "auto", "risk_ceiling": 35 },
+    "refactor_hotspot": { "tier": "propose", "risk_ceiling": 60 },
+    "architecture_drift": { "tier": "propose", "risk_ceiling": 70 },
+    "performance_regression": { "tier": "propose", "risk_ceiling": 60 },
+    "recurring_failure": { "tier": "propose", "risk_ceiling": 50 },
+    "dora_regression": { "tier": "propose", "risk_ceiling": 55 },
+    "new_feature": { "tier": "draft", "risk_ceiling": 90 },
+    "breaking_change": { "tier": "draft", "risk_ceiling": 95 },
+    "business_logic": { "tier": "draft", "risk_ceiling": 90 },
+    "api_change": { "tier": "draft", "risk_ceiling": 85 },
+    "data_model_change": { "tier": "draft", "risk_ceiling": 90 }
+  },
+  "limits": {
+    "max_issues_per_day": 15,
+    "max_cost_per_day_usd": 25,
+    "cooldown_seconds": 300,
+    "halt_after_consecutive_failures": 3
+  },
+  "scoring_weights": {
+    "impact": 0.3,
+    "urgency": 0.25,
+    "effort": 0.2,
+    "confidence": 0.15,
+    "risk": 0.1
+  }
+}

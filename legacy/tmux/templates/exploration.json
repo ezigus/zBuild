@@ -1,0 +1,20 @@
+{
+  "name": "exploration",
+  "description": "Codebase exploration with one agent researching and one synthesizing",
+  "keywords": ["explore", "research", "investigate", "understand", "analyze"],
+  "agents": [
+    {
+      "name": "explorer",
+      "role": "Deep-dive into code, trace execution paths, map dependencies",
+      "focus": "src/, apps/, lib/"
+    },
+    {
+      "name": "synthesizer",
+      "role": "Summarize findings, document architecture, identify patterns",
+      "focus": "docs/, README.md, *.md"
+    }
+  ],
+  "layout": "even-horizontal",
+  "layout_style": "main-vertical",
+  "main_pane_percent": 60
+}

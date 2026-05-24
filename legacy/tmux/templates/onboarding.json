@@ -1,0 +1,33 @@
+{
+  "name": "onboarding",
+  "description": "Developer experience and onboarding improvement with audit, fix, and verification agents",
+  "keywords": [
+    "onboarding",
+    "developer experience",
+    "dx",
+    "setup",
+    "getting started",
+    "contribute",
+    "new developer"
+  ],
+  "agents": [
+    {
+      "name": "auditor",
+      "role": "Try setup from scratch — clone, install, run, test. Identify friction, missing docs, confusing errors, time each step.",
+      "focus": "README.md, CONTRIBUTING.md, Makefile, docker-compose.yml, scripts/"
+    },
+    {
+      "name": "improver",
+      "role": "Fix setup scripts, add missing documentation, improve error messages, create quick-start guide",
+      "focus": "scripts/, docs/, README.md, CONTRIBUTING.md, Makefile, *.md"
+    },
+    {
+      "name": "tester",
+      "role": "Verify the improved flow works from a fresh environment. Test on different OS assumptions, check idempotency.",
+      "focus": "scripts/, Makefile, docker-compose.yml, *.test.*"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

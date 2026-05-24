@@ -1,0 +1,20 @@
+{
+  "name": "architecture",
+  "description": "Architecture planning with research and specification agents",
+  "keywords": ["architecture", "design", "structure", "system", "diagram"],
+  "agents": [
+    {
+      "name": "researcher",
+      "role": "Analyze existing code, trace dependencies, identify patterns, evaluate trade-offs",
+      "focus": "src/, apps/, lib/, package.json"
+    },
+    {
+      "name": "spec-writer",
+      "role": "Write ADRs, design docs, technical specs, diagrams, interface contracts",
+      "focus": "docs/, adr/, ARCHITECTURE.md, *.md"
+    }
+  ],
+  "layout": "even-horizontal",
+  "layout_style": "main-vertical",
+  "main_pane_percent": 60
+}

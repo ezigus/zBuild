@@ -1,0 +1,35 @@
+{
+  "name": "api-design",
+  "description": "API design and implementation with designer, implementer, and consumer agents",
+  "keywords": [
+    "api",
+    "endpoint",
+    "rest",
+    "graphql",
+    "grpc",
+    "openapi",
+    "swagger",
+    "schema",
+    "contract"
+  ],
+  "agents": [
+    {
+      "name": "designer",
+      "role": "Schema design, OpenAPI/GraphQL spec, contract definition, versioning strategy",
+      "focus": "*.yaml, *.graphql, *.proto, docs/api/, openapi/"
+    },
+    {
+      "name": "implementer",
+      "role": "Routes, middleware, validation, serialization, error handling, rate limiting",
+      "focus": "src/api/, src/routes/, src/middleware/, src/controllers/"
+    },
+    {
+      "name": "consumer",
+      "role": "Client SDK, usage examples, integration tests, developer experience validation",
+      "focus": "src/client/, sdk/, examples/, *.test.*, __tests__/"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

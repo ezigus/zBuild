@@ -1,0 +1,36 @@
+{
+  "name": "incident-response",
+  "description": "Production incident response with investigation, fix, and postmortem agents",
+  "keywords": [
+    "incident",
+    "outage",
+    "down",
+    "production",
+    "hotfix",
+    "urgent",
+    "pager",
+    "alert",
+    "sev1",
+    "sev2"
+  ],
+  "agents": [
+    {
+      "name": "investigator",
+      "role": "Trace logs, metrics, and error paths to identify root cause. Narrow the blast radius.",
+      "focus": "src/, logs/, config/, *.log"
+    },
+    {
+      "name": "fixer",
+      "role": "Implement minimal hotfix with smallest possible blast radius. Prioritize speed and safety.",
+      "focus": "src/, lib/, apps/"
+    },
+    {
+      "name": "postmortem",
+      "role": "Write incident report, create follow-up issues, add monitoring and alerting to prevent recurrence",
+      "focus": "docs/, *.md, src/monitoring/, src/alerts/"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

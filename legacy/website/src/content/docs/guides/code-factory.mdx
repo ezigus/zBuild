@@ -1,0 +1,352 @@
+---
+title: Code Factory Pattern
+description: How Shipwright implements the Code Factory pattern — deterministic, auditable, machine-verifiable agent code delivery with risk-aware merge gates, SHA discipline, and incident-to-harness loops.
+---
+
+import { Card, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
+
+The **Code Factory** pattern is a control-plane architecture where coding agents write 100% of the code and the repository enforces deterministic, risk-aware checks before merge. Evidence is machine-verifiable, review loops are automated, and incidents feed back into harness coverage.
+
+Shipwright implements every layer of the Code Factory pattern — and extends it with capabilities that go beyond the baseline.
+
+---
+
+## The Loop
+
+```
+Agent writes code → Risk policy gate classifies PR → CI runs tier-appropriate checks
+→ Code review agent validates → Findings remediated in-branch → Clean evidence for current SHA
+→ Bot-only threads auto-resolved → Merge with auditable proof → Incidents create harness gaps
+```
+
+Every step is deterministic. Every decision is traceable to policy. Every merge is backed by machine-verifiable evidence tied to the exact commit SHA being merged.
+
+---
+
+## 1. Single Machine-Readable Contract
+
+All risk tiers, merge requirements, docs drift rules, evidence specs, and harness gap SLAs live in one file: `config/policy.json`.
+
+```json
+{
+  "riskTierRules": {
+    "critical": [".github/workflows/**", "config/policy.json"],
+    "high": ["scripts/sw-pipeline.sh", "scripts/sw-daemon.sh"],
+    "medium": ["scripts/sw-*.sh", "dashboard/**"],
+    "low": ["docs/**", "website/**", "**"]
+  },
+  "mergePolicy": {
+    "critical": {
+      "requiredChecks": [
+        "risk-policy-gate",
+        "tests",
+        "e2e-smoke",
+        "platform-health",
+        "code-review-agent"
+      ],
+      "requireDocsDriftCheck": true
+    },
+    "low": {
+      "requiredChecks": ["risk-policy-gate"]
+    }
+  }
+}
+```
+
+**Why this matters:** No ambiguity. No silent drift between scripts, workflows, and docs. One contract governs all merge decisions, and CI validates that contract on every push.
+
+---
+
+## 2. Preflight Gate Before Expensive CI
+
+The `risk-policy-gate` workflow runs first on every PR:
+
+1. Classifies changed files against `riskTierRules` (highest tier wins)
+2. Computes required checks for that tier
+3. Detects docs drift when control-plane files change without doc updates
+4. Posts a gate summary with SHA, tier, and required checks
+
+Only after the gate passes do expensive CI jobs (tests, builds, security scans) fan out. This saves CI minutes on PRs that are already policy-blocked.
+
+```
+PR opened → risk-policy-gate (3s) → pass? → tests + e2e + security (5-10min)
+                                   → fail? → blocked, no CI wasted
+```
+
+---
+
+## 3. Current-Head SHA Discipline
+
+This is the most critical safety invariant. Shipwright enforces that all evidence — check runs, reviews, approvals — corresponds to the **current PR head SHA**:
+
+- Check runs are validated against the head commit before merge
+- Stale approvals from before the latest push are flagged
+- Reviews must be refreshed after code changes
+- The merge function records the exact SHA it validated
+
+**Without this, you can merge a PR using "clean" evidence from an older commit that no longer applies.**
+
+---
+
+## 4. Canonical Rerun Writer with SHA Dedupe
+
+When multiple workflows can request review reruns, duplicate bot comments and race conditions appear. Shipwright uses a single canonical rerun writer (`sw-review-rerun.sh`) that:
+
+- Uses a marker comment (`<!-- shipwright-review-rerun -->`) for identification
+- Includes `sha:<head>` to prevent duplicate requests for the same commit
+- Checks existing comments before posting
+- Works with any review agent (Greptile, CodeRabbit, internal, etc.)
+
+```bash
+shipwright review-rerun request 42 abc1234 greptile
+# Only posts if no rerun was already requested for sha:abc1234
+```
+
+---
+
+## 5. Automated Remediation Loop
+
+When a code review finds actionable issues, the `review-remediation` workflow:
+
+1. Collects review findings (inline comments + review body)
+2. Triggers Claude to read findings and patch code
+3. Runs focused validation (tests)
+4. Pushes a fix commit to the same PR branch
+5. PR synchronize triggers the normal rerun path
+
+The remediation agent is constrained: minimum necessary changes, no new features, no unrelated refactoring. Pinned model + effort for reproducibility.
+
+---
+
+## 6. Auto-Resolve Bot-Only Threads
+
+After a clean current-head review rerun, Shipwright auto-resolves unresolved PR threads where **all comments are from bots**. Human-participated threads are never touched.
+
+This is controlled by policy:
+
+```json
+{
+  "codeReviewAgent": {
+    "autoResolveBotsOnlyThreads": true,
+    "neverAutoResolveHumanThreads": true
+  }
+}
+```
+
+The workflow uses GraphQL to inspect thread participants and only resolves when every author matches known bot patterns.
+
+---
+
+## 7. Evidence Framework — Not Just Browser
+
+The blog post recommends browser evidence for UI changes. Shipwright generalizes this into a **multi-type evidence framework** that covers every surface an agent can change:
+
+| Evidence Type | What It Proves                  | Example                                                     |
+| ------------- | ------------------------------- | ----------------------------------------------------------- |
+| **browser**   | UI renders correctly            | Dashboard loads, pipeline status page shows stages          |
+| **api**       | REST/GraphQL contracts hold     | Health endpoint returns 200, response is valid JSON         |
+| **database**  | Schema integrity maintained     | Migrations are current, no orphaned tables                  |
+| **cli**       | Commands produce correct output | `shipwright pipeline status --json` exits 0 with valid JSON |
+| **webhook**   | Callback endpoints respond      | Webhook receiver accepts POST with expected status          |
+| **custom**    | Anything else                   | User-defined verification scripts                           |
+
+```bash
+# Capture all evidence types
+npm run harness:evidence:capture
+
+# Capture specific type only
+npm run harness:evidence:capture:api
+npm run harness:evidence:capture:cli
+npm run harness:evidence:capture:database
+
+# Verify manifest and freshness
+npm run harness:evidence:verify
+
+# Pre-PR: capture + verify in one step
+npm run harness:evidence:pre-pr
+```
+
+Collectors are defined in `config/policy.json` under the `evidence` section:
+
+```json
+{
+  "evidence": {
+    "artifactMaxAgeMinutes": 30,
+    "requireFreshArtifacts": true,
+    "collectors": [
+      {
+        "name": "dashboard-api-health",
+        "type": "api",
+        "method": "GET",
+        "url": "http://localhost:8767/api/health",
+        "expectedStatus": 200,
+        "assertions": ["status-ok", "response-has-version"]
+      },
+      {
+        "name": "pipeline-cli-smoke",
+        "type": "cli",
+        "command": "bash scripts/sw-pipeline.sh status",
+        "expectedExitCode": 0,
+        "assertions": ["has-pipeline-state"]
+      },
+      {
+        "name": "db-schema-integrity",
+        "type": "database",
+        "command": "bash scripts/sw-db.sh health",
+        "expectedExitCode": 0,
+        "assertions": ["schema-valid", "db-accessible"]
+      }
+    ]
+  }
+}
+```
+
+Merge policy enforces which evidence types are required per risk tier:
+
+```json
+{
+  "mergePolicy": {
+    "critical": { "requiredEvidence": ["cli", "api"] },
+    "high": { "requiredEvidence": ["cli"] },
+    "medium": { "requiredEvidence": [] }
+  }
+}
+```
+
+Every evidence artifact records the capture timestamp, collector type, pass/fail status, and type-specific details (HTTP status, exit code, response body, etc.) in a machine-readable manifest.
+
+---
+
+## 8. Incident Memory with Harness-Gap Loop
+
+Every production regression must produce a test case:
+
+```
+production regression → incident detected → harness gap issue created
+→ test case written → gap resolved → SLA tracked
+```
+
+The `shipwright incident gap` commands manage this loop:
+
+```bash
+shipwright incident gap list          # Show all open gaps
+shipwright incident gap sla           # Show SLA compliance metrics
+shipwright incident gap resolve gap-inc-123 scripts/sw-auth-test.sh
+```
+
+SLAs are enforced by policy:
+
+- P0: 24 hours to add test case
+- P1: 72 hours
+- P2: 168 hours (1 week)
+
+Gaps that exceed SLA are flagged as overdue. GitHub issues are auto-created for tracking.
+
+---
+
+## How Shipwright Goes Beyond the Baseline
+
+<CardGrid>
+  <Card title="12-Stage Pipeline" icon="rocket">
+    Not just build-test-merge. A full 12-stage pipeline with intake, planning,
+    design, adversarial review, compound quality gates, deployment, validation,
+    and monitoring. Each stage has configurable quality gates.
+  </Card>
+  <Card title="Predictive Risk" icon="warning">
+    Risk isn't just path-based classification. The intelligence layer scores
+    issues using GitHub signals — security alerts, similar past failures,
+    contributor expertise, file churn patterns — before a single line of code is
+    written.
+  </Card>
+  <Card title="Self-Healing Builds" icon="setting">
+    When tests fail, the pipeline re-enters the build loop with error context.
+    Convergence detection prevents infinite loops. Error classification routes
+    retries intelligently. The system learns which fixes work.
+  </Card>
+  <Card title="Persistent Memory" icon="open-book">
+    Every pipeline run feeds back into persistent memory: failure patterns, fix
+    effectiveness, prediction accuracy. The next run benefits from every
+    previous one. Cross-repo global memory shares learnings across projects.
+  </Card>
+  <Card title="18 Autonomous Agents" icon="group">
+    Specialized agents for every role: PM, code reviewer, security auditor, test
+    generator, incident commander, architecture enforcer, and more. Each agent
+    has defined responsibilities and quality standards.
+  </Card>
+  <Card title="Fleet Operations" icon="list-format">
+    The Code Factory pattern applied across your entire organization. Fleet
+    daemons watch every repo, shared worker pools rebalance based on priority,
+    and aggregate metrics track delivery health org-wide.
+  </Card>
+</CardGrid>
+
+---
+
+## The Full Command Set
+
+```bash
+# Evidence framework — capture and verify all types
+npm run harness:evidence:capture          # All collectors
+npm run harness:evidence:capture:api      # API endpoints only
+npm run harness:evidence:capture:cli      # CLI commands only
+npm run harness:evidence:capture:database # Database checks only
+npm run harness:evidence:capture:browser  # Browser/UI only
+npm run harness:evidence:verify           # Verify manifest + freshness
+npm run harness:evidence:pre-pr           # Capture + verify in one step
+
+# Risk and policy
+npm run harness:risk-tier
+npm run harness:policy-gate
+
+# Core pipeline
+npm test
+npm run test:smoke
+npm run test:integration
+
+# Incident-to-harness loop
+shipwright incident gap list
+shipwright incident gap sla
+shipwright incident gap resolve <gap-id> <test-file>
+
+# Review rerun management
+shipwright review-rerun request <pr#> <sha> [agent]
+shipwright review-rerun check <pr#>
+shipwright review-rerun wait <pr#> <sha> [timeout]
+
+# Evidence CLI (all types)
+shipwright evidence capture [type]
+shipwright evidence verify
+shipwright evidence pre-pr [type]
+shipwright evidence status
+shipwright evidence types
+```
+
+---
+
+## Workflow Architecture
+
+Four GitHub Actions workflows implement the Code Factory control plane:
+
+| Workflow                   | Trigger              | Role                             |
+| -------------------------- | -------------------- | -------------------------------- |
+| `risk-policy-gate.yml`     | PR open/sync         | Classify risk, enforce preflight |
+| `review-remediation.yml`   | Review submitted     | Auto-fix review findings         |
+| `auto-resolve-threads.yml` | Check suite complete | Clean up bot-only threads        |
+| `shipwright-pipeline.yml`  | Issue labeled        | Full autonomous delivery         |
+
+Plus the existing CI workflows (`test.yml`, `e2e-smoke.yml`) that run after the preflight gate passes.
+
+---
+
+## Pattern Summary
+
+1. **One contract** — `config/policy.json` is the single source of truth
+2. **Preflight gate** — Risk classification before expensive CI
+3. **SHA discipline** — All evidence validated against current head
+4. **Single rerun writer** — SHA-deduped, no duplicate bot comments
+5. **Remediation loop** — Findings → patch → validate → push → rerun
+6. **Bot thread cleanup** — Auto-resolve bot-only threads after clean rerun
+7. **Evidence framework** — Machine-verifiable proof for browser, API, database, CLI, webhook, and custom checks
+8. **Harness-gap loop** — Every incident produces a test case within SLA
+
+The result: a repo where agents implement, validate, and are reviewed with deterministic, auditable standards — and the system gets smarter with every run.

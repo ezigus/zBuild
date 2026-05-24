@@ -1,0 +1,326 @@
+---
+title: Shipwright
+description: The autonomous delivery platform — from labeled issue to merged PR with self-healing builds, adversarial review, and intelligence that improves with every run.
+template: splash
+hero:
+  title: The Autonomous Delivery Platform
+  tagline: Label a GitHub issue. Walk away. Shipwright triages with AI, composes an intelligent pipeline, builds with self-healing agents, and creates a PR — learning from every outcome.
+  actions:
+    - text: Get Started
+      link: /quick-start/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/sethdford/shipwright
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
+
+## How It Works
+
+<div class="pipeline-flow">
+  <div class="flow-step">
+    <div class="flow-number">1</div>
+    <div class="flow-label">Issue Arrives</div>
+    <div class="flow-desc">GitHub label or AI patrol creates work</div>
+  </div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step">
+    <div class="flow-number">2</div>
+    <div class="flow-label">AI Triage</div>
+    <div class="flow-desc">
+      Semantic analysis, risk assessment, priority scoring
+    </div>
+  </div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step">
+    <div class="flow-number">3</div>
+    <div class="flow-label">Compose Pipeline</div>
+    <div class="flow-desc">Custom stages, model routing, cost prediction</div>
+  </div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step">
+    <div class="flow-number">4</div>
+    <div class="flow-label">Agents Execute</div>
+    <div class="flow-desc">Parallel builds across backend, frontend, tests</div>
+  </div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step">
+    <div class="flow-number">5</div>
+    <div class="flow-label">Quality Gates</div>
+    <div class="flow-desc">
+      Self-healing builds, adversarial review, compound audit
+    </div>
+  </div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step">
+    <div class="flow-number">6</div>
+    <div class="flow-label">Ship and Learn</div>
+    <div class="flow-desc">PR created, memory captured, system optimizes</div>
+  </div>
+</div>
+
+<div class="flow-loop-label">Every run makes the next one smarter</div>
+
+---
+
+## By the Numbers
+
+<div class="stats-grid">
+  <div class="stat">
+    <div class="stat-number">12</div>
+    <div class="stat-label">Pipeline Stages</div>
+  </div>
+  <div class="stat">
+    <div class="stat-number">7</div>
+    <div class="stat-label">Intelligence Modules</div>
+  </div>
+  <div class="stat">
+    <div class="stat-number">24</div>
+    <div class="stat-label">Team Templates</div>
+  </div>
+  <div class="stat">
+    <div class="stat-number">8</div>
+    <div class="stat-label">Pipeline Configurations</div>
+  </div>
+  <div class="stat">
+    <div class="stat-number">278</div>
+    <div class="stat-label">Tests Passing</div>
+  </div>
+  <div class="stat">
+    <div class="stat-number">38k+</div>
+    <div class="stat-label">Lines of Bash</div>
+  </div>
+</div>
+
+---
+
+## The Full SDLC, Automated
+
+Every stage can be enabled, disabled, or gated. The intelligence layer composes the optimal combination for each issue.
+
+```
+intake → plan → design → build → test → review → compound_quality → pr → merge → deploy → validate → monitor
+```
+
+<CardGrid>
+  <Card title="Intelligent Triage" icon="star">
+    Claude semantically analyzes every issue — complexity, risk level, success
+    probability, optimal template, key risks. Not word counts. Not regex.
+    Semantic understanding.
+  </Card>
+  <Card title="Adaptive Pipelines" icon="puzzle">
+    The intelligence engine composes a custom pipeline for each issue. Security
+    issues get threat modeling stages. Simple fixes skip planning. Budget
+    constraints trigger model downgrades. Static templates remain as fallbacks.
+  </Card>
+  <Card title="Self-Healing Builds" icon="rocket">
+    When tests fail, the pipeline captures error output and re-enters the build
+    loop with that context. Agents read failures and fix them — just like a
+    human developer, but without the frustration.
+  </Card>
+  <Card title="Adversarial Review" icon="warning">
+    After the primary agent writes code, a second adversarial agent tries to
+    break it. Security flaws, race conditions, edge cases. They iterate until
+    the adversary finds nothing critical.
+  </Card>
+  <Card title="Developer Simulation" icon="group">
+    Before PR submission, three simulated reviewers — security, performance,
+    maintainability — raise objections. The agent addresses concerns before any
+    human sees the code. Fewer review cycles, faster merges.
+  </Card>
+  <Card title="Compound Quality" icon="approve-check">
+    Multi-dimensional quality audit combining adversarial testing, negative
+    testing, end-to-end validation, and definition-of-done verification in a
+    single stage. Not just "do tests pass" — does this code actually work.
+  </Card>
+</CardGrid>
+
+---
+
+## Intelligence That Compounds
+
+<div class="intel-grid">
+  <div class="intel-card">
+    <div class="intel-title">Analyze</div>
+    <div class="intel-desc">
+      Every issue is semantically analyzed for complexity, risk, and optimal
+      approach. The intelligence core replaces hardcoded heuristics with
+      AI-powered decisions at every branch point in the pipeline.
+    </div>
+  </div>
+  <div class="intel-card">
+    <div class="intel-title">Predict</div>
+    <div class="intel-desc">
+      Before a pipeline starts, the system estimates cost, predicts which stages
+      might fail, and injects preventative context from memory. Anomaly
+      detection catches deviations during execution.
+    </div>
+  </div>
+  <div class="intel-card highlight">
+    <div class="intel-title">Learn</div>
+    <div class="intel-desc">
+      After every pipeline, the self-optimization module analyzes the outcome —
+      what worked, what failed, why. Template weights adjust. Model routing
+      optimizes. Memory evolves. The next run benefits from every previous one.
+    </div>
+  </div>
+</div>
+
+Seven modules working together: intelligence core, pipeline composer, self-optimization, predictive analytics, adversarial review, developer simulation, and architecture enforcement. All behind feature flags. All degrade gracefully when disabled.
+
+---
+
+## One Command
+
+```bash
+# Full delivery pipeline — issue to PR, fully autonomous
+shipwright pipeline start --issue 42
+
+# Autonomous daemon — watches GitHub, processes issues 24/7
+shipwright daemon start
+
+# Team session — 3 agents building in parallel
+shipwright session my-feature --template feature-dev
+
+# Continuous loop with quality gates
+shipwright loop "Build auth" --test-cmd "npm test" --audit-agent
+
+# Fleet — daemons across every repo in your organization
+shipwright fleet start
+
+# Apply the same fix across 10 repos simultaneously
+shipwright fix "Update lodash to 4.17.21" --repos ~/api,~/web,~/mobile
+```
+
+---
+
+## The Platform
+
+<CardGrid>
+  <Card title="Delivery Pipeline" icon="rocket">
+    12-stage pipeline from intake to monitoring. Self-healing builds, GitHub
+    integration, quality gates, and eight templates — from fast hotfixes to
+    enterprise deployments with auto-rollback.
+  </Card>
+  <Card title="Autonomous Daemon" icon="setting">
+    Background process that polls GitHub for labeled issues, triages with AI,
+    spawns pipelines, retries failures with escalation, and optimizes itself
+    based on DORA metrics. Set it and forget it.
+  </Card>
+  <Card title="Agent Teams" icon="group">
+    24 team templates covering the full SDLC — feature development, code review,
+    security audit, testing, refactoring, migration, incident response, and
+    more. Each agent gets its own tmux pane with strict file ownership.
+  </Card>
+  <Card title="Fleet Operations" icon="list-format">
+    Orchestrate daemons across every repository in your organization from a
+    single command. Shared worker pools, aggregate DORA metrics, and fleet-wide
+    dashboards.
+  </Card>
+  <Card title="DORA Metrics" icon="bar-chart">
+    Track deployment frequency, cycle time, change failure rate, and mean time
+    to recovery. Elite/High/Medium/Low grading based on Google's research. The
+    self-optimizer uses these metrics to tune the system automatically.
+  </Card>
+  <Card title="Cost Intelligence" icon="information">
+    Token usage tracking per stage, daily budget enforcement, and per-issue cost
+    breakdowns. The intelligence layer predicts costs before runs and routes
+    cheaper models to simpler stages. Budget-aware auto-scaling.
+  </Card>
+  <Card title="Persistent Memory" icon="open-book">
+    Failure patterns, design decisions, codebase conventions, and performance
+    baselines — captured after every run and injected into future pipelines.
+    Cross-repo global memory shares learnings across projects.
+  </Card>
+  <Card title="Architecture Enforcement" icon="document">
+    A living architectural model built from your codebase. Every change is
+    validated against established patterns. Violations are flagged before PR
+    creation. The model evolves when legitimate changes are detected.
+  </Card>
+</CardGrid>
+
+---
+
+## Code Factory: Deterministic Agent Delivery
+
+Shipwright implements the complete **Code Factory** pattern — the control-plane architecture where agents write 100% of the code and the repo enforces deterministic, risk-aware checks before every merge.
+
+<CardGrid>
+  <Card title="Single Contract" icon="document">
+    One machine-readable policy file governs risk tiers, merge requirements,
+    docs drift rules, evidence specs, and harness gap SLAs. No ambiguity, no
+    drift between scripts and docs.
+  </Card>
+  <Card title="SHA Discipline" icon="approve-check">
+    All evidence — check runs, reviews, approvals — must correspond to the
+    current PR head SHA. Stale evidence from older commits is never trusted. The
+    single most important safety invariant.
+  </Card>
+  <Card title="Multi-Type Evidence" icon="information">
+    Not just browser screenshots. Machine-verifiable proof for API contracts,
+    database schema, CLI commands, webhooks, and custom checks. Six evidence
+    types with freshness enforcement and per-tier merge requirements.
+  </Card>
+  <Card title="Harness-Gap Loop" icon="warning">
+    Every production regression automatically creates a harness gap issue with
+    SLA tracking. The incident isn't closed until a test case covers the failure
+    scenario. Coverage only grows.
+  </Card>
+</CardGrid>
+
+---
+
+## Shipwright vs. Traditional AI Coding Tools
+
+<div class="comparison-grid">
+  <div class="comparison-col">
+    <div class="comparison-header">Traditional AI Coding Tools</div>
+    <ul class="comparison-list">
+      <li>Help you write code in an editor</li>
+      <li>One conversation at a time</li>
+      <li>You manage the workflow</li>
+      <li>Start fresh every session</li>
+      <li>Single-repo focus</li>
+      <li>Manual quality checks</li>
+      <li>No delivery automation</li>
+      <li>Fixed behavior</li>
+    </ul>
+  </div>
+  <div class="comparison-col highlight">
+    <div class="comparison-header">Shipwright</div>
+    <ul class="comparison-list">
+      <li>Runs your entire delivery operation</li>
+      <li>Parallel agents across backend, frontend, tests</li>
+      <li>Autonomous pipeline from issue to PR</li>
+      <li>Persistent memory across every run</li>
+      <li>Fleet operations across all your repos</li>
+      <li>Compound quality gates, adversarial review</li>
+      <li>Full SDLC automation with DORA metrics</li>
+      <li>Self-improving intelligence that learns</li>
+    </ul>
+  </div>
+</div>
+
+---
+
+## Install
+
+{/* prettier-ignore */}
+<Tabs>
+  <TabItem label="curl">
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/sethdford/shipwright/main/scripts/install-remote.sh | bash
+    ```
+  </TabItem>
+  <TabItem label="Git">
+    ```bash
+    git clone https://github.com/sethdford/shipwright.git
+    cd shipwright && ./install.sh
+    ```
+  </TabItem>
+</Tabs>
+
+Open source under the MIT license. Requires Claude Code and tmux.

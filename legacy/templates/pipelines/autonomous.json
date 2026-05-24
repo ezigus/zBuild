@@ -1,0 +1,117 @@
+{
+  "name": "autonomous",
+  "description": "Fully autonomous pipeline with compound quality — zero human gates",
+  "defaults": {
+    "model": "claude-opus-4-6",
+    "agents": 1
+  },
+  "intelligence": {
+    "adversarial_enabled": true,
+    "architecture_enabled": true,
+    "simulation_enabled": true
+  },
+  "stages": [
+    { "id": "intake", "enabled": true, "gate": "auto", "config": {} },
+    {
+      "id": "plan",
+      "enabled": true,
+      "gate": "auto",
+      "config": { "model": "claude-opus-4-6" }
+    },
+    {
+      "id": "design",
+      "enabled": true,
+      "gate": "auto",
+      "config": { "model": "claude-opus-4-6" }
+    },
+    {
+      "id": "build",
+      "enabled": true,
+      "gate": "auto",
+      "config": { "max_iterations": 20, "audit": true, "quality_gates": true }
+    },
+    {
+      "id": "test",
+      "enabled": true,
+      "gate": "auto",
+      "config": { "coverage_min": 80 }
+    },
+    { "id": "review", "enabled": true, "gate": "auto", "config": {} },
+    {
+      "id": "compound_quality",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "adversarial": true,
+        "negative": true,
+        "e2e": true,
+        "dod_audit": true,
+        "max_cycles": 3,
+        "audit_intensity": "auto",
+        "compound_quality_blocking": true
+      }
+    },
+    {
+      "id": "audit",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "secret_scan": true,
+        "file_permissions": true,
+        "atomic_writes": true,
+        "coverage_delta": true,
+        "blocking": false
+      }
+    },
+    {
+      "id": "resync",
+      "enabled": true,
+      "gate": "auto",
+      "config": {}
+    },
+    {
+      "id": "pr",
+      "enabled": true,
+      "gate": "auto",
+      "config": { "wait_ci": false }
+    },
+    {
+      "id": "merge",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "merge_method": "squash",
+        "wait_ci_timeout_s": 600,
+        "auto_delete_branch": true,
+        "auto_merge": true,
+        "auto_approve": true
+      }
+    },
+    {
+      "id": "deploy",
+      "enabled": false,
+      "gate": "approve",
+      "config": { "staging_cmd": "", "production_cmd": "", "rollback_cmd": "" }
+    },
+    {
+      "id": "validate",
+      "enabled": false,
+      "gate": "auto",
+      "config": { "smoke_cmd": "", "health_url": "", "close_issue": true }
+    },
+    {
+      "id": "monitor",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "duration_minutes": 5,
+        "health_url": "",
+        "error_threshold": 5,
+        "log_pattern": "ERROR|FATAL|PANIC",
+        "log_cmd": "",
+        "rollback_cmd": "",
+        "auto_rollback": false
+      }
+    }
+  ]
+}

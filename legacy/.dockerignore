@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.git/
+*.tar.gz
+**/*-test.sh
+scripts/build-release.sh
+scripts/update-version.sh
+scripts/install-remote.sh
+scripts/install-completions.sh
+homebrew/
+website/
+.github/

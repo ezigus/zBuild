@@ -1,0 +1,4 @@
+# This file disables legacy/scripts/sw from running.
+# See legacy/FROZEN.md and docs/adr/ADR-002-legacy-import-strategy.md.
+# Remove this file ONLY by going through the wrapper documented in FROZEN.md
+# (which sets SHIPWRIGHT_OVERRIDE_DISABLED=1, recognized only while this file exists).

@@ -1,0 +1,36 @@
+{
+  "name": "compliance",
+  "description": "Regulatory and license compliance with scanning, remediation, and documentation agents",
+  "keywords": [
+    "compliance",
+    "license",
+    "sbom",
+    "gdpr",
+    "hipaa",
+    "sox",
+    "pci",
+    "regulation",
+    "audit",
+    "legal"
+  ],
+  "agents": [
+    {
+      "name": "scanner",
+      "role": "License audit, SBOM generation, dependency risk assessment, known vulnerability scanning, policy violation detection",
+      "focus": "package.json, go.mod, Cargo.toml, *.lock, requirements.txt, LICENSE"
+    },
+    {
+      "name": "remediator",
+      "role": "Replace problematic dependencies, add required license notices, fix policy violations, update to compliant versions",
+      "focus": "src/, lib/, package.json, go.mod, LICENSE, NOTICE"
+    },
+    {
+      "name": "documenter",
+      "role": "Compliance reports, audit trail documentation, data flow diagrams, privacy impact assessments, policy documentation",
+      "focus": "docs/, compliance/, *.md, SECURITY.md, PRIVACY.md"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

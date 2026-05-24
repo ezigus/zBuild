@@ -1,0 +1,83 @@
+{
+  "name": "shipwright-cli",
+  "version": "3.6.1",
+  "description": "Orchestrate autonomous Claude Code agent teams in tmux",
+  "bin": {
+    "shipwright": "scripts/sw",
+    "sw": "scripts/sw",
+    "cct": "scripts/sw"
+  },
+  "files": [
+    "config/",
+    "scripts/",
+    "!scripts/*-test.sh",
+    "!scripts/build-release.sh",
+    "!scripts/update-version.sh",
+    "!scripts/install-remote.sh",
+    "!scripts/install-completions.sh",
+    "templates/",
+    "tmux/templates/",
+    "tmux/tmux.conf",
+    "tmux/shipwright-overlay.conf",
+    "dashboard/",
+    "claude-code/",
+    ".claude/agents/",
+    ".claude/hooks/",
+    "completions/",
+    "docs/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs",
+    "dashboard:build": "bun build dashboard/src/main.ts --target=browser --outdir=dashboard/public/dist --sourcemap=linked",
+    "dashboard:watch": "bun build dashboard/src/main.ts --target=browser --outdir=dashboard/public/dist --sourcemap=linked --watch",
+    "dashboard:prod": "bun build dashboard/src/main.ts --target=browser --outdir=dashboard/public/dist --minify",
+    "dashboard:test": "vitest run --config dashboard/vitest.config.ts",
+    "dashboard:test:watch": "vitest --config dashboard/vitest.config.ts",
+    "dashboard:test:coverage": "vitest run --config dashboard/vitest.config.ts --coverage",
+    "test": "bash tests/sw-orphan-test.sh && bash scripts/sw-agi-roadmap-test.sh && bash scripts/sw-activity-test.sh && bash scripts/sw-adaptive-test.sh && bash scripts/sw-adversarial-test.sh && bash scripts/sw-architecture-enforcer-test.sh && bash scripts/sw-auth-test.sh && bash scripts/sw-autonomous-test.sh && bash scripts/sw-changelog-test.sh && bash scripts/sw-checkpoint-test.sh && bash scripts/sw-ci-test.sh && bash scripts/sw-gha-pipeline-test.sh && bash scripts/sw-snapshot-guard-test.sh && bash scripts/sw-cleanup-test.sh && bash scripts/sw-code-review-test.sh && bash scripts/sw-connect-test.sh && bash scripts/sw-context-test.sh && bash scripts/sw-cost-test.sh && bash scripts/sw-daemon-test.sh && bash scripts/sw-dashboard-test.sh && bash scripts/sw-db-test.sh && bash scripts/sw-decompose-test.sh && bash scripts/sw-decide-test.sh && bash scripts/sw-deps-test.sh && bash scripts/sw-developer-simulation-test.sh && bash scripts/sw-discovery-test.sh && bash scripts/sw-doc-fleet-test.sh && bash scripts/sw-docs-agent-test.sh && bash scripts/sw-docs-test.sh && bash scripts/sw-doctor-test.sh && bash scripts/sw-dora-test.sh && bash scripts/sw-durable-test.sh && bash scripts/sw-e2e-orchestrator-test.sh && bash scripts/sw-eventbus-test.sh && bash scripts/sw-feedback-test.sh && bash scripts/sw-fix-test.sh && bash scripts/sw-fleet-discover-test.sh && bash scripts/sw-fleet-test.sh && bash scripts/sw-fleet-viz-test.sh && bash scripts/sw-frontier-test.sh && bash scripts/sw-github-app-test.sh && bash scripts/sw-github-checks-test.sh && bash scripts/sw-github-deploy-test.sh && bash scripts/sw-github-graphql-test.sh && bash scripts/sw-guild-test.sh && bash scripts/sw-heartbeat-test.sh && bash scripts/sw-hello-test.sh && bash scripts/sw-hygiene-test.sh && bash scripts/sw-incident-test.sh && bash scripts/sw-init-test.sh && bash scripts/sw-instrument-test.sh && bash scripts/sw-intelligence-test.sh && bash scripts/sw-jira-test.sh && bash scripts/sw-launchd-test.sh && bash scripts/sw-linear-test.sh && bash scripts/sw-logs-test.sh && bash scripts/sw-loop-test.sh && bash scripts/sw-memory-test.sh && bash scripts/sw-mission-control-test.sh && bash scripts/sw-model-router-test.sh && bash scripts/sw-otel-test.sh && bash scripts/sw-oversight-test.sh && bash scripts/sw-patrol-meta-test.sh && bash scripts/sw-pipeline-composer-test.sh && bash scripts/sw-pipeline-test.sh && bash scripts/sw-pipeline-vitals-test.sh && bash scripts/sw-pipeline-memory-guard-test.sh && bash scripts/sw-pm-test.sh && bash scripts/sw-pr-lifecycle-test.sh && bash scripts/sw-predictive-test.sh && bash scripts/sw-prep-test.sh && bash scripts/sw-ps-test.sh && bash scripts/sw-public-dashboard-test.sh && bash scripts/sw-quality-test.sh && bash scripts/sw-reaper-test.sh && bash scripts/sw-recruit-test.sh && bash scripts/sw-regression-test.sh && bash scripts/sw-release-manager-test.sh && bash scripts/sw-release-test.sh && bash scripts/sw-remote-test.sh && bash scripts/sw-replay-test.sh && bash scripts/sw-retro-test.sh && bash scripts/sw-scale-test.sh && bash scripts/sw-security-audit-test.sh && bash scripts/sw-self-optimize-test.sh && bash scripts/sw-session-test.sh && bash scripts/sw-setup-test.sh && bash scripts/sw-standup-test.sh && bash scripts/sw-status-test.sh && bash scripts/sw-strategic-test.sh && bash scripts/sw-stream-test.sh && bash scripts/sw-swarm-test.sh && bash scripts/sw-team-stages-test.sh && bash scripts/sw-templates-test.sh && bash scripts/sw-testgen-test.sh && bash scripts/sw-tmux-pipeline-test.sh && bash scripts/sw-tmux-test.sh && bash scripts/sw-trace-test.sh && bash scripts/sw-tracker-test.sh && bash scripts/sw-triage-test.sh && bash scripts/sw-upgrade-test.sh && bash scripts/sw-ux-test.sh && bash scripts/sw-webhook-test.sh && bash scripts/sw-widgets-test.sh && bash scripts/sw-worktree-test.sh && bash scripts/sw-lib-compat-test.sh && bash scripts/sw-lib-config-test.sh && bash scripts/sw-lib-cost-share-test.sh && bash scripts/sw-lib-helpers-test.sh && bash scripts/sw-lib-error-actionability-test.sh && bash scripts/sw-lib-daemon-dispatch-test.sh && bash scripts/sw-lib-daemon-failure-test.sh && bash scripts/sw-lib-daemon-poll-test.sh && bash scripts/sw-lib-daemon-state-test.sh && bash scripts/sw-lib-daemon-triage-test.sh && bash scripts/sw-lib-daemon-patrol-test.sh && bash scripts/sw-lib-pipeline-detection-test.sh && bash scripts/sw-lib-pipeline-intelligence-test.sh && bash scripts/sw-lib-pipeline-quality-checks-test.sh && bash scripts/sw-lib-pipeline-github-test.sh && bash scripts/sw-lib-pipeline-stages-test.sh && bash scripts/sw-lib-pipeline-stages-review-test.sh && bash scripts/sw-lib-pipeline-state-test.sh && bash scripts/sw-cross-repo-isolation-test.sh && bash scripts/sw-ruflo-adapter-test.sh && bash scripts/sw-ruflo-timeout-test.sh && bash scripts/sw-ruflo-bridge-test.sh && bash scripts/sw-ruflo-benchmark-test.sh && bash scripts/sw-adapters-test.sh && bash scripts/sw-evidence-test.sh && bash scripts/sw-review-rerun-test.sh && bash scripts/sw-tracker-providers-test.sh && bash scripts/sw-budget-chaos-test.sh && bash scripts/sw-chaos-test.sh && bash scripts/sw-autonomous-e2e-test.sh && bash scripts/sw-memory-discovery-e2e-test.sh && bash scripts/sw-policy-e2e-test.sh && bash scripts/sw-e2e-smoke-test.sh && bash scripts/sw-dashboard-e2e-test.sh && bash scripts/sw-lib-loop-iteration-test.sh && bash scripts/sw-lib-loop-restart-test.sh && bash scripts/sw-lib-loop-convergence-test.sh && bash scripts/sw-lib-ci-reconcile-state-test.sh && bash scripts/sw-ci-reset-stale-state-test.sh && bash scripts/sw-lib-compound-audit-test.sh && bash scripts/sw-postmortem-460-test.sh",
+    "test:smoke": "bash scripts/sw-e2e-smoke-test.sh",
+    "test:integration": "bash scripts/sw-e2e-integration-test.sh && bash scripts/sw-e2e-system-test.sh && bash scripts/sw-server-api-test.sh && bash scripts/sw-integration-claude-test.sh",
+    "harness:evidence:capture": "bash scripts/sw-evidence.sh capture",
+    "harness:evidence:verify": "bash scripts/sw-evidence.sh verify",
+    "harness:evidence:pre-pr": "bash scripts/sw-evidence.sh pre-pr",
+    "harness:evidence:capture:browser": "bash scripts/sw-evidence.sh capture browser",
+    "harness:evidence:capture:api": "bash scripts/sw-evidence.sh capture api",
+    "harness:evidence:capture:database": "bash scripts/sw-evidence.sh capture database",
+    "harness:evidence:capture:cli": "bash scripts/sw-evidence.sh capture cli",
+    "harness:ui:capture-browser-evidence": "bash scripts/sw-evidence.sh capture browser",
+    "harness:ui:verify-browser-evidence": "bash scripts/sw-evidence.sh verify",
+    "harness:ui:pre-pr": "bash scripts/sw-evidence.sh pre-pr browser",
+    "bench:ruflo": "bash scripts/benchmark-ruflo-backends.sh",
+    "bench:ruflo:collect": "bash scripts/benchmark-ruflo-backends.sh --no-assert"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "tmux",
+    "agent-teams",
+    "autonomous",
+    "pipeline",
+    "ai"
+  ],
+  "author": "Seth Ford",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sethdford/shipwright.git"
+  },
+  "homepage": "https://sethdford.github.io/shipwright",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@vitest/coverage-v8": "^4.0.18",
+    "bun-types": "^1.3.9",
+    "happy-dom": "^20.6.1",
+    "jsdom": "^28.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "bug-fix",
+  "description": "Bug fix with reproducer, fixer, and verifier agents",
+  "keywords": [
+    "bug",
+    "fix",
+    "error",
+    "crash",
+    "broken",
+    "failing",
+    "regression"
+  ],
+  "agents": [
+    {
+      "name": "reproducer",
+      "role": "Write a failing test that reproduces the bug, trace root cause",
+      "focus": "*.test.ts, __tests__/, *.spec.ts"
+    },
+    {
+      "name": "fixer",
+      "role": "Implement the fix in source code, handle edge cases",
+      "focus": "src/, apps/, lib/"
+    },
+    {
+      "name": "verifier",
+      "role": "Check for regressions, verify fix doesn't break other tests, review changes",
+      "focus": "*.test.*, src/, CHANGELOG.md"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

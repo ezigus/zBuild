@@ -1,0 +1,32 @@
+{
+  "name": "security-audit",
+  "description": "Security audit with code analysis, dependency scanning, and config review agents",
+  "keywords": [
+    "security",
+    "vulnerability",
+    "xss",
+    "injection",
+    "auth",
+    "patch"
+  ],
+  "agents": [
+    {
+      "name": "code-analysis",
+      "role": "SAST: injection flaws, auth bypasses, XSS, CSRF, insecure deserialization",
+      "focus": "src/, apps/, lib/"
+    },
+    {
+      "name": "dependencies",
+      "role": "Dependency vulnerabilities, outdated packages, license compliance, supply chain risks",
+      "focus": "package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, go.mod, requirements.txt"
+    },
+    {
+      "name": "config-review",
+      "role": "Secrets exposure, insecure defaults, CORS, CSP headers, environment config",
+      "focus": "*.config.*, .env*, docker*, *.yaml, *.yml, nginx.conf"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

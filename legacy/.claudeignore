@@ -1,0 +1,48 @@
+# Claude Code Context Window Optimization
+# Files and directories to exclude from automatic context loading
+# Reduces token usage by ~25% on typical codebases
+
+# Package managers & dependencies
+node_modules/
+package-lock.json
+yarn.lock
+bun.lock
+
+# Build artifacts
+dist/
+build/
+out/
+.next/
+public/built/
+website/build/
+
+# Version control
+.git/
+.gitignore
+.github/workflows/
+
+# Dependencies
+vendor/
+.venv/
+venv/
+__pycache__/
+
+# Large data files (keep models, configs, test data)
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# Dashboard built files
+dashboard/public/built/
+
+# Test coverage reports
+coverage/
+.nyc_output/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

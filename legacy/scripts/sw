@@ -1,0 +1,634 @@
+#!/usr/bin/env bash
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  Shipwright CLI (sw)                                                   ║
+# ║  Orchestrate autonomous Claude Code agent teams in tmux                 ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+set -euo pipefail
+
+# ─── zBuild legacy sentinel guard ─────────────────────────────────────────
+# This block is the SOLE patch to legacy verbatim content.
+# See docs/adr/ADR-002-legacy-import-strategy.md and legacy/FROZEN.md.
+# Removed automatically when this file is git-rm'd during keeper migration.
+_zbuild_sentinel="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.shipwright-disabled"
+if [[ -f "$_zbuild_sentinel" && "${SHIPWRIGHT_OVERRIDE_DISABLED:-0}" != "1" ]]; then
+    echo "ERROR: legacy/scripts/sw is disabled by sentinel file:" >&2
+    echo "  $_zbuild_sentinel" >&2
+    echo "See legacy/FROZEN.md. Do not run legacy scripts unless you know what you are doing." >&2
+    exit 64
+fi
+# ─── end zBuild legacy sentinel guard ─────────────────────────────────────
+
+VERSION="3.6.1"
+
+# Resolve symlinks (required for npm global install where bin/ symlinks to node_modules/)
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+    DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+
+# ─── Colors (matches Seth's tmux theme) ─────────────────────────────────────
+CYAN='\033[38;2;0;212;255m'     # #00d4ff — primary accent
+PURPLE='\033[38;2;124;58;237m'  # #7c3aed — secondary
+# shellcheck disable=SC2034
+BLUE='\033[38;2;0;102;255m'     # #0066ff — tertiary
+GREEN='\033[38;2;74;222;128m'   # success
+YELLOW='\033[38;2;250;204;21m'  # warning
+RED='\033[38;2;248;113;113m'    # error
+DIM='\033[2m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# ─── Project identity (auto-detect from git remote) ───────────────────────
+_sw_github_repo() {
+    local url; url="$(git remote get-url origin 2>/dev/null || echo "")"
+    if [[ "$url" =~ github\.com[:/]([^/]+)/([^/.]+) ]]; then
+        echo "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+    else
+        echo "${SHIPWRIGHT_GITHUB_REPO:-sethdford/shipwright}"
+    fi
+}
+# shellcheck disable=SC2155
+_sw_github_owner() { local r="$(_sw_github_repo)"; echo "${r%%/*}"; }
+_sw_docs_url() { echo "${SHIPWRIGHT_DOCS_URL:-https://$(_sw_github_owner).github.io/shipwright}"; }
+_sw_github_url() { echo "https://github.com/$(_sw_github_repo)"; }
+
+# ─── Cross-platform compatibility ──────────────────────────────────────────
+# shellcheck source=lib/compat.sh
+[[ -f "$SCRIPT_DIR/lib/compat.sh" ]] && source "$SCRIPT_DIR/lib/compat.sh"
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+info()    { echo -e "${CYAN}${BOLD}▸${RESET} $*"; }
+success() { echo -e "${GREEN}${BOLD}✓${RESET} $*"; }
+warn()    { echo -e "${YELLOW}${BOLD}⚠${RESET} $*"; }
+error()   { echo -e "${RED}${BOLD}✗${RESET} $*" >&2; }
+
+check_tmux() {
+    if ! command -v tmux >/dev/null 2>&1; then
+        error "tmux is not installed. Install it first:"
+        echo -e "  ${DIM}brew install tmux${RESET}  (macOS)"
+        echo -e "  ${DIM}sudo apt install tmux${RESET}  (Ubuntu/Debian)"
+        exit 1
+    fi
+}
+
+check_in_tmux() {
+    if [[ -z "${TMUX:-}" ]]; then
+        warn "Not inside a tmux session."
+        echo -e "  Start one with: ${DIM}tmux new -s work${RESET}"
+        echo -e "  Or attach:      ${DIM}tmux attach${RESET}"
+        exit 1
+    fi
+}
+
+ensure_repo_setup() {
+    if [[ ! -d ".claude" ]]; then
+        error "This repo hasn't been set up for Shipwright."
+        echo ""
+        echo -e "  ${CYAN}${BOLD}Run one of:${RESET}"
+        echo -e "    ${DIM}shipwright setup${RESET}  — guided setup (recommended)"
+        echo -e "    ${DIM}shipwright init${RESET}   — quick setup (no prompts)"
+        echo ""
+        exit 1
+    fi
+}
+
+show_version() {
+    echo -e "${CYAN}${BOLD}shipwright${RESET} ${DIM}v${VERSION}${RESET} — Orchestrate AI Coding Teams  ${DIM}(alias: sw)${RESET}"
+}
+
+show_help() {
+    show_version
+    echo ""
+    echo -e "${BOLD}USAGE${RESET}"
+    echo -e "  ${CYAN}shipwright${RESET} <command> [options]    ${DIM}(alias: sw)${RESET}"
+    echo ""
+    echo -e "${BOLD}GETTING STARTED${RESET}"
+    echo -e "  ${CYAN}init${RESET}                  One-command setup — tmux, CLI, templates, hooks"
+    echo -e "  ${CYAN}setup${RESET}                 Guided interactive setup"
+    echo -e "  ${CYAN}doctor${RESET}                Validate your setup and check for issues"
+    echo ""
+    echo -e "${BOLD}EVERYDAY COMMANDS${RESET}"
+    echo -e "  ${CYAN}session${RESET} [name]         Create a tmux window for a Claude agent team"
+    echo -e "  ${CYAN}loop${RESET} \"goal\" [opts]     Continuous agent loop — run until goal achieved"
+    echo -e "  ${CYAN}pipeline${RESET} <cmd>          Full delivery pipeline — issue to merged PR"
+    echo -e "  ${CYAN}daemon${RESET} <cmd>            Issue watcher — auto-process GitHub issues"
+    echo -e "  ${CYAN}status${RESET} [--json]         Show running teams and agents"
+    echo -e "  ${CYAN}ps${RESET}                      Show agent processes"
+    echo -e "  ${CYAN}logs${RESET} [team] [opts]      View and search agent pane logs"
+    echo -e "  ${CYAN}prep${RESET} [options]           Generate .claude/ configs for any repo"
+    echo ""
+    echo -e "${BOLD}COMMAND GROUPS${RESET}  ${DIM}(use: shipwright <group> help)${RESET}"
+    echo -e "  ${CYAN}agent${RESET}     ${DIM}recruit, swarm, standup, guild, oversight${RESET}"
+    echo -e "  ${CYAN}quality${RESET}   ${DIM}code-review, security-audit, testgen, hygiene${RESET}"
+    echo -e "  ${CYAN}observe${RESET}   ${DIM}vitals, dora, retro, stream, activity, replay${RESET}"
+    echo -e "  ${CYAN}release${RESET}   ${DIM}release, release-manager, changelog, deploy${RESET}"
+    echo -e "  ${CYAN}intel${RESET}     ${DIM}predict, intelligence, strategic, optimize${RESET}"
+    echo ""
+    echo -e "${BOLD}OPERATIONS${RESET}"
+    echo -e "  ${CYAN}fleet${RESET} <cmd>            Multi-repo orchestration"
+    echo -e "  ${CYAN}fix${RESET} \"goal\" [opts]      Bulk fix across multiple repos"
+    echo -e "  ${CYAN}dashboard${RESET} <cmd>         Real-time WebSocket dashboard"
+    echo -e "  ${CYAN}cost${RESET} <cmd>              Token usage, budgets, model routing"
+    echo -e "  ${CYAN}memory${RESET} <cmd>            Persistent learning from pipeline runs"
+    echo -e "  ${CYAN}ai${RESET} <cmd>                AI provider management and diagnostics"
+    echo ""
+    echo -e "${BOLD}INTEGRATIONS${RESET}"
+    echo -e "  ${CYAN}github${RESET}                 Repo context, security, blame"
+    echo -e "  ${CYAN}jira${RESET} <cmd>              Bidirectional Jira sync"
+    echo -e "  ${CYAN}linear${RESET} <cmd>            Bidirectional Linear sync"
+    echo -e "  ${CYAN}ci${RESET} <cmd>                CI/CD workflow generation"
+    echo ""
+    echo -e "${BOLD}MAINTENANCE${RESET}"
+    echo -e "  ${CYAN}cleanup${RESET} [--force] [--prune-orphans]  Clean up orphaned sessions/processes"
+    echo -e "  ${CYAN}upgrade${RESET} [--apply]       Check for and apply updates"
+    echo -e "  ${CYAN}templates${RESET} [list|show]   Manage team composition templates"
+    echo -e "  ${CYAN}version${RESET}                 Show/bump/check version"
+    echo ""
+    echo -e "${BOLD}QUICK START${RESET}"
+    echo -e "  ${DIM}shipwright loop \"Build auth\" --test-cmd \"npm test\"${RESET}"
+    echo -e "  ${DIM}shipwright pipeline start --issue 123${RESET}"
+    echo -e "  ${DIM}shipwright daemon start --detach${RESET}"
+    echo ""
+    echo -e "${BOLD}TMUX KEYBINDINGS${RESET}"
+    echo -e "  ${PURPLE}prefix + T${RESET}           Launch a team session"
+    echo -e "  ${PURPLE}prefix + Ctrl-t${RESET}      Show team dashboard"
+    echo ""
+    echo -e "${DIM}Run ${RESET}${CYAN}shipwright help --all${RESET}${DIM} for the full command list (80+ commands)${RESET}"
+    echo -e "${DIM}Docs: $(_sw_docs_url)  |  GitHub: $(_sw_github_url)${RESET}"
+}
+
+show_help_all() {
+    show_help
+    echo ""
+    echo -e "${BOLD}ALL COMMANDS${RESET}  ${DIM}(complete reference)${RESET}"
+    echo -e "  ${CYAN}session${RESET}       ${CYAN}status${RESET}        ${CYAN}ps${RESET}            ${CYAN}logs${RESET}          ${CYAN}activity${RESET}"
+    echo -e "  ${CYAN}loop${RESET}          ${CYAN}pipeline${RESET}      ${CYAN}daemon${RESET}        ${CYAN}prep${RESET}          ${CYAN}worktree${RESET}"
+    echo -e "  ${CYAN}fleet${RESET}         ${CYAN}fleet-viz${RESET}     ${CYAN}fix${RESET}           ${CYAN}dashboard${RESET}     ${CYAN}public-dashboard${RESET}"
+    echo -e "  ${CYAN}memory${RESET}        ${CYAN}cost${RESET}          ${CYAN}model${RESET}         ${CYAN}adaptive${RESET}      ${CYAN}regression${RESET}"
+    echo -e "  ${CYAN}ai${RESET}            ${CYAN}incident${RESET}      ${CYAN}db${RESET}            ${CYAN}deps${RESET}          ${CYAN}instrument${RESET}"
+    echo -e "  ${CYAN}scale${RESET}         ${CYAN}swarm${RESET}         ${CYAN}recruit${RESET}       ${CYAN}standup${RESET}       ${CYAN}guild${RESET}"
+    echo -e "  ${CYAN}oversight${RESET}     ${CYAN}code-review${RESET}   ${CYAN}testgen${RESET}       ${CYAN}security-audit${RESET}  ${CYAN}hygiene${RESET}"
+    echo -e "  ${CYAN}quality${RESET}       ${CYAN}vitals${RESET}        ${CYAN}dora${RESET}          ${CYAN}retro${RESET}         ${CYAN}stream${RESET}"
+    echo -e "  ${CYAN}replay${RESET}        ${CYAN}release${RESET}       ${CYAN}release-manager${RESET}  ${CYAN}changelog${RESET}  ${CYAN}docs${RESET}"
+    echo -e "  ${CYAN}docs-agent${RESET}    ${CYAN}doc-fleet${RESET}     ${CYAN}pr${RESET}            ${CYAN}triage${RESET}        ${CYAN}decompose${RESET}"
+    echo -e "  ${CYAN}discovery${RESET}     ${CYAN}github${RESET}        ${CYAN}github-app${RESET}    ${CYAN}checks${RESET}        ${CYAN}ci${RESET}"
+    echo -e "  ${CYAN}deploys${RESET}       ${CYAN}auth${RESET}          ${CYAN}webhook${RESET}       ${CYAN}eventbus${RESET}      ${CYAN}otel${RESET}"
+    echo -e "  ${CYAN}context${RESET}       ${CYAN}trace${RESET}         ${CYAN}widgets${RESET}       ${CYAN}connect${RESET}       ${CYAN}remote${RESET}"
+    echo -e "  ${CYAN}launchd${RESET}       ${CYAN}jira${RESET}          ${CYAN}linear${RESET}        ${CYAN}tracker${RESET}       ${CYAN}heartbeat${RESET}"
+    echo -e "  ${CYAN}checkpoint${RESET}    ${CYAN}durable${RESET}       ${CYAN}autonomous${RESET}    ${CYAN}pm${RESET}            ${CYAN}strategic${RESET}"
+    echo -e "  ${CYAN}team-stages${RESET}   ${CYAN}ux${RESET}            ${CYAN}mission-control${RESET}  ${CYAN}tmux${RESET}       ${CYAN}reaper${RESET}"
+    echo -e "  ${CYAN}e2e${RESET}           ${CYAN}init${RESET}          ${CYAN}setup${RESET}         ${CYAN}doctor${RESET}        ${CYAN}cleanup${RESET}"
+    echo -e "  ${CYAN}upgrade${RESET}       ${CYAN}templates${RESET}     ${CYAN}version${RESET}"
+    echo ""
+    echo -e "${DIM}Run ${RESET}${CYAN}shipwright <command> --help${RESET}${DIM} for details on any command${RESET}"
+}
+
+# ─── Command Group Routers ───────────────────────────────────────────────────
+
+route_agent() {
+    local subcmd="${1:-help}"
+    shift 2>/dev/null || true
+    case "$subcmd" in
+        recruit)      exec "$SCRIPT_DIR/sw-recruit.sh" "$@" ;;
+        swarm)        exec "$SCRIPT_DIR/sw-swarm.sh" "$@" ;;
+        standup)      exec "$SCRIPT_DIR/sw-standup.sh" "$@" ;;
+        guild)        exec "$SCRIPT_DIR/sw-guild.sh" "$@" ;;
+        oversight)    exec "$SCRIPT_DIR/sw-oversight.sh" "$@" ;;
+        help|*) echo "Usage: shipwright agent {recruit|swarm|standup|guild|oversight}"; exit 1 ;;
+    esac
+}
+
+route_quality() {
+    local subcmd="${1:-help}"
+    shift 2>/dev/null || true
+    case "$subcmd" in
+        code-review)      exec "$SCRIPT_DIR/sw-code-review.sh" "$@" ;;
+        security-audit|audit) exec "$SCRIPT_DIR/sw-security-audit.sh" "$@" ;;
+        testgen)          exec "$SCRIPT_DIR/sw-testgen.sh" "$@" ;;
+        hygiene)          exec "$SCRIPT_DIR/sw-hygiene.sh" "$@" ;;
+        validate|gate)    exec "$SCRIPT_DIR/sw-quality.sh" "$@" ;;
+        help|*) echo "Usage: shipwright quality {code-review|security-audit|testgen|hygiene|validate}"; exit 1 ;;
+    esac
+}
+
+route_observe() {
+    local subcmd="${1:-help}"
+    shift 2>/dev/null || true
+    case "$subcmd" in
+        vitals)       exec "$SCRIPT_DIR/sw-pipeline-vitals.sh" "$@" ;;
+        dora)         exec "$SCRIPT_DIR/sw-dora.sh" "$@" ;;
+        retro)        exec "$SCRIPT_DIR/sw-retro.sh" "$@" ;;
+        stream)       exec "$SCRIPT_DIR/sw-stream.sh" "$@" ;;
+        activity)     exec "$SCRIPT_DIR/sw-activity.sh" "$@" ;;
+        replay)       exec "$SCRIPT_DIR/sw-replay.sh" "$@" ;;
+        status)       exec "$SCRIPT_DIR/sw-status.sh" "$@" ;;
+        help|*) echo "Usage: shipwright observe {vitals|dora|retro|stream|activity|replay|status}"; exit 1 ;;
+    esac
+}
+
+route_release() {
+    local subcmd="${1:-help}"
+    shift 2>/dev/null || true
+    case "$subcmd" in
+        release)          exec "$SCRIPT_DIR/sw-release.sh" "$@" ;;
+        release-manager)  exec "$SCRIPT_DIR/sw-release-manager.sh" "$@" ;;
+        changelog)        exec "$SCRIPT_DIR/sw-changelog.sh" "$@" ;;
+        deploy|deploys)   exec "$SCRIPT_DIR/sw-github-deploy.sh" "$@" ;;
+        build)            exec "$SCRIPT_DIR/build-release.sh" "$@" ;;
+        help|*) echo "Usage: shipwright release {release|release-manager|changelog|deploy|build}"; exit 1 ;;
+    esac
+}
+
+route_intel() {
+    local subcmd="${1:-help}"
+    shift 2>/dev/null || true
+    case "$subcmd" in
+        predict)      exec "$SCRIPT_DIR/sw-predictive.sh" "$@" ;;
+        intelligence) exec "$SCRIPT_DIR/sw-intelligence.sh" "$@" ;;
+        strategic)    exec "$SCRIPT_DIR/sw-strategic.sh" "$@" ;;
+        optimize)     exec "$SCRIPT_DIR/sw-self-optimize.sh" "$@" ;;
+        help|*) echo "Usage: shipwright intel {predict|intelligence|strategic|optimize}"; exit 1 ;;
+    esac
+}
+
+# ─── Welcome message helper ──────────────────────────────────────────────────
+show_welcome() {
+    echo ""
+    echo -e "${CYAN}${BOLD}  Welcome to Shipwright v${VERSION}!${RESET}"
+    echo -e "${DIM}  ════════════════════════════════════════════${RESET}"
+    echo ""
+    echo -e "  It looks like this repo hasn't been set up yet."
+    echo ""
+    echo -e "  ${CYAN}${BOLD}→${RESET} For guided setup (4 phases):    ${DIM}shipwright setup${RESET}"
+    echo -e "  ${CYAN}${BOLD}→${RESET} For quick setup (no prompts):     ${DIM}shipwright init${RESET}"
+    echo -e "  ${CYAN}${BOLD}→${RESET} For full help:                   ${DIM}shipwright help${RESET}"
+    echo ""
+}
+
+# ─── Command Router ──────────────────────────────────────────────────────────
+
+main() {
+    local cmd="${1:-help}"
+
+    # Special case: if no arguments and .claude/ doesn't exist, show welcome
+    if [[ "$#" -eq 0 && ! -d ".claude" && ! -d "$(pwd)/.claude" ]]; then
+        show_welcome
+        return 0
+    fi
+
+    shift 2>/dev/null || true
+
+    # shellcheck disable=SC2221,SC2222
+    case "$cmd" in
+        # Command groups
+        agent)          route_agent "$@" ;;
+        quality)        route_quality "$@" ;;
+        observe)        route_observe "$@" ;;
+        release)        route_release "$@" ;;
+        intel)          route_intel "$@" ;;
+
+        session)
+            check_tmux
+            check_in_tmux
+            exec "$SCRIPT_DIR/sw-session.sh" "$@"
+            ;;
+        status)
+            check_tmux
+            exec "$SCRIPT_DIR/sw-status.sh" "$@"
+            ;;
+        mission-control|mc)
+            exec "$SCRIPT_DIR/sw-mission-control.sh" "$@"
+            ;;
+        ps)
+            check_tmux
+            exec "$SCRIPT_DIR/sw-ps.sh" "$@"
+            ;;
+        logs)
+            exec "$SCRIPT_DIR/sw-logs.sh" "$@"
+            ;;
+        activity)
+            exec "$SCRIPT_DIR/sw-activity.sh" "$@"
+            ;;
+        templates)
+            exec "$SCRIPT_DIR/sw-templates.sh" "$@"
+            ;;
+        doctor)
+            exec "$SCRIPT_DIR/sw-doctor.sh" "$@"
+            ;;
+        cleanup)
+            check_tmux
+            exec "$SCRIPT_DIR/sw-cleanup.sh" "$@"
+            ;;
+        reaper)
+            check_tmux
+            exec "$SCRIPT_DIR/sw-reaper.sh" "$@"
+            ;;
+        upgrade)
+            exec "$SCRIPT_DIR/sw-upgrade.sh" "$@"
+            ;;
+        loop)
+            exec "$SCRIPT_DIR/sw-loop.sh" "$@"
+            ;;
+        pipeline)
+            exec "$SCRIPT_DIR/sw-pipeline.sh" "$@"
+            ;;
+        worktree)
+            exec "$SCRIPT_DIR/sw-worktree.sh" "$@"
+            ;;
+        prep)
+            exec "$SCRIPT_DIR/sw-prep.sh" "$@"
+            ;;
+        hygiene)
+            exec "$SCRIPT_DIR/sw-hygiene.sh" "$@"
+            ;;
+        daemon)
+            exec "$SCRIPT_DIR/sw-daemon.sh" "$@"
+            ;;
+        autonomous|auto)
+            exec "$SCRIPT_DIR/sw-autonomous.sh" "$@"
+            ;;
+        memory)
+            exec "$SCRIPT_DIR/sw-memory.sh" "$@"
+            ;;
+        guild)
+            exec "$SCRIPT_DIR/sw-guild.sh" "$@"
+            ;;
+        instrument)
+            exec "$SCRIPT_DIR/sw-instrument.sh" "$@"
+            ;;
+        cost)
+            exec "$SCRIPT_DIR/sw-cost.sh" "$@"
+            ;;
+        adaptive)
+            exec "$SCRIPT_DIR/sw-adaptive.sh" "$@"
+            ;;
+        regression)
+            exec "$SCRIPT_DIR/sw-regression.sh" "$@"
+            ;;
+        incident)
+            exec "$SCRIPT_DIR/sw-incident.sh" "$@"
+            ;;
+        db)
+            exec "$SCRIPT_DIR/sw-db.sh" "$@"
+            ;;
+        deps)
+            exec "$SCRIPT_DIR/sw-deps.sh" "$@"
+            ;;
+        fleet)
+            exec "$SCRIPT_DIR/sw-fleet.sh" "$@"
+            ;;
+        fleet-viz)
+            exec "$SCRIPT_DIR/sw-fleet-viz.sh" "$@"
+            ;;
+        fix)
+            exec "$SCRIPT_DIR/sw-fix.sh" "$@"
+            ;;
+        init)
+            exec "$SCRIPT_DIR/sw-init.sh" "$@"
+            ;;
+        setup)
+            exec "$SCRIPT_DIR/sw-setup.sh" "$@"
+            ;;
+        dashboard|dash)
+            exec "$SCRIPT_DIR/sw-dashboard.sh" "$@"
+            ;;
+        public-dashboard|share)
+            exec "$SCRIPT_DIR/sw-public-dashboard.sh" "$@"
+            ;;
+        jira)
+            exec "$SCRIPT_DIR/sw-jira.sh" "$@"
+            ;;
+        linear)
+            exec "$SCRIPT_DIR/sw-linear.sh" "$@"
+            ;;
+        model)
+            exec "$SCRIPT_DIR/sw-model-router.sh" "$@"
+            ;;
+        ai)
+            exec "$SCRIPT_DIR/sw-ai.sh" "$@"
+            ;;
+        tracker)
+            exec "$SCRIPT_DIR/sw-tracker.sh" "$@"
+            ;;
+        heartbeat)
+            exec "$SCRIPT_DIR/sw-heartbeat.sh" "$@"
+            ;;
+        standup)
+            exec "$SCRIPT_DIR/sw-standup.sh" "$@"
+            ;;
+        checkpoint)
+            exec "$SCRIPT_DIR/sw-checkpoint.sh" "$@"
+            ;;
+        durable)
+            exec "$SCRIPT_DIR/sw-durable.sh" "$@"
+            ;;
+        webhook)
+            exec "$SCRIPT_DIR/sw-webhook.sh" "$@"
+            ;;
+        connect)
+            exec "$SCRIPT_DIR/sw-connect.sh" "$@"
+            ;;
+        remote)
+            exec "$SCRIPT_DIR/sw-remote.sh" "$@"
+            ;;
+        launchd)
+            exec "$SCRIPT_DIR/sw-launchd.sh" "$@"
+            ;;
+        auth)
+            exec "$SCRIPT_DIR/sw-auth.sh" "$@"
+            ;;
+        intelligence|intel)
+            exec "$SCRIPT_DIR/sw-intelligence.sh" "$@"
+            ;;
+        optimize)
+            exec "$SCRIPT_DIR/sw-self-optimize.sh" "$@"
+            ;;
+        predict)
+            exec "$SCRIPT_DIR/sw-predictive.sh" "$@"
+            ;;
+        adversarial)
+            exec "$SCRIPT_DIR/sw-adversarial.sh" "$@"
+            ;;
+        simulation)
+            exec "$SCRIPT_DIR/sw-developer-simulation.sh" "$@"
+            ;;
+        strategic|strategy)
+            exec "$SCRIPT_DIR/sw-strategic.sh" "$@"
+            ;;
+        architecture)
+            exec "$SCRIPT_DIR/sw-architecture-enforcer.sh" "$@"
+            ;;
+        vitals)
+            exec "$SCRIPT_DIR/sw-pipeline-vitals.sh" "$@"
+            ;;
+        stream)
+            exec "$SCRIPT_DIR/sw-stream.sh" "$@"
+            ;;
+        docs)
+            exec "$SCRIPT_DIR/sw-docs.sh" "$@"
+            ;;
+        changelog)
+            exec "$SCRIPT_DIR/sw-changelog.sh" "$@"
+            ;;
+        docs-agent)
+            exec "$SCRIPT_DIR/sw-docs-agent.sh" "$@"
+            ;;
+        doc-fleet)
+            exec "$SCRIPT_DIR/sw-doc-fleet.sh" "$@"
+            ;;
+        release)
+            exec "$SCRIPT_DIR/sw-release.sh" "$@"
+            ;;
+        release-manager|rm)
+            exec "$SCRIPT_DIR/sw-release-manager.sh" "$@"
+            ;;
+        replay)
+            exec "$SCRIPT_DIR/sw-replay.sh" "$@"
+            ;;
+        review-rerun|rr)
+            exec "$SCRIPT_DIR/sw-review-rerun.sh" "$@"
+            ;;
+        scale)
+            exec "$SCRIPT_DIR/sw-scale.sh" "$@"
+            ;;
+        swarm)
+            exec "$SCRIPT_DIR/sw-swarm.sh" "$@"
+            ;;
+        dora)
+            exec "$SCRIPT_DIR/sw-dora.sh" "$@"
+            ;;
+        retro)
+            exec "$SCRIPT_DIR/sw-retro.sh" "$@"
+            ;;
+        tmux)
+            exec "$SCRIPT_DIR/sw-tmux.sh" "$@"
+            ;;
+        tmux-pipeline)
+            exec "$SCRIPT_DIR/sw-tmux-pipeline.sh" "$@"
+            ;;
+        github|gh-context)
+            exec "$SCRIPT_DIR/sw-github-graphql.sh" "$@"
+            ;;
+        checks)
+            exec "$SCRIPT_DIR/sw-github-checks.sh" "$@"
+            ;;
+        ci)
+            exec "$SCRIPT_DIR/sw-ci.sh" "$@"
+            ;;
+        deploys|deployments)
+            exec "$SCRIPT_DIR/sw-github-deploy.sh" "$@"
+            ;;
+        github-app)
+            exec "$SCRIPT_DIR/sw-github-app.sh" "$@"
+            ;;
+        decompose)
+            exec "$SCRIPT_DIR/sw-decompose.sh" "$@"
+            ;;
+        discovery)
+            exec "$SCRIPT_DIR/sw-discovery.sh" "$@"
+            ;;
+        context)
+            exec "$SCRIPT_DIR/sw-context.sh" "$@"
+            ;;
+        trace)
+            exec "$SCRIPT_DIR/sw-trace.sh" "$@"
+            ;;
+        pr)
+            exec "$SCRIPT_DIR/sw-pr-lifecycle.sh" "$@"
+            ;;
+        widgets)
+            exec "$SCRIPT_DIR/sw-widgets.sh" "$@"
+            ;;
+        feedback)
+            exec "$SCRIPT_DIR/sw-feedback.sh" "$@"
+            ;;
+        eventbus)
+            exec "$SCRIPT_DIR/sw-eventbus.sh" "$@"
+            ;;
+        evidence|ev)
+            exec "$SCRIPT_DIR/sw-evidence.sh" "$@"
+            ;;
+        decide)
+            exec "$SCRIPT_DIR/sw-decide.sh" "$@"
+            ;;
+        otel)
+            exec "$SCRIPT_DIR/sw-otel.sh" "$@"
+            ;;
+        triage)
+            exec "$SCRIPT_DIR/sw-triage.sh" "$@"
+            ;;
+        pipeline-composer|composer)
+            exec "$SCRIPT_DIR/sw-pipeline-composer.sh" "$@"
+            ;;
+        oversight)
+            exec "$SCRIPT_DIR/sw-oversight.sh" "$@"
+            ;;
+        code-review)
+            exec "$SCRIPT_DIR/sw-code-review.sh" "$@"
+            ;;
+        pm)
+            exec "$SCRIPT_DIR/sw-pm.sh" "$@"
+            ;;
+        team-stages)
+            exec "$SCRIPT_DIR/sw-team-stages.sh" "$@"
+            ;;
+        ux)
+            exec "$SCRIPT_DIR/sw-ux.sh" "$@"
+            ;;
+        recruit)
+            exec "$SCRIPT_DIR/sw-recruit.sh" "$@"
+            ;;
+        testgen)
+            exec "$SCRIPT_DIR/sw-testgen.sh" "$@"
+            ;;
+        e2e)
+            exec "$SCRIPT_DIR/sw-e2e-orchestrator.sh" "$@"
+            ;;
+        security-audit|audit)
+            exec "$SCRIPT_DIR/sw-security-audit.sh" "$@"
+            ;;
+        help|--help|-h)
+            if [[ "${1:-}" == "--all" || "${1:-}" == "-a" ]]; then
+                show_help_all
+            else
+                show_help
+            fi
+            ;;
+        version)
+            case "${1:-show}" in
+                bump)
+                    shift
+                    if [[ -z "${1:-}" ]]; then
+                        error "Usage: shipwright version bump <x.y.z>"
+                        echo -e "  ${DIM}Example: shipwright version bump 2.3.0${RESET}"
+                        exit 1
+                    fi
+                    exec "$SCRIPT_DIR/update-version.sh" "$@"
+                    ;;
+                check)
+                    exec "$SCRIPT_DIR/check-version-consistency.sh" "$@"
+                    ;;
+                show|*)
+                    show_version
+                    ;;
+            esac
+            ;;
+        --version|-v)
+            show_version
+            ;;
+        hello)
+            exec "$SCRIPT_DIR/sw-hello.sh" "$@"
+            ;;
+        *)
+            error "Unknown command: ${cmd}"
+            echo ""
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

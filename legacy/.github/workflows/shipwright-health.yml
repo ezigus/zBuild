@@ -1,0 +1,253 @@
+name: Shipwright Health Check
+
+# Periodic health dashboard — collects metrics and updates a pinned health issue
+on:
+  schedule:
+    - cron: "0 */6 * * *" # Every 6 hours
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Collect pipeline metrics
+        id: metrics
+        run: |
+          echo "--- Shipwright Health Check: $(date -u +%Y-%m-%dT%H:%M:%SZ) ---"
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          SINCE=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-24H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "2000-01-01T00:00:00Z")
+
+          # Pipeline runs in last 24h
+          RUNS_JSON=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow=shipwright-pipeline.yml --limit 100 \
+            --json conclusion,status,createdAt,updatedAt,databaseId,displayTitle 2>/dev/null || echo "[]")
+
+          TOTAL=$(echo "$RUNS_JSON" | jq "[.[] | select(.createdAt > \"$SINCE\")] | length")
+          SUCCEEDED=$(echo "$RUNS_JSON" | jq "[.[] | select(.createdAt > \"$SINCE\" and .conclusion == \"success\")] | length")
+          FAILED=$(echo "$RUNS_JSON" | jq "[.[] | select(.createdAt > \"$SINCE\" and .conclusion == \"failure\")] | length")
+          CANCELLED=$(echo "$RUNS_JSON" | jq "[.[] | select(.createdAt > \"$SINCE\" and .conclusion == \"cancelled\")] | length")
+          IN_PROGRESS=$(echo "$RUNS_JSON" | jq "[.[] | select(.status == \"in_progress\")] | length")
+
+          # Success rate
+          if [[ "$TOTAL" -gt 0 ]]; then
+            SUCCESS_RATE=$(( SUCCEEDED * 100 / TOTAL ))
+          else
+            SUCCESS_RATE=100
+          fi
+
+          # Success rate status
+          if [[ "$SUCCESS_RATE" -ge 80 ]]; then
+            RATE_STATUS="OK"
+          elif [[ "$SUCCESS_RATE" -ge 50 ]]; then
+            RATE_STATUS="WARN"
+          else
+            RATE_STATUS="CRITICAL"
+          fi
+
+          # Stuck issues: pipeline starting comment >4h ago with no result comment after it
+          STUCK_COUNT=0
+          STUCK_ISSUES=""
+          FOUR_HOURS_AGO=$(date -u -d '4 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-4H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "2000-01-01T00:00:00Z")
+
+          OPEN_ISSUES=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label shipwright --state open --json number --jq '.[].number' 2>/dev/null || echo "")
+
+          for issue in $OPEN_ISSUES; do
+            # Get the timestamp of the last "Pipeline Starting" comment
+            LAST_START=$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" --json comments \
+              --jq '[.comments[] | select(.body | contains("Pipeline Starting"))] | last | .createdAt // ""' 2>/dev/null || echo "")
+
+            if [[ -z "$LAST_START" ]]; then
+              continue
+            fi
+
+            # Check if there's a result comment after the start comment
+            HAS_RESULT=$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" --json comments \
+              --jq "[.comments[] | select((.body | contains(\"Pipeline Completed\")) or (.body | contains(\"Pipeline Failed\")))] | [.[] | select(.createdAt > \"$LAST_START\")] | length" 2>/dev/null || echo "0")
+
+            if [[ "$HAS_RESULT" -eq 0 && "$LAST_START" < "$FOUR_HOURS_AGO" ]]; then
+              STUCK_COUNT=$((STUCK_COUNT + 1))
+              STUCK_ISSUES="${STUCK_ISSUES}#${issue} "
+            fi
+          done
+
+          # Open shipwright backlog
+          BACKLOG=$(echo "$OPEN_ISSUES" | grep -c . || true)
+          BACKLOG="${BACKLOG:-0}"
+
+          # Recent failures detail
+          FAILURE_DETAIL=""
+          RECENT_FAILURES=$(echo "$RUNS_JSON" | jq -r "[.[] | select(.createdAt > \"$SINCE\" and .conclusion == \"failure\")] | .[:5] | .[] | \"- \" + .displayTitle + \" (run \" + (.databaseId | tostring) + \")\"" 2>/dev/null || echo "")
+          if [[ -n "$RECENT_FAILURES" ]]; then
+            FAILURE_DETAIL="$RECENT_FAILURES"
+          fi
+
+          # Save to outputs
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "succeeded=$SUCCEEDED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "cancelled=$CANCELLED" >> "$GITHUB_OUTPUT"
+          echo "in_progress=$IN_PROGRESS" >> "$GITHUB_OUTPUT"
+          echo "success_rate=$SUCCESS_RATE" >> "$GITHUB_OUTPUT"
+          echo "rate_status=$RATE_STATUS" >> "$GITHUB_OUTPUT"
+          echo "stuck_count=$STUCK_COUNT" >> "$GITHUB_OUTPUT"
+          echo "stuck_issues=$STUCK_ISSUES" >> "$GITHUB_OUTPUT"
+          echo "backlog=$BACKLOG" >> "$GITHUB_OUTPUT"
+
+          # Multi-line output
+          {
+            echo "failure_detail<<EOF"
+            echo "$FAILURE_DETAIL"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update health issue
+        run: |
+          TIMESTAMP="${{ steps.metrics.outputs.timestamp }}"
+          TOTAL="${{ steps.metrics.outputs.total }}"
+          SUCCEEDED="${{ steps.metrics.outputs.succeeded }}"
+          FAILED="${{ steps.metrics.outputs.failed }}"
+          CANCELLED="${{ steps.metrics.outputs.cancelled }}"
+          IN_PROGRESS="${{ steps.metrics.outputs.in_progress }}"
+          SUCCESS_RATE="${{ steps.metrics.outputs.success_rate }}"
+          RATE_STATUS="${{ steps.metrics.outputs.rate_status }}"
+          STUCK_COUNT="${{ steps.metrics.outputs.stuck_count }}"
+          STUCK_ISSUES="${{ steps.metrics.outputs.stuck_issues }}"
+          BACKLOG="${{ steps.metrics.outputs.backlog }}"
+          FAILURE_DETAIL="${{ steps.metrics.outputs.failure_detail }}"
+
+          # Status emoji
+          if [[ "$RATE_STATUS" == "OK" ]]; then
+            STATUS_EMOJI="&#9989;"  # green check
+          elif [[ "$RATE_STATUS" == "WARN" ]]; then
+            STATUS_EMOJI="&#9888;"  # warning
+          else
+            STATUS_EMOJI="&#10060;"  # red X
+          fi
+
+          STUCK_STATUS="OK"
+          if [[ "$STUCK_COUNT" -gt 0 ]]; then
+            STUCK_STATUS="ALERT ($STUCK_ISSUES)"
+          fi
+
+          # Build report body
+          BODY=$(cat <<REPORT_EOF
+          ## Shipwright Health Report — ${TIMESTAMP}
+
+          | Metric | Value | Status |
+          |--------|-------|--------|
+          | Pipelines (24h) | ${TOTAL} | — |
+          | Succeeded | ${SUCCEEDED} | — |
+          | Failed | ${FAILED} | — |
+          | Cancelled | ${CANCELLED} | — |
+          | In Progress | ${IN_PROGRESS} | — |
+          | Success Rate | ${SUCCESS_RATE}% | ${RATE_STATUS} |
+          | Stuck Issues | ${STUCK_COUNT} | ${STUCK_STATUS} |
+          | Open Backlog | ${BACKLOG} | — |
+
+          REPORT_EOF
+          )
+
+          if [[ -n "$FAILURE_DETAIL" ]]; then
+            BODY="${BODY}
+          ### Recent Failures
+          ${FAILURE_DETAIL}
+          "
+          fi
+
+          BODY="${BODY}
+          ---
+          *Updated automatically every 6 hours by [Shipwright Health Check](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*
+          <!-- SHIPWRIGHT-HEALTH-REPORT -->
+          "
+
+          # Find or create the health issue
+          HEALTH_ISSUE=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label "shipwright-health" --state open --json number \
+            --jq '.[0].number // empty' 2>/dev/null || echo "")
+
+          if [[ -n "$HEALTH_ISSUE" ]]; then
+            # Update existing health issue body
+            gh issue edit "$HEALTH_ISSUE" --repo "$GITHUB_REPOSITORY" \
+              --body "$BODY" 2>/dev/null || echo "Failed to update health issue #$HEALTH_ISSUE"
+            echo "Updated health issue #$HEALTH_ISSUE"
+          else
+            # Create new health issue
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Shipwright Health Dashboard" \
+              --body "$BODY" \
+              --label "shipwright-health" 2>/dev/null || echo "Failed to create health issue"
+            echo "Created new health issue"
+          fi
+
+      - name: Alert on critical health
+        if: steps.metrics.outputs.rate_status == 'CRITICAL' || steps.metrics.outputs.stuck_count != '0'
+        run: |
+          SUCCESS_RATE="${{ steps.metrics.outputs.success_rate }}"
+          STUCK_COUNT="${{ steps.metrics.outputs.stuck_count }}"
+          STUCK_ISSUES="${{ steps.metrics.outputs.stuck_issues }}"
+
+          ALERT_REASONS=""
+          if [[ "${{ steps.metrics.outputs.rate_status }}" == "CRITICAL" ]]; then
+            ALERT_REASONS="- Pipeline success rate is ${SUCCESS_RATE}% (below 50% threshold)"
+          fi
+          if [[ "$STUCK_COUNT" -gt 0 ]]; then
+            ALERT_REASONS="${ALERT_REASONS}
+          - ${STUCK_COUNT} stuck issue(s): ${STUCK_ISSUES}"
+          fi
+
+          # Check if there's already a recent alert (within last 24h)
+          EXISTING_ALERT=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label "shipwright-alert" --state open --json number,createdAt \
+            --jq '.[0].number // empty' 2>/dev/null || echo "")
+
+          if [[ -z "$EXISTING_ALERT" ]]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Shipwright Alert: Pipeline health degraded" \
+              --body "$(cat <<EOF
+          ## Shipwright Health Alert
+
+          The automated health check detected issues requiring attention:
+
+          ${ALERT_REASONS}
+
+          ### Action Required
+          - Check recent pipeline runs for systemic failures
+          - Review stuck issues for resource or configuration problems
+          - Check [workflow runs](${{ github.server_url }}/${{ github.repository }}/actions/workflows/shipwright-pipeline.yml) for details
+
+          This alert will auto-close when health returns to normal.
+          EOF
+          )" \
+              --label "shipwright-alert" 2>/dev/null || echo "Failed to create alert issue"
+            echo "Created health alert issue"
+          else
+            echo "Alert issue #$EXISTING_ALERT already open — skipping duplicate"
+          fi
+
+      - name: Close resolved alerts
+        if: steps.metrics.outputs.rate_status == 'OK' && steps.metrics.outputs.stuck_count == '0'
+        run: |
+          # Close any open alert issues since health is OK now
+          OPEN_ALERTS=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label "shipwright-alert" --state open --json number \
+            --jq '.[].number' 2>/dev/null || echo "")
+
+          for alert in $OPEN_ALERTS; do
+            gh issue close "$alert" --repo "$GITHUB_REPOSITORY" \
+              --comment "Health restored — auto-closing alert. Success rate is back to ${{ steps.metrics.outputs.success_rate }}%." \
+              2>/dev/null || true
+            echo "Closed resolved alert #$alert"
+          done

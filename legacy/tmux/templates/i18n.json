@@ -1,0 +1,34 @@
+{
+  "name": "i18n",
+  "description": "Internationalization with extraction, translation setup, and verification agents",
+  "keywords": [
+    "i18n",
+    "internationalization",
+    "localization",
+    "l10n",
+    "translate",
+    "language",
+    "locale",
+    "rtl"
+  ],
+  "agents": [
+    {
+      "name": "extractor",
+      "role": "Find hardcoded strings, extract to resource bundles, set up i18n framework, create translation key conventions",
+      "focus": "src/components/, apps/, *.tsx, *.jsx, *.vue, *.html"
+    },
+    {
+      "name": "translator",
+      "role": "Generate translation keys, set up plural rules, handle date/number/currency formats, RTL layout considerations",
+      "focus": "src/locales/, src/i18n/, translations/, *.json, *.yaml"
+    },
+    {
+      "name": "verifier",
+      "role": "Check string truncation, layout breakage, format consistency, missing translations, pseudo-localization testing",
+      "focus": "*.test.*, __tests__/, src/components/, e2e/"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

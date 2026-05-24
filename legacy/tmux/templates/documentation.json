@@ -1,0 +1,20 @@
+{
+  "name": "documentation",
+  "description": "Documentation with API docs and user guide agents",
+  "keywords": ["doc", "readme", "guide", "tutorial", "api doc"],
+  "agents": [
+    {
+      "name": "api-docs",
+      "role": "API reference, endpoint docs, request/response examples, OpenAPI spec",
+      "focus": "docs/api/, openapi.*, swagger.*, src/api/"
+    },
+    {
+      "name": "guides",
+      "role": "User guides, tutorials, README, getting started, architecture docs",
+      "focus": "docs/, README.md, ARCHITECTURE.md, *.md"
+    }
+  ],
+  "layout": "even-horizontal",
+  "layout_style": "main-vertical",
+  "main_pane_percent": 60
+}

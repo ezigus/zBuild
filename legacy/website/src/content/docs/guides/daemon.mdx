@@ -1,0 +1,325 @@
+---
+title: Autonomous Daemon
+description: Run Shipwright as a background daemon that watches GitHub issues and automatically spawns delivery pipelines.
+---
+
+The daemon (`shipwright daemon`) runs in the background, polling GitHub for new issues and automatically spawning delivery pipelines to handle them. Combined with DORA metrics, it gives you a fully autonomous development operation.
+
+## How It Works
+
+1. The daemon polls your GitHub repo (or entire org) for issues with a configurable label (default: `ready-to-build`)
+2. Each issue is scored by **intelligent triage** — with the intelligence layer enabled, Claude semantically analyzes each issue for complexity, risk, and optimal approach; without it, scoring uses 6 heuristic dimensions (priority, age, complexity, dependencies, type, memory)
+3. Issues are processed in triage-score order; **priority lane** issues bypass the queue
+4. The daemon **auto-selects a pipeline template** based on issue labels and triage score (when `auto_template` is enabled)
+5. A git worktree is created and a pipeline is spawned (`shipwright pipeline start --issue <id>`)
+6. On failure, the daemon **auto-retries with escalation** (model/template upgrade)
+7. On success, labels are updated and the issue is commented with results
+8. The **self-optimization loop** periodically tunes parameters based on DORA metrics
+9. During quiet periods, **proactive patrol** scans the codebase for issues
+10. **Degradation detection** alerts when pipeline success rates decline
+
+## Quick Start
+
+```bash
+# Initialize daemon configuration
+shipwright daemon init
+
+# Start the daemon
+shipwright daemon start
+
+# Check daemon status
+shipwright daemon status
+
+# View daemon logs
+shipwright daemon logs --follow
+
+# Stop the daemon
+shipwright daemon stop
+```
+
+## DORA Metrics
+
+The daemon tracks delivery performance using the four DORA metrics:
+
+| Metric                   | What It Measures             | Elite     | High         | Medium         | Low      |
+| ------------------------ | ---------------------------- | --------- | ------------ | -------------- | -------- |
+| **Deployment Frequency** | How often you deploy         | On-demand | Daily–Weekly | Weekly–Monthly | Monthly+ |
+| **Cycle Time**           | Time from commit to deploy   | < 1 hour  | < 1 day      | < 1 week       | 1 week+  |
+| **Change Failure Rate**  | % of deploys causing failure | < 5%      | < 10%        | < 15%          | 15%+     |
+| **Mean Time to Restore** | Recovery time after failure  | < 1 hour  | < 1 day      | < 1 week       | 1 week+  |
+
+View your metrics dashboard:
+
+```bash
+# Default: last 7 days
+shipwright daemon metrics
+
+# Custom period
+shipwright daemon metrics --period 30
+
+# JSON output for tooling
+shipwright daemon metrics --json
+```
+
+Grades follow Google's DORA research thresholds: **Elite**, **High**, **Medium**, **Low**.
+
+## Commands
+
+| Command                     | Description                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------ |
+| `shipwright daemon init`    | Create daemon configuration file                                                     |
+| `shipwright daemon start`   | Start the background daemon                                                          |
+| `shipwright daemon stop`    | Stop the daemon gracefully                                                           |
+| `shipwright daemon status`  | Show daemon status and current pipelines                                             |
+| `shipwright daemon metrics` | Display DORA metrics dashboard                                                       |
+| `shipwright daemon logs`    | View daemon log output                                                               |
+| `shipwright daemon triage`  | Show issue triage scores and priority ranking                                        |
+| `shipwright daemon patrol`  | Run proactive codebase patrol (use `--once` for single run, `--dry-run` for preview) |
+
+## Event Logging
+
+All daemon and pipeline events are logged to `~/.shipwright/events.jsonl` as newline-delimited JSON. Events include:
+
+- `daemon.started`, `daemon.stopped`
+- `daemon.poll` — each polling cycle
+- `daemon.spawn` — new pipeline started
+- `daemon.reap` — pipeline process finished
+- `pipeline.started`, `pipeline.completed`
+- `stage.started`, `stage.completed`, `stage.failed`
+
+These events power the DORA metrics dashboard and can be consumed by external tools.
+
+## Intelligent Triage
+
+Every incoming issue is scored on a 0–100 scale across six dimensions. Higher-scoring issues are processed first, preventing starvation and ensuring critical work gets done.
+
+| Dimension           | Points    | How It's Scored                                                          |
+| ------------------- | --------- | ------------------------------------------------------------------------ |
+| **Priority labels** | 0–30      | `urgent`/`p0` = 30, `high`/`p1` = 20, `normal`/`p2` = 10, `low`/`p3` = 5 |
+| **Issue age**       | 0–15      | > 7 days = 15, > 3 days = 10, > 1 day = 5 (prevents starvation)          |
+| **Complexity**      | 0–20      | Simpler issues score higher (shorter body, fewer file references)        |
+| **Dependencies**    | -15 to 15 | Blocks other issues = +15, blocked by open issues = -15                  |
+| **Type**            | 0–10      | `security`/`bug` = 10, `feature`/`enhancement` = 5                       |
+| **Memory**          | -5 to 10  | Prior success on similar work = +10, prior failures = -5                 |
+
+View current triage scores:
+
+```bash
+shipwright daemon triage
+```
+
+## Adaptive Template Selection
+
+When `auto_template` is enabled, the daemon automatically selects the best pipeline template for each issue based on its labels and triage score.
+
+**Selection priority:**
+
+1. **Label overrides** — `hotfix`/`incident` labels → `hotfix` template, `security` → `enterprise`
+2. **`template_map` overrides** — regex patterns in config matched against issue labels
+3. **Score-based fallback** — score ≥ 70 → `fast`, ≥ 40 → `standard`, below 40 → `full`
+
+Enable in config:
+
+```json
+{
+  "auto_template": true,
+  "template_map": {
+    "hotfix|incident": "hotfix",
+    "security": "enterprise"
+  }
+}
+```
+
+## Auto-Retry with Escalation
+
+Failed pipelines are automatically retried up to `max_retries` times. When `retry_escalation` is enabled, each retry can escalate the model or template to increase the chance of success.
+
+```json
+{
+  "max_retries": 2,
+  "retry_escalation": true
+}
+```
+
+## Self-Optimizing Metrics
+
+When `self_optimize` is enabled, the daemon periodically reviews its own DORA metrics and automatically tunes parameters to improve delivery performance.
+
+The optimization loop runs every `optimize_interval` poll cycles (default: 10) and applies these adjustments:
+
+| Condition           | Adjustment                                     |
+| ------------------- | ---------------------------------------------- |
+| CFR > 40%           | Switch to `full` template                      |
+| CFR > 20%           | Enable compound quality stage                  |
+| Lead time > 4 hours | Increase `max_parallel`, halve `poll_interval` |
+| Lead time > 2 hours | Enable `auto_template` for adaptive routing    |
+| Deploy freq < 1/day | Recommend merge stage                          |
+| MTTR > 2 hours      | Recommend auto-rollback                        |
+
+Enable in config:
+
+```json
+{
+  "self_optimize": true,
+  "optimize_interval": 10
+}
+```
+
+## Priority Lanes
+
+Critical issues can bypass the normal queue. When an issue has a priority label (e.g., `hotfix`, `incident`, `p0`, `urgent`), it gets processed immediately — even if `max_parallel` slots are full — using up to `priority_lane_max` extra slots.
+
+```json
+{
+  "priority_lane": true,
+  "priority_lane_labels": "hotfix,incident,p0,urgent",
+  "priority_lane_max": 1
+}
+```
+
+## Org-Wide Mode
+
+Instead of watching a single repository, the daemon can poll issues across all repositories in a GitHub organization.
+
+```json
+{
+  "watch_mode": "org",
+  "org": "my-org",
+  "repo_filter": "api-.*|web-.*"
+}
+```
+
+| Field         | Description                               |
+| ------------- | ----------------------------------------- |
+| `watch_mode`  | Set to `"org"` for organization mode      |
+| `org`         | GitHub organization name                  |
+| `repo_filter` | Optional regex to filter repository names |
+
+## Proactive Patrol
+
+During quiet periods (no active jobs, no queued issues), the daemon automatically runs codebase patrol scans. Patrol checks for:
+
+- **Dependency vulnerabilities** — runs `npm audit` and flags critical/high CVEs
+- **Stale dependencies** — detects packages behind their latest version
+- **Dead code** — finds unused exports and unreferenced modules
+- **Test coverage gaps** — identifies untested source files
+- **Documentation staleness** — flags docs not updated in 90+ days
+- **Performance regressions** — compares test duration baselines
+
+Patrol findings are automatically created as GitHub issues with the patrol label.
+
+```bash
+# Run patrol manually
+shipwright daemon patrol
+
+# Preview findings without creating issues
+shipwright daemon patrol --dry-run
+
+# Run once and exit (for cron jobs)
+shipwright daemon patrol --once
+```
+
+Configure patrol behavior:
+
+```json
+{
+  "patrol": {
+    "interval": 3600,
+    "max_issues": 5,
+    "label": "auto-patrol"
+  }
+}
+```
+
+## AI-Powered Patrol
+
+When the intelligence layer is enabled (`intelligence.predictive_enabled` in daemon-config.json), patrol scans are enhanced with AI analysis. Instead of relying solely on grep-based checks, Claude reads sampled source files, test files, and recent git history to perform holistic codebase analysis. The existing grep checks serve as pre-filters, and Claude confirms or dismisses findings — reducing false positive rates significantly.
+
+See the [Intelligence guide](/guides/intelligence/) for details on predictive analytics and AI patrol.
+
+## Degradation Detection
+
+The daemon monitors recent pipeline success rates and alerts when quality degrades. It checks the last `degradation_window` pipelines (default: 5) and fires alerts when:
+
+- **Change Failure Rate** exceeds `cfr_threshold` (default: 30%)
+- **Success rate** drops below `success_threshold` (default: 50%)
+
+Alerts are logged and sent to Slack if a webhook is configured.
+
+```json
+{
+  "alerts": {
+    "degradation_window": 5,
+    "cfr_threshold": 30,
+    "success_threshold": 50
+  },
+  "notifications": {
+    "slack_webhook": "https://hooks.slack.com/services/..."
+  }
+}
+```
+
+## Configuration
+
+After running `shipwright daemon init`, edit the configuration file at `.claude/daemon-config.json`:
+
+```json
+{
+  "watch_label": "ready-to-build",
+  "poll_interval": 60,
+  "max_parallel": 2,
+  "pipeline_template": "autonomous",
+  "base_branch": "main",
+  "model": "opus",
+  "skip_gates": true,
+  "auto_template": true,
+  "template_map": {
+    "hotfix|incident": "hotfix",
+    "security": "enterprise"
+  },
+  "max_retries": 2,
+  "retry_escalation": true,
+  "self_optimize": true,
+  "optimize_interval": 10,
+  "priority_lane": true,
+  "priority_lane_labels": "hotfix,incident,p0,urgent",
+  "priority_lane_max": 1,
+  "watch_mode": "repo",
+  "org": null,
+  "repo_filter": null,
+  "patrol": {
+    "interval": 3600,
+    "max_issues": 5,
+    "label": "auto-patrol"
+  },
+  "alerts": {
+    "degradation_window": 5,
+    "cfr_threshold": 30,
+    "success_threshold": 50
+  }
+}
+```
+
+See [Configuration reference](/reference/configuration/) for the full list of fields.
+
+## Auto-Scaling
+
+The daemon can dynamically adjust worker count based on system resources when `auto_scale` is enabled:
+
+```json
+{
+  "auto_scale": true,
+  "auto_scale_interval": 5,
+  "max_workers": 8,
+  "min_workers": 1,
+  "worker_mem_gb": 4,
+  "estimated_cost_per_job_usd": 5.0
+}
+```
+
+Scaling factors (takes the minimum):
+
+- **CPU**: 75% of cores
+- **Memory**: available GB / `worker_mem_gb`
+- **Budget**: remaining daily budget / `estimated_cost_per_job_usd`
+- **Queue**: current demand (active + queued issues)

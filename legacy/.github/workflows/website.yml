@@ -1,0 +1,79 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: website
+
+      - name: Build
+        run: npm run build
+        working-directory: website
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check GitHub Pages is enabled
+        id: pages_check
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" --silent 2>/dev/null; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GitHub Pages is not enabled — deploy skipped. Enable it at https://github.com/${{ github.repository }}/settings/pages (Source: GitHub Actions)."
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        if: steps.pages_check.outputs.enabled == 'true'
+        uses: actions/deploy-pages@v4
+
+      - name: Deployment skipped — Pages not enabled
+        if: steps.pages_check.outputs.enabled != 'true'
+        run: |
+          echo "::notice::Website built successfully. Deployment skipped because GitHub Pages is not enabled."
+          echo "::notice::To deploy, go to https://github.com/${{ github.repository }}/settings/pages and set Source to 'GitHub Actions'."

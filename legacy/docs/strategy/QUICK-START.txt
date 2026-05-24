@@ -1,0 +1,289 @@
+================================================================================
+SHIPWRIGHT GO-TO-MARKET STRATEGY - EXECUTIVE BRIEF
+================================================================================
+
+CREATED: February 14, 2026
+STATUS: Ready for implementation
+OWNER: Seth Ford
+
+================================================================================
+CORE VALUE PROPOSITION
+================================================================================
+
+"Ship code 10x faster with autonomous Claude Code agent teams — no AI API 
+vendor lock-in, runs on your infra, integrates with your GitHub."
+
+================================================================================
+KEY DIFFERENTIATORS
+================================================================================
+
+1. Self-hosted + Open Source (No vendor lock-in)
+2. Agent Team Orchestration (Multi-agent coordination)
+3. Native GitHub Integration (Checks, Deployments APIs)
+4. Built-in Intelligence (Predictive risk, DORA metrics)
+5. Cost Transparency (Per-pipeline ROI tracking)
+6. Universal Bash Compatibility (Runs anywhere)
+
+================================================================================
+DISTRIBUTION MODEL (3-TIER)
+================================================================================
+
+Q1-Q2: Community Edition (Free, Unlimited)
+  └─ Open source on GitHub, organic growth via Hacker News + Product Hunt
+  
+Q3:    Freemium SaaS (Optional Hosted)
+  └─ $49/mo individuals, $299/mo teams, free tier for OSS
+  
+Q4+:   Enterprise Edition (Self-Hosted + Support)
+  └─ $5K-$50K/year, SAML/OIDC, SOC 2, SLA
+
+================================================================================
+4-PHASE ROADMAP
+================================================================================
+
+Phase 1: CORE EXCELLENCE (Feb-Mar, 8 weeks)
+  Goal: Rock-solid foundation
+  Focus: Stability, docs, DX
+  Success: 1K GitHub stars, 500+ Discord members
+  
+Phase 2: DIFFERENTIATION (Feb-Apr, 12 weeks)
+  Goal: Unique competitive advantages
+  Focus: Intelligence, cost, DORA metrics
+  Success: 5K GitHub stars, 70% using predictive risk
+  
+Phase 3: ENTERPRISE READY (Apr-Jun, 12 weeks)
+  Goal: Unlock $100K+ deals
+  Focus: Auth, compliance, GitHub App
+  Success: SOC 2 certified, 5+ enterprise pilots
+  
+Phase 4: PLATFORM ECOSYSTEM (Jun+, Ongoing)
+  Goal: Standard for AI-native delivery
+  Focus: Marketplace, extensibility, integrations
+  Success: 10K+ deployments, 50+ custom agents
+
+================================================================================
+THIS WEEK'S QUICK WINS (29 hours total)
+================================================================================
+
+Monday: GitHub Profile + Product Hunt (10 hours)
+  • Update github.com/sethdford profile README with Shipwright showcase
+  • Prepare 2-min demo video
+  • Schedule Product Hunt launch for Tuesday
+  
+Tuesday: Launch Day (12 hours)
+  • Product Hunt launch with live demo
+  • Submit to Hacker News (2-hour turnaround window)
+  • Engage in comments all day
+  
+Wednesday-Friday: Community Setup (7 hours)
+  • Create Discord server with 5 core channels
+  • Invite early users + Anthropic contacts
+  • Setup weekly demo video schedule
+  
+Parallel: Content (No additional time, leverage existing work)
+  • Publish benchmark comparison table
+  • Publish 3 case studies from existing Shipwright runs
+  • Submit 2-3 conference talk proposals
+
+Target: 500+ upvotes on Product Hunt, 100+ Hacker News points, 50+ Discord members
+
+================================================================================
+SUCCESS METRICS (Quarterly)
+================================================================================
+
+Q2 Targets (by Jun 30):
+  GitHub Stars: 2,000
+  Monthly Installs: 100
+  Active Daemons: 20
+  Discord Members: 100
+  Blog Visitors: 500/month
+
+Q3 Targets (by Sep 30):
+  GitHub Stars: 3,000
+  Monthly Installs: 300
+  Active Daemons: 50
+  Discord Members: 250
+  Freemium Signups: 100
+  Enterprise Pilots: 2
+
+Q4 Targets (by Dec 31):
+  GitHub Stars: 5,000+
+  Monthly Installs: 500+
+  Active Daemons: 100+
+  Discord Members: 500+
+  Freemium Signups: 500+
+  Enterprise Pilots: 5+
+  MRR Revenue: $10K+
+
+================================================================================
+COMPETITIVE POSITIONING
+================================================================================
+
+Shipwright's Unique Quadrant:
+  Open-source + Self-hosted + Multi-agent Orchestration
+
+vs. Cursor:           ✓ Autonomous execution (Cursor is IDE-only)
+vs. Copilot:          ✓ Self-hosted + cost transparency
+vs. GitHub Actions:   ✓ AI-native agent orchestration
+vs. Traditional CI:   ✓ Zero human-in-loop execution
+
+Market Tailwinds:
+  • Enterprise skepticism of AI SaaS (prefer self-hosted)
+  • Agent craze (Shipwright is native, not bolted-on)
+  • Cost consciousness (Shipwright tracks ROI)
+  • DevOps evolution (delivery acceleration = competitive advantage)
+  • Open-source preference (trust for critical infrastructure)
+
+================================================================================
+ADOPTION FUNNEL
+================================================================================
+
+Stage 1: AWARENESS (GitHub Trending, HN, Product Hunt)
+  → Technical decision-makers, DevOps leads
+  
+Stage 2: TRIAL (One-liner install, 5-min first pipeline)
+  → Curious developers
+  
+Stage 3: CONVERSION (Daemon running autonomously 7+ days)
+  → Dev teams processing 5+ issues/sprint
+  
+Stage 4: EXPANSION (Fleet, integrations, enterprise)
+  → Multi-repo orgs, enterprises
+
+Conversion Target: 40% of trial users → daemon adoption at 7 days
+
+================================================================================
+KEY MESSAGING BY AUDIENCE
+================================================================================
+
+Developers:
+  "Ship code 10x faster"
+  "From issue to PR in 4 minutes"
+  "No vendor lock-in"
+
+Dev Teams:
+  "Reduce DORA lead time 80%"
+  "Stop manual shipping"
+  "Transparent costs"
+
+Enterprises:
+  "AI-native without lock-in"
+  "SOC 2, HIPAA-ready"
+  "Reduces release cycles from weeks to days"
+
+================================================================================
+PARTNERSHIPS (PRIORITY ORDER)
+================================================================================
+
+Tier 1: Anthropic (Co-marketing, "Built with Claude Code")
+Tier 2: GitHub (Native integration, marketplace)
+Tier 3: Atlassian (Jira sync), Slack, PagerDuty
+Tier 4: CNCF, dev communities, conference speaking
+
+================================================================================
+RISK MITIGATION
+================================================================================
+
+Risk: Anthropic API pricing changes
+  → Multi-model support from day 1 (Haiku, Sonnet, Opus, open models)
+
+Risk: Competitors catch up
+  → Move fast on agent orchestration (get to 10K deployments first)
+  → Build community moat (switching cost high at 1K+ developers)
+
+Risk: Adoption plateaus
+  → Enterprise tier unlocks revenue even if community plateaus
+  → Partnership amplification (Anthropic, GitHub, DevOps platforms)
+
+Risk: Team spread thin on SaaS
+  → Keep OSS on critical path, SaaS as optional extension
+  → Hire dedicated SaaS team in Phase 3
+
+================================================================================
+CONTENT STRATEGY (6-MONTH CADENCE)
+================================================================================
+
+Blog (Monthly):
+  • "Shipwright in Production" — case studies, metrics
+  • "Reducing DORA Lead Time" — thought leadership
+  
+YouTube (Weekly):
+  • 2-3 minute tutorials
+  • Live issue-to-PR demos
+  
+Twitter (3x per week):
+  • Community wins (screenshots, metrics)
+  • Thought leadership threads
+  
+Webinars (Monthly):
+  • "AI-Native Delivery" for enterprises
+  • Live Q&A with community
+  
+Conferences (Quarterly):
+  • GitHub Universe, QCon, DevOps Days talks
+
+================================================================================
+ORGANIZATION STRUCTURE
+================================================================================
+
+Phase 1-2 (Self-funded):
+  • Founder/Core Dev (1)
+  • Part-time Contributors (3-5)
+
+Phase 3 (Series A):
+  • CEO/Founder
+  • Head of Product
+  • 2x Lead Engineers
+  • DevOps Engineer
+  • DevRel
+  • Sales Engineer
+
+Phase 4 (Series B):
+  • Engineering (6-8)
+  • Product/Design (2)
+  • Sales/CS (3-4)
+  • DevRel/Marketing (2)
+  • Operations/Finance (1-2)
+
+================================================================================
+NEXT 90 DAYS
+================================================================================
+
+Week 1-2:
+  ✓ Launch Product Hunt + Hacker News
+  ✓ Create Discord community
+  ✓ Publish benchmark comparison
+  
+Week 3-6:
+  ✓ Document 3 real case studies
+  ✓ Blog series: 4 posts on AI-native delivery
+  ✓ Video tutorials: 10x 2-3 min quick starts
+  
+Week 7-12:
+  ✓ Phase 1 complete: Dashboard v1, quality gates, streaming
+  ✓ Hit 1K GitHub stars
+  ✓ Daemon retention: 40%+ at 7 days
+  ✓ Start Phase 2 planning
+
+================================================================================
+RECOMMENDED READING ORDER
+================================================================================
+
+1. This file (Quick reference)
+2. 03-gtm-and-roadmap.md Executive Summary (2 pages)
+3. 03-gtm-and-roadmap.md Part I (Go-to-market strategy)
+4. 03-gtm-and-roadmap.md Part III (Quick wins)
+5. 02-mission-and-brand.md (For messaging/content)
+6. 01-market-research.md (Background/context)
+
+================================================================================
+CONTACT & REVIEW
+================================================================================
+
+Document Owner: Seth Ford
+Last Updated: February 14, 2026
+Next Review: March 31, 2026
+
+For questions or updates, see the full documents in this directory.
+
+================================================================================

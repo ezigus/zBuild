@@ -1,0 +1,135 @@
+{
+  "name": "cost-aware",
+  "description": "Cost-optimized pipeline: budget limits, model routing (haiku→sonnet→opus), per-stage tracking",
+  "defaults": {
+    "model": "claude-sonnet-4-6",
+    "agents": 1,
+    "cost_tracking": true,
+    "budget_check": true
+  },
+  "intelligence": {
+    "adversarial_enabled": true,
+    "architecture_enabled": true,
+    "simulation_enabled": true
+  },
+  "stages": [
+    {
+      "id": "intake",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "model": "claude-haiku-4-5-20251001",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "plan",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "model": "claude-sonnet-4-6",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "build",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "model": "claude-sonnet-4-6",
+        "max_iterations": 20,
+        "audit": true,
+        "quality_gates": true,
+        "cost_tracking": true,
+        "abort_on_budget": true
+      }
+    },
+    {
+      "id": "test",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "coverage_min": 80,
+        "model": "claude-haiku-4-5-20251001",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "review",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "model": "claude-opus-4-6",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "compound_quality",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "adversarial": true,
+        "negative": true,
+        "e2e": true,
+        "dod_audit": true,
+        "max_cycles": 2,
+        "audit_intensity": "auto",
+        "compound_quality_blocking": true,
+        "model": "claude-sonnet-4-6",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "audit",
+      "enabled": true,
+      "gate": "auto",
+      "config": {
+        "secret_scan": true,
+        "file_permissions": true,
+        "atomic_writes": true,
+        "coverage_delta": true,
+        "blocking": false,
+        "model": "claude-haiku-4-5-20251001",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "resync",
+      "enabled": true,
+      "gate": "auto",
+      "config": {}
+    },
+    {
+      "id": "pr",
+      "enabled": true,
+      "gate": "approve",
+      "config": {
+        "wait_ci": false,
+        "model": "claude-haiku-4-5-20251001",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "deploy",
+      "enabled": false,
+      "gate": "approve",
+      "config": {
+        "staging_cmd": "",
+        "production_cmd": "",
+        "rollback_cmd": "",
+        "cost_tracking": true
+      }
+    },
+    {
+      "id": "validate",
+      "enabled": false,
+      "gate": "auto",
+      "config": {
+        "smoke_cmd": "",
+        "health_url": "",
+        "close_issue": true,
+        "cost_tracking": true
+      }
+    }
+  ]
+}

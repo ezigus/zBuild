@@ -1,0 +1,526 @@
+#compdef shipwright sw
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  Shipwright — Zsh tab completions                                       ║
+# ║  Auto-install to ~/.zsh/completions/ during shipwright init             ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+
+_shipwright() {
+    local -a commands
+    commands=(
+        # Command groups
+        'agent:Agent management (recruit, swarm, standup, guild, oversight)'
+        'quality:Quality & review (code-review, security-audit, testgen, hygiene, validate)'
+        'observe:Observability (vitals, dora, retro, stream, activity, replay)'
+        'release:Release & deploy (release, release-manager, changelog, deploy, build)'
+        'intel:Intelligence (predict, intelligence, strategic, optimize)'
+        # Core workflow
+        'init:Quick tmux setup — one command, no prompts'
+        'setup:Guided setup — prerequisites, init, doctor'
+        'session:Create a new tmux window for a Claude team'
+        'status:Show dashboard of running teams and agents'
+        'ps:Show running agent processes and status'
+        'logs:View and search agent pane logs'
+        'templates:Manage team composition templates'
+        'doctor:Validate your setup and check for issues'
+        'cleanup:Clean up orphaned team sessions'
+        'reaper:Automatic pane cleanup when agents exit'
+        'upgrade:Check for updates from the repo'
+        'loop:Continuous agent loop — run until goal is achieved'
+        'pipeline:Full delivery pipeline — idea to production'
+        'worktree:Manage git worktrees for agent isolation'
+        'prep:Repo preparation — generate .claude/ configs'
+        'daemon:Issue watcher — auto-process GitHub issues'
+        'fleet:Multi-repo fleet — orchestrate daemons'
+        'memory:Persistent memory — learn from every pipeline run'
+        'cost:Cost intelligence — track tokens, budgets'
+        'db:SQLite persistence — events, runs, developers'
+        'fix:Bulk fix — apply a fix across multiple repos'
+        'dashboard:Fleet Command — real-time dashboard'
+        # Agent management (also accessible via agent group)
+        'swarm:Dynamic agent swarm management'
+        'recruit:Agent recruitment & talent management'
+        'standup:Automated daily standups for AI teams'
+        'guild:Knowledge guilds & cross-team learning'
+        'oversight:Quality oversight board'
+        'pm:Autonomous PM agent for team orchestration'
+        'team-stages:Multi-agent execution with roles'
+        'scale:Dynamic agent team scaling'
+        # Quality (also accessible via quality group)
+        'code-review:Clean code & architecture analysis'
+        'security-audit:Comprehensive security auditing'
+        'testgen:Autonomous test generation & coverage'
+        'hygiene:Repository organization & cleanup'
+        'adversarial:Red-team code review & edge case finding'
+        'simulation:Multi-persona developer simulation'
+        'architecture:Living architecture model & enforcement'
+        # Observability (also accessible via observe group)
+        'vitals:Pipeline vitals — real-time health scoring'
+        'dora:DORA metrics dashboard with intelligence'
+        'retro:Sprint retrospective engine'
+        'stream:Live terminal output streaming from panes'
+        'activity:Live agent activity stream'
+        'replay:Pipeline run replay & timeline viewing'
+        # Release (also accessible via release group)
+        'changelog:Automated release notes & migration guides'
+        'release-manager:Autonomous release pipeline'
+        'review-rerun:SHA-deduped rerun comment writer'
+        # Intelligence (also accessible via intel group)
+        'intelligence:Run intelligence engine analysis'
+        'predict:Predictive risk assessment & anomaly detection'
+        'strategic:Strategic intelligence agent'
+        'optimize:Self-optimization based on DORA metrics'
+        'adaptive:Data-driven pipeline tuning'
+        'regression:Regression detection pipeline'
+        'model:Intelligent model routing & cost optimization'
+        'pipeline-composer:Dynamic pipeline composition'
+        # Integrations
+        'jira:Jira ↔ GitHub bidirectional sync'
+        'linear:Linear ↔ GitHub bidirectional sync'
+        'tracker:Issue tracker — configure Linear/Jira'
+        'github:GitHub context — repo metadata'
+        'github-app:GitHub App management & webhook receiver'
+        'checks:GitHub checks — CI check runs'
+        'ci:CI/CD workflow generation'
+        'deploys:Deployments — deployment history'
+        'webhook:GitHub webhooks — instant processing'
+        'auth:GitHub OAuth authentication'
+        # Operations
+        'fleet-viz:Multi-repo fleet visualization'
+        'public-dashboard:Public real-time pipeline progress'
+        'mission-control:Terminal-based pipeline mission control'
+        'connect:Team connect — sync local state'
+        'remote:Remote machines — manage distributed workers'
+        'launchd:Process supervision — auto-start on boot'
+        'heartbeat:Agent heartbeat — write/check/list'
+        'checkpoint:Checkpoints — save/restore agent state'
+        'autonomous:AI-building-AI master controller'
+        'tmux-pipeline:Spawn and manage pipelines in tmux'
+        # Issue management
+        'triage:Intelligent issue labeling & prioritization'
+        'decompose:Issue decomposer — analyze complexity'
+        'pr:PR lifecycle — auto-review, merge'
+        # Data & learning
+        'instrument:Pipeline instrumentation & feedback loops'
+        'discovery:Cross-pipeline real-time learning'
+        'feedback:Production feedback loop'
+        'eventbus:Durable event bus for components'
+        'evidence:Machine-verifiable proof for deliveries'
+        'otel:OpenTelemetry observability'
+        'context:Context engine — gather context'
+        'trace:E2E traceability (Issue → Commit → PR → Deploy)'
+        # Documentation
+        'docs:Documentation keeper — auto-sync docs'
+        'docs-agent:Auto-sync README, wiki, API docs'
+        'doc-fleet:Documentation fleet orchestrator'
+        # Setup & maintenance
+        'incident:Autonomous incident detection & response'
+        'deps:Automated dependency update management'
+        'durable:Durable workflow engine for long-running ops'
+        'tmux:tmux health — doctor, install, fix'
+        'ux:Premium UX enhancement layer'
+        'widgets:Embeddable status widgets'
+        'e2e:Test suite registry & execution'
+        # Meta
+        'help:Show help message'
+        'version:Show/bump/check version'
+    )
+
+    local -a agent_cmds quality_cmds observe_cmds release_cmds intel_cmds
+    local -a pipeline_cmds daemon_cmds fleet_cmds memory_cmds cost_cmds
+    local -a templates_cmds worktree_cmds tracker_cmds heartbeat_cmds
+    local -a checkpoint_cmds connect_cmds remote_cmds launchd_cmds
+    local -a dashboard_cmds github_cmds checks_cmds deploys_cmds docs_cmds
+    local -a tmux_cmds decompose_cmds pr_cmds db_cmds ci_cmds auth_cmds
+    local -a autonomous_cmds version_cmds jira_cmds linear_cmds
+    local -a eventbus_cmds evidence_cmds webhook_cmds
+
+    agent_cmds=(
+        'recruit:Agent recruitment & talent management'
+        'swarm:Dynamic agent swarm management'
+        'standup:Automated daily standups'
+        'guild:Knowledge guilds & cross-team learning'
+        'oversight:Quality oversight board'
+    )
+    quality_cmds=(
+        'code-review:Clean code & architecture analysis'
+        'security-audit:Comprehensive security auditing'
+        'testgen:Autonomous test generation'
+        'hygiene:Repository organization & cleanup'
+        'validate:Intelligent completion audits'
+        'gate:Quality gate enforcement'
+    )
+    observe_cmds=(
+        'vitals:Pipeline vitals — real-time scoring'
+        'dora:DORA metrics dashboard'
+        'retro:Sprint retrospective engine'
+        'stream:Live terminal output streaming'
+        'activity:Live agent activity stream'
+        'replay:Pipeline DVR — view past runs'
+        'status:Team status dashboard'
+    )
+    release_cmds=(
+        'release:Release train automation'
+        'release-manager:Autonomous release pipeline'
+        'changelog:Automated release notes'
+        'deploy:Deployments — deployment history'
+        'build:Build release tarballs'
+    )
+    intel_cmds=(
+        'predict:Predictive risk assessment'
+        'intelligence:Intelligence engine analysis'
+        'strategic:Strategic intelligence agent'
+        'optimize:Self-optimization based on DORA'
+    )
+    pipeline_cmds=(
+        'start:Start a new pipeline run'
+        'resume:Resume from last stage'
+        'status:Show pipeline progress dashboard'
+        'abort:Cancel the running pipeline'
+        'list:Browse pipeline templates'
+        'show:Show pipeline template details'
+        'test:Run pipeline test suite'
+    )
+    daemon_cmds=(
+        'start:Start issue watcher'
+        'stop:Graceful shutdown'
+        'status:Show active pipelines and queue'
+        'metrics:DORA/DX metrics dashboard'
+        'triage:Show issue triage scores'
+        'patrol:Run proactive codebase patrol'
+        'test:Run daemon test suite'
+        'logs:View daemon logs'
+        'init:Initialize daemon config'
+    )
+    fleet_cmds=(
+        'start:Start daemons for all repos'
+        'stop:Stop all daemons'
+        'status:Show fleet-wide status'
+        'metrics:Cross-repo DORA metrics'
+        'discover:Auto-discover repos in GitHub org'
+        'test:Run fleet test suite'
+    )
+    memory_cmds=(
+        'show:Show learned patterns for this repo'
+        'search:Search across all memories'
+        'forget:Remove a memory entry'
+        'export:Export memories to file'
+        'import:Import memories from file'
+        'stats:Memory usage and coverage'
+        'test:Run memory test suite'
+    )
+    cost_cmds=(
+        'show:Show cost summary'
+        'budget:Manage daily budget'
+        'record:Record token usage'
+        'calculate:Calculate cost estimate'
+        'check-budget:Check budget before starting'
+        'remaining-budget:Check remaining daily budget'
+    )
+    templates_cmds=(
+        'list:Browse team templates'
+        'show:Show template details'
+    )
+    worktree_cmds=(
+        'create:Create git worktree'
+        'list:List active worktrees'
+        'remove:Remove worktree'
+    )
+    tracker_cmds=(
+        'init:Initialize tracker'
+        'status:Show tracker status'
+        'sync:Sync issues'
+        'test:Run tracker test suite'
+    )
+    heartbeat_cmds=(
+        'write:Write heartbeat'
+        'check:Check heartbeat'
+        'list:List heartbeats'
+        'clear:Clear heartbeats'
+    )
+    checkpoint_cmds=(
+        'save:Save agent state'
+        'restore:Restore agent state'
+        'list:List checkpoints'
+        'delete:Delete checkpoint'
+    )
+    connect_cmds=(
+        'start:Sync to team dashboard'
+        'stop:Stop connection'
+        'join:Join a team'
+        'status:Show connection status'
+    )
+    remote_cmds=(
+        'list:Show remote machines'
+        'add:Register a remote'
+        'remove:Remove a remote'
+        'status:Health check remotes'
+        'test:Run remote test suite'
+    )
+    launchd_cmds=(
+        'install:Auto-start on boot'
+        'uninstall:Remove services'
+        'status:Show service status'
+        'test:Run launchd test suite'
+    )
+    dashboard_cmds=(
+        'start:Start dashboard'
+        'stop:Stop dashboard'
+        'status:Show dashboard status'
+    )
+    github_cmds=(
+        'context:Show GitHub context'
+        'security:Show security alerts'
+        'blame:Show file ownership'
+    )
+    checks_cmds=(
+        'list:Show check runs'
+        'status:Show check status'
+        'test:Run checks test suite'
+    )
+    deploys_cmds=(
+        'list:Show deployment history'
+        'status:Show deployment status'
+        'test:Run deploys test suite'
+    )
+    docs_cmds=(
+        'check:Report stale sections'
+        'sync:Regenerate stale sections'
+        'wiki:Generate wiki pages'
+        'report:Show freshness report'
+        'test:Run docs test suite'
+    )
+    tmux_cmds=(
+        'doctor:Check Claude compat'
+        'install:Install TPM'
+        'fix:Auto-fix issues'
+        'reload:Reload config'
+        'test:Run tmux test suite'
+    )
+    decompose_cmds=(
+        'analyze:Analyze complexity'
+        'create-subtasks:Create subtasks'
+    )
+    pr_cmds=(
+        'review:Auto-review PR'
+        'merge:Auto-merge PR'
+        'cleanup:Cleanup merged branches'
+        'feedback:Get PR feedback'
+    )
+    db_cmds=(
+        'init:Initialize database'
+        'health:Check database health'
+        'migrate:Run migrations'
+        'stats:Show database statistics'
+        'query:Run a query'
+        'export:Export data'
+    )
+    ci_cmds=(
+        'generate:Generate CI workflows'
+        'status:Show CI status'
+        'test:Run CI test suite'
+    )
+    auth_cmds=(
+        'login:Authenticate with GitHub'
+        'logout:Revoke authentication'
+        'status:Show auth status'
+        'test:Run auth test suite'
+    )
+    autonomous_cmds=(
+        'start:Start autonomous loop'
+        'status:Show autonomous status'
+        'test:Run autonomous test suite'
+    )
+    version_cmds=(
+        'show:Show current version'
+        'bump:Bump version everywhere'
+        'check:Verify version consistency'
+    )
+    jira_cmds=(
+        'sync:Sync Jira issues'
+        'status:Show Jira sync status'
+        'test:Run Jira test suite'
+    )
+    linear_cmds=(
+        'sync:Sync Linear issues'
+        'status:Show Linear sync status'
+        'test:Run Linear test suite'
+    )
+    eventbus_cmds=(
+        'emit:Emit an event'
+        'listen:Listen for events'
+        'status:Show bus status'
+        'test:Run eventbus test suite'
+    )
+    evidence_cmds=(
+        'capture:Capture evidence artifacts'
+        'verify:Verify evidence freshness'
+        'pre-pr:Run pre-PR evidence checks'
+    )
+    webhook_cmds=(
+        'start:Start webhook receiver'
+        'stop:Stop webhook receiver'
+        'status:Show webhook status'
+        'test:Run webhook test suite'
+    )
+
+    _arguments -C \
+        '1:command:->command' \
+        '*::arg:->args'
+
+    case "$state" in
+        command)
+            _describe -t commands 'shipwright command' commands
+            ;;
+        args)
+            case "${words[1]}" in
+                agent)      _describe -t agent-cmds 'agent command' agent_cmds ;;
+                quality)    _describe -t quality-cmds 'quality command' quality_cmds ;;
+                observe)    _describe -t observe-cmds 'observe command' observe_cmds ;;
+                release)    _describe -t release-cmds 'release command' release_cmds ;;
+                intel)      _describe -t intel-cmds 'intel command' intel_cmds ;;
+                pipeline)
+                    _describe -t pipeline-cmds 'pipeline command' pipeline_cmds
+                    _arguments '*:options:_pipeline_options'
+                    ;;
+                daemon)     _describe -t daemon-cmds 'daemon command' daemon_cmds ;;
+                fleet)      _describe -t fleet-cmds 'fleet command' fleet_cmds ;;
+                memory)     _describe -t memory-cmds 'memory command' memory_cmds ;;
+                cost)       _describe -t cost-cmds 'cost command' cost_cmds ;;
+                templates)  _describe -t templates-cmds 'templates command' templates_cmds ;;
+                worktree)   _describe -t worktree-cmds 'worktree command' worktree_cmds ;;
+                tracker)    _describe -t tracker-cmds 'tracker command' tracker_cmds ;;
+                heartbeat)  _describe -t heartbeat-cmds 'heartbeat command' heartbeat_cmds ;;
+                checkpoint) _describe -t checkpoint-cmds 'checkpoint command' checkpoint_cmds ;;
+                connect)
+                    _describe -t connect-cmds 'connect command' connect_cmds
+                    _arguments '--token[Invite token]:token'
+                    ;;
+                remote)
+                    _describe -t remote-cmds 'remote command' remote_cmds
+                    _arguments '--host[Hostname]:host' '--port[SSH port]:port' '--key[SSH key]:file' '--user[SSH user]:user'
+                    ;;
+                launchd)    _describe -t launchd-cmds 'launchd command' launchd_cmds ;;
+                dashboard)  _describe -t dashboard-cmds 'dashboard command' dashboard_cmds ;;
+                github)     _describe -t github-cmds 'github command' github_cmds ;;
+                checks)     _describe -t checks-cmds 'checks command' checks_cmds ;;
+                deploys)    _describe -t deploys-cmds 'deploys command' deploys_cmds ;;
+                docs)       _describe -t docs-cmds 'docs command' docs_cmds ;;
+                tmux)       _describe -t tmux-cmds 'tmux command' tmux_cmds ;;
+                decompose)  _describe -t decompose-cmds 'decompose command' decompose_cmds ;;
+                pr)         _describe -t pr-cmds 'pr command' pr_cmds ;;
+                db)         _describe -t db-cmds 'db command' db_cmds ;;
+                ci)         _describe -t ci-cmds 'ci command' ci_cmds ;;
+                auth)       _describe -t auth-cmds 'auth command' auth_cmds ;;
+                autonomous) _describe -t autonomous-cmds 'autonomous command' autonomous_cmds ;;
+                version)    _describe -t version-cmds 'version command' version_cmds ;;
+                jira)       _describe -t jira-cmds 'jira command' jira_cmds ;;
+                linear)     _describe -t linear-cmds 'linear command' linear_cmds ;;
+                eventbus)   _describe -t eventbus-cmds 'eventbus command' eventbus_cmds ;;
+                evidence)   _describe -t evidence-cmds 'evidence command' evidence_cmds ;;
+                webhook)    _describe -t webhook-cmds 'webhook command' webhook_cmds ;;
+                prep)
+                    _arguments \
+                        '--check[Audit existing prep quality]' \
+                        '--with-claude[Deep analysis using Claude Code]' \
+                        '--verbose[Verbose output]'
+                    ;;
+                loop)
+                    _arguments \
+                        '1:goal:' \
+                        '--repo[Directory path]:directory:_directories' \
+                        '--local[Local-only mode (no GitHub)]' \
+                        '--test-cmd[Test command]:command:' \
+                        '--fast-test-cmd[Fast subset test]:command:' \
+                        '--fast-test-interval[Full test every N iterations]:count:' \
+                        '--max-iterations[Max iterations]:count:' \
+                        '--model[Model to use]:model:(opus sonnet haiku)' \
+                        '--agents[Number of agents]:count:' \
+                        '--roles[Role per agent]:roles:' \
+                        '--worktree[Use git worktrees for isolation]' \
+                        '--audit[Self-reflection each iteration]' \
+                        '--audit-agent[Separate auditor]' \
+                        '--quality-gates[Quality checks]' \
+                        '--definition-of-done[Checklist]:file:_files' \
+                        '--resume[Resume interrupted loop]' \
+                        '--max-restarts[Max session restarts]:count:' \
+                        '--max-turns[Max API turns per session]:count:' \
+                        '--skip-permissions[Skip prompts]' \
+                        '--verbose[Show full Claude output]' \
+                        '--no-auto-extend[Disable auto-extension]' \
+                        '--extension-size[Additional iterations per extension]:count:' \
+                        '--max-extensions[Max auto-extensions]:count:'
+                    ;;
+                fix)
+                    _arguments \
+                        '1:goal:' \
+                        '--repos[Repository paths]:repos:' \
+                        '--worktree[Use git worktrees]' \
+                        '--test-cmd[Test command]:command:'
+                    ;;
+                logs)
+                    _arguments \
+                        '1:team name:' \
+                        '--follow[Tail logs]' \
+                        '--lines[Number of lines]:count:' \
+                        '--grep[Search pattern]:pattern:'
+                    ;;
+                cleanup)
+                    _arguments '--force[Kill orphaned sessions]'
+                    ;;
+                upgrade)
+                    _arguments '--apply[Apply updates]'
+                    ;;
+                reaper)
+                    _arguments '--watch[Continuous watch mode]'
+                    ;;
+                status)
+                    _arguments '--json[JSON output]'
+                    ;;
+                doctor)
+                    _arguments '--json[JSON output]'
+                    ;;
+                session)
+                    _arguments \
+                        '1:team name:' \
+                        '--template[Team template]:template:' \
+                        '-t[Team template]:template:' \
+                        '--agents[Number of agents]:count:' \
+                        '--roles[Agent roles]:roles:'
+                    ;;
+                help)
+                    _arguments '--all[Show all commands]' '-a[Show all commands]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_pipeline_options() {
+    _arguments \
+        '--issue[GitHub issue number]:issue:' \
+        '--goal[Goal description]:goal:' \
+        '--repo[Directory path]:directory:_directories' \
+        '--local[Local-only mode (no GitHub)]' \
+        '--worktree[Use isolated worktree]' \
+        '--template[Pipeline template]:template:(fast standard full hotfix autonomous enterprise cost-aware deployed)' \
+        '--skip-gates[Auto-proceed all gates]' \
+        '--test-cmd[Test command]:command:' \
+        '--fast-test-cmd[Fast test command]:command:' \
+        '--model[Model to use]:model:(opus sonnet haiku)' \
+        '--agents[Number of agents]:count:' \
+        '--base[Base branch for PR]:branch:' \
+        '--reviewers[PR reviewers]:reviewers:' \
+        '--labels[PR labels]:labels:' \
+        '--no-github[Disable GitHub integration]' \
+        '--no-github-label[Do not modify issue labels]' \
+        '--ci[CI mode (non-interactive)]' \
+        '--ignore-budget[Skip budget enforcement]' \
+        '--dry-run[Show what would happen]' \
+        '--slack-webhook[Slack webhook URL]:url:' \
+        '--self-heal[Build retry cycles]:count:' \
+        '--max-iterations[Max build loop iterations]:count:' \
+        '--max-restarts[Max session restarts]:count:' \
+        '--completed-stages[Skip these stages]:stages:'
+}
+
+_shipwright "$@"

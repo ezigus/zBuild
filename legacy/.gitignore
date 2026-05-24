@@ -1,0 +1,96 @@
+.DS_Store
+*.swp
+*.swo
+*~
+firebase-debug.log
+.worktrees/
+
+# Generated demo GIFs (hosted on vhs.charm.sh)
+demo/*.gif
+
+# Upgrade backups
+*.pre-upgrade.bak
+
+# Pipeline runtime artifacts (created per-repo at runtime)
+.claude/worktrees/
+.claude/pipeline-artifacts/*
+# Issue-scoped artifact snapshots ARE committed so plan/design survive CI resume.
+# Two negation lines required: first re-includes the subdirectory, second its contents.
+!.claude/pipeline-artifacts/issue-*/
+!.claude/pipeline-artifacts/issue-*/**
+.claude/pipeline-state.md
+.claude/pipeline-status.json
+.claude/pipeline-tasks*.md
+.claude/loop-logs/
+.claude/loop-state.md
+.claude/platform-hygiene.json
+.claude/intelligence-cache.json
+.claude/code-review.json
+.claude/hygiene-report.json
+.claude/scheduled_tasks.lock
+.claude/.push.lock
+
+# Shipwright runtime event logs (per-issue/per-run JSONL streams)
+.shipwright/events-*.jsonl
+
+# Generated changelogs (produced by sw-changelog.sh)
+CHANGELOG-*.md
+
+# Build artifacts
+dist/
+node_modules/
+*.tgz
+
+# Test coverage artifacts
+coverage/
+*.lcov
+tmp_test_output.txt
+tmp_*.txt
+
+# Vector databases
+ruvector.db
+
+# Website build
+website/node_modules/
+website/dist/
+website/.astro/
+
+# ─── Claude-flow / ruflo install artifacts ─────────────────────────────────
+# These directories are scaffolded by `ruflo init` / `@claude-flow/cli init`
+# and should regenerate on demand. Shipwright does not depend on them being
+# present in the repo; they are orthogonal to shipwright's own domain.
+
+# Block subdirectory bundles under .claude/agents/ and .claude/skills/
+# while preserving shipwright's own top-level .md files.
+.claude/agents/*/
+.claude/skills/*/
+
+# Whole directories that are never shipwright's
+.claude/commands/
+.claude/memory.db
+
+# Claude-flow runtime state (daemon PIDs, metrics, swarm state, vector DBs)
+.claude-flow/
+.swarm/
+vectors.db
+
+# Machine-local Claude Code settings (hook paths are environment-specific)
+.claude/settings.json
+
+# AgentDB binary artifacts (regenerated at runtime)
+agentdb.rvf
+agentdb.rvf.lock
+
+# Root-level install artifacts (NOT .claude/CLAUDE.md, which is the legit
+# shipwright thin wrapper)
+/CLAUDE.md
+/.mcp.json
+
+# Root-level src/ directory: Shipwright's own source lives in scripts/, not src/.
+# A src/ directory at the repo root is never intentional and would be picked up
+# by the dead-code patrol as an orphaned JS file (e.g. src/circular-import.js).
+/src/
+
+# Bun build cache
+Library/
+.shipwright/events-*.jsonl

@@ -1,0 +1,25 @@
+{
+  "name": "migration",
+  "description": "Data/schema migration with schema, code adaptation, and rollback agents",
+  "keywords": ["migrate", "upgrade", "port", "convert", "move"],
+  "agents": [
+    {
+      "name": "schema",
+      "role": "Write migration scripts, update schema, handle data transformations",
+      "focus": "migrations/, schema.*, prisma/, src/db/"
+    },
+    {
+      "name": "adapter",
+      "role": "Update application code to work with new schema, fix queries, update models",
+      "focus": "src/models/, src/services/, src/api/"
+    },
+    {
+      "name": "rollback",
+      "role": "Write rollback scripts, verify backward compatibility, test migration reversal",
+      "focus": "migrations/, *.test.*, scripts/"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

@@ -1,0 +1,110 @@
+---
+title: Bulk Fix
+description: Apply the same fix across multiple repositories in parallel — dependency bumps, security patches, API migrations, and more.
+---
+
+Bulk fix (`shipwright fix`) takes a single goal and executes it across multiple repositories simultaneously. Each repo gets its own pipeline, branch, and PR — all running in parallel with throttled concurrency.
+
+## How It Works
+
+1. You specify a goal and a list of target repos
+2. Shipwright creates a fix branch in each repo (e.g., `fix/update-lodash-to-4-17-21`)
+3. A pipeline runs in parallel for each repo, up to `--max-parallel` at a time
+4. When all pipelines finish, a summary table shows pass/fail status and PR links
+
+## Quick Start
+
+```bash
+# Fix a dependency across three repos
+shipwright fix "Update lodash to 4.17.21" --repos ~/api,~/web,~/mobile
+
+# Security patch with hotfix pipeline
+shipwright fix "Fix SQL injection in auth module" --repos ~/api --pipeline hotfix
+
+# Repos from a file, bump Node version
+shipwright fix "Bump Node.js to 22" --repos-from repos.txt --pipeline fast
+
+# Preview what would happen
+shipwright fix "Migrate to ESM imports" --repos ~/api,~/web --dry-run
+
+# Check status of running fix sessions
+shipwright fix --status
+```
+
+## Options
+
+| Flag                       | Default      | Description                                |
+| -------------------------- | ------------ | ------------------------------------------ |
+| `--repos <paths>`          | _(required)_ | Comma-separated repo paths                 |
+| `--repos-from <file>`      |              | Read repo paths from a file (one per line) |
+| `--pipeline <template>`    | `fast`       | Pipeline template to use                   |
+| `--model <model>`          | auto         | Claude model to use                        |
+| `--max-parallel <n>`       | `3`          | Max concurrent pipelines                   |
+| `--branch-prefix <prefix>` | `fix/`       | Branch name prefix                         |
+| `--dry-run`                |              | Preview without executing                  |
+| `--status`                 |              | Show running/completed fix sessions        |
+
+## Repos File Format
+
+When using `--repos-from`, provide one path per line. Comments (lines starting with `#`) and blank lines are ignored:
+
+```text
+# Production services
+~/projects/api
+~/projects/web
+~/projects/auth-service
+
+# Mobile
+~/projects/mobile-app
+```
+
+## Summary Output
+
+After all pipelines complete, Shipwright prints a results table:
+
+```
+═══ Fix Complete: "Update lodash to 4.17.21" ═══
+
+  Repo             Status     PR                             Duration
+  ────────────────────────────────────────────────────────────────
+  api              ✓ pass     github.com/org/api/pull/42     3m 12s
+  web              ✓ pass     github.com/org/web/pull/18     2m 45s
+  mobile           ✗ fail     -                              4m 8s
+
+  Success: 2/3  |  Duration: 4m 8s (parallel)
+```
+
+Logs for failed repos are saved to `~/.shipwright/fix-<session>-logs/`.
+
+## Example Workflows
+
+### Dependency Bump
+
+```bash
+shipwright fix "Update axios from 0.x to 1.x — update import paths and response types" \
+  --repos ~/api,~/web,~/dashboard \
+  --pipeline fast
+```
+
+### Security Patch
+
+```bash
+shipwright fix "Sanitize all user inputs passed to SQL queries using parameterized queries" \
+  --repos ~/api,~/auth \
+  --pipeline hotfix
+```
+
+### API Migration
+
+```bash
+shipwright fix "Replace deprecated v1 auth endpoints with v2 OAuth flow" \
+  --repos-from services.txt \
+  --max-parallel 5
+```
+
+## Tips
+
+- **Use `--dry-run` first** to verify repo paths and see the planned branches before committing.
+- **Choose the right pipeline** — `fast` skips gates for quick fixes; `hotfix` is optimized for urgent patches.
+- **Descriptive goals** — The more specific the goal, the better Claude performs. "Update lodash" is vague; "Update lodash to 4.17.21 and replace all \_.get() calls with optional chaining" is actionable.
+- **Check status later** — Run `shipwright fix --status` to review past fix sessions and their outcomes.

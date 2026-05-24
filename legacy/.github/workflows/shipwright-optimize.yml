@@ -1,0 +1,170 @@
+name: Shipwright Self-Optimization
+
+on:
+  schedule:
+    - cron: "0 3 * * 0" # Sunday 3am UTC
+  workflow_dispatch: {}
+
+concurrency:
+  group: shipwright-optimize
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+  # Issue #460 — needed by `gh run download` to pull cost-breakdown artifacts
+  # from recent shipwright-pipeline runs for cross-machine cost optimization.
+  actions: read
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Configure git
+        run: |
+          git config user.name "shipwright[bot]"
+          git config user.email "shipwright[bot]@users.noreply.github.com"
+
+      - name: Restore persistent state
+        run: |
+          mkdir -p ~/.shipwright/memory ~/.shipwright/optimization
+          if git fetch origin shipwright-data 2>/dev/null; then
+            echo "Restoring state from shipwright-data branch..."
+            for file in events.jsonl costs.json budget.json; do
+              git show "origin/shipwright-data:${file}" > ~/.shipwright/"${file}" 2>/dev/null || true
+            done
+            # Issue #460 — baselines/ holds the rolling per-stage cost baseline
+            # that the cost-breakdown merge step folds new data into. Restore it
+            # so consecutive cron runs accumulate cross-machine cost intel.
+            for dir in memory optimization baselines; do
+              for file in $(git ls-tree -r --name-only origin/shipwright-data -- "${dir}/" 2>/dev/null); do
+                mkdir -p ~/.shipwright/"$(dirname "$file")"
+                git show "origin/shipwright-data:${file}" > ~/.shipwright/"${file}" 2>/dev/null || true
+              done
+            done
+            echo "State restored successfully"
+          else
+            echo "No shipwright-data branch found — starting fresh"
+          fi
+
+      # Issue #460 — Fold cross-machine cost-breakdown artifacts from recent
+      # pipeline runs into the shared rolling baseline. Each pipeline run uploads
+      # `cost-breakdown-issue-<N>-run-<RUN_ID>` (retention 30d). See
+      # docs/cost-sharing.md for the artifact-name contract.
+      - name: Download recent cost-breakdown artifacts
+        id: cost_download
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p /tmp/cost-merge
+          # Pull the 20 most-recent completed pipeline runs and download their
+          # dedicated cost-breakdown artifact (if present). Errors are silenced
+          # per-run so a single missing or stale artifact does not abort the
+          # whole optimize pass.
+          gh run list \
+            --workflow=shipwright-pipeline.yml \
+            --status=completed \
+            --limit=20 \
+            --json databaseId \
+            --jq '.[].databaseId' 2>/dev/null \
+            | while read -r run_id; do
+                [ -z "$run_id" ] && continue
+                gh run download "$run_id" \
+                  --dir "/tmp/cost-merge/run-$run_id" \
+                  --pattern 'cost-breakdown-*' 2>/dev/null || true
+              done
+          ARTIFACT_COUNT=$(find /tmp/cost-merge -name 'cost-breakdown.json' 2>/dev/null | wc -l | tr -d ' ')
+          echo "artifact_count=${ARTIFACT_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "Downloaded ${ARTIFACT_COUNT} cost-breakdown artifact(s) from recent runs"
+
+      - name: Merge cost breakdowns and update baselines
+        if: steps.cost_download.outputs.artifact_count != '0'
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p ~/.shipwright/baselines
+          # shellcheck disable=SC1091
+          source scripts/lib/cost/share.sh
+          # shellcheck disable=SC1091
+          source scripts/lib/cost/baselines.sh
+          cost_merge_breakdowns /tmp/cost-merge ~/.shipwright/baselines/merged-cost-breakdown.json
+          n_updated=$(cost_apply_merged_to_baselines ~/.shipwright/baselines/merged-cost-breakdown.json | tail -1)
+          echo "Folded merged breakdown into baseline: ${n_updated:-0} stage(s) updated"
+
+      - name: Run self-optimization
+        run: |
+          set +e
+
+          echo "--- Running self-optimization analysis ---"
+          bash ./scripts/sw-self-optimize.sh tune 2>&1 || echo "Optimization tune completed with warnings"
+
+          echo ""
+          echo "--- Generating optimization report ---"
+          REPORT=$(bash ./scripts/sw-self-optimize.sh report 2>/dev/null || echo "No report generated")
+          echo "$REPORT"
+
+          echo ""
+          echo "--- Evolving memory patterns ---"
+          bash ./scripts/sw-self-optimize.sh evolve-memory 2>&1 || echo "Memory evolution completed with warnings"
+
+      - name: Persist state to shipwright-data branch
+        if: always()
+        run: |
+          SW_STATE_DIR=$(mktemp -d)
+          cd "$SW_STATE_DIR"
+          git init
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          if git fetch origin shipwright-data 2>/dev/null; then
+            git checkout -b shipwright-data origin/shipwright-data
+          else
+            git checkout --orphan shipwright-data
+            echo "# Shipwright Persistent State" > README.md
+          fi
+          cp ~/.shipwright/events.jsonl . 2>/dev/null || true
+          cp ~/.shipwright/costs.json . 2>/dev/null || true
+          cp ~/.shipwright/budget.json . 2>/dev/null || true
+          for dir in memory optimization baselines; do
+            if [[ -d ~/.shipwright/${dir} ]]; then
+              cp -r ~/.shipwright/${dir} . 2>/dev/null || true
+            fi
+          done
+          git config user.name "shipwright[bot]"
+          git config user.email "shipwright[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet 2>/dev/null; then
+            echo "No state changes to persist"
+          else
+            git commit -m "chore: persist optimization state [skip ci]"
+            PUSHED=false
+            for ATTEMPT in 1 2 3 4 5; do
+              if git push origin shipwright-data 2>/dev/null; then
+                PUSHED=true
+                break
+              fi
+              JITTER=$((RANDOM % 10 + 2))
+              echo "Push attempt $ATTEMPT failed — retrying in ${JITTER}s..."
+              sleep "$JITTER"
+              git fetch origin shipwright-data 2>/dev/null || true
+              git rebase origin/shipwright-data 2>/dev/null || {
+                echo "Rebase conflict — force pushing"
+                git rebase --abort 2>/dev/null || true
+                git push origin shipwright-data --force 2>/dev/null && PUSHED=true && break
+              }
+            done
+            if [ "$PUSHED" = "true" ]; then
+              echo "State persisted to shipwright-data branch"
+            else
+              echo "WARNING: Failed to persist state after 5 attempts — non-fatal"
+            fi
+          fi

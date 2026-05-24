@@ -1,0 +1,175 @@
+name: Pipeline Resume
+
+# Human-triggered resume for a failed or stuck pipeline.
+# Auto-detects which stages already completed by reading .claude/pipeline-state.md
+# from the feature branch, then dispatches shipwright-pipeline.yml with those stages
+# pre-filled so the pipeline picks up from where it left off.
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to resume"
+        required: true
+        type: number
+      completed_stages:
+        description: "Override: comma-separated stages to skip (auto-detected from branch if blank)"
+        required: false
+        default: ""
+        type: string
+      template:
+        description: "Pipeline template"
+        required: false
+        default: "full"
+        type: choice
+        options:
+          - fast
+          - standard
+          - full
+          - autonomous
+          - cost-aware
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ inputs.issue_number }}
+      OVERRIDE_STAGES: ${{ inputs.completed_stages }}
+      TEMPLATE: ${{ inputs.template }}
+
+    steps:
+      - name: Detect completed stages and dispatch pipeline
+        run: |
+          set -euo pipefail
+          BRANCH="shipwright/issue-${ISSUE_NUMBER}"
+
+          # ── 1. Guard: bail if a pipeline run for this issue is already in progress ─
+          # Filter by displayTitle (run-name: "Shipwright Pipeline #N") to avoid
+          # blocking resumes for different issues — the pipeline has per-issue
+          # concurrency groups already, so repo-wide detection would be too broad.
+          ACTIVE=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow shipwright-pipeline.yml \
+            --status in_progress \
+            --limit 50 \
+            --json displayTitle \
+            --jq "[.[] | select(.displayTitle | contains(\"#${ISSUE_NUMBER}\"))] | length" \
+            2>/dev/null || echo "0")
+          if [[ "${ACTIVE:-0}" -gt 0 ]]; then
+            echo "A Shipwright Pipeline run for issue #${ISSUE_NUMBER} is already in progress — aborting resume."
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
+          :warning: **Pipeline Resume Aborted**
+
+          A pipeline run for issue #${ISSUE_NUMBER} is already **in progress**.
+          Resume was not dispatched to avoid duplicate work.
+
+          Check [workflow runs](${{ github.server_url }}/${{ github.repository }}/actions/workflows/shipwright-pipeline.yml) and retry once the active run finishes.
+          EOF
+          )"
+            exit 0
+          fi
+
+          # ── 2. Resolve completed stages ──────────────────────────────────────
+
+          # Manual override always wins — that's the whole point of an override
+          if [[ -n "$OVERRIDE_STAGES" ]]; then
+            DETECTED="$OVERRIDE_STAGES"
+            SOURCE="manual override"
+          else
+            # Primary: structured pipeline-status.json (written at each stage transition)
+            STATUS_B64=$(gh api \
+              "repos/$GITHUB_REPOSITORY/contents/.claude/pipeline-status.json?ref=$BRANCH" \
+              --jq '.content' 2>/dev/null || true)
+            JSON_STAGES=""
+            if [[ -n "$STATUS_B64" ]]; then
+              JSON_STAGES=$(printf '%s' "$STATUS_B64" | base64 -d 2>/dev/null \
+                | jq -r '.completed_stages[]?' 2>/dev/null \
+                | sort -u || true)
+            fi
+
+            # Fallback: try branch state file via gh api (no checkout needed; contents: read is sufficient)
+            STATE_B64=$(gh api \
+              "repos/$GITHUB_REPOSITORY/contents/.claude/pipeline-state.md?ref=$BRANCH" \
+              --jq '.content' 2>/dev/null) || STATE_B64=""
+
+            BRANCH_STAGES=""
+            if [[ -n "$STATE_B64" ]]; then
+              # GitHub API base64 includes line breaks every 60 chars; base64 -d handles them
+              # Use grep -E + sed (portable; avoids GNU grep -P dependency)
+              BRANCH_STAGES=$(printf '%s' "$STATE_B64" | base64 -d 2>/dev/null \
+                | grep -E '^[[:space:]]+[a-z_]+: complete' \
+                | sed 's/^[[:space:]]*//' \
+                | sed 's/: complete$//' \
+                | sort -u || true)
+            fi
+
+            # Final fallback: parse issue comments for SHIPWRIGHT-STAGE markers
+            COMMENT_STAGES=""
+            if [[ -z "$JSON_STAGES" && -z "$BRANCH_STAGES" ]]; then
+              COMMENTS=$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                --json comments --jq '.comments[].body' 2>/dev/null || true)
+              COMMENT_STAGES=$(printf '%s' "$COMMENTS" \
+                | grep -oE 'SHIPWRIGHT-STAGE: [a-z_]+:complete' \
+                | sed 's/SHIPWRIGHT-STAGE: //;s/:complete//' \
+                | sort -u || true)
+            fi
+
+            STAGES_NL="${JSON_STAGES:-${BRANCH_STAGES:-$COMMENT_STAGES}}"
+            DETECTED=$(printf '%s' "$STAGES_NL" | tr '\n' ',' | sed 's/,$//;s/^,//')
+
+            if [[ -n "$JSON_STAGES" ]]; then
+              SOURCE="structured pipeline-status.json ($BRANCH)"
+            elif [[ -n "$BRANCH_STAGES" ]]; then
+              SOURCE="branch state file ($BRANCH)"
+            elif [[ -n "$COMMENT_STAGES" ]]; then
+              SOURCE="issue comments"
+            else
+              SOURCE="no completed stages found"
+            fi
+          fi
+
+          # ── 3. Compute the next stage (most useful info for the human) ───────
+          CANON="intake plan design build test review compound_quality pr merge deploy validate monitor"
+          NEXT="(unknown)"
+          for s in $CANON; do
+            case ",$DETECTED," in *",$s,"*) continue ;; esac
+            NEXT="$s"; break
+          done
+
+          echo "Completed stages: ${DETECTED:-none}"
+          echo "Source: $SOURCE"
+          echo "Next stage: $NEXT"
+          echo "Template: $TEMPLATE"
+
+          # ── 4. Post resume comment on issue ──────────────────────────────────
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
+          :arrows_counterclockwise: **Pipeline Resume Dispatched**
+
+          | Field | Value |
+          |-------|-------|
+          | Completed stages | \`${DETECTED:-none}\` |
+          | Source | $SOURCE |
+          | Next stage | \`$NEXT\` |
+          | Template | \`$TEMPLATE\` |
+
+          The pipeline will skip already-completed stages and resume from \`$NEXT\`.
+
+          > **Note**: If a pipeline was already running it would have been detected and this dispatch would have aborted.
+          EOF
+          )"
+
+          # ── 5. Dispatch the main pipeline ─────────────────────────────────────
+          gh workflow run shipwright-pipeline.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            -f issue_number="$ISSUE_NUMBER" \
+            -f template="$TEMPLATE" \
+            -f completed_stages="$DETECTED" \
+            -f skip_triage=true

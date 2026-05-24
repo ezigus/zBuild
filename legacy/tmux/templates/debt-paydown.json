@@ -1,0 +1,34 @@
+{
+  "name": "debt-paydown",
+  "description": "Technical debt reduction with analysis, refactoring, and verification agents",
+  "keywords": [
+    "debt",
+    "tech debt",
+    "technical debt",
+    "cleanup",
+    "legacy",
+    "modernize",
+    "deprecate",
+    "upgrade deps"
+  ],
+  "agents": [
+    {
+      "name": "analyzer",
+      "role": "Identify debt hotspots — cyclomatic complexity, code churn, tight coupling, outdated dependencies, dead code",
+      "focus": "src/, lib/, package.json, go.mod, *.lock"
+    },
+    {
+      "name": "refactorer",
+      "role": "Systematic cleanup while preserving test coverage. Upgrade dependencies, remove dead code, simplify abstractions.",
+      "focus": "src/, lib/, apps/"
+    },
+    {
+      "name": "reviewer",
+      "role": "Verify behavior preservation — no regressions, measurable complexity reduction, test coverage maintained or improved",
+      "focus": "*.test.*, __tests__/, *.spec.*"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

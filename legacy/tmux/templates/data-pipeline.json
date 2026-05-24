@@ -1,0 +1,36 @@
+{
+  "name": "data-pipeline",
+  "description": "Data engineering with extract, transform, and load agents",
+  "keywords": [
+    "data",
+    "pipeline",
+    "etl",
+    "elt",
+    "ingestion",
+    "warehouse",
+    "lake",
+    "batch",
+    "stream",
+    "sql"
+  ],
+  "agents": [
+    {
+      "name": "extractor",
+      "role": "Source connectors, ingestion logic, schema mapping, incremental extraction, change data capture",
+      "focus": "src/extract/, src/connectors/, src/sources/, config/"
+    },
+    {
+      "name": "transformer",
+      "role": "Business logic, data cleaning, aggregation, validation rules, data quality checks",
+      "focus": "src/transform/, src/models/, src/validators/, sql/, dbt/"
+    },
+    {
+      "name": "loader",
+      "role": "Sink connectors, idempotent writes, partitioning, monitoring, schema evolution handling",
+      "focus": "src/load/, src/sinks/, src/destinations/, *.test.*"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

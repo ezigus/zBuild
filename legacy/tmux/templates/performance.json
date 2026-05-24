@@ -1,0 +1,35 @@
+{
+  "name": "performance",
+  "description": "Performance optimization with profiling, optimization, and validation agents",
+  "keywords": [
+    "performance",
+    "slow",
+    "optimize",
+    "benchmark",
+    "profile",
+    "latency",
+    "throughput",
+    "cache",
+    "speed"
+  ],
+  "agents": [
+    {
+      "name": "profiler",
+      "role": "Benchmark endpoints and functions, identify bottlenecks, generate flame graphs and timing data",
+      "focus": "*.bench.*, *.perf.*, scripts/"
+    },
+    {
+      "name": "optimizer",
+      "role": "Implement performance fixes — query optimization, caching, lazy loading, algorithm improvements",
+      "focus": "src/, lib/, apps/"
+    },
+    {
+      "name": "validator",
+      "role": "Before/after benchmarks, regression prevention tests, verify no behavior changes",
+      "focus": "*.test.*, *.bench.*, __tests__/"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

@@ -1,0 +1,239 @@
+{
+  "$schema": "https://shipwright.dev/schemas/policy-v1.json",
+  "description": "Central policy for Shipwright — timeouts, limits, thresholds, risk tiers, merge gates. Single source of truth for the Code Factory pattern.",
+  "version": "2",
+  "riskTierRules": {
+    "critical": [
+      "config/policy.json",
+      "config/policy.schema.json",
+      ".github/workflows/**",
+      ".claude/hooks/**",
+      "scripts/lib/policy.sh"
+    ],
+    "high": [
+      "scripts/sw-pipeline.sh",
+      "scripts/sw-daemon.sh",
+      "scripts/sw-pr-lifecycle.sh",
+      "scripts/sw-incident.sh",
+      "scripts/sw-security-audit.sh",
+      "scripts/sw-github-checks.sh",
+      "scripts/sw-github-graphql.sh",
+      "scripts/sw-github-deploy.sh",
+      "scripts/lib/pipeline-stages.sh",
+      "scripts/lib/pipeline-quality.sh",
+      "dashboard/server.ts"
+    ],
+    "medium": [
+      "scripts/sw-*.sh",
+      "scripts/lib/*.sh",
+      "dashboard/**",
+      "templates/pipelines/**"
+    ],
+    "low": ["docs/**", "website/**", "**/*.md", "**"]
+  },
+  "mergePolicy": {
+    "critical": {
+      "requiredChecks": [
+        "risk-policy-gate",
+        "test",
+        "smoke",
+        "platform-health",
+        "shellcheck"
+      ],
+      "requiredReviewers": 1,
+      "requiredEvidence": ["cli", "api"],
+      "requireDocsDriftCheck": true
+    },
+    "high": {
+      "requiredChecks": ["risk-policy-gate", "test", "smoke"],
+      "requiredReviewers": 0,
+      "requiredEvidence": ["cli"],
+      "requireDocsDriftCheck": false
+    },
+    "medium": {
+      "requiredChecks": ["risk-policy-gate", "test"],
+      "requiredReviewers": 0,
+      "requiredEvidence": [],
+      "requireDocsDriftCheck": false
+    },
+    "low": {
+      "requiredChecks": ["risk-policy-gate"],
+      "requiredReviewers": 0,
+      "requiredEvidence": [],
+      "requireDocsDriftCheck": false
+    }
+  },
+  "docsDriftRules": {
+    "trackedPairs": [
+      {
+        "source": "config/policy.json",
+        "docs": ["docs/config-policy.md", "README.md"]
+      },
+      {
+        "source": ".github/workflows/**",
+        "docs": ["docs/config-policy.md"]
+      },
+      {
+        "source": "scripts/sw-pipeline.sh",
+        "docs": ["website/src/content/docs/guides/pipeline.mdx"]
+      }
+    ],
+    "failOnDrift": false,
+    "warnOnDrift": true
+  },
+  "evidence": {
+    "artifactMaxAgeMinutes": 30,
+    "requireFreshArtifacts": true,
+    "collectors": [
+      {
+        "name": "dashboard-loads",
+        "type": "browser",
+        "entrypoint": "/",
+        "baseUrl": "http://localhost:8767",
+        "assertions": ["page-title-visible", "websocket-connected"]
+      },
+      {
+        "name": "pipeline-status",
+        "type": "browser",
+        "entrypoint": "/pipeline",
+        "baseUrl": "http://localhost:8767",
+        "assertions": ["stage-list-rendered", "progress-indicator-visible"]
+      },
+      {
+        "name": "dashboard-api-health",
+        "type": "api",
+        "method": "GET",
+        "url": "http://localhost:8767/api/health",
+        "expectedStatus": 200,
+        "assertions": ["status-ok", "response-has-version"]
+      },
+      {
+        "name": "dashboard-ws-connect",
+        "type": "api",
+        "method": "GET",
+        "url": "http://localhost:8767/api/ws-status",
+        "expectedStatus": 200,
+        "assertions": ["websocket-active"]
+      },
+      {
+        "name": "pipeline-cli-smoke",
+        "type": "cli",
+        "command": "bash scripts/sw-pipeline.sh status",
+        "expectedExitCode": 0,
+        "assertions": ["has-pipeline-state"]
+      },
+      {
+        "name": "policy-validation",
+        "type": "cli",
+        "command": "jq empty config/policy.json",
+        "expectedExitCode": 0,
+        "assertions": ["valid-json"]
+      },
+      {
+        "name": "db-schema-integrity",
+        "type": "database",
+        "command": "bash scripts/sw-db.sh health",
+        "expectedExitCode": 0,
+        "assertions": ["schema-valid", "db-accessible"]
+      }
+    ]
+  },
+  "harnessGapPolicy": {
+    "enabled": true,
+    "p0SlaHours": 24,
+    "p1SlaHours": 72,
+    "p2SlaHours": 168,
+    "autoCreateGapIssue": true,
+    "requireTestCaseBeforeClose": true
+  },
+  "codeReviewAgent": {
+    "provider": "internal",
+    "rerunMarker": "<!-- shipwright-review-rerun -->",
+    "timeoutMinutes": 20,
+    "treatVulnerabilityLanguageAsActionable": true,
+    "treatWeakConfidenceAsActionable": true,
+    "autoResolveBotsOnlyThreads": true,
+    "neverAutoResolveHumanThreads": true
+  },
+  "daemon": {
+    "poll_interval_seconds": 60,
+    "health_heartbeat_timeout": 120,
+    "stage_timeouts": {
+      "intake": 60,
+      "plan": 60,
+      "design": 60,
+      "lint": 60,
+      "format": 60,
+      "build": 300,
+      "test": 180,
+      "review": 180,
+      "compound_quality": 180
+    },
+    "auto_scale_interval_cycles": 5,
+    "optimize_interval_cycles": 10,
+    "stale_reaper_interval_cycles": 10,
+    "stale_timeout_multiplier": 2,
+    "stale_state_hours": 2
+  },
+  "pipeline": {
+    "max_iterations_default": 10,
+    "max_cycles_convergence_cap": 50,
+    "coverage_threshold_percent": 60,
+    "quality_gate_score_threshold": 70,
+    "memory_baseline_fallback_percent": 20,
+    "memory_inject_fallback_percent": 30
+  },
+  "quality": {
+    "coverage_threshold": 60,
+    "gate_score_threshold": 70,
+    "audit_weights": {
+      "test_pass": 30,
+      "coverage": 20,
+      "security": 20,
+      "architecture": 15,
+      "correctness": 15
+    }
+  },
+  "strategic": {
+    "max_issues_per_cycle": 5,
+    "cooldown_seconds": 14400,
+    "overlap_threshold_percent": 60,
+    "strategy_lines": 200
+  },
+  "retry": {
+    "max_pipeline_starts": 6,
+    "max_auto_retries": 3,
+    "abandon_after_minutes": 120
+  },
+  "sweep": {
+    "cron_minutes": 30,
+    "stuck_threshold_hours": 4,
+    "retry_template": "full",
+    "retry_max_iterations": 20,
+    "stuck_retry_max_iterations": 23
+  },
+  "hygiene": {
+    "artifact_age_days": 7
+  },
+  "recruit": {
+    "self_tune_min_matches": 5,
+    "self_tune_min_success_rate": 60,
+    "match_confidence_threshold": 0.3,
+    "max_match_history_size": 5000,
+    "max_profile_task_history": 50,
+    "meta_learning_accuracy_floor": 50,
+    "auto_evolve_after_outcomes": 20,
+    "llm_timeout_seconds": 30,
+    "default_model": "sonnet",
+    "promote_threshold_tasks": 10,
+    "promote_threshold_success_rate": 85
+  },
+  "decision": {
+    "enabled": true,
+    "cycle_interval_seconds": 1800,
+    "tiers_file": "config/decision-tiers.json",
+    "outcome_learning_enabled": true,
+    "outcome_min_samples": 10,
+    "dedup_window_days": 7
+  }
+}

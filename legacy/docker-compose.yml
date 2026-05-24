@@ -1,0 +1,64 @@
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  Shipwright — Docker Compose                                            ║
+# ║  docker compose up -d                                                   ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+
+services:
+  shipwright:
+    build: .
+    container_name: shipwright
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - SHIPWRIGHT_LOCAL=${SHIPWRIGHT_LOCAL:-0}
+      - NO_GITHUB=${NO_GITHUB:-0}
+    volumes:
+      # Mount your project for pipeline processing
+      - ${PROJECT_DIR:-.}:/workspace
+      # Persist shipwright state across restarts
+      - shipwright-data:/root/.shipwright
+      # Persist Claude config
+      - claude-config:/root/.claude
+    working_dir: /workspace
+    ports:
+      - "8767:8767" # Dashboard
+    tty: true
+    stdin_open: true
+    entrypoint: ["bash"]
+    command: ["-c", "shipwright dashboard start && exec bash"]
+
+  # Daemon mode: watches for labeled GitHub issues and auto-processes them
+  daemon:
+    build: .
+    container_name: shipwright-daemon
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    volumes:
+      - ${PROJECT_DIR:-.}:/workspace
+      - shipwright-data:/root/.shipwright
+      - claude-config:/root/.claude
+    working_dir: /workspace
+    entrypoint: ["shipwright"]
+    command: ["daemon", "start"]
+    restart: unless-stopped
+    profiles:
+      - daemon
+
+  # Dashboard only: real-time web UI
+  dashboard:
+    build: .
+    container_name: shipwright-dashboard
+    volumes:
+      - shipwright-data:/root/.shipwright
+    ports:
+      - "8767:8767"
+    entrypoint: ["shipwright"]
+    command: ["dashboard", "start", "--foreground"]
+    restart: unless-stopped
+    profiles:
+      - dashboard
+
+volumes:
+  shipwright-data:
+  claude-config:

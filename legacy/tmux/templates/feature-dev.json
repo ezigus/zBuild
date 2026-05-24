@@ -1,0 +1,25 @@
+{
+  "name": "feature-dev",
+  "description": "Feature development with backend, frontend, and tests agents",
+  "keywords": ["feature", "implement", "build", "create", "add", "new"],
+  "agents": [
+    {
+      "name": "backend",
+      "role": "API routes, services, data layer",
+      "focus": "src/api/, src/services/, src/models/"
+    },
+    {
+      "name": "frontend",
+      "role": "UI components, state management, styling",
+      "focus": "apps/web/src/, src/components/"
+    },
+    {
+      "name": "tests",
+      "role": "Unit tests, integration tests, test utilities",
+      "focus": "*.test.ts, __tests__/, *.spec.ts"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

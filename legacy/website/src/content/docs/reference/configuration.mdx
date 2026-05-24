@@ -1,0 +1,533 @@
+---
+title: Configuration
+description: Configure tmux theme, Claude Code settings, hooks, and environment variables.
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+## tmux Theme
+
+The theme lives in `tmux/tmux.conf`. It uses a dark blue-gray background with cyan accents.
+
+### Color Palette
+
+| Element                             | Color          | Hex       |
+| ----------------------------------- | -------------- | --------- |
+| Background                          | Dark blue-gray | `#1a1a2e` |
+| Foreground                          | Warm gray      | `#a8a8b0` |
+| Accent (active borders, highlights) | Cyan           | `#00d4ff` |
+| Secondary                           | Blue           | `#0066ff` |
+| Tertiary                            | Purple         | `#7c3aed` |
+| Inactive borders                    | Muted indigo   | `#333355` |
+| Inactive elements                   | Zinc           | `#71717a` |
+| Active pane background              | Lifted dark    | `#1e1e34` |
+
+:::note[v2.1.0 Color Update]
+Near-white text (`#e4e4e7`) was replaced with warm grays across all tmux chrome for reduced glare during extended sessions.
+:::
+
+### Visual Features (v2.1.0)
+
+**Role-Colored Pane Borders** — active pane border color reflects the agent role:
+
+| Role      | Color  | Hex       |
+| --------- | ------ | --------- |
+| Builder   | Blue   | `#0066ff` |
+| Reviewer  | Orange | `#f59e0b` |
+| Tester    | Yellow | `#eab308` |
+| Optimizer | Purple | `#7c3aed` |
+| Security  | Red    | `#ef4444` |
+| Docs      | Green  | `#4ade80` |
+
+**Pipeline Stage Badge** — the status bar shows a live pipeline stage indicator (`⚙ BUILD`, `⚡ TEST`, `↑ PR`) with stage-specific colors.
+
+**Agent Count Widget** — displays `λN` in the status bar showing the count of active agents from heartbeat files.
+
+**Active Pane Lift** — subtle background depth effect distinguishes the active pane from inactive panes.
+
+To customize colors, edit the hex values in `tmux/tmux.conf` and reload with `prefix + r`.
+
+### Keybindings
+
+The prefix key is `Ctrl-a` (remapped from the default `Ctrl-b`).
+
+#### General
+
+| Key           | Action                          |
+| ------------- | ------------------------------- |
+| `prefix + r`  | Reload tmux config              |
+| `prefix + \|` | Split pane vertically           |
+| `prefix + -`  | Split pane horizontally         |
+| `prefix + c`  | New window                      |
+| `prefix + x`  | Kill pane (with confirmation)   |
+| `prefix + X`  | Kill window (with confirmation) |
+| `prefix + s`  | Choose session (tree view)      |
+| `prefix + N`  | New session                     |
+
+#### Pane Navigation (vim-style)
+
+| Key                | Action                                    |
+| ------------------ | ----------------------------------------- |
+| `prefix + h/j/k/l` | Move between panes                        |
+| `Ctrl + h/j/k/l`   | Smart pane switching (vim-tmux-navigator) |
+| `prefix + H/J/K/L` | Resize pane (repeatable)                  |
+
+#### Agent Teams
+
+| Key               | Action                                    |
+| ----------------- | ----------------------------------------- |
+| `prefix + T`      | Launch team session                       |
+| `prefix + Ctrl-t` | Show team status dashboard                |
+| `prefix + g`      | Display pane numbers                      |
+| `prefix + G`      | Toggle zoom on current pane               |
+| `prefix + S`      | Toggle synchronized panes                 |
+| `prefix + M-t`    | Toggle team sync mode                     |
+| `prefix + M-1`    | Layout: main-horizontal (leader 65% left) |
+| `prefix + M-2`    | Layout: main-vertical (leader 60% top)    |
+| `prefix + M-3`    | Layout: tiled (equal sizes)               |
+| `prefix + M-s`    | Capture current pane scrollback           |
+| `prefix + M-a`    | Capture all panes in window               |
+| `prefix + R`      | Reap dead panes (one-shot cleanup)        |
+
+#### Copy Mode (vi-style)
+
+| Key          | Action                |
+| ------------ | --------------------- |
+| `v`          | Begin selection       |
+| `y`          | Copy selection        |
+| `r`          | Toggle rectangle mode |
+| `prefix + p` | Paste buffer          |
+
+## Claude Code Settings
+
+The `claude-code/settings.json.template` configures Claude Code for agent teams.
+
+### Key Settings
+
+| Setting                                | Default   | Description                   |
+| -------------------------------------- | --------- | ----------------------------- |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | `"1"`     | Enable agent teams (required) |
+| `CLAUDE_CODE_AUTOCOMPACT_PCT_OVERRIDE` | `"70"`    | Context compaction threshold  |
+| `CLAUDE_CODE_SUBAGENT_MODEL`           | `"haiku"` | Model for subagent lookups    |
+| `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | `"5"`     | Parallel tool calls per agent |
+
+### Installation
+
+1. Copy the template: `cp claude-code/settings.json.template ~/.claude/settings.json`
+2. Customize the `enabledPlugins` section
+3. Adjust environment variables as needed
+
+## Hooks
+
+Hooks are shell scripts that run on Claude Code lifecycle events.
+
+### Included Hooks
+
+| Hook                  | Event         | What It Does                                              |
+| --------------------- | ------------- | --------------------------------------------------------- |
+| `teammate-idle.sh`    | TeammateIdle  | Runs typecheck — blocks idle until errors are fixed       |
+| `task-completed.sh`   | TaskCompleted | Runs lint + test — blocks completion until quality passes |
+| `notify-idle.sh`      | Notification  | Desktop alert when agents need attention                  |
+| `pre-compact-save.sh` | PreCompact    | Saves git context before compaction                       |
+
+### Installing Hooks
+
+```bash
+# Copy hooks to Claude Code hooks directory
+cp claude-code/hooks/*.sh ~/.claude/hooks/
+chmod +x ~/.claude/hooks/*.sh
+```
+
+Then wire them up in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "teammate-idle": {
+      "command": "~/.claude/hooks/teammate-idle.sh",
+      "timeout": 30000
+    }
+  }
+}
+```
+
+### Writing Custom Hooks
+
+Quality gate hooks use exit codes to control behavior:
+
+| Exit Code | Meaning                                            |
+| --------- | -------------------------------------------------- |
+| `0`       | Pass — agent continues normally                    |
+| `2`       | Block — agent must fix the issue before proceeding |
+| Other     | Error — logged but doesn't block                   |
+
+Example lint check hook:
+
+```bash
+#!/usr/bin/env bash
+cd "$(find_project_root)" || exit 0
+pnpm lint 2>&1 || {
+  echo "::error::Lint errors found. Fix them before going idle."
+  exit 2
+}
+exit 0
+```
+
+## Daemon Intelligence Configuration
+
+The daemon configuration file at `.claude/daemon-config.json` controls all daemon intelligence features. Generate it with `shipwright daemon init`.
+
+### Core Settings
+
+| Field               | Default            | Description                      |
+| ------------------- | ------------------ | -------------------------------- |
+| `watch_label`       | `"ready-to-build"` | GitHub label to watch for        |
+| `poll_interval`     | `60`               | Seconds between polls            |
+| `max_parallel`      | `2`                | Maximum concurrent pipeline jobs |
+| `pipeline_template` | `"autonomous"`     | Default pipeline template        |
+| `base_branch`       | `"main"`           | Branch to create worktrees from  |
+| `model`             | `"opus"`           | Default Claude model             |
+| `skip_gates`        | `true`             | Auto-approve all gates           |
+
+### Adaptive Template Selection
+
+Automatically selects the best pipeline template based on issue labels and triage score.
+
+| Field           | Default | Description                                                    |
+| --------------- | ------- | -------------------------------------------------------------- |
+| `auto_template` | `false` | Enable adaptive template selection                             |
+| `template_map`  | `{}`    | Regex-based template overrides (label pattern → template name) |
+
+When `auto_template` is enabled, template selection uses this priority:
+
+1. **Label overrides** — `hotfix`/`incident` → hotfix template, `security` → enterprise
+2. **`template_map` overrides** — regex patterns matched against issue labels
+3. **Score-based** — score ≥ 70 → `fast`, ≥ 40 → `standard`, below → `full`
+
+```json
+{
+  "auto_template": true,
+  "template_map": {
+    "hotfix|incident": "hotfix",
+    "security": "enterprise"
+  }
+}
+```
+
+### Auto-Retry with Escalation
+
+Automatically retries failed pipelines with optional model/template escalation.
+
+| Field              | Default | Description                      |
+| ------------------ | ------- | -------------------------------- |
+| `max_retries`      | `2`     | Maximum retry attempts per issue |
+| `retry_escalation` | `true`  | Escalate model/template on retry |
+
+### Self-Optimizing Metrics
+
+Automatically tunes daemon parameters based on DORA metric thresholds. Enabled by default in the shipped daemon config.
+
+| Field               | Default | Description                                               |
+| ------------------- | ------- | --------------------------------------------------------- |
+| `self_optimize`     | `true`  | Enable self-optimizing loop (includes context efficiency) |
+| `optimize_interval` | `10`    | Poll cycles between optimization checks                   |
+
+Self-optimization adjustments:
+
+- **CFR > 40%** — switches to `full` template
+- **CFR > 20%** — enables compound quality
+- **Lead time > 4hrs** — increases `max_parallel`, halves `poll_interval`
+- **Lead time > 2hrs** — enables `auto_template`
+- **Deploy freq < 1/day** — recommends merge stage
+- **MTTR > 2hrs** — recommends auto-rollback
+
+### Priority Lanes
+
+Allows critical issues to bypass the normal queue and get processed immediately.
+
+| Field                  | Default                       | Description                             |
+| ---------------------- | ----------------------------- | --------------------------------------- |
+| `priority_lane`        | `false`                       | Enable priority bypass queue            |
+| `priority_lane_labels` | `"hotfix,incident,p0,urgent"` | Labels that trigger priority lane       |
+| `priority_lane_max`    | `1`                           | Maximum extra slots for priority issues |
+
+### Org-Wide Mode
+
+Watch issues across all repositories in a GitHub organization.
+
+| Field         | Default  | Description                                                 |
+| ------------- | -------- | ----------------------------------------------------------- |
+| `watch_mode`  | `"repo"` | `"repo"` for single repo, `"org"` for org-wide              |
+| `org`         | `null`   | GitHub organization name (required for org mode)            |
+| `repo_filter` | `null`   | Regex filter for repository names (e.g. `"api-.*\|web-.*"`) |
+
+### Patrol Settings
+
+Proactive codebase scanning during quiet periods.
+
+| Field               | Default         | Description                            |
+| ------------------- | --------------- | -------------------------------------- |
+| `patrol.interval`   | `3600`          | Seconds between patrol runs            |
+| `patrol.max_issues` | `5`             | Maximum issues to create per patrol    |
+| `patrol.label`      | `"auto-patrol"` | Label applied to patrol-created issues |
+
+### Degradation Alerting
+
+Monitors pipeline success rates and alerts on quality declines.
+
+| Field                       | Default | Description                                 |
+| --------------------------- | ------- | ------------------------------------------- |
+| `alerts.degradation_window` | `5`     | Number of recent pipelines to evaluate      |
+| `alerts.cfr_threshold`      | `30`    | Change failure rate (%) that triggers alert |
+| `alerts.success_threshold`  | `50`    | Success rate (%) below which an alert fires |
+
+### Health Monitoring
+
+| Field                    | Default | Description                              |
+| ------------------------ | ------- | ---------------------------------------- |
+| `health.stale_timeout_s` | `1800`  | Seconds before a job is considered stale |
+
+### Lifecycle Hooks
+
+| Field                          | Default               | Description                             |
+| ------------------------------ | --------------------- | --------------------------------------- |
+| `on_success.remove_label`      | `"ready-to-build"`    | Label to remove on success              |
+| `on_success.add_label`         | `"pipeline/complete"` | Label to add on success                 |
+| `on_success.close_issue`       | `false`               | Close issue on success                  |
+| `on_failure.add_label`         | `"pipeline/failed"`   | Label to add on failure                 |
+| `on_failure.comment_log_lines` | `50`                  | Log lines to include in failure comment |
+
+### Notifications
+
+| Field                         | Default | Description                  |
+| ----------------------------- | ------- | ---------------------------- |
+| `notifications.slack_webhook` | `null`  | Slack webhook URL for alerts |
+
+### Full Example
+
+```json
+{
+  "watch_label": "ready-to-build",
+  "poll_interval": 60,
+  "max_parallel": 2,
+  "pipeline_template": "autonomous",
+  "base_branch": "main",
+  "model": "opus",
+  "skip_gates": true,
+  "auto_template": true,
+  "template_map": {
+    "hotfix|incident": "hotfix",
+    "security": "enterprise"
+  },
+  "max_retries": 2,
+  "retry_escalation": true,
+  "self_optimize": true,
+  "optimize_interval": 10,
+  "intelligence": {
+    "enabled": true,
+    "optimization_enabled": true,
+    "prediction_enabled": true
+  },
+  "priority_lane": true,
+  "priority_lane_labels": "hotfix,incident,p0,urgent",
+  "priority_lane_max": 1,
+  "watch_mode": "repo",
+  "org": null,
+  "repo_filter": null,
+  "patrol": {
+    "interval": 3600,
+    "max_issues": 5,
+    "label": "auto-patrol"
+  },
+  "alerts": {
+    "degradation_window": 5,
+    "cfr_threshold": 30,
+    "success_threshold": 50
+  },
+  "health": {
+    "stale_timeout_s": 1800
+  },
+  "on_success": {
+    "remove_label": "ready-to-build",
+    "add_label": "pipeline/complete",
+    "close_issue": false
+  },
+  "on_failure": {
+    "add_label": "pipeline/failed",
+    "comment_log_lines": 50
+  },
+  "notifications": {
+    "slack_webhook": null
+  }
+}
+```
+
+## Intelligence Configuration
+
+The intelligence layer adds semantic codebase analysis, predictive risk assessment, and self-optimization to the daemon. All intelligence features are optional and configured in the `intelligence` section of `.claude/daemon-config.json`.
+
+### Core Intelligence Settings
+
+| Field                            | Default | Description                                                                            |
+| -------------------------------- | ------- | -------------------------------------------------------------------------------------- |
+| `intelligence.enabled`           | `auto`  | Master switch: `auto` enables when Claude CLI is available; `true`/`false` to override |
+| `intelligence.cache_ttl_seconds` | `3600`  | Cache duration for intelligence responses (prevents re-analyzing the same issue)       |
+
+### Intelligence Feature Flags
+
+| Field                               | Default | Description                                                                     |
+| ----------------------------------- | ------- | ------------------------------------------------------------------------------- |
+| `intelligence.composer_enabled`     | `false` | Enable dynamic pipeline composition (replaces static template selection)        |
+| `intelligence.optimization_enabled` | `true`  | Enable self-optimization (outcome analysis, template tuning, model A/B testing) |
+| `intelligence.prediction_enabled`   | `true`  | Enable predictive analytics (risk assessment, anomaly detection, AI patrol)     |
+| `intelligence.adversarial_enabled`  | `false` | Enable adversarial code review (red-team review after primary agent)            |
+| `intelligence.simulation_enabled`   | `false` | Enable developer simulation (simulated PR review with multiple personas)        |
+| `intelligence.architecture_enabled` | `false` | Enable architecture enforcer (living architectural model and validation)        |
+
+### Intelligence Tuning Parameters
+
+| Field                            | Default | Description                                               |
+| -------------------------------- | ------- | --------------------------------------------------------- |
+| `intelligence.ab_test_ratio`     | `0.2`   | Fraction of runs using composed pipelines for A/B testing |
+| `intelligence.anomaly_threshold` | `3.0`   | Standard deviations for anomaly detection                 |
+
+All intelligence features degrade gracefully when disabled or when Claude API calls fail. The system falls back to existing static behavior.
+
+## Decision Engine Configuration
+
+The decision engine handles autonomous operational decisions with risk-tiered approval. Configure in `config/policy.json` under the `decision` key.
+
+| Field                               | Default                      | Description                                          |
+| ----------------------------------- | ---------------------------- | ---------------------------------------------------- |
+| `decision.enabled`                  | `true`                       | Enable the autonomous decision engine                |
+| `decision.cycle_interval_seconds`   | `1800`                       | Seconds between decision cycles                      |
+| `decision.tiers_file`               | `config/decision-tiers.json` | Risk tier definitions for decisions                  |
+| `decision.outcome_learning_enabled` | `true`                       | Learn from decision outcomes to improve future calls |
+| `decision.outcome_min_samples`      | `10`                         | Minimum samples before applying learned adjustments  |
+| `decision.dedup_window_days`        | `7`                          | Window for deduplicating identical decisions         |
+
+## Context Engineering Configuration
+
+Context engineering controls how pipeline agents compose and trim their context window. Configure in `config/defaults.json` under the `loop` key.
+
+| Field                             | Default  | Description                             |
+| --------------------------------- | -------- | --------------------------------------- |
+| `loop.context_budget_chars`       | `180000` | Maximum characters for composed prompts |
+| `loop.context_trim_memory_chars`  | `20000`  | Max characters from memory injection    |
+| `loop.context_trim_git_entries`   | `10`     | Max git log entries included in context |
+| `loop.context_trim_hotspot_files` | `5`      | Max hotspot files included              |
+| `loop.context_trim_test_lines`    | `50`     | Max lines of test output included       |
+
+The self-optimization loop monitors context efficiency events (`loop.context_efficiency`) and recommends budget adjustments automatically. See the [Intelligence guide](/guides/intelligence/#context-efficiency-closed-loop) for details.
+
+## Auto-Scaling Configuration
+
+The daemon supports resource-aware dynamic worker scaling based on system capacity and budget.
+
+| Field                        | Default | Description                                    |
+| ---------------------------- | ------- | ---------------------------------------------- |
+| `auto_scale`                 | `false` | Enable resource-aware dynamic worker scaling   |
+| `auto_scale_interval`        | `5`     | Seconds between scale checks                   |
+| `max_workers`                | `8`     | Maximum workers the auto-scaler can allocate   |
+| `min_workers`                | `1`     | Minimum workers (floor)                        |
+| `worker_mem_gb`              | `4`     | Memory per worker for capacity calculation     |
+| `estimated_cost_per_job_usd` | `5.0`   | Cost estimate per job for budget-based scaling |
+
+Scaling factors (takes the minimum):
+
+- **CPU**: 75% of system cores
+- **Memory**: available GB / `worker_mem_gb`
+- **Budget**: remaining daily budget / `estimated_cost_per_job_usd`
+- **Queue**: current demand (active + queued issues)
+
+## Worker Pool Configuration
+
+For fleet operations, distribute workers across multiple repositories.
+
+| Field                                    | Default | Description                                  |
+| ---------------------------------------- | ------- | -------------------------------------------- |
+| `worker_pool.enabled`                    | `false` | Enable shared worker pool across fleet repos |
+| `worker_pool.total_workers`              | `12`    | Total workers to distribute across repos     |
+| `worker_pool.rebalance_interval_seconds` | `120`   | Seconds between rebalance cycles             |
+
+When enabled, the fleet rebalancer runs in the background and redistributes workers every N seconds. Repos with more queued issues get more workers. Each repo always gets at least 1 worker.
+
+## Fleet Configuration
+
+The fleet configuration file at `.claude/fleet-config.json` manages multi-repo daemon orchestration. Generate it with `shipwright fleet init`.
+
+```json
+{
+  "repos": [
+    { "path": "/path/to/api", "template": "autonomous", "max_parallel": 2 },
+    { "path": "/path/to/web", "template": "standard" }
+  ],
+  "defaults": {
+    "watch_label": "ready-to-build",
+    "pipeline_template": "autonomous",
+    "max_parallel": 2,
+    "model": "opus"
+  },
+  "shared_events": true
+}
+```
+
+### Repo-Level Overrides
+
+Each entry in the `repos` array can override the fleet defaults:
+
+| Field          | Default                      | Description                                   |
+| -------------- | ---------------------------- | --------------------------------------------- |
+| `path`         | —                            | **Required.** Absolute path to the repository |
+| `template`     | `defaults.pipeline_template` | Pipeline template override                    |
+| `max_parallel` | `defaults.max_parallel`      | Max concurrent pipelines for this repo        |
+| `watch_label`  | `defaults.watch_label`       | Label override for this repo                  |
+| `model`        | `defaults.model`             | Model override for this repo                  |
+
+### Fleet Defaults
+
+| Field                        | Default            | Description                      |
+| ---------------------------- | ------------------ | -------------------------------- |
+| `defaults.watch_label`       | `"ready-to-build"` | Default issue label to watch     |
+| `defaults.pipeline_template` | `"autonomous"`     | Default pipeline template        |
+| `defaults.max_parallel`      | `2`                | Default max concurrent pipelines |
+| `defaults.model`             | `"opus"`           | Default Claude model             |
+| `shared_events`              | `true`             | Share events.jsonl across repos  |
+
+## Deploy Configuration
+
+Deploy configuration is set up via `shipwright init --deploy` or by using the `deployed` pipeline template. Deploy adapters live in `scripts/adapters/`.
+
+Available deploy adapters:
+
+| Adapter | File                         | Description             |
+| ------- | ---------------------------- | ----------------------- |
+| Vercel  | `adapters/vercel-deploy.sh`  | Vercel deployment       |
+| Fly.io  | `adapters/fly-deploy.sh`     | Fly.io deployment       |
+| Railway | `adapters/railway-deploy.sh` | Railway deployment      |
+| Docker  | `adapters/docker-deploy.sh`  | Docker-based deployment |
+
+The `deployed` pipeline template uses placeholder commands (`__STAGING_CMD__`, `__PRODUCTION_CMD__`, `__ROLLBACK_CMD__`, `__SMOKE_CMD__`, `__HEALTH_URL__`) that are replaced during `shipwright init --deploy`.
+
+## Environment Variables
+
+| Variable                               | Default      | Description                                            |
+| -------------------------------------- | ------------ | ------------------------------------------------------ |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | —            | **Required.** Enables agent teams                      |
+| `CLAUDE_CODE_SUBAGENT_MODEL`           | parent model | Model for subagent lookups (`"haiku"` recommended)     |
+| `CLAUDE_CODE_AUTOCOMPACT_PCT_OVERRIDE` | `"80"`       | Context compaction threshold (lower = more aggressive) |
+| `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | `"3"`        | Parallel tool calls per agent                          |
+| `SHIPWRIGHT_WEBHOOK_URL`               | —            | Custom webhook URL for pipeline notifications          |
+
+## tmux Plugins (TPM)
+
+After installation, press `prefix + I` to install plugins.
+
+| Plugin             | Key            | What It Does                                    |
+| ------------------ | -------------- | ----------------------------------------------- |
+| **tmux-fingers**   | `prefix + F`   | Vimium-style copy hints for URLs, paths, hashes |
+| **tmux-fzf-url**   | `prefix + u`   | Fuzzy-find and open URLs                        |
+| **tmux-fzf**       | `F5`           | Fuzzy finder for sessions, windows, panes       |
+| **extrakto**       | `prefix + tab` | Extract and copy text from pane output          |
+| **tmux-resurrect** | auto           | Save and restore sessions across restarts       |
+| **tmux-continuum** | auto           | Automatic continuous session saving             |

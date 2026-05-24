@@ -1,0 +1,312 @@
+name: Shipwright Dispatch
+
+# Unified issue dispatch + sweep. Bridges shipwright-labeled issues to pipeline
+# dispatch, handles stuck pipelines, and retries failures without a retry comment.
+# Runs every 15 minutes — absorbs the former 30-minute shipwright-sweep.yml.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+concurrency:
+  group: shipwright-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Load sweep policy from config
+        run: |
+          if [ -f config/policy.json ]; then
+            echo "STUCK_THRESHOLD_HOURS=$(jq -r '.sweep.stuck_threshold_hours // 4' config/policy.json)" >> $GITHUB_ENV
+            _rt=$(jq -r '.sweep.retry_template // empty' config/policy.json 2>/dev/null || true)
+            echo "RETRY_TEMPLATE=${_rt:-full}" >> $GITHUB_ENV
+            echo "RETRY_MAX_ITERATIONS=$(jq -r '.sweep.retry_max_iterations // 25' config/policy.json)" >> $GITHUB_ENV
+            echo "STUCK_RETRY_MAX_ITERATIONS=$(jq -r '.sweep.stuck_retry_max_iterations // 30' config/policy.json)" >> $GITHUB_ENV
+          fi
+
+      - name: Scan and dispatch shipwright-labeled issues
+        id: find
+        run: |
+          echo "--- Shipwright Dispatch: $(date -u +%Y-%m-%dT%H:%M:%SZ) ---"
+          STUCK_HOURS="${STUCK_THRESHOLD_HOURS:-4}"
+
+          # Get all open issues with the 'shipwright' label
+          ISSUES=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label shipwright --state open --json number,title \
+            --jq '.[].number' 2>/dev/null || echo "")
+
+          if [[ -z "$ISSUES" ]]; then
+            echo "No open shipwright-labeled issues found."
+            echo "dispatch=" >> "$GITHUB_OUTPUT"
+            echo "stuck=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Found shipwright-labeled issues: $ISSUES"
+
+          # Timestamps for lookback windows
+          STUCK_CUTOFF=$(date -u -d "${STUCK_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-${STUCK_HOURS}H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "2000-01-01T00:00:00Z")
+
+          DISPATCH=""
+          STUCK=""
+          DISPATCHED=0
+          SKIPPED=0
+
+          for issue in $ISSUES; do
+            echo ""
+            echo "--- Checking issue #$issue ---"
+
+            # ── Check 1: Skip if issue has shipwright-failed label ──
+            HAS_FAILED_LABEL=$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
+              --json labels --jq '[.labels[].name] | index("shipwright-failed") // empty' 2>/dev/null || echo "")
+
+            if [[ -n "$HAS_FAILED_LABEL" ]]; then
+              echo "Issue #$issue: has shipwright-failed label — skipping"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            # ── Check 2: Active/queued pipeline runs for THIS issue ──
+            ISSUE_ACTIVE="0"
+            if gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow=shipwright-pipeline.yml --status in_progress \
+              --json displayTitle --jq "[.[] | select(.displayTitle | test(\"#${issue}( |$)\"))] | length" > /tmp/dispatch-active-$issue.txt 2>/dev/null; then
+              ISSUE_ACTIVE=$(cat /tmp/dispatch-active-$issue.txt 2>/dev/null || echo "0")
+            else
+              echo "Issue #$issue: API call failed — skipping to avoid duplicate dispatch"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            ISSUE_QUEUED="0"
+            if gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow=shipwright-pipeline.yml --status queued \
+              --json displayTitle --jq "[.[] | select(.displayTitle | test(\"#${issue}( |$)\"))] | length" > /tmp/dispatch-queued-$issue.txt 2>/dev/null; then
+              ISSUE_QUEUED=$(cat /tmp/dispatch-queued-$issue.txt 2>/dev/null || echo "0")
+            else
+              echo "Issue #$issue: API call failed — skipping to avoid duplicate dispatch"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            if [[ "${ISSUE_ACTIVE:-0}" -gt 0 ]] || [[ "${ISSUE_QUEUED:-0}" -gt 0 ]]; then
+              echo "Issue #$issue: pipeline already running/queued — skipping"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            # ── Fetch comments (two calls: bodies for grep checks, timestamped for stuck detection) ──
+            COMMENTS=""
+            if ! COMMENTS=$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
+              --json comments --jq '.comments[].body' 2>/dev/null); then
+              echo "Issue #$issue: failed to fetch comments (rate limited?) — skipping"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            COMMENTS_WITH_DATES=""
+            if ! COMMENTS_WITH_DATES=$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
+              --json comments --jq '.comments[] | "\(.createdAt)|\(.body)"' 2>/dev/null); then
+              echo "Issue #$issue: failed to fetch comment dates — skipping"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            HAS_SUCCESS=$(echo "$COMMENTS" | grep -c "Pipeline Completed Successfully" || true)
+            HAS_PR=$(echo "$COMMENTS" | grep -c "Pull Request Created" || true)
+
+            # ── Check 3: Already completed with PR ──
+            if [[ "$HAS_SUCCESS" -gt 0 && "$HAS_PR" -gt 0 ]]; then
+              echo "Issue #$issue: pipeline already completed with PR — skipping"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            # ── Check 4: Stuck issue detection (started >N hours ago, no result) ──
+            LAST_START_DATE=$(echo "$COMMENTS_WITH_DATES" | grep "Pipeline Starting" | tail -1 | cut -d'|' -f1 || echo "")
+
+            if [[ -n "$LAST_START_DATE" ]]; then
+              LAST_RESULT_DATE=$(echo "$COMMENTS_WITH_DATES" | grep -E "Pipeline Completed|Pipeline Failed" | tail -1 | cut -d'|' -f1 || echo "")
+
+              if [[ -z "$LAST_RESULT_DATE" || "$LAST_RESULT_DATE" < "$LAST_START_DATE" ]]; then
+                if [[ "$LAST_START_DATE" < "$STUCK_CUTOFF" ]]; then
+                  echo "Issue #$issue: STUCK — started $LAST_START_DATE with no result"
+                  STUCK="${STUCK}${issue}\n"
+                  continue
+                fi
+              fi
+            fi
+
+            # ── Check 5: Recent failure without retry comment ──
+            LAST_FAILURE=$(echo "$COMMENTS" | grep -c "Pipeline Failed" || true)
+            HAS_RETRY=$(echo "$COMMENTS" | grep -c "SHIPWRIGHT-RETRY" || true)
+            HAS_FAILED_LBL=$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
+              --json labels --jq '[.labels[].name] | index("shipwright-failed") // empty' 2>/dev/null || echo "")
+
+            if [[ "$LAST_FAILURE" -gt 0 && "$HAS_RETRY" -eq 0 && -z "$HAS_FAILED_LBL" ]]; then
+              echo "Issue #$issue: failed without retry — dispatching with full template"
+
+              # Primary: pipeline-status.json for stage data
+              DISPATCH_BRANCH="shipwright/issue-${issue}"
+              STATUS_B64=$(gh api \
+                "repos/$GITHUB_REPOSITORY/contents/.claude/pipeline-status.json?ref=$DISPATCH_BRANCH" \
+                --jq '.content' 2>/dev/null || true)
+              JSON_STAGES=""
+              if [[ -n "$STATUS_B64" ]]; then
+                JSON_STAGES=$(printf '%s' "$STATUS_B64" | base64 -d 2>/dev/null \
+                  | jq -r '.completed_stages[]?' 2>/dev/null | sort -u || true)
+              fi
+
+              # Fallback: extract completed stages from comment markers
+              RAW_STAGES=$(echo "$COMMENTS" | grep -oE 'SHIPWRIGHT-STAGE: [a-z_]+:complete' | sed 's/SHIPWRIGHT-STAGE: //' | sed 's/:complete//' | sort -u || echo "")
+
+              # Merge JSON and comment sources
+              RAW_STAGES=$(printf '%s\n%s\n' "$RAW_STAGES" "$JSON_STAGES" | sort -u | grep -v '^$' || echo "")
+
+              COMPLETED_STAGES=""
+              for stage in $RAW_STAGES; do
+                case "$stage" in
+                  intake|plan|design) COMPLETED_STAGES="${COMPLETED_STAGES:+$COMPLETED_STAGES,}$stage" ;;
+                esac
+              done
+
+              gh workflow run shipwright-pipeline.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                -f issue_number="$issue" \
+                -f template="${RETRY_TEMPLATE:-full}" \
+                -f max_iterations="${RETRY_MAX_ITERATIONS:-25}" \
+                -f completed_stages="$COMPLETED_STAGES" \
+                -f skip_triage=true 2>&1 || echo "  Failed to dispatch retry for #$issue"
+              sleep 5
+              continue
+            fi
+
+            # ── Check 6: Never processed — needs initial dispatch ──
+            HAS_ANY_PIPELINE=$(echo "$COMMENTS" | grep -c "Shipwright Pipeline" || true)
+
+            if [[ "$HAS_ANY_PIPELINE" -eq 0 ]]; then
+              echo "Issue #$issue: never processed — dispatching pipeline"
+              if gh workflow run shipwright-pipeline.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                -f issue_number="$issue" \
+                -f template=standard 2>&1; then
+                echo "Issue #$issue: pipeline dispatched successfully"
+                DISPATCHED=$((DISPATCHED + 1))
+                gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" \
+                  --add-label "shipwright" 2>/dev/null || true
+              else
+                echo "Issue #$issue: failed to dispatch pipeline"
+              fi
+              sleep 5
+              continue
+            fi
+
+            # ── Check 7: Succeeded but no PR — re-dispatch ──
+            if [[ "$HAS_SUCCESS" -gt 0 && "$HAS_PR" -eq 0 ]]; then
+              echo "Issue #$issue: succeeded but no PR — needs re-dispatch"
+              DISPATCH="${DISPATCH}${issue}\n"
+              continue
+            fi
+
+            echo "Issue #$issue: no action needed"
+            SKIPPED=$((SKIPPED + 1))
+          done
+
+          # Output issues needing re-dispatch (succeeded-but-no-PR)
+          DISPATCH=$(printf '%b' "$DISPATCH" | grep -v '^$' || true)
+          {
+            echo "dispatch<<EOF"
+            echo "$DISPATCH"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          STUCK=$(printf '%b' "$STUCK" | grep -v '^$' || true)
+          {
+            echo "stuck<<EOF"
+            echo "$STUCK"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "--- Dispatch Summary ---"
+          echo "Dispatched: $DISPATCHED"
+          echo "Skipped: $SKIPPED"
+          [[ -n "$DISPATCH" ]] && echo "Will re-dispatch for: $DISPATCH"
+          [[ -n "$STUCK" ]] && echo "Stuck issues detected: $STUCK"
+          [[ -z "$DISPATCH" && -z "$STUCK" ]] && echo "All shipwright issues accounted for."
+
+      - name: Dispatch pipelines for succeeded-but-no-PR issues
+        if: steps.find.outputs.dispatch != ''
+        run: |
+          echo "${{ steps.find.outputs.dispatch }}" | while read -r issue; do
+            [[ -z "$issue" ]] && continue
+            echo "Re-dispatching pipeline for issue #$issue..."
+            gh workflow run shipwright-pipeline.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              -f issue_number="$issue" \
+              -f template=standard \
+              -f skip_triage=false 2>&1 || echo "  Failed to dispatch for #$issue (will retry next cycle)"
+            sleep 5
+          done
+
+      - name: Handle stuck issues
+        if: steps.find.outputs.stuck != ''
+        run: |
+          echo "${{ steps.find.outputs.stuck }}" | while read -r issue; do
+            [[ -z "$issue" ]] && continue
+            echo "Handling stuck issue #$issue..."
+
+            IS_STUCK=$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
+              --json labels --jq '[.labels[].name] | index("shipwright-stuck") // empty' 2>/dev/null || echo "")
+
+            if [[ -n "$IS_STUCK" ]]; then
+              echo "Issue #$issue: already labeled shipwright-stuck — skipping"
+              continue
+            fi
+
+            gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" \
+              --add-label "shipwright-stuck" 2>/dev/null || true
+
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
+          ⚠️ **Shipwright Dispatch — Stuck Pipeline Detected**
+
+          This issue has had a pipeline running for >${STUCK_THRESHOLD_HOURS:-4} hours with no completion result.
+
+          Possible causes:
+          - Pipeline runner timed out or was cancelled without posting results
+          - GitHub Actions outage during pipeline execution
+          - Pipeline hung on a long-running stage
+
+          The dispatch will attempt to re-dispatch this issue on the next cycle. To retry manually:
+          \`\`\`
+          gh workflow run shipwright-pipeline.yml -f issue_number=$issue -f template=full -f skip_triage=true
+          \`\`\`
+          EOF
+          )" 2>/dev/null || true
+
+            gh workflow run shipwright-pipeline.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              -f issue_number="$issue" \
+              -f template="${RETRY_TEMPLATE:-full}" \
+              -f max_iterations="${STUCK_RETRY_MAX_ITERATIONS:-30}" \
+              -f skip_triage=true 2>&1 || echo "  Failed to dispatch for stuck #$issue"
+            sleep 5
+          done

@@ -1,0 +1,43 @@
+{
+  "name": "doc-fleet",
+  "description": "Documentation fleet — 5 specialized agents for docs refactoring, cleanup, and enhancement",
+  "keywords": [
+    "doc-fleet",
+    "documentation",
+    "claude-md",
+    "strategy",
+    "readme",
+    "patterns",
+    "refactor"
+  ],
+  "agents": [
+    {
+      "name": "doc-architect",
+      "role": "Documentation structure, information architecture, cross-linking, manifest",
+      "focus": "docs/, .claude/, README.md, STRATEGY.md"
+    },
+    {
+      "name": "claude-md",
+      "role": "CLAUDE.md files, agent role definitions, AUTO sections, development guidelines",
+      "focus": ".claude/CLAUDE.md, .claude/agents/, claude-code/"
+    },
+    {
+      "name": "strategy-curator",
+      "role": "Strategic docs, plans, AGI roadmap, backlog triage, metrics updates",
+      "focus": "STRATEGY.md, docs/AGI-*, docs/PLATFORM-*, docs/strategy/"
+    },
+    {
+      "name": "pattern-writer",
+      "role": "Developer guides, patterns, tips, known issues, policy docs, tmux docs",
+      "focus": "docs/patterns/, docs/TIPS.md, docs/KNOWN-ISSUES.md, docs/config-policy.md, docs/tmux-research/"
+    },
+    {
+      "name": "readme-optimizer",
+      "role": "README, onboarding, install flow, command tables, public-facing docs",
+      "focus": "README.md, install.sh, .github/pull_request_template.md"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "tiled",
+  "main_pane_percent": 50
+}

@@ -1,0 +1,175 @@
+# Review Remediation — When code review finds actionable issues, trigger agent to fix them.
+# Part of the Code Factory pattern: review findings → patch → validate → push → rerun.
+name: Review Remediation
+
+on:
+  # Triggered when review comments are posted
+  pull_request_review:
+    types: [submitted]
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to remediate"
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: review-remediation-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  remediate:
+    # Only run on reviews that request changes, or on manual dispatch
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.review.state == 'changes_requested'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine PR number
+        id: pr
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+          # Get the PR branch and head SHA
+          PR_JSON=$(gh pr view "$PR_NUMBER" --json headRefName,headRefOid)
+          BRANCH=$(echo "$PR_JSON" | jq -r '.headRefName')
+          HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout PR branch
+        run: |
+          git checkout "${{ steps.pr.outputs.branch }}"
+
+      - name: Collect review findings
+        id: findings
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          HEAD_SHA="${{ steps.pr.outputs.head_sha }}"
+
+          # Collect review comments from the latest review
+          REVIEW_COMMENTS=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews" \
+            --jq '[.[] | select(.state == "CHANGES_REQUESTED")] | last | .body // ""' 2>/dev/null || echo "")
+
+          # Also get inline review comments
+          INLINE_COMMENTS=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.commit_id == "'"${HEAD_SHA}"'")] | map({path: .path, line: .line, body: .body}) | tostring' 2>/dev/null || echo "[]")
+
+          # Build remediation context
+          cat > /tmp/review-findings.json << EOF
+          {
+            "pr_number": ${PR_NUMBER},
+            "head_sha": "${HEAD_SHA}",
+            "review_body": $(echo "$REVIEW_COMMENTS" | jq -Rs .),
+            "inline_comments": ${INLINE_COMMENTS:-[]}
+          }
+          EOF
+
+          FINDING_COUNT=$(echo "$INLINE_COMMENTS" | jq 'length' 2>/dev/null || echo "0")
+          echo "count=$FINDING_COUNT" >> "$GITHUB_OUTPUT"
+          echo "has_findings=$([[ "$FINDING_COUNT" -gt 0 || -n "$REVIEW_COMMENTS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remediate with Claude
+        if: steps.findings.outputs.has_findings == 'true'
+        run: |
+          # Guard: skip if no auth token
+          if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+            echo "::warning::CLAUDE_CODE_OAUTH_TOKEN not set — skipping remediation"
+            exit 0
+          fi
+
+          # Install Claude Code if needed
+          if ! command -v claude &>/dev/null; then
+            npm install -g @anthropic-ai/claude-code 2>/dev/null || true
+          fi
+
+          FINDINGS=$(cat /tmp/review-findings.json)
+
+          PROMPT="You are remediating code review findings on PR #${{ steps.pr.outputs.number }}.
+
+          ## Review Findings
+          ${FINDINGS}
+
+          ## Instructions
+          1. Read each review finding carefully
+          2. Make the minimum necessary code changes to address each finding
+          3. Run relevant tests to validate your changes
+          4. Do NOT introduce new features or refactor unrelated code
+          5. Focus only on what the reviewer requested
+
+          Fix all actionable findings. Skip any that are questions or suggestions without clear action items."
+
+          claude -p "$PROMPT" --max-turns 10 --model claude-sonnet-4-20250514 2>&1 || {
+            echo "::warning::Claude remediation returned non-zero — changes may be partial"
+          }
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+      - name: Run validation
+        if: steps.findings.outputs.has_findings == 'true'
+        run: |
+          # Run the test suite to validate remediation
+          if [[ -f "package.json" ]]; then
+            npm test 2>&1 || {
+              echo "::warning::Tests failed after remediation"
+              exit 1
+            }
+          fi
+
+      - name: Push remediation commit
+        if: steps.findings.outputs.has_findings == 'true'
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to commit — review findings may not have been actionable"
+            exit 0
+          fi
+
+          git config user.name "shipwright[bot]"
+          git config user.email "shipwright[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: address review findings for $(echo ${{ steps.pr.outputs.short_sha }})
+
+          Automated remediation by Shipwright Code Factory.
+          Findings: ${{ steps.findings.outputs.count }} inline comments addressed.
+          Original head: ${{ steps.pr.outputs.head_sha }}"
+
+          git push origin "${{ steps.pr.outputs.branch }}"
+
+          echo "Remediation commit pushed — PR synchronize will trigger rerun path"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Request review rerun
+        if: steps.findings.outputs.has_findings == 'true'
+        run: |
+          # Use the canonical rerun writer if available
+          NEW_HEAD=$(git rev-parse HEAD)
+          if [[ -f "./scripts/sw-review-rerun.sh" ]]; then
+            bash ./scripts/sw-review-rerun.sh request "${{ steps.pr.outputs.number }}" "$NEW_HEAD" "shipwright" || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

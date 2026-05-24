@@ -1,0 +1,60 @@
+name: Pipeline Machinery Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/lib/pipeline-*.sh'
+      - 'scripts/sw-pipeline.sh'
+      - 'scripts/sw-loop.sh'
+      - 'scripts/lib/helpers.sh'
+      - '.claude/helpers/**'
+
+jobs:
+  scope-smoke:
+    name: scope-smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install jq
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Scope-redaction helpers present
+        run: bash scripts/sw-pipeline-test.sh test_scope_redaction_helpers_present
+
+      - name: In-scope path not redacted
+        run: bash scripts/sw-pipeline-test.sh test_scope_redaction_in_scope_no_redaction
+
+      - name: Out-of-scope path triggers redaction
+        run: bash scripts/sw-pipeline-test.sh test_scope_redaction_oos_event_fires
+
+      - name: Drift subcommand wired
+        run: bash scripts/sw-pipeline-test.sh test_scope_drift_subcommand_present
+
+      - name: SCOPE_ESCALATION detection in sw-loop.sh
+        run: bash scripts/sw-pipeline-test.sh test_scope_escalation_detection_in_loop
+
+      - name: scope_manifest events in _extract_scope_from_design
+        run: bash scripts/sw-pipeline-test.sh test_scope_manifest_events_in_extract
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Pipeline Machinery Scope-Redaction Smoke (${{ matrix.os }})" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All scope-redaction smoke assertions passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Scope-redaction smoke failed — check steps above" >> $GITHUB_STEP_SUMMARY
+          fi

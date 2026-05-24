@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sethdford.github.io/shipwright/sitemap.xml

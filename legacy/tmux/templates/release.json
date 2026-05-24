@@ -1,0 +1,35 @@
+{
+  "name": "release",
+  "description": "Release management with preparation, validation, and announcement agents",
+  "keywords": [
+    "release",
+    "version",
+    "publish",
+    "changelog",
+    "tag",
+    "package",
+    "ship",
+    "launch",
+    "npm publish"
+  ],
+  "agents": [
+    {
+      "name": "preparer",
+      "role": "Changelog generation, version bumps, dependency audit, license check, breaking change detection",
+      "focus": "package.json, CHANGELOG.md, Cargo.toml, go.mod, *.lock, version.*"
+    },
+    {
+      "name": "validator",
+      "role": "Full test suite, smoke tests, canary checks, rollback verification, binary/package size check",
+      "focus": "*.test.*, scripts/, e2e/, *.spec.*"
+    },
+    {
+      "name": "announcer",
+      "role": "Release notes, migration guide, deprecation notices, upgrade instructions, API diff summary",
+      "focus": "docs/, *.md, CHANGELOG.md, MIGRATION.md, UPGRADING.md"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

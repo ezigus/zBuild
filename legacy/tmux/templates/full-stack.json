@@ -1,0 +1,32 @@
+{
+  "name": "full-stack",
+  "description": "Full-stack development with API, database, and UI agents",
+  "keywords": [
+    "fullstack",
+    "full-stack",
+    "end-to-end",
+    "api",
+    "database",
+    "frontend"
+  ],
+  "agents": [
+    {
+      "name": "api",
+      "role": "REST/GraphQL endpoints, middleware, request validation, auth",
+      "focus": "src/api/, src/routes/, src/middleware/"
+    },
+    {
+      "name": "database",
+      "role": "Schema, migrations, queries, models, seed data",
+      "focus": "src/models/, src/db/, migrations/, schema.*, prisma/"
+    },
+    {
+      "name": "ui",
+      "role": "Pages, components, state management, styling, forms",
+      "focus": "apps/web/, src/components/, src/pages/, *.css"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

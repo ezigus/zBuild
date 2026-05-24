@@ -1,0 +1,175 @@
+# Risk Policy Gate — PR-level preflight that runs BEFORE expensive CI.
+# Computes risk tier from changed files, asserts required checks, detects docs drift.
+# Part of the Code Factory pattern: deterministic, auditable, machine-verifiable.
+name: Risk Policy Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  risk-policy-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+    outputs:
+      risk_tier: ${{ steps.classify.outputs.risk_tier }}
+      required_checks: ${{ steps.classify.outputs.required_checks }}
+      docs_drift: ${{ steps.drift.outputs.drift_detected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed
+        run: |
+          CHANGED=$(gh pr diff "${{ github.event.pull_request.number }}" --name-only 2>/dev/null || git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "--- Changed files ---"
+          echo "$CHANGED"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Classify risk tier from changed files
+        id: classify
+        run: |
+          POLICY="config/policy.json"
+          if [[ ! -f "$POLICY" ]]; then
+            echo "::warning::policy.json not found — defaulting to medium"
+            echo "risk_tier=medium" >> "$GITHUB_OUTPUT"
+            echo "required_checks=risk-policy-gate,test" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED_FILES="${{ steps.changed.outputs.files }}"
+          RISK_TIER="low"
+
+          # Match changed files against risk tier rules (highest tier wins)
+          check_tier() {
+            local tier="$1"
+            local patterns
+            patterns=$(jq -r ".riskTierRules.${tier}[]? // empty" "$POLICY" 2>/dev/null)
+            [[ -z "$patterns" ]] && return 1
+
+            while IFS= read -r pattern; do
+              [[ -z "$pattern" ]] && continue
+              while IFS= read -r file; do
+                [[ -z "$file" ]] && continue
+                # Convert glob to regex for matching
+                local regex
+                regex=$(echo "$pattern" | sed 's/\./\\./g; s/\*\*/DOUBLESTAR/g; s/\*/[^\/]*/g; s/DOUBLESTAR/.*/g')
+                if echo "$file" | grep -qE "^${regex}$"; then
+                  return 0
+                fi
+              done <<< "$CHANGED_FILES"
+            done <<< "$patterns"
+            return 1
+          }
+
+          if check_tier "critical"; then
+            RISK_TIER="critical"
+          elif check_tier "high"; then
+            RISK_TIER="high"
+          elif check_tier "medium"; then
+            RISK_TIER="medium"
+          fi
+
+          # Read required checks for this tier
+          REQUIRED_CHECKS=$(jq -r ".mergePolicy.${RISK_TIER}.requiredChecks[]? // empty" "$POLICY" 2>/dev/null | paste -sd ',' -)
+          REQUIRED_CHECKS="${REQUIRED_CHECKS:-risk-policy-gate}"
+
+          echo "risk_tier=$RISK_TIER" >> "$GITHUB_OUTPUT"
+          echo "required_checks=$REQUIRED_CHECKS" >> "$GITHUB_OUTPUT"
+
+          echo "--- Risk Classification ---"
+          echo "Tier: $RISK_TIER"
+          echo "Required checks: $REQUIRED_CHECKS"
+
+      - name: Check docs drift
+        id: drift
+        run: |
+          POLICY="config/policy.json"
+          CHANGED_FILES="${{ steps.changed.outputs.files }}"
+          DRIFT_DETECTED="false"
+          DRIFT_DETAILS=""
+
+          if [[ ! -f "$POLICY" ]]; then
+            echo "drift_detected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PAIRS=$(jq -c '.docsDriftRules.trackedPairs[]? // empty' "$POLICY" 2>/dev/null)
+          [[ -z "$PAIRS" ]] && { echo "drift_detected=false" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          while IFS= read -r pair; do
+            [[ -z "$pair" ]] && continue
+            SOURCE=$(echo "$pair" | jq -r '.source')
+            DOCS=$(echo "$pair" | jq -r '.docs[]')
+
+            # Check if source pattern matches any changed file
+            SOURCE_CHANGED="false"
+            SOURCE_REGEX=$(echo "$SOURCE" | sed 's/\./\\./g; s/\*\*/DOUBLESTAR/g; s/\*/[^\/]*/g; s/DOUBLESTAR/.*/g')
+            while IFS= read -r file; do
+              [[ -z "$file" ]] && continue
+              if echo "$file" | grep -qE "^${SOURCE_REGEX}$"; then
+                SOURCE_CHANGED="true"
+                break
+              fi
+            done <<< "$CHANGED_FILES"
+
+            if [[ "$SOURCE_CHANGED" == "true" ]]; then
+              # Check if any of the required docs were also changed
+              while IFS= read -r doc; do
+                [[ -z "$doc" ]] && continue
+                if ! echo "$CHANGED_FILES" | grep -qF "$doc"; then
+                  DRIFT_DETECTED="true"
+                  DRIFT_DETAILS="${DRIFT_DETAILS}\n- \`${SOURCE}\` changed but \`${doc}\` was not updated"
+                fi
+              done <<< "$DOCS"
+            fi
+          done <<< "$PAIRS"
+
+          echo "drift_detected=$DRIFT_DETECTED" >> "$GITHUB_OUTPUT"
+
+          FAIL_ON_DRIFT=$(jq -r '.docsDriftRules.failOnDrift // false' "$POLICY" 2>/dev/null)
+          WARN_ON_DRIFT=$(jq -r '.docsDriftRules.warnOnDrift // true' "$POLICY" 2>/dev/null)
+
+          if [[ "$DRIFT_DETECTED" == "true" ]]; then
+            echo "--- Docs Drift Detected ---"
+            echo -e "$DRIFT_DETAILS"
+            if [[ "$WARN_ON_DRIFT" == "true" ]]; then
+              echo "::warning::Docs drift detected:$(echo -e "$DRIFT_DETAILS")"
+            fi
+            if [[ "$FAIL_ON_DRIFT" == "true" ]]; then
+              echo "::error::Docs drift is blocking — update documentation before merge"
+              exit 1
+            fi
+          fi
+
+      - name: Post gate summary
+        if: always()
+        run: |
+          RISK_TIER="${{ steps.classify.outputs.risk_tier }}"
+          REQUIRED_CHECKS="${{ steps.classify.outputs.required_checks }}"
+          DRIFT="${{ steps.drift.outputs.drift_detected }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          BODY="## Risk Policy Gate
+
+          **SHA:** \`${HEAD_SHA}\`
+          **Risk Tier:** \`${RISK_TIER}\`
+          **Required Checks:** ${REQUIRED_CHECKS}
+          **Docs Drift:** ${DRIFT}
+
+          This gate ran against the current PR head. All required checks must pass for this SHA before merge."
+
+          echo "$BODY" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,159 @@
+# Auto-Resolve Bot-Only Threads — After a clean current-head review rerun,
+# auto-resolve unresolved threads where ALL comments are from bots.
+# Never auto-resolves threads with human participation.
+# Part of the Code Factory pattern for reducing review friction at scale.
+name: Auto-Resolve Bot Threads
+
+on:
+  # Runs after check suites complete (review agent finishes)
+  check_suite:
+    types: [completed]
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to clean up threads on"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-resolve:
+    # Only run on successful check suites for PRs, or manual dispatch
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.check_suite.conclusion == 'success' &&
+       github.event.check_suite.pull_requests[0] != null)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUBTOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine PR
+        id: pr
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            PR_NUMBER="${{ github.event.check_suite.pull_requests[0].number }}"
+          fi
+
+          if [[ -z "$PR_NUMBER" || "$PR_NUMBER" == "null" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          HEAD_SHA=$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid' 2>/dev/null || echo "")
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load policy
+        if: steps.pr.outputs.skip != 'true'
+        id: policy
+        run: |
+          POLICY="config/policy.json"
+          if [[ -f "$POLICY" ]]; then
+            AUTO_RESOLVE=$(jq -r '.codeReviewAgent.autoResolveBotsOnlyThreads // false' "$POLICY")
+            NEVER_HUMAN=$(jq -r '.codeReviewAgent.neverAutoResolveHumanThreads // true' "$POLICY")
+          else
+            AUTO_RESOLVE="true"
+            NEVER_HUMAN="true"
+          fi
+          echo "auto_resolve=$AUTO_RESOLVE" >> "$GITHUB_OUTPUT"
+          echo "never_human=$NEVER_HUMAN" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve bot-only threads
+        if: steps.pr.outputs.skip != 'true' && steps.policy.outputs.auto_resolve == 'true'
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          HEAD_SHA="${{ steps.pr.outputs.head_sha }}"
+          SHORT_SHA="${HEAD_SHA:0:7}"
+
+          # Known bot suffixes/patterns
+          BOT_PATTERNS="\\[bot\\]|shipwright|github-actions|dependabot|renovate|greptile|coderabbit|codeclimate"
+
+          # Get all review threads via GraphQL
+          QUERY='query($owner:String!, $repo:String!, $pr:Int!) {
+            repository(owner:$owner, name:$repo) {
+              pullRequest(number:$pr) {
+                reviewThreads(first:100) {
+                  nodes {
+                    id
+                    isResolved
+                    comments(first:50) {
+                      nodes {
+                        author { login }
+                        body
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }'
+
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+
+          THREADS=$(gh api graphql -f query="$QUERY" \
+            -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" 2>/dev/null || echo "{}")
+
+          UNRESOLVED=$(echo "$THREADS" | jq -c '
+            .data.repository.pullRequest.reviewThreads.nodes[]
+            | select(.isResolved == false)
+          ' 2>/dev/null || echo "")
+
+          RESOLVED_COUNT=0
+          SKIPPED_COUNT=0
+
+          while IFS= read -r thread; do
+            [[ -z "$thread" ]] && continue
+
+            THREAD_ID=$(echo "$thread" | jq -r '.id')
+            AUTHORS=$(echo "$thread" | jq -r '.comments.nodes[].author.login' 2>/dev/null | sort -u)
+
+            # Check if ALL authors are bots
+            ALL_BOTS="true"
+            while IFS= read -r author; do
+              [[ -z "$author" ]] && continue
+              if ! echo "$author" | grep -qiE "$BOT_PATTERNS"; then
+                ALL_BOTS="false"
+                break
+              fi
+            done <<< "$AUTHORS"
+
+            if [[ "$ALL_BOTS" == "true" ]]; then
+              # Resolve the bot-only thread
+              RESOLVE_MUTATION='mutation($threadId:ID!) {
+                resolveReviewThread(input: {threadId: $threadId}) {
+                  thread { isResolved }
+                }
+              }'
+
+              if gh api graphql -f query="$RESOLVE_MUTATION" -f threadId="$THREAD_ID" 2>/dev/null; then
+                ((RESOLVED_COUNT++))
+              fi
+            else
+              ((SKIPPED_COUNT++))
+            fi
+          done <<< "$UNRESOLVED"
+
+          echo "--- Auto-Resolve Summary ---"
+          echo "PR: #${PR_NUMBER}"
+          echo "Head SHA: ${SHORT_SHA}"
+          echo "Bot-only threads resolved: ${RESOLVED_COUNT}"
+          echo "Human-participated threads skipped: ${SKIPPED_COUNT}"
+
+          if [[ "$RESOLVED_COUNT" -gt 0 ]]; then
+            echo "Resolved ${RESOLVED_COUNT} bot-only thread(s) on PR #${PR_NUMBER} at ${SHORT_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

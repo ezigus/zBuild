@@ -1,0 +1,230 @@
+{
+  "$schema": "https://shipwright.dev/schemas/defaults-v1.json",
+  "description": "Default values for all Shipwright tunables. Override via daemon-config.json, config/policy.json, or SHIPWRIGHT_* env vars.",
+  "version": "1",
+  "network": {
+    "connect_timeout": 10,
+    "max_time": 60,
+    "gh_timeout": 30,
+    "retry_count": 3,
+    "retry_delay": 2
+  },
+  "daemon": {
+    "poll_interval": 30,
+    "max_parallel": 4,
+    "watch_label": "shipwright",
+    "issue_limit": 100,
+    "on_success_remove_label": true,
+    "health_check_interval": 60,
+    "stale_job_timeout_hours": 2,
+    "branch_pattern": "shipwright/issue-{issue}",
+    "worktree_dir": ".worktrees"
+  },
+  "pipeline": {
+    "merge": {
+      "wait_ci_timeout_s": 1500
+    },
+    "max_iterations": 20,
+    "build_test_retries": 1,
+    "claude_timeout": 1800,
+    "heartbeat_interval": 30,
+    "composed_cache_ttl": 3600,
+    "branch_pattern": "shipwright/issue-{issue}",
+    "stage_order": [
+      "intake",
+      "plan",
+      "design",
+      "build",
+      "test",
+      "review",
+      "compound_quality",
+      "resync",
+      "pr",
+      "merge",
+      "deploy",
+      "validate",
+      "monitor"
+    ],
+    "command_discovery": {
+      "enabled": true,
+      "help_args": "--help",
+      "search_max_depth": 6,
+      "cache_ttl_seconds": 300,
+      "execution": {
+        "fail_fast": true,
+        "separator": " && "
+      },
+      "mode_map": {
+        "UITests": "ui",
+        "integration": "integration",
+        "Package.swift": "swiftpm_all"
+      },
+      "helpers": [
+        {
+          "id": "xcode_runner",
+          "script": "scripts/run-xcode-tests.sh",
+          "environments": ["ios_xcode", "swiftpm"],
+          "help_args": "--help",
+          "parser": "xcode_runner_help_v1",
+          "default_mode": "unit",
+          "mode_flags": {
+            "swiftpm_all": "-t Packages"
+          },
+          "prefer_helper": true
+        }
+      ]
+    },
+    "dod": {
+      "test_dir_names": ["test", "tests", "__tests__", "spec", "specs"],
+      "test_filename_patterns": [
+        "{stem}.test.{ext}",
+        "{stem}.spec.{ext}",
+        "{stem}_test.{ext}",
+        "{stem}-test.{ext}",
+        "{stem}_spec.{ext}",
+        "test_{stem}.{ext}",
+        "{stem_pascal}Test.{ext}",
+        "{stem_pascal}Tests.{ext}"
+      ],
+      "search_strategies": ["colocated", "mirror", "flat", "prefix_flat"],
+      "source_roots": ["src/", "lib/", "app/", "scripts/", "pkg/", ""],
+      "prefix_flat_template": "scripts/sw-{lib_subpath}-{stem}-test.sh"
+    }
+  },
+  "loop": {
+    "claude_timeout": 1800,
+    "test_timeout": 900,
+    "test_timeout_max": 3600,
+    "sleep_between_iterations": 2,
+    "max_restarts": 0,
+    "fast_test_interval": 5,
+    "convergence_threshold": 3,
+    "multi_agent_sleep": 5,
+    "context_budget_chars": 180000,
+    "context_trim_memory_chars": 20000,
+    "context_trim_git_entries": 10,
+    "context_trim_hotspot_files": 5,
+    "context_trim_test_lines": 50,
+    "dod_diff_max_lines": 3000,
+    "holistic_diff_max_lines": 1000,
+    "inner_stage_comments": "off"
+  },
+  "ai": {
+    "provider": {
+      "default": "claude",
+      "allowed": "claude,codex,copilot",
+      "fallback": "none"
+    },
+    "models": {
+      "claude": {
+        "haiku": "haiku",
+        "sonnet": "sonnet",
+        "opus": "opus"
+      },
+      "codex": {
+        "haiku": "gpt-5.1-codex-mini",
+        "sonnet": "gpt-5.1-codex",
+        "opus": "gpt-5"
+      },
+      "copilot": {
+        "haiku": "claude-haiku-4.5",
+        "sonnet": "claude-sonnet-4.5",
+        "opus": "gpt-5"
+      }
+    },
+    "providers": {
+      "claude": {
+        "command": "claude",
+        "help_args": "--help"
+      },
+      "codex": {
+        "command": "codex",
+        "help_args": "exec --help"
+      },
+      "copilot": {
+        "command": "copilot",
+        "help_args": "--help"
+      }
+    },
+    "telemetry": {
+      "allow_estimated_cost": true
+    }
+  },
+  "dashboard": {
+    "port": 8767,
+    "poll_interval_ms": 2000,
+    "ws_heartbeat_ms": 30000
+  },
+  "webhook": {
+    "port": 8765,
+    "secret_length": 32,
+    "max_payload_bytes": 1048576
+  },
+  "urls": {
+    "linear_api": "https://api.linear.app/graphql",
+    "github_api": "https://api.github.com",
+    "github_device_code": "https://github.com/login/device/code",
+    "github_device_login": "https://github.com/login/device",
+    "otel_endpoint": "http://localhost:4318",
+    "tpm_repo": "https://github.com/tmux-plugins/tpm",
+    "bun_install": "https://bun.sh/install"
+  },
+  "intelligence": {
+    "cache_ttl": 3600,
+    "complexity_bands": { "low": 3, "medium": 6, "high": 10 },
+    "miss_rate_high": 30,
+    "miss_rate_low": 5,
+    "anomaly_threshold": 3.0,
+    "ab_test_ratio": 0.2,
+    "claude_timeout": 60
+  },
+  "predictive": {
+    "default_risk_score": 50,
+    "keyword_risk_score": 70
+  },
+  "api_optimization": {
+    "programmatic_tool_calling": true,
+    "tool_search_enabled": true,
+    "tool_search_type": "bm25",
+    "defer_unused_tools": true,
+    "web_search_version": "web_search_20260209",
+    "web_fetch_version": "web_fetch_20260209",
+    "dynamic_filtering": true,
+    "code_execution_sandbox": true,
+    "beta_header": "code-execution-web-tools-2026-02-09"
+  },
+  "quality": {
+    "gate_score_threshold": 70,
+    "secret_threshold": 3,
+    "min_file_count": 10,
+    "score_weight_per_file": 25,
+    "pass_rate_threshold": 5.0,
+    "bundle_growth_legacy_pct": 20,
+    "perf_regression_legacy_pct": 30
+  },
+  "cleanup": {
+    "artifact_age_days": 7,
+    "heartbeat_stale_seconds": 300,
+    "checkpoint_max_count": 10
+  },
+  "labels": {
+    "watch": "shipwright",
+    "ready_to_build": "ready-to-build",
+    "hotfix": "hotfix",
+    "claimed_prefix": "claimed:",
+    "incident": ["hotfix", "shipwright"],
+    "incident_labels": "hotfix,shipwright",
+    "harness_gap": ["harness-gap", "shipwright"],
+    "harness_gap_labels": "harness-gap,shipwright"
+  },
+  "limits": {
+    "triage_issues": 100,
+    "triage_unlabeled": 50,
+    "strategic_closed": 30,
+    "dora_days": 30,
+    "log_tail_lines": 100,
+    "function_scan_limit": 1000,
+    "dead_code_timeout_seconds": 20,
+    "dependency_scan_limit": 0
+  }
+}

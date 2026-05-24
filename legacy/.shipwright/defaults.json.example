@@ -1,0 +1,12 @@
+{
+  "ruflo": {
+    "enabled": true,
+    "topology": "hierarchical",
+    "max_agents": 8,
+    "memory_namespace_prefix": "pipeline",
+    "learning_bridge": true,
+    "q_learning_routing": true,
+    "cost_budget_multiplier": 2.5,
+    "circuit_breaker_timeout_s": 30
+  }
+}

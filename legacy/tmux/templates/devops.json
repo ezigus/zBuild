@@ -1,0 +1,20 @@
+{
+  "name": "devops",
+  "description": "DevOps with CI/CD pipeline and infrastructure agents",
+  "keywords": ["devops", "deploy", "ci", "cd", "infrastructure", "docker"],
+  "agents": [
+    {
+      "name": "pipeline",
+      "role": "CI/CD workflows, build steps, test stages, deployment automation",
+      "focus": ".github/workflows/, .gitlab-ci.yml, Jenkinsfile, buildspec.yml"
+    },
+    {
+      "name": "infrastructure",
+      "role": "Docker, Terraform, CloudFormation, Kubernetes manifests, environment config",
+      "focus": "Dockerfile, docker-compose.*, terraform/, k8s/, infra/, *.tf"
+    }
+  ],
+  "layout": "even-horizontal",
+  "layout_style": "main-vertical",
+  "main_pane_percent": 60
+}

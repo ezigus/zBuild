@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "generated_at": "2026-03-28T22:36:41Z",
+  "stack": {
+    "lang": "typescript",
+    "framework": "none",
+    "test": "vitest",
+    "package_manager": "npm"
+  },
+  "files": {
+    ".claude/CLAUDE.md": { "checksum": "5205b86f2743f42f94abe995cfe7d3fd", "lines": 28 },
+    ".claude/settings.json": { "checksum": "faba171450a21462960e8f406b35ae9c", "lines": 11 },
+    ".claude/hooks/pre-build.sh": { "checksum": "0f3cda9148fce4007291a3c6bf56c18c", "lines": 5 },
+    ".claude/hooks/post-test.sh": { "checksum": "075cb1fc2341f800efed6bae0641f391", "lines": 12 },
+    ".claude/agents/backend.md": { "checksum": "7061340e0a9e9c513afa9a4ed3d0d8d9", "lines": 26 },
+    ".claude/agents/tester.md": { "checksum": "bd9a16808abe82de1d4770ea690ad3f1", "lines": 31 },
+    ".claude/ARCHITECTURE.md": { "checksum": "6fa4a4866a44cceb7cba8ab7133f107d", "lines": 21 },
+    ".claude/CODING-STANDARDS.md": { "checksum": "182666473bb0f467519b1cc1b8bbc186", "lines": 29 },
+    ".claude/DEFINITION-OF-DONE.md": { "checksum": "6f3b6f7bd8520cded41b214061ab760f", "lines": 24 },
+    ".github/ISSUE_TEMPLATE/agent-task.md": { "checksum": "65bb5f638b9ef8b3037fd59c0a111f35", "lines": 24 }
+  }
+}

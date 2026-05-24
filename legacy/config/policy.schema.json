@@ -1,0 +1,359 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Shipwright Policy",
+  "description": "Central policy for Shipwright — timeouts, limits, thresholds, risk tiers, merge gates. Single source of truth for the Code Factory pattern.",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "description": { "type": "string" },
+    "version": { "type": "string" },
+    "ai": {
+      "type": "object",
+      "description": "Universal AI provider configuration for daemon and non-daemon execution paths.",
+      "properties": {
+        "provider": {
+          "type": "object",
+          "properties": {
+            "default": { "type": "string" },
+            "allowed": { "type": "string" },
+            "fallback": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "models": {
+          "type": "object",
+          "description": "Canonical tier mapping per provider (haiku/sonnet/opus).",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "haiku": { "type": "string" },
+              "sonnet": { "type": "string" },
+              "opus": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "providers": {
+          "type": "object",
+          "description": "Per-provider executable command and help probe args.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string" },
+              "help_args": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "properties": {
+            "allow_estimated_cost": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "riskTierRules": {
+      "type": "object",
+      "description": "Path-based risk classification. Tiers: critical, high, medium, low. Glob patterns matched against changed files.",
+      "properties": {
+        "critical": { "type": "array", "items": { "type": "string" } },
+        "high": { "type": "array", "items": { "type": "string" } },
+        "medium": { "type": "array", "items": { "type": "string" } },
+        "low": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "mergePolicy": {
+      "type": "object",
+      "description": "Required checks and evidence by risk tier before merge is allowed.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "requiredChecks": { "type": "array", "items": { "type": "string" } },
+          "requiredReviewers": { "type": "integer", "minimum": 0 },
+          "requiredEvidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["browser", "api", "database", "cli", "webhook", "custom"]
+            },
+            "description": "Evidence types required before merge for this tier"
+          },
+          "requireDocsDriftCheck": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "docsDriftRules": {
+      "type": "object",
+      "description": "Detect when control-plane files change without corresponding doc updates.",
+      "properties": {
+        "trackedPairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" },
+              "docs": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["source", "docs"]
+          }
+        },
+        "failOnDrift": { "type": "boolean" },
+        "warnOnDrift": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Evidence framework — machine-verifiable proof for browser, API, database, CLI, and webhook changes. Each collector defines a type-specific verification strategy.",
+      "properties": {
+        "artifactMaxAgeMinutes": { "type": "integer", "minimum": 1 },
+        "requireFreshArtifacts": { "type": "boolean" },
+        "collectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Unique name for this evidence collector"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "browser",
+                  "api",
+                  "database",
+                  "cli",
+                  "webhook",
+                  "custom"
+                ],
+                "description": "Evidence type: browser (HTTP page load), api (REST/GraphQL endpoint), database (schema/migration check), cli (command execution), webhook (callback verification), custom (user-defined script)"
+              },
+              "entrypoint": {
+                "type": "string",
+                "description": "URL path for browser evidence"
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "Base URL for browser/api evidence"
+              },
+              "url": {
+                "type": "string",
+                "description": "Full URL for api evidence"
+              },
+              "method": {
+                "type": "string",
+                "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"],
+                "description": "HTTP method for api evidence"
+              },
+              "command": {
+                "type": "string",
+                "description": "Shell command for cli/database evidence"
+              },
+              "expectedStatus": {
+                "type": "integer",
+                "description": "Expected HTTP status code for api evidence"
+              },
+              "expectedExitCode": {
+                "type": "integer",
+                "description": "Expected exit code for cli/database evidence"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "HTTP headers for api evidence"
+              },
+              "body": {
+                "type": "string",
+                "description": "Request body for api evidence"
+              },
+              "assertions": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Named assertions to validate"
+              },
+              "timeout": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Timeout in seconds for this collector"
+              }
+            },
+            "required": ["name", "type", "assertions"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "harnessGapPolicy": {
+      "type": "object",
+      "description": "Incident-to-harness loop: every regression must produce a test case within SLA.",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "p0SlaHours": { "type": "integer", "minimum": 1 },
+        "p1SlaHours": { "type": "integer", "minimum": 1 },
+        "p2SlaHours": { "type": "integer", "minimum": 1 },
+        "autoCreateGapIssue": { "type": "boolean" },
+        "requireTestCaseBeforeClose": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "codeReviewAgent": {
+      "type": "object",
+      "description": "Code review agent configuration — provider-agnostic settings for rerun, resolve, and remediation.",
+      "properties": {
+        "provider": { "type": "string" },
+        "rerunMarker": { "type": "string" },
+        "timeoutMinutes": { "type": "integer", "minimum": 1 },
+        "treatVulnerabilityLanguageAsActionable": { "type": "boolean" },
+        "treatWeakConfidenceAsActionable": { "type": "boolean" },
+        "autoResolveBotsOnlyThreads": { "type": "boolean" },
+        "neverAutoResolveHumanThreads": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "daemon": {
+      "type": "object",
+      "properties": {
+        "poll_interval_seconds": { "type": "integer", "minimum": 1 },
+        "health_heartbeat_timeout": { "type": "integer", "minimum": 1 },
+        "stage_timeouts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        },
+        "auto_scale_interval_cycles": { "type": "integer", "minimum": 1 },
+        "optimize_interval_cycles": { "type": "integer", "minimum": 1 },
+        "stale_reaper_interval_cycles": { "type": "integer", "minimum": 1 },
+        "stale_timeout_multiplier": { "type": "integer", "minimum": 1 },
+        "stale_state_hours": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "pipeline": {
+      "type": "object",
+      "properties": {
+        "max_iterations_default": { "type": "integer", "minimum": 1 },
+        "max_cycles_convergence_cap": { "type": "integer", "minimum": 1 },
+        "coverage_threshold_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "quality_gate_score_threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "memory_baseline_fallback_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "memory_inject_fallback_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "coverage_threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "gate_score_threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "audit_weights": {
+          "type": "object",
+          "properties": {
+            "test_pass": { "type": "integer", "minimum": 0 },
+            "coverage": { "type": "integer", "minimum": 0 },
+            "security": { "type": "integer", "minimum": 0 },
+            "architecture": { "type": "integer", "minimum": 0 },
+            "correctness": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "strategic": {
+      "type": "object",
+      "properties": {
+        "max_issues_per_cycle": { "type": "integer", "minimum": 1 },
+        "cooldown_seconds": { "type": "integer", "minimum": 0 },
+        "overlap_threshold_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "strategy_lines": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "sweep": {
+      "type": "object",
+      "properties": {
+        "cron_minutes": { "type": "integer", "minimum": 1 },
+        "stuck_threshold_hours": { "type": "integer", "minimum": 1 },
+        "retry_template": { "type": "string" },
+        "retry_max_iterations": { "type": "integer", "minimum": 1 },
+        "stuck_retry_max_iterations": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "hygiene": {
+      "type": "object",
+      "properties": {
+        "artifact_age_days": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "recruit": {
+      "type": "object",
+      "properties": {
+        "self_tune_min_matches": { "type": "integer", "minimum": 1 },
+        "self_tune_min_success_rate": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "match_confidence_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_match_history_size": { "type": "integer", "minimum": 1 },
+        "max_profile_task_history": { "type": "integer", "minimum": 1 },
+        "meta_learning_accuracy_floor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "auto_evolve_after_outcomes": { "type": "integer", "minimum": 1 },
+        "llm_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "default_model": { "type": "string" },
+        "promote_threshold_tasks": { "type": "integer", "minimum": 1 },
+        "promote_threshold_success_rate": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

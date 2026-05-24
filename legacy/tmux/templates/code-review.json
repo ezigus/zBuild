@@ -1,0 +1,25 @@
+{
+  "name": "code-review",
+  "description": "Code review with quality, security, and test coverage agents",
+  "keywords": ["review", "audit", "quality", "check", "pr"],
+  "agents": [
+    {
+      "name": "code-quality",
+      "role": "Code quality, logic errors, design patterns, readability",
+      "focus": "src/, apps/"
+    },
+    {
+      "name": "security",
+      "role": "Security vulnerabilities, auth flaws, injection risks",
+      "focus": "src/auth/, src/api/, *.config.*"
+    },
+    {
+      "name": "test-coverage",
+      "role": "Test completeness, edge cases, missing assertions",
+      "focus": "*.test.*, __tests__/, *.spec.*"
+    }
+  ],
+  "layout": "tiled",
+  "layout_style": "main-horizontal",
+  "main_pane_percent": 65
+}

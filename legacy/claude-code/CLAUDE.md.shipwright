@@ -1,0 +1,179 @@
+# Shipwright — Agent Instructions
+
+This project uses [Shipwright](https://github.com/sethdford/shipwright) for autonomous Claude Code agent teams.
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `shipwright pipeline start --issue <N>` | Run full delivery pipeline for an issue |
+| `shipwright pipeline start --issue <N> --worktree` | Pipeline in isolated git worktree (parallel-safe) |
+| `shipwright pipeline start --goal "..." --worktree=name` | Pipeline with named worktree |
+| `shipwright session <name> --template <tpl>` | Create a team session with agent panes |
+| `shipwright daemon start` | Watch repo for labeled issues, auto-process |
+| `shipwright fleet start` | Orchestrate daemons across multiple repos |
+| `shipwright fix "<goal>" --repos <paths>` | Apply the same fix across repos in parallel |
+| `shipwright prep` | Analyze repo and generate preparation report |
+| `shipwright loop` | Continuous improvement loop |
+| `shipwright status` | Show team dashboard |
+| `shipwright cost show` | Token usage and spending dashboard |
+| `shipwright cost budget set <amount>` | Set daily budget limit |
+| `shipwright cost remaining-budget` | Check remaining daily budget (used by auto-scaler) |
+| `shipwright memory show` | View captured failure patterns |
+| `shipwright dashboard` | Real-time web dashboard (requires Bun) |
+| `shipwright dashboard start` | Start dashboard in background |
+| `shipwright heartbeat list` | Show agent heartbeat status |
+| `shipwright checkpoint list` | Show saved pipeline checkpoints |
+| `shipwright remote list` | Show registered machines |
+| `shipwright remote add <name> --host <h>` | Register a remote worker machine |
+
+## Pipeline Stages
+
+```
+intake → plan → design → build → test → review → compound_quality → pr → deploy → validate → monitor
+```
+
+## Parallel Pipelines
+
+Use `--worktree` to run multiple pipelines concurrently on the same repo:
+
+```bash
+# Each runs in its own git worktree — no conflicts
+shipwright pipeline start --issue 42 --worktree
+shipwright pipeline start --issue 43 --worktree
+shipwright pipeline start --goal "Refactor auth" --worktree=auth-refactor
+```
+
+The daemon uses worktrees automatically. Use `--worktree` for ad-hoc parallel runs.
+
+## Auto-Scaling (Daemon)
+
+The daemon can dynamically adjust worker count based on system resources:
+
+```json
+{
+  "auto_scale": true,
+  "auto_scale_interval": 5,
+  "max_workers": 8,
+  "min_workers": 1,
+  "worker_mem_gb": 4,
+  "estimated_cost_per_job_usd": 5.0
+}
+```
+
+Scaling factors (takes the minimum):
+- **CPU**: 75% of cores (e.g., 8-core → max 6 workers)
+- **Memory**: available GB / `worker_mem_gb`
+- **Budget**: remaining daily budget / `estimated_cost_per_job_usd`
+- **Queue**: current demand (active + queued issues)
+
+## Fleet Worker Pool
+
+Distribute a total worker budget across repos proportionally to demand:
+
+```json
+{
+  "worker_pool": {
+    "enabled": true,
+    "total_workers": 12,
+    "rebalance_interval_seconds": 120
+  }
+}
+```
+
+When enabled, the fleet rebalancer runs in the background and redistributes workers every N seconds. Repos with more queued issues get more workers. Each repo always gets at least 1 worker.
+
+## tmux Conventions
+
+- Team windows are named `claude-<team-name>` (get the lambda icon in the status bar)
+- Pane titles: `<team>-<role>` (visible in pane borders)
+- Set pane title: `printf '\033]2;agent-name\033\\'`
+- Prefix key: **Ctrl-a**
+- Layouts: `prefix + M-1` (horizontal), `M-2` (vertical), `M-3` (tiled)
+- Zoom: `prefix + G` (toggle focus on one pane)
+- Capture output: `prefix + M-s` (current pane), `prefix + M-a` (all panes)
+
+## Team Patterns
+
+- Assign each agent **different files** to avoid merge conflicts
+- Use `--worktree` for file isolation between agents
+- Keep tasks self-contained (5-6 focused tasks per agent)
+- Use the task list for coordination, not direct messaging
+
+## Memory System
+
+Failure patterns are automatically captured after each pipeline run and injected into future builds. Agents receive relevant context from previous runs — fixes, root causes, and codebase conventions — so they don't repeat mistakes.
+
+## Pipeline Templates
+
+| Template | Use Case |
+|----------|----------|
+| `fast` | Simple changes (score >= 70) — skip review |
+| `standard` | Medium complexity — full pipeline |
+| `full` | Complex changes — extra review cycles |
+| `hotfix` | Urgent fixes — minimal stages |
+| `autonomous` | Daemon-driven — all stages enabled |
+| `cost-aware` | Budget-conscious — model routing by stage |
+
+## Daemon Configuration
+
+Generate with `shipwright daemon init`, then edit `.claude/daemon-config.json`:
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `max_parallel` | `2` | Static worker limit (overridden by auto_scale) |
+| `auto_scale` | `false` | Enable resource-aware dynamic scaling |
+| `max_workers` | `8` | Ceiling for auto-scaler |
+| `min_workers` | `1` | Floor for auto-scaler |
+| `self_optimize` | `false` | Auto-tune based on DORA metrics |
+| `auto_template` | `false` | Pick pipeline template by issue complexity |
+| `max_retries` | `2` | Retry failed pipelines with escalation |
+| `priority_lane` | `false` | Reserve a slot for urgent/hotfix issues |
+
+## Failure Recovery
+
+### When Tests Fail
+
+1. Read the full test output — don't guess at the failure
+2. Identify the failing test and the assertion that broke
+3. Fix the code (not the test, unless the test is wrong)
+4. Re-run the specific failing test first, then the full suite
+5. If the fix touches shared code, check for regressions in related tests
+6. Document what caused the failure in your task update
+
+### When Merge Conflicts Arise
+
+1. Run `git status` to see all conflicted files
+2. Resolve one file at a time — read both versions before choosing
+3. Check `.claude/CLAUDE.md` for project conventions that may affect resolution
+4. After resolving, run the test suite to verify nothing broke
+5. If unsure about a resolution, ask the team lead before committing
+
+### When Context Window Gets Tight
+
+1. The PreCompact hook automatically saves context before compaction
+2. Summarize your progress and next steps before context is lost
+3. Break remaining work into smaller, self-contained tasks
+4. Use `shipwright memory show` to review captured learnings
+5. Focus on completing the current task rather than starting new ones
+
+### When a Pipeline Fails
+
+1. Check the pipeline state: `cat .claude/pipeline-state.md`
+2. Review logs for the failed stage
+3. Fix the issue, then resume: `shipwright pipeline resume`
+4. If the failure is infrastructure-related, use `--worktree` for isolation
+5. Use `shipwright memory show` — previous failures may have relevant fixes
+
+### Recovery Commands
+
+| Command | Purpose |
+|---------|---------|
+| `shipwright pipeline resume` | Resume from last completed stage |
+| `shipwright memory show`     | View captured failure patterns |
+| `shipwright doctor` | Diagnose setup issues |
+| `shipwright status` | Check team and agent status |
+| `shipwright cleanup --force` | Kill orphaned sessions |
+| `shipwright worktree create <branch>` | Isolate work in a git worktree |
+| `git stash` | Temporarily save uncommitted changes |
+| `git diff --name-only HEAD~1` | See files changed in last commit |
