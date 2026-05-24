@@ -2088,6 +2088,11 @@ issues:
     title: "[Phase 0.5] ADR-009 manifest fields: platform + provides.role + platform_overrides + detect.signals"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation]
+    state: closed
+    closed_reason: |
+      Shipped in PR #226 (issue #191). Manifest schema extended with optional
+      platform, provides.role, platform_overrides, and detect.signals fields.
+      yaml_get_list added to registry.sh. Backward-compatible with existing manifests.
     body: |
       Extend ADR-001 plugin manifest with four new OPTIONAL fields per ADR-009:
         - platform: ios|node|null      # null/omit = generic fallback
@@ -2114,6 +2119,11 @@ issues:
     title: "[Phase 0.5] Template schema YAML (role-based stages + strategy + extends)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation]
+    state: closed
+    closed_reason: |
+      Shipped in PR #226 (issue #192). config/templates/standard.yaml created
+      with 3-stage fanout template. core/pipeline/template.sh implements load_template,
+      template_stage_roles (inline + block YAML), and template_stage_strategy.
     body: |
       ADR-009 template schema. Templates are YAML at config/templates/<name>.yaml.
 
@@ -2145,6 +2155,12 @@ issues:
     title: "[Phase 0.5] Resolver: resolve_plugin_for_role(role, platform) with fallback"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation]
+    state: closed
+    closed_reason: |
+      Shipped in PR #226 (issue #193). core/pipeline/resolver.sh implements
+      resolve_plugin_for_role with 2-pass resolution (platform-specific → generic
+      fallback), semver tie-break, alphabetical id tie-break, and
+      registry.role-unresolved event on miss.
     body: |
       Core function consumed by the pipeline runner (mvp-1). Given a role and
       a detected platform, returns the matching plugin directory.
@@ -2168,6 +2184,12 @@ issues:
     title: "[Phase 0.5] core/detect/platforms.sh subsystem (detection engine, not plugin)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation, safety-primitive]
+    state: closed
+    closed_reason: |
+      Shipped in PR #226 (issue #194). core/detect/platforms.sh implements
+      detect_platforms with hardcoded indicator patterns (ios/node/python/go),
+      git-SHA cache, .zbuild/platforms.json overrides (applied on cache hit too),
+      and generic floor. manifest detect.signals parsing deferred to Phase 1.
     body: |
       Engine subsystem (NOT a plugin stage). Runs before any stage dispatch.
       Reads platform plugins' detect.signals manifests + .zbuild/platforms.json
@@ -2693,6 +2715,12 @@ issues:
     title: "[Phase 0.5] Pipeline runner: role-based templates + resolver (follow-up to #83)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation]
+    state: closed
+    closed_reason: |
+      Shipped in PR #226 (issue #208). runner.sh updated to load templates,
+      run detect_platforms, dispatch all declared stage roles × detected platforms
+      (fanout/sequential), resolve via plat-3 with backward-compat ID fallback,
+      and track partial fanout failure as stage.fail reason=partial.
     body: |
       Tracked separately in #208 (created out-of-band). Manifest copy so it
       survives manifest regeneration.
