@@ -117,6 +117,16 @@ milestones:
     description: |
       Behaviors not wired in legacy today; build after Phase 5 stabilizes.
       KEEPERS §L (11 items).
+  - title: Phase 0.5 — MVP Pipeline & Distribution
+    description: |
+      Scaffolding required to run zBuild end-to-end at all — pipeline runner,
+      model router stub, intake/output stages, security-lens LLM wiring — plus
+      install paths (npm publish, one-shot installer) and CI integration
+      (reusable workflow, daemon-in-Actions, auth docs). Not keepers; new code
+      that the manifest didn't originally cover. Ships when:
+      'zbuild pipeline start --goal "..." --scope src/' produces a real
+      security audit comment on a GitHub issue, AND `npx zbuild` works from
+      a clean machine.
 
 # ─── Issues ─────────────────────────────────────────────────────────────────
 # Body template (markdown) used for every keeper issue. Substitution placeholders:
@@ -907,3 +917,243 @@ issues:
       plugins/claim-coordinator/dashboard/: routes claim ops through an
       optional dashboard process that serializes them in-memory. For teams
       already running the dashboard.
+
+  # ─── Phase 0.5 — MVP Pipeline (5 issues) ────────────────────────────────
+  - id: mvp-1
+    title: "[Phase 0.5] Pipeline runner (core/pipeline/runner.sh)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Implement the orchestration loop that reads a pipeline template
+      (config/templates/<name>.yaml), discovers required plugins via the
+      registry, and calls each plugin's init → run → finalize hooks in order.
+
+      Scope:
+      - core/pipeline/runner.sh with run_pipeline(template, goal) entry point
+      - Reads stage list from template YAML
+      - Resolves stage → plugin via registry lookup
+      - Handles failure: classifies via recovery-plugin, decides retry/abort
+      - Writes state via core/state/atomic.sh on every stage transition
+      - Emits pipeline.{start,end,abort} + stage.{start,complete,fail} events
+
+      Minimal template (config/templates/security-audit.yaml):
+        stages: [intake, security-lens, output]
+
+      Dependencies: plugin-registry (done), event-bus (done), state (done).
+      Blocks: MVP-3, MVP-4, MVP-5.
+
+      Tests: tests/core-pipeline-runner-test.sh with a fixture template
+      and 2 mock plugins; verify hook ordering, state writes, event emission.
+
+  - id: mvp-2
+    title: "[Phase 0.5] Model router stub (core/router/route.sh)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Phase 0.5 stub of the model router. Selects a model from
+      config/models.json based on requested tier (T0-T4), shells out to the
+      `claude` CLI with the (already-redacted) prompt, parses the response.
+
+      Scope:
+      - core/router/route.sh exporting route_to_model(tier, prompt) → response
+      - Reads config/models.json (ADR-003 schema; minimal version OK)
+      - Phase 0.5: no UCB1/Thompson; just pick first candidate in tier
+      - Shells to `claude` CLI; logs model.route event
+      - Returns raw response text (caller parses)
+
+      Real UCB1 (#29) and Thompson (#30) routers replace the picker logic
+      later; the shell-to-claude transport stays.
+
+      Tests: tests/core-router-route-test.sh with a mocked `claude` binary
+      via PATH-shadow (test-helpers pattern). Verify tier resolution, env
+      passing, event emission.
+
+  - id: mvp-3
+    title: "[Phase 0.5] Intake stage plugin (plugins/agent/intake/)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, agent-plugin]
+    body: |
+      First stage of every pipeline run. Captures the goal (from --goal CLI
+      arg or GitHub issue) and writes the initial state file + scope manifest.
+
+      Scope:
+      - plugins/agent/intake/{manifest.yaml,plugin.sh,prompts/intake.md}
+      - run() takes goal-text + optional issue-number, writes:
+        - state/scope-manifest.md (fenced block; default scope = whole repo,
+          override via --scope flag)
+        - state/intake.md (sanitized goal via goal-sanitize)
+      - Apply goal-sanitization sentinels at the capture boundary
+      - Emit stage.complete with goal summary
+
+      Dependencies: MVP-1 (runner), redaction chokepoint (done).
+      Blocks: MVP-5 (output needs intake state).
+
+      Tests: tests/plugin-intake-test.sh with --goal "test goal" and
+      verify state files created, sentinels applied, scope manifest readable.
+
+  - id: mvp-4
+    title: "[Phase 0.5] Wire security-lens to real LLM call (via router)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, agent-plugin]
+    body: |
+      Replace the security-lens Phase-0 stub (keyword counter) with a real
+      LLM call via core/router. Reads prompts/security.md, applies redaction,
+      routes to T3 (per manifest config), parses findings.json from response.
+
+      Scope:
+      - plugins/agent/security-lens/plugin.sh: run() rewires to call
+        route_to_model(tier, redacted_prompt)
+      - Parses model response as findings.json (per prompts/security.md schema)
+      - Validates schema; emits warning on malformed response
+      - Existing chokepoint + event-bus wiring stays unchanged
+
+      Dependencies: MVP-2 (router).
+
+      Tests: extend tests/plugin-security-lens-test.sh with a mocked router
+      that returns a canned findings.json; verify parse + emit.
+
+  - id: mvp-5
+    title: "[Phase 0.5] Output stage plugin (plugins/tool/output-github-comment/)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, tool-plugin]
+    body: |
+      Last stage of the MVP pipeline. Reads accumulated findings.json artifacts
+      and posts a comment on the GitHub issue (or writes a local report if no
+      issue number).
+
+      Scope:
+      - plugins/tool/output-github-comment/{manifest.yaml,plugin.sh}
+      - kind: tool (non-LLM)
+      - Reads state/artifacts/*-findings.json
+      - Renders markdown summary (table by severity)
+      - If $ZBUILD_ISSUE set: `gh issue comment $ZBUILD_ISSUE --body-file ...`
+      - Else: write to state/report-$run_id.md
+
+      Dependencies: MVP-1 (runner).
+
+      Tests: tests/plugin-output-test.sh with mocked gh CLI, verify markdown
+      shape and command invocation.
+
+  # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
+  - id: inst-1
+    title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      .github/workflows/release.yml is drafted but the npm publish step is
+      commented out pending 0.1.0. Complete the flow + ship the first
+      publish so `npm install -g zbuild` works.
+
+      Scope:
+      - Bump version in package.json to 0.1.0
+      - Uncomment + test npm publish step in release.yml
+      - Add NPM_TOKEN secret to the repo
+      - Tag v0.1.0; verify the workflow runs and publishes
+      - Verify on clean machine: `npx zbuild --version` and
+        `npm install -g zbuild && zbuild --version`
+
+      Should land AFTER MVP-1..5 so the first published version actually does
+      something (runs a security audit) rather than printing stubs.
+
+  - id: inst-2
+    title: "[Phase 0.5] One-shot installer (curl | bash)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Hosted installer script so a user can run:
+
+        curl -sSL https://zbuild.dev/install | bash
+
+      (or whatever URL we end up with).
+
+      Scope:
+      - Script verifies bash 5+, git, jq, gh present (reuses install.sh checks)
+      - Resolves latest release tag from GitHub API
+      - Downloads tarball, extracts to ~/.zbuild, symlinks to ~/.local/bin/zbuild
+      - Doctor verification at end
+      - Host the script: GitHub Pages on this repo (zbuild.dev domain optional)
+      - README install section updated
+
+      Defer Homebrew formula to wishlist.
+
+  - id: inst-3
+    title: "[Phase 0.5] Doctor command covers install verification (extends #58)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Extend the doctor command (issue #58 already migrates the legacy doctor)
+      to verify the install itself: PATH has zbuild, ~/.zbuild/state writable,
+      gh CLI authenticated, claude CLI present, sqlite3 available, bash >=5.
+
+      Sequence: blocks on #58 landing, then extends. The "install verification"
+      checks live alongside the legacy doctor checks.
+
+      Scope:
+      - Add check_install() to doctor's check registry
+      - Output: green/yellow/red per check + copy-paste fix line per failure
+      - Tests verify each check fires correctly with mocks
+
+  # ─── Phase 0.5 — GitHub CI Integration (3 issues) ──────────────────────
+  - id: ci-1
+    title: "[Phase 0.5] Reusable workflow: .github/workflows/zbuild-pipeline.yml"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Ship a reusable GitHub Actions workflow that downstream repos can
+      include in their own .github/workflows/ to run zBuild against their
+      issues:
+
+        jobs:
+          zbuild:
+            uses: ezigus/zBuild/.github/workflows/zbuild-pipeline.yml@v1
+            with:
+              template: security-audit
+            secrets:
+              ZBUILD_GITHUB_TOKEN: ${{ secrets.ZBUILD_PAT }}
+              ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      Scope:
+      - Workflow file in this repo, with `on: workflow_call:` trigger
+      - Inputs: template (string), issue-number (string, optional)
+      - Steps: install zbuild, run pipeline, exit code propagation
+      - Documented in docs/CI-INTEGRATION.md
+      - Test repo demonstrating consumption (could be a fixture)
+
+      Dependencies: INST-1 (zbuild must be installable via npm/curl first).
+
+  - id: ci-2
+    title: "[Phase 0.5] Daemon-in-Actions mode (label-triggered pipeline)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, daemon-plugin]
+    body: |
+      The shipwright daemon's external API is GitHub labels. Replicate the
+      pattern as a workflow: when an issue gets the `zbuild` label, an
+      Actions workflow picks it up and runs the pipeline (no long-running
+      daemon needed).
+
+      Scope:
+      - .github/workflows/zbuild-on-label.yml triggered by `issues: labeled`
+      - Filters on `label.name == 'zbuild'`
+      - Calls the reusable workflow from CI-1 with issue number
+      - Posts result back as a comment (via the output plugin from MVP-5)
+      - Documented label contract in docs/CI-INTEGRATION.md
+      - Sample tested on this repo against a test issue
+
+      Future: Phase 3 daemon plugins (issues #45-55) implement the long-running
+      version. CI-2 is the Actions-native variant; both share the label contract.
+
+  - id: ci-3
+    title: "[Phase 0.5] Auth + permissions docs (PAT vs GITHUB_TOKEN, secrets)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
+    body: |
+      Document the auth surface for users who want to run zBuild in CI:
+      - GITHUB_TOKEN (default action token) vs PAT (cross-repo, can edit own
+        workflow files) — when each is needed
+      - ANTHROPIC_API_KEY secret setup
+      - Minimum required scopes per token type
+      - Common failure modes (token can't add labels in fork PRs, etc.)
+      - Sample secrets configuration for the consumer-repo case
+
+      Deliverable: docs/CI-INTEGRATION.md sections covering auth, common
+      setups, troubleshooting. Plus a one-page quickstart in README.
