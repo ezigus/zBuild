@@ -10,7 +10,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install bash 5 (Ubuntu ships with 5.x already)
         run: bash --version
@@ -55,7 +55,7 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run unit tests
