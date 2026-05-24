@@ -25,12 +25,18 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 
 DRY_RUN=0
 UPDATE_EXISTING=0
+RECONCILE_ONLY=0
 MANIFEST="$REPO_ROOT/.github/issues/keepers-manifest.yaml"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
         --update-existing) UPDATE_EXISTING=1; shift ;;
+        --reconcile)
+            # Read-only: list live issues whose titles aren't in the manifest, and
+            # manifest entries with state: closed whose live issue is still open.
+            # Doesn't modify anything; informational diff between manifest + live.
+            RECONCILE_ONLY=1; shift ;;
         --manifest) MANIFEST="$2"; shift 2 ;;
         -h|--help)
             grep '^#' "$0" | head -30
@@ -58,6 +64,30 @@ REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 info "target repo: $REPO"
 info "manifest: $MANIFEST"
 [[ "$DRY_RUN" -eq 1 ]] && warn "DRY RUN — no API calls will be made"
+
+# ─── --reconcile: read-only diff between live + manifest ───────────────────
+if [[ "$RECONCILE_ONLY" -eq 1 ]]; then
+    info "reconcile mode — read-only diff"
+    # Build set of manifest titles
+    manifest_titles="$(yq -r '.issues[].title' "$MANIFEST" | sort)"
+    # Build map of manifest title → state
+    manifest_closed="$(yq -r '.issues[] | select(.state == "closed") | .title' "$MANIFEST" | sort)"
+    live_open="$(gh issue list --state open --limit 500 --json title -q '.[].title' | sort)"
+    live_closed="$(gh issue list --state closed --limit 500 --json title -q '.[].title' | sort)"
+    live_all="$(printf '%s\n%s\n' "$live_open" "$live_closed" | sort -u)"
+
+    echo
+    info "Live issues without a manifest entry (operator-created / orphaned):"
+    comm -23 <(echo "$live_all") <(echo "$manifest_titles") | sed 's/^/  - /'
+    echo
+    info "Manifest entries with state: closed but live issue still open (would close on --update-existing):"
+    comm -12 <(echo "$manifest_closed") <(echo "$live_open") | sed 's/^/  - /'
+    echo
+    info "Manifest entries (state: open) whose live issue is closed (won't auto-reopen):"
+    comm -12 <(echo "$manifest_titles" | comm -23 - <(echo "$manifest_closed")) <(echo "$live_closed") | sed 's/^/  - /'
+    echo
+    exit 0
+fi
 
 run_gh() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -154,6 +184,14 @@ $behavior
 - [ ] \`git rm\` legacy source once 5-test trial passes
 - [ ] Create \`legacy/migrated/<keeper-id>.md\` tombstone
 EOF
+    # Optional body_suffix appended after the keeper template (for cross-refs)
+    local suffix; suffix="$(yq ".issues[$idx].body_suffix // \"\"" "$MANIFEST")"
+    if [[ -n "$suffix" && "$suffix" != "null" ]]; then
+        echo
+        echo "---"
+        echo
+        echo "$suffix"
+    fi
 }
 
 for i in $(seq 0 $((issue_count - 1))); do
@@ -174,8 +212,7 @@ for i in $(seq 0 $((issue_count - 1))); do
 
     if echo "$existing_titles" | grep -qFx "$title"; then
         if [[ "$UPDATE_EXISTING" -eq 1 ]]; then
-            # Find the issue number and update its body
-            # Use --arg to pass title safely; avoids jq parse errors on titles with quotes
+            # Find the issue number
             issue_num="$(gh issue list --state all --limit 500 --json number,title \
                 | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' \
                 | head -1)"
@@ -183,6 +220,30 @@ for i in $(seq 0 $((issue_count - 1))); do
                 warn "couldn't resolve issue number for: $title"
                 continue
             fi
+
+            # Check live state vs manifest state
+            live_state="$(gh issue view "$issue_num" --json state -q .state 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+            manifest_state="$state"
+
+            # Close if manifest says closed AND live is open (manifest is source of truth)
+            if [[ "$manifest_state" == "closed" && "$live_state" == "open" ]]; then
+                close_reason="$(yq ".issues[$i].closed_reason // \"Closed per manifest declaration.\"" "$MANIFEST")"
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    echo "  [dry-run] gh issue close $issue_num --comment <reason>" >&2
+                else
+                    gh issue close "$issue_num" --comment "$close_reason" >/dev/null 2>&1 && \
+                        echo "  ${YELLOW}× closed #$issue_num per manifest: $title${RESET}" || \
+                        warn "close failed: #$issue_num $title"
+                fi
+                skipped=$((skipped + 1))
+                continue
+            fi
+
+            # NOTE: We deliberately do NOT auto-reopen issues that the manifest says
+            # are open but live state is closed. Operator might have closed manually
+            # for a reason. --reconcile surfaces this for review.
+
+            # Update body
             if [[ "$DRY_RUN" -eq 1 ]]; then
                 echo "  [dry-run] gh issue edit $issue_num --body <new>" >&2
             else
