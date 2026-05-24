@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# Tests: plugins/agent/security-lens — first agent plugin POC.
+# Proves the end-to-end migration loop: discovery, redaction chokepoint,
+# event bus emission, typed findings.json output.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+
+print_test_header "plugin: security-lens (first POC)"
+
+setup_test_env "plugin-security-lens"
+
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+
+# Source registry + plugin (registry pulls the lifecycle helpers we'll use)
+# shellcheck source=../core/plugin-registry/registry.sh
+source "$REPO_ROOT/core/plugin-registry/registry.sh"
+
+PLUGIN_DIR="$REPO_ROOT/plugins/agent/security-lens"
+
+# ─── Plugin is discoverable + valid ─────────────────────────────────────────
+set +e
+validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "security-lens manifest validates (kind: agent + requires.core: [redaction, ...])" "0" "$rc"
+
+discovered="$(discover_plugins "$REPO_ROOT/plugins")"
+assert_contains "security-lens is discovered" "$discovered" "agent/security-lens"
+
+# ─── Prompt provenance: text matches legacy:48-53 verbatim ──────────────────
+legacy_block="$(awk 'NR>=48 && NR<=53' "$REPO_ROOT/legacy/scripts/lib/compound-audit.sh" | tr -d '\r')"
+prompt_block="$(cat "$PLUGIN_DIR/prompts/security.md")"
+
+# Both should contain these exact lines
+for line in \
+    "You are a Security Auditor" \
+    "Command injection, path traversal, input validation gaps" \
+    "Credential/secret exposure in code or logs" \
+    "Authentication/authorization bypass paths" \
+    "OWASP top 10 vulnerability patterns" \
+    "Do NOT report non-security issues."; do
+    if echo "$legacy_block" | grep -qF "$line"; then
+        legacy_has=1
+    else
+        legacy_has=0
+    fi
+    if echo "$prompt_block" | grep -qF "$line"; then
+        prompt_has=1
+    else
+        prompt_has=0
+    fi
+    assert_eq "verbatim line preserved: '$line'" "$legacy_has" "$prompt_has"
+done
+
+# ─── Run: refuses without scope manifest (chokepoint enforcement) ───────────
+INPUT="$TEST_TEMP_DIR/input.txt"
+echo "some random text that mentions auth and credential leaks" > "$INPUT"
+
+OUTPUT="$TEST_TEMP_DIR/findings.json"
+
+# Source plugin and call init
+# shellcheck source=../plugins/agent/security-lens/plugin.sh
+source "$PLUGIN_DIR/plugin.sh"
+
+security_lens_init >/dev/null
+
+# Run without scope manifest — should fail (chokepoint refuses)
+set +e
+security_lens_run "$INPUT" "" "$OUTPUT" 2>/dev/null
+rc=$?
+set -e
+assert_eq "security_lens_run refuses without scope manifest (chokepoint enforcement)" "1" "$rc"
+
+# ─── Run: with scope manifest, emits typed findings.json ────────────────────
+MANIFEST="$TEST_TEMP_DIR/scope.md"
+cat > "$MANIFEST" <<EOF
++ src/
++ tests/
+EOF
+security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
+assert_file_exists "findings.json created" "$OUTPUT"
+
+schema_v=$(jq -r .schema_version "$OUTPUT")
+assert_eq "findings.json schema_version=1" "1" "$schema_v"
+
+plugin_id=$(jq -r .plugin_id "$OUTPUT")
+assert_eq "findings.json plugin_id=security-lens" "security-lens" "$plugin_id"
+
+# Trigger keywords ("auth", "credential") should produce at least one finding
+findings_count=$(jq -r '.findings | length' "$OUTPUT")
+if [[ "$findings_count" -gt 0 ]]; then
+    assert_pass "trigger keywords produced $findings_count finding(s)"
+else
+    assert_fail "trigger keywords should have produced findings"
+fi
+
+# ─── Events emitted during the run ──────────────────────────────────────────
+if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
+    redaction_count=$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" || true)
+    run_complete=$(grep -c '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" || true)
+    if [[ "$redaction_count" -ge 1 ]]; then
+        assert_pass "redaction.applied event emitted (chokepoint observable)"
+    else
+        assert_fail "expected redaction.applied event in event log"
+    fi
+    if [[ "$run_complete" -ge 1 ]]; then
+        assert_pass "plugin.run.complete event emitted"
+    else
+        assert_fail "expected plugin.run.complete event in event log"
+    fi
+else
+    assert_fail "events.jsonl was not created"
+fi
+
+# ─── Finalize ───────────────────────────────────────────────────────────────
+security_lens_finalize >/dev/null
+finalize_count=$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" || true)
+if [[ "$finalize_count" -ge 1 ]]; then
+    assert_pass "plugin.finalize.complete event emitted"
+else
+    assert_fail "expected plugin.finalize.complete event"
+fi
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))
