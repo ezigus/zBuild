@@ -43,7 +43,6 @@ yaml_get() {
     }
     ' "$file" 2>/dev/null
     # Simpler: use grep + sed
-    local pattern
     if [[ "$key" == *.* ]]; then
         # Nested key like hooks.init: find "<parent>:" then indented "<child>:"
         local parent="${key%.*}"

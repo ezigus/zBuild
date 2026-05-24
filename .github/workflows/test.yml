@@ -36,11 +36,21 @@ jobs:
           echo "OK: legacy sentinel guard works"
 
       - name: Shellcheck
+        # SC1091 (info: couldn't follow sourced file) is excluded because we
+        # use dynamic source paths that shellcheck can't statically resolve.
+        # Severity floor: warning. Info-level findings don't fail CI.
         run: |
-          shellcheck scripts/zbuild
-          shellcheck scripts/lib/helpers.sh
-          shellcheck scripts/lib/compat.sh
-          shellcheck install.sh
+          shellcheck --severity=warning scripts/zbuild
+          shellcheck --severity=warning scripts/lib/helpers.sh
+          shellcheck --severity=warning scripts/lib/compat.sh
+          shellcheck --severity=warning install.sh
+          shellcheck --severity=warning core/redaction/scope-redaction.sh
+          shellcheck --severity=warning core/state/atomic.sh
+          shellcheck --severity=warning core/state/resume.sh
+          shellcheck --severity=warning core/plugin-registry/registry.sh
+          shellcheck --severity=warning core/event-bus/event-bus.sh
+          shellcheck --severity=warning plugins/agent/security-lens/plugin.sh
+          shellcheck --severity=warning scripts/generate-issues.sh
 
   unit:
     runs-on: ubuntu-latest

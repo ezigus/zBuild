@@ -155,7 +155,7 @@ EOF
 }
 
 for i in $(seq 0 $((issue_count - 1))); do
-    id="$(yq ".issues[$i].id" "$MANIFEST")"
+    # id is in the manifest for cross-issue references; not used by gh CLI directly
     title="$(yq ".issues[$i].title" "$MANIFEST")"
     milestone="$(yq ".issues[$i].milestone" "$MANIFEST")"
     state="$(yq ".issues[$i].state // \"open\"" "$MANIFEST")"
