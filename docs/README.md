@@ -15,6 +15,7 @@
 - **[ADR-006 — Resume Contract](adr/ADR-006-resume-contract.md)** — explicit persisted vs. reconstructed state lists; plugin responsibilities.
 - **[ADR-007 — Test Strategy](adr/ADR-007-test-strategy.md)** — call-and-assert + golden-file diffing; the 5-test trial; the migration matrix.
 - **[ADR-008 — Dependency Policy](adr/ADR-008-dependency-policy.md)** — GitHub Actions, Node.js, and npm: Dependabot weekly, quarterly audit, pre-release checklist.
+- **[ADR-009 — Platform-Aware Modularity](adr/ADR-009-platform-aware-modularity.md)** — Platform identity in manifest, role-based templates with fallback chain, declarative detection signals, three orchestration strategies (fanout/composite/sequential).
 
 ## Conventions
 
