@@ -29,7 +29,7 @@ Usage:
 Commands:
   --version, version     Print version
   --help, help, -h       Show this help
-  status                 Show pipeline status
+  status                 Show pipeline status (Phase 0 stub — JSON only)
   plugin list            List discovered plugins
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
 

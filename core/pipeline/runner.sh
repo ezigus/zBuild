@@ -51,8 +51,12 @@ main() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --issue)    issue="$2";    shift 2 ;;
-            --goal)     goal="$2";     shift 2 ;;
+            --issue)
+                [[ -z "${2:-}" ]] && { error "--issue requires a value"; _usage; return 2; }
+                issue="$2"; shift 2 ;;
+            --goal)
+                [[ -z "${2:-}" ]] && { error "--goal requires a value"; _usage; return 2; }
+                goal="$2"; shift 2 ;;
             --dry-run)  dry_run=true;  shift ;;
             --help|-h)  _usage; return 0 ;;
             *) error "Unknown argument: $1"; _usage; return 2 ;;
@@ -102,7 +106,7 @@ main() {
 
     _runner_abort_trap() {
         [[ "$_runner_ended" == "true" ]] && return 0
-        eb_emit_event "pipeline.end" "status=aborted" \
+        eb_emit_event "pipeline.abort" \
             "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
     }
     trap '_runner_abort_trap' EXIT
@@ -112,22 +116,31 @@ main() {
 
     local stage plugin_dir rc
     for stage in "${_PIPELINE_STAGES[@]}"; do
+        eb_emit_event "stage.start" "stage=$stage"
         info "Running stage: $stage"
         plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
 
         if [[ -z "$plugin_dir" ]]; then
-            warn "No plugin registered for stage '$stage' — skipping"
-            _update_stage_status "$state_file" "$stage" "skipped"
-            continue
+            _update_stage_status "$state_file" "$stage" "failed"
+            eb_emit_event "stage.fail" "stage=$stage" "reason=no_plugin"
+            eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue"
+            _runner_ended=true
+            error "No plugin registered for required stage '$stage'"
+            return 1
         fi
 
         set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
 
         if [[ $rc -eq 0 ]]; then
-            _update_stage_status "$state_file" "$stage" "success"
+            _update_stage_status "$state_file" "$stage" "complete"
+            eb_emit_event "stage.complete" "stage=$stage"
             success "Stage $stage complete"
         else
+            # ADR-001: exit 1 (recoverable) and 2 (fatal) both halt v1.
+            # Retry/recovery routing is deferred (follow-on issue, depends_on: 83).
             _update_stage_status "$state_file" "$stage" "failed"
+            eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
             _runner_ended=true
