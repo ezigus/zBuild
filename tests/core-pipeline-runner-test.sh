@@ -179,6 +179,117 @@ else
     assert_fail "events.jsonl not created (needed to verify abort event)"
 fi
 
+# ─── Test 11: --template flag parsed; missing template falls back gracefully ──
+_make_plugin "intake"        "agent" 0
+_make_plugin "security-lens" "agent" 0
+_make_plugin "output"        "tool"  0
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
+
+out="$(bash "$RUNNER" --issue 83 --dry-run --template standard 2>&1)"
+assert_contains "--template standard dry-run shows intake"        "$out" "intake"
+assert_contains "--template standard dry-run shows security-lens" "$out" "security-lens"
+assert_contains "--template standard dry-run shows output"        "$out" "output"
+
+out="$(bash "$RUNNER" --issue 83 --dry-run --template nonexistent 2>&1)"
+assert_contains "missing template falls back to built-in stages"  "$out" "intake"
+
+# ─── Test 12: role-based dispatch — resolver path executes correctly ───────────
+# Helpers for role-based plugins (provides.role field)
+_make_role_plugin() {
+    local id="$1" role="$2" exit_code="${3:-0}"
+    local dir="$TEST_TEMP_DIR/plugins/agent/$id"
+    mkdir -p "$dir"
+    local fn; fn="${id//-/_}_run"
+    cat > "$dir/manifest.yaml" <<EOF
+id: $id
+name: Role Plugin $id
+kind: agent
+version: 0.0.1
+hooks:
+  run: $fn
+requires:
+  core:
+    - redaction
+provides:
+  role: $role
+EOF
+    printf '%s() { return %d; }\n' "$fn" "$exit_code" > "$dir/plugin.sh"
+}
+
+rm -rf "$PLUGINS_ROOT/agent/" "$PLUGINS_ROOT/tool/"
+_make_role_plugin "intake-agent"   "intake"          0
+_make_role_plugin "security-agent" "security-auditor" 0
+_make_role_plugin "output-agent"   "output"           0
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
+
+set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+assert_eq "role-based dispatch exits 0" "0" "$rc"
+
+role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
+assert_eq "role-based dispatch: 3 stage.complete events" "3" "$role_complete"
+
+role_sl_status="$(jq -r '.stage_statuses["security-lens"] // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
+assert_eq "role-based: security-lens stage_status=complete" "complete" "$role_sl_status"
+
+# ─── Test 13: fanout with 2 detected platforms — plugin invoked once per platform
+# Pre-populate platforms.json cache so detect_platforms returns 2 platforms.
+current_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
+mkdir -p "$STATE_DIR"
+printf '{"schema_version":1,"repo_head_sha":"%s","detected":["node","ios"],"overrides":[],"updated_at":"2026-01-01T00:00:00Z"}\n' \
+    "$current_sha" > "$STATE_DIR/platforms.json"
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+
+set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+assert_eq "fanout 2 platforms exits 0" "0" "$rc"
+
+# 3 stages × 2 platforms = 6 plugin.run.start events via fanout
+plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
+assert_eq "fanout 2 platforms: 6 plugin.run.start events (3 stages × 2)" "6" "$plugin_run_count"
+
+# ─── Test 14: partial fanout failure — stage.fail + pipeline.end status=failed ─
+# Platform-specific success (node) + generic failure (ios fallback) → partial.
+# Requires _make_platform_role_plugin helper.
+_make_platform_role_plugin() {
+    local id="$1" role="$2" platform="$3" exit_code="${4:-0}"
+    local dir="$TEST_TEMP_DIR/plugins/agent/$id"
+    mkdir -p "$dir"
+    local fn; fn="${id//-/_}_run"
+    cat > "$dir/manifest.yaml" <<EOF
+id: $id
+name: Platform Role Plugin $id
+kind: agent
+version: 0.0.1
+hooks:
+  run: $fn
+requires:
+  core:
+    - redaction
+platform: $platform
+provides:
+  role: $role
+EOF
+    printf '%s() { return %d; }\n' "$fn" "$exit_code" > "$dir/plugin.sh"
+}
+
+# security-agent (generic, exit 1) = ios fallback fails
+_make_role_plugin "security-agent" "security-auditor" 1
+# security-agent-node (platform=node, exit 0) = node-specific succeeds
+_make_platform_role_plugin "security-agent-node" "security-auditor" "node" 0
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+# Reuse platforms.json from test 13: ["node", "ios"]
+# node: resolve finds security-agent-node (platform=node) → exit 0
+# ios:  resolve finds security-agent (generic)             → exit 1
+# → success_count=1, fail_count=1 → partial (rc=2)
+
+set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+assert_eq "partial fanout failure exits 1" "1" "$rc"
+
+partial_stage_fail=$(grep '"stage.fail"' "$EVENTS_JSONL" | grep -c '"partial"' || true)
+assert_eq "partial fanout emits stage.fail with reason=partial" "1" "$partial_stage_fail"
+
+partial_pipeline_end=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"failed"' || true)
+assert_eq "partial fanout emits pipeline.end status=failed" "1" "$partial_pipeline_end"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

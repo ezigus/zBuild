@@ -174,6 +174,36 @@ Ceiling enforcement is per-platform; one platform hitting cap doesn't downgrade 
 - Per-pipeline-run strategy override via CLI (`--strategy` flag wishlist).
 - Content-pattern detection signals (file content parsing) deferred to Phase 1+.
 
+## Implementation Notes (Phase 0.5 — issue #208)
+
+### ZBUILD_PLATFORM env contract
+
+When the runner dispatches a stage using `fanout` or `sequential` strategy, each plugin invocation receives the env var **`ZBUILD_PLATFORM=<platform>`** set to the platform string for that invocation (e.g., `ios`, `node`, `generic`). Plugin authors should read this to adapt behavior per-platform.
+
+`ZBUILD_PLATFORMS` (CSV) is reserved for `composite` strategy (Phase 1) and not yet set.
+
+### Phase 0.5 deferred items
+
+The following parts of this ADR are deferred to Phase 1:
+
+- **`detect.signals` in manifests** — v1 detection uses hardcoded per-platform indicator patterns in `core/detect/platforms.sh`. Manifest signal parsing (list-of-maps YAML) is deferred.
+- **`composite` strategy** — runner exits with an error if a template requests it.
+- **`zbuild detect platforms --explain`** — CLI deferred.
+- **Content-pattern detection signals** — deferred.
+
+### Detection cache
+
+`state/platforms.json` includes `repo_head_sha` (from `git rev-parse HEAD`). If the file exists and the SHA matches the current HEAD, `detect_platforms` returns the cached result without re-walking the repo. Cache is invalidated on commit.
+
+### Backward-compatibility
+
+The runner falls back to `_find_plugin_for_stage` (direct stage-ID match) in two cases:
+
+1. **Template stage has no roles** — `template_stage_roles` returns empty (e.g., stage loaded from the built-in fallback list instead of a template).
+2. **No plugin declares `provides.role`** — template stage lists roles but none of the installed plugins have a matching `provides.role` field; the resolver finds no candidates across all platforms. The runner then tries the direct ID match as a migration aid.
+
+This lets existing plugins (without `provides.role`) continue working while new plugins adopt role-based manifests incrementally.
+
 ## References
 
 - [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — manifest schema (extended here)

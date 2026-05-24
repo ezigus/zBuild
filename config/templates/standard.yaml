@@ -1,0 +1,16 @@
+id: standard
+name: Standard Pipeline
+extends: null
+defaults:
+  strategy: fanout
+
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]
+  - id: security-lens
+    gate: auto
+    roles: [security-auditor]
+  - id: output
+    gate: auto
+    roles: [output]
