@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  zBuild CLI (zbuild / zb)                                                 ║
+# ║  Plugin-based framework for autonomous AI agent delivery pipelines        ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+set -euo pipefail
+
+VERSION="0.0.1"
+
+# Resolve symlinks (npm global install symlinks bin/ to node_modules/)
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+    DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+
+# shellcheck source=lib/helpers.sh
+source "$SCRIPT_DIR/lib/helpers.sh"
+
+usage() {
+    cat <<EOF
+zBuild ${VERSION} — plugin-based framework for autonomous AI agent delivery pipelines.
+
+Usage:
+  zbuild <command> [args...]
+
+Commands:
+  --version, version     Print version
+  --help, help, -h       Show this help
+  status                 Show pipeline status (not implemented in Phase 0)
+  plugin list            List discovered plugins (not implemented in Phase 0)
+  pipeline start         Start a pipeline (not implemented in Phase 0)
+
+Phase 0 implementation is in progress. Most commands are stubs.
+See https://github.com/ezigus/zBuild/issues for the migration backlog.
+
+Documentation:
+  docs/KEEPERS.md        Behaviors preserved from shipwright
+  docs/ARCHITECTURE.md   System view and plugin contract
+  docs/adr/              Architecture decisions
+EOF
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+    --version|version)
+        echo "zbuild ${VERSION}"
+        ;;
+    --help|help|-h)
+        usage
+        ;;
+    status)
+        info "zbuild status — Phase 0 stub"
+        echo '{"status": "phase-0-stub", "version": "'"$VERSION"'"}'
+        ;;
+    plugin)
+        case "${2:-}" in
+            list)
+                info "zbuild plugin list — Phase 0 stub"
+                echo "(plugin registry not yet implemented; will land in step 3 of Phase 0)"
+                ;;
+            *)
+                error "Unknown plugin subcommand: ${2:-}"
+                exit 2
+                ;;
+        esac
+        ;;
+    pipeline)
+        info "zbuild pipeline ${2:-} — Phase 0 stub"
+        echo "(pipeline orchestration lands in Phase 1)"
+        ;;
+    *)
+        error "Unknown command: $cmd"
+        usage
+        exit 2
+        ;;
+esac

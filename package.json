@@ -1,0 +1,46 @@
+{
+  "name": "zbuild",
+  "version": "0.0.1",
+  "description": "Plugin-based framework for autonomous AI agent delivery pipelines. Successor to shipwright.",
+  "license": "MIT",
+  "author": "Eric Ziegler <eric@zig.us>",
+  "homepage": "https://github.com/ezigus/zBuild",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ezigus/zBuild.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ezigus/zBuild/issues"
+  },
+  "bin": {
+    "zbuild": "scripts/zbuild",
+    "zb": "scripts/zbuild"
+  },
+  "files": [
+    "scripts/",
+    "core/",
+    "plugins/",
+    "config/",
+    "docs/",
+    "install.sh",
+    "LICENSE",
+    "README.md",
+    "CLAUDE.md"
+  ],
+  "scripts": {
+    "test": "bash tests/run-all.sh",
+    "test:unit": "bash tests/run-unit.sh",
+    "lint": "shellcheck scripts/zbuild scripts/lib/*.sh"
+  },
+  "engines": {
+    "bash": ">=5.0.0"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "pipeline",
+    "claude-code",
+    "plugin-framework",
+    "shipwright"
+  ]
+}

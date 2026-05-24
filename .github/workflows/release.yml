@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify version consistency
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pkg=$(jq -r .version package.json)
+          if [[ "$tag" != "$pkg" ]]; then
+            echo "ERROR: tag v$tag does not match package.json version $pkg"
+            exit 1
+          fi
+          echo "OK: tag matches package.json version: $tag"
+
+      - name: Smoke test
+        run: ./scripts/zbuild --version
+
+      # npm publish step intentionally omitted until 0.1.0 (Phase 0 ships).
+      # When ready: add NPM_TOKEN secret and uncomment.
+      # - run: npm publish
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

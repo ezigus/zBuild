@@ -1,0 +1,57 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bash 5 (Ubuntu ships with 5.x already)
+        run: bash --version
+
+      - name: Install jq + shellcheck
+        run: sudo apt-get install -y jq shellcheck
+
+      - name: zbuild --version
+        run: ./scripts/zbuild --version
+
+      - name: zbuild --help
+        run: ./scripts/zbuild --help
+
+      - name: Legacy sentinel guard refuses to run
+        run: |
+          set +e
+          bash legacy/scripts/sw status
+          status=$?
+          if [[ $status -ne 64 ]]; then
+            echo "ERROR: legacy sw should have exited 64 (sentinel), got $status"
+            exit 1
+          fi
+          echo "OK: legacy sentinel guard works"
+
+      - name: Shellcheck
+        run: |
+          shellcheck scripts/zbuild
+          shellcheck scripts/lib/helpers.sh
+          shellcheck scripts/lib/compat.sh
+          shellcheck install.sh
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run unit tests
+        run: |
+          if [[ -x tests/run-unit.sh ]]; then
+            bash tests/run-unit.sh
+          else
+            echo "tests/run-unit.sh not yet implemented (Phase 0 step 5+)"
+          fi
