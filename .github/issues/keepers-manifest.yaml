@@ -1008,6 +1008,8 @@ issues:
     title: "[Phase 0.5] Model router stub (core/router/route.sh)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation]
+    state: closed
+    closed_reason: "Merged via PR #228 (2026-05-24). Delivered core/router/route.sh, config/models.json (ADR-003 schema T0-T4), and 18-assertion test suite. All CI green."
     body: |
       Phase 0.5 stub of the model router. Selects a model from
       config/models.json based on requested tier (T0-T4), shells out to the
