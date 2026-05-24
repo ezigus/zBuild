@@ -56,13 +56,30 @@ case "$cmd" in
         echo '{"status": "phase-0-stub", "version": "'"$VERSION"'"}'
         ;;
     plugin)
+        # shellcheck source=../core/plugin-registry/registry.sh
+        source "$(cd "$SCRIPT_DIR/.." && pwd)/core/plugin-registry/registry.sh"
         case "${2:-}" in
             list)
-                info "zbuild plugin list — Phase 0 stub"
-                echo "(plugin registry not yet implemented; will land in step 3 of Phase 0)"
+                info "zbuild plugins"
+                printf "  %-20s %-12s %-10s %s\n" "ID" "KIND" "VERSION" "NAME"
+                printf "  %-20s %-12s %-10s %s\n" "--" "----" "-------" "----"
+                list_plugins_table
+                ;;
+            lock)
+                lockfile_write
+                success "wrote $ZBUILD_LOCKFILE"
+                ;;
+            validate)
+                if lockfile_validate; then
+                    success "lockfile validates clean"
+                else
+                    error "lockfile mismatches detected"
+                    exit 1
+                fi
                 ;;
             *)
                 error "Unknown plugin subcommand: ${2:-}"
+                echo "Available: list, lock, validate" >&2
                 exit 2
                 ;;
         esac
