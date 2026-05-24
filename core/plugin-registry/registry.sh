@@ -72,6 +72,36 @@ yaml_get() {
     fi
 }
 
+# ─── yaml_get_list — extract a simple list value (inline or multi-line) ─────
+# Usage: yaml_get_list <yaml_file> <key>
+# Handles: key: [a, b, c]  OR  key:\n  - a\n  - b
+yaml_get_list() {
+    local file="$1"
+    local key="$2"
+    awk -v key="$key" '
+    $0 ~ "^"key":[[:space:]]*\\[" {
+        sub(/^[^[]*\[/, "")
+        sub(/\].*$/, "")
+        n = split($0, items, /,[[:space:]]*/)
+        for (i = 1; i <= n; i++) {
+            gsub(/^[[:space:]"'"'"']+|[[:space:]"'"'"']+$/, "", items[i])
+            if (items[i] != "") print items[i]
+        }
+        exit
+    }
+    $0 ~ "^"key":[[:space:]]*$" { in_list = 1; next }
+    in_list && /^[[:space:]]*-[[:space:]]/ {
+        item = $0
+        gsub(/^[[:space:]]*-[[:space:]]*/, "", item)
+        gsub(/[[:space:]]*#.*/, "", item)
+        gsub(/^["'"'"']|["'"'"']$/, "", item)
+        gsub(/[[:space:]]*$/, "", item)
+        if (item != "") print item
+    }
+    in_list && /^[a-zA-Z_]/ { exit }
+    ' "$file" 2>/dev/null
+}
+
 # ─── validate_manifest ──────────────────────────────────────────────────────
 # Checks required fields and kind validity. Returns 0 if valid, 1 if not.
 validate_manifest() {

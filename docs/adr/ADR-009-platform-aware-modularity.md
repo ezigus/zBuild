@@ -174,6 +174,31 @@ Ceiling enforcement is per-platform; one platform hitting cap doesn't downgrade 
 - Per-pipeline-run strategy override via CLI (`--strategy` flag wishlist).
 - Content-pattern detection signals (file content parsing) deferred to Phase 1+.
 
+## Implementation Notes (Phase 0.5 — issue #208)
+
+### ZBUILD_PLATFORM env contract
+
+When the runner dispatches a stage using `fanout` or `sequential` strategy, each plugin invocation receives the env var **`ZBUILD_PLATFORM=<platform>`** set to the platform string for that invocation (e.g., `ios`, `node`, `generic`). Plugin authors should read this to adapt behavior per-platform.
+
+`ZBUILD_PLATFORMS` (CSV) is reserved for `composite` strategy (Phase 1) and not yet set.
+
+### Phase 0.5 deferred items
+
+The following parts of this ADR are deferred to Phase 1:
+
+- **`detect.signals` in manifests** — v1 detection uses hardcoded per-platform indicator patterns in `core/detect/platforms.sh`. Manifest signal parsing (list-of-maps YAML) is deferred.
+- **`composite` strategy** — runner exits with an error if a template requests it.
+- **`zbuild detect platforms --explain`** — CLI deferred.
+- **Content-pattern detection signals** — deferred.
+
+### Detection cache
+
+`state/platforms.json` includes `repo_head_sha` (from `git rev-parse HEAD`). If the file exists and the SHA matches the current HEAD, `detect_platforms` returns the cached result without re-walking the repo. Cache is invalidated on commit.
+
+### Backward-compatibility
+
+Stages in `standard.yaml` that reference roles (e.g., `roles: [intake]`) use the resolver. Existing plugins without a `provides.role` field are transparently found via `_find_plugin_for_stage` (direct ID match) — the fallback is triggered whenever `template_stage_roles` returns empty. This lets plugins migrate to role-based resolution incrementally.
+
 ## References
 
 - [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — manifest schema (extended here)
