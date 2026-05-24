@@ -5,7 +5,7 @@
 
 ## Context
 
-Shipwright has 160 test files (158 bash + 2 vitest) and `scripts/lib/test-helpers.sh`, which provides color output, temp-dir isolation, PATH-shadow mocks, child-process cleanup, and CI-env sanitization. The harness is generic and well-crafted; the test inventory is mixed.
+The legacy code has 160 test files (158 bash + 2 vitest) and `legacy/scripts/lib/test-helpers.sh`, which provides color output, temp-dir isolation, PATH-shadow mocks, child-process cleanup, and CI-env sanitization. The harness is generic and well-crafted; the test inventory is mixed.
 
 A first-pass audit incorrectly claimed "60+ grep-for-function-name assertions" as a liability. Re-audit found **zero** `grep -qE "^funcname\(\)"` patterns across the 160 files. Tests invoke functions directly and assert outputs/side-effects. That's a major asset.
 
@@ -13,11 +13,11 @@ Confirmed gap: **zero golden-output / snapshot tests.** No `*.golden`, no `expec
 
 ## Decision
 
-zBuild's test strategy has three pillars: **call-and-assert** (lifted from shipwright), **golden-file diffing** (new), and the **5-test trial** per keeper (process gate).
+zBuild's test strategy has three pillars: **call-and-assert** (lifted from legacy), **golden-file diffing** (new), and the **5-test trial** per keeper (process gate).
 
 ### Pillar 1: Call-and-assert (lift wholesale)
 
-`scripts/lib/test-helpers.sh` is lifted from shipwright with minimal changes (`SHIPWRIGHT_*` env vars renamed to `ZBUILD_*`). Convention:
+`scripts/lib/test-helpers.sh` is lifted from `legacy/scripts/lib/test-helpers.sh` with minimal changes (legacy env var names renamed to `ZBUILD_*`). Convention:
 - Test file naming: `tests/<feature>-test.sh` for unit/integration; `tests/e2e/<feature>-test.sh` for end-to-end.
 - Co-located plugin tests: `plugins/<kind>/<name>/test.sh`.
 - Every test file is idempotent on re-source (`[[ -n "${_<name>_TEST_LOADED:-}" ]] && return 0`).
@@ -55,7 +55,7 @@ The trial is the gate to `git rm` the legacy source and write the tombstone.
 
 ### Migration matrix (from KEEPERS §G)
 
-Enumerated row-by-row in `.github/issues/keepers-manifest.yaml`. Each of shipwright's 160 test files lands in one bucket:
+Enumerated row-by-row in `.github/issues/keepers-manifest.yaml`. Each of legacy's 160 test files lands in one bucket:
 
 - **~50 migrate near-unchanged.** All 25 lib tests (daemon-state, pipeline-stages, helpers, compat, config). All 9 E2E tests. Core feature tests for pipeline/ci/loop/replay/daemon/init/cleanup/cost/db. Harness is reusable.
 - **~30 rewrite.** Adapters, agi-roadmap, chaos, postmortem-460, ruflo-adapter, tmux-pipeline, ai-provider, cross-repo-isolation, budget-chaos, evidence — all encode platform-specific assumptions that won't survive plugin migration.
@@ -91,4 +91,4 @@ Phase 0 verification calls for this: spawn two simulated daemons, have them race
 
 - [KEEPERS.md §G](../KEEPERS.md#section-g--test-harness-carry-forward-with-audit-correction) — full migration matrix and harness audit.
 - [KEEPERS.md §J](../KEEPERS.md#section-j--verification) — the 5-test trial.
-- shipwright `scripts/lib/test-helpers.sh` — source for the lifted harness.
+- `legacy/scripts/lib/test-helpers.sh` — source for the lifted harness.

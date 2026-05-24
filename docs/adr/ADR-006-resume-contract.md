@@ -5,7 +5,7 @@
 
 ## Context
 
-Shipwright's resume semantics are partially documented. `resume_state` in `pipeline-state.sh:876-1075` restores stage statuses and `SELF_HEAL_COUNT` but **does not** read back `CURRENT_ITERATION` — verified at line 269 (written) and confirmed absent in lines 987-1026 (read). On resume, plugins relying on iteration count receive the *initial* value (often 0), causing the loop to re-do iterations.
+The legacy resume semantics are partially documented. `resume_state` in `legacy/scripts/lib/pipeline-state.sh:876-1075` restores stage statuses and `SELF_HEAL_COUNT` but **does not** read back `CURRENT_ITERATION` — verified at line 269 (written) and confirmed absent in lines 987-1026 (read). On resume, plugins relying on iteration count receive the *initial* value (often 0), causing the loop to re-do iterations.
 
 Other state that doesn't survive resume:
 - `loop-state.md` (gitignored; per-iteration debug state; regenerated each run).
@@ -23,7 +23,7 @@ zBuild's resume contract is explicit. Two tiers: **persisted** (engine guarantee
 | Key | Owner | Type | Notes |
 |---|---|---|---|
 | `stage_statuses[]` | core/state | enum per stage | `pending`/`in_progress`/`complete`/`failed`/`skipped` |
-| `current_iteration` | core/state | int | **NEW in zBuild** — fixes shipwright gap |
+| `current_iteration` | core/state | int | **NEW in zBuild** — fixes legacy resume gap |
 | `self_heal_count` | core/state | int | per-stage retry counter |
 | `scope_manifest_hash` | core/redaction | sha256 | detects scope-manifest mutation across resume |
 | `cost_ledger_pointer` | core/cost | offset into ledger | enables resume to continue cost tracking |
@@ -94,7 +94,7 @@ The engine does NOT guarantee:
 ## Consequences
 
 **Good:**
-- Fixes the shipwright `CURRENT_ITERATION` gap explicitly.
+- Fixes the legacy `CURRENT_ITERATION` resume gap explicitly.
 - Plugin authors have a checklist: declare persisted, declare reconstructed, write tests.
 - Resume failures are loud and explicit; no silent half-state.
 - `kill -9` → restart works for any well-behaved plugin.
@@ -109,4 +109,4 @@ The engine does NOT guarantee:
 - [KEEPERS.md §C correction: CURRENT_ITERATION lost on resume](../KEEPERS.md#section-c--reliability--safety-expanded)
 - [KEEPERS.md §C addition 8: resume best-effort contract](../KEEPERS.md#additions-hidden-safety-primitives-the-original-spec-missed)
 - [ARCHITECTURE.md §4](../ARCHITECTURE.md#4-state-model) — full state model.
-- shipwright `scripts/lib/pipeline-state.sh:269` (write) vs `:987-1026` (read) — the gap this ADR closes.
+- `legacy/scripts/lib/pipeline-state.sh:269` (write) vs `:987-1026` (read) — the gap this ADR closes.

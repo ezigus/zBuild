@@ -25,7 +25,7 @@ assert_file_exists "init_state creates state file" "$STATE_FILE"
 assert_eq "schema_version is 1" "1" "$(jq -r .schema_version "$STATE_FILE")"
 assert_eq "current_iteration starts at 0" "0" "$(jq -r .current_iteration "$STATE_FILE")"
 
-# ─── current_iteration persists (the shipwright gap fix) ────────────────────
+# ─── current_iteration persists (the legacy resume gap fix) ────────────────────
 increment_iteration "$STATE_FILE" >/dev/null
 increment_iteration "$STATE_FILE" >/dev/null
 increment_iteration "$STATE_FILE" >/dev/null
@@ -34,7 +34,7 @@ assert_eq "current_iteration persisted after 3 increments" "3" \
 
 # ─── resume_state preserves current_iteration ──────────────────────────────
 resume_state "$STATE_FILE" >/dev/null
-assert_eq "current_iteration survives resume (FIXES shipwright gap)" "3" \
+assert_eq "current_iteration survives resume (FIXES legacy resume gap)" "3" \
     "$(get_state_field "$STATE_FILE" '.current_iteration' '0')"
 
 # ─── atomic_write rotates .bak ──────────────────────────────────────────────

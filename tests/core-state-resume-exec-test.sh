@@ -45,7 +45,7 @@ read_output="$(bash -c "
     echo \"iter=\$iter score=\$score\"
 ")"
 
-assert_contains "reader process sees current_iteration=3 (FIXES shipwright gap)" "$read_output" "iter=3"
+assert_contains "reader process sees current_iteration=3 (FIXES legacy resume gap)" "$read_output" "iter=3"
 assert_contains "reader process sees plugin_state.test-plugin.score=88" "$read_output" "score=88"
 
 # ─── Process 3: writer continues after resume ──────────────────────────────

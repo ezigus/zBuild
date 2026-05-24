@@ -25,7 +25,7 @@ source "$_ZBUILD_RESUME_DIR/atomic.sh"
 #   "run_id": "uuid",
 #   "issue": 42,
 #   "stage_statuses": { "plan": "complete", "build": "in_progress", ... },
-#   "current_iteration": 3,                  // <-- explicitly persisted (fixes shipwright gap)
+#   "current_iteration": 3,                  // <-- explicitly persisted (fixes legacy resume gap)
 #   "self_heal_count": { "build": 1 },
 #   "scope_manifest_hash": "sha256...",
 #   "cost_ledger_pointer": 1248,

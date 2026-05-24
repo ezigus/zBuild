@@ -13,7 +13,7 @@ Written via `core/state/atomic_write` (with `.bak` rotation). Survives `kill -9`
 | Key | Owner | Notes |
 |---|---|---|
 | `stage_statuses` | engine | per-stage enum |
-| `current_iteration` | engine | **fixed** vs shipwright gap; always restored on resume |
+| `current_iteration` | engine | **fixed** vs legacy resume gap; always restored on resume |
 | `self_heal_count` | engine | per-stage retry counter |
 | `scope_manifest_hash` | engine | detects scope changes across resume |
 | `cost_ledger_pointer` | engine | resume continues cost tracking |

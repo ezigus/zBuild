@@ -24,11 +24,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 
 DRY_RUN=0
+UPDATE_EXISTING=0
 MANIFEST="$REPO_ROOT/.github/issues/keepers-manifest.yaml"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
+        --update-existing) UPDATE_EXISTING=1; shift ;;
         --manifest) MANIFEST="$2"; shift 2 ;;
         -h|--help)
             grep '^#' "$0" | head -30
@@ -171,6 +173,23 @@ for i in $(seq 0 $((issue_count - 1))); do
     fi
 
     if echo "$existing_titles" | grep -qFx "$title"; then
+        if [[ "$UPDATE_EXISTING" -eq 1 ]]; then
+            # Find the issue number and update its body
+            issue_num="$(gh issue list --state all --limit 500 --search "in:title \"$title\"" --json number,title -q ".[] | select(.title == \"$title\") | .number" | head -1)"
+            if [[ -z "$issue_num" ]]; then
+                warn "couldn't resolve issue number for: $title"
+                continue
+            fi
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                echo "  [dry-run] gh issue edit $issue_num --body <new>" >&2
+            else
+                gh issue edit "$issue_num" --body "$body" >/dev/null 2>&1 && \
+                    echo "  ${BLUE}~ updated #$issue_num: $title${RESET}" || \
+                    warn "update failed: #$issue_num $title"
+            fi
+            skipped=$((skipped + 1))
+            continue
+        fi
         echo "  ${DIM}skip issue (exists): $title${RESET}"
         skipped=$((skipped + 1))
         continue

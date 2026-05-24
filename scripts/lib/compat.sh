@@ -3,7 +3,7 @@
 # ║  zBuild compat — Bash 5+ floor; platform detection                       ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
-# zBuild requires Bash 5+. No Bash 3.2 polyfills (cleared from shipwright per
+# zBuild requires Bash 5+. No Bash 3.2 polyfills (cleared from legacy per
 # the migration plan). This file is small on purpose; if it grows past ~50
 # lines, that's a smell.
 

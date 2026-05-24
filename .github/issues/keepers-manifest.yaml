@@ -40,7 +40,7 @@ labels:
   # Type
   - name: keeper
     color: "7c3aed"
-    description: Behavior preserved from shipwright, with 5-test trial
+    description: Behavior preserved from legacy, with 5-test trial
   - name: wishlist
     color: "7c3aed"
     description: Section L — post-stabilization wishlist (not blocking)
@@ -106,7 +106,7 @@ milestones:
       working. KEEPERS §D.
   - title: Phase 4 — CLI, UX, Skills, Personas
     description: |
-      CLI surface matches shipwright's E section, 7 compound-audit lenses
+      CLI surface matches the legacy E-section behavior, 7 compound-audit lenses
       migrated as agent plugins, skill registry closed-loop preserved, status
       JSON / doctor / live-comment marker intact. KEEPERS §E + §F.
   - title: Phase 5 — Test Migration & Verification
@@ -115,7 +115,7 @@ milestones:
       multi-daemon claim race test passes, legacy/ has shrunk to zero. KEEPERS §G.
   - title: Wishlist — Post-stabilization
     description: |
-      Behaviors not wired in shipwright today; build after Phase 5 stabilizes.
+      Behaviors not wired in legacy today; build after Phase 5 stabilizes.
       KEEPERS §L (11 items).
 
 # ─── Issues ─────────────────────────────────────────────────────────────────
@@ -146,12 +146,12 @@ issues:
       docs/KEEPERS.md + docs/ARCHITECTURE.md + 7 ADRs as the implementation
       north star. Architecture locked before code arrives. DONE in commit 7686ad1.
   - id: ph0-legacy
-    title: "[Phase 0] Import shipwright as legacy/ with sentinel guard"
+    title: "[Phase 0] Import the upstream source as legacy/ with sentinel guard"
     milestone: "Phase 0 — Core Engine Foundation"
     labels: [phase-0, foundation]
     state: closed
     body: |
-      Plain copy of shipwright source into legacy/. FROZEN.md + .shipwright-disabled
+      Plain copy of the upstream source into legacy/. FROZEN.md + the legacy
       sentinel + one-line patch to legacy/scripts/sw to refuse runs. ADR-002.
       DONE in commit 5484736.
   - id: ph0-day1
@@ -375,7 +375,9 @@ issues:
     behavior: |
       Goal-scoped → issue-scoped → repo-scoped cascade. Native memory is TF-IDF
       (sw-memory.sh); ruflo-adapter provides HNSW vectors via MCP under
-      shipwright-repo-{hash}/issue-{N} namespaces. Carry forward as side service.
+      per-repo / per-issue namespaces (legacy uses shipwright-* names; zBuild
+      keeper will use zbuild-* namespaces to avoid cross-talk). Carry forward
+      as side service.
   - id: b-8
     title: "[B1] Adaptive cycle limits (convergence/divergence/plateau detection)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -550,7 +552,7 @@ issues:
     milestone: "Phase 2 — Reliability & Safety Primitives"
     labels: [phase-2, keeper, safety-primitive]
     spec_cite: "KEEPERS §C additions #8"
-    legacy_cite: "Not documented in shipwright; new contract per ADR-006"
+    legacy_cite: "Not documented in legacy; new contract per ADR-006"
     behavior: |
       ALREADY DOCUMENTED in docs/RESUME-CONTRACT.md + ADR-006. This issue
       tracks plugin authors declaring `state.persisted` / `state.reconstructed`
@@ -564,7 +566,9 @@ issues:
     spec_cite: "KEEPERS §D"
     legacy_cite: "legacy/scripts/sw-daemon.sh:196-209; daemon-state.sh:620-704"
     behavior: |
-      Labels are the entire control plane. shipwright in, pipeline/complete /
+      Labels are the entire control plane. The trigger label (currently named
+      'shipwright' in legacy; rename to 'zbuild' for the migrated plugin) in,
+      pipeline/complete /
       pipeline/failed / claimed:<machine> out. Operators can pause / retry /
       redirect / priority-promote from the web UI with no SDK. Carry forward
       verbatim.
@@ -622,7 +626,8 @@ issues:
     legacy_cite: "legacy/scripts/lib/daemon-poll.sh:1237-1276"
     behavior: |
       When nothing's queued, daemon runs security audit / stale-deps / dead-code
-      scans and creates new shipwright-labeled issues. Daemon generates its own
+      scans and creates new zbuild-labeled issues (legacy uses 'shipwright'
+      label). Daemon generates its own
       work.
   - id: d-8
     title: "[D] Watchdog around poll loop (5 auto-restarts, doubling backoff)"
@@ -806,7 +811,7 @@ issues:
     milestone: "Phase 5 — Test Migration & Verification"
     labels: [phase-5, keeper, test-migration]
     spec_cite: "KEEPERS §G"
-    legacy_cite: "shipwright has zero golden tests; ~30 platform-bound (adapters/agi-roadmap/chaos/postmortem-460/ruflo-adapter/tmux-pipeline/ai-provider/cross-repo-isolation/budget-chaos/evidence); ~20 obsolete"
+    legacy_cite: "legacy has zero golden tests; ~30 platform-bound (adapters/agi-roadmap/chaos/postmortem-460/ruflo-adapter/tmux-pipeline/ai-provider/cross-repo-isolation/budget-chaos/evidence); ~20 obsolete"
     behavior: |
       Add tests/golden/ subdir. Rewrite the 30 platform-bound tests in zBuild
       idiom. Delete 20 obsolete ones. Each gets a manifest row.

@@ -130,4 +130,4 @@ A plugin's `requires.plugins` list is enforced at discovery time: the engine ref
 
 - [KEEPERS.md](../KEEPERS.md) §A (stage dispatch), §F (personas as agent plugins).
 - [ARCHITECTURE.md](../ARCHITECTURE.md) §2 (plugin contract), §3 (data flow).
-- shipwright `scripts/lib/skill-registry.sh` — the only plugin-shaped surface today; informs the manifest design but is narrower (prompt fragments only).
+- `legacy/scripts/lib/skill-registry.sh` — the only plugin-shaped surface in the upstream today; informs the manifest design but is narrower (prompt fragments only).

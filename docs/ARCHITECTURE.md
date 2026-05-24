@@ -1,6 +1,6 @@
 # zBuild Architecture
 
-System view, plugin contract, data flow, state model, glossary. Complements [KEEPERS.md](KEEPERS.md), which catalogs what we preserve from shipwright. This document is the new system zBuild is building.
+System view, plugin contract, data flow, state model, glossary. Complements [KEEPERS.md](KEEPERS.md), which catalogs what we preserve from legacy. This document is the new system zBuild is building.
 
 ---
 
@@ -235,7 +235,7 @@ No other entry point may emit LLM-bound text. This is enforced by code review + 
 
 ## 5. GitHub label contract (external API)
 
-The shipwright innovation we preserve verbatim: **GitHub labels are the entire control plane.** No SDK, no API tokens, no dashboard required. Operators can pause / retry / redirect from the web UI.
+The upstream innovation we preserve verbatim: **GitHub labels are the entire control plane.** No SDK, no API tokens, no dashboard required. Operators can pause / retry / redirect from the web UI.
 
 - `zbuild` — input: "process this issue."
 - `pipeline/in-progress` — claim-coordinator owns this issue.
@@ -266,7 +266,7 @@ Events are written atomically to **both** SQLite (durable) and JSONL (streamable
 }
 ```
 
-Required event types (from shipwright; carry forward):
+Required event types (lifted from legacy; carry forward):
 
 - `pipeline.{start,end,abort}`
 - `stage.{start,complete,fail,skip}`
@@ -283,7 +283,7 @@ Schema-as-warn: unknown event types are logged with a warning but never block th
 
 ## 7. Glossary
 
-- **Keeper** — a behavior we preserve from shipwright (catalog in [KEEPERS.md](KEEPERS.md)). Each keeper has a citation and a 5-test trial.
+- **Keeper** — a behavior we preserve from legacy (catalog in [KEEPERS.md](KEEPERS.md)). Each keeper has a citation and a 5-test trial.
 - **Plugin kind** — the type discriminator on a manifest: `agent | tool | recovery | orchestrator | claim-coordinator | daemon`. Determines required lifecycle hooks.
 - **Chokepoint** — a single function/seam through which all data of a certain kind must pass (e.g., redaction). Enforced by code review + test, not by language-level access control.
 - **Tier (T0–T4)** — model routing ordinal. T0 = no LLM (Agent Booster / WASM); T1 = micro / haiku; T2 = sonnet; T3 = opus; T4 = experimental. Models are data in `config/models.json`; tier numbers are stable, model names are not referenced in code.
@@ -313,7 +313,7 @@ Schema-as-warn: unknown event types are logged with a warning but never block th
 | `scripts/lib/` | `helpers.sh`, `compat.sh`, `test-helpers.sh` |
 | `tests/` | migrated + new tests; `tests/golden/` for snapshot diffs |
 | `docs/adr/` | architecture decision records |
-| `legacy/` | frozen shipwright import; shrinks to zero as keepers verify out |
+| `legacy/` | frozen upstream import; shrinks to zero as keepers verify out |
 | `legacy/migrated/` | tombstones, one per migrated keeper |
 | `.github/issues/` | `keepers-manifest.yaml` (source of truth for issue generation) |
 | `.github/workflows/` | CI/CD |

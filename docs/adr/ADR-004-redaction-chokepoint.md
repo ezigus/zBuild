@@ -5,7 +5,7 @@
 
 ## Context
 
-Shipwright's scope-redaction safety primitive is invoked from **9 distinct call sites** today (verified in KEEPERS §C corrections). Every site calls `_redact_paths_outside_scope` directly with inline allowlist and cycle parameters. No wrapper function exists.
+The legacy scope-redaction safety primitive is invoked from **9 distinct call sites** today (verified in KEEPERS §C corrections). Every site calls `_redact_paths_outside_scope` directly with inline allowlist and cycle parameters. No wrapper function exists.
 
 This is the highest-leverage safety mechanism in the system: it prevents an LLM agent from being shown paths it shouldn't see (out-of-scope files, sibling repos, credentials elsewhere on disk). Today's pattern works but is fragile — a new prompt-emitting code path can be added without going through redaction, and nothing in CI catches it.
 
@@ -62,7 +62,7 @@ Parsed in one line of awk. Humans edit visually; engine reads the fence content 
 ### Operator override (audit-trail required)
 
 In rare cases an operator may need to disable redaction for a debug run. This requires BOTH:
-1. `SHIPWRIGHT_SCOPE_OVERRIDE=1` env var.
+1. `ZBUILD_SCOPE_OVERRIDE=1` env var.
 2. A token file at `~/.zbuild/scope-override-token` containing the current pipeline's `run_id`.
 
 The token file must be written by the operator manually each run (one-shot). The agent CANNOT self-grant the override. Every override emits a `redaction.refused.overridden` event with operator-identifying metadata.
@@ -82,5 +82,5 @@ The token file must be written by the operator manually each run (one-shot). The
 ## References
 
 - [KEEPERS.md §C](../KEEPERS.md#section-c--reliability--safety-expanded) — redaction has 9 prompt seams; no wrapper today.
-- shipwright `scripts/lib/helpers.sh:634-800` — current `_redact_paths_outside_scope` implementation (reference for the new chokepoint).
-- shipwright `scripts/lib/pipeline-stages.sh:42` — scope-manifest extraction.
+- `legacy/scripts/lib/helpers.sh:634-800` — original `_redact_paths_outside_scope` implementation (reference for the new chokepoint).
+- `legacy/scripts/lib/pipeline-stages.sh:42` — scope-manifest extraction.

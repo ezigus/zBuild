@@ -3,7 +3,7 @@
 ## Source of truth
 
 zBuild's architecture and migration plan live in:
-- [docs/KEEPERS.md](docs/KEEPERS.md) — what we preserve from shipwright and why
+- [docs/KEEPERS.md](docs/KEEPERS.md) — what we preserve from legacy and why
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system view, plugin contract, data flow
 - [docs/adr/](docs/adr/) — formal architecture decisions
 
@@ -27,7 +27,7 @@ zBuild's architecture and migration plan live in:
 - `/scripts` — CLI entry + shared libs
 - `/tests` — all tests; `/tests/golden` for snapshot diffs
 - `/docs` — KEEPERS, ARCHITECTURE, ADRs, plans
-- `/legacy` — frozen shipwright import; FROZEN, do not run
+- `/legacy` — frozen upstream import; FROZEN, do not run
 - `/.github` — workflows, issue templates, `keepers-manifest.yaml`
 
 ## Working with `legacy/`

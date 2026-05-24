@@ -2,7 +2,7 @@
 
 ## Start here
 
-- **[KEEPERS.md](KEEPERS.md)** — what we preserve from shipwright, with audit-verified citations and a 5-test trial per keeper. The spec.
+- **[KEEPERS.md](KEEPERS.md)** — what we preserve from legacy, with audit-verified citations and a 5-test trial per keeper. The spec.
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — system view, plugin contract, data flow, state model, glossary. The system.
 
 ## Architecture Decision Records

@@ -5,22 +5,22 @@
 
 ## Context
 
-zBuild is a rearchitecture of shipwright. The original Keepers Spec argued for starting clean; a content audit found **1,851 LoC of incident-hardened content** across 12 categories (compound-audit prompts, sentinels, gate-signal regex, scope parser, skill .md fragments, pessimist template, simulation personas, error-classifier rules, hallucination filter, dedup, safe_git_stage). This content is the product of years of incident response; retyping from spec re-introduces the bugs each block defends against.
+zBuild is a rearchitecture of an upstream system. The original Keepers Spec argued for starting clean; a content audit found **1,851 LoC of incident-hardened content** across 12 categories (compound-audit prompts, sentinels, gate-signal regex, scope parser, skill .md fragments, pessimist template, simulation personas, error-classifier rules, hallucination filter, dedup, safe_git_stage). This content is the product of years of incident response; retyping from spec re-introduces the bugs each block defends against.
 
 Three import options were considered:
-- **(a) `git subtree add` shipwright as `legacy/`**, preserving history. Pros: full git blame; cons: grafted history confuses `git log`, complicates future updates.
+- **(a) `git subtree add` the upstream as `legacy/`**, preserving history. Pros: full git blame; cons: grafted history confuses `git log`, complicates future updates.
 - **(b) Plain copy without history.** Pros: simplest, clean zBuild history, easy to prune; cons: lose blame trail (mitigated by file:line citations in KEEPERS.md).
-- **(c) `git filter-repo` to rewrite shipwright history under `legacy/` prefix, then merge.** Pros: blame survives; cons: slow on 1160 commits, merge-risky, high effort for reference-only value.
+- **(c) `git filter-repo` to rewrite upstream history under `legacy/` prefix, then merge.** Pros: blame survives; cons: slow on 1160 commits, merge-risky, high effort for reference-only value.
 
-The dominant concern is the **PROJECT_ROOT collision** risk: shipwright scripts derive `PROJECT_ROOT` from `git rev-parse --show-toplevel`, so running any legacy script from inside the zBuild repo writes state to zBuild's `.claude/`, claims labels in zBuild's GitHub issues, and pollutes shared event logs.
+The dominant concern is the **PROJECT_ROOT collision** risk: legacy scripts derive `PROJECT_ROOT` from `git rev-parse --show-toplevel`, so running any legacy script from inside the zBuild repo writes state to zBuild's `.claude/`, claims labels in zBuild's GitHub issues, and pollutes shared event logs.
 
 ## Decision
 
-**Option (b) — plain copy, no git history.** Shipwright is being sunset; full history preservation is reference-only value. Plain copy is simplest, keeps zBuild's git history clean, and the `legacy/` tree shrinks to zero as keepers verify out.
+**Option (b) — plain copy, no git history.** The upstream is being sunset; full history preservation is reference-only value. Plain copy is simplest, keeps zBuild's git history clean, and the `legacy/` tree shrinks to zero as keepers verify out.
 
 ### Sentinel-guard protocol (mitigates PROJECT_ROOT collision)
 
-1. Copy shipwright source verbatim into `legacy/`.
+1. Copy the upstream source verbatim into `legacy/`.
 2. Add `legacy/FROZEN.md` at the top of `legacy/` with explicit "DO NOT RUN" notice.
 3. Add `legacy/.shipwright-disabled` sentinel file.
 4. **Patch one line in `legacy/scripts/sw`** to check for the sentinel at startup and refuse to run when present.
@@ -63,7 +63,7 @@ The override env var is recognized only when the sentinel still exists, preventi
 - One-line exception is auditable.
 
 **Bad:**
-- Lose git blame for legacy content. Mitigation: KEEPERS.md citations include line numbers; `git log --follow` on upstream shipwright remains available.
+- Lose git blame for legacy content. Mitigation: KEEPERS.md citations include line numbers; `git log --follow` on the upstream repo remains available.
 - Sentinel-guard is bypassable by sufficiently determined developers. We accept this; the goal is to prevent accidents, not to enforce a security boundary.
 - Two `.gitignore`s, two `.claude/` directories, two LICENSE files exist briefly. Documented as expected; the legacy versions remain unreachable.
 
@@ -71,4 +71,4 @@ The override env var is recognized only when the sentinel still exists, preventi
 
 - [KEEPERS.md §N](../KEEPERS.md#section-n--repository-creation--legacy-import) — full rationale for plain-copy decision.
 - [ARCHITECTURE.md §8](../ARCHITECTURE.md#8-what-lives-where-file-system-tour) — `legacy/` placement in the file-system tour.
-- shipwright content audit (1,851 LoC across 12 categories) — see KEEPERS.md §N.
+- Legacy content audit (1,851 LoC across 12 categories) — see KEEPERS.md §N.

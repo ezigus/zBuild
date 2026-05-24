@@ -5,7 +5,7 @@
 
 ## Context
 
-Shipwright references specific model names (`haiku`, `sonnet`, `opus`) in code: ~11 hardcoded sites in `sw-pipeline.sh`, plus cost tables, recruit role recommendations, and prompt fallbacks. Every time Anthropic ships a new model tier, or pricing shifts, or a different provider is added, code edits ripple through the repo.
+The legacy code references specific model names (`haiku`, `sonnet`, `opus`) directly: ~11 hardcoded sites in `legacy/scripts/sw-pipeline.sh`, plus cost tables, recruit role recommendations, and prompt fallbacks. Every time Anthropic ships a new model tier, or pricing shifts, or a different provider is added, code edits ripple through the repo.
 
 Models are data. Their identity (haiku, sonnet, opus, gpt-4o, llama-3.1-70b), their costs, their context windows, and their capabilities all change on a quarterly cadence. Code should be stable across those changes.
 
@@ -81,7 +81,7 @@ Code references models only by **tier ordinal** T0–T4. The mapping from tier t
 }
 ```
 
-Multiple candidates per tier enable router-driven A/B testing (UCB1, Thompson) and provider failover — both already wired in shipwright and preserved as keepers.
+Multiple candidates per tier enable router-driven A/B testing (UCB1, Thompson) and provider failover — both already wired in legacy and preserved as keepers.
 
 ### Router contract
 
@@ -111,7 +111,7 @@ No code change. No plugin change.
 
 **Good:**
 - Model upgrades are config edits, reviewable in PRs without touching code.
-- Cost tables centralize (existing in shipwright at one place; preserved).
+- Cost tables centralize (existing in legacy at one place; preserved).
 - Multi-provider support comes for free (add candidates to a tier).
 - Tests can pin to `T2` knowing the behavior is stable across model changes.
 
@@ -123,5 +123,5 @@ No code change. No plugin change.
 ## References
 
 - [KEEPERS.md §B1.9–11](../KEEPERS.md#b1--verified-wired-carry-forward-as-core) — cost ledger, UCB1, Thompson router.
-- shipwright `scripts/sw-pipeline.sh:~2563` (router block), `:837` (cost table).
-- shipwright `scripts/sw-self-optimize.sh:851-893` (Thompson), `:907-955` (UCB1).
+- `legacy/scripts/sw-pipeline.sh:~2563` (router block), `:837` (cost table).
+- `legacy/scripts/sw-self-optimize.sh:851-893` (Thompson), `:907-955` (UCB1).
