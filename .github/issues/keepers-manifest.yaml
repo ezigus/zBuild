@@ -394,6 +394,15 @@ issues:
       per-repo / per-issue namespaces (legacy uses shipwright-* names; zBuild
       keeper will use zbuild-* namespaces to avoid cross-talk). Carry forward
       as side service.
+    body_suffix: |
+      ## ADR-011 / §6.5 cross-reference
+
+      This cascade is now backend-agnostic: it queries `memory_search` per the
+      [ADR-011](../../docs/adr/ADR-011-pluggable-backends.md) contract and
+      inspects `memory_capabilities` to decide between text and vector
+      matching. SQLite default (#216) does TF-IDF; ruflo optional (#217) does
+      HNSW. Namespace naming changes from legacy `shipwright-*` to
+      `zbuild-{repo,issue,goal}`.
   - id: b-8
     title: "[B1] Adaptive cycle limits (convergence/divergence/plateau detection)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -450,6 +459,14 @@ issues:
     behavior: |
       memory_failures table: error_signature TEXT keyed on (repo_hash, failure_class).
       Substrate for future AI fallback (§L wishlist item 2).
+    body_suffix: |
+      ## ADR-011 cross-reference
+
+      The `memory_failures` SQLite table is part of the **memory-sqlite default
+      backend** schema (#216). When users opt into the ruflo backend (#217),
+      error signatures may use ruflo's own keyed storage instead; the engine
+      consumes them through the `memory_search` contract either way. This
+      issue tracks the substrate that #216 provides.
 
   # ─── Section C — Reliability + Safety (12 keepers) ─────────────────────
   - id: c-1
@@ -493,6 +510,15 @@ issues:
       ALREADY MIGRATED in Phase 0 as core/state/resume.sh (current_iteration is
       explicitly persisted; exec-based test proves cross-process survival).
       This issue verifies it via 5-test trial.
+    body_suffix: |
+      ## ARCHITECTURE §6.5 cross-reference
+
+      This directly implements **Pipeline-Resume Memory** per
+      [ADR-006](../../docs/adr/ADR-006-resume-contract.md) — the always-on
+      operational state, distinct from Learning Memory
+      ([ADR-011](../../docs/adr/ADR-011-pluggable-backends.md)). See also
+      #225 (operator-CLI surface for resume) and #209 (auto-resume detection
+      in bootstrap).
   - id: c-5
     title: "[C] Disk-space precheck on ALL artifact writes"
     milestone: "Phase 2 — Reliability & Safety Primitives"
@@ -573,6 +599,14 @@ issues:
       ALREADY DOCUMENTED in docs/RESUME-CONTRACT.md + ADR-006. This issue
       tracks plugin authors declaring `state.persisted` / `state.reconstructed`
       in their manifests as plugins migrate. Phase 5 verification.
+    body_suffix: |
+      ## ARCHITECTURE §6.5 cross-reference
+
+      This is the engine-side **Pipeline-Resume Memory** contract per
+      [ADR-006](../../docs/adr/ADR-006-resume-contract.md). Plugins declare
+      their persisted-vs-reconstructed split in manifests; runtime enforces
+      it. Distinct from Learning Memory (ADR-011). Related: #36 (CURRENT_ITERATION
+      persistence), #225 (operator resume CLI).
 
   # ─── Section D — Daemon + Autonomous Operation (11 keepers) ────────────
   - id: d-1
@@ -929,6 +963,12 @@ issues:
     title: "[Phase 0.5] Pipeline runner (core/pipeline/runner.sh)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation]
+    state: closed
+    closed_reason: |
+      MVP runner shipped (core/pipeline/runner.sh, ~158 LoC). Body was
+      revised post-merge to require ADR-009 role-based templates + resolver;
+      that scope is tracked separately in #208 (mvp-1b). This issue closes
+      as the MVP-skeleton portion complete.
     body: |
       Implement the orchestration loop that reads a pipeline template
       (config/templates/<name>.yaml), reads detected platforms from
@@ -1264,6 +1304,18 @@ issues:
       auto-memory-hook.mjs equivalent. SessionStart restores conversation
       memory; SessionEnd flushes new patterns to AgentDB. Required for the
       'pick up where you left off' developer experience.
+
+      ---
+
+      ## ADR-011 / §6.5 cross-reference
+
+      This hook restores **Learning Memory** (patterns, embeddings, skill
+      scores from previous pipelines) per
+      [ADR-011](../../docs/adr/ADR-011-pluggable-backends.md). It is **NOT**
+      Pipeline-Resume Memory (which is handled by bootstrap-cache per
+      [ADR-010](../../docs/adr/ADR-010-ci-cli-parity.md) and #209). The
+      restoration is backend-agnostic: works the same with sqlite default
+      (#216) or ruflo optional (#217) via the `memory_search` contract.
   - id: hook-5
     title: "[Phase 0.5] Claude Code hooks: PreCompact (context save before compaction)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1404,6 +1456,17 @@ issues:
       daemon-failure checks for pipeline-artifacts/checkpoints/ and passes
       --resume on retry. Faster than restart-from-scratch when pipeline got
       most of the way through.
+
+      ---
+
+      ## Cross-reference: complementary to resume-1
+
+      This covers **daemon-driven** checkpoint recovery (after-failure re-entry
+      via `--resume` flag). It complements #225 (operator-triggered resume CLI
+      + auto-resume policy in bootstrap). Both consume the same
+      [ADR-006](../../docs/adr/ADR-006-resume-contract.md) Pipeline-Resume
+      Memory contract; the difference is trigger (daemon vs. operator vs.
+      auto-detect in #209 bootstrap).
   - id: adapt-11
     title: "[Phase 3] Intelligence-powered triage (semantic complexity/risk extraction)"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
@@ -1467,6 +1530,17 @@ issues:
       Cost ledger backing store with per-budget tracking. Feeds opt-1 and
       ccli-5 (token-limit enforcement). Extends #28 ledger spec with the
       persistence layer.
+
+      ---
+
+      ## Cost-ecosystem cross-reference
+
+      This is the **persistence layer** for the cost ledger spec defined in
+      #28 (cost ledger + baselines feeding routing). Schema must support
+      per-(stage, platform) cost tracking per #203 (per-platform ceilings) —
+      add `platform` column to both `cost_entries` and `budgets` tables for
+      composite-key enforcement. Reads/writes happen through the #28 ledger
+      logic, not direct SQL from plugins.
   - id: db-3
     title: "[Phase 3] AgentDB tables: heartbeats (daemon state)"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
@@ -1478,10 +1552,21 @@ issues:
     title: "[Phase 3] AgentDB tables: memory_patterns + memory_decisions + memory_embeddings"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, keeper, learning-loop]
+    state: closed
+    closed_reason: |
+      Subsumed into the memory-backend abstraction (ADR-011): memory_patterns,
+      memory_decisions, memory_embeddings are the substrate that the
+      memory-sqlite default backend (#216) and memory-ruflo optional backend
+      (#217) implement via the memory_put/get/search contract. The specific
+      table designs become implementation details of #216; vector embeddings
+      are handled by #217 in ruflo HNSW namespaces rather than a local table.
+      Closed to avoid two parallel specs for the same substrate.
     body: |
       Three tables for the learning loop substrate: extracted patterns,
       architectural decisions, ONNX embeddings. memory_failures (#32) is the
       4th; this issue covers the other three.
+
+      **Status: closed — superseded by ADR-011 backend abstraction (#216, #217).**
   - id: db-5
     title: "[Phase 3] AgentDB tables: daemon_queue (durable job queue)"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
@@ -1496,6 +1581,18 @@ issues:
     body: |
       Replicate learned state across machines via HTTP sync. Enables fleet
       operations (multiple developer machines share learned patterns).
+
+      ---
+
+      ## ADR-011 cross-reference
+
+      Learning-memory cross-device sync depends on the selected backend (per
+      [ADR-011](../../docs/adr/ADR-011-pluggable-backends.md)). SQLite default
+      (#216) requires a cache backend (#211/#212 `cache_pull/push`) for
+      cross-runner persistence. Ruflo backend (#217) has its own MCP remote.
+      This is **distinct** from pipeline-resume cache transport (ADR-010
+      covers that for ADR-006 state); these two memory models' transports are
+      decoupled by design.
 
   # ─── Phase 3 — GitHub Actions workflows (8 critical) ───────────────────
   - id: wf-1
@@ -1559,6 +1656,17 @@ issues:
       Resume a failed pipeline from its last checkpoint (works with adapt-10).
       Operator-trigger or automatic-after-flake.
 
+      ---
+
+      ## Cross-reference: resume orchestration
+
+      This workflow uses **Pipeline-Resume Memory** per
+      [ADR-006](../../docs/adr/ADR-006-resume-contract.md). Operator-triggered
+      resume-from-failure via `zbuild pipeline resume` (#225). Integrated into
+      CI lifecycle via #209 bootstrap (auto-resume detection) and #210
+      teardown (status marking: complete/interrupted/aborted). Daemon-triggered
+      counterpart: #120 (checkpoint-based recovery).
+
   # ─── Phase 3 — Cross-repo / multi-repo (4 issues) ──────────────────────
   - id: xrepo-1
     title: "[Phase 3] Cross-repo isolation (per-repo state, no cross-contamination)"
@@ -1597,9 +1705,20 @@ issues:
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
     labels: [phase-4, keeper, cli-ux]
     body: |
-      User-facing surface to inspect what zbuild has learned. Reads from
-      AgentDB memory tables (db-4). Critical for trust ('what did the
-      system memorize about my codebase?').
+      User-facing surface to inspect what zbuild has learned. Critical for
+      trust ('what did the system memorize about my codebase?').
+
+      ---
+
+      ## ADR-011 cross-reference
+
+      Memory inspector consumes the
+      [ADR-011](../../docs/adr/ADR-011-pluggable-backends.md) `memory_search` /
+      `memory_list_namespaces` contract — NOT direct SQLite access. Inspector
+      adapts output based on `memory_capabilities` (e.g., shows vector-search
+      relevance scores only when the selected backend supports them). Works
+      identically against sqlite default (#216) or ruflo (#217) via the
+      contract.
   - id: cmd-2
     title: "[Phase 4] CLI: worktree subcommands (zbuild worktree create|list|sync|remove|reset)"
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
