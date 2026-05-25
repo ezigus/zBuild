@@ -14,6 +14,9 @@ source "$_ZBUILD_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../config/config.sh
 source "$_ZBUILD_ROOT/core/config/config.sh"
 zbuild_config_init
+# shellcheck source=../memory/contract.sh
+source "$_ZBUILD_ROOT/core/memory/contract.sh"
+memory_init || { echo "runner: memory backend failed to initialize" >&2; exit 2; }
 source "$_ZBUILD_ROOT/core/detect/platforms.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template.sh"
 source "$_ZBUILD_ROOT/core/pipeline/resolver.sh"

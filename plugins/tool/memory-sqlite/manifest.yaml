@@ -1,0 +1,8 @@
+id: memory-sqlite
+name: SQLite Memory Backend
+kind: tool
+version: 0.0.1
+provides:
+  role: memory-backend
+  alias: sqlite
+  capabilities: [text_search, namespacing, persistence]
