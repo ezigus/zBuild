@@ -15,6 +15,13 @@ source "$_OUTPUT_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_OUTPUT_ROOT/core/event-bus/event-bus.sh"
 
+# ─── helpers ─────────────────────────────────────────────────────────────────
+# Sanitize a string for use in a GFM table cell: collapse newlines → space,
+# escape pipe characters so the table structure doesn't break.
+_md_cell() {
+    printf '%s' "$1" | tr -d '\r' | tr '\n' ' ' | sed 's/|/\\|/g'
+}
+
 # ─── init ────────────────────────────────────────────────────────────────────
 output_init() {
     export ZBUILD_PLUGIN="output-github-comment"
@@ -44,13 +51,18 @@ output_run() {
         [[ -f "$f" ]] && findings_files+=("$f")
     done < <(find "$artifacts_dir" -name "*-findings.json" 2>/dev/null | sort)
 
-    # Merge all .findings arrays into a single flat array
-    local all_findings
-    if [[ ${#findings_files[@]} -gt 0 ]]; then
-        all_findings="$(jq -s '[.[].findings // [] | .[]]' "${findings_files[@]}" 2>/dev/null || echo '[]')"
-    else
-        all_findings="[]"
-    fi
+    # Merge all .findings arrays — parse each file individually so one
+    # malformed artifact cannot silently drop findings from all other files.
+    local all_findings="[]"
+    local f file_findings
+    for f in "${findings_files[@]}"; do
+        if file_findings="$(jq -e '.findings // []' "$f" 2>/dev/null)"; then
+            all_findings="$(printf '%s\n%s' "$all_findings" "$file_findings" \
+                | jq -s 'add // []' 2>/dev/null || echo "$all_findings")"
+        else
+            warn "output_run: skipping malformed findings file: $f"
+        fi
+    done
 
     # Sort by severity: critical=0, high=1, medium=2, low=3, else=4
     local sorted
@@ -79,13 +91,13 @@ output_run() {
         body="${body}"'|---|---|---|---|---|'$'\n'
 
         while IFS= read -r finding; do
-            local severity title category file suggestion
-            severity="$(printf '%s' "$finding" | jq -r '.severity // ""' 2>/dev/null)"
-            title="$(printf '%s' "$finding" | jq -r '.title // ""' 2>/dev/null)"
-            category="$(printf '%s' "$finding" | jq -r '.category // ""' 2>/dev/null)"
-            file="$(printf '%s' "$finding" | jq -r '.file // ""' 2>/dev/null)"
-            suggestion="$(printf '%s' "$finding" | jq -r '.suggestion // ""' 2>/dev/null)"
-            body="${body}"'| '"${severity}"' | '"${title}"' | '"${category}"' | '"${file}"' | '"${suggestion}"' |'$'\n'
+            local severity title category file_loc suggestion
+            severity="$(_md_cell "$(printf '%s' "$finding" | jq -r '.severity // ""' 2>/dev/null)")"
+            title="$(_md_cell "$(printf '%s' "$finding" | jq -r '.title // ""' 2>/dev/null)")"
+            category="$(_md_cell "$(printf '%s' "$finding" | jq -r '.category // ""' 2>/dev/null)")"
+            file_loc="$(_md_cell "$(printf '%s' "$finding" | jq -r '.file // ""' 2>/dev/null)")"
+            suggestion="$(_md_cell "$(printf '%s' "$finding" | jq -r '.suggestion // ""' 2>/dev/null)")"
+            body="${body}"'| '"${severity}"' | '"${title}"' | '"${category}"' | '"${file_loc}"' | '"${suggestion}"' |'$'\n'
         done < <(printf '%s' "$sorted" | jq -c '.[]' 2>/dev/null)
     else
         body="${body}"$'\n'"No findings."$'\n'
