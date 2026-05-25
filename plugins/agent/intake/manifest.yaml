@@ -1,0 +1,27 @@
+id: intake
+name: Intake Stage
+kind: agent
+version: 0.1.0
+description: |
+  First stage of every pipeline run. Captures the goal, strips synthesized
+  pipeline context (sentinel-based sanitization), reads state/platforms.json
+  for platform-aware scope defaults, and writes state/scope-manifest.md +
+  state/intake.md. Phase 0.5 stub: no LLM call. Real planning prompt deferred.
+
+hooks:
+  init: intake_init
+  run: intake_run
+  finalize: intake_finalize
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+
+provides:
+  artifact_type: [scope-manifest.md, intake.md]
+  role: intake
+
+config:
+  tier_default: T1
