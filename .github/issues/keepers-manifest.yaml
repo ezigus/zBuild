@@ -945,6 +945,48 @@ issues:
       plugins/claim-coordinator/dashboard/: routes claim ops through an
       optional dashboard process that serializes them in-memory. For teams
       already running the dashboard.
+  # ════════════════════════════════════════════════════════════════════════
+  # Phase 0.5 execution order (waves; items inside a wave can run in parallel)
+  # ════════════════════════════════════════════════════════════════════════
+  #
+  # MVP-1..5 + mvp-5a are DONE (#83–87, #238). Manifest-sync (#227) is DONE.
+  # security-lens hook fix (#240) is DONE. Doc/contract codification (PR #242)
+  # in flight.
+  #
+  # Wave A — Polish the MVP smoke (parallel, small, high-leverage)
+  #   #202  plat-8       --scope + --platform-override CLI flags  (~30 min)
+  #   #213  cipar-4      Output destination dispatch table (supersedes mvp-5a)
+  #   #225  mvp-rsm-1    `zbuild pipeline resume` CLI + auto-resume policy
+  #
+  # Wave B — Distribution (npm publish is the gate; rest parallel after)
+  #   #88   inst-1       npm publish 0.1.0 (SERIAL — gates B+C tracks)
+  #     ├─ #89   inst-2  One-shot installer (parallel with #91)
+  #     ├─ #91   ci-1    Reusable workflow .github/workflows/zbuild-pipeline.yml
+  #     └─ #90   inst-3  Doctor verifies install (after #88+#89)
+  #   #93   ci-3        Auth + permissions docs (parallel anytime)
+  #
+  # Wave C — Backend contracts (3 independent serial chains, parallel between)
+  #   Memory:        #215 → #216 (SQLite default) → #217 (ruflo optional)
+  #   Orchestrator:  #219 → #220 (bash-parallel) → #221 (ruflo) → #222 (refactor)
+  #   Cache:         #211 → #212 (gh-actions-cache)
+  #   Then:          #218 cipar-5 Backend selection schema (after all three)
+  #
+  # Wave D — CI integration (serial after Wave C)
+  #   #209  cipar-1      zbuild bootstrap command
+  #   #210  cipar-2      zbuild teardown command (after #209 + #211)
+  #   #214  cipar-6      CI/CLI parity test (after #209+#210)
+  #   #92   ci-2         Daemon-in-Actions (after #91+#209+#210)
+  #
+  # Wave E — Platform refinement (parallel polish; non-blocking)
+  #   #195  plat-1       Platform plugin pattern: declarative detection signals
+  #   #196  plat-2       .zbuild/platforms.json config schema
+  #   #197  plat-3       Detection conflict resolution + signal strength ranking
+  #
+  # Wave F — Claude integration polish (all parallel, all non-blocking)
+  #   CLI flags:  #94, #95, #96, #97, #98, #99
+  #   Hooks:      #100, #101, #102, #103, #104, #105
+  #
+  # ════════════════════════════════════════════════════════════════════════
   # ─── Phase 0.5 — MVP Pipeline (5 issues) ────────────────────────────────
   - id: mvp-1
     title: "[Phase 0.5] Pipeline runner (core/pipeline/runner.sh)"
