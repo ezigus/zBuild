@@ -119,6 +119,12 @@ for _f in "${pool_dir}/slots/"*.pid "${pool_dir}/results/"*.inner_pid; do
     [[ -f "$_f" ]] && _t4_pids+=("$(cat "$_f")")
 done
 
+if [[ "${#_t4_pids[@]}" -gt 0 ]]; then
+    assert_pass "t4: tracked at least one worker PID before shutdown (${#_t4_pids[@]} total)"
+else
+    assert_fail "t4: tracked at least one worker PID before shutdown" "no PID files found under $pool_dir"
+fi
+
 orch_shutdown "$pool"
 
 if [[ ! -d "$pool_dir" ]]; then
@@ -239,6 +245,12 @@ _t9_pids=()
 for _f in "${pool_dir}/slots/"*.pid "${pool_dir}/results/"*.inner_pid; do
     [[ -f "$_f" ]] && _t9_pids+=("$(cat "$_f")")
 done
+
+if [[ "${#_t9_pids[@]}" -gt 0 ]]; then
+    assert_pass "t9: tracked at least one worker PID before shutdown (${#_t9_pids[@]} total)"
+else
+    assert_fail "t9: tracked at least one worker PID before shutdown" "no PID files found under $pool_dir"
+fi
 
 orch_shutdown "$pool"
 

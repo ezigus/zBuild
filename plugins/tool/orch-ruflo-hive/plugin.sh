@@ -202,7 +202,7 @@ orch_shutdown() {
     done
 
     # Best-effort ruflo shutdown notification
-    ruflo hive-mind shutdown 2>/dev/null || true
+    ruflo hive-mind shutdown >/dev/null 2>&1 || true
 
     rm -rf "$pool_dir"
     return 0
