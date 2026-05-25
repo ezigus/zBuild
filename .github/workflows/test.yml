@@ -15,10 +15,16 @@ jobs:
         run: sudo apt-get install -y shellcheck
       - name: Shellcheck all scripts
         run: |
-          find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
-            | xargs -0 shellcheck --severity=warning
+          files=$(find scripts core plugins -name '*.sh' -not -path '*/legacy/*')
+          count=$(echo "$files" | grep -c .) || count=0
+          echo "Checking $count shell scripts..."
+          echo "$files" | tr '\n' '\0' | xargs -0 shellcheck --severity=warning
+          echo "shellcheck passed ($count files)"
       - name: Legacy sentinel
-        run: bash legacy/scripts/sw 2>&1 | grep -q "disabled" || exit 1
+        run: |
+          output=$(bash legacy/scripts/sw 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "disabled" || exit 1
 
   lint:
     name: Lint
@@ -29,8 +35,11 @@ jobs:
         run: sudo apt-get install -y shellcheck
       - name: Shellcheck (strict)
         run: |
-          find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
-            | xargs -0 shellcheck --severity=warning
+          files=$(find scripts core plugins -name '*.sh' -not -path '*/legacy/*')
+          count=$(echo "$files" | grep -c .) || count=0
+          echo "Checking $count shell scripts..."
+          echo "$files" | tr '\n' '\0' | xargs -0 shellcheck --severity=warning
+          echo "shellcheck passed ($count files)"
 
   unit:
     name: Unit tests
