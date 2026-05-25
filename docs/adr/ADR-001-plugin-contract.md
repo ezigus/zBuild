@@ -71,6 +71,28 @@ state:
 
 All kinds may implement `init`, `finalize`, `cleanup`.
 
+### Hook function signature
+
+All lifecycle hooks (`init`, `run`/kind-entry, `finalize`, `cleanup`) receive the same two positional arguments from `plugin_hook_call` (see `core/plugin-registry/registry.sh`):
+
+```
+<hook>(stage_id, state_file)
+```
+
+- `$1` — `stage_id` (string, informational; most plugins ignore it).
+- `$2` — `state_file` (absolute path to `pipeline-state.json`). Plugins derive `state_dir = dirname($2)` and `artifacts_dir = $state_dir/artifacts`.
+
+Run-time context (goal text, issue number, run id, target platform, scope manifest path) is passed via env vars exported by the runner — never via positional args. The current set:
+
+| Env var | Set by | Available to |
+|---|---|---|
+| `ZBUILD_GOAL` | runner | all hooks |
+| `ZBUILD_ISSUE` | runner | all hooks (empty string when absent) |
+| `ZBUILD_RUN_ID` | runner | all hooks |
+| `ZBUILD_TARGET_PLATFORM` | runner (fanout strategy) | role-resolved hooks only |
+
+Plugins MUST use the defensive read `local state_file="${2:-}"` and return rc=2 if `state_file` is empty, so config errors surface distinctly from runtime failures. Plugins MAY split their hook into an outer adapter (`<plugin>_run`) and an inner unit-testable function with explicit path args (e.g., `_security_lens_run_inner`) — the outer is the contract; the inner is for tests.
+
 ### Lifecycle ordering
 
 For each plugin discovered in a run:

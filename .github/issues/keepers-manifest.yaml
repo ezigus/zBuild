@@ -1153,6 +1153,35 @@ issues:
       (7 assertions). Closed via #238.
     state: closed
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T01:53:06Z). Recorded by manifest-sync.'
+  - id: mvp-5b
+    title: "[Phase 0.5] Fix security-lens hook signature mismatch (stage, state_file contract)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, agent-plugin]
+    body: |
+      security_lens_run was coded as a unit-testable inner function with
+      signature (input, scope_manifest, output, artifact_dir). The pipeline
+      runner dispatches all hooks as (stage, state_file), so $3 was unbound
+      and the security-lens stage failed with rc=1 on every pipeline run.
+
+      Fix:
+      - Renamed the inner implementation to _security_lens_run_inner to keep
+        it directly unit-testable with explicit paths.
+      - Added a thin security_lens_run(stage, state_file) wrapper that derives
+        artifact paths from state_dir = $(dirname "$state_file"), matching the
+        established pattern in intake_run and output_run.
+      - Artifact filename partitioned by ZBUILD_TARGET_PLATFORM so fanout runs
+        write security-<platform>-findings.json and don't overwrite each other;
+        both forms match the *-findings.json glob in the output plugin.
+      - Tests updated: unit tests call _security_lens_run_inner directly;
+        three new hook-contract tests exercise security_lens_run end-to-end
+        including the platform-scoped filename case.
+
+      Implemented: PR #240 (2026-05-24). 37 security-lens assertions passing.
+      Pipeline smoke confirmed end-to-end: intake → security-lens → output all
+      complete with findings.json produced and report rendered.
+    state: closed
+    closed_reason: 'Merged PR #240 (2026-05-24).'
+
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
     title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
@@ -2374,9 +2403,9 @@ issues:
       - --format json for machine consumption
       - Tests with fixture repos covering all source types
   - id: plat-8
-    title: "[Phase 4] CLI flags: --platform-override <p>, --scope <path>"
-    milestone: "Phase 4 — CLI, UX, Skills, Personas"
-    labels: [phase-4, keeper, cli-ux]
+    title: "[Phase 0.5] CLI flags: --platform-override <p>, --scope <path>"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, cli-ux]
     body: |
       Two escape hatches for `zbuild pipeline start`:
         --platform-override <p>: force entire repo to single platform; skip
@@ -2389,6 +2418,12 @@ issues:
       - Override sets ZBUILD_PLATFORM_OVERRIDE; detection short-circuits
       - --scope appends to state/scope-manifest.md (intersect with detection)
       - Tests: override forces single platform; --scope restricts correctly
+
+      Bumped from Phase 4 to Phase 0.5: the first MVP smoke run revealed that
+      without --scope, audits fail-closed on any path outside auto-detected
+      platforms (e.g., core/redaction/ itself). The redaction chokepoint
+      working correctly means the demo can't show real findings until this
+      flag exists. ~30-min implementation that unblocks every smoke test.
   # ─── Phase 3 — Per-platform cost ceilings (1 issue) ────────────────────
   - id: plat-12
     title: "[Phase 3] Per-platform cost ceilings (extends #28 cost ledger)"
