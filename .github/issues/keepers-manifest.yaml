@@ -1146,6 +1146,11 @@ issues:
 
       Spec citation: ADR-010 §3 (output destination abstraction);
       this is the minimum slice of #213 needed for the MVP first run.
+
+      Implemented: PR #239 (2026-05-25). Three-way dispatch added to
+      plugins/tool/output-github-comment/plugin.sh — ZBUILD_ISSUE >
+      ZBUILD_OUTPUT > stdout. Covered by tests/plugin-output-stdout-test.sh
+      (7 assertions). Closed via #238.
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
     title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
