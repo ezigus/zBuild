@@ -9,6 +9,13 @@
 cache_pull() {
     local key="$1"
     local dest_dir="$2"
+
+    # Validate key — must only contain [a-zA-Z0-9_.-] and no path separators
+    if [[ -z "$key" || "$key" =~ [^a-zA-Z0-9_.\-] || "$key" == *".."* ]]; then
+        echo "cache: invalid key: $key" >&2
+        return 2
+    fi
+
     local cache_dir="${ZBUILD_CACHE_DIR:-${HOME}/.zbuild/cache}"
     local src="${cache_dir}/${key}"
 
@@ -37,6 +44,13 @@ cache_pull() {
 cache_push() {
     local key="$1"
     local src_dir="$2"
+
+    # Validate key — must only contain [a-zA-Z0-9_.-] and no path separators
+    if [[ -z "$key" || "$key" =~ [^a-zA-Z0-9_.\-] || "$key" == *".."* ]]; then
+        echo "cache: invalid key: $key" >&2
+        return 2
+    fi
+
     local cache_dir="${ZBUILD_CACHE_DIR:-${HOME}/.zbuild/cache}"
     local dest="${cache_dir}/${key}"
     local dest_tmp="${cache_dir}/${key}.tmp"
