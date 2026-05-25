@@ -1033,6 +1033,8 @@ issues:
     title: "[Phase 0.5] Intake stage plugin (plugins/agent/intake/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation, agent-plugin]
+    state: closed
+    closed_reason: "Merged via PR #230 (2026-05-24). Delivered plugins/agent/intake/ with goal sanitization (legacy sentinel port), platform-aware scope, injection guard, and 26-assertion test suite."
     body: |
       First STAGE of every pipeline run. Captures the goal (from --goal CLI
       arg or GitHub issue) and writes the initial state file + scope manifest.
