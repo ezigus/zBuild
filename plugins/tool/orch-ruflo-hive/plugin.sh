@@ -118,8 +118,10 @@ _orch_hive_kill_slot() {
 
 # ─── orch_collect ────────────────────────────────────────────────────────────
 # Contract: orch_collect <pool_id> [--timeout S]
-# Polls .exit files; streams stdout/stderr; returns first non-zero rc.
-# Removes pool dir on clean success.
+# Polls .exit files; streams stdout/stderr.
+# Exit codes: 0=all pass, 1=all fail, 2=partial (mix of pass+fail).
+# Work-unit exit codes are normalised — original rc is not passed through.
+# Removes pool dir only on clean success (all pass).
 orch_collect() {
     local pool_id="$1"
     shift

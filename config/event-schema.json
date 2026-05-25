@@ -44,6 +44,7 @@
     "registry.lockfile.written",
     "registry.role-unresolved",
     "state.write",
-    "state.recover"
+    "state.recover",
+    "plugin.contract.violated"
   ]
 }

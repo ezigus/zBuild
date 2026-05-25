@@ -77,11 +77,17 @@ _strategy_run_fanout() {
         if [[ $collect_rc -eq 0 ]]; then
             success_count=$((success_count + 1))
             # Validate artifact contracts for all successfully-dispatched plugins.
+            # Deduplicate plugin dirs first — same generic plugin may appear for
+            # multiple platforms and each unique dir only needs one contract check.
             if declare -F _check_artifact_contract >/dev/null 2>&1; then
-                local dp
+                local dp seen_dp
+                declare -A seen_dp=()
                 for dp in "${dispatched_plugins[@]+"${dispatched_plugins[@]}"}"; do
+                    [[ -n "${seen_dp[$dp]:-}" ]] && continue
+                    seen_dp[$dp]=1
                     _check_artifact_contract "$dp" "$state_dir" "$stage"
                 done
+                unset seen_dp
             fi
         elif [[ $collect_rc -eq 2 ]]; then
             success_count=$((success_count + 1))
