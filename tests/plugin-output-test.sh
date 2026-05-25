@@ -258,6 +258,25 @@ else
     assert_fail "newline in suggestion should be collapsed in table cell"
 fi
 
+# ─── Test 14: ZBUILD_OUTPUT set to unwritable path → rc=1 + error event ──────
+rm -f "$ARTIFACTS_DIR"/*.json
+export ZBUILD_OUTPUT="/nonexistent/no-such-dir/report.md"
+unset ZBUILD_ISSUE 2>/dev/null || true
+
+set +e
+output_run "output" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "unwritable ZBUILD_OUTPUT returns rc=1" "1" "$rc"
+err_reason=$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.run.error") | .data.reason // empty' 2>/dev/null | \
+    grep "file_write_failed" | tail -1 || true)
+assert_eq "plugin.run.error emitted with file_write_failed" "file_write_failed" "$err_reason"
+
+# Restore ZBUILD_OUTPUT for any future tests
+export ZBUILD_OUTPUT="$STATE_DIR/report-test-run-001.md"
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

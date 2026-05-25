@@ -123,7 +123,13 @@ output_run() {
         fi
         dest="gh-issue-$ZBUILD_ISSUE"
     elif [[ -n "${ZBUILD_OUTPUT:-}" ]]; then
-        cp "$state_dir/output-body.md" "$ZBUILD_OUTPUT"
+        mkdir -p "$(dirname "$ZBUILD_OUTPUT")" 2>/dev/null || true
+        if ! cp "$state_dir/output-body.md" "$ZBUILD_OUTPUT" 2>/dev/null; then
+            error "output_run: failed to write report to ZBUILD_OUTPUT=$ZBUILD_OUTPUT"
+            emit_event "plugin.run.error" "plugin=output-github-comment" \
+                "reason=file_write_failed" "path=$ZBUILD_OUTPUT"
+            return 1
+        fi
         dest="file:$ZBUILD_OUTPUT"
     else
         cat "$state_dir/output-body.md"
