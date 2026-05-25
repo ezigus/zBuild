@@ -114,7 +114,7 @@ _check_artifact_contract() {
     # Create synthetic blocking findings.json under artifacts/ so the output
     # plugin's aggregator (which reads $state_dir/artifacts/*-findings.json) picks it up
     mkdir -p "$state_dir/artifacts"
-    local findings_file="$state_dir/artifacts/${stage}-contract-violated-findings.json"
+    local findings_file="$state_dir/artifacts/${stage}-${plugin_id:-unknown}-contract-violated-findings.json"
     jq -n \
         --arg stage "$stage" \
         --arg plugin "${plugin_id:-unknown}" \
