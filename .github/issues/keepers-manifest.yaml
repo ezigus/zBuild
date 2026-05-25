@@ -2662,6 +2662,8 @@ issues:
         GITHUB_ACTIONS=true mock), diffs state/artifacts/, events.jsonl tail
       - Bootstrap + teardown should be the only steps differing in behavior
       - Tests must pass deterministically — verifies parity contract
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T15:34:11Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — Pluggable memory backend (ADR-011, 4 issues) ─────────
   - id: mem-1
     title: "[Phase 0.5] Memory backend contract (put/get/search/namespace API)"
@@ -2732,6 +2734,8 @@ issues:
       - Doctor (#58) flags configured-but-missing backends
       - Tests cover: default (no config), each opt-in backend, missing-backend
         warning
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T15:29:57Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — Pluggable orchestrator backend (ADR-011, 4 issues) ───
   - id: orch-1
     title: "[Phase 0.5] Orchestrator backend contract (spawn/dispatch/collect/shutdown)"
