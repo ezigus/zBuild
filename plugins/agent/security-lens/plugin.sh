@@ -48,10 +48,14 @@ security_lens_run() {
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
+    # Partition by platform when running in fanout mode so parallel invocations
+    # don't overwrite each other. Filename still matches the *-findings.json
+    # glob that the output plugin uses to collect results.
+    local platform_infix="${ZBUILD_TARGET_PLATFORM:+-${ZBUILD_TARGET_PLATFORM}}"
     _security_lens_run_inner \
         "$state_dir/intake.md" \
         "$state_dir/scope-manifest.md" \
-        "$artifacts_dir/security-findings.json" \
+        "$artifacts_dir/security${platform_infix}-findings.json" \
         "$artifacts_dir"
 }
 

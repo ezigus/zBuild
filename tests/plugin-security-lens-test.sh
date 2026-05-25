@@ -256,6 +256,35 @@ assert_eq "R8: missing .findings yields empty array (not null)" "0" "$r8_count"
 r8_findings_type=$(jq -r '.findings | type' "$OUTPUT_R8")
 assert_eq "R8: .findings is array not null" "array" "$r8_findings_type"
 
+# ─── Hook contract: security_lens_run(stage, state_file) ─────────────────────
+# Verifies the wrapper derives paths correctly and writes to the right artifact.
+STATE_DIR="$TEST_TEMP_DIR/state"
+STATE_FILE="$STATE_DIR/pipeline-state.json"
+mkdir -p "$STATE_DIR/artifacts"
+echo '{"schema_version":1,"run_id":"test-hook-001","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
+echo "auth bypass credential leak" > "$STATE_DIR/intake.md"
+printf '+ src/\n+ tests/\n' > "$STATE_DIR/scope-manifest.md"
+
+cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
+#!/usr/bin/env bash
+echo '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+set +e
+security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "hook contract: security_lens_run(stage, state_file) returns rc=0" "0" "$rc"
+assert_file_exists "hook contract: artifact written to state_dir/artifacts/" \
+    "$STATE_DIR/artifacts/security-findings.json"
+
+# Platform partitioning: ZBUILD_TARGET_PLATFORM suffix is injected into filename
+ZBUILD_TARGET_PLATFORM="ios" security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
+assert_file_exists "hook contract: platform fanout writes platform-scoped artifact" \
+    "$STATE_DIR/artifacts/security-ios-findings.json"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
