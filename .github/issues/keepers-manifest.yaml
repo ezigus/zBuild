@@ -15,7 +15,6 @@
 #   - body uses the KEEPER issue template from KEEPERS §O
 
 schema_version: 1
-
 # ─── Labels (16) ────────────────────────────────────────────────────────────
 labels:
   # Phase
@@ -82,7 +81,6 @@ labels:
   - name: cli-ux
     color: "a78bfa"
     description: CLI / UX surface
-
 # ─── Milestones (7) ─────────────────────────────────────────────────────────
 milestones:
   - title: Phase 0 — Core Engine Foundation
@@ -127,7 +125,6 @@ milestones:
       'zbuild pipeline start --goal "..." --scope src/' produces a real
       security audit comment on a GitHub issue, AND `npx zbuild` works from
       a clean machine.
-
 # ─── Issues ─────────────────────────────────────────────────────────────────
 # Body template (markdown) used for every keeper issue. Substitution placeholders:
 #   ${spec_cite}      — KEEPERS section
@@ -136,7 +133,6 @@ milestones:
 #   ${plugin_kind}    — agent | tool | recovery | orchestrator | claim-coordinator | daemon | (none for safety)
 #   ${depends_on}     — markdown list of dependent issue IDs (resolved to issue numbers by generator)
 #   ${blocks}         — markdown list of blocked issue IDs
-
 issues:
   # ─── Phase 0 Foundation (9 — most done; tracking only) ─────────────────
   - id: ph0-repo
@@ -220,7 +216,6 @@ issues:
       docs/RESUME-CONTRACT.md (plugin-author cheat-sheet) + tests/core-state-resume-exec-test.sh
       (3-process: write → read → continue, proves state survives process exit).
       DONE in commit 195d210.
-
   # ─── Section A — Pipeline / Stage Composition (8 keepers) ──────────────
   - id: a-1
     title: "[A] Wrap stage handlers as kind: agent plugins"
@@ -318,7 +313,6 @@ issues:
       mid-pipeline reassessment, hard floor) and decides which stages to skip.
       pipeline_backtrack_to_stage allows bounded back-edges (cap=1 per run).
       Reassessment can simplify the pipeline mid-run.
-
   # ─── Section B — Intelligence + Learning (13 keepers) ──────────────────
   - id: b-1
     title: "[B1] Telemetry event bus (dual SQLite + JSONL, schema-as-warn)"
@@ -467,7 +461,6 @@ issues:
       error signatures may use ruflo's own keyed storage instead; the engine
       consumes them through the `memory_search` contract either way. This
       issue tracks the substrate that #216 provides.
-
   # ─── Section C — Reliability + Safety (12 keepers) ─────────────────────
   - id: c-1
     title: "[C] Redaction chokepoint (single _apply_scope_redaction helper)"
@@ -607,7 +600,6 @@ issues:
       their persisted-vs-reconstructed split in manifests; runtime enforces
       it. Distinct from Learning Memory (ADR-011). Related: #36 (CURRENT_ITERATION
       persistence), #225 (operator resume CLI).
-
   # ─── Section D — Daemon + Autonomous Operation (11 keepers) ────────────
   - id: d-1
     title: "[D] GitHub label contract as external API"
@@ -717,7 +709,6 @@ issues:
     behavior: |
       Distinguishes 'agent thinking' from 'agent dead.' Per-stage timeouts
       configurable; 'patient kill' protocol.
-
   # ─── Section E — CLI + UX (5 keepers, carry forward) ───────────────────
   - id: e-1
     title: "[E] Live-updating GitHub PR comment with HTML marker"
@@ -765,7 +756,6 @@ issues:
       Defensive bounds + SQLite-magic verification. Honest 0% beats fake 100%.
       Memorializes a real bug where corrupted memory.db rendered as '3.3 billion
       patterns.'
-
   # ─── Section F — Personas + Recruit + Skills (7 keepers) ───────────────
   - id: f-1
     title: "[F] Compound-audit security lens (already migrated)"
@@ -835,7 +825,6 @@ issues:
       Edge Case Auditor (boundary, empty, null, concurrent, race) AND skill
       registry recording/sorting. Bundled because the skill registry is what
       makes the 7 lenses self-improving across runs.
-
   # ─── Section G — Test Harness + Migration (3 keepers) ──────────────────
   - id: g-1
     title: "[G] Lift test-helpers.sh wholesale + ZBUILD_* renames"
@@ -865,7 +854,6 @@ issues:
     behavior: |
       Add tests/golden/ subdir. Rewrite the 30 platform-bound tests in zBuild
       idiom. Delete 20 obsolete ones. Each gets a manifest row.
-
   # ─── Section L — Post-Stabilization Wishlist (11 items) ────────────────
   - id: l-1
     title: "[L] Real SPRT for routing graduation (Wald hypothesis test)"
@@ -957,7 +945,6 @@ issues:
       plugins/claim-coordinator/dashboard/: routes claim ops through an
       optional dashboard process that serializes them in-memory. For teams
       already running the dashboard.
-
   # ─── Phase 0.5 — MVP Pipeline (5 issues) ────────────────────────────────
   - id: mvp-1
     title: "[Phase 0.5] Pipeline runner (core/pipeline/runner.sh)"
@@ -1003,7 +990,6 @@ issues:
 
       Tests: tests/core-pipeline-runner-test.sh with a fixture template
       and 2 mock plugins; verify hook ordering, state writes, event emission.
-
   - id: mvp-2
     title: "[Phase 0.5] Model router stub (core/router/route.sh)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1028,7 +1014,6 @@ issues:
       Tests: tests/core-router-route-test.sh with a mocked `claude` binary
       via PATH-shadow (test-helpers pattern). Verify tier resolution, env
       passing, event emission.
-
   - id: mvp-3
     title: "[Phase 0.5] Intake stage plugin (plugins/agent/intake/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1058,7 +1043,8 @@ issues:
 
       Tests: tests/plugin-intake-test.sh with --goal "test goal" and
       verify state files created, sentinels applied, scope manifest readable.
-
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T00:29:01Z). Recorded by manifest-sync.'
   - id: mvp-4
     title: "[Phase 0.5] Wire security-lens to real LLM call (via router)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1079,7 +1065,6 @@ issues:
 
       Tests: extend tests/plugin-security-lens-test.sh with a mocked router
       that returns a canned findings.json; verify parse + emit.
-
   - id: mvp-5
     title: "[Phase 0.5] Output stage plugin (plugins/tool/output-github-comment/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1101,7 +1086,6 @@ issues:
 
       Tests: tests/plugin-output-test.sh with mocked gh CLI, verify markdown
       shape and command invocation.
-
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
     title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
@@ -1122,7 +1106,6 @@ issues:
 
       Should land AFTER MVP-1..5 so the first published version actually does
       something (runs a security audit) rather than printing stubs.
-
   - id: inst-2
     title: "[Phase 0.5] One-shot installer (curl | bash)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1143,7 +1126,6 @@ issues:
       - README install section updated
 
       Defer Homebrew formula to wishlist.
-
   - id: inst-3
     title: "[Phase 0.5] Doctor command covers install verification (extends #58)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1160,7 +1142,6 @@ issues:
       - Add check_install() to doctor's check registry
       - Output: green/yellow/red per check + copy-paste fix line per failure
       - Tests verify each check fires correctly with mocks
-
   # ─── Phase 0.5 — GitHub CI Integration (3 issues) ──────────────────────
   - id: ci-1
     title: "[Phase 0.5] Reusable workflow: .github/workflows/zbuild-pipeline.yml"
@@ -1188,7 +1169,6 @@ issues:
       - Test repo demonstrating consumption (could be a fixture)
 
       Dependencies: INST-1 (zbuild must be installable via npm/curl first).
-
   - id: ci-2
     title: "[Phase 0.5] Daemon-in-Actions mode (label-triggered pipeline)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1209,7 +1189,6 @@ issues:
 
       Future: Phase 3 daemon plugins (issues #45-55) implement the long-running
       version. CI-2 is the Actions-native variant; both share the label contract.
-
   - id: ci-3
     title: "[Phase 0.5] Auth + permissions docs (PAT vs GITHUB_TOKEN, secrets)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1225,7 +1204,6 @@ issues:
 
       Deliverable: docs/CI-INTEGRATION.md sections covering auth, common
       setups, troubleshooting. Plus a one-page quickstart in README.
-
   # ─── Phase 0.5 — Claude CLI surface & Code hooks (12 issues) ───────────
   - id: ccli-1
     title: "[Phase 0.5] Claude CLI: --output-format json structured output"
@@ -1335,7 +1313,6 @@ issues:
     body: |
       Track subagent lifecycles; emit events when teammates spawn/finish;
       notify on idle. Foundation for the "what are my agents doing" UX.
-
   # ─── Phase 1 — Ruflo MCP integration depth (5 issues) ──────────────────
   - id: ruf-1
     title: "[Phase 1] Ruflo daemon lifecycle (spawn / kill / restart)"
@@ -1378,7 +1355,6 @@ issues:
       Connect to multiple MCP servers (claude-flow, ruv-swarm, flow-nexus,
       agentic-flow) per .mcp.json. Handle server lifecycle, health checks,
       version pinning, error propagation, fallback routing when one's down.
-
   # ─── Phase 3 — Daemon adaptive subsystems (12 issues) ──────────────────
   - id: adapt-1
     title: "[Phase 3] Adaptive poll intervals (queue depth + cost-per-job)"
@@ -1490,7 +1466,6 @@ issues:
       dead code (no importers), test coverage gaps, doc staleness, perf
       regression, recurring failures, DORA degradation, untested scripts,
       retry exhaustion patterns.
-
   # ─── Phase 3 — Self-optimize learning loop wiring (3 issues) ───────────
   - id: opt-1
     title: "[Phase 3] Outcome → routing feedback loop (record_model_outcome wiring)"
@@ -1517,7 +1492,6 @@ issues:
       Prune stale skill-recommendation patterns; promote ones that correlated
       with recent successes; feed updates back into the skill registry
       (#22/#67) so older patterns decay rather than dominate.
-
   # ─── Phase 3 — AgentDB multi-table persistence (6 issues) ──────────────
   - id: db-1
     title: "[Phase 3] AgentDB tables: pipeline_runs + pipeline_stages"
@@ -1597,7 +1571,6 @@ issues:
       This is **distinct** from pipeline-resume cache transport (ADR-010
       covers that for ADR-006 state); these two memory models' transports are
       decoupled by design.
-
   # ─── Phase 3 — GitHub Actions workflows (8 critical) ───────────────────
   - id: wf-1
     title: "[Phase 3] Workflow: zbuild-patrol.yml (patrol-as-self-generated work)"
@@ -1670,7 +1643,6 @@ issues:
       CI lifecycle via #209 bootstrap (auto-resume detection) and #210
       teardown (status marking: complete/interrupted/aborted). Daemon-triggered
       counterpart: #120 (checkpoint-based recovery).
-
   # ─── Phase 3 — Cross-repo / multi-repo (4 issues) ──────────────────────
   - id: xrepo-1
     title: "[Phase 3] Cross-repo isolation (per-repo state, no cross-contamination)"
@@ -1702,7 +1674,6 @@ issues:
     body: |
       Failure in one repo's pipeline must not pause the daemon for other repos.
       Per-repo circuit breakers (extends adapt-9).
-
   # ─── Phase 4 — CLI subcommand gaps (12 issues) ─────────────────────────
   - id: cmd-1
     title: "[Phase 4] CLI: memory inspector (zbuild memory show|list|search|export|import|forget|stats)"
@@ -1806,7 +1777,6 @@ issues:
       Continuous improvement loop command (distinct from pipeline). Runs an
       agent in a tight edit-test-verify loop against a goal until passing.
       Preserves shipwright's `loop` command UX.
-
   # ─── Phase 4 — Personas beyond compound-audit (5 issues) ───────────────
   - id: per-1
     title: "[Phase 4] Persona: red-team / adversarial (sw-adversarial.sh, 3-round cap)"
@@ -1847,7 +1817,6 @@ issues:
     body: |
       sw-intelligence.sh: predictive-analysis prompts that extract complexity,
       risk_level, success_probability from an issue. Feeds adapt-11 triage.
-
   # ─── Phase 4 — Compound-audit orchestration (3 issues) ─────────────────
   - id: co-1
     title: "[Phase 4] Compound-audit cascade orchestrator (parallel lens dispatch)"
@@ -1872,7 +1841,6 @@ issues:
       Low-confidence findings from a lens get re-checked by a specialist
       (e.g., security ambiguity routes to red-team persona per-1). Escalation
       policy is a small registry, not hardcoded.
-
   # ─── Phase 4 — Skills batch (1 omnibus issue) ───────────────────────────
   - id: skl-1
     title: "[Phase 4] Migrate remaining 11 skill .md fragments (omnibus)"
@@ -1890,7 +1858,6 @@ issues:
       plugins/skill/<name>/.
 
       Checkbox-driven; ~30 min per skill once the pattern is set.
-
   # ─── Phase 4 — Dashboards & Observability UI (6 issues) ────────────────
   # User note: dashboards are NOT top priority but should be done. Place
   # toward the end of Phase 4 ordering.
@@ -1943,8 +1910,6 @@ issues:
       Extends #59 with: --type/--agent/--team/--stage filter flags;
       snapshot (one-liner per event), follow-mode (live tail); 5-color
       per-agent hash; 17 event-type → emoji map.
-
-
   # ─── Wishlist additions (audit gaps deferred to post-stabilization) ────
   - id: l-12
     title: "[L] Webhook receiver infrastructure (HMAC, port 8765)"
@@ -2086,7 +2051,6 @@ issues:
       Mobile (iOS) becomes a separate concern under "platform packs" (l-30..),
       where dropping in a platform manifest + signals lets the same `standard`
       template run on that platform via fanout/composite strategies.
-
   # ─── Phase 0.5 — Platform-aware modularity (ADR-009, 14 issues) ───────
   - id: plat-1
     title: "[Phase 0.5] ADR-009 manifest fields: platform + provides.role + platform_overrides + detect.signals"
@@ -2118,7 +2082,6 @@ issues:
       - Update yaml_get to read nested detect.signals arrays
       - Update plugins/agent/security-lens/manifest.yaml: declare role=security-auditor
       - Test: existing security-lens still passes; new fields validate correctly
-
   - id: plat-2
     title: "[Phase 0.5] Template schema YAML (role-based stages + strategy + extends)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2154,7 +2117,6 @@ issues:
       - Write config/templates/standard.yaml + hotfix.yaml (extends standard)
       - Tests verify schema parse + extends resolution + disabled_stages skip
       - Reference: ADR-009 §2
-
   - id: plat-3
     title: "[Phase 0.5] Resolver: resolve_plugin_for_role(role, platform) with fallback"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2183,7 +2145,6 @@ issues:
       - resolve_plugins_for_stage(stage, platforms) for multi-platform stages
       - Tests with fixture plugins covering: exact match, fallback, tie-break,
         not-found, multi-platform fan-out
-
   - id: plat-4
     title: "[Phase 0.5] core/detect/platforms.sh subsystem (detection engine, not plugin)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2214,7 +2175,6 @@ issues:
 
       Tests: monorepo fixture (ios/ + api/), pure-platform fixture, ambiguous
       fixture (Package.swift + package.json same folder), docs-only fixture.
-
   - id: plat-5
     title: "[Phase 0.5] Platform plugin pattern: declarative detection signals"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2232,7 +2192,6 @@ issues:
         files: [{pattern: package.json, strength: high}, {pattern: package-lock.json, strength: medium}]
         directories: [{pattern: node_modules/, strength: low}]
       - Tests verify detection picks up these manifests automatically
-
   - id: plat-6
     title: "[Phase 0.5] .zbuild/platforms.json config schema (overrides + disable + aliases)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2260,7 +2219,6 @@ issues:
       - docs/platforms-config-schema.md with examples
       - .gitignore: state/platforms.detected.json (machine-generated)
       - Tests cover override-wins-over-detect, disable_detection, aliases
-
   - id: plat-13
     title: "[Phase 0.5] Detection conflict resolution + signal strength ranking"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2284,7 +2242,6 @@ issues:
       - Event: detection.conflict {path, candidates, strengths, resolution}
       - CLI: zbuild detect platforms --explain shows resolution reasoning
       - Tests cover all conflict patterns
-
   # ─── Phase 1 — Orchestration strategies (3 issues) ─────────────────────
   - id: plat-9
     title: "[Phase 1] Fanout strategy (parallel per-platform stage execution)"
@@ -2301,7 +2258,6 @@ issues:
       - Aggregate state/artifacts/<stage>-<platform>.* into stage output
       - Event: stage.fanout {stage, platforms, parallelism}
       - Tests: 2-platform fixture, verify both run in parallel + both artifacts
-
   - id: plat-10
     title: "[Phase 1] Composite strategy (one invocation with multi-platform context)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -2317,7 +2273,6 @@ issues:
       - Plugin generates a single artifact covering all platforms
       - Default for design + plan stages per ADR-009
       - Tests: monorepo design stage emits single composite design.md
-
   - id: plat-11
     title: "[Phase 1] Sequential strategy (per-platform execution serialized)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -2331,7 +2286,6 @@ issues:
       - Config flag: per_platform_halt_on_fail (default false)
       - Use case: strong isolation needs (e.g., release stages)
       - Tests: serialization + halt-on-fail behavior
-
   # ─── Phase 4 — Platform CLI surface (2 issues) ─────────────────────────
   - id: plat-7
     title: "[Phase 4] CLI: zbuild detect platforms [--explain] [--repo <root>]"
@@ -2352,7 +2306,6 @@ issues:
       - Calls core/detect/platforms.sh; renders output
       - --format json for machine consumption
       - Tests with fixture repos covering all source types
-
   - id: plat-8
     title: "[Phase 4] CLI flags: --platform-override <p>, --scope <path>"
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
@@ -2369,7 +2322,6 @@ issues:
       - Override sets ZBUILD_PLATFORM_OVERRIDE; detection short-circuits
       - --scope appends to state/scope-manifest.md (intersect with detection)
       - Tests: override forces single platform; --scope restricts correctly
-
   # ─── Phase 3 — Per-platform cost ceilings (1 issue) ────────────────────
   - id: plat-12
     title: "[Phase 3] Per-platform cost ceilings (extends #28 cost ledger)"
@@ -2387,7 +2339,6 @@ issues:
       - Emits cost.platform_capped event when ceiling hit; downgrades that
         platform's tier for that stage only
       - Dashboard cost view (dash-1) breaks down by (stage × platform)
-
   # ─── Phase 5 — Detection test fixtures (1 issue) ───────────────────────
   - id: plat-14
     title: "[Phase 5] Detection golden tests on monorepo fixtures"
@@ -2409,7 +2360,6 @@ issues:
       Each fixture has tests/golden/detect/<name>.json = expected
       state/platforms.json. Run detection, diff against golden. Update goldens
       with ZBUILD_UPDATE_GOLDEN=1.
-
   # ─── Wishlist — Platform packs (3 issues, examples) ───────────────────
   - id: l-30
     title: "[L] Platform pack: iOS (Package.swift detection + ios-aware plugins)"
@@ -2425,7 +2375,6 @@ issues:
 
       Pattern reference for other platform packs. Each platform pack = one
       directory you copy + edit. ZERO core code changes.
-
   - id: l-31
     title: "[L] Platform pack: Node + React (split or combined)"
     milestone: "Wishlist — Post-stabilization"
@@ -2435,7 +2384,6 @@ issues:
       React = frontend, can coexist in same repo). Each has its own detection
       signals (package.json + engines.node vs package.json + react in deps)
       and specialized plugins (jest-runner, vitest-runner, etc.).
-
   - id: l-32
     title: "[L] Platform pack: Python (uv/poetry/pip detection + python-aware plugins)"
     milestone: "Wishlist — Post-stabilization"
@@ -2444,7 +2392,6 @@ issues:
       Python platform pack: detection signals (pyproject.toml, requirements.txt,
       setup.py), specialized plugins (pytest-runner, ruff/mypy linters,
       bandit security). Most demand after Node + iOS.
-
   # ─── Phase 0.5 — CI/CLI parity (ADR-010, 6 issues) ────────────────────
   - id: cipar-1
     title: "[Phase 0.5] zbuild bootstrap command (rehydrate state, verify auth, validate lockfile, detect resume)"
@@ -2478,7 +2425,6 @@ issues:
       - Locally: cache-pull is local-noop but resume detection still runs
       - Doctor-style report at end (green/yellow/red per check + resume status)
       - Reusable Actions composite: .github/actions/bootstrap/action.yml
-
   - id: cipar-2
     title: "[Phase 0.5] zbuild teardown command (snapshot state, mark status, upload artifacts, summarize)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2508,7 +2454,6 @@ issues:
       - In CI: writes to $GITHUB_STEP_SUMMARY; uploads state/artifacts/* via
         actions/upload-artifact; updates PR comment marker (uses #56 contract)
       - Reusable Actions composite: .github/actions/teardown/action.yml
-
   - id: cipar-3
     title: "[Phase 0.5] Cache backend contract + default (local) implementation"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2525,7 +2470,6 @@ issues:
       - plugins/tool/cache-local/ default implementation
       - Selection via .zbuild/config.yaml: backends.cache: local|gh-actions-cache|s3
       - Tests: cache_pull on empty restores cleanly; cache_push round-trips
-
   - id: cipar-4
     title: "[Phase 0.5] Cache backend: gh-actions-cache (for CI)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2539,7 +2483,6 @@ issues:
       - Handles GH cache size limits (10GB total, 5GB per item) with
         warn-and-truncate of events.jsonl archives
       - Tests: round-trip via local mock filesystem; verify key derivation
-
   - id: cipar-5
     title: "[Phase 0.5] Output destination abstraction (stdout / file / PR comment / check run / step summary)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2557,7 +2500,6 @@ issues:
         - step-summary (when $GITHUB_STEP_SUMMARY set)
       - Config in template or env: which destinations active for this run
       - Tests with mocked gh CLI verify each destination
-
   - id: cipar-6
     title: "[Phase 0.5] CI/CLI parity test (same fixture, same output, both contexts)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2572,7 +2514,6 @@ issues:
         GITHUB_ACTIONS=true mock), diffs state/artifacts/, events.jsonl tail
       - Bootstrap + teardown should be the only steps differing in behavior
       - Tests must pass deterministically — verifies parity contract
-
   # ─── Phase 0.5 — Pluggable memory backend (ADR-011, 4 issues) ─────────
   - id: mem-1
     title: "[Phase 0.5] Memory backend contract (put/get/search/namespace API)"
@@ -2592,7 +2533,6 @@ issues:
       - Plugin registry recognizes provides.role: memory-backend
       - CLI: zbuild plugin list --role memory-backend
       - Tests: a mock backend in tests/fixtures/ implements the contract
-
   - id: mem-2
     title: "[Phase 0.5] Default memory backend: SQLite (no external deps)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2607,7 +2547,6 @@ issues:
       - memory_search uses LIKE %query% (TF-IDF-style — no vectors)
       - Reuses AgentDB tables from db-1..6 issues
       - Tests: contract conformance + roundtrip
-
   - id: mem-3
     title: "[Phase 0.5] Optional memory backend: ruflo HNSW vectors (plugin)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2624,7 +2563,6 @@ issues:
       - Per-repo namespace isolation (zbuild-repo-{hash} per ruf-4)
       - fallback_to_default_on_error: true (degrade to sqlite if ruflo down)
       - Tests: contract conformance (with ruflo mock); degraded mode
-
   - id: mem-4
     title: "[Phase 0.5] Backend selection: .zbuild/config.yaml schema"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2646,7 +2584,6 @@ issues:
       - Doctor (#58) flags configured-but-missing backends
       - Tests cover: default (no config), each opt-in backend, missing-backend
         warning
-
   # ─── Phase 0.5 — Pluggable orchestrator backend (ADR-011, 4 issues) ───
   - id: orch-1
     title: "[Phase 0.5] Orchestrator backend contract (spawn/dispatch/collect/shutdown)"
@@ -2665,7 +2602,6 @@ issues:
         sequential) consume this contract — they don't bind to a specific
         backend
       - Tests with a synchronous mock backend
-
   - id: orch-2
     title: "[Phase 0.5] Default orchestrator backend: bash-parallel (no external deps)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2681,7 +2617,6 @@ issues:
       - Implements fanout (subshells in parallel), sequential (serial), and
         a degenerate composite (single subshell with bundled context)
       - Tests: 2-worker fanout completes in ~max(worker_time) not sum
-
   - id: orch-3
     title: "[Phase 0.5] Optional orchestrator backend: ruflo hive-mind (plugin)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2699,7 +2634,6 @@ issues:
       - Per-stage namespace: stage-${stage}-${platform}-${run_id}
       - fallback_to_default_on_error: true (graceful → bash-parallel)
       - Tests with ruflo mock + degraded fallback
-
   - id: orch-4
     title: "[Phase 0.5] Strategy implementations use orchestrator contract (refactor plat-9/10/11)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2713,7 +2647,6 @@ issues:
       strategy code changes.
 
       Dependencies: orch-1 (contract), orch-2 (default impl).
-
   # ─── Phase 0.5 — Follow-up to closed #83 ───────────────────────────────
   - id: mvp-1b
     title: "[Phase 0.5] Pipeline runner: role-based templates + resolver (follow-up to #83)"
@@ -2741,7 +2674,6 @@ issues:
       Live issue: https://github.com/ezigus/zBuild/issues/208
       Dependencies: plat-1, plat-2, plat-3, plat-4.
       Blocks: plat-9, plat-10, plat-11, MVP-3.
-
   # ─── Phase 0.5 — Explicit resume CLI surface (1 issue) ─────────────────
   - id: resume-1
     title: "[Phase 0.5] zbuild pipeline resume CLI + auto-resume policy"
@@ -2777,7 +2709,6 @@ issues:
 
       Dependencies: cipar-1 (bootstrap), cipar-2 (teardown), #36
       (CURRENT_ITERATION), adapt-10 (checkpoint-based recovery).
-
   # ─── Phase 0.5 — Manifest-sync workflow (1 issue) ─────────────────────
   - id: sync-1
     title: "[Phase 0.5] Manifest-sync CI workflow (bidirectional drift detection + auto-PR)"
