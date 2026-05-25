@@ -17,12 +17,32 @@ _memory_ruflo_ns() {
 
 # ─── _memory_ruflo_repo_hash — cross-platform sha256 of repo root ────────────
 _memory_ruflo_repo_hash() {
-    local root="${ZBUILD_ROOT:-$(pwd)}"
+    # Prefer ZBUILD_PROJECT_ROOT (canonical project root); fall back to ZBUILD_ROOT,
+    # then pwd. Canonicalize to avoid hash divergence from CWD changes.
+    local root
+    root="${ZBUILD_PROJECT_ROOT:-${ZBUILD_ROOT:-}}"
+    [[ -z "$root" ]] && root="$(pwd)"
+    # Canonicalize path so symlinks / relative components don't break isolation.
+    root="$(cd "$root" 2>/dev/null && pwd || printf '%s' "$root")"
     if command -v sha256sum >/dev/null 2>&1; then
         printf '%s' "$root" | sha256sum | cut -c1-12
     else
         printf '%s' "$root" | shasum -a 256 | cut -c1-12
     fi
+}
+
+# ─── _memory_ruflo_validate_key — reject path-traversal in keys ──────────────
+# exit 0: valid; exit 2: invalid (path traversal or control chars)
+_memory_ruflo_validate_key() {
+    local key="$1"
+    [[ -z "$key" ]] && return 2
+    # Reject path traversal sequences and leading slash
+    # Note: bash strings are null-terminated; null-byte check omitted (unreliable in glob patterns).
+    if [[ "$key" == *".."* || "$key" == "/"* || "$key" == *$'\n'* ]]; then
+        warn "memory-ruflo: key rejected — contains disallowed sequence: $key" >&2 || true
+        return 2
+    fi
+    return 0
 }
 
 # ─── memory_capabilities ─────────────────────────────────────────────────────
@@ -53,6 +73,7 @@ memory_backend_init() {
 memory_put() {
     local ns="$1" key="$2" value="${3:-}"
     [[ -z "$ns" || -z "$key" ]] && return 2
+    _memory_ruflo_validate_key "$key" || return 2
 
     local scoped_ns
     scoped_ns="$(_memory_ruflo_ns "$ns")"
@@ -65,8 +86,8 @@ memory_put() {
 }
 
 # ─── memory_get <ns> <key> ───────────────────────────────────────────────────
-# exit 0 always (empty stdout = miss); exit 1 on unrecoverable backend error
-# ruflo rc=1 is treated as a miss (ruflo uses rc=1 for both miss and error)
+# exit 0 always (empty stdout = miss); non-zero ruflo exit treated as graceful miss.
+# ruflo uses rc=1 for both "key not found" and backend errors — both are treated as miss.
 memory_get() {
     local ns="$1" key="$2"
     [[ -z "$ns" || -z "$key" ]] && return 0
