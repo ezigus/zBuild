@@ -248,11 +248,11 @@ if echo "$report" | grep -qF 'A \| B title'; then
 else
     assert_fail "pipe in title should be escaped as \\| in table cell"
 fi
-if echo "$report" | grep -qP 'do this\nor that' 2>/dev/null || \
-   printf '%s' "$report" | awk '/do this/{found=1} found && /or that/{exit 0} END{exit 1}' 2>/dev/null; then
-    assert_fail "newline in suggestion should be collapsed in table cell"
-else
+# Both substrings must appear on the same line — only possible if the newline was collapsed.
+if echo "$report" | grep -q "do this.*or that"; then
     assert_pass "newline in suggestion collapsed to space in table cell"
+else
+    assert_fail "newline in suggestion should be collapsed in table cell"
 fi
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
