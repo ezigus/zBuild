@@ -50,6 +50,9 @@ ARTIFACTS_DIR="$STATE_DIR/artifacts"
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
 echo '{"schema_version":1,"run_id":"test-run-001","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
 export ZBUILD_RUN_ID="test-run-001"
+# Route all file-write assertions to a fixed path (ZBUILD_OUTPUT takes
+# precedence over stdout default introduced in #238).
+export ZBUILD_OUTPUT="$STATE_DIR/report-test-run-001.md"
 
 output_init >/dev/null 2>&1
 
