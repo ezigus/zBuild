@@ -14,6 +14,7 @@ dist/
 .env
 .env.local
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Runtime artifacts (from local testing of runner/event-bus/etc.)
 .swarm/
