@@ -72,7 +72,9 @@ security_lens_run() {
     redacted_content="$(cat "$redacted")"
     prompt="${sys_prompt}"$'\n\n'"${redacted_content}"
 
-    # ─── Route to LLM (T3 per manifest config.tier_default) ───────────────
+    # ─── Route to LLM (hardcoded T3, matching manifest config.tier_default) ──
+    # ZBUILD_SECURITY_LENS_TIER overrides for testing. Manifest-driven tier
+    # read is deferred to a follow-up issue.
     local tier="${ZBUILD_SECURITY_LENS_TIER:-T3}"
     local raw_response="" router_rc=0
     raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)" || router_rc=$?
@@ -93,8 +95,13 @@ security_lens_run() {
         else
             warn "security_lens_run: LLM response unparseable; using empty findings"
         fi
+    elif [[ $router_rc -eq 1 ]]; then
+        warn "security_lens_run: router rc=1 (recoverable); using empty findings"
     elif [[ $router_rc -ne 0 ]]; then
-        warn "security_lens_run: router rc=$router_rc; using empty findings"
+        error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
+        emit_event "plugin.run.error" "plugin=security-lens" \
+            "reason=router_fatal" "router_rc=$router_rc"
+        return 1
     fi
 
     # ─── Write findings.json (schema unchanged + stub:false marker) ───────

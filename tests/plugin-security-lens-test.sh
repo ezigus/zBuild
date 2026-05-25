@@ -225,20 +225,18 @@ assert_eq "R6: router rc=1 returns plugin rc=0 (fail-open)" "0" "$rc"
 r6_count=$(jq '.findings | length' "$OUTPUT_R6")
 assert_eq "R6: router failure yields empty findings" "0" "$r6_count"
 
-# ─── R7: router rc=2 (fatal) ─────────────────────────────────────────────────
-cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
-#!/usr/bin/env bash
-exit 2
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/claude"
+# ─── R7: router rc=2 (fatal) — invalid tier triggers router-internal fatal ────
+# claude exit codes map to rc=1 (recoverable); rc=2 comes from router internals
+# (invalid tier, missing models.json, T0). Use T9 (unknown tier) to force it.
 OUTPUT_R7="$TEST_TEMP_DIR/findings_r7.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R7" "$TEST_TEMP_DIR" >/dev/null 2>&1
+ZBUILD_SECURITY_LENS_TIER=T9 security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R7" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
-assert_eq "R7: router rc=2 returns plugin rc=0 (fail-open)" "0" "$rc"
-r7_count=$(jq '.findings | length' "$OUTPUT_R7")
-assert_eq "R7: router rc=2 yields empty findings" "0" "$r7_count"
+assert_eq "R7: router rc=2 (fatal tier) returns plugin rc=1 (propagates)" "1" "$rc"
+r7_error_event=$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.run.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "R7: plugin.run.error event emitted with router_fatal reason" "router_fatal" "$r7_error_event"
 
 # ─── R8: .findings key missing from valid JSON object ─────────────────────────
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
