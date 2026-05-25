@@ -1,0 +1,13 @@
+id: memory-ruflo
+name: ruflo HNSW Vector Memory Backend
+kind: tool
+version: 0.0.1
+provides:
+  role: memory-backend
+  alias: ruflo
+  capabilities: [vector_search, hnsw, namespacing, persistence]
+requires:
+  bin: [ruflo, jq]
+config:
+  fallback_to_default_on_error: true
+  tier_default: T2
