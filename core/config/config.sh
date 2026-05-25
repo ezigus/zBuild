@@ -85,7 +85,7 @@ zbuild_config_get() {
 
 # zbuild_config_validate_backends: warn on configured-but-missing backend plugins
 zbuild_config_validate_backends() {
-    local cap backend default role plugin_dir
+    local cap backend default role
     for cap in memory orchestrator cache; do
         backend="$(zbuild_config_get_backend "$cap")"
         default="${_ZBUILD_BACKEND_DEFAULTS[$cap]}"
@@ -93,7 +93,7 @@ zbuild_config_validate_backends() {
         [[ "$backend" == "$default" ]] && continue
         # Check if plugin exists for this backend
         role="${cap}-backend"
-        if ! plugin_dir="$(find_plugin_for_role "$role" "$backend" 2>/dev/null)"; then
+        if ! find_plugin_for_role "$role" "$backend" >/dev/null 2>&1; then
             warn "backend.missing: ${cap}=${backend} configured but plugin not found" >&2
             emit_event "backend.missing" "role=$role" "requested=$backend" || true
         fi
