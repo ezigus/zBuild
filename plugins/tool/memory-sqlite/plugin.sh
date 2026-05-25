@@ -53,25 +53,6 @@ SQL
     return 0
 }
 
-# ─── memory_put <ns> <key> <value> ───────────────────────────────────────────
-# exit 0: success; exit 1: backend error; exit 2: invalid args (empty key/ns)
-memory_put() {
-    local ns="$1" key="$2" value="$3"
-    [[ -z "$ns" || -z "$key" ]] && return 2
-
-    local db
-    db="$(_memory_sqlite_db_path)"
-
-    local err
-    err="$(sqlite3 "$db" \
-        "INSERT OR REPLACE INTO memory (namespace, key, value, updated_at)
-         VALUES ($(printf '%s' "$ns" | sqlite3 -), $(printf '%s' "$key" | sqlite3 -), $(printf '%s' "$value" | sqlite3 -), strftime('%s', 'now'));" 2>&1)" || {
-        # sqlite3 exited non-zero — map to exit 1
-        return 1
-    }
-    return 0
-}
-
 # ─── _sqlite3_quote — safely quote a string for SQLite ───────────────────────
 _sqlite3_quote() {
     local val="$1"
@@ -79,8 +60,8 @@ _sqlite3_quote() {
     printf "'%s'" "${val//\'/\'\'}"
 }
 
-# ─── memory_put (rewrite using _sqlite3_quote for correctness) ───────────────
-# Redefine memory_put to use safe quoting
+# ─── memory_put <ns> <key> <value> ───────────────────────────────────────────
+# exit 0: success; exit 1: backend error; exit 2: invalid args (empty key/ns)
 memory_put() {
     local ns="$1" key="$2" value="$3"
     [[ -z "$ns" || -z "$key" ]] && return 2
@@ -134,12 +115,18 @@ memory_search() {
     db="$(_memory_sqlite_db_path)"
     [[ ! -f "$db" ]] && return 0
 
+    if [[ -n "$limit" && ! "$limit" =~ ^[0-9]+$ ]]; then
+        printf 'memory_search: --limit value must be a non-negative integer\n' >&2
+        return 2
+    fi
+
     local q_ns q_like limit_clause
     q_ns="$(_sqlite3_quote "$ns")"
-    # LIKE query: escape %, _, and backslash in query, then wrap in %...%
-    local escaped_query="${query//'%'/'%'}"
-    escaped_query="${escaped_query//'_'/'_'}"
-    q_like="$(_sqlite3_quote "%${query}%")"
+    # LIKE query: escape \, %, and _ in query, then wrap in %...%
+    local escaped_query="${query//\\/\\\\}"
+    escaped_query="${escaped_query//'%'/'\%'}"
+    escaped_query="${escaped_query//'_'/'\_'}"
+    q_like="$(_sqlite3_quote "%${escaped_query}%")"
     limit_clause=""
     [[ -n "$limit" ]] && limit_clause="LIMIT $limit"
 
@@ -148,7 +135,7 @@ memory_search() {
         "SELECT key, replace(value, char(10), '\n')
          FROM memory
          WHERE namespace=$q_ns
-           AND (key LIKE $q_like OR value LIKE $q_like)
+           AND (key LIKE $q_like ESCAPE '\\' OR value LIKE $q_like ESCAPE '\\')
          $limit_clause;" 2>/dev/null)" || return 1
     [[ -n "$rows" ]] && printf '%s\n' "$rows"
     return 0

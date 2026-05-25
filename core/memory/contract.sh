@@ -15,15 +15,17 @@ _ZBUILD_MEMORY_INITIALIZED=0
 _MEMORY_CONTRACT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="${_ZBUILD_ROOT:-$(cd "$_MEMORY_CONTRACT_DIR/../.." && pwd)}"
 
-# ─── Stub functions — overridden by backend source ───────────────────────────
-# These stubs exist so callers can safely test if the contract layer is loaded
-# before memory_init has been called. Each stub returns 1 (not-initialized).
-memory_put()              { return 1; }
-memory_get()              { return 0; }
-memory_search()           { return 0; }
-memory_list_namespaces()  { return 0; }
-memory_namespace_exists() { return 1; }
-memory_namespace_clear()  { return 1; }
+# ─── _memory_not_initialized — emitted by stubs when no backend is loaded ────
+_memory_not_initialized() {
+    local fn="${1:-memory}"
+    printf '%s: memory backend not initialized; call memory_init first\n' "$fn" >&2
+    return 1
+}
+
+# NOTE: No stub implementations of the 6 required functions are defined here.
+# The backend's plugin.sh is the sole provider of those implementations.
+# This ensures that declare -F checks in memory_init accurately reflect
+# whether a backend was successfully sourced.
 
 # ─── memory_has_capability <cap> ─────────────────────────────────────────────
 # exit 0 if backend declares capability; exit 1 if not or if memory_capabilities
@@ -129,6 +131,7 @@ memory_init() {
     done
     if [[ "$missing_count" -gt 0 ]]; then
         warn "memory_init: $missing_count required function(s) missing from backend '$_ZBUILD_MEMORY_BACKEND'" >&2 || true
+        return 1
     fi
 
     # ── Mark initialized ──────────────────────────────────────────────────────
