@@ -2719,6 +2719,8 @@ issues:
       - Per-repo namespace isolation (zbuild-repo-{hash} per ruf-4)
       - fallback_to_default_on_error: true (degrade to sqlite if ruflo down)
       - Tests: contract conformance (with ruflo mock); degraded mode
+    state: closed
+    closed_reason: 'Merged via PR #266 (feat/217-memory-ruflo) on 2026-05-25. plugins/tool/memory-ruflo/ shipped with HNSW vector backend, repo-scoped namespacing, key traversal validation, and ruflo+jq contract.'
   - id: mem-4
     title: "[Phase 0.5] Backend selection: .zbuild/config.yaml schema"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2796,6 +2798,8 @@ issues:
       - Per-stage namespace: stage-${stage}-${platform}-${run_id}
       - fallback_to_default_on_error: true (graceful → bash-parallel)
       - Tests with ruflo mock + degraded fallback
+    state: closed
+    closed_reason: 'Merged via PR #267 (feat/221-orch-ruflo-hive) on 2026-05-25. plugins/tool/orch-ruflo-hive/ shipped with hybrid model (ruflo hive-mind notifications + local bash subshells for work units), pool validation, and SIGTERM→SIGKILL shutdown.'
   - id: orch-4
     title: "[Phase 0.5] Strategy implementations use orchestrator contract (refactor plat-9/10/11)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
