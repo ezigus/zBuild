@@ -40,7 +40,7 @@ jobs:
       - name: Run unit tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
-          bash scripts/run-tests.sh --tier unit
+          bash scripts/run-tests.sh --tier unit 2>&1 | tee /tmp/zbuild-unit-results.txt
         env:
           ZBUILD_TEST_TMP: ""
       - name: Upload unit results
@@ -59,7 +59,7 @@ jobs:
       - name: Run integration tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
-          bash scripts/run-tests.sh --tier integration
+          bash scripts/run-tests.sh --tier integration 2>&1 | tee /tmp/zbuild-integration-results.txt
       - name: Upload integration results
         uses: actions/upload-artifact@v7
         if: always()
