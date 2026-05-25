@@ -185,6 +185,37 @@ a4a_err_evt=$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
 # triggers only when command -v itself fails (no binary at all in PATH).
 assert_eq "A4a: rc=127 mock → router.error event emitted" "claude_cli_failed" "$a4a_err_evt"
 
+# ─── Test A4a2: truly missing claude binary → claude_binary_missing event ────
+# Run in a subshell with PATH reduced to only system dirs that don't have claude.
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+a4a2_result=$(
+    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_JSONL"
+    export ZBUILD_MODELS_FILE="$ZBUILD_MODELS_FILE"
+    export ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA"
+    export ZBUILD_EVENTS_DIR="$ZBUILD_EVENTS_DIR"
+    export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DB"
+    export ZBUILD_RUN_ID="${ZBUILD_RUN_ID:-}"
+    # Use a PATH with only a safe temp dir that has no claude binary
+    safe_dir="$(mktemp -d)"
+    # Copy only jq, bash, date, sed, awk, grep which router needs
+    for b in jq bash date sed awk grep cat printf mkdir rm cp; do
+        p="$(command -v "$b" 2>/dev/null || true)"
+        [[ -n "$p" ]] && ln -sf "$p" "$safe_dir/$b" 2>/dev/null || true
+    done
+    export PATH="$safe_dir"
+    source "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true
+    route_to_model "T2" "ping" 2>/dev/null
+    echo "rc=$?"
+    rm -rf "$safe_dir"
+)
+set -e
+a4a2_rc=$(printf '%s' "$a4a2_result" | grep 'rc=' | cut -d= -f2 || true)
+a4a2_evt=$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "A4a2: no claude in PATH → route_to_model returns rc=1" "1" "$a4a2_rc"
+assert_eq "A4a2: router.error reason=claude_binary_missing" "claude_binary_missing" "$a4a2_evt"
+
 # ─── Test A4b: claude -p returns rc=1 → deterministic error emitted ───────────
 # Already tested in test 9 (above). Verify router.error event is emitted.
 cat > "$TEST_TEMP_DIR/bin/claude" <<'FAIL_MOCK'

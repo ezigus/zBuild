@@ -455,8 +455,8 @@ else
     assert_fail "A3 artifact contract: events.jsonl not created"
 fi
 
-# The engine should create a synthetic findings.json with one blocking finding
-a3_findings="$A3_STATE_DIR/findings.json"
+# The engine creates the synthetic file under artifacts/ so the output aggregator picks it up
+a3_findings="$A3_STATE_DIR/artifacts/intake-contract-violated-findings.json"
 if [[ -f "$a3_findings" ]]; then
     a3_blocking=$(jq '[.findings[] | select(.severity == "blocking")] | length' "$a3_findings" 2>/dev/null || echo "0")
     assert_eq "A3 artifact contract: synthetic findings.json has 1 blocking finding" "1" "$a3_blocking"

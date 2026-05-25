@@ -45,13 +45,19 @@ while IFS=: read -r file line content; do
             continue ;;
     esac
     VIOLATIONS+=("$file:$line: raw 'claude -p' invocation (must go through core/router)")
-done < <(grep -rn 'claude -p\|claude --print' \
-    --include="*.sh" --include="*.bash" \
-    --exclude-dir=".git" \
-    --exclude-dir="legacy" \
-    --exclude-dir="tests" \
-    --exclude-dir="docs" \
-    "$REPO_ROOT" 2>/dev/null | grep -v '/core/redaction/' | grep -v '/core/router/' || true)
+done < <({
+    # Named extensions
+    grep -rn 'claude -p\|claude --print' \
+        --include="*.sh" --include="*.bash" \
+        --exclude-dir=".git" \
+        --exclude-dir="legacy" \
+        --exclude-dir="tests" \
+        --exclude-dir="docs" \
+        "$REPO_ROOT" 2>/dev/null || true
+    # Extensionless entry-point scripts (e.g. scripts/zbuild)
+    find "$REPO_ROOT/scripts" -maxdepth 1 -type f ! -name "*.*" -executable 2>/dev/null | \
+        xargs -I{} grep -n 'claude -p\|claude --print' {} /dev/null 2>/dev/null || true
+} | grep -v '/core/redaction/' | grep -v '/core/router/' || true)
 
 # ─── Pattern 2: curl to anthropic API ────────────────────────────────────────
 while IFS=: read -r file line content; do
@@ -63,13 +69,17 @@ while IFS=: read -r file line content; do
             continue ;;
     esac
     VIOLATIONS+=("$file:$line: raw curl to Anthropic API (must go through core/router)")
-done < <(grep -rn 'curl.*anthropic\|curl.*api\.anthropic' \
-    --include="*.sh" --include="*.bash" \
-    --exclude-dir=".git" \
-    --exclude-dir="legacy" \
-    --exclude-dir="tests" \
-    --exclude-dir="docs" \
-    "$REPO_ROOT" 2>/dev/null | grep -v '/core/redaction/' | grep -v '/core/router/' || true)
+done < <({
+    grep -rn 'curl.*anthropic\|curl.*api\.anthropic' \
+        --include="*.sh" --include="*.bash" \
+        --exclude-dir=".git" \
+        --exclude-dir="legacy" \
+        --exclude-dir="tests" \
+        --exclude-dir="docs" \
+        "$REPO_ROOT" 2>/dev/null || true
+    find "$REPO_ROOT/scripts" -maxdepth 1 -type f ! -name "*.*" -executable 2>/dev/null | \
+        xargs -I{} grep -n 'curl.*anthropic\|curl.*api\.anthropic' {} /dev/null 2>/dev/null || true
+} | grep -v '/core/redaction/' | grep -v '/core/router/' || true)
 
 # ─── Report ───────────────────────────────────────────────────────────────────
 if [[ ${#VIOLATIONS[@]} -eq 0 ]]; then

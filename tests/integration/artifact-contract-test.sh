@@ -109,7 +109,9 @@ else
 fi
 
 # ─── Assert synthetic findings.json exists with blocking finding ──────────────
-a3_findings="$A3_STATE_DIR/findings.json"
+# Written to artifacts/<stage>-contract-violated-findings.json so the output
+# plugin's aggregator (which reads artifacts/*-findings.json) picks it up.
+a3_findings="$A3_STATE_DIR/artifacts/intake-contract-violated-findings.json"
 assert_file_exists "synthetic findings.json created" "$a3_findings"
 
 if [[ -f "$a3_findings" ]]; then

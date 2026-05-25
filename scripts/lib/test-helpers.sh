@@ -331,10 +331,12 @@ mock_route_to_model() {
   local delay="${3:-0}"
   local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"
   mkdir -p "$mock_dir"
+  # Write stdout content to a file so single-quotes in content don't break the script
+  printf '%s' "$stdout_content" > "$mock_dir/claude-stdout"
   cat > "$mock_dir/claude" <<MOCKEOF
 #!/usr/bin/env bash
 [[ "$delay" -gt 0 ]] && sleep "$delay"
-printf '%s' '$stdout_content'
+cat "$(printf '%s' "$mock_dir")/claude-stdout"
 exit $rc
 MOCKEOF
   chmod +x "$mock_dir/claude"

@@ -98,8 +98,10 @@ _check_artifact_contract() {
         "expected_path=$resolved_path" \
         "reason=artifact_missing_or_empty"
 
-    # Create synthetic blocking findings.json in state_dir
-    local findings_file="$state_dir/findings.json"
+    # Create synthetic blocking findings.json under artifacts/ so the output
+    # plugin's aggregator (which reads $state_dir/artifacts/*-findings.json) picks it up
+    mkdir -p "$state_dir/artifacts"
+    local findings_file="$state_dir/artifacts/${stage}-contract-violated-findings.json"
     jq -n \
         --arg stage "$stage" \
         --arg plugin "${plugin_id:-unknown}" \
