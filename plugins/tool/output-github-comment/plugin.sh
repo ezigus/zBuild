@@ -109,7 +109,8 @@ output_run() {
     # Write body atomically
     printf '%s\n' "$body" | atomic_write "$state_dir/output-body.md"
 
-    # Destination dispatch (stdout emission deferred to #213)
+    # Destination dispatch — precedence: ZBUILD_ISSUE > ZBUILD_OUTPUT > stdout
+    # Full per-destination toggle table (ZBUILD_OUTPUT_*) is deferred to #213.
     local dest
     if [[ -n "${ZBUILD_ISSUE:-}" && "$ZBUILD_ISSUE" != "0" ]]; then
         gh issue comment "$ZBUILD_ISSUE" --body-file "$state_dir/output-body.md"
@@ -121,9 +122,18 @@ output_run() {
             return 1
         fi
         dest="gh-issue-$ZBUILD_ISSUE"
+    elif [[ -n "${ZBUILD_OUTPUT:-}" ]]; then
+        mkdir -p "$(dirname "$ZBUILD_OUTPUT")" 2>/dev/null || true
+        if ! cp "$state_dir/output-body.md" "$ZBUILD_OUTPUT" 2>/dev/null; then
+            error "output_run: failed to write report to ZBUILD_OUTPUT=$ZBUILD_OUTPUT"
+            emit_event "plugin.run.error" "plugin=output-github-comment" \
+                "reason=file_write_failed" "path=$ZBUILD_OUTPUT"
+            return 1
+        fi
+        dest="file:$ZBUILD_OUTPUT"
     else
-        cp "$state_dir/output-body.md" "$state_dir/report-${ZBUILD_RUN_ID:-run}.md"
-        dest="local"
+        cat "$state_dir/output-body.md"
+        dest="stdout"
     fi
 
     emit_event "plugin.run.complete" "plugin=output-github-comment" \
