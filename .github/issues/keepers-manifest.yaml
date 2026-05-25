@@ -2911,3 +2911,19 @@ issues:
       - scripts/generate-issues.sh `--reconcile` mode (already implemented;
         sync-1 builds on this with the write-back logic)
       - peter-evans/create-pull-request@v6 action
+  # ─── Cross-cutting audit follow-up (1 issue) ───────────────────────────
+  - id: audit-v3
+    title: "[Audit] Shipwright v3 — concerns & remediation (safety, dedupe, test strategy, CI)"
+    milestone: "Phase 5 — Test Migration & Verification"
+    labels: [phase-2, phase-5, safety-primitive, test-migration]
+    body: |
+      Full v3 audit + phased remediation of legacy/scripts (shipwright source).
+      Covers safety guardrails, dedupe/centralization, monolith splits,
+      error-handling hygiene, test-taxonomy rebuild, and CI tier restructure.
+      Phased so each PR is independently shippable and revertable.
+
+      Live issue: https://github.com/ezigus/zBuild/issues/247
+
+      See live issue body for the full v3 plan (concerns + phased remediation
+      + verification). Manifest entry exists so the work is tracked alongside
+      the keeper backlog and survives manifest regeneration.
