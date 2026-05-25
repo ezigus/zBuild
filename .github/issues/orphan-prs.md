@@ -12,3 +12,5 @@ tracking issue should still show up somewhere when reviewing repo history.
 | #1 | chore(ci): bump actions/checkout from 5 to 6 | 2026-05-24 |
 | #229 | [manifest-sync] Drift reconciliation | 2026-05-25 |
 | #232 | [manifest-sync] Drift reconciliation | 2026-05-25 |
+| #236 | fix(#87): address code review P1+P2 — malformed artifact isolation + markdown escaping | 2026-05-25 |
+| #233 | [manifest-sync] Drift reconciliation | 2026-05-25 |
