@@ -48,6 +48,9 @@ export ZBUILD_RUN_ID="test-run-238"
 # Both destination vars unset for every test in this file
 unset ZBUILD_ISSUE  2>/dev/null || true
 unset ZBUILD_OUTPUT 2>/dev/null || true
+# CI sets GITHUB_STEP_SUMMARY which would activate the step-summary destination
+# and change the expected dest telemetry — explicitly disable it for this test.
+unset GITHUB_STEP_SUMMARY 2>/dev/null || true
 
 # shellcheck source=../plugins/tool/output-github-comment/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"

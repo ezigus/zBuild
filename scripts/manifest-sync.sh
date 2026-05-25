@@ -12,9 +12,9 @@
 # ║                        suitable for a PR (caller invokes the PR action)   ║
 # ║                                                                           ║
 # ║  Triggers (when used in CI; see .github/workflows/manifest-sync.yml):     ║
-# ║    schedule  — full daily pass                                            ║
-# ║    pull_request.closed  — record auto-closes from merged PRs              ║
-# ║    issues.closed        — record human web-UI closes                      ║
+# ║    schedule  — full daily pass (02:00 UTC)                                ║
+# ║    push:main — catches drift immediately after any merge                  ║
+# ║    (pull_request.closed + issues.closed removed — caused cascade loops)   ║
 # ║                                                                           ║
 # ║  Safety: never auto-closes live issues, never auto-reopens. Only ever     ║
 # ║  edits the local manifest YAML and lets a human review the PR.            ║
@@ -122,11 +122,11 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
     if ! echo "$pr_body" | grep -qiE '(closes|fixes|resolves)[ ]+#[0-9]+'; then
         ORPHAN_PRS+=("$pr_num|$pr_title")
     fi
-done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -50)
+done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -30)
 
 if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
     DRIFT_FOUND=1
-    info "Merged PRs not linked to any issue (in last 50):"
+    info "Merged PRs not linked to any issue (rolling 30-PR window):"
     for entry in "${ORPHAN_PRS[@]}"; do
         IFS='|' read -r num title <<< "$entry"
         echo "  - PR #$num: $title"
@@ -171,19 +171,32 @@ done
 # Apply: append orphan PRs to log
 if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
     mkdir -p "$(dirname "$ORPHAN_PRS_LOG")"
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     if [[ ! -f "$ORPHAN_PRS_LOG" ]]; then
-        cat > "$ORPHAN_PRS_LOG" <<'HDR'
+        cat > "$ORPHAN_PRS_LOG" <<HDR
 # Orphan PRs — merged without linking to an issue
 
-Auto-maintained by `scripts/manifest-sync.sh`. Each entry below is a PR that
-merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`.
+Auto-maintained by \`scripts/manifest-sync.sh\`. Each entry below is a PR that
+merged without referencing an issue via \`Closes #N\` / \`Fixes #N\` / \`Resolves #N\`.
 
-The point of this log is institutional memory: changes that didn't have a
-tracking issue should still show up somewhere when reviewing repo history.
+Rolling window: last 30 merged PRs. Not an exhaustive archive.
+
+_Last updated: ${now} (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
 HDR
+    else
+        # Upsert the _Last updated_ line: replace if present, insert before the table if absent.
+        if grep -q "^_Last updated:" "$ORPHAN_PRS_LOG"; then
+            sed -i.bak "s|^_Last updated:.*|_Last updated: ${now} (rolling 30-PR window)_|" "$ORPHAN_PRS_LOG"
+            rm -f "${ORPHAN_PRS_LOG}.bak"
+        else
+            awk -v ts="_Last updated: ${now} (rolling 30-PR window)_" \
+                '/^\| PR \| Title \| First seen \|/{print ts; print ""; print; next} {print}' \
+                "$ORPHAN_PRS_LOG" > "${ORPHAN_PRS_LOG}.tmp" \
+                && mv "${ORPHAN_PRS_LOG}.tmp" "$ORPHAN_PRS_LOG"
+        fi
     fi
     today="$(date -u +%Y-%m-%d)"
     for entry in "${ORPHAN_PRS[@]}"; do
