@@ -121,8 +121,20 @@ output_run() {
         return 1
     fi
 
-    local dest="stdout"
-    [[ -n "${ZBUILD_ISSUE:-}" && "${ZBUILD_ISSUE}" != "0" ]] && dest="gh-issue-$ZBUILD_ISSUE"
+    # Build dest list reflecting all enabled destinations
+    local dest_parts=()
+    [[ "${ZBUILD_OUTPUT_STDOUT:-1}" != "0" ]] && dest_parts+=("stdout")
+    [[ "${ZBUILD_OUTPUT_LOCAL_REPORT:-1}" != "0" ]] && dest_parts+=("local-report")
+    if [[ -n "${ZBUILD_ISSUE:-}" && "${ZBUILD_ISSUE}" != "0" \
+          && "${ZBUILD_OUTPUT_GH_COMMENT:-1}" != "0" ]]; then
+        dest_parts+=("gh-issue-${ZBUILD_ISSUE}")
+    fi
+    [[ "${ZBUILD_OUTPUT_GH_CHECK_RUN:-0}" == "1" ]] && dest_parts+=("gh-check-run")
+    [[ -n "${GITHUB_STEP_SUMMARY:-}" && "${ZBUILD_OUTPUT_STEP_SUMMARY:-1}" != "0" ]] \
+        && dest_parts+=("step-summary")
+    local dest
+    dest="$(IFS=,; printf '%s' "${dest_parts[*]}")"
+    [[ -z "$dest" ]] && dest="none"
 
     emit_event "plugin.run.complete" "plugin=output-github-comment" \
         "findings_count=$count" "dest=$dest"

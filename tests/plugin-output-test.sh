@@ -156,7 +156,7 @@ gh_args="$(cat "$TEST_TEMP_DIR/last_gh_args")"
 assert_contains "gh called with 'issue'" "$gh_args" "issue"
 assert_contains "gh called with 'comment'" "$gh_args" "comment"
 assert_contains "gh called with issue number" "$gh_args" "42"
-assert_contains "gh called with --body-file" "$gh_args" "--body-file"
+assert_contains "gh called with --body" "$gh_args" "--body"
 rm -f "$TEST_TEMP_DIR/last_gh_args"
 
 # ─── Test 8: gh fails → plugin returns rc=1 + error event ────────────────────

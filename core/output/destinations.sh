@@ -35,7 +35,7 @@ _dest_local_report() {
     local toggle="${ZBUILD_OUTPUT_LOCAL_REPORT:-1}"
     [[ "$toggle" == "0" ]] && return 0
     local report_path="$state_dir/report-${run_id}.md"
-    printf '%s\n' "$content" > "$report_path"
+    printf '%s\n' "$content" | atomic_write "$report_path"
 }
 
 # ─── gh-pr-comment destination ────────────────────────────────────────────────
@@ -53,10 +53,7 @@ _dest_gh_comment() {
     local toggle="${ZBUILD_OUTPUT_GH_COMMENT:-1}"
     [[ "$toggle" == "0" ]] && return 0
 
-    # output-body.md is written by the caller (plugin.sh) before emit_output;
-    # pass it directly so gh can stream it without re-buffering content.
-    local body_file="$state_dir/output-body.md"
-    gh issue comment "$ZBUILD_ISSUE" --body-file "$body_file"
+    gh issue comment "$ZBUILD_ISSUE" --body "$content"
 }
 
 # ─── gh-check-run destination ─────────────────────────────────────────────────
@@ -78,7 +75,7 @@ _dest_gh_check_run() {
         -f conclusion="neutral" \
         -f "output[title]=zBuild Report (run ${run_id})" \
         -f "output[summary]=${content}" \
-        >/dev/null 2>&1 || true
+        >/dev/null 2>&1
 }
 
 # ─── step-summary destination ─────────────────────────────────────────────────
@@ -106,14 +103,13 @@ emit_output() {
     local run_id="${2:-unknown}"
     local state_dir="${3:-.}"
 
-    _dest_stdout       "$content" "$run_id" "$state_dir"
-    _dest_local_report "$content" "$run_id" "$state_dir"
+    local rc=0
 
-    local gh_rc=0
-    _dest_gh_comment   "$content" "$run_id" "$state_dir" || gh_rc=$?
+    _dest_stdout       "$content" "$run_id" "$state_dir" || rc=$?
+    _dest_local_report "$content" "$run_id" "$state_dir" || rc=$?
+    _dest_gh_comment   "$content" "$run_id" "$state_dir" || rc=$?
+    _dest_gh_check_run "$content" "$run_id" "$state_dir" || rc=$?
+    _dest_step_summary "$content" "$run_id" "$state_dir" || rc=$?
 
-    _dest_gh_check_run "$content" "$run_id" "$state_dir"
-    _dest_step_summary "$content" "$run_id" "$state_dir"
-
-    return $gh_rc
+    return $rc
 }
