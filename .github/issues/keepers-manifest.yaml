@@ -1151,6 +1151,8 @@ issues:
       plugins/tool/output-github-comment/plugin.sh — ZBUILD_ISSUE >
       ZBUILD_OUTPUT > stdout. Covered by tests/plugin-output-stdout-test.sh
       (7 assertions). Closed via #238.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T01:53:06Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
     title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"

@@ -14,3 +14,5 @@ tracking issue should still show up somewhere when reviewing repo history.
 | #232 | [manifest-sync] Drift reconciliation | 2026-05-25 |
 | #236 | fix(#87): address code review P1+P2 — malformed artifact isolation + markdown escaping | 2026-05-25 |
 | #233 | [manifest-sync] Drift reconciliation | 2026-05-25 |
+| #240 | fix: align security-lens hook with (stage, state_file) contract | 2026-05-25 |
+| #234 | [manifest-sync] Drift reconciliation | 2026-05-25 |
