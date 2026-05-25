@@ -328,7 +328,7 @@ main() {
         if [[ -f "$state_file" ]]; then
             rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
         fi
-        _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
+        _runner_run_id="${ZBUILD_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
         _runner_issue="${issue:-0}"
         init_state "$state_file" "$_runner_run_id" "$_runner_issue"
         # Persist goal so resume can reconstruct the correct runner args.
