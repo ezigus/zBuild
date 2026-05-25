@@ -142,3 +142,64 @@ increment_iteration() {
     set_state_field "$state_file" '.current_iteration' "$next"
     echo "$next"
 }
+
+# ─── get_resume_recommendation ──────────────────────────────────────────────
+# Returns one of: auto_resume, manual_resume_only, fresh_start
+#
+# Decision table (ADR-006):
+#   status=in_progress  AND last event < 24h → auto_resume
+#   status=in_progress  AND last event ≥ 24h → manual_resume_only
+#   status=interrupted                        → auto_resume
+#   status=aborted                            → manual_resume_only
+#   status=complete  (or missing)             → fresh_start
+get_resume_recommendation() {
+    local state_file="$1"
+
+    if [[ ! -f "$state_file" ]]; then
+        echo "fresh_start"
+        return 0
+    fi
+
+    local status updated_at
+    status="$(get_state_field "$state_file" '.status' '')"
+    updated_at="$(get_state_field "$state_file" '.updated_at' '')"
+
+    case "$status" in
+        complete|"")
+            echo "fresh_start"
+            ;;
+        aborted)
+            echo "manual_resume_only"
+            ;;
+        interrupted)
+            echo "auto_resume"
+            ;;
+        in_progress)
+            # Check if last update was within 24 hours
+            if [[ -z "$updated_at" ]]; then
+                echo "manual_resume_only"
+                return 0
+            fi
+            local updated_epoch now_epoch age_seconds
+            # Parse ISO 8601 timestamp to epoch seconds
+            if date -d "$updated_at" +%s >/dev/null 2>&1; then
+                # GNU date
+                updated_epoch="$(date -d "$updated_at" +%s 2>/dev/null || echo 0)"
+            else
+                # BSD date (macOS)
+                updated_epoch="$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$updated_at" +%s 2>/dev/null || echo 0)"
+            fi
+            now_epoch="$(date -u +%s)"
+            age_seconds=$(( now_epoch - updated_epoch ))
+            if [[ $age_seconds -lt 86400 ]]; then
+                echo "auto_resume"
+            else
+                echo "manual_resume_only"
+            fi
+            ;;
+        *)
+            echo "fresh_start"
+            ;;
+    esac
+    return 0
+}

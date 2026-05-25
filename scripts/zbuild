@@ -33,6 +33,11 @@ Commands:
   plugin list            List discovered plugins
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
                          [--platform-override <p>] [--scope <path>]...
+                         [--no-resume]
+  pipeline resume        Resume most recent interrupted/in_progress run
+                         [--run-id <id>] [--from-stage <stage>] [--force]
+  pipeline status        Show resume recommendation for the current state file
+                         [--run-id <id>]
 
 See https://github.com/ezigus/zBuild/issues for the migration backlog.
 
@@ -41,6 +46,25 @@ Documentation:
   docs/ARCHITECTURE.md   System view and plugin contract
   docs/adr/              Architecture decisions
 EOF
+}
+
+# _find_state_file <state_dir> <run_id>
+# Locates a state file: by run_id scan when <run_id> is non-empty, else default path.
+# Prints the path on success; exits 1 on failure.
+_find_state_file() {
+    local state_dir="$1" run_id="$2"
+    if [[ -n "$run_id" ]]; then
+        local f
+        for f in "$state_dir"/pipeline-state*.json; do
+            [[ -f "$f" ]] || continue
+            if jq -e --arg id "$run_id" '.run_id == $id' "$f" >/dev/null 2>&1; then
+                echo "$f"; return 0
+            fi
+        done
+        error "No state file found for run-id: $run_id"
+        exit 1
+    fi
+    echo "$state_dir/pipeline-state.json"
 }
 
 cmd="${1:-help}"
@@ -89,6 +113,8 @@ case "$cmd" in
         case "${2:-}" in
             start)
                 shift 2
+                # Pre-parse --platform-override and --scope before forwarding to runner.
+                # All other args are forwarded verbatim.
                 platform_override=""
                 scope_paths=()
                 runner_args=()
@@ -126,9 +152,104 @@ case "$cmd" in
                 fi
                 exec bash "$REPO_ROOT/core/pipeline/runner.sh" "${runner_args[@]+"${runner_args[@]}"}"
                 ;;
+            resume)
+                shift 2
+                run_id=""
+                force=false
+                runner_args=(--resume)
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --run-id)
+                            [[ -z "${2:-}" ]] && { error "--run-id requires a value"; usage; exit 2; }
+                            run_id="$2"; shift 2 ;;
+                        --from-stage)
+                            [[ -z "${2:-}" ]] && { error "--from-stage requires a value"; usage; exit 2; }
+                            runner_args+=(--from-stage "$2"); shift 2 ;;
+                        --force)
+                            force=true; runner_args+=(--force); shift ;;
+                        *)
+                            runner_args+=("$1"); shift ;;
+                    esac
+                done
+
+                state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+                state_file="$(_find_state_file "$state_dir" "$run_id")"
+                # Always export ZBUILD_STATE_FILE so runner.sh knows which file to use
+                export ZBUILD_STATE_FILE="$state_file"
+
+                if [[ ! -f "$state_file" ]]; then
+                    error "No state file found at $state_file; nothing to resume"
+                    exit 1
+                fi
+
+                # shellcheck source=../core/state/atomic.sh
+                source "$REPO_ROOT/core/state/atomic.sh"
+                # shellcheck source=../core/state/resume.sh
+                source "$REPO_ROOT/core/state/resume.sh"
+
+                cur_status="$(get_state_field "$state_file" '.status' '')"
+                if [[ "$cur_status" == "aborted" ]] && ! $force; then
+                    error "Pipeline status is 'aborted'; use --force to resume anyway"
+                    exit 1
+                fi
+                if [[ "$cur_status" == "complete" ]]; then
+                    warn "Pipeline status is 'complete'; nothing to resume (start a new run)"
+                    exit 1
+                fi
+
+                saved_issue="$(get_state_field "$state_file" '.issue' '0')"
+                saved_goal="$(get_state_field "$state_file" '.goal' '')"
+
+                # Rebuild runner args: goal-based runs store goal in state (issue==0)
+                if [[ "$saved_issue" == "0" && -n "$saved_goal" ]]; then
+                    runner_args+=(--goal "$saved_goal")
+                else
+                    runner_args+=(--issue "$saved_issue")
+                fi
+
+                set_state_field "$state_file" '.status' '"in_progress"'
+
+                export ZBUILD_STATE_DIR="$state_dir"
+                exec bash "$REPO_ROOT/core/pipeline/runner.sh" "${runner_args[@]}"
+                ;;
+            status)
+                shift 2
+                run_id=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --run-id)
+                            [[ -z "${2:-}" ]] && { error "--run-id requires a value"; usage; exit 2; }
+                            run_id="$2"; shift 2 ;;
+                        *)
+                            shift ;;
+                    esac
+                done
+
+                state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+                state_file="$(_find_state_file "$state_dir" "$run_id")"
+
+                if [[ ! -f "$state_file" ]]; then
+                    info "No pipeline state found at $state_file"
+                    echo '{"recommendation": "fresh_start", "reason": "no_state_file"}'
+                    exit 0
+                fi
+
+                # shellcheck source=../core/state/atomic.sh
+                source "$REPO_ROOT/core/state/atomic.sh"
+                # shellcheck source=../core/state/resume.sh
+                source "$REPO_ROOT/core/state/resume.sh"
+
+                info "Pipeline state: $state_file"
+                jq -n \
+                    --arg run_id    "$(get_state_field "$state_file" '.run_id' '')" \
+                    --arg status    "$(get_state_field "$state_file" '.status' '')" \
+                    --arg updated_at "$(get_state_field "$state_file" '.updated_at' '')" \
+                    --arg recommendation "$(get_resume_recommendation "$state_file")" \
+                    '{run_id: $run_id, status: $status, updated_at: $updated_at, recommendation: $recommendation}'
+                ;;
             *)
                 error "Unknown pipeline subcommand: ${2:-}"
-                echo "Available: start" >&2
+                echo "Available: start, resume, status" >&2
                 exit 2
                 ;;
         esac
