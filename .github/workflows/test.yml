@@ -10,7 +10,7 @@ jobs:
     name: Smoke (shellcheck + legacy sentinel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
       - name: Shellcheck all scripts
@@ -24,7 +24,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
       - name: Shellcheck (strict)
@@ -36,7 +36,7 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run unit tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -55,7 +55,7 @@ jobs:
     name: Integration tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run integration tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -72,7 +72,7 @@ jobs:
     name: E2E (mocked)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run e2e tier (mocked claude+gh)
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -88,7 +88,7 @@ jobs:
     name: Golden contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run golden tier
         run: bash scripts/run-tests.sh --tier golden
 
@@ -96,7 +96,7 @@ jobs:
     name: Mutation docs lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run mutation doc validation
         run: bash scripts/run-tests.sh --tier mutation
 
@@ -105,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit, integration]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install kcov
         run: |
           sudo apt-get install -y kcov || echo "kcov unavailable, skipping coverage"
@@ -127,7 +127,7 @@ jobs:
     needs: [smoke, lint, unit, integration, e2e-mocked, golden, mutation-lint, coverage]
     if: always()
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Write job summary
         run: |
           echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
