@@ -13,7 +13,8 @@ _ZBUILD_STRATEGY_COMPOSITE_LOADED=1
 # Usage: _strategy_run_composite <pool_id> <stage> <roles_out> <state_file> <plugins_root>
 # Phase 1 stub: always returns 1 with a deferral message.
 _strategy_run_composite() {
-    local stage="${2:-unknown}"
+    local pool_id="$1" stage="${2:-unknown}"
     warn "composite strategy not implemented (Phase 1, issue #199): stage=${stage}" || true
+    orch_shutdown "$pool_id" 2>/dev/null || true
     return 1
 }

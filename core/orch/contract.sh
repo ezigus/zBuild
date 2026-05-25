@@ -61,6 +61,8 @@ fi
 
 if ! declare -F orch_collect >/dev/null 2>&1; then
     # Exit code convention: 0=all pass, 1=all fail, 2=partial (some pass some fail).
+    # Backends normalise work-unit exit codes — any non-zero counts as fail;
+    # the original work-unit rc is NOT passed through.
     orch_collect()      { _orch_not_implemented "orch_collect" "$1"; }
 fi
 

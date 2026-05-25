@@ -100,8 +100,10 @@ _orch_par_kill_slot() {
 
 # ─── orch_collect ────────────────────────────────────────────────────────────
 # Contract: orch_collect <pool_id> [--timeout S]
-# Polls .exit files; streams stdout/stderr; returns first non-zero rc.
-# Removes pool dir on clean success.
+# Polls .exit files; streams stdout/stderr.
+# Exit code convention: 0=all pass, 1=all fail, 2=partial (mix of pass+fail).
+# Work-unit exit codes are normalised; the original rc is not passed through.
+# Removes pool dir only on clean success (all pass).
 orch_collect() {
     local pool_id="$1"
     shift
@@ -117,7 +119,7 @@ orch_collect() {
     local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
     [[ -d "${pool_dir}/pids" ]] || return 0
 
-    local first_failure=0
+    local pass_count=0 fail_count=0
     local deadline=0
     [[ "$timeout_s" -gt 0 ]] && deadline=$(( $(date +%s) + timeout_s ))
 
@@ -144,11 +146,21 @@ orch_collect() {
         rc="$(cat "${result_base}.exit" 2>/dev/null || echo 1)"
         [[ -f "${result_base}.stdout" ]] && cat "${result_base}.stdout"
         [[ -f "${result_base}.stderr" ]] && cat "${result_base}.stderr" >&2
-        [[ "$rc" -ne 0 && "$first_failure" -eq 0 ]] && first_failure=$rc
+        if [[ "$rc" -eq 0 ]]; then
+            pass_count=$((pass_count + 1))
+        else
+            fail_count=$((fail_count + 1))
+        fi
     done
 
-    [[ "$first_failure" -eq 0 ]] && rm -rf "$pool_dir"
-    return "$first_failure"
+    if [[ "$fail_count" -eq 0 ]]; then
+        rm -rf "$pool_dir"
+        return 0
+    elif [[ "$pass_count" -gt 0 ]]; then
+        return 2  # partial
+    else
+        return 1  # all failed
+    fi
 }
 
 # ─── orch_shutdown ────────────────────────────────────────────────────────────

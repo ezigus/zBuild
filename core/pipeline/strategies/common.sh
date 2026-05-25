@@ -15,7 +15,9 @@ _ZBUILD_ROOT="${_ZBUILD_ROOT:-$(cd "${_ZBUILD_STRATEGIES_DIR}/../../.." && pwd)}
 _strategy_validate_stage() {
     local stage="$1"
     [[ -z "$stage" ]] && return 2
-    if [[ "$stage" == *".."* || "$stage" == "/"* || "$stage" =~ [[:space:]] || "$stage" == *$'\n'* ]]; then
+    # Strict allowlist — identical to platform: prevents ' injection in the
+    # heredoc literal and path-traversal in scratch dir names.
+    if [[ ! "$stage" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
         warn "strategy: invalid stage name: ${stage}" || true
         return 2
     fi

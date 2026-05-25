@@ -61,10 +61,17 @@ memory_capabilities                                   # → JSON of declared cap
 ```bash
 orch_spawn <pool_id> <count> <role_arg>               # spawn N workers
 orch_dispatch <pool_id> <task_json>                   # send work to pool
-orch_collect <pool_id> [--timeout S]                  # gather results
+orch_collect <pool_id> [--timeout S]                  # gather results; exit 0=all pass, 1=all fail, 2=partial
 orch_shutdown <pool_id>                               # cleanup
 orch_capabilities                                     # → JSON
 ```
+
+**`orch_collect` exit code convention (all implementations must honour this):**
+- `0` — all dispatched work units exited 0 (success); pool dir removed.
+- `1` — all dispatched work units exited non-zero (complete failure).
+- `2` — mixed results: at least one unit passed and at least one failed (partial).
+
+Work-unit exit codes are normalised — individual codes are not passed through. Strategies use `2` to emit `stage.fail reason=partial` via the runner.
 
 **Default implementation**: `plugins/tool/orch-bash-parallel/` — uses bash subshells + `wait -n` for parallelism, no coordination beyond independent execution. Implements `fanout` and `sequential` strategies trivially; `composite` works via a single subshell.
 

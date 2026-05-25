@@ -7,7 +7,7 @@
 # Pool lifecycle:
 #   1. orch_spawn   <pool_id>          — creates pool dir structure
 #   2. orch_dispatch <pool_id> <file>  — launches background job; returns slot_id
-#   3. orch_collect  <pool_id> [--timeout S] — waits for all jobs; returns first non-0 rc
+#   3. orch_collect  <pool_id> [--timeout S] — waits for all jobs; exit 0=all pass 1=all fail 2=partial
 #   4. orch_shutdown <pool_id>         — SIGTERM/SIGKILL workers; rm -rf pool dir
 set -euo pipefail
 
@@ -151,8 +151,10 @@ else
     assert_pass "stderr output does NOT appear in orch_collect stdout"
 fi
 
-# ─── Test 5: non-zero exit — worker exits 42 → orch_collect returns 42 ────────
-print_test_section "5. Worker exits 42 → orch_collect returns 42"
+# ─── Test 5: non-zero exit — worker exits 42 → orch_collect returns 1 (all-fail) ─
+# orch_collect normalises work-unit exit codes to the 0/1/2 contract:
+# 0=all pass, 1=all fail, 2=partial. The original 42 is not passed through.
+print_test_section "5. Worker exits 42 → orch_collect returns 1 (all-fail convention)"
 
 pool="$(_pool t5)"
 orch_spawn "$pool"
@@ -165,7 +167,7 @@ orch_collect "$pool" >/dev/null 2>/dev/null
 collect_rc=$?
 set -e
 
-assert_exit_code "orch_collect returns 42 from worker exit code" "42" "$collect_rc"
+assert_exit_code "orch_collect returns 1 (all-fail) for non-zero worker exit" "1" "$collect_rc"
 
 # On failure, pool dir should remain (not cleaned up)
 pool_dir="${TMPDIR}/zbuild-pool-${pool}"

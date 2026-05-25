@@ -114,7 +114,7 @@ _check_artifact_contract() {
     # Create synthetic blocking findings.json under artifacts/ so the output
     # plugin's aggregator (which reads $state_dir/artifacts/*-findings.json) picks it up
     mkdir -p "$state_dir/artifacts"
-    local findings_file="$state_dir/artifacts/${stage}-contract-violated-findings.json"
+    local findings_file="$state_dir/artifacts/${stage}-${plugin_id:-unknown}-contract-violated-findings.json"
     jq -n \
         --arg stage "$stage" \
         --arg plugin "${plugin_id:-unknown}" \
@@ -467,7 +467,7 @@ main() {
             # Strategy dispatch via orch contract (ADR-011, issue #222).
             # Pool ID: stage-scoped, unique per run to prevent pool collision across stages.
             local pool_id
-            pool_id="zbuild-${stage}-${$}-$(date +%s%N 2>/dev/null || date +%s)"
+            pool_id="zbuild-${stage:0:20}-$$-$(date +%s%N 2>/dev/null || date +%s)"
             orch_spawn "$pool_id" || {
                 _update_stage_status "$state_file" "$stage" "failed"
                 _set_pipeline_status "$state_file" "interrupted"
@@ -496,8 +496,11 @@ main() {
                     ;;
             esac
 
-            # rc=1 from strategy may mean "no plugin found" — fall back to direct ID match (backward-compat)
-            if [[ $rc -eq 1 && "$_effective_strategy" != "composite" ]]; then
+            # rc=4 from strategy means "no plugin found for any role" — fall back to direct ID
+            # match (backward-compat for plugins named by stage ID rather than role).
+            # rc=1/2 are execution failures; the fallback must NOT fire for those, or a failed
+            # role-based stage could be silently masked by a passing stage-id plugin.
+            if [[ $rc -eq 4 ]]; then
                 plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
                 if [[ -z "$plugin_dir" ]]; then
                     _update_stage_status "$state_file" "$stage" "failed"
@@ -514,10 +517,8 @@ main() {
                 if [[ $rc -eq 0 ]]; then
                     _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
                 fi
-            elif [[ $rc -eq 0 ]]; then
-                # ARCHITECTURE.md §2: artifact contract check after successful fanout/sequential
-                _check_artifact_contract "" "$state_dir" "$stage" 2>/dev/null || true
             fi
+            # rc=0: artifact contracts already checked inside fanout/sequential strategies.
         fi
 
         if [[ $rc -eq 0 ]]; then

@@ -5,6 +5,7 @@ stage.start
 plugin.run.start
 plugin.run.complete
 plugin.run.complete
+plugin.contract.violated
 stage.complete
 stage.start
 registry.role-unresolved
@@ -20,5 +21,6 @@ stage.start
 plugin.run.start
 plugin.run.complete
 plugin.run.complete
+plugin.contract.violated
 stage.complete
 pipeline.end

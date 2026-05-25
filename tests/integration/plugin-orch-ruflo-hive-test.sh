@@ -150,8 +150,10 @@ else
         "found $leftover_count .tmp file(s)"
 fi
 
-# ─── Test 6: Work unit exits non-zero → orch_collect returns that rc ──────────
-print_test_section "6. Work unit exits 42 → orch_collect returns 42"
+# ─── Test 6: Work unit exits non-zero → orch_collect returns 1 (all-fail) ────
+# orch_collect normalises work-unit exit codes to the 0/1/2 contract:
+# 0=all pass, 1=all fail, 2=partial. The original exit code is not passed through.
+print_test_section "6. Work unit exits 42 → orch_collect returns 1 (all-fail convention)"
 
 pool="$(_pool t6)"
 orch_spawn "$pool"
@@ -164,7 +166,7 @@ orch_collect "$pool" >/dev/null 2>/dev/null
 collect_rc=$?
 set -e
 
-assert_exit_code "orch_collect returns 42 from work unit exit code" "42" "$collect_rc"
+assert_exit_code "orch_collect returns 1 (all-fail) for non-zero work unit exit" "1" "$collect_rc"
 
 # On failure, pool dir should remain (not auto-cleaned)
 pool_dir="${TMPDIR}/zbuild-hive-${pool}"
