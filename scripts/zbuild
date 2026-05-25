@@ -108,7 +108,21 @@ case "$cmd" in
                     export ZBUILD_PLATFORM_OVERRIDE="$platform_override"
                 fi
                 if [[ ${#scope_paths[@]} -gt 0 ]]; then
-                    export ZBUILD_SCOPE_PATHS="${scope_paths[*]}"
+                    # Validate paths: reject absolute paths and directory traversal.
+                    for _sp in "${scope_paths[@]}"; do
+                        if [[ "$_sp" == /* ]]; then
+                            error "--scope: absolute paths are not allowed: $_sp"
+                            exit 2
+                        fi
+                        if [[ "$_sp" == *..* ]]; then
+                            error "--scope: paths containing '..' are not allowed: $_sp"
+                            exit 2
+                        fi
+                    done
+                    unset _sp
+                    # Export as newline-delimited string to preserve paths with spaces.
+                    export ZBUILD_SCOPE_PATHS
+                    ZBUILD_SCOPE_PATHS="$(printf '%s\n' "${scope_paths[@]}")"
                 fi
                 exec bash "$REPO_ROOT/core/pipeline/runner.sh" "${runner_args[@]+"${runner_args[@]}"}"
                 ;;

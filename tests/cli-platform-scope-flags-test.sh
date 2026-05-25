@@ -63,58 +63,59 @@ assert_eq "android override produces exactly one platform line" "1" "$line_count
 unset ZBUILD_PLATFORM_OVERRIDE
 rm -f "$STATE_DIR/platforms.json"
 
-# ─── Test 4: --scope path appended to scope-manifest.md ──────────────────────
-scope_manifest="$STATE_DIR/scope-manifest.md"
-rm -f "$scope_manifest"
-scope_input="src/"
-{
-    echo "# Scope Manifest"
-    echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo ""
-    echo "$scope_input"
-} >> "$scope_manifest"
-assert_file_exists "scope-manifest.md created" "$scope_manifest"
-manifest_content="$(cat "$scope_manifest")"
-assert_contains "scope-manifest.md contains src/" "$manifest_content" "src/"
-rm -f "$scope_manifest"
+# Source the runner module to get access to write_scope_override.
+# atomic_write is already available (platforms.sh sources atomic.sh transitively).
+# runner.sh is guarded with [[ "${BASH_SOURCE[0]}" == "$0" ]] so sourcing it
+# only loads functions without executing main().
+source "$REPO_ROOT/core/pipeline/runner.sh"
 
-# ─── Test 5: Multiple scope paths all appear in scope-manifest.md ────────────
-scope_manifest="$STATE_DIR/scope-manifest.md"
-rm -f "$scope_manifest"
-{
-    echo "# Scope Manifest"
-    echo ""
-    echo "src/"
-    echo "lib/"
-    echo "tests/"
-} >> "$scope_manifest"
-manifest_content="$(cat "$scope_manifest")"
-assert_contains "scope-manifest.md contains src/" "$manifest_content" "src/"
-assert_contains "scope-manifest.md contains lib/" "$manifest_content" "lib/"
-assert_contains "scope-manifest.md contains tests/" "$manifest_content" "tests/"
-rm -f "$scope_manifest"
+# ─── Test 4: write_scope_override writes '+ <path>' format ───────────────────
+rm -f "$STATE_DIR/scope-override.md"
+export ZBUILD_SCOPE_PATHS="src/"
+write_scope_override "$STATE_DIR" "test-run-id"
+assert_file_exists "scope-override.md created by write_scope_override" "$STATE_DIR/scope-override.md"
+override_content="$(cat "$STATE_DIR/scope-override.md")"
+assert_contains "scope-override.md contains '+ src/'" "$override_content" "+ src/"
+# Must NOT appear as a bare path without the '+' prefix (redaction contract)
+if grep -qE '^src/$' "$STATE_DIR/scope-override.md" 2>/dev/null; then
+    assert_fail "scope-override.md must not contain bare path without '+' prefix"
+else
+    assert_pass "scope-override.md has no bare path lines"
+fi
+unset ZBUILD_SCOPE_PATHS
+rm -f "$STATE_DIR/scope-override.md"
 
-# ─── Test 6: Both flags together — override + scope both work ────────────────
+# ─── Test 5: Multiple scope paths all get '+ <path>' entries ─────────────────
+rm -f "$STATE_DIR/scope-override.md"
+export ZBUILD_SCOPE_PATHS
+ZBUILD_SCOPE_PATHS="$(printf '%s\n' "src/" "lib/" "tests/")"
+write_scope_override "$STATE_DIR" "test-run-id"
+assert_file_exists "scope-override.md created for multiple paths" "$STATE_DIR/scope-override.md"
+override_content="$(cat "$STATE_DIR/scope-override.md")"
+assert_contains "scope-override.md contains '+ src/'" "$override_content" "+ src/"
+assert_contains "scope-override.md contains '+ lib/'" "$override_content" "+ lib/"
+assert_contains "scope-override.md contains '+ tests/'" "$override_content" "+ tests/"
+unset ZBUILD_SCOPE_PATHS
+rm -f "$STATE_DIR/scope-override.md"
+
+# ─── Test 6: Platform override + scope override both work independently ───────
 rm -f "$STATE_DIR/platforms.json"
-scope_manifest="$STATE_DIR/scope-manifest.md"
-rm -f "$scope_manifest"
+rm -f "$STATE_DIR/scope-override.md"
 
 export ZBUILD_PLATFORM_OVERRIDE="node"
 result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
 assert_contains "combined: platform override returns node" "$result" "node"
 unset ZBUILD_PLATFORM_OVERRIDE
 
-{
-    echo "# Scope Manifest"
-    echo ""
-    echo "src/"
-} >> "$scope_manifest"
-assert_file_exists "combined: scope-manifest.md exists" "$scope_manifest"
-combined_content="$(cat "$scope_manifest")"
-assert_contains "combined: scope-manifest.md contains src/" "$combined_content" "src/"
+export ZBUILD_SCOPE_PATHS="src/"
+write_scope_override "$STATE_DIR" "test-run-id"
+assert_file_exists "combined: scope-override.md exists" "$STATE_DIR/scope-override.md"
+combined_content="$(cat "$STATE_DIR/scope-override.md")"
+assert_contains "combined: scope-override.md contains '+ src/'" "$combined_content" "+ src/"
+unset ZBUILD_SCOPE_PATHS
 
 rm -f "$STATE_DIR/platforms.json"
-rm -f "$scope_manifest"
+rm -f "$STATE_DIR/scope-override.md"
 
 cleanup_test_env
 print_test_results
