@@ -7,7 +7,19 @@ on:
 
 jobs:
   smoke:
-    name: Smoke (shellcheck + legacy sentinel)
+    name: Smoke (CLI sanity + legacy sentinel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: CLI sanity
+        run: |
+          bash scripts/zbuild --version
+          bash scripts/zbuild --help
+      - name: Legacy sentinel
+        run: bash legacy/scripts/sw 2>&1 | grep -q "disabled" || exit 1
+
+  lint:
+    name: Lint (shellcheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -15,31 +27,8 @@ jobs:
         run: sudo apt-get install -y shellcheck
       - name: Shellcheck all scripts
         run: |
-          files=$(find scripts core plugins -name '*.sh' -not -path '*/legacy/*')
-          count=$(echo "$files" | grep -c .) || count=0
-          echo "Checking $count shell scripts..."
-          echo "$files" | tr '\n' '\0' | xargs -0 shellcheck --severity=warning
-          echo "shellcheck passed ($count files)"
-      - name: Legacy sentinel
-        run: |
-          output=$(bash legacy/scripts/sw 2>&1) || true
-          echo "$output"
-          echo "$output" | grep -q "disabled" || exit 1
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
-      - name: Shellcheck (strict)
-        run: |
-          files=$(find scripts core plugins -name '*.sh' -not -path '*/legacy/*')
-          count=$(echo "$files" | grep -c .) || count=0
-          echo "Checking $count shell scripts..."
-          echo "$files" | tr '\n' '\0' | xargs -0 shellcheck --severity=warning
-          echo "shellcheck passed ($count files)"
+          find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
+            | xargs -0 shellcheck --severity=warning
 
   unit:
     name: Unit tests
