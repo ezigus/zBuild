@@ -16,3 +16,4 @@ tracking issue should still show up somewhere when reviewing repo history.
 | #233 | [manifest-sync] Drift reconciliation | 2026-05-25 |
 | #240 | fix: align security-lens hook with (stage, state_file) contract | 2026-05-25 |
 | #234 | [manifest-sync] Drift reconciliation | 2026-05-25 |
+| #237 | [manifest-sync] Drift reconciliation | 2026-05-25 |
