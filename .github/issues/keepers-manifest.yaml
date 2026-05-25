@@ -2927,3 +2927,5 @@ issues:
       See live issue body for the full v3 plan (concerns + phased remediation
       + verification). Manifest entry exists so the work is tracked alongside
       the keeper backlog and survives manifest regeneration.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T13:40:03Z). Recorded by manifest-sync.'
