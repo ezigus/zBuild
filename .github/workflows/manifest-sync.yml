@@ -57,7 +57,6 @@ jobs:
           fi
 
       - name: Run manifest-sync
-        if: steps.check_pending.outputs.pending == 'false'
         id: sync
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -77,6 +76,8 @@ jobs:
 
       - name: Create PR with manifest changes
         if: steps.check_pending.outputs.pending == 'false' && steps.sync.outputs.changes_made == 'true'
+        # Pending guard is here (not on the sync step) so report mode and drift
+        # accumulation still work while a review PR is open; only PR creation is suppressed.
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
