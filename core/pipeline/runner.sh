@@ -127,6 +127,13 @@ main() {
         return 2
     fi
 
+    # --from-stage is only valid in resume mode
+    if [[ -n "$from_stage" ]] && ! $resume_mode; then
+        error "--from-stage is only valid with --resume"
+        _usage
+        return 2
+    fi
+
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
     local template_file="$_ZBUILD_ROOT/config/templates/${template}.yaml"
@@ -168,8 +175,27 @@ main() {
     fi
 
     mkdir -p "$state_dir"
-    local state_file="$state_dir/pipeline-state.json"
+    # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`)
+    local state_file
+    if [[ -n "${ZBUILD_STATE_FILE:-}" ]]; then
+        state_file="$ZBUILD_STATE_FILE"
+        state_dir="$(dirname "$state_file")"
+    else
+        state_file="$state_dir/pipeline-state.json"
+    fi
     _runner_state_file="$state_file"
+
+    # Validate --from-stage against active_stages now that we have the stage list
+    if [[ -n "$from_stage" ]]; then
+        local _fs_valid=false _fs_s
+        for _fs_s in "${active_stages[@]}"; do
+            [[ "$_fs_s" == "$from_stage" ]] && { _fs_valid=true; break; }
+        done
+        if ! $_fs_valid; then
+            error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
+            return 2
+        fi
+    fi
 
     # ── Resume / fresh-start policy ────────────────────────────────────────────
     if $resume_mode; then
@@ -221,6 +247,10 @@ main() {
         _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
         _runner_issue="${issue:-0}"
         init_state "$state_file" "$_runner_run_id" "$_runner_issue"
+        # Persist goal so resume can reconstruct the correct runner args
+        if [[ -n "${goal:-}" ]]; then
+            set_state_field "$state_file" '.goal' "\"$goal\""
+        fi
     fi
 
     _runner_ended=false
