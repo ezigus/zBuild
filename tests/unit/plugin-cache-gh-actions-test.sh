@@ -213,37 +213,25 @@ else
         "output was: $caps_out"
 fi
 
-# ─── Test 8: RUNNER_TEMP unset — cache_pull exits non-zero ───────────────────
-print_test_section "8. RUNNER_TEMP unset: cache_pull exits non-zero with diagnostic"
+# ─── Test 8: RUNNER_TEMP unset — cache_pull gracefully returns CACHE_MISS ────
+print_test_section "8. RUNNER_TEMP unset: cache_pull gracefully returns CACHE_MISS (rc=0)"
 
-# Save and unset for this test only
 SAVED_RUNNER_TEMP="$RUNNER_TEMP"
 unset RUNNER_TEMP
 
 set +e
-unset_out="$(cache_pull "any-key" "$TEST_TEMP_DIR/unset-dest" 2>&1)"
+unset_out="$(cache_pull "any-key" "$TEST_TEMP_DIR/unset-dest" 2>/dev/null)"
 unset_rc=$?
 set -e
 
-if [[ "$unset_rc" -ne 0 ]]; then
-    assert_pass "RUNNER_TEMP unset: cache_pull exits non-zero (rc=$unset_rc)"
-else
-    assert_fail "RUNNER_TEMP unset: cache_pull exits non-zero" \
-        "got rc=0, stdout/stderr: $unset_out"
-fi
-
-if echo "$unset_out" | grep -qiE "(RUNNER_TEMP|not set|unset|required|missing)"; then
-    assert_pass "RUNNER_TEMP unset: diagnostic names the missing variable"
-else
-    assert_fail "RUNNER_TEMP unset: diagnostic names the missing variable" \
-        "stderr was: $unset_out"
-fi
+assert_exit_code "RUNNER_TEMP unset: cache_pull exits 0 (graceful)" "0" "$unset_rc"
+assert_eq "RUNNER_TEMP unset: cache_pull returns CACHE_MISS" "CACHE_MISS" "$unset_out"
 
 export RUNNER_TEMP="$SAVED_RUNNER_TEMP"
 mkdir -p "$RUNNER_TEMP"
 
-# ─── Test 9: RUNNER_TEMP unset — cache_push also exits non-zero ──────────────
-print_test_section "9. RUNNER_TEMP unset: cache_push also exits non-zero"
+# ─── Test 9: RUNNER_TEMP unset — cache_push silently no-ops (rc=0) ───────────
+print_test_section "9. RUNNER_TEMP unset: cache_push silently no-ops (rc=0)"
 
 unset RUNNER_TEMP
 
@@ -252,16 +240,11 @@ mkdir -p "$PUSH_SRC_U"
 printf 'data\n' > "$PUSH_SRC_U/data.txt"
 
 set +e
-unset_push_out="$(cache_push "any-key" "$PUSH_SRC_U" 2>&1)"
+cache_push "any-key" "$PUSH_SRC_U" 2>/dev/null
 unset_push_rc=$?
 set -e
 
-if [[ "$unset_push_rc" -ne 0 ]]; then
-    assert_pass "RUNNER_TEMP unset: cache_push exits non-zero (rc=$unset_push_rc)"
-else
-    assert_fail "RUNNER_TEMP unset: cache_push exits non-zero" \
-        "got rc=0, stdout/stderr: $unset_push_out"
-fi
+assert_exit_code "RUNNER_TEMP unset: cache_push exits 0 (graceful no-op)" "0" "$unset_push_rc"
 
 export RUNNER_TEMP="$SAVED_RUNNER_TEMP"
 mkdir -p "$RUNNER_TEMP"

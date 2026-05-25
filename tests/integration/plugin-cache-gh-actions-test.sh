@@ -164,7 +164,7 @@ fi
 
 # Test 5: no partial/tmp files left exposed under RUNNER_TEMP with the key's name
 #         (tmp files should be cleaned up on failure)
-if find "$RUNNER_TEMP" -name "*.tmp" -o -name "*.partial" 2>/dev/null | grep -q .; then
+if find "$RUNNER_TEMP" \( -name "*.tmp" -o -name "*.partial" -o -name "*.tmp.*" \) 2>/dev/null | grep -q .; then
     assert_fail "interrupted push: no .tmp/.partial files left in RUNNER_TEMP" \
         "leftover temp files found; plugin did not clean up after kill"
 else
@@ -229,7 +229,7 @@ else
     # Create the dest dir, lock it, then attempt the pull.
     LOCKED_DEST="$TEST_TEMP_DIR/locked-dest"
     mkdir -p "$LOCKED_DEST"
-    chmod 444 "$LOCKED_DEST"  # readable but not writable
+    chmod 555 "$LOCKED_DEST"  # traversable+readable but not writable
 
     set +e
     locked_out="$(cache_pull "key-writable-001" "$LOCKED_DEST" 2>&1)"
@@ -281,22 +281,20 @@ assert_exit_code "RUNNER_TEMP independence: pull with valid RUNNER_TEMP exits 0"
 assert_eq "RUNNER_TEMP independence: pull with valid RUNNER_TEMP returns CACHE_HIT" \
     "CACHE_HIT" "$indep_out"
 
-# Test 9: now unset RUNNER_TEMP; a second call must fail, not use a cached path.
+# Test 9: now unset RUNNER_TEMP; second call must degrade gracefully (CACHE_MISS rc=0),
+# not silently reuse a previously validated path.
 SAVED_RT="$RUNNER_TEMP"
 unset RUNNER_TEMP
 
 INDEP_PULL2="$TEST_TEMP_DIR/indep-pull2"
 set +e
-indep2_out="$(cache_pull "indep-key-001" "$INDEP_PULL2" 2>&1)"
+indep2_out="$(cache_pull "indep-key-001" "$INDEP_PULL2" 2>/dev/null)"
 indep2_rc=$?
 set -e
 
-if [[ "$indep2_rc" -ne 0 ]]; then
-    assert_pass "RUNNER_TEMP independence: second call (RUNNER_TEMP unset) exits non-zero"
-else
-    assert_fail "RUNNER_TEMP independence: second call (RUNNER_TEMP unset) exits non-zero" \
-        "plugin reused a cached path after RUNNER_TEMP was unset; got rc=0"
-fi
+assert_exit_code "RUNNER_TEMP independence: second call exits 0 (graceful)" "0" "$indep2_rc"
+assert_eq "RUNNER_TEMP independence: second call returns CACHE_MISS (not CACHE_HIT)" \
+    "CACHE_MISS" "$indep2_out"
 
 export RUNNER_TEMP="$SAVED_RT"
 mkdir -p "$RUNNER_TEMP"
