@@ -2813,6 +2813,8 @@ issues:
       strategy code changes.
 
       Dependencies: orch-1 (contract), orch-2 (default impl).
+    state: closed
+    closed_reason: 'Merged via PR #268 (feat/222-strategy-orch-contract) on 2026-05-25. core/pipeline/strategies/{common,fanout,sequential,composite}.sh extracted from runner.sh; work units delegate through orch_spawn/dispatch/collect/shutdown contract; orch_collect partial convention (rc=2); 18 unit + 9 integration tests; all CI checks green.'
   # ─── Phase 0.5 — Follow-up to closed #83 ───────────────────────────────
   - id: mvp-1b
     title: "[Phase 0.5] Pipeline runner: role-based templates + resolver (follow-up to #83)"
