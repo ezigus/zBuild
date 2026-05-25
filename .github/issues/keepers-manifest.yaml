@@ -1094,6 +1094,8 @@ issues:
       on/off configuration are tracked in #213. Implement #87 with the single
       comment-or-report dispatch; #213 will refactor this stage to use a
       destinations dispatch table.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T01:18:01Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
     title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
