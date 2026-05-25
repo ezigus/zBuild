@@ -17,3 +17,5 @@ tracking issue should still show up somewhere when reviewing repo history.
 | #240 | fix: align security-lens hook with (stage, state_file) contract | 2026-05-25 |
 | #234 | [manifest-sync] Drift reconciliation | 2026-05-25 |
 | #237 | [manifest-sync] Drift reconciliation | 2026-05-25 |
+| #242 | manifest: Phase 0.5 wave ordering + cleanup .claude/scheduled_tasks.lock | 2026-05-25 |
+| #241 | [manifest-sync] Drift reconciliation | 2026-05-25 |
