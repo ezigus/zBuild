@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../scripts/lib/helpers.sh
@@ -289,6 +289,180 @@ assert_eq "partial fanout emits stage.fail with reason=partial" "1" "$partial_st
 
 partial_pipeline_end=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"failed"' || true)
 assert_eq "partial fanout emits pipeline.end status=failed" "1" "$partial_pipeline_end"
+
+# ─── Test A2: abort trap emits pipeline.abort (fail-closed path) ─────────────
+# Verifies that the converted fail-closed abort trap emits pipeline.abort and
+# marks the pipeline as interrupted in state. Uses a completely isolated temp
+# dir to avoid interference from role-based plugins created by earlier tests.
+A2_DIR="$TEST_TEMP_DIR/a2"
+A2_PLUGINS="$A2_DIR/plugins"
+A2_STATE_DIR="$A2_DIR/state"
+A2_EVENTS_DIR="$A2_DIR/events"
+A2_EVENTS_JSONL="$A2_EVENTS_DIR/events.jsonl"
+mkdir -p "$A2_PLUGINS/agent/intake" "$A2_PLUGINS/agent/security-lens" \
+         "$A2_PLUGINS/tool/output" "$A2_STATE_DIR" "$A2_EVENTS_DIR"
+
+# Slow intake plugin (blocks pipeline for >1 second so kill fires mid-run)
+cat > "$A2_PLUGINS/agent/intake/manifest.yaml" <<'EOF'
+id: intake
+name: Slow Intake A2
+kind: agent
+version: 0.0.1
+hooks:
+  run: intake_run
+requires:
+  core:
+    - redaction
+EOF
+cat > "$A2_PLUGINS/agent/intake/plugin.sh" <<'EOF'
+intake_run() { sleep 15; return 0; }
+EOF
+
+# Fast downstream plugins (never reached due to kill)
+cat > "$A2_PLUGINS/agent/security-lens/manifest.yaml" <<'EOF'
+id: security-lens
+name: Fast SL
+kind: agent
+version: 0.0.1
+hooks:
+  run: sl_run
+requires:
+  core:
+    - redaction
+EOF
+cat > "$A2_PLUGINS/agent/security-lens/plugin.sh" <<'EOF'
+sl_run() { return 0; }
+EOF
+cat > "$A2_PLUGINS/tool/output/manifest.yaml" <<'EOF'
+id: output
+name: Fast Out
+kind: tool
+version: 0.0.1
+hooks:
+  run: out_run
+EOF
+cat > "$A2_PLUGINS/tool/output/plugin.sh" <<'EOF'
+out_run() { return 0; }
+EOF
+
+ZBUILD_PLUGINS_ROOT="$A2_PLUGINS" \
+ZBUILD_STATE_DIR="$A2_STATE_DIR" \
+ZBUILD_EVENTS_DIR="$A2_EVENTS_DIR" \
+ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
+ZBUILD_EVENTS_DB="$A2_DIR/events.db" \
+bash "$RUNNER" --issue 83 2>/dev/null &
+a2_pid=$!
+sleep 1
+kill "$a2_pid" 2>/dev/null || true
+wait "$a2_pid" 2>/dev/null || true
+
+if [[ -f "$A2_EVENTS_JSONL" ]]; then
+    a2_abort=$(grep -c '"pipeline.abort"' "$A2_EVENTS_JSONL" || true)
+    assert_eq "A2 abort trap: pipeline.abort event emitted on kill" "1" "$a2_abort"
+    # Verify no pipeline.state.error (state file write should have succeeded)
+    a2_state_err=$(grep -c '"pipeline.state.error"' "$A2_EVENTS_JSONL" || true)
+    assert_eq "A2 abort trap: no state.error when state file writable" "0" "$a2_state_err"
+else
+    assert_fail "A2 abort trap: events.jsonl not created"
+fi
+
+# ─── Test A2b: abort trap marks pipeline as interrupted in state ───────────────
+a2_state_file="$A2_STATE_DIR/pipeline-state.json"
+if [[ -f "$a2_state_file" ]]; then
+    a2_status="$(jq -r '.status // empty' "$a2_state_file" 2>/dev/null || true)"
+    assert_eq "A2 abort trap: pipeline status=interrupted in state" "interrupted" "$a2_status"
+else
+    assert_fail "A2 abort trap: state file not created"
+fi
+
+# ─── Test A3: artifact contract — plugin declares provides.artifact_type ──────
+# ARCHITECTURE.md §2: if a plugin declares provides.artifact_type but writes
+# no artifact, the engine MUST emit plugin.contract.violated and create a
+# synthetic blocking finding.
+A3_DIR="$TEST_TEMP_DIR/a3"
+A3_PLUGINS="$A3_DIR/plugins"
+A3_STATE_DIR="$A3_DIR/state"
+A3_EVENTS_DIR="$A3_DIR/events"
+A3_EVENTS_JSONL="$A3_EVENTS_DIR/events.jsonl"
+mkdir -p "$A3_PLUGINS/agent/noartifact" "$A3_PLUGINS/agent/security-lens" \
+         "$A3_PLUGINS/tool/output" "$A3_STATE_DIR" "$A3_EVENTS_DIR"
+
+# Plugin that declares provides.artifact_type but writes NO artifact file
+cat > "$A3_PLUGINS/agent/noartifact/manifest.yaml" <<'EOF'
+id: intake
+name: No-Artifact Intake
+kind: agent
+version: 0.0.1
+hooks:
+  run: noartifact_run
+requires:
+  core:
+    - redaction
+provides:
+  artifact_type: findings.json
+outputs:
+  - name: findings
+    path: artifacts/intake-findings.json
+    type: findings.json
+EOF
+cat > "$A3_PLUGINS/agent/noartifact/plugin.sh" <<'EOF'
+noartifact_run() {
+    # Intentionally does NOT write artifacts/intake-findings.json
+    return 0
+}
+EOF
+
+cat > "$A3_PLUGINS/agent/security-lens/manifest.yaml" <<'EOF'
+id: security-lens
+name: Fast SL
+kind: agent
+version: 0.0.1
+hooks:
+  run: sl_run
+requires:
+  core:
+    - redaction
+EOF
+cat > "$A3_PLUGINS/agent/security-lens/plugin.sh" <<'EOF'
+sl_run() { return 0; }
+EOF
+cat > "$A3_PLUGINS/tool/output/manifest.yaml" <<'EOF'
+id: output
+name: Fast Out
+kind: tool
+version: 0.0.1
+hooks:
+  run: out_run
+EOF
+cat > "$A3_PLUGINS/tool/output/plugin.sh" <<'EOF'
+out_run() { return 0; }
+EOF
+
+set +e
+ZBUILD_PLUGINS_ROOT="$A3_PLUGINS" \
+ZBUILD_STATE_DIR="$A3_STATE_DIR" \
+ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
+ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
+ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
+bash "$RUNNER" --issue 83 2>/dev/null
+a3_rc=$?
+set -e
+
+if [[ -f "$A3_EVENTS_JSONL" ]]; then
+    a3_violated=$(grep -c '"plugin.contract.violated"' "$A3_EVENTS_JSONL" || true)
+    assert_eq "A3 artifact contract: plugin.contract.violated event emitted" "1" "$a3_violated"
+else
+    assert_fail "A3 artifact contract: events.jsonl not created"
+fi
+
+# The engine creates the synthetic file under artifacts/ so the output aggregator picks it up
+a3_findings="$A3_STATE_DIR/artifacts/intake-contract-violated-findings.json"
+if [[ -f "$a3_findings" ]]; then
+    a3_blocking=$(jq '[.findings[] | select(.severity == "blocking")] | length' "$a3_findings" 2>/dev/null || echo "0")
+    assert_eq "A3 artifact contract: synthetic findings.json has 1 blocking finding" "1" "$a3_blocking"
+else
+    assert_fail "A3 artifact contract: synthetic findings.json not created"
+fi
 
 cleanup_test_env
 print_test_results

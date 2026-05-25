@@ -43,6 +43,86 @@ _find_plugin_for_stage() {
     return 1
 }
 
+# _check_artifact_contract <plugin_dir> <state_dir> <stage>
+# ARCHITECTURE.md §2: if a plugin declares provides.artifact_type, it MUST
+# write the declared output artifact. Emits plugin.contract.violated and
+# creates a synthetic blocking findings.json if the artifact is missing/empty.
+# Returns 0 always (caller decides whether to halt the pipeline).
+_check_artifact_contract() {
+    local plugin_dir="$1" state_dir="$2" stage="$3"
+    local manifest="$plugin_dir/manifest.yaml"
+
+    # Check if plugin declares provides.artifact_type
+    local artifact_type
+    artifact_type="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null || true)"
+    [[ -z "$artifact_type" ]] && return 0
+
+    # Get declared output path (first outputs[].path entry)
+    local output_path
+    output_path="$(awk '
+        /^outputs:/ { in_outputs=1; next }
+        in_outputs && /^[a-zA-Z_]/ { in_outputs=0 }
+        in_outputs && /path:/ {
+            sub(/^[[:space:]]*path:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, "")
+            print
+            exit
+        }
+    ' "$manifest" 2>/dev/null || true)"
+
+    # Resolve path relative to state_dir if not absolute
+    local resolved_path
+    if [[ -n "$output_path" ]]; then
+        if [[ "$output_path" == /* ]]; then
+            resolved_path="$output_path"
+        else
+            resolved_path="$state_dir/$output_path"
+        fi
+    else
+        # No explicit output path declared — check for state_dir/artifacts/<stage>-findings.json
+        resolved_path="$state_dir/artifacts/${stage}-findings.json"
+    fi
+
+    # Check if artifact exists and is non-empty
+    if [[ -s "$resolved_path" ]]; then
+        return 0  # artifact present and non-empty — contract satisfied
+    fi
+
+    local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+
+    # Emit plugin.contract.violated event
+    eb_emit_event "plugin.contract.violated" \
+        "stage=$stage" \
+        "plugin=${plugin_id:-unknown}" \
+        "artifact_type=$artifact_type" \
+        "expected_path=$resolved_path" \
+        "reason=artifact_missing_or_empty"
+
+    # Create synthetic blocking findings.json under artifacts/ so the output
+    # plugin's aggregator (which reads $state_dir/artifacts/*-findings.json) picks it up
+    mkdir -p "$state_dir/artifacts"
+    local findings_file="$state_dir/artifacts/${stage}-contract-violated-findings.json"
+    jq -n \
+        --arg stage "$stage" \
+        --arg plugin "${plugin_id:-unknown}" \
+        --arg artifact_type "$artifact_type" \
+        --arg path "$resolved_path" \
+        '{
+            schema_version: 1,
+            findings: [{
+                id: "artifact-contract-violated",
+                title: ("Plugin contract violated: " + $plugin + " declared provides.artifact_type=" + $artifact_type + " but wrote no artifact"),
+                severity: "blocking",
+                stage: $stage,
+                plugin: $plugin,
+                detail: ("Expected artifact at: " + $path)
+            }]
+        }' > "$findings_file" 2>/dev/null || true
+
+    warn "Plugin contract violated: $plugin_id (stage=$stage) declared artifact_type=$artifact_type but wrote no artifact at $resolved_path"
+    return 0
+}
+
 # write_scope_override — writes ZBUILD_SCOPE_PATHS (newline-delimited) to
 # <state_dir>/scope-override.md as '+ <path>' fenced entries.
 # Exported so tests can source runner.sh and call it directly.
@@ -151,8 +231,10 @@ main() {
         info "Pipeline plan (dry-run, template=$template) — issue=${issue:-} goal=${goal:-}"
         local stage roles_out role plugin_dir pd
         for stage in "${active_stages[@]}"; do
+            # Intentional fail-open (dry-run display only; missing template/plugin not fatal here)
             roles_out="$(template_stage_roles "$stage" 2>/dev/null || true)"
             if [[ -z "$roles_out" ]]; then
+                # Intentional fail-open: dry-run lookup; empty result displayed as "(no plugin registered)"
                 plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
                 [[ -n "$plugin_dir" ]] \
                     && printf "  stage: %-20s → plugin: %s\n" "$stage" "$(basename "$plugin_dir")" \
@@ -160,9 +242,11 @@ main() {
             else
                 while IFS= read -r role; do
                     [[ -z "$role" ]] && continue
+                    # Intentional fail-open: dry-run role lookup; empty = display "(no plugin for role)"
                     pd="$(resolve_plugin_for_role "$role" "" "$plugins_root" 2>/dev/null || true)"
                     if [[ -z "$pd" ]]; then
                         # Role resolver found nothing; try direct ID match for display
+                        # Intentional fail-open: display fallback only
                         pd="$(_find_plugin_for_stage "$stage" "$plugins_root" 2>/dev/null || true)"
                     fi
                     [[ -n "$pd" ]] \
@@ -247,9 +331,11 @@ main() {
         _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
         _runner_issue="${issue:-0}"
         init_state "$state_file" "$_runner_run_id" "$_runner_issue"
-        # Persist goal so resume can reconstruct the correct runner args
+        # Persist goal so resume can reconstruct the correct runner args.
+        # Use jq --arg to safely encode user-supplied goal (prevents JSON injection
+        # from embedded quotes or other special characters in the goal string).
         if [[ -n "${goal:-}" ]]; then
-            set_state_field "$state_file" '.goal' "\"$goal\""
+            set_state_field "$state_file" '.goal' "$(jq -n --arg g "$goal" '$g')"
         fi
     fi
 
@@ -271,10 +357,20 @@ main() {
 
     _runner_abort_trap() {
         [[ "$_runner_ended" == "true" ]] && return 0
-        # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere
-        _set_pipeline_status "$_runner_state_file" "interrupted" 2>/dev/null || true
-        eb_emit_event "pipeline.abort" \
-            "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+        # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere.
+        # Fail-closed: if we cannot mark the pipeline interrupted, emit an error event so the
+        # operator can detect the unrecorded abort (was: || true, which silently dropped failures).
+        if ! _set_pipeline_status "$_runner_state_file" "interrupted" 2>/dev/null; then
+            eb_emit_event "pipeline.state.error" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                "reason=abort_trap_set_status_failed" 2>/dev/null || true
+        fi
+        # Fail-closed: if abort event cannot be emitted, that is still non-fatal for the trap
+        # itself (the process is exiting), but we do not silently swallow the failure.
+        if ! eb_emit_event "pipeline.abort" \
+            "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null; then
+            : # trap is exiting anyway; best-effort only
+        fi
     }
     trap '_runner_abort_trap' EXIT
 
@@ -324,12 +420,15 @@ main() {
         eb_emit_event "stage.start" "stage=$stage"
         info "Running stage: $stage"
 
+        # Intentional fail-open: missing/empty template roles = no-template path (handled below)
         local roles_out; roles_out="$(template_stage_roles "$stage" 2>/dev/null || true)"
         local strategy; strategy="$(template_stage_strategy "$stage" 2>/dev/null || echo "fanout")"
         local plugin_dir="" rc=0
 
         if [[ -z "$roles_out" ]]; then
-            # No roles in template — resolve by stage ID (backward-compat)
+            # No roles in template — resolve by stage ID (backward-compat).
+            # Intentional fail-open: _find_plugin_for_stage returns non-zero when not found;
+            # the empty-result branch below emits stage.fail and halts the pipeline (fail-closed).
             plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
             if [[ -z "$plugin_dir" ]]; then
                 _update_stage_status "$state_file" "$stage" "failed"
@@ -342,6 +441,10 @@ main() {
                 return 1
             fi
             set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
+            # ARCHITECTURE.md §2: enforce artifact contract after plugin run (fail-closed)
+            if [[ $rc -eq 0 ]]; then
+                _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
+            fi
         else
             if [[ "$strategy" == "composite" ]]; then
                 error "Stage $stage: composite strategy not implemented (Phase 1 — deferred)"
@@ -352,6 +455,8 @@ main() {
                     [[ -z "$role" ]] && continue
                     $break_all && break
                     for platform in "${_DETECTED_PLATFORMS[@]}"; do
+                        # Intentional fail-open: resolver returns non-zero when no match;
+                        # empty result → continue to next platform (not a fatal error here).
                         plugin_dir="$(resolve_plugin_for_role "$role" "$platform" "$plugins_root" 2>/dev/null || true)"
                         [[ -z "$plugin_dir" ]] && \
                             plugin_dir="$(resolve_plugin_for_role "$role" "" "$plugins_root" 2>/dev/null || true)"
@@ -361,6 +466,10 @@ main() {
                         ZBUILD_TARGET_PLATFORM="$platform" plugin_hook_call "$plugin_dir" run "$stage" "$state_file"
                         local prc=$?
                         set -e
+                        # ARCHITECTURE.md §2: enforce artifact contract after plugin run
+                        if [[ $prc -eq 0 ]]; then
+                            _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
+                        fi
                         if [[ $prc -eq 0 ]]; then
                             success_count=$((success_count + 1))
                         else
@@ -374,7 +483,9 @@ main() {
                 done <<< "$roles_out"
 
                 if ! $any_plugin_found; then
-                    # No role-based plugin found — fall back to direct ID match (backward-compat)
+                    # No role-based plugin found — fall back to direct ID match (backward-compat).
+                    # Intentional fail-open: empty result triggers the fail-closed block below
+                    # which emits stage.fail, marks pipeline interrupted, and returns 1.
                     plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
                     if [[ -z "$plugin_dir" ]]; then
                         _update_stage_status "$state_file" "$stage" "failed"
@@ -387,6 +498,10 @@ main() {
                         return 1
                     fi
                     set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
+                    # ARCHITECTURE.md §2: enforce artifact contract after plugin run (fail-closed)
+                    if [[ $rc -eq 0 ]]; then
+                        _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
+                    fi
                 else
                     if   [[ $fail_count -eq 0 ]]; then   rc=0
                     elif [[ $success_count -gt 0 ]]; then rc=2
@@ -406,6 +521,7 @@ main() {
             if [[ "$stage" == "intake" && -f "$state_dir/scope-override.md" ]]; then
                 local scope_manifest="$state_dir/scope-manifest.md"
                 # Extract only '+ <path>' lines from the override file and append.
+                # Intentional fail-open: scope-override.md may not exist (no --scope flag used)
                 grep '^+ ' "$state_dir/scope-override.md" >> "$scope_manifest" 2>/dev/null || true
                 info "Appended scope override entries to $scope_manifest"
             fi

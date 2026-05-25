@@ -74,6 +74,14 @@ jobs:
           fi
           echo "changes_made=false" >> "$GITHUB_OUTPUT"
 
+      - name: Fail on unresolved drift
+        run: |
+          if [[ -f .manifest-drift ]]; then
+            echo "manifest-sync: unresolved drift detected (no auto-PR created)" >&2
+            cat .manifest-drift >&2
+            exit 1
+          fi
+
       - name: Create PR with manifest changes
         if: steps.check_pending.outputs.pending == 'false' && steps.sync.outputs.changes_made == 'true'
         # Pending guard is here (not on the sync step) so report mode and drift

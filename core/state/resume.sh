@@ -4,6 +4,7 @@
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # Implements the ADR-006 resume contract.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 #
 # Persisted (survives kill -9, host restart):
 #   - stage_statuses, current_iteration, self_heal_count, scope_manifest_hash,

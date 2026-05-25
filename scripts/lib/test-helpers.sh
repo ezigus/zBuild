@@ -21,7 +21,9 @@ _TEST_HELPERS_LOADED=1
 CYAN='\033[38;2;0;212;255m'
 GREEN='\033[38;2;74;222;128m'
 RED='\033[38;2;248;113;113m'
+# shellcheck disable=SC2034
 YELLOW='\033[38;2;250;204;21m'
+# shellcheck disable=SC2034
 PURPLE='\033[38;2;168;85;247m'
 DIM='\033[2m'
 BOLD='\033[1m'
@@ -319,4 +321,41 @@ print_test_results() {
     fi
     echo ""
     exit "$FAIL"
+}
+
+# Mock route_to_model with parameterizable rc, stdout, and optional delay
+# Usage: mock_route_to_model <rc> <stdout_content> [delay_seconds]
+mock_route_to_model() {
+  local rc="$1"
+  local stdout_content="$2"
+  local delay="${3:-0}"
+  local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"
+  mkdir -p "$mock_dir"
+  # Write stdout content to a file so single-quotes in content don't break the script
+  printf '%s' "$stdout_content" > "$mock_dir/claude-stdout"
+  cat > "$mock_dir/claude" <<MOCKEOF
+#!/usr/bin/env bash
+[[ "$delay" -gt 0 ]] && sleep "$delay"
+cat "$(printf '%s' "$mock_dir")/claude-stdout"
+exit $rc
+MOCKEOF
+  chmod +x "$mock_dir/claude"
+  export PATH="$mock_dir:$PATH"
+  export ZBUILD_MOCK_CLAUDE_RC="$rc"
+}
+
+# Assert no direct anthropic API calls were made (chokepoint enforcement)
+mock_anthropic_api() {
+  local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"
+  mkdir -p "$mock_dir"
+  cat > "$mock_dir/curl" <<'MOCKEOF'
+#!/usr/bin/env bash
+if printf '%s\n' "$@" | grep -q 'anthropic'; then
+  echo "[mock] ERROR: direct anthropic API call detected — must go through core/redaction" >&2
+  exit 1
+fi
+exec /usr/bin/curl "$@"
+MOCKEOF
+  chmod +x "$mock_dir/curl"
+  export PATH="$mock_dir:$PATH"
 }

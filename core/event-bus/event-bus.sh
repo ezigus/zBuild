@@ -6,6 +6,7 @@
 # Single-writer JSONL (flock-guarded) + optional SQLite mirror for durability.
 # Schema-as-warn: unknown event types log a warning but never block.
 # Events from ARCHITECTURE.md §6.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
 [[ -n "${_ZBUILD_EVENT_BUS_LOADED:-}" ]] && return 0
 _ZBUILD_EVENT_BUS_LOADED=1
@@ -28,7 +29,8 @@ _eb_init() {
     : > "${ZBUILD_EVENTS_JSONL}.lock" 2>/dev/null || true
     # SQLite is optional — only init if sqlite3 is present
     if command -v sqlite3 >/dev/null 2>&1 && [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
-        sqlite3 "$ZBUILD_EVENTS_DB" <<'SQL' 2>/dev/null || true
+        local _eb_init_err
+        _eb_init_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -44,6 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
 CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
 SQL
+        )" || { [[ -n "$_eb_init_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_init_err" >&2; }
     fi
 }
 
@@ -124,10 +127,12 @@ eb_emit_event() {
 
     # SQLite mirror (optional, fire-and-forget)
     if command -v sqlite3 >/dev/null 2>&1; then
-        sqlite3 "$ZBUILD_EVENTS_DB" <<SQL 2>/dev/null || true
+        local _eb_emit_err
+        _eb_emit_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<SQL 2>&1
 INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version)
 VALUES ('$ts', '$run_id', $issue, '$type', '$plugin', '$kind', '$(echo "$payload" | sed "s/'/''/g")', 1);
 SQL
+        )" || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
     fi
 }
 

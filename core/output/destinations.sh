@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # core/output/destinations.sh — Output destination abstraction (issue #213)
 # ADR-010 §3. Dispatch table for all output destination kinds.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 #
 # Usage:
 #   source "core/output/destinations.sh"

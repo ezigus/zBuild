@@ -89,18 +89,17 @@ strip_ansi() {
     sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g'
 }
 
-# ─── Emit event placeholder ─────────────────────────────────────────────────
-# Real event bus lands in core/event-bus/ during Phase 0 step 4.
-# This placeholder emits to stderr so Phase 0 step 1-3 can use the call site
-# without depending on the bus implementation existing.
+# ─── Emit event sentinel ─────────────────────────────────────────────────────
+# Guards against calling emit_event before core/event-bus/event-bus.sh is
+# sourced. When event-bus.sh is sourced after helpers.sh, its emit_event
+# definition overwrites this sentinel.
+# Returns 0 (not 1) so callers running under set -euo pipefail are not aborted
+# by missing event-bus; the warning is sufficient for debugging.
 emit_event() {
-    local event_type="$1"; shift
-    if [[ -n "${ZBUILD_EVENT_BUS:-}" ]]; then
-        # Real bus dispatch will go here once core/event-bus/ lands.
-        :
-    elif [[ -n "${ZBUILD_DEBUG:-}" ]]; then
-        echo "[event] $event_type $*" >&2
+    if [[ -n "${ZBUILD_DEBUG:-}" ]]; then
+        echo "[helpers] WARN: emit_event called before event-bus.sh was sourced" >&2
     fi
+    return 0
 }
 
 # ─── Project root resolution ────────────────────────────────────────────────
