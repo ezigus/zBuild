@@ -1,3 +1,4 @@
+memory.backend.init
 pipeline.init
 pipeline.start
 stage.start
