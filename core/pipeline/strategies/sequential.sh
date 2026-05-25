@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # core/pipeline/strategies/sequential.sh — serialized per-platform dispatch (issue #200/#222)
-# ADR-009: platforms run one at a time; halts on first failure when ZBUILD_HALT_ON_FAIL=1.
+# ADR-009: platforms run one at a time; always halts on the first collect failure.
 # Depends on core/orch/contract.sh being sourced first by the caller (runner.sh).
 # Sourced library: inherits caller's pipefail; do not add set -euo pipefail here.
 
@@ -25,7 +25,8 @@ source "${_ZBUILD_STRATEGIES_DIR_SEQ}/common.sh"
 #
 # Returns:
 #   0 — all succeeded
-#   1 — any failure, or no plugin found for any role
+#   1 — any collect/dispatch failure
+#   4 — no plugin found for any role (caller may fall back to stage-id lookup)
 _strategy_run_sequential() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local any_plugin_found=false
@@ -72,6 +73,6 @@ _strategy_run_sequential() {
     done <<< "$roles_out"
 
     orch_shutdown "$pool_id" 2>/dev/null || true
-    $any_plugin_found || return 1
+    $any_plugin_found || return 4
     return 0
 }

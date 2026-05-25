@@ -24,12 +24,14 @@ source "${_ZBUILD_STRATEGIES_DIR_FANOUT}/common.sh"
 #
 # Returns:
 #   0 — all succeeded
-#   1 — all failed or no plugin found for any role (callers treat as stage fail)
-#   2 — partial (at least one success, at least one fail)
+#   1 — all failed (collect failure with no successes)
+#   2 — partial (at least one success, at least one fail); callers treat as stage fail
+#   4 — no plugin found for any role (caller may fall back to stage-id lookup)
 _strategy_run_fanout() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
-    local success_count=0 fail_count=0 any_plugin_found=false
-    local -a work_units=()
+    local success_count=0 fail_count=0 any_plugin_found=false dispatch_count=0
+    local -a work_units=() dispatched_plugins=()
+    local state_dir; state_dir="$(dirname "$state_file")"
 
     local role platform plugin_dir wu
     while IFS= read -r role; do
@@ -54,29 +56,43 @@ _strategy_run_fanout() {
                 fail_count=$((fail_count + 1))
                 continue
             }
+            dispatch_count=$((dispatch_count + 1))
+            dispatched_plugins+=("$plugin_dir")
         done
     done <<< "$roles_out"
 
     if ! $any_plugin_found; then
         _strategy_cleanup_work_units "${work_units[@]+"${work_units[@]}"}"
         orch_shutdown "$pool_id" 2>/dev/null || true
-        return 1
+        return 4
     fi
 
-    local collect_rc=0
-    orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+    # Only collect if at least one dispatch succeeded; otherwise pool is empty
+    # and orch_collect would return 0 (no results) — misreported as success.
+    if [[ "$dispatch_count" -gt 0 ]]; then
+        local collect_rc=0
+        orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+
+        # orch_collect exit codes: 0=all pass, 1=all fail, 2=partial.
+        if [[ $collect_rc -eq 0 ]]; then
+            success_count=$((success_count + 1))
+            # Validate artifact contracts for all successfully-dispatched plugins.
+            if declare -F _check_artifact_contract >/dev/null 2>&1; then
+                local dp
+                for dp in "${dispatched_plugins[@]+"${dispatched_plugins[@]}"}"; do
+                    _check_artifact_contract "$dp" "$state_dir" "$stage"
+                done
+            fi
+        elif [[ $collect_rc -eq 2 ]]; then
+            success_count=$((success_count + 1))
+            fail_count=$((fail_count + 1))
+        else
+            fail_count=$((fail_count + 1))
+        fi
+    fi
+
     _strategy_cleanup_work_units "${work_units[@]+"${work_units[@]}"}"
     orch_shutdown "$pool_id" 2>/dev/null || true
-
-    # orch_collect exit codes: 0=all pass, 1=all fail, 2=partial (some pass, some fail).
-    if [[ $collect_rc -eq 0 ]]; then
-        success_count=$((success_count + 1))
-    elif [[ $collect_rc -eq 2 ]]; then
-        success_count=$((success_count + 1))
-        fail_count=$((fail_count + 1))
-    else
-        fail_count=$((fail_count + 1))
-    fi
 
     if   [[ $fail_count -eq 0 ]];    then return 0
     elif [[ $success_count -gt 0 ]]; then return 2
