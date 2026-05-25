@@ -214,6 +214,47 @@ set -e
 assert_eq "stub:false field ignored, rc=0" "0" "$rc"
 assert_contains "Real Finding in report" "$(cat "$STATE_DIR/report-test-run-001.md")" "Real Finding"
 
+# ─── Test 12: one malformed + one valid findings.json → valid findings kept ───
+rm -f "$ARTIFACTS_DIR"/*.json
+cat > "$ARTIFACTS_DIR/bad-findings.json" <<'JSON'
+this is not json at all
+JSON
+cat > "$ARTIFACTS_DIR/good-findings.json" <<'JSON'
+{"schema_version":1,"plugin_id":"test","findings":[{"title":"Good Finding","severity":"high","category":"injection","file":"src/x.sh:1","evidence":"e","suggestion":"s"}],"stub":false}
+JSON
+unset ZBUILD_ISSUE 2>/dev/null || true
+
+set +e
+output_run "output" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "malformed file alongside valid file returns rc=0" "0" "$rc"
+assert_contains "valid finding kept despite malformed sibling" \
+    "$(cat "$STATE_DIR/report-test-run-001.md")" "Good Finding"
+
+# ─── Test 13: pipe and newline in finding fields → table cell sanitized ───────
+rm -f "$ARTIFACTS_DIR"/*.json
+cat > "$ARTIFACTS_DIR/pipe-findings.json" <<'JSON'
+{"schema_version":1,"plugin_id":"test","findings":[{"title":"A | B title","severity":"low","category":"style","file":"src/x.sh:1","evidence":"e","suggestion":"do this\nor that"}],"stub":false}
+JSON
+unset ZBUILD_ISSUE 2>/dev/null || true
+
+output_run "output" "$STATE_FILE" >/dev/null 2>&1
+report="$(cat "$STATE_DIR/report-test-run-001.md")"
+
+if echo "$report" | grep -qF 'A \| B title'; then
+    assert_pass "pipe in title escaped with backslash in table cell"
+else
+    assert_fail "pipe in title should be escaped as \\| in table cell"
+fi
+if echo "$report" | grep -qP 'do this\nor that' 2>/dev/null || \
+   printf '%s' "$report" | awk '/do this/{found=1} found && /or that/{exit 0} END{exit 1}' 2>/dev/null; then
+    assert_fail "newline in suggestion should be collapsed in table cell"
+else
+    assert_pass "newline in suggestion collapsed to space in table cell"
+fi
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results
