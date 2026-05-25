@@ -25,6 +25,8 @@ source "$_SEC_LENS_ROOT/scripts/lib/helpers.sh"
 source "$_SEC_LENS_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_SEC_LENS_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../core/router/route.sh
+source "$_SEC_LENS_ROOT/core/router/route.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 security_lens_init() {
@@ -64,46 +66,63 @@ security_lens_run() {
         return 1
     fi
 
-    # ─── Phase 0 stub: emit deterministic findings.json ─────────────────────
-    # Real implementation routes the redacted prompt through the model router
-    # (router lands later in the migration). For Phase 0, we emit a synthetic
-    # finding so the migration loop is testable end-to-end.
-    local now
-    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    # ─── Build prompt: system prompt + redacted input ─────────────────────
+    local sys_prompt redacted_content prompt
+    sys_prompt="$(cat "$_SEC_LENS_DIR/prompts/security.md")"
+    redacted_content="$(cat "$redacted")"
+    prompt="${sys_prompt}"$'\n\n'"${redacted_content}"
 
-    # Look for trigger keywords in the redacted input
-    local triggers="injection|auth|secret|credential|permission|bypass|xss|csrf|traversal|sanitiz"
-    local trigger_hits=0
-    trigger_hits="$(grep -cEo "$triggers" "$redacted" 2>/dev/null || true)"
+    # ─── Route to LLM (hardcoded T3, matching manifest config.tier_default) ──
+    # ZBUILD_SECURITY_LENS_TIER overrides for testing. Manifest-driven tier
+    # read is deferred to a follow-up issue.
+    local tier="${ZBUILD_SECURITY_LENS_TIER:-T3}"
+    local raw_response="" router_rc=0
+    raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)" || router_rc=$?
+
+    # ─── Parse: strip fences, extract .findings, validate array ───────────
+    # Ported from legacy/scripts/lib/compound-audit.sh:160-182
+    local findings_json="[]"
+    if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
+        local stripped extracted
+        stripped="$(printf '%s' "$raw_response" \
+            | sed 's/^[[:space:]]*```json[[:space:]]*//' \
+            | sed 's/^[[:space:]]*```[[:space:]]*//'     \
+            | sed 's/[[:space:]]*```[[:space:]]*$//')"
+        extracted="$(printf '%s' "$stripped" \
+            | jq -r '.findings // [] | tojson' 2>/dev/null || true)"
+        if printf '%s' "$extracted" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            findings_json="$extracted"
+        else
+            warn "security_lens_run: LLM response unparseable; using empty findings"
+        fi
+    elif [[ $router_rc -eq 1 ]]; then
+        warn "security_lens_run: router rc=1 (recoverable); using empty findings"
+    elif [[ $router_rc -ne 0 ]]; then
+        error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
+        emit_event "plugin.run.error" "plugin=security-lens" \
+            "reason=router_fatal" "router_rc=$router_rc"
+        return 1
+    fi
+
+    # ─── Write findings.json (schema unchanged + stub:false marker) ───────
+    local now findings_count
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    findings_count="$(printf '%s' "$findings_json" | jq 'length' 2>/dev/null || echo 0)"
 
     jq -n \
         --arg ts "$now" \
-        --argjson hits "${trigger_hits:-0}" \
+        --argjson findings "$findings_json" \
         '{
             schema_version: 1,
             plugin_id: "security-lens",
             generated_at: $ts,
-            findings: (
-                if $hits > 0 then
-                    [{
-                        title: "Phase 0 stub: trigger keywords detected in input",
-                        severity: "low",
-                        category: "phase-0-stub",
-                        file: "n/a",
-                        evidence: "(\($hits) keyword matches; real LLM routing lands with the router)",
-                        suggestion: "Wire the real LLM call once core/router/ is implemented."
-                    }]
-                else
-                    []
-                end
-            ),
-            stub: true
-        }' > "$output"
+            findings: $findings,
+            stub: false
+        }' | atomic_write "$output"
 
     emit_event "plugin.run.complete" "plugin=security-lens" \
-        "findings_count=$(jq -r '.findings | length' "$output")" \
-        "trigger_hits=$trigger_hits"
-
+        "findings_count=$findings_count" \
+        "router_rc=$router_rc"
     return 0
 }
 
