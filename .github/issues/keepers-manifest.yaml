@@ -2628,6 +2628,8 @@ issues:
       - Handles GH cache size limits (10GB total, 5GB per item) with
         warn-and-truncate of events.jsonl archives
       - Tests: round-trip via local mock filesystem; verify key derivation
+    state: closed
+    closed_reason: 'Merged via PR #264 (feat/212-cache-gh-actions) on 2026-05-25. plugins/tool/cache-gh-actions/ shipped with graceful RUNNER_TEMP degradation, atomic flock-protected swap, and size guard.'
   - id: cipar-5
     title: "[Phase 0.5] Output destination abstraction (stdout / file / PR comment / check run / step summary)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2775,6 +2777,8 @@ issues:
       - Implements fanout (subshells in parallel), sequential (serial), and
         a degenerate composite (single subshell with bundled context)
       - Tests: 2-worker fanout completes in ~max(worker_time) not sum
+    state: closed
+    closed_reason: 'Merged via PR #263 (feat/220-orch-bash-parallel) on 2026-05-25. plugins/tool/orch-bash-parallel/ shipped with inner PID tracking, allowlist validation, file-captured exit codes, and SIGTERM→SIGKILL shutdown.'
   - id: orch-3
     title: "[Phase 0.5] Optional orchestrator backend: ruflo hive-mind (plugin)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
