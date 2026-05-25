@@ -52,6 +52,28 @@ detect_platforms() {
 
     mkdir -p "$state_dir"
 
+    # Short-circuit: if ZBUILD_PLATFORM_OVERRIDE is set, write a single-platform
+    # platforms.json and return immediately — no filesystem scan performed.
+    # Still compute repo_head_sha (git rev-parse only, no filesystem scan) so
+    # cache semantics and the ADR-009 contract remain intact.
+    if [[ -n "${ZBUILD_PLATFORM_OVERRIDE:-}" ]]; then
+        local override_sha=""
+        override_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo "")"
+        jq -n \
+            --arg platform "$ZBUILD_PLATFORM_OVERRIDE" \
+            --arg sha "$override_sha" \
+            --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+                schema_version: 1,
+                repo_head_sha: $sha,
+                detected: [$platform],
+                overrides: [],
+                updated_at: $now
+            }' | atomic_write "$platforms_file"
+        echo "$ZBUILD_PLATFORM_OVERRIDE"
+        return 0
+    fi
+
     # Cache check: if platforms.json exists and SHA matches current HEAD, return cached
     local current_sha=""
     current_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo "")"

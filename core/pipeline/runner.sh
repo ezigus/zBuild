@@ -22,6 +22,10 @@ Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
   --goal "<text>"   Pipeline goal description (alternative to --issue)
   --dry-run         Print the stage plan without executing anything
   --template <id>   Pipeline template to use (default: standard)
+
+Environment:
+  ZBUILD_PLATFORM_OVERRIDE  Force a single platform; detection short-circuits.
+  ZBUILD_SCOPE_PATHS        Newline-delimited scope paths; written as '+ <path>' entries.
 EOF
 }
 
@@ -32,6 +36,27 @@ _find_plugin_for_stage() {
         [[ "$id" == "$stage" ]] && { echo "$plugin_dir"; return 0; }
     done < <(discover_plugins "$plugins_root" 2>/dev/null)
     return 1
+}
+
+# write_scope_override — writes ZBUILD_SCOPE_PATHS (newline-delimited) to
+# <state_dir>/scope-override.md as '+ <path>' fenced entries.
+# Exported so tests can source runner.sh and call it directly.
+# Usage: write_scope_override <state_dir> <run_id>
+write_scope_override() {
+    local state_dir="$1" run_id="${2:-}"
+    [[ -z "$state_dir" ]] && return 1
+    [[ -z "${ZBUILD_SCOPE_PATHS:-}" ]] && return 0
+    local scope_override="$state_dir/scope-override.md"
+    {
+        echo "# Scope Override"
+        echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "# run_id: $run_id"
+        echo ""
+        while IFS= read -r scope_path; do
+            [[ -z "$scope_path" ]] && continue
+            printf '+ %s\n' "$scope_path"
+        done <<< "$ZBUILD_SCOPE_PATHS"
+    } | atomic_write "$scope_override"
 }
 
 _zbuild_runner_set_stage_status() {
@@ -125,6 +150,14 @@ main() {
     # TODO(#35): Admission gate pending re-label to phase-0.5.
     mkdir -p "$state_dir"
     local state_file="$state_dir/pipeline-state.json"
+
+    # Write user-provided scope paths to scope-override.md in '+ <path>' format.
+    # After the intake stage completes, these entries are appended to scope-manifest.md
+    # so intake's platform detection is preserved alongside the operator override.
+    if [[ -n "${ZBUILD_SCOPE_PATHS:-}" ]]; then
+        write_scope_override "$state_dir" "$_runner_run_id"
+        info "Scope override paths written to $state_dir/scope-override.md"
+    fi
 
     if ! init_state "$state_file" "$_runner_run_id" "$_runner_issue" 2>/dev/null; then
         warn "State file exists — clearing for fresh run (resume not yet implemented)"
@@ -228,6 +261,15 @@ main() {
             _update_stage_status "$state_file" "$stage" "complete"
             eb_emit_event "stage.complete" "stage=$stage"
             success "Stage $stage complete"
+            # After intake completes, append user-provided scope overrides to
+            # scope-manifest.md so intake's detection output is preserved alongside
+            # the operator's --scope paths.
+            if [[ "$stage" == "intake" && -f "$state_dir/scope-override.md" ]]; then
+                local scope_manifest="$state_dir/scope-manifest.md"
+                # Extract only '+ <path>' lines from the override file and append.
+                grep '^+ ' "$state_dir/scope-override.md" >> "$scope_manifest" 2>/dev/null || true
+                info "Appended scope override entries to $scope_manifest"
+            fi
         elif [[ $rc -eq 2 ]]; then
             # Partial fanout: at least one platform succeeded and at least one failed.
             # State uses "failed" (ADR-006 enum); partial detail is in the event payload.
@@ -256,4 +298,7 @@ main() {
     return 0
 }
 
-main "$@"
+# Only run main when executed directly, not when sourced for function access.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
