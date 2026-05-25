@@ -1088,6 +1088,12 @@ issues:
 
       Tests: tests/plugin-output-test.sh with mocked gh CLI, verify markdown
       shape and command invocation.
+
+      Out of scope: Output destinations beyond the local report / gh-issue-comment
+      fallback (stdout, PR comment, check run, step summary) and any per-destination
+      on/off configuration are tracked in #213. Implement #87 with the single
+      comment-or-report dispatch; #213 will refactor this stage to use a
+      destinations dispatch table.
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
     title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
@@ -2500,7 +2506,10 @@ issues:
         - gh-pr-comment (when ZBUILD_ISSUE is a PR + CI)
         - gh-check-run (opt-in via ZBUILD_EMIT_CHECK_RUN)
         - step-summary (when $GITHUB_STEP_SUMMARY set)
-      - Config in template or env: which destinations active for this run
+      - Config in template or env: each destination has an independent on/off
+        switch (e.g., ZBUILD_OUTPUT_<DEST>=0|1), evaluated per run.
+        Defaults: stdout=on, local-report=on, gh-comment=on-when-issue-set,
+        check-run=off, step-summary=on-when-$GITHUB_STEP_SUMMARY-set.
       - Tests with mocked gh CLI verify each destination
   - id: cipar-6
     title: "[Phase 0.5] CI/CLI parity test (same fixture, same output, both contexts)"
