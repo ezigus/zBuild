@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# core/pipeline/runner.sh — Pipeline orchestrator (issue #83, #208)
+# core/pipeline/runner.sh — Pipeline orchestrator (issue #83, #208, #225)
 # ADR-001 (plugin contract), ADR-006 (resume contract), ADR-009 (platform-aware modularity)
 set -euo pipefail
 
@@ -18,10 +18,15 @@ source "$_ZBUILD_ROOT/core/pipeline/resolver.sh"
 _usage() {
     cat <<EOF
 Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
+                 [--resume] [--from-stage <stage>] [--no-resume] [--force]
   --issue <N>       GitHub issue number to work
   --goal "<text>"   Pipeline goal description (alternative to --issue)
   --dry-run         Print the stage plan without executing anything
   --template <id>   Pipeline template to use (default: standard)
+  --resume          Resume an existing run (skip completed stages)
+  --from-stage <s>  Skip ahead to stage <s> when resuming (emits warning)
+  --no-resume       Force fresh start even if an in_progress state exists
+  --force           Resume even if status=aborted
 
 Environment:
   ZBUILD_PLATFORM_OVERRIDE  Force a single platform; detection short-circuits.
@@ -71,11 +76,27 @@ _update_stage_status() {
     unset _ZB_STAGE_ID _ZB_STAGE_STATUS
 }
 
+# _set_pipeline_status <state_file> <status>
+# Sets the top-level .status field atomically.
+_zbuild_runner_set_pipeline_status() {
+    jq --arg st "$_ZB_PIPELINE_STATUS" \
+       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       '.status = $st | .updated_at = $now'
+}
+
+_set_pipeline_status() {
+    export _ZB_PIPELINE_STATUS="$2"
+    locked_state_update "$1" "_zbuild_runner_set_pipeline_status"
+    unset _ZB_PIPELINE_STATUS
+}
+
+
 # Globals (not local) so EXIT trap can read them after main() returns.
-_runner_run_id="" _runner_issue="" _runner_ended=false
+_runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
 
 main() {
     local issue="" goal="" dry_run=false template="standard"
+    local resume_mode=false from_stage="" no_resume=false force=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -88,7 +109,13 @@ main() {
             --template)
                 [[ -z "${2:-}" ]] && { error "--template requires a value"; _usage; return 2; }
                 template="$2"; shift 2 ;;
-            --dry-run)  dry_run=true;  shift ;;
+            --dry-run)    dry_run=true;    shift ;;
+            --resume)     resume_mode=true; shift ;;
+            --no-resume)  no_resume=true;  shift ;;
+            --force)      force=true;      shift ;;
+            --from-stage)
+                [[ -z "${2:-}" ]] && { error "--from-stage requires a value"; _usage; return 2; }
+                from_stage="$2"; shift 2 ;;
             --help|-h)  _usage; return 0 ;;
             *) error "Unknown argument: $1"; _usage; return 2 ;;
         esac
@@ -140,16 +167,69 @@ main() {
         return 0
     fi
 
-    _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
-    _runner_issue="${issue:-0}"
+    mkdir -p "$state_dir"
+    local state_file="$state_dir/pipeline-state.json"
+    _runner_state_file="$state_file"
+
+    # ── Resume / fresh-start policy ────────────────────────────────────────────
+    if $resume_mode; then
+        # Explicit --resume: check state exists and honour --force for aborted
+        if [[ ! -f "$state_file" ]]; then
+            error "No state file found at $state_file; cannot resume"
+            return 1
+        fi
+        local existing_status
+        existing_status="$(get_state_field "$state_file" '.status' '')"
+        if [[ "$existing_status" == "aborted" ]] && ! $force; then
+            error "Pipeline status is 'aborted'; use --force to resume anyway"
+            return 1
+        fi
+        if [[ "$existing_status" == "complete" ]]; then
+            warn "Pipeline status is 'complete'; starting fresh"
+            resume_mode=false
+        else
+            # Restore run_id and issue from existing state
+            _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
+            _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
+        fi
+    elif ! $no_resume && [[ -f "$state_file" ]]; then
+        # Auto-resume policy
+        local recommendation
+        recommendation="$(get_resume_recommendation "$state_file")"
+        case "$recommendation" in
+            auto_resume)
+                info "Auto-resuming previous run (use --no-resume to force fresh start)"
+                resume_mode=true
+                _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
+                _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
+                ;;
+            manual_resume_only)
+                info "Previous run requires explicit --resume (or --force for aborted)"
+                resume_mode=false
+                ;;
+            fresh_start|*)
+                resume_mode=false
+                ;;
+        esac
+    fi
+
+    if ! $resume_mode; then
+        # Fresh start: clear any existing state
+        if [[ -f "$state_file" ]]; then
+            rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
+        fi
+        _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
+        _runner_issue="${issue:-0}"
+        init_state "$state_file" "$_runner_run_id" "$_runner_issue"
+    fi
+
     _runner_ended=false
     export ZBUILD_RUN_ID="$_runner_run_id"
     export ZBUILD_ISSUE="$_runner_issue"
     export ZBUILD_GOAL="${goal:-}"
 
-    # TODO(#35): Admission gate pending re-label to phase-0.5.
-    mkdir -p "$state_dir"
-    local state_file="$state_dir/pipeline-state.json"
+    # Mark pipeline as in_progress
+    _set_pipeline_status "$state_file" "in_progress"
 
     # Write user-provided scope paths to scope-override.md in '+ <path>' format.
     # After the intake stage completes, these entries are appended to scope-manifest.md
@@ -159,14 +239,10 @@ main() {
         info "Scope override paths written to $state_dir/scope-override.md"
     fi
 
-    if ! init_state "$state_file" "$_runner_run_id" "$_runner_issue" 2>/dev/null; then
-        warn "State file exists — clearing for fresh run (resume not yet implemented)"
-        rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
-        init_state "$state_file" "$_runner_run_id" "$_runner_issue"
-    fi
-
     _runner_abort_trap() {
         [[ "$_runner_ended" == "true" ]] && return 0
+        # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere
+        _set_pipeline_status "$_runner_state_file" "interrupted" 2>/dev/null || true
         eb_emit_event "pipeline.abort" \
             "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
     }
@@ -179,11 +255,42 @@ main() {
     done < <(detect_platforms "$PWD" "$state_dir" 2>/dev/null)
     [[ ${#_DETECTED_PLATFORMS[@]} -eq 0 ]] && _DETECTED_PLATFORMS=("generic")
 
-    eb_emit_event "pipeline.start" "run_id=$_runner_run_id" "issue=$_runner_issue"
-    info "Pipeline started — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
+    if $resume_mode; then
+        eb_emit_event "pipeline.resume" "run_id=$_runner_run_id" "issue=$_runner_issue"
+        info "Pipeline resuming — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
+        if [[ -n "$from_stage" ]]; then
+            warn "Skipping ahead to stage '$from_stage' as requested (--from-stage)"
+            eb_emit_event "pipeline.skip_to_stage" "stage=$from_stage" "run_id=$_runner_run_id"
+        fi
+    else
+        eb_emit_event "pipeline.start" "run_id=$_runner_run_id" "issue=$_runner_issue"
+        info "Pipeline started — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
+    fi
+
+    # ── Determine skip-ahead point when --from-stage is set ───────────────────
+    local skip_until_stage=""
+    [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
 
     local stage
     for stage in "${active_stages[@]}"; do
+        # When resuming, skip stages already marked complete unless --from-stage overrides
+        if $resume_mode && [[ -z "$skip_until_stage" ]]; then
+            local stage_status
+            stage_status="$(get_state_field "$state_file" ".stage_statuses[\"$stage\"]" '')"
+            if [[ "$stage_status" == "complete" ]]; then
+                info "Skipping already-complete stage: $stage"
+                continue
+            fi
+        fi
+
+        # --from-stage: skip until we reach the named stage
+        if [[ -n "$skip_until_stage" && "$stage" != "$skip_until_stage" ]]; then
+            info "Skipping stage: $stage (awaiting $skip_until_stage)"
+            continue
+        fi
+        # Once we reach the target stage, clear the skip gate
+        skip_until_stage=""
+
         eb_emit_event "stage.start" "stage=$stage"
         info "Running stage: $stage"
 
@@ -196,6 +303,7 @@ main() {
             plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
             if [[ -z "$plugin_dir" ]]; then
                 _update_stage_status "$state_file" "$stage" "failed"
+                _set_pipeline_status "$state_file" "interrupted"
                 eb_emit_event "stage.fail" "stage=$stage" "reason=no_plugin"
                 eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                     "run_id=$_runner_run_id" "issue=$_runner_issue"
@@ -240,6 +348,7 @@ main() {
                     plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
                     if [[ -z "$plugin_dir" ]]; then
                         _update_stage_status "$state_file" "$stage" "failed"
+                        _set_pipeline_status "$state_file" "interrupted"
                         eb_emit_event "stage.fail" "stage=$stage" "reason=no_plugin"
                         eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
@@ -274,6 +383,7 @@ main() {
             # Partial fanout: at least one platform succeeded and at least one failed.
             # State uses "failed" (ADR-006 enum); partial detail is in the event payload.
             _update_stage_status "$state_file" "$stage" "failed"
+            _set_pipeline_status "$state_file" "interrupted"
             eb_emit_event "stage.fail" "stage=$stage" "reason=partial"
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
@@ -283,6 +393,7 @@ main() {
         else
             # ADR-001: exit 1 (recoverable) and 2 (fatal) both halt v1.
             _update_stage_status "$state_file" "$stage" "failed"
+            _set_pipeline_status "$state_file" "interrupted"
             eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
@@ -292,6 +403,7 @@ main() {
         fi
     done
 
+    _set_pipeline_status "$state_file" "complete"
     eb_emit_event "pipeline.end" "status=success" "run_id=$_runner_run_id" "issue=$_runner_issue"
     _runner_ended=true
     success "Pipeline complete — run_id=$_runner_run_id"
