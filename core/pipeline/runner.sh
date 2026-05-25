@@ -466,7 +466,8 @@ main() {
         else
             # Strategy dispatch via orch contract (ADR-011, issue #222).
             # Pool ID: stage-scoped, unique per run to prevent pool collision across stages.
-            local pool_id="zbuild-${stage}-${$}-$(date +%s%N 2>/dev/null || date +%s)"
+            local pool_id
+            pool_id="zbuild-${stage}-${$}-$(date +%s%N 2>/dev/null || date +%s)"
             orch_spawn "$pool_id" || {
                 _update_stage_status "$state_file" "$stage" "failed"
                 _set_pipeline_status "$state_file" "interrupted"

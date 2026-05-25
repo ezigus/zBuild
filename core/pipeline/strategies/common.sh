@@ -48,7 +48,7 @@ _strategy_make_work_unit() {
     [[ -z "$plugin_dir" ]] && { warn "strategy: _strategy_make_work_unit: empty plugin_dir" || true; return 2; }
 
     local scratch_dir="${ZBUILD_ORCH_SCRATCH:-${HOME}/.zbuild/state/orch}"
-    mkdir -p -m 700 "$scratch_dir" 2>/dev/null || {
+    mkdir -p "$scratch_dir" 2>/dev/null && chmod 700 "$scratch_dir" 2>/dev/null || {
         warn "strategy: cannot create orch scratch dir: ${scratch_dir}" || true
         return 1
     }
