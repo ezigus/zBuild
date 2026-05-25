@@ -68,12 +68,13 @@ orch_dispatch() {
 # Iterates all result files; prints stdout; returns first non-zero rc.
 # --timeout is accepted for contract compatibility but ignored (synchronous).
 orch_collect() {
+    # Exit code convention: 0=all pass, 1=all fail, 2=partial (some pass some fail).
     local pool_id="$1"
     # Accept --timeout flag without error; value is discarded.
     _orch_seq_validate_pool_id "$pool_id" "orch_collect" || return 1
 
     local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
-    local first_failure=0
+    local pass_count=0 fail_count=0
 
     if [[ ! -d "${pool_dir}/results" ]]; then
         return 0
@@ -86,11 +87,21 @@ orch_collect() {
         rc="$(cat "$exit_file")"
         [[ -f "${base}.stdout" ]] && cat "${base}.stdout"
         [[ -f "${base}.stderr" ]] && cat "${base}.stderr" >&2
-        [[ $rc -ne 0 && $first_failure -eq 0 ]] && first_failure=$rc
+        if [[ $rc -eq 0 ]]; then
+            pass_count=$((pass_count + 1))
+        else
+            fail_count=$((fail_count + 1))
+        fi
     done
 
-    [[ $first_failure -eq 0 ]] && rm -rf "$pool_dir"
-    return "$first_failure"
+    if [[ "$fail_count" -eq 0 ]]; then
+        rm -rf "$pool_dir"
+        return 0
+    elif [[ "$pass_count" -gt 0 ]]; then
+        return 2  # partial
+    else
+        return 1  # all failed
+    fi
 }
 
 # ─── orch_shutdown ───────────────────────────────────────────────────────────

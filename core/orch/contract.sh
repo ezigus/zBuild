@@ -60,6 +60,7 @@ if ! declare -F orch_dispatch >/dev/null 2>&1; then
 fi
 
 if ! declare -F orch_collect >/dev/null 2>&1; then
+    # Exit code convention: 0=all pass, 1=all fail, 2=partial (some pass some fail).
     orch_collect()      { _orch_not_implemented "orch_collect" "$1"; }
 fi
 

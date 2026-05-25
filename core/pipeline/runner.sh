@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# core/pipeline/runner.sh — Pipeline orchestrator (issue #83, #208, #225)
-# ADR-001 (plugin contract), ADR-006 (resume contract), ADR-009 (platform-aware modularity)
+# core/pipeline/runner.sh — Pipeline orchestrator (issue #83, #208, #222, #225)
+# ADR-001 (plugin contract), ADR-006 (resume contract), ADR-009 (platform-aware modularity),
+# ADR-011 (pluggable orch backend)
 set -euo pipefail
 
 _RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +21,12 @@ memory_init || { echo "runner: memory backend failed to initialize" >&2; exit 2;
 source "$_ZBUILD_ROOT/core/detect/platforms.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template.sh"
 source "$_ZBUILD_ROOT/core/pipeline/resolver.sh"
+# shellcheck source=../orch/contract.sh
+source "$_ZBUILD_ROOT/core/orch/contract.sh"
+# Strategy modules (ADR-009 §fanout/sequential/composite, issue #222)
+source "$_ZBUILD_ROOT/core/pipeline/strategies/fanout.sh"
+source "$_ZBUILD_ROOT/core/pipeline/strategies/sequential.sh"
+source "$_ZBUILD_ROOT/core/pipeline/strategies/composite.sh"
 
 _usage() {
     cat <<EOF
@@ -457,68 +464,59 @@ main() {
                 _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
             fi
         else
-            if [[ "$strategy" == "composite" ]]; then
-                error "Stage $stage: composite strategy not implemented (Phase 1 — deferred)"
-                rc=1
-            else
-                local success_count=0 fail_count=0 any_plugin_found=false break_all=false role
-                while IFS= read -r role; do
-                    [[ -z "$role" ]] && continue
-                    $break_all && break
-                    for platform in "${_DETECTED_PLATFORMS[@]}"; do
-                        # Intentional fail-open: resolver returns non-zero when no match;
-                        # empty result → continue to next platform (not a fatal error here).
-                        plugin_dir="$(resolve_plugin_for_role "$role" "$platform" "$plugins_root" 2>/dev/null || true)"
-                        [[ -z "$plugin_dir" ]] && \
-                            plugin_dir="$(resolve_plugin_for_role "$role" "" "$plugins_root" 2>/dev/null || true)"
-                        [[ -z "$plugin_dir" ]] && continue
-                        any_plugin_found=true
-                        set +e
-                        ZBUILD_TARGET_PLATFORM="$platform" plugin_hook_call "$plugin_dir" run "$stage" "$state_file"
-                        local prc=$?
-                        set -e
-                        # ARCHITECTURE.md §2: enforce artifact contract after plugin run
-                        if [[ $prc -eq 0 ]]; then
-                            _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
-                        fi
-                        if [[ $prc -eq 0 ]]; then
-                            success_count=$((success_count + 1))
-                        else
-                            fail_count=$((fail_count + 1))
-                            warn "Stage $stage role $role failed on platform $platform (rc=$prc)"
-                            if [[ "$strategy" == "sequential" ]]; then
-                                break_all=true; break
-                            fi
-                        fi
-                    done
-                done <<< "$roles_out"
+            # Strategy dispatch via orch contract (ADR-011, issue #222).
+            # Pool ID: stage-scoped, unique per run to prevent pool collision across stages.
+            local pool_id
+            pool_id="zbuild-${stage}-${$}-$(date +%s%N 2>/dev/null || date +%s)"
+            orch_spawn "$pool_id" || {
+                _update_stage_status "$state_file" "$stage" "failed"
+                _set_pipeline_status "$state_file" "interrupted"
+                eb_emit_event "stage.fail" "stage=$stage" "reason=orch_spawn_failed"
+                eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue"
+                _runner_ended=true
+                error "Stage $stage: orch_spawn failed for pool $pool_id"
+                return 1
+            }
 
-                if ! $any_plugin_found; then
-                    # No role-based plugin found — fall back to direct ID match (backward-compat).
-                    # Intentional fail-open: empty result triggers the fail-closed block below
-                    # which emits stage.fail, marks pipeline interrupted, and returns 1.
-                    plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
-                    if [[ -z "$plugin_dir" ]]; then
-                        _update_stage_status "$state_file" "$stage" "failed"
-                        _set_pipeline_status "$state_file" "interrupted"
-                        eb_emit_event "stage.fail" "stage=$stage" "reason=no_plugin"
-                        eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
-                            "run_id=$_runner_run_id" "issue=$_runner_issue"
-                        _runner_ended=true
-                        error "No plugin registered for required stage '$stage' (roles: $roles_out)"
-                        return 1
-                    fi
-                    set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
-                    # ARCHITECTURE.md §2: enforce artifact contract after plugin run (fail-closed)
-                    if [[ $rc -eq 0 ]]; then
-                        _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
-                    fi
-                else
-                    if   [[ $fail_count -eq 0 ]]; then   rc=0
-                    elif [[ $success_count -gt 0 ]]; then rc=2
-                    else                                  rc=1
-                    fi
+            # Allow _ZBUILD_STRATEGY_OVERRIDE for testing; normal path reads $strategy.
+            local _effective_strategy="${_ZBUILD_STRATEGY_OVERRIDE:-$strategy}"
+
+            rc=0
+            case "$_effective_strategy" in
+                composite)
+                    set +e; _strategy_run_composite "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root"; rc=$?; set -e
+                    ;;
+                sequential)
+                    set +e; _strategy_run_sequential "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root"; rc=$?; set -e
+                    ;;
+                *)
+                    # fanout (default) — parallel dispatch
+                    set +e; _strategy_run_fanout "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root"; rc=$?; set -e
+                    ;;
+            esac
+
+            # rc=1 from strategy may mean "no plugin found" — fall back to direct ID match (backward-compat)
+            if [[ $rc -eq 1 && "$_effective_strategy" != "composite" ]]; then
+                plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
+                if [[ -z "$plugin_dir" ]]; then
+                    _update_stage_status "$state_file" "$stage" "failed"
+                    _set_pipeline_status "$state_file" "interrupted"
+                    eb_emit_event "stage.fail" "stage=$stage" "reason=no_plugin"
+                    eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
+                        "run_id=$_runner_run_id" "issue=$_runner_issue"
+                    _runner_ended=true
+                    error "No plugin registered for required stage '$stage' (roles: $roles_out)"
+                    return 1
                 fi
+                set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
+                # ARCHITECTURE.md §2: enforce artifact contract after plugin run (fail-closed)
+                if [[ $rc -eq 0 ]]; then
+                    _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
+                fi
+            elif [[ $rc -eq 0 ]]; then
+                # ARCHITECTURE.md §2: artifact contract check after successful fanout/sequential
+                _check_artifact_contract "" "$state_dir" "$stage" 2>/dev/null || true
             fi
         fi
 
