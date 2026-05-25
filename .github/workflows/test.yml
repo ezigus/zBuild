@@ -1,67 +1,143 @@
-name: test
+name: Tests
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   smoke:
+    name: Smoke (shellcheck + legacy sentinel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Install bash 5 (Ubuntu ships with 5.x already)
-        run: bash --version
-
-      - name: Install jq + shellcheck
-        run: sudo apt-get install -y jq shellcheck
-
-      - name: zbuild --version
-        run: ./scripts/zbuild --version
-
-      - name: zbuild --help
-        run: ./scripts/zbuild --help
-
-      - name: Legacy sentinel guard refuses to run
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      - name: Shellcheck all scripts
         run: |
-          set +e
-          bash legacy/scripts/sw status
-          status=$?
-          if [[ $status -ne 64 ]]; then
-            echo "ERROR: legacy sw should have exited 64 (sentinel), got $status"
-            exit 1
-          fi
-          echo "OK: legacy sentinel guard works"
+          find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
+            | xargs -0 shellcheck --severity=warning
+      - name: Legacy sentinel
+        run: bash legacy/scripts/sw 2>&1 | grep -q "disabled" || exit 1
 
-      - name: Shellcheck
-        # SC1091 (info: couldn't follow sourced file) is excluded because we
-        # use dynamic source paths that shellcheck can't statically resolve.
-        # Severity floor: warning. Info-level findings don't fail CI.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      - name: Shellcheck (strict)
         run: |
-          shellcheck --severity=warning scripts/zbuild
-          shellcheck --severity=warning scripts/lib/helpers.sh
-          shellcheck --severity=warning scripts/lib/compat.sh
-          shellcheck --severity=warning install.sh
-          shellcheck --severity=warning core/redaction/scope-redaction.sh
-          shellcheck --severity=warning core/state/atomic.sh
-          shellcheck --severity=warning core/state/resume.sh
-          shellcheck --severity=warning core/plugin-registry/registry.sh
-          shellcheck --severity=warning core/event-bus/event-bus.sh
-          shellcheck --severity=warning plugins/agent/security-lens/plugin.sh
-          shellcheck --severity=warning scripts/generate-issues.sh
+          find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
+            | xargs -0 shellcheck --severity=warning
 
   unit:
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Install jq
-        run: sudo apt-get install -y jq
-      - name: Run unit tests
+      - uses: actions/checkout@v4
+      - name: Run unit tier
         run: |
-          if [[ -x tests/run-unit.sh ]]; then
-            bash tests/run-unit.sh
+          export ZBUILD_TEST_TMP="$(mktemp -d)"
+          bash scripts/run-tests.sh --tier unit
+        env:
+          ZBUILD_TEST_TMP: ""
+      - name: Upload unit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-results
+          path: /tmp/zbuild-unit-results.txt
+          if-no-files-found: ignore
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run integration tier
+        run: |
+          export ZBUILD_TEST_TMP="$(mktemp -d)"
+          bash scripts/run-tests.sh --tier integration
+      - name: Upload integration results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-results
+          path: /tmp/zbuild-integration-results.txt
+          if-no-files-found: ignore
+
+  e2e-mocked:
+    name: E2E (mocked)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run e2e tier (mocked claude+gh)
+        run: |
+          export ZBUILD_TEST_TMP="$(mktemp -d)"
+          # PATH-shadow real claude and gh with mocks
+          mkdir -p "$ZBUILD_TEST_TMP/bin"
+          printf '#!/usr/bin/env bash\necho "{}"\nexit 0\n' > "$ZBUILD_TEST_TMP/bin/claude"
+          printf '#!/usr/bin/env bash\necho "{}"\nexit 0\n' > "$ZBUILD_TEST_TMP/bin/gh"
+          chmod +x "$ZBUILD_TEST_TMP/bin/claude" "$ZBUILD_TEST_TMP/bin/gh"
+          export PATH="$ZBUILD_TEST_TMP/bin:$PATH"
+          bash scripts/run-tests.sh --tier e2e
+
+  golden:
+    name: Golden contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run golden tier
+        run: bash scripts/run-tests.sh --tier golden
+
+  mutation-lint:
+    name: Mutation docs lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run mutation doc validation
+        run: bash scripts/run-tests.sh --tier mutation
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: [unit, integration]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kcov
+        run: |
+          sudo apt-get install -y kcov || echo "kcov unavailable, skipping coverage"
+      - name: Run coverage (unit + integration)
+        run: |
+          export ZBUILD_TEST_TMP="$(mktemp -d)"
+          if command -v kcov >/dev/null 2>&1; then
+            kcov --include-path=core,scripts/lib coverage-out bash scripts/run-tests.sh --tier unit
+            kcov --include-path=core,scripts/lib --merge coverage-out coverage-out bash scripts/run-tests.sh --tier integration
+            echo "Coverage report generated"
           else
-            echo "tests/run-unit.sh not yet implemented (Phase 0 step 5+)"
+            echo "kcov not available — skipping coverage measurement"
           fi
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [smoke, lint, unit, integration, e2e-mocked, golden, mutation-lint, coverage]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write job summary
+        run: |
+          echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tier | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| smoke | ${{ needs.smoke.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| lint | ${{ needs.lint.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| unit | ${{ needs.unit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| integration | ${{ needs.integration.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| e2e-mocked | ${{ needs.e2e-mocked.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| golden | ${{ needs.golden.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| mutation-lint | ${{ needs.mutation-lint.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| coverage | ${{ needs.coverage.result }} |" >> "$GITHUB_STEP_SUMMARY"

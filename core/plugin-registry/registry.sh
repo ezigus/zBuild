@@ -6,6 +6,7 @@
 # ADR-001 implementation. Plugins live in plugins/<kind>/<name>/ with a
 # manifest.yaml and plugin.sh. The registry discovers them, validates manifests,
 # applies a lockfile, and dispatches lifecycle hooks.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
 [[ -n "${_ZBUILD_REGISTRY_LOADED:-}" ]] && return 0
 _ZBUILD_REGISTRY_LOADED=1

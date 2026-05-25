@@ -320,3 +320,38 @@ print_test_results() {
     echo ""
     exit "$FAIL"
 }
+
+# Mock route_to_model with parameterizable rc, stdout, and optional delay
+# Usage: mock_route_to_model <rc> <stdout_content> [delay_seconds]
+mock_route_to_model() {
+  local rc="$1"
+  local stdout_content="$2"
+  local delay="${3:-0}"
+  local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"
+  mkdir -p "$mock_dir"
+  cat > "$mock_dir/claude" <<MOCKEOF
+#!/usr/bin/env bash
+[[ "$delay" -gt 0 ]] && sleep "$delay"
+printf '%s' '$stdout_content'
+exit $rc
+MOCKEOF
+  chmod +x "$mock_dir/claude"
+  export PATH="$mock_dir:$PATH"
+  export ZBUILD_MOCK_CLAUDE_RC="$rc"
+}
+
+# Assert no direct anthropic API calls were made (chokepoint enforcement)
+mock_anthropic_api() {
+  local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"
+  mkdir -p "$mock_dir"
+  cat > "$mock_dir/curl" <<'MOCKEOF'
+#!/usr/bin/env bash
+if printf '%s\n' "$@" | grep -q 'anthropic'; then
+  echo "[mock] ERROR: direct anthropic API call detected — must go through core/redaction" >&2
+  exit 1
+fi
+exec /usr/bin/curl "$@"
+MOCKEOF
+  chmod +x "$mock_dir/curl"
+  export PATH="$mock_dir:$PATH"
+}

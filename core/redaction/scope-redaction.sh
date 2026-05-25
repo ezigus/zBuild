@@ -15,6 +15,7 @@
 #   3. Preserve code-fence boundaries verbatim.
 #   4. Emit redaction.applied event with stats.
 #   5. Idempotent.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
 [[ -n "${_ZBUILD_REDACTION_LOADED:-}" ]] && return 0
 _ZBUILD_REDACTION_LOADED=1

@@ -29,7 +29,11 @@
   ],
   "scripts": {
     "test": "bash tests/run-all.sh",
-    "test:unit": "bash tests/run-unit.sh",
+    "test:unit": "bash scripts/run-tests.sh --tier unit",
+    "test:integration": "bash scripts/run-tests.sh --tier integration",
+    "test:e2e": "bash scripts/run-tests.sh --tier e2e",
+    "test:golden": "bash scripts/run-tests.sh --tier golden",
+    "test:mutation": "bash scripts/run-tests.sh --tier mutation",
     "lint": "shellcheck scripts/zbuild scripts/lib/*.sh"
   },
   "engines": {

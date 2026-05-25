@@ -3,6 +3,7 @@
 # ADR-009 (platform-aware modularity)
 # NOTE: detect.signals manifest parsing deferred to Phase 1.
 # v1 uses hardcoded platform indicator patterns.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
 [[ -n "${_ZBUILD_DETECT_LOADED:-}" ]] && return 0
 _ZBUILD_DETECT_LOADED=1

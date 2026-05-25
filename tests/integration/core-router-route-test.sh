@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
@@ -149,6 +149,128 @@ set -e
 
 assert_eq "claude CLI failure returns rc=1 (recoverable)" "1" "$rc"
 assert_eq "no stdout on claude failure" "" "$out"
+
+# ─── Test A4a: claude binary missing → rc=1 + router.error event ─────────────
+# Simulate missing binary by placing a fake claude wrapper that returns 127
+# (standard "command not found" exit code), then verify the router handles it.
+# Note: We cannot completely hide the real claude binary on macOS without using
+# Bash 3 (which breaks zbuild). Instead we verify the code path via a wrapper
+# that immediately exits 127. The router checks "command -v claude" which would
+# find the wrapper; to test the actual missing-binary path, we place a wrapper
+# that mimics the "not found" behavior for the claude CLI subprocess call.
+#
+# For direct missing-binary test, verify the detection logic is correct in code:
+# The router.sh now has: if ! command -v claude >/dev/null 2>&1; then ... return 1
+# We verify this by checking what happens when a fake mock exits 127 (not found).
+cat > "$TEST_TEMP_DIR/bin/claude" <<'MISSING_MOCK'
+#!/usr/bin/env bash
+# Simulate binary-not-found behavior at subprocess level
+exit 127
+MISSING_MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+
+# With the 127-exit mock: `command -v claude` still FINDS the mock (it exists).
+# The router emits router.error with reason=claude_cli_failed (rc=127).
+set +e
+err="$(route_to_model "T2" "ping" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+assert_eq "A4a: claude rc=127 → route_to_model returns rc=1" "1" "$rc"
+
+a4a_err_evt=$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+# rc=127 is treated as claude_cli_failed (general failure) — binary-missing check
+# triggers only when command -v itself fails (no binary at all in PATH).
+assert_eq "A4a: rc=127 mock → router.error event emitted" "claude_cli_failed" "$a4a_err_evt"
+
+# ─── Test A4b: claude -p returns rc=1 → deterministic error emitted ───────────
+# Already tested in test 9 (above). Verify router.error event is emitted.
+cat > "$TEST_TEMP_DIR/bin/claude" <<'FAIL_MOCK'
+#!/usr/bin/env bash
+exit 1
+FAIL_MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "A4b: claude rc=1 → route_to_model returns rc=1" "1" "$rc"
+
+a4b_err_evt=$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "A4b: router.error event reason=claude_cli_failed" "claude_cli_failed" "$a4b_err_evt"
+
+# ─── Test A4c: empty response → error event emitted ───────────────────────────
+cat > "$TEST_TEMP_DIR/bin/claude" <<'EMPTY_MOCK'
+#!/usr/bin/env bash
+printf ""
+exit 0
+EMPTY_MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "A4c: empty response → rc=1 (recoverable)" "1" "$rc"
+
+a4c_err_evt=$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "A4c: router.error event reason=empty_response" "empty_response" "$a4c_err_evt"
+
+# ─── Test A4d: model.route emitted without preceding redaction.applied ─────────
+# Restore working claude mock
+cat > "$TEST_TEMP_DIR/bin/claude" <<'GOOD_MOCK'
+#!/usr/bin/env bash
+echo "OK-RESPONSE"
+exit 0
+GOOD_MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+# Set ZBUILD_RUN_ID so the C6 check sees run events.
+export ZBUILD_RUN_ID="c6-test-run-id"
+: > "$ZBUILD_EVENTS_JSONL"
+
+# Emit a non-redaction event for this run_id (stage.start, not redaction.applied)
+jq -cn --arg rid "$ZBUILD_RUN_ID" \
+    '{ts:"2026-01-01T00:00:00Z", run_id:$rid, issue:0, type:"stage.start",
+      plugin:"", kind:"", data:{stage:"intake"}, schema_version:1}' \
+    >> "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "A4d: model.route without redaction.applied → rc=1" "1" "$rc"
+
+a4d_evt=$(grep '"router.precondition.violated"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r '.type // empty' 2>/dev/null | tail -1 || true)
+assert_eq "A4d: router.precondition.violated event emitted" "router.precondition.violated" "$a4d_evt"
+
+# ─── Test A4e: model.route WITH preceding redaction.applied → succeeds ─────────
+: > "$ZBUILD_EVENTS_JSONL"
+
+# Emit a redaction.applied event for this run_id (precondition satisfied)
+jq -cn --arg rid "$ZBUILD_RUN_ID" \
+    '{ts:"2026-01-01T00:00:00Z", run_id:$rid, issue:0, type:"redaction.applied",
+      plugin:"", kind:"", data:{}, schema_version:1}' \
+    >> "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "A4e: model.route with redaction.applied preceding → rc=0" "0" "$rc"
+assert_eq "A4e: response passthrough works" "OK-RESPONSE" "$out"
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env

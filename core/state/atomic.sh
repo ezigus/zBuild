@@ -4,6 +4,7 @@
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # All state writes go through these primitives. See ADR-006.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
 [[ -n "${_ZBUILD_STATE_ATOMIC_LOADED:-}" ]] && return 0
 _ZBUILD_STATE_ATOMIC_LOADED=1

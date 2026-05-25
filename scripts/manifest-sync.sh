@@ -189,8 +189,7 @@ HDR
     else
         # Upsert the _Last updated_ line: replace if present, insert before the table if absent.
         if grep -q "^_Last updated:" "$ORPHAN_PRS_LOG"; then
-            sed -i.bak "s|^_Last updated:.*|_Last updated: ${now} (rolling 30-PR window)_|" "$ORPHAN_PRS_LOG"
-            rm -f "${ORPHAN_PRS_LOG}.bak"
+            zbuild_sed_inplace "s|^_Last updated:.*|_Last updated: ${now} (rolling 30-PR window)_|" "$ORPHAN_PRS_LOG"
         else
             awk -v ts="_Last updated: ${now} (rolling 30-PR window)_" \
                 '/^\| PR \| Title \| First seen \|/{print ts; print ""; print; next} {print}' \
