@@ -4,16 +4,18 @@ name: manifest-sync
 # hand-merged PRs without linked issues, issues opened outside the manifest)
 # that the local tooling can't see.
 #
-# See issue #227 for design rationale.
+# Triggers: daily 02:00 UTC + push to main. Event-based triggers (PR closed,
+# issues closed) were removed — they caused cascade loops (issue #248).
+# A pending-PR guard prevents duplicate auto-PRs when drift is already staged.
+#
+# See issue #227 for design rationale; issue #248 for noise-reduction changes.
 
 on:
   schedule:
     # Daily at 02:00 UTC — full reconcile pass
     - cron: '0 2 * * *'
-  pull_request:
-    types: [closed]
-  issues:
-    types: [closed]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       mode:
@@ -41,7 +43,21 @@ jobs:
           sudo curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
+      - name: Skip if sync PR already pending
+        id: check_pending
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh pr list --label manifest-sync --state open --json number --jq 'length')
+          if [[ "$count" -gt 0 ]]; then
+            echo "pending=true" >> "$GITHUB_OUTPUT"
+            echo "Open manifest-sync PR already exists — skipping this run"
+          else
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run manifest-sync
+        if: steps.check_pending.outputs.pending == 'false'
         id: sync
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,7 +76,7 @@ jobs:
           echo "changes_made=false" >> "$GITHUB_OUTPUT"
 
       - name: Create PR with manifest changes
-        if: steps.sync.outputs.changes_made == 'true'
+        if: steps.check_pending.outputs.pending == 'false' && steps.sync.outputs.changes_made == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

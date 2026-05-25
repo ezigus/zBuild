@@ -12,9 +12,9 @@
 # ║                        suitable for a PR (caller invokes the PR action)   ║
 # ║                                                                           ║
 # ║  Triggers (when used in CI; see .github/workflows/manifest-sync.yml):     ║
-# ║    schedule  — full daily pass                                            ║
-# ║    pull_request.closed  — record auto-closes from merged PRs              ║
-# ║    issues.closed        — record human web-UI closes                      ║
+# ║    schedule  — full daily pass (02:00 UTC)                                ║
+# ║    push:main — catches drift immediately after any merge                  ║
+# ║    (pull_request.closed + issues.closed removed — caused cascade loops)   ║
 # ║                                                                           ║
 # ║  Safety: never auto-closes live issues, never auto-reopens. Only ever     ║
 # ║  edits the local manifest YAML and lets a human review the PR.            ║
@@ -122,11 +122,11 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
     if ! echo "$pr_body" | grep -qiE '(closes|fixes|resolves)[ ]+#[0-9]+'; then
         ORPHAN_PRS+=("$pr_num|$pr_title")
     fi
-done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -50)
+done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -30)
 
 if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
     DRIFT_FOUND=1
-    info "Merged PRs not linked to any issue (in last 50):"
+    info "Merged PRs not linked to any issue (rolling 30-PR window):"
     for entry in "${ORPHAN_PRS[@]}"; do
         IFS='|' read -r num title <<< "$entry"
         echo "  - PR #$num: $title"
@@ -178,14 +178,15 @@ if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
 Auto-maintained by `scripts/manifest-sync.sh`. Each entry below is a PR that
 merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`.
 
-The point of this log is institutional memory: changes that didn't have a
-tracking issue should still show up somewhere when reviewing repo history.
+Rolling window: last 30 merged PRs. Not an exhaustive archive.
 
 | PR | Title | First seen |
 |---|---|---|
 HDR
     fi
     today="$(date -u +%Y-%m-%d)"
+    # Update the "last updated" timestamp in the header (idempotent sed; no-op if line absent)
+    sed -i.bak "s|^_Last updated:.*|_Last updated: $(date -u +%Y-%m-%dT%H:%M:%SZ) (rolling 30-PR window)_|" "$ORPHAN_PRS_LOG" && rm -f "${ORPHAN_PRS_LOG}.bak"
     for entry in "${ORPHAN_PRS[@]}"; do
         IFS='|' read -r num title <<< "$entry"
         # Idempotent: skip if PR already in log
