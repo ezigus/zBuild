@@ -89,46 +89,41 @@ assert_contains \
     "orch_capabilities output contains fanout_parallel capability" \
     "$caps" '"fanout_parallel"'
 
-# ─── Test 3: Invalid pool_id returns rc=1 ─────────────────────────────────────
-print_test_section "3. Invalid pool_id returns rc=1 in all contract functions"
+# ─── Test 3: Invalid pool_id returns rc=1 in ALL five contract functions ───────
+print_test_section "3. Invalid pool_id returns rc=1 in all five contract functions"
 
-# Test pool_id with path separator
-set +e
-orch_spawn "a/b" 2>/dev/null
-rc_slash=$?
-set -e
-assert_exit_code "orch_spawn rejects pool_id with slash (a/b)" "1" "$rc_slash"
+_assert_invalid_pool() {
+    local fn="$1" bad_id="$2" label="$3"
+    local rc=0
+    set +e
+    case "$fn" in
+        spawn)  orch_spawn "$bad_id" 2>/dev/null; rc=$? ;;
+        dispatch) orch_dispatch "$bad_id" "/dev/null" 2>/dev/null; rc=$? ;;
+        collect)  orch_collect "$bad_id" 2>/dev/null; rc=$? ;;
+        shutdown) orch_shutdown "$bad_id" 2>/dev/null; rc=$? ;;
+        capabilities) orch_capabilities 2>/dev/null; rc=$? ;;
+    esac
+    set -e
+    [[ "$fn" == "capabilities" ]] \
+        && assert_exit_code "orch_capabilities ignores pool_id (no arg)" "0" "$rc" \
+        || assert_exit_code "${fn} rejects ${label}" "1" "$rc"
+}
 
-# Test pool_id with ..
-set +e
-orch_spawn "../bad" 2>/dev/null
-rc_dotdot=$?
-set -e
-assert_exit_code "orch_spawn rejects pool_id with .. (../bad)" "1" "$rc_dotdot"
+for bad_id in "a/b" "../bad" "" "bad id"; do
+    _assert_invalid_pool spawn      "$bad_id" "pool_id='${bad_id}'"
+    _assert_invalid_pool dispatch   "$bad_id" "pool_id='${bad_id}'"
+    _assert_invalid_pool collect    "$bad_id" "pool_id='${bad_id}'"
+    _assert_invalid_pool shutdown   "$bad_id" "pool_id='${bad_id}'"
+done
 
-# Test empty string
-set +e
-orch_spawn "" 2>/dev/null
-rc_empty=$?
-set -e
-assert_exit_code "orch_spawn rejects empty pool_id" "1" "$rc_empty"
-
-# Test 65-character string (over the 64-char limit)
+# 65-char (over limit)
 long_id="$(printf 'a%.0s' {1..65})"
-set +e
-orch_spawn "$long_id" 2>/dev/null
-rc_long=$?
-set -e
-assert_exit_code "orch_spawn rejects 65-char pool_id (over limit)" "1" "$rc_long"
+_assert_invalid_pool spawn    "$long_id" "65-char pool_id"
+_assert_invalid_pool dispatch "$long_id" "65-char pool_id"
+_assert_invalid_pool collect  "$long_id" "65-char pool_id"
+_assert_invalid_pool shutdown "$long_id" "65-char pool_id"
 
-# Test pool_id with space
-set +e
-orch_spawn "bad id" 2>/dev/null
-rc_space=$?
-set -e
-assert_exit_code "orch_spawn rejects pool_id with whitespace" "1" "$rc_space"
-
-# Verify a valid 64-char pool_id is accepted
+# Verify a valid 64-char pool_id is accepted by spawn
 ok_id="$(printf 'a%.0s' {1..64})"
 set +e
 orch_spawn "$ok_id" 2>/dev/null

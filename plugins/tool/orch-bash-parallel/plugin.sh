@@ -3,12 +3,18 @@
 # Parallel orchestrator backend — background bash jobs (issue #220, ADR-011).
 # Provides: orchestrator-backend / bash-parallel
 #
-# orch_dispatch launches each work unit in a background subshell that writes
-# its own exit code to results/<slot_id>.exit.  orch_collect polls for .exit
-# files; it does NOT use wait $pid because orch_dispatch is often called from
-# command substitution, making the worker a grandchild orphan.
+# orch_dispatch launches each work unit in a background subshell.  The wrapper
+# subshell writes its own exit code to results/<slot_id>.exit; it also records
+# the actual work-unit PID in results/<slot_id>.inner_pid and installs a trap
+# so that SIGTERM/EXIT propagates to the inner process.
+#
+# orch_collect polls for .exit files — it does NOT use wait $pid because
+# orch_dispatch is often called from command substitution, making the wrapper a
+# grandchild orphan whose PID cannot be waited on by the parent shell.
 #
 # Pool layout: ${TMPDIR:-/tmp}/zbuild-pool-<pool_id>/{results,pids}/
+#   results/<slot>.{stdout,stderr,exit,inner_pid}
+#   pids/<slot>.pid
 #
 # Sourced library: inherits caller's pipefail; do not add set -euo pipefail here.
 
@@ -52,20 +58,44 @@ orch_dispatch() {
     fi
 
     local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
+
+    # Ensure pool dirs exist even if orch_spawn was skipped or failed.
+    mkdir -p "${pool_dir}/results" "${pool_dir}/pids" 2>/dev/null || {
+        warn "orch_bash_parallel: pool dir is not writable: ${pool_dir}" || true
+        return 1
+    }
+
     local slot_id
     slot_id="$(date +%s%N)-$$-$(openssl rand -hex 8 2>/dev/null || printf '%05d%05d%05d' $RANDOM $RANDOM $RANDOM)"
     local result_base="${pool_dir}/results/${slot_id}"
 
-    # Background subshell writes its own exit code; see file header re: orphan PID.
+    # Background subshell: writes inner work-unit PID, traps on exit to propagate
+    # signals, then waits for inner and writes .exit file.
     (
-        local rc=0
-        bash "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" || rc=$?
+        local rc=0 inner=0
+        bash "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" &
+        inner=$!
+        echo "$inner" > "${result_base}.inner_pid"
+        # Propagate SIGTERM/EXIT to the actual work-unit process.
+        trap 'kill -KILL "$inner" 2>/dev/null || true' EXIT INT TERM
+        wait "$inner" || rc=$?
+        trap - EXIT INT TERM
         echo "$rc" > "${result_base}.exit"
     ) &
     local worker_pid=$!
     echo "$worker_pid" > "${pool_dir}/pids/${slot_id}.pid"
     echo "$slot_id"
     return 0
+}
+
+# ─── _orch_par_kill_slot ─────────────────────────────────────────────────────
+# Sends signal to both the wrapper PID and the inner work-unit PID (if known).
+_orch_par_kill_slot() {
+    local sig="$1"
+    local wrapper_pid="$2"
+    local inner_pid="${3:-}"
+    kill "-${sig}" "$wrapper_pid" 2>/dev/null || true
+    [[ -n "$inner_pid" ]] && kill "-${sig}" "$inner_pid" 2>/dev/null || true
 }
 
 # ─── orch_collect ────────────────────────────────────────────────────────────
@@ -91,18 +121,20 @@ orch_collect() {
     local deadline=0
     [[ "$timeout_s" -gt 0 ]] && deadline=$(( $(date +%s) + timeout_s ))
 
-    local pid_file slot_id result_base worker_pid rc
+    local pid_file slot_id result_base wrapper_pid inner_pid rc
     for pid_file in "${pool_dir}/pids/"*.pid; do
         [[ -f "$pid_file" ]] || continue
         slot_id="$(basename "${pid_file%.pid}")"
         result_base="${pool_dir}/results/${slot_id}"
-        worker_pid="$(cat "$pid_file")"
+        wrapper_pid="$(cat "$pid_file")"
+        inner_pid=""
+        [[ -f "${result_base}.inner_pid" ]] && inner_pid="$(cat "${result_base}.inner_pid")"
 
         while [[ ! -f "${result_base}.exit" ]]; do
             if [[ "$timeout_s" -gt 0 && "$(date +%s)" -ge "$deadline" ]]; then
-                kill -TERM "$worker_pid" 2>/dev/null || true
+                _orch_par_kill_slot TERM "$wrapper_pid" "$inner_pid"
                 sleep 0.5
-                kill -KILL "$worker_pid" 2>/dev/null || true
+                _orch_par_kill_slot KILL "$wrapper_pid" "$inner_pid"
                 echo "124" > "${result_base}.exit"
                 break
             fi
@@ -121,6 +153,7 @@ orch_collect() {
 
 # ─── orch_shutdown ────────────────────────────────────────────────────────────
 # Contract: orch_shutdown <pool_id>  — SIGTERM → SIGKILL → rm -rf pool dir.
+# Kills both the wrapper subshell and the inner work-unit PID for each slot.
 orch_shutdown() {
     local pool_id="$1"
     _orch_par_validate_pool_id "$pool_id" "orch_shutdown" || return 1
@@ -128,15 +161,25 @@ orch_shutdown() {
     local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
     [[ -d "$pool_dir" ]] || return 0
 
-    local pid_file worker_pid
+    local pid_file slot_id wrapper_pid inner_pid
     for pid_file in "${pool_dir}/pids/"*.pid; do
-        [[ -f "$pid_file" ]] || continue; worker_pid="$(cat "$pid_file")"
-        kill -TERM "$worker_pid" 2>/dev/null || true
+        [[ -f "$pid_file" ]] || continue
+        slot_id="$(basename "${pid_file%.pid}")"
+        wrapper_pid="$(cat "$pid_file")"
+        inner_pid=""
+        [[ -f "${pool_dir}/results/${slot_id}.inner_pid" ]] && \
+            inner_pid="$(cat "${pool_dir}/results/${slot_id}.inner_pid")"
+        _orch_par_kill_slot TERM "$wrapper_pid" "$inner_pid"
     done
     sleep 0.5
     for pid_file in "${pool_dir}/pids/"*.pid; do
-        [[ -f "$pid_file" ]] || continue; worker_pid="$(cat "$pid_file")"
-        kill -KILL "$worker_pid" 2>/dev/null || true
+        [[ -f "$pid_file" ]] || continue
+        slot_id="$(basename "${pid_file%.pid}")"
+        wrapper_pid="$(cat "$pid_file")"
+        inner_pid=""
+        [[ -f "${pool_dir}/results/${slot_id}.inner_pid" ]] && \
+            inner_pid="$(cat "${pool_dir}/results/${slot_id}.inner_pid")"
+        _orch_par_kill_slot KILL "$wrapper_pid" "$inner_pid"
     done
     rm -rf "$pool_dir"
     return 0

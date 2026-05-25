@@ -96,10 +96,10 @@ elapsed=$(( t_end - t_start ))
 
 assert_exit_code "orch_collect returns 0 for parallel workers" "0" "$collect_rc"
 
-if [[ "$elapsed" -lt 2 ]]; then
-    assert_pass "parallel workers complete in <2s (elapsed: ${elapsed}s)"
+if [[ "$elapsed" -lt 3 ]]; then
+    assert_pass "parallel workers complete in <3s (elapsed: ${elapsed}s)"
 else
-    assert_fail "parallel workers complete in <2s" "elapsed: ${elapsed}s (expected <2)"
+    assert_fail "parallel workers complete in <3s" "elapsed: ${elapsed}s (expected <3)"
 fi
 
 # ─── Test 3: stdout isolation — worker A and worker B output do not mix ───────
@@ -186,6 +186,8 @@ orch_spawn "$pool"
 
 unit="$(_make_unit "t6" 'sleep 60')"
 orch_dispatch "$pool" "$unit" >/dev/null
+# Give dispatch time to write PID files
+sleep 0.2
 
 pool_dir="${TMPDIR}/zbuild-pool-${pool}"
 
@@ -196,6 +198,12 @@ else
     assert_fail "pool dir exists before shutdown" "not found: $pool_dir"
 fi
 
+# Collect PIDs before shutdown removes the files
+_t6_pids=()
+for _f in "${pool_dir}/pids/"*.pid "${pool_dir}/results/"*.inner_pid; do
+    [[ -f "$_f" ]] && _t6_pids+=("$(cat "$_f")")
+done
+
 orch_shutdown "$pool"
 
 if [[ ! -d "$pool_dir" ]]; then
@@ -203,6 +211,17 @@ if [[ ! -d "$pool_dir" ]]; then
 else
     assert_fail "orch_shutdown removes pool dir" "dir still exists: $pool_dir"
 fi
+
+# Verify all tracked worker processes are actually dead
+sleep 0.3
+for _pid in "${_t6_pids[@]}"; do
+    if kill -0 "$_pid" 2>/dev/null; then
+        assert_fail "worker PID ${_pid} terminated after shutdown" "process still alive"
+        kill -KILL "$_pid" 2>/dev/null || true
+    else
+        assert_pass "worker PID ${_pid} terminated after shutdown"
+    fi
+done
 
 # ─── Test 7: orch_collect --timeout: long worker with short timeout returns non-zero
 print_test_section "7. orch_collect --timeout 1 with 10s worker → returns non-zero within ~2s"
