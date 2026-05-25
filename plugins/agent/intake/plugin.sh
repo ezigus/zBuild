@@ -96,19 +96,23 @@ intake_run() {
     done < <(jq -r '.detected[]' "$state_dir/platforms.json" 2>/dev/null || true)
     [[ ${#platforms[@]} -eq 0 ]] && platforms=("generic")
 
-    # Build scope-manifest content: one "+ <platform>/" line per platform
-    local scope_content=""
-    local p
-    for p in "${platforms[@]}"; do
-        if [[ "$p" == "generic" ]]; then
-            scope_content="${scope_content}+ ./\n"
-        else
-            scope_content="${scope_content}+ ${p}/\n"
-        fi
-    done
-
-    # Write atomically (atomic_write reads from stdin — helpers.sh:41)
-    printf '%b' "$scope_content" | atomic_write "$state_dir/scope-manifest.md"
+    # Build scope-manifest: one "+ <platform>/" line per platform.
+    # Validate platform IDs to ^[a-z0-9_-]+$ before writing — platform values
+    # come from plugin manifests / .zbuild/platforms.json and are not fully
+    # trusted; malicious values could expand the redaction allowlist via path
+    # injection. Use printf '%s' (not '%b') to prevent backslash interpretation.
+    {
+        local p
+        for p in "${platforms[@]}"; do
+            if [[ "$p" == "generic" ]]; then
+                printf '+ ./\n'
+            elif [[ "$p" =~ ^[a-z0-9_-]+$ ]]; then
+                printf '+ %s/\n' "$p"
+            else
+                warn "intake_run: skipping invalid platform id: $p"
+            fi
+        done
+    } | atomic_write "$state_dir/scope-manifest.md"
     printf '%s\n' "$sanitized"   | atomic_write "$state_dir/intake.md"
 
     emit_event "plugin.run.complete" "plugin=intake" \

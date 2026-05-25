@@ -105,6 +105,31 @@ scope="$(cat "$STATE_DIR/scope-manifest.md")"
 assert_contains "scope-manifest has + ios/" "$scope" "+ ios/"
 assert_contains "scope-manifest has + node/" "$scope" "+ node/"
 
+# Each entry must be a "+" line (format consumed by scope-redaction.sh:73)
+plus_lines="$(grep -c '^\+' "$STATE_DIR/scope-manifest.md" || true)"
+assert_gt "scope-manifest entries are + lines" "$plus_lines" "0"
+
+# ─── Test 5b: injection guard — invalid platform ID is dropped ───────────────
+cat > "$STATE_DIR/platforms.json" <<'JSON'
+{"detected":["ios","bad\nvalue","../etc","ok-platform"],"repo_head_sha":"abc"}
+JSON
+
+export ZBUILD_GOAL="injection test"
+
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "injection guard run returns rc=0" "0" "$rc"
+scope="$(cat "$STATE_DIR/scope-manifest.md")"
+assert_contains "valid platform ok-platform written" "$scope" "+ ok-platform/"
+if echo "$scope" | grep -q '\.\.'; then
+    assert_fail "path traversal should be filtered from scope-manifest"
+else
+    assert_pass "path traversal filtered from scope-manifest"
+fi
+
 # ─── Test 6: no platforms.json → generic fallback (+ ./) ─────────────────────
 rm -f "$STATE_DIR/platforms.json"
 
