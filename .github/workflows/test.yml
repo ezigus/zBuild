@@ -22,7 +22,7 @@ jobs:
           echo "shellcheck passed ($count files)"
       - name: Legacy sentinel
         run: |
-          output=$(bash legacy/scripts/sw 2>&1)
+          output=$(bash legacy/scripts/sw 2>&1) || true
           echo "$output"
           echo "$output" | grep -q "disabled" || exit 1
 
