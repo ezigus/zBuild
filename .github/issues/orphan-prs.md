@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-25T15:50:41Z (rolling 30-PR window)_
+_Last updated: 2026-05-25T19:12:34Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -27,3 +27,4 @@ _Last updated: 2026-05-25T15:50:41Z (rolling 30-PR window)_
 | #255 | chore(ci): bump actions/checkout from 4 to 6 | 2026-05-25 |
 | #254 | chore(ci): bump actions/upload-artifact from 4 to 7 | 2026-05-25 |
 | #253 | [manifest-sync] Drift reconciliation | 2026-05-25 |
+| #257 | [manifest-sync] Drift reconciliation | 2026-05-25 |
