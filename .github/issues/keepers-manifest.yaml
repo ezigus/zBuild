@@ -2931,6 +2931,8 @@ issues:
       - scripts/generate-issues.sh `--reconcile` mode (already implemented;
         sync-1 builds on this with the write-back logic)
       - peter-evans/create-pull-request@v6 action
+    state: closed
+    closed_reason: 'Closed manually on 2026-05-25. Implemented via PR #252 — .github/workflows/manifest-sync.yml and scripts/manifest-sync.sh both shipped.'
   # ─── Cross-cutting audit follow-up (1 issue) ───────────────────────────
   - id: audit-v3
     title: "[Audit] Shipwright v3 — concerns & remediation (safety, dedupe, test strategy, CI)"
