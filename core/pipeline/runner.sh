@@ -120,6 +120,7 @@ main() {
     _runner_ended=false
     export ZBUILD_RUN_ID="$_runner_run_id"
     export ZBUILD_ISSUE="$_runner_issue"
+    export ZBUILD_GOAL="${goal:-}"
 
     # TODO(#35): Admission gate pending re-label to phase-0.5.
     mkdir -p "$state_dir"
