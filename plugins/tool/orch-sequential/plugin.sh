@@ -11,17 +11,26 @@
 [[ -n "${_ZBUILD_ORCH_SEQUENTIAL_LOADED:-}" ]] && return 0
 _ZBUILD_ORCH_SEQUENTIAL_LOADED=1
 
+# ─── _orch_seq_validate_pool_id ──────────────────────────────────────────────
+# Rejects pool IDs containing path separators, "..", or whitespace.
+# Returns 0 if valid, 1 if invalid (emits a warning to stderr).
+_orch_seq_validate_pool_id() {
+    local pool_id="$1"
+    local caller="${2:-orch_sequential}"
+    if [[ "$pool_id" == ".." ]] || printf '%s' "$pool_id" | grep -qE '(/|\.\.|[[:space:]])'; then
+        warn "${caller}: invalid pool_id (contains /, .., or whitespace): ${pool_id}" || true
+        return 1
+    fi
+    return 0
+}
+
 # ─── orch_spawn ──────────────────────────────────────────────────────────────
 # Contract: orch_spawn <pool_id> [count] [role_arg]
 # Creates the pool results directory.  count and role_arg are accepted for
 # contract compliance but unused by the sequential backend.
 orch_spawn() {
     local pool_id="$1"
-    # Validate pool_id: reject paths containing /, .., or whitespace
-    if printf '%s' "$pool_id" | grep -qE '(/|\.\.|[[:space:]])'; then
-        warn "orch_spawn: invalid pool_id (contains /, .., or whitespace): ${pool_id}" 2>/dev/null || true
-        return 1
-    fi
+    _orch_seq_validate_pool_id "$pool_id" "orch_spawn" || return 1
     mkdir -p "${TMPDIR:-/tmp}/zbuild-pool-${pool_id}/results"
     return 0
 }
@@ -35,20 +44,22 @@ orch_spawn() {
 orch_dispatch() {
     local pool_id="$1"
     local work_unit="$2"
+    _orch_seq_validate_pool_id "$pool_id" "orch_dispatch" || return 1
     local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
     local slot_id
     slot_id="$(date +%s%N)-$$-${RANDOM}"
     local result_base="${pool_dir}/results/${slot_id}"
 
     # Execute synchronously — no background (&)
+    local task_rc=0
     if [[ -f "$work_unit" && -x "$work_unit" ]]; then
         # work_unit is a script file path
-        bash "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" || true
+        bash "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
     else
         # work_unit is a bash body string (mock-compatible mode)
-        bash -c "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" || true
+        bash -c "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
     fi
-    echo $? > "${result_base}.exit"
+    echo "$task_rc" > "${result_base}.exit"
     echo "$slot_id"
 }
 
@@ -59,6 +70,7 @@ orch_dispatch() {
 orch_collect() {
     local pool_id="$1"
     # Accept --timeout flag without error; value is discarded.
+    _orch_seq_validate_pool_id "$pool_id" "orch_collect" || return 1
 
     local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
     local first_failure=0
@@ -86,6 +98,7 @@ orch_collect() {
 # Removes the pool directory.  Idempotent — safe to call on non-existent pool.
 orch_shutdown() {
     local pool_id="$1"
+    _orch_seq_validate_pool_id "$pool_id" "orch_shutdown" || return 1
     rm -rf "${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
     return 0
 }

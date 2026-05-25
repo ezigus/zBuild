@@ -17,6 +17,18 @@
 [[ -n "${_ZBUILD_ORCH_CONTRACT_LOADED:-}" ]] && return 0
 _ZBUILD_ORCH_CONTRACT_LOADED=1
 
+# Sentinel: 0 = only stubs loaded, 1 = a real backend plugin was sourced.
+# If any contract function is already defined when this file is sourced, a
+# backend was pre-loaded (sourced before this contract file).  Mark it loaded
+# so _orch_load_backend does not overwrite those implementations.
+if declare -F orch_spawn >/dev/null 2>&1 || \
+   declare -F orch_dispatch >/dev/null 2>&1 || \
+   declare -F orch_capabilities >/dev/null 2>&1; then
+    _ZBUILD_ORCH_BACKEND_LOADED=1
+else
+    _ZBUILD_ORCH_BACKEND_LOADED=0
+fi
+
 _ZBUILD_ORCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "${_ZBUILD_ORCH_DIR}/../.." && pwd)"
 
@@ -32,7 +44,7 @@ _orch_not_implemented() {
     if declare -F emit_event >/dev/null 2>&1; then
         emit_event "orch.contract.not_implemented" "fn=${fn_name}" "context=${context}" || true
     fi
-    warn "orch contract: ${fn_name} not implemented (context: ${context})" 2>/dev/null || true
+    warn "orch contract: ${fn_name} not implemented (context: ${context})" || true
     return 1
 }
 
@@ -127,6 +139,7 @@ orch_load_backend() {
         if [[ -n "$plugin_dir" && -f "${plugin_dir}/plugin.sh" ]]; then
             # shellcheck disable=SC1090
             source "${plugin_dir}/plugin.sh"
+            _ZBUILD_ORCH_BACKEND_LOADED=1
             return 0
         fi
     fi
@@ -136,6 +149,7 @@ orch_load_backend() {
     if [[ -n "$plugin_dir" && -f "${plugin_dir}/plugin.sh" ]]; then
         # shellcheck disable=SC1090
         source "${plugin_dir}/plugin.sh"
+        _ZBUILD_ORCH_BACKEND_LOADED=1
         return 0
     fi
 
@@ -144,10 +158,20 @@ orch_load_backend() {
     if [[ "$backend" == "sequential" && -f "$sequential_sh" ]]; then
         # shellcheck disable=SC1090
         source "$sequential_sh"
+        _ZBUILD_ORCH_BACKEND_LOADED=1
         return 0
     fi
 
-    # Nothing found — warn and return 1
+    # No plugin found for requested backend — fall back to sequential (built-in)
+    if [[ -f "$sequential_sh" ]]; then
+        warn "orch_load_backend: backend '${backend}' not found; falling back to sequential" || true
+        # shellcheck disable=SC1090
+        source "$sequential_sh"
+        _ZBUILD_ORCH_BACKEND_LOADED=1
+        return 0
+    fi
+
+    # Nothing found at all — warn and return 1
     warn "orch_load_backend: backend '${backend}' not found (no plugin for role orchestrator-backend with alias ${backend})" || true
     return 1
 }
@@ -157,17 +181,11 @@ orch_load_backend() {
 # Skips auto-loading if a backend has already provided the contract functions
 # (i.e., when a plugin sources the backend before sourcing this contract file).
 _orch_load_backend() {
-    # If all five contract functions are defined, a backend was sourced before
-    # this contract file.  Since the stubs above are gated with `if ! declare -F`,
-    # the only way all five exist is if a backend was already loaded.  Skip to
-    # avoid overwriting the pre-loaded backend's implementations.
-    if declare -F orch_spawn >/dev/null 2>&1 && \
-       declare -F orch_dispatch >/dev/null 2>&1 && \
-       declare -F orch_collect >/dev/null 2>&1 && \
-       declare -F orch_shutdown >/dev/null 2>&1 && \
-       declare -F orch_capabilities >/dev/null 2>&1; then
-        return 0
-    fi
+    # If a real backend was already sourced (sentinel set to 1), skip auto-load
+    # to avoid overwriting the pre-loaded backend's implementations.
+    # Note: the stubs above do NOT set this sentinel, so checking declare -F
+    # would always return true (stubs are defined).  We use the sentinel instead.
+    [[ "${_ZBUILD_ORCH_BACKEND_LOADED:-0}" -eq 1 ]] && return 0
 
     local backend
 
@@ -183,5 +201,5 @@ _orch_load_backend() {
     orch_load_backend "$backend" 2>/dev/null || true
 }
 
-# Auto-load at source time
+# Auto-load at source time — skipped if _ZBUILD_ORCH_BACKEND_LOADED is already 1
 _orch_load_backend

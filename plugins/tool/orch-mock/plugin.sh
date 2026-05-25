@@ -69,7 +69,8 @@ orch_spawn() {
 # Contract: orch_dispatch <pool_id> <task_body>
 # Mock: executes the task_body synchronously in a subshell; persists
 #       stdout + exit code to results/<seq>.{stdout,rc}.
-# Returns the exit code of the task itself.
+# Returns 0 (task accepted for execution); task failures surface via orch_collect.
+# This matches the async contract: callers must not assume dispatch failure == task failure.
 orch_dispatch() {
     local pool_id="$1"
     local task_body="$2"
@@ -96,7 +97,9 @@ orch_dispatch() {
     bash -c "$task_body" > "$stdout_file" 2>&1 || task_rc=$?
     printf '%s' "$task_rc" > "$rc_file"
 
-    return "$task_rc"
+    # Always return 0: dispatch means "task accepted", not "task succeeded".
+    # Task failures are surfaced by orch_collect, preserving set -e safety.
+    return 0
 }
 
 # ─── orch_collect ────────────────────────────────────────────────────────────
