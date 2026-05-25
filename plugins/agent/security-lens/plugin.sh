@@ -37,12 +37,31 @@ security_lens_init() {
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
+# Hook called by the pipeline runner: security_lens_run(stage, state_file)
+# Derives artifact paths from state_dir and delegates to the inner function.
+security_lens_run() {
+    local state_file="${2:-}"
+    if [[ -z "$state_file" ]]; then
+        error "security_lens_run: state_file argument required"
+        return 2
+    fi
+    local state_dir; state_dir="$(dirname "$state_file")"
+    local artifacts_dir="$state_dir/artifacts"
+    mkdir -p "$artifacts_dir"
+    _security_lens_run_inner \
+        "$state_dir/intake.md" \
+        "$state_dir/scope-manifest.md" \
+        "$artifacts_dir/security-findings.json" \
+        "$artifacts_dir"
+}
+
+# Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = input file (raw text to analyze, e.g., a git diff or file list)
 #   $2 = scope_manifest path
 #   $3 = output findings.json path
 #   $4 = (optional) artifact dir for intermediate redacted prompt
-security_lens_run() {
+_security_lens_run_inner() {
     local input="$1"
     local scope_manifest="$2"
     local output="$3"

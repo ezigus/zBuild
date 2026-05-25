@@ -82,7 +82,7 @@ security_lens_init >/dev/null
 
 # Run without scope manifest — should fail (chokepoint refuses)
 set +e
-security_lens_run "$INPUT" "" "$OUTPUT" 2>/dev/null
+_security_lens_run_inner "$INPUT" "" "$OUTPUT" 2>/dev/null
 rc=$?
 set -e
 assert_eq "security_lens_run refuses without scope manifest (chokepoint enforcement)" "1" "$rc"
@@ -93,7 +93,7 @@ cat > "$MANIFEST" <<EOF
 + src/
 + tests/
 EOF
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
 assert_file_exists "findings.json created" "$OUTPUT"
 
 schema_v=$(jq -r .schema_version "$OUTPUT")
@@ -148,7 +148,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
 OUTPUT_R="$TEST_TEMP_DIR/findings_r.json"
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R" "$TEST_TEMP_DIR" >/dev/null 2>&1
 
 assert_file_exists "R1: router run creates findings.json" "$OUTPUT_R"
 stub_val=$(jq -r .stub "$OUTPUT_R")
@@ -173,7 +173,7 @@ exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R3="$TEST_TEMP_DIR/findings_r3.json"
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R3" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R3" "$TEST_TEMP_DIR" >/dev/null 2>&1
 fence_title=$(jq -r '.findings[0].title' "$OUTPUT_R3")
 assert_eq "R3: fenced JSON response parsed correctly" "XSS" "$fence_title"
 
@@ -186,7 +186,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R4="$TEST_TEMP_DIR/findings_r4.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R4" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R4" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R4: malformed response returns rc=0 (fail-open)" "0" "$rc"
@@ -203,7 +203,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R5="$TEST_TEMP_DIR/findings_r5.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R5" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R5" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R5: empty response returns rc=0" "0" "$rc"
@@ -218,7 +218,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R6="$TEST_TEMP_DIR/findings_r6.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R6" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R6" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R6: router rc=1 returns plugin rc=0 (fail-open)" "0" "$rc"
@@ -230,7 +230,7 @@ assert_eq "R6: router failure yields empty findings" "0" "$r6_count"
 # (invalid tier, missing models.json, T0). Use T9 (unknown tier) to force it.
 OUTPUT_R7="$TEST_TEMP_DIR/findings_r7.json"
 set +e
-ZBUILD_SECURITY_LENS_TIER=T9 security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R7" "$TEST_TEMP_DIR" >/dev/null 2>&1
+ZBUILD_SECURITY_LENS_TIER=T9 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R7" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R7: router rc=2 (fatal tier) returns plugin rc=1 (propagates)" "1" "$rc"
@@ -247,7 +247,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R8="$TEST_TEMP_DIR/findings_r8.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R8" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R8" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R8: missing .findings returns rc=0" "0" "$rc"
