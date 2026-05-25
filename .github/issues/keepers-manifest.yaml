@@ -2703,6 +2703,8 @@ issues:
       - memory_search uses LIKE %query% (TF-IDF-style — no vectors)
       - Reuses AgentDB tables from db-1..6 issues
       - Tests: contract conformance + roundtrip
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T18:52:23Z). Recorded by manifest-sync.'
   - id: mem-3
     title: "[Phase 0.5] Optional memory backend: ruflo HNSW vectors (plugin)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
