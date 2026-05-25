@@ -46,15 +46,16 @@ assert_contains "intake discovered in plugin registry" "$discovered" "agent/inta
 source "$PLUGIN_DIR/plugin.sh"
 intake_init >/dev/null 2>&1
 
-# ─── Test 2: ZBUILD_GOAL unset → rc=2 ────────────────────────────────────────
+# ─── Test 2: ZBUILD_GOAL unset AND no issue → rc=2 ───────────────────────────
 unset ZBUILD_GOAL 2>/dev/null || true
+export ZBUILD_ISSUE="0"
 
 set +e
 err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "unset ZBUILD_GOAL returns rc=2" "2" "$rc"
+assert_eq "unset ZBUILD_GOAL with no issue returns rc=2" "2" "$rc"
 assert_contains "stderr mentions ZBUILD_GOAL" "$err" "ZBUILD_GOAL"
 
 # ─── Test 3: goal written to state/intake.md ─────────────────────────────────
@@ -132,15 +133,29 @@ intake_finalize >/dev/null 2>&1
 finalize_count=$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
 assert_gt "plugin.finalize.complete event emitted" "$finalize_count" "0"
 
-# ─── Test 9: empty ZBUILD_GOAL → rc=2 ────────────────────────────────────────
+# ─── Test 9: empty ZBUILD_GOAL + ZBUILD_ISSUE=0 → rc=2 ──────────────────────
 export ZBUILD_GOAL=""
+export ZBUILD_ISSUE="0"
 
 set +e
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 
-assert_eq "empty ZBUILD_GOAL returns rc=2" "2" "$rc"
+assert_eq "empty ZBUILD_GOAL with no issue returns rc=2" "2" "$rc"
+
+# ─── Test 10: --issue mode (ZBUILD_GOAL="", ZBUILD_ISSUE=42) → rc=0 ──────────
+unset ZBUILD_GOAL 2>/dev/null || true
+export ZBUILD_ISSUE="42"
+
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "--issue mode with no goal text returns rc=0" "0" "$rc"
+assert_contains "--issue mode writes issue ref to intake.md" \
+    "$(cat "$STATE_DIR/intake.md")" "issue #42"
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env

@@ -62,9 +62,17 @@ intake_init() {
 #         $(dirname $state_file)/intake.md
 intake_run() {
     local goal="${ZBUILD_GOAL:-}"
+    local issue="${ZBUILD_ISSUE:-0}"
+
+    # Support --issue mode: when goal text is absent, derive it from the issue number.
+    # Runner exports ZBUILD_GOAL="" in --issue runs, so we fall back rather than hard-fail.
     if [[ -z "$goal" ]]; then
-        error "intake_run: ZBUILD_GOAL is required but not set"
-        return 2
+        if [[ -n "$issue" && "$issue" != "0" ]]; then
+            goal="GitHub issue #${issue}"
+        else
+            error "intake_run: ZBUILD_GOAL is required (or pass --issue <N>)"
+            return 2
+        fi
     fi
 
     local state_file="${2:-}"
