@@ -22,6 +22,10 @@ Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
   --goal "<text>"   Pipeline goal description (alternative to --issue)
   --dry-run         Print the stage plan without executing anything
   --template <id>   Pipeline template to use (default: standard)
+
+Environment:
+  ZBUILD_PLATFORM_OVERRIDE  Force a single platform; detection short-circuits.
+  ZBUILD_SCOPE_PATHS        Space-separated scope paths; written to scope-manifest.md.
 EOF
 }
 
@@ -125,6 +129,22 @@ main() {
     # TODO(#35): Admission gate pending re-label to phase-0.5.
     mkdir -p "$state_dir"
     local state_file="$state_dir/pipeline-state.json"
+
+    if [[ -n "${ZBUILD_SCOPE_PATHS:-}" ]]; then
+        local scope_manifest="$state_dir/scope-manifest.md"
+        local scope_body
+        scope_body="$(
+            echo "# Scope Manifest"
+            echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "# run_id: $_runner_run_id"
+            echo ""
+            for scope_path in $ZBUILD_SCOPE_PATHS; do
+                echo "$scope_path"
+            done
+        )"
+        printf '%s\n' "$scope_body" | atomic_write "$scope_manifest"
+        info "Scope paths written to $scope_manifest"
+    fi
 
     if ! init_state "$state_file" "$_runner_run_id" "$_runner_issue" 2>/dev/null; then
         warn "State file exists — clearing for fresh run (resume not yet implemented)"

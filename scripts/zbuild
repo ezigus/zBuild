@@ -32,6 +32,7 @@ Commands:
   status                 Show pipeline status (Phase 0 stub — JSON only)
   plugin list            List discovered plugins
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
+                         [--platform-override <p>] [--scope <path>]...
 
 See https://github.com/ezigus/zBuild/issues for the migration backlog.
 
@@ -88,7 +89,28 @@ case "$cmd" in
         case "${2:-}" in
             start)
                 shift 2
-                exec bash "$REPO_ROOT/core/pipeline/runner.sh" "$@"
+                platform_override=""
+                scope_paths=()
+                runner_args=()
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --platform-override)
+                            [[ -z "${2:-}" ]] && { error "--platform-override requires a value"; usage; exit 2; }
+                            platform_override="$2"; shift 2 ;;
+                        --scope)
+                            [[ -z "${2:-}" ]] && { error "--scope requires a value"; usage; exit 2; }
+                            scope_paths+=("$2"); shift 2 ;;
+                        *)
+                            runner_args+=("$1"); shift ;;
+                    esac
+                done
+                if [[ -n "$platform_override" ]]; then
+                    export ZBUILD_PLATFORM_OVERRIDE="$platform_override"
+                fi
+                if [[ ${#scope_paths[@]} -gt 0 ]]; then
+                    export ZBUILD_SCOPE_PATHS="${scope_paths[*]}"
+                fi
+                exec bash "$REPO_ROOT/core/pipeline/runner.sh" "${runner_args[@]+"${runner_args[@]}"}"
                 ;;
             *)
                 error "Unknown pipeline subcommand: ${2:-}"
