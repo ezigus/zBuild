@@ -1065,6 +1065,8 @@ issues:
 
       Tests: extend tests/plugin-security-lens-test.sh with a mocked router
       that returns a canned findings.json; verify parse + emit.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T00:53:40Z). Recorded by manifest-sync.'
   - id: mvp-5
     title: "[Phase 0.5] Output stage plugin (plugins/tool/output-github-comment/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
