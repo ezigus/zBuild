@@ -73,7 +73,9 @@ orch_capabilities                                     # → JSON
 
 Work-unit exit codes are normalised — individual codes are not passed through. Strategies use `2` to emit `stage.fail reason=partial` via the runner.
 
-**Default implementation**: `plugins/tool/orch-bash-parallel/` — uses bash subshells + `wait -n` for parallelism, no coordination beyond independent execution. Implements `fanout` and `sequential` strategies trivially; `composite` works via a single subshell.
+**Phase 0.5 default implementation**: `plugins/tool/orch-sequential/` — single-process, in-order dispatch. Chosen as the default for Phase 0.5 because it has zero coordination surface and the smallest reference impl of the 0/1/2 normalisation contract. The `bash-parallel` example in `.zbuild/config.yaml` below shows the most common opt-in.
+
+**Parallel implementation**: `plugins/tool/orch-bash-parallel/` — uses bash subshells + `wait -n` for parallelism, no coordination beyond independent execution. Implements `fanout` and `sequential` strategies trivially; `composite` works via a single subshell.
 
 **Optional implementation**: `plugins/tool/orch-ruflo-hive/` — proxies to `ruflo hive-mind init/spawn/orchestrate`. Implements all three strategies natively; provides queen-collapse synthesis and shared-memory namespacing. `orch_capabilities` declares `["hive_mind", "queen_collapse", "shared_memory"]`.
 
@@ -89,11 +91,13 @@ Defaults: `local` (no-op). Optionals: `gh-actions-cache`, `s3`, `gist`.
 
 ### Backend selection: `.zbuild/config.yaml`
 
+> **Scope note:** backend pluggability covers **memory, orchestrator, and cache only**. Model routing is core per ADR-003 — `core/router/route.sh` is not a backend and is not selectable via this config.
+
 ```yaml
 backends:
-  memory: sqlite                    # or "ruflo"
-  orchestrator: bash-parallel       # or "ruflo-hive"
-  cache: local                      # or "gh-actions-cache", "s3"
+  memory: sqlite                    # default; or "ruflo"
+  orchestrator: sequential          # default; or "bash-parallel", "ruflo-hive"
+  cache: local                      # default; or "gh-actions-cache", "s3"
 
 # Optional per-backend config
 memory_ruflo:

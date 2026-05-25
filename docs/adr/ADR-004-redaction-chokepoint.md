@@ -38,7 +38,7 @@ Behavior:
 
 ### Enforcement
 
-- **Test:** `tests/redaction-chokepoint-test.sh` greps the repo for `<claude\|<curl.*anthropic` invocations outside `core/redaction/` and `core/router/`; any match fails the test.
+- **Test:** `tests/integration/redaction-chokepoint-test.sh` greps the repo for `<claude\|<curl.*anthropic` invocations outside `core/redaction/` and `core/router/`; any match fails the test. (May relocate to `tests/unit/` under ADR-012 tiering — the test is a static repo scan, not an end-to-end integration; update this reference if it moves.)
 - **Code review:** PR checklist includes "Does this PR introduce a new LLM call?" → if yes, "Does it go through `core/redaction/apply_scope_redaction`?"
 - **Manifest:** plugins MUST declare `requires.core: [redaction]`; the registry refuses to load a `kind: agent` plugin without it.
 - **Event-bus assertion:** every `model.route` event MUST be preceded by a `redaction.applied` event within the same `run_id` + `stage`. The engine refuses to call the router if the precondition is unmet.

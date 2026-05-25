@@ -2953,3 +2953,19 @@ issues:
       the keeper backlog and survives manifest regeneration.
     state: closed
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T13:40:03Z). Recorded by manifest-sync.'
+  # ─── Phase 0.5 cleanup (filed 2026-05-26) ──────────────────────────────
+  # Cleanup of shipped Phase 0/0.5 code, docs, and manifests before
+  # resuming remaining Phase 0.5 work. No new functionality.
+  # Plan: .claude/plans/i-want-you-to-hashed-duckling.md
+  - id: cleanup-1
+    title: "[Phase 0.5 cleanup] Doc honesty: KEEPERS counts, ADR-004/008/011 drift"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [foundation, phase-0.5]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/271
+      Refines #4 (Phase 0 spec + architecture docs).
+      Follow-up to #251 (Phase 0 post-foundation audit).
+      Mechanical doc edits to remove stale counts (KEEPERS), wrong
+      action pins (ADR-008/010), wrong test path (ADR-004), wrong
+      default backend + missing router cross-ref note (ADR-011).
+    state: open
