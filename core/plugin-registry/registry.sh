@@ -237,6 +237,32 @@ lockfile_validate() {
     return $((mismatches > 0))
 }
 
+# ─── find_plugin_for_role ────────────────────────────────────────────────────
+# Find a plugin directory providing the given role and backend alias.
+# Usage: find_plugin_for_role <role> <backend_alias> [plugins_root]
+# Output: prints plugin_dir on success; returns 1 if not found.
+# Matches by: provides.role == <role> AND (id == <alias> OR provides.alias == <alias>)
+find_plugin_for_role() {
+    local role="$1"
+    local alias="$2"
+    local plugins_root="${3:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}}"
+    local plugin_dir manifest declared_role plugin_id declared_alias
+
+    while IFS= read -r plugin_dir; do
+        manifest="$plugin_dir/manifest.yaml"
+        [[ ! -f "$manifest" ]] && continue
+        declared_role="$(yaml_get "$manifest" "provides.role" 2>/dev/null || true)"
+        [[ "$declared_role" != "$role" ]] && continue
+        plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+        declared_alias="$(yaml_get "$manifest" "provides.alias" 2>/dev/null || true)"
+        if [[ "$plugin_id" == "$alias" || "$declared_alias" == "$alias" ]]; then
+            echo "$plugin_dir"
+            return 0
+        fi
+    done < <(discover_plugins "$plugins_root" 2>/dev/null || true)
+    return 1
+}
+
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
 # Source the plugin's plugin.sh and call a lifecycle hook by name.
 # Plugin functions are isolated by sub-shell to prevent namespace pollution.

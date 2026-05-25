@@ -11,6 +11,12 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 source "$_ZBUILD_ROOT/core/plugin-registry/registry.sh"
+# shellcheck source=../config/config.sh
+source "$_ZBUILD_ROOT/core/config/config.sh"
+zbuild_config_init
+# shellcheck source=../memory/contract.sh
+source "$_ZBUILD_ROOT/core/memory/contract.sh"
+memory_init || { echo "runner: memory backend failed to initialize" >&2; exit 2; }
 source "$_ZBUILD_ROOT/core/detect/platforms.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template.sh"
 source "$_ZBUILD_ROOT/core/pipeline/resolver.sh"
@@ -328,7 +334,12 @@ main() {
         if [[ -f "$state_file" ]]; then
             rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
         fi
-        _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
+        # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
+        # to prevent path traversal when run_id is used in report-${run_id}.md filenames.
+        local _raw_run_id="${ZBUILD_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
+        _runner_run_id="${_raw_run_id//[^a-zA-Z0-9_.-]/}"
+        # Fall back to generated ID if sanitization emptied the value
+        [[ -z "$_runner_run_id" ]] && _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
         _runner_issue="${issue:-0}"
         init_state "$state_file" "$_runner_run_id" "$_runner_issue"
         # Persist goal so resume can reconstruct the correct runner args.

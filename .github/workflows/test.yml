@@ -7,27 +7,25 @@ on:
 
 jobs:
   smoke:
-    name: Smoke (shellcheck + legacy sentinel)
+    name: Smoke (CLI sanity + legacy sentinel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
-      - name: Shellcheck all scripts
+      - uses: actions/checkout@v6
+      - name: CLI sanity
         run: |
-          find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
-            | xargs -0 shellcheck --severity=warning
+          bash scripts/zbuild --version
+          bash scripts/zbuild --help
       - name: Legacy sentinel
         run: bash legacy/scripts/sw 2>&1 | grep -q "disabled" || exit 1
 
   lint:
-    name: Lint
+    name: Lint (shellcheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
-      - name: Shellcheck (strict)
+      - name: Shellcheck all scripts
         run: |
           find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
             | xargs -0 shellcheck --severity=warning
@@ -36,15 +34,15 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run unit tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
-          bash scripts/run-tests.sh --tier unit
+          bash scripts/run-tests.sh --tier unit 2>&1 | tee /tmp/zbuild-unit-results.txt
         env:
           ZBUILD_TEST_TMP: ""
       - name: Upload unit results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: unit-results
@@ -55,13 +53,13 @@ jobs:
     name: Integration tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run integration tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
-          bash scripts/run-tests.sh --tier integration
+          bash scripts/run-tests.sh --tier integration 2>&1 | tee /tmp/zbuild-integration-results.txt
       - name: Upload integration results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: integration-results
@@ -72,7 +70,7 @@ jobs:
     name: E2E (mocked)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run e2e tier (mocked claude+gh)
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -88,7 +86,7 @@ jobs:
     name: Golden contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run golden tier
         run: bash scripts/run-tests.sh --tier golden
 
@@ -96,7 +94,7 @@ jobs:
     name: Mutation docs lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run mutation doc validation
         run: bash scripts/run-tests.sh --tier mutation
 
@@ -105,10 +103,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit, integration]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install kcov
         run: |
-          sudo apt-get install -y kcov || echo "kcov unavailable, skipping coverage"
+          sudo apt-get install -y cmake g++ libdw-dev libssl-dev libcurl4-openssl-dev python3
+          git clone --depth=1 https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
+          cmake -S /tmp/kcov-src -B /tmp/kcov-build
+          sudo cmake --build /tmp/kcov-build --target install -j"$(nproc)"
       - name: Run coverage (unit + integration)
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -127,7 +128,7 @@ jobs:
     needs: [smoke, lint, unit, integration, e2e-mocked, golden, mutation-lint, coverage]
     if: always()
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Write job summary
         run: |
           echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"

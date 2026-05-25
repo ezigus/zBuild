@@ -2613,6 +2613,8 @@ issues:
       - plugins/tool/cache-local/ default implementation
       - Selection via .zbuild/config.yaml: backends.cache: local|gh-actions-cache|s3
       - Tests: cache_pull on empty restores cleanly; cache_push round-trips
+    state: closed
+    closed_reason: 'Merged via PR #261 (feat/211-cache-contract) on 2026-05-25. core/cache/contract.sh + plugins/tool/cache-local/ shipped.'
   - id: cipar-4
     title: "[Phase 0.5] Cache backend: gh-actions-cache (for CI)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2662,6 +2664,8 @@ issues:
         GITHUB_ACTIONS=true mock), diffs state/artifacts/, events.jsonl tail
       - Bootstrap + teardown should be the only steps differing in behavior
       - Tests must pass deterministically — verifies parity contract
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T15:34:11Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — Pluggable memory backend (ADR-011, 4 issues) ─────────
   - id: mem-1
     title: "[Phase 0.5] Memory backend contract (put/get/search/namespace API)"
@@ -2681,6 +2685,8 @@ issues:
       - Plugin registry recognizes provides.role: memory-backend
       - CLI: zbuild plugin list --role memory-backend
       - Tests: a mock backend in tests/fixtures/ implements the contract
+    state: closed
+    closed_reason: 'Merged via PR #260 (feat/215-memory-contract) on 2026-05-25. core/memory/contract.sh + plugins/tool/memory-sqlite/ shipped.'
   - id: mem-2
     title: "[Phase 0.5] Default memory backend: SQLite (no external deps)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2732,6 +2738,8 @@ issues:
       - Doctor (#58) flags configured-but-missing backends
       - Tests cover: default (no config), each opt-in backend, missing-backend
         warning
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T15:29:57Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — Pluggable orchestrator backend (ADR-011, 4 issues) ───
   - id: orch-1
     title: "[Phase 0.5] Orchestrator backend contract (spawn/dispatch/collect/shutdown)"
@@ -2750,6 +2758,8 @@ issues:
         sequential) consume this contract — they don't bind to a specific
         backend
       - Tests with a synchronous mock backend
+    state: closed
+    closed_reason: 'Merged via PR #262 (feat/219-orch-contract) on 2026-05-25. core/orch/contract.sh + plugins/tool/orch-sequential/ + plugins/tool/orch-mock/ shipped.'
   - id: orch-2
     title: "[Phase 0.5] Default orchestrator backend: bash-parallel (no external deps)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
