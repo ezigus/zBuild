@@ -44,7 +44,7 @@ jobs:
         env:
           ZBUILD_TEST_TMP: ""
       - name: Upload unit results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: unit-results
@@ -61,7 +61,7 @@ jobs:
           export ZBUILD_TEST_TMP="$(mktemp -d)"
           bash scripts/run-tests.sh --tier integration
       - name: Upload integration results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: integration-results
