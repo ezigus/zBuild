@@ -1094,8 +1094,58 @@ issues:
       on/off configuration are tracked in #213. Implement #87 with the single
       comment-or-report dispatch; #213 will refactor this stage to use a
       destinations dispatch table.
+
+      Note: stdout-as-default (so the MVP runs without any GitHub auth or
+      destination flag) is split out to its own focused issue (see mvp-5a)
+      so the MVP demo can `zbuild pipeline start --goal ... --scope ...`
+      and see findings in the terminal with zero ceremony.
     state: closed
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-25T01:18:01Z). Recorded by manifest-sync.'
+  - id: mvp-5a
+    title: "[Phase 0.5] Output stage: stdout as default when no destination set"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, tool-plugin, cli-ux]
+    body: |
+      Make the MVP output stage (#87 / mvp-5) print findings to stdout when no
+      explicit destination flag/env is provided. This is the smallest possible
+      change that lets `zbuild pipeline start --goal "..." --scope ...` run
+      end-to-end without GitHub auth or a `--issue` flag, which is the
+      canonical first-run demo.
+
+      Rationale:
+      - Unix convention: tools print to stdout by default.
+      - ADR-010 (CI/CLI parity): output destinations are abstracted; stdout
+        is the lowest-common-denominator destination that needs no setup.
+      - Testability: CI smoke can pipe `zbuild ... | tee audit.md` without
+        a tracking issue / write token.
+      - Removes the "what issue number do I pass?" friction for first-time
+        users trying the MVP.
+
+      Scope:
+      - In plugins/tool/output-github-comment/plugin.sh: if neither
+        $ZBUILD_ISSUE nor $ZBUILD_OUTPUT is set, print the rendered markdown
+        report to stdout AND skip the gh comment / local file write.
+      - Document the precedence in the plugin's README and in the MVP
+        smoke-test docs: --issue > --output file > stdout default.
+      - Test: tests/plugin-output-stdout-test.sh verifies that with both
+        env vars unset, stdout contains the report and no gh CLI call
+        is attempted (mocked gh fails the test if called).
+
+      Out of scope:
+      - The full destinations dispatch table (stdout/file/pr-comment/
+        check-run/step-summary with per-destination on/off switches) —
+        that's #213.
+      - Renaming the plugin away from `output-github-comment/` — keep the
+        directory name for now; #213 will rename to `output/` when it
+        generalizes the dispatch.
+
+      Dependencies:
+      - Blocks: nothing critical; this is a polish issue that makes #87's
+        MVP demo work without ceremony.
+      - Depends on: #87 (mvp-5) landing first; this layers on top.
+
+      Spec citation: ADR-010 §3 (output destination abstraction);
+      this is the minimum slice of #213 needed for the MVP first run.
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
     title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
