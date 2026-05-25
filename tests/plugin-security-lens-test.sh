@@ -82,7 +82,7 @@ security_lens_init >/dev/null
 
 # Run without scope manifest — should fail (chokepoint refuses)
 set +e
-security_lens_run "$INPUT" "" "$OUTPUT" 2>/dev/null
+_security_lens_run_inner "$INPUT" "" "$OUTPUT" 2>/dev/null
 rc=$?
 set -e
 assert_eq "security_lens_run refuses without scope manifest (chokepoint enforcement)" "1" "$rc"
@@ -93,7 +93,7 @@ cat > "$MANIFEST" <<EOF
 + src/
 + tests/
 EOF
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
 assert_file_exists "findings.json created" "$OUTPUT"
 
 schema_v=$(jq -r .schema_version "$OUTPUT")
@@ -148,7 +148,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
 OUTPUT_R="$TEST_TEMP_DIR/findings_r.json"
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R" "$TEST_TEMP_DIR" >/dev/null 2>&1
 
 assert_file_exists "R1: router run creates findings.json" "$OUTPUT_R"
 stub_val=$(jq -r .stub "$OUTPUT_R")
@@ -173,7 +173,7 @@ exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R3="$TEST_TEMP_DIR/findings_r3.json"
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R3" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R3" "$TEST_TEMP_DIR" >/dev/null 2>&1
 fence_title=$(jq -r '.findings[0].title' "$OUTPUT_R3")
 assert_eq "R3: fenced JSON response parsed correctly" "XSS" "$fence_title"
 
@@ -186,7 +186,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R4="$TEST_TEMP_DIR/findings_r4.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R4" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R4" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R4: malformed response returns rc=0 (fail-open)" "0" "$rc"
@@ -203,7 +203,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R5="$TEST_TEMP_DIR/findings_r5.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R5" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R5" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R5: empty response returns rc=0" "0" "$rc"
@@ -218,7 +218,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R6="$TEST_TEMP_DIR/findings_r6.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R6" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R6" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R6: router rc=1 returns plugin rc=0 (fail-open)" "0" "$rc"
@@ -230,7 +230,7 @@ assert_eq "R6: router failure yields empty findings" "0" "$r6_count"
 # (invalid tier, missing models.json, T0). Use T9 (unknown tier) to force it.
 OUTPUT_R7="$TEST_TEMP_DIR/findings_r7.json"
 set +e
-ZBUILD_SECURITY_LENS_TIER=T9 security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R7" "$TEST_TEMP_DIR" >/dev/null 2>&1
+ZBUILD_SECURITY_LENS_TIER=T9 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R7" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R7: router rc=2 (fatal tier) returns plugin rc=1 (propagates)" "1" "$rc"
@@ -247,7 +247,7 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 OUTPUT_R8="$TEST_TEMP_DIR/findings_r8.json"
 set +e
-security_lens_run "$INPUT" "$MANIFEST" "$OUTPUT_R8" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R8" "$TEST_TEMP_DIR" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "R8: missing .findings returns rc=0" "0" "$rc"
@@ -255,6 +255,35 @@ r8_count=$(jq '.findings | length' "$OUTPUT_R8")
 assert_eq "R8: missing .findings yields empty array (not null)" "0" "$r8_count"
 r8_findings_type=$(jq -r '.findings | type' "$OUTPUT_R8")
 assert_eq "R8: .findings is array not null" "array" "$r8_findings_type"
+
+# ─── Hook contract: security_lens_run(stage, state_file) ─────────────────────
+# Verifies the wrapper derives paths correctly and writes to the right artifact.
+STATE_DIR="$TEST_TEMP_DIR/state"
+STATE_FILE="$STATE_DIR/pipeline-state.json"
+mkdir -p "$STATE_DIR/artifacts"
+echo '{"schema_version":1,"run_id":"test-hook-001","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
+echo "auth bypass credential leak" > "$STATE_DIR/intake.md"
+printf '+ src/\n+ tests/\n' > "$STATE_DIR/scope-manifest.md"
+
+cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
+#!/usr/bin/env bash
+echo '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+set +e
+security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "hook contract: security_lens_run(stage, state_file) returns rc=0" "0" "$rc"
+assert_file_exists "hook contract: artifact written to state_dir/artifacts/" \
+    "$STATE_DIR/artifacts/security-findings.json"
+
+# Platform partitioning: ZBUILD_TARGET_PLATFORM suffix is injected into filename
+ZBUILD_TARGET_PLATFORM="ios" security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
+assert_file_exists "hook contract: platform fanout writes platform-scoped artifact" \
+    "$STATE_DIR/artifacts/security-ios-findings.json"
 
 cleanup_test_env
 print_test_results
