@@ -164,11 +164,19 @@ set +e
 output="$(plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "run" "arg1" 2>&1)"
 rc=$?
 set -e
-# Warn message present in stderr; rc 0 because the underlying function ran.
+# rc=0: hook still ran. A regression that started refusing in non-strict
+# would surface here, not get hidden behind the warning-text check.
+assert_eq "non-strict mode still returns rc=0 (hook ran)" "0" "$rc"
 if echo "$output" | grep -q "tamper\|hash mismatch"; then
     assert_pass "non-strict mode emits tamper warning"
 else
     assert_fail "non-strict mode emits tamper warning" "got: $output"
+fi
+# And the tampered code actually executed (TAMPERED-RUN output present).
+if echo "$output" | grep -q "TAMPERED-RUN"; then
+    assert_pass "non-strict mode sourced the tampered file (warn-only path)"
+else
+    assert_fail "non-strict mode sourced the tampered file" "got: $output"
 fi
 
 # Restore plugin.sh so the later dispatch tests see a clean file.

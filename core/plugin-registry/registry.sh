@@ -318,9 +318,12 @@ verify_plugin_for_source() {
 
     local actual_pair; actual_pair="$(_hash_plugin_pair "$manifest")"
     if [[ "$actual_pair" != "$expected_pair" ]]; then
-        error "verify_plugin_for_source: $id — file hash mismatch (lockfile: $expected_pair, actual: $actual_pair). plugin.sh or manifest.yaml has changed since lock; refusing to source under ZBUILD_STRICT_PLUGIN_LOCK=1."
         emit_event "plugin.tamper.detected" "plugin=$id" "manifest=$manifest_in_lock"
-        [[ "${ZBUILD_STRICT_PLUGIN_LOCK:-0}" == "1" ]] && return 1
+        if [[ "${ZBUILD_STRICT_PLUGIN_LOCK:-0}" == "1" ]]; then
+            error "verify_plugin_for_source: $id — file hash mismatch (lockfile: $expected_pair, actual: $actual_pair). plugin.sh or manifest.yaml has changed since lock; refusing to source under ZBUILD_STRICT_PLUGIN_LOCK=1."
+            return 1
+        fi
+        warn "verify_plugin_for_source: $id — file hash mismatch (lockfile: $expected_pair, actual: $actual_pair). plugin.sh or manifest.yaml has changed since lock. Set ZBUILD_STRICT_PLUGIN_LOCK=1 to refuse to source on mismatch."
         return 0
     fi
     return 0
