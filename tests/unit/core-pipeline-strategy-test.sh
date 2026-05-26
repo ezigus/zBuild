@@ -258,6 +258,45 @@ else
     assert_fail "composite: output contains deferral message" "output: $composite_out"
 fi
 
+# ─── Test 6b: composite emits structured strategy.composite.unimplemented event (#311) ─
+print_test_section "6b. composite: structured event payload (#311)"
+
+# Source event-bus with a fresh events log so we can read what the stub emitted.
+COMP_EVENTS_DIR="$TEST_TEMP_DIR/composite-events"
+mkdir -p "$COMP_EVENTS_DIR"
+export ZBUILD_EVENTS_DIR="$COMP_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$COMP_EVENTS_DIR/events.jsonl"
+export ZBUILD_EVENTS_DB="$COMP_EVENTS_DIR/events.db"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+: > "$ZBUILD_EVENTS_JSONL"
+
+# shellcheck source=../../core/event-bus/event-bus.sh
+source "$REPO_ROOT/core/event-bus/event-bus.sh"
+
+# _DETECTED_PLATFORMS used by the stub to populate the platforms field.
+_DETECTED_PLATFORMS=("ios" "node")
+
+set +e
+_strategy_run_composite "comp-pool-002" "design" "some-role" "$STATE_FILE2" "$PLUGINS_ROOT" 2>/dev/null
+rc=$?
+set -e
+assert_eq "composite still rc=1 with event-bus loaded" "1" "$rc"
+
+if grep -q '"strategy.composite.unimplemented"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "composite emits strategy.composite.unimplemented event"
+else
+    assert_fail "composite emits strategy.composite.unimplemented event" \
+        "events.jsonl: $(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
+fi
+
+reason_field="$(grep '"strategy.composite.unimplemented"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
+    | jq -r '.data.reason // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "event reason=phase1_deferred" "phase1_deferred" "$reason_field"
+
+platforms_field="$(grep '"strategy.composite.unimplemented"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
+    | jq -r '.data.platforms // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "event platforms=ios,node (from _DETECTED_PLATFORMS)" "ios,node" "$platforms_field"
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results
