@@ -66,12 +66,19 @@ _strategy_make_work_unit() {
     # Values are embedded as single-quoted literals to prevent re-expansion.
     # event-bus.sh is sourced so plugin_hook_call emits events to the shared
     # ZBUILD_EVENTS_JSONL / ZBUILD_EVENTS_DB (inherited env vars from runner).
+    #
+    # Issue #307: ADR-009 §"ZBUILD_PLATFORM env contract" promises plugins
+    # see ZBUILD_PLATFORM=<single-platform> per per-platform invocation.
+    # ADR-001's hook-context table lists the older name ZBUILD_TARGET_PLATFORM
+    # for the same value. We export both so plugins can rely on either; the
+    # canonical name going forward is ZBUILD_PLATFORM (ADR-009 §6).
     cat > "$wu" <<WORKUNIT
 #!/usr/bin/env bash
 set -euo pipefail
 source '${_ZBUILD_ROOT}/scripts/lib/helpers.sh'
 source '${_ZBUILD_ROOT}/core/event-bus/event-bus.sh'
 source '${_ZBUILD_ROOT}/core/plugin-registry/registry.sh'
+export ZBUILD_PLATFORM='${platform}'
 export ZBUILD_TARGET_PLATFORM='${platform}'
 export ZBUILD_ROOT='${_ZBUILD_ROOT}'
 plugin_hook_call '${plugin_dir}' run '${stage}' '${state_file}'
