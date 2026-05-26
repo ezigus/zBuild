@@ -45,6 +45,96 @@ _extract_bash_block() {
     ' "$file"
 }
 
+# Extract the first backticked path from the line(s) following a ## header.
+# Returns the path with surrounding backticks stripped, empty on miss.
+# Pure-awk so the function never trips errexit/pipefail (the previous
+# `grep -oE ... | head -1` pipeline could exit non-zero on no-match or
+# SIGPIPE on multi-match — #322 review L56).
+_extract_backticked_path() {
+    local file="$1" header="$2"
+    awk -v hdr="$header" '
+        $0 == hdr            { in_section = 1; next }
+        in_section && /^## / { exit }
+        in_section {
+            line = $0
+            while (match(line, /`[^`]+`/)) {
+                tok = substr(line, RSTART + 1, RLENGTH - 2)
+                if (tok != "") {
+                    print tok
+                    exit
+                }
+                line = substr(line, RSTART + RLENGTH)
+            }
+        }
+    ' "$file" 2>/dev/null || true
+}
+
+# Verify the doc's "## Expected failing test" path is *plausibly related*
+# to the "## File" being mutated — i.e., the test either lives in a path that
+# shares a stem with the mutated file, OR it references the mutated file
+# path/basename in its contents. Issue #309: prevents a mutation that patches
+# core/router/ from naming an unrelated tests/unit/core-redaction-test.sh as
+# its expected-failing test (which would pass for the wrong reason).
+#
+# Returns 0 if related, 1 if not relateable, 2 if either path is missing.
+_check_mutation_relevance() {
+    local doc="$1"
+    local file_path test_path
+    file_path="$(_extract_backticked_path "$doc" "## File")"
+    test_path="$(_extract_backticked_path "$doc" "## Expected failing test")"
+
+    if [[ -z "$file_path" || -z "$test_path" ]]; then
+        return 2
+    fi
+
+    # The test file must exist on disk relative to repo root.
+    if [[ ! -f "$REPO_ROOT/$test_path" ]]; then
+        return 2
+    fi
+
+    # Stem overlap: the mutated file's basename stem (without .sh) AND each
+    # directory component contributes a candidate token. The test path must
+    # contain at least one of them.
+    local file_base="${file_path##*/}"
+    local file_stem="${file_base%.*}"            # e.g., scope-redaction
+    local file_dir="${file_path%/*}"             # e.g., core/redaction
+    local file_dir_leaf="${file_dir##*/}"        # e.g., redaction
+
+    local token tokens=("$file_stem" "$file_dir_leaf")
+    # Also tokenize the stem on '-' to allow partial-stem matches
+    # (e.g., scope-redaction → scope, redaction).
+    local IFS_BAK="$IFS"; IFS="-"
+    # shellcheck disable=SC2206
+    local stem_parts=( $file_stem )
+    IFS="$IFS_BAK"
+    for token in "${stem_parts[@]}"; do
+        [[ ${#token} -ge 4 ]] && tokens+=("$token")
+    done
+
+    local t
+    for t in "${tokens[@]}"; do
+        [[ -z "$t" ]] && continue
+        if [[ "$test_path" == *"$t"* ]]; then
+            return 0
+        fi
+        # Or the test source references the mutated file path/basename.
+        # `-F` keeps the search literal — file stems can include `.` or `[`
+        # (multi-dot names) which would otherwise be interpreted as regex
+        # metacharacters and silently miss or false-match (#322 review L108).
+        if grep -qF -- "$t" "$REPO_ROOT/$test_path" 2>/dev/null; then
+            return 0
+        fi
+    done
+
+    # Last chance: does the test source the mutated file directly?
+    if grep -qF "$file_path" "$REPO_ROOT/$test_path" 2>/dev/null \
+       || grep -qF "$file_base" "$REPO_ROOT/$test_path" 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Restore everything the last patch touched: `git checkout --` tracked
 # modifications (always tried, even if file was deleted), and `rm` untracked
 # files the patch created. Then forget the lists.
@@ -132,6 +222,25 @@ for doc in "$MUTATION_DIR"/*.md; do
     if [[ $structural_ok -eq 0 ]]; then
         failed=$((failed + 1))
         results+=("FAIL  $name  (structural)")
+        continue
+    fi
+
+    # Relevance gate (#309): expected-failing-test must plausibly exercise the
+    # mutated file. Refuses to run mutations that name an unrelated test.
+    relevance_rc=0
+    _check_mutation_relevance "$doc" || relevance_rc=$?
+    if [[ $relevance_rc -eq 2 ]]; then
+        echo "FAIL $name: could not parse File and/or Expected failing test paths (missing or test file absent)" >&2
+        failed=$((failed + 1))
+        results+=("FAIL  $name  (relevance: unparseable / missing test file)")
+        continue
+    fi
+    if [[ $relevance_rc -eq 1 ]]; then
+        file_path_msg="$(_extract_backticked_path "$doc" "## File")"
+        test_path_msg="$(_extract_backticked_path "$doc" "## Expected failing test")"
+        echo "FAIL $name: expected-failing-test '$test_path_msg' has no path/content link to mutated '$file_path_msg' (#309)" >&2
+        failed=$((failed + 1))
+        results+=("FAIL  $name  (relevance: test does not exercise mutated file)")
         continue
     fi
 
