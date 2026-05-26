@@ -42,13 +42,23 @@ _orch_local_kill_slot() {
 # _orch_local_dispatch_workunit <pool_dir> <pid_subdir> <work_unit> <caller_tag>
 # Dispatches <work_unit> (must be an executable file path) in a background
 # subshell. Records wrapper PID and inner PID; installs trap to propagate
-# SIGTERM/EXIT to the inner process. Prints slot_id to stdout. Returns 0 on
-# successful dispatch, 1 on validation/permission failure.
+# SIGTERM/EXIT to the inner process.
+#
+# Output: prints slot_id to stdout AND sets the global _ORCH_LOCAL_LAST_SLOT_ID.
+# Callers needing the slot_id after dispatch (e.g. for downstream telemetry)
+# MUST read the global, NOT use command substitution: `$(_orch_local_dispatch_workunit ...)`
+# forks a subshell whose EXIT trap (installed by test-helpers.sh or similar)
+# `pkill -P $$`s the wrapper subshell we just spawned. The global pattern
+# avoids that subshell entirely. (Caught in #282 second-round review.)
+#
+# Returns 0 on successful dispatch, 1 on validation/permission failure.
 _orch_local_dispatch_workunit() {
     local pool_dir="$1"
     local pid_subdir="$2"
     local work_unit="$3"
     local caller_tag="${4:-orch_local}"
+
+    _ORCH_LOCAL_LAST_SLOT_ID=""
 
     if [[ ! -f "$work_unit" || ! -x "$work_unit" ]]; then
         warn "${caller_tag}: work_unit must be a path to an executable file: ${work_unit}" || true
@@ -79,6 +89,7 @@ _orch_local_dispatch_workunit() {
     ) &
     local worker_pid=$!
     echo "$worker_pid" > "${pool_dir}/${pid_subdir}/${slot_id}.pid"
+    _ORCH_LOCAL_LAST_SLOT_ID="$slot_id"
     echo "$slot_id"
     return 0
 }

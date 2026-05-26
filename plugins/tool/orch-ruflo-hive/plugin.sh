@@ -78,13 +78,13 @@ orch_dispatch() {
     local pool_id="$1" work_unit="$2"
     _orch_hive_validate_pool_id "$pool_id" "orch_dispatch" || return 1
 
-    # Capture slot_id from local dispatch; abort the ruflo notification if
-    # validation/dispatch failed (Copilot caught on #282: previous order
-    # emitted ruflo telemetry for work that never ran).
-    local slot_id rc
-    slot_id="$(_orch_local_dispatch_workunit "$(_orch_hive_pool_dir "$pool_id")" "slots" "$work_unit" "orch_ruflo_hive")"
-    rc=$?
-    [[ $rc -ne 0 ]] && return "$rc"
+    # Dispatch locally first (so we only notify ruflo for work that ran).
+    # Read slot_id from the engine's _ORCH_LOCAL_LAST_SLOT_ID global rather
+    # than command substitution — `$(...)` forks a subshell whose EXIT trap
+    # would pkill the wrapper we just spawned (caught in #282 second round).
+    _orch_local_dispatch_workunit "$(_orch_hive_pool_dir "$pool_id")" "slots" "$work_unit" "orch_ruflo_hive" \
+        >/dev/null || return $?
+    local slot_id="$_ORCH_LOCAL_LAST_SLOT_ID"
 
     # Best-effort ruflo notification — failures do not affect local execution.
     ruflo hive-mind task \
