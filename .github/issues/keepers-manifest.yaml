@@ -3035,4 +3035,22 @@ issues:
       core/pipeline/state_helpers.sh (write_scope_override, _update_stage_status,
       _set_pipeline_status + jq filter helpers). runner.sh drops from 572
       to 448 lines, comfortably under the CLAUDE.md 500-line cap.
+    state: closed
+    closed_reason: 'Shipped via PR #280 on 2026-05-26.'
+  - id: cleanup-6
+    title: "[Phase 0.5 cleanup] Orch backend dedup: extract core/orch/local_engine.sh from bash-parallel + ruflo-hive"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/281
+      Refines #220 (bash-parallel), #221 (ruflo-hive), #269 (0/1/2
+      normaliser fix that exposed the duplication), #278 (orch-mock
+      catch-up that proved the duplication trap). Extract shared
+      dispatch/collect/poll/shutdown logic from the two backends into
+      new core/orch/local_engine.sh. Single source of truth for the
+      0/1/2 normaliser. orch-bash-parallel drops 203→86 LoC;
+      orch-ruflo-hive drops 228→119 LoC. Both plugins keep only their
+      backend-specific bits (pool-dir naming, validation, ruflo hive-mind
+      hooks, capabilities). Future contract fixes change one file, not
+      two-or-three. No behavior change — pure refactor.
     state: open
