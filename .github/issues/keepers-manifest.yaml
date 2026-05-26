@@ -3255,6 +3255,44 @@ issues:
       interrupted) branch which bypasses the 86400s check; in_progress)
       branch with a stale timestamp is never exercised. Small test
       addition; no production code change.
+  - id: cleanup-delta-d
+    title: "[Phase 0.5 cleanup] Per-plugin keeper trials for memory-sqlite (#216) and orch-sequential (#219)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/302
+      Per KEEPERS §G 5-trial-per-keeper mandate. Both default backends
+      (memory-sqlite #216, orch-sequential #219) shipped without
+      dedicated test files; coverage came indirectly via the contract
+      layer tests. The ruflo counterparts (memory-ruflo, orch-ruflo-hive)
+      have per-plugin tests; the two defaults now do too.
+
+      Added:
+      - tests/integration/plugin-memory-sqlite-test.sh (24 assertions:
+        capabilities, put/get roundtrip with single-quote/newline/UTF-8
+        edge cases, namespace isolation, search --limit, lifecycle
+        list/exists/clear, durability across reinit, sequential overwrite)
+      - tests/integration/plugin-orch-sequential-test.sh (12 assertions:
+        capabilities, spawn, dispatch+collect 0/1/2 normalization,
+        shutdown, pool isolation, pool_id validation, script-file
+        work-unit format)
+
+      Concurrency bug surfaced by the new memory-sqlite test (lost
+      writes under SQLITE_BUSY because no PRAGMA busy_timeout): filed
+      as #303 follow-up. Test stays sequential today; once #303 lands,
+      a higher-concurrency assertion can be added.
+    state: open
+  - id: bug-memory-sqlite-busy-timeout
+    title: "[Phase 0.5 bug surfaced by #302] memory-sqlite: lost writes under concurrent puts (no busy_timeout)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/303
+      memory-sqlite doesn't set PRAGMA busy_timeout; concurrent puts
+      from separate processes silently lose writes under SQLITE_BUSY.
+      Surfaced by Group D per-plugin trial. Fix: add busy_timeout=5000
+      to schema-init in memory_backend_init.
   - id: coverage-gap-runner-abort-state-error
     title: "[Test coverage gap surfaced by #298] runner abort trap: state-write failure path not exercised by A2"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
