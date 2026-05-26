@@ -3020,4 +3020,19 @@ issues:
       validates-or-casts $issue to integer at function entry; (3) router
       drops the predictable /tmp/zb-router-stderr-$$ fallback and returns
       2 with a router.error event if mktemp fails.
+    state: closed
+    closed_reason: 'Shipped via PR #278 on 2026-05-26.'
+  - id: cleanup-5
+    title: "[Phase 0.5 cleanup] Split core/pipeline/runner.sh (572 LoC → ≤500 per CLAUDE.md)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/279
+      Refines #83 (initial pipeline runner) and the runner growth across
+      #214, #225, #244, #268. Pure extraction — no behavior change. Three
+      new files: core/pipeline/dispatch.sh (_find_plugin_for_stage),
+      core/pipeline/contracts.sh (_check_artifact_contract), and
+      core/pipeline/state_helpers.sh (write_scope_override, _update_stage_status,
+      _set_pipeline_status + jq filter helpers). runner.sh drops from 572
+      to 448 lines, comfortably under the CLAUDE.md 500-line cap.
     state: open
