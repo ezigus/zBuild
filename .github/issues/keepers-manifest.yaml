@@ -3243,7 +3243,8 @@ issues:
       trap state-write failure path) — substituted with safer alt
       mutations and filed follow-ups #299, #300 to strengthen the tests
       and restore the more aggressive mutations.
-    state: open
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-26T11:10:38Z). Recorded by manifest-sync.'
   - id: coverage-gap-resume-in-progress
     title: "[Test coverage gap surfaced by #298] resume.sh: in_progress 24h boundary never exercised"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3281,7 +3282,8 @@ issues:
       writes under SQLITE_BUSY because no PRAGMA busy_timeout): filed
       as #303 follow-up. Test stays sequential today; once #303 lands,
       a higher-concurrency assertion can be added.
-    state: open
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-26T11:35:04Z). Recorded by manifest-sync.'
   - id: bug-memory-sqlite-busy-timeout
     title: "[Phase 0.5 bug surfaced by #302] memory-sqlite: lost writes under concurrent puts (no busy_timeout)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3329,4 +3331,5 @@ issues:
       - tests/golden/parity/artifact-paths.golden
 
       No production code changes. Just stronger parity coverage.
-    state: open
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-26T11:35:07Z). Recorded by manifest-sync.'

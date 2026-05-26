@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-25T22:53:01Z (rolling 30-PR window)_
+_Last updated: 2026-05-26T21:31:05Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -30,3 +30,4 @@ _Last updated: 2026-05-25T22:53:01Z (rolling 30-PR window)_
 | #257 | [manifest-sync] Drift reconciliation | 2026-05-25 |
 | #269 | fix(pipeline): address PR #268 review comments (strategy + orch contract) | 2026-05-25 |
 | #265 | [manifest-sync] Drift reconciliation | 2026-05-25 |
+| #295 | manifest(delta-deferred): file 8 tracking issues from review delta plan | 2026-05-26 |
