@@ -201,6 +201,34 @@ list_plugins_table() {
 }
 
 # ─── lockfile_write / lockfile_validate ─────────────────────────────────────
+# Lockfile format (one record per line):
+#   <plugin_id> <manifest_sha>:<plugin_sh_sha> <manifest_path>
+#
+# Issue #290: hashing only the manifest leaves a tampered plugin.sh with
+# unchanged manifest passing verification — and the engine then `source`s the
+# tampered file, giving an attacker code execution. We now hash both files
+# and reverify before sourcing (see verify_plugin_for_source).
+#
+# Legacy single-hash records (pre-#290) are detected and treated as a
+# mismatch with a clearer message so users know to regenerate.
+
+# ─── _hash_plugin_pair — emit "<manifest_sha>:<plugin_sh_sha>" ──────────────
+_hash_plugin_pair() {
+    local manifest="$1"
+    local plugin_sh; plugin_sh="$(dirname "$manifest")/plugin.sh"
+    local manifest_sha; manifest_sha="$(shasum -a 256 "$manifest" | cut -d' ' -f1)"
+    local plugin_sh_sha
+    if [[ -f "$plugin_sh" ]]; then
+        plugin_sh_sha="$(shasum -a 256 "$plugin_sh" | cut -d' ' -f1)"
+    else
+        # Plugin has no plugin.sh (e.g., manifest-only data plugin). Use a
+        # sentinel sha so absence is recorded explicitly and any later
+        # appearance of plugin.sh becomes a detected change.
+        plugin_sh_sha="0000000000000000000000000000000000000000000000000000000000000000"
+    fi
+    printf '%s:%s\n' "$manifest_sha" "$plugin_sh_sha"
+}
+
 lockfile_write() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
     local lockfile="${2:-$ZBUILD_LOCKFILE}"
@@ -209,8 +237,8 @@ lockfile_write() {
     discover_plugins "$plugins_root" | sort | while IFS= read -r plugin_dir; do
         local manifest="$plugin_dir/manifest.yaml"
         local id; id="$(yaml_get "$manifest" "id")"
-        local hash; hash="$(shasum -a 256 "$manifest" | cut -d' ' -f1)"
-        echo "$id $hash $manifest"
+        local pair; pair="$(_hash_plugin_pair "$manifest")"
+        echo "$id $pair $manifest"
     done > "$lockfile.tmp"
     mv "$lockfile.tmp" "$lockfile"
     emit_event "registry.lockfile.written" "lockfile=$lockfile"
@@ -222,19 +250,80 @@ lockfile_validate() {
         return 0  # No lockfile yet; first run.
     fi
     local mismatches=0
-    while IFS=' ' read -r id expected_hash manifest; do
+    while IFS=' ' read -r id expected_pair manifest; do
         if [[ ! -f "$manifest" ]]; then
             warn "lockfile_validate: manifest missing for $id: $manifest"
             mismatches=$((mismatches + 1))
             continue
         fi
-        local actual_hash; actual_hash="$(shasum -a 256 "$manifest" | cut -d' ' -f1)"
-        if [[ "$actual_hash" != "$expected_hash" ]]; then
-            warn "lockfile_validate: hash mismatch for $id (lockfile=$expected_hash, actual=$actual_hash)"
+        # Detect legacy single-hash records (no colon → pre-#290 format).
+        if [[ "$expected_pair" != *:* ]]; then
+            warn "lockfile_validate: legacy single-hash record for $id; regenerate lockfile (\`zbuild plugin lock\`) to enable plugin.sh tamper detection (#290)"
+            mismatches=$((mismatches + 1))
+            continue
+        fi
+        local actual_pair; actual_pair="$(_hash_plugin_pair "$manifest")"
+        if [[ "$actual_pair" != "$expected_pair" ]]; then
+            local expected_manifest="${expected_pair%:*}"
+            local expected_plugin_sh="${expected_pair#*:}"
+            local actual_manifest="${actual_pair%:*}"
+            local actual_plugin_sh="${actual_pair#*:}"
+            if [[ "$actual_manifest" != "$expected_manifest" && "$actual_plugin_sh" != "$expected_plugin_sh" ]]; then
+                warn "lockfile_validate: $id — BOTH manifest.yaml AND plugin.sh changed since lockfile"
+            elif [[ "$actual_manifest" != "$expected_manifest" ]]; then
+                warn "lockfile_validate: $id — manifest.yaml changed since lockfile"
+            else
+                warn "lockfile_validate: $id — plugin.sh changed since lockfile (possible tampering)"
+            fi
             mismatches=$((mismatches + 1))
         fi
     done < "$lockfile"
     return $((mismatches > 0))
+}
+
+# ─── verify_plugin_for_source — pre-source tamper check (#290) ──────────────
+# Returns 0 if plugin.sh is safe to source per the lockfile, 1 if tampered.
+# When ZBUILD_STRICT_PLUGIN_LOCK=1, this is called from plugin_hook_call right
+# before `source "$plugin_sh"`; mismatch refuses to source. When the env var
+# is unset (default), behavior matches lockfile_validate: warn-only.
+#
+# If no lockfile entry exists for this plugin, returns 0 — the lockfile is
+# the authority on what's pinned, and a brand-new plugin won't be there yet.
+verify_plugin_for_source() {
+    local manifest="$1"
+    local lockfile="${2:-$ZBUILD_LOCKFILE}"
+    [[ ! -f "$lockfile" ]] && return 0
+
+    local id; id="$(yaml_get "$manifest" "id")"
+    [[ -z "$id" ]] && return 0
+
+    local expected_pair manifest_in_lock
+    while IFS=' ' read -r lock_id pair lock_manifest; do
+        if [[ "$lock_id" == "$id" ]]; then
+            expected_pair="$pair"
+            manifest_in_lock="$lock_manifest"
+            break
+        fi
+    done < "$lockfile"
+
+    # No entry — new plugin, no pin to enforce.
+    [[ -z "${expected_pair:-}" ]] && return 0
+
+    # Legacy single-hash record: insist on regeneration before enforcing.
+    if [[ "$expected_pair" != *:* ]]; then
+        warn "verify_plugin_for_source: $id has legacy single-hash lockfile entry; cannot verify plugin.sh (#290)"
+        [[ "${ZBUILD_STRICT_PLUGIN_LOCK:-0}" == "1" ]] && return 1
+        return 0
+    fi
+
+    local actual_pair; actual_pair="$(_hash_plugin_pair "$manifest")"
+    if [[ "$actual_pair" != "$expected_pair" ]]; then
+        error "verify_plugin_for_source: $id — file hash mismatch (lockfile: $expected_pair, actual: $actual_pair). plugin.sh or manifest.yaml has changed since lock; refusing to source under ZBUILD_STRICT_PLUGIN_LOCK=1."
+        emit_event "plugin.tamper.detected" "plugin=$id" "manifest=$manifest_in_lock"
+        [[ "${ZBUILD_STRICT_PLUGIN_LOCK:-0}" == "1" ]] && return 1
+        return 0
+    fi
+    return 0
 }
 
 # ─── find_plugin_for_role ────────────────────────────────────────────────────
@@ -286,6 +375,12 @@ plugin_hook_call() {
 
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
     local kind; kind="$(yaml_get "$manifest" "kind")"
+
+    # Pre-source tamper check (#290). Honors ZBUILD_STRICT_PLUGIN_LOCK.
+    if ! verify_plugin_for_source "$manifest"; then
+        emit_event "plugin.$hook_name.refused" "plugin=$plugin_id" "kind=$kind" "reason=lockfile-mismatch"
+        return 1
+    fi
 
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
 

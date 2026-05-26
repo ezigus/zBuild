@@ -126,6 +126,69 @@ rc=$?
 set -e
 assert_eq "lockfile_validate detects manifest mutation" "1" "$rc"
 
+# ─── Plugin.sh tamper detection (#290) ──────────────────────────────────────
+# Re-lock with manifest restored; tamper plugin.sh only.
+sed -i.bak '/^# extra comment$/d' "$FIXTURE_ROOT/agent/test-lens/manifest.yaml" 2>/dev/null \
+    || sed -i '' '/^# extra comment$/d' "$FIXTURE_ROOT/agent/test-lens/manifest.yaml"
+rm -f "$FIXTURE_ROOT/agent/test-lens/manifest.yaml.bak"
+lockfile_write "$FIXTURE_ROOT" "$ZBUILD_LOCKFILE"
+set +e
+lockfile_validate "$ZBUILD_LOCKFILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "lockfile clean after re-lock" "0" "$rc"
+
+# Append malicious-looking code to plugin.sh (manifest untouched).
+echo 'test_lens_run() { echo "TAMPERED-RUN: $*"; }' >> "$FIXTURE_ROOT/agent/test-lens/plugin.sh"
+set +e
+lockfile_validate "$ZBUILD_LOCKFILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "lockfile_validate detects plugin.sh tamper (manifest untouched) (#290)" "1" "$rc"
+
+# Under ZBUILD_STRICT_PLUGIN_LOCK=1, plugin_hook_call refuses to source.
+set +e
+output="$(ZBUILD_STRICT_PLUGIN_LOCK=1 plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "run" "arg1" 2>&1)"
+rc=$?
+set -e
+assert_eq "strict mode refuses tampered plugin.sh (rc != 0)" "1" "$rc"
+if echo "$output" | grep -q "TAMPERED-RUN"; then
+    assert_fail "strict mode must NOT execute tampered code" "got: $output"
+else
+    assert_pass "strict mode blocks tampered code execution"
+fi
+
+# Default (non-strict): warn but still source — keeps current behavior for
+# users who haven't opted in.
+set +e
+output="$(plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "run" "arg1" 2>&1)"
+rc=$?
+set -e
+# Warn message present in stderr; rc 0 because the underlying function ran.
+if echo "$output" | grep -q "tamper\|hash mismatch"; then
+    assert_pass "non-strict mode emits tamper warning"
+else
+    assert_fail "non-strict mode emits tamper warning" "got: $output"
+fi
+
+# Restore plugin.sh so the later dispatch tests see a clean file.
+cat > "$FIXTURE_ROOT/agent/test-lens/plugin.sh" <<'EOF'
+test_lens_init() { echo "init called"; }
+test_lens_run() { echo "run called: $*"; }
+EOF
+lockfile_write "$FIXTURE_ROOT" "$ZBUILD_LOCKFILE"
+
+# Legacy single-hash lockfile entry is detected and flagged.
+# Manually craft a legacy-format record (no colon).
+LEGACY_LOCKFILE="$TEST_TEMP_DIR/plugins-legacy.lock"
+legacy_hash="$(shasum -a 256 "$FIXTURE_ROOT/agent/test-lens/manifest.yaml" | cut -d' ' -f1)"
+echo "test-lens $legacy_hash $FIXTURE_ROOT/agent/test-lens/manifest.yaml" > "$LEGACY_LOCKFILE"
+set +e
+lockfile_validate "$LEGACY_LOCKFILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "lockfile_validate flags legacy single-hash records (#290 migration)" "1" "$rc"
+
 # Hook dispatch: call init on test-lens
 output="$(plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "init" 2>&1)"
 assert_contains "plugin_hook_call dispatches init hook" "$output" "init called"
