@@ -141,16 +141,49 @@ persist_result="$(memory_get "persist-ns" "persist-key")"
 assert_eq "data survives backend_init re-call (idempotent)" "persist-value" "$persist_result"
 
 # ─── Test 7: sequential puts overwrite cleanly (last-write-wins semantics) ──
-# NOTE: concurrent writes from separate processes are NOT safe today —
-# memory-sqlite doesn't set `PRAGMA busy_timeout`, so SQLITE_BUSY causes
-# lost writes even at 3 concurrent writers. Tracked as #303; once fixed,
-# this section should add the concurrent-write coverage.
 print_test_section "7. sequential overwrite: last write wins on same (ns,key)"
 memory_put "seq-ns" "k1" "first"
 memory_put "seq-ns" "k1" "second"
 memory_put "seq-ns" "k1" "third"
 final="$(memory_get "seq-ns" "k1")"
 assert_eq "INSERT OR REPLACE semantics: last write wins" "third" "$final"
+
+# ─── Test 7b: concurrent puts to distinct keys — no lost writes (issue #303) ─
+# Before the busy_timeout fix this test would fail intermittently because
+# SQLITE_BUSY caused silent INSERT failures. With `-cmd ".timeout 5000"` set
+# on every sqlite3 invocation, blocked writers wait + retry internally.
+print_test_section "7b. concurrent puts to distinct keys: all writes durable (#303)"
+CONCURRENT_N=20
+for i in $(seq 1 "$CONCURRENT_N"); do
+    memory_put "concur-ns" "key-$i" "value-$i" &
+done
+wait
+
+missing=0
+for i in $(seq 1 "$CONCURRENT_N"); do
+    got="$(memory_get "concur-ns" "key-$i")"
+    if [[ "$got" != "value-$i" ]]; then
+        missing=$((missing + 1))
+    fi
+done
+assert_eq "concurrent puts to ${CONCURRENT_N} distinct keys: all present (no SQLITE_BUSY drops)" "0" "$missing"
+
+# ─── Test 7c: concurrent puts to same key — exactly one winner, no torn write ─
+print_test_section "7c. concurrent puts to same key: one winner, no NULL/empty"
+for i in $(seq 1 "$CONCURRENT_N"); do
+    memory_put "race-ns" "shared" "writer-$i" &
+done
+wait
+
+race_result="$(memory_get "race-ns" "shared")"
+# A successful run is one where SOME writer-N value is present (not empty).
+# A failed (pre-fix) run would frequently see an empty result or a missing row.
+if [[ "$race_result" =~ ^writer-[0-9]+$ ]]; then
+    assert_eq "same-key race produces a complete write (one writer wins)" "1" "1"
+else
+    echo "  FAIL: same-key race left memory in non-winner state: '$race_result'" >&2
+    assert_eq "same-key race produces a complete write (one writer wins)" "winner" "$race_result"
+fi
 
 # ─── Test 8: schema-version unaware roundtrip with empty value ──────────────
 print_test_section "8. edge cases"
