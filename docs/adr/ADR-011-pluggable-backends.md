@@ -82,12 +82,16 @@ Work-unit exit codes are normalised — individual codes are not passed through.
 ### Cache backend contract (covered in ADR-010)
 
 ```bash
-cache_pull <slot_id>                                  # restore state from cache
-cache_push <slot_id>                                  # snapshot state to cache
+cache_pull <key> <dest_dir>                           # restore from cache key into dest_dir
+cache_push <key> <src_dir>                            # snapshot src_dir under cache key
 cache_capabilities                                    # → JSON
 ```
 
-Defaults: `local` (no-op). Optionals: `gh-actions-cache`, `s3`, `gist`.
+The `<key>` is an opaque, plugin-agnostic identifier (e.g., a slot id or a content hash). The `<dest_dir>` / `<src_dir>` makes the caller's intent explicit and lets a single cache backend serve multiple consumers (resume snapshot, build artifact, etc.) within one run.
+
+Reconciled with the code (`core/cache/contract.sh`) on 2026-05-26 per #310: the initial sketch used a single-arg `cache_pull <slot_id>` that conflated key and destination. The two-arg form is what every implementation already needs and what the existing `gh-actions-cache` / `cache-local` plugins ship.
+
+Defaults: `local` (no-op stub for Phase 0.5). Optionals: `gh-actions-cache`, `s3`, `gist`.
 
 ### Backend selection: `.zbuild/config.yaml`
 

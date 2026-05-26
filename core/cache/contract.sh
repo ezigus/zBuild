@@ -67,10 +67,8 @@ cache_has_capability() {
 
 # ─── Backend loading ─────────────────────────────────────────────────────────
 # Executed at sourcing time. Determines backend, sources plugin, verifies API.
-# NOTE: ADR-011 specifies single-arg cache_pull <slot_id>, but this Phase 0.5
-# implementation uses cache_pull <key> <dest_dir> and cache_push <key> <src_dir>.
-# The signature will be reconciled when bootstrap.sh and teardown.sh are
-# implemented (issues #209/#210).
+# Cache contract signature is `cache_pull <key> <dest_dir>` / `cache_push <key>
+# <src_dir>` — ADR-011 reconciled to this shape on 2026-05-26 per #310.
 
 _zbuild_cache_load_backend() {
     local backend
