@@ -324,6 +324,8 @@ issues:
       ALREADY MIGRATED in Phase 0 as core/event-bus/event-bus.sh.
       This issue verifies it via 5-test trial during Phase 1 (full coverage,
       mapping table, removal symptom).
+    state: closed
+    closed_reason: 'Closed via #285 on 2026-05-26 — event bus shipped at core/event-bus/event-bus.sh; verified by tests/unit/core-event-bus-test.sh.'
   - id: b-2
     title: "[B1] Audit intensity auto-selection (reads quality-scores.jsonl)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -472,6 +474,8 @@ issues:
       ALREADY MIGRATED in Phase 0 as core/redaction/scope-redaction.sh. This
       issue tracks routing all 9 legacy call sites through the chokepoint as
       Phase 2 keepers migrate.
+    state: closed
+    closed_reason: 'Closed via #285 on 2026-05-26 — chokepoint shipped at core/redaction/scope-redaction.sh; routing legacy call sites is Phase 2 follow-on work (separate tracking).'
   - id: c-2
     title: "[C] Goal sanitization at all capture/resume/restart boundaries"
     milestone: "Phase 2 — Reliability & Safety Primitives"
@@ -512,6 +516,8 @@ issues:
       ([ADR-011](../../docs/adr/ADR-011-pluggable-backends.md)). See also
       #225 (operator-CLI surface for resume) and #209 (auto-resume detection
       in bootstrap).
+    state: closed
+    closed_reason: 'Closed via #285 on 2026-05-26 — current_iteration field shipped in core/state/resume.sh:29 schema; verified by tests/integration/core-state-resume-exec-test.sh + tests/integration/resume-state-machine-test.sh.'
   - id: c-5
     title: "[C] Disk-space precheck on ALL artifact writes"
     milestone: "Phase 2 — Reliability & Safety Primitives"
@@ -2568,6 +2574,8 @@ issues:
       - Locally: cache-pull is local-noop but resume detection still runs
       - Doctor-style report at end (green/yellow/red per check + resume status)
       - Reusable Actions composite: .github/actions/bootstrap/action.yml
+    state: closed
+    closed_reason: 'Closed via #285 on 2026-05-26 — duplicate of #223 (closed when bootstrap shipped via PR #245).'
   - id: cipar-2
     title: "[Phase 0.5] zbuild teardown command (snapshot state, mark status, upload artifacts, summarize)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2597,6 +2605,8 @@ issues:
       - In CI: writes to $GITHUB_STEP_SUMMARY; uploads state/artifacts/* via
         actions/upload-artifact; updates PR comment marker (uses #56 contract)
       - Reusable Actions composite: .github/actions/teardown/action.yml
+    state: closed
+    closed_reason: 'Closed via #285 on 2026-05-26 — duplicate of #224 (closed when teardown shipped via PR #245).'
   - id: cipar-3
     title: "[Phase 0.5] Cache backend contract + default (local) implementation"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3070,3 +3080,19 @@ issues:
       dirs aren't tracked; this is local-only). No code, no tests affected.
     state: closed
     closed_reason: 'Shipped via PR #284 on 2026-05-26.'
+  - id: cleanup-8
+    title: "[Phase 0.5 cleanup] Issue/manifest hygiene: close already-shipped (#20/#33/#36) + duplicates (#209/#210)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/285
+      Final PR in the Phase 0.5 cleanup wave. Closes 5 stale GitHub
+      issues whose work has already shipped: #20 (event bus → b-1),
+      #33 (redaction chokepoint → c-1), #36 (CURRENT_ITERATION → c-4)
+      — these bodies literally said "ALREADY MIGRATED in Phase 0".
+      Also closes duplicates #209 (→ cipar-1, dup of merged #223) and
+      #210 (→ cipar-2, dup of merged #224). All 5 manifest entries
+      mirror state to closed with closed_reason citing #285. After
+      this PR merges, the Phase 0.5 cleanup wave is complete.
+    state: closed
+    closed_reason: 'Shipped via PR (this PR) on 2026-05-26.'
