@@ -2983,4 +2983,23 @@ issues:
       rather than removing (which would block registry load); (b) rename
       the security-lens "tombstone" to in-progress framing because legacy
       source is still present and 2/5 trial items unchecked.
+    state: closed
+    closed_reason: 'Shipped via PR #274 on 2026-05-26.'
+  - id: cleanup-3
+    title: "[Phase 0.5 cleanup] Test-infra fixes: capture pattern, find -executable, lint scope, test relocation"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/275
+      Follow-up to #251 (Phase 0 post-foundation audit) and #271 (doc honesty).
+      Five test-infra fixes: (1) capture-once-replay-on-fail in run-tests.sh
+      (eliminates double-execution side effects); (2) GNU-only find -executable
+      → portable -perm -u+x in redaction-chokepoint-test (silently no-op on
+      macOS today); (3) relocate redaction-chokepoint-test from integration/
+      to unit/ per ADR-012 (it's a static repo grep, not E2E); (4) chmod +x
+      the 4 tests/e2e/*.sh files missing the bit; (5) expand npm lint scope
+      to cover core/ and plugins/ shell files; ADR-004 path ref updated.
+      Original "tests/golden/parity orphaned" finding dropped — verified
+      run-fixture.sh is intentionally a fixture helper requiring caller env
+      vars, not a top-level test.
     state: open

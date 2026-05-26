@@ -55,7 +55,7 @@ done < <({
         --exclude-dir="docs" \
         "$REPO_ROOT" 2>/dev/null || true
     # Extensionless entry-point scripts (e.g. scripts/zbuild)
-    find "$REPO_ROOT/scripts" -maxdepth 1 -type f ! -name "*.*" -executable 2>/dev/null | \
+    find "$REPO_ROOT/scripts" -maxdepth 1 -type f ! -name "*.*" -perm -u+x 2>/dev/null | \
         xargs -I{} grep -n 'claude -p\|claude --print' {} /dev/null 2>/dev/null || true
 } | grep -v '/core/redaction/' | grep -v '/core/router/' || true)
 
@@ -77,7 +77,7 @@ done < <({
         --exclude-dir="tests" \
         --exclude-dir="docs" \
         "$REPO_ROOT" 2>/dev/null || true
-    find "$REPO_ROOT/scripts" -maxdepth 1 -type f ! -name "*.*" -executable 2>/dev/null | \
+    find "$REPO_ROOT/scripts" -maxdepth 1 -type f ! -name "*.*" -perm -u+x 2>/dev/null | \
         xargs -I{} grep -n 'curl.*anthropic\|curl.*api\.anthropic' {} /dev/null 2>/dev/null || true
 } | grep -v '/core/redaction/' | grep -v '/core/router/' || true)
 
