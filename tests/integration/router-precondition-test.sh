@@ -42,14 +42,13 @@ set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "fresh run with no events: route_to_model refuses (#289 fail-closed)" "1" "$rc"
+assert_eq "fresh run with no events: route_to_model refuses (#289 fail-closed, rc=2 fatal)" "2" "$rc"
 
 refused_count="$(grep -c '"router.precondition.refused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 assert_gt "router.precondition.refused event emitted (no_events_for_run)" "$refused_count" "0"
 
 # ─── Test 1a: ZBUILD_RUN_ID unset → C6 fails CLOSED (#289) ───────────────────
-# Pre-#289 this silently no-op'd; now it refuses.
-saved_run_id="${ZBUILD_RUN_ID:-}"
+# Pre-#289 this silently no-op'd; now it refuses with rc=2 (fatal).
 unset ZBUILD_RUN_ID
 : > "$ZBUILD_EVENTS_JSONL"
 
@@ -57,7 +56,7 @@ set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "ZBUILD_RUN_ID unset: route_to_model refuses (#289 fail-closed)" "1" "$rc"
+assert_eq "ZBUILD_RUN_ID unset: route_to_model refuses (#289 fail-closed, rc=2 fatal)" "2" "$rc"
 
 # ─── Test 1b: ZBUILD_EVENTS_JSONL missing → C6 fails CLOSED (#289) ───────────
 export ZBUILD_RUN_ID="precond-run-no-log-$$"
@@ -69,7 +68,7 @@ set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "events log missing: route_to_model refuses (#289 fail-closed)" "1" "$rc"
+assert_eq "events log missing: route_to_model refuses (#289 fail-closed, rc=2 fatal)" "2" "$rc"
 
 # Restore for subsequent tests
 export ZBUILD_EVENTS_JSONL="$saved_events_log"
@@ -88,7 +87,7 @@ set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "C6 precondition violated: last event not redaction.applied → rc=1" "1" "$rc"
+assert_eq "C6 precondition violated: last event not redaction.applied → rc=2 (fatal)" "2" "$rc"
 
 # Assert router.precondition.violated event was emitted
 violated_count="$(grep -c '"router.precondition.violated"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
@@ -128,7 +127,7 @@ model_route_fired="$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
     | grep -c "model.route" || true)"
 assert_gt "model.route event emitted when precondition satisfied" "$model_route_fired" "0"
 
-# ─── Test 4: --skip-precondition bypasses C6 (bootstrapping/test path) ────────
+# ─── Test 4a: --skip-precondition WITHOUT override token is refused ──────────
 export ZBUILD_RUN_ID="precond-run-skip-$$"
 : > "$ZBUILD_EVENTS_JSONL"
 
@@ -143,20 +142,44 @@ set +e
 out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "--skip-precondition bypasses C6 → rc=0" "0" "$rc"
+assert_eq "--skip-precondition without ZBUILD_SCOPE_OVERRIDE → refused (rc=2)" "2" "$rc"
 
-# Audit event emitted on bypass
-skipped_count="$(grep -c '"router.precondition.skipped"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-assert_gt "router.precondition.skipped event emitted on --skip-precondition" "$skipped_count" "0"
+refused_skip="$(grep '"router.precondition.refused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
+    | jq -r 'select(.type=="router.precondition.refused") | .data.reason // empty' 2>/dev/null \
+    | tail -1 || true)"
+assert_eq "refused event reason=skip_without_override" "skip_without_override" "$refused_skip"
 
-# ─── Test 5: --skip-precondition tolerates unset ZBUILD_RUN_ID (#289) ────────
-# Bootstrapping path: bypass should work even without RUN_ID wiring.
-unset ZBUILD_RUN_ID
+# ─── Test 4b: --skip-precondition WITH proper override token is honored ──────
+: > "$ZBUILD_EVENTS_JSONL"
+# Use an isolated HOME so the override token is scoped to this test.
+TEST_HOME="$TEST_TEMP_DIR/home"
+mkdir -p "$TEST_HOME/.zbuild"
+echo -n "$ZBUILD_RUN_ID" > "$TEST_HOME/.zbuild/scope-override-token"
+# Re-emit a non-redaction event so the bypass actually has something to bypass
+jq -cn \
+    --arg rid "$ZBUILD_RUN_ID" \
+    '{ts:"2026-01-01T00:00:00Z", run_id:$rid, issue:0, type:"pipeline.start",
+      plugin:"", kind:"", data:{}, schema_version:1}' \
+    >> "$ZBUILD_EVENTS_JSONL"
+
 set +e
-out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
+out="$(HOME="$TEST_HOME" ZBUILD_SCOPE_OVERRIDE=1 route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "--skip-precondition works with ZBUILD_RUN_ID unset" "0" "$rc"
+assert_eq "--skip-precondition with override token → rc=0" "0" "$rc"
+
+skipped_count="$(grep -c '"router.precondition.skipped"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_gt "router.precondition.skipped event emitted on authorised bypass" "$skipped_count" "0"
+
+# ─── Test 5: --skip-precondition with ZBUILD_RUN_ID unset still needs token ──
+# Bootstrapping path: operator must use the literal "bootstrap" as token contents.
+unset ZBUILD_RUN_ID
+echo -n "bootstrap" > "$TEST_HOME/.zbuild/scope-override-token"
+set +e
+out="$(HOME="$TEST_HOME" ZBUILD_SCOPE_OVERRIDE=1 route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
+rc=$?
+set -e
+assert_eq "--skip-precondition + RUN_ID unset + bootstrap token → rc=0" "0" "$rc"
 
 cleanup_test_env
 print_test_results

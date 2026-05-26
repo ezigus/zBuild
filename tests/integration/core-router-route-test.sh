@@ -21,6 +21,16 @@ export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$TEST_TEMP_DIR/events"
 
+# #289 rescope: --skip-precondition now requires the operator-override token
+# (ZBUILD_SCOPE_OVERRIDE=1 + ~/.zbuild/scope-override-token matching RUN_ID or
+# the literal "bootstrap"). Set up an isolated HOME so the tier-selection /
+# error-path tests can use the flag without depending on the user's real
+# ~/.zbuild.
+export HOME="$TEST_TEMP_DIR/home"
+mkdir -p "$HOME/.zbuild"
+echo -n "bootstrap" > "$HOME/.zbuild/scope-override-token"
+export ZBUILD_SCOPE_OVERRIDE=1
+
 # ─── Mock: model-recording claude stub (tests 1-3, 7-8) ──────────────────────
 # Parses --model <id> from args (ignores -p and --print), records model to
 # last_model, echoes "OK-RESPONSE". TEST_TEMP_DIR embedded at mock creation time.
@@ -280,7 +290,7 @@ out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
 
-assert_eq "A4d: model.route without redaction.applied → rc=1" "1" "$rc"
+assert_eq "A4d: model.route without redaction.applied → rc=2 (fatal)" "2" "$rc"
 
 a4d_evt=$(grep '"router.precondition.violated"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r '.type // empty' 2>/dev/null | tail -1 || true)
