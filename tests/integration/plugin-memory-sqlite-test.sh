@@ -179,10 +179,10 @@ race_result="$(memory_get "race-ns" "shared")"
 # A successful run is one where SOME writer-N value is present (not empty).
 # A failed (pre-fix) run would frequently see an empty result or a missing row.
 if [[ "$race_result" =~ ^writer-[0-9]+$ ]]; then
-    assert_eq "same-key race produces a complete write (one writer wins)" "1" "1"
+    assert_pass "same-key race produces a complete write (one writer wins)"
 else
-    echo "  FAIL: same-key race left memory in non-winner state: '$race_result'" >&2
-    assert_eq "same-key race produces a complete write (one writer wins)" "winner" "$race_result"
+    assert_fail "same-key race produces a complete write (one writer wins)" \
+        "memory left in non-winner state: '$race_result'"
 fi
 
 # ─── Test 8: schema-version unaware roundtrip with empty value ──────────────

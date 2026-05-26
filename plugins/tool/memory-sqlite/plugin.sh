@@ -14,8 +14,25 @@ _ZBUILD_MEMORY_SQLITE_LOADED=1
 #
 # 5 seconds is generous for the per-call cost while still bounding pathological
 # contention. Override with ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MS for tuning.
+#
+# Security: the env var flows into sqlite3 `-cmd ".timeout N"` and into the
+# schema-init SQL string, so it MUST be validated as a non-negative integer
+# before use. An unvalidated value would let an attacker inject sqlite3
+# dot-commands or SQL. Clamped to a sane upper bound (60s).
+_ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS=60000
 _memory_sqlite_busy_timeout_ms() {
-    echo "${ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MS:-5000}"
+    local v="${ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MS:-5000}"
+    if [[ ! "$v" =~ ^[0-9]+$ ]]; then
+        warn "memory-sqlite: ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MS not a non-negative integer (got: $v); falling back to 5000" >&2 || true
+        echo "5000"
+        return 0
+    fi
+    if (( v > _ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS )); then
+        warn "memory-sqlite: clamping busy_timeout to ${_ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS}ms (requested $v)" >&2 || true
+        echo "$_ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS"
+        return 0
+    fi
+    echo "$v"
 }
 
 # ─── DB path resolution ──────────────────────────────────────────────────────
@@ -50,9 +67,10 @@ memory_backend_init() {
     local timeout_ms
     timeout_ms="$(_memory_sqlite_busy_timeout_ms)"
 
+    # Quoted heredoc + `-cmd` keeps the SQL body free of shell interpolation.
+    # The validated timeout flows in via -cmd ".timeout N" only.
     local err
-    err="$(sqlite3 "$db" <<SQL 2>&1
-PRAGMA busy_timeout = ${timeout_ms};
+    err="$(sqlite3 -cmd ".timeout ${timeout_ms}" "$db" <<'SQL' 2>&1
 PRAGMA journal_mode = WAL;
 CREATE TABLE IF NOT EXISTS memory (
     namespace TEXT NOT NULL,
