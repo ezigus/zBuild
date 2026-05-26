@@ -65,32 +65,38 @@ apply_scope_redaction() {
         return 1
     fi
 
-    # ─── Parse scope manifest into a temporary allowlist file ──────────────
-    local allow_file; allow_file="$(mktemp)"
-    # shellcheck disable=SC2064
-    trap "rm -f '$allow_file'" RETURN
-
-    # Extract "+ path" entries; strip leading + and whitespace.
-    awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' \
-        "$manifest" > "$allow_file"
-
-    # Add CSV allowlist entries
+    # ─── Build allowlist as in-memory string (no tempfile; #296 Δ-3) ───────
+    # Previously: wrote to mktemp + trap RETURN + awk read via getline < file.
+    # Race window: if a concurrent process deleted the tempfile between write
+    # and read, awk would silently see an empty allowlist (fail-safe but
+    # silent over-redaction). Inlining via environment variable eliminates
+    # the tempfile and the race entirely.
+    local allow_lines
+    allow_lines="$(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$manifest")"
     if [[ -n "$allowlist" ]]; then
-        echo "$allowlist" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' >> "$allow_file"
+        # printf instead of echo: echo mishandles "-n"/"-e"/backslashes on
+        # some platforms (Copilot caught this on PR #297).
+        local csv_lines; csv_lines="$(printf '%s\n' "$allowlist" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        if [[ -n "$allow_lines" ]]; then
+            allow_lines="${allow_lines}"$'\n'"${csv_lines}"
+        else
+            allow_lines="$csv_lines"
+        fi
     fi
 
     # ─── Redact with awk (fence-aware, allowlist-driven) ────────────────────
     local size_before; size_before=$(wc -c < "$input")
 
-    awk -v allow_file="$allow_file" '
+    ZBUILD_REDACTION_ALLOW="$allow_lines" awk '
     BEGIN {
         n_allow = 0
-        while ((getline line < allow_file) > 0) {
-            if (length(line) > 0) {
-                allow[++n_allow] = line
+        allow_data = ENVIRON["ZBUILD_REDACTION_ALLOW"]
+        n = split(allow_data, lines, "\n")
+        for (i = 1; i <= n; i++) {
+            if (length(lines[i]) > 0) {
+                allow[++n_allow] = lines[i]
             }
         }
-        close(allow_file)
         in_fence = 0
     }
     /^```/ {

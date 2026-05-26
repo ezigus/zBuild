@@ -3187,3 +3187,32 @@ issues:
       Two views: (a) yaml_get replacement is cleanup; (b) adds behavior
       and should be a follow-up. Awaits decision. Surfaced as Δ-9 in
       delta plan. See also delta-d1 (broader sweep).
+  - id: cleanup-delta-b
+    title: "[Phase 0.5 cleanup] scope-redaction allowlist tempfile race + ZBUILD_STATE_FILE vs --issue cross-check"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, safety-primitive]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/296
+      Bundles Δ-3 and Δ-4 from the review delta plan because both are
+      small and touch only existing shipped code.
+
+      Δ-3: scope-redaction.sh used mktemp + RETURN trap for the allowlist;
+      a concurrent process deleting the tempfile between write and read
+      would silently produce an empty allowlist (over-redaction with no
+      error). Replaced tempfile with ZBUILD_REDACTION_ALLOW env var read
+      via awk's ENVIRON in BEGIN. No tempfile, no race.
+
+      Δ-4: runner.sh honors ZBUILD_STATE_FILE if set, otherwise derives
+      from --issue. If both were set and disagreed, the env var won
+      silently — operator-confusion vector. Added cross-check (placed
+      before --dry-run so it also surfaces mismatches in dry-run mode):
+      when state file exists and records a different issue, runner errors
+      (return 2). Fail-closed on corrupt JSON via `jq empty` validation.
+
+      Tests added:
+      - tests/unit/scope-redaction-no-tempfile-test.sh (6 assertions)
+      - tests/integration/runner-state-file-issue-cross-check-test.sh
+        (12 assertions covering mismatch, match, no-issue, no-env,
+        missing-file, and corrupt-JSON fail-closed)
+    state: closed
+    closed_reason: 'Shipped via PR #297 on 2026-05-26.'
