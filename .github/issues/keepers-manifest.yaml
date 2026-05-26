@@ -2968,4 +2968,19 @@ issues:
       Mechanical doc edits to remove stale counts (KEEPERS), wrong
       action pins (ADR-008/010), wrong test path (ADR-004), wrong
       default backend + missing router cross-ref note (ADR-011).
+    state: closed
+    closed_reason: 'Shipped via PR #272 on 2026-05-26.'
+  - id: cleanup-2
+    title: "[Phase 0.5 cleanup] Manifest/tombstone honesty: intake redaction false claim, security-lens tombstone framing"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, safety-primitive]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/273
+      Refines #7 (Phase 0 core safety chokepoints) and #10 (security-lens POC).
+      Two honesty fixes: (a) intake manifest's redaction dep is declared
+      because the registry enforces it on kind: agent, but plugin.sh
+      doesn't call apply_scope_redaction today — clarify in description
+      rather than removing (which would block registry load); (b) rename
+      the security-lens "tombstone" to in-progress framing because legacy
+      source is still present and 2/5 trial items unchecked.
     state: open
