@@ -8,12 +8,12 @@ description: |
   for platform-aware scope defaults, and writes state/scope-manifest.md +
   state/intake.md. Phase 0.5 stub: no LLM call. Real planning prompt deferred.
 
-  Note on `requires.core: [redaction]`: declared because intake is `kind:
-  agent` and the deferred planning prompt will emit through the chokepoint.
-  Registry enforces this declaration on every `kind: agent` plugin per
-  ADR-004; do not remove it without also reclassifying the plugin. Today
-  intake produces the scope manifest that drives redaction downstream but
-  does not call `apply_scope_redaction` itself.
+  Note on `requires.core: [redaction]`: declared because intake is a
+  `kind: agent` plugin and the deferred planning prompt will emit through
+  the chokepoint. Registry enforces this declaration on every `kind: agent`
+  plugin per ADR-004; do not remove it without also reclassifying the
+  plugin. Today intake produces the scope manifest that drives redaction
+  downstream but does not call `apply_scope_redaction` itself.
 
 hooks:
   init: intake_init

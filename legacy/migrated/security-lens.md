@@ -12,7 +12,8 @@ POC plugin port landed at `plugins/agent/security-lens/` on 2026-05-24.
 
 ## Source range — STILL PRESENT in legacy/
 
-The following lines will be `git rm`'d when the migration completes:
+The following lines will be removed (via `git rm` on the file, or by
+excising the cited ranges) when the migration completes:
 
 - `legacy/scripts/lib/compound-audit.sh:48-53` (prompt block)
 - `legacy/scripts/lib/compound-audit.sh:367` (trigger keywords)
