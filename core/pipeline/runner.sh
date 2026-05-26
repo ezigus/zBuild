@@ -153,6 +153,17 @@ main() {
     if [[ -n "${ZBUILD_STATE_FILE:-}" ]]; then
         state_file="$ZBUILD_STATE_FILE"
         state_dir="$(dirname "$state_file")"
+        # Cross-check: if both ZBUILD_STATE_FILE and --issue are set, the
+        # state file's recorded issue MUST match. Silent disagreement was
+        # an operator-confusion vector — issue #296 Δ-4.
+        if [[ -n "$issue" && "$issue" != "0" && -f "$state_file" ]]; then
+            local _existing_issue
+            _existing_issue="$(get_state_field "$state_file" '.issue' '')"
+            if [[ -n "$_existing_issue" && "$_existing_issue" != "0" && "$_existing_issue" != "$issue" ]]; then
+                error "ZBUILD_STATE_FILE points at run for issue $_existing_issue but --issue is $issue (mismatch); aborting to avoid silent override"
+                return 2
+            fi
+        fi
     else
         state_file="$state_dir/pipeline-state.json"
     fi
