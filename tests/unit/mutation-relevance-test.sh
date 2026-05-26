@@ -25,10 +25,28 @@ setup_test_env "mutation-relevance"
 # only up to the main-loop sentinel.
 HARNESS="$REPO_ROOT/scripts/run-mutation.sh"
 HARNESS_SUB="$TEST_TEMP_DIR/harness-fns.sh"
-awk '/^# ─── Main loop ───/{exit} {print}' "$HARNESS" > "$HARNESS_SUB"
+# Strip the harness's `trap '_restore_patches' EXIT INT TERM` line — without
+# that strip the source would install a trap that clobbers test-helpers.sh's
+# cleanup_test_env hook (#322 review L32). The relevance helpers are the only
+# part of run-mutation.sh we need here.
+awk '
+    /^# ─── Main loop ───/ { exit }
+    /^trap .*_restore_patches/ { next }
+    { print }
+' "$HARNESS" > "$HARNESS_SUB"
+
+# Save the test-harness EXIT trap so we can restore it after sourcing, even
+# though the awk strip above already removes the run-mutation trap install.
+_PRIOR_EXIT_TRAP="$(trap -p EXIT)"
 
 # shellcheck disable=SC1090
 source "$HARNESS_SUB"
+
+# Defensive: re-establish the prior EXIT trap in case the harness installs
+# anything via other paths (e.g. via sourced helpers we don't strip).
+if [[ -n "$_PRIOR_EXIT_TRAP" ]]; then
+    eval "$_PRIOR_EXIT_TRAP"
+fi
 
 # The sub-script computes REPO_ROOT relative to its OWN location (the temp
 # file). Override using the saved TEST_REPO_ROOT so _check_mutation_relevance
@@ -148,5 +166,6 @@ set -e
 assert_eq "correctly paired (router file ↔ router test) accepted" "0" "$rc"
 
 cleanup_test_env
+# print_test_results already exits with the failure count; the trailing
+# `exit` was unreachable dead code (#322 review L152).
 print_test_results
-exit $((FAIL > 0))

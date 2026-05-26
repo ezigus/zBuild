@@ -47,13 +47,26 @@ _extract_bash_block() {
 
 # Extract the first backticked path from the line(s) following a ## header.
 # Returns the path with surrounding backticks stripped, empty on miss.
+# Pure-awk so the function never trips errexit/pipefail (the previous
+# `grep -oE ... | head -1` pipeline could exit non-zero on no-match or
+# SIGPIPE on multi-match — #322 review L56).
 _extract_backticked_path() {
     local file="$1" header="$2"
     awk -v hdr="$header" '
         $0 == hdr            { in_section = 1; next }
         in_section && /^## / { exit }
-        in_section           { print }
-    ' "$file" | grep -oE '`[^`]+`' | head -1 | sed 's/`//g'
+        in_section {
+            line = $0
+            while (match(line, /`[^`]+`/)) {
+                tok = substr(line, RSTART + 1, RLENGTH - 2)
+                if (tok != "") {
+                    print tok
+                    exit
+                }
+                line = substr(line, RSTART + RLENGTH)
+            }
+        }
+    ' "$file" 2>/dev/null || true
 }
 
 # Verify the doc's "## Expected failing test" path is *plausibly related*
@@ -105,7 +118,10 @@ _check_mutation_relevance() {
             return 0
         fi
         # Or the test source references the mutated file path/basename.
-        if grep -q -- "$t" "$REPO_ROOT/$test_path" 2>/dev/null; then
+        # `-F` keeps the search literal — file stems can include `.` or `[`
+        # (multi-dot names) which would otherwise be interpreted as regex
+        # metacharacters and silently miss or false-match (#322 review L108).
+        if grep -qF -- "$t" "$REPO_ROOT/$test_path" 2>/dev/null; then
             return 0
         fi
     done
