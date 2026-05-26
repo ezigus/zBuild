@@ -6,29 +6,34 @@
 #      ## Expected failing test / ## Result / ## Patch / ## Test).
 #   2. Extract the ```bash code block under ## Patch — apply it (mutates code).
 #   3. Extract the ```bash code block under ## Test — run it; expect non-zero.
-#   4. Restore ONLY the files the patch touched, via `git checkout --`.
-#      EXIT trap restores them on crash too.
+#   4. Restore EVERY patch-touched file (tracked → git checkout; untracked →
+#      rm). EXIT trap restores on crash too.
 #
-# A mutation that does NOT cause the targeted test to fail is a real bug:
-# the test doesn't cover the mutation, or the production code path is dead.
-# That's the whole point of mutation testing.
+# Safety invariants:
+#   - Refuses to run if any mutation-target dir (core/plugins/scripts/tests)
+#     has uncommitted tracked changes OR untracked files. Prevents conflating
+#     user's WIP with patch artifacts.
+#   - Restores ONLY patch-introduced changes (tracks pre/post snapshots);
+#     never touches user's pre-existing work elsewhere.
+#   - .mutbak cleanup scoped to mutation-target dirs.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MUTATION_DIR="$REPO_ROOT/tests/mutation"
+MUTATE_DIRS=(core plugins scripts tests)
 
 passed=0
 failed=0
 results=()
 
-# Tracked across all mutations so the EXIT trap can clean up half-applied state.
-declare -a _PATCH_TOUCHED_FILES=()
+# Files the current/last patch added or modified — for EXIT-trap restore.
+declare -a _PATCH_MODIFIED=()
+declare -a _PATCH_UNTRACKED=()
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
-# Extract the first ```bash ... ``` block under a given header from a .md file.
 _extract_bash_block() {
     local file="$1" header="$2"
     awk -v hdr="$header" '
@@ -40,47 +45,83 @@ _extract_bash_block() {
     ' "$file"
 }
 
-# Restore ONLY the files patches touched (not the user's pre-existing
-# uncommitted changes). Also clean any .mutbak sed artifacts.
+# Restore everything the last patch touched: `git checkout --` tracked
+# modifications (always tried, even if file was deleted), and `rm` untracked
+# files the patch created. Then forget the lists.
 _restore_patches() {
     local f
-    for f in "${_PATCH_TOUCHED_FILES[@]:-}"; do
-        [[ -n "$f" && -e "$REPO_ROOT/$f" ]] || continue
+    for f in "${_PATCH_MODIFIED[@]:-}"; do
+        [[ -z "$f" ]] && continue
+        # Try checkout unconditionally — handles deleted/renamed files too.
         git -C "$REPO_ROOT" checkout -- "$f" 2>/dev/null || true
     done
-    _PATCH_TOUCHED_FILES=()
-    find "$REPO_ROOT" -name '*.mutbak' -not -path '*/.git/*' \
-        -not -path '*/legacy/*' -not -path '*/.claude/*' -delete 2>/dev/null || true
+    for f in "${_PATCH_UNTRACKED[@]:-}"; do
+        [[ -z "$f" ]] && continue
+        rm -f "$REPO_ROOT/$f" 2>/dev/null || true
+    done
+    _PATCH_MODIFIED=()
+    _PATCH_UNTRACKED=()
 }
 
-# Record which files the patch modified (relative to repo root), then capture
-# them in the global _PATCH_TOUCHED_FILES so the trap can restore on crash.
-_record_patch_touched() {
-    local pre="$1"
-    local post
-    post="$(git -C "$REPO_ROOT" diff --name-only 2>/dev/null || true)"
-    # Anything in post that isn't in pre is a patch-introduced change.
+# Refuse if the working tree has ANY change in mutation-target dirs.
+# This is essential: patch detection compares snapshots, and a pre-existing
+# diff would be either silently restored (data loss) or silently skipped
+# (mutation leaks past the cleanup). Both are bad.
+_assert_clean_targets() {
+    local dirty untracked
+    dirty="$(cd "$REPO_ROOT" && git diff --name-only -- "${MUTATE_DIRS[@]}" 2>/dev/null || true)"
+    untracked="$(cd "$REPO_ROOT" && git ls-files --others --exclude-standard -- "${MUTATE_DIRS[@]}" 2>/dev/null || true)"
+    if [[ -n "$dirty" || -n "$untracked" ]]; then
+        echo "run-mutation.sh: refusing — working tree has uncommitted changes" >&2
+        echo "  in mutation-target dirs (${MUTATE_DIRS[*]})." >&2
+        [[ -n "$dirty" ]]     && echo "  modified:" >&2 && echo "$dirty"     | sed 's/^/    /' >&2
+        [[ -n "$untracked" ]] && echo "  untracked:" >&2 && echo "$untracked" | sed 's/^/    /' >&2
+        echo "  Commit or stash them first." >&2
+        exit 1
+    fi
+}
+
+# Snapshot current tracked-modifications + untracked in mutation-target dirs.
+# Emits two newline-delimited lists separated by a sentinel "---".
+_snapshot_targets() {
+    (cd "$REPO_ROOT" && git diff --name-only -- "${MUTATE_DIRS[@]}" 2>/dev/null || true)
+    echo "---SNAPSHOT-SEPARATOR---"
+    (cd "$REPO_ROOT" && git ls-files --others --exclude-standard -- "${MUTATE_DIRS[@]}" 2>/dev/null || true)
+}
+
+# Diff two snapshots; populate _PATCH_MODIFIED + _PATCH_UNTRACKED with NEW
+# entries only (entries that appeared post-patch but not pre-patch).
+_compute_patch_delta() {
+    local pre="$1" post="$2"
+    local pre_mod pre_unt post_mod post_unt
+    pre_mod="$(echo "$pre"  | awk '/^---SNAPSHOT-SEPARATOR---$/{exit} {print}')"
+    pre_unt="$(echo "$pre"  | awk '/^---SNAPSHOT-SEPARATOR---$/{seen=1; next} seen{print}')"
+    post_mod="$(echo "$post" | awk '/^---SNAPSHOT-SEPARATOR---$/{exit} {print}')"
+    post_unt="$(echo "$post" | awk '/^---SNAPSHOT-SEPARATOR---$/{seen=1; next} seen{print}')"
+
     local f
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        grep -Fxq "$f" <<< "$pre" || _PATCH_TOUCHED_FILES+=("$f")
-    done <<< "$post"
+        grep -Fxq "$f" <<< "$pre_mod" || _PATCH_MODIFIED+=("$f")
+    done <<< "$post_mod"
+
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        grep -Fxq "$f" <<< "$pre_unt" || _PATCH_UNTRACKED+=("$f")
+    done <<< "$post_unt"
 }
 
-# EXIT trap: only restore patches; never touch the user's pre-existing diff.
+# EXIT trap restores last patch's touched files; never touches pre-existing.
 trap '_restore_patches' EXIT INT TERM
 
 # ─── Main loop ──────────────────────────────────────────────────────────────
 
-# Snapshot the pre-existing modified file set so the patch-touched detector
-# can subtract it.
-PRE_EXISTING_DIFF="$(git -C "$REPO_ROOT" diff --name-only 2>/dev/null || true)"
+_assert_clean_targets
 
 for doc in "$MUTATION_DIR"/*.md; do
     [[ -f "$doc" ]] || continue
     name="$(basename "$doc")"
 
-    # 1. Lint structural sections.
     structural_ok=1
     for section in "## File" "## Mutation" "## Expected failing test" "## Result" "## Patch" "## Test"; do
         if ! grep -qF "$section" "$doc"; then
@@ -94,7 +135,6 @@ for doc in "$MUTATION_DIR"/*.md; do
         continue
     fi
 
-    # 2. Extract patch + test bash blocks.
     patch_code="$(_extract_bash_block "$doc" "## Patch")"
     test_code="$(_extract_bash_block "$doc" "## Test")"
     if [[ -z "$patch_code" || -z "$test_code" ]]; then
@@ -104,32 +144,37 @@ for doc in "$MUTATION_DIR"/*.md; do
         continue
     fi
 
-    # 3. Apply patch.
+    # Snapshot, patch, snapshot, compute delta.
+    pre_snap="$(_snapshot_targets)"
+
     if ! (cd "$REPO_ROOT" && bash -c "set -euo pipefail; $patch_code"); then
         echo "FAIL $name: patch script returned non-zero" >&2
-        _record_patch_touched "$PRE_EXISTING_DIFF"
+        # Compute delta first so _restore_patches knows what to clean.
+        post_snap="$(_snapshot_targets)"
+        _compute_patch_delta "$pre_snap" "$post_snap"
         _restore_patches
         failed=$((failed + 1))
         results+=("FAIL  $name  (patch failed)")
         continue
     fi
 
-    # Detect what the patch touched (excluding pre-existing diff).
-    _record_patch_touched "$PRE_EXISTING_DIFF"
-    if [[ ${#_PATCH_TOUCHED_FILES[@]} -eq 0 ]]; then
-        echo "FAIL $name: patch ran but touched no new files (sed/awk no-op?)" >&2
+    post_snap="$(_snapshot_targets)"
+    _compute_patch_delta "$pre_snap" "$post_snap"
+
+    if [[ ${#_PATCH_MODIFIED[@]} -eq 0 && ${#_PATCH_UNTRACKED[@]} -eq 0 ]]; then
+        echo "FAIL $name: patch ran but touched no files (sed/awk no-op?)" >&2
+        _restore_patches   # cleans any spurious .mutbak even if patch was no-op
         failed=$((failed + 1))
         results+=("FAIL  $name  (no-op patch)")
         continue
     fi
 
-    # 4. Run targeted test; expect NON-ZERO.
+    # Run targeted test; expect NON-ZERO.
     set +e
     (cd "$REPO_ROOT" && bash -c "$test_code") >/dev/null 2>&1
     test_rc=$?
     set -e
 
-    # 5. Restore the files this patch touched.
     _restore_patches
 
     if [[ $test_rc -ne 0 ]]; then
