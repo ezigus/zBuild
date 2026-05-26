@@ -3037,20 +3037,6 @@ issues:
       to 448 lines, comfortably under the CLAUDE.md 500-line cap.
     state: closed
     closed_reason: 'Shipped via PR #280 on 2026-05-26.'
-  - id: cleanup-7
-    title: "[Phase 0.5 cleanup] Repo hygiene: untrack runtime artifacts + delete empty plugins/tool/mock-memory/"
-    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
-    labels: [phase-0, foundation]
-    body: |
-      Live issue: https://github.com/ezigus/zBuild/issues/283
-      Pure repo hygiene. (1) git rm --cached the runtime artifacts that
-      pre-dated .gitignore coverage: ruvector.db, .swarm/memory.db{,-shm,-wal},
-      .claude-flow/swarm/swarm-state.json. The files stay on disk locally
-      so devs don't lose state. (2) Add .claude-flow/ to .gitignore
-      (matches the .swarm/ pattern already there). (3) rmdir the empty
-      plugins/tool/mock-memory/ directory (not tracked in git because empty
-      dirs aren't tracked; this is local-only). No code, no tests affected.
-    state: open
   - id: cleanup-6
     title: "[Phase 0.5 cleanup] Orch backend dedup: extract core/orch/local_engine.sh from bash-parallel + ruflo-hive"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3069,3 +3055,18 @@ issues:
       two-or-three. No behavior change — pure refactor.
     state: closed
     closed_reason: 'Shipped via PR #282 on 2026-05-26.'
+  - id: cleanup-7
+    title: "[Phase 0.5 cleanup] Repo hygiene: untrack runtime artifacts + delete empty plugins/tool/mock-memory/"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/283
+      Pure repo hygiene. (1) git rm --cached the runtime artifacts that
+      pre-dated .gitignore coverage: ruvector.db, .swarm/memory.db{,-shm,-wal},
+      .claude-flow/swarm/swarm-state.json. The files stay on disk locally
+      so devs don't lose state. (2) Add .claude-flow/ to .gitignore
+      (matches the .swarm/ pattern already there). (3) rmdir the empty
+      plugins/tool/mock-memory/ directory (not tracked in git because empty
+      dirs aren't tracked; this is local-only). No code, no tests affected.
+    state: closed
+    closed_reason: 'Shipped via PR #284 on 2026-05-26.'
