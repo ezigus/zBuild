@@ -3155,15 +3155,18 @@ issues:
       ADR-009 has the appendix pattern; ADRs 001-007 don't. Cosmetic, low
       urgency. Deferred from Phase 0.5 cleanup.
   - id: delta-d6
-    title: "[Deferred] New ADR-013: canonical zBuild stage list (currently only sketched in ARCHITECTURE §3)"
-    milestone: "Phase 1 — Pipeline & Intelligence"
-    labels: [phase-1, foundation]
+    title: "[Phase 0.5] New ADR-013: canonical zBuild stage list (currently only sketched in ARCHITECTURE §3)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
     state: open
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/292
-      Stage list is the spine of the system; no ADR formalizes it. New
-      design surface; defer until Phase 1 stage-handler-as-plugin work
-      (#12, #13-16) consolidates the actual canonical list.
+      Stage list is the spine of the system; no ADR formalizes it.
+      Pulled from Phase 1 → Phase 0.5 on 2026-05-26: the Wave B
+      dogfooding plugins (plan/build/test/review/pr) need a vocabulary
+      to validate against. Ship a minimal v1 ADR now (6-7 standard
+      stage IDs); Phase 1 stage-handler-as-plugin work (#12, #13-16)
+      can expand the taxonomy as it lands.
   - id: delta-d8
     title: "[Deferred decision] State read fail-closed on JSON corruption — narrow lift from Phase 2 #38"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3330,3 +3333,28 @@ issues:
 
       No production code changes. Just stronger parity coverage.
     state: open
+  - id: mutation-universalmutator-spike
+    title: "Evaluate universalmutator for auto-generated bash mutation operators"
+    milestone: "Phase 5 — Test Migration & Verification"
+    labels: [phase-5, test-migration]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/325
+      Spike to evaluate universalmutator (CMU, language-agnostic regex-driven
+      mutation tool) as a complement to the hand-authored tests/mutation/*.md
+      specs. Current harness (#298) is high-signal but low-coverage — only
+      catches mutations someone thought to write.
+
+      Define a small bash operator ruleset (==/!=, &&/||, drop set -e, swap
+      -eq/-ne, flip exit codes, quoting strip), run against one keeper
+      (e.g. core/router/route.sh), pipe each mutant through the test suite
+      as oracle, and compare killed-mutant rate vs hand-written specs.
+
+      Decide: keep both (hand-written for high-signal, auto-generated for
+      breadth), fold one into the other, or drop.
+
+      Out of scope: replacing hand-written specs wholesale; making
+      universalmutator a hard CI dependency.
+
+      Phase 5 because it's test-infrastructure tooling, not engine work;
+      lands after Phase 0.5 stabilizes.
