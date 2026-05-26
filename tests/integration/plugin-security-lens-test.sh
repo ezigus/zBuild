@@ -21,6 +21,13 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
+# #289: router C6 precondition now refuses fail-closed when ZBUILD_RUN_ID is
+# unset. This integration test exercises the full chokepoint flow (security-lens
+# emits redaction.applied via apply_scope_redaction, then calls route_to_model),
+# so we need a run_id wired in for the precondition check to find the
+# preceding redaction.applied event.
+export ZBUILD_RUN_ID="security-lens-test-$$"
+
 mkdir -p "$TEST_TEMP_DIR/bin"
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"

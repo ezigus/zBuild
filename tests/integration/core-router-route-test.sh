@@ -48,7 +48,7 @@ source "$REPO_ROOT/core/router/route.sh"
 : > "$TEST_TEMP_DIR/last_model"
 
 set +e
-out="$(route_to_model "T2" "ping" 2>/dev/null)"
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 
@@ -60,7 +60,7 @@ assert_eq "T2 selects claude-sonnet-4-6" "claude-sonnet-4-6" "$last_model"
 : > "$TEST_TEMP_DIR/last_model"
 
 set +e
-out="$(route_to_model "T1" "ping" 2>/dev/null)"
+out="$(route_to_model "T1" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 
@@ -72,7 +72,7 @@ assert_eq "T1 selects claude-haiku-4-5-20251001" "claude-haiku-4-5-20251001" "$l
 : > "$TEST_TEMP_DIR/last_model"
 
 set +e
-out="$(route_to_model "T3" "ping" 2>/dev/null)"
+out="$(route_to_model "T3" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 
@@ -82,7 +82,7 @@ assert_eq "T3 selects claude-opus-4-7" "claude-opus-4-7" "$last_model"
 
 # ─── Test 4: T0 (wasm) returns rc=2 ─────────────────────────────────────────
 set +e
-err="$(route_to_model "T0" "ping" 2>&1 >/dev/null)"
+err="$(route_to_model "T0" "ping" --skip-precondition 2>&1 >/dev/null)"
 rc=$?
 set -e
 
@@ -91,7 +91,7 @@ assert_contains "T0 stderr mentions not implemented" "$err" "not implemented"
 
 # ─── Test 5: T4 (empty candidates) returns rc=1 ──────────────────────────────
 set +e
-err="$(route_to_model "T4" "ping" 2>&1 >/dev/null)"
+err="$(route_to_model "T4" "ping" --skip-precondition 2>&1 >/dev/null)"
 rc=$?
 set -e
 
@@ -100,7 +100,7 @@ assert_contains "T4 stderr mentions no candidates" "$err" "no candidates"
 
 # ─── Test 6: invalid tier returns rc=2 ───────────────────────────────────────
 set +e
-err="$(route_to_model "T9" "ping" 2>&1 >/dev/null)"
+err="$(route_to_model "T9" "ping" --skip-precondition 2>&1 >/dev/null)"
 rc=$?
 set -e
 
@@ -112,7 +112,7 @@ assert_contains "invalid tier stderr mentions invalid tier" "$err" "invalid tier
 : > "$TEST_TEMP_DIR/last_model"
 
 set +e
-route_to_model "T2" "ping" >/dev/null 2>&1
+route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1
 set -e
 
 event_tier="$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
@@ -127,7 +127,7 @@ assert_eq "model.route event has model_id=claude-sonnet-4-6" "claude-sonnet-4-6"
 : > "$TEST_TEMP_DIR/last_model"
 
 set +e
-out="$(route_to_model "T2" "ping" 2>/dev/null)"
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 
@@ -143,7 +143,7 @@ FAIL_MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
 set +e
-out="$(route_to_model "T2" "ping" 2>/dev/null)"
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 
@@ -173,7 +173,7 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 # With the 127-exit mock: `command -v claude` still FINDS the mock (it exists).
 # The router emits router.error with reason=claude_cli_failed (rc=127).
 set +e
-err="$(route_to_model "T2" "ping" 2>&1 >/dev/null)"
+err="$(route_to_model "T2" "ping" --skip-precondition 2>&1 >/dev/null)"
 rc=$?
 set -e
 
@@ -205,7 +205,7 @@ a4a2_result=$(
     done
     export PATH="$safe_dir"
     source "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true
-    route_to_model "T2" "ping" 2>/dev/null
+    route_to_model "T2" "ping" --skip-precondition 2>/dev/null
     echo "rc=$?"
     rm -rf "$safe_dir"
 )
@@ -226,7 +226,7 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 : > "$ZBUILD_EVENTS_JSONL"
 
 set +e
-out="$(route_to_model "T2" "ping" 2>/dev/null)"
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 
@@ -246,7 +246,7 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 : > "$ZBUILD_EVENTS_JSONL"
 
 set +e
-out="$(route_to_model "T2" "ping" 2>/dev/null)"
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 

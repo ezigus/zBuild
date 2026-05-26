@@ -31,9 +31,10 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 
 source "$REPO_ROOT/core/router/route.sh"
 
-# ─── Test 1: fresh run_id with no events → C6 check skipped (no events to check)
-# The router only enforces C6 when there ARE events for the run_id.
-# With no events at all the check passes (fail-open for bootstrapping).
+# ─── Test 1: fresh run_id with no events for that run → C6 fails CLOSED (#289)
+# Pre-#289 this case silently passed (the inner `[[ ... ]]` short-circuited).
+# Now: no events for this run_id means we cannot verify redaction.applied, so
+# the router refuses.
 export ZBUILD_RUN_ID="precond-run-fresh-$$"
 : > "$ZBUILD_EVENTS_JSONL"
 
@@ -41,7 +42,37 @@ set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "fresh run with no events: route_to_model succeeds (C6 skip-open)" "0" "$rc"
+assert_eq "fresh run with no events: route_to_model refuses (#289 fail-closed)" "1" "$rc"
+
+refused_count="$(grep -c '"router.precondition.refused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_gt "router.precondition.refused event emitted (no_events_for_run)" "$refused_count" "0"
+
+# ─── Test 1a: ZBUILD_RUN_ID unset → C6 fails CLOSED (#289) ───────────────────
+# Pre-#289 this silently no-op'd; now it refuses.
+saved_run_id="${ZBUILD_RUN_ID:-}"
+unset ZBUILD_RUN_ID
+: > "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" 2>/dev/null)"
+rc=$?
+set -e
+assert_eq "ZBUILD_RUN_ID unset: route_to_model refuses (#289 fail-closed)" "1" "$rc"
+
+# ─── Test 1b: ZBUILD_EVENTS_JSONL missing → C6 fails CLOSED (#289) ───────────
+export ZBUILD_RUN_ID="precond-run-no-log-$$"
+saved_events_log="$ZBUILD_EVENTS_JSONL"
+export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/does-not-exist.jsonl"
+rm -f "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" 2>/dev/null)"
+rc=$?
+set -e
+assert_eq "events log missing: route_to_model refuses (#289 fail-closed)" "1" "$rc"
+
+# Restore for subsequent tests
+export ZBUILD_EVENTS_JSONL="$saved_events_log"
 
 # ─── Test 2: run_id with non-redaction last event → C6 violation, rc=1 ───────
 export ZBUILD_RUN_ID="precond-run-violation-$$"
@@ -113,6 +144,19 @@ out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
 rc=$?
 set -e
 assert_eq "--skip-precondition bypasses C6 → rc=0" "0" "$rc"
+
+# Audit event emitted on bypass
+skipped_count="$(grep -c '"router.precondition.skipped"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_gt "router.precondition.skipped event emitted on --skip-precondition" "$skipped_count" "0"
+
+# ─── Test 5: --skip-precondition tolerates unset ZBUILD_RUN_ID (#289) ────────
+# Bootstrapping path: bypass should work even without RUN_ID wiring.
+unset ZBUILD_RUN_ID
+set +e
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
+rc=$?
+set -e
+assert_eq "--skip-precondition works with ZBUILD_RUN_ID unset" "0" "$rc"
 
 cleanup_test_env
 print_test_results
