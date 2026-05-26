@@ -271,11 +271,13 @@ set -e
 assert_eq "validate_manifest rejects claim-coordinator missing release/heartbeat/list_claims (#287)" "1" "$rc"
 
 # Malformed requires.core (scalar instead of list) → rejected.
-mkdir -p "$FIXTURE_ROOT/agent/bad-requires-core"
-cat > "$FIXTURE_ROOT/agent/bad-requires-core/manifest.yaml" <<'EOF'
+# Use kind: orchestrator so the ADR-004 redaction check doesn't fire — this
+# isolates the new scalar-shape check (#294) from the redaction requirement.
+mkdir -p "$FIXTURE_ROOT/orchestrator/bad-requires-core"
+cat > "$FIXTURE_ROOT/orchestrator/bad-requires-core/manifest.yaml" <<'EOF'
 id: bad-requires
 name: Bad Requires
-kind: agent
+kind: orchestrator
 version: 0.0.1
 hooks:
   run: br_run
@@ -283,10 +285,38 @@ requires:
   core: redaction
 EOF
 set +e
-validate_manifest "$FIXTURE_ROOT/agent/bad-requires-core/manifest.yaml" >/dev/null 2>&1
+validate_manifest "$FIXTURE_ROOT/orchestrator/bad-requires-core/manifest.yaml" >/dev/null 2>&1
 rc=$?
 set -e
-assert_eq "validate_manifest rejects scalar requires.core (#294)" "1" "$rc"
+assert_eq "validate_manifest rejects scalar requires.core for non-agent kind (#294)" "1" "$rc"
+
+# ─── #294 bypass: '- redaction' outside requires.core should NOT satisfy ─────
+# Pre-fix the agent-redaction check used a file-wide grep, so a `- redaction`
+# anywhere in the manifest (e.g. inside outputs:) would falsely satisfy it.
+# After structural validation the bypass is closed.
+mkdir -p "$FIXTURE_ROOT/agent/bypass-attempt"
+cat > "$FIXTURE_ROOT/agent/bypass-attempt/manifest.yaml" <<'EOF'
+id: bypass-attempt
+name: Bypass Attempt (redaction outside requires.core)
+kind: agent
+version: 0.0.1
+hooks:
+  run: ba_run
+requires:
+  core:
+    - event-bus
+config:
+  notes:
+    - redaction is mentioned here but not under requires.core
+EOF
+cat > "$FIXTURE_ROOT/agent/bypass-attempt/plugin.sh" <<'EOF'
+ba_run() { :; }
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/agent/bypass-attempt/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects agent with 'redaction' outside requires.core (#294 bypass closed)" "1" "$rc"
 
 # ─── #288: fail-closed artifact scanner ──────────────────────────────────────
 mkdir -p "$FIXTURE_ROOT/agent/declares-output"
