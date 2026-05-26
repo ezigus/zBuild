@@ -10,9 +10,14 @@ _ZBUILD_CONTRACTS_LOADED=1
 _ZBUILD_CONTRACTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_CONTRACTS_ROOT="$(cd "$_ZBUILD_CONTRACTS_DIR/../.." && pwd)"
 
-# Depends on yaml_get + warn (scripts/lib/helpers.sh) and eb_emit_event
-# (core/event-bus/event-bus.sh). Defensively source if absent.
+# Depends on yaml_get (core/plugin-registry/registry.sh — NOT helpers.sh,
+# Copilot caught this on #280), warn (scripts/lib/helpers.sh), and
+# eb_emit_event (core/event-bus/event-bus.sh). Defensively source each
+# if absent so the file is self-contained when tests source it directly.
 if ! declare -F yaml_get >/dev/null 2>&1; then
+    source "$_ZBUILD_CONTRACTS_ROOT/core/plugin-registry/registry.sh"
+fi
+if ! declare -F warn >/dev/null 2>&1; then
     source "$_ZBUILD_CONTRACTS_ROOT/scripts/lib/helpers.sh"
 fi
 if ! declare -F eb_emit_event >/dev/null 2>&1; then

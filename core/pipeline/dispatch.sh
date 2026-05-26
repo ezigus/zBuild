@@ -9,14 +9,11 @@ _ZBUILD_DISPATCH_LOADED=1
 _ZBUILD_DISPATCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_DISPATCH_ROOT="$(cd "$_ZBUILD_DISPATCH_DIR/../.." && pwd)"
 
-# Depends on yaml_get (scripts/lib/helpers.sh) and discover_plugins
-# (core/plugin-registry/registry.sh). Callers must have sourced both.
-# Re-source defensively if either is absent so the file is self-contained
-# when tests source dispatch.sh directly.
-if ! declare -F yaml_get >/dev/null 2>&1; then
-    source "$_ZBUILD_DISPATCH_ROOT/scripts/lib/helpers.sh"
-fi
-if ! declare -F discover_plugins >/dev/null 2>&1; then
+# Depends on yaml_get and discover_plugins — both in
+# core/plugin-registry/registry.sh. Re-source defensively if either is
+# absent so the file is self-contained when tests source dispatch.sh
+# directly. (Copilot caught on #280: yaml_get is NOT in helpers.sh.)
+if ! declare -F yaml_get >/dev/null 2>&1 || ! declare -F discover_plugins >/dev/null 2>&1; then
     source "$_ZBUILD_DISPATCH_ROOT/core/plugin-registry/registry.sh"
 fi
 

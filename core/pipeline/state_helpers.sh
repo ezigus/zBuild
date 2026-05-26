@@ -10,10 +10,15 @@ _ZBUILD_STATE_HELPERS_LOADED=1
 _ZBUILD_STATE_HELPERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_STATE_HELPERS_ROOT="$(cd "$_ZBUILD_STATE_HELPERS_DIR/../.." && pwd)"
 
-# Depends on atomic_write + locked_state_update (core/state/atomic.sh).
-# Defensively source if absent (e.g. tests source state_helpers.sh directly).
+# Depends on locked_state_update (core/state/atomic.sh) and atomic_write
+# (scripts/lib/helpers.sh). Defensively source each if absent — checking
+# both because a test could stub one without the other (Copilot caught
+# on #280: previously only locked_state_update was checked).
 if ! declare -F locked_state_update >/dev/null 2>&1; then
     source "$_ZBUILD_STATE_HELPERS_ROOT/core/state/atomic.sh"
+fi
+if ! declare -F atomic_write >/dev/null 2>&1; then
+    source "$_ZBUILD_STATE_HELPERS_ROOT/scripts/lib/helpers.sh"
 fi
 
 # write_scope_override — writes ZBUILD_SCOPE_PATHS (newline-delimited) to
