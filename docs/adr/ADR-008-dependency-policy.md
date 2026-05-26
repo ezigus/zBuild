@@ -7,7 +7,7 @@
 
 zBuild has three categories of external dependencies that can rot:
 
-1. **GitHub Actions** — `actions/checkout`, `actions/setup-node`, etc. Each action major version pins a JavaScript runtime (e.g., `actions/checkout@v4` runs on Node.js 20). When GitHub deprecates that runtime, the action emits a warning, then breaks. Today (2026-05-24) we saw the warning on `checkout@v4` (Node 20 → forced to Node 24 starting 2026-06-02).
+1. **GitHub Actions** — `actions/checkout`, `actions/setup-node`, etc. Each action major version pins a JavaScript runtime; when GitHub deprecates that runtime, the action emits a warning, then breaks. The 2026-05-24 CI warning on `actions/checkout@v4` (Node 20 → forced to Node 24 starting 2026-06-02) is the incident that prompted this ADR; that bump has since been applied (workflows pinned to `@v6` — see Implementation Notes).
 2. **Node.js itself** — both as the runtime for `bin/zbuild` (via `package.json` `engines`) and as the runtime for any tooling our CI uses (e.g., `npm publish`).
 3. **npm dependencies** — currently none required by zBuild; future plugins may add some.
 
@@ -49,6 +49,12 @@ Without an explicit policy, deprecations sneak up. The 2026-06-02 forced-upgrade
 **Bad:**
 - Weekly Dependabot noise. Mitigation: `open-pull-requests-limit: 5` per ecosystem; we triage in batch.
 - Action major-version bumps occasionally break CI (e.g., changed defaults). We accept this as the cost of staying current. PRs are reviewed before merge.
+
+## Implementation Notes
+
+- **v4→v6 transition complete (2026-05-25):** `actions/checkout`, `actions/setup-node` and friends are pinned to `@v6` across all workflows. The Node 20 deprecation that prompted this ADR is no longer a forward risk.
+- **Policy stance, not version manifest:** this ADR is the *rules* (latest stable major, Dependabot weekly, manual review). The current pins live in `.github/workflows/*.yml`; do not try to keep version numbers in the ADR in sync — the workflow files are the truth.
+- **Quarterly audit cadence:** next audit due 2026-08-25. Track audit completion in a closed-issue comment, not in this ADR.
 
 ## References
 

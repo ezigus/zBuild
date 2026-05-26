@@ -79,6 +79,15 @@ The engine validates:
 1. Every key in `persisted` has a corresponding `core/state/write_plugin_state <plugin_id> <key> <value>` call in `plugin.sh` (greppable; loose but catches obvious omissions).
 2. Every key in `reconstructed` is set in `init` before any `run` invocation. Asserted at runtime: missing keys → plugin refuses to run.
 
+### Idempotency scope for `init`
+
+"Plugins MUST be idempotent across re-runs of `init`" means:
+
+- **In scope (A — what is guaranteed):** within a *single resume operation* on a *single pipeline-state.json*, the engine may call `init` more than once (e.g., the engine retries init after a transient failure). The plugin MUST tolerate this: side-effects must be writable-or-reread without duplication. Concretely: writing to `core/state/write_plugin_state` is idempotent because the engine de-duplicates; writing to an external sink (Slack, GitHub comment) is NOT idempotent and MUST be guarded by a sentinel key in persisted state.
+- **Out of scope (B — what is NOT guaranteed):** idempotency across *different* pipeline runs (run A resumes, then unrelated run B starts). Run B starts fresh; the plugin's `init` may legitimately re-emit side-effects from run B even if run A already did so. Cross-run de-duplication is the calling system's concern (e.g., GitHub issue body de-dup belongs in the output-destination layer, not in the plugin).
+
+**Worked example.** `security-lens` declares `persisted: [last_pr_comment_id]`. On first `init`, it posts a comment, captures the comment ID, writes it via `core/state/write_plugin_state`. On second `init` *within the same resume*, it reads the persisted ID, sees the comment exists, skips the post. On `init` for a different run, it has no persisted ID for that run and posts again — that's correct, because the runs are independent artifacts.
+
 ### Resume sequence
 
 ```
@@ -117,6 +126,12 @@ The engine does NOT guarantee:
 - Manifest authorship friction (one more section to declare).
 - Reconstructed state can be expensive to recompute (e.g., large git diffs). Mitigation: plugins can cache reconstructed state into persisted state if they declare both.
 - The "every persisted key has a write_plugin_state call" check is grep-based, not type-checked. Accepted as a soft guardrail.
+
+## Implementation Notes
+
+- **24h auto/manual resume boundary** is implemented at `core/state/resume.sh:178–199` (`age_seconds -lt 86400` → `auto_resume`, else `manual_resume_only`). Both BSD and GNU date parsing supported.
+- **`current_iteration` persistence** is wired through `init_state()` (resume.sh:63 sets 0) and surfaces in the resume event at resume.sh:96.
+- **Test coverage gaps tracked separately:** #299 (24h boundary not exercised), #300 (runner abort-trap state-write failure path not exercised by mutation A2).
 
 ## References
 

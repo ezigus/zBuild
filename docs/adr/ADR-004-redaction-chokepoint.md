@@ -79,6 +79,14 @@ The token file must be written by the operator manually each run (one-shot). The
 - Plugin authors must always go through the helper, even for "obviously safe" prompts. Friction. Mitigation: the helper is one function call.
 - Tests grep for raw model invocations; clever obfuscation (e.g., constructing the URL via variable substitution) could bypass. Accepted; we're guarding against accidents, not adversaries.
 
+## Implementation Notes
+
+- **Chokepoint** lives at `core/redaction/scope-redaction.sh:34–158` (`apply_scope_redaction`). It refuses to emit when the scope manifest is missing/empty unless an explicit operator override (`ZBUILD_SCOPE_OVERRIDE=1` + token file matching `ZBUILD_RUN_ID`) is set, in which case it emits a `redaction.refused.overridden` audit event.
+- **Router C6 precondition** (`core/router/route.sh:23–66`) gates LLM dispatch on the most recent event being `redaction.applied`. The outer `--skip-precondition` path is fail-closed; the inner `[[ -n "$run_id" && -f ${ZBUILD_EVENTS_JSONL:-} ]]` no-ops when `ZBUILD_RUN_ID` is unset — that narrow edge case is tracked by **#289** (rescoped 2026-05-26).
+- **KEEPERS §C note correction:** legacy had 9 redaction seams; zBuild unifies all LLM-bound emission through this one chokepoint. The 9-seam framing in KEEPERS describes the *legacy* state.
+- **Intake note:** `plugins/agent/intake/manifest.yaml` declares `requires.core: [redaction, event-bus, state]` but does not yet call `apply_scope_redaction` because intake doesn't emit LLM-bound text in Phase 0.5. Phase 1 intake-LLM wiring MUST invoke the chokepoint before any model call.
+- **Test coverage:** `tests/unit/core-redaction-test.sh` exercises fail-closed behavior; `tests/mutation/scope-redaction-mutations.md` inverts the guard and confirms tests catch it.
+
 ## References
 
 - [KEEPERS.md §C](../KEEPERS.md#section-c--reliability--safety-expanded) — redaction has 9 prompt seams; no wrapper today.
