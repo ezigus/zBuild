@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-26T21:31:05Z (rolling 30-PR window)_
+_Last updated: 2026-05-26T23:22:04Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -31,3 +31,15 @@ _Last updated: 2026-05-26T21:31:05Z (rolling 30-PR window)_
 | #269 | fix(pipeline): address PR #268 review comments (strategy + orch contract) | 2026-05-25 |
 | #265 | [manifest-sync] Drift reconciliation | 2026-05-25 |
 | #295 | manifest(delta-deferred): file 8 tracking issues from review delta plan | 2026-05-26 |
+| #324 | docs(#310): reconcile cache contract signature — ADR-011 matches the code | 2026-05-26 |
+| #323 | fix(#299/#300): 24h boundary tests + UTC parsing fix + abort-trap coverage | 2026-05-26 |
+| #322 | fix(#309): mutation harness verifies expected-failing-test belongs to mutated module | 2026-05-26 |
+| #321 | fix(#311): composite strategy fail-loud with structured event | 2026-05-26 |
+| #320 | feat(#308): default claim-coordinator plugin (github-labels) + race test | 2026-05-26 |
+| #319 | fix(#307): dispatcher exports ZBUILD_PLATFORM per per-platform invocation | 2026-05-26 |
+| #318 | fix(#287/#288/#294): manifest schema validation + fail-closed artifact scanner | 2026-05-26 |
+| #317 | fix(#289 rescope): router C6 fail-closed when ZBUILD_RUN_ID/events log unset | 2026-05-26 |
+| #316 | fix(#290): plugin lockfile hashes plugin.sh + manifest; reverify before source | 2026-05-26 |
+| #315 | fix(#303): memory-sqlite busy_timeout — no more lost writes under concurrency | 2026-05-26 |
+| #314 | docs(adr): Implementation Notes appendices + ADR-006/008 clarifications | 2026-05-26 |
+| #270 | [manifest-sync] Drift reconciliation | 2026-05-26 |
