@@ -103,8 +103,25 @@ yaml_get_list() {
     ' "$file" 2>/dev/null
 }
 
+# ─── _required_hooks_for_kind — ADR-001 §"Required hooks per kind" ──────────
+# Returns space-separated required hook names for the given plugin kind.
+# Empty output = "no specifically required hooks" (still allow init/finalize/cleanup).
+_required_hooks_for_kind() {
+    case "$1" in
+        agent)             echo "run" ;;
+        tool)              echo "run" ;;
+        recovery)          echo "classify act" ;;
+        orchestrator)      echo "run" ;;
+        claim-coordinator) echo "claim release heartbeat list_claims" ;;
+        daemon)            echo "tick" ;;
+        *)                 echo "" ;;
+    esac
+}
+
 # ─── validate_manifest ──────────────────────────────────────────────────────
-# Checks required fields and kind validity. Returns 0 if valid, 1 if not.
+# Checks required fields, kind validity, kind-specific hook presence, and the
+# ADR-004 redaction requirement for agent plugins. Returns 0 if valid, 1 if not.
+# Issues #287, #294: expands beyond the original 4-field check.
 validate_manifest() {
     local manifest="$1"
     local errors=0
@@ -138,6 +155,34 @@ validate_manifest() {
     if [[ "$kind" == "agent" ]]; then
         if ! grep -qE '^\s+-\s+redaction\b' "$manifest"; then
             error "validate_manifest($manifest): kind: agent plugins MUST declare 'requires.core: [redaction, ...]'"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    # ─── #287/#294: hooks per kind ──────────────────────────────────────────
+    # Every kind-required hook must be declared in the manifest's hooks: block.
+    if [[ -n "$kind" ]]; then
+        local required_hooks; required_hooks="$(_required_hooks_for_kind "$kind")"
+        if [[ -n "$required_hooks" ]]; then
+            local h
+            for h in $required_hooks; do
+                local fn; fn="$(yaml_get "$manifest" "hooks.$h" 2>/dev/null || true)"
+                if [[ -z "$fn" ]]; then
+                    error "validate_manifest($manifest): kind: $kind requires hook '$h' (declare under hooks: in the manifest)"
+                    errors=$((errors + 1))
+                fi
+            done
+        fi
+    fi
+
+    # ─── #287/#294: requires.core must be a YAML-structured list ────────────
+    # Detect malformed `requires.core: redaction` (scalar instead of list).
+    if grep -qE '^\s*requires:' "$manifest"; then
+        # Look for `core:` under `requires:`. If present, the next non-blank
+        # non-comment line within the requires block must start with `- ` or
+        # the `core:` value must be an inline list `[a, b]`.
+        if grep -qE '^\s+core:\s*[^[\s]' "$manifest" && ! grep -qE '^\s+core:\s*\[' "$manifest"; then
+            error "validate_manifest($manifest): requires.core must be a YAML list (use 'core: [redaction, ...]' or '  - redaction')"
             errors=$((errors + 1))
         fi
     fi
@@ -355,6 +400,92 @@ find_plugin_for_role() {
     return 1
 }
 
+# ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
+# ADR-001 §Fail-closed scanner contract:
+#   "If a plugin declares provides.artifact_type but no artifact exists at
+#    outputs[].path after run completes with exit 0, the engine emits a
+#    synthetic blocking finding."
+#
+# Arguments:
+#   $1 — plugin_dir
+#   $2 — state_file (so $state_dir / $artifacts_dir can substitute into paths)
+#
+# Returns:
+#   0 if all declared outputs are present (or no outputs declared).
+#   1 if any declared output is missing — and emits one
+#      `plugin.artifact.missing` event per missing path.
+#
+# Path-template substitution (Phase 0.5): supports ${state_dir} and
+# ${artifact_dir} / ${artifacts_dir}. Other env vars are best-effort:
+# unsubstituted references remain literal (and will fail the existence check).
+scan_plugin_outputs() {
+    local plugin_dir="$1"
+    local state_file="${2:-}"
+    local manifest="$plugin_dir/manifest.yaml"
+
+    # No manifest, no outputs to scan — silently succeed.
+    [[ ! -f "$manifest" ]] && return 0
+
+    local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+    local kind; kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+    local artifact_type; artifact_type="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null || true)"
+
+    # If the plugin does not advertise a typed artifact, nothing to scan.
+    [[ -z "$artifact_type" ]] && return 0
+
+    # Compute substitution roots from state_file.
+    local state_dir="" artifact_dir=""
+    if [[ -n "$state_file" ]]; then
+        state_dir="$(dirname "$state_file")"
+        artifact_dir="${state_dir}/artifacts"
+    fi
+
+    # Pull outputs[].path entries from the manifest. yaml_get/yaml_get_list
+    # don't model lists of objects, so grep the YAML directly. Format we
+    # support (per ADR-001):
+    #   outputs:
+    #     - name: foo
+    #       path: ${artifact_dir}/foo.json
+    #       type: foo.json
+    local paths
+    paths="$(awk '
+        /^outputs:[[:space:]]*$/ { in_block = 1; next }
+        in_block && /^[a-zA-Z_]/ { in_block = 0 }
+        in_block && /^[[:space:]]+path:[[:space:]]*/ {
+            sub(/^[[:space:]]+path:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, "")
+            gsub(/^["'"'"']|["'"'"']$/, "")
+            print
+        }
+    ' "$manifest" 2>/dev/null)"
+
+    [[ -z "$paths" ]] && return 0
+
+    local missing=0
+    local raw_path resolved
+    while IFS= read -r raw_path; do
+        [[ -z "$raw_path" ]] && continue
+        resolved="$raw_path"
+        # Phase 0.5 substitutions.
+        resolved="${resolved//\$\{state_dir\}/$state_dir}"
+        resolved="${resolved//\$\{artifact_dir\}/$artifact_dir}"
+        resolved="${resolved//\$\{artifacts_dir\}/$artifact_dir}"
+
+        if [[ ! -e "$resolved" ]]; then
+            error "scan_plugin_outputs: plugin=$plugin_id declared output missing: $resolved (template: $raw_path)"
+            emit_event "plugin.artifact.missing" \
+                "plugin=$plugin_id" \
+                "kind=$kind" \
+                "artifact_type=$artifact_type" \
+                "expected_path=$resolved" \
+                "template=$raw_path"
+            missing=$((missing + 1))
+        fi
+    done <<< "$paths"
+
+    return $((missing > 0))
+}
+
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
 # Source the plugin's plugin.sh and call a lifecycle hook by name.
 # Plugin functions are isolated by sub-shell to prevent namespace pollution.
@@ -401,6 +532,19 @@ plugin_hook_call() {
     local rc=$?
 
     if [[ $rc -eq 0 ]]; then
+        # #288: after a successful `run`, verify the plugin actually produced
+        # the artifacts it declared. Absent evidence IS blocking evidence —
+        # emit synthetic findings for each missing output and surface the
+        # failure as a non-zero hook exit so the caller can react.
+        if [[ "$hook_name" == "run" ]]; then
+            # Per ADR-001 hook signature: $@ after shift 2 is (stage_id, state_file, ...).
+            local state_file_arg="${2:-}"
+            if ! scan_plugin_outputs "$plugin_dir" "$state_file_arg"; then
+                emit_event "plugin.$hook_name.artifact_check_failed" \
+                    "plugin=$plugin_id" "kind=$kind"
+                return 1
+            fi
+        fi
         emit_event "plugin.$hook_name.complete" "plugin=$plugin_id" "kind=$kind"
     else
         emit_event "plugin.$hook_name.error" "plugin=$plugin_id" "kind=$kind" "rc=$rc"
