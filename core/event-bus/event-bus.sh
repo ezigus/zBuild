@@ -103,11 +103,18 @@ eb_emit_event() {
     local plugin="${ZBUILD_PLUGIN:-}"
     local kind="${ZBUILD_PLUGIN_KIND:-}"
 
+    # Validate-or-cast $issue to a non-negative integer. Coming from env, an
+    # unsanitized string here would break the SQL INSERT below ($issue is
+    # interpolated unquoted because the column is INTEGER).
+    if ! [[ "$issue" =~ ^[0-9]+$ ]]; then
+        issue=0
+    fi
+
     local event_json
     event_json="$(jq -cn \
         --arg ts "$ts" \
         --arg run_id "$run_id" \
-        --argjson issue "${issue:-0}" \
+        --argjson issue "$issue" \
         --arg type "$type" \
         --arg plugin "$plugin" \
         --arg kind "$kind" \
@@ -125,15 +132,33 @@ eb_emit_event() {
         echo "$event_json" >> "$ZBUILD_EVENTS_JSONL"
     fi
 
-    # SQLite mirror (optional, fire-and-forget)
+    # SQLite mirror (optional, fire-and-forget).
+    # Escape every string field — previously only $payload was escaped, so a
+    # plugin emitting e.g. ZBUILD_PLUGIN_KIND="x'); DROP TABLE events;--"
+    # could corrupt the event store. $issue is validated as integer above
+    # and interpolated unquoted (INTEGER column).
     if command -v sqlite3 >/dev/null 2>&1; then
+        local _ts_esc _rid_esc _type_esc _plugin_esc _kind_esc _payload_esc
+        _ts_esc="$(_eb_sql_escape "$ts")"
+        _rid_esc="$(_eb_sql_escape "$run_id")"
+        _type_esc="$(_eb_sql_escape "$type")"
+        _plugin_esc="$(_eb_sql_escape "$plugin")"
+        _kind_esc="$(_eb_sql_escape "$kind")"
+        _payload_esc="$(_eb_sql_escape "$payload")"
         local _eb_emit_err
         _eb_emit_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<SQL 2>&1
 INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version)
-VALUES ('$ts', '$run_id', $issue, '$type', '$plugin', '$kind', '$(echo "$payload" | sed "s/'/''/g")', 1);
+VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);
 SQL
         )" || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
     fi
+}
+
+# _eb_sql_escape: double single-quotes for SQLite single-quoted string literals.
+# Single source of truth; used for every string field in the INSERT above.
+_eb_sql_escape() {
+    local s="$1"
+    printf '%s' "${s//\'/\'\'}"
 }
 
 # ─── eb_query_events — minimal read API ─────────────────────────────────────

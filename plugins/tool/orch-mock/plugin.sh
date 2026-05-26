@@ -105,8 +105,11 @@ orch_dispatch() {
 # ─── orch_collect ────────────────────────────────────────────────────────────
 # Contract: orch_collect <pool_id> [--timeout S]
 # Mock: iterates all result files in dispatch order; prints stdout of every
-#       work unit.  Returns the first non-zero rc encountered, or 0 if all
-#       tasks succeeded.  --timeout is accepted but ignored (mock is synchronous).
+#       work unit.  Returns 0/1/2 per the orch contract (#269):
+#         0 — all work units exited 0 (success)
+#         1 — all work units exited non-zero (complete failure)
+#         2 — mixed: at least one passed and at least one failed (partial)
+#       --timeout is accepted but ignored (mock is synchronous).
 orch_collect() {
     local pool_id="$1"
     # Accept --timeout flag without error; value is discarded.
@@ -123,7 +126,7 @@ orch_collect() {
     local total
     total="$(cat "${pool_dir}/seq" 2>/dev/null || echo 0)"
 
-    local overall_rc=0
+    local pass_count=0 fail_count=0
     local i
     for (( i = 0; i < total; i++ )); do
         local stdout_file="${pool_dir}/results/${i}.stdout"
@@ -136,13 +139,21 @@ orch_collect() {
         if [[ -f "$rc_file" ]]; then
             local task_rc
             task_rc="$(cat "$rc_file")"
-            if [[ "$task_rc" -ne 0 && "$overall_rc" -eq 0 ]]; then
-                overall_rc="$task_rc"
+            if [[ "$task_rc" -eq 0 ]]; then
+                pass_count=$((pass_count + 1))
+            else
+                fail_count=$((fail_count + 1))
             fi
         fi
     done
 
-    return "$overall_rc"
+    if [[ "$fail_count" -eq 0 ]]; then
+        return 0
+    elif [[ "$pass_count" -gt 0 ]]; then
+        return 2  # partial
+    else
+        return 1  # all failed
+    fi
 }
 
 # ─── orch_shutdown ───────────────────────────────────────────────────────────

@@ -3002,4 +3002,22 @@ issues:
       Original "tests/golden/parity orphaned" finding dropped — verified
       run-fixture.sh is intentionally a fixture helper requiring caller env
       vars, not a top-level test.
+    state: closed
+    closed_reason: 'Shipped via PR #276 on 2026-05-26.'
+  - id: cleanup-4
+    title: "[Phase 0.5 cleanup] Code bugs: orch-mock 0/1/2 normalization, event-bus SQL escape, router tempfile fallback"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, safety-primitive]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/277
+      Follow-up to #269 (Copilot review fix that normalised the three prod
+      orch backends but missed the mock) and #251 (Phase 0 audit Phase F).
+      Three bug fixes: (1) orch-mock's orch_collect now returns 0/1/2 per
+      the orch contract instead of raw rc passthrough — new
+      tests/unit/plugin-orch-mock-test.sh covers all-pass/all-fail/mixed/
+      empty; (2) event-bus SQLite INSERT now escapes every string field
+      via new _eb_sql_escape helper (was only escaping $payload), and
+      validates-or-casts $issue to integer at function entry; (3) router
+      drops the predictable /tmp/zb-router-stderr-$$ fallback and returns
+      2 with a router.error event if mktemp fails.
     state: open

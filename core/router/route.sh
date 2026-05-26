@@ -131,7 +131,15 @@ route_to_model() {
     fi
 
     local response rc=0
-    local stderr_file; stderr_file="$(mktemp 2>/dev/null || echo "/tmp/zb-router-stderr-$$")"
+    local stderr_file
+    if ! stderr_file="$(mktemp 2>/dev/null)"; then
+        error "router: mktemp failed; refusing to fall back to a predictable shared path"
+        eb_emit_event "router.error" \
+            "tier=$tier" \
+            "model_id=$model_id" \
+            "reason=mktemp_failed"
+        return 2
+    fi
     # Use -p to pass prompt as argument (matches established claude CLI usage pattern).
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$("${_tout_cmd[@]}" claude -p "$prompt" --print --model "$model_id" 2>"$stderr_file")" || rc=$?
