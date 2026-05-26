@@ -6,6 +6,35 @@
 [[ -n "${_ZBUILD_MEMORY_SQLITE_LOADED:-}" ]] && return 0
 _ZBUILD_MEMORY_SQLITE_LOADED=1
 
+# ─── Concurrency: busy_timeout (issue #303) ──────────────────────────────────
+# SQLite serializes writes via a single writer lock. Without busy_timeout,
+# concurrent INSERT OR REPLACE calls return SQLITE_BUSY and the bash plugin
+# treats that as silent failure, losing the write. With busy_timeout > 0 the
+# blocked connection waits and retries internally; the write is durable.
+#
+# 5 seconds is generous for the per-call cost while still bounding pathological
+# contention. Override with ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MS for tuning.
+#
+# Security: the env var flows into sqlite3 `-cmd ".timeout N"` and into the
+# schema-init SQL string, so it MUST be validated as a non-negative integer
+# before use. An unvalidated value would let an attacker inject sqlite3
+# dot-commands or SQL. Clamped to a sane upper bound (60s).
+_ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS=60000
+_memory_sqlite_busy_timeout_ms() {
+    local v="${ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MS:-5000}"
+    if [[ ! "$v" =~ ^[0-9]+$ ]]; then
+        warn "memory-sqlite: ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MS not a non-negative integer (got: $v); falling back to 5000" >&2 || true
+        echo "5000"
+        return 0
+    fi
+    if (( v > _ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS )); then
+        warn "memory-sqlite: clamping busy_timeout to ${_ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS}ms (requested $v)" >&2 || true
+        echo "$_ZBUILD_MEMORY_SQLITE_BUSY_TIMEOUT_MAX_MS"
+        return 0
+    fi
+    echo "$v"
+}
+
 # ─── DB path resolution ──────────────────────────────────────────────────────
 # Priority: ZBUILD_MEMORY_DB → ${ZBUILD_STATE_DIR}/memory.db → ~/.zbuild/state/memory.db
 _memory_sqlite_db_path() {
@@ -35,8 +64,14 @@ memory_backend_init() {
         return 1
     fi
 
+    local timeout_ms
+    timeout_ms="$(_memory_sqlite_busy_timeout_ms)"
+
+    # Quoted heredoc + `-cmd` keeps the SQL body free of shell interpolation.
+    # The validated timeout flows in via -cmd ".timeout N" only.
     local err
-    err="$(sqlite3 "$db" <<'SQL' 2>&1
+    err="$(sqlite3 -cmd ".timeout ${timeout_ms}" "$db" <<'SQL' 2>&1
+PRAGMA journal_mode = WAL;
 CREATE TABLE IF NOT EXISTS memory (
     namespace TEXT NOT NULL,
     key TEXT NOT NULL,
@@ -51,6 +86,26 @@ SQL
         return 1
     }
     return 0
+}
+
+# ─── _sqlite3_with_timeout — run SQL with busy_timeout set ────────────────────
+# All read/write paths funnel through here so concurrent invocations honor
+# busy_timeout instead of silently dropping writes. Uses `-cmd ".timeout N"`
+# which sets busy_timeout on the connection WITHOUT producing any stdout
+# (unlike `PRAGMA busy_timeout = N;` which echoes the new value).
+_sqlite3_with_timeout() {
+    local db="$1"; shift
+    local timeout_ms
+    timeout_ms="$(_memory_sqlite_busy_timeout_ms)"
+    sqlite3 -cmd ".timeout ${timeout_ms}" "$db" "$@"
+}
+
+_sqlite3_with_timeout_sep() {
+    local sep="$1"; shift
+    local db="$1"; shift
+    local timeout_ms
+    timeout_ms="$(_memory_sqlite_busy_timeout_ms)"
+    sqlite3 -cmd ".timeout ${timeout_ms}" -separator "$sep" "$db" "$@"
 }
 
 # ─── _sqlite3_quote — safely quote a string for SQLite ───────────────────────
@@ -74,7 +129,7 @@ memory_put() {
     q_key="$(_sqlite3_quote "$key")"
     q_value="$(_sqlite3_quote "$value")"
 
-    sqlite3 "$db" \
+    _sqlite3_with_timeout "$db" \
         "INSERT OR REPLACE INTO memory (namespace, key, value, updated_at)
          VALUES ($q_ns, $q_key, $q_value, strftime('%s', 'now'));" 2>/dev/null || return 1
     return 0
@@ -95,7 +150,7 @@ memory_get() {
     q_key="$(_sqlite3_quote "$key")"
 
     local result
-    result="$(sqlite3 "$db" \
+    result="$(_sqlite3_with_timeout "$db" \
         "SELECT value FROM memory WHERE namespace=$q_ns AND key=$q_key LIMIT 1;" 2>/dev/null)" || return 1
     printf '%s' "$result"
     return 0
@@ -131,7 +186,7 @@ memory_search() {
     [[ -n "$limit" ]] && limit_clause="LIMIT $limit"
 
     local rows
-    rows="$(sqlite3 -separator $'\t' "$db" \
+    rows="$(_sqlite3_with_timeout_sep $'\t' "$db" \
         "SELECT key, replace(value, char(10), '\n')
          FROM memory
          WHERE namespace=$q_ns
@@ -148,7 +203,7 @@ memory_list_namespaces() {
     db="$(_memory_sqlite_db_path)"
     [[ ! -f "$db" ]] && return 0
 
-    sqlite3 "$db" \
+    _sqlite3_with_timeout "$db" \
         "SELECT DISTINCT namespace FROM memory ORDER BY namespace;" 2>/dev/null || return 1
     return 0
 }
@@ -164,7 +219,7 @@ memory_namespace_exists() {
     local q_ns
     q_ns="$(_sqlite3_quote "$ns")"
     local count
-    count="$(sqlite3 "$db" \
+    count="$(_sqlite3_with_timeout "$db" \
         "SELECT COUNT(*) FROM memory WHERE namespace=$q_ns LIMIT 1;" 2>/dev/null)" || return 1
     [[ "${count:-0}" -gt 0 ]] && return 0
     return 1
@@ -180,7 +235,7 @@ memory_namespace_clear() {
 
     local q_ns
     q_ns="$(_sqlite3_quote "$ns")"
-    sqlite3 "$db" \
+    _sqlite3_with_timeout "$db" \
         "DELETE FROM memory WHERE namespace=$q_ns;" 2>/dev/null || return 1
     return 0
 }
