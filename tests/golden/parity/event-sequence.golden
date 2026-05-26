@@ -15,7 +15,6 @@ redaction.applied
 model.route
 plugin.run.complete
 plugin.run.complete
-plugin.contract.violated
 stage.complete
 stage.start
 plugin.run.start

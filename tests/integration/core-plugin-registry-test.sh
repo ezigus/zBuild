@@ -215,6 +215,196 @@ else
     assert_pass "disabled plugin (test-tool) excluded from discovery"
 fi
 
+# ─── #287/#294: hook-per-kind validation ─────────────────────────────────────
+# Agent plugin without a `run` hook should fail validation.
+mkdir -p "$FIXTURE_ROOT/agent/no-run-hook"
+cat > "$FIXTURE_ROOT/agent/no-run-hook/manifest.yaml" <<'EOF'
+id: no-run-hook
+name: Agent Missing Run Hook
+kind: agent
+version: 0.0.1
+hooks:
+  init: nr_init
+requires:
+  core:
+    - redaction
+EOF
+cat > "$FIXTURE_ROOT/agent/no-run-hook/plugin.sh" <<'EOF'
+nr_init() { :; }
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/agent/no-run-hook/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects agent without 'run' hook (#287)" "1" "$rc"
+
+# Tool plugin without `run` hook → rejected.
+mkdir -p "$FIXTURE_ROOT/tool/no-run-tool"
+cat > "$FIXTURE_ROOT/tool/no-run-tool/manifest.yaml" <<'EOF'
+id: no-run-tool
+name: Tool Missing Run
+kind: tool
+version: 0.0.1
+hooks:
+  init: t_init
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/tool/no-run-tool/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects tool without 'run' hook (#287)" "1" "$rc"
+
+# Claim-coordinator missing required hooks → rejected.
+mkdir -p "$FIXTURE_ROOT/claim-coordinator/incomplete"
+cat > "$FIXTURE_ROOT/claim-coordinator/incomplete/manifest.yaml" <<'EOF'
+id: claim-incomplete
+name: Incomplete Claim Coordinator
+kind: claim-coordinator
+version: 0.0.1
+hooks:
+  claim: c_claim
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/claim-coordinator/incomplete/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects claim-coordinator missing release/heartbeat/list_claims (#287)" "1" "$rc"
+
+# Malformed requires.core (scalar instead of list) → rejected.
+# Use kind: orchestrator so the ADR-004 redaction check doesn't fire — this
+# isolates the new scalar-shape check (#294) from the redaction requirement.
+mkdir -p "$FIXTURE_ROOT/orchestrator/bad-requires-core"
+cat > "$FIXTURE_ROOT/orchestrator/bad-requires-core/manifest.yaml" <<'EOF'
+id: bad-requires
+name: Bad Requires
+kind: orchestrator
+version: 0.0.1
+hooks:
+  run: br_run
+requires:
+  core: redaction
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/orchestrator/bad-requires-core/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects scalar requires.core for non-agent kind (#294)" "1" "$rc"
+
+# ─── #294 bypass: '- redaction' outside requires.core should NOT satisfy ─────
+# Pre-fix the agent-redaction check used a file-wide grep, so a `- redaction`
+# anywhere in the manifest (e.g. inside outputs:) would falsely satisfy it.
+# After structural validation the bypass is closed.
+mkdir -p "$FIXTURE_ROOT/agent/bypass-attempt"
+cat > "$FIXTURE_ROOT/agent/bypass-attempt/manifest.yaml" <<'EOF'
+id: bypass-attempt
+name: Bypass Attempt (redaction outside requires.core)
+kind: agent
+version: 0.0.1
+hooks:
+  run: ba_run
+requires:
+  core:
+    - event-bus
+config:
+  notes:
+    - redaction is mentioned here but not under requires.core
+EOF
+cat > "$FIXTURE_ROOT/agent/bypass-attempt/plugin.sh" <<'EOF'
+ba_run() { :; }
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/agent/bypass-attempt/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects agent with 'redaction' outside requires.core (#294 bypass closed)" "1" "$rc"
+
+# ─── #288: fail-closed artifact scanner ──────────────────────────────────────
+mkdir -p "$FIXTURE_ROOT/agent/declares-output"
+cat > "$FIXTURE_ROOT/agent/declares-output/manifest.yaml" <<'EOF'
+id: declares-output
+name: Declares Output
+kind: agent
+version: 0.0.1
+hooks:
+  run: do_run
+requires:
+  core:
+    - redaction
+provides:
+  artifact_type: findings.json
+  schema_version: 1
+outputs:
+  - name: findings
+    path: ${artifact_dir}/findings.json
+    type: findings.json
+EOF
+# Two plugin.sh variants: one writes the artifact, one doesn't.
+cat > "$FIXTURE_ROOT/agent/declares-output/plugin.sh" <<'EOF'
+do_run() {
+    local _stage_id="$1" state_file="$2"
+    # Intentionally writes NOTHING — exercises the scanner's blocking behavior.
+    return 0
+}
+EOF
+
+# Set up a state_dir + artifact_dir so the scanner can substitute the template.
+PLUG_STATE_DIR="$TEST_TEMP_DIR/plugin-state"
+mkdir -p "$PLUG_STATE_DIR/artifacts"
+PLUG_STATE_FILE="$PLUG_STATE_DIR/pipeline-state.json"
+echo '{}' > "$PLUG_STATE_FILE"
+
+# Lockfile from earlier tests is for the FIRST plugins set; regenerate so this
+# fixture is recognized (otherwise verify_plugin_for_source would warn).
+lockfile_write "$FIXTURE_ROOT" "$ZBUILD_LOCKFILE"
+
+# Direct scanner call: no artifact present → returns 1.
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/agent/declares-output" "$PLUG_STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "scan_plugin_outputs returns 1 when declared output missing (#288)" "1" "$rc"
+
+# plugin_hook_call should surface the scanner failure as a non-zero hook exit.
+set +e
+plugin_hook_call "$FIXTURE_ROOT/agent/declares-output" "run" "stage-id" "$PLUG_STATE_FILE" >/dev/null 2>&1
+hook_rc=$?
+set -e
+assert_eq "plugin_hook_call returns non-zero when scanner finds missing artifact (#288)" "1" "$hook_rc"
+
+# When the artifact IS produced, the scanner is happy + hook returns 0.
+cat > "$FIXTURE_ROOT/agent/declares-output/plugin.sh" <<'EOF'
+do_run() {
+    local _stage_id="$1" state_file="$2"
+    local state_dir; state_dir="$(dirname "$state_file")"
+    mkdir -p "$state_dir/artifacts"
+    echo '{"findings":[]}' > "$state_dir/artifacts/findings.json"
+    return 0
+}
+EOF
+lockfile_write "$FIXTURE_ROOT" "$ZBUILD_LOCKFILE"
+
+# Pre-create the artifact so the direct scanner call has something to find.
+echo '{"findings":[]}' > "$PLUG_STATE_DIR/artifacts/findings.json"
+
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/agent/declares-output" "$PLUG_STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "scan_plugin_outputs returns 0 when declared output exists" "0" "$rc"
+
+set +e
+plugin_hook_call "$FIXTURE_ROOT/agent/declares-output" "run" "stage-id" "$PLUG_STATE_FILE" >/dev/null 2>&1
+hook_rc=$?
+set -e
+assert_eq "plugin_hook_call returns 0 when scanner passes" "0" "$hook_rc"
+
+# Tool plugin without provides.artifact_type → scanner is no-op (always passes).
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/tool/test-tool" "$PLUG_STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "scanner no-op for plugins without provides.artifact_type" "0" "$rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

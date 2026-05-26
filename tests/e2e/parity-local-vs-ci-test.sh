@@ -107,6 +107,8 @@ _artifact_paths() {
         -not -name '*.bak' \
         -not -name '*.db' \
         -not -name '*.db-journal' \
+        -not -name '*.db-shm' \
+        -not -name '*.db-wal' \
         | sort )
 }
 

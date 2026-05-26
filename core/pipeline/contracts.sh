@@ -50,13 +50,18 @@ _check_artifact_contract() {
         }
     ' "$manifest" 2>/dev/null || true)"
 
-    # Resolve path relative to state_dir if not absolute
+    # Resolve path: substitute Phase 0.5 template variables (same set as
+    # scan_plugin_outputs in registry.sh — kept in sync per #318 review)
+    # then make relative paths state_dir-relative.
     local resolved_path
     if [[ -n "$output_path" ]]; then
-        if [[ "$output_path" == /* ]]; then
-            resolved_path="$output_path"
-        else
-            resolved_path="$state_dir/$output_path"
+        local artifact_dir="${state_dir}/artifacts"
+        resolved_path="$output_path"
+        resolved_path="${resolved_path//\$\{state_dir\}/$state_dir}"
+        resolved_path="${resolved_path//\$\{artifact_dir\}/$artifact_dir}"
+        resolved_path="${resolved_path//\$\{artifacts_dir\}/$artifact_dir}"
+        if [[ "$resolved_path" != /* ]]; then
+            resolved_path="$state_dir/$resolved_path"
         fi
     else
         # No explicit output path declared — check for state_dir/artifacts/<stage>-findings.json
