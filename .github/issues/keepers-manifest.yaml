@@ -3100,3 +3100,90 @@ issues:
       this PR merges, the Phase 0.5 cleanup wave is complete.
     state: closed
     closed_reason: 'Shipped via PR #286 on 2026-05-26.'
+  # ─── Delta plan deferred tracking issues (2026-05-26) ───────────────────
+  # Filed alongside the Phase 0.5 cleanup wave to record items the cleanup
+  # plan deliberately deferred. None require code in Phase 0.5; each is
+  # scoped to a future phase or awaits a decision.
+  - id: delta-d1
+    title: "[Deferred] Manifest validator: enforce full ADR-001 schema (hooks per kind, requires.core via YAML, provides.artifact_type, state.persisted/reconstructed)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/287
+      ADR-001 §Manifest schema documents many required fields;
+      core/plugin-registry/registry.sh:117-123 only enforces id/name/kind/version.
+      Hooks per kind, requires.core via structural YAML, provides.artifact_type,
+      state.persisted/reconstructed are not validated. Adds enforcement behavior
+      — deferred from the Phase 0.5 cleanup pass.
+  - id: delta-d2
+    title: "[Deferred] Fail-closed artifact-presence scanner (synthesize blocking finding when plugin declares outputs[].path but produces nothing)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/288
+      ADR-001 §C.4 / KEEPERS §C.4 promise this behavior; runner does not
+      enforce it. Adds new behavior — deferred from Phase 0.5 cleanup.
+  - id: delta-d3
+    title: "[Deferred] Router precondition fail-closed when ZBUILD_RUN_ID or ZBUILD_EVENTS_JSONL unset + gate --skip-precondition behind operator override + audit event"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/289
+      core/router/route.sh:49-66 precondition silently passes on missing env;
+      --skip-precondition is an undocumented bypass with no audit trail.
+      Adds new hardening — deferred from Phase 0.5 cleanup.
+  - id: delta-d4
+    title: "[Deferred] Plugin lockfile: hash plugin.sh (and all plugin files), reverify before source"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/290
+      core/plugin-registry/registry.sh:204-217 hashes only manifest.yaml.
+      A tampered plugin.sh (manifest unchanged) passes lockfile validation.
+      RCE risk. Adds new behavior — deferred from Phase 0.5 cleanup.
+  - id: delta-d5
+    title: "[Deferred] Retrofit 'Implementation Notes' appendix on ADRs 001-007 (pattern from ADR-009)"
+    milestone: "Phase 5 — Test Migration & Verification"
+    labels: [phase-5, foundation]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/291
+      ADR-009 has the appendix pattern; ADRs 001-007 don't. Cosmetic, low
+      urgency. Deferred from Phase 0.5 cleanup.
+  - id: delta-d6
+    title: "[Deferred] New ADR-013: canonical zBuild stage list (currently only sketched in ARCHITECTURE §3)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/292
+      Stage list is the spine of the system; no ADR formalizes it. New
+      design surface; defer until Phase 1 stage-handler-as-plugin work
+      (#12, #13-16) consolidates the actual canonical list.
+  - id: delta-d8
+    title: "[Deferred decision] State read fail-closed on JSON corruption — narrow lift from Phase 2 #38"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/293
+      Partial overlap with #38 (Phase 2 broad sweep) — this is the narrow
+      locked_state_update path only.
+      Two views: (a) narrow lift of .bak recovery into locked_state_update
+      is cleanup of shipped code; (b) leave for Phase 2 #38 broad sweep.
+      Awaits decision. Surfaced as Δ-8 in delta plan.
+  - id: delta-d9
+    title: "[Deferred decision] Plugin registry: YAML-structural manifest validation (replace fragile grep for redaction requirement)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/294
+      core/plugin-registry/registry.sh:138-142 uses fragile grep.
+      Two views: (a) yaml_get replacement is cleanup; (b) adds behavior
+      and should be a follow-up. Awaits decision. Surfaced as Δ-9 in
+      delta plan. See also delta-d1 (broader sweep).
