@@ -182,13 +182,16 @@ get_resume_recommendation() {
                 return 0
             fi
             local updated_epoch now_epoch age_seconds
-            # Parse ISO 8601 timestamp to epoch seconds
-            if date -d "$updated_at" +%s >/dev/null 2>&1; then
+            # Parse ISO-8601 'Z' timestamp to epoch seconds.
+            # Both branches must interpret the string as UTC — otherwise the
+            # 24h boundary drifts by the local timezone offset (#299 surfaced).
+            if date -u -d "$updated_at" +%s >/dev/null 2>&1; then
                 # GNU date
-                updated_epoch="$(date -d "$updated_at" +%s 2>/dev/null || echo 0)"
+                updated_epoch="$(date -u -d "$updated_at" +%s 2>/dev/null || echo 0)"
             else
-                # BSD date (macOS)
-                updated_epoch="$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$updated_at" +%s 2>/dev/null || echo 0)"
+                # BSD date (macOS) — force UTC interpretation with TZ=UTC so
+                # 'Z'-suffixed ISO strings parse to the right epoch.
+                updated_epoch="$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$updated_at" +%s 2>/dev/null || echo 0)"
             fi
             now_epoch="$(date -u +%s)"
             age_seconds=$(( now_epoch - updated_epoch ))
