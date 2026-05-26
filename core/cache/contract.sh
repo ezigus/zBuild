@@ -67,8 +67,9 @@ cache_has_capability() {
 
 # ─── Backend loading ─────────────────────────────────────────────────────────
 # Executed at sourcing time. Determines backend, sources plugin, verifies API.
-# Cache contract signature is `cache_pull <key> <dest_dir>` / `cache_push <key>
-# <src_dir>` — ADR-011 reconciled to this shape on 2026-05-26 per #310.
+# Cache contract signatures: `cache_pull <key> <dest_dir>` and
+# `cache_push <key> <src_dir>`. ADR-011 reconciled to this shape on
+# 2026-05-26 per #310.
 
 _zbuild_cache_load_backend() {
     local backend

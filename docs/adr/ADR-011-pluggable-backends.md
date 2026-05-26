@@ -91,7 +91,7 @@ The `<key>` is an opaque, plugin-agnostic identifier (e.g., a slot id or a conte
 
 Reconciled with the code (`core/cache/contract.sh`) on 2026-05-26 per #310: the initial sketch used a single-arg `cache_pull <slot_id>` that conflated key and destination. The two-arg form is what every implementation already needs and what the existing `gh-actions-cache` / `cache-local` plugins ship.
 
-Defaults: `local` (no-op stub for Phase 0.5). Optionals: `gh-actions-cache`, `s3`, `gist`.
+Defaults: `local` — a real filesystem-backed cache under `$ZBUILD_CACHE_DIR` (defaults to `~/.zbuild/cache`). Optionals: `gh-actions-cache`, `s3`, `gist`.
 
 ### Backend selection: `.zbuild/config.yaml`
 
