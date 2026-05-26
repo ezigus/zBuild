@@ -73,7 +73,7 @@ orch_capabilities                                     # → JSON
 
 Work-unit exit codes are normalised — individual codes are not passed through. Strategies use `2` to emit `stage.fail reason=partial` via the runner.
 
-**Phase 0.5 default implementation**: `plugins/tool/orch-sequential/` — single-process, in-order dispatch. Chosen as the default for Phase 0.5 because it has zero coordination surface and the smallest reference impl of the 0/1/2 normalisation contract. The `bash-parallel` example in `.zbuild/config.yaml` below shows the most common opt-in.
+**Phase 0.5 default implementation**: `plugins/tool/orch-sequential/` — single-process, in-order dispatch. Chosen as the default for Phase 0.5 because it has zero coordination surface and the smallest reference impl of the 0/1/2 normalisation contract. The `.zbuild/config.yaml` snippet below shows how to opt in to one of the optional backends.
 
 **Parallel implementation**: `plugins/tool/orch-bash-parallel/` — uses bash subshells + `wait -n` for parallelism, no coordination beyond independent execution. Implements `fanout` and `sequential` strategies trivially; `composite` works via a single subshell.
 

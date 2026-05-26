@@ -2960,7 +2960,7 @@ issues:
   - id: cleanup-1
     title: "[Phase 0.5 cleanup] Doc honesty: KEEPERS counts, ADR-004/008/011 drift"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
-    labels: [foundation, phase-0.5]
+    labels: [phase-0, foundation]
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/271
       Refines #4 (Phase 0 spec + architecture docs).
