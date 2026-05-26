@@ -1,0 +1,11 @@
+./artifacts/intake-intake-contract-violated-findings.json
+./artifacts/output-output-github-comment-contract-violated-findings.json
+./artifacts/security-findings.json
+./artifacts/security-lens-prompt.redacted.txt
+./artifacts/security-lens-security-lens-contract-violated-findings.json
+./intake.md
+./output-body.md
+./pipeline-state.json
+./platforms.json
+./report-parity-fixture-run-001.md
+./scope-manifest.md
