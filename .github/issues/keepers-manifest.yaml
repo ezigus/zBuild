@@ -321,11 +321,11 @@ issues:
     spec_cite: "KEEPERS §B1.1"
     legacy_cite: "legacy/scripts/lib/helpers.sh:75 (emit_event); legacy/config/event-schema.json"
     behavior: |
-      ALREADY MIGRATED in Phase 0 as core/event-bus/event-bus.sh.
-      This issue verifies it via 5-test trial during Phase 1 (full coverage,
-      mapping table, removal symptom).
+      MIGRATED in Phase 0 as core/event-bus/event-bus.sh. The 5-test trial
+      coverage (unit + integration + concurrent-writer) shipped alongside
+      the implementation; see tests/unit/core-event-bus-test.sh.
     state: closed
-    closed_reason: 'Closed via #285 on 2026-05-26 — event bus shipped at core/event-bus/event-bus.sh; verified by tests/unit/core-event-bus-test.sh.'
+    closed_reason: 'Closed via PR #286 on 2026-05-26 — event bus shipped at core/event-bus/event-bus.sh; verified by tests/unit/core-event-bus-test.sh.'
   - id: b-2
     title: "[B1] Audit intensity auto-selection (reads quality-scores.jsonl)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -471,11 +471,13 @@ issues:
     spec_cite: "KEEPERS §C corrections #1"
     legacy_cite: "legacy/scripts/lib/helpers.sh:634-800 (impl); 9 call sites listed in KEEPERS §C"
     behavior: |
-      ALREADY MIGRATED in Phase 0 as core/redaction/scope-redaction.sh. This
-      issue tracks routing all 9 legacy call sites through the chokepoint as
-      Phase 2 keepers migrate.
+      MIGRATED in Phase 0 as core/redaction/scope-redaction.sh (the
+      _apply_scope_redaction chokepoint). Routing the 9 legacy call sites
+      through the chokepoint is Phase 2 follow-on work and is tracked
+      under the individual Phase 2 keeper issues as they migrate — not
+      here. Enforcement test lives at tests/unit/redaction-chokepoint-test.sh.
     state: closed
-    closed_reason: 'Closed via #285 on 2026-05-26 — chokepoint shipped at core/redaction/scope-redaction.sh; routing legacy call sites is Phase 2 follow-on work (separate tracking).'
+    closed_reason: 'Closed via PR #286 on 2026-05-26 — chokepoint shipped at core/redaction/scope-redaction.sh; routing legacy call sites is Phase 2 follow-on work tracked separately.'
   - id: c-2
     title: "[C] Goal sanitization at all capture/resume/restart boundaries"
     milestone: "Phase 2 — Reliability & Safety Primitives"
@@ -515,9 +517,11 @@ issues:
       operational state, distinct from Learning Memory
       ([ADR-011](../../docs/adr/ADR-011-pluggable-backends.md)). See also
       #225 (operator-CLI surface for resume) and #209 (auto-resume detection
-      in bootstrap).
+      in bootstrap, since closed as a duplicate). MIGRATED in Phase 0;
+      verified by tests/integration/core-state-resume-exec-test.sh and
+      tests/integration/resume-state-machine-test.sh.
     state: closed
-    closed_reason: 'Closed via #285 on 2026-05-26 — current_iteration field shipped in core/state/resume.sh:29 schema; verified by tests/integration/core-state-resume-exec-test.sh + tests/integration/resume-state-machine-test.sh.'
+    closed_reason: 'Closed via PR #286 on 2026-05-26 — current_iteration field shipped in core/state/resume.sh:29 schema; verified by tests/integration/core-state-resume-exec-test.sh + tests/integration/resume-state-machine-test.sh.'
   - id: c-5
     title: "[C] Disk-space precheck on ALL artifact writes"
     milestone: "Phase 2 — Reliability & Safety Primitives"
@@ -2575,7 +2579,7 @@ issues:
       - Doctor-style report at end (green/yellow/red per check + resume status)
       - Reusable Actions composite: .github/actions/bootstrap/action.yml
     state: closed
-    closed_reason: 'Closed via #285 on 2026-05-26 — duplicate of #223 (closed when bootstrap shipped via PR #245).'
+    closed_reason: 'Closed via PR #286 on 2026-05-26 — duplicate of #223 (closed when bootstrap shipped via PR #245).'
   - id: cipar-2
     title: "[Phase 0.5] zbuild teardown command (snapshot state, mark status, upload artifacts, summarize)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2606,7 +2610,7 @@ issues:
         actions/upload-artifact; updates PR comment marker (uses #56 contract)
       - Reusable Actions composite: .github/actions/teardown/action.yml
     state: closed
-    closed_reason: 'Closed via #285 on 2026-05-26 — duplicate of #224 (closed when teardown shipped via PR #245).'
+    closed_reason: 'Closed via PR #286 on 2026-05-26 — duplicate of #224 (closed when teardown shipped via PR #245).'
   - id: cipar-3
     title: "[Phase 0.5] Cache backend contract + default (local) implementation"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3095,4 +3099,4 @@ issues:
       mirror state to closed with closed_reason citing #285. After
       this PR merges, the Phase 0.5 cleanup wave is complete.
     state: closed
-    closed_reason: 'Shipped via PR (this PR) on 2026-05-26.'
+    closed_reason: 'Shipped via PR #286 on 2026-05-26.'
