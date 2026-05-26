@@ -18,6 +18,7 @@ dist/
 
 # Runtime artifacts (from local testing of runner/event-bus/etc.)
 .swarm/
+.claude-flow/
 ruvector.db
 state/
 *.db-wal
