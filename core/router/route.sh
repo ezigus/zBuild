@@ -132,7 +132,10 @@ route_to_model() {
 
     local response rc=0
     local stderr_file
-    if ! stderr_file="$(mktemp 2>/dev/null)"; then
+    # Use an explicit template so mktemp behaves identically on GNU and BSD
+    # (bare `mktemp` without args is not portable across all BSD variants;
+    # Copilot caught this on #278).
+    if ! stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
         error "router: mktemp failed; refusing to fall back to a predictable shared path"
         eb_emit_event "router.error" \
             "tier=$tier" \

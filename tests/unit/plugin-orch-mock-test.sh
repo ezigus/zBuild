@@ -36,19 +36,23 @@ fi
 orch_shutdown "$pool"
 
 # ─── M2: all-fail → 1 ────────────────────────────────────────────────────────
+# First exit code is intentionally NOT 1 — pre-fix code returned the first
+# non-zero rc encountered, so if the first failure were 1 this assertion
+# would pass on the buggy version. Putting 5 first makes the test
+# discriminating: only the 0/1/2 normaliser can return 1 here.
 pool="m2-all-fail"
 orch_spawn "$pool" 3 ""
-orch_dispatch "$pool" "$(orch_work_unit 'exit 1')" >/dev/null
-orch_dispatch "$pool" "$(orch_work_unit 'exit 2')" >/dev/null
 orch_dispatch "$pool" "$(orch_work_unit 'exit 5')" >/dev/null
+orch_dispatch "$pool" "$(orch_work_unit 'exit 2')" >/dev/null
+orch_dispatch "$pool" "$(orch_work_unit 'exit 7')" >/dev/null
 set +e
 orch_collect "$pool" >/dev/null
 rc=$?
 set -e
 if [[ $rc -eq 1 ]]; then
-    assert_pass "M2: all-fail returns 1 (got $rc) — not raw rc passthrough"
+    assert_pass "M2: all-fail returns 1 (got $rc) — not raw rc passthrough (pre-fix would have returned 5)"
 else
-    assert_fail "M2: all-fail returns 1" "got $rc (pre-fix would have been 1, 2, or 5 depending on first non-zero)"
+    assert_fail "M2: all-fail returns 1" "got $rc (pre-fix would have returned 5, the first non-zero)"
 fi
 orch_shutdown "$pool"
 

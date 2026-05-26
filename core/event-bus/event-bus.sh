@@ -156,9 +156,10 @@ SQL
 
 # _eb_sql_escape: double single-quotes for SQLite single-quoted string literals.
 # Single source of truth; used for every string field in the INSERT above.
+# Uses sed because bash parameter expansion ${s//\'/\'\'} inside double
+# quotes treats \' as literal backslash+quote (Copilot caught this on #278).
 _eb_sql_escape() {
-    local s="$1"
-    printf '%s' "${s//\'/\'\'}"
+    printf '%s' "$1" | sed "s/'/''/g"
 }
 
 # ─── eb_query_events — minimal read API ─────────────────────────────────────
