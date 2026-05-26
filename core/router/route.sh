@@ -14,12 +14,41 @@ source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition]
-# Exit codes: 0=success, 1=recoverable (no candidates / claude API error), 2=fatal
+# Exit codes:
+#   0 — success
+#   1 — recoverable (no candidates, claude CLI / API error)
+#   2 — fatal (invariant violation: invalid args, misconfiguration, OR a C6
+#       precondition refusal — see below)
 #
-# C6 precondition (ARCHITECTURE.md §3): before emitting model.route, verify that
-# the most-recent event for the current run_id is redaction.applied.
-# If not, emits router.precondition.violated and returns non-zero.
-# Pass --skip-precondition to bypass (for bootstrapping / tests that don't use redaction).
+# C6 precondition (ARCHITECTURE.md §3 / ADR-004): before emitting model.route,
+# verify that the most-recent event for the current run_id is `redaction.applied`.
+# If not, emits `router.precondition.violated` and returns rc=2.
+#
+# Issue #289 (rescoped 2026-05-26): the precondition is fail-closed in three
+# ways, each emitting a single `router.precondition.refused` event with a
+# stable `reason=...` field (grep target). All refusals return rc=2 — the
+# safety violation is fatal, not recoverable, so callers don't silently
+# degrade by treating it as a transient failure.
+#   1. `--skip-precondition` not passed AND last event != redaction.applied
+#      → emits `router.precondition.violated`, rc=2.
+#   2. `--skip-precondition` not passed AND `ZBUILD_RUN_ID` unset
+#      → emits `router.precondition.refused` with reason=no_run_id, rc=2.
+#      Previously the inner `[[ -n "$run_id" && -f ... ]]` silently no-op'd
+#      this case and let the router proceed unverified.
+#   3. `--skip-precondition` not passed AND events log missing/empty
+#      → emits `router.precondition.refused` with reason=no_events_log, rc=2.
+#   4. `--skip-precondition` not passed AND no events for this run_id
+#      → emits `router.precondition.refused` with reason=no_events_for_run, rc=2.
+#
+# `--skip-precondition` is intended for bootstrapping (router self-test, early
+# pipeline init before the redaction chokepoint runs) and unit tests that
+# don't model the event bus. It is gated behind the SAME operator-override
+# pair that `apply_scope_redaction` uses (ADR-004 §Operator override):
+#   - ZBUILD_SCOPE_OVERRIDE=1
+#   - ~/.zbuild/scope-override-token contains the current ZBUILD_RUN_ID
+# Both conditions must hold OR the bypass is refused (rc=2). The token file
+# must be created by the operator each run (one-shot). Every accepted bypass
+# emits an audited `router.precondition.skipped` event.
 route_to_model() {
     if [[ $# -lt 2 ]]; then
         error "route_to_model requires <tier> <prompt>"
@@ -46,22 +75,78 @@ route_to_model() {
     # ── C6 precondition: most-recent event for run_id must be redaction.applied ──
     # This enforces ARCHITECTURE.md §3: "Every box that emits LLM-bound text passes
     # through redaction.apply(). There is no other path."
-    if ! $skip_precondition; then
+    if $skip_precondition; then
+        # Operator override gate (parallel to apply_scope_redaction):
+        # require ZBUILD_SCOPE_OVERRIDE=1 AND a token file matching the
+        # current run_id. Either condition missing → refuse the bypass.
+        local override_token="${HOME}/.zbuild/scope-override-token"
+        local override_ok=false
+        if [[ "${ZBUILD_SCOPE_OVERRIDE:-0}" == "1" && -f "$override_token" ]]; then
+            local token_run_id; token_run_id="$(cat "$override_token" 2>/dev/null || echo "")"
+            # When ZBUILD_RUN_ID is unset (bootstrap path), accept a token of
+            # the literal "bootstrap" so the gate is still operator-asserted.
+            local rid="${ZBUILD_RUN_ID:-bootstrap}"
+            [[ "$token_run_id" == "$rid" ]] && override_ok=true
+        fi
+        if ! $override_ok; then
+            error "router C6 precondition refused: --skip-precondition requires ZBUILD_SCOPE_OVERRIDE=1 + ~/.zbuild/scope-override-token containing run_id (or 'bootstrap' if RUN_ID unset)"
+            eb_emit_event "router.precondition.refused" \
+                "tier=$tier" \
+                "reason=skip_without_override" \
+                "run_id_state=${ZBUILD_RUN_ID:+set}${ZBUILD_RUN_ID:-unset}" 2>/dev/null || true
+            return 2
+        fi
+        # Audited bypass — emit an event so the override is observable in logs.
+        # We rely on the envelope's run_id; payload only records that the
+        # override was authorised + how the run_id was sourced.
+        eb_emit_event "router.precondition.skipped" \
+            "tier=$tier" \
+            "reason=skip_precondition_flag" \
+            "run_id_state=${ZBUILD_RUN_ID:+set}${ZBUILD_RUN_ID:-unset}" 2>/dev/null || true
+    else
         local run_id="${ZBUILD_RUN_ID:-}"
-        if [[ -n "$run_id" && -f "${ZBUILD_EVENTS_JSONL:-}" ]]; then
-            local last_event_type
-            last_event_type="$(jq -r --arg rid "$run_id" \
-                'select(.run_id == $rid) | .type' \
-                "${ZBUILD_EVENTS_JSONL}" 2>/dev/null | tail -1 || true)"
-            if [[ -n "$last_event_type" && "$last_event_type" != "redaction.applied" ]]; then
-                error "router C6 precondition violated: last event for run_id=$run_id was '$last_event_type', expected 'redaction.applied'"
-                eb_emit_event "router.precondition.violated" \
-                    "run_id=$run_id" \
-                    "tier=$tier" \
-                    "last_event=$last_event_type" \
-                    "required=redaction.applied"
-                return 1
-            fi
+        local events_log="${ZBUILD_EVENTS_JSONL:-}"
+
+        # Fail-closed: ZBUILD_RUN_ID must be set (#289). rc=2 (fatal) so
+        # callers don't silently degrade and route unverified prompts.
+        if [[ -z "$run_id" ]]; then
+            error "router C6 precondition refused: ZBUILD_RUN_ID is unset; cannot verify redaction.applied. Pass --skip-precondition only with operator override (ZBUILD_SCOPE_OVERRIDE + token)."
+            eb_emit_event "router.precondition.refused" \
+                "tier=$tier" \
+                "reason=no_run_id" 2>/dev/null || true
+            return 2
+        fi
+
+        # Fail-closed: events log must exist (#289).
+        if [[ -z "$events_log" || ! -f "$events_log" ]]; then
+            error "router C6 precondition refused: ZBUILD_EVENTS_JSONL='${events_log}' missing or empty; cannot verify redaction.applied for run_id=$run_id."
+            eb_emit_event "router.precondition.refused" \
+                "tier=$tier" \
+                "reason=no_events_log" 2>/dev/null || true
+            return 2
+        fi
+
+        local last_event_type
+        last_event_type="$(jq -r --arg rid "$run_id" \
+            'select(.run_id == $rid) | .type' \
+            "$events_log" 2>/dev/null | tail -1 || true)"
+
+        # Fail-closed: no events found for this run_id (#289).
+        if [[ -z "$last_event_type" ]]; then
+            error "router C6 precondition refused: no events found in $events_log for run_id=$run_id; cannot verify redaction.applied."
+            eb_emit_event "router.precondition.refused" \
+                "tier=$tier" \
+                "reason=no_events_for_run" 2>/dev/null || true
+            return 2
+        fi
+
+        if [[ "$last_event_type" != "redaction.applied" ]]; then
+            error "router C6 precondition violated: last event for run_id=$run_id was '$last_event_type', expected 'redaction.applied'"
+            eb_emit_event "router.precondition.violated" \
+                "tier=$tier" \
+                "last_event=$last_event_type" \
+                "required=redaction.applied"
+            return 2
         fi
     fi
 
