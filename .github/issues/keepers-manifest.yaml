@@ -3216,3 +3216,53 @@ issues:
         missing-file, and corrupt-JSON fail-closed)
     state: closed
     closed_reason: 'Shipped via PR #297 on 2026-05-26.'
+  - id: cleanup-delta-g
+    title: "[Phase 0.5 cleanup] Executable mutation test harness — run-mutation.sh actually applies mutations"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/298
+      Before this PR, tests/mutation/*.md specs were prose-only and
+      scripts/run-mutation.sh only verified the markdown structure —
+      it never injected a mutation or asserted the targeted test failed.
+      The mutation suite was theatre: a developer could delete `flock`
+      from atomic.sh and CI would pass.
+
+      Extended the .md schema with two new structured sections:
+      `## Patch` (a bash code block that mutates files) and `## Test`
+      (a bash code block expected to fail after the patch). Rewrote
+      run-mutation.sh to extract these blocks, apply the patch, run the
+      test, restore via git checkout of only the patch-touched files,
+      and assert the test exited non-zero.
+
+      All 6 existing specs upgraded to include Patch + Test sections.
+      6/6 mutations execute and are caught by their documented tests.
+
+      Two original mutations targeted test-coverage gaps the existing
+      tests don't cover (resume in_progress 24h boundary, runner abort
+      trap state-write failure path) — substituted with safer alt
+      mutations and filed follow-ups #299, #300 to strengthen the tests
+      and restore the more aggressive mutations.
+    state: open
+  - id: coverage-gap-resume-in-progress
+    title: "[Test coverage gap surfaced by #298] resume.sh: in_progress 24h boundary never exercised"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/299
+      Surfaced by #298. resume-state-machine-test.sh tests the
+      interrupted) branch which bypasses the 86400s check; in_progress)
+      branch with a stale timestamp is never exercised. Small test
+      addition; no production code change.
+  - id: coverage-gap-runner-abort-state-error
+    title: "[Test coverage gap surfaced by #298] runner abort trap: state-write failure path not exercised by A2"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/300
+      Surfaced by #298. Test A2 exercises abort with writable state;
+      the `if ! _set_pipeline_status ... then pipeline.state.error` fail
+      -closed block is never triggered. Add A2c with chmod 444 on
+      state dir. Small test addition; no production code change.
