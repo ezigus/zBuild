@@ -3126,7 +3126,7 @@ issues:
       ADR-001 §C.4 / KEEPERS §C.4 promise this behavior; runner does not
       enforce it. Adds new behavior — deferred from Phase 0.5 cleanup.
   - id: delta-d3
-    title: "[Deferred] Router precondition fail-closed when ZBUILD_RUN_ID/EVENTS_JSONL unset + gate --skip-precondition behind operator override + audit event"
+    title: "[Deferred] Router precondition fail-closed when ZBUILD_RUN_ID or ZBUILD_EVENTS_JSONL unset + gate --skip-precondition behind operator override + audit event"
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, foundation, safety-primitive]
     state: open
@@ -3167,18 +3167,19 @@ issues:
   - id: delta-d8
     title: "[Deferred decision] State read fail-closed on JSON corruption — narrow lift from Phase 2 #38"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
-    labels: [phase-0.5, foundation, safety-primitive]
+    labels: [phase-0, foundation, safety-primitive]
     state: open
-    partial_overlap: [38]
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/293
+      Partial overlap with #38 (Phase 2 broad sweep) — this is the narrow
+      locked_state_update path only.
       Two views: (a) narrow lift of .bak recovery into locked_state_update
       is cleanup of shipped code; (b) leave for Phase 2 #38 broad sweep.
       Awaits decision. Surfaced as Δ-8 in delta plan.
   - id: delta-d9
     title: "[Deferred decision] Plugin registry: YAML-structural manifest validation (replace fragile grep for redaction requirement)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
-    labels: [phase-0.5, foundation, safety-primitive]
+    labels: [phase-0, foundation, safety-primitive]
     state: open
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/294
