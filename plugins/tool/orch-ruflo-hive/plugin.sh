@@ -69,21 +69,30 @@ orch_spawn() {
 }
 
 # ─── orch_dispatch ───────────────────────────────────────────────────────────
-# Contract: orch_dispatch <pool_id> <work_unit>  — best-effort ruflo task
-# notification, then delegates to local_engine.
+# Contract: orch_dispatch <pool_id> <work_unit>  — local dispatch first (so
+# we only notify ruflo for work that actually ran), then best-effort ruflo
+# task notification, then print the slot_id. Restores the pre-extraction
+# "zbuild:<slot_id>:<work_unit>" description format now that slot_id is
+# available before the notification.
 orch_dispatch() {
     local pool_id="$1" work_unit="$2"
     _orch_hive_validate_pool_id "$pool_id" "orch_dispatch" || return 1
 
-    # Notify ruflo about this task (best-effort; does not affect local execution).
-    # Description tag uses the work_unit path; slot_id is unknown until dispatch
-    # so it's not included here (was a minor cosmetic difference from the
-    # pre-extraction version).
+    # Capture slot_id from local dispatch; abort the ruflo notification if
+    # validation/dispatch failed (Copilot caught on #282: previous order
+    # emitted ruflo telemetry for work that never ran).
+    local slot_id rc
+    slot_id="$(_orch_local_dispatch_workunit "$(_orch_hive_pool_dir "$pool_id")" "slots" "$work_unit" "orch_ruflo_hive")"
+    rc=$?
+    [[ $rc -ne 0 ]] && return "$rc"
+
+    # Best-effort ruflo notification — failures do not affect local execution.
     ruflo hive-mind task \
-        --description "zbuild:${work_unit}" \
+        --description "zbuild:${slot_id}:${work_unit}" \
         >/dev/null 2>&1 || true
 
-    _orch_local_dispatch_workunit "$(_orch_hive_pool_dir "$pool_id")" "slots" "$work_unit" "orch_ruflo_hive"
+    echo "$slot_id"
+    return 0
 }
 
 # ─── orch_collect ────────────────────────────────────────────────────────────

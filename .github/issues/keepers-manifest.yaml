@@ -3053,4 +3053,5 @@ issues:
       backend-specific bits (pool-dir naming, validation, ruflo hive-mind
       hooks, capabilities). Future contract fixes change one file, not
       two-or-three. No behavior change — pure refactor.
-    state: open
+    state: closed
+    closed_reason: 'Shipped via PR #282 on 2026-05-26.'
