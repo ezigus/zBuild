@@ -3304,3 +3304,29 @@ issues:
       the `if ! _set_pipeline_status ... then pipeline.state.error` fail
       -closed block is never triggered. Add A2c with chmod 444 on
       state dir. Small test addition; no production code change.
+  - id: cleanup-delta-e
+    title: "[Phase 0.5 cleanup] Parity test depth — diff full state.json + artifacts, not just status/stage_statuses"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/305
+      Before this PR, tests/e2e/parity-local-vs-ci-test.sh asserted same
+      pipeline status, same stage_statuses map, and same event-type
+      sequence — but did NOT diff the full pipeline-state.json, the
+      artifact tree, or artifact contents. ADR-010 implies stronger
+      CI/CLI equivalence than event-type presence.
+
+      Extended the existing test (no new file) with 6 new assertions:
+      - full normalized pipeline-state.json identical across modes
+      - artifact filename list identical
+      - each artifact's sha256 identical after timestamp + path-prefix
+        normalization
+      - normalized state.json matches new golden parity/state-shape
+      - artifact filename list matches new golden parity/artifact-paths
+
+      Two new goldens checked in:
+      - tests/golden/parity/state-shape.golden
+      - tests/golden/parity/artifact-paths.golden
+
+      No production code changes. Just stronger parity coverage.
+    state: open
