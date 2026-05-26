@@ -224,17 +224,23 @@ validate_manifest() {
 
     # ─── #287/#294: hooks per kind ──────────────────────────────────────────
     # Every kind-required hook must be declared in the manifest's hooks: block.
+    # Backend plugins (those declaring `provides.role`) are invoked through
+    # contract layers (cache_pull, memory_put, etc.) — not plugin_hook_call —
+    # so they don't need lifecycle hooks. The check skips when role is set.
     if [[ -n "$kind" ]]; then
-        local required_hooks; required_hooks="$(_required_hooks_for_kind "$kind")"
-        if [[ -n "$required_hooks" ]]; then
-            local h
-            for h in $required_hooks; do
-                local fn; fn="$(yaml_get "$manifest" "hooks.$h" 2>/dev/null || true)"
-                if [[ -z "$fn" ]]; then
-                    error "validate_manifest($manifest): kind: $kind requires hook '$h' (declare under hooks: in the manifest)"
-                    errors=$((errors + 1))
-                fi
-            done
+        local provides_role; provides_role="$(yaml_get "$manifest" "provides.role" 2>/dev/null || true)"
+        if [[ -z "$provides_role" ]]; then
+            local required_hooks; required_hooks="$(_required_hooks_for_kind "$kind")"
+            if [[ -n "$required_hooks" ]]; then
+                local h
+                for h in $required_hooks; do
+                    local fn; fn="$(yaml_get "$manifest" "hooks.$h" 2>/dev/null || true)"
+                    if [[ -z "$fn" ]]; then
+                        error "validate_manifest($manifest): kind: $kind requires hook '$h' (declare under hooks: in the manifest)"
+                        errors=$((errors + 1))
+                    fi
+                done
+            fi
         fi
     fi
 
