@@ -87,6 +87,15 @@ Phase 0 verification calls for this: spawn two simulated daemons, have them race
 - The 5-test trial is process overhead per keeper. Trade-off: explicit gates beat implicit drift.
 - Rewriting 30 tests is real effort. Mitigation: parallelize across the migration; each rewrite is independent.
 
+## Implementation Notes
+
+- **Tier directories exist:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/golden/`, `tests/mutation/`. Per-tier runner at `scripts/run-tests.sh`.
+- **Mutation harness** (`scripts/run-mutation.sh`, added by PR #301) applies real patches and asserts the expected test fails. Patch-vs-test relevance enforcement is tracked by **#309**.
+- **Golden snapshots** present today: `init-state-shape.golden`, `redaction-applied-shape.golden`, `cli-dry-run.golden`. Coverage is intentionally narrow; expansion proceeds with each new contract.
+- **5-test trial** has been applied to memory-sqlite (#216) and orch-sequential (#219) per PR #304. Other keepers await per-PR trial files; ADR-002 pruning protocol blocks `git rm` of legacy source until the trial files exist.
+- **Parity test** (`tests/e2e/parity-local-vs-ci-test.sh`) diffs full `pipeline-state.json` (normalized) + artifact sha256 tree + event-type sequence — the depth promised by ADR-010 (added by PR #306).
+- **CI gating:** `.github/workflows/test.yml` runs smoke + lint + unit + integration + e2e + golden + mutation as parallel jobs.
+
 ## References
 
 - [KEEPERS.md §G](../KEEPERS.md#section-g--test-harness-carry-forward-with-audit-correction) — full migration matrix and harness audit.
