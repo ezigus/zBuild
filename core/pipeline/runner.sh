@@ -107,6 +107,25 @@ main() {
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
     local template_file="$_ZBUILD_ROOT/config/templates/${template}.yaml"
 
+    # Cross-check: ZBUILD_STATE_FILE vs --issue (issue #296 Δ-4)
+    # Placed before --dry-run so dry-run also surfaces mismatches.
+    # Fail-closed on corrupt state files (rather than letting get_state_field
+    # silently return its default and skip the check).
+    if [[ -n "${ZBUILD_STATE_FILE:-}" && -n "$issue" && "$issue" != "0" \
+          && -f "${ZBUILD_STATE_FILE}" ]]; then
+        if ! jq empty "${ZBUILD_STATE_FILE}" >/dev/null 2>&1; then
+            error "ZBUILD_STATE_FILE='${ZBUILD_STATE_FILE}' is not valid JSON; refusing to honor it alongside --issue $issue (fail-closed)"
+            return 2
+        fi
+        local _existing_issue
+        _existing_issue="$(jq -r '.issue // ""' "${ZBUILD_STATE_FILE}" 2>/dev/null || true)"
+        if [[ -n "$_existing_issue" && "$_existing_issue" != "null" \
+              && "$_existing_issue" != "0" && "$_existing_issue" != "$issue" ]]; then
+            error "ZBUILD_STATE_FILE points at run for issue $_existing_issue but --issue is $issue (mismatch); aborting to avoid silent override"
+            return 2
+        fi
+    fi
+
     # Load template; fall back to built-in stage list if template missing or empty
     local active_stages=()
     if load_template "$template_file" 2>/dev/null && [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
@@ -149,21 +168,11 @@ main() {
 
     mkdir -p "$state_dir"
     # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`)
+    # Cross-check vs --issue happened earlier (before --dry-run); see #296 Δ-4.
     local state_file
     if [[ -n "${ZBUILD_STATE_FILE:-}" ]]; then
         state_file="$ZBUILD_STATE_FILE"
         state_dir="$(dirname "$state_file")"
-        # Cross-check: if both ZBUILD_STATE_FILE and --issue are set, the
-        # state file's recorded issue MUST match. Silent disagreement was
-        # an operator-confusion vector — issue #296 Δ-4.
-        if [[ -n "$issue" && "$issue" != "0" && -f "$state_file" ]]; then
-            local _existing_issue
-            _existing_issue="$(get_state_field "$state_file" '.issue' '')"
-            if [[ -n "$_existing_issue" && "$_existing_issue" != "0" && "$_existing_issue" != "$issue" ]]; then
-                error "ZBUILD_STATE_FILE points at run for issue $_existing_issue but --issue is $issue (mismatch); aborting to avoid silent override"
-                return 2
-            fi
-        fi
     else
         state_file="$state_dir/pipeline-state.json"
     fi

@@ -83,30 +83,32 @@ else
     assert_fail "mismatch error message is clear" "stderr: $(cat "$TEST_TEMP_DIR/stderr1")"
 fi
 
-# ─── Test 2: ZBUILD_STATE_FILE points at issue 100 + --issue 100 → no error ─
-# (Run with --dry-run so we don't actually traverse stages — we just want to
-# confirm the cross-check doesn't reject matching values.)
+# ─── Test 2: matching (state=100, --issue=100) passes the cross-check ──────
+# Use --dry-run because the cross-check now fires BEFORE dry-run early-return.
+# Matching values should result in rc=0 (dry-run success) and no "mismatch".
 set +e
 ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --issue 100 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
 rc=$?
 set -e
-if [[ "$rc" -ne 2 ]] || ! grep -q "mismatch" "$TEST_TEMP_DIR/stderr2"; then
-    assert_pass "matching (state=100, --issue=100) does not trigger cross-check error"
+assert_eq "matching (state=100, --issue=100) exits 0 via dry-run" "0" "$rc"
+if ! grep -q "mismatch" "$TEST_TEMP_DIR/stderr2"; then
+    assert_pass "matching values produce no 'mismatch' error"
 else
-    assert_fail "matching values should not trigger cross-check error" \
-        "rc=$rc stderr=$(cat "$TEST_TEMP_DIR/stderr2")"
+    assert_fail "matching values must not trigger 'mismatch' error" \
+        "stderr: $(cat "$TEST_TEMP_DIR/stderr2")"
 fi
 
-# ─── Test 3: ZBUILD_STATE_FILE set, --issue omitted → no error ─────────────
+# ─── Test 3: ZBUILD_STATE_FILE set + --goal (no --issue) → cross-check skipped ─
 set +e
 ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --goal "test goal" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr3"
 rc=$?
 set -e
+assert_eq "goal-mode + state file exits 0 via dry-run" "0" "$rc"
 if ! grep -q "mismatch" "$TEST_TEMP_DIR/stderr3"; then
     assert_pass "no --issue (goal-mode) does not trigger cross-check error"
 else
     assert_fail "no --issue should not trigger cross-check error" \
-        "rc=$rc stderr=$(cat "$TEST_TEMP_DIR/stderr3")"
+        "stderr: $(cat "$TEST_TEMP_DIR/stderr3")"
 fi
 
 # ─── Test 4: ZBUILD_STATE_FILE unset → no cross-check at all ───────────────
@@ -114,11 +116,12 @@ set +e
 bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr4"
 rc=$?
 set -e
+assert_eq "no env var, --issue only, exits 0 via dry-run" "0" "$rc"
 if ! grep -q "mismatch" "$TEST_TEMP_DIR/stderr4"; then
     assert_pass "ZBUILD_STATE_FILE unset → no cross-check applied"
 else
     assert_fail "no env var should not trigger cross-check error" \
-        "rc=$rc stderr=$(cat "$TEST_TEMP_DIR/stderr4")"
+        "stderr: $(cat "$TEST_TEMP_DIR/stderr4")"
 fi
 
 # ─── Test 5: ZBUILD_STATE_FILE set but file doesn't exist → no error here ──
@@ -129,11 +132,31 @@ ZBUILD_STATE_FILE="$TEST_TEMP_DIR/nonexistent-state.json" \
     bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr5"
 rc=$?
 set -e
+assert_eq "missing state file exits 0 via dry-run" "0" "$rc"
 if ! grep -q "mismatch" "$TEST_TEMP_DIR/stderr5"; then
     assert_pass "missing state file → no cross-check applied (resume logic handles)"
 else
     assert_fail "missing state file should not trigger cross-check error" \
-        "rc=$rc stderr=$(cat "$TEST_TEMP_DIR/stderr5")"
+        "stderr: $(cat "$TEST_TEMP_DIR/stderr5")"
+fi
+
+# ─── Test 6: ZBUILD_STATE_FILE points at corrupt JSON → fail-closed ────────
+# Hardening: if get_state_field silently defaulted on jq errors, a corrupt
+# state file could bypass the cross-check. We use `jq empty` to validate
+# first and refuse to proceed on invalid JSON.
+CORRUPT_STATE_FILE="$TEST_TEMP_DIR/corrupt-state.json"
+echo "this is not json {" > "$CORRUPT_STATE_FILE"
+set +e
+ZBUILD_STATE_FILE="$CORRUPT_STATE_FILE" \
+    bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
+rc=$?
+set -e
+assert_eq "corrupt state file + --issue → exits 2 (fail-closed)" "2" "$rc"
+if grep -q "not valid JSON" "$TEST_TEMP_DIR/stderr6"; then
+    assert_pass "corrupt-JSON error message is clear"
+else
+    assert_fail "corrupt-JSON error message is clear" \
+        "stderr: $(cat "$TEST_TEMP_DIR/stderr6")"
 fi
 
 cleanup_test_env

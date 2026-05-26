@@ -74,7 +74,9 @@ apply_scope_redaction() {
     local allow_lines
     allow_lines="$(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$manifest")"
     if [[ -n "$allowlist" ]]; then
-        local csv_lines; csv_lines="$(echo "$allowlist" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        # printf instead of echo: echo mishandles "-n"/"-e"/backslashes on
+        # some platforms (Copilot caught this on PR #297).
+        local csv_lines; csv_lines="$(printf '%s\n' "$allowlist" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
         if [[ -n "$allow_lines" ]]; then
             allow_lines="${allow_lines}"$'\n'"${csv_lines}"
         else

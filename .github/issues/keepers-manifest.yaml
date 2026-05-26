@@ -3204,11 +3204,15 @@ issues:
 
       Δ-4: runner.sh honors ZBUILD_STATE_FILE if set, otherwise derives
       from --issue. If both were set and disagreed, the env var won
-      silently — operator-confusion vector. Added cross-check: when state
-      file exists and records a different issue, runner errors (return 2)
-      with a clear message.
+      silently — operator-confusion vector. Added cross-check (placed
+      before --dry-run so it also surfaces mismatches in dry-run mode):
+      when state file exists and records a different issue, runner errors
+      (return 2). Fail-closed on corrupt JSON via `jq empty` validation.
 
       Tests added:
       - tests/unit/scope-redaction-no-tempfile-test.sh (6 assertions)
-      - tests/integration/runner-state-file-issue-cross-check-test.sh (6 assertions)
-    state: open
+      - tests/integration/runner-state-file-issue-cross-check-test.sh
+        (12 assertions covering mismatch, match, no-issue, no-env,
+        missing-file, and corrupt-JSON fail-closed)
+    state: closed
+    closed_reason: 'Shipped via PR #297 on 2026-05-26.'
