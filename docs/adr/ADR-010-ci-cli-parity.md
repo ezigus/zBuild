@@ -86,7 +86,7 @@ jobs:
   zbuild:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: ezigus/zBuild/.github/actions/bootstrap@v1
         with:
           cache-backend: gh-actions-cache

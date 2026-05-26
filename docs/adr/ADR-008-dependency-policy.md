@@ -17,8 +17,8 @@ Without an explicit policy, deprecations sneak up. The 2026-06-02 forced-upgrade
 
 ### Actions: always latest stable major
 
-- Bump GitHub Actions to the latest stable major version. Today: `actions/checkout@v5`, `actions/setup-node@v5`.
-- Pin to major version (`@v5`), not SHA or minor. Major bumps get reviewed; minor/patch is automatic via Dependabot.
+- Bump GitHub Actions to the latest stable major version. See `.github/workflows/` for current pins (today: `actions/checkout@v6`, `actions/setup-node@v6`, `actions/upload-artifact@v7`, `peter-evans/create-pull-request@v8`).
+- Pin to major version (e.g. `@v6`), not SHA or minor. Major bumps get reviewed; minor/patch is automatic via Dependabot.
 - Dependabot config (`.github/dependabot.yml`) opens weekly PRs for action updates. PRs are reviewed and merged manually; no auto-merge.
 
 ### Node.js: LTS + 1

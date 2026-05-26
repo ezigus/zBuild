@@ -274,10 +274,13 @@ Behaviors not wired today; build after migration stabilizes (not blocking Phase 
 
 ### Issue counts
 
-- **Phase 0 foundation: 9 issues** (see Phase 0 sequence below).
-- **Keepers: ~59 issues** (A:8, B:13, C:12, D:11, E:5, F:7, G:3). Counts must be enumerated row-by-row in `keepers-manifest.yaml` so phase-ship criteria are checkable, not forecasted.
-- **Wishlist: 11 issues** (Section L, one each).
-- **Total: ~79 issues.**
+Counts are authoritative in `.github/issues/keepers-manifest.yaml` and on GitHub (the manifest-sync workflow from #227/#248 keeps them in lockstep).
+
+- **Phase 0 foundation:** entries labeled `phase-0`.
+- **Keepers:** entries labeled `keeper`, split across sections A–G.
+- **Wishlist:** entries labeled `wishlist` (Section L).
+
+To get current totals, query the manifest or GitHub directly — don't hard-code numeric snapshots in docs (they drift the moment work ships).
 
 ### Top dependencies (modeled as issue links)
 
