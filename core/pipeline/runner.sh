@@ -27,6 +27,11 @@ source "$_ZBUILD_ROOT/core/orch/contract.sh"
 source "$_ZBUILD_ROOT/core/pipeline/strategies/fanout.sh"
 source "$_ZBUILD_ROOT/core/pipeline/strategies/sequential.sh"
 source "$_ZBUILD_ROOT/core/pipeline/strategies/composite.sh"
+# Runner helpers extracted from this file in #279 to keep it under the
+# CLAUDE.md 500-line cap.
+source "$_ZBUILD_ROOT/core/pipeline/dispatch.sh"
+source "$_ZBUILD_ROOT/core/pipeline/contracts.sh"
+source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
 
 _usage() {
     cat <<EOF
@@ -47,142 +52,13 @@ Environment:
 EOF
 }
 
-_find_plugin_for_stage() {
-    local stage="$1" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}" plugin_dir id
-    while IFS= read -r plugin_dir; do
-        id="$(yaml_get "$plugin_dir/manifest.yaml" "id")"
-        [[ "$id" == "$stage" ]] && { echo "$plugin_dir"; return 0; }
-    done < <(discover_plugins "$plugins_root" 2>/dev/null)
-    return 1
-}
-
-# _check_artifact_contract <plugin_dir> <state_dir> <stage>
-# ARCHITECTURE.md §2: if a plugin declares provides.artifact_type, it MUST
-# write the declared output artifact. Emits plugin.contract.violated and
-# creates a synthetic blocking findings.json if the artifact is missing/empty.
-# Returns 0 always (caller decides whether to halt the pipeline).
-_check_artifact_contract() {
-    local plugin_dir="$1" state_dir="$2" stage="$3"
-    local manifest="$plugin_dir/manifest.yaml"
-
-    # Check if plugin declares provides.artifact_type
-    local artifact_type
-    artifact_type="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null || true)"
-    [[ -z "$artifact_type" ]] && return 0
-
-    # Get declared output path (first outputs[].path entry)
-    local output_path
-    output_path="$(awk '
-        /^outputs:/ { in_outputs=1; next }
-        in_outputs && /^[a-zA-Z_]/ { in_outputs=0 }
-        in_outputs && /path:/ {
-            sub(/^[[:space:]]*path:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, "")
-            print
-            exit
-        }
-    ' "$manifest" 2>/dev/null || true)"
-
-    # Resolve path relative to state_dir if not absolute
-    local resolved_path
-    if [[ -n "$output_path" ]]; then
-        if [[ "$output_path" == /* ]]; then
-            resolved_path="$output_path"
-        else
-            resolved_path="$state_dir/$output_path"
-        fi
-    else
-        # No explicit output path declared — check for state_dir/artifacts/<stage>-findings.json
-        resolved_path="$state_dir/artifacts/${stage}-findings.json"
-    fi
-
-    # Check if artifact exists and is non-empty
-    if [[ -s "$resolved_path" ]]; then
-        return 0  # artifact present and non-empty — contract satisfied
-    fi
-
-    local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
-
-    # Emit plugin.contract.violated event
-    eb_emit_event "plugin.contract.violated" \
-        "stage=$stage" \
-        "plugin=${plugin_id:-unknown}" \
-        "artifact_type=$artifact_type" \
-        "expected_path=$resolved_path" \
-        "reason=artifact_missing_or_empty"
-
-    # Create synthetic blocking findings.json under artifacts/ so the output
-    # plugin's aggregator (which reads $state_dir/artifacts/*-findings.json) picks it up
-    mkdir -p "$state_dir/artifacts"
-    local findings_file="$state_dir/artifacts/${stage}-${plugin_id:-unknown}-contract-violated-findings.json"
-    jq -n \
-        --arg stage "$stage" \
-        --arg plugin "${plugin_id:-unknown}" \
-        --arg artifact_type "$artifact_type" \
-        --arg path "$resolved_path" \
-        '{
-            schema_version: 1,
-            findings: [{
-                id: "artifact-contract-violated",
-                title: ("Plugin contract violated: " + $plugin + " declared provides.artifact_type=" + $artifact_type + " but wrote no artifact"),
-                severity: "blocking",
-                stage: $stage,
-                plugin: $plugin,
-                detail: ("Expected artifact at: " + $path)
-            }]
-        }' > "$findings_file" 2>/dev/null || true
-
-    warn "Plugin contract violated: $plugin_id (stage=$stage) declared artifact_type=$artifact_type but wrote no artifact at $resolved_path"
-    return 0
-}
-
-# write_scope_override — writes ZBUILD_SCOPE_PATHS (newline-delimited) to
-# <state_dir>/scope-override.md as '+ <path>' fenced entries.
-# Exported so tests can source runner.sh and call it directly.
-# Usage: write_scope_override <state_dir> <run_id>
-write_scope_override() {
-    local state_dir="$1" run_id="${2:-}"
-    [[ -z "$state_dir" ]] && return 1
-    [[ -z "${ZBUILD_SCOPE_PATHS:-}" ]] && return 0
-    local scope_override="$state_dir/scope-override.md"
-    {
-        echo "# Scope Override"
-        echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        echo "# run_id: $run_id"
-        echo ""
-        while IFS= read -r scope_path; do
-            [[ -z "$scope_path" ]] && continue
-            printf '+ %s\n' "$scope_path"
-        done <<< "$ZBUILD_SCOPE_PATHS"
-    } | atomic_write "$scope_override"
-}
-
-_zbuild_runner_set_stage_status() {
-    jq --arg id "$_ZB_STAGE_ID" --arg st "$_ZB_STAGE_STATUS" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-       '.stage_statuses[$id] = $st | .updated_at = $now'
-}
-
-_update_stage_status() {
-    export _ZB_STAGE_ID="$2" _ZB_STAGE_STATUS="$3"
-    locked_state_update "$1" "_zbuild_runner_set_stage_status"
-    unset _ZB_STAGE_ID _ZB_STAGE_STATUS
-}
-
-# _set_pipeline_status <state_file> <status>
-# Sets the top-level .status field atomically.
-_zbuild_runner_set_pipeline_status() {
-    jq --arg st "$_ZB_PIPELINE_STATUS" \
-       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-       '.status = $st | .updated_at = $now'
-}
-
-_set_pipeline_status() {
-    export _ZB_PIPELINE_STATUS="$2"
-    locked_state_update "$1" "_zbuild_runner_set_pipeline_status"
-    unset _ZB_PIPELINE_STATUS
-}
-
+# Helpers extracted to dispatch.sh / contracts.sh / state_helpers.sh in #279:
+#   _find_plugin_for_stage       → core/pipeline/dispatch.sh
+#   _check_artifact_contract     → core/pipeline/contracts.sh
+#   write_scope_override
+#   _update_stage_status         } → core/pipeline/state_helpers.sh
+#   _set_pipeline_status
+#   (+ their _zbuild_runner_set_* jq filter helpers)
 
 # Globals (not local) so EXIT trap can read them after main() returns.
 _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
