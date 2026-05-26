@@ -33,12 +33,19 @@ run_tier() {
 
   for f in "${files[@]}"; do
     total=$((total + 1))
-    if bash "$f" > /dev/null 2>&1; then
+    # Capture once into a tempfile; replay on failure. Avoids the
+    # double-execution side effects (state writes, event emits) of the
+    # previous "run silent, then re-run on fail to show output" pattern.
+    local out
+    out="$(mktemp -t "zbuild-test-$name.XXXXXX")"
+    if bash "$f" >"$out" 2>&1; then
       passed=$((passed + 1))
+      rm -f "$out"
     else
       failed=$((failed + 1))
       echo "$name: FAIL $f" >&2
-      bash "$f" >&2 || true
+      cat "$out" >&2 || true
+      rm -f "$out"
     fi
   done
 
