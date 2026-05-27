@@ -1,27 +1,28 @@
 ## File
-`core/plugin-registry/discovery.sh` — `find_plugin_for_role` locates a plugin that provides a given role and backend alias. A broken role lookup causes the wrong plugin to be dispatched (or lookup fails entirely), silently breaking role-based backend selection.
+`core/plugin-registry/manifest-validation.sh` — `validate_manifest` enforces ADR-004: agent plugins MUST declare `redaction` inside `requires.core`. Removing this check causes agent plugins without the redaction chokepoint to silently pass validation, defeating the safety invariant.
 
 ## Mutation
-Remove the alias match from `find_plugin_for_role` so only the plugin id is checked and `provides.alias` is never consulted. Replace the compound `||` condition with a strict id-only check, causing any plugin whose id differs from the requested alias (but whose `provides.alias` would have matched) to be skipped.
+Remove the ADR-004 redaction enforcement block from `validate_manifest` so that agent plugins whose `requires.core` list omits `redaction` are accepted instead of rejected with rc=1.
 
 ## Patch
 ```bash
 python3 - <<'PY'
-import pathlib
-p = pathlib.Path("core/plugin-registry/discovery.sh")
+import pathlib, re
+p = pathlib.Path("core/plugin-registry/manifest-validation.sh")
 src = p.read_text()
+# Neutralise the redaction check: replace the failing branch with a no-op return
 new = src.replace(
-    'if [[ "$plugin_id" == "$alias" || "$declared_alias" == "$alias" ]]; then',
-    'if [[ "$plugin_id" == "$alias" ]]; then',
+    'if ! grep -Fxq "redaction" <<< "$core_items"; then',
+    'if false; then  # mutation: ADR-004 redaction check disabled',
     1,
 )
-assert new != src, "patch did not match the alias OR id compound check"
+assert new != src, "patch did not match the redaction grep guard"
 p.write_text(new)
 PY
 ```
 
 ## Expected failing test
-`tests/integration/core-plugin-registry-test.sh` — asserts that `find_plugin_for_role` resolves a plugin whose `provides.alias` field matches the requested alias even when the plugin id does not. With the mutation, alias-only matches return rc=1 and the test's `assert_eq` on the returned directory fails.
+`tests/integration/core-plugin-registry-test.sh` — the test asserts `validate_manifest` returns rc=1 for an agent manifest that lacks `redaction` in `requires.core` (the `bad-no-redaction` fixture). With the mutation, `validate_manifest` returns rc=0 for that fixture and the `assert_eq` on rc=1 fails.
 
 ## Test
 ```bash
@@ -29,4 +30,4 @@ bash tests/integration/core-plugin-registry-test.sh
 ```
 
 ## Result
-The mutation is caught: the registry integration test fails because a plugin reachable only via its `provides.alias` is no longer found; `find_plugin_for_role` returns 1 where it should return 0 and print the plugin directory.
+The mutation is caught: the registry integration test fails at the assertion `validate_manifest rejects agent without redaction in requires.core (ADR-004 enforcement)` because the mutated code accepts the bad-no-redaction fixture instead of rejecting it.
