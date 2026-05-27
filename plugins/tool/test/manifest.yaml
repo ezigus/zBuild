@@ -1,0 +1,43 @@
+id: test
+name: Test Stage
+kind: tool
+version: 0.1.0
+description: |
+  Applies the build-stage diff.patch in a temporary directory and runs the
+  project test suite. Captures exit code and output; always exits 0 so the
+  pipeline engine reads the verdict from the artifact rather than the plugin
+  exit code. Never invokes route_to_model (T0 tool — no LLM dependency).
+
+hooks:
+  init: test_stage_init
+  run: test_stage_run
+  finalize: test_stage_finalize
+  cleanup: test_stage_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  artifact_type: test-results.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+  test_cmd_default: "npm test"
+
+inputs:
+  - name: diff_patch
+    type: file
+    path: "${artifact_dir}/diff.patch"
+
+outputs:
+  - name: test_results
+    path: "${artifact_dir}/test-results.json"
+    type: test-results.json
+
+state:
+  persisted: [last_verdict, last_exit_code]
+  reconstructed: []
