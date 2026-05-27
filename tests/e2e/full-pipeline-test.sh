@@ -252,14 +252,14 @@ print_test_section "Happy path: test stage"
 # path is exercised and the mock git accepts it.
 # diff.patch was already written by build_stage_run; the mock git always exits 0.
 
-test_stage_init
+test_init
 set +e
-test_stage_run "test" "$STATE_FILE"
+test_run "test" "$STATE_FILE"
 _test_rc=$?
 set -e
 
-# test_stage_run always returns 0; verdict is in the artifact
-assert_eq "test_stage_run exits 0 (verdict in artifact)" "0" "$_test_rc"
+# test_run always returns 0; verdict is in the artifact
+assert_eq "test_run exits 0 (verdict in artifact)" "0" "$_test_rc"
 assert_file_exists "test-results.json artifact created" "$ARTIFACTS_DIR/test-results.json"
 
 if [[ -f "$ARTIFACTS_DIR/test-results.json" ]]; then
@@ -276,19 +276,19 @@ else
     assert_fail "test-results.json verdict is pass/fail/error" "file missing"
 fi
 
-test_stage_finalize
+test_finalize
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "Happy path: review stage"
 
 _MOCK_STAGE="review"
-review_stage_init
+review_init
 set +e
-review_stage_run "review" "$STATE_FILE"
+review_run "review" "$STATE_FILE"
 _review_rc=$?
 set -e
 
-assert_eq "review_stage_run exits 0" "0" "$_review_rc"
+assert_eq "review_run exits 0" "0" "$_review_rc"
 assert_file_exists "review.json artifact created" "$ARTIFACTS_DIR/review.json"
 
 if [[ -f "$ARTIFACTS_DIR/review.json" ]]; then
@@ -305,7 +305,7 @@ else
     assert_fail "review.json verdict is approve/request_changes/block" "file missing"
 fi
 
-review_stage_finalize
+review_finalize
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "Happy path: pr-open stage"

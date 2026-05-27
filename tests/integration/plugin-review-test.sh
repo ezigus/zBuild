@@ -88,10 +88,10 @@ MOCK
     chmod +x "$TEST_TEMP_DIR/bin/claude"
 }
 
-# ─── Test 1: review_stage_init sets env vars ──────────────────────────────────
-print_test_section "1. review_stage_init sets env"
+# ─── Test 1: review_init sets env vars ───────────────────────────────────────
+print_test_section "1. review_init sets env"
 unset ZBUILD_PLUGIN ZBUILD_PLUGIN_KIND 2>/dev/null || true
-review_stage_init >/dev/null 2>&1
+review_init >/dev/null 2>&1
 assert_eq "ZBUILD_PLUGIN=review after init" "review" "${ZBUILD_PLUGIN:-}"
 assert_eq "ZBUILD_PLUGIN_KIND=agent after init" "agent" "${ZBUILD_PLUGIN_KIND:-}"
 
@@ -101,7 +101,7 @@ _install_claude_mock '{"verdict":"approve","confidence":0.95,"issues":[],"summar
 
 OUTPUT_APPROVE="$ARTIFACT_DIR/review-approve.json"
 set +e
-_review_stage_run_inner \
+_review_run_inner \
     "$SCOPE_MANIFEST" \
     "$FIXTURE_DIR/plan.json" \
     "$FIXTURE_DIR/diff.patch" \
@@ -126,7 +126,7 @@ _install_claude_mock '{"verdict":"request_changes","confidence":0.7,"issues":["t
 
 OUTPUT_RC="$ARTIFACT_DIR/review-rc.json"
 set +e
-_review_stage_run_inner \
+_review_run_inner \
     "$SCOPE_MANIFEST" \
     "$FIXTURE_DIR/plan.json" \
     "$FIXTURE_DIR/diff.patch" \
@@ -149,7 +149,7 @@ _install_claude_mock '{"verdict":"block","confidence":0.99,"issues":["security h
 
 OUTPUT_BLOCK="$ARTIFACT_DIR/review-block.json"
 set +e
-_review_stage_run_inner \
+_review_run_inner \
     "$SCOPE_MANIFEST" \
     "$FIXTURE_DIR/plan.json" \
     "$FIXTURE_DIR/diff.patch" \
@@ -170,7 +170,7 @@ _install_claude_mock '{"verdict":"garbage","confidence":0.5,"issues":[],"summary
 
 OUTPUT_INVALID="$ARTIFACT_DIR/review-invalid.json"
 set +e
-_review_stage_run_inner \
+_review_run_inner \
     "$SCOPE_MANIFEST" \
     "$FIXTURE_DIR/plan.json" \
     "$FIXTURE_DIR/diff.patch" \
@@ -188,10 +188,10 @@ assert_eq "invalid verdict: defaults to request_changes" "request_changes" "$v"
 note_count="$(jq '[.issues[] | select(test("invalid verdict|garbage"; "i"))] | length' "$OUTPUT_INVALID" 2>/dev/null || echo 0)"
 assert_gt "invalid verdict: note injected into issues" "$note_count" "0"
 
-# ─── Test 6: review_stage_finalize runs cleanly ───────────────────────────────
-print_test_section "6. review_stage_finalize rc=0"
+# ─── Test 6: review_finalize runs cleanly ────────────────────────────────────
+print_test_section "6. review_finalize rc=0"
 set +e
-review_stage_finalize >/dev/null 2>&1
+review_finalize >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "finalize: rc=0" "0" "$rc"
@@ -253,10 +253,10 @@ else
     assert_fail "redaction chokepoint: events.jsonl not found"
 fi
 
-# ─── Bonus: review_stage_cleanup runs cleanly ─────────────────────────────────
+# ─── Bonus: review_cleanup runs cleanly ──────────────────────────────────────
 print_test_section "cleanup: rc=0"
 set +e
-review_stage_cleanup >/dev/null 2>&1
+review_cleanup >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "cleanup: rc=0" "0" "$rc"

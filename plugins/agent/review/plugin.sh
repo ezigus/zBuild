@@ -31,7 +31,7 @@ source "$_REVIEW_ROOT/core/router/route.sh"
 _REVIEW_VALID_VERDICTS="approve request_changes block"
 
 # ─── init ───────────────────────────────────────────────────────────────────
-review_stage_init() {
+review_init() {
     export ZBUILD_PLUGIN="review"
     export ZBUILD_PLUGIN_KIND="agent"
     emit_event "plugin.init.start" "plugin=review"
@@ -39,19 +39,19 @@ review_stage_init() {
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
-# Hook called by the pipeline runner: review_stage_run(stage, state_file)
+# Hook called by the pipeline runner: review_run(stage, state_file)
 # Derives artifact paths from state_dir and delegates to the inner function.
-review_stage_run() {
+review_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
-        error "review_stage_run: state_file argument required"
+        error "review_run: state_file argument required"
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifact_dir="$state_dir/artifacts"
     mkdir -p "$artifact_dir"
 
-    _review_stage_run_inner \
+    _review_run_inner \
         "$state_dir/scope-manifest.md" \
         "$artifact_dir/plan.json" \
         "$artifact_dir/diff.patch" \
@@ -68,7 +68,7 @@ review_stage_run() {
 #   $4 = test-results.json path
 #   $5 = output review.json path
 #   $6 = artifact_dir (for intermediate files)
-_review_stage_run_inner() {
+_review_run_inner() {
     local scope_manifest="$1"
     local plan_json_path="$2"
     local diff_patch_path="$3"
@@ -77,7 +77,7 @@ _review_stage_run_inner() {
     local artifact_dir="${6:-$(dirname "$output_review_json")}"
 
     if [[ -z "$output_review_json" ]]; then
-        error "_review_stage_run_inner: output path required"
+        error "_review_run_inner: output path required"
         return 2
     fi
 
@@ -88,21 +88,21 @@ _review_stage_run_inner() {
     if [[ -f "$plan_json_path" ]]; then
         plan_content="$(cat "$plan_json_path")"
     else
-        warn "review_stage_run: plan.json not found at $plan_json_path; using empty"
+        warn "review_run: plan.json not found at $plan_json_path; using empty"
         plan_content="{}"
     fi
 
     if [[ -f "$diff_patch_path" ]]; then
         diff_content="$(cat "$diff_patch_path")"
     else
-        warn "review_stage_run: diff.patch not found at $diff_patch_path; using empty"
+        warn "review_run: diff.patch not found at $diff_patch_path; using empty"
         diff_content="(no diff available)"
     fi
 
     if [[ -f "$test_results_json_path" ]]; then
         test_content="$(cat "$test_results_json_path")"
     else
-        warn "review_stage_run: test-results.json not found; treating as test failure"
+        warn "review_run: test-results.json not found; treating as test failure"
         test_content='{"status":"unknown","passed":0,"failed":0,"note":"test results missing -- treated as failure"}'
     fi
 
@@ -140,7 +140,7 @@ verdict rules:
     # ─── Redaction chokepoint (REQUIRED — refuse to call LLM without it) ────
     local redacted_prompt_file="$artifact_dir/review-prompt.redacted.txt"
     if ! apply_scope_redaction "$prompt_file" "$redacted_prompt_file" "$scope_manifest" "" "0"; then
-        error "review_stage_run: redaction failed; refusing to emit"
+        error "review_run: redaction failed; refusing to emit"
         emit_event "plugin.run.error" "plugin=review" "reason=redaction_failed"
         return 1
     fi
@@ -177,9 +177,9 @@ verdict rules:
         summary="$(printf '%s' "$stripped" \
             | jq -r '.summary // ""' 2>/dev/null || true)"
     elif [[ $router_rc -eq 1 ]]; then
-        warn "review_stage_run: router rc=1 (recoverable); defaulting verdict"
+        warn "review_run: router rc=1 (recoverable); defaulting verdict"
     elif [[ $router_rc -ne 0 ]]; then
-        error "review_stage_run: router rc=$router_rc (fatal); refusing to emit"
+        error "review_run: router rc=$router_rc (fatal); refusing to emit"
         emit_event "plugin.run.error" "plugin=review" \
             "reason=router_fatal" "router_rc=$router_rc"
         return 1
@@ -196,7 +196,7 @@ verdict rules:
     done
 
     if ! $verdict_valid; then
-        warn "review_stage_run: invalid verdict '${verdict}' from LLM; defaulting to request_changes"
+        warn "review_run: invalid verdict '${verdict}' from LLM; defaulting to request_changes"
         local original_verdict="$verdict"
         verdict="request_changes"
         confidence="${confidence:-0.5}"
@@ -240,13 +240,13 @@ verdict rules:
 }
 
 # ─── finalize ───────────────────────────────────────────────────────────────
-review_stage_finalize() {
+review_finalize() {
     emit_event "plugin.finalize.complete" "plugin=review"
     return 0
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-review_stage_cleanup() {
+review_cleanup() {
     emit_event "plugin.cleanup.complete" "plugin=review"
     return 0
 }

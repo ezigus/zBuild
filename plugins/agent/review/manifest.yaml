@@ -8,10 +8,10 @@ description: |
   plan -> build -> test -> review loop before a PR is opened.
 
 hooks:
-  init: review_stage_init
-  run: review_stage_run
-  finalize: review_stage_finalize
-  cleanup: review_stage_cleanup
+  init: review_init
+  run: review_run
+  finalize: review_finalize
+  cleanup: review_cleanup
 
 requires:
   core:
