@@ -150,7 +150,16 @@ if [[ "$DRIFT_FOUND" -eq 0 ]]; then
 fi
 
 CHANGES_MADE=0
-PR_BODY_FILE="${RUNNER_TEMP:-/tmp}/manifest-sync-pr-body.md"
+
+# Require RUNNER_TEMP (set by GitHub Actions); fail fast for local debugging clarity.
+if [[ -z "${RUNNER_TEMP:-}" ]]; then
+    warn "RUNNER_TEMP is unset — writing PR body to /tmp (workflow body-path step will not find it outside CI)"
+    RUNNER_TEMP="/tmp"
+fi
+PR_BODY_FILE="${RUNNER_TEMP}/manifest-sync-pr-body.md"
+
+# Escape pipe characters and strip newlines in table cell content.
+_escape_cell() { printf '%s' "$1" | tr -d '\n\r' | sed 's/|/\\|/g'; }
 
 # Build PR body with actual drift details; placeholders replaced by workflow
 {
@@ -166,21 +175,21 @@ PR_BODY_FILE="${RUNNER_TEMP:-/tmp}/manifest-sync-pr-body.md"
         echo "|---|---|---|"
         for entry in "${TO_MARK_CLOSED[@]}"; do
             IFS='|' read -r mid lnum title <<< "$entry"
-            echo "| \`$mid\` | #$lnum | $title |"
+            echo "| \`$(_escape_cell "$mid")\` | #$lnum | $(_escape_cell "$title") |"
         done
     else
         echo "None."
     fi
     echo ""
 
-    echo "## Orphan PRs added to log (${#ORPHAN_PRS[@]})"
+    echo "## Orphan PRs detected (${#ORPHAN_PRS[@]})"
     echo ""
     if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
         echo "| PR | Title |"
         echo "|---|---|"
         for entry in "${ORPHAN_PRS[@]}"; do
             IFS='|' read -r num title <<< "$entry"
-            echo "| #$num | $title |"
+            echo "| #$num | $(_escape_cell "$title") |"
         done
     else
         echo "None."
@@ -196,7 +205,7 @@ PR_BODY_FILE="${RUNNER_TEMP:-/tmp}/manifest-sync-pr-body.md"
         echo "|---|---|---|"
         for entry in "${ORPHAN_ISSUES[@]}"; do
             IFS='|' read -r num state title <<< "$entry"
-            echo "| #$num | $state | $title |"
+            echo "| #$num | $state | $(_escape_cell "$title") |"
         done
     else
         echo "None."
