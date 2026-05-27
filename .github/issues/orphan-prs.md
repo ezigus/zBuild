@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-26T23:27:46Z (rolling 30-PR window)_
+_Last updated: 2026-05-27T04:49:29Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -44,3 +44,5 @@ _Last updated: 2026-05-26T23:27:46Z (rolling 30-PR window)_
 | #314 | docs(adr): Implementation Notes appendices + ADR-006/008 clarifications | 2026-05-26 |
 | #270 | [manifest-sync] Drift reconciliation | 2026-05-26 |
 | #326 | [manifest-sync] Drift reconciliation | 2026-05-26 |
+| #328 | manifest: pull #292 (ADR-013) from phase-1 → phase-0.5 | 2026-05-27 |
+| #327 | [manifest-sync] Drift reconciliation | 2026-05-27 |
