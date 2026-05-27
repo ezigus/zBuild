@@ -13,6 +13,7 @@ registry.role-unresolved
 plugin.run.start
 redaction.applied
 model.route
+model.outcome
 plugin.run.complete
 plugin.run.complete
 stage.complete

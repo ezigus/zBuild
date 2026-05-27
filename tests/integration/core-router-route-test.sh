@@ -313,6 +313,114 @@ set -e
 assert_eq "A4e: model.route with redaction.applied preceding → rc=0" "0" "$rc"
 assert_eq "A4e: response passthrough works" "OK-RESPONSE" "$out"
 
+# ─── Test B1: JSON mode — happy path ─────────────────────────────────────────
+# A4d/A4e left ZBUILD_RUN_ID set; unset it so --skip-precondition reverts to
+# "bootstrap" token matching (the override token written above at test setup).
+unset ZBUILD_RUN_ID
+# When ZBUILD_ROUTER_JSON_OUTPUT=1, router passes --output-format json and
+# extracts .result from the JSON envelope.
+cat > "$TEST_TEMP_DIR/bin/claude" <<JSONMOCK
+#!/usr/bin/env bash
+model_id=""
+use_json=false
+printf '%s\n' "\$@" > "$TEST_TEMP_DIR/last_args"
+while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+        --model)          model_id="\${2:-}"; shift 2 ;;
+        --output-format)  [[ "\${2:-}" == "json" ]] && use_json=true; shift 2 ;;
+        *)                shift ;;
+    esac
+done
+printf '%s\n' "\$model_id" > "$TEST_TEMP_DIR/last_model"
+if \$use_json; then
+    printf '{"type":"result","subtype":"success","is_error":false,"result":"OK-RESPONSE","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\n'
+else
+    echo "OK-RESPONSE"
+fi
+exit 0
+JSONMOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+: > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_ROUTER_JSON_OUTPUT=1
+
+set +e
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "B1: JSON mode returns rc=0" "0" "$rc"
+assert_eq "B1: .result extracted from JSON envelope" "OK-RESPONSE" "$out"
+
+b1_args="$(cat "$TEST_TEMP_DIR/last_args" 2>/dev/null || true)"
+assert_contains "B1: --output-format json passed to claude" "$b1_args" "json"
+
+b1_outcome="$(grep '"model.outcome"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="model.outcome") | .data.input_tokens // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "B1: model.outcome event has input_tokens=10" "10" "$b1_outcome"
+
+# ─── Test B2: JSON mode — malformed response → rc=1 ──────────────────────────
+cat > "$TEST_TEMP_DIR/bin/claude" <<'BADJSON'
+#!/usr/bin/env bash
+echo "not-json-at-all"
+exit 0
+BADJSON
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "B2: malformed JSON → rc=1 (recoverable)" "1" "$rc"
+assert_eq "B2: no stdout on malformed JSON" "" "$out"
+
+b2_err="$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "B2: router.error reason=json_result_missing" "json_result_missing" "$b2_err"
+
+# ─── Test B3: JSON mode — valid JSON but .result absent → rc=1 ───────────────
+cat > "$TEST_TEMP_DIR/bin/claude" <<'NORESULT'
+#!/usr/bin/env bash
+printf '{"type":"result","subtype":"success"}\n'
+exit 0
+NORESULT
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "B3: JSON missing .result → rc=1 (recoverable)" "1" "$rc"
+b3_err="$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "B3: router.error reason=json_result_missing" "json_result_missing" "$b3_err"
+
+# ─── Test B4: JSON mode off — plain text passthrough unchanged ────────────────
+unset ZBUILD_ROUTER_JSON_OUTPUT
+cat > "$TEST_TEMP_DIR/bin/claude" <<'PLAIN'
+#!/usr/bin/env bash
+echo "OK-RESPONSE"
+exit 0
+PLAIN
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+: > "$ZBUILD_EVENTS_JSONL"
+
+set +e
+out="$(route_to_model "T2" "ping" --skip-precondition 2>/dev/null)"
+rc=$?
+set -e
+
+assert_eq "B4: JSON mode off → rc=0" "0" "$rc"
+assert_eq "B4: plain text passthrough unchanged" "OK-RESPONSE" "$out"
+
+b4_outcome="$(grep '"model.outcome"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="model.outcome") | .data.input_tokens // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "B4: model.outcome emitted with input_tokens=0 (no JSON)" "0" "$b4_outcome"
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results
