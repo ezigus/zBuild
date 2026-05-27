@@ -1,0 +1,80 @@
+name: zbuild daemon (label-triggered pipeline)
+
+# Daemon-in-Actions mode — issue #92.
+#
+# Watches for issues labeled `zbuild-run` and invokes the reusable
+# zbuild-pipeline workflow automatically.  After the pipeline completes
+# (success or failure) the label is removed so the issue can be re-triggered
+# by adding the label again, and a comment with the run URL is posted.
+#
+# The trigger label is configurable via the ZBUILD_TRIGGER_LABEL env var.
+# Model selection is governed by config/models.json + core/router — no model
+# names are hardcoded here (ADR-003).
+
+on:
+  issues:
+    types: [labeled]
+
+env:
+  ZBUILD_TRIGGER_LABEL: zbuild-run
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+# ─── Job 1: guard — only proceed when the correct label was applied ───────────
+jobs:
+  trigger:
+    name: 'Trigger guard — check label'
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'zbuild-run'
+    outputs:
+      issue_number: ${{ github.event.issue.number }}
+    steps:
+      - name: Confirm trigger label matched
+        run: |
+          echo "Issue #${{ github.event.issue.number }} labeled '${{ github.event.label.name }}' — proceeding."
+
+# ─── Job 2: run the reusable zbuild pipeline ─────────────────────────────────
+  pipeline:
+    name: 'Pipeline — issue #${{ needs.trigger.outputs.issue_number }}'
+    needs: trigger
+    uses: ./.github/workflows/zbuild-pipeline.yml
+    with:
+      issue_number: ${{ fromJson(needs.trigger.outputs.issue_number) }}
+      dry_run: false
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# ─── Job 3: post-run cleanup — remove label and post comment ─────────────────
+  post-run:
+    name: 'Post-run — remove label + comment'
+    needs: pipeline
+    runs-on: ubuntu-latest
+    # Always run so the label is removed even if the pipeline fails.
+    if: always()
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      PIPELINE_RESULT: ${{ needs.pipeline.result }}
+    steps:
+      - name: Remove zbuild-run label
+        run: |
+          gh api \
+            --method DELETE \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/labels/zbuild-run" \
+            || echo "Label already removed or not present — continuing."
+
+      - name: Post run-completion comment
+        run: |
+          if [[ "$PIPELINE_RESULT" == "success" ]]; then
+            body="**zbuild pipeline completed successfully.**  Run: ${RUN_URL}"
+          else
+            body="**zbuild pipeline finished with result: \`${PIPELINE_RESULT}\`.**  Run: ${RUN_URL}"
+          fi
+          gh issue comment "${ISSUE_NUMBER}" \
+            --repo "${{ github.repository }}" \
+            --body "$body"
