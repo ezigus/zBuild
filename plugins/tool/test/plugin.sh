@@ -39,7 +39,7 @@ test_stage_run() {
     local state_dir
     state_dir="$(dirname "$state_file")"
     local artifact_dir="${ZBUILD_ARTIFACT_DIR:-${state_dir}/artifacts}"
-    local repo_root="${ZBUILD_REPO_ROOT:-$(git -C "$state_dir" rev-parse --show-toplevel 2>/dev/null || echo "$state_dir")}"
+    local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo "$state_dir")}"
     local diff_patch="${artifact_dir}/diff.patch"
     local output_json="${artifact_dir}/test-results.json"
     local test_cmd="${ZBUILD_TEST_CMD:-npm test}"
@@ -61,7 +61,7 @@ _test_stage_run_inner() {
     local test_cmd="$4"
 
     local tmp
-    tmp="$(mktemp -d)"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
     local verdict="error"
     local exit_code=2
     local diff_applied=false
@@ -72,7 +72,7 @@ _test_stage_run_inner() {
         _test_stage_write_result "$output_json" \
             "error" 2 0 0 "" "false" "$test_cmd"
         rm -rf "$tmp"
-        emit_event "stage.complete" "plugin=test" "verdict=error" "reason=missing_diff_patch"
+        emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=missing_diff_patch"
         return 0
     fi
 
@@ -95,11 +95,18 @@ _test_stage_run_inner() {
         _test_stage_write_result "$output_json" \
             "error" 2 0 0 "$test_output" "false" "$test_cmd"
         rm -rf "$tmp"
-        emit_event "stage.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
+        emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
         return 0
     fi
 
-    git -C "$tmp" apply --allow-empty "$diff_patch_path" 2>/dev/null || true
+    if ! git -C "$tmp" apply --allow-empty "$diff_patch_path" 2>/dev/null; then
+        test_output="git apply failed after --check passed"
+        _test_stage_write_result "$output_json" \
+            "error" 2 0 0 "$test_output" "false" "$test_cmd"
+        rm -rf "$tmp"
+        emit_event "plugin.run.error" "plugin=test" "reason=diff_apply_failed_after_check"
+        return 0
+    fi
     diff_applied=true
 
     # ── Run test command ───────────────────────────────────────────────────────
@@ -134,7 +141,7 @@ _test_stage_run_inner() {
         "$test_output" "$diff_applied" "$test_cmd"
 
     rm -rf "$tmp"
-    emit_event "stage.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}"
+    emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}"
     return 0
 }
 
@@ -189,6 +196,6 @@ test_stage_finalize() {
 
 # ─── test_stage_cleanup ───────────────────────────────────────────────────────
 test_stage_cleanup() {
-    emit_event "plugin.cleanup.done" "plugin=test" "kind=tool"
+    emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool"
     return 0
 }

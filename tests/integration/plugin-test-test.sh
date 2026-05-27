@@ -36,7 +36,8 @@ export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo"
 # We need a real (or fake) git repo for `git apply` to work.
 mkdir -p "$TEST_TEMP_DIR/repo"
 git -C "$TEST_TEMP_DIR/repo" init -q
-git -C "$TEST_TEMP_DIR/repo" commit --allow-empty -m "init" -q
+git -C "$TEST_TEMP_DIR/repo" -c user.name="zbuild-test" -c user.email="test@zbuild" \
+    commit --allow-empty -m "init" -q
 
 # ─── Source plugin ────────────────────────────────────────────────────────────
 # shellcheck source=../../plugins/tool/test/plugin.sh
