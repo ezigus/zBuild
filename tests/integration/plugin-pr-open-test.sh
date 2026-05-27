@@ -182,6 +182,66 @@ set -e
 
 assert_exit_code "pr_open_cleanup returns rc=0" "0" "$rc"
 
+# ─── Test 7: redaction chokepoint regression guard (issue #360) ──────────────
+# Per ADR-004 every LLM-bound prompt must pass through apply_scope_redaction.
+# pr-open is a T0 tool: it builds a PR body from on-disk artifacts and shells
+# out to `gh`. It MUST NOT call route_to_model or emit `model.route` events.
+#
+# FINDING (issue #360): pr-open does not currently invoke the chokepoint
+# because it has no LLM call. That is the correct design for a T0 tool. The
+# safety risk is that someone could *add* an LLM call to this plugin later
+# (e.g. "use Claude to summarize the diff in the PR body") without routing
+# the prompt through apply_scope_redaction. This section catches that
+# regression by asserting no model.route event was emitted across all the
+# successful runs above. If a future change adds an LLM call without
+# redaction, this assertion fails and forces the author to either:
+#   (a) route through apply_scope_redaction first, OR
+#   (b) keep pr-open T0 and move the LLM work to a different plugin.
+print_test_section "7. pr-open is T0: no model.route without redaction (issue #360)"
+
+if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
+    model_route_count="$(jq -c 'select(.type == "model.route" and .plugin == "pr-open")' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c . || true)"
+    if [[ "$model_route_count" -eq 0 ]]; then
+        assert_pass "no model.route events from pr-open (T0 invariant holds)"
+    else
+        assert_fail "pr-open emitted $model_route_count model.route event(s) — must redact first per ADR-004"
+    fi
+
+    # If a future change ever emits a model.route from pr-open, there must be
+    # a preceding redaction.applied event in the same run (ADR-004 §Enforcement).
+    # Today this is vacuously true; we encode the invariant so it never silently
+    # regresses.
+    bad_routes="$(jq -c '
+        select(.type == "model.route" and .plugin == "pr-open") |
+        .run_id
+    ' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+    if [[ -z "$bad_routes" ]]; then
+        assert_pass "ADR-004 invariant: no unredacted LLM calls from pr-open"
+    else
+        # If model.route DOES exist, every one must be preceded by redaction.applied
+        # for the same run_id. Check that condition.
+        unredacted=0
+        while IFS= read -r rid_quoted; do
+            [[ -z "$rid_quoted" ]] && continue
+            rid="${rid_quoted//\"/}"
+            red_for_run="$(jq -c --arg r "$rid" \
+                'select(.type == "redaction.applied" and .run_id == $r)' \
+                "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c . || true)"
+            if [[ "$red_for_run" -eq 0 ]]; then
+                unredacted=$((unredacted + 1))
+            fi
+        done <<< "$bad_routes"
+        if [[ "$unredacted" -eq 0 ]]; then
+            assert_pass "every pr-open model.route preceded by redaction.applied"
+        else
+            assert_fail "$unredacted pr-open model.route event(s) lack a preceding redaction.applied"
+        fi
+    fi
+else
+    assert_fail "redaction chokepoint guard: events.jsonl not found"
+fi
+
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results
