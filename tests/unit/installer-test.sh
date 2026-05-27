@@ -34,7 +34,7 @@ _real_bash="$(/usr/bin/which bash)"
 mkdir -p "$_sys_path"
 # Symlink exactly the low-level tools the installer uses internally.
 # Include bash itself so the subprocess can run.
-for _b in mkdir cp tar ln rm mktemp bash touch; do
+for _b in mkdir cp tar ln rm mktemp bash touch gzip gunzip; do
     _bp="$(/usr/bin/which "$_b" 2>/dev/null || true)"
     [[ -n "$_bp" ]] && ln -sf "$_bp" "$_sys_path/$_b"
 done
