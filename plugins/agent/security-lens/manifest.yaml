@@ -22,6 +22,7 @@ requires:
   plugins: []
 
 provides:
+  role: security-auditor
   artifact_type: findings.json
   schema_version: 1
 
