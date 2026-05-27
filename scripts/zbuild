@@ -31,6 +31,7 @@ Commands:
   --help, help, -h       Show this help
   status                 Show pipeline status (Phase 0 stub — JSON only)
   plugin list            List discovered plugins
+  doctor                 Validate install and configuration (bash>=5, claude, gh, sqlite3, etc.)
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
                          [--platform-override <p>] [--scope <path>]...
                          [--no-resume]
@@ -78,6 +79,11 @@ case "$cmd" in
     status)
         info "zbuild status — Phase 0 stub"
         echo '{"status": "phase-0-stub", "version": "'"$VERSION"'"}'
+        ;;
+    doctor)
+        # shellcheck source=lib/doctor.sh
+        source "$SCRIPT_DIR/lib/doctor.sh"
+        run_doctor "$VERSION"
         ;;
     plugin)
         # shellcheck source=../core/plugin-registry/registry.sh
