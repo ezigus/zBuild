@@ -224,6 +224,42 @@ the active template until its implementation phase ships:
 | deploy/validate/monitor plugins | Deferred | Phase 3 |
 | `config/artifact-schema.json` | Deferred | Phase 1 — schemas for structured artifacts |
 
+### Canonical vs. secondary artifacts (issue #361)
+
+A stage plugin MAY write additional artifacts beyond the single
+`expected_artifact` named in the canonical table above.  When it does, the
+following rules apply:
+
+1. The filename in the `expected_artifact` column is the **canonical artifact**.
+   It is the value that MUST appear in the plugin manifest's
+   `provides.artifact_type` field, and it is the artifact the fail-closed
+   scanner (ARCHITECTURE.md §2, KEEPERS §C.4, `core/pipeline/contracts.sh`)
+   verifies on stage exit.  Downstream stages reference this filename when
+   wiring inputs.
+2. Any other files the plugin writes are **secondary artifacts**.  They are
+   listed in the manifest's `outputs[]` array alongside the canonical artifact,
+   but they MUST NOT appear in `provides.artifact_type`.  Secondary artifacts
+   are observability/debugging aids; nothing in the contract layer is allowed
+   to depend on their existence.
+3. The canonical artifact MUST be the first entry in `outputs[]` so the
+   contract scanner (which reads the first `outputs[].path` to resolve the
+   verification target) checks the right file.
+
+**Worked example — `pr` stage:**
+
+- Canonical: `pr-url.txt` (one line, the PR URL — what downstream cares about).
+- Secondary: `pr-result.json` (richer status payload: `status`, `branch`,
+  `draft`, `pr_number`, error detail when blocked).
+- Both files are written on a successful PR open; `pr-result.json` is also
+  written on the `verdict=block` and `main-branch-guard` refusal paths so
+  operators have a structured failure record, but the contract scanner only
+  requires `pr-url.txt` on success.
+
+This convention generalizes: any future stage that benefits from a structured
+side-channel (e.g., `test` writing both a human summary and JUnit XML) follows
+the same canonical-plus-secondary pattern, with `provides.artifact_type` always
+pointing at the canonical entry from the table above.
+
 ## References
 
 - [ARCHITECTURE.md §3](../ARCHITECTURE.md#3-data-flow-a-zbuild-pipeline-start-traversal) — data flow traversal

@@ -20,6 +20,10 @@ requires:
     - state
 
 provides:
+  # Canonical artifact per ADR-013: pr-url.txt.
+  # The plugin also writes pr-result.json (richer status payload, listed in
+  # outputs[] below); both are written on success. See ADR-013 Implementation
+  # Notes for the canonical vs. secondary artifact convention.
   artifact_type: pr-url.txt
   schema_version: 1
 
