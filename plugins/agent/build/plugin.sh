@@ -54,10 +54,8 @@ build_stage_run() {
     mkdir -p "$artifacts_dir"
 
     local scope_manifest="$state_dir/scope-manifest.md"
-    if [[ ! -f "$scope_manifest" ]]; then
-        error "build_stage_run: scope-manifest.md not found at $scope_manifest"
-        return 2
-    fi
+    # Do not pre-check scope_manifest — apply_scope_redaction enforces ADR-004
+    # fail-closed path including the operator override.
 
     local plan_json_path="$artifacts_dir/plan.json"
 
@@ -134,26 +132,14 @@ _build_stage_run_inner() {
     fi
 
     # ─── Extract diff.patch from LLM response ────────────────────────────────
-    # The LLM response is expected to contain a unified diff. We extract the
-    # diff block — either a fenced ```diff block or the raw diff starting with
-    # "diff --git". If neither is present, write an empty patch file.
+    # Find the first `diff --git` line anywhere in the response (handles
+    # leading prose/preamble before the actual diff).
     local diff_content=""
     if [[ -n "$raw_response" ]]; then
-        # Try to extract a fenced diff block first
-        local stripped
-        stripped="$(printf '%s' "$raw_response" \
-            | sed 's/^[[:space:]]*```diff[[:space:]]*//' \
-            | sed 's/^[[:space:]]*```patch[[:space:]]*//' \
-            | sed 's/^[[:space:]]*```[[:space:]]*//' \
-            | sed 's/[[:space:]]*```[[:space:]]*$//')"
-
-        # Check if the response (or stripped version) looks like a diff
-        if printf '%s' "$stripped" | grep -q '^diff --git'; then
-            diff_content="$stripped"
-        elif printf '%s' "$raw_response" | grep -q '^diff --git'; then
-            diff_content="$raw_response"
-        else
-            warn "_build_stage_run_inner: LLM response does not contain a recognizable diff; using empty patch"
+        diff_content="$(printf '%s' "$raw_response" \
+            | awk '/^diff --git /{found=1} found{print}' || true)"
+        if [[ -z "$diff_content" ]]; then
+            warn "_build_stage_run_inner: LLM response does not contain a recognizable diff; writing empty patch"
         fi
     fi
 
@@ -220,8 +206,10 @@ _build_stage_run_inner() {
     # ─── Validate diff.patch with git apply --check (warn-only) ─────────────
     # Failure here is a warning, not a fatal error — the test stage is the
     # authoritative validator.
+    # ─── Validate diff.patch (warn-only; test stage is the authoritative check) ─
+    local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
     if [[ -n "$diff_content" ]] && command -v git >/dev/null 2>&1; then
-        if ! git apply --check "$output_diff_patch" >/dev/null 2>&1; then
+        if ! git -C "$repo_root" apply --check "$output_diff_patch" >/dev/null 2>&1; then
             warn "_build_stage_run_inner: git apply --check failed on diff.patch; test stage will catch this"
             emit_event "build.diff.validation_warning" "plugin=build" \
                 "reason=git_apply_check_failed" \
@@ -229,7 +217,7 @@ _build_stage_run_inner() {
         fi
     fi
 
-    emit_event "stage.complete" "stage=build" \
+    emit_event "plugin.run.complete" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \
         "lines_added=$lines_added" \
