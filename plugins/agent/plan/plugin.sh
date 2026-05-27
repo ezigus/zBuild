@@ -50,10 +50,8 @@ plan_run() {
     mkdir -p "$artifacts_dir"
 
     local scope_manifest="$state_dir/scope-manifest.md"
-    if [[ ! -f "$scope_manifest" ]]; then
-        error "plan_run: scope-manifest.md not found at $scope_manifest"
-        return 2
-    fi
+    # Do not pre-check scope_manifest existence — apply_scope_redaction handles
+    # the missing-manifest fail-closed path (ADR-004) and the operator override.
 
     local goal_text="${ZBUILD_GOAL:-}"
     if [[ -z "$goal_text" ]]; then
@@ -127,13 +125,13 @@ _plan_run_inner() {
             | sed 's/^[[:space:]]*```json[[:space:]]*//' \
             | sed 's/^[[:space:]]*```[[:space:]]*//'     \
             | sed 's/[[:space:]]*```[[:space:]]*$//')"
-        if printf '%s' "$stripped" | jq -e 'type == "object" and (.steps | type == "array") and (.steps | length > 0)' >/dev/null 2>&1; then
+        if printf '%s' "$stripped" | jq -e 'type == "object" and (.schema_version == 1) and (.steps | type == "array") and (.steps | length > 0)' >/dev/null 2>&1; then
             plan_json="$stripped"
         else
-            warn "_plan_run_inner: LLM response is not a valid plan JSON with non-empty .steps; using stub"
+            warn "_plan_run_inner: LLM response is not a valid plan.json (requires schema_version=1 and non-empty .steps)"
         fi
     elif [[ $router_rc -eq 1 ]]; then
-        warn "_plan_run_inner: router rc=1 (recoverable); using stub plan"
+        warn "_plan_run_inner: router rc=1 (recoverable); no plan produced"
     elif [[ $router_rc -ne 0 ]]; then
         error "_plan_run_inner: router rc=$router_rc (fatal)"
         emit_event "plugin.run.error" "plugin=plan" \
@@ -154,7 +152,7 @@ _plan_run_inner() {
     local step_count
     step_count="$(printf '%s' "$plan_json" | jq '.steps | length' 2>/dev/null || echo 0)"
 
-    emit_event "stage.complete" "stage=plan" \
+    emit_event "plugin.run.complete" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \
         "artifact=plan.json"

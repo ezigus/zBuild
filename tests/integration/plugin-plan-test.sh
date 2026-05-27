@@ -90,21 +90,38 @@ assert_eq "plan.json schema_version == 1" "1" "$schema_version"
 step_count="$(printf '%s' "$plan_json_content" | jq '.steps | length' 2>/dev/null || echo 0)"
 assert_gt "plan.json .steps | length > 0" "$step_count" "0"
 
-# ─── Test 4: plan_run fails with missing scope_manifest (rc=2) ───────────────
-# Create an alternate state dir with no scope-manifest.md
+# ─── Test 4: plan_run fails with missing scope_manifest (rc=1 — redaction fail-closed) ─
+# Temporarily replace apply_scope_redaction with a scope-aware mock that
+# matches the real ADR-004 fail-closed behavior (returns 1 when manifest absent).
+apply_scope_redaction() {
+    local _input="$1" _output="$2" _manifest="$3"
+    if [[ -z "$_manifest" || ! -f "$_manifest" ]]; then
+        return 1
+    fi
+    cat "$_input" > "$_output"
+    return 0
+}
+
 NO_SCOPE_STATE_DIR="$TEST_TEMP_DIR/state-noscope"
 NO_SCOPE_STATE_FILE="$NO_SCOPE_STATE_DIR/pipeline-state.json"
 mkdir -p "$NO_SCOPE_STATE_DIR/artifacts"
 echo '{"schema_version":1,"run_id":"test","issue":"0","stage_statuses":{}}' > "$NO_SCOPE_STATE_FILE"
 printf 'test goal\n' > "$NO_SCOPE_STATE_DIR/intake.md"
-# No scope-manifest.md written here
+# No scope-manifest.md written here — redaction chokepoint will refuse
 
 set +e
 plan_run "plan" "$NO_SCOPE_STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 
-assert_eq "plan_run with missing scope_manifest returns rc=2" "2" "$rc"
+assert_eq "plan_run with missing scope_manifest returns rc=1 (redaction fail-closed)" "1" "$rc"
+
+# Restore passthrough mock for remaining tests
+apply_scope_redaction() {
+    local _input="$1" _output="$2"
+    cat "$_input" > "$_output"
+    return 0
+}
 
 # ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
 set +e

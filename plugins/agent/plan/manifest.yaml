@@ -36,7 +36,7 @@ inputs:
 
 outputs:
   - name: plan
-    path: "${artifact_dir}/plan.json"
+    path: ${artifact_dir}/plan.json
     type: plan.json
 
 state:
