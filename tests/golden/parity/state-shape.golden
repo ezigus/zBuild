@@ -2,16 +2,19 @@
   "claim_lease_id": "",
   "cost_ledger_pointer": 0,
   "current_iteration": 0,
-  "issue": 214,
+  "issue": 359,
   "plugin_state": {},
   "run_id": "parity-fixture-run-001",
   "schema_version": 1,
   "scope_manifest_hash": "",
   "self_heal_count": {},
   "stage_statuses": {
+    "build": "complete",
     "intake": "complete",
-    "output": "complete",
-    "security-lens": "complete"
+    "plan": "complete",
+    "pr": "complete",
+    "review": "complete",
+    "test": "complete"
   },
   "status": "complete"
 }
