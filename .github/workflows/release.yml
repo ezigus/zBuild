@@ -29,8 +29,7 @@ jobs:
       - name: Smoke test
         run: ./scripts/zbuild --version
 
-      # npm publish step intentionally omitted until 0.1.0 (Phase 0 ships).
-      # When ready: add NPM_TOKEN secret and uncomment.
-      # - run: npm publish
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

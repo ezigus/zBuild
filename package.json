@@ -1,6 +1,6 @@
 {
   "name": "zbuild",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Plugin-based framework for autonomous AI agent delivery pipelines.",
   "license": "MIT",
   "author": "Eric Ziegler <eric@zig.us>",
