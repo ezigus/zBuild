@@ -28,13 +28,12 @@ setup_test_env "memory-ruflo-adv"
 # store with the prefixed namespace and check that the plugin exposes the bare
 # name to callers.
 #
-# Subcommands (matching the ruflo memory CLI the plugin must target):
-#   ruflo memory store   <ns> <key> <value>
-#   ruflo memory get     <ns> <key>
-#   ruflo memory search  <ns> <query> [--limit N]
-#   ruflo memory list-namespaces
-#   ruflo memory namespace-exists <ns>
-#   ruflo memory namespace-clear  <ns>
+# Subcommands (flag-based CLI matching the plugin.sh spec):
+#   ruflo memory store   -k KEY --value VALUE -n NS --upsert --quiet
+#   ruflo memory retrieve -k KEY -n NS --format json --quiet
+#   ruflo memory search  -q QUERY -n NS -t TYPE -l LIMIT --format json --quiet
+#   ruflo memory list    --format json --quiet -l LIMIT [-n NS]
+#   ruflo memory delete  -k KEY -n NS -f --quiet
 #
 # Environment overrides for failure injection:
 #   RUFLO_FAIL_ALL=1   — every subcommand exits 1 (simulates a broken daemon)

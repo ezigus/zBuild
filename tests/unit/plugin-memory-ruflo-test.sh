@@ -32,8 +32,8 @@ export MOCK_STORE_DIR
 #   ruflo memory delete   -k KEY -n NS -f --quiet
 #
 # RUFLO_FAIL_NEXT: if set to a command verb (store|retrieve|search|list|delete),
-# the mock exits with rc=1 for store/retrieve and rc=2 for search/list/delete on
-# the next matching call, then clears the variable.
+# the mock exits with rc=1 on the next matching call.
+# NOTE: runs in a subprocess — caller must unset RUFLO_FAIL_NEXT manually after use.
 
 cat > "$TEST_TEMP_DIR/bin/ruflo" << 'MOCK_EOF'
 #!/usr/bin/env bash

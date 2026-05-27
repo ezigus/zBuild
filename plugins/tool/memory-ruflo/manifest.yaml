@@ -9,5 +9,4 @@ provides:
 requires:
   bin: [ruflo, jq]
 config:
-  fallback_to_default_on_error: true
   tier_default: T2

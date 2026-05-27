@@ -505,6 +505,7 @@ find_plugin_for_role() {
 scan_plugin_outputs() {
     local plugin_dir="$1"
     local state_file="${2:-}"
+    local stage="${3:-}"
     local manifest="$plugin_dir/manifest.yaml"
 
     # No manifest, no outputs to scan — silently succeed.
@@ -563,6 +564,35 @@ scan_plugin_outputs() {
                 "artifact_type=$artifact_type" \
                 "expected_path=$resolved" \
                 "template=$raw_path"
+            # ADR-001 §Fail-closed contract: emit plugin.contract.violated and write
+            # synthetic blocking findings.json so the output stage can surface the violation.
+            local _stage_id="${stage:-${plugin_id}}"
+            emit_event "plugin.contract.violated" \
+                "stage=$_stage_id" \
+                "plugin=$plugin_id" \
+                "artifact_type=$artifact_type" \
+                "expected_path=$resolved" \
+                "reason=artifact_missing_or_empty"
+            if [[ -n "$state_dir" ]]; then
+                mkdir -p "${state_dir}/artifacts"
+                local _findings_file="${state_dir}/artifacts/${_stage_id}-${plugin_id}-contract-violated-findings.json"
+                jq -n \
+                    --arg stage "$_stage_id" \
+                    --arg plugin "$plugin_id" \
+                    --arg artifact_type "$artifact_type" \
+                    --arg path "$resolved" \
+                    '{
+                        schema_version: 1,
+                        findings: [{
+                            id: "artifact-contract-violated",
+                            title: ("Plugin contract violated: " + $plugin + " declared provides.artifact_type=" + $artifact_type + " but wrote no artifact"),
+                            severity: "blocking",
+                            stage: $stage,
+                            plugin: $plugin,
+                            detail: ("Expected artifact at: " + $path)
+                        }]
+                    }' > "$_findings_file" 2>/dev/null || true
+            fi
             missing=$((missing + 1))
         fi
     done <<< "$paths"
@@ -622,8 +652,9 @@ plugin_hook_call() {
         # failure as a non-zero hook exit so the caller can react.
         if [[ "$hook_name" == "run" ]]; then
             # Per ADR-001 hook signature: $@ after shift 2 is (stage_id, state_file, ...).
+            local stage_arg="${1:-}"
             local state_file_arg="${2:-}"
-            if ! scan_plugin_outputs "$plugin_dir" "$state_file_arg"; then
+            if ! scan_plugin_outputs "$plugin_dir" "$state_file_arg" "$stage_arg"; then
                 emit_event "plugin.$hook_name.artifact_check_failed" \
                     "plugin=$plugin_id" "kind=$kind"
                 return 1
