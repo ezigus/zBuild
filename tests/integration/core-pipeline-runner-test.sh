@@ -352,7 +352,18 @@ ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A2_DIR/events.db" \
 bash "$RUNNER" --issue 83 2>/dev/null &
 a2_pid=$!
-sleep 1
+# Wait until the runner has emitted pipeline.start (proof the abort trap is
+# installed and events.jsonl exists) before sending SIGTERM. A fixed sleep
+# races with slow CI runners — poll up to 10 s instead.
+a2_ready=0
+for _ in $(seq 1 100); do
+    if [[ -f "$A2_EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$A2_EVENTS_JSONL" 2>/dev/null; then
+        a2_ready=1
+        break
+    fi
+    sleep 0.1
+done
+[[ "$a2_ready" -eq 1 ]] || echo "WARN: A2 runner never emitted pipeline.start within 10s" >&2
 kill "$a2_pid" 2>/dev/null || true
 wait "$a2_pid" 2>/dev/null || true
 
