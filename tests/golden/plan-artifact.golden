@@ -1,0 +1,1 @@
+{"schema_version":1,"goal":"implement the feature","steps":[{"id":1,"description":"write tests","files":["tests/unit/feature-test.sh"]}]}
