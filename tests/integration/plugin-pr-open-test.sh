@@ -76,6 +76,43 @@ fi
 
 unset -f git
 
+# ─── Test 2b: blocked when review.json is missing (fail-closed, #358) ───────
+print_test_section "2b. Blocked when review.json is missing (fail-closed per ADR-001)"
+
+rm -f "$PR_RESULT_JSON"
+rm -f "$REVIEW_JSON"
+
+# Mock git to return a safe non-main branch so we reach the review.json check
+git() {
+    if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
+        echo "zbuild/issue-999"
+    else
+        command git "$@"
+    fi
+}
+export -f git
+
+set +e
+_pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
+rc=$?
+set -e
+
+assert_exit_code "missing review.json returns rc=2" "2" "$rc"
+assert_file_exists "pr-result.json written when review.json missing" "$PR_RESULT_JSON"
+
+if [[ -f "$PR_RESULT_JSON" ]]; then
+    pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "pr-result.json status=blocked when review.json missing" "blocked" "$pr_status"
+    pr_reason="$(jq -r '.reason' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    if [[ "$pr_reason" == *"missing"* ]]; then
+        assert_pass "pr-result.json reason contains 'missing'"
+    else
+        assert_fail "pr-result.json reason contains 'missing'" "reason was: $pr_reason"
+    fi
+fi
+
+unset -f git
+
 # ─── Test 3: blocked if current branch is main ───────────────────────────────
 print_test_section "3. Blocked when current branch is main"
 

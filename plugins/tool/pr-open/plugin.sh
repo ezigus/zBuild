@@ -85,19 +85,28 @@ _pr_open_run_inner() {
         return 2
     fi
 
-    # ── Safety check 2: refuse if review verdict == "block" ──────────────────
-    if [[ -f "$review_json_path" ]]; then
-        local verdict
-        verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
-        if [[ "$verdict" == "block" ]]; then
-            error "pr_open: refusing to open PR — review verdict is 'block'"
-            emit_event "plugin.run.error" "plugin=pr-open" \
-                "reason=review_verdict_block" "verdict=${verdict}"
-            jq -n \
-                '{"schema_version":1,"status":"blocked","reason":"review verdict is block","draft":true}' \
-                > "$output_pr_result_json"
-            return 2
-        fi
+    # ── Safety check 2: fail-closed if review.json missing (ADR-001, #358) ───
+    if [[ ! -f "$review_json_path" ]]; then
+        error "pr_open: refusing to open PR — review.json missing (fail-closed per ADR-001)"
+        emit_event "plugin.run.error" "plugin=pr-open" \
+            "reason=review_json_missing" "path=${review_json_path}"
+        jq -n \
+            '{"schema_version":1,"status":"blocked","reason":"review.json missing — fail-closed per ADR-001","draft":true}' \
+            > "$output_pr_result_json"
+        return 2
+    fi
+
+    # ── Safety check 3: refuse if review verdict == "block" ──────────────────
+    local verdict
+    verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
+    if [[ "$verdict" == "block" ]]; then
+        error "pr_open: refusing to open PR — review verdict is 'block'"
+        emit_event "plugin.run.error" "plugin=pr-open" \
+            "reason=review_verdict_block" "verdict=${verdict}"
+        jq -n \
+            '{"schema_version":1,"status":"blocked","reason":"review verdict is block","draft":true}' \
+            > "$output_pr_result_json"
+        return 2
     fi
 
     # ── Create/switch to zbuild/issue-N branch ────────────────────────────────
