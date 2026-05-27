@@ -1,0 +1,49 @@
+id: build
+name: Build Stage
+kind: agent
+version: 0.1.0
+description: |
+  Build stage agent. Reads the plan.json artifact produced by the plan stage
+  and invokes the LLM (T2) to produce a diff.patch and build-summary.json.
+  The diff.patch is NEVER applied inside this plugin — it is written as an
+  artifact for the downstream test stage to validate and apply.
+
+hooks:
+  init: build_stage_init
+  run: build_stage_run
+  finalize: build_stage_finalize
+  cleanup: build_stage_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: build-summary.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - name: scope_manifest
+    type: file
+  - name: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+
+outputs:
+  - name: diff_patch
+    path: "${artifact_dir}/diff.patch"
+    type: patch
+  - name: build_summary
+    path: "${artifact_dir}/build-summary.json"
+    type: build-summary.json
+
+state:
+  persisted: [last_files_changed, last_lines_added]
+  reconstructed: [plan_json]
