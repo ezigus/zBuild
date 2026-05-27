@@ -3,11 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: output-github-comment (issue #87)"
@@ -24,7 +24,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 mkdir -p "$TEST_TEMP_DIR/bin"
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 
-# shellcheck source=../core/plugin-registry/registry.sh
+# shellcheck source=../../../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/tool/output-github-comment"
@@ -40,7 +40,7 @@ discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "output-github-comment discovered in plugin registry" "$discovered" "tool/output-github-comment"
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
-# shellcheck source=../plugins/tool/output-github-comment/plugin.sh
+# shellcheck source=../../../../plugins/tool/output-github-comment/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
 # ─── Shared fixtures ──────────────────────────────────────────────────────────

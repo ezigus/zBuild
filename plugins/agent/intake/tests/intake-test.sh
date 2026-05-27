@@ -3,11 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: intake (goal capture + scope manifest — issue #85)"
@@ -20,7 +20,7 @@ export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
-# shellcheck source=../core/plugin-registry/registry.sh
+# shellcheck source=../../../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/intake"
@@ -42,7 +42,7 @@ discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "intake discovered in plugin registry" "$discovered" "agent/intake"
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
-# shellcheck source=../plugins/agent/intake/plugin.sh
+# shellcheck source=../../../../plugins/agent/intake/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 intake_init >/dev/null 2>&1
 

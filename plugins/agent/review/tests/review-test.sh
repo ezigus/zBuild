@@ -5,11 +5,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: review (issue #343)"
@@ -29,7 +29,7 @@ mkdir -p "$TEST_TEMP_DIR/bin"
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 
 # ─── Source plugin (also sources event-bus, redaction, router, helpers) ──────
-# shellcheck source=../../plugins/agent/review/plugin.sh
+# shellcheck source=../../../../plugins/agent/review/plugin.sh
 source "$REPO_ROOT/plugins/agent/review/plugin.sh"
 
 # ─── Real redaction chokepoint (issue #360) ───────────────────────────────────

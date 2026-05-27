@@ -5,11 +5,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: output-github-comment stdout default (issue #238)"
@@ -32,7 +32,7 @@ exit 1
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/gh"
 
-# shellcheck source=../core/plugin-registry/registry.sh
+# shellcheck source=../../../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/tool/output-github-comment"
@@ -52,7 +52,7 @@ unset ZBUILD_OUTPUT 2>/dev/null || true
 # and change the expected dest telemetry — explicitly disable it for this test.
 unset GITHUB_STEP_SUMMARY 2>/dev/null || true
 
-# shellcheck source=../plugins/tool/output-github-comment/plugin.sh
+# shellcheck source=../../../../plugins/tool/output-github-comment/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 output_init >/dev/null 2>&1
 
