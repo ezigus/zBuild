@@ -80,6 +80,18 @@ The engine refuses to start with multiple `claim-coordinator` plugins enabled �
 - Plugin contract for `claim-coordinator` is wider than other kinds (4 entry points vs. 1–2). Accepted; the operations are intrinsically asymmetric.
 - Selecting the wrong coordinator (e.g., `ttl-leases` when fleet members can't see a shared filesystem) silently breaks claims. Mitigation: every coordinator's `init` performs a self-test and refuses to start if its consistency assumptions are violated.
 
+## Implementation Notes (Phase 0.5 — issue #291)
+
+| Item | Status | PR / Notes |
+|------|--------|------------|
+| `kind: claim-coordinator` plugin kind in registry | Implemented | #320 (feat #308, 2026-05-26) |
+| `plugins/claim-coordinator/github-labels/` default coordinator | Implemented | #320; all 4 entry points (`claim`, `release`, `heartbeat`, `list_claims`) |
+| `flock` timeout + exclusivity self-test in `init` | Implemented | PR #320 review commit (`862bfc0`) |
+| `tests/e2e/claim-race-test.sh` race coverage | Implemented | #320; 6 assertions across concurrent-claim scenarios |
+| TOCTOU window documented in plugin README | Implemented | `plugins/claim-coordinator/github-labels/README.md` |
+| `plugins/claim-coordinator/ttl-leases/` (no TOCTOU) | Deferred → Phase 1 | KEEPERS.md §L item 10 |
+| `plugins/claim-coordinator/dashboard/` variant | Deferred → Phase 1 | KEEPERS.md §L item 11 |
+
 ## References
 
 - [KEEPERS.md §M](../KEEPERS.md#section-m--multi-machine-claim-safety-decided-modular-swap-later) — full decision rationale.

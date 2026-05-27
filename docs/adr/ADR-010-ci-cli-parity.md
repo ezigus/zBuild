@@ -117,6 +117,14 @@ This is the property the user asked for: "consistent regardless of underlying re
 - Cache backend is a new pluggable surface — more contracts to maintain.
 - GH Actions cache has size limits (10GB total per repo, 5GB per item); some users may hit them with large AgentDB stores.
 
+## Implementation Notes (Phase 0.5 — issue #291)
+
+| Item | Status | PR / Notes |
+|------|--------|------------|
+| Parity test (`tests/e2e/parity-local-vs-ci-test.sh`) diffing state, artifacts, event sequence | Implemented | #306 (ADR-010 parity depth); golden + sha256 + event-type sequence |
+| `bootstrap` / `teardown` commands in CLI | Deferred → Phase 1 | not yet needed for single-machine Phase 0.5 |
+| Pluggable cache backend contract | Deferred → Phase 1 | ADR-011 backends (#211, #215, #217, #219, #221) define the pattern |
+
 ## References
 
 - [ADR-009 — Platform-Aware Modularity](ADR-009-platform-aware-modularity.md) — detection drives platform, not the workflow

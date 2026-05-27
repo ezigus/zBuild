@@ -79,7 +79,7 @@ The token file must be written by the operator manually each run (one-shot). The
 - Plugin authors must always go through the helper, even for "obviously safe" prompts. Friction. Mitigation: the helper is one function call.
 - Tests grep for raw model invocations; clever obfuscation (e.g., constructing the URL via variable substitution) could bypass. Accepted; we're guarding against accidents, not adversaries.
 
-## Implementation Notes
+## Implementation Notes (Phase 0.5 — issue #291)
 
 - **Chokepoint** lives at `core/redaction/scope-redaction.sh:34–158` (`apply_scope_redaction`). It refuses to emit when the scope manifest is missing/empty unless an explicit operator override (`ZBUILD_SCOPE_OVERRIDE=1` + token file matching `ZBUILD_RUN_ID`) is set, in which case it emits a `redaction.refused.overridden` audit event.
 - **Router C6 precondition** (`core/router/route.sh:23–66`) gates LLM dispatch on the most recent event being `redaction.applied`. The outer `--skip-precondition` path is fail-closed; the inner `[[ -n "$run_id" && -f ${ZBUILD_EVENTS_JSONL:-} ]]` no-ops when `ZBUILD_RUN_ID` is unset — that narrow edge case is tracked by **#289** (rescoped 2026-05-26).

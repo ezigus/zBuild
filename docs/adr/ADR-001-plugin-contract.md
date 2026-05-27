@@ -148,7 +148,7 @@ A plugin's `requires.plugins` list is enforced at discovery time: the engine ref
 - Versioning across breaking manifest changes — start with `schema_version` in manifest; bump policy TBD.
 - Hot-reload of plugins during a long-running pipeline — out of scope for Phase 0.
 
-## Implementation Notes
+## Implementation Notes (Phase 0.5 — issue #291)
 
 - **Manifest validation** is partially implemented at `core/plugin-registry/registry.sh:117–142`. As of 2026-05-26 it enforces only the 4 required identity fields (`id/name/kind/version`) plus a grep-based check that agent-plugins declare `requires.core: [redaction]`. Full YAML-structural validation of `hooks`-per-kind, `requires.core` as a structured list, `provides.artifact_type`, and `state.persisted/reconstructed` is tracked by **#287** + **#294**.
 - **Lockfile** at `registry.sh:204–238` currently hashes `manifest.yaml` only. Hashing `plugin.sh` and any auxiliary files (and reverifying before `source`) is tracked by **#290**. Until that lands, a tampered `plugin.sh` with unchanged manifest will pass verification.

@@ -120,6 +120,18 @@ No code change. No plugin change.
 - Debugging "why did this run on opus?" requires consulting router logs (mitigated: every model selection emits a `model.route` event with full context).
 - Tier semantics drift over time as model capabilities shift. We accept this; the tiers are about cost+latency class, not capability promises.
 
+## Implementation Notes (Phase 0.5 — issue #291)
+
+| Item | Status | PR / Notes |
+|------|--------|------------|
+| `config/models.json` with T0–T4 tiers | Implemented | #228 (router stub); current model IDs updated in subsequent PRs |
+| `core/router/route.sh` reads tiers, emits `model.route` event | Implemented | #278, #317 (C6 precondition hardening) |
+| C6 precondition: last event must be `redaction.applied` before model call | Implemented | #317 (rescoped from #289, 2026-05-26) |
+| No hardcoded model names in code (tier-ordinal-only) | Implemented | enforced by convention; grep rule in CI lint |
+| `model.outcome` event with token counts | Implemented | #330 (issue #94) |
+| UCB1 / Thompson adaptive selection across candidates | Deferred → Phase 1 | tracked by **#29** |
+| Cost-ledger offline accounting | Deferred → Phase 1 | tracked by **#28** |
+
 ## References
 
 - [KEEPERS.md §B1.9–11](../KEEPERS.md#b1--verified-wired-carry-forward-as-core) — cost ledger, UCB1, Thompson router.
