@@ -1364,6 +1364,8 @@ issues:
       are parseable as structured data (vs free-text). Wire into core/router.
       Legacy uses this in nearly every claude invocation; tracking explicitly so
       we don't lose it.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T01:22:18Z). Recorded by manifest-sync.'
   - id: ccli-2
     title: "[Phase 0.5] Claude CLI: prompt caching directives"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1372,6 +1374,8 @@ issues:
       Use Anthropic's prompt-caching headers/flags for repeated context blocks
       (scope manifest, repo summary, fixed system prompts). Reduces token spend
       30-90% for long-running pipelines. Wire into core/router/route.sh.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T01:35:22Z). Recorded by manifest-sync.'
   - id: ccli-3
     title: "[Phase 0.5] Claude CLI: --mcp server connection flags"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2342,6 +2346,8 @@ issues:
         files: [{pattern: package.json, strength: high}, {pattern: package-lock.json, strength: medium}]
         directories: [{pattern: node_modules/, strength: low}]
       - Tests verify detection picks up these manifests automatically
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T00:50:41Z). Recorded by manifest-sync.'
   - id: plat-6
     title: "[Phase 0.5] .zbuild/platforms.json config schema (overrides + disable + aliases)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2369,6 +2375,8 @@ issues:
       - docs/platforms-config-schema.md with examples
       - .gitignore: state/platforms.detected.json (machine-generated)
       - Tests cover override-wins-over-detect, disable_detection, aliases
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T00:50:41Z). Recorded by manifest-sync.'
   - id: plat-13
     title: "[Phase 0.5] Detection conflict resolution + signal strength ranking"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2392,6 +2400,8 @@ issues:
       - Event: detection.conflict {path, candidates, strengths, resolution}
       - CLI: zbuild detect platforms --explain shows resolution reasoning
       - Tests cover all conflict patterns
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T00:50:42Z). Recorded by manifest-sync.'
   # ─── Phase 1 — Orchestration strategies (3 issues) ─────────────────────
   - id: plat-9
     title: "[Phase 1] Fanout strategy (parallel per-platform stage execution)"
@@ -3178,7 +3188,7 @@ issues:
     title: "[Deferred decision] State read fail-closed on JSON corruption — narrow lift from Phase 2 #38"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation, safety-primitive]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/293
       Partial overlap with #38 (Phase 2 broad sweep) — this is the narrow
@@ -3186,6 +3196,7 @@ issues:
       Two views: (a) narrow lift of .bak recovery into locked_state_update
       is cleanup of shipped code; (b) leave for Phase 2 #38 broad sweep.
       Awaits decision. Surfaced as Δ-8 in delta plan.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T00:50:40Z). Recorded by manifest-sync.'
   - id: delta-d9
     title: "[Deferred decision] Plugin registry: YAML-structural manifest validation (replace fragile grep for redaction requirement)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
