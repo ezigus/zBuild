@@ -25,7 +25,7 @@ mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR" "$EVENTS_DIR" "$BIN_DIR"
 # ─── Wire event-bus to the test state dir ───────────────────────────────────
 export ZBUILD_EVENTS_DIR="$EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="/dev/null"
+export ZBUILD_EVENTS_DB="$EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_ISSUE=999
 export ZBUILD_RUN_ID="full-pipeline-test-run-001"
@@ -94,8 +94,8 @@ new file mode 100644
 # Canned review JSON
 _REVIEW_JSON='{"verdict":"approve","confidence":0.95,"issues":[],"summary":"Diff implements the plan correctly."}'
 
-# route_to_model: returns canned response per stage
-# The ZBUILD_PIPELINE_STAGE env var is set before each call to select response.
+# route_to_model: returns canned response per stage.
+# Tests set _MOCK_STAGE before each stage's run call to select the response.
 route_to_model() {
     local _tier="$1"  # unused in mock
     case "${_MOCK_STAGE:-}" in
@@ -147,12 +147,14 @@ exit 0
 RSYNCEOF
 chmod +x "$BIN_DIR/rsync"
 
-# Mock gh binary — returns a fake PR URL for gh pr create
-cat > "$BIN_DIR/gh" <<'GHEOF'
+# Mock gh binary — captures args to $BIN_DIR/gh-calls.log; returns fake PR URL
+GH_CALLS_LOG="$BIN_DIR/gh-calls.log"
+cat > "$BIN_DIR/gh" <<GHEOF
 #!/usr/bin/env bash
-case "${1:-}" in
+printf '%s\n' "\$*" >> "$GH_CALLS_LOG"
+case "\${1:-}" in
     pr)
-        case "${2:-}" in
+        case "\${2:-}" in
             create) echo "https://github.com/testuser/zbuild/pull/999" ;;
             *)      echo "" ;;
         esac
@@ -338,10 +340,54 @@ fi
 
 pr_open_finalize
 
+# Assert gh pr create was called with --draft and Closes #999 in args
+if [[ -f "$GH_CALLS_LOG" ]]; then
+    _gh_call="$(cat "$GH_CALLS_LOG")"
+    if printf '%s' "$_gh_call" | grep -q -- "--draft"; then
+        assert_pass "gh pr create called with --draft flag"
+    else
+        assert_fail "gh pr create called with --draft flag" "log: $_gh_call"
+    fi
+    if printf '%s' "$_gh_call" | grep -q "Closes #999"; then
+        assert_pass "gh pr create body contains Closes #999"
+    else
+        assert_fail "gh pr create body contains Closes #999" "log: $_gh_call"
+    fi
+else
+    assert_fail "gh pr create called with --draft flag" "gh-calls.log not written"
+    assert_fail "gh pr create body contains Closes #999" "gh-calls.log not written"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
-# SECTION 3: Event sequence verification
+# SECTION 3: Pipeline state assertions
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "Pipeline state assertions"
+
+if [[ -f "$STATE_FILE" ]]; then
+    _state_run_id="$(jq -r '.run_id // empty' "$STATE_FILE" 2>/dev/null || true)"
+    assert_eq "pipeline-state.json run_id matches" "$ZBUILD_RUN_ID" "$_state_run_id"
+
+    _state_issue="$(jq -r '.issue // empty' "$STATE_FILE" 2>/dev/null || true)"
+    assert_eq "pipeline-state.json issue==999" "999" "$_state_issue"
+
+    _state_sv="$(jq -r '.schema_version // empty' "$STATE_FILE" 2>/dev/null || true)"
+    assert_eq "pipeline-state.json schema_version==1" "1" "$_state_sv"
+else
+    assert_fail "pipeline-state.json run_id matches" "state file missing"
+    assert_fail "pipeline-state.json issue==999" "state file missing"
+    assert_fail "pipeline-state.json schema_version==1" "state file missing"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: Event sequence verification
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "Event sequence verification"
+
+# Set GOLDEN_DIR before sourcing so the library's default is overridden.
+GOLDEN_DIR="$REPO_ROOT/tests/golden"
+export GOLDEN_DIR
+# shellcheck source=../../scripts/lib/golden.sh
+source "$REPO_ROOT/scripts/lib/golden.sh"
 
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
     # Count plugin.run.complete events — expect at least one per stage (5 total)
@@ -357,6 +403,22 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
             "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d '[:space:]')"
         assert_gt "plugin.run.complete emitted for stage: $_stage" "$_stage_events" "0"
     done
+
+    # Golden event-type sequence: strip non-deterministic fields (timestamps,
+    # run_ids, sizes) and capture just the ordered event types.
+    _normalized_events="$(jq -r '.type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
+        | grep -v '^$' || true)"
+
+    set +e
+    assert_golden "full-pipeline/event-sequence" "$_normalized_events"
+    _golden_rc=$?
+    set -e
+    if [[ $_golden_rc -eq 0 ]]; then
+        assert_pass "event type sequence matches golden"
+    else
+        assert_fail "event type sequence matches golden" \
+            "run with UPDATE_GOLDEN=1 to regenerate tests/golden/full-pipeline/event-sequence.golden"
+    fi
 else
     assert_fail "events.jsonl exists for event verification" "file not found: $ZBUILD_EVENTS_JSONL"
 fi
