@@ -151,6 +151,76 @@ fi
 
 CHANGES_MADE=0
 
+# Require RUNNER_TEMP (set by GitHub Actions); fail fast for local debugging clarity.
+if [[ -z "${RUNNER_TEMP:-}" ]]; then
+    warn "RUNNER_TEMP is unset — writing PR body to /tmp (workflow body-path step will not find it outside CI)"
+    RUNNER_TEMP="/tmp"
+fi
+PR_BODY_FILE="${RUNNER_TEMP}/manifest-sync-pr-body.md"
+
+# Escape pipe characters and strip newlines in table cell content.
+_escape_cell() { printf '%s' "$1" | tr -d '\n\r' | sed 's/|/\\|/g'; }
+
+# Build PR body with actual drift details; placeholders replaced by workflow
+{
+    echo "Auto-detected drift between \`.github/issues/keepers-manifest.yaml\` and the live repo state."
+    echo ""
+    echo "**Trigger:** \`%%TRIGGER%%\`  **Run:** %%RUN_ID%%"
+    echo ""
+
+    echo "## Issues marked closed (${#TO_MARK_CLOSED[@]})"
+    echo ""
+    if [[ ${#TO_MARK_CLOSED[@]} -gt 0 ]]; then
+        echo "| Manifest ID | Issue | Title |"
+        echo "|---|---|---|"
+        for entry in "${TO_MARK_CLOSED[@]}"; do
+            IFS='|' read -r mid lnum title <<< "$entry"
+            echo "| \`$(_escape_cell "$mid")\` | #$lnum | $(_escape_cell "$title") |"
+        done
+    else
+        echo "None."
+    fi
+    echo ""
+
+    echo "## Orphan PRs detected (${#ORPHAN_PRS[@]})"
+    echo ""
+    if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
+        echo "| PR | Title |"
+        echo "|---|---|"
+        for entry in "${ORPHAN_PRS[@]}"; do
+            IFS='|' read -r num title <<< "$entry"
+            echo "| #$num | $(_escape_cell "$title") |"
+        done
+    else
+        echo "None."
+    fi
+    echo ""
+
+    echo "## Orphan issues — not auto-added (${#ORPHAN_ISSUES[@]})"
+    echo ""
+    if [[ ${#ORPHAN_ISSUES[@]} -gt 0 ]]; then
+        echo "These live issues have no manifest entry. Human judgment required before adding."
+        echo ""
+        echo "| Issue | State | Title |"
+        echo "|---|---|---|"
+        for entry in "${ORPHAN_ISSUES[@]}"; do
+            IFS='|' read -r num state title <<< "$entry"
+            echo "| #$num | $state | $(_escape_cell "$title") |"
+        done
+    else
+        echo "None."
+    fi
+    echo ""
+
+    echo "## What this PR does NOT do"
+    echo ""
+    echo "- Does NOT auto-add live-only issues to the manifest."
+    echo "- Does NOT close any live GitHub issues."
+    echo "- Does NOT reopen anything."
+    echo ""
+    echo "Safe to merge if the changes look right."
+} > "$PR_BODY_FILE"
+
 # Apply: mark manifest entries closed where live is closed
 for entry in "${TO_MARK_CLOSED[@]}"; do
     IFS='|' read -r mid lnum title <<< "$entry"
