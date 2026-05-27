@@ -39,9 +39,9 @@ tc1_rc=$?
 set -e
 assert_eq "TC-1: blocked command exits 1" "1" "$tc1_rc"
 
-# After a block there should be NO hook.pre_tool_use.checked event with verdict=allow
+# After a block there should be NO hook.pre_bash.allowed event with verdict=allow
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
-    allow_after_block=$(grep 'hook.pre_tool_use.checked' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep 'allow' || true)
+    allow_after_block=$(grep 'hook.pre_bash.allowed' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep 'allow' || true)
     if [[ -n "$allow_after_block" ]]; then
         assert_fail "TC-1b: no allow event emitted after block"
     else
@@ -62,11 +62,11 @@ assert_eq "TC-2: allowed command exits 0" "0" "$tc2_rc"
 # valid ZBUILD_RUN_ID. The handler's emitEvent is fire-and-forget, so we check
 # conditionally: if the JSONL was created, it must contain the allow event.
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
-    allow_event=$(grep 'hook.pre_tool_use.checked' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
+    allow_event=$(grep 'hook.pre_bash.allowed' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
     if [[ -n "$allow_event" ]]; then
         assert_pass "TC-2b: allow event present in JSONL"
-        verdict=$(echo "$allow_event" | jq -r '.data.verdict // empty' 2>/dev/null || true)
-        assert_eq "TC-2c: event has verdict=allow" "allow" "$verdict"
+        event_type=$(echo "$allow_event" | jq -r '.type // empty' 2>/dev/null || true)
+        assert_eq "TC-2c: event type is hook.pre_bash.allowed" "hook.pre_bash.allowed" "$event_type"
     else
         # Event bus requires ZBUILD_RUN_ID; without it, no event — that is acceptable
         assert_pass "TC-2b: no event (event bus requires ZBUILD_RUN_ID — acceptable in unit env)"

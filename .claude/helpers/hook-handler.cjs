@@ -1,5 +1,5 @@
 'use strict';
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -55,8 +55,10 @@ function emitEvent(type, pairs) {
   try {
     const eventBus = path.join(PROJECT_ROOT, 'core/event-bus/event-bus.sh');
     if (!fs.existsSync(eventBus)) return;
-    const args = pairs.map(p => `"${p.replace(/"/g, '\\"')}"`).join(' ');
-    execSync(`bash -c 'source "${eventBus}" && eb_emit_event "${type}" ${args}'`, {
+    // Pass all values as positional args ($1=eventBus, $2=type, $3..=pairs)
+    // so no value is ever interpolated into shell source text.
+    const script = `source "$1" && eb_emit_event "$2" ${pairs.map((_, i) => `"$${i + 3}"`).join(' ')}`;
+    execFileSync('bash', ['-c', script, '--', eventBus, type, ...pairs], {
       timeout: 2000, stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (_) { /* non-fatal */ }
@@ -95,7 +97,7 @@ async function handlePreBash(input) {
     }
   }
   for (const re of BASH_REGEX_BLOCKLIST) {
-    if (re.test(rawCmd)) {
+    if (re.test(cmd)) {
       // Do NOT include the dangerous command text in the event log
       emitEvent('hook.pre_bash.blocked', ['reason=regex_blocklist']);
       process.stderr.write(`[zbuild hook] Blocked command matching pattern: ${re}\n`);
@@ -111,8 +113,16 @@ async function handlePreEdit(input) {
   let parsed = {};
   try { parsed = JSON.parse(input); } catch (_) { return; }
   const filePath = parsed.tool_input?.file_path || parsed.tool_input?.path || '';
-  const content = parsed.tool_input?.new_string || parsed.tool_input?.content || '';
-  if (!content || isTestPath(filePath)) return;
+  if (isTestPath(filePath)) return;
+
+  // Collect content from all edit forms: Write/Edit (new_string/content) + MultiEdit (edits[].new_string)
+  const parts = [
+    parsed.tool_input?.new_string || '',
+    parsed.tool_input?.content || '',
+    ...(parsed.tool_input?.edits || []).map(e => e.new_string || ''),
+  ];
+  const content = parts.join('\n');
+  if (!content.trim()) return;
 
   for (const pattern of SECRET_PATTERNS) {
     if (pattern.test(content)) {
