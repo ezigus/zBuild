@@ -71,7 +71,8 @@ assert_file_exists "state/intake.md created" "$STATE_DIR/intake.md"
 assert_contains "intake.md contains sanitized goal" "$(cat "$STATE_DIR/intake.md")" "fix auth bug"
 
 # ─── Test 4: synthesized sentinel stripped from goal ─────────────────────────
-export ZBUILD_GOAL="$(printf 'fix the login flow\n\n## Plan Summary\nsome noise')"
+ZBUILD_GOAL="$(printf 'fix the login flow\n\n## Plan Summary\nsome noise')"
+export ZBUILD_GOAL
 
 set +e
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
