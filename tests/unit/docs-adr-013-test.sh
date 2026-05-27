@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 # Tests: docs/adr/ADR-013-canonical-stage-list.md — content conformance (issue #292)
 #
-# ADR-013 is a markdown document (the deliverable for issue #292). These tests
-# verify that the file exists, has all required structural sections, declares the
-# canonical 11-stage list with correct required fields, defines the
-# compound_quality sub-phases, cross-links from ARCHITECTURE.md §3, and has no
-# extras or omissions in the stage id set.
-#
 # Test tier: unit  (read-only grep/awk against committed markdown files; no
 # subprocess, no network, no FS mutation, well under 1s per test)
 set -euo pipefail
@@ -32,8 +26,6 @@ if [[ -f "$ADR_FILE" ]]; then
 else
     assert_fail "TC-1: ADR-013 file exists at docs/adr/ADR-013-canonical-stage-list.md" \
         "file not found: $ADR_FILE"
-    # Cannot continue without the file — remaining tests would produce
-    # misleading output, so exit now with the failure count.
     cleanup_test_env
     print_test_results
     exit 1
@@ -57,55 +49,46 @@ done
 # ---------------------------------------------------------------------------
 # TC-3: All 11 canonical stage ids are present in the document
 # ---------------------------------------------------------------------------
+# Use grep -w for portable word-boundary matching (POSIX/BSD/GNU compatible).
 canonical_stages=(
-    intake
-    plan
-    design
-    build
-    test
-    review
-    compound_quality
-    pr
-    deploy
-    validate
-    monitor
+    intake plan design build test review
+    compound_quality pr deploy validate monitor
 )
 
 for stage_id in "${canonical_stages[@]}"; do
     set +e
-    grep -q "\b${stage_id}\b" "$ADR_FILE"
+    grep -qw -- "${stage_id}" "$ADR_FILE"
     rc=$?
     set -e
     assert_eq "TC-3: stage id '${stage_id}' present in ADR-013" "0" "$rc"
 done
 
 # ---------------------------------------------------------------------------
-# TC-4: Each stage entry has all required field names in the document
+# TC-4: Required field names appear in the document
 # ---------------------------------------------------------------------------
-# ADR-013 must define a structured stage table or block that includes each of
-# these field names at least once per stage section.  We test that the field
-# names appear in the document body at all; a deeper per-row check is TC-7.
-required_fields=(id kind tier required_hooks expected_artifact blocking)
+# lifecycle_hooks replaces the earlier required_hooks column name (ADR-001
+# distinguishes kind-entry hooks from optional lifecycle hooks).
+required_fields=(id kind tier lifecycle_hooks expected_artifact blocking)
 
 for field in "${required_fields[@]}"; do
     set +e
-    grep -q "\b${field}\b" "$ADR_FILE"
+    grep -qw -- "${field}" "$ADR_FILE"
     rc=$?
     set -e
     assert_eq "TC-4: required field '${field}' appears in ADR-013" "0" "$rc"
 done
 
 # ---------------------------------------------------------------------------
-# TC-5: compound_quality sub-phases defined (preflight, audit_plan, cycle, backtrack)
+# TC-5: compound_quality sub-phases defined with canonical ids
 # ---------------------------------------------------------------------------
-# ADR-013 is the canonical source; sub-phase names must match exactly.
-# `audit_plan` (not `plan`) is the second sub-phase per the ADR's own table.
-# Testing for the exact token prevents false-green matches on the generic word "plan".
+# audit_plan (not plan) is the second sub-phase per ADR-013 §"compound_quality
+# sub-phases". Testing the exact token prevents false-green matches on the
+# generic word "plan" which appears as a stage id throughout the file.
 compound_subphases=(preflight audit_plan cycle backtrack)
 
 for subphase in "${compound_subphases[@]}"; do
     set +e
-    grep -q "\b${subphase}\b" "$ADR_FILE"
+    grep -qw -- "${subphase}" "$ADR_FILE"
     rc=$?
     set -e
     assert_eq "TC-5: compound_quality sub-phase '${subphase}' defined in ADR-013" "0" "$rc"
@@ -114,8 +97,6 @@ done
 # ---------------------------------------------------------------------------
 # TC-6: ARCHITECTURE.md §3 contains a cross-link to ADR-013
 # ---------------------------------------------------------------------------
-# The cross-link may appear as [ADR-013], ADR-013, or a relative markdown link
-# pointing to the file.  We accept any of these forms.
 set +e
 grep -qE "(ADR-013|\[ADR-013\]|ADR-013-canonical-stage-list)" "$ARCH_FILE"
 rc=$?
@@ -123,69 +104,64 @@ set -e
 assert_eq "TC-6: ARCHITECTURE.md §3 cross-links to ADR-013" "0" "$rc"
 
 # ---------------------------------------------------------------------------
-# TC-7: Stage ids in ADR match canonical list exactly — no extras, no missing
+# TC-7: Stage ids in Decision table match canonical list exactly — no extras
 # ---------------------------------------------------------------------------
-# Strategy: extract every token that looks like a stage id from the ADR's
-# Decision section, then compare the sorted set to the canonical sorted set.
-# We look for bare id values on lines that contain "id:" or "| id" table cells
-# matching one of the known stage names (guarded list), so we do not
-# accidentally pick up unrelated text.
+# Strategy: locate the canonical stage definitions table by its header row
+# ("| id | kind | tier |"), then extract the first pipe-cell from every data
+# row that follows (until a blank line or the next section header).
+# This extracts ALL first-column values without an allowlist filter, so any
+# extra/typo stage id in the table will be caught.  Uses POSIX awk.
 
 canonical_sorted=$(printf '%s\n' "${canonical_stages[@]}" | sort)
 
-# Collect stage ids from explicit "| <id> |" table cells in the Decision
-# section only.  Uses only POSIX awk (no 3-arg match, no gawk extensions) so
-# it works on both macOS nawk and GNU awk.
 found_sorted=$(awk '
-    /^## Decision/        { in_decision=1; next }
-    in_decision && /^## / { in_decision=0 }
-    in_decision {
+    /^\| id[[:space:]]*\|/ { in_table=1; next }   # header row
+    in_table && /^\|---/   { next }                # separator row
+    in_table && /^\|/ {
         n = split($0, cells, "|")
-        for (i = 1; i <= n; i++) {
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", cells[i])
-            if (cells[i] ~ /^(intake|plan|design|build|test|review|compound_quality|pr|deploy|validate|monitor)$/) {
-                ids[cells[i]] = 1
+        if (n >= 2) {
+            val = cells[2]
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+            if (val != "" && val !~ /^-+$/ && val != "id") {
+                ids[val] = 1
             }
         }
     }
+    in_table && !/^\|/ { in_table=0 }
     END { for (k in ids) print k }
 ' "$ADR_FILE" | sort)
 
-assert_eq "TC-7: stage id set in ADR-013 matches canonical list exactly" \
+assert_eq "TC-7: stage id set in Decision table matches canonical list exactly" \
     "$canonical_sorted" "$found_sorted"
 
 # ---------------------------------------------------------------------------
 # TC-8: All expected_artifact table cells are non-empty
 # ---------------------------------------------------------------------------
-# The canonical stage table has 11 data rows (one per stage). Extract the
-# expected_artifact column (column 5 in the pipe-delimited table, 1-indexed
-# from the leftmost pipe) and count any cells that are blank or contain only
-# dashes/whitespace (which would indicate a missing artifact value).
-# Uses POSIX awk; works on both macOS nawk and GNU awk.
+# Find the canonical stage table by its header, then check column 5
+# (expected_artifact) in each data row.  Column index is 6 in the awk split
+# because the first split cell is empty (line starts with |).
 blank_artifacts=$(awk '
-    /^\| id / { header=1; next }
+    /^\| id[[:space:]]*\|/ { header=1; next }
     header && /^\|---/ { next }
     header && /^\|/ {
         n = split($0, cells, "|")
-        # column index 5 = expected_artifact (after id|kind|tier|required_hooks|expected_artifact)
         if (n >= 6) {
             val = cells[6]
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
             if (val == "" || val ~ /^-+$/) count++
         }
     }
+    header && !/^\|/ { header=0 }
     END { print count+0 }
 ' "$ADR_FILE")
 assert_eq "TC-8: no expected_artifact table cells are empty" "0" "$blank_artifacts"
 
 # ---------------------------------------------------------------------------
-# TC-9: All tiers are valid values in the T0–T4 range
+# TC-9: All tier values are within T0–T4
 # ---------------------------------------------------------------------------
-# Any "tier:" or "| T" cell that names a tier value must be T0, T1, T2, T3, or
-# T4.  If the document contains a tier value outside that set it indicates a
-# typo or an undocumented tier.
+# grep -Eo 'T[0-9]+' without \b is portable; filter with grep -Ev '^T[0-4]$'.
 set +e
-invalid_tiers=$(grep -Eo "\bT[0-9]+\b" "$ADR_FILE" | grep -Ev "^T[0-4]$" | wc -l | tr -d ' ')
+invalid_tiers=$(grep -Eo 'T[0-9]+' "$ADR_FILE" | grep -cv '^T[0-4]$' || true)
 set -e
 assert_eq "TC-9: all tier values in ADR-013 are within T0–T4" "0" "$invalid_tiers"
 

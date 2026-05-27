@@ -52,25 +52,27 @@ Each stage is defined by:
 | `id` | Stable snake_case identifier.  Referenced in templates and manifests. |
 | `kind` | Plugin kind required for this stage (`agent`, `tool`, `orchestrator`, `daemon`). |
 | `tier` | Default model-routing tier (ADR-003).  T0 = no LLM; T1–T4 = ascending capability/cost. |
-| `required_hooks` | Lifecycle hooks the engine calls on the stage's plugin. |
-| `expected_artifact` | Path (relative to `state/artifacts/`) the stage MUST produce. |
+| `lifecycle_hooks` | Hooks the engine invokes on the stage's plugin.  Per ADR-001, the only kind-required entry point is `run` (agent/tool/orchestrator) or `tick` (daemon); `init`, `finalize`, and `cleanup` are optional but listed here when the stage's plugin is expected to implement them. |
+| `expected_artifact` | Filename the stage MUST produce under `ZBUILD_ARTIFACT_DIR` (`state/artifacts/`).  `intake` is the single exception: it writes `state/scope-manifest.md` directly (outside `artifacts/`) because every downstream redaction call reads it from that stable path. |
 | `blocking` | Whether stage failure halts the pipeline (`true`) or degrades gracefully (`false`). |
 
 ### Canonical stage definitions
 
-| id | kind | tier | required_hooks | expected_artifact | blocking |
+| id | kind | tier | lifecycle_hooks | expected_artifact | blocking |
 |---|---|---|---|---|---|
-| intake | agent | T1 | init, run, finalize | scope-manifest.md | true |
-| plan | agent | T2 | init, run, finalize | plan.md | true |
+| intake | agent | T1 | init, run, finalize | scope-manifest.md† | true |
+| plan | agent | T2 | init, run, finalize | plan.json | true |
 | design | agent | T3 | init, run, finalize | design.md | true |
-| build | agent | T2 | init, run, finalize | build-context.md | true |
+| build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
-| review | agent | T2 | init, run, finalize | review.md | true |
+| review | agent | T2 | init, run, finalize | review.json | true |
 | compound_quality | orchestrator | T3 | init, run, finalize, cleanup | compound-quality-result.json | true |
 | pr | tool | T0 | init, run, finalize | pr-url.txt | true |
 | deploy | tool | T0 | init, run, finalize | deploy.log | true |
 | validate | tool | T0 | init, run, finalize | validate-result.json | true |
 | monitor | daemon | T1 | init, tick, finalize, cleanup | monitor-report.md | false |
+
+† `intake`'s `scope-manifest.md` is written to `state/scope-manifest.md` directly, not under `state/artifacts/`, because every downstream redaction call must find it at this stable path.
 
 ### Kind assignment rationale
 
@@ -121,10 +123,10 @@ internals.
 
 ### Artifact paths and the fail-closed rule
 
-All artifact paths are relative to `ZBUILD_ARTIFACT_DIR` (which resolves to
-`state/artifacts/` under the pipeline working directory).  `scope-manifest.md`
-is the single exception: intake writes it directly to `state/scope-manifest.md`
-because it is the redaction contract read by every downstream LLM call.
+All `expected_artifact` values in the table are filenames under `ZBUILD_ARTIFACT_DIR`
+(`state/artifacts/`).  `intake` is the single exception: it writes
+`state/scope-manifest.md` directly (the `†` in the table) because every
+downstream redaction call reads it from that stable path outside `artifacts/`.
 
 The fail-closed scanner rule (ARCHITECTURE.md §2, Keepers §C.4) applies to
 every `expected_artifact` in the table above:
