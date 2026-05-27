@@ -1,0 +1,42 @@
+id: pr-open
+name: PR Open Stage
+kind: tool
+version: 0.1.0
+description: |
+  Opens a draft pull request via `gh pr create --draft`. Reads the review.json
+  artifact from the prior review stage and refuses to open if verdict == "block".
+  Also refuses if the current branch is main or master. Always produces a draft PR.
+  No LLM dependency — T0 tool stage (ADR-013).
+
+hooks:
+  init: pr_open_init
+  run: pr_open_run
+  finalize: pr_open_finalize
+  cleanup: pr_open_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+
+provides:
+  artifact_type: pr-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+  always_draft: true
+
+inputs:
+  - name: review_json
+    type: file
+    path: "${artifact_dir}/review.json"
+
+outputs:
+  - name: pr_result
+    path: "${artifact_dir}/pr-result.json"
+    type: pr-result.json
+
+state:
+  persisted: [last_pr_url, last_pr_number]
+  reconstructed: []
