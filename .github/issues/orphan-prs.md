@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-27T04:49:29Z (rolling 30-PR window)_
+_Last updated: 2026-05-27T11:20:34Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -46,3 +46,6 @@ _Last updated: 2026-05-27T04:49:29Z (rolling 30-PR window)_
 | #326 | [manifest-sync] Drift reconciliation | 2026-05-26 |
 | #328 | manifest: pull #292 (ADR-013) from phase-1 → phase-0.5 | 2026-05-27 |
 | #327 | [manifest-sync] Drift reconciliation | 2026-05-27 |
+| #346 | manifest: add Wave B plugin issues (#340-#345) for Phase 0.5 dogfooding | 2026-05-27 |
+| #339 | fix: resolve Copilot review comments from PRs #335, #336, #337 | 2026-05-27 |
+| #334 | [manifest-sync] Drift reconciliation | 2026-05-27 |
