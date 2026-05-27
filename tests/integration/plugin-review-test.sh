@@ -234,12 +234,20 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
         assert_fail "redaction.applied present but redactions=0 — passthrough stub regression?"
     fi
 
-    # scope_hash must not be the literal "mock" (sentinel from the old stub).
-    if jq -e 'select(.type == "redaction.applied" and .data.scope_hash == "mock")' \
-        "$ZBUILD_EVENTS_JSONL" >/dev/null 2>&1; then
-        assert_fail "redaction.applied has scope_hash=mock — stale stub still in place"
+    # scope_hash must be a real SHA-256 digest (64-char lowercase hex), not the
+    # literal "mock" sentinel from the old stub, and not missing/null/empty.
+    # A stale stub that emits any non-"mock" placeholder would otherwise slip
+    # past a simple inequality check (Copilot review on PR #376).
+    bad_hashes="$(jq -c '
+        select(.type == "redaction.applied") |
+        select((.data.scope_hash // "") | test("^[a-f0-9]{64}$") | not) |
+        .data.scope_hash // "<missing>"
+    ' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+    if [[ -z "$bad_hashes" ]]; then
+        assert_pass "redaction.applied scope_hash is a valid SHA-256 (64 lowercase hex chars)"
     else
-        assert_pass "redaction.applied scope_hash is real sha256 (not 'mock' sentinel)"
+        bad_count="$(printf '%s\n' "$bad_hashes" | grep -c . || true)"
+        assert_fail "redaction.applied has $bad_count non-SHA256 scope_hash value(s): $bad_hashes"
     fi
 else
     assert_fail "redaction chokepoint: events.jsonl not found"

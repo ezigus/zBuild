@@ -208,35 +208,38 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
         assert_fail "pr-open emitted $model_route_count model.route event(s) — must redact first per ADR-004"
     fi
 
-    # If a future change ever emits a model.route from pr-open, there must be
-    # a preceding redaction.applied event in the same run (ADR-004 §Enforcement).
-    # Today this is vacuously true; we encode the invariant so it never silently
-    # regresses.
-    bad_routes="$(jq -c '
-        select(.type == "model.route" and .plugin == "pr-open") |
-        .run_id
-    ' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-    if [[ -z "$bad_routes" ]]; then
-        assert_pass "ADR-004 invariant: no unredacted LLM calls from pr-open"
+    # If a future change ever emits a model.route from pr-open, mirror the
+    # router's C6 precondition (core/router/route.sh): the most recent event
+    # for that run_id, at the moment of the model.route, must be
+    # redaction.applied. A bare "any redaction.applied in the same run" check
+    # is too loose — a stale redaction from an earlier plugin invocation, or
+    # a route ordered *before* its redaction, would falsely pass it
+    # (Copilot review on PR #376).
+    #
+    # Algorithm: walk events.jsonl in order. For every model.route with
+    # plugin=pr-open, the immediately-preceding event for the same run_id
+    # must be type=redaction.applied. Otherwise the route is unredacted.
+    unredacted="$(jq -rs '
+        # Per-run last-event-type tracker, then count pr-open model.routes
+        # whose preceding event for their run_id was not redaction.applied.
+        reduce .[] as $e (
+            {last: {}, bad: 0};
+            if ($e.type == "model.route" and $e.plugin == "pr-open") then
+                .bad += (if (.last[$e.run_id] // "") == "redaction.applied" then 0 else 1 end)
+                | .last[$e.run_id] = $e.type
+            else
+                .last[$e.run_id] = $e.type
+            end
+        ) | .bad
+    ' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+
+    if [[ "${unredacted:-0}" -eq 0 ]]; then
+        # Either no pr-open model.route events exist (vacuously true today),
+        # or every one was immediately preceded by redaction.applied for the
+        # same run_id — matching the router's C6 invariant exactly.
+        assert_pass "ADR-004 invariant: every pr-open model.route immediately preceded by redaction.applied (same run_id)"
     else
-        # If model.route DOES exist, every one must be preceded by redaction.applied
-        # for the same run_id. Check that condition.
-        unredacted=0
-        while IFS= read -r rid_quoted; do
-            [[ -z "$rid_quoted" ]] && continue
-            rid="${rid_quoted//\"/}"
-            red_for_run="$(jq -c --arg r "$rid" \
-                'select(.type == "redaction.applied" and .run_id == $r)' \
-                "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c . || true)"
-            if [[ "$red_for_run" -eq 0 ]]; then
-                unredacted=$((unredacted + 1))
-            fi
-        done <<< "$bad_routes"
-        if [[ "$unredacted" -eq 0 ]]; then
-            assert_pass "every pr-open model.route preceded by redaction.applied"
-        else
-            assert_fail "$unredacted pr-open model.route event(s) lack a preceding redaction.applied"
-        fi
+        assert_fail "$unredacted pr-open model.route event(s) not immediately preceded by redaction.applied for same run_id"
     fi
 else
     assert_fail "redaction chokepoint guard: events.jsonl not found"
