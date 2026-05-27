@@ -1,4 +1,4 @@
-id: pr-open
+id: pr
 name: PR Open Stage
 kind: tool
 version: 0.1.0
@@ -20,7 +20,7 @@ requires:
     - state
 
 provides:
-  artifact_type: pr-result.json
+  artifact_type: pr-url.txt
   schema_version: 1
 
 config:
@@ -33,8 +33,11 @@ inputs:
     path: "${artifact_dir}/review.json"
 
 outputs:
+  - name: pr_url
+    path: ${artifact_dir}/pr-url.txt
+    type: pr-url.txt
   - name: pr_result
-    path: "${artifact_dir}/pr-result.json"
+    path: ${artifact_dir}/pr-result.json
     type: pr-result.json
 
 state:

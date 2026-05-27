@@ -143,6 +143,8 @@ set -e
 
 assert_exit_code "successful PR open returns rc=0" "0" "$rc"
 assert_file_exists "pr-result.json written on success" "$PR_RESULT_JSON"
+assert_file_exists "pr-url.txt written on success (ADR-013 canonical)" \
+    "$(dirname "$PR_RESULT_JSON")/pr-url.txt"
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
     pr_result_json="$(cat "$PR_RESULT_JSON")"
