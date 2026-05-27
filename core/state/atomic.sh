@@ -42,25 +42,52 @@ locked_state_update() {
     # shellcheck disable=SC2064
     trap "rm -f '$current' '$next'" RETURN
 
+    # _lsu_validate_and_copy <state_file> <dest_tmp>
+    # Validates state_file (recovering from .bak when needed), then copies the
+    # now-valid file into dest_tmp.  Returns 0 on success, 2 if both are corrupt.
+    # Stderr diagnostics from validate_json are intentionally NOT suppressed so
+    # callers see corruption warnings in their log output.
+    _lsu_validate_and_copy() {
+        local sf="$1" dest="$2"
+        [[ -f "$sf" ]] || return 0  # No file yet — fresh start; leave dest empty.
+        # A zero-byte file is not valid state; treat it as corrupt so .bak recovery runs.
+        # (jq empty considers an empty file valid, so we gate before calling validate_json.)
+        if [[ ! -s "$sf" ]]; then
+            warn "locked_state_update: $sf is empty; attempting .bak recovery"
+            if [[ -f "${sf}.bak" ]] && jq empty "${sf}.bak" >/dev/null 2>&1; then
+                cp "${sf}.bak" "$sf"
+            else
+                emit_event "state.corruption.unrecoverable" \
+                    "state_file=$sf" "reason=empty_and_no_valid_bak" 2>/dev/null || true
+                error "locked_state_update: $sf is empty and .bak is missing or corrupt; failing closed"
+                return 2
+            fi
+        fi
+        local rc=0
+        validate_json "$sf" >/dev/null || rc=$?
+        if (( rc == 2 )); then
+            # Both sf and .bak are corrupt — emit event (best-effort) then fail closed.
+            emit_event "state.corruption.unrecoverable" \
+                "state_file=$sf" "reason=both_corrupt" 2>/dev/null || true
+            error "locked_state_update: $sf and .bak both corrupt; failing closed"
+            return 2
+        fi
+        # validate_json may have restored .bak into sf; copy whatever is now in
+        # sf (guaranteed valid) into the temp working file.
+        cp "$sf" "$dest"
+    }
+
     if zbuild_has_flock; then
         (
             flock -w 30 9 || { error "locked_state_update: failed to acquire lock on $lock_file"; exit 1; }
-            if [[ -f "$state_file" ]]; then
-                cp "$state_file" "$current"
-                # Validate before passing to update fn
-                if ! validate_json "$current" >/dev/null 2>&1; then
-                    warn "locked_state_update: $state_file failed validation; using .bak if available"
-                fi
-            fi
+            _lsu_validate_and_copy "$state_file" "$current" || exit 2
             "$update_fn" < "$current" > "$next"
             atomic_write "$state_file" < "$next"
         ) 9>"$lock_file"
     else
         # Fallback for systems without flock (macOS without brew flock).
         warn "locked_state_update: flock unavailable; using best-effort (race risk)"
-        if [[ -f "$state_file" ]]; then
-            cp "$state_file" "$current"
-        fi
+        _lsu_validate_and_copy "$state_file" "$current" || return 2
         "$update_fn" < "$current" > "$next"
         atomic_write "$state_file" < "$next"
     fi

@@ -45,6 +45,8 @@
     "registry.role-unresolved",
     "state.write",
     "state.recover",
+    "state.corruption.unrecoverable",
+    "detection.conflict",
     "plugin.contract.violated"
   ]
 }
