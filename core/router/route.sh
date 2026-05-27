@@ -357,8 +357,11 @@ route_to_model() {
     local _ledger_file="${_ledger_dir}/cost-ledger.jsonl"
     if [[ "$_call_cost_usd" != "0" && "$_call_cost_usd" != "0.000000" ]]; then
         mkdir -p "$_ledger_dir" 2>/dev/null || true
-        if command -v flock >/dev/null 2>&1; then
-            flock "$_ledger_file" printf '%s\n' "$_call_cost_usd" >> "$_ledger_file" 2>/dev/null || true
+        if zbuild_has_flock; then
+            (
+                flock -w 5 9 || exit 1
+                printf '%s\n' "$_call_cost_usd" >> "$_ledger_file"
+            ) 9>"${_ledger_file}.lock" 2>/dev/null || true
         else
             printf '%s\n' "$_call_cost_usd" >> "$_ledger_file" 2>/dev/null || true
         fi

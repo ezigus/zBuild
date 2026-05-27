@@ -105,6 +105,7 @@ _check_state_dir() {
 _check_state_health() {
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
     local in_progress=0
+    local _sh_failed=0
     local f
     if ! command -v jq >/dev/null 2>&1; then
         _doc_warn "state health check skipped: jq not available"
@@ -115,6 +116,7 @@ _check_state_health() {
         [[ -f "$f" ]] || continue
         if ! jq empty "$f" >/dev/null 2>&1; then
             _doc_fail "corrupt state file: $f"
+            _sh_failed=1
         else
             local status
             status="$(jq -r '.status // empty' "$f" 2>/dev/null || true)"
@@ -125,9 +127,9 @@ _check_state_health() {
     done
     if (( in_progress > 1 )); then
         _doc_warn "$in_progress in_progress pipelines found (expected ≤1); stale state may exist"
-    else
-        _doc_pass "state dir: $state_dir"
+        _sh_failed=1
     fi
+    [[ $_sh_failed -eq 0 ]] && _doc_pass "state dir: $state_dir"
 }
 
 # ─── Plugin Registry ─────────────────────────────────────────────────────────
