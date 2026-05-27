@@ -218,7 +218,7 @@ fi
 print_test_section "2. memory_backend_init: exits 0 when ruflo is in PATH"
 
 set +e
-init_out="$(memory_backend_init 2>&1)"
+memory_backend_init >/dev/null 2>&1
 init_rc=$?
 set -e
 

@@ -137,9 +137,9 @@ YAML
 printf 'output_run() { return 0; }\n' > "$PLUGINS_ROOT/tool/output/plugin.sh"
 
 set +e
-out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
-       ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR" \
-       bash "$ZBUILD_CLI" pipeline start --goal "test scope" --scope "$EMPTY_SCOPE" --dry-run 2>&1)"
+ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR" \
+bash "$ZBUILD_CLI" pipeline start --goal "test scope" --scope "$EMPTY_SCOPE" --dry-run >/dev/null 2>&1
 rc=$?
 set -e
 

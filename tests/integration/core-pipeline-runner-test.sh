@@ -438,15 +438,15 @@ cat > "$A3_PLUGINS/tool/output/plugin.sh" <<'EOF'
 out_run() { return 0; }
 EOF
 
-set +e
+# Behaviour under test is the plugin.contract.violated event count, not the
+# runner's exit code (which is non-zero on violation). Use `|| true` instead
+# of capturing an unused rc.
 ZBUILD_PLUGINS_ROOT="$A3_PLUGINS" \
 ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
-bash "$RUNNER" --issue 83 2>/dev/null
-a3_rc=$?
-set -e
+bash "$RUNNER" --issue 83 2>/dev/null || true
 
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
     a3_violated=$(grep -c '"plugin.contract.violated"' "$A3_EVENTS_JSONL" || true)
