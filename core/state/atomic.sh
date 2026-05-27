@@ -42,12 +42,12 @@ locked_state_update() {
     # shellcheck disable=SC2064
     trap "rm -f '$current' '$next'" RETURN
 
-    # _lsu_validate_and_copy <state_file> <dest_tmp>
+    # _zbuild_lsu_validate_and_copy <state_file> <dest_tmp>
     # Validates state_file (recovering from .bak when needed), then copies the
     # now-valid file into dest_tmp.  Returns 0 on success, 2 if both are corrupt.
     # Stderr diagnostics from validate_json are intentionally NOT suppressed so
     # callers see corruption warnings in their log output.
-    _lsu_validate_and_copy() {
+    _zbuild_lsu_validate_and_copy() {
         local sf="$1" dest="$2"
         [[ -f "$sf" ]] || return 0  # No file yet — fresh start; leave dest empty.
         # A zero-byte file is not valid state; treat it as corrupt so .bak recovery runs.
@@ -80,14 +80,14 @@ locked_state_update() {
     if zbuild_has_flock; then
         (
             flock -w 30 9 || { error "locked_state_update: failed to acquire lock on $lock_file"; exit 1; }
-            _lsu_validate_and_copy "$state_file" "$current" || exit 2
+            _zbuild_lsu_validate_and_copy "$state_file" "$current" || exit 2
             "$update_fn" < "$current" > "$next"
             atomic_write "$state_file" < "$next"
         ) 9>"$lock_file"
     else
         # Fallback for systems without flock (macOS without brew flock).
         warn "locked_state_update: flock unavailable; using best-effort (race risk)"
-        _lsu_validate_and_copy "$state_file" "$current" || return 2
+        _zbuild_lsu_validate_and_copy "$state_file" "$current" || return 2
         "$update_fn" < "$current" > "$next"
         atomic_write "$state_file" < "$next"
     fi

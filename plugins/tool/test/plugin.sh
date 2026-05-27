@@ -6,7 +6,7 @@
 # runs the project test suite, and writes test-results.json.
 # Always exits 0; verdict is encoded in the artifact.
 #
-# Hook prefix: test_stage_  (avoids clashing with bash built-in `test`)
+# Hook prefix: test_  (plugin hooks use <plugin>_<verb> convention)
 # Sourced library: no set -euo pipefail.
 
 [[ -n "${_ZBUILD_TEST_STAGE_LOADED:-}" ]] && return 0
@@ -19,19 +19,19 @@ _ZBUILD_TEST_STAGE_ROOT="$(cd "$_ZBUILD_TEST_STAGE_DIR/../../.." && pwd)"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_ZBUILD_TEST_STAGE_ROOT/core/event-bus/event-bus.sh"
 
-# ─── test_stage_init ──────────────────────────────────────────────────────────
+# ─── test_init ────────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
-test_stage_init() {
+test_init() {
     export ZBUILD_PLUGIN="test"
     export ZBUILD_PLUGIN_KIND="tool"
     emit_event "plugin.init.start" "plugin=test" "kind=tool"
     return 0
 }
 
-# ─── test_stage_run ───────────────────────────────────────────────────────────
+# ─── test_run ─────────────────────────────────────────────────────────────────
 # Entry point called by the pipeline engine.
-# Usage: test_stage_run <stage> <state_file>
-test_stage_run() {
+# Usage: test_run <stage> <state_file>
+test_run() {
     local _stage="$1"  # stage name passed by engine; unused by this tool plugin
     local state_file="$2"
 
@@ -46,15 +46,15 @@ test_stage_run() {
 
     mkdir -p "$artifact_dir"
 
-    _test_stage_run_inner "$diff_patch" "$repo_root" "$output_json" "$test_cmd"
+    _test_run_inner "$diff_patch" "$repo_root" "$output_json" "$test_cmd"
     return 0
 }
 
-# ─── _test_stage_run_inner ────────────────────────────────────────────────────
+# ─── _test_run_inner ──────────────────────────────────────────────────────────
 # Core logic: apply diff in a temp dir, run tests, write artifact.
 # Always returns 0 — verdict is in the JSON.
-# Usage: _test_stage_run_inner <diff_patch_path> <repo_root> <output_json> <test_cmd>
-_test_stage_run_inner() {
+# Usage: _test_run_inner <diff_patch_path> <repo_root> <output_json> <test_cmd>
+_test_run_inner() {
     local diff_patch_path="$1"
     local repo_root="$2"
     local output_json="$3"
@@ -69,7 +69,7 @@ _test_stage_run_inner() {
 
     # ── Guard: diff.patch must exist ──────────────────────────────────────────
     if [[ ! -f "$diff_patch_path" ]]; then
-        _test_stage_write_result "$output_json" \
+        _test_write_result "$output_json" \
             "error" 2 0 0 "" "false" "$test_cmd"
         rm -rf "$tmp"
         emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=missing_diff_patch"
@@ -92,7 +92,7 @@ _test_stage_run_inner() {
     if ! apply_check_out="$(git -C "$tmp" apply --check --allow-empty "$diff_patch_path" 2>&1)"; then
         # Could not apply — write error artifact and return
         test_output="git apply --check failed: ${apply_check_out}"
-        _test_stage_write_result "$output_json" \
+        _test_write_result "$output_json" \
             "error" 2 0 0 "$test_output" "false" "$test_cmd"
         rm -rf "$tmp"
         emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
@@ -101,7 +101,7 @@ _test_stage_run_inner() {
 
     if ! git -C "$tmp" apply --allow-empty "$diff_patch_path" 2>/dev/null; then
         test_output="git apply failed after --check passed"
-        _test_stage_write_result "$output_json" \
+        _test_write_result "$output_json" \
             "error" 2 0 0 "$test_output" "false" "$test_cmd"
         rm -rf "$tmp"
         emit_event "plugin.run.error" "plugin=test" "reason=diff_apply_failed_after_check"
@@ -136,7 +136,7 @@ _test_stage_run_inner() {
         failed="$(printf '%s' "$raw_output" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1 || echo 0)"
     fi
 
-    _test_stage_write_result "$output_json" \
+    _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$test_cmd"
 
@@ -145,11 +145,11 @@ _test_stage_run_inner() {
     return 0
 }
 
-# ─── _test_stage_write_result ─────────────────────────────────────────────────
+# ─── _test_write_result ───────────────────────────────────────────────────────
 # Writes test-results.json atomically via a temp file.
-# Usage: _test_stage_write_result <path> <verdict> <exit_code> <passed> <failed>
-#                                  <test_output> <diff_applied> <test_cmd>
-_test_stage_write_result() {
+# Usage: _test_write_result <path> <verdict> <exit_code> <passed> <failed>
+#                            <test_output> <diff_applied> <test_cmd>
+_test_write_result() {
     local path="$1"
     local verdict="$2"
     local exit_code="$3"
@@ -188,14 +188,14 @@ _test_stage_write_result() {
     mv "$tmp_out" "$path"
 }
 
-# ─── test_stage_finalize ──────────────────────────────────────────────────────
-test_stage_finalize() {
+# ─── test_finalize ────────────────────────────────────────────────────────────
+test_finalize() {
     emit_event "plugin.finalize.complete" "plugin=test" "kind=tool"
     return 0
 }
 
-# ─── test_stage_cleanup ───────────────────────────────────────────────────────
-test_stage_cleanup() {
+# ─── test_cleanup ─────────────────────────────────────────────────────────────
+test_cleanup() {
     emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool"
     return 0
 }

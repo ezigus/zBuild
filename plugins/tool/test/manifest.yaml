@@ -9,10 +9,10 @@ description: |
   exit code. Never invokes route_to_model (T0 tool — no LLM dependency).
 
 hooks:
-  init: test_stage_init
-  run: test_stage_run
-  finalize: test_stage_finalize
-  cleanup: test_stage_cleanup
+  init: test_init
+  run: test_run
+  finalize: test_finalize
+  cleanup: test_cleanup
 
 requires:
   core:

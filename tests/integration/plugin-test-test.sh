@@ -51,13 +51,13 @@ _json_key() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Test 1: test_stage_init sets ZBUILD_PLUGIN env
+# Test 1: test_init sets ZBUILD_PLUGIN env
 # ═══════════════════════════════════════════════════════════════════════════════
-print_test_section "1. test_stage_init sets env"
+print_test_section "1. test_init sets env"
 
 unset ZBUILD_PLUGIN ZBUILD_PLUGIN_KIND 2>/dev/null || true
 
-test_stage_init >/dev/null 2>&1
+test_init >/dev/null 2>&1
 
 assert_eq "ZBUILD_PLUGIN set to 'test'" "test" "${ZBUILD_PLUGIN:-}"
 assert_eq "ZBUILD_PLUGIN_KIND set to 'tool'" "tool" "${ZBUILD_PLUGIN_KIND:-}"
@@ -71,7 +71,7 @@ NONEXISTENT_PATCH="$ARTIFACT_DIR/nonexistent.patch"
 OUT_JSON_2="$ARTIFACT_DIR/test-results-2.json"
 
 set +e
-_test_stage_run_inner "$NONEXISTENT_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_2" "true"
+_test_run_inner "$NONEXISTENT_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_2" "true"
 rc2=$?
 set -e
 
@@ -120,7 +120,7 @@ GOOD_PATCH="$ARTIFACT_DIR/good.patch"
 printf '' > "$GOOD_PATCH"
 
 set +e
-_test_stage_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_3" "true"
+_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_3" "true"
 rc3=$?
 set -e
 
@@ -144,7 +144,7 @@ OUT_JSON_4="$ARTIFACT_DIR/test-results-4.json"
 
 # Reuse the same mock git + good patch from test 3
 set +e
-_test_stage_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_4" "exit 1"
+_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_4" "exit 1"
 rc4=$?
 set -e
 
@@ -158,16 +158,16 @@ assert_eq "verdict is 'fail' when test_cmd exits 1" "fail" "$verdict4"
 assert_eq "exit_code is 1 in artifact" "1" "$exit_code4"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Test 5: test_stage_finalize runs cleanly
+# Test 5: test_finalize runs cleanly
 # ═══════════════════════════════════════════════════════════════════════════════
-print_test_section "5. test_stage_finalize runs cleanly"
+print_test_section "5. test_finalize runs cleanly"
 
 set +e
-test_stage_finalize >/dev/null 2>&1
+test_finalize >/dev/null 2>&1
 rc5=$?
 set -e
 
-assert_exit_code "test_stage_finalize exits 0" "0" "$rc5"
+assert_exit_code "test_finalize exits 0" "0" "$rc5"
 
 # Verify the finalize event was emitted
 finalize_count="$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
