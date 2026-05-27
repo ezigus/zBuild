@@ -1,5 +1,5 @@
 ## File
-`core/plugin-registry/registry.sh`
+`core/plugin-registry/manifest-validation.sh`
 
 ## Mutation
 Disable the `kind: agent ⇒ requires.core: [redaction]` guard in `validate_manifest`. Replace the structural list-membership check with `if false`, so an agent plugin without `redaction` in `requires.core` silently passes validation.
@@ -8,7 +8,7 @@ Disable the `kind: agent ⇒ requires.core: [redaction]` guard in `validate_mani
 ```bash
 python3 - <<'PY'
 import pathlib
-p = pathlib.Path("core/plugin-registry/registry.sh")
+p = pathlib.Path("core/plugin-registry/manifest-validation.sh")
 src = p.read_text()
 new = src.replace(
     'if ! grep -Fxq "redaction" <<< "$core_items"; then',
