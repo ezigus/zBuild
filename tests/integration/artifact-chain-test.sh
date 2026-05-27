@@ -127,6 +127,16 @@ if [[ -n "$intake_pos" && -n "$sl_pos" && "$intake_pos" -gt 0 && "$sl_pos" -gt 0
         assert_fail "event ordering: intake plugin.run.complete before security-lens" \
             "intake line=$intake_pos sl line=$sl_pos"
     fi
+    # Also assert security-lens completes before output-github-comment when
+    # the output event is present (full intake → sl → output chain).
+    if [[ -n "$output_pos" && "$output_pos" -gt 0 ]]; then
+        if [[ "$sl_pos" -lt "$output_pos" ]]; then
+            assert_pass "event ordering: security-lens plugin.run.complete before output-github-comment"
+        else
+            assert_fail "event ordering: security-lens plugin.run.complete before output-github-comment" \
+                "sl line=$sl_pos output line=$output_pos"
+        fi
+    fi
 else
     # plugin.run.complete events emitted — verify via grep count
     intake_complete="$(grep '"plugin.run.complete"' "$EVENTS_JSONL" 2>/dev/null \

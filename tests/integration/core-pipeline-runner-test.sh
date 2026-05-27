@@ -352,7 +352,18 @@ ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A2_DIR/events.db" \
 bash "$RUNNER" --issue 83 2>/dev/null &
 a2_pid=$!
-sleep 1
+# Wait until the runner has emitted pipeline.start (proof the abort trap is
+# installed and events.jsonl exists) before sending SIGTERM. A fixed sleep
+# races with slow CI runners — poll up to 10 s instead.
+a2_ready=0
+for _ in $(seq 1 100); do
+    if [[ -f "$A2_EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$A2_EVENTS_JSONL" 2>/dev/null; then
+        a2_ready=1
+        break
+    fi
+    sleep 0.1
+done
+[[ "$a2_ready" -eq 1 ]] || echo "WARN: A2 runner never emitted pipeline.start within 10s" >&2
 kill "$a2_pid" 2>/dev/null || true
 wait "$a2_pid" 2>/dev/null || true
 
@@ -438,15 +449,15 @@ cat > "$A3_PLUGINS/tool/output/plugin.sh" <<'EOF'
 out_run() { return 0; }
 EOF
 
-set +e
+# Behaviour under test is the plugin.contract.violated event count, not the
+# runner's exit code (which is non-zero on violation). Use `|| true` instead
+# of capturing an unused rc.
 ZBUILD_PLUGINS_ROOT="$A3_PLUGINS" \
 ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
-bash "$RUNNER" --issue 83 2>/dev/null
-a3_rc=$?
-set -e
+bash "$RUNNER" --issue 83 2>/dev/null || true
 
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
     a3_violated=$(grep -c '"plugin.contract.violated"' "$A3_EVENTS_JSONL" || true)

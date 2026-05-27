@@ -79,7 +79,7 @@ mkdir -p "$LEGIT_SRC"
 printf 'safe content\n' > "$LEGIT_SRC/data.txt"
 
 set +e
-push_traversal_out="$(cache_push "../../../tmp/evil" "$LEGIT_SRC" 2>&1)"
+cache_push "../../../tmp/evil" "$LEGIT_SRC" >/dev/null 2>&1
 push_traversal_rc=$?
 set -e
 
@@ -99,10 +99,9 @@ CANARY="$TEST_TEMP_DIR/INJECTION_CANARY"
 # treat this as a literal string (quoted), never pass it unquoted to eval/sh.
 export RUNNER_TEMP="$TEST_TEMP_DIR/runner; touch $CANARY #"
 
-set +e
-meta_out="$(cache_push "safe-key-001" "$SAFE_PUSH_SRC" 2>&1)"
-meta_rc=$?
-set -e
+# Assertion is canary-file presence (proof of shell injection); the
+# plugin's stdout/rc are not under test here.
+cache_push "safe-key-001" "$SAFE_PUSH_SRC" >/dev/null 2>&1 || true
 
 if [[ -f "$CANARY" ]]; then
     assert_fail "RUNNER_TEMP metachar injection: canary file was NOT created" \
@@ -164,7 +163,7 @@ mkdir -p "$COMMA_SRC"
 printf 'comma-key content\n' > "$COMMA_SRC/data.txt"
 
 set +e
-comma_out="$(cache_push "key,with,commas" "$COMMA_SRC" 2>&1)"
+cache_push "key,with,commas" "$COMMA_SRC" >/dev/null 2>&1
 comma_rc=$?
 set -e
 

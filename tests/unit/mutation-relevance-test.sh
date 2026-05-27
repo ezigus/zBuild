@@ -7,6 +7,7 @@ set -euo pipefail
 TEST_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_REPO_ROOT="$(cd "$TEST_SCRIPT_DIR/../.." && pwd)"
 # Aliases for the test-helpers harness which expects these names.
+# shellcheck disable=SC2034  # SCRIPT_DIR is consumed by sourced helpers
 SCRIPT_DIR="$TEST_SCRIPT_DIR"
 REPO_ROOT="$TEST_REPO_ROOT"
 
