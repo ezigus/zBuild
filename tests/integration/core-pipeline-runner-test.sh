@@ -50,9 +50,9 @@ export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-_make_plugin "intake"        "agent" 0
-_make_plugin "security-lens" "agent" 0
-_make_plugin "output"        "tool"  0
+_make_plugin "intake"  "agent" 0
+_make_plugin "build"   "agent" 0
+_make_plugin "review"  "agent" 0
 
 # ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
 set +e; bash "$RUNNER" 2>/dev/null; rc=$?; set -e
@@ -73,8 +73,8 @@ assert_eq "--goal with no value exits 2" "2" "$rc"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 out="$(bash "$RUNNER" --issue 83 --dry-run 2>&1)"
 assert_contains "dry-run shows intake stage" "$out" "intake"
-assert_contains "dry-run shows security-lens stage" "$out" "security-lens"
-assert_contains "dry-run shows output stage" "$out" "output"
+assert_contains "dry-run shows build stage"  "$out" "build"
+assert_contains "dry-run shows review stage" "$out" "review"
 assert_file_not_exists "dry-run leaves state file untouched" "$STATE_DIR/pipeline-state.json"
 
 # ─── Test 5: happy path → exits 0, emits pipeline.start + pipeline.end ──────
@@ -105,14 +105,14 @@ assert_file_exists "state file created" "$STATE_FILE"
 intake_status="$(jq -r '.stage_statuses.intake // empty' "$STATE_FILE" 2>/dev/null)"
 assert_eq "intake stage_status=complete (ADR-006 enum)" "complete" "$intake_status"
 
-sl_status="$(jq -r '.stage_statuses["security-lens"] // empty' "$STATE_FILE" 2>/dev/null)"
-assert_eq "security-lens stage_status=complete (ADR-006 enum)" "complete" "$sl_status"
+build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_FILE" 2>/dev/null)"
+assert_eq "build stage_status=complete (ADR-006 enum)" "complete" "$build_status"
 
-output_status="$(jq -r '.stage_statuses.output // empty' "$STATE_FILE" 2>/dev/null)"
-assert_eq "output stage_status=complete (ADR-006 enum)" "complete" "$output_status"
+review_status="$(jq -r '.stage_statuses.review // empty' "$STATE_FILE" 2>/dev/null)"
+assert_eq "review stage_status=complete (ADR-006 enum)" "complete" "$review_status"
 
 # ─── Test 8: mid-stage failure → exits 1, pipeline.end + stage.fail ──────────
-_make_plugin "security-lens" "agent" 1
+_make_plugin "build" "agent" 1
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
 set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
@@ -122,14 +122,14 @@ assert_file_exists "events.jsonl present on failure" "$EVENTS_JSONL"
 failed_end=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"failed"' || true)
 assert_eq "pipeline.end status=failed emitted" "1" "$failed_end"
 
-stage_in_end=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"security-lens"' || true)
+stage_in_end=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"build"' || true)
 assert_eq "pipeline.end names the failing stage" "1" "$stage_in_end"
 
 stage_fail_event=$(grep -c '"stage.fail"' "$EVENTS_JSONL" || true)
 assert_eq "stage.fail event emitted" "1" "$stage_fail_event"
 
-sl_fail_status="$(jq -r '.stage_statuses["security-lens"] // empty' "$STATE_FILE" 2>/dev/null)"
-assert_eq "security-lens stage_status=failed in state" "failed" "$sl_fail_status"
+build_fail_status="$(jq -r '.stage_statuses.build // empty' "$STATE_FILE" 2>/dev/null)"
+assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 
 # ─── Test 9: missing plugin for required stage → fails pipeline ───────────────
 rm -rf "$PLUGINS_ROOT/agent/intake"
@@ -180,15 +180,15 @@ else
 fi
 
 # ─── Test 11: --template flag parsed; missing template falls back gracefully ──
-_make_plugin "intake"        "agent" 0
-_make_plugin "security-lens" "agent" 0
-_make_plugin "output"        "tool"  0
+_make_plugin "intake"  "agent" 0
+_make_plugin "build"   "agent" 0
+_make_plugin "review"  "agent" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
 out="$(bash "$RUNNER" --issue 83 --dry-run --template standard 2>&1)"
-assert_contains "--template standard dry-run shows intake"        "$out" "intake"
-assert_contains "--template standard dry-run shows security-lens" "$out" "security-lens"
-assert_contains "--template standard dry-run shows output"        "$out" "output"
+assert_contains "--template standard dry-run shows intake"  "$out" "intake"
+assert_contains "--template standard dry-run shows build"   "$out" "build"
+assert_contains "--template standard dry-run shows review"  "$out" "review"
 
 out="$(bash "$RUNNER" --issue 83 --dry-run --template nonexistent 2>&1)"
 assert_contains "missing template falls back to built-in stages"  "$out" "intake"
@@ -217,9 +217,9 @@ EOF
 }
 
 rm -rf "$PLUGINS_ROOT/agent/" "$PLUGINS_ROOT/tool/"
-_make_role_plugin "intake-agent"   "intake"          0
-_make_role_plugin "security-agent" "security-auditor" 0
-_make_role_plugin "output-agent"   "output"           0
+_make_role_plugin "intake-agent"  "intake"   0
+_make_role_plugin "build-agent"   "builder"  0
+_make_role_plugin "review-agent"  "reviewer" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
 set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
@@ -228,8 +228,8 @@ assert_eq "role-based dispatch exits 0" "0" "$rc"
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
 assert_eq "role-based dispatch: 3 stage.complete events" "3" "$role_complete"
 
-role_sl_status="$(jq -r '.stage_statuses["security-lens"] // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
-assert_eq "role-based: security-lens stage_status=complete" "complete" "$role_sl_status"
+role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
+assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"
 
 # ─── Test 13: fanout with 2 detected platforms — plugin invoked once per platform
 # Pre-populate platforms.json cache so detect_platforms returns 2 platforms.
@@ -271,14 +271,14 @@ EOF
     printf '%s() { return %d; }\n' "$fn" "$exit_code" > "$dir/plugin.sh"
 }
 
-# security-agent (generic, exit 1) = ios fallback fails
-_make_role_plugin "security-agent" "security-auditor" 1
-# security-agent-node (platform=node, exit 0) = node-specific succeeds
-_make_platform_role_plugin "security-agent-node" "security-auditor" "node" 0
+# build-agent (generic, exit 1) = ios fallback fails
+_make_role_plugin "build-agent" "builder" 1
+# build-agent-node (platform=node, exit 0) = node-specific succeeds
+_make_platform_role_plugin "build-agent-node" "builder" "node" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 # Reuse platforms.json from test 13: ["node", "ios"]
-# node: resolve finds security-agent-node (platform=node) → exit 0
-# ios:  resolve finds security-agent (generic)             → exit 1
+# node: resolve finds build-agent-node (platform=node) → exit 0
+# ios:  resolve finds build-agent (generic)             → exit 1
 # → success_count=1, fail_count=1 → partial (rc=2)
 
 set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
@@ -299,8 +299,8 @@ A2_PLUGINS="$A2_DIR/plugins"
 A2_STATE_DIR="$A2_DIR/state"
 A2_EVENTS_DIR="$A2_DIR/events"
 A2_EVENTS_JSONL="$A2_EVENTS_DIR/events.jsonl"
-mkdir -p "$A2_PLUGINS/agent/intake" "$A2_PLUGINS/agent/security-lens" \
-         "$A2_PLUGINS/tool/output" "$A2_STATE_DIR" "$A2_EVENTS_DIR"
+mkdir -p "$A2_PLUGINS/agent/intake" "$A2_PLUGINS/agent/build" \
+         "$A2_PLUGINS/agent/review" "$A2_STATE_DIR" "$A2_EVENTS_DIR"
 
 # Slow intake plugin (blocks pipeline for >1 second so kill fires mid-run)
 cat > "$A2_PLUGINS/agent/intake/manifest.yaml" <<'EOF'
@@ -319,30 +319,33 @@ intake_run() { sleep 15; return 0; }
 EOF
 
 # Fast downstream plugins (never reached due to kill)
-cat > "$A2_PLUGINS/agent/security-lens/manifest.yaml" <<'EOF'
-id: security-lens
-name: Fast SL
+cat > "$A2_PLUGINS/agent/build/manifest.yaml" <<'EOF'
+id: build
+name: Fast Build
 kind: agent
 version: 0.0.1
 hooks:
-  run: sl_run
+  run: build_run
 requires:
   core:
     - redaction
 EOF
-cat > "$A2_PLUGINS/agent/security-lens/plugin.sh" <<'EOF'
-sl_run() { return 0; }
+cat > "$A2_PLUGINS/agent/build/plugin.sh" <<'EOF'
+build_run() { return 0; }
 EOF
-cat > "$A2_PLUGINS/tool/output/manifest.yaml" <<'EOF'
-id: output
-name: Fast Out
-kind: tool
+cat > "$A2_PLUGINS/agent/review/manifest.yaml" <<'EOF'
+id: review
+name: Fast Review
+kind: agent
 version: 0.0.1
 hooks:
-  run: out_run
+  run: review_run
+requires:
+  core:
+    - redaction
 EOF
-cat > "$A2_PLUGINS/tool/output/plugin.sh" <<'EOF'
-out_run() { return 0; }
+cat > "$A2_PLUGINS/agent/review/plugin.sh" <<'EOF'
+review_run() { return 0; }
 EOF
 
 ZBUILD_PLUGINS_ROOT="$A2_PLUGINS" \
@@ -395,8 +398,8 @@ A3_PLUGINS="$A3_DIR/plugins"
 A3_STATE_DIR="$A3_DIR/state"
 A3_EVENTS_DIR="$A3_DIR/events"
 A3_EVENTS_JSONL="$A3_EVENTS_DIR/events.jsonl"
-mkdir -p "$A3_PLUGINS/agent/noartifact" "$A3_PLUGINS/agent/security-lens" \
-         "$A3_PLUGINS/tool/output" "$A3_STATE_DIR" "$A3_EVENTS_DIR"
+mkdir -p "$A3_PLUGINS/agent/noartifact" "$A3_PLUGINS/agent/build" \
+         "$A3_PLUGINS/agent/review" "$A3_STATE_DIR" "$A3_EVENTS_DIR"
 
 # Plugin that declares provides.artifact_type but writes NO artifact file
 cat > "$A3_PLUGINS/agent/noartifact/manifest.yaml" <<'EOF'
@@ -423,30 +426,33 @@ noartifact_run() {
 }
 EOF
 
-cat > "$A3_PLUGINS/agent/security-lens/manifest.yaml" <<'EOF'
-id: security-lens
-name: Fast SL
+cat > "$A3_PLUGINS/agent/build/manifest.yaml" <<'EOF'
+id: build
+name: Fast Build
 kind: agent
 version: 0.0.1
 hooks:
-  run: sl_run
+  run: build_run
 requires:
   core:
     - redaction
 EOF
-cat > "$A3_PLUGINS/agent/security-lens/plugin.sh" <<'EOF'
-sl_run() { return 0; }
+cat > "$A3_PLUGINS/agent/build/plugin.sh" <<'EOF'
+build_run() { return 0; }
 EOF
-cat > "$A3_PLUGINS/tool/output/manifest.yaml" <<'EOF'
-id: output
-name: Fast Out
-kind: tool
+cat > "$A3_PLUGINS/agent/review/manifest.yaml" <<'EOF'
+id: review
+name: Fast Review
+kind: agent
 version: 0.0.1
 hooks:
-  run: out_run
+  run: review_run
+requires:
+  core:
+    - redaction
 EOF
-cat > "$A3_PLUGINS/tool/output/plugin.sh" <<'EOF'
-out_run() { return 0; }
+cat > "$A3_PLUGINS/agent/review/plugin.sh" <<'EOF'
+review_run() { return 0; }
 EOF
 
 # Behaviour under test is the plugin.contract.violated event count, not the

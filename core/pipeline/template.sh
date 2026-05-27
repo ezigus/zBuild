@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # core/pipeline/template.sh — Template loading and stage resolution (issue #208)
-# ADR-009 (platform-aware modularity)
+# ADR-009 (platform-aware modularity), ADR-013 (canonical stage sequence)
 # Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
 [[ -n "${_ZBUILD_TEMPLATE_LOADED:-}" ]] && return 0
@@ -14,9 +14,58 @@ source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../plugin-registry/registry.sh
 source "$_ZBUILD_ROOT/core/plugin-registry/registry.sh"
 
+# ADR-013 canonical stage sequence — stability contract, not user-configurable.
+# Exactly these 11 ids, in this order:
+#   intake plan design build test review compound_quality pr deploy validate monitor
+readonly _ZBUILD_CANONICAL_STAGES=(
+    intake plan design build test review compound_quality pr deploy validate monitor
+)
+
 # Module-level state — populated by load_template
 _TPL_DEFAULT_STRATEGY="fanout"
 _TPL_STAGES=()
+
+# _tpl_validate_stages <stage_ids...>
+# Validates that every stage id is in the canonical list and that the ids
+# appear in the same relative order as the canonical sequence.
+# Prints a structured error and returns 1 on the first violation.
+_tpl_validate_stages() {
+    local -a ids=("$@")
+    [[ ${#ids[@]} -eq 0 ]] && return 0
+
+    # Build a lookup: canonical stage → its ordinal position
+    local -a canonical=("${_ZBUILD_CANONICAL_STAGES[@]}")
+    local canonical_list="${canonical[*]}"
+
+    local prev_pos=-1
+    local stage_id
+    for stage_id in "${ids[@]}"; do
+        # Check membership
+        local pos=-1
+        local i
+        for i in "${!canonical[@]}"; do
+            if [[ "${canonical[$i]}" == "$stage_id" ]]; then
+                pos=$i
+                break
+            fi
+        done
+
+        if [[ $pos -eq -1 ]]; then
+            error "load_template: unknown stage id '${stage_id}' (valid: ${canonical_list})"
+            return 1
+        fi
+
+        # Check order preservation
+        if [[ $pos -le $prev_pos ]]; then
+            error "load_template: stage '${stage_id}' violates canonical order (valid order: ${canonical_list})"
+            return 1
+        fi
+
+        prev_pos=$pos
+    done
+
+    return 0
+}
 
 load_template() {
     local template_file="$1"
@@ -32,6 +81,18 @@ load_template() {
 
     local stage_data
     stage_data="$(_tpl_parse_stage_data "$template_file")"
+
+    # Collect stage ids first for validation
+    local -a collected_ids=()
+    while IFS='|' read -r stage_id roles strategy; do
+        [[ -z "$stage_id" ]] && continue
+        collected_ids+=("$stage_id")
+    done <<< "$stage_data"
+
+    # Validate all stage ids against the canonical list before mutating state
+    _tpl_validate_stages "${collected_ids[@]}" || return 1
+
+    # Populate module state
     while IFS='|' read -r stage_id roles strategy; do
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
