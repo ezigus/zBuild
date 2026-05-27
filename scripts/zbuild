@@ -38,6 +38,8 @@ Commands:
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
                          [--platform-override <p>] [--scope <path>]...
                          [--no-resume]
+                         [--mcp-server <url>]... [--mcp-transport stdio|sse]
+                         [--mcp-timeout <seconds>]
   pipeline resume        Resume most recent interrupted/in_progress run
                          [--run-id <id>] [--from-stage <stage>] [--force]
   pipeline status        Show resume recommendation for the current state file
@@ -48,6 +50,14 @@ Session flags (shortcuts):
                          Exports ZBUILD_RESUME_RUN_ID for the runner.
   --resume-latest        Reads run_id from state/pipeline-state.json and resumes it.
   --attach <run_id>      Tails state/events.jsonl filtered to the given run_id.
+
+MCP flags (pipeline start):
+  --mcp-server <url>     MCP server URL to connect to (repeatable for multiple servers).
+                         Exported as ZBUILD_MCP_SERVERS (newline-delimited).
+  --mcp-transport <type> Transport type: stdio or sse.
+                         Exported as ZBUILD_MCP_TRANSPORT (consumer defaults apply when unset).
+  --mcp-timeout <secs>   Positive integer; connection timeout in seconds.
+                         Exported as ZBUILD_MCP_TIMEOUT (consumer defaults apply when unset).
 
 See https://github.com/ezigus/zBuild/issues for the migration backlog.
 
@@ -189,10 +199,13 @@ case "$cmd" in
         case "${2:-}" in
             start)
                 shift 2
-                # Pre-parse --platform-override and --scope before forwarding to runner.
+                # Pre-parse --platform-override, --scope, and --mcp-* before forwarding to runner.
                 # All other args are forwarded verbatim.
                 platform_override=""
                 scope_paths=()
+                mcp_servers=()
+                mcp_transport=""
+                mcp_timeout=""
                 runner_args=()
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
@@ -202,12 +215,38 @@ case "$cmd" in
                         --scope)
                             [[ -z "${2:-}" ]] && { error "--scope requires a value"; usage; exit 2; }
                             scope_paths+=("$2"); shift 2 ;;
+                        --mcp-server)
+                            [[ -z "${2:-}" ]] && { error "--mcp-server requires a value"; usage; exit 2; }
+                            mcp_servers+=("$2"); shift 2 ;;
+                        --mcp-transport)
+                            [[ -z "${2:-}" ]] && { error "--mcp-transport requires a value"; usage; exit 2; }
+                            case "$2" in
+                                stdio|sse) mcp_transport="$2" ;;
+                                *) error "--mcp-transport must be 'stdio' or 'sse', got: $2"; exit 1 ;;
+                            esac
+                            shift 2 ;;
+                        --mcp-timeout)
+                            [[ -z "${2:-}" ]] && { error "--mcp-timeout requires a value"; usage; exit 2; }
+                            case "$2" in
+                                ''|*[!0-9]*|0) error "--mcp-timeout must be a positive integer, got: $2"; exit 2 ;;
+                            esac
+                            mcp_timeout="$2"; shift 2 ;;
                         *)
                             runner_args+=("$1"); shift ;;
                     esac
                 done
                 if [[ -n "$platform_override" ]]; then
                     export ZBUILD_PLATFORM_OVERRIDE="$platform_override"
+                fi
+                if [[ ${#mcp_servers[@]} -gt 0 ]]; then
+                    export ZBUILD_MCP_SERVERS
+                    ZBUILD_MCP_SERVERS="$(printf '%s\n' "${mcp_servers[@]}")"
+                fi
+                if [[ -n "$mcp_transport" ]]; then
+                    export ZBUILD_MCP_TRANSPORT="$mcp_transport"
+                fi
+                if [[ -n "$mcp_timeout" ]]; then
+                    export ZBUILD_MCP_TIMEOUT="$mcp_timeout"
                 fi
                 if [[ ${#scope_paths[@]} -gt 0 ]]; then
                     # Validate paths: reject absolute paths and directory traversal.
