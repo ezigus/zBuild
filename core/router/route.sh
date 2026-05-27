@@ -228,11 +228,14 @@ route_to_model() {
             "reason=mktemp_failed"
         return 2
     fi
-    # Use -p to pass prompt as argument (matches established claude CLI usage pattern).
+    # Build args as array (issue #94: --output-format json; security: no word-splitting).
+    local -a _claude_args=(-p "$prompt" --print --model "$model_id")
+    [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
+
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
-        response="$("${_tout_cmd[@]}" claude -p "$prompt" --print --model "$model_id" 2>"$stderr_file")" || rc=$?
+        response="$("${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file")" || rc=$?
     else
-        response="$(claude -p "$prompt" --print --model "$model_id" 2>"$stderr_file")" || rc=$?
+        response="$(claude "${_claude_args[@]}" 2>"$stderr_file")" || rc=$?
     fi
 
     if [[ $rc -ne 0 ]]; then
@@ -258,6 +261,35 @@ route_to_model() {
         return 1
     fi
 
-    printf '%s\n' "$response"
+    # Parse JSON envelope and emit model.outcome (issue #94).
+    # In JSON mode extract .result; fall back to zeros for token counts when
+    # the response is plain text (ZBUILD_ROUTER_JSON_OUTPUT unset or 0).
+    local text_response="$response"
+    local input_tokens=0 output_tokens=0 cache_read=0 cache_creation=0
+    if [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]]; then
+        text_response="$(printf '%s' "$response" | jq -r '.result // empty' 2>/dev/null || true)"
+        if [[ -z "$text_response" ]]; then
+            error "router: JSON output mode active but .result missing or empty — response: ${response:0:120}"
+            eb_emit_event "router.error" \
+                "tier=$tier" \
+                "model_id=$model_id" \
+                "reason=json_result_missing"
+            return 1
+        fi
+        input_tokens="$(printf '%s' "$response" | jq -r '.usage.input_tokens // 0' 2>/dev/null || echo 0)"
+        output_tokens="$(printf '%s' "$response" | jq -r '.usage.output_tokens // 0' 2>/dev/null || echo 0)"
+        cache_read="$(printf '%s' "$response" | jq -r '.usage.cache_read_input_tokens // 0' 2>/dev/null || echo 0)"
+        cache_creation="$(printf '%s' "$response" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null || echo 0)"
+    fi
+
+    eb_emit_event "model.outcome" \
+        "tier=$tier" \
+        "model_id=$model_id" \
+        "input_tokens=$input_tokens" \
+        "output_tokens=$output_tokens" \
+        "cache_read_input_tokens=$cache_read" \
+        "cache_creation_input_tokens=$cache_creation"
+
+    printf '%s\n' "$text_response"
     return 0
 }
