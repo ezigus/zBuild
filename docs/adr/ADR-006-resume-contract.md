@@ -127,7 +127,7 @@ The engine does NOT guarantee:
 - Reconstructed state can be expensive to recompute (e.g., large git diffs). Mitigation: plugins can cache reconstructed state into persisted state if they declare both.
 - The "every persisted key has a write_plugin_state call" check is grep-based, not type-checked. Accepted as a soft guardrail.
 
-## Implementation Notes
+## Implementation Notes (Phase 0.5 — issue #291)
 
 - **24h auto/manual resume boundary** is implemented at `core/state/resume.sh:178–199` (`age_seconds -lt 86400` → `auto_resume`, else `manual_resume_only`). Both BSD and GNU date parsing supported.
 - **`current_iteration` persistence** is wired through `init_state()` (resume.sh:63 sets 0) and surfaces in the resume event at resume.sh:96.

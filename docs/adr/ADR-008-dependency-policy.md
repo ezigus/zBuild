@@ -50,7 +50,7 @@ Without an explicit policy, deprecations sneak up. The 2026-06-02 forced-upgrade
 - Weekly Dependabot noise. Mitigation: `open-pull-requests-limit: 5` per ecosystem; we triage in batch.
 - Action major-version bumps occasionally break CI (e.g., changed defaults). We accept this as the cost of staying current. PRs are reviewed before merge.
 
-## Implementation Notes
+## Implementation Notes (Phase 0.5 — issue #291)
 
 - **v4→v6 transition complete (2026-05-25):** `actions/checkout`, `actions/setup-node` and friends are pinned to `@v6` across all workflows. The Node 20 deprecation that prompted this ADR is no longer a forward risk.
 - **Policy stance, not version manifest:** this ADR is the *rules* (latest stable major, Dependabot weekly, manual review). The current pins live in `.github/workflows/*.yml`; do not try to keep version numbers in the ADR in sync — the workflow files are the truth.

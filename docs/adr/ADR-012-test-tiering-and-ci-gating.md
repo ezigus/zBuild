@@ -86,6 +86,16 @@ Out of scope until a budget-capped, secret-gated, `safe-to-test-e2e`-labeled wor
 ### Neutral
 - Backward compat: `tests/run-all.sh` and `tests/run-unit.sh` delegate to the new runner; existing `npm test` / `npm run test:unit` continue to work.
 
+## Implementation Notes (Phase 0.5 — issue #291)
+
+| Item | Status | PR / Notes |
+|------|--------|------------|
+| `scripts/run-tests.sh` per-tier runner (`unit` / `integration` / `e2e` / `golden` / `mutation`) | Implemented | #272 (cleanup wave) |
+| All five tier directories present with tests | Implemented | confirmed by `npm test` — 23/23 unit, 31/31 integration, 6/6 e2e, 1/1 golden, 6/6 mutation |
+| CI matrix: separate jobs per tier | Implemented | `.github/workflows/test.yml` |
+| `kcov` bash coverage floor | Deferred → Phase 1 | floor threshold not yet set; tracking issue TBD |
+| Existing `npm test` / `npm run test:unit` backward compat | Implemented | delegate to `run-tests.sh` |
+
 ## References
 
 - ADR-001 (plugin registry — tests cover registry behavior)

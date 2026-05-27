@@ -87,7 +87,7 @@ Phase 0 verification calls for this: spawn two simulated daemons, have them race
 - The 5-test trial is process overhead per keeper. Trade-off: explicit gates beat implicit drift.
 - Rewriting 30 tests is real effort. Mitigation: parallelize across the migration; each rewrite is independent.
 
-## Implementation Notes
+## Implementation Notes (Phase 0.5 — issue #291)
 
 - **Tier directories exist:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/golden/`, `tests/mutation/`. Per-tier runner at `scripts/run-tests.sh`.
 - **Mutation harness** (`scripts/run-mutation.sh`, added by PR #301) applies real patches and asserts the expected test fails. Patch-vs-test relevance enforcement is tracked by **#309**.

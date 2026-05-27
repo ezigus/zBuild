@@ -67,6 +67,18 @@ The override env var is recognized only when the sentinel still exists, preventi
 - Sentinel-guard is bypassable by sufficiently determined developers. We accept this; the goal is to prevent accidents, not to enforce a security boundary.
 - Two `.gitignore`s, two `.claude/` directories, two LICENSE files exist briefly. Documented as expected; the legacy versions remain unreachable.
 
+## Implementation Notes (Phase 0.5 — issue #291)
+
+| Item | Status | PR / Notes |
+|------|--------|------------|
+| Plain-copy import of `legacy/` | Implemented | commit `5484736` (#0.5 import) |
+| `legacy/.shipwright-disabled` sentinel file | Implemented | commit `5484736` |
+| `legacy/FROZEN.md` "DO NOT RUN" notice | Implemented | commit `5484736` |
+| `legacy/scripts/sw` one-line sentinel patch | Implemented | commit `5484736` (sole edit exception per ADR) |
+| `git rm` + `legacy/migrated/<keeper-id>.md` pruning protocol | Active | 1 keeper pruned so far: `security-lens` (commit `048343b`); remaining keepers pending 5-test trials |
+| Intentional-invocation wrapper documented | Implemented | ADR §Wrapper section + KEEPERS.md §N |
+| KEEPERS.md file:line citations (blame-loss mitigation) | Implemented | KEEPERS.md throughout |
+
 ## References
 
 - [KEEPERS.md §N](../KEEPERS.md#section-n--repository-creation--legacy-import) — full rationale for plain-copy decision.

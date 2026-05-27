@@ -165,6 +165,18 @@ The plugin registry can list all backends of a role: `zbuild plugin list --role 
 - Should backends be per-namespace? (e.g., "use SQLite for cost ledger, ruflo HNSW for embeddings"). Initial design: per-capability is the unit (memory backend is one choice; can't split). Revisit if real demand.
 - Should `_capabilities` results be cached or queried every run? Initial: queried once at backend init.
 
+## Implementation Notes (Phase 0.5 — issue #291)
+
+| Item | Status | PR / Notes |
+|------|--------|------------|
+| Cache backend contract (local file + GH Actions cache) | Implemented | #211 (issue #82); local default wired |
+| Memory backend contract (local JSON + SQLite) | Implemented | #215, #216 (SQLite trial) |
+| Memory-ruflo optional backend | Implemented | #217 (issue #215/217) |
+| Orchestrator backend contract (sequential default) | Implemented | #219 (issue #88) |
+| Orchestrator-ruflo hive-mind optional backend | Implemented | #221 (issue #89) |
+| `_capabilities` query + graceful fallback | Implemented | all backend PRs above follow this pattern |
+| Ruflo HNSW / Pinecone / Redis additional backends | Deferred → Phase 1 | KEEPERS.md §B1 wish list |
+
 ## References
 
 - [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — backends are plugins
