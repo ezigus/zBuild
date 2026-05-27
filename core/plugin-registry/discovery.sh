@@ -34,7 +34,6 @@ discover_plugins() {
         done < "$ZBUILD_DISABLED_FILE"
     fi
 
-    local count=0
     find "$plugins_root" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | while IFS= read -r manifest; do
         local plugin_dir; plugin_dir="$(dirname "$manifest")"
         local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
@@ -48,7 +47,6 @@ discover_plugins() {
         fi
         if validate_manifest "$manifest" >/dev/null 2>&1; then
             echo "$plugin_dir"
-            count=$((count + 1))
         else
             warn "discover_plugins: skipping invalid manifest: $manifest"
         fi
@@ -59,7 +57,6 @@ discover_plugins() {
 # Human-readable listing for `zbuild plugin list`.
 list_plugins_table() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
-    local count=0
     discover_plugins "$plugins_root" | while IFS= read -r plugin_dir; do
         local manifest="$plugin_dir/manifest.yaml"
         local id name kind version
@@ -68,7 +65,6 @@ list_plugins_table() {
         kind="$(yaml_get "$manifest" "kind")"
         version="$(yaml_get "$manifest" "version")"
         printf "  %-20s %-12s %-10s %s\n" "$id" "$kind" "$version" "$name"
-        count=$((count + 1))
     done
 }
 
@@ -104,15 +100,19 @@ _hash_plugin_pair() {
 lockfile_write() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
     local lockfile="${2:-$ZBUILD_LOCKFILE}"
-    mkdir -p "$(dirname "$lockfile")"
-    : > "$lockfile.tmp"
+    local lockdir; lockdir="$(dirname "$lockfile")"
+    mkdir -p "$lockdir"
+    # Use mktemp in the same directory (atomic rename) to avoid TOCTOU /
+    # symlink attacks and collisions across concurrent runs that a
+    # predictable "$lockfile.tmp" path would expose.
+    local tmp; tmp="$(mktemp "${lockdir}/.lockfile.XXXXXX")"
     discover_plugins "$plugins_root" | sort | while IFS= read -r plugin_dir; do
         local manifest="$plugin_dir/manifest.yaml"
         local id; id="$(yaml_get "$manifest" "id")"
         local pair; pair="$(_hash_plugin_pair "$manifest")"
         echo "$id $pair $manifest"
-    done > "$lockfile.tmp"
-    mv "$lockfile.tmp" "$lockfile"
+    done > "$tmp"
+    mv "$tmp" "$lockfile"
     emit_event "registry.lockfile.written" "lockfile=$lockfile"
 }
 

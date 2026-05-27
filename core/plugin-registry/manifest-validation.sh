@@ -21,19 +21,6 @@ ZBUILD_PLUGIN_KINDS=(agent tool recovery orchestrator claim-coordinator daemon)
 yaml_get() {
     local file="$1"
     local key="$2"
-    awk -v key="$key" '
-    BEGIN { split(key, parts, /\./); want = parts[1]; subwant = parts[2] }
-    /^[a-zA-Z_][a-zA-Z0-9_-]*:/ {
-        # Top-level key
-        gsub(/:.*/, "", $0)
-        if (subwant == "" && $0 == want) {
-            # Get value after colon on same line
-            getline line
-            # Re-read: need value from original line
-        }
-    }
-    ' "$file" 2>/dev/null
-    # Simpler: use grep + sed
     if [[ "$key" == *.* ]]; then
         # Nested key like hooks.init: find "<parent>:" then indented "<child>:"
         local parent="${key%.*}"
