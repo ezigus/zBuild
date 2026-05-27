@@ -168,7 +168,7 @@ zbuild pipeline start --issue 42
 [event-bus.emit("pipeline.start", {issue:42, ...})]
    │
    ▼
-[engine traverses stages from template; per stage:]
+[engine traverses stages from template; per stage — see ADR-013 for canonical stage list]
    │
    ├─▶ [redaction.apply(prompt_text, scope_manifest) → wrapped text]
    ├─▶ [router.route(tier, complexity) → model selection]
@@ -177,7 +177,7 @@ zbuild pipeline start --issue 42
    ├─▶ [state.update(stage_status, CURRENT_ITERATION) → atomic_write + .bak]
    │
    ▼
-[compound_quality orchestrator runs (4-phase: preflight → plan → cycle → backtrack)]
+[compound_quality orchestrator runs (4-phase: preflight → plan → cycle → backtrack) — see ADR-013]
    │
    ▼
 [github.update_live_comment(pipeline-progress-marker, new_status)]
