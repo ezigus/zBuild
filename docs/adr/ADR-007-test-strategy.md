@@ -19,7 +19,7 @@ zBuild's test strategy has three pillars: **call-and-assert** (lifted from legac
 
 `scripts/lib/test-helpers.sh` is lifted from `legacy/scripts/lib/test-helpers.sh` with minimal changes (legacy env var names renamed to `ZBUILD_*`). Convention:
 - Test file naming: `tests/<feature>-test.sh` for unit/integration; `tests/e2e/<feature>-test.sh` for end-to-end.
-- Co-located plugin tests: `plugins/<kind>/<name>/test.sh`.
+- Co-located plugin tests: `plugins/<kind>/<name>/tests/<name>-test.sh` (integration) and `plugins/<kind>/<name>/tests/<name>-unit-test.sh` (unit). Discovered by `run-tests.sh` via glob `plugins/**/tests/*-test.sh`.
 - Every test file is idempotent on re-source (`[[ -n "${_<name>_TEST_LOADED:-}" ]] && return 0`).
 - Master cleanup trap kills child processes; tests cannot leak daemons.
 
