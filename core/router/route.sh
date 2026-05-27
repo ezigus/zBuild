@@ -57,7 +57,7 @@ route_to_model() {
     local tier="$1" prompt="$2"
     local skip_precondition=false
     local model_override=""
-    local _prev_arg=""
+    local _prev_arg="" arg
     for arg in "${@:3}"; do
         [[ "$arg" == "--skip-precondition" ]] && skip_precondition=true
         [[ "$_prev_arg" == "--model" ]] && model_override="$arg"
@@ -186,11 +186,21 @@ route_to_model() {
     fi
 
     local provider cost_in cost_out cache_eligible
-    provider="$(jq -r ".tiers.${tier}.candidates[0].provider // empty" "$models_file" 2>/dev/null)" || provider=""
-    cost_in="$(jq -r ".tiers.${tier}.candidates[0].cost_per_input_mtok // empty" "$models_file" 2>/dev/null)" || cost_in=""
-    cost_out="$(jq -r ".tiers.${tier}.candidates[0].cost_per_output_mtok // empty" "$models_file" 2>/dev/null)" || cost_out=""
-    # cache_eligible (issue #95): drives whether cache token metrics are meaningful in model.outcome
-    cache_eligible="$(jq -r ".tiers.${tier}.candidates[0].cache_eligible // false" "$models_file" 2>/dev/null)" || cache_eligible="false"
+    if [[ "$override_source" == "flag" || "$override_source" == "env" ]]; then
+        # When the model_id is overridden via --model or ZBUILD_PLUGIN_MODEL, the
+        # candidates[0] cost/provider fields don't correspond to the override model.
+        # Clear them so the ledger/events don't record misleading cost data.
+        provider=""
+        cost_in=""
+        cost_out=""
+        cache_eligible="false"
+    else
+        provider="$(jq -r ".tiers.${tier}.candidates[0].provider // empty" "$models_file" 2>/dev/null)" || provider=""
+        cost_in="$(jq -r ".tiers.${tier}.candidates[0].cost_per_input_mtok // empty" "$models_file" 2>/dev/null)" || cost_in=""
+        cost_out="$(jq -r ".tiers.${tier}.candidates[0].cost_per_output_mtok // empty" "$models_file" 2>/dev/null)" || cost_out=""
+        # cache_eligible (issue #95): drives whether cache token metrics are meaningful in model.outcome
+        cache_eligible="$(jq -r ".tiers.${tier}.candidates[0].cache_eligible // false" "$models_file" 2>/dev/null)" || cache_eligible="false"
+    fi
 
     # Event duality: recommended + applied both = candidates[0] in Phase 0.5 (UCB1 → #29)
     # Cost fields logged here for offline computation in #28
@@ -238,6 +248,7 @@ route_to_model() {
     if [[ -n "$_budget_usd" ]]; then
         local _ledger_file="${HOME}/.zbuild/cost-ledger.jsonl"
         local _total_cost=0
+        # Phase 0.5: no locking on the read; fanout parallel calls may race — acceptable until #198
         if [[ -f "$_ledger_file" ]]; then
             _total_cost="$(awk '{s+=$1} END{printf "%.6f", s+0}' "$_ledger_file" 2>/dev/null || echo 0)"
         fi
@@ -324,6 +335,7 @@ route_to_model() {
 
     # Compute call cost (USD) for ledger append (#98).
     # Uses per-token rates from models.json; falls back to 0 if rates missing.
+    # Cost tracking requires JSON output mode (ZBUILD_ROUTER_JSON_OUTPUT=1); plain-text mode tokens are 0.
     local _call_cost_usd=0
     if [[ -n "$cost_in" && -n "$cost_out" ]]; then
         _call_cost_usd="$(awk -v i="$input_tokens" -v o="$output_tokens" \
@@ -345,7 +357,11 @@ route_to_model() {
     local _ledger_file="${_ledger_dir}/cost-ledger.jsonl"
     if [[ "$_call_cost_usd" != "0" && "$_call_cost_usd" != "0.000000" ]]; then
         mkdir -p "$_ledger_dir" 2>/dev/null || true
-        printf '%s\n' "$_call_cost_usd" >> "$_ledger_file" 2>/dev/null || true
+        if command -v flock >/dev/null 2>&1; then
+            flock "$_ledger_file" printf '%s\n' "$_call_cost_usd" >> "$_ledger_file" 2>/dev/null || true
+        else
+            printf '%s\n' "$_call_cost_usd" >> "$_ledger_file" 2>/dev/null || true
+        fi
     fi
 
     printf '%s\n' "$text_response"

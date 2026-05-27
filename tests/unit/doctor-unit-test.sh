@@ -57,7 +57,7 @@ assert_eq "TC-4: empty plugins dir → FAIL stays 0" "0" "$DOCTOR_FAIL"
 DOCTOR_PASS=0 DOCTOR_WARN=0 DOCTOR_FAIL=0
 _empty_repo="$TEST_TEMP_DIR/empty-repo"
 mkdir -p "$_empty_repo"
-ZBUILD_REPO_ROOT="$_empty_repo" _check_config_files
+_ZBUILD_ROOT="$_empty_repo" _check_config_files
 assert_gt "TC-5: missing config files → FAIL >= 1" "$DOCTOR_FAIL" "0"
 
 # ─── TC-6: _check_config_files passes when both config files are valid JSON ───
@@ -67,7 +67,7 @@ _config_repo="$TEST_TEMP_DIR/config-repo"
 mkdir -p "$_config_repo/config"
 echo '{"models": []}' > "$_config_repo/config/models.json"
 echo '{"schema": "v1"}' > "$_config_repo/config/event-schema.json"
-ZBUILD_REPO_ROOT="$_config_repo" _check_config_files
+_ZBUILD_ROOT="$_config_repo" _check_config_files
 assert_eq "TC-6: valid config files → PASS==2 (one per file)" "2" "$DOCTOR_PASS"
 assert_eq "TC-6: valid config files → FAIL stays 0" "0" "$DOCTOR_FAIL"
 
@@ -77,7 +77,7 @@ _corrupt_repo="$TEST_TEMP_DIR/corrupt-repo"
 mkdir -p "$_corrupt_repo/config"
 echo 'not valid json {{{' > "$_corrupt_repo/config/models.json"
 echo '{"schema": "v1"}' > "$_corrupt_repo/config/event-schema.json"
-ZBUILD_REPO_ROOT="$_corrupt_repo" _check_config_files
+_ZBUILD_ROOT="$_corrupt_repo" _check_config_files
 assert_eq "TC-7: corrupt models.json → FAIL incremented" "1" "$DOCTOR_FAIL"
 
 # ─── TC-8: _check_jq passes when jq is available ─────────────────────────────
