@@ -173,10 +173,12 @@ route_to_model() {
         return 1
     fi
 
-    local provider cost_in cost_out
+    local provider cost_in cost_out cache_eligible
     provider="$(jq -r ".tiers.${tier}.candidates[0].provider // empty" "$models_file" 2>/dev/null)" || provider=""
     cost_in="$(jq -r ".tiers.${tier}.candidates[0].cost_per_input_mtok // empty" "$models_file" 2>/dev/null)" || cost_in=""
     cost_out="$(jq -r ".tiers.${tier}.candidates[0].cost_per_output_mtok // empty" "$models_file" 2>/dev/null)" || cost_out=""
+    # cache_eligible (issue #95): drives whether cache token metrics are meaningful in model.outcome
+    cache_eligible="$(jq -r ".tiers.${tier}.candidates[0].cache_eligible // false" "$models_file" 2>/dev/null)" || cache_eligible="false"
 
     # Event duality: recommended + applied both = candidates[0] in Phase 0.5 (UCB1 → #29)
     # Cost fields logged here for offline computation in #28
@@ -188,7 +190,8 @@ route_to_model() {
         "applied=$model_id" \
         "selector=candidates[0]" \
         "cost_per_input_mtok=${cost_in:-}" \
-        "cost_per_output_mtok=${cost_out:-}"
+        "cost_per_output_mtok=${cost_out:-}" \
+        "cache_eligible=${cache_eligible}"
 
     # Validate timeout is a positive integer before building the command.
     local secs="${ZBUILD_ROUTER_TIMEOUT:-120}"
@@ -285,6 +288,7 @@ route_to_model() {
     eb_emit_event "model.outcome" \
         "tier=$tier" \
         "model_id=$model_id" \
+        "cache_eligible=${cache_eligible}" \
         "input_tokens=$input_tokens" \
         "output_tokens=$output_tokens" \
         "cache_read_input_tokens=$cache_read" \
