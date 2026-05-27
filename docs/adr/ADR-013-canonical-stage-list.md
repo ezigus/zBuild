@@ -224,12 +224,66 @@ the active template until its implementation phase ships:
 | deploy/validate/monitor plugins | Deferred | Phase 3 |
 | `config/artifact-schema.json` | Deferred | Phase 1 — schemas for structured artifacts |
 
+### Canonical vs. secondary artifacts (issue #361)
+
+A stage plugin MAY write additional artifacts beyond the single
+`expected_artifact` named in the canonical table above.  When it does, the
+following rules apply:
+
+1. The filename in the `expected_artifact` column is the **canonical artifact**.
+   It is the value that MUST appear in the plugin manifest's
+   `provides.artifact_type` field, and it is the artifact the fail-closed
+   contract checker (ARCHITECTURE.md §2, ADR-001 §"Fail-closed scanner
+   contract", `core/pipeline/contracts.sh::_check_artifact_contract`)
+   verifies is **present and non-empty** on stage exit.  Downstream stages
+   reference this filename when wiring inputs.
+2. Any other files the plugin writes are **secondary artifacts**.  They MAY
+   be listed in the manifest's `outputs[]` array alongside the canonical
+   artifact, but they MUST NOT appear in `provides.artifact_type`, and no
+   downstream stage wiring is allowed to depend on them — they remain
+   observability/debugging aids from the pipeline-contract perspective.
+   Note: any path listed in `outputs[]` is still enforced for **existence**
+   on a successful run by `scan_plugin_outputs`
+   (`core/plugin-registry/registry.sh`, issue #288), so a plugin that
+   declares a secondary output must actually produce it on the success path.
+   Plugins that genuinely cannot guarantee a secondary file on every success
+   should leave it out of `outputs[]`.
+3. The canonical artifact MUST be the first entry in `outputs[]` because
+   the two artifact layers split responsibilities:
+   - `_check_artifact_contract` (contracts.sh) reads only the **first**
+     `outputs[].path` and uses it as the non-empty / `provides.artifact_type`
+     verification target.  Putting the canonical entry first is what makes
+     that check land on the right file.
+   - `scan_plugin_outputs` (registry.sh) iterates **every** `outputs[].path`
+     and emits `plugin.artifact.missing` for any that don't exist after a
+     0-exit run.  Ordering doesn't matter for this scan, but it does matter
+     for the first-entry contract check above.
+
+**Worked example — `pr` stage:**
+
+- Canonical: `pr-url.txt` (one line, the PR URL — what downstream cares about).
+- Secondary: `pr-result.json` (richer status payload: `status`, `branch`,
+  `draft`, `pr_number`, error detail when blocked).
+- Both files are written on a successful PR open; `pr-result.json` is also
+  written on the `verdict=block` and `main-branch-guard` refusal paths so
+  operators have a structured failure record.  The first-entry contract
+  check (`_check_artifact_contract`) verifies `pr-url.txt` is present and
+  non-empty as the canonical `provides.artifact_type` target; the secondary
+  `pr-result.json` is enforced for existence by `scan_plugin_outputs` on
+  the success path because it is declared in `outputs[]`, but downstream
+  stages MUST NOT wire inputs from it.
+
+This convention generalizes: any future stage that benefits from a structured
+side-channel (e.g., `test` writing both a human summary and JUnit XML) follows
+the same canonical-plus-secondary pattern, with `provides.artifact_type` always
+pointing at the canonical entry from the table above.
+
 ## References
 
 - [ARCHITECTURE.md §3](../ARCHITECTURE.md#3-data-flow-a-zbuild-pipeline-start-traversal) — data flow traversal
 - [KEEPERS.md §A](../KEEPERS.md#section-a--pipeline--stage-composition-verified) — stage dispatch and compound_quality 4-phase split
-- [KEEPERS.md §C.4](../KEEPERS.md) — fail-closed scanner (absent evidence IS blocking evidence)
-- [ADR-001](ADR-001-plugin-contract.md) — plugin contract, manifest schema, fail-closed rule
+- [ARCHITECTURE.md §2](../ARCHITECTURE.md#2-plugin-contract) — plugin contract, fail-closed scanner ("absent evidence IS blocking evidence")
+- [ADR-001 §Fail-closed scanner contract](ADR-001-plugin-contract.md#fail-closed-scanner-contract) — synthetic blocking finding when declared artifact is missing after exit 0
 - [ADR-003](ADR-003-models-as-data.md) — tier ordinals T0–T4
 - [ADR-004](ADR-004-redaction-chokepoint.md) — redaction chokepoint, scope-manifest.md
 - [ADR-006](ADR-006-resume-contract.md) — resume semantics, stage status persistence
