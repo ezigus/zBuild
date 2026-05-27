@@ -203,7 +203,8 @@ verdict rules:
         # Prepend a note about the invalid verdict to issues
         local note="LLM returned invalid verdict '${original_verdict}'; defaulted to request_changes"
         issues_json="$(printf '%s' "$issues_json" \
-            | jq --arg n "$note" '. + [$n]' 2>/dev/null || printf '["%s"]' "$note")"
+            | jq --arg n "$note" '. + [$n]' 2>/dev/null \
+            || jq -n --arg n "$note" '[$n]')"
         if [[ -z "$summary" ]]; then
             summary="Verdict defaulted: LLM response was not a valid verdict value."
         fi
@@ -213,9 +214,14 @@ verdict rules:
     local issues_count
     issues_count="$(printf '%s' "$issues_json" | jq 'length' 2>/dev/null || echo 0)"
 
+    # Coerce confidence to numeric 0..1; default 0.5 for non-numeric values.
+    local confidence_num
+    confidence_num="$(printf '%s' "${confidence:-0.5}" \
+        | awk 'BEGIN{v=0.5} /^[0-9.]+$/{v=$1; if(v>1)v=1; if(v<0)v=0} END{printf "%g",v}')"
+
     jq -n \
         --arg verdict "$verdict" \
-        --argjson confidence "${confidence:-0.5}" \
+        --argjson confidence "$confidence_num" \
         --argjson issues "$issues_json" \
         --arg summary "$summary" \
         '{
@@ -226,7 +232,7 @@ verdict rules:
             summary: $summary
         }' | atomic_write "$output_review_json"
 
-    emit_event "stage.complete" "plugin=review" \
+    emit_event "plugin.run.complete" "plugin=review" \
         "verdict=$verdict" \
         "issues_count=$issues_count" \
         "router_rc=$router_rc"
@@ -241,6 +247,6 @@ review_stage_finalize() {
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
 review_stage_cleanup() {
-    emit_event "plugin.cleanup.done" "plugin=review"
+    emit_event "plugin.cleanup.complete" "plugin=review"
     return 0
 }
