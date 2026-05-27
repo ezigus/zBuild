@@ -3411,7 +3411,7 @@ issues:
     title: "[Phase 0.5] plan-stage plugin (plugins/agent/plan/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0.5, foundation, agent-plugin]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/340
       Wave B dogfooding plugin (1 of 5). Reads issue body, calls Claude,
@@ -3419,11 +3419,12 @@ issues:
       pulled to Phase 0.5 so the "first version" milestone can ship.
       Depends on #292 ADR-013 + #94/#95 Claude CLI structured I/O.
       Parallel-safe with #341, #342, #343, #344.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T12:02:39Z). Recorded by manifest-sync.'
   - id: plugin-build-stage
     title: "[Phase 0.5] build-stage plugin (plugins/agent/build/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0.5, foundation, agent-plugin]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/341
       Wave B dogfooding plugin (2 of 5). Reads plan.json, calls Claude
@@ -3431,11 +3432,12 @@ issues:
       risk of the 5 — operates in a worktree, scope-redaction enforced,
       hard cap on Claude turns. Sub-issue of #12. Depends on #292 + #94/95.
       Parallel-safe with #340, #342, #343, #344.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T12:02:51Z). Recorded by manifest-sync.'
   - id: plugin-test-stage
     title: "[Phase 0.5] test-stage plugin (plugins/tool/test/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0.5, foundation, tool-plugin]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/342
       Wave B dogfooding plugin (3 of 5). Pure bash — applies diff,
@@ -3443,11 +3445,12 @@ issues:
       call so no redaction requirement; can start as soon as #292 ships
       without waiting on #94/95. Sub-issue of #12.
       Parallel-safe with #340, #341, #343, #344.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T12:02:45Z). Recorded by manifest-sync.'
   - id: plugin-review-stage
     title: "[Phase 0.5] review-stage plugin (plugins/agent/review/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0.5, foundation, agent-plugin]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/343
       Wave B dogfooding plugin (4 of 5). Calls Claude to review the
@@ -3455,11 +3458,12 @@ issues:
       (approve|request_changes|block). Sub-issue of #12. Depends on
       #292 + #94/95.
       Parallel-safe with #340, #341, #342, #344.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T12:02:55Z). Recorded by manifest-sync.'
   - id: plugin-pr-open-stage
     title: "[Phase 0.5] pr-open-stage plugin (plugins/tool/pr-open/)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0.5, foundation, tool-plugin]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/344
       Wave B dogfooding plugin (5 of 5). Pure bash — creates branch,
@@ -3468,11 +3472,12 @@ issues:
       if current branch == main. NO LLM call; can start as soon as
       #292 ships. Sub-issue of #12.
       Parallel-safe with #340, #341, #342, #343.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T12:03:29Z). Recorded by manifest-sync.'
   - id: plugin-integration-test
     title: "[Phase 0.5] Integration test: full 5-stage pipeline (plan→build→test→review→pr-open)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0.5, foundation, test-migration]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/345
       End-to-end integration test at tests/e2e/full-pipeline-test.sh.
@@ -3481,3 +3486,4 @@ issues:
       Pins the Wave B loop behavior so future refactors stay safe
       without requiring expensive dogfood runs. Depends on all 5
       Wave B plugins (#340-#344) + #292.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T12:25:25Z). Recorded by manifest-sync.'
