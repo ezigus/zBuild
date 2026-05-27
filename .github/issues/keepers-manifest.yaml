@@ -750,6 +750,8 @@ issues:
     behavior: |
       Check registry; copy-paste fix lines; resolves auto config values
       explicitly. Doctor itself becomes a plugin extension point.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:18:49Z). Recorded by manifest-sync.'
   - id: e-4
     title: "[E] Activity stream (event-bus consumer with per-agent color hash)"
     milestone: "Phase 4 — CLI, UX, Skills, Personas"
@@ -1256,6 +1258,8 @@ issues:
 
       Should land AFTER MVP-1..5 so the first published version actually does
       something (runs a security audit) rather than printing stubs.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:18:53Z). Recorded by manifest-sync.'
   - id: inst-2
     title: "[Phase 0.5] One-shot installer (curl | bash)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1276,6 +1280,8 @@ issues:
       - README install section updated
 
       Defer Homebrew formula to wishlist.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:18:53Z). Recorded by manifest-sync.'
   - id: inst-3
     title: "[Phase 0.5] Doctor command covers install verification (extends #58)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1292,6 +1298,8 @@ issues:
       - Add check_install() to doctor's check registry
       - Output: green/yellow/red per check + copy-paste fix line per failure
       - Tests verify each check fires correctly with mocks
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:18:49Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — GitHub CI Integration (3 issues) ──────────────────────
   - id: ci-1
     title: "[Phase 0.5] Reusable workflow: .github/workflows/zbuild-pipeline.yml"
@@ -1392,6 +1400,8 @@ issues:
       Resolve effective model from cascade: --model flag > plugin config >
       tier from config/models.json > default. Matches legacy get_effective_model
       precedence. Already partial in MVP-2; this issue closes it out.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:19:06Z). Recorded by manifest-sync.'
   - id: ccli-5
     title: "[Phase 0.5] Claude CLI: token-limit enforcement + budget cutoff"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1400,6 +1410,8 @@ issues:
       Enforce per-run token cap based on budget remaining (cost ledger).
       Refuse to dispatch further model calls when cap reached; emit
       cost.budget_exceeded event; let recovery plugin decide abort vs degrade.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:19:06Z). Recorded by manifest-sync.'
   - id: ccli-6
     title: "[Phase 0.5] Claude CLI: session attachment / interrupt-resume"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1417,6 +1429,8 @@ issues:
       Validates bash commands and edits before execution (block dangerous,
       record audit trail, redact secrets). Lift legacy contract from
       legacy/.claude/settings.json:2-23.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:35Z). Recorded by manifest-sync.'
   - id: hook-2
     title: "[Phase 0.5] Claude Code hooks: PostToolUse (post-edit, post-bash)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1424,6 +1438,8 @@ issues:
     body: |
       Post-tool finalization: run formatters, update event log, persist
       artifacts. Lift from legacy/.claude/settings.json:25-45.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:36Z). Recorded by manifest-sync.'
   - id: hook-3
     title: "[Phase 0.5] Claude Code hooks: UserPromptSubmit routing"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1432,6 +1448,8 @@ issues:
       Dynamic routing of user prompts to specialized handlers (route-handler.cjs).
       Allows the daemon to inject context (e.g., relevant keepers, pipeline
       status) before Claude Code processes the prompt.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:36Z). Recorded by manifest-sync.'
   - id: hook-4
     title: "[Phase 0.5] Claude Code hooks: SessionStart/End memory restoration"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1452,6 +1470,8 @@ issues:
       [ADR-010](../../docs/adr/ADR-010-ci-cli-parity.md) and #209). The
       restoration is backend-agnostic: works the same with sqlite default
       (#216) or ruflo optional (#217) via the `memory_search` contract.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:37Z). Recorded by manifest-sync.'
   - id: hook-5
     title: "[Phase 0.5] Claude Code hooks: PreCompact (context save before compaction)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1460,6 +1480,8 @@ issues:
       Snapshot conversation state to disk before Claude Code compacts so
       developers can recover important context. Lift from
       legacy/.claude/settings.json:96-158.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:37Z). Recorded by manifest-sync.'
   - id: hook-6
     title: "[Phase 0.5] Claude Code hooks: SubagentStart/Stop + Notification"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1467,6 +1489,8 @@ issues:
     body: |
       Track subagent lifecycles; emit events when teammates spawn/finish;
       notify on idle. Foundation for the "what are my agents doing" UX.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:39:36Z). Recorded by manifest-sync.'
   # ─── Phase 1 — Ruflo MCP integration depth (5 issues) ──────────────────
   - id: ruf-1
     title: "[Phase 1] Ruflo daemon lifecycle (spawn / kill / restart)"
