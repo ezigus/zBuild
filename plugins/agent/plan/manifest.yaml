@@ -1,0 +1,44 @@
+id: plan
+name: Plan Stage
+kind: agent
+version: 0.1.0
+description: |
+  Plan stage agent (ADR-013, T2). Consumes a scope-manifest and goal text,
+  routes to the T2 model tier, and produces a plan.json artifact describing
+  the ordered implementation steps, file estimates, and notes.
+
+hooks:
+  init: plan_init
+  run: plan_run
+  finalize: plan_finalize
+  cleanup: plan_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: plan.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - name: scope_manifest
+    type: file
+  - name: goal
+    type: string
+
+outputs:
+  - name: plan
+    path: "${artifact_dir}/plan.json"
+    type: plan.json
+
+state:
+  persisted: [last_plan_steps]
+  reconstructed: [goal_text]
