@@ -45,7 +45,7 @@ VALID_JSON='{"schema_version":1,"current_stage":"build","status":"running"}'
 # Helper: reset state and events between scenarios.
 reset_scenario() {
     rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
-    > "$ZBUILD_EVENTS_JSONL"
+    : > "$ZBUILD_EVENTS_JSONL"
 }
 
 # Helper: assert the JSONL events file contains at least one line whose "type"
@@ -293,7 +293,7 @@ reset_scenario
 
 printf '{bad json primary' > "$STATE_FILE"
 printf '{bad json bak' > "${STATE_FILE}.bak"
-> "$ZBUILD_EVENTS_JSONL"
+: > "$ZBUILD_EVENTS_JSONL"
 
 set +e
 locked_state_update "$STATE_FILE" append_tested_fn
@@ -330,7 +330,7 @@ reset_scenario
 
 printf '{garbage' > "$STATE_FILE"
 printf '{garbage bak' > "${STATE_FILE}.bak"
-> "$ZBUILD_EVENTS_JSONL"
+: > "$ZBUILD_EVENTS_JSONL"
 
 set +e
 locked_state_update "$STATE_FILE" append_tested_fn
@@ -417,7 +417,7 @@ reset_scenario
 
 printf '{bad primary noflock' > "$STATE_FILE"
 printf '{bad bak noflock' > "${STATE_FILE}.bak"
-> "$ZBUILD_EVENTS_JSONL"
+: > "$ZBUILD_EVENTS_JSONL"
 
 set +e
 locked_state_update "$STATE_FILE" append_tested_fn
