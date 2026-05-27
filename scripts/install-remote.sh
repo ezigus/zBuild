@@ -52,22 +52,26 @@ if [[ -z "$TAG" || "$TAG" == "null" ]]; then
 fi
 info "Latest release: $TAG"
 
+# Enable fail-fast now that prereqs are verified and we're past the accumulating
+# MISSING[] loop. Download/extract/symlink failures should be fatal.
+set -e
+
 # Download tarball
 TARBALL_URL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
-TMP_TARBALL="$(mktemp -t zbuild-install.XXXXXX).tar.gz"
+TMP_TARBALL="$(mktemp -t zbuild-install.XXXXXX)"
 trap 'rm -f "$TMP_TARBALL"' EXIT
 
 info "Downloading $TARBALL_URL..."
-curl -sSfL "$TARBALL_URL" -o "$TMP_TARBALL"
+curl -sSfL "$TARBALL_URL" -o "$TMP_TARBALL" || die "Download failed"
 
 # Extract
 mkdir -p "$INSTALL_DIR"
-tar -xzf "$TMP_TARBALL" -C "$INSTALL_DIR" --strip-components=1
+tar -xzf "$TMP_TARBALL" -C "$INSTALL_DIR" --strip-components=1 || die "Extract failed"
 info "Extracted to $INSTALL_DIR"
 
 # Symlink
 mkdir -p "$BIN_DIR"
-ln -sf "$INSTALL_DIR/scripts/zbuild" "$BIN_DIR/zbuild"
+ln -sf "$INSTALL_DIR/scripts/zbuild" "$BIN_DIR/zbuild" || die "Symlink failed"
 info "Symlinked: $BIN_DIR/zbuild"
 
 # PATH advisory

@@ -68,7 +68,7 @@ mock_git
 
 # Set up state dir and config env
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
-export ZBUILD_REPO_ROOT="$REPO_ROOT"
+export _ZBUILD_ROOT="$REPO_ROOT"
 export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
 mkdir -p "$ZBUILD_STATE_DIR"
 
@@ -152,12 +152,12 @@ chmod +x "$TEST_TEMP_DIR/bin/sqlite3"
 _no_config_dir="$TEST_TEMP_DIR/no-config"
 mkdir -p "$_no_config_dir"
 set +e
-out="$(ZBUILD_REPO_ROOT="$_no_config_dir" zbuild doctor 2>&1)"
+out="$(_ZBUILD_ROOT="$_no_config_dir" zbuild doctor 2>&1)"
 rc=$?
 set -e
 assert_eq "TC-5: missing models.json → exit 1" "1" "$rc"
 # Restore
-export ZBUILD_REPO_ROOT="$REPO_ROOT"
+export _ZBUILD_ROOT="$REPO_ROOT"
 
 # ─── TC-6: Summary line format matches expected pattern ───────────────────────
 set +e

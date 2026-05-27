@@ -22,6 +22,10 @@ _doc_fail() { error "  [FAIL] $*"; DOCTOR_FAIL=$((DOCTOR_FAIL + 1)); }
 # ─── Prerequisites ───────────────────────────────────────────────────────────
 
 _check_bash_version() {
+    # Note: helpers.sh (sourced above) hard-fails on Bash <5, so the bash 3/4
+    # branches below can only execute when this function is invoked from a
+    # Bash 5+ shell that is checking the *system default* bash version.
+    # In practice major will always be ≥5 when reached via normal sourcing.
     local major="${BASH_VERSINFO[0]}"
     if (( major >= 5 )); then
         _doc_pass "bash ${BASH_VERSION}"
@@ -58,7 +62,7 @@ _check_claude() {
 
 _check_gh() {
     if ! command -v gh >/dev/null 2>&1; then
-        _doc_warn "gh CLI not found (optional); Fix: gh auth login"
+        _doc_warn "gh CLI not found (optional); Fix: install gh CLI — https://cli.github.com/"
         return
     fi
     if gh auth status >/dev/null 2>&1; then
@@ -101,12 +105,18 @@ _check_state_dir() {
 _check_state_health() {
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
     local in_progress=0
+    local _sh_failed=0
     local f
+    if ! command -v jq >/dev/null 2>&1; then
+        _doc_warn "state health check skipped: jq not available"
+        return
+    fi
     # Scan for corrupt JSON and count in_progress runs
     for f in "$state_dir"/pipeline-state*.json; do
         [[ -f "$f" ]] || continue
         if ! jq empty "$f" >/dev/null 2>&1; then
             _doc_fail "corrupt state file: $f"
+            _sh_failed=1
         else
             local status
             status="$(jq -r '.status // empty' "$f" 2>/dev/null || true)"
@@ -117,7 +127,9 @@ _check_state_health() {
     done
     if (( in_progress > 1 )); then
         _doc_warn "$in_progress in_progress pipelines found (expected ≤1); stale state may exist"
+        _sh_failed=1
     fi
+    [[ $_sh_failed -eq 0 ]] && _doc_pass "state dir: $state_dir"
 }
 
 # ─── Plugin Registry ─────────────────────────────────────────────────────────
@@ -142,15 +154,15 @@ _check_plugin_registry() {
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 _check_config_files() {
-    local repo_root="${ZBUILD_REPO_ROOT:-}"
-    if [[ -z "$repo_root" ]]; then
-        repo_root="$(cd "$_ZBUILD_DOCTOR_SCRIPT_DIR/../.." && pwd)"
-    fi
+    # Use _ZBUILD_ROOT if already set (e.g. sourced via route.sh), else compute.
+    local repo_root="${_ZBUILD_ROOT:-$(cd "$_ZBUILD_DOCTOR_SCRIPT_DIR/../.." && pwd)}"
     local models_json="$repo_root/config/models.json"
     local event_schema="$repo_root/config/event-schema.json"
 
     if [[ ! -f "$models_json" ]]; then
         _doc_fail "config/models.json missing (expected at $models_json)"
+    elif ! command -v jq >/dev/null 2>&1; then
+        _doc_warn "config/models.json found but JSON validation skipped: jq not available"
     elif ! jq empty "$models_json" >/dev/null 2>&1; then
         _doc_fail "config/models.json is not valid JSON"
     else
@@ -159,6 +171,8 @@ _check_config_files() {
 
     if [[ ! -f "$event_schema" ]]; then
         _doc_fail "config/event-schema.json missing (expected at $event_schema)"
+    elif ! command -v jq >/dev/null 2>&1; then
+        _doc_warn "config/event-schema.json found but JSON validation skipped: jq not available"
     elif ! jq empty "$event_schema" >/dev/null 2>&1; then
         _doc_fail "config/event-schema.json is not valid JSON"
     else
@@ -170,6 +184,9 @@ _check_config_files() {
 
 run_doctor() {
     local version="${1:-}"
+    DOCTOR_PASS=0
+    DOCTOR_WARN=0
+    DOCTOR_FAIL=0
     echo ""
     info "zbuild doctor${version:+ v$version}"
     echo ""
