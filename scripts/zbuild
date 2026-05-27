@@ -54,10 +54,10 @@ Session flags (shortcuts):
 MCP flags (pipeline start):
   --mcp-server <url>     MCP server URL to connect to (repeatable for multiple servers).
                          Exported as ZBUILD_MCP_SERVERS (newline-delimited).
-  --mcp-transport <type> Transport type: stdio (default) or sse.
-                         Exported as ZBUILD_MCP_TRANSPORT.
-  --mcp-timeout <secs>   Connection timeout in seconds (default: 30).
-                         Exported as ZBUILD_MCP_TIMEOUT.
+  --mcp-transport <type> Transport type: stdio or sse.
+                         Exported as ZBUILD_MCP_TRANSPORT (consumer defaults apply when unset).
+  --mcp-timeout <secs>   Positive integer; connection timeout in seconds.
+                         Exported as ZBUILD_MCP_TIMEOUT (consumer defaults apply when unset).
 
 See https://github.com/ezigus/zBuild/issues for the migration backlog.
 
@@ -227,6 +227,9 @@ case "$cmd" in
                             shift 2 ;;
                         --mcp-timeout)
                             [[ -z "${2:-}" ]] && { error "--mcp-timeout requires a value"; usage; exit 2; }
+                            case "$2" in
+                                ''|*[!0-9]*|0) error "--mcp-timeout must be a positive integer, got: $2"; exit 2 ;;
+                            esac
                             mcp_timeout="$2"; shift 2 ;;
                         *)
                             runner_args+=("$1"); shift ;;

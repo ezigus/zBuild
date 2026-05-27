@@ -65,13 +65,22 @@ _out="$(_run_mcp --mcp-server "http://mcp.example.com:8080" --issue 1)"
 assert_contains "TC-1: ZBUILD_MCP_SERVERS contains the URL" \
     "$_out" "ZBUILD_MCP_SERVERS=http://mcp.example.com:8080"
 
-# ─── TC-2: multiple --mcp-server flags → both URLs present in output ─────────
+# ─── TC-2: multiple --mcp-server flags → newline-delimited in ZBUILD_MCP_SERVERS ─
 _out="$(_run_mcp \
     --mcp-server "http://a.example.com" \
     --mcp-server "http://b.example.com" \
     --issue 1)"
 assert_contains "TC-2: first server URL present"  "$_out" "http://a.example.com"
 assert_contains "TC-2: second server URL present" "$_out" "http://b.example.com"
+# Verify newline-delimited accumulation: the two URLs must appear on consecutive lines
+# (the runner stub prints ZBUILD_MCP_SERVERS=%s which expands the newline into the output)
+_pair="$(printf 'http://a.example.com\nhttp://b.example.com')"
+if [[ "$_out" == *"$_pair"* ]]; then
+    assert_pass "TC-2: URLs are newline-delimited (not space- or comma-joined)"
+else
+    assert_fail "TC-2: URLs are newline-delimited (not space- or comma-joined)" \
+        "URLs not found on consecutive lines in: $_out"
+fi
 
 # ─── TC-3: --mcp-transport sse sets ZBUILD_MCP_TRANSPORT=sse ─────────────────
 _out="$(_run_mcp --mcp-transport sse --issue 1)"
