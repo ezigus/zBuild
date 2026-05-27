@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PLUGIN_DIR="$REPO_ROOT/plugins/tool/memory-ruflo"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
@@ -274,7 +274,7 @@ assert_exit_code "memory_put valid args exits 0" "0" "$put_rc"
 
 # Verify the mock stored the value.  The plugin scopes the ns with a repo hash
 # prefix so we need to find it via glob.
-stored_val="$(find "$MOCK_STORE_DIR" -name 'key-001' -type f 2>/dev/null | xargs cat 2>/dev/null || true)"
+stored_val="$(find "$MOCK_STORE_DIR" -name 'key-001' -type f -print0 2>/dev/null | xargs -0 cat 2>/dev/null || true)"
 assert_eq "memory_put: value written to backing store" "value-001" "$stored_val"
 
 # ─── Test 5: memory_put with empty namespace exits 2 ─────────────────────────

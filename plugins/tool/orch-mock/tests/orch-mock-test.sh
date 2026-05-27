@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
@@ -15,7 +15,7 @@ print_test_header "orch-mock — orch_collect returns 0/1/2 per orch contract"
 setup_test_env "plugin-orch-mock"
 export ORCH_MOCK_DIR="$TEST_TEMP_DIR/orch-mock"
 
-# shellcheck source=../../plugins/tool/orch-mock/plugin.sh
+# shellcheck source=../../../../plugins/tool/orch-mock/plugin.sh
 source "$REPO_ROOT/plugins/tool/orch-mock/plugin.sh"
 
 # ─── M1: all-pass → 0 ────────────────────────────────────────────────────────

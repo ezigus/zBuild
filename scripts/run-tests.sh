@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TESTS_DIR="$REPO_ROOT/tests"
+PLUGINS_DIR="$REPO_ROOT/plugins"
 
 tier="${1:-}"
 if [[ "$tier" == "--tier" ]]; then
@@ -16,15 +17,27 @@ run_tier() {
   local dir="$TESTS_DIR/$name"
   local passed=0 failed=0 total=0
 
-  if [[ ! -d "$dir" ]]; then
-    echo "$name: 0/0 passed (no tests)"
-    return 0
+  local files=()
+
+  # Collect tests from the flat tests/<tier>/ directory (if it exists)
+  if [[ -d "$dir" ]]; then
+    while IFS= read -r -d '' f; do
+      files+=("$f")
+    done < <(find "$dir" -maxdepth 1 -name '*-test.sh' -print0 2>/dev/null)
   fi
 
-  local files=()
-  while IFS= read -r -d '' f; do
-    files+=("$f")
-  done < <(find "$dir" -maxdepth 1 -name '*-test.sh' -print0 2>/dev/null)
+  # Collect co-located plugin tests from plugins/*/*/tests/
+  # Convention: *-unit-test.sh => unit tier; other *-test.sh => integration tier
+  if [[ "$name" == "unit" ]]; then
+    while IFS= read -r -d '' f; do
+      files+=("$f")
+    done < <(find "$PLUGINS_DIR" -path '*/tests/*-unit-test.sh' -print0 2>/dev/null | sort -z)
+  elif [[ "$name" == "integration" ]]; then
+    while IFS= read -r -d '' f; do
+      [[ "$f" == *-unit-test.sh ]] && continue
+      files+=("$f")
+    done < <(find "$PLUGINS_DIR" -path '*/tests/*-test.sh' -print0 2>/dev/null | sort -z)
+  fi
 
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "$name: 0/0 passed (empty tier)"

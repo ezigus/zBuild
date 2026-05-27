@@ -3,11 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: test-stage (tool/test — issue #342)"
@@ -40,7 +40,7 @@ git -C "$TEST_TEMP_DIR/repo" -c user.name="zbuild-test" -c user.email="test@zbui
     commit --allow-empty -m "init" -q
 
 # ─── Source plugin ────────────────────────────────────────────────────────────
-# shellcheck source=../../plugins/tool/test/plugin.sh
+# shellcheck source=../../../../plugins/tool/test/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
 # ─── Helper: read a key from a JSON file ─────────────────────────────────────

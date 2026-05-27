@@ -3,11 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: plan (plan-stage agent plugin — issue #340)"
@@ -43,7 +43,7 @@ CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal
 # route.sh) are loaded and their idempotent guards (_ZBUILD_*_LOADED) are set.
 # Then redefine the mocks — they will shadow the real functions for the rest
 # of this test session.
-# shellcheck source=../../plugins/agent/plan/plugin.sh
+# shellcheck source=../../../../plugins/agent/plan/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
 # ─── Mock: apply_scope_redaction — copy input to output, succeed ─────────────

@@ -5,11 +5,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: security-lens (first POC)"
@@ -33,7 +33,7 @@ export PATH="$TEST_TEMP_DIR/bin:$PATH"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 
 # Source registry + plugin (registry pulls the lifecycle helpers we'll use)
-# shellcheck source=../core/plugin-registry/registry.sh
+# shellcheck source=../../../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/security-lens"
@@ -80,9 +80,9 @@ echo "some random text that mentions auth and credential leaks" > "$INPUT"
 OUTPUT="$TEST_TEMP_DIR/findings.json"
 
 # Source plugin and call init
-# shellcheck source=../plugins/agent/security-lens/plugin.sh
+# shellcheck source=../../../../plugins/agent/security-lens/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
-# shellcheck source=../core/router/route.sh
+# shellcheck source=../../../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
 security_lens_init >/dev/null

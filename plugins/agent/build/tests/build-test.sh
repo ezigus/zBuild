@@ -5,11 +5,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: build (build stage agent — issue #341)"
@@ -33,7 +33,7 @@ export ZBUILD_ISSUE="341"
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/build"
 
 # ─── Source plugin ───────────────────────────────────────────────────────────
-# shellcheck source=../../plugins/agent/build/plugin.sh
+# shellcheck source=../../../../plugins/agent/build/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
 # ─── Shared fixtures ─────────────────────────────────────────────────────────

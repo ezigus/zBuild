@@ -13,11 +13,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "orch-ruflo-hive — integration tests (issue #221)"
@@ -46,7 +46,7 @@ RUFLO_MOCK_EOF
 chmod +x "$TEST_TEMP_DIR/bin/ruflo"
 
 # Source the plugin under test directly.
-# shellcheck source=../../plugins/tool/orch-ruflo-hive/plugin.sh
+# shellcheck source=../../../../plugins/tool/orch-ruflo-hive/plugin.sh
 source "$REPO_ROOT/plugins/tool/orch-ruflo-hive/plugin.sh"
 
 # ─── Helper: unique pool id per section ──────────────────────────────────────

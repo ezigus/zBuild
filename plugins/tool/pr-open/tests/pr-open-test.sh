@@ -3,11 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# shellcheck source=../../scripts/lib/helpers.sh
+# shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: pr-open (draft PR, safety guards — issue #344)"
@@ -32,7 +32,7 @@ echo '{"schema_version":1,"run_id":"test-run","issue":"999","stage_statuses":{}}
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
 PLUGIN_DIR="$REPO_ROOT/plugins/tool/pr-open"
-# shellcheck source=../../plugins/tool/pr-open/plugin.sh
+# shellcheck source=../../../../plugins/tool/pr-open/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
 # ─── Test 1: pr_open_init sets env vars ──────────────────────────────────────
