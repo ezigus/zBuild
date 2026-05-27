@@ -25,6 +25,9 @@ zBuild ${VERSION} — plugin-based framework for autonomous AI agent delivery pi
 
 Usage:
   zbuild <command> [args...]
+  zbuild --resume <run_id>    Resume a specific interrupted run by run_id
+  zbuild --resume-latest      Resume the most recent interrupted run
+  zbuild --attach <run_id>    Attach to (tail) the event log for a running pipeline
 
 Commands:
   --version, version     Print version
@@ -39,6 +42,12 @@ Commands:
                          [--run-id <id>] [--from-stage <stage>] [--force]
   pipeline status        Show resume recommendation for the current state file
                          [--run-id <id>]
+
+Session flags (shortcuts):
+  --resume <run_id>      Shorthand for: pipeline resume --run-id <run_id>
+                         Exports ZBUILD_RESUME_RUN_ID for the runner.
+  --resume-latest        Reads run_id from state/pipeline-state.json and resumes it.
+  --attach <run_id>      Tails state/events.jsonl filtered to the given run_id.
 
 See https://github.com/ezigus/zBuild/issues for the migration backlog.
 
@@ -67,6 +76,67 @@ _find_state_file() {
     fi
     echo "$state_dir/pipeline-state.json"
 }
+
+# ─── Top-level session/interrupt-resume flags ──────────────────────────────
+# These are shortcuts; they resolve to the pipeline subcommand machinery below
+# but are exposed as first-class flags for convenience and scriptability.
+#
+# --resume <run_id>
+#   Locate the state file for <run_id>, export ZBUILD_RESUME_RUN_ID, then
+#   hand off to `pipeline resume --run-id <run_id>`.
+#
+# --resume-latest
+#   Read run_id from the default state file (state/pipeline-state.json) and
+#   hand off to `pipeline resume --run-id <run_id>`.
+#
+# --attach <run_id>
+#   Tail state/events.jsonl, filtering to lines whose run_id matches.
+#   Exits when the pipeline process ends (SIGPIPE from tail).
+#
+# Implementation note: we exec/delegate into the pipeline case block rather
+# than duplicating logic, so all the guard-rails (status checks, --force,
+# state-file export) run exactly once in pipeline resume.
+
+if [[ "${1:-}" == "--resume" ]]; then
+    [[ -z "${2:-}" ]] && { error "--resume requires a run_id"; usage; exit 2; }
+    _resume_run_id="$2"
+    export ZBUILD_RESUME_RUN_ID="$_resume_run_id"
+    # Re-enter via the pipeline resume subcommand path
+    set -- pipeline resume --run-id "$_resume_run_id" "${@:3}"
+fi
+
+if [[ "${1:-}" == "--resume-latest" ]]; then
+    _state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    _state_file="$_state_dir/pipeline-state.json"
+    if [[ ! -f "$_state_file" ]]; then
+        error "--resume-latest: no state file found at $_state_file; nothing to resume"
+        exit 1
+    fi
+    _latest_run_id="$(jq -r '.run_id // empty' "$_state_file" 2>/dev/null)"
+    if [[ -z "$_latest_run_id" ]]; then
+        error "--resume-latest: state file exists but contains no run_id: $_state_file"
+        exit 1
+    fi
+    export ZBUILD_RESUME_RUN_ID="$_latest_run_id"
+    set -- pipeline resume --run-id "$_latest_run_id" "${@:2}"
+fi
+
+if [[ "${1:-}" == "--attach" ]]; then
+    [[ -z "${2:-}" ]] && { error "--attach requires a run_id"; usage; exit 2; }
+    _attach_run_id="$2"
+    _state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    _events_file="${ZBUILD_EVENTS_JSONL:-$_state_dir/events.jsonl}"
+    if [[ ! -f "$_events_file" ]]; then
+        error "--attach: event log not found at $_events_file"
+        exit 1
+    fi
+    info "Attaching to run $_attach_run_id (Ctrl-C to detach)"
+    # tail -F follows rotation; grep -F matches fixed string for the run_id field.
+    # Use --line-buffered / -l so each event line appears immediately.
+    exec tail -F "$_events_file" 2>/dev/null \
+        | grep --line-buffered -F "\"run_id\":\"${_attach_run_id}\"" || true
+    exit 0
+fi
 
 cmd="${1:-help}"
 case "$cmd" in
