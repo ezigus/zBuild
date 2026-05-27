@@ -32,18 +32,17 @@ export PATH="$TEST_TEMP_DIR/bin:$PATH"
 # shellcheck source=../../plugins/agent/review/plugin.sh
 source "$REPO_ROOT/plugins/agent/review/plugin.sh"
 
-# ─── Mock apply_scope_redaction as a passthrough ──────────────────────────────
-# Overrides the real chokepoint so tests don't need a real scope manifest.
-# Must be defined after sourcing plugin.sh (which sources scope-redaction.sh).
-apply_scope_redaction() {
-    local input="$1"
-    local output="$2"
-    # Remaining args (manifest, allowlist, cycle_id) ignored in mock.
-    cp "$input" "$output"
-    emit_event "redaction.applied" "input=$input" "output=$output" \
-        "size_before=0" "size_after=0" "redactions=0" "scope_hash=mock"
-    return 0
-}
+# ─── Real redaction chokepoint (issue #360) ───────────────────────────────────
+# Previously this file stubbed apply_scope_redaction with `cp` passthrough,
+# which meant a regression bypassing the chokepoint would still pass the test.
+# Per ADR-004 the chokepoint is the single safety primitive between any
+# zBuild plugin and an LLM call — it MUST run for real in tests.
+#
+# We use the shared fixture scope-manifest that allows only tests/, so the
+# diff content (which references src/auth.sh) is guaranteed to be redacted
+# and redactions>0 in the redaction.applied event. The assertion below
+# verifies both that the event was emitted and that it represents real
+# redaction work, not a passthrough.
 
 # ─── Minimal fixture files ─────────────────────────────────────────────────────
 FIXTURE_DIR="$TEST_TEMP_DIR/fixtures"
@@ -53,6 +52,8 @@ cat > "$FIXTURE_DIR/plan.json" <<'EOF'
 {"goal":"Add user authentication","steps":["Create login endpoint","Add session handling"],"schema_version":1}
 EOF
 
+# Diff intentionally references src/auth.sh — paths OUTSIDE the scope manifest
+# (which allows tests/ only) so the real chokepoint must redact them.
 cat > "$FIXTURE_DIR/diff.patch" <<'EOF'
 --- a/src/auth.sh
 +++ b/src/auth.sh
@@ -65,8 +66,8 @@ cat > "$FIXTURE_DIR/diff.patch" <<'EOF'
 +}
 EOF
 
-SCOPE_MANIFEST="$TEST_TEMP_DIR/scope.md"
-printf '+ src/\n+ tests/\n' > "$SCOPE_MANIFEST"
+# Use the shared fixture manifest: allows only tests/, so src/auth.sh redacts.
+SCOPE_MANIFEST="$REPO_ROOT/tests/fixtures/redaction/scope-tests-only.md"
 
 ARTIFACT_DIR="$TEST_TEMP_DIR/artifacts"
 mkdir -p "$ARTIFACT_DIR"
@@ -204,6 +205,52 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
     fi
 else
     assert_fail "finalize: events.jsonl not found"
+fi
+
+# ─── Test 7: redaction chokepoint asserted (issue #360) ───────────────────────
+# Per ADR-004 every LLM-bound prompt must pass through apply_scope_redaction.
+# Verify the real chokepoint ran (not a passthrough stub) by asserting that
+# at least one redaction.applied event exists in events.jsonl with
+# redactions > 0 — proving the manifest was honored and out-of-scope paths
+# (src/auth.sh in the diff fixture) were rewritten.
+print_test_section "7. redaction.applied emitted with redactions>0 (chokepoint live)"
+
+if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
+    red_events="$(jq -c 'select(.type == "redaction.applied")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+    red_count="$(printf '%s\n' "$red_events" | grep -c . || true)"
+    if [[ "$red_count" -ge 1 ]]; then
+        assert_pass "redaction.applied event present ($red_count occurrences)"
+    else
+        assert_fail "no redaction.applied event in events.jsonl — chokepoint bypassed?"
+    fi
+
+    # At least one event must have redactions>0 (i.e. real work, not passthrough)
+    max_red="$(jq -r 'select(.type == "redaction.applied") | .data.redactions // "0"' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
+        | awk 'BEGIN{m=0} { if ($1+0 > m) m = $1+0 } END{print m}')"
+    if [[ "${max_red:-0}" -gt 0 ]]; then
+        assert_pass "redaction.applied: max redactions=$max_red (>0, manifest enforced)"
+    else
+        assert_fail "redaction.applied present but redactions=0 — passthrough stub regression?"
+    fi
+
+    # scope_hash must be a real SHA-256 digest (64-char lowercase hex), not the
+    # literal "mock" sentinel from the old stub, and not missing/null/empty.
+    # A stale stub that emits any non-"mock" placeholder would otherwise slip
+    # past a simple inequality check (Copilot review on PR #376).
+    bad_hashes="$(jq -c '
+        select(.type == "redaction.applied") |
+        select((.data.scope_hash // "") | test("^[a-f0-9]{64}$") | not) |
+        .data.scope_hash // "<missing>"
+    ' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+    if [[ -z "$bad_hashes" ]]; then
+        assert_pass "redaction.applied scope_hash is a valid SHA-256 (64 lowercase hex chars)"
+    else
+        bad_count="$(printf '%s\n' "$bad_hashes" | grep -c . || true)"
+        assert_fail "redaction.applied has $bad_count non-SHA256 scope_hash value(s): $bad_hashes"
+    fi
+else
+    assert_fail "redaction chokepoint: events.jsonl not found"
 fi
 
 # ─── Bonus: review_stage_cleanup runs cleanly ─────────────────────────────────
