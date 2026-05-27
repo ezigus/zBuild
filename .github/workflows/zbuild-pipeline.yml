@@ -1,0 +1,87 @@
+name: zbuild pipeline
+
+# Reusable workflow: call from other workflows via `uses:` with workflow_call.
+# Manual trigger available via workflow_dispatch for one-off runs.
+#
+# Issue #91 — stub that wires the zbuild CLI to GitHub Actions.
+# Daemon-mode scheduling (#92) is separate.
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        description: 'GitHub issue number to run the pipeline for'
+        required: true
+        type: number
+      goal:
+        description: 'Optional free-text goal (passed to --goal instead of --issue)'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Pass --dry-run to zbuild (no side effects)'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GITHUB_TOKEN:
+        required: false   # inherited from calling workflow when not explicitly passed
+
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'GitHub issue number to run the pipeline for'
+        required: true
+        type: number
+      goal:
+        description: 'Optional free-text goal'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Dry run (no side effects)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  pipeline:
+    name: 'Pipeline — issue #${{ inputs.issue_number }}'
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Model selection is governed by config/models.json + core/router — never hardcoded here.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install zbuild
+        run: bash install.sh
+
+      - name: Run pipeline
+        run: |
+          args=()
+          if [[ -n "${{ inputs.goal }}" ]]; then
+            args+=(--goal "${{ inputs.goal }}")
+          else
+            args+=(--issue "${{ inputs.issue_number }}")
+          fi
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          bash scripts/zbuild pipeline start "${args[@]}"
+
+      - name: Upload pipeline artifacts
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: 'pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}'
+          path: state/artifacts/
+          if-no-files-found: ignore
