@@ -146,7 +146,7 @@ orch_dispatch() { _spy_log "orch_dispatch" "$1"; local wu="${2:-}"; [[ -f "$wu" 
 orch_collect()  { _spy_log "orch_collect"  "$1"; return 0; }
 orch_shutdown() { _spy_log "orch_shutdown" "$1"; rm -rf "${TMPDIR:-/tmp}/zbuild-pool-$1" 2>/dev/null || true; return 0; }
 
-> "$ORCH_SPY_LOG"
+: > "$ORCH_SPY_LOG"
 
 # Make the dummy plugin write a sentinel
 FANOUT_PLUGIN_DIR="$TEST_TEMP_DIR/plugins/tool/fanout-agent"
@@ -204,7 +204,7 @@ fi
 # ─── Test 5: sequential calls orch_shutdown even when collect fails ───────────
 print_test_section "5. sequential: orch_shutdown called even when dispatch fails"
 
-> "$ORCH_SPY_LOG"
+: > "$ORCH_SPY_LOG"
 
 # Override orch_collect to fail — sequential should still call orch_shutdown (cleanup invariant)
 orch_dispatch() {

@@ -189,7 +189,7 @@ _purge_stale_pools() {
 }
 
 _run_pipeline() {
-    > "$ORCH_SPY_LOG"
+    : > "$ORCH_SPY_LOG"
     rm -f "$STATE_DIR/"*.json
     set +e
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
@@ -285,7 +285,7 @@ cat > "$SEQ_FAIL_DIR/plugin.sh" <<'PLUGIN'
 intake_fail_run() { return 1; }
 PLUGIN
 
-> "$ORCH_SPY_LOG"
+: > "$ORCH_SPY_LOG"
 
 set +e
 ZBUILD_PLUGINS_ROOT="$SEQ_PLUGINS_ROOT" \
@@ -310,7 +310,7 @@ fi
 # ─── Test 4: composite returns non-zero with deferral message ────────────────
 print_test_section "4. composite strategy: emits deferral error (Phase 1 deferred)"
 
-> "$ORCH_SPY_LOG"
+: > "$ORCH_SPY_LOG"
 
 set +e
 composite_out="$(
