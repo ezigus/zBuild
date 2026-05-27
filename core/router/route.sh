@@ -56,10 +56,12 @@ route_to_model() {
     fi
     local tier="$1" prompt="$2"
     local skip_precondition=false
-    # Check for optional --skip-precondition flag (must come after tier and prompt)
-    local arg
+    local model_override=""
+    local _prev_arg=""
     for arg in "${@:3}"; do
         [[ "$arg" == "--skip-precondition" ]] && skip_precondition=true
+        [[ "$_prev_arg" == "--model" ]] && model_override="$arg"
+        _prev_arg="$arg"
     done
 
     if [[ ! "$tier" =~ ^T[0-4]$ ]]; then
@@ -165,12 +167,22 @@ route_to_model() {
         return 2
     fi
 
-    local model_id
-    model_id="$(jq -r ".tiers.${tier}.candidates[0].id // empty" "$models_file" 2>/dev/null)" \
-        || { error "failed to read candidates for tier $tier"; return 2; }
-    if [[ -z "$model_id" ]]; then
-        error "no candidates for tier $tier"
-        return 1
+    # Model ID cascade: --model flag > ZBUILD_PLUGIN_MODEL env > candidates[0]
+    local model_id override_source
+    if [[ -n "$model_override" ]]; then
+        model_id="$model_override"
+        override_source="flag"
+    elif [[ -n "${ZBUILD_PLUGIN_MODEL:-}" ]]; then
+        model_id="$ZBUILD_PLUGIN_MODEL"
+        override_source="env"
+    else
+        model_id="$(jq -r ".tiers.${tier}.candidates[0].id // empty" "$models_file" 2>/dev/null)" \
+            || { error "failed to read candidates for tier $tier"; return 2; }
+        if [[ -z "$model_id" ]]; then
+            error "no candidates for tier $tier"
+            return 1
+        fi
+        override_source="candidates[0]"
     fi
 
     local provider cost_in cost_out cache_eligible
@@ -188,7 +200,8 @@ route_to_model() {
         "provider=${provider:-}" \
         "recommended=$model_id" \
         "applied=$model_id" \
-        "selector=candidates[0]" \
+        "selector=${override_source}" \
+        "override_source=${override_source}" \
         "cost_per_input_mtok=${cost_in:-}" \
         "cost_per_output_mtok=${cost_out:-}" \
         "cache_eligible=${cache_eligible}"
@@ -216,6 +229,30 @@ route_to_model() {
             "model_id=$model_id" \
             "reason=claude_binary_missing"
         return 1
+    fi
+
+    # ── Token budget enforcement (#98) ──
+    # Budget check: scan cost ledger and refuse if over ZBUILD_BUDGET_USD.
+    # Only enforced when ZBUILD_BUDGET_USD is set.
+    local _budget_usd="${ZBUILD_BUDGET_USD:-}"
+    if [[ -n "$_budget_usd" ]]; then
+        local _ledger_file="${HOME}/.zbuild/cost-ledger.jsonl"
+        local _total_cost=0
+        if [[ -f "$_ledger_file" ]]; then
+            _total_cost="$(awk '{s+=$1} END{printf "%.6f", s+0}' "$_ledger_file" 2>/dev/null || echo 0)"
+        fi
+        # awk float comparison: is _total_cost >= _budget_usd?
+        local _over_budget
+        _over_budget="$(awk -v tot="$_total_cost" -v bud="$_budget_usd" 'BEGIN{print (tot+0 >= bud+0) ? "1" : "0"}')"
+        if [[ "$_over_budget" == "1" ]]; then
+            error "router: token budget exceeded (spent=${_total_cost} budget=${_budget_usd}) — refusing model call for tier=$tier"
+            eb_emit_event "cost.budget_exceeded" \
+                "tier=$tier" \
+                "model_id=$model_id" \
+                "spent=${_total_cost}" \
+                "budget=${_budget_usd}" 2>/dev/null || true
+            return 1
+        fi
     fi
 
     local response rc=0
@@ -285,6 +322,15 @@ route_to_model() {
         cache_creation="$(printf '%s' "$response" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null || echo 0)"
     fi
 
+    # Compute call cost (USD) for ledger append (#98).
+    # Uses per-token rates from models.json; falls back to 0 if rates missing.
+    local _call_cost_usd=0
+    if [[ -n "$cost_in" && -n "$cost_out" ]]; then
+        _call_cost_usd="$(awk -v i="$input_tokens" -v o="$output_tokens" \
+            -v ri="$cost_in" -v ro="$cost_out" \
+            'BEGIN{printf "%.6f", (i*ri + o*ro)/1000000}' 2>/dev/null || echo 0)"
+    fi
+
     eb_emit_event "model.outcome" \
         "tier=$tier" \
         "model_id=$model_id" \
@@ -293,6 +339,14 @@ route_to_model() {
         "output_tokens=$output_tokens" \
         "cache_read_input_tokens=$cache_read" \
         "cache_creation_input_tokens=$cache_creation"
+
+    # Append call cost to ledger (#98). Non-fatal on write failure.
+    local _ledger_dir="${HOME}/.zbuild"
+    local _ledger_file="${_ledger_dir}/cost-ledger.jsonl"
+    if [[ "$_call_cost_usd" != "0" && "$_call_cost_usd" != "0.000000" ]]; then
+        mkdir -p "$_ledger_dir" 2>/dev/null || true
+        printf '%s\n' "$_call_cost_usd" >> "$_ledger_file" 2>/dev/null || true
+    fi
 
     printf '%s\n' "$text_response"
     return 0
