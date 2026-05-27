@@ -1,0 +1,1 @@
+{"ts":"2026-01-01T00:00:00.000Z","run_id":"test-run-385","issue":0,"type":"redaction.refused","plugin":"","kind":"","data":{"reason":"missing_scope_manifest","input":"test-input.txt","cycle":"0"},"schema_version":1}
