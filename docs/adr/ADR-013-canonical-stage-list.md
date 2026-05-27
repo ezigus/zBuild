@@ -61,16 +61,16 @@ Each stage is defined by:
 | id | kind | tier | required_hooks | expected_artifact | blocking |
 |---|---|---|---|---|---|
 | intake | agent | T1 | init, run, finalize | scope-manifest.md | true |
-| plan | agent | T2 | init, run, finalize | artifacts/plan.md | true |
-| design | agent | T3 | init, run, finalize | artifacts/design.md | true |
-| build | agent | T2 | init, run, finalize | artifacts/build-context.md | true |
-| test | tool | T0 | init, run, finalize | artifacts/test-results.json | true |
-| review | agent | T2 | init, run, finalize | artifacts/review.md | true |
-| compound_quality | orchestrator | T3 | init, run, finalize, cleanup | artifacts/compound-quality-result.json | true |
-| pr | tool | T0 | init, run, finalize | artifacts/pr-url.txt | true |
-| deploy | tool | T0 | init, run, finalize | artifacts/deploy.log | true |
-| validate | tool | T0 | init, run, finalize | artifacts/validate-result.json | true |
-| monitor | daemon | T1 | init, run, finalize, cleanup | artifacts/monitor-report.md | false |
+| plan | agent | T2 | init, run, finalize | plan.md | true |
+| design | agent | T3 | init, run, finalize | design.md | true |
+| build | agent | T2 | init, run, finalize | build-context.md | true |
+| test | tool | T0 | init, run, finalize | test-results.json | true |
+| review | agent | T2 | init, run, finalize | review.md | true |
+| compound_quality | orchestrator | T3 | init, run, finalize, cleanup | compound-quality-result.json | true |
+| pr | tool | T0 | init, run, finalize | pr-url.txt | true |
+| deploy | tool | T0 | init, run, finalize | deploy.log | true |
+| validate | tool | T0 | init, run, finalize | validate-result.json | true |
+| monitor | daemon | T1 | init, tick, finalize, cleanup | monitor-report.md | false |
 
 ### Kind assignment rationale
 
@@ -79,7 +79,8 @@ Each stage is defined by:
   `requires.core: [redaction]`.  This keeps the redaction chokepoint (ADR-004)
   honest.
 - `monitor` is `daemon`: it runs a poll loop that outlives the pipeline run;
-  the one-shot `run` contract of `tool`/`agent` does not fit.
+  the one-shot `run` contract of `tool`/`agent` does not fit.  Per ADR-001,
+  `daemon` plugins use `tick` (not `run`) as their periodic entry point.
 - `compound_quality` is `orchestrator`: it drives multiple `agent` sub-plugins
   through a multi-phase loop.  It is the only stage that uses the orchestrator
   `run` hook signature (upstream artifacts in, downstream artifacts + verdict
@@ -92,7 +93,8 @@ Each stage is defined by:
   these stages is a bug.
 - T1 (`intake`, `monitor`): light summarization; micro-LLM is sufficient.
   `intake` declares T1 as forward-compatibility for a planned planning prompt;
-  today's Phase 0.5 stub makes no LLM call.
+  the Phase 0.5 stub makes no LLM call yet, but the manifest already declares
+  `requires.core: [redaction]` to enforce the chokepoint contract.
 - T2 (`plan`, `build`, `review`): standard reasoning; balanced cost/quality.
 - T3 (`design`, `compound_quality`): architecture-level decisions and
   multi-lens audit require the highest available reasoning tier.
@@ -176,8 +178,8 @@ the active template until its implementation phase ships:
 | Stage | Required from phase |
 |---|---|
 | intake | Phase 0.5 (implemented) |
-| review | Phase 0.5 (compound_quality security-lens only) |
-| plan, design, build, test, compound_quality | Phase 1 |
+| compound_quality | Phase 0.5 (security-lens only; full 7-lens suite is Phase 1) |
+| plan, design, build, test, review | Phase 1 |
 | pr | Phase 1 (optional) |
 | deploy, validate, monitor | Phase 3 |
 

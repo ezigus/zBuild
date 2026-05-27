@@ -85,7 +85,7 @@ done
 # ADR-013 must define a structured stage table or block that includes each of
 # these field names at least once per stage section.  We test that the field
 # names appear in the document body at all; a deeper per-row check is TC-7.
-required_fields=(id kind tier required_hooks expected_artifact)
+required_fields=(id kind tier required_hooks expected_artifact blocking)
 
 for field in "${required_fields[@]}"; do
     set +e
@@ -96,11 +96,12 @@ for field in "${required_fields[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# TC-5: compound_quality sub-phases defined (preflight, plan, cycle, backtrack)
+# TC-5: compound_quality sub-phases defined (preflight, audit_plan, cycle, backtrack)
 # ---------------------------------------------------------------------------
-# ARCHITECTURE.md §3 names them: "4-phase: preflight → plan → cycle → backtrack"
-# ADR-013 must document all four inside its compound_quality entry.
-compound_subphases=(preflight plan cycle backtrack)
+# ADR-013 is the canonical source; sub-phase names must match exactly.
+# `audit_plan` (not `plan`) is the second sub-phase per the ADR's own table.
+# Testing for the exact token prevents false-green matches on the generic word "plan".
+compound_subphases=(preflight audit_plan cycle backtrack)
 
 for subphase in "${compound_subphases[@]}"; do
     set +e
@@ -154,15 +155,28 @@ assert_eq "TC-7: stage id set in ADR-013 matches canonical list exactly" \
     "$canonical_sorted" "$found_sorted"
 
 # ---------------------------------------------------------------------------
-# TC-8: All artifact type values are non-empty strings
+# TC-8: All expected_artifact table cells are non-empty
 # ---------------------------------------------------------------------------
-# expected_artifact field lines must not be blank/null/empty after the colon.
-# We grep for lines whose expected_artifact (or table cell equivalent) value is
-# empty or consists only of whitespace/dashes.
-set +e
-blank_artifacts=$(grep -Ei "expected_artifact[[:space:]]*:[[:space:]]*$" "$ADR_FILE" | wc -l | tr -d ' ')
-set -e
-assert_eq "TC-8: no expected_artifact fields are empty" "0" "$blank_artifacts"
+# The canonical stage table has 11 data rows (one per stage). Extract the
+# expected_artifact column (column 5 in the pipe-delimited table, 1-indexed
+# from the leftmost pipe) and count any cells that are blank or contain only
+# dashes/whitespace (which would indicate a missing artifact value).
+# Uses POSIX awk; works on both macOS nawk and GNU awk.
+blank_artifacts=$(awk '
+    /^\| id / { header=1; next }
+    header && /^\|---/ { next }
+    header && /^\|/ {
+        n = split($0, cells, "|")
+        # column index 5 = expected_artifact (after id|kind|tier|required_hooks|expected_artifact)
+        if (n >= 6) {
+            val = cells[6]
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+            if (val == "" || val ~ /^-+$/) count++
+        }
+    }
+    END { print count+0 }
+' "$ADR_FILE")
+assert_eq "TC-8: no expected_artifact table cells are empty" "0" "$blank_artifacts"
 
 # ---------------------------------------------------------------------------
 # TC-9: All tiers are valid values in the T0–T4 range

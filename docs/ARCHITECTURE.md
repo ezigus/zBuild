@@ -177,7 +177,7 @@ zbuild pipeline start --issue 42
    ├─▶ [state.update(stage_status, CURRENT_ITERATION) → atomic_write + .bak]
    │
    ▼
-[compound_quality orchestrator runs (4-phase: preflight → plan → cycle → backtrack) — see ADR-013]
+[compound_quality orchestrator runs (4-phase: preflight → audit_plan → cycle → backtrack) — see ADR-013]
    │
    ▼
 [github.update_live_comment(pipeline-progress-marker, new_status)]
