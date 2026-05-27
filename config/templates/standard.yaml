@@ -8,9 +8,9 @@ stages:
   - id: intake
     gate: auto
     roles: [intake]
-  - id: security-lens
+  - id: build
     gate: auto
-    roles: [security-auditor]
-  - id: output
+    roles: [builder]
+  - id: review
     gate: auto
-    roles: [output]
+    roles: [reviewer]
