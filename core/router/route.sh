@@ -217,9 +217,14 @@ route_to_model() {
         "cache_eligible=${cache_eligible}"
 
     # Validate timeout is a positive integer before building the command.
-    local secs="${ZBUILD_ROUTER_TIMEOUT:-120}"
-    if [[ ! "$secs" =~ ^[0-9]+$ ]]; then
-        error "ZBUILD_ROUTER_TIMEOUT must be a positive integer, got: $secs"
+    # Default 300s (5 min): Sonnet planning calls regularly land in the
+    # 100-180s range, so the prior 120s ceiling tripped on routine work
+    # (issue #424 — successful run took 117s, very next run timed out at
+    # 124s on a 1KB prompt). Operators wanting tighter bounds can still
+    # set ZBUILD_ROUTER_TIMEOUT explicitly.
+    local secs="${ZBUILD_ROUTER_TIMEOUT:-300}"
+    if [[ ! "$secs" =~ ^[0-9]+$ ]] || [[ "$secs" -eq 0 ]]; then
+        error "ZBUILD_ROUTER_TIMEOUT must be a positive integer (>=1), got: $secs"
         return 2
     fi
 
