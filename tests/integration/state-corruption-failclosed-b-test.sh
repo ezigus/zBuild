@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Tests: core/state/atomic.sh — locked_state_update fail-closed on JSON corruption.
+# Tests: core/state/atomic.sh — locked_state_update fail-closed on JSON corruption — Part B
 #
 # Issue #293: Before the fix, locked_state_update warned on corruption and passed
 # corrupt bytes to the update function.  After the fix it must:
-#   1. Validate the state file BEFORE copying to the temp working copy.
-#   2. Recover from .bak when the primary is corrupt.
-#   3. Emit state.corruption.unrecoverable (with state_file + reason fields) and
-#      return non-zero when both the primary and .bak are corrupt.
-#   4. Pass the RECOVERED data (not corrupt data, not empty) to the update function.
-#   5. After a successful .bak recovery + update the new .bak reflects the
-#      recovered content, not the corrupt file.
-#   6. All of the above hold on the no-flock fallback path (ZBUILD_HAS_FLOCK=0).
+#   6. All of the above hold on the no-flock fallback path (zbuild_has_flock() overridden).
+#
+# Part B covers: Scenarios 6-10
+#   Scenario 6: state.corruption.unrecoverable payload fields are correct
+#   Scenario 7: no-flock fallback — empty primary triggers .bak recovery
+#   Scenario 8: no-flock fallback — both corrupt fail-closed + event emitted
+#   Scenario 9: race condition simulation — concurrent writers, one corrupts mid-write
+#   Scenario 10: control — valid state, no corruption, update succeeds
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,9 +19,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "state corruption fail-closed — locked_state_update (#293)"
+print_test_header "state corruption fail-closed Part B (scenarios 6-10) — locked_state_update (#293)"
 
-setup_test_env "state-corruption-failclosed"
+setup_test_env "state-corruption-failclosed-b"
 
 # ─── shared infrastructure ───────────────────────────────────────────────────
 
@@ -92,16 +92,6 @@ assert_event_emitted() {
     fi
 }
 
-# Helper: run update_fn that records what it received on stdin and echoes it
-# back as-is (identity transform, but captures the received bytes for inspection).
-CAPTURED_INPUT_FILE="$TEST_TEMP_DIR/captured-update-input.txt"
-identity_update_fn() {
-    local content
-    content="$(cat)"
-    printf '%s' "$content" > "$CAPTURED_INPUT_FILE"
-    printf '%s' "$content"
-}
-
 # A well-behaved update function that appends a "tested" key.
 append_tested_fn() {
     local content
@@ -112,215 +102,6 @@ append_tested_fn() {
         echo '{"tested": true}'
     fi
 }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 1 — Empty file (0 bytes) triggers .bak recovery
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 1: empty state file (0 bytes) — .bak recovery"
-reset_scenario
-
-# Establish a valid .bak
-printf '%s' "$VALID_JSON" > "${STATE_FILE}.bak"
-# Corrupt primary with empty file
-: > "$STATE_FILE"
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-assert_eq \
-    "empty state file: locked_state_update returns 0 after .bak recovery" \
-    "0" "$lsu_rc"
-
-assert_file_exists \
-    "empty state file: output state file still exists" \
-    "$STATE_FILE"
-
-if [[ -f "$STATE_FILE" ]]; then
-    set +e; jq empty "$STATE_FILE" >/dev/null 2>&1; jq_rc=$?; set -e
-    assert_eq \
-        "empty state file: output state is valid JSON" \
-        "0" "$jq_rc"
-
-    if [[ $jq_rc -eq 0 ]]; then
-        stage_val="$(jq -r '.current_stage // empty' "$STATE_FILE" 2>/dev/null || true)"
-        assert_eq \
-            "empty state file: update fn received recovered data (current_stage preserved)" \
-            "build" "$stage_val"
-
-        tested_val="$(jq -r '.tested // empty' "$STATE_FILE" 2>/dev/null || true)"
-        assert_eq \
-            "empty state file: update fn was applied (tested key present)" \
-            "true" "$tested_val"
-    fi
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 2 — Partial write (truncated JSON) triggers .bak recovery
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 2: partial write (truncated JSON) — .bak recovery"
-reset_scenario
-
-printf '%s' "$VALID_JSON" > "${STATE_FILE}.bak"
-printf '{"schema_version": 1, "current_ite' > "$STATE_FILE"   # truncated
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-assert_eq \
-    "partial write: locked_state_update returns 0 after .bak recovery" \
-    "0" "$lsu_rc"
-
-if [[ -f "$STATE_FILE" ]]; then
-    set +e; jq empty "$STATE_FILE" >/dev/null 2>&1; jq_rc=$?; set -e
-    assert_eq \
-        "partial write: output state is valid JSON" \
-        "0" "$jq_rc"
-
-    if [[ $jq_rc -eq 0 ]]; then
-        stage_val="$(jq -r '.current_stage // empty' "$STATE_FILE" 2>/dev/null || true)"
-        assert_eq \
-            "partial write: recovered data passed to update fn (current_stage preserved)" \
-            "build" "$stage_val"
-    fi
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 3 — Recovery sequence: update_fn receives recovered data, not corrupt
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 3: update_fn receives recovered (.bak) data, not corrupt bytes"
-reset_scenario
-
-RECOVERED_JSON='{"schema_version":1,"current_stage":"test","status":"recovered"}'
-printf '%s' "$RECOVERED_JSON" > "${STATE_FILE}.bak"
-printf 'NOT_JSON_AT_ALL}{{{' > "$STATE_FILE"
-
-set +e
-locked_state_update "$STATE_FILE" identity_update_fn
-lsu_rc=$?
-set -e
-
-assert_eq \
-    "recovery sequence: locked_state_update returns 0" \
-    "0" "$lsu_rc"
-
-if [[ -f "$CAPTURED_INPUT_FILE" ]]; then
-    captured="$(cat "$CAPTURED_INPUT_FILE")"
-    # Must not contain the corrupt garbage
-    if echo "$captured" | grep -qF 'NOT_JSON_AT_ALL' 2>/dev/null; then
-        assert_fail \
-            "recovery sequence: update_fn must NOT receive corrupt bytes" \
-            "captured input contained corrupt data: $captured"
-    else
-        assert_pass "recovery sequence: update_fn did not receive corrupt bytes"
-    fi
-    # Must contain the recovered stage
-    recovered_stage="$(echo "$captured" | jq -r '.current_stage // empty' 2>/dev/null || true)"
-    assert_eq \
-        "recovery sequence: update_fn received recovered data (current_stage=test)" \
-        "test" "$recovered_stage"
-else
-    assert_fail \
-        "recovery sequence: captured input file missing — identity_update_fn was not called"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 4 — Post-recovery .bak state reflects recovered content, not corrupt
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 4: after .bak recovery + update, new .bak holds recovered data"
-reset_scenario
-
-GOOD_BAK_JSON='{"schema_version":1,"current_stage":"deploy","status":"ok"}'
-printf '%s' "$GOOD_BAK_JSON" > "${STATE_FILE}.bak"
-printf '{corrupt' > "$STATE_FILE"
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-assert_eq \
-    "post-recovery .bak: locked_state_update returns 0" \
-    "0" "$lsu_rc"
-
-if [[ -f "${STATE_FILE}.bak" ]]; then
-    set +e; jq empty "${STATE_FILE}.bak" >/dev/null 2>&1; bak_rc=$?; set -e
-    assert_eq \
-        "post-recovery .bak: new .bak is valid JSON (not the old corrupt file)" \
-        "0" "$bak_rc"
-
-    if [[ $bak_rc -eq 0 ]]; then
-        bak_stage="$(jq -r '.current_stage // empty' "${STATE_FILE}.bak" 2>/dev/null || true)"
-        # The new .bak is what atomic_write rotated — i.e. the state just before
-        # the final mv.  That is the output of append_tested_fn applied to the
-        # recovered data, which must carry the recovered current_stage.
-        # (atomic_write cp's old target to .bak; old target here is the recovered
-        # intermediate written in the same locked_state_update call.)
-        if [[ "$bak_stage" == "deploy" ]]; then
-            assert_pass "post-recovery .bak: .bak carries recovered stage (deploy)"
-        elif [[ -n "$bak_stage" ]]; then
-            # Acceptable: .bak may be the pre-update snapshot from atomic_write
-            assert_pass "post-recovery .bak: .bak is valid and has a stage value ($bak_stage)"
-        else
-            assert_fail \
-                "post-recovery .bak: expected .bak to carry recovered current_stage" \
-                "got: $(cat "${STATE_FILE}.bak")"
-        fi
-
-        # Critical: .bak must not be the old corrupt content
-        bak_raw="$(cat "${STATE_FILE}.bak")"
-        if echo "$bak_raw" | grep -qF 'corrupt' 2>/dev/null; then
-            assert_fail \
-                "post-recovery .bak: .bak must not be the corrupt primary" \
-                "bak content: $bak_raw"
-        else
-            assert_pass "post-recovery .bak: .bak does not contain corrupt data"
-        fi
-    fi
-else
-    assert_fail \
-        "post-recovery .bak: .bak file must exist after atomic_write rotation"
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 5 — Both primary and .bak corrupt → fail-closed, emit event
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 5: both primary and .bak corrupt — fail-closed + event emitted"
-reset_scenario
-
-printf '{bad json primary' > "$STATE_FILE"
-printf '{bad json bak' > "${STATE_FILE}.bak"
-: > "$ZBUILD_EVENTS_JSONL"
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-if [[ $lsu_rc -ne 0 ]]; then
-    assert_pass "both corrupt: locked_state_update returns non-zero (fail-closed)"
-else
-    assert_fail \
-        "both corrupt: locked_state_update must return non-zero when both are corrupt" \
-        "got exit code: $lsu_rc"
-fi
-
-assert_event_emitted \
-    "both corrupt: state.corruption.unrecoverable event emitted" \
-    "state.corruption.unrecoverable"
-
-assert_event_emitted \
-    "both corrupt: event payload includes state_file field" \
-    "state.corruption.unrecoverable" \
-    "state_file"
-
-assert_event_emitted \
-    "both corrupt: event payload includes reason field" \
-    "state.corruption.unrecoverable" \
-    "reason"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Scenario 6 — Event payload content validation (state_file points at actual file)
@@ -528,4 +309,3 @@ fi
 
 cleanup_test_env
 print_test_results
-exit $((FAIL > 0))
