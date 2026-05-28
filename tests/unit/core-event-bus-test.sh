@@ -55,19 +55,25 @@ assert_eq "unknown event type does NOT cause emit to fail (schema-as-warn)" "0" 
 last="$(tail -1 "$ZBUILD_EVENTS_JSONL")"
 assert_eq "unknown type was still written" "made.up.event.type" "$(echo "$last" | jq -r .type)"
 
+# Warning is unconditional (no ZBUILD_DEBUG needed)
+stderr_out="$(eb_emit_event "made.up.event.type.2" 2>&1 >/dev/null)"
+assert_eq "unknown type warns to stderr without ZBUILD_DEBUG" \
+    "[event-bus] WARN: unknown event type 'made.up.event.type.2' (run_id=)" \
+    "$stderr_out"
+
 # ─── Query API ──────────────────────────────────────────────────────────────
 count_start=$(eb_query_events "pipeline.start" | wc -l | tr -d ' ')
 assert_eq "query filters by type" "1" "$count_start"
 
 count_all=$(eb_query_events "" 100 | wc -l | tr -d ' ')
-# We've emitted: pipeline.start, plugin.run.start, made.up.event.type = 3
-assert_eq "query returns all events" "3" "$count_all"
+# We've emitted: pipeline.start, plugin.run.start, made.up.event.type, made.up.event.type.2 = 4
+assert_eq "query returns all events" "4" "$count_all"
 
 # ─── SQLite mirror exists if sqlite3 is available ───────────────────────────
 if command -v sqlite3 >/dev/null 2>&1; then
     assert_file_exists "SQLite mirror created" "$ZBUILD_EVENTS_DB"
     db_count=$(sqlite3 "$ZBUILD_EVENTS_DB" 'SELECT COUNT(*) FROM events;')
-    assert_eq "SQLite mirror has 3 events" "3" "$db_count"
+    assert_eq "SQLite mirror has 4 events" "4" "$db_count"
 else
     assert_pass "skipped SQLite mirror (sqlite3 not installed)"
 fi

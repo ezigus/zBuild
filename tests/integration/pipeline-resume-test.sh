@@ -160,16 +160,17 @@ assert_eq "aborted still returns manual_resume_only (force is caller's responsib
 # ─── Integration: runner.sh --resume skips completed stages end-to-end ────────
 print_test_section "integration: runner --resume skips stages with status=complete"
 
-# Build minimal plugins for the built-in 3-stage list
+# Build minimal plugins for all 4 stages in the standard template (intake/plan/build/review)
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 INT_PLUGINS_ROOT="$TEST_TEMP_DIR/int_plugins"
 INT_STATE_DIR="$TEST_TEMP_DIR/int_state"
 INT_EVENTS_DIR="$TEST_TEMP_DIR/int_events"
-mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/build" \
-         "$INT_PLUGINS_ROOT/agent/review" "$INT_STATE_DIR" "$INT_EVENTS_DIR"
+mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/plan" \
+         "$INT_PLUGINS_ROOT/agent/build" "$INT_PLUGINS_ROOT/agent/review" \
+         "$INT_STATE_DIR" "$INT_EVENTS_DIR"
 
-# Plugins: intake and build succeed; review succeeds
-for _plugin in intake build; do
+# Plugins: all 4 standard-template stages succeed
+for _plugin in intake plan build; do
     _fn="${_plugin//-/_}_run"
     cat > "$INT_PLUGINS_ROOT/agent/$_plugin/manifest.yaml" <<EOF
 id: $_plugin
@@ -197,7 +198,8 @@ requires:
 EOF
 printf 'review_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/review/plugin.sh"
 
-# Write a realistic state file: intake=complete, build=complete, review=pending
+# Write state: intake=complete, plan=complete, build=complete, review=pending
+# (matches all 4 stages in standard template so resume only runs review)
 INT_STATE_FILE="$INT_STATE_DIR/pipeline-state.json"
 jq -n \
     --arg run_id "integ-test-resume-225" \
@@ -206,7 +208,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: 225,
-        stage_statuses: {intake: "complete", build: "complete", review: "pending"},
+        stage_statuses: {intake: "complete", plan: "complete", build: "complete", review: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -237,10 +239,10 @@ assert_file_exists "integration: state file still present after resume" "$INT_ST
 _review_status="$(jq -r '.stage_statuses.review // empty' "$INT_STATE_FILE" 2>/dev/null)"
 assert_eq "integration: review stage_status=complete after resume" "complete" "$_review_status"
 
-# Verify intake and build were skipped (events.jsonl should show only 1 stage.start)
+# Verify intake/plan/build were skipped (events.jsonl should show only 1 stage.start for review)
 if [[ -f "$INT_EVENTS_DIR/events.jsonl" ]]; then
     _stage_starts="$(grep -c '"stage.start"' "$INT_EVENTS_DIR/events.jsonl" || true)"
-    assert_eq "integration: only 1 stage.start (skipped 2 complete stages)" "1" "$_stage_starts"
+    assert_eq "integration: only 1 stage.start (skipped 3 complete stages)" "1" "$_stage_starts"
     _resume_event="$(grep -c '"pipeline.resume"' "$INT_EVENTS_DIR/events.jsonl" || true)"
     assert_eq "integration: pipeline.resume event emitted" "1" "$_resume_event"
 fi
