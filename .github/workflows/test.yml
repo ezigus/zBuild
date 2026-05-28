@@ -130,14 +130,12 @@ jobs:
           git clone --depth=1 https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
           cmake -S /tmp/kcov-src -B /tmp/kcov-build
           sudo cmake --build /tmp/kcov-build --target install -j"$(nproc)"
-      - name: Run coverage (unit + integration)
+      - name: Run coverage (unit tests)
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
           if command -v kcov >/dev/null 2>&1; then
-            kcov --include-path=core,scripts/lib coverage-unit bash scripts/run-tests.sh --tier unit || true
-            kcov --include-path=core,scripts/lib coverage-integration bash scripts/run-tests.sh --tier integration || true
-            kcov --merge coverage-out coverage-unit coverage-integration
-            echo "Coverage report generated"
+            kcov --include-path=core,scripts/lib coverage-out bash scripts/run-tests.sh --tier unit || true
+            echo "Coverage run complete"
           else
             echo "kcov not available — skipping coverage measurement"
           fi
@@ -145,17 +143,24 @@ jobs:
         env:
           COVERAGE_FLOOR: "70"
         run: |
-          # Coverage floor: core/ + scripts/lib/ combined statement coverage must be ≥ COVERAGE_FLOOR %.
+          # Coverage floor: core/ + scripts/lib/ statement coverage must be ≥ COVERAGE_FLOOR %.
+          # Unit tests only — integration tests are timing-sensitive under kcov instrumentation.
           # Threshold is locked at merge time; documented in CLAUDE.md.
-          report="coverage-out/kcov-merged/coverage.json"
-          if [[ ! -f "$report" ]]; then
-            echo "Coverage report not found at $report — kcov may not be installed"
+          report="$(find coverage-out -name 'coverage.json' 2>/dev/null | head -1)"
+          if [[ -z "$report" || ! -f "$report" ]]; then
+            echo "Coverage report not found — kcov may not be installed or failed"
             exit 0
           fi
+          echo "Using report: $report"
           pct="$(python3 -c "
-          import json, sys
+          import json
           d = json.load(open('$report'))
-          print(d.get('percent_covered', d.get('covered', '0')))
+          if 'percent_covered' in d:
+              print(d['percent_covered'])
+          elif isinstance(d.get('total'), dict) and 'percent_covered' in d['total']:
+              print(d['total']['percent_covered'])
+          else:
+              print('0')
           " 2>/dev/null || echo "0")"
           pct_int="${pct%%.*}"
           echo "Coverage: ${pct}% (floor: ${COVERAGE_FLOOR}%)"
