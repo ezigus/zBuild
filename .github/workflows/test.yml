@@ -138,7 +138,8 @@ jobs:
           kcov \
             --bash-parse-files-in-dir="$(pwd)/core" \
             --bash-parse-files-in-dir="$(pwd)/scripts/lib" \
-            --include-pattern="/core/,/scripts/lib/" \
+            --include-pattern="/core/" \
+            --include-pattern="/scripts/lib/" \
             coverage-out \
             bash scripts/run-tests.sh --tier unit
           echo "Coverage run complete"
