@@ -39,6 +39,8 @@ When a keeper passes its 5-test trial (see KEEPERS §J):
 
 The `legacy/migrated/` tombstone tree is the audit trail. `ls legacy/migrated/` answers "what's done." The `legacy/` tree shrinks to zero by end-of-migration.
 
+> **Deferred keepers:** if a keeper's 5-test trial is blocked on a deferred issue, the tombstone MUST cite the relevant issue number from [PHASE-DEFERRALS.md](PHASE-DEFERRALS.md) so reviewers know why the legacy source has not yet been removed.
+
 ### Wrapper for intentional invocation
 
 Any legitimate need to run a legacy script (e.g., generating a fixture for a 5-test trial) MUST use the wrapper:
