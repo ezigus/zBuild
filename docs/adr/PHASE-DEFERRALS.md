@@ -12,7 +12,7 @@ protocol for any legacy sources whose keeper has a deferred trial.
 | #287 | Manifest validator: enforce full ADR-001 schema (hooks per kind, requires.core via YAML, provides.artifact_type, state.persisted/reconstructed) | ADR-001 | Full YAML-structural validation adds coupling risk; 4-field validator is sufficient for Phase 0.5 plugin set |
 | #288 | Fail-closed artifact-presence scanner (synthesize blocking finding when plugin declares outputs[].path but produces nothing) | ADR-001 | Requires artifact-schema.json (#361) to land first; no Phase 0.5 plugin yet skips writing its canonical artifact |
 | #289 | Router precondition fail-closed when ZBUILD_RUN_ID or ZBUILD_EVENTS_JSONL unset + gate --skip-precondition behind operator override + audit event | ADR-004 | Narrow edge-case that does not affect single-machine Phase 0.5 runs; rescoped 2026-05-26 |
-| #294 | Plugin registry: YAML-structural manifest validation (replace fragile grep for redaction requirement) | ADR-001 | Companion to #287; YAML parsing adds a bash dependency; deferred until Phase 1 toolchain is settled |
+| #294 | Plugin registry: YAML-structural manifest validation (replace fragile grep for redaction requirement) | ADR-001 | Companion to #287; requires a stable manifest schema before structural validation can be written without chasing schema changes; deferred until Phase 1 contracts settle |
 
 ## Phase 2 Deferrals
 

@@ -181,9 +181,9 @@ the active template until its implementation phase ships:
 |---|---|---|
 | intake | Phase 0.5 | Shipped — plugin + tests + parity coverage |
 | compound_quality | Phase 0.5 | Shipped — security-lens only; full 7-lens suite deferred to Phase 1 |
-| plan, design, build, test, review | Phase 1 | Deferred — see [PHASE-DEFERRALS.md](PHASE-DEFERRALS.md) |
-| pr | Phase 1 (optional) | Deferred |
-| deploy, validate, monitor | Phase 3 | Deferred |
+| plan, design, build, test, review | Phase 1 | Planned — not yet shipped |
+| pr | Phase 1 (optional) | Planned — not yet shipped |
+| deploy, validate, monitor | Phase 3 | Planned — not yet shipped |
 
 ## Consequences
 

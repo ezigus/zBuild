@@ -42,7 +42,7 @@ Behavior:
 - **Code review:** PR checklist includes "Does this PR introduce a new LLM call?" → if yes, "Does it go through `core/redaction/apply_scope_redaction`?"
 - **Manifest:** plugins MUST declare `requires.core: [redaction]`; the registry refuses to load a `kind: agent` plugin without it.
 - **Event-bus assertion:** every `model.route` event MUST be preceded by a `redaction.applied` event within the same `run_id` + `stage`. The engine refuses to call the router if the precondition is unmet.
-- **Stage-level enforcement:** ADR-013's tier assignment additionally enforces this invariant — stages assigned T0 (`test`, `pr`, `deploy`, `validate`) MUST never emit LLM-bound text; any attempt to wire a model call into a T0 stage is a bug caught at template-load validation. See [ADR-013](ADR-013-canonical-stage-list.md) §Tier assignment rationale.
+- **Stage-level enforcement:** ADR-013's tier assignment additionally reinforces this invariant — stages assigned T0 (`test`, `pr`, `deploy`, `validate`) MUST never emit LLM-bound text. The T0 designation is a semantic constraint enforced by code review and the manifest redaction requirement; any plugin wired into a T0 stage that calls the router is a bug surfaced by the redaction chokepoint and manifest validation. See [ADR-013](ADR-013-canonical-stage-list.md) §Tier assignment rationale.
 
 ### Scope manifest contract
 
