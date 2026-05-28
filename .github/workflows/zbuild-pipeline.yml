@@ -23,9 +23,10 @@ on:
         required: false
         type: boolean
         default: false
-    secrets:
-      GITHUB_TOKEN:
-        required: false   # inherited from calling workflow when not explicitly passed
+    # NOTE: do not declare `secrets: GITHUB_TOKEN` here — GITHUB_TOKEN is a
+    # reserved name auto-provided to every workflow. Declaring it makes the
+    # workflow file invalid, which causes GitHub to emit a phantom "workflow
+    # file issue" failure on every push to the default branch.
 
   workflow_dispatch:
     inputs:
