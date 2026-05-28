@@ -133,15 +133,15 @@ jobs:
       - name: Run coverage (unit tests)
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
-          if command -v kcov >/dev/null 2>&1; then
-            kcov --bash-parse-files-in-dir="$(pwd)" \
-                 --include-path="$(pwd)/core,$(pwd)/scripts/lib" \
-                 coverage-out bash scripts/run-tests.sh --tier unit || true
-            echo "Coverage run complete"
-            find coverage-out -name 'coverage.json' -exec echo "Found: {}" \; 2>/dev/null || echo "No coverage.json found"
-          else
-            echo "kcov not available — skipping coverage measurement"
-          fi
+          # --include-pattern does substring matching (robust across runner path variations).
+          # --bash-parse-files-in-dir pre-parses .sh files for accurate line maps.
+          kcov \
+            --bash-parse-files-in-dir="$(pwd)/core" \
+            --include-pattern="/core/,/scripts/lib/" \
+            coverage-out \
+            bash scripts/run-tests.sh --tier unit
+          echo "Coverage run complete"
+          find coverage-out -name 'coverage.json' -exec echo "Found: {}" \; 2>/dev/null || echo "No coverage.json found"
       - name: Coverage diagnostics
         if: always()
         run: |
