@@ -223,8 +223,8 @@ route_to_model() {
     # 124s on a 1KB prompt). Operators wanting tighter bounds can still
     # set ZBUILD_ROUTER_TIMEOUT explicitly.
     local secs="${ZBUILD_ROUTER_TIMEOUT:-300}"
-    if [[ ! "$secs" =~ ^[0-9]+$ ]]; then
-        error "ZBUILD_ROUTER_TIMEOUT must be a positive integer, got: $secs"
+    if [[ ! "$secs" =~ ^[0-9]+$ ]] || [[ "$secs" -eq 0 ]]; then
+        error "ZBUILD_ROUTER_TIMEOUT must be a positive integer (>=1), got: $secs"
         return 2
     fi
 
