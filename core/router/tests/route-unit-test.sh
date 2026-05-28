@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Tests: core/router/route.sh — unit tests for precondition, model lookup, error paths
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+# shellcheck source=../../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+
+print_test_header "core/router/route — unit: precondition + model lookup + error paths"
+setup_test_env "router-unit"
+
+export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
+export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
+export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+mkdir -p "$TEST_TEMP_DIR/events" "$TEST_TEMP_DIR/bin"
+
+# Operator override token so --skip-precondition works in tests
+export HOME="$TEST_TEMP_DIR/home"
+mkdir -p "$HOME/.zbuild"
+echo -n "bootstrap" > "$HOME/.zbuild/scope-override-token"
+export ZBUILD_SCOPE_OVERRIDE=1
+unset ZBUILD_RUN_ID 2>/dev/null || true
+
+# Mock claude: records --model arg, echoes "ok"
+cat > "$TEST_TEMP_DIR/bin/claude" << 'MOCK'
+#!/usr/bin/env bash
+while [[ $# -gt 0 ]]; do
+    [[ "$1" == "--model" && -n "${2:-}" ]] && printf '%s\n' "$2" > "${ZBUILD_TEST_MODEL_FILE:-/dev/null}" && shift 2 && continue
+    shift
+done
+echo "ok"
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+export PATH="$TEST_TEMP_DIR/bin:$PATH"
+export ZBUILD_TEST_MODEL_FILE="$TEST_TEMP_DIR/last_model"
+
+# shellcheck source=../route.sh
+source "$REPO_ROOT/core/router/route.sh"
+
+# ── Invalid tier → rc=2 ─────────────────────────────────────────────────────
+set +e
+route_to_model "T9" "prompt" --skip-precondition 2>/dev/null; _rc=$?
+set -e
+assert_eq "invalid tier T9 → rc=2" "2" "$_rc"
+
+# ── T0 not implemented → rc=2 ───────────────────────────────────────────────
+set +e
+route_to_model "T0" "prompt" --skip-precondition 2>/dev/null; _rc=$?
+set -e
+assert_eq "T0 not implemented → rc=2" "2" "$_rc"
+
+# ── Missing tier arg → rc=2 ─────────────────────────────────────────────────
+set +e
+route_to_model 2>/dev/null; _rc=$?
+set -e
+assert_eq "no args → rc=2" "2" "$_rc"
+
+# ── Precondition: no run_id (not bootstrap, no --skip-precondition) → rc=2 ──
+: > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_RUN_ID="some-run"
+unset ZBUILD_SCOPE_OVERRIDE 2>/dev/null || true
+set +e
+route_to_model "T2" "prompt" 2>/dev/null; _rc=$?
+set -e
+assert_eq "precondition refused: no events log → rc=2" "2" "$_rc"
+export ZBUILD_SCOPE_OVERRIDE=1
+unset ZBUILD_RUN_ID 2>/dev/null || true
+
+# ── T1 → selects Haiku model ────────────────────────────────────────────────
+: > "$TEST_TEMP_DIR/last_model"
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T1" "ping" --skip-precondition 2>/dev/null; _rc=$?
+set -e
+assert_eq "T1 → rc=0" "0" "$_rc"
+_model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
+assert_eq "T1 selects haiku model" "claude-haiku-4-5-20251001" "$_model"
+
+# ── T2 → selects Sonnet model ───────────────────────────────────────────────
+: > "$TEST_TEMP_DIR/last_model"
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T2" "ping" --skip-precondition 2>/dev/null; _rc=$?
+set -e
+assert_eq "T2 → rc=0" "0" "$_rc"
+_model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
+assert_eq "T2 selects sonnet model" "claude-sonnet-4-6" "$_model"
+
+# ── --model override ────────────────────────────────────────────────────────
+: > "$TEST_TEMP_DIR/last_model"
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T2" "ping" --skip-precondition --model "custom-model-id" 2>/dev/null; _rc=$?
+set -e
+assert_eq "--model override → rc=0" "0" "$_rc"
+_model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
+assert_eq "--model override is respected" "custom-model-id" "$_model"
+
+# ── Success emits model.route + model.outcome events ────────────────────────
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T2" "ping" --skip-precondition 2>/dev/null; _rc=$?
+set -e
+assert_eq "T2 success → rc=0" "0" "$_rc"
+_has_route="$(jq -r 'select(.type=="model.route") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "model.route event emitted" "model.route" "$_has_route"
+_has_outcome="$(jq -r 'select(.type=="model.outcome") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "model.outcome event emitted" "model.outcome" "$_has_outcome"
+
+# ── No claude binary → rc=1 ─────────────────────────────────────────────────
+OLDPATH="$PATH"
+export PATH="/usr/bin:/bin"  # strip everything; no claude binary on minimal path
+set +e
+route_to_model "T2" "ping" --skip-precondition 2>/dev/null; _rc=$?
+set -e
+assert_eq "no claude binary → rc=1" "1" "$_rc"
+export PATH="$OLDPATH"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))
