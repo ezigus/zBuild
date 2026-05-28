@@ -1327,6 +1327,8 @@ issues:
       - Test repo demonstrating consumption (could be a fixture)
 
       Dependencies: INST-1 (zbuild must be installable via npm/curl first).
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T23:39:44Z). Recorded by manifest-sync.'
   - id: ci-2
     title: "[Phase 0.5] Daemon-in-Actions mode (label-triggered pipeline)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1347,6 +1349,8 @@ issues:
 
       Future: Phase 3 daemon plugins (issues #45-55) implement the long-running
       version. CI-2 is the Actions-native variant; both share the label contract.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T23:52:13Z). Recorded by manifest-sync.'
   - id: ci-3
     title: "[Phase 0.5] Auth + permissions docs (PAT vs GITHUB_TOKEN, secrets)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1362,6 +1366,8 @@ issues:
 
       Deliverable: docs/CI-INTEGRATION.md sections covering auth, common
       setups, troubleshooting. Plus a one-page quickstart in README.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T23:52:16Z). Recorded by manifest-sync.'
   # ─── Phase 0.5 — Claude CLI surface & Code hooks (12 issues) ───────────
   - id: ccli-1
     title: "[Phase 0.5] Claude CLI: --output-format json structured output"
@@ -1392,6 +1398,8 @@ issues:
       Pass through MCP server connections (claude-flow, ruflo, etc.) to plugin
       agents that need them. Legacy connects via `.mcp.json`; zbuild needs the
       same surface so plugins can use tools beyond plain LLM call.
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T23:41:06Z). Recorded by manifest-sync.'
   - id: ccli-4
     title: "[Phase 0.5] Claude CLI: model override resolution (config + flag)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -1420,6 +1428,8 @@ issues:
       Support attaching to a long-running claude session (`--session-id`) so
       pipelines that span multiple stages can share a conversational context
       where useful (e.g., review stage seeing build's reasoning).
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T23:40:49Z). Recorded by manifest-sync.'
   - id: hook-1
     title: "[Phase 0.5] Claude Code hooks: PreToolUse (pre-bash, pre-edit validation)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"

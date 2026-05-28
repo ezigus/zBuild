@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-27T18:44:17Z (rolling 30-PR window)_
+_Last updated: 2026-05-28T03:19:52Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -52,3 +52,5 @@ _Last updated: 2026-05-27T18:44:17Z (rolling 30-PR window)_
 | #347 | [manifest-sync] Drift reconciliation | 2026-05-27 |
 | #350 | feat(manifest-sync): richer PR body + 3× daily schedule | 2026-05-27 |
 | #348 | [manifest-sync] Drift reconciliation | 2026-05-27 |
+| #409 | fix: harden abort-trap test against kcov timing | 2026-05-28 |
+| #395 | ci(#389): add lint step to reject hardcoded model names (ADR-003) | 2026-05-28 |
