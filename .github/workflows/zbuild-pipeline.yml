@@ -60,7 +60,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install zbuild
         run: bash install.sh
@@ -80,7 +80,7 @@ jobs:
 
       - name: Upload pipeline artifacts
         if: success()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: 'pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}'
           path: state/artifacts/
