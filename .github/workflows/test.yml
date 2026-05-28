@@ -125,14 +125,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install kcov
-        run: sudo apt-get install -y kcov python3
+        run: |
+          sudo apt-get install -y cmake g++ libdw-dev libssl-dev libcurl4-openssl-dev python3
+          git clone --depth=1 https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
+          cmake -S /tmp/kcov-src -B /tmp/kcov-build
+          sudo cmake --build /tmp/kcov-build --target install -j"$(nproc)"
       - name: Run coverage (unit tests)
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
           if command -v kcov >/dev/null 2>&1; then
-            kcov --include-path="$(pwd)/core,$(pwd)/scripts/lib" coverage-out bash scripts/run-tests.sh --tier unit || true
+            kcov --bash-parse-files-in-dir="$(pwd)" \
+                 --include-path="$(pwd)/core,$(pwd)/scripts/lib" \
+                 coverage-out bash scripts/run-tests.sh --tier unit || true
             echo "Coverage run complete"
-            echo "kcov version: $(kcov --version 2>&1 | head -1)"
             find coverage-out -name 'coverage.json' -exec echo "Found: {}" \; 2>/dev/null || echo "No coverage.json found"
           else
             echo "kcov not available — skipping coverage measurement"
