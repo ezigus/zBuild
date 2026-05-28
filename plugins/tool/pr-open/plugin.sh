@@ -10,11 +10,11 @@
 [[ -n "${_ZBUILD_PR_OPEN_LOADED:-}" ]] && return 0
 _ZBUILD_PR_OPEN_LOADED=1
 
-_PR_OPEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_PR_OPEN_ROOT="$(cd "$_PR_OPEN_DIR/../../.." && pwd)"
-
-# shellcheck source=../../../scripts/lib/helpers.sh
-source "$_PR_OPEN_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_PR_OPEN_DIR="$_ZBUILD_PLUGIN_DIR"
+_PR_OPEN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_PR_OPEN_ROOT/core/event-bus/event-bus.sh"
 

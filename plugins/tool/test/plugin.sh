@@ -12,8 +12,11 @@
 [[ -n "${_ZBUILD_TEST_STAGE_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_STAGE_LOADED=1
 
-_ZBUILD_TEST_STAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_ZBUILD_TEST_STAGE_ROOT="$(cd "$_ZBUILD_TEST_STAGE_DIR/../../.." && pwd)"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_ZBUILD_TEST_STAGE_DIR="$_ZBUILD_PLUGIN_DIR"
+_ZBUILD_TEST_STAGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # ─── Dependencies ─────────────────────────────────────────────────────────────
 # shellcheck source=../../../core/event-bus/event-bus.sh

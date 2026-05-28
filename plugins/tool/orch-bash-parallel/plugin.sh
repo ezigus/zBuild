@@ -15,8 +15,11 @@
 [[ -n "${_ZBUILD_ORCH_BASH_PARALLEL_LOADED:-}" ]] && return 0
 _ZBUILD_ORCH_BASH_PARALLEL_LOADED=1
 
-_ZBUILD_ORCH_PAR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_ZBUILD_ORCH_PAR_ROOT="$(cd "$_ZBUILD_ORCH_PAR_DIR/../../.." && pwd)"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_ZBUILD_ORCH_PAR_DIR="$_ZBUILD_PLUGIN_DIR"
+_ZBUILD_ORCH_PAR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/orch/local_engine.sh
 source "$_ZBUILD_ORCH_PAR_ROOT/core/orch/local_engine.sh"

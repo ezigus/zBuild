@@ -6,11 +6,11 @@
 [[ -n "${_ZBUILD_OUTPUT_LOADED:-}" ]] && return 0
 _ZBUILD_OUTPUT_LOADED=1
 
-_OUTPUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_OUTPUT_ROOT="$(cd "$_OUTPUT_DIR/../../.." && pwd)"
-
-# shellcheck source=../../../scripts/lib/helpers.sh
-source "$_OUTPUT_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_OUTPUT_DIR="$_ZBUILD_PLUGIN_DIR"
+_OUTPUT_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_OUTPUT_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/output/destinations.sh

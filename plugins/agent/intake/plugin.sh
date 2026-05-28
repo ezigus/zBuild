@@ -6,11 +6,11 @@
 [[ -n "${_ZBUILD_INTAKE_LOADED:-}" ]] && return 0
 _ZBUILD_INTAKE_LOADED=1
 
-_INTAKE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_INTAKE_ROOT="$(cd "$_INTAKE_DIR/../../.." && pwd)"
-
-# shellcheck source=../../../scripts/lib/helpers.sh
-source "$_INTAKE_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_INTAKE_DIR="$_ZBUILD_PLUGIN_DIR"
+_INTAKE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_INTAKE_ROOT/core/event-bus/event-bus.sh"
 
