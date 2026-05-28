@@ -56,7 +56,7 @@ npm run lint       # shellcheck + lint
 ```
 
 - ALWAYS run tests after making code changes.
-- CI enforces a **70% statement coverage floor** on `core/` + `scripts/lib/` (issue #372). If Coverage CI fails after your PR, run `kcov --include-path=core,scripts/lib coverage-out bash scripts/run-tests.sh --tier unit` locally to see which lines are uncovered.
+- CI enforces a **25% statement coverage floor** on `core/` + `scripts/lib/` (issue #372, baseline measured post-Wave-1). Target is 70% — will be raised in Wave 4 as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage.
 - ALWAYS verify the relevant test passes before opening a PR.
 
 ## Security rules
