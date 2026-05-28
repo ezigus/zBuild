@@ -47,6 +47,9 @@
     "state.recover",
     "state.corruption.unrecoverable",
     "detection.conflict",
-    "plugin.contract.violated"
+    "plugin.contract.violated",
+    "plugin.artifact.missing",
+    "plugin.run.artifact_check_failed",
+    "plugin.tamper.detected"
   ]
 }
