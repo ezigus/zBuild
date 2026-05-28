@@ -134,7 +134,7 @@ jobs:
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
           if command -v kcov >/dev/null 2>&1; then
-            kcov --include-path=core,scripts/lib coverage-out bash scripts/run-tests.sh --tier unit || true
+            kcov --include-path="$(pwd)/core,$(pwd)/scripts/lib" coverage-out bash scripts/run-tests.sh --tier unit || true
             echo "Coverage run complete"
           else
             echo "kcov not available — skipping coverage measurement"
