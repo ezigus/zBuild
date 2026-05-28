@@ -15,7 +15,7 @@
 #   build_stage_run         — derive paths, delegate to _build_stage_run_inner
 #   _build_stage_run_inner  — redact → route → extract diff → write artifacts
 #   build_stage_finalize    — emit plugin.finalize.complete
-#   build_stage_cleanup     — emit plugin.cleanup.done, return 0
+#   build_stage_cleanup     — emit plugin.cleanup.complete, return 0
 
 [[ -n "${_ZBUILD_BUILD_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_LOADED=1
@@ -234,6 +234,6 @@ build_stage_finalize() {
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
 build_stage_cleanup() {
-    emit_event "plugin.cleanup.done" "plugin=build"
+    emit_event "plugin.cleanup.complete" "plugin=build"
     return 0
 }

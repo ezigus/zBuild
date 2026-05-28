@@ -13,6 +13,7 @@ hooks:
   init: security_lens_init
   run: security_lens_run
   finalize: security_lens_finalize
+  cleanup: security_lens_cleanup
 
 requires:
   core:

@@ -154,3 +154,9 @@ security_lens_finalize() {
     emit_event "plugin.finalize.complete" "plugin=security-lens"
     return 0
 }
+
+# ─── cleanup ────────────────────────────────────────────────────────────────
+security_lens_cleanup() {
+    emit_event "plugin.cleanup.complete" "plugin=security-lens"
+    return 0
+}
