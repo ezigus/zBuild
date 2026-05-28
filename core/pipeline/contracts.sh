@@ -45,6 +45,7 @@ _check_artifact_contract() {
         in_outputs && /path:/ {
             sub(/^[[:space:]]*path:[[:space:]]*/, "")
             sub(/[[:space:]]*#.*/, "")
+            gsub(/^["'"'"']|["'"'"']$/, "")
             print
             exit
         }

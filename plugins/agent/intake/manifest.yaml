@@ -27,10 +27,12 @@ requires:
     - state
 
 outputs:
-  - path: ${state_dir}/scope-manifest.md
-    description: Scope manifest (canonical artifact, ADR-013)
-  - path: ${state_dir}/intake.md
-    description: Sanitized goal and context
+  - name: scope_manifest
+    path: ${state_dir}/scope-manifest.md
+    type: scope-manifest.md
+  - name: intake_goal
+    path: ${state_dir}/intake.md
+    type: intake.md
 
 provides:
   artifact_type: [scope-manifest.md, intake.md]
