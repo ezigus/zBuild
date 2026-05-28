@@ -7,8 +7,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/golden.sh
 source "$REPO_ROOT/scripts/lib/golden.sh"
 
 print_test_header "engine event shapes (#385) — model.route, model.outcome, bus envelope, scope-manifest fence"
@@ -21,6 +24,7 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
+# shellcheck source=../../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
 
 # Canonical timestamp used in all goldens — substituted in during normalisation.
@@ -31,7 +35,7 @@ CANONICAL_TS="2026-01-01T00:00:00.000Z"
 # files stable across runs without losing any other field.
 _normalise_event() {
     local jsonl_file="$1"
-    jq -c --arg ts "$CANONICAL_TS" '.ts = $ts' <(tail -1 "$jsonl_file")
+    jq -Sc --arg ts "$CANONICAL_TS" '.ts = $ts' <(tail -1 "$jsonl_file")
 }
 
 # ── G1: event-bus envelope shape ────────────────────────────────────────────
