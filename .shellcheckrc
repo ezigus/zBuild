@@ -1,0 +1,10 @@
+# .shellcheckrc — repo-wide shellcheck configuration
+# Freezes the surgical disable patterns already used throughout the codebase.
+# See: https://www.shellcheck.net/wiki/
+
+# Shell dialect: all scripts in this repo are bash.
+shell=bash
+
+# SC1090/SC1091: dynamic source paths (e.g. source "$REPO_ROOT/scripts/lib/helpers.sh")
+# are intentional — we don't specify -P or hardcode paths at the top of every file.
+disable=SC1090,SC1091

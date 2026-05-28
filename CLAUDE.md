@@ -67,6 +67,12 @@ npm run lint       # shellcheck + lint
 - Sanitize file paths to prevent directory traversal.
 - All LLM-bound text passes through `core/redaction/apply_scope_redaction` — no exceptions. A plugin that invokes a model directly is a bug.
 
+## Code style
+
+- **Function headers**: one-line comment above a function only when the WHY is non-obvious (hidden constraint, workaround, invariant). Never multi-line docstrings. Apply this on touch — no mass backfill.
+- **Shellcheck**: `.shellcheckrc` at repo root sets `shell=bash` and disables SC1090/SC1091 (dynamic source paths). Per-file `# shellcheck disable=SCXXXX` is still fine for local suppressions.
+- **Editor conventions**: `.editorconfig` at repo root: 4-space indent for `.sh`, 2-space for YAML/JSON, LF line endings, final newline, no trailing whitespace.
+
 ## Models as data, not strings
 
 - Code never references `haiku`, `sonnet`, `opus`, etc. by name.
