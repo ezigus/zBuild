@@ -18,30 +18,8 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "core/pipeline/dispatch — stage→plugin resolver (#365)"
 setup_test_env "pipeline-dispatch"
 
-# ─── Fixture factory ─────────────────────────────────────────────────────────
-# Make a minimal valid plugin manifest that passes validate_manifest().
-# _make_plugin id [kind] [run_exit_code] [extra_dir_suffix]
-_make_plugin() {
-    local id="$1" kind="${2:-agent}" exit_code="${3:-0}" suffix="${4:-}"
-    local dir="$TEST_TEMP_DIR/plugins/$kind/${id}${suffix}"
-    mkdir -p "$dir"
-    local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Test $id
-kind: $kind
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-EOF
-    cat > "$dir/plugin.sh" <<EOF
-${fn}() { return $exit_code; }
-EOF
-    echo "$dir"
-}
+# Use shared factory from test-helpers.sh (Wave 4)
+_make_plugin() { mock_plugin_factory "$@"; }
 
 # ─── Shared env — point dispatch at the test temp dir ───────────────────────
 export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"

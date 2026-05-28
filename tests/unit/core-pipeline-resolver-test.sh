@@ -13,36 +13,8 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "core/pipeline/resolver — role-based plugin resolver (ADR-009)"
 setup_test_env "pipeline-resolver"
 
-# ─── Fixture factory ─────────────────────────────────────────────────────────
-# _make_plugin id [kind] [exit_code] [platform] [role] [version]
-_make_plugin() {
-    local id="$1" kind="${2:-agent}" exit_code="${3:-0}" platform="${4:-}" role="${5:-}" version="${6:-0.0.1}"
-    local dir="$TEST_TEMP_DIR/plugins/$kind/$id"
-    mkdir -p "$dir"
-    local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Test $id
-kind: $kind
-version: $version
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-EOF
-    # Append optional fields after the required block
-    [[ -n "$platform" ]] && echo "platform: $platform" >> "$dir/manifest.yaml"
-    if [[ -n "$role" ]]; then
-        cat >> "$dir/manifest.yaml" <<EOF
-provides:
-  role: $role
-EOF
-    fi
-    cat > "$dir/plugin.sh" <<EOF
-${fn}() { return $exit_code; }
-EOF
-}
+# Use shared factory from test-helpers.sh (Wave 4)
+_make_plugin() { mock_plugin_factory "$@"; }
 
 # ─── Shared env — point all subsystems at the test temp dir ─────────────────
 export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -107,6 +79,7 @@ set -e
 
 event_count=$(grep -c '"registry.role-unresolved"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
 assert_gt "registry.role-unresolved event emitted on no match" "$event_count" "0"
+assert_event_emitted "registry.role-unresolved event via assert_event_emitted" "$ZBUILD_EVENTS_JSONL" "registry.role-unresolved"
 
 # ─── Test 6: tie-break by version — higher version wins ──────────────────────
 _make_plugin "coder-old" "agent" 0 "" "coder" "0.1.0"

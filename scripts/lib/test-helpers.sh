@@ -344,6 +344,56 @@ MOCKEOF
   export ZBUILD_MOCK_CLAUDE_RC="$rc"
 }
 
+# ── mock_plugin_factory ───────────────────────────────────────────────────────
+# Creates a minimal valid plugin directory under $TEST_TEMP_DIR/plugins/.
+# Prints the directory path to stdout.
+#
+# Usage: mock_plugin_factory <id> [kind=agent] [exit_code=0] [platform=] [role=] [version=0.0.1]
+mock_plugin_factory() {
+    local id="$1" kind="${2:-agent}" exit_code="${3:-0}" platform="${4:-}" role="${5:-}" version="${6:-0.0.1}"
+    local dir="$TEST_TEMP_DIR/plugins/$kind/$id"
+    mkdir -p "$dir"
+    local fn; fn="${id//-/_}_run"
+    cat > "$dir/manifest.yaml" <<EOF
+id: $id
+name: Test $id
+kind: $kind
+version: $version
+hooks:
+  run: $fn
+requires:
+  core:
+    - redaction
+EOF
+    [[ -n "$platform" ]] && printf 'platform: %s\n' "$platform" >> "$dir/manifest.yaml"
+    if [[ -n "$role" ]]; then
+        printf 'provides:\n  role: %s\n' "$role" >> "$dir/manifest.yaml"
+    fi
+    cat > "$dir/plugin.sh" <<EOF
+${fn}() { return $exit_code; }
+EOF
+    printf '%s\n' "$dir"
+}
+
+# ── assert_event_emitted ──────────────────────────────────────────────────────
+# Asserts that an event of the given type appears in the JSONL events log.
+#
+# Usage: assert_event_emitted <desc> <events_jsonl_path> <event_type>
+assert_event_emitted() {
+    local desc="$1" events_file="$2" event_type="$3"
+    if [[ ! -f "$events_file" ]]; then
+        assert_fail "$desc" "events file not found: $events_file"
+        return
+    fi
+    local found
+    found="$(jq -r --arg t "$event_type" 'select(.type == $t) | .type' "$events_file" 2>/dev/null | head -1 || true)"
+    if [[ "$found" == "$event_type" ]]; then
+        assert_pass "$desc"
+    else
+        assert_fail "$desc" "event '$event_type' not found in $events_file"
+    fi
+}
+
 # Assert no direct anthropic API calls were made (chokepoint enforcement)
 mock_anthropic_api() {
   local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"
