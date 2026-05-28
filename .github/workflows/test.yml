@@ -146,29 +146,19 @@ jobs:
         if: always()
         run: |
           report="$(find coverage-out -name 'coverage.json' 2>/dev/null | head -1)"
-          {
-            echo "## Coverage Diagnostics"
-            echo ""
-            if [[ -z "$report" || ! -f "$report" ]]; then
-              echo "No coverage.json found — kcov did not produce output."
-            else
-              echo "**Report**: \`$report\`"
-              instrumented="$(find coverage-out -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')"
-              echo "**Instrumented files**: ${instrumented}"
-              echo ""
-              echo "| File | Coverage |"
-              echo "|------|----------|"
-              python3 - "$report" <<'PYEOF'
-import json, sys, os
-d = json.load(open(sys.argv[1]))
-files = d.get('source_files') or []
-for f in sorted(files, key=lambda x: x.get('name','')):
-    name = os.path.relpath(f.get('name','?'))
-    pct  = f.get('percent_covered', 0)
-    print(f"| `{name}` | {pct:.1f}% |")
-PYEOF
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "## Coverage Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z "$report" || ! -f "$report" ]]; then
+            echo "No coverage.json found — kcov did not produce output." >> "$GITHUB_STEP_SUMMARY"
+          else
+            instrumented="$(find coverage-out -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')"
+            echo "**Instrumented files**: ${instrumented}" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| File | Coverage |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|------|----------|" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.source_files[]? | "| `\(.name)` | \(.percent_covered)% |"' "$report" \
+              | sort >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          fi
       - name: Enforce coverage floor (issue #372)
         env:
           COVERAGE_FLOOR: "70"
