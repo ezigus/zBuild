@@ -189,6 +189,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.jso
 
 out="$(bash "$RUNNER" --issue 83 --dry-run --template standard 2>&1)"
 assert_contains "--template standard dry-run shows intake"  "$out" "intake"
+assert_contains "--template standard dry-run shows plan"    "$out" "plan"
 assert_contains "--template standard dry-run shows build"   "$out" "build"
 assert_contains "--template standard dry-run shows review"  "$out" "review"
 

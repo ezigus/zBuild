@@ -8,6 +8,9 @@ stages:
   - id: intake
     gate: auto
     roles: [intake]
+  - id: plan
+    gate: auto
+    roles: [planner]
   - id: build
     gate: auto
     roles: [builder]

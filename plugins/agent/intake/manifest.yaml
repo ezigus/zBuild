@@ -26,6 +26,12 @@ requires:
     - event-bus
     - state
 
+outputs:
+  - path: ${state_dir}/scope-manifest.md
+    description: Scope manifest (canonical artifact, ADR-013)
+  - path: ${state_dir}/intake.md
+    description: Sanitized goal and context
+
 provides:
   artifact_type: [scope-manifest.md, intake.md]
   role: intake
