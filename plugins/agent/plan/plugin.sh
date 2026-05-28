@@ -11,7 +11,7 @@
 #   plan_run         — derive paths, delegate to _plan_run_inner
 #   _plan_run_inner  — redact → route → validate → emit stage.complete
 #   plan_finalize    — emit plugin.finalize.complete
-#   plan_cleanup     — emit plugin.cleanup.done, return 0
+#   plan_cleanup     — emit plugin.cleanup.complete, return 0
 
 [[ -n "${_ZBUILD_PLAN_LOADED:-}" ]] && return 0
 _ZBUILD_PLAN_LOADED=1
@@ -167,6 +167,6 @@ plan_finalize() {
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
 plan_cleanup() {
-    emit_event "plugin.cleanup.done" "plugin=plan"
+    emit_event "plugin.cleanup.complete" "plugin=plan"
     return 0
 }

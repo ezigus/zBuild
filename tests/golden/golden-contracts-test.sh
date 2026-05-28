@@ -47,5 +47,22 @@ else
     assert_fail "G3: CLI dry-run output matches golden" "assert_golden returned $g3_rc"
 fi
 
+# ─── G4: plugin lifecycle event types golden ────────────────────────────────
+# Verifies canonical hook outcome event names (plugin.*.complete, not *.done).
+# Any future drift from "complete" → "done" (or new suffix) fails this golden.
+_lifecycle_types="$(jq -r '
+  .known_types[]
+  | select(test("^plugin\\.(init|run|finalize|cleanup)\\.complete$"))
+' "$REPO_ROOT/config/event-schema.json" | sort)"
+set +e
+assert_golden "plugin-lifecycle-event-types" "$_lifecycle_types"
+g4_rc=$?
+set -e
+if [[ $g4_rc -eq 0 ]]; then
+    assert_pass "G4: canonical plugin lifecycle event types match golden"
+else
+    assert_fail "G4: canonical plugin lifecycle event types" "assert_golden returned $g4_rc"
+fi
+
 print_test_results
 exit $((FAIL > 0))
