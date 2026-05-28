@@ -184,39 +184,50 @@ set -e
 
 assert_eq "empty ZBUILD_GOAL with no issue returns rc=2" "2" "$rc"
 
-# ─── gh mock helper for --issue tests ────────────────────────────────────────
-# $TEST_TEMP_DIR/bin is already on PATH (see scripts/lib/test-helpers.sh:62),
-# so dropping an executable there shadows the real `gh`.
-_make_gh_mock() {
-    # $1 = title, $2 = body (may contain newlines via $'...'), $3 = exit code
-    local _title="$1" _body="$2" _rc="$3"
-    cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK_EOF
-#!/usr/bin/env bash
-# Minimal gh mock for intake tests. Only handles: gh issue view N --json title,body --jq <expr>
-if [[ "\$1" == "issue" && "\$2" == "view" && "\$4" == "--json" ]]; then
-    if [[ "$_rc" -ne 0 ]]; then
-        exit $_rc
-    fi
-    # Build canonical JSON, then pipe through jq with the caller's --jq expr.
-    payload=\$(jq -nc --arg t "$_title" --arg b "$_body" '{title:\$t, body:\$b}')
-    if [[ "\$6" == "--jq" ]]; then
-        printf '%s' "\$payload" | jq -r "\$7"
-    else
-        printf '%s' "\$payload"
-    fi
-    exit 0
-fi
-exit 0
-MOCK_EOF
-    chmod +x "$TEST_TEMP_DIR/bin/gh"
+# ─── gh mock for --issue tests ───────────────────────────────────────────────
+# Use the shared mock_binary helper (no string interpolation into the mock
+# script — title/body/rc are read at runtime from env vars, so arbitrary
+# content with quotes/backticks/$() is safe). Unrecognized invocations
+# exit 2 with a diagnostic so contract drift in the production `gh` call
+# fails the test loudly instead of silently succeeding.
+mock_binary "gh" '
+case "${1:-}:${2:-}:${4:-}" in
+    issue:view:--json)
+        if [[ "${MOCK_GH_RC:-0}" -ne 0 ]]; then
+            exit "${MOCK_GH_RC}"
+        fi
+        payload="$(jq -nc \
+            --arg t "${MOCK_GH_ISSUE_TITLE:-}" \
+            --arg b "${MOCK_GH_ISSUE_BODY:-}" \
+            "{title:\$t, body:\$b}")"
+        if [[ "${6:-}" == "--jq" ]]; then
+            printf "%s" "$payload" | jq -r "$7"
+        else
+            printf "%s" "$payload"
+        fi
+        exit 0
+        ;;
+    *)
+        printf "mock gh: unexpected args: %s\n" "$*" >&2
+        exit 2
+        ;;
+esac
+'
+
+_set_gh_mock() {
+    # $1=title $2=body $3=exit-rc
+    export MOCK_GH_ISSUE_TITLE="$1"
+    export MOCK_GH_ISSUE_BODY="$2"
+    export MOCK_GH_RC="$3"
 }
 
-_unmake_gh_mock() {
+_clear_gh_mock() {
+    unset MOCK_GH_ISSUE_TITLE MOCK_GH_ISSUE_BODY MOCK_GH_RC
     rm -f "$TEST_TEMP_DIR/bin/gh"
 }
 
 # ─── Test 10: --issue mode fetches real title+body via gh ────────────────────
-_make_gh_mock "Fix login crash on launch" $'Steps to reproduce:\n1. Open app\n2. Tap login' 0
+_set_gh_mock "Fix login crash on launch" $'Steps to reproduce:\n1. Open app\n2. Tap login' 0
 unset ZBUILD_GOAL 2>/dev/null || true
 export ZBUILD_ISSUE="42"
 
@@ -232,7 +243,7 @@ assert_contains "--issue mode writes fetched body to intake.md" \
     "$(cat "$STATE_DIR/intake.md")" "Steps to reproduce"
 
 # ─── Test 10b: gh failure falls back to placeholder + warns ─────────────────
-_make_gh_mock "" "" 1
+_set_gh_mock "" "" 1
 
 set +e
 intake_stderr="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
@@ -246,7 +257,7 @@ assert_contains "gh failure emits visible warn" \
     "$intake_stderr" "gh issue view #42 failed"
 
 # ─── Test 10c: null body — title-only fetch is acceptable ───────────────────
-_make_gh_mock "Refactor cache layer" "" 0
+_set_gh_mock "Refactor cache layer" "" 0
 
 set +e
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
@@ -257,7 +268,7 @@ assert_eq "title-only fetch returns rc=0" "0" "$rc"
 assert_contains "title-only intake.md contains title" \
     "$(cat "$STATE_DIR/intake.md")" "Refactor cache layer"
 
-_unmake_gh_mock
+_clear_gh_mock
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env

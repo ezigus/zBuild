@@ -72,7 +72,11 @@ intake_run() {
             # --jq emits "title\n\nbody" (title-only when body is null/empty).
             # gh failure or empty result → fall back to placeholder + warn so
             # offline/CI runs without auth still complete.
-            local fetched="" gh_rc=0
+            #
+            # Save/restore errexit via $- so callers running with `set +e`
+            # don't get -e flipped back on as a side effect.
+            local fetched="" gh_rc=0 _had_errexit=0
+            [[ $- == *e* ]] && _had_errexit=1
             set +e
             fetched="$(gh issue view "$issue" \
                 --json title,body \
@@ -83,7 +87,7 @@ intake_run() {
                         else $t + "\n\n" + $b
                         end' 2>/dev/null)"
             gh_rc=$?
-            set -e
+            [[ $_had_errexit -eq 1 ]] && set -e
             if [[ $gh_rc -eq 0 && -n "$fetched" ]]; then
                 goal="$fetched"
             else
