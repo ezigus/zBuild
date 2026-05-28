@@ -41,8 +41,8 @@ _ZBUILD_PLUGIN_BOOTSTRAP_LOADED=1
 #
 # Also sources scripts/lib/helpers.sh so plugins need not repeat that line.
 #
-# Returns 0 on success; 1 if the resolved root does not look like the repo
-# (i.e. scripts/lib/helpers.sh is missing), printing an error to stderr.
+# Returns 0 on success; 1 on any error (empty arg, cannot resolve dir/root,
+# helpers.sh missing, or helpers.sh fails to source), printing diagnostics to stderr.
 zbuild_plugin_bootstrap() {
     local plugin_source="${1:-}"
 
@@ -78,7 +78,10 @@ zbuild_plugin_bootstrap() {
     _ZBUILD_PLUGIN_ROOT="$_proot"
 
     # shellcheck source=./helpers.sh
-    source "$_helpers"
+    source "$_helpers" || {
+        printf 'plugin-bootstrap: failed to source helpers.sh: %s\n' "$_helpers" >&2
+        return 1
+    }
 
     return 0
 }

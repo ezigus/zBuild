@@ -25,7 +25,6 @@ assert_eq "load guard set" "1" "${_ZBUILD_PLUGIN_BOOTSTRAP_LOADED:-}"
 # ─── Test 2: zbuild_plugin_bootstrap resolves _ZBUILD_PLUGIN_DIR correctly ───
 print_test_section "2. zbuild_plugin_bootstrap resolves _ZBUILD_PLUGIN_DIR"
 
-# Simulate a plugin located at plugins/agent/build/plugin.sh
 _ZBUILD_PLUGIN_DIR=""
 _ZBUILD_PLUGIN_ROOT=""
 
@@ -42,14 +41,40 @@ assert_eq "_ZBUILD_PLUGIN_ROOT is the repo root" \
     "$REPO_ROOT" \
     "$_ZBUILD_PLUGIN_ROOT"
 
-# ─── Test 4: helpers.sh is sourced — warn/error functions are available ───────
-print_test_section "4. helpers.sh sourced — warn and error functions exist"
-assert_eq "warn function defined" "function" "$(type -t warn 2>/dev/null || echo missing)"
-assert_eq "error function defined" "function" "$(type -t error 2>/dev/null || echo missing)"
+# ─── Test 4: helpers.sh is sourced — verify via subshell with clean load guard ──
+# Run in a subshell that unsets the helpers load guard so we can verify
+# zbuild_plugin_bootstrap actually sources helpers.sh rather than relying on
+# the outer shell's already-sourced state.
+print_test_section "4. helpers.sh sourced — warn and error functions exist in fresh env"
+helpers_sourced_ok="$(
+    unset _ZBUILD_HELPERS_LOADED 2>/dev/null || true
+    unset -f warn error 2>/dev/null || true
+    # Re-source bootstrap with cleared state (must unset the load guard too)
+    unset _ZBUILD_PLUGIN_BOOTSTRAP_LOADED 2>/dev/null || true
+    # shellcheck source=../../scripts/lib/plugin-bootstrap.sh
+    source "$REPO_ROOT/scripts/lib/plugin-bootstrap.sh"
+    _ZBUILD_PLUGIN_DIR=""
+    _ZBUILD_PLUGIN_ROOT=""
+    zbuild_plugin_bootstrap "$REPO_ROOT/plugins/agent/build/plugin.sh" 2>/dev/null
+    if declare -f warn >/dev/null 2>&1 && declare -f error >/dev/null 2>&1; then
+        echo "ok"
+    else
+        echo "missing"
+    fi
+)"
+assert_eq "warn and error defined after zbuild_plugin_bootstrap" "ok" "$helpers_sourced_ok"
 
 # ─── Test 5: _ZBUILD_HELPERS_LOADED guard is set (helpers.sh sourced) ─────────
-print_test_section "5. _ZBUILD_HELPERS_LOADED is set (helpers.sh was sourced)"
-assert_eq "_ZBUILD_HELPERS_LOADED set" "1" "${_ZBUILD_HELPERS_LOADED:-}"
+print_test_section "5. _ZBUILD_HELPERS_LOADED is set in fresh env after zbuild_plugin_bootstrap"
+helpers_loaded="$(
+    unset _ZBUILD_HELPERS_LOADED 2>/dev/null || true
+    unset _ZBUILD_PLUGIN_BOOTSTRAP_LOADED 2>/dev/null || true
+    # shellcheck source=../../scripts/lib/plugin-bootstrap.sh
+    source "$REPO_ROOT/scripts/lib/plugin-bootstrap.sh"
+    zbuild_plugin_bootstrap "$REPO_ROOT/plugins/agent/build/plugin.sh" 2>/dev/null
+    echo "${_ZBUILD_HELPERS_LOADED:-unset}"
+)"
+assert_eq "_ZBUILD_HELPERS_LOADED set in fresh env" "1" "$helpers_loaded"
 
 # ─── Test 6: works for a tool plugin (plugins/tool/<name>/) ───────────────────
 print_test_section "6. zbuild_plugin_bootstrap works for plugins/tool/ path"
@@ -77,11 +102,10 @@ assert_exit_code "empty arg exits 1" "1" "$rc"
 # ─── Test 8: path that cannot resolve repo root exits 1 ──────────────────────
 print_test_section "8. bad path (helpers.sh absent) exits 1"
 set +e
-# Provide a path that is only 1 level inside a tmp dir so 3-levels-up hits /tmp
-# or somewhere without scripts/lib/helpers.sh
 zbuild_plugin_bootstrap "/tmp/fake-plugin.sh" 2>/dev/null
 rc=$?
 set -e
 assert_exit_code "bad path exits 1" "1" "$rc"
 
+cleanup_test_env
 print_test_results
