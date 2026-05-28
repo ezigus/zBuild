@@ -53,7 +53,7 @@ first_output="$(awk '
     in_outputs && /path:/ {
         sub(/^[[:space:]]*path:[[:space:]]*/, "")
         sub(/[[:space:]]*#.*/, "")
-        gsub(/^["']|["']$/, "")
+        gsub(/^["'"'"']|["'"'"']$/, "")
         print; exit
     }
 ' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
