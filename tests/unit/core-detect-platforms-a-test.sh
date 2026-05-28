@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests: core/detect/platforms.sh — Platform detection engine (ADR-009) — Part A
-# Covers (tests 1-12): basic platform detection, indicator files, platform.json
+# Covers (tests 1-12): basic platform detection, indicator files, platforms.json
 #         written to state dir, idempotency, override file, and detect.signals
 #         from manifest (issues #195).
 set -euo pipefail
@@ -295,4 +295,3 @@ rm -rf "$GENERIC_MARKER_DIR"
 
 cleanup_test_env
 print_test_results
-exit $((FAIL > 0))

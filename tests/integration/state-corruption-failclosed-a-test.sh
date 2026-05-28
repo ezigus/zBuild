@@ -332,4 +332,3 @@ assert_event_emitted \
 
 cleanup_test_env
 print_test_results
-exit $((FAIL > 0))

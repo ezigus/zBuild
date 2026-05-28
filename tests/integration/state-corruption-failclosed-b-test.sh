@@ -3,7 +3,7 @@
 #
 # Issue #293: Before the fix, locked_state_update warned on corruption and passed
 # corrupt bytes to the update function.  After the fix it must:
-#   6. All of the above hold on the no-flock fallback path (ZBUILD_HAS_FLOCK=0).
+#   6. All of the above hold on the no-flock fallback path (zbuild_has_flock() overridden).
 #
 # Part B covers: Scenarios 6-10
 #   Scenario 6: state.corruption.unrecoverable payload fields are correct
@@ -309,4 +309,3 @@ fi
 
 cleanup_test_env
 print_test_results
-exit $((FAIL > 0))
