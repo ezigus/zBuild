@@ -169,8 +169,8 @@ EOF
 bash "$RUNNER" --issue 83 2>/dev/null &
 runner_pid=$!
 # Poll until runner creates events.jsonl (EXIT trap set up before first event), timeout 10s.
-_t=0
-until [[ -f "$EVENTS_JSONL" ]] || [[ $_t -ge 10 ]]; do sleep 0.3; _t=$((_t + 1)); done
+_deadline=$(( SECONDS + 10 ))
+until [[ -f "$EVENTS_JSONL" ]] || [[ $SECONDS -ge $_deadline ]]; do sleep 0.3; done
 kill "$runner_pid" 2>/dev/null || true
 wait "$runner_pid" 2>/dev/null || true
 
