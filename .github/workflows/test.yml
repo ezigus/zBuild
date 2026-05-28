@@ -155,16 +155,7 @@ jobs:
             exit 0
           fi
           echo "Using report: $report"
-          pct="$(python3 -c "
-          import json
-          d = json.load(open('$report'))
-          if 'percent_covered' in d:
-              print(d['percent_covered'])
-          elif isinstance(d.get('total'), dict) and 'percent_covered' in d['total']:
-              print(d['total']['percent_covered'])
-          else:
-              print('0')
-          " 2>/dev/null || echo "0")"
+          pct="$(python3 -c "import json; d=json.load(open('$report')); print(d.get('percent_covered') or (d.get('total') or {}).get('percent_covered') or '0')" 2>/dev/null || echo "0")"
           pct_int="${pct%%.*}"
           echo "Coverage: ${pct}% (floor: ${COVERAGE_FLOOR}%)"
           if [[ "$pct_int" -eq 0 ]]; then
