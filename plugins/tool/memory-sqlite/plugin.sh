@@ -61,7 +61,7 @@ memory_backend_init() {
 
     if ! command -v sqlite3 >/dev/null 2>&1; then
         warn "memory-sqlite: sqlite3 not found; memory operations will fail" >&2 || true
-        return 1
+        return 2
     fi
 
     local timeout_ms
@@ -83,7 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_namespace ON memory (namespace);
 SQL
     )" || {
         warn "memory-sqlite: schema init failed: $err" >&2 || true
-        return 1
+        return 2
     }
     return 0
 }
