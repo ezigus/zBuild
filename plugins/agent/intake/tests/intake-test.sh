@@ -184,7 +184,50 @@ set -e
 
 assert_eq "empty ZBUILD_GOAL with no issue returns rc=2" "2" "$rc"
 
-# ─── Test 10: --issue mode (ZBUILD_GOAL="", ZBUILD_ISSUE=42) → rc=0 ──────────
+# ─── gh mock for --issue tests ───────────────────────────────────────────────
+# Use the shared mock_binary helper (no string interpolation into the mock
+# script — title/body/rc are read at runtime from env vars, so arbitrary
+# content with quotes/backticks/$() is safe). Unrecognized invocations
+# exit 2 with a diagnostic so contract drift in the production `gh` call
+# fails the test loudly instead of silently succeeding.
+mock_binary "gh" '
+case "${1:-}:${2:-}:${4:-}" in
+    issue:view:--json)
+        if [[ "${MOCK_GH_RC:-0}" -ne 0 ]]; then
+            exit "${MOCK_GH_RC}"
+        fi
+        payload="$(jq -nc \
+            --arg t "${MOCK_GH_ISSUE_TITLE:-}" \
+            --arg b "${MOCK_GH_ISSUE_BODY:-}" \
+            "{title:\$t, body:\$b}")"
+        if [[ "${6:-}" == "--jq" ]]; then
+            printf "%s" "$payload" | jq -r "$7"
+        else
+            printf "%s" "$payload"
+        fi
+        exit 0
+        ;;
+    *)
+        printf "mock gh: unexpected args: %s\n" "$*" >&2
+        exit 2
+        ;;
+esac
+'
+
+_set_gh_mock() {
+    # $1=title $2=body $3=exit-rc
+    export MOCK_GH_ISSUE_TITLE="$1"
+    export MOCK_GH_ISSUE_BODY="$2"
+    export MOCK_GH_RC="$3"
+}
+
+_clear_gh_mock() {
+    unset MOCK_GH_ISSUE_TITLE MOCK_GH_ISSUE_BODY MOCK_GH_RC
+    rm -f "$TEST_TEMP_DIR/bin/gh"
+}
+
+# ─── Test 10: --issue mode fetches real title+body via gh ────────────────────
+_set_gh_mock "Fix login crash on launch" $'Steps to reproduce:\n1. Open app\n2. Tap login' 0
 unset ZBUILD_GOAL 2>/dev/null || true
 export ZBUILD_ISSUE="42"
 
@@ -194,8 +237,38 @@ rc=$?
 set -e
 
 assert_eq "--issue mode with no goal text returns rc=0" "0" "$rc"
-assert_contains "--issue mode writes issue ref to intake.md" \
-    "$(cat "$STATE_DIR/intake.md")" "issue #42"
+assert_contains "--issue mode writes fetched title to intake.md" \
+    "$(cat "$STATE_DIR/intake.md")" "Fix login crash on launch"
+assert_contains "--issue mode writes fetched body to intake.md" \
+    "$(cat "$STATE_DIR/intake.md")" "Steps to reproduce"
+
+# ─── Test 10b: gh failure falls back to placeholder + warns ─────────────────
+_set_gh_mock "" "" 1
+
+set +e
+intake_stderr="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+assert_eq "gh failure still returns rc=0 (placeholder fallback)" "0" "$rc"
+assert_contains "fallback intake.md contains placeholder issue ref" \
+    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #42"
+assert_contains "gh failure emits visible warn" \
+    "$intake_stderr" "gh issue view #42 failed"
+
+# ─── Test 10c: null body — title-only fetch is acceptable ───────────────────
+_set_gh_mock "Refactor cache layer" "" 0
+
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "title-only fetch returns rc=0" "0" "$rc"
+assert_contains "title-only intake.md contains title" \
+    "$(cat "$STATE_DIR/intake.md")" "Refactor cache layer"
+
+_clear_gh_mock
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env

@@ -68,7 +68,32 @@ intake_run() {
     # Runner exports ZBUILD_GOAL="" in --issue runs, so we fall back rather than hard-fail.
     if [[ -z "$goal" ]]; then
         if [[ -n "$issue" && "$issue" != "0" ]]; then
-            goal="GitHub issue #${issue}"
+            # Fetch real title + body from GitHub so the plan stage has context.
+            # --jq emits "title\n\nbody" (title-only when body is null/empty).
+            # gh failure or empty result → fall back to placeholder + warn so
+            # offline/CI runs without auth still complete.
+            #
+            # Save/restore errexit via $- so callers running with `set +e`
+            # don't get -e flipped back on as a side effect.
+            local fetched="" gh_rc=0 _had_errexit=0
+            [[ $- == *e* ]] && _had_errexit=1
+            set +e
+            fetched="$(gh issue view "$issue" \
+                --json title,body \
+                --jq '(.title // "") as $t
+                      | (.body  // "") as $b
+                      | if ($t | length) == 0 then ""
+                        elif ($b | length) == 0 then $t
+                        else $t + "\n\n" + $b
+                        end' 2>/dev/null)"
+            gh_rc=$?
+            [[ $_had_errexit -eq 1 ]] && set -e
+            if [[ $gh_rc -eq 0 && -n "$fetched" ]]; then
+                goal="$fetched"
+            else
+                warn "intake_run: gh issue view #${issue} failed (rc=${gh_rc}); using placeholder"
+                goal="GitHub issue #${issue}"
+            fi
         else
             error "intake_run: ZBUILD_GOAL is required (or pass --issue <N>)"
             return 2
