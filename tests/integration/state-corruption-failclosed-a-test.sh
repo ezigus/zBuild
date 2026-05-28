@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: core/state/atomic.sh — locked_state_update fail-closed on JSON corruption.
+# Tests: core/state/atomic.sh — locked_state_update fail-closed on JSON corruption — Part A
 #
 # Issue #293: Before the fix, locked_state_update warned on corruption and passed
 # corrupt bytes to the update function.  After the fix it must:
@@ -10,7 +10,13 @@
 #   4. Pass the RECOVERED data (not corrupt data, not empty) to the update function.
 #   5. After a successful .bak recovery + update the new .bak reflects the
 #      recovered content, not the corrupt file.
-#   6. All of the above hold on the no-flock fallback path (ZBUILD_HAS_FLOCK=0).
+#
+# Part A covers: Scenarios 1-5
+#   Scenario 1: empty primary triggers .bak recovery
+#   Scenario 2: partial write (truncated JSON) triggers .bak recovery
+#   Scenario 3: update_fn receives recovered data, not corrupt bytes
+#   Scenario 4: post-recovery .bak reflects recovered content
+#   Scenario 5: both primary and .bak corrupt — fail-closed + event emitted
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,9 +25,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "state corruption fail-closed — locked_state_update (#293)"
+print_test_header "state corruption fail-closed Part A (scenarios 1-5) — locked_state_update (#293)"
 
-setup_test_env "state-corruption-failclosed"
+setup_test_env "state-corruption-failclosed-a"
 
 # ─── shared infrastructure ───────────────────────────────────────────────────
 
@@ -321,208 +327,6 @@ assert_event_emitted \
     "both corrupt: event payload includes reason field" \
     "state.corruption.unrecoverable" \
     "reason"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 6 — Event payload content validation (state_file points at actual file)
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 6: state.corruption.unrecoverable payload fields are correct"
-reset_scenario
-
-printf '{garbage' > "$STATE_FILE"
-printf '{garbage bak' > "${STATE_FILE}.bak"
-: > "$ZBUILD_EVENTS_JSONL"
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-set -e
-
-if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
-    matched_line="$(grep -F '"state.corruption.unrecoverable"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || true)"
-    if [[ -n "$matched_line" ]]; then
-        # state_file check: try well-structured path first, then raw string search.
-        # The raw path covers the pre-fix malformed single-JSON-blob emit call.
-        emitted_state_file="$(echo "$matched_line" | jq -r '.data.state_file // empty' 2>/dev/null || true)"
-        if [[ -n "$emitted_state_file" && \
-              ("$emitted_state_file" == "$STATE_FILE" || \
-               "$(basename "$emitted_state_file")" == "$(basename "$STATE_FILE")") ]]; then
-            assert_pass "event payload: state_file references the correct path"
-        elif echo "$matched_line" | grep -qF '"state_file"' 2>/dev/null; then
-            # state_file key is present (pre-fix encoding embeds full JSON as key)
-            assert_pass "event payload: state_file key present in event"
-        else
-            assert_fail \
-                "event payload: state_file key missing from event" \
-                "event: $matched_line"
-        fi
-
-        # reason check: try well-structured path first, then raw string search.
-        emitted_reason="$(echo "$matched_line" | jq -r '.data.reason // empty' 2>/dev/null || true)"
-        if [[ -n "$emitted_reason" ]]; then
-            assert_pass "event payload: reason field is non-empty ('$emitted_reason')"
-        elif echo "$matched_line" | grep -qF '"reason"' 2>/dev/null; then
-            assert_pass "event payload: reason key present in event"
-        else
-            assert_fail \
-                "event payload: reason key missing from event — fixed code must pass reason=... to emit_event" \
-                "event: $matched_line"
-        fi
-    else
-        assert_fail \
-            "event payload validation: no state.corruption.unrecoverable event found" \
-            "events.jsonl: $(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo '<empty>')"
-    fi
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 7 — No-flock fallback: empty primary, valid .bak recovers correctly
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 7: no-flock fallback — empty primary triggers .bak recovery"
-reset_scenario
-
-# Override zbuild_has_flock to simulate systems without flock
-zbuild_has_flock() { return 1; }
-
-printf '%s' "$VALID_JSON" > "${STATE_FILE}.bak"
-: > "$STATE_FILE"
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-assert_eq \
-    "no-flock / empty primary: locked_state_update returns 0 after .bak recovery" \
-    "0" "$lsu_rc"
-
-if [[ -f "$STATE_FILE" ]]; then
-    set +e; jq empty "$STATE_FILE" >/dev/null 2>&1; jq_rc=$?; set -e
-    assert_eq \
-        "no-flock / empty primary: output state is valid JSON" \
-        "0" "$jq_rc"
-
-    if [[ $jq_rc -eq 0 ]]; then
-        stage_val="$(jq -r '.current_stage // empty' "$STATE_FILE" 2>/dev/null || true)"
-        assert_eq \
-            "no-flock / empty primary: recovered data passed to update fn" \
-            "build" "$stage_val"
-    fi
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 8 — No-flock fallback: both corrupt → fail-closed + event emitted
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 8: no-flock fallback — both corrupt fail-closed + event"
-reset_scenario
-# zbuild_has_flock is still overridden from scenario 7
-
-printf '{bad primary noflock' > "$STATE_FILE"
-printf '{bad bak noflock' > "${STATE_FILE}.bak"
-: > "$ZBUILD_EVENTS_JSONL"
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-if [[ $lsu_rc -ne 0 ]]; then
-    assert_pass "no-flock / both corrupt: locked_state_update returns non-zero (fail-closed)"
-else
-    assert_fail \
-        "no-flock / both corrupt: must return non-zero when both are corrupt" \
-        "got exit code: $lsu_rc"
-fi
-
-assert_event_emitted \
-    "no-flock / both corrupt: state.corruption.unrecoverable event emitted" \
-    "state.corruption.unrecoverable"
-
-# Restore flock detection to real implementation for any subsequent tests.
-# (compat.sh has a load-guard so re-sourcing is a no-op; restore directly.)
-zbuild_has_flock() { command -v flock >/dev/null 2>&1; }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 9 — Race condition simulation: second writer sees corrupt file
-#              mid-write but has a valid .bak to recover from
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 9: race condition simulation — concurrent writers, one corrupts mid-write"
-
-# This simulates the observable outcome of a race without requiring real
-# concurrency (which is flaky on CI).  We model the state that would exist
-# if writer-A lost its flock and wrote partial JSON, then writer-B wakes up:
-#   primary  = partial JSON (as if writer-A crashed mid-write)
-#   .bak     = last good write (from before writer-A started)
-# Writer-B (our call) should recover from .bak and succeed.
-reset_scenario
-
-LAST_GOOD='{"schema_version":1,"current_stage":"plan","status":"completed"}'
-printf '%s' "$LAST_GOOD" > "${STATE_FILE}.bak"
-printf '{"schema_version":1,"current_stage":"bui' > "$STATE_FILE"  # simulated partial
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-assert_eq \
-    "race simulation: second writer recovers via .bak and returns 0" \
-    "0" "$lsu_rc"
-
-if [[ -f "$STATE_FILE" ]]; then
-    set +e; jq empty "$STATE_FILE" >/dev/null 2>&1; jq_rc=$?; set -e
-    assert_eq \
-        "race simulation: final state is valid JSON" \
-        "0" "$jq_rc"
-
-    if [[ $jq_rc -eq 0 ]]; then
-        stage_val="$(jq -r '.current_stage // empty' "$STATE_FILE" 2>/dev/null || true)"
-        # The recovered .bak had stage "plan" — update fn must see that, not
-        # the partial write's "bui..." fragment.
-        assert_eq \
-            "race simulation: update fn applied to recovered data (stage=plan, not partial)" \
-            "plan" "$stage_val"
-
-        tested_val="$(jq -r '.tested // empty' "$STATE_FILE" 2>/dev/null || true)"
-        assert_eq \
-            "race simulation: update fn was called (tested key present)" \
-            "true" "$tested_val"
-    fi
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scenario 10 — Happy path control: no corruption, update fn works normally
-# ─────────────────────────────────────────────────────────────────────────────
-print_test_section "Scenario 10: control — valid state, no corruption, update succeeds"
-reset_scenario
-
-printf '%s\n' "$VALID_JSON" | atomic_write "$STATE_FILE"
-
-set +e
-locked_state_update "$STATE_FILE" append_tested_fn
-lsu_rc=$?
-set -e
-
-assert_eq \
-    "control: locked_state_update returns 0 for valid state" \
-    "0" "$lsu_rc"
-
-if [[ -f "$STATE_FILE" ]]; then
-    set +e; jq empty "$STATE_FILE" >/dev/null 2>&1; jq_rc=$?; set -e
-    assert_eq \
-        "control: output state is valid JSON" \
-        "0" "$jq_rc"
-
-    if [[ $jq_rc -eq 0 ]]; then
-        stage_val="$(jq -r '.current_stage // empty' "$STATE_FILE" 2>/dev/null || true)"
-        assert_eq \
-            "control: original fields preserved through update" \
-            "build" "$stage_val"
-
-        tested_val="$(jq -r '.tested // empty' "$STATE_FILE" 2>/dev/null || true)"
-        assert_eq \
-            "control: update fn applied correctly (tested key present)" \
-            "true" "$tested_val"
-    fi
-fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 
