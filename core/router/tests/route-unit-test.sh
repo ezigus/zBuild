@@ -73,7 +73,11 @@ assert_eq "precondition refused: no events log → rc=2" "2" "$_rc"
 export ZBUILD_SCOPE_OVERRIDE=1
 unset ZBUILD_RUN_ID 2>/dev/null || true
 
-# ── T1 → selects Haiku model ────────────────────────────────────────────────
+# Expected model IDs derived from config — never hardcoded (ADR-003)
+_T1_EXPECTED="$(jq -r '.tiers.T1.candidates[0].id' "$ZBUILD_MODELS_FILE")"
+_T2_EXPECTED="$(jq -r '.tiers.T2.candidates[0].id' "$ZBUILD_MODELS_FILE")"
+
+# ── T1 → selects T1 candidate model ─────────────────────────────────────────
 : > "$TEST_TEMP_DIR/last_model"
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
@@ -81,9 +85,9 @@ route_to_model "T1" "ping" --skip-precondition 2>/dev/null; _rc=$?
 set -e
 assert_eq "T1 → rc=0" "0" "$_rc"
 _model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
-assert_eq "T1 selects haiku model" "claude-haiku-4-5-20251001" "$_model"
+assert_eq "T1 selects T1 candidate model" "$_T1_EXPECTED" "$_model"
 
-# ── T2 → selects Sonnet model ───────────────────────────────────────────────
+# ── T2 → selects T2 candidate model ─────────────────────────────────────────
 : > "$TEST_TEMP_DIR/last_model"
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
@@ -91,7 +95,7 @@ route_to_model "T2" "ping" --skip-precondition 2>/dev/null; _rc=$?
 set -e
 assert_eq "T2 → rc=0" "0" "$_rc"
 _model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
-assert_eq "T2 selects sonnet model" "claude-sonnet-4-6" "$_model"
+assert_eq "T2 selects T2 candidate model" "$_T2_EXPECTED" "$_model"
 
 # ── --model override ────────────────────────────────────────────────────────
 : > "$TEST_TEMP_DIR/last_model"
