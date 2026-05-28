@@ -10,11 +10,11 @@ sed -i.mutbak 's/if \[\[ \${#detected_platforms\[@\]} -eq 0 \]\]; then/if [[ ${#
 ```
 
 ## Expected failing test
-`tests/unit/core-detect-platforms-test.sh` — Test 1 asserts that `detect_platforms` returns a result containing "generic" when no plugins declare a platform and no indicator files are present. With the mutation the condition never fires for the empty case, so the output is empty and `assert_contains "generic"` fails.
+`tests/unit/core-detect-platforms-test-a.sh` — Test 1 asserts that `detect_platforms` returns a result containing "generic" when no plugins declare a platform and no indicator files are present. With the mutation the condition never fires for the empty case, so the output is empty and `assert_contains "generic"` fails.
 
 ## Test
 ```bash
-bash tests/unit/core-detect-platforms-test.sh
+bash tests/unit/core-detect-platforms-test-a.sh
 ```
 
 ## Result
