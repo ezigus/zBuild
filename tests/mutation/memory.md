@@ -1,35 +1,28 @@
 ## File
-`core/memory/contract.sh`
+`core/memory/contract.sh` — `memory_has_capability` reports whether the loaded backend declares a given capability string. Inverting its return code causes callers to see absent capabilities as present and vice versa, breaking any test that verifies capability detection.
 
 ## Mutation
-Remove the required-functions verification loop in `memory_init` — replace the
-loop body that checks each required function with `: # check removed by mutation`.
-This lets `memory_init` succeed and set `_ZBUILD_MEMORY_INITIALIZED=1` even when
-the backend plugin fails to define one or more of the six required functions
-(`memory_put`, `memory_get`, `memory_search`, `memory_list_namespaces`,
-`memory_namespace_exists`, `memory_namespace_clear`).
+Flip the final return values in `memory_has_capability`: return 0 when the capability is NOT found and return 1 when it IS found. This inverts the capability contract.
 
 ## Patch
 ```bash
 python3 - <<'PY'
 import pathlib
 p = pathlib.Path("core/memory/contract.sh")
-text = p.read_text()
-new = text.replace(
-    '        if ! declare -F "$fn" >/dev/null 2>&1; then\n            warn "memory_init: backend \'$_ZBUILD_MEMORY_BACKEND\' did not define required function: $fn" >&2 || true\n            missing_count=$((missing_count + 1))\n        fi',
-    '        : # required-function check removed by mutation',
+src = p.read_text()
+# Swap the grep-success path (return 0) and the fallback (return 1)
+new = src.replace(
+    '    if printf \'%s\' "$caps" | grep -qF "${cap}" 2>/dev/null; then\n        return 0\n    fi\n    return 1\n}',
+    '    if printf \'%s\' "$caps" | grep -qF "${cap}" 2>/dev/null; then\n        return 1\n    fi\n    return 0\n}',
     1,
 )
-assert new != text, "patch did not match the required-function loop body"
+assert new != src, "patch did not match capability return block"
 p.write_text(new)
 PY
 ```
 
 ## Expected failing test
-`tests/unit/core-memory-contract-test.sh` — asserts that `memory_init` returns
-non-zero when the sourced backend plugin is missing one or more required
-functions. With the verification loop neutralized, `memory_init` returns 0
-(success) for an incomplete backend and the test's exit-code assertion fails.
+`tests/unit/core-memory-contract-test.sh` — asserts `assert_exit_code "memory_has_capability text_search returns 0" "0" "$cap_rc"`. With the mutation, `memory_has_capability text_search` returns 1 (found → inverted), and the exit-code assertion fails.
 
 ## Test
 ```bash
@@ -37,6 +30,4 @@ bash tests/unit/core-memory-contract-test.sh
 ```
 
 ## Result
-The mutation is caught: the memory contract unit test fails because `memory_init`
-no longer rejects an incomplete backend; it reports success even when required
-functions are absent, violating the six-function completeness invariant.
+The mutation is caught: the memory contract test fails at `assert_exit_code "memory_has_capability text_search returns 0"` because the mutated function returns 1 instead of 0 for a declared capability.
