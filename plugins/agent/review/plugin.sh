@@ -15,11 +15,11 @@
 [[ -n "${_ZBUILD_REVIEW_LOADED:-}" ]] && return 0
 _ZBUILD_REVIEW_LOADED=1
 
-_REVIEW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_REVIEW_ROOT="$(cd "$_REVIEW_DIR/../../.." && pwd)"
-
-# shellcheck source=../../../scripts/lib/helpers.sh
-source "$_REVIEW_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_REVIEW_DIR="$_ZBUILD_PLUGIN_DIR"
+_REVIEW_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/redaction/scope-redaction.sh
 source "$_REVIEW_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh

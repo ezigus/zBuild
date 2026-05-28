@@ -17,8 +17,11 @@
 [[ -n "${_ZBUILD_ORCH_RUFLO_HIVE_LOADED:-}" ]] && return 0
 _ZBUILD_ORCH_RUFLO_HIVE_LOADED=1
 
-_ZBUILD_ORCH_HIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_ZBUILD_ORCH_HIVE_ROOT="$(cd "$_ZBUILD_ORCH_HIVE_DIR/../../.." && pwd)"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_ZBUILD_ORCH_HIVE_DIR="$_ZBUILD_PLUGIN_DIR"
+_ZBUILD_ORCH_HIVE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/orch/local_engine.sh
 source "$_ZBUILD_ORCH_HIVE_ROOT/core/orch/local_engine.sh"

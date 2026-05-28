@@ -20,11 +20,11 @@
 [[ -n "${_ZBUILD_BUILD_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_LOADED=1
 
-_BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_BUILD_ROOT="$(cd "$_BUILD_DIR/../../.." && pwd)"
-
-# shellcheck source=../../../scripts/lib/helpers.sh
-source "$_BUILD_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_BUILD_DIR="$_ZBUILD_PLUGIN_DIR"
+_BUILD_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/redaction/scope-redaction.sh
 source "$_BUILD_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh

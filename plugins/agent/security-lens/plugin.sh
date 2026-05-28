@@ -16,11 +16,11 @@
 [[ -n "${_ZBUILD_SECURITY_LENS_LOADED:-}" ]] && return 0
 _ZBUILD_SECURITY_LENS_LOADED=1
 
-_SEC_LENS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_SEC_LENS_ROOT="$(cd "$_SEC_LENS_DIR/../../.." && pwd)"
-
-# shellcheck source=../../../scripts/lib/helpers.sh
-source "$_SEC_LENS_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
+zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_SEC_LENS_DIR="$_ZBUILD_PLUGIN_DIR"
+_SEC_LENS_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/redaction/scope-redaction.sh
 source "$_SEC_LENS_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
