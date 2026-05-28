@@ -141,6 +141,29 @@ jobs:
           else
             echo "kcov not available — skipping coverage measurement"
           fi
+      - name: Enforce coverage floor (issue #372)
+        env:
+          COVERAGE_FLOOR: "70"
+        run: |
+          # Coverage floor: core/ + scripts/lib/ combined statement coverage must be ≥ COVERAGE_FLOOR %.
+          # Threshold is locked at merge time; documented in CLAUDE.md.
+          report="coverage-out/kcov-merged/coverage.json"
+          if [[ ! -f "$report" ]]; then
+            echo "Coverage report not found at $report — kcov may not be installed"
+            exit 0
+          fi
+          pct="$(python3 -c "
+          import json, sys
+          d = json.load(open('$report'))
+          print(d.get('percent_covered', d.get('covered', '0')))
+          " 2>/dev/null || echo "0")"
+          pct_int="${pct%%.*}"
+          echo "Coverage: ${pct}% (floor: ${COVERAGE_FLOOR}%)"
+          if [[ "$pct_int" -lt "$COVERAGE_FLOOR" ]]; then
+            echo "ERROR: coverage ${pct}% is below the ${COVERAGE_FLOOR}% floor (issue #372)"
+            exit 1
+          fi
+          echo "OK: coverage ${pct}% >= ${COVERAGE_FLOOR}%"
 
   summary:
     name: Summary
