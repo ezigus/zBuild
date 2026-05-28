@@ -51,6 +51,7 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 _make_plugin "intake"  "agent" 0
+_make_plugin "plan"    "agent" 0
 _make_plugin "build"   "agent" 0
 _make_plugin "review"  "agent" 0
 
@@ -69,7 +70,7 @@ assert_eq "--issue with no value exits 2" "2" "$rc"
 set +e; bash "$RUNNER" --goal 2>/dev/null; rc=$?; set -e
 assert_eq "--goal with no value exits 2" "2" "$rc"
 
-# ─── Test 4: dry-run prints 3-stage plan without executing ──────────────────
+# ─── Test 4: dry-run prints 4-stage plan without executing ──────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 out="$(bash "$RUNNER" --issue 83 --dry-run 2>&1)"
 assert_contains "dry-run shows intake stage" "$out" "intake"
@@ -95,7 +96,7 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 # ─── Test 6: stage lifecycle events emitted ─────────────────────────────────
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
-    assert_eq "$stage_event emitted for each MVP stage (3x)" "3" "$count"
+    assert_eq "$stage_event emitted for each MVP stage (4x)" "4" "$count"
 done
 
 # ─── Test 7: ADR-006 stage status enum — "complete" not "success" ───────────
@@ -104,6 +105,9 @@ assert_file_exists "state file created" "$STATE_FILE"
 
 intake_status="$(jq -r '.stage_statuses.intake // empty' "$STATE_FILE" 2>/dev/null)"
 assert_eq "intake stage_status=complete (ADR-006 enum)" "complete" "$intake_status"
+
+plan_status="$(jq -r '.stage_statuses.plan // empty' "$STATE_FILE" 2>/dev/null)"
+assert_eq "plan stage_status=complete (ADR-006 enum)" "complete" "$plan_status"
 
 build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_FILE" 2>/dev/null)"
 assert_eq "build stage_status=complete (ADR-006 enum)" "complete" "$build_status"
@@ -183,12 +187,14 @@ fi
 
 # ─── Test 11: --template flag parsed; missing template falls back gracefully ──
 _make_plugin "intake"  "agent" 0
+_make_plugin "plan"    "agent" 0
 _make_plugin "build"   "agent" 0
 _make_plugin "review"  "agent" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
 out="$(bash "$RUNNER" --issue 83 --dry-run --template standard 2>&1)"
 assert_contains "--template standard dry-run shows intake"  "$out" "intake"
+assert_contains "--template standard dry-run shows plan"    "$out" "plan"
 assert_contains "--template standard dry-run shows build"   "$out" "build"
 assert_contains "--template standard dry-run shows review"  "$out" "review"
 
@@ -220,6 +226,7 @@ EOF
 
 rm -rf "$PLUGINS_ROOT/agent/" "$PLUGINS_ROOT/tool/"
 _make_role_plugin "intake-agent"  "intake"   0
+_make_role_plugin "plan-agent"    "planner"  0
 _make_role_plugin "build-agent"   "builder"  0
 _make_role_plugin "review-agent"  "reviewer" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
@@ -228,7 +235,7 @@ set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-assert_eq "role-based dispatch: 3 stage.complete events" "3" "$role_complete"
+assert_eq "role-based dispatch: 4 stage.complete events" "4" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
 assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"
@@ -244,9 +251,9 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
-# 3 stages × 2 platforms = 6 plugin.run.start events via fanout
+# 4 stages × 2 platforms = 8 plugin.run.start events via fanout
 plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
-assert_eq "fanout 2 platforms: 6 plugin.run.start events (3 stages × 2)" "6" "$plugin_run_count"
+assert_eq "fanout 2 platforms: 8 plugin.run.start events (4 stages × 2)" "8" "$plugin_run_count"
 
 # ─── Test 14: partial fanout failure — stage.fail + pipeline.end status=failed ─
 # Platform-specific success (node) + generic failure (ios fallback) → partial.

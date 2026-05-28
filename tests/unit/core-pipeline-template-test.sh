@@ -132,12 +132,13 @@ assert_eq "load_template missing file returns non-zero" "1" "$rc"
 # ─── Test 2: load_template populates _TPL_STAGES correctly (standard) ────────
 load_template "$STANDARD_TPL"
 stage_count="${#_TPL_STAGES[@]}"
-assert_eq "standard template has 3 stages" "3" "$stage_count"
+assert_eq "standard template has 4 stages" "4" "$stage_count"
 
 # ─── Test 3: stage order is preserved in _TPL_STAGES ─────────────────────────
 assert_eq "_TPL_STAGES[0] is intake" "intake" "${_TPL_STAGES[0]}"
-assert_eq "_TPL_STAGES[1] is build"  "build"  "${_TPL_STAGES[1]}"
-assert_eq "_TPL_STAGES[2] is review" "review" "${_TPL_STAGES[2]}"
+assert_eq "_TPL_STAGES[1] is plan"   "plan"   "${_TPL_STAGES[1]}"
+assert_eq "_TPL_STAGES[2] is build"  "build"  "${_TPL_STAGES[2]}"
+assert_eq "_TPL_STAGES[3] is review" "review" "${_TPL_STAGES[3]}"
 
 # ─── Test 4: _TPL_DEFAULT_STRATEGY is set correctly ──────────────────────────
 assert_eq "_TPL_DEFAULT_STRATEGY=fanout" "fanout" "$_TPL_DEFAULT_STRATEGY"
@@ -146,7 +147,11 @@ assert_eq "_TPL_DEFAULT_STRATEGY=fanout" "fanout" "$_TPL_DEFAULT_STRATEGY"
 roles_intake="$(template_stage_roles "intake")"
 assert_eq "template_stage_roles intake returns intake" "intake" "$roles_intake"
 
-# ─── Test 6: template_stage_roles returns correct role for build ──────────────
+# ─── Test 6: template_stage_roles returns correct role for plan ───────────────
+roles_plan="$(template_stage_roles "plan")"
+assert_eq "template_stage_roles plan returns planner" "planner" "$roles_plan"
+
+# ─── Test 6b: template_stage_roles returns correct role for build ─────────────
 roles_build="$(template_stage_roles "build")"
 assert_eq "template_stage_roles build returns builder" "builder" "$roles_build"
 
@@ -187,7 +192,7 @@ assert_contains "review roles contains auditor"  "$roles_review" "auditor"
 # ─── Test 14: reload standard template — state is fully reset ─────────────────
 load_template "$STANDARD_TPL"
 reload_count="${#_TPL_STAGES[@]}"
-assert_eq "reloaded standard template still has 3 stages" "3" "$reload_count"
+assert_eq "reloaded standard template still has 4 stages" "4" "$reload_count"
 assert_eq "reloaded _TPL_DEFAULT_STRATEGY=fanout" "fanout" "$_TPL_DEFAULT_STRATEGY"
 
 # ─── Test 15: unknown stage id → load_template returns non-zero ───────────────

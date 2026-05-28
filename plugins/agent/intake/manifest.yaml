@@ -26,6 +26,14 @@ requires:
     - event-bus
     - state
 
+outputs:
+  - name: scope_manifest
+    path: ${state_dir}/scope-manifest.md
+    type: scope-manifest.md
+  - name: intake_goal
+    path: ${state_dir}/intake.md
+    type: intake.md
+
 provides:
   artifact_type: [scope-manifest.md, intake.md]
   role: intake

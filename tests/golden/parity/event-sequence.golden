@@ -5,7 +5,6 @@ stage.start
 plugin.run.start
 plugin.run.complete
 plugin.run.complete
-plugin.contract.violated
 stage.complete
 stage.start
 plugin.run.start
@@ -22,13 +21,11 @@ model.route
 model.outcome
 plugin.run.complete
 plugin.run.complete
-plugin.contract.violated
 stage.complete
 stage.start
 plugin.run.start
 plugin.run.complete
 plugin.run.complete
-plugin.contract.violated
 stage.complete
 stage.start
 plugin.run.start
@@ -37,7 +34,6 @@ model.route
 model.outcome
 plugin.run.complete
 plugin.run.complete
-plugin.contract.violated
 stage.complete
 stage.start
 plugin.run.start

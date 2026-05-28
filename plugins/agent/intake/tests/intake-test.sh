@@ -46,6 +46,20 @@ assert_contains "intake discovered in plugin registry" "$discovered" "agent/inta
 source "$PLUGIN_DIR/plugin.sh"
 intake_init >/dev/null 2>&1
 
+# ─── Test 1b: manifest declares outputs[] with scope-manifest.md first ────────
+first_output="$(awk '
+    /^outputs:/ { in_outputs=1; next }
+    in_outputs && /^[a-zA-Z_]/ { in_outputs=0 }
+    in_outputs && /path:/ {
+        sub(/^[[:space:]]*path:[[:space:]]*/, "")
+        sub(/[[:space:]]*#.*/, "")
+        gsub(/^["'"'"']|["'"'"']$/, "")
+        print; exit
+    }
+' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+assert_contains "intake manifest outputs[0].path contains scope-manifest.md" \
+    "$first_output" "scope-manifest.md"
+
 # ─── Test 2: ZBUILD_GOAL unset AND no issue → rc=2 ───────────────────────────
 unset ZBUILD_GOAL 2>/dev/null || true
 export ZBUILD_ISSUE="0"
