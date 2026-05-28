@@ -137,11 +137,18 @@ jobs:
           # --bash-parse-files-in-dir pre-parses .sh files for accurate line maps.
           kcov \
             --bash-parse-files-in-dir="$(pwd)/core" \
+            --bash-parse-files-in-dir="$(pwd)/scripts/lib" \
             --include-pattern="/core/,/scripts/lib/" \
             coverage-out \
             bash scripts/run-tests.sh --tier unit
           echo "Coverage run complete"
           find coverage-out -name 'coverage.json' -exec echo "Found: {}" \; 2>/dev/null || echo "No coverage.json found"
+          echo "=== COVERAGE JSON DEBUG ==="
+          report="$(find coverage-out -name 'coverage.json' 2>/dev/null | head -1)"
+          if [[ -n "$report" ]]; then
+            echo "Report path: $report"
+            jq '{percent_covered, total_lines, covered_lines, files_count: (.source_files | length), first_file: .source_files[0].name}' "$report" 2>/dev/null || jq '.' "$report" | head -30
+          fi
       - name: Coverage diagnostics
         if: always()
         run: |
