@@ -96,7 +96,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Run mutation doc validation
-        run: bash scripts/run-tests.sh --tier mutation
+        run: |
+          output="$(bash scripts/run-tests.sh --tier mutation 2>&1)" && rc=0 || rc=$?
+          echo "$output"
+          score_line="$(echo "$output" | grep '^mutation:' | tail -1)"
+          if [[ -n "$score_line" ]]; then
+            echo "## Mutation Pass-Rate" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`$score_line\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $rc
 
   lint-no-hardcoded-models:
     name: Lint (no hardcoded model names — ADR-003)
@@ -127,8 +136,8 @@ jobs:
       - name: Run coverage (unit tests)
         env:
           # Floor is 25% — reflects measured baseline (kcov never produced data).
-          # Raise to 70% in Wave 4 after test-depth improvements (#372).
-          COVERAGE_FLOOR: "25"
+          # Raised to 29% in Wave 4 (#372). Target: 70% after further test depth work.
+          COVERAGE_FLOOR: "29"
         run: bash scripts/check-coverage.sh
 
   summary:

@@ -15,28 +15,8 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)"
 setup_test_env "pipeline-runner"
 
-# ─── Fixtures: fake plugin factory ──────────────────────────────────────────
-
-_make_plugin() {
-    local id="$1" kind="${2:-agent}" exit_code="${3:-0}"
-    local dir="$TEST_TEMP_DIR/plugins/$kind/$id"
-    mkdir -p "$dir"
-    local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Test $id
-kind: $kind
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-EOF
-    cat > "$dir/plugin.sh" <<EOF
-${fn}() { return $exit_code; }
-EOF
-}
+# Use shared factory from test-helpers.sh (Wave 4)
+_make_plugin() { mock_plugin_factory "$@"; }
 
 # Shared env: point all subsystems at the test temp dir.
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"

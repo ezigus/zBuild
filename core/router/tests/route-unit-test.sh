@@ -113,10 +113,9 @@ set +e
 route_to_model "T2" "ping" --skip-precondition 2>/dev/null; _rc=$?
 set -e
 assert_eq "T2 success → rc=0" "0" "$_rc"
-_has_route="$(jq -r 'select(.type=="model.route") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
-assert_eq "model.route event emitted" "model.route" "$_has_route"
-_has_outcome="$(jq -r 'select(.type=="model.outcome") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
-assert_eq "model.outcome event emitted" "model.outcome" "$_has_outcome"
+assert_event_emitted "model.route event emitted" "$ZBUILD_EVENTS_JSONL" "model.route"
+assert_event_emitted "model.outcome event emitted" "$ZBUILD_EVENTS_JSONL" "model.outcome"
+assert_event_emitted "router.precondition.skipped event emitted" "$ZBUILD_EVENTS_JSONL" "router.precondition.skipped"
 
 # ── No claude binary → rc=1 ─────────────────────────────────────────────────
 OLDPATH="$PATH"
