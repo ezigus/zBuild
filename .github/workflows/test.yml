@@ -127,8 +127,8 @@ jobs:
       - name: Install kcov
         run: |
           sudo apt-get install -y cmake g++ libdw-dev libssl-dev libcurl4-openssl-dev python3
-          git clone --depth=1 https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
-          cmake -S /tmp/kcov-src -B /tmp/kcov-build
+          curl -fsSL https://github.com/SimonKagstrom/kcov/archive/refs/tags/v42.tar.gz | tar -xz -C /tmp
+          cmake -S /tmp/kcov-42 -B /tmp/kcov-build
           sudo cmake --build /tmp/kcov-build --target install -j"$(nproc)"
       - name: Run coverage (unit tests)
         run: |
@@ -142,6 +142,33 @@ jobs:
           else
             echo "kcov not available — skipping coverage measurement"
           fi
+      - name: Coverage diagnostics
+        if: always()
+        run: |
+          report="$(find coverage-out -name 'coverage.json' 2>/dev/null | head -1)"
+          {
+            echo "## Coverage Diagnostics"
+            echo ""
+            if [[ -z "$report" || ! -f "$report" ]]; then
+              echo "No coverage.json found — kcov did not produce output."
+            else
+              echo "**Report**: \`$report\`"
+              instrumented="$(find coverage-out -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')"
+              echo "**Instrumented files**: ${instrumented}"
+              echo ""
+              echo "| File | Coverage |"
+              echo "|------|----------|"
+              python3 - "$report" <<'PYEOF'
+import json, sys, os
+d = json.load(open(sys.argv[1]))
+files = d.get('source_files') or []
+for f in sorted(files, key=lambda x: x.get('name','')):
+    name = os.path.relpath(f.get('name','?'))
+    pct  = f.get('percent_covered', 0)
+    print(f"| `{name}` | {pct:.1f}% |")
+PYEOF
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Enforce coverage floor (issue #372)
         env:
           COVERAGE_FLOOR: "70"
@@ -151,16 +178,16 @@ jobs:
           # Threshold is locked at merge time; documented in CLAUDE.md.
           report="$(find coverage-out -name 'coverage.json' 2>/dev/null | head -1)"
           if [[ -z "$report" || ! -f "$report" ]]; then
-            echo "Coverage report not found — kcov may not be installed or failed"
-            exit 0
+            echo "ERROR: coverage report not found — kcov failed to produce output"
+            exit 1
           fi
           echo "Using report: $report"
           pct="$(python3 -c "import json; d=json.load(open('$report')); print(d.get('percent_covered') or (d.get('total') or {}).get('percent_covered') or '0')" 2>/dev/null || echo "0")"
           pct_int="${pct%%.*}"
           echo "Coverage: ${pct}% (floor: ${COVERAGE_FLOOR}%)"
           if [[ "$pct_int" -eq 0 ]]; then
-            echo "WARNING: coverage is 0% — kcov bash instrumentation may not be functional on this runner. Skipping floor enforcement."
-            exit 0
+            echo "ERROR: coverage is 0% — kcov bash instrumentation failed on this runner"
+            exit 1
           fi
           if [[ "$pct_int" -lt "$COVERAGE_FLOOR" ]]; then
             echo "ERROR: coverage ${pct}% is below the ${COVERAGE_FLOOR}% floor (issue #372)"

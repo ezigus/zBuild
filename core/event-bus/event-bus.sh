@@ -75,10 +75,8 @@ eb_emit_event() {
     _eb_init
 
     if ! _eb_known_type "$type"; then
-        # Schema-as-warn: log but don't block.
-        if [[ -n "${ZBUILD_DEBUG:-}" ]]; then
-            echo "[event-bus] WARN: unknown event type: $type" >&2
-        fi
+        # Schema-as-warn: always log, never block.
+        echo "[event-bus] WARN: unknown event type '$type' (run_id=${ZBUILD_RUN_ID:-})" >&2
     fi
 
     # Build payload from key=val args
