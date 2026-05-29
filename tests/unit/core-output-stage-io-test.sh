@@ -349,6 +349,54 @@ rec36g="$(_t440_make_record plan llm "prompt" "$broken" "" "1000")"
 out36g="$(_stage_io_to_stdout "$rec36g" 2>/dev/null)"
 assert_contains "T36g malformed JSON falls back to raw" "$out36g" "unterminated_string"
 
+# ─── T36h: ANSI/CSI escape sequences stripped from llm output ───────────────
+# The bracketed-paste-mode-start code \e[200~ would corrupt the operator's
+# terminal — once received, the shell treats subsequent content as pasted
+# input and may execute it as commands. Verified in production after #450.
+#
+# Use ANSI-C $'...' quoting to embed real escape characters. We check that:
+#   (1) the raw \e[200~ sequence does NOT appear in rendered output
+#   (2) the surrounding text content IS preserved
+output_with_bpm=$'before\e[200~middle\e[201~after'
+rec36h="$(_t440_make_record plan llm "ok" "$output_with_bpm" "" "1000")"
+out36h="$(_stage_io_to_stdout "$rec36h" 2>/dev/null)"
+assert_contains "T36h before-ESC text preserved" "$out36h" "before"
+assert_contains "T36h middle text preserved" "$out36h" "middle"
+assert_contains "T36h after-ESC text preserved" "$out36h" "after"
+# Critical: the BPM markers must be GONE from rendered output.
+if printf '%s' "$out36h" | grep -qF $'\e[200~'; then
+    assert_fail "T36h \\e[200~ stripped from rendered output" "still present"
+else
+    assert_pass "T36h \\e[200~ stripped from rendered output"
+fi
+if printf '%s' "$out36h" | grep -qF $'\e[201~'; then
+    assert_fail "T36h \\e[201~ stripped from rendered output" "still present"
+else
+    assert_pass "T36h \\e[201~ stripped from rendered output"
+fi
+
+# ─── T36i: colorized command output (ANSI SGR codes) stripped ───────────────
+# gh / git emit ANSI color codes when they detect a tty. Captured output
+# shouldn't leak those into the rendered banner.
+colored=$'plain \e[31mred\e[0m \e[1;32mbold-green\e[0m end'
+rec36i="$(_t440_make_record build command "ls" "$colored" "0" "100")"
+out36i="$(_stage_io_to_stdout "$rec36i" 2>/dev/null)"
+assert_contains "T36i text preserved with colors stripped" "$out36i" "plain red bold-green end"
+if printf '%s' "$out36i" | grep -qP '\x1b\['; then
+    assert_fail "T36i no ESC[ sequences remain" "still present"
+else
+    assert_pass "T36i no ESC[ sequences remain"
+fi
+
+# ─── T36j: leading ANSI codes don't fool the JSON pretty-print precheck ────
+# Pretty-print's cheap precheck looks for `{` at the start; a leading ANSI
+# code would cause it to fall through to "not JSON" even though the content
+# IS JSON. Stripping happens before pretty-print so this works.
+json_with_lead_ansi=$'\e[2J\e[H{"a":1,"b":[2,3]}'
+rec36j="$(_t440_make_record plan llm "ok" "$json_with_lead_ansi" "" "1000")"
+out36j="$(_stage_io_to_stdout "$rec36j" 2>/dev/null)"
+assert_contains "T36j JSON after-leading-ANSI gets pretty-printed" "$out36j" '  "a": 1'
+
 # ─── T37: stdout computed shows in:/out: ─────────────────────────────────────
 rec37="$(_t440_make_record intake computed "src/file.txt" "dst/file.txt" "" "")"
 out37="$(_stage_io_to_stdout "$rec37" 2>/dev/null)"
