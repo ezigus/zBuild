@@ -268,10 +268,9 @@ template parser, router, helpers, plugins, or event schema.
 
 The v2 slice introduces the `run_captured_command <stage> <argv...>` wrapper in
 `scripts/lib/helpers.sh`. The wrapper executes the wrapped command with merged
-stdout+stderr captured to a temp file, records wall-clock duration via
-`$SECONDS` (sub-second commands record `duration_ms=0` — this is intentional in
-the bash-3.2 compat regime; sub-second timing would require `EPOCHREALTIME`
-which is bash-5 only), forwards the record to `capture_stage_io --kind command`,
+stdout+stderr captured to a temp file, records wall-clock duration in
+millisecond resolution via `$EPOCHREALTIME` (zBuild requires Bash 5+ per
+`scripts/lib/compat.sh`), forwards the record to `capture_stage_io --kind command`,
 and re-emits the captured output on its own stdout so it is a drop-in
 replacement for `$(cmd)` callers. The caller's `errexit` state is preserved.
 
@@ -307,6 +306,6 @@ command transparently and the capture is a no-op (hot path).
   ends with `[truncated: <N> bytes total, captured <max>]`.
 - Embedded NUL bytes are stripped (`tr -d '\0'`) before the record is
   assembled — binary command output is lossy by design.
-- `duration_ms` resolution is one second (integer seconds × 1000).
+- `duration_ms` resolution is true milliseconds via `$EPOCHREALTIME`.
 - Outbound `gh_comment` redaction is still deferred to #440; v2 stages that
   enable `gh_comment` will receive the v3 stub renderer.

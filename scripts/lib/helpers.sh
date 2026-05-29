@@ -112,8 +112,8 @@ emit_event() {
 # child's exit code, and flows captured output to its own stdout so it is a
 # drop-in replacement for `$(cmd)` patterns.
 #
-# Bash 3.2-compatible. Sub-second commands record duration_ms=0 (SECONDS-based
-# integer seconds × 1000 — no EPOCHREALTIME).
+# Duration is measured via $EPOCHREALTIME (Bash 5+; zBuild requires it per
+# scripts/lib/compat.sh) for true millisecond resolution.
 #
 # Truncation: captured output is read back via `head -c $RUN_CAPTURED_CMD_MAX_BYTES`
 # (default 1 MiB). When the on-disk size exceeds the cap, a "[truncated: ...]"
@@ -165,10 +165,15 @@ run_captured_command() {
     # varies across BSD/GNU; this idiom matches `core/router/route.sh`).
     local capfile
     capfile="$(mktemp "${TMPDIR:-/tmp}/zbuild-capcmd.XXXXXX")"
-    local _start=$SECONDS
+    # EPOCHREALTIME is a Bash 5+ builtin: "<sec>.<usec>". Strip the dot
+    # to convert to an all-microsecond integer for arithmetic.
+    local _t0_us="${EPOCHREALTIME/./}"
     "$@" >"$capfile" 2>&1
     local rc=$?
-    local _dur_ms=$(( (SECONDS - _start) * 1000 ))
+    local _t1_us="${EPOCHREALTIME/./}"
+    # Guard against leading-zero octal interpretation in arithmetic context.
+    local _dur_ms=$(( (10#${_t1_us} - 10#${_t0_us}) / 1000 ))
+    (( _dur_ms < 0 )) && _dur_ms=0
 
     # Determine on-disk size; read back up to the cap; append truncation marker
     # if the on-disk size exceeds the cap.
