@@ -56,6 +56,143 @@ new file mode 100644
 @@ -0,0 +1 @@
 +dummy'
 
+# ─── Prompt-capture mock (file-based — survives subshell boundary) ───────────
+# route_to_model runs inside $(...) in _build_stage_run_inner, so a variable
+# assignment in the mock body is lost. Writing to a file survives the subshell.
+# Mirrors plan-test.sh:64-71 (issue #435 fix).
+_CAPTURED_PROMPT_FILE="$TEST_TEMP_DIR/captured-build-prompt.txt"
+: > "$_CAPTURED_PROMPT_FILE"
+
+# apply_scope_redaction passthrough — needed before route_to_model mock is live.
+apply_scope_redaction() {
+    local _input="$1"
+    local _output="$2"
+    cp "$_input" "$_output"
+    emit_event "redaction.applied" \
+        "input=$_input" "output=$_output" \
+        "size_before=0" "size_after=0" "redactions=0" \
+        "scope_hash=mock" "cycle=0"
+    return 0
+}
+
+# Prompt-capturing route_to_model mock — writes prompt arg to file, returns CANNED_DIFF.
+route_to_model() {
+    # Args: tier prompt [flags...]
+    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
+    printf '%s\n' "$CANNED_DIFF"
+    return 0
+}
+
+# ─── T_PROMPT fixtures ───────────────────────────────────────────────────────
+ARTIFACT_DIR_PROMPT="$TEST_TEMP_DIR/artifacts_prompt"
+mkdir -p "$ARTIFACT_DIR_PROMPT"
+
+PLAN_JSON_PROMPT="$ARTIFACT_DIR_PROMPT/plan.json"
+cat > "$PLAN_JSON_PROMPT" <<'EOF'
+{
+  "schema_version": 1,
+  "goal": "Add dummy fixture file for build-stage prompt tests",
+  "steps": [
+    {"id": "step-1", "description": "create fixture", "files": ["tests/fixtures/build-test-dummy.txt"], "estimated_lines": 1}
+  ]
+}
+EOF
+
+OUT_DIFF_PROMPT="$ARTIFACT_DIR_PROMPT/diff.patch"
+OUT_SUMMARY_PROMPT="$ARTIFACT_DIR_PROMPT/build-summary.json"
+
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_PROMPT" \
+    "$OUT_DIFF_PROMPT" \
+    "$OUT_SUMMARY_PROMPT" \
+    "$ARTIFACT_DIR_PROMPT" >/dev/null 2>&1
+rc_prompt=$?
+set -e
+
+_captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
+
+# ─── T_PROMPT_1: Prompt contains required format tokens ──────────────────────
+print_test_section "T_PROMPT_1: prompt contains required format tokens"
+
+assert_exit_code "T_PROMPT_1 inner run returns rc=0" "0" "$rc_prompt"
+assert_contains "prompt contains 'diff --git'"         "$_captured_prompt" "diff --git"
+assert_contains "prompt contains 'no tool-use'"        "$_captured_prompt" "no tool-use"
+assert_contains "prompt contains 'no markdown code fences'" "$_captured_prompt" "no markdown code fences"
+assert_contains "prompt contains 'no commentary'"      "$_captured_prompt" "no commentary"
+assert_contains "prompt contains '--- a/'"             "$_captured_prompt" "--- a/"
+assert_contains "prompt contains '+++ b/'"             "$_captured_prompt" "+++ b/"
+assert_contains "prompt contains '@@ '"               "$_captured_prompt" "@@ "
+
+# ─── T_PROMPT_2: Non-empty diff extraction from CANNED_DIFF ──────────────────
+print_test_section "T_PROMPT_2: CANNED_DIFF mock produces non-empty diff.patch"
+
+diff_line_count_prompt=0
+if [[ -f "$OUT_DIFF_PROMPT" ]]; then
+    diff_line_count_prompt="$(grep -c . "$OUT_DIFF_PROMPT" 2>/dev/null || true)"
+fi
+if [[ "$diff_line_count_prompt" -gt 0 ]]; then
+    assert_pass "diff.patch has lines > 0 ($diff_line_count_prompt lines)"
+else
+    assert_fail "diff.patch is empty — extractor did not find diff"
+fi
+
+# ─── T_PROMPT_3: Prose response produces empty patch, not rc=2 ───────────────
+print_test_section "T_PROMPT_3: prose LLM response → empty diff.patch, rc=0"
+
+ARTIFACT_DIR_PROSE="$TEST_TEMP_DIR/artifacts_prose"
+mkdir -p "$ARTIFACT_DIR_PROSE"
+PLAN_JSON_PROSE="$ARTIFACT_DIR_PROSE/plan.json"
+cp "$PLAN_JSON_PROMPT" "$PLAN_JSON_PROSE"
+OUT_DIFF_PROSE="$ARTIFACT_DIR_PROSE/diff.patch"
+OUT_SUMMARY_PROSE="$ARTIFACT_DIR_PROSE/build-summary.json"
+
+# Override: mock returns prose instead of a diff
+route_to_model() {
+    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
+    printf '%s\n' "I need Write permission to create new test files and fixture files. Could you grant Write permission?"
+    return 0
+}
+
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_PROSE" \
+    "$OUT_DIFF_PROSE" \
+    "$OUT_SUMMARY_PROSE" \
+    "$ARTIFACT_DIR_PROSE" >/dev/null 2>&1
+rc_prose=$?
+set -e
+
+assert_exit_code "prose response returns rc=0 (warn path)" "0" "$rc_prose"
+
+# diff.patch should exist but be empty (extractor found nothing)
+diff_content_prose=""
+if [[ -f "$OUT_DIFF_PROSE" ]]; then
+    diff_content_prose="$(cat "$OUT_DIFF_PROSE")"
+fi
+# Strip trailing newline added by printf '%s\n' ""
+diff_content_prose_trimmed="$(printf '%s' "$diff_content_prose" | tr -d '\n')"
+if [[ -z "$diff_content_prose_trimmed" ]]; then
+    assert_pass "diff.patch is empty when LLM returns prose"
+else
+    assert_fail "diff.patch unexpectedly non-empty for prose response: $diff_content_prose"
+fi
+
+# Restore CANNED_DIFF mock for remaining tests
+route_to_model() {
+    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
+    printf '%s\n' "$CANNED_DIFF"
+    return 0
+}
+
+# ─── T_PROMPT_4: Prompt contains new-file syntax tokens ──────────────────────
+print_test_section "T_PROMPT_4: prompt contains /dev/null and 'new file mode'"
+
+assert_contains "prompt contains '/dev/null'"     "$_captured_prompt" "/dev/null"
+assert_contains "prompt contains 'new file mode'" "$_captured_prompt" "new file mode"
+
 # ─── Test 1: build_stage_init sets env ───────────────────────────────────────
 print_test_section "T1: build_stage_init sets ZBUILD_PLUGIN=build"
 
