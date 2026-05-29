@@ -102,6 +102,113 @@ emit_event() {
     return 0
 }
 
+# ─── run_captured_command — ADR-015 v2 command-kind capture wrapper (#439) ──
+# Usage: run_captured_command <stage> <argv...>
+#
+# Wraps an external command, captures its merged stdout+stderr, exit code, and
+# wall-clock duration, then forwards the record to capture_stage_io as a
+# command-kind artifact. Stage MUST come first; argv must be non-empty. The
+# wrapper is transparent: it preserves the caller's errexit state, returns the
+# child's exit code, and flows captured output to its own stdout so it is a
+# drop-in replacement for `$(cmd)` patterns.
+#
+# Duration is measured via $EPOCHREALTIME (Bash 5+; zBuild requires it per
+# scripts/lib/compat.sh) for true millisecond resolution.
+#
+# Truncation: captured output is read back via `head -c $RUN_CAPTURED_CMD_MAX_BYTES`
+# (default 1 MiB). When the on-disk size exceeds the cap, a "[truncated: ...]"
+# marker is appended. Binary data is lossy — embedded NULs are stripped via
+# `tr -d '\0'` before being passed to capture_stage_io.
+: "${RUN_CAPTURED_CMD_MAX_BYTES:=1048576}"
+
+run_captured_command() {
+    if [[ $# -eq 0 ]]; then
+        error "run_captured_command: usage: <stage> <argv...> (stage and argv required)"
+        return 2
+    fi
+    local stage="$1"; shift
+    if [[ -z "$stage" ]]; then
+        error "run_captured_command: <stage> is required (non-empty)"
+        return 2
+    fi
+    # Stage-name shape guard: stages are agent-internal identifiers from the
+    # canonical list, not user-facing flags. Reject anything that could be a
+    # misordered call where the caller forgot the stage arg and passed argv[0]
+    # (e.g. `--check`, `gh`, `git`) as the stage.
+    if [[ ! "$stage" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        error "run_captured_command: stage '$stage' must match ^[a-z_][a-z0-9_-]*$ (likely a misordered call — pass <stage> before argv)"
+        return 2
+    fi
+    if [[ $# -eq 0 ]]; then
+        error "run_captured_command: argv is required (non-empty)"
+        return 2
+    fi
+    # Defensive guard — caller must have sourced core/output/stage-io.sh first.
+    if ! declare -f capture_stage_io >/dev/null 2>&1; then
+        error "run_captured_command: capture_stage_io not loaded (source core/output/stage-io.sh first)"
+        return 2
+    fi
+
+    # Save caller's errexit so we can run the wrapper body with `set +e`
+    # without leaking the disable back to a `set -e` caller.
+    local _had_errexit=0
+    [[ $- == *e* ]] && _had_errexit=1
+    set +e
+
+    # Encode argv via printf %q (trim trailing space).
+    local argv_str
+    argv_str="$(printf '%q ' "$@")"
+    argv_str="${argv_str% }"
+
+    # Capture into a temp file (merged streams).
+    # Use explicit template form (router precedent — `mktemp -t` resolution
+    # varies across BSD/GNU; this idiom matches `core/router/route.sh`).
+    local capfile
+    capfile="$(mktemp "${TMPDIR:-/tmp}/zbuild-capcmd.XXXXXX")"
+    # EPOCHREALTIME is a Bash 5+ builtin: "<sec>.<usec>". Strip the dot
+    # to convert to an all-microsecond integer for arithmetic.
+    local _t0_us="${EPOCHREALTIME/./}"
+    "$@" >"$capfile" 2>&1
+    local rc=$?
+    local _t1_us="${EPOCHREALTIME/./}"
+    # Guard against leading-zero octal interpretation in arithmetic context.
+    local _dur_ms=$(( (10#${_t1_us} - 10#${_t0_us}) / 1000 ))
+    (( _dur_ms < 0 )) && _dur_ms=0
+
+    # Determine on-disk size; read back up to the cap; append truncation marker
+    # if the on-disk size exceeds the cap.
+    local _max="${RUN_CAPTURED_CMD_MAX_BYTES:-1048576}"
+    local _actual
+    _actual="$(wc -c <"$capfile" | tr -d ' ')"
+    local out
+    # Strip NULs before passing to capture (binary lossy but documented).
+    out="$(head -c "$_max" "$capfile" | tr -d '\0')"
+    if [[ "$_actual" -gt "$_max" ]]; then
+        out="${out}"$'\n'"[truncated: ${_actual} bytes total, captured ${_max}]"
+    fi
+
+    # Forward to chokepoint. Failure to capture is logged but does not change
+    # the wrapped command's return code (caller cares about the wrapped rc).
+    capture_stage_io \
+        --stage "$stage" \
+        --kind command \
+        --input "$argv_str" \
+        --output "$out" \
+        --exit-code "$rc" \
+        --duration-ms "$_dur_ms" \
+        --metadata "pwd=$PWD" \
+        || warn "run_captured_command: capture failed for stage=$stage; wrapped rc=$rc preserved"
+
+    # Drop-in $(...) compatibility — flow captured output to wrapper stdout.
+    printf '%s' "$out"
+
+    rm -f "$capfile"
+
+    # Restore errexit if caller had it on.
+    [[ $_had_errexit -eq 1 ]] && set -e
+    return $rc
+}
+
 # ─── Project root resolution ────────────────────────────────────────────────
 # Returns zBuild repo root via git rev-parse; falls back to env var; error if neither.
 zbuild_project_root() {

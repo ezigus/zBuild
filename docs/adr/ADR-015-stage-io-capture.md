@@ -263,3 +263,49 @@ mergeable, with ADR-015 flipping to **Accepted** when the first one lands.
 
 This ADR PR (#441) lands the design document only; it does not modify the
 template parser, router, helpers, plugins, or event schema.
+
+### v2 — `run_captured_command` wrapper (issue #439)
+
+The v2 slice introduces the `run_captured_command <stage> <argv...>` wrapper in
+`scripts/lib/helpers.sh`. The wrapper executes the wrapped command with merged
+stdout+stderr captured to a temp file, records wall-clock duration in
+millisecond resolution via `$EPOCHREALTIME` (zBuild requires Bash 5+ per
+`scripts/lib/compat.sh`), forwards the record to `capture_stage_io --kind command`,
+and re-emits the captured output on its own stdout so it is a drop-in
+replacement for `$(cmd)` callers. The caller's `errexit` state is preserved.
+
+**Adoption recipe:** any plugin invoking an external command whose argv,
+exit code, or output is worth auditing should replace the bare command with
+`run_captured_command <stage> <argv...>`. The plugin must already source
+`core/output/stage-io.sh` (a defensive guard returns rc=2 if not). When the
+template's stage declares no `io.destinations`, the wrapper still runs the
+command transparently and the capture is a no-op (hot path).
+
+**Adopted in v2:**
+
+- `plugins/agent/intake/plugin.sh` — the `gh issue view` call in `intake_run`:
+  ```sh
+  fetched="$(run_captured_command intake gh issue view "$issue" \
+      --json title,body --jq '...' 2>/dev/null)"
+  ```
+  Stdout passthrough returns the assembled `title\n\nbody` string.
+- `plugins/agent/build/plugin.sh` — the `git apply --check` validation:
+  ```sh
+  if ! run_captured_command build git -C "$repo_root" apply --check \
+      "$output_diff_patch" >/dev/null 2>&1; then
+      warn "..."
+  fi
+  ```
+  The wrapper's stdout is redirected to `/dev/null` because only the rc
+  matters for `--check`; the captured output still lands in the artifact.
+
+**v2 limitations (carried into v3):**
+
+- Capture is read-back through `head -c $RUN_CAPTURED_CMD_MAX_BYTES` (default
+  1 MiB). Output exceeding the cap is truncated and the artifact's `.output`
+  ends with `[truncated: <N> bytes total, captured <max>]`.
+- Embedded NUL bytes are stripped (`tr -d '\0'`) before the record is
+  assembled — binary command output is lossy by design.
+- `duration_ms` resolution is true milliseconds via `$EPOCHREALTIME`.
+- Outbound `gh_comment` redaction is still deferred to #440; v2 stages that
+  enable `gh_comment` will receive the v3 stub renderer.
