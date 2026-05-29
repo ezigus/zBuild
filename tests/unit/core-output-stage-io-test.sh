@@ -126,7 +126,7 @@ assert_contains "T10 event has stage" "$t10_evt" "plan"
 assert_contains "T10 event has kind=llm" "$t10_evt" "llm"
 assert_contains "T10 event has artifact_path" "$t10_evt" "plan-1.json"
 
-# ─── T11: stdout destination stub ────────────────────────────────────────────
+# ─── T11: stdout destination renders content (#440) ──────────────────────────
 _MOCK_DESTS="stdout"
 rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
 set +e
@@ -134,17 +134,17 @@ out11="$(capture_stage_io --stage plan --kind llm --input "i" --output "o" 2>&1)
 rc=$?
 set -e
 assert_eq "T11 stdout dest rc=0" "0" "$rc"
-assert_contains "T11 stdout dest logs deferred to #440" "$out11" "deferred to #440"
+assert_contains "T11 stdout dest emits stage-io header" "$out11" "stage-io: plan"
 
-# ─── T12: gh_comment destination stub ────────────────────────────────────────
+# ─── T12: gh_comment destination silent skip when ZBUILD_ISSUE unset ─────────
 _MOCK_DESTS="gh_comment"
 rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
+unset ZBUILD_ISSUE 2>/dev/null || true
 set +e
 out12="$(capture_stage_io --stage plan --kind llm --input "i" --output "o" 2>&1)"
 rc=$?
 set -e
-assert_eq "T12 gh_comment dest rc=0" "0" "$rc"
-assert_contains "T12 gh_comment dest logs deferred to #440" "$out12" "deferred to #440"
+assert_eq "T12 gh_comment dest rc=0 (silent skip)" "0" "$rc"
 
 # ─── T31: stdout-only dest writes NO file under state/artifacts/stage-io ─────
 # Proves the stub path doesn't accidentally write artifacts.
@@ -216,6 +216,333 @@ rc=$?
 set -e
 assert_eq "T34 missing --input only returns rc=2" "2" "$rc"
 assert_contains "T34 stderr mentions input" "$err34" "input"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ADR-015 v3 (#440): _stage_io_to_stdout + _stage_io_to_gh_comment renderers
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Helper: build a record JSON for direct renderer testing
+_t440_make_record() {
+    local stage="$1" kind="$2" input="$3" output="$4"
+    local exit_code="${5:-}" duration_ms="${6:-}" metadata_json="${7:-{\}}"
+    jq -n \
+        --arg stage "$stage" --arg kind "$kind" \
+        --arg input "$input" --arg output "$output" \
+        --arg exit_code "$exit_code" --arg duration_ms "$duration_ms" \
+        --argjson metadata "$metadata_json" \
+        '{
+            schema_version: 1, run_id: "t440", stage: $stage, kind: $kind, seq: 1,
+            input: $input, output: $output,
+            exit_code: (if $exit_code == "" then null else ($exit_code|tonumber) end),
+            duration_ms: (if $duration_ms == "" then null else ($duration_ms|tonumber) end),
+            metadata: $metadata, ts: "2026-05-29T00:00:00Z"
+        }'
+}
+
+# Stub template_stage_io_tail_lines + template_stage_io_redact so the renderers
+# don't depend on template state. Tests override these per case.
+_MOCK_TAIL=""
+_MOCK_REDACT=""
+template_stage_io_tail_lines() { printf '%s' "$_MOCK_TAIL"; }
+template_stage_io_redact() { printf '%s' "$_MOCK_REDACT"; }
+
+# ─── T35: stdout llm renders banner with header ──────────────────────────────
+_MOCK_TAIL=""
+rec35="$(_t440_make_record plan llm "prompt text" "response text" "" "2400")"
+out35="$(_stage_io_to_stdout "$rec35" 2>/dev/null)"
+assert_contains_regex "T35 stdout llm has header line" "$out35" "stage-io: plan \[llm\]"
+assert_contains "T35 stdout llm has seq=1" "$out35" "seq=1"
+assert_contains "T35 stdout llm has duration 2.4s" "$out35" "2.4s"
+assert_contains "T35 stdout llm has input section" "$out35" "── input ──"
+assert_contains "T35 stdout llm has output section" "$out35" "── output ──"
+assert_contains "T35 stdout llm has footer" "$out35" "end stage-io: plan"
+
+# ─── T36: stdout command shows $ <input> and exit line ───────────────────────
+rec36="$(_t440_make_record build command "ls -la" "file1\nfile2" "0" "100")"
+out36="$(_stage_io_to_stdout "$rec36" 2>/dev/null)"
+assert_contains "T36 stdout command has \$ prefix" "$out36" '$ ls -la'
+assert_contains "T36 stdout command has exit line" "$out36" "── exit: 0 ──"
+
+# ─── T37: stdout computed shows in:/out: ─────────────────────────────────────
+rec37="$(_t440_make_record intake computed "src/file.txt" "dst/file.txt" "" "")"
+out37="$(_stage_io_to_stdout "$rec37" 2>/dev/null)"
+assert_contains "T37 stdout computed has in:" "$out37" "in: src/file.txt"
+assert_contains "T37 stdout computed has out:" "$out37" "out: dst/file.txt"
+
+# ─── T38: stdout tail_lines default 40 when template returns empty ───────────
+# Generate 50-line output; expect last 40 to appear, first 10 missing
+_MOCK_TAIL=""
+fifty_lines=""
+for i in $(seq 1 50); do fifty_lines+="line${i}\n"; done
+# Use printf to expand the \n into real newlines
+fifty_lines="$(printf '%b' "$fifty_lines")"
+rec38="$(_t440_make_record plan llm "in" "$fifty_lines" "" "100")"
+out38="$(_stage_io_to_stdout "$rec38" 2>/dev/null)"
+assert_contains "T38 stdout llm tail contains line50" "$out38" "line50"
+assert_contains "T38 stdout llm tail contains line11" "$out38" "line11"
+if grep -qx "line10" <<< "$out38"; then
+    assert_fail "T38 stdout llm tail excludes line10" "line10 unexpectedly present"
+else
+    assert_pass "T38 stdout llm tail excludes line10 (default 40)"
+fi
+
+# ─── T39: stdout tail_lines custom (5) honored ───────────────────────────────
+_MOCK_TAIL="5"
+rec39="$(_t440_make_record plan llm "in" "$fifty_lines" "" "100")"
+out39="$(_stage_io_to_stdout "$rec39" 2>/dev/null)"
+assert_contains "T39 stdout tail 5 contains line50" "$out39" "line50"
+assert_contains "T39 stdout tail 5 contains line46" "$out39" "line46"
+if grep -qx "line45" <<< "$out39"; then
+    assert_fail "T39 stdout tail 5 excludes line45" "line45 unexpectedly present"
+else
+    assert_pass "T39 stdout tail 5 excludes line45"
+fi
+_MOCK_TAIL=""
+
+# ─── T40: stdout llm with metadata.error → FAIL ──────────────────────────────
+rec40="$(_t440_make_record plan llm "in" "out" "" "100" '{"error":"timeout"}')"
+out40="$(_stage_io_to_stdout "$rec40" 2>/dev/null)"
+assert_contains "T40 stdout llm with error shows FAIL" "$out40" "FAIL"
+
+# ─── T41: stdout command exit_code 0 vs 1 → OK vs FAIL ───────────────────────
+rec41a="$(_t440_make_record build command "true" "" "0" "10")"
+out41a="$(_stage_io_to_stdout "$rec41a" 2>/dev/null)"
+assert_contains "T41a stdout command exit 0 → OK" "$out41a" " OK "
+rec41b="$(_t440_make_record build command "false" "" "1" "10")"
+out41b="$(_stage_io_to_stdout "$rec41b" 2>/dev/null)"
+assert_contains "T41b stdout command exit 1 → FAIL" "$out41b" " FAIL "
+
+# ─── T42: gh_comment no-op when ZBUILD_ISSUE unset ───────────────────────────
+unset ZBUILD_ISSUE 2>/dev/null || true
+rec42="$(_t440_make_record plan llm "i" "o" "" "100")"
+# Use a gh shim that records calls
+ghdir="$TEST_TEMP_DIR/gh-t42"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+echo "GH_CALLED \$@" >> "$ghdir/calls.log"
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+_stage_io_to_gh_comment "$rec42" >/dev/null 2>&1
+PATH="$saved_path"
+if [[ -s "$ghdir/calls.log" ]]; then
+    assert_fail "T42 gh not called when ZBUILD_ISSUE unset" "calls.log non-empty"
+else
+    assert_pass "T42 gh not called when ZBUILD_ISSUE unset"
+fi
+
+# ─── T43: gh_comment no-op when ZBUILD_OUTPUT_GH_COMMENT=0 ───────────────────
+export ZBUILD_ISSUE="123"
+export ZBUILD_OUTPUT_GH_COMMENT="0"
+ghdir="$TEST_TEMP_DIR/gh-t43"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+echo "GH_CALLED" >> "$ghdir/calls.log"
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+_stage_io_to_gh_comment "$rec42" >/dev/null 2>&1
+PATH="$saved_path"
+if [[ -s "$ghdir/calls.log" ]]; then
+    assert_fail "T43 gh not called when ZBUILD_OUTPUT_GH_COMMENT=0" "calls.log non-empty"
+else
+    assert_pass "T43 gh not called when ZBUILD_OUTPUT_GH_COMMENT=0"
+fi
+unset ZBUILD_OUTPUT_GH_COMMENT
+
+# ─── T44: gh_comment builds <details>/<summary>/fenced shape ─────────────────
+export ZBUILD_ISSUE="123"
+rec44="$(_t440_make_record plan llm "prompt body" "response body" "" "2400")"
+ghdir="$TEST_TEMP_DIR/gh-t44"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+# Capture --body argument
+shift  # 'issue'
+shift  # 'comment'
+shift  # issue number
+while [[ \$# -gt 0 ]]; do
+    if [[ "\$1" == "--body" ]]; then
+        printf '%s' "\$2" > "$ghdir/body.txt"
+        shift 2
+        continue
+    fi
+    shift
+done
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+# No manifest → pass-through redaction
+_stage_io_to_gh_comment "$rec44" >/dev/null 2>&1
+PATH="$saved_path"
+body44="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
+assert_contains "T44 gh body contains <details>" "$body44" "<details>"
+assert_contains "T44 gh body contains </details>" "$body44" "</details>"
+assert_contains "T44 gh body contains summary OK plan llm 2.4s" "$body44" "<summary>OK stage: plan (llm, 2.4s)</summary>"
+# Two fenced blocks: ```... ``` for input and output sections (stdout rendering nested)
+fence_count="$(grep -c '^```' <<< "$body44" || true)"
+if [[ "$fence_count" -ge 2 ]]; then
+    assert_pass "T44 gh body has at least 2 fence markers"
+else
+    assert_fail "T44 gh body has at least 2 fence markers" "got: $fence_count"
+fi
+
+# ─── T45: body cap: 80_000-char output → ≤ 60_000 + truncated marker ─────────
+big_output=""
+big_output="$(printf 'X%.0s' $(seq 1 80000))"
+rec45="$(_t440_make_record plan llm "short input" "$big_output" "" "100")"
+ghdir="$TEST_TEMP_DIR/gh-t45"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+shift; shift; shift
+while [[ \$# -gt 0 ]]; do
+    if [[ "\$1" == "--body" ]]; then
+        printf '%s' "\$2" > "$ghdir/body.txt"
+        shift 2; continue
+    fi
+    shift
+done
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+_stage_io_to_gh_comment "$rec45" >/dev/null 2>&1
+PATH="$saved_path"
+body45="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
+body45_size=${#body45}
+if [[ "$body45_size" -le 60000 ]]; then
+    assert_pass "T45 body cap ≤ 60000 (got $body45_size)"
+else
+    assert_fail "T45 body cap ≤ 60000" "got: $body45_size"
+fi
+assert_contains "T45 truncated marker present" "$body45" "[truncated"
+assert_contains "T45 truncated mentions 80000 bytes" "$body45" "80000-byte"
+assert_contains "T45 truncated mentions artifact path" "$body45" "artifacts/stage-io/plan-1.json"
+
+# ─── T46: redaction applied via scope manifest ───────────────────────────────
+mkdir -p "$ZBUILD_STATE_DIR"
+cat > "$ZBUILD_STATE_DIR/scope-manifest.md" <<'EOF'
++ core/
+EOF
+rec46="$(_t440_make_record plan llm "prompt" "see secrets/api.key for details" "" "100")"
+ghdir="$TEST_TEMP_DIR/gh-t46"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+shift; shift; shift
+while [[ \$# -gt 0 ]]; do
+    if [[ "\$1" == "--body" ]]; then printf '%s' "\$2" > "$ghdir/body.txt"; shift 2; continue; fi
+    shift
+done
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+_stage_io_to_gh_comment "$rec46" >/dev/null 2>&1
+PATH="$saved_path"
+body46="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
+assert_contains "T46 body has out-of-scope-context wrapper" "$body46" "<out-of-scope-context>"
+
+# ─── T47: redact: false opt-out for command kind ─────────────────────────────
+_MOCK_REDACT="false"
+rec47="$(_t440_make_record build command "grep -r secrets/api.key /etc" "found secrets/api.key" "0" "100")"
+ghdir="$TEST_TEMP_DIR/gh-t47"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+shift; shift; shift
+while [[ \$# -gt 0 ]]; do
+    if [[ "\$1" == "--body" ]]; then printf '%s' "\$2" > "$ghdir/body.txt"; shift 2; continue; fi
+    shift
+done
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+_stage_io_to_gh_comment "$rec47" >/dev/null 2>&1
+PATH="$saved_path"
+body47="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
+if grep -qF '<out-of-scope-context>' <<< "$body47"; then
+    assert_fail "T47 command redact:false → no redaction" "out-of-scope-context wrapper unexpectedly present"
+else
+    assert_pass "T47 command redact:false → no redaction wrapper"
+fi
+assert_contains "T47 command redact:false body has unredacted token" "$body47" "secrets/api.key"
+_MOCK_REDACT=""
+
+# ─── T48: LLM kind ignores redact:false (always redacted) ────────────────────
+_MOCK_REDACT="false"
+rec48="$(_t440_make_record plan llm "prompt" "see secrets/api.key here" "" "100")"
+ghdir="$TEST_TEMP_DIR/gh-t48"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+shift; shift; shift
+while [[ \$# -gt 0 ]]; do
+    if [[ "\$1" == "--body" ]]; then printf '%s' "\$2" > "$ghdir/body.txt"; shift 2; continue; fi
+    shift
+done
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+_stage_io_to_gh_comment "$rec48" >/dev/null 2>&1
+PATH="$saved_path"
+body48="$(cat "$ghdir/body.txt" 2>/dev/null || echo '')"
+assert_contains "T48 LLM ignores redact:false (still redacted)" "$body48" "<out-of-scope-context>"
+_MOCK_REDACT=""
+
+# ─── T49: redaction failure → drop comment + emit error event ────────────────
+# Save the real function via declare -f, install a failing mock, restore later.
+: > "$ZBUILD_EVENTS_JSONL"
+_orig_apply_scope_redaction="$(declare -f apply_scope_redaction)"
+apply_scope_redaction() { return 1; }
+rec49="$(_t440_make_record plan llm "p" "o" "" "100")"
+ghdir="$TEST_TEMP_DIR/gh-t49"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<EOF
+#!/usr/bin/env bash
+echo "GH_CALLED" >> "$ghdir/calls.log"
+exit 0
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+set +e
+_stage_io_to_gh_comment "$rec49" >/dev/null 2>&1
+rc49=$?
+set -e
+PATH="$saved_path"
+assert_eq "T49 redaction failure returns 0" "0" "$rc49"
+if [[ -s "$ghdir/calls.log" ]]; then
+    assert_fail "T49 comment dropped on redaction failure" "gh was called"
+else
+    assert_pass "T49 comment dropped on redaction failure"
+fi
+assert_event_emitted "T49 stage.io.error redaction_failed emitted" "$ZBUILD_EVENTS_JSONL" "stage.io.error"
+t49_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | head -1)"
+assert_contains "T49 event has redaction_failed reason" "$t49_evt" "redaction_failed"
+# Restore real apply_scope_redaction from the saved declare -f snapshot.
+unset -f apply_scope_redaction
+eval "$_orig_apply_scope_redaction"
+unset _orig_apply_scope_redaction
+
+# ─── T50: gh post failure → emit error event, return 0 ──────────────────────
+: > "$ZBUILD_EVENTS_JSONL"
+rec50="$(_t440_make_record plan llm "p" "o" "" "100")"
+ghdir="$TEST_TEMP_DIR/gh-t50"; mkdir -p "$ghdir"
+cat > "$ghdir/gh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$ghdir/gh"
+saved_path="$PATH"; PATH="$ghdir:$PATH"
+set +e
+_stage_io_to_gh_comment "$rec50" >/dev/null 2>&1
+rc50=$?
+set -e
+PATH="$saved_path"
+assert_eq "T50 gh failure returns 0" "0" "$rc50"
+assert_event_emitted "T50 stage.io.error gh_comment_post_failed emitted" "$ZBUILD_EVENTS_JSONL" "stage.io.error"
+t50_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | head -1)"
+assert_contains "T50 event has gh_comment_post_failed reason" "$t50_evt" "gh_comment_post_failed"
 
 cleanup_test_env
 print_test_results

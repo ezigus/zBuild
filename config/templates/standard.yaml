@@ -8,12 +8,22 @@ stages:
   - id: intake
     gate: auto
     roles: [intake]
+    io:
+      destinations: [file]
   - id: plan
     gate: auto
     roles: [planner]
+    io:
+      destinations: [file, gh_comment]
+      tail_lines: 60
   - id: build
     gate: auto
     roles: [builder]
+    io:
+      destinations: [file]
   - id: review
     gate: auto
     roles: [reviewer]
+    io:
+      destinations: [file, gh_comment]
+      tail_lines: 80
