@@ -9,21 +9,23 @@ stages:
     gate: auto
     roles: [intake]
     io:
-      destinations: [file]
+      destinations: [file, stdout]
+      tail_lines: 200
   - id: plan
     gate: auto
     roles: [planner]
     io:
-      destinations: [file, gh_comment]
-      tail_lines: 60
+      destinations: [file, stdout]
+      tail_lines: 200
   - id: build
     gate: auto
     roles: [builder]
     io:
-      destinations: [file]
+      destinations: [file, stdout]
+      tail_lines: 200
   - id: review
     gate: auto
     roles: [reviewer]
     io:
-      destinations: [file, gh_comment]
-      tail_lines: 80
+      destinations: [file, stdout]
+      tail_lines: 200
