@@ -496,6 +496,15 @@ assert_contains "Tv3-7 error mentions redact" "$err_redact_bad" "redact"
 load_template "$VALID_SUBSET_TPL"
 assert_eq "Tv3-8 redact missing → empty" "" "$(template_stage_io_redact plan)"
 
+# Tv3-9: _TPL_STAGE_IO_* vars are exported (orch spawns plugins in subshells
+# that must inherit destinations/tail_lines/redact via the environment;
+# without export, capture_stage_io silently short-circuits in the plugin).
+load_template "$STANDARD_TPL"
+exported_dests="$(bash -c 'printenv _TPL_STAGE_IO_DESTS_plan')"
+assert_eq "Tv3-9 _TPL_STAGE_IO_DESTS_plan exported across subshells" "file,stdout" "$exported_dests"
+exported_roles="$(bash -c 'printenv _TPL_STAGE_ROLES_plan')"
+assert_eq "Tv3-9 _TPL_STAGE_ROLES_plan exported across subshells" "planner" "$exported_roles"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
