@@ -305,6 +305,50 @@ assert_contains "T36c malformed input has exit line" "$out36c" "── exit: 0 �
 # Sanity: filesystem is intact (no command execution from the test input).
 [[ -d / ]] && assert_pass "T36c eval did not execute embedded \$(rm -rf /)"
 
+# ─── T36d: llm output that is minified JSON renders as indented multi-line ──
+# The plan plugin's LLM response is exactly this shape — a one-line minified
+# JSON blob (~4KB). Operator complained it was unreadable as-is.
+_MOCK_TAIL="200"
+minified='{"schema_version":1,"title":"x","steps":[{"id":"step-1","description":"do thing","files":["a","b"]}]}'
+rec36d="$(_t440_make_record plan llm "prompt" "$minified" "" "1000")"
+out36d="$(_stage_io_to_stdout "$rec36d" 2>/dev/null)"
+# Pretty-printed JSON has at least one newline between { and the first field,
+# and "schema_version" is indented (jq default indent is 2 spaces).
+assert_contains "T36d minified JSON output gets indented" "$out36d" '  "schema_version": 1'
+assert_contains "T36d nested array also indented" "$out36d" '      "id": "step-1"'
+# The original minified blob should NOT appear as one giant line anywhere.
+if echo "$out36d" | grep -qF '{"schema_version":1,'; then
+    assert_fail "T36d minified blob must NOT survive as one line after pretty-print" "got: still minified"
+else
+    assert_pass "T36d minified blob must NOT survive as one line after pretty-print"
+fi
+
+# ─── T36e: non-JSON LLM output is unchanged ─────────────────────────────────
+# Plain prose responses shouldn't be touched.
+prose=$'Hi there.\nThis is plain text.\nNo JSON anywhere.'
+rec36e="$(_t440_make_record plan llm "prompt" "$prose" "" "1000")"
+out36e="$(_stage_io_to_stdout "$rec36e" 2>/dev/null)"
+assert_contains "T36e prose preserved line 1" "$out36e" "Hi there."
+assert_contains "T36e prose preserved line 3" "$out36e" "No JSON anywhere."
+
+# ─── T36f: ```json … ``` fenced JSON gets unwrapped and pretty-printed ─────
+fenced=$'```json\n{"a":1,"b":[2,3]}\n```'
+rec36f="$(_t440_make_record plan llm "prompt" "$fenced" "" "1000")"
+out36f="$(_stage_io_to_stdout "$rec36f" 2>/dev/null)"
+assert_contains "T36f fenced JSON gets indented" "$out36f" '  "a": 1'
+# Original fence markers should NOT survive (stripped before pretty-print).
+if echo "$out36f" | grep -qF '```json'; then
+    assert_fail "T36f fence markers should be stripped" "got: fence still there"
+else
+    assert_pass "T36f fence markers stripped"
+fi
+
+# ─── T36g: malformed JSON (starts with { but invalid) falls back to raw ────
+broken='{"unterminated_string": "no quote'
+rec36g="$(_t440_make_record plan llm "prompt" "$broken" "" "1000")"
+out36g="$(_stage_io_to_stdout "$rec36g" 2>/dev/null)"
+assert_contains "T36g malformed JSON falls back to raw" "$out36g" "unterminated_string"
+
 # ─── T37: stdout computed shows in:/out: ─────────────────────────────────────
 rec37="$(_t440_make_record intake computed "src/file.txt" "dst/file.txt" "" "")"
 out37="$(_stage_io_to_stdout "$rec37" 2>/dev/null)"

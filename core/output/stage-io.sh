@@ -348,6 +348,42 @@ _stage_io_render_command_argv() {
     printf '\n'
 }
 
+# ─── _stage_io_pretty_print — pretty-print JSON, pass through otherwise ─────
+# LLM outputs and some command outputs (gh --json) are JSON; minified, they
+# render as one ~4KB line that scrolls off-screen and is unreadable. When the
+# content parses as JSON (after stripping optional ```json … ``` fences),
+# reformat through `jq .` for indented multi-line output. Otherwise return
+# the original text unchanged. Always returns content on stdout; jq's
+# "couldn't parse" error and the fallback are silenced.
+_stage_io_pretty_print() {
+    local content="$1"
+    # Cheap precheck — only attempt jq on content that starts with { or [
+    # (post leading whitespace). Avoids the cost of jq -e for plain prose.
+    local trimmed="${content#"${content%%[![:space:]]*}"}"
+    [[ "$trimmed" != \{* && "$trimmed" != \[* ]] && {
+        # Strip a ```json … ``` wrapper if that's the only thing keeping it
+        # from parsing (the plan plugin's response sometimes has these).
+        if [[ "$trimmed" == '```json'* || "$trimmed" == '```'* ]]; then
+            content="$(printf '%s' "$content" \
+                | sed 's/^[[:space:]]*```json[[:space:]]*//' \
+                | sed 's/^[[:space:]]*```[[:space:]]*//' \
+                | sed 's/[[:space:]]*```[[:space:]]*$//')"
+            trimmed="${content#"${content%%[![:space:]]*}"}"
+            [[ "$trimmed" != \{* && "$trimmed" != \[* ]] && { printf '%s' "$content"; return 0; }
+        else
+            printf '%s' "$content"; return 0
+        fi
+    }
+    # Try to pretty-print. On failure (invalid JSON despite starting with
+    # {/[) fall back to the original text.
+    local pretty
+    if pretty="$(printf '%s' "$content" | jq . 2>/dev/null)"; then
+        printf '%s' "$pretty"
+    else
+        printf '%s' "$content"
+    fi
+}
+
 # ─── _stage_io_tail — last N lines of input string ───────────────────────────
 # Appends trailing newline so the next section divider (── … ──) starts on its
 # own line, even when the original content lacked a final newline.
@@ -394,14 +430,24 @@ _stage_io_to_stdout() {
             printf '── input ──\n'
             _stage_io_head "$input" "$tail_lines"
             printf '\n── output ──\n'
-            _stage_io_tail "$output" "$tail_lines"
+            # Pretty-print JSON outputs so a 4KB minified response renders as
+            # a readable indented block instead of one giant line. Falls back
+            # to the raw text when the content isn't JSON.
+            local _pretty_out
+            _pretty_out="$(_stage_io_pretty_print "$output")"
+            _stage_io_tail "$_pretty_out" "$tail_lines"
             printf '\n'
             ;;
         command)
             printf '── input ──\n'
             _stage_io_render_command_argv "$input"
             printf '── output ──\n'
-            _stage_io_tail "$output" "$tail_lines"
+            # Command output is typically free-form text (gh issue body, git
+            # output) but occasionally JSON (gh ... --json). Pretty-print
+            # opportunistically.
+            local _pretty_cmd_out
+            _pretty_cmd_out="$(_stage_io_pretty_print "$output")"
+            _stage_io_tail "$_pretty_cmd_out" "$tail_lines"
             printf '\n── exit: %s ──\n' "${exit_code:-?}"
             ;;
         computed)
