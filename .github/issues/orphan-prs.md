@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-29T00:00:00Z (rolling 30-PR window)_
+_Last updated: 2026-05-29T18:49:40Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -58,3 +58,12 @@ _Last updated: 2026-05-29T00:00:00Z (rolling 30-PR window)_
 | #423 | fix(ci): drop invalid secrets.GITHUB_TOKEN from zbuild-pipeline workflow | 2026-05-28 |
 | #420 | [manifest-sync] Drift reconciliation | 2026-05-28 |
 | #434 | [manifest-sync] Drift reconciliation | 2026-05-29 |
+| #453 | fix: strip ANSI/CSI escape sequences from captured input/output | 2026-05-29 |
+| #452 | feat: pretty-print JSON outputs in stage-io banner via jq | 2026-05-29 |
+| #451 | feat: human-readable command-kind input rendering in stage-io banner | 2026-05-29 |
+| #450 | fix: stage-io banner uses dedicated fd 3, survives plugin 2>/dev/null | 2026-05-29 |
+| #449 | fix: stage-io stdout banner goes to stderr (route_to_model contention) | 2026-05-29 |
+| #448 | fix: export _TPL_STAGE_IO_* vars so plugin subshells see stage-io config | 2026-05-29 |
+| #446 | chore: verbose stage-io defaults in standard.yaml (file+stdout, tail 200) | 2026-05-29 |
+| #443 | chore(manifest-sync): backfill 55 orphan issues into keepers-manifest.yaml | 2026-05-29 |
+| #441 | docs(ADR-015): propose stage-I/O capture chokepoint | 2026-05-29 |
