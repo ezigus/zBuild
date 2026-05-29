@@ -203,7 +203,20 @@ capture_stage_io() {
                 [[ -z "$artifact_path" ]] && artifact_path="$_p"
                 ;;
             stdout)
-                _stage_io_to_stdout "$record" || true
+                # Banner must go to STDERR, not stdout. Reason: route_to_model
+                # returns the LLM response via stdout (callers do
+                # `raw_response=$(route_to_model ...)`). When capture_stage_io
+                # is invoked from inside route_to_model (the llm-kind capture
+                # point), any banner written to stdout would either corrupt
+                # the response or — as line 78 of route.sh redirects capture's
+                # stdout to /dev/null — be silently swallowed. Stderr is
+                # captured by the orch local engine's result.stderr file and
+                # forwarded to the operator's terminal by orch_collect, so
+                # the banner reaches the user without contending with the
+                # response channel. gh_comment renderer still calls
+                # _stage_io_to_stdout for inner-content production where the
+                # stdout capture IS what we want; that path is unchanged.
+                _stage_io_to_stdout "$record" >&2 || true
                 ;;
             gh_comment)
                 _stage_io_to_gh_comment "$record" || true
