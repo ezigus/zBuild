@@ -261,6 +261,56 @@ rc=$?
 set -e
 assert_eq "cleanup: rc=0" "0" "$rc"
 
+# ─── Test 8: prompt hygiene hardening (#462) ─────────────────────────────────
+print_test_section "8. prompt contains #435-style hygiene tokens (issue #462)"
+
+# File-based capture: route_to_model runs inside $() in _review_run_inner,
+# so variable-based capture is lost to the subshell — use a file.
+_CAPTURED_REVIEW_PROMPT="$TEST_TEMP_DIR/captured-review-prompt.txt"
+: > "$_CAPTURED_REVIEW_PROMPT"
+
+# Shadow route_to_model to capture prompt arg and return a canned approve verdict
+route_to_model() {
+    printf '%s' "${2:-}" > "$_CAPTURED_REVIEW_PROMPT"
+    printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}'
+    return 0
+}
+
+OUTPUT_HYGIENE="$ARTIFACT_DIR/review-hygiene.json"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_HYGIENE" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "hygiene: rc=0" "0" "$rc"
+
+captured_prompt="$(cat "$_CAPTURED_REVIEW_PROMPT")"
+
+# Assert required hygiene tokens
+if echo "$captured_prompt" | grep -q "no markdown code fences"; then
+    assert_pass "prompt contains 'no markdown code fences'"
+else
+    assert_fail "prompt missing 'no markdown code fences'" "got: $(echo "$captured_prompt" | head -5)"
+fi
+
+if echo "$captured_prompt" | grep -q "no tool calls"; then
+    assert_pass "prompt contains 'no tool calls'"
+else
+    assert_fail "prompt missing 'no tool calls'" "got: $(echo "$captured_prompt" | head -5)"
+fi
+
+if echo "$captured_prompt" | grep -qi "SINGLE JSON object"; then
+    assert_pass "prompt contains 'SINGLE JSON object'"
+else
+    assert_fail "prompt missing 'SINGLE JSON object'" "got: $(echo "$captured_prompt" | head -5)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

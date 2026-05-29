@@ -107,31 +107,41 @@ _review_run_inner() {
     fi
 
     # ─── Build prompt ────────────────────────────────────────────────────────
+    local _review_instructions
+    _review_instructions="$(cat <<'REVIEW_PROMPT'
+You are a code review agent. Examine the diff to determine whether it correctly
+implements the plan. Respond with a SINGLE JSON object and nothing else —
+no markdown code fences, no commentary before or after, no tool calls.
+
+Required JSON schema:
+
+  {
+    "verdict": "approve" | "request_changes" | "block",
+    "confidence": <float 0.0-1.0>,
+    "issues": ["<string>", ...],
+    "summary": "<string>"
+  }
+
+Rules:
+- `schema_version` is implicit (1).
+- `verdict` MUST be exactly one of: approve, request_changes, block.
+- `issues` is an array of strings; empty array [] if no issues found.
+- `confidence` is a float between 0.0 and 1.0.
+- Do not include reasoning, explanations, or prose — just the JSON.
+
+Verdict definitions:
+  approve         — diff implements the plan; tests pass; safe to open PR
+  request_changes — fixable issues found; not blocking but need attention
+  block           — critical issues; must not proceed to PR
+
+REVIEW_PROMPT
+)"
     local prompt
-    # shellcheck disable=SC2089
-    prompt="Review whether this diff implements the plan. Respond with a JSON object only -- no prose, no code fences.
-
-Plan:
-${plan_content}
-
-Diff:
-${diff_content}
-
-Test results:
-${test_content}
-
-Respond with JSON:
-{
-  \"verdict\": \"approve\" | \"request_changes\" | \"block\",
-  \"confidence\": <float 0.0-1.0>,
-  \"issues\": [<string>, ...],
-  \"summary\": \"<string>\"
-}
-
-verdict rules:
-  approve         -- diff implements the plan; tests pass; safe to open PR
-  request_changes -- fixable issues found; not blocking but need attention
-  block           -- critical issues; must not proceed to PR"
+    printf -v prompt '%s\nPlan:\n%s\n\nDiff:\n%s\n\nTest results:\n%s\n' \
+        "$_review_instructions" \
+        "$plan_content" \
+        "$diff_content" \
+        "$test_content"
 
     # Write prompt to a temp file for redaction (apply_scope_redaction takes file paths)
     local prompt_file="$artifact_dir/review-prompt.txt"
