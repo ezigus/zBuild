@@ -58,6 +58,7 @@
     "plugin.tamper.detected",
     "intake.refused.issue_closed",
     "intake.override.closed_issue_allowed",
-    "plan.scope.violation"
+    "plan.scope.violation",
+    "review.scope.violation"
   ]
 }

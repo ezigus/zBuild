@@ -109,11 +109,26 @@ _review_run_inner() {
     fi
 
     # ─── Build prompt ────────────────────────────────────────────────────────
+    # ADR-018 (#469): Pattern 1 — one-shot with tools. Read is available for
+    # diff verification; Edit/Write/Bash are forbidden. Final-output contract
+    # remains a SINGLE JSON object with no fences and no prose.
     local _review_instructions
     _review_instructions="$(cat <<'REVIEW_PROMPT'
 You are a code review agent. Examine the diff to determine whether it correctly
-implements the plan. Respond with a SINGLE JSON object and nothing else —
-no markdown code fences, no commentary before or after, no tool calls.
+implements the plan.
+
+Final-output contract:
+Your FINAL response must be a SINGLE JSON object — no markdown code fences, no
+prose before or after the JSON.
+
+Tool-use policy:
+You MAY use the Read tool to inspect files referenced by the diff to verify
+the change implements the plan. Do NOT call Edit, Write, or Bash. Limit reads
+to paths in the diff or in the scope manifest.
+
+Scope redaction:
+Files outside the declared scope appear in the diff as `<out-of-scope-context>`
+markers — do NOT attempt to Read those paths.
 
 Required JSON schema:
 
@@ -129,7 +144,8 @@ Rules:
 - `verdict` MUST be exactly one of: approve, request_changes, block.
 - `issues` is an array of strings; empty array [] if no issues found.
 - `confidence` is a float between 0.0 and 1.0.
-- Do not include reasoning, explanations, or prose — just the JSON.
+- Do not include reasoning, explanations, or prose in the FINAL response —
+  just the JSON.
 
 Verdict definitions:
   approve         — diff implements the plan; tests pass; safe to open PR
@@ -166,9 +182,26 @@ REVIEW_PROMPT
     redacted_prompt="$(cat "$redacted_prompt_file")"
 
     # ─── Route to LLM (T2 per manifest config.tier_default) ─────────────────
+    # ADR-018 (#469): opt-in tool-use audit. When ZBUILD_REVIEW_AUDIT_TOOL_USE=1
+    # we ask the router to use --output-format json (via ZBUILD_ROUTER_JSON_OUTPUT)
+    # and write the captured tool_uses[] array to a side-channel file so we can
+    # parse it back in this shell (route_to_model is called via $() which
+    # discards subshell-local state otherwise).
     local tier="${ZBUILD_REVIEW_TIER:-T2}"
     local raw_response="" router_rc=0
+    local _audit_enabled=0 _audit_tool_uses_file=""
+    if [[ "${ZBUILD_REVIEW_AUDIT_TOOL_USE:-0}" == "1" ]]; then
+        _audit_enabled=1
+        _audit_tool_uses_file="$artifact_dir/review-tool-uses.json"
+        : > "$_audit_tool_uses_file"
+        export ZBUILD_ROUTER_JSON_OUTPUT=1
+        export ZBUILD_ROUTER_TOOL_USES_FILE="$_audit_tool_uses_file"
+    fi
     raw_response="$(route_to_model "$tier" "$redacted_prompt" 2>/dev/null)" || router_rc=$?
+    if [[ $_audit_enabled -eq 1 ]]; then
+        unset ZBUILD_ROUTER_JSON_OUTPUT ZBUILD_ROUTER_TOOL_USES_FILE
+        _review_audit_tool_use "$_audit_tool_uses_file" "$scope_manifest" || true
+    fi
 
     # ─── Parse verdict from LLM response ────────────────────────────────────
     local verdict="" confidence="" issues_json="[]" summary=""
@@ -253,6 +286,69 @@ REVIEW_PROMPT
         "verdict=$verdict" \
         "issues_count=$issues_count" \
         "router_rc=$router_rc"
+    return 0
+}
+
+# ─── _review_audit_tool_use ─────────────────────────────────────────────────
+# ADR-018 (#469): warn-only audit. Parses tool_uses[] (written by the router
+# side-channel) and emits review.scope.violation for each Read whose
+# input.file_path is NOT covered by the scope manifest allowlist. Does NOT
+# coerce the verdict — downstream consumers decide. Fail-soft: any error is
+# logged via warn() but the function still returns 0.
+#
+# Args:
+#   $1 = tool_uses_file (json array; may be empty or missing)
+#   $2 = scope_manifest path
+_review_audit_tool_use() {
+    local tool_uses_file="$1" scope_manifest="$2"
+
+    [[ -z "$tool_uses_file" || ! -s "$tool_uses_file" ]] && return 0
+    [[ -z "$scope_manifest" || ! -f "$scope_manifest" ]] && return 0
+
+    # Allowlist: lines starting with '+' in the manifest (mirrors
+    # apply_scope_redaction's parser).
+    local allow_lines
+    allow_lines="$(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$scope_manifest" 2>/dev/null || true)"
+    local scope_hash
+    scope_hash="$(shasum -a 256 "$scope_manifest" 2>/dev/null | cut -d' ' -f1)"
+
+    # Extract Read paths from tool_uses[]; skip non-Read calls.
+    local read_paths
+    read_paths="$(jq -r '
+        if type == "array" then
+            .[] | select(.name == "Read") | .input.file_path // empty
+        else
+            empty
+        end
+    ' "$tool_uses_file" 2>/dev/null || true)"
+
+    [[ -z "$read_paths" ]] && return 0
+
+    local path stripped in_scope a
+    while IFS= read -r path; do
+        [[ -z "$path" ]] && continue
+        stripped="${path#./}"
+        in_scope=0
+        while IFS= read -r a; do
+            [[ -z "$a" ]] && continue
+            # Prefix match — `a` is the allowlist entry (e.g. "tests/"). The
+            # case glob `"$a"*` expands to e.g. `tests/*` and matches when
+            # `stripped` starts with `a`. Quote `a` so its own contents are
+            # taken literally; only the trailing `*` is a glob.
+            case "$stripped" in
+                "$a"*) in_scope=1; break ;;
+            esac
+        done <<< "$allow_lines"
+        if [[ $in_scope -eq 0 ]]; then
+            emit_event "review.scope.violation" \
+                "plugin=review" \
+                "stage=review" \
+                "path=$path" \
+                "scope_hash=$scope_hash"
+            warn "review_audit: out-of-scope Read on '$path' (warn-only; verdict unchanged)"
+        fi
+    done <<< "$read_paths"
+
     return 0
 }
 

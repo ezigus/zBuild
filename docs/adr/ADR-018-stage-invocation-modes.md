@@ -317,7 +317,47 @@ branch `feat/468-plan-invites-read`:
   goldens under `tests/golden/`: `plan-in-scope.golden`,
   `plan-out-of-scope.golden`, `plan-scope-violation-event.golden`.
 
-Issues B, D, E remain pending; this section will be updated to `Accepted`
-and this paragraph rewritten with PR links as each merges.
+Issue D (`#469 — review invites Read for diff verification`) in flight on
+branch `feat/469-review-invites-read`:
+
+- `_review_instructions` heredoc in `plugins/agent/review/plugin.sh`
+  rewritten as three distinct clauses (final-output contract, tool-use
+  invitation, scope-redaction reminder). The literal phrase "no tool
+  calls" from #462 is removed; Read is explicitly invited for diff
+  verification; Edit/Write/Bash remain forbidden in the prompt text;
+  `<out-of-scope-context>` markers are called out so the model does
+  not attempt to Read redacted paths.
+- Opt-in audit gated by `ZBUILD_REVIEW_AUDIT_TOOL_USE=1`. When enabled,
+  the plugin exports `ZBUILD_ROUTER_JSON_OUTPUT=1` to switch the router
+  into JSON envelope mode and `ZBUILD_ROUTER_TOOL_USES_FILE=<path>` to
+  request that `_route_call_claude` write the captured `tool_uses[]`
+  array to a side-channel file (route_to_model is called via `$()`
+  which would otherwise discard the in-subshell `_ROUTE_TOOL_USES_JSON`
+  state). After the call the plugin parses the file and, for each Read
+  whose `input.file_path` is not covered by the scope-manifest
+  allowlist, emits `review.scope.violation` with `path=<offender>` and
+  `scope_hash=<sha256>`. Warn-only — the verdict is NOT coerced; this
+  is defense-in-depth per the ADR-004 amendment above.
+- When `ZBUILD_REVIEW_AUDIT_TOOL_USE` is unset (default), the plugin's
+  behavior is identical to pre-#469: bare-text JSON parse path, no
+  envelope unwrap, no audit events.
+- `review.scope.violation` added to
+  `config/event-schema.json::known_types`.
+- Test coverage extended in
+  `plugins/agent/review/tests/review-test.sh`:
+  - Test 8 inverts the #462 "no tool calls" assertion to a NEGATIVE
+    check and adds positives for Read invitation, Edit/Write/Bash
+    prohibition, `<out-of-scope-context>` awareness.
+  - Tests 9–10: prompt declares scope-bounded reads; happy-path
+    verdict round-trip regression.
+  - Tests 11 / 11b: audit-on emits violations for out-of-scope Read,
+    no false-positive for in-scope path; audit-off emits no events.
+  - Test 12: subprocess-boundary contract — a real mock `claude`
+    binary on PATH emits the JSON envelope; the router unwraps it,
+    writes `tool_uses[]` to the side-channel, the plugin parses the
+    side-channel back and emits the violation event.
+
+Issues B and E remain pending; this section will be updated to
+`Accepted` and this paragraph rewritten with PR links as each merges.
 
 Dogfood run `20260529164733-70084` is the triggering evidence on record.
