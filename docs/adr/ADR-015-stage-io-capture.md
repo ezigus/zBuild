@@ -361,9 +361,9 @@ Truncating first could slice through a path-token in mid-string and produce
 an `<out-of-scope-context>` wrapper with an unmatched closing tag, defeating
 the purpose. The full body is assembled, then trimmed if it exceeds the cap.
 
-**60_000-char body cap**
+**60_000-byte body cap**
 
-GitHub allows up to 65_536 chars per issue comment body; the cap is set
+GitHub allows up to 65_536 bytes per issue comment body; the cap is set
 conservatively at 60_000 to leave headroom for the wrapping `<details>`,
 fence markers, summary, and the truncation marker itself. When a rendered
 body exceeds the cap, the rendered output portion is trimmed and a marker is
@@ -426,7 +426,7 @@ whose argv and output the operator has audited as safe to publish.
 
 **Deferred items**
 
-- Per-stage `max_output_bytes` knob — for now the 60_000-char body cap is
+- Per-stage `max_output_bytes` knob — for now the 60_000-byte body cap is
   global. A future iteration could let high-signal stages (review) keep more.
 - `gh_check_run` and `step_summary` destinations — sibling tokens to add
   after experience with `gh_comment` reveals what shape works.

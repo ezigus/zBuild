@@ -247,7 +247,8 @@ _stage_io_to_file() {
 
 # ─── _stage_io_render_status — derive OK/FAIL/empty indicator ────────────────
 # Args: <kind> <exit_code> <metadata_json>
-# Prints "OK", "FAIL", or empty (LLM with no error metadata).
+# Prints "OK" or "FAIL". LLM kind defaults to OK; only renders FAIL when
+# metadata.error is set.
 _stage_io_render_status() {
     local kind="$1" exit_code="$2" metadata_json="$3"
     case "$kind" in
@@ -343,7 +344,7 @@ _stage_io_to_stdout() {
 # Char count via ${#s} is multi-byte aware under UTF-8 locales; the GitHub
 # comment limit (65_536) is in BYTES. Force LC_ALL=C so ${#s} counts bytes.
 _stage_io_byte_len() {
-    LC_ALL=C
+    local LC_ALL=C
     local s="$1"
     printf '%s' "${#s}"
 }
@@ -360,10 +361,14 @@ _stage_io_redact_outbound() {
         return 0
     fi
     local tmp_in tmp_out
-    tmp_in="$(mktemp 2>/dev/null)" || { return 1; }
-    tmp_out="$(mktemp 2>/dev/null)" || { rm -f "$tmp_in"; return 1; }
-    # Cleanup on every return path including SIGPIPE.
-    trap 'rm -f "$tmp_in" "$tmp_out"' RETURN
+    tmp_in="$(mktemp "${TMPDIR:-/tmp}/zbio-in.XXXXXX" 2>/dev/null)" || { return 1; }
+    tmp_out="$(mktemp "${TMPDIR:-/tmp}/zbio-out.XXXXXX" 2>/dev/null)" || { rm -f "$tmp_in"; return 1; }
+    # Cleanup on every return path including SIGPIPE. Double-quote the trap arg
+    # so $tmp_in/$tmp_out expand to literal paths at trap-registration time —
+    # protects against the locals going out of scope before the trap fires and
+    # avoids re-evaluation hazards if another RETURN trap is layered on top.
+    # shellcheck disable=SC2064
+    trap "rm -f '$tmp_in' '$tmp_out'" RETURN
     printf '%s' "$content" > "$tmp_in"
     if apply_scope_redaction "$tmp_in" "$tmp_out" "$manifest" "" "0" >/dev/null 2>&1; then
         cat "$tmp_out"
@@ -462,8 +467,15 @@ _stage_io_to_gh_comment() {
         local room=$(( max - overhead_len - marker_len ))
         [[ $room -lt 0 ]] && room=0
         # Byte-accurate slice (head -c counts bytes regardless of locale).
-        local trimmed_rendered
-        trimmed_rendered="$(printf '%s' "$rendered_body" | head -c "$room")"
+        # iconv -c strips invalid UTF-8 sequences that would result from cutting
+        # mid-codepoint, ensuring GitHub API accepts the body. If iconv is
+        # unavailable (empty result), fall back to the raw bytewise slice.
+        local trimmed_rendered raw_slice
+        raw_slice="$(printf '%s' "$rendered_body" | head -c "$room")"
+        trimmed_rendered="$(printf '%s' "$raw_slice" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)"
+        if [[ -z "$trimmed_rendered" && -n "$raw_slice" ]]; then
+            trimmed_rendered="$raw_slice"
+        fi
         body="$(printf '<details><summary>%sstage: %s (%s, %s)</summary>\n\n```\n%s%s\n```\n</details>\n' \
             "$summary_status" "$stage" "$kind" "$dur" "$trimmed_rendered" "$trunc_marker")"
     fi
