@@ -112,13 +112,23 @@ load_template() {
     while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact; do
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
-        # Store roles, strategy, io_dests via name-mangled env vars (bash 3.2 compat)
+        # Store roles, strategy, io_dests via name-mangled env vars.
+        # MUST be exported: plugins run in subshells spawned by the orch local
+        # engine (`bash work-unit.sh`) and their capture_stage_io call needs to
+        # read template_stage_io_dests, which reads these vars. Without export
+        # the plugin sees them as empty and stage-io capture is silently
+        # short-circuited as "no destinations configured".
         local safe_id="${stage_id//-/_}"
         printf -v "_TPL_STAGE_ROLES_${safe_id}" '%s' "$roles"
         printf -v "_TPL_STAGE_STRATEGY_${safe_id}" '%s' "$strategy"
         printf -v "_TPL_STAGE_IO_DESTS_${safe_id}" '%s' "$io_dests"
         printf -v "_TPL_STAGE_IO_TAIL_${safe_id}" '%s' "$io_tail"
         printf -v "_TPL_STAGE_IO_REDACT_${safe_id}" '%s' "$io_redact"
+        export "_TPL_STAGE_ROLES_${safe_id}" \
+               "_TPL_STAGE_STRATEGY_${safe_id}" \
+               "_TPL_STAGE_IO_DESTS_${safe_id}" \
+               "_TPL_STAGE_IO_TAIL_${safe_id}" \
+               "_TPL_STAGE_IO_REDACT_${safe_id}"
     done <<< "$stage_data"
 }
 
