@@ -71,6 +71,75 @@ plan_run() {
         "$artifacts_dir"
 }
 
+# ─── _plan_validate_scope ───────────────────────────────────────────────────
+# Walk plan.json's steps[].files[] and emit one plan.scope.violation event per
+# offending path. Fail-soft: prints the violation count to stdout (caller adds
+# it to plugin.run.complete) and returns 0 even when violations are found.
+# Args:
+#   $1 = plan_json (string content)
+#   $2 = scope_manifest path
+# Stdout: integer violation count.
+_plan_validate_scope() {
+    local plan_json="$1"
+    local manifest="$2"
+
+    if [[ -z "$plan_json" || ! -f "$manifest" ]]; then
+        printf '0'
+        return 0
+    fi
+
+    # Reuse the manifest parser shape from core/redaction/scope-redaction.sh:75.
+    local allow_lines
+    allow_lines="$(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$manifest")"
+
+    local scope_hash; scope_hash="$(shasum -a 256 "$manifest" | cut -d' ' -f1)"
+    local manifest_abs; manifest_abs="$(cd "$(dirname "$manifest")" 2>/dev/null && pwd)/$(basename "$manifest")"
+
+    local violations=0
+    # Stream "step_id<TAB>file" pairs. Use TSV to keep paths intact.
+    while IFS=$'\t' read -r step_id raw_path; do
+        [[ -z "$step_id" || -z "$raw_path" ]] && continue
+        local reason=""
+        # Absolute path?
+        if [[ "$raw_path" == /* ]]; then
+            reason="absolute_path"
+        else
+            # Normalize: strip leading ./
+            local norm="$raw_path"
+            norm="${norm#./}"
+            # Traversal — any `..` segment escapes the repo.
+            if [[ "$norm" == ".." || "$norm" == "../"* || "$norm" == *"/../"* || "$norm" == *"/.." ]]; then
+                reason="out_of_repo"
+            else
+                # Prefix-match against allowlist
+                local in_scope=0 prefix
+                while IFS= read -r prefix; do
+                    [[ -z "$prefix" ]] && continue
+                    if [[ "$norm" == "$prefix"* || "./$norm" == "$prefix"* ]]; then
+                        in_scope=1
+                        break
+                    fi
+                done <<< "$allow_lines"
+                [[ "$in_scope" -eq 0 ]] && reason="out_of_scope"
+            fi
+        fi
+        if [[ -n "$reason" ]]; then
+            violations=$((violations + 1))
+            emit_event "plan.scope.violation" \
+                "plugin=plan" \
+                "stage=plan" \
+                "step_id=$step_id" \
+                "path=$raw_path" \
+                "reason=$reason" \
+                "scope_hash=$scope_hash" \
+                "manifest_path=$manifest_abs"
+        fi
+    done < <(printf '%s' "$plan_json" \
+        | jq -r '.steps[]? | .id as $id | (.files[]? | select(type=="string")) as $f | [$id, $f] | @tsv' 2>/dev/null || true)
+
+    printf '%s' "$violations"
+}
+
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
@@ -117,11 +186,24 @@ _plan_run_inner() {
     # (no expansion); the dynamic goal is appended with an explicit \n
     # separator (printf instead of $(...)) so the boundary is not eaten
     # by command-substitution trailing-newline stripping.
+    # ADR-018 Pattern 1 (#468): plan runs as one-shot with tools available.
+    # Invite Read for context-gathering inside the scope-manifest; forbid
+    # mutating tools. Inline the scope-manifest verbatim as ground truth so
+    # the LLM does not hallucinate paths. Pipeline post-validates files[].
     local _plan_instructions
     _plan_instructions="$(cat <<'PLAN_PROMPT'
 You are a software planning agent. Decompose the goal into concrete
-implementation steps. Respond with a SINGLE JSON object and nothing else
-— no markdown code fences, no commentary before or after, no tool calls.
+implementation steps.
+
+Tool use:
+- You may use the Read tool to inspect files within the scope-manifest
+  before producing the plan. Read only paths under the scope-manifest
+  prefixes listed at the end of this prompt.
+- Do NOT call Edit, Write, or Bash. This stage is read-only.
+
+Output contract:
+- Your FINAL response must be a SINGLE JSON object — no markdown code fences,
+  no commentary before or after the JSON.
 
 Required JSON schema:
 
@@ -146,16 +228,23 @@ Rules:
 - `steps` MUST be a non-empty array; each step MUST have id, description,
   files, estimated_lines.
 - Step ids are stable handles ("step-1", "step-2", ...) in declaration order.
-- `files` lists every file the step expects to create or modify.
+- `files` lists every file the step expects to create or modify; every
+  entry MUST be a string repo-relative path under a scope-manifest prefix.
 - Keep steps small and independently testable.
-- Do not include reasoning, plans-about-plans, or repo exploration — just
-  the JSON describing what to do.
 
 Goal:
 PLAN_PROMPT
 )"
+    # Inline the scope-manifest verbatim (ground truth). Falls back to a
+    # placeholder if the manifest file is unreadable so the prompt remains
+    # well-formed; redaction has already fail-closed in that case above.
+    local manifest_body=""
+    if [[ -f "$scope_manifest" ]]; then
+        manifest_body="$(cat "$scope_manifest")"
+    fi
     local prompt
-    printf -v prompt '%s\n%s\n' "$_plan_instructions" "$redacted_content"
+    printf -v prompt '%s\n%s\n\nScope manifest (allowed path prefixes):\n%s\n' \
+        "$_plan_instructions" "$redacted_content" "$manifest_body"
 
     # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────
     local tier="${ZBUILD_PLAN_TIER:-T2}"
@@ -170,7 +259,7 @@ PLAN_PROMPT
             | sed 's/^[[:space:]]*```json[[:space:]]*//' \
             | sed 's/^[[:space:]]*```[[:space:]]*//'     \
             | sed 's/[[:space:]]*```[[:space:]]*$//')"
-        if printf '%s' "$stripped" | jq -e 'type == "object" and (.schema_version == 1) and (.steps | type == "array") and (.steps | length > 0)' >/dev/null 2>&1; then
+        if printf '%s' "$stripped" | jq -e 'type == "object" and (.schema_version == 1) and (.steps | type == "array") and (.steps | length > 0) and (.steps | all((.files | type == "array") and (.files | all(type == "string"))))' >/dev/null 2>&1; then
             plan_json="$stripped"
         else
             warn "_plan_run_inner: LLM response is not a valid plan.json (requires schema_version=1 and non-empty .steps)"
@@ -197,9 +286,17 @@ PLAN_PROMPT
     local step_count
     step_count="$(printf '%s' "$plan_json" | jq '.steps | length' 2>/dev/null || echo 0)"
 
+    # ADR-018 Pattern 1 (#468): post-validate step.files[] against the
+    # scope-manifest. Fail-soft — plan.json is written regardless; review
+    # verdicts on violations rather than aborting the pipeline.
+    local scope_violations
+    scope_violations="$(_plan_validate_scope "$plan_json" "$scope_manifest")"
+    [[ -z "$scope_violations" ]] && scope_violations=0
+
     emit_event "plugin.run.complete" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \
+        "scope_violations=$scope_violations" \
         "artifact=plan.json"
     return 0
 }

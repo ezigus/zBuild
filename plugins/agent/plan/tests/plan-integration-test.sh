@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Integration test: plan stage end-to-end with a stubbed `claude` binary on PATH.
+# Exercises route_to_model -> _route_call_claude across the subprocess boundary
+# (real subshell, real exec) and verifies the scope post-validation contract
+# from ADR-018 Pattern 1 (#468).
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+
+# shellcheck source=../../../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+
+print_test_header "plugin: plan — integration (real claude stub, subprocess boundary)"
+
+setup_test_env "plugin-plan-integration"
+
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+mkdir -p "$ZBUILD_EVENTS_DIR"
+
+PLUGIN_DIR="$REPO_ROOT/plugins/agent/plan"
+
+STATE_DIR="$TEST_TEMP_DIR/state"
+STATE_FILE="$STATE_DIR/pipeline-state.json"
+ARTIFACTS_DIR="$STATE_DIR/artifacts"
+mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
+echo '{"schema_version":1,"run_id":"test","issue":"999","stage_statuses":{}}' > "$STATE_FILE"
+
+cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
++ core/
++ plugins/
+SCOPE
+
+export ZBUILD_GOAL="integration test goal"
+export ZBUILD_RUN_ID="integ-test"
+export ZBUILD_ISSUE=999
+
+# Stub a real `claude` binary on PATH. route_to_model -> _route_call_claude
+# resolves it via `command -v claude` and then execs it; the stub writes its
+# canned response to stdout and ignores all flags.
+CANNED_RESPONSE_FILE="$TEST_TEMP_DIR/claude-canned.json"
+cat > "$TEST_TEMP_DIR/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+# Stubbed claude: ignore flags, emit canned response from env file.
+cat "${CANNED_RESPONSE_FILE:-/dev/null}"
+STUB
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+export CANNED_RESPONSE_FILE
+
+# Source plugin
+# shellcheck source=../../../../plugins/agent/plan/plugin.sh
+source "$PLUGIN_DIR/plugin.sh"
+
+# ─── Variant 1: in-scope plan → plan.json written, no violations ─────────────
+printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
+
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "variant 1: in-scope plan returns rc=0" "0" "$rc"
+assert_file_exists "variant 1: plan.json written" "$ARTIFACTS_DIR/plan.json"
+v1_violations="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "variant 1: no violation events" "0" "$v1_violations"
+
+# ─── Variant 2: out-of-scope plan → plan.json still written, violation emitted ─
+: > "$ZBUILD_EVENTS_JSONL"
+printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/oops.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
+
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "variant 2: out-of-scope returns rc=0 (fail-soft)" "0" "$rc"
+assert_file_exists "variant 2: plan.json still written" "$ARTIFACTS_DIR/plan.json"
+v2_violations="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "variant 2: one violation event" "1" "$v2_violations"
+v2_path="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "variant 2: violation path is offender" "legacy/oops.sh" "$v2_path"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))

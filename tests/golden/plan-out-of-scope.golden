@@ -1,0 +1,1 @@
+{"schema_version":1,"title":"out-of-scope fixture","goal":"a sample goal","steps":[{"id":"step-1","description":"touch legacy file","files":["legacy/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}

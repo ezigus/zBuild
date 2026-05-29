@@ -281,7 +281,43 @@ branch `feat/466-router-flags`:
   the subprocess boundary, locks the export + comma-preservation
   contract).
 
-Issues B–E remain pending; this section will be updated to `Accepted` and
-this paragraph rewritten with PR links as each merges.
+Issue C (`#468 — plan: invite Read; post-validate step.files[]`) in flight on
+branch `feat/468-plan-invites-read`:
+
+- `_plan_instructions` heredoc in `plugins/agent/plan/plugin.sh` rewritten:
+  the "no tool calls" prohibition is gone; the prompt now splits into a
+  "Tool use" clause that invites the Read tool and forbids Edit/Write/Bash,
+  and an "Output contract" clause that demands a single JSON object with no
+  markdown code fences.
+- The scope-manifest is inlined verbatim into the prompt body after the
+  goal, prefixed with "Scope manifest (allowed path prefixes):". This is
+  ground truth — avoids round-trip on `apply_scope_redaction` markers and
+  removes a hallucination axis.
+- New helper `_plan_validate_scope` walks `plan.steps[].files[]` via
+  `jq -r '@tsv'`, normalizes each path (strips leading `./`), rejects
+  absolute (`^/`) and `..`-traversal segments, and prefix-matches the
+  remainder against the manifest allowlist parsed with the same awk shape
+  used by `core/redaction/scope-redaction.sh:75`. One
+  `plan.scope.violation` event is emitted per offender with flat k=v
+  payload (`plugin`, `stage`, `step_id`, `path`, `reason`, `scope_hash`,
+  `manifest_path`). `reason` is one of `out_of_scope`, `absolute_path`,
+  `out_of_repo`.
+- Fail-soft: `plan.json` is written regardless of violations; the
+  count is added to the existing `plugin.run.complete` payload as
+  `scope_violations=<N>`; `rc=0` on violations.
+- Schema validator tightened: the `jq -e` predicate now asserts
+  `(.steps | all((.files | type=="array") and (.files | all(type=="string"))))`.
+  Malformed plans still rc=1 with `plugin.run.error reason=invalid_plan_response`.
+- `plan.scope.violation` added to `config/event-schema.json::known_types`.
+- Test coverage: `plugins/agent/plan/tests/plan-test.sh` extended (42
+  assertions including new Test 3c prompt assertions and Tests 6–13 for
+  scope post-validation); new
+  `plugins/agent/plan/tests/plan-integration-test.sh` (7 assertions, stubs
+  a real `claude` binary on PATH to cross the subprocess boundary). New
+  goldens under `tests/golden/`: `plan-in-scope.golden`,
+  `plan-out-of-scope.golden`, `plan-scope-violation-event.golden`.
+
+Issues B, D, E remain pending; this section will be updated to `Accepted`
+and this paragraph rewritten with PR links as each merges.
 
 Dogfood run `20260529164733-70084` is the triggering evidence on record.
