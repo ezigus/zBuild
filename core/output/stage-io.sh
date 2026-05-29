@@ -203,20 +203,19 @@ capture_stage_io() {
                 [[ -z "$artifact_path" ]] && artifact_path="$_p"
                 ;;
             stdout)
-                # Banner must go to STDERR, not stdout. Reason: route_to_model
-                # returns the LLM response via stdout (callers do
-                # `raw_response=$(route_to_model ...)`). When capture_stage_io
-                # is invoked from inside route_to_model (the llm-kind capture
-                # point), any banner written to stdout would either corrupt
-                # the response or — as line 78 of route.sh redirects capture's
-                # stdout to /dev/null — be silently swallowed. Stderr is
-                # captured by the orch local engine's result.stderr file and
-                # forwarded to the operator's terminal by orch_collect, so
-                # the banner reaches the user without contending with the
-                # response channel. gh_comment renderer still calls
-                # _stage_io_to_stdout for inner-content production where the
-                # stdout capture IS what we want; that path is unchanged.
-                _stage_io_to_stdout "$record" >&2 || true
+                # Banner goes to ZBUILD_STAGE_IO_FD (default 3, opened by the
+                # runner at startup; see core/pipeline/runner.sh). This fd
+                # survives both the route_to_model stdout-as-response-carrier
+                # contention AND the plugin-side `2>/dev/null` suppression
+                # that plan and intake plugins wrap around route_to_model /
+                # run_captured_command (plugins/agent/plan/plugin.sh:163,
+                # plugins/agent/intake/plugin.sh:90). When unset (ad-hoc CLI
+                # invocations outside a pipeline), fall back to fd 2 so the
+                # banner is still visible somewhere.
+                # gh_comment renderer's *inner* call to _stage_io_to_stdout
+                # for content production is on stdout (no redirect) and
+                # unchanged.
+                _stage_io_to_stdout "$record" >&"${ZBUILD_STAGE_IO_FD:-2}" || true
                 ;;
             gh_comment)
                 _stage_io_to_gh_comment "$record" || true
