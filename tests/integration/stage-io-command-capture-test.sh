@@ -107,75 +107,14 @@ assert_json_key "intake artifact stage == intake" "$json_intake" ".stage" "intak
 intake_input="$(printf '%s' "$json_intake" | jq -r .input)"
 assert_contains "intake artifact .input starts with gh issue view" "$intake_input" "gh issue view"
 
-# ─── Build adoption: invoke _build_stage_run_inner with a broken patch ───────
-# shellcheck source=../../plugins/agent/build/plugin.sh
-source "$REPO_ROOT/plugins/agent/build/plugin.sh"
-build_stage_init >/dev/null 2>&1 || true
-
-BUILD_ART="$TEST_TEMP_DIR/build-artifacts"
-mkdir -p "$BUILD_ART"
-SCOPE_MANIFEST="$BUILD_ART/scope-manifest.md"
-cat > "$SCOPE_MANIFEST" <<'EOF'
-+ core/
-+ plugins/
-+ tests/
-EOF
-PLAN_JSON="$BUILD_ART/plan.json"
-cat > "$PLAN_JSON" <<'EOF'
-{"schema_version":1,"summary":"test","approach":"test","files_to_modify":[],"tests_to_add":[],"risks":[]}
-EOF
-
-# Deliberately broken patch — passes the `diff --git` filter so build invokes
-# git apply --check, but the diff body is invalid so the check fails (rc != 0).
-BROKEN_PATCH='diff --git a/nonexistent.txt b/nonexistent.txt
-index 0000000..0000000 100644
---- a/nonexistent.txt
-+++ b/nonexistent.txt
-@@ -1,1 +1,1 @@
--this content does not exist in the file
-+broken patch should fail apply check'
-
-# Route ZBUILD_REPO_ROOT to TEST_TEMP_DIR so git -C works (a non-git dir will
-# still produce a non-zero rc from git apply --check, which is what we test).
-mkdir -p "$TEST_TEMP_DIR/fakerepo"
-( cd "$TEST_TEMP_DIR/fakerepo" && git init -q . >/dev/null 2>&1 ) || true
-export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/fakerepo"
-
-# Stub route_to_model so build doesn't actually call the router; return broken diff.
-route_to_model() { printf '%s' "$BROKEN_PATCH"; return 0; }
-
-OUT_DIFF="$BUILD_ART/diff.patch"
-OUT_SUMMARY="$BUILD_ART/build-summary.json"
-
-set +e
-_build_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUT_DIFF" "$OUT_SUMMARY" >/dev/null 2>&1
-build_rc=$?
-set -e
-
-# Look for any build-N.json artifact (the validation call should have written one).
-build_artifact=""
-for f in "$ZBUILD_STATE_DIR/artifacts/stage-io"/build-*.json; do
-    [[ -f "$f" ]] && build_artifact="$f" && break
-done
-
-if [[ -n "$build_artifact" ]]; then
-    assert_pass "build stage-io artifact written (path=$build_artifact)"
-else
-    assert_fail "build stage-io artifact written" "no build-*.json under $ZBUILD_STATE_DIR/artifacts/stage-io"
-fi
-
-if [[ -n "$build_artifact" ]]; then
-    json_build="$(cat "$build_artifact" 2>/dev/null || echo '{}')"
-    assert_json_key "build artifact kind == command" "$json_build" ".kind" "command"
-    build_input="$(printf '%s' "$json_build" | jq -r .input)"
-    assert_contains "build artifact .input starts with git -C" "$build_input" "git -C"
-    build_rc_field="$(printf '%s' "$json_build" | jq -r .exit_code)"
-    if [[ "$build_rc_field" != "0" && -n "$build_rc_field" && "$build_rc_field" != "null" ]]; then
-        assert_pass "build artifact .exit_code != 0 (got $build_rc_field — apply check failed as expected)"
-    else
-        assert_fail "build artifact .exit_code != 0" "got: $build_rc_field"
-    fi
-fi
+# ─── Build adoption removed by #467 (ADR-018 Pattern 2) ──────────────────────
+# Pre-#467 the build plugin invoked `git -C <repo> apply --check` on an LLM-
+# emitted patch and that call was wrapped by `run_captured_command` to produce
+# a build-*.json command-kind artifact under state/artifacts/stage-io. With
+# Pattern 2 the build plugin derives diff.patch from the working tree (via
+# `git diff HEAD` in route_to_model_loop) and no longer runs `git apply --check`
+# inside the plugin — the test stage owns patch validation now. Intake is the
+# remaining command-kind adoption site exercised by this test.
 
 cleanup_test_env
 print_test_results

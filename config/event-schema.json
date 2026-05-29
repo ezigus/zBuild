@@ -59,6 +59,16 @@
     "intake.refused.issue_closed",
     "intake.override.closed_issue_allowed",
     "plan.scope.violation",
-    "review.scope.violation"
+    "review.scope.violation",
+    "router.max_iterations.override_ignored",
+    "loop.iteration",
+    "loop.iteration.error",
+    "loop.complete",
+    "loop.max_iterations",
+    "loop.git_diff_failed",
+    "loop.terminated.signal",
+    "loop.diff_capture_warning",
+    "build.scope.violation",
+    "build.empty_diff"
   ]
 }

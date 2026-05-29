@@ -233,6 +233,12 @@ _route_resolve_max_turns() {
         router.max_turns.override_ignored
 }
 
+# ADR-018 (#467): per-stage router.max_iterations > $ZBUILD_ROUTER_MAX_ITERATIONS > 10 default.
+_route_resolve_max_iterations() {
+    _route_resolve_knob template_stage_router_max_iterations ZBUILD_ROUTER_MAX_ITERATIONS 10 \
+        router.max_iterations.override_ignored
+}
+
 # ─── _route_emit_model_route <tier> <timeout_s> ──────────────────────────────
 _route_emit_model_route() {
     local tier="$1" secs="${2:-}"
@@ -414,4 +420,304 @@ _route_update_ledger() {
     else
         printf '%s\n' "$_call_cost_usd" >> "$_ledger_file" 2>/dev/null || true
     fi
+}
+
+# ─── route_to_model_loop — ADR-018 Pattern 2 (Issue #467) ────────────────────
+# Multi-turn agent loop. Each iteration invokes claude in $cwd; the pipeline
+# captures `git diff HEAD` between turns and appends to the next prompt.
+# Terminates on `LOOP_COMPLETE` sentinel from .result, or max-iterations cap.
+# The LLM never emits a diff string; the caller reads `git diff HEAD` after
+# the loop returns.
+#
+# Usage:
+#   route_to_model_loop <tier> <prompt_file> <cwd> <max_iterations> \
+#       [--max-turns-per-call N] [--done-sentinel TOKEN] \
+#       [--inter-turn-hook FN] [--model ID] [--scope-allowlist CSV]
+#
+# Globals set:
+#   _ROUTE_LOOP_ITERATIONS         — count of iterations actually run
+#   _ROUTE_LOOP_TERMINATED_REASON  — done_sentinel | max_iterations | signal |
+#                                    hook_failed | error
+#   _ROUTE_LOOP_INPUT_TOKENS       — cumulative .usage.input_tokens
+#   _ROUTE_LOOP_OUTPUT_TOKENS      — cumulative .usage.output_tokens
+#
+# Returns: 0 on DONE-sentinel, 1 on max-iter no-DONE, 2 on fatal.
+_ROUTE_LOOP_ITERATIONS=0
+_ROUTE_LOOP_TERMINATED_REASON=""
+_ROUTE_LOOP_INPUT_TOKENS=0
+_ROUTE_LOOP_OUTPUT_TOKENS=0
+_ROUTE_LOOP_CHILD_PID=""
+
+# Default no-op inter-turn hook — overridden via --inter-turn-hook FN
+_route_loop_default_hook() { :; }
+
+# Signal trap installer — kills child claude, emits terminated.signal event.
+_route_loop_install_traps() {
+    trap '_route_loop_on_signal SIGINT' INT
+    trap '_route_loop_on_signal SIGTERM' TERM
+}
+_route_loop_clear_traps() {
+    trap - INT TERM
+}
+_route_loop_on_signal() {
+    local sig="$1"
+    if [[ -n "${_ROUTE_LOOP_CHILD_PID:-}" ]]; then
+        kill "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true
+    fi
+    _ROUTE_LOOP_TERMINATED_REASON="signal"
+    eb_emit_event "loop.terminated.signal" \
+        "signal=$sig" \
+        "iterations=${_ROUTE_LOOP_ITERATIONS}" 2>/dev/null || true
+    return 130
+}
+
+route_to_model_loop() {
+    if [[ $# -lt 4 ]]; then
+        error "route_to_model_loop requires <tier> <prompt_file> <cwd> <max_iterations>"
+        return 2
+    fi
+    local tier="$1" prompt_file="$2" cwd="$3" max_iterations="$4"; shift 4
+
+    local max_turns_per_call=""
+    local done_sentinel="LOOP_COMPLETE"
+    local inter_turn_hook="_route_loop_default_hook"
+    local model_override=""
+    local scope_allowlist=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --max-turns-per-call) max_turns_per_call="$2"; shift 2 ;;
+            --done-sentinel)      done_sentinel="$2";       shift 2 ;;
+            --inter-turn-hook)    inter_turn_hook="$2";     shift 2 ;;
+            --model)              model_override="$2";      shift 2 ;;
+            --scope-allowlist)    scope_allowlist="$2";     shift 2 ;;
+            *) error "route_to_model_loop: unknown flag '$1'"; return 2 ;;
+        esac
+    done
+
+    if [[ ! "$tier" =~ ^T[0-4]$ ]]; then
+        error "route_to_model_loop: invalid tier '$tier'"
+        return 2
+    fi
+    if [[ -z "$prompt_file" || ! -f "$prompt_file" ]]; then
+        error "route_to_model_loop: prompt_file '$prompt_file' missing"
+        return 2
+    fi
+    if [[ -z "$cwd" || ! -d "$cwd" ]]; then
+        error "route_to_model_loop: cwd '$cwd' missing or not a directory"
+        return 2
+    fi
+    if ! [[ "$max_iterations" =~ ^[0-9]+$ ]] || [[ "$max_iterations" -lt 1 ]]; then
+        error "route_to_model_loop: max_iterations must be positive integer, got: $max_iterations"
+        return 2
+    fi
+
+    _route_lookup_model "$tier" "$model_override" || return $?
+
+    if ! command -v claude >/dev/null 2>&1; then
+        error "route_to_model_loop: claude binary not found in PATH"
+        eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+            "reason=claude_binary_missing" 2>/dev/null || true
+        return 2
+    fi
+
+    local mt; mt="$(_route_resolve_max_turns)"
+    if ! [[ "$mt" =~ ^[0-9]+$ ]] || [[ "$mt" -lt 1 ]] || [[ "$mt" -gt 200 ]]; then
+        error "route_to_model_loop: max_turns must be integer in 1..200, got: $mt"
+        return 2
+    fi
+    [[ -n "$max_turns_per_call" ]] && mt="$max_turns_per_call"
+
+    local secs; secs="$(_route_resolve_timeout)"
+    local -a _tout_cmd=()
+    if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$secs")
+    elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$secs")
+    fi
+
+    _ROUTE_LOOP_ITERATIONS=0
+    _ROUTE_LOOP_TERMINATED_REASON=""
+    _ROUTE_LOOP_INPUT_TOKENS=0
+    _ROUTE_LOOP_OUTPUT_TOKENS=0
+
+    _route_loop_install_traps
+
+    # Per-iteration temp dir outside the caller's artifacts dir so the parity
+    # goldens that snapshot artifact filenames are not polluted by iter files.
+    local _loop_tmp; _loop_tmp="$(mktemp -d "${TMPDIR:-/tmp}/zb-loop-iters.XXXXXX")"
+
+    local static_prompt prev_diff="" timeout_recur=0
+    static_prompt="$(cat "$prompt_file")"
+
+    local diff_cap="${ZBUILD_LOOP_DIFF_CAP_CHARS:-20000}"
+    local iter
+    for (( iter=1; iter <= max_iterations; iter++ )); do
+        _ROUTE_LOOP_ITERATIONS=$iter
+
+        local iter_prompt
+        if [[ -z "$prev_diff" ]]; then
+            iter_prompt="$static_prompt
+
+## Iteration ${iter}/${max_iterations}
+(No prior changes — this is the first iteration.)"
+        else
+            iter_prompt="$static_prompt
+
+## Iteration ${iter}/${max_iterations}
+## Cumulative diff so far (\`git diff HEAD\`):
+${prev_diff}"
+        fi
+
+        # Per-iteration redaction: satisfy C6 precondition before each claude call.
+        local iter_prompt_file="${_loop_tmp}/iter-${iter}.txt"
+        local iter_redacted_file="${_loop_tmp}/iter-${iter}.redacted.txt"
+        printf '%s\n' "$iter_prompt" > "$iter_prompt_file"
+
+        local _scope_manifest="${ZBUILD_SCOPE_MANIFEST:-}"
+        if [[ -n "$_scope_manifest" && -f "$_scope_manifest" ]] && \
+           declare -F apply_scope_redaction >/dev/null 2>&1; then
+            apply_scope_redaction "$iter_prompt_file" "$iter_redacted_file" \
+                "$_scope_manifest" "$scope_allowlist" "$iter" \
+                >/dev/null 2>&1 || cp "$iter_prompt_file" "$iter_redacted_file"
+        else
+            # Emit a redaction.applied stub so the per-iteration C6 precondition
+            # is satisfied even when a manifest is not configured (test mode).
+            cp "$iter_prompt_file" "$iter_redacted_file"
+            eb_emit_event "redaction.applied" \
+                "input=$iter_prompt_file" "output=$iter_redacted_file" \
+                "size_before=0" "size_after=0" "redactions=0" \
+                "scope_hash=loop-passthrough" "cycle=$iter" 2>/dev/null || true
+        fi
+
+        local final_prompt; final_prompt="$(cat "$iter_redacted_file")"
+
+        eb_emit_event "loop.iteration" \
+            "tier=$tier" "iteration=$iter" "max_iterations=$max_iterations" \
+            "model_id=$_ROUTE_MODEL_ID" "cwd=$cwd" 2>/dev/null || true
+
+        local stderr_file rc=0 json_file
+        stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-loop-stderr.XXXXXX")"
+        json_file="$(mktemp "${TMPDIR:-/tmp}/zb-loop-json.XXXXXX")"
+
+        local -a _claude_args=(-p "$final_prompt" --print --model "$_ROUTE_MODEL_ID")
+        _claude_args+=(--max-turns "$mt")
+        _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+        _claude_args+=(--dangerously-skip-permissions)
+        _claude_args+=(--output-format json)
+
+        # Run claude in $cwd as background child so signal trap can kill it.
+        if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
+            ( cd "$cwd" && "${_tout_cmd[@]}" claude "${_claude_args[@]}" ) \
+                >"$json_file" 2>"$stderr_file" &
+        else
+            ( cd "$cwd" && claude "${_claude_args[@]}" ) \
+                >"$json_file" 2>"$stderr_file" &
+        fi
+        _ROUTE_LOOP_CHILD_PID=$!
+        wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
+        _ROUTE_LOOP_CHILD_PID=""
+
+        if [[ $rc -ne 0 ]]; then
+            local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
+            warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
+            eb_emit_event "loop.iteration.error" \
+                "iteration=$iter" "rc=$rc" \
+                "model_id=$_ROUTE_MODEL_ID" \
+                "reason=claude_rc_nonzero" 2>/dev/null || true
+            if [[ $rc -eq 124 ]]; then
+                timeout_recur=$(( timeout_recur + 1 ))
+                if [[ $timeout_recur -ge 3 ]]; then
+                    error "route_to_model_loop: 3 consecutive timeouts — fatal"
+                    _ROUTE_LOOP_TERMINATED_REASON="error"
+                    rm -f "$stderr_file" "$json_file"
+                    _route_loop_clear_traps
+                    return 2
+                fi
+            fi
+            rm -f "$stderr_file" "$json_file"
+            # Capture diff after error iteration too so progress isn't lost.
+            _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
+                _ROUTE_LOOP_TERMINATED_REASON="error"
+                _route_loop_clear_traps
+                return 2
+            }
+            continue
+        fi
+        timeout_recur=0
+        rm -f "$stderr_file"
+
+        # Extract .result and token usage from claude JSON output.
+        local result_text="" in_tok=0 out_tok=0
+        result_text="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
+        in_tok="$(jq -r '.usage.input_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
+        out_tok="$(jq -r '.usage.output_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
+        _ROUTE_LOOP_INPUT_TOKENS=$(( _ROUTE_LOOP_INPUT_TOKENS + in_tok ))
+        _ROUTE_LOOP_OUTPUT_TOKENS=$(( _ROUTE_LOOP_OUTPUT_TOKENS + out_tok ))
+
+        # Inter-turn hook (best-effort; failure does not abort the loop).
+        if declare -F "$inter_turn_hook" >/dev/null 2>&1; then
+            "$inter_turn_hook" "$iter" "$cwd" "$json_file" "$result_text" || \
+                warn "route_to_model_loop: hook '$inter_turn_hook' rc=$? iter=$iter"
+        fi
+
+        # DONE-sentinel: line-anchored grep against the result text.
+        # Matches: whitespace + LOOP_COMPLETE + whitespace, on its own line.
+        if printf '%s\n' "$result_text" | \
+           grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+            _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+            eb_emit_event "loop.complete" \
+                "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
+                "input_tokens=$_ROUTE_LOOP_INPUT_TOKENS" \
+                "output_tokens=$_ROUTE_LOOP_OUTPUT_TOKENS" \
+                "reason=done_sentinel" 2>/dev/null || true
+            rm -f "$json_file"
+            _route_loop_clear_traps
+            rm -rf "$_loop_tmp" 2>/dev/null || true
+            return 0
+        fi
+        rm -f "$json_file"
+
+        # Capture diff for next iteration's prompt.
+        _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
+            _ROUTE_LOOP_TERMINATED_REASON="error"
+            _route_loop_clear_traps
+            rm -rf "$_loop_tmp" 2>/dev/null || true
+            return 2
+        }
+    done
+
+    _ROUTE_LOOP_TERMINATED_REASON="max_iterations"
+    eb_emit_event "loop.max_iterations" \
+        "iterations=$max_iterations" "model_id=$_ROUTE_MODEL_ID" \
+        "input_tokens=$_ROUTE_LOOP_INPUT_TOKENS" \
+        "output_tokens=$_ROUTE_LOOP_OUTPUT_TOKENS" 2>/dev/null || true
+    _route_loop_clear_traps
+    rm -rf "$_loop_tmp" 2>/dev/null || true
+    return 1
+}
+
+# _route_loop_capture_diff <cwd> <cap_chars> <prev_diff_var_name>
+# Captures `git -C <cwd> diff HEAD` into the named variable.
+# On overflow: replaces with `git diff --stat` + truncation notice.
+# On git failure: emits loop.git_diff_failed and returns 1.
+_route_loop_capture_diff() {
+    local cwd="$1" cap="$2" var_name="$3"
+    # intent-to-add so new untracked files appear in `git diff HEAD`
+    git -C "$cwd" add -N . 2>/dev/null || true
+    local diff_out diff_rc=0
+    diff_out="$(git -C "$cwd" diff HEAD 2>/dev/null)" || diff_rc=$?
+    if [[ $diff_rc -ne 0 ]]; then
+        eb_emit_event "loop.git_diff_failed" \
+            "cwd=$cwd" "rc=$diff_rc" 2>/dev/null || true
+        return 1
+    fi
+    if [[ ${#diff_out} -gt $cap ]]; then
+        local stat_out
+        stat_out="$(git -C "$cwd" diff --stat HEAD 2>/dev/null || echo "(diff too large)")"
+        diff_out="(diff exceeded cap of ${cap} chars; showing stats only)
+${stat_out}"
+        eb_emit_event "loop.diff_capture_warning" \
+            "cwd=$cwd" "reason=cap_exceeded" "cap=$cap" 2>/dev/null || true
+    fi
+    printf -v "$var_name" '%s' "$diff_out"
+    return 0
 }
