@@ -85,9 +85,12 @@ run_in_subprocess() {
     # Sets globals: $SUBPROC_STDOUT (file), $SUBPROC_STDERR (file), $SUBPROC_RC
     SUBPROC_STDOUT="$TEST_TEMP_DIR/subproc.stdout"
     SUBPROC_STDERR="$TEST_TEMP_DIR/subproc.stderr"
-    rm -f "$SUBPROC_STDOUT" "$SUBPROC_STDERR"
+    SUBPROC_FD3="$TEST_TEMP_DIR/subproc.fd3"
+    rm -f "$SUBPROC_STDOUT" "$SUBPROC_STDERR" "$SUBPROC_FD3"
+    # Allocate fd 3 the way the runner does (exec 3>&2). For the test we
+    # redirect fd 3 to a file so we can inspect it independently.
     set +e
-    bash "$1" >"$SUBPROC_STDOUT" 2>"$SUBPROC_STDERR"
+    ZBUILD_STAGE_IO_FD=3 bash "$1" >"$SUBPROC_STDOUT" 2>"$SUBPROC_STDERR" 3>"$SUBPROC_FD3"
     SUBPROC_RC=$?
     set -e
 }
@@ -120,9 +123,9 @@ route_to_model T2 "the prompt body" --skip-precondition
 EOF
 
 run_in_subprocess "$TEST_TEMP_DIR/case1.sh"
-case1_stdout="\$(cat "$SUBPROC_STDOUT")"
 case1_stdout="$(cat "$SUBPROC_STDOUT")"
 case1_stderr="$(cat "$SUBPROC_STDERR")"
+case1_fd3="$(cat "$SUBPROC_FD3")"
 
 # Acceptance — these are the assertions that catch the production bug:
 assert_eq "Case 1 subprocess rc=0" "0" "$SUBPROC_RC"
@@ -137,11 +140,12 @@ else
     assert_pass "Case 1 stdout must NOT contain the stage-io banner"
 fi
 
-# fd 2 must contain the banner so the operator's terminal still gets it. If
-# the banner is missing here, the visible-output regression we just fixed
-# has come back.
-assert_contains "Case 1 stderr contains the stage-io banner" "$case1_stderr" "stage-io: plan"
-assert_contains "Case 1 stderr banner has end marker" "$case1_stderr" "end stage-io: plan"
+# fd 3 (the runner-allocated stage-io channel) must contain the banner so
+# the operator's terminal still gets it even when the plugin suppresses
+# stderr via 2>/dev/null. This is the property that fd 2 alone could not
+# satisfy and what the new ZBUILD_STAGE_IO_FD convention solves.
+assert_contains "Case 1 fd 3 contains the stage-io banner" "$case1_fd3" "stage-io: plan"
+assert_contains "Case 1 fd 3 banner has end marker" "$case1_fd3" "end stage-io: plan"
 
 # ─── Case 2: $()-capture purity — what the plan plugin actually does ────────
 # Replicate plugins/agent/plan/plugin.sh:163 exactly:
@@ -177,6 +181,7 @@ EOF
 
 run_in_subprocess "$TEST_TEMP_DIR/case2.sh"
 case2_stdout="$(cat "$SUBPROC_STDOUT")"
+case2_fd3="$(cat "$SUBPROC_FD3")"
 
 assert_eq "Case 2 subprocess rc=0" "0" "$SUBPROC_RC"
 assert_contains "Case 2 captured response contains the LLM payload" "$case2_stdout" "CAPTURED:LLM_RESPONSE_PAYLOAD"
@@ -190,6 +195,11 @@ if echo "$case2_stdout" | grep -q "stage-io: plan"; then
 else
     assert_pass "Case 2 captured response must NOT contain banner"
 fi
+
+# AND fd 3 still gets the banner even though the plugin's idiom suppresses
+# fd 2 (the `2>/dev/null` inside the $(...)). This is the property the
+# production user saw fail before this PR.
+assert_contains "Case 2 fd 3 contains banner despite plugin's 2>/dev/null" "$case2_fd3" "stage-io: plan"
 
 # ─── Case 3: artifact still written despite the channel split ───────────────
 # The banner went to stderr; the file destination is independent. Confirm

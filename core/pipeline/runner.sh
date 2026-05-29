@@ -307,6 +307,18 @@ main() {
         info "Pipeline started — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
     fi
 
+    # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
+    # Allocate a dedicated fd that survives plugin-side `2>/dev/null`
+    # suppression. Plugins (intake, plan, etc.) call route_to_model or
+    # run_captured_command with `2>/dev/null` to silence command noise; if the
+    # stage-io banner were on fd 2 it would be silenced too. We open fd 3 to
+    # the runner's stderr here, export ZBUILD_STAGE_IO_FD=3, and the
+    # _stage_io_to_stdout renderer writes to that fd. The orch local engine's
+    # `bash work-unit.sh > stdout 2> stderr` spawn touches only fd 1 and 2,
+    # so fd 3 is inherited untouched by every plugin process.
+    exec 3>&2
+    export ZBUILD_STAGE_IO_FD=3
+
     # ── Determine skip-ahead point when --from-stage is set ───────────────────
     local skip_until_stage=""
     [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
