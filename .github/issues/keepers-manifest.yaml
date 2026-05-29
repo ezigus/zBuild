@@ -4043,3 +4043,47 @@ issues:
       Pre-built pipeline templates for common workflows: tdd, enterprise,
       deployed, ios, ios-fast.
     closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: adr015-v1-file-destination
+    title: "ADR-015 v1: template io.destinations + capture_stage_io helper + file destination"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/438
+      ADR-015 v1 — smallest end-to-end vertical slice. Template schema
+      io.destinations, capture_stage_io chokepoint, and file destination.
+      ADR-015 flips from Proposed to Accepted on merge.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: adr015-v2-command-kind
+    title: "ADR-015 v2: run_captured_command wrapper + command-kind adoption"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/439
+      ADR-015 v2 — command-kind capture path. run_captured_command wrapper
+      in helpers.sh; opt-in adoption in intake and build plugins.
+      Blocked by #438.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: adr015-v3-stdout-gh-comment
+    title: "ADR-015 v3: stdout + gh_comment destinations + standard.yaml defaults"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/440
+      ADR-015 v3 — visibility payoff. stdout and gh_comment renderers;
+      standard.yaml default destinations per stage; outbound redaction
+      for gh_comment. Blocked by #438.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: per-repo-template-overrides
+    title: "Per-repository template overrides — search .zbuild/templates/ before shipped config/templates/"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation, cli-ux]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/447
+      Search path: .zbuild/templates/<id>.yaml before config/templates/<id>.yaml.
+      extends: resolver for deep-merge overrides. Safety gate on removing
+      safety-critical stages. pipeline.template.resolved event.
+      Requires ADR-016 (Per-Repository Template Resolution) first.
