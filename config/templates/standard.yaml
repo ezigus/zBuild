@@ -11,25 +11,21 @@ stages:
     io:
       destinations: [file, stdout]
       tail_lines: 200
-      redact: false
   - id: plan
     gate: auto
     roles: [planner]
     io:
       destinations: [file, stdout]
       tail_lines: 200
-      redact: false
   - id: build
     gate: auto
     roles: [builder]
     io:
       destinations: [file, stdout]
       tail_lines: 200
-      redact: false
   - id: review
     gate: auto
     roles: [reviewer]
     io:
       destinations: [file, stdout]
       tail_lines: 200
-      redact: false
