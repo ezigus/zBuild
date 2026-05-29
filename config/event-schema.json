@@ -29,6 +29,8 @@
     "redaction.refused.overridden",
     "model.route",
     "model.outcome",
+    "stage.io.captured",
+    "stage.io.error",
     "recovery.suggestion",
     "recovery.action",
     "recovery.exhausted",

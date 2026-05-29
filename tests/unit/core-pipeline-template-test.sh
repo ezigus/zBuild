@@ -241,6 +241,112 @@ assert_eq "empty stages list passes validation" "0" "$rc_empty"
 # ─── Test 22: empty stages list → _TPL_STAGES is empty ───────────────────────
 assert_eq "empty stages template has 0 stages" "0" "${#_TPL_STAGES[@]}"
 
+# ─── ADR-015 v1 (#438): io.destinations field ─────────────────────────────────
+
+# Tnew1: inline io.destinations: [file] → template_stage_io_dests returns "file"
+IO_INLINE_TPL="$TEST_TEMP_DIR/io-inline.yaml"
+cat > "$IO_INLINE_TPL" <<'EOF'
+id: io-inline
+name: IO Inline
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+EOF
+load_template "$IO_INLINE_TPL"
+io_dests_inline="$(template_stage_io_dests "plan")"
+assert_eq "Tnew1 inline io.destinations=[file] → file" "file" "$io_dests_inline"
+
+# Tnew2: multi-line io.destinations list → file\nstdout
+IO_MULTI_TPL="$TEST_TEMP_DIR/io-multi.yaml"
+cat > "$IO_MULTI_TPL" <<'EOF'
+id: io-multi
+name: IO Multi
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations:
+        - file
+        - stdout
+EOF
+load_template "$IO_MULTI_TPL"
+io_dests_multi="$(template_stage_io_dests "plan")"
+io_dests_multi_count="$(printf '%s\n' "$io_dests_multi" | wc -l | tr -d ' ')"
+assert_eq "Tnew2 multi-line io.destinations has 2 entries" "2" "$io_dests_multi_count"
+assert_contains "Tnew2 multi-line io.destinations contains file" "$io_dests_multi" "file"
+assert_contains "Tnew2 multi-line io.destinations contains stdout" "$io_dests_multi" "stdout"
+
+# Tnew3: unknown io.destinations token → load_template rc=1
+IO_BAD_TPL="$TEST_TEMP_DIR/io-bad.yaml"
+cat > "$IO_BAD_TPL" <<'EOF'
+id: io-bad
+name: IO Bad
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [pigeon]
+EOF
+set +e
+err_io_bad="$(load_template "$IO_BAD_TPL" 2>&1)"
+rc_io_bad=$?
+set -e
+assert_eq "Tnew3 unknown io.destinations token → rc=1" "1" "$rc_io_bad"
+assert_contains "Tnew3 error mentions bad token 'pigeon'" "$err_io_bad" "pigeon"
+assert_contains "Tnew3 error mentions 'unknown'" "$err_io_bad" "unknown"
+
+# Tnew4: stage without io: → template_stage_io_dests returns empty
+load_template "$STANDARD_TPL"
+io_dests_none="$(template_stage_io_dests "plan")"
+assert_eq "Tnew4 stage without io: returns empty" "" "$io_dests_none"
+
+# Tnew5: regression — io: block doesn't break roles/strategy parsing
+IO_MIXED_TPL="$TEST_TEMP_DIR/io-mixed.yaml"
+cat > "$IO_MIXED_TPL" <<'EOF'
+id: io-mixed
+name: IO Mixed
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner, designer]
+    strategy: sequential
+    io:
+      destinations: [file]
+  - id: build
+    gate: auto
+    roles: [builder]
+EOF
+load_template "$IO_MIXED_TPL"
+assert_eq "Tnew5 regression: 2 stages" "2" "${#_TPL_STAGES[@]}"
+roles_mixed_plan="$(template_stage_roles "plan")"
+roles_mixed_plan_count="$(printf '%s\n' "$roles_mixed_plan" | wc -l | tr -d ' ')"
+assert_eq "Tnew5 regression: plan has 2 roles" "2" "$roles_mixed_plan_count"
+assert_contains "Tnew5 regression: plan roles include planner" "$roles_mixed_plan" "planner"
+assert_contains "Tnew5 regression: plan roles include designer" "$roles_mixed_plan" "designer"
+strat_mixed_plan="$(template_stage_strategy "plan")"
+assert_eq "Tnew5 regression: plan strategy=sequential" "sequential" "$strat_mixed_plan"
+roles_mixed_build="$(template_stage_roles "build")"
+assert_eq "Tnew5 regression: build roles=builder" "builder" "$roles_mixed_build"
+io_mixed_plan="$(template_stage_io_dests "plan")"
+assert_eq "Tnew5 regression: plan io_dests=file" "file" "$io_mixed_plan"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

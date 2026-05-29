@@ -12,6 +12,9 @@ _ZBUILD_ROOT="$(cd "$_ROUTER_DIR/../.." && pwd)"
 
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
+# ADR-015 v1 (#438): stage-io chokepoint — capture LLM prompt/response when
+# the current stage declares io.destinations. Sourced library is idempotent.
+source "$_ZBUILD_ROOT/core/output/stage-io.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -55,6 +58,25 @@ route_to_model() {
 
     _route_emit_outcome "$tier"
     _route_update_ledger
+
+    # ADR-015 v1 (#438): LLM-kind stage I/O capture.
+    # No-op when the current stage has no io.destinations configured (or when
+    # ZBUILD_CURRENT_STAGE is unset — e.g. ad-hoc CLI invocations).
+    # Capture failure must not fail the router (hot path) — best-effort.
+    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
+        capture_stage_io \
+            --stage "$ZBUILD_CURRENT_STAGE" \
+            --kind llm \
+            --input "$prompt" \
+            --output "$_ROUTE_RESPONSE" \
+            --metadata "tier=$tier" \
+            --metadata "model_id=$_ROUTE_MODEL_ID" \
+            --metadata "input_tokens=${_ROUTE_INPUT_TOKENS:-0}" \
+            --metadata "output_tokens=${_ROUTE_OUTPUT_TOKENS:-0}" \
+            --metadata "cache_read=${_ROUTE_CACHE_READ:-0}" \
+            --metadata "cache_creation=${_ROUTE_CACHE_CREATION:-0}" \
+            >/dev/null || true
+    fi
 
     printf '%s\n' "$_ROUTE_RESPONSE"
     return 0

@@ -334,6 +334,11 @@ main() {
         eb_emit_event "stage.start" "stage=$stage"
         info "Running stage: $stage"
 
+        # ADR-015 v1 (#438): expose current stage to the LLM router so
+        # capture_stage_io can attribute artifacts to the right stage.
+        # Unset after plugin invocation to avoid leaking across stage boundaries.
+        export ZBUILD_CURRENT_STAGE="$stage"
+
         # Intentional fail-open: missing/empty template roles = no-template path (handled below)
         local roles_out; roles_out="$(template_stage_roles "$stage" 2>/dev/null || true)"
         local strategy; strategy="$(template_stage_strategy "$stage" 2>/dev/null || echo "fanout")"
@@ -453,6 +458,10 @@ main() {
             error "Stage $stage failed (rc=$rc)"
             return 1
         fi
+
+        # ADR-015 v1 (#438): clear the current-stage env so subsequent code
+        # running between stages doesn't accidentally tag artifacts.
+        unset ZBUILD_CURRENT_STAGE
     done
 
     _set_pipeline_status "$state_file" "complete"

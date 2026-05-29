@@ -25,6 +25,10 @@ readonly _ZBUILD_CANONICAL_STAGES=(
 _TPL_DEFAULT_STRATEGY="fanout"
 _TPL_STAGES=()
 
+# ADR-015 v1 (#438): recognized io.destination tokens. Unknown tokens fail at
+# template load time with an actionable error listing the valid set.
+readonly _ZBUILD_IO_DESTINATIONS_VALID=(file stdout gh_comment)
+
 # _tpl_validate_stages <stage_ids...>
 # Validates that every stage id is in the canonical list and that the ids
 # appear in the same relative order as the canonical sequence.
@@ -84,37 +88,82 @@ load_template() {
 
     # Collect stage ids first for validation
     local -a collected_ids=()
-    while IFS='|' read -r stage_id roles strategy; do
+    local -a collected_io_dests=()
+    while IFS='|' read -r stage_id roles strategy io_dests; do
         [[ -z "$stage_id" ]] && continue
         collected_ids+=("$stage_id")
+        collected_io_dests+=("$io_dests")
     done <<< "$stage_data"
 
     # Validate all stage ids against the canonical list before mutating state
     _tpl_validate_stages "${collected_ids[@]}" || return 1
 
+    # ADR-015 v1 (#438): validate io.destinations tokens before mutating state
+    _tpl_validate_io_dests collected_ids collected_io_dests || return 1
+
     # Populate module state
-    while IFS='|' read -r stage_id roles strategy; do
+    while IFS='|' read -r stage_id roles strategy io_dests; do
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
-        # Store roles and strategy via name-mangled env vars (bash 3.2 compat)
+        # Store roles, strategy, io_dests via name-mangled env vars (bash 3.2 compat)
         local safe_id="${stage_id//-/_}"
         printf -v "_TPL_STAGE_ROLES_${safe_id}" '%s' "$roles"
         printf -v "_TPL_STAGE_STRATEGY_${safe_id}" '%s' "$strategy"
+        printf -v "_TPL_STAGE_IO_DESTS_${safe_id}" '%s' "$io_dests"
     done <<< "$stage_data"
+}
+
+# _tpl_validate_io_dests <ids_arr_name> <dests_arr_name>
+# Validates io.destinations tokens (v1 set: file, stdout, gh_comment).
+# Bash 3.2 compat: pass array names; iterate via eval-style indirection.
+_tpl_validate_io_dests() {
+    local ids_var="$1" dests_var="$2"
+    local valid_list="${_ZBUILD_IO_DESTINATIONS_VALID[*]}"
+    # shellcheck disable=SC1087,SC2154
+    # _n / _stage / _dests are assigned via the eval lines below; shellcheck
+    # can't see through eval so it warns SC2154 ("referenced but not assigned").
+    # Pre-declare them as locals so the disable comments don't need to repeat.
+    local _n="" _stage="" _dests=""
+    eval "_n=\${#${ids_var}[@]}"
+    local i
+    for (( i=0; i<_n; i++ )); do
+        eval "_stage=\${${ids_var}[$i]}"
+        eval "_dests=\${${dests_var}[$i]}"
+        [[ -z "$_dests" ]] && continue
+        local token
+        local IFS_save="$IFS"
+        IFS=','
+        # shellcheck disable=SC2086
+        set -- $_dests
+        IFS="$IFS_save"
+        for token in "$@"; do
+            [[ -z "$token" ]] && continue
+            local found=0
+            local v
+            for v in "${_ZBUILD_IO_DESTINATIONS_VALID[@]}"; do
+                [[ "$v" == "$token" ]] && { found=1; break; }
+            done
+            if [[ $found -eq 0 ]]; then
+                error "template: unknown io.destination '$token' for stage '$_stage' (valid: $valid_list)"
+                return 1
+            fi
+        done
+    done
+    return 0
 }
 
 _tpl_parse_stage_data() {
     local file="$1"
     awk '
     /^stages:/ { in_stages = 1; next }
-    in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; next }
+    in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; in_io_dests = 0; in_io_block = 0; next }
     in_stages && /^[[:space:]]*-[[:space:]]*id:/ {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy }
-        in_roles = 0
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests }
+        in_roles = 0; in_io_dests = 0; in_io_block = 0
         current_id = $0
         gsub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", current_id)
         gsub(/[[:space:]]*$/, "", current_id)
-        current_roles = ""; current_strategy = ""
+        current_roles = ""; current_strategy = ""; current_io_dests = ""
         next
     }
     in_stages && in_roles && /^[[:space:]]*-[[:space:]]/ {
@@ -128,6 +177,17 @@ _tpl_parse_stage_data() {
         next
     }
     in_stages && in_roles { in_roles = 0 }
+    in_stages && in_io_dests && /^[[:space:]]*-[[:space:]]/ {
+        item = $0
+        gsub(/^[[:space:]]*-[[:space:]]+/, "", item)
+        gsub(/[[:space:]]*$/, "", item)
+        if (item != "") {
+            if (current_io_dests == "") current_io_dests = item
+            else current_io_dests = current_io_dests "," item
+        }
+        next
+    }
+    in_stages && in_io_dests { in_io_dests = 0 }
     in_stages && current_id != "" && /roles:/ {
         roles_line = $0
         if (roles_line ~ /\[/) {
@@ -142,9 +202,25 @@ _tpl_parse_stage_data() {
         current_strategy = $0
         gsub(/^[[:space:]]+strategy:[[:space:]]*/, "", current_strategy)
         gsub(/[[:space:]]*$/, "", current_strategy)
+        next
+    }
+    in_stages && current_id != "" && /^[[:space:]]+io:[[:space:]]*$/ {
+        in_io_block = 1
+        next
+    }
+    in_io_block && /^[[:space:]]+destinations:/ {
+        dest_line = $0
+        if (dest_line ~ /\[/) {
+            sub(/^[^[]*\[/, "", dest_line)
+            sub(/\].*$/, "", dest_line)
+            gsub(/[[:space:]]/, "", dest_line)
+            current_io_dests = dest_line
+            in_io_dests = 0
+        } else { in_io_dests = 1 }
+        next
     }
     END {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests }
     }
     ' "$file"
 }
@@ -168,4 +244,16 @@ template_stage_strategy() {
     else
         echo "${_TPL_DEFAULT_STRATEGY:-fanout}"
     fi
+}
+
+# ADR-015 v1 (#438): newline-delimited list of io.destinations for the stage
+# (empty when stage has no io.destinations configured — caller treats empty as
+# "capture disabled" and no-ops without I/O).
+template_stage_io_dests() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_IO_DESTS_${safe_id}"
+    local dests="${!var:-}"
+    [[ -z "$dests" ]] && return 0
+    tr ',' '\n' <<< "$dests"
 }
