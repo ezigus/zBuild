@@ -239,3 +239,27 @@ behavior. We adopt the same chokepoint pattern up front.
 - Issue #213 (closed) — end-of-pipeline destinations.
 - Issue #421 (closed), Issue #435 (closed) — recent failures that would
   have been visibly diagnosable from captured LLM I/O.
+
+## Implementation Notes (Proposed — 2026-05-29)
+
+This ADR ships in **Proposed** status. No code has been written yet.
+Implementation is split across three sequential issues, each independently
+mergeable, with ADR-015 flipping to **Accepted** when the first one lands.
+
+- **#438** (v1, the minimum end-to-end slice) — template `io.destinations`
+  field + awk parser extension at `core/pipeline/template.sh:87-137` +
+  `capture_stage_io` chokepoint in new module `core/output/stage-io.sh` +
+  `_stage_io_to_file` renderer + LLM-kind capture point in
+  `core/router/route.sh`. ADR-015 **Status** changes from Proposed to
+  Accepted on merge of #438.
+- **#439** (v2, blocked by #438) — `run_captured_command` wrapper in
+  `scripts/lib/helpers.sh` + command-kind adoption in
+  `plugins/agent/intake/plugin.sh` (the `gh issue view` call landed in #421)
+  and `plugins/agent/build/plugin.sh`.
+- **#440** (v3, blocked by #438) — `_stage_io_to_stdout` and
+  `_stage_io_to_gh_comment` renderers + outbound redaction for `gh_comment`
+  (reuses `core/redaction/scope-redaction.sh`) + `config/templates/standard.yaml`
+  defaults turning the feature on for plan/build/review/intake.
+
+This ADR PR (#441) lands the design document only; it does not modify the
+template parser, router, helpers, plugins, or event schema.
