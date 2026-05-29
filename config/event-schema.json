@@ -30,6 +30,7 @@
     "model.route",
     "model.outcome",
     "router.timeout.override_ignored",
+    "router.max_turns.override_ignored",
     "stage.io.captured",
     "stage.io.error",
     "recovery.suggestion",
