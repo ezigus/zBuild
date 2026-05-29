@@ -98,7 +98,7 @@ assert_gt "plan.json .steps | length > 0" "$step_count" "0"
 
 # ─── Test 3b: prompt declares the plan.json schema (issue #435) ───────────────
 # The LLM must be told what shape to produce, or it returns prose and the
-# validator at plugin.sh:128 rejects it. Assert the prompt names the required
+# `jq -e` validator in _plan_run_inner rejects it. Assert the prompt names the required
 # fields and demands JSON-only output (no markdown wrappers, no commentary).
 captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 assert_contains "plan prompt names schema_version field" \
