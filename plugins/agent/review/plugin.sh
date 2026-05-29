@@ -26,6 +26,8 @@ source "$_REVIEW_ROOT/core/redaction/scope-redaction.sh"
 source "$_REVIEW_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_REVIEW_ROOT/core/router/route.sh"
+# shellcheck source=../../../scripts/lib/artifact-render.sh
+source "$_REVIEW_ROOT/scripts/lib/artifact-render.sh"
 
 # Valid verdict values per manifest config.valid_verdicts
 _REVIEW_VALID_VERDICTS="approve request_changes block"
@@ -136,11 +138,16 @@ Verdict definitions:
 
 REVIEW_PROMPT
 )"
+    # ADR-018: render plan and diff as markdown for LLM consumption. Test
+    # results stay as raw fenced text — no test-results renderer (see #470).
+    local plan_md diff_md
+    plan_md="$(render_artifact plan "$plan_content")"
+    diff_md="$(render_artifact diff "$diff_content")"
     local prompt
     printf -v prompt '%s\nPlan:\n%s\n\nDiff:\n%s\n\nTest results:\n%s\n' \
         "$_review_instructions" \
-        "$plan_content" \
-        "$diff_content" \
+        "$plan_md" \
+        "$diff_md" \
         "$test_content"
 
     # Write prompt to a temp file for redaction (apply_scope_redaction takes file paths)

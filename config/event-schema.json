@@ -33,6 +33,7 @@
     "router.max_turns.override_ignored",
     "stage.io.captured",
     "stage.io.error",
+    "stage.io.render.fallback",
     "recovery.suggestion",
     "recovery.action",
     "recovery.exhausted",

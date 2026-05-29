@@ -54,12 +54,19 @@ EOF
 
 # Diff intentionally references src/auth.sh — paths OUTSIDE the scope manifest
 # (which allows tests/ only) so the real chokepoint must redact them.
+# ADR-018 (#470): review now renders the diff as markdown for the LLM, which
+# wraps hunks in ```diff fences (preserved verbatim by ADR-004 redaction).
+# Use a proper `diff --git` header so render_diff_md emits a `## a/src/...`
+# heading OUTSIDE the fence — that heading still gets redacted, keeping the
+# redactions>0 invariant intact.
 cat > "$FIXTURE_DIR/diff.patch" <<'EOF'
---- a/src/auth.sh
+diff --git a/src/auth.sh b/src/auth.sh
+new file mode 100644
+--- /dev/null
 +++ b/src/auth.sh
 @@ -0,0 +1,10 @@
 +#!/usr/bin/env bash
-+# Login endpoint
++# Login endpoint at src/auth.sh
 +login_user() {
 +    local user="$1" pass="$2"
 +    validate_credentials "$user" "$pass"

@@ -1,0 +1,11 @@
+# Review
+
+**Verdict:** request_changes
+**Confidence:** 0.75
+
+## Issues
+- Missing test for empty-input case
+- Renderer should escape backticks in titles
+
+## Summary
+Solid implementation but two test gaps need to close before approving.
