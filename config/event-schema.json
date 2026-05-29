@@ -52,6 +52,8 @@
     "plugin.contract.violated",
     "plugin.artifact.missing",
     "plugin.run.artifact_check_failed",
-    "plugin.tamper.detected"
+    "plugin.tamper.detected",
+    "intake.refused.issue_closed",
+    "intake.override.closed_issue_allowed"
   ]
 }
