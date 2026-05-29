@@ -348,6 +348,30 @@ _stage_io_render_command_argv() {
     printf '\n'
 }
 
+# ─── _stage_io_strip_ansi — remove ANSI/CSI escape sequences ────────────────
+# Captured LLM responses and command outputs (gh, git, anything that detects
+# a tty) can contain ANSI escape sequences that hose the operator's terminal
+# when echoed back through the banner. The xterm bracketed-paste-mode-start
+# code (`\e[200~`) is particularly nasty: once received, the terminal treats
+# everything after as pasted-input until it sees the matching end code,
+# which corrupts the shell prompt and may execute lines as commands.
+#
+# Strips:
+#   - CSI: ESC [ <params> <final>, where params is [0-9;?]* and final is a
+#     letter or `~` (covers the BPM markers \e[200~ / \e[201~).
+#   - Bare ESC followed by a single character (OSC, single-shift, etc.).
+# Leaves real newlines, tabs, and other printable content alone.
+#
+# Always emits content on stdout; never errors. Safe to use on any captured
+# string field.
+_stage_io_strip_ansi() {
+    local content="$1"
+    # Use sed with the GNU/BSD-common ERE form. \x1b is the ESC character.
+    # Two passes: first strip CSI (ESC [ ... <letter|~>), then strip any
+    # remaining bare-ESC sequences (ESC <char>).
+    printf '%s' "$content" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g'
+}
+
 # ─── _stage_io_pretty_print — pretty-print JSON, pass through otherwise ─────
 # LLM outputs and some command outputs (gh --json) are JSON; minified, they
 # render as one ~4KB line that scrolls off-screen and is unreadable. When the
@@ -424,6 +448,16 @@ _stage_io_to_stdout() {
     local status_field=""
     [[ -n "$status" ]] && status_field=" ${status}"
     printf '── stage-io: %s [%s] seq=%s%s %s ──\n' "$stage" "$kind" "$seq" "$status_field" "$dur"
+
+    # Sanitize input/output: strip ANSI/CSI escape sequences before they
+    # reach the operator's terminal. Captured LLM responses and command
+    # output can contain xterm control codes (notably bracketed-paste-mode
+    # \e[200~/\e[201~) that hose the shell prompt and can cause subsequent
+    # terminal content to be interpreted as pasted-and-executed commands.
+    # Strip before everything else so pretty-print's JSON sniffer can't be
+    # fooled by leading escapes either.
+    input="$(_stage_io_strip_ansi "$input")"
+    output="$(_stage_io_strip_ansi "$output")"
 
     case "$kind" in
         llm)
