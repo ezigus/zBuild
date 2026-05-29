@@ -84,6 +84,9 @@ labels:
   - name: cli-ux
     color: "a78bfa"
     description: CLI / UX surface
+  - name: documentation
+    color: "0075ca"
+    description: Documentation improvements (ADRs, READMEs, CLAUDE.md)
 # ─── Milestones (7) ─────────────────────────────────────────────────────────
 milestones:
   - title: Phase 0 — Core Engine Foundation
@@ -3947,8 +3950,8 @@ issues:
     state: open
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/290
-      Plugin lockfile should hash all plugin files (not just plugin.sh)
-      and reverify before sourcing.
+      Plugin lockfile currently only hashes manifest.yaml; extend it to
+      also hash plugin.sh (and all plugin files) and reverify before sourcing.
   - id: router-precondition-fail-closed
     title: "Router precondition fail-closed when ZBUILD_RUN_ID or ZBUILD_EVENTS_JSONL unset + gate --skip-precondition behind operator override + audit event"
     milestone: "Phase 1 — Pipeline & Intelligence"
