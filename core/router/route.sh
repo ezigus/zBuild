@@ -89,6 +89,11 @@ _ROUTE_MODEL_ID="" _ROUTE_PROVIDER="" _ROUTE_COST_IN="" _ROUTE_COST_OUT=""
 _ROUTE_CACHE_ELIGIBLE="false" _ROUTE_OVERRIDE_SOURCE="" _ROUTE_RESPONSE=""
 _ROUTE_INPUT_TOKENS=0 _ROUTE_OUTPUT_TOKENS=0
 _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
+# ADR-018 (#469): captured tool_uses[] envelope when JSON output mode is active.
+# Empty when JSON mode off or envelope lacked the field. Consumers (review
+# audit) read this AFTER route_to_model returns. Not exported to subshells —
+# valid only within the parent shell that sourced route.sh.
+_ROUTE_TOOL_USES_JSON="[]"
 
 # ─── _route_check_precondition <tier> <skip:bool> ────────────────────────────
 # Validates C6: most-recent event for current run_id must be redaction.applied.
@@ -335,6 +340,7 @@ _route_call_claude() {
     # JSON output mode: extract .result and token counts
     _ROUTE_INPUT_TOKENS=0 _ROUTE_OUTPUT_TOKENS=0
     _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
+    _ROUTE_TOOL_USES_JSON="[]"
     if [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]]; then
         local text_response
         text_response="$(printf '%s' "$response" | jq -r '.result // empty' 2>/dev/null || true)"
@@ -347,6 +353,23 @@ _route_call_claude() {
         _ROUTE_OUTPUT_TOKENS="$(printf '%s' "$response" | jq -r '.usage.output_tokens // 0' 2>/dev/null || echo 0)"
         _ROUTE_CACHE_READ="$(printf '%s' "$response" | jq -r '.usage.cache_read_input_tokens // 0' 2>/dev/null || echo 0)"
         _ROUTE_CACHE_CREATION="$(printf '%s' "$response" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null || echo 0)"
+        # ADR-018 (#469): expose tool_uses[] for opt-in audit consumers.
+        # Fail-soft — bad/missing field becomes empty array; never blocks.
+        local _tu
+        _tu="$(printf '%s' "$response" | jq -c '.tool_uses // []' 2>/dev/null || echo '[]')"
+        if printf '%s' "$_tu" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            _ROUTE_TOOL_USES_JSON="$_tu"
+        else
+            _ROUTE_TOOL_USES_JSON="[]"
+        fi
+        # Side-channel: route_to_model is typically called via $() which
+        # discards subshell state. Callers that need _ROUTE_TOOL_USES_JSON
+        # across that boundary set ZBUILD_ROUTER_TOOL_USES_FILE to a path
+        # the parent shell can read after the call returns.
+        if [[ -n "${ZBUILD_ROUTER_TOOL_USES_FILE:-}" ]]; then
+            printf '%s\n' "$_ROUTE_TOOL_USES_JSON" \
+                > "$ZBUILD_ROUTER_TOOL_USES_FILE" 2>/dev/null || true
+        fi
         response="$text_response"
     fi
 

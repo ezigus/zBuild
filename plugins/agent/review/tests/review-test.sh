@@ -268,8 +268,8 @@ rc=$?
 set -e
 assert_eq "cleanup: rc=0" "0" "$rc"
 
-# ─── Test 8: prompt hygiene hardening (#462) ─────────────────────────────────
-print_test_section "8. prompt contains #435-style hygiene tokens (issue #462)"
+# ─── Test 8: prompt hygiene + ADR-018 tool-use invitation (#469) ─────────────
+print_test_section "8. prompt invites Read, forbids Edit/Write/Bash (#469)"
 
 # File-based capture: route_to_model runs inside $() in _review_run_inner,
 # so variable-based capture is lost to the subshell — use a file.
@@ -299,23 +299,248 @@ assert_eq "hygiene: rc=0" "0" "$rc"
 
 captured_prompt="$(cat "$_CAPTURED_REVIEW_PROMPT")"
 
-# Assert required hygiene tokens
+# Kept hygiene tokens
 if echo "$captured_prompt" | grep -q "no markdown code fences"; then
     assert_pass "prompt contains 'no markdown code fences'"
 else
     assert_fail "prompt missing 'no markdown code fences'" "got: $(echo "$captured_prompt" | head -5)"
 fi
 
-if echo "$captured_prompt" | grep -q "no tool calls"; then
-    assert_pass "prompt contains 'no tool calls'"
-else
-    assert_fail "prompt missing 'no tool calls'" "got: $(echo "$captured_prompt" | head -5)"
-fi
-
 if echo "$captured_prompt" | grep -qi "SINGLE JSON object"; then
     assert_pass "prompt contains 'SINGLE JSON object'"
 else
     assert_fail "prompt missing 'SINGLE JSON object'" "got: $(echo "$captured_prompt" | head -5)"
+fi
+
+# NEGATIVE: the #462 "no tool calls" prohibition is lifted under ADR-018.
+if echo "$captured_prompt" | grep -q "no tool calls"; then
+    assert_fail "prompt still contains 'no tool calls' — should be lifted under ADR-018"
+else
+    assert_pass "prompt no longer forbids tool calls outright"
+fi
+
+if echo "$captured_prompt" | grep -qi "no tool-use"; then
+    assert_fail "prompt still says 'no tool-use' — should be lifted under ADR-018"
+else
+    assert_pass "prompt does not say 'no tool-use'"
+fi
+
+# POSITIVE: invitation + the Read tool named
+if echo "$captured_prompt" | grep -qi "MAY use the Read tool"; then
+    assert_pass "prompt invites Read tool ('MAY use the Read tool')"
+else
+    assert_fail "prompt missing 'MAY use the Read tool' invitation"
+fi
+
+if echo "$captured_prompt" | grep -q "Read"; then
+    assert_pass "prompt names the Read tool"
+else
+    assert_fail "prompt does not name Read"
+fi
+
+# POSITIVE: forbid Edit/Write/Bash explicitly
+if echo "$captured_prompt" | grep -q "Edit" && \
+   echo "$captured_prompt" | grep -q "Write" && \
+   echo "$captured_prompt" | grep -q "Bash"; then
+    assert_pass "prompt forbids Edit/Write/Bash"
+else
+    assert_fail "prompt does not explicitly forbid Edit/Write/Bash"
+fi
+
+# POSITIVE: <out-of-scope-context> marker awareness
+if echo "$captured_prompt" | grep -q "out-of-scope-context"; then
+    assert_pass "prompt mentions <out-of-scope-context> marker"
+else
+    assert_fail "prompt does not mention <out-of-scope-context> markers"
+fi
+
+# ─── Test 9: prompt declares read scope discipline (#469) ────────────────────
+print_test_section "9. prompt declares scope-bounded reads (#469)"
+
+if echo "$captured_prompt" | grep -qi "scope manifest"; then
+    assert_pass "prompt mentions scope manifest"
+else
+    assert_fail "prompt does not mention scope manifest"
+fi
+
+# Read scope is explicitly limited to paths in the diff or scope manifest
+if echo "$captured_prompt" | grep -qi "paths in the diff"; then
+    assert_pass "prompt limits reads to paths in the diff or manifest"
+else
+    assert_fail "prompt does not constrain read paths"
+fi
+
+# ─── Test 10: happy-path verdict round-trip regression (#469) ────────────────
+print_test_section "10. happy-path verdict round-trip (#469)"
+
+# Same shadow route_to_model is in effect (returns valid approve JSON).
+OUTPUT_HAPPY="$ARTIFACT_DIR/review-happy.json"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_HAPPY" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "happy-path: rc=0" "0" "$rc"
+assert_file_exists "happy-path: review.json created" "$OUTPUT_HAPPY"
+v="$(jq -r '.verdict' "$OUTPUT_HAPPY")"
+assert_eq "happy-path: verdict=approve" "approve" "$v"
+
+# ─── Test 11: audit enabled — out-of-scope Read emits violation (#469) ───────
+print_test_section "11. audit mode emits review.scope.violation for out-of-scope Read (#469)"
+
+# Truncate events log so we can count violations from this test only.
+EVENTS_SNAPSHOT_LINES_T11="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+
+# Shadow route_to_model: behave like the router would in JSON mode — unwrap
+# .result and (critically) write tool_uses[] to ZBUILD_ROUTER_TOOL_USES_FILE.
+route_to_model() {
+    local envelope='{"type":"result","subtype":"success","result":"{\"verdict\":\"approve\",\"confidence\":0.9,\"issues\":[],\"summary\":\"ok\"}","tool_uses":[{"name":"Read","input":{"file_path":"src/auth.sh"}},{"name":"Read","input":{"file_path":"tests/foo.sh"}}]}'
+    local tu='[{"name":"Read","input":{"file_path":"src/auth.sh"}},{"name":"Read","input":{"file_path":"tests/foo.sh"}}]'
+    if [[ -n "${ZBUILD_ROUTER_TOOL_USES_FILE:-}" ]]; then
+        printf '%s\n' "$tu" > "$ZBUILD_ROUTER_TOOL_USES_FILE"
+    fi
+    # Plugin parses bare JSON verdict — return the unwrapped .result text.
+    printf '%s\n' "$(printf '%s' "$envelope" | jq -r '.result')"
+    return 0
+}
+
+OUTPUT_AUDIT="$ARTIFACT_DIR/review-audit.json"
+set +e
+ZBUILD_REVIEW_AUDIT_TOOL_USE=1 \
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_AUDIT" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "audit: rc=0" "0" "$rc"
+assert_file_exists "audit: review.json still written" "$OUTPUT_AUDIT"
+v="$(jq -r '.verdict' "$OUTPUT_AUDIT")"
+assert_eq "audit: verdict round-trips approve (warn-only)" "approve" "$v"
+
+# Violations recorded only for events appended after the pre-test snapshot.
+NEW_EVENTS_T11="$(tail -n +$((EVENTS_SNAPSHOT_LINES_T11 + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+
+violations_src="$(printf '%s\n' "$NEW_EVENTS_T11" \
+    | jq -c 'select(.type == "review.scope.violation") | select(.data.path == "src/auth.sh")' 2>/dev/null \
+    | grep -c . || true)"
+if [[ "${violations_src:-0}" -ge 1 ]]; then
+    assert_pass "audit: review.scope.violation emitted for src/auth.sh"
+else
+    assert_fail "audit: expected review.scope.violation for src/auth.sh"
+fi
+
+violations_tests="$(printf '%s\n' "$NEW_EVENTS_T11" \
+    | jq -c 'select(.type == "review.scope.violation") | select(.data.path == "tests/foo.sh")' 2>/dev/null \
+    | grep -c . || true)"
+if [[ "${violations_tests:-0}" -eq 0 ]]; then
+    assert_pass "audit: NO violation for in-scope tests/foo.sh"
+else
+    assert_fail "audit: false-positive violation for in-scope tests/foo.sh"
+fi
+
+# ─── Test 11b: audit disabled (default) — no audit event ─────────────────────
+print_test_section "11b. audit disabled by default — no audit event (#469)"
+
+EVENTS_SNAPSHOT_LINES_T11B="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+
+# Bare-JSON return path (no envelope, no side-channel write)
+route_to_model() {
+    printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}'
+    return 0
+}
+
+OUTPUT_AUDIT_OFF="$ARTIFACT_DIR/review-audit-off.json"
+unset ZBUILD_REVIEW_AUDIT_TOOL_USE 2>/dev/null || true
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_AUDIT_OFF" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "audit-off: rc=0" "0" "$rc"
+v="$(jq -r '.verdict' "$OUTPUT_AUDIT_OFF")"
+assert_eq "audit-off: verdict round-trips" "approve" "$v"
+
+NEW_EVENTS_T11B="$(tail -n +$((EVENTS_SNAPSHOT_LINES_T11B + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+audit_events_off="$(printf '%s\n' "$NEW_EVENTS_T11B" \
+    | jq -c 'select(.type == "review.scope.violation")' 2>/dev/null \
+    | grep -c . || true)"
+if [[ "${audit_events_off:-0}" -eq 0 ]]; then
+    assert_pass "audit-off: zero review.scope.violation events"
+else
+    assert_fail "audit-off: $audit_events_off review.scope.violation events emitted unexpectedly"
+fi
+
+# ─── Test 12: subprocess-boundary mock claude (#469) ─────────────────────────
+# Real mock claude binary on PATH emits a full JSON envelope; the router
+# (sourced inside the plugin) unwraps it and writes tool_uses[] to the
+# side-channel file. This locks the contract across the actual subprocess
+# boundary that route_to_model crosses in production.
+print_test_section "12. subprocess-boundary: envelope mode round-trip (#469)"
+
+# Reset router-internal guard so route_to_model goes through the real path
+# (we previously shadowed it as a shell function in tests 8/10/11/11b).
+# Bash `unset -f` removes the function entirely; re-source route.sh to
+# restore the real definition (with guard unset first to bypass the
+# idempotency check).
+unset -f route_to_model 2>/dev/null || true
+unset _ZBUILD_ROUTER_LOADED
+# shellcheck source=../../../../core/router/route.sh
+source "$REPO_ROOT/core/router/route.sh"
+
+# Mock claude that emits the full result envelope (matches --output-format json)
+cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
+#!/usr/bin/env bash
+# Mock: always emit a result envelope regardless of args.
+cat <<'JSON'
+{"type":"result","subtype":"success","result":"{\"verdict\":\"approve\",\"confidence\":0.88,\"issues\":[],\"summary\":\"sub-boundary ok\"}","usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"tool_uses":[{"name":"Read","input":{"file_path":"src/auth.sh"}}]}
+JSON
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+EVENTS_SNAPSHOT_LINES_T12="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+
+OUTPUT_T12="$ARTIFACT_DIR/review-t12.json"
+set +e
+ZBUILD_REVIEW_AUDIT_TOOL_USE=1 \
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T12" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "sub-boundary: rc=0" "0" "$rc"
+assert_file_exists "sub-boundary: review.json written" "$OUTPUT_T12"
+v="$(jq -r '.verdict' "$OUTPUT_T12")"
+assert_eq "sub-boundary: verdict round-trips" "approve" "$v"
+
+NEW_EVENTS_T12="$(tail -n +$((EVENTS_SNAPSHOT_LINES_T12 + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+sub_viol="$(printf '%s\n' "$NEW_EVENTS_T12" \
+    | jq -c 'select(.type == "review.scope.violation") | select(.data.path == "src/auth.sh")' 2>/dev/null \
+    | grep -c . || true)"
+if [[ "${sub_viol:-0}" -ge 1 ]]; then
+    assert_pass "sub-boundary: violation emitted via real envelope unwrap path"
+else
+    assert_fail "sub-boundary: expected violation event for src/auth.sh"
 fi
 
 cleanup_test_env
