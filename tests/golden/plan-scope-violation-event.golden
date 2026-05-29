@@ -1,0 +1,1 @@
+{"type":"plan.scope.violation","data":{"plugin":"plan","stage":"plan","step_id":"step-1","path":"legacy/foo.sh","reason":"out_of_scope","scope_hash":"<sha256>","manifest_path":"<absolute>"}}

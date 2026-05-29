@@ -57,6 +57,7 @@
     "plugin.run.artifact_check_failed",
     "plugin.tamper.detected",
     "intake.refused.issue_closed",
-    "intake.override.closed_issue_allowed"
+    "intake.override.closed_issue_allowed",
+    "plan.scope.violation"
   ]
 }

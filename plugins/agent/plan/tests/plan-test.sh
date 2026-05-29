@@ -35,7 +35,11 @@ cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + plugins/
 SCOPE
 
-# Canned plan.json the mock router will write
+# Canned plan.json the mock router will write. Tests override CANNED_PLAN
+# (the mock reads it at each invocation) to exercise violation cases without
+# needing to redefine the mock body.
+# shellcheck disable=SC2089,SC2090  # JSON literal stored verbatim; mocked
+# route_to_model echoes it as-is.
 CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
@@ -117,6 +121,131 @@ assert_contains "plan prompt forbids markdown code fences" \
     "$captured_prompt" "no markdown code fences"
 assert_contains "plan prompt still includes the goal text" \
     "$captured_prompt" "test goal"
+
+# ─── Test 3c: ADR-018 (#468) — prompt invites Read; forbids mutating tools ──
+# Lifted the "no tool calls" prohibition once #466 made tools available via
+# --dangerously-skip-permissions. Plan now invites Read for context-gathering
+# while still forbidding Edit/Write/Bash and inlining the scope-manifest.
+if grep -q "no tool calls" <<< "$captured_prompt"; then
+    assert_fail "plan prompt no longer forbids tool calls"
+else
+    assert_pass "plan prompt no longer forbids tool calls"
+fi
+if grep -q "no tool-use" <<< "$captured_prompt"; then
+    assert_fail "plan prompt no longer says no tool-use"
+else
+    assert_pass "plan prompt no longer says no tool-use"
+fi
+if grep -qi "Read tool" <<< "$captured_prompt"; then
+    assert_pass "plan prompt invites the Read tool"
+else
+    assert_fail "plan prompt invites the Read tool" "captured: $(head -c 200 <<<"$captured_prompt")"
+fi
+assert_contains "plan prompt forbids Edit/Write/Bash" \
+    "$captured_prompt" "Do NOT call Edit"
+if grep -qi "Scope manifest" <<< "$captured_prompt"; then
+    assert_pass "plan prompt inlines the scope manifest"
+else
+    assert_fail "plan prompt inlines the scope manifest"
+fi
+assert_contains "plan prompt includes manifest prefix" \
+    "$captured_prompt" "+ core/"
+
+# ─── Test 6: scope post-validation — in-scope plan emits zero violations ────
+EVENTS_FILE="$ZBUILD_EVENTS_JSONL"
+: > "$EVENTS_FILE" 2>/dev/null || true
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh","plugins/agent/plan/plugin.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "in-scope plan returns rc=0" "0" "$rc"
+assert_file_exists "in-scope plan.json written" "$ARTIFACTS_DIR/plan.json"
+violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "in-scope plan emits no violation events" "0" "$violation_count"
+sv="$(jq -r 'select(.type=="plugin.run.complete" and .data.stage=="plan") | .data.scope_violations' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+assert_eq "in-scope plugin.run.complete payload.scope_violations=0" "0" "${sv:-MISSING}"
+
+# ─── Test 7: out-of-scope single path — one violation, plan.json still written ─
+: > "$EVENTS_FILE"
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "out-of-scope plan returns rc=0 (fail-soft)" "0" "$rc"
+assert_file_exists "out-of-scope plan.json still written" "$ARTIFACTS_DIR/plan.json"
+violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "out-of-scope plan emits exactly one violation event" "1" "$violation_count"
+reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_FILE" 2>/dev/null | head -1)"
+assert_eq "violation reason=out_of_scope" "out_of_scope" "$reason"
+voff="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$EVENTS_FILE" 2>/dev/null | head -1)"
+assert_eq "violation path reports offender" "legacy/foo.sh" "$voff"
+sv="$(jq -r 'select(.type=="plugin.run.complete" and .data.stage=="plan") | .data.scope_violations' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+assert_eq "scope_violations=1 in run.complete" "1" "$sv"
+
+# ─── Test 8: multiple out-of-scope — one event per offender ─────────────────
+: > "$EVENTS_FILE"
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/a.sh","docs/b.md"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "two offenders emit two violation events" "2" "$violation_count"
+
+# ─── Test 9: mixed — only out-of-scope path is reported ─────────────────────
+: > "$EVENTS_FILE"
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/ok.sh","legacy/bad.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "mixed plan reports only out-of-scope path" "1" "$violation_count"
+voff="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$EVENTS_FILE" 2>/dev/null | head -1)"
+assert_eq "mixed violation path is the offender" "legacy/bad.sh" "$voff"
+
+# ─── Test 10: absolute path — reason=absolute_path ──────────────────────────
+: > "$EVENTS_FILE"
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["/etc/passwd"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_FILE" 2>/dev/null | head -1)"
+assert_eq "absolute path violation reason=absolute_path" "absolute_path" "$reason"
+
+# ─── Test 11: traversal — reason=out_of_repo ────────────────────────────────
+: > "$EVENTS_FILE"
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["../escape.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_FILE" 2>/dev/null | head -1)"
+assert_eq "traversal violation reason=out_of_repo" "out_of_repo" "$reason"
+
+# ─── Test 12: malformed plan (non-string files) — rc=1, invalid_plan_response ─
+: > "$EVENTS_FILE"
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":[123],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "malformed files[] non-string returns rc=1" "1" "$rc"
+err_reason="$(jq -r 'select(.type=="plugin.run.error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+assert_eq "malformed plan error reason=invalid_plan_response" "invalid_plan_response" "$err_reason"
+
+# ─── Test 13: empty files[] — allowed, no violation ─────────────────────────
+: > "$EVENTS_FILE"
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"refactor only","files":[],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "empty files[] returns rc=0" "0" "$rc"
+violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "empty files[] emits no violations" "0" "$violation_count"
+
+# Restore the original canned plan for any tests below
+CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
 # ─── Test 4: plan_run fails with missing scope_manifest (rc=1 — redaction fail-closed) ─
 # Temporarily replace apply_scope_redaction with a scope-aware mock that
