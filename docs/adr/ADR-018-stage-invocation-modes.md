@@ -243,3 +243,11 @@ Rejected.
 | C | `plan: invite Read; post-validate step.files[] (ADR-018)` | Issue A |
 | D | `review: invite Read for diff verification (ADR-018)` | Issue A |
 | E | `core: artifact renderer registry + banner markdown (ADR-018)` | ADR-018; parallel to A/B/C/D |
+
+## Implementation Notes (Proposed — 2026-05-29)
+
+Not yet implemented. Five issues (A–E) are the implementation backlog for this
+ADR; each will reference back here on merge. This section will be updated to
+`Accepted` with PR links when Issue A lands.
+
+Dogfood run `20260529164733-70084` is the triggering evidence on record.
