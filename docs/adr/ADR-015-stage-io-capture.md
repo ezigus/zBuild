@@ -1,6 +1,6 @@
 # ADR-015: Stage I/O Capture Chokepoint
 
-**Status:** Proposed
+**Status:** Accepted (2026-05-29)
 **Date:** 2026-05-29
 
 ## Context
@@ -309,3 +309,128 @@ command transparently and the capture is a no-op (hot path).
 - `duration_ms` resolution is true milliseconds via `$EPOCHREALTIME`.
 - Outbound `gh_comment` redaction is still deferred to #440; v2 stages that
   enable `gh_comment` will receive the v3 stub renderer.
+
+### v3 — stdout + gh_comment renderers (issue #440)
+
+The v3 slice replaces the `_stage_io_to_stdout` and `_stage_io_to_gh_comment`
+stubs in `core/output/stage-io.sh` with functional renderers, wires outbound
+redaction for `gh_comment` destinations through
+`core/redaction/scope-redaction.sh::apply_scope_redaction`, and turns the
+feature on by default in `config/templates/standard.yaml` for the four
+agent-bearing stages (intake/plan/build/review). The ADR status flips from
+Proposed to Accepted with this slice.
+
+**Renderer formats**
+
+`_stage_io_to_stdout <record_json>` renders to its own stdout (not stderr —
+the rendered text is *content*). Layout:
+
+```
+── stage-io: <stage> [<kind>] seq=<N> <OK|FAIL> <duration> ──
+<per-kind body>
+── end stage-io: <stage> ──
+```
+
+Per-kind body:
+
+- `llm` — `── input ──\n<head tail_lines of input>\n── output ──\n<tail tail_lines of output>`
+- `command` — `── input ──\n$ <input>\n── output ──\n<tail tail_lines of output>\n── exit: <exit_code> ──`
+- `computed` — `in: <input>\nout: <output>`
+
+Status indicator: `command` reports `OK` when `exit_code==0` and `FAIL`
+otherwise. `llm` reports `OK` when `metadata.error` is absent and `FAIL`
+when present. `computed` always reports `OK`. Duration is rendered as
+`%.1fs` from `duration_ms`, or `-` when unset.
+
+`_stage_io_to_gh_comment <record_json>` wraps the same stdout rendering
+inside a `<details>...</details>` block with a one-line `<summary>`:
+
+```
+<details><summary>OK stage: plan (llm, 2.4s)</summary>
+
+```
+<stdout rendering, redacted>
+```
+</details>
+```
+
+**Redact-before-truncate ordering**
+
+Redaction is applied to `output` and then `input` BEFORE the body-cap check.
+Truncating first could slice through a path-token in mid-string and produce
+an `<out-of-scope-context>` wrapper with an unmatched closing tag, defeating
+the purpose. The full body is assembled, then trimmed if it exceeds the cap.
+
+**60_000-byte body cap**
+
+GitHub allows up to 65_536 bytes per issue comment body; the cap is set
+conservatively at 60_000 to leave headroom for the wrapping `<details>`,
+fence markers, summary, and the truncation marker itself. When a rendered
+body exceeds the cap, the rendered output portion is trimmed and a marker is
+appended:
+
+```
+[truncated — see <state_dir>/artifacts/stage-io/<stage>-<seq>.json for full <N>-byte capture]
+```
+
+The artifact path always points to the full capture written by the
+`file` destination — `gh_comment` is for human review; the `file`
+destination is the source of truth.
+
+**gh_comment skip semantics**
+
+The destination is a silent no-op when:
+
+- `ZBUILD_ISSUE` is unset, empty, or `0` (mirrors `_dest_gh_comment` at
+  `core/output/destinations.sh:50-52` — when there's no issue, there's
+  nothing to comment on).
+- `ZBUILD_OUTPUT_GH_COMMENT=0` (global kill switch, also mirrors
+  `core/output/destinations.sh:13-15` — operators can disable all
+  `gh_comment` capture without touching templates).
+
+On `gh issue comment` failure (network, permissions, rate limit), the
+destination emits `stage.io.error reason=gh_comment_post_failed` via the
+event bus and returns 0 — capture is best-effort observability; a flaky
+comment must not break the stage that produced it. On redaction failure
+(`apply_scope_redaction` returns non-zero), the comment is dropped, an
+event `stage.io.error reason=redaction_failed` is emitted, and the
+function returns 0; the file capture is unaffected and still contains the
+unredacted record (file is private state; gh_comment is the public
+emission path).
+
+**Per-stage template knobs: `tail_lines`, `redact`**
+
+The pipeline-template `io:` block grows two optional sibling keys:
+
+```yaml
+stages:
+  - id: plan
+    io:
+      destinations: [file, gh_comment]
+      tail_lines: 60     # int, 1..10000, default 40
+      redact: true       # bool, default true; LLM ignores false
+```
+
+`tail_lines` (integer, range `1..10000`, default `40` when unset) controls
+how many trailing lines of `output` (and leading lines of `input` for the
+`llm` body) appear in renderings. The validator rejects non-integers,
+zero/negative, and values above 10_000 to catch unit-confusion typos
+(e.g. someone writing `tail_lines: 60000` thinking bytes).
+
+`redact` (`true|false`, default `true` when unset) lets `command` and
+`computed` stages opt out of outbound redaction for trusted internal
+commands (e.g. `git apply --check` on a path already inside scope). The
+`llm` kind ALWAYS redacts — the response could be model-emitted content
+referencing paths the prompt never mentioned. The opt-out is for commands
+whose argv and output the operator has audited as safe to publish.
+
+**Deferred items**
+
+- Per-stage `max_output_bytes` knob — for now the 60_000-byte body cap is
+  global. A future iteration could let high-signal stages (review) keep more.
+- `gh_check_run` and `step_summary` destinations — sibling tokens to add
+  after experience with `gh_comment` reveals what shape works.
+- Resume idempotency — when a pipeline resumes mid-stage, `seq` is recomputed
+  from the artifact-dir listing; on disk this works, but a stage that
+  re-runs after partial completion may double-post `gh_comment` entries.
+  A future "did this seq already comment?" check is deferred.

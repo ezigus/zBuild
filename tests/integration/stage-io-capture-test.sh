@@ -97,6 +97,65 @@ set -e
 assert_eq "route_to_model still rc=0 without stage" "0" "$rc2"
 assert_file_not_exists "no artifact written when ZBUILD_CURRENT_STAGE unset" "$artifact"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ADR-015 v3 (#440): end-to-end gh_comment destination
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Reset events log and state
+: > "$ZBUILD_EVENTS_JSONL"
+rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
+
+# Template with file + gh_comment for plan
+TPL_V3="$TEST_TEMP_DIR/io-template-v3.yaml"
+cat > "$TPL_V3" <<'EOF'
+id: io-int-v3
+name: IO Integration V3
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file, gh_comment]
+EOF
+load_template "$TPL_V3"
+
+# PATH-shim gh to record calls
+ghdir_int="$TEST_TEMP_DIR/gh-int"
+mkdir -p "$ghdir_int"
+cat > "$ghdir_int/gh" <<EOF
+#!/usr/bin/env bash
+echo "GH_INVOKED \$1 \$2" >> "$ghdir_int/calls.log"
+exit 0
+EOF
+chmod +x "$ghdir_int/gh"
+export PATH="$ghdir_int:$PATH"
+export ZBUILD_ISSUE="999"
+export ZBUILD_CURRENT_STAGE="plan"
+
+set +e
+out_v3="$(route_to_model "T2" "v3 test prompt" --skip-precondition 2>/dev/null)"
+rc_v3=$?
+set -e
+assert_eq "v3 route_to_model rc=0" "0" "$rc_v3"
+
+artifact_v3="$ZBUILD_STATE_DIR/artifacts/stage-io/plan-1.json"
+assert_file_exists "v3 stage-io artifact written" "$artifact_v3"
+
+# gh was invoked
+if [[ -s "$ghdir_int/calls.log" ]] && grep -q "GH_INVOKED issue comment" "$ghdir_int/calls.log"; then
+    assert_pass "v3 gh issue comment was invoked"
+else
+    assert_fail "v3 gh issue comment was invoked" "calls.log empty or missing entry"
+fi
+
+# stage.io.captured event has dest_list with both
+evt_v3="$(jq -c --arg t "stage.io.captured" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | tail -1)"
+assert_contains "v3 event dest_list contains file" "$evt_v3" "file"
+assert_contains "v3 event dest_list contains gh_comment" "$evt_v3" "gh_comment"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

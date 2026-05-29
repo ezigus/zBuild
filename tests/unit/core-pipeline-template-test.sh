@@ -310,7 +310,9 @@ assert_contains "Tnew3 error mentions bad token 'pigeon'" "$err_io_bad" "pigeon"
 assert_contains "Tnew3 error mentions 'unknown'" "$err_io_bad" "unknown"
 
 # Tnew4: stage without io: → template_stage_io_dests returns empty
-load_template "$STANDARD_TPL"
+# Use VALID_SUBSET_TPL (no io: block on any stage) since standard.yaml now ships
+# with io.destinations populated (ADR-015 v3, #440).
+load_template "$VALID_SUBSET_TPL"
 io_dests_none="$(template_stage_io_dests "plan")"
 assert_eq "Tnew4 stage without io: returns empty" "" "$io_dests_none"
 
@@ -346,6 +348,153 @@ roles_mixed_build="$(template_stage_roles "build")"
 assert_eq "Tnew5 regression: build roles=builder" "builder" "$roles_mixed_build"
 io_mixed_plan="$(template_stage_io_dests "plan")"
 assert_eq "Tnew5 regression: plan io_dests=file" "file" "$io_mixed_plan"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ADR-015 v3 (#440): io.tail_lines + io.redact per-stage knobs
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Tv3-1: inline io.tail_lines parses
+IO_TAIL_INLINE_TPL="$TEST_TEMP_DIR/io-tail-inline.yaml"
+cat > "$IO_TAIL_INLINE_TPL" <<'EOF'
+id: io-tail-inline
+name: IO Tail Inline
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+      tail_lines: 60
+EOF
+load_template "$IO_TAIL_INLINE_TPL"
+assert_eq "Tv3-1 io.tail_lines parsed as 60" "60" "$(template_stage_io_tail_lines plan)"
+
+# Tv3-2: io.tail_lines missing → empty (use subset template w/o io: block)
+load_template "$VALID_SUBSET_TPL"
+assert_eq "Tv3-2 io.tail_lines missing → empty" "" "$(template_stage_io_tail_lines plan)"
+
+# Tv3-3: non-numeric tail_lines rejected
+IO_TAIL_BAD_TPL="$TEST_TEMP_DIR/io-tail-bad.yaml"
+cat > "$IO_TAIL_BAD_TPL" <<'EOF'
+id: io-tail-bad
+name: IO Tail Bad
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+      tail_lines: forty
+EOF
+set +e
+err_tail_bad="$(load_template "$IO_TAIL_BAD_TPL" 2>&1)"
+rc_tail_bad=$?
+set -e
+assert_eq "Tv3-3 non-numeric tail_lines rejected" "1" "$rc_tail_bad"
+assert_contains "Tv3-3 error mentions tail_lines" "$err_tail_bad" "tail_lines"
+
+# Tv3-4: tail_lines > 10000 rejected
+IO_TAIL_HUGE_TPL="$TEST_TEMP_DIR/io-tail-huge.yaml"
+cat > "$IO_TAIL_HUGE_TPL" <<'EOF'
+id: io-tail-huge
+name: IO Tail Huge
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+      tail_lines: 99999
+EOF
+set +e
+err_tail_huge="$(load_template "$IO_TAIL_HUGE_TPL" 2>&1)"
+rc_tail_huge=$?
+set -e
+assert_eq "Tv3-4 tail_lines > 10000 rejected" "1" "$rc_tail_huge"
+
+# Tv3-5: tail_lines=0 rejected (must be ≥ 1)
+IO_TAIL_ZERO_TPL="$TEST_TEMP_DIR/io-tail-zero.yaml"
+cat > "$IO_TAIL_ZERO_TPL" <<'EOF'
+id: io-tail-zero
+name: IO Tail Zero
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+      tail_lines: 0
+EOF
+set +e
+load_template "$IO_TAIL_ZERO_TPL" 2>/dev/null
+rc_tail_zero=$?
+set -e
+assert_eq "Tv3-5 tail_lines=0 rejected" "1" "$rc_tail_zero"
+
+# Tv3-6: redact true/false accepted
+IO_REDACT_TF_TPL="$TEST_TEMP_DIR/io-redact-tf.yaml"
+cat > "$IO_REDACT_TF_TPL" <<'EOF'
+id: io-redact-tf
+name: IO Redact TF
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+      redact: true
+  - id: build
+    gate: auto
+    roles: [builder]
+    io:
+      destinations: [file]
+      redact: false
+EOF
+load_template "$IO_REDACT_TF_TPL"
+assert_eq "Tv3-6a plan redact=true" "true" "$(template_stage_io_redact plan)"
+assert_eq "Tv3-6b build redact=false" "false" "$(template_stage_io_redact build)"
+
+# Tv3-7: redact invalid value rejected
+IO_REDACT_BAD_TPL="$TEST_TEMP_DIR/io-redact-bad.yaml"
+cat > "$IO_REDACT_BAD_TPL" <<'EOF'
+id: io-redact-bad
+name: IO Redact Bad
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+      redact: maybe
+EOF
+set +e
+err_redact_bad="$(load_template "$IO_REDACT_BAD_TPL" 2>&1)"
+rc_redact_bad=$?
+set -e
+assert_eq "Tv3-7 redact invalid rejected" "1" "$rc_redact_bad"
+assert_contains "Tv3-7 error mentions redact" "$err_redact_bad" "redact"
+
+# Tv3-8: redact missing → empty
+load_template "$VALID_SUBSET_TPL"
+assert_eq "Tv3-8 redact missing → empty" "" "$(template_stage_io_redact plan)"
 
 cleanup_test_env
 print_test_results

@@ -25,6 +25,8 @@ source "$_ZBUILD_ROOT_FOR_STAGE_IO/scripts/lib/helpers.sh"
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/event-bus/event-bus.sh"
 # shellcheck source=../pipeline/template.sh
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/pipeline/template.sh"
+# shellcheck source=../redaction/scope-redaction.sh
+source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/redaction/scope-redaction.sh"
 
 # ─── capture_stage_io — chokepoint ────────────────────────────────────────────
 # Usage:
@@ -243,14 +245,244 @@ _stage_io_to_file() {
     return 0
 }
 
-# ─── _stage_io_to_stdout — v1 stub, full impl deferred to #440 ───────────────
+# ─── _stage_io_render_status — derive OK/FAIL/empty indicator ────────────────
+# Args: <kind> <exit_code> <metadata_json>
+# Prints "OK" or "FAIL". LLM kind defaults to OK; only renders FAIL when
+# metadata.error is set.
+_stage_io_render_status() {
+    local kind="$1" exit_code="$2" metadata_json="$3"
+    case "$kind" in
+        command)
+            if [[ "$exit_code" == "0" ]]; then printf 'OK'
+            else printf 'FAIL'
+            fi
+            ;;
+        llm)
+            local has_err
+            has_err="$(printf '%s' "$metadata_json" | jq -r 'if has("error") then "1" else "0" end' 2>/dev/null || printf '0')"
+            if [[ "$has_err" == "1" ]]; then printf 'FAIL'
+            else printf 'OK'
+            fi
+            ;;
+        computed)
+            printf 'OK'
+            ;;
+    esac
+}
+
+# ─── _stage_io_render_duration — duration_ms → "N.Ns" or "-" ─────────────────
+_stage_io_render_duration() {
+    local ms="$1"
+    if [[ -z "$ms" || "$ms" == "null" ]]; then printf -- '-'; return; fi
+    awk -v m="$ms" 'BEGIN{printf "%.1fs", m/1000}'
+}
+
+# ─── _stage_io_tail — last N lines of input string ───────────────────────────
+# Appends trailing newline so the next section divider (── … ──) starts on its
+# own line, even when the original content lacked a final newline.
+_stage_io_tail() {
+    local content="$1" n="$2"
+    printf '%s\n' "$content" | tail -n "$n"
+}
+
+# ─── _stage_io_head — first N lines of input string ──────────────────────────
+# Appends trailing newline so the next section divider (── … ──) starts on its
+# own line, even when the original content lacked a final newline.
+_stage_io_head() {
+    local content="$1" n="$2"
+    printf '%s\n' "$content" | head -n "$n"
+}
+
+# ─── _stage_io_to_stdout <record_json> — renders stage-io capture to stdout ──
 _stage_io_to_stdout() {
-    info "stage-io stdout renderer deferred to #440" >&2
+    local record="$1"
+    local stage kind seq input output exit_code duration_ms metadata
+    stage="$(printf '%s' "$record" | jq -r '.stage')"
+    kind="$(printf '%s' "$record" | jq -r '.kind')"
+    seq="$(printf '%s' "$record" | jq -r '.seq')"
+    input="$(printf '%s' "$record" | jq -r '.input')"
+    output="$(printf '%s' "$record" | jq -r '.output')"
+    exit_code="$(printf '%s' "$record" | jq -r '.exit_code // ""')"
+    duration_ms="$(printf '%s' "$record" | jq -r '.duration_ms // ""')"
+    metadata="$(printf '%s' "$record" | jq -c '.metadata // {}')"
+
+    local tail_lines
+    tail_lines="$(template_stage_io_tail_lines "$stage" 2>/dev/null || true)"
+    [[ -z "$tail_lines" ]] && tail_lines=40
+
+    local status; status="$(_stage_io_render_status "$kind" "$exit_code" "$metadata")"
+    local dur; dur="$(_stage_io_render_duration "$duration_ms")"
+
+    # Header
+    local status_field=""
+    [[ -n "$status" ]] && status_field=" ${status}"
+    printf '── stage-io: %s [%s] seq=%s%s %s ──\n' "$stage" "$kind" "$seq" "$status_field" "$dur"
+
+    case "$kind" in
+        llm)
+            printf '── input ──\n'
+            _stage_io_head "$input" "$tail_lines"
+            printf '\n── output ──\n'
+            _stage_io_tail "$output" "$tail_lines"
+            printf '\n'
+            ;;
+        command)
+            printf '── input ──\n$ %s\n── output ──\n' "$input"
+            _stage_io_tail "$output" "$tail_lines"
+            printf '\n── exit: %s ──\n' "${exit_code:-?}"
+            ;;
+        computed)
+            printf 'in: %s\nout: %s\n' "$input" "$output"
+            ;;
+    esac
+
+    printf '── end stage-io: %s ──\n' "$stage"
     return 0
 }
 
-# ─── _stage_io_to_gh_comment — v1 stub, full impl deferred to #440 ───────────
+# ─── _stage_io_byte_len <string> — byte length (UTF-8 safe) ──────────────────
+# Char count via ${#s} is multi-byte aware under UTF-8 locales; the GitHub
+# comment limit (65_536) is in BYTES. Force LC_ALL=C so ${#s} counts bytes.
+_stage_io_byte_len() {
+    local LC_ALL=C
+    local s="$1"
+    printf '%s' "${#s}"
+}
+
+# ─── _stage_io_redact_outbound <content> ─────────────────────────────────────
+# Outputs redacted content to stdout, returns 0 on success, 1 on redactor failure.
+# Pass-through when no scope manifest is present (e.g. intake before scope bound).
+_stage_io_redact_outbound() {
+    local content="$1"
+    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local manifest="$state_dir/scope-manifest.md"
+    if [[ ! -s "$manifest" ]]; then
+        printf '%s' "$content"
+        return 0
+    fi
+    local tmp_in tmp_out
+    tmp_in="$(mktemp "${TMPDIR:-/tmp}/zbio-in.XXXXXX" 2>/dev/null)" || { return 1; }
+    tmp_out="$(mktemp "${TMPDIR:-/tmp}/zbio-out.XXXXXX" 2>/dev/null)" || { rm -f "$tmp_in"; return 1; }
+    # Cleanup on every return path including SIGPIPE. Double-quote the trap arg
+    # so $tmp_in/$tmp_out expand to literal paths at trap-registration time —
+    # protects against the locals going out of scope before the trap fires and
+    # avoids re-evaluation hazards if another RETURN trap is layered on top.
+    # shellcheck disable=SC2064
+    trap "rm -f '$tmp_in' '$tmp_out'" RETURN
+    printf '%s' "$content" > "$tmp_in"
+    if apply_scope_redaction "$tmp_in" "$tmp_out" "$manifest" "" "0" >/dev/null 2>&1; then
+        cat "$tmp_out"
+        return 0
+    fi
+    return 1
+}
+
+# ─── _stage_io_to_gh_comment <record_json> ───────────────────────────────────
 _stage_io_to_gh_comment() {
-    info "stage-io gh_comment renderer deferred to #440" >&2
+    local record="$1"
+
+    # Silent skips — mirror destinations.sh
+    if [[ -z "${ZBUILD_ISSUE:-}" || "${ZBUILD_ISSUE}" == "0" ]]; then
+        return 0
+    fi
+    local toggle="${ZBUILD_OUTPUT_GH_COMMENT:-1}"
+    [[ "$toggle" == "0" ]] && return 0
+
+    local stage kind seq input output exit_code duration_ms metadata
+    stage="$(printf '%s' "$record" | jq -r '.stage')"
+    kind="$(printf '%s' "$record" | jq -r '.kind')"
+    seq="$(printf '%s' "$record" | jq -r '.seq')"
+    input="$(printf '%s' "$record" | jq -r '.input')"
+    output="$(printf '%s' "$record" | jq -r '.output')"
+    exit_code="$(printf '%s' "$record" | jq -r '.exit_code // ""')"
+    duration_ms="$(printf '%s' "$record" | jq -r '.duration_ms // ""')"
+    metadata="$(printf '%s' "$record" | jq -c '.metadata // {}')"
+
+    local status; status="$(_stage_io_render_status "$kind" "$exit_code" "$metadata")"
+    local dur; dur="$(_stage_io_render_duration "$duration_ms")"
+
+    # Apply outbound redaction (output first, then input) — BEFORE truncate.
+    # LLM kind always redacts; command/computed honor template_stage_io_redact.
+    local skip_redact=0
+    if [[ "$kind" != "llm" ]]; then
+        local redact_pref
+        redact_pref="$(template_stage_io_redact "$stage" 2>/dev/null || true)"
+        [[ "$redact_pref" == "false" ]] && skip_redact=1
+    fi
+
+    local r_output="$output" r_input="$input"
+    if [[ "$skip_redact" -eq 0 ]]; then
+        if ! r_output="$(_stage_io_redact_outbound "$output")"; then
+            eb_emit_event "stage.io.error" "stage=$stage" "reason=redaction_failed" 2>/dev/null || true
+            return 0
+        fi
+        if ! r_input="$(_stage_io_redact_outbound "$input")"; then
+            eb_emit_event "stage.io.error" "stage=$stage" "reason=redaction_failed" 2>/dev/null || true
+            return 0
+        fi
+    fi
+
+    # Build inner rendered text — reuse stdout renderer shape, but using
+    # the already-redacted input/output. Construct a synthetic record that
+    # carries the redacted strings.
+    local rendered_record
+    rendered_record="$(printf '%s' "$record" | jq -c --arg i "$r_input" --arg o "$r_output" '.input = $i | .output = $o')"
+    local rendered_body
+    rendered_body="$(_stage_io_to_stdout "$rendered_record" 2>/dev/null)"
+
+    # Build the comment body:
+    # <details><summary>OK stage: <id> (<kind>, <dur>)</summary>
+    # ```
+    # <rendered_body>
+    # ```
+    # </details>
+    local summary_status=""
+    [[ -n "$status" ]] && summary_status="${status} "
+    local artifact_path
+    artifact_path="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts/stage-io/${stage}-${seq}.json"
+
+    # Compose initial body
+    local body
+    body="$(printf '<details><summary>%sstage: %s (%s, %s)</summary>\n\n```\n%s\n```\n</details>\n' \
+        "$summary_status" "$stage" "$kind" "$dur" "$rendered_body")"
+
+    # Truncate if > 60_000 bytes by trimming the rendered output portion.
+    # GitHub's hard limit is 65_536 BYTES (not chars); use byte-length helper so
+    # multi-byte UTF-8 content is sized correctly under any locale.
+    local max=60000
+    if [[ $(_stage_io_byte_len "$body") -gt $max ]]; then
+        local orig_bytes
+        orig_bytes="$(_stage_io_byte_len "$output")"
+        local trunc_marker
+        trunc_marker="$(printf '\n[truncated — see %s for full %d-byte capture]' "$artifact_path" "$orig_bytes")"
+        # Conservative: keep the header/input intact; shrink the rendered body's tail.
+        # Strategy: rebuild with progressively shorter trailing slice of rendered_body
+        # until under cap, then re-wrap.
+        local overhead_template
+        overhead_template="$(printf '<details><summary>%sstage: %s (%s, %s)</summary>\n\n```\n\n```\n</details>\n' \
+            "$summary_status" "$stage" "$kind" "$dur")"
+        local overhead_len marker_len
+        overhead_len="$(_stage_io_byte_len "$overhead_template")"
+        marker_len="$(_stage_io_byte_len "$trunc_marker")"
+        local room=$(( max - overhead_len - marker_len ))
+        [[ $room -lt 0 ]] && room=0
+        # Byte-accurate slice (head -c counts bytes regardless of locale).
+        # iconv -c strips invalid UTF-8 sequences that would result from cutting
+        # mid-codepoint, ensuring GitHub API accepts the body. If iconv is
+        # unavailable (empty result), fall back to the raw bytewise slice.
+        local trimmed_rendered raw_slice
+        raw_slice="$(printf '%s' "$rendered_body" | head -c "$room")"
+        trimmed_rendered="$(printf '%s' "$raw_slice" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)"
+        if [[ -z "$trimmed_rendered" && -n "$raw_slice" ]]; then
+            trimmed_rendered="$raw_slice"
+        fi
+        body="$(printf '<details><summary>%sstage: %s (%s, %s)</summary>\n\n```\n%s%s\n```\n</details>\n' \
+            "$summary_status" "$stage" "$kind" "$dur" "$trimmed_rendered" "$trunc_marker")"
+    fi
+
+    if ! gh issue comment "$ZBUILD_ISSUE" --body "$body" >/dev/null 2>&1; then
+        eb_emit_event "stage.io.error" "stage=$stage" "reason=gh_comment_post_failed" 2>/dev/null || true
+        return 0
+    fi
     return 0
 }

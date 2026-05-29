@@ -89,10 +89,14 @@ load_template() {
     # Collect stage ids first for validation
     local -a collected_ids=()
     local -a collected_io_dests=()
-    while IFS='|' read -r stage_id roles strategy io_dests; do
+    local -a collected_io_tail=()
+    local -a collected_io_redact=()
+    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact; do
         [[ -z "$stage_id" ]] && continue
         collected_ids+=("$stage_id")
         collected_io_dests+=("$io_dests")
+        collected_io_tail+=("$io_tail")
+        collected_io_redact+=("$io_redact")
     done <<< "$stage_data"
 
     # Validate all stage ids against the canonical list before mutating state
@@ -101,8 +105,11 @@ load_template() {
     # ADR-015 v1 (#438): validate io.destinations tokens before mutating state
     _tpl_validate_io_dests collected_ids collected_io_dests || return 1
 
+    # ADR-015 v3 (#440): validate io.tail_lines and io.redact
+    _tpl_validate_io_knobs collected_ids collected_io_tail collected_io_redact || return 1
+
     # Populate module state
-    while IFS='|' read -r stage_id roles strategy io_dests; do
+    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact; do
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
         # Store roles, strategy, io_dests via name-mangled env vars (bash 3.2 compat)
@@ -110,7 +117,36 @@ load_template() {
         printf -v "_TPL_STAGE_ROLES_${safe_id}" '%s' "$roles"
         printf -v "_TPL_STAGE_STRATEGY_${safe_id}" '%s' "$strategy"
         printf -v "_TPL_STAGE_IO_DESTS_${safe_id}" '%s' "$io_dests"
+        printf -v "_TPL_STAGE_IO_TAIL_${safe_id}" '%s' "$io_tail"
+        printf -v "_TPL_STAGE_IO_REDACT_${safe_id}" '%s' "$io_redact"
     done <<< "$stage_data"
+}
+
+# ADR-015 v3 (#440): validate tail_lines (integer 1..10000) and redact (true|false)
+# Uses Bash 5+ namerefs for safer array-by-name passing (no eval indirection).
+_tpl_validate_io_knobs() {
+    local -n ids_ref="$1"
+    local -n tails_ref="$2"
+    local -n redacts_ref="$3"
+    local i n=${#ids_ref[@]}
+    for (( i=0; i<n; i++ )); do
+        local stage="${ids_ref[$i]}"
+        local tail="${tails_ref[$i]}"
+        local redact="${redacts_ref[$i]}"
+        if [[ -n "$tail" ]]; then
+            if ! [[ "$tail" =~ ^[0-9]+$ ]] || [[ "$tail" -lt 1 ]] || [[ "$tail" -gt 10000 ]]; then
+                error "template: io.tail_lines for stage '$stage' must be integer in 1..10000, got: $tail"
+                return 1
+            fi
+        fi
+        if [[ -n "$redact" ]]; then
+            if [[ "$redact" != "true" && "$redact" != "false" ]]; then
+                error "template: io.redact for stage '$stage' must be 'true' or 'false', got: $redact"
+                return 1
+            fi
+        fi
+    done
+    return 0
 }
 
 # _tpl_validate_io_dests <ids_arr_name> <dests_arr_name>
@@ -158,12 +194,13 @@ _tpl_parse_stage_data() {
     /^stages:/ { in_stages = 1; next }
     in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; in_io_dests = 0; in_io_block = 0; next }
     in_stages && /^[[:space:]]*-[[:space:]]*id:/ {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact }
         in_roles = 0; in_io_dests = 0; in_io_block = 0
         current_id = $0
         gsub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", current_id)
         gsub(/[[:space:]]*$/, "", current_id)
         current_roles = ""; current_strategy = ""; current_io_dests = ""
+        current_io_tail = ""; current_io_redact = ""
         next
     }
     in_stages && in_roles && /^[[:space:]]*-[[:space:]]/ {
@@ -199,6 +236,10 @@ _tpl_parse_stage_data() {
         next
     }
     in_stages && current_id != "" && /^[[:space:]]+strategy:/ {
+        # Defensive: if io: appeared before strategy: in this stage, clear the
+        # io-block flags so subsequent list items are not mis-attributed.
+        in_io_block = 0
+        in_io_dests = 0
         current_strategy = $0
         gsub(/^[[:space:]]+strategy:[[:space:]]*/, "", current_strategy)
         gsub(/[[:space:]]*$/, "", current_strategy)
@@ -219,8 +260,24 @@ _tpl_parse_stage_data() {
         } else { in_io_dests = 1 }
         next
     }
+    in_io_block && /^[[:space:]]+tail_lines:/ {
+        tl = $0
+        gsub(/^[[:space:]]+tail_lines:[[:space:]]*/, "", tl)
+        gsub(/[[:space:]]*$/, "", tl)
+        current_io_tail = tl
+        in_io_dests = 0
+        next
+    }
+    in_io_block && /^[[:space:]]+redact:/ {
+        rd = $0
+        gsub(/^[[:space:]]+redact:[[:space:]]*/, "", rd)
+        gsub(/[[:space:]]*$/, "", rd)
+        current_io_redact = rd
+        in_io_dests = 0
+        next
+    }
     END {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact }
     }
     ' "$file"
 }
@@ -256,4 +313,21 @@ template_stage_io_dests() {
     local dests="${!var:-}"
     [[ -z "$dests" ]] && return 0
     tr ',' '\n' <<< "$dests"
+}
+
+# ADR-015 v3 (#440): per-stage io.tail_lines (empty when unset → caller default 40)
+template_stage_io_tail_lines() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_IO_TAIL_${safe_id}"
+    echo "${!var:-}"
+}
+
+# ADR-015 v3 (#440): per-stage io.redact (empty/true/false; empty = default true).
+# LLM kind ignores "false" (always redacts).
+template_stage_io_redact() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_IO_REDACT_${safe_id}"
+    echo "${!var:-}"
 }
