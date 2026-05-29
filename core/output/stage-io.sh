@@ -289,6 +289,65 @@ _stage_io_render_duration() {
     awk -v m="$ms" 'BEGIN{printf "%.1fs", m/1000}'
 }
 
+# ─── _stage_io_render_command_argv — human-readable argv for command-kind ────
+# Input: the .input field of a command-kind record (printf '%q '-encoded argv
+# emitted by run_captured_command). The %q encoding round-trips through the
+# shell but surfaces ugly $'...' ANSI-C quoting and \-escapes when shown raw.
+# This helper decodes back to argv and re-renders with shell-friendly but
+# human-readable quoting: simple identifiers bare, anything with whitespace or
+# shell metacharacters single-quoted with embedded newlines kept as real
+# newlines (so multi-line --jq filters render readably). For multi-line args,
+# subsequent lines get a 2-space hanging indent so the structure is visually
+# clear even when the prompt and arg blur together.
+#
+# Safety note: `eval "set -- $input"` is safe because $input came from our
+# own run_captured_command's printf '%q' — that produces shell-literal
+# escapes, not interpretable expressions. We are NOT eval'ing user input.
+# Falls back to printing the raw input if decoding fails for any reason.
+_stage_io_render_command_argv() {
+    local input="$1"
+    # Decode in a subshell so a malformed input can't corrupt the caller's
+    # positional parameters or environment.
+    local decoded_argv_count=0
+    if ! eval "set -- $input" 2>/dev/null; then
+        printf '$ %s\n' "$input"
+        return 0
+    fi
+    decoded_argv_count=$#
+    if [[ $decoded_argv_count -eq 0 ]]; then
+        printf '$ %s\n' "$input"
+        return 0
+    fi
+
+    printf '$ '
+    local i=0 arg
+    for arg in "$@"; do
+        i=$((i + 1))
+        # Separator (space after first arg)
+        [[ $i -gt 1 ]] && printf ' '
+        # Render rule:
+        #   - empty string -> ''
+        #   - plain word (alphanumeric, ., /, -, _, =, :, ,, @, +, %) -> bare
+        #   - everything else -> single-quoted; embedded single quotes
+        #     become '\'' (close, escape, reopen). Real newlines inside the
+        #     single quotes stay as real newlines for visual readability;
+        #     continuation lines get a 2-space hang indent.
+        if [[ -z "$arg" ]]; then
+            printf "''"
+        elif [[ "$arg" =~ ^[A-Za-z0-9._/@:,=+%-]+$ ]]; then
+            printf '%s' "$arg"
+        else
+            # Single-quote with embedded-quote escape and hang indent for
+            # any continuation lines.
+            local quoted="${arg//\'/\'\\\'\'}"
+            # Hang indent: every \n in the value gets a 2-space prefix after.
+            quoted="${quoted//$'\n'/$'\n'  }"
+            printf "'%s'" "$quoted"
+        fi
+    done
+    printf '\n'
+}
+
 # ─── _stage_io_tail — last N lines of input string ───────────────────────────
 # Appends trailing newline so the next section divider (── … ──) starts on its
 # own line, even when the original content lacked a final newline.
@@ -339,7 +398,9 @@ _stage_io_to_stdout() {
             printf '\n'
             ;;
         command)
-            printf '── input ──\n$ %s\n── output ──\n' "$input"
+            printf '── input ──\n'
+            _stage_io_render_command_argv "$input"
+            printf '── output ──\n'
             _stage_io_tail "$output" "$tail_lines"
             printf '\n── exit: %s ──\n' "${exit_code:-?}"
             ;;
