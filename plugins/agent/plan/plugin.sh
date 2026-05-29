@@ -106,11 +106,56 @@ _plan_run_inner() {
     local redacted_content
     redacted_content="$(cat "$redacted_file")"
 
-    # Build prompt from redacted goal.
+    # Build prompt from redacted goal. The instruction block declares the
+    # plan.json schema inline because the validator below (jq -e at the
+    # response-parse step) enforces `schema_version=1` and a non-empty
+    # `steps[]`, and an underspecified prompt makes the LLM return prose
+    # (issue #435). Schema mirrors the canonical fixture at
+    # plugins/agent/plan/tests/plan-test.sh.
+    #
+    # The static instruction block is captured via single-quoted heredoc
+    # (no expansion); the dynamic goal is appended with an explicit \n
+    # separator (printf instead of $(...)) so the boundary is not eaten
+    # by command-substitution trailing-newline stripping.
+    local _plan_instructions
+    _plan_instructions="$(cat <<'PLAN_PROMPT'
+You are a software planning agent. Decompose the goal into concrete
+implementation steps. Respond with a SINGLE JSON object and nothing else
+— no markdown code fences, no commentary before or after, no tool calls.
+
+Required JSON schema:
+
+  {
+    "schema_version": 1,
+    "title": "<short title>",
+    "goal": "<one-line restatement of the goal>",
+    "steps": [
+      {
+        "id": "step-1",
+        "description": "<what this step accomplishes>",
+        "files": ["<repo-relative path>", "..."],
+        "estimated_lines": <integer>
+      }
+    ],
+    "estimated_total_lines": <integer>,
+    "notes": "<optional caveats; empty string if none>"
+  }
+
+Rules:
+- `schema_version` MUST be the integer 1.
+- `steps` MUST be a non-empty array; each step MUST have id, description,
+  files, estimated_lines.
+- Step ids are stable handles ("step-1", "step-2", ...) in declaration order.
+- `files` lists every file the step expects to create or modify.
+- Keep steps small and independently testable.
+- Do not include reasoning, plans-about-plans, or repo exploration — just
+  the JSON describing what to do.
+
+Goal:
+PLAN_PROMPT
+)"
     local prompt
-    prompt="$(printf '%s\n\n%s\n' \
-        "You are a software planning agent. Given the following goal, produce a structured plan in JSON." \
-        "$redacted_content")"
+    printf -v prompt '%s\n%s\n' "$_plan_instructions" "$redacted_content"
 
     # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────
     local tier="${ZBUILD_PLAN_TIER:-T2}"
