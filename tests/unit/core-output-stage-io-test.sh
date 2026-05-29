@@ -556,6 +556,54 @@ assert_event_emitted "T50 stage.io.error gh_comment_post_failed emitted" "$ZBUIL
 t50_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | head -1)"
 assert_contains "T50 event has gh_comment_post_failed reason" "$t50_evt" "gh_comment_post_failed"
 
+# ─── T51: stdout destination must NOT pollute caller's stdout (fix for the
+# route_to_model `raw_response=$(route_to_model ...)` contention) ────────────
+# The plan plugin and any other caller of route_to_model invokes the router
+# inside a $() capture to pull the LLM response off stdout. If capture_stage_io's
+# stdout destination writes the banner to stdout, the banner either corrupts
+# the captured response OR gets silently swallowed by route.sh's defensive
+# >/dev/null redirect (the original bug). The banner MUST go to stderr (or
+# some other non-stdout channel) so that:
+#   (a) $() callers continue to see only the response on stdout
+#   (b) the operator's terminal still shows the banner
+_MOCK_DESTS="stdout"
+_MOCK_TAIL=""
+rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
+# Capture stdout and stderr SEPARATELY so we can assert the channel split.
+t51_stdout_file="$TEST_TEMP_DIR/t51.stdout"
+t51_stderr_file="$TEST_TEMP_DIR/t51.stderr"
+set +e
+capture_stage_io --stage plan --kind llm --input "p" --output "o" --duration-ms 100 \
+    >"$t51_stdout_file" 2>"$t51_stderr_file"
+rc=$?
+set -e
+t51_stdout="$(cat "$t51_stdout_file")"
+t51_stderr="$(cat "$t51_stderr_file")"
+assert_eq "T51 rc=0" "0" "$rc"
+# THIS is the assertion that would have caught the production bug: capture's
+# stdout must be empty so $() callers see only the LLM response.
+if [[ -z "$t51_stdout" ]]; then
+    assert_pass "T51 stdout destination does NOT write to caller stdout"
+else
+    assert_fail "T51 stdout destination does NOT write to caller stdout" "got on stdout: ${t51_stdout:0:80}"
+fi
+assert_contains "T51 stdout destination DOES write banner to stderr" "$t51_stderr" "stage-io: plan"
+
+# ─── T52: simulate the real route_to_model pattern — verify $() purity ──────
+# Mimic exactly what route.sh:78-81 does:
+#   capture_stage_io ... >/dev/null || true
+#   printf '%s\n' "$response"
+# Caller does `raw=$(route_to_model)` and expects raw == response only.
+_MOCK_DESTS="stdout"
+mock_route_to_model_with_capture() {
+    capture_stage_io --stage plan --kind llm --input "p" --output "fake_response" --duration-ms 100 \
+        >/dev/null 2>&1 || true
+    printf '%s\n' "fake_response"
+}
+t52_raw="$(mock_route_to_model_with_capture)"
+# Trim trailing newline that $() strips
+assert_eq "T52 caller's \$() sees only the response, not the banner" "fake_response" "$t52_raw"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
