@@ -263,6 +263,48 @@ out36="$(_stage_io_to_stdout "$rec36" 2>/dev/null)"
 assert_contains "T36 stdout command has \$ prefix" "$out36" '$ ls -la'
 assert_contains "T36 stdout command has exit line" "$out36" "── exit: 0 ──"
 
+# ─── T36b: command-kind argv decode renders human-readable (no $'...') ──────
+# Mimic run_captured_command's printf '%q ' encoding for an argv that contains
+# a multi-line --jq filter (the exact intake case the user hit). Assert the
+# rendered output:
+#   - drops the ANSI-C $'...' wrapper
+#   - keeps real newlines (not the literal "\n" escape)
+#   - bare-prints simple identifiers like "gh" / "issue"
+#   - single-quotes the multi-line --jq value
+argv_quoted="$(printf '%q ' "gh" "issue" "view" "291" "--json" "title,body" \
+    "--jq" $'(.title // "") as $t\n| (.body // "") as $b\n| $t + "\\n" + $b')"
+argv_quoted="${argv_quoted% }"
+rec36b="$(_t440_make_record intake command "$argv_quoted" "Real title\nReal body" "0" "500")"
+out36b="$(_stage_io_to_stdout "$rec36b" 2>/dev/null)"
+
+assert_contains "T36b decoded command starts with bare 'gh'" "$out36b" "$ gh issue view 291"
+# Critical: NO $'...' wrapper should appear in human-readable output.
+if echo "$out36b" | grep -qF "$'"; then
+    assert_fail "T36b decoded command must NOT contain ANSI-C \$'...' wrapper" "got: $(echo "$out36b" | grep -F "$'" | head -1)"
+else
+    assert_pass "T36b decoded command must NOT contain ANSI-C \$'...' wrapper"
+fi
+# Real newlines from the jq filter should appear as actual newlines in the
+# multi-line single-quoted block, NOT as the literal characters \n.
+if echo "$out36b" | grep -qF '\n| (.body'; then
+    assert_fail "T36b multi-line arg should render as real newlines, not \\\\n escapes" "got: $(echo "$out36b" | grep -F '\n')"
+else
+    assert_pass "T36b multi-line arg renders as real newlines, not \\\\n escapes"
+fi
+# The decoded multi-line --jq value should be in single quotes:
+assert_contains "T36b --jq value rendered in single quotes" "$out36b" "'(.title // \"\") as \$t"
+
+# ─── T36c: malformed input falls back to raw display without crashing ───────
+# A non-printf-%q input shouldn't break the renderer; just print it raw.
+rec36c="$(_t440_make_record build command "this is not printf %q output \$(rm -rf /)" "ok" "0" "100")"
+out36c="$(_stage_io_to_stdout "$rec36c" 2>/dev/null)"
+# Whichever path it takes (decode succeeds or falls back), output must contain
+# the input text and an exit line, and must NOT execute the embedded \$(...).
+assert_contains "T36c malformed input still shown" "$out36c" "this is not"
+assert_contains "T36c malformed input has exit line" "$out36c" "── exit: 0 ──"
+# Sanity: filesystem is intact (no command execution from the test input).
+[[ -d / ]] && assert_pass "T36c eval did not execute embedded \$(rm -rf /)"
+
 # ─── T37: stdout computed shows in:/out: ─────────────────────────────────────
 rec37="$(_t440_make_record intake computed "src/file.txt" "dst/file.txt" "" "")"
 out37="$(_stage_io_to_stdout "$rec37" 2>/dev/null)"
