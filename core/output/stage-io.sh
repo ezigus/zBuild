@@ -27,6 +27,8 @@ source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/event-bus/event-bus.sh"
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/pipeline/template.sh"
 # shellcheck source=../redaction/scope-redaction.sh
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/redaction/scope-redaction.sh"
+# shellcheck source=../../scripts/lib/artifact-render.sh
+source "$_ZBUILD_ROOT_FOR_STAGE_IO/scripts/lib/artifact-render.sh"
 
 # ─── capture_stage_io — chokepoint ────────────────────────────────────────────
 # Usage:
@@ -462,7 +464,19 @@ _stage_io_to_stdout() {
     case "$kind" in
         llm)
             printf '── input ──\n'
-            _stage_io_head "$input" "$tail_lines"
+            # ADR-018: when metadata.artifact is set (plan|diff|review|...), the
+            # input is a known artifact shape — route through the renderer
+            # registry so the banner shows markdown instead of raw JSON/patch.
+            # Unknown ids fall through render_artifact's passthrough.
+            local _artifact_id
+            _artifact_id="$(printf '%s' "$metadata" | jq -r '.artifact // empty' 2>/dev/null || true)"
+            if [[ -n "$_artifact_id" ]]; then
+                local _rendered_input
+                _rendered_input="$(render_artifact "$_artifact_id" "$input" 2>/dev/null)"
+                _stage_io_head "$_rendered_input" "$tail_lines"
+            else
+                _stage_io_head "$input" "$tail_lines"
+            fi
             printf '\n── output ──\n'
             # Pretty-print JSON outputs so a 4KB minified response renders as
             # a readable indented block instead of one giant line. Falls back

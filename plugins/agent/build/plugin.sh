@@ -31,6 +31,8 @@ source "$_BUILD_ROOT/core/redaction/scope-redaction.sh"
 source "$_BUILD_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_BUILD_ROOT/core/router/route.sh"
+# shellcheck source=../../../scripts/lib/artifact-render.sh
+source "$_BUILD_ROOT/scripts/lib/artifact-render.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 build_stage_init() {
@@ -151,8 +153,12 @@ Minimal single-file example:
 Plan to implement:
 BUILD_PROMPT
 )"
+    # ADR-018: render plan.json as markdown for LLM consumption. Falls back
+    # to raw JSON on renderer failure (passthrough).
+    local plan_md
+    plan_md="$(render_artifact plan "$plan_json")"
     local prompt
-    printf -v prompt '%s\n%s\n' "$_build_instructions" "$plan_json"
+    printf -v prompt '%s\n%s\n' "$_build_instructions" "$plan_md"
     printf '%s\n' "$prompt" > "$prompt_input_file"
 
     local redacted_file="$artifact_dir/build-prompt.redacted.txt"

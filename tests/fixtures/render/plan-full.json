@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "title": "Renderer registry",
+  "goal": "Add a markdown renderer registry for inter-stage artifacts",
+  "steps": [
+    {
+      "id": 1,
+      "description": "Write the artifact-render.sh library",
+      "files": ["scripts/lib/artifact-render.sh"],
+      "estimated_lines": 250
+    },
+    {
+      "id": 2,
+      "description": "Wire build and review plugin prompts",
+      "files": ["plugins/agent/build/plugin.sh", "plugins/agent/review/plugin.sh"]
+    }
+  ],
+  "notes": "Markdown is the wire format between stages; JSON stays on disk."
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "verdict": "request_changes",
+  "confidence": 0.75,
+  "issues": [
+    "Missing test for empty-input case",
+    "Renderer should escape backticks in titles"
+  ],
+  "summary": "Solid implementation but two test gaps need to close before approving."
+}

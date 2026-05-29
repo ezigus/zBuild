@@ -1,0 +1,371 @@
+#!/usr/bin/env bash
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  zBuild artifact-render — registry-pattern markdown renderer (ADR-018)   ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+#
+# Provides a registry of artifact renderers so plugins/stages can declare a
+# canonical id (plan, diff, review, …) and emit a markdown shape for LLM
+# consumption and banner display. Built-in renderers cover plan.json /
+# diff.patch / review.json. New stages register their own via
+# `register_artifact_renderer` — no edits to this file required.
+#
+# Public API:
+#   register_artifact_renderer <id> <fn>   # idempotent; rc=2 on conflict
+#   render_artifact <id> <input>           # dispatch; passthrough on miss
+#   artifact_renderer_for <id>             # prints fn name, rc=1 if unknown
+#
+# Convention: built-in renderer fns are named render_<id>_md.
+#
+# Sourced library: do not set -euo pipefail (would leak to caller).
+
+[[ -n "${_ZBUILD_ARTIFACT_RENDER_LOADED:-}" ]] && return 0
+_ZBUILD_ARTIFACT_RENDER_LOADED=1
+
+_ZBUILD_ARTIFACT_RENDER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./compat.sh
+source "$_ZBUILD_ARTIFACT_RENDER_DIR/compat.sh"
+
+# Registry — Bash 5 associative array (Bash 5 enforced by compat.sh).
+declare -gA _ARTIFACT_RENDERERS=()
+
+# ─── register_artifact_renderer <id> <fn> ────────────────────────────────────
+# Idempotent for the same (id, fn) pair. Returns rc=2 if <id> is already bound
+# to a DIFFERENT fn unless ZBUILD_ARTIFACT_RENDERER_FORCE=1 is set.
+register_artifact_renderer() {
+    local id="${1:-}" fn="${2:-}"
+    if [[ -z "$id" || -z "$fn" ]]; then
+        printf 'register_artifact_renderer: usage: <id> <fn>\n' >&2
+        return 2
+    fi
+    if [[ -n "${_ARTIFACT_RENDERERS[$id]:-}" ]]; then
+        if [[ "${_ARTIFACT_RENDERERS[$id]}" == "$fn" ]]; then
+            return 0
+        fi
+        if [[ "${ZBUILD_ARTIFACT_RENDERER_FORCE:-0}" == "1" ]]; then
+            _ARTIFACT_RENDERERS[$id]="$fn"
+            return 0
+        fi
+        printf 'register_artifact_renderer: conflict for id=%s (existing=%s, new=%s); set ZBUILD_ARTIFACT_RENDERER_FORCE=1 to override\n' \
+            "$id" "${_ARTIFACT_RENDERERS[$id]}" "$fn" >&2
+        return 2
+    fi
+    _ARTIFACT_RENDERERS[$id]="$fn"
+    return 0
+}
+
+# ─── artifact_renderer_for <id> — print fn name or rc=1 ──────────────────────
+artifact_renderer_for() {
+    local id="${1:-}"
+    [[ -z "$id" ]] && return 1
+    local fn="${_ARTIFACT_RENDERERS[$id]:-}"
+    [[ -z "$fn" ]] && return 1
+    printf '%s' "$fn"
+}
+
+# ─── render_artifact <id> <input> ────────────────────────────────────────────
+# Dispatches to the renderer registered for <id>. Unknown id OR renderer rc!=0
+# → raw passthrough (rc=0) + best-effort stage.io.render.fallback event.
+render_artifact() {
+    local id="${1:-}" input="${2:-}"
+    if [[ -z "$id" ]]; then
+        printf '%s' "$input"
+        return 0
+    fi
+    local fn="${_ARTIFACT_RENDERERS[$id]:-}"
+    if [[ -z "$fn" ]]; then
+        if declare -f eb_emit_event >/dev/null 2>&1; then
+            eb_emit_event "stage.io.render.fallback" "artifact_id=$id" "reason=unknown_id" 2>/dev/null || true
+        fi
+        printf '%s' "$input"
+        return 0
+    fi
+    local rendered rc
+    rendered="$("$fn" "$input" 2>/dev/null)"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        if declare -f eb_emit_event >/dev/null 2>&1; then
+            eb_emit_event "stage.io.render.fallback" "artifact_id=$id" "reason=renderer_error" "fn=$fn" 2>/dev/null || true
+        fi
+        printf '%s' "$input"
+        return 0
+    fi
+    printf '%s' "$rendered"
+    return 0
+}
+
+# ─── _artifact_jq_or_passthrough <expr> <input> ──────────────────────────────
+# Runs jq with the given expression; on parse failure returns input unchanged
+# (rc=0).
+_artifact_jq_or_passthrough() {
+    local expr="$1" input="$2"
+    local out
+    if out="$(printf '%s' "$input" | jq -r "$expr" 2>/dev/null)"; then
+        printf '%s' "$out"
+        return 0
+    fi
+    printf '%s' "$input"
+    return 0
+}
+
+# ─── _artifact_md_escape_inline <s> — single-line user-controlled string ─────
+# Strips ANSI/CSI, collapses CR/LF to single space, escapes backticks so an
+# attacker-controlled title can't break out of our intended block structure.
+_artifact_md_escape_inline() {
+    local s="$1"
+    s="$(printf '%s' "$s" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
+    s="${s//$'\r'/ }"
+    s="${s//$'\n'/ }"
+    s="${s//\`/\\\`}"
+    printf '%s' "$s"
+}
+
+# ─── _artifact_md_escape_block <s> — multi-line user-controlled text ─────────
+# Preserves newlines; strips ANSI; escapes backticks.
+_artifact_md_escape_block() {
+    local s="$1"
+    s="$(printf '%s' "$s" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
+    s="${s//\`/\\\`}"
+    printf '%s' "$s"
+}
+
+# ─── _artifact_pick_fence <body> — pick triple or quadruple backtick fence ──
+_artifact_pick_fence() {
+    local body="$1"
+    if printf '%s' "$body" | grep -qE '`{3,}'; then
+        printf '%s' '````'
+    else
+        printf '%s' '```'
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Built-in renderer: render_plan_md
+# Input: plan.json text. Recognised fields: title, goal,
+#        steps[{description, files, estimated_lines}], notes. Missing fields
+#        are silently skipped (only what exists is rendered).
+# ═══════════════════════════════════════════════════════════════════════════
+render_plan_md() {
+    local input="$1"
+    if [[ -z "$input" ]]; then
+        printf '_empty plan_'
+        return 0
+    fi
+    if ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$input")"
+        printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+        return 0
+    fi
+
+    local title goal notes
+    title="$(printf '%s' "$input" | jq -r '.title // empty' 2>/dev/null)"
+    goal="$(printf '%s' "$input" | jq -r '.goal // empty' 2>/dev/null)"
+    notes="$(printf '%s' "$input" | jq -r '.notes // empty' 2>/dev/null)"
+
+    local heading_title
+    if [[ -n "$title" ]]; then
+        heading_title="$(_artifact_md_escape_inline "$title")"
+    else
+        heading_title='(untitled)'
+    fi
+    printf '# Plan: %s\n' "$heading_title"
+
+    if [[ -n "$goal" ]]; then
+        printf '\n**Goal:** %s\n' "$(_artifact_md_escape_inline "$goal")"
+    fi
+
+    local steps_len
+    steps_len="$(printf '%s' "$input" | jq '.steps | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
+    if [[ "$steps_len" -gt 0 ]] 2>/dev/null; then
+        printf '\n## Steps\n'
+        local i=0
+        while [[ $i -lt $steps_len ]]; do
+            local desc files_json files_count est
+            desc="$(printf '%s' "$input" | jq -r ".steps[$i].description // empty" 2>/dev/null)"
+            est="$(printf '%s' "$input" | jq -r ".steps[$i].estimated_lines // empty" 2>/dev/null)"
+            files_json="$(printf '%s' "$input" | jq -c ".steps[$i].files // []" 2>/dev/null)"
+            files_count="$(printf '%s' "$files_json" | jq 'if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
+
+            local num=$((i + 1))
+            if [[ -n "$desc" ]]; then
+                printf '%d. %s\n' "$num" "$(_artifact_md_escape_inline "$desc")"
+            else
+                printf '%d. (no description)\n' "$num"
+            fi
+            if [[ "$files_count" -gt 0 ]] 2>/dev/null; then
+                local files_line=""
+                local j=0
+                while [[ $j -lt $files_count ]]; do
+                    local f
+                    f="$(printf '%s' "$files_json" | jq -r ".[$j]" 2>/dev/null)"
+                    f="$(_artifact_md_escape_inline "$f")"
+                    if [[ -z "$files_line" ]]; then
+                        files_line="\`$f\`"
+                    else
+                        files_line="${files_line}, \`$f\`"
+                    fi
+                    j=$((j + 1))
+                done
+                printf '   - Files: %s\n' "$files_line"
+            fi
+            if [[ -n "$est" && "$est" != "null" ]]; then
+                printf '   - Estimated lines: %s\n' "$(_artifact_md_escape_inline "$est")"
+            fi
+            i=$((i + 1))
+        done
+    fi
+
+    if [[ -n "$notes" ]]; then
+        printf '\n## Notes\n%s\n' "$(_artifact_md_escape_block "$notes")"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Built-in renderer: render_diff_md
+# Input: a unified diff. Splits per-file on `^diff --git a/<a> b/<b>`. Emits a
+# `## <path>` heading per file; renames → `## a/x → a/y`; deletes append
+# ` (deleted)`; new files append ` (new)`. Binary diffs render as the
+# `_binary changes_` placeholder. Body is wrapped in a ```diff fence and
+# escalates to a 4-backtick fence if the body contains ``` anywhere (e.g.
+# diffing a markdown file with code fences). Empty input → `_no changes_`.
+#
+# The awk pass emits ASCII " -> " for rename arrows for awk-variant
+# portability; a sed pass rewrites to a unicode " → " in the final output.
+# ═══════════════════════════════════════════════════════════════════════════
+render_diff_md() {
+    local input="$1"
+    if [[ -z "${input//[[:space:]]/}" ]]; then
+        printf '_no changes_'
+        return 0
+    fi
+    if ! printf '%s' "$input" | grep -q '^diff --git '; then
+        local fence; fence="$(_artifact_pick_fence "$input")"
+        printf '%s diff\n%s\n%s' "$fence" "$input" "$fence"
+        return 0
+    fi
+    _artifact_diff_awk "$input" | sed -e 's/ -> / → /g' | _artifact_strip_trailing_blank
+}
+
+_artifact_strip_trailing_blank() {
+    awk 'BEGIN{prev=""; have=0}
+         { if (have) print prev; prev=$0; have=1 }
+         END { if (have && prev != "") print prev }'
+}
+
+_artifact_diff_awk() {
+    local input="$1"
+    printf '%s' "$input" | awk '
+        BEGIN { block = ""; have = 0 }
+        function flush_block(   n, lines, first, rest, p, hdr_a, hdr_b,
+                                is_new, is_del, is_bin, is_rename,
+                                fence, k, end) {
+            if (!have) return
+            n = split(block, lines, "\n")
+            first = lines[1]
+            hdr_a = ""; hdr_b = ""
+            rest = substr(first, length("diff --git a/") + 1)
+            p = index(rest, " b/")
+            if (p > 0) {
+                hdr_a = substr(rest, 1, p - 1)
+                hdr_b = substr(rest, p + 3)
+            }
+            is_new = 0; is_del = 0; is_bin = 0; is_rename = 0
+            for (k = 1; k <= n; k++) {
+                if (lines[k] ~ /^new file mode /)      is_new = 1
+                if (lines[k] ~ /^deleted file mode /)  is_del = 1
+                if (lines[k] ~ /^Binary files /)       is_bin = 1
+                if (lines[k] ~ /^GIT binary patch/)    is_bin = 1
+                if (lines[k] ~ /^rename from /)        is_rename = 1
+                if (lines[k] ~ /^rename to /)          is_rename = 1
+            }
+            if (is_rename && hdr_a != hdr_b) {
+                printf("## a/%s -> a/%s\n", hdr_a, hdr_b)
+            } else if (is_del) {
+                printf("## a/%s (deleted)\n", hdr_a)
+            } else if (is_new) {
+                printf("## a/%s (new)\n", hdr_b)
+            } else {
+                printf("## a/%s\n", hdr_b)
+            }
+            if (is_bin) {
+                print "_binary changes_"
+                printf("\n")
+                return
+            }
+            # Pick triple- or quad-backtick fence. Escalate when body contains
+            # ``` anywhere (covers `+```code```` lines and full-fence content).
+            fence = "```"
+            for (k = 1; k <= n; k++) {
+                if (lines[k] ~ /```/) { fence = "````"; break }
+            }
+            printf("%sdiff\n", fence)
+            end = n
+            while (end > 1 && lines[end] == "") end--
+            for (k = 1; k <= end; k++) print lines[k]
+            printf("%s\n\n", fence)
+        }
+        /^diff --git / {
+            flush_block()
+            block = $0
+            have = 1
+            next
+        }
+        {
+            if (have) block = block "\n" $0
+        }
+        END { flush_block() }
+    '
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Built-in renderer: render_review_md
+# Input: review.json (verdict, confidence, issues[], summary).
+# ═══════════════════════════════════════════════════════════════════════════
+render_review_md() {
+    local input="$1"
+    if [[ -z "$input" ]]; then
+        printf '_empty review_'
+        return 0
+    fi
+    if ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$input")"
+        printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+        return 0
+    fi
+
+    local verdict confidence summary
+    verdict="$(printf '%s' "$input" | jq -r '.verdict // empty' 2>/dev/null)"
+    confidence="$(printf '%s' "$input" | jq -r '.confidence // empty' 2>/dev/null)"
+    summary="$(printf '%s' "$input" | jq -r '.summary // empty' 2>/dev/null)"
+
+    printf '# Review\n'
+    if [[ -n "$verdict" ]]; then
+        printf '\n**Verdict:** %s\n' "$(_artifact_md_escape_inline "$verdict")"
+    fi
+    if [[ -n "$confidence" ]]; then
+        printf '**Confidence:** %s\n' "$(_artifact_md_escape_inline "$confidence")"
+    fi
+
+    local issues_len
+    issues_len="$(printf '%s' "$input" | jq '.issues | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
+    if [[ "$issues_len" -gt 0 ]] 2>/dev/null; then
+        printf '\n## Issues\n'
+        local i=0
+        while [[ $i -lt $issues_len ]]; do
+            local issue
+            issue="$(printf '%s' "$input" | jq -r ".issues[$i] // empty" 2>/dev/null)"
+            if [[ -n "$issue" ]]; then
+                printf -- '- %s\n' "$(_artifact_md_escape_inline "$issue")"
+            fi
+            i=$((i + 1))
+        done
+    fi
+
+    if [[ -n "$summary" ]]; then
+        printf '\n## Summary\n%s\n' "$(_artifact_md_escape_block "$summary")"
+    fi
+}
+
+# ─── Register built-ins (idempotent) ────────────────────────────────────────
+register_artifact_renderer "plan"   "render_plan_md"   >/dev/null 2>&1 || true
+register_artifact_renderer "diff"   "render_diff_md"   >/dev/null 2>&1 || true
+register_artifact_renderer "review" "render_review_md" >/dev/null 2>&1 || true
