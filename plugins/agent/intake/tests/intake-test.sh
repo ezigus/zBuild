@@ -186,24 +186,63 @@ assert_eq "empty ZBUILD_GOAL with no issue returns rc=2" "2" "$rc"
 
 # ─── gh mock for --issue tests ───────────────────────────────────────────────
 # Use the shared mock_binary helper (no string interpolation into the mock
-# script — title/body/rc are read at runtime from env vars, so arbitrary
-# content with quotes/backticks/$() is safe). Unrecognized invocations
-# exit 2 with a diagnostic so contract drift in the production `gh` call
-# fails the test loudly instead of silently succeeding.
+# script — title/body/rc/state/stateReason/repo are read at runtime from env
+# vars, so arbitrary content with quotes/backticks/$() is safe). Unrecognized
+# invocations exit 2 with a diagnostic so contract drift in the production
+# `gh` call fails the test loudly instead of silently succeeding.
+#
+# Dispatches THREE call shapes (issue #456):
+#   1. gh issue view N --json state,stateReason --jq …    → state envelope
+#   2. gh issue view N --json title,body --jq …           → title+body (#421)
+#   3. gh repo view --json nameWithOwner --jq …           → repo slug
 mock_binary "gh" '
-case "${1:-}:${2:-}:${4:-}" in
-    issue:view:--json)
-        if [[ "${MOCK_GH_RC:-0}" -ne 0 ]]; then
-            exit "${MOCK_GH_RC}"
+case "${1:-} ${2:-}" in
+    "issue view")
+        # Distinguish the two --json shapes by inspecting field list (${5}).
+        if [[ "${4:-}" == "--json" && "${5:-}" == "state,stateReason" ]]; then
+            # MOCK_GH_STATE_RC overrides; otherwise inherit MOCK_GH_RC so a
+            # single fail-switch (#421 compat) flips both call shapes.
+            _rc="${MOCK_GH_STATE_RC:-${MOCK_GH_RC:-0}}"
+            if [[ "$_rc" -ne 0 ]]; then
+                exit "$_rc"
+            fi
+            payload="$(jq -nc \
+                --arg s "${MOCK_GH_STATE:-OPEN}" \
+                --arg r "${MOCK_GH_STATE_REASON:-}" \
+                "{state:\$s, stateReason:(if \$r == \"\" then null else \$r end)}")"
+            if [[ "${6:-}" == "--jq" ]]; then
+                printf "%s" "$payload" | jq -r "$7"
+            else
+                printf "%s" "$payload"
+            fi
+            exit 0
+        elif [[ "${4:-}" == "--json" && "${5:-}" == "title,body" ]]; then
+            if [[ "${MOCK_GH_RC:-0}" -ne 0 ]]; then
+                exit "${MOCK_GH_RC}"
+            fi
+            payload="$(jq -nc \
+                --arg t "${MOCK_GH_ISSUE_TITLE:-}" \
+                --arg b "${MOCK_GH_ISSUE_BODY:-}" \
+                "{title:\$t, body:\$b}")"
+            if [[ "${6:-}" == "--jq" ]]; then
+                printf "%s" "$payload" | jq -r "$7"
+            else
+                printf "%s" "$payload"
+            fi
+            exit 0
         fi
-        payload="$(jq -nc \
-            --arg t "${MOCK_GH_ISSUE_TITLE:-}" \
-            --arg b "${MOCK_GH_ISSUE_BODY:-}" \
-            "{title:\$t, body:\$b}")"
-        if [[ "${6:-}" == "--jq" ]]; then
-            printf "%s" "$payload" | jq -r "$7"
+        printf "mock gh: unexpected issue view args: %s\n" "$*" >&2
+        exit 2
+        ;;
+    "repo view")
+        if [[ "${MOCK_GH_REPO_RC:-0}" -ne 0 ]]; then
+            exit "${MOCK_GH_REPO_RC}"
+        fi
+        slug="${MOCK_GH_REPO:-acme/zbuild}"
+        if [[ "${2:-}" == "view" && "${3:-}" == "--json" && "${5:-}" == "--jq" ]]; then
+            printf "%s\n" "$slug"
         else
-            printf "%s" "$payload"
+            printf "{\"nameWithOwner\":\"%s\"}\n" "$slug"
         fi
         exit 0
         ;;
@@ -215,14 +254,20 @@ esac
 '
 
 _set_gh_mock() {
-    # $1=title $2=body $3=exit-rc
+    # $1=title $2=body $3=exit-rc [$4=state] [$5=stateReason]
     export MOCK_GH_ISSUE_TITLE="$1"
     export MOCK_GH_ISSUE_BODY="$2"
     export MOCK_GH_RC="$3"
+    export MOCK_GH_STATE="${4:-OPEN}"
+    export MOCK_GH_STATE_REASON="${5:-}"
+    # When tests want the state-check call to also fail, they set MOCK_GH_STATE_RC.
+    export MOCK_GH_STATE_RC="${MOCK_GH_STATE_RC:-0}"
 }
 
 _clear_gh_mock() {
-    unset MOCK_GH_ISSUE_TITLE MOCK_GH_ISSUE_BODY MOCK_GH_RC
+    unset MOCK_GH_ISSUE_TITLE MOCK_GH_ISSUE_BODY MOCK_GH_RC \
+          MOCK_GH_STATE MOCK_GH_STATE_REASON MOCK_GH_STATE_RC \
+          MOCK_GH_REPO MOCK_GH_REPO_RC ZBUILD_ALLOW_CLOSED_ISSUE
     rm -f "$TEST_TEMP_DIR/bin/gh"
 }
 
@@ -267,6 +312,185 @@ set -e
 assert_eq "title-only fetch returns rc=0" "0" "$rc"
 assert_contains "title-only intake.md contains title" \
     "$(cat "$STATE_DIR/intake.md")" "Refactor cache layer"
+
+# NOTE: do not _clear_gh_mock here — T_456_* tests reuse the gh PATH shim.
+
+# ════════════════════════════════════════════════════════════════════════════
+# Issue #456 — refuse-on-closed tests (T_456_a..j)
+# ════════════════════════════════════════════════════════════════════════════
+
+_reset_events() {
+    : > "$ZBUILD_EVENTS_JSONL"
+}
+
+unset ZBUILD_GOAL 2>/dev/null || true
+export ZBUILD_ISSUE="42"
+
+# ─── T_456_a: CLOSED/COMPLETED → refuse rc=2, event emitted ─────────────────
+_set_gh_mock "Should not be read" "body" 0 CLOSED COMPLETED
+_reset_events
+
+set +e
+t456a_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+assert_eq "T_456_a: CLOSED/COMPLETED returns rc=2" "2" "$rc"
+assert_contains "T_456_a: stderr mentions #42" "$t456a_err" "#42"
+assert_contains "T_456_a: stderr mentions CLOSED" "$t456a_err" "CLOSED"
+assert_contains "T_456_a: stderr mentions COMPLETED" "$t456a_err" "COMPLETED"
+assert_contains "T_456_a: stderr mentions ZBUILD_ALLOW_CLOSED_ISSUE" \
+    "$t456a_err" "ZBUILD_ALLOW_CLOSED_ISSUE"
+assert_contains "T_456_a: stderr contains issue URL" \
+    "$t456a_err" "github.com/acme/zbuild/issues/42"
+refused_count=$(grep -c '"intake.refused.issue_closed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
+assert_gt "T_456_a: intake.refused.issue_closed event emitted" "$refused_count" "0"
+state_reason_field="$(grep '"intake.refused.issue_closed"' "$ZBUILD_EVENTS_JSONL" \
+    | jq -r 'select(.type=="intake.refused.issue_closed") | .data.state_reason // empty' | tail -1)"
+assert_eq "T_456_a: event has state_reason=COMPLETED" "COMPLETED" "$state_reason_field"
+
+# ─── T_456_b: CLOSED/NOT_PLANNED ────────────────────────────────────────────
+_set_gh_mock "x" "y" 0 CLOSED NOT_PLANNED
+_reset_events
+
+set +e
+t456b_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+assert_eq "T_456_b: CLOSED/NOT_PLANNED returns rc=2" "2" "$rc"
+assert_contains "T_456_b: stderr mentions NOT_PLANNED" "$t456b_err" "NOT_PLANNED"
+
+# ─── T_456_c: CLOSED/DUPLICATE ──────────────────────────────────────────────
+_set_gh_mock "x" "y" 0 CLOSED DUPLICATE
+_reset_events
+
+set +e
+t456c_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+assert_eq "T_456_c: CLOSED/DUPLICATE returns rc=2" "2" "$rc"
+assert_contains "T_456_c: stderr mentions DUPLICATE" "$t456c_err" "DUPLICATE"
+
+# ─── T_456_d: CLOSED with empty stateReason ─────────────────────────────────
+_set_gh_mock "x" "y" 0 CLOSED ""
+_reset_events
+
+set +e
+t456d_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+assert_eq "T_456_d: CLOSED/empty-reason returns rc=2" "2" "$rc"
+assert_contains "T_456_d: stderr says <not specified>" "$t456d_err" "<not specified>"
+if echo "$t456d_err" | grep -q 'reason: null'; then
+    assert_fail "T_456_d: stderr must not literal-contain 'reason: null'"
+else
+    assert_pass "T_456_d: stderr does not contain literal 'reason: null'"
+fi
+if echo "$t456d_err" | grep -q '(null)'; then
+    assert_fail "T_456_d: stderr must not contain '(null)'"
+else
+    assert_pass "T_456_d: stderr does not contain '(null)'"
+fi
+
+# ─── T_456_e: OPEN/REOPENED → pass through, intake.md written ───────────────
+_set_gh_mock "Reopened title" "Reopened body" 0 OPEN REOPENED
+_reset_events
+rm -f "$STATE_DIR/intake.md"
+
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "T_456_e: OPEN/REOPENED returns rc=0" "0" "$rc"
+assert_file_exists "T_456_e: intake.md written" "$STATE_DIR/intake.md"
+assert_contains "T_456_e: intake.md has title" \
+    "$(cat "$STATE_DIR/intake.md")" "Reopened title"
+assert_contains "T_456_e: intake.md has body" \
+    "$(cat "$STATE_DIR/intake.md")" "Reopened body"
+
+# ─── T_456_f: OPEN with null/empty stateReason ──────────────────────────────
+_set_gh_mock "Open title" "Open body" 0 OPEN ""
+_reset_events
+rm -f "$STATE_DIR/intake.md"
+
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "T_456_f: OPEN/null-reason returns rc=0" "0" "$rc"
+assert_file_exists "T_456_f: intake.md written" "$STATE_DIR/intake.md"
+
+# ─── T_456_g: override ZBUILD_ALLOW_CLOSED_ISSUE=1 + CLOSED ─────────────────
+_set_gh_mock "Allowed title" "Allowed body" 0 CLOSED COMPLETED
+_reset_events
+rm -f "$STATE_DIR/intake.md"
+export ZBUILD_ALLOW_CLOSED_ISSUE=1
+
+set +e
+t456g_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+unset ZBUILD_ALLOW_CLOSED_ISSUE
+assert_eq "T_456_g: override + CLOSED returns rc=0" "0" "$rc"
+assert_contains "T_456_g: stderr warn mentions ZBUILD_ALLOW_CLOSED_ISSUE" \
+    "$t456g_err" "ZBUILD_ALLOW_CLOSED_ISSUE"
+assert_file_exists "T_456_g: intake.md written" "$STATE_DIR/intake.md"
+assert_contains "T_456_g: intake.md has fetched title" \
+    "$(cat "$STATE_DIR/intake.md")" "Allowed title"
+override_count=$(grep -c '"intake.override.closed_issue_allowed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
+assert_gt "T_456_g: override event emitted" "$override_count" "0"
+
+# ─── T_456_h: INVERTED — =true does NOT bypass; refusal still fires ─────────
+_set_gh_mock "x" "y" 0 CLOSED COMPLETED
+_reset_events
+export ZBUILD_ALLOW_CLOSED_ISSUE=true
+
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+unset ZBUILD_ALLOW_CLOSED_ISSUE
+assert_eq "T_456_h: ZBUILD_ALLOW_CLOSED_ISSUE=true STILL refuses (strict =1)" "2" "$rc"
+
+# ─── T_456_i: gh issue view rc=1 → state check falls through, placeholder ───
+_set_gh_mock "" "" 1
+_reset_events
+rm -f "$STATE_DIR/intake.md"
+
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+assert_eq "T_456_i: gh fail → state check passes through, rc=0" "0" "$rc"
+assert_contains "T_456_i: intake.md has placeholder" \
+    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #42"
+
+# ─── T_456_j: MOCK_GH_REPO_RC=1 + CLOSED still refuses cleanly ──────────────
+_set_gh_mock "x" "y" 0 CLOSED COMPLETED
+export MOCK_GH_REPO_RC=1
+_reset_events
+
+set +e
+t456j_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
+rc=$?
+set -e
+
+unset MOCK_GH_REPO_RC
+assert_eq "T_456_j: repo view fail + CLOSED returns rc=2" "2" "$rc"
+assert_contains "T_456_j: stderr still mentions CLOSED" "$t456j_err" "CLOSED"
+if echo "$t456j_err" | grep -q '//issues/'; then
+    assert_fail "T_456_j: stderr must not contain malformed //issues/ token"
+else
+    assert_pass "T_456_j: stderr has no malformed //issues/ token"
+fi
 
 _clear_gh_mock
 
