@@ -100,7 +100,60 @@ _build_stage_run_inner() {
 
     # ─── Write prompt to a file for the redaction chokepoint ────────────────
     local prompt_input_file="$artifact_dir/build-prompt.txt"
-    printf 'Implement the plan: %s\n' "$plan_json" > "$prompt_input_file"
+    local _build_instructions
+    _build_instructions="$(cat <<'BUILD_PROMPT'
+You are a headless code-generation agent. No tool-use is available — you cannot
+request file permissions, list directories, or call any tools. Do not ask for
+anything. Just emit the code change.
+
+Required output format: a unified diff parseable by `git apply`.
+
+Rules:
+- Respond with the unified diff and NOTHING ELSE — no tool-use, no markdown code fences,
+  no commentary before or after, no tool calls, no preamble, no explanation.
+- The FIRST LINE of your response MUST be: diff --git a/<path> b/<path>
+- Anything before that line is discarded by the diff extractor.
+- For modified files use the standard hunk format:
+    diff --git a/path/to/file.sh b/path/to/file.sh
+    --- a/path/to/file.sh
+    +++ b/path/to/file.sh
+    @@ -N,M +N,M @@ context
+    -removed line
+    +added line
+- For NEW files use:
+    diff --git a/new/file.sh b/new/file.sh
+    new file mode 100644
+    --- /dev/null
+    +++ b/new/file.sh
+    @@ -0,0 +1,3 @@
+    +line one
+    +line two
+    +line three
+- For DELETED files use:
+    diff --git a/old/file.sh b/old/file.sh
+    deleted file mode 100644
+    --- a/old/file.sh
+    +++ /dev/null
+    @@ -1,3 +0,0 @@
+    -line one
+    -line two
+    -line three
+
+Minimal single-file example:
+    diff --git a/core/foo.sh b/core/foo.sh
+    --- a/core/foo.sh
+    +++ b/core/foo.sh
+    @@ -1,3 +1,4 @@
+     existing line
+    +new line
+     another line
+
+Plan to implement:
+BUILD_PROMPT
+)"
+    local prompt
+    printf -v prompt '%s\n%s\n' "$_build_instructions" "$plan_json"
+    printf '%s\n' "$prompt" > "$prompt_input_file"
 
     local redacted_file="$artifact_dir/build-prompt.redacted.txt"
 
