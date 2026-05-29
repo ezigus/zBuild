@@ -244,10 +244,44 @@ Rejected.
 | D | `review: invite Read for diff verification (ADR-018)` | Issue A |
 | E | `core: artifact renderer registry + banner markdown (ADR-018)` | ADR-018; parallel to A/B/C/D |
 
-## Implementation Notes (Proposed — 2026-05-29)
+## Implementation Notes (In Flight — 2026-05-29)
 
-Not yet implemented. Five issues (A–E) are the implementation backlog for this
-ADR; each will reference back here on merge. This section will be updated to
-`Accepted` with PR links when Issue A lands.
+Issue A (`#466 — router adopts shipwright's claude flag set`) in flight on
+branch `feat/466-router-flags`:
+
+- `_route_call_claude` in `core/router/route.sh` now appends three flags
+  before the JSON-mode toggle: `--max-turns <N>`,
+  `--disallowed-tools "EnterPlanMode,ExitPlanMode"`,
+  `--dangerously-skip-permissions`.
+- New helper `_route_resolve_max_turns` mirrors ADR-017's
+  `_route_resolve_timeout` and reuses `_route_resolve_knob` (extended with
+  an optional 4th event-name argument so the override-ignored event type
+  can vary per knob). Precedence: per-stage `router.max_turns` > env
+  `ZBUILD_ROUTER_MAX_TURNS` > compile-time default `25`. Invalid values
+  (non-integer, `<1`, `>200`) return rc=2 with `router.error
+  reason=invalid_max_turns`.
+- Template parser (`core/pipeline/template.sh::_tpl_parse_stage_data`)
+  recognises `router.max_turns:` as a sibling of `timeout_s`; pipe-
+  delimited emit grows from 7 to 8 fields. Validator
+  `_tpl_validate_io_knobs` extended with a 5th nameref arg and rejects
+  values outside `1..200` with the actionable error
+  `template: router.max_turns for stage '<id>' must be integer in 1..200,
+  got: <val>`.
+- Name-mangled env var `_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}` is appended
+  to the `export` statement (#448 lesson — plugin subshells must inherit
+  the per-stage knob).
+- Accessor `template_stage_router_max_turns` added.
+- `router.max_turns.override_ignored` added to
+  `config/event-schema.json::known_types`.
+- `config/templates/standard.yaml` ships `max_turns: 25` defaults on plan
+  and review; build deliberately omits the knob (Issue B will set the
+  agent-loop value).
+- Test coverage: `tests/unit/router-claude-flags-test.sh` (28 assertions),
+  `tests/integration/router-claude-flags-test.sh` (7 assertions across
+  the subprocess boundary, locks the export + comma-preservation
+  contract).
+
+Issues B–E remain pending; this section will be updated to `Accepted` and
+this paragraph rewritten with PR links as each merges.
 
 Dogfood run `20260529164733-70084` is the triggering evidence on record.

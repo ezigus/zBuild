@@ -197,6 +197,7 @@ _route_lookup_model() {
 # fallback; default is the compile-time floor.
 _route_resolve_knob() {
     local accessor_fn="$1" env_var="$2" default_val="$3"
+    local override_event="${4:-router.timeout.override_ignored}"
     local v=""
     if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F "$accessor_fn" >/dev/null 2>&1; then
         v="$($accessor_fn "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
@@ -205,7 +206,7 @@ _route_resolve_knob() {
         # If env var ALSO set and differs, emit override-ignored event for audit.
         local env_val="${!env_var:-}"
         if [[ -n "$env_val" && "$env_val" != "$v" ]]; then
-            eb_emit_event "router.timeout.override_ignored" \
+            eb_emit_event "$override_event" \
                 "stage=${ZBUILD_CURRENT_STAGE:-}" \
                 "env_var=$env_var" \
                 "env_value=$env_val" \
@@ -219,6 +220,12 @@ _route_resolve_knob() {
 # Concrete: per-stage router.timeout_s > $ZBUILD_ROUTER_TIMEOUT > 300s default.
 _route_resolve_timeout() {
     _route_resolve_knob template_stage_router_timeout ZBUILD_ROUTER_TIMEOUT 300
+}
+
+# ADR-018 (#466): per-stage router.max_turns > $ZBUILD_ROUTER_MAX_TURNS > 25 default.
+_route_resolve_max_turns() {
+    _route_resolve_knob template_stage_router_max_turns ZBUILD_ROUTER_MAX_TURNS 25 \
+        router.max_turns.override_ignored
 }
 
 # ─── _route_emit_model_route <tier> <timeout_s> ──────────────────────────────
@@ -279,7 +286,21 @@ _route_call_claude() {
     elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$secs")
     fi
 
+    # ADR-018 (#466): adopt shipwright's flag set so Pattern 1 (one-shot with tools)
+    # works. Tools are available to claude --print unless disallowed; we forbid
+    # only EnterPlanMode/ExitPlanMode and skip the permission prompt (headless).
+    local max_turns; max_turns="$(_route_resolve_max_turns)"
+    if [[ ! "$max_turns" =~ ^[0-9]+$ ]] || [[ "$max_turns" -lt 1 ]] || [[ "$max_turns" -gt 200 ]]; then
+        error "router: max_turns must be integer in 1..200, got: $max_turns"
+        eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+            "reason=invalid_max_turns" "max_turns=$max_turns"
+        return 2
+    fi
+
     local -a _claude_args=(-p "$prompt" --print --model "$_ROUTE_MODEL_ID")
+    _claude_args+=(--max-turns "$max_turns")
+    _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+    _claude_args+=(--dangerously-skip-permissions)
     [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
 
     local stderr_file rc=0
