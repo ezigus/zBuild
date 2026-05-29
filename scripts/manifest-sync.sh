@@ -120,6 +120,10 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
         pr_body=""
     fi
     if ! echo "$pr_body" | grep -qiE '(closes|fixes|resolves)[ ]+#[0-9]+'; then
+        # Skip PRs already acknowledged in the orphan log
+        if [[ -f "$ORPHAN_PRS_LOG" ]] && grep -q "^| #${pr_num} |" "$ORPHAN_PRS_LOG"; then
+            continue
+        fi
         ORPHAN_PRS+=("$pr_num|$pr_title")
     fi
 done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -30)
