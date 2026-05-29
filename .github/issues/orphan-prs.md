@@ -57,3 +57,4 @@ _Last updated: 2026-05-28T18:50:38Z (rolling 30-PR window)_
 | #414 | [manifest-sync] Drift reconciliation | 2026-05-28 |
 | #423 | fix(ci): drop invalid secrets.GITHUB_TOKEN from zbuild-pipeline workflow | 2026-05-28 |
 | #420 | [manifest-sync] Drift reconciliation | 2026-05-28 |
+| #434 | [manifest-sync] Drift reconciliation | 2026-05-29 |
