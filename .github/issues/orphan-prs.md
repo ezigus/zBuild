@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-28T11:08:27Z (rolling 30-PR window)_
+_Last updated: 2026-05-28T18:50:38Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -55,3 +55,5 @@ _Last updated: 2026-05-28T11:08:27Z (rolling 30-PR window)_
 | #409 | fix: harden abort-trap test against kcov timing | 2026-05-28 |
 | #395 | ci(#389): add lint step to reject hardcoded model names (ADR-003) | 2026-05-28 |
 | #414 | [manifest-sync] Drift reconciliation | 2026-05-28 |
+| #423 | fix(ci): drop invalid secrets.GITHUB_TOKEN from zbuild-pipeline workflow | 2026-05-28 |
+| #420 | [manifest-sync] Drift reconciliation | 2026-05-28 |
