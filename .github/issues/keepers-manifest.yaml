@@ -84,6 +84,9 @@ labels:
   - name: cli-ux
     color: "a78bfa"
     description: CLI / UX surface
+  - name: documentation
+    color: "0075ca"
+    description: Documentation improvements (ADRs, READMEs, CLAUDE.md)
 # ─── Milestones (7) ─────────────────────────────────────────────────────────
 milestones:
   - title: Phase 0 — Core Engine Foundation
@@ -3497,3 +3500,546 @@ issues:
       without requiring expensive dogfood runs. Depends on all 5
       Wave B plugins (#340-#344) + #292.
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T12:25:25Z). Recorded by manifest-sync.'
+  - id: wave-1-restore-guardrails
+    title: "Wave 1: Restore coverage + validation guardrails"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/418
+      Replace broken kcov with PS4-trace coverage, set 25% floor,
+      tighten manifest validation, promote event-schema from warn→error.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: wave-2-backend-contract-harmonization
+    title: "Wave 2: Backend contract harmonization + event drift"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: []
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/426
+      ADR-012 (eager vs lazy init decision), align memory/contract.sh,
+      rename plugin.cleanup.done→complete, add security-lens cleanup hook,
+      pin lifecycle event sequence golden.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: wave-3-entry-guards
+    title: "Wave 3: Phase 1 entry guards"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: []
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/428
+      Router golden coverage + route_to_model decomposition + redaction
+      runtime sentinel + artifact-presence scanner (#288) + orch exit-code
+      matrix tests.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: wave-4-test-depth
+    title: "Wave 4: Test depth — mock_plugin_factory + assert_event_emitted + co-locate + claim-coordinator + output validation"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: []
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/430
+      Extract mock_plugin_factory + assert_event_emitted helpers,
+      co-locate tests for core/cache/ + core/redaction/, backfill
+      claim-coordinator tests, surface mutation score in CI summary.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: wave-5-convention-lock-in
+    title: "Wave 5: Convention lock-in — .shellcheckrc + .editorconfig + CLAUDE.md function-header style"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: []
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/432
+      Drop .shellcheckrc + .editorconfig at repo root, document
+      function-header style in CLAUDE.md.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: plan-prompt-underspecified
+    title: "plan plugin prompt is underspecified — LLM returns prose instead of plan.json schema"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: []
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/435
+      Plan plugin prompt missing schema declaration, example output, and
+      JSON-only response directive — LLM returns prose instead of valid
+      plan.json. Rewrite prompt to declare schema inline.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: intake-manifest-outputs-fix
+    title: "fix: intake manifest missing outputs[] + standard template missing plan stage"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/415
+      Intake manifest missing outputs[] field; standard pipeline template
+      missing plan stage. Dogfood smoke fix.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: intake-body-drop-fix
+    title: "intake stage drops gh issue body — plan stage gets no context, fails with invalid plan.json"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: []
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/421
+      Intake plugin drops gh issue body; plan stage receives empty context
+      and fails schema validation. Fix intake to pass full body through.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: router-timeout-tight
+    title: "router: 120s default timeout is too tight — plan-stage Sonnet calls regularly hit it"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: []
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/424
+      Default 120s router timeout too tight for plan-stage Sonnet calls.
+      Raise to 300s or make configurable per tier.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-adr-strengthening-pack
+    title: "[Phase 0.5 cleanup] ADR strengthening pack + PHASE-DEFERRALS.md"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [documentation, foundation, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/390
+      ADR strengthening pack: add implementation notes, clarify scope,
+      add PHASE-DEFERRALS.md for deferred items.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-ci-lint-hardcoded-models
+    title: "[Phase 0.5 cleanup] CI lint: prevent hardcoded model names (ADR-003)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [safety-primitive, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/389
+      Add CI lint step to scan core/, plugins/, scripts/ for hardcoded
+      model name strings (ADR-003 compliance).
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-claim-coordinator-readme
+    title: "[Phase 0.5 cleanup] claim-coordinator README (ADR-005 mandate)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [documentation, claim-coordinator, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/388
+      Add README to claim-coordinator plugin per ADR-005 mandate.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-security-lens-manifest-role
+    title: "[Phase 0.5 cleanup] security-lens manifest: provides.role: security-auditor"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [agent-plugin, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/387
+      security-lens manifest missing provides.role: security-auditor field.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-lockfile-tamper-detection-test
+    title: "[Phase 0.5 cleanup] Plugin lockfile tamper-detection integration test"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [safety-primitive, test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/386
+      Integration test for plugin lockfile tamper-detection to verify
+      the safety primitive works end-to-end.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-engine-event-shape-goldens
+    title: "[Phase 0.5 cleanup] Engine event-shape goldens (model.route, model.outcome, event-bus envelope, scope-manifest fence)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/385
+      Golden snapshots for core event shapes: model.route, model.outcome,
+      event-bus envelope, and scope-manifest fence.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-mutation-docs-dispatch-detection
+    title: "[Phase 0.5 cleanup] Mutation docs: 4 dispatch/detection modules (pipeline-resolver, output-destinations, registry-role-resolution, detect-platforms)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/384
+      Mutation test documentation for 4 dispatch/detection modules.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-mutation-docs-core-contracts
+    title: "[Phase 0.5 cleanup] Mutation docs: 5 core contracts (event-bus, orch, memory, cache, pipeline-contracts)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/383
+      Mutation test documentation for 5 core contracts.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-rc-semantics-audit
+    title: "[Phase 0.5 cleanup] rc=0/1/2 semantics audit per ADR-001"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [safety-primitive, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/382
+      Audit all exit-code usage against ADR-001 rc=0/1/2 semantics;
+      enforce rc=2 on unrecoverable paths.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-plugin-bootstrap-helper
+    title: "[Phase 0.5 cleanup] Plugin bootstrap helper: scripts/lib/plugin-bootstrap.sh"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [foundation, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/381
+      Shared plugin bootstrap helper at scripts/lib/plugin-bootstrap.sh
+      to reduce boilerplate across plugin implementations.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-ci-coverage-floor
+    title: "[Phase 0.5 cleanup] CI coverage floor — gate on minimum kcov threshold"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/372
+      Add CI coverage gate with minimum threshold; baseline 25% post-Wave-1,
+      raised to 29% in Wave 4.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-hook-naming-nits
+    title: "[Phase 0.5 cleanup] Hook naming nits: review_stage_* / test_stage_* / _lsu_ prefixes"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/371
+      Normalize hook function naming across review_stage_*, test_stage_*,
+      and _lsu_* prefixes.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-template-stage-id-validation
+    title: "[Phase 0.5 cleanup] Template stage-id validation (ADR-013 line 152-159)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [safety-primitive, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/370
+      Enforce template stage-id validation per ADR-013 lines 152-159.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-co-located-plugin-tests
+    title: "[Phase 0.5 cleanup] Co-located plugin tests per ADR-007"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [documentation, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/369
+      Ensure all plugins have co-located tests per ADR-007.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-missing-unit-tests-resume
+    title: "[Phase 0.5 cleanup] Missing unit tests for resume.sh / runner.sh / state_helpers.sh"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/368
+      Add unit tests for resume.sh, runner.sh, and state_helpers.sh.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-missing-artifact-goldens
+    title: "[Phase 0.5 cleanup] Missing artifact goldens for 5 plugin outputs"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/367
+      Add golden snapshots for the 5 plugin output artifacts.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-split-large-test-files
+    title: "[Phase 0.5 cleanup] Split 4 large test files (>500 lines)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/366
+      Split 4 test files exceeding 500 lines into focused modules.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-dispatch-no-unit-test
+    title: "[Phase 3 audit] core/pipeline/dispatch.sh has no unit test or mutation doc (safety-critical)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [safety-primitive, test-migration]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/365
+      dispatch.sh is safety-critical (routes stages to plugins) but has no
+      unit test or mutation documentation.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-registry-split-modules
+    title: "[Phase 3 audit] core/plugin-registry/registry.sh 668 lines — split into modules"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/364
+      registry.sh at 668 lines exceeds the 500-line cap; split into
+      focused modules.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-sc2034-unused-rc
+    title: "[Phase 3 audit] SC2034 captured-but-unused rc values in 10 test sites"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/363
+      SC2034 shellcheck warning: captured rc values assigned but unused
+      in 10 test sites, potentially masking silent assertion bugs.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-sc2188-orphan-redirections
+    title: "[Phase 3 audit] SC2188 orphan redirections in 9 test sites (likely silent assertion bugs)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/362
+      SC2188 shellcheck warning: orphan redirections in 9 test sites,
+      likely causing silent assertion bugs.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-pr-url-artifact-drift
+    title: "[Phase 3 audit] pr-url.txt vs pr-result.json artifact_type drift (ADR-013 alignment)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [documentation, tool-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/361
+      pr-open plugin declares pr-url.txt but actual output is pr-result.json;
+      drift from ADR-013 artifact_type spec.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-redaction-chokepoint-not-asserted
+    title: "[Phase 3 audit] Redaction chokepoint not asserted in pr-open + review tests"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [safety-primitive, test-migration]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/360
+      pr-open and review plugin tests don't assert the redaction chokepoint
+      is exercised, leaving it unverified in the test suite.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-parity-no-wave-b
+    title: "[Phase 3 audit] Parity fixture does not exercise Wave B plugins"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [test-migration]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/359
+      Parity fixture (local vs CI comparison) doesn't cover the 5 Wave B
+      dogfooding plugins.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph3-pr-open-silent-fail
+    title: "[Phase 3 audit] pr-open silent fail-open when review.json missing"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [tool-plugin, safety-primitive]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/358
+      pr-open plugin silently succeeds when review.json is missing instead
+      of failing closed.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: doc-adr-006-idempotency
+    title: "[Doc] ADR-006: clarify idempotency scope for reconstructed-state init re-runs"
+    milestone: "Phase 0 — Core Engine Foundation"
+    labels: [documentation, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/313
+      ADR-006 idempotency scope needs clarification for reconstructed-state
+      init re-run scenarios.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: doc-adr-008-stale-ref
+    title: "[Doc] ADR-008: remove stale @v4 reference (workflows already on @v6)"
+    milestone: "Phase 0 — Core Engine Foundation"
+    labels: [documentation, foundation, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/312
+      ADR-008 references @v4 GitHub Actions action versions; workflows
+      already upgraded to @v6.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-composite-strategy-fail-loud
+    title: "[Phase 0.5] Composite strategy: fail-loud when selected (currently silent stub)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [foundation, orchestrator-plugin, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/311
+      Composite orchestration strategy is a silent stub; should fail-loud
+      when selected until fully implemented.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-cache-contract-reconcile
+    title: "[Phase 0.5] Reconcile cache contract signature: ADR-011 vs core/cache/contract.sh"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [documentation, foundation, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/310
+      cache/contract.sh signature diverges from ADR-011 spec; reconcile
+      or document the deviation.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-mutation-harness-module-enforce
+    title: "[Phase 0.5] Mutation harness: enforce expected-failing-test belongs to mutated module"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [foundation, safety-primitive, test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/309
+      Mutation harness should enforce that expected-failing tests belong
+      to the module being mutated.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-default-claim-coordinator
+    title: "[Phase 0.5] Default claim-coordinator plugin (github-labels) + tests/e2e/claim-race-test.sh"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [foundation, claim-coordinator, safety-primitive, test-migration, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/308
+      Ship default claim-coordinator plugin using github-labels backend
+      plus e2e claim-race test.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-dispatcher-export-platform
+    title: "[Phase 0.5] Dispatcher must export ZBUILD_PLATFORM per per-platform invocation (ADR-009 env contract)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [foundation, safety-primitive, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/307
+      Dispatcher must export ZBUILD_PLATFORM for each per-platform plugin
+      invocation per ADR-009 environment contract.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: manifest-validator-yaml-structural
+    title: "Plugin registry: YAML-structural manifest validation (replace fragile grep for redaction requirement)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-1, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/294
+      Replace fragile grep-based manifest validation with proper
+      YAML-structural parsing for redaction requirement checks.
+  - id: state-read-fail-closed-json
+    title: "State read fail-closed on JSON corruption — narrow lift from Phase 2 #38"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, safety-primitive]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/293
+      State reader must fail-closed (rc=2) on JSON corruption instead
+      of returning partial/empty data silently.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: adr-013-canonical-stage-list
+    title: "New ADR-013: canonical zBuild stage list (currently only sketched in ARCHITECTURE §3)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [foundation, phase-0.5]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/292
+      Formalize the canonical stage list as ADR-013 (currently only sketched
+      in ARCHITECTURE §3).
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: adr-impl-notes-retrofit
+    title: "Retrofit 'Implementation Notes' appendix on ADRs 001–007 (pattern from ADR-009)"
+    milestone: "Phase 5 — Test Migration & Verification"
+    labels: [phase-5, foundation]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/291
+      Add Implementation Notes appendix to ADRs 001–007 following the
+      pattern established in ADR-009.
+  - id: plugin-lockfile-hash-all
+    title: "Plugin lockfile: hash plugin.sh (and all plugin files), reverify before source"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: open
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/290
+      Plugin lockfile currently only hashes manifest.yaml; extend it to
+      also hash plugin.sh (and all plugin files) and reverify before sourcing.
+  - id: router-precondition-fail-closed
+    title: "Router precondition fail-closed when ZBUILD_RUN_ID or ZBUILD_EVENTS_JSONL unset + gate --skip-precondition behind operator override + audit event"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/289
+      Router precondition must fail-closed (rc=2) when ZBUILD_RUN_ID or
+      ZBUILD_EVENTS_JSONL unset; --skip-precondition gated behind operator
+      override with audit event.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: artifact-presence-scanner
+    title: "Fail-closed artifact-presence scanner (synthesize blocking finding when plugin declares outputs[].path but produces nothing)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/288
+      Scanner that fails-closed when a plugin declares outputs[].path in
+      its manifest but produces no artifact after 0-exit.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: manifest-validator-full-adr001
+    title: "Manifest validator: enforce full ADR-001 schema (hooks per kind, requires.core via YAML, provides.artifact_type, state.persisted/reconstructed)"
+    milestone: "Phase 1 — Pipeline & Intelligence"
+    labels: [phase-1, foundation, safety-primitive]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/287
+      Tighten manifest validation to enforce the full ADR-001 schema:
+      hooks per kind, requires.core via YAML, provides.artifact_type,
+      and state.persisted/reconstructed fields.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-repo-hygiene
+    title: "[Phase 0.5 cleanup] Repo hygiene: gitignore + untrack runtime artifacts + delete empty mock-memory/"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/283
+      gitignore cleanup, untrack runtime artifacts from git, delete
+      empty mock-memory/ directory.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-test-infra-fixes
+    title: "[Phase 0.5 cleanup] Test-infra fixes: golden discovery, find -executable, lint scope, test relocation"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, foundation, test-migration]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/275
+      Fix test infrastructure: golden file discovery, find -executable flag,
+      lint scope reduction, test file relocation.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: audit-phase0-post-foundation
+    title: "[Audit] zbuild Phase 0 post-foundation — test tiering, CI exposure, correctness concerns"
+    milestone: "Phase 2 — Reliability & Safety Primitives"
+    labels: [phase-2, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/251
+      Post-Phase-0 audit covering test tiering strategy, CI exposure gaps,
+      and correctness concerns to address before Phase 1.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: ph05-manifest-sync-noise
+    title: "[Phase 0.5] manifest-sync: reduce trigger noise and add pending-PR guard"
+    milestone: "Phase 0 — Core Engine Foundation"
+    labels: [phase-0, foundation, cli-ux]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/248
+      Reduce manifest-sync trigger frequency and add guard against creating
+      a new sync PR when one is already pending review.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: cli-flags-platform-scope
+    title: "[Phase 4] CLI flags: --platform-override <p>, --scope <path>"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0, keeper, foundation, cli-ux]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/202
+      Add CLI flags --platform-override and --scope to zbuild pipeline start.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: pipeline-templates
+    title: "[L] Pipeline templates: tdd / enterprise / deployed / ios / ios-fast"
+    milestone: "Wishlist — Post-stabilization"
+    labels: [wishlist]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/188
+      Pre-built pipeline templates for common workflows: tdd, enterprise,
+      deployed, ios, ios-fast.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
