@@ -390,8 +390,11 @@ else
 fi
 
 # ─── T45: body cap: 80_000-char output → ≤ 60_000 + truncated marker ─────────
-big_output=""
-big_output="$(printf 'X%.0s' $(seq 1 80000))"
+# Use head -c / tr (portable) instead of `printf 'X%.0s' $(seq 1 N)` because the
+# latter expands $(seq ...) into ~80k argv items which exceeds Linux ARG_MAX
+# (typically ~131KB), silently truncating on CI while macOS (with a much higher
+# limit) appears to pass locally. head -c writes N bytes without an argv hop.
+big_output="$(head -c 80000 /dev/zero | tr '\0' 'X')"
 rec45="$(_t440_make_record plan llm "short input" "$big_output" "" "100")"
 ghdir="$TEST_TEMP_DIR/gh-t45"; mkdir -p "$ghdir"
 cat > "$ghdir/gh" <<EOF
