@@ -209,7 +209,7 @@ _build_stage_run_inner() {
     # ─── Validate diff.patch (warn-only; test stage is the authoritative check) ─
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
     if [[ -n "$diff_content" ]] && command -v git >/dev/null 2>&1; then
-        if ! git -C "$repo_root" apply --check "$output_diff_patch" >/dev/null 2>&1; then
+        if ! run_captured_command build git -C "$repo_root" apply --check "$output_diff_patch" >/dev/null 2>&1; then
             warn "_build_stage_run_inner: git apply --check failed on diff.patch; test stage will catch this"
             emit_event "build.diff.validation_warning" "plugin=build" \
                 "reason=git_apply_check_failed" \

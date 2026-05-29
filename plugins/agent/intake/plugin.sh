@@ -13,6 +13,8 @@ _INTAKE_DIR="$_ZBUILD_PLUGIN_DIR"
 _INTAKE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_INTAKE_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../core/output/stage-io.sh
+source "$_INTAKE_ROOT/core/output/stage-io.sh"
 
 # ─── Goal sanitization (ported verbatim from legacy/scripts/lib/goal-sanitize.sh)
 # Bash 3.2 safe: %% operator only, no regex, no associative arrays.
@@ -78,7 +80,7 @@ intake_run() {
             local fetched="" gh_rc=0 _had_errexit=0
             [[ $- == *e* ]] && _had_errexit=1
             set +e
-            fetched="$(gh issue view "$issue" \
+            fetched="$(run_captured_command intake gh issue view "$issue" \
                 --json title,body \
                 --jq '(.title // "") as $t
                       | (.body  // "") as $b
