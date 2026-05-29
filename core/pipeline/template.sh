@@ -91,12 +91,14 @@ load_template() {
     local -a collected_io_dests=()
     local -a collected_io_tail=()
     local -a collected_io_redact=()
-    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact; do
+    local -a collected_router_timeout=()
+    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout; do
         [[ -z "$stage_id" ]] && continue
         collected_ids+=("$stage_id")
         collected_io_dests+=("$io_dests")
         collected_io_tail+=("$io_tail")
         collected_io_redact+=("$io_redact")
+        collected_router_timeout+=("$router_timeout")
     done <<< "$stage_data"
 
     # Validate all stage ids against the canonical list before mutating state
@@ -105,11 +107,11 @@ load_template() {
     # ADR-015 v1 (#438): validate io.destinations tokens before mutating state
     _tpl_validate_io_dests collected_ids collected_io_dests || return 1
 
-    # ADR-015 v3 (#440): validate io.tail_lines and io.redact
-    _tpl_validate_io_knobs collected_ids collected_io_tail collected_io_redact || return 1
+    # ADR-015 v3 (#440) + ADR-017 (#455): validate io.tail_lines, io.redact, router.timeout_s
+    _tpl_validate_io_knobs collected_ids collected_io_tail collected_io_redact collected_router_timeout || return 1
 
     # Populate module state
-    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact; do
+    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout; do
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
         # Store roles, strategy, io_dests via name-mangled env vars.
@@ -124,25 +126,30 @@ load_template() {
         printf -v "_TPL_STAGE_IO_DESTS_${safe_id}" '%s' "$io_dests"
         printf -v "_TPL_STAGE_IO_TAIL_${safe_id}" '%s' "$io_tail"
         printf -v "_TPL_STAGE_IO_REDACT_${safe_id}" '%s' "$io_redact"
+        printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" '%s' "$router_timeout"
         export "_TPL_STAGE_ROLES_${safe_id}" \
                "_TPL_STAGE_STRATEGY_${safe_id}" \
                "_TPL_STAGE_IO_DESTS_${safe_id}" \
                "_TPL_STAGE_IO_TAIL_${safe_id}" \
-               "_TPL_STAGE_IO_REDACT_${safe_id}"
+               "_TPL_STAGE_IO_REDACT_${safe_id}" \
+               "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}"
     done <<< "$stage_data"
 }
 
 # ADR-015 v3 (#440): validate tail_lines (integer 1..10000) and redact (true|false)
+# ADR-017 (#455): also validate router.timeout_s (integer 1..3600)
 # Uses Bash 5+ namerefs for safer array-by-name passing (no eval indirection).
 _tpl_validate_io_knobs() {
     local -n ids_ref="$1"
     local -n tails_ref="$2"
     local -n redacts_ref="$3"
+    local -n rtimeouts_ref="$4"
     local i n=${#ids_ref[@]}
     for (( i=0; i<n; i++ )); do
         local stage="${ids_ref[$i]}"
         local tail="${tails_ref[$i]}"
         local redact="${redacts_ref[$i]}"
+        local rt="${rtimeouts_ref[$i]}"
         if [[ -n "$tail" ]]; then
             if ! [[ "$tail" =~ ^[0-9]+$ ]] || [[ "$tail" -lt 1 ]] || [[ "$tail" -gt 10000 ]]; then
                 error "template: io.tail_lines for stage '$stage' must be integer in 1..10000, got: $tail"
@@ -152,6 +159,12 @@ _tpl_validate_io_knobs() {
         if [[ -n "$redact" ]]; then
             if [[ "$redact" != "true" && "$redact" != "false" ]]; then
                 error "template: io.redact for stage '$stage' must be 'true' or 'false', got: $redact"
+                return 1
+            fi
+        fi
+        if [[ -n "$rt" ]]; then
+            if ! [[ "$rt" =~ ^[0-9]+$ ]] || [[ "$rt" -lt 1 ]] || [[ "$rt" -gt 3600 ]]; then
+                error "template: router.timeout_s for stage '$stage' must be integer in 1..3600, got: $rt"
                 return 1
             fi
         fi
@@ -202,15 +215,15 @@ _tpl_parse_stage_data() {
     local file="$1"
     awk '
     /^stages:/ { in_stages = 1; next }
-    in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; in_io_dests = 0; in_io_block = 0; next }
+    in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0; next }
     in_stages && /^[[:space:]]*-[[:space:]]*id:/ {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact }
-        in_roles = 0; in_io_dests = 0; in_io_block = 0
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout }
+        in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0
         current_id = $0
         gsub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", current_id)
         gsub(/[[:space:]]*$/, "", current_id)
         current_roles = ""; current_strategy = ""; current_io_dests = ""
-        current_io_tail = ""; current_io_redact = ""
+        current_io_tail = ""; current_io_redact = ""; current_router_timeout = ""
         next
     }
     in_stages && in_roles && /^[[:space:]]*-[[:space:]]/ {
@@ -246,10 +259,11 @@ _tpl_parse_stage_data() {
         next
     }
     in_stages && current_id != "" && /^[[:space:]]+strategy:/ {
-        # Defensive: if io: appeared before strategy: in this stage, clear the
-        # io-block flags so subsequent list items are not mis-attributed.
+        # Defensive: if io: or router: appeared before strategy: in this stage,
+        # clear the block flags so subsequent list items are not mis-attributed.
         in_io_block = 0
         in_io_dests = 0
+        in_router_block = 0
         current_strategy = $0
         gsub(/^[[:space:]]+strategy:[[:space:]]*/, "", current_strategy)
         gsub(/[[:space:]]*$/, "", current_strategy)
@@ -257,8 +271,24 @@ _tpl_parse_stage_data() {
     }
     in_stages && current_id != "" && /^[[:space:]]+io:[[:space:]]*$/ {
         in_io_block = 1
+        in_router_block = 0
         next
     }
+    in_stages && current_id != "" && /^[[:space:]]+router:[[:space:]]*$/ {
+        in_io_block = 0
+        in_io_dests = 0
+        in_router_block = 1
+        next
+    }
+    in_router_block && /^[[:space:]]+timeout_s:/ {
+        rt = $0
+        gsub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", rt)
+        gsub(/[[:space:]]*$/, "", rt)
+        current_router_timeout = rt
+        next
+    }
+    # ADR-017 §8: ignore future router siblings silently (tier_default, budget_usd, model_override).
+    in_router_block && /^[[:space:]]+[a-z_]+:/ { next }
     in_io_block && /^[[:space:]]+destinations:/ {
         dest_line = $0
         if (dest_line ~ /\[/) {
@@ -287,7 +317,7 @@ _tpl_parse_stage_data() {
         next
     }
     END {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout }
     }
     ' "$file"
 }
@@ -339,5 +369,15 @@ template_stage_io_redact() {
     local stage_id="$1"
     local safe_id="${stage_id//-/_}"
     local var="_TPL_STAGE_IO_REDACT_${safe_id}"
+    echo "${!var:-}"
+}
+
+# ADR-017 (#455): per-stage router.timeout_s (empty when unset → caller default 300).
+# Consumer chokepoint: _route_resolve_timeout in core/router/route.sh applies
+# the precedence rule (per-stage > env > compile-time default).
+template_stage_router_timeout() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}"
     echo "${!var:-}"
 }

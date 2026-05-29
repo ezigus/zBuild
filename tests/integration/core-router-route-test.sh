@@ -421,6 +421,94 @@ b4_outcome="$(grep '"model.outcome"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="model.outcome") | .data.input_tokens // empty' 2>/dev/null | tail -1 || true)"
 assert_eq "B4: model.outcome emitted with input_tokens=0 (no JSON)" "0" "$b4_outcome"
 
+# ─── ADR-017 (#455): per-stage router.timeout_s precedence ───────────────────
+# Restore a successful claude mock for these tests.
+cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
+#!/usr/bin/env bash
+echo "OK-RESPONSE"
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+# Source template module so accessor template_stage_router_timeout is available.
+# shellcheck source=../../core/pipeline/template.sh
+source "$REPO_ROOT/core/pipeline/template.sh"
+
+# Build a fixture template with build router.timeout_s=900.
+ROUTER_TIMEOUT_FIXTURE="$TEST_TEMP_DIR/router-timeout-fixture.yaml"
+cat > "$ROUTER_TIMEOUT_FIXTURE" <<'EOF'
+id: rt-fixture
+name: RT Fixture
+defaults:
+  strategy: fanout
+
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
+    router:
+      timeout_s: 900
+EOF
+
+# ─── Tr-1: per-stage value wins (stage set, env unset) ───────────────────────
+load_template "$ROUTER_TIMEOUT_FIXTURE"
+ZBUILD_CURRENT_STAGE=build
+unset ZBUILD_ROUTER_TIMEOUT
+tr1_val="$(_route_resolve_timeout)"
+assert_eq "Tr-1 per-stage build timeout=900" "900" "$tr1_val"
+
+# ─── Tr-2: env wins when stage unset ─────────────────────────────────────────
+unset ZBUILD_CURRENT_STAGE
+export ZBUILD_ROUTER_TIMEOUT=450
+tr2_val="$(_route_resolve_timeout)"
+assert_eq "Tr-2 env timeout=450" "450" "$tr2_val"
+unset ZBUILD_ROUTER_TIMEOUT
+
+# ─── Tr-3: compile-time default 300 when both unset ──────────────────────────
+unset ZBUILD_CURRENT_STAGE
+unset ZBUILD_ROUTER_TIMEOUT
+tr3_val="$(_route_resolve_timeout)"
+assert_eq "Tr-3 default timeout=300" "300" "$tr3_val"
+
+# ─── Tr-4: per-stage AND env both set → per-stage wins + override_ignored ────
+load_template "$ROUTER_TIMEOUT_FIXTURE"
+ZBUILD_CURRENT_STAGE=build
+export ZBUILD_ROUTER_TIMEOUT=600
+: > "$ZBUILD_EVENTS_JSONL"
+tr4_val="$(_route_resolve_timeout)"
+assert_eq "Tr-4 per-stage 900 wins over env 600" "900" "$tr4_val"
+tr4_evt="$(grep '"router.timeout.override_ignored"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="router.timeout.override_ignored") | .data.applied // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "Tr-4 override_ignored event emitted with applied=900" "900" "$tr4_evt"
+unset ZBUILD_ROUTER_TIMEOUT
+unset ZBUILD_CURRENT_STAGE
+
+# ─── Tr-5: empty-string per-stage var falls through to env ───────────────────
+# Set stage var explicitly to empty (e.g. stage with no router block exported as empty).
+load_template "$ROUTER_TIMEOUT_FIXTURE"
+ZBUILD_CURRENT_STAGE=plan   # plan not in fixture → accessor returns empty
+export ZBUILD_ROUTER_TIMEOUT=450
+tr5_val="$(_route_resolve_timeout)"
+assert_eq "Tr-5 empty per-stage falls through to env=450" "450" "$tr5_val"
+unset ZBUILD_ROUTER_TIMEOUT
+unset ZBUILD_CURRENT_STAGE
+
+# ─── Tr-6: model.route event JSONL contains timeout_s field ──────────────────
+: > "$ZBUILD_EVENTS_JSONL"
+unset ZBUILD_ROUTER_TIMEOUT
+load_template "$ROUTER_TIMEOUT_FIXTURE"
+export ZBUILD_CURRENT_STAGE=build
+set +e
+route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1
+set -e
+tr6_timeout="$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="model.route") | .data.timeout_s // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "Tr-6 model.route event has timeout_s=900" "900" "$tr6_timeout"
+tr6_outcome="$(grep '"model.outcome"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="model.outcome") | .data.timeout_s // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "Tr-6 model.outcome event has timeout_s=900" "900" "$tr6_outcome"
+unset ZBUILD_CURRENT_STAGE
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

@@ -1,6 +1,6 @@
 # ADR-017: Per-Stage Router Configuration
 
-**Status:** Proposed
+**Status:** Accepted (2026-05-29)
 **Date:** 2026-05-29
 
 ## Context
@@ -250,21 +250,39 @@ stage-aware via the already-exported `ZBUILD_CURRENT_STAGE` (PR #438).
   This ADR is the right architecture for what #424 attempted as a
   global default.
 
-## Implementation Notes (Proposed — 2026-05-29)
+## Implementation Notes (Accepted — 2026-05-29)
 
-This ADR ships in **Proposed** status. No code has been written yet.
-Implementation lands in one issue (filed alongside this ADR):
+Implemented in **PR for #455** on branch `feat/455-per-stage-router-timeout`:
 
-- **#455 — ADR-017 v1: per-stage `router.timeout_s` in pipeline template.**
-  Awk parser extension, exported name-mangled env var, accessor,
-  validator (integer in `1..3600`), router lookup change in
-  `core/router/route.sh`, `standard.yaml` defaults (plan: 300, build:
-  900, review: 300), `model.route` event field, and tests. ADR-017
-  **Status** flips from Proposed to Accepted on merge of that issue.
+- Awk parser extended in `core/pipeline/template.sh::_tpl_parse_stage_data`
+  with a new `router:` block arm and `timeout_s:` field; pipe-delimited
+  emit grows from 6 to 7 fields.
+- Validator `_tpl_validate_io_knobs` extended with a 4th nameref arg
+  (`rtimeouts_ref`) and rejects values outside `1..3600` with the
+  actionable error `template: router.timeout_s for stage '<id>' must be
+  integer in 1..3600, got: <val>`.
+- Name-mangled env var `_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}` is appended
+  to the existing `export` statement (#448 lesson — plugin subshells
+  must inherit; locked by `Tv3-16` and the
+  `tests/integration/router-timeout-precedence-e2e-test.sh` subprocess-
+  boundary test).
+- Accessor `template_stage_router_timeout` added.
+- Router gains the generic precedence chokepoint
+  `_route_resolve_knob <accessor_fn> <env_var> <default>` and a concrete
+  `_route_resolve_timeout` (per-stage > `ZBUILD_ROUTER_TIMEOUT` > 300s).
+  When per-stage and env both set with different values, a
+  `router.timeout.override_ignored` event is emitted for audit.
+- `model.route` and `model.outcome` events both carry the resolved
+  `timeout_s` field. `router.timeout.override_ignored` added to
+  `config/event-schema.json::known_types`.
+- `config/templates/standard.yaml` ships defaults: plan=300, build=900,
+  review=300; intake stays without a router block (no router call).
+
+Out-of-scope-for-v1 siblings reserved in §8 (`tier_default`, `budget_usd`,
+`model_override`) are deliberately *not* implemented here — they will
+reuse the `_route_resolve_knob` chokepoint and the same parser/validator/
+accessor pattern when they land.
 
 A separate issue tracked alongside this ADR (**#456 — intake refuse-on-closed**)
 is *not* covered here — it's a behavioral guard in the intake plugin, not a
 router contract change, and has no interaction with this ADR's status.
-
-This ADR PR lands the design document only; it does not modify the
-template parser, router, plugins, standard template, or event schema.

@@ -17,15 +17,21 @@ stages:
     io:
       destinations: [file, stdout]
       tail_lines: 200
+    router:
+      timeout_s: 300
   - id: build
     gate: auto
     roles: [builder]
     io:
       destinations: [file, stdout]
       tail_lines: 200
+    router:
+      timeout_s: 900
   - id: review
     gate: auto
     roles: [reviewer]
     io:
       destinations: [file, stdout]
       tail_lines: 200
+    router:
+      timeout_s: 300

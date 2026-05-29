@@ -45,18 +45,20 @@ route_to_model() {
     _route_check_precondition "$tier" "$skip_precondition" || return $?
     _route_lookup_model "$tier" "$model_override"          || return $?
 
-    local secs="${ZBUILD_ROUTER_TIMEOUT:-300}"
+    # ADR-017 (#455): precedence-aware timeout resolution.
+    # per-stage template router.timeout_s > ZBUILD_ROUTER_TIMEOUT env > 300s default.
+    local secs; secs="$(_route_resolve_timeout)"
     if [[ ! "$secs" =~ ^[0-9]+$ ]] || [[ "$secs" -eq 0 ]]; then
         error "ZBUILD_ROUTER_TIMEOUT must be a positive integer (>=1), got: $secs"; return 2
     fi
 
-    _route_emit_model_route "$tier"
+    _route_emit_model_route "$tier" "$secs"
     _route_check_budget "$tier" || return $?
 
     _ROUTE_RESPONSE=""
     _route_call_claude "$tier" "$prompt" "$secs" || return $?
 
-    _route_emit_outcome "$tier"
+    _route_emit_outcome "$tier" "$secs"
     _route_update_ledger
 
     # ADR-015 v1 (#438): LLM-kind stage I/O capture.
@@ -189,9 +191,39 @@ _route_lookup_model() {
     return 0
 }
 
-# ─── _route_emit_model_route <tier> ──────────────────────────────────────────
+# ─── _route_resolve_knob — ADR-017 (#455) precedence chokepoint ──────────────
+# Generic helper: future knobs (tier_default, budget_usd, model_override) reuse
+# this. Accessor returns per-stage value or empty; env_var supplies session-wide
+# fallback; default is the compile-time floor.
+_route_resolve_knob() {
+    local accessor_fn="$1" env_var="$2" default_val="$3"
+    local v=""
+    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F "$accessor_fn" >/dev/null 2>&1; then
+        v="$($accessor_fn "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
+    fi
+    if [[ -n "$v" ]]; then
+        # If env var ALSO set and differs, emit override-ignored event for audit.
+        local env_val="${!env_var:-}"
+        if [[ -n "$env_val" && "$env_val" != "$v" ]]; then
+            eb_emit_event "router.timeout.override_ignored" \
+                "stage=${ZBUILD_CURRENT_STAGE:-}" \
+                "env_var=$env_var" \
+                "env_value=$env_val" \
+                "applied=$v" 2>/dev/null || true
+        fi
+        printf '%s\n' "$v"; return 0
+    fi
+    printf '%s\n' "${!env_var:-$default_val}"
+}
+
+# Concrete: per-stage router.timeout_s > $ZBUILD_ROUTER_TIMEOUT > 300s default.
+_route_resolve_timeout() {
+    _route_resolve_knob template_stage_router_timeout ZBUILD_ROUTER_TIMEOUT 300
+}
+
+# ─── _route_emit_model_route <tier> <timeout_s> ──────────────────────────────
 _route_emit_model_route() {
-    local tier="$1"
+    local tier="$1" secs="${2:-}"
     eb_emit_event "model.route" \
         "tier=$tier" \
         "model_id=$_ROUTE_MODEL_ID" \
@@ -202,7 +234,8 @@ _route_emit_model_route() {
         "override_source=${_ROUTE_OVERRIDE_SOURCE}" \
         "cost_per_input_mtok=${_ROUTE_COST_IN:-}" \
         "cost_per_output_mtok=${_ROUTE_COST_OUT:-}" \
-        "cache_eligible=${_ROUTE_CACHE_ELIGIBLE}"
+        "cache_eligible=${_ROUTE_CACHE_ELIGIBLE}" \
+        "timeout_s=${secs}"
 }
 
 # ─── _route_check_budget <tier> ──────────────────────────────────────────────
@@ -300,9 +333,9 @@ _route_call_claude() {
     return 0
 }
 
-# ─── _route_emit_outcome <tier> ──────────────────────────────────────────────
+# ─── _route_emit_outcome <tier> <timeout_s> ──────────────────────────────────
 _route_emit_outcome() {
-    local tier="$1"
+    local tier="$1" secs="${2:-}"
     eb_emit_event "model.outcome" \
         "tier=$tier" \
         "model_id=$_ROUTE_MODEL_ID" \
@@ -310,7 +343,8 @@ _route_emit_outcome() {
         "input_tokens=$_ROUTE_INPUT_TOKENS" \
         "output_tokens=$_ROUTE_OUTPUT_TOKENS" \
         "cache_read_input_tokens=$_ROUTE_CACHE_READ" \
-        "cache_creation_input_tokens=$_ROUTE_CACHE_CREATION"
+        "cache_creation_input_tokens=$_ROUTE_CACHE_CREATION" \
+        "timeout_s=${secs}"
 }
 
 # ─── _route_update_ledger ─────────────────────────────────────────────────────

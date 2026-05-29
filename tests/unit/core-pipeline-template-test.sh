@@ -505,6 +505,162 @@ assert_eq "Tv3-9 _TPL_STAGE_IO_DESTS_plan exported across subshells" "file,stdou
 exported_roles="$(bash -c 'printenv _TPL_STAGE_ROLES_plan')"
 assert_eq "Tv3-9 _TPL_STAGE_ROLES_plan exported across subshells" "planner" "$exported_roles"
 
+# ─── ADR-017 (#455): per-stage router.timeout_s ──────────────────────────────
+
+# Tv3-10: router.timeout_s on build stage → accessor returns "900"
+ROUTER_TIMEOUT_TPL="$TEST_TEMP_DIR/router-timeout.yaml"
+cat > "$ROUTER_TIMEOUT_TPL" <<'EOF'
+id: router-timeout
+name: Router Timeout
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    io:
+      destinations: [file]
+    router:
+      timeout_s: 300
+  - id: build
+    gate: auto
+    roles: [builder]
+    io:
+      destinations: [file]
+    router:
+      timeout_s: 900
+EOF
+load_template "$ROUTER_TIMEOUT_TPL"
+assert_eq "Tv3-10 build router.timeout_s=900" "900" "$(template_stage_router_timeout build)"
+assert_eq "Tv3-10 plan router.timeout_s=300" "300" "$(template_stage_router_timeout plan)"
+
+# Tv3-11: no router block → accessor returns empty
+load_template "$VALID_SUBSET_TPL"
+assert_eq "Tv3-11 router.timeout_s missing → empty" "" "$(template_stage_router_timeout build)"
+
+# Tv3-12: invalid timeout_s "foo" → rc=1, error mentions stage 'build' and got: foo
+ROUTER_BAD_TPL="$TEST_TEMP_DIR/router-bad.yaml"
+cat > "$ROUTER_BAD_TPL" <<'EOF'
+id: router-bad
+name: Router Bad
+defaults:
+  strategy: fanout
+
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
+    router:
+      timeout_s: foo
+EOF
+set +e
+err_router_bad="$(load_template "$ROUTER_BAD_TPL" 2>&1)"
+rc_router_bad=$?
+set -e
+assert_eq "Tv3-12 invalid router.timeout_s rejected" "1" "$rc_router_bad"
+assert_contains "Tv3-12 error mentions stage 'build'" "$err_router_bad" "router.timeout_s for stage 'build'"
+assert_contains "Tv3-12 error mentions got: foo" "$err_router_bad" "got: foo"
+
+# Tv3-13: out-of-range high (3601) → rc=1
+ROUTER_HIGH_TPL="$TEST_TEMP_DIR/router-high.yaml"
+cat > "$ROUTER_HIGH_TPL" <<'EOF'
+id: router-high
+name: Router High
+defaults:
+  strategy: fanout
+
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
+    router:
+      timeout_s: 3601
+EOF
+set +e
+load_template "$ROUTER_HIGH_TPL" 2>/dev/null
+rc_router_high=$?
+set -e
+assert_eq "Tv3-13 router.timeout_s=3601 rejected" "1" "$rc_router_high"
+
+# Tv3-14: zero → rc=1
+ROUTER_ZERO_TPL="$TEST_TEMP_DIR/router-zero.yaml"
+cat > "$ROUTER_ZERO_TPL" <<'EOF'
+id: router-zero
+name: Router Zero
+defaults:
+  strategy: fanout
+
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
+    router:
+      timeout_s: 0
+EOF
+set +e
+load_template "$ROUTER_ZERO_TPL" 2>/dev/null
+rc_router_zero=$?
+set -e
+assert_eq "Tv3-14 router.timeout_s=0 rejected" "1" "$rc_router_zero"
+
+# Tv3-15: boundary values 1 and 3600 accepted
+ROUTER_BOUNDARY_TPL="$TEST_TEMP_DIR/router-boundary.yaml"
+cat > "$ROUTER_BOUNDARY_TPL" <<'EOF'
+id: router-boundary
+name: Router Boundary
+defaults:
+  strategy: fanout
+
+stages:
+  - id: plan
+    gate: auto
+    roles: [planner]
+    router:
+      timeout_s: 1
+  - id: build
+    gate: auto
+    roles: [builder]
+    router:
+      timeout_s: 3600
+EOF
+set +e
+load_template "$ROUTER_BOUNDARY_TPL" 2>/dev/null
+rc_router_boundary=$?
+set -e
+assert_eq "Tv3-15 boundary values accepted" "0" "$rc_router_boundary"
+assert_eq "Tv3-15 plan timeout=1" "1" "$(template_stage_router_timeout plan)"
+assert_eq "Tv3-15 build timeout=3600" "3600" "$(template_stage_router_timeout build)"
+
+# Tv3-16: _TPL_STAGE_ROUTER_TIMEOUT_* vars are exported across subshells (#448
+# regression lock — plugin subshells must inherit this).
+load_template "$ROUTER_TIMEOUT_TPL"
+exported_rtimeout="$(bash -c 'printenv _TPL_STAGE_ROUTER_TIMEOUT_build')"
+assert_eq "Tv3-16 _TPL_STAGE_ROUTER_TIMEOUT_build exported across subshells" "900" "$exported_rtimeout"
+
+# Tv3-17: future router siblings (tier_default, etc.) tolerated silently per ADR-017 §8
+ROUTER_FUTURE_TPL="$TEST_TEMP_DIR/router-future.yaml"
+cat > "$ROUTER_FUTURE_TPL" <<'EOF'
+id: router-future
+name: Router Future
+defaults:
+  strategy: fanout
+
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
+    router:
+      timeout_s: 600
+      tier_default: T3
+EOF
+set +e
+load_template "$ROUTER_FUTURE_TPL" 2>/dev/null
+rc_router_future=$?
+set -e
+assert_eq "Tv3-17 future router siblings tolerated" "0" "$rc_router_future"
+assert_eq "Tv3-17 timeout_s still parsed correctly" "600" "$(template_stage_router_timeout build)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
