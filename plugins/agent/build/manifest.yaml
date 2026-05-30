@@ -30,19 +30,25 @@ config:
   tier_default: T2
 
 inputs:
-  - name: scope_manifest
+  - id: scope_manifest
     type: file
-  - name: plan
+    source: stage:intake
+    required: true
+  - id: plan
     type: file
     path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
 
 outputs:
-  - name: diff_patch
+  - id: diff_patch
     path: "${artifact_dir}/diff.patch"
     type: patch
-  - name: build_summary
+    required: true
+  - id: build_summary
     path: "${artifact_dir}/build-summary.json"
     type: build-summary.json
+    required: true
 
 state:
   persisted: [last_files_changed, last_lines_added]

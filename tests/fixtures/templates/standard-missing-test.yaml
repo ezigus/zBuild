@@ -1,0 +1,22 @@
+id: standard-missing-test
+name: Standard Missing Test (ADR-020 keystone fixture)
+extends: null
+defaults:
+  strategy: fanout
+
+# Intentionally omits the `test` stage between `build` and `review`.
+# review's manifest declares `source: stage:test` for `test_results`, so
+# the contract validator MUST reject this template at pre-flight.
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]
+  - id: plan
+    gate: auto
+    roles: [planner]
+  - id: build
+    gate: auto
+    roles: [builder]
+  - id: review
+    gate: auto
+    roles: [reviewer]

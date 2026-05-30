@@ -7,6 +7,7 @@
     "pipeline.resume",
     "pipeline.end",
     "pipeline.abort",
+    "pipeline.preflight.fail",
     "stage.start",
     "stage.complete",
     "stage.fail",

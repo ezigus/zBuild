@@ -33,22 +33,31 @@ config:
     - block
 
 inputs:
-  - name: scope_manifest
+  - id: scope_manifest
     type: file
-  - name: plan
+    source: stage:intake
+    required: true
+  - id: plan
     type: file
     path: "${artifact_dir}/plan.json"
-  - name: diff_patch
+    source: stage:plan
+    required: true
+  - id: diff_patch
     type: file
     path: "${artifact_dir}/diff.patch"
-  - name: test_results
+    source: stage:build
+    required: true
+  - id: test_results
     type: file
     path: "${artifact_dir}/test-results.json"
+    source: stage:test
+    required: true
 
 outputs:
-  - name: review
+  - id: review
     path: "${artifact_dir}/review.json"
     type: review.json
+    required: true
 
 state:
   persisted:
