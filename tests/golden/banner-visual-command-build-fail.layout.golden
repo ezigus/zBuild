@@ -1,0 +1,6 @@
+══ stage-io: build [command] seq=1 input ═══════════════════════════════════════════ 03:25:45 UTC ══
+$ false
+══ stage-io: build [command] seq=1 output FAIL 0.5s ════════════════════════════════ 03:25:45 UTC ══
+boom
+── exit: 1 ──
+── end stage-io: build ✗ ──

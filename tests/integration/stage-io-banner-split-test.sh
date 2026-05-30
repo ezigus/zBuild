@@ -93,7 +93,8 @@ ZBUILD_STAGE_IO_FD=3 bash "$DRIVER" >/dev/null 2>/dev/null 3>"$BANNER_FD3" || tr
 banner_content="$(cat "$BANNER_FD3" 2>/dev/null || echo '')"
 
 # (1) Banner contains an input-section header BEFORE the output-section header.
-input_line="$(printf '%s\n' "$banner_content" | grep -n 'seq=1 input ──' | head -1 | cut -d: -f1)"
+# #499: I/O banner header dividers switched from ── (U+2500) to ══ (U+2550).
+input_line="$(printf '%s\n' "$banner_content" | grep -n 'seq=1 input ══' | head -1 | cut -d: -f1)"
 output_line="$(printf '%s\n' "$banner_content" | grep -n 'seq=1 output' | head -1 | cut -d: -f1)"
 end_line="$(printf '%s\n' "$banner_content" | grep -n 'end stage-io: plan' | head -1 | cut -d: -f1)"
 

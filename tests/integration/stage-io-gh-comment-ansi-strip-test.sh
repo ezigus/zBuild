@@ -91,6 +91,12 @@ assert_eq "gh body has zero ANSI escape bytes" "0" "$esc_count"
 body="$(cat "$GH_BODY_CAPTURE")"
 assert_contains "gh body contains prompt"   "$body" "PROMPT BODY"
 assert_contains "gh body contains response" "$body" "RESPONSE BODY"
+# #499: the gh_comment body is built by `_stage_io_to_stdout` (plain-text
+# assembler), which still emits ── dividers (it doesn't know about the #499 ═
+# swap that lives in the fd-2 banner emitters). Verify the body retains its
+# ── divider so an over-zealous future ANSI strip (e.g. one that nukes all
+# non-ASCII along with escapes) is caught by regression.
+assert_contains "gh body keeps ── divider (non-ASCII survives ANSI strip)" "$body" "──"
 
 # Bonus: the fd-3 banner (operator-visible) should HAVE ANSI escapes because
 # we forced colors on. That confirms color-asymmetry: banners colored,

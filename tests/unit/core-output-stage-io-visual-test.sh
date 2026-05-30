@@ -170,6 +170,53 @@ banner_f="$(cat "$fd3e")"
 assert_contains "T9 output banner has FAIL status" "$banner_f" "output FAIL"
 assert_contains "T9 end-trailer has ✗ icon for FAIL" "$banner_f" "end stage-io: build ✗"
 
+# ─── T10: #499 — stage-name escape is BLUE for plan/build/test (uniform) ────
+_reset_pending
+rm -rf "$ZBUILD_STATE_DIR/artifacts"
+fd_t10="$TEST_TEMP_DIR/t10.fd3"
+: > "$fd_t10"
+exec 3>"$fd_t10"
+for s in plan build test; do
+    ZBUILD_STAGE_IO_FORCE_COLOR=1 ZBUILD_STAGE_IO_FD=3 \
+    ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+        stage_io_begin --stage "$s" --kind llm --input "p" >/dev/null
+    ZBUILD_STAGE_IO_FORCE_COLOR=1 ZBUILD_STAGE_IO_FD=3 \
+    ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+        stage_io_end --stage "$s" --kind llm --seq "$_STAGE_IO_LAST_SEQ" \
+            --output "r" --duration-ms 1 >/dev/null
+done
+exec 3>&-
+banner_t10="$(cat "$fd_t10")"
+ESC_BLUE_T10=$'\033[38;2;0;102;255m'
+ESC_BOLD_T10=$'\033[1m'
+ESC_RESET_T10=$'\033[0m'
+for s in plan build test; do
+    assert_contains "T10 #499: stage '$s' wrapped in uniform \$BLUE+\$BOLD" \
+        "$banner_t10" "${ESC_BLUE_T10}${ESC_BOLD_T10}${s}${ESC_RESET_T10}"
+done
+
+# ─── T11: #499 — NO_COLOR strips ANSI but ═ glyph survives ──────────────────
+_reset_pending
+rm -rf "$ZBUILD_STATE_DIR/artifacts"
+fd_t11="$TEST_TEMP_DIR/t11.fd3"
+: > "$fd_t11"
+exec 3>"$fd_t11"
+# Use NO_COLOR via env, with fd 3 a plain file (banner_use_color → false anyway).
+NO_COLOR=1 ZBUILD_STAGE_IO_FD=3 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_begin --stage plan --kind llm --input "P" >/dev/null
+NO_COLOR=1 ZBUILD_STAGE_IO_FD=3 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_end --stage plan --kind llm --seq "$_STAGE_IO_LAST_SEQ" \
+        --output "R" --duration-ms 1 >/dev/null
+exec 3>&-
+banner_t11="$(cat "$fd_t11")"
+if printf '%s' "$banner_t11" | grep -q $'\x1b\\['; then
+    assert_fail "T11 NO_COLOR strips all ANSI from banner" "found ESC[ in: $banner_t11"
+else
+    assert_pass "T11 NO_COLOR strips all ANSI from banner"
+fi
+assert_contains "T11 NO_COLOR keeps ═ divider glyph" "$banner_t11" "═"
+assert_contains "T11 NO_COLOR keeps ── end-trailer glyph" "$banner_t11" "── end stage-io: plan"
+
 cleanup_test_env
 print_test_results
 exit "$FAIL"

@@ -596,3 +596,44 @@ log archives stay clean. Tests that need colored goldens set
 **Per-iteration build loop colors.** Iterations within `build` inherit the
 stage's color from the registry — there is no per-iteration override.
 Theme support is out of scope; `NO_COLOR` is the escape hatch.
+
+**Palette collapse + `LIGHT_BLUE` ═ dividers (issue #499 — amendment).**
+The original v5 per-stage color palette
+(intake=BLUE, plan=CYAN, build=YELLOW, test=PURPLE, review=GREEN,
+security-lens=RED) shipped under #492 but was found in scrollback review to
+be visual noise rather than a scan aid: the colored stage name token already
+carries identity, and rotating the surrounding hue per stage made the divider
+runs themselves compete for attention without helping the operator find
+anything. Under #499 the built-in registry collapses so every canonical stage
+maps to a single uniform `$BLUE` — stage identity is now carried only by the
+BOLD weight + the stage name token in the banner heading. The
+`register_stage_color` extension hook and the per-stage `_stage_color`
+lookup remain in place so plugins / future stages can register a bespoke
+color when there is a real reason. The unknown-stage `$CYAN` fallback
+becomes a meaningful diagnostic signal: built-ins are BLUE, anything CYAN
+is an unrecognized stage id.
+
+To preserve a sense of visual weight, #499 also introduces a new global
+color in `scripts/lib/helpers.sh` — `LIGHT_BLUE` (`\033[38;2;100;200;255m`)
+— and swaps the I/O banner header dividers from the light `─` (U+2500) to
+the medium-weight `═` (U+2550), wrapped in `LIGHT_BLUE`. The end-trailer
+`── end stage-io: <stage> <icon> ──` keeps the lighter `─` glyph and
+the `_end_color` rc-color from v4 (green on OK, red on FAIL). The result
+is a three-tier visual hierarchy on every captured pair:
+
+  - `═══ … ═══` LIGHT_BLUE — structural top of the banner
+  - stage name — BLUE + BOLD identity token
+  - `── end stage-io … ──` rc-color — lighter close
+
+Substring invariant: the asserted v4 prefix
+(`stage-io: <stage> [<kind>] seq=N <input|output>`) remains byte-identical
+because color escapes are placed BETWEEN tokens (around the stage-name
+sub-span), never inside it. Existing assertions in
+`tests/unit/core-output-stage-io-split-test.sh` stay green.
+
+`gh_comment` safety is unchanged: `_stage_io_strip_ansi` strips by pattern
+(`\x1b\[…`), so `LIGHT_BLUE` escapes are removed transparently — no
+code change was needed in `_stage_io_to_gh_comment`. Regression-guarded
+by `tests/integration/stage-io-gh-comment-ansi-strip-test.sh`, which now
+additionally asserts that the `─` glyph survives the strip (to catch a
+future over-aggressive stripper that nukes all non-ASCII bytes).
