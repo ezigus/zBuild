@@ -120,14 +120,15 @@ ZBUILD_STAGE_IO_FD=3 bash "$DRIVER" >/dev/null 2>/dev/null 3>"$BANNER_FD3" || tr
 banner="$(cat "$BANNER_FD3" 2>/dev/null || echo '')"
 
 # (1) Three iterations → three input/output pairs.
-in_count="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[llm\] seq=.* input ──' || true)"
+# #499: I/O banner header dividers switched from ── (U+2500) to ══ (U+2550).
+in_count="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[llm\] seq=.* input ══' || true)"
 out_count="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[llm\] seq=.* output ' || true)"
 assert_eq "3 input banners (one per iteration)"  "3" "$in_count"
 assert_eq "3 output banners (one per iteration)" "3" "$out_count"
 
 # (2) Subprocess-boundary: each input banner emits BEFORE its claude MARK,
 # and each output banner emits AFTER. We test iter=1 as proof of ordering.
-in_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 input ──' | head -1 | cut -d: -f1)"
+in_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 input ══' | head -1 | cut -d: -f1)"
 out_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 output ' | head -1 | cut -d: -f1)"
 if [[ -n "$in_line_1" && -n "$out_line_1" && "$in_line_1" -lt "$out_line_1" ]]; then
     assert_pass "iter=1 input < output ordering on fd 3"
@@ -141,7 +142,7 @@ fi
 # emitted ONE banner per pair (output) when the caller used 2>/dev/null —
 # this loop check catches a regression where iter>1 inputs are missing.
 for s in 2 3; do
-    in_l="$(printf '%s\n' "$banner" | grep -n "seq=${s} input ──"  | head -1 | cut -d: -f1)"
+    in_l="$(printf '%s\n' "$banner" | grep -n "seq=${s} input ══"  | head -1 | cut -d: -f1)"
     out_l="$(printf '%s\n' "$banner" | grep -n "seq=${s} output "  | head -1 | cut -d: -f1)"
     if [[ -n "$in_l" && -n "$out_l" && "$in_l" -lt "$out_l" ]]; then
         assert_pass "iter=${s} input < output ordering on fd 3"

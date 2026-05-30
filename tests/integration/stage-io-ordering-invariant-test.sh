@@ -279,7 +279,7 @@ for row in "${STAGES[@]}"; do
     #      AND that both fall between the input and output banner positions.
     #
     # We assert ordering via grep-by-line-number on the banner stream.
-    input_line="$(printf '%s\n' "$banner" | grep -n 'seq=.* input ──' | head -1 | cut -d: -f1)"
+    input_line="$(printf '%s\n' "$banner" | grep -n 'seq=.* input ══' | head -1 | cut -d: -f1)"
     output_line="$(printf '%s\n' "$banner" | grep -n 'seq=.* output ' | head -1 | cut -d: -f1)"
     if [[ -n "$input_line" && -n "$output_line" && "$input_line" -lt "$output_line" ]]; then
         assert_pass "[$stage_id] input banner precedes output banner"

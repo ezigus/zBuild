@@ -199,7 +199,8 @@ stage_io_end --stage plan --kind llm --seq "$_STAGE_IO_LAST_SEQ" --output "RESP"
     --duration-ms 10 >/dev/null 2>&1
 exec 3>&-
 s9_content="$(cat "$s9_fd3")"
-s9_input_line="$(printf '%s\n' "$s9_content" | grep -n "input ──"  | head -1 | cut -d: -f1)"
+# #499: I/O banner header dividers switched from ── to ══.
+s9_input_line="$(printf '%s\n' "$s9_content" | grep -n "input ══"  | head -1 | cut -d: -f1)"
 s9_mark_line="$(printf '%s\n' "$s9_content"  | grep -n "__BETWEEN" | head -1 | cut -d: -f1)"
 s9_output_line="$(printf '%s\n' "$s9_content" | grep -n "output OK" | head -1 | cut -d: -f1)"
 if [[ -n "$s9_input_line" && -n "$s9_mark_line" && -n "$s9_output_line" \

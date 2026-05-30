@@ -20,11 +20,12 @@ source "$_ZBUILD_SCRIPT_DIR/compat.sh"
 # without a real terminal. NO_COLOR still wins over FORCE_COLOR (POSIX-ish
 # convention: explicit opt-out beats explicit opt-in).
 if [[ -n "${NO_COLOR:-}" || ( "${FORCE_COLOR:-0}" != "1" && ! -t 1 ) ]]; then
-    CYAN=''; PURPLE=''; BLUE=''; GREEN=''; YELLOW=''; RED=''; DIM=''; BOLD=''; RESET=''
+    CYAN=''; PURPLE=''; BLUE=''; LIGHT_BLUE=''; GREEN=''; YELLOW=''; RED=''; DIM=''; BOLD=''; RESET=''
 else
     CYAN='\033[38;2;0;212;255m'
     PURPLE='\033[38;2;124;58;237m'
     BLUE='\033[38;2;0;102;255m'
+    LIGHT_BLUE='\033[38;2;100;200;255m'
     GREEN='\033[38;2;74;222;128m'
     YELLOW='\033[38;2;250;204;21m'
     RED='\033[38;2;248;113;113m'
@@ -32,7 +33,7 @@ else
     BOLD='\033[1m'
     RESET='\033[0m'
 fi
-export CYAN PURPLE BLUE GREEN YELLOW RED DIM BOLD RESET
+export CYAN PURPLE BLUE LIGHT_BLUE GREEN YELLOW RED DIM BOLD RESET
 
 info()    { echo -e "${CYAN}${BOLD}▸${RESET} $*"; }
 success() { echo -e "${GREEN}${BOLD}✓${RESET} $*"; }

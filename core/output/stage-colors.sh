@@ -28,21 +28,35 @@ _ZBUILD_STAGE_COLORS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$_ZBUILD_STAGE_COLORS_DIR/../../scripts/lib/helpers.sh"
 
-# Per-stage color map. Order chosen so adjacent pipeline stages contrast
-# visually in the operator's terminal scrollback.
+# Per-stage color map. ADR-015 §v5 (issue #499): all built-in stages map to
+# uniform brand color; per-stage variance was rejected as visual noise without
+# aiding scan. Stage identity is carried by BOLD weight + the stage name token
+# in the banner, not by hue. Registry mechanism (and `register_stage_color`
+# extensibility) is preserved so plugins / future stages can opt into bespoke
+# colors when there is a strong reason.
 declare -gA _STAGE_COLORS=(
     [intake]="$BLUE"
-    [plan]="$CYAN"
-    [build]="$YELLOW"
-    [test]="$PURPLE"
-    [review]="$GREEN"
-    [security-lens]="$RED"
+    [plan]="$BLUE"
+    [build]="$BLUE"
+    [test]="$BLUE"
+    [review]="$BLUE"
+    [security-lens]="$BLUE"
 )
 
+# register_stage_color <stage> <color_escape> — runtime extension hook.
+# Plugins / external integrations can register a custom color for a stage id
+# not in the built-in map. No-op if either arg is empty. Idempotent overwrite.
+register_stage_color() {
+    local stage="${1:-}" color="${2:-}"
+    [[ -z "$stage" ]] && return 0
+    _STAGE_COLORS[$stage]="$color"
+}
+
 # _stage_color <stage> — print the ANSI escape for a stage to stdout.
-# Unknown stages fall back to $CYAN (matches the existing `info()` palette
-# and keeps colored output non-jarring for any future stage that lands
-# before its color is registered here). Always rc=0; never errors.
+# Unknown stages fall back to $CYAN, which is now a meaningful diagnostic
+# signal: built-in stages render BLUE, anything CYAN is an unrecognized stage
+# id (typo in a template, a plugin that forgot to register, etc.). Always
+# rc=0; never errors.
 _stage_color() {
     local stage="${1:-}"
     if [[ -n "$stage" && -n "${_STAGE_COLORS[$stage]+x}" ]]; then

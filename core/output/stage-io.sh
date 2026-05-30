@@ -801,7 +801,8 @@ _stage_io_visible_len() {
 }
 
 # ─── _stage_io_dashes <n> — emit n × ─ (horizontal-bar U+2500) ───────────────
-# Empty when n <= 0. Used to right-pad the banner heading toward the timestamp.
+# Empty when n <= 0. Light divider — used by the end-trailer ("── end stage-io
+# ──") for a softer close than the heavy I/O banner header.
 _stage_io_dashes() {
     local n="${1:-0}"
     [[ "$n" -le 0 ]] && return 0
@@ -810,37 +811,63 @@ _stage_io_dashes() {
     printf '%s' "${dashes// /─}"
 }
 
+# ─── _stage_io_heavy_dashes <n> — emit n × ═ (double-bar U+2550, #499) ───────
+# Medium-weight divider used in the I/O banner header (begin + end output line
+# headings). The three-tier visual hierarchy is: ═ LIGHT_BLUE structural / ─
+# rc-colored closer / stage-name BLUE+BOLD identity (ADR-015 §v5 / #499).
+_stage_io_heavy_dashes() {
+    local n="${1:-0}"
+    [[ "$n" -le 0 ]] && return 0
+    local dashes
+    printf -v dashes '%*s' "$n" ''
+    printf '%s' "${dashes// /═}"
+}
+
 # ─── _stage_io_compose_banner — assemble heading with right-aligned timestamp ─
-# Args: <prefix_visible> <prefix_with_ansi> <timestamp_str>
+# Args: <prefix_visible> <prefix_with_ansi> <timestamp_str> [<divider_color>]
 # Strategy:
-#   visible_text = "── <prefix_visible> ──── ... ──── HH:MM:SS UTC ──"
+#   visible_text = "═══ <prefix_visible> ═══ ... ═══ HH:MM:SS UTC ═══"
 #   width        = _term_width
 #   pad          = width - len(prefix) - len(ts) - bookend chars
 # When pad <= 2 (terminal < 70 cols), degrade to the legacy format: just emit
-# the prefix without timestamp / right-alignment, returning the no-padding
-# fallback so older substring assertions keep working.
+# the prefix without timestamp / right-alignment.
+#
+# #499: I/O banner header dividers use the medium-weight ═ (U+2550) glyph,
+# wrapped in LIGHT_BLUE when colored. Bookends and the right-pad run use the
+# same glyph for visual consistency. Each ═ run is wrapped individually so
+# the COLOR escape goes around the divider, never inside the asserted prefix
+# substring ("stage-io: <stage> [...] seq=N <input|output>"). The end-trailer
+# (── end stage-io ──) keeps the lighter ─ via a separate emitter — see
+# _stage_io_stdout_end's printf.
 #
 # Prints the assembled line (no trailing newline) on stdout. Color escapes
 # pass through unchanged via the *_with_ansi* prefix.
 _stage_io_compose_banner() {
-    local prefix_visible="$1" prefix_ansi="$2" ts="$3"
+    local prefix_visible="$1" prefix_ansi="$2" ts="$3" divider_color="${4:-}"
     local width
     width="$(_term_width)"
-    # Bookend layout: `── <prefix> ` + dashes + ` <ts> ──`
-    # Fixed glyph cost: "── " (3) + " " (1) + " " (1) + " ──" (3) = 8 visible cols.
+    # Bookend layout: `══ <prefix> ` + dashes + ` <ts> ══`
+    # Fixed glyph cost: "══ " (3) + " " (1) + " " (1) + " ══" (3) = 8 visible cols.
     local fixed=8
     local pad=$(( width - ${#prefix_visible} - ${#ts} - fixed ))
-    # Use printf '%b' for the ANSI-laden prefix so backslash-encoded escape
-    # sequences in $CYAN/$BOLD/etc resolve to real escape characters. The
-    # remaining %s args (dashes, timestamp) are plain text.
+    local _reset=""
+    [[ -n "$divider_color" ]] && _reset="${RESET:-}"
     if [[ "$pad" -le 2 ]]; then
-        # Degraded: legacy heading with closing dashes only.
-        printf '── %b ──' "$prefix_ansi"
+        # Degraded: heavy bookends only, no timestamp / right-alignment.
+        printf '%b══%b %b %b══%b' "$divider_color" "$_reset" "$prefix_ansi" "$divider_color" "$_reset"
         return 0
     fi
     local dashes
-    dashes="$(_stage_io_dashes "$pad")"
-    printf '── %b %s %s ──' "$prefix_ansi" "$dashes" "$ts"
+    dashes="$(_stage_io_heavy_dashes "$pad")"
+    # Each ═ run wrapped in (divider_color … reset). Prefix carries its own
+    # color escapes via prefix_ansi. Substring invariant: tokens inside
+    # prefix_visible remain byte-identical to v4.
+    printf '%b══%b %b %b%s%b %s %b══%b' \
+        "$divider_color" "$_reset" \
+        "$prefix_ansi" \
+        "$divider_color" "$dashes" "$_reset" \
+        "$ts" \
+        "$divider_color" "$_reset"
 }
 
 # ─── _stage_io_stdout_begin — #481 input-phase banner emitter ─────────────────
@@ -866,10 +893,12 @@ _stage_io_stdout_begin() {
     # When the banner fd isn't a tty (file/pipe — tests, CI logs), strip ANSI
     # so existing substring assertions (token order: <prefix> <pad> <ts>)
     # see the literal prefix without intervening escapes.
-    local _color="" _bold="" _dim="" _reset=""
+    local _color="" _bold="" _dim="" _reset="" _light_blue=""
     if _stage_io_banner_use_color; then
         _color="$(_stage_color "$stage")"
         _bold="${BOLD:-}"; _dim="${DIM:-}"; _reset="${RESET:-}"
+        # #499: structural ═ dividers in medium-weight LIGHT_BLUE.
+        _light_blue="${LIGHT_BLUE:-}"
     fi
     local _ts _prefix_v _prefix_a
     _ts="$(_stage_io_now_short)"
@@ -883,7 +912,7 @@ _stage_io_stdout_begin() {
     # capture the banner into a string even if the caller-level redirect is
     # bypassed, because every printf below lands on fd 2 directly.
     {
-        _stage_io_compose_banner "$_prefix_v" "$_prefix_a" "$_ts"
+        _stage_io_compose_banner "$_prefix_v" "$_prefix_a" "$_ts" "$_light_blue"
         printf '\n'
         case "$kind" in
             llm)
@@ -935,11 +964,14 @@ _stage_io_stdout_end() {
     _artifact_id="$(printf '%s' "$metadata" | jq -r '.artifact // empty' 2>/dev/null || true)"
 
     # #492 v5: color the status icon (✓/✗) and right-align ts + dur on heading.
-    local _color="" _bold="" _dim="" _reset="" _green="" _red=""
+    # #499: structural ═ dividers in LIGHT_BLUE on the output-heading line; the
+    # end-trailer keeps the lighter ── (rc-colored per #492).
+    local _color="" _bold="" _dim="" _reset="" _green="" _red="" _light_blue=""
     if _stage_io_banner_use_color; then
         _color="$(_stage_color "$stage")"
         _bold="${BOLD:-}"; _dim="${DIM:-}"; _reset="${RESET:-}"
         _green="${GREEN:-}"; _red="${RED:-}"
+        _light_blue="${LIGHT_BLUE:-}"
     fi
     local _ts _prefix_v _prefix_a _icon _icon_color _end_color _status_color
     _ts="$(_stage_io_now_short)"
@@ -964,7 +996,7 @@ _stage_io_stdout_end() {
     # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
     # ${ZBUILD_STAGE_IO_FD:-2}. Mirrors _stage_io_stdout_begin; see comment there.
     {
-        _stage_io_compose_banner "$_prefix_v" "$_prefix_a" "$_ts"
+        _stage_io_compose_banner "$_prefix_v" "$_prefix_a" "$_ts" "$_light_blue"
         printf '\n'
         case "$kind" in
             llm)
@@ -988,6 +1020,7 @@ _stage_io_stdout_end() {
                 printf 'out: %s\n' "$output"
                 ;;
         esac
+        # #499: end-trailer keeps the lighter ── close (rc-colored per #492).
         printf '%b── end stage-io: %s %s ──%b\n' "$_end_color" "$stage" "$_icon" "$_reset"
     } >&"${ZBUILD_STAGE_IO_FD:-2}"
     return 0
