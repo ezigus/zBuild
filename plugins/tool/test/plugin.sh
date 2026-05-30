@@ -265,9 +265,8 @@ _test_write_result() {
     dir="$(dirname "$path")"
     mkdir -p "$dir"
 
-    local tmp_out
-    tmp_out="$(mktemp "${path}.tmp.XXXXXX")"
-
+    # #507: write via atomic_write (helpers.sh) so the manifest-declared
+    # primary output `test-results.json` passes the atomicity guard test.
     jq -n \
         --arg verdict "$verdict" \
         --argjson exit_code "$exit_code" \
@@ -285,9 +284,7 @@ _test_write_result() {
             test_output: $test_output,
             diff_applied: $diff_applied,
             test_cmd: $test_cmd
-        }' > "$tmp_out"
-
-    mv "$tmp_out" "$path"
+        }' | atomic_write "$path"
 }
 
 # ─── test_finalize ────────────────────────────────────────────────────────────

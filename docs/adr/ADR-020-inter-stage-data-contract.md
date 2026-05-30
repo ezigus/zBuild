@@ -325,3 +325,55 @@ to **Accepted** when the warn → enforce default-flip issue lands.
 - `scripts/lib/manifest-graph.sh` — shared parser.
 - `scripts/lib/lint-contract.sh` — CI lint.
 - `tests/integration/pipeline-preflight-missing-stage-test.sh` — keystone test.
+
+## Verdict convention (#507 amendment)
+
+Every stage-bound plugin's manifest MUST mark exactly ONE entry in `outputs:`
+with `primary: true`. The primary output is the canonical artifact the
+runner reads to derive the stage-complete indicator (`✓ ⚠ ✗`).
+
+### `outputs[].primary` schema
+
+```yaml
+outputs:
+  - id: review                       # required
+    path: ${artifact_dir}/review.json  # required (path or templated path)
+    type: review.json                # required
+    required: true                   # required (true|false)
+    primary: true                    # NEW (#507) — exactly one per manifest
+```
+
+Enforced by `scripts/lib/lint-contract.sh` (fail-closed; `npm run lint`).
+
+### Per-stage verdict source
+
+| Stage         | Primary artifact            | Verdict field            |
+| ------------- | --------------------------- | ------------------------ |
+| intake        | scope-manifest.md           | rc-fallback (presence)   |
+| plan          | plan.json                   | rc-fallback (no field)   |
+| build         | build-summary.json          | `.verdict` (schema v3) — falls back to `.scope_violation` for v≤2 |
+| test          | test-results.json           | `.verdict`               |
+| review        | review.json                 | `.verdict`               |
+| security-lens | security-findings.json      | informational — always pass on presence (ADR-019) |
+| pr            | pr-url.txt                  | rc-fallback (presence)   |
+
+### Verdict → indicator class table
+
+(See ADR-019 Implementation Notes for the canonical table — `pass | warn |
+fail | unknown`.)
+
+### Events
+
+#507 registers three new event types (`config/event-schema.json`):
+
+- `stage.verdict.missing` — declared primary artifact absent or malformed.
+- `stage.verdict.stale_artifact` — resume found the stage marked complete
+  in state but the primary artifact is no longer on disk.
+- `pipeline.indicator.unknown_verdict` — `.verdict` field carried an
+  unrecognised value (out-of-table); indicator degrades to `⚠`.
+
+### State (`stage_verdicts`)
+
+The runner persists `.stage_verdicts[<stage>]` (one of
+`pass|warn|fail|unknown`) alongside `.stage_statuses` for observability
+and resume. Schema-additive; older state files are upgraded in place.

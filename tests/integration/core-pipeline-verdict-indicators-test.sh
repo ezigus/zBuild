@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# Integration: runner stage-complete indicator reflects verdict (#507).
+# Uses synthetic plugins that write a primary artifact with a controlled verdict.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
+
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+
+print_test_header "runner verdict-driven indicators (#507)"
+setup_test_env "verdict-indicators"
+
+PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+STATE_DIR="$TEST_TEMP_DIR/state"
+EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
+export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
+export ZBUILD_STATE_DIR="$STATE_DIR"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
+export ZBUILD_EVENTS_JSONL="$EVENTS_JSONL"
+export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
+
+# ─── Helper: synthetic plugin that writes test-results.json with verdict X ───
+# _make_verdict_plugin <stage_id> <kind> <output_relpath> <json> [role]
+_make_verdict_plugin() {
+    local id="$1" kind="$2" out_rel="$3" json="$4" role="${5:-}"
+    local dir="$PLUGINS_ROOT/$kind/$id"
+    mkdir -p "$dir"
+    local fn; fn="${id//-/_}_run"
+    # Agent plugins must declare redaction in requires.core (registry rule).
+    local core_list="[event-bus]"
+    if [[ "$kind" == "agent" ]]; then
+        core_list="[redaction, event-bus]"
+    fi
+    {
+        cat <<EOF
+id: $id
+name: $id
+kind: $kind
+version: 0.0.1
+hooks:
+  run: $fn
+requires:
+  core: $core_list
+EOF
+        if [[ -n "$role" ]]; then
+            cat <<EOF
+provides:
+  role: $role
+EOF
+        fi
+        cat <<EOF
+inputs: []
+outputs:
+  - id: ${id}_out
+    path: \${artifact_dir}/$out_rel
+    type: json
+    required: true
+    primary: true
+EOF
+    } > "$dir/manifest.yaml"
+    cat > "$dir/plugin.sh" <<EOF
+${fn}() {
+    local state_file="\$2"
+    local state_dir; state_dir="\$(dirname "\$state_file")"
+    local art_dir="\$state_dir/artifacts"
+    mkdir -p "\$art_dir"
+    printf '%s' '$json' > "\$art_dir/$out_rel"
+    return 0
+}
+EOF
+}
+
+_run_pipeline() {
+    rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+    bash "$RUNNER" --issue 83 2>"$TEST_TEMP_DIR/runner.err" >/dev/null
+}
+
+# ─── Scenario 1: all-pass → every line ends with ✓ ───────────────────────────
+print_test_section "all-pass: every stage line ends with ✓"
+rm -rf "$PLUGINS_ROOT"
+_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
+_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
+_make_verdict_plugin build  agent build-summary.json '{"verdict":"pass","scope_violation":false}' builder
+_make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
+_make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
+set +e; _run_pipeline; rc=$?; set -e
+if [[ $rc -ne 0 ]]; then
+    echo "--- runner.err on failure ---" >&2
+    cat "$TEST_TEMP_DIR/runner.err" >&2 || true
+    echo "--- end ---" >&2
+fi
+assert_eq "all-pass: runner exits 0" "0" "$rc"
+
+err="$(cat "$TEST_TEMP_DIR/runner.err")"
+for stage in intake plan build test review; do
+    if grep -E "✓.*Stage.*${stage}.*complete" <<<"$err" >/dev/null; then
+        assert_pass "all-pass: ✓ on $stage line"
+    else
+        assert_fail "all-pass: ✓ on $stage line" "stage line not found"
+    fi
+done
+
+# Verdict attribute on stage.complete events
+all_pass_with_verdict=$(grep '"stage.complete"' "$EVENTS_JSONL" | grep -c '"pass"' || true)
+[[ "$all_pass_with_verdict" -ge 5 ]] \
+    && assert_pass "stage.complete carries verdict=pass for each stage" \
+    || assert_fail "stage.complete carries verdict=pass for each stage" "got $all_pass_with_verdict"
+
+# stage_verdicts persisted in state
+verdict_intake="$(jq -r '.stage_verdicts.intake // empty' "$STATE_DIR/pipeline-state.json")"
+assert_eq "state.stage_verdicts.intake == pass" "pass" "$verdict_intake"
+
+# ─── Scenario 2: test verdict=fail → ✗ on test line ──────────────────────────
+print_test_section "test verdict=fail produces ✗"
+rm -rf "$PLUGINS_ROOT"
+_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
+_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
+_make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builder
+_make_verdict_plugin test   tool  test-results.json  '{"verdict":"fail"}' tester
+_make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
+set +e; _run_pipeline; rc=$?; set -e
+err="$(cat "$TEST_TEMP_DIR/runner.err")"
+if grep -E "✗.*Stage.*test.*complete" <<<"$err" >/dev/null; then
+    assert_pass "test verdict=fail -> ✗ on test line"
+else
+    assert_fail "test verdict=fail -> ✗ on test line" "$(grep -i 'test.*complete' <<<"$err" || echo 'no line')"
+fi
+
+# ─── Scenario 3: build scope_violation=true → ✗ on build line ────────────────
+print_test_section "build scope_violation=true produces ✗"
+rm -rf "$PLUGINS_ROOT"
+_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
+_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
+_make_verdict_plugin build  agent build-summary.json '{"scope_violation":true}' builder
+_make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
+_make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
+set +e; _run_pipeline; rc=$?; set -e
+err="$(cat "$TEST_TEMP_DIR/runner.err")"
+if grep -E "✗.*Stage.*build.*complete" <<<"$err" >/dev/null; then
+    assert_pass "build scope_violation=true -> ✗ on build line"
+else
+    assert_fail "build scope_violation=true -> ✗ on build line" "$(grep -i 'build.*complete' <<<"$err" || echo 'no line')"
+fi
+
+# ─── Scenario 4: review request_changes → ⚠ on review line ───────────────────
+print_test_section "review request_changes produces ⚠"
+rm -rf "$PLUGINS_ROOT"
+_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
+_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
+_make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builder
+_make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
+_make_verdict_plugin review agent review.json '{"verdict":"request_changes"}' reviewer
+set +e; _run_pipeline; rc=$?; set -e
+err="$(cat "$TEST_TEMP_DIR/runner.err")"
+if grep -E "⚠.*Stage.*review.*complete" <<<"$err" >/dev/null; then
+    assert_pass "review request_changes -> ⚠ on review line"
+else
+    assert_fail "review request_changes -> ⚠ on review line" "$(grep -i 'review.*complete' <<<"$err" || echo 'no line')"
+fi
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))

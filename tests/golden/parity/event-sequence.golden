@@ -5,6 +5,7 @@ stage.start
 plugin.run.start
 plugin.run.complete
 plugin.run.complete
+stage.verdict.missing
 stage.complete
 stage.start
 plugin.run.start
@@ -46,5 +47,6 @@ plugin.run.start
 plugin.pr_open.branch_fallback_used
 plugin.run.complete
 plugin.run.complete
+stage.verdict.missing
 stage.complete
 pipeline.end

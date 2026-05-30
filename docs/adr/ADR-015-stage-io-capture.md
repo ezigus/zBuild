@@ -729,3 +729,20 @@ cases), `tests/unit/core-pipeline-runner-stage-banner-goldens-test.sh`
 (8 byte-exact goldens under `tests/golden/runner-stage-banners/`),
 plus integration coverage in
 `tests/integration/core-pipeline-runner-test.sh` (I1/I1b/I2).
+
+### v5.1 — Verdict-driven stage indicator glyphs (#507)
+
+The `▸ Running stage:` / `✓ Stage <name> complete` lines emitted by the
+runner (see `core/pipeline/runner.sh:490-527`) now derive the trailing
+glyph + color from the plugin's manifest-declared primary output verdict
+instead of unconditionally painting green on rc=0.
+
+| Class   | Glyph | Color  |
+| ------- | ----- | ------ |
+| pass    | `✓`   | GREEN  |
+| warn    | `⚠`   | YELLOW |
+| fail    | `✗`   | RED    |
+
+The stage name keeps its registry color (assigned in §v5); only the
+leading glyph + indicator color change. See ADR-019 / ADR-020 amendments
+for the verdict table and primary-output declaration rules.

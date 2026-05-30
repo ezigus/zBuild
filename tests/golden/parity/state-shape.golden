@@ -16,5 +16,13 @@
     "review": "complete",
     "test": "complete"
   },
+  "stage_verdicts": {
+    "build": "pass",
+    "intake": "warn",
+    "plan": "pass",
+    "pr": "warn",
+    "review": "warn",
+    "test": "fail"
+  },
   "status": "complete"
 }
