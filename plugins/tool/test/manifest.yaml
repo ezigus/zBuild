@@ -21,6 +21,7 @@ requires:
   plugins: []
 
 provides:
+  role: tester
   artifact_type: test-results.json
   schema_version: 1
 

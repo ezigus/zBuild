@@ -60,6 +60,7 @@
     "intake.override.closed_issue_allowed",
     "plan.scope.violation",
     "review.scope.violation",
+    "review.test_status.coerced",
     "router.max_iterations.override_ignored",
     "loop.iteration",
     "loop.iteration.error",

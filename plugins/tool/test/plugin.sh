@@ -139,6 +139,18 @@ _test_run_inner() {
         failed="$(printf '%s' "$raw_output" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1 || echo 0)"
     fi
 
+    # ── #485 silent-failure guard: a no-op run that exits 0 with zero
+    # parsed pass/fail counts is NOT a passing test suite — it is a
+    # misconfigured test command (e.g. `true`, `:`, an empty script).
+    # Emit verdict=error so the review stage fails closed instead of
+    # silently approving a build that was never tested.
+    if [[ "$verdict" == "pass" && "$passed" -eq 0 && "$failed" -eq 0 ]]; then
+        verdict="error"
+        if [[ -z "$test_output" ]]; then
+            test_output="no-op test run: test_cmd exited 0 but produced no pass/fail counts (passed=0, failed=0)"
+        fi
+    fi
+
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$test_cmd"

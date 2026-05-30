@@ -79,6 +79,21 @@ SCOPE_MANIFEST="$REPO_ROOT/tests/fixtures/redaction/scope-tests-only.md"
 ARTIFACT_DIR="$TEST_TEMP_DIR/artifacts"
 mkdir -p "$ARTIFACT_DIR"
 
+# ─── Helper: install a passing test-results.json fixture (#485) ──────────────
+# Without this fixture, _review_derive_test_status returns "unknown" and the
+# review plugin coerces approve → request_changes (fail-closed contract,
+# ADR-019). Tests that assert a non-`request_changes` outcome must call this
+# helper FIRST. Tests asserting request_changes/block already get the right
+# verdict either way.
+_install_passing_test_results() {
+    cat > "$FIXTURE_DIR/test-results.json" <<'EOF'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":5,"failed":0,"test_output":"5 passed","diff_applied":true,"test_cmd":"true"}
+EOF
+}
+_remove_test_results() {
+    rm -f "$FIXTURE_DIR/test-results.json"
+}
+
 # ─── Helper: install a mock claude binary returning canned JSON ───────────────
 # route_to_model calls the claude binary internally; we mock it here.
 # apply_scope_redaction mock above emits redaction.applied, satisfying the
@@ -102,6 +117,7 @@ assert_eq "ZBUILD_PLUGIN_KIND=agent after init" "agent" "${ZBUILD_PLUGIN_KIND:-}
 
 # ─── Test 2: approve verdict ───────────────────────────────────────────────────
 print_test_section "2. approve verdict"
+_install_passing_test_results
 _install_claude_mock '{"verdict":"approve","confidence":0.95,"issues":[],"summary":"LGTM"}'
 
 OUTPUT_APPROVE="$ARTIFACT_DIR/review-approve.json"
@@ -176,6 +192,7 @@ assert_eq "block: verdict=block" "block" "$v"
 # object out. Without the helper, this exact dogfood shape produced a
 # defaulted request_changes verdict.
 print_test_section "4b. #478: prose-prefixed JSON parsed correctly"
+_install_passing_test_results
 _install_claude_mock 'Now I have a complete picture.
 
 {"verdict":"approve","confidence":0.9,"issues":[],"summary":"prose-prefix ok"}'
@@ -295,6 +312,7 @@ assert_eq "cleanup: rc=0" "0" "$rc"
 
 # ─── Test 8: prompt hygiene + ADR-018 tool-use invitation (#469) ─────────────
 print_test_section "8. prompt invites Read, forbids Edit/Write/Bash (#469)"
+_install_passing_test_results
 
 # File-based capture: route_to_model runs inside $() in _review_run_inner,
 # so variable-based capture is lost to the subshell — use a file.
@@ -427,6 +445,7 @@ fi
 
 # ─── Test 10: happy-path verdict round-trip regression (#469) ────────────────
 print_test_section "10. happy-path verdict round-trip (#469)"
+_install_passing_test_results
 
 # Same shadow route_to_model is in effect (returns valid approve JSON).
 OUTPUT_HAPPY="$ARTIFACT_DIR/review-happy.json"
@@ -447,6 +466,7 @@ assert_eq "happy-path: verdict=approve" "approve" "$v"
 
 # ─── Test 11: audit enabled — out-of-scope Read emits violation (#469) ───────
 print_test_section "11. audit mode emits review.scope.violation for out-of-scope Read (#469)"
+_install_passing_test_results
 
 # Truncate events log so we can count violations from this test only.
 EVENTS_SNAPSHOT_LINES_T11="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
@@ -505,6 +525,7 @@ fi
 
 # ─── Test 11b: audit disabled (default) — no audit event ─────────────────────
 print_test_section "11b. audit disabled by default — no audit event (#469)"
+_install_passing_test_results
 
 EVENTS_SNAPSHOT_LINES_T11B="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
 
@@ -547,6 +568,7 @@ fi
 # side-channel file. This locks the contract across the actual subprocess
 # boundary that route_to_model crosses in production.
 print_test_section "12. subprocess-boundary: envelope mode round-trip (#469)"
+_install_passing_test_results
 
 # Reset router-internal guard so route_to_model goes through the real path
 # (we previously shadowed it as a shell function in tests 8/10/11/11b).
@@ -596,6 +618,205 @@ if [[ "${sub_viol:-0}" -ge 1 ]]; then
     assert_pass "sub-boundary: violation emitted via real envelope unwrap path"
 else
     assert_fail "sub-boundary: expected violation event for src/auth.sh"
+fi
+
+# ─── Test 13: #485 — passing test-results lets approve survive ───────────────
+print_test_section "13. #485: test_status=passed → approve survives"
+
+# Reset to function shadow returning approve (test 11b/12 may have changed it).
+unset -f route_to_model 2>/dev/null || true
+unset _ZBUILD_ROUTER_LOADED
+# shellcheck source=../../../../core/router/route.sh
+source "$REPO_ROOT/core/router/route.sh"
+
+_install_passing_test_results
+_install_claude_mock '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"all good"}'
+
+OUTPUT_T13="$ARTIFACT_DIR/review-485-t13.json"
+EVENTS_SNAPSHOT_T13="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T13" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#485 t13: rc=0" "0" "$rc"
+v="$(jq -r '.verdict' "$OUTPUT_T13")"
+assert_eq "#485 t13: verdict stays approve when tests pass" "approve" "$v"
+NEW_T13="$(tail -n +$((EVENTS_SNAPSHOT_T13 + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+coerce_t13="$(printf '%s\n' "$NEW_T13" | jq -c 'select(.type == "review.test_status.coerced")' 2>/dev/null | grep -c . || true)"
+if [[ "${coerce_t13:-0}" -eq 0 ]]; then
+    assert_pass "#485 t13: no coercion event when tests pass"
+else
+    assert_fail "#485 t13: unexpected coercion event ($coerce_t13)"
+fi
+
+# ─── Test 14: #485 — missing test-results.json + approve → coerced ───────────
+print_test_section "14. #485: missing test-results + approve → request_changes"
+_remove_test_results
+_install_claude_mock '{"verdict":"approve","confidence":0.95,"issues":[],"summary":"LGTM"}'
+
+OUTPUT_T14="$ARTIFACT_DIR/review-485-t14.json"
+EVENTS_SNAPSHOT_T14="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T14" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#485 t14: rc=0" "0" "$rc"
+v="$(jq -r '.verdict' "$OUTPUT_T14")"
+assert_eq "#485 t14: approve coerced to request_changes" "request_changes" "$v"
+NEW_T14="$(tail -n +$((EVENTS_SNAPSHOT_T14 + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+coerce_t14="$(printf '%s\n' "$NEW_T14" | jq -c 'select(.type == "review.test_status.coerced")' 2>/dev/null | grep -c . || true)"
+if [[ "${coerce_t14:-0}" -ge 1 ]]; then
+    assert_pass "#485 t14: review.test_status.coerced event emitted"
+else
+    assert_fail "#485 t14: missing coercion event"
+fi
+ts_t14="$(printf '%s\n' "$NEW_T14" | jq -r 'select(.type == "review.test_status.coerced") | .data.test_status' 2>/dev/null | head -1)"
+assert_eq "#485 t14: test_status=unknown" "unknown" "$ts_t14"
+# Issues list includes the synthetic coercion note.
+note_t14="$(jq '[.issues[] | select(test("coerced to request_changes"; "i"))] | length' "$OUTPUT_T14")"
+assert_gt "#485 t14: coercion note injected into issues" "$note_t14" "0"
+
+# ─── Test 15a: #485 — verdict=fail + LLM approve → coerced ───────────────────
+print_test_section "15a. #485: tests failed + LLM approve → request_changes"
+cat > "$FIXTURE_DIR/test-results.json" <<'EOF'
+{"schema_version":1,"verdict":"fail","exit_code":1,"passed":2,"failed":3,"test_output":"2 passed, 3 failed","diff_applied":true,"test_cmd":"npm test"}
+EOF
+_install_claude_mock '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"looks ok"}'
+
+OUTPUT_T15A="$ARTIFACT_DIR/review-485-t15a.json"
+EVENTS_SNAPSHOT_T15A="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T15A" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#485 t15a: rc=0" "0" "$rc"
+v="$(jq -r '.verdict' "$OUTPUT_T15A")"
+assert_eq "#485 t15a: approve → request_changes when tests failed" "request_changes" "$v"
+NEW_T15A="$(tail -n +$((EVENTS_SNAPSHOT_T15A + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+ts_t15a="$(printf '%s\n' "$NEW_T15A" | jq -r 'select(.type == "review.test_status.coerced") | .data.test_status' 2>/dev/null | head -1)"
+assert_eq "#485 t15a: test_status=failed" "failed" "$ts_t15a"
+
+# ─── Test 15b: #485 — verdict=fail + LLM request_changes stays unchanged ─────
+print_test_section "15b. #485: tests failed + LLM request_changes stays"
+_install_claude_mock '{"verdict":"request_changes","confidence":0.6,"issues":["small issue"],"summary":"needs work"}'
+
+OUTPUT_T15B="$ARTIFACT_DIR/review-485-t15b.json"
+EVENTS_SNAPSHOT_T15B="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T15B" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#485 t15b: rc=0" "0" "$rc"
+v="$(jq -r '.verdict' "$OUTPUT_T15B")"
+assert_eq "#485 t15b: request_changes stays" "request_changes" "$v"
+NEW_T15B="$(tail -n +$((EVENTS_SNAPSHOT_T15B + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+coerce_t15b="$(printf '%s\n' "$NEW_T15B" | jq -c 'select(.type == "review.test_status.coerced")' 2>/dev/null | grep -c . || true)"
+if [[ "${coerce_t15b:-0}" -eq 0 ]]; then
+    assert_pass "#485 t15b: no coercion for request_changes verdict"
+else
+    assert_fail "#485 t15b: unexpected coercion event ($coerce_t15b)"
+fi
+
+# ─── Test 15c: #485 — verdict=fail + LLM block stays block (floor) ───────────
+print_test_section "15c. #485: tests failed + LLM block stays block"
+_install_claude_mock '{"verdict":"block","confidence":0.99,"issues":["critical"],"summary":"dangerous"}'
+
+OUTPUT_T15C="$ARTIFACT_DIR/review-485-t15c.json"
+EVENTS_SNAPSHOT_T15C="$(wc -l < "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T15C" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#485 t15c: rc=0" "0" "$rc"
+v="$(jq -r '.verdict' "$OUTPUT_T15C")"
+assert_eq "#485 t15c: block stays block (floor not demoted)" "block" "$v"
+NEW_T15C="$(tail -n +$((EVENTS_SNAPSHOT_T15C + 1)) "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+coerce_t15c="$(printf '%s\n' "$NEW_T15C" | jq -c 'select(.type == "review.test_status.coerced")' 2>/dev/null | grep -c . || true)"
+if [[ "${coerce_t15c:-0}" -eq 0 ]]; then
+    assert_pass "#485 t15c: no coercion for block verdict"
+else
+    assert_fail "#485 t15c: block was coerced (should be floor)"
+fi
+
+# ─── Test 16: #485 — high confidence + tests unknown → still coerced ─────────
+print_test_section "16. #485: high confidence + tests unknown → safety wins"
+_remove_test_results
+_install_claude_mock '{"verdict":"approve","confidence":0.99,"issues":[],"summary":"very confident"}'
+
+OUTPUT_T16="$ARTIFACT_DIR/review-485-t16.json"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T16" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#485 t16: rc=0" "0" "$rc"
+v="$(jq -r '.verdict' "$OUTPUT_T16")"
+assert_eq "#485 t16: high-confidence approve still coerced when tests unknown" "request_changes" "$v"
+# Confidence is preserved verbatim — coercion does not modify it.
+conf_t16="$(jq -r '.confidence' "$OUTPUT_T16")"
+assert_eq "#485 t16: confidence preserved (0.99)" "0.99" "$conf_t16"
+
+# ─── Test 17: #485 — prompt declares the test-results requirement ────────────
+print_test_section "17. #485: prompt declares 'approve requires tests passed' rule"
+_install_passing_test_results
+_CAPTURED_REVIEW_PROMPT_485="$TEST_TEMP_DIR/captured-review-prompt-485.txt"
+: > "$_CAPTURED_REVIEW_PROMPT_485"
+route_to_model() {
+    printf '%s' "${2:-}" > "$_CAPTURED_REVIEW_PROMPT_485"
+    printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}'
+    return 0
+}
+
+OUTPUT_T17="$ARTIFACT_DIR/review-485-t17.json"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_T17" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+set -e
+captured_485="$(cat "$_CAPTURED_REVIEW_PROMPT_485")"
+if echo "$captured_485" | grep -qi "approve verdict requires"; then
+    assert_pass "#485 t17: prompt contains 'approve verdict requires' rule"
+else
+    assert_fail "#485 t17: prompt missing 'approve verdict requires' rule"
 fi
 
 cleanup_test_env
