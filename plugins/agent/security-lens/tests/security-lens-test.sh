@@ -323,6 +323,27 @@ else
     assert_fail "R9 (#476): expected --output-format json in argv" "got: $(tr '\n' ' ' < "$ARGV_CAPTURE")"
 fi
 
+# ─── R10 (#483): security-lens tags capture with metadata.artifact ───────────
+# ADR-018 producer-side renderer dispatch. The "security-lens" renderer is NOT
+# yet registered (follow-up issue); render_artifact passthrough + fallback
+# event is acceptable. This test pins the env-var opt-in symmetric with
+# plan/review so the wiring is exercised. Shadows route_to_model in-process so
+# we can introspect the exported env var at call time.
+_CAPTURED_SECLENS_ARTIFACT="$TEST_TEMP_DIR/captured-seclens-artifact.txt"
+: > "$_CAPTURED_SECLENS_ARTIFACT"
+route_to_model() {
+    printf '%s' "${ZBUILD_ROUTER_ARTIFACT_ID:-unset}" > "$_CAPTURED_SECLENS_ARTIFACT"
+    printf '%s\n' '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+    return 0
+}
+OUTPUT_R10="$TEST_TEMP_DIR/findings_r10.json"
+set +e
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R10" "$TEST_TEMP_DIR" >/dev/null 2>&1
+set -e
+captured_seclens_artifact="$(cat "$_CAPTURED_SECLENS_ARTIFACT" 2>/dev/null || true)"
+assert_eq "R10 (#483): security-lens exports ZBUILD_ROUTER_ARTIFACT_ID=security-lens around route_to_model" \
+    "security-lens" "$captured_seclens_artifact"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

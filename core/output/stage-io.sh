@@ -478,12 +478,25 @@ _stage_io_to_stdout() {
                 _stage_io_head "$input" "$tail_lines"
             fi
             printf '\n── output ──\n'
-            # Pretty-print JSON outputs so a 4KB minified response renders as
-            # a readable indented block instead of one giant line. Falls back
-            # to the raw text when the content isn't JSON.
-            local _pretty_out
-            _pretty_out="$(_stage_io_pretty_print "$output")"
-            _stage_io_tail "$_pretty_out" "$tail_lines"
+            # ADR-018 (#483): symmetric output-side dispatch. When the producer
+            # plugin tagged the capture with metadata.artifact (e.g. plan,
+            # review), route the output through the renderer registry so the
+            # producer's OWN banner shows markdown instead of raw JSON. The
+            # #470 wave only handled the input side (consumer-facing). Falls
+            # through to the pretty-print branch on unknown id (render_artifact
+            # passthrough + stage.io.render.fallback event).
+            if [[ -n "$_artifact_id" ]]; then
+                local _rendered_output
+                _rendered_output="$(render_artifact "$_artifact_id" "$output" 2>/dev/null)"
+                _stage_io_tail "$_rendered_output" "$tail_lines"
+            else
+                # Pretty-print JSON outputs so a 4KB minified response renders as
+                # a readable indented block instead of one giant line. Falls back
+                # to the raw text when the content isn't JSON.
+                local _pretty_out
+                _pretty_out="$(_stage_io_pretty_print "$output")"
+                _stage_io_tail "$_pretty_out" "$tail_lines"
+            fi
             printf '\n'
             ;;
         command)

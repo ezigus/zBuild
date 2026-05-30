@@ -106,11 +106,23 @@ _security_lens_run_inner() {
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1
+    # ADR-018 (#483): tag the router's capture symmetrically with plan/review.
+    # The "security-lens" renderer is NOT yet registered — render_artifact will
+    # passthrough and emit stage.io.render.fallback (acceptable; follow-up
+    # issue tracks adding render_security_lens_md). Tagging now keeps the
+    # opt-in surface symmetric across all Pattern 1 stages.
+    local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
+    export ZBUILD_ROUTER_ARTIFACT_ID=security-lens
     raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)" || router_rc=$?
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
         export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+    fi
+    if [[ "$_prev_artifact_env" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_ARTIFACT_ID
+    else
+        export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
     fi
 
     # ─── Parse: strip fences, extract .findings, validate array ───────────

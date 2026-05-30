@@ -499,3 +499,24 @@ follow-up to `#476`):
   test suites gain a "#478 prose-prefix" regression case plus prompt
   assertions for the new sentence. `plan-integration-test.sh` adds variant 3
   to lock the parser-side extraction across the subprocess boundary.
+
+Producer-side banner rendering parity (`#483`, follow-up to `#470`/`#476`):
+the renderer registry dispatch at `core/output/stage-io.sh` was input-side
+only — the consumer's input banner rendered through `render_artifact`, but
+the producer's own output banner fell through to the pretty-print path and
+showed raw JSON. `#483` closes the asymmetry with a new env-var
+`ZBUILD_ROUTER_ARTIFACT_ID` (symmetric to `#476`'s
+`ZBUILD_ROUTER_JSON_OUTPUT`). When set, `route_to_model` appends
+`--metadata artifact=<id>` to the `capture_stage_io` call, and
+`_stage_io_to_stdout`'s `llm` branch now dispatches `render_artifact "$id"
+"$output"` BEFORE the pretty-print fallback (mirror of the existing input
+branch from `#470`). Plan exports `=plan`, review `=review`, security-lens
+`=security-lens`; each wraps with the same `_prev_artifact_env="${VAR-__UNSET__}"`
+save/restore pattern as `#476`. The `security-lens` renderer is not yet
+registered — `render_artifact` passthrough + `stage.io.render.fallback`
+event are intentional until a follow-up adds `render_security_lens_md`.
+Coverage: `tests/unit/core-output-stage-io-render-test.sh` adds B5–B7 for
+the output dispatch; `tests/unit/agent-stages-artifact-metadata-symmetry-test.sh`
+(NEW) is the cross-plugin parity lock; `tests/integration/agent-stage-banner-rendered-markdown-test.sh`
+(NEW) crosses the subprocess boundary with the real envelope-mock claude on
+PATH and captures fd 3 to assert markdown headings in the OUTPUT banner.
