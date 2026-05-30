@@ -74,6 +74,34 @@ out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
 # When artifact metadata absent, input is shown as-is (not via renderer).
 assert_contains "B4 no metadata.artifact → raw input" "$out" '{"a":1}'
 
+# ─── B5 (#483): metadata.artifact also dispatches the OUTPUT side ────────────
+# The #470 wave only handled input. Producer-side tagging (#483) needs the
+# output branch to render too, otherwise plan/review's own banner shows raw
+# JSON. Lock the new dispatch in the same shape as B1.
+plan_output_json='{"title":"Out plan","goal":"render output"}'
+rec="$(_make_record build llm "in" "$plan_output_json" '{"artifact":"plan"}')"
+out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
+assert_contains "B5 output rendered as markdown heading" "$out" "# Plan: Out plan"
+assert_contains "B5 output rendered Goal field" "$out" "**Goal:** render output"
+# Original raw JSON should NOT appear verbatim in the output section.
+if printf '%s' "$out" | sed -n '/── output ──/,/── end stage-io/p' | grep -qF '{"title":"Out plan"'; then
+    assert_fail "B5 raw JSON not in output section" "raw JSON leaked"
+else
+    assert_pass "B5 raw JSON not in output section"
+fi
+
+# ─── B6 (#483): unknown artifact id on OUTPUT → passthrough (no error) ───────
+rec="$(_make_record plan llm "in" "raw output body" '{"artifact":"nope-unknown"}')"
+out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
+assert_contains "B6 unknown artifact id falls through on output" "$out" "raw output body"
+
+# ─── B7 (#483): no metadata.artifact → output uses pretty-print path ─────────
+rec="$(_make_record plan llm "in" '{"a":1}' '{}')"
+out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
+# When artifact metadata absent, output still renders (raw or pretty); JSON
+# stays present. This locks the negative half of B5: no-tag → no render call.
+assert_contains "B7 no metadata.artifact → output unchanged content" "$out" '"a": 1'
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -66,6 +66,17 @@ route_to_model() {
     # ZBUILD_CURRENT_STAGE is unset — e.g. ad-hoc CLI invocations).
     # Capture failure must not fail the router (hot path) — best-effort.
     if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
+        # ADR-018 (#483): producer-side artifact tagging. When the calling
+        # plugin sets ZBUILD_ROUTER_ARTIFACT_ID (mirror of #476's
+        # ZBUILD_ROUTER_JSON_OUTPUT pattern), append metadata.artifact=<id>
+        # to the capture so the stage-io banner routes both input AND output
+        # through the renderer registry. Without this, the producer stage's
+        # own output banner shows raw JSON — only the consumer's input banner
+        # benefits from the #470 dispatch.
+        local -a _capture_meta_extra=()
+        if [[ -n "${ZBUILD_ROUTER_ARTIFACT_ID:-}" ]]; then
+            _capture_meta_extra+=( --metadata "artifact=$ZBUILD_ROUTER_ARTIFACT_ID" )
+        fi
         capture_stage_io \
             --stage "$ZBUILD_CURRENT_STAGE" \
             --kind llm \
@@ -77,6 +88,7 @@ route_to_model() {
             --metadata "output_tokens=${_ROUTE_OUTPUT_TOKENS:-0}" \
             --metadata "cache_read=${_ROUTE_CACHE_READ:-0}" \
             --metadata "cache_creation=${_ROUTE_CACHE_CREATION:-0}" \
+            "${_capture_meta_extra[@]}" \
             >/dev/null || true
     fi
 

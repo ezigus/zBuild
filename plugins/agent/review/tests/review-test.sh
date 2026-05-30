@@ -304,10 +304,14 @@ _CAPTURED_REVIEW_PROMPT="$TEST_TEMP_DIR/captured-review-prompt.txt"
 # Shadow route_to_model to capture prompt arg and return a canned approve verdict
 # Also capture ZBUILD_ROUTER_JSON_OUTPUT state for the #476 envelope-mode invariant.
 _CAPTURED_REVIEW_ENVELOPE="$TEST_TEMP_DIR/captured-review-envelope.txt"
+_CAPTURED_REVIEW_ARTIFACT="$TEST_TEMP_DIR/captured-review-artifact.txt"
 : > "$_CAPTURED_REVIEW_ENVELOPE"
+: > "$_CAPTURED_REVIEW_ARTIFACT"
 route_to_model() {
     printf '%s' "${2:-}" > "$_CAPTURED_REVIEW_PROMPT"
     printf '%s' "${ZBUILD_ROUTER_JSON_OUTPUT:-unset}" > "$_CAPTURED_REVIEW_ENVELOPE"
+    # #483: capture artifact-id env so we can assert review tagged the capture.
+    printf '%s' "${ZBUILD_ROUTER_ARTIFACT_ID:-unset}" > "$_CAPTURED_REVIEW_ARTIFACT"
     printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}'
     return 0
 }
@@ -330,6 +334,11 @@ assert_eq "hygiene: rc=0" "0" "$rc"
 captured_review_envelope="$(cat "$_CAPTURED_REVIEW_ENVELOPE")"
 assert_eq "review exports ZBUILD_ROUTER_JSON_OUTPUT=1 on default path (#476)" \
     "1" "$captured_review_envelope"
+
+# #483: artifact-id tag is producer-side renderer dispatch
+captured_review_artifact="$(cat "$_CAPTURED_REVIEW_ARTIFACT")"
+assert_eq "review exports ZBUILD_ROUTER_ARTIFACT_ID=review around route_to_model (#483)" \
+    "review" "$captured_review_artifact"
 
 captured_prompt="$(cat "$_CAPTURED_REVIEW_PROMPT")"
 

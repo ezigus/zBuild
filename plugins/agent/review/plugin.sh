@@ -197,6 +197,10 @@ REVIEW_PROMPT
     local _audit_enabled=0 _audit_tool_uses_file=""
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1
+    # ADR-018 (#483): tag the router's capture so review's own banner renders
+    # the review.json output via render_review_md (mirror #476 save/restore).
+    local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
+    export ZBUILD_ROUTER_ARTIFACT_ID=review
     if [[ "${ZBUILD_REVIEW_AUDIT_TOOL_USE:-0}" == "1" ]]; then
         _audit_enabled=1
         _audit_tool_uses_file="$artifact_dir/review-tool-uses.json"
@@ -208,6 +212,11 @@ REVIEW_PROMPT
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
         export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+    fi
+    if [[ "$_prev_artifact_env" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_ARTIFACT_ID
+    else
+        export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
     fi
     if [[ $_audit_enabled -eq 1 ]]; then
         unset ZBUILD_ROUTER_TOOL_USES_FILE

@@ -259,11 +259,20 @@ PLAN_PROMPT
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1
+    # ADR-018 (#483): tag the router's capture so plan's own banner renders
+    # the plan.json output via render_plan_md (mirror #476 save/restore).
+    local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
+    export ZBUILD_ROUTER_ARTIFACT_ID=plan
     raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)" || router_rc=$?
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
         export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+    fi
+    if [[ "$_prev_artifact_env" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_ARTIFACT_ID
+    else
+        export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
     fi
 
     # ─── Parse: strip fences, validate JSON with .steps array ───────────────

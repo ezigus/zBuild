@@ -103,6 +103,50 @@ assert_eq "variant 3 (#478): plan.json parsed via parser-side helper" "1" "$v3_s
 v3_violations="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "variant 3 (#478): no scope violations on in-scope payload" "0" "$v3_violations"
 
+# ─── Variant 4 (#483): producer-side OUTPUT banner renders markdown ──────────
+# When plan opts into ZBUILD_ROUTER_ARTIFACT_ID=plan, the router appends
+# metadata.artifact=plan to capture_stage_io. The stage-io output branch now
+# dispatches render_plan_md, so plan's own banner shows "# Plan: ..." instead
+# of raw JSON.
+: > "$ZBUILD_EVENTS_JSONL"
+printf '%s\n' '{"schema_version":1,"title":"Banner Title","goal":"render output banner","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
+
+# Enable stage-io capture for the "plan" stage with stdout destination.
+# The template-loader exports _TPL_STAGE_IO_DESTS_<safe_id> when a template
+# is loaded; we set it directly here to bypass needing a full template load.
+export ZBUILD_CURRENT_STAGE=plan
+export _TPL_STAGE_IO_DESTS_plan="stdout"
+# Capture the stage-io banner: open fd 3 to a file.
+BANNER_OUT="$TEST_TEMP_DIR/banner-v4.txt"
+: > "$BANNER_OUT"
+exec 3>"$BANNER_OUT"
+export ZBUILD_STAGE_IO_FD=3
+
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+exec 3>&-
+unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_plan
+
+assert_eq "variant 4 (#483): plan_run still rc=0 with banner capture on" "0" "$rc"
+banner_content="$(cat "$BANNER_OUT" 2>/dev/null || true)"
+if printf '%s' "$banner_content" | grep -qF "# Plan: Banner Title"; then
+    assert_pass "variant 4 (#483): OUTPUT banner contains rendered markdown heading"
+else
+    assert_fail "variant 4 (#483): OUTPUT banner missing markdown heading" \
+        "got: $(printf '%s' "$banner_content" | head -40)"
+fi
+# The output banner section must not contain the raw JSON title key.
+banner_output_section="$(printf '%s' "$banner_content" | sed -n '/── output ──/,/── end stage-io/p')"
+if printf '%s' "$banner_output_section" | grep -qF '"title":"Banner Title"'; then
+    assert_fail "variant 4 (#483): raw JSON leaked into output section" \
+        "got: $(printf '%s' "$banner_output_section" | head -20)"
+else
+    assert_pass "variant 4 (#483): raw JSON absent from output section"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

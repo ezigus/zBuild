@@ -67,14 +67,19 @@ apply_scope_redaction() {
 # so variable-based capture is lost to the subshell — use a file instead.
 _CAPTURED_PROMPT_FILE="$TEST_TEMP_DIR/captured-plan-prompt.txt"
 _CAPTURED_ENVELOPE_FILE="$TEST_TEMP_DIR/captured-plan-envelope.txt"
+_CAPTURED_ARTIFACT_FILE="$TEST_TEMP_DIR/captured-plan-artifact.txt"
 : > "$_CAPTURED_PROMPT_FILE"
 : > "$_CAPTURED_ENVELOPE_FILE"
+: > "$_CAPTURED_ARTIFACT_FILE"
 route_to_model() {
     # Args: tier prompt [flags...]
     printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
     # #476: capture envelope-mode state at call time so we can assert
     # plan opted in (ADR-018 Pattern 1 §"JSON envelope is mandatory…").
     printf '%s' "${ZBUILD_ROUTER_JSON_OUTPUT:-unset}" > "$_CAPTURED_ENVELOPE_FILE"
+    # #483: capture artifact-id env at call time so we can assert plan
+    # tagged the capture so its own banner renders via render_plan_md.
+    printf '%s' "${ZBUILD_ROUTER_ARTIFACT_ID:-unset}" > "$_CAPTURED_ARTIFACT_FILE"
     printf '%s\n' "$CANNED_PLAN"
     return 0
 }
@@ -103,6 +108,13 @@ assert_file_exists "plan.json artifact created" "$ARTIFACTS_DIR/plan.json"
 captured_envelope="$(cat "$_CAPTURED_ENVELOPE_FILE" 2>/dev/null || true)"
 assert_eq "plan exports ZBUILD_ROUTER_JSON_OUTPUT=1 around route_to_model (#476)" \
     "1" "$captured_envelope"
+
+# ─── Test 2c (#483): plan tags capture with metadata.artifact=plan ───────────
+# ADR-018 producer-side renderer dispatch — the plugin's own banner must
+# render via render_plan_md, not raw JSON.
+captured_artifact="$(cat "$_CAPTURED_ARTIFACT_FILE" 2>/dev/null || true)"
+assert_eq "plan exports ZBUILD_ROUTER_ARTIFACT_ID=plan around route_to_model (#483)" \
+    "plan" "$captured_artifact"
 
 # ─── Test 3: plan.json has required fields ────────────────────────────────────
 plan_json_content="$(cat "$ARTIFACTS_DIR/plan.json" 2>/dev/null || echo '{}')"
