@@ -689,3 +689,43 @@ path-only masker on a body the LLM never sees.
 `review.numstat.truncated`) — the formatter accepts `--event-prefix
 <stage>` and inserts the literal `numstat` segment so existing build
 assertions stay byte-identical.
+
+**Stage boundary timestamps (issue #508 — amendment).** The runner's three
+stage-boundary lines (`core/pipeline/runner.sh::_render_stage_divider`,
+the `▸ Running stage: X` line, and the `✓/✗ Stage X complete/failed`
+lines) now carry wall-clock timestamps so operators can see *when* each
+stage began and ended, plus elapsed duration:
+
+  - **Heavy divider** — gains a right-aligned `HH:MM:SS UTC` stamp,
+    mirroring the `_stage_io_compose_banner` right-alignment idiom. Width
+    math (no bookend glyphs in this layout): `left_bar = (width - len(label)
+    - len(ts) - 1) / 2`; `mid_bar = width - left_bar - len(label) - len(ts)
+    - 1`. When `mid_bar <= 2` (very narrow terminals) the divider degrades
+    to the legacy symmetric format (no timestamp) so layout stays readable.
+  - **Running line** — appended `  (started HH:MM:SS UTC)` in `${DIM}`.
+    Two-space separator before the paren matches the metadata-trailer
+    convention used by stage-io banner footers.
+  - **Complete line** — appended `  (finished HH:MM:SS UTC · <N.Ns>)`
+    in `${DIM}`. The `·` (U+00B7) separator matches the stage-io banner
+    footer. Sub-minute durations format as `<N.N>s` (mirrors
+    `_stage_io_render_duration`); `>= 60 s` formats as `<m>m<ss>s` so a
+    slow stage doesn't surface as e.g. `127.4s`.
+  - **Fail line** — `Stage X failed (rc=N, finished HH:MM:SS UTC · <dur>)`.
+    The timestamp stays `${DIM}`, not red — the clock isn't the failure;
+    the prefix `✗`/red carried by `error()` already signals rc.
+
+The duration source is a new runner-local associative array
+`_RUNNER_STAGE_START_MS` populated immediately before each
+`_render_stage_divider` call and read at the complete/fail sites. The
+clock primitive is `_runner_now_ms` / `_runner_now_short`, both of which
+honor the *same* `ZBUILD_STAGE_IO_NOW_MS_OVERRIDE` env var used by
+`_stage_io_now_ms` / `_stage_io_now_short` — single test contract; the
+runner does NOT introduce a new override name. Defensive fallbacks:
+empty / non-numeric clock → `??:??:?? UTC`; missing start-time cache →
+`?s`. Color handling: the timestamp is plain text outside color escapes,
+so `NO_COLOR=1` naturally preserves it. Tests:
+`tests/unit/core-pipeline-runner-stage-timestamps-test.sh` (30 unit
+cases), `tests/unit/core-pipeline-runner-stage-banner-goldens-test.sh`
+(8 byte-exact goldens under `tests/golden/runner-stage-banners/`),
+plus integration coverage in
+`tests/integration/core-pipeline-runner-test.sh` (I1/I1b/I2).

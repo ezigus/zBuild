@@ -1,0 +1,1 @@
+[38;2;248;113;113m[1m✗[0m Stage build failed (rc=1, finished 03:25:45 UTC · 0.5s)
