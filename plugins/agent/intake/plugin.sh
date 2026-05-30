@@ -412,6 +412,10 @@ intake_run() {
             local fetched="" gh_rc=0 _had_errexit=0
             [[ $- == *e* ]] && _had_errexit=1
             set +e
+            # #491: do NOT redirect run_captured_command's stderr — the
+            # command-kind stage-io input banner writes to fd 2 (default
+            # ZBUILD_STAGE_IO_FD) and 2>/dev/null would swallow it, breaking
+            # the ADR-015 §v4 input-before-action ordering contract.
             fetched="$(run_captured_command intake gh issue view "$issue" \
                 --json title,body \
                 --jq '(.title // "") as $t
@@ -419,7 +423,7 @@ intake_run() {
                       | if ($t | length) == 0 then ""
                         elif ($b | length) == 0 then $t
                         else $t + "\n\n" + $b
-                        end' 2>/dev/null)"
+                        end')"
             gh_rc=$?
             [[ $_had_errexit -eq 1 ]] && set -e
             if [[ $gh_rc -eq 0 && -n "$fetched" ]]; then

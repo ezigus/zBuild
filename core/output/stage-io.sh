@@ -40,6 +40,39 @@ source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/redaction/scope-redaction.sh"
 # shellcheck source=../../scripts/lib/artifact-render.sh
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/scripts/lib/artifact-render.sh"
 
+# ─── _stage_io_validate_fd — refuse 0/1 and require an open fd ────────────────
+# #491 §v4: the banner fd MUST NOT collide with stdin (0) or the action's
+# stdout (1). Routing the banner to fd 1 would interleave it with $() captures
+# and corrupt downstream parsing; routing to fd 0 is nonsensical. Default is
+# fd 2 (stderr), which the chokepoint's caller-level redirect already targets.
+# Called once at module load time so the failure shows up at source-time, not
+# at the moment a stage tries to emit a banner.
+_stage_io_validate_fd() {
+    local fd="${ZBUILD_STAGE_IO_FD:-2}"
+    if [[ ! "$fd" =~ ^[0-9]+$ ]]; then
+        error "ZBUILD_STAGE_IO_FD must be a non-negative integer; got '$fd'"
+        return 2
+    fi
+    if [[ "$fd" == "0" || "$fd" == "1" ]]; then
+        error "ZBUILD_STAGE_IO_FD=$fd is forbidden (0=stdin, 1=stdout would collide with action capture); use fd 2 (default) or a dedicated >=3 fd"
+        return 2
+    fi
+    # Verify the fd is actually open in the caller's shell. `>&"$fd"` succeeds
+    # only if fd is open for write. Defensive guard wrapped in a subshell so a
+    # closed fd error doesn't leak to the caller's terminal.
+    if ! ( : >&"$fd" ) 2>/dev/null; then
+        error "ZBUILD_STAGE_IO_FD=$fd is not open for write in this shell"
+        return 2
+    fi
+    return 0
+}
+
+# Run validation exactly once per process at module load. The outer guard at
+# the top of this file (`_ZBUILD_STAGE_IO_LOADED`) ensures we don't re-validate
+# on re-source. Failure here aborts the source via `return 2` so the caller
+# sees an immediate, actionable error instead of a silently swallowed banner.
+_stage_io_validate_fd || return $?
+
 # ─── _stage_io_now_ms — millisecond clock with override hook ──────────────────
 # Used by stage_io_begin/_end for deterministic golden snapshots.
 # When ZBUILD_STAGE_IO_NOW_MS_OVERRIDE is set, returns its value verbatim
@@ -683,24 +716,31 @@ _stage_io_stdout_begin() {
 
     input="$(_stage_io_strip_ansi "$input")"
 
-    printf '── stage-io: %s [%s] seq=%s input ──\n' "$stage" "$kind" "$seq"
-    case "$kind" in
-        llm)
-            if [[ -n "$artifact_id" ]]; then
-                local _rendered
-                _rendered="$(render_artifact "$artifact_id" "$input" 2>/dev/null)"
-                _stage_io_head "$_rendered" "$tail_lines"
-            else
-                _stage_io_head "$input" "$tail_lines"
-            fi
-            ;;
-        command)
-            _stage_io_render_command_argv "$input"
-            ;;
-        computed)
-            printf 'in: %s\n' "$input"
-            ;;
-    esac
+    # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
+    # ${ZBUILD_STAGE_IO_FD:-2}. The caller-level redirect in stage_io_begin is
+    # belt; this is suspenders — a caller that wraps the action in $(...) cannot
+    # capture the banner into a string even if the caller-level redirect is
+    # bypassed, because every printf below lands on fd 2 directly.
+    {
+        printf '── stage-io: %s [%s] seq=%s input ──\n' "$stage" "$kind" "$seq"
+        case "$kind" in
+            llm)
+                if [[ -n "$artifact_id" ]]; then
+                    local _rendered
+                    _rendered="$(render_artifact "$artifact_id" "$input" 2>/dev/null)"
+                    _stage_io_head "$_rendered" "$tail_lines"
+                else
+                    _stage_io_head "$input" "$tail_lines"
+                fi
+                ;;
+            command)
+                _stage_io_render_command_argv "$input"
+                ;;
+            computed)
+                printf 'in: %s\n' "$input"
+                ;;
+        esac
+    } >&"${ZBUILD_STAGE_IO_FD:-2}"
     return 0
 }
 
@@ -732,30 +772,34 @@ _stage_io_stdout_end() {
     local _artifact_id
     _artifact_id="$(printf '%s' "$metadata" | jq -r '.artifact // empty' 2>/dev/null || true)"
 
-    printf '── stage-io: %s [%s] seq=%s output %s %s ──\n' "$stage" "$kind" "$seq" "$status" "$dur"
-    case "$kind" in
-        llm)
-            if [[ -n "$_artifact_id" ]]; then
-                local _rendered_output
-                _rendered_output="$(render_artifact "$_artifact_id" "$output" 2>/dev/null)"
-                _stage_io_tail "$_rendered_output" "$tail_lines"
-            else
-                local _pretty_out
-                _pretty_out="$(_stage_io_pretty_print "$output")"
-                _stage_io_tail "$_pretty_out" "$tail_lines"
-            fi
-            ;;
-        command)
-            local _pretty_cmd_out
-            _pretty_cmd_out="$(_stage_io_pretty_print "$output")"
-            _stage_io_tail "$_pretty_cmd_out" "$tail_lines"
-            printf '── exit: %s ──\n' "${exit_code:-?}"
-            ;;
-        computed)
-            printf 'out: %s\n' "$output"
-            ;;
-    esac
-    printf '── end stage-io: %s ──\n' "$stage"
+    # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
+    # ${ZBUILD_STAGE_IO_FD:-2}. Mirrors _stage_io_stdout_begin; see comment there.
+    {
+        printf '── stage-io: %s [%s] seq=%s output %s %s ──\n' "$stage" "$kind" "$seq" "$status" "$dur"
+        case "$kind" in
+            llm)
+                if [[ -n "$_artifact_id" ]]; then
+                    local _rendered_output
+                    _rendered_output="$(render_artifact "$_artifact_id" "$output" 2>/dev/null)"
+                    _stage_io_tail "$_rendered_output" "$tail_lines"
+                else
+                    local _pretty_out
+                    _pretty_out="$(_stage_io_pretty_print "$output")"
+                    _stage_io_tail "$_pretty_out" "$tail_lines"
+                fi
+                ;;
+            command)
+                local _pretty_cmd_out
+                _pretty_cmd_out="$(_stage_io_pretty_print "$output")"
+                _stage_io_tail "$_pretty_cmd_out" "$tail_lines"
+                printf '── exit: %s ──\n' "${exit_code:-?}"
+                ;;
+            computed)
+                printf 'out: %s\n' "$output"
+                ;;
+        esac
+        printf '── end stage-io: %s ──\n' "$stage"
+    } >&"${ZBUILD_STAGE_IO_FD:-2}"
     return 0
 }
 
@@ -891,6 +935,14 @@ _stage_io_redact_outbound() {
 }
 
 # ─── _stage_io_to_gh_comment <record_json> ───────────────────────────────────
+# #491 §v4 fd-asymmetry note: the stdout-destination banner writes to fd
+# ${ZBUILD_STAGE_IO_FD:-2} (stderr by default — never captured by $()), but the
+# gh_comment renderer builds its body via $() capture of _stage_io_to_stdout
+# (fd 1). This is intentional: the gh_comment body is *content* that must be
+# assembled as a string for the GitHub API call, whereas the stdout-banner is
+# *operator-visible logging* that must survive callers wrapping the action in
+# $(). Do not collapse this asymmetry — moving the gh_comment renderer to fd 2
+# would make the body unavailable for the gh CLI invocation. See ADR-015 §v4.
 _stage_io_to_gh_comment() {
     local record="$1"
 

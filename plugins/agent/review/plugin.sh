@@ -239,7 +239,8 @@ REVIEW_PROMPT
         : > "$_audit_tool_uses_file"
         export ZBUILD_ROUTER_TOOL_USES_FILE="$_audit_tool_uses_file"
     fi
-    raw_response="$(route_to_model "$tier" "$redacted_prompt" 2>/dev/null)" || router_rc=$?
+    # #491: do NOT redirect route_to_model's stderr — see ADR-015 §v4.
+    raw_response="$(route_to_model "$tier" "$redacted_prompt")" || router_rc=$?
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
