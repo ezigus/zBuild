@@ -39,8 +39,9 @@ source "$_BUILD_ROOT/core/output/stage-io.sh"
 # ADR-018 (#470): artifact renderer registry for inter-stage markdown.
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_BUILD_ROOT/scripts/lib/artifact-render.sh"
-# shellcheck source=../../../scripts/lib/artifact-render.sh
-source "$_BUILD_ROOT/scripts/lib/artifact-render.sh"
+# #506: shared numstat banner formatter (also used by review).
+# shellcheck source=../../../scripts/lib/numstat-format.sh
+source "$_BUILD_ROOT/scripts/lib/numstat-format.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 build_stage_init() {
@@ -371,86 +372,26 @@ BUILD_PROMPT
 }
 
 # _build_path_in_scope <path> <allowed_files_array_name>
-# Prefix match: an allowed path covers itself and any descendants. Returns 0
-# (in scope) or 1 (violation).
+# Thin wrapper around the shared _numstat_path_in_scope helper (#506).
 _build_path_in_scope() {
-    local path="$1"
-    local -n _allowed_ref="$2"
-    local allowed
-    for allowed in "${_allowed_ref[@]}"; do
-        [[ -z "$allowed" ]] && continue
-        # Exact match
-        [[ "$path" == "$allowed" ]] && return 0
-        # Directory prefix (allowed=core/ → path=core/foo.sh in scope)
-        if [[ "$allowed" == */ ]]; then
-            [[ "$path" == "${allowed}"* ]] && return 0
-        else
-            # Allowed is a file or implicit dir; treat as prefix when followed by /
-            [[ "$path" == "${allowed}/"* ]] && return 0
-        fi
-    done
-    return 1
+    _numstat_path_in_scope "$@"
 }
 
 # ─── _build_format_numstat ──────────────────────────────────────────────────
-# Args:
-#   $1 = raw numstat output (multi-line: "<adds>\t<dels>\t<path>")
-#   $2 = allowed_files array name (nameref) — paths outside scope are masked
-# Stdout: formatted banner body. Prints per-line "+A -R path" then a
-#   "total: N files, +X -Y" footer. Caps at 50 lines and appends a truncation
-#   hint when exceeded. Emits build.numstat.truncated when truncated.
-# Returns: 0 always. The count of files (untrucated) is exported via
-#   _BUILD_NUMSTAT_FILES_COUNT for caller metadata.
+# Thin wrapper around the shared format_numstat (#506). Delegates to the
+# extracted helper with build's defaults (event prefix=build, full-at
+# pointer=build-summary.json) and mirrors _NUMSTAT_FILES_COUNT into the
+# legacy _BUILD_NUMSTAT_FILES_COUNT name the caller still reads.
 _BUILD_NUMSTAT_MAX_LINES=50
 _BUILD_NUMSTAT_FILES_COUNT=0
 _build_format_numstat() {
     local raw="$1"
-    # Use a distinct nameref name to avoid the "circular name reference"
-    # warning when we forward to _build_path_in_scope (which also uses
-    # `local -n _fmt_allowed_ref=...`). Bash flags same-name namerefs as circular.
-    local -n _fmt_allowed_ref="$2"
-    local total_files=0 total_add=0 total_del=0
-    local shown=0
-    local -a out_lines=()
-    if [[ -n "$raw" ]]; then
-        while IFS=$'\t' read -r adds dels path; do
-            [[ -z "$path" ]] && continue
-            total_files=$((total_files + 1))
-            # Binary files in numstat: "-\t-\tpath". Render as "bin bin <path>".
-            local add_n=0 del_n=0
-            if [[ "$adds" =~ ^[0-9]+$ ]]; then add_n="$adds"; fi
-            if [[ "$dels" =~ ^[0-9]+$ ]]; then del_n="$dels"; fi
-            total_add=$((total_add + add_n))
-            total_del=$((total_del + del_n))
-            # Path redaction: out-of-scope → marker. Only filter when the
-            # allowed list is non-empty (otherwise leave paths verbatim so the
-            # operator still sees something useful).
-            local display_path="$path"
-            if [[ ${#_fmt_allowed_ref[@]} -gt 0 ]]; then
-                if ! _build_path_in_scope "$path" _fmt_allowed_ref; then
-                    display_path="<out-of-scope-context>"
-                fi
-            fi
-            if [[ $shown -lt $_BUILD_NUMSTAT_MAX_LINES ]]; then
-                out_lines+=("+${adds} -${dels}  ${display_path}")
-                shown=$((shown + 1))
-            fi
-        done <<< "$raw"
-    fi
-    _BUILD_NUMSTAT_FILES_COUNT="$total_files"
-
-    local line
-    for line in "${out_lines[@]}"; do
-        printf '%s\n' "$line"
-    done
-    if [[ $total_files -gt $_BUILD_NUMSTAT_MAX_LINES ]]; then
-        local more=$(( total_files - _BUILD_NUMSTAT_MAX_LINES ))
-        printf '... and %d more files (see build-summary.json)\n' "$more"
-        emit_event "build.numstat.truncated" "plugin=build" \
-            "count=$total_files" "shown=$_BUILD_NUMSTAT_MAX_LINES" \
-            >/dev/null 2>&1 || true
-    fi
-    printf 'total: %d files, +%d -%d\n' "$total_files" "$total_add" "$total_del"
+    local allowed_name="$2"
+    # event-prefix=build → emits "build.numstat.truncated" (stable name).
+    format_numstat "$raw" "$allowed_name" \
+        --event-prefix "build" \
+        --full-at "build-summary.json"
+    _BUILD_NUMSTAT_FILES_COUNT="$_NUMSTAT_FILES_COUNT"
     return 0
 }
 

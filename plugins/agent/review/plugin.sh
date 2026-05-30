@@ -28,6 +28,9 @@ source "$_REVIEW_ROOT/core/event-bus/event-bus.sh"
 source "$_REVIEW_ROOT/core/router/route.sh"
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_REVIEW_ROOT/scripts/lib/artifact-render.sh"
+# #506: shared numstat banner formatter (operator-banner override input).
+# shellcheck source=../../../scripts/lib/numstat-format.sh
+source "$_REVIEW_ROOT/scripts/lib/numstat-format.sh"
 
 # Valid verdict values per manifest config.valid_verdicts
 _REVIEW_VALID_VERDICTS="approve request_changes block"
@@ -239,8 +242,27 @@ REVIEW_PROMPT
         : > "$_audit_tool_uses_file"
         export ZBUILD_ROUTER_TOOL_USES_FILE="$_audit_tool_uses_file"
     fi
+
+    # ── #506: numstat banner override ───────────────────────────────────────
+    # The review LLM needs the full diff (above), but the operator-visible
+    # stage_io banner should show a compact numstat-style file-change
+    # summary, NOT every diff hunk. Compute `git diff <merge-base> HEAD
+    # --numstat` and format it via the shared formatter, then export
+    # ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE so _stage_io_stdout_begin uses
+    # it for the on-screen banner. The persisted artifact + LLM prompt
+    # are unchanged.
+    local _prev_banner_override="${ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE-__UNSET__}"
+    _review_set_banner_override "$scope_manifest" "$diff_patch_path"
+
     # #491: do NOT redirect route_to_model's stderr — see ADR-015 §v4.
     raw_response="$(route_to_model "$tier" "$redacted_prompt")" || router_rc=$?
+
+    # Restore env immediately after route returns.
+    if [[ "$_prev_banner_override" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE
+    else
+        export ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE="$_prev_banner_override"
+    fi
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
@@ -382,6 +404,69 @@ REVIEW_PROMPT
         "verdict=$verdict" \
         "issues_count=$issues_count" \
         "router_rc=$router_rc"
+    return 0
+}
+
+# ─── _review_set_banner_override ────────────────────────────────────────────
+# #506: Compute a numstat-style file-change summary for the operator-visible
+# stage_io banner and export it via ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE. The
+# review LLM still receives the full diff via the redacted prompt — this
+# override ONLY swaps the on-screen banner body.
+#
+# Args:
+#   $1 = scope_manifest path (for the allowlist; reconstructed from `+` lines
+#        the same way _review_audit_tool_use does)
+#   $2 = diff_patch_path     (used as the --full-at pointer in the
+#        truncation hint so operators can grep where the full diff lives)
+#
+# Strategy:
+#   - Resolve merge-base against the default branch (origin/main, then main,
+#     then HEAD~1). If none resolves, fall back to `git diff HEAD --numstat`.
+#   - Format via shared format_numstat with --event-prefix review so a
+#     truncation fires as `review.numstat.truncated`.
+#   - Wrap the body in `── changed files ──` heading + a trailing blank line
+#     so the override is visually distinct from the raw-prompt body.
+#
+# Fail-soft: any git error → empty override (banner falls back to raw prompt).
+_review_set_banner_override() {
+    local scope_manifest="$1"
+    local diff_patch_path="$2"
+
+    # Reconstruct allowlist from scope manifest `+` lines.
+    local -a _allowed_files=()
+    if [[ -n "$scope_manifest" && -f "$scope_manifest" ]]; then
+        local _line
+        while IFS= read -r _line; do
+            [[ -z "$_line" ]] && continue
+            _allowed_files+=( "$_line" )
+        done < <(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$scope_manifest" 2>/dev/null || true)
+    fi
+
+    # Resolve a merge-base ref. Best-effort; never propagate git errors.
+    local _base="" _candidate
+    for _candidate in "origin/main" "main" "HEAD~1"; do
+        if git rev-parse --verify "$_candidate" >/dev/null 2>&1; then
+            _base="$(git merge-base "$_candidate" HEAD 2>/dev/null || true)"
+            [[ -n "$_base" ]] && break
+        fi
+    done
+
+    local _raw=""
+    if [[ -n "$_base" ]]; then
+        _raw="$(git diff "$_base" HEAD --numstat 2>/dev/null || true)"
+    fi
+    if [[ -z "$_raw" ]]; then
+        _raw="$(git diff HEAD --numstat 2>/dev/null || true)"
+    fi
+
+    # Format. Empty _raw → formatter still emits a "total: 0 files…" footer
+    # which is the honest signal to the operator.
+    local _formatted
+    _formatted="$(format_numstat "$_raw" _allowed_files \
+        --event-prefix "review" \
+        --full-at "${diff_patch_path:-diff.patch}")"
+
+    export ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE=$'── changed files ──\n'"$_formatted"
     return 0
 }
 

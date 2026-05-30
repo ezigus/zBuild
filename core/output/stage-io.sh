@@ -898,6 +898,18 @@ _stage_io_stdout_begin() {
     tail_lines="$(template_stage_io_tail_lines "$stage" 2>/dev/null || true)"
     [[ -z "$tail_lines" ]] && tail_lines=40
 
+    # #506: operator-banner input override. When set, the on-screen banner
+    # uses this value as .input INSTEAD of the (potentially huge) raw prompt.
+    # The persisted artifact record still receives the full prompt — only the
+    # rendered banner body is substituted. Used by the review stage to show
+    # a numstat file-change summary while the LLM still gets the full diff.
+    # Also clears artifact_id so the override body bypasses the registry
+    # renderer (which would otherwise re-process the already-formatted text).
+    if [[ -n "${ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE:-}" ]]; then
+        input="${ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE}"
+        artifact_id=""
+    fi
+
     input="$(_stage_io_strip_ansi "$input")"
 
     # #492 v5: build a colored heading with right-aligned HH:MM:SS UTC.

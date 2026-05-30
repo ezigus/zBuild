@@ -641,3 +641,51 @@ future over-aggressive stripper that nukes all non-ASCII bytes).
 **Implementation Note — banner-vs-payload divergence in loops (issue #505).**
 For loop callers (`route_to_model_loop`, ADR-018 Pattern 2), the `stage_io_begin --input` string MAY diverge from the actual LLM payload starting at iter 2. The banner's `--input` carries an operator-facing deduped pointer
 (`[static prompt: same as iter 1, N lines, sha=…]` + `[diff: see ── changed-files ── summary below …]`), while the artifact `.input` field — and the `claude -p` argv — continue to carry the full prompt. This divergence is enabled by a new optional `stage_io_begin --persist-input <path>` flag (`core/output/stage-io.sh`): when set, the artifact record reads its `.input` from that file rather than the `--input` string. Default behavior — for callers that don't pass `--persist-input` — is byte-identical to v5; plan / review / security-lens callers are untouched. The ordering contract (begin emits before LLM call, end after) is preserved unchanged; only the banner's CONTENT shape changes. See ADR-018 §Pattern 2.5 for the loop-side dedupe rules.
+
+### v5 addendum — Operator-banner input override + review numstat (issue #506)
+
+The review stage's input to the LLM is the full diff (the LLM needs it to
+judge correctness). The operator-visible banner does not — every diff hunk
+on every PR is noise. #506 introduces a producer-side override knob that
+lets a stage swap the banner body without disturbing the persisted artifact
+or the prompt that actually reaches the model.
+
+**Knob:** `ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE` (string, env). When set,
+`_stage_io_stdout_begin` substitutes its value for `.input` before any
+renderer dispatch — and also clears the local `artifact_id` so the registry
+renderer does not re-process the already-formatted text. The persisted
+JSON record (`state/artifacts/stage-io/<stage>-<seq>.json`) keeps the
+full original input verbatim — only the on-screen banner body is swapped.
+
+**Review numstat shape.** The review plugin sources `scripts/lib/numstat-format.sh`
+(extracted from `plugins/agent/build/plugin.sh` in the same PR), computes
+`git diff <merge-base> HEAD --numstat` against the closest of
+`origin/main` → `main` → `HEAD~1`, formats via the shared
+`format_numstat` helper with `--event-prefix review` and `--full-at
+<diff.patch path>`, then wraps the body in a `── changed files ──`
+heading. The override is exported around the `route_to_model` call and
+restored immediately after (mirror of the `ZBUILD_ROUTER_JSON_OUTPUT` /
+`ZBUILD_ROUTER_ARTIFACT_ID` save/restore pattern already in the plugin).
+
+**Why a producer-side env knob and not a `--banner-input` route_to_model
+flag?** route_to_model is the chokepoint that calls `stage_io_begin`, but
+its signature is intentionally minimal (tier + prompt). Adding a banner
+override flag would push presentation concerns into the router. The env
+knob keeps the router signature stable, and the consumer (`_stage_io_stdout_begin`)
+already centralizes all banner presentation logic — making it the right
+place for the substitution.
+
+**Scope-redaction interaction.** The banner body is NOT piped through
+`apply_scope_redaction` a second time. The shared formatter masks
+out-of-scope paths to `<out-of-scope-context>` via its allowlist
+parameter, and the allowlist is reconstructed from the same `+` lines in
+`scope-manifest.md` that `_review_audit_tool_use` already parses. This
+keeps the redaction chokepoint (`core/redaction/`) the single source of
+truth for the LLM-bound prompt while the banner uses a lighter,
+path-only masker on a body the LLM never sees.
+
+**Stable event names.** Truncation events keep their historical
+`<stage>.numstat.truncated` shape (`build.numstat.truncated`,
+`review.numstat.truncated`) — the formatter accepts `--event-prefix
+<stage>` and inserts the literal `numstat` segment so existing build
+assertions stay byte-identical.
