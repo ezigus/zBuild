@@ -16,6 +16,7 @@ plugin.run.complete
 plugin.finalize.complete
 plugin.init.start
 redaction.applied
+review.test_status.coerced
 plugin.run.complete
 plugin.finalize.complete
 plugin.init.start

@@ -32,6 +32,37 @@ source "$_REVIEW_ROOT/scripts/lib/artifact-render.sh"
 # Valid verdict values per manifest config.valid_verdicts
 _REVIEW_VALID_VERDICTS="approve request_changes block"
 
+# ─── _review_derive_test_status ──────────────────────────────────────────────
+# #485: Map the test plugin's test-results.json into one of three
+# review-side states:
+#   passed   — tests ran and verdict=pass
+#   failed   — tests ran and verdict in {fail, error}
+#   unknown  — test-results.json missing or has no usable .verdict
+#
+# Test plugin (plugins/tool/test) writes `.verdict` (pass|fail|error). Review
+# does NOT read `.status`; that field has never been written by the producer.
+# Fail-closed: anything we cannot positively interpret as `pass` is treated as
+# at-least-`unknown`; verdict=error specifically maps to `failed` so a
+# misconfigured run cannot smuggle approve through.
+#
+# Usage: _review_derive_test_status <test_results_json_path>
+# Prints: passed | failed | unknown
+_review_derive_test_status() {
+    local path="$1"
+    if [[ -z "$path" || ! -f "$path" ]]; then
+        printf 'unknown\n'
+        return 0
+    fi
+    local v
+    v="$(jq -r '.verdict // empty' "$path" 2>/dev/null || true)"
+    case "$v" in
+        pass)        printf 'passed\n' ;;
+        fail|error)  printf 'failed\n' ;;
+        *)           printf 'unknown\n' ;;
+    esac
+    return 0
+}
+
 # ─── init ───────────────────────────────────────────────────────────────────
 review_init() {
     export ZBUILD_PLUGIN="review"
@@ -147,6 +178,7 @@ Rules:
 - Do not include reasoning, explanations, or prose in the FINAL response —
   just the JSON.
 - Your response MUST begin with `{` and contain nothing other than the JSON object — no leading prose, no trailing prose, no markdown fences.
+- An approve verdict requires that test results show tests passed; if test results are missing, unknown, or failed, return request_changes (not approve).
 
 Verdict definitions:
   approve         — diff implements the plan; tests pass; safe to open PR
@@ -288,6 +320,39 @@ REVIEW_PROMPT
         if [[ -z "$summary" ]]; then
             summary="Verdict defaulted: LLM response was not a valid verdict value."
         fi
+    fi
+
+    # ─── #485 fail-closed: coerce approve → request_changes when tests
+    # did not positively pass. block is the strictest floor and is NOT
+    # demoted here (ADR-019). LLM confidence is preserved verbatim — it
+    # remains an advisory signal independent of the post-validation result.
+    local test_status
+    test_status="$(_review_derive_test_status "$test_results_json_path")"
+    if [[ "$verdict" == "approve" && ( "$test_status" == "unknown" || "$test_status" == "failed" ) ]]; then
+        local original_verdict_485="$verdict"
+        local test_exit_code_485=""
+        if [[ -f "$test_results_json_path" ]]; then
+            test_exit_code_485="$(jq -r '.exit_code // empty' "$test_results_json_path" 2>/dev/null || true)"
+        fi
+        warn "review_run: verdict coerced from approve to request_changes (test_status=$test_status)"
+        verdict="request_changes"
+        local coerce_note="tests did not pass (test_status=$test_status); approve coerced to request_changes"
+        issues_json="$(printf '%s' "$issues_json" \
+            | jq --arg n "$coerce_note" '. + [$n]' 2>/dev/null \
+            || jq -n --arg n "$coerce_note" '[$n]')"
+        # Prepend coercion note to summary so the LLM's reasoning stays visible.
+        if [[ -n "$summary" ]]; then
+            summary="[coerced: tests $test_status] $summary"
+        else
+            summary="[coerced: tests $test_status]"
+        fi
+        emit_event "review.test_status.coerced" \
+            "plugin=review" \
+            "stage=review" \
+            "original_verdict=$original_verdict_485" \
+            "coerced_verdict=request_changes" \
+            "test_status=$test_status" \
+            "test_exit_code=$test_exit_code_485"
     fi
 
     # ─── Write review.json ───────────────────────────────────────────────────

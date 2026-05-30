@@ -416,6 +416,24 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
         assert_gt "plugin.run.complete emitted for stage: $_stage" "$_stage_events" "0"
     done
 
+    # ─── #485: build → test → review ordering invariant ─────────────────────
+    # The first plugin.run.complete line number per stage is sufficient to
+    # prove that the test stage runs after build and before review.
+    _line_build="$(jq -r 'select(.type == "plugin.run.complete" and .plugin == "build") | input_line_number' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    _line_test="$(jq -r 'select(.type == "plugin.run.complete" and .plugin == "test") | input_line_number' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    _line_review="$(jq -r 'select(.type == "plugin.run.complete" and .plugin == "review") | input_line_number' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    if [[ -n "$_line_build" && -n "$_line_test" && -n "$_line_review" \
+        && "$_line_build" -lt "$_line_test" \
+        && "$_line_test" -lt "$_line_review" ]]; then
+        assert_pass "#485: build < test < review ordering preserved (build@$_line_build, test@$_line_test, review@$_line_review)"
+    else
+        assert_fail "#485: build < test < review ordering" \
+            "got build=$_line_build, test=$_line_test, review=$_line_review"
+    fi
+
     # Golden event-type sequence: strip non-deterministic fields (timestamps,
     # run_ids, sizes) and capture just the ordered event types.
     _normalized_events="$(jq -r '.type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \

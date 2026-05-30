@@ -86,6 +86,8 @@ assert_eq "diff_applied is false for missing patch" "false" "$diff_applied2"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Test 3: good diff.patch + passing mock test_cmd → verdict=pass
+# #485: test_cmd must produce a parseable "X passed" line — a bare `true`
+# triggers the no-op silent-failure guard (verdict=error).
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "3. good diff.patch + passing test_cmd → pass"
 
@@ -120,7 +122,7 @@ GOOD_PATCH="$ARTIFACT_DIR/good.patch"
 printf '' > "$GOOD_PATCH"
 
 set +e
-_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_3" "true"
+_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_3" "echo '3 passed'"
 rc3=$?
 set -e
 
@@ -156,6 +158,33 @@ exit_code4="$(_json_key "$OUT_JSON_4" '.exit_code')"
 
 assert_eq "verdict is 'fail' when test_cmd exits 1" "fail" "$verdict4"
 assert_eq "exit_code is 1 in artifact" "1" "$exit_code4"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Test 4b: #485 — no-op test_cmd (exit 0, no pass/fail counts) → verdict=error
+# Silent-failure guard: bare `true` exits 0 but produces no "X passed" output.
+# Without the guard this would smuggle a "pass" verdict through, letting the
+# review stage approve a build that was never actually tested. The guard maps
+# this to verdict=error so review fail-closes.
+# ═══════════════════════════════════════════════════════════════════════════════
+print_test_section "4b. #485: no-op test_cmd → verdict=error (silent-failure guard)"
+
+OUT_JSON_4B="$ARTIFACT_DIR/test-results-4b.json"
+
+set +e
+_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_4B" "true"
+rc4b=$?
+set -e
+
+assert_exit_code "plugin still exits 0 on no-op run" "0" "$rc4b"
+assert_file_exists "test-results.json written" "$OUT_JSON_4B"
+verdict4b="$(_json_key "$OUT_JSON_4B" '.verdict')"
+exit_code4b="$(_json_key "$OUT_JSON_4B" '.exit_code')"
+passed4b="$(_json_key "$OUT_JSON_4B" '.passed')"
+failed4b="$(_json_key "$OUT_JSON_4B" '.failed')"
+assert_eq "#485 no-op: verdict=error (not pass)" "error" "$verdict4b"
+assert_eq "#485 no-op: exit_code=0 still recorded" "0" "$exit_code4b"
+assert_eq "#485 no-op: passed=0" "0" "$passed4b"
+assert_eq "#485 no-op: failed=0" "0" "$failed4b"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Test 5: test_finalize runs cleanly

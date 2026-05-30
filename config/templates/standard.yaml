@@ -28,6 +28,12 @@ stages:
       tail_lines: 200
     router:
       timeout_s: 900
+  - id: test
+    gate: auto
+    roles: [tester]
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
   - id: review
     gate: auto
     roles: [reviewer]
