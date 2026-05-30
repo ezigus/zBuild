@@ -84,7 +84,7 @@ else
         "got: $(printf '%s' "$plan_banner_content" | head -40)"
 fi
 
-plan_output_section="$(printf '%s' "$plan_banner_content" | sed -n '/── output ──/,/── end stage-io/p')"
+plan_output_section="$(printf '%s' "$plan_banner_content" | sed -n '/seq=[0-9]* output /,/── end stage-io/p')"
 if printf '%s' "$plan_output_section" | grep -qF '"title":"Boundary Plan"'; then
     assert_fail "plan banner raw JSON leaked into output section" \
         "got: $(printf '%s' "$plan_output_section" | head -20)"
@@ -161,7 +161,7 @@ else
         "got: $(printf '%s' "$review_banner_content" | head -40)"
 fi
 
-review_output_section="$(printf '%s' "$review_banner_content" | sed -n '/── output ──/,/── end stage-io/p')"
+review_output_section="$(printf '%s' "$review_banner_content" | sed -n '/seq=[0-9]* output /,/── end stage-io/p')"
 if printf '%s' "$review_output_section" | grep -qF '"verdict":"approve"'; then
     assert_fail "review banner raw JSON leaked into output section" \
         "got: $(printf '%s' "$review_output_section" | head -20)"

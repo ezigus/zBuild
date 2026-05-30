@@ -55,40 +55,58 @@ route_to_model() {
     _route_emit_model_route "$tier" "$secs"
     _route_check_budget "$tier" || return $?
 
+    # #481: split LLM-kind stage I/O so input banner emits BEFORE the LLM call
+    # and output banner emits AFTER. The two halves are paired by reserved seq.
+    # Capture failure must not fail the router — best-effort throughout.
+    local _stage_io_seq=""
+    local -a _capture_meta_extra=()
+    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
+        if [[ -n "${ZBUILD_ROUTER_ARTIFACT_ID:-}" ]]; then
+            _capture_meta_extra+=( --metadata "artifact=$ZBUILD_ROUTER_ARTIFACT_ID" )
+        fi
+        # Direct call (not $()) so begin's assoc-array state survives in
+        # the caller's shell — $() in a subshell would lose the pending map.
+        stage_io_begin \
+            --stage "$ZBUILD_CURRENT_STAGE" \
+            --kind llm \
+            --input "$prompt" \
+            --metadata "tier=$tier" \
+            "${_capture_meta_extra[@]}" >/dev/null 2>&1 || true
+        _stage_io_seq="$_STAGE_IO_LAST_SEQ"
+    fi
+
     _ROUTE_RESPONSE=""
-    _route_call_claude "$tier" "$prompt" "$secs" || return $?
+    local _call_rc=0
+    _route_call_claude "$tier" "$prompt" "$secs" || _call_rc=$?
+    if [[ "$_call_rc" -ne 0 ]]; then
+        # On error, close the begin so it doesn't orphan into the EXIT trap.
+        if [[ -n "$_stage_io_seq" ]]; then
+            stage_io_end \
+                --stage "$ZBUILD_CURRENT_STAGE" \
+                --kind llm \
+                --seq "$_stage_io_seq" \
+                --output "${_ROUTE_RESPONSE:-}" \
+                --metadata "model_id=$_ROUTE_MODEL_ID" \
+                --metadata "error=true" \
+                >/dev/null 2>&1 || true
+        fi
+        return "$_call_rc"
+    fi
 
     _route_emit_outcome "$tier" "$secs"
     _route_update_ledger
 
-    # ADR-015 v1 (#438): LLM-kind stage I/O capture.
-    # No-op when the current stage has no io.destinations configured (or when
-    # ZBUILD_CURRENT_STAGE is unset — e.g. ad-hoc CLI invocations).
-    # Capture failure must not fail the router (hot path) — best-effort.
-    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
-        # ADR-018 (#483): producer-side artifact tagging. When the calling
-        # plugin sets ZBUILD_ROUTER_ARTIFACT_ID (mirror of #476's
-        # ZBUILD_ROUTER_JSON_OUTPUT pattern), append metadata.artifact=<id>
-        # to the capture so the stage-io banner routes both input AND output
-        # through the renderer registry. Without this, the producer stage's
-        # own output banner shows raw JSON — only the consumer's input banner
-        # benefits from the #470 dispatch.
-        local -a _capture_meta_extra=()
-        if [[ -n "${ZBUILD_ROUTER_ARTIFACT_ID:-}" ]]; then
-            _capture_meta_extra+=( --metadata "artifact=$ZBUILD_ROUTER_ARTIFACT_ID" )
-        fi
-        capture_stage_io \
+    if [[ -n "$_stage_io_seq" ]]; then
+        stage_io_end \
             --stage "$ZBUILD_CURRENT_STAGE" \
             --kind llm \
-            --input "$prompt" \
+            --seq "$_stage_io_seq" \
             --output "$_ROUTE_RESPONSE" \
-            --metadata "tier=$tier" \
             --metadata "model_id=$_ROUTE_MODEL_ID" \
             --metadata "input_tokens=${_ROUTE_INPUT_TOKENS:-0}" \
             --metadata "output_tokens=${_ROUTE_OUTPUT_TOKENS:-0}" \
             --metadata "cache_read=${_ROUTE_CACHE_READ:-0}" \
             --metadata "cache_creation=${_ROUTE_CACHE_CREATION:-0}" \
-            "${_capture_meta_extra[@]}" \
             >/dev/null || true
     fi
 

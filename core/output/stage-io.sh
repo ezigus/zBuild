@@ -16,6 +16,16 @@
 [[ -n "${_ZBUILD_STAGE_IO_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_IO_LOADED=1
 
+# ── #481: per-process begin/end pairing state ─────────────────────────────────
+# Bash 5+ associative arrays. zBuild already enforces Bash 5 (scripts/lib/compat.sh).
+# Keyed by "<stage>:<seq>" so multiple in-flight captures (per stage) can coexist.
+declare -gA _STAGE_IO_START_NS
+declare -gA _STAGE_IO_PENDING        # holds the begin-time metadata JSON keyed by stage:seq
+declare -gA _STAGE_IO_PENDING_INPUT  # holds the begin-time input by stage:seq
+declare -gA _STAGE_IO_PENDING_KIND   # holds the begin-time kind by stage:seq
+declare -gA _STAGE_IO_PENDING_DESTS  # holds the begin-time dests by stage:seq
+_STAGE_IO_LAST_SEQ=""
+
 _STAGE_IO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT_FOR_STAGE_IO="$(cd "$_STAGE_IO_DIR/../.." && pwd)"
 
@@ -30,125 +40,277 @@ source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/redaction/scope-redaction.sh"
 # shellcheck source=../../scripts/lib/artifact-render.sh
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/scripts/lib/artifact-render.sh"
 
-# ─── capture_stage_io — chokepoint ────────────────────────────────────────────
+# ─── _stage_io_now_ms — millisecond clock with override hook ──────────────────
+# Used by stage_io_begin/_end for deterministic golden snapshots.
+# When ZBUILD_STAGE_IO_NOW_MS_OVERRIDE is set, returns its value verbatim
+# (single test-injected timestamp). Otherwise reads $EPOCHREALTIME (Bash 5+).
+_stage_io_now_ms() {
+    if [[ -n "${ZBUILD_STAGE_IO_NOW_MS_OVERRIDE:-}" ]]; then
+        printf '%s' "$ZBUILD_STAGE_IO_NOW_MS_OVERRIDE"
+        return 0
+    fi
+    local us="${EPOCHREALTIME/./}"
+    # us is microseconds when EPOCHREALTIME is "<sec>.<usec>"
+    printf '%s' $(( 10#${us} / 1000 ))
+}
+
+# ─── _stage_io_orphan_finalizer — EXIT trap helper for unpaired begins ────────
+# Walks any keys still in _STAGE_IO_PENDING and emits a stage.io.error with
+# reason=output_never_emitted, plus a partial file record at the reserved seq.
+# Best-effort: failures are swallowed (already on the exit path).
+_stage_io_orphan_finalizer() {
+    local key stage seq kind input
+    for key in "${!_STAGE_IO_PENDING[@]}"; do
+        stage="${key%%:*}"
+        seq="${key##*:}"
+        kind="${_STAGE_IO_PENDING_KIND[$key]:-llm}"
+        input="${_STAGE_IO_PENDING_INPUT[$key]:-}"
+        eb_emit_event "stage.io.error" \
+            "stage=$stage" "seq=$seq" "kind=$kind" \
+            "reason=output_never_emitted" 2>/dev/null || true
+        # Best-effort partial record so the operator can still inspect the input.
+        local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+        local io_dir="$state_dir/artifacts/stage-io"
+        mkdir -p "$io_dir" 2>/dev/null || continue
+        local path="$io_dir/${stage}-${seq}.partial.json"
+        local ts; ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        local rec
+        rec="$(jq -n \
+            --arg stage "$stage" --arg kind "$kind" --arg seq "$seq" \
+            --arg input "$input" --arg ts "$ts" \
+            '{schema_version:1, stage:$stage, kind:$kind, seq:($seq|tonumber),
+              input:$input, output:"", exit_code:null, duration_ms:null,
+              metadata:{partial:"output_never_emitted"}, ts:$ts}' 2>/dev/null)" || continue
+        printf '%s\n' "$rec" > "$path" 2>/dev/null || true
+    done
+}
+
+# Install the orphan trap exactly once per process when stage-io is sourced.
+# CAUTION: do NOT compose with the inherited EXIT trap. Bash subshells
+# INHERIT trap definitions for the purpose of `trap -p` reads but the
+# inherited trap is reset (does not fire) on subshell exit. If we read the
+# parent's body and re-install it here, the subshell will erroneously fire
+# the parent's trap on its own exit — which, for the runner's
+# `_runner_abort_trap`, mistakenly emits pipeline.abort once per plugin
+# subshell (regression caught by tests/e2e/parity-local-vs-ci-test.sh).
+# Install only our own finalizer. The runner's own EXIT trap continues to
+# fire when the runner process exits, independently of our trap here.
+if [[ -z "${_ZBUILD_STAGE_IO_TRAP_INSTALLED:-}" ]]; then
+    _ZBUILD_STAGE_IO_TRAP_INSTALLED=1
+    trap '_stage_io_orphan_finalizer' EXIT
+fi
+
+# ─── stage_io_begin — #481 input-phase emitter ────────────────────────────────
 # Usage:
-#   capture_stage_io --stage <id> --kind llm|command|computed \
-#                    --input <str> --output <str> \
-#                    [--exit-code N] [--duration-ms N] \
-#                    [--metadata k=v]...
+#   stage_io_begin --stage <id> --kind llm|command|computed \
+#                  --input <s> [--metadata k=v]...
+#
+# Effects (when stage has destinations configured):
+#   - reserves the next seq under <stage>-*.json
+#   - emits "── stage-io: <stage> [<kind>] seq=N input ──\n<input head>\n" to
+#     stdout destination (via ZBUILD_STAGE_IO_FD; default fd 2)
+#   - stashes start time and pending metadata in per-process maps
+#   - does NOT yet write the file artifact or post the gh_comment (deferred
+#     to stage_io_end so the comment is a single merged record).
+#
+# Output:
+#   stdout: the reserved seq (so callers can pass it to stage_io_end --seq N)
+#   also exports _STAGE_IO_LAST_SEQ
 #
 # Returns:
-#   0 — success (capture written, or no destinations configured: no-op)
-#   2 — usage error (missing required flag, unknown --kind, bad --metadata,
-#                    schema-invalid built record)
-capture_stage_io() {
-    if [[ $# -eq 0 ]]; then
-        error "capture_stage_io: usage: --stage <id> --kind llm|command|computed --input <s> --output <s> [--exit-code N] [--duration-ms N] [--metadata k=v]..."
-        return 2
+#   0 — success (or no-op when no destinations configured; still prints seq 0)
+#   2 — usage error
+stage_io_begin() {
+    local stage="" kind=""
+    local input="__ZBUILD_STAGE_IO_UNSET__"
+    local -a meta_keys=() meta_vals=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --stage)    stage="${2:-}"; shift 2 ;;
+            --kind)     kind="${2:-}"; shift 2 ;;
+            --input)    input="${2:-}"; shift 2 ;;
+            --metadata)
+                local kv="${2:-}"
+                if [[ "$kv" != *"="* ]]; then
+                    error "stage_io_begin: malformed --metadata '$kv'"
+                    return 2
+                fi
+                meta_keys+=("${kv%%=*}"); meta_vals+=("${kv#*=}"); shift 2
+                ;;
+            *)
+                error "stage_io_begin: unknown flag '$1'"
+                return 2
+                ;;
+        esac
+    done
+
+    [[ -z "$stage" ]] && { error "stage_io_begin: --stage required"; return 2; }
+    [[ -z "$kind"  ]] && { error "stage_io_begin: --kind required";  return 2; }
+    case "$kind" in llm|command|computed) : ;;
+        *) error "stage_io_begin: unknown --kind '$kind'"; return 2 ;;
+    esac
+    [[ "$input" == "__ZBUILD_STAGE_IO_UNSET__" ]] && \
+        { error "stage_io_begin: --input required"; return 2; }
+
+    local dests_nl
+    dests_nl="$(template_stage_io_dests "$stage" 2>/dev/null || true)"
+
+    # Reserve seq even when no destinations (callers may still pair end);
+    # but skip filesystem ls when no io_dir exists.
+    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local io_dir="$state_dir/artifacts/stage-io"
+    local existing_count=0
+    if [[ -d "$io_dir" ]]; then
+        # shellcheck disable=SC2012
+        # `|| true` suffix: `ls` returning rc=2 (no match) is normal and would
+        # otherwise trip set -e in callers that wrap with pipefail.
+        existing_count=$( { ls -1 "$io_dir"/"${stage}"-*.json 2>/dev/null || true; } | wc -l | tr -d ' ')
+    fi
+    # Also count already-reserved-but-not-yet-finalized seqs for this stage
+    # so back-to-back begins reserve distinct numbers. Use `if` rather than
+    # `[[ ]] && ...` so a false test result doesn't trip `set -e` in callers.
+    local pending_for_stage=0 _k
+    for _k in "${!_STAGE_IO_PENDING[@]}"; do
+        if [[ "${_k%%:*}" == "$stage" ]]; then
+            pending_for_stage=$((pending_for_stage + 1))
+        fi
+    done
+    local seq=$((existing_count + pending_for_stage + 1))
+    _STAGE_IO_LAST_SEQ="$seq"
+
+    # Build a metadata-keys list as TSV in pending map (so end can merge).
+    local meta_blob=""
+    local mi
+    for (( mi=0; mi<${#meta_keys[@]}; mi++ )); do
+        meta_blob+="${meta_keys[$mi]}=${meta_vals[$mi]}"$'\n'
+    done
+
+    local key="${stage}:${seq}"
+    _STAGE_IO_PENDING[$key]="$meta_blob"
+    _STAGE_IO_PENDING_INPUT[$key]="$input"
+    _STAGE_IO_PENDING_KIND[$key]="$kind"
+    _STAGE_IO_PENDING_DESTS[$key]="$dests_nl"
+    _STAGE_IO_START_NS[$key]="$(_stage_io_now_ms)"
+
+    # Banner — only emit if stdout destination is configured.
+    if [[ -n "$dests_nl" ]] && printf '%s\n' "$dests_nl" | grep -qx "stdout"; then
+        # Find metadata.artifact key if provided (so #470's input-side renderer
+        # dispatch can run during the input phase, before end-time merge).
+        local _artifact_id="" _i
+        for (( _i=0; _i<${#meta_keys[@]}; _i++ )); do
+            if [[ "${meta_keys[$_i]}" == "artifact" ]]; then
+                _artifact_id="${meta_vals[$_i]}"
+                break
+            fi
+        done
+        _stage_io_stdout_begin "$stage" "$kind" "$seq" "$input" "$_artifact_id" \
+            >&"${ZBUILD_STAGE_IO_FD:-2}" || true
     fi
 
-    local stage="" kind=""
-    # Sentinels distinguish "flag never provided" from "flag provided with empty value".
-    # Empty --input/--output is legitimate (e.g. LLM timeout/refusal producing empty output);
-    # we only reject when the flag itself was omitted.
-    local input="__ZBUILD_STAGE_IO_UNSET__"
+    # Return the seq on stdout so callers can capture it.
+    printf '%s' "$seq"
+    return 0
+}
+
+# ─── stage_io_end — #481 output-phase emitter ─────────────────────────────────
+# Usage:
+#   stage_io_end --stage <id> --kind k --seq <N> --output <s> \
+#                [--exit-code N] [--duration-ms N] [--metadata k=v]...
+#
+# Effects:
+#   - computes duration_ms from begin's stash (unless --duration-ms overrides)
+#   - emits "── stage-io: <stage> [<kind>] seq=N output STATUS DUR ──\n<output tail>\n── end stage-io: <stage> ──\n"
+#   - writes a single merged file record at the reserved seq path
+#   - renders gh_comment once with the merged record
+#   - emits stage.io.captured event (one per pair)
+stage_io_end() {
+    local stage="" kind="" seq=""
     local output="__ZBUILD_STAGE_IO_UNSET__"
     local exit_code="" duration_ms=""
-    # Bash 3.2: no associative arrays — use parallel arrays for metadata
     local -a meta_keys=() meta_vals=()
-
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --stage)        stage="${2:-}"; shift 2 ;;
             --kind)         kind="${2:-}"; shift 2 ;;
-            --input)        input="${2:-}"; shift 2 ;;
+            --seq)          seq="${2:-}"; shift 2 ;;
             --output)       output="${2:-}"; shift 2 ;;
             --exit-code)    exit_code="${2:-}"; shift 2 ;;
             --duration-ms)  duration_ms="${2:-}"; shift 2 ;;
             --metadata)
                 local kv="${2:-}"
                 if [[ "$kv" != *"="* ]]; then
-                    error "capture_stage_io: malformed --metadata '$kv' (expected key=value)"
+                    error "stage_io_end: malformed --metadata '$kv'"
                     return 2
                 fi
-                meta_keys+=("${kv%%=*}")
-                meta_vals+=("${kv#*=}")
-                shift 2
+                meta_keys+=("${kv%%=*}"); meta_vals+=("${kv#*=}"); shift 2
                 ;;
             *)
-                error "capture_stage_io: unknown flag '$1'"
+                error "stage_io_end: unknown flag '$1'"
                 return 2
                 ;;
         esac
     done
+    [[ -z "$stage" ]] && { error "stage_io_end: --stage required"; return 2; }
+    [[ -z "$kind"  ]] && { error "stage_io_end: --kind required";  return 2; }
+    [[ -z "$seq"   ]] && { error "stage_io_end: --seq required (call stage_io_begin first)"; return 2; }
+    [[ "$output" == "__ZBUILD_STAGE_IO_UNSET__" ]] && \
+        { error "stage_io_end: --output required"; return 2; }
 
-    # Required-flag validation
-    if [[ -z "$stage" ]]; then
-        error "capture_stage_io: --stage is required"
+    local key="${stage}:${seq}"
+    if [[ -z "${_STAGE_IO_PENDING[$key]+x}" ]]; then
+        # No matching begin — bad pairing.
+        eb_emit_event "stage.io.error" \
+            "stage=$stage" "seq=$seq" "kind=$kind" "reason=end_without_begin" \
+            2>/dev/null || true
+        error "stage_io_end: no matching stage_io_begin for ${stage}:${seq}"
         return 2
     fi
-    if [[ -z "$kind" ]]; then
-        error "capture_stage_io: --kind is required"
-        return 2
-    fi
-    case "$kind" in
-        llm|command|computed) : ;;
-        *) error "capture_stage_io: unknown --kind '$kind' (valid: llm, command, computed)"; return 2 ;;
-    esac
-    # --input / --output: empty string is legitimate (e.g. LLM timeout/refusal).
-    # Sentinel tracking distinguishes "flag never provided" from "flag with empty value".
-    if [[ "$input" == "__ZBUILD_STAGE_IO_UNSET__" ]]; then
-        error "capture_stage_io: --input is required"
-        return 2
-    fi
-    if [[ "$output" == "__ZBUILD_STAGE_IO_UNSET__" ]]; then
-        error "capture_stage_io: --output is required"
-        return 2
-    fi
-    # Strip sentinel before JSON build (defensive — both should be non-sentinel here).
-    [[ "$input" == "__ZBUILD_STAGE_IO_UNSET__" ]] && input=""
-    [[ "$output" == "__ZBUILD_STAGE_IO_UNSET__" ]] && output=""
 
-    # ── Destination lookup — no destinations means no-op (hot path) ──────────
-    local dests_nl
-    dests_nl="$(template_stage_io_dests "$stage" 2>/dev/null || true)"
+    local input="${_STAGE_IO_PENDING_INPUT[$key]:-}"
+    local dests_nl="${_STAGE_IO_PENDING_DESTS[$key]:-}"
+
+    # Merge metadata: begin's stash first, then end's.
+    local meta_blob="${_STAGE_IO_PENDING[$key]}"
+    local mi
+    for (( mi=0; mi<${#meta_keys[@]}; mi++ )); do
+        meta_blob+="${meta_keys[$mi]}=${meta_vals[$mi]}"$'\n'
+    done
+
+    # Compute duration unless override.
+    if [[ -z "$duration_ms" ]]; then
+        local start_ms="${_STAGE_IO_START_NS[$key]:-}"
+        local now_ms; now_ms="$(_stage_io_now_ms)"
+        if [[ -n "$start_ms" && "$start_ms" =~ ^[0-9]+$ && "$now_ms" =~ ^[0-9]+$ ]]; then
+            duration_ms=$(( now_ms - start_ms ))
+            (( duration_ms < 0 )) && duration_ms=0
+        fi
+    fi
+
+    # Clean up pending state — finalize is now happening.
+    unset '_STAGE_IO_PENDING[$key]'
+    unset '_STAGE_IO_PENDING_INPUT[$key]'
+    unset '_STAGE_IO_PENDING_KIND[$key]'
+    unset '_STAGE_IO_PENDING_DESTS[$key]'
+    unset '_STAGE_IO_START_NS[$key]'
+
+    # If no destinations were configured, nothing more to do.
     if [[ -z "$dests_nl" ]]; then
         return 0
     fi
 
-    # Build comma-delimited dest_list for event payload + iteration list
-    local dests_comma
-    dests_comma="$(printf '%s' "$dests_nl" | tr '\n' ',' | sed 's/,$//')"
-
-    # ── seq: count existing <stage>-*.json under artifacts/stage-io ──────────
-    # TODO: wrap with flock(1) once fanout strategy concurrently captures
-    #       (out-of-scope for v1 single-writer LLM path).
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
-    local io_dir="$state_dir/artifacts/stage-io"
-    local existing_count=0
-    if [[ -d "$io_dir" ]]; then
-        # shellcheck disable=SC2012
-        existing_count=$(ls -1 "$io_dir"/"${stage}"-*.json 2>/dev/null | wc -l | tr -d ' ')
-    fi
-    local seq=$((existing_count + 1))
-
-    # ── Build JSON via jq --arg (NEVER string interp) ─────────────────────────
-    local ts
-    ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    # ── Build merged record via jq --arg ────────────────────────────────────
+    local ts; ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     local run_id="${ZBUILD_RUN_ID:-}"
-
-    # Build metadata object
     local metadata_json='{}'
-    local mi
-    for (( mi=0; mi<${#meta_keys[@]}; mi++ )); do
+    while IFS='=' read -r mk mv; do
+        [[ -z "$mk" ]] && continue
         metadata_json="$(printf '%s' "$metadata_json" | \
-            jq -c --arg k "${meta_keys[$mi]}" --arg v "${meta_vals[$mi]}" '. + {($k): $v}')" || {
-            error "capture_stage_io: failed to assemble metadata"
+            jq -c --arg k "$mk" --arg v "$mv" '. + {($k): $v}')" || {
+            error "stage_io_end: failed to assemble metadata"
             return 2
         }
-    done
+    done <<< "$meta_blob"
 
-    # Numeric fields: default exit_code/duration_ms to null when unset.
     local record
     record="$(jq -n \
         --arg schema_version "1" \
@@ -175,7 +337,7 @@ capture_stage_io() {
             metadata: $metadata,
             ts: $ts
         }')" || {
-        error "capture_stage_io: jq assembly failed"
+        error "stage_io_end: jq assembly failed"
         eb_emit_event "stage.io.error" "stage=$stage" "reason=jq_assembly_failed" 2>/dev/null || true
         return 2
     }
@@ -188,7 +350,10 @@ capture_stage_io() {
         return 2
     fi
 
-    # ── Dispatch to each destination ─────────────────────────────────────────
+    local dests_comma
+    dests_comma="$(printf '%s' "$dests_nl" | tr '\n' ',' | sed 's/,$//')"
+
+    # Dispatch destinations.
     local dest artifact_path=""
     local IFS_save="$IFS"; IFS=$'\n'
     local -a dests_arr=()
@@ -205,38 +370,113 @@ capture_stage_io() {
                 [[ -z "$artifact_path" ]] && artifact_path="$_p"
                 ;;
             stdout)
-                # Banner goes to ZBUILD_STAGE_IO_FD (default 3, opened by the
-                # runner at startup; see core/pipeline/runner.sh). This fd
-                # survives both the route_to_model stdout-as-response-carrier
-                # contention AND the plugin-side `2>/dev/null` suppression
-                # that plan and intake plugins wrap around route_to_model /
-                # run_captured_command (plugins/agent/plan/plugin.sh:163,
-                # plugins/agent/intake/plugin.sh:90). When unset (ad-hoc CLI
-                # invocations outside a pipeline), fall back to fd 2 so the
-                # banner is still visible somewhere.
-                # gh_comment renderer's *inner* call to _stage_io_to_stdout
-                # for content production is on stdout (no redirect) and
-                # unchanged.
-                _stage_io_to_stdout "$record" >&"${ZBUILD_STAGE_IO_FD:-2}" || true
+                # Output-phase banner only (begin already emitted the input
+                # section). Uses the same fd-3 convention.
+                _stage_io_stdout_end "$record" >&"${ZBUILD_STAGE_IO_FD:-2}" || true
                 ;;
             gh_comment)
                 _stage_io_to_gh_comment "$record" || true
                 ;;
             *)
-                # Should be impossible — template loader rejects unknown tokens.
-                error "capture_stage_io: unknown destination '$dest' (should have failed at template load)"
+                error "stage_io_end: unknown destination '$dest'"
                 return 2
                 ;;
         esac
     done
 
-    # ── Emit stage.io.captured AFTER successful write, BEFORE return ─────────
     eb_emit_event "stage.io.captured" \
-        "stage=$stage" \
-        "kind=$kind" \
-        "seq=$seq" \
-        "dest_list=$dests_comma" \
-        "artifact_path=${artifact_path:-}" 2>/dev/null || true
+        "stage=$stage" "kind=$kind" "seq=$seq" \
+        "dest_list=$dests_comma" "artifact_path=${artifact_path:-}" \
+        2>/dev/null || true
+
+    return 0
+}
+
+# ─── capture_stage_io — chokepoint (now a compat shim over begin+end) ────────
+# Usage:
+#   capture_stage_io --stage <id> --kind llm|command|computed \
+#                    --input <str> --output <str> \
+#                    [--exit-code N] [--duration-ms N] \
+#                    [--metadata k=v]...
+#
+# Returns:
+#   0 — success (capture written, or no destinations configured: no-op)
+#   2 — usage error (missing required flag, unknown --kind, bad --metadata,
+#                    schema-invalid built record)
+capture_stage_io() {
+    if [[ $# -eq 0 ]]; then
+        error "capture_stage_io: usage: --stage <id> --kind llm|command|computed --input <s> --output <s> [--exit-code N] [--duration-ms N] [--metadata k=v]..."
+        return 2
+    fi
+
+    local stage="" kind=""
+    local input="__ZBUILD_STAGE_IO_UNSET__"
+    local output="__ZBUILD_STAGE_IO_UNSET__"
+    local exit_code="" duration_ms=""
+    local -a begin_args=() end_args=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --stage)        stage="${2:-}"; shift 2 ;;
+            --kind)         kind="${2:-}"; shift 2 ;;
+            --input)        input="${2:-}"; shift 2 ;;
+            --output)       output="${2:-}"; shift 2 ;;
+            --exit-code)    exit_code="${2:-}"; shift 2 ;;
+            --duration-ms)  duration_ms="${2:-}"; shift 2 ;;
+            --metadata)
+                local kv="${2:-}"
+                if [[ "$kv" != *"="* ]]; then
+                    error "capture_stage_io: malformed --metadata '$kv' (expected key=value)"
+                    return 2
+                fi
+                # Forward to begin so end's merge preserves both halves.
+                begin_args+=( --metadata "$kv" )
+                shift 2
+                ;;
+            *)
+                error "capture_stage_io: unknown flag '$1'"
+                return 2
+                ;;
+        esac
+    done
+
+    # Required-flag validation (own checks so the error messages stay
+    # capture_stage_io-prefixed for existing tests).
+    if [[ -z "$stage" ]]; then
+        error "capture_stage_io: --stage is required"
+        return 2
+    fi
+    if [[ -z "$kind" ]]; then
+        error "capture_stage_io: --kind is required"
+        return 2
+    fi
+    case "$kind" in
+        llm|command|computed) : ;;
+        *) error "capture_stage_io: unknown --kind '$kind' (valid: llm, command, computed)"; return 2 ;;
+    esac
+    if [[ "$input" == "__ZBUILD_STAGE_IO_UNSET__" ]]; then
+        error "capture_stage_io: --input is required"
+        return 2
+    fi
+    if [[ "$output" == "__ZBUILD_STAGE_IO_UNSET__" ]]; then
+        error "capture_stage_io: --output is required"
+        return 2
+    fi
+
+    # Shim over begin+end. We MUST NOT capture begin via $(...) — its assoc-array
+    # side effects would be lost in the subshell. Instead call directly and
+    # read the reserved seq from _STAGE_IO_LAST_SEQ. Suppress stdout so the
+    # printed seq doesn't leak to the caller (capture_stage_io has never
+    # printed to stdout).
+    stage_io_begin --stage "$stage" --kind "$kind" \
+        --input "$input" "${begin_args[@]}" >/dev/null || return 2
+    local _reserved_seq="$_STAGE_IO_LAST_SEQ"
+
+    [[ -n "$exit_code"   ]] && end_args+=( --exit-code   "$exit_code"   )
+    [[ -n "$duration_ms" ]] && end_args+=( --duration-ms "$duration_ms" )
+
+    stage_io_end --stage "$stage" --kind "$kind" --seq "$_reserved_seq" \
+        --output "$output" "${end_args[@]}" || return $?
 
     return 0
 }
@@ -424,6 +664,99 @@ _stage_io_tail() {
 _stage_io_head() {
     local content="$1" n="$2"
     printf '%s\n' "$content" | head -n "$n"
+}
+
+# ─── _stage_io_stdout_begin — #481 input-phase banner emitter ─────────────────
+# Emits only the input section of the split banner:
+#   ── stage-io: <stage> [<kind>] seq=N input ──
+#   <input head>
+# No "end stage-io:" trailer — that fires at end-time. Honors the consumer-side
+# artifact renderer dispatch (#470) when metadata.artifact is in the begin args
+# — but since this helper doesn't have the merged metadata yet, we accept an
+# optional artifact_id argument for that dispatch.
+_stage_io_stdout_begin() {
+    local stage="$1" kind="$2" seq="$3" input="$4" artifact_id="${5:-}"
+
+    local tail_lines
+    tail_lines="$(template_stage_io_tail_lines "$stage" 2>/dev/null || true)"
+    [[ -z "$tail_lines" ]] && tail_lines=40
+
+    input="$(_stage_io_strip_ansi "$input")"
+
+    printf '── stage-io: %s [%s] seq=%s input ──\n' "$stage" "$kind" "$seq"
+    case "$kind" in
+        llm)
+            if [[ -n "$artifact_id" ]]; then
+                local _rendered
+                _rendered="$(render_artifact "$artifact_id" "$input" 2>/dev/null)"
+                _stage_io_head "$_rendered" "$tail_lines"
+            else
+                _stage_io_head "$input" "$tail_lines"
+            fi
+            ;;
+        command)
+            _stage_io_render_command_argv "$input"
+            ;;
+        computed)
+            printf 'in: %s\n' "$input"
+            ;;
+    esac
+    return 0
+}
+
+# ─── _stage_io_stdout_end <record_json> — #481 output-phase banner emitter ────
+# Emits the output section + closing trailer of the split banner:
+#   ── stage-io: <stage> [<kind>] seq=N output STATUS DUR ──
+#   <output tail>
+#   ── end stage-io: <stage> ──
+_stage_io_stdout_end() {
+    local record="$1"
+    local stage kind seq output exit_code duration_ms metadata
+    stage="$(printf '%s' "$record" | jq -r '.stage')"
+    kind="$(printf '%s' "$record" | jq -r '.kind')"
+    seq="$(printf '%s' "$record" | jq -r '.seq')"
+    output="$(printf '%s' "$record" | jq -r '.output')"
+    exit_code="$(printf '%s' "$record" | jq -r '.exit_code // ""')"
+    duration_ms="$(printf '%s' "$record" | jq -r '.duration_ms // ""')"
+    metadata="$(printf '%s' "$record" | jq -c '.metadata // {}')"
+
+    local tail_lines
+    tail_lines="$(template_stage_io_tail_lines "$stage" 2>/dev/null || true)"
+    [[ -z "$tail_lines" ]] && tail_lines=40
+
+    local status; status="$(_stage_io_render_status "$kind" "$exit_code" "$metadata")"
+    local dur;    dur="$(_stage_io_render_duration "$duration_ms")"
+
+    output="$(_stage_io_strip_ansi "$output")"
+
+    local _artifact_id
+    _artifact_id="$(printf '%s' "$metadata" | jq -r '.artifact // empty' 2>/dev/null || true)"
+
+    printf '── stage-io: %s [%s] seq=%s output %s %s ──\n' "$stage" "$kind" "$seq" "$status" "$dur"
+    case "$kind" in
+        llm)
+            if [[ -n "$_artifact_id" ]]; then
+                local _rendered_output
+                _rendered_output="$(render_artifact "$_artifact_id" "$output" 2>/dev/null)"
+                _stage_io_tail "$_rendered_output" "$tail_lines"
+            else
+                local _pretty_out
+                _pretty_out="$(_stage_io_pretty_print "$output")"
+                _stage_io_tail "$_pretty_out" "$tail_lines"
+            fi
+            ;;
+        command)
+            local _pretty_cmd_out
+            _pretty_cmd_out="$(_stage_io_pretty_print "$output")"
+            _stage_io_tail "$_pretty_cmd_out" "$tail_lines"
+            printf '── exit: %s ──\n' "${exit_code:-?}"
+            ;;
+        computed)
+            printf 'out: %s\n' "$output"
+            ;;
+    esac
+    printf '── end stage-io: %s ──\n' "$stage"
+    return 0
 }
 
 # ─── _stage_io_to_stdout <record_json> — renders stage-io capture to stdout ──
