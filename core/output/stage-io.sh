@@ -179,12 +179,18 @@ fi
 stage_io_begin() {
     local stage="" kind=""
     local input="__ZBUILD_STAGE_IO_UNSET__"
+    local persist_input_path=""
     local -a meta_keys=() meta_vals=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --stage)    stage="${2:-}"; shift 2 ;;
             --kind)     kind="${2:-}"; shift 2 ;;
             --input)    input="${2:-}"; shift 2 ;;
+            # #505: optional override — banner uses --input (operator-facing,
+            # possibly deduped), but artifact .input reads from this file
+            # (full LLM payload, postmortem fidelity). Default off; plan/
+            # review/security-lens callers untouched. See ADR-018 §Pattern 2.5.
+            --persist-input) persist_input_path="${2:-}"; shift 2 ;;
             --metadata)
                 local kv="${2:-}"
                 if [[ "$kv" != *"="* ]]; then
@@ -243,7 +249,14 @@ stage_io_begin() {
 
     local key="${stage}:${seq}"
     _STAGE_IO_PENDING[$key]="$meta_blob"
-    _STAGE_IO_PENDING_INPUT[$key]="$input"
+    # #505: artifact .input stores the persisted file's contents when caller
+    # passed --persist-input <path>; otherwise the begin-time --input string.
+    # Banner (below) always uses $input — divergence is intentional.
+    if [[ -n "$persist_input_path" && -f "$persist_input_path" ]]; then
+        _STAGE_IO_PENDING_INPUT[$key]="$(cat "$persist_input_path")"
+    else
+        _STAGE_IO_PENDING_INPUT[$key]="$input"
+    fi
     _STAGE_IO_PENDING_KIND[$key]="$kind"
     _STAGE_IO_PENDING_DESTS[$key]="$dests_nl"
     _STAGE_IO_START_NS[$key]="$(_stage_io_now_ms)"

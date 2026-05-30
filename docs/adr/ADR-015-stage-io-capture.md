@@ -637,3 +637,7 @@ code change was needed in `_stage_io_to_gh_comment`. Regression-guarded
 by `tests/integration/stage-io-gh-comment-ansi-strip-test.sh`, which now
 additionally asserts that the `─` glyph survives the strip (to catch a
 future over-aggressive stripper that nukes all non-ASCII bytes).
+
+**Implementation Note — banner-vs-payload divergence in loops (issue #505).**
+For loop callers (`route_to_model_loop`, ADR-018 Pattern 2), the `stage_io_begin --input` string MAY diverge from the actual LLM payload starting at iter 2. The banner's `--input` carries an operator-facing deduped pointer
+(`[static prompt: same as iter 1, N lines, sha=…]` + `[diff: see ── changed-files ── summary below …]`), while the artifact `.input` field — and the `claude -p` argv — continue to carry the full prompt. This divergence is enabled by a new optional `stage_io_begin --persist-input <path>` flag (`core/output/stage-io.sh`): when set, the artifact record reads its `.input` from that file rather than the `--input` string. Default behavior — for callers that don't pass `--persist-input` — is byte-identical to v5; plan / review / security-lens callers are untouched. The ordering contract (begin emits before LLM call, end after) is preserved unchanged; only the banner's CONTENT shape changes. See ADR-018 §Pattern 2.5 for the loop-side dedupe rules.
