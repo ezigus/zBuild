@@ -87,6 +87,15 @@ Pattern 1 plugins MUST run `.result` through `extract_first_json_object`
 (`scripts/lib/helpers.sh`) before `jq` validation. This is a durable safety
 net; prompt instructions alone are best-effort (#478).
 
+Two defenses now cover envelope-mode in-turn prose (#510):
+1. **Parser side** — `extract_first_json_object` (existing, #478) slices the
+   LAST balanced top-level object so plugins persist a clean artifact to disk.
+2. **Banner side** — `extract_json_and_surrounding_prose` (new, #510) returns
+   both the JSON slice AND the surrounding prose so `render_plan_md` /
+   `render_review_md` can split the OUTPUT banner into the rendered artifact
+   FIRST followed by a `── llm comment ──` block. The on-disk capture record
+   stays raw — see ADR-015 §v5 Implementation Note.
+
 Scope declaration: the prompt states which paths the stage may read (scope-manifest
 by default for read-only analyzers). Pipeline post-validates tool-use log if
 available in `--output-format json` responses.

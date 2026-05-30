@@ -139,10 +139,55 @@ _artifact_pick_fence() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Helper: _artifact_split_prose_json — wraps extract_json_and_surrounding_prose
+# and assigns the two slices into caller-provided variable names. Caller MUST
+# `local _prose _json` (or equivalent) before calling. Uses sentinel-line
+# parsing to tolerate embedded newlines on either slice. (#510)
+# ═══════════════════════════════════════════════════════════════════════════
+_artifact_split_prose_json() {
+    local input="$1" out_prose_var="$2" out_json_var="$3"
+    local raw
+    raw="$(printf '%s' "$input" | extract_json_and_surrounding_prose)"
+    local _p _j
+    _p="$(printf '%s' "$raw" | awk '
+        BEGIN { mode = "" }
+        /^__PROSE__$/ { mode = "prose"; next }
+        /^__JSON__$/  { mode = "json";  next }
+        { if (mode == "prose") { if (out=="") out=$0; else out=out "\n" $0 } }
+        END { printf "%s", out }
+    ')"
+    _j="$(printf '%s' "$raw" | awk '
+        BEGIN { mode = "" }
+        /^__PROSE__$/ { mode = "prose"; next }
+        /^__JSON__$/  { mode = "json";  next }
+        { if (mode == "json")  { if (out=="") out=$0; else out=out "\n" $0 } }
+        END { printf "%s", out }
+    ')"
+    printf -v "$out_prose_var" '%s' "$_p"
+    printf -v "$out_json_var"  '%s' "$_j"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Helper: _artifact_emit_llm_comment — emit a ── llm comment ── block carrying
+# escaped prose. No-op when prose is empty. (#510)
+# ═══════════════════════════════════════════════════════════════════════════
+_artifact_emit_llm_comment() {
+    local prose="$1"
+    [[ -z "$prose" ]] && return 0
+    printf '\n── llm comment ──\n%s\n' "$(_artifact_md_escape_block "$prose")"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Built-in renderer: render_plan_md
 # Input: plan.json text. Recognised fields: title, goal,
 #        steps[{description, files, estimated_lines}], notes. Missing fields
 #        are silently skipped (only what exists is rendered).
+#
+# #510: when the LLM emits prose alongside JSON in the same assistant turn
+# (envelope mode separates turns but not in-turn prose), split the captured
+# payload into rendered plan FIRST (eye-target priority) + a
+# ── llm comment ── block carrying the surrounding prose. The pure-JSON happy
+# path remains byte-identical so existing goldens are unchanged.
 # ═══════════════════════════════════════════════════════════════════════════
 render_plan_md() {
     local input="$1"
@@ -150,11 +195,48 @@ render_plan_md() {
         printf '_empty plan_'
         return 0
     fi
-    if ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+
+    # #510 split: peel prose around the LAST balanced top-level JSON object.
+    local _prose _json
+    _artifact_split_prose_json "$input" _prose _json
+
+    # No balanced JSON found. Two sub-paths:
+    #   (a) input contains a `{` → looks like malformed JSON; preserve the
+    #       legacy fenced-raw-passthrough so the visual cue ("this was meant
+    #       to be JSON but didn't parse") matches the pre-#510 contract.
+    #       (Regression lock for P4 in artifact-render-plan-test.sh.)
+    #   (b) input has no `{` at all → genuine prose-only payload; emit the
+    #       placeholder heading + ── llm comment ── block.
+    if [[ -z "$_json" ]]; then
+        if [[ "$input" == *'{'* ]]; then
+            local fence; fence="$(_artifact_pick_fence "$input")"
+            printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+            return 0
+        fi
+        if [[ -n "$_prose" ]]; then
+            printf '# Plan: (no JSON returned)'
+            _artifact_emit_llm_comment "$_prose"
+            return 0
+        fi
         local fence; fence="$(_artifact_pick_fence "$input")"
         printf '%s\n%s\n%s' "$fence" "$input" "$fence"
         return 0
     fi
+
+    # JSON slice exists but may still be malformed (slicer is brace-balanced,
+    # not jq-validated). Fall back to fenced raw on parse failure — and if
+    # there is surrounding prose, surface it in a comment block.
+    if ! printf '%s' "$_json" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$_json")"
+        printf '%s\n%s\n%s' "$fence" "$_json" "$fence"
+        _artifact_emit_llm_comment "$_prose"
+        return 0
+    fi
+
+    # Happy path: render the structured plan from the JSON slice. Prose is
+    # emitted AFTER the plan so the rendered artifact stays at the top of the
+    # banner (eye-target priority).
+    input="$_json"
 
     local title goal notes
     title="$(printf '%s' "$input" | jq -r '.title // empty' 2>/dev/null)"
@@ -217,6 +299,10 @@ render_plan_md() {
     if [[ -n "$notes" ]]; then
         printf '\n## Notes\n%s\n' "$(_artifact_md_escape_block "$notes")"
     fi
+
+    # #510: append surrounding prose as a ── llm comment ── block (no-op when
+    # _prose is empty so the pure-JSON happy path is byte-identical).
+    _artifact_emit_llm_comment "$_prose"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -326,11 +412,36 @@ render_review_md() {
         printf '_empty review_'
         return 0
     fi
-    if ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+
+    # #510 split — see render_plan_md for the rationale.
+    local _prose _json
+    _artifact_split_prose_json "$input" _prose _json
+
+    if [[ -z "$_json" ]]; then
+        # See render_plan_md for the malformed-JSON vs prose-only rationale.
+        if [[ "$input" == *'{'* ]]; then
+            local fence; fence="$(_artifact_pick_fence "$input")"
+            printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+            return 0
+        fi
+        if [[ -n "$_prose" ]]; then
+            printf '# Review: (no JSON returned)'
+            _artifact_emit_llm_comment "$_prose"
+            return 0
+        fi
         local fence; fence="$(_artifact_pick_fence "$input")"
         printf '%s\n%s\n%s' "$fence" "$input" "$fence"
         return 0
     fi
+
+    if ! printf '%s' "$_json" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$_json")"
+        printf '%s\n%s\n%s' "$fence" "$_json" "$fence"
+        _artifact_emit_llm_comment "$_prose"
+        return 0
+    fi
+
+    input="$_json"
 
     local verdict confidence summary
     verdict="$(printf '%s' "$input" | jq -r '.verdict // empty' 2>/dev/null)"
@@ -363,6 +474,10 @@ render_review_md() {
     if [[ -n "$summary" ]]; then
         printf '\n## Summary\n%s\n' "$(_artifact_md_escape_block "$summary")"
     fi
+
+    # #510: append surrounding prose as a ── llm comment ── block (no-op when
+    # _prose is empty so the pure-JSON happy path is byte-identical).
+    _artifact_emit_llm_comment "$_prose"
 }
 
 # ─── Register built-ins (idempotent) ────────────────────────────────────────

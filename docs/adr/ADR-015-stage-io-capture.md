@@ -746,3 +746,22 @@ instead of unconditionally painting green on rc=0.
 The stage name keeps its registry color (assigned in §v5); only the
 leading glyph + indicator color change. See ADR-019 / ADR-020 amendments
 for the verdict table and primary-output declaration rules.
+
+### v5 Implementation Note — Renderer-side prose/JSON split (#510)
+
+`_stage_io_stdout_end` (`core/output/stage-io.sh:1030`) dispatches to
+`render_artifact "$_artifact_id" "$output"` when the capture metadata
+carries an `artifact` tag. As of #510, the registered renderers for
+`plan` and `review` may split the captured payload into two visual
+sections inside the OUTPUT banner: the rendered artifact FIRST (eye-target
+priority) followed by a `── llm comment ──` block carrying any free-text
+the model emitted alongside the JSON in the same assistant turn (envelope
+mode separates turns but not in-turn prose).
+
+This split is purely a banner-render concern. The on-disk capture
+record's `.output` field is the raw payload (unchanged); plugins that
+write structured artifacts to disk (e.g. `plan.json`) continue to do so
+via their own parser (`extract_first_json_object` — see ADR-018 Pattern 1).
+The new `extract_json_and_surrounding_prose` helper in
+`scripts/lib/helpers.sh` powers the split; `extract_first_json_object`
+itself is unchanged for back-compat with the plan plugin's schema check.
