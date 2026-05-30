@@ -378,6 +378,179 @@ else
 fi
 assert_event_emitted "build.scope.violation event fired" "$ZBUILD_EVENTS_JSONL" "build.scope.violation"
 
+# ─── #498: _build_format_numstat unit tests ─────────────────────────────────
+print_test_section "T7: _build_format_numstat — single-file rendering"
+
+_allowed_empty=()
+# Run NOT in subshell so _BUILD_NUMSTAT_FILES_COUNT propagates. Capture stdout
+# via redirection-to-file instead of $().
+_t7_out="$TEST_TEMP_DIR/t7-numstat.txt"
+_build_format_numstat $'12\t0\tcore/foo.sh' _allowed_empty > "$_t7_out"
+out_single="$(cat "$_t7_out")"
+assert_contains "single-file shows +12 -0 line" "$out_single" "+12 -0  core/foo.sh"
+assert_contains "single-file footer: 1 file, +12 -0" "$out_single" "total: 1 files, +12 -0"
+assert_eq "single-file _BUILD_NUMSTAT_FILES_COUNT == 1" "1" "$_BUILD_NUMSTAT_FILES_COUNT"
+
+print_test_section "T8: _build_format_numstat — multi-file totals"
+_allowed_empty=()
+multi_input=$'5\t2\ta.sh\n10\t3\tb.sh\n1\t0\tc.sh'
+out_multi="$(_build_format_numstat "$multi_input" _allowed_empty)"
+assert_contains "multi-file footer: 3 files, +16 -5" "$out_multi" "total: 3 files, +16 -5"
+assert_contains "multi-file includes a.sh" "$out_multi" "a.sh"
+assert_contains "multi-file includes b.sh" "$out_multi" "b.sh"
+assert_contains "multi-file includes c.sh" "$out_multi" "c.sh"
+
+print_test_section "T9: _build_format_numstat — empty diff"
+_allowed_empty=()
+_t9_out="$TEST_TEMP_DIR/t9-numstat.txt"
+_build_format_numstat "" _allowed_empty > "$_t9_out"
+out_empty="$(cat "$_t9_out")"
+assert_contains "empty footer: 0 files, +0 -0" "$out_empty" "total: 0 files, +0 -0"
+assert_eq "empty _BUILD_NUMSTAT_FILES_COUNT == 0" "0" "$_BUILD_NUMSTAT_FILES_COUNT"
+
+print_test_section "T10: _build_format_numstat — binary file (-\\t-\\tpath)"
+_allowed_empty=()
+out_bin="$(_build_format_numstat $'-\t-\tassets/logo.png' _allowed_empty)"
+assert_contains "binary file shown with '-' counts" "$out_bin" "+- --  assets/logo.png"
+assert_contains "binary file counted as 1 file" "$out_bin" "total: 1 files, +0 -0"
+
+print_test_section "T11: _build_format_numstat — out-of-scope path redaction"
+_allowed_in=(core/ tests/)
+out_redact="$(_build_format_numstat $'3\t1\tdangerous/secrets.txt\n5\t0\tcore/safe.sh' _allowed_in)"
+assert_contains "out-of-scope path replaced with marker" "$out_redact" "<out-of-scope-context>"
+assert_contains "in-scope path rendered verbatim" "$out_redact" "core/safe.sh"
+if printf '%s' "$out_redact" | grep -q "dangerous/secrets.txt"; then
+    assert_fail "out-of-scope path leaked to banner" "found dangerous/secrets.txt in $out_redact"
+else
+    assert_pass "out-of-scope literal path NOT in banner"
+fi
+
+print_test_section "T12: _build_format_numstat — truncation cap (50)"
+_allowed_empty=()
+big_input=""
+for i in $(seq 1 60); do
+    big_input+=$'1\t0\tf'"${i}.sh"$'\n'
+done
+big_input="${big_input%$'\n'}"
+# Reset events file so we can assert the truncation event.
+: > "$ZBUILD_EVENTS_JSONL"
+out_big="$(_build_format_numstat "$big_input" _allowed_empty)"
+assert_contains "truncation hint emitted" "$out_big" "and 10 more files (see build-summary.json)"
+assert_contains "truncated footer: 60 files, +60 -0" "$out_big" "total: 60 files, +60 -0"
+shown_count="$(printf '%s\n' "$out_big" | grep -c '^+1 -0  f' || true)"
+assert_eq "exactly 50 numstat lines shown when total=60" "50" "$shown_count"
+assert_event_emitted "build.numstat.truncated event fired" \
+    "$ZBUILD_EVENTS_JSONL" "build.numstat.truncated"
+
+# ─── T13: end-to-end — _build_emit_changed_files_summary on a real repo ────
+print_test_section "T13: emit summary on real repo with edits → banner + computed event"
+
+ARTIFACT_DIR_T13="$TEST_TEMP_DIR/artifacts_t13"
+mkdir -p "$ARTIFACT_DIR_T13"
+PLAN_JSON_T13="$ARTIFACT_DIR_T13/plan.json"
+cat > "$PLAN_JSON_T13" <<'EOF'
+{
+  "schema_version": 1,
+  "files": ["tests/fixtures/build-test-dummy.txt"],
+  "steps": []
+}
+EOF
+OUT_DIFF_T13="$ARTIFACT_DIR_T13/diff.patch"
+OUT_SUMMARY_T13="$ARTIFACT_DIR_T13/build-summary.json"
+
+REPO_T13="$(setup_build_repo "repo_t13")"
+export ZBUILD_REPO_ROOT="$REPO_T13"
+MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
+MOCK_LOOP_EDIT_CONTENT="hello-498"
+MOCK_LOOP_ITERATIONS=2
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+# Configure a template that has stdout destination so the banner emits.
+TEMPLATE_T13="$TEST_TEMP_DIR/template-t13.yaml"
+cat > "$TEMPLATE_T13" <<'YAML'
+id: standard
+name: Standard Pipeline
+extends: null
+defaults:
+  strategy: fanout
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
+    io:
+      destinations: [file, stdout]
+      tail_lines: 80
+YAML
+# Load template module + template (stage-io reads destinations via this).
+# shellcheck source=../../../../core/pipeline/template.sh
+source "$REPO_ROOT/core/pipeline/template.sh"
+load_template "$TEMPLATE_T13"
+export ZBUILD_CURRENT_STAGE=build
+
+BANNER_T13="$TEST_TEMP_DIR/banner-t13.txt"
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+ZBUILD_STAGE_IO_FD=3 _build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_T13" \
+    "$OUT_DIFF_T13" \
+    "$OUT_SUMMARY_T13" \
+    "$ARTIFACT_DIR_T13" >/dev/null 2>/dev/null 3>"$BANNER_T13"
+rc_t13=$?
+set -e
+
+assert_exit_code "T13 inner run rc=0" "0" "$rc_t13"
+banner_t13="$(cat "$BANNER_T13" 2>/dev/null || true)"
+assert_contains "computed banner emitted for build stage" "$banner_t13" "stage-io: build [computed]"
+assert_contains "computed banner shows numstat input literal" "$banner_t13" "git diff HEAD --numstat"
+assert_contains "computed banner shows the changed file" "$banner_t13" "build-test-dummy.txt"
+assert_contains "computed banner shows total footer" "$banner_t13" "total: 1 files"
+captured_computed="$(jq -c --arg t "stage.io.captured" \
+    'select(.type==$t and .data.stage=="build" and .data.kind=="computed")' \
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "exactly 1 stage.io.captured event with kind=computed" "1" "$captured_computed"
+
+# ─── T14: discrepancy detection — LOOP_COMPLETE + 0 changed files ──────────
+print_test_section "T14: LOOP_COMPLETE + 0 files → build.discrepancy.detected + WARN"
+
+ARTIFACT_DIR_T14="$TEST_TEMP_DIR/artifacts_t14"
+mkdir -p "$ARTIFACT_DIR_T14"
+PLAN_JSON_T14="$ARTIFACT_DIR_T14/plan.json"
+cp "$PLAN_JSON_T13" "$PLAN_JSON_T14"
+OUT_DIFF_T14="$ARTIFACT_DIR_T14/diff.patch"
+OUT_SUMMARY_T14="$ARTIFACT_DIR_T14/build-summary.json"
+
+REPO_T14="$(setup_build_repo "repo_t14")"
+export ZBUILD_REPO_ROOT="$REPO_T14"
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+BANNER_T14="$TEST_TEMP_DIR/banner-t14.txt"
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+ZBUILD_STAGE_IO_FD=3 _build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_T14" \
+    "$OUT_DIFF_T14" \
+    "$OUT_SUMMARY_T14" \
+    "$ARTIFACT_DIR_T14" >/dev/null 2>/dev/null 3>"$BANNER_T14"
+rc_t14=$?
+set -e
+assert_exit_code "T14 inner run rc=0" "0" "$rc_t14"
+banner_t14="$(cat "$BANNER_T14" 2>/dev/null || true)"
+assert_contains "T14 WARN banner line emitted" "$banner_t14" "WARN: LLM signaled success but numstat shows 0 files changed"
+assert_event_emitted "build.discrepancy.detected event fired" \
+    "$ZBUILD_EVENTS_JSONL" "build.discrepancy.detected"
+
+# Reset to defaults for any subsequent tests.
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 cleanup_test_env

@@ -9,6 +9,7 @@ plugin.finalize.complete
 plugin.init.start
 redaction.applied
 build.empty_diff
+build.discrepancy.detected
 plugin.run.complete
 plugin.finalize.complete
 plugin.init.start
