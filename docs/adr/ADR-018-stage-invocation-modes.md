@@ -121,6 +121,35 @@ Scope declaration: the prompt states which files the stage may touch (e.g.
 **Future users:** test-fix loops, deploy-validate retry loops, any stage where
 iterative working-tree editing is required.
 
+#### Implementation Notes — corrupt-diff gate (issue #509)
+
+The post-loop diff captured via `git diff HEAD` (with the `git add -N`
+pre-pass that surfaces untracked files) can be syntactically corrupt without
+the loop or scope-validation noticing: zero-line stat entries for empty
+files, binary-file stubs missing a full index line, and stale `@@` line
+numbers after cumulative multi-iter edits all produce diffs that
+`git apply --check` rejects. Before #509 these patches were written to
+`diff.patch` silently and only surfaced when the downstream test stage
+tried to apply them.
+
+The gate lives in `plugins/agent/build/plugin.sh::_build_apply_check`,
+NOT the router — router stays diff-format-agnostic per Pattern 2. The
+helper runs `git apply --check -R` (reverse, because the working tree
+already holds the changes the diff describes) before the single
+`atomic_write` of `build-summary.json`, and folds its outcome into a new
+top-level `.apply_check` object on the summary. Fail-CLOSED: a corrupt
+patch sets `verdict=corrupt_diff` AND makes the plugin return rc=1, so
+`core/pipeline/runner.sh:672-686` halts the pipeline via the rc-wins
+path. The diff is still written (for triage), but the test stage never
+runs.
+
+Precondition mitigations mirror `_build_emit_changed_files_summary`:
+detached/unborn/rebase/merge/bisect state short-circuits to
+`reason=precondition_failed` fail-CLOSED rather than running the check on
+an unstable tree. Missing git binary → `reason=tool_unavailable`,
+catastrophic `git apply` rc>1 → same. Empty diff is skipped (the existing
+`build.empty_diff` event still fires upstream).
+
 ---
 
 ### Deterministic operations stay bash

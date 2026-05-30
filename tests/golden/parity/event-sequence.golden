@@ -24,6 +24,7 @@ loop.iteration
 loop.complete
 loop.git_diff_failed
 build.empty_diff
+build.apply_check.skipped
 build.discrepancy.detected
 plugin.run.complete
 plugin.run.complete

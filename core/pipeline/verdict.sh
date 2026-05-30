@@ -9,7 +9,8 @@
 # Verdict table (PINNED — see ADR-019 / ADR-020 amendment):
 #   pass, approve                                 → ✓ GREEN
 #   request_changes                               → ⚠ YELLOW
-#   fail, error, block, scope_violation           → ✗ RED
+#   fail, error, block, scope_violation,
+#   corrupt_diff                                  → ✗ RED
 #   missing/malformed on declared-primary         → ⚠ YELLOW + stage.verdict.missing
 #   rc != 0 (any cause)                           → ✗ RED  (rc always wins)
 #
@@ -49,7 +50,7 @@ verdict_classify() {
             echo "pass" ;;
         request_changes)
             echo "warn" ;;
-        fail|error|block|scope_violation)
+        fail|error|block|scope_violation|corrupt_diff)
             echo "fail" ;;
         ""|null)
             echo "unknown" ;;
