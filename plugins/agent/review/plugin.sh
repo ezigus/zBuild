@@ -182,25 +182,44 @@ REVIEW_PROMPT
     redacted_prompt="$(cat "$redacted_prompt_file")"
 
     # ─── Route to LLM (T2 per manifest config.tier_default) ─────────────────
-    # ADR-018 (#469): opt-in tool-use audit. When ZBUILD_REVIEW_AUDIT_TOOL_USE=1
-    # we ask the router to use --output-format json (via ZBUILD_ROUTER_JSON_OUTPUT)
-    # and write the captured tool_uses[] array to a side-channel file so we can
-    # parse it back in this shell (route_to_model is called via $() which
-    # discards subshell-local state otherwise).
+    # ADR-018 (#476): Pattern 1 stages with tools MUST use JSON envelope mode.
+    # Envelope (JSON output mode + .result extraction) is unconditional now;
+    # without it the model streams reasoning turns as prose before the final
+    # JSON and the parser below rejects the response.
+    #
+    # ADR-018 (#469): opt-in tool-use audit gated by ZBUILD_REVIEW_AUDIT_TOOL_USE=1
+    # additionally exports ZBUILD_ROUTER_TOOL_USES_FILE so the router writes
+    # tool_uses[] to a side-channel file we can parse back here ($() discards
+    # subshell state otherwise).
     local tier="${ZBUILD_REVIEW_TIER:-T2}"
     local raw_response="" router_rc=0
     local _audit_enabled=0 _audit_tool_uses_file=""
+    local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
+    export ZBUILD_ROUTER_JSON_OUTPUT=1
     if [[ "${ZBUILD_REVIEW_AUDIT_TOOL_USE:-0}" == "1" ]]; then
         _audit_enabled=1
         _audit_tool_uses_file="$artifact_dir/review-tool-uses.json"
         : > "$_audit_tool_uses_file"
-        export ZBUILD_ROUTER_JSON_OUTPUT=1
         export ZBUILD_ROUTER_TOOL_USES_FILE="$_audit_tool_uses_file"
     fi
     raw_response="$(route_to_model "$tier" "$redacted_prompt" 2>/dev/null)" || router_rc=$?
+    if [[ "$_prev_json_env" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_JSON_OUTPUT
+    else
+        export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+    fi
     if [[ $_audit_enabled -eq 1 ]]; then
-        unset ZBUILD_ROUTER_JSON_OUTPUT ZBUILD_ROUTER_TOOL_USES_FILE
+        unset ZBUILD_ROUTER_TOOL_USES_FILE
         _review_audit_tool_use "$_audit_tool_uses_file" "$scope_manifest" || true
+    fi
+
+    # #476 finding: distinguish "envelope returned empty .result" from
+    # "router rc=non-zero" so an empty model output doesn't masquerade as a
+    # legitimate verdict downstream.
+    if [[ $router_rc -eq 0 && -z "$raw_response" ]]; then
+        error "review_run: router returned empty .result envelope; refusing to emit verdict"
+        emit_event "plugin.run.error" "plugin=review" "reason=empty_result_envelope"
+        return 1
     fi
 
     # ─── Parse verdict from LLM response ────────────────────────────────────

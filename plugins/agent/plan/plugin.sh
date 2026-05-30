@@ -247,12 +247,30 @@ PLAN_PROMPT
         "$_plan_instructions" "$redacted_content" "$manifest_body"
 
     # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────
+    # ADR-018 (#476): Pattern 1 stages with tools MUST use JSON envelope mode.
+    # Headless text mode streams every turn (reasoning + tools + final) as
+    # concatenated text; only .result from the JSON envelope is the
+    # final assistant message. Without this, reasoning turns leak as a prose
+    # preamble and break the strict-JSON parser below.
+    #
+    # Save/restore so a caller that set the flag externally is not clobbered.
     local tier="${ZBUILD_PLAN_TIER:-T2}"
     local raw_response="" router_rc=0
+    local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
+    export ZBUILD_ROUTER_JSON_OUTPUT=1
     raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)" || router_rc=$?
+    if [[ "$_prev_json_env" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_JSON_OUTPUT
+    else
+        export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+    fi
 
     # ─── Parse: strip fences, validate JSON with .steps array ───────────────
     local plan_json=""
+    # #476: distinguish empty-envelope from schema-failure so a future
+    # regression (e.g. envelope mode silently disabled) emits a different
+    # `reason=` and is grep-detectable.
+    local schema_failed=0
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
         local stripped
         stripped="$(printf '%s' "$raw_response" \
@@ -262,8 +280,11 @@ PLAN_PROMPT
         if printf '%s' "$stripped" | jq -e 'type == "object" and (.schema_version == 1) and (.steps | type == "array") and (.steps | length > 0) and (.steps | all((.files | type == "array") and (.files | all(type == "string"))))' >/dev/null 2>&1; then
             plan_json="$stripped"
         else
+            schema_failed=1
             warn "_plan_run_inner: LLM response is not a valid plan.json (requires schema_version=1 and non-empty .steps)"
         fi
+    elif [[ $router_rc -eq 0 && -z "$raw_response" ]]; then
+        warn "_plan_run_inner: router rc=0 but .result envelope is empty (model returned no final message)"
     elif [[ $router_rc -eq 1 ]]; then
         warn "_plan_run_inner: router rc=1 (recoverable); no plan produced"
     elif [[ $router_rc -ne 0 ]]; then
@@ -275,8 +296,11 @@ PLAN_PROMPT
 
     # ─── Validate: fail if we still have no usable plan ─────────────────────
     if [[ -z "$plan_json" ]]; then
-        error "_plan_run_inner: no valid plan.json produced (LLM returned unusable response)"
-        emit_event "plugin.run.error" "plugin=plan" "reason=invalid_plan_response"
+        local _reason="invalid_plan_response"
+        [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
+        [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
+        error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
+        emit_event "plugin.run.error" "plugin=plan" "reason=$_reason"
         return 1
     fi
 

@@ -141,18 +141,13 @@ fi
 # ─── R1/R2: happy path — valid JSON response + redaction-reach assertion ─────
 echo "auth bypass credential leak" > "$INPUT"
 
-cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
-#!/usr/bin/env bash
-while [[ \$# -gt 0 ]]; do
-    case "\$1" in
-        -p) printf '%s' "\$2" > "$TEST_TEMP_DIR/last_prompt"; shift 2 ;;
-        *) shift ;;
-    esac
-done
-echo '{"schema_version":1,"plugin_id":"security-lens","findings":[{"title":"SQL Injection","severity":"high","category":"injection","file":"src/db.sh:42","evidence":"unsanitized var","suggestion":"quote all variables"}]}'
-exit 0
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/claude"
+# #476: envelope-aware via the shared helper. Plugin now exports
+# ZBUILD_ROUTER_JSON_OUTPUT=1 (ADR-018 Pattern 1 decision #8); router invokes
+# claude with --output-format json. Helper also records the prompt so R2 can
+# assert the system prompt reaches the LLM.
+install_envelope_mock_claude \
+    --record-prompt "$TEST_TEMP_DIR/last_prompt" \
+    '{"schema_version":1,"plugin_id":"security-lens","findings":[{"title":"SQL Injection","severity":"high","category":"injection","file":"src/db.sh:42","evidence":"unsanitized var","suggestion":"quote all variables"}]}'
 
 OUTPUT_R="$TEST_TEMP_DIR/findings_r.json"
 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R" "$TEST_TEMP_DIR" >/dev/null 2>&1
@@ -172,25 +167,15 @@ else
     assert_fail "R2: system prompt missing from LLM call"
 fi
 
-# ─── R3: fenced JSON response ─────────────────────────────────────────────────
-cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
-#!/usr/bin/env bash
-printf '```json\n{"schema_version":1,"plugin_id":"security-lens","findings":[{"title":"XSS","severity":"medium","category":"owasp-a3","file":"src/out.sh:1","evidence":"echo $var","suggestion":"escape output"}]}\n```\n'
-exit 0
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/claude"
+# ─── R3: fenced JSON response (envelope-wrapped per #476) ─────────────────────
+install_envelope_mock_claude $'```json\n{"schema_version":1,"plugin_id":"security-lens","findings":[{"title":"XSS","severity":"medium","category":"owasp-a3","file":"src/out.sh:1","evidence":"echo $var","suggestion":"escape output"}]}\n```'
 OUTPUT_R3="$TEST_TEMP_DIR/findings_r3.json"
 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R3" "$TEST_TEMP_DIR" >/dev/null 2>&1
 fence_title=$(jq -r '.findings[0].title' "$OUTPUT_R3")
 assert_eq "R3: fenced JSON response parsed correctly" "XSS" "$fence_title"
 
-# ─── R4: malformed (non-JSON) response ───────────────────────────────────────
-cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
-#!/usr/bin/env bash
-echo "this is not json at all"
-exit 0
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/claude"
+# ─── R4: malformed (non-JSON) response (envelope-wrapped per #476) ───────────
+install_envelope_mock_claude "this is not json at all"
 OUTPUT_R4="$TEST_TEMP_DIR/findings_r4.json"
 set +e
 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R4" "$TEST_TEMP_DIR" >/dev/null 2>&1
@@ -245,13 +230,8 @@ r7_error_event=$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | 
     jq -r 'select(.type=="plugin.run.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
 assert_eq "R7: plugin.run.error event emitted with router_fatal reason" "router_fatal" "$r7_error_event"
 
-# ─── R8: .findings key missing from valid JSON object ─────────────────────────
-cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
-#!/usr/bin/env bash
-echo '{"schema_version":1}'
-exit 0
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/claude"
+# ─── R8: .findings key missing from valid JSON object (envelope-wrapped #476) ─
+install_envelope_mock_claude '{"schema_version":1}'
 OUTPUT_R8="$TEST_TEMP_DIR/findings_r8.json"
 set +e
 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R8" "$TEST_TEMP_DIR" >/dev/null 2>&1
@@ -272,12 +252,7 @@ echo '{"schema_version":1,"run_id":"test-hook-001","issue":"0","stage_statuses":
 echo "auth bypass credential leak" > "$STATE_DIR/intake.md"
 printf '+ src/\n+ tests/\n' > "$STATE_DIR/scope-manifest.md"
 
-cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
-#!/usr/bin/env bash
-echo '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
-exit 0
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/claude"
+install_envelope_mock_claude '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
 
 set +e
 security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
@@ -291,6 +266,26 @@ assert_file_exists "hook contract: artifact written to state_dir/artifacts/" \
 ZBUILD_TARGET_PLATFORM="ios" security_lens_run "security-lens" "$STATE_FILE" >/dev/null 2>&1
 assert_file_exists "hook contract: platform fanout writes platform-scoped artifact" \
     "$STATE_DIR/artifacts/security-ios-findings.json"
+
+# ─── R9 (#476): plugin exports ZBUILD_ROUTER_JSON_OUTPUT=1 ───────────────────
+# ADR-018 Pattern 1 decision #8: plugins MUST opt into JSON envelope mode so
+# the router adds --output-format json. Mock records argv to disk; assert.
+# DO NOT REMOVE — this is the sole production-path argv pin for the #476
+# invariant on security-lens. Tests R1/R3/R4/R8 pass with or without envelope
+# mode because the helper handles both.
+ARGV_CAPTURE="$TEST_TEMP_DIR/r9-argv"
+install_envelope_mock_claude \
+    --record-argv "$ARGV_CAPTURE" \
+    '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+
+OUTPUT_R9="$TEST_TEMP_DIR/findings_r9.json"
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R9" "$TEST_TEMP_DIR" >/dev/null 2>&1
+assert_file_exists "R9: claude was invoked (argv capture file written)" "$ARGV_CAPTURE"
+if grep -qx '\--output-format' "$ARGV_CAPTURE" && grep -qx 'json' "$ARGV_CAPTURE"; then
+    assert_pass "R9 (#476): security-lens invokes claude with --output-format json"
+else
+    assert_fail "R9 (#476): expected --output-format json in argv" "got: $(tr '\n' ' ' < "$ARGV_CAPTURE")"
+fi
 
 cleanup_test_env
 print_test_results

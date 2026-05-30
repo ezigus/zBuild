@@ -98,9 +98,20 @@ _security_lens_run_inner() {
     # ─── Route to LLM (hardcoded T3, matching manifest config.tier_default) ──
     # ZBUILD_SECURITY_LENS_TIER overrides for testing. Manifest-driven tier
     # read is deferred to a follow-up issue.
+    # ADR-018 (#476): Pattern 1 stages with tools MUST use JSON envelope mode.
+    # Without the JSON envelope + .result extraction, reasoning turns leak
+    # as a prose preamble that breaks the strict-JSON parser below.
+    # Save/restore so an outer caller's env intent is preserved.
     local tier="${ZBUILD_SECURITY_LENS_TIER:-T3}"
     local raw_response="" router_rc=0
+    local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
+    export ZBUILD_ROUTER_JSON_OUTPUT=1
     raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)" || router_rc=$?
+    if [[ "$_prev_json_env" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_JSON_OUTPUT
+    else
+        export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+    fi
 
     # ─── Parse: strip fences, extract .findings, validate array ───────────
     # Ported from legacy/scripts/lib/compound-audit.sh:160-182

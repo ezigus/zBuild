@@ -41,16 +41,15 @@ export ZBUILD_RUN_ID="integ-test"
 export ZBUILD_ISSUE=999
 
 # Stub a real `claude` binary on PATH. route_to_model -> _route_call_claude
-# resolves it via `command -v claude` and then execs it; the stub writes its
-# canned response to stdout and ignores all flags.
+# resolves it via `command -v claude` and then execs it.
+#
+# #476: envelope-aware via the shared helper. Plan now exports
+# ZBUILD_ROUTER_JSON_OUTPUT=1 (ADR-018 Pattern 1 decision #8), so the router
+# adds --output-format json. The helper wraps in envelope on that argv;
+# otherwise emits raw.
 CANNED_RESPONSE_FILE="$TEST_TEMP_DIR/claude-canned.json"
-cat > "$TEST_TEMP_DIR/bin/claude" <<'STUB'
-#!/usr/bin/env bash
-# Stubbed claude: ignore flags, emit canned response from env file.
-cat "${CANNED_RESPONSE_FILE:-/dev/null}"
-STUB
-chmod +x "$TEST_TEMP_DIR/bin/claude"
-export CANNED_RESPONSE_FILE
+: > "$CANNED_RESPONSE_FILE"
+install_envelope_mock_claude --file "$CANNED_RESPONSE_FILE"
 
 # Source plugin
 # shellcheck source=../../../../plugins/agent/plan/plugin.sh

@@ -66,10 +66,15 @@ apply_scope_redaction() {
 # the LLM for (issue #435). plan_run invokes route_to_model inside $(...),
 # so variable-based capture is lost to the subshell — use a file instead.
 _CAPTURED_PROMPT_FILE="$TEST_TEMP_DIR/captured-plan-prompt.txt"
+_CAPTURED_ENVELOPE_FILE="$TEST_TEMP_DIR/captured-plan-envelope.txt"
 : > "$_CAPTURED_PROMPT_FILE"
+: > "$_CAPTURED_ENVELOPE_FILE"
 route_to_model() {
     # Args: tier prompt [flags...]
     printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
+    # #476: capture envelope-mode state at call time so we can assert
+    # plan opted in (ADR-018 Pattern 1 §"JSON envelope is mandatory…").
+    printf '%s' "${ZBUILD_ROUTER_JSON_OUTPUT:-unset}" > "$_CAPTURED_ENVELOPE_FILE"
     printf '%s\n' "$CANNED_PLAN"
     return 0
 }
@@ -90,6 +95,14 @@ set -e
 
 assert_eq "plan_run returns rc=0" "0" "$rc"
 assert_file_exists "plan.json artifact created" "$ARTIFACTS_DIR/plan.json"
+
+# ─── Test 2b (#476): plan opts into JSON envelope mode before route_to_model ──
+# ADR-018 §"JSON envelope is mandatory when tools are available" + decision #8.
+# Without ZBUILD_ROUTER_JSON_OUTPUT=1, claude --print streams reasoning turns
+# as a prose preamble that breaks the strict-JSON parser.
+captured_envelope="$(cat "$_CAPTURED_ENVELOPE_FILE" 2>/dev/null || true)"
+assert_eq "plan exports ZBUILD_ROUTER_JSON_OUTPUT=1 around route_to_model (#476)" \
+    "1" "$captured_envelope"
 
 # ─── Test 3: plan.json has required fields ────────────────────────────────────
 plan_json_content="$(cat "$ARTIFACTS_DIR/plan.json" 2>/dev/null || echo '{}')"
@@ -222,7 +235,10 @@ set -e
 reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_FILE" 2>/dev/null | head -1)"
 assert_eq "traversal violation reason=out_of_repo" "out_of_repo" "$reason"
 
-# ─── Test 12: malformed plan (non-string files) — rc=1, invalid_plan_response ─
+# ─── Test 12: malformed plan (non-string files) — rc=1, schema_violation ────
+# #476: plan now distinguishes schema_violation (response present but fails
+# jq -e predicate) from empty_result_envelope (router rc=0, .result empty)
+# and invalid_plan_response (legacy fallback for other rc paths).
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":[123],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
@@ -231,7 +247,7 @@ rc=$?
 set -e
 assert_eq "malformed files[] non-string returns rc=1" "1" "$rc"
 err_reason="$(jq -r 'select(.type=="plugin.run.error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
-assert_eq "malformed plan error reason=invalid_plan_response" "invalid_plan_response" "$err_reason"
+assert_eq "malformed plan error reason=schema_violation (#476)" "schema_violation" "$err_reason"
 
 # ─── Test 13: empty files[] — allowed, no violation ─────────────────────────
 : > "$EVENTS_FILE"
@@ -243,6 +259,21 @@ set -e
 assert_eq "empty files[] returns rc=0" "0" "$rc"
 violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "empty files[] emits no violations" "0" "$violation_count"
+
+# ─── Test 13b (#476): router returns empty .result → empty_result_envelope ──
+# Negative case the #476 fix was written to handle: model emits only tool
+# turns and the final assistant message is empty. Router succeeds (rc=0)
+# but raw_response is empty. Plugin must distinguish this from a schema
+# failure and emit reason=empty_result_envelope.
+: > "$EVENTS_FILE"
+CANNED_PLAN=''
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "empty .result returns rc=1 (#476)" "1" "$rc"
+empty_reason="$(jq -r 'select(.type=="plugin.run.error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+assert_eq "empty .result emits reason=empty_result_envelope (#476)" "empty_result_envelope" "$empty_reason"
 
 # Restore the original canned plan for any tests below
 CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'

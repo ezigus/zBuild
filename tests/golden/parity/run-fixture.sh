@@ -35,21 +35,27 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# #476: plan, review, security-lens now ALL run in JSON envelope mode
+# (ADR-018 Pattern 1 decision #8). Wrap every Pattern 1 response in the
+# result envelope so the router's .result extraction finds the payload.
+# Build (Pattern 2) already wraps, since route_to_model_loop drives it.
 if printf '%s' "$prompt" | grep -q "LOOP_COMPLETE"; then
     # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD
     # (route_to_model_loop runs claude with cwd=$ZBUILD_REPO_ROOT) and emit a
-    # claude --output-format json envelope with .result containing the DONE
-    # sentinel as the final line.
+    # result envelope with .result containing the DONE sentinel as the
+    # final line.
     mkdir -p "$PWD/tests/fixtures"
     printf 'parity-fixture\n' > "$PWD/tests/fixtures/parity-fixture.txt"
     jq -n --arg r $'Created fixture file.\nLOOP_COMPLETE' \
        '{result:$r, usage:{input_tokens:5, output_tokens:3}}'
 elif printf '%s' "$prompt" | grep -q "Review whether this diff"; then
-    # review stage — approve verdict, no issues
-    printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"parity fixture review"}'
+    # review stage — approve verdict, no issues (wrapped per #476)
+    jq -n --arg r '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"parity fixture review"}' \
+       '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 else
-    # plan stage (default)
-    printf '%s\n' '{"schema_version":1,"issue":359,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"add parity fixture file","files":["tests/fixtures/parity-fixture.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}'
+    # plan stage (default — wrapped per #476)
+    jq -n --arg r '{"schema_version":1,"issue":359,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"add parity fixture file","files":["tests/fixtures/parity-fixture.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
+       '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 fi
 exit 0
 MOCK

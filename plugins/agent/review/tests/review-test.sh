@@ -87,12 +87,10 @@ _install_claude_mock() {
     local response_json="$1"
     local mock_stdout_file="$TEST_TEMP_DIR/mock-claude-stdout"
     printf '%s\n' "$response_json" > "$mock_stdout_file"
-    cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
-#!/usr/bin/env bash
-cat "$mock_stdout_file"
-exit 0
-MOCK
-    chmod +x "$TEST_TEMP_DIR/bin/claude"
+    # #476: delegate to the shared envelope-aware helper. Wraps payload in
+    # the result envelope when invoked with --output-format json (which review
+    # now does unconditionally — ADR-018 decision #8); otherwise raw text.
+    install_envelope_mock_claude --file "$mock_stdout_file"
 }
 
 # ─── Test 1: review_init sets env vars ───────────────────────────────────────
@@ -277,8 +275,12 @@ _CAPTURED_REVIEW_PROMPT="$TEST_TEMP_DIR/captured-review-prompt.txt"
 : > "$_CAPTURED_REVIEW_PROMPT"
 
 # Shadow route_to_model to capture prompt arg and return a canned approve verdict
+# Also capture ZBUILD_ROUTER_JSON_OUTPUT state for the #476 envelope-mode invariant.
+_CAPTURED_REVIEW_ENVELOPE="$TEST_TEMP_DIR/captured-review-envelope.txt"
+: > "$_CAPTURED_REVIEW_ENVELOPE"
 route_to_model() {
     printf '%s' "${2:-}" > "$_CAPTURED_REVIEW_PROMPT"
+    printf '%s' "${ZBUILD_ROUTER_JSON_OUTPUT:-unset}" > "$_CAPTURED_REVIEW_ENVELOPE"
     printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}'
     return 0
 }
@@ -296,6 +298,11 @@ rc=$?
 set -e
 
 assert_eq "hygiene: rc=0" "0" "$rc"
+
+# #476: envelope-mode invariant on review's default path
+captured_review_envelope="$(cat "$_CAPTURED_REVIEW_ENVELOPE")"
+assert_eq "review exports ZBUILD_ROUTER_JSON_OUTPUT=1 on default path (#476)" \
+    "1" "$captured_review_envelope"
 
 captured_prompt="$(cat "$_CAPTURED_REVIEW_PROMPT")"
 
