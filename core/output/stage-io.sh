@@ -31,6 +31,8 @@ _ZBUILD_ROOT_FOR_STAGE_IO="$(cd "$_STAGE_IO_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/scripts/lib/helpers.sh"
+# shellcheck source=./stage-colors.sh
+source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/output/stage-colors.sh"
 # shellcheck source=../event-bus/event-bus.sh
 source "$_ZBUILD_ROOT_FOR_STAGE_IO/core/event-bus/event-bus.sh"
 # shellcheck source=../pipeline/template.sh
@@ -85,6 +87,27 @@ _stage_io_now_ms() {
     local us="${EPOCHREALTIME/./}"
     # us is microseconds when EPOCHREALTIME is "<sec>.<usec>"
     printf '%s' $(( 10#${us} / 1000 ))
+}
+
+# ─── _stage_io_now_short — HH:MM:SS UTC clock for banner heading (#492) ──────
+# Used by _stage_io_stdout_begin/_end to right-align a wall-time stamp on the
+# banner heading. Honors ZBUILD_STAGE_IO_NOW_MS_OVERRIDE so goldens / visual
+# determinism tests can pin the timestamp. macOS BSD `date -r <sec>` and GNU
+# `date -d @<sec>` differ — we use `-r` first (BSD/macOS) with a GNU fallback.
+_stage_io_now_short() {
+    local sec
+    if [[ -n "${ZBUILD_STAGE_IO_NOW_MS_OVERRIDE:-}" ]]; then
+        sec=$(( ZBUILD_STAGE_IO_NOW_MS_OVERRIDE / 1000 ))
+    else
+        sec=${EPOCHSECONDS:-$(date -u +%s)}
+    fi
+    # BSD date (macOS): `date -u -r <sec>`. GNU date: `date -u -d @<sec>`.
+    # Try BSD form first; fall back to GNU; final fallback is current time.
+    local out
+    out="$(date -u -r "$sec" +'%H:%M:%S UTC' 2>/dev/null \
+        || date -u -d "@$sec" +'%H:%M:%S UTC' 2>/dev/null \
+        || date -u +'%H:%M:%S UTC')"
+    printf '%s' "$out"
 }
 
 # ─── _stage_io_orphan_finalizer — EXIT trap helper for unpaired begins ────────
@@ -699,6 +722,127 @@ _stage_io_head() {
     printf '%s\n' "$content" | head -n "$n"
 }
 
+# ─── _stage_io_truncation_hint <total> <shown> <stage> <seq> ─────────────────
+# (#492) Emit "↪ [<remaining> more lines · full at <path>]" when content was
+# truncated. When stage/seq omitted (no deterministic path), skips path portion.
+# Always prints with a leading newline so it visually separates from content.
+_stage_io_truncation_hint() {
+    local total="$1" shown="$2" stage="${3:-}" seq="${4:-}"
+    [[ "$total" -le "$shown" ]] && return 0
+    local remaining=$(( total - shown ))
+    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    if [[ -n "$stage" && -n "$seq" ]]; then
+        local path="$state_dir/artifacts/stage-io/${stage}-${seq}.json"
+        printf '↪ [%d more lines · full at %s]\n' "$remaining" "$path"
+    else
+        printf '↪ [%d more lines]\n' "$remaining"
+    fi
+}
+
+# ─── _stage_io_head_with_hint <content> <n> [<stage> <seq>] ──────────────────
+# Like _stage_io_head, plus a truncation hint when wc -l > n.
+_stage_io_head_with_hint() {
+    local content="$1" n="$2" stage="${3:-}" seq="${4:-}"
+    local total
+    total="$(printf '%s\n' "$content" | wc -l | tr -d ' ')"
+    printf '%s\n' "$content" | head -n "$n"
+    _stage_io_truncation_hint "$total" "$n" "$stage" "$seq"
+}
+
+# ─── _stage_io_tail_with_hint <content> <n> [<stage> <seq>] ──────────────────
+# Like _stage_io_tail, plus a truncation hint when wc -l > n.
+_stage_io_tail_with_hint() {
+    local content="$1" n="$2" stage="${3:-}" seq="${4:-}"
+    local total
+    total="$(printf '%s\n' "$content" | wc -l | tr -d ' ')"
+    printf '%s\n' "$content" | tail -n "$n"
+    _stage_io_truncation_hint "$total" "$n" "$stage" "$seq"
+}
+
+# ─── _stage_io_banner_use_color (#492) ───────────────────────────────────────
+# Decide whether to emit ANSI color in banner output. Returns 0 (true) when
+# colors should render, 1 (false) when they should be stripped. Used by
+# _stage_io_stdout_begin/_end so a banner being captured to a non-tty fd
+# (file, pipe — common in tests and CI logs) renders as plain text without
+# ANSI escapes interleaving with substring assertions.
+#
+# Rules (in order):
+#   - NO_COLOR set                                 → no color
+#   - FORCE_COLOR=1                                → color (overrides tty)
+#   - ZBUILD_STAGE_IO_FORCE_COLOR=1                → color (test/golden pin)
+#   - banner fd (ZBUILD_STAGE_IO_FD, default 2) is a tty → color
+#   - otherwise                                    → no color
+_stage_io_banner_use_color() {
+    [[ -n "${NO_COLOR:-}" ]] && return 1
+    # ZBUILD_STAGE_IO_FORCE_COLOR is the banner-specific opt-in (test/golden
+    # pin). FORCE_COLOR alone is NOT enough — it only populates the helpers
+    # palette; the banner fd's tty-ness still gates whether colors interleave
+    # with the operator-visible stream, since callers commonly capture banners
+    # to files for grep-based assertions.
+    [[ "${ZBUILD_STAGE_IO_FORCE_COLOR:-0}" == "1" ]] && return 0
+    local fd="${ZBUILD_STAGE_IO_FD:-2}"
+    if [[ -t "$fd" ]] 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# ─── _stage_io_visible_len <string> — visible (no-ANSI) byte length (#492) ────
+# Strip ANSI escapes via the existing sed pattern in helpers.sh's strip_ansi
+# (we re-implement inline rather than piping to a subshell — banner rendering
+# is hot-ish and forks add up). Used by the banner padder to compute right-
+# alignment math against the *visible* length, not the ANSI-laden raw length.
+_stage_io_visible_len() {
+    local LC_ALL=C
+    local s="$1"
+    # Strip CSI: ESC [ <params> <final>; then bare ESC <char>.
+    s="$(printf '%s' "$s" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
+    printf '%s' "${#s}"
+}
+
+# ─── _stage_io_dashes <n> — emit n × ─ (horizontal-bar U+2500) ───────────────
+# Empty when n <= 0. Used to right-pad the banner heading toward the timestamp.
+_stage_io_dashes() {
+    local n="${1:-0}"
+    [[ "$n" -le 0 ]] && return 0
+    local dashes
+    printf -v dashes '%*s' "$n" ''
+    printf '%s' "${dashes// /─}"
+}
+
+# ─── _stage_io_compose_banner — assemble heading with right-aligned timestamp ─
+# Args: <prefix_visible> <prefix_with_ansi> <timestamp_str>
+# Strategy:
+#   visible_text = "── <prefix_visible> ──── ... ──── HH:MM:SS UTC ──"
+#   width        = _term_width
+#   pad          = width - len(prefix) - len(ts) - bookend chars
+# When pad <= 2 (terminal < 70 cols), degrade to the legacy format: just emit
+# the prefix without timestamp / right-alignment, returning the no-padding
+# fallback so older substring assertions keep working.
+#
+# Prints the assembled line (no trailing newline) on stdout. Color escapes
+# pass through unchanged via the *_with_ansi* prefix.
+_stage_io_compose_banner() {
+    local prefix_visible="$1" prefix_ansi="$2" ts="$3"
+    local width
+    width="$(_term_width)"
+    # Bookend layout: `── <prefix> ` + dashes + ` <ts> ──`
+    # Fixed glyph cost: "── " (3) + " " (1) + " " (1) + " ──" (3) = 8 visible cols.
+    local fixed=8
+    local pad=$(( width - ${#prefix_visible} - ${#ts} - fixed ))
+    # Use printf '%b' for the ANSI-laden prefix so backslash-encoded escape
+    # sequences in $CYAN/$BOLD/etc resolve to real escape characters. The
+    # remaining %s args (dashes, timestamp) are plain text.
+    if [[ "$pad" -le 2 ]]; then
+        # Degraded: legacy heading with closing dashes only.
+        printf '── %b ──' "$prefix_ansi"
+        return 0
+    fi
+    local dashes
+    dashes="$(_stage_io_dashes "$pad")"
+    printf '── %b %s %s ──' "$prefix_ansi" "$dashes" "$ts"
+}
+
 # ─── _stage_io_stdout_begin — #481 input-phase banner emitter ─────────────────
 # Emits only the input section of the split banner:
 #   ── stage-io: <stage> [<kind>] seq=N input ──
@@ -716,21 +860,39 @@ _stage_io_stdout_begin() {
 
     input="$(_stage_io_strip_ansi "$input")"
 
+    # #492 v5: build a colored heading with right-aligned HH:MM:SS UTC.
+    # Color application is ONLY here (fd-2 path); _stage_io_to_stdout
+    # (gh_comment body assembler) remains plain-text by construction.
+    # When the banner fd isn't a tty (file/pipe — tests, CI logs), strip ANSI
+    # so existing substring assertions (token order: <prefix> <pad> <ts>)
+    # see the literal prefix without intervening escapes.
+    local _color="" _bold="" _dim="" _reset=""
+    if _stage_io_banner_use_color; then
+        _color="$(_stage_color "$stage")"
+        _bold="${BOLD:-}"; _dim="${DIM:-}"; _reset="${RESET:-}"
+    fi
+    local _ts _prefix_v _prefix_a
+    _ts="$(_stage_io_now_short)"
+    _prefix_v="stage-io: ${stage} [${kind}] seq=${seq} input"
+    # Colored prefix: dim "stage-io:" label, colored bold stage name, plain rest.
+    _prefix_a="${_dim}stage-io:${_reset} ${_color}${_bold}${stage}${_reset} [${kind}] seq=${seq} input"
+
     # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
     # ${ZBUILD_STAGE_IO_FD:-2}. The caller-level redirect in stage_io_begin is
     # belt; this is suspenders — a caller that wraps the action in $(...) cannot
     # capture the banner into a string even if the caller-level redirect is
     # bypassed, because every printf below lands on fd 2 directly.
     {
-        printf '── stage-io: %s [%s] seq=%s input ──\n' "$stage" "$kind" "$seq"
+        _stage_io_compose_banner "$_prefix_v" "$_prefix_a" "$_ts"
+        printf '\n'
         case "$kind" in
             llm)
                 if [[ -n "$artifact_id" ]]; then
                     local _rendered
                     _rendered="$(render_artifact "$artifact_id" "$input" 2>/dev/null)"
-                    _stage_io_head "$_rendered" "$tail_lines"
+                    _stage_io_head_with_hint "$_rendered" "$tail_lines" "$stage" "$seq"
                 else
-                    _stage_io_head "$input" "$tail_lines"
+                    _stage_io_head_with_hint "$input" "$tail_lines" "$stage" "$seq"
                 fi
                 ;;
             command)
@@ -772,33 +934,61 @@ _stage_io_stdout_end() {
     local _artifact_id
     _artifact_id="$(printf '%s' "$metadata" | jq -r '.artifact // empty' 2>/dev/null || true)"
 
+    # #492 v5: color the status icon (✓/✗) and right-align ts + dur on heading.
+    local _color="" _bold="" _dim="" _reset="" _green="" _red=""
+    if _stage_io_banner_use_color; then
+        _color="$(_stage_color "$stage")"
+        _bold="${BOLD:-}"; _dim="${DIM:-}"; _reset="${RESET:-}"
+        _green="${GREEN:-}"; _red="${RED:-}"
+    fi
+    local _ts _prefix_v _prefix_a _icon _icon_color _end_color _status_color
+    _ts="$(_stage_io_now_short)"
+    # Status colorization: OK=green, FAIL=red. Icon (✓/✗) is placed on the
+    # end-trailer line, NOT on the output heading — that keeps the legacy
+    # substring "seq=N output OK <dur>" intact for existing assertions.
+    if [[ "$status" == "OK" ]]; then
+        _icon='✓'; _icon_color="$_green"; _status_color="$_green"
+    else
+        _icon='✗'; _icon_color="$_red"; _status_color="$_red"
+    fi
+    # rc-colored end trailer: green when no exit_code or exit_code==0 (LLM kind
+    # has no exit_code — treat as OK); red otherwise. Mirrors status above.
+    if [[ -z "$exit_code" || "$exit_code" == "0" ]]; then
+        [[ "$status" == "OK" ]] && _end_color="$_green" || _end_color="$_red"
+    else
+        _end_color="$_red"
+    fi
+    _prefix_v="stage-io: ${stage} [${kind}] seq=${seq} output ${status} ${dur}"
+    _prefix_a="${_dim}stage-io:${_reset} ${_color}${_bold}${stage}${_reset} [${kind}] seq=${seq} output ${_status_color}${status}${_reset} ${dur}"
+
     # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
     # ${ZBUILD_STAGE_IO_FD:-2}. Mirrors _stage_io_stdout_begin; see comment there.
     {
-        printf '── stage-io: %s [%s] seq=%s output %s %s ──\n' "$stage" "$kind" "$seq" "$status" "$dur"
+        _stage_io_compose_banner "$_prefix_v" "$_prefix_a" "$_ts"
+        printf '\n'
         case "$kind" in
             llm)
                 if [[ -n "$_artifact_id" ]]; then
                     local _rendered_output
                     _rendered_output="$(render_artifact "$_artifact_id" "$output" 2>/dev/null)"
-                    _stage_io_tail "$_rendered_output" "$tail_lines"
+                    _stage_io_tail_with_hint "$_rendered_output" "$tail_lines" "$stage" "$seq"
                 else
                     local _pretty_out
                     _pretty_out="$(_stage_io_pretty_print "$output")"
-                    _stage_io_tail "$_pretty_out" "$tail_lines"
+                    _stage_io_tail_with_hint "$_pretty_out" "$tail_lines" "$stage" "$seq"
                 fi
                 ;;
             command)
                 local _pretty_cmd_out
                 _pretty_cmd_out="$(_stage_io_pretty_print "$output")"
-                _stage_io_tail "$_pretty_cmd_out" "$tail_lines"
+                _stage_io_tail_with_hint "$_pretty_cmd_out" "$tail_lines" "$stage" "$seq"
                 printf '── exit: %s ──\n' "${exit_code:-?}"
                 ;;
             computed)
                 printf 'out: %s\n' "$output"
                 ;;
         esac
-        printf '── end stage-io: %s ──\n' "$stage"
+        printf '%b── end stage-io: %s %s ──%b\n' "$_end_color" "$stage" "$_icon" "$_reset"
     } >&"${ZBUILD_STAGE_IO_FD:-2}"
     return 0
 }
@@ -935,6 +1125,13 @@ _stage_io_redact_outbound() {
 }
 
 # ─── _stage_io_to_gh_comment <record_json> ───────────────────────────────────
+# #492 v5 color-asymmetry note: color escapes are emitted only in
+# `_stage_io_stdout_begin` / `_stage_io_stdout_end` (fd-2 path). The
+# `_stage_io_to_stdout` renderer (used here to assemble the gh_comment body)
+# remains plain-text by construction so the comment posted to GitHub never
+# contains ANSI escapes. Do not add color to `_stage_io_to_stdout` without
+# stripping it back out here.
+#
 # #491 §v4 fd-asymmetry note: the stdout-destination banner writes to fd
 # ${ZBUILD_STAGE_IO_FD:-2} (stderr by default — never captured by $()), but the
 # gh_comment renderer builds its body via $() capture of _stage_io_to_stdout

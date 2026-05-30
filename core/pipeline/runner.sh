@@ -8,6 +8,7 @@ _RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "$_RUNNER_DIR/../.." && pwd)"
 
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
+source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
@@ -62,6 +63,34 @@ EOF
 
 # Globals (not local) so EXIT trap can read them after main() returns.
 _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
+
+# ─── _render_stage_divider <stage> (#492) ────────────────────────────────────
+# Emits a blank line + a heavy horizontal rule (━ U+2501) with the stage name
+# centered in stage-color, then another blank line — written to fd 2 so it
+# survives the same redirection rules as ▸/✓/✗ info lines. Used on every
+# stage transition (between eb_emit_event "stage.start" and "▸ Running stage")
+# so the operator's eye finds the next stage boundary at a glance.
+_render_stage_divider() {
+    local stage="$1"
+    local width
+    width="$(_term_width)"
+    local color
+    color="$(_stage_color "$stage")"
+    local label=" ${stage} "
+    local sides=$(( (width - ${#label}) / 2 ))
+    [[ "$sides" -lt 2 ]] && sides=2
+    local bar
+    printf -v bar '%*s' "$sides" ''
+    bar="${bar// /━}"
+    {
+        printf '\n'
+        # %b on the colored fragments so \033[...] in $color/$BOLD/$RESET
+        # resolves to real escape sequences (matches echo -e behavior used by
+        # info()/success()/error() elsewhere in this file).
+        printf '%b%s%b%s%b%b%s%b\n' "$color" "$bar" "${BOLD:-}" "$label" "${RESET:-}" "$color" "$bar" "${RESET:-}"
+        printf '\n'
+    } >&2
+}
 
 main() {
     local issue="" goal="" dry_run=false template="standard"
@@ -344,7 +373,10 @@ main() {
         skip_until_stage=""
 
         eb_emit_event "stage.start" "stage=$stage"
-        info "Running stage: $stage"
+        # #492 v5: heavy divider + stage-color stage name on the "Running" line.
+        _render_stage_divider "$stage"
+        local _sc_color; _sc_color="$(_stage_color "$stage")"
+        echo -e "${CYAN}${BOLD}▸${RESET} Running stage: ${_sc_color}${BOLD}${stage}${RESET}" >&2
 
         # ADR-015 v1 (#438): expose current stage to the LLM router so
         # capture_stage_io can attribute artifacts to the right stage.
@@ -437,7 +469,9 @@ main() {
         if [[ $rc -eq 0 ]]; then
             _update_stage_status "$state_file" "$stage" "complete"
             eb_emit_event "stage.complete" "stage=$stage"
-            success "Stage $stage complete"
+            # #492 v5: stage name carries its registry color; ✓ stays green.
+            local _cc; _cc="$(_stage_color "$stage")"
+            echo -e "${GREEN}${BOLD}✓${RESET} Stage ${_cc}${BOLD}${stage}${RESET} complete" >&2
             # After intake completes, append user-provided scope overrides to
             # scope-manifest.md so intake's detection output is preserved alongside
             # the operator's --scope paths.

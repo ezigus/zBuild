@@ -520,3 +520,79 @@ the SAME LINE as `route_to_model`, `route_to_model_loop`, or
 have nothing to do with banner emission. Test files are out of scope (they
 legitimately exercise error returns with stderr suppression). Wired into
 `npm run lint`.
+
+### v5 — Visual hierarchy + timestamps (issue #492)
+
+The v4 contract delivered correct *ordering*. v5 polishes the operator-facing
+banner shape so a long pipeline run is scannable in scrollback. Concrete
+changes, all confined to the fd-2 (default) banner path:
+
+**Per-stage color registry.** `core/output/stage-colors.sh` declares a
+Bash 5+ associative array `_STAGE_COLORS` keyed by canonical stage id
+(intake/plan/build/test/review/security-lens) with the value drawn from the
+existing helpers palette (`$BLUE/$CYAN/$YELLOW/$PURPLE/$GREEN/$RED`). A small
+helper `_stage_color <stage>` returns the ANSI escape for a stage and falls
+back to `$CYAN` for unknown stages. A source-once guard (`_ZBUILD_STAGE_COLORS_LOADED`)
+keeps re-source cheap. The registry is sourced by `core/output/stage-io.sh`
+(banner emitter) and `core/pipeline/runner.sh` (`▸ Running stage` line +
+stage-transition divider) — NOT by `plugin-bootstrap.sh`, since plugins
+already get the palette indirectly via `info()`/`success()` etc.
+
+**Banner format.** The heading is composed as
+`── stage-io: <stage> [<kind>] seq=<N> <input|output> [STATUS DUR] ──── HH:MM:SS UTC ──`.
+Token order matches v4 so existing substring assertions
+(`tests/unit/core-output-stage-io-split-test.sh`) keep working: prefix text
+first, then padding dashes, then the right-aligned timestamp. Width comes
+from `scripts/lib/helpers.sh::_term_width` (memoized `tput cols` →
+`$COLUMNS` → 80). When the computed padding falls to ≤2 (terminal < ~70
+cols), the heading degrades to the v4 format (no timestamp, no
+right-alignment) so a narrow terminal still gets readable output.
+
+**Timestamp.** `_stage_io_now_short` renders `HH:MM:SS UTC`. It honors
+`ZBUILD_STAGE_IO_NOW_MS_OVERRIDE` for golden determinism and falls back
+through BSD `date -r <sec>` (macOS) → GNU `date -d @<sec>` so the same
+helper works on both platforms.
+
+**Status icons.** The end-trailer carries `✓` on OK and `✗` on FAIL, colored
+green/red respectively. The icon is on the END trailer, not the output
+heading — keeping `seq=N output OK <dur>` as a literal substring for v4
+assertions. The output heading itself colors only the `OK`/`FAIL` token
+(via `$GREEN`/`$RED`), not the surrounding text.
+
+**Heavy stage divider.** `core/pipeline/runner.sh::_render_stage_divider`
+emits a blank line + a full-width `━` (U+2501) rule with the stage name
+centered in stage-color, then another blank line — fired between
+`eb_emit_event "stage.start"` and `info "Running stage:"`. The `▸ Running
+stage` and `✓ Stage <id> complete` lines now color the stage name with
+its registry color (icon stays `info`/`success` palette).
+
+**Truncation hint.** When `_stage_io_head_with_hint`/`_stage_io_tail_with_hint`
+detect that the content exceeds `tail_lines`, they append a single
+`↪ [<remaining> more lines · full at <artifact-path>]` line. The artifact
+path is the deterministic `${ZBUILD_STATE_DIR}/artifacts/stage-io/<stage>-<seq>.json`
+so the operator can `cat` the full record without scrolling backward to
+find the path.
+
+**Color asymmetry (by construction).** Colors are emitted ONLY by
+`_stage_io_stdout_begin`/`_stage_io_stdout_end` (the fd-2 banner path).
+`_stage_io_to_stdout` — which is captured via `$(...)` by
+`_stage_io_to_gh_comment` to assemble the GitHub comment body — remains
+plain-text by construction. This means the gh_comment body never carries
+ANSI escapes even when the operator-visible banner is fully colored.
+Cross-references the v4 fd-asymmetry note above; the v5 change extends the
+asymmetry from `fd` to `bytes`. Regression test:
+`tests/integration/stage-io-gh-comment-ansi-strip-test.sh` forces colors on
+and asserts zero ESC bytes in the captured `gh issue comment --body`.
+
+**NO_COLOR / non-tty graceful degradation.** `_stage_io_banner_use_color`
+inspects `NO_COLOR`, `ZBUILD_STAGE_IO_FORCE_COLOR` (the banner-specific
+test/golden pin), and `[[ -t $ZBUILD_STAGE_IO_FD ]]` to decide whether to
+emit ANSI escapes for this specific banner write. When the banner fd is a
+file or pipe (common in tests, in CI logs, and when an operator pipes the
+pipeline through `tee`), colors are dropped so substring assertions and
+log archives stay clean. Tests that need colored goldens set
+`ZBUILD_STAGE_IO_FORCE_COLOR=1` per case.
+
+**Per-iteration build loop colors.** Iterations within `build` inherit the
+stage's color from the registry — there is no per-iteration override.
+Theme support is out of scope; `NO_COLOR` is the escape hatch.

@@ -15,8 +15,11 @@ _ZBUILD_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./compat.sh
 source "$_ZBUILD_SCRIPT_DIR/compat.sh"
 
-# ─── Colors (NO_COLOR-aware) ─────────────────────────────────────────────────
-if [[ -n "${NO_COLOR:-}" || ! -t 1 ]]; then
+# ─── Colors (NO_COLOR-aware, FORCE_COLOR override) ───────────────────────────
+# FORCE_COLOR=1 wins over the tty check so tests/CI can pin colored output
+# without a real terminal. NO_COLOR still wins over FORCE_COLOR (POSIX-ish
+# convention: explicit opt-out beats explicit opt-in).
+if [[ -n "${NO_COLOR:-}" || ( "${FORCE_COLOR:-0}" != "1" && ! -t 1 ) ]]; then
     CYAN=''; PURPLE=''; BLUE=''; GREEN=''; YELLOW=''; RED=''; DIM=''; BOLD=''; RESET=''
 else
     CYAN='\033[38;2;0;212;255m'
@@ -81,6 +84,38 @@ validate_json() {
     fi
     error "validate_json: both $path and ${path}.bak are corrupt"
     return 2
+}
+
+# ─── Terminal width helper (#492) ────────────────────────────────────────────
+# Returns the terminal column count; memoized per-process so repeated calls
+# don't shell out to `tput cols`. Tests inject ZBUILD_TERM_WIDTH_OVERRIDE to
+# pin layout; they MUST `unset _ZBUILD_TERM_WIDTH` between cases so the
+# memoization doesn't fossilize a previous test's value.
+#
+# Resolution order:
+#   1. ZBUILD_TERM_WIDTH_OVERRIDE (test pin)
+#   2. Memoized _ZBUILD_TERM_WIDTH (set on first uncached call)
+#   3. NO_COLOR or non-tty → 80 (stable layout for goldens / CI logs)
+#   4. tput cols  →  COLUMNS  →  80 (final fallback)
+_term_width() {
+    if [[ -n "${ZBUILD_TERM_WIDTH_OVERRIDE:-}" ]]; then
+        printf '%s' "$ZBUILD_TERM_WIDTH_OVERRIDE"
+        return 0
+    fi
+    if [[ -n "${_ZBUILD_TERM_WIDTH:-}" ]]; then
+        printf '%s' "$_ZBUILD_TERM_WIDTH"
+        return 0
+    fi
+    local w=""
+    if [[ -n "${NO_COLOR:-}" || ! -t 1 ]]; then
+        w=80
+    else
+        w="$(tput cols 2>/dev/null || true)"
+        [[ -z "$w" || ! "$w" =~ ^[0-9]+$ ]] && w="${COLUMNS:-80}"
+        [[ ! "$w" =~ ^[0-9]+$ ]] && w=80
+    fi
+    _ZBUILD_TERM_WIDTH="$w"
+    printf '%s' "$_ZBUILD_TERM_WIDTH"
 }
 
 # ─── ANSI stripping ─────────────────────────────────────────────────────────
