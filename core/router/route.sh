@@ -624,6 +624,24 @@ ${prev_diff}"
             "tier=$tier" "iteration=$iter" "max_iterations=$max_iterations" \
             "model_id=$_ROUTE_MODEL_ID" "cwd=$cwd" 2>/dev/null || true
 
+        # #482: per-iteration stage_io banner (Pattern 2). Mirrors #481's
+        # split begin/end emit around the LLM call so build's loop is
+        # observable like plan/review. Fails soft — capture never blocks
+        # the loop. Uses ZBUILD_CURRENT_STAGE (preferred) or ZBUILD_PLUGIN.
+        local _iter_stage_io_seq=""
+        local _iter_stage_id="${ZBUILD_CURRENT_STAGE:-${ZBUILD_PLUGIN:-}}"
+        if [[ -n "$_iter_stage_id" ]]; then
+            stage_io_begin \
+                --stage "$_iter_stage_id" \
+                --kind llm \
+                --input "$final_prompt" \
+                --metadata "tier=$tier" \
+                --metadata "iter=$iter" \
+                --metadata "model_id=$_ROUTE_MODEL_ID" \
+                >/dev/null 2>&1 || true
+            _iter_stage_io_seq="${_STAGE_IO_LAST_SEQ:-}"
+        fi
+
         local stderr_file rc=0 json_file
         stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-loop-stderr.XXXXXX")"
         json_file="$(mktemp "${TMPDIR:-/tmp}/zb-loop-json.XXXXXX")"
@@ -653,6 +671,22 @@ ${prev_diff}"
                 "iteration=$iter" "rc=$rc" \
                 "model_id=$_ROUTE_MODEL_ID" \
                 "reason=claude_rc_nonzero" 2>/dev/null || true
+            # #482: close the per-iteration banner on the error path so we
+            # don't orphan it into the EXIT trap. Output is whatever (if
+            # anything) ended up in json_file before the failure.
+            if [[ -n "$_iter_stage_io_seq" ]]; then
+                local _err_result=""
+                _err_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
+                stage_io_end \
+                    --stage "$_iter_stage_id" \
+                    --kind llm \
+                    --seq "$_iter_stage_io_seq" \
+                    --output "$_err_result" \
+                    --exit-code "$rc" \
+                    --metadata "iter=$iter" \
+                    --metadata "error=true" \
+                    >/dev/null 2>&1 || true
+            fi
             if [[ $rc -eq 124 ]]; then
                 timeout_recur=$(( timeout_recur + 1 ))
                 if [[ $timeout_recur -ge 3 ]]; then
@@ -682,6 +716,21 @@ ${prev_diff}"
         out_tok="$(jq -r '.usage.output_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
         _ROUTE_LOOP_INPUT_TOKENS=$(( _ROUTE_LOOP_INPUT_TOKENS + in_tok ))
         _ROUTE_LOOP_OUTPUT_TOKENS=$(( _ROUTE_LOOP_OUTPUT_TOKENS + out_tok ))
+
+        # #482: close the per-iteration banner on the success path. Output
+        # is the LLM's result text (matches Pattern 1's banner shape).
+        if [[ -n "$_iter_stage_io_seq" ]]; then
+            stage_io_end \
+                --stage "$_iter_stage_id" \
+                --kind llm \
+                --seq "$_iter_stage_io_seq" \
+                --output "$result_text" \
+                --exit-code 0 \
+                --metadata "iter=$iter" \
+                --metadata "tokens_in=$in_tok" \
+                --metadata "tokens_out=$out_tok" \
+                >/dev/null 2>&1 || true
+        fi
 
         # Inter-turn hook (best-effort; failure does not abort the loop).
         if declare -F "$inter_turn_hook" >/dev/null 2>&1; then
