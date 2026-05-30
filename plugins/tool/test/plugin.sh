@@ -21,6 +21,10 @@ _ZBUILD_TEST_STAGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # ─── Dependencies ─────────────────────────────────────────────────────────────
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_ZBUILD_TEST_STAGE_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../core/output/stage-io.sh
+# #497: stage_io_begin/_end wrap the eval below to satisfy ADR-015 §v4
+# input-before-action / output-after-action ordering contract.
+source "$_ZBUILD_TEST_STAGE_ROOT/core/output/stage-io.sh"
 
 # ─── test_init ────────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
@@ -79,6 +83,29 @@ _test_run_inner() {
         return 0
     fi
 
+    # ── #497: open stage-io banner (input phase) ──────────────────────────────
+    # Wraps git-apply + eval + verdict derivation; ADR-015 §v4 requires input
+    # banner BEFORE the action and output banner AFTER. The input encodes
+    # test_cmd via printf %q so _stage_io_render_command_argv can decode it
+    # back into shell-readable form. Begin only fires past the missing-diff
+    # guard (no test_cmd resolution attempted there). Every exit path below
+    # MUST call _test_emit_io_end before _test_write_result so the pair closes.
+    # Do NOT capture stage_io_begin via $(...) — the begin function's
+    # associative-array side effects (pending input/kind/dests/start-ts) live
+    # in the parent shell and are lost in a subshell, causing stage_io_end to
+    # error out with "no matching stage_io_begin". Mirror the capture_stage_io
+    # shim pattern: call directly, swallow the printed seq, then read it back
+    # from _STAGE_IO_LAST_SEQ.
+    local _test_seq=""
+    local _test_t0_us="${EPOCHREALTIME/./}"
+    local _test_input_argv
+    _test_input_argv="$(printf '%q' "$test_cmd")"
+    if stage_io_begin --stage test --kind command \
+            --input "$_test_input_argv" \
+            --metadata "cwd=$tmp" >/dev/null 2>&1; then
+        _test_seq="$_STAGE_IO_LAST_SEQ"
+    fi
+
     # ── Copy repo into temp dir ────────────────────────────────────────────────
     # Include .git so that `git apply` has a valid repository context.
     # Use rsync when available for speed; fall back to cp.
@@ -95,6 +122,8 @@ _test_run_inner() {
     if ! apply_check_out="$(git -C "$tmp" apply --check --allow-empty "$diff_patch_path" 2>&1)"; then
         # Could not apply — write error artifact and return
         test_output="git apply --check failed: ${apply_check_out}"
+        _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
+            "git apply --check failed: $(printf '%s' "$apply_check_out" | head -n1)"
         _test_write_result "$output_json" \
             "error" 2 0 0 "$test_output" "false" "$test_cmd"
         rm -rf "$tmp"
@@ -104,6 +133,8 @@ _test_run_inner() {
 
     if ! git -C "$tmp" apply --allow-empty "$diff_patch_path" 2>/dev/null; then
         test_output="git apply failed after --check passed"
+        _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
+            "git apply failed after --check passed"
         _test_write_result "$output_json" \
             "error" 2 0 0 "$test_output" "false" "$test_cmd"
         rm -rf "$tmp"
@@ -151,12 +182,68 @@ _test_run_inner() {
         fi
     fi
 
+    # ── #497: build derived one-line summary for the output banner ──────────
+    # Rules (pinned 2-agent consensus, see issue #497):
+    #   pass   → "N passed, M failed"
+    #   fail   → "N passed, M failed (exit N)"
+    #   error (no-op #485 guard) → "no-op: 0 tests detected"
+    #   error (other failure with non-empty output) → "error: <first line>" +
+    #     exit_code metadata. Duration is rendered by the banner heading via
+    #     --duration-ms; we don't include it in the summary string.
+    local _test_summary=""
+    case "$verdict" in
+        pass) _test_summary="${passed} passed, ${failed} failed" ;;
+        fail) _test_summary="${passed} passed, ${failed} failed (exit ${exit_code})" ;;
+        error)
+            # #485 no-op guard sets test_output to a known prefix when the
+            # silent-failure path triggers. Map to a short summary token.
+            if [[ "$test_output" == "no-op test run:"* ]]; then
+                _test_summary="no-op: 0 tests detected"
+            else
+                local _err_first
+                _err_first="$(printf '%s' "$test_output" | head -n1)"
+                if [[ -z "$_err_first" ]]; then
+                    _test_summary="error: (no output) exit_code=${exit_code}"
+                else
+                    _test_summary="error: ${_err_first}"
+                fi
+            fi
+            ;;
+    esac
+    _test_emit_io_end "$_test_seq" "$_test_t0_us" "$verdict" "$exit_code" \
+        "$passed" "$failed" "$_test_summary"
+
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$test_cmd"
 
     rm -rf "$tmp"
     emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}"
+    return 0
+}
+
+# ─── _test_emit_io_end ───────────────────────────────────────────────────────
+# #497: close the stage-io banner pair opened by stage_io_begin at the start of
+# _test_run_inner. Computes wall duration from $t0_us, then calls stage_io_end
+# with the derived one-line summary as --output. Best-effort — failures are
+# swallowed so they can never destabilize the test verdict path. Skips entirely
+# when seq is empty (begin was suppressed, e.g. no template destinations).
+# Usage: _test_emit_io_end <seq> <t0_us> <verdict> <exit_code> <passed> <failed> <summary>
+_test_emit_io_end() {
+    local seq="$1" t0_us="$2" verdict="$3" exit_code="$4"
+    local passed="$5" failed="$6" summary="$7"
+    [[ -z "$seq" ]] && return 0
+    local t1_us="${EPOCHREALTIME/./}"
+    local dur_ms=$(( (10#${t1_us} - 10#${t0_us}) / 1000 ))
+    (( dur_ms < 0 )) && dur_ms=0
+    stage_io_end --stage test --kind command --seq "$seq" \
+        --output "$summary" \
+        --exit-code "$exit_code" \
+        --duration-ms "$dur_ms" \
+        --metadata "verdict=$verdict" \
+        --metadata "passed=$passed" \
+        --metadata "failed=$failed" \
+        --metadata "exit_code=$exit_code" 2>/dev/null || true
     return 0
 }
 
