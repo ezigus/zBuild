@@ -93,7 +93,8 @@ load_template() {
     local -a collected_io_redact=()
     local -a collected_router_timeout=()
     local -a collected_router_max_turns=()
-    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns; do
+    local -a collected_router_max_iterations=()
+    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations; do
         [[ -z "$stage_id" ]] && continue
         collected_ids+=("$stage_id")
         collected_io_dests+=("$io_dests")
@@ -101,6 +102,7 @@ load_template() {
         collected_io_redact+=("$io_redact")
         collected_router_timeout+=("$router_timeout")
         collected_router_max_turns+=("$router_max_turns")
+        collected_router_max_iterations+=("$router_max_iterations")
     done <<< "$stage_data"
 
     # Validate all stage ids against the canonical list before mutating state
@@ -109,13 +111,15 @@ load_template() {
     # ADR-015 v1 (#438): validate io.destinations tokens before mutating state
     _tpl_validate_io_dests collected_ids collected_io_dests || return 1
 
-    # ADR-015 v3 (#440) + ADR-017 (#455) + ADR-018 (#466):
-    # validate io.tail_lines, io.redact, router.timeout_s, router.max_turns
+    # ADR-015 v3 (#440) + ADR-017 (#455) + ADR-018 (#466, #467):
+    # validate io.tail_lines, io.redact, router.timeout_s, router.max_turns,
+    # router.max_iterations
     _tpl_validate_io_knobs collected_ids collected_io_tail collected_io_redact \
-        collected_router_timeout collected_router_max_turns || return 1
+        collected_router_timeout collected_router_max_turns \
+        collected_router_max_iterations || return 1
 
     # Populate module state
-    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns; do
+    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations; do
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
         # Store roles, strategy, io_dests via name-mangled env vars.
@@ -132,19 +136,22 @@ load_template() {
         printf -v "_TPL_STAGE_IO_REDACT_${safe_id}" '%s' "$io_redact"
         printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" '%s' "$router_timeout"
         printf -v "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" '%s' "$router_max_turns"
+        printf -v "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}" '%s' "$router_max_iterations"
         export "_TPL_STAGE_ROLES_${safe_id}" \
                "_TPL_STAGE_STRATEGY_${safe_id}" \
                "_TPL_STAGE_IO_DESTS_${safe_id}" \
                "_TPL_STAGE_IO_TAIL_${safe_id}" \
                "_TPL_STAGE_IO_REDACT_${safe_id}" \
                "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" \
-               "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}"
+               "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" \
+               "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
     done <<< "$stage_data"
 }
 
 # ADR-015 v3 (#440): validate tail_lines (integer 1..10000) and redact (true|false)
 # ADR-017 (#455): also validate router.timeout_s (integer 1..3600)
 # ADR-018 (#466): also validate router.max_turns (integer 1..200)
+# ADR-018 (#467): also validate router.max_iterations (integer 1..50)
 # Uses Bash 5+ namerefs for safer array-by-name passing (no eval indirection).
 _tpl_validate_io_knobs() {
     local -n ids_ref="$1"
@@ -152,6 +159,7 @@ _tpl_validate_io_knobs() {
     local -n redacts_ref="$3"
     local -n rtimeouts_ref="$4"
     local -n rmaxturns_ref="$5"
+    local -n rmaxiters_ref="$6"
     local i n=${#ids_ref[@]}
     for (( i=0; i<n; i++ )); do
         local stage="${ids_ref[$i]}"
@@ -159,6 +167,7 @@ _tpl_validate_io_knobs() {
         local redact="${redacts_ref[$i]}"
         local rt="${rtimeouts_ref[$i]}"
         local rmt="${rmaxturns_ref[$i]}"
+        local rmi="${rmaxiters_ref[$i]}"
         if [[ -n "$tail" ]]; then
             if ! [[ "$tail" =~ ^[0-9]+$ ]] || [[ "$tail" -lt 1 ]] || [[ "$tail" -gt 10000 ]]; then
                 error "template: io.tail_lines for stage '$stage' must be integer in 1..10000, got: $tail"
@@ -180,6 +189,12 @@ _tpl_validate_io_knobs() {
         if [[ -n "$rmt" ]]; then
             if ! [[ "$rmt" =~ ^[0-9]+$ ]] || [[ "$rmt" -lt 1 ]] || [[ "$rmt" -gt 200 ]]; then
                 error "template: router.max_turns for stage '$stage' must be integer in 1..200, got: $rmt"
+                return 1
+            fi
+        fi
+        if [[ -n "$rmi" ]]; then
+            if ! [[ "$rmi" =~ ^[0-9]+$ ]] || [[ "$rmi" -lt 1 ]] || [[ "$rmi" -gt 50 ]]; then
+                error "template: router.max_iterations for stage '$stage' must be integer in 1..50, got: $rmi"
                 return 1
             fi
         fi
@@ -232,7 +247,7 @@ _tpl_parse_stage_data() {
     /^stages:/ { in_stages = 1; next }
     in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0; next }
     in_stages && /^[[:space:]]*-[[:space:]]*id:/ {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations }
         in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0
         current_id = $0
         gsub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", current_id)
@@ -240,6 +255,7 @@ _tpl_parse_stage_data() {
         current_roles = ""; current_strategy = ""; current_io_dests = ""
         current_io_tail = ""; current_io_redact = ""; current_router_timeout = ""
         current_router_max_turns = ""
+        current_router_max_iterations = ""
         next
     }
     in_stages && in_roles && /^[[:space:]]*-[[:space:]]/ {
@@ -310,6 +326,13 @@ _tpl_parse_stage_data() {
         current_router_max_turns = rmt
         next
     }
+    in_router_block && /^[[:space:]]+max_iterations:/ {
+        rmi = $0
+        gsub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", rmi)
+        gsub(/[[:space:]]*$/, "", rmi)
+        current_router_max_iterations = rmi
+        next
+    }
     # ADR-017 §8: ignore future router siblings silently (tier_default, budget_usd, model_override).
     in_router_block && /^[[:space:]]+[a-z_]+:/ { next }
     in_io_block && /^[[:space:]]+destinations:/ {
@@ -340,7 +363,7 @@ _tpl_parse_stage_data() {
         next
     }
     END {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns }
+        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations }
     }
     ' "$file"
 }
@@ -412,5 +435,15 @@ template_stage_router_max_turns() {
     local stage_id="$1"
     local safe_id="${stage_id//-/_}"
     local var="_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}"
+    echo "${!var:-}"
+}
+
+# ADR-018 (#467): per-stage router.max_iterations (empty when unset → caller default 10).
+# Consumer chokepoint: _route_resolve_max_iterations in core/router/route.sh applies
+# the precedence rule (per-stage > env > compile-time default).
+template_stage_router_max_iterations() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
     echo "${!var:-}"
 }

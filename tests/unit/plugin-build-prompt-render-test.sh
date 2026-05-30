@@ -18,27 +18,30 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR"
 
-# Mock the router so it never makes network calls; capture the redacted prompt
-# that the build plugin passed to it.
+# #467: build now calls route_to_model_loop (ADR-018 Pattern 2). Mock the loop
+# entry point and capture the prompt-file contents that the plugin assembled.
 export _MOCK_ROUTE_CAPTURE="$TEST_TEMP_DIR/route-prompt.txt"
-route_to_model() {
-    # $1 = tier, $2 = prompt
-    printf '%s' "$2" > "$_MOCK_ROUTE_CAPTURE"
-    # Return an empty diff so the build proceeds without producing a real patch.
-    printf ''
-    return 0
-}
-export -f route_to_model 2>/dev/null || true
 
 # shellcheck source=../../plugins/agent/build/plugin.sh
 source "$REPO_ROOT/plugins/agent/build/plugin.sh"
-# Re-override after sourcing (plugin.sh sources route.sh which provides the
-# real route_to_model — our shadow must come last).
-route_to_model() {
-    printf '%s' "$2" > "$_MOCK_ROUTE_CAPTURE"
-    printf ''
+
+route_to_model_loop() {
+    # Args: tier prompt_file cwd max_iterations [flags...]
+    local _prompt_file="$2"
+    [[ -f "$_prompt_file" ]] && cp "$_prompt_file" "$_MOCK_ROUTE_CAPTURE"
+    _ROUTE_LOOP_ITERATIONS=1
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_INPUT_TOKENS=0
+    _ROUTE_LOOP_OUTPUT_TOKENS=0
     return 0
 }
+
+# Ensure repo root for diff capture points at a fresh git repo.
+_RENDER_REPO="$TEST_TEMP_DIR/render-repo"
+mkdir -p "$_RENDER_REPO"
+( cd "$_RENDER_REPO" && git init -q && git config user.email t@t && git config user.name t \
+    && echo seed > seed.txt && git add seed.txt && git commit -q -m seed ) >/dev/null
+export ZBUILD_REPO_ROOT="$_RENDER_REPO"
 
 # Stub apply_scope_redaction to be pass-through (no manifest required).
 apply_scope_redaction() {

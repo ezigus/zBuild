@@ -108,6 +108,18 @@ route_to_model() {
     return 0
 }
 
+# #467: build now calls route_to_model_loop (ADR-018 Pattern 2). Mock it to
+# terminate immediately on DONE so no per-iteration loop.iteration.error events
+# fire (which would make the event golden environment-dependent on whether the
+# CI default claude shim returns rc!=0).
+route_to_model_loop() {
+    _ROUTE_LOOP_ITERATIONS=1
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_INPUT_TOKENS=0
+    _ROUTE_LOOP_OUTPUT_TOKENS=0
+    return 0
+}
+
 # Mock git binary in BIN_DIR — accepts all operations; branch returns the
 # feature branch so pr-open does not hit the main/master safety check.
 cat > "$BIN_DIR/git" <<'GITEOF'

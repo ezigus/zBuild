@@ -17,10 +17,14 @@ stage.complete
 stage.start
 plugin.run.start
 redaction.applied
-model.route
-model.outcome
+redaction.applied
+loop.iteration
+loop.complete
+loop.git_diff_failed
+build.empty_diff
 plugin.run.complete
 plugin.run.complete
+plugin.contract.violated
 stage.complete
 stage.start
 plugin.run.start

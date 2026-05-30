@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Tests: plugins/agent/build — build stage agent (issue #341)
-# Verifies: init env, missing plan.json rc=2, artifact production,
-#           build-summary.json schema, finalize rc=0.
+# Tests: plugins/agent/build — build stage agent (issues #341, #467)
+# Updated for ADR-018 Pattern 2: route_to_model_loop + git-derived diff.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +11,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "plugin: build (build stage agent — issue #341)"
+print_test_header "plugin: build (agent-loop + git-derived diff — issue #467)"
 
 setup_test_env "plugin-build"
 
@@ -22,17 +21,12 @@ export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
-# Router C6 precondition requires a run_id and an events log with a preceding
-# redaction.applied event. We set ZBUILD_RUN_ID here; the mock route_to_model
-# below bypasses the router entirely so the precondition is moot in practice,
-# but having the env var set is correct for the integration path.
 export ZBUILD_RUN_ID="build-test-$$"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_ISSUE="341"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/build"
 
-# ─── Source plugin ───────────────────────────────────────────────────────────
 # shellcheck source=../../../../plugins/agent/build/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
@@ -44,26 +38,27 @@ cat > "$SCOPE_MANIFEST" <<'EOF'
 + plugins/
 EOF
 
-# Canned diff used as the mock LLM response. This is a trivially-valid unified
-# diff that creates a new fixture file. git apply --check will pass on it when
-# run inside the repo (the target path does not exist yet, which is fine for a
-# "new file" patch, but may vary by git version — the plugin only warns on
-# check failure, never aborts).
-CANNED_DIFF='diff --git a/tests/fixtures/build-test-dummy.txt b/tests/fixtures/build-test-dummy.txt
-new file mode 100644
---- /dev/null
-+++ b/tests/fixtures/build-test-dummy.txt
-@@ -0,0 +1 @@
-+dummy'
+# ─── Test git repo setup ─────────────────────────────────────────────────────
+# Each inner-run gets its own temp git repo so `git diff HEAD` is meaningful.
+setup_build_repo() {
+    local name="$1"
+    local repo="$TEST_TEMP_DIR/$name"
+    mkdir -p "$repo/tests/fixtures"
+    ( cd "$repo" \
+      && git init -q \
+      && git config user.email "test@zbuild" \
+      && git config user.name  "zbuild-test" \
+      && echo "seed" > tests/fixtures/seed.txt \
+      && git add tests/fixtures/seed.txt \
+      && git commit -q -m "seed" )
+    printf '%s\n' "$repo"
+}
 
 # ─── Prompt-capture mock (file-based — survives subshell boundary) ───────────
-# route_to_model runs inside $(...) in _build_stage_run_inner, so a variable
-# assignment in the mock body is lost. Writing to a file survives the subshell.
-# Mirrors plan-test.sh:64-71 (issue #435 fix).
 _CAPTURED_PROMPT_FILE="$TEST_TEMP_DIR/captured-build-prompt.txt"
 : > "$_CAPTURED_PROMPT_FILE"
 
-# apply_scope_redaction passthrough — needed before route_to_model mock is live.
+# apply_scope_redaction passthrough
 apply_scope_redaction() {
     local _input="$1"
     local _output="$2"
@@ -75,12 +70,29 @@ apply_scope_redaction() {
     return 0
 }
 
-# Prompt-capturing route_to_model mock — writes prompt arg to file, returns CANNED_DIFF.
-route_to_model() {
-    # Args: tier prompt [flags...]
-    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
-    printf '%s\n' "$CANNED_DIFF"
-    return 0
+# Mock route_to_model_loop: writes the prompt file content to the capture file,
+# performs the configured edit inside $cwd, sets loop globals, returns rc.
+# Behavior controlled by globals MOCK_LOOP_EDIT_FILE / MOCK_LOOP_EDIT_CONTENT /
+# MOCK_LOOP_RC / MOCK_LOOP_REASON / MOCK_LOOP_ITERATIONS.
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
+route_to_model_loop() {
+    # Args: tier prompt_file cwd max_iterations [flags...]
+    local _prompt_file="$2"
+    local _cwd="$3"
+    [[ -f "$_prompt_file" ]] && cp "$_prompt_file" "$_CAPTURED_PROMPT_FILE"
+    if [[ -n "$MOCK_LOOP_EDIT_FILE" && -d "$_cwd" ]]; then
+        mkdir -p "$_cwd/$(dirname "$MOCK_LOOP_EDIT_FILE")"
+        printf '%s' "$MOCK_LOOP_EDIT_CONTENT" > "$_cwd/$MOCK_LOOP_EDIT_FILE"
+    fi
+    _ROUTE_LOOP_ITERATIONS="$MOCK_LOOP_ITERATIONS"
+    _ROUTE_LOOP_TERMINATED_REASON="$MOCK_LOOP_REASON"
+    _ROUTE_LOOP_INPUT_TOKENS=100
+    _ROUTE_LOOP_OUTPUT_TOKENS=50
+    return "$MOCK_LOOP_RC"
 }
 
 # ─── T_PROMPT fixtures ───────────────────────────────────────────────────────
@@ -101,6 +113,14 @@ EOF
 OUT_DIFF_PROMPT="$ARTIFACT_DIR_PROMPT/diff.patch"
 OUT_SUMMARY_PROMPT="$ARTIFACT_DIR_PROMPT/build-summary.json"
 
+# Configure mock to edit tests/fixtures/build-test-dummy.txt inside the repo.
+REPO_PROMPT="$(setup_build_repo "repo_prompt")"
+export ZBUILD_REPO_ROOT="$REPO_PROMPT"
+MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
+MOCK_LOOP_EDIT_CONTENT="dummy"
+MOCK_LOOP_ITERATIONS=2
+MOCK_LOOP_REASON="done_sentinel"
+
 set +e
 _build_stage_run_inner \
     "$SCOPE_MANIFEST" \
@@ -113,33 +133,30 @@ set -e
 
 _captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
 
-# ─── T_PROMPT_1: Prompt contains required format tokens ──────────────────────
-print_test_section "T_PROMPT_1: prompt contains required format tokens"
+# ─── T_PROMPT_1: Prompt contents (ADR-018 Pattern 2) ─────────────────────────
+print_test_section "T_PROMPT_1: prompt invites tools and declares scope + sentinel"
 
 assert_exit_code "T_PROMPT_1 inner run returns rc=0" "0" "$rc_prompt"
-assert_contains "prompt contains 'diff --git'"         "$_captured_prompt" "diff --git"
-assert_contains "prompt contains 'no tool-use'"        "$_captured_prompt" "no tool-use"
-assert_contains "prompt contains 'no markdown code fences'" "$_captured_prompt" "no markdown code fences"
-assert_contains "prompt contains 'no commentary'"      "$_captured_prompt" "no commentary"
-assert_contains "prompt contains '--- a/'"             "$_captured_prompt" "--- a/"
-assert_contains "prompt contains '+++ b/'"             "$_captured_prompt" "+++ b/"
-assert_contains "prompt contains '@@ '"               "$_captured_prompt" "@@ "
+assert_contains "prompt mentions Read/Edit/Write/Bash tools"  "$_captured_prompt" "Read, Edit, Write, and"
+assert_contains "prompt mentions LOOP_COMPLETE sentinel"      "$_captured_prompt" "LOOP_COMPLETE"
+assert_contains "prompt mentions scope (plan.files[])"        "$_captured_prompt" "plan.files[]"
+assert_contains "prompt lists the in-scope file"              "$_captured_prompt" "build-test-dummy.txt"
+assert_contains "prompt forbids out-of-scope edits"           "$_captured_prompt" "out-of-scope"
 
-# ─── T_PROMPT_2: Non-empty diff extraction from CANNED_DIFF ──────────────────
-print_test_section "T_PROMPT_2: CANNED_DIFF mock produces non-empty diff.patch"
+# ─── T_PROMPT_2: Real edit produces non-empty diff.patch ─────────────────────
+print_test_section "T_PROMPT_2: agent edit → non-empty diff.patch"
 
-diff_line_count_prompt=0
-if [[ -f "$OUT_DIFF_PROMPT" ]]; then
-    diff_line_count_prompt="$(grep -c . "$OUT_DIFF_PROMPT" 2>/dev/null || true)"
-fi
-if [[ "$diff_line_count_prompt" -gt 0 ]]; then
-    assert_pass "diff.patch has lines > 0 ($diff_line_count_prompt lines)"
+diff_lines_prompt=0
+[[ -f "$OUT_DIFF_PROMPT" ]] && diff_lines_prompt="$(grep -c . "$OUT_DIFF_PROMPT" 2>/dev/null || true)"
+if [[ "$diff_lines_prompt" -gt 0 ]]; then
+    assert_pass "diff.patch has lines > 0 ($diff_lines_prompt lines)"
 else
-    assert_fail "diff.patch is empty — extractor did not find diff"
+    assert_fail "diff.patch unexpectedly empty after agent edit"
 fi
+assert_contains "diff.patch contains target file path" "$(cat "$OUT_DIFF_PROMPT")" "build-test-dummy.txt"
 
-# ─── T_PROMPT_3: Prose response produces empty patch, not rc=2 ───────────────
-print_test_section "T_PROMPT_3: prose LLM response → empty diff.patch, rc=0"
+# ─── T_PROMPT_3: Prose-only (no edits) → empty diff, rc=0, build.empty_diff ──
+print_test_section "T_PROMPT_3: prose-only response → empty diff.patch, rc=0"
 
 ARTIFACT_DIR_PROSE="$TEST_TEMP_DIR/artifacts_prose"
 mkdir -p "$ARTIFACT_DIR_PROSE"
@@ -148,12 +165,13 @@ cp "$PLAN_JSON_PROMPT" "$PLAN_JSON_PROSE"
 OUT_DIFF_PROSE="$ARTIFACT_DIR_PROSE/diff.patch"
 OUT_SUMMARY_PROSE="$ARTIFACT_DIR_PROSE/build-summary.json"
 
-# Override: mock returns prose instead of a diff
-route_to_model() {
-    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
-    printf '%s\n' "I need Write permission to create new test files and fixture files. Could you grant Write permission?"
-    return 0
-}
+REPO_PROSE="$(setup_build_repo "repo_prose")"
+export ZBUILD_REPO_ROOT="$REPO_PROSE"
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_REASON="max_iterations"
+MOCK_LOOP_ITERATIONS=10
+MOCK_LOOP_RC=1
 
 set +e
 _build_stage_run_inner \
@@ -165,39 +183,25 @@ _build_stage_run_inner \
 rc_prose=$?
 set -e
 
-assert_exit_code "prose response returns rc=0 (warn path)" "0" "$rc_prose"
-
-# diff.patch should exist but be empty (extractor found nothing)
-diff_content_prose=""
-if [[ -f "$OUT_DIFF_PROSE" ]]; then
-    diff_content_prose="$(cat "$OUT_DIFF_PROSE")"
-fi
-# Strip trailing newline added by printf '%s\n' ""
-diff_content_prose_trimmed="$(printf '%s' "$diff_content_prose" | tr -d '\n')"
-if [[ -z "$diff_content_prose_trimmed" ]]; then
-    assert_pass "diff.patch is empty when LLM returns prose"
+assert_exit_code "prose response returns rc=0" "0" "$rc_prose"
+prose_size=0
+[[ -f "$OUT_DIFF_PROSE" ]] && prose_size="$(wc -c < "$OUT_DIFF_PROSE" | tr -d ' ')"
+if [[ "$prose_size" -eq 0 ]]; then
+    assert_pass "diff.patch is empty when agent makes no edits"
 else
-    assert_fail "diff.patch unexpectedly non-empty for prose response: $diff_content_prose"
+    assert_fail "diff.patch unexpectedly non-empty for prose-only run ($prose_size bytes)"
 fi
+assert_event_emitted "build.empty_diff event fired" "$ZBUILD_EVENTS_JSONL" "build.empty_diff"
 
-# Restore CANNED_DIFF mock for remaining tests
-route_to_model() {
-    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
-    printf '%s\n' "$CANNED_DIFF"
-    return 0
-}
-
-# ─── T_PROMPT_4: Prompt contains new-file syntax tokens ──────────────────────
-print_test_section "T_PROMPT_4: prompt contains /dev/null and 'new file mode'"
-
-assert_contains "prompt contains '/dev/null'"     "$_captured_prompt" "/dev/null"
-assert_contains "prompt contains 'new file mode'" "$_captured_prompt" "new file mode"
+# Reset mock to default success
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
 
 # ─── Test 1: build_stage_init sets env ───────────────────────────────────────
 print_test_section "T1: build_stage_init sets ZBUILD_PLUGIN=build"
 
 build_stage_init >/dev/null 2>&1
-
 assert_eq "build_stage_init: ZBUILD_PLUGIN=build" "build" "$ZBUILD_PLUGIN"
 assert_eq "build_stage_init: ZBUILD_PLUGIN_KIND=agent" "agent" "$ZBUILD_PLUGIN_KIND"
 
@@ -206,7 +210,6 @@ print_test_section "T2: missing plan.json returns rc=2"
 
 ARTIFACT_DIR_T2="$TEST_TEMP_DIR/artifacts_t2"
 mkdir -p "$ARTIFACT_DIR_T2"
-
 NONEXISTENT_PLAN="$ARTIFACT_DIR_T2/does-not-exist.json"
 OUT_DIFF_T2="$ARTIFACT_DIR_T2/diff.patch"
 OUT_SUMMARY_T2="$ARTIFACT_DIR_T2/build-summary.json"
@@ -225,18 +228,18 @@ assert_exit_code "missing plan.json yields rc=2" "2" "$rc_t2"
 assert_file_not_exists "no diff.patch written when plan.json missing" "$OUT_DIFF_T2"
 assert_file_not_exists "no build-summary.json written when plan.json missing" "$OUT_SUMMARY_T2"
 
-# ─── Test 3: produces diff.patch and build-summary.json ──────────────────────
-print_test_section "T3: produces diff.patch and build-summary.json with mocked router"
+# ─── Test 3: produces diff.patch + build-summary.json via mocked loop ────────
+print_test_section "T3: produces diff.patch and build-summary.json with mocked loop"
 
 ARTIFACT_DIR_T3="$TEST_TEMP_DIR/artifacts_t3"
 mkdir -p "$ARTIFACT_DIR_T3"
 
-# Write a fixture plan.json
 PLAN_JSON_T3="$ARTIFACT_DIR_T3/plan.json"
 cat > "$PLAN_JSON_T3" <<'EOF'
 {
   "schema_version": 1,
   "goal": "Add dummy fixture file for build-stage test",
+  "files": ["tests/fixtures/build-test-dummy.txt"],
   "steps": [
     {"id": 1, "action": "create", "path": "tests/fixtures/build-test-dummy.txt", "content": "dummy"}
   ]
@@ -246,29 +249,13 @@ EOF
 OUT_DIFF_T3="$ARTIFACT_DIR_T3/diff.patch"
 OUT_SUMMARY_T3="$ARTIFACT_DIR_T3/build-summary.json"
 
-# Mock apply_scope_redaction as a passthrough (writes input to output unchanged).
-# This avoids needing a real scope-manifest and keeps the test self-contained.
-apply_scope_redaction() {
-    local _input="$1"
-    local _output="$2"
-    # $3 = manifest (ignored in mock), $4 = allowlist, $5 = cycle_id
-    cp "$_input" "$_output"
-    # Emit the required redaction.applied event so the router precondition passes
-    # if called for real. In our mock path route_to_model is also mocked so it
-    # won't check, but emitting keeps the event log consistent.
-    emit_event "redaction.applied" \
-        "input=$_input" "output=$_output" \
-        "size_before=0" "size_after=0" "redactions=0" \
-        "scope_hash=mock" "cycle=0"
-    return 0
-}
-
-# Mock route_to_model to return the canned diff directly (bypasses LLM).
-route_to_model() {
-    # $1 = tier, $2 = prompt — ignored in mock
-    printf '%s\n' "$CANNED_DIFF"
-    return 0
-}
+REPO_T3="$(setup_build_repo "repo_t3")"
+export ZBUILD_REPO_ROOT="$REPO_T3"
+MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
+MOCK_LOOP_EDIT_CONTENT="dummy content"
+MOCK_LOOP_ITERATIONS=3
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
 
 set +e
 _build_stage_run_inner \
@@ -284,12 +271,10 @@ assert_exit_code "mocked inner run returns rc=0" "0" "$rc_t3"
 assert_file_exists "diff.patch artifact produced" "$OUT_DIFF_T3"
 assert_file_exists "build-summary.json artifact produced" "$OUT_SUMMARY_T3"
 
-# Verify diff.patch contains the expected diff header
 diff_content_t3="$(cat "$OUT_DIFF_T3")"
 assert_contains "diff.patch contains diff --git header" "$diff_content_t3" "diff --git"
 assert_contains "diff.patch contains target file" "$diff_content_t3" "build-test-dummy.txt"
 
-# Verify build-summary.json is valid JSON
 summary_json_t3="$(cat "$OUT_SUMMARY_T3")"
 if printf '%s' "$summary_json_t3" | jq empty >/dev/null 2>&1; then
     assert_pass "build-summary.json is valid JSON"
@@ -297,33 +282,31 @@ else
     assert_fail "build-summary.json is not valid JSON"
 fi
 
-# ─── Test 4: build-summary.json has required fields ──────────────────────────
-print_test_section "T4: build-summary.json has required schema fields"
+# ─── Test 4: build-summary.json schema_version=2 + new fields ────────────────
+print_test_section "T4: build-summary.json has schema_version=2 + loop fields"
 
-assert_json_key "schema_version == 1" "$summary_json_t3" ".schema_version" "1"
+assert_json_key "schema_version == 2" "$summary_json_t3" ".schema_version" "2"
 
-# .files_changed must be an array
 files_changed_type="$(printf '%s' "$summary_json_t3" | jq -r '.files_changed | type' 2>/dev/null || echo "missing")"
 assert_eq "files_changed is an array" "array" "$files_changed_type"
 
-# .issue should match ZBUILD_ISSUE
 assert_json_key "issue matches ZBUILD_ISSUE=341" "$summary_json_t3" ".issue" "341"
+assert_json_key "iterations == 3"               "$summary_json_t3" ".iterations" "3"
+assert_json_key "terminated_reason == done_sentinel" "$summary_json_t3" ".terminated_reason" "done_sentinel"
+assert_json_key "scope_violation == false"      "$summary_json_t3" ".scope_violation" "false"
+assert_json_key "loop_input_tokens == 100"      "$summary_json_t3" ".loop_input_tokens" "100"
+assert_json_key "loop_output_tokens == 50"      "$summary_json_t3" ".loop_output_tokens" "50"
 
-# .diff_patch_path must be present and non-empty
 diff_patch_path_val="$(printf '%s' "$summary_json_t3" | jq -r '.diff_patch_path // empty' 2>/dev/null || echo "")"
-if [[ -n "$diff_patch_path_val" ]]; then
-    assert_pass "diff_patch_path field is present and non-empty"
-else
-    assert_fail "diff_patch_path field missing or empty"
-fi
+[[ -n "$diff_patch_path_val" ]] && assert_pass "diff_patch_path field is present and non-empty" \
+    || assert_fail "diff_patch_path field missing or empty"
 
-# .notes must be a non-empty string
 notes_val="$(printf '%s' "$summary_json_t3" | jq -r '.notes // empty' 2>/dev/null || echo "")"
-if [[ -n "$notes_val" ]]; then
-    assert_pass "notes field is present and non-empty"
-else
-    assert_fail "notes field missing or empty"
-fi
+[[ -n "$notes_val" ]] && assert_pass "notes field is present and non-empty" \
+    || assert_fail "notes field missing or empty"
+
+scope_violations_type="$(printf '%s' "$summary_json_t3" | jq -r '.scope_violations | type' 2>/dev/null || echo "missing")"
+assert_eq "scope_violations is an array" "array" "$scope_violations_type"
 
 # ─── Test 5: build_stage_finalize runs cleanly ───────────────────────────────
 print_test_section "T5: build_stage_finalize returns rc=0"
@@ -332,10 +315,8 @@ set +e
 build_stage_finalize >/dev/null 2>&1
 rc_finalize=$?
 set -e
-
 assert_exit_code "build_stage_finalize returns rc=0" "0" "$rc_finalize"
 
-# Verify the finalize event was emitted
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
     finalize_count="$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
     if [[ "$finalize_count" -ge 1 ]]; then
@@ -344,9 +325,58 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
         assert_fail "plugin.finalize.complete event not found in event log"
     fi
 else
-    # Event bus may not have written yet; the rc=0 check is the primary assertion
     assert_pass "build_stage_finalize returned rc=0 (event log not yet written)"
 fi
+
+# ─── Test 6: Out-of-scope edit → build.scope.violation + empty diff.patch ────
+print_test_section "T6: out-of-scope edit → scope_violation=true, empty diff.patch, rc=0"
+
+ARTIFACT_DIR_T6="$TEST_TEMP_DIR/artifacts_t6"
+mkdir -p "$ARTIFACT_DIR_T6"
+PLAN_JSON_T6="$ARTIFACT_DIR_T6/plan.json"
+cat > "$PLAN_JSON_T6" <<'EOF'
+{
+  "schema_version": 1,
+  "files": ["core/safe.sh"],
+  "steps": []
+}
+EOF
+OUT_DIFF_T6="$ARTIFACT_DIR_T6/diff.patch"
+OUT_SUMMARY_T6="$ARTIFACT_DIR_T6/build-summary.json"
+
+REPO_T6="$(setup_build_repo "repo_t6")"
+export ZBUILD_REPO_ROOT="$REPO_T6"
+MOCK_LOOP_EDIT_FILE="dangerous/secrets.txt"
+MOCK_LOOP_EDIT_CONTENT="leaked"
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_T6" \
+    "$OUT_DIFF_T6" \
+    "$OUT_SUMMARY_T6" \
+    "$ARTIFACT_DIR_T6" >/dev/null 2>&1
+rc_t6=$?
+set -e
+
+assert_exit_code "scope violation returns rc=0 (review verdicts)" "0" "$rc_t6"
+t6_size=0
+[[ -f "$OUT_DIFF_T6" ]] && t6_size="$(wc -c < "$OUT_DIFF_T6" | tr -d ' ')"
+assert_eq "diff.patch is empty on scope violation (0 bytes)" "0" "$t6_size"
+
+summary_t6="$(cat "$OUT_SUMMARY_T6")"
+assert_json_key "scope_violation == true" "$summary_t6" ".scope_violation" "true"
+
+t6_violation_count="$(printf '%s' "$summary_t6" | jq '.scope_violations | length' 2>/dev/null || echo 0)"
+if [[ "$t6_violation_count" -ge 1 ]]; then
+    assert_pass "scope_violations array lists offending path"
+else
+    assert_fail "scope_violations array is empty"
+fi
+assert_event_emitted "build.scope.violation event fired" "$ZBUILD_EVENTS_JSONL" "build.scope.violation"
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }

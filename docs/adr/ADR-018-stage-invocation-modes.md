@@ -281,7 +281,7 @@ branch `feat/466-router-flags`:
   the subprocess boundary, locks the export + comma-preservation
   contract).
 
-Issue C (`#468 — plan: invite Read; post-validate step.files[]`) in flight on
+Issue C (`#468 — plan: invite Read; post-validate step.files[]`) merged on
 branch `feat/468-plan-invites-read`:
 
 - `_plan_instructions` heredoc in `plugins/agent/plan/plugin.sh` rewritten:
@@ -317,7 +317,7 @@ branch `feat/468-plan-invites-read`:
   goldens under `tests/golden/`: `plan-in-scope.golden`,
   `plan-out-of-scope.golden`, `plan-scope-violation-event.golden`.
 
-Issue D (`#469 — review invites Read for diff verification`) in flight on
+Issue D (`#469 — review invites Read for diff verification`) merged on
 branch `feat/469-review-invites-read`:
 
 - `_review_instructions` heredoc in `plugins/agent/review/plugin.sh`
@@ -357,7 +357,61 @@ branch `feat/469-review-invites-read`:
     writes `tool_uses[]` to the side-channel, the plugin parses the
     side-channel back and emits the violation event.
 
-Issues B and E remain pending; this section will be updated to
-`Accepted` and this paragraph rewritten with PR links as each merges.
+Issue B (`#467 — build: agent-loop + git diff (ADR-018 Pattern 2)`) in
+flight on branch `feat/467-build-agent-loop`:
+
+- New `route_to_model_loop` in `core/router/route.sh` implements Pattern 2.
+  Signature `<tier> <prompt_file> <cwd> <max_iterations> [--max-turns-per-call N]
+  [--done-sentinel TOKEN] [--inter-turn-hook FN] [--model ID]
+  [--scope-allowlist CSV]`. Each iteration fuses a static prompt with
+  `git diff HEAD` from the prior turn, redacts via `apply_scope_redaction`
+  (per-iteration C6), invokes claude with `--output-format json`,
+  extracts `.result`, and grep-anchors `^[[:space:]]*LOOP_COMPLETE[[:space:]]*$`.
+  Sets globals `_ROUTE_LOOP_ITERATIONS`, `_ROUTE_LOOP_TERMINATED_REASON`,
+  `_ROUTE_LOOP_INPUT_TOKENS`, `_ROUTE_LOOP_OUTPUT_TOKENS`. Returns 0
+  (DONE), 1 (max-iter), 2 (fatal). 3 consecutive timeouts → fatal.
+  `git diff HEAD` failure → fatal + `loop.git_diff_failed`. SIGINT/SIGTERM
+  trap kills the child and emits `loop.terminated.signal`. Diff cap
+  default 20000 chars (`ZBUILD_LOOP_DIFF_CAP_CHARS`); overflow falls back
+  to `git diff --stat` + warn event.
+- `core/pipeline/template.sh` gains `router.max_iterations` knob (1..50)
+  mirroring `max_turns` from #466. Default 10 via env
+  `ZBUILD_ROUTER_MAX_ITERATIONS` or compile-time fallback. Pipe-delimited
+  emit grows 8 → 9 fields. Accessor `template_stage_router_max_iterations`.
+- `plugins/agent/build/plugin.sh` rewritten: build prompt now invites
+  Read/Edit/Write/Bash tools, declares scope from `plan.files[]`, and
+  requests `LOOP_COMPLETE` as the terminal sentinel. Replaced
+  `route_to_model` + awk diff extractor with `route_to_model_loop` +
+  `git -C "$repo_root" diff HEAD` after the loop. `git add -N .` runs
+  pre-diff so untracked files appear in the canonical artifact.
+- Scope post-validation walks `git diff --name-status -z HEAD` (NUL-safe
+  via tempfile read — bash command substitution strips NULs). Renames
+  (`R*`) check both old and new path; deletions (`D`) check the deleted
+  path. Prefix match: a plan path covers descendants. Violations are
+  fail-soft: empty `diff.patch`, `build.scope.violation` event per
+  offender, `scope_violation=true` in summary, rc=0.
+- `build-summary.json` bumped to `schema_version=2`; new fields
+  `iterations`, `terminated_reason` (one of `done_sentinel | max_iterations
+  | signal | hook_failed | error`), `scope_violation`, `scope_violations`,
+  `loop_input_tokens`, `loop_output_tokens`.
+- New event types added to `config/event-schema.json`: `loop.iteration`,
+  `loop.iteration.error`, `loop.complete`, `loop.max_iterations`,
+  `loop.git_diff_failed`, `loop.terminated.signal`,
+  `loop.diff_capture_warning`, `build.scope.violation`, `build.empty_diff`,
+  `router.max_iterations.override_ignored`.
+- Test coverage: `core/router/tests/route-loop-unit-test.sh` (31
+  assertions — single-iter DONE, multi-iter DONE, max-iter cap, rc!=0
+  recovery, sentinel parsing variants including whitespace/lowercase
+  rejection, diff-cap fallback, argument validation).
+  `plugins/agent/build/tests/build-test.sh` updated to 40 assertions —
+  drops obsolete diff-format prompt checks, exercises real temp git
+  repos, validates the new schema_version=2 fields, and adds T6 for the
+  scope-violation path.
+- ADR-004 amendment honored: per-iteration redaction event is emitted
+  immediately before each claude call inside the loop, satisfying the C6
+  precondition for every turn.
+
+Issue E remains pending; this section will be updated to `Accepted` and
+this paragraph rewritten with PR links as it merges.
 
 Dogfood run `20260529164733-70084` is the triggering evidence on record.

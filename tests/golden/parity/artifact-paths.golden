@@ -1,3 +1,4 @@
+./artifacts/build-build-contract-violated-findings.json
 ./artifacts/build-prompt.redacted.txt
 ./artifacts/build-prompt.txt
 ./artifacts/build-summary.json
@@ -12,6 +13,8 @@
 ./artifacts/review.json
 ./artifacts/test-results.json
 ./intake.md
+./mock-repo/seed.txt
+./mock-repo/tests/fixtures/parity-fixture.txt
 ./pipeline-state.json
 ./platforms.json
 ./scope-manifest.md
