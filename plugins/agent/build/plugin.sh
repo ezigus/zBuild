@@ -31,6 +31,11 @@ source "$_BUILD_ROOT/core/redaction/scope-redaction.sh"
 source "$_BUILD_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_BUILD_ROOT/core/router/route.sh"
+# #498: stage_io_begin/end emit the post-loop changed-files summary banner.
+# route.sh already sources stage-io, but make the dependency explicit so
+# unit tests that load only the plugin (not the router) still get it.
+# shellcheck source=../../../core/output/stage-io.sh
+source "$_BUILD_ROOT/core/output/stage-io.sh"
 # ADR-018 (#470): artifact renderer registry for inter-stage markdown.
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_BUILD_ROOT/scripts/lib/artifact-render.sh"
@@ -219,7 +224,12 @@ _build_stage_run_inner() {
         done
     fi
 
+    # #498: capture numstat BEFORE the scope-violation zero-out so the operator
+    # banner (emitted after the summary) can surface what the LLM attempted
+    # even when diff_content is forcibly emptied below.
+    local pre_zero_numstat=""
     if [[ "$scope_violation" == "true" ]]; then
+        pre_zero_numstat="$(git -C "$repo_root" diff HEAD --numstat 2>/dev/null || true)"
         warn "_build_stage_run_inner: scope violation — writing empty diff.patch"
         diff_content=""
     fi
@@ -297,6 +307,18 @@ _build_stage_run_inner() {
             notes: $notes
         }' | atomic_write "$output_summary_json"
 
+    # ─── #498: changed-files numstat summary banner (kind=computed) ──────────
+    # Emit a NEW stage-level operator banner after route_to_model_loop returns
+    # so the operator sees BOTH the LLM's per-iteration prose (#482's kind=llm
+    # banners) AND what files actually changed on disk. kind=computed is
+    # DISTINCT from #482's kind=llm — the build-loop-banner-test regex matches
+    # `[llm]` literally; using llm here would collide with #491's ordering
+    # contract.
+    _BUILD_PLAN_FILES_CSV="$plan_files_csv" \
+    _build_emit_changed_files_summary \
+        "$repo_root" "$terminated_reason" \
+        "$scope_violation" "$pre_zero_numstat" || true
+
     emit_event "plugin.run.complete" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \
@@ -368,6 +390,211 @@ _build_path_in_scope() {
         fi
     done
     return 1
+}
+
+# ─── _build_format_numstat ──────────────────────────────────────────────────
+# Args:
+#   $1 = raw numstat output (multi-line: "<adds>\t<dels>\t<path>")
+#   $2 = allowed_files array name (nameref) — paths outside scope are masked
+# Stdout: formatted banner body. Prints per-line "+A -R path" then a
+#   "total: N files, +X -Y" footer. Caps at 50 lines and appends a truncation
+#   hint when exceeded. Emits build.numstat.truncated when truncated.
+# Returns: 0 always. The count of files (untrucated) is exported via
+#   _BUILD_NUMSTAT_FILES_COUNT for caller metadata.
+_BUILD_NUMSTAT_MAX_LINES=50
+_BUILD_NUMSTAT_FILES_COUNT=0
+_build_format_numstat() {
+    local raw="$1"
+    # Use a distinct nameref name to avoid the "circular name reference"
+    # warning when we forward to _build_path_in_scope (which also uses
+    # `local -n _fmt_allowed_ref=...`). Bash flags same-name namerefs as circular.
+    local -n _fmt_allowed_ref="$2"
+    local total_files=0 total_add=0 total_del=0
+    local shown=0
+    local -a out_lines=()
+    if [[ -n "$raw" ]]; then
+        while IFS=$'\t' read -r adds dels path; do
+            [[ -z "$path" ]] && continue
+            total_files=$((total_files + 1))
+            # Binary files in numstat: "-\t-\tpath". Render as "bin bin <path>".
+            local add_n=0 del_n=0
+            if [[ "$adds" =~ ^[0-9]+$ ]]; then add_n="$adds"; fi
+            if [[ "$dels" =~ ^[0-9]+$ ]]; then del_n="$dels"; fi
+            total_add=$((total_add + add_n))
+            total_del=$((total_del + del_n))
+            # Path redaction: out-of-scope → marker. Only filter when the
+            # allowed list is non-empty (otherwise leave paths verbatim so the
+            # operator still sees something useful).
+            local display_path="$path"
+            if [[ ${#_fmt_allowed_ref[@]} -gt 0 ]]; then
+                if ! _build_path_in_scope "$path" _fmt_allowed_ref; then
+                    display_path="<out-of-scope-context>"
+                fi
+            fi
+            if [[ $shown -lt $_BUILD_NUMSTAT_MAX_LINES ]]; then
+                out_lines+=("+${adds} -${dels}  ${display_path}")
+                shown=$((shown + 1))
+            fi
+        done <<< "$raw"
+    fi
+    _BUILD_NUMSTAT_FILES_COUNT="$total_files"
+
+    local line
+    for line in "${out_lines[@]}"; do
+        printf '%s\n' "$line"
+    done
+    if [[ $total_files -gt $_BUILD_NUMSTAT_MAX_LINES ]]; then
+        local more=$(( total_files - _BUILD_NUMSTAT_MAX_LINES ))
+        printf '... and %d more files (see build-summary.json)\n' "$more"
+        emit_event "build.numstat.truncated" "plugin=build" \
+            "count=$total_files" "shown=$_BUILD_NUMSTAT_MAX_LINES" \
+            >/dev/null 2>&1 || true
+    fi
+    printf 'total: %d files, +%d -%d\n' "$total_files" "$total_add" "$total_del"
+    return 0
+}
+
+# ─── _build_emit_changed_files_summary ──────────────────────────────────────
+# Emit the post-loop kind=computed stage_io banner showing `git diff HEAD
+# --numstat` so the operator sees what the build loop actually changed on
+# disk (independent of the LLM's per-iteration prose).
+#
+# Args:
+#   $1 = repo_root
+#   $2 = terminated_reason (from _ROUTE_LOOP_TERMINATED_REASON)
+#   $3 = scope_violation ("true"/"false")
+#   $4 = pre_zero_numstat (captured BEFORE diff zero-out on scope violation)
+#
+# Side effects:
+#   - emits stage_io_begin/_end pair (kind=computed) on the build stage's
+#     configured destinations (no-op when none configured — fail-soft)
+#   - emits build.numstat.precondition_failed when git rev-parse HEAD fails
+#   - emits build.discrepancy.detected when LOOP_COMPLETE + 0 files
+#   - emits build.numstat.truncated via _build_format_numstat when capped
+_build_emit_changed_files_summary() {
+    local repo_root="$1"
+    local terminated_reason="$2"
+    local scope_violation="$3"
+    local pre_zero_numstat="$4"
+
+    local stage_id="${ZBUILD_CURRENT_STAGE:-build}"
+    local start_ms="${EPOCHREALTIME/./}"
+    start_ms=$(( 10#${start_ms:-0} / 1000 ))
+
+    # ── Pre-check git state (detached HEAD, mid-rebase, unborn branch) ──────
+    if ! git -C "$repo_root" rev-parse --verify HEAD >/dev/null 2>&1; then
+        local reason="unknown"
+        if [[ -d "$repo_root/.git/rebase-merge" || -d "$repo_root/.git/rebase-apply" ]]; then
+            reason="rebase"
+        elif [[ -f "$repo_root/.git/BISECT_LOG" ]]; then
+            reason="bisect"
+        elif [[ -f "$repo_root/.git/MERGE_HEAD" ]]; then
+            reason="merge"
+        elif ! git -C "$repo_root" symbolic-ref -q HEAD >/dev/null 2>&1; then
+            reason="detached"
+        else
+            reason="unborn"
+        fi
+        emit_event "build.numstat.precondition_failed" "plugin=build" \
+            "reason=$reason" "repo_root=$repo_root" >/dev/null 2>&1 || true
+        local _seq=""
+        stage_io_begin --stage "$stage_id" --kind computed \
+            --input "git diff HEAD --numstat" \
+            --metadata "diff_source=git_diff_HEAD_numstat" \
+            --metadata "precondition_failed=true" \
+            --metadata "reason=$reason" >/dev/null 2>&1 || return 0
+        _seq="${_STAGE_IO_LAST_SEQ:-}"
+        [[ -z "$_seq" ]] && return 0
+        local now_ms="${EPOCHREALTIME/./}"
+        now_ms=$(( 10#${now_ms:-0} / 1000 ))
+        stage_io_end --stage "$stage_id" --kind computed --seq "$_seq" \
+            --output "WARN: git state precondition failed (reason=$reason); numstat skipped" \
+            --duration-ms $(( now_ms - start_ms )) \
+            --metadata "precondition_failed=true" \
+            --metadata "reason=$reason" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    # ── Run numstat (use pre-zeroed snapshot on scope_violation) ───────────
+    local numstat_out=""
+    local scope_violation_mode="false"
+    if [[ "$scope_violation" == "true" ]]; then
+        numstat_out="$pre_zero_numstat"
+        scope_violation_mode="true"
+    else
+        numstat_out="$(git -C "$repo_root" diff HEAD --numstat 2>/dev/null || true)"
+    fi
+
+    # ── Build allow-list from plan_files_csv (caller-scoped via env) ───────
+    # We don't have direct access to plan_files_csv here; reconstruct from
+    # ZBUILD_SCOPE_MANIFEST or fall back to empty (which disables redaction).
+    # The simpler approach: caller passes via env var BUILD_PLAN_FILES_CSV.
+    local -a allowed_files=()
+    local _csv="${_BUILD_PLAN_FILES_CSV:-}"
+    if [[ -n "$_csv" ]]; then
+        local IFS_save="$IFS"
+        IFS=','
+        # shellcheck disable=SC2206,SC2034
+        # SC2206: word-split intentional. SC2034: passed to _build_format_numstat
+        # via nameref (local -n _fmt_allowed_ref), which shellcheck cannot follow.
+        allowed_files=( $_csv )
+        IFS="$IFS_save"
+    fi
+
+    # ── Format with redaction + truncation ─────────────────────────────────
+    # NB: capture via tmp file (not $()) so _BUILD_NUMSTAT_FILES_COUNT,
+    # which _build_format_numstat sets on the caller, isn't lost across a
+    # subshell boundary. The $(_build_format_numstat …) path would forfeit
+    # the count and force a discrepancy false-positive (caught by #498's
+    # integration test).
+    local _fmt_tmp; _fmt_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-numstat.XXXXXX")"
+    _build_format_numstat "$numstat_out" allowed_files > "$_fmt_tmp"
+    local formatted; formatted="$(cat "$_fmt_tmp")"
+    rm -f "$_fmt_tmp"
+    local files_count="$_BUILD_NUMSTAT_FILES_COUNT"
+
+    # ── Discrepancy: LOOP_COMPLETE + 0 files changed ──────────────────────
+    local discrepancy="false"
+    if [[ "$terminated_reason" == "done_sentinel" && "$files_count" -eq 0 \
+          && "$scope_violation_mode" != "true" ]]; then
+        discrepancy="true"
+        emit_event "build.discrepancy.detected" "plugin=build" \
+            "reason=loop_complete_no_changes" \
+            "terminated_reason=$terminated_reason" \
+            "files_changed=0" >/dev/null 2>&1 || true
+        formatted="WARN: LLM signaled success but numstat shows 0 files changed"$'\n'"$formatted"
+    fi
+
+    # ── Emit stage_io banner pair (computed) ───────────────────────────────
+    local _seq=""
+    local -a begin_meta=(
+        --metadata "diff_source=git_diff_HEAD_numstat"
+        --metadata "files_changed=$files_count"
+    )
+    local -a end_meta=(
+        --metadata "diff_source=git_diff_HEAD_numstat"
+        --metadata "files_changed=$files_count"
+    )
+    if [[ "$scope_violation_mode" == "true" ]]; then
+        begin_meta+=( --metadata "scope_violation=true" )
+        end_meta+=( --metadata "scope_violation=true" )
+    fi
+    if [[ "$discrepancy" == "true" ]]; then
+        end_meta+=( --metadata "discrepancy=loop_complete_no_changes" )
+    fi
+
+    stage_io_begin --stage "$stage_id" --kind computed \
+        --input "git diff HEAD --numstat" \
+        "${begin_meta[@]}" >/dev/null 2>&1 || return 0
+    _seq="${_STAGE_IO_LAST_SEQ:-}"
+    [[ -z "$_seq" ]] && return 0
+    local now_ms="${EPOCHREALTIME/./}"
+    now_ms=$(( 10#${now_ms:-0} / 1000 ))
+    stage_io_end --stage "$stage_id" --kind computed --seq "$_seq" \
+        --output "$formatted" \
+        --duration-ms $(( now_ms - start_ms )) \
+        "${end_meta[@]}" >/dev/null 2>&1 || true
+    return 0
 }
 
 # ─── finalize ───────────────────────────────────────────────────────────────

@@ -175,6 +175,16 @@ orphan_count="$(jq -c --arg t "stage.io.error" 'select(.type==$t and .data.reaso
     "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "no orphan begins" "0" "$orphan_count"
 
+# (7) #498: regression — the per-iteration [llm] banners (this test's
+# pre-existing assertions above) MUST NOT be coupled to the [computed]
+# changed-files-summary banner the build plugin now emits AFTER the loop.
+# This integration test only drives route_to_model_loop directly (not the
+# full build plugin), so the computed banner should NOT appear here. Assert
+# zero [computed] banners in this slice — that guarantees #482 + #498 are
+# decoupled: route.sh emits kind=llm only; build/plugin.sh emits kind=computed.
+computed_count="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[computed\]' || true)"
+assert_eq "no [computed] banners when only route_to_model_loop runs (#498 decoupling)" "0" "$computed_count"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
