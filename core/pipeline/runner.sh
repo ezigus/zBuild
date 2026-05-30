@@ -35,6 +35,8 @@ source "$_ZBUILD_ROOT/core/pipeline/contracts.sh"
 source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
 # ADR-020 (#496) pre-flight inter-stage data contract validator.
 source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
+# #507 verdict-driven stage-complete indicator (ADR-019 / ADR-020 amendment).
+source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
 
 _usage() {
     cat <<EOF
@@ -482,6 +484,27 @@ main() {
             local stage_status
             stage_status="$(get_state_field "$state_file" ".stage_statuses[\"$stage\"]" '')"
             if [[ "$stage_status" == "complete" ]]; then
+                # #507: if the primary artifact has gone missing between runs
+                # (operator deleted state/artifacts/, partial restore, etc.)
+                # emit a stale-artifact warning so the operator sees a ⚠
+                # instead of silently trusting the persisted status.
+                local _sk_plugin_dir _sk_manifest="" _sk_prim_path="" _sk_resolved=""
+                _sk_plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" 2>/dev/null || true)"
+                if [[ -n "$_sk_plugin_dir" ]]; then
+                    _sk_manifest="$_sk_plugin_dir/manifest.yaml"
+                    _sk_prim_path="$(_verdict_primary_output_path "$_sk_manifest" 2>/dev/null || true)"
+                    if [[ -n "$_sk_prim_path" ]]; then
+                        _sk_resolved="$(_verdict_resolve_path "$_sk_prim_path" "$state_dir")"
+                        if [[ ! -s "$_sk_resolved" ]]; then
+                            eb_emit_event "stage.verdict.stale_artifact" \
+                                "stage=$stage" "path=$_sk_resolved" \
+                                "run_id=$_runner_run_id"
+                            local _sk_sc; _sk_sc="$(_stage_color "$stage")"
+                            echo -e "${YELLOW}${BOLD}⚠${RESET} Stage ${_sk_sc}${BOLD}${stage}${RESET} complete (stale: primary artifact missing)" >&2
+                            continue
+                        fi
+                    fi
+                fi
                 info "Skipping already-complete stage: $stage"
                 continue
             fi
@@ -600,14 +623,26 @@ main() {
 
         if [[ $rc -eq 0 ]]; then
             _update_stage_status "$state_file" "$stage" "complete"
-            eb_emit_event "stage.complete" "stage=$stage"
-            # #492 v5: stage name carries its registry color; ✓ stays green.
+            # #507: resolve verdict from the plugin's manifest-declared primary
+            # output. Glyph + color reflect the actual verdict, not just rc=0.
+            local _verdict_manifest="" _verdict_class="pass"
+            local _verdict_plugin_dir=""
+            _verdict_plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" 2>/dev/null || true)"
+            if [[ -n "$_verdict_plugin_dir" ]]; then
+                _verdict_manifest="$_verdict_plugin_dir/manifest.yaml"
+            fi
+            _verdict_class="$(runner_read_stage_verdict "$state_dir" "$_verdict_manifest" "$stage" 0)"
+            # Persist verdict for observability/resume (schema-additive).
+            _zbuild_state_set_stage_verdict "$state_file" "$stage" "$_verdict_class"
+            eb_emit_event "stage.complete" "stage=$stage" "verdict=$_verdict_class"
+            local _vg _vc _sc2 _cc_ts _cc_dur
+            _vg="$(verdict_glyph "$_verdict_class")"
+            _vc="$(verdict_color "$_verdict_class")"
+            _sc2="$(_stage_color "$stage")"
             # #508: append "  (finished HH:MM:SS UTC · <dur>)" in DIM.
-            local _cc; _cc="$(_stage_color "$stage")"
-            local _cc_ts _cc_dur
             _cc_ts="$(_runner_now_short)"
             _cc_dur="$(_runner_duration_token "$stage")"
-            echo -e "${GREEN}${BOLD}✓${RESET} Stage ${_cc}${BOLD}${stage}${RESET} complete  ${DIM}(finished ${_cc_ts} · ${_cc_dur})${RESET}" >&2
+            echo -e "${_vc}${BOLD}${_vg}${RESET} Stage ${_sc2}${BOLD}${stage}${RESET} complete  ${DIM}(finished ${_cc_ts} · ${_cc_dur})${RESET}" >&2
             # After intake completes, append user-provided scope overrides to
             # scope-manifest.md so intake's detection output is preserved alongside
             # the operator's --scope paths.

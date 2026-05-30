@@ -210,8 +210,10 @@ _pr_open_run_inner() {
     pr_number="$(printf '%s' "$pr_url" | grep -Eo '[0-9]+$' || echo "0")"
 
     # ── Write pr-result.json ──────────────────────────────────────────────────
-    # Write canonical pr-url.txt (ADR-013 artifact) and richer pr-result.json
-    printf '%s\n' "$pr_url" > "$(dirname "$output_pr_result_json")/pr-url.txt"
+    # Write canonical pr-url.txt (ADR-013 artifact) and richer pr-result.json.
+    # #507: pr-url.txt is the manifest-declared primary output — written via
+    # atomic_write to satisfy the primary-output atomicity guard test.
+    printf '%s\n' "$pr_url" | atomic_write "$(dirname "$output_pr_result_json")/pr-url.txt"
 
     jq -n \
         --argjson schema_version 1 \

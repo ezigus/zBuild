@@ -58,6 +58,8 @@ outputs:
     path: "${artifact_dir}/review.json"
     type: review.json
     required: true
+    # ADR-020 amendment (#507): primary output; .verdict drives indicator.
+    primary: true
 
 state:
   persisted:

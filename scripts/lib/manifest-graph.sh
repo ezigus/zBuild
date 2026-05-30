@@ -181,6 +181,78 @@ manifest_graph_get_outputs() {
     _mgraph_parse_block "$1" "outputs"
 }
 
+# ─── manifest_graph_primary_output <manifest> ──────────────────────────────────
+# Echoes the FIRST outputs[] row marked `primary: true` in the same
+# pipe-delimited shape as manifest_graph_get_outputs:
+#   id|type|source|required|path
+# Empty stdout (rc 1) if no row is marked primary. ADR-020 amendment (#507)
+# requires exactly-one primary per manifest; the lint asserts the constraint.
+manifest_graph_primary_output() {
+    local manifest="$1"
+    [[ -f "$manifest" ]] || return 1
+    local row
+    row="$(awk '
+        BEGIN { in_out=0; cur_id=""; cur_type=""; cur_required=""; cur_path=""; cur_primary=""; emitted=0 }
+        function flush() {
+            if (cur_primary == "true" && cur_id != "" && emitted == 0) {
+                # outputs do not have a source column; keep position for parity.
+                print cur_id "|" cur_type "||" cur_required "|" cur_path
+                emitted=1
+            }
+            cur_id=""; cur_type=""; cur_required=""; cur_path=""; cur_primary=""
+        }
+        /^outputs:/ { in_out=1; next }
+        in_out && /^[a-zA-Z_]/ { flush(); in_out=0 }
+        in_out && /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ {
+            flush()
+            line=$0
+            sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            gsub(/[[:space:]]*$/, "", line)
+            cur_id=line; next
+        }
+        in_out && cur_id != "" && /^[[:space:]]+type:[[:space:]]*/ {
+            line=$0
+            sub(/^[[:space:]]+type:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            gsub(/[[:space:]]*$/, "", line)
+            cur_type=line; next
+        }
+        in_out && cur_id != "" && /^[[:space:]]+required:[[:space:]]*/ {
+            line=$0
+            sub(/^[[:space:]]+required:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            gsub(/[[:space:]]*$/, "", line)
+            cur_required=line; next
+        }
+        in_out && cur_id != "" && /^[[:space:]]+path:[[:space:]]*/ {
+            line=$0
+            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            gsub(/[[:space:]]*$/, "", line)
+            cur_path=line; next
+        }
+        in_out && cur_id != "" && /^[[:space:]]+primary:[[:space:]]*/ {
+            line=$0
+            sub(/^[[:space:]]+primary:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            gsub(/[[:space:]]*$/, "", line)
+            cur_primary=line; next
+        }
+        END { flush() }
+    ' "$manifest" 2>/dev/null)"
+    if [[ -z "$row" ]]; then
+        return 1
+    fi
+    printf '%s\n' "$row"
+    return 0
+}
+
 # ─── manifest_graph_collect <plugins_root> <stage_id> ──────────────────────────
 # Find the first manifest in plugins_root whose top-level id == stage_id.
 # Echoes the absolute path; rc 1 if not found.

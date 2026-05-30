@@ -32,6 +32,7 @@ outputs:
     type: file
     path: \${state_dir}/scope-manifest.md
     required: true
+    primary: true
 EOF
 
 cat > "$PLUGINS_ROOT/agent/plan/manifest.yaml" <<EOF
@@ -53,6 +54,7 @@ outputs:
     type: file
     path: \${artifact_dir}/plan.json
     required: true
+    primary: true
 EOF
 
 # TC-1: clean fixture passes

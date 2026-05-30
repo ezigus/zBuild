@@ -81,6 +81,20 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
         _complain "$rel: missing inputs: block (declare 'inputs: []' for zero-input plugins) [ADR-020 decision 1]"
     fi
 
+    # ── ADR-020 amendment (#507): exactly-one outputs[].primary: true ──────
+    primary_count=$(awk '
+        BEGIN { in_out=0; n=0 }
+        /^outputs:/ { in_out=1; next }
+        in_out && /^[a-zA-Z_]/ { in_out=0 }
+        in_out && /^[[:space:]]+primary:[[:space:]]*true([[:space:]]|$|#)/ { n++ }
+        END { print n }
+    ' "$m" 2>/dev/null)
+    if [[ "$primary_count" -eq 0 ]]; then
+        _complain "$rel: no outputs[] entry declares 'primary: true' (#507; pick the canonical artifact)"
+    elif [[ "$primary_count" -gt 1 ]]; then
+        _complain "$rel: $primary_count outputs[] entries declare 'primary: true' (must be exactly one) [#507]"
+    fi
+
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         # shellcheck disable=SC2034  # in_type/in_path read for parity with validator parser

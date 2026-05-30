@@ -43,6 +43,9 @@ outputs:
     path: ${artifact_dir}/plan.json
     type: plan.json
     required: true
+    # ADR-020 amendment (#507): primary output. plan.json has no .verdict
+    # field; runner falls back to pass when JSON is present and well-formed.
+    primary: true
 
 state:
   persisted: [last_plan_steps]

@@ -43,6 +43,9 @@ outputs:
     path: ${artifact_dir}/pr-url.txt
     type: pr-url.txt
     required: true
+    # ADR-020 amendment (#507): canonical primary (non-JSON). Indicator
+    # falls back to rc-only: present == pass.
+    primary: true
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
     type: pr-result.json

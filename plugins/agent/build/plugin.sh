@@ -278,8 +278,13 @@ _build_stage_run_inner() {
             | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
     fi
 
+    # #507: .verdict field paired with .scope_violation drives the runner's
+    # stage-complete indicator (ADR-020 amendment). schema_version bumped to 3.
+    local build_verdict="pass"
+    [[ "$scope_violation" == "true" ]] && build_verdict="scope_violation"
+
     jq -n \
-        --argjson schema_version 2 \
+        --argjson schema_version 3 \
         --argjson issue "$issue" \
         --argjson files_changed "$files_changed_json" \
         --argjson lines_added "$lines_added" \
@@ -287,6 +292,7 @@ _build_stage_run_inner() {
         --arg diff_patch_path "$output_diff_patch" \
         --argjson iterations "$iterations" \
         --arg terminated_reason "$terminated_reason" \
+        --arg verdict "$build_verdict" \
         --argjson scope_violation "$([[ "$scope_violation" == "true" ]] && echo true || echo false)" \
         --argjson scope_violations "$violations_json" \
         --argjson loop_input_tokens "$loop_input_tokens" \
@@ -301,6 +307,7 @@ _build_stage_run_inner() {
             diff_patch_path: $diff_patch_path,
             iterations: $iterations,
             terminated_reason: $terminated_reason,
+            verdict: $verdict,
             scope_violation: $scope_violation,
             scope_violations: $scope_violations,
             loop_input_tokens: $loop_input_tokens,

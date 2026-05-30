@@ -187,3 +187,31 @@ Files touched in #485:
   `tests/golden/parity/event-sequence.golden` — added the new coerce event
   emitted under the all-`true` test fixture.
 - `docs/adr/ADR-019-review-fail-closed-on-test-failure.md` — this file.
+
+## Implementation Notes (Phase 1, issue #507) — verdict-driven indicators
+
+#485 wired the review stage to consume the test plugin's `.verdict` field;
+the runner itself still painted every rc=0 stage with a green `✓`. Issue
+#507 generalises ADR-019's verdict-awareness across **every** stage's
+operator-facing indicator.
+
+The runner now sources `core/pipeline/verdict.sh`, which reads the plugin's
+manifest-declared *primary* output (a new `outputs[].primary: true` flag —
+exactly one per stage-bound manifest, enforced by `scripts/lib/lint-contract.sh`)
+and maps the verdict to one of `pass | warn | fail | unknown`:
+
+| Verdict (raw)                                | Class | Glyph | Color  |
+| -------------------------------------------- | ----- | ----- | ------ |
+| `pass`, `approve`                            | pass  | `✓`   | GREEN  |
+| `request_changes`                            | warn  | `⚠`   | YELLOW |
+| `fail`, `error`, `block`, `scope_violation`  | fail  | `✗`   | RED    |
+| missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |
+| `rc != 0` (any cause)                        | fail  | `✗`   | RED — rc always wins |
+
+`security-lens` keeps its **informational** role: an emitted
+`security-findings.json` is always treated as `pass`, never as a stop.
+Gate semantics (which verdicts halt the pipeline) are *unchanged* in #507;
+this is an indicator-only change.
+
+Test stage `verdict=fail` no longer appears as `✓` — the regression that
+motivated #507.

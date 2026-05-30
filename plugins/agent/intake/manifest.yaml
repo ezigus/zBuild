@@ -36,6 +36,9 @@ outputs:
     path: ${state_dir}/scope-manifest.md
     type: scope-manifest.md
     required: true
+    # ADR-020 amendment (#507): primary output (non-JSON). Indicator falls
+    # back to rc-only — present == pass; absent (rc=0 anyway) == warn.
+    primary: true
   - id: intake_goal
     path: ${state_dir}/intake.md
     type: intake.md

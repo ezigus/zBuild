@@ -41,6 +41,9 @@ outputs:
     path: "${artifact_dir}/test-results.json"
     type: test-results.json
     required: true
+    # ADR-020 amendment (#507): primary output drives the runner's
+    # stage-complete indicator via the .verdict field.
+    primary: true
 
 state:
   persisted: [last_verdict, last_exit_code]

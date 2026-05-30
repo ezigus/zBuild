@@ -86,3 +86,19 @@ _set_pipeline_branch() {
     locked_state_update "$1" "_zbuild_runner_set_pipeline_branch"
     unset _ZB_PIPELINE_BRANCH
 }
+
+# _zbuild_state_set_stage_verdict <state_file> <stage> <verdict>
+# Persists .stage_verdicts[<stage>] = <verdict_class> atomically. Added by
+# #507 for observability and resume (schema-additive — older state files
+# without the key are upgraded in-place on the next write).
+_zbuild_runner_set_stage_verdict() {
+    jq --arg id "$_ZB_STAGE_ID" --arg v "$_ZB_STAGE_VERDICT" \
+       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       '(.stage_verdicts //= {}) | .stage_verdicts[$id] = $v | .updated_at = $now'
+}
+
+_zbuild_state_set_stage_verdict() {
+    export _ZB_STAGE_ID="$2" _ZB_STAGE_VERDICT="$3"
+    locked_state_update "$1" "_zbuild_runner_set_stage_verdict"
+    unset _ZB_STAGE_ID _ZB_STAGE_VERDICT
+}
