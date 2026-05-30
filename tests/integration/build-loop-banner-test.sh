@@ -88,7 +88,16 @@ YAML
 DRIVER="$TEST_TEMP_DIR/driver.sh"
 BANNER_FD3="$TEST_TEMP_DIR/banner-fd3.txt"
 PROMPT_FILE="$TEST_TEMP_DIR/prompt.txt"
-echo "build static prompt" > "$PROMPT_FILE"
+# #505: prompt must exceed ZBUILD_LOOP_BANNER_DEDUPE_MIN_CHARS (500) so the
+# loop's iter≥2 banner-dedupe pathway actually fires — the new assertion
+# below asserts that artifact .input still holds the full static prompt
+# (persist-input regression guard).
+{
+    echo "build static prompt — REGRESSION_FULL_PROMPT_SENTINEL"
+    for i in $(seq 1 20); do
+        echo "padding line $i: keep this prompt above the dedupe minimum."
+    done
+} > "$PROMPT_FILE"
 
 cat > "$DRIVER" <<EOF
 set -euo pipefail
@@ -163,6 +172,23 @@ for s in 1 2 3; do
     if [[ -f "$art" ]]; then
         rec="$(cat "$art")"
         assert_json_key "build-${s}.json metadata.iter == $s" "$rec" ".metadata.iter" "$s"
+    fi
+done
+
+# (4b) #505 regression guard: iter≥2 artifact .input MUST contain the full
+# static prompt (via stage_io_begin --persist-input), even though the
+# scrollback banner for iter≥2 is deduped down to a pointer. Banner-vs-payload
+# divergence is intentional (ADR-018 §Pattern 2.5); artifact fidelity is not.
+for s in 2 3; do
+    art="$ZBUILD_STATE_DIR/artifacts/stage-io/build-${s}.json"
+    if [[ -f "$art" ]]; then
+        in_field="$(jq -r '.input' "$art" 2>/dev/null || true)"
+        if [[ "$in_field" == *"REGRESSION_FULL_PROMPT_SENTINEL"* ]]; then
+            assert_pass "build-${s}.json .input contains full static prompt (persist-input regression guard)"
+        else
+            assert_fail "build-${s}.json .input contains full static prompt (persist-input regression guard)" \
+                "in_head=$(printf '%s' "$in_field" | head -c 160)"
+        fi
     fi
 done
 

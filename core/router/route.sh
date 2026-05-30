@@ -577,6 +577,9 @@ route_to_model_loop() {
 
     local static_prompt prev_diff="" timeout_recur=0
     static_prompt="$(cat "$prompt_file")"
+    # #505: snapshot of prev_diff at start of THIS iteration, used to detect
+    # an unchanged diff between iterations for the operator banner pointer.
+    local _prev_diff_for_banner=""
 
     local diff_cap="${ZBUILD_LOOP_DIFF_CAP_CHARS:-20000}"
     local iter
@@ -624,6 +627,50 @@ ${prev_diff}"
             "tier=$tier" "iteration=$iter" "max_iterations=$max_iterations" \
             "model_id=$_ROUTE_MODEL_ID" "cwd=$cwd" 2>/dev/null || true
 
+        # #505: build operator-facing banner_input that DEDUPES the static
+        # prompt + REPLACES the cumulative diff section with a pointer once
+        # we are past iter 1. The LLM still gets the full final_prompt; only
+        # the scrollback banner is trimmed. See ADR-018 §Pattern 2.5.
+        #
+        # Dedupe minimum (chars): below this, the full prompt is fine.
+        local _banner_dedupe_min="${ZBUILD_LOOP_BANNER_DEDUPE_MIN_CHARS:-500}"
+        local banner_input="$final_prompt"
+        if (( iter >= 2 )) && (( ${#static_prompt} >= _banner_dedupe_min )); then
+            # sha = first 8 hex chars of sha256(static_prompt) — detects
+            # mid-loop static-prompt mutation across iterations.
+            local _sha8="" _static_lines
+            _static_lines="$(printf '%s' "$static_prompt" | wc -l | tr -d ' ')"
+            if command -v shasum >/dev/null 2>&1; then
+                _sha8="$(printf '%s' "$static_prompt" | shasum -a 256 | cut -c1-8)"
+            elif command -v sha256sum >/dev/null 2>&1; then
+                _sha8="$(printf '%s' "$static_prompt" | sha256sum | cut -c1-8)"
+            else
+                _sha8="nohash"
+            fi
+
+            # Classify the diff pointer: cap-exceeded (stat-only marker from
+            # _route_loop_capture_diff), unchanged across iters, or normal.
+            local _diff_pointer
+            if [[ "$prev_diff" == "(diff exceeded cap of "* ]]; then
+                _diff_pointer="[diff: stat-only, see ── changed-files ──]"
+            elif [[ -n "${_prev_diff_for_banner:-}" && "$_prev_diff_for_banner" == "$prev_diff" ]]; then
+                _diff_pointer="[diff: unchanged from iter $((iter - 1))]"
+            else
+                local _diff_lines _diff_chars
+                _diff_lines="$(printf '%s' "$prev_diff" | wc -l | tr -d ' ')"
+                _diff_chars="${#prev_diff}"
+                _diff_pointer="[diff: see ── changed-files ── summary below (${_diff_lines} lines, ${_diff_chars}c)]"
+            fi
+
+            banner_input="[static prompt: same as iter 1, ${_static_lines} lines, sha=${_sha8}]
+
+## Iteration ${iter}/${max_iterations}
+
+${_diff_pointer}"
+        fi
+        # Track prev_diff snapshot for next-iter "unchanged" detection.
+        _prev_diff_for_banner="$prev_diff"
+
         # #482: per-iteration stage_io banner (Pattern 2). Mirrors #481's
         # split begin/end emit around the LLM call so build's loop is
         # observable like plan/review. Fails soft — capture never blocks
@@ -631,10 +678,15 @@ ${prev_diff}"
         local _iter_stage_io_seq=""
         local _iter_stage_id="${ZBUILD_CURRENT_STAGE:-${ZBUILD_PLUGIN:-}}"
         if [[ -n "$_iter_stage_id" ]]; then
+            # #505: --persist-input writes final_prompt (full payload) into
+            # the artifact .input field, while --input drives only the
+            # (possibly deduped) scrollback banner. Default behavior — for
+            # callers that don't pass --persist-input — is unchanged.
             stage_io_begin \
                 --stage "$_iter_stage_id" \
                 --kind llm \
-                --input "$final_prompt" \
+                --input "$banner_input" \
+                --persist-input "$iter_redacted_file" \
                 --metadata "tier=$tier" \
                 --metadata "iter=$iter" \
                 --metadata "model_id=$_ROUTE_MODEL_ID" \

@@ -520,3 +520,39 @@ the output dispatch; `tests/unit/agent-stages-artifact-metadata-symmetry-test.sh
 (NEW) is the cross-plugin parity lock; `tests/integration/agent-stage-banner-rendered-markdown-test.sh`
 (NEW) crosses the subprocess boundary with the real envelope-mock claude on
 PATH and captures fd 3 to assert markdown headings in the OUTPUT banner.
+
+### Pattern 2.5 — banner-vs-payload divergence in loops (issue #505)
+
+Pattern 2's per-iteration `stage_io_begin/end` pair (`#482`) initially emitted the same string to BOTH the operator scrollback banner AND the artifact `.input` field. In long loops this produced redundant noise: iter 2+ repeated the full static prompt verbatim AND the cumulative `git diff HEAD` block, which is also rendered immediately afterward by build's `── changed-files ──` summary banner (`#498`). Operators reading the scroll had no fast way to confirm "same prompt as iter 1, just see the diff below".
+
+**Decision (#505):** for `route_to_model_loop` only, the per-iteration banner DEDUPES the static prompt and REPLACES the cumulative diff section with a pointer once `iter ≥ 2`. The LLM payload is unchanged — `claude -p` always receives the full prompt. Artifact `.input` is unchanged — the new `stage_io_begin --persist-input <path>` flag writes the full prompt into the file record, preserving postmortem fidelity. Only the scrollback banner CONTENT diverges.
+
+Banner shape on iter ≥ 2:
+
+```
+[static prompt: same as iter 1, <N> lines, sha=<short8>]
+
+## Iteration ${iter}/${max_iterations}
+
+[diff: see ── changed-files ── summary below (<N> lines, <chars>c)]
+```
+
+`sha` is the first 8 hex chars of `sha256(static_prompt)`, so mid-loop static-prompt mutation surfaces immediately (the pointer's sha changes between iterations). Three variants of the diff pointer are emitted:
+
+- `[diff: see ── changed-files ── summary below (<N> lines, <chars>c)]` — normal case.
+- `[diff: stat-only, see ── changed-files ──]` — when `_route_loop_capture_diff` returned the cap-exceeded `git diff --stat` payload (`route.sh` ~line 792).
+- `[diff: unchanged from iter N-1]` — when the prev-iter diff snapshot is byte-identical (signals the loop has stalled on a no-op turn).
+
+**Edge cases / opt-out:**
+
+- iter 1 is always full (no prior context to dedupe against).
+- iter 1 with empty `prev_diff` (route.sh:587–591) is the pre-existing special-case path; dedupe machinery is skipped (the iter-1 banner is the full prompt anyway).
+- Dedupe is skipped entirely when `len(static_prompt) < ${ZBUILD_LOOP_BANNER_DEDUPE_MIN_CHARS:-500}` — below that threshold the operator gains nothing from a pointer.
+
+**Tests:**
+
+- `tests/unit/core-router-loop-banner-test.sh` (NEW) is the contract lock. Drives a 3-iter happy-path loop with a rotating mock claude that records argv + `-p` prompt per call; asserts (a) the full static-body sentinel appears in EVERY `claude -p` call; (b) iter ≥ 2 banner contains the `[static prompt: same as iter 1` and `[diff: ` pointers; (c) iter ≥ 2 banner does NOT contain the full static body; (d) `state/artifacts/stage-io/build-*.json` `.input` contains the full static body for ALL three iters (persist-input fidelity).
+- `tests/integration/build-loop-banner-test.sh` gains a regression guard at iter 2/3 that asserts `.input` carries the full prompt sentinel even when banner is deduped. Pre-existing ordering + count assertions are unchanged.
+- `tests/integration/stage-io-ordering-invariant-test.sh` (#491 keystone) remains content-agnostic and continues to pass — the begin-before-LLM, end-after-LLM ordering is unchanged.
+
+**Compatibility:** `--persist-input` is a NEW optional flag on `stage_io_begin`. Callers that do not pass it (`route_to_model`, plan/review/security-lens via `capture_stage_io`) are byte-identical to v5 — divergence is opt-in, loop-caller-only.
