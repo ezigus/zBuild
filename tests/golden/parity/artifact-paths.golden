@@ -13,6 +13,8 @@
 ./artifacts/review.json
 ./artifacts/test-results.json
 ./intake.md
+./mock-repo/seed.txt
+./mock-repo/tests/fixtures/parity-fixture.txt
 ./pipeline-state.json
 ./platforms.json
 ./scope-manifest.md

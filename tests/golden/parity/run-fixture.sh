@@ -35,16 +35,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if printf '%s' "$prompt" | grep -q "Implement the plan"; then
-    # build stage — return a unified diff that touches a single fixture file
-    cat <<'RESPONSE'
-diff --git a/tests/fixtures/parity-fixture.txt b/tests/fixtures/parity-fixture.txt
-new file mode 100644
---- /dev/null
-+++ b/tests/fixtures/parity-fixture.txt
-@@ -0,0 +1 @@
-+parity-fixture
-RESPONSE
+if printf '%s' "$prompt" | grep -q "LOOP_COMPLETE"; then
+    # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD
+    # (route_to_model_loop runs claude with cwd=$ZBUILD_REPO_ROOT) and emit a
+    # claude --output-format json envelope with .result containing the DONE
+    # sentinel as the final line.
+    mkdir -p "$PWD/tests/fixtures"
+    printf 'parity-fixture\n' > "$PWD/tests/fixtures/parity-fixture.txt"
+    jq -n --arg r $'Created fixture file.\nLOOP_COMPLETE' \
+       '{result:$r, usage:{input_tokens:5, output_tokens:3}}'
 elif printf '%s' "$prompt" | grep -q "Review whether this diff"; then
     # review stage — approve verdict, no issues
     printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"parity fixture review"}'
@@ -77,6 +76,11 @@ chmod +x "$FIXTURE_BIN_DIR/gh"
 # build/test stages need: apply / -C <dir> apply.
 cat > "$FIXTURE_BIN_DIR/git" <<'MOCK'
 #!/usr/bin/env bash
+# Real git binary for delegation (#467 needs git diff/add/init to work).
+_real_git=""
+for _candidate in /usr/bin/git /usr/local/bin/git /opt/homebrew/bin/git; do
+    [[ -x "$_candidate" ]] && _real_git="$_candidate" && break
+done
 case "${1:-}" in
     rev-parse)
         if [[ "${2:-}" == "--abbrev-ref" ]]; then
@@ -92,9 +96,18 @@ case "${1:-}" in
     push)     exit 0 ;;
     checkout) exit 0 ;;
     -C)
-        # git -C <dir> apply ...  — accept and exit 0
-        shift; shift
-        exit 0
+        # #467 Pattern 2: delegate diff / add / status to real git inside the
+        # build's repo; intercept apply/push/checkout as before.
+        _subcmd="${3:-}"
+        case "$_subcmd" in
+            diff|add|status|init|config|commit|log)
+                [[ -n "$_real_git" ]] && exec "$_real_git" "$@"
+                exit 0
+                ;;
+            *)
+                shift; shift; exit 0
+                ;;
+        esac
         ;;
     *) echo "" ;;
 esac
@@ -142,8 +155,19 @@ TPL
 trap 'rm -f "$FIXTURE_TEMPLATE"' EXIT
 
 # ── Mock repo for the test stage to copy and apply diffs against ─────────────
+# #467: build now needs a real git repo so `git diff HEAD` works (not just a
+# bare .git dir). Use the system git binary BEFORE we shadow it on PATH below.
 MOCK_REPO="$FIXTURE_STATE_DIR/mock-repo"
-mkdir -p "$MOCK_REPO/.git"
+mkdir -p "$MOCK_REPO"
+(
+    cd "$MOCK_REPO"
+    /usr/bin/env git init -q
+    /usr/bin/env git config user.email parity@zbuild
+    /usr/bin/env git config user.name parity-fixture
+    echo seed > seed.txt
+    /usr/bin/env git add seed.txt
+    /usr/bin/env git commit -q -m "parity seed"
+) >/dev/null 2>&1
 
 # ── Wire up environment ───────────────────────────────────────────────────────
 export PATH="$FIXTURE_BIN_DIR:$PATH"
