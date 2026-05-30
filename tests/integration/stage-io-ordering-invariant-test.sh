@@ -14,11 +14,6 @@
 #
 # Adding a stage = adding a row to STAGES below. New contributor sees the test
 # fail until they thread the contract through their stage. See ADR-015 §v4.
-#
-# Out of scope: the `test` stage doesn't currently use the stage-io chokepoint
-# (it's a T0 tool that runs npm test in a tmp dir without LLM or
-# run_captured_command), so it has no row. Adopting stage-io there is a
-# separate follow-up issue.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -132,6 +127,7 @@ declare -a STAGES=(
     "security-lens|llm|drv_route_to_model"
     "build|llm|drv_route_to_model_loop"
     "intake|command|drv_run_captured_command"
+    "test|command|drv_test_run"
 )
 
 # Driver helper that writes a self-contained subprocess driver to $1 with
@@ -191,6 +187,52 @@ drv_run_captured_command() {
     local stage_id="$1" driver_path="$2"
     write_driver "$driver_path" "$stage_id" \
         "run_captured_command $stage_id gh issue view 42 --json title,body --jq '.title' >/dev/null || true"
+}
+
+# ── #497: drv_test_run — exercise plugins/tool/test against a real tmp repo ──
+# Builds a minimal repo with an empty diff.patch under the row's artifact dir,
+# installs a slow mock test_cmd that sleeps 1.5s + writes begin/end marks to
+# SLOW_MARK (so the duration-delta assertion can verify the action took ≥1s),
+# then drives test_run through the plugin's own source path.
+drv_test_run() {
+    local stage_id="$1" driver_path="$2"
+    local repo="$TEST_TEMP_DIR/repo-${stage_id}"
+    local art_dir="$TEST_TEMP_DIR/state-${stage_id}/artifacts"
+    mkdir -p "$repo" "$art_dir"
+    ( cd "$repo" && git init -q && git config user.email t@t && git config user.name t \
+        && echo seed > seed.txt && git add seed.txt && git commit -q -m seed ) >/dev/null 2>&1
+    # Empty diff.patch — git apply --check --allow-empty accepts it.
+    : > "$art_dir/diff.patch"
+    # Slow mock test_cmd. Mirrors the slow-mock-claude wall-time marker so the
+    # parent test's duration-delta assertion can prove the action bracketed the
+    # banner pair by ≥1s.
+    local mock_cmd="$TEST_TEMP_DIR/bin/mock-test-cmd-${stage_id}.sh"
+    cat > "$mock_cmd" <<MOCK
+#!/usr/bin/env bash
+_mark="${SLOW_MARK}"
+if [[ -n "\$_mark" ]]; then
+    _us="\${EPOCHREALTIME/./}"
+    printf '%s %s begin\n' "\$(( 10#\${_us} / 1000 ))" "\$0" >> "\$_mark"
+fi
+sleep 1.5
+if [[ -n "\$_mark" ]]; then
+    _us="\${EPOCHREALTIME/./}"
+    printf '%s %s end\n' "\$(( 10#\${_us} / 1000 ))" "\$0" >> "\$_mark"
+fi
+echo "1 passed"
+exit 0
+MOCK
+    chmod +x "$mock_cmd"
+
+    # The plugin reads ZBUILD_TEST_CMD; resolve to the absolute mock path.
+    # State file path is the conventional location read inside test_run.
+    write_driver "$driver_path" "$stage_id" \
+        "source \"$REPO_ROOT/plugins/tool/test/plugin.sh\"
+export ZBUILD_ARTIFACT_DIR=\"$art_dir\"
+export ZBUILD_REPO_ROOT=\"$repo\"
+export ZBUILD_TEST_CMD=\"$mock_cmd\"
+mkdir -p \"$TEST_TEMP_DIR/state-${stage_id}\"
+test_run test \"$TEST_TEMP_DIR/state-${stage_id}/state.json\" || true"
 }
 
 # ── Run each row ────────────────────────────────────────────────────────────

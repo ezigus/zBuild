@@ -1,0 +1,6 @@
+── stage-io: test [command] seq=1 input ──────────────────────────────────────────── 03:25:45 UTC ──
+$ <TMP>
+── stage-io: test [command] seq=1 output FAIL <DUR> ───────────────────────────────── 03:25:45 UTC ──
+git apply --check failed: error: patch failed: somefile:1
+── exit: 2 ──
+── end stage-io: test ✗ ──
