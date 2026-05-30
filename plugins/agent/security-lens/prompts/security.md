@@ -42,3 +42,5 @@ Return a JSON object matching the `findings.json` schema:
 ```
 
 Findings that mention paths outside the scope manifest WILL be wrapped in `<out-of-scope-context>` markers by the redaction chokepoint before they reach you. Treat such tokens as "exists but you cannot inspect" — flag the file but do not invent line numbers or contents.
+
+Your response MUST begin with `{` and contain nothing other than the JSON object — no leading prose, no trailing prose, no markdown fences.

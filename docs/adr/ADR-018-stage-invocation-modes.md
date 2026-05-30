@@ -81,6 +81,12 @@ and auto-extracts `.result`
 site. Without this, reasoning preambles leak into the response and break strict
 JSON parsers downstream (#476).
 
+The envelope separates reasoning *turns* from the final turn, but the model can
+still emit prose **inside** the final turn before/after the JSON object.
+Pattern 1 plugins MUST run `.result` through `extract_first_json_object`
+(`scripts/lib/helpers.sh`) before `jq` validation. This is a durable safety
+net; prompt instructions alone are best-effort (#478).
+
 Scope declaration: the prompt states which paths the stage may read (scope-manifest
 by default for read-only analyzers). Pipeline post-validates tool-use log if
 available in `--output-format json` responses.
@@ -461,3 +467,35 @@ Decision point #8 — JSON envelope mandatory for Pattern 1 with tools
     contract for plan, review, and security-lens.
 
 Dogfood run `20260529164733-70084` is the triggering evidence on record.
+
+Decision point #8 reinforcement — parser-side JSON extraction (`#478`,
+follow-up to `#476`):
+
+- Triggering evidence: even with envelope mode on, dogfood runs continued to
+  fail because the model emitted prose INSIDE its final assistant message
+  (e.g. "Now I have a complete picture.\n\n{...}"). The envelope separates
+  reasoning *turns* from the final turn; it does not separate prose from JSON
+  within the final turn.
+- Fix: new helper `extract_first_json_object` in `scripts/lib/helpers.sh`. Pure
+  awk state machine, string-aware brace scan, top-level-only (object-only
+  contract — top-level arrays pass through), folds in markdown ```json fence
+  stripping as a pre-pass. The algorithm returns the **LAST** top-level
+  balanced object (models tend to emit examples first, real answers last); the
+  function name is kept from the issue title for thread continuity. On
+  no-match the input passes through verbatim so #476 reason= diagnostics
+  (`schema_violation` vs `empty_result_envelope`) still classify correctly.
+- Wired into `plugins/agent/plan/plugin.sh`,
+  `plugins/agent/review/plugin.sh`, `plugins/agent/security-lens/plugin.sh`
+  in place of the per-plugin 3-line sed fence-strip pipeline. Downstream
+  `jq -e` validation unchanged.
+- Prompt hardening: every Pattern 1 instruction heredoc now appends "Your
+  response MUST begin with `{` and contain nothing other than the JSON object
+  — no leading prose, no trailing prose, no markdown fences." after its
+  existing "no commentary before or after" clause. Helper is the durable
+  safety net; the prompt rule is best-effort.
+- Test coverage: `tests/unit/extract-first-json-object-test.sh` locks E1–E18
+  (regression locks on LAST-wins, string-aware scan, passthrough on no-match,
+  array passthrough, UTF-8 BOM, perf budget). Plan, review, and security-lens
+  test suites gain a "#478 prose-prefix" regression case plus prompt
+  assertions for the new sentence. `plan-integration-test.sh` adds variant 3
+  to lock the parser-side extraction across the subprocess boundary.

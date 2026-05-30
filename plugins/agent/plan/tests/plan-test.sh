@@ -275,6 +275,32 @@ assert_eq "empty .result returns rc=1 (#476)" "1" "$rc"
 empty_reason="$(jq -r 'select(.type=="plugin.run.error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
 assert_eq "empty .result emits reason=empty_result_envelope (#476)" "empty_result_envelope" "$empty_reason"
 
+# ─── Test 13c (#478): prose-prefixed JSON survives via parser-side helper ───
+# Envelope mode (#476) separates reasoning *turns* from the final turn but the
+# model can still emit prose INSIDE the final assistant message before its
+# JSON. extract_first_json_object slices the LAST top-level balanced object
+# out of the prose preface. Without the helper this exact shape was the
+# triggering dogfood failure on #294.
+: > "$EVENTS_FILE"
+CANNED_PLAN='Now I have a complete picture.
+
+{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#478: prose-prefixed JSON returns rc=0" "0" "$rc"
+assert_file_exists "#478: plan.json written despite prose preface" "$ARTIFACTS_DIR/plan.json"
+schema_v="$(jq -r '.schema_version // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "#478: plan.json parsed from prose-prefixed payload" "1" "$schema_v"
+
+# ─── Test 13d (#478): prompt hardening — explicit "MUST begin with {" rule ──
+captured_prompt_478="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "#478: plan prompt demands response begins with '{'" \
+    "$captured_prompt_478" 'Your response MUST begin with `{`'
+assert_contains "#478: plan prompt forbids leading/trailing prose" \
+    "$captured_prompt_478" "no leading prose, no trailing prose, no markdown fences"
+
 # Restore the original canned plan for any tests below
 CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 

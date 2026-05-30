@@ -146,6 +146,7 @@ Rules:
 - `confidence` is a float between 0.0 and 1.0.
 - Do not include reasoning, explanations, or prose in the FINAL response —
   just the JSON.
+- Your response MUST begin with `{` and contain nothing other than the JSON object — no leading prose, no trailing prose, no markdown fences.
 
 Verdict definitions:
   approve         — diff implements the plan; tests pass; safe to open PR
@@ -226,12 +227,13 @@ REVIEW_PROMPT
     local verdict="" confidence="" issues_json="[]" summary=""
 
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
-        # Strip markdown code fences if present
+        # #478: slice the LAST top-level balanced JSON object out of the
+        # response. Envelope mode (#476) separates reasoning turns from the
+        # final turn; the model can still preface its JSON with prose
+        # *inside* the final turn. Helper passes input through verbatim on
+        # no-match so downstream parsing falls back to the existing defaults.
         local stripped
-        stripped="$(printf '%s' "$raw_response" \
-            | sed 's/^[[:space:]]*```json[[:space:]]*//' \
-            | sed 's/^[[:space:]]*```[[:space:]]*//'     \
-            | sed 's/[[:space:]]*```[[:space:]]*$//')"
+        stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"
 
         verdict="$(printf '%s' "$stripped" \
             | jq -r '.verdict // empty' 2>/dev/null || true)"
