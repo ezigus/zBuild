@@ -243,6 +243,42 @@ assert_eq "R8: missing .findings yields empty array (not null)" "0" "$r8_count"
 r8_findings_type=$(jq -r '.findings | type' "$OUTPUT_R8")
 assert_eq "R8: .findings is array not null" "array" "$r8_findings_type"
 
+# ─── R8b (#478): prose-prefixed JSON survives via parser-side helper ────────
+# Envelope mode (#476) separates reasoning *turns* from the final turn but
+# the model can still emit prose INSIDE the final assistant message before
+# its JSON. extract_first_json_object slices the LAST top-level balanced
+# object out. Locks the dogfood shape that motivated #478.
+install_envelope_mock_claude 'Now I have a complete picture.
+
+{"schema_version":1,"plugin_id":"security-lens","findings":[{"title":"Secret leak","severity":"high","category":"secret","file":"src/cfg.sh:3","evidence":"API_KEY=abc","suggestion":"use env"}]}'
+OUTPUT_R8b="$TEST_TEMP_DIR/findings_r8b.json"
+set +e
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R8b" "$TEST_TEMP_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "R8b (#478): prose-prefixed response returns rc=0" "0" "$rc"
+assert_file_exists "R8b (#478): findings.json written despite prose preface" "$OUTPUT_R8b"
+r8b_title=$(jq -r '.findings[0].title // "missing"' "$OUTPUT_R8b" 2>/dev/null || echo missing)
+assert_eq "R8b (#478): finding parsed from prose-prefixed payload" "Secret leak" "$r8b_title"
+
+# ─── R8c (#478): prompt hardening — system prompt carries explicit "{" rule ──
+# The shared sentence is appended to prompts/security.md; assert it reaches
+# the model via the last_prompt capture.
+install_envelope_mock_claude \
+    --record-prompt "$TEST_TEMP_DIR/last_prompt_478" \
+    '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$TEST_TEMP_DIR/findings_r8c.json" "$TEST_TEMP_DIR" >/dev/null 2>&1
+if grep -qF 'Your response MUST begin with `{`' "$TEST_TEMP_DIR/last_prompt_478" 2>/dev/null; then
+    assert_pass "R8c (#478): security-lens prompt carries 'MUST begin with {' rule"
+else
+    assert_fail "R8c (#478): prompt missing 'MUST begin with {' rule"
+fi
+if grep -qF "no leading prose, no trailing prose, no markdown fences" "$TEST_TEMP_DIR/last_prompt_478" 2>/dev/null; then
+    assert_pass "R8c (#478): security-lens prompt forbids leading/trailing prose"
+else
+    assert_fail "R8c (#478): prompt missing prose prohibition"
+fi
+
 # ─── Hook contract: security_lens_run(stage, state_file) ─────────────────────
 # Verifies the wrapper derives paths correctly and writes to the right artifact.
 STATE_DIR="$TEST_TEMP_DIR/state"

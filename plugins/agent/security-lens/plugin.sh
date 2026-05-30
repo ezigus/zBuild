@@ -117,11 +117,13 @@ _security_lens_run_inner() {
     # Ported from legacy/scripts/lib/compound-audit.sh:160-182
     local findings_json="[]"
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
+        # #478: slice the LAST top-level balanced JSON object out of any
+        # prose preface the model may emit inside the final assistant turn
+        # (envelope mode separates turns but not in-turn prose). Helper
+        # passes input through verbatim on no-match so the existing
+        # empty-findings fallback below still fires.
         local stripped extracted
-        stripped="$(printf '%s' "$raw_response" \
-            | sed 's/^[[:space:]]*```json[[:space:]]*//' \
-            | sed 's/^[[:space:]]*```[[:space:]]*//'     \
-            | sed 's/[[:space:]]*```[[:space:]]*$//')"
+        stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"
         extracted="$(printf '%s' "$stripped" \
             | jq -r '.findings // [] | tojson' 2>/dev/null || true)"
         if printf '%s' "$extracted" | jq -e 'type == "array"' >/dev/null 2>&1; then

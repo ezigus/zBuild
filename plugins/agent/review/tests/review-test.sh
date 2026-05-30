@@ -169,6 +169,33 @@ assert_file_exists "block: review.json created" "$OUTPUT_BLOCK"
 v="$(jq -r '.verdict' "$OUTPUT_BLOCK")"
 assert_eq "block: verdict=block" "block" "$v"
 
+# ─── Test 4b (#478): prose-prefixed JSON survives via parser-side helper ────
+# Envelope mode (#476) separates reasoning *turns* from the final turn but
+# the model can still emit prose INSIDE the final assistant message before
+# its JSON. extract_first_json_object slices the LAST top-level balanced
+# object out. Without the helper, this exact dogfood shape produced a
+# defaulted request_changes verdict.
+print_test_section "4b. #478: prose-prefixed JSON parsed correctly"
+_install_claude_mock 'Now I have a complete picture.
+
+{"verdict":"approve","confidence":0.9,"issues":[],"summary":"prose-prefix ok"}'
+
+OUTPUT_PROSE="$ARTIFACT_DIR/review-prose-478.json"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$FIXTURE_DIR/plan.json" \
+    "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" \
+    "$OUTPUT_PROSE" \
+    "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "#478: prose-prefixed rc=0" "0" "$rc"
+assert_file_exists "#478: review.json written despite prose preface" "$OUTPUT_PROSE"
+v_478="$(jq -r '.verdict' "$OUTPUT_PROSE" 2>/dev/null || echo missing)"
+assert_eq "#478: verdict extracted from prose-prefixed payload" "approve" "$v_478"
+
 # ─── Test 5: invalid verdict → defaults to request_changes ────────────────────
 print_test_section "5. invalid verdict -> defaults to request_changes"
 _install_claude_mock '{"verdict":"garbage","confidence":0.5,"issues":[],"summary":"wat"}'
@@ -317,6 +344,18 @@ if echo "$captured_prompt" | grep -qi "SINGLE JSON object"; then
     assert_pass "prompt contains 'SINGLE JSON object'"
 else
     assert_fail "prompt missing 'SINGLE JSON object'" "got: $(echo "$captured_prompt" | head -5)"
+fi
+
+# #478: prompt hardening — explicit "MUST begin with {" rule
+if echo "$captured_prompt" | grep -qF 'Your response MUST begin with `{`'; then
+    assert_pass "#478: review prompt demands response begins with '{'"
+else
+    assert_fail "#478: review prompt missing 'MUST begin with {' rule"
+fi
+if echo "$captured_prompt" | grep -qF "no leading prose, no trailing prose, no markdown fences"; then
+    assert_pass "#478: review prompt forbids leading/trailing prose"
+else
+    assert_fail "#478: review prompt missing prose prohibition"
 fi
 
 # NEGATIVE: the #462 "no tool calls" prohibition is lifted under ADR-018.

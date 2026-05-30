@@ -89,6 +89,93 @@ strip_ansi() {
     sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g'
 }
 
+# ─── extract_first_json_object (#478) ───────────────────────────────────────
+# Durable safety net for ADR-018 Pattern 1: the JSON envelope (#476) separates
+# reasoning *turns* from the final turn, but the model can still emit prose
+# inside the final assistant message before/after its JSON. Slice the LAST
+# top-level balanced JSON object out of stdin.
+#
+# "LAST wins" — despite the name "first" (kept for the #478 issue thread), the
+# algorithm returns the LAST balanced top-level object. Models typically emit
+# reasoning/examples first and the real answer last (e.g. "Here's an example
+# {a:1}. Real plan: {...}"). The caller's strict schema check (jq -e) provides
+# the layered defense for cases where the LAST object is itself inline noise.
+#
+# Markdown ```json … ``` fence stripping is folded into a pre-pass so callers
+# can drop their ad-hoc sed pipelines.
+#
+# Contract: stdin -> stdout, rc=0 always. No JSON validation here; if no
+# balanced object is found the input passes through verbatim so the caller's
+# downstream diagnostics (e.g. #476 reason=schema_violation /
+# empty_result_envelope) still see the prose and can classify it correctly.
+extract_first_json_object() {
+    awk '
+        BEGIN { buf = "" }
+        { buf = buf $0 "\n" }
+        END {
+            # Strip a UTF-8 BOM and surrounding markdown json fences if present
+            # (pre-pass; idempotent — no-op if no fence).
+            sub(/^\xef\xbb\xbf/, "", buf)
+            sub(/^[[:space:]]*```json[[:space:]]*\n?/, "", buf)
+            sub(/^[[:space:]]*```[[:space:]]*\n?/, "", buf)
+            sub(/\n?[[:space:]]*```[[:space:]]*$/, "", buf)
+
+            n = length(buf)
+            depth = 0       # brace nesting depth
+            arr_depth = 0   # bracket nesting depth (object-only contract:
+                            # skip `{` while inside `[...]`)
+            in_string = 0
+            escape = 0
+            start = -1
+            last_start = -1
+            last_end = -1
+            for (i = 1; i <= n; i++) {
+                c = substr(buf, i, 1)
+                if (escape) { escape = 0; continue }
+                if (in_string) {
+                    if (c == "\\") { escape = 1; continue }
+                    if (c == "\"") { in_string = 0 }
+                    continue
+                }
+                if (c == "\"") { in_string = 1; continue }
+                if (c == "[") {
+                    if (depth == 0) { arr_depth++ }
+                    continue
+                }
+                if (c == "]") {
+                    if (depth == 0 && arr_depth > 0) { arr_depth-- }
+                    continue
+                }
+                if (c == "{") {
+                    if (depth == 0 && arr_depth > 0) { continue }
+                    if (depth == 0) { start = i }
+                    depth++
+                    continue
+                }
+                if (c == "}") {
+                    if (depth > 0) {
+                        depth--
+                        if (depth == 0 && start > 0) {
+                            last_start = start
+                            last_end = i
+                            start = -1
+                        }
+                    }
+                }
+            }
+            if (last_start > 0 && last_end >= last_start) {
+                printf "%s", substr(buf, last_start, last_end - last_start + 1)
+            } else {
+                # Passthrough: restore the original (sans fence pre-pass) so
+                # #476 diagnostics see the prose verbatim. Strip the trailing
+                # newline we appended while accumulating.
+                sub(/\n$/, "", buf)
+                printf "%s", buf
+            }
+        }
+    '
+}
+
 # ─── Emit event sentinel ─────────────────────────────────────────────────────
 # Guards against calling emit_event before core/event-bus/event-bus.sh is
 # sourced. When event-bus.sh is sourced after helpers.sh, its emit_event

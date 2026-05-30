@@ -82,6 +82,27 @@ assert_eq "variant 2: one violation event" "1" "$v2_violations"
 v2_path="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "variant 2: violation path is offender" "legacy/oops.sh" "$v2_path"
 
+# ─── Variant 3 (#478): prose-prefixed JSON survives the subprocess boundary ─
+# The mock claude returns prose preface + JSON inside the envelope .result.
+# The parser-side helper (extract_first_json_object) must slice the JSON out
+# before jq -e validation; otherwise the dogfood failure path reproduces here.
+: > "$ZBUILD_EVENTS_JSONL"
+printf 'Now I have a complete picture.\n\n%s\n' \
+    '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' \
+    > "$CANNED_RESPONSE_FILE"
+
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "variant 3 (#478): prose-prefixed envelope returns rc=0" "0" "$rc"
+assert_file_exists "variant 3 (#478): plan.json written despite prose preface" \
+    "$ARTIFACTS_DIR/plan.json"
+v3_schema="$(jq -r '.schema_version // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "variant 3 (#478): plan.json parsed via parser-side helper" "1" "$v3_schema"
+v3_violations="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "variant 3 (#478): no scope violations on in-scope payload" "0" "$v3_violations"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

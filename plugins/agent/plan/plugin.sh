@@ -204,6 +204,7 @@ Tool use:
 Output contract:
 - Your FINAL response must be a SINGLE JSON object — no markdown code fences,
   no commentary before or after the JSON.
+- Your response MUST begin with `{` and contain nothing other than the JSON object — no leading prose, no trailing prose, no markdown fences.
 
 Required JSON schema:
 
@@ -272,11 +273,13 @@ PLAN_PROMPT
     # `reason=` and is grep-detectable.
     local schema_failed=0
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
+        # #478: slice the LAST top-level balanced JSON object out of any
+        # prose preface the model may emit inside the final assistant turn
+        # (envelope mode separates turns but not in-turn prose). Helper
+        # passes input through verbatim on no-match so the #476 reason=
+        # diagnostics below still classify schema_violation vs empty.
         local stripped
-        stripped="$(printf '%s' "$raw_response" \
-            | sed 's/^[[:space:]]*```json[[:space:]]*//' \
-            | sed 's/^[[:space:]]*```[[:space:]]*//'     \
-            | sed 's/[[:space:]]*```[[:space:]]*$//')"
+        stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"
         if printf '%s' "$stripped" | jq -e 'type == "object" and (.schema_version == 1) and (.steps | type == "array") and (.steps | length > 0) and (.steps | all((.files | type == "array") and (.files | all(type == "string"))))' >/dev/null 2>&1; then
             plan_json="$stripped"
         else
