@@ -86,11 +86,16 @@ apply_scope_redaction() {
 
     # ─── Redact with awk (fence-aware, allowlist-driven) ────────────────────
     local size_before; size_before=$(wc -c < "$input")
+    local counter_skipped_log="$output.counter-skipped"
+    : > "$counter_skipped_log"
 
-    ZBUILD_REDACTION_ALLOW="$allow_lines" awk '
+    ZBUILD_REDACTION_ALLOW="$allow_lines" \
+    ZBUILD_REDACTION_COUNTER_LOG="$counter_skipped_log" \
+    awk '
     BEGIN {
         n_allow = 0
         allow_data = ENVIRON["ZBUILD_REDACTION_ALLOW"]
+        counter_log = ENVIRON["ZBUILD_REDACTION_COUNTER_LOG"]
         n = split(allow_data, lines, "\n")
         for (i = 1; i <= n; i++) {
             if (length(lines[i]) > 0) {
@@ -117,6 +122,16 @@ apply_scope_redaction() {
             before = substr(rest, 1, RSTART - 1)
             token = substr(rest, RSTART, RLENGTH)
             after = substr(rest, RSTART + RLENGTH)
+            # Alpha-guard (#504): legitimate paths always contain at least one
+            # ASCII letter. Pure-digit tokens like "2/10" (iteration counters)
+            # or "2026/05/29" (date prefixes) are not paths — skip wrapping
+            # and log so we can emit a redaction.counter_skipped event.
+            if (token !~ /[A-Za-z]/) {
+                result = result before token
+                print token >> counter_log
+                rest = after
+                continue
+            }
             # Check if token starts with any allowed prefix (with optional leading ./)
             in_scope = 0
             stripped = token
@@ -144,6 +159,21 @@ apply_scope_redaction() {
     local size_after; size_after=$(wc -c < "$output")
     local redactions; redactions=$(grep -c '<out-of-scope-context>' "$output" || true)
     local scope_hash; scope_hash="$(shasum -a 256 "$manifest" | cut -d' ' -f1)"
+
+    # Emit a debug-grade event when the alpha-guard skipped one or more
+    # candidate tokens (#504). Single event per call regardless of count, to
+    # keep volume low; sample tokens included for triage.
+    if [[ -s "$counter_skipped_log" ]]; then
+        local counter_count counter_sample
+        counter_count=$(wc -l < "$counter_skipped_log" | tr -d ' ')
+        counter_sample="$(head -3 "$counter_skipped_log" | tr '\n' ',' | sed 's/,$//')"
+        emit_event "redaction.counter_skipped" \
+            "input=$input" \
+            "count=$counter_count" \
+            "sample=$counter_sample" \
+            "cycle=$cycle_id"
+    fi
+    rm -f "$counter_skipped_log"
 
     emit_event "redaction.applied" \
         "input=$input" \

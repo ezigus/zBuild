@@ -28,6 +28,7 @@
     "redaction.applied",
     "redaction.refused",
     "redaction.refused.overridden",
+    "redaction.counter_skipped",
     "model.route",
     "model.outcome",
     "router.timeout.override_ignored",
