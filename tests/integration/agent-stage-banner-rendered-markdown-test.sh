@@ -169,6 +169,163 @@ else
     assert_pass "review banner output section free of raw JSON"
 fi
 
+# ─── Plan banner: prose+JSON envelope splits into plan + llm comment (#510) ─
+print_test_section "plan stage OUTPUT banner splits prose+JSON envelope (#510)"
+
+: > "$ZBUILD_EVENTS_JSONL"
+PLAN_MIX="$TEST_TEMP_DIR/plan-canned-mixed.json"
+printf '%s' 'Here is the plan.
+{"schema_version":1,"title":"Mixed Plan","goal":"split prose","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
+Let me know if you want changes.' > "$PLAN_MIX"
+PLAN_PROMPT_REC="$TEST_TEMP_DIR/plan-mix-prompt.txt"
+install_envelope_mock_claude --file "$PLAN_MIX" --record-prompt "$PLAN_PROMPT_REC"
+
+export ZBUILD_CURRENT_STAGE=plan
+export _TPL_STAGE_IO_DESTS_plan="stdout"
+PLAN_BANNER_MIX="$TEST_TEMP_DIR/plan-banner-mix.txt"
+: > "$PLAN_BANNER_MIX"
+exec 3>"$PLAN_BANNER_MIX"
+export ZBUILD_STAGE_IO_FD=3
+
+rm -rf "$ARTIFACTS_DIR"
+mkdir -p "$ARTIFACTS_DIR"
+
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+
+exec 3>&-
+unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_plan
+
+assert_eq "plan_run rc=0 on prose+JSON envelope" "0" "$rc"
+
+plan_mix_content="$(cat "$PLAN_BANNER_MIX" 2>/dev/null || true)"
+plan_mix_output="$(printf '%s' "$plan_mix_content" | sed -n '/seq=[0-9]* output /,/── end stage-io/p')"
+
+if printf '%s' "$plan_mix_output" | grep -qF "# Plan: Mixed Plan"; then
+    assert_pass "prose+JSON banner: rendered plan heading present"
+else
+    assert_fail "prose+JSON banner: rendered plan heading present" \
+        "got: $(printf '%s' "$plan_mix_output" | head -40)"
+fi
+if printf '%s' "$plan_mix_output" | grep -qF "## Steps"; then
+    assert_pass "prose+JSON banner: ## Steps section present"
+else
+    assert_fail "prose+JSON banner: ## Steps section present" \
+        "got: $(printf '%s' "$plan_mix_output" | head -40)"
+fi
+if printf '%s' "$plan_mix_output" | grep -qF "── llm comment ──"; then
+    assert_pass "prose+JSON banner: llm comment block emitted"
+else
+    assert_fail "prose+JSON banner: llm comment block emitted" \
+        "got: $(printf '%s' "$plan_mix_output" | head -40)"
+fi
+if printf '%s' "$plan_mix_output" | grep -qF "Let me know if you want changes"; then
+    assert_pass "prose+JSON banner: suffix prose preserved in comment"
+else
+    assert_fail "prose+JSON banner: suffix prose preserved in comment" \
+        "got: $(printf '%s' "$plan_mix_output" | head -40)"
+fi
+
+# plan.json on disk must be ONLY the JSON object (envelope prose stripped).
+PLAN_ON_DISK="$ARTIFACTS_DIR/plan.json"
+if [[ -f "$PLAN_ON_DISK" ]] && jq empty "$PLAN_ON_DISK" >/dev/null 2>&1; then
+    title_on_disk="$(jq -r '.title' "$PLAN_ON_DISK")"
+    if [[ "$title_on_disk" == "Mixed Plan" ]]; then
+        assert_pass "plan.json on disk parses + contains pure JSON object"
+    else
+        assert_fail "plan.json on disk title mismatch" "got: $title_on_disk"
+    fi
+else
+    assert_fail "plan.json on disk parses with jq" "missing or invalid: $PLAN_ON_DISK"
+fi
+
+# ─── Plan banner: JSON-only envelope → NO comment marker (regression lock) ─
+print_test_section "plan stage OUTPUT banner: JSON-only envelope has no comment marker (#510)"
+
+: > "$ZBUILD_EVENTS_JSONL"
+install_envelope_mock_claude --file "$PLAN_CANNED"
+
+export ZBUILD_CURRENT_STAGE=plan
+export _TPL_STAGE_IO_DESTS_plan="stdout"
+PLAN_BANNER_JO="$TEST_TEMP_DIR/plan-banner-json-only.txt"
+: > "$PLAN_BANNER_JO"
+exec 3>"$PLAN_BANNER_JO"
+export ZBUILD_STAGE_IO_FD=3
+
+rm -rf "$ARTIFACTS_DIR"
+mkdir -p "$ARTIFACTS_DIR"
+
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+
+exec 3>&-
+unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_plan
+
+plan_jo_output="$(sed -n '/seq=[0-9]* output /,/── end stage-io/p' "$PLAN_BANNER_JO" 2>/dev/null || true)"
+if printf '%s' "$plan_jo_output" | grep -qF "── llm comment ──"; then
+    assert_fail "JSON-only banner has NO llm comment marker (regression lock)" \
+        "got: $(printf '%s' "$plan_jo_output" | head -40)"
+else
+    assert_pass "JSON-only banner has NO llm comment marker (regression lock)"
+fi
+
+# ─── Review banner: prose+JSON envelope splits into review + llm comment ───
+print_test_section "review stage OUTPUT banner splits prose+JSON envelope (#510)"
+
+: > "$ZBUILD_EVENTS_JSONL"
+REVIEW_MIX="$TEST_TEMP_DIR/review-canned-mixed.json"
+printf '%s' 'Reviewer note: looks fine.
+{"verdict":"approve","confidence":0.92,"issues":[],"summary":"mixed envelope ok"}
+Let me know if you want changes.' > "$REVIEW_MIX"
+install_envelope_mock_claude --file "$REVIEW_MIX"
+
+export ZBUILD_CURRENT_STAGE=review
+export _TPL_STAGE_IO_DESTS_review="stdout"
+REVIEW_BANNER_MIX="$TEST_TEMP_DIR/review-banner-mix.txt"
+: > "$REVIEW_BANNER_MIX"
+exec 3>"$REVIEW_BANNER_MIX"
+export ZBUILD_STAGE_IO_FD=3
+
+REV_OUT_MIX="$REV_FIX/review-mix.json"
+set +e
+_review_run_inner \
+    "$STATE_DIR/scope-manifest.md" \
+    "$REV_FIX/plan.json" \
+    "$REV_FIX/diff.patch" \
+    "$REV_FIX/test-results.json" \
+    "$REV_OUT_MIX" \
+    "$REV_FIX" >/dev/null 2>&1
+rc=$?
+set -e
+
+exec 3>&-
+unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review
+
+assert_eq "_review_run_inner rc=0 on prose+JSON envelope" "0" "$rc"
+
+review_mix_output="$(sed -n '/seq=[0-9]* output /,/── end stage-io/p' "$REVIEW_BANNER_MIX" 2>/dev/null || true)"
+if printf '%s' "$review_mix_output" | grep -qF "# Review"; then
+    assert_pass "prose+JSON review banner: rendered Review heading present"
+else
+    assert_fail "prose+JSON review banner: rendered Review heading present" \
+        "got: $(printf '%s' "$review_mix_output" | head -40)"
+fi
+if printf '%s' "$review_mix_output" | grep -qF "── llm comment ──"; then
+    assert_pass "prose+JSON review banner: llm comment block emitted"
+else
+    assert_fail "prose+JSON review banner: llm comment block emitted" \
+        "got: $(printf '%s' "$review_mix_output" | head -40)"
+fi
+if printf '%s' "$review_mix_output" | grep -qF "Reviewer note: looks fine"; then
+    assert_pass "prose+JSON review banner: prefix prose preserved"
+else
+    assert_fail "prose+JSON review banner: prefix prose preserved" \
+        "got: $(printf '%s' "$review_mix_output" | head -40)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

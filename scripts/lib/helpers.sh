@@ -212,6 +212,119 @@ extract_first_json_object() {
     '
 }
 
+# ─── extract_json_and_surrounding_prose (#510) ──────────────────────────────
+# Sibling of extract_first_json_object that ALSO returns the surrounding prose
+# so renderers can present both the structured artifact AND any free-text
+# commentary the model emitted in the same assistant turn (envelope mode
+# separates turns but not in-turn prose).
+#
+# Mirrors the LAST-balanced-object algorithm of extract_first_json_object so
+# both helpers agree on which slice is "the" JSON. extract_first_json_object
+# itself is unchanged for parser back-compat (e.g. plan plugin schema check).
+#
+# Output contract: stdout, two lines, prefixed with sentinels so the slices can
+# carry embedded newlines without colliding with the field separator. rc=0
+# always (no-match → empty slices).
+#
+#   __PROSE__
+#   <prose bytes — pre-object concat post-object, single blank line between
+#                  when both non-empty; markdown ```json fences stripped BEFORE
+#                  slicing so fenced JSON does not pollute prose>
+#   __JSON__
+#   <json bytes — empty if no balanced object found>
+#
+# Consumers parse via awk on the sentinels (see render_plan_md).
+extract_json_and_surrounding_prose() {
+    awk '
+        BEGIN { buf = "" }
+        { buf = buf $0 "\n" }
+        END {
+            # Pre-pass identical to extract_first_json_object so slicing math
+            # operates on the same buffer the LAST-wins parser saw.
+            sub(/^\xef\xbb\xbf/, "", buf)
+            sub(/^[[:space:]]*```json[[:space:]]*\n?/, "", buf)
+            sub(/^[[:space:]]*```[[:space:]]*\n?/, "", buf)
+            sub(/\n?[[:space:]]*```[[:space:]]*$/, "", buf)
+            # Strip the trailing newline we appended while accumulating so
+            # prose slices do not carry phantom blank lines.
+            sub(/\n$/, "", buf)
+
+            n = length(buf)
+            depth = 0
+            arr_depth = 0
+            in_string = 0
+            escape = 0
+            start = -1
+            last_start = -1
+            last_end = -1
+            for (i = 1; i <= n; i++) {
+                c = substr(buf, i, 1)
+                if (escape) { escape = 0; continue }
+                if (in_string) {
+                    if (c == "\\") { escape = 1; continue }
+                    if (c == "\"") { in_string = 0 }
+                    continue
+                }
+                if (c == "\"") { in_string = 1; continue }
+                if (c == "[") {
+                    if (depth == 0) { arr_depth++ }
+                    continue
+                }
+                if (c == "]") {
+                    if (depth == 0 && arr_depth > 0) { arr_depth-- }
+                    continue
+                }
+                if (c == "{") {
+                    if (depth == 0 && arr_depth > 0) { continue }
+                    if (depth == 0) { start = i }
+                    depth++
+                    continue
+                }
+                if (c == "}") {
+                    if (depth > 0) {
+                        depth--
+                        if (depth == 0 && start > 0) {
+                            last_start = start
+                            last_end = i
+                            start = -1
+                        }
+                    }
+                }
+            }
+
+            prose = ""
+            json = ""
+            if (last_start > 0 && last_end >= last_start) {
+                json = substr(buf, last_start, last_end - last_start + 1)
+                pre  = (last_start > 1) ? substr(buf, 1, last_start - 1) : ""
+                post = (last_end < n)   ? substr(buf, last_end + 1)       : ""
+                # Trim surrounding whitespace on each prose slice so a typical
+                # "Here is the plan.\n\n{...}\n\nLet me know..." input does
+                # not yield empty-looking-but-whitespace prose blocks.
+                sub(/^[[:space:]]+/, "", pre);  sub(/[[:space:]]+$/, "", pre)
+                sub(/^[[:space:]]+/, "", post); sub(/[[:space:]]+$/, "", post)
+                if (pre != "" && post != "") {
+                    prose = pre "\n\n" post
+                } else if (pre != "") {
+                    prose = pre
+                } else if (post != "") {
+                    prose = post
+                }
+            } else {
+                # No balanced JSON object found: the entire buffer is prose.
+                # Strip surrounding whitespace for the same reason as above.
+                prose = buf
+                sub(/^[[:space:]]+/, "", prose); sub(/[[:space:]]+$/, "", prose)
+            }
+
+            printf "__PROSE__\n"
+            printf "%s", prose
+            printf "\n__JSON__\n"
+            printf "%s", json
+        }
+    '
+}
+
 # ─── Emit event sentinel ─────────────────────────────────────────────────────
 # Guards against calling emit_event before core/event-bus/event-bus.sh is
 # sourced. When event-bus.sh is sourced after helpers.sh, its emit_event

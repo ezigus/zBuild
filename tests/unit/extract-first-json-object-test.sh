@@ -118,6 +118,17 @@ out="$(printf '%s' 'Just talking about {"foo":"bar"} as an example.' | extract_f
 assert_eq "E17: helper extracts; layered defense delegates schema check upstream" \
     '{"foo":"bar"}' "$out"
 
+# ─── E19: passthrough still works with prose AROUND object (#510 sibling) ──
+# Sanity guard that extract_first_json_object remains the back-compat parser:
+# extract_json_and_surrounding_prose is a NEW sibling for renderers; this
+# helper's "LAST balanced object wins" contract must not regress when the
+# #510 helper lands.
+out="$(printf '%s' 'Pre.
+{"k":"v"}
+Post.' | extract_first_json_object)"
+assert_eq "E19: back-compat — prose around object still returns object" \
+    '{"k":"v"}' "$out"
+
 # ─── E18: string-internal close brace edge ─────────────────────────────────
 # Critical: a `}` inside a JSON string MUST NOT close the outer object.
 out="$(printf '%s' '{"description": "use }} in regex"}' | extract_first_json_object)"
