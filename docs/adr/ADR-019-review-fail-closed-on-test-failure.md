@@ -204,7 +204,7 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | -------------------------------------------- | ----- | ----- | ------ |
 | `pass`, `approve`                            | pass  | `✓`   | GREEN  |
 | `request_changes`                            | warn  | `⚠`   | YELLOW |
-| `fail`, `error`, `block`, `scope_violation`  | fail  | `✗`   | RED    |
+| `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
 | missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |
 | `rc != 0` (any cause)                        | fail  | `✗`   | RED — rc always wins |
 
@@ -212,6 +212,13 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 `security-findings.json` is always treated as `pass`, never as a stop.
 Gate semantics (which verdicts halt the pipeline) are *unchanged* in #507;
 this is an indicator-only change.
+
+Note: `corrupt_diff` (added in #509) is the third terminal verdict value
+for build alongside `pass` and `scope_violation`. The build plugin sets it
+when `git apply --check -R` rejects the post-loop `diff.patch`; the plugin
+also returns rc=1 in that case so the runner's rc-wins halt path
+(`core/pipeline/runner.sh:672-686`) prevents the downstream test stage
+from ever running on a syntactically corrupt patch.
 
 Test stage `verdict=fail` no longer appears as `✓` — the regression that
 motivated #507.

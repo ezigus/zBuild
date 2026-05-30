@@ -351,7 +351,7 @@ Enforced by `scripts/lib/lint-contract.sh` (fail-closed; `npm run lint`).
 | ------------- | --------------------------- | ------------------------ |
 | intake        | scope-manifest.md           | rc-fallback (presence)   |
 | plan          | plan.json                   | rc-fallback (no field)   |
-| build         | build-summary.json          | `.verdict` (schema v3) — falls back to `.scope_violation` for v≤2 |
+| build         | build-summary.json          | `.verdict` (schema v3; values: `pass` \| `scope_violation` \| `corrupt_diff`) — falls back to `.scope_violation` for v≤2. Schema v3 also carries optional `.apply_check.{ok,reason,stderr_first_line,truncation_observed,diff_bytes}` populated by the #509 corrupt-diff gate. |
 | test          | test-results.json           | `.verdict`               |
 | review        | review.json                 | `.verdict`               |
 | security-lens | security-findings.json      | informational — always pass on presence (ADR-019) |

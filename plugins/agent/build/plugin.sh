@@ -283,6 +283,29 @@ _build_stage_run_inner() {
     local build_verdict="pass"
     [[ "$scope_violation" == "true" ]] && build_verdict="scope_violation"
 
+    # ─── #509: corrupt-patch guard ────────────────────────────────────────────
+    # Run `git apply --check` on the post-loop diff.patch BEFORE the atomic
+    # write so apply_check.* fields can be folded into the single summary
+    # write. Fail-CLOSED: on failure, set verdict=corrupt_diff AND force
+    # the plugin to return rc=1 (defense in depth — runner.sh:672-686 halts
+    # on rc!=0; verdict surfaces in the indicator + downstream consumers).
+    # Skip the gate entirely if the diff was zero'd by a scope_violation —
+    # that path has its own verdict.
+    local _gate_tmp; _gate_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-applycheck.XXXXXX")"
+    set +e
+    _build_apply_check "$repo_root" "$output_diff_patch" "$_gate_tmp"
+    local _gate_rc=$?
+    set -e
+    local apply_check_json
+    apply_check_json="$(cat "$_gate_tmp" 2>/dev/null || echo '{}')"
+    rm -f "$_gate_tmp"
+
+    local force_fail_rc=0
+    if [[ "$scope_violation" != "true" && "$_gate_rc" -ne 0 ]]; then
+        build_verdict="corrupt_diff"
+        force_fail_rc=1
+    fi
+
     jq -n \
         --argjson schema_version 3 \
         --argjson issue "$issue" \
@@ -297,6 +320,7 @@ _build_stage_run_inner() {
         --argjson scope_violations "$violations_json" \
         --argjson loop_input_tokens "$loop_input_tokens" \
         --argjson loop_output_tokens "$loop_output_tokens" \
+        --argjson apply_check "$apply_check_json" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
         '{
             schema_version: $schema_version,
@@ -312,6 +336,7 @@ _build_stage_run_inner() {
             scope_violations: $scope_violations,
             loop_input_tokens: $loop_input_tokens,
             loop_output_tokens: $loop_output_tokens,
+            apply_check: $apply_check,
             notes: $notes
         }' | atomic_write "$output_summary_json"
 
@@ -335,8 +360,12 @@ _build_stage_run_inner() {
         "iterations=$iterations" \
         "terminated_reason=$terminated_reason" \
         "scope_violation=$scope_violation" \
+        "verdict=$build_verdict" \
         "artifact=build-summary.json"
-    return 0
+    # #509: rc-wins fail-CLOSED — corrupt-patch gate makes the plugin exit 1
+    # so runner.sh:672-686 halts the pipeline (verdict=corrupt_diff is
+    # defense-in-depth for the indicator + downstream consumers).
+    return "$force_fail_rc"
 }
 
 # _build_compose_instructions <plan_files_csv>
@@ -382,6 +411,165 @@ BUILD_PROMPT
 # Thin wrapper around the shared _numstat_path_in_scope helper (#506).
 _build_path_in_scope() {
     _numstat_path_in_scope "$@"
+}
+
+# ─── _build_apply_check (#509) ──────────────────────────────────────────────
+# Run `git apply --check` on the post-loop diff.patch to catch the class
+# of corruption that has been silently producing empty build artifacts:
+# `git add -N` zero-line stat entries, stale @@ line numbers from cumulative
+# multi-iter edits, malformed payloads, etc. Fail-CLOSED.
+#
+# Output contract: helper writes a JSON object to <result_path> so the
+# caller (a subshell at this site would lose vars per the precedent at
+# plugin.sh:493-501 — capture state via tmp file, not $()).
+#
+# Args:
+#   $1 = repo_root           absolute path of working tree
+#   $2 = output_diff_patch   path to diff.patch produced by build loop
+#   $3 = result_path         tmp file to write JSON result into
+#
+# JSON fields written to <result_path>:
+#   { ok: true|false,
+#     reason: "<classification>" (only on fail),
+#     stderr_first_line: "<line>" (only on fail),
+#     truncation_observed: bool,
+#     diff_bytes: <int>,
+#     skipped: bool }
+#
+# Returns rc=0 on pass or empty-diff skip; rc=1 fail-CLOSED on everything
+# else (corruption, missing git, precondition state, catastrophic git rc>1).
+_build_apply_check() {
+    local repo_root="$1"
+    local diff_path="$2"
+    local result_path="${3:?_build_apply_check: missing result_path}"
+
+    # NB: callers MUST invoke under `set +e` (e.g. wrapped in `set +e; ...; set -e`)
+    # because the gate's whole point is to surface failure rc to a caller that
+    # then folds the result into the build summary. Do NOT touch errexit state
+    # here — bash flag changes leak to the caller and have burned us before.
+
+    local diff_bytes=0
+    if [[ -f "$diff_path" ]]; then
+        diff_bytes="$(wc -c < "$diff_path" 2>/dev/null | tr -d ' ' || echo 0)"
+    fi
+
+    # ── (a) Empty-diff short-circuit: skip gate, emit event, return 0 ───────
+    if [[ ! -s "$diff_path" ]]; then
+        emit_event "build.apply_check.skipped" "plugin=build" \
+            "reason=empty_diff" "diff_bytes=$diff_bytes" >/dev/null 2>&1 || true
+        jq -n --argjson db "$diff_bytes" \
+            '{ok:true, skipped:true, reason:"empty_diff_skipped",
+              truncation_observed:false, diff_bytes:$db}' > "$result_path"
+        return 0
+    fi
+
+    # ── (b) Invariant: defensive guard against cap-exceeded stat stubs ─────
+    if head -c 64 "$diff_path" 2>/dev/null | grep -q '^(diff exceeded cap'; then
+        emit_event "build.invariant.diff_is_stub" "plugin=build" \
+            "diff_bytes=$diff_bytes" >/dev/null 2>&1 || true
+        jq -n --argjson db "$diff_bytes" \
+            '{ok:false, reason:"truncated", truncation_observed:true,
+              stderr_first_line:"diff payload is a stat stub, not real patch",
+              diff_bytes:$db}' > "$result_path"
+        return 1
+    fi
+
+    # ── (c) Tool availability ──────────────────────────────────────────────
+    if ! command -v git >/dev/null 2>&1; then
+        emit_event "build.apply_check.unavailable" "plugin=build" \
+            "reason=git_missing" >/dev/null 2>&1 || true
+        jq -n --argjson db "$diff_bytes" \
+            '{ok:false, reason:"tool_unavailable",
+              stderr_first_line:"git binary not on PATH",
+              truncation_observed:false, diff_bytes:$db}' > "$result_path"
+        return 1
+    fi
+
+    # ── (d) Precondition gate (mirror _build_emit_changed_files_summary) ───
+    local _pre_reason=""
+    if [[ -d "$repo_root/.git/rebase-merge" || -d "$repo_root/.git/rebase-apply" ]]; then
+        _pre_reason="rebase"
+    elif [[ -f "$repo_root/.git/MERGE_HEAD" ]]; then
+        _pre_reason="merge"
+    elif [[ -f "$repo_root/.git/BISECT_LOG" ]]; then
+        _pre_reason="bisect"
+    elif ! git -C "$repo_root" rev-parse --verify HEAD >/dev/null 2>&1; then
+        # Detached HEAD or unborn — distinguish via symbolic-ref.
+        if ! git -C "$repo_root" symbolic-ref -q HEAD >/dev/null 2>&1; then
+            _pre_reason="detached"
+        else
+            _pre_reason="unborn"
+        fi
+    fi
+    if [[ -n "$_pre_reason" ]]; then
+        emit_event "build.apply_check.precondition_failed" "plugin=build" \
+            "reason=$_pre_reason" "repo_root=$repo_root" >/dev/null 2>&1 || true
+        jq -n --argjson db "$diff_bytes" --arg r "$_pre_reason" \
+            '{ok:false, reason:"precondition_failed",
+              stderr_first_line:("git state precondition failed: " + $r),
+              truncation_observed:false, diff_bytes:$db}' > "$result_path"
+        return 1
+    fi
+
+    # ── (e) The check: git apply --check (default whitespace handling) ─────
+    # Capture stderr separately so the first line can be classified.
+    #
+    # The post-loop diff.patch is `git diff HEAD`, so the changes ALREADY
+    # exist in the working tree — a forward `git apply --check` would fail
+    # context matching ("patch failed: file.txt:N") since the lines are
+    # already changed. The downstream test stage applies the patch to a
+    # clean tree (resets first), so the equivalent validation here is:
+    #   - reverse-check: confirm the patch reverses cleanly against the
+    #     current working tree (i.e. forward-applicable against HEAD).
+    # `-R` also exercises the same parser, so corrupt-patch / @@-line
+    # errors surface identically.
+    local _stderr_file; _stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-applycheck-err.XXXXXX")"
+    git -C "$repo_root" apply --check -R "$diff_path" 2>"$_stderr_file"
+    local _check_rc=$?
+
+    if [[ $_check_rc -eq 0 ]]; then
+        rm -f "$_stderr_file"
+        jq -n --argjson db "$diff_bytes" \
+            '{ok:true, truncation_observed:false, diff_bytes:$db}' > "$result_path"
+        return 0
+    fi
+
+    local _stderr_first
+    _stderr_first="$(head -n 1 "$_stderr_file" 2>/dev/null || true)"
+    rm -f "$_stderr_file"
+
+    # Classify stderr → reason. Most common: "corrupt patch", "patch does not
+    # apply", "does not match index", "No such file or directory".
+    local _reason="context"
+    if printf '%s' "$_stderr_first" | grep -qi 'corrupt patch'; then
+        _reason="context"
+    elif printf '%s' "$_stderr_first" | grep -qiE 'no such file|does not exist|new file .* exists in working dir'; then
+        _reason="missing_target"
+    elif printf '%s' "$_stderr_first" | grep -qiE 'binary|cannot represent'; then
+        _reason="binary"
+    elif printf '%s' "$_stderr_first" | grep -qiE 'patch does not apply|does not match'; then
+        _reason="context"
+    elif printf '%s' "$_stderr_first" | grep -qi 'whitespace'; then
+        _reason="whitespace"
+    fi
+    # Catastrophic rc>1 → unavailable (could not even attempt the check).
+    if [[ $_check_rc -gt 1 ]]; then
+        emit_event "build.apply_check.unavailable" "plugin=build" \
+            "rc=$_check_rc" "stderr_first_line=$_stderr_first" >/dev/null 2>&1 || true
+        jq -n --argjson db "$diff_bytes" --arg s "$_stderr_first" --argjson rc "$_check_rc" \
+            '{ok:false, reason:"tool_unavailable",
+              stderr_first_line:$s, truncation_observed:false,
+              diff_bytes:$db, git_apply_rc:$rc}' > "$result_path"
+        return 1
+    fi
+
+    emit_event "build.apply_check.failed" "plugin=build" \
+        "reason=$_reason" "stderr_first_line=$_stderr_first" \
+        "diff_bytes=$diff_bytes" >/dev/null 2>&1 || true
+    jq -n --argjson db "$diff_bytes" --arg s "$_stderr_first" --arg r "$_reason" \
+        '{ok:false, reason:$r, stderr_first_line:$s,
+          truncation_observed:false, diff_bytes:$db}' > "$result_path"
+    return 1
 }
 
 # ─── _build_format_numstat ──────────────────────────────────────────────────
