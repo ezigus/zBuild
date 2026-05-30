@@ -263,7 +263,10 @@ PLAN_PROMPT
     # the plan.json output via render_plan_md (mirror #476 save/restore).
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
     export ZBUILD_ROUTER_ARTIFACT_ID=plan
-    raw_response="$(route_to_model "$tier" "$prompt" 2>/dev/null)" || router_rc=$?
+    # #491: do NOT redirect route_to_model's stderr — the stage-io input banner
+    # writes to fd 2 (ZBUILD_STAGE_IO_FD default) and 2>/dev/null would swallow
+    # it, breaking the ADR-015 §v4 input-before-action ordering contract.
+    raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else

@@ -136,6 +136,21 @@ else
         "in=$in_line_1 out=$out_line_1; banner head: $(printf '%s' "$banner" | head -c 400)"
 fi
 
+# (2b) #491: per-iteration ordering on iter=2 and iter=3 too. Each input
+# banner MUST precede its same-seq output banner. The pre-#491 bug only
+# emitted ONE banner per pair (output) when the caller used 2>/dev/null —
+# this loop check catches a regression where iter>1 inputs are missing.
+for s in 2 3; do
+    in_l="$(printf '%s\n' "$banner" | grep -n "seq=${s} input ──"  | head -1 | cut -d: -f1)"
+    out_l="$(printf '%s\n' "$banner" | grep -n "seq=${s} output "  | head -1 | cut -d: -f1)"
+    if [[ -n "$in_l" && -n "$out_l" && "$in_l" -lt "$out_l" ]]; then
+        assert_pass "iter=${s} input < output ordering on fd 3"
+    else
+        assert_fail "iter=${s} input < output ordering" \
+            "in=$in_l out=$out_l"
+    fi
+done
+
 # (3) Mock claude was invoked 3 times (3 MARK lines).
 mark_count="$(wc -l < "$MARK_FILE" | tr -d ' ')"
 assert_eq "mock claude invoked 3 times" "3" "$mark_count"

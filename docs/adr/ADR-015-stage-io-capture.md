@@ -434,3 +434,89 @@ whose argv and output the operator has audited as safe to publish.
   from the artifact-dir listing; on disk this works, but a stage that
   re-runs after partial completion may double-post `gh_comment` entries.
   A future "did this seq already comment?" check is deferred.
+
+### v4 — Emission ordering contract (issue #491)
+
+Every stage that performs work MUST emit its input banner BEFORE the action is
+invoked and its output banner AFTER the action returns. Concretely:
+`stage_io_begin` (or `_stage_io_stdout_begin`) writes to fd
+`${ZBUILD_STAGE_IO_FD:-2}` and is sequenced before the LLM/command/computed
+action runs in the parent shell; `stage_io_end` is sequenced after. Capturing
+the action via `$(...)` is forbidden when that subshell would intercept the
+banner fd — callers must either (a) write banners to a fd the subshell
+inherits and does not redirect (the default fd 2), or (b) invoke the action
+without a stdout-capturing subshell. The chokepoint itself MUST redirect its
+own banner writes (`>&"${ZBUILD_STAGE_IO_FD:-2}"`) so a caller that wraps it
+in `$()` cannot capture the banner into a string. Stages adopting
+`route_to_model`, `route_to_model_loop`, or `run_captured_command`
+automatically inherit this contract; stages with bespoke action invocation
+must satisfy it manually and are linted (see CI invariant test reference).
+
+**Why #481 regressed before #491.** #481 split the v1 single banner into
+begin/end phases with the intent that input emits before the action runs and
+output emits after. But five plugins (plan/review/security-lens/build/intake)
+wrap their action invocation in `$(...)` with `2>/dev/null` to suppress stderr
+noise; because the banner writes to fd 2 by default, the `2>/dev/null` swallowed
+the begin half of the banner. The output half still emitted from the parent
+shell (after `$()` returned), so an operator saw a single output banner — the
+exact pre-#481 shape, plus orphan-trap noise. #491 codifies the contract
+above, hardens the chokepoint with a layer-2 fd redirect inside
+`_stage_io_stdout_begin` / `_stage_io_stdout_end` (defense-in-depth), removes
+the `2>/dev/null` from all five callsites, validates `ZBUILD_STAGE_IO_FD` at
+module load (refuses 0 or 1 — collision with stdin or the action's stdout), and
+ships a same-line lint guard and a cross-stage integration test.
+
+**Two-layer fd contract (defense-in-depth).** The caller-level redirect
+(`stage_io_begin` / `stage_io_end` wrap their internal helper invocations with
+`>&"${ZBUILD_STAGE_IO_FD:-2}"`) is the belt. The helper-level redirect
+(`_stage_io_stdout_begin` / `_stage_io_stdout_end` wrap their bodies in
+`{ … } >&"${ZBUILD_STAGE_IO_FD:-2}"`) is the suspenders — even if a future
+caller forgets the outer redirect, every banner-printing `printf` lands on the
+banner fd directly. A test that calls these helpers directly with no caller
+redirect must still see the banner on fd 2.
+
+**`ZBUILD_STAGE_IO_FD` validation.** `_stage_io_validate_fd` runs once at
+module load (gated by `_ZBUILD_STAGE_IO_LOADED`) and refuses `0` (stdin
+collision) and `1` (stdout collision — would interleave the banner with `$()`
+captures and corrupt downstream parsing) with `error` + `return 2`. The
+validation also verifies the fd is actually open for write in the sourcing
+shell. Failure aborts the `source` so the operator sees the error immediately
+rather than at the first banner-emit attempt.
+
+**gh_comment fd asymmetry (documented carve-out).** The stdout-destination
+banner writes to fd `${ZBUILD_STAGE_IO_FD:-2}`. The gh_comment renderer's body
+is built via `$(_stage_io_to_stdout …)` capture (fd 1). This is intentional:
+the gh_comment body is *content* assembled as a string for the GitHub API
+call, whereas the stdout-banner is *operator-visible logging* that must
+survive callers wrapping the action in `$()`. Do not collapse this asymmetry
+without a follow-up issue; moving the gh_comment renderer to fd 2 would make
+the body unavailable for the gh CLI invocation. Cross-reference:
+`core/output/stage-io.sh::_stage_io_to_gh_comment` carries the same note.
+
+**Pre-begin error frames are intentionally unframed.** Errors that fire
+before `stage_io_begin` (budget overflow, precondition failure, router
+config errors) appear without banner framing; this is by design — the
+orphan-trap from #481 captures the state for forensics
+(`stage.io.error reason=output_never_emitted`) and an unbanner-framed error
+keeps the operator's attention on the actionable text. Adopters who want
+pre-begin errors framed must call `stage_io_begin` before the precondition
+gate; this is out of scope for #491 and tracked as a follow-up.
+
+**CI invariant test.** The keystone enforcement lives in
+`tests/integration/stage-io-ordering-invariant-test.sh`. It is table-driven
+(one row per stage that performs work — currently intake/plan/build/review/
+security-lens) and asserts, with a slow mock claude (sleep 1.5s per call),
+that the input banner emits at least 1 second before the output banner. New
+contributor adds a stage = adds a row. A meta-test
+(`tests/unit/docs-adr-015-references-invariant-test.sh`) fails if this ADR
+ever stops referencing the invariant test path — preventing silent deletion
+of the test.
+
+**Lint guard.** `scripts/lib/lint-stage-io.sh` rejects any production code
+(`plugins/**/plugin.sh` + `core/router/route.sh`) that has `2>/dev/null` on
+the SAME LINE as `route_to_model`, `route_to_model_loop`, or
+`run_captured_command`. The guard is narrow on purpose: it does not flag the
+~100 unrelated `2>/dev/null` uses (gh/git probes, optional helpers) which
+have nothing to do with banner emission. Test files are out of scope (they
+legitimately exercise error returns with stderr suppression). Wired into
+`npm run lint`.

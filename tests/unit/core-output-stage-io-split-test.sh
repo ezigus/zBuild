@@ -216,6 +216,10 @@ fi
 _reset_pending
 rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
 : > "$ZBUILD_EVENTS_JSONL"
+# #491: previous test sections leaked ZBUILD_STAGE_IO_FD=3, but the subshell
+# below re-sources stage-io.sh — _stage_io_validate_fd will refuse to load if
+# the leaked fd isn't open. Reset to the default (fd 2) before re-source.
+unset ZBUILD_STAGE_IO_FD
 (
     # shellcheck source=../../core/output/stage-io.sh
     # Force a re-source so the trap installs in this subshell.

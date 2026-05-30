@@ -138,8 +138,12 @@ _build_stage_run_inner() {
     export ZBUILD_SCOPE_MANIFEST="$scope_manifest"
 
     local router_rc=0
+    # #491: do NOT redirect route_to_model_loop's stderr — the per-iteration
+    # stage-io input banner writes to fd 2 (ZBUILD_STAGE_IO_FD default) and
+    # 2>/dev/null would swallow every iteration's input banner, breaking the
+    # ADR-015 §v4 input-before-action ordering contract for Pattern 2.
     route_to_model_loop "$tier" "$redacted_file" "$repo_root" "$max_iter" \
-        --scope-allowlist "$plan_files_csv" 2>/dev/null || router_rc=$?
+        --scope-allowlist "$plan_files_csv" || router_rc=$?
 
     local iterations="${_ROUTE_LOOP_ITERATIONS:-0}"
     local terminated_reason="${_ROUTE_LOOP_TERMINATED_REASON:-error}"
