@@ -4087,3 +4087,113 @@ issues:
       extends: resolver for deep-merge overrides. Safety gate on removing
       safety-critical stages. pipeline.template.resolved event.
       Requires ADR-016 (Per-Repository Template Resolution) first.
+  - id: adr017-v1-per-stage-timeout
+    title: "ADR-017 v1: per-stage router.timeout_s in pipeline template"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/455
+      ADR-017 v1 — per-stage router.timeout_s field in pipeline template.
+      Template parser and router wiring to enforce stage-level timeouts.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: intake-refuse-closed-issue
+    title: "intake: refuse --issue <N> when the issue is CLOSED; report state back to the operator"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation, cli-ux]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/456
+      Intake plugin refuses to start a pipeline against a closed issue
+      and surfaces the issue state to the operator with an actionable error.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: build-prompt-unified-diff
+    title: "build: rewrite prompt to demand a unified diff (no tool-use, no prose)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/461
+      Rewrite build plugin prompt to emit a unified diff; LLM was
+      previously asking for file permissions instead of producing a diff.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: review-prompt-hygiene
+    title: "review: harden prompt with #435-style hygiene (no tool calls, no markdown fences)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/462
+      Harden review plugin prompt to suppress tool calls and markdown
+      fences, matching the hygiene pattern established in #435.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: router-shipwright-flags
+    title: "router: adopt shipwright's claude flag set — --max-turns, --disallowed-tools, --dangerously-skip-permissions (ADR-018)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/466
+      Router adopts shipwright's claude invocation flags for ADR-018
+      stage invocation modes (--max-turns, --disallowed-tools, etc).
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: build-agent-loop-git-diff
+    title: "build: replace LLM-emitted diff with agent-loop + git diff (ADR-018)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/467
+      Build stage switches from LLM-emitted diff to agent-loop + git diff,
+      mirroring shipwright's build loop per ADR-018 Pattern 2.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: plan-prompt-read-scope
+    title: "plan: prompt invites Read for context-gathering; post-validate step.files[] against scope-manifest (ADR-018)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/468
+      Plan plugin prompt invites Read tool for context-gathering; adds
+      post-validation of step.files[] against the scope manifest (ADR-018).
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: review-prompt-read-diff
+    title: "review: prompt invites Read for verifying the diff against the working tree (ADR-018)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/469
+      Review plugin prompt invites Read tool to verify the diff against
+      the working tree per ADR-018.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: artifact-renderer-registry
+    title: "core: artifact renderer registry — markdown rendering for inter-stage prompts and banner (ADR-018)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/470
+      Core artifact renderer registry for markdown rendering of inter-stage
+      prompts and the stage-io banner; pluggable for future stages (ADR-018).
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: adr018-pattern1-json-output
+    title: "pattern 1 stages with tools must use --output-format json + .result (ADR-018 amendment)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/476
+      ADR-018 amendment: pattern 1 stages that use tools must invoke claude
+      with --output-format json and extract output via .result.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: adr018-pattern1-json-parser
+    title: "pattern 1 stages must extract first JSON object from .result (parser-side, follow-up to #476)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/478
+      Parser-side follow-up to #476: pattern 1 stages must extract the
+      first JSON object from .result when --output-format json is used.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'

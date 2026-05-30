@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-29T18:49:40Z (rolling 30-PR window)_
+_Last updated: 2026-05-30T03:15:31Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -67,3 +67,11 @@ _Last updated: 2026-05-29T18:49:40Z (rolling 30-PR window)_
 | #446 | chore: verbose stage-io defaults in standard.yaml (file+stdout, tail 200) | 2026-05-29 |
 | #443 | chore(manifest-sync): backfill 55 orphan issues into keepers-manifest.yaml | 2026-05-29 |
 | #441 | docs(ADR-015): propose stage-I/O capture chokepoint | 2026-05-29 |
+| #475 | feat(#467): build agent-loop with pipeline-derived diff (ADR-018 Pattern 2) | 2026-05-30 |
+| #472 | feat(#470): artifact renderer registry for inter-stage markdown (ADR-018) | 2026-05-30 |
+| #471 | feat(#466): router adopts shipwright's claude flag set (ADR-018) | 2026-05-30 |
+| #465 | docs(adr): ADR-018 — stage invocation modes (one-shot with tools vs agent-loop) | 2026-05-30 |
+| #459 | fix(#456): intake refuse --issue <N> when CLOSED; report state back to operator | 2026-05-30 |
+| #458 | feat(#455): ADR-017 v1 — per-stage router.timeout_s in pipeline template | 2026-05-30 |
+| #457 | docs(ADR-017): propose per-stage router configuration | 2026-05-30 |
+| #454 | [manifest-sync] Drift reconciliation | 2026-05-30 |
