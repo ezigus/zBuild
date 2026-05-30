@@ -35,12 +35,9 @@ export NO_GITHUB=true
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR" "$EVENTS_DIR"
 
 # ─── Mock claude to return a valid findings JSON ─────────────────────────────
-cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
-#!/usr/bin/env bash
-echo '{"findings":[{"title":"test","severity":"low","description":"d","recommendation":"r"}]}'
-exit 0
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/claude"
+# #476: envelope-aware via the shared helper.
+install_envelope_mock_claude \
+    '{"findings":[{"title":"test","severity":"low","description":"d","recommendation":"r"}]}'
 
 # ─── Write a minimal scope manifest so redaction passes ──────────────────────
 printf '+ ./\n' | atomic_write "$STATE_DIR/scope-manifest.md"

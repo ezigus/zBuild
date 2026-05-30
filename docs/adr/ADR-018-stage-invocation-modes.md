@@ -68,8 +68,18 @@ only `EnterPlanMode`/`ExitPlanMode` are disallowed. `--max-turns 25`,
 `--dangerously-skip-permissions`.
 
 The stage emits a final structured artifact (JSON or markdown) as its terminal
-response. The pipeline captures stdout exactly as today — `claude --print` still
-returns a single final response even when it used tools internally.
+response.
+
+**JSON envelope is mandatory when tools are available.** `claude --print` *without*
+`--output-format json` streams every turn — reasoning, tool calls, and final
+answer — as concatenated text. Only `.result` from the JSON envelope is the
+final assistant message; reasoning lives in separate fields. Plugins MUST set
+`ZBUILD_ROUTER_JSON_OUTPUT=1` around their `route_to_model` call and consume
+only `.result`. The router enforces `--output-format json` at the boundary
+and auto-extracts `.result`
+(`core/router/route.sh:315, 350-352`); plugins enforce the contract at the call
+site. Without this, reasoning preambles leak into the response and break strict
+JSON parsers downstream (#476).
 
 Scope declaration: the prompt states which paths the stage may read (scope-manifest
 by default for read-only analyzers). Pipeline post-validates tool-use log if
@@ -179,6 +189,11 @@ Once Issues A + B ship, adding any new stage requires zero changes to
    *(Issue E)*
 7. Extensibility contract: Pattern 1 and Pattern 2 are the standing templates;
    new stages reference this ADR, not a new one.
+8. **Pattern 1 stages that invite tool use MUST opt into JSON envelope mode.**
+   Plugins export `ZBUILD_ROUTER_JSON_OUTPUT=1` around the `route_to_model`
+   call and consume only `.result`. Text-streaming mode (the default for
+   `claude --print` without `--output-format json`) leaks reasoning turns as a
+   prose preamble that breaks strict-JSON parsers (#476).
 
 ## Amendment to ADR-004
 
@@ -413,5 +428,36 @@ flight on branch `feat/467-build-agent-loop`:
 
 Issue E remains pending; this section will be updated to `Accepted` and
 this paragraph rewritten with PR links as it merges.
+
+Decision point #8 — JSON envelope mandatory for Pattern 1 with tools
+(`#476`, follow-up to the wave above):
+
+- Triggering dogfood run on `7b20640` against `--issue 294`: plan stage
+  failed with `invalid_plan_response` because `claude --print` streamed a
+  reasoning turn ("Now I have a full picture…") as a prose preamble
+  before the final JSON. The `jq -e` validator rejected the run-on
+  string.
+- Root cause: the router has supported `--output-format json` + `.result`
+  extraction since the Pattern 2 work (`core/router/route.sh:315, 350-352`),
+  but Pattern 1 plugins (plan, security-lens, and review's default path)
+  never opted in. Only `route_to_model_loop` (#467) and review's audit
+  branch (#469) used the envelope.
+- Fix (in flight on `fix/476-pattern1-json-envelope`):
+  - `plugins/agent/plan/plugin.sh`, `plugins/agent/security-lens/plugin.sh`,
+    `plugins/agent/review/plugin.sh` each wrap their `route_to_model`
+    call with `export ZBUILD_ROUTER_JSON_OUTPUT=1` / `unset` (mirror
+    review's existing pattern from #469).
+  - Review's restructure: envelope-mode export is now unconditional; the
+    `ZBUILD_REVIEW_AUDIT_TOOL_USE` gate only controls the tool-uses
+    side-channel.
+  - Decision point #8 codifies the rule in §"Pattern 1" so future stages
+    (design, compound_quality, etc.) inherit it.
+- Tests extended:
+  - Unit shadows of `route_to_model` capture `ZBUILD_ROUTER_JSON_OUTPUT`
+    at call time and assert it equals `1`.
+  - Integration `claude` stubs on PATH branch on `--output-format json`
+    argv: emit an envelope `{"type":"result","subtype":"success","result":"..."}`
+    when present, raw text otherwise. Locks the subprocess-boundary
+    contract for plan, review, and security-lens.
 
 Dogfood run `20260529164733-70084` is the triggering evidence on record.
