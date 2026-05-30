@@ -214,6 +214,150 @@ assert_event_emitted "R7 loop.diff_capture_warning event fired" \
     "$ZBUILD_EVENTS_JSONL" "loop.diff_capture_warning"
 unset ZBUILD_LOOP_DIFF_CAP_CHARS
 
+# ─── R8 (#482): per-iteration stage_io banner (Pattern 2) ────────────────────
+print_test_section "R8: route_to_model_loop emits stage_io begin/end per iteration"
+
+# Set up a mock template_stage_io_dests so banners actually emit. Use
+# stdout + file destinations so the banner hits fd 3 AND a file artifact is
+# written per iteration.
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-r8"
+mkdir -p "$ZBUILD_STATE_DIR/artifacts/stage-io"
+# shellcheck source=../../output/stage-io.sh
+source "$REPO_ROOT/core/output/stage-io.sh"
+template_stage_io_dests() {
+    local _stage="$1"
+    [[ "$_stage" == "build" ]] || return 0
+    printf 'file\nstdout\n'
+}
+template_stage_io_tail_lines() { printf ''; }
+template_stage_io_redact()     { printf ''; }
+
+REPO8=$(make_repo "repo8")
+COUNTER8="$TEST_TEMP_DIR/counter8"
+install_mock_claude "$COUNTER8" 3 "r8.txt"
+
+# Capture banner stream on fd 3.
+R8_FD3="$TEST_TEMP_DIR/r8-fd3.txt"
+: > "$R8_FD3"
+: > "$ZBUILD_EVENTS_JSONL"
+
+export ZBUILD_CURRENT_STAGE=build
+export ZBUILD_STAGE_IO_FD=3
+
+set +e
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO8" 5 >/dev/null 2>/dev/null 3>"$R8_FD3"
+r8_rc=$?
+set -e
+unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_FD
+
+assert_exit_code "R8 rc=0 after 3 iterations" "0" "$r8_rc"
+assert_eq "R8 iterations=3" "3" "${_ROUTE_LOOP_ITERATIONS:-0}"
+
+r8_banner="$(cat "$R8_FD3")"
+# Each iteration should have one input + one output line for build.
+r8_input_count="$(printf '%s\n' "$r8_banner" | grep -c 'stage-io: build \[llm\] seq=.* input ──' || true)"
+r8_output_count="$(printf '%s\n' "$r8_banner" | grep -c 'stage-io: build \[llm\] seq=.* output ' || true)"
+assert_eq "R8 3 input banners (one per iteration)"  "3" "$r8_input_count"
+assert_eq "R8 3 output banners (one per iteration)" "3" "$r8_output_count"
+
+# Each iteration's seq increments: seq=1, seq=2, seq=3.
+for _seq in 1 2 3; do
+    if printf '%s\n' "$r8_banner" | grep -q "stage-io: build \[llm\] seq=${_seq} input ──"; then
+        assert_pass "R8 input banner seq=$_seq present"
+    else
+        assert_fail "R8 input banner seq=$_seq present" "missing in: $(printf '%s' "$r8_banner" | head -c 400)"
+    fi
+done
+
+# stage.io.captured count == 3 (one per iteration).
+r8_captured="$(jq -c --arg t "stage.io.captured" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "R8 3 stage.io.captured events" "3" "$r8_captured"
+
+# Per-iteration file artifacts: build-1.json, build-2.json, build-3.json.
+for _seq in 1 2 3; do
+    assert_file_exists "R8 build-${_seq}.json artifact" \
+        "$ZBUILD_STATE_DIR/artifacts/stage-io/build-${_seq}.json"
+done
+
+# Check metadata.iter on the first record.
+r8_rec1="$(cat "$ZBUILD_STATE_DIR/artifacts/stage-io/build-1.json")"
+assert_json_key "R8 build-1.json metadata.iter == 1" "$r8_rec1" ".metadata.iter" "1"
+assert_json_key "R8 build-1.json metadata.tier == T2" "$r8_rec1" ".metadata.tier" "T2"
+
+# R8b: error-path iteration also closes the banner (no orphan). Reuse the
+# mid-loop-rc=1 mock from R4 but assert there's still an output banner for
+# each iteration including the failing one.
+print_test_section "R8b: error-path iteration emits stage_io_end (no orphan)"
+REPO8B=$(make_repo "repo8b")
+COUNTER8B="$TEST_TEMP_DIR/counter8b"
+: > "$COUNTER8B"
+cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
+#!/usr/bin/env bash
+n=\$(wc -l < "$COUNTER8B" 2>/dev/null | tr -d ' ' || echo 0)
+n=\$(( n + 1 ))
+echo "iter \$n" >> "$COUNTER8B"
+case "\$n" in
+    1) jq -n '{result:"iter1 wip", usage:{input_tokens:5, output_tokens:3}}'; exit 0 ;;
+    2) echo "claude oops" >&2; exit 1 ;;
+    3) jq -n --arg r \$'done\nLOOP_COMPLETE' '{result:\$r, usage:{input_tokens:5, output_tokens:3}}'; exit 0 ;;
+esac
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+R8B_FD3="$TEST_TEMP_DIR/r8b-fd3.txt"
+: > "$R8B_FD3"
+: > "$ZBUILD_EVENTS_JSONL"
+rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
+mkdir -p "$ZBUILD_STATE_DIR/artifacts/stage-io"
+
+export ZBUILD_CURRENT_STAGE=build
+export ZBUILD_STAGE_IO_FD=3
+set +e
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO8B" 5 >/dev/null 2>/dev/null 3>"$R8B_FD3"
+r8b_rc=$?
+set -e
+unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_FD
+
+assert_exit_code "R8b rc=0 (recovered)" "0" "$r8b_rc"
+# 3 begin → 3 end pairs (one per iteration including the failing iter).
+r8b_input_count="$(printf '%s\n' "$(cat "$R8B_FD3")" | grep -c 'stage-io: build \[llm\] seq=.* input ──' || true)"
+r8b_output_count="$(printf '%s\n' "$(cat "$R8B_FD3")" | grep -c 'stage-io: build \[llm\] seq=.* output ' || true)"
+assert_eq "R8b 3 input banners (incl. failed iter)"  "3" "$r8b_input_count"
+assert_eq "R8b 3 output banners (incl. failed iter)" "3" "$r8b_output_count"
+
+# Failed iteration banner has FAIL status (error=true triggers FAIL render).
+if printf '%s\n' "$(cat "$R8B_FD3")" | grep -q 'stage-io: build \[llm\] seq=2 output FAIL'; then
+    assert_pass "R8b failed iter banner shows FAIL"
+else
+    assert_fail "R8b failed iter banner shows FAIL" \
+        "got: $(grep 'seq=2 output' "$R8B_FD3" || true)"
+fi
+
+# No stage.io.error orphan event (each begin paired with an end).
+r8b_orphans="$(jq -c --arg t "stage.io.error" 'select(.type==$t and .data.reason=="output_never_emitted")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "R8b no orphan begins" "0" "$r8b_orphans"
+
+# R8c: no banner when ZBUILD_CURRENT_STAGE unset (Pattern 1's behavior parity).
+print_test_section "R8c: no banner when ZBUILD_CURRENT_STAGE unset"
+REPO8C=$(make_repo "repo8c")
+COUNTER8C="$TEST_TEMP_DIR/counter8c"
+install_mock_claude "$COUNTER8C" 1 "r8c.txt"
+R8C_FD3="$TEST_TEMP_DIR/r8c-fd3.txt"
+: > "$R8C_FD3"
+: > "$ZBUILD_EVENTS_JSONL"
+unset ZBUILD_CURRENT_STAGE ZBUILD_PLUGIN
+export ZBUILD_STAGE_IO_FD=3
+set +e
+route_to_model_loop T2 "$PROMPT_FILE" "$REPO8C" 5 >/dev/null 2>/dev/null 3>"$R8C_FD3"
+r8c_rc=$?
+set -e
+unset ZBUILD_STAGE_IO_FD
+assert_exit_code "R8c rc=0" "0" "$r8c_rc"
+r8c_input_count="$(grep -c 'input ──' "$R8C_FD3" 2>/dev/null || true)"
+[[ -z "$r8c_input_count" ]] && r8c_input_count=0
+assert_eq "R8c no banners when stage id unset" "0" "$r8c_input_count"
+
 # ─── R-arg: invalid args → rc=2 ──────────────────────────────────────────────
 print_test_section "R-arg: argument validation"
 set +e
