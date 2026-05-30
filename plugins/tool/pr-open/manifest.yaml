@@ -32,17 +32,21 @@ config:
   always_draft: true
 
 inputs:
-  - name: review_json
+  - id: review
     type: file
     path: "${artifact_dir}/review.json"
+    source: stage:review
+    required: true
 
 outputs:
-  - name: pr_url
+  - id: pr_url
     path: ${artifact_dir}/pr-url.txt
     type: pr-url.txt
-  - name: pr_result
+    required: true
+  - id: pr_result
     path: ${artifact_dir}/pr-result.json
     type: pr-result.json
+    required: true
 
 state:
   persisted: [last_pr_url, last_pr_number]

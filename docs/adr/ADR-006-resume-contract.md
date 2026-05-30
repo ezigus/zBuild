@@ -127,6 +127,31 @@ The engine does NOT guarantee:
 - Reconstructed state can be expensive to recompute (e.g., large git diffs). Mitigation: plugins can cache reconstructed state into persisted state if they declare both.
 - The "every persisted key has a write_plugin_state call" check is grep-based, not type-checked. Accepted as a soft guardrail.
 
+## Amendment — `preflight_failed` pipeline status (issue #496, ADR-020)
+
+ADR-020 introduces a pre-flight inter-stage data contract validator that
+runs at pipeline start (after `load_template`, before any stage executes).
+When the validator fails in `ZBUILD_CONTRACT_VALIDATOR=enforce` mode, the
+runner writes a minimal state.json with `status: preflight_failed` so
+operators can distinguish "pipeline halted before any stage ran" from
+"pipeline interrupted mid-flight."
+
+The pipeline status enum now includes:
+
+| Value | Set by | Meaning |
+|---|---|---|
+| `in_progress` | runner | stages running |
+| `complete` | runner | all stages succeeded |
+| `interrupted` | runner | aborted mid-flight (signal, mid-stage failure) |
+| `aborted` | runner / operator | explicit cancellation |
+| `failed` | runner | terminal failure after at least one stage ran |
+| `preflight_failed` | contract-validator (ADR-020) | rejected before any stage; no resume target |
+
+Pipelines in `preflight_failed` status are NOT resumable; the runner's
+resume policy refuses to restart them (the contract violation is in the
+template or manifests, not in execution state). The resume command should
+surface a "fix the contract first" hint rather than attempting to continue.
+
 ## Implementation Notes (Phase 0.5 — issue #291)
 
 - **24h auto/manual resume boundary** is implemented at `core/state/resume.sh:178–199` (`age_seconds -lt 86400` → `auto_resume`, else `manual_resume_only`). Both BSD and GNU date parsing supported.

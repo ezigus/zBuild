@@ -168,6 +168,9 @@ zbuild pipeline start --issue 42
 [event-bus.emit("pipeline.start", {issue:42, ...})]
    │
    ▼
+[pre-flight: contract-validator checks inter-stage data contract — see ADR-020]
+   │
+   ▼
 [engine traverses stages from template; per stage — see ADR-013 for canonical stage list]
    │
    ├─▶ [redaction.apply(prompt_text, scope_manifest) → wrapped text]

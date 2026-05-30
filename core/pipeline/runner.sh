@@ -33,6 +33,8 @@ source "$_ZBUILD_ROOT/core/pipeline/strategies/composite.sh"
 source "$_ZBUILD_ROOT/core/pipeline/dispatch.sh"
 source "$_ZBUILD_ROOT/core/pipeline/contracts.sh"
 source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
+# ADR-020 (#496) pre-flight inter-stage data contract validator.
+source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
 
 _usage() {
     cat <<EOF
@@ -163,6 +165,25 @@ main() {
         warn "Template '$template' not found; using built-in stage list"
         active_stages=(intake security-lens output)
     fi
+
+    # ADR-020 (#496) pre-flight inter-stage data contract validator.
+    # Runs BEFORE the --dry-run branch so dry-run also surfaces contract
+    # violations. Default mode is `warn` for the first release; operators
+    # opt into hard enforcement via ZBUILD_CONTRACT_VALIDATOR=enforce.
+    # The validator returns 0 in warn mode regardless of violations and
+    # 2 in enforce mode when at least one required input is unsatisfied.
+    # Pre-flight state-file path defaults to the same target the runner
+    # will later use; on enforce-failure the validator writes a minimal
+    # state stub with status: preflight_failed (ADR-006 amendment).
+    {
+        local _cv_state_file_pf="${ZBUILD_STATE_FILE:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/pipeline-state.json}"
+        local _cv_stages_nl=""
+        printf -v _cv_stages_nl '%s\n' "${active_stages[@]}"
+        if ! _contract_validate_pipeline "$_cv_stages_nl" "$plugins_root" "$_cv_state_file_pf"; then
+            error "Pre-flight contract validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
+            return 2
+        fi
+    }
 
     if $dry_run; then
         info "Pipeline plan (dry-run, template=$template) — issue=${issue:-} goal=${goal:-}"

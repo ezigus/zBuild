@@ -30,14 +30,17 @@ config:
   test_cmd_default: "npm test"
 
 inputs:
-  - name: diff_patch
+  - id: diff_patch
     type: file
     path: "${artifact_dir}/diff.patch"
+    source: stage:build
+    required: true
 
 outputs:
-  - name: test_results
+  - id: test_results
     path: "${artifact_dir}/test-results.json"
     type: test-results.json
+    required: true
 
 state:
   persisted: [last_verdict, last_exit_code]
