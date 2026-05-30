@@ -116,6 +116,264 @@ _intake_check_issue_state() {
     return 2
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Issue #484 — Feature branch creation (fail-closed)
+#
+# Mirrors legacy/scripts/lib/pipeline-stages-intake.sh:66-94 BUT replaces
+# the `git checkout || true` silent-failure pattern with strict error
+# classification + named refusal events. Branch format diverges from
+# legacy's `feature/slug-N` per stakeholder decision: `zbuild/issue-N-slug`
+# (issue number BEFORE slug).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# _intake_derive_branch_name <issue> <title>
+# Echoes a branch name of the form: zbuild/issue-<N>-<slug>
+# Slug rules (POSIX-portable, mirrors legacy:83-86):
+#   - lowercase
+#   - non-alphanumeric → '-'
+#   - collapse runs of '-'
+#   - cut to 40 chars
+#   - strip trailing '-'
+#   - empty/punctuation-only title → slug "untitled"
+_intake_derive_branch_name() {
+    local issue="$1" title="$2"
+    local slug
+    # shellcheck disable=SC2001  # POSIX sed for portability over bash subst
+    slug="$(printf '%s' "$title" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9]/-/g' \
+        | sed 's/--*/-/g' \
+        | cut -c1-40)"
+    slug="${slug#-}"
+    slug="${slug%-}"
+    [[ -z "$slug" ]] && slug="untitled"
+    if [[ -n "$issue" && "$issue" != "0" ]]; then
+        printf 'zbuild/issue-%s-%s\n' "$issue" "$slug"
+    else
+        # No issue context — still emit a deterministic branch name.
+        printf 'zbuild/issue-0-%s\n' "$slug"
+    fi
+}
+
+# _intake_validate_branch_name <name>
+# Returns 0 if safe, 2 otherwise. Rejects empty/whitespace, leading '-',
+# '..' anywhere (path traversal), and shell/refname metacharacters.
+_intake_validate_branch_name() {
+    local n="$1"
+    [[ -z "${n//[[:space:]]/}" ]] && return 2
+    [[ "$n" == -* ]] && return 2
+    [[ "$n" == *..* ]] && return 2
+    # Reject control chars, spaces, and git-forbidden refname chars.
+    case "$n" in
+        *' '*|*$'\t'*|*$'\n'*|*'~'*|*'^'*|*':'*|*'?'*|*'*'*|*'['*|*'\'*) return 2 ;;
+    esac
+    return 0
+}
+
+# _intake_check_preflight
+# Validates the working-tree state before any branch op. Emits a refusal
+# event on failure and returns 2; returns 0 if all clear.
+_intake_check_preflight() {
+    # 1) git binary present
+    if ! command -v git >/dev/null 2>&1; then
+        error "intake_branch: git not found in PATH"
+        emit_event "intake.refused.git_unavailable" \
+            "plugin=intake" "reason=git_not_found"
+        return 2
+    fi
+    # 2) inside a git repo
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        error "intake_branch: not inside a git repository"
+        emit_event "intake.refused.git_unavailable" \
+            "plugin=intake" "reason=not_a_git_repo"
+        return 2
+    fi
+    # 3) repo not mid-rebase/bisect/merge
+    local git_dir
+    git_dir="$(git rev-parse --git-dir 2>/dev/null)"
+    local mid_state=""
+    if [[ -d "$git_dir/rebase-merge" || -d "$git_dir/rebase-apply" ]]; then
+        mid_state="rebase"
+    elif [[ -f "$git_dir/MERGE_HEAD" ]]; then
+        mid_state="merge"
+    elif [[ -f "$git_dir/BISECT_LOG" ]]; then
+        mid_state="bisect"
+    fi
+    if [[ -n "$mid_state" ]]; then
+        error "intake_branch: refusing — repository is mid-${mid_state}"
+        emit_event "intake.refused.repo_state" \
+            "plugin=intake" "reason=repo_state_${mid_state}"
+        return 2
+    fi
+    # 4) dirty working tree (unless override). Use `git status --porcelain` —
+    #    non-empty output means tracked changes or untracked files exist.
+    if [[ "${ZBUILD_INTAKE_ALLOW_DIRTY:-0}" != "1" ]]; then
+        local dirty
+        dirty="$(git status --porcelain 2>/dev/null)"
+        if [[ -n "$dirty" ]]; then
+            error "intake_branch: refusing — working tree is dirty (set ZBUILD_INTAKE_ALLOW_DIRTY=1 to override)"
+            emit_event "intake.refused.dirty_tree" \
+                "plugin=intake" "reason=working_tree_dirty"
+            return 2
+        fi
+    fi
+    return 0
+}
+
+# _intake_checkout_branch <branch>
+# Idempotent checkout with error classification. Emits:
+#   - intake.branch.noop      (already on target)
+#   - intake.branch.reused    (local branch existed)
+#   - intake.branch.created   (new local branch)
+#   - intake.refused.branch_exists_remote_only
+#   - intake.error            (other checkout failures)
+# Sets _INTAKE_BRANCH_OUTCOME to one of: noop|reused|created
+_intake_checkout_branch() {
+    local target="$1"
+    _INTAKE_BRANCH_OUTCOME=""
+
+    # Validate up front so callers don't have to.
+    if ! _intake_validate_branch_name "$target"; then
+        error "intake_branch: invalid branch name: '$target'"
+        emit_event "intake.refused.invalid_branch_name" \
+            "plugin=intake" "branch=$target" "reason=invalid_branch_name"
+        return 2
+    fi
+
+    # Capture current state for event payloads.
+    local current previous_head base_sha
+    current="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+    previous_head="${current:-detached}"
+    base_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+
+    # Detached HEAD info event (non-fatal — we branch from current commit).
+    if [[ -z "$current" ]]; then
+        emit_event "intake.branch.from_detached" \
+            "plugin=intake" "base=$base_sha" "target=$target"
+    fi
+
+    # Already on target → no-op.
+    if [[ -n "$current" && "$current" == "$target" ]]; then
+        emit_event "intake.branch.noop" \
+            "plugin=intake" "branch=$target" "base=$base_sha"
+        _INTAKE_BRANCH_OUTCOME="noop"
+        return 0
+    fi
+
+    # Does local branch exist?
+    if git show-ref --verify --quiet "refs/heads/$target"; then
+        if ! git checkout "$target" >/dev/null 2>&1; then
+            error "intake_branch: checkout of existing branch '$target' failed"
+            emit_event "intake.error" \
+                "plugin=intake" "branch=$target" "reason=checkout_failed"
+            return 2
+        fi
+        # Verify post-checkout
+        local after
+        after="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+        if [[ "$after" != "$target" ]]; then
+            error "intake_branch: post-checkout HEAD mismatch (expected '$target', got '$after')"
+            emit_event "intake.error" \
+                "plugin=intake" "branch=$target" "reason=post_checkout_mismatch"
+            return 2
+        fi
+        local ahead_count
+        ahead_count="$(git rev-list --count "main..$target" 2>/dev/null || echo 0)"
+        emit_event "intake.branch.reused" \
+            "plugin=intake" "branch=$target" "base=$base_sha" \
+            "previous_head=$previous_head" "ahead_count=$ahead_count"
+        _INTAKE_BRANCH_OUTCOME="reused"
+        return 0
+    fi
+
+    # Local branch absent — does it exist on remote? Don't auto-fetch.
+    # `git show-ref` won't list remote refs unless we look at remotes/.
+    if git show-ref --verify --quiet "refs/remotes/origin/$target"; then
+        error "intake_branch: refusing — branch '$target' exists on remote but not locally; fetch/checkout manually"
+        emit_event "intake.refused.branch_exists_remote_only" \
+            "plugin=intake" "branch=$target" "reason=branch_exists_remote_only"
+        return 2
+    fi
+
+    # Create new branch.
+    if ! git checkout -b "$target" >/dev/null 2>&1; then
+        error "intake_branch: 'git checkout -b $target' failed"
+        emit_event "intake.error" \
+            "plugin=intake" "branch=$target" "reason=branch_create_failed"
+        return 2
+    fi
+    # Verify post-checkout.
+    local after
+    after="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+    if [[ "$after" != "$target" ]]; then
+        error "intake_branch: post-create HEAD mismatch (expected '$target', got '$after')"
+        emit_event "intake.error" \
+            "plugin=intake" "branch=$target" "reason=post_create_mismatch"
+        return 2
+    fi
+    emit_event "intake.branch.created" \
+        "plugin=intake" "branch=$target" "base=$base_sha" \
+        "previous_head=$previous_head"
+    _INTAKE_BRANCH_OUTCOME="created"
+    return 0
+}
+
+# _intake_create_workspace_branch <state_dir> <issue> <title>
+# Top-level orchestrator: env override > preflight > derive > checkout >
+# state writes. Returns 0 on success, 2 on any refusal/error.
+_intake_create_workspace_branch() {
+    local state_dir="$1" issue="$2" title="$3"
+
+    # Env override (with deprecated WORKSPACE_BRANCH alias).
+    local override="${ZBUILD_WORKSPACE_BRANCH:-}"
+    if [[ -z "$override" && -n "${WORKSPACE_BRANCH:-}" ]]; then
+        warn "intake_branch: WORKSPACE_BRANCH is deprecated; use ZBUILD_WORKSPACE_BRANCH"
+        override="$WORKSPACE_BRANCH"
+    fi
+
+    # CI mode: refuse if no override.
+    local ci_mode=0
+    if [[ "${CI:-false}" == "true" || "${CI_MODE:-false}" == "true" ]]; then
+        ci_mode=1
+    fi
+    if [[ $ci_mode -eq 1 && -z "$override" ]]; then
+        error "intake_branch: CI mode requires ZBUILD_WORKSPACE_BRANCH to be set"
+        emit_event "intake.refused.invalid_branch_name" \
+            "plugin=intake" "reason=ci_workspace_branch_unset"
+        return 2
+    fi
+
+    # Preflight (git binary, repo state, dirty tree).
+    _intake_check_preflight || return 2
+
+    local target
+    if [[ -n "$override" ]]; then
+        if ! _intake_validate_branch_name "$override"; then
+            error "intake_branch: ZBUILD_WORKSPACE_BRANCH='$override' is invalid"
+            emit_event "intake.refused.invalid_branch_name" \
+                "plugin=intake" "branch=$override" "reason=env_override_invalid"
+            return 2
+        fi
+        target="$override"
+    else
+        target="$(_intake_derive_branch_name "$issue" "$title")"
+    fi
+
+    _intake_checkout_branch "$target" || return 2
+
+    # State writes — atomic single-line file + optional pipeline-state JSON
+    # field (only when the state JSON exists and the helper is loaded).
+    printf '%s\n' "$target" | atomic_write "$state_dir/intake-branch.txt"
+
+    local pipeline_state="$state_dir/pipeline-state.json"
+    if [[ -f "$pipeline_state" ]] && declare -F _set_pipeline_branch >/dev/null 2>&1; then
+        _set_pipeline_branch "$pipeline_state" "$target" 2>/dev/null || \
+            warn "intake_branch: failed to record .branch in pipeline-state.json (non-fatal)"
+    fi
+
+    return 0
+}
+
 # ─── init ────────────────────────────────────────────────────────────────────
 intake_init() {
     export ZBUILD_PLUGIN="intake"
@@ -215,6 +473,34 @@ intake_run() {
         done
     } | atomic_write "$state_dir/scope-manifest.md"
     printf '%s\n' "$sanitized"   | atomic_write "$state_dir/intake.md"
+
+    # Issue #484: derive title from first line of sanitized goal for branch slug.
+    # Mirrors legacy's `slug=$(echo "$GOAL" | tr ... | sed ... | cut ...)`,
+    # but we use the title line (first \n-terminated chunk) so multi-line
+    # issue bodies don't bloat the slug. The 40-char cut in _intake_derive
+    # provides the same bound legacy:84 used.
+    local _title_line
+    _title_line="${sanitized%%$'\n'*}"
+
+    # Load state_helpers if available so _set_pipeline_branch can record the
+    # branch on the pipeline-state.json. Defer-loaded to avoid hard coupling.
+    if ! declare -F _set_pipeline_branch >/dev/null 2>&1; then
+        # shellcheck source=../../../core/pipeline/state_helpers.sh
+        [[ -f "$_INTAKE_ROOT/core/pipeline/state_helpers.sh" ]] && \
+            source "$_INTAKE_ROOT/core/pipeline/state_helpers.sh" 2>/dev/null || true
+    fi
+
+    # Branch creation is fail-CLOSED — any refusal propagates as rc=2 so
+    # the pipeline halts before downstream stages corrupt main/HEAD. Tests
+    # that don't exercise the real git path set ZBUILD_INTAKE_SKIP_BRANCH=1.
+    if [[ "${ZBUILD_INTAKE_SKIP_BRANCH:-0}" != "1" ]]; then
+        local _branch_rc=0
+        _intake_create_workspace_branch "$state_dir" "$issue" "$_title_line" \
+            || _branch_rc=$?
+        if [[ $_branch_rc -ne 0 ]]; then
+            return $_branch_rc
+        fi
+    fi
 
     emit_event "plugin.run.complete" "plugin=intake" \
         "goal_len=${#sanitized}" \

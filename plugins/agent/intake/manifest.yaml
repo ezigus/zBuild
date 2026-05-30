@@ -33,6 +33,10 @@ outputs:
   - name: intake_goal
     path: ${state_dir}/intake.md
     type: intake.md
+  # intake-branch.txt is a side-effect of branch creation; not declared
+  # here because branch creation is opt-out via ZBUILD_INTAKE_SKIP_BRANCH
+  # (tests that aren't git repos disable it). pr-open consumes the file
+  # opportunistically with a fallback. Issue #484.
 
 provides:
   artifact_type: [scope-manifest.md, intake.md]

@@ -109,8 +109,24 @@ _pr_open_run_inner() {
         return 2
     fi
 
-    # ── Create/switch to zbuild/issue-N branch ────────────────────────────────
-    local target_branch="zbuild/issue-${issue_num}"
+    # ── Determine target branch ───────────────────────────────────────────────
+    # Issue #484: prefer the branch recorded by intake (state.branch or
+    # intake-branch.txt) so we use the slug-bearing name intake already
+    # created. Fall back to the legacy zbuild/issue-N form so existing
+    # state files without a .branch field still work (transitional).
+    local target_branch=""
+    target_branch="$(jq -r '.branch // empty' "$state_file" 2>/dev/null || true)"
+    if [[ -z "$target_branch" || "$target_branch" == "null" ]]; then
+        local _state_dir; _state_dir="$(dirname "$state_file")"
+        if [[ -f "$_state_dir/intake-branch.txt" ]]; then
+            target_branch="$(head -n1 "$_state_dir/intake-branch.txt" 2>/dev/null | tr -d '[:space:]' || true)"
+        fi
+    fi
+    if [[ -z "$target_branch" ]]; then
+        target_branch="zbuild/issue-${issue_num}"
+        emit_event "plugin.pr_open.branch_fallback_used" \
+            "plugin=pr-open" "branch=${target_branch}" "reason=no_state_branch"
+    fi
     if [[ "$current_branch" != "$target_branch" ]]; then
         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
             error "pr_open: failed to create or switch to branch '${target_branch}'"

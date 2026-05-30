@@ -452,6 +452,49 @@ assert_event_emitted() {
     fi
 }
 
+# ─── setup_git_temp_repo ─────────────────────────────────────────────────────
+# Creates a real, minimal git repo under $TEST_TEMP_DIR/<name> with one
+# initial commit. Returns its absolute path on stdout. Used by integration
+# tests that exercise real `git checkout`/`git symbolic-ref` against an
+# isolated repo (issue #484).
+#
+# Usage:
+#   repo="$(setup_git_temp_repo myrepo)"
+#   (cd "$repo" && some_test)
+setup_git_temp_repo() {
+    local name="${1:-gitrepo}"
+    local repo="$TEST_TEMP_DIR/$name"
+    mkdir -p "$repo"
+    (
+        cd "$repo"
+        # Use the real git binary (not whatever PATH shim may be present).
+        local real_git
+        real_git="$(command -v git 2>/dev/null || true)"
+        # If a shim like the parity-fixture mock is on PATH, fall back to
+        # well-known absolute locations.
+        if [[ -z "$real_git" ]]; then
+            for c in /usr/bin/git /usr/local/bin/git /opt/homebrew/bin/git; do
+                [[ -x "$c" ]] && real_git="$c" && break
+            done
+        fi
+        [[ -z "$real_git" ]] && return 1
+        "$real_git" init -q -b main 2>/dev/null || "$real_git" init -q
+        "$real_git" config user.email "test@zbuild.local"
+        "$real_git" config user.name "zbuild-test"
+        "$real_git" config commit.gpgsign false
+        echo "seed" > seed.txt
+        "$real_git" add seed.txt
+        "$real_git" commit -q -m "seed"
+        # Normalize default branch name to 'main' for predictable tests.
+        local cur
+        cur="$("$real_git" symbolic-ref --short HEAD 2>/dev/null || echo main)"
+        if [[ "$cur" != "main" ]]; then
+            "$real_git" branch -m "$cur" main 2>/dev/null || true
+        fi
+    ) >/dev/null 2>&1 || return 1
+    printf '%s\n' "$repo"
+}
+
 # Assert no direct anthropic API calls were made (chokepoint enforcement)
 mock_anthropic_api() {
   local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"

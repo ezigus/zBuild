@@ -41,6 +41,7 @@ plugin.run.complete
 stage.complete
 stage.start
 plugin.run.start
+plugin.pr_open.branch_fallback_used
 plugin.run.complete
 plugin.run.complete
 stage.complete
