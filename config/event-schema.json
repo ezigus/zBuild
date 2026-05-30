@@ -69,6 +69,17 @@
     "loop.terminated.signal",
     "loop.diff_capture_warning",
     "build.scope.violation",
-    "build.empty_diff"
+    "build.empty_diff",
+    "intake.branch.created",
+    "intake.branch.reused",
+    "intake.branch.noop",
+    "intake.branch.from_detached",
+    "intake.refused.dirty_tree",
+    "intake.refused.repo_state",
+    "intake.refused.invalid_branch_name",
+    "intake.refused.git_unavailable",
+    "intake.refused.branch_exists_remote_only",
+    "intake.error",
+    "plugin.pr_open.branch_fallback_used"
   ]
 }

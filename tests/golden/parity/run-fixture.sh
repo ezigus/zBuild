@@ -193,6 +193,11 @@ export ZBUILD_PLATFORM_OVERRIDE=generic       # prevent platform-detection diver
 export ZBUILD_GOAL="parity fixture goal"
 export ZBUILD_REPO_ROOT="$MOCK_REPO"
 export ZBUILD_TEST_CMD="true"                 # test stage runs this in tmp dir
+# Issue #484: intake's new branch path needs a real git repo; this fixture
+# stubs git on PATH so we can't run real symbolic-ref/checkout. The parity
+# test is about engine env-agnosticism, not branch behavior — skip it here.
+# Dedicated branch tests cover the new code path.
+export ZBUILD_INTAKE_SKIP_BRANCH=1
 
 mkdir -p "$ZBUILD_EVENTS_DIR"
 

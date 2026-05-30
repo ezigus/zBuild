@@ -20,6 +20,11 @@ export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
+# Issue #484: branch creation requires a real git repo. These tests use a
+# fake state dir, so opt out — dedicated tests in intake-branch-test.sh
+# and tests/integration/intake-branch-creation-test.sh cover the new path.
+export ZBUILD_INTAKE_SKIP_BRANCH=1
+
 # shellcheck source=../../../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 

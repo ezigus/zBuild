@@ -69,3 +69,20 @@ _set_pipeline_status() {
     locked_state_update "$1" "_zbuild_runner_set_pipeline_status"
     unset _ZB_PIPELINE_STATUS
 }
+
+# _set_pipeline_branch <state_file> <branch>
+# Sets the top-level .branch field atomically and bumps .updated_at.
+# Added for issue #484: intake creates a feature branch and records it in
+# state so downstream stages (notably pr-open) can read it instead of
+# re-deriving the name from the issue number.
+_zbuild_runner_set_pipeline_branch() {
+    jq --arg br "$_ZB_PIPELINE_BRANCH" \
+       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       '.branch = $br | .updated_at = $now'
+}
+
+_set_pipeline_branch() {
+    export _ZB_PIPELINE_BRANCH="$2"
+    locked_state_update "$1" "_zbuild_runner_set_pipeline_branch"
+    unset _ZB_PIPELINE_BRANCH
+}

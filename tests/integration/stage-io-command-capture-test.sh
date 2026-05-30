@@ -24,6 +24,9 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="run-stage-io-cmd"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR"
 
+# Issue #484: intake creates a git branch; this test isn't a git repo.
+export ZBUILD_INTAKE_SKIP_BRANCH=1
+
 # ─── Load template machinery + mock destinations ─────────────────────────────
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"

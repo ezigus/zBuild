@@ -19,5 +19,6 @@ redaction.applied
 plugin.run.complete
 plugin.finalize.complete
 plugin.init.start
+plugin.pr_open.branch_fallback_used
 plugin.run.complete
 plugin.finalize.complete

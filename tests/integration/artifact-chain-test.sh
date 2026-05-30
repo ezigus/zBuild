@@ -31,6 +31,8 @@ export ZBUILD_GOAL="Test artifact chain"
 export ZBUILD_OUTPUT_GH_COMMENT=0
 export ZBUILD_OUTPUT_GH_CHECK_RUN=0
 export NO_GITHUB=true
+# Issue #484: intake creates a git branch; this test isn't a git repo.
+export ZBUILD_INTAKE_SKIP_BRANCH=1
 
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR" "$EVENTS_DIR"
 
