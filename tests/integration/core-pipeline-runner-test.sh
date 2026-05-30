@@ -475,6 +475,50 @@ else
     assert_fail "A3 artifact contract: synthetic findings.json not created"
 fi
 
+# ─── Test I1 (#508): 5-stage happy path emits divider+running+complete with UTC ─
+# Reset to a clean plugin set in the shared PLUGINS_ROOT (mock_plugin_factory
+# writes under $TEST_TEMP_DIR/plugins regardless of ZBUILD_PLUGINS_ROOT —
+# match that convention rather than fight it).
+rm -rf "$PLUGINS_ROOT/agent" "$PLUGINS_ROOT/tool"
+_make_plugin "intake" "agent" 0 >/dev/null
+_make_plugin "plan"   "agent" 0 >/dev/null
+_make_plugin "build"  "agent" 0 >/dev/null
+_make_plugin "test"   "tool"  0 >/dev/null
+_make_plugin "review" "agent" 0 >/dev/null
+
+I1_STDERR="$TEST_TEMP_DIR/i1.runner.stderr"
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
+NO_COLOR=1 \
+bash "$RUNNER" --issue 83 2>"$I1_STDERR" >/dev/null
+
+I1_OUT="$(cat "$I1_STDERR")"
+assert_contains "I1 #508: stderr carries UTC timestamps" "$I1_OUT" "UTC"
+assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:25:45 UTC"
+assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
+
+# I1b: exactly 5 'started ' and 5 'finished ' suffixes (one per stage).
+started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
+assert_eq "I1b #508: exactly 5 'started ' suffixes" "5" "$started_count"
+finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)
+assert_eq "I1b #508: exactly 5 'finished ' suffixes" "5" "$finished_count"
+
+# ─── Test I2 (#508): failure path emits ✗ with rc + finished + duration ─────
+_make_plugin "build" "agent" 1 >/dev/null
+I2_STDERR="$TEST_TEMP_DIR/i2.runner.stderr"
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+set +e
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
+NO_COLOR=1 \
+bash "$RUNNER" --issue 83 2>"$I2_STDERR" >/dev/null
+set -e
+
+I2_OUT="$(cat "$I2_STDERR")"
+assert_contains "I2 #508: fail line carries rc + finished + duration" \
+    "$I2_OUT" "Stage build failed (rc=1, finished 03:25:45 UTC"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

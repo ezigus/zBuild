@@ -66,12 +66,93 @@ EOF
 # Globals (not local) so EXIT trap can read them after main() returns.
 _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
 
-# ─── _render_stage_divider <stage> (#492) ────────────────────────────────────
+# ─── stage-start time cache (#508) ───────────────────────────────────────────
+# Populated immediately before _render_stage_divider for each stage; read at
+# the ✓/✗ complete/fail sites to compute the duration suffix. assoc array so
+# nested / out-of-order stages (none today, but safe) still resolve correctly.
+declare -gA _RUNNER_STAGE_START_MS=()
+
+# ─── _runner_now_ms (#508) ───────────────────────────────────────────────────
+# Millisecond wall clock. Honors ZBUILD_STAGE_IO_NOW_MS_OVERRIDE so goldens
+# can pin the timestamp (same env var as stage-io.sh — single test contract;
+# do NOT introduce a runner-specific override name). Non-numeric override is
+# treated as unset (defensive: a stray export shouldn't crash the runner).
+# Empty stdout on failure → caller renders "??:??:?? UTC" / "?s" — no crash.
+_runner_now_ms() {
+    local ovr="${ZBUILD_STAGE_IO_NOW_MS_OVERRIDE:-}"
+    if [[ -n "$ovr" && "$ovr" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$ovr"
+        return 0
+    fi
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        local us="${EPOCHREALTIME/./}"
+        printf '%s' $(( 10#${us} / 1000 ))
+        return 0
+    fi
+    printf '%s' "$(( ${EPOCHSECONDS:-$(date -u +%s)} * 1000 ))"
+}
+
+# ─── _runner_now_short (#508) — HH:MM:SS UTC for stage banners ───────────────
+# Returns ??:??:?? UTC when the underlying clock primitive yields nothing
+# (defensive — the operator-visible banner still renders without crashing).
+_runner_now_short() {
+    local ms; ms="$(_runner_now_ms)"
+    if [[ -z "$ms" || ! "$ms" =~ ^[0-9]+$ ]]; then
+        printf '??:??:?? UTC'
+        return 0
+    fi
+    local sec=$(( ms / 1000 ))
+    local out
+    out="$(date -u -r "$sec" +'%H:%M:%S UTC' 2>/dev/null \
+        || date -u -d "@$sec" +'%H:%M:%S UTC' 2>/dev/null \
+        || printf '??:??:?? UTC')"
+    printf '%s' "$out"
+}
+
+# ─── _runner_duration_token <stage> (#508) ───────────────────────────────────
+# Format the elapsed duration since the start cache was populated. Mirrors
+# stage-io.sh::_stage_io_render_duration's "<N.N>s" for sub-minute durations;
+# for >= 60 s we use "<m>m<ss>s" so a slow stage doesn't render as "127.4s".
+# Cache miss → "?s" (no crash).
+_runner_duration_token() {
+    local stage="$1"
+    local start="${_RUNNER_STAGE_START_MS[$stage]:-}"
+    if [[ -z "$start" || ! "$start" =~ ^[0-9]+$ ]]; then
+        printf '?s'
+        return 0
+    fi
+    local now; now="$(_runner_now_ms)"
+    if [[ -z "$now" || ! "$now" =~ ^[0-9]+$ ]]; then
+        printf '?s'
+        return 0
+    fi
+    local ms=$(( now - start ))
+    (( ms < 0 )) && ms=0
+    if (( ms < 60000 )); then
+        awk -v m="$ms" 'BEGIN{printf "%.1fs", m/1000}'
+    else
+        local total_s=$(( ms / 1000 ))
+        local mins=$(( total_s / 60 ))
+        local secs=$(( total_s % 60 ))
+        printf '%dm%02ds' "$mins" "$secs"
+    fi
+}
+
+# ─── _render_stage_divider <stage> (#492, ts: #508) ──────────────────────────
 # Emits a blank line + a heavy horizontal rule (━ U+2501) with the stage name
 # centered in stage-color, then another blank line — written to fd 2 so it
 # survives the same redirection rules as ▸/✓/✗ info lines. Used on every
 # stage transition (between eb_emit_event "stage.start" and "▸ Running stage")
 # so the operator's eye finds the next stage boundary at a glance.
+#
+# #508: right-align an HH:MM:SS UTC timestamp on the divider, mirroring the
+# stage-io banner header right-alignment (_stage_io_compose_banner). Width
+# math (no bookend glyphs in this layout — just bars + label + sep + ts):
+#   visible = left_bar + len(label) + mid_bar + 1 (space) + len(ts)
+#   left_bar = (width - len(label) - len(ts) - 1) / 2
+#   mid_bar  = width - left_bar - len(label) - len(ts) - 1
+# Degrade rule: when mid_bar <= 2 (very narrow terminals) we drop the
+# timestamp and emit the legacy symmetric divider so layout stays legible.
 _render_stage_divider() {
     local stage="$1"
     local width
@@ -79,17 +160,38 @@ _render_stage_divider() {
     local color
     color="$(_stage_color "$stage")"
     local label=" ${stage} "
-    local sides=$(( (width - ${#label}) / 2 ))
-    [[ "$sides" -lt 2 ]] && sides=2
-    local bar
-    printf -v bar '%*s' "$sides" ''
-    bar="${bar// /━}"
+    local ts; ts="$(_runner_now_short)"
+
+    # Layout: <left_bar><label><mid_bar> <ts>
+    # Visible width = left_bar + len(label) + mid_bar + 1 (sep) + len(ts).
+    local left_bar=$(( (width - ${#label} - ${#ts} - 1) / 2 ))
+    local mid_bar=$(( width - left_bar - ${#label} - ${#ts} - 1 ))
+
+    if [[ "$mid_bar" -le 2 ]]; then
+        # Degraded: legacy symmetric divider, no timestamp (narrow terminal).
+        local sides=$(( (width - ${#label}) / 2 ))
+        [[ "$sides" -lt 2 ]] && sides=2
+        local bar
+        printf -v bar '%*s' "$sides" ''
+        bar="${bar// /━}"
+        {
+            printf '\n'
+            printf '%b%s%b%s%b%b%s%b\n' "$color" "$bar" "${BOLD:-}" "$label" "${RESET:-}" "$color" "$bar" "${RESET:-}"
+            printf '\n'
+        } >&2
+        return 0
+    fi
+
+    local lbar rbar
+    printf -v lbar '%*s' "$left_bar" ''; lbar="${lbar// /━}"
+    printf -v rbar '%*s' "$mid_bar"  ''; rbar="${rbar// /━}"
     {
         printf '\n'
-        # %b on the colored fragments so \033[...] in $color/$BOLD/$RESET
-        # resolves to real escape sequences (matches echo -e behavior used by
-        # info()/success()/error() elsewhere in this file).
-        printf '%b%s%b%s%b%b%s%b\n' "$color" "$bar" "${BOLD:-}" "$label" "${RESET:-}" "$color" "$bar" "${RESET:-}"
+        # %b on colored fragments so \033[...] resolves like echo -e elsewhere.
+        # Timestamp is plain text outside color escapes — NO_COLOR keeps it.
+        printf '%b%s%b%s%b%b%s%b %s\n' \
+            "$color" "$lbar" "${BOLD:-}" "$label" "${RESET:-}" \
+            "$color" "$rbar" "${RESET:-}" "$ts"
         printf '\n'
     } >&2
 }
@@ -394,10 +496,19 @@ main() {
         skip_until_stage=""
 
         eb_emit_event "stage.start" "stage=$stage"
+        # #508: cache stage start (ms) BEFORE the divider call so the divider
+        # and Running line share a consistent start-time wall clock under the
+        # ZBUILD_STAGE_IO_NOW_MS_OVERRIDE pin used by goldens.
+        _RUNNER_STAGE_START_MS[$stage]="$(_runner_now_ms)"
         # #492 v5: heavy divider + stage-color stage name on the "Running" line.
         _render_stage_divider "$stage"
         local _sc_color; _sc_color="$(_stage_color "$stage")"
-        echo -e "${CYAN}${BOLD}▸${RESET} Running stage: ${_sc_color}${BOLD}${stage}${RESET}" >&2
+        # #508: append "  (started HH:MM:SS UTC)" in DIM. Two-space separator
+        # before the paren matches the metadata-trailer convention used by
+        # stage-io banner footers. Timestamp text stays outside the color
+        # escape so NO_COLOR strips ANSI but preserves the timestamp.
+        local _sc_ts; _sc_ts="$(_runner_now_short)"
+        echo -e "${CYAN}${BOLD}▸${RESET} Running stage: ${_sc_color}${BOLD}${stage}${RESET}  ${DIM}(started ${_sc_ts})${RESET}" >&2
 
         # ADR-015 v1 (#438): expose current stage to the LLM router so
         # capture_stage_io can attribute artifacts to the right stage.
@@ -491,8 +602,12 @@ main() {
             _update_stage_status "$state_file" "$stage" "complete"
             eb_emit_event "stage.complete" "stage=$stage"
             # #492 v5: stage name carries its registry color; ✓ stays green.
+            # #508: append "  (finished HH:MM:SS UTC · <dur>)" in DIM.
             local _cc; _cc="$(_stage_color "$stage")"
-            echo -e "${GREEN}${BOLD}✓${RESET} Stage ${_cc}${BOLD}${stage}${RESET} complete" >&2
+            local _cc_ts _cc_dur
+            _cc_ts="$(_runner_now_short)"
+            _cc_dur="$(_runner_duration_token "$stage")"
+            echo -e "${GREEN}${BOLD}✓${RESET} Stage ${_cc}${BOLD}${stage}${RESET} complete  ${DIM}(finished ${_cc_ts} · ${_cc_dur})${RESET}" >&2
             # After intake completes, append user-provided scope overrides to
             # scope-manifest.md so intake's detection output is preserved alongside
             # the operator's --scope paths.
@@ -512,7 +627,12 @@ main() {
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
             _runner_ended=true
-            error "Stage $stage partially failed"
+            # #508: failure-line timestamp stays DIM (not red) — the clock
+            # isn't the failure. error() handles the ✗/red on the prefix.
+            local _f1_ts _f1_dur
+            _f1_ts="$(_runner_now_short)"
+            _f1_dur="$(_runner_duration_token "$stage")"
+            error "Stage $stage partially failed  ${DIM}(finished ${_f1_ts} · ${_f1_dur})${RESET}"
             return 1
         else
             # ADR-001: exit 1 (recoverable) and 2 (fatal) both halt v1.
@@ -522,7 +642,12 @@ main() {
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
             _runner_ended=true
-            error "Stage $stage failed (rc=$rc)"
+            # #508: append timestamp + duration; rc stays in front of the
+            # paren so the metadata reads "(rc=N, finished ... · ...s)".
+            local _f2_ts _f2_dur
+            _f2_ts="$(_runner_now_short)"
+            _f2_dur="$(_runner_duration_token "$stage")"
+            error "Stage $stage failed (rc=$rc, finished ${_f2_ts} · ${_f2_dur})"
             return 1
         fi
 

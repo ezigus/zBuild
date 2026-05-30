@@ -1,0 +1,1 @@
+[38;2;74;222;128m[1m✓[0m Stage [38;2;0;102;255m[1mplan[0m complete  [2m(finished 03:25:45 UTC · 0.4s)[0m

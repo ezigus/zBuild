@@ -1,0 +1,1 @@
+[38;2;0;212;255m[1m▸[0m Running stage: [38;2;0;102;255m[1mplan[0m  [2m(started 03:25:45 UTC)[0m
