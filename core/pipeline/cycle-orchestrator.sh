@@ -39,6 +39,9 @@ source "$_CYCLE_ORCH_ROOT/core/state/resume.sh"
 source "$_CYCLE_ORCH_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=./template.sh
 source "$_CYCLE_ORCH_ROOT/core/pipeline/template.sh"
+# shellcheck source=../output/event-banners.sh
+# #526: operator-visible WARN banner for HIGH-severity cycle events.
+source "$_CYCLE_ORCH_ROOT/core/output/event-banners.sh"
 # #511 F2 Pin 2: resolve feedback source paths via the from-stage manifest's
 # outputs[id==<X>].path entry (so the orchestrator stops assuming the legacy
 # `artifacts/<stage>/<output>` layout that real plugins do NOT follow).
@@ -66,10 +69,17 @@ _CYCLE_TRAP_HISTORY_FILE=""
 
 # ─── _cycle_emit — wrapper around eb_emit_event with cycle envelope ──────────
 # Adds cycle_id automatically; payload is flat k=v per zbuild convention.
+# #526: also dispatches to the HIGH-event banner emitter so the 5 high-severity
+# cycle.* events fire both a JSONL record (durable) AND a stderr WARN banner
+# (operator-visible). Banner is a no-op for non-HIGH event types — see
+# core/output/event-banners.sh::_HIGH_EVENT_TYPES.
 _cycle_emit() {
     local type="$1"; shift
     eb_emit_event "$type" "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "$@" \
         2>/dev/null || true
+    # Banner intentionally writes to stderr — do NOT redirect 2>/dev/null here.
+    # The helper itself wraps its body in best-effort guards.
+    _emit_high_event_banner "$type" "$@" || true
 }
 
 # ─── Trap composition (silent-failure findings #5, #6) ───────────────────────
@@ -137,8 +147,7 @@ _cycle_load_template() {
     local stages_csv="${!stages_var:-}"
     if [[ -z "$stages_csv" ]]; then
         error "cycle '$cycle_id': no stages declared"
-        eb_emit_event "cycle.config.invalid" \
-            "cycle_id=$cycle_id" "reason=no_stages" 2>/dev/null || true
+        _cycle_emit "cycle.config.invalid" "reason=no_stages"
         return 4
     fi
     local IFS_save="$IFS"; IFS=','
@@ -149,26 +158,22 @@ _cycle_load_template() {
     _CYCLE_MAX_ITER="${!max_var:-}"
     if [[ -z "$_CYCLE_MAX_ITER" ]] || ! [[ "$_CYCLE_MAX_ITER" =~ ^[0-9]+$ ]]; then
         error "cycle '$cycle_id': max_iterations required (integer 1..${_CYCLE_ABSOLUTE_MAX})"
-        eb_emit_event "cycle.config.invalid" \
-            "cycle_id=$cycle_id" "reason=max_iterations_missing_or_nonint" \
-            "value=${_CYCLE_MAX_ITER:-<unset>}" 2>/dev/null || true
+        _cycle_emit "cycle.config.invalid" "reason=max_iterations_missing_or_nonint" \
+            "value=${_CYCLE_MAX_ITER:-<unset>}"
         return 4
     fi
     if [[ "$_CYCLE_MAX_ITER" -lt 1 || "$_CYCLE_MAX_ITER" -gt "$_CYCLE_ABSOLUTE_MAX" ]]; then
         error "cycle '$cycle_id': max_iterations must be 1..${_CYCLE_ABSOLUTE_MAX}, got: $_CYCLE_MAX_ITER"
-        eb_emit_event "cycle.config.invalid" \
-            "cycle_id=$cycle_id" "reason=max_iterations_out_of_range" \
-            "value=$_CYCLE_MAX_ITER" "absolute_max=$_CYCLE_ABSOLUTE_MAX" \
-            2>/dev/null || true
+        _cycle_emit "cycle.config.invalid" "reason=max_iterations_out_of_range" \
+            "value=$_CYCLE_MAX_ITER" "absolute_max=$_CYCLE_ABSOLUTE_MAX"
         return 4
     fi
 
     _CYCLE_ON_MAX="${!on_max_var:-continue}"
     if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
         error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
-        eb_emit_event "cycle.config.invalid" \
-            "cycle_id=$cycle_id" "reason=on_max_invalid" \
-            "value=$_CYCLE_ON_MAX" 2>/dev/null || true
+        _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
+            "value=$_CYCLE_ON_MAX"
         return 4
     fi
 
@@ -180,8 +185,7 @@ _cycle_load_template() {
     if [[ -z "$_CYCLE_UNTIL_STAGE" || -z "$_CYCLE_UNTIL_FIELD" \
           || -z "$_CYCLE_UNTIL_OP" || -z "$_CYCLE_UNTIL_VALUE" ]]; then
         error "cycle '$cycle_id': until.{stage,field,op,value} all required"
-        eb_emit_event "cycle.config.invalid" \
-            "cycle_id=$cycle_id" "reason=until_incomplete" 2>/dev/null || true
+        _cycle_emit "cycle.config.invalid" "reason=until_incomplete"
         return 4
     fi
     # v1 whitelist
@@ -189,9 +193,8 @@ _cycle_load_template() {
         verdict|status) ;;
         *)
             error "cycle '$cycle_id': until.field must be verdict|status, got: $_CYCLE_UNTIL_FIELD"
-            eb_emit_event "cycle.config.invalid" \
-                "cycle_id=$cycle_id" "reason=until_field_invalid" \
-                "value=$_CYCLE_UNTIL_FIELD" 2>/dev/null || true
+            _cycle_emit "cycle.config.invalid" "reason=until_field_invalid" \
+                "value=$_CYCLE_UNTIL_FIELD"
             return 4
             ;;
     esac
@@ -199,9 +202,8 @@ _cycle_load_template() {
         eq|ne) ;;
         *)
             error "cycle '$cycle_id': until.op must be eq|ne, got: $_CYCLE_UNTIL_OP"
-            eb_emit_event "cycle.config.invalid" \
-                "cycle_id=$cycle_id" "reason=until_op_invalid" \
-                "value=$_CYCLE_UNTIL_OP" 2>/dev/null || true
+            _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
+                "value=$_CYCLE_UNTIL_OP"
             return 4
             ;;
     esac
@@ -212,9 +214,8 @@ _cycle_load_template() {
     done
     if [[ $_us_ok -ne 1 ]]; then
         error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
-        eb_emit_event "cycle.config.invalid" \
-            "cycle_id=$cycle_id" "reason=until_stage_outside_cycle" \
-            "value=$_CYCLE_UNTIL_STAGE" 2>/dev/null || true
+        _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
+            "value=$_CYCLE_UNTIL_STAGE"
         return 4
     fi
 

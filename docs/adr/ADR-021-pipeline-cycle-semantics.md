@@ -163,6 +163,16 @@ otherwise it falls through to the legacy stage loop (zero behavior change).
 - Fail-loud on every silent-failure class (verdict missing, feedback missing,
   metric invalid, history lost, plateau skipped).
 
+**Operator visibility (amended 2026-05-31, issue #526).** HIGH-severity cycle
+events — `cycle.feedback.missing`, `cycle.config.invalid`,
+`cycle.iteration.verdict_missing`, `cycle.history.lost`, `cycle.metric.invalid`
+— emit BOTH a structured JSONL record (durable, machine-readable) AND a
+single-line `⚠ <event.type> — <k=v...>` banner to stderr (operator-visible,
+indented under the active cycle divider). The HIGH set is owned by
+`core/output/event-banners.sh::_HIGH_EVENT_TYPES`; expanding it is a
+non-breaking change. Banner emit failure (closed fd, full pipe) MUST NOT
+abort the cycle — JSONL is the source of truth.
+
 **Bad:**
 - Template authors learn one more keyword (`cycles:`).
 - The orchestrator runs with `set +e` internally to protect set-e-naive
