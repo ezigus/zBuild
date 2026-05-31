@@ -16,9 +16,9 @@ source "$_ZBUILD_ROOT/core/plugin-registry/registry.sh"
 
 # ADR-013 canonical stage sequence — stability contract, not user-configurable.
 # Exactly these 11 ids, in this order:
-#   intake plan design build test review compound_quality pr deploy validate monitor
+#   intake plan design build test test_assessment review compound_quality pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan design build test review compound_quality pr deploy validate monitor
+    intake plan design build test test_assessment review compound_quality pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template

@@ -47,11 +47,11 @@ for section in "Context" "Decision" "Consequences" "Implementation Notes"; do
 done
 
 # ---------------------------------------------------------------------------
-# TC-3: All 11 canonical stage ids are present in the document
+# TC-3: All 12 canonical stage ids are present in the document
 # ---------------------------------------------------------------------------
 # Use grep -w for portable word-boundary matching (POSIX/BSD/GNU compatible).
 canonical_stages=(
-    intake plan design build test review
+    intake plan design build test test_assessment review
     compound_quality pr deploy validate monitor
 )
 
