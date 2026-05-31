@@ -31,6 +31,11 @@ plugin_heartbeat <lease_id> → exit 0 if still held, 1 if expired
 plugin_list_claims → emits stdout JSON: [{"issue": N, "holder": "...", "acquired_at": "..."}]
 ```
 
+> **Naming convention:** hook function names are
+> `<plugin-id>_<verb>` (e.g. `github_labels_claim`,
+> `github_labels_release`). The `plugin_*` form in the snippet above is
+> illustrative.
+
 The engine calls these and trusts the return values. Different implementations have different consistency guarantees; the engine doesn't try to reason about them.
 
 ### Default plugin: `plugins/claim-coordinator/github-labels/`

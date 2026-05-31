@@ -147,6 +147,11 @@ A stage may be skipped when:
 
 Skipped stages emit `stage.skip` on the event bus with a `reason` field.
 
+> **Cycle interaction (ADR-021):** `--from-stage <s>` is refused if
+> `<s>` is inside or after a `cycles[].stages[]` entry. Resume into a
+> mid-cycle iteration uses the cycle orchestrator's own iter-N+1
+> dispatch (ADR-021 §Resume contract), not `--from-stage`.
+
 ### Template integration
 
 Templates define a subset of stages via their `stages:` array.  The runner

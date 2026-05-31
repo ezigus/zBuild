@@ -584,6 +584,15 @@ asymmetry from `fd` to `bytes`. Regression test:
 `tests/integration/stage-io-gh-comment-ansi-strip-test.sh` forces colors on
 and asserts zero ESC bytes in the captured `gh issue comment --body`.
 
+**Producer-side artifact-id contract (issue #483).** Pattern 1 plugins
+that want their captured `route_to_model` output rendered via the
+artifact-renderer registry (rather than fence-fallback) set
+`ZBUILD_ROUTER_ARTIFACT_ID=<id>` around the route call. The router
+attaches `metadata.artifact=<id>` to the `stage_io_begin` call; the
+output banner then dispatches to `render_artifact "<id>" "$output"`.
+Currently used by plan / review / security-lens. See ADR-018
+§"Implementation Notes (#483)" for the env-knob save/restore idiom.
+
 **NO_COLOR / non-tty graceful degradation.** `_stage_io_banner_use_color`
 inspects `NO_COLOR`, `ZBUILD_STAGE_IO_FORCE_COLOR` (the banner-specific
 test/golden pin), and `[[ -t $ZBUILD_STAGE_IO_FD ]]` to decide whether to
