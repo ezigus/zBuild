@@ -828,19 +828,41 @@ ${_diff_pointer}"
 
 # _route_loop_capture_diff <cwd> <cap_chars> <prev_diff_var_name>
 # Captures `git -C <cwd> diff HEAD` into the named variable.
+#
+# #530: bash `$()` strips trailing newlines, leaving the captured diff 1 byte
+# short of the raw `git diff HEAD` output → downstream `git apply --check`
+# fails with "corrupt patch at line N". Fix: stream `git diff HEAD` to a
+# tempfile (no command-substitution trimming), then read it back via the
+# `printf x; %x` trick to round-trip the trailing newline through a bash
+# variable losslessly.
+#
 # On overflow: replaces with `git diff --stat` + truncation notice.
 # On git failure: emits loop.git_diff_failed and returns 1.
 _route_loop_capture_diff() {
     local cwd="$1" cap="$2" var_name="$3"
     # intent-to-add so new untracked files appear in `git diff HEAD`
     git -C "$cwd" add -N . 2>/dev/null || true
-    local diff_out diff_rc=0
-    diff_out="$(git -C "$cwd" diff HEAD 2>/dev/null)" || diff_rc=$?
+
+    # Stream directly to disk; do not let `$()` touch the byte stream.
+    local _diff_tmp; _diff_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-loop-diff.XXXXXX")"
+    local diff_rc=0
+    git -C "$cwd" diff HEAD > "$_diff_tmp" 2>/dev/null || diff_rc=$?
     if [[ $diff_rc -ne 0 ]]; then
+        rm -f "$_diff_tmp"
+        # Best-effort: clear `-N` intent-to-add entries so a later iteration's
+        # diff isn't polluted by an aborted capture.
+        git -C "$cwd" reset -q 2>/dev/null || true
         eb_emit_event "loop.git_diff_failed" \
             "cwd=$cwd" "rc=$diff_rc" 2>/dev/null || true
         return 1
     fi
+
+    # Lossless readback: `cat file; printf x` then strip the final 'x'.
+    local diff_out
+    diff_out="$(cat "$_diff_tmp"; printf x)"
+    diff_out="${diff_out%x}"
+    rm -f "$_diff_tmp"
+
     if [[ ${#diff_out} -gt $cap ]]; then
         local stat_out
         stat_out="$(git -C "$cwd" diff --stat HEAD 2>/dev/null || echo "(diff too large)")"
