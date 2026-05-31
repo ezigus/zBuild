@@ -48,10 +48,57 @@ _REVIEW_VALID_VERDICTS="approve request_changes block"
 # at-least-`unknown`; verdict=error specifically maps to `failed` so a
 # misconfigured run cannot smuggle approve through.
 #
+# #569 / ADR-019 §7 amendment (#572): when test-assessment.json is also present
+# in the artifact dir, PREFER its .verdict over test-results.json. The
+# test_assessment LLM stage (#567) interprets test output and is the
+# authoritative signal. Mapping:
+#   assessment.verdict=pass         → "passed"
+#   assessment.verdict=fail|error   → "failed"
+#   assessment.verdict=inconclusive → "unknown"
+#   assessment absent/malformed/unknown verdict → fall through to test-results
+# Fail-closed is preserved: a malformed assessment never coerces approve
+# (jq returns empty → fall through, where the test-results check still applies).
+#
 # Usage: _review_derive_test_status <test_results_json_path>
 # Prints: passed | failed | unknown
 _review_derive_test_status() {
     local path="$1"
+
+    # #569: precedence — check test-assessment.json first. Resolve from the
+    # artifact dir (dirname of test-results path); honor ZBUILD_ARTIFACT_DIR
+    # as a fallback when the test-results path is absent or unusable.
+    local _art_dir=""
+    if [[ -n "$path" ]]; then
+        _art_dir="$(dirname "$path")"
+    fi
+    if [[ -z "$_art_dir" || ! -d "$_art_dir" ]]; then
+        _art_dir="${ZBUILD_ARTIFACT_DIR:-}"
+    fi
+    if [[ -n "$_art_dir" ]]; then
+        local _assessment="$_art_dir/test-assessment.json"
+        if [[ -s "$_assessment" ]]; then
+            local _av
+            _av="$(jq -r '.verdict // empty' "$_assessment" 2>/dev/null || true)"
+            case "$_av" in
+                pass|fail|error|inconclusive)
+                    # ADR-019 §7 mandates this telemetry so operators can tell
+                    # whether a coerced review came from test_assessment or raw
+                    # test-results.json. (Codex P2 on #580.)
+                    emit_event "review.test_assessment.consumed" \
+                        "source=test_assessment" \
+                        "verdict=$_av" \
+                        "path=$_assessment" 2>/dev/null || true
+                    ;;
+            esac
+            case "$_av" in
+                pass)         printf 'passed\n';  return 0 ;;
+                fail|error)   printf 'failed\n';  return 0 ;;
+                inconclusive) printf 'unknown\n'; return 0 ;;
+                *) ;;  # fall through to test-results.json
+            esac
+        fi
+    fi
+
     if [[ -z "$path" || ! -f "$path" ]]; then
         printf 'unknown\n'
         return 0
