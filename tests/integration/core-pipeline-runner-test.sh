@@ -35,12 +35,14 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-_make_plugin "intake"  "agent" 0
-_make_plugin "plan"    "agent" 0
-_make_plugin "build"   "agent" 0
+_make_plugin "intake"          "agent" 0
+_make_plugin "plan"            "agent" 0
+_make_plugin "build"           "agent" 0
 # #485: standard template now includes the test stage between build and review.
-_make_plugin "test"    "tool"  0
-_make_plugin "review"  "agent" 0
+_make_plugin "test"            "tool"  0
+# #568: standard template inserts test_assessment between test and review.
+_make_plugin "test_assessment" "agent" 0
+_make_plugin "review"          "agent" 0
 
 # ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
 set +e; bash "$RUNNER" 2>/dev/null; rc=$?; set -e
@@ -83,7 +85,8 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 # ─── Test 6: stage lifecycle events emitted ─────────────────────────────────
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
-    assert_eq "$stage_event emitted for each MVP stage (5x)" "5" "$count"
+    # #568: 6 stages (intake, plan, build, test, test_assessment, review).
+    assert_eq "$stage_event emitted for each MVP stage (6x)" "6" "$count"
 done
 
 # ─── Test 7: ADR-006 stage status enum — "complete" not "success" ───────────
@@ -213,19 +216,22 @@ EOF
 }
 
 rm -rf "$PLUGINS_ROOT/agent/" "$PLUGINS_ROOT/tool/"
-_make_role_plugin "intake-agent"  "intake"   0
-_make_role_plugin "plan-agent"    "planner"  0
-_make_role_plugin "build-agent"   "builder"  0
+_make_role_plugin "intake-agent"          "intake"          0
+_make_role_plugin "plan-agent"            "planner"         0
+_make_role_plugin "build-agent"           "builder"         0
 # #485: tester role added for the test stage
-_make_role_plugin "test-agent"    "tester"   0
-_make_role_plugin "review-agent"  "reviewer" 0
+_make_role_plugin "test-agent"            "tester"          0
+# #568: test_assessment role added for the new assessment stage
+_make_role_plugin "test-assessment-agent" "test_assessment" 0
+_make_role_plugin "review-agent"          "reviewer"        0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
 set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-assert_eq "role-based dispatch: 5 stage.complete events" "5" "$role_complete"
+# #568: 6 stages now (added test_assessment).
+assert_eq "role-based dispatch: 6 stage.complete events" "6" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
 assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"
@@ -241,9 +247,9 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
-# 5 stages × 2 platforms = 10 plugin.run.start events via fanout (#485)
+# #568: 6 stages × 2 platforms = 12 plugin.run.start events via fanout
 plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
-assert_eq "fanout 2 platforms: 10 plugin.run.start events (5 stages × 2)" "10" "$plugin_run_count"
+assert_eq "fanout 2 platforms: 12 plugin.run.start events (6 stages × 2)" "12" "$plugin_run_count"
 
 # ─── Test 14: partial fanout failure — stage.fail + pipeline.end status=failed ─
 # Platform-specific success (node) + generic failure (ios fallback) → partial.

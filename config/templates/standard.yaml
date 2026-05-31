@@ -34,6 +34,15 @@ stages:
     io:
       destinations: [file, stdout]
       tail_lines: 200
+  - id: test_assessment
+    gate: auto
+    roles: [test_assessment]
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
+    router:
+      timeout_s: 300
+      max_turns: 25
   - id: review
     gate: auto
     roles: [reviewer]
@@ -44,23 +53,25 @@ stages:
       timeout_s: 300
       max_turns: 25
 
-# ADR-021 (#511 F2): build/test outer cycle. When the test verdict is not
-# `pass`, the cycle re-enters build with the prior test failures injected
-# as a prompt preamble (wired via `feedback.to.input=prior_test_failures`,
-# consumed by `plugins/agent/build` whose manifest declares the matching
-# `source: cycle_feedback` input). On termination via max_iterations,
+# ADR-021 + ADR-022 (#568): build/test/test_assessment outer cycle. The cycle
+# converges on the LLM-issued test_assessment verdict (Pattern 1 stage from
+# #567), not on the raw test rc. When the assessment is not `pass`, the cycle
+# re-enters build with the prior assessment markdown injected as a prompt
+# preamble (wired via `feedback.to.input=prior_test_assessment`, consumed by
+# `plugins/agent/build` whose manifest declares the matching `source:
+# cycle_feedback` input — renamed in #571). On termination via max_iterations,
 # plateau, or divergence, the runner CONTINUES to review so the ADR-019
 # fail-closed gate runs as the final arbiter.
 cycles:
   - id: build_test_cycle
-    stages: [build, test]
+    stages: [build, test, test_assessment]
     until:
-      stage: test
+      stage: test_assessment
       field: verdict
       op: eq
       value: pass
     max_iterations: 3
     on_max: continue
     feedback:
-      - from: { stage: test, output: test_failures_summary }
-        to: { stage: build, input: prior_test_failures, required: false }
+      - from: { stage: test_assessment, output: test_assessment_md }
+        to: { stage: build, input: prior_test_assessment, required: false }

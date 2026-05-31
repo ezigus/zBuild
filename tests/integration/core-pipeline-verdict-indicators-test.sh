@@ -91,6 +91,8 @@ _make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
 _make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
 _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass","scope_violation":false}' builder
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
+# #568: standard template now requires a test_assessment stage between test and review.
+_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 if [[ $rc -ne 0 ]]; then
@@ -101,7 +103,7 @@ fi
 assert_eq "all-pass: runner exits 0" "0" "$rc"
 
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-for stage in intake plan build test review; do
+for stage in intake plan build test test_assessment review; do
     if grep -E "✓.*Stage.*${stage}.*complete" <<<"$err" >/dev/null; then
         assert_pass "all-pass: ✓ on $stage line"
     else
@@ -109,9 +111,9 @@ for stage in intake plan build test review; do
     fi
 done
 
-# Verdict attribute on stage.complete events
+# Verdict attribute on stage.complete events (#568: now 6 stages instead of 5)
 all_pass_with_verdict=$(grep '"stage.complete"' "$EVENTS_JSONL" | grep -c '"pass"' || true)
-[[ "$all_pass_with_verdict" -ge 5 ]] \
+[[ "$all_pass_with_verdict" -ge 6 ]] \
     && assert_pass "stage.complete carries verdict=pass for each stage" \
     || assert_fail "stage.complete carries verdict=pass for each stage" "got $all_pass_with_verdict"
 
@@ -126,6 +128,8 @@ _make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
 _make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
 _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builder
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"fail"}' tester
+# #568: standard template now requires a test_assessment stage between test and review.
+_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"fail"}' test_assessment
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
@@ -142,6 +146,8 @@ _make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
 _make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
 _make_verdict_plugin build  agent build-summary.json '{"scope_violation":true}' builder
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
+# #568: standard template now requires a test_assessment stage between test and review.
+_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
@@ -158,6 +164,8 @@ _make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
 _make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
 _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builder
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
+# #568: standard template now requires a test_assessment stage between test and review.
+_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
 _make_verdict_plugin review agent review.json '{"verdict":"request_changes"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"

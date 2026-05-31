@@ -39,11 +39,14 @@ for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:build_test_cycle" ]] && has_cyc=1
 done
 assert_eq "T1: dispatch units include cycle:build_test_cycle" "1" "$has_cyc"
-# Feedback wiring parsed (from: test/test_failures_summary → to: build/prior_test_failures)
+# #568: feedback wiring is now (test_assessment/test_assessment_md →
+# build/prior_test_assessment) — the LLM-issued assessment markdown, not the
+# raw test-failures dump. The 3-stage cycle's full feedback semantics are
+# covered by tests/integration/standard-template-3stage-cycle-test.sh.
 fb_var="_TPL_CYCLE_FEEDBACK_build_test_cycle"
 fb_value="${!fb_var:-}"
-assert_contains "T1: feedback wires test:test_failures_summary" "$fb_value" "test:test_failures_summary"
-assert_contains "T1: feedback wires build:prior_test_failures" "$fb_value" "build:prior_test_failures"
+assert_contains "T1: feedback wires test_assessment:test_assessment_md" "$fb_value" "test_assessment:test_assessment_md"
+assert_contains "T1: feedback wires build:prior_test_assessment" "$fb_value" "build:prior_test_assessment"
 
 # ─── T2: test plugin emits failures summary on fail, absent on pass ─────────
 # shellcheck disable=SC1090
@@ -214,8 +217,10 @@ if [[ "$t6_review" != "absent" ]]; then
 else
     assert_fail "T6 (#527): review must dispatch on cycle unconverged" "stage_statuses.review=absent"
 fi
-t6_test="$(jq -r '.stage_statuses.test // "absent"' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
-assert_eq "T6 (#527): stage_statuses.test=failed (unconverged signal propagated)" \
+# #568: until.stage is now `test_assessment` (3-stage cycle), so the runner
+# propagates the unconverged signal there instead of on `test`.
+t6_test="$(jq -r '.stage_statuses.test_assessment // "absent"' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
+assert_eq "T6 (#527/#568): stage_statuses.test_assessment=failed (unconverged signal propagated)" \
     "failed" "$t6_test"
 t6_status="$(jq -r '.status' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
 assert_eq "T6 (#527): pipeline_status=failed (NOT complete) on unconverged" \
