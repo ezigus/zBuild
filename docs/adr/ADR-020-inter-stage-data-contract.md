@@ -237,6 +237,10 @@ Both are documented here as known contract-bypass paths to audit in a
 follow-up. They were intentionally preserved in this PR to keep the
 behavior change scoped to the explicit-violation path.
 
+> _Tracking-issue creation for the bypass-path audit is pending; the
+> two known bypasses (template-missing fallback at runner.sh:158-165
+> and strategy rc=4 fallback) remain documented here until then._
+
 ## Consequences
 
 **Positive:**
@@ -441,3 +445,9 @@ Validator violation codes: `CYCLE_FB_REQUIRED`, `CYCLE_FB_DIR`,
 The closed templating-var set (decision #5) grows by ONE entry:
 `cycle_feedback_dir`. No other var is added; rejection of unknown
 `${var}` in input paths still fires for everything else.
+
+> **Cross-reference:** the feedback-path resolution mechanism itself
+> (manifest-driven, not hardcoded `<stage>/<output>`) is pinned in
+> ADR-021 §"Feedback-path resolution (#511 Pin 2)". F2 (#511) clarified
+> this after F1 (#512) shipped with a hardcoded shape that didn't match
+> real plugin manifests.

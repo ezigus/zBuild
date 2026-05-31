@@ -55,6 +55,11 @@ Output format: `<tier>: N/M passed` — parseable by CI summary step.
 - Floor = measured baseline − 5% on first wiring PR; ratchet upward each quarter
 - **Caveat:** kcov-on-bash has rough attribution under `set -e`, sourced files, subshells — treat the floor as a regression detector, not an absolute quality measure
 
+> **Current floor (as of 2026-05-31):** 29% statement coverage on
+> `core/` + `scripts/lib/` (enforced via `scripts/check-coverage.sh` and
+> CI per issue #372). Target: 70%. The floor is ratcheted upward as test
+> depth improves.
+
 ### CI job graph
 
 ```

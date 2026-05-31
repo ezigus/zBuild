@@ -239,6 +239,28 @@ Once Issues A + B ship, adding any new stage requires zero changes to
    `claude --print` without `--output-format json`) leaks reasoning turns as a
    prose preamble that breaks strict-JSON parsers (#476).
 
+   ```bash
+   # Save/restore template for Pattern 1 plugins:
+   local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
+   local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
+   export ZBUILD_ROUTER_JSON_OUTPUT=1
+   export ZBUILD_ROUTER_ARTIFACT_ID="<plugin-id>"
+   # call route_to_model here
+   if [[ "$_prev_json_env" == "__UNSET__" ]]; then
+       unset ZBUILD_ROUTER_JSON_OUTPUT
+   else
+       export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+   fi
+   if [[ "$_prev_artifact_env" == "__UNSET__" ]]; then
+       unset ZBUILD_ROUTER_ARTIFACT_ID
+   else
+       export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
+   fi
+   ```
+
+   This idiom is verified across all 3 Pattern 1 plugins (plan/review/security-lens).
+   Codifying it prevents future regressions.
+
 ## Amendment to ADR-004
 
 ADR-004 established `apply_scope_redaction` as the single chokepoint through

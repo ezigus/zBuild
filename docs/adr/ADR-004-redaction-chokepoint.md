@@ -88,6 +88,19 @@ The token file must be written by the operator manually each run (one-shot). The
 - **Intake note:** `plugins/agent/intake/manifest.yaml` declares `requires.core: [redaction, event-bus, state]` but does not yet call `apply_scope_redaction` because intake doesn't emit LLM-bound text in Phase 0.5. Phase 1 intake-LLM wiring MUST invoke the chokepoint before any model call.
 - **Test coverage:** `tests/unit/core-redaction-test.sh` exercises fail-closed behavior; `tests/mutation/scope-redaction-mutations.md` inverts the guard and confirms tests catch it.
 
+## Amendment — Pattern 2 (`route_to_model_loop`) per-iter emit (issue #467, ADR-018)
+
+`route_to_model_loop` (introduced by ADR-018 Pattern 2 via #467) emits a
+`redaction.applied` event on EVERY iteration of the inner agent loop —
+not just the initial call. This preserves C6 precondition ("LLM never
+sees raw out-of-scope context") across multi-turn build runs.
+
+The chokepoint invariant itself is unchanged: every LLM-bound text still
+passes through `apply_scope_redaction`. The amendment only documents the
+emission frequency, which is now per-iter rather than per-stage. See
+ADR-018 §Pattern 2 for the loop semantics and ADR-015 §v6 for the
+per-iter banner ordering.
+
 ## References
 
 - [KEEPERS.md §C](../KEEPERS.md#section-c--reliability--safety-expanded) — redaction has 9 prompt seams; no wrapper today.
