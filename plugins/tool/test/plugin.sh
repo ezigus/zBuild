@@ -120,7 +120,14 @@ _test_run_inner() {
     # Dry-run first with --allow-empty so a no-op (empty) diff is accepted.
     local apply_check_out
     if ! apply_check_out="$(git -C "$tmp" apply --check --allow-empty "$diff_patch_path" 2>&1)"; then
-        # Could not apply — write error artifact and return
+        # Could not apply — write error artifact and return.
+        # #550: write minimal test-results.json via printf BEFORE the atomic
+        # _test_write_result call so the verdict=error is guaranteed to land
+        # even if jq/atomic_write fails (e.g. jq absent, disk full).  The
+        # plain printf write satisfies the stage.verdict resolver; the
+        # _test_write_result call below may overwrite it with a richer object.
+        printf '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}\n' \
+            > "$output_json"
         test_output="git apply --check failed: ${apply_check_out}"
         _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
             "git apply --check failed: $(printf '%s' "$apply_check_out" | head -n1)"
@@ -132,6 +139,9 @@ _test_run_inner() {
     fi
 
     if ! git -C "$tmp" apply --allow-empty "$diff_patch_path" 2>/dev/null; then
+        # #550: same guarantee for the apply-after-check path.
+        printf '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}\n' \
+            > "$output_json"
         test_output="git apply failed after --check passed"
         _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
             "git apply failed after --check passed"
