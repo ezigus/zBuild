@@ -46,28 +46,49 @@ parse_index_spec() {
     printf '%s\n' "${out[@]}" | sort -nu | tr '\n' ' ' | sed 's/ $//'
 }
 
-# Annotate a candidate with possible-duplicate hint based on substring overlap
-# against open-issue titles. Annotation only — never filters. The operator
-# decides whether the existing issue covers the deferred-work mention.
+# Annotate a candidate with possible-duplicate hints via Jaccard similarity
+# on title + body (ADR-020 v2 / sub-3 of #555). Annotation only — never filters.
+# Borderline scores (0.20-0.40) routed through gha_compute_similarity_llm.
+# Returns up to 3 hints like "#42 (sim 0.55) #99 (sim 0.38 — LLM verification unavailable: credentials not configured)".
 annotate_possible_dup() {
     local excerpt="$1"
-    local titles_file="$2"
-    [[ -s "$titles_file" ]] || return 0
-    local key
-    # Extract a 3-word signature from the excerpt for cheap substring match
-    key="$(printf '%s' "$excerpt" | tr '[:upper:]' '[:lower:]' \
-        | tr -cs 'a-z0-9 ' ' ' \
-        | awk '{ for (i=1; i<=NF && i<=8; i++) printf "%s ", $i }' \
-        | sed 's/ *$//')"
-    [[ -z "$key" ]] && return 0
-    local words first
-    read -ra words <<< "$key"
-    first="${words[0]:-}"
-    [[ -z "$first" || "${#first}" -lt 4 ]] && return 0
-    grep -iE "(^|\t)[0-9]+\t.*${first}" "$titles_file" 2>/dev/null \
-        | head -n 2 \
-        | awk -F'\t' '{ printf "#%s ", $1 }' \
-        | sed 's/ $//'
+    local issues_jsonl="$2"   # path to JSONL: each line is `{number, title, body}`
+    [[ -s "$issues_jsonl" ]] || return 0
+    local annotation_threshold="${DEFERRED_SIMILARITY_THRESHOLD:-0.35}"
+    local llm_lo="${DEFERRED_LLM_LOWER:-0.20}"
+    local llm_hi="${DEFERRED_LLM_UPPER:-0.40}"
+    # Collect ALL matches as "score|hint" lines; sort by score descending; take
+    # top 3 (Codex review #578 caught: first-3-found is not top-3-by-score).
+    local matches=""
+    local issue_json
+    while IFS= read -r issue_json; do
+        [[ -z "$issue_json" ]] && continue
+        local oid title body haystack score marker
+        oid="$(printf '%s' "$issue_json" | jq -r '.number // empty')"
+        [[ -z "$oid" ]] && continue
+        title="$(printf '%s' "$issue_json" | jq -r '.title // ""')"
+        body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
+        haystack="${title} ${body}"
+        score="$(gha_compute_similarity "$excerpt" "$haystack")"
+        marker=""
+        if awk -v s="$score" -v lo="$llm_lo" -v hi="$llm_hi" 'BEGIN{exit !(s>=lo && s<hi)}'; then
+            local refined
+            refined="$(gha_compute_similarity_llm "$excerpt" "$haystack" "$score" 2>/dev/null || printf '%s|_LLM_FAILED_NETWORK' "$score")"
+            score="${refined%%|*}"
+            marker="${refined##*|}"
+        fi
+        if awk -v s="$score" -v t="$annotation_threshold" 'BEGIN{exit !(s>=t)}'; then
+            local printable llm_note=""
+            printable="$(printf '%.2f' "$score")"
+            if [[ -n "$marker" && "$marker" != "_LLM_OK" ]]; then
+                llm_note=" — $(gha_llm_marker_to_annotation "$marker")"
+            fi
+            matches+="${printable} #${oid} (sim ${printable}${llm_note})"$'\n'
+        fi
+    done < "$issues_jsonl"
+    [[ -z "$matches" ]] && return 0
+    # Sort by leading score descending; strip the sort key; take top 3; join with spaces.
+    printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
 }
 
 is_in_presented_log() {
@@ -204,12 +225,13 @@ USAGE
     info "fetched $pr_count merged PRs"
 
     info "fetching open issue titles (for dup annotation)..."
-    local titles_file="${RUNNER_TEMP:-/tmp}/deferred-backfill-titles.tsv"
+    local issues_jsonl="${RUNNER_TEMP:-/tmp}/deferred-backfill-issues.jsonl"
     # Annotation-only: if the list fails, degrade gracefully (no annotations)
-    # rather than abort the whole scan.
-    gh issue list --state open --limit 1000 --json number,title \
-        --jq '.[] | "\(.number)\t\(.title)"' > "$titles_file" 2>/dev/null \
-        || { warn "open-issue fetch failed; annotations disabled"; : > "$titles_file"; }
+    # rather than abort the whole scan. Fetches body too so similarity helper
+    # can match on content, not just titles (sub-3 of #555).
+    gh issue list --state open --limit 1000 --json number,title,body \
+        --jq '.[] | @json' > "$issues_jsonl" 2>/dev/null \
+        || { warn "open-issue fetch failed; annotations disabled"; : > "$issues_jsonl"; }
 
     # CANDIDATE_LINES is global so bulk_file_selected can index into it
     CANDIDATE_LINES=()
@@ -258,7 +280,7 @@ USAGE
     local idx=1 line pr_num phrase excerpt dup_hint
     for line in "${CANDIDATE_LINES[@]}"; do
         IFS='|' read -r pr_num phrase excerpt <<< "$line"
-        dup_hint="$(annotate_possible_dup "$excerpt" "$titles_file" 2>/dev/null || true)"
+        dup_hint="$(annotate_possible_dup "$excerpt" "$issues_jsonl" 2>/dev/null || true)"
         if [[ -n "$dup_hint" ]]; then
             echo "${idx}. PR #${pr_num} [${phrase}] — possible dup: ${dup_hint}"
         else
