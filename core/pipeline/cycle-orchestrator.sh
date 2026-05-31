@@ -67,6 +67,12 @@ _CYCLE_TRAP_CYCLE_ID=""
 _CYCLE_TRAP_ITER=0
 _CYCLE_TRAP_HISTORY_FILE=""
 
+# ─── Per-iter start-wall-clock cache (#524) ──────────────────────────────────
+# Populated by the iter-begin hook (orchestrator) and read by the iter-complete
+# hook to compute elapsed_s for the operator-visible iter-complete trailer.
+# Keyed by iter number; values are ms epochs.
+declare -gA _CYCLE_ITER_START_MS=()
+
 # ─── _cycle_emit — wrapper around eb_emit_event with cycle envelope ──────────
 # Adds cycle_id automatically; payload is flat k=v per zbuild convention.
 # #526: also dispatches to the HIGH-event banner emitter so the 5 high-severity
@@ -688,8 +694,16 @@ _cycle_iter_dispatch() {
 }
 
 # ─── _cycle_handle_terminal_rc — runner-facing helper ────────────────────────
-# Maps orchestrator rc → pipeline-state status. Callers (runner) decide whether
-# to halt the linear pipeline based on rc + on_max policy.
+# Maps orchestrator rc → reason → (a) cycle.complete event (durable, fd-event)
+# and (b) operator-fd-2 exit banner via registered `cycle_exit_hook`.
+# Silent-failure mitigation #8: this is the SINGLE choke point for cycle exit
+# banner emission. All inline `cycle.complete` emit sites (max_iterations,
+# plateau, divergence, aborted) route through here OR explicitly invoke the
+# hook themselves; the runner calls it once after cycle_orchestrator_run as a
+# backstop for paths the orchestrator didn't already cover (defensive — the
+# event is idempotent at this layer since it carries reason; duplicate fd-2
+# banners are guarded via _CYCLE_EXIT_BANNER_EMITTED).
+_CYCLE_EXIT_BANNER_EMITTED=0
 _cycle_handle_terminal_rc() {
     local rc="$1" cycle_id="$2" state_file="$3"
     local reason
@@ -698,7 +712,7 @@ _cycle_handle_terminal_rc() {
         1)   reason="max_iterations" ;;
         2)   reason="plateau" ;;
         3)   reason="divergence" ;;
-        4)   reason="config_invalid" ;;
+        4)   reason="${_CYCLE_LAST_TERMINATED_REASON:-config_invalid}" ;;
         5)   reason="blocked" ;;
         130) reason="aborted" ;;
         *)   reason="error" ;;
@@ -706,6 +720,17 @@ _cycle_handle_terminal_rc() {
     eb_emit_event "cycle.complete" \
         "cycle_id=$cycle_id" "iter=${_CYCLE_LAST_ITERATIONS}" \
         "reason=$reason" 2>/dev/null || true
+    # Exit banner via registered hook — event emitted FIRST (durable above),
+    # banner SECOND (best-effort). Idempotency guard: emit at most once per
+    # cycle_orchestrator_run terminal-rc fan-in. Reset by the next cycle
+    # entry hook invocation.
+    if [[ "${_CYCLE_EXIT_BANNER_EMITTED:-0}" != "1" ]]; then
+        if declare -F cycle_exit_hook >/dev/null 2>&1; then
+            cycle_exit_hook "$cycle_id" "$reason" \
+                "${_CYCLE_LAST_ITERATIONS:-0}" "${_CYCLE_MAX_ITER:-0}" || true
+        fi
+        _CYCLE_EXIT_BANNER_EMITTED=1
+    fi
 }
 
 # ─── cycle_orchestrator_run <cycle_id> <state_dir> <state_file> ──────────────
@@ -725,6 +750,9 @@ cycle_orchestrator_run() {
     _CYCLE_TRAP_ITER=0
     _CYCLE_LAST_TERMINATED_REASON=""
     _CYCLE_LAST_ITERATIONS=0
+    # #524: reset exit-banner idempotency flag for this cycle run.
+    _CYCLE_EXIT_BANNER_EMITTED=0
+    _CYCLE_ITER_START_MS=()
 
     if ! _cycle_load_template "$cycle_id"; then
         _CYCLE_LAST_TERMINATED_REASON="config_invalid"
@@ -752,6 +780,17 @@ cycle_orchestrator_run() {
     for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
         _CYCLE_TRAP_ITER="$iter"
         _CYCLE_LAST_ITERATIONS="$iter"
+
+        # #524 iter-begin hook — operator-visible iter divider. Runner registers
+        # `cycle_iter_begin_hook` to call _render_cycle_iter_divider. Best-effort
+        # (never aborts cycle on hook failure). Records wall clock for elapsed.
+        if declare -F cycle_iter_begin_hook >/dev/null 2>&1; then
+            # Don't redirect stderr here — the hook's renderer writes to fd 2
+            # by design (operator chrome). Helper-internal redirects already
+            # handle broken-fd tolerance. `|| true` keeps a hook failure from
+            # aborting the cycle.
+            cycle_iter_begin_hook "$cycle_id" "$iter" "$_CYCLE_MAX_ITER" || true
+        fi
 
         # Dispatch the cycle's stages in order.
         if ! _cycle_iter_dispatch "$iter" "$state_file"; then
@@ -820,35 +859,46 @@ cycle_orchestrator_run() {
             "velocity=$(( 0 - failure_count ))" \
             "failure_count=$failure_count" 2>/dev/null || true
 
+        # #524 iter-complete hook — operator-visible iter trailer. Event emit
+        # is durable above; the hook is best-effort (silent-failure mitigation
+        # #1: event FIRST, banner SECOND). Runner registers this to call
+        # _render_cycle_iter_complete with verdict / velocity / fc / elapsed.
+        if declare -F cycle_iter_complete_hook >/dev/null 2>&1; then
+            cycle_iter_complete_hook "$cycle_id" "$iter" "$h_verdict" \
+                "$(( 0 - failure_count ))" "$failure_count" || true
+        fi
+
         if [[ $term_rc -ge 0 ]]; then
+            # #524 Pin 8: route ALL terminal-rc paths through
+            # _cycle_handle_terminal_rc — single fan-in for cycle.complete
+            # event + operator exit banner. Diagnostic events (cycle.plateau /
+            # cycle.divergence) stay inline since they carry termination-
+            # specific evidence the central helper doesn't know about.
             case "$term_rc" in
-                0) _cycle_handle_terminal_rc 0 "$cycle_id" "$state_file" ;;
-                1) eb_emit_event "cycle.complete" "cycle_id=$cycle_id" "iter=$iter" "reason=max_iterations" 2>/dev/null || true ;;
-                2) eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=verdict_tuple_identical" "streak=$_CYCLE_PLATEAU_WINDOW" 2>/dev/null || true
-                   eb_emit_event "cycle.complete" "cycle_id=$cycle_id" "iter=$iter" "reason=plateau" 2>/dev/null || true ;;
-                3) eb_emit_event "cycle.divergence" "cycle_id=$cycle_id" "iter=$iter" "velocity_history=$failure_count" 2>/dev/null || true
-                   eb_emit_event "cycle.complete" "cycle_id=$cycle_id" "iter=$iter" "reason=divergence" 2>/dev/null || true ;;
+                2) eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=verdict_tuple_identical" "streak=$_CYCLE_PLATEAU_WINDOW" 2>/dev/null || true ;;
+                3) eb_emit_event "cycle.divergence" "cycle_id=$cycle_id" "iter=$iter" "velocity_history=$failure_count" 2>/dev/null || true ;;
                 5) # #528: emit cycle.blocked between cycle.iteration.complete
                    # (already emitted above) and cycle.complete reason=blocked
-                   # — strict event ordering per MED #9.
+                   # — strict event ordering per MED #9. cycle.complete itself
+                   # is emitted by _cycle_handle_terminal_rc below (#524 fan-in).
                    eb_emit_event "cycle.blocked" "cycle_id=$cycle_id" "iter=$iter" \
                        "stage=${_CYCLE_BLOCKED_STAGE:-unknown}" \
                        "verdict=${_CYCLE_BLOCKED_VERDICT:-unknown}" \
-                       "feedback_missing=false" 2>/dev/null || true
-                   eb_emit_event "cycle.complete" "cycle_id=$cycle_id" "iter=$iter" "reason=blocked" 2>/dev/null || true ;;
+                       "feedback_missing=false" 2>/dev/null || true ;;
             esac
+            _cycle_handle_terminal_rc "$term_rc" "$cycle_id" "$state_file"
             _cycle_clear_traps
             { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return "$term_rc"; }
         fi
 
         # Not terminating — wire feedback for next iter.
         if ! _cycle_apply_feedback "$(( iter + 1 ))" "$state_dir"; then
-            _CYCLE_LAST_TERMINATED_REASON="feedback_missing"
+            _CYCLE_LAST_TERMINATED_REASON="aborted"
             _cycle_state_write_iter_atomic "$state_file" "$cycle_id" "$iter" \
                 "$h_verdict" "$h_status" "$failure_count" "aborted" || true
-            eb_emit_event "cycle.complete" \
-                "cycle_id=$cycle_id" "iter=$iter" "reason=aborted" \
-                2>/dev/null || true
+            # #524 Pin 8: route through central helper (emits cycle.complete
+            # + exit banner). rc=130 → reason=aborted in handler map.
+            _cycle_handle_terminal_rc 130 "$cycle_id" "$state_file"
             _cycle_clear_traps
             { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
         fi

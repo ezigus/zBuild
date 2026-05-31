@@ -182,6 +182,23 @@ abort the cycle — JSONL is the source of truth.
 - Concrete build/test cycle wiring in `standard.yaml`.
 - Plugin-side helpers for reading `ZBUILD_CYCLE_FEEDBACK_DIR`.
 
+### Operator visibility (#524)
+
+Cycle entry, per-iter boundaries, per-iter outcomes, and cycle exit are
+rendered on fd 2 as operator chrome via four helpers in
+`core/pipeline/runner.sh` (full spec in ADR-015 §v6 "Cycle-scope visual
+hierarchy"). The orchestrator stays event-emit + control-flow only and
+calls three optional hook functions when declared:
+`cycle_iter_begin_hook`, `cycle_iter_complete_hook`, `cycle_exit_hook`.
+
+Banner emission is single-fan-in through `_cycle_handle_terminal_rc`, which
+emits `cycle.complete` (durable) FIRST and then invokes the exit hook
+(best-effort) — mirroring the v4 stage-start ordering contract. The
+inline `cycle.plateau` / `cycle.divergence` diagnostic events still emit
+at their original sites (they carry termination-specific evidence the
+central helper doesn't know about); `cycle.complete` is centralised so a
+typo in a termination reason cannot silently bypass the exit banner.
+
 ## F1 vs F2 split
 
 | Item | F1 (#512, this PR) | F2 (#511) |

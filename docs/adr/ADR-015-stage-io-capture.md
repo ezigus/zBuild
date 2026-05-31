@@ -835,3 +835,61 @@ overlay does NOT introduce a new artifact layout; downstream consumers
 continue to read the canonical path. Iteration history (verdicts,
 failure_count) lives in the per-cycle JSONL (`cycle-<id>-history.jsonl`)
 plus `cycle_iterations[X].iter[]` in pipeline-state.json.
+
+#### v6 — Cycle-scope visual hierarchy (#524)
+
+The v5 stage-transition divider (`━━━` U+2501, BOLD BLUE) is the heaviest
+visual rule. Outer cycles nest one layer above this with a heavier-feeling
+LIGHT_BLUE `═══` (U+2550) for cycle entry/exit, and one layer below stage
+transitions with a CYAN `─` (U+2500) for per-iter sub-dividers. Four new
+helpers in `core/pipeline/runner.sh` render this hierarchy:
+
+- `_render_cycle_entry <cycle_id> <max> <stages_csv>` — heavy `═` divider
+  with `cycle: <id>` label, `▸ Entering cycle` line, DIM trailer with
+  `max_iterations` + stages.
+- `_render_cycle_iter_divider <cycle_id> <iter> <max>` — light `─` CYAN
+  sub-divider `─── iter N/M ───`.
+- `_render_cycle_iter_complete <iter> <verdict> <velocity> <fc> <elapsed_s>` —
+  DIM `↳ iter N complete: …` trailer (event emitted FIRST, banner SECOND
+  per ordering contract below).
+- `_render_cycle_exit <cycle_id> <reason> <iter> <max>` — heavy `═` divider
+  with verdict glyph + reason text. Map:
+
+  | reason            | glyph | color        |
+  | ----------------- | ----- | ------------ |
+  | converged         | ✓     | GREEN+BOLD   |
+  | max_iterations    | ✗     | RED+BOLD     |
+  | plateau           | ✗     | RED+BOLD     |
+  | divergence        | ✗     | RED+BOLD     |
+  | aborted           | ⚠     | YELLOW+BOLD  |
+  | verdict_missing   | ⚠     | YELLOW+BOLD  |
+  | blocked           | ✗     | RED+BOLD     |
+  | error / config_invalid / unknown | ✗ | RED+BOLD |
+
+**Routing contract** (mirrors v5's stage-divider rules):
+- Helpers are operator-fd-2 chrome: hardcoded `>&2`, never wrapped in `$()`.
+- Each helper's writes are grouped under `{ …; } >&2 2>/dev/null || true`
+  so a broken stderr never aborts the cycle.
+- NEVER routed through `gh_comment` — operator-only.
+- NO_COLOR strips ANSI but preserves glyphs + text.
+- `_term_width` is the single source of width truth (honors
+  `ZBUILD_TERM_WIDTH_OVERRIDE` for goldens). Narrow terminals degrade to
+  the legacy symmetric divider.
+
+**Orchestrator coupling**: the orchestrator stays event-emit + control-flow
+only. It calls three optional hook functions when declared:
+`cycle_iter_begin_hook`, `cycle_iter_complete_hook`, `cycle_exit_hook`. The
+runner registers these to invoke the helpers above; tests can register
+alternative hooks (or none) without changing orchestrator code.
+
+**Emission ordering** (silent-failure mitigation): for each terminal event,
+the durable event (`cycle.iteration.complete`, `cycle.complete`) is emitted
+FIRST and the operator banner SECOND, mirroring v4's stage-start contract.
+All terminal-rc paths fan in through `_cycle_handle_terminal_rc`, which
+emits `cycle.complete` then invokes `cycle_exit_hook` once per cycle run
+(idempotent via `_CYCLE_EXIT_BANNER_EMITTED`).
+
+Goldens live under `tests/golden/cycle-banners/` paired
+(`.layout.txt`/`.colored.txt`) per termination reason. Determinism is
+pinned via the same env vars used by the v5 stage banner goldens
+(`ZBUILD_TERM_WIDTH_OVERRIDE`, `ZBUILD_STAGE_IO_NOW_MS_OVERRIDE`).
