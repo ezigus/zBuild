@@ -152,6 +152,45 @@ resume policy refuses to restart them (the contract violation is in the
 template or manifests, not in execution state). The resume command should
 surface a "fix the contract first" hint rather than attempting to continue.
 
+## Amendment — `cycle_iterations` persistence (issue #512, ADR-021)
+
+ADR-021 introduces the outer-cycle orchestrator. Cycle state is persisted
+under a new schema-additive key on `pipeline-state.json`:
+
+```json
+"cycle_iterations": {
+  "<cycle_id>": {
+    "status": "in_progress|complete|plateau|divergence|max_iterations|verdict_missing|aborted|preflight_failed",
+    "current_iter": <N>,
+    "max_iterations": <M>,
+    "history_file": "<state_dir>/cycle-<id>-history.jsonl",
+    "iter": [...]
+  }
+}
+```
+
+`stage_statuses[]` enum is **unchanged**. Per-cycle stage outcome lives
+under `cycle_iterations[X].iter[N].verdict`. Older state files (no
+`.cycle_iterations` key) are upgraded in-place on the next write via
+defensive `(.cycle_iterations //= {})` init in every mutator.
+
+### Step 3.5 — mid-cycle resume hand-off
+
+Inserted between the existing resume sequence's step 3 and step 4:
+
+> 3.5. If `cycle_iterations[X].status == in_progress`:
+> - Re-validate the last completed stage's primary artifact via the
+>   #496 validator. If missing → emit `cycle.iter.stale_artifact` and
+>   re-run iter N from scratch (drop history rows for N, keep N-1).
+> - If artifact present → resume between iters; start iter N+1 with
+>   feedback already wired.
+> - Restore `_cycle_history[]` from JSONL BEFORE plateau/divergence
+>   eval; empty rehydration when `iter > 1` → emit `cycle.history.lost`
+>   and fail closed (no silent coast).
+
+Without this hand-off, a `kill -9` during iter 2 of a 3-iter cycle would
+restart from iter 1, losing progress and any cumulative state.
+
 ## Implementation Notes (Phase 0.5 — issue #291)
 
 - **24h auto/manual resume boundary** is implemented at `core/state/resume.sh:178–199` (`age_seconds -lt 86400` → `auto_resume`, else `manual_resume_only`). Both BSD and GNU date parsing supported.

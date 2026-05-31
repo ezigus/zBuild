@@ -37,6 +37,8 @@ source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
 source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
 # #507 verdict-driven stage-complete indicator (ADR-019 / ADR-020 amendment).
 source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
+# ADR-021 (#512) outer-cycle orchestrator (F1, flag-gated by ZBUILD_CYCLES_ENABLED).
+source "$_ZBUILD_ROOT/core/pipeline/cycle-orchestrator.sh"
 
 _usage() {
     cat <<EOF
@@ -476,6 +478,107 @@ main() {
     # ── Determine skip-ahead point when --from-stage is set ───────────────────
     local skip_until_stage=""
     [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
+
+    # ADR-021 (#512): cycle-aware dispatch. Only active when:
+    #   1) ZBUILD_CYCLES_ENABLED=1 (default 0 — F1 ships as a no-op in production)
+    #   2) _TPL_DISPATCH_UNITS contains at least one "cycle:<id>" entry
+    # When inactive, falls through to the legacy stage loop below (unchanged).
+    local _cycles_enabled="${ZBUILD_CYCLES_ENABLED:-0}"
+    local _has_cycle_unit=0 _u
+    if [[ "$_cycles_enabled" == "1" && ${#_TPL_DISPATCH_UNITS[@]} -gt 0 ]]; then
+        for _u in "${_TPL_DISPATCH_UNITS[@]}"; do
+            [[ "$_u" == cycle:* ]] && _has_cycle_unit=1 && break
+        done
+    fi
+
+    # cycle_dispatch_stage hook — F1 uses the same per-stage path that the
+    # legacy stage loop uses. Returns the stage's rc; the orchestrator owns the
+    # iteration semantics. Sets _CYCLE_DISPATCH_VERDICT / _CYCLE_DISPATCH_STATUS
+    # so the orchestrator can score until/plateau/divergence.
+    cycle_dispatch_stage() {
+        local _cd_stage="$1" _cd_iter="$2" _cd_state="$3"
+        _CYCLE_DISPATCH_VERDICT=""
+        _CYCLE_DISPATCH_STATUS=""
+        local _cd_plugin_dir _cd_rc=0
+        _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
+        if [[ -z "$_cd_plugin_dir" ]]; then
+            _CYCLE_DISPATCH_VERDICT="error"
+            _CYCLE_DISPATCH_STATUS="failed"
+            return 1
+        fi
+        set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
+        local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+        _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+        if [[ $_cd_rc -eq 0 ]]; then
+            _CYCLE_DISPATCH_STATUS="complete"
+        else
+            _CYCLE_DISPATCH_STATUS="failed"
+        fi
+        return $_cd_rc
+    }
+
+    if [[ $_has_cycle_unit -eq 1 ]]; then
+        local _unit _rc=0
+        for _unit in "${_TPL_DISPATCH_UNITS[@]}"; do
+            case "$_unit" in
+                cycle:*)
+                    local _cyc_id="${_unit#cycle:}"
+                    info "Entering cycle: $_cyc_id"
+                    set +e
+                    cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file"
+                    _rc=$?
+                    set -e
+                    _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file"
+                    # rc 0 (converged), 1 (max_iter w/ on_max=continue) → keep going
+                    # rc 2 (plateau), 3 (divergence), 4 (config) → halt
+                    # rc 130 (aborted) → halt
+                    if [[ $_rc -eq 4 || $_rc -eq 130 || $_rc -eq 2 || $_rc -eq 3 ]]; then
+                        _set_pipeline_status "$state_file" "interrupted"
+                        eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
+                            "reason=$_CYCLE_LAST_TERMINATED_REASON" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue"
+                        _runner_ended=true
+                        error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
+                        return 1
+                    fi
+                    ;;
+                stage:*)
+                    local _ust="${_unit#stage:}"
+                    # Re-enter the legacy loop for a single stage by re-using
+                    # active_stages — simplest correct path: run that stage's
+                    # body inline via cycle_dispatch_stage (gives same plugin
+                    # path); then mirror state writes the original loop does.
+                    eb_emit_event "stage.start" "stage=$_ust"
+                    _RUNNER_STAGE_START_MS[$_ust]="$(_runner_now_ms)"
+                    _render_stage_divider "$_ust"
+                    local _sc; _sc="$(_stage_color "$_ust")"
+                    local _ts; _ts="$(_runner_now_short)"
+                    echo -e "${CYAN}${BOLD}▸${RESET} Running stage: ${_sc}${BOLD}${_ust}${RESET}  ${DIM}(started ${_ts})${RESET}" >&2
+                    export ZBUILD_CURRENT_STAGE="$_ust"
+                    set +e; cycle_dispatch_stage "$_ust" 0 "$state_file"; _rc=$?; set -e
+                    unset ZBUILD_CURRENT_STAGE
+                    if [[ $_rc -ne 0 ]]; then
+                        _update_stage_status "$state_file" "$_ust" "failed"
+                        _set_pipeline_status "$state_file" "interrupted"
+                        eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc"
+                        eb_emit_event "pipeline.end" "status=failed" "stage=$_ust" "rc=$_rc" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue"
+                        _runner_ended=true
+                        error "Stage $_ust failed (rc=$_rc)"
+                        return 1
+                    fi
+                    _update_stage_status "$state_file" "$_ust" "complete"
+                    _zbuild_state_set_stage_verdict "$state_file" "$_ust" "${_CYCLE_DISPATCH_VERDICT:-pass}"
+                    eb_emit_event "stage.complete" "stage=$_ust" "verdict=${_CYCLE_DISPATCH_VERDICT:-pass}"
+                    ;;
+            esac
+        done
+        _set_pipeline_status "$state_file" "complete"
+        eb_emit_event "pipeline.end" "status=success" "run_id=$_runner_run_id" "issue=$_runner_issue"
+        _runner_ended=true
+        success "Pipeline complete — run_id=$_runner_run_id"
+        return 0
+    fi
 
     local stage
     for stage in "${active_stages[@]}"; do

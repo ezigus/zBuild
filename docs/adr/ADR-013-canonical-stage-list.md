@@ -278,6 +278,26 @@ side-channel (e.g., `test` writing both a human summary and JUnit XML) follows
 the same canonical-plus-secondary pattern, with `provides.artifact_type` always
 pointing at the canonical entry from the table above.
 
+## Amendment — Cycle composition (issue #512, ADR-021)
+
+ADR-021 introduces an overlay `cycles:` block. Cycle membership is purely
+an annotation on stages already listed in canonical `stages:`. Invariants
+preserved by the parser+validator:
+
+1. Every stage id referenced by `cycles:` MUST already appear in `stages:`.
+2. A cycle's `stages: [...]` MUST be a **contiguous subsequence** of the
+   canonical `stages:` order — no skipping, no reordering.
+3. Cycles MUST NOT overlap (each stage belongs to at most one cycle).
+4. `until.stage` MUST be in `cycle.stages[]`.
+
+The runner walks `_TPL_STAGES[]` in canonical order as before. When a
+stage is the FIRST stage of a declared cycle, the runner emits a
+`cycle:<id>` dispatch unit covering the whole cycle; the remaining cycle
+stages are absorbed under that unit. All other stages become `stage:<id>`
+dispatch units. With no `cycles:` block, every unit is `stage:<id>` and
+linear dispatch is byte-identical to today (regression-locked in
+`tests/unit/core-pipeline-template-cycles-test.sh`).
+
 ## References
 
 - [ARCHITECTURE.md §3](../ARCHITECTURE.md#3-data-flow-a-zbuild-pipeline-start-traversal) — data flow traversal

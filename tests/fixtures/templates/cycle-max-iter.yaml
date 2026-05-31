@@ -1,0 +1,19 @@
+id: cycle-max-iter
+name: Cycle that exhausts max_iterations
+defaults:
+  strategy: fanout
+stages:
+  - id: build
+    roles: [builder]
+  - id: test
+    roles: [tester]
+cycles:
+  - id: build-test
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 3
+    on_max: continue

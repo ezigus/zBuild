@@ -377,3 +377,27 @@ fail | unknown`.)
 The runner persists `.stage_verdicts[<stage>]` (one of
 `pass|warn|fail|unknown`) alongside `.stage_statuses` for observability
 and resume. Schema-additive; older state files are upgraded in place.
+
+## Amendment — Cycled stages (issue #512, ADR-021)
+
+The pre-flight contract validator recognises stages declared inside a
+`cycles:` block exactly the same way as linear stages: it walks
+`_TPL_STAGES[]` in canonical order, resolves each stage's plugin manifest,
+and checks `requires.inputs[]` against the producer-output map. Cycle
+membership is invisible to the validator — overlay, not replacement.
+
+Cycle `feedback` declarations introduce a new class of input wiring:
+
+```yaml
+feedback:
+  - from: { stage: test, output: primary.txt }
+    to:   { stage: build, input: prior_test_result, required: false }
+```
+
+When `required: false`, the validator MUST NOT flag the `to` input as a
+missing producer — feedback is delivered file-side at runtime via
+`ZBUILD_CYCLE_FEEDBACK_DIR`, not at template-load time. When
+`required: true`, the validator confirms the `from` stage actually
+produces the named output (existing producer-output map lookup); a
+runtime `cycle.feedback.missing` event fires loud if the artifact is
+absent at iteration boundary.
