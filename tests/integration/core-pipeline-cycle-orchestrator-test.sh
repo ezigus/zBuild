@@ -149,4 +149,89 @@ for u in "${_TPL_DISPATCH_UNITS[@]}"; do
 done
 assert_eq "T6: standard.yaml declares cycle:build_test_cycle unit (#511)" "1" "$has_cycle_unit"
 
+# ─── T7 (#524): operator-visible cycle banners on fd 2 ────────────────────────
+# Wire the runner-style hooks, then run a converging cycle. Capture stderr and
+# assert:
+#   - iter divider appears at least once
+#   - exit banner appears AFTER the last iter divider
+#   - banners go to fd 2 ONLY (orchestrator stdout is empty)
+#
+# Hook definitions mirror runner.sh — kept in-test so the orchestrator-only
+# unit-of-test stays decoupled from the runner's source.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck disable=SC1090
+source "$REPO_ROOT/core/output/stage-colors.sh"
+# Source the runner so the four banner helpers are in scope.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/core/pipeline/runner.sh"
+
+cycle_iter_begin_hook() {
+    local _h_cycle_id="$1" _h_iter="$2" _h_max="$3"
+    _render_cycle_iter_divider "$_h_cycle_id" "$_h_iter" "$_h_max"
+}
+cycle_iter_complete_hook() {
+    local _h_cycle_id="$1" _h_iter="$2" _h_verdict="$3" _h_velocity="$4" _h_fc="$5"
+    _render_cycle_iter_complete "$_h_iter" "$_h_verdict" "$_h_velocity" "$_h_fc" 0
+}
+cycle_exit_hook() {
+    local _h_cycle_id="$1" _h_reason="$2" _h_iter="$3" _h_max="$4"
+    _render_cycle_exit "$_h_cycle_id" "$_h_reason" "$_h_iter" "$_h_max"
+}
+
+# Run with stderr captured to a file; stdout captured separately.
+_seed_state
+load_template "$FIXT/cycle-converges-iter2.yaml"
+MOCK_VERDICTS="build:pass,pass,pass;test:fail,pass"
+
+T7_STDOUT="$TEST_TEMP_DIR/t7.stdout"
+T7_STDERR="$TEST_TEMP_DIR/t7.stderr"
+
+export NO_COLOR=1
+export ZBUILD_TERM_WIDTH_OVERRIDE=100
+set +e
+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE" \
+    > "$T7_STDOUT" 2> "$T7_STDERR"
+rc=$?
+set -e
+unset NO_COLOR ZBUILD_TERM_WIDTH_OVERRIDE
+
+assert_eq "T7: orchestrator rc=0 (converged)" "0" "$rc"
+
+# Iter divider lines look like `─── iter N/M ───…`
+set +e
+iter_divider_count="$(grep -c 'iter [0-9]*/[0-9]*' "$T7_STDERR" 2>/dev/null)"
+set -e
+[[ -z "$iter_divider_count" ]] && iter_divider_count=0
+if [[ "$iter_divider_count" -ge 1 ]]; then
+    assert_pass "T7: iter divider(s) appear on stderr (count=$iter_divider_count)"
+else
+    assert_fail "T7: iter divider count" "expected ≥1, got $iter_divider_count; stderr:\n$(cat "$T7_STDERR")"
+fi
+
+# Exit banner — `converged in N/M iters` text
+if grep -q 'converged in 2/5 iters' "$T7_STDERR"; then
+    assert_pass "T7: exit banner 'converged in 2/5 iters' on stderr"
+else
+    assert_fail "T7: exit banner" "stderr:\n$(cat "$T7_STDERR")"
+fi
+
+# Ordering: last iter divider line number < exit banner line number
+last_iter_line="$(grep -n 'iter [0-9]*/[0-9]*' "$T7_STDERR" | tail -n 1 | cut -d: -f1)"
+exit_banner_line="$(grep -n 'converged in' "$T7_STDERR" | head -n 1 | cut -d: -f1)"
+if [[ -n "$last_iter_line" && -n "$exit_banner_line" \
+      && "$exit_banner_line" -gt "$last_iter_line" ]]; then
+    assert_pass "T7: exit banner ($exit_banner_line) AFTER last iter divider ($last_iter_line)"
+else
+    assert_fail "T7: exit-after-iter ordering" \
+        "last_iter=$last_iter_line exit=$exit_banner_line"
+fi
+
+# fd 1 leakage: stdout should be empty (banners are fd 2 only).
+if [[ ! -s "$T7_STDOUT" ]]; then
+    assert_pass "T7: stdout empty — banners fd-2 only"
+else
+    assert_fail "T7: stdout leakage" "stdout:\n$(cat "$T7_STDOUT")"
+fi
+
 print_test_results

@@ -353,6 +353,162 @@ _render_stage_divider() {
     } >&2
 }
 
+# ─── Cycle banner helpers (#524, ADR-015 §v6, ADR-021) ───────────────────────
+# Operator-fd-2 chrome for outer cycles (ADR-021). These render a visual
+# hierarchy that nests cleanly with the existing stage-transition divider
+# (_render_stage_divider) so the operator can see cycle entry, per-iter
+# boundaries, per-iter outcomes, and cycle exit in the scrollback.
+#
+# Glyph + color ladder (heaviest → lightest):
+#   ━━━ (U+2501) stage transition   — BOLD BLUE (handled in _render_stage_divider)
+#   ═══ (U+2550) cycle entry/exit   — LIGHT_BLUE
+#   ─── (U+2500) cycle iter divider — CYAN
+#
+# Routing contract (silent-failure mitigations):
+#   - All 4 helpers write to fd 2 ONLY. Hardcoded `>&2`. NEVER capture in $(…)
+#     — output would vanish. Banner emit follows event emit (event=durable,
+#     banner=best-effort).
+#   - `{ ...; } >&2 2>/dev/null || true` is used so a broken stderr can never
+#     abort the cycle. Each block is a single printf wrapped in the redirect
+#     group so SIGINT during banner emit cannot race on partial writes.
+#   - These banners are fd-2 ONLY and NEVER appear in the PR comment body
+#     rendered by gh_comment. Operator chrome only.
+#
+# Determinism: honors ZBUILD_TERM_WIDTH_OVERRIDE + ZBUILD_STAGE_IO_NOW_MS_OVERRIDE
+# via _term_width / _runner_now_short (same contract as _render_stage_divider).
+
+# ─── _render_cycle_entry <cycle_id> <max> <stages_csv> ───────────────────────
+# Heavy `═` LIGHT_BLUE divider + `▸ Entering cycle <id>` line + DIM trailer
+# (max + stages). Emitted by the runner BEFORE cycle_orchestrator_run so the
+# operator's eye finds the cycle boundary before the first iter divider.
+_render_cycle_entry() {
+    local cycle_id="$1" max="$2" stages_csv="${3:-}"
+    local width; width="$(_term_width)"
+    local label=" cycle: ${cycle_id} "
+    local sides=$(( (width - ${#label}) / 2 ))
+    [[ "$sides" -lt 2 ]] && sides=2
+    local bar
+    printf -v bar '%*s' "$sides" ''
+    bar="${bar// /═}"
+    {
+        printf '\n'
+        printf '%b%s%b%s%b%b%s%b\n' \
+            "${LIGHT_BLUE:-}" "$bar" "${BOLD:-}" "$label" "${RESET:-}" \
+            "${LIGHT_BLUE:-}" "$bar" "${RESET:-}"
+        printf '%b%b▸%b Entering cycle: %b%b%s%b\n' \
+            "${LIGHT_BLUE:-}" "${BOLD:-}" "${RESET:-}" \
+            "${LIGHT_BLUE:-}" "${BOLD:-}" "$cycle_id" "${RESET:-}"
+        printf '%b  (max_iterations=%s · stages=%s)%b\n' \
+            "${DIM:-}" "$max" "$stages_csv" "${RESET:-}"
+        printf '\n'
+    } >&2 2>/dev/null || true
+}
+
+# ─── _render_cycle_iter_divider <cycle_id> <iter> <max> ───────────────────────
+# Light `─` CYAN sub-divider for each iter boundary, e.g.
+# `─── iter 2/5 ───────────────────`. Emitted by the orchestrator's iter-begin
+# hook BEFORE the first per-stage banner of the iter.
+_render_cycle_iter_divider() {
+    local cycle_id="$1" iter="$2" max="$3"
+    local width; width="$(_term_width)"
+    local label=" iter ${iter}/${max} "
+    local sides=$(( (width - ${#label}) / 2 ))
+    [[ "$sides" -lt 2 ]] && sides=2
+    local bar
+    printf -v bar '%*s' "$sides" ''
+    bar="${bar// /─}"
+    {
+        printf '\n%b%s%b%s%b%b%s%b\n' \
+            "${CYAN:-}" "$bar" "${BOLD:-}" "$label" "${RESET:-}" \
+            "${CYAN:-}" "$bar" "${RESET:-}"
+    } >&2 2>/dev/null || true
+}
+
+# ─── _render_cycle_iter_complete <iter> <verdict> <velocity> <fc> <elapsed_s> ──
+# Per-iter DIM trailer line e.g. `↳ iter 2 complete: verdict=pass velocity=-1
+# failure_count=1 elapsed=4s`. Emitted by the orchestrator's iter-complete
+# hook AFTER the `cycle.iteration.complete` event is durable.
+_render_cycle_iter_complete() {
+    local iter="$1" verdict="$2" velocity="$3" failure_count="$4" elapsed_s="$5"
+    {
+        printf '%b↳ iter %s complete: verdict=%s velocity=%s failure_count=%s elapsed=%ss%b\n' \
+            "${DIM:-}" "$iter" "$verdict" "$velocity" "$failure_count" "$elapsed_s" "${RESET:-}"
+    } >&2 2>/dev/null || true
+}
+
+# ─── _render_cycle_exit <cycle_id> <reason> <iter> <max> ──────────────────────
+# Heavy `═` LIGHT_BLUE divider + verdict-glyph line mapping termination reason
+# to glyph + color (see #524 spec).
+#   converged       → ✓ GREEN+BOLD
+#   max_iterations  → ✗ RED+BOLD
+#   plateau         → ✗ RED+BOLD
+#   divergence      → ✗ RED+BOLD
+#   aborted         → ⚠ YELLOW+BOLD
+#   verdict_missing → ⚠ YELLOW+BOLD
+#   blocked         → ✗ RED+BOLD (sibling #528)
+#   error/config_invalid → ✗ RED+BOLD
+#   unknown (typo)  → ✗ RED+BOLD (fail loud)
+# Emitted by the runner AFTER cycle_orchestrator_run via _cycle_handle_terminal_rc.
+_render_cycle_exit() {
+    local cycle_id="$1" reason="$2" iter="$3" max="$4"
+    local glyph color text
+    case "$reason" in
+        converged)
+            glyph="✓"; color="${GREEN:-}"
+            text="Cycle ${cycle_id} converged in ${iter}/${max} iters"
+            ;;
+        max_iterations)
+            glyph="✗"; color="${RED:-}"
+            text="Cycle ${cycle_id} exhausted max_iterations (${iter}/${max})"
+            ;;
+        plateau)
+            glyph="✗"; color="${RED:-}"
+            text="Cycle ${cycle_id} halted: plateau"
+            ;;
+        divergence)
+            glyph="✗"; color="${RED:-}"
+            text="Cycle ${cycle_id} halted: divergence"
+            ;;
+        aborted)
+            glyph="⚠"; color="${YELLOW:-}"
+            text="Cycle ${cycle_id} aborted: ${reason}"
+            ;;
+        verdict_missing)
+            glyph="⚠"; color="${YELLOW:-}"
+            text="Cycle ${cycle_id} halted: verdict missing"
+            ;;
+        blocked)
+            glyph="✗"; color="${RED:-}"
+            text="Cycle ${cycle_id} halted: blocked"
+            ;;
+        error|config_invalid)
+            glyph="✗"; color="${RED:-}"
+            text="Cycle ${cycle_id} failed: ${reason}"
+            ;;
+        *)
+            # Fail loud on typo — default RED ✗ so operators see unknown reasons.
+            glyph="✗"; color="${RED:-}"
+            text="Cycle ${cycle_id} halted: ${reason}"
+            ;;
+    esac
+    local width; width="$(_term_width)"
+    local label=" cycle: ${cycle_id} "
+    local sides=$(( (width - ${#label}) / 2 ))
+    [[ "$sides" -lt 2 ]] && sides=2
+    local bar
+    printf -v bar '%*s' "$sides" ''
+    bar="${bar// /═}"
+    {
+        printf '\n'
+        printf '%b%s%b%s%b%b%s%b\n' \
+            "${LIGHT_BLUE:-}" "$bar" "${BOLD:-}" "$label" "${RESET:-}" \
+            "${LIGHT_BLUE:-}" "$bar" "${RESET:-}"
+        printf '%b%b%s%b %s\n' \
+            "$color" "${BOLD:-}" "$glyph" "${RESET:-}" "$text"
+        printf '\n'
+    } >&2 2>/dev/null || true
+}
+
 main() {
     local issue="" goal="" dry_run=false template="standard"
     local resume_mode=false from_stage="" no_resume=false force=false
@@ -773,6 +929,35 @@ main() {
         return $_cd_rc
     }
 
+    # #524: register cycle banner hooks. The orchestrator calls these (when
+    # declared) at iter-begin, iter-complete, and exit. Definitions are local
+    # to the runner so the orchestrator stays event-emit + control-flow only
+    # (no terminal rendering coupling).
+    cycle_iter_begin_hook() {
+        local _h_cycle_id="$1" _h_iter="$2" _h_max="$3"
+        _CYCLE_ITER_START_MS[$_h_iter]="$(_runner_now_ms)"
+        _render_cycle_iter_divider "$_h_cycle_id" "$_h_iter" "$_h_max"
+    }
+    cycle_iter_complete_hook() {
+        local _h_cycle_id="$1" _h_iter="$2" _h_verdict="$3" \
+              _h_velocity="$4" _h_fc="$5"
+        local _h_start="${_CYCLE_ITER_START_MS[$_h_iter]:-}"
+        local _h_elapsed=0
+        if [[ -n "$_h_start" && "$_h_start" =~ ^[0-9]+$ ]]; then
+            local _h_now; _h_now="$(_runner_now_ms)"
+            if [[ "$_h_now" =~ ^[0-9]+$ ]]; then
+                _h_elapsed=$(( (_h_now - _h_start) / 1000 ))
+                (( _h_elapsed < 0 )) && _h_elapsed=0
+            fi
+        fi
+        _render_cycle_iter_complete "$_h_iter" "$_h_verdict" \
+            "$_h_velocity" "$_h_fc" "$_h_elapsed"
+    }
+    cycle_exit_hook() {
+        local _h_cycle_id="$1" _h_reason="$2" _h_iter="$3" _h_max="$4"
+        _render_cycle_exit "$_h_cycle_id" "$_h_reason" "$_h_iter" "$_h_max"
+    }
+
     if [[ $_has_cycle_unit -eq 1 ]]; then
         local _unit _rc=0
         # #527: track non-zero cycle terminations across the dispatch loop so the
@@ -788,7 +973,15 @@ main() {
             case "$_unit" in
                 cycle:*)
                     local _cyc_id="${_unit#cycle:}"
-                    info "Entering cycle: $_cyc_id"
+                    # #524: replace bare `info` with operator-visible cycle
+                    # entry banner (heavy ═ + ▸ Entering + DIM trailer).
+                    local _cyc_stages_csv=""
+                    local _cyc_safe="${_cyc_id//-/_}"
+                    local _cyc_stages_var="_TPL_CYCLE_STAGES_${_cyc_safe}"
+                    local _cyc_max_var="_TPL_CYCLE_MAX_${_cyc_safe}"
+                    _cyc_stages_csv="${!_cyc_stages_var:-}"
+                    local _cyc_max="${!_cyc_max_var:-?}"
+                    _render_cycle_entry "$_cyc_id" "$_cyc_max" "$_cyc_stages_csv"
                     set +e
                     cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file"
                     _rc=$?
