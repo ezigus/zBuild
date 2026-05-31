@@ -62,4 +62,11 @@ assert_contains "S10: body contains phrase label" "$body" "separate issue"
 out="$(extract_excerpt "first sentence. needs a separate issue here. third sentence." "separate issue")"
 assert_contains "S11: excerpt contains the phrase" "$out" "separate issue"
 
+# ─── S12 REGRESSION LOCK: pipe characters in excerpt sanitized (Codex review #573) ─
+# Without this, "needs follow-up for A | B" would split across the candidate
+# format's 4 fields, corrupting the rendered triage body.
+got="$(sanitize_excerpt "needs follow-up for A | B markdown table")"
+[[ "$got" == *"|"* ]] && assert_fail "S12 LOCK: pipe still present in sanitized excerpt: $got" \
+    || assert_pass "S12 LOCK: pipe replaced (markdown-table safe)"
+
 print_test_results

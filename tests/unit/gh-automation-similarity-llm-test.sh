@@ -141,4 +141,23 @@ assert_contains "L11d: PARSE annotation human-readable" "$ann" "unparseable"
 ann="$(gha_llm_marker_to_annotation "_LLM_UNAVAILABLE_NO_CLI")"
 assert_contains "L11e: NO_CLI annotation mentions install" "$ann" "claude CLI"
 
+# ─── L12 REGRESSION LOCK: malformed score strings rejected (Codex review #565) ─
+# Without strict regex, awk's numeric coercion would silently accept "0foo" as 0.
+export LLM_TIEBREAKER_ENABLED=1
+export ANTHROPIC_API_KEY="test-key"
+mock_binary "claude" 'echo "{\"result\":\"{\\\"score\\\":\\\"0foo\\\"}\"}"; exit 0'
+got="$(gha_compute_similarity_llm "x" "y" "0.40")"
+[[ "$got" == "0.40|_LLM_FAILED_PARSE" ]] && assert_pass "L12 LOCK: '0foo' rejected as malformed score" \
+    || assert_fail "L12 LOCK: malformed '0foo' wrongly accepted; got: $got"
+
+mock_binary "claude" 'echo "{\"result\":\"{\\\"score\\\":\\\"0.75 likely\\\"}\"}"; exit 0'
+got="$(gha_compute_similarity_llm "x" "y" "0.40")"
+[[ "$got" == "0.40|_LLM_FAILED_PARSE" ]] && assert_pass "L12 LOCK: '0.75 likely' rejected" \
+    || assert_fail "L12 LOCK: '0.75 likely' wrongly accepted; got: $got"
+
+# Sanity: clean decimals still accepted
+mock_binary "claude" 'echo "{\"result\":\"{\\\"score\\\":0.65}\"}"; exit 0'
+got="$(gha_compute_similarity_llm "x" "y" "0.40")"
+assert_eq "L12 sanity: clean 0.65 still accepted" "0.65|_LLM_OK" "$got"
+
 print_test_results

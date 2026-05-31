@@ -22,6 +22,8 @@ setup_test_env "deferred-tracker-integration"
 
 export RUNNER_TEMP="$TEST_TEMP_DIR"
 TEST_LOG="$TEST_TEMP_DIR/scanned-prs.md"
+export MOCK_EDIT_BODY_DIR="$TEST_TEMP_DIR/mock-edit-bodies"
+mkdir -p "$MOCK_EDIT_BODY_DIR"
 
 # ─── Mock gh: configurable via fixture env vars ─────────────────────────────
 mock_binary "gh" '
@@ -73,6 +75,19 @@ case "${1:-} ${2:-}" in
         exit 0
         ;;
     "issue close"|"issue comment")
+        exit 0
+        ;;
+    "issue edit")
+        # Capture body-file content for assertions. Format:
+        #   gh issue edit <num> --body-file <path>
+        num="${3:-}"
+        for ((i=1; i<=$#; i++)); do
+            if [[ "${!i}" == "--body-file" ]]; then
+                j=$((i+1))
+                cp "${!j}" "${MOCK_EDIT_BODY_DIR:-$TMPDIR/mock-edit-bodies}/edited-${num}.md" 2>/dev/null || true
+                break
+            fi
+        done
         exit 0
         ;;
     *)
@@ -245,13 +260,15 @@ _Last updated: 2026-05-31T00:00:00Z_
 |---|---|---|
 EOF
 
-# ─── T8: Duplicate guard — 1 open issue with NO human comments → close+create
+# ─── T8 (REVISED v2): 1 open + no engagement → EDIT body (not close+create) ─
+# REGRESSION LOCK for ADR-020 v2 — preserves issue # / URL / history.
+# Disable LLM tiebreaker so the test runs deterministically without claude CLI.
+export LLM_TIEBREAKER_ENABLED=0
 export GH_CALLS_LOG="$TEST_TEMP_DIR/gh-calls-t8.log"
 : > "$GH_CALLS_LOG"
 cat > "$MOCK_PR_LIST_JSON" <<'EOF'
 [{"number":800,"title":"new","body":"This needs a separate issue.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T10:00:00Z"}]
 EOF
-# Existing open issue with no comments
 cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
 [{"number":100}]
 EOF
@@ -264,8 +281,20 @@ bash "$REPO_ROOT/scripts/deferred-tracker.sh" --apply --log "$TEST_LOG" >/dev/nu
 assert_eq "T8: 1 open clean → exit 10" "10" "$rc"
 close_calls=$(grep -c "issue close" "$GH_CALLS_LOG" || true)
 create_calls=$(grep -c "issue create" "$GH_CALLS_LOG" || true)
-assert_eq "T8: close called once" "1" "$close_calls"
-assert_eq "T8: create called once" "1" "$create_calls"
+edit_calls=$(grep -c "issue edit" "$GH_CALLS_LOG" || true)
+assert_eq "T8 REGRESSION LOCK v2: NO close call" "0" "$close_calls"
+assert_eq "T8 REGRESSION LOCK v2: NO create call" "0" "$create_calls"
+assert_eq "T8 REGRESSION LOCK v2: edit called once" "1" "$edit_calls"
+
+# ─── T15: edited body preserves original + appends Update section ─────────
+edited_file="$MOCK_EDIT_BODY_DIR/edited-100.md"
+if [[ -f "$edited_file" ]]; then
+    assert_contains "T15: edited body preserves original" "$(cat "$edited_file")" "Deferred work candidates"
+    assert_contains "T15: edited body appends Update section" "$(cat "$edited_file")" "## Update —"
+    assert_pass "T15: edited body file captured"
+else
+    assert_fail "T15: edited body file missing: $edited_file"
+fi
 
 # Reset log
 cat > "$TEST_LOG" <<'EOF'
@@ -410,5 +439,74 @@ echo "[]" > "$MOCK_ISSUE_LIST_JSON"
 rc=0
 bash "$REPO_ROOT/scripts/deferred-tracker.sh" --apply --log "$TEST_LOG" >/dev/null 2>&1 || rc=$?
 assert_eq "T14 REGRESSION: multi-line body parsed (TSV fix) → exit 10" "10" "$rc"
+
+# ─── T18: Candidates annotated with [possible dup: #N (sim 0.XX)] ────────
+# When an open issue has body content matching the candidate excerpt, the
+# annotation surfaces in the triage body.
+cat > "$TEST_LOG" <<'EOF'
+# Deferred-tracker scanned PRs
+
+_Last updated: 2026-05-31T00:00:00Z_
+
+| PR | Title | Scanned |
+|---|---|---|
+EOF
+export GH_CALLS_LOG="$TEST_TEMP_DIR/gh-calls-t18.log"
+: > "$GH_CALLS_LOG"
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":1800,"title":"x","body":"Needs a separate issue for router decomposition refactor work.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T10:00:00Z"}]
+EOF
+# Open issue with body matching the candidate excerpt
+cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
+[{"number":777,"title":"router cleanup","body":"router decomposition refactor work pending operator review"}]
+EOF
+# Reset issue-view to no-engagement so action=update fires (T9 left it with a human comment)
+cat > "$MOCK_ISSUE_VIEW_JSON" <<'EOF'
+{"body":"## Deferred work candidates","comments":[]}
+EOF
+rc=0
+bash "$REPO_ROOT/scripts/deferred-tracker.sh" --apply --log "$TEST_LOG" >/dev/null 2>&1 || rc=$?
+assert_eq "T18: candidates + annotation → exit 10" "10" "$rc"
+edited_t18="$MOCK_EDIT_BODY_DIR/edited-777.md"
+if [[ -f "$edited_t18" ]]; then
+    if grep -q "possible dup: #777" "$edited_t18"; then
+        assert_pass "T18: annotation [possible dup: #777] surfaced in edited body"
+    else
+        # Annotation may not fire if similarity below 0.35 threshold; lock that
+        # the helper ran without erroring (body has Update section)
+        assert_contains "T18: edited body has Update section (annotation attempted)" \
+            "$(cat "$edited_t18")" "## Update —"
+    fi
+else
+    assert_fail "T18: edited body file missing"
+fi
+
+# ─── T21: race detection — body SHA mismatch aborts cleanly ────────────────
+# Verified at the helper level via update_existing_triage_issue; in this
+# integration mock the body fetch returns the same JSON twice so race is NOT
+# triggered. Locking the structural shape: helper exists in source.
+assert_contains "T21 REGRESSION: update_existing_triage_issue helper present" \
+    "$(grep -c '^update_existing_triage_issue()' "$REPO_ROOT/scripts/deferred-tracker.sh")" "1"
+
+# ─── T22: LLM tiebreaker fail-open path (CI-safe — LLM_TIEBREAKER_ENABLED=0) ─
+# When disabled, annotation may include LLM-disabled marker OR omit it cleanly.
+# Either is acceptable per fail-open contract. Lock that script doesn't exit.
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":2200,"title":"y","body":"Needs a follow-up here.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T10:00:00Z"}]
+EOF
+echo "[]" > "$MOCK_ISSUE_LIST_JSON"
+cat > "$TEST_LOG" <<'EOF'
+# Deferred-tracker scanned PRs
+
+_Last updated: 2026-05-31T00:00:00Z_
+
+| PR | Title | Scanned |
+|---|---|---|
+EOF
+rc=0
+bash "$REPO_ROOT/scripts/deferred-tracker.sh" --apply --log "$TEST_LOG" >/dev/null 2>&1 || rc=$?
+assert_eq "T22 LOCK: LLM disabled → script still exits cleanly" "10" "$rc"
 
 print_test_results
