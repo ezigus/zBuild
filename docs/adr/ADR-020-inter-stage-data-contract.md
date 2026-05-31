@@ -100,7 +100,8 @@ The canonical inter-stage data flow as of Phase 1:
 | plan    | `scope_manifest` (intake), `goal_string` (external)   | `plan` → `plan.json`                                            |
 | build   | `scope_manifest` (intake), `plan` (plan)              | `diff_patch` → `diff.patch`, `build_summary` → `build-summary.json` |
 | test    | `diff_patch` (build)                                  | `test_results` → `test-results.json`                            |
-| review  | `scope_manifest`, `plan`, `diff_patch`, `test_results` | `review` → `review.json`                                       |
+| test_assessment | `test_results` (test), `diff_patch` (build, optional) | `test_assessment` → `test-assessment.json`              |
+| review  | `scope_manifest`, `plan`, `diff_patch`, `test_results`, `test_assessment` (optional, ADR-022) | `review` → `review.json` |
 | pr      | `review` (review)                                     | `pr_url` → `pr-url.txt`, `pr_result` → `pr-result.json`         |
 
 ### Pre-flight algorithm
@@ -461,3 +462,49 @@ The closed templating-var set (decision #5) grows by ONE entry:
 > ADR-021 §"Feedback-path resolution (#511 Pin 2)". F2 (#511) clarified
 > this after F1 (#512) shipped with a hardcoded shape that didn't match
 > real plugin manifests.
+
+## Amendment — LLM-interpreted verdict stages (#572, ADR-022)
+
+ADR-020's primary-output contract (#507 amendment) recognises a sibling
+class of Pattern-1 stages whose primary artifact's `.verdict` is an LLM
+**interpretation** rather than a deterministic gate. `test_assessment`
+(ADR-022) is the first such stage: its `test-assessment.json` declares
+`primary: true`, `type: test_assessment.json`, and the manifest input
+contract is:
+
+```yaml
+inputs:
+  - id: test_results
+    type: test_results.json
+    source: stage:test
+    required: true
+    path: ${artifact_dir}/test-results.json
+  - id: diff_patch
+    type: text/diff
+    source: stage:build
+    required: false
+    path: ${artifact_dir}/diff.patch
+outputs:
+  - id: test_assessment
+    type: test_assessment.json
+    primary: true
+    required: true
+    path: ${artifact_dir}/test-assessment.json
+```
+
+The `extract_first_json_object` helper + `ZBUILD_ROUTER_JSON_OUTPUT=1`
+wrapping rules (ADR-018 decision #8) apply unchanged. CI lint
+(`scripts/lib/lint-contract.sh`) enforces the `primary: true` invariant
+on the assessment's output exactly as it does for other Pattern-1
+stage-bound manifests.
+
+The verdict enum is broader than the structural `pass|fail|error` set: an
+additional value `inconclusive` is permitted to signal LLM uncertainty.
+Per-consumer mapping is owned by the consumer (ADR-019 §7 for review;
+ADR-021 §"test_assessment as until: source" for the cycle), not by this
+schema layer.
+
+Feedback wiring from the assessment's `failure_summary_md` field into
+build's `prior_test_failures` input flows through `source: cycle_feedback`
+exactly as codified in the #511 amendment above; no new var or
+discriminator is introduced.

@@ -692,3 +692,29 @@ When an outer cycle dispatches a build stage that internally uses Pattern 2,
 the build plugin's inner loop runs to completion, returns rc + verdict, and
 the outer cycle records that as iter N's outcome. The two layers do not
 interfere with each other's state.
+
+## Amendment — `test_assessment` as a Pattern 1 stage (issue #572, 2026-05-31)
+
+ADR-022 introduces a new canonical stage, `test_assessment`, slotted between
+`test` and `review`. It is a Pattern 1 stage by construction and joins the
+existing Pattern 1 roster.
+
+**Current users (amended #572):** plan, review, security-lens,
+**test_assessment**. The `test_assessment` stage consumes `test-results.json`
+(raw counts + producer verdict from the `test` tool stage) and interprets
+test output into a structured verdict envelope. Like other Pattern 1
+plugins, it MUST set `ZBUILD_ROUTER_JSON_OUTPUT=1` and
+`ZBUILD_ROUTER_ARTIFACT_ID=test_assessment` around its `route_to_model`
+call, route final output through `extract_first_json_object`, and register
+a renderer `render_test_assessment_md` via `register_artifact_renderer`
+(see §"Artifact renderer registry" above).
+
+Decision points list grows by one:
+
+9. `test_assessment` is a Pattern 1 stage by construction: deterministic
+   test execution stays in the `test` tool plugin (per the "Deterministic
+   operations stay bash" clause above); LLM interpretation of the test
+   signal is a separate Pattern 1 stage feeding review (ADR-019 §7) and
+   the `build_test_cycle`'s `until:` predicate (ADR-021 amendment for
+   #572). See ADR-022 for the full Status / Context / Decision /
+   Consequences record.

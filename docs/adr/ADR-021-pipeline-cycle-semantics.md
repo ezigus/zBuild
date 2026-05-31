@@ -375,3 +375,58 @@ emitted between `cycle.iteration.complete` and `cycle.complete reason=blocked`.
 terminate-now (mirrors `_cycle_check_max_iterations` non-numeric handling).
 Empty `_CYCLE_LAST_VERDICTS_BLOB={}` → emit `cycle.metric.invalid
 metric=verdicts_blob_empty`, also fail-CLOSED.
+
+## Amendment — `test_assessment` as `until:` source (#572, ADR-022)
+
+The canonical `build_test_cycle` `until:` predicate (see #511 amendment
+above) is amended to read `test_assessment.verdict` when the assessment
+stage (ADR-022) is in the cycle's `stages[]`. The canonical wiring becomes:
+
+```yaml
+cycles:
+  - id: build_test_cycle
+    stages: [build, test, test_assessment]
+    until: { stage: test_assessment, field: verdict, op: eq, value: pass }
+    max_iterations: 3
+    on_max: continue
+    feedback:
+      - from: { stage: test_assessment, output: failure_summary }
+        to:   { stage: build, input: prior_test_failures, required: false }
+```
+
+**Rationale.** The test plugin's `verdict=pass|fail|error` is *structural*
+(exit code + parsed counts). Convergence requires *semantic*
+interpretation: did the new test failures regress prior work, are the
+remaining failures flaky, is the change actually green? `test_assessment`
+provides that signal. Folding it into the test plugin would violate
+ADR-018's "Deterministic operations stay bash" clause and conflate two
+concerns (see ADR-022 §Alternatives).
+
+**Verdict invariant.** `test_assessment.verdict == pass` REQUIRES BOTH
+`test.failed == 0` AND `agrees_with_build_complete == true` AND
+`build.verdict == pass`. The assessment cannot upgrade a structural
+failure into convergence; it can only down-classify a structural pass
+into `fail` or `inconclusive` when semantic interpretation contradicts
+the raw counts.
+
+**Per-iter artifact cleanup.** The cleanup contract (#511 Pin 8) extends
+to `test-assessment.json`: each cycle iteration deletes the file before
+dispatching the iteration, preventing stale prior-iter assessments from
+silently satisfying `until: verdict==pass`.
+
+**Blocked termination.** The blocked predicate (#528 amendment above)
+treats `test_assessment.verdict ∈ {error}` as blocked identically to
+other stages. `inconclusive` is NOT blocked (the LLM is uncertain, not
+broken) — the cycle keeps iterating until convergence or another
+termination class fires.
+
+**Feedback source.** Feedback now flows from
+`test_assessment.failure_summary_md` (human-readable markdown) into
+build's `prior_test_failures` input via `source: cycle_feedback`, giving
+build a higher-signal preamble than the test plugin's raw counts. The
+empty-feedback omission rule (#511 Pin 5) is unchanged: an empty
+`failure_summary_md` produces no preamble.
+
+**Backward compatibility.** Templates that omit `test_assessment` from
+the cycle's `stages[]` keep `until: { stage: test, field: verdict }` and
+the F2 wiring is unchanged. The amendment is opt-in via the stage list.
