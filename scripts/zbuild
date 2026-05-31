@@ -44,6 +44,11 @@ Commands:
                          [--run-id <id>] [--from-stage <stage>] [--force]
   pipeline status        Show resume recommendation for the current state file
                          [--run-id <id>]
+  cleanup                Prune stale zbuild/issue-* branches + old state files
+                         [--branches] [--state-dirs]
+                         [--dry-run|--apply|--force]
+                         [--age-days N] [--quiet]
+                         Default: dry-run, both categories, age-days 14.
 
 Session flags (shortcuts):
   --resume <run_id>      Shorthand for: pipeline resume --run-id <run_id>
@@ -368,6 +373,62 @@ case "$cmd" in
                 exit 2
                 ;;
         esac
+        ;;
+    cleanup)
+        shift
+        # shellcheck source=lib/cleanup.sh
+        source "$SCRIPT_DIR/lib/cleanup.sh"
+        cl_branches=false
+        cl_state_dirs=false
+        cl_dry_run=""
+        cl_force=false
+        cl_age_days=14
+        cl_quiet=false
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --branches)   cl_branches=true; shift ;;
+                --state-dirs) cl_state_dirs=true; shift ;;
+                --dry-run)    cl_dry_run=true; shift ;;
+                --apply)      cl_dry_run=false; shift ;;
+                --force)      cl_force=true; cl_dry_run="${cl_dry_run:-false}"; shift ;;
+                --age-days)
+                    [[ -z "${2:-}" ]] && { error "--age-days requires a value"; exit 2; }
+                    case "$2" in
+                        ''|*[!0-9]*) error "--age-days must be a non-negative integer, got: $2"; exit 2 ;;
+                    esac
+                    cl_age_days="$2"; shift 2 ;;
+                --quiet) cl_quiet=true; shift ;;
+                *)
+                    error "Unknown cleanup flag: $1"
+                    echo "Usage: zbuild cleanup [--branches] [--state-dirs] [--dry-run|--apply|--force] [--age-days N] [--quiet]" >&2
+                    exit 2 ;;
+            esac
+        done
+        # Default = dry-run when neither --apply nor --force specified.
+        [[ -z "$cl_dry_run" ]] && cl_dry_run=true
+        # Default categories: both when neither flag was set.
+        if ! $cl_branches && ! $cl_state_dirs; then
+            cl_branches=true
+            cl_state_dirs=true
+        fi
+
+        $cl_quiet || {
+            if $cl_dry_run; then info "zbuild cleanup (dry-run; --apply or --force to act)"
+            else info "zbuild cleanup (applying)"; fi
+        }
+
+        if $cl_state_dirs; then
+            cl_state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+            cl_state_candidates="$(_cleanup_scan_state_files "$cl_state_dir" "$cl_age_days" "$cl_force" || true)"
+            _cleanup_render_plan "state files" "$cl_state_candidates" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_plan "$cl_state_candidates" "$cl_dry_run"
+        fi
+
+        if $cl_branches; then
+            cl_branch_plan="$(_cleanup_scan_branches "$cl_force" || true)"
+            _cleanup_render_plan "branches" "$cl_branch_plan" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_branch_plan "$cl_branch_plan" "$cl_dry_run"
+        fi
         ;;
     *)
         error "Unknown command: $cmd"
