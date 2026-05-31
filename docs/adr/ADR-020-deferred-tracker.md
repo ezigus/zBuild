@@ -252,3 +252,122 @@ codes: `0` = no candidates, `10` = changes applied, `2` = error.
 - Issue #531 — implementation issue for this ADR
 - `scripts/manifest-sync.sh` — structural template and existing scanner
 - `.github/issues/orphan-prs.md` — idempotency log pattern
+
+---
+
+## Amendment v2 (2026-05-31)
+
+**Why amended:** Operator feedback after #531/#540/#541 landed:
+
+1. The recurring scanner closes-and-creates the triage issue on the
+   1-open + no-engagement path, losing the URL, history, and external links.
+2. Both `deferred-tracker` and `deferred-backfill` need to surface possible
+   duplicates against open issues; today only `deferred-backfill` does so,
+   via fragile single-word substring on titles.
+3. `manifest-sync` uses exact-equality on titles
+   (`jq .select(.title == $t)` at `scripts/manifest-sync.sh:79, 84, 102`).
+   A title edit as small as adding brackets (`"Phase 0.5 cleanup: foo"` vs
+   `"[Phase 0.5 cleanup] foo"`) makes manifest-sync flag the same issue
+   as an orphan.
+
+The amendment ships as 6 sequential sub-issues under epic #555:
+#558 (sub-1, this section), #559 (sub-6 LLM tiebreaker), #560 (sub-2),
+#561 (sub-3), #562 (sub-4), #563 (sub-5).
+
+### Decision: Jaccard token similarity helper
+
+New `gha_compute_similarity <text_a> <text_b>` in `scripts/lib/gh-automation.sh`
+returns a `0.00`–`1.00` score via `printf '%.2f'`.
+
+**Algorithm:**
+1. Lowercase both inputs.
+2. Tokenize on any run of non-alphanumeric characters (handles newlines and
+   punctuation identically).
+3. Filter tokens to length ≥ 4 — drops articles, code fragments, junk.
+4. Drop a small stopword set (the/and/that/this/with/from/when/what/where/will/should/would/could/into/also/just/more/some/like/such/these/those/after/before/while/about/then/than/have/been/they/their/there/which).
+5. Compute Jaccard `|A ∩ B| / |A ∪ B|` on deduplicated sets.
+6. Divide-by-zero safety: empty filtered sets → `0.00`.
+
+**Float comparison idiom (locked):** every adopter compares scores against
+thresholds via `awk -v s="$score" -v t="$threshold" 'BEGIN{exit !(s>=t)}'`,
+or equivalently the `gha_score_meets_threshold` helper. Bash integer-compare
+(`[[ ]]`, `-ge`) on `%.2f` strings is forbidden.
+
+### Decision: cascading classifier with LLM tiebreaker
+
+Pure Jaccard misses semantic similarity. Sub-6 (#559) adds a fail-open LLM
+helper invoked ONLY on borderline Jaccard scores (typically 0.20–0.40 for
+annotation, 0.40–0.60 for manifest-sync's higher bar). The cascade caps LLM
+volume at tens of calls per scan rather than thousands.
+
+**Fail-open contract:** when LLM is unavailable, fails, times out, or returns
+unparseable output, the helper returns the original Jaccard score plus a
+machine-readable marker (`_LLM_UNAVAILABLE_NO_CREDS`, `_LLM_FAILED_TIMEOUT`,
+etc.). Adopters render the marker as an operator-readable annotation in the
+issue/PR body. NEVER silently fall through.
+
+### Decision: threshold table by adopter
+
+| Adopter | Annotation threshold | LLM tiebreaker zone |
+|---|---|---|
+| `deferred-tracker` (sub-2 / #560) | 0.35 | 0.20–0.40 |
+| `deferred-backfill` (sub-3 / #561) | 0.35 | 0.20–0.40 |
+| `manifest-sync` orphan annotation (sub-4 / #562) | 0.6 | 0.40–0.60 |
+| `manifest-sync` TO_MARK_CLOSED PR-staged write (sub-5 / #563) | 0.6 | 0.40–0.60 |
+
+Configurable via env vars `DEFERRED_SIMILARITY_THRESHOLD` and
+`MANIFEST_SIMILARITY_THRESHOLD`. The manifest-sync bar is higher because a
+false positive on the write path causes silent data drift in a load-bearing
+file.
+
+### Decision: update-in-place, not close-and-create
+
+Sub-2 (#560) replaces the recurring scanner's `close_previous_triage_issue` +
+`create_triage_issue` pair (on the 1-open + no-engagement path) with a single
+`gh issue edit --body-file` call. Preserves issue number, URL, external
+links, and the operator's history of what was surfaced.
+
+**Race avoidance:** SHA256 fingerprint the body immediately before edit; if
+it changed since fetch, abort to avoid clobbering concurrent human edits.
+
+**Body rotation:** cap the issue body at the most recent 10 `## Update —`
+sections; drop the oldest when an 11th is appended. Prevents unbounded body
+growth.
+
+**Engaged-issue path UNCHANGED:** when human comments or checked boxes exist,
+fall back to `gh issue comment` instead of `gh issue edit` — body-edit would
+wipe the operator's checkbox state. This preserves the v1 ADR contract for
+human-engaged issues.
+
+### Decision: manifest-sync writes are PR-gated, not auto-flip
+
+Sub-5 (#563) does NOT auto-edit `keepers-manifest.yaml` on fuzzy matches.
+The change is staged into the same manifest-sync PR the workflow already
+creates (via `peter-evans/create-pull-request`), annotated as
+`(fuzzy match: <id>, jaccard 0.XX — verify before merge)` in the PR body.
+The PR review IS the human approval step. Operator merges to apply, or
+reverts the specific hunk to reject.
+
+### Rejected alternatives
+
+- **Embedding-based similarity** (cosine over sentence-BERT or similar).
+  Over-engineered for shell automation; adds Python dependency; cost
+  comparable to LLM tiebreaker without the human-readable failure surface.
+- **Auto-merging fuzzy matches in manifest-sync** (the original proposal).
+  Silent data drift risk on a load-bearing YAML file. Analyst pressure-test
+  flagged as highest risk. Replaced with PR-staged approval.
+- **Body-edit on the engagement path.** Would wipe operator's checked boxes
+  and any in-progress notes. Comment-append path retained for safety.
+- **LLM-as-primary similarity (no Jaccard).** Cost-prohibitive at 50
+  candidates × 200 open issues per scan = thousands of LLM calls.
+  Non-deterministic, hard to test. Cascading-classifier pattern (Jaccard
+  filter + LLM tiebreaker) gets most of the benefit at a tiny fraction
+  of the cost.
+
+### Future amendment hooks
+
+If false-positive rate on the annotation threshold stays above 15% after
+1 month of operator use, raise the threshold (config first; ADR amendment v3
+only if the change is permanent). If LLM tiebreaker observed quality is
+poor, disable globally via `LLM_TIEBREAKER_ENABLED=0` while iterating on
+the prompt.
