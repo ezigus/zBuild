@@ -56,8 +56,25 @@ _review_derive_test_status() {
         printf 'unknown\n'
         return 0
     fi
-    local v
-    v="$(jq -r '.verdict // empty' "$path" 2>/dev/null || true)"
+    local v jq_err
+    # #527 silent-failure CRIT #5: jq parse errors must not be silently swallowed;
+    # emit a discoverable event so a malformed test-results.json is visible in the
+    # post-mortem event log. Behavior on parse error is preserved (v="" → unknown,
+    # which the ADR-019 fail-closed gate coerces approve → request_changes).
+    jq_err="$(mktemp 2>/dev/null || printf '/tmp/zb-review-jq.%s' "$$")"
+    if v="$(jq -r '.verdict // empty' "$path" 2>"$jq_err")"; then
+        :
+    else
+        local err_msg
+        err_msg="$(tr -d '\n' < "$jq_err" 2>/dev/null | head -c 200)"
+        emit_event "review.jq.parse_error" \
+            "plugin=review" \
+            "stage=review" \
+            "path=$path" \
+            "error=${err_msg:-jq_failed}" 2>/dev/null || true
+        v=""
+    fi
+    rm -f "$jq_err" 2>/dev/null || true
     case "$v" in
         pass)        printf 'passed\n' ;;
         fail|error)  printf 'failed\n' ;;
@@ -140,6 +157,16 @@ _review_run_inner() {
     else
         warn "review_run: test-results.json not found; treating as test failure"
         test_content='{"status":"unknown","passed":0,"failed":0,"note":"test results missing -- treated as failure"}'
+        # #527 silent-failure CRIT #4: ALWAYS emit a discoverable event when
+        # test-results.json is missing so operators can spot it in event-log
+        # post-mortems regardless of which verdict path runs downstream. The
+        # ADR-019 fail-closed coercion still fires below; this event is purely
+        # for observability (no behavior change).
+        emit_event "review.test_status.missing" \
+            "plugin=review" \
+            "stage=review" \
+            "path=$test_results_json_path" \
+            "reason=file_absent"
     fi
 
     # ─── Build prompt ────────────────────────────────────────────────────────

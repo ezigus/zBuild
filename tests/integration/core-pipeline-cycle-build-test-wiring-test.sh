@@ -174,4 +174,51 @@ else
     assert_fail "T5: rejection message" "missing expected diagnostic"
 fi
 
+# ─── T6 (#527): positive assertion — review dispatches when cycle unconverged ─
+# Drives runner.sh in-process so we can stub cycle_orchestrator_run with rc=1
+# (max_iterations) and verify stage_statuses.review is NOT absent. Without #527
+# the runner falls through silently to pipeline_status=complete; the assertion
+# below pins that review actually ran AND the cycle's unconverged signal was
+# propagated as stage_statuses[test]=failed for ADR-019 coercion.
+T6_TMP="$TEST_TEMP_DIR/t6-runner"
+mkdir -p "$T6_TMP/state" "$T6_TMP/events"
+(
+    set +e
+    export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+    export ZBUILD_EVENTS_DIR="$T6_TMP/events"
+    export ZBUILD_EVENTS_JSONL="$T6_TMP/events/events.jsonl"
+    export ZBUILD_STATE_DIR="$T6_TMP/state"
+    export ZBUILD_STATE_FILE="$T6_TMP/state/pipeline-state.json"
+    export ZBUILD_CYCLES_ENABLED=1
+    export ZBUILD_CONTRACT_VALIDATOR=warn
+    export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+    cycle_orchestrator_run() {
+        _CYCLE_LAST_TERMINATED_REASON="max_iterations"
+        _CYCLE_LAST_ITERATIONS=3
+        return 1
+    }
+    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+    runner_read_stage_verdict() { echo "request_changes"; }
+    plugin_hook_call() {
+        local state="$4"; local artdir; artdir="$(dirname "$state")/artifacts"; mkdir -p "$artdir"
+        printf '{"verdict":"request_changes"}' > "$artdir/review.json"
+        return 0
+    }
+    main --issue 999 --template standard >/dev/null 2>&1
+) || true
+t6_review="$(jq -r '.stage_statuses.review // "absent"' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
+if [[ "$t6_review" != "absent" ]]; then
+    assert_pass "T6 (#527): stage_statuses.review != absent when cycle unconverged (max_iterations)"
+else
+    assert_fail "T6 (#527): review must dispatch on cycle unconverged" "stage_statuses.review=absent"
+fi
+t6_test="$(jq -r '.stage_statuses.test // "absent"' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
+assert_eq "T6 (#527): stage_statuses.test=failed (unconverged signal propagated)" \
+    "failed" "$t6_test"
+t6_status="$(jq -r '.status' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
+assert_eq "T6 (#527): pipeline_status=failed (NOT complete) on unconverged" \
+    "failed" "$t6_status"
+
 print_test_results
