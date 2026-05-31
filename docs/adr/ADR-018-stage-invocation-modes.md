@@ -176,6 +176,43 @@ retains coarser single-bucket behavior because the authoritative gate
 downstream re-classifies — tracked as a follow-up rather than expanded scope
 here.
 
+**Amendment (#530) — Diff capture trailing-newline contract.** The
+`route_to_model_loop` + build plugin diff capture path round-tripped
+`git diff HEAD` through bash command substitution (`$()`), which strips
+trailing newlines. Combined with `printf '%s'` (no `\n`), this produced
+patches missing their terminal newline — apply-check forward fails ("corrupt
+patch at line N"), reverse passes (the #519 mask). The fix: write `git diff
+HEAD` directly to the artifact file via `git diff HEAD > diff.patch`,
+bypassing bash variables. Downstream consumers (stats parsers, scope check)
+read the file back with the lossless `cat file; printf x` trick so the
+trailing newline survives a round-trip through bash. The
+`_route_loop_capture_diff` helper uses the same disk-tempfile-readback
+pattern for the prev_diff prompt-feedback variable.
+
+The `_build_apply_check` gate is extended to run BOTH forward and reverse
+checks: forward via `git reset` (drop `-N` index entries) → `git stash
+push -u` → `git apply --check <patch>` → `git stash pop` → restore index,
+plus the existing reverse check. Both must pass for `ok:true`. New summary
+fields: `apply_check.forward_ok`, `apply_check.reverse_ok`. The reverse-
+only check from #509 was structurally blind to forward-only corruption
+(same parser, same byte stream).
+
+Hunk-count structural validation runs an awk pass on the patch text and
+parses each `@@ -a,b +c,d @@` header. The following `-`/` `/`+` line
+counts must agree with `b`/`d` for every hunk; the LAST hunk's mismatch
+is the canonical truncation signature. Hits emit
+`build.invariant.hunk_count_mismatch` and set `truncation_observed=true`
+in `apply_check`.
+
+Additional defense-in-depth: after writing `diff.patch`, the plugin
+verifies the last byte is `\n` and appends one if not, emitting
+`build.diff.trailing_newline_restored` if the canary fires (should not
+post-fix). NUL-byte scan flags `build.diff.binary_truncation_observed`
+when binary diffs would otherwise truncate silently through bash
+variables. After the diff is written and scope-validated, the `git add
+-N` intent-to-add index entries are cleared via `git reset` so the
+downstream test stage's `git apply` sees a clean index.
+
 ---
 
 ### Deterministic operations stay bash

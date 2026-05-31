@@ -189,13 +189,70 @@ _build_stage_run_inner() {
     # without staging their content. Without it, new files created by the agent
     # would be silently dropped from the canonical diff.
     git -C "$repo_root" add -N . 2>/dev/null || true
-    local diff_content="" diff_rc=0
-    diff_content="$(git -C "$repo_root" diff HEAD 2>/dev/null)" || diff_rc=$?
+
+    # #530: stream `git diff HEAD` DIRECTLY to the artifact file. Capturing via
+    # `$()` strips the trailing newline (and `printf '%s'` doesn't restore it),
+    # producing a 1-byte-truncated patch that downstream `git apply --check`
+    # rejects ("corrupt patch at line N"). Writing to disk first sidesteps
+    # bash's command-substitution byte stripping entirely.
+    local diff_rc=0
+    git -C "$repo_root" diff HEAD > "$output_diff_patch" 2>/dev/null || diff_rc=$?
+
+    local _diff_failure="false"
     if [[ $diff_rc -ne 0 ]]; then
-        warn "_build_stage_run_inner: git diff HEAD failed in $repo_root"
-        emit_event "loop.git_diff_failed" "plugin=build" "cwd=$repo_root" "rc=$diff_rc"
-        diff_content=""
+        warn "_build_stage_run_inner: git diff HEAD failed in $repo_root rc=$diff_rc"
+        # NB: keep the existing `loop.git_diff_failed` event name (set by the
+        # pre-#530 path and asserted by parity goldens) so callers don't need
+        # to learn a new event. The new `build.git_diff_failed` was reserved
+        # for force-fail semantics that we DO NOT enforce here — the apply-
+        # check gate is the canonical fail-CLOSED point. See #530 PR notes.
+        emit_event "loop.git_diff_failed" "plugin=build" \
+            "cwd=$repo_root" "rc=$diff_rc"
+        # Truncate the artifact so downstream consumers can't be confused by
+        # a partial write.
+        : > "$output_diff_patch"
+        _diff_failure="true"
     fi
+
+    # Lossless readback: `cat file; printf x` round-trips the trailing newline
+    # through a bash variable for the downstream stats parsers + scope check.
+    local diff_content=""
+    if [[ -s "$output_diff_patch" ]]; then
+        diff_content="$(cat "$output_diff_patch"; printf x)"
+        diff_content="${diff_content%x}"
+    fi
+
+    # #530 invariant: if a non-empty diff doesn't end in \n, restore it.
+    # This canary catches any future regression of the trailing-newline
+    # contract — should never fire after the direct-to-disk write above,
+    # but defense in depth.
+    if [[ -s "$output_diff_patch" ]]; then
+        local _last_byte
+        _last_byte="$(tail -c1 "$output_diff_patch" | od -An -tx1 | tr -d ' \n')"
+        if [[ "$_last_byte" != "0a" ]]; then
+            printf '\n' >> "$output_diff_patch"
+            diff_content+=$'\n'
+            emit_event "build.diff.trailing_newline_restored" "plugin=build" \
+                "last_byte=0x${_last_byte}" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # #530 NUL detection: bash variables can't safely carry NUL bytes; binary
+    # diffs would otherwise truncate silently in `diff_content`. The on-disk
+    # file is fine (we never load it into bash), but the stats parsers below
+    # would be misled. Flag explicitly so the gate fails-CLOSED rather than
+    # producing misleading numstat output.
+    if [[ -s "$output_diff_patch" ]] && \
+       LC_ALL=C grep -q $'\x00' "$output_diff_patch" 2>/dev/null; then
+        emit_event "build.diff.binary_truncation_observed" "plugin=build" \
+            "path=$output_diff_patch" >/dev/null 2>&1 || true
+    fi
+
+    # NB: the `git add -N` intent-to-add entries stay in the index through
+    # the scope-validation block below (`git diff --name-status -z HEAD`
+    # needs them to surface new untracked files). They're cleared at the
+    # end of the function via `_build_reset_intent_to_add` so the test
+    # stage's `git apply` sees a clean index.
 
     # ─── Scope post-validation via git diff --name-status -z ─────────────────
     local scope_violation="false"
@@ -256,6 +313,8 @@ _build_stage_run_inner() {
         pre_zero_numstat="$(git -C "$repo_root" diff HEAD --numstat 2>/dev/null || true)"
         warn "_build_stage_run_inner: scope violation — writing empty diff.patch"
         diff_content=""
+        # #530: file was already written directly above; zero it now.
+        : > "$output_diff_patch"
     fi
 
     # Empty-diff signal: emit warn event when prose-only / no edits produced.
@@ -264,8 +323,10 @@ _build_stage_run_inner() {
             "iterations=$iterations" "terminated_reason=$terminated_reason"
     fi
 
-    # ─── Write diff.patch (NEVER applied here) ───────────────────────────────
-    printf '%s' "$diff_content" > "$output_diff_patch"
+    # NB (#530): diff.patch was written directly from `git diff HEAD` above
+    # to preserve the trailing newline. We do NOT re-write it from
+    # `$diff_content` here — that would re-introduce the bash command-
+    # substitution trailing-newline strip.
 
     # ─── Parse diff stats ────────────────────────────────────────────────────
     local files_changed_json="[]" lines_added=0 lines_removed=0
@@ -329,6 +390,12 @@ _build_stage_run_inner() {
         force_fail_rc=1
     fi
 
+    # #530: a failed `git diff HEAD` capture is surfaced via the
+    # `loop.git_diff_failed` event above. We do NOT force-fail here — the
+    # apply-check gate is the canonical fail-CLOSED point. (Keeping the
+    # existing empty-diff-on-failure behavior so parity fixtures that
+    # intentionally exercise this path stay green.)
+
     jq -n \
         --argjson schema_version 3 \
         --argjson issue "$issue" \
@@ -385,6 +452,13 @@ _build_stage_run_inner() {
         "scope_violation=$scope_violation" \
         "verdict=$build_verdict" \
         "artifact=build-summary.json"
+
+    # #530: clear `git add -N` intent-to-add entries from the index now that
+    # scope-validation has run + the diff has been written. The test stage's
+    # `git apply` runs against a clean index; leaving these entries pollutes
+    # downstream operations.
+    git -C "$repo_root" reset -q 2>/dev/null || true
+
     # #509: rc-wins fail-CLOSED — corrupt-patch gate makes the plugin exit 1
     # so runner.sh:672-686 halts the pipeline (verdict=corrupt_diff is
     # defense-in-depth for the indicator + downstream consumers).
@@ -567,47 +641,178 @@ _build_apply_check() {
         return 1
     fi
 
-    # ── (e) The check: git apply --check (default whitespace handling) ─────
-    # Capture stderr separately so the first line can be classified.
+    # ── (e) Bidirectional check (#530) ─────────────────────────────────────
+    # #509 ran reverse-only (`-R`) on the premise that the WT already holds
+    # the edits the patch describes. That masked the #530 trailing-newline
+    # truncation: reverse passed (same parser, same byte stream), forward
+    # failed against a clean tree with "corrupt patch at line N". The remedy:
+    # also run forward against a stashed-clean tree. BOTH must pass for
+    # ok:true. New summary fields: apply_check.forward_ok, apply_check.reverse_ok.
     #
-    # The post-loop diff.patch is `git diff HEAD`, so the changes ALREADY
-    # exist in the working tree — a forward `git apply --check` would fail
-    # context matching ("patch failed: file.txt:N") since the lines are
-    # already changed. The downstream test stage applies the patch to a
-    # clean tree (resets first), so the equivalent validation here is:
-    #   - reverse-check: confirm the patch reverses cleanly against the
-    #     current working tree (i.e. forward-applicable against HEAD).
-    # `-R` also exercises the same parser, so corrupt-patch / @@-line
-    # errors surface identically.
-    local _stderr_file; _stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-applycheck-err.XXXXXX")"
-    git -C "$repo_root" apply --check -R "$diff_path" 2>"$_stderr_file"
-    local _check_rc=$?
+    # We avoid `git worktree add` here (heavy, requires writable .git dir)
+    # in favor of `git stash push -u` → `git apply --check` → `git stash pop`.
+    # `stash pop` is best-effort: if it fails the next test stage will catch
+    # the inconsistent tree, but we still surface the apply-check verdict.
+    local _stderr_rev; _stderr_rev="$(mktemp "${TMPDIR:-/tmp}/zb-applycheck-rev.XXXXXX")"
+    git -C "$repo_root" apply --check -R "$diff_path" 2>"$_stderr_rev"
+    local _rev_rc=$?
+    local _rev_first
+    _rev_first="$(head -n 1 "$_stderr_rev" 2>/dev/null || true)"
 
-    if [[ $_check_rc -eq 0 ]]; then
-        rm -f "$_stderr_file"
+    # Forward check: requires a clean tree AND a clean index. We must clear
+    # `git add -N` intent-to-add entries first; otherwise the index says
+    # "file is tracked" and `git apply --check` rejects with "already exists
+    # in working directory" / "Entry not uptodate".
+    #
+    # Order: save index → reset (clears `-N` entries) → stash -u (pushes
+    # untracked) → apply --check → stash pop → restore index.
+    local _stderr_fwd; _stderr_fwd="$(mktemp "${TMPDIR:-/tmp}/zb-applycheck-fwd.XXXXXX")"
+    local _index_backup; _index_backup="$(mktemp "${TMPDIR:-/tmp}/zb-applycheck-idx.XXXXXX")"
+    local _stash_pushed="false"
+    local _stash_label="zb-applycheck-fwd-$$"
+    local _index_saved="false"
+
+    # Save current index for later restore (best-effort).
+    if [[ -f "$repo_root/.git/index" ]] && \
+       cp "$repo_root/.git/index" "$_index_backup" 2>/dev/null; then
+        _index_saved="true"
+    fi
+
+    # Drop `-N` entries by resetting the index. After this `git diff HEAD`
+    # would no longer surface untracked files — that's why we do it AFTER
+    # capturing diff_path. (Caller owns the `git add -N` lifecycle.)
+    git -C "$repo_root" reset -q >/dev/null 2>&1 || true
+
+    if git -C "$repo_root" stash push -u -q -m "$_stash_label" >/dev/null 2>&1; then
+        if git -C "$repo_root" stash list 2>/dev/null | grep -q "$_stash_label"; then
+            _stash_pushed="true"
+        fi
+    fi
+
+    git -C "$repo_root" apply --check "$diff_path" 2>"$_stderr_fwd"
+    local _fwd_rc=$?
+    local _fwd_first
+    _fwd_first="$(head -n 1 "$_stderr_fwd" 2>/dev/null || true)"
+
+    if [[ "$_stash_pushed" == "true" ]]; then
+        git -C "$repo_root" stash pop -q >/dev/null 2>&1 || \
+            warn "_build_apply_check: stash pop failed (label=$_stash_label) — tree may be inconsistent"
+    fi
+
+    # Restore the saved index so the caller still sees `-N` entries for
+    # downstream consumers (numstat banner etc.).
+    if [[ "$_index_saved" == "true" ]]; then
+        cp "$_index_backup" "$repo_root/.git/index" 2>/dev/null || true
+    fi
+    rm -f "$_index_backup"
+
+    # ── (f) Hunk-count structural validation (#530 tertiary) ───────────────
+    # Parse each `@@ -a,b +c,d @@` header and verify the following
+    # `-`/` `/`+` line counts agree with b/d. A mismatch on the LAST hunk
+    # of any file is the canonical truncation signature.
+    local _hunk_mismatch="false"
+    local _hunk_reason=""
+    if [[ -s "$diff_path" ]]; then
+        local _awk_out
+        _awk_out="$(awk '
+            function flush_hunk(   ) {
+                if (in_hunk) {
+                    if (minus_seen != minus_expect || plus_seen != plus_expect) {
+                        printf "MISMATCH file=%s expect=-%d/+%d saw=-%d/+%d\n",
+                            cur_file, minus_expect, plus_expect, minus_seen, plus_seen
+                        exit 0
+                    }
+                }
+            }
+            /^diff --git/ {
+                flush_hunk()
+                in_hunk = 0
+                # Best-effort filename — diff --git a/<x> b/<y>
+                cur_file = $0
+                sub(/^diff --git a\//, "", cur_file)
+                sub(/ b\/.*$/, "", cur_file)
+                next
+            }
+            /^@@ / {
+                flush_hunk()
+                # @@ -a,b +c,d @@ ...   (b/d optional → default 1)
+                # Captures: 2 = b (or empty), 4 = d (or empty)
+                if (match($0, /^@@ -[0-9]+(,([0-9]+))? \+[0-9]+(,([0-9]+))? @@/)) {
+                    line = substr($0, RSTART, RLENGTH)
+                    n = split(line, parts, /[ ,@+-]+/)
+                    # parts: "" "" "a" "b" "c" "d" (approx) — easier: regex caps
+                    minus_expect = 1
+                    plus_expect  = 1
+                    if (match(line, /-[0-9]+,[0-9]+/)) {
+                        s = substr(line, RSTART, RLENGTH); sub(/-[0-9]+,/, "", s)
+                        minus_expect = s + 0
+                    }
+                    if (match(line, /\+[0-9]+,[0-9]+/)) {
+                        s = substr(line, RSTART, RLENGTH); sub(/\+[0-9]+,/, "", s)
+                        plus_expect = s + 0
+                    }
+                    minus_seen = 0; plus_seen = 0; in_hunk = 1
+                }
+                next
+            }
+            in_hunk == 1 {
+                c = substr($0, 1, 1)
+                if (c == "-") { minus_seen++; }
+                else if (c == "+") { plus_seen++; }
+                else if (c == " ") { minus_seen++; plus_seen++; }
+                else if (c == "\\") { /* "\ No newline at end of file" — skip */ }
+                else {
+                    # End of hunk body (next file header / EOF marker).
+                    flush_hunk()
+                    in_hunk = 0
+                }
+            }
+            END { flush_hunk() }
+        ' "$diff_path" 2>/dev/null || true)"
+        if [[ -n "$_awk_out" ]]; then
+            _hunk_mismatch="true"
+            _hunk_reason="$_awk_out"
+            emit_event "build.invariant.hunk_count_mismatch" "plugin=build" \
+                "detail=$_awk_out" "diff_bytes=$diff_bytes" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # ── (g) Synthesize verdict ─────────────────────────────────────────────
+    local _ok="true"
+    local _truncation="false"
+    local _fwd_ok="true" _rev_ok="true"
+    [[ $_fwd_rc -ne 0 ]] && { _ok="false"; _fwd_ok="false"; }
+    [[ $_rev_rc -ne 0 ]] && { _ok="false"; _rev_ok="false"; }
+    if [[ "$_hunk_mismatch" == "true" ]]; then
+        _ok="false"
+        _truncation="true"
+    fi
+
+    # Pick stderr_first / reason from whichever side failed (prefer forward,
+    # since that's the new #530 signal).
+    local _stderr_first="$_fwd_first"
+    local _check_rc=$_fwd_rc
+    if [[ "$_fwd_ok" == "true" && "$_rev_ok" == "false" ]]; then
+        _stderr_first="$_rev_first"
+        _check_rc=$_rev_rc
+    fi
+    rm -f "$_stderr_fwd" "$_stderr_rev"
+
+    if [[ "$_ok" == "true" ]]; then
         jq -n --argjson db "$diff_bytes" \
-            '{ok:true, truncation_observed:false, diff_bytes:$db}' > "$result_path"
+            '{ok:true, forward_ok:true, reverse_ok:true,
+              truncation_observed:false, diff_bytes:$db}' > "$result_path"
         return 0
     fi
 
-    local _stderr_first
-    _stderr_first="$(head -n 1 "$_stderr_file" 2>/dev/null || true)"
-    rm -f "$_stderr_file"
-
-    # ── (f) Classification: rc FIRST, then sub-switch on stderr (#529) ─────
-    # Pre-#529 collapsed all rc>1 into reason=tool_unavailable, which masked
-    # rc=128 "error: corrupt patch" (parser rejected payload) as if git were
-    # missing. Distinct branches matter for triage and downstream policy:
-    #   - corrupt_format → patch shape problem, retry path is regenerate diff
-    #   - tool_state     → env defect (broken index / unreachable HEAD)
-    #   - tool_unavailable → git binary missing or rc=127 (PATH/sandbox)
-    #   - other          → unknown rc surfaced verbatim
-    # See ADR-018 §Pattern 2 "corrupt-diff gate" amendment.
+    # ── (f) Classification: rc FIRST, then sub-switch on stderr (#529/#530) ──
+    # #530: hunk_mismatch overrides rc-based classification — structural
+    # truncation is detectable before git apply even runs.
     local _reason="" _branch="" _emit_event="build.apply_check.failed"
 
-    if [[ $_check_rc -eq 128 ]]; then
-        # B9 must precede B10: corrupt-patch errors can be followed by a
-        # `fatal:` line later in stderr. Anchor on the first line only.
+    if [[ "$_hunk_mismatch" == "true" ]]; then
+        _reason="corrupt_format"; _branch="corrupt_format"
+    elif [[ $_check_rc -eq 128 ]]; then
         if [[ "$_stderr_first" =~ ^error:[[:space:]]+(corrupt[[:space:]]+patch|patch[[:space:]]+fragment|cannot[[:space:]]+apply[[:space:]]+binary[[:space:]]+patch) ]]; then
             _reason="corrupt_format"; _branch="corrupt_format"
         elif [[ "$_stderr_first" =~ ^fatal: ]]; then
@@ -624,7 +829,6 @@ _build_apply_check() {
         elif [[ "$_stderr_first" =~ (no[[:space:]]+such[[:space:]]+file|does[[:space:]]+not[[:space:]]+exist|new[[:space:]]+file[[:space:]].+exists[[:space:]]+in[[:space:]]+working[[:space:]]+dir) ]]; then
             _reason="missing_target"; _branch="missing_target"
         elif [[ "$_stderr_first" =~ whitespace ]]; then
-            # Whitespace warning on rc=1 keeps prior behavior (today: ok=false).
             _reason="whitespace"; _branch="ws_warn"
         elif [[ "$_stderr_first" =~ (patch[[:space:]]+does[[:space:]]+not[[:space:]]+apply|does[[:space:]]+not[[:space:]]+match) ]]; then
             _reason="context"; _branch="context"
@@ -632,25 +836,29 @@ _build_apply_check() {
             _reason="context"; _branch="context"
         fi
     else
-        # rc > 1, rc != 128, rc != 127  → catch-all "other" (capture rc).
         _reason="other"; _branch="other"
     fi
 
-    # Emit with classifier_branch + git_apply_rc on every failure path so
-    # triage can pivot off the event payload alone.
     emit_event "$_emit_event" "plugin=build" \
         "reason=$_reason" \
         "apply_check.classifier_branch=$_branch" \
         "git_apply_rc=$_check_rc" \
         "stderr_first_line=$_stderr_first" \
-        "diff_bytes=$diff_bytes" >/dev/null 2>&1 || true
+        "diff_bytes=$diff_bytes" \
+        "forward_ok=$_fwd_ok" "reverse_ok=$_rev_ok" >/dev/null 2>&1 || true
     jq -n --argjson db "$diff_bytes" \
           --arg s "$_stderr_first" \
           --arg r "$_reason" \
           --arg b "$_branch" \
           --argjson rc "$_check_rc" \
+          --argjson fok "$_fwd_ok" --argjson rok "$_rev_ok" \
+          --argjson trunc "$_truncation" --arg hunk "$_hunk_reason" \
         '{ok:false, reason:$r, classifier_branch:$b, stderr_first_line:$s,
-          truncation_observed:false, diff_bytes:$db, git_apply_rc:$rc}' > "$result_path"
+          forward_ok:$fok, reverse_ok:$rok,
+          truncation_observed:$trunc,
+          diff_bytes:$db, git_apply_rc:$rc}
+         + (if ($hunk|length) > 0 then {hunk_mismatch_detail:$hunk} else {} end)' \
+        > "$result_path"
     return 1
 }
 
