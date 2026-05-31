@@ -765,3 +765,15 @@ via their own parser (`extract_first_json_object` — see ADR-018 Pattern 1).
 The new `extract_json_and_surrounding_prose` helper in
 `scripts/lib/helpers.sh` powers the split; `extract_first_json_object`
 itself is unchanged for back-compat with the plan plugin's schema check.
+
+### v6 — Per-iter stage-io within outer cycles (#512, ADR-021)
+
+When a stage runs inside an outer cycle, the orchestrator exports
+`ZBUILD_CYCLE_ITER=<N>` and `ZBUILD_CYCLE_ID=<id>` around each dispatch.
+Stage banner headers gain an `iter=N/max` prefix so operators can attribute
+artifacts to the correct iteration. Per-iter stage-io artifacts are written
+to the existing per-stage location (`state/artifacts/<stage>/`) — the cycle
+overlay does NOT introduce a new artifact layout; downstream consumers
+continue to read the canonical path. Iteration history (verdicts,
+failure_count) lives in the per-cycle JSONL (`cycle-<id>-history.jsonl`)
+plus `cycle_iterations[X].iter[]` in pipeline-state.json.

@@ -495,6 +495,64 @@ setup_git_temp_repo() {
     printf '%s\n' "$repo"
 }
 
+# ── install_cycle_mock_stages (ADR-021, #512) ─────────────────────────────────
+# Generate plugins for a cycle whose per-stage verdict depends on ZBUILD_CYCLE_ITER.
+#
+# Usage:
+#   install_cycle_mock_stages <plugins_root> <cycle_id> <stage_id> <iter1:iter2:...>
+#
+# Each stage emits the verdict declared at index (iter-1). Trailing iters reuse
+# the last declared verdict. The plugin also writes the primary artifact to
+# state/artifacts/<stage>/primary.txt so feedback wiring has something to copy.
+install_cycle_mock_stages() {
+    # shellcheck disable=SC2034
+    local plugins_root="$1" cycle_id="$2" stage_id="$3" verdicts="$4"
+    local dir="$plugins_root/agent/$stage_id"
+    mkdir -p "$dir"
+    local fn="${stage_id//-/_}_run"
+    cat > "$dir/manifest.yaml" <<EOF
+id: $stage_id
+name: Cycle Mock $stage_id
+kind: agent
+version: 0.0.1
+hooks:
+  run: $fn
+provides:
+  artifact_type: primary.txt
+outputs:
+  - path: $stage_id/primary.txt
+requires:
+  core:
+    - redaction
+EOF
+    cat > "$dir/plugin.sh" <<PLUGIN
+${fn}() {
+    local stage_id="\$1" state_file="\$2"
+    local iter="\${ZBUILD_CYCLE_ITER:-1}"
+    local verdicts="$verdicts"
+    local IFS_save="\$IFS"; IFS=':'
+    # shellcheck disable=SC2206
+    local -a vs=(\$verdicts)
+    IFS="\$IFS_save"
+    local idx=\$(( iter - 1 ))
+    [[ \$idx -ge \${#vs[@]} ]] && idx=\$(( \${#vs[@]} - 1 ))
+    local v="\${vs[\$idx]:-pass}"
+    local sdir="\${ZBUILD_STATE_DIR:-\$HOME/.zbuild/state}"
+    mkdir -p "\$sdir/artifacts/$stage_id"
+    printf 'iter=%s verdict=%s\n' "\$iter" "\$v" > "\$sdir/artifacts/$stage_id/primary.txt"
+    # Persist verdict where runner_read_stage_verdict can find it. The simplest
+    # path: write to state via jq inline (we lack the verdict.sh API surface in
+    # this stub). cycle_dispatch_stage reads _CYCLE_DISPATCH_VERDICT, so set it
+    # via the state file mechanism the orchestrator scrapes.
+    export _CYCLE_DISPATCH_VERDICT="\$v"
+    export _CYCLE_DISPATCH_STATUS="complete"
+    [[ "\$v" == "fail" ]] && return 1
+    return 0
+}
+PLUGIN
+    printf '%s\n' "$dir"
+}
+
 # Assert no direct anthropic API calls were made (chokepoint enforcement)
 mock_anthropic_api() {
   local mock_dir="${ZBUILD_TEST_TMP:-/tmp}/mocks/$$"

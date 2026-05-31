@@ -1,0 +1,22 @@
+id: cycle-feedback
+name: Cycle with feedback wiring
+defaults:
+  strategy: fanout
+stages:
+  - id: build
+    roles: [builder]
+  - id: test
+    roles: [tester]
+cycles:
+  - id: build-test
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 4
+    on_max: continue
+    feedback:
+      - from: { stage: test, output: primary.txt }
+        to:   { stage: build, input: prior_test_result, required: false }

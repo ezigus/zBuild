@@ -24,6 +24,12 @@ readonly _ZBUILD_CANONICAL_STAGES=(
 # Module-level state — populated by load_template
 _TPL_DEFAULT_STRATEGY="fanout"
 _TPL_STAGES=()
+# ADR-021 (#512): list of dispatch units in template order. Each entry is
+# "stage:<id>" or "cycle:<id>". Empty `cycles:` block → every unit is "stage:<id>"
+# (backwards-compat — runner behavior identical to today).
+_TPL_DISPATCH_UNITS=()
+# ADR-021: list of cycle ids declared in template (in declaration order).
+_TPL_CYCLES=()
 
 # ADR-015 v1 (#438): recognized io.destination tokens. Unknown tokens fail at
 # template load time with an actionable error listing the valid set.
@@ -146,6 +152,332 @@ load_template() {
                "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" \
                "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
     done <<< "$stage_data"
+
+    # ADR-021 (#512): parse `cycles:` overlay (optional). Absent → empty cycle
+    # list → linear dispatch (units = stage:<id> for every stage).
+    _TPL_CYCLES=()
+    _tpl_parse_cycles "$template_file" || return 1
+    _tpl_validate_cycles || return 1
+    _tpl_build_dispatch_units || return 1
+}
+
+# ─── _tpl_parse_cycles — parse `cycles:` overlay (ADR-021) ───────────────────
+# Side effects: appends to _TPL_CYCLES[], populates per-cycle name-mangled vars:
+#   _TPL_CYCLE_STAGES_<id>          (CSV stage ids; declaration order)
+#   _TPL_CYCLE_MAX_<id>             (integer)
+#   _TPL_CYCLE_ON_MAX_<id>          (continue|halt)
+#   _TPL_CYCLE_UNTIL_STAGE_<id>     (stage id)
+#   _TPL_CYCLE_UNTIL_FIELD_<id>     (verdict|status)
+#   _TPL_CYCLE_UNTIL_OP_<id>        (eq|ne)
+#   _TPL_CYCLE_UNTIL_VALUE_<id>     (string)
+#   _TPL_CYCLE_PLATEAU_W_<id>       (integer, default 3)
+#   _TPL_CYCLE_DIVERGENCE_W_<id>    (integer, default 2)
+#   _TPL_CYCLE_FEEDBACK_<id>        (newline-delimited "from:out|to:field:required")
+_tpl_parse_cycles() {
+    local file="$1"
+    # Awk-based parser. Schema is narrow on purpose (no full YAML); we control
+    # the surface area. Output: per-cycle pipe-delimited blob, one line per
+    # cycle, followed by zero or more feedback rows prefixed by `FB|<cycle>|`.
+    local parsed
+    parsed="$(awk '
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    function strip_inline_list(line,    s) {
+        s = line
+        sub(/^[^[]*\[/, "", s)
+        sub(/\].*$/, "", s)
+        gsub(/[[:space:]]/, "", s)
+        return s
+    }
+    /^cycles:/ { in_cycles = 1; next }
+    in_cycles && /^[a-zA-Z_]/ { in_cycles = 0 }
+    in_cycles && /^[[:space:]]*-[[:space:]]*id:/ {
+        if (cid != "") {
+            print "C|" cid "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg
+            for (k = 1; k <= nfb; k++) print "FB|" cid "|" fb[k]
+        }
+        cid = trim($0); sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", cid)
+        cstages = ""; cmax = ""; conmax = ""; custage = ""; cufield = ""
+        cuop = ""; cuvalue = ""; cplateau = ""; cdiverg = ""
+        nfb = 0
+        in_stages_list = 0; in_until = 0; in_plateau = 0; in_diverg = 0
+        in_feedback = 0; in_fb_item = 0
+        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+        next
+    }
+    # `stages:` (inline list or multi-line) — under a cycle entry
+    cid != "" && /^[[:space:]]+stages:/ {
+        in_until = 0; in_plateau = 0; in_diverg = 0; in_feedback = 0
+        if ($0 ~ /\[/) {
+            cstages = strip_inline_list($0)
+            in_stages_list = 0
+        } else {
+            in_stages_list = 1
+        }
+        next
+    }
+    in_stages_list && /^[[:space:]]+-[[:space:]]/ {
+        item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
+        if (item != "") cstages = (cstages == "" ? item : cstages "," item)
+        next
+    }
+    in_stages_list && /^[[:space:]]+[a-z_]+:/ { in_stages_list = 0 }
+    cid != "" && /^[[:space:]]+max_iterations:/ {
+        v = $0; sub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); cmax = trim(v); next
+    }
+    cid != "" && /^[[:space:]]+on_max:/ {
+        v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); conmax = trim(v); next
+    }
+    cid != "" && /^[[:space:]]+until:[[:space:]]*$/ {
+        in_until = 1; in_plateau = 0; in_diverg = 0; in_feedback = 0; next
+    }
+    in_until && /^[[:space:]]+stage:/ {
+        v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); custage = trim(v); next
+    }
+    in_until && /^[[:space:]]+field:/ {
+        v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cufield = trim(v); next
+    }
+    in_until && /^[[:space:]]+op:/ {
+        v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cuop = trim(v); next
+    }
+    in_until && /^[[:space:]]+value:/ {
+        v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cuvalue = trim(v); next
+    }
+    cid != "" && /^[[:space:]]+plateau:[[:space:]]*$/ { in_plateau = 1; in_until = 0; in_diverg = 0; next }
+    in_plateau && /^[[:space:]]+window:/ {
+        v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cplateau = trim(v); next
+    }
+    cid != "" && /^[[:space:]]+divergence:[[:space:]]*$/ { in_diverg = 1; in_until = 0; in_plateau = 0; next }
+    in_diverg && /^[[:space:]]+window:/ {
+        v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cdiverg = trim(v); next
+    }
+    cid != "" && /^[[:space:]]+feedback:[[:space:]]*$/ { in_feedback = 1; in_until = 0; in_plateau = 0; in_diverg = 0; next }
+    in_feedback && /^[[:space:]]+-[[:space:]]+from:/ {
+        if (fb_from_stage != "" || fb_to_stage != "") {
+            nfb++
+            fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
+        }
+        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+        in_fb_item = 1
+        # Inline parse of "- from: { stage: X, output: Y }" if present on this line.
+        line = $0
+        sub(/^[[:space:]]+-[[:space:]]+from:[[:space:]]*\{?/, "", line)
+        sub(/\}.*$/, "", line)
+        n = split(line, kv, /,[[:space:]]*/)
+        for (i = 1; i <= n; i++) {
+            split(kv[i], pair, /:[[:space:]]*/)
+            key = trim(pair[1]); val = trim(pair[2])
+            if (key == "stage")  fb_from_stage = val
+            if (key == "output") fb_from_output = val
+        }
+        next
+    }
+    in_feedback && in_fb_item && /^[[:space:]]+from:/ {
+        line = $0; sub(/^[[:space:]]+from:[[:space:]]*\{?/, "", line); sub(/\}.*$/, "", line)
+        n = split(line, kv, /,[[:space:]]*/)
+        for (i = 1; i <= n; i++) {
+            split(kv[i], pair, /:[[:space:]]*/)
+            key = trim(pair[1]); val = trim(pair[2])
+            if (key == "stage")  fb_from_stage = val
+            if (key == "output") fb_from_output = val
+        }
+        next
+    }
+    in_feedback && in_fb_item && /^[[:space:]]+to:/ {
+        line = $0; sub(/^[[:space:]]+to:[[:space:]]*\{?/, "", line); sub(/\}.*$/, "", line)
+        n = split(line, kv, /,[[:space:]]*/)
+        for (i = 1; i <= n; i++) {
+            split(kv[i], pair, /:[[:space:]]*/)
+            key = trim(pair[1]); val = trim(pair[2])
+            if (key == "stage")    fb_to_stage = val
+            if (key == "input")    fb_to_field = val
+            if (key == "required") fb_required = val
+        }
+        next
+    }
+    END {
+        if (cid != "") {
+            print "C|" cid "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg
+            if (fb_from_stage != "" || fb_to_stage != "") {
+                nfb++
+                fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
+            }
+            for (k = 1; k <= nfb; k++) print "FB|" cid "|" fb[k]
+        }
+    }
+    ' "$file" 2>/dev/null)"
+
+    [[ -z "$parsed" ]] && return 0  # no cycles block
+
+    local line tag cid rest
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        tag="${line%%|*}"; rest="${line#*|}"
+        if [[ "$tag" == "C" ]]; then
+            cid="${rest%%|*}"
+            local payload="${rest#*|}"
+            IFS='|' read -r cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg <<< "$payload"
+            _TPL_CYCLES+=("$cid")
+            local safe="${cid//-/_}"
+            printf -v "_TPL_CYCLE_STAGES_${safe}"        '%s' "$cstages"
+            printf -v "_TPL_CYCLE_MAX_${safe}"           '%s' "$cmax"
+            printf -v "_TPL_CYCLE_ON_MAX_${safe}"        '%s' "${conmax:-continue}"
+            printf -v "_TPL_CYCLE_UNTIL_STAGE_${safe}"   '%s' "$custage"
+            printf -v "_TPL_CYCLE_UNTIL_FIELD_${safe}"   '%s' "$cufield"
+            printf -v "_TPL_CYCLE_UNTIL_OP_${safe}"      '%s' "$cuop"
+            printf -v "_TPL_CYCLE_UNTIL_VALUE_${safe}"   '%s' "$cuvalue"
+            printf -v "_TPL_CYCLE_PLATEAU_W_${safe}"     '%s' "$cplateau"
+            printf -v "_TPL_CYCLE_DIVERGENCE_W_${safe}"  '%s' "$cdiverg"
+            export "_TPL_CYCLE_STAGES_${safe}" "_TPL_CYCLE_MAX_${safe}" \
+                   "_TPL_CYCLE_ON_MAX_${safe}" "_TPL_CYCLE_UNTIL_STAGE_${safe}" \
+                   "_TPL_CYCLE_UNTIL_FIELD_${safe}" "_TPL_CYCLE_UNTIL_OP_${safe}" \
+                   "_TPL_CYCLE_UNTIL_VALUE_${safe}" "_TPL_CYCLE_PLATEAU_W_${safe}" \
+                   "_TPL_CYCLE_DIVERGENCE_W_${safe}"
+        elif [[ "$tag" == "FB" ]]; then
+            cid="${rest%%|*}"
+            local fbrec="${rest#*|}"
+            local safe="${cid//-/_}"
+            local var="_TPL_CYCLE_FEEDBACK_${safe}"
+            local prev="${!var:-}"
+            if [[ -z "$prev" ]]; then
+                printf -v "$var" '%s' "$fbrec"
+            else
+                printf -v "$var" '%s\n%s' "$prev" "$fbrec"
+            fi
+            # shellcheck disable=SC2163
+            export "${var?}"
+        fi
+    done <<< "$parsed"
+    return 0
+}
+
+# ─── _tpl_validate_cycles — enforce ADR-021 invariants ───────────────────────
+# - stages[] is contiguous subsequence of canonical (_TPL_STAGES) order
+# - max_iterations integer 1..10 (REQUIRED)
+# - until.stage MUST be in cycle.stages
+# - cycles MUST NOT overlap each other
+_tpl_validate_cycles() {
+    [[ ${#_TPL_CYCLES[@]} -eq 0 ]] && return 0
+    local cid prev_end=-1
+    local -A seen_stage=()
+    for cid in "${_TPL_CYCLES[@]}"; do
+        local safe="${cid//-/_}"
+        local stages_var="_TPL_CYCLE_STAGES_${safe}"
+        local stages_csv="${!stages_var:-}"
+        if [[ -z "$stages_csv" ]]; then
+            error "cycle '$cid': no stages declared"
+            return 1
+        fi
+        local IFS_save="$IFS"; IFS=','
+        # shellcheck disable=SC2206
+        local -a cs=($stages_csv)
+        IFS="$IFS_save"
+
+        # Each stage must be a known _TPL_STAGES entry; positions must be
+        # contiguous-ascending (no gaps, no out-of-order).
+        local first_pos=-1 last_pos=-1
+        local s
+        for s in "${cs[@]}"; do
+            local pos=-1 i
+            for i in "${!_TPL_STAGES[@]}"; do
+                if [[ "${_TPL_STAGES[$i]}" == "$s" ]]; then
+                    pos=$i
+                    break
+                fi
+            done
+            if [[ $pos -eq -1 ]]; then
+                error "cycle '$cid': stage '$s' not in template stages[]"
+                return 1
+            fi
+            if [[ -n "${seen_stage[$s]:-}" ]]; then
+                error "cycle '$cid': stage '$s' is in another cycle (cycles must not overlap)"
+                return 1
+            fi
+            if [[ $first_pos -eq -1 ]]; then
+                first_pos=$pos
+            else
+                if [[ $pos -ne $((last_pos + 1)) ]]; then
+                    error "cycle '$cid': stages must be a contiguous subsequence of template stages[]"
+                    return 1
+                fi
+            fi
+            last_pos=$pos
+            seen_stage[$s]=1
+        done
+
+        if [[ $first_pos -le $prev_end ]]; then
+            error "cycle '$cid': overlaps a previously declared cycle"
+            return 1
+        fi
+        prev_end=$last_pos
+
+        # max_iterations required + bounded
+        local max_var="_TPL_CYCLE_MAX_${safe}"
+        local max="${!max_var:-}"
+        if [[ -z "$max" ]] || ! [[ "$max" =~ ^[0-9]+$ ]] || [[ "$max" -lt 1 ]] || [[ "$max" -gt 10 ]]; then
+            error "cycle '$cid': max_iterations required integer in 1..10, got: ${max:-<unset>}"
+            return 1
+        fi
+
+        # until.stage must be in cs[]
+        local us_var="_TPL_CYCLE_UNTIL_STAGE_${safe}"
+        local us="${!us_var:-}"
+        if [[ -z "$us" ]]; then
+            error "cycle '$cid': until.stage required"
+            return 1
+        fi
+        local found=0
+        for s in "${cs[@]}"; do
+            [[ "$s" == "$us" ]] && found=1 && break
+        done
+        if [[ $found -ne 1 ]]; then
+            error "cycle '$cid': until.stage '$us' is not in cycle stages (${cs[*]})"
+            return 1
+        fi
+    done
+    return 0
+}
+
+# ─── _tpl_build_dispatch_units — assemble runner dispatch sequence ───────────
+# Walks _TPL_STAGES[] in order. Each stage belongs to at most one cycle
+# (validated above). On entering a cycle's first stage, emit one "cycle:<id>"
+# unit covering the whole cycle. All other stages become "stage:<id>".
+_tpl_build_dispatch_units() {
+    _TPL_DISPATCH_UNITS=()
+    # Map: stage → cycle_id (if any)
+    local -A stage_to_cycle=()
+    local -A cycle_first_stage=()
+    local cid
+    for cid in "${_TPL_CYCLES[@]}"; do
+        local safe="${cid//-/_}"
+        local stages_var="_TPL_CYCLE_STAGES_${safe}"
+        local stages_csv="${!stages_var:-}"
+        local IFS_save="$IFS"; IFS=','
+        # shellcheck disable=SC2206
+        local -a cs=($stages_csv)
+        IFS="$IFS_save"
+        local idx=0 s
+        for s in "${cs[@]}"; do
+            stage_to_cycle[$s]="$cid"
+            if [[ $idx -eq 0 ]]; then
+                cycle_first_stage[$cid]="$s"
+            fi
+            idx=$((idx + 1))
+        done
+    done
+
+    local s
+    for s in "${_TPL_STAGES[@]}"; do
+        local in_cycle="${stage_to_cycle[$s]:-}"
+        if [[ -n "$in_cycle" ]]; then
+            if [[ "${cycle_first_stage[$in_cycle]}" == "$s" ]]; then
+                _TPL_DISPATCH_UNITS+=("cycle:$in_cycle")
+            fi
+            # subsequent cycle stages are absorbed under the cycle unit
+        else
+            _TPL_DISPATCH_UNITS+=("stage:$s")
+        fi
+    done
+    return 0
 }
 
 # ADR-015 v3 (#440): validate tail_lines (integer 1..10000) and redact (true|false)

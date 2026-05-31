@@ -594,3 +594,25 @@ Banner shape on iter ≥ 2:
 - `tests/integration/stage-io-ordering-invariant-test.sh` (#491 keystone) remains content-agnostic and continues to pass — the begin-before-LLM, end-after-LLM ordering is unchanged.
 
 **Compatibility:** `--persist-input` is a NEW optional flag on `stage_io_begin`. Callers that do not pass it (`route_to_model`, plan/review/security-lens via `capture_stage_io`) are byte-identical to v5 — divergence is opt-in, loop-caller-only.
+
+## Amendment — Inner loop (Pattern 2) vs outer cycles (issue #512, ADR-021)
+
+ADR-021 introduces an **outer cycle** that iterates a contiguous group of
+canonical stages (e.g., `build → test`). Pattern 2 in this ADR
+(`route_to_model_loop`) is the **inner loop** that iterates a single
+stage's LLM calls. The two are orthogonal and compose:
+
+| Layer | Concern | Termination | Owner |
+|---|---|---|---|
+| Outer cycle (ADR-021) | Multiple stages converging together | `until:` predicate on stage verdict, `max_iterations`, plateau, divergence | `cycle_orchestrator_run` |
+| Inner loop (ADR-018 Pattern 2) | One LLM agent iterating its own edits | `LOOP_COMPLETE` sentinel, `max-iterations` cap, signal | `route_to_model_loop` |
+
+Shared convergence vocabulary:
+- Both emit `*.complete` events at terminal state.
+- Both have a hardcoded ceiling (`_CYCLE_ABSOLUTE_MAX=10` outer; 50 inner).
+- Both install INT/TERM traps but NEVER own EXIT (runner does).
+
+When an outer cycle dispatches a build stage that internally uses Pattern 2,
+the build plugin's inner loop runs to completion, returns rc + verdict, and
+the outer cycle records that as iter N's outcome. The two layers do not
+interfere with each other's state.

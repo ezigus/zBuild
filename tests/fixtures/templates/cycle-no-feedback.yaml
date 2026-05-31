@@ -1,0 +1,17 @@
+id: cycle-no-feedback
+name: Cycle without feedback wiring
+defaults:
+  strategy: fanout
+stages:
+  - id: build
+    roles: [builder]
+cycles:
+  - id: build-only
+    stages: [build]
+    until:
+      stage: build
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 2
+    on_max: continue
