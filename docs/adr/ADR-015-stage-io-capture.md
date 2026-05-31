@@ -739,6 +739,24 @@ cases), `tests/unit/core-pipeline-runner-stage-banner-goldens-test.sh`
 plus integration coverage in
 `tests/integration/core-pipeline-runner-test.sh` (I1/I1b/I2).
 
+**Heading prefix removal (issue #523 — amendment).** The literal `stage-io:`
+label in the banner heading (begin/end input+output header lines) is removed.
+New shape: `══ <stage> [<kind>] seq=N <input|output> [STATUS DUR] ══`.
+The bracketed `[kind]` is retained as load-bearing — it selects the renderer
+branch in `_stage_io_to_stdout` (llm | command | computed) and is asserted by
+integration tests under `tests/integration/build-*-banner-test.sh`. The
+closing trailer `── end stage-io: <stage> <icon> ──` is unchanged: the
+trailer's prefix bounds the captured section and aids scrollback search.
+Goldens regenerated; v4 substring invariant updated. The gh_comment renderer
+(`_stage_io_to_stdout`) applies the same prefix removal to preserve banner/
+comment schema symmetry.
+
+**Stage-divider blank-line spacing (issue #523 — amendment).** A single blank
+line is emitted at the END of every stage divider (combined with the existing
+leading `\n` produces two stacked blanks between consecutive stages). Cycle
+sub-dividers (ADR-015 §v6 / ADR-021) do NOT add blank lines to preserve
+vertical density across high-iter cycles.
+
 ### v5.1 — Verdict-driven stage indicator glyphs (#507)
 
 The `▸ Running stage:` / `✓ Stage <name> complete` lines emitted by the

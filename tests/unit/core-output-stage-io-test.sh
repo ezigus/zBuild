@@ -134,7 +134,7 @@ out11="$(capture_stage_io --stage plan --kind llm --input "i" --output "o" 2>&1)
 rc=$?
 set -e
 assert_eq "T11 stdout dest rc=0" "0" "$rc"
-assert_contains "T11 stdout dest emits stage-io header" "$out11" "stage-io: plan"
+assert_contains "T11 stdout dest emits stage header (#523: 'stage-io:' prefix dropped)" "$out11" "end stage-io: plan"
 
 # ─── T12: gh_comment destination silent skip when ZBUILD_ISSUE unset ─────────
 _MOCK_DESTS="gh_comment"
@@ -250,7 +250,7 @@ template_stage_io_redact() { printf '%s' "$_MOCK_REDACT"; }
 _MOCK_TAIL=""
 rec35="$(_t440_make_record plan llm "prompt text" "response text" "" "2400")"
 out35="$(_stage_io_to_stdout "$rec35" 2>/dev/null)"
-assert_contains_regex "T35 stdout llm has header line" "$out35" "stage-io: plan \[llm\]"
+assert_contains_regex "T35 stdout llm has header line (#523)" "$out35" "── plan \[llm\]"
 assert_contains "T35 stdout llm has seq=1" "$out35" "seq=1"
 assert_contains "T35 stdout llm has duration 2.4s" "$out35" "2.4s"
 assert_contains "T35 stdout llm has input section" "$out35" "── input ──"
@@ -721,7 +721,7 @@ if [[ -z "$t51_stdout" ]]; then
 else
     assert_fail "T51 stdout destination does NOT write to caller stdout" "got on stdout: ${t51_stdout:0:80}"
 fi
-assert_contains "T51 stdout destination DOES write banner to stderr" "$t51_stderr" "stage-io: plan"
+assert_contains "T51 stdout destination DOES write banner to stderr (#523)" "$t51_stderr" "end stage-io: plan"
 
 # ─── T52: simulate the real route_to_model pattern — verify $() purity ──────
 # Mimic exactly what route.sh:78-81 does:

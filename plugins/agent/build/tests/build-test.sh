@@ -504,7 +504,7 @@ set -e
 
 assert_exit_code "T13 inner run rc=0" "0" "$rc_t13"
 banner_t13="$(cat "$BANNER_T13" 2>/dev/null || true)"
-assert_contains "computed banner emitted for build stage" "$banner_t13" "stage-io: build [computed]"
+assert_contains "computed banner emitted for build stage (#523)" "$banner_t13" "build [computed]"
 assert_contains "computed banner shows numstat input literal" "$banner_t13" "git diff HEAD --numstat"
 assert_contains "computed banner shows the changed file" "$banner_t13" "build-test-dummy.txt"
 assert_contains "computed banner shows total footer" "$banner_t13" "total: 1 files"

@@ -849,7 +849,8 @@ _stage_io_heavy_dashes() {
 # wrapped in LIGHT_BLUE when colored. Bookends and the right-pad run use the
 # same glyph for visual consistency. Each ═ run is wrapped individually so
 # the COLOR escape goes around the divider, never inside the asserted prefix
-# substring ("stage-io: <stage> [...] seq=N <input|output>"). The end-trailer
+# substring ("<stage> [...] seq=N <input|output>"; #523 dropped the "stage-io:"
+# prefix that previously preceded the stage name). The end-trailer
 # (── end stage-io ──) keeps the lighter ─ via a separate emitter — see
 # _stage_io_stdout_end's printf.
 #
@@ -927,9 +928,13 @@ _stage_io_stdout_begin() {
     fi
     local _ts _prefix_v _prefix_a
     _ts="$(_stage_io_now_short)"
-    _prefix_v="stage-io: ${stage} [${kind}] seq=${seq} input"
-    # Colored prefix: dim "stage-io:" label, colored bold stage name, plain rest.
-    _prefix_a="${_dim}stage-io:${_reset} ${_color}${_bold}${stage}${_reset} [${kind}] seq=${seq} input"
+    # #523: drop literal "stage-io:" label from the heading. The bracketed
+    # [kind] token remains — it is load-bearing (renderer dispatch + integration
+    # test grep). End-trailer keeps its "end stage-io:" prefix (closer aids
+    # scrollback search; minimizes golden churn).
+    _prefix_v="${stage} [${kind}] seq=${seq} input"
+    # Colored prefix: colored bold stage name, plain rest.
+    _prefix_a="${_color}${_bold}${stage}${_reset} [${kind}] seq=${seq} input"
 
     # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
     # ${ZBUILD_STAGE_IO_FD:-2}. The caller-level redirect in stage_io_begin is
@@ -1015,8 +1020,10 @@ _stage_io_stdout_end() {
     else
         _end_color="$_red"
     fi
-    _prefix_v="stage-io: ${stage} [${kind}] seq=${seq} output ${status} ${dur}"
-    _prefix_a="${_dim}stage-io:${_reset} ${_color}${_bold}${stage}${_reset} [${kind}] seq=${seq} output ${_status_color}${status}${_reset} ${dur}"
+    # #523: drop literal "stage-io:" label from the heading (see input-banner
+    # comment above). End-trailer prefix retained at L1049.
+    _prefix_v="${stage} [${kind}] seq=${seq} output ${status} ${dur}"
+    _prefix_a="${_color}${_bold}${stage}${_reset} [${kind}] seq=${seq} output ${_status_color}${status}${_reset} ${dur}"
 
     # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
     # ${ZBUILD_STAGE_IO_FD:-2}. Mirrors _stage_io_stdout_begin; see comment there.
@@ -1074,7 +1081,10 @@ _stage_io_to_stdout() {
     # Header
     local status_field=""
     [[ -n "$status" ]] && status_field=" ${status}"
-    printf '── stage-io: %s [%s] seq=%s%s %s ──\n' "$stage" "$kind" "$seq" "$status_field" "$dur"
+    # #523: drop "stage-io:" prefix from gh_comment renderer header for
+    # banner/comment schema symmetry (the bracketed [kind] token + stage are
+    # the load-bearing pieces; closer trailer at L1144 unchanged).
+    printf '── %s [%s] seq=%s%s %s ──\n' "$stage" "$kind" "$seq" "$status_field" "$dur"
 
     # Sanitize input/output: strip ANSI/CSI escape sequences before they
     # reach the operator's terminal. Captured LLM responses and command

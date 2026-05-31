@@ -335,6 +335,10 @@ _render_stage_divider() {
             printf '\n'
             printf '%b%s%b%s%b%b%s%b\n' "$color" "$bar" "${BOLD:-}" "$label" "${RESET:-}" "$color" "$bar" "${RESET:-}"
             printf '\n'
+            # #523: trailing blank line — combined with the existing leading
+            # \n above, produces two stacked blanks between consecutive stages.
+            # Cycle sub-dividers (ADR-015 §v6) intentionally do NOT add this.
+            printf '\n'
         } >&2
         return 0
     fi
@@ -349,6 +353,10 @@ _render_stage_divider() {
         printf '%b%s%b%s%b%b%s%b %s\n' \
             "$color" "$lbar" "${BOLD:-}" "$label" "${RESET:-}" \
             "$color" "$rbar" "${RESET:-}" "$ts"
+        printf '\n'
+        # #523: trailing blank line — combined with the leading \n above,
+        # produces two stacked blanks between consecutive stages. Cycle
+        # sub-dividers (ADR-015 §v6) intentionally do NOT add this.
         printf '\n'
     } >&2
 }
