@@ -242,8 +242,12 @@ _build_stage_run_inner() {
     # file is fine (we never load it into bash), but the stats parsers below
     # would be misled. Flag explicitly so the gate fails-CLOSED rather than
     # producing misleading numstat output.
+    # #549: use `perl -0777 -ne 'exit(!/\x00/)'` instead of `grep -qP`.
+    # macOS BSD grep does not support `-P`; `grep -qP '\x00' 2>/dev/null` would
+    # exit 2 silently → fail-OPEN on every diff (never flag binary). Perl is
+    # always available on macOS + ubuntu CI runners.
     if [[ -s "$output_diff_patch" ]] && \
-       LC_ALL=C grep -qP '\x00' "$output_diff_patch" 2>/dev/null; then
+       LC_ALL=C perl -0777 -ne 'exit(!/\x00/)' "$output_diff_patch" 2>/dev/null; then
         emit_event "build.diff.binary_truncation_observed" "plugin=build" \
             "path=$output_diff_patch" >/dev/null 2>&1 || true
     fi
