@@ -128,6 +128,38 @@ AND `failed == 0` AND `exit_code == 0`, emit `verdict=error` (not `pass`).
 A passing test suite that parses zero passes is indistinguishable from a
 no-op `test_cmd`; we fail closed on both.
 
+### 7. Verdict-source precedence with test_assessment (#572, ADR-022)
+
+When the `test_assessment` stage (ADR-022) is present in the template, the
+review plugin's `_review_derive_test_status` helper MUST prefer
+`test_assessment.verdict` over `test.verdict` as the coercion source. The
+mapping table is unchanged:
+
+| Source verdict (test_assessment OR test) | `test_status` |
+| ----------------------------------------- | ------------- |
+| `pass`                                    | `passed`      |
+| `fail`                                    | `failed`      |
+| `error`                                   | `failed`      |
+| `inconclusive` (test_assessment only)     | `unknown`     |
+| missing / other                           | `unknown`     |
+
+Resolution order: `test_assessment.json.verdict` > `test-results.json.verdict`
+> `unknown`. Falls back to `test.verdict` for legacy templates without the
+assessment stage so the ADR-019 contract remains backward compatible. The
+coercion banner gains a `source=test_assessment|test` field for triage. A
+new event `review.test_assessment.consumed source=test_assessment` is
+emitted when assessment is the chosen source. Fail-closed behavior is
+unchanged: `unknown` and `failed` both coerce `approve → request_changes`.
+
+`inconclusive` (the LLM signalled it could not judge) is the ONLY non-blocking
+non-pass value emitted by `test_assessment`; review treats it as `unknown`
+(fail-closed) and the build/test cycle treats it as `fail` (keep iterating)
+per ADR-021's #572 amendment.
+
+The per-stage verdict source table (#507 amendment, below) gains a row:
+
+| test_assessment | test-assessment.json | `.verdict` (assessed by LLM; pass\|fail\|error\|inconclusive) |
+
 ## Consequences
 
 ### Positive

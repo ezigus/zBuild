@@ -5,7 +5,7 @@
 
 ## Context
 
-The pipeline stage sequence `intake → plan → design → build → test → review →
+The pipeline stage sequence `intake → plan → design → build → test → test_assessment → review →
 compound_quality → pr → deploy → validate → monitor` is referenced throughout
 the codebase and in ARCHITECTURE.md §3, but no ADR has formally defined it.
 The informal list has two problems:
@@ -27,10 +27,10 @@ not require them to be implemented.
 
 ### Stage sequence
 
-The canonical pipeline sequence is **exactly 11 stages in this order**:
+The canonical pipeline sequence is **exactly 12 stages in this order**:
 
 ```
-intake → plan → design → build → test → review →
+intake → plan → design → build → test → test_assessment → review →
 compound_quality → pr → deploy → validate → monitor
 ```
 
@@ -65,6 +65,7 @@ Each stage is defined by:
 | design | agent | T3 | init, run, finalize | design.md | true |
 | build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
+| test_assessment | agent | T2 | init, run, finalize, cleanup | test-assessment.json | true |
 | review | agent | T2 | init, run, finalize | review.json | true |
 | compound_quality | orchestrator | T3 | init, run, finalize, cleanup | compound-quality-result.json | true |
 | pr | tool | T0 | init, run, finalize | pr-url.txt | true |
@@ -317,3 +318,9 @@ linear dispatch is byte-identical to today (regression-locked in
 - [ADR-012](ADR-012-test-tiering-and-ci-gating.md) — test tier definitions (unit/integration/e2e)
 - `legacy/scripts/sw-pipeline-resume-test.sh` — canonical stage list in legacy (12 stages including `merge`; `merge` is implicit in the `pr` stage in this ADR)
 - `legacy/scripts/lib/pipeline-stages-*.sh` — stage implementations (reference only)
+
+## Amendment 2026-05-31 (#572) — `test_assessment` inserted between `test` and `review`
+
+Per ADR-022, the canonical stage sequence is extended from 11 to 12 stages by inserting `test_assessment` (Pattern 1 agent stage, tier T2) between `test` and `review`. The new stage is `blocking: true`. Templates that don't need LLM-interpreted test verdicts may continue to omit it (subtractive composition rule unchanged). Existing templates that omit `test_assessment` keep ADR-019's fallback semantics where review reads `test.verdict` directly.
+
+References: ADR-018 (Pattern 1), ADR-019 §7 (verdict precedence), ADR-020 §LLM-interpreted verdict stages, ADR-021 §test_assessment until: source, ADR-022 (full record), #567 (impl), #572 (this amendment).
