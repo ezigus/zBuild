@@ -131,8 +131,12 @@ _cleanup_scan_state_files() {
                 ;;
         esac
         # Age check (skip if newer than cutoff).
+        # GNU stat first (Linux CI), then BSD (macOS dev). BSD stat -f doesn't
+        # clean-fail on Linux — it returns garbage with rc=0, so trying it first
+        # leaves non-numeric text in $mtime → arithmetic aborts under set -u.
+        # (Codex P2 on #577 + Coverage CI failure.)
         local mtime
-        mtime="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo "0")"
+        mtime="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "0")"
         [[ "$mtime" -gt "$cutoff" ]] && continue
         local age_d=$(( (now - mtime) / 86400 ))
         printf '%s\tstatus=%s;age=%sd\n' "$f" "$status" "$age_d"
