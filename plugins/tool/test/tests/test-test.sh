@@ -419,6 +419,71 @@ verdict11="$(_json_key "$OUT_JSON_11" '.verdict')"
 assert_eq "[subprocess] verdict=pass preserved" "pass" "$verdict11"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Test 12: #548 — temp dir is reset to HEAD before diff apply
+#
+# Scenario: the build agent has an uncommitted working-tree change in the repo
+# fixture. The diff.patch was generated against a clean HEAD, so the patch
+# applies cleanly only when the temp copy is at HEAD. Without the checkout+clean
+# reset added by #548, rsync would copy the dirty working tree and `git apply
+# --check` would fail with "patch does not apply", emitting diff_apply_failed.
+# ═══════════════════════════════════════════════════════════════════════════════
+print_test_section "12. #548: temp dir reset to HEAD before diff apply"
+
+# Create a file at HEAD in the repo fixture, then make an uncommitted change.
+REPO_12="$TEST_TEMP_DIR/repo-12"
+mkdir -p "$REPO_12"
+git -C "$REPO_12" init -q
+git -C "$REPO_12" -c user.name="zbuild-test" -c user.email="test@zbuild" \
+    commit --allow-empty -m "init" -q
+
+# Add a tracked file at HEAD.
+printf 'line1\n' > "$REPO_12/tracked.txt"
+git -C "$REPO_12" add tracked.txt
+git -C "$REPO_12" -c user.name="zbuild-test" -c user.email="test@zbuild" \
+    commit -m "add tracked.txt" -q
+
+# Dirty the working tree: modify the tracked file WITHOUT committing.
+printf 'line1\nline2-dirty\n' > "$REPO_12/tracked.txt"
+
+# Build a patch that applies cleanly against HEAD (adds a comment line).
+PATCH_12="$ARTIFACT_DIR/diff-12.patch"
+cat > "$PATCH_12" <<'PATCHEOF'
+diff --git a/tracked.txt b/tracked.txt
+index 84d55c5..abc1234 100644
+--- a/tracked.txt
++++ b/tracked.txt
+@@ -1 +1,2 @@
+ line1
++# added by patch
+PATCHEOF
+
+OUT_JSON_12="$ARTIFACT_DIR/test-results-12.json"
+
+# Use the real git (no mock) and a test_cmd that reports a passing count.
+# The mock git in PATH only stubs `apply`; for this test we want real git to
+# exercise the actual checkout+clean reset path, so temporarily remove the
+# mock git from PATH.
+OLD_PATH="$PATH"
+_filtered_path="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "$TEST_TEMP_DIR/bin" | tr '\n' ':' | sed 's/:$//')"
+export PATH="$_filtered_path"
+hash -r
+
+set +e
+_test_run_inner "$PATCH_12" "$REPO_12" "$OUT_JSON_12" "echo '1 passed'"
+rc12=$?
+set -e
+
+export PATH="$OLD_PATH"
+hash -r
+
+assert_exit_code "#548: plugin exits 0 with dirty working tree" "0" "$rc12"
+assert_file_exists "#548: test-results.json written" "$OUT_JSON_12"
+verdict12="$(_json_key "$OUT_JSON_12" '.verdict')"
+diff_applied12="$(_json_key "$OUT_JSON_12" '.diff_applied')"
+assert_eq "#548: verdict=pass (patch applied against clean HEAD)" "pass" "$verdict12"
+assert_eq "#548: diff_applied=true" "true" "$diff_applied12"
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Test 5: test_finalize runs cleanly
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "5. test_finalize runs cleanly"
