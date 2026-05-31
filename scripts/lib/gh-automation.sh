@@ -96,3 +96,128 @@ gha_score_meets_threshold() {
     local threshold="$2"
     awk -v s="$score" -v t="$threshold" 'BEGIN{exit !(s>=t)}'
 }
+
+# LLM tiebreaker for borderline Jaccard scores (#559 / ADR-020 v2).
+# Returns "<score>|<marker>" where marker is _LLM_OK or a failure code.
+# NEVER exits non-zero; NEVER returns empty score. Fail-open by contract.
+#
+# This helper calls `claude` CLI directly rather than route_to_model because:
+# 1. Inputs are public GitHub issue text, not codebase content
+# 2. This is automation tooling, not a pipeline stage
+# 3. route_to_model requires RUN_ID / events.jsonl / redaction.applied
+#    precondition that doesn't fit the workflow-script use case
+# ADR-004's chokepoint applies to pipeline-stage LLM calls; ADR-020 v2
+# documents this deviation.
+gha_compute_similarity_llm() {
+    local text_a="${1:-}"
+    local text_b="${2:-}"
+    local jaccard_score="${3:-0.00}"
+    local enabled="${LLM_TIEBREAKER_ENABLED:-1}"
+    local timeout_secs="${LLM_TIEBREAKER_TIMEOUT_SECS:-15}"
+    local cache_dir="${LLM_TIEBREAKER_CACHE_DIR:-${RUNNER_TEMP:-/tmp}/llm-similarity-cache}"
+    local model_id="${LLM_TIEBREAKER_MODEL:-claude-haiku-4-5-20251001}"
+
+    # Disabled by env → fail open
+    if [[ "$enabled" != "1" ]]; then
+        printf '%s|_LLM_UNAVAILABLE_DISABLED\n' "$jaccard_score"
+        return 0
+    fi
+
+    # No claude CLI → fail open
+    if ! command -v claude >/dev/null 2>&1; then
+        printf '%s|_LLM_UNAVAILABLE_NO_CLI\n' "$jaccard_score"
+        return 0
+    fi
+
+    # Missing credentials (claude reads ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)
+    if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+        printf '%s|_LLM_UNAVAILABLE_NO_CREDS\n' "$jaccard_score"
+        return 0
+    fi
+
+    # Cache check: SHA256(text_a + sep + text_b)
+    mkdir -p "$cache_dir" 2>/dev/null || true
+    local cache_key cache_file
+    cache_key="$(printf '%s\n__SEP__\n%s' "$text_a" "$text_b" | shasum -a 256 2>/dev/null | awk '{print $1}')"
+    if [[ -n "$cache_key" ]]; then
+        cache_file="$cache_dir/$cache_key"
+        if [[ -f "$cache_file" ]]; then
+            cat "$cache_file"
+            return 0
+        fi
+    fi
+
+    # Build prompt
+    local prompt
+    prompt="$(cat <<EOF
+You compare two GitHub issue descriptions to determine if they describe the same underlying work. Return ONLY a JSON object with a single key "score" between 0.00 (clearly different) and 1.00 (clearly the same). No prose.
+
+Item A:
+${text_a}
+
+Item B:
+${text_b}
+EOF
+)"
+
+    # Invoke claude with timeout; capture rc explicitly
+    local raw_response rc=0 timeout_cmd=""
+    if command -v gtimeout >/dev/null 2>&1; then
+        timeout_cmd="gtimeout"
+    elif command -v timeout >/dev/null 2>&1; then
+        timeout_cmd="timeout"
+    fi
+
+    if [[ -n "$timeout_cmd" ]]; then
+        raw_response="$("$timeout_cmd" "$timeout_secs" claude --model "$model_id" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
+    else
+        raw_response="$(claude --model "$model_id" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
+    fi
+
+    # Timeout signal: 124 from coreutils timeout, 143 (128+15) from BSD
+    if [[ "$rc" -eq 124 || "$rc" -eq 143 ]]; then
+        printf '%s|_LLM_FAILED_TIMEOUT\n' "$jaccard_score"
+        return 0
+    fi
+    if [[ "$rc" -ne 0 ]]; then
+        printf '%s|_LLM_FAILED_NETWORK\n' "$jaccard_score"
+        return 0
+    fi
+    if [[ -z "$raw_response" ]]; then
+        printf '%s|_LLM_FAILED_EMPTY\n' "$jaccard_score"
+        return 0
+    fi
+
+    # Extract .result from envelope, then first JSON object, then .score
+    local inner_text llm_score
+    inner_text="$(printf '%s' "$raw_response" | jq -r '.result // ""' 2>/dev/null)" || inner_text=""
+    [[ -z "$inner_text" ]] && inner_text="$raw_response"  # fallback if not envelope
+    llm_score="$(printf '%s' "$inner_text" | extract_first_json_object 2>/dev/null | jq -r '.score // empty' 2>/dev/null)" || llm_score=""
+
+    if [[ -z "$llm_score" ]] || ! awk -v s="$llm_score" 'BEGIN{exit !(s>=0 && s<=1)}'; then
+        printf '%s|_LLM_FAILED_PARSE\n' "$jaccard_score"
+        return 0
+    fi
+
+    local result
+    result="$(printf '%.2f|_LLM_OK\n' "$llm_score")"
+    [[ -n "$cache_key" ]] && printf '%s\n' "$result" > "$cache_file" 2>/dev/null || true
+    printf '%s\n' "$result"
+}
+
+# Converts a similarity marker to operator-readable annotation text.
+gha_llm_marker_to_annotation() {
+    local marker="$1"
+    case "$marker" in
+        _LLM_OK) printf '' ;;
+        _LLM_UNAVAILABLE_DISABLED) printf 'LLM verification disabled' ;;
+        _LLM_UNAVAILABLE_NO_CLI) printf 'LLM verification unavailable: claude CLI not installed' ;;
+        _LLM_UNAVAILABLE_NO_CREDS) printf 'LLM verification unavailable: credentials not configured' ;;
+        _LLM_FAILED_TIMEOUT) printf 'LLM check timed out' ;;
+        _LLM_FAILED_NETWORK) printf 'LLM network error' ;;
+        _LLM_FAILED_EMPTY) printf 'LLM returned empty response' ;;
+        _LLM_FAILED_PARSE) printf 'LLM returned unparseable response' ;;
+        _LLM_FAILED_RATE_LIMIT) printf 'LLM rate limited' ;;
+        *) printf 'LLM check failed: %s' "$marker" ;;
+    esac
+}
