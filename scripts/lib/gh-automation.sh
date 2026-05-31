@@ -115,7 +115,15 @@ gha_compute_similarity_llm() {
     local enabled="${LLM_TIEBREAKER_ENABLED:-1}"
     local timeout_secs="${LLM_TIEBREAKER_TIMEOUT_SECS:-15}"
     local cache_dir="${LLM_TIEBREAKER_CACHE_DIR:-${RUNNER_TEMP:-/tmp}/llm-similarity-cache}"
-    local model_id="${LLM_TIEBREAKER_MODEL:-claude-haiku-4-5-20251001}"
+    # Per ADR-003: no hardcoded model names. Resolve T1 (cheapest tier) from
+    # config/models.json if available; fall back to claude CLI's default.
+    local model_id="${LLM_TIEBREAKER_MODEL:-}"
+    if [[ -z "$model_id" ]]; then
+        local models_file="${ZBUILD_MODELS_FILE:-${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/config/models.json}"
+        if [[ -f "$models_file" ]]; then
+            model_id="$(jq -r '.tiers.T1.candidates[0].id // empty' "$models_file" 2>/dev/null || echo "")"
+        fi
+    fi
 
     # Disabled by env → fail open
     if [[ "$enabled" != "1" ]]; then
@@ -168,10 +176,12 @@ EOF
         timeout_cmd="timeout"
     fi
 
+    local model_args=()
+    [[ -n "$model_id" ]] && model_args=(--model "$model_id")
     if [[ -n "$timeout_cmd" ]]; then
-        raw_response="$("$timeout_cmd" "$timeout_secs" claude --model "$model_id" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
+        raw_response="$("$timeout_cmd" "$timeout_secs" claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
     else
-        raw_response="$(claude --model "$model_id" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
+        raw_response="$(claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
     fi
 
     # Timeout signal: 124 from coreutils timeout, 143 (128+15) from BSD
