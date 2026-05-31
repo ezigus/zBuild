@@ -480,7 +480,108 @@ render_review_md() {
     _artifact_emit_llm_comment "$_prose"
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Built-in renderer: render_test_assessment_md (#567)
+# Input: test-assessment.json. Fields: verdict (pass|fail|error|inconclusive),
+#        summary, diagnosis, required_changes[], agrees_with_build_complete,
+#        branch_numstat, failure_summary_md, iter. Renders heading + verdict,
+#        emits the LLM-authored `failure_summary_md` verbatim as the body, and
+#        bullets `required_changes`. Surrounding prose surfaces as a
+#        ── llm comment ── trailing block (parity with render_plan_md).
+# ═══════════════════════════════════════════════════════════════════════════
+render_test_assessment_md() {
+    local input="$1"
+    if [[ -z "$input" ]]; then
+        printf '_empty test assessment_'
+        return 0
+    fi
+
+    local _prose _json
+    _artifact_split_prose_json "$input" _prose _json
+
+    if [[ -z "$_json" ]]; then
+        if [[ "$input" == *'{'* ]]; then
+            local fence; fence="$(_artifact_pick_fence "$input")"
+            printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+            return 0
+        fi
+        if [[ -n "$_prose" ]]; then
+            printf '# Test Assessment: (no JSON returned)'
+            _artifact_emit_llm_comment "$_prose"
+            return 0
+        fi
+        local fence; fence="$(_artifact_pick_fence "$input")"
+        printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+        return 0
+    fi
+
+    if ! printf '%s' "$_json" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$_json")"
+        printf '%s\n%s\n%s' "$fence" "$_json" "$fence"
+        _artifact_emit_llm_comment "$_prose"
+        return 0
+    fi
+
+    input="$_json"
+
+    local verdict summary diagnosis numstat agrees failure_md iter
+    verdict="$(printf '%s' "$input" | jq -r '.verdict // empty' 2>/dev/null)"
+    summary="$(printf '%s' "$input" | jq -r '.summary // empty' 2>/dev/null)"
+    diagnosis="$(printf '%s' "$input" | jq -r '.diagnosis // empty' 2>/dev/null)"
+    numstat="$(printf '%s' "$input" | jq -r '.branch_numstat // empty' 2>/dev/null)"
+    agrees="$(printf '%s' "$input" | jq -r '.agrees_with_build_complete // empty' 2>/dev/null)"
+    failure_md="$(printf '%s' "$input" | jq -r '.failure_summary_md // empty' 2>/dev/null)"
+    iter="$(printf '%s' "$input" | jq -r '.iter // empty' 2>/dev/null)"
+
+    local heading_verdict
+    if [[ -n "$verdict" ]]; then
+        heading_verdict="$(_artifact_md_escape_inline "$verdict")"
+    else
+        heading_verdict='(no verdict)'
+    fi
+    printf '# Test Assessment: %s\n' "$heading_verdict"
+
+    if [[ -n "$iter" && "$iter" != "null" ]]; then
+        printf '\n**Iter:** %s\n' "$(_artifact_md_escape_inline "$iter")"
+    fi
+    if [[ -n "$agrees" && "$agrees" != "null" ]]; then
+        printf '**Agrees with build complete:** %s\n' "$(_artifact_md_escape_inline "$agrees")"
+    fi
+    if [[ -n "$numstat" ]]; then
+        printf '**Branch numstat:** %s\n' "$(_artifact_md_escape_inline "$numstat")"
+    fi
+
+    if [[ -n "$summary" ]]; then
+        printf '\n## Summary\n%s\n' "$(_artifact_md_escape_block "$summary")"
+    fi
+    if [[ -n "$diagnosis" ]]; then
+        printf '\n## Diagnosis\n%s\n' "$(_artifact_md_escape_block "$diagnosis")"
+    fi
+
+    local rc_len
+    rc_len="$(printf '%s' "$input" | jq '.required_changes | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
+    if [[ "$rc_len" -gt 0 ]] 2>/dev/null; then
+        printf '\n## Required Changes\n'
+        local i=0
+        while [[ $i -lt $rc_len ]]; do
+            local item
+            item="$(printf '%s' "$input" | jq -r ".required_changes[$i] // empty" 2>/dev/null)"
+            if [[ -n "$item" ]]; then
+                printf -- '- %s\n' "$(_artifact_md_escape_inline "$item")"
+            fi
+            i=$((i + 1))
+        done
+    fi
+
+    if [[ -n "$failure_md" ]]; then
+        printf '\n## Failure Summary\n%s\n' "$(_artifact_md_escape_block "$failure_md")"
+    fi
+
+    _artifact_emit_llm_comment "$_prose"
+}
+
 # ─── Register built-ins (idempotent) ────────────────────────────────────────
-register_artifact_renderer "plan"   "render_plan_md"   >/dev/null 2>&1 || true
-register_artifact_renderer "diff"   "render_diff_md"   >/dev/null 2>&1 || true
-register_artifact_renderer "review" "render_review_md" >/dev/null 2>&1 || true
+register_artifact_renderer "plan"            "render_plan_md"            >/dev/null 2>&1 || true
+register_artifact_renderer "diff"            "render_diff_md"            >/dev/null 2>&1 || true
+register_artifact_renderer "review"          "render_review_md"          >/dev/null 2>&1 || true
+register_artifact_renderer "test_assessment" "render_test_assessment_md" >/dev/null 2>&1 || true
