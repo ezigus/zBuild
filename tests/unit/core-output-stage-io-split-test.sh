@@ -68,7 +68,7 @@ exec 3>&-
 assert_eq "S1 seq == 1 on first begin" "1" "$s1_seq"
 assert_eq "S1 _STAGE_IO_LAST_SEQ matches" "1" "$_STAGE_IO_LAST_SEQ"
 s1_banner="$(cat "$s1_fd3")"
-assert_contains "S1 banner has input header" "$s1_banner" "stage-io: plan [llm] seq=1 input"
+assert_contains "S1 banner has input header (#523)" "$s1_banner" "plan [llm] seq=1 input"
 assert_contains "S1 banner has prompt body" "$s1_banner" "PROMPT_BODY"
 # No output section yet
 if printf '%s' "$s1_banner" | grep -q "seq=1 output"; then
@@ -94,7 +94,7 @@ rc_s2=$?
 exec 3>&-
 assert_eq "S2 end rc=0" "0" "$rc_s2"
 s2_banner="$(cat "$s2_fd3")"
-assert_contains "S2 banner has output header with status+dur" "$s2_banner" "stage-io: plan [llm] seq=1 output OK 1.2s"
+assert_contains "S2 banner has output header with status+dur (#523)" "$s2_banner" "plan [llm] seq=1 output OK 1.2s"
 assert_contains "S2 banner has response body" "$s2_banner" "RESPONSE_BODY"
 assert_contains "S2 banner has end trailer" "$s2_banner" "end stage-io: plan"
 assert_file_exists "S2 file artifact written at end" "$ZBUILD_STATE_DIR/artifacts/stage-io/plan-1.json"

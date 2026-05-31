@@ -142,20 +142,20 @@ ZBUILD_STAGE_IO_FD=3 bash "$DRIVER" >/dev/null 2>/dev/null 3>"$BANNER" || true
 banner="$(cat "$BANNER" 2>/dev/null || echo '')"
 
 # ─── (1) Per-iteration [llm] banners preserved (#482 unchanged) ───────────
-in_llm="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[llm\] seq=.* input ══' || true)"
-out_llm="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[llm\] seq=.* output ' || true)"
+in_llm="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* input ══' || true)"
+out_llm="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* output ' || true)"
 assert_eq "2 [llm] input banners (one per iter)"  "2" "$in_llm"
 assert_eq "2 [llm] output banners (one per iter)" "2" "$out_llm"
 
 # ─── (2) Exactly ONE [computed] banner (input + output pair) ──────────────
-in_computed="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[computed\] seq=.* input ══' || true)"
-out_computed="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[computed\] seq=.* output ' || true)"
+in_computed="$(printf '%s\n' "$banner" | grep -cE '══ build \[computed\] seq=.* input ══' || true)"
+out_computed="$(printf '%s\n' "$banner" | grep -cE '══ build \[computed\] seq=.* output ' || true)"
 assert_eq "1 [computed] input banner"  "1" "$in_computed"
 assert_eq "1 [computed] output banner" "1" "$out_computed"
 
 # ─── (3) [computed] banner appears AFTER all [llm] banners (#491 ordering) ─
-last_llm_line="$(printf '%s\n' "$banner" | grep -n 'stage-io: build \[llm\]' | tail -1 | cut -d: -f1)"
-first_computed_line="$(printf '%s\n' "$banner" | grep -n 'stage-io: build \[computed\]' | head -1 | cut -d: -f1)"
+last_llm_line="$(printf '%s\n' "$banner" | grep -nE '══ build \[llm\]' | tail -1 | cut -d: -f1)"
+first_computed_line="$(printf '%s\n' "$banner" | grep -nE '══ build \[computed\]' | head -1 | cut -d: -f1)"
 if [[ -n "$last_llm_line" && -n "$first_computed_line" \
       && "$last_llm_line" -lt "$first_computed_line" ]]; then
     assert_pass "[computed] banner emitted AFTER all [llm] banners"

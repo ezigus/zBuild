@@ -84,9 +84,25 @@ else
 fi
 assert_contains "D1 end-trailer keeps lighter ── glyph" "$end_trailer" "── end stage-io: plan"
 
-# Substring invariant: v4 prefix is byte-identical inside the header.
-assert_contains "D1 input header preserves v4 substring"  "$input_header"  "stage-io: plan [llm] seq=1 input"
-assert_contains "D1 output header preserves v4 substring" "$output_header" "stage-io: plan [llm] seq=1 output OK 1.2s"
+# #523: v4 substring invariant updated — "stage-io:" prefix dropped from
+# heading. Bracketed [kind] token retained (load-bearing). End-trailer prefix
+# at L1049 unchanged (closer aids scrollback search).
+assert_contains "D1 input header preserves v4 (post-#523) substring"  "$input_header"  "plan [llm] seq=1 input"
+assert_contains "D1 output header preserves v4 (post-#523) substring" "$output_header" "plan [llm] seq=1 output OK 1.2s"
+# #523 negative assertion: heading lines must NOT carry the legacy "stage-io:"
+# label any more (only the end-trailer keeps it).
+if printf '%s' "$input_header" | grep -q "stage-io:"; then
+    assert_fail "D1 input header has NO 'stage-io:' prefix (#523)" "found in: $input_header"
+else
+    assert_pass "D1 input header has NO 'stage-io:' prefix (#523)"
+fi
+if printf '%s' "$output_header" | grep -q "stage-io:"; then
+    assert_fail "D1 output header has NO 'stage-io:' prefix (#523)" "found in: $output_header"
+else
+    assert_pass "D1 output header has NO 'stage-io:' prefix (#523)"
+fi
+# Positive: end-trailer prefix still retained.
+assert_contains "D1 end-trailer keeps 'end stage-io:' prefix (#523)" "$end_trailer" "end stage-io: plan"
 
 # ─── D2: colored fd → stage name wrapped in $BLUE+$BOLD (uniform per #499) ──
 _reset_pending

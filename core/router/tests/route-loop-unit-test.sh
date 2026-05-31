@@ -255,14 +255,14 @@ assert_eq "R8 iterations=3" "3" "${_ROUTE_LOOP_ITERATIONS:-0}"
 
 r8_banner="$(cat "$R8_FD3")"
 # Each iteration should have one input + one output line for build.
-r8_input_count="$(printf '%s\n' "$r8_banner" | grep -c 'stage-io: build \[llm\] seq=.* input ══' || true)"
-r8_output_count="$(printf '%s\n' "$r8_banner" | grep -c 'stage-io: build \[llm\] seq=.* output ' || true)"
+r8_input_count="$(printf '%s\n' "$r8_banner" | grep -cE '══ build \[llm\] seq=.* input ══' || true)"
+r8_output_count="$(printf '%s\n' "$r8_banner" | grep -cE '══ build \[llm\] seq=.* output ' || true)"
 assert_eq "R8 3 input banners (one per iteration)"  "3" "$r8_input_count"
 assert_eq "R8 3 output banners (one per iteration)" "3" "$r8_output_count"
 
 # Each iteration's seq increments: seq=1, seq=2, seq=3.
 for _seq in 1 2 3; do
-    if printf '%s\n' "$r8_banner" | grep -q "stage-io: build \[llm\] seq=${_seq} input ══"; then
+    if printf '%s\n' "$r8_banner" | grep -qE "══ build \[llm\] seq=${_seq} input ══"; then
         assert_pass "R8 input banner seq=$_seq present"
     else
         assert_fail "R8 input banner seq=$_seq present" "missing in: $(printf '%s' "$r8_banner" | head -c 400)"
@@ -321,13 +321,13 @@ unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_FD
 
 assert_exit_code "R8b rc=0 (recovered)" "0" "$r8b_rc"
 # 3 begin → 3 end pairs (one per iteration including the failing iter).
-r8b_input_count="$(printf '%s\n' "$(cat "$R8B_FD3")" | grep -c 'stage-io: build \[llm\] seq=.* input ══' || true)"
-r8b_output_count="$(printf '%s\n' "$(cat "$R8B_FD3")" | grep -c 'stage-io: build \[llm\] seq=.* output ' || true)"
+r8b_input_count="$(printf '%s\n' "$(cat "$R8B_FD3")" | grep -cE '══ build \[llm\] seq=.* input ══' || true)"
+r8b_output_count="$(printf '%s\n' "$(cat "$R8B_FD3")" | grep -cE '══ build \[llm\] seq=.* output ' || true)"
 assert_eq "R8b 3 input banners (incl. failed iter)"  "3" "$r8b_input_count"
 assert_eq "R8b 3 output banners (incl. failed iter)" "3" "$r8b_output_count"
 
 # Failed iteration banner has FAIL status (error=true triggers FAIL render).
-if printf '%s\n' "$(cat "$R8B_FD3")" | grep -q 'stage-io: build \[llm\] seq=2 output FAIL'; then
+if printf '%s\n' "$(cat "$R8B_FD3")" | grep -qE '══ build \[llm\] seq=2 output FAIL'; then
     assert_pass "R8b failed iter banner shows FAIL"
 else
     assert_fail "R8b failed iter banner shows FAIL" \

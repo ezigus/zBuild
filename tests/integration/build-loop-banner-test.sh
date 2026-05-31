@@ -130,8 +130,8 @@ banner="$(cat "$BANNER_FD3" 2>/dev/null || echo '')"
 
 # (1) Three iterations → three input/output pairs.
 # #499: I/O banner header dividers switched from ── (U+2500) to ══ (U+2550).
-in_count="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[llm\] seq=.* input ══' || true)"
-out_count="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[llm\] seq=.* output ' || true)"
+in_count="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* input ══' || true)"
+out_count="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* output ' || true)"
 assert_eq "3 input banners (one per iteration)"  "3" "$in_count"
 assert_eq "3 output banners (one per iteration)" "3" "$out_count"
 
@@ -209,7 +209,7 @@ assert_eq "no orphan begins" "0" "$orphan_count"
 # full build plugin), so the computed banner should NOT appear here. Assert
 # zero [computed] banners in this slice — that guarantees #482 + #498 are
 # decoupled: route.sh emits kind=llm only; build/plugin.sh emits kind=computed.
-computed_count="$(printf '%s\n' "$banner" | grep -c 'stage-io: build \[computed\]' || true)"
+computed_count="$(printf '%s\n' "$banner" | grep -cE '══ build \[computed\]' || true)"
 assert_eq "no [computed] banners when only route_to_model_loop runs (#498 decoupling)" "0" "$computed_count"
 
 cleanup_test_env
