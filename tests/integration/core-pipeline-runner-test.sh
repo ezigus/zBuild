@@ -524,6 +524,116 @@ I2_OUT="$(cat "$I2_STDERR")"
 assert_contains "I2 #508: fail line carries rc + finished + duration" \
     "$I2_OUT" "Stage build failed (rc=1, finished 03:25:45 UTC"
 
+# ─── Test I3 (#525): happy path emits ✓ pipeline.end terminal banner ─────────
+_make_plugin "build" "agent" 0 >/dev/null
+I3_STDERR="$TEST_TEMP_DIR/i3.runner.stderr"
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
+NO_COLOR=1 \
+bash "$RUNNER" --issue 83 2>"$I3_STDERR" >/dev/null
+I3_OUT="$(cat "$I3_STDERR")"
+
+assert_contains "I3 #525: terminal banner frame uses ═"            "$I3_OUT" "═"
+assert_contains "I3 #525: terminal banner labels pipeline.end"     "$I3_OUT" "pipeline.end"
+assert_contains "I3 #525: banner status word maps success→complete" "$I3_OUT" "Pipeline complete:"
+assert_contains "I3 #525: banner carries status=complete"          "$I3_OUT" "status=complete"
+assert_contains "I3 #525: banner carries run_id=83-derived"        "$I3_OUT" "issue=83"
+assert_contains "I3 #525: banner carries 'took ' duration token"   "$I3_OUT" "(took "
+
+# Regression: event payload contract unchanged — pipeline.end event count = 1
+i3_end_count=$(grep -c '"pipeline.end"' "$EVENTS_JSONL" || true)
+assert_eq "I3 regression: banner adds no extra pipeline.end events" "1" "$i3_end_count"
+
+# ─── Test I4 (#525): mid-stage failure emits ✗ banner with stage+rc ──────────
+_make_plugin "build" "agent" 1 >/dev/null
+I4_STDERR="$TEST_TEMP_DIR/i4.runner.stderr"
+rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+set +e
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
+NO_COLOR=1 \
+bash "$RUNNER" --issue 83 2>"$I4_STDERR" >/dev/null
+set -e
+I4_OUT="$(cat "$I4_STDERR")"
+
+assert_contains "I4 #525: failure banner uses ✗"               "$I4_OUT" "✗"
+assert_contains "I4 #525: failure banner reports stage=build"  "$I4_OUT" "stage=build"
+assert_contains "I4 #525: failure banner reports rc=1"         "$I4_OUT" "rc=1"
+assert_contains "I4 #525: failure banner word is 'failed'"     "$I4_OUT" "Pipeline failed:"
+
+# Regression: one and only one pipeline.end event
+i4_end_count=$(grep -c '"pipeline.end"' "$EVENTS_JSONL" || true)
+assert_eq "I4 regression: exactly one pipeline.end event" "1" "$i4_end_count"
+
+# ─── Test I5 (#525): NO_COLOR strips ANSI but keeps glyph + ts in banner ─────
+I5_OUT="$I3_OUT"  # reuse happy-path stderr captured under NO_COLOR=1 above
+if [[ "$I5_OUT" == *$'\033'* ]]; then
+    assert_fail "I5 #525: NO_COLOR strips ANSI from banner" "ESC byte present"
+else
+    assert_pass "I5 #525: NO_COLOR strips ANSI from banner"
+fi
+assert_contains "I5 #525: NO_COLOR banner keeps timestamp" "$I5_OUT" "UTC"
+assert_contains "I5 #525: NO_COLOR banner keeps ✓ glyph"   "$I5_OUT" "✓"
+
+# ─── Test I6 (#525): SIGTERM mid-run → ✗ aborted banner via EXIT trap ───────
+# Reuses the Test 10 / A2 pattern: slow intake plugin, kill mid-run.
+I6_DIR="$TEST_TEMP_DIR/i6"
+I6_PLUGINS="$I6_DIR/plugins"
+I6_STATE_DIR="$I6_DIR/state"
+I6_EVENTS_DIR="$I6_DIR/events"
+I6_EVENTS_JSONL="$I6_EVENTS_DIR/events.jsonl"
+I6_STDERR="$I6_DIR/runner.stderr"
+mkdir -p "$I6_PLUGINS/agent/intake" "$I6_STATE_DIR" "$I6_EVENTS_DIR"
+
+cat > "$I6_PLUGINS/agent/intake/manifest.yaml" <<'EOF'
+id: intake
+name: Slow Intake I6
+kind: agent
+version: 0.0.1
+hooks:
+  run: intake_run
+requires:
+  core:
+    - redaction
+EOF
+cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
+intake_run() { sleep 15; return 0; }
+EOF
+
+# Flaky-kill mitigation (per #494): retry up to twice if the kill races
+# pipeline.start emission.
+i6_ok=0
+for _attempt in 1 2; do
+    rm -f "$I6_EVENTS_JSONL" "$I6_STDERR"
+    ZBUILD_PLUGINS_ROOT="$I6_PLUGINS" \
+    ZBUILD_STATE_DIR="$I6_STATE_DIR" \
+    ZBUILD_EVENTS_DIR="$I6_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$I6_EVENTS_JSONL" \
+    ZBUILD_EVENTS_DB="$I6_DIR/events.db" \
+    NO_COLOR=1 \
+    bash "$RUNNER" --issue 83 2>"$I6_STDERR" >/dev/null &
+    i6_pid=$!
+    for _ in $(seq 1 100); do
+        if [[ -f "$I6_EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$I6_EVENTS_JSONL" 2>/dev/null; then
+            break
+        fi
+        sleep 0.1
+    done
+    kill "$i6_pid" 2>/dev/null || true
+    wait "$i6_pid" 2>/dev/null || true
+    if [[ -f "$I6_STDERR" ]] && grep -q "Pipeline aborted:" "$I6_STDERR"; then
+        i6_ok=1; break
+    fi
+done
+
+if [[ "$i6_ok" -eq 1 ]]; then
+    assert_pass "I6 #525: SIGTERM emits ✗ aborted terminal banner"
+else
+    assert_fail "I6 #525: SIGTERM emits ✗ aborted terminal banner" \
+                "stderr: $(tr '\n' '|' < "$I6_STDERR" 2>/dev/null | head -c 400)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

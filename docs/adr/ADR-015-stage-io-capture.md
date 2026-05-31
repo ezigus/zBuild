@@ -775,6 +775,55 @@ The new `extract_json_and_surrounding_prose` helper in
 `scripts/lib/helpers.sh` powers the split; `extract_first_json_object`
 itself is unchanged for back-compat with the plan plugin's schema check.
 
+### v5.2 — Pipeline terminal banner (issue #525)
+
+`core/pipeline/runner.sh` emits an operator-visible pipeline.end banner at
+every `pipeline.end` / `pipeline.abort` emit site (9 in-runner sites + the
+pre-flight `return 2` path + the EXIT trap). The banner is framed with `═`
+(U+2550) to distinguish the pipeline boundary from stage boundaries (`━`,
+v5) and stage-io banners (`─`, v4).
+
+Format:
+
+```
+════ pipeline.end ════ HH:MM:SS UTC
+<glyph> Pipeline <word>: status=<X> run_id=<Y> issue=<N> (took <dur>)
+```
+
+Glyph + color derive from `core/pipeline/verdict.sh` via a thin runner-local
+shim (`_pipeline_status_glyph` / `_pipeline_status_color`) mapping the
+ADR-006 pipeline status enum to verdict classes — this is a render-only
+mapping and does NOT extend the verdict-table enum:
+
+| status              | glyph | color  | verdict class |
+| ------------------- | ----- | ------ | ------------- |
+| `complete`          | `✓`   | GREEN  | pass          |
+| `failed`            | `✗`   | RED    | fail          |
+| `interrupted`       | `✗`   | RED    | fail          |
+| `aborted`           | `✗`   | RED    | fail          |
+| `preflight_failed`  | `⚠`   | YELLOW | warn          |
+
+Duration is sourced from `_RUNNER_PIPELINE_START_MS`, cached immediately
+after `_runner_run_id` is sanitized (before the EXIT trap installs) so
+even very-early failures — including the pre-flight contract-validator
+path — report a real elapsed time; cache miss degrades to `?s`.
+
+Event payload contract is unchanged: the legacy `status=success` token
+remains the persisted JSONL value (consumers depend on it). The banner
+performs `success → complete` mapping for display only, tracking the
+ADR-006 state-enum word so the operator sees the same vocabulary in the
+banner that they see in `pipeline-state.json`.
+
+Banner is emitted AFTER `eb_emit_event "pipeline.end"` (or
+`eb_emit_event "pipeline.abort"` in the EXIT trap) so the durable event
+record is fail-closed against banner-write failures. Width-degrade rule
+mirrors `_render_stage_divider`: when `mid_bar <= 2` (very narrow
+terminals) the timestamp is dropped and a symmetric divider is rendered
+on line 1 — line 2 still emits the full status detail.
+
+Goldens under `tests/golden/pipeline-end/` cover all five statuses in
+both layout (`NO_COLOR=1`) and colored (`FORCE_COLOR=1`) modes.
+
 ### v6 — Per-iter stage-io within outer cycles (#512, ADR-021)
 
 When a stage runs inside an outer cycle, the orchestrator exports
