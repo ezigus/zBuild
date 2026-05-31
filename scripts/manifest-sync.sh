@@ -205,12 +205,44 @@ _escape_cell() { printf '%s' "$1" | tr -d '\n\r' | sed 's/|/\\|/g'; }
     echo ""
     if [[ ${#ORPHAN_ISSUES[@]} -gt 0 ]]; then
         echo "These live issues have no manifest entry. Human judgment required before adding."
+        echo "Possible-match hints below each orphan come from similarity scoring (sub-4 of #555)."
         echo ""
         echo "| Issue | State | Title |"
         echo "|---|---|---|"
+        _manifest_threshold="${MANIFEST_SIMILARITY_THRESHOLD:-0.6}"
+        _manifest_llm_lo="${MANIFEST_LLM_LOWER:-0.40}"
+        _manifest_llm_hi="${MANIFEST_LLM_UPPER:-0.60}"
         for entry in "${ORPHAN_ISSUES[@]}"; do
             IFS='|' read -r num state title <<< "$entry"
             echo "| #$num | $state | $(_escape_cell "$title") |"
+            _orphan_matches=""
+            while IFS=$'\t' read -r _m_title _m_id; do
+                [[ -z "$_m_title" || -z "$_m_id" ]] && continue
+                _marker=""
+                _score="$(gha_compute_similarity "$title" "$_m_title")"
+                if awk -v s="$_score" -v lo="$_manifest_llm_lo" -v hi="$_manifest_llm_hi" 'BEGIN{exit !(s>=lo && s<hi)}'; then
+                    _refined="$(gha_compute_similarity_llm "$title" "$_m_title" "$_score" 2>/dev/null || printf '%s|_LLM_FAILED_NETWORK' "$_score")"
+                    _score="${_refined%%|*}"
+                    _marker="${_refined##*|}"
+                fi
+                if awk -v s="$_score" -v t="$_manifest_threshold" 'BEGIN{exit !(s>=t)}'; then
+                    _llm_note=""
+                    _printable="$(printf '%.2f' "$_score")"
+                    if [[ -n "$_marker" && "$_marker" != "_LLM_OK" ]]; then
+                        _llm_note=" — $(gha_llm_marker_to_annotation "$_marker")"
+                    fi
+                    _orphan_matches+="${_printable}\t$(_escape_cell "$_m_id")\t${_llm_note}"$'\n'
+                fi
+            done < <(jq -r '.[] | "\(.title)\t\(.id)"' "$TMP/manifest-entries.json" 2>/dev/null || true)
+            if [[ -n "$_orphan_matches" ]]; then
+                _printed=0
+                while IFS=$'\t' read -r _ms _mid _note; do
+                    [[ -z "$_ms" ]] && continue
+                    echo "| ↳ possible match: \`${_mid}\` (sim ${_ms}${_note}) | | |"
+                    _printed=$((_printed + 1))
+                    (( _printed >= 3 )) && break
+                done < <(printf '%b' "$_orphan_matches" | sort -t$'\t' -k1,1nr)
+            fi
         done
     else
         echo "None."
