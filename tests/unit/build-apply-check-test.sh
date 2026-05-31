@@ -149,6 +149,194 @@ res="$(run_gate "$REPO6" "$DIFF6")"
 rc="${res%%|*}"
 assert_eq "U6: rc=0 (whitespace warn)" "0" "$rc"
 
+# Helper that also returns the classifier_branch field for richer assertions.
+run_gate_full() {
+    local repo="$1" diff_path="$2"
+    local tmp; tmp="$(mktemp "${TMPDIR:-/tmp}/zb-gate.XXXXXX")"
+    set +e
+    _build_apply_check "$repo" "$diff_path" "$tmp"
+    local rc=$?
+    set -e
+    local ok reason branch grc
+    ok="$(jq -r '.ok' "$tmp" 2>/dev/null || echo 'parse_error')"
+    reason="$(jq -r '.reason // ""' "$tmp" 2>/dev/null || echo '')"
+    branch="$(jq -r '.classifier_branch // ""' "$tmp" 2>/dev/null || echo '')"
+    grc="$(jq -r '.git_apply_rc // ""' "$tmp" 2>/dev/null || echo '')"
+    rm -f "$tmp"
+    printf '%s|%s|%s|%s|%s' "$rc" "$ok" "$reason" "$branch" "$grc"
+}
+
+# ─── U7: rc=128 corrupt-format → reason=corrupt_format ───────────────────────
+# Hand-crafted patch with garbled hunk header that triggers git rc=128
+# "error: corrupt patch at line N". Must NOT classify as tool_unavailable.
+print_test_section "U7: rc=128 corrupt patch → corrupt_format"
+REPO7="$(mk_repo u7)"
+DIFF7="$TEST_TEMP_DIR/u7.patch"
+cat > "$DIFF7" <<'PATCH'
+diff --git a/file.txt b/file.txt
+index 0000000..1111111 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,3 +1,3 @@
+-line1
++CHANGED
+ line2
+@@ THIS IS NOT A VALID HUNK HEADER @@
+garbage payload no leading space
+PATCH
+res="$(run_gate_full "$REPO7" "$DIFF7")"
+rc="$(printf '%s' "$res" | awk -F'|' '{print $1}')"
+ok="$(printf '%s' "$res" | awk -F'|' '{print $2}')"
+reason="$(printf '%s' "$res" | awk -F'|' '{print $3}')"
+branch="$(printf '%s' "$res" | awk -F'|' '{print $4}')"
+grc="$(printf '%s' "$res" | awk -F'|' '{print $5}')"
+assert_eq "U7: rc=1 fail-closed" "1" "$rc"
+assert_eq "U7: ok=false" "false" "$ok"
+assert_eq "U7: reason=corrupt_format" "corrupt_format" "$reason"
+assert_eq "U7: classifier_branch=corrupt_format" "corrupt_format" "$branch"
+assert_eq "U7: git_apply_rc=128" "128" "$grc"
+
+# ─── U8: whitespace warn → ok=true, reason absent ────────────────────────────
+print_test_section "U8: ok-whitespace has no reason field"
+REPO8="$(mk_repo u8)"
+DIFF8="$TEST_TEMP_DIR/u8.patch"
+( cd "$REPO8" && printf 'line1\nline2 \nline3\n' > file.txt && git diff HEAD ) > "$DIFF8"
+res="$(run_gate_full "$REPO8" "$DIFF8")"
+rc="$(printf '%s' "$res" | awk -F'|' '{print $1}')"
+ok="$(printf '%s' "$res" | awk -F'|' '{print $2}')"
+reason="$(printf '%s' "$res" | awk -F'|' '{print $3}')"
+assert_eq "U8: rc=0" "0" "$rc"
+assert_eq "U8: ok=true" "true" "$ok"
+assert_eq "U8: reason absent (empty)" "" "$reason"
+
+# ─── U9: rc=1 context fail → classifier_branch=context ───────────────────────
+# Valid hunk header (in-range lines) but the "-" content doesn't match HEAD —
+# git rejects with rc=1 "patch does not apply" / "does not match".
+print_test_section "U9: rc=1 context → classifier_branch=context"
+REPO9="$(mk_repo u9)"
+DIFF9="$TEST_TEMP_DIR/u9.patch"
+cat > "$DIFF9" <<'PATCH'
+diff --git a/file.txt b/file.txt
+index 0000000..1111111 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,3 +1,3 @@
+-WRONG_OLD
++CHANGED
+ line2
+ line3
+PATCH
+res="$(run_gate_full "$REPO9" "$DIFF9")"
+rc="$(printf '%s' "$res" | awk -F'|' '{print $1}')"
+reason="$(printf '%s' "$res" | awk -F'|' '{print $3}')"
+branch="$(printf '%s' "$res" | awk -F'|' '{print $4}')"
+assert_eq "U9: rc=1" "1" "$rc"
+assert_eq "U9: reason=context" "context" "$reason"
+assert_eq "U9: classifier_branch=context" "context" "$branch"
+
+# ─── U10: exotic rc (mock git returning 42) → reason=other ──────────────────
+print_test_section "U10: exotic git rc → reason=other"
+REPO10="$(mk_repo u10)"
+DIFF10="$TEST_TEMP_DIR/u10.patch"
+printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' > "$DIFF10"
+# Shim a fake git that passes through to real git EXCEPT for `apply` (which
+# always exits rc=42 with generic stderr — modeling exotic git failure).
+SHIM10="$TEST_TEMP_DIR/shim-rc42"
+mkdir -p "$SHIM10"
+REAL_GIT="$(command -v git)"
+cat > "$SHIM10/git" <<SH
+#!/usr/bin/env bash
+# Walk args to find subcommand (skip -C <dir> / -c key=val).
+args=("\$@")
+i=0
+sub=""
+while [[ \$i -lt \${#args[@]} ]]; do
+    a="\${args[\$i]}"
+    case "\$a" in
+        -C|-c) i=\$((i + 2)); continue ;;
+        --*) i=\$((i + 1)); continue ;;
+        *) sub="\$a"; break ;;
+    esac
+done
+if [[ "\$sub" == "apply" ]]; then
+    printf 'unexpected git failure (mock rc=42)\n' >&2
+    exit 42
+fi
+exec $REAL_GIT "\$@"
+SH
+chmod +x "$SHIM10/git"
+_save_path="$PATH"
+res="$(PATH="$SHIM10:$PATH" run_gate_full "$REPO10" "$DIFF10")"
+PATH="$_save_path"
+rc="$(printf '%s' "$res" | awk -F'|' '{print $1}')"
+reason="$(printf '%s' "$res" | awk -F'|' '{print $3}')"
+branch="$(printf '%s' "$res" | awk -F'|' '{print $4}')"
+grc="$(printf '%s' "$res" | awk -F'|' '{print $5}')"
+assert_eq "U10: rc=1 (fail-closed)" "1" "$rc"
+assert_eq "U10: reason=other" "other" "$reason"
+assert_eq "U10: classifier_branch=other" "other" "$branch"
+assert_eq "U10: git_apply_rc=42" "42" "$grc"
+
+# ─── U11: DOGFOOD REGRESSION — truncated 33-line patch (issue #529) ─────────
+# Reproduces the exact failure from run_id 20260531062504-11010: a patch
+# truncated mid-hunk so the parser hits "error: corrupt patch at line N"
+# with rc=128. Before this fix, the gate misclassified this as
+# reason=tool_unavailable. After: reason=corrupt_format.
+print_test_section "U11: dogfood — truncated patch must be corrupt_format"
+REPO11="$(mk_repo u11)"
+# Make file with enough lines that a truncated hunk is plausible.
+( cd "$REPO11" && printf 'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n' > file.txt \
+    && git add file.txt && git commit -q --amend --no-edit )
+DIFF11="$TEST_TEMP_DIR/u11.patch"
+# Hand-rolled 33-line patch truncated mid-hunk (header claims 7 context lines
+# but body has fewer + a hunk header that never terminates).
+cat > "$DIFF11" <<'PATCH'
+diff --git a/file.txt b/file.txt
+index 1111111..2222222 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,10 +1,10 @@
+-l1
++L1
+ l2
+ l3
+ l4
+ l5
+ l6
+ l7
+ l8
+ l9
+ l10
+@@ -20,15 +20,15 @@ context block lost
+-l20
++L20
+ l21
+ l22
+ l23
+ l24
+ l25
+ l26
+ l27
+ l28
+ l29
+PATCH
+res="$(run_gate_full "$REPO11" "$DIFF11")"
+rc="$(printf '%s' "$res" | awk -F'|' '{print $1}')"
+ok="$(printf '%s' "$res" | awk -F'|' '{print $2}')"
+reason="$(printf '%s' "$res" | awk -F'|' '{print $3}')"
+branch="$(printf '%s' "$res" | awk -F'|' '{print $4}')"
+assert_eq "U11: rc=1 fail-closed" "1" "$rc"
+assert_eq "U11: ok=false" "false" "$ok"
+# Load-bearing: must be corrupt_format, NOT tool_unavailable.
+if [[ "$reason" == "tool_unavailable" ]]; then
+    assert_fail "U11: reason != tool_unavailable (issue #529 regression)" \
+        "got tool_unavailable — classifier still collapses rc=128"
+else
+    assert_pass "U11: reason != tool_unavailable"
+fi
+assert_eq "U11: reason=corrupt_format" "corrupt_format" "$reason"
+assert_eq "U11: classifier_branch=corrupt_format" "corrupt_format" "$branch"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

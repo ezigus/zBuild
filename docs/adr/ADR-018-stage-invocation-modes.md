@@ -159,6 +159,23 @@ an unstable tree. Missing git binary → `reason=tool_unavailable`,
 catastrophic `git apply` rc>1 → same. Empty diff is skipped (the existing
 `build.empty_diff` event still fires upstream).
 
+**Amendment (#529)** — The `rc>1 → tool_unavailable` collapse in
+`_build_apply_check` conflated two distinct semantic classes. As of #529 the
+gate stderr-classifies before rc-bucketing: rc=128 with `^error: corrupt patch`
+resolves to `reason=corrupt_format` (fail-CLOSED, parser rejected payload);
+rc=128 with `^fatal:` resolves to `reason=tool_state` (fail-CLOSED, git
+environment defect — typically broken-index or unreachable HEAD discovered
+mid-apply). Only `rc=127` and "binary missing" map to `tool_unavailable`.
+Any other unexpected rc surfaces as `reason=other` with `git_apply_rc`
+captured verbatim. Every failure event carries
+`apply_check.classifier_branch=<tag>` for triage (tags: `corrupt_format`,
+`tool_state`, `tool_unavailable_127`, `git_missing`, `binary`,
+`missing_target`, `context`, `ws_warn`, `precondition`, `stub_guard`,
+`other`). Router-side `_route_loop_capture_diff` (`core/router/route.sh:838`)
+retains coarser single-bucket behavior because the authoritative gate
+downstream re-classifies — tracked as a follow-up rather than expanded scope
+here.
+
 ---
 
 ### Deterministic operations stay bash

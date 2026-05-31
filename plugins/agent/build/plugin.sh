@@ -516,9 +516,11 @@ _build_apply_check() {
     # ── (b) Invariant: defensive guard against cap-exceeded stat stubs ─────
     if head -c 64 "$diff_path" 2>/dev/null | grep -q '^(diff exceeded cap'; then
         emit_event "build.invariant.diff_is_stub" "plugin=build" \
-            "diff_bytes=$diff_bytes" >/dev/null 2>&1 || true
+            "diff_bytes=$diff_bytes" \
+            "apply_check.classifier_branch=stub_guard" >/dev/null 2>&1 || true
         jq -n --argjson db "$diff_bytes" \
             '{ok:false, reason:"truncated", truncation_observed:true,
+              classifier_branch:"stub_guard",
               stderr_first_line:"diff payload is a stat stub, not real patch",
               diff_bytes:$db}' > "$result_path"
         return 1
@@ -527,9 +529,11 @@ _build_apply_check() {
     # ── (c) Tool availability ──────────────────────────────────────────────
     if ! command -v git >/dev/null 2>&1; then
         emit_event "build.apply_check.unavailable" "plugin=build" \
-            "reason=git_missing" >/dev/null 2>&1 || true
+            "reason=git_missing" \
+            "apply_check.classifier_branch=git_missing" >/dev/null 2>&1 || true
         jq -n --argjson db "$diff_bytes" \
             '{ok:false, reason:"tool_unavailable",
+              classifier_branch:"git_missing",
               stderr_first_line:"git binary not on PATH",
               truncation_observed:false, diff_bytes:$db}' > "$result_path"
         return 1
@@ -553,9 +557,11 @@ _build_apply_check() {
     fi
     if [[ -n "$_pre_reason" ]]; then
         emit_event "build.apply_check.precondition_failed" "plugin=build" \
-            "reason=$_pre_reason" "repo_root=$repo_root" >/dev/null 2>&1 || true
+            "reason=$_pre_reason" "repo_root=$repo_root" \
+            "apply_check.classifier_branch=precondition" >/dev/null 2>&1 || true
         jq -n --argjson db "$diff_bytes" --arg r "$_pre_reason" \
             '{ok:false, reason:"precondition_failed",
+              classifier_branch:"precondition",
               stderr_first_line:("git state precondition failed: " + $r),
               truncation_observed:false, diff_bytes:$db}' > "$result_path"
         return 1
@@ -588,37 +594,63 @@ _build_apply_check() {
     _stderr_first="$(head -n 1 "$_stderr_file" 2>/dev/null || true)"
     rm -f "$_stderr_file"
 
-    # Classify stderr → reason. Most common: "corrupt patch", "patch does not
-    # apply", "does not match index", "No such file or directory".
-    local _reason="context"
-    if printf '%s' "$_stderr_first" | grep -qi 'corrupt patch'; then
-        _reason="context"
-    elif printf '%s' "$_stderr_first" | grep -qiE 'no such file|does not exist|new file .* exists in working dir'; then
-        _reason="missing_target"
-    elif printf '%s' "$_stderr_first" | grep -qiE 'binary|cannot represent'; then
-        _reason="binary"
-    elif printf '%s' "$_stderr_first" | grep -qiE 'patch does not apply|does not match'; then
-        _reason="context"
-    elif printf '%s' "$_stderr_first" | grep -qi 'whitespace'; then
-        _reason="whitespace"
-    fi
-    # Catastrophic rc>1 → unavailable (could not even attempt the check).
-    if [[ $_check_rc -gt 1 ]]; then
-        emit_event "build.apply_check.unavailable" "plugin=build" \
-            "rc=$_check_rc" "stderr_first_line=$_stderr_first" >/dev/null 2>&1 || true
-        jq -n --argjson db "$diff_bytes" --arg s "$_stderr_first" --argjson rc "$_check_rc" \
-            '{ok:false, reason:"tool_unavailable",
-              stderr_first_line:$s, truncation_observed:false,
-              diff_bytes:$db, git_apply_rc:$rc}' > "$result_path"
-        return 1
+    # ── (f) Classification: rc FIRST, then sub-switch on stderr (#529) ─────
+    # Pre-#529 collapsed all rc>1 into reason=tool_unavailable, which masked
+    # rc=128 "error: corrupt patch" (parser rejected payload) as if git were
+    # missing. Distinct branches matter for triage and downstream policy:
+    #   - corrupt_format → patch shape problem, retry path is regenerate diff
+    #   - tool_state     → env defect (broken index / unreachable HEAD)
+    #   - tool_unavailable → git binary missing or rc=127 (PATH/sandbox)
+    #   - other          → unknown rc surfaced verbatim
+    # See ADR-018 §Pattern 2 "corrupt-diff gate" amendment.
+    local _reason="" _branch="" _emit_event="build.apply_check.failed"
+
+    if [[ $_check_rc -eq 128 ]]; then
+        # B9 must precede B10: corrupt-patch errors can be followed by a
+        # `fatal:` line later in stderr. Anchor on the first line only.
+        if [[ "$_stderr_first" =~ ^error:[[:space:]]+(corrupt[[:space:]]+patch|patch[[:space:]]+fragment|cannot[[:space:]]+apply[[:space:]]+binary[[:space:]]+patch) ]]; then
+            _reason="corrupt_format"; _branch="corrupt_format"
+        elif [[ "$_stderr_first" =~ ^fatal: ]]; then
+            _reason="tool_state"; _branch="tool_state"
+        else
+            _reason="other"; _branch="other"
+        fi
+    elif [[ $_check_rc -eq 127 ]]; then
+        _reason="tool_unavailable"; _branch="tool_unavailable_127"
+        _emit_event="build.apply_check.unavailable"
+    elif [[ $_check_rc -eq 1 ]]; then
+        if [[ "$_stderr_first" =~ (binary[[:space:]]+files?|cannot[[:space:]]+represent) ]]; then
+            _reason="binary"; _branch="binary"
+        elif [[ "$_stderr_first" =~ (no[[:space:]]+such[[:space:]]+file|does[[:space:]]+not[[:space:]]+exist|new[[:space:]]+file[[:space:]].+exists[[:space:]]+in[[:space:]]+working[[:space:]]+dir) ]]; then
+            _reason="missing_target"; _branch="missing_target"
+        elif [[ "$_stderr_first" =~ whitespace ]]; then
+            # Whitespace warning on rc=1 keeps prior behavior (today: ok=false).
+            _reason="whitespace"; _branch="ws_warn"
+        elif [[ "$_stderr_first" =~ (patch[[:space:]]+does[[:space:]]+not[[:space:]]+apply|does[[:space:]]+not[[:space:]]+match) ]]; then
+            _reason="context"; _branch="context"
+        else
+            _reason="context"; _branch="context"
+        fi
+    else
+        # rc > 1, rc != 128, rc != 127  → catch-all "other" (capture rc).
+        _reason="other"; _branch="other"
     fi
 
-    emit_event "build.apply_check.failed" "plugin=build" \
-        "reason=$_reason" "stderr_first_line=$_stderr_first" \
+    # Emit with classifier_branch + git_apply_rc on every failure path so
+    # triage can pivot off the event payload alone.
+    emit_event "$_emit_event" "plugin=build" \
+        "reason=$_reason" \
+        "apply_check.classifier_branch=$_branch" \
+        "git_apply_rc=$_check_rc" \
+        "stderr_first_line=$_stderr_first" \
         "diff_bytes=$diff_bytes" >/dev/null 2>&1 || true
-    jq -n --argjson db "$diff_bytes" --arg s "$_stderr_first" --arg r "$_reason" \
-        '{ok:false, reason:$r, stderr_first_line:$s,
-          truncation_observed:false, diff_bytes:$db}' > "$result_path"
+    jq -n --argjson db "$diff_bytes" \
+          --arg s "$_stderr_first" \
+          --arg r "$_reason" \
+          --arg b "$_branch" \
+          --argjson rc "$_check_rc" \
+        '{ok:false, reason:$r, classifier_branch:$b, stderr_first_line:$s,
+          truncation_observed:false, diff_bytes:$db, git_apply_rc:$rc}' > "$result_path"
     return 1
 }
 

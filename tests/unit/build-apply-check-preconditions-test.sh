@@ -107,6 +107,112 @@ ok="$(printf '%s' "$res" | awk -F'|' '{print $2}')"
 assert_eq "F4: rc=1 (fail-closed on unparseable patch)" "1" "$rc"
 assert_eq "F4: ok=false" "false" "$ok"
 
+# Helper that returns classifier_branch as well.
+run_gate_full() {
+    local repo="$1" diff_path="$2"
+    local tmp; tmp="$(mktemp "${TMPDIR:-/tmp}/zb-gate.XXXXXX")"
+    set +e
+    _build_apply_check "$repo" "$diff_path" "$tmp"
+    local rc=$?
+    set -e
+    local ok reason branch grc
+    ok="$(jq -r '.ok' "$tmp" 2>/dev/null || echo 'parse_error')"
+    reason="$(jq -r '.reason // ""' "$tmp" 2>/dev/null || echo '')"
+    branch="$(jq -r '.classifier_branch // ""' "$tmp" 2>/dev/null || echo '')"
+    grc="$(jq -r '.git_apply_rc // ""' "$tmp" 2>/dev/null || echo '')"
+    rm -f "$tmp"
+    printf '%s|%s|%s|%s|%s' "$rc" "$ok" "$reason" "$branch" "$grc"
+}
+
+# ─── F5: rc=128 + fatal: → reason=tool_state ─────────────────────────────────
+# Simulate `git apply` emitting a fatal: error with rc=128 via shim. This is
+# the "git ran but its environment is broken" case (e.g. corrupt index,
+# unreachable HEAD found mid-apply). Must classify as tool_state — NOT
+# tool_unavailable (binary IS present) and NOT corrupt_format (patch is fine).
+print_test_section "F5: rc=128 + fatal: → tool_state"
+REPO5="$(mk_repo f5)"
+DIFF5="$TEST_TEMP_DIR/f5.patch"
+( cd "$REPO5" && sed -i.bak 's/a/A/' f.txt && rm -f f.txt.bak && git diff HEAD ) > "$DIFF5"
+SHIM5="$TEST_TEMP_DIR/shim-fatal"
+mkdir -p "$SHIM5"
+REAL_GIT_F5="$(command -v git)"
+cat > "$SHIM5/git" <<SH
+#!/usr/bin/env bash
+args=("\$@")
+i=0
+sub=""
+while [[ \$i -lt \${#args[@]} ]]; do
+    a="\${args[\$i]}"
+    case "\$a" in
+        -C|-c) i=\$((i + 2)); continue ;;
+        --*) i=\$((i + 1)); continue ;;
+        *) sub="\$a"; break ;;
+    esac
+done
+if [[ "\$sub" == "apply" ]]; then
+    printf 'fatal: index file corrupt\n' >&2
+    exit 128
+fi
+exec $REAL_GIT_F5 "\$@"
+SH
+chmod +x "$SHIM5/git"
+_save_path="$PATH"
+res="$(PATH="$SHIM5:$PATH" run_gate_full "$REPO5" "$DIFF5")"
+PATH="$_save_path"
+rc="$(printf '%s' "$res" | awk -F'|' '{print $1}')"
+ok="$(printf '%s' "$res" | awk -F'|' '{print $2}')"
+reason="$(printf '%s' "$res" | awk -F'|' '{print $3}')"
+branch="$(printf '%s' "$res" | awk -F'|' '{print $4}')"
+assert_eq "F5: rc=1 fail-closed" "1" "$rc"
+assert_eq "F5: ok=false" "false" "$ok"
+assert_eq "F5: reason=tool_state" "tool_state" "$reason"
+assert_eq "F5: classifier_branch=tool_state" "tool_state" "$branch"
+
+# ─── F6: rc=127 (git apply not found via shim) → tool_unavailable_127 ───────
+# Shim a stub `git` whose behavior is: respond normally for metadata (so
+# precondition checks pass) but exit 127 with "command not found" stderr for
+# `git apply` — modeling sandbox/PATH oddities where apply subcommand is
+# unreachable while the main binary is.
+print_test_section "F6: rc=127 → tool_unavailable_127"
+REPO6="$(mk_repo f6)"
+DIFF6="$TEST_TEMP_DIR/f6.patch"
+( cd "$REPO6" && sed -i.bak 's/a/A/' f.txt && rm -f f.txt.bak && git diff HEAD ) > "$DIFF6"
+SHIM6="$TEST_TEMP_DIR/shim-rc127"
+mkdir -p "$SHIM6"
+REAL_GIT_F6="$(command -v git)"
+cat > "$SHIM6/git" <<SH
+#!/usr/bin/env bash
+# Walk args to find subcommand (skip -C <dir> / -c key=val).
+args=("\$@")
+i=0
+sub=""
+while [[ \$i -lt \${#args[@]} ]]; do
+    a="\${args[\$i]}"
+    case "\$a" in
+        -C|-c) i=\$((i + 2)); continue ;;
+        --*) i=\$((i + 1)); continue ;;
+        *) sub="\$a"; break ;;
+    esac
+done
+if [[ "\$sub" == "apply" ]]; then
+    printf "git: 'apply' is not a git command\n" >&2
+    exit 127
+fi
+exec $REAL_GIT_F6 "\$@"
+SH
+chmod +x "$SHIM6/git"
+_save_path="$PATH"
+res="$(PATH="$SHIM6:$PATH" run_gate_full "$REPO6" "$DIFF6")"
+PATH="$_save_path"
+rc="$(printf '%s' "$res" | awk -F'|' '{print $1}')"
+reason="$(printf '%s' "$res" | awk -F'|' '{print $3}')"
+branch="$(printf '%s' "$res" | awk -F'|' '{print $4}')"
+grc="$(printf '%s' "$res" | awk -F'|' '{print $5}')"
+assert_eq "F6: rc=1 fail-closed" "1" "$rc"
+assert_eq "F6: reason=tool_unavailable" "tool_unavailable" "$reason"
+assert_eq "F6: classifier_branch=tool_unavailable_127" "tool_unavailable_127" "$branch"
+assert_eq "F6: git_apply_rc=127" "127" "$grc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
