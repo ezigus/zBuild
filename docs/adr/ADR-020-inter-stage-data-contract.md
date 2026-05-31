@@ -379,8 +379,18 @@ fail | unknown`.)
 ### State (`stage_verdicts`)
 
 The runner persists `.stage_verdicts[<stage>]` (one of
-`pass|warn|fail|unknown`) alongside `.stage_statuses` for observability
-and resume. Schema-additive; older state files are upgraded in place.
+`pass|warn|fail|unknown` OR a raw structural-failure verdict
+`error|corrupt_diff|block`) alongside `.stage_statuses` for
+observability and resume. Schema-additive; older state files are
+upgraded in place.
+
+Amendment (#550): the structural-failure raw verdicts
+`error|corrupt_diff|block` are preserved unclassified so the cycle
+blocked predicate (`_cycle_detect_blocked`, ADR-021) can distinguish
+them from generic `fail` (which means "test ran and failed — keep
+iterating"). Without this pass-through, `verdict_classify` collapses
+all three to `fail` and structural failures silently retry instead of
+aborting the cycle.
 
 ## Amendment — Cycled stages (issue #512, ADR-021)
 

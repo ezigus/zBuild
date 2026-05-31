@@ -81,7 +81,13 @@ assert_eq "test verdict=fail -> fail" "fail" "$got"
 
 printf '%s' '{"verdict":"error"}' > "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
-assert_eq "test verdict=error -> fail" "fail" "$got"
+# #550: structural-failure raw verdicts pass through unclassified so the
+# cycle blocked predicate can distinguish them from generic "fail".
+assert_eq "test verdict=error -> error (pass-through #550)" "error" "$got"
+
+printf '%s' '{"verdict":"corrupt_diff","reason":"diff_apply_failed"}' > "$ART_DIR/test-results.json"
+got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
+assert_eq "test verdict=corrupt_diff -> corrupt_diff (pass-through #550)" "corrupt_diff" "$got"
 
 # ─── Test: review verdicts ───────────────────────────────────────────────────
 print_test_section "review plugin verdict mapping"
@@ -97,7 +103,8 @@ assert_eq "review verdict=request_changes -> warn" "warn" "$got"
 
 printf '%s' '{"verdict":"block"}' > "$ART_DIR/review.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$r_dir/manifest.yaml" "review" 0)"
-assert_eq "review verdict=block -> fail" "fail" "$got"
+# #550: block is a structural-failure class — passes through unclassified.
+assert_eq "review verdict=block -> block (pass-through #550)" "block" "$got"
 
 # ─── Test: build verdict via .scope_violation (legacy) and .verdict ──────────
 print_test_section "build plugin verdict derivation"
@@ -115,6 +122,15 @@ assert_eq "build scope_violation=true -> fail" "fail" "$got"
 printf '%s' '{"verdict":"pass","scope_violation":false}' > "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
 assert_eq "build .verdict=pass -> pass" "pass" "$got"
+
+# #550: build corrupt_diff also passes through (structural-failure class).
+printf '%s' '{"verdict":"corrupt_diff","scope_violation":false}' > "$ART_DIR/build-summary.json"
+got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
+assert_eq "build .verdict=corrupt_diff -> corrupt_diff (pass-through #550)" "corrupt_diff" "$got"
+
+printf '%s' '{"verdict":"error"}' > "$ART_DIR/build-summary.json"
+got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
+assert_eq "build .verdict=error -> error (pass-through #550)" "error" "$got"
 
 # ─── Test: plan (no .verdict field) falls back to pass when present ──────────
 print_test_section "plan plugin no .verdict field -> pass"
