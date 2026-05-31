@@ -209,3 +209,83 @@ otherwise it falls through to the legacy stage loop (zero behavior change).
 - `legacy/scripts/lib/loop-convergence.sh` — read-only convergence reference
 - `core/pipeline/cycle-orchestrator.sh` — implementation
 - `core/pipeline/template.sh` — cycles overlay parser
+
+## Amendment — Concrete F2 wiring (issue #511)
+
+F2 (#511) wires the FIRST production cycle into `config/templates/standard.yaml`:
+
+```yaml
+cycles:
+  - id: build_test_cycle
+    stages: [build, test]
+    until: { stage: test, field: verdict, op: eq, value: pass }
+    max_iterations: 3
+    on_max: continue
+    feedback:
+      - from: { stage: test, output: test_failures_summary }
+        to:   { stage: build, input: prior_test_failures, required: false }
+```
+
+### Consumer-side declaration requirement (#511)
+
+Each `feedback.to.input=<X>` MUST appear on the consumer's manifest as
+an `inputs[]` entry with `source: cycle_feedback` (see ADR-020
+amendment). The contract-validator enforces both directions
+(`CYCLE_FB_UNWIRED` and `CYCLE_FB_UNDECLARED`) so neither side can drift.
+
+### Feedback-path resolution (#511 Pin 2)
+
+`_cycle_apply_feedback` resolves the from-stage source via the from-stage
+manifest's `outputs[id==<from_output>].path` (with canonical templating
+expansion), NOT the legacy `artifacts/<stage>/<output>` hardcoded layout
+that real plugins do NOT follow. The pre-F2 implementation silently
+failed to find anything for plugins (build, test) that write FLAT into
+`state/artifacts/`. F1 mock fixtures (which DO write under
+`artifacts/<stage>/`) continue to work via a manifest-absent fallback.
+
+### Per-iter artifact cleanup contract (#511 Pin 8)
+
+Before EACH cycle iteration dispatch, the orchestrator deletes per-cycle
+stage primary outputs (read from each stage's manifest
+`outputs[primary:true].path`). Without this, a stale prior-iter
+`test-results.json` could silently satisfy `until: verdict==pass` even
+though the current iter's test stage never ran. Event:
+`cycle.artifacts.cleared iter=N stage=<id> path=<resolved>`.
+
+### `test-results.json` reflects the FINAL iter (#511 Pin 16)
+
+The test plugin uses `atomic_write` and overwrites
+`state/artifacts/test-results.json` each iteration. The downstream
+review stage reads from the canonical path — i.e. it always sees the
+LAST iteration's verdict. F2 ships canonical-only; per-iter triage
+copies under `state/cycle-<id>/iter-<N>/artifacts/` are out of scope.
+
+### Pipeline halt-vs-continue (#511 Pin 7)
+
+The runner CONTINUES to the next dispatch unit on cycle rc ∈
+{0 converged, 1 max_iterations, 2 plateau, 3 divergence} so the review
+stage runs and the ADR-019 fail-closed gate (#485) fires as the FINAL
+arbiter. Halt only on rc=4 (config_invalid) and rc=130 (aborted).
+
+### `--from-stage` rejection (#511 Pin 14)
+
+`runner.sh --from-stage <S>` is REFUSED with rc=2 when `<S>` is a member
+of any cycle, OR appears strictly after a cycle in the dispatch order.
+Either case would produce non-deterministic feedback state or consume
+stale test artifacts. Event: `pipeline.from_stage.rejected
+reason=inside_cycle_or_after`.
+
+### Auto-enable + env override (#511 Pin 4)
+
+Cycles are AUTO-ENABLED when the active template declares any
+`cycles:[]`. The legacy `ZBUILD_CYCLES_ENABLED` env var still wins:
+`=1` forces on, `=0` forces off (emits `cycle.disabled
+reason=env_override` + stderr banner so the operator notices). Unset
+falls through to the auto-detect path. Auto-enable emits
+`cycle.auto_enabled template=<id>`.
+
+### Empty-feedback preamble omission (#511 Pin 5)
+
+The build plugin's `_build_read_prior_failures` uses `[[ -s file ]]`
+(present AND non-empty). An empty feedback file → preamble OMITTED
+entirely. Never silent emit.

@@ -213,6 +213,15 @@ _test_run_inner() {
     _test_emit_io_end "$_test_seq" "$_test_t0_us" "$verdict" "$exit_code" \
         "$passed" "$failed" "$_test_summary"
 
+    # ── ADR-021 amendment (#511 F2): derive test-failures-summary.md ────────
+    # Pre-verdict-write, post-verdict-derivation. Consumed by the build stage
+    # as cycle feedback on the next iter (manifest input `prior_test_failures`,
+    # source: cycle_feedback). "missing == empty" — file is ABSENT when no
+    # failures present; never empty-but-present (mitigates silent-failure #1).
+    local _tfs_path
+    _tfs_path="$(dirname "$output_json")/test-failures-summary.md"
+    _test_emit_failures_summary "$_tfs_path" "$verdict" "$failed" "$exit_code" "$raw_output"
+
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$test_cmd"
@@ -244,6 +253,80 @@ _test_emit_io_end() {
         --metadata "passed=$passed" \
         --metadata "failed=$failed" \
         --metadata "exit_code=$exit_code" 2>/dev/null || true
+    return 0
+}
+
+# ─── _test_emit_failures_summary (#511 F2) ──────────────────────────────────
+# Write a small markdown summary of the test failures when the verdict is
+# fail|error AND there is something concrete to report. ABSENT-on-empty
+# semantics: if there are no detectable failures, do NOT write the file
+# (so the cycle feedback layer sees "missing == nothing to inject" and the
+# build preamble is omitted entirely — see _build_read_prior_failures).
+#
+# Size cap: 8 KB (cycle feedback files must stay small — they are appended
+# to the next iter's build prompt). When truncated, append a `[truncated]`
+# marker so the consumer knows the slice is partial.
+#
+# Usage: _test_emit_failures_summary <out_path> <verdict> <failed_count> <exit_code> <raw_output>
+_test_emit_failures_summary() {
+    local out_path="$1" verdict="$2" failed_count="$3" exit_code="$4" raw_output="$5"
+    # Best-effort: nothing useful to emit → ensure file is ABSENT (do not
+    # leave a stale prior-iter summary around to mislead the next build).
+    if [[ "$verdict" == "pass" ]]; then
+        rm -f "$out_path" 2>/dev/null || true
+        return 0
+    fi
+    # error verdict with no recognizable failure content → ABSENT too.
+    if [[ "$verdict" == "error" && -z "$raw_output" ]]; then
+        rm -f "$out_path" 2>/dev/null || true
+        return 0
+    fi
+
+    # Extract failing test lines (best-effort across common formats).
+    # We keep matched lines verbatim — the build agent reads them as-is.
+    local extracted
+    extracted="$(printf '%s' "$raw_output" \
+        | grep -E '(FAIL|✗|✘|Error:|Failure:|AssertionError|expected|Expected)' \
+        | head -n 60 || true)"
+
+    # If nothing matched but verdict says fail/error, fall back to first ~40
+    # lines of raw output so the build agent at least sees something.
+    if [[ -z "$extracted" ]]; then
+        extracted="$(printf '%s' "$raw_output" | head -n 40 || true)"
+    fi
+
+    # Pin: if extraction still yields zero non-whitespace content, file must
+    # be ABSENT (empty-but-present is impossible — silent-failure guard #1).
+    local _nows
+    _nows="$(printf '%s' "$extracted" | tr -d '[:space:]')"
+    if [[ -z "$_nows" ]]; then
+        rm -f "$out_path" 2>/dev/null || true
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$out_path")" 2>/dev/null || true
+    local tmp; tmp="$(mktemp "${out_path}.XXXXXX" 2>/dev/null || echo "${out_path}.tmp")"
+    {
+        printf '# Test failures summary\n\n'
+        printf '- verdict: %s\n' "$verdict"
+        printf '- failed: %s\n' "$failed_count"
+        printf '- exit_code: %s\n\n' "$exit_code"
+        printf '## Failing lines (extracted)\n\n'
+        printf '```\n%s\n```\n' "$extracted"
+    } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+
+    # 8 KB cap with truncation marker.
+    local _max=8192
+    local _bytes
+    _bytes="$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')"
+    if [[ "$_bytes" =~ ^[0-9]+$ && "$_bytes" -gt "$_max" ]]; then
+        local _tmp2; _tmp2="$(mktemp "${out_path}.XXXXXX" 2>/dev/null || echo "${out_path}.tmp2")"
+        head -c "$_max" "$tmp" > "$_tmp2" 2>/dev/null
+        printf '\n\n[truncated]\n' >> "$_tmp2"
+        mv -f "$_tmp2" "$tmp"
+    fi
+
+    mv -f "$tmp" "$out_path" 2>/dev/null || rm -f "$tmp"
     return 0
 }
 

@@ -62,16 +62,40 @@ scan_plugin_outputs() {
     #     - name: foo
     #       path: ${artifact_dir}/foo.json
     #       type: foo.json
+    # #511 F2: respect `required: false` on outputs (e.g. test plugin's
+    # `test_failures_summary` which is intentionally ABSENT when the test
+    # verdict is `pass` — missing == empty). Without this, the scanner
+    # would flag the missing optional artifact as a fail-closed contract
+    # violation on every passing run, breaking the parity goldens.
     local paths
     paths="$(awk '
-        /^outputs:[[:space:]]*$/ { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/ { in_block = 0 }
-        in_block && /^[[:space:]]+path:[[:space:]]*/ {
-            sub(/^[[:space:]]+path:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, "")
-            gsub(/^["'"'"']|["'"'"']$/, "")
-            print
+        BEGIN { in_block = 0; cur_path = ""; cur_required = "" }
+        function flush() {
+            if (cur_path != "" && cur_required != "false") {
+                print cur_path
+            }
+            cur_path = ""; cur_required = ""
         }
+        /^outputs:[[:space:]]*$/ { in_block = 1; next }
+        in_block && /^[a-zA-Z_]/ { flush(); in_block = 0 }
+        in_block && /^[[:space:]]*-[[:space:]]/ { flush() }
+        in_block && /^[[:space:]]+path:[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            cur_path = line
+            next
+        }
+        in_block && /^[[:space:]]+required:[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]+required:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            cur_required = line
+            next
+        }
+        END { flush() }
     ' "$manifest" 2>/dev/null)"
 
     [[ -z "$paths" ]] && return 0

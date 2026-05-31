@@ -21,6 +21,10 @@ EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 ORCH_SPY_LOG="$TEST_TEMP_DIR/orch-spy.log"
 
 export ORCH_SPY_LOG
+# #511 F2: this test asserts the legacy linear strategy-dispatch path
+# (every stage gets its own orch_spawn). Force-disable cycles so build+test
+# are NOT absorbed into a cycle unit that bypasses orch_spawn.
+export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────

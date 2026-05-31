@@ -44,6 +44,13 @@ outputs:
     # ADR-020 amendment (#507): primary output drives the runner's
     # stage-complete indicator via the .verdict field.
     primary: true
+  # ADR-021 amendment (#511 F2): derived markdown summary consumed by the
+  # build stage as cycle feedback. ABSENT when no failures present
+  # (missing == empty semantics); never an empty-but-present file.
+  - id: test_failures_summary
+    path: "${artifact_dir}/test-failures-summary.md"
+    type: markdown
+    required: false
 
 state:
   persisted: [last_verdict, last_exit_code]

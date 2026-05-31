@@ -34,6 +34,7 @@ stage.start
 plugin.run.start
 plugin.run.complete
 plugin.run.complete
+stage.verdict.missing
 stage.complete
 stage.start
 plugin.run.start

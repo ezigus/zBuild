@@ -39,6 +39,16 @@ inputs:
     path: "${artifact_dir}/plan.json"
     source: stage:plan
     required: true
+  # ADR-020 amendment / ADR-021 amendment (#511 F2): cross-iter feedback from
+  # the prior test run when this stage executes inside a cycle. ALWAYS
+  # optional (required:false); absent file → no preamble injected (see
+  # _build_read_prior_failures). Path resolves via ${cycle_feedback_dir} →
+  # $ZBUILD_CYCLE_FEEDBACK_DIR exported by cycle-orchestrator::_cycle_apply_feedback.
+  - id: prior_test_failures
+    type: text/plain
+    path: "${cycle_feedback_dir}/prior_test_failures.txt"
+    source: cycle_feedback
+    required: false
 
 outputs:
   - id: diff_patch

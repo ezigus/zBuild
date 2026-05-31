@@ -24,6 +24,8 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$EVENTS_JSONL"
 export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+# #511 F2: pre-cycle linear assertions; force linear dispatch.
+export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 # ─── Helper: synthetic plugin that writes test-results.json with verdict X ───

@@ -237,6 +237,7 @@ jq -n \
 
 # Run runner --resume against this state file
 set +e
+ZBUILD_CYCLES_ENABLED=0 \
 ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
 ZBUILD_STATE_DIR="$INT_STATE_DIR" \
 ZBUILD_STATE_FILE="$INT_STATE_FILE" \
@@ -267,6 +268,7 @@ fi
 print_test_section "integration: --from-stage with unknown stage exits 2"
 
 set +e
+ZBUILD_CYCLES_ENABLED=0 \
 ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
 ZBUILD_STATE_DIR="$INT_STATE_DIR" \
 ZBUILD_STATE_FILE="$INT_STATE_FILE" \
@@ -291,6 +293,7 @@ jq -n \
       plugin_state:{},status:"in_progress",updated_at:$now}' > "$INT_STATE_FILE"
 
 set +e
+ZBUILD_CYCLES_ENABLED=0 \
 ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
 ZBUILD_STATE_DIR="$INT_STATE_DIR" \
 ZBUILD_STATE_FILE="$INT_STATE_FILE" \

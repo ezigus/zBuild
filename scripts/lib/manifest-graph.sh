@@ -48,8 +48,17 @@ manifest_graph_external_allowlist() {
 }
 
 # ─── ADR-020 closed templating var set (decision #5) ──────────────────────────
+# `cycle_feedback_dir` added by #511 (F2): resolves to $ZBUILD_CYCLE_FEEDBACK_DIR
+# at expansion time. Only valid on inputs declared `source: cycle_feedback` —
+# enforced by lint/validator (cycle_feedback_dir_in_artifact_path rule).
 manifest_graph_canonical_vars() {
-    echo "state_dir artifact_dir stage_io_dir run_id"
+    echo "state_dir artifact_dir stage_io_dir run_id cycle_feedback_dir"
+}
+
+# ─── ADR-020 amendment (#511): cycle_feedback as input source ────────────────
+# Returns 0 if source value is the cycle-feedback discriminator.
+manifest_graph_is_cycle_feedback_source() {
+    [[ "${1:-}" == "cycle_feedback" ]]
 }
 
 # ─── Sentinel probe — distinguishes absent vs. unparseable (decision #4 HIGH) ──

@@ -22,7 +22,7 @@
     "plan": "pass",
     "pr": "warn",
     "review": "warn",
-    "test": "fail"
+    "test": "warn"
   },
   "status": "complete"
 }

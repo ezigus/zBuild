@@ -120,6 +120,22 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
                     _complain "$rel: input '$in_id' uses source: external for id NOT in allowlist [$(manifest_graph_external_allowlist)] [ADR-020 decision 6]"
                 fi
                 ;;
+            cycle_feedback)
+                # ADR-020 amendment (#511 / F2): cycle_feedback inputs are
+                # wired by `cycles[].feedback.to.input==<id>`. Constraints:
+                #   - required:true is a contradiction (feedback is best-effort)
+                #   - path MUST use ${cycle_feedback_dir}, not ${artifact_dir}
+                if [[ "$eff_required" == "true" ]]; then
+                    _complain "$rel: input '$in_id' source:cycle_feedback cannot be required:true (#511; cross-iter feedback is best-effort)"
+                fi
+                if [[ -n "$in_path" && "$in_path" == *'${artifact_dir}'* ]]; then
+                    _complain "$rel: input '$in_id' source:cycle_feedback uses \${artifact_dir} in path (use \${cycle_feedback_dir}; cross-iter data must not pollute artifact namespace) [#511]"
+                fi
+                # Cross-template wiring (unwired/undeclared) is enforced by the
+                # runtime contract-validator when the active template + plugin
+                # set are known together. CI lint operates on plugins alone, so
+                # it cannot decide unwired here — runtime validator owns that.
+                ;;
             stage:*)
                 producer="${in_source#stage:}"
                 if [[ "$producer" == "$id" ]]; then

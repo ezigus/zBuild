@@ -401,3 +401,43 @@ missing producer — feedback is delivered file-side at runtime via
 produces the named output (existing producer-output map lookup); a
 runtime `cycle.feedback.missing` event fires loud if the artifact is
 absent at iteration boundary.
+
+## Amendment — Optional inputs in cycle context (issue #511, F2)
+
+Inter-iter feedback flows through a NEW input `source:` discriminator —
+`cycle_feedback` — rather than via a sibling `optional_inputs:` block.
+This keeps the inputs schema single-rooted and re-uses the existing
+graph-walk / lint pipeline:
+
+```yaml
+# plugins/agent/build/manifest.yaml
+inputs:
+  - id: prior_test_failures
+    type: text/plain
+    path: "${cycle_feedback_dir}/prior_test_failures.txt"
+    source: cycle_feedback
+    required: false
+```
+
+Rules (enforced by both `scripts/lib/lint-contract.sh` and
+`core/pipeline/contract-validator.sh`):
+
+1. `source: cycle_feedback` with `required: true` is a contradiction —
+   cross-iter feedback is best-effort by definition.
+2. `path:` MUST use the new `${cycle_feedback_dir}` canonical var
+   (resolves to `$ZBUILD_CYCLE_FEEDBACK_DIR` at expansion time);
+   `${artifact_dir}` is rejected — cross-iter data must not pollute the
+   artifact namespace.
+3. Every `cycle_feedback` input MUST be referenced by some
+   `cycles[].feedback.to.input==<id>` — otherwise the input is
+   declared-but-unwired (silent failure).
+4. Every `cycles[].feedback.to.input=<X>` MUST land on a consumer
+   manifest whose `inputs[].id==X` AND `source==cycle_feedback`;
+   otherwise the wiring is undeclared (data flows nowhere).
+
+Validator violation codes: `CYCLE_FB_REQUIRED`, `CYCLE_FB_DIR`,
+`CYCLE_FB_UNWIRED`, `CYCLE_FB_UNDECLARED`.
+
+The closed templating-var set (decision #5) grows by ONE entry:
+`cycle_feedback_dir`. No other var is added; rejection of unknown
+`${var}` in input paths still fires for everything else.

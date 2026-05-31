@@ -39,6 +39,11 @@ source "$_CYCLE_ORCH_ROOT/core/state/resume.sh"
 source "$_CYCLE_ORCH_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=./template.sh
 source "$_CYCLE_ORCH_ROOT/core/pipeline/template.sh"
+# #511 F2 Pin 2: resolve feedback source paths via the from-stage manifest's
+# outputs[id==<X>].path entry (so the orchestrator stops assuming the legacy
+# `artifacts/<stage>/<output>` layout that real plugins do NOT follow).
+# shellcheck source=../../scripts/lib/manifest-graph.sh
+source "$_CYCLE_ORCH_ROOT/scripts/lib/manifest-graph.sh"
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 # HARDCODED ceiling — checked BEFORE the template's max_iterations value (silent-
@@ -366,6 +371,43 @@ _cycle_detect_divergence() {
 #   ${state_dir}/cycle-<id>/iter-<N>/feedback/<to_field>.txt
 # FAIL LOUDLY (emit cycle.feedback.missing) when from-field artifact missing.
 # Never substitute empty string silently.
+# ─── _cycle_resolve_from_path <state_dir> <from_stage> <from_output> ─────────
+# #511 Pin 2: resolve the feedback source path using the from-stage manifest's
+# outputs[id==<from_output>].path entry (which already supports ${artifact_dir}
+# templating), NOT the legacy hardcoded `artifacts/<stage>/<output>` shape.
+# Real plugins (build, test) write FLAT (e.g. artifacts/test-failures-summary.md),
+# so the old code silently failed to find anything. Backwards-compat fallback:
+# if the manifest is not available OR declares no path for the requested output
+# id, fall back to `artifacts/<from_stage>/<from_output>` (legacy mock layout).
+_cycle_resolve_from_path() {
+    local state_dir="$1" from_stage="$2" from_output="$3"
+    local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
+    local manifest=""
+    if declare -F manifest_graph_collect >/dev/null 2>&1; then
+        manifest="$(manifest_graph_collect "$plugins_root" "$from_stage" 2>/dev/null || true)"
+    fi
+    if [[ -n "$manifest" && -f "$manifest" ]] \
+       && declare -F manifest_graph_get_outputs >/dev/null 2>&1; then
+        local rec o_id o_type o_src o_req o_path
+        while IFS= read -r rec; do
+            [[ -z "$rec" ]] && continue
+            # shellcheck disable=SC2034  # o_type/o_src/o_req destructured for schema parity, only o_path read
+            IFS='|' read -r o_id o_type o_src o_req o_path <<< "$rec"
+            if [[ "$o_id" == "$from_output" && -n "$o_path" ]]; then
+                # Expand canonical templating vars.
+                local resolved="$o_path"
+                resolved="${resolved//\$\{artifact_dir\}/$state_dir/artifacts}"
+                resolved="${resolved//\$\{state_dir\}/$state_dir}"
+                printf '%s\n' "$resolved"
+                return 0
+            fi
+        done < <(manifest_graph_get_outputs "$manifest")
+    fi
+    # Legacy fallback (mock plugins / pre-F2 fixtures).
+    printf '%s/artifacts/%s/%s\n' "$state_dir" "$from_stage" "$from_output"
+    return 0
+}
+
 _cycle_apply_feedback() {
     local iter_next="$1" state_dir="$2"
     local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter_next}/feedback"
@@ -384,7 +426,8 @@ _cycle_apply_feedback() {
         local rest="${to_part#*:}"
         local to_field="${rest%%:*}"
         local required="${rest#*:}"
-        local src="$state_dir/artifacts/${from_stage}/${from_output}"
+        local src
+        src="$(_cycle_resolve_from_path "$state_dir" "$from_stage" "$from_output")"
         local dst="$fb_dir/${to_field}.txt"
         if [[ ! -e "$src" ]]; then
             _cycle_emit "cycle.feedback.missing" \
@@ -405,6 +448,11 @@ _cycle_apply_feedback() {
             return 1
         fi
     done
+    # #511 Pin 9: atomic `.complete` sentinel — written AFTER all feedback
+    # files are copied. On resume entry to iter N+1, missing `.complete`
+    # signals "re-run _cycle_apply_feedback" (kill between mkdir and cp left
+    # partial dir, mitigating silent-failure finding #9).
+    : > "$fb_dir/.complete" 2>/dev/null || true
     return 0
 }
 
@@ -478,6 +526,38 @@ _cycle_state_write_iter_atomic() {
 # `cycle_dispatch_stage` is declared (test harness OR runner), call it; else
 # emit cycle.config.invalid and fail. Returns aggregate failure_count.
 # Sets globals: _CYCLE_LAST_VERDICTS_BLOB (JSON), _CYCLE_LAST_FAILURE_COUNT.
+# ─── _cycle_pre_iter_cleanup (#511 Pin 8) ────────────────────────────────────
+# Before EACH cycle iter dispatch, delete per-cycle-stage primary outputs so a
+# stale prior-iter artifact cannot silently satisfy `until: verdict==pass`
+# (silent-failure finding #2). Reads each stage's manifest primary-output path.
+_cycle_pre_iter_cleanup() {
+    local iter="$1" state_dir="$2"
+    local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
+    declare -F manifest_graph_collect >/dev/null 2>&1 || return 0
+    declare -F manifest_graph_primary_output >/dev/null 2>&1 || return 0
+    local s
+    for s in "${_CYCLE_STAGES[@]}"; do
+        local manifest
+        manifest="$(manifest_graph_collect "$plugins_root" "$s" 2>/dev/null || true)"
+        [[ -z "$manifest" || ! -f "$manifest" ]] && continue
+        local row
+        row="$(manifest_graph_primary_output "$manifest" 2>/dev/null || true)"
+        [[ -z "$row" ]] && continue
+        # row: id|type||required|path
+        local p="${row##*|}"
+        [[ -z "$p" ]] && continue
+        local resolved="$p"
+        resolved="${resolved//\$\{artifact_dir\}/$state_dir/artifacts}"
+        resolved="${resolved//\$\{state_dir\}/$state_dir}"
+        if [[ -f "$resolved" ]]; then
+            rm -f "$resolved" 2>/dev/null || true
+            _cycle_emit "cycle.artifacts.cleared" "iter=$iter" "stage=$s" \
+                "path=$resolved"
+        fi
+    done
+    return 0
+}
+
 _cycle_iter_dispatch() {
     local iter="$1" state_file="$2"
     _CYCLE_LAST_VERDICTS_BLOB="{}"
@@ -489,6 +569,10 @@ _cycle_iter_dispatch() {
             "reason=no_dispatch_hook"
         return 1
     fi
+
+    # #511 Pin 8: per-iter cleanup BEFORE dispatch.
+    local _state_dir; _state_dir="$(dirname "$state_file")"
+    _cycle_pre_iter_cleanup "$iter" "$_state_dir"
 
     local s rc verdict status
     local blob="{}"
@@ -524,6 +608,27 @@ _cycle_iter_dispatch() {
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID
     _CYCLE_LAST_VERDICTS_BLOB="$blob"
     _CYCLE_LAST_FAILURE_COUNT="$fail"
+    # #511 Pin 10: failure_count fidelity. The orchestrator's default is the
+    # count of stages with rc!=0 (always 0..|stages|). For the build/test
+    # cycle that under-reports actual progress — a test run that drops from
+    # 17 failing tests to 3 looks identical (fc=1 either way), masking
+    # convergence and starving the divergence detector. If a `test` stage
+    # ran in this iter AND test-results.json declares `.failed`, prefer that
+    # integer (silent-failure finding #11).
+    local _has_test=0 _ts
+    for _ts in "${_CYCLE_STAGES[@]}"; do
+        [[ "$_ts" == "test" ]] && _has_test=1 && break
+    done
+    if [[ $_has_test -eq 1 ]]; then
+        local _tr="$_state_dir/artifacts/test-results.json"
+        if [[ -s "$_tr" ]]; then
+            local _failed_n
+            _failed_n="$(jq -r '.failed // 0' "$_tr" 2>/dev/null || echo 0)"
+            if [[ "$_failed_n" =~ ^[0-9]+$ ]]; then
+                _CYCLE_LAST_FAILURE_COUNT="$_failed_n"
+            fi
+        fi
+    fi
     return 0
 }
 

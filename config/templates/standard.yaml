@@ -43,3 +43,24 @@ stages:
     router:
       timeout_s: 300
       max_turns: 25
+
+# ADR-021 (#511 F2): build/test outer cycle. When the test verdict is not
+# `pass`, the cycle re-enters build with the prior test failures injected
+# as a prompt preamble (wired via `feedback.to.input=prior_test_failures`,
+# consumed by `plugins/agent/build` whose manifest declares the matching
+# `source: cycle_feedback` input). On termination via max_iterations,
+# plateau, or divergence, the runner CONTINUES to review so the ADR-019
+# fail-closed gate runs as the final arbiter.
+cycles:
+  - id: build_test_cycle
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 3
+    on_max: continue
+    feedback:
+      - from: { stage: test, output: test_failures_summary }
+        to: { stage: build, input: prior_test_failures, required: false }

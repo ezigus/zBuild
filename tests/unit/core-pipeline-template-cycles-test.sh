@@ -18,15 +18,20 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 
 FIXT="$REPO_ROOT/tests/fixtures/templates"
 
-# T1: backcompat — standard.yaml (no cycles:) → _TPL_DISPATCH_UNITS all stage:<id>
+# T1: standard.yaml — #511 F2 wires the build/test cycle. Dispatch units now
+# contain exactly ONE cycle:build_test_cycle entry between stage:plan and
+# stage:review. Pre-F2 expectation (zero cycles) is obsoleted by #511.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-assert_eq "standard.yaml: dispatch units length == stage count" "${#_TPL_STAGES[@]}" "${#_TPL_DISPATCH_UNITS[@]}"
-all_stage=1
+assert_eq "standard.yaml: 1 cycle declared (#511 F2)" "1" "${#_TPL_CYCLES[@]}"
+assert_eq "standard.yaml: cycle id is build_test_cycle" "build_test_cycle" "${_TPL_CYCLES[0]}"
+# stages = intake, plan, build, test, review (5). build+test absorbed into 1
+# cycle unit → 4 dispatch units total (stage:intake, stage:plan, cycle:..., stage:review).
+assert_eq "standard.yaml: 4 dispatch units" "4" "${#_TPL_DISPATCH_UNITS[@]}"
+has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == stage:* ]] || { all_stage=0; break; }
+    [[ "$u" == "cycle:build_test_cycle" ]] && has_cycle_unit=1
 done
-assert_eq "standard.yaml: every dispatch unit is stage:*" "1" "$all_stage"
-assert_eq "standard.yaml: zero cycles declared" "0" "${#_TPL_CYCLES[@]}"
+assert_eq "standard.yaml: declares cycle:build_test_cycle unit" "1" "$has_cycle_unit"
 
 # T2: cycle-converges-iter2 — one cycle declared, dispatch unit emitted once
 load_template "$FIXT/cycle-converges-iter2.yaml"
@@ -156,6 +161,7 @@ assert_eq "overlap: load_template rc != 0" "1" "$rc"
 # cycles: absent.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 assert_eq "regression: standard.yaml still has 5 stages" "5" "${#_TPL_STAGES[@]}"
-assert_eq "regression: standard.yaml has zero cycles" "0" "${#_TPL_CYCLES[@]}"
+# #511 F2: standard.yaml now declares one cycle (build_test_cycle).
+assert_eq "regression: standard.yaml has one cycle (build_test_cycle)" "1" "${#_TPL_CYCLES[@]}"
 
 print_test_results
