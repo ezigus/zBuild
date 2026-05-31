@@ -49,3 +49,50 @@ gha_append_scanned_log() {
         printf '| #%s | %s | %s |\n' "$pr_num" "$title" "$col3_value" >> "$log_path"
     done
 }
+
+# Jaccard token-similarity for issue-dedup scans (#558 / ADR-020 v2).
+# Returns 0.00–1.00 on stdout via printf '%.2f'. Bash 3.2 + POSIX awk.
+gha_compute_similarity() {
+    local text_a="${1:-}"
+    local text_b="${2:-}"
+    local score
+    score="$(printf '%s\n__ZBUILD_SEP__\n%s\n' "$text_a" "$text_b" | awk '
+        BEGIN {
+            split("the and that this with from when what where will should " \
+                  "would could into also just more some like such these those " \
+                  "after before while about then than have been they their " \
+                  "there which", sw, " ")
+            for (i in sw) stop[sw[i]] = 1
+            side = "A"
+        }
+        /^__ZBUILD_SEP__$/ { side = "B"; next }
+        {
+            line = tolower($0)
+            n = split(line, toks, /[^[:alnum:]]+/)
+            for (i = 1; i <= n; i++) {
+                t = toks[i]
+                if (length(t) < 4) continue
+                if (t in stop) continue
+                if (side == "A") setA[t] = 1
+                else             setB[t] = 1
+            }
+        }
+        END {
+            inter = 0; union = 0
+            for (t in setA) { union++; if (t in setB) inter++ }
+            for (t in setB) if (!(t in setA)) union++
+            if (union == 0) { printf "0.00"; exit }
+            printf "%.4f", inter / union
+        }
+    ')" || score="0.00"
+    [[ -z "$score" ]] && score="0.00"
+    printf '%.2f\n' "$score"
+}
+
+# True (rc=0) when $score >= $threshold; both are %.2f decimal strings.
+# Avoids bash integer-compare on decimals.
+gha_score_meets_threshold() {
+    local score="$1"
+    local threshold="$2"
+    awk -v s="$score" -v t="$threshold" 'BEGIN{exit !(s>=t)}'
+}
