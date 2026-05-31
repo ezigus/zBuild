@@ -28,6 +28,11 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$EVENTS_JSONL"
 export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+# #511 F2: these tests pre-date the standard.yaml cycle wiring and assert
+# a strictly LINEAR per-stage banner/event sequence (e.g. "exactly 5 started
+# suffixes"). Force-disable cycle dispatch so the runner walks the legacy
+# linear path — the cycle path is covered by its own dedicated tests.
+export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 _make_plugin "intake"  "agent" 0

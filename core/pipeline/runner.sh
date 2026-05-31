@@ -344,6 +344,61 @@ main() {
             error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
             return 2
         fi
+        # #511 Pin 14: refuse --from-stage that lands INSIDE a cycle OR
+        # AFTER a cycle (former case would silently skip cycle iters and
+        # produce non-deterministic feedback state; latter would consume
+        # stale test-results from a previous run). Mitigates silent-failure
+        # finding #8. Walks the cycle stage lists collected by template.sh.
+        local _r_cyc_count=0
+        if declare -p _TPL_CYCLES >/dev/null 2>&1; then
+            _r_cyc_count="${#_TPL_CYCLES[@]}"
+        fi
+        if [[ $_r_cyc_count -gt 0 ]]; then
+            local _fs_cycle_id="" _cyc
+            for _cyc in "${_TPL_CYCLES[@]}"; do
+                local _safe="${_cyc//-/_}"
+                local _stages_var="_TPL_CYCLE_STAGES_${_safe}"
+                local _stages_csv="${!_stages_var:-}"
+                local IFS_save="$IFS"; IFS=','
+                # shellcheck disable=SC2206
+                local -a _cs=($_stages_csv)
+                IFS="$IFS_save"
+                local _cs_s
+                for _cs_s in "${_cs[@]}"; do
+                    [[ "$_cs_s" == "$from_stage" ]] && { _fs_cycle_id="$_cyc"; break 2; }
+                done
+            done
+            # Check "after a cycle" too — locate from_stage position and any
+            # cycle position in active_stages, reject if any cycle position
+            # is strictly less.
+            local _after_cycle=0
+            if [[ -z "$_fs_cycle_id" ]]; then
+                local _fs_pos=-1 _i
+                for _i in "${!active_stages[@]}"; do
+                    [[ "${active_stages[$_i]}" == "$from_stage" ]] && _fs_pos=$_i && break
+                done
+                for _cyc in "${_TPL_CYCLES[@]}"; do
+                    local _safe2="${_cyc//-/_}"
+                    local _sv2="_TPL_CYCLE_STAGES_${_safe2}"
+                    local _scsv2="${!_sv2:-}"
+                    local _first_stage="${_scsv2%%,*}"
+                    local _cpos=-1
+                    for _i in "${!active_stages[@]}"; do
+                        [[ "${active_stages[$_i]}" == "$_first_stage" ]] && _cpos=$_i && break
+                    done
+                    if [[ $_cpos -ge 0 && $_fs_pos -gt $_cpos ]]; then
+                        _after_cycle=1; break
+                    fi
+                done
+            fi
+            if [[ -n "$_fs_cycle_id" || $_after_cycle -eq 1 ]]; then
+                eb_emit_event "pipeline.from_stage.rejected" \
+                    "reason=inside_cycle_or_after" "from_stage=$from_stage" \
+                    "cycle_id=${_fs_cycle_id:-}" 2>/dev/null || true
+                error "--from-stage '$from_stage' lands inside or after a cycle ('${_fs_cycle_id:-after-cycle}') — refused. Resume the cycle from its first stage or omit --from-stage."
+                return 2
+            fi
+        fi
     fi
 
     # ── Resume / fresh-start policy ────────────────────────────────────────────
@@ -479,17 +534,43 @@ main() {
     local skip_until_stage=""
     [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
 
-    # ADR-021 (#512): cycle-aware dispatch. Only active when:
-    #   1) ZBUILD_CYCLES_ENABLED=1 (default 0 — F1 ships as a no-op in production)
-    #   2) _TPL_DISPATCH_UNITS contains at least one "cycle:<id>" entry
-    # When inactive, falls through to the legacy stage loop below (unchanged).
-    local _cycles_enabled="${ZBUILD_CYCLES_ENABLED:-0}"
-    local _has_cycle_unit=0 _u
-    if [[ "$_cycles_enabled" == "1" && ${#_TPL_DISPATCH_UNITS[@]} -gt 0 ]]; then
+    # ADR-021 (#512 + #511 F2): cycle-aware dispatch.
+    # #511 Pin 4 — detect-and-enable with env override:
+    #   ZBUILD_CYCLES_ENABLED=0  → disabled (force off, even if template asks)
+    #   ZBUILD_CYCLES_ENABLED=1  → enabled (force on; explicit opt-in)
+    #   unset + template has cycles[] → enabled (auto)
+    #   else                       → disabled (no cycles in template anyway)
+    # When auto-enabled, emit `cycle.auto_enabled` for observability.
+    # When env=0 AND template has cycles, emit `cycle.disabled reason=env_override`
+    # PLUS a stderr banner BEFORE the linear path runs (silent-failure #3).
+    local _template_has_cycle=0 _u
+    if [[ ${#_TPL_DISPATCH_UNITS[@]} -gt 0 ]]; then
         for _u in "${_TPL_DISPATCH_UNITS[@]}"; do
-            [[ "$_u" == cycle:* ]] && _has_cycle_unit=1 && break
+            [[ "$_u" == cycle:* ]] && _template_has_cycle=1 && break
         done
     fi
+    local _cycles_enabled_raw="${ZBUILD_CYCLES_ENABLED:-}"
+    local _has_cycle_unit=0
+    case "$_cycles_enabled_raw" in
+        0)
+            _has_cycle_unit=0
+            if [[ $_template_has_cycle -eq 1 ]]; then
+                eb_emit_event "cycle.disabled" "reason=env_override" \
+                    "template=$template" 2>/dev/null || true
+                warn "Template '$template' declares cycles[] but ZBUILD_CYCLES_ENABLED=0 — running linear (env override)"
+            fi
+            ;;
+        1)
+            [[ $_template_has_cycle -eq 1 ]] && _has_cycle_unit=1
+            ;;
+        ""|*)
+            if [[ $_template_has_cycle -eq 1 ]]; then
+                _has_cycle_unit=1
+                eb_emit_event "cycle.auto_enabled" "template=$template" \
+                    "reason=template_declares_cycles" 2>/dev/null || true
+            fi
+            ;;
+    esac
 
     # cycle_dispatch_stage hook — F1 uses the same per-stage path that the
     # legacy stage loop uses. Returns the stage's rc; the orchestrator owns the
@@ -529,10 +610,12 @@ main() {
                     _rc=$?
                     set -e
                     _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file"
-                    # rc 0 (converged), 1 (max_iter w/ on_max=continue) → keep going
-                    # rc 2 (plateau), 3 (divergence), 4 (config) → halt
-                    # rc 130 (aborted) → halt
-                    if [[ $_rc -eq 4 || $_rc -eq 130 || $_rc -eq 2 || $_rc -eq 3 ]]; then
+                    # #511 Pin 7 — halt-vs-continue:
+                    # rc 0 (converged), 1 (max_iter), 2 (plateau), 3 (divergence)
+                    #   → CONTINUE to next dispatch unit so review runs AND the
+                    #     ADR-019 fail-closed gate (#485) fires as final arbiter.
+                    # rc 4 (config_invalid), 130 (aborted) → halt immediately.
+                    if [[ $_rc -eq 4 || $_rc -eq 130 ]]; then
                         _set_pipeline_status "$state_file" "interrupted"
                         eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
@@ -540,6 +623,9 @@ main() {
                         _runner_ended=true
                         error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
                         return 1
+                    fi
+                    if [[ $_rc -ne 0 ]]; then
+                        warn "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON — continuing to next dispatch unit so review fail-closed gate runs"
                     fi
                     ;;
                 stage:*)

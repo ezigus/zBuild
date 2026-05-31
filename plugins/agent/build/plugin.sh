@@ -123,6 +123,17 @@ _build_stage_run_inner() {
     fi
     local prompt
     printf -v prompt '%s\n\n## Plan\n%s\n' "$_build_instructions" "$plan_payload"
+
+    # ─── #511 F2: cycle-feedback preamble at byte 0 ──────────────────────────
+    # When the prior cycle iter's test stage produced a failures summary,
+    # prepend it AHEAD of the standard instructions so the model sees prior
+    # failures BEFORE its rules. Empty/missing file → preamble omitted
+    # entirely (silent-failure guard: `[[ -s file ]]`, not just `-f`).
+    local _preamble
+    _preamble="$(_build_read_prior_failures 2>/dev/null || true)"
+    if [[ -n "$_preamble" ]]; then
+        prompt="${_preamble}${prompt}"
+    fi
     printf '%s\n' "$prompt" > "$prompt_input_file"
 
     local redacted_file="$artifact_dir/build-prompt.redacted.txt"
@@ -138,6 +149,18 @@ _build_stage_run_inner() {
     local tier="${ZBUILD_BUILD_TIER:-T2}"
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || echo 10)"
     [[ "$max_iter" =~ ^[0-9]+$ ]] || max_iter=10
+    # ─── #511 F2: cycle-budget clamp ─────────────────────────────────────────
+    # When running INSIDE a cycle iter (ZBUILD_CYCLE_ITER set by orchestrator),
+    # clamp the inner agent-loop max_iterations to 15 to bound worst-case cost
+    # (cycle.max_iter × stage_count × inner.max_iter). Default upper bound is
+    # 25 (per ADR-018), so we cap to 15 only when it would exceed.
+    if [[ -n "${ZBUILD_CYCLE_ITER:-}" && "$max_iter" -gt 15 ]]; then
+        local _orig="$max_iter"
+        max_iter=15
+        emit_event "build.cycle.max_turns_clamped" "plugin=build" \
+            "iter=${ZBUILD_CYCLE_ITER}" "orig=$_orig" "clamped=$max_iter" \
+            >/dev/null 2>&1 || true
+    fi
 
     # Expose the scope manifest path so per-iteration redaction inside the loop
     # can satisfy C6 without inlining the manifest at every consumer.
@@ -366,6 +389,33 @@ _build_stage_run_inner() {
     # so runner.sh:672-686 halts the pipeline (verdict=corrupt_diff is
     # defense-in-depth for the indicator + downstream consumers).
     return "$force_fail_rc"
+}
+
+# ─── _build_read_prior_failures (#511 F2) ──────────────────────────────────
+# Read the prior cycle iter's test-failures-summary (wired in by the cycle
+# orchestrator's _cycle_apply_feedback as
+# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_failures.txt). Returns the preamble
+# text on stdout (with trailing blank line) OR empty stdout when:
+#   - not running in a cycle (ZBUILD_CYCLE_ITER unset)
+#   - cycle feedback dir not exported
+#   - file missing OR empty (silent-failure guard: `[[ -s file ]]`)
+#
+# Empty stdout → caller omits the preamble entirely (NEVER silent emit).
+_build_read_prior_failures() {
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
+    local f="$fb_dir/prior_test_failures.txt"
+    # `-s`: present AND non-empty. `-f` alone would let empty-but-present
+    # files through and inject a no-op preamble (silent failure).
+    [[ ! -s "$f" ]] && return 0
+    local prev_iter=$(( iter - 1 ))
+    [[ "$prev_iter" -lt 1 ]] && prev_iter=1
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "$body" ]] && return 0
+    printf '## Previous test failures (iter %d)\n%s\nFix these before LOOP_COMPLETE.\n\n' \
+        "$prev_iter" "$body"
 }
 
 # _build_compose_instructions <plan_files_csv>

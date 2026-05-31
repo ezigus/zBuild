@@ -137,13 +137,16 @@ assert_eq "T5: orchestrator converges iter 1" "0" "$rc"
 ci_present="$(jq -r '.cycle_iterations["build-test"].status // "missing"' "$STATE_FILE" 2>/dev/null)"
 assert_contains "T5: cycle_iterations[build-test].status present" "$ci_present" "complete"
 
-# T6: regression — load_template on standard.yaml leaves _TPL_DISPATCH_UNITS as
-# all stage:* (no cycles).
+# T6: standard.yaml — #511 F2 wires the build/test cycle. The dispatch unit
+# list MUST contain a `cycle:build_test_cycle` entry between stage:plan and
+# stage:review. The pre-F2 invariant ("all stage:*") is intentionally
+# obsoleted by this PR; the F1 regression intent (no cycle leaks into linear
+# templates) is preserved by tests using cycle-less fixtures.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-all_stage=1
+has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == stage:* ]] || all_stage=0
+    [[ "$u" == "cycle:build_test_cycle" ]] && has_cycle_unit=1
 done
-assert_eq "T6: standard.yaml dispatch units all stage:* (no cycle leak)" "1" "$all_stage"
+assert_eq "T6: standard.yaml declares cycle:build_test_cycle unit (#511)" "1" "$has_cycle_unit"
 
 print_test_results

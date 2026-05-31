@@ -15,6 +15,10 @@ print_test_header "artifact contract — A3: missing artifact triggers plugin.co
 setup_test_env "artifact-contract"
 
 EVENTS_DIR="$TEST_TEMP_DIR/events"
+# #511 F2: this test invokes runner with the default standard template; the
+# F2 cycle wiring is irrelevant to artifact-contract assertions and would
+# otherwise interact with the missing-artifact path. Force linear dispatch.
+export ZBUILD_CYCLES_ENABLED=0
 export ZBUILD_EVENTS_DIR="$EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$EVENTS_DIR/events.db"

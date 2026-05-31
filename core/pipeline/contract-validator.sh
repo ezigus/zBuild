@@ -247,6 +247,58 @@ _contract_validate_pipeline() {
                         fail_count=$((fail_count + 1))
                     fi
                     ;;
+                cycle_feedback)
+                    # ADR-020 amendment (#511 / F2): cycle_feedback inputs are
+                    # OPTIONAL by construction (cross-iter only meaningful when
+                    # the cycle runs more than once). required:true is a
+                    # contradiction caught above; an unreachable branch here.
+                    if [[ "$in_required" == "true" ]]; then
+                        violations+=("$stage|CYCLE_FB_REQUIRED|$in_id|source: cycle_feedback cannot be required:true (#511)")
+                        fail_count=$((fail_count + 1))
+                        continue
+                    fi
+                    if [[ -n "$in_path" && "$in_path" == *'${artifact_dir}'* ]]; then
+                        violations+=("$stage|CYCLE_FB_DIR|$in_id|source:cycle_feedback path uses \${artifact_dir} (use \${cycle_feedback_dir}) [#511]|$in_path")
+                        fail_count=$((fail_count + 1))
+                        continue
+                    fi
+                    # Wiring check: input MUST be referenced by some
+                    # cycles[].feedback.to.input==<in_id> AND the consumer
+                    # stage MUST be a member of that cycle. Wiring data lives
+                    # in template-parser side-channel vars (_TPL_CYCLE_*).
+                    # Only enforced when template-parser state is loaded;
+                    # otherwise warn-skip (lint catches the static side).
+                    local _cyc_count=0
+                    if declare -p _TPL_CYCLES >/dev/null 2>&1; then
+                        _cyc_count="${#_TPL_CYCLES[@]}"
+                    fi
+                    if [[ $_cyc_count -gt 0 ]]; then
+                        local _wired=0 _cyc
+                        for _cyc in "${_TPL_CYCLES[@]}"; do
+                            local _safe="${_cyc//-/_}"
+                            local _fb_var="_TPL_CYCLE_FEEDBACK_${_safe}"
+                            local _fb_blob="${!_fb_var:-}"
+                            [[ -z "$_fb_blob" ]] && continue
+                            local _fb_line
+                            while IFS= read -r _fb_line; do
+                                [[ -z "$_fb_line" ]] && continue
+                                # "from_stage:from_output|to_stage:to_field:required"
+                                local _to_part="${_fb_line#*|}"
+                                local _to_stage="${_to_part%%:*}"
+                                local _rest="${_to_part#*:}"
+                                local _to_field="${_rest%%:*}"
+                                if [[ "$_to_stage" == "$stage" && "$_to_field" == "$in_id" ]]; then
+                                    _wired=1; break
+                                fi
+                            done <<< "$_fb_blob"
+                            [[ $_wired -eq 1 ]] && break
+                        done
+                        if [[ $_wired -eq 0 ]]; then
+                            violations+=("$stage|CYCLE_FB_UNWIRED|$in_id|input declares source:cycle_feedback but no cycles[].feedback.to wires it [#511]")
+                            fail_count=$((fail_count + 1))
+                        fi
+                    fi
+                    ;;
                 stage:*)
                     local producer="${in_source#stage:}"
                     # Self-reference check
@@ -290,6 +342,46 @@ _contract_validate_pipeline() {
         _CV_AVAILABLE["$stage"]=1
     done
 
+    # ── ADR-021 amendment (#511): cycle_feedback_undeclared check ──────────
+    # For every cycles[].feedback.to.input=<X>, the consumer's manifest MUST
+    # declare an input with id==X and source==cycle_feedback. Otherwise the
+    # template wires data the consumer never reads — silent failure class.
+    local _cyc_count2=0
+    if declare -p _TPL_CYCLES >/dev/null 2>&1; then
+        _cyc_count2="${#_TPL_CYCLES[@]}"
+    fi
+    if [[ $_cyc_count2 -gt 0 ]]; then
+        local _cyc
+        for _cyc in "${_TPL_CYCLES[@]}"; do
+            local _safe="${_cyc//-/_}"
+            local _fb_var="_TPL_CYCLE_FEEDBACK_${_safe}"
+            local _fb_blob="${!_fb_var:-}"
+            [[ -z "$_fb_blob" ]] && continue
+            local _fb_line
+            while IFS= read -r _fb_line; do
+                [[ -z "$_fb_line" ]] && continue
+                local _to_part="${_fb_line#*|}"
+                local _to_stage="${_to_part%%:*}"
+                local _rest="${_to_part#*:}"
+                local _to_field="${_rest%%:*}"
+                local _to_manifest="${_CV_STAGE_MANIFEST[$_to_stage]:-}"
+                [[ -z "$_to_manifest" ]] && continue
+                local _has_input=0 _irec _iid _itype _isrc _ireq _ipath
+                while IFS= read -r _irec; do
+                    [[ -z "$_irec" ]] && continue
+                    IFS='|' read -r _iid _itype _isrc _ireq _ipath <<< "$_irec"
+                    if [[ "$_iid" == "$_to_field" && "$_isrc" == "cycle_feedback" ]]; then
+                        _has_input=1; break
+                    fi
+                done < <(manifest_graph_get_inputs "$_to_manifest")
+                if [[ $_has_input -eq 0 ]]; then
+                    violations+=("$_to_stage|CYCLE_FB_UNDECLARED|$_to_field|cycle[$_cyc].feedback.to wires input '$_to_field' but stage '$_to_stage' declares no matching input with source:cycle_feedback [#511]")
+                    fail_count=$((fail_count + 1))
+                fi
+            done <<< "$_fb_blob"
+        done
+    fi
+
     # No violations → success
     if [[ $fail_count -eq 0 ]]; then
         return 0
@@ -315,7 +407,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)
