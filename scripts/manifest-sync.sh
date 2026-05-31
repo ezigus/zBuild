@@ -26,6 +26,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=lib/gh-automation.sh
+source "$REPO_ROOT/scripts/lib/gh-automation.sh"
 
 MODE="report"
 MANIFEST="$REPO_ROOT/.github/issues/keepers-manifest.yaml"
@@ -120,8 +122,7 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
         pr_body=""
     fi
     if ! echo "$pr_body" | grep -qiE '(closes|fixes|resolves)[ ]+#[0-9]+'; then
-        # Skip PRs already acknowledged in the orphan log
-        if [[ -f "$ORPHAN_PRS_LOG" ]] && grep -q "^| #${pr_num} |" "$ORPHAN_PRS_LOG"; then
+        if gha_is_already_scanned "$pr_num" "$ORPHAN_PRS_LOG"; then
             continue
         fi
         ORPHAN_PRS+=("$pr_num|$pr_title")
@@ -242,46 +243,35 @@ for entry in "${TO_MARK_CLOSED[@]}"; do
     CHANGES_MADE=$((CHANGES_MADE + 1))
 done
 
-# Apply: append orphan PRs to log
-if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
-    mkdir -p "$(dirname "$ORPHAN_PRS_LOG")"
-    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    if [[ ! -f "$ORPHAN_PRS_LOG" ]]; then
-        cat > "$ORPHAN_PRS_LOG" <<HDR
+_manifest_sync_orphan_log_header() {
+    local path="$1" timestamp="$2"
+    cat > "$path" <<HDR
 # Orphan PRs — merged without linking to an issue
 
 Auto-maintained by \`scripts/manifest-sync.sh\`. Each entry below is a PR that
 merged without referencing an issue via \`Closes #N\` / \`Fixes #N\` / \`Resolves #N\`.
 
-Rolling window: last 30 merged PRs. Not an exhaustive archive.
-
-_Last updated: ${now} (rolling 30-PR window)_
+_Last updated: ${timestamp}_
 
 | PR | Title | First seen |
 |---|---|---|
 HDR
-    else
-        # Upsert the _Last updated_ line: replace if present, insert before the table if absent.
-        if grep -q "^_Last updated:" "$ORPHAN_PRS_LOG"; then
-            zbuild_sed_inplace "s|^_Last updated:.*|_Last updated: ${now} (rolling 30-PR window)_|" "$ORPHAN_PRS_LOG"
-        else
-            awk -v ts="_Last updated: ${now} (rolling 30-PR window)_" \
-                '/^\| PR \| Title \| First seen \|/{print ts; print ""; print; next} {print}' \
-                "$ORPHAN_PRS_LOG" > "${ORPHAN_PRS_LOG}.tmp" \
-                && mv "${ORPHAN_PRS_LOG}.tmp" "$ORPHAN_PRS_LOG"
-        fi
-    fi
+}
+
+# Apply: append orphan PRs to log
+if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
     today="$(date -u +%Y-%m-%d)"
-    for entry in "${ORPHAN_PRS[@]}"; do
-        IFS='|' read -r num title <<< "$entry"
-        # Idempotent: skip if PR already in log
-        if grep -q "^| #${num} |" "$ORPHAN_PRS_LOG"; then
-            continue
-        fi
-        echo "| #${num} | ${title} | ${today} |" >> "$ORPHAN_PRS_LOG"
-        success "  orphan log: appended PR #${num}"
-        CHANGES_MADE=$((CHANGES_MADE + 1))
-    done
+    before_count=0
+    [[ -f "$ORPHAN_PRS_LOG" ]] && before_count=$(grep -cE '^\| #[0-9]+ \|' "$ORPHAN_PRS_LOG" || true)
+    gha_append_scanned_log "$ORPHAN_PRS_LOG" \
+        "_manifest_sync_orphan_log_header" "$today" \
+        "${ORPHAN_PRS[@]}"
+    after_count=$(grep -cE '^\| #[0-9]+ \|' "$ORPHAN_PRS_LOG" || true)
+    added=$((after_count - before_count))
+    if (( added > 0 )); then
+        success "  orphan log: appended $added PR row(s)"
+        CHANGES_MADE=$((CHANGES_MADE + added))
+    fi
 fi
 
 # Note: orphan ISSUES (live but not in manifest) are surfaced but NOT
