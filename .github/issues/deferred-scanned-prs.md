@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-05-31T12:07:08Z_
+_Last updated: 2026-05-31T18:53:06Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -40,3 +40,12 @@ _Last updated: 2026-05-31T12:07:08Z_
 | #487 | feat(#484): intake creates feature branch from issue (fail-closed) | 2026-05-31 |
 | #486 | fix(#483): plugins tag route_to_model capture with metadata.artifact (ADR-018) | 2026-05-31 |
 | #480 | [manifest-sync] Drift reconciliation | 2026-05-31 |
+| #554 | fix(runner): add || true to eb_emit_event in stage dispatch loop to prevent pipeline.abort (#547) | 2026-05-31 |
+| #553 | fix(test): write test-results.json verdict=error on diff_apply_failed to trigger cycle blocked predicate (#550) | 2026-05-31 |
+| #552 | fix(test): reset temp worktree to HEAD before diff apply to prevent diff_apply_failed (#548) | 2026-05-31 |
+| #551 | fix(build): NUL detection false positive - use grep -P instead of bash $'\x00' empty string (#549) | 2026-05-31 |
+| #546 | feat(#541): one-shot historical deferred-work backfill | 2026-05-31 |
+| #545 | feat(#540): extract gha_is_already_scanned + gha_append_scanned_log | 2026-05-31 |
+| #544 | fix(build): diff capture trailing-newline + bidirectional apply-check + hunk-count validation (#530) | 2026-05-31 |
+| #543 | feat(banner): drop stage-io: prefix + blank-line spacing between stages (#523) | 2026-05-31 |
+| #538 | feat(cycle): operator-visible banners for cycle.start/iter/complete (#524) | 2026-05-31 |
