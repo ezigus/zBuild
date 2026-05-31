@@ -243,7 +243,7 @@ _build_stage_run_inner() {
     # would be misled. Flag explicitly so the gate fails-CLOSED rather than
     # producing misleading numstat output.
     if [[ -s "$output_diff_patch" ]] && \
-       LC_ALL=C grep -q $'\x00' "$output_diff_patch" 2>/dev/null; then
+       LC_ALL=C grep -qP '\x00' "$output_diff_patch" 2>/dev/null; then
         emit_event "build.diff.binary_truncation_observed" "plugin=build" \
             "path=$output_diff_patch" >/dev/null 2>&1 || true
     fi
