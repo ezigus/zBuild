@@ -327,6 +327,60 @@ _cycle_detect_plateau() {
     [[ "$distinct" == "1" ]]
 }
 
+# ─── _cycle_detect_blocked <verdicts_blob> <iter> ────────────────────────────
+# #528 — early-abort when any stage in _CYCLE_STAGES[] this iter has raw
+# verdict ∈ {error, corrupt_diff, block} (the "cannot-recover" class).
+#
+# Returns: 0 = blocked (terminate-now), 1 = not blocked.
+#
+# Pin (silent-failure CRITICAL #1): blocked = verdict-PRESENT + value-in-set.
+#   verdict=missing is handled exclusively by cycle.iteration.verdict_missing
+#   emitted from _cycle_check_until — DO NOT double-emit.
+# Pin (silent-failure CRITICAL #2): distinct from cycle.feedback.missing (#526).
+#   Blocked fires on verdict; feedback.missing fires on missing-artifact.
+# Pin (silent-failure HIGH #5): no debounce — these are structural failures
+#   (corrupt patch, dispatch error) and retry doesn't help. EXCEPT: bypass
+#   blocked when _CYCLE_UNTIL_VALUE == "error" (operator template explicitly
+#   converging on error).
+# Pin (silent-failure HIGH #6): jq parse failure OR empty blob → fail-CLOSED,
+#   treat as terminate-now (mirrors _cycle_check_max_iterations non-numeric).
+# Pin (HIGH #7): read from $1 (caller passes _CYCLE_LAST_VERDICTS_BLOB), NEVER
+#   from history — resume-safe by construction.
+_cycle_detect_blocked() {
+    local blob="$1" iter="$2"
+    # Operator-bypass: if until-value is explicitly "error", the template is
+    # converging ON error — let until fire, don't shadow it.
+    if [[ "${_CYCLE_UNTIL_VALUE:-}" == "error" ]]; then
+        return 1
+    fi
+    # Fail-CLOSED: empty / unset blob.
+    if [[ -z "$blob" || "$blob" == "{}" ]]; then
+        _cycle_emit "cycle.metric.invalid" "metric=verdicts_blob_empty" \
+            "iter=$iter"
+        return 0
+    fi
+    # Fail-CLOSED: jq parse failure on the blob itself.
+    if ! jq -e . <<< "$blob" >/dev/null 2>&1; then
+        _cycle_emit "cycle.metric.invalid" "metric=blocked_eval" \
+            "iter=$iter" "reason=jq_failed"
+        return 0
+    fi
+    local s v
+    for s in "${_CYCLE_STAGES[@]}"; do
+        v="$(jq -r --arg s "$s" '.[$s].verdict // empty' <<< "$blob" 2>/dev/null || true)"
+        case "$v" in
+            error|corrupt_diff|block)
+                # Stash matched stage/verdict so caller can emit cycle.blocked
+                # with the originating context (event ordering MED #9).
+                _CYCLE_BLOCKED_STAGE="$s"
+                _CYCLE_BLOCKED_VERDICT="$v"
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
 # ─── _cycle_detect_divergence <history_file> <K> ─────────────────────────────
 # K consecutive POSITIVE failure_count deltas → divergence.
 # Skip when iter<K+1.
@@ -645,6 +699,7 @@ _cycle_handle_terminal_rc() {
         2)   reason="plateau" ;;
         3)   reason="divergence" ;;
         4)   reason="config_invalid" ;;
+        5)   reason="blocked" ;;
         130) reason="aborted" ;;
         *)   reason="error" ;;
     esac
@@ -748,6 +803,12 @@ cycle_orchestrator_run() {
         elif _cycle_detect_divergence "$history_file" "$_CYCLE_DIVERGENCE_WINDOW"; then
             _CYCLE_LAST_TERMINATED_REASON="divergence"
             overall_status="divergence"; term_rc=3
+        elif _cycle_detect_blocked "$verdicts_blob" "$iter"; then
+            # #528: structural cannot-progress class — fires LAST (after
+            # divergence) so legitimate "make progress" predicates take
+            # priority. rc=5 halts the pipeline (runner.sh:618).
+            _CYCLE_LAST_TERMINATED_REASON="blocked"
+            overall_status="blocked"; term_rc=5
         fi
 
         # Single atomic state write per iter boundary.
@@ -767,6 +828,14 @@ cycle_orchestrator_run() {
                    eb_emit_event "cycle.complete" "cycle_id=$cycle_id" "iter=$iter" "reason=plateau" 2>/dev/null || true ;;
                 3) eb_emit_event "cycle.divergence" "cycle_id=$cycle_id" "iter=$iter" "velocity_history=$failure_count" 2>/dev/null || true
                    eb_emit_event "cycle.complete" "cycle_id=$cycle_id" "iter=$iter" "reason=divergence" 2>/dev/null || true ;;
+                5) # #528: emit cycle.blocked between cycle.iteration.complete
+                   # (already emitted above) and cycle.complete reason=blocked
+                   # — strict event ordering per MED #9.
+                   eb_emit_event "cycle.blocked" "cycle_id=$cycle_id" "iter=$iter" \
+                       "stage=${_CYCLE_BLOCKED_STAGE:-unknown}" \
+                       "verdict=${_CYCLE_BLOCKED_VERDICT:-unknown}" \
+                       "feedback_missing=false" 2>/dev/null || true
+                   eb_emit_event "cycle.complete" "cycle_id=$cycle_id" "iter=$iter" "reason=blocked" 2>/dev/null || true ;;
             esac
             _cycle_clear_traps
             { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return "$term_rc"; }

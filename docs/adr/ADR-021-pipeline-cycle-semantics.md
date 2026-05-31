@@ -321,3 +321,40 @@ review, so review's `_review_derive_test_status` sees an unambiguous failure
 signal and the ADR-019 coercion path fires deterministically. A new event
 `cycle.unconverged cycle_id=<id> iter=<N> reason=<max_iterations|plateau|divergence>`
 is emitted alongside the existing `cycle.complete`.
+
+## Amendment — Blocked termination class (#528)
+
+A new termination class `blocked` distinguishes "stage could not produce
+signal" (verdict=error/corrupt_diff/block) from "stage ran and didn't
+converge" (verdict=fail). Per ADR-019 plugin verdicts table.
+
+**Predicate:** `_cycle_detect_blocked` fires when ANY stage in `cycle.stages[]`
+this iter has raw verdict ∈ {error, corrupt_diff, block}. Read from
+`_CYCLE_LAST_VERDICTS_BLOB` (resume-safe). Does NOT fire on missing verdict
+(handled by `verdict_missing`), on `fail` (keep iterating), or on
+`scope_violation` (actionable).
+
+**Priority (revised):** until > max_iterations > plateau > divergence > blocked > signal.
+
+Blocked is LAST so legitimate convergence + plateau/divergence detection
+still fire when applicable. Blocked is bypassed when `until.value == "error"`
+(operator template explicitly converging on error).
+
+**Return code 5 allocation:** rc=5 halts the pipeline (review does NOT run on
+blocked). Runner halt set: `{4, 5, 130}`. Rationale: upstream input is
+structurally broken; running review on `verdict=error` produces noise + burns
+tokens.
+
+**Reason enum extension:** `cycle.complete reason ∈ {converged, plateau,
+max_iterations, divergence, blocked, verdict_missing, aborted, error}`.
+
+**Event:** `cycle.blocked cycle_id=X iter=N stage=Y verdict=Z feedback_missing=bool`
+emitted between `cycle.iteration.complete` and `cycle.complete reason=blocked`.
+
+**State enum extension:** `cycle_iterations[X].status ∈ {..., blocked}`.
+
+**Fail-CLOSED handling:** jq parse failure on verdicts blob → emit
+`cycle.metric.invalid metric=blocked_eval reason=jq_failed`, treat as
+terminate-now (mirrors `_cycle_check_max_iterations` non-numeric handling).
+Empty `_CYCLE_LAST_VERDICTS_BLOB={}` → emit `cycle.metric.invalid
+metric=verdicts_blob_empty`, also fail-CLOSED.
