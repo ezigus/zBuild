@@ -641,9 +641,22 @@ _cycle_iter_dispatch() {
     # Capture caller's errexit state — we MUST NOT alter it after returning
     # (silent-failure: leaking `set -e` ON breaks set-e-naive callers).
     local _had_e=0; case $- in *e*) _had_e=1 ;; esac
+    # #566: snapshot caller's ZBUILD_CURRENT_STAGE so we can restore it after
+    # the dispatch loop (mirrors the linear-stage path at runner.sh:1057-1059).
+    # Without this export, route.sh:679's _iter_stage_id resolves to "" and the
+    # per-iteration [llm] banner is silently skipped for every stage in a cycle.
+    local _prior_stage_set=0 _prior_stage=""
+    if [[ -n "${ZBUILD_CURRENT_STAGE+x}" ]]; then
+        _prior_stage_set=1
+        _prior_stage="$ZBUILD_CURRENT_STAGE"
+    fi
     for s in "${_CYCLE_STAGES[@]}"; do
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
+        # #566: stage identity must propagate to subshells so router/stage-io,
+        # per-stage timeouts, redaction scope, and cost-ledger events all
+        # resolve `${ZBUILD_CURRENT_STAGE}` correctly inside cycles.
+        export ZBUILD_CURRENT_STAGE="$s"
         # Re-install traps — silent-failure finding #6: nested route loops
         # clobber INT/TERM. Reassert ownership after each stage.
         _cycle_install_traps
@@ -667,6 +680,13 @@ _cycle_iter_dispatch() {
         fi
     done
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID
+    # #566: restore caller's ZBUILD_CURRENT_STAGE — preserves prior value if
+    # set, or unsets (we own the var only within this loop).
+    if [[ $_prior_stage_set -eq 1 ]]; then
+        export ZBUILD_CURRENT_STAGE="$_prior_stage"
+    else
+        unset ZBUILD_CURRENT_STAGE
+    fi
     _CYCLE_LAST_VERDICTS_BLOB="$blob"
     _CYCLE_LAST_FAILURE_COUNT="$fail"
     # #511 Pin 10: failure_count fidelity. The orchestrator's default is the
