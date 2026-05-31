@@ -460,3 +460,68 @@ zbuild_project_root() {
     fi
     echo "$root"
 }
+
+# ─── branch_numstat — compact "files=N add=A del=D" diff summary (#567) ─────
+# Fail-OPEN helper for the test_assessment LLM input. Returns a single line on
+# stdout describing the current branch's diff against a base ref. NEVER aborts
+# the caller (rc=0 always) — this is LLM signal, not a safety gate.
+#
+# Output shapes:
+#   files=<N> add=<A> del=<B>     when a base ref resolves
+#   unknown                       when no usable ref or no git repo
+#
+# Base-ref fallback chain: origin/main → main → master → HEAD~50..HEAD →
+#   HEAD~1..HEAD → unknown. Binary files in numstat appear as "-\t-\tpath";
+# we treat their adds/dels as 0 when summing.
+branch_numstat() {
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        printf 'unknown\n'
+        return 0
+    fi
+
+    local base="" range="" cand
+    for cand in "origin/main" "main" "master"; do
+        if git rev-parse --verify --quiet "$cand" >/dev/null 2>&1; then
+            base="$(git merge-base "$cand" HEAD 2>/dev/null || true)"
+            if [[ -n "$base" ]]; then
+                range="${base}..HEAD"
+                break
+            fi
+        fi
+    done
+
+    if [[ -z "$range" ]]; then
+        # HEAD~50 ancestor probe (skip if shallow / fewer commits than 50).
+        if git rev-parse --verify --quiet "HEAD~50" >/dev/null 2>&1; then
+            range="HEAD~50..HEAD"
+        elif git rev-parse --verify --quiet "HEAD~1" >/dev/null 2>&1; then
+            range="HEAD~1..HEAD"
+        fi
+    fi
+
+    if [[ -z "$range" ]]; then
+        printf 'unknown\n'
+        return 0
+    fi
+
+    local raw
+    raw="$(git diff --numstat "$range" 2>/dev/null || true)"
+    if [[ -z "$raw" ]]; then
+        printf 'files=0 add=0 del=0\n'
+        return 0
+    fi
+
+    local files=0 add=0 del=0
+    local adds dels path a_n d_n
+    while IFS=$'\t' read -r adds dels path; do
+        [[ -z "$path" ]] && continue
+        files=$((files + 1))
+        a_n=0; d_n=0
+        [[ "$adds" =~ ^[0-9]+$ ]] && a_n="$adds"
+        [[ "$dels" =~ ^[0-9]+$ ]] && d_n="$dels"
+        add=$((add + a_n))
+        del=$((del + d_n))
+    done <<< "$raw"
+    printf 'files=%d add=%d del=%d\n' "$files" "$add" "$del"
+    return 0
+}

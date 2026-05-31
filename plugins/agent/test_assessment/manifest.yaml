@@ -1,0 +1,70 @@
+id: test_assessment
+name: Test Assessment Stage
+kind: agent
+version: 0.1.0
+description: |
+  Pattern 1 LLM stage (#567). Consumes test-results.json, plan.json, and
+  build-summary.json; emits test-assessment.json with a structured verdict
+  (pass|fail|error|inconclusive), a root-cause diagnosis, required_changes[],
+  agrees_with_build_complete, and an LLM-authored failure_summary_md. The
+  rendered markdown sibling (test-assessment.md) is the build cycle's
+  prior_test_assessment feedback source.
+
+hooks:
+  init: test_assessment_init
+  run: test_assessment_run
+  finalize: test_assessment_finalize
+  cleanup: test_assessment_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: test-assessment.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+  valid_verdicts:
+    - pass
+    - fail
+    - error
+    - inconclusive
+
+inputs:
+  - id: test_results
+    type: file
+    path: "${artifact_dir}/test-results.json"
+    source: stage:test
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
+  - id: build_summary
+    type: file
+    path: "${artifact_dir}/build-summary.json"
+    source: stage:build
+    required: false
+
+outputs:
+  - id: test_assessment
+    path: "${artifact_dir}/test-assessment.json"
+    type: test-assessment.json
+    required: true
+    primary: true
+  - id: test_assessment_md
+    path: "${artifact_dir}/test-assessment.md"
+    type: markdown
+    required: false
+
+state:
+  persisted:
+    - last_verdict
+  reconstructed: []
