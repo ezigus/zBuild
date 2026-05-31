@@ -306,6 +306,59 @@ assert_contains "apply-fail summary contains 'git apply --check failed:'" \
 mv "$SAVED_GIT" "$TEST_TEMP_DIR/bin/git"
 hash -r
 
+# ─── Test 9b-550: #550 diff_apply_failed → test-results.json exists with verdict=error ─
+# The apply-fail path must write test-results.json (verdict=error,
+# reason=diff_apply_failed) so the stage-verdict resolver reads "error" instead
+# of emitting artifact_absent + verdict=warn.  This is the root fix for #550:
+# the _cycle_detect_blocked predicate checks for verdict=error; without this
+# file the cycle ran all 3 max iterations instead of aborting after iter 1.
+print_test_section "9b. #550 diff_apply_failed → test-results.json exists with verdict=error"
+
+# Swap in a failing git apply mock (same pattern as test 9).
+SAVED_GIT_9B="$TEST_TEMP_DIR/bin/git.saved-9b"
+mv "$TEST_TEMP_DIR/bin/git" "$SAVED_GIT_9B"
+cat > "$TEST_TEMP_DIR/bin/git" <<'GITFAIL9B'
+#!/usr/bin/env bash
+args=("$@")
+if [[ "${args[0]:-}" == "-C" ]]; then args=("${args[@]:2}"); fi
+case "${args[0]:-}" in
+    apply)
+        echo "error: patch failed: foo.js:1" >&2
+        echo "error: patch failed: foo.js:1"
+        exit 1
+        ;;
+    *) exec "$(PATH=/usr/bin:/usr/local/bin:/opt/homebrew/bin command -v git)" "$@" ;;
+esac
+GITFAIL9B
+chmod +x "$TEST_TEMP_DIR/bin/git"
+hash -r
+
+OUT_JSON_9B550="$ARTIFACT_DIR/test-results-9b-550.json"
+# Remove any pre-existing output to confirm the file is freshly written.
+rm -f "$OUT_JSON_9B550"
+set +e
+_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_9B550" \
+    "$TEST_TEMP_DIR/bin/mock_test.sh"
+rc9b550=$?
+set -e
+
+assert_exit_code "#550 plugin exits 0 on diff_apply_failed" "0" "$rc9b550"
+assert_file_exists "#550 test-results.json written on diff_apply_failed" "$OUT_JSON_9B550"
+
+verdict9b550="$(_json_key "$OUT_JSON_9B550" '.verdict')"
+assert_eq "#550 verdict=error on diff_apply_failed" "error" "$verdict9b550"
+
+# Confirm reason field carries diff_apply_failed token (from the printf failsafe
+# OR the richer _test_write_result; either satisfies the cycle-blocked predicate).
+reason9b550="$(_json_key "$OUT_JSON_9B550" '.reason // .test_output // empty')"
+# verdict=error is the critical assertion; reason is best-effort.
+[[ -n "$reason9b550" ]] && assert_pass "#550 reason/test_output field present" \
+    || assert_fail "#550 reason/test_output field present" "both fields empty"
+
+# Restore the passing mock git.
+mv "$SAVED_GIT_9B" "$TEST_TEMP_DIR/bin/git"
+hash -r
+
 # ─── Test 9a: error (no-op #485) → 'no-op: 0 tests detected' summary ─────────
 print_test_section "9a. #497 #485 no-op guard → 'no-op: 0 tests detected'"
 

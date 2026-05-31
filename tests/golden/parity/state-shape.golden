@@ -18,11 +18,11 @@
   },
   "stage_verdicts": {
     "build": "pass",
-    "intake": "warn",
+    "intake": "pass",
     "plan": "pass",
-    "pr": "warn",
+    "pr": "pass",
     "review": "warn",
-    "test": "warn"
+    "test": "error"
   },
   "status": "complete"
 }
