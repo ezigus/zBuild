@@ -91,4 +91,25 @@ dir="$(mk_case t9 '{"verdict":"pass"}' '')"
 out="$(_review_derive_test_status "$dir/test-results.json")"
 assert_eq "T9: assessment pass alone (no test-results) → 'passed'" "passed" "$out"
 
+# ─── Test 10: ADR-019 §7 mandates review.test_assessment.consumed event ──────
+# (Codex P2 on #580.) When the assessment source is selected, an event must
+# be emitted with source=test_assessment + verdict so operators can audit
+# which artifact drove the coercion decision.
+: > "$ZBUILD_EVENTS_JSONL"
+dir="$(mk_case t10 '{"verdict":"fail"}' '{"verdict":"pass"}')"
+out="$(_review_derive_test_status "$dir/test-results.json")"
+assert_eq "T10a: assessment fail wins precedence → 'failed'" "failed" "$out"
+ev_count="$(grep -c '"type":"review.test_assessment.consumed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
+[[ -z "$ev_count" ]] && ev_count=0
+assert_eq "T10b: review.test_assessment.consumed event emitted (count=1)" "1" "$ev_count"
+
+# ─── Test 11: fallback path (no assessment) does NOT emit the event ──────────
+: > "$ZBUILD_EVENTS_JSONL"
+dir="$(mk_case t11 '' '{"verdict":"pass"}')"
+out="$(_review_derive_test_status "$dir/test-results.json")"
+assert_eq "T11a: fallback works" "passed" "$out"
+ev_count="$(grep -c '"type":"review.test_assessment.consumed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
+[[ -z "$ev_count" ]] && ev_count=0
+assert_eq "T11b: no consumed event on fallback path" "0" "$ev_count"
+
 print_test_results

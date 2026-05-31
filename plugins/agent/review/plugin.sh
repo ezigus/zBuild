@@ -80,6 +80,17 @@ _review_derive_test_status() {
             local _av
             _av="$(jq -r '.verdict // empty' "$_assessment" 2>/dev/null || true)"
             case "$_av" in
+                pass|fail|error|inconclusive)
+                    # ADR-019 §7 mandates this telemetry so operators can tell
+                    # whether a coerced review came from test_assessment or raw
+                    # test-results.json. (Codex P2 on #580.)
+                    emit_event "review.test_assessment.consumed" \
+                        "source=test_assessment" \
+                        "verdict=$_av" \
+                        "path=$_assessment" 2>/dev/null || true
+                    ;;
+            esac
+            case "$_av" in
                 pass)         printf 'passed\n';  return 0 ;;
                 fail|error)   printf 'failed\n';  return 0 ;;
                 inconclusive) printf 'unknown\n'; return 0 ;;
