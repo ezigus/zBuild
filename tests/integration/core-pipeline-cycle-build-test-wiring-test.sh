@@ -81,48 +81,44 @@ else
     assert_fail "T2c: error+empty raw should yield no file" "found $SUM"
 fi
 
-# ─── T3: build preamble injection — present at byte 0 when feedback non-empty
+# ─── T3: build feedback section — present when prior_test_assessment non-empty
+# (#571 renamed _build_read_prior_failures → _build_read_prior_assessment;
+# file: prior_test_failures.txt → prior_test_assessment.txt to match #568.)
 # shellcheck disable=SC1090
 source "$REPO_ROOT/plugins/agent/build/plugin.sh"
 FB_DIR="$TEST_TEMP_DIR/fb-iter-2"
 mkdir -p "$FB_DIR"
-printf '## Test failures summary\n\n- verdict: fail\n- failed: 2\n' \
-    > "$FB_DIR/prior_test_failures.txt"
+printf '## Test assessment\n\n- verdict: fail\n- failed: 2\n' \
+    > "$FB_DIR/prior_test_assessment.txt"
 export ZBUILD_CYCLE_ITER=2
 export ZBUILD_CYCLE_FEEDBACK_DIR="$FB_DIR"
-preamble="$(_build_read_prior_failures)"
-if [[ -n "$preamble" ]]; then
-    assert_pass "T3a: prior failures present → preamble emitted"
+assessment_body="$(_build_read_prior_assessment)"
+if [[ -n "$assessment_body" ]]; then
+    assert_pass "T3a: prior assessment present → body returned"
 else
-    assert_fail "T3a: prior failures present → preamble should be emitted" "got empty"
+    assert_fail "T3a: prior assessment present → body should be returned" "got empty"
 fi
-# The preamble MUST start with "## Previous test failures" (so when prepended
-# to the existing prompt it lands at byte 0).
-prefix="${preamble:0:30}"
-if [[ "$prefix" == "## Previous test failures"* ]]; then
-    assert_pass "T3b: preamble begins with '## Previous test failures' header"
-else
-    assert_fail "T3b: preamble header" "expected '## Previous test failures', got '$prefix'"
-fi
-# Iter number is N-1 = 1
-assert_contains "T3c: preamble names iter N-1 (iter 1)" "$preamble" "(iter 1)"
+# Body is returned RAW (the framing wraps it with the CURRENT ITERATION
+# FEEDBACK header in _build_stage_run_inner — see #571 prompt v2 framing).
+assert_contains "T3b: returned body contains the assessment content" \
+    "$assessment_body" "verdict: fail"
 
-# T3d: empty file → preamble ABSENT (silent-failure guard, `-s` not `-f`)
-: > "$FB_DIR/prior_test_failures.txt"
-empty_preamble="$(_build_read_prior_failures)"
-if [[ -z "$empty_preamble" ]]; then
-    assert_pass "T3d: empty feedback file → preamble OMITTED (silent-failure guard)"
+# T3d: empty file → body ABSENT (silent-failure guard, `-s` not `-f`)
+: > "$FB_DIR/prior_test_assessment.txt"
+empty_body="$(_build_read_prior_assessment)"
+if [[ -z "$empty_body" ]]; then
+    assert_pass "T3d: empty feedback file → body OMITTED (silent-failure guard)"
 else
-    assert_fail "T3d: empty feedback → preamble should be empty" "got non-empty"
+    assert_fail "T3d: empty feedback → body should be empty" "got non-empty"
 fi
 
-# T3e: no cycle context (ZBUILD_CYCLE_ITER unset) → preamble ABSENT
+# T3e: no cycle context (ZBUILD_CYCLE_ITER unset) → body ABSENT
 unset ZBUILD_CYCLE_ITER
-no_cyc_preamble="$(_build_read_prior_failures)"
-if [[ -z "$no_cyc_preamble" ]]; then
-    assert_pass "T3e: outside cycle → preamble OMITTED"
+no_cyc_body="$(_build_read_prior_assessment)"
+if [[ -z "$no_cyc_body" ]]; then
+    assert_pass "T3e: outside cycle → body OMITTED"
 else
-    assert_fail "T3e: outside cycle → preamble should be empty" "got non-empty"
+    assert_fail "T3e: outside cycle → body should be empty" "got non-empty"
 fi
 unset ZBUILD_CYCLE_FEEDBACK_DIR
 

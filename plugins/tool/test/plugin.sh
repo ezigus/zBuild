@@ -278,7 +278,7 @@ _test_emit_io_end() {
 # fail|error AND there is something concrete to report. ABSENT-on-empty
 # semantics: if there are no detectable failures, do NOT write the file
 # (so the cycle feedback layer sees "missing == nothing to inject" and the
-# build preamble is omitted entirely — see _build_read_prior_failures).
+# build FEEDBACK section is omitted entirely — see _build_read_prior_assessment).
 #
 # Size cap: 8 KB (cycle feedback files must stay small — they are appended
 # to the next iter's build prompt). When truncated, append a `[truncated]`

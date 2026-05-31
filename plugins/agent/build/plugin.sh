@@ -110,10 +110,13 @@ _build_stage_run_inner() {
         jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"
 
-    # ─── Write build prompt (ADR-018 Pattern 2) ──────────────────────────────
+    # ─── Write build prompt (ADR-018 Pattern 2, #571 v2 framing) ─────────────
+    # Three-section framed structure the LLM sees on every iteration:
+    #   1. ORIGINAL TASK (immutable across iterations) — issue goal + plan md
+    #   2. INSTRUCTIONS — scope/loop/sentinel rules (stable across iters)
+    #   3. CURRENT ITERATION FEEDBACK — empty on iter 1; iter 2+: prior
+    #      test_assessment markdown (wired by #568 via cycle feedback dir).
     local prompt_input_file="$artifact_dir/build-prompt.txt"
-    local _build_instructions
-    _build_instructions="$(_build_compose_instructions "$plan_files_csv")"
 
     # ADR-018 (#470): render plan.json as markdown for LLM consumption when
     # the renderer registry is available. Falls back to raw JSON otherwise.
@@ -121,20 +124,39 @@ _build_stage_run_inner() {
     if declare -F render_artifact >/dev/null 2>&1; then
         plan_payload="$(render_artifact plan "$plan_json" 2>/dev/null || echo "$plan_json")"
     fi
-    local prompt
-    printf -v prompt '%s\n\n## Plan\n%s\n' "$_build_instructions" "$plan_payload"
 
-    # ─── #511 F2: cycle-feedback preamble at byte 0 ──────────────────────────
-    # When the prior cycle iter's test stage produced a failures summary,
-    # prepend it AHEAD of the standard instructions so the model sees prior
-    # failures BEFORE its rules. Empty/missing file → preamble omitted
-    # entirely (silent-failure guard: `[[ -s file ]]`, not just `-f`).
-    local _preamble
-    _preamble="$(_build_read_prior_failures 2>/dev/null || true)"
-    if [[ -n "$_preamble" ]]; then
-        prompt="${_preamble}${prompt}"
-    fi
-    printf '%s\n' "$prompt" > "$prompt_input_file"
+    # Resolve banner iter/max — iter from cycle context (defaults to 1),
+    # max from router resolver. Banner is operator-visible after #566.
+    local _iter_n="${ZBUILD_CYCLE_ITER:-1}"
+    local _iter_max
+    _iter_max="$(_route_resolve_max_iterations 2>/dev/null || echo 10)"
+    [[ "$_iter_max" =~ ^[0-9]+$ ]] || _iter_max=10
+
+    local _task_header
+    _task_header="$(_build_render_task_header "$_iter_n" "$_iter_max")"
+
+    local _build_instructions
+    _build_instructions="$(_build_compose_instructions "$plan_files_csv")"
+
+    # Iter 2+: pull prior test_assessment markdown. Empty when no cycle or
+    # file missing/empty (silent-failure guard — see _build_read_prior_assessment).
+    local _feedback_body
+    _feedback_body="$(_build_read_prior_assessment 2>/dev/null || true)"
+
+    {
+        printf '%s\n' "$_task_header"
+        printf '## ORIGINAL TASK (immutable across iterations)\n'
+        printf '%s\n\n' "$plan_payload"
+        printf '## INSTRUCTIONS\n%s\n' "$_build_instructions"
+        if [[ -n "$_feedback_body" ]]; then
+            local _prev_iter=$(( _iter_n - 1 ))
+            [[ "$_prev_iter" -lt 1 ]] && _prev_iter=1
+            printf '\n## CURRENT ITERATION FEEDBACK (from test_assessment iter %d)\n' \
+                "$_prev_iter"
+            printf '%s\n' "$_feedback_body"
+            printf 'Fix the issues above before emitting LOOP_COMPLETE.\n'
+        fi
+    } > "$prompt_input_file"
 
     local redacted_file="$artifact_dir/build-prompt.redacted.txt"
 
@@ -469,35 +491,50 @@ _build_stage_run_inner() {
     return "$force_fail_rc"
 }
 
-# ─── _build_read_prior_failures (#511 F2) ──────────────────────────────────
-# Read the prior cycle iter's test-failures-summary (wired in by the cycle
+# ─── _build_read_prior_assessment (#571, renamed from _build_read_prior_failures)
+# Read the prior cycle iter's test_assessment markdown (wired by the cycle
 # orchestrator's _cycle_apply_feedback as
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_failures.txt). Returns the preamble
-# text on stdout (with trailing blank line) OR empty stdout when:
+# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt, sourced from the
+# test_assessment stage's rendered md output per #567/#568/ADR-022). Returns
+# the raw assessment body on stdout OR empty stdout when:
 #   - not running in a cycle (ZBUILD_CYCLE_ITER unset)
 #   - cycle feedback dir not exported
 #   - file missing OR empty (silent-failure guard: `[[ -s file ]]`)
 #
-# Empty stdout → caller omits the preamble entirely (NEVER silent emit).
-_build_read_prior_failures() {
+# Iter ≥3: the orchestrator overwrites prior_test_assessment.txt each iter
+# (cycle-orchestrator.sh:492 `cp "$src" "$dst"`), so reading it naturally
+# yields ONLY the most recent prior assessment — no history-trimming needed
+# here.
+#
+# Empty stdout → caller omits the FEEDBACK section entirely (NEVER silent emit).
+_build_read_prior_assessment() {
     local iter="${ZBUILD_CYCLE_ITER:-}"
     local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
     [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_test_failures.txt"
+    local f="$fb_dir/prior_test_assessment.txt"
     # `-s`: present AND non-empty. `-f` alone would let empty-but-present
-    # files through and inject a no-op preamble (silent failure).
+    # files through and inject a no-op section (silent failure).
     [[ ! -s "$f" ]] && return 0
-    local prev_iter=$(( iter - 1 ))
-    [[ "$prev_iter" -lt 1 ]] && prev_iter=1
     local body
     body="$(cat "$f" 2>/dev/null)" || return 0
     [[ -z "$body" ]] && return 0
-    printf '## Previous test failures (iter %d)\n%s\nFix these before LOOP_COMPLETE.\n\n' \
-        "$prev_iter" "$body"
+    printf '%s' "$body"
+}
+
+# _build_render_task_header <iter> <max_iter>
+# Emits the stable banner that prefixes every build prompt. Mirrors the
+# legacy `render_task_header` shape (loop-prompt-template.sh) so operators
+# eyeballing the [llm] capture see the same framing they had in shipwright.
+_build_render_task_header() {
+    local iter="${1:-1}"
+    local max_iter="${2:-1}"
+    printf '============== ZBUILD BUILD — iter %s/%s ==============\n' \
+        "$iter" "$max_iter"
 }
 
 # _build_compose_instructions <plan_files_csv>
-# Emits the static portion of the build prompt. Per ADR-018 Pattern 2:
+# Emits the INSTRUCTIONS section of the framed prompt — stable scope/loop/
+# sentinel/rules text, identical across iterations. Per ADR-018 Pattern 2:
 # Read/Edit/Write/Bash tools are available; the loop watches `git diff HEAD`;
 # completion is signaled by emitting `LOOP_COMPLETE` on its own line.
 _build_compose_instructions() {
@@ -511,24 +548,24 @@ _build_compose_instructions() {
     cat <<BUILD_PROMPT
 You are an autonomous build agent for zBuild. You have Read, Edit, Write, and
 Bash tools available. Your job is to edit the working tree to implement the
-plan below.
+ORIGINAL TASK above.
 
-## Scope (plan.files[])
+### Scope (plan.files[])
 You may ONLY touch files listed here. Refuse any out-of-scope edit.
 ${scope_section}
 
-## How the loop works
+### How the loop works
 - Each iteration you may make code changes via Edit/Write/Bash.
 - After each iteration the pipeline captures \`git diff HEAD\` and feeds it
   back to you so you can verify progress.
 - Do NOT emit a unified diff in your response — the pipeline derives the
   canonical \`diff.patch\` artifact from \`git diff HEAD\` automatically.
 
-## Completion sentinel
+### Completion sentinel
 When the implementation is complete and tests would pass, emit \`LOOP_COMPLETE\`
 on its own line as the FINAL line of your response. This terminates the loop.
 
-## Rules
+### Rules
 - Touch only files in the scope list above.
 - Do not run \`git commit\` — the pipeline owns commit semantics.
 - Keep changes minimal and aligned with the plan.

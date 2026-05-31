@@ -16,6 +16,7 @@ plugin.run.complete
 stage.complete
 stage.start
 plugin.run.start
+redaction.counter_skipped
 redaction.applied
 redaction.counter_skipped
 redaction.applied
