@@ -57,7 +57,9 @@ annotate_possible_dup() {
     local annotation_threshold="${DEFERRED_SIMILARITY_THRESHOLD:-0.35}"
     local llm_lo="${DEFERRED_LLM_LOWER:-0.20}"
     local llm_hi="${DEFERRED_LLM_UPPER:-0.40}"
-    local hints="" count_hints=0
+    # Collect ALL matches as "score|hint" lines; sort by score descending; take
+    # top 3 (Codex review #578 caught: first-3-found is not top-3-by-score).
+    local matches=""
     local issue_json
     while IFS= read -r issue_json; do
         [[ -z "$issue_json" ]] && continue
@@ -76,22 +78,17 @@ annotate_possible_dup() {
             marker="${refined##*|}"
         fi
         if awk -v s="$score" -v t="$annotation_threshold" 'BEGIN{exit !(s>=t)}'; then
-            count_hints=$((count_hints + 1))
-            (( count_hints > 3 )) && continue
             local printable llm_note=""
             printable="$(printf '%.2f' "$score")"
             if [[ -n "$marker" && "$marker" != "_LLM_OK" ]]; then
                 llm_note=" — $(gha_llm_marker_to_annotation "$marker")"
             fi
-            local hint="#${oid} (sim ${printable}${llm_note})"
-            if [[ -z "$hints" ]]; then
-                hints="$hint"
-            else
-                hints="${hints} ${hint}"
-            fi
+            matches+="${printable} #${oid} (sim ${printable}${llm_note})"$'\n'
         fi
     done < "$issues_jsonl"
-    printf '%s' "$hints"
+    [[ -z "$matches" ]] && return 0
+    # Sort by leading score descending; strip the sort key; take top 3; join with spaces.
+    printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
 }
 
 is_in_presented_log() {

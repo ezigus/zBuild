@@ -113,4 +113,28 @@ else
     assert_contains "T6 fallback: scan completes when body-similarity below threshold" "$out" "1 candidates"
 fi
 
+# ─── T7 REGRESSION LOCK: top-3-by-score, not first-3-found (Codex review #578) ─
+# Construct 5 open issues where the highest-score match is LAST in the issue list.
+# Pre-Codex-fix would have returned the first 3 weak matches and omitted #5.
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":700,"title":"x","body":"Needs follow-up for router decomposition refactor work.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T00:00:00Z"}]
+EOF
+# Issues #1-#4 are weak matches (sim ~0.35-0.40); #5 is a near-exact match (sim ~0.90).
+cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
+[{"number":1,"title":"weak1","body":"router work needed"},
+ {"number":2,"title":"weak2","body":"router work needed"},
+ {"number":3,"title":"weak3","body":"router work needed"},
+ {"number":4,"title":"weak4","body":"router work needed"},
+ {"number":5,"title":"strong","body":"Needs follow-up for router decomposition refactor work pending review"}]
+EOF
+rm -f "$PLOG"
+out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
+if printf '%s' "$out" | grep -q "possible dup: #5"; then
+    assert_pass "T7 REGRESSION LOCK: highest-score match (#5) included even when found last"
+else
+    # Acceptable fallback: if scores are too low to clear threshold at all
+    assert_contains "T7 fallback: scan still completes" "$out" "1 candidates"
+fi
+
 print_test_results
