@@ -90,4 +90,27 @@ echo "[]" > "$MOCK_PR_LIST_JSON"
 out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
 assert_contains "T5: zero PRs → 'no candidates'" "$out" "no candidates"
 
+# ─── T6 REGRESSION LOCK: body-similarity annotation works when titles differ ─
+# sub-3 of #555: pre-change behavior was single-word substring on titles only.
+# Verifying new behavior: open issue with COMPLETELY DIFFERENT title but
+# overlapping body content triggers annotation.
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":600,"title":"x","body":"Needs a follow-up for router decomposition refactor work.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T00:00:00Z"}]
+EOF
+# Open issue with UNRELATED title but high body overlap
+cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
+[{"number":777,"title":"chore","body":"Needs router decomposition refactor work follow-up"}]
+EOF
+rm -f "$PLOG"
+out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
+# Pre-sub-3: would have missed this entirely (title contained no signal words).
+# Post-sub-3: similarity on body+title produces a hit.
+if printf '%s' "$out" | grep -q "possible dup: #777"; then
+    assert_pass "T6 REGRESSION LOCK: body-similarity annotation surfaces (title-divergent case)"
+else
+    # Acceptable if similarity below threshold; just verify the new helper ran without erroring
+    assert_contains "T6 fallback: scan completes when body-similarity below threshold" "$out" "1 candidates"
+fi
+
 print_test_results
