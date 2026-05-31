@@ -289,3 +289,25 @@ falls through to the auto-detect path. Auto-enable emits
 The build plugin's `_build_read_prior_failures` uses `[[ -s file ]]`
 (present AND non-empty). An empty feedback file → preamble OMITTED
 entirely. Never silent emit.
+
+### Termination → next stage (amendment for #527/#528)
+
+The cycle orchestrator MUST NOT mutate `pipeline_status` on any termination rc.
+Only the runner's dispatch-unit loop writes terminal pipeline status. On cycle
+rc∈{1,2,3} the runner continues to the next dispatch unit (typically `review`)
+with `pipeline_status="in_progress"` preserved; the `cycle_iterations[<id>].status`
+field retains its non-converged terminal value AND a new `_RUNNER_CYCLE_UNCONVERGED`
+flag ensures the final pipeline status reflects the unconverged outcome (failed,
+not complete). Review's ADR-019 fail-closed gate (#485) is the sole verdict-class
+arbiter; the runner's status flag is independent.
+
+On rc=4 (config_invalid), rc=5 (blocked, #528), rc=130 (aborted) the
+runner halts immediately: `pipeline_status="interrupted"`, `pipeline.end
+status=failed`, no further dispatch units run.
+
+Additionally, when the cycle terminates rc∈{1,2,3} the runner sets
+`stage_statuses[<until-stage>]=failed` (typically `test`) BEFORE dispatching
+review, so review's `_review_derive_test_status` sees an unambiguous failure
+signal and the ADR-019 coercion path fires deterministically. A new event
+`cycle.unconverged cycle_id=<id> iter=<N> reason=<max_iterations|plateau|divergence>`
+is emitted alongside the existing `cycle.complete`.

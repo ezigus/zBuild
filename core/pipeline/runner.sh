@@ -600,6 +600,15 @@ main() {
 
     if [[ $_has_cycle_unit -eq 1 ]]; then
         local _unit _rc=0
+        # #527: track non-zero cycle terminations across the dispatch loop so the
+        # final pipeline_status write below reflects unconverged outcomes as
+        # `failed` instead of silently overwriting them with `complete`.
+        # rc∈{1,2,3} (max_iter/plateau/divergence) → cycle continued to review;
+        # ADR-019 fail-closed coercion (#485) must remain authoritative, but the
+        # pipeline-level status must also reflect the cycle's non-convergence.
+        local _RUNNER_CYCLE_UNCONVERGED=0
+        local _RUNNER_CYCLE_UNCONVERGED_REASON=""
+        local _RUNNER_CYCLE_UNCONVERGED_ID=""
         for _unit in "${_TPL_DISPATCH_UNITS[@]}"; do
             case "$_unit" in
                 cycle:*)
@@ -610,12 +619,21 @@ main() {
                     _rc=$?
                     set -e
                     _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file"
-                    # #511 Pin 7 — halt-vs-continue:
-                    # rc 0 (converged), 1 (max_iter), 2 (plateau), 3 (divergence)
-                    #   → CONTINUE to next dispatch unit so review runs AND the
-                    #     ADR-019 fail-closed gate (#485) fires as final arbiter.
-                    # rc 4 (config_invalid), 130 (aborted) → halt immediately.
-                    if [[ $_rc -eq 4 || $_rc -eq 130 ]]; then
+                    # #511 Pin 7 / #527 — halt-vs-continue rc table:
+                    # rc 0 (converged)         → CONTINUE; happy path.
+                    # rc 1 (max_iter)          → CONTINUE; review gate runs;
+                    #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
+                    # rc 2 (plateau)           → CONTINUE; review gate runs;
+                    #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
+                    # rc 3 (divergence)        → CONTINUE; review gate runs;
+                    #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
+                    # rc 4 (config_invalid)    → HALT; status=interrupted.
+                    # rc 5 (blocked, #528)     → HALT; status=interrupted. This
+                    #                            PR reserves the slot; #528 wires
+                    #                            the rc=5 semantics into the
+                    #                            cycle orchestrator.
+                    # rc 130 (aborted)         → HALT; status=interrupted.
+                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 130 ]]; then
                         _set_pipeline_status "$state_file" "interrupted"
                         eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
@@ -624,8 +642,27 @@ main() {
                         error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
                         return 1
                     fi
-                    if [[ $_rc -ne 0 ]]; then
-                        warn "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON — continuing to next dispatch unit so review fail-closed gate runs"
+                    if [[ $_rc -eq 1 || $_rc -eq 2 || $_rc -eq 3 ]]; then
+                        _RUNNER_CYCLE_UNCONVERGED=1
+                        _RUNNER_CYCLE_UNCONVERGED_REASON="$_CYCLE_LAST_TERMINATED_REASON"
+                        _RUNNER_CYCLE_UNCONVERGED_ID="$_cyc_id"
+                        # Propagate the cycle's unconverged signal as the until-stage
+                        # failure (typically `test`) so review's `_review_derive_test_status`
+                        # sees an unambiguous failure. Without this, review's #485
+                        # coercion may default to "unknown" depending on whether the
+                        # test plugin wrote test-results.json before the cycle bailed.
+                        # ADR-021 amendment (#527): runner sets stage_statuses[<until>]=failed
+                        # so review's ADR-019 fail-closed gate has a clean signal.
+                        local _until_stage_var="_TPL_CYCLE_UNTIL_STAGE_${_cyc_id//-/_}"
+                        local _until_stage="${!_until_stage_var:-test}"
+                        _update_stage_status "$state_file" "$_until_stage" "failed"
+                        eb_emit_event "cycle.unconverged" \
+                            "cycle_id=$_cyc_id" \
+                            "iter=${_CYCLE_LAST_ITERATIONS:-0}" \
+                            "reason=$_CYCLE_LAST_TERMINATED_REASON" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                            2>/dev/null || true
+                        warn "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON — continuing to next dispatch unit so review fail-closed gate runs (pipeline_status will be 'failed')"
                     fi
                     ;;
                 stage:*)
@@ -659,6 +696,23 @@ main() {
                     ;;
             esac
         done
+        # #527: when any cycle terminated unconverged (rc∈{1,2,3}), the pipeline
+        # outcome is `failed` even if review approved (and per ADR-019/#485,
+        # review's fail-closed gate should have coerced approve → request_changes
+        # via the stage_statuses[until]=failed signal we propagated above).
+        # Only write `complete` when every cycle converged AND every stage
+        # succeeded — preserving the silent-failure invariant that "complete"
+        # truly means "no non-convergence anywhere in the run".
+        if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
+            _set_pipeline_status "$state_file" "failed"
+            eb_emit_event "pipeline.end" "status=failed" \
+                "cycle=$_RUNNER_CYCLE_UNCONVERGED_ID" \
+                "reason=$_RUNNER_CYCLE_UNCONVERGED_REASON" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue"
+            _runner_ended=true
+            error "Pipeline failed — cycle '$_RUNNER_CYCLE_UNCONVERGED_ID' did not converge (reason=$_RUNNER_CYCLE_UNCONVERGED_REASON); run_id=$_runner_run_id"
+            return 1
+        fi
         _set_pipeline_status "$state_file" "complete"
         eb_emit_event "pipeline.end" "status=success" "run_id=$_runner_run_id" "issue=$_runner_issue"
         _runner_ended=true

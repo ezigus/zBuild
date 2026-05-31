@@ -222,3 +222,17 @@ from ever running on a syntactically corrupt patch.
 
 Test stage `verdict=fail` no longer appears as `✓` — the regression that
 motivated #507.
+
+### Note (#527): cycle-unconverged signal propagation
+
+When the outer build/test cycle (ADR-021) terminates non-converged (rc∈{1,2,3}:
+max_iterations, plateau, divergence), the runner now sets
+`stage_statuses[<until-stage>]=failed` (typically `test`) BEFORE dispatching
+review. This ensures `_review_derive_test_status` has an unambiguous failure
+signal even if test-results.json is stale or missing, so the coercion
+`approve → request_changes` fires deterministically. Without this
+propagation (pre-#527), the cycle's non-convergence could be silently masked:
+review would approve, runner would write `pipeline_status=complete`, and the
+ADR-019 contract was violated. The propagated `stage_statuses[test]=failed`
+combined with `_RUNNER_CYCLE_UNCONVERGED=1` (which controls the final
+`pipeline_status=failed` write) closes that hole.
