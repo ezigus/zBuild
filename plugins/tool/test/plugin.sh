@@ -116,6 +116,13 @@ _test_run_inner() {
         cp -r "$repo_root/." "$tmp/"
     fi
 
+    # Reset temp copy to HEAD so diff.patch applies against a clean baseline.
+    # Without this, rsync copies uncommitted working-tree changes, causing
+    # `git apply --check` to fail with "patch does not apply" because the
+    # patch was captured after those changes were already in place (#548).
+    git -C "$tmp" checkout HEAD -- . 2>/dev/null || true
+    git -C "$tmp" clean -fd 2>/dev/null || true
+
     # ── Apply diff ────────────────────────────────────────────────────────────
     # Dry-run first with --allow-empty so a no-op (empty) diff is accepted.
     local apply_check_out
