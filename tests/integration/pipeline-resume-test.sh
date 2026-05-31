@@ -167,6 +167,7 @@ INT_STATE_DIR="$TEST_TEMP_DIR/int_state"
 INT_EVENTS_DIR="$TEST_TEMP_DIR/int_events"
 mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/plan" \
          "$INT_PLUGINS_ROOT/agent/build" "$INT_PLUGINS_ROOT/tool/test" \
+         "$INT_PLUGINS_ROOT/agent/test_assessment" \
          "$INT_PLUGINS_ROOT/agent/review" \
          "$INT_STATE_DIR" "$INT_EVENTS_DIR"
 
@@ -214,8 +215,22 @@ requires:
 EOF
 printf 'test_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/tool/test/plugin.sh"
 
-# Write state: all four pre-review stages complete, review pending.
-# #485: standard template now has 5 stages — include test=complete.
+# #568: standard template now requires a test_assessment stage between test and review.
+cat > "$INT_PLUGINS_ROOT/agent/test_assessment/manifest.yaml" <<EOF
+id: test_assessment
+name: Test test_assessment-stage
+kind: agent
+version: 0.0.1
+hooks:
+  run: test_assessment_run
+requires:
+  core:
+    - redaction
+EOF
+printf 'test_assessment_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/test_assessment/plugin.sh"
+
+# Write state: all pre-review stages complete, review pending.
+# #485: added test=complete. #568: added test_assessment=complete.
 INT_STATE_FILE="$INT_STATE_DIR/pipeline-state.json"
 jq -n \
     --arg run_id "integ-test-resume-225" \
@@ -224,7 +239,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: 225,
-        stage_statuses: {intake: "complete", plan: "complete", build: "complete", test: "complete", review: "pending"},
+        stage_statuses: {intake: "complete", plan: "complete", build: "complete", test: "complete", test_assessment: "complete", review: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",

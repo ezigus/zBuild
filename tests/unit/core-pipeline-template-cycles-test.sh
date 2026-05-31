@@ -24,8 +24,9 @@ FIXT="$REPO_ROOT/tests/fixtures/templates"
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 assert_eq "standard.yaml: 1 cycle declared (#511 F2)" "1" "${#_TPL_CYCLES[@]}"
 assert_eq "standard.yaml: cycle id is build_test_cycle" "build_test_cycle" "${_TPL_CYCLES[0]}"
-# stages = intake, plan, build, test, review (5). build+test absorbed into 1
-# cycle unit → 4 dispatch units total (stage:intake, stage:plan, cycle:..., stage:review).
+# stages = intake, plan, build, test, test_assessment, review (6 — #568).
+# build+test+test_assessment absorbed into 1 cycle unit → 4 dispatch units total
+# (stage:intake, stage:plan, cycle:build_test_cycle, stage:review).
 assert_eq "standard.yaml: 4 dispatch units" "4" "${#_TPL_DISPATCH_UNITS[@]}"
 has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
@@ -160,7 +161,7 @@ assert_eq "overlap: load_template rc != 0" "1" "$rc"
 # T9: regression — load_template still succeeds and _TPL_STAGES intact when
 # cycles: absent.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-assert_eq "regression: standard.yaml still has 5 stages" "5" "${#_TPL_STAGES[@]}"
+assert_eq "regression: standard.yaml still has 6 stages (#568)" "6" "${#_TPL_STAGES[@]}"
 # #511 F2: standard.yaml now declares one cycle (build_test_cycle).
 assert_eq "regression: standard.yaml has one cycle (build_test_cycle)" "1" "${#_TPL_CYCLES[@]}"
 

@@ -93,8 +93,9 @@ assert_eq "A: stage_statuses.review=complete (review RAN)" \
     "complete" "$(jq -r '.stage_statuses.review' "$A_STATE" 2>/dev/null)"
 assert_eq "A: stage_verdicts.review=request_changes (ADR-019 coercion fired)" \
     "request_changes" "$(jq -r '.stage_verdicts.review' "$A_STATE" 2>/dev/null)"
-assert_eq "A: stage_statuses.test=failed (cycle unconverged signal propagated)" \
-    "failed" "$(jq -r '.stage_statuses.test' "$A_STATE" 2>/dev/null)"
+# #568: until.stage is now `test_assessment` (3-stage cycle).
+assert_eq "A: stage_statuses.test_assessment=failed (cycle unconverged signal propagated)" \
+    "failed" "$(jq -r '.stage_statuses.test_assessment' "$A_STATE" 2>/dev/null)"
 if grep -q '"type":"cycle.unconverged"' "$A_EVENTS" 2>/dev/null && \
    grep -q '"reason":"max_iterations"' "$A_EVENTS" 2>/dev/null; then
     assert_pass "A: cycle.unconverged event emitted with reason=max_iterations"
