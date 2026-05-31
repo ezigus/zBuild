@@ -85,10 +85,18 @@ else
 fi
 
 # ─── MS2: genuinely unrelated → no annotation for #200 ─────────────────────
+# REGRESSION LOCK: the line immediately following | #200 | row must NOT be a
+# possible-match annotation row. (Codex review #579 caught: an earlier
+# version of this test only matched a literal string that could never appear,
+# making the assertion a no-op.)
 if [[ -f "$PR_BODY_PATH" ]]; then
-    # #200 is "completely unrelated work item" — should NOT have possible-match below it
-    awk '/^\| #200 \|/{print; getline nextline; if (nextline ~ /possible match.*nothing-matches/) exit 1; print nextline}' "$PR_BODY_PATH" > /dev/null
-    assert_pass "MS2: unrelated orphan structurally present"
+    # Extract the line right after the #200 orphan row
+    line_after_200="$(awk '/^\| #200 \|/{getline; print; exit}' "$PR_BODY_PATH")"
+    if [[ "$line_after_200" == *"possible match"* ]]; then
+        assert_fail "MS2: unrelated orphan #200 wrongly annotated: $line_after_200"
+    else
+        assert_pass "MS2 LOCK: unrelated orphan #200 has NO possible-match annotation"
+    fi
 fi
 
 # ─── MS4: 2+ manifest entries above threshold → multiple annotations ───────
