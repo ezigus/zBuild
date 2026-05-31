@@ -1047,7 +1047,8 @@ main() {
                     # active_stages — simplest correct path: run that stage's
                     # body inline via cycle_dispatch_stage (gives same plugin
                     # path); then mirror state writes the original loop does.
-                    eb_emit_event "stage.start" "stage=$_ust"
+                    eb_emit_event "stage.start" "stage=$_ust" \
+                        || { _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
                     _RUNNER_STAGE_START_MS[$_ust]="$(_runner_now_ms)"
                     _render_stage_divider "$_ust"
                     local _sc; _sc="$(_stage_color "$_ust")"
@@ -1059,9 +1060,11 @@ main() {
                     if [[ $_rc -ne 0 ]]; then
                         _update_stage_status "$state_file" "$_ust" "failed"
                         _set_pipeline_status "$state_file" "interrupted"
-                        eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc"
+                        eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
+                            || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
                         eb_emit_event "pipeline.end" "status=failed" "stage=$_ust" "rc=$_rc" \
-                            "run_id=$_runner_run_id" "issue=$_runner_issue"
+                            "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                            || { _r=$?; warn "eb_emit_event pipeline.end status=failed failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
                         _render_pipeline_end "failed" "$_ust" "$_rc"
                         _runner_ended=true
                         error "Stage $_ust failed (rc=$_rc)"
@@ -1069,7 +1072,8 @@ main() {
                     fi
                     _update_stage_status "$state_file" "$_ust" "complete"
                     _zbuild_state_set_stage_verdict "$state_file" "$_ust" "${_CYCLE_DISPATCH_VERDICT:-pass}"
-                    eb_emit_event "stage.complete" "stage=$_ust" "verdict=${_CYCLE_DISPATCH_VERDICT:-pass}"
+                    eb_emit_event "stage.complete" "stage=$_ust" "verdict=${_CYCLE_DISPATCH_VERDICT:-pass}" \
+                        || { _r=$?; warn "eb_emit_event stage.complete failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
                     ;;
             esac
         done
