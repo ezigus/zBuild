@@ -60,6 +60,7 @@
     "cycle.plateau.skipped",
     "cycle.iter.stale_artifact",
     "cycle.artifacts.cleared",
+    "cycle.blocked",
     "cycle.auto_enabled",
     "cycle.disabled",
     "cycle.unconverged",

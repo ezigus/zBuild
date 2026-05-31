@@ -619,7 +619,7 @@ main() {
                     _rc=$?
                     set -e
                     _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file"
-                    # #511 Pin 7 / #527 — halt-vs-continue rc table:
+                    # #511 Pin 7 / #527 / #528 — halt-vs-continue rc table:
                     # rc 0 (converged)         → CONTINUE; happy path.
                     # rc 1 (max_iter)          → CONTINUE; review gate runs;
                     #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
@@ -628,10 +628,9 @@ main() {
                     # rc 3 (divergence)        → CONTINUE; review gate runs;
                     #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
                     # rc 4 (config_invalid)    → HALT; status=interrupted.
-                    # rc 5 (blocked, #528)     → HALT; status=interrupted. This
-                    #                            PR reserves the slot; #528 wires
-                    #                            the rc=5 semantics into the
-                    #                            cycle orchestrator.
+                    # rc 5 (blocked, #528)     → HALT; status=interrupted. Review
+                    #                            does NOT run on blocked (upstream
+                    #                            input structurally broken).
                     # rc 130 (aborted)         → HALT; status=interrupted.
                     if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 130 ]]; then
                         _set_pipeline_status "$state_file" "interrupted"
