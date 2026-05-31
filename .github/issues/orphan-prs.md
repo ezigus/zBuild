@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-30T03:15:31Z (rolling 30-PR window)_
+_Last updated: 2026-05-30T18:21:43Z (rolling 30-PR window)_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -75,3 +75,6 @@ _Last updated: 2026-05-30T03:15:31Z (rolling 30-PR window)_
 | #458 | feat(#455): ADR-017 v1 — per-stage router.timeout_s in pipeline template | 2026-05-30 |
 | #457 | docs(ADR-017): propose per-stage router configuration | 2026-05-30 |
 | #454 | [manifest-sync] Drift reconciliation | 2026-05-30 |
+| #493 | fix(#491): stage-io ordering contract (ADR-015 amendment + #481 fix) | 2026-05-30 |
+| #487 | feat(#484): intake creates feature branch from issue (fail-closed) | 2026-05-30 |
+| #480 | [manifest-sync] Drift reconciliation | 2026-05-30 |

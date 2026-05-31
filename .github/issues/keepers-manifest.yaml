@@ -4197,3 +4197,73 @@ issues:
       Parser-side follow-up to #476: pattern 1 stages must extract the
       first JSON object from .result when --output-format json is used.
     closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: stage-io-split-banner
+    title: "stage-io: split input/output banner emission — show prompt BEFORE LLM call"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/481
+      Split stage-io banner emission so the prompt is shown before the
+      LLM call and the response is shown after, improving operator visibility.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: build-stage-io-banner-loop
+    title: "build: emit stage-io banner per loop iteration (Pattern 2 observability)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/482
+      Build plugin emits a stage-io banner on each agent-loop iteration
+      for Pattern 2 observability per ADR-018.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: plan-artifact-metadata-tag
+    title: "plan: tag route_to_model output with metadata.artifact=plan so renderer fires on banner"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/483
+      Plan plugin tags route_to_model output with metadata.artifact=plan
+      so the artifact renderer fires on the stage-io banner.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: intake-feature-branch
+    title: "intake: create feature branch from issue (mirror shipwright pipeline-stages-intake.sh:66-94)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/484
+      Intake plugin creates a feature branch from the issue number,
+      mirroring shipwright's branch-creation logic; fail-closed on error.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: review-fail-closed-tests
+    title: "review: fail-closed on unknown/failed tests + enable test stage in standard.yaml"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, agent-plugin]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/485
+      Review plugin fails closed when tests are unknown or failing;
+      enables the test stage in standard.yaml by default.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: stage-io-ordering-contract
+    title: "stage-io: codify input-before-action / output-after-action contract across all stages"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/491
+      Codifies the stage-io ordering contract (input shown before action,
+      output shown after) across all stages; fixes #481 regression.
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
+  - id: stage-io-visual-hierarchy
+    title: "stage-io: visual hierarchy + timestamps (color, divider, right-align, truncation hints)"
+    milestone: "Phase 0.5 — MVP Pipeline & Distribution"
+    labels: [phase-0.5, foundation, cli-ux]
+    state: closed
+    body: |
+      Live issue: https://github.com/ezigus/zBuild/issues/492
+      Visual hierarchy improvements to stage-io banners: color coding,
+      dividers, right-aligned timestamps, and truncation hints (ADR-015 §v5).
+    closed_reason: 'Closed via GitHub. Recorded by manifest-sync.'
