@@ -128,6 +128,11 @@ sanitize_excerpt() {
     text="${text//\@/\\@}"
     # Backtick escape blocks code-fence breakout (ADR-020 §Markdown-injection).
     text="${text//\`/\'}"
+    # Pipe is our candidate field separator; substituting with `/` keeps the
+    # excerpt readable while preventing `IFS='|' read` from miscounting fields
+    # (Codex review #573 caught this — markdown tables and "A | B"-style
+    # text in PR bodies would split the excerpt across fields).
+    text="${text//\|/\/}"
     if [[ ${#text} -gt $EXCERPT_MAX ]]; then
         text="${text:0:$EXCERPT_MAX}..."
     fi

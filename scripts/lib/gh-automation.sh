@@ -204,7 +204,15 @@ EOF
     [[ -z "$inner_text" ]] && inner_text="$raw_response"  # fallback if not envelope
     llm_score="$(printf '%s' "$inner_text" | extract_first_json_object 2>/dev/null | jq -r '.score // empty' 2>/dev/null)" || llm_score=""
 
-    if [[ -z "$llm_score" ]] || ! awk -v s="$llm_score" 'BEGIN{exit !(s>=0 && s<=1)}'; then
+    # Strict decimal validation: awk's numeric coercion accepts "0foo"/"0.75 likely"
+    # as 0/0.75 numerically. Reject anything that isn't a clean 0.NN or 1.00 string.
+    # (Codex review #565 caught this — would silently turn malformed LLM output
+    # into a trusted similarity score, violating fail-open contract.)
+    if [[ -z "$llm_score" ]] || ! [[ "$llm_score" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
+        printf '%s|_LLM_FAILED_PARSE\n' "$jaccard_score"
+        return 0
+    fi
+    if ! awk -v s="$llm_score" 'BEGIN{exit !(s>=0 && s<=1)}'; then
         printf '%s|_LLM_FAILED_PARSE\n' "$jaccard_score"
         return 0
     fi
