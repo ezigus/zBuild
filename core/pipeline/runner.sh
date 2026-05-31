@@ -76,6 +76,13 @@ _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
 # nested / out-of-order stages (none today, but safe) still resolve correctly.
 declare -gA _RUNNER_STAGE_START_MS=()
 
+# ─── pipeline-wide start time cache (#525) ───────────────────────────────────
+# Populated once at the top of main() right after _runner_run_id is sanitized
+# (well before the EXIT trap installs) so every pipeline.end emit site — incl.
+# preflight failure (L289) and the EXIT trap — can render a duration. Empty
+# until set; readers degrade to "?s" on cache-miss (mirrors _runner_duration_token).
+_RUNNER_PIPELINE_START_MS=""
+
 # ─── _runner_now_ms (#508) ───────────────────────────────────────────────────
 # Millisecond wall clock. Honors ZBUILD_STAGE_IO_NOW_MS_OVERRIDE so goldens
 # can pin the timestamp (same env var as stage-io.sh — single test contract;
@@ -140,6 +147,152 @@ _runner_duration_token() {
         local secs=$(( total_s % 60 ))
         printf '%dm%02ds' "$mins" "$secs"
     fi
+}
+
+# ─── _runner_pipeline_duration_token (#525) ──────────────────────────────────
+# Parallel to _runner_duration_token but for the pipeline-wide window. No stage
+# argument — reads _RUNNER_PIPELINE_START_MS directly. Returns "?s" on cache
+# miss so the banner still renders during very-early failures.
+_runner_pipeline_duration_token() {
+    local start="${_RUNNER_PIPELINE_START_MS:-}"
+    if [[ -z "$start" || ! "$start" =~ ^[0-9]+$ ]]; then
+        printf '?s'
+        return 0
+    fi
+    local now; now="$(_runner_now_ms)"
+    if [[ -z "$now" || ! "$now" =~ ^[0-9]+$ ]]; then
+        printf '?s'
+        return 0
+    fi
+    local ms=$(( now - start ))
+    (( ms < 0 )) && ms=0
+    if (( ms < 60000 )); then
+        awk -v m="$ms" 'BEGIN{printf "%.1fs", m/1000}'
+    else
+        local total_s=$(( ms / 1000 ))
+        local mins=$(( total_s / 60 ))
+        local secs=$(( total_s % 60 ))
+        printf '%dm%02ds' "$mins" "$secs"
+    fi
+}
+
+# ─── _pipeline_status_glyph <status> (#525) ──────────────────────────────────
+# Thin shim mapping the ADR-006 pipeline status enum to a verdict class glyph
+# (delegates to verdict_glyph from core/pipeline/verdict.sh, #507). The
+# pipeline status enum is distinct from plugin verdicts on purpose — this is
+# a render-only mapping for the terminal banner, NOT an extension of the
+# verdict table itself.
+#
+# Mapping:
+#   complete (banner-only; persisted event payload still says "success")
+#                                          → pass  → ✓
+#   failed | interrupted | aborted         → fail  → ✗
+#   preflight_failed                       → warn  → ⚠
+#   anything else                          → ⚠ (defensive)
+_pipeline_status_glyph() {
+    local status="${1:-}"
+    case "$status" in
+        complete|success)              verdict_glyph "pass" ;;
+        failed|interrupted|aborted)    verdict_glyph "fail" ;;
+        preflight_failed)              verdict_glyph "warn" ;;
+        *)                             printf '%s' "?" ;;
+    esac
+}
+
+# ─── _pipeline_status_color <status> (#525) ──────────────────────────────────
+# Companion to _pipeline_status_glyph; delegates to verdict_color so NO_COLOR
+# behavior matches the per-stage indicator line exactly.
+_pipeline_status_color() {
+    local status="${1:-}"
+    case "$status" in
+        complete|success)              verdict_color "pass" ;;
+        failed|interrupted|aborted)    verdict_color "fail" ;;
+        preflight_failed)              verdict_color "warn" ;;
+        *)                             printf '%s' "${YELLOW:-}" ;;
+    esac
+}
+
+# ─── _render_pipeline_end <status> [stage] [rc] (#525) ───────────────────────
+# Emits the terminal banner that closes a pipeline run, framed with ═ (U+2550)
+# to distinguish the pipeline boundary from the stage divider (━) and stage-io
+# banners (─). Two-line layout:
+#
+#   ════════════════ pipeline.end ════════════════ HH:MM:SS UTC
+#   <glyph> Pipeline <status_word>: status=<X> run_id=<Y> issue=<N> (took <dur>)
+#
+# Frame bars colored BLUE (chrome). Glyph + leading status word inherit the
+# verdict class color (foreground signal). Right-aligned timestamp via the
+# same width math as _render_stage_divider — degrades to a symmetric divider
+# (no timestamp) when mid_bar <= 2.
+#
+# Writes to fd 2 so it composes correctly with other operator lines (info /
+# success / error) under the same output redirection rules. Banner is emitted
+# AFTER the pipeline.end JSONL event so the durable event is fail-closed
+# against banner-write failures.
+_render_pipeline_end() {
+    local status="${1:-unknown}"
+    local stage_hint="${2:-}"
+    local rc_hint="${3:-}"
+    local run_id="${_runner_run_id:-?}"
+    local issue="${_runner_issue:-?}"
+    local dur; dur="$(_runner_pipeline_duration_token)"
+    local glyph; glyph="$(_pipeline_status_glyph "$status")"
+    local color; color="$(_pipeline_status_color "$status")"
+    local frame="${BLUE:-}"
+    local ts; ts="$(_runner_now_short)"
+    local width; width="$(_term_width)"
+
+    # Map status → operator-friendly verb for line 2. Tracks event payload
+    # verbatim so "status=<X>" agrees with the verb. ("success" in legacy
+    # event payloads renders as "complete" — see ADR-015 §v5 amendment).
+    local word
+    case "$status" in
+        success|complete)    word="complete" ;;
+        failed)              word="failed" ;;
+        interrupted)         word="interrupted" ;;
+        aborted)             word="aborted" ;;
+        preflight_failed)    word="preflight_failed" ;;
+        *)                   word="$status" ;;
+    esac
+
+    local label=" pipeline.end "
+    # Layout: <left_bar><label><mid_bar> <ts>
+    local left_bar=$(( (width - ${#label} - ${#ts} - 1) / 2 ))
+    local mid_bar=$(( width - left_bar - ${#label} - ${#ts} - 1 ))
+
+    local detail_status="status=${status}"
+    [[ -n "$stage_hint" ]] && detail_status+=" stage=${stage_hint}"
+    [[ -n "$rc_hint"    ]] && detail_status+=" rc=${rc_hint}"
+
+    if [[ "$mid_bar" -le 2 ]]; then
+        # Degraded layout — drop timestamp from the header.
+        local sides=$(( (width - ${#label}) / 2 ))
+        [[ "$sides" -lt 2 ]] && sides=2
+        local bar
+        printf -v bar '%*s' "$sides" ''
+        bar="${bar// /═}"
+        {
+            printf '\n'
+            printf '%b%s%b%s%b%b%s%b\n' "$frame" "$bar" "${BOLD:-}" "$label" "${RESET:-}" "$frame" "$bar" "${RESET:-}"
+            printf '%b%b%s%b Pipeline %s: %s run_id=%s issue=%s (took %s)\n' \
+                "$color" "${BOLD:-}" "$glyph" "${RESET:-}" \
+                "$word" "$detail_status" "$run_id" "$issue" "$dur"
+        } >&2
+        return 0
+    fi
+
+    local lbar rbar
+    printf -v lbar '%*s' "$left_bar" ''; lbar="${lbar// /═}"
+    printf -v rbar '%*s' "$mid_bar"  ''; rbar="${rbar// /═}"
+    {
+        printf '\n'
+        printf '%b%s%b%s%b%b%s%b %s\n' \
+            "$frame" "$lbar" "${BOLD:-}" "$label" "${RESET:-}" \
+            "$frame" "$rbar" "${RESET:-}" "$ts"
+        printf '%b%b%s%b Pipeline %s: %s run_id=%s issue=%s (took %s)\n' \
+            "$color" "${BOLD:-}" "$glyph" "${RESET:-}" \
+            "$word" "$detail_status" "$run_id" "$issue" "$dur"
+    } >&2
 }
 
 # ─── _render_stage_divider <stage> (#492, ts: #508) ──────────────────────────
@@ -287,6 +440,18 @@ main() {
         printf -v _cv_stages_nl '%s\n' "${active_stages[@]}"
         if ! _contract_validate_pipeline "$_cv_stages_nl" "$plugins_root" "$_cv_state_file_pf"; then
             error "Pre-flight contract validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
+            # #525: pre-flight failure is a pipeline terminal — emit the
+            # durable pipeline.end event FIRST (event-bus is fail-closed)
+            # then the operator banner. run_id/issue may not yet be
+            # established here; fall back to the CLI args / env / "-".
+            _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+            _runner_issue="${_runner_issue:-${issue:-0}}"
+            # Cache start time defensively so the duration token doesn't
+            # render "?s" for preflight failures triggered very early.
+            : "${_RUNNER_PIPELINE_START_MS:=$(_runner_now_ms)}"
+            eb_emit_event "pipeline.end" "status=preflight_failed" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+            _render_pipeline_end "preflight_failed"
             return 2
         fi
     }
@@ -465,6 +630,10 @@ main() {
     fi
 
     _runner_ended=false
+    # #525: cache the pipeline-start wall clock NOW (right after _runner_run_id
+    # is established but before any plugin runs) so every pipeline.end emit
+    # site — including the EXIT trap — can render a duration.
+    _RUNNER_PIPELINE_START_MS="$(_runner_now_ms)"
     export ZBUILD_RUN_ID="$_runner_run_id"
     export ZBUILD_ISSUE="$_runner_issue"
     export ZBUILD_GOAL="${goal:-}"
@@ -496,6 +665,12 @@ main() {
             "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null; then
             : # trap is exiting anyway; best-effort only
         fi
+        # #525: terminal banner for the operator. Event already emitted above
+        # so banner-render failure cannot lose the durable record. Reuses the
+        # ✗ RED "aborted" rendering path (per ADR-015 §v5 amendment).
+        # NB: do NOT redirect stderr away here — the banner writes to fd 2.
+        # Wrap in a subshell so a non-zero rc inside doesn't abort the trap.
+        ( _render_pipeline_end "aborted" ) || true
     }
     trap '_runner_abort_trap' EXIT
 
@@ -637,6 +812,7 @@ main() {
                         eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
+                        _render_pipeline_end "failed"
                         _runner_ended=true
                         error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
                         return 1
@@ -685,6 +861,7 @@ main() {
                         eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc"
                         eb_emit_event "pipeline.end" "status=failed" "stage=$_ust" "rc=$_rc" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
+                        _render_pipeline_end "failed" "$_ust" "$_rc"
                         _runner_ended=true
                         error "Stage $_ust failed (rc=$_rc)"
                         return 1
@@ -714,6 +891,10 @@ main() {
         fi
         _set_pipeline_status "$state_file" "complete"
         eb_emit_event "pipeline.end" "status=success" "run_id=$_runner_run_id" "issue=$_runner_issue"
+        # #525: persisted event payload stays "status=success" (existing
+        # contract — do not break consumers). Banner reads ADR-006 state
+        # enum "complete" for the operator-facing glyph + word.
+        _render_pipeline_end "complete"
         _runner_ended=true
         success "Pipeline complete — run_id=$_runner_run_id"
         return 0
@@ -796,6 +977,7 @@ main() {
                 eb_emit_event "stage.fail" "stage=$stage" "reason=no_plugin"
                 eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                     "run_id=$_runner_run_id" "issue=$_runner_issue"
+                _render_pipeline_end "failed" "$stage"
                 _runner_ended=true
                 error "No plugin registered for required stage '$stage'"
                 return 1
@@ -816,6 +998,7 @@ main() {
                 eb_emit_event "stage.fail" "stage=$stage" "reason=orch_spawn_failed"
                 eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                     "run_id=$_runner_run_id" "issue=$_runner_issue"
+                _render_pipeline_end "failed" "$stage"
                 _runner_ended=true
                 error "Stage $stage: orch_spawn failed for pool $pool_id"
                 return 1
@@ -850,6 +1033,7 @@ main() {
                     eb_emit_event "stage.fail" "stage=$stage" "reason=no_plugin"
                     eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                         "run_id=$_runner_run_id" "issue=$_runner_issue"
+                    _render_pipeline_end "failed" "$stage"
                     _runner_ended=true
                     error "No plugin registered for required stage '$stage' (roles: $roles_out)"
                     return 1
@@ -903,6 +1087,7 @@ main() {
             eb_emit_event "stage.fail" "stage=$stage" "reason=partial"
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
+            _render_pipeline_end "failed" "$stage"
             _runner_ended=true
             # #508: failure-line timestamp stays DIM (not red) — the clock
             # isn't the failure. error() handles the ✗/red on the prefix.
@@ -918,6 +1103,7 @@ main() {
             eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
+            _render_pipeline_end "failed" "$stage" "$rc"
             _runner_ended=true
             # #508: append timestamp + duration; rc stays in front of the
             # paren so the metadata reads "(rc=N, finished ... · ...s)".
@@ -935,6 +1121,9 @@ main() {
 
     _set_pipeline_status "$state_file" "complete"
     eb_emit_event "pipeline.end" "status=success" "run_id=$_runner_run_id" "issue=$_runner_issue"
+    # #525: banner uses ADR-006 state enum "complete" while persisted event
+    # payload remains "status=success" (existing consumer contract).
+    _render_pipeline_end "complete"
     _runner_ended=true
     success "Pipeline complete — run_id=$_runner_run_id"
     return 0
