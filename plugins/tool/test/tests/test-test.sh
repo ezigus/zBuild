@@ -464,7 +464,8 @@ OUT_JSON_12="$ARTIFACT_DIR/test-results-12.json"
 # exercise the actual checkout+clean reset path, so temporarily remove the
 # mock git from PATH.
 OLD_PATH="$PATH"
-export PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "$TEST_TEMP_DIR/bin" | tr '\n' ':' | sed 's/:$//')"
+_filtered_path="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "$TEST_TEMP_DIR/bin" | tr '\n' ':' | sed 's/:$//')"
+export PATH="$_filtered_path"
 hash -r
 
 set +e
