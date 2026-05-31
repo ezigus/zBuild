@@ -391,6 +391,7 @@ _cycle_resolve_from_path() {
         local rec o_id o_type o_src o_req o_path
         while IFS= read -r rec; do
             [[ -z "$rec" ]] && continue
+            # shellcheck disable=SC2034  # o_type/o_src/o_req destructured for schema parity, only o_path read
             IFS='|' read -r o_id o_type o_src o_req o_path <<< "$rec"
             if [[ "$o_id" == "$from_output" && -n "$o_path" ]]; then
                 # Expand canonical templating vars.
