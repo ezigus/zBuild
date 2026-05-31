@@ -390,7 +390,7 @@ cycles:
     max_iterations: 3
     on_max: continue
     feedback:
-      - from: { stage: test_assessment, output: failure_summary }
+      - from: { stage: test_assessment, output: test_assessment_md }
         to:   { stage: build, input: prior_test_failures, required: false }
 ```
 

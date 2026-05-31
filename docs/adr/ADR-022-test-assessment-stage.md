@@ -193,3 +193,21 @@ test and review, not after.
 - Issue #569 — review consumer wiring (precedence table consumer)
 - Issue #571 — build prompt update (consume `prior_test_failures` from assessment feedback)
 - Issue #572 — this ADR (amendments + new record)
+
+## Implementation Notes
+
+- **Plugin location**: `plugins/agent/test_assessment/` (NOT `test-assessment/`). Snake_case matches ADR-013 stage id convention.
+- **Manifest output ids**: `test_assessment` (primary, the `.json` artifact) and `test_assessment_md` (the rendered MD). The cycle feedback (#568) wires `from: { stage: test_assessment, output: test_assessment_md }` — the MD file is what flows back to build as `prior_test_failures.txt`.
+- **Renderer**: `render_test_assessment_md` registered via `register_artifact_renderer "test_assessment" "render_test_assessment_md"` in `scripts/lib/artifact-render.sh`.
+- **branch_numstat helper**: lives in `scripts/lib/helpers.sh`; fail-OPEN with fallback chain (origin/main → main → master → HEAD~50 → HEAD~1 → "unknown"). NOT a safety gate — LLM signal only.
+- **Verdict invariant**: enforced by the plugin POST-LLM (not by the LLM): `verdict==pass` requires `test.failed==0 && agrees_with_build_complete && build.verdict==pass`. Downgrade emits `test_assessment.downgrade` event.
+- **Redaction**: ALL inputs flow through `apply_scope_redaction` with `$ZBUILD_CYCLE_ID` for telemetry attribution.
+- **Cycle-iter dual-path write**: artifact written to both `cycle-<id>/iter-<N>/` and the flat manifest-primary path so it survives `_cycle_pre_iter_cleanup` while remaining resolvable by `_cycle_apply_feedback`.
+
+### Implementation status
+
+- #572 (this ADR + amendments): merged in PR pending CI
+- #567 (plugin + manifest + renderer + helper): implemented; PR pending
+- #568 (standard.yaml cycle wiring): not yet implemented
+- #569 (review consumer precedence): not yet implemented
+- #571 (build prompt consumes `prior_test_failures` from assessment): not yet implemented
