@@ -8,6 +8,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=lib/gh-automation.sh
+source "$REPO_ROOT/scripts/lib/gh-automation.sh"
 
 # ─── Constants (ADR-020 locked v1) ───────────────────────────────────────────
 # Signal phrases — case-insensitive, word-boundary anchored. Excludes "phase \d+"
@@ -37,7 +39,11 @@ EXCERPT_MAX=200
 PAGINATION_LIMIT=25
 LOG_PATH_DEFAULT="$REPO_ROOT/.github/issues/deferred-scanned-prs.md"
 DRIFT_SENTINEL="$REPO_ROOT/.deferred-drift"
-BOOTSTRAP_WINDOW_PRS=30
+# Bootstrap = first-ever run with empty log. 200 default; override via env for
+# larger repos / one-off rescans (issue #540 review feedback — 30 was too small).
+BOOTSTRAP_WINDOW_PRS="${DEFERRED_TRACKER_BOOTSTRAP_PRS:-200}"
+# Incremental window cap when a since-anchor exists.
+INCREMENTAL_FETCH_LIMIT="${DEFERRED_TRACKER_FETCH_LIMIT:-200}"
 
 match_signal_phrases() {
     local body="$1"
@@ -98,12 +104,7 @@ compute_since_anchor() {
         || printf ''
 }
 
-is_already_scanned() {
-    local pr_num="$1"
-    local log_path="$2"
-    [[ -f "$log_path" ]] || return 1
-    grep -qE "^\| #${pr_num} \|" "$log_path"
-}
+is_already_scanned() { gha_is_already_scanned "$@"; }
 
 # ReDoS guard: cap input length and bound surrounding-context match to 120 chars
 # each side instead of unbounded `[^.!?]*` (review finding, ADR-020 §Mitigations).
@@ -215,38 +216,29 @@ append_to_existing_issue() {
     gh issue comment "$issue_num" --body-file "$body_file" >/dev/null 2>&1
 }
 
-# Called ONLY after successful issue creation (ADR-020 §Idempotency rollback).
-append_to_log() {
-    local log_path="$1"
-    shift
-    local now today
-    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    today="$(date -u +%Y-%m-%d)"
-    if [[ ! -f "$log_path" ]]; then
-        mkdir -p "$(dirname "$log_path")"
-        cat > "$log_path" <<HDR
+_deferred_tracker_log_header() {
+    local path="$1" timestamp="$2"
+    cat > "$path" <<HDR
 # Deferred-tracker scanned PRs
 
 Auto-maintained by \`scripts/deferred-tracker.sh\`. Each entry is a merged PR
 that the deferred-tracker has scanned — listed whether or not a candidate was
 found. Once a PR appears here, it is never re-scanned.
 
-_Last updated: ${now}_
+_Last updated: ${timestamp}_
 
 | PR | Title | Scanned |
 |---|---|---|
 HDR
-    else
-        zbuild_sed_inplace "s|^_Last updated:.*|_Last updated: ${now}_|" "$log_path"
-    fi
-    for entry in "$@"; do
-        IFS='|' read -r pr_num title <<< "$entry"
-        # Idempotency: skip if already present
-        if grep -qE "^\| #${pr_num} \|" "$log_path"; then
-            continue
-        fi
-        printf '| #%s | %s | %s |\n' "$pr_num" "$title" "$today" >> "$log_path"
-    done
+}
+
+# Called ONLY after successful issue creation (ADR-020 §Idempotency rollback).
+append_to_log() {
+    local log_path="$1"
+    shift
+    local today
+    today="$(date -u +%Y-%m-%d)"
+    gha_append_scanned_log "$log_path" "_deferred_tracker_log_header" "$today" "$@"
 }
 
 # ─── Main flow (skipped when sourced for tests) ──────────────────────────────
@@ -276,9 +268,7 @@ main() {
     fi
 
     local prs_json="${RUNNER_TEMP:-/tmp}/deferred-tracker-prs.json"
-    # Non-bootstrap mode uses a wider limit so a missed run doesn't lose PRs
-    # outside the bootstrap window.
-    local fetch_limit=200
+    local fetch_limit="$INCREMENTAL_FETCH_LIMIT"
     [[ -z "$since" ]] && fetch_limit="$BOOTSTRAP_WINDOW_PRS"
     gh pr list --state closed --search "$search_q" \
         --limit "$fetch_limit" \
