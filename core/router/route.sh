@@ -825,10 +825,14 @@ ${_diff_pointer}"
             return 2
         }
 
-        # Wave 8 #613: auto-terminate after N consecutive empty-diff iters.
+        # Wave 8 #613: auto-terminate after N consecutive truly-empty diff iters.
         # Safety net for when the LLM forgets to emit LOOP_COMPLETE (e.g., it
         # observes the work is already done but responds without the sentinel).
-        if [[ -z "$prev_diff" || "$prev_diff" == "(diff exceeded cap"* ]]; then
+        # Codex P1 on #615: DO NOT count capped-diff sentinel as empty —
+        # the LLM may legitimately be producing large patches each iter
+        # that exceed ZBUILD_LOOP_DIFF_CAP_CHARS. Only truly empty diff
+        # (zero changes) counts toward the no-progress streak.
+        if [[ -z "$prev_diff" ]]; then
             empty_iter_count=$(( empty_iter_count + 1 ))
         else
             empty_iter_count=0
