@@ -202,15 +202,15 @@ orphan_count="$(jq -c --arg t "stage.io.error" 'select(.type==$t and .data.reaso
     "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "no orphan begins" "0" "$orphan_count"
 
-# (7) #498: regression — the per-iteration [llm] banners (this test's
-# pre-existing assertions above) MUST NOT be coupled to the [computed]
-# changed-files-summary banner the build plugin now emits AFTER the loop.
-# This integration test only drives route_to_model_loop directly (not the
-# full build plugin), so the computed banner should NOT appear here. Assert
-# zero [computed] banners in this slice — that guarantees #482 + #498 are
-# decoupled: route.sh emits kind=llm only; build/plugin.sh emits kind=computed.
+# (7) #587: regression — the per-iteration [llm] banners MUST NOT be
+# coupled to a [computed] banner. Prior to #587 the build plugin emitted a
+# post-loop [computed] banner pair (added in #498); #566 made the [llm]
+# banners visible and exposed the duplication, so #587 removed the
+# [computed] banner pair entirely (event-only signal now). This slice only
+# runs route_to_model_loop directly, so zero [computed] banners is expected
+# both before and after #587 — the assertion stays at 0.
 computed_count="$(printf '%s\n' "$banner" | grep -cE '══ build \[computed\]' || true)"
-assert_eq "no [computed] banners when only route_to_model_loop runs (#498 decoupling)" "0" "$computed_count"
+assert_eq "no [computed] banners when only route_to_model_loop runs (#587)" "0" "$computed_count"
 
 cleanup_test_env
 print_test_results

@@ -147,55 +147,29 @@ out_llm="$(printf '%s\n' "$banner" | grep -cE '══ build \[llm\] seq=.* outpu
 assert_eq "2 [llm] input banners (one per iter)"  "2" "$in_llm"
 assert_eq "2 [llm] output banners (one per iter)" "2" "$out_llm"
 
-# ─── (2) Exactly ONE [computed] banner (input + output pair) ──────────────
+# ─── (2) ZERO [computed] banners (#587: kill duplicate post-loop banner) ──
 in_computed="$(printf '%s\n' "$banner" | grep -cE '══ build \[computed\] seq=.* input ══' || true)"
 out_computed="$(printf '%s\n' "$banner" | grep -cE '══ build \[computed\] seq=.* output ' || true)"
-assert_eq "1 [computed] input banner"  "1" "$in_computed"
-assert_eq "1 [computed] output banner" "1" "$out_computed"
+assert_eq "0 [computed] input banners (#587)"  "0" "$in_computed"
+assert_eq "0 [computed] output banners (#587)" "0" "$out_computed"
 
-# ─── (3) [computed] banner appears AFTER all [llm] banners (#491 ordering) ─
-last_llm_line="$(printf '%s\n' "$banner" | grep -nE '══ build \[llm\]' | tail -1 | cut -d: -f1)"
-first_computed_line="$(printf '%s\n' "$banner" | grep -nE '══ build \[computed\]' | head -1 | cut -d: -f1)"
-if [[ -n "$last_llm_line" && -n "$first_computed_line" \
-      && "$last_llm_line" -lt "$first_computed_line" ]]; then
-    assert_pass "[computed] banner emitted AFTER all [llm] banners"
-else
-    assert_fail "[computed] banner ordering" \
-        "last_llm=$last_llm_line first_computed=$first_computed_line"
-fi
-
-# ─── (4) [computed] banner contains numstat literal + changed file ────────
-assert_contains "[computed] banner input shows numstat literal" \
-    "$banner" "git diff HEAD --numstat"
-assert_contains "[computed] banner output shows the changed file" \
-    "$banner" "build-test-498.txt"
-assert_contains "[computed] banner output shows total footer" \
-    "$banner" "total: 1 files,"
-
-# ─── (5) Numstat byte-matches `git diff HEAD --numstat` (consistency) ─────
-real_numstat="$(git -C "$REPO" diff HEAD --numstat 2>/dev/null || true)"
-# The banner shows the formatted body; extract +A -R path lines and compare
-# files names against the real numstat output.
-if [[ -n "$real_numstat" ]]; then
-    real_file="$(printf '%s\n' "$real_numstat" | head -1 | awk '{print $3}')"
-    if printf '%s\n' "$banner" | grep -q "$real_file"; then
-        assert_pass "banner numstat references real changed file ($real_file)"
-    else
-        assert_fail "banner missing real numstat file" "expected $real_file in banner"
-    fi
-fi
-
-# ─── (6) Exactly 1 stage.io.captured event with kind=computed ─────────────
-captured_computed="$(jq -c --arg t "stage.io.captured" \
-    'select(.type==$t and .data.stage=="build" and .data.kind=="computed")' \
-    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "1 stage.io.captured event with kind=computed" "1" "$captured_computed"
-
-# ─── (7) No discrepancy event (numstat showed > 0 files changed) ──────────
+# ─── (3) No discrepancy event for happy-path (numstat showed > 0 files) ───
 disc_count="$(jq -c --arg t "build.discrepancy.detected" \
     'select(.type==$t)' \
     "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "no build.discrepancy.detected event (real edits present)" "0" "$disc_count"
+
+# ─── (4) No empty-after-done-sentinel event either (happy-path) ───────────
+empty_count="$(jq -c --arg t "build.diff.empty_after_done_sentinel" \
+    'select(.type==$t)' \
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "no build.diff.empty_after_done_sentinel event (#587, real edits)" "0" "$empty_count"
+
+# ─── (5) Zero stage.io.captured events with kind=computed (#587) ──────────
+captured_computed="$(jq -c --arg t "stage.io.captured" \
+    'select(.type==$t and .data.stage=="build" and .data.kind=="computed")' \
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "0 stage.io.captured events with kind=computed (#587)" "0" "$captured_computed"
 
 cleanup_test_env
 print_test_results
