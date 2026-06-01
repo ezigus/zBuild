@@ -801,6 +801,11 @@ main() {
     export ZBUILD_RUN_ID="$_runner_run_id"
     export ZBUILD_ISSUE="$_runner_issue"
     export ZBUILD_GOAL="${goal:-}"
+    # #618: child plugins (e.g. core/router/route.sh:route_to_model_loop, which
+    # reads $ZBUILD_STATE_DIR/intake-baseline-ref.txt per #617) need to see
+    # the resolved state_dir. Without this export the var is unset in plugin
+    # subshells and the #617 BRANCH STATE block is silently skipped.
+    export ZBUILD_STATE_DIR="$state_dir"
 
     # Mark pipeline as in_progress
     _set_pipeline_status "$state_file" "in_progress"
