@@ -496,7 +496,7 @@ else
     assert_fail "A3 artifact contract: synthetic findings.json not created"
 fi
 
-# ─── Test I1 (#508): 5-stage happy path emits divider+running+complete with UTC ─
+# ─── Test I1 (#508): 6-stage happy path emits divider+running+complete with UTC ─
 # Reset to a clean plugin set in the shared PLUGINS_ROOT (mock_plugin_factory
 # writes under $TEST_TEMP_DIR/plugins regardless of ZBUILD_PLUGINS_ROOT —
 # match that convention rather than fight it).
