@@ -382,7 +382,7 @@ colored=$'plain \e[31mred\e[0m \e[1;32mbold-green\e[0m end'
 rec36i="$(_t440_make_record build command "ls" "$colored" "0" "100")"
 out36i="$(_stage_io_to_stdout "$rec36i" 2>/dev/null)"
 assert_contains "T36i text preserved with colors stripped" "$out36i" "plain red bold-green end"
-if printf '%s' "$out36i" | grep -qP '\x1b\['; then
+if printf '%s' "$out36i" | LC_ALL=C grep -q $'\033['; then
     assert_fail "T36i no ESC[ sequences remain" "still present"
 else
     assert_pass "T36i no ESC[ sequences remain"

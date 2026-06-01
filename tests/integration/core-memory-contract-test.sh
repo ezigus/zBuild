@@ -340,8 +340,7 @@ memory_put "ns-fmt" "fmt-key" "fmt-value"
 fmt_out="$(memory_search "ns-fmt" "fmt")"
 
 # Should contain a tab between key and value
-if printf '%s' "$fmt_out" | grep -qP 'fmt-key\tfmt-value' 2>/dev/null || \
-   printf '%s' "$fmt_out" | grep -q $'fmt-key\tfmt-value'; then
+if printf '%s' "$fmt_out" | grep -q $'fmt-key\tfmt-value'; then
     assert_pass "search output is tab-separated key<TAB>value"
 else
     assert_fail "search output is tab-separated key<TAB>value" \
