@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Unit test (#549): NUL byte detection in build plugin uses grep -P '\x00'
-# instead of the broken bash $'\x00' empty-string pattern that matched every
-# non-empty line (false positive).
+# Unit test (#549): NUL byte detection in build plugin uses a portable perl
+# one-liner instead of the broken bash $'\x00' empty-string pattern that
+# matched every non-empty line (false positive). (#601: replaced grep -P
+# fallback with perl since BSD grep on macOS lacks -P.)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +13,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "build #549: NUL byte detection (grep -P not bash \$'\\x00')"
+print_test_header "build #549: NUL byte detection (portable perl, not bash \$'\\x00')"
 setup_test_env "build-nul-detection"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
@@ -40,12 +41,7 @@ reset_events() {
 # On macOS, BSD grep lacks -P; fall back to perl which is always available.
 has_nul() {
     local file="$1"
-    if LC_ALL=C grep -qP '\x00' "$file" 2>/dev/null; then
-        return 0
-    elif perl -0777 -ne 'exit(!/\x00/)' "$file" 2>/dev/null; then
-        return 0
-    fi
-    return 1
+    LC_ALL=C perl -0777 -ne 'exit(!/\x00/)' "$file" 2>/dev/null
 }
 
 # ─── N1: plain-text file → NUL detection MUST NOT fire ──────────────────────
@@ -91,27 +87,15 @@ broken_pattern=$'\x00'
 broken_len=${#broken_pattern}
 assert_eq "N3: bash \$'\\x00' length is 0 (empty string, not NUL literal)" "0" "$broken_len"
 
-# ─── N4: confirm grep -P '\x00' is the correct fix on platforms that support it
-print_test_section "N4: grep -P '\\x00' correctly rejects plain text (when -P is available)"
+# ─── N4: confirm portable perl NUL check correctly rejects plain text ────────
+print_test_section "N4: perl NUL check correctly rejects plain text (portable)"
 
-if LC_ALL=C grep --version 2>&1 | grep -q 'GNU'; then
-    # GNU grep: -P is supported.
-    PLAIN2="$TEST_TEMP_DIR/plain2.patch"
-    printf 'just plain text\n' > "$PLAIN2"
-    if LC_ALL=C grep -qP '\x00' "$PLAIN2" 2>/dev/null; then
-        assert_fail "N4: grep -P should not match plain text" "matched unexpectedly"
-    else
-        assert_pass "N4: grep -P '\\x00' does not match plain text"
-    fi
+PLAIN2="$TEST_TEMP_DIR/plain2.patch"
+printf 'just plain text\n' > "$PLAIN2"
+if LC_ALL=C perl -0777 -ne 'exit(!/\x00/)' "$PLAIN2" 2>/dev/null; then
+    assert_fail "N4: perl NUL check should not match plain text" "matched unexpectedly"
 else
-    # macOS BSD grep lacks -P — verify via perl fallback instead.
-    PLAIN2="$TEST_TEMP_DIR/plain2.patch"
-    printf 'just plain text\n' > "$PLAIN2"
-    if perl -0777 -ne 'exit(!/\x00/)' "$PLAIN2" 2>/dev/null; then
-        assert_fail "N4: perl NUL check should not match plain text" "matched unexpectedly"
-    else
-        assert_pass "N4: perl NUL check does not match plain text (macOS fallback)"
-    fi
+    assert_pass "N4: perl NUL check does not match plain text"
 fi
 
 cleanup_test_env
