@@ -90,6 +90,10 @@ assert_pass() {
     local desc="$1"
     TOTAL=$((TOTAL + 1))
     PASS=$((PASS + 1))
+    # #600: ZBUILD_TEST_QUIET=1 suppresses per-assertion echoes to keep the
+    # pipeline test-stage banner compact. Counters still update; assert_fail
+    # is intentionally NOT gated (failures always surface).
+    [[ "${ZBUILD_TEST_QUIET:-0}" == "1" ]] && return 0
     echo -e "  ${GREEN}✓${RESET} ${desc}"
 }
 
@@ -365,6 +369,17 @@ print_test_section() {
 }
 
 print_test_results() {
+    # #600: in quiet mode, emit a single-line compact summary FIRST so the
+    # pipeline operator can scan a 30-line test-stage banner instead of ~150.
+    # The full multi-line block follows unchanged (no info loss for humans
+    # reviewing failures).
+    if [[ "${ZBUILD_TEST_QUIET:-0}" == "1" ]]; then
+        if [[ $FAIL -eq 0 ]]; then
+            echo -e "  ${GREEN}${BOLD}✓ ${PASS}/${TOTAL} passed${RESET}"
+        else
+            echo -e "  ${RED}${BOLD}✗ ${PASS}/${TOTAL} passed (${FAIL} FAILED)${RESET}"
+        fi
+    fi
     echo ""
     echo -e "${DIM}  ──────────────────────────────────────────${RESET}"
     echo ""
