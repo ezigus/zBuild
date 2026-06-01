@@ -3,12 +3,8 @@ name: Cycle where test stage hits structural error (verdict=error) on iter 1
 defaults:
   strategy: fanout
 stages:
-  - id: build
-    roles: [builder]
-  - id: test
-    roles: [tester]
-cycles:
   - id: build-test
+    type: cycle
     stages: [build, test]
     until:
       stage: test
@@ -17,3 +13,9 @@ cycles:
       value: pass
     max_iterations: 5
     on_max: continue
+
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]

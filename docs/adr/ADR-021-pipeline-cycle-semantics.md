@@ -430,3 +430,90 @@ empty-feedback omission rule (#511 Pin 5) is unchanged: an empty
 **Backward compatibility.** Templates that omit `test_assessment` from
 the cycle's `stages[]` keep `until: { stage: test, field: verdict }` and
 the F2 wiring is unchanged. The amendment is opt-in via the stage list.
+
+---
+
+## Amendment §"Cycle declaration syntax v2" (#585)
+
+**Decision.** The legacy two-block template shape (top-level `stages:` flat
+list + sibling `cycles:` overlay) is retired. v2 inlines cycles as `stages:`
+entries in execution order; per-stage attributes for cycle members are
+hoisted into a new top-level `stage_definitions:` map.
+
+**v1 (retired)**:
+```yaml
+stages:
+  - id: intake
+  - id: plan
+  - id: build
+  - id: test
+  - id: review
+cycles:
+  - id: build_test
+    stages: [build, test]
+    until: { stage: test, field: verdict, op: eq, value: pass }
+    max_iterations: 3
+```
+
+**v2**:
+```yaml
+stages:
+  - id: intake
+    roles: [intake]
+  - id: plan
+    roles: [planner]
+  - id: build_test
+    type: cycle
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 3
+  - id: review
+    roles: [reviewer]
+
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]
+```
+
+**Rationale.** Top-down readability: the cycle appears in execution order,
+not in a separate block the reader must mentally splice in. Cycle id and
+member-stage attrs are clearly separated into distinct namespaces; the
+canonical-stages allow-list applies only to the flat expanded `_TPL_STAGES[]`
+(canonical ids), while cycle ids live in `_TPL_CYCLES[]` (free namespace).
+
+**Hard-break.** The parser refuses templates with a top-level `cycles:`
+block and points the operator at `scripts/migrate-template-v2.sh`. Dual-
+syntax tolerance was rejected: the AWK parser cannot disambiguate cleanly
+and the migration is mechanical for the small set of in-tree fixtures + any
+user template. Hard-break also avoids silent precedence bugs.
+
+**Invariants preserved.** The downstream contract (`_TPL_STAGES[]` =
+canonical-ordered flat list; `_TPL_DISPATCH_UNITS[]` = `stage:<id>` /
+`cycle:<cid>` tokens; per-stage `_TPL_STAGE_*_<safe>` vars) is identical
+to v1, so the runner, cycle-orchestrator, contract validator, and plugin
+manifests required ZERO code changes. The parser refactor is local.
+
+**Migration.** `scripts/migrate-template-v2.sh <file> [--in-place]` performs
+a mechanical YAML transform: hoists cycle member stage definitions into
+`stage_definitions:`, replaces them in `stages:` with one inline
+`type: cycle` entry, and drops the `cycles:` block. The script is
+idempotent (a v2 file with no `cycles:` block is emitted verbatim).
+
+**Validation rule changes.**
+- Legacy "contiguous-subsequence in flat stages" check no longer applies
+  (v2 has no flat list to be a subsequence of). Cycle membership is now
+  defined by the inline `stages:` list directly.
+- New rule: every cycle member id MUST have a `stage_definitions:` entry,
+  or `load_template` fails with `cycle 'X' references stage 'Y' but no
+  'stage_definitions.Y' entry exists`.
+- Existing rules unchanged: `max_iterations 1..10` REQUIRED;
+  `until.stage` MUST be in cycle's `stages[]`; cycle ids do NOT collide
+  with canonical stage names (a cycle id named `build` would be ambiguous
+  with the `build` member, but no template ships that way and the
+  collision is structurally rejected by the missing-stage-def check).

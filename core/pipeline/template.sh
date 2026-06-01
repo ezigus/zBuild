@@ -84,15 +84,44 @@ load_template() {
         return 1
     fi
 
+    # ADR-021 v2 (#585): legacy top-level `cycles:` block is a hard-break.
+    # Detect and refuse with a pointer to the migration helper.
+    if awk 'BEGIN{rc=1} /^cycles:[[:space:]]*$/ {rc=0; exit} END{exit rc}' "$template_file"; then
+        error "load_template: legacy 'cycles:' block detected in $template_file"
+        error "  v2 template syntax inlines cycles as stage entries (type: cycle)"
+        error "  with per-stage attributes hoisted into a top-level"
+        error "  'stage_definitions:' map (see ADR-021 v2 / issue #585)."
+        error "  Run: scripts/migrate-template-v2.sh '$template_file' --in-place"
+        return 1
+    fi
+
     _TPL_DEFAULT_STRATEGY="$(yaml_get "$template_file" "defaults.strategy")"
     [[ -z "$_TPL_DEFAULT_STRATEGY" ]] && _TPL_DEFAULT_STRATEGY="fanout"
 
     _TPL_STAGES=()
+    _TPL_CYCLES=()
 
-    local stage_data
-    stage_data="$(_tpl_parse_stage_data "$template_file")"
+    # ADR-021 v2 parser: scan `stages:` block, emitting interleaved S|/IC|/FB|
+    # rows. Inline cycle entries (IC|) reference cycle member stages by id;
+    # per-stage attrs for those members come from `stage_definitions:` (parsed
+    # separately below).
+    local stage_rows defs_rows
+    stage_rows="$(_tpl_parse_stages_v2 "$template_file")"
+    defs_rows="$(_tpl_parse_stage_definitions "$template_file")"
 
-    # Collect stage ids first for validation
+    # Build map: stage id → "S|<id>|<roles>|<strategy>|<io...>|<router...>"
+    # First load defs into the map; then non-cycle stage rows from `stages:`
+    # also feed the map (regular stages declare their own attrs inline).
+    local -A stage_def_row=()
+    local row sid rest
+    while IFS= read -r row; do
+        [[ -z "$row" ]] && continue
+        sid="${row%%|*}"
+        rest="${row#*|}"
+        stage_def_row["$sid"]="$rest"
+    done <<< "$defs_rows"
+
+    # Phase 1: collect ids in execution order + extract cycle metadata.
     local -a collected_ids=()
     local -a collected_io_dests=()
     local -a collected_io_tail=()
@@ -100,40 +129,109 @@ load_template() {
     local -a collected_router_timeout=()
     local -a collected_router_max_turns=()
     local -a collected_router_max_iterations=()
-    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations; do
-        [[ -z "$stage_id" ]] && continue
-        collected_ids+=("$stage_id")
-        collected_io_dests+=("$io_dests")
-        collected_io_tail+=("$io_tail")
-        collected_io_redact+=("$io_redact")
-        collected_router_timeout+=("$router_timeout")
-        collected_router_max_turns+=("$router_max_turns")
-        collected_router_max_iterations+=("$router_max_iterations")
-    done <<< "$stage_data"
+    local -a stage_data_rows=()
 
-    # Validate all stage ids against the canonical list before mutating state
+    while IFS= read -r row; do
+        [[ -z "$row" ]] && continue
+        local tag="${row%%|*}"
+        local payload="${row#*|}"
+        case "$tag" in
+            S)
+                # Inline regular stage row from `stages:` — full attr payload.
+                # Format: <id>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>
+                local s_id s_roles s_strat s_iod s_iot s_ior s_rt s_rmt s_rmi
+                IFS='|' read -r s_id s_roles s_strat s_iod s_iot s_ior s_rt s_rmt s_rmi <<< "$payload"
+                [[ -z "$s_id" ]] && continue
+                # Also drop into defs map so cycle members can declare attrs
+                # inline if templates choose to (forward-compat).
+                stage_def_row["$s_id"]="$s_roles|$s_strat|$s_iod|$s_iot|$s_ior|$s_rt|$s_rmt|$s_rmi"
+                collected_ids+=("$s_id")
+                collected_io_dests+=("$s_iod")
+                collected_io_tail+=("$s_iot")
+                collected_io_redact+=("$s_ior")
+                collected_router_timeout+=("$s_rt")
+                collected_router_max_turns+=("$s_rmt")
+                collected_router_max_iterations+=("$s_rmi")
+                stage_data_rows+=("$s_id|$s_roles|$s_strat|$s_iod|$s_iot|$s_ior|$s_rt|$s_rmt|$s_rmi")
+                ;;
+            IC)
+                # Inline cycle entry. Format:
+                # <cid>|<cstages>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>
+                local cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg
+                IFS='|' read -r cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg <<< "$payload"
+                [[ -z "$cid" ]] && continue
+                _TPL_CYCLES+=("$cid")
+                local safe="${cid//-/_}"
+                printf -v "_TPL_CYCLE_STAGES_${safe}"        '%s' "$cstages"
+                printf -v "_TPL_CYCLE_MAX_${safe}"           '%s' "$cmax"
+                printf -v "_TPL_CYCLE_ON_MAX_${safe}"        '%s' "${conmax:-continue}"
+                printf -v "_TPL_CYCLE_UNTIL_STAGE_${safe}"   '%s' "$custage"
+                printf -v "_TPL_CYCLE_UNTIL_FIELD_${safe}"   '%s' "$cufield"
+                printf -v "_TPL_CYCLE_UNTIL_OP_${safe}"      '%s' "$cuop"
+                printf -v "_TPL_CYCLE_UNTIL_VALUE_${safe}"   '%s' "$cuvalue"
+                printf -v "_TPL_CYCLE_PLATEAU_W_${safe}"     '%s' "$cplateau"
+                printf -v "_TPL_CYCLE_DIVERGENCE_W_${safe}"  '%s' "$cdiverg"
+                export "_TPL_CYCLE_STAGES_${safe}" "_TPL_CYCLE_MAX_${safe}" \
+                       "_TPL_CYCLE_ON_MAX_${safe}" "_TPL_CYCLE_UNTIL_STAGE_${safe}" \
+                       "_TPL_CYCLE_UNTIL_FIELD_${safe}" "_TPL_CYCLE_UNTIL_OP_${safe}" \
+                       "_TPL_CYCLE_UNTIL_VALUE_${safe}" "_TPL_CYCLE_PLATEAU_W_${safe}" \
+                       "_TPL_CYCLE_DIVERGENCE_W_${safe}"
+                # Expand cycle members in order into the flat stage list.
+                local IFS_save="$IFS"; IFS=','
+                # shellcheck disable=SC2206
+                local -a members=($cstages)
+                IFS="$IFS_save"
+                local m m_row m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi
+                for m in "${members[@]}"; do
+                    m_row="${stage_def_row[$m]:-}"
+                    if [[ -z "$m_row" ]]; then
+                        error "load_template: cycle '$cid' references stage '$m' but no 'stage_definitions.$m' entry exists"
+                        return 1
+                    fi
+                    IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi <<< "$m_row"
+                    collected_ids+=("$m")
+                    collected_io_dests+=("$m_iod")
+                    collected_io_tail+=("$m_iot")
+                    collected_io_redact+=("$m_ior")
+                    collected_router_timeout+=("$m_rt")
+                    collected_router_max_turns+=("$m_rmt")
+                    collected_router_max_iterations+=("$m_rmi")
+                    stage_data_rows+=("$m|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
+                done
+                ;;
+            FB)
+                # Feedback row for the most-recent cycle. Format:
+                # <cid>|<fbrec>  (fbrec = from_stage:from_output|to_stage:to_field:required)
+                local fb_cid fb_rec
+                fb_cid="${payload%%|*}"
+                fb_rec="${payload#*|}"
+                local safe="${fb_cid//-/_}"
+                local var="_TPL_CYCLE_FEEDBACK_${safe}"
+                local prev="${!var:-}"
+                if [[ -z "$prev" ]]; then
+                    printf -v "$var" '%s' "$fb_rec"
+                else
+                    printf -v "$var" '%s\n%s' "$prev" "$fb_rec"
+                fi
+                # shellcheck disable=SC2163
+                export "${var?}"
+                ;;
+        esac
+    done <<< "$stage_rows"
+
+    # Validate ids/order/io/router before mutating per-stage state.
     _tpl_validate_stages "${collected_ids[@]}" || return 1
-
-    # ADR-015 v1 (#438): validate io.destinations tokens before mutating state
     _tpl_validate_io_dests collected_ids collected_io_dests || return 1
-
-    # ADR-015 v3 (#440) + ADR-017 (#455) + ADR-018 (#466, #467):
-    # validate io.tail_lines, io.redact, router.timeout_s, router.max_turns,
-    # router.max_iterations
     _tpl_validate_io_knobs collected_ids collected_io_tail collected_io_redact \
         collected_router_timeout collected_router_max_turns \
         collected_router_max_iterations || return 1
 
-    # Populate module state
-    while IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations; do
+    # Populate per-stage state (flat _TPL_STAGES[] + per-id env vars).
+    local stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations
+    for row in "${stage_data_rows[@]}"; do
+        IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations <<< "$row"
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
-        # Store roles, strategy, io_dests via name-mangled env vars.
-        # MUST be exported: plugins run in subshells spawned by the orch local
-        # engine (`bash work-unit.sh`) and their capture_stage_io call needs to
-        # read template_stage_io_dests, which reads these vars. Without export
-        # the plugin sees them as empty and stage-io capture is silently
-        # short-circuited as "no destinations configured".
         local safe_id="${stage_id//-/_}"
         printf -v "_TPL_STAGE_ROLES_${safe_id}" '%s' "$roles"
         printf -v "_TPL_STAGE_STRATEGY_${safe_id}" '%s' "$strategy"
@@ -151,35 +249,25 @@ load_template() {
                "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" \
                "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" \
                "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
-    done <<< "$stage_data"
+    done
 
-    # ADR-021 (#512): parse `cycles:` overlay (optional). Absent → empty cycle
-    # list → linear dispatch (units = stage:<id> for every stage).
-    _TPL_CYCLES=()
-    _tpl_parse_cycles "$template_file" || return 1
     _tpl_validate_cycles || return 1
     _tpl_build_dispatch_units || return 1
 }
 
-# ─── _tpl_parse_cycles — parse `cycles:` overlay (ADR-021) ───────────────────
-# Side effects: appends to _TPL_CYCLES[], populates per-cycle name-mangled vars:
-#   _TPL_CYCLE_STAGES_<id>          (CSV stage ids; declaration order)
-#   _TPL_CYCLE_MAX_<id>             (integer)
-#   _TPL_CYCLE_ON_MAX_<id>          (continue|halt)
-#   _TPL_CYCLE_UNTIL_STAGE_<id>     (stage id)
-#   _TPL_CYCLE_UNTIL_FIELD_<id>     (verdict|status)
-#   _TPL_CYCLE_UNTIL_OP_<id>        (eq|ne)
-#   _TPL_CYCLE_UNTIL_VALUE_<id>     (string)
-#   _TPL_CYCLE_PLATEAU_W_<id>       (integer, default 3)
-#   _TPL_CYCLE_DIVERGENCE_W_<id>    (integer, default 2)
-#   _TPL_CYCLE_FEEDBACK_<id>        (newline-delimited "from:out|to:field:required")
-_tpl_parse_cycles() {
+# ─── _tpl_parse_stages_v2 — parse `stages:` block with inline cycle support ──
+# ADR-021 v2 (#585). Single AWK pass over `stages:` emits interleaved rows:
+#   S|<id>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>
+#     for regular `- id:` stage entries (full attr payload, same shape as the
+#     legacy _tpl_parse_stage_data output)
+#   IC|<cid>|<cstages_csv>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>
+#     for `- id: …; type: cycle` entries
+#   FB|<cid>|<from_stage>:<from_output>|<to_stage>:<to_input>:<required>
+#     one row per feedback record in the most-recently opened cycle
+# Caller distinguishes by leading tag; preserves declaration order.
+_tpl_parse_stages_v2() {
     local file="$1"
-    # Awk-based parser. Schema is narrow on purpose (no full YAML); we control
-    # the surface area. Output: per-cycle pipe-delimited blob, one line per
-    # cycle, followed by zero or more feedback rows prefixed by `FB|<cycle>|`.
-    local parsed
-    parsed="$(awk '
+    awk '
     function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
     function strip_inline_list(line,    s) {
         s = line
@@ -188,24 +276,55 @@ _tpl_parse_cycles() {
         gsub(/[[:space:]]/, "", s)
         return s
     }
-    /^cycles:/ { in_cycles = 1; next }
-    in_cycles && /^[a-zA-Z_]/ { in_cycles = 0 }
-    in_cycles && /^[[:space:]]*-[[:space:]]*id:/ {
-        if (cid != "") {
-            print "C|" cid "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg
-            for (k = 1; k <= nfb; k++) print "FB|" cid "|" fb[k]
+    function flush_entry(   k) {
+        if (current_id == "") return
+        if (entry_kind == "cycle") {
+            print "IC|" current_id "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg
+            if (fb_from_stage != "" || fb_to_stage != "") {
+                nfb++
+                fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
+            }
+            for (k = 1; k <= nfb; k++) print "FB|" current_id "|" fb[k]
+        } else {
+            print "S|" current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations
         }
-        cid = trim($0); sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", cid)
+    }
+    function reset_entry() {
+        current_id = ""; entry_kind = "stage"
+        current_roles = ""; current_strategy = ""; current_io_dests = ""
+        current_io_tail = ""; current_io_redact = ""; current_router_timeout = ""
+        current_router_max_turns = ""; current_router_max_iterations = ""
         cstages = ""; cmax = ""; conmax = ""; custage = ""; cufield = ""
         cuop = ""; cuvalue = ""; cplateau = ""; cdiverg = ""
         nfb = 0
+        in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0
         in_stages_list = 0; in_until = 0; in_plateau = 0; in_diverg = 0
         in_feedback = 0; in_fb_item = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+    }
+    BEGIN { reset_entry() }
+    /^stages:[[:space:]]*$/ { in_stages = 1; next }
+    in_stages && /^[a-zA-Z_]/ {
+        flush_entry()
+        reset_entry()
+        in_stages = 0
         next
     }
-    # `stages:` (inline list or multi-line) — under a cycle entry
-    cid != "" && /^[[:space:]]+stages:/ {
+    in_stages && /^[[:space:]]*-[[:space:]]*id:/ {
+        flush_entry()
+        reset_entry()
+        sid = $0
+        sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", sid)
+        current_id = trim(sid)
+        next
+    }
+    in_stages && current_id != "" && /^[[:space:]]+type:[[:space:]]*cycle[[:space:]]*$/ {
+        entry_kind = "cycle"
+        next
+    }
+
+    # ── cycle-only fields ────────────────────────────────────────────────────
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+stages:/ {
         in_until = 0; in_plateau = 0; in_diverg = 0; in_feedback = 0
         if ($0 ~ /\[/) {
             cstages = strip_inline_list($0)
@@ -215,50 +334,51 @@ _tpl_parse_cycles() {
         }
         next
     }
-    in_stages_list && /^[[:space:]]+-[[:space:]]/ {
+    in_stages && entry_kind == "cycle" && in_stages_list && /^[[:space:]]+-[[:space:]]/ {
         item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
         if (item != "") cstages = (cstages == "" ? item : cstages "," item)
         next
     }
-    in_stages_list && /^[[:space:]]+[a-z_]+:/ { in_stages_list = 0 }
-    cid != "" && /^[[:space:]]+max_iterations:/ {
+    in_stages && entry_kind == "cycle" && in_stages_list && /^[[:space:]]+[a-z_]+:/ { in_stages_list = 0 }
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+max_iterations:/ {
         v = $0; sub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); cmax = trim(v); next
     }
-    cid != "" && /^[[:space:]]+on_max:/ {
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+on_max:/ {
         v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); conmax = trim(v); next
     }
-    cid != "" && /^[[:space:]]+until:[[:space:]]*$/ {
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+until:[[:space:]]*$/ {
         in_until = 1; in_plateau = 0; in_diverg = 0; in_feedback = 0; next
     }
-    in_until && /^[[:space:]]+stage:/ {
+    in_stages && entry_kind == "cycle" && in_until && /^[[:space:]]+stage:/ {
         v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); custage = trim(v); next
     }
-    in_until && /^[[:space:]]+field:/ {
+    in_stages && entry_kind == "cycle" && in_until && /^[[:space:]]+field:/ {
         v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cufield = trim(v); next
     }
-    in_until && /^[[:space:]]+op:/ {
+    in_stages && entry_kind == "cycle" && in_until && /^[[:space:]]+op:/ {
         v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cuop = trim(v); next
     }
-    in_until && /^[[:space:]]+value:/ {
+    in_stages && entry_kind == "cycle" && in_until && /^[[:space:]]+value:/ {
         v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cuvalue = trim(v); next
     }
-    cid != "" && /^[[:space:]]+plateau:[[:space:]]*$/ { in_plateau = 1; in_until = 0; in_diverg = 0; next }
-    in_plateau && /^[[:space:]]+window:/ {
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+plateau:[[:space:]]*$/ { in_plateau = 1; in_until = 0; in_diverg = 0; next }
+    in_stages && entry_kind == "cycle" && in_plateau && /^[[:space:]]+window:/ {
         v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cplateau = trim(v); next
     }
-    cid != "" && /^[[:space:]]+divergence:[[:space:]]*$/ { in_diverg = 1; in_until = 0; in_plateau = 0; next }
-    in_diverg && /^[[:space:]]+window:/ {
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+divergence:[[:space:]]*$/ { in_diverg = 1; in_until = 0; in_plateau = 0; next }
+    in_stages && entry_kind == "cycle" && in_diverg && /^[[:space:]]+window:/ {
         v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cdiverg = trim(v); next
     }
-    cid != "" && /^[[:space:]]+feedback:[[:space:]]*$/ { in_feedback = 1; in_until = 0; in_plateau = 0; in_diverg = 0; next }
-    in_feedback && /^[[:space:]]+-[[:space:]]+from:/ {
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+feedback:[[:space:]]*$/ {
+        in_feedback = 1; in_until = 0; in_plateau = 0; in_diverg = 0; next
+    }
+    in_stages && entry_kind == "cycle" && in_feedback && /^[[:space:]]+-[[:space:]]+from:/ {
         if (fb_from_stage != "" || fb_to_stage != "") {
             nfb++
             fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
         }
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
         in_fb_item = 1
-        # Inline parse of "- from: { stage: X, output: Y }" if present on this line.
         line = $0
         sub(/^[[:space:]]+-[[:space:]]+from:[[:space:]]*\{?/, "", line)
         sub(/\}.*$/, "", line)
@@ -271,7 +391,7 @@ _tpl_parse_cycles() {
         }
         next
     }
-    in_feedback && in_fb_item && /^[[:space:]]+from:/ {
+    in_stages && entry_kind == "cycle" && in_feedback && in_fb_item && /^[[:space:]]+from:/ {
         line = $0; sub(/^[[:space:]]+from:[[:space:]]*\{?/, "", line); sub(/\}.*$/, "", line)
         n = split(line, kv, /,[[:space:]]*/)
         for (i = 1; i <= n; i++) {
@@ -282,7 +402,7 @@ _tpl_parse_cycles() {
         }
         next
     }
-    in_feedback && in_fb_item && /^[[:space:]]+to:/ {
+    in_stages && entry_kind == "cycle" && in_feedback && in_fb_item && /^[[:space:]]+to:/ {
         line = $0; sub(/^[[:space:]]+to:[[:space:]]*\{?/, "", line); sub(/\}.*$/, "", line)
         n = split(line, kv, /,[[:space:]]*/)
         for (i = 1; i <= n; i++) {
@@ -294,60 +414,177 @@ _tpl_parse_cycles() {
         }
         next
     }
-    END {
-        if (cid != "") {
-            print "C|" cid "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg
-            if (fb_from_stage != "" || fb_to_stage != "") {
-                nfb++
-                fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
-            }
-            for (k = 1; k <= nfb; k++) print "FB|" cid "|" fb[k]
+
+    # ── regular-stage fields (entry_kind == "stage") ────────────────────────
+    in_stages && entry_kind == "stage" && in_roles && /^[[:space:]]*-[[:space:]]/ {
+        item = $0; gsub(/^[[:space:]]*-[[:space:]]+/, "", item); gsub(/[[:space:]]*$/, "", item)
+        if (item != "") {
+            if (current_roles == "") current_roles = item
+            else current_roles = current_roles "," item
+        }
+        next
+    }
+    in_stages && entry_kind == "stage" && in_roles { in_roles = 0 }
+    in_stages && entry_kind == "stage" && in_io_dests && /^[[:space:]]*-[[:space:]]/ {
+        item = $0; gsub(/^[[:space:]]*-[[:space:]]+/, "", item); gsub(/[[:space:]]*$/, "", item)
+        if (item != "") {
+            if (current_io_dests == "") current_io_dests = item
+            else current_io_dests = current_io_dests "," item
+        }
+        next
+    }
+    in_stages && entry_kind == "stage" && in_io_dests { in_io_dests = 0 }
+    in_stages && entry_kind == "stage" && current_id != "" && /roles:/ {
+        roles_line = $0
+        if (roles_line ~ /\[/) {
+            sub(/^[^[]*\[/, "", roles_line)
+            sub(/\].*$/, "", roles_line)
+            gsub(/[[:space:]]/, "", roles_line)
+            current_roles = roles_line
+        } else { in_roles = 1 }
+        next
+    }
+    in_stages && entry_kind == "stage" && current_id != "" && /^[[:space:]]+strategy:/ {
+        in_io_block = 0; in_io_dests = 0; in_router_block = 0
+        current_strategy = $0
+        gsub(/^[[:space:]]+strategy:[[:space:]]*/, "", current_strategy)
+        gsub(/[[:space:]]*$/, "", current_strategy)
+        next
+    }
+    in_stages && entry_kind == "stage" && current_id != "" && /^[[:space:]]+io:[[:space:]]*$/ {
+        in_io_block = 1; in_router_block = 0; next
+    }
+    in_stages && entry_kind == "stage" && current_id != "" && /^[[:space:]]+router:[[:space:]]*$/ {
+        in_io_block = 0; in_io_dests = 0; in_router_block = 1; next
+    }
+    in_stages && entry_kind == "stage" && in_router_block && /^[[:space:]]+timeout_s:/ {
+        rt = $0; gsub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", rt); gsub(/[[:space:]]*$/, "", rt); current_router_timeout = rt; next
+    }
+    in_stages && entry_kind == "stage" && in_router_block && /^[[:space:]]+max_turns:/ {
+        rmt = $0; gsub(/^[[:space:]]+max_turns:[[:space:]]*/, "", rmt); gsub(/[[:space:]]*$/, "", rmt); current_router_max_turns = rmt; next
+    }
+    in_stages && entry_kind == "stage" && in_router_block && /^[[:space:]]+max_iterations:/ {
+        rmi = $0; gsub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", rmi); gsub(/[[:space:]]*$/, "", rmi); current_router_max_iterations = rmi; next
+    }
+    in_stages && entry_kind == "stage" && in_router_block && /^[[:space:]]+[a-z_]+:/ { next }
+    in_stages && entry_kind == "stage" && in_io_block && /^[[:space:]]+destinations:/ {
+        dest_line = $0
+        if (dest_line ~ /\[/) {
+            sub(/^[^[]*\[/, "", dest_line)
+            sub(/\].*$/, "", dest_line)
+            gsub(/[[:space:]]/, "", dest_line)
+            current_io_dests = dest_line
+            in_io_dests = 0
+        } else { in_io_dests = 1 }
+        next
+    }
+    in_stages && entry_kind == "stage" && in_io_block && /^[[:space:]]+tail_lines:/ {
+        tl = $0; gsub(/^[[:space:]]+tail_lines:[[:space:]]*/, "", tl); gsub(/[[:space:]]*$/, "", tl); current_io_tail = tl; in_io_dests = 0; next
+    }
+    in_stages && entry_kind == "stage" && in_io_block && /^[[:space:]]+redact:/ {
+        rd = $0; gsub(/^[[:space:]]+redact:[[:space:]]*/, "", rd); gsub(/[[:space:]]*$/, "", rd); current_io_redact = rd; in_io_dests = 0; next
+    }
+    END { flush_entry() }
+    ' "$file"
+}
+
+# ─── _tpl_parse_stage_definitions — parse `stage_definitions:` map (v2) ─────
+# Emits one S|<id>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>
+# row per definition. Same payload shape as _tpl_parse_stage_data so the load
+# pipeline can consume both streams uniformly.
+_tpl_parse_stage_definitions() {
+    local file="$1"
+    awk '
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    function flush_def() {
+        if (cur_id == "")
+            return
+        print cur_id "|" cur_roles "|" cur_strategy "|" cur_io_dests "|" cur_io_tail "|" cur_io_redact "|" cur_rt "|" cur_rmt "|" cur_rmi
+    }
+    function reset_def() {
+        cur_id = ""; cur_roles = ""; cur_strategy = ""
+        cur_io_dests = ""; cur_io_tail = ""; cur_io_redact = ""
+        cur_rt = ""; cur_rmt = ""; cur_rmi = ""
+        in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
+    }
+    BEGIN { reset_def() }
+    /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
+    in_defs && /^[a-zA-Z_]/ { flush_def(); reset_def(); in_defs = 0; next }
+    # Each top-level def is "  <id>:" (2-space indent).
+    in_defs && /^[[:space:]]+[a-zA-Z_][a-zA-Z0-9_-]*:[[:space:]]*$/ {
+        # Distinguish "  <id>:" (indent 2) from deeper "    <field>:" (indent 4+).
+        line = $0
+        indent = match(line, /[^ ]/) - 1
+        if (indent == 2) {
+            flush_def(); reset_def()
+            cur_id = line; gsub(/^[[:space:]]+/, "", cur_id); gsub(/:[[:space:]]*$/, "", cur_id)
+            next
         }
     }
-    ' "$file" 2>/dev/null)"
-
-    [[ -z "$parsed" ]] && return 0  # no cycles block
-
-    local line tag cid rest
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        tag="${line%%|*}"; rest="${line#*|}"
-        if [[ "$tag" == "C" ]]; then
-            cid="${rest%%|*}"
-            local payload="${rest#*|}"
-            IFS='|' read -r cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg <<< "$payload"
-            _TPL_CYCLES+=("$cid")
-            local safe="${cid//-/_}"
-            printf -v "_TPL_CYCLE_STAGES_${safe}"        '%s' "$cstages"
-            printf -v "_TPL_CYCLE_MAX_${safe}"           '%s' "$cmax"
-            printf -v "_TPL_CYCLE_ON_MAX_${safe}"        '%s' "${conmax:-continue}"
-            printf -v "_TPL_CYCLE_UNTIL_STAGE_${safe}"   '%s' "$custage"
-            printf -v "_TPL_CYCLE_UNTIL_FIELD_${safe}"   '%s' "$cufield"
-            printf -v "_TPL_CYCLE_UNTIL_OP_${safe}"      '%s' "$cuop"
-            printf -v "_TPL_CYCLE_UNTIL_VALUE_${safe}"   '%s' "$cuvalue"
-            printf -v "_TPL_CYCLE_PLATEAU_W_${safe}"     '%s' "$cplateau"
-            printf -v "_TPL_CYCLE_DIVERGENCE_W_${safe}"  '%s' "$cdiverg"
-            export "_TPL_CYCLE_STAGES_${safe}" "_TPL_CYCLE_MAX_${safe}" \
-                   "_TPL_CYCLE_ON_MAX_${safe}" "_TPL_CYCLE_UNTIL_STAGE_${safe}" \
-                   "_TPL_CYCLE_UNTIL_FIELD_${safe}" "_TPL_CYCLE_UNTIL_OP_${safe}" \
-                   "_TPL_CYCLE_UNTIL_VALUE_${safe}" "_TPL_CYCLE_PLATEAU_W_${safe}" \
-                   "_TPL_CYCLE_DIVERGENCE_W_${safe}"
-        elif [[ "$tag" == "FB" ]]; then
-            cid="${rest%%|*}"
-            local fbrec="${rest#*|}"
-            local safe="${cid//-/_}"
-            local var="_TPL_CYCLE_FEEDBACK_${safe}"
-            local prev="${!var:-}"
-            if [[ -z "$prev" ]]; then
-                printf -v "$var" '%s' "$fbrec"
-            else
-                printf -v "$var" '%s\n%s' "$prev" "$fbrec"
-            fi
-            # shellcheck disable=SC2163
-            export "${var?}"
-        fi
-    done <<< "$parsed"
-    return 0
+    in_defs && cur_id != "" && in_roles && /^[[:space:]]+-[[:space:]]/ {
+        item = $0; gsub(/^[[:space:]]+-[[:space:]]+/, "", item); gsub(/[[:space:]]*$/, "", item)
+        if (item != "") {
+            if (cur_roles == "") cur_roles = item
+            else cur_roles = cur_roles "," item
+        }
+        next
+    }
+    in_defs && cur_id != "" && in_roles { in_roles = 0 }
+    in_defs && cur_id != "" && in_io_dests && /^[[:space:]]+-[[:space:]]/ {
+        item = $0; gsub(/^[[:space:]]+-[[:space:]]+/, "", item); gsub(/[[:space:]]*$/, "", item)
+        if (item != "") {
+            if (cur_io_dests == "") cur_io_dests = item
+            else cur_io_dests = cur_io_dests "," item
+        }
+        next
+    }
+    in_defs && cur_id != "" && in_io_dests { in_io_dests = 0 }
+    in_defs && cur_id != "" && /^[[:space:]]+roles:/ {
+        roles_line = $0
+        if (roles_line ~ /\[/) {
+            sub(/^[^[]*\[/, "", roles_line)
+            sub(/\].*$/, "", roles_line)
+            gsub(/[[:space:]]/, "", roles_line)
+            cur_roles = roles_line
+        } else { in_roles = 1 }
+        next
+    }
+    in_defs && cur_id != "" && /^[[:space:]]+strategy:/ {
+        in_io_block = 0; in_io_dests = 0; in_router_block = 0
+        cur_strategy = $0; gsub(/^[[:space:]]+strategy:[[:space:]]*/, "", cur_strategy); gsub(/[[:space:]]*$/, "", cur_strategy)
+        next
+    }
+    in_defs && cur_id != "" && /^[[:space:]]+io:[[:space:]]*$/ { in_io_block = 1; in_router_block = 0; next }
+    in_defs && cur_id != "" && /^[[:space:]]+router:[[:space:]]*$/ { in_io_block = 0; in_io_dests = 0; in_router_block = 1; next }
+    in_defs && in_router_block && /^[[:space:]]+timeout_s:/ {
+        v = $0; gsub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", v); gsub(/[[:space:]]*$/, "", v); cur_rt = v; next
+    }
+    in_defs && in_router_block && /^[[:space:]]+max_turns:/ {
+        v = $0; gsub(/^[[:space:]]+max_turns:[[:space:]]*/, "", v); gsub(/[[:space:]]*$/, "", v); cur_rmt = v; next
+    }
+    in_defs && in_router_block && /^[[:space:]]+max_iterations:/ {
+        v = $0; gsub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); gsub(/[[:space:]]*$/, "", v); cur_rmi = v; next
+    }
+    in_defs && in_router_block && /^[[:space:]]+[a-z_]+:/ { next }
+    in_defs && in_io_block && /^[[:space:]]+destinations:/ {
+        dest_line = $0
+        if (dest_line ~ /\[/) {
+            sub(/^[^[]*\[/, "", dest_line)
+            sub(/\].*$/, "", dest_line)
+            gsub(/[[:space:]]/, "", dest_line)
+            cur_io_dests = dest_line
+            in_io_dests = 0
+        } else { in_io_dests = 1 }
+        next
+    }
+    in_defs && in_io_block && /^[[:space:]]+tail_lines:/ {
+        v = $0; gsub(/^[[:space:]]+tail_lines:[[:space:]]*/, "", v); gsub(/[[:space:]]*$/, "", v); cur_io_tail = v; in_io_dests = 0; next
+    }
+    in_defs && in_io_block && /^[[:space:]]+redact:/ {
+        v = $0; gsub(/^[[:space:]]+redact:[[:space:]]*/, "", v); gsub(/[[:space:]]*$/, "", v); cur_io_redact = v; in_io_dests = 0; next
+    }
+    END { flush_def() }
+    ' "$file"
 }
 
 # ─── _tpl_validate_cycles — enforce ADR-021 invariants ───────────────────────
@@ -571,133 +808,6 @@ _tpl_validate_io_dests() {
         done
     done
     return 0
-}
-
-_tpl_parse_stage_data() {
-    local file="$1"
-    awk '
-    /^stages:/ { in_stages = 1; next }
-    in_stages && /^[a-zA-Z_]/ { in_stages = 0; in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0; next }
-    in_stages && /^[[:space:]]*-[[:space:]]*id:/ {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations }
-        in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0
-        current_id = $0
-        gsub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", current_id)
-        gsub(/[[:space:]]*$/, "", current_id)
-        current_roles = ""; current_strategy = ""; current_io_dests = ""
-        current_io_tail = ""; current_io_redact = ""; current_router_timeout = ""
-        current_router_max_turns = ""
-        current_router_max_iterations = ""
-        next
-    }
-    in_stages && in_roles && /^[[:space:]]*-[[:space:]]/ {
-        item = $0
-        gsub(/^[[:space:]]*-[[:space:]]+/, "", item)
-        gsub(/[[:space:]]*$/, "", item)
-        if (item != "") {
-            if (current_roles == "") current_roles = item
-            else current_roles = current_roles "," item
-        }
-        next
-    }
-    in_stages && in_roles { in_roles = 0 }
-    in_stages && in_io_dests && /^[[:space:]]*-[[:space:]]/ {
-        item = $0
-        gsub(/^[[:space:]]*-[[:space:]]+/, "", item)
-        gsub(/[[:space:]]*$/, "", item)
-        if (item != "") {
-            if (current_io_dests == "") current_io_dests = item
-            else current_io_dests = current_io_dests "," item
-        }
-        next
-    }
-    in_stages && in_io_dests { in_io_dests = 0 }
-    in_stages && current_id != "" && /roles:/ {
-        roles_line = $0
-        if (roles_line ~ /\[/) {
-            sub(/^[^[]*\[/, "", roles_line)
-            sub(/\].*$/, "", roles_line)
-            gsub(/[[:space:]]/, "", roles_line)
-            current_roles = roles_line
-        } else { in_roles = 1 }
-        next
-    }
-    in_stages && current_id != "" && /^[[:space:]]+strategy:/ {
-        # Defensive: if io: or router: appeared before strategy: in this stage,
-        # clear the block flags so subsequent list items are not mis-attributed.
-        in_io_block = 0
-        in_io_dests = 0
-        in_router_block = 0
-        current_strategy = $0
-        gsub(/^[[:space:]]+strategy:[[:space:]]*/, "", current_strategy)
-        gsub(/[[:space:]]*$/, "", current_strategy)
-        next
-    }
-    in_stages && current_id != "" && /^[[:space:]]+io:[[:space:]]*$/ {
-        in_io_block = 1
-        in_router_block = 0
-        next
-    }
-    in_stages && current_id != "" && /^[[:space:]]+router:[[:space:]]*$/ {
-        in_io_block = 0
-        in_io_dests = 0
-        in_router_block = 1
-        next
-    }
-    in_router_block && /^[[:space:]]+timeout_s:/ {
-        rt = $0
-        gsub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", rt)
-        gsub(/[[:space:]]*$/, "", rt)
-        current_router_timeout = rt
-        next
-    }
-    in_router_block && /^[[:space:]]+max_turns:/ {
-        rmt = $0
-        gsub(/^[[:space:]]+max_turns:[[:space:]]*/, "", rmt)
-        gsub(/[[:space:]]*$/, "", rmt)
-        current_router_max_turns = rmt
-        next
-    }
-    in_router_block && /^[[:space:]]+max_iterations:/ {
-        rmi = $0
-        gsub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", rmi)
-        gsub(/[[:space:]]*$/, "", rmi)
-        current_router_max_iterations = rmi
-        next
-    }
-    # ADR-017 §8: ignore future router siblings silently (tier_default, budget_usd, model_override).
-    in_router_block && /^[[:space:]]+[a-z_]+:/ { next }
-    in_io_block && /^[[:space:]]+destinations:/ {
-        dest_line = $0
-        if (dest_line ~ /\[/) {
-            sub(/^[^[]*\[/, "", dest_line)
-            sub(/\].*$/, "", dest_line)
-            gsub(/[[:space:]]/, "", dest_line)
-            current_io_dests = dest_line
-            in_io_dests = 0
-        } else { in_io_dests = 1 }
-        next
-    }
-    in_io_block && /^[[:space:]]+tail_lines:/ {
-        tl = $0
-        gsub(/^[[:space:]]+tail_lines:[[:space:]]*/, "", tl)
-        gsub(/[[:space:]]*$/, "", tl)
-        current_io_tail = tl
-        in_io_dests = 0
-        next
-    }
-    in_io_block && /^[[:space:]]+redact:/ {
-        rd = $0
-        gsub(/^[[:space:]]+redact:[[:space:]]*/, "", rd)
-        gsub(/[[:space:]]*$/, "", rd)
-        current_io_redact = rd
-        in_io_dests = 0
-        next
-    }
-    END {
-        if (current_id != "") { print current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations }
-    }
-    ' "$file"
 }
 
 template_stage_roles() {

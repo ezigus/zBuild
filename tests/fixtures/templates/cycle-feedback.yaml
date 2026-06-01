@@ -3,12 +3,8 @@ name: Cycle with feedback wiring
 defaults:
   strategy: fanout
 stages:
-  - id: build
-    roles: [builder]
-  - id: test
-    roles: [tester]
-cycles:
   - id: build-test
+    type: cycle
     stages: [build, test]
     until:
       stage: test
@@ -20,3 +16,9 @@ cycles:
     feedback:
       - from: { stage: test, output: primary.txt }
         to:   { stage: build, input: prior_test_result, required: false }
+
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]
