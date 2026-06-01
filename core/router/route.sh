@@ -470,12 +470,16 @@ _route_update_ledger() {
 #                                    hook_failed | error
 #   _ROUTE_LOOP_INPUT_TOKENS       — cumulative .usage.input_tokens
 #   _ROUTE_LOOP_OUTPUT_TOKENS      — cumulative .usage.output_tokens
+#   _ROUTE_LOOP_LAST_RESPONSE      — (#608) result_text of the FINAL iteration,
+#                                    consumed by build plugin's COMMIT_SUMMARY
+#                                    parser. Empty when no iteration ran.
 #
 # Returns: 0 on DONE-sentinel, 1 on max-iter no-DONE, 2 on fatal.
 _ROUTE_LOOP_ITERATIONS=0
 _ROUTE_LOOP_TERMINATED_REASON=""
 _ROUTE_LOOP_INPUT_TOKENS=0
 _ROUTE_LOOP_OUTPUT_TOKENS=0
+_ROUTE_LOOP_LAST_RESPONSE=""
 _ROUTE_LOOP_CHILD_PID=""
 
 # Default no-op inter-turn hook — overridden via --inter-turn-hook FN
@@ -568,6 +572,7 @@ route_to_model_loop() {
     _ROUTE_LOOP_TERMINATED_REASON=""
     _ROUTE_LOOP_INPUT_TOKENS=0
     _ROUTE_LOOP_OUTPUT_TOKENS=0
+    _ROUTE_LOOP_LAST_RESPONSE=""
 
     _route_loop_install_traps
 
@@ -768,6 +773,9 @@ ${_diff_pointer}"
         out_tok="$(jq -r '.usage.output_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
         _ROUTE_LOOP_INPUT_TOKENS=$(( _ROUTE_LOOP_INPUT_TOKENS + in_tok ))
         _ROUTE_LOOP_OUTPUT_TOKENS=$(( _ROUTE_LOOP_OUTPUT_TOKENS + out_tok ))
+        # #608: expose the most recent iteration's LLM text so the build plugin
+        # can parse the COMMIT_SUMMARY marker after the loop returns.
+        _ROUTE_LOOP_LAST_RESPONSE="$result_text"
 
         # #482: close the per-iteration banner on the success path. Output
         # is the LLM's result text (matches Pattern 1's banner shape).

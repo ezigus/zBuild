@@ -750,3 +750,29 @@ Decision points list grows by one:
    the `build_test_cycle`'s `until:` predicate (ADR-021 amendment for
    #572). See ADR-022 for the full Status / Context / Decision /
    Consequences record.
+
+## Amendment — Loop-completion contract adds `COMMIT_SUMMARY` (issue #608, 2026-05-31)
+
+The Pattern 2 loop-completion contract is extended: the LLM emits
+`COMMIT_SUMMARY: <one-line>` immediately before the final `LOOP_COMPLETE`
+sentinel. The pipeline parses this marker from the last iteration's
+`.result` text (now exposed via `_ROUTE_LOOP_LAST_RESPONSE`) and uses it
+as the message of the per-iteration commit it creates on the LLM's behalf
+(see ADR-021 amendment for the cycle-level rationale).
+
+The contract:
+
+- LLM emits `COMMIT_SUMMARY: <msg>` on its own line before `LOOP_COMPLETE`
+- Pipeline scans the last 50 lines of the final iteration response for
+  the regex `^COMMIT_SUMMARY:[[:space:]]*(.+)$`; LAST match wins
+- Message is trimmed and truncated to 72 chars (git short-message
+  convention)
+- Fallback: when the marker is absent, the pipeline uses `plan.title`
+  from `plan.json`; when that is also empty, it synthesizes
+  `zbuild: build iter <N>`
+- The LLM does NOT run `git commit` — the pipeline owns commit semantics
+  (this was always the contract; #608 makes the pipeline honor it)
+
+Implementation: `plugins/agent/build/plugin.sh::_build_parse_commit_summary`
+and `::_build_commit_iteration`. The instruction is rendered into every
+build prompt's INSTRUCTIONS section via `_build_compose_instructions`.

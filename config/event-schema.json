@@ -103,6 +103,8 @@
     "build.git_diff_failed",
     "build.diff.trailing_newline_restored",
     "build.diff.binary_truncation_observed",
+    "build.commit.created",
+    "build.commit.skipped",
     "intake.branch.created",
     "intake.branch.reused",
     "intake.branch.noop",

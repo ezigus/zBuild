@@ -11,6 +11,7 @@ redaction.applied
 build.empty_diff
 build.discrepancy.detected
 build.diff.empty_after_done_sentinel
+build.commit.skipped
 plugin.run.complete
 plugin.finalize.complete
 plugin.init.start
