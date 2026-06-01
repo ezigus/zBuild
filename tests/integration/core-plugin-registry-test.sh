@@ -318,6 +318,31 @@ rc=$?
 set -e
 assert_eq "validate_manifest rejects agent with 'redaction' outside requires.core (#294 bypass closed)" "1" "$rc"
 
+# ─── #294 bypass: YAML comment '# - redaction' must NOT satisfy requires.core ─
+# The awk extractor only emits list items matching ^[[:space:]]+-[[:space:]]+
+# so a comment line is silently ignored; this fixture pins that behaviour.
+mkdir -p "$FIXTURE_ROOT/agent/comment-bypass"
+cat > "$FIXTURE_ROOT/agent/comment-bypass/manifest.yaml" <<'EOF'
+id: comment-bypass
+name: Comment Bypass (redaction as YAML comment)
+kind: agent
+version: 0.0.1
+hooks:
+  run: cb_run
+requires:
+  core:
+    # - redaction
+    - event-bus
+EOF
+cat > "$FIXTURE_ROOT/agent/comment-bypass/plugin.sh" <<'EOF'
+cb_run() { :; }
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/agent/comment-bypass/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects agent with '# - redaction' YAML comment (#294 comment bypass closed)" "1" "$rc"
+
 # ─── #288: fail-closed artifact scanner ──────────────────────────────────────
 mkdir -p "$FIXTURE_ROOT/agent/declares-output"
 cat > "$FIXTURE_ROOT/agent/declares-output/manifest.yaml" <<'EOF'
