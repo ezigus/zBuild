@@ -123,8 +123,8 @@ _test_run_inner() {
     else
         cp -r "$repo_root/." "$tmp/"
     fi
-    git -C "$tmp" checkout HEAD -- . 2>/dev/null || true
-    git -C "$tmp" clean -fd 2>/dev/null || true
+    git -C "$tmp" checkout HEAD -- . >/dev/null 2>&1 || true
+    git -C "$tmp" clean -fdq >/dev/null 2>&1 || true
     if [[ -s "$diff_patch_path" ]]; then
         if ! git -C "$tmp" apply --check "$diff_patch_path" 2>/dev/null; then
             test_output="diff_apply_failed: canonical diff.patch does not apply"
