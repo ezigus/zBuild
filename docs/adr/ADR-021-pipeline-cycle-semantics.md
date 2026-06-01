@@ -517,3 +517,39 @@ idempotent (a v2 file with no `cycles:` block is emitted verbatim).
   with canonical stage names (a cycle id named `build` would be ambiguous
   with the `build` member, but no template ships that way and the
   collision is structurally rejected by the missing-stage-def check).
+
+## Amendment — Per-iteration commit contract (issue #608, 2026-05-31)
+
+A cycle that hopes to converge requires per-iteration commits. Without
+them, `test_assessment` reads `git diff --numstat HEAD` against a stale
+HEAD (the cycle's pre-build seed) and reports 0 files changed even when
+the LLM did real work — and the cycle's `until:` predicate never fires
+positively.
+
+The amendment pins:
+
+1. **Commit happens INSIDE the build stage** — not a new stage, not a
+   coordinator concern. Build owns the loop; build owns the commit.
+2. **Commit happens OUTSIDE the LLM** — the pipeline invokes
+   `git commit`. The LLM is forbidden from running `git commit` per the
+   prompt's `### Rules` section.
+3. **Commit author** is `zbuild-pipeline <pipeline@local>` so test runs
+   and downstream stages can distinguish pipeline-authored commits from
+   the operator's seed commits via `git log --author`.
+4. **`--no-verify`** is used: pre-commit hooks in the target repo MUST
+   NOT block the pipeline mid-cycle. The review stage (T2 reviewer) is
+   the canonical quality gate; the build commit is provisional.
+5. **Guards**: when `verdict=scope_violation` OR the staged diff is
+   empty after `git add -- <plan_files>`, the pipeline emits
+   `build.commit.skipped reason=<scope_violation|empty_diff>` and does
+   NOT create a commit. This preserves the invariant that pipeline
+   commits correspond 1:1 to a successful in-scope iteration.
+6. **Observability**: `build.commit.created sha=<sha> msg="<msg>"
+   iter=<N>` lands in `events.jsonl` for every successful per-iter
+   commit. The cycle orchestrator reads these events to populate
+   `cycle.iter.N.commit_sha` in its state record.
+
+Cumulative effect across a multi-iter cycle: HEAD advances by exactly
+one commit per successful build iteration. `test_assessment` running
+on iter N sees the iter (N-1) commit on HEAD and `git diff --numstat`
+against the cycle's seed reflects the cumulative work.

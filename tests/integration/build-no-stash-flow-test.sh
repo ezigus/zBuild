@@ -126,17 +126,17 @@ EOF
 
 bash "$DRIVER" >/dev/null 2>/dev/null || true
 
-# ── (1) Working tree shows LLM edits (tracked diff OR untracked file) ──────
-# After the build, the plugin clears `git add -N` intent-to-add entries so
-# new untracked files don't show in `git diff HEAD`. They DO still show in
-# `git status --porcelain` as `??`. Check both surfaces.
+# ── (1) LLM edits captured by git: post-#608 they land in a pipeline commit;
+#       pre-#608 they remained in the working tree. Either signal proves the
+#       edits weren't lost to a stash dance — the #602 invariant.
 numstat="$(cd "$REPO" && git diff HEAD --numstat 2>/dev/null || true)"
 untracked="$(cd "$REPO" && git status --porcelain 2>/dev/null | grep -E '^\?\?' || true)"
-if [[ -n "$numstat" || -n "$untracked" ]]; then
-    assert_pass "LLM edits visible in working tree after build (#602)"
+last_author="$(cd "$REPO" && git log -1 --format='%an' 2>/dev/null || true)"
+if [[ -n "$numstat" || -n "$untracked" || "$last_author" == "zbuild-pipeline" ]]; then
+    assert_pass "LLM edits captured by git (working tree or pipeline commit, #602)"
 else
-    assert_fail "LLM edits visible in working tree after build (#602)" \
-        "expected diff or untracked changes; got empty — likely stashed"
+    assert_fail "LLM edits captured by git (#602)" \
+        "expected diff/untracked/pipeline-commit; got empty — likely stashed"
 fi
 
 # ── (2) New file present in working tree (proof: not hidden in stash) ──────

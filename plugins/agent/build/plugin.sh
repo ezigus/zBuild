@@ -451,6 +451,22 @@ _build_stage_run_inner() {
         "$repo_root" "$terminated_reason" \
         "$scope_violation" "$pre_zero_numstat" || true
 
+    # ─── #608: per-iteration commit (pipeline owns commit semantics) ─────────
+    # The build prompt promises the LLM does not commit; the pipeline does.
+    # Without this, test_assessment reads numstat=0 against HEAD even when
+    # the LLM did real work (PR #608). Skipped on scope_violation/empty_diff;
+    # see _build_commit_iteration above.
+    local _plan_title
+    _plan_title="$(printf '%s' "$plan_json" | jq -r '.title // ""' 2>/dev/null || echo "")"
+    _build_commit_iteration \
+        "$repo_root" \
+        "$plan_files_csv" \
+        "$scope_violation" \
+        "$build_verdict" \
+        "${_ROUTE_LOOP_LAST_RESPONSE:-}" \
+        "$_plan_title" \
+        "$_iter_n" || true
+
     emit_event "plugin.run.complete" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \
@@ -550,7 +566,148 @@ on its own line as the FINAL line of your response. This terminates the loop.
 - Touch only files in the scope list above.
 - Do not run \`git commit\` — the pipeline owns commit semantics.
 - Keep changes minimal and aligned with the plan.
+
+### Commit message (#608)
+Before the final \`LOOP_COMPLETE\` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
 BUILD_PROMPT
+}
+
+# ─── _build_parse_commit_summary <response_text> <plan_title> ────────────────
+# Scan response_text (last 50 lines) for `^COMMIT_SUMMARY:[[:space:]]*(.+)$`.
+# Takes the LAST match (LLM may correct itself across the response), trims
+# whitespace, truncates to 72 chars. Falls back to plan_title (also truncated)
+# when no marker is found. If plan_title is also empty, synthesizes a default
+# from ZBUILD_CYCLE_ITER. Echoes the message on stdout.
+_build_parse_commit_summary() {
+    local response="${1:-}"
+    local plan_title="${2:-}"
+    local msg=""
+
+    if [[ -n "$response" ]]; then
+        # Bounded scan: last 50 lines. Captures the LAST COMMIT_SUMMARY line.
+        msg="$(printf '%s\n' "$response" \
+            | tail -n 50 \
+            | grep -E '^COMMIT_SUMMARY:[[:space:]]*(.+)$' \
+            | tail -n 1 \
+            | sed -E 's/^COMMIT_SUMMARY:[[:space:]]*//' \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+            || true)"
+    fi
+
+    if [[ -z "$msg" ]]; then
+        msg="$(printf '%s' "$plan_title" \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    fi
+
+    if [[ -z "$msg" ]]; then
+        msg="zbuild: build iter ${ZBUILD_CYCLE_ITER:-1}"
+    fi
+
+    # Truncate to 72 chars (git short-message convention).
+    printf '%s' "$msg" | cut -c1-72
+}
+
+# ─── _build_commit_iteration ────────────────────────────────────────────────
+# Post-loop commit logic (#608). Honors the build prompt contract: "the
+# pipeline owns commit semantics" — invoked OUTSIDE the LLM, AFTER the loop.
+#
+# Args:
+#   $1 = repo_root
+#   $2 = plan_files_csv (scope allowlist; what we `git add`)
+#   $3 = scope_violation ("true"/"false")
+#   $4 = build_verdict (currently "pass" or "scope_violation")
+#   $5 = response_text  (last LLM iteration's text, for COMMIT_SUMMARY)
+#   $6 = plan_title     (fallback commit message)
+#   $7 = iter           (the cycle iter, for event metadata; 1 outside cycle)
+#
+# Side effects:
+#   - On scope_violation: emit build.commit.skipped reason=scope_violation
+#   - On empty staged diff: emit build.commit.skipped reason=empty_diff
+#   - On success: git commit + emit build.commit.created sha=<sha> msg=<msg>
+_build_commit_iteration() {
+    local repo_root="$1"
+    local plan_files_csv="$2"
+    local scope_violation="$3"
+    local build_verdict="$4"
+    local response_text="$5"
+    local plan_title="$6"
+    local iter="${7:-1}"
+
+    if [[ "$scope_violation" == "true" || "$build_verdict" == "scope_violation" ]]; then
+        emit_event "build.commit.skipped" "plugin=build" \
+            "reason=scope_violation" "iter=$iter"
+        return 0
+    fi
+
+    # Clear `git add -N` intent-to-add entries left by the loop so the
+    # subsequent `git add -- <paths>` stages real content (not just an
+    # empty intent marker that produces an empty staged diff).
+    git -C "$repo_root" reset -q 2>/dev/null || true
+
+    # Stage only in-scope files that actually exist (or are tracked).
+    local -a files_arr=()
+    if [[ -n "$plan_files_csv" ]]; then
+        local IFS_save="$IFS"
+        IFS=','
+        # shellcheck disable=SC2206
+        files_arr=( $plan_files_csv )
+        IFS="$IFS_save"
+    fi
+
+    local -a add_args=()
+    local f
+    for f in "${files_arr[@]}"; do
+        [[ -z "$f" ]] && continue
+        if [[ -e "$repo_root/$f" ]] || \
+           git -C "$repo_root" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+            add_args+=("$f")
+        fi
+    done
+
+    if [[ ${#add_args[@]} -eq 0 ]]; then
+        emit_event "build.commit.skipped" "plugin=build" \
+            "reason=empty_diff" "iter=$iter"
+        return 0
+    fi
+
+    git -C "$repo_root" add -- "${add_args[@]}" 2>/dev/null || {
+        emit_event "build.commit.skipped" "plugin=build" \
+            "reason=empty_diff" "iter=$iter"
+        return 0
+    }
+
+    # If nothing actually got staged (all files identical), skip.
+    if git -C "$repo_root" diff --cached --quiet 2>/dev/null; then
+        emit_event "build.commit.skipped" "plugin=build" \
+            "reason=empty_diff" "iter=$iter"
+        return 0
+    fi
+
+    local commit_msg
+    commit_msg="$(_build_parse_commit_summary "$response_text" "$plan_title")"
+
+    if ! git -C "$repo_root" commit \
+        --author "zbuild-pipeline <pipeline@local>" \
+        --no-verify --quiet \
+        -m "$commit_msg" 2>/dev/null; then
+        warn "_build_commit_iteration: git commit failed in $repo_root"
+        emit_event "build.commit.skipped" "plugin=build" \
+            "reason=commit_failed" "iter=$iter"
+        return 0
+    fi
+
+    local sha
+    sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo '')"
+    emit_event "build.commit.created" "plugin=build" \
+        "sha=$sha" "msg=$commit_msg" "iter=$iter"
+    return 0
 }
 
 # _build_path_in_scope <path> <allowed_files_array_name>
