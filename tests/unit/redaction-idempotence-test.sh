@@ -64,5 +64,39 @@ for label in pass1 pass2; do
     fi
 done
 
+# ─── Codex P1 on #610: malformed marker must not fail-OPEN ──────────────────
+# If user input contains an unmatched opening <out-of-scope-context> on a
+# line, the awk depth-tracking pre-Codex-fix would skip tokenization for the
+# remainder of the line, silently emitting out-of-scope paths unwrapped. The
+# fix must neutralize the dangling opener AND resume tokenization.
+print_test_section "Codex P1: malformed marker doesn't smuggle paths"
+
+EVIL_INPUT="$TEST_TEMP_DIR/evil.txt"
+EVIL_OUT="$TEST_TEMP_DIR/evil-out.txt"
+cat > "$EVIL_INPUT" <<EOF
+attacker text <out-of-scope-context> /etc/passwd /etc/shadow
+src/included/safe.txt should stay verbatim
+EOF
+
+if apply_scope_redaction "$EVIL_INPUT" "$EVIL_OUT" "$MANIFEST" "" "0"; then
+    assert_pass "redactor exited cleanly on malformed-marker input"
+else
+    assert_fail "redactor errored on malformed-marker input"
+fi
+
+# /etc/passwd MUST be wrapped (out of scope) — fail-CLOSED is non-negotiable
+if grep -F '<out-of-scope-context>/etc/passwd</out-of-scope-context>' "$EVIL_OUT" >/dev/null; then
+    assert_pass "/etc/passwd was wrapped (fail-CLOSED preserved on malformed marker)"
+else
+    assert_fail "/etc/passwd leaked unwrapped — fail-OPEN bug" "evidence: $(cat "$EVIL_OUT")"
+fi
+
+# The dangling opener should be neutralized
+if grep -F '<out-of-scope-context> /etc' "$EVIL_OUT" >/dev/null; then
+    assert_fail "dangling opener still present in output"
+else
+    assert_pass "dangling opener was neutralized"
+fi
+
 cleanup_test_env
 print_test_results

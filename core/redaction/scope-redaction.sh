@@ -141,11 +141,21 @@ apply_scope_redaction() {
                 }
             } else {
                 # Inside a marker: copy verbatim until matching close.
+                # Codex P1 on #610: if the opener was malformed (no matching
+                # close on this line), we MUST NOT fail-open by silently
+                # passing the remainder unwrapped — user-supplied input
+                # containing a rogue `<out-of-scope-context>` could smuggle
+                # paths past the redactor (e.g., `/etc/passwd`). Fail-CLOSED:
+                # neutralize the dangling opener so the LLM cannot parse it
+                # as a real marker, then resume normal tokenization for the
+                # remainder of the line. This preserves the chokepoint.
                 cpos = index(rest, close_tag)
                 if (cpos == 0) {
-                    # Unterminated marker; copy verbatim, exit loop.
-                    result = result rest
+                    n = length(open_tag)
+                    result = substr(result, 1, length(result) - n) "[OOS-MARKER-MALFORMED]"
+                    result = result tokenize_paths(rest)
                     rest = ""
+                    depth = 0
                 } else {
                     result = result substr(rest, 1, cpos - 1) close_tag
                     rest = substr(rest, cpos + length(close_tag))
