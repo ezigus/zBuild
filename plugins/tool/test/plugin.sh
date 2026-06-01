@@ -164,14 +164,16 @@ _test_run_inner() {
     diff_applied=true
 
     # ── Run test command ───────────────────────────────────────────────────────
-    # #600: export ZBUILD_TEST_QUIET=1 so suites using test-helpers.sh suppress
-    # per-assertion ✓ echoes. Failures + per-suite summary always print; full
-    # raw output still flows into test-results.json (no info loss for the
-    # downstream test_assessment stage). Local devs running `npm test`
-    # directly are unaffected (env var unset = current verbose behavior).
+    # #600 + codex P2 on #604: DO NOT export ZBUILD_TEST_QUIET=1 here. Doing
+    # so would quiet the captured raw_output that downstream consumers depend
+    # on (test-results.json::.test_output, _test_emit_failures_summary, and
+    # test_assessment's prompt all need per-assertion detail to diagnose
+    # failures). ZBUILD_TEST_QUIET stays as a local-dev convenience env var.
+    # Banner verbosity is instead controlled by stage_io's tail_lines knob
+    # (set per-stage in the template).
     local test_rc=0
     local raw_output
-    raw_output="$(cd "$tmp" && export ZBUILD_TEST_QUIET=1 && eval "$test_cmd" 2>&1)" || test_rc=$?
+    raw_output="$(cd "$tmp" && eval "$test_cmd" 2>&1)" || test_rc=$?
 
     # Truncate output to 10 KB to keep artifact manageable
     test_output="$(printf '%s' "$raw_output" | head -c 10240)"
