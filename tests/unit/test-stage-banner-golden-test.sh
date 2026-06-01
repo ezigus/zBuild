@@ -158,34 +158,9 @@ set -e
 [[ $g2 -eq 0 ]] && assert_pass "G2: fail-case banner matches golden" \
     || assert_fail "G2: fail-case banner matches golden" "golden diff (rc=$g2)"
 
-# ─── G3: error (apply-fail) golden ────────────────────────────────────────────
-# Swap in a failing git for this case only.
-mv "$TEST_TEMP_DIR/bin/git" "$TEST_TEMP_DIR/bin/git.saved"
-cat > "$TEST_TEMP_DIR/bin/git" <<'GITFAIL'
-#!/usr/bin/env bash
-args=("$@")
-[[ "${args[0]:-}" == "-C" ]] && args=("${args[@]:2}")
-case "${args[0]:-}" in
-    apply)
-        printf 'error: patch failed: somefile:1\n' >&2
-        printf 'error: patch failed: somefile:1\n'
-        exit 1
-        ;;
-    *) exec "$(PATH=/usr/bin:/usr/local/bin:/opt/homebrew/bin command -v git)" "$@" ;;
-esac
-GITFAIL
-chmod +x "$TEST_TEMP_DIR/bin/git"
-BANNER_E="$TEST_TEMP_DIR/banner-error.txt"
-_run_case error "$GOOD_PATCH" "$ARTIFACT_DIR/r-error.json" \
-    "$TEST_TEMP_DIR/bin/mock-pass.sh" "$BANNER_E"
-mv "$TEST_TEMP_DIR/bin/git.saved" "$TEST_TEMP_DIR/bin/git"
-banner_err="$(_sanitize "$(cat "$BANNER_E")")"
-set +e
-assert_golden "test-stage-banner-error" "$banner_err"
-g3=$?
-set -e
-[[ $g3 -eq 0 ]] && assert_pass "G3: error-case banner matches golden" \
-    || assert_fail "G3: error-case banner matches golden" "golden diff (rc=$g3)"
+# ─── G3 removed (#602): apply-fail path no longer reachable. ─────────────────
+# The test plugin no longer runs `git apply` — the build's WT edits arrive via
+# rsync intact. There is no diff_apply_failed verdict surface to snapshot.
 
 cleanup_test_env
 print_test_results

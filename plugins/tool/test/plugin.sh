@@ -110,8 +110,11 @@ _test_run_inner() {
     fi
 
     # ── Copy repo into temp dir ────────────────────────────────────────────────
-    # Include .git so that `git apply` has a valid repository context.
-    # Use rsync when available for speed; fall back to cp.
+    # #602: rsync copies the LLM's in-place edits (tracked + untracked) along
+    # with the .git dir. There is no stash dance upstream, so the source
+    # working tree already holds the edits described by diff.patch — no
+    # `git apply` step is needed. Skipping the reset-to-HEAD step (#548 era)
+    # is the whole point: doing that here would DROP the build's work.
     if command -v rsync >/dev/null 2>&1; then
         rsync -a "$repo_root/" "$tmp/" 2>/dev/null || \
             cp -r "$repo_root/." "$tmp/"
@@ -119,48 +122,9 @@ _test_run_inner() {
         cp -r "$repo_root/." "$tmp/"
     fi
 
-    # Reset temp copy to HEAD so diff.patch applies against a clean baseline.
-    # Without this, rsync copies uncommitted working-tree changes, causing
-    # `git apply --check` to fail with "patch does not apply" because the
-    # patch was captured after those changes were already in place (#548).
-    git -C "$tmp" checkout HEAD -- . 2>/dev/null || true
-    git -C "$tmp" clean -fd 2>/dev/null || true
-
-    # ── Apply diff ────────────────────────────────────────────────────────────
-    # Dry-run first with --allow-empty so a no-op (empty) diff is accepted.
-    local apply_check_out
-    if ! apply_check_out="$(git -C "$tmp" apply --check --allow-empty "$diff_patch_path" 2>&1)"; then
-        # Could not apply — write error artifact and return.
-        # #550: write minimal test-results.json via printf BEFORE the atomic
-        # _test_write_result call so the verdict=error is guaranteed to land
-        # even if jq/atomic_write fails (e.g. jq absent, disk full).  The
-        # plain printf write satisfies the stage.verdict resolver; the
-        # _test_write_result call below may overwrite it with a richer object.
-        printf '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}\n' \
-            > "$output_json"
-        test_output="git apply --check failed: ${apply_check_out}"
-        _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
-            "git apply --check failed: $(printf '%s' "$apply_check_out" | head -n1)"
-        _test_write_result "$output_json" \
-            "error" 2 0 0 "$test_output" "false" "$test_cmd" "diff_apply_failed"
-        rm -rf "$tmp"
-        emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
-        return 0
-    fi
-
-    if ! git -C "$tmp" apply --allow-empty "$diff_patch_path" 2>/dev/null; then
-        # #550: same guarantee for the apply-after-check path.
-        printf '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}\n' \
-            > "$output_json"
-        test_output="git apply failed after --check passed"
-        _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
-            "git apply failed after --check passed"
-        _test_write_result "$output_json" \
-            "error" 2 0 0 "$test_output" "false" "$test_cmd" "diff_apply_failed"
-        rm -rf "$tmp"
-        emit_event "plugin.run.error" "plugin=test" "reason=diff_apply_failed_after_check"
-        return 0
-    fi
+    # The build's working-tree edits arrived via rsync. Mark diff_applied=true
+    # for downstream consumers — the diff lives in the working tree because
+    # the LLM wrote it there directly.
     diff_applied=true
 
     # ── Run test command ───────────────────────────────────────────────────────

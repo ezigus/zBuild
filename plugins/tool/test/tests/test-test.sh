@@ -268,98 +268,12 @@ set -e
 banner8="$(cat "$BANNER_8")"
 assert_contains "fail summary: jest '44 passed, 3 failed (exit 1)'" "$banner8" "44 passed, 3 failed (exit 1)"
 
-# ─── Test 9: error (apply-fail) → 'git apply --check failed:' summary ────────
-# Use a separate mock git that FAILS apply-check to drive the error path.
-print_test_section "9. #497 error (apply fail) → 'git apply --check failed:'"
-
-# Save current mock git, swap in a failing one for this test only.
-SAVED_GIT="$TEST_TEMP_DIR/bin/git.saved"
-mv "$TEST_TEMP_DIR/bin/git" "$SAVED_GIT"
-cat > "$TEST_TEMP_DIR/bin/git" <<'GITFAIL'
-#!/usr/bin/env bash
-args=("$@")
-if [[ "${args[0]:-}" == "-C" ]]; then args=("${args[@]:2}"); fi
-case "${args[0]:-}" in
-    apply)
-        echo "patch does not apply at line 1" >&2
-        echo "patch does not apply at line 1"
-        exit 1
-        ;;
-    *) exec "$(PATH=/usr/bin:/usr/local/bin:/opt/homebrew/bin command -v git)" "$@" ;;
-esac
-GITFAIL
-chmod +x "$TEST_TEMP_DIR/bin/git"
-
-# Force bash to re-resolve `git` from PATH — earlier tests cached the path
-# and `mv` + new write doesn't invalidate the hash on its own.
-hash -r
-
-OUT_JSON_9="$ARTIFACT_DIR/test-results-9.json"
-BANNER_9="$TEST_TEMP_DIR/banner-9.txt"
-set +e
-_run_with_banner "$BANNER_9" "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_9" \
-    "$TEST_TEMP_DIR/bin/mock_test.sh"
-set -e
-banner9="$(cat "$BANNER_9")"
-assert_contains "apply-fail summary contains 'git apply --check failed:'" \
-    "$banner9" "git apply --check failed:"
-
-# Restore the passing mock git for subsequent tests.
-mv "$SAVED_GIT" "$TEST_TEMP_DIR/bin/git"
-hash -r
-
-# ─── Test 9b-550: #550 diff_apply_failed → test-results.json exists with verdict=error ─
-# The apply-fail path must write test-results.json (verdict=error,
-# reason=diff_apply_failed) so the stage-verdict resolver reads "error" instead
-# of emitting artifact_absent + verdict=warn.  This is the root fix for #550:
-# the _cycle_detect_blocked predicate checks for verdict=error; without this
-# file the cycle ran all 3 max iterations instead of aborting after iter 1.
-print_test_section "9b. #550 diff_apply_failed → test-results.json exists with verdict=error"
-
-# Swap in a failing git apply mock (same pattern as test 9).
-SAVED_GIT_9B="$TEST_TEMP_DIR/bin/git.saved-9b"
-mv "$TEST_TEMP_DIR/bin/git" "$SAVED_GIT_9B"
-cat > "$TEST_TEMP_DIR/bin/git" <<'GITFAIL9B'
-#!/usr/bin/env bash
-args=("$@")
-if [[ "${args[0]:-}" == "-C" ]]; then args=("${args[@]:2}"); fi
-case "${args[0]:-}" in
-    apply)
-        echo "error: patch failed: foo.js:1" >&2
-        echo "error: patch failed: foo.js:1"
-        exit 1
-        ;;
-    *) exec "$(PATH=/usr/bin:/usr/local/bin:/opt/homebrew/bin command -v git)" "$@" ;;
-esac
-GITFAIL9B
-chmod +x "$TEST_TEMP_DIR/bin/git"
-hash -r
-
-OUT_JSON_9B550="$ARTIFACT_DIR/test-results-9b-550.json"
-# Remove any pre-existing output to confirm the file is freshly written.
-rm -f "$OUT_JSON_9B550"
-set +e
-_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_9B550" \
-    "$TEST_TEMP_DIR/bin/mock_test.sh"
-rc9b550=$?
-set -e
-
-assert_exit_code "#550 plugin exits 0 on diff_apply_failed" "0" "$rc9b550"
-assert_file_exists "#550 test-results.json written on diff_apply_failed" "$OUT_JSON_9B550"
-
-verdict9b550="$(_json_key "$OUT_JSON_9B550" '.verdict')"
-assert_eq "#550 verdict=error on diff_apply_failed" "error" "$verdict9b550"
-
-# Confirm reason field carries diff_apply_failed token (from the printf failsafe
-# OR the richer _test_write_result; either satisfies the cycle-blocked predicate).
-reason9b550="$(_json_key "$OUT_JSON_9B550" '.reason // .test_output // empty')"
-# verdict=error is the critical assertion; reason is best-effort.
-[[ -n "$reason9b550" ]] && assert_pass "#550 reason/test_output field present" \
-    || assert_fail "#550 reason/test_output field present" "both fields empty"
-
-# Restore the passing mock git.
-mv "$SAVED_GIT_9B" "$TEST_TEMP_DIR/bin/git"
-hash -r
+# ─── Test 9, 9b removed (#602) ───────────────────────────────────────────────
+# Tests 9 and 9b exercised the `git apply --check failed:` and `diff_apply_failed`
+# error paths in the test plugin. With #602 the test plugin no longer applies a
+# diff — the build's working-tree edits arrive via rsync intact — so these paths
+# are unreachable by construction. The empty-diff path (no LLM edits) still
+# exists upstream as the `build.empty_diff` / discrepancy events.
 
 # ─── Test 9a: error (no-op #485) → 'no-op: 0 tests detected' summary ─────────
 print_test_section "9a. #497 #485 no-op guard → 'no-op: 0 tests detected'"
@@ -477,15 +391,15 @@ verdict11="$(_json_key "$OUT_JSON_11" '.verdict')"
 assert_eq "[subprocess] verdict=pass preserved" "pass" "$verdict11"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Test 12: #548 — temp dir is reset to HEAD before diff apply
+# Test 12: #602 — dirty working tree rsyncs into temp dir intact
 #
-# Scenario: the build agent has an uncommitted working-tree change in the repo
-# fixture. The diff.patch was generated against a clean HEAD, so the patch
-# applies cleanly only when the temp copy is at HEAD. Without the checkout+clean
-# reset added by #548, rsync would copy the dirty working tree and `git apply
-# --check` would fail with "patch does not apply", emitting diff_apply_failed.
+# Pre-#602 scenario (#548): the test plugin reset the temp dir to HEAD then
+# `git apply`'d diff.patch, so the build's WT edits had to be re-applied.
+# Post-#602: the build's edits ARE the WT (no stash dance), so rsync just
+# copies them and tests run directly. Verdict still resolves to pass via
+# the mock test_cmd; diff_applied is set unconditionally to true.
 # ═══════════════════════════════════════════════════════════════════════════════
-print_test_section "12. #548: temp dir reset to HEAD before diff apply"
+print_test_section "12. #602: dirty WT rsyncs intact (no reset, no apply)"
 
 # Create a file at HEAD in the repo fixture, then make an uncommitted change.
 REPO_12="$TEST_TEMP_DIR/repo-12"

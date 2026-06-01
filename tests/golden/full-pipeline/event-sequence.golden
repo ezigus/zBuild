@@ -9,7 +9,6 @@ plugin.finalize.complete
 plugin.init.start
 redaction.applied
 build.empty_diff
-build.apply_check.skipped
 build.discrepancy.detected
 build.diff.empty_after_done_sentinel
 plugin.run.complete

@@ -282,11 +282,11 @@ else
     assert_fail "build-summary.json is not valid JSON"
 fi
 
-# ─── Test 4: build-summary.json schema_version=3 + new fields ────────────────
-# #507 bumped schema_version to 3 to add the .verdict field.
-print_test_section "T4: build-summary.json has schema_version=3 + loop fields"
+# ─── Test 4: build-summary.json schema_version=4 + new fields ────────────────
+# #602 bumped schema_version to 4 (apply_check field dropped with the stash dance).
+print_test_section "T4: build-summary.json has schema_version=4 + loop fields"
 
-assert_json_key "schema_version == 3" "$summary_json_t3" ".schema_version" "3"
+assert_json_key "schema_version == 4" "$summary_json_t3" ".schema_version" "4"
 assert_json_key "verdict field present (#507)" "$summary_json_t3" ".verdict" "pass"
 
 files_changed_type="$(printf '%s' "$summary_json_t3" | jq -r '.files_changed | type' 2>/dev/null || echo "missing")"
