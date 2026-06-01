@@ -35,7 +35,8 @@ SIGNAL_PHRASES=(
 
 LABEL_TRIAGE="deferred-candidate"
 LABEL_AUTOMATED="automated"
-EXCERPT_MAX=200
+EXCERPT_MAX="${DEFERRED_EXCERPT_MAX:-500}"
+EXCERPT_CONTEXT="${DEFERRED_EXCERPT_CONTEXT:-300}"
 PAGINATION_LIMIT=25
 LOG_PATH_DEFAULT="$REPO_ROOT/.github/issues/deferred-scanned-prs.md"
 DRIFT_SENTINEL="$REPO_ROOT/.deferred-drift"
@@ -106,18 +107,61 @@ compute_since_anchor() {
 
 is_already_scanned() { gha_is_already_scanned "$@"; }
 
-# ReDoS guard: cap input length and bound surrounding-context match to 120 chars
-# each side instead of unbounded `[^.!?]*` (review finding, ADR-020 §Mitigations).
+# ReDoS guard: cap input length to 8 KB and bound context to $EXCERPT_CONTEXT
+# chars each side (default 300, tunable via DEFERRED_EXCERPT_CONTEXT).
+# Implemented with awk (not grep `.{0,N}`) because BSD grep caps {N} at 255
+# and we want operators to be able to go larger.
+# When the leading edge of the captured window lands mid-word, advance past
+# the partial token and prepend "..." so the excerpt doesn't start with a
+# word fragment like "idden-dup" — issue #596.
 extract_excerpt() {
     local body="$1"
     local phrase="$2"
     body="${body:0:8192}"
-    printf '%s' "$body" \
+    local raw
+    raw="$(printf '%s' "$body" \
         | tr '\n' ' ' \
-        | grep -ioE ".{0,120}${phrase}.{0,120}" \
-        | head -n 1 \
-        | sed 's/^ *//; s/ *$//' \
-        || printf '%s' "$phrase"
+        | awk -v phrase="$phrase" -v ctx="$EXCERPT_CONTEXT" '
+            BEGIN { ph_lc = tolower(phrase) }
+            {
+                line_lc = tolower($0)
+                pos = index(line_lc, ph_lc)
+                if (pos == 0) exit 1
+                start = pos - ctx
+                if (start < 1) start = 1
+                # Window = [start, pos + length(phrase) + ctx). Codex review
+                # #598 caught the prior `phrase + ctx*2 + (pos - start)` math
+                # produced ~3*ctx in the normal case instead of ~2*ctx.
+                end = pos + length(phrase) + ctx
+                len = end - start
+                print substr($0, start, len)
+                exit 0
+            }' \
+        | sed 's/^ *//; s/ *$//')" || true
+
+    if [[ -z "$raw" ]]; then
+        printf '%s' "$phrase"
+        return 0
+    fi
+
+    # Leading mid-word trim: probe by finding $raw in $body via awk's literal
+    # `index()` (NOT bash glob — Codex #598 caught that `${body%%"$raw"*}`
+    # globs `*`/`?`/`[` from real PR bodies and misfires).
+    local before_char
+    # Newline-compact the body to match awk's view of the line, then look up
+    # the char immediately preceding the match position.
+    before_char="$(printf '%s' "$body" | tr '\n' ' ' \
+        | awk -v needle="$raw" '
+            { pos = index($0, needle); if (pos > 1) print substr($0, pos - 1, 1); exit }' \
+        2>/dev/null || true)"
+    if [[ -n "$before_char" && "$before_char" =~ [[:alnum:]_] ]]; then
+        local trimmed="${raw#*[[:space:]]}"
+        if [[ "$trimmed" != "$raw" ]]; then
+            raw="...${trimmed}"
+        fi
+    fi
+
+    printf '%s' "$raw"
 }
 
 # Escapes auto-close (#), mention (@), and code-fence (`) injection vectors.
@@ -133,8 +177,17 @@ sanitize_excerpt() {
     # (Codex review #573 caught this — markdown tables and "A | B"-style
     # text in PR bodies would split the excerpt across fields).
     text="${text//\|/\/}"
+    # Trailing word-boundary trim — don't cut mid-word at the cap (#596).
     if [[ ${#text} -gt $EXCERPT_MAX ]]; then
-        text="${text:0:$EXCERPT_MAX}..."
+        local slice="${text:0:$EXCERPT_MAX}"
+        local boundary="${slice% *}"
+        if [[ "$boundary" != "$slice" && -n "$boundary" ]]; then
+            text="${boundary}..."
+        else
+            # No whitespace in range — single huge token. Slice and append
+            # regardless; this is the worst-case readability path.
+            text="${slice}..."
+        fi
     fi
     printf '%s' "$text"
 }
@@ -286,27 +339,49 @@ annotate_candidates_with_dups() {
         printf '[]' > "$open_issues_json"
     fi
     local candidate
+    # Detect empty open-issues fetch up-front so we can short-circuit each
+    # candidate to the "no open issues" annotation (#596 visibility item).
+    local issues_present=1
+    if ! jq -e '.[0]' "$open_issues_json" >/dev/null 2>&1; then
+        issues_present=0
+    fi
     for candidate in "${candidates_in[@]}"; do
         local _num _phrase _excerpt
         IFS='|' read -r _num _phrase _excerpt <<< "$candidate"
         local hints=""
         local count_hints=0
+        # Sentinel -1.00 ensures first issue always seeds best_issue, even
+        # when its score is 0.00 (Codex #598 fix mirrored here).
+        local best_score="-1.00" best_issue=""
+        local seen_issue_count=0
+        if (( issues_present == 0 )); then
+            printf '%s|[no match (no open issues)]\n' "$candidate"
+            continue
+        fi
         local issue_json
         while IFS= read -r issue_json; do
             [[ -z "$issue_json" ]] && continue
             local oid title body haystack score marker refined refined_score
             oid="$(printf '%s' "$issue_json" | jq -r '.number // empty')"
             [[ -z "$oid" ]] && continue
+            seen_issue_count=$((seen_issue_count + 1))
             title="$(printf '%s' "$issue_json" | jq -r '.title // ""')"
             body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
             haystack="${title} ${body}"
-            score="$(gha_compute_similarity "$_excerpt" "$haystack")"
+            score="$(gha_compute_similarity "$_excerpt" "$haystack" 2>/dev/null || printf '0.00')"
             marker=""
             if awk -v s="$score" -v lo="$llm_lo" -v hi="$llm_hi" 'BEGIN{exit !(s>=lo && s<hi)}'; then
                 refined="$(gha_compute_similarity_llm "$_excerpt" "$haystack" "$score" 2>/dev/null || printf '%s|_LLM_FAILED_NETWORK' "$score")"
                 refined_score="${refined%%|*}"
                 marker="${refined##*|}"
                 score="$refined_score"
+            fi
+            # Track best-seen score regardless of threshold (#596).
+            # `>=` (not `>`) so all-zero scores still seed best_issue
+            # (Codex #598).
+            if awk -v s="$score" -v b="$best_score" 'BEGIN{exit !(s>=b)}'; then
+                best_score="$score"
+                best_issue="$oid"
             fi
             if awk -v s="$score" -v t="$annotation_threshold" 'BEGIN{exit !(s>=t)}'; then
                 count_hints=$((count_hints + 1))
@@ -324,6 +399,18 @@ annotate_candidates_with_dups() {
                 fi
             fi
         done < <(jq -c '.[]' "$open_issues_json" 2>/dev/null || true)
+        # If nothing cleared the threshold, surface the best-seen score so
+        # operators see "the check ran but nothing matched" (#596 D).
+        # Distinguish "issues exist but all scored 0.00" from "no issues
+        # fetched" via seen_issue_count (Codex #598).
+        if [[ -z "$hints" ]]; then
+            if (( seen_issue_count == 0 )); then
+                hints="[no match (no open issues)]"
+            else
+                local pb; pb="$(printf '%.2f' "$best_score")"
+                hints="[no match (best: ${pb} vs #${best_issue})]"
+            fi
+        fi
         printf '%s|%s\n' "$candidate" "$hints"
     done
 }

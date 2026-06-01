@@ -53,29 +53,46 @@ parse_index_spec() {
 annotate_possible_dup() {
     local excerpt="$1"
     local issues_jsonl="$2"   # path to JSONL: each line is `{number, title, body}`
-    [[ -s "$issues_jsonl" ]] || return 0
+    # No-open-issues path — emit the "no match (no open issues)" signal so
+    # operators see that the comparison ran (#596 D).
+    if [[ ! -s "$issues_jsonl" ]]; then
+        printf 'no match (no open issues)'
+        return 0
+    fi
     local annotation_threshold="${DEFERRED_SIMILARITY_THRESHOLD:-0.35}"
     local llm_lo="${DEFERRED_LLM_LOWER:-0.20}"
     local llm_hi="${DEFERRED_LLM_UPPER:-0.40}"
     # Collect ALL matches as "score|hint" lines; sort by score descending; take
     # top 3 (Codex review #578 caught: first-3-found is not top-3-by-score).
     local matches=""
+    # Track best-seen score AND issue-counter so we can distinguish "issues
+    # exist but all scored 0.00" from "no issues fetched at all" (Codex #598).
+    local best_score="-1.00" best_issue=""
+    local seen_issue_count=0
     local issue_json
     while IFS= read -r issue_json; do
         [[ -z "$issue_json" ]] && continue
         local oid title body haystack score marker
         oid="$(printf '%s' "$issue_json" | jq -r '.number // empty')"
         [[ -z "$oid" ]] && continue
+        seen_issue_count=$((seen_issue_count + 1))
         title="$(printf '%s' "$issue_json" | jq -r '.title // ""')"
         body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
         haystack="${title} ${body}"
-        score="$(gha_compute_similarity "$excerpt" "$haystack")"
+        score="$(gha_compute_similarity "$excerpt" "$haystack" 2>/dev/null || printf '0.00')"
         marker=""
         if awk -v s="$score" -v lo="$llm_lo" -v hi="$llm_hi" 'BEGIN{exit !(s>=lo && s<hi)}'; then
             local refined
             refined="$(gha_compute_similarity_llm "$excerpt" "$haystack" "$score" 2>/dev/null || printf '%s|_LLM_FAILED_NETWORK' "$score")"
             score="${refined%%|*}"
             marker="${refined##*|}"
+        fi
+        # `>=` (not `>`) so the first issue always seeds best_issue even when
+        # the score is 0.00 (Codex #598 — without this, all-zero scores
+        # produced a misleading "no open issues" output).
+        if awk -v s="$score" -v b="$best_score" 'BEGIN{exit !(s>=b)}'; then
+            best_score="$score"
+            best_issue="$oid"
         fi
         if awk -v s="$score" -v t="$annotation_threshold" 'BEGIN{exit !(s>=t)}'; then
             local printable llm_note=""
@@ -86,9 +103,18 @@ annotate_possible_dup() {
             matches+="${printable} #${oid} (sim ${printable}${llm_note})"$'\n'
         fi
     done < "$issues_jsonl"
-    [[ -z "$matches" ]] && return 0
-    # Sort by leading score descending; strip the sort key; take top 3; join with spaces.
-    printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
+    if [[ -n "$matches" ]]; then
+        printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
+        return 0
+    fi
+    # "no open issues" only when the loop actually saw no issues with a
+    # numeric id. Otherwise we have at least one comparison to report.
+    if (( seen_issue_count == 0 )); then
+        printf 'no match (no open issues)'
+    else
+        local pb; pb="$(printf '%.2f' "$best_score")"
+        printf 'no match (best: %s vs #%s)' "$pb" "$best_issue"
+    fi
 }
 
 is_in_presented_log() {
@@ -316,16 +342,22 @@ USAGE
     # on PR-body content the operator hasn't sanitized for printf.
     echo
     echo "── Deferred-work candidates ──"
-    local idx=1 line pr_num phrase excerpt dup_hint
+    local idx=1 line pr_num phrase excerpt dup_hint label
     for line in "${CANDIDATE_LINES[@]}"; do
         IFS='|' read -r pr_num phrase excerpt <<< "$line"
         dup_hint="$(annotate_possible_dup "$excerpt" "$issues_jsonl" 2>/dev/null || true)"
-        if [[ -n "$dup_hint" ]]; then
-            echo "${idx}. PR #${pr_num} [${phrase}] — possible dup: ${dup_hint}"
+        # annotate_possible_dup now always returns a non-empty string — either
+        # a top-3 match hint or a "no match (...)" signal (#596 D). Match-vs-
+        # no-match is distinguished by the leading word so we render the
+        # right header label.
+        if [[ "$dup_hint" == "no match"* ]]; then
+            label="$dup_hint"
         else
-            echo "${idx}. PR #${pr_num} [${phrase}]"
+            label="possible dup: $dup_hint"
         fi
+        echo "${idx}. PR #${pr_num} [${phrase}] — ${label}"
         echo "     ${excerpt}"
+        echo                              # blank line between candidates (#596 A)
         idx=$((idx + 1))
     done
     echo
