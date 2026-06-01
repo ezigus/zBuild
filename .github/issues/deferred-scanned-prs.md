@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-05-31T18:53:06Z_
+_Last updated: 2026-06-01T12:24:10Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -49,3 +49,23 @@ _Last updated: 2026-05-31T18:53:06Z_
 | #544 | fix(build): diff capture trailing-newline + bidirectional apply-check + hunk-count validation (#530) | 2026-05-31 |
 | #543 | feat(banner): drop stage-io: prefix + blank-line spacing between stages (#523) | 2026-05-31 |
 | #538 | feat(cycle): operator-visible banners for cycle.start/iter/complete (#524) | 2026-05-31 |
+| #599 | feat(cleanup): handle zb-applycheck-* stashes + tmpdirs + --restore-stash flag (#594) | 2026-06-01 |
+| #598 | feat(#596): deferred output formatting — spacing, longer excerpts, visible scores | 2026-06-01 |
+| #597 | feat(install): copy code to $ZBUILD_HOME instead of symlinking (#595) | 2026-06-01 |
+| #593 | fix(test): pattern bank for known runners + honest fail-safe (no fabricated counts) (#584) | 2026-06-01 |
+| #592 | feat(template): inline cycles as stage entries — v2 hard-break + migration script (#585) | 2026-06-01 |
+| #591 | feat(#589): zbuild deferred/manifest CLI subcommands + structured --help | 2026-06-01 |
+| #590 | fix(build): remove duplicate [computed] post-loop banner — event-only discrepancy signal (#587) | 2026-06-01 |
+| #588 | fix(test-harness): open fd 3 in run-tests.sh + relax stage-io guard with warn+event fallback (#586) | 2026-06-01 |
+| #582 | feat(cycle): 3-stage build_test_cycle [build,test,test_assessment] + until on assessment + feedback rewire (#568) | 2026-06-01 |
+| #581 | feat(build): prompt v2 framing — ORIGINAL TASK / INSTRUCTIONS / ITERATION FEEDBACK (#571) | 2026-06-01 |
+| #580 | feat(review): consume test_assessment.verdict (preferred) in fail-closed coercion (#569) | 2026-06-01 |
+| #579 | feat(#562): manifest-sync orphan annotation (READ-ONLY) — sub-4 of #555 | 2026-06-01 |
+| #578 | feat(#561): deferred-backfill similarity-based annotation (sub-3 of #555) | 2026-06-01 |
+| #577 | feat(cleanup): zbuild cleanup --force for branches + state dirs (#570) | 2026-06-01 |
+| #576 | feat(test_assessment): new Pattern 1 stage modeled after plan — LLM interprets test results (#567) | 2026-06-01 |
+| #575 | fix(banner): export ZBUILD_CURRENT_STAGE in cycle dispatch so [llm] banner emits (#566) | 2026-06-01 |
+| #574 | docs(adr): amendments + new ADR-022 for test_assessment stage (#572) | 2026-06-01 |
+| #573 | feat(#560): deferred-tracker dup annotation + update-in-place (sub-2 of #555) | 2026-06-01 |
+| #565 | feat(#559): LLM tiebreaker for borderline Jaccard scores (fail-open) — sub-6 of #555 | 2026-06-01 |
+| #564 | feat(#558): gha_compute_similarity Jaccard helper + ADR-020 v2 (sub-1 of #555) | 2026-06-01 |
