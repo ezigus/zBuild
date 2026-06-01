@@ -90,6 +90,7 @@
     "loop.iteration.error",
     "loop.complete",
     "loop.max_iterations",
+    "loop.no_progress",
     "loop.git_diff_failed",
     "loop.terminated.signal",
     "loop.diff_capture_warning",
