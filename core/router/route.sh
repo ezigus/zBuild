@@ -607,6 +607,30 @@ route_to_model_loop() {
 ${prev_diff}"
         fi
 
+        # Wave 8 #614: branch-cumulative context.
+        # Show the LLM what's already committed on this branch since intake
+        # started. Critical for "already done" recognition: without this, the
+        # LLM sees an empty iter delta on iter 1 and doesn't know the branch
+        # has commits from prior pipeline runs / human work.
+        local _intake_ref _commits _stat _short_head
+        _intake_ref=""
+        if [[ -n "${ZBUILD_STATE_DIR:-}" && -f "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" ]]; then
+            _intake_ref="$(cat "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" 2>/dev/null || true)"
+        fi
+        if [[ -n "$_intake_ref" ]]; then
+            _commits="$(git -C "$cwd" log "${_intake_ref}..HEAD" --oneline 2>/dev/null | head -10 || true)"
+            _stat="$(git -C "$cwd" diff "${_intake_ref}..HEAD" --stat 2>/dev/null || true)"
+            _short_head="$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+            iter_prompt="${iter_prompt}
+
+## BRANCH STATE since intake (HEAD: ${_short_head})
+Commits:
+${_commits:-  (none)}
+
+Diff vs intake baseline:
+${_stat:-  (no changes)}"
+        fi
+
         # Per-iteration redaction: satisfy C6 precondition before each claude call.
         local iter_prompt_file="${_loop_tmp}/iter-${iter}.txt"
         local iter_redacted_file="${_loop_tmp}/iter-${iter}.redacted.txt"

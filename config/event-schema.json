@@ -116,6 +116,7 @@
     "intake.refused.git_unavailable",
     "intake.refused.branch_exists_remote_only",
     "intake.error",
+    "intake.baseline.captured",
     "plugin.pr_open.branch_fallback_used"
   ]
 }
