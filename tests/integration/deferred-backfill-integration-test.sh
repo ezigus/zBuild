@@ -187,4 +187,27 @@ rm -f "$PLOG"
 out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
 assert_contains "T10 LOCK: 'no match (no open issues)' when list empty" "$out" "no match (no open issues)"
 
+# ─── T11 REGRESSION LOCK: issues exist but all score 0.00 (Codex #598) ──────
+# Open issue exists but excerpt and issue body share zero tokens (after
+# stopword/short-token filtering). Pre-Codex-fix would have reported
+# "no match (no open issues)" — wrong, since an issue WAS compared.
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":920,"title":"x","body":"Needs a separate issue for parity normalizer fixup work.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T00:00:00Z"}]
+EOF
+# Open issue body uses entirely disjoint vocabulary (single 3-char tokens
+# survive stopword filtering as nothing → 0.00 score).
+cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
+[{"number":99,"title":"a b c","body":"d e f g"}]
+EOF
+rm -f "$PLOG"
+out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
+if printf '%s' "$out" | grep -q "no match (no open issues)"; then
+    assert_fail "T11 REGRESSION LOCK: 0.00 scores wrongly reported as 'no open issues'"
+else
+    assert_contains "T11 LOCK: 0.00 scores produce 'no match (best:' annotation" "$out" "no match (best:"
+fi
+# Specifically, should reference the issue that WAS compared.
+assert_contains "T11: annotation references the compared issue #99" "$out" "#99"
+
 print_test_results

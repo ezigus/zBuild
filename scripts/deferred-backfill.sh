@@ -65,15 +65,17 @@ annotate_possible_dup() {
     # Collect ALL matches as "score|hint" lines; sort by score descending; take
     # top 3 (Codex review #578 caught: first-3-found is not top-3-by-score).
     local matches=""
-    # Track best-seen score regardless of threshold so we can surface a
-    # "no match (best: 0.XX vs #N)" signal when nothing clears (#596 D).
-    local best_score="0.00" best_issue=""
+    # Track best-seen score AND issue-counter so we can distinguish "issues
+    # exist but all scored 0.00" from "no issues fetched at all" (Codex #598).
+    local best_score="-1.00" best_issue=""
+    local seen_issue_count=0
     local issue_json
     while IFS= read -r issue_json; do
         [[ -z "$issue_json" ]] && continue
         local oid title body haystack score marker
         oid="$(printf '%s' "$issue_json" | jq -r '.number // empty')"
         [[ -z "$oid" ]] && continue
+        seen_issue_count=$((seen_issue_count + 1))
         title="$(printf '%s' "$issue_json" | jq -r '.title // ""')"
         body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
         haystack="${title} ${body}"
@@ -85,7 +87,10 @@ annotate_possible_dup() {
             score="${refined%%|*}"
             marker="${refined##*|}"
         fi
-        if awk -v s="$score" -v b="$best_score" 'BEGIN{exit !(s>b)}'; then
+        # `>=` (not `>`) so the first issue always seeds best_issue even when
+        # the score is 0.00 (Codex #598 — without this, all-zero scores
+        # produced a misleading "no open issues" output).
+        if awk -v s="$score" -v b="$best_score" 'BEGIN{exit !(s>=b)}'; then
             best_score="$score"
             best_issue="$oid"
         fi
@@ -102,11 +107,13 @@ annotate_possible_dup() {
         printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
         return 0
     fi
-    if [[ -n "$best_issue" ]] && awk -v s="$best_score" 'BEGIN{exit !(s>0)}'; then
+    # "no open issues" only when the loop actually saw no issues with a
+    # numeric id. Otherwise we have at least one comparison to report.
+    if (( seen_issue_count == 0 )); then
+        printf 'no match (no open issues)'
+    else
         local pb; pb="$(printf '%.2f' "$best_score")"
         printf 'no match (best: %s vs #%s)' "$pb" "$best_issue"
-    else
-        printf 'no match (no open issues)'
     fi
 }
 

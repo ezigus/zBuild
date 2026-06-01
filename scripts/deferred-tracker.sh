@@ -129,7 +129,11 @@ extract_excerpt() {
                 if (pos == 0) exit 1
                 start = pos - ctx
                 if (start < 1) start = 1
-                len = length(phrase) + ctx * 2 + (pos - start)
+                # Window = [start, pos + length(phrase) + ctx). Codex review
+                # #598 caught the prior `phrase + ctx*2 + (pos - start)` math
+                # produced ~3*ctx in the normal case instead of ~2*ctx.
+                end = pos + length(phrase) + ctx
+                len = end - start
                 print substr($0, start, len)
                 exit 0
             }' \
@@ -140,19 +144,20 @@ extract_excerpt() {
         return 0
     fi
 
-    # Leading mid-word trim: probe by finding $raw in $body and inspecting
-    # the char immediately preceding the match.
-    local prefix="${body%%"$raw"*}"
-    if [[ "$prefix" != "$body" && -n "$prefix" ]]; then
-        local before_char="${prefix: -1}"
-        if [[ "$before_char" =~ [[:alnum:]_] ]]; then
-            # Drop the first (partial) token then strip the whitespace that
-            # followed it; only commit if a whitespace actually existed
-            # within the captured window (avoid wiping a single huge token).
-            local trimmed="${raw#*[[:space:]]}"
-            if [[ "$trimmed" != "$raw" ]]; then
-                raw="...${trimmed}"
-            fi
+    # Leading mid-word trim: probe by finding $raw in $body via awk's literal
+    # `index()` (NOT bash glob — Codex #598 caught that `${body%%"$raw"*}`
+    # globs `*`/`?`/`[` from real PR bodies and misfires).
+    local before_char
+    # Newline-compact the body to match awk's view of the line, then look up
+    # the char immediately preceding the match position.
+    before_char="$(printf '%s' "$body" | tr '\n' ' ' \
+        | awk -v needle="$raw" '
+            { pos = index($0, needle); if (pos > 1) print substr($0, pos - 1, 1); exit }' \
+        2>/dev/null || true)"
+    if [[ -n "$before_char" && "$before_char" =~ [[:alnum:]_] ]]; then
+        local trimmed="${raw#*[[:space:]]}"
+        if [[ "$trimmed" != "$raw" ]]; then
+            raw="...${trimmed}"
         fi
     fi
 
@@ -345,7 +350,10 @@ annotate_candidates_with_dups() {
         IFS='|' read -r _num _phrase _excerpt <<< "$candidate"
         local hints=""
         local count_hints=0
-        local best_score="0.00" best_issue=""
+        # Sentinel -1.00 ensures first issue always seeds best_issue, even
+        # when its score is 0.00 (Codex #598 fix mirrored here).
+        local best_score="-1.00" best_issue=""
+        local seen_issue_count=0
         if (( issues_present == 0 )); then
             printf '%s|[no match (no open issues)]\n' "$candidate"
             continue
@@ -356,6 +364,7 @@ annotate_candidates_with_dups() {
             local oid title body haystack score marker refined refined_score
             oid="$(printf '%s' "$issue_json" | jq -r '.number // empty')"
             [[ -z "$oid" ]] && continue
+            seen_issue_count=$((seen_issue_count + 1))
             title="$(printf '%s' "$issue_json" | jq -r '.title // ""')"
             body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
             haystack="${title} ${body}"
@@ -368,7 +377,9 @@ annotate_candidates_with_dups() {
                 score="$refined_score"
             fi
             # Track best-seen score regardless of threshold (#596).
-            if awk -v s="$score" -v b="$best_score" 'BEGIN{exit !(s>b)}'; then
+            # `>=` (not `>`) so all-zero scores still seed best_issue
+            # (Codex #598).
+            if awk -v s="$score" -v b="$best_score" 'BEGIN{exit !(s>=b)}'; then
                 best_score="$score"
                 best_issue="$oid"
             fi
@@ -390,12 +401,14 @@ annotate_candidates_with_dups() {
         done < <(jq -c '.[]' "$open_issues_json" 2>/dev/null || true)
         # If nothing cleared the threshold, surface the best-seen score so
         # operators see "the check ran but nothing matched" (#596 D).
+        # Distinguish "issues exist but all scored 0.00" from "no issues
+        # fetched" via seen_issue_count (Codex #598).
         if [[ -z "$hints" ]]; then
-            if [[ -n "$best_issue" ]] && awk -v s="$best_score" 'BEGIN{exit !(s>0)}'; then
+            if (( seen_issue_count == 0 )); then
+                hints="[no match (no open issues)]"
+            else
                 local pb; pb="$(printf '%.2f' "$best_score")"
                 hints="[no match (best: ${pb} vs #${best_issue})]"
-            else
-                hints="[no match (no open issues)]"
             fi
         fi
         printf '%s|%s\n' "$candidate" "$hints"
