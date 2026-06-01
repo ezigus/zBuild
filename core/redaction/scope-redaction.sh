@@ -115,19 +115,70 @@ apply_scope_redaction() {
     }
     {
         line = $0
-        # Find path-like tokens: contains / and matches [A-Za-z0-9._/-]+
+        # Idempotence (#606 Bug A2): skip tokenization inside existing
+        # <out-of-scope-context>...</out-of-scope-context> spans. The path
+        # regex matches "/out-of-scope-context" inside the closing tag,
+        # which would cascade-nest markers on a second pass. Segment the
+        # line by markers and only tokenize outside-marker segments.
         result = ""
         rest = line
+        open_tag  = "<out-of-scope-context>"
+        close_tag = "</out-of-scope-context>"
+        depth = 0
+        while (length(rest) > 0) {
+            if (depth == 0) {
+                # Find next opening marker (if any) and tokenize text before it.
+                opos = index(rest, open_tag)
+                if (opos == 0) {
+                    # No more markers on this line; tokenize whole remainder.
+                    result = result tokenize_paths(rest)
+                    rest = ""
+                } else {
+                    pre = substr(rest, 1, opos - 1)
+                    result = result tokenize_paths(pre) open_tag
+                    rest = substr(rest, opos + length(open_tag))
+                    depth = 1
+                }
+            } else {
+                # Inside a marker: copy verbatim until matching close.
+                # Codex P1 on #610: if the opener was malformed (no matching
+                # close on this line), we MUST NOT fail-open by silently
+                # passing the remainder unwrapped — user-supplied input
+                # containing a rogue `<out-of-scope-context>` could smuggle
+                # paths past the redactor (e.g., `/etc/passwd`). Fail-CLOSED:
+                # neutralize the dangling opener so the LLM cannot parse it
+                # as a real marker, then resume normal tokenization for the
+                # remainder of the line. This preserves the chokepoint.
+                cpos = index(rest, close_tag)
+                if (cpos == 0) {
+                    n = length(open_tag)
+                    result = substr(result, 1, length(result) - n) "[OOS-MARKER-MALFORMED]"
+                    result = result tokenize_paths(rest)
+                    rest = ""
+                    depth = 0
+                } else {
+                    result = result substr(rest, 1, cpos - 1) close_tag
+                    rest = substr(rest, cpos + length(close_tag))
+                    depth = 0
+                }
+            }
+        }
+        print result
+    }
+    # ── helper: tokenize path-like substrings in plain (non-marker) text ──
+    function tokenize_paths(text,    out, rest, before, token, after, in_scope, stripped, i, a) {
+        out = ""
+        rest = text
         while (match(rest, /[A-Za-z0-9._-]*\/[A-Za-z0-9._\/-]+/)) {
             before = substr(rest, 1, RSTART - 1)
-            token = substr(rest, RSTART, RLENGTH)
-            after = substr(rest, RSTART + RLENGTH)
+            token  = substr(rest, RSTART, RLENGTH)
+            after  = substr(rest, RSTART + RLENGTH)
             # Alpha-guard (#504): legitimate paths always contain at least one
             # ASCII letter. Pure-digit tokens like "2/10" (iteration counters)
             # or "2026/05/29" (date prefixes) are not paths — skip wrapping
             # and log so we can emit a redaction.counter_skipped event.
             if (token !~ /[A-Za-z]/) {
-                result = result before token
+                out = out before token
                 print token >> counter_log
                 rest = after
                 continue
@@ -145,14 +196,13 @@ apply_scope_redaction() {
                 }
             }
             if (in_scope) {
-                result = result before token
+                out = out before token
             } else {
-                result = result before "<out-of-scope-context>" token "</out-of-scope-context>"
+                out = out before "<out-of-scope-context>" token "</out-of-scope-context>"
             }
             rest = after
         }
-        result = result rest
-        print result
+        return out rest
     }
     ' "$input" > "$output"
 

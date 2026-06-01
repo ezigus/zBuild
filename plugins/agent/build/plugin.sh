@@ -160,7 +160,10 @@ _build_stage_run_inner() {
 
     local redacted_file="$artifact_dir/build-prompt.redacted.txt"
 
-    if ! apply_scope_redaction "$prompt_input_file" "$redacted_file" "$scope_manifest" "" "0"; then
+    # #606 Bug A1: pass the plan files CSV as the allowlist on the initial
+    # redaction pass. Previously this was empty, so in-scope plan paths got
+    # wrapped in <out-of-scope-context> before the agent loop ever saw them.
+    if ! apply_scope_redaction "$prompt_input_file" "$redacted_file" "$scope_manifest" "$plan_files_csv" "0"; then
         error "_build_stage_run_inner: redaction failed; refusing to emit"
         emit_event "plugin.run.error" "plugin=build" "reason=redaction_failed"
         return 1
