@@ -65,7 +65,12 @@ run_tier() {
     # previous "run silent, then re-run on fail to show output" pattern.
     local out
     out="$(mktemp -t "zbuild-test-$name.XXXXXX")"
-    if bash "$f" >"$out" 2>&1; then
+    # Open fd 3 to /dev/null so any sourced module that respects
+    # ZBUILD_STAGE_IO_FD=3 (the production runner default — see
+    # core/pipeline/runner.sh:869) finds the fd open for write. Without this,
+    # stage-io.sh's load-time guard would abort sourcing for every test that
+    # pulls in that module under the unit harness. (#586)
+    if bash "$f" 3>/dev/null >"$out" 2>&1; then
       passed=$((passed + 1))
       rm -f "$out"
     else

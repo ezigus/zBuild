@@ -62,9 +62,26 @@ _stage_io_validate_fd() {
     # Verify the fd is actually open in the caller's shell. `>&"$fd"` succeeds
     # only if fd is open for write. Defensive guard wrapped in a subshell so a
     # closed fd error doesn't leak to the caller's terminal.
+    #
+    # #586: relaxed from hard `error → return 2` to warn-once + fall back to
+    # fd 2 (stderr). The production runner (core/pipeline/runner.sh:869)
+    # opens fd 3 before any plugin spawn, so this branch should never fire
+    # in normal pipeline operation; if it does fire, we emit a structured
+    # `stage_io.fd_fallback` event so the fallback is grep-able in
+    # events.jsonl (suppressed under ZBUILD_TEST_MODE=1 to keep the test
+    # event stream clean).
     if ! ( : >&"$fd" ) 2>/dev/null; then
-        error "ZBUILD_STAGE_IO_FD=$fd is not open for write in this shell"
-        return 2
+        if [[ -z "${_STAGE_IO_FD_FALLBACK_WARNED:-}" ]]; then
+            warn "ZBUILD_STAGE_IO_FD=$fd not open for write; falling back to fd 2 (stderr)"
+            _STAGE_IO_FD_FALLBACK_WARNED=1
+            if [[ "${ZBUILD_TEST_MODE:-}" != "1" ]]; then
+                eb_emit_event "stage_io.fd_fallback" \
+                    "requested_fd=$fd" \
+                    "actual_fd=2" \
+                    "pid=$$" 2>/dev/null || true
+            fi
+        fi
+        export ZBUILD_STAGE_IO_FD=2
     fi
     return 0
 }
