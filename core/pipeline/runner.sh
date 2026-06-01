@@ -813,6 +813,11 @@ main() {
         info "Scope override paths written to $state_dir/scope-override.md"
     fi
 
+    # #612: SIGINT marker — set by the INT trap so the EXIT trap can record
+    # `pipeline.aborted reason=sigint` durably (the trap itself runs in the
+    # signal handler context; we centralize the state/event writes in EXIT).
+    _RUNNER_SIGINT_RECEIVED=0
+
     _runner_abort_trap() {
         [[ "$_runner_ended" == "true" ]] && return 0
         # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere.
@@ -822,6 +827,16 @@ main() {
             eb_emit_event "pipeline.state.error" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue" \
                 "reason=abort_trap_set_status_failed" 2>/dev/null || true
+        fi
+        # #612: when the abort was caused by SIGINT, emit a distinguishable
+        # `pipeline.aborted reason=sigint status=interrupted` event so the
+        # operator/postmortem can tell a Ctrl-C from an OOM or fatal stage rc.
+        # Always emit the legacy `pipeline.abort` too so existing consumers
+        # don't break.
+        if [[ "${_RUNNER_SIGINT_RECEIVED:-0}" == "1" ]]; then
+            eb_emit_event "pipeline.aborted" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                "reason=sigint" "status=interrupted" 2>/dev/null || true
         fi
         # Fail-closed: if abort event cannot be emitted, that is still non-fatal for the trap
         # itself (the process is exiting), but we do not silently swallow the failure.
@@ -836,7 +851,19 @@ main() {
         # Wrap in a subshell so a non-zero rc inside doesn't abort the trap.
         ( _render_pipeline_end "aborted" ) || true
     }
+    # #612: INT/TERM trap — flag the SIGINT cause then exit. Setting the flag
+    # before exit lets the EXIT trap emit `pipeline.aborted reason=sigint`.
+    # `exit 130` triggers _runner_abort_trap (EXIT) which writes state + events.
+    _runner_signal_trap() {
+        _RUNNER_SIGINT_RECEIVED=1
+        # Re-raise the standard 128+SIGINT exit code so the parent shell sees
+        # the cancellation, not a clean 0.
+        exit 130
+    }
     trap '_runner_abort_trap' EXIT
+    # #612: only INT — SIGTERM is left at default disposition so the existing
+    # `kill mid-run emits pipeline.abort` behavior (test 10) is preserved.
+    trap '_runner_signal_trap' INT
 
     # Detect platforms (writes state/platforms.json; returns "generic" if none found)
     local _DETECTED_PLATFORMS=()
@@ -1010,6 +1037,15 @@ main() {
                     # rc 130 (aborted)         → HALT; status=interrupted.
                     if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 130 ]]; then
                         _set_pipeline_status "$state_file" "interrupted"
+                        # #612: distinguish SIGINT-driven cycle abort so the
+                        # postmortem event stream can answer "was this Ctrl-C?"
+                        # without parsing per-cycle terminated_reason fields.
+                        if [[ $_rc -eq 130 ]]; then
+                            _RUNNER_SIGINT_RECEIVED=1
+                            eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
+                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                                "reason=sigint" "status=interrupted" 2>/dev/null || true
+                        fi
                         eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
@@ -1306,6 +1342,16 @@ main() {
             _update_stage_status "$state_file" "$stage" "failed"
             _set_pipeline_status "$state_file" "interrupted"
             eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
+            # #612: rc=130 from a stage means the SIGINT propagation chain
+            # reached us (route_to_model_loop saw child rc=130 → build plugin
+            # propagated 130 → here). Emit `pipeline.aborted reason=sigint` so
+            # postmortems can distinguish Ctrl-C from OOM/fatal errors.
+            if [[ $rc -eq 130 ]]; then
+                _RUNNER_SIGINT_RECEIVED=1
+                eb_emit_event "pipeline.aborted" "stage=$stage" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                    "reason=sigint" "status=interrupted" 2>/dev/null || true
+            fi
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
             _render_pipeline_end "failed" "$stage" "$rc"
