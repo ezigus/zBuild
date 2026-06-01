@@ -109,22 +109,31 @@ _test_run_inner() {
         _test_seq="$_STAGE_IO_LAST_SEQ"
     fi
 
-    # ── Copy repo into temp dir ────────────────────────────────────────────────
-    # #602: rsync copies the LLM's in-place edits (tracked + untracked) along
-    # with the .git dir. There is no stash dance upstream, so the source
-    # working tree already holds the edits described by diff.patch — no
-    # `git apply` step is needed. Skipping the reset-to-HEAD step (#548 era)
-    # is the whole point: doing that here would DROP the build's work.
+    # ── Copy repo + reset to HEAD + apply canonical diff ─────────────────────
+    # #602 + codex P1 on #605: rsync brings the LLM's working-tree edits, BUT
+    # in the scope-violation case the build emptied diff.patch while leaving
+    # rejected edits in the working tree. If we just trust the rsync, the
+    # test runs against code that will not be in the PR. Fix: reset temp to
+    # HEAD and apply the CANONICAL diff.patch artifact (which build
+    # sanctioned). Restores the Wave 1 #548 contract. Empty diff.patch is
+    # fine — tests just run against HEAD.
     if command -v rsync >/dev/null 2>&1; then
         rsync -a "$repo_root/" "$tmp/" 2>/dev/null || \
             cp -r "$repo_root/." "$tmp/"
     else
         cp -r "$repo_root/." "$tmp/"
     fi
-
-    # The build's working-tree edits arrived via rsync. Mark diff_applied=true
-    # for downstream consumers — the diff lives in the working tree because
-    # the LLM wrote it there directly.
+    git -C "$tmp" checkout HEAD -- . 2>/dev/null || true
+    git -C "$tmp" clean -fd 2>/dev/null || true
+    if [[ -s "$diff_patch_path" ]]; then
+        if ! git -C "$tmp" apply --check "$diff_patch_path" 2>/dev/null; then
+            test_output="diff_apply_failed: canonical diff.patch does not apply"
+            _test_write_result "$output_json" "error" "diff_apply_failed" \
+                0 0 "$test_output" false "$test_cmd"
+            return 0
+        fi
+        git -C "$tmp" apply "$diff_patch_path" 2>/dev/null || true
+    fi
     diff_applied=true
 
     # ── Run test command ───────────────────────────────────────────────────────
