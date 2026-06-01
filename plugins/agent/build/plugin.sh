@@ -209,6 +209,22 @@ _build_stage_run_inner() {
         terminated_reason="error"
     fi
 
+    # #612: rc=130 from the router is a SIGINT propagation, not a build failure.
+    # Skip the post-loop bookkeeping (diff capture, scope validation, summary
+    # write, per-iter commit) and bubble 130 up so the cycle/runner sees it as
+    # a terminal abort rather than continuing into the next stage/iter.
+    # The router has already emitted loop.terminated.signal and cleared its
+    # traps; we just need to short-circuit and propagate.
+    if [[ $router_rc -eq 130 ]]; then
+        warn "_build_stage_run_inner: route_to_model_loop rc=130 (SIGINT) — propagating abort"
+        emit_event "build.aborted" "plugin=build" \
+            "reason=sigint" "iterations=$iterations" >/dev/null 2>&1 || true
+        # Best-effort: clear `git add -N` intent-to-add entries so a downstream
+        # `git diff HEAD` after the abort sees a clean index.
+        git -C "$repo_root" reset -q 2>/dev/null || true
+        return 130
+    fi
+
     # ─── Derive diff.patch from git working tree ─────────────────────────────
     # `git add -N` (intent-to-add) makes untracked files appear in `git diff HEAD`
     # without staging their content. Without it, new files created by the agent

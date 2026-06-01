@@ -721,6 +721,39 @@ ${_diff_pointer}"
         wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
         _ROUTE_LOOP_CHILD_PID=""
 
+        # #612: rc=130 means the child claude was interrupted by SIGINT (either
+        # delivered to the foreground process group by the operator's Ctrl-C, or
+        # by _route_loop_on_signal's `kill`). It is NOT a transient error —
+        # falling through to the generic `continue` below absorbs the signal and
+        # spawns another claude on the next iteration, making the pipeline
+        # impossible to interrupt. Short-circuit here: emit a terminal signal
+        # event, set the reason, clear traps, return 130 so callers (build
+        # plugin, runner) can propagate the abort.
+        if [[ $rc -eq 130 ]]; then
+            warn "route_to_model_loop: claude interrupted (rc=130) iter=$iter — propagating SIGINT"
+            _ROUTE_LOOP_TERMINATED_REASON="signal"
+            eb_emit_event "loop.terminated.signal" \
+                "iterations=$iter" "child_rc=130" \
+                "model_id=$_ROUTE_MODEL_ID" 2>/dev/null || true
+            # Close the per-iteration stage_io banner on the signal path so
+            # we don't orphan it into the EXIT trap.
+            if [[ -n "$_iter_stage_io_seq" ]]; then
+                stage_io_end \
+                    --stage "$_iter_stage_id" \
+                    --kind llm \
+                    --seq "$_iter_stage_io_seq" \
+                    --output "" \
+                    --exit-code 130 \
+                    --metadata "iter=$iter" \
+                    --metadata "signal=true" \
+                    >/dev/null 2>&1 || true
+            fi
+            rm -f "$stderr_file" "$json_file"
+            _route_loop_clear_traps
+            rm -rf "$_loop_tmp" 2>/dev/null || true
+            return 130
+        fi
+
         if [[ $rc -ne 0 ]]; then
             local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
             warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
