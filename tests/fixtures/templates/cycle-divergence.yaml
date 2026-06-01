@@ -3,12 +3,8 @@ name: Cycle whose failure_count grows
 defaults:
   strategy: fanout
 stages:
-  - id: build
-    roles: [builder]
-  - id: test
-    roles: [tester]
-cycles:
   - id: build-test
+    type: cycle
     stages: [build, test]
     until:
       stage: test
@@ -19,3 +15,9 @@ cycles:
     on_max: continue
     divergence:
       window: 2
+
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]

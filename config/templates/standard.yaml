@@ -20,50 +20,19 @@ stages:
     router:
       timeout_s: 300
       max_turns: 25
-  - id: build
-    gate: auto
-    roles: [builder]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-    router:
-      timeout_s: 900
-  - id: test
-    gate: auto
-    roles: [tester]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-  - id: test_assessment
-    gate: auto
-    roles: [test_assessment]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-    router:
-      timeout_s: 300
-      max_turns: 25
-  - id: review
-    gate: auto
-    roles: [reviewer]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-    router:
-      timeout_s: 300
-      max_turns: 25
-
-# ADR-021 + ADR-022 (#568): build/test/test_assessment outer cycle. The cycle
-# converges on the LLM-issued test_assessment verdict (Pattern 1 stage from
-# #567), not on the raw test rc. When the assessment is not `pass`, the cycle
-# re-enters build with the prior assessment markdown injected as a prompt
-# preamble (wired via `feedback.to.input=prior_test_assessment`, consumed by
-# `plugins/agent/build` whose manifest declares the matching `source:
-# cycle_feedback` input — renamed in #571). On termination via max_iterations,
-# plateau, or divergence, the runner CONTINUES to review so the ADR-019
-# fail-closed gate runs as the final arbiter.
-cycles:
+  # ADR-021 + ADR-022 (#568): build/test/test_assessment outer cycle. The cycle
+  # converges on the LLM-issued test_assessment verdict (Pattern 1 stage from
+  # #567), not on the raw test rc. When the assessment is not `pass`, the cycle
+  # re-enters build with the prior assessment markdown injected as a prompt
+  # preamble (wired via `feedback.to.input=prior_test_assessment`, consumed by
+  # `plugins/agent/build` whose manifest declares the matching `source:
+  # cycle_feedback` input — renamed in #571). On termination via max_iterations,
+  # plateau, or divergence, the runner CONTINUES to review so the ADR-019
+  # fail-closed gate runs as the final arbiter.
+  # ADR-021 v2 (#585): cycle lives inline in `stages:` (execution order); per-
+  # stage attrs for cycle members are hoisted into `stage_definitions:`.
   - id: build_test_cycle
+    type: cycle
     stages: [build, test, test_assessment]
     until:
       stage: test_assessment
@@ -75,3 +44,37 @@ cycles:
     feedback:
       - from: { stage: test_assessment, output: test_assessment_md }
         to: { stage: build, input: prior_test_assessment, required: false }
+  - id: review
+    gate: auto
+    roles: [reviewer]
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
+    router:
+      timeout_s: 300
+      max_turns: 25
+
+stage_definitions:
+  build:
+    gate: auto
+    roles: [builder]
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
+    router:
+      timeout_s: 900
+  test:
+    gate: auto
+    roles: [tester]
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
+  test_assessment:
+    gate: auto
+    roles: [test_assessment]
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
+    router:
+      timeout_s: 300
+      max_turns: 25
