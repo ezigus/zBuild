@@ -149,9 +149,20 @@ fi
 FAKE_TMP="$TEST_TEMP_DIR/faketmp"
 mkdir -p "$FAKE_TMP"
 mkdir -p "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/pipeline-runner.XYZ" "$FAKE_TMP/unrelated-dir"
-# Age all by 2 hours
-if touch -d "@$(( $(date +%s) - 7200 ))" "$FAKE_TMP/zb-applycheck-fwd-12345" 2>/dev/null; then :; else
-    ts="$(date -r $(( $(date +%s) - 7200 )) "+%Y%m%d%H%M.%S")"
+# Age ALL fixture dirs by 2 hours (Codex P1 on #599: original applied
+# `touch -d` only to one dir in the GNU branch, leaving the other two with
+# current mtimes → scanner correctly skipped them under age_hours=1 → false
+# negative on Linux CI).
+_age_target=$(( $(date +%s) - 7200 ))
+if touch -d "@${_age_target}" "$FAKE_TMP/zb-applycheck-fwd-12345" 2>/dev/null; then
+    # GNU touch (Linux): apply to all fixture dirs.
+    touch -d "@${_age_target}" \
+        "$FAKE_TMP/zbuild-test-stage.ABCDE" \
+        "$FAKE_TMP/pipeline-runner.XYZ" \
+        "$FAKE_TMP/unrelated-dir"
+else
+    # BSD touch (macOS): -t YYYYMMDDhhmm.SS
+    ts="$(date -r ${_age_target} "+%Y%m%d%H%M.%S")"
     touch -t "$ts" "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/pipeline-runner.XYZ" "$FAKE_TMP/unrelated-dir"
 fi
 TMPDIR="$FAKE_TMP" plan_tmp="$(TMPDIR="$FAKE_TMP" _cleanup_scan_zbuild_tmpdirs 1 || true)"
