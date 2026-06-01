@@ -197,13 +197,52 @@ main_backfill() {
             --limit) pr_limit="$2"; shift 2 ;;
             -h|--help)
                 cat <<USAGE
-Usage: deferred-backfill.sh [--report | --file <indices>] [--include-presented]
-                            [--presented-log <path>] [--limit <N>]
+deferred-backfill — one-shot historical scan for deferred-work mentions.
+
+What it does:
+  Walks all merged PRs (default last 1000) and matches the ADR-020 signal-phrase
+  list ("separate issue", "follow-up", "deferred to", "out of scope",
+  "TODO(followup)", etc.). Prints a numbered list of candidates with sanitized
+  excerpts and possible-dup hints; operator selects indices to bulk-file as
+  deferred-backfill-labelled issues.
+
+When to use it:
+  Manual one-shot: backfill triage after enabling the tracker, or to sweep a
+  long history window the recurring tracker won't revisit. Not scheduled in CI
+  (see .github/workflows/deferred-tracker.yml for the recurring scanner).
+
+Invocation styles:
+  Invoke directly:    bash scripts/deferred-backfill.sh [flags]
+  Invoke via zbuild:  zbuild deferred backfill [flags]
 
 Modes:
-  --report (default)  scan history and print numbered candidates to stdout
-  --file <indices>    after --report, bulk-create issues for selected indices
-                      (e.g. "1,3-5"); requires y/N confirmation, capped at $BULK_FILE_CAP
+  --report (default)   Scan history; print numbered candidates to stdout.
+  --file <indices>     After scan, bulk-create issues for selected indices
+                       (e.g. "1,3-5,7"); y/N confirmation required; capped at
+                       ${BULK_FILE_CAP} per invocation.
+
+Flags:
+  --include-presented      Re-show candidates already in the presented log
+                           (default: skip them).
+  --presented-log <path>   Override presented-candidates log location.
+  --limit <N>              Cap the merged-PR fetch (default 1000).
+  -h, --help               Show this help.
+
+LLM tiebreaker (fail-open):
+  Possible-dup hints with Jaccard scores 0.20-0.40 are routed through the LLM
+  verifier. On network/credential failure the annotation reads
+  "(sim 0.30 — LLM verification unavailable: ...)" — Jaccard-only hint, not an
+  LLM-confirmed match. Workflow continues; nothing silently fails.
+
+Examples:
+  bash scripts/deferred-backfill.sh --report --limit 500
+  zbuild deferred backfill --file 1,3-5
+
+See also:
+  docs/adr/ADR-020-deferred-tracker.md
+  scripts/deferred-tracker.sh   (recurring incremental scanner)
+  scripts/manifest-sync.sh      (sibling drift scanner)
+  Issues: #541 (this script), #555 (dup-hint v2), #561/#578 (sub-3 + Codex top-3 fix)
 USAGE
                 return 0 ;;
             *) error "unknown arg: $1"; return 2 ;;
