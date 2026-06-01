@@ -39,6 +39,7 @@
     "stage.io.captured",
     "stage.io.error",
     "stage.io.render.fallback",
+    "stage_io.fd_fallback",
     "recovery.suggestion",
     "recovery.action",
     "recovery.exhausted",

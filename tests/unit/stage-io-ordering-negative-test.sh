@@ -67,12 +67,16 @@ else
         "stderr: $fd1_err"
 fi
 
-# ── (3) FD validation: closed fd 17 → source rc=2 ────────────────────────────
+# ── (3) FD validation: closed fd 17 → relaxed fallback (#586) ───────────────
+# #586 relaxed the hard `return 2` to a warn-once + fall back to fd 2 + emit
+# `stage_io.fd_fallback` event. Source still succeeds (rc=0); effective fd is 2.
 set +e
-ZBUILD_STAGE_IO_FD=17 bash -c "source \"$REPO_ROOT/core/output/stage-io.sh\"" >/dev/null 2>&1
+fb_out="$(ZBUILD_STAGE_IO_FD=17 ZBUILD_TEST_MODE=1 bash -c "source \"$REPO_ROOT/core/output/stage-io.sh\" && echo fd=\$ZBUILD_STAGE_IO_FD" 2>&1)"
 rc_fd9=$?
 set -e
-assert_eq "(3) ZBUILD_STAGE_IO_FD=17 (closed fd) refused" "2" "$rc_fd9"
+assert_eq "(3) ZBUILD_STAGE_IO_FD=17 (closed fd) falls back (#586)" "0" "$rc_fd9"
+assert_contains "(3b) closed-fd fallback sets effective fd=2 (#586)" "$fb_out" "fd=2"
+assert_contains_regex "(3c) closed-fd fallback warns to stderr (#586)" "$fb_out" "fallback|fall.*back|fd 2"
 
 # ── (4) FD validation: open fd 17 is accepted ────────────────────────────────
 set +e
