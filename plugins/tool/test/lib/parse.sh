@@ -29,11 +29,12 @@ _ZBUILD_TEST_PARSE_LOADED=1
 #   integration: N/M passed
 #   e2e: N/M passed
 #   golden: N/M passed
+#   mutation: N/M passed
 # Plus per-tier file-fail markers: `unit: FAIL <path>`.
-# Anchor: at least one `^(unit|integration|e2e|golden): N/M passed` line.
+# Anchor: at least one `^(unit|integration|e2e|golden|mutation): N/M passed` line.
 _test_pattern_runall() {
     local raw="$1" rc="$2"
-    printf '%s' "$raw" | grep -qE '^(unit|integration|e2e|golden): [0-9]+/[0-9]+ passed' || return 1
+    printf '%s' "$raw" | grep -qE '^(unit|integration|e2e|golden|mutation): [0-9]+/[0-9]+ passed' || return 1
 
     local total_passed=0 total_count=0 fail_files=0 parts=""
     local line suite n m
@@ -46,9 +47,9 @@ _test_pattern_runall() {
         total_passed=$((total_passed + n))
         total_count=$((total_count + m))
         parts="${parts}${suite} ${n}/${m} · "
-    done < <(printf '%s\n' "$raw" | grep -E '^(unit|integration|e2e|golden): [0-9]+/[0-9]+ passed')
+    done < <(printf '%s\n' "$raw" | grep -E '^(unit|integration|e2e|golden|mutation): [0-9]+/[0-9]+ passed')
 
-    fail_files="$(printf '%s\n' "$raw" | grep -cE '^(unit|integration|e2e|golden): FAIL ')"
+    fail_files="$(printf '%s\n' "$raw" | grep -cE '^(unit|integration|e2e|golden|mutation): FAIL ')"
     [[ "$fail_files" =~ ^[0-9]+$ ]] || fail_files=0
 
     local failed=$((total_count - total_passed))

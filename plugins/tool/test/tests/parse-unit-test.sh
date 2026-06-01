@@ -258,4 +258,26 @@ IFS='|' read -r v p f s r <<< "$OUT"
 assert_eq "failsafe prose: recognized=0 (anchors held)" "0" "$r"
 assert_eq "failsafe prose: passed=null"                 "null" "$p"
 
+print_test_section "13. _test_pattern_runall — includes mutation tier (#593 codex P2)"
+
+# Codex P2 caught that `mutation: N/M passed` from run-mutation.sh was being
+# silently dropped. The cycle's failure-count tracking then sees .failed=0
+# when only mutation fails. Now must be aggregated like the other tiers.
+MUTATION_FIXTURE="$(cat <<'EOF'
+unit: 126/126 passed
+integration: 80/80 passed
+e2e: 7/7 passed
+golden: 1/1 passed
+mutation: FAIL /repo/tests/mutation/some-mutation.sh
+mutation: 18/20 passed
+EOF
+)"
+
+OUT="$(_split "$MUTATION_FIXTURE" 1)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "runall+mutation: recognized=1" "1" "$r"
+assert_eq "runall+mutation: passed=232 (126+80+7+1+18)" "232" "$p"
+assert_eq "runall+mutation: failed=1 (mutation FAIL file)" "1" "$f"
+assert_contains "runall+mutation: summary mentions mutation 18/20" "$s" "mutation 18/20"
+
 print_test_results
