@@ -165,7 +165,7 @@ runner_pid=$!
 # Wait for pipeline.start to be IN events.jsonl (not just for the file to
 # exist). File existence races: memory.backend.init writes to the file
 # BEFORE the abort EXIT trap is installed, so kill during that window
-# misses the trap entirely. A2 (line 367-373) and I6 use this pattern. #619.
+# misses the trap entirely. Sibling tests A2 and I6 use this same pattern. #619.
 t10_ready=0
 for _ in $(seq 1 100); do
     if [[ -f "$EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$EVENTS_JSONL" 2>/dev/null; then
