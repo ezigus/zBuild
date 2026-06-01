@@ -122,7 +122,7 @@ GOOD_PATCH="$ARTIFACT_DIR/good.patch"
 printf '' > "$GOOD_PATCH"
 
 set +e
-_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_3" "echo '3 passed'"
+_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_3" $'printf \'Tests:       0 failed, 3 passed, 3 total\\n\''
 rc3=$?
 set -e
 
@@ -146,7 +146,7 @@ OUT_JSON_4="$ARTIFACT_DIR/test-results-4.json"
 
 # Reuse the same mock git + good patch from test 3
 set +e
-_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_4" "exit 1"
+_test_run_inner "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_4" $'printf \'Tests:       1 failed, 2 passed, 3 total\\n\'; exit 1'
 rc4=$?
 set -e
 
@@ -183,8 +183,10 @@ passed4b="$(_json_key "$OUT_JSON_4B" '.passed')"
 failed4b="$(_json_key "$OUT_JSON_4B" '.failed')"
 assert_eq "#485 no-op: verdict=error (not pass)" "error" "$verdict4b"
 assert_eq "#485 no-op: exit_code=0 still recorded" "0" "$exit_code4b"
-assert_eq "#485 no-op: passed=0" "0" "$passed4b"
-assert_eq "#485 no-op: failed=0" "0" "$failed4b"
+# #584: fail-safe now records null counts (no fabricated numbers) when the
+# parser does not recognize the output. The fail-closed verdict=error remains.
+assert_eq "#485/#584 no-op: passed=null (honest)" "null" "$passed4b"
+assert_eq "#485/#584 no-op: failed=null (honest)" "null" "$failed4b"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tests 6-11: #497 stage-io banner — input/output pair around the eval.
@@ -232,7 +234,7 @@ print_test_section "6. #497 input banner emitted; kind=command; contains test_cm
 
 OUT_JSON_6="$ARTIFACT_DIR/test-results-6.json"
 BANNER_6="$TEST_TEMP_DIR/banner-6.txt"
-_install_mock_test_cmd "47 passed, 0 failed" 0
+_install_mock_test_cmd "Tests:       0 failed, 47 passed, 47 total" 0
 set +e
 _run_with_banner "$BANNER_6" "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_6" \
     "$TEST_TEMP_DIR/bin/mock_test.sh"
@@ -249,7 +251,7 @@ assert_contains "input banner shows test_cmd path" "$banner6" "mock_test.sh"
 # ─── Test 7: pass verdict → output summary "N passed, M failed" ───────────────
 print_test_section "7. #497 pass verdict → output summary 'N passed, M failed'"
 
-assert_contains "output summary: '47 passed, 0 failed'" "$banner6" "47 passed, 0 failed"
+assert_contains "output summary: jest '47 passed, 0 failed'" "$banner6" "47 passed, 0 failed"
 assert_contains "output banner present (seq=1 output)" "$banner6" "seq=1 output"
 assert_contains "end stage-io trailer present" "$banner6" "end stage-io: test"
 
@@ -258,13 +260,13 @@ print_test_section "8. #497 fail verdict → summary has '(exit N)' suffix"
 
 OUT_JSON_8="$ARTIFACT_DIR/test-results-8.json"
 BANNER_8="$TEST_TEMP_DIR/banner-8.txt"
-_install_mock_test_cmd "44 passed, 3 failed" 1
+_install_mock_test_cmd "Tests:       3 failed, 44 passed, 47 total" 1
 set +e
 _run_with_banner "$BANNER_8" "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_8" \
     "$TEST_TEMP_DIR/bin/mock_test.sh"
 set -e
 banner8="$(cat "$BANNER_8")"
-assert_contains "fail summary: '44 passed, 3 failed (exit 1)'" "$banner8" "44 passed, 3 failed (exit 1)"
+assert_contains "fail summary: jest '44 passed, 3 failed (exit 1)'" "$banner8" "44 passed, 3 failed (exit 1)"
 
 # ─── Test 9: error (apply-fail) → 'git apply --check failed:' summary ────────
 # Use a separate mock git that FAILS apply-check to drive the error path.
@@ -368,8 +370,11 @@ set +e
 _run_with_banner "$BANNER_9A" "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_9A" "true"
 set -e
 banner9a="$(cat "$BANNER_9A")"
-assert_contains "no-op summary: 'no-op: 0 tests detected'" \
-    "$banner9a" "no-op: 0 tests detected"
+# #584: empty-output (no-op) now falls through fail-safe; the fail-closed
+# verdict is preserved but the banner reports the honest "summary unavailable"
+# token instead of fabricating a parsed-count summary.
+assert_contains "no-op summary: 'summary unavailable'" \
+    "$banner9a" "summary unavailable"
 
 # ─── Test 9b: error (other) → 'error:' + exit_code metadata ───────────────────
 # A command that exits non-zero AND produces no "X passed/failed" line and is
@@ -396,7 +401,7 @@ print_test_section "10. #497 input banner timestamp < output banner timestamp"
 OUT_JSON_10="$ARTIFACT_DIR/test-results-10.json"
 BANNER_10="$TEST_TEMP_DIR/banner-10.txt"
 # Slow mock: sleeps 1.5s between input and output banner emit points.
-_install_mock_test_cmd "1 passed" 0 1.5
+_install_mock_test_cmd "Tests:       0 failed, 1 passed, 1 total" 0 1.5
 T_START="$(date +%s)"
 set +e
 _run_with_banner "$BANNER_10" "$GOOD_PATCH" "$TEST_TEMP_DIR/repo" "$OUT_JSON_10" \
@@ -427,7 +432,7 @@ print_test_section "11. #497 subprocess-boundary integration on fd 3"
 
 OUT_JSON_11="$ARTIFACT_DIR/test-results-11.json"
 BANNER_11="$TEST_TEMP_DIR/banner-11.txt"
-_install_mock_test_cmd "9 passed, 0 failed" 0
+_install_mock_test_cmd "Tests:       0 failed, 9 passed, 9 total" 0
 DRIVER_11="$TEST_TEMP_DIR/driver-11.sh"
 cat > "$DRIVER_11" <<EOF
 set -uo pipefail
@@ -466,7 +471,7 @@ assert_exit_code "driver subprocess exits 0" "0" "$rc11"
 banner11="$(cat "$BANNER_11")"
 assert_contains "[subprocess] input banner on fd 3" "$banner11" "seq=1 input"
 assert_contains "[subprocess] output banner on fd 3" "$banner11" "seq=1 output"
-assert_contains "[subprocess] summary in output banner" "$banner11" "9 passed, 0 failed"
+assert_contains "[subprocess] summary in output banner (jest)" "$banner11" "9 passed, 0 failed"
 assert_file_exists "[subprocess] test-results.json still written" "$OUT_JSON_11"
 verdict11="$(_json_key "$OUT_JSON_11" '.verdict')"
 assert_eq "[subprocess] verdict=pass preserved" "pass" "$verdict11"
@@ -522,7 +527,7 @@ export PATH="$_filtered_path"
 hash -r
 
 set +e
-_test_run_inner "$PATCH_12" "$REPO_12" "$OUT_JSON_12" "echo '1 passed'"
+_test_run_inner "$PATCH_12" "$REPO_12" "$OUT_JSON_12" $'printf \'Tests:       0 failed, 1 passed, 1 total\\n\''
 rc12=$?
 set -e
 

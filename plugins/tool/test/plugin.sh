@@ -25,6 +25,9 @@ source "$_ZBUILD_TEST_STAGE_ROOT/core/event-bus/event-bus.sh"
 # #497: stage_io_begin/_end wrap the eval below to satisfy ADR-015 §v4
 # input-before-action / output-after-action ordering contract.
 source "$_ZBUILD_TEST_STAGE_ROOT/core/output/stage-io.sh"
+# shellcheck source=./lib/parse.sh
+# #584: pattern bank for known test runners + honest fail-safe.
+source "$_ZBUILD_TEST_STAGE_DIR/lib/parse.sh"
 
 # ─── test_init ────────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
@@ -139,7 +142,7 @@ _test_run_inner() {
         _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
             "git apply --check failed: $(printf '%s' "$apply_check_out" | head -n1)"
         _test_write_result "$output_json" \
-            "error" 2 0 0 "$test_output" "false" "$test_cmd"
+            "error" 2 0 0 "$test_output" "false" "$test_cmd" "diff_apply_failed"
         rm -rf "$tmp"
         emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
         return 0
@@ -153,7 +156,7 @@ _test_run_inner() {
         _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
             "git apply failed after --check passed"
         _test_write_result "$output_json" \
-            "error" 2 0 0 "$test_output" "false" "$test_cmd"
+            "error" 2 0 0 "$test_output" "false" "$test_cmd" "diff_apply_failed"
         rm -rf "$tmp"
         emit_event "plugin.run.error" "plugin=test" "reason=diff_apply_failed_after_check"
         return 0
@@ -170,63 +173,40 @@ _test_run_inner() {
 
     exit_code="$test_rc"
 
-    if [[ "$test_rc" -eq 0 ]]; then
-        verdict="pass"
-    else
-        verdict="fail"
-    fi
+    # ── #584: pattern-bank parse → verdict + counts + summary ────────────────
+    # `passed`/`failed` may be the literal string "null" when no pattern
+    # recognized the output (fail-safe). The JSON writer translates this to
+    # JSON null via --argjson, but downstream callers that expect integers
+    # (e.g. _test_emit_failures_summary) must guard with the
+    # `recognized` flag before doing arithmetic.
+    local passed=0 failed=0 _test_summary="" verdict_p="" recognized=0 reason=""
+    local _parsed
+    _parsed="$(_test_parse_summary "$raw_output" "$test_rc")"
+    IFS='|' read -r verdict_p passed failed _test_summary recognized <<< "$_parsed"
 
-    # ── Parse pass/fail counts if possible ────────────────────────────────────
-    local passed=0
-    local failed=0
-    # Try to parse npm/jest style: "X passed, Y failed"
-    if printf '%s' "$raw_output" | grep -qE '[0-9]+ passed'; then
-        passed="$(printf '%s' "$raw_output" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1 || echo 0)"
-    fi
-    if printf '%s' "$raw_output" | grep -qE '[0-9]+ failed'; then
-        failed="$(printf '%s' "$raw_output" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1 || echo 0)"
-    fi
-
-    # ── #485 silent-failure guard: a no-op run that exits 0 with zero
-    # parsed pass/fail counts is NOT a passing test suite — it is a
-    # misconfigured test command (e.g. `true`, `:`, an empty script).
-    # Emit verdict=error so the review stage fails closed instead of
-    # silently approving a build that was never tested.
-    if [[ "$verdict" == "pass" && "$passed" -eq 0 && "$failed" -eq 0 ]]; then
-        verdict="error"
-        if [[ -z "$test_output" ]]; then
-            test_output="no-op test run: test_cmd exited 0 but produced no pass/fail counts (passed=0, failed=0)"
-        fi
-    fi
-
-    # ── #497: build derived one-line summary for the output banner ──────────
-    # Rules (pinned 2-agent consensus, see issue #497):
-    #   pass   → "N passed, M failed"
-    #   fail   → "N passed, M failed (exit N)"
-    #   error (no-op #485 guard) → "no-op: 0 tests detected"
-    #   error (other failure with non-empty output) → "error: <first line>" +
-    #     exit_code metadata. Duration is rendered by the banner heading via
-    #     --duration-ms; we don't include it in the summary string.
-    local _test_summary=""
-    case "$verdict" in
-        pass) _test_summary="${passed} passed, ${failed} failed" ;;
-        fail) _test_summary="${passed} passed, ${failed} failed (exit ${exit_code})" ;;
-        error)
-            # #485 no-op guard sets test_output to a known prefix when the
-            # silent-failure path triggers. Map to a short summary token.
-            if [[ "$test_output" == "no-op test run:"* ]]; then
-                _test_summary="no-op: 0 tests detected"
-            else
-                local _err_first
-                _err_first="$(printf '%s' "$test_output" | head -n1)"
-                if [[ -z "$_err_first" ]]; then
-                    _test_summary="error: (no output) exit_code=${exit_code}"
-                else
-                    _test_summary="error: ${_err_first}"
-                fi
+    if [[ "$recognized" == "1" ]]; then
+        verdict="$verdict_p"
+        # ── #485 silent-failure guard ────────────────────────────────────────
+        # A no-op run that was recognized as 0-passed / 0-failed and exited 0
+        # is still a misconfigured test command. Keep the original fail-closed
+        # semantics so the review stage rejects builds that were never tested.
+        if [[ "$verdict" == "pass" && "$passed" -eq 0 && "$failed" -eq 0 ]]; then
+            verdict="error"
+            reason="silent_failure"
+            if [[ -z "$test_output" ]]; then
+                test_output="no-op test run: test_cmd exited 0 but produced no pass/fail counts (passed=0, failed=0)"
             fi
-            ;;
-    esac
+            _test_summary="no-op: 0 tests detected"
+        fi
+    else
+        # Fail-safe: parser did not recognize this runner. Do NOT trust the
+        # `pass` verdict implied by rc=0; mark verdict=error with a distinct
+        # reason so consumers can distinguish from #485 silent failures and
+        # from `diff_apply_failed` above.
+        verdict="error"
+        reason="summary_unavailable"
+    fi
+
     _test_emit_io_end "$_test_seq" "$_test_t0_us" "$verdict" "$exit_code" \
         "$passed" "$failed" "$_test_summary"
 
@@ -237,11 +217,14 @@ _test_run_inner() {
     # failures present; never empty-but-present (mitigates silent-failure #1).
     local _tfs_path
     _tfs_path="$(dirname "$output_json")/test-failures-summary.md"
-    _test_emit_failures_summary "$_tfs_path" "$verdict" "$failed" "$exit_code" "$raw_output"
+    # failures-summary expects a numeric `failed_count`; translate null→0 here.
+    local _failed_for_summary="$failed"
+    [[ "$_failed_for_summary" == "null" ]] && _failed_for_summary=0
+    _test_emit_failures_summary "$_tfs_path" "$verdict" "$_failed_for_summary" "$exit_code" "$raw_output"
 
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
-        "$test_output" "$diff_applied" "$test_cmd"
+        "$test_output" "$diff_applied" "$test_cmd" "$reason"
 
     rm -rf "$tmp"
     emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}"
@@ -350,7 +333,12 @@ _test_emit_failures_summary() {
 # ─── _test_write_result ───────────────────────────────────────────────────────
 # Writes test-results.json atomically via a temp file.
 # Usage: _test_write_result <path> <verdict> <exit_code> <passed> <failed>
-#                            <test_output> <diff_applied> <test_cmd>
+#                            <test_output> <diff_applied> <test_cmd> [reason]
+# #584: passed/failed may be the literal token "null" to record that the
+# parser did not recognize this runner's output (honest fail-safe — never
+# fabricate counts). The `reason` field is optional and emitted only when
+# non-empty; values include `summary_unavailable` (#584 fail-safe),
+# `silent_failure` (#485 no-op guard), `diff_apply_failed` (callers above).
 _test_write_result() {
     local path="$1"
     local verdict="$2"
@@ -360,21 +348,27 @@ _test_write_result() {
     local test_output="$6"
     local diff_applied="$7"
     local test_cmd="$8"
+    local reason="${9:-}"
 
     local dir
     dir="$(dirname "$path")"
     mkdir -p "$dir"
+
+    # #584: pass through "null" literal so --argjson treats it as JSON null;
+    # numeric values pass through unchanged.
+    local passed_json="$passed" failed_json="$failed"
 
     # #507: write via atomic_write (helpers.sh) so the manifest-declared
     # primary output `test-results.json` passes the atomicity guard test.
     jq -n \
         --arg verdict "$verdict" \
         --argjson exit_code "$exit_code" \
-        --argjson passed "$passed" \
-        --argjson failed "$failed" \
+        --argjson passed "$passed_json" \
+        --argjson failed "$failed_json" \
         --arg test_output "$test_output" \
         --argjson diff_applied "$diff_applied" \
         --arg test_cmd "$test_cmd" \
+        --arg reason "$reason" \
         '{
             schema_version: 1,
             verdict: $verdict,
@@ -384,7 +378,8 @@ _test_write_result() {
             test_output: $test_output,
             diff_applied: $diff_applied,
             test_cmd: $test_cmd
-        }' | atomic_write "$path"
+        } + (if $reason != "" then {reason: $reason} else {} end)' \
+      | atomic_write "$path"
 }
 
 # ─── test_finalize ────────────────────────────────────────────────────────────

@@ -124,12 +124,12 @@ EOF
 mkdir -p "$TEST_TEMP_DIR/bin"
 cat > "$TEST_TEMP_DIR/bin/mock-pass.sh" <<'MOCK'
 #!/usr/bin/env bash
-echo "47 passed, 0 failed"
+echo "Tests:       0 failed, 47 passed, 47 total"
 exit 0
 MOCK
 cat > "$TEST_TEMP_DIR/bin/mock-fail.sh" <<'MOCK'
 #!/usr/bin/env bash
-echo "44 passed, 3 failed"
+echo "Tests:       3 failed, 44 passed, 47 total"
 exit 1
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/mock-pass.sh" "$TEST_TEMP_DIR/bin/mock-fail.sh"
