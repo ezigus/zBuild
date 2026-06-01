@@ -109,10 +109,10 @@ assert_golden_contains "build-summary-artifact" '"notes"'
 
 g2_content="$(cat "$GOLDEN_DIR/build-summary-artifact.golden" 2>/dev/null || echo '{}')"
 g2_schema="$(printf '%s' "$g2_content" | jq -r '.schema_version' 2>/dev/null || echo '')"
-if [[ "$g2_schema" == "3" ]]; then
-    assert_pass "G2: build-summary-artifact schema_version == 3 (#507 adds .verdict)"
+if [[ "$g2_schema" == "4" ]]; then
+    assert_pass "G2: build-summary-artifact schema_version == 4 (#602 drops .apply_check)"
 else
-    assert_fail "G2: build-summary-artifact schema_version == 3" "got: $g2_schema"
+    assert_fail "G2: build-summary-artifact schema_version == 4" "got: $g2_schema"
 fi
 
 g2_notes="$(printf '%s' "$g2_content" | jq -r '.notes' 2>/dev/null || echo '')"

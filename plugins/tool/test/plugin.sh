@@ -109,57 +109,30 @@ _test_run_inner() {
         _test_seq="$_STAGE_IO_LAST_SEQ"
     fi
 
-    # ── Copy repo into temp dir ────────────────────────────────────────────────
-    # Include .git so that `git apply` has a valid repository context.
-    # Use rsync when available for speed; fall back to cp.
+    # ── Copy repo + reset to HEAD + apply canonical diff ─────────────────────
+    # #602 + codex P1 on #605: rsync brings the LLM's working-tree edits, BUT
+    # in the scope-violation case the build emptied diff.patch while leaving
+    # rejected edits in the working tree. If we just trust the rsync, the
+    # test runs against code that will not be in the PR. Fix: reset temp to
+    # HEAD and apply the CANONICAL diff.patch artifact (which build
+    # sanctioned). Restores the Wave 1 #548 contract. Empty diff.patch is
+    # fine — tests just run against HEAD.
     if command -v rsync >/dev/null 2>&1; then
         rsync -a "$repo_root/" "$tmp/" 2>/dev/null || \
             cp -r "$repo_root/." "$tmp/"
     else
         cp -r "$repo_root/." "$tmp/"
     fi
-
-    # Reset temp copy to HEAD so diff.patch applies against a clean baseline.
-    # Without this, rsync copies uncommitted working-tree changes, causing
-    # `git apply --check` to fail with "patch does not apply" because the
-    # patch was captured after those changes were already in place (#548).
     git -C "$tmp" checkout HEAD -- . 2>/dev/null || true
     git -C "$tmp" clean -fd 2>/dev/null || true
-
-    # ── Apply diff ────────────────────────────────────────────────────────────
-    # Dry-run first with --allow-empty so a no-op (empty) diff is accepted.
-    local apply_check_out
-    if ! apply_check_out="$(git -C "$tmp" apply --check --allow-empty "$diff_patch_path" 2>&1)"; then
-        # Could not apply — write error artifact and return.
-        # #550: write minimal test-results.json via printf BEFORE the atomic
-        # _test_write_result call so the verdict=error is guaranteed to land
-        # even if jq/atomic_write fails (e.g. jq absent, disk full).  The
-        # plain printf write satisfies the stage.verdict resolver; the
-        # _test_write_result call below may overwrite it with a richer object.
-        printf '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}\n' \
-            > "$output_json"
-        test_output="git apply --check failed: ${apply_check_out}"
-        _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
-            "git apply --check failed: $(printf '%s' "$apply_check_out" | head -n1)"
-        _test_write_result "$output_json" \
-            "error" 2 0 0 "$test_output" "false" "$test_cmd" "diff_apply_failed"
-        rm -rf "$tmp"
-        emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
-        return 0
-    fi
-
-    if ! git -C "$tmp" apply --allow-empty "$diff_patch_path" 2>/dev/null; then
-        # #550: same guarantee for the apply-after-check path.
-        printf '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}\n' \
-            > "$output_json"
-        test_output="git apply failed after --check passed"
-        _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 0 0 \
-            "git apply failed after --check passed"
-        _test_write_result "$output_json" \
-            "error" 2 0 0 "$test_output" "false" "$test_cmd" "diff_apply_failed"
-        rm -rf "$tmp"
-        emit_event "plugin.run.error" "plugin=test" "reason=diff_apply_failed_after_check"
-        return 0
+    if [[ -s "$diff_patch_path" ]]; then
+        if ! git -C "$tmp" apply --check "$diff_patch_path" 2>/dev/null; then
+            test_output="diff_apply_failed: canonical diff.patch does not apply"
+            _test_write_result "$output_json" "error" "diff_apply_failed" \
+                0 0 "$test_output" false "$test_cmd"
+            return 0
+        fi
+        git -C "$tmp" apply "$diff_patch_path" 2>/dev/null || true
     fi
     diff_applied=true
 

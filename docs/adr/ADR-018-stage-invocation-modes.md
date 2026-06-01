@@ -211,7 +211,39 @@ post-fix). NUL-byte scan flags `build.diff.binary_truncation_observed`
 when binary diffs would otherwise truncate silently through bash
 variables. After the diff is written and scope-validated, the `git add
 -N` intent-to-add index entries are cleared via `git reset` so the
-downstream test stage's `git apply` sees a clean index.
+downstream test stage's rsync sees a clean index.
+
+**Amendment (#602) — Strip the stash dance; LLM edits ARE the diff.** The
+`_build_apply_check` gate from #509/#530 ran `git stash push -u` →
+`git apply --check` → `git stash pop` to validate the captured patch
+against a clean tree. `git stash pop` is documented as best-effort; in
+practice it silently failed on any conflict between the stashed working
+tree and the patch-touched files, leaving the LLM's edits hidden in the
+stash. Dogfood `20260601074651-63429` cycled to exhaustion with
+`numstat=0/0/0` every iter because every build run quietly stashed its
+own work. Legacy shipwright (`legacy/scripts/lib/pipeline-stages-build.sh`)
+never did this dance — its `sw loop` runs in-place and the next iter's
+`git diff` reads the working tree directly.
+
+Post-#602 contract for Pattern 2:
+
+> The LLM edits the working tree directly via Edit/Write tools. The
+> pipeline captures `git diff HEAD` after the loop terminates; no
+> intermediate stash or apply-check dance. The captured diff IS the
+> canonical `diff.patch` artifact for downstream stages. Diff
+> applicability is validated by the LLM's actions, not by post-hoc
+> machinery. The downstream test stage rsyncs the working tree
+> (incl. the LLM's edits) into a temp dir and runs tests directly —
+> no `git apply` step.
+
+Removed in #602: `_build_apply_check` (~324 LOC), the bidirectional
+forward+reverse machinery, the `apply_check` field on `build-summary.json`
+(schema_version 3 → 4), the test plugin's `git checkout HEAD -- .` /
+`git clean -fd` reset, the test plugin's `git apply --check` / `git apply`
+steps, and four event names (`build.apply_check.{failed,skipped,unavailable,
+precondition_failed}`). Kept: scope-violation detection,
+`build.diff.empty_after_done_sentinel` discrepancy event, and the
+`git diff HEAD` capture itself (the canonical diff artifact).
 
 ---
 
