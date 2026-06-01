@@ -62,7 +62,22 @@ for d in scripts core plugins config; do
     fi
     rsync -a --delete "$SCRIPT_DIR/$d/" "$ZBUILD_HOME/$d/"
 done
-success "copied scripts/ core/ plugins/ config/"
+
+# Codex P2 on #597: tracker subcommands (manifest-sync, deferred-tracker,
+# deferred-backfill, generate-issues) default to reading
+# $REPO_ROOT/.github/issues/keepers-manifest.yaml. With $REPO_ROOT now
+# pinned to $ZBUILD_HOME (not the source clone), those defaults break
+# unless we also copy .github/issues/. Operators can still override via
+# --manifest <path> to target a different repo's manifest. Follow-up:
+# tracker scripts should resolve "project root" from $PWD (not $REPO_ROOT)
+# so they work against arbitrary repos without bundling this snapshot.
+if [[ -d "$SCRIPT_DIR/.github/issues" ]]; then
+    mkdir -p "$ZBUILD_HOME/.github"
+    rsync -a --delete "$SCRIPT_DIR/.github/issues/" "$ZBUILD_HOME/.github/issues/"
+    success "copied scripts/ core/ plugins/ config/ .github/issues/"
+else
+    success "copied scripts/ core/ plugins/ config/ (no .github/issues to copy)"
+fi
 
 # ─── Capture version metadata ───────────────────────────────────────────────
 # Best-effort: if the source is not a git checkout, record "unknown".
