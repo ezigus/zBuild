@@ -16,7 +16,7 @@ print_test_header "core/pipeline/runner — orchestrator behaviors (ADR-001, ADR
 setup_test_env "pipeline-runner"
 
 # Use shared factory from test-helpers.sh (Wave 4)
-_make_plugin() { mock_plugin_factory "$@"; }
+_make_plugin() { mock_plugin_factory "$@" >/dev/null; }   # #619: suppress factory's path echo
 
 # Shared env: point all subsystems at the test temp dir.
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -69,7 +69,7 @@ assert_file_not_exists "dry-run leaves state file untouched" "$STATE_DIR/pipelin
 
 # ─── Test 5: happy path → exits 0, emits pipeline.start + pipeline.end ──────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "happy path exits 0" "0" "$rc"
 assert_file_exists "events.jsonl created" "$EVENTS_JSONL"
 
@@ -109,7 +109,7 @@ assert_eq "review stage_status=complete (ADR-006 enum)" "complete" "$review_stat
 _make_plugin "build" "agent" 1
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "mid-stage failure exits 1" "1" "$rc"
 assert_file_exists "events.jsonl present on failure" "$EVENTS_JSONL"
 
@@ -129,7 +129,7 @@ assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 rm -rf "$PLUGINS_ROOT/agent/intake"
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "missing required plugin exits 1" "1" "$rc"
 
 if [[ -f "$EVENTS_JSONL" ]]; then
@@ -160,11 +160,21 @@ cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<'EOF'
 intake_run() { sleep 10; return 0; }
 EOF
 
-bash "$RUNNER" --issue 83 2>/dev/null &
+bash "$RUNNER" --issue 83 >/dev/null 2>&1 &
 runner_pid=$!
-# Poll until runner creates events.jsonl (EXIT trap set up before first event), timeout 10s.
-_deadline=$(( SECONDS + 10 ))
-until [[ -f "$EVENTS_JSONL" ]] || [[ $SECONDS -ge $_deadline ]]; do sleep 0.3; done
+# Wait for pipeline.start to be IN events.jsonl (not just for the file to
+# exist). File existence races: memory.backend.init writes to the file
+# BEFORE the abort EXIT trap is installed, so kill during that window
+# misses the trap entirely. A2 (line 367-373) and I6 use this pattern. #619.
+t10_ready=0
+for _ in $(seq 1 100); do
+    if [[ -f "$EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$EVENTS_JSONL" 2>/dev/null; then
+        t10_ready=1
+        break
+    fi
+    sleep 0.1
+done
+[[ "$t10_ready" -eq 1 ]] || echo "WARN: Test 10 runner never emitted pipeline.start within 10s" >&2
 kill "$runner_pid" 2>/dev/null || true
 wait "$runner_pid" 2>/dev/null || true
 
@@ -226,7 +236,7 @@ _make_role_plugin "test-assessment-agent" "test_assessment" 0
 _make_role_plugin "review-agent"          "reviewer"        0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
-set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
@@ -244,7 +254,7 @@ printf '{"schema_version":1,"repo_head_sha":"%s","detected":["node","ios"],"over
     "$current_sha" > "$STATE_DIR/platforms.json"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 
-set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
 # #568: 6 stages × 2 platforms = 12 plugin.run.start events via fanout
@@ -286,7 +296,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 # ios:  resolve finds build-agent (generic)             → exit 1
 # → success_count=1, fail_count=1 → partial (rc=2)
 
-set +e; bash "$RUNNER" --issue 83 2>/dev/null; rc=$?; set -e
+set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "partial fanout failure exits 1" "1" "$rc"
 
 partial_stage_fail=$(grep '"stage.fail"' "$EVENTS_JSONL" | grep -c '"partial"' || true)
@@ -358,7 +368,7 @@ ZBUILD_STATE_DIR="$A2_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A2_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A2_DIR/events.db" \
-bash "$RUNNER" --issue 83 2>/dev/null &
+bash "$RUNNER" --issue 83 >/dev/null 2>&1 &   # #619: suppress info banner
 a2_pid=$!
 # Wait until the runner has emitted pipeline.start (proof the abort trap is
 # installed and events.jsonl exists) before sending SIGTERM. A fixed sleep
@@ -468,7 +478,7 @@ ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
-bash "$RUNNER" --issue 83 2>/dev/null || true
+bash "$RUNNER" --issue 83 >/dev/null 2>&1 || true   # #619: suppress info banner
 
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
     a3_violated=$(grep -c '"plugin.contract.violated"' "$A3_EVENTS_JSONL" || true)
@@ -638,6 +648,28 @@ if [[ "$i6_ok" -eq 1 ]]; then
 else
     assert_fail "I6 #525: SIGTERM emits ✗ aborted terminal banner" \
                 "stderr: $(tr '\n' '|' < "$I6_STDERR" 2>/dev/null | head -c 400)"
+fi
+
+
+# ─── Test R1 (#619): _usage() writes to stderr, not stdout ────────────────────
+# REGRESSION LOCK: catches a revert of runner.sh's `cat >&2 <<EOF`.
+r1_stdout="$(bash "$RUNNER" 2>/dev/null || true)"
+if [[ "$r1_stdout" == *"Usage: runner.sh"* ]]; then
+    assert_fail "R1 #619: _usage() must NOT leak to stdout" "got: ${r1_stdout:0:120}..."
+else
+    assert_pass "R1 #619: _usage() writes to stderr only (stdout clean)"
+fi
+# Positive control: stderr still surfaces the Usage block on error path.
+r1_stderr="$(bash "$RUNNER" 2>&1 >/dev/null || true)"
+assert_contains "R1 #619: _usage() still reaches stderr" "$r1_stderr" "Usage: runner.sh"
+
+# ─── Test R2 (#619): _make_plugin wrapper suppresses factory stdout ───────────
+# REGRESSION LOCK: catches a revert of the wrapper's `>/dev/null`.
+r2_stdout="$(_make_plugin "r2demo" "agent" 0)"
+if [[ -z "$r2_stdout" ]]; then
+    assert_pass "R2 #619: _make_plugin wrapper suppresses factory stdout"
+else
+    assert_fail "R2 #619: _make_plugin wrapper must suppress stdout" "leaked: $r2_stdout"
 fi
 
 cleanup_test_env
