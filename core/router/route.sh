@@ -587,6 +587,8 @@ route_to_model_loop() {
     local _prev_diff_for_banner=""
 
     local diff_cap="${ZBUILD_LOOP_DIFF_CAP_CHARS:-20000}"
+    # Wave 8 #613: track consecutive empty-diff iters as a no-progress safety net.
+    local empty_iter_count=0
     local iter
     for (( iter=1; iter <= max_iterations; iter++ )); do
         _ROUTE_LOOP_ITERATIONS=$iter
@@ -822,6 +824,24 @@ ${_diff_pointer}"
             rm -rf "$_loop_tmp" 2>/dev/null || true
             return 2
         }
+
+        # Wave 8 #613: auto-terminate after N consecutive empty-diff iters.
+        # Safety net for when the LLM forgets to emit LOOP_COMPLETE (e.g., it
+        # observes the work is already done but responds without the sentinel).
+        if [[ -z "$prev_diff" || "$prev_diff" == "(diff exceeded cap"* ]]; then
+            empty_iter_count=$(( empty_iter_count + 1 ))
+        else
+            empty_iter_count=0
+        fi
+        if [[ $empty_iter_count -ge 2 ]]; then
+            _ROUTE_LOOP_TERMINATED_REASON="no_progress"
+            eb_emit_event "loop.no_progress" \
+                "iterations=$iter" \
+                "empty_iter_streak=$empty_iter_count" 2>/dev/null || true
+            _route_loop_clear_traps
+            rm -rf "$_loop_tmp" 2>/dev/null || true
+            return 0
+        fi
     done
 
     _ROUTE_LOOP_TERMINATED_REASON="max_iterations"

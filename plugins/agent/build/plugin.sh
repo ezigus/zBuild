@@ -559,8 +559,12 @@ ${scope_section}
   canonical \`diff.patch\` artifact from \`git diff HEAD\` automatically.
 
 ### Completion sentinel
-When the implementation is complete and tests would pass, emit \`LOOP_COMPLETE\`
-on its own line as the FINAL line of your response. This terminates the loop.
+Emit \`LOOP_COMPLETE\` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check \`git log\` for commits + \`git diff\` for any
+remaining gap), emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating
+when there is nothing left to do.
 
 ### Rules
 - Touch only files in the scope list above.
