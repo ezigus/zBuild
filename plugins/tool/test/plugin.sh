@@ -164,9 +164,14 @@ _test_run_inner() {
     diff_applied=true
 
     # ── Run test command ───────────────────────────────────────────────────────
+    # #600: export ZBUILD_TEST_QUIET=1 so suites using test-helpers.sh suppress
+    # per-assertion ✓ echoes. Failures + per-suite summary always print; full
+    # raw output still flows into test-results.json (no info loss for the
+    # downstream test_assessment stage). Local devs running `npm test`
+    # directly are unaffected (env var unset = current verbose behavior).
     local test_rc=0
     local raw_output
-    raw_output="$(cd "$tmp" && eval "$test_cmd" 2>&1)" || test_rc=$?
+    raw_output="$(cd "$tmp" && export ZBUILD_TEST_QUIET=1 && eval "$test_cmd" 2>&1)" || test_rc=$?
 
     # Truncate output to 10 KB to keep artifact manageable
     test_output="$(printf '%s' "$raw_output" | head -c 10240)"
