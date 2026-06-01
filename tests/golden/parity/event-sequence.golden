@@ -26,6 +26,7 @@ loop.git_diff_failed
 build.empty_diff
 build.apply_check.skipped
 build.discrepancy.detected
+build.diff.empty_after_done_sentinel
 plugin.run.complete
 plugin.run.complete
 plugin.contract.violated

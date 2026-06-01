@@ -504,14 +504,22 @@ set -e
 
 assert_exit_code "T13 inner run rc=0" "0" "$rc_t13"
 banner_t13="$(cat "$BANNER_T13" 2>/dev/null || true)"
-assert_contains "computed banner emitted for build stage (#523)" "$banner_t13" "build [computed]"
-assert_contains "computed banner shows numstat input literal" "$banner_t13" "git diff HEAD --numstat"
-assert_contains "computed banner shows the changed file" "$banner_t13" "build-test-dummy.txt"
-assert_contains "computed banner shows total footer" "$banner_t13" "total: 1 files"
+# #587: [computed] banner pair removed from _build_emit_changed_files_summary.
+# Operator signal lives in events (build.discrepancy.detected /
+# build.diff.empty_after_done_sentinel) + stderr warn; no banner.
+if printf '%s\n' "$banner_t13" | grep -q "build \[computed\]"; then
+    assert_fail "no [computed] banner (#587)" "found build [computed] in T13 banner"
+else
+    assert_pass "no [computed] banner emitted by build stage (#587)"
+fi
 captured_computed="$(jq -c --arg t "stage.io.captured" \
     'select(.type==$t and .data.stage=="build" and .data.kind=="computed")' \
     "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "exactly 1 stage.io.captured event with kind=computed" "1" "$captured_computed"
+assert_eq "0 stage.io.captured events with kind=computed (#587)" "0" "$captured_computed"
+empty_count_t13="$(jq -c --arg t "build.diff.empty_after_done_sentinel" \
+    'select(.type==$t)' \
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "no build.diff.empty_after_done_sentinel event (T13 had real edits)" "0" "$empty_count_t13"
 
 # ─── T14: discrepancy detection — LOOP_COMPLETE + 0 changed files ──────────
 print_test_section "T14: LOOP_COMPLETE + 0 files → build.discrepancy.detected + WARN"
@@ -532,6 +540,7 @@ MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_RC=0
 
 BANNER_T14="$TEST_TEMP_DIR/banner-t14.txt"
+STDERR_T14="$TEST_TEMP_DIR/stderr-t14.txt"
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
 ZBUILD_STAGE_IO_FD=3 _build_stage_run_inner \
@@ -539,14 +548,24 @@ ZBUILD_STAGE_IO_FD=3 _build_stage_run_inner \
     "$PLAN_JSON_T14" \
     "$OUT_DIFF_T14" \
     "$OUT_SUMMARY_T14" \
-    "$ARTIFACT_DIR_T14" >/dev/null 2>/dev/null 3>"$BANNER_T14"
+    "$ARTIFACT_DIR_T14" >/dev/null 2>"$STDERR_T14" 3>"$BANNER_T14"
 rc_t14=$?
 set -e
 assert_exit_code "T14 inner run rc=0" "0" "$rc_t14"
 banner_t14="$(cat "$BANNER_T14" 2>/dev/null || true)"
-assert_contains "T14 WARN banner line emitted" "$banner_t14" "WARN: LLM signaled success but numstat shows 0 files changed"
-assert_event_emitted "build.discrepancy.detected event fired" \
+stderr_t14="$(cat "$STDERR_T14" 2>/dev/null || true)"
+# #587: WARN line moved from [computed] banner output → stderr `warn` call.
+assert_contains "T14 stderr WARN line emitted (#587)" "$stderr_t14" "LLM signaled success but numstat shows 0 files changed"
+# #587: no [computed] banner pair anymore.
+if printf '%s\n' "$banner_t14" | grep -q "build \[computed\]"; then
+    assert_fail "no [computed] banner in T14 (#587)" "found build [computed] in T14 banner"
+else
+    assert_pass "T14 emits no [computed] banner (#587)"
+fi
+assert_event_emitted "build.discrepancy.detected event fired (legacy name)" \
     "$ZBUILD_EVENTS_JSONL" "build.discrepancy.detected"
+assert_event_emitted "build.diff.empty_after_done_sentinel event fired (#587)" \
+    "$ZBUILD_EVENTS_JSONL" "build.diff.empty_after_done_sentinel"
 
 # Reset to defaults for any subsequent tests.
 MOCK_LOOP_RC=0

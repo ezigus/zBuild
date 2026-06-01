@@ -456,13 +456,14 @@ _build_stage_run_inner() {
             notes: $notes
         }' | atomic_write "$output_summary_json"
 
-    # ─── #498: changed-files numstat summary banner (kind=computed) ──────────
-    # Emit a NEW stage-level operator banner after route_to_model_loop returns
-    # so the operator sees BOTH the LLM's per-iteration prose (#482's kind=llm
-    # banners) AND what files actually changed on disk. kind=computed is
-    # DISTINCT from #482's kind=llm — the build-loop-banner-test regex matches
-    # `[llm]` literally; using llm here would collide with #491's ordering
-    # contract.
+    # ─── #587: post-loop discrepancy + numstat summary (no banner) ───────────
+    # Originally (#498) this emitted a [computed] stage_io banner pair after
+    # route_to_model_loop returned, so the operator saw both LLM prose (#482's
+    # [llm] banners) AND what files actually changed on disk. #566 made the
+    # [llm] banners more prominent, exposing the [computed] pair as redundant
+    # duplication. #587 removed the banner entirely — the function now emits
+    # `build.discrepancy.detected` + `build.diff.empty_after_done_sentinel`
+    # events plus a single-line stderr `warn` instead.
     _BUILD_PLAN_FILES_CSV="$plan_files_csv" \
     _build_emit_changed_files_summary \
         "$repo_root" "$terminated_reason" \
@@ -932,21 +933,22 @@ _build_format_numstat() {
 #   $3 = scope_violation ("true"/"false")
 #   $4 = pre_zero_numstat (captured BEFORE diff zero-out on scope violation)
 #
-# Side effects:
-#   - emits stage_io_begin/_end pair (kind=computed) on the build stage's
-#     configured destinations (no-op when none configured — fail-soft)
+# Side effects (#587: no stage_io banner pair — event-only signal):
 #   - emits build.numstat.precondition_failed when git rev-parse HEAD fails
-#   - emits build.discrepancy.detected when LOOP_COMPLETE + 0 files
+#   - emits build.discrepancy.detected when LOOP_COMPLETE + 0 files (legacy name)
+#   - emits build.diff.empty_after_done_sentinel for the same condition (#587)
 #   - emits build.numstat.truncated via _build_format_numstat when capped
+#   - writes one-line stderr `warn` for operator-visible signal in both
+#     the precondition-fail and discrepancy paths (no FD-3 banner)
 _build_emit_changed_files_summary() {
     local repo_root="$1"
     local terminated_reason="$2"
     local scope_violation="$3"
     local pre_zero_numstat="$4"
 
-    local stage_id="${ZBUILD_CURRENT_STAGE:-build}"
-    local start_ms="${EPOCHREALTIME/./}"
-    start_ms=$(( 10#${start_ms:-0} / 1000 ))
+    # #587: stage_id retained for any future event metadata; no banner pair.
+    local _stage_id_unused="${ZBUILD_CURRENT_STAGE:-build}"
+    : "$_stage_id_unused"
 
     # ── Pre-check git state (detached HEAD, mid-rebase, unborn branch) ──────
     if ! git -C "$repo_root" rev-parse --verify HEAD >/dev/null 2>&1; then
@@ -964,21 +966,8 @@ _build_emit_changed_files_summary() {
         fi
         emit_event "build.numstat.precondition_failed" "plugin=build" \
             "reason=$reason" "repo_root=$repo_root" >/dev/null 2>&1 || true
-        local _seq=""
-        stage_io_begin --stage "$stage_id" --kind computed \
-            --input "git diff HEAD --numstat" \
-            --metadata "diff_source=git_diff_HEAD_numstat" \
-            --metadata "precondition_failed=true" \
-            --metadata "reason=$reason" >/dev/null 2>&1 || return 0
-        _seq="${_STAGE_IO_LAST_SEQ:-}"
-        [[ -z "$_seq" ]] && return 0
-        local now_ms="${EPOCHREALTIME/./}"
-        now_ms=$(( 10#${now_ms:-0} / 1000 ))
-        stage_io_end --stage "$stage_id" --kind computed --seq "$_seq" \
-            --output "WARN: git state precondition failed (reason=$reason); numstat skipped" \
-            --duration-ms $(( now_ms - start_ms )) \
-            --metadata "precondition_failed=true" \
-            --metadata "reason=$reason" >/dev/null 2>&1 || true
+        # #587: replace [computed] banner pair with single-line stderr warn.
+        warn "build: numstat skipped (git state $reason)" >&2 || true
         return 0
     fi
 
@@ -1021,46 +1010,28 @@ _build_emit_changed_files_summary() {
     local files_count="$_BUILD_NUMSTAT_FILES_COUNT"
 
     # ── Discrepancy: LOOP_COMPLETE + 0 files changed ──────────────────────
-    local discrepancy="false"
+    # #587: removed [computed] stage_io banner pair entirely. Signal lives in
+    # two events (legacy `build.discrepancy.detected` for backward-compat +
+    # new `build.diff.empty_after_done_sentinel`) plus a single-line stderr
+    # `warn` for operator visibility. The duration/start_ms accounting is
+    # likewise gone since there's no banner to attach it to; events carry
+    # their own timestamps via the bus.
     if [[ "$terminated_reason" == "done_sentinel" && "$files_count" -eq 0 \
           && "$scope_violation_mode" != "true" ]]; then
-        discrepancy="true"
         emit_event "build.discrepancy.detected" "plugin=build" \
             "reason=loop_complete_no_changes" \
             "terminated_reason=$terminated_reason" \
             "files_changed=0" >/dev/null 2>&1 || true
-        formatted="WARN: LLM signaled success but numstat shows 0 files changed"$'\n'"$formatted"
+        emit_event "build.diff.empty_after_done_sentinel" "plugin=build" \
+            "terminated_reason=$terminated_reason" \
+            "files_changed=0" >/dev/null 2>&1 || true
+        warn "build: LLM signaled success but numstat shows 0 files changed" >&2 || true
     fi
 
-    # ── Emit stage_io banner pair (computed) ───────────────────────────────
-    local _seq=""
-    local -a begin_meta=(
-        --metadata "diff_source=git_diff_HEAD_numstat"
-        --metadata "files_changed=$files_count"
-    )
-    local -a end_meta=(
-        --metadata "diff_source=git_diff_HEAD_numstat"
-        --metadata "files_changed=$files_count"
-    )
-    if [[ "$scope_violation_mode" == "true" ]]; then
-        begin_meta+=( --metadata "scope_violation=true" )
-        end_meta+=( --metadata "scope_violation=true" )
-    fi
-    if [[ "$discrepancy" == "true" ]]; then
-        end_meta+=( --metadata "discrepancy=loop_complete_no_changes" )
-    fi
-
-    stage_io_begin --stage "$stage_id" --kind computed \
-        --input "git diff HEAD --numstat" \
-        "${begin_meta[@]}" >/dev/null 2>&1 || return 0
-    _seq="${_STAGE_IO_LAST_SEQ:-}"
-    [[ -z "$_seq" ]] && return 0
-    local now_ms="${EPOCHREALTIME/./}"
-    now_ms=$(( 10#${now_ms:-0} / 1000 ))
-    stage_io_end --stage "$stage_id" --kind computed --seq "$_seq" \
-        --output "$formatted" \
-        --duration-ms $(( now_ms - start_ms )) \
-        "${end_meta[@]}" >/dev/null 2>&1 || true
+    # #587: `formatted` is computed only as a side-effect of populating
+    # `_BUILD_NUMSTAT_FILES_COUNT` (consumed by the discrepancy check above).
+    # No banner reads it anymore; touch to silence shellcheck.
+    : "${formatted:-}"
     return 0
 }
 
