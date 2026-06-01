@@ -42,13 +42,16 @@ mkdir -p "$STATE_DIR"
 cd "$REPO" || exit 1
 
 # Drive the same orchestrator the real intake_run path calls.
-# ZBUILD_INTAKE_ALLOW_DIRTY=1 bypasses the dirty-tree preflight refusal —
-# CI environments can leave the temp git repo with platform-specific state
-# (file mode, line endings) that looks dirty even after a clean seed commit.
-# This test is exercising the baseline-ref write, not the dirty-tree gate.
+# - unset CI: intake's CI-mode preflight requires ZBUILD_WORKSPACE_BRANCH;
+#   this test exercises the local-branch-creation path, not the CI path
+# - ZBUILD_INTAKE_ALLOW_DIRTY=1: bypass the dirty-tree preflight (#484);
+#   platform-specific git state in temp repos shouldn't gate this test
 : > "$ZBUILD_EVENTS_JSONL"
-ZBUILD_INTAKE_ALLOW_DIRTY=1 _intake_create_workspace_branch "$STATE_DIR" 614 "branch cumulative context" \
-    > /tmp/intake-614-out.$$ 2>&1
+(
+    unset CI GITHUB_ACTIONS
+    export ZBUILD_INTAKE_ALLOW_DIRTY=1
+    _intake_create_workspace_branch "$STATE_DIR" 614 "branch cumulative context"
+) > /tmp/intake-614-out.$$ 2>&1
 rc=$?
 if [[ "$rc" -ne 0 ]]; then
     # Print captured output for diagnosability if rc != 0 (CI debugging)
