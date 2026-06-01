@@ -619,7 +619,59 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             --apply)  MODE="apply"; shift ;;
             --log)    LOG_PATH="$2"; shift 2 ;;
             -h|--help)
-                grep '^#' "$0" | head -25
+                cat <<'USAGE'
+deferred-tracker — surface deferred-work mentions in merged PR bodies.
+
+What it does:
+  Scans recently merged PRs (rolling window) for ADR-020 signal phrases
+  ("separate issue", "follow-up", "deferred to", "out of scope", etc.) and
+  files / updates a consolidated triage GitHub issue labelled
+  deferred-candidate. Each candidate gets a sanitized excerpt plus
+  possible-dup hints against open issues.
+
+When to use it:
+  Runs automatically 3× daily via .github/workflows/deferred-tracker.yml.
+  Manual local invocation is useful for debugging, validating credentials,
+  or testing scanner changes before pushing.
+
+Invocation styles:
+  Invoke directly:    bash scripts/deferred-tracker.sh [flags]
+  Invoke via zbuild:  zbuild deferred tracker [flags]
+
+Modes:
+  --report (default)   Read-only. Prints candidates to stdout; no issue
+                       created, no log written.
+  --apply              Creates / updates / appends the triage issue per the
+                       duplicate-guard state machine; appends to scanned log
+                       only on successful issue write.
+
+Flags:
+  --log <path>         Override scanned-PRs log location. Path-traversal guard
+                       rejects '..' segments.
+  -h, --help           Show this help.
+
+Duplicate-issue state machine (--apply):
+  0 open                    → create new
+  1 open + no engagement    → EDIT existing body in place (preserves URL/history)
+  1 open + comments/boxes   → append as comment (preserves checked boxes)
+  2+ open                   → fail loud, touch .deferred-drift sentinel, exit 2
+
+LLM tiebreaker (fail-open):
+  Borderline Jaccard scores (0.20-0.40) route through an LLM verifier. On
+  failure the original score is kept with annotation like
+  "(sim 0.30 — LLM verification unavailable: ...)" — operator reads as
+  "Jaccard-only, treat with caution."
+
+Examples:
+  bash scripts/deferred-tracker.sh --report
+  zbuild deferred tracker --apply
+
+See also:
+  docs/adr/ADR-020-deferred-tracker.md
+  scripts/deferred-backfill.sh   (one-shot historical scan)
+  scripts/manifest-sync.sh       (sibling drift scanner)
+  Issues: #531 (v1), #555 (v2 dup-hints), #560 (sub-2 update-in-place), #563 (fuzzy auto-write)
+USAGE
                 exit 0
                 ;;
             *) error "Unknown arg: $1"; exit 2 ;;

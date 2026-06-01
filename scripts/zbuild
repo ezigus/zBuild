@@ -49,6 +49,10 @@ Commands:
                          [--dry-run|--apply|--force]
                          [--age-days N] [--quiet]
                          Default: dry-run, both categories, age-days 14.
+  deferred <sub>         Deferred-work scanners (backfill | tracker)
+                         Run \`zbuild deferred --help\` for sub-commands.
+  manifest <sub>         Manifest YAML drift management (sync)
+                         Run \`zbuild manifest --help\` for sub-commands.
 
 Session flags (shortcuts):
   --resume <run_id>      Shorthand for: pipeline resume --run-id <run_id>
@@ -429,6 +433,65 @@ case "$cmd" in
             _cleanup_render_plan "branches" "$cl_branch_plan" "$cl_dry_run" "$cl_quiet"
             _cleanup_apply_branch_plan "$cl_branch_plan" "$cl_dry_run"
         fi
+        ;;
+    deferred)
+        case "${2:-}" in
+            backfill)
+                shift 2
+                exec bash "$SCRIPT_DIR/deferred-backfill.sh" "$@"
+                ;;
+            tracker)
+                shift 2
+                exec bash "$SCRIPT_DIR/deferred-tracker.sh" "$@"
+                ;;
+            ""|-h|--help)
+                cat <<'HELP'
+zbuild deferred — deferred-work scanners.
+
+Sub-commands:
+  backfill   One-shot historical scan; terminal output (manual use).
+  tracker    Recurring scan; creates/updates a triage issue (mostly automated).
+
+Default mode for each sub-command is --report (read-only, safe).
+
+Run any sub-command with --help for full details:
+  zbuild deferred backfill --help
+  zbuild deferred tracker --help
+HELP
+                ;;
+            *)
+                error "Unknown deferred subcommand: $2"
+                echo "Available: backfill, tracker" >&2
+                echo "Run: zbuild deferred --help" >&2
+                exit 2
+                ;;
+        esac
+        ;;
+    manifest)
+        case "${2:-}" in
+            sync)
+                shift 2
+                exec bash "$SCRIPT_DIR/manifest-sync.sh" "$@"
+                ;;
+            ""|-h|--help)
+                cat <<'HELP'
+zbuild manifest — manifest YAML drift management.
+
+Sub-commands:
+  sync   Detect drift between keepers-manifest.yaml and live GitHub state.
+
+Default mode is --report (read-only, safe).
+
+Run: zbuild manifest sync --help for full details.
+HELP
+                ;;
+            *)
+                error "Unknown manifest subcommand: $2"
+                echo "Available: sync" >&2
+                echo "Run: zbuild manifest --help" >&2
+                exit 2
+                ;;
+        esac
         ;;
     *)
         error "Unknown command: $cmd"

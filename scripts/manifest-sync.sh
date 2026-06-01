@@ -39,7 +39,58 @@ while [[ $# -gt 0 ]]; do
         --apply)  MODE="apply"; shift ;;
         --manifest) MANIFEST="$2"; shift 2 ;;
         -h|--help)
-            grep '^#' "$0" | head -25
+            cat <<'USAGE'
+manifest-sync — bidirectional drift between keepers-manifest.yaml and GitHub.
+
+What it does:
+  Compares .github/issues/keepers-manifest.yaml against the live repo and
+  surfaces three drift classes:
+    1. Manifest entries marked 'state: open' whose live issue is closed
+    2. Live issues with no manifest entry (orphans), annotated with
+       (possible match: <id> sim 0.XX) hints when the title is similar to
+       an existing manifest entry
+    3. Merged PRs that did not reference an issue via Closes/Fixes/Resolves
+  In --apply mode, edits the manifest YAML in place and appends to the
+  orphan-PRs log; orphan issues are reported but never auto-added.
+
+When to use it:
+  Runs automatically 3× daily via .github/workflows/manifest-sync.yml plus on
+  push:main. Manual local invocation is useful for previewing drift without
+  creating a PR.
+
+Invocation styles:
+  Invoke directly:    bash scripts/manifest-sync.sh [flags]
+  Invoke via zbuild:  zbuild manifest sync [flags]
+
+Modes:
+  --report (default)   Read-only. Prints all three drift classes to stdout;
+                       exits 0 whether or not drift was found.
+  --apply              Edits manifest.yaml (state: closed where live closed),
+                       appends orphan PRs to log. Exits 10 if changes were
+                       made (signals the workflow to open a PR), 0 otherwise.
+
+Flags:
+  --manifest <path>    Override manifest path
+                       (default: .github/issues/keepers-manifest.yaml).
+  -h, --help           Show this help.
+
+Safety:
+  Never auto-closes live GitHub issues. Never auto-reopens anything. Only
+  edits the local manifest YAML and the orphan-PRs log; a human reviews the
+  resulting PR. Orphan live issues are surfaced but NOT auto-added to the
+  manifest — that requires human judgment. Fuzzy auto-write of orphan issues
+  into the manifest is deferred to #563 (gated on operator-feedback window).
+
+Examples:
+  bash scripts/manifest-sync.sh --report
+  zbuild manifest sync --apply --manifest /tmp/test-manifest.yaml
+
+See also:
+  docs/adr/ADR-020-deferred-tracker.md
+  scripts/deferred-tracker.sh   (sibling: PR-body deferred-work scanner)
+  scripts/deferred-backfill.sh  (sibling: one-shot historical scan)
+  Issues: #227 (this script), #555 (dup-hints), #562 (sub-4 annotation), #563 (sub-5 fuzzy write)
+USAGE
             exit 0
             ;;
         *) error "Unknown arg: $1"; exit 2 ;;
