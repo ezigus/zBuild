@@ -53,13 +53,21 @@ parse_index_spec() {
 annotate_possible_dup() {
     local excerpt="$1"
     local issues_jsonl="$2"   # path to JSONL: each line is `{number, title, body}`
-    [[ -s "$issues_jsonl" ]] || return 0
+    # No-open-issues path — emit the "no match (no open issues)" signal so
+    # operators see that the comparison ran (#596 D).
+    if [[ ! -s "$issues_jsonl" ]]; then
+        printf 'no match (no open issues)'
+        return 0
+    fi
     local annotation_threshold="${DEFERRED_SIMILARITY_THRESHOLD:-0.35}"
     local llm_lo="${DEFERRED_LLM_LOWER:-0.20}"
     local llm_hi="${DEFERRED_LLM_UPPER:-0.40}"
     # Collect ALL matches as "score|hint" lines; sort by score descending; take
     # top 3 (Codex review #578 caught: first-3-found is not top-3-by-score).
     local matches=""
+    # Track best-seen score regardless of threshold so we can surface a
+    # "no match (best: 0.XX vs #N)" signal when nothing clears (#596 D).
+    local best_score="0.00" best_issue=""
     local issue_json
     while IFS= read -r issue_json; do
         [[ -z "$issue_json" ]] && continue
@@ -69,13 +77,17 @@ annotate_possible_dup() {
         title="$(printf '%s' "$issue_json" | jq -r '.title // ""')"
         body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
         haystack="${title} ${body}"
-        score="$(gha_compute_similarity "$excerpt" "$haystack")"
+        score="$(gha_compute_similarity "$excerpt" "$haystack" 2>/dev/null || printf '0.00')"
         marker=""
         if awk -v s="$score" -v lo="$llm_lo" -v hi="$llm_hi" 'BEGIN{exit !(s>=lo && s<hi)}'; then
             local refined
             refined="$(gha_compute_similarity_llm "$excerpt" "$haystack" "$score" 2>/dev/null || printf '%s|_LLM_FAILED_NETWORK' "$score")"
             score="${refined%%|*}"
             marker="${refined##*|}"
+        fi
+        if awk -v s="$score" -v b="$best_score" 'BEGIN{exit !(s>b)}'; then
+            best_score="$score"
+            best_issue="$oid"
         fi
         if awk -v s="$score" -v t="$annotation_threshold" 'BEGIN{exit !(s>=t)}'; then
             local printable llm_note=""
@@ -86,9 +98,16 @@ annotate_possible_dup() {
             matches+="${printable} #${oid} (sim ${printable}${llm_note})"$'\n'
         fi
     done < "$issues_jsonl"
-    [[ -z "$matches" ]] && return 0
-    # Sort by leading score descending; strip the sort key; take top 3; join with spaces.
-    printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
+    if [[ -n "$matches" ]]; then
+        printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
+        return 0
+    fi
+    if [[ -n "$best_issue" ]] && awk -v s="$best_score" 'BEGIN{exit !(s>0)}'; then
+        local pb; pb="$(printf '%.2f' "$best_score")"
+        printf 'no match (best: %s vs #%s)' "$pb" "$best_issue"
+    else
+        printf 'no match (no open issues)'
+    fi
 }
 
 is_in_presented_log() {
@@ -316,16 +335,22 @@ USAGE
     # on PR-body content the operator hasn't sanitized for printf.
     echo
     echo "── Deferred-work candidates ──"
-    local idx=1 line pr_num phrase excerpt dup_hint
+    local idx=1 line pr_num phrase excerpt dup_hint label
     for line in "${CANDIDATE_LINES[@]}"; do
         IFS='|' read -r pr_num phrase excerpt <<< "$line"
         dup_hint="$(annotate_possible_dup "$excerpt" "$issues_jsonl" 2>/dev/null || true)"
-        if [[ -n "$dup_hint" ]]; then
-            echo "${idx}. PR #${pr_num} [${phrase}] — possible dup: ${dup_hint}"
+        # annotate_possible_dup now always returns a non-empty string — either
+        # a top-3 match hint or a "no match (...)" signal (#596 D). Match-vs-
+        # no-match is distinguished by the leading word so we render the
+        # right header label.
+        if [[ "$dup_hint" == "no match"* ]]; then
+            label="$dup_hint"
         else
-            echo "${idx}. PR #${pr_num} [${phrase}]"
+            label="possible dup: $dup_hint"
         fi
+        echo "${idx}. PR #${pr_num} [${phrase}] — ${label}"
         echo "     ${excerpt}"
+        echo                              # blank line between candidates (#596 A)
         idx=$((idx + 1))
     done
     echo

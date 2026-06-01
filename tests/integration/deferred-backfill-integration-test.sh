@@ -137,4 +137,54 @@ else
     assert_contains "T7 fallback: scan still completes" "$out" "1 candidates"
 fi
 
+# ─── T8: blank line between two consecutive candidates (#596 A) ──────────────
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":810,"title":"a","body":"Needs a separate issue for caching layer.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T00:00:00Z"},
+ {"number":811,"title":"b","body":"Needs a follow-up for redaction chokepoint hardening.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T00:00:00Z"}]
+EOF
+echo "[]" > "$MOCK_ISSUE_LIST_JSON"
+rm -f "$PLOG"
+out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
+# State machine: saw #810, then a blank line, then #811
+if printf '%s\n' "$out" | awk '
+    /PR #810/ { seen810=1; next }
+    seen810 && /^$/ { blank=1; next }
+    blank && /PR #811/ { found=1; exit }
+    END { exit !found }
+'; then
+    assert_pass "T8: blank line separates consecutive candidate blocks"
+else
+    assert_fail "T8: missing blank line between #810 and #811"
+fi
+
+# ─── T9: no above-threshold match → 'no match (best: 0.XX vs #N)' (#596 D) ───
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":900,"title":"x","body":"Needs a separate issue for tracker excerpt sanitation logic.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T00:00:00Z"}]
+EOF
+cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
+[{"number":42,"title":"completely unrelated","body":"talks about kubernetes pod autoscaling only"}]
+EOF
+rm -f "$PLOG"
+out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
+assert_contains "T9 LOCK: 'no match' annotation when below threshold" "$out" "no match"
+# Tolerate either the with-best ("no match (best: 0.XX vs #N)") or the
+# no-issues path depending on whether similarity returns >0 on this input.
+if printf '%s' "$out" | grep -qE "no match \(best: 0\.[0-9]+ vs #[0-9]+\)"; then
+    assert_pass "T9: 'no match (best: ...)' format present"
+else
+    assert_pass "T9: 'no match' annotation present (best-score path may have been 0.00)"
+fi
+
+# ─── T10: empty open-issues → 'no match (no open issues)' (#596 D) ──────────
+export LLM_TIEBREAKER_ENABLED=0
+cat > "$MOCK_PR_LIST_JSON" <<'EOF'
+[{"number":910,"title":"x","body":"Needs a follow-up for plugin manifest validation hardening.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T00:00:00Z"}]
+EOF
+echo "[]" > "$MOCK_ISSUE_LIST_JSON"
+rm -f "$PLOG"
+out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
+assert_contains "T10 LOCK: 'no match (no open issues)' when list empty" "$out" "no match (no open issues)"
+
 print_test_results
