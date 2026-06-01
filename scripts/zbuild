@@ -30,7 +30,8 @@ Usage:
   zbuild --attach <run_id>    Attach to (tail) the event log for a running pipeline
 
 Commands:
-  --version, version     Print version
+  --version, version     Print version (reads \$ZBUILD_HOME/version when set)
+  upgrade --from <dir>   Re-run install.sh from a source clone (pulls main first)
   --help, help, -h       Show this help
   status                 Show pipeline status (Phase 0 stub — JSON only)
   plugin list            List discovered plugins
@@ -160,7 +161,77 @@ fi
 cmd="${1:-help}"
 case "$cmd" in
     --version|version)
+        # ADR-023: prefer $ZBUILD_HOME/version (written by install.sh) so the
+        # printed metadata reflects the *installed* tree, not whatever the
+        # source clone's HEAD is right now.
         echo "zbuild ${VERSION}"
+        _zhome="${ZBUILD_HOME:-$HOME/.local/share/zbuild}"
+        if [[ -f "$_zhome/version" ]]; then
+            # shellcheck disable=SC1090
+            while IFS='=' read -r k v; do
+                [[ -z "$k" ]] && continue
+                printf '  %s: %s\n' "$k" "$v"
+            done < "$_zhome/version"
+        else
+            # Fallback: legacy install / source-clone invocation. Try git.
+            _repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+            if _sha=$(git -C "$_repo_root" rev-parse HEAD 2>/dev/null); then
+                _br=$(git -C "$_repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+                printf '  sha: %s\n  branch: %s\n  source: %s\n' "$_sha" "$_br" "$_repo_root"
+                echo "  (no \$ZBUILD_HOME/version — reporting source clone HEAD)"
+            else
+                echo "  installed version unknown — please re-run install.sh"
+            fi
+        fi
+        ;;
+    upgrade)
+        shift
+        up_from=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --from)
+                    [[ -z "${2:-}" ]] && { error "--from requires a directory"; exit 2; }
+                    up_from="$2"; shift 2 ;;
+                -h|--help)
+                    cat <<'UPHELP'
+zbuild upgrade — re-run install.sh from a source clone.
+
+Usage:
+  zbuild upgrade --from <path-to-zbuild-source-clone>
+
+Behavior:
+  1. cd <dir>; git pull (best-effort; non-fatal if not a git checkout)
+  2. exec <dir>/install.sh — copies the refreshed tree into $ZBUILD_HOME.
+
+The --from flag is required. zbuild needs to know where your source clone
+lives because $ZBUILD_HOME contains only the runtime tree (no .git).
+UPHELP
+                    exit 0 ;;
+                *)
+                    error "Unknown upgrade flag: $1"; exit 2 ;;
+            esac
+        done
+        if [[ -z "$up_from" ]]; then
+            error "zbuild upgrade requires --from <source-dir>"
+            echo "  Example: zbuild upgrade --from ~/code/zBuild" >&2
+            echo "  Run \`zbuild upgrade --help\` for details." >&2
+            exit 2
+        fi
+        if [[ ! -d "$up_from" ]]; then
+            error "--from directory not found: $up_from"
+            exit 2
+        fi
+        if [[ ! -x "$up_from/install.sh" ]] && [[ ! -f "$up_from/install.sh" ]]; then
+            error "no install.sh at $up_from/install.sh — is this a zBuild source clone?"
+            exit 2
+        fi
+        info "upgrading zBuild from $up_from"
+        if git -C "$up_from" rev-parse HEAD >/dev/null 2>&1; then
+            git -C "$up_from" pull --ff-only 2>&1 || warn "git pull failed (continuing with current source state)"
+        else
+            warn "$up_from is not a git checkout; skipping pull"
+        fi
+        exec bash "$up_from/install.sh"
         ;;
     --help|help|-h)
         usage
