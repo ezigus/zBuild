@@ -125,6 +125,13 @@ printf '%s' "$elapsed" > "$ELAPSED_FILE"
 # (0) Runner finished — captured rc.
 assert_pass "runner exited (rc=$runner_rc)"
 
+# Codex P2 on #616: runner must distinguish SIGINT (rc=130) from generic failure (rc=1)
+if [[ "$runner_rc" -eq 130 ]]; then
+    assert_pass "runner exits 130 distinctly on SIGINT (not generic rc=1)"
+else
+    assert_fail "runner exits 130 distinctly on SIGINT" "got rc=$runner_rc"
+fi
+
 # (1) Wall-clock budget: < 4s. Without the fix, the route loop iterates 5x
 #     against the rc=130 mock; with the fix it bails after the first call.
 if [[ "$elapsed" -le 4 ]]; then

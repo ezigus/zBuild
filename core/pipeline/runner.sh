@@ -1052,6 +1052,10 @@ main() {
                         _render_pipeline_end "failed"
                         _runner_ended=true
                         error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
+                        # Codex P2 on #616: propagate rc=130 distinctly.
+                        if [[ $_rc -eq 130 ]]; then
+                            return 130
+                        fi
                         return 1
                     fi
                     if [[ $_rc -eq 1 || $_rc -eq 2 || $_rc -eq 3 ]]; then
@@ -1362,6 +1366,11 @@ main() {
             _f2_ts="$(_runner_now_short)"
             _f2_dur="$(_runner_duration_token "$stage")"
             error "Stage $stage failed (rc=$rc, finished ${_f2_ts} · ${_f2_dur})"
+            # Codex P2 on #616: propagate rc=130 distinctly so callers
+            # can distinguish operator Ctrl-C from a generic stage failure.
+            if [[ $rc -eq 130 ]]; then
+                return 130
+            fi
             return 1
         fi
 
