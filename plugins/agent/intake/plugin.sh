@@ -365,6 +365,18 @@ _intake_create_workspace_branch() {
     # field (only when the state JSON exists and the helper is loaded).
     printf '%s\n' "$target" | atomic_write "$state_dir/intake-branch.txt"
 
+    # Wave 8 #614: record post-checkout HEAD as the "intake baseline".
+    # Build plugin + router loop read this back when assembling iter prompts
+    # so the LLM can see commits already on the branch ("already done"
+    # recognition). Bare SHA, no trailing newline — printf '%s', not 'echo'.
+    local _baseline_sha
+    _baseline_sha="$(git rev-parse HEAD 2>/dev/null || true)"
+    if [[ -n "$_baseline_sha" ]]; then
+        printf '%s' "$_baseline_sha" > "$state_dir/intake-baseline-ref.txt"
+        emit_event "intake.baseline.captured" \
+            "plugin=intake" "sha=$_baseline_sha"
+    fi
+
     local pipeline_state="$state_dir/pipeline-state.json"
     if [[ -f "$pipeline_state" ]] && declare -F _set_pipeline_branch >/dev/null 2>&1; then
         _set_pipeline_branch "$pipeline_state" "$target" 2>/dev/null || \
