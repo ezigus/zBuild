@@ -41,7 +41,8 @@ source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
 source "$_ZBUILD_ROOT/core/pipeline/cycle-orchestrator.sh"
 
 _usage() {
-    cat <<EOF
+    # Usage shown on error or --help. Unix convention: stderr (#619).
+    cat >&2 <<EOF
 Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
                  [--resume] [--from-stage <stage>] [--no-resume] [--force]
   --issue <N>       GitHub issue number to work
