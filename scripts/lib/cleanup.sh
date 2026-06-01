@@ -223,6 +223,164 @@ _cleanup_apply_branch_plan() {
     done <<<"$data"
 }
 
+# ─── Active-run predicate (#594) ────────────────────────────────────────────
+# _cleanup_is_active_run <run_id>
+# True if any pipeline-state-*.json in $ZBUILD_STATE_DIR has matching .run_id
+# AND .status == "in_progress". Fail-CLOSED: jq parse errors on a file we
+# can't read are treated as "could be active" → return 0.
+_cleanup_is_active_run() {
+    local rid="$1"
+    [[ -z "$rid" ]] && return 1
+    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    [[ -d "$state_dir" ]] || return 1
+    local f
+    for f in "$state_dir"/pipeline-state*.json; do
+        [[ -f "$f" ]] || continue
+        case "$f" in *.bak|*.lock) continue ;; esac
+        local file_rid status
+        # Single jq call, tolerate parse errors.
+        if ! file_rid="$(jq -r '.run_id // ""' "$f" 2>/dev/null)"; then
+            # jq couldn't parse. If filename hints at rid, fail-CLOSED.
+            case "$f" in *"$rid"*) return 0 ;; esac
+            continue
+        fi
+        [[ "$file_rid" != "$rid" ]] && continue
+        status="$(jq -r '.status // ""' "$f" 2>/dev/null || echo "")"
+        [[ "$status" == "in_progress" ]] && return 0
+    done
+    return 1
+}
+
+# ─── Stash scanner (#594) ───────────────────────────────────────────────────
+# _cleanup_scan_stashes <force_bool> <age_hours>
+# Emits: "stash@{N}\t<decision>\t<reason>"
+# decision ∈ {prune, skip}; reason includes message + run_id + reason text.
+# ONLY considers stashes whose message starts with "zb-applycheck-".
+_cleanup_scan_stashes() {
+    local force="$1" age_hours="$2"
+    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_hours * 3600 ))
+    local line
+    # Use NUL-safe iteration; %gd=stash ref, %ct=committer ts, %s=subject.
+    while IFS=$'\t' read -r ref ts subject; do
+        [[ -z "$ref" ]] && continue
+        # Strip "On <branch>: " prefix that git stash injects automatically when
+        # the user did not pass -m. We seed with -m so subject == message.
+        local msg="${subject#On *: }"
+        msg="${msg#WIP on *: }"
+        case "$msg" in
+            zb-applycheck-*) ;;
+            *) continue ;;  # never even mention non-prefix stashes
+        esac
+        # Extract run_id = trailing digits after final '-'.
+        local rid="${msg##*-}"
+        [[ "$rid" =~ ^[0-9]+$ ]] || rid=""
+        # Active-run check (fail-CLOSED).
+        if [[ -n "$rid" ]] && _cleanup_is_active_run "$rid"; then
+            printf '%s\tskip\tactive run_id=%s msg=%s\n' "$ref" "$rid" "$msg"
+            continue
+        fi
+        # Age check.
+        if [[ "$ts" =~ ^[0-9]+$ && "$ts" -gt "$cutoff" ]]; then
+            printf '%s\tskip\tnewer than %sh msg=%s\n' "$ref" "$age_hours" "$msg"
+            continue
+        fi
+        # Note: --force is not required for stashes; the prefix + age + active
+        # gates already encode safety. Force just suppresses age (caller can
+        # pass age_hours=0). We still distinguish reasons for traceability.
+        printf '%s\tprune\tzb-applycheck stash age_ok rid=%s msg=%s\n' "$ref" "${rid:-?}" "$msg"
+    done < <(git stash list --format='%gd	%ct	%s' 2>/dev/null || true)
+    _ZBUILD_UNUSED="$force"  # acknowledge param (reserved for future gating)
+    unset _ZBUILD_UNUSED
+}
+
+# ─── Tmpdir scanner (#594) ──────────────────────────────────────────────────
+# _cleanup_scan_zbuild_tmpdirs <age_hours>
+# Globs ${TMPDIR:-/tmp} for zb-applycheck-*, zbuild-test-stage.*,
+# pipeline-runner.* — older than cutoff. Emits: "<path>\tprune\t<reason>".
+_cleanup_scan_zbuild_tmpdirs() {
+    local age_hours="$1"
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_hours * 3600 ))
+    local tmpd="${TMPDIR:-/tmp}"
+    tmpd="${tmpd%/}"
+    [[ -d "$tmpd" ]] || return 0
+    local pattern path mtime age_h
+    for pattern in "zb-applycheck-*" "zbuild-test-stage.*" "pipeline-runner.*"; do
+        for path in "$tmpd"/$pattern; do
+            [[ -e "$path" ]] || continue
+            mtime="$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || echo "0")"
+            [[ "$mtime" =~ ^[0-9]+$ ]] || continue
+            [[ "$mtime" -gt "$cutoff" ]] && continue
+            age_h=$(( (now - mtime) / 3600 ))
+            printf '%s\tprune\tpattern=%s age=%sh\n' "$path" "$pattern" "$age_h"
+        done
+    done
+}
+
+# ─── Stash applier (#594) ───────────────────────────────────────────────────
+# _cleanup_apply_stash_plan <plan_TSV> <dry_run_bool>
+# Drops in reverse stash-index order so dropping doesn't shift remaining refs.
+# Re-verifies the prefix at drop-time (defence in depth).
+_cleanup_apply_stash_plan() {
+    local data="$1" dry_run="$2"
+    [[ -z "$data" ]] && return 0
+    # Collect prune indices.
+    local lines=() line ref decision rest
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        ref="${line%%$'\t'*}"
+        rest="${line#*$'\t'}"
+        decision="${rest%%$'\t'*}"
+        [[ "$decision" != "prune" ]] && continue
+        lines+=("$ref")
+    done <<<"$data"
+    [[ "$dry_run" == "true" ]] && return 0
+    # Sort descending by index N inside stash@{N}.
+    local sorted
+    sorted="$(printf '%s\n' "${lines[@]}" | awk -F'[{}]' '{print $2"\t"$0}' | sort -rn | cut -f2)"
+    while IFS= read -r ref; do
+        [[ -z "$ref" ]] && continue
+        # Re-verify the prefix immediately before drop.
+        local subject
+        subject="$(git stash list --format='%gd	%s' 2>/dev/null | awk -F'\t' -v r="$ref" '$1==r{print $2}')"
+        local msg="${subject#On *: }"; msg="${msg#WIP on *: }"
+        case "$msg" in zb-applycheck-*) ;; *) continue ;; esac
+        git stash drop -q "$ref" >/dev/null 2>&1 || true
+    done <<<"$sorted"
+}
+
+# ─── Stash restore (#594) ───────────────────────────────────────────────────
+# _cleanup_restore_stash <index>
+# Validates that stash@{N} exists AND its message has zb-applycheck-* prefix,
+# then `git stash pop stash@{N}`. Returns nonzero on validation failure or pop
+# failure (and in pop-failure case, leaves the stash in place per safety).
+_cleanup_restore_stash() {
+    local idx="$1"
+    [[ "$idx" =~ ^[0-9]+$ ]] || { error "restore-stash: index must be a non-negative integer (got: $idx)"; return 2; }
+    local ref="stash@{$idx}"
+    local subject
+    subject="$(git stash list --format='%gd	%s' 2>/dev/null | awk -F'\t' -v r="$ref" '$1==r{print $2}')"
+    if [[ -z "$subject" ]]; then
+        error "restore-stash: no such stash $ref"
+        return 2
+    fi
+    local msg="${subject#On *: }"; msg="${msg#WIP on *: }"
+    case "$msg" in
+        zb-applycheck-*) ;;
+        *)
+            error "restore-stash: $ref is not a zb-applycheck-* stash (msg: $msg)"
+            return 2
+            ;;
+    esac
+    if ! git stash pop "$ref" >/dev/null 2>&1; then
+        error "restore-stash: git stash pop $ref failed; stash left in place"
+        return 1
+    fi
+    return 0
+}
+
 # ─── Renderer ───────────────────────────────────────────────────────────────
 # _cleanup_render_plan <kind> <data> <dry_run> <quiet>
 _cleanup_render_plan() {
@@ -241,7 +399,7 @@ _cleanup_render_plan() {
         local target rest decision reason
         target="${line%%$'\t'*}"
         rest="${line#*$'\t'}"
-        if [[ "$kind" == "branches" ]]; then
+        if [[ "$kind" == "branches" || "$kind" == "stashes" || "$kind" == "tmpdirs" ]]; then
             decision="${rest%%$'\t'*}"
             reason="${rest#*$'\t'}"
             printf '  %-40s  %-6s  %s\n' "$target" "$decision" "$reason"

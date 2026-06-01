@@ -45,10 +45,16 @@ Commands:
   pipeline status        Show resume recommendation for the current state file
                          [--run-id <id>]
   cleanup                Prune stale zbuild/issue-* branches + old state files
-                         [--branches] [--state-dirs]
+                         + zb-applycheck-* stashes + zb-applycheck/zbuild-test-stage/
+                         pipeline-runner tmpdirs. Also prunes worktree orphans.
+                         [--branches] [--state-dirs] [--stashes] [--tmpdirs]
                          [--dry-run|--apply|--force]
-                         [--age-days N] [--quiet]
-                         Default: dry-run, both categories, age-days 14.
+                         [--age-days N]    (state files; default 14)
+                         [--age-hours N]   (stashes + tmpdirs; default 1)
+                         [--restore-stash <N> --apply]  (pop a zb-applycheck stash
+                                                          to working tree, then drop)
+                         [--quiet]
+                         Default: dry-run, all categories.
   deferred <sub>         Deferred-work scanners (backfill | tracker)
                          Run \`zbuild deferred --help\` for sub-commands.
   manifest <sub>         Manifest YAML drift management (sync)
@@ -384,14 +390,20 @@ case "$cmd" in
         source "$SCRIPT_DIR/lib/cleanup.sh"
         cl_branches=false
         cl_state_dirs=false
+        cl_stashes=false
+        cl_tmpdirs=false
         cl_dry_run=""
         cl_force=false
         cl_age_days=14
+        cl_age_hours=1
         cl_quiet=false
+        cl_restore_idx=""
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 --branches)   cl_branches=true; shift ;;
                 --state-dirs) cl_state_dirs=true; shift ;;
+                --stashes)    cl_stashes=true; shift ;;
+                --tmpdirs)    cl_tmpdirs=true; shift ;;
                 --dry-run)    cl_dry_run=true; shift ;;
                 --apply)      cl_dry_run=false; shift ;;
                 --force)      cl_force=true; cl_dry_run="${cl_dry_run:-false}"; shift ;;
@@ -401,19 +413,55 @@ case "$cmd" in
                         ''|*[!0-9]*) error "--age-days must be a non-negative integer, got: $2"; exit 2 ;;
                     esac
                     cl_age_days="$2"; shift 2 ;;
+                --age-hours)
+                    [[ -z "${2:-}" ]] && { error "--age-hours requires a value"; exit 2; }
+                    case "$2" in
+                        ''|*[!0-9]*) error "--age-hours must be a non-negative integer, got: $2"; exit 2 ;;
+                    esac
+                    cl_age_hours="$2"; shift 2 ;;
+                --restore-stash)
+                    [[ -z "${2:-}" ]] && { error "--restore-stash requires a stash index"; exit 2; }
+                    case "$2" in
+                        ''|*[!0-9]*) error "--restore-stash requires a non-negative integer, got: $2"; exit 2 ;;
+                    esac
+                    cl_restore_idx="$2"; shift 2 ;;
                 --quiet) cl_quiet=true; shift ;;
                 *)
                     error "Unknown cleanup flag: $1"
-                    echo "Usage: zbuild cleanup [--branches] [--state-dirs] [--dry-run|--apply|--force] [--age-days N] [--quiet]" >&2
+                    echo "Usage: zbuild cleanup [--branches] [--state-dirs] [--stashes] [--tmpdirs]" >&2
+                    echo "                       [--dry-run|--apply|--force]" >&2
+                    echo "                       [--age-days N] [--age-hours N] [--quiet]" >&2
+                    echo "                       [--restore-stash <index> --apply]" >&2
                     exit 2 ;;
             esac
         done
+        # --restore-stash short-circuits: mutually exclusive with category/force.
+        if [[ -n "$cl_restore_idx" ]]; then
+            if $cl_force; then
+                error "--restore-stash cannot be combined with --force"
+                exit 2
+            fi
+            # Default to dry-run if neither --apply nor --dry-run set.
+            [[ -z "$cl_dry_run" ]] && cl_dry_run=true
+            if $cl_dry_run; then
+                $cl_quiet || info "would restore stash@{$cl_restore_idx} (use --apply to act)"
+                exit 0
+            fi
+            if _cleanup_restore_stash "$cl_restore_idx"; then
+                $cl_quiet || info "restored stash@{$cl_restore_idx} to working tree"
+                exit 0
+            else
+                exit 1
+            fi
+        fi
         # Default = dry-run when neither --apply nor --force specified.
         [[ -z "$cl_dry_run" ]] && cl_dry_run=true
-        # Default categories: both when neither flag was set.
-        if ! $cl_branches && ! $cl_state_dirs; then
+        # Default categories: all when no category flag was set.
+        if ! $cl_branches && ! $cl_state_dirs && ! $cl_stashes && ! $cl_tmpdirs; then
             cl_branches=true
             cl_state_dirs=true
+            cl_stashes=true
+            cl_tmpdirs=true
         fi
 
         $cl_quiet || {
@@ -432,6 +480,39 @@ case "$cmd" in
             cl_branch_plan="$(_cleanup_scan_branches "$cl_force" || true)"
             _cleanup_render_plan "branches" "$cl_branch_plan" "$cl_dry_run" "$cl_quiet"
             _cleanup_apply_branch_plan "$cl_branch_plan" "$cl_dry_run"
+        fi
+
+        if $cl_stashes; then
+            # Note: only meaningful inside a git work tree.
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                cl_stash_plan="$(_cleanup_scan_stashes "$cl_force" "$cl_age_hours" || true)"
+                _cleanup_render_plan "stashes" "$cl_stash_plan" "$cl_dry_run" "$cl_quiet"
+                _cleanup_apply_stash_plan "$cl_stash_plan" "$cl_dry_run"
+            fi
+        fi
+
+        if $cl_tmpdirs; then
+            cl_tmp_plan="$(_cleanup_scan_zbuild_tmpdirs "$cl_age_hours" || true)"
+            _cleanup_render_plan "tmpdirs" "$cl_tmp_plan" "$cl_dry_run" "$cl_quiet"
+            if [[ "$cl_dry_run" != "true" ]]; then
+                target=""
+                while IFS= read -r line; do
+                    [[ -z "$line" ]] && continue
+                    target="${line%%$'\t'*}"
+                    [[ -d "$target" ]] || continue
+                    case "$target" in
+                        */zb-applycheck-*|*/zbuild-test-stage.*|*/pipeline-runner.*)
+                            rm -rf -- "$target" 2>/dev/null || true ;;
+                    esac
+                done <<<"$cl_tmp_plan"
+            fi
+        fi
+
+        # Auto-prune worktree orphans (cheap, idempotent; only inside a repo).
+        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            if [[ "$cl_dry_run" != "true" ]]; then
+                git worktree prune >/dev/null 2>&1 || true
+            fi
         fi
         ;;
     deferred)
