@@ -324,3 +324,17 @@ linear dispatch is byte-identical to today (regression-locked in
 Per ADR-022, the canonical stage sequence is extended from 11 to 12 stages by inserting `test_assessment` (Pattern 1 agent stage, tier T2) between `test` and `review`. The new stage is `blocking: true`. Templates that don't need LLM-interpreted test verdicts may continue to omit it (subtractive composition rule unchanged). Existing templates that omit `test_assessment` keep ADR-019's fallback semantics where review reads `test.verdict` directly.
 
 References: ADR-018 (Pattern 1), ADR-019 §7 (verdict precedence), ADR-020 §LLM-interpreted verdict stages, ADR-021 §test_assessment until: source, ADR-022 (full record), #567 (impl), #572 (this amendment).
+
+## Amendment 2026-06-02 (#447 / ADR-016 prerequisite) — Taxonomy-only scope clarification
+
+This ADR is the **taxonomy** for canonical stage IDs and their per-stage attributes (kind, tier, lifecycle hooks, expected artifact, blocking). It defines *what a stage ID means*. It does **not** define *what should be present in any particular pipeline*.
+
+The "should" question is governed elsewhere:
+
+- **Structural realization** (cycle entries, `stage_definitions:` hoisting, execution-order tokens that aren't canonical stage IDs themselves) is owned by ADR-021 v2. Templates declare order via `stages: [...]` which may contain composite cycle entries; those expand to canonical IDs via `stage_definitions:`. A template's *flattened, resolved* stage set — not its raw `stages:` list — is what gets compared to this ADR's taxonomy.
+
+- **Per-repository template resolution and base-template diff** are owned by ADR-016 (filed as a follow-up). When a per-repo `.zbuild/templates/<id>.yaml` resolves via `extends:`, the engine computes a diff between the resolved override and its declared base template, NOT against the full list in this ADR. The diff fires `pipeline.template.diff_from_base` for operator visibility but never blocks execution.
+
+Consequently, the "subtractive composition" rule in §"Stage sequence" remains true (templates may omit stages and the runner validates only that present IDs are members of the taxonomy), but the rule about *which* omissions matter to a particular pipeline is template-family-specific, not engine-hardcoded. Future shipped templates (e.g., a hypothetical `issue-creation` family) define their own expected stage set by being what they are; the engine knows nothing about that beyond ID validity.
+
+References: ADR-016 (per-repository template resolution), ADR-021 v2 (cycle/composite structural mechanism), #447 (implementation umbrella), #652/#653/#654/#655/#656 (sub-issues for ADR-016 + impl).
