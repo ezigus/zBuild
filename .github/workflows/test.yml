@@ -58,11 +58,6 @@ jobs:
   integration:
     name: Integration tests
     runs-on: ubuntu-latest
-    # TODO: drop `continue-on-error` after the three Linux-only failures land
-    # (#631 deferred-tracker T6, #632 intake-branch-creation-test, #633 plugins
-    # intake-branch-test). Without this, the integration tier would turn red on
-    # every PR now that #629's tee-mask is fixed below.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Run integration tier
