@@ -335,6 +335,29 @@ _test_emit_failures_summary() {
 # fabricate counts). The `reason` field is optional and emitted only when
 # non-empty; values include `summary_unavailable` (#584 fail-safe),
 # `silent_failure` (#485 no-op guard), `diff_apply_failed` (callers above).
+# #626: sanitize a numeric slot — accept "null", integers, or fall back to "null".
+# Anything else (whitespace, "abc", embedded quotes) becomes JSON null so jq
+# --argjson never barfs and the writer stays fail-CLOSED.
+_test_sanitize_numeric() {
+    local v="$1"
+    if [[ "$v" == "null" ]] || [[ "$v" =~ ^-?[0-9]+$ ]]; then
+        printf '%s' "$v"
+    else
+        printf 'null'
+    fi
+}
+
+# #626: sanitize a boolean slot — only literal true/false survive; everything
+# else becomes false. Mirrors the numeric sanitizer's fail-closed posture.
+_test_sanitize_bool() {
+    local v="$1"
+    if [[ "$v" == "true" || "$v" == "false" ]]; then
+        printf '%s' "$v"
+    else
+        printf 'false'
+    fi
+}
+
 _test_write_result() {
     local path="$1"
     local verdict="$2"
@@ -352,17 +375,31 @@ _test_write_result() {
 
     # #584: pass through "null" literal so --argjson treats it as JSON null;
     # numeric values pass through unchanged.
-    local passed_json="$passed" failed_json="$failed"
+    # #626: defensive sanitizers — adversarial input (whitespace, control
+    # chars, embedded quotes) must never crash jq. Anything that is not a
+    # bare integer or the "null" token becomes JSON null; anything that is
+    # not true/false becomes false.
+    local exit_code_json passed_json failed_json diff_applied_json
+    exit_code_json="$(_test_sanitize_numeric "$exit_code")"
+    passed_json="$(_test_sanitize_numeric "$passed")"
+    failed_json="$(_test_sanitize_numeric "$failed")"
+    diff_applied_json="$(_test_sanitize_bool "$diff_applied")"
 
     # #507: write via atomic_write (helpers.sh) so the manifest-declared
     # primary output `test-results.json` passes the atomicity guard test.
+    # #626 + Copilot P2 on #640: stream jq → atomic_write directly with a
+    # subshell-scoped pipefail so large test_output never buffers in a
+    # bash variable. Check the jq-side exit via PIPESTATUS[0]; on failure
+    # write a degenerate-but-valid fallback so the primary artifact always
+    # exists and emit test.result_write.fallback. All jq stderr is
+    # suppressed so internal sanitization failures never leak.
     jq -n \
         --arg verdict "$verdict" \
-        --argjson exit_code "$exit_code" \
+        --argjson exit_code "$exit_code_json" \
         --argjson passed "$passed_json" \
         --argjson failed "$failed_json" \
         --arg test_output "$test_output" \
-        --argjson diff_applied "$diff_applied" \
+        --argjson diff_applied "$diff_applied_json" \
         --arg test_cmd "$test_cmd" \
         --arg reason "$reason" \
         '{
@@ -375,7 +412,18 @@ _test_write_result() {
             diff_applied: $diff_applied,
             test_cmd: $test_cmd
         } + (if $reason != "" then {reason: $reason} else {} end)' \
+        2>/dev/null \
       | atomic_write "$path"
+    local _jq_rc="${PIPESTATUS[0]}"
+
+    if (( _jq_rc != 0 )); then
+        # Fail-closed: overwrite with a degenerate-but-valid JSON object so
+        # the primary output always parses. Sanitizers already constrained
+        # exit_code_json to {integer, "null"} so %s interpolation is safe.
+        printf '{"schema_version":1,"verdict":"error","reason":"result_write_failed","exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":""}\n' \
+            "$exit_code_json" | atomic_write "$path"
+        emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
+    fi
 }
 
 # ─── test_finalize ────────────────────────────────────────────────────────────
