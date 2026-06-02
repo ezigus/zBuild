@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-02T11:53:49Z_
+_Last updated: 2026-06-02T19:45:50Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -92,3 +92,8 @@ _Last updated: 2026-06-02T11:53:49Z_
 | #604 | feat(test): ZBUILD_TEST_QUIET=1 suppresses per-assertion echoes (#600) | 2026-06-02 |
 | #603 | fix(portability): replace grep -P with portable equivalents in 3 tests (#601) | 2026-06-02 |
 | #556 | [manifest-sync] Drift reconciliation | 2026-06-02 |
+| #658 | docs(adr-016): Per-Repository Template Resolution (Proposed) | 2026-06-02 |
+| #657 | docs(adr-013): taxonomy-only scope clarification (ADR-016 prerequisite) | 2026-06-02 |
+| #651 | fix(#646): stage-output framing — discrepancy warn inside banner + blank line between stages | 2026-06-02 |
+| #650 | fix(#647): defense-in-depth fd 3 / ZBUILD_STAGE_IO_FD isolation in router | 2026-06-02 |
+| #648 | [manifest-sync] Drift reconciliation | 2026-06-02 |
