@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-31T18:22:34Z_
+_Last updated: 2026-06-02T11:27:43Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -84,3 +84,11 @@ _Last updated: 2026-05-31T18:22:34Z_
 | #522 | docs(adr): cross-reference cleanup + missed-amendment audit fixups | 2026-05-31 |
 | #516 | feat(runner): stage-start + stage-end timestamps with duration (#508) | 2026-05-31 |
 | #500 | feat(#496): inter-stage data contract + pre-flight validator (ADR-020) | 2026-05-31 |
+| #644 | chore: drop unit step continue-on-error (#635 fixed) | 2026-06-02 |
+| #638 | chore: drop integration step continue-on-error (96/96 passing) | 2026-06-02 |
+| #620 | fix(runner): export ZBUILD_STATE_DIR so #617 branch-state injection fires (#618) | 2026-06-02 |
+| #611 | feat(build): pipeline commits per cycle iter using COMMIT_SUMMARY marker (#608) | 2026-06-02 |
+| #603 | fix(portability): replace grep -P with portable equivalents in 3 tests (#601) | 2026-06-02 |
+| #599 | feat(cleanup): handle zb-applycheck-* stashes + tmpdirs + --restore-stash flag (#594) | 2026-06-02 |
+| #597 | feat(install): copy code to $ZBUILD_HOME instead of symlinking (#595) | 2026-06-02 |
+| #588 | fix(test-harness): open fd 3 in run-tests.sh + relax stage-io guard with warn+event fallback (#586) | 2026-06-02 |
