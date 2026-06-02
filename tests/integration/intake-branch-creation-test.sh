@@ -43,13 +43,20 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 #    plugins): a fresh bash interpreter so we exercise the real source/init
 #    chain, not state inherited from this shell.
 set +e
+# #632: this test exercises branch-creation mechanics, not the closed-issue
+# gate or CI-mode gate. Bypass both so it runs identically on macOS and Linux
+# CI:
+#  - GHA sets GITHUB_REPOSITORY → gh resolves issue #484 as CLOSED → refuse
+#  - GHA sets CI=true → plugin requires ZBUILD_WORKSPACE_BRANCH override → refuse
 subprocess_out="$(
+    env -u CI \
     ZBUILD_EVENTS_DIR="$ZBUILD_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DB" \
     ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA" \
     ZBUILD_GOAL="add branch creation to intake" \
     ZBUILD_ISSUE=484 \
+    ZBUILD_ALLOW_CLOSED_ISSUE=1 \
     bash -c "
         set -uo pipefail
         cd '$REPO'
@@ -99,8 +106,10 @@ fi
 
 # Re-invoke: subsequent call should emit a reused or noop event (no second created).
 set +e
+env -u CI \
 ZBUILD_GOAL="add branch creation to intake" \
 ZBUILD_ISSUE=484 \
+ZBUILD_ALLOW_CLOSED_ISSUE=1 \
 bash -c "
     set -uo pipefail
     cd '$REPO'

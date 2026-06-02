@@ -113,6 +113,12 @@ echo '{"schema_version":1,"run_id":"t","issue":484,"stage_statuses":{}}' > "$STA
 _reset_events() { : > "$ZBUILD_EVENTS_JSONL"; }
 _event_count() { grep -c "\"$1\"" "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0; }
 
+# #633: GHA sets CI=true; intake plugin's CI-mode gate then requires
+# ZBUILD_WORKSPACE_BRANCH override. This test exercises the auto-derive path,
+# so unset CI for the rest of the script. (macOS runs this without CI set
+# anyway; Linux CI is the only environment where this matters.)
+unset CI CI_MODE
+
 # All state-changing tests run in the parent shell so HEAD changes persist.
 cd "$REPO" || exit 1
 
