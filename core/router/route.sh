@@ -351,11 +351,24 @@ _route_call_claude() {
         return 2
     fi
 
+    # #647: defense-in-depth fd isolation. Close fd 3 and unset
+    # ZBUILD_STAGE_IO_FD inside the spawned subshell so the runner's
+    # stage-io capture chokepoint never leaks into the claude subprocess
+    # (parallel companion to #645's fix at the test-plugin site). All 5
+    # agent plugins that call route_to_model inherit this protection.
     local response
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
-        response="$("${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file")" || rc=$?
+        response="$(
+            unset ZBUILD_STAGE_IO_FD
+            exec 3>&-
+            "${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
+        )" || rc=$?
     else
-        response="$(claude "${_claude_args[@]}" 2>"$stderr_file")" || rc=$?
+        response="$(
+            unset ZBUILD_STAGE_IO_FD
+            exec 3>&-
+            claude "${_claude_args[@]}" 2>"$stderr_file"
+        )" || rc=$?
     fi
 
     if [[ $rc -ne 0 ]]; then
@@ -784,12 +797,24 @@ ${_diff_pointer}"
         _claude_args+=(--output-format json)
 
         # Run claude in $cwd as background child so signal trap can kill it.
+        # #647: defense-in-depth fd isolation — close fd 3 and unset
+        # ZBUILD_STAGE_IO_FD inside the background subshell so the runner's
+        # stage-io capture chokepoint never leaks into claude. The build
+        # plugin (the loop's primary caller) inherits this protection.
         if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
-            ( cd "$cwd" && "${_tout_cmd[@]}" claude "${_claude_args[@]}" ) \
-                >"$json_file" 2>"$stderr_file" &
+            (
+                cd "$cwd" \
+                    && unset ZBUILD_STAGE_IO_FD \
+                    && exec 3>&- \
+                    && "${_tout_cmd[@]}" claude "${_claude_args[@]}"
+            ) >"$json_file" 2>"$stderr_file" &
         else
-            ( cd "$cwd" && claude "${_claude_args[@]}" ) \
-                >"$json_file" 2>"$stderr_file" &
+            (
+                cd "$cwd" \
+                    && unset ZBUILD_STAGE_IO_FD \
+                    && exec 3>&- \
+                    && claude "${_claude_args[@]}"
+            ) >"$json_file" 2>"$stderr_file" &
         fi
         _ROUTE_LOOP_CHILD_PID=$!
         wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
