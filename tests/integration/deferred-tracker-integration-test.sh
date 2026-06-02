@@ -236,12 +236,15 @@ export GH_CALLS_LOG="$TEST_TEMP_DIR/gh-calls-t6.log"
 cat > "$MOCK_PR_LIST_JSON" <<'EOF'
 [{"number":600,"title":"report mode","body":"Needs a separate issue.","author":{"login":"ezigus","type":"User"},"mergedAt":"2026-05-31T10:00:00Z"}]
 EOF
-log_mtime_before=$(stat -f '%m' "$TEST_LOG" 2>/dev/null || stat -c '%Y' "$TEST_LOG")
+# #631: compare content hash, not mtime. mtime resolution differs by FS (ext4 ns
+# vs HFS+ 1s), and on Linux even a same-content rewrite would bump mtime. The
+# real invariant is "report mode does not change the log's bytes."
+log_hash_before=$(shasum -a 256 "$TEST_LOG" | awk '{print $1}')
 rc=0
 bash "$REPO_ROOT/scripts/deferred-tracker.sh" --report --log "$TEST_LOG" >/dev/null 2>&1 || rc=$?
-log_mtime_after=$(stat -f '%m' "$TEST_LOG" 2>/dev/null || stat -c '%Y' "$TEST_LOG")
+log_hash_after=$(shasum -a 256 "$TEST_LOG" | awk '{print $1}')
 assert_eq "T6: report mode → exit 0" "0" "$rc"
-assert_eq "T6: report mode does not mutate log" "$log_mtime_before" "$log_mtime_after"
+assert_eq "T6: report mode does not mutate log" "$log_hash_before" "$log_hash_after"
 issue_create_calls=$(grep -c "issue create" "$GH_CALLS_LOG" || true)
 assert_eq "T6: report mode does not create issue" "0" "$issue_create_calls"
 
