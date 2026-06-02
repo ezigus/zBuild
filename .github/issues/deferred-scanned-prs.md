@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-02T03:48:28Z_
+_Last updated: 2026-06-02T11:53:49Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -91,3 +91,4 @@ _Last updated: 2026-06-02T03:48:28Z_
 | #605 | fix(build): strip the stash dance — LLM edits in place, capture git diff HEAD directly (#602) | 2026-06-02 |
 | #604 | feat(test): ZBUILD_TEST_QUIET=1 suppresses per-assertion echoes (#600) | 2026-06-02 |
 | #603 | fix(portability): replace grep -P with portable equivalents in 3 tests (#601) | 2026-06-02 |
+| #556 | [manifest-sync] Drift reconciliation | 2026-06-02 |
