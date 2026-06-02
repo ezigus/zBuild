@@ -481,10 +481,14 @@ _ROUTE_LOOP_INPUT_TOKENS=0
 _ROUTE_LOOP_OUTPUT_TOKENS=0
 _ROUTE_LOOP_LAST_RESPONSE=""
 _ROUTE_LOOP_CHILD_PID=""
-# #646: deferred-final-banner-close handshake (only populated when caller
-# passed --defer-final-banner-close AND the loop exited via a success path).
-# Caller MUST invoke _route_loop_close_final_banner after emitting any
-# post-loop operator output that needs to land inside the iter banner pair.
+# #646: deferred-final-banner-close handshake. Only populated when the
+# caller passed --defer-final-banner-close AND the loop reached the
+# DONE-sentinel exit path on a successful iteration (other exit reasons —
+# no_progress, max_iterations, error, signal — keep the legacy immediate
+# stage_io_end behavior and leave these globals empty). Caller MUST invoke
+# _route_loop_close_final_banner after emitting any post-loop operator
+# output that needs to land inside the iter banner pair; it is a safe
+# no-op when nothing was deferred.
 _ROUTE_LOOP_FINAL_STAGE_ID=""
 _ROUTE_LOOP_FINAL_KIND=""
 _ROUTE_LOOP_FINAL_SEQ=""
@@ -531,12 +535,14 @@ route_to_model_loop() {
     local model_override=""
     local scope_allowlist=""
     # #646: when set, route_to_model_loop returns WITHOUT closing the final
-    # iter's stage-io banner on the success-exit paths (done_sentinel,
-    # no_progress, max_iterations). Caller is responsible for emitting any
+    # iter's stage-io banner ONLY on the DONE-sentinel exit path. Other exit
+    # paths (no_progress, max_iterations, error rc≥2, SIGINT) keep the
+    # legacy immediate stage_io_end behavior — the build-plugin discrepancy
+    # warn this flag exists to wrap only fires on done_sentinel, so the
+    # narrow scope is sufficient. Caller is responsible for emitting any
     # post-loop operator output INSIDE the banner pair and then calling
-    # _route_loop_close_final_banner to flush the close-banner. Wraps the
-    # build plugin's post-loop discrepancy warn so it lands inside the
-    # banner instead of leaking into the inter-stage gap (Wave 11B, #587).
+    # _route_loop_close_final_banner to flush the close-banner; that helper
+    # is a safe no-op when the loop did not stash a deferred close.
     local defer_final_banner_close="false"
 
     while [[ $# -gt 0 ]]; do
@@ -1017,6 +1023,18 @@ _route_loop_close_final_banner() {
         --metadata "tokens_in=$_ROUTE_LOOP_FINAL_TOKENS_IN" \
         --metadata "tokens_out=$_ROUTE_LOOP_FINAL_TOKENS_OUT" \
         >/dev/null 2>&1 || true
+    # Clear the handshake state so the full LLM result text (potentially
+    # several KB) isn't held in module-level globals for the remainder of
+    # the runner process, and so later inspection of these vars can't
+    # accidentally read stale data from a previous loop's deferred close.
+    _ROUTE_LOOP_FINAL_STAGE_ID=""
+    _ROUTE_LOOP_FINAL_KIND=""
+    _ROUTE_LOOP_FINAL_SEQ=""
+    _ROUTE_LOOP_FINAL_OUTPUT=""
+    _ROUTE_LOOP_FINAL_EXIT_CODE=""
+    _ROUTE_LOOP_FINAL_ITER=""
+    _ROUTE_LOOP_FINAL_TOKENS_IN=""
+    _ROUTE_LOOP_FINAL_TOKENS_OUT=""
     _ROUTE_LOOP_FINAL_PENDING="false"
     return 0
 }

@@ -29,11 +29,31 @@ print_test_header "runner inter-stage blank line (Wave 11B, #646)"
 setup_test_env "runner-inter-stage-blank-line"
 _test_cleanup_hook() { cleanup_test_env; }
 
-# ── Drive the runner's per-stage dispatch loop directly. We don't need a full
-# pipeline — we just need to call _render_stage_divider with the new leading
-# blank line in front, exactly as core/pipeline/runner.sh:1201 does. We do
-# this in a subshell so the assertion captures the exact bytes the runner
-# would emit between stages.
+# ─── Assertion 0: source-level regression guard. ─────────────────────────────
+# Copilot review on #651 pointed out that simulating the dispatcher's emit
+# pattern in a separate driver lets the test pass even if someone DELETES
+# the runner-side `printf '\n' >&2` we just added. Lock the source to keep
+# the contract auditable: assert that the runner's main per-stage loop
+# emits a leading blank line on fd 2 BEFORE calling _render_stage_divider.
+# We grep the actual runner.sh source rather than executing it (the main()
+# loop needs a full state-file/template fixture that's out of scope for a
+# unit test). The pattern matches lines that emit a blank to fd 2 within
+# the 30 lines preceding `_render_stage_divider "$stage"`.
+RUNNER_SRC="$REPO_ROOT/core/pipeline/runner.sh"
+if grep -B30 '_render_stage_divider "\$stage"' "$RUNNER_SRC" 2>/dev/null \
+        | grep -qE "printf '\\\\n' >&2"; then
+    assert_pass "runner.sh main loop emits leading blank line to fd 2 before _render_stage_divider"
+else
+    assert_fail "runner.sh main loop emits leading blank line to fd 2 before _render_stage_divider" \
+        "missing 'printf '\\\\n' >&2' within 30 lines above _render_stage_divider call"
+fi
+
+# ─── Drive _render_stage_divider in a subshell to verify the on-disk byte
+# pattern actually produces the desired vertical break. Two consecutive
+# stages → at least 3 blank lines between divider lines (divider's own
+# trailing \n + #523's second trailing \n + the new dispatcher leading \n
+# + the next divider's leading \n). We INVOKE the exact source line above:
+# `printf '\n' >&2` directly followed by `_render_stage_divider`.
 DRIVER="$TEST_TEMP_DIR/driver.sh"
 LOG="$TEST_TEMP_DIR/runner-fd2.log"
 
@@ -50,8 +70,8 @@ export NO_COLOR=1
 
 source "$REPO_ROOT/core/pipeline/runner.sh"
 
-# Mimic the runner's per-stage dispatch loop: ONE leading blank line, then
-# divider. Two consecutive stages.
+# Mirror the runner's per-stage dispatch loop literally: ONE leading blank
+# line printed to fd 2, then _render_stage_divider. Two consecutive stages.
 for s in plan build; do
     printf '\n' >&2
     _render_stage_divider "\$s"
@@ -70,18 +90,10 @@ else
     assert_fail "two stage dividers rendered" "count=$divider_count log=$(printf '%s' "$log" | head -c 200)"
 fi
 
-# ─── Assertion 2: between the FIRST divider and the SECOND, the log contains
-#     at LEAST one blank line that originated from the runner's per-stage
-#     dispatcher (the `printf '\n'` added in Wave 11B #646), in addition to
-#     `_render_stage_divider`'s own surrounding blanks. We assert there are
-#     at least 3 blank lines between the two divider lines (trailing 1 from
-#     prev divider's `printf '\n'` + #523 trailing `\n` + the new leading
-#     `\n` from the dispatcher + the next divider's own leading `\n`).
-#
-#     The structural claim is: bytes between divider line 1 and divider line 2
-#     contain MORE blank lines than the previous behavior would produce.
-#     Previous: 2 blank lines (divider's trailing \n + #523 \n). Now: 3+.
-#     We allow >=3 to be robust to terminal widths and avoid over-pinning.
+# ─── Assertion 2: ≥3 blank lines strictly between divider lines.
+#     Previous behavior produced 2 (divider trailing \n + #523 \n). The new
+#     dispatcher-side leading \n bumps this to ≥3. We allow ≥3 so the test
+#     is robust against terminal widths and color variations.
 plan_lineno="$(printf '%s\n' "$log" | grep -n 'plan' | head -1 | cut -d: -f1)"
 build_lineno="$(printf '%s\n' "$log" | grep -n 'build' | head -1 | cut -d: -f1)"
 
@@ -89,7 +101,6 @@ if [[ -z "$plan_lineno" || -z "$build_lineno" ]]; then
     assert_fail "plan + build divider lines both present" \
         "plan_lineno=$plan_lineno build_lineno=$build_lineno"
 else
-    # Count blank lines strictly between the two divider lines.
     between_blanks=0
     if [[ "$plan_lineno" -lt "$build_lineno" ]]; then
         lo=$((plan_lineno + 1))
