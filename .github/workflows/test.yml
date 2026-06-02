@@ -33,9 +33,6 @@ jobs:
   unit:
     name: Unit tests
     runs-on: ubuntu-latest
-    # TODO: drop after #635 (core-output-stage-io-test.sh exits non-zero on
-    # Linux without a failed assertion — masked by #629's tee-rc bug until now).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Run unit tier
