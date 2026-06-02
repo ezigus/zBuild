@@ -88,9 +88,11 @@ decision locks:
    addition).
 
 4. **`pipeline.template.resolved` event.** Emitted exactly once per
-   pipeline run, immediately after template resolution and validation
-   succeed (or fail — see the resolver step order below for the precise
-   firing point). Payload:
+   pipeline run, emitted unconditionally after the snapshot step,
+   regardless of whether the canonical-ID validation (step 7) or
+   contract validation (step 8) succeed. Validation failures cause the
+   runner to abort *after* the events fire — operators retain
+   diagnostic signal. Payload:
 
    ```
    pipeline.template.resolved
@@ -119,16 +121,11 @@ decision locks:
      base_template_id            (string)            — the shipped id from extends:
      stages_in_base_not_in_override  (array<string>) — removed canonical ids
      stages_added                (array<string>)     — added canonical ids (must still be ADR-013 members)
-     stages_modified             (array<string>)     — canonical ids whose per-stage attrs changed
    ```
 
-   (Q2) `stages_modified` uses **canonical-form serialized comparison**:
-   list-valued fields (`io.destinations`, `roles`) are compared as
-   sorted sequences for membership, but order is significant for
-   semantically-ordered fields. Concretely, `io.destinations: [file,
-   stdout]` vs `[stdout, file]` DOES count as modified — destination
-   order can affect rendering precedence and we err on the side of
-   reporting more diffs rather than silently merging.
+   (Q2) The diff event is scoped to **stage-level add/remove only**.
+   Attribute-level modification detection (per-stage `io.destinations`,
+   `roles`, etc.) is deferred to a future ADR if it's ever needed.
 
    The diff event fires **even when downstream validation
    (ADR-013 canonical-id check, ADR-020 contract validator) ultimately
@@ -154,35 +151,47 @@ The resolver runs these steps **in this exact order**. The order is
 load-bearing: every step's input is a downstream step's invariant.
 
 ```
-1. locate         — apply lock 1 search order; for CLI, take the supplied path verbatim
-2. load           — parse YAML (current AWK-based parser in core/pipeline/template.sh)
-3. validate       — check that `extends:` is present (lock 2) when source ∈ {local, cli};
-                    refuse multi-hop (extends-target's extends is non-null) at this step
-4. load_base      — load the shipped base referenced by extends: (single hop, lock 2)
-5. overlay        — full-replace overlay of override onto base (lock 1 semantics);
-                    stage_definitions: from override REPLACE the base entry for that stage id,
-                    NOT field-level merge — to avoid silent half-merges of cycle members
-6. flatten_cycles — apply ADR-021 v2 cycle expansion to produce _TPL_STAGES[] flat list
-7. validate_ids   — ADR-013 canonical-id + canonical-order check against _TPL_STAGES[]
-8. validate_adr020— ADR-020 contract validator runs against the fully resolved template
-9. snapshot       — write state/artifacts/template.resolved.yaml (resume invariant; see below)
-10. emit_resolved — emit pipeline.template.resolved (lock 4)
-11. emit_diff     — if source ∈ {local, cli}, emit pipeline.template.diff_from_base (lock 5)
-                    THIS STEP FIRES EVEN IF STEPS 7 OR 8 FAILED
+1.  locate         — apply lock 1 search order; for CLI, take the supplied path verbatim
+2.  load           — parse YAML (current AWK-based parser in core/pipeline/template.sh)
+3.  validate       — check that `extends:` is present (lock 2) when source ∈ {local, cli};
+                     refuse multi-hop (extends-target's extends is non-null) at this step
+4.  load_base      — load the shipped base referenced by extends: (single hop, lock 2)
+5.  overlay        — full-replace overlay of override onto base (lock 1 semantics);
+                     stage_definitions: from override REPLACE the base entry for that stage id,
+                     NOT field-level merge — to avoid silent half-merges of cycle members
+6.  flatten_cycles — apply ADR-021 v2 cycle expansion to produce _TPL_STAGES[] flat list
+7.  validate_ids   — ADR-013 canonical-id + canonical-order check against _TPL_STAGES[];
+                     CAPTURE the result, do NOT abort yet
+8.  validate_adr020— ADR-020 contract validator runs against the fully resolved template;
+                     CAPTURE the result, do NOT abort yet
+9.  snapshot       — write state/artifacts/template.resolved.yaml (resume invariant; see below)
+10. emit_resolved  — emit pipeline.template.resolved (lock 4) unconditionally
+11. emit_diff      — if source ∈ {local, cli}, emit pipeline.template.diff_from_base (lock 5)
+                     unconditionally on the captured resolved shape
+12. honor_validation — if either captured validation result (step 7 or 8) failed,
+                     the runner aborts here with the original validation error.
+                     Otherwise, dispatch proceeds.
 ```
 
-The diff event (step 11) is intentionally last and intentionally not
-short-circuited by validation failure: an operator with a broken
-override still wants to see the structural diff in their dogfood log.
-Step 11 only depends on having a resolved (post-overlay, post-flatten)
+Validation results from steps 7 and 8 are captured but do NOT
+short-circuit until step 12. Events 10 (resolved) and 11 (diff, when
+applicable) fire unconditionally on the captured resolved shape, then
+step 12 honors any validation failures and aborts. This ordering is
+load-bearing: an operator with a broken override still wants to see
+the structural diff in their dogfood log before the abort. Steps 10
+and 11 only depend on having a resolved (post-overlay, post-flatten)
 shape AND a base for comparison; both are produced regardless of
-downstream validation success.
+validation success.
 
 (B2) Pinning this order resolves the open question of where ADR-020
 validation slots relative to cycle flattening. Validation runs AFTER
 flattening because ADR-020 walks `_TPL_STAGES[]`, which is the
-post-flatten contract. Validation runs BEFORE snapshot because a broken
-template should not poison a resumable state directory.
+post-flatten contract. The snapshot is written before the validation
+abort (step 12) so that the resolved shape is available to the
+emitted events — but because the runner aborts at step 12 on
+validation failure, no stage dispatch ever consults a snapshot of a
+broken template. A snapshot of a failed-validation template is a
+diagnostic artifact, not an invitation to resume.
 
 ### Resume contract (B1 — BLOCKING)
 
@@ -220,9 +229,11 @@ When neither `.zbuild/templates/<id>.yaml` nor a CLI file path is
 supplied:
 
 - The resolver's first stat-miss on `.zbuild/templates/<id>.yaml` is
-  **silent**. No warning, no info line, no event. The repo without an
-  override is the overwhelming default case and must not be polluted by
-  resolver chatter.
+  **silent in operator chatter**: no warn line, no info line. The repo
+  without an override is the overwhelming default case and must not be
+  polluted by resolver chatter. The `pipeline.template.resolved` event
+  still fires as normal (per lock 4's "ALWAYS fires" requirement), with
+  `source: shipped` and `extends_chain: []`.
 - The resolver falls through to `config/templates/<id>.yaml` (shipped),
   emits `pipeline.template.resolved source=shipped extends_chain=[]`,
   and does NOT emit the diff event.
@@ -233,7 +244,7 @@ repo has an override can grep `events.jsonl` for `source=local`.
 
 ### Safety-critical stage removal (C4 — deferred to impl)
 
-ADR-447 §5 raised the question of whether the engine should hardcode a
+#447 §5 raised the question of whether the engine should hardcode a
 list of "safety-critical" stages that cannot be omitted by an override
 (e.g., refuse a template that removes `review`). **This ADR explicitly
 defers that decision.** Concretely:
