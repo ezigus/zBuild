@@ -125,11 +125,27 @@ _test_run_inner() {
     fi
     git -C "$tmp" checkout HEAD -- . >/dev/null 2>&1 || true
     git -C "$tmp" clean -fdq >/dev/null 2>&1 || true
+    # #608 + #625: post-#608 the build commits each iter to HEAD, so a
+    # `git diff HEAD` artifact is empty whenever no further edits were made.
+    # The `-s` guard skips apply-check for zero-byte patches (tests run
+    # against HEAD); without it, `git apply --check` returns 128 and falls
+    # into the apply-failure path below.
     if [[ -s "$diff_patch_path" ]]; then
         if ! git -C "$tmp" apply --check "$diff_patch_path" 2>/dev/null; then
             test_output="diff_apply_failed: canonical diff.patch does not apply"
-            _test_write_result "$output_json" "error" "diff_apply_failed" \
-                0 0 "$test_output" false "$test_cmd"
+            # #625: exit_code MUST be numeric — jq --argjson rejects strings.
+            # Slot the label into the trailing `reason` field, use exit_code=2
+            # as the apply-failure sentinel (matches missing-diff guard above).
+            _test_write_result "$output_json" "error" 2 \
+                0 0 "$test_output" false "$test_cmd" "diff_apply_failed"
+            # Copilot P2 on #634: this exit path MUST close the stage-io
+            # banner pair opened above and emit plugin.run.complete to match
+            # the contract documented at line ~95 ("every exit path below
+            # MUST call _test_emit_io_end").
+            _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 \
+                0 0 "diff_apply_failed"
+            # tmpdir cleanup: addressed by RETURN trap in #628
+            emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
             return 0
         fi
         git -C "$tmp" apply "$diff_patch_path" 2>/dev/null || true
