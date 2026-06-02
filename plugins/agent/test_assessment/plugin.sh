@@ -98,12 +98,39 @@ _test_assessment_run_inner() {
     mkdir -p "$artifact_dir"
 
     # ─── Gather inputs ───────────────────────────────────────────────────────
+    # Fail-CLOSED on missing/malformed test-results.json (#627). Before this
+    # guard the plugin substituted '{}' and called the LLM with empty context,
+    # producing fabricated assessments. The input is declared required:true in
+    # the manifest; runtime must honor the contract or block the cycle.
     local test_content plan_content build_content
-    if [[ -f "$test_results_path" ]]; then
-        test_content="$(cat "$test_results_path")"
-    else
-        warn "test_assessment_run: test-results.json missing at $test_results_path"
-        test_content='{}'
+    if [[ ! -f "$test_results_path" ]]; then
+        warn "test_assessment_run: test-results.json missing at $test_results_path — fail-CLOSED"
+        emit_event "test_assessment.missing_input" \
+            "plugin=test_assessment" \
+            "path=$test_results_path" \
+            "reason=missing" 2>/dev/null || true
+        _test_assessment_write_error_result \
+            "$output_json" "$output_md" \
+            "test_results_missing" \
+            "test-results.json was not written by the test stage" \
+            "$state_dir"
+        return 0
+    fi
+    test_content="$(cat "$test_results_path")"
+    # Empty file is also a structural failure (jq empty accepts empty input,
+    # so we must check explicitly). Require a parseable JSON document.
+    if [[ -z "$test_content" ]] || ! printf '%s' "$test_content" | jq -e 'type' >/dev/null 2>&1; then
+        warn "test_assessment_run: test-results.json malformed at $test_results_path — fail-CLOSED"
+        emit_event "test_assessment.missing_input" \
+            "plugin=test_assessment" \
+            "path=$test_results_path" \
+            "reason=malformed" 2>/dev/null || true
+        _test_assessment_write_error_result \
+            "$output_json" "$output_md" \
+            "test_results_malformed" \
+            "test-results.json is not valid JSON" \
+            "$state_dir"
+        return 0
     fi
     if [[ -f "$plan_path" ]]; then
         plan_content="$(cat "$plan_path")"
@@ -347,6 +374,65 @@ TA_PROMPT
         "downgraded=$downgraded" \
         "artifact=test-assessment.json"
     return 0
+}
+
+# ─── fail-CLOSED error result writer (#627) ─────────────────────────────────
+# Writes a valid test-assessment.json (verdict=error) + markdown sibling when
+# the test-results.json input is missing or malformed. The verdict=error value
+# is preserved by runner_read_stage_verdict (verdict.sh:#550) and triggers
+# _cycle_detect_blocked so the cycle aborts at the current iteration instead
+# of burning further iterations on fabricated assessments.
+#
+# Args:
+#   $1 = output test-assessment.json path
+#   $2 = output test-assessment.md path
+#   $3 = reason code (test_results_missing | test_results_malformed)
+#   $4 = human-readable detail
+#   $5 = state_dir (for optional cycle-iter mirror)
+_test_assessment_write_error_result() {
+    local output_json="$1"
+    local output_md="$2"
+    local reason="$3"
+    local detail="$4"
+    local state_dir="$5"
+
+    local final_json
+    final_json="$(jq -nc \
+        --arg reason "$reason" \
+        --arg detail "$detail" \
+        '{
+            schema_version: 1,
+            verdict: "error",
+            reason: $reason,
+            detail: $detail,
+            summary: $detail,
+            diagnosis: "",
+            required_changes: [],
+            agrees_with_build_complete: false,
+            branch_numstat: "unknown",
+            failure_summary_md: ("test_assessment fail-CLOSED: " + $detail),
+            iter: 0
+        }')"
+
+    local rendered_md
+    rendered_md="$(render_test_assessment_md "$final_json" 2>/dev/null || \
+        printf '# Test Assessment: error\n\n%s\n' "$detail")"
+
+    printf '%s\n' "$final_json" | atomic_write "$output_json"
+    printf '%s\n' "$rendered_md" | atomic_write "$output_md"
+
+    if [[ -n "${ZBUILD_CYCLE_ID:-}" && -n "${ZBUILD_CYCLE_ITER:-}" ]]; then
+        local iter_dir="$state_dir/cycle-${ZBUILD_CYCLE_ID}/iter-${ZBUILD_CYCLE_ITER}"
+        mkdir -p "$iter_dir"
+        printf '%s\n' "$final_json"  | atomic_write "$iter_dir/test-assessment.json"
+        printf '%s\n' "$rendered_md" | atomic_write "$iter_dir/test-assessment.md"
+    fi
+
+    emit_event "plugin.run.complete" "stage=test_assessment" \
+        "plugin=test_assessment" \
+        "verdict=error" \
+        "reason=$reason" \
+        "artifact=test-assessment.json" 2>/dev/null || true
 }
 
 # ─── finalize ───────────────────────────────────────────────────────────────
