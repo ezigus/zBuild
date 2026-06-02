@@ -387,38 +387,39 @@ _test_write_result() {
 
     # #507: write via atomic_write (helpers.sh) so the manifest-declared
     # primary output `test-results.json` passes the atomicity guard test.
-    # #626: every jq invocation suppresses stderr so internal sanitization
-    # failures never leak to the user terminal; the fallback below writes a
-    # degenerate-but-valid object and emits test.result_write.fallback so
-    # downstream consumers can still observe a result file.
-    local _payload
-    if _payload="$(jq -n \
-            --arg verdict "$verdict" \
-            --argjson exit_code "$exit_code_json" \
-            --argjson passed "$passed_json" \
-            --argjson failed "$failed_json" \
-            --arg test_output "$test_output" \
-            --argjson diff_applied "$diff_applied_json" \
-            --arg test_cmd "$test_cmd" \
-            --arg reason "$reason" \
-            '{
-                schema_version: 1,
-                verdict: $verdict,
-                exit_code: $exit_code,
-                passed: $passed,
-                failed: $failed,
-                test_output: $test_output,
-                diff_applied: $diff_applied,
-                test_cmd: $test_cmd
-            } + (if $reason != "" then {reason: $reason} else {} end)' \
-            2>/dev/null)"; then
-        printf '%s\n' "$_payload" | atomic_write "$path"
-    else
-        # Fail-closed: write a degenerate-but-valid JSON object so the
-        # primary output always exists. Use only sanitized values that we
-        # know are safe (exit_code_json is already either an integer or
-        # "null"). Embedding the exit_code via printf %s is safe because
-        # the sanitizer constrained the lexicon.
+    # #626 + Copilot P2 on #640: stream jq → atomic_write directly with a
+    # subshell-scoped pipefail so large test_output never buffers in a
+    # bash variable. Check the jq-side exit via PIPESTATUS[0]; on failure
+    # write a degenerate-but-valid fallback so the primary artifact always
+    # exists and emit test.result_write.fallback. All jq stderr is
+    # suppressed so internal sanitization failures never leak.
+    jq -n \
+        --arg verdict "$verdict" \
+        --argjson exit_code "$exit_code_json" \
+        --argjson passed "$passed_json" \
+        --argjson failed "$failed_json" \
+        --arg test_output "$test_output" \
+        --argjson diff_applied "$diff_applied_json" \
+        --arg test_cmd "$test_cmd" \
+        --arg reason "$reason" \
+        '{
+            schema_version: 1,
+            verdict: $verdict,
+            exit_code: $exit_code,
+            passed: $passed,
+            failed: $failed,
+            test_output: $test_output,
+            diff_applied: $diff_applied,
+            test_cmd: $test_cmd
+        } + (if $reason != "" then {reason: $reason} else {} end)' \
+        2>/dev/null \
+      | atomic_write "$path"
+    local _jq_rc="${PIPESTATUS[0]}"
+
+    if (( _jq_rc != 0 )); then
+        # Fail-closed: overwrite with a degenerate-but-valid JSON object so
+        # the primary output always parses. Sanitizers already constrained
+        # exit_code_json to {integer, "null"} so %s interpolation is safe.
         printf '{"schema_version":1,"verdict":"error","reason":"result_write_failed","exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":""}\n' \
             "$exit_code_json" | atomic_write "$path"
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true

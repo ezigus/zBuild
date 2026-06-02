@@ -140,8 +140,61 @@ assert_eq "happy: .exit_code" "0" "$(jq -r '.exit_code' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .passed" "5" "$(jq -r '.passed' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .diff_applied" "true" "$(jq -r '.diff_applied' "$OUT7" 2>/dev/null)"
 
-# ─── 8. schema registration ───────────────────────────────────────────────────
-print_test_section "8. test.result_write.fallback registered in event-schema.json"
+# ─── 8. forced jq failure exercises the fallback branch + event emission ────
+# Copilot P1 on #640: without this case the suite proved sanitization works
+# but never actually walked the failure path. Shim jq via PATH so it exits 1
+# unconditionally, which makes the real implementation hit the fallback
+# writer and emit test.result_write.fallback.
+print_test_section "8. forced jq failure: fallback JSON + event emitted"
+
+JQ_SHIM_DIR="$TEST_TEMP_DIR/jq-shim"
+mkdir -p "$JQ_SHIM_DIR"
+REAL_JQ="$(command -v jq)"
+# Selectively fail only for the writer's `jq -n ...` invocation. Other
+# callers (event-bus.sh, assertions, schema lookup) still get real jq so
+# emit_event keeps working and the test can observe the fallback event.
+cat > "$JQ_SHIM_DIR/jq" <<SHIM
+#!/usr/bin/env bash
+if [[ "\$1" == "-n" ]]; then
+    exit 1
+fi
+exec "$REAL_JQ" "\$@"
+SHIM
+chmod +x "$JQ_SHIM_DIR/jq"
+
+OUT8="$ARTIFACT_DIR/results-forced-fail.json"
+ERR8="$TEST_TEMP_DIR/forced-fail.stderr"
+
+# event-bus.sh captured ZBUILD_EVENTS_JSONL at source-time (when plugin.sh
+# loaded), so just truncate the existing file rather than re-pointing.
+: > "$ZBUILD_EVENTS_JSONL"
+
+PATH="$JQ_SHIM_DIR:$PATH" _test_write_result \
+    "$OUT8" "error" 0 0 0 "out" "false" "cmd" 2>"$ERR8" || true
+
+assert_file_exists "forced-fail: results file written" "$OUT8"
+
+if jq empty "$OUT8" >/dev/null 2>&1; then
+    assert_pass "forced-fail: fallback JSON is parseable"
+else
+    assert_fail "forced-fail: fallback JSON is parseable" \
+        "content: $(head -c 200 "$OUT8" 2>/dev/null)"
+fi
+
+assert_eq "forced-fail: .reason=result_write_failed" "result_write_failed" \
+    "$(jq -r '.reason' "$OUT8" 2>/dev/null)"
+assert_eq "forced-fail: .verdict=error" "error" \
+    "$(jq -r '.verdict' "$OUT8" 2>/dev/null)"
+
+if grep -q '"type":"test.result_write.fallback"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "forced-fail: test.result_write.fallback event emitted"
+else
+    assert_fail "forced-fail: test.result_write.fallback event emitted" \
+        "events.jsonl: $(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
+fi
+
+# ─── 9. schema registration ───────────────────────────────────────────────────
+print_test_section "9. test.result_write.fallback registered in event-schema.json"
 
 if jq -e '.known_types | index("test.result_write.fallback")' \
         "$REPO_ROOT/config/event-schema.json" >/dev/null 2>&1; then
