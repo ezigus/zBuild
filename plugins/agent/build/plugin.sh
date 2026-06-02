@@ -196,8 +196,15 @@ _build_stage_run_inner() {
     # stage-io input banner writes to fd 2 (ZBUILD_STAGE_IO_FD default) and
     # 2>/dev/null would swallow every iteration's input banner, breaking the
     # ADR-015 §v4 input-before-action ordering contract for Pattern 2.
+    # #646: --defer-final-banner-close keeps the final iter's stage-io banner
+    # open across post-loop bookkeeping (numstat, scope check, discrepancy
+    # warn) so the operator-visible warn lands INSIDE the banner pair instead
+    # of leaking into the inter-stage gap. We flush the deferred close via
+    # _route_loop_close_final_banner after _build_emit_changed_files_summary
+    # below (or unconditionally on the early-exit paths).
     route_to_model_loop "$tier" "$redacted_file" "$repo_root" "$max_iter" \
-        --scope-allowlist "$plan_files_csv" || router_rc=$?
+        --scope-allowlist "$plan_files_csv" \
+        --defer-final-banner-close || router_rc=$?
 
     local iterations="${_ROUTE_LOOP_ITERATIONS:-0}"
     local terminated_reason="${_ROUTE_LOOP_TERMINATED_REASON:-error}"
@@ -222,6 +229,11 @@ _build_stage_run_inner() {
         # Best-effort: clear `git add -N` intent-to-add entries so a downstream
         # `git diff HEAD` after the abort sees a clean index.
         git -C "$repo_root" reset -q 2>/dev/null || true
+        # #646: flush any deferred final-banner close so we don't orphan a
+        # half-open banner pair into the EXIT trap. No-op when not deferred.
+        if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+            _route_loop_close_final_banner || true
+        fi
         return 130
     fi
 
@@ -466,6 +478,15 @@ _build_stage_run_inner() {
     _build_emit_changed_files_summary \
         "$repo_root" "$terminated_reason" \
         "$scope_violation" "$pre_zero_numstat" || true
+
+    # #646: now that the discrepancy warn (if any) has fired, flush the
+    # deferred close of the final LLM iter's stage-io banner. Safe no-op when
+    # the loop didn't stash a deferred close (e.g., the exit path was not
+    # done_sentinel). The warn lands inside the banner pair instead of in
+    # the inter-stage gap.
+    if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+        _route_loop_close_final_banner || true
+    fi
 
     # ─── #608: per-iteration commit (pipeline owns commit semantics) ─────────
     # The build prompt promises the LLM does not commit; the pipeline does.

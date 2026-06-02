@@ -1197,6 +1197,13 @@ main() {
         # and Running line share a consistent start-time wall clock under the
         # ZBUILD_STAGE_IO_NOW_MS_OVERRIDE pin used by goldens.
         _RUNNER_STAGE_START_MS[$stage]="$(_runner_now_ms)"
+        # #646: emit a single blank line BEFORE the stage divider so
+        # consecutive stages don't render flush against each other. The
+        # divider itself already prints a leading \n; this additional blank
+        # gives the operator a clear vertical break between the previous
+        # stage's `── end stage-io: <prev> ──` line (or any post-loop warns)
+        # and the next stage's `━━━ <stage> ━━━` boundary. Wave 11B.
+        printf '\n' >&2
         # #492 v5: heavy divider + stage-color stage name on the "Running" line.
         _render_stage_divider "$stage"
         local _sc_color; _sc_color="$(_stage_color "$stage")"

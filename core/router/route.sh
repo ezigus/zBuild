@@ -481,6 +481,19 @@ _ROUTE_LOOP_INPUT_TOKENS=0
 _ROUTE_LOOP_OUTPUT_TOKENS=0
 _ROUTE_LOOP_LAST_RESPONSE=""
 _ROUTE_LOOP_CHILD_PID=""
+# #646: deferred-final-banner-close handshake (only populated when caller
+# passed --defer-final-banner-close AND the loop exited via a success path).
+# Caller MUST invoke _route_loop_close_final_banner after emitting any
+# post-loop operator output that needs to land inside the iter banner pair.
+_ROUTE_LOOP_FINAL_STAGE_ID=""
+_ROUTE_LOOP_FINAL_KIND=""
+_ROUTE_LOOP_FINAL_SEQ=""
+_ROUTE_LOOP_FINAL_OUTPUT=""
+_ROUTE_LOOP_FINAL_EXIT_CODE=""
+_ROUTE_LOOP_FINAL_ITER=""
+_ROUTE_LOOP_FINAL_TOKENS_IN=""
+_ROUTE_LOOP_FINAL_TOKENS_OUT=""
+_ROUTE_LOOP_FINAL_PENDING="false"
 
 # Default no-op inter-turn hook — overridden via --inter-turn-hook FN
 _route_loop_default_hook() { :; }
@@ -517,6 +530,14 @@ route_to_model_loop() {
     local inter_turn_hook="_route_loop_default_hook"
     local model_override=""
     local scope_allowlist=""
+    # #646: when set, route_to_model_loop returns WITHOUT closing the final
+    # iter's stage-io banner on the success-exit paths (done_sentinel,
+    # no_progress, max_iterations). Caller is responsible for emitting any
+    # post-loop operator output INSIDE the banner pair and then calling
+    # _route_loop_close_final_banner to flush the close-banner. Wraps the
+    # build plugin's post-loop discrepancy warn so it lands inside the
+    # banner instead of leaking into the inter-stage gap (Wave 11B, #587).
+    local defer_final_banner_close="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -525,6 +546,7 @@ route_to_model_loop() {
             --inter-turn-hook)    inter_turn_hook="$2";     shift 2 ;;
             --model)              model_override="$2";      shift 2 ;;
             --scope-allowlist)    scope_allowlist="$2";     shift 2 ;;
+            --defer-final-banner-close) defer_final_banner_close="true"; shift ;;
             *) error "route_to_model_loop: unknown flag '$1'"; return 2 ;;
         esac
     done
@@ -573,6 +595,16 @@ route_to_model_loop() {
     _ROUTE_LOOP_INPUT_TOKENS=0
     _ROUTE_LOOP_OUTPUT_TOKENS=0
     _ROUTE_LOOP_LAST_RESPONSE=""
+    # #646: clear deferred-final-banner-close handshake state from any prior call.
+    _ROUTE_LOOP_FINAL_STAGE_ID=""
+    _ROUTE_LOOP_FINAL_KIND=""
+    _ROUTE_LOOP_FINAL_SEQ=""
+    _ROUTE_LOOP_FINAL_OUTPUT=""
+    _ROUTE_LOOP_FINAL_EXIT_CODE=""
+    _ROUTE_LOOP_FINAL_ITER=""
+    _ROUTE_LOOP_FINAL_TOKENS_IN=""
+    _ROUTE_LOOP_FINAL_TOKENS_OUT=""
+    _ROUTE_LOOP_FINAL_PENDING="false"
 
     _route_loop_install_traps
 
@@ -846,9 +878,50 @@ ${_diff_pointer}"
         # can parse the COMMIT_SUMMARY marker after the loop returns.
         _ROUTE_LOOP_LAST_RESPONSE="$result_text"
 
+        # Inter-turn hook (best-effort; failure does not abort the loop).
+        # #646: moved AHEAD of the per-iter stage_io_end so any operator
+        # output the hook emits (e.g., build's post-loop discrepancy warn,
+        # when wired via --defer-final-banner-close) lands inside the open
+        # banner pair rather than in the inter-stage gap.
+        if declare -F "$inter_turn_hook" >/dev/null 2>&1; then
+            "$inter_turn_hook" "$iter" "$cwd" "$json_file" "$result_text" || \
+                warn "route_to_model_loop: hook '$inter_turn_hook' rc=$? iter=$iter"
+        fi
+
+        # #646: DONE-sentinel detection moved AHEAD of stage_io_end so that
+        # callers using --defer-final-banner-close can decide whether to
+        # leave the banner open for post-loop output. Line-anchored grep
+        # against the result text; matches whitespace + sentinel + whitespace.
+        local _iter_done_sentinel="false"
+        if printf '%s\n' "$result_text" | \
+           grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+            _iter_done_sentinel="true"
+        fi
+
+        # #646: If this iter triggers a success-exit AND the caller asked us
+        # to defer the final banner close, stash the close-banner parameters
+        # in module-level state and skip stage_io_end. The caller MUST flush
+        # via _route_loop_close_final_banner before returning to the runner.
+        # Non-sentinel iters AND callers that did NOT opt in to defer keep
+        # the legacy behavior — close immediately on success.
+        local _iter_banner_closed="false"
+        if [[ "$_iter_done_sentinel" == "true" && "$defer_final_banner_close" == "true" && -n "$_iter_stage_io_seq" ]]; then
+            _ROUTE_LOOP_FINAL_STAGE_ID="$_iter_stage_id"
+            _ROUTE_LOOP_FINAL_KIND="llm"
+            _ROUTE_LOOP_FINAL_SEQ="$_iter_stage_io_seq"
+            _ROUTE_LOOP_FINAL_OUTPUT="$result_text"
+            _ROUTE_LOOP_FINAL_EXIT_CODE="0"
+            _ROUTE_LOOP_FINAL_ITER="$iter"
+            _ROUTE_LOOP_FINAL_TOKENS_IN="$in_tok"
+            _ROUTE_LOOP_FINAL_TOKENS_OUT="$out_tok"
+            _ROUTE_LOOP_FINAL_PENDING="true"
+            _iter_banner_closed="true"  # deferred — caller will close
+        fi
+
         # #482: close the per-iteration banner on the success path. Output
         # is the LLM's result text (matches Pattern 1's banner shape).
-        if [[ -n "$_iter_stage_io_seq" ]]; then
+        # #646: skipped when deferred above.
+        if [[ "$_iter_banner_closed" != "true" && -n "$_iter_stage_io_seq" ]]; then
             stage_io_end \
                 --stage "$_iter_stage_id" \
                 --kind llm \
@@ -861,16 +934,7 @@ ${_diff_pointer}"
                 >/dev/null 2>&1 || true
         fi
 
-        # Inter-turn hook (best-effort; failure does not abort the loop).
-        if declare -F "$inter_turn_hook" >/dev/null 2>&1; then
-            "$inter_turn_hook" "$iter" "$cwd" "$json_file" "$result_text" || \
-                warn "route_to_model_loop: hook '$inter_turn_hook' rc=$? iter=$iter"
-        fi
-
-        # DONE-sentinel: line-anchored grep against the result text.
-        # Matches: whitespace + LOOP_COMPLETE + whitespace, on its own line.
-        if printf '%s\n' "$result_text" | \
-           grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+        if [[ "$_iter_done_sentinel" == "true" ]]; then
             _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
             eb_emit_event "loop.complete" \
                 "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
@@ -923,6 +987,38 @@ ${_diff_pointer}"
     _route_loop_clear_traps
     # #628: $_loop_tmp cleanup handled by RETURN trap above.
     return 1
+}
+
+# ─── _route_loop_close_final_banner — #646 deferred-close flush ──────────────
+# Closes the banner pair that route_to_model_loop left open when called with
+# --defer-final-banner-close AND the loop exited via the done_sentinel path.
+# No-op when:
+#   - the caller did not pass --defer-final-banner-close, OR
+#   - the loop exited via a path that did not stash a deferred close
+#     (no_progress, max_iterations, error, signal — those paths keep legacy
+#     banner-close semantics for now), OR
+#   - the deferred-close state was already flushed.
+# Safe to call unconditionally from the build plugin after every loop return.
+_route_loop_close_final_banner() {
+    if [[ "$_ROUTE_LOOP_FINAL_PENDING" != "true" ]]; then
+        return 0
+    fi
+    if [[ -z "$_ROUTE_LOOP_FINAL_SEQ" || -z "$_ROUTE_LOOP_FINAL_STAGE_ID" ]]; then
+        _ROUTE_LOOP_FINAL_PENDING="false"
+        return 0
+    fi
+    stage_io_end \
+        --stage "$_ROUTE_LOOP_FINAL_STAGE_ID" \
+        --kind  "$_ROUTE_LOOP_FINAL_KIND" \
+        --seq   "$_ROUTE_LOOP_FINAL_SEQ" \
+        --output "$_ROUTE_LOOP_FINAL_OUTPUT" \
+        --exit-code "$_ROUTE_LOOP_FINAL_EXIT_CODE" \
+        --metadata "iter=$_ROUTE_LOOP_FINAL_ITER" \
+        --metadata "tokens_in=$_ROUTE_LOOP_FINAL_TOKENS_IN" \
+        --metadata "tokens_out=$_ROUTE_LOOP_FINAL_TOKENS_OUT" \
+        >/dev/null 2>&1 || true
+    _ROUTE_LOOP_FINAL_PENDING="false"
+    return 0
 }
 
 # _route_loop_capture_diff <cwd> <cap_chars> <prev_diff_var_name>
