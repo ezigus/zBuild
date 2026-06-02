@@ -2,6 +2,10 @@
 # Tests: core/output/stage-io.sh — capture_stage_io chokepoint (ADR-015 v1, issue #438)
 set -euo pipefail
 
+# #635 DEBUG: trap exit to print line number — Linux fails without ✗
+trap 'echo "##DEBUG635 exit_at_line=$LINENO rc=$?" >&2' EXIT
+trap 'echo "##DEBUG635 ERR_at_line=$LINENO rc=$?" >&2' ERR
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 STAGE_IO_SH="$REPO_ROOT/core/output/stage-io.sh"
