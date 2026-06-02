@@ -508,3 +508,134 @@ Feedback wiring from the assessment's `failure_summary_md` field into
 build's `prior_test_failures` input flows through `source: cycle_feedback`
 exactly as codified in the #511 amendment above; no new var or
 discriminator is introduced.
+
+## Amendment 2026-06-02 (#660 / Wave 12) — diff.patch semantics post-#608 + output-uniqueness rule
+
+Dogfood `20260602175629-21896` (Wave 11 on #653) exposed a clean
+architectural bug latent since #611 (which shipped #608 per-iter
+commit). Build wrote 419 lines + committed per-iter, then the test
+stage exited 1.8s with `diff_apply_failed` rc=2. Root cause: build
+captured `git diff HEAD` at `plugins/agent/build/plugin.sh:252` BEFORE
+`_build_commit_iteration` landed the work in HEAD, then test rsynced
+HEAD (work already there) and ran `git apply --check diff.patch` (same
+work) → dup-apply failure. The empty-diff guard from Wave 10A only
+catches zero-byte patches, not already-applied ones.
+
+The fix is semantic, not just procedural. This amendment codifies the
+new contract; Waves 12-B…12-E implement it.
+
+### A. `diff.patch` is a cumulative audit artifact, not a transport patch
+
+- **Pre-#611**: `diff.patch` was the transport for the agent's
+  uncommitted work between `build` and `test`. The test plugin
+  rsynced a clean copy of the workspace and applied `diff.patch` on
+  top to reconstruct what build had produced.
+- **Post-#611**: build commits per iteration to the branch HEAD.
+  Inter-stage work flows via git commits, NOT via patch transport.
+- **New semantic**: `diff.patch` is the **cumulative branch delta
+  since the intake baseline**, computed as
+  `git diff $(cat state/intake-baseline-ref.txt)..HEAD`. It is a
+  **read-only audit/LLM-context artifact**, NOT a transport patch.
+- Build rewrites `diff.patch` once per iter, AFTER the per-iter
+  commit lands. There is exactly one `diff.patch` per pipeline run
+  representing the full branch delta at any given point in time.
+- Test does NOT apply `diff.patch`. Test rsyncs HEAD (which already
+  contains the committed work) and runs the test command directly.
+  Wave 12-C (#662) removes the vestigial apply step at
+  `plugins/tool/test/plugin.sh:141-158`.
+- Review reads `diff.patch` as LLM prompt context (informational).
+- Operators and audit trails consume `diff.patch` as the canonical
+  record of what changed on the branch end-to-end.
+
+### B. Data flow table corrections
+
+The data flow table at lines 97-105 above is corrected as follows
+(Wave 12-D / #663 carries the manifest-side edits; this amendment is
+the source of truth):
+
+- **`test_assessment` row**: remove the `diff_patch (build, optional)`
+  entry from the "Reads" column. Agent 1 audit confirmed it is
+  neither declared in the test-assessment manifest nor read by the
+  code. It was aspirational, never wired.
+- **`test` row**: `diff_patch` is *informational only*. Test does
+  NOT apply it; tests run against the rsync'd HEAD (which already
+  contains the committed work). Wave 12-D will either downgrade
+  the test manifest's `diff_patch` input to a comment ("retained
+  for future audit hook") or remove it outright depending on
+  whether any downstream consumer references it through test.
+- **`build` row**: clarify that `diff_patch` is rewritten each iter
+  after the per-iter commit lands, and that its content is
+  `git diff $intake_baseline..HEAD`, NOT `git diff HEAD`.
+- **`intake` row**: add `intake_baseline_ref` →
+  `state/intake-baseline-ref.txt` (see Section C below).
+
+### C. `state/intake-baseline-ref.txt` as a first-class artifact
+
+Per #617, intake writes `state/intake-baseline-ref.txt` containing the
+post-checkout HEAD SHA at `plugins/agent/intake/plugin.sh:375`. Until
+this amendment, that file was a **documented contract bypass**: it was
+injected into build via an env-var side-channel (the same class of
+bypass flagged in ADR-020:223-240 above).
+
+The bypass closes as follows:
+
+- Intake's manifest formally declares `intake_baseline_ref` as an
+  output of type `text/plain` at path `${state_dir}/intake-baseline-ref.txt`.
+- Build's manifest declares `intake_baseline_ref` as an optional
+  input (`required: false`) so a freshly-resumed build can recover
+  the baseline without re-running intake. When absent, build falls
+  back to the merge-base of HEAD against the default branch (current
+  behavior).
+- Future stages that need to compute baseline-relative deltas
+  (review's "what changed since intake started", post-#660 audit
+  reporting) now have a **legal**, manifest-declared source for the
+  baseline SHA. No new side-channel env var should be introduced.
+
+Wave 12-D (#663) carries the manifest edits.
+
+### D. Validator rule — output-uniqueness
+
+Per user direction (2026-06-02), ADR-020 mandates a new pre-flight
+invariant on the manifest graph:
+
+> Each output `id` value MUST be claimed by exactly one stage
+> manifest across the template's resolved stage set. Duplicate
+> output declarations across two stages MUST be refused at
+> pre-flight with a structured error naming both producers.
+
+Rationale: the existing producer-output map
+(`_CV_STAGE_OUTPUTS_OK[stage_id:output_id]`, decision §pre-flight
+algorithm step 3) is keyed by `(stage, id)`. Two stages claiming the
+same output id today produce two map entries that both look valid;
+downstream consumers using `source: stage:X` resolve cleanly to
+either, but a `source: stage:*` (or future role-based dispatch)
+would silently pick one producer over the other. The output-uniqueness
+rule closes that ambiguity at pre-flight.
+
+Violation code: `OUTPUT_DUP`. Error format follows the established
+shape ("expects ... source declared ... status ...") and names both
+declaring manifests with their absolute paths.
+
+Wave 12-E (#664) implements this check AND flips the validator
+default from `warn` to `enforce` (open follow-up from the
+"Rollout escape hatch" section above). The default-flip lands in the
+same PR as the output-uniqueness rule so the new violation class is
+enforced from first appearance, not warned-then-enforced.
+
+### References
+
+- #611 (which shipped #608 per-iter commit) — precondition for the
+  semantic shift; without per-iter commits to HEAD, transport
+  semantics for `diff.patch` were still necessary.
+- #617 — `state/intake-baseline-ref.txt` origin and current
+  side-channel injection path.
+- Dogfood run `20260602175629-21896` — motivating failure
+  (`diff_apply_failed` rc=2, 1.8s into test stage).
+- #660 — this amendment.
+- #661 — Wave 12-B, build rewrites `diff.patch` as cumulative
+  baseline→HEAD delta.
+- #662 — Wave 12-C, test removes vestigial `git apply --check` step.
+- #663 — Wave 12-D, manifest hygiene
+  (`intake_baseline_ref`, `test_assessment` row fix, `test` row fix).
+- #664 — Wave 12-E, validator output-uniqueness rule +
+  `warn → enforce` default flip.
