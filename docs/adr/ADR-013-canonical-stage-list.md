@@ -331,7 +331,7 @@ This ADR is the **taxonomy** for canonical stage IDs and their per-stage attribu
 
 The "should" question is governed elsewhere:
 
-- **Structural realization** (cycle entries, `stage_definitions:` hoisting, execution-order tokens that aren't canonical stage IDs themselves) is owned by ADR-021 v2. Templates declare order via `stages: [...]` which may contain composite cycle entries; those expand to canonical IDs via `stage_definitions:`. A template's *flattened, resolved* stage set — not its raw `stages:` list — is what gets compared to this ADR's taxonomy.
+- **Structural realization** (cycle entries, `stage_definitions:` hoisting, execution-order tokens that aren't canonical stage IDs themselves) is owned by ADR-021 v2. Templates declare order via `stages: [...]` which may contain composite cycle entries; each cycle entry expands to canonical IDs via its own `stages:` member list (defined in the cycle entry under `stage_definitions:`), and `stage_definitions:` carries the per-stage attributes for those member stages. A template's *flattened, resolved* stage set — not its raw `stages:` list — is what gets compared to this ADR's taxonomy.
 
 - **Per-repository template resolution and base-template diff** are owned by ADR-016 (filed as a follow-up). When a per-repo `.zbuild/templates/<id>.yaml` resolves via `extends:`, the engine computes a diff between the resolved override and its declared base template, NOT against the full list in this ADR. The diff fires `pipeline.template.diff_from_base` for operator visibility but never blocks execution.
 
