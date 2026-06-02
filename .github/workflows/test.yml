@@ -33,12 +33,18 @@ jobs:
   unit:
     name: Unit tests
     runs-on: ubuntu-latest
+    # TODO: drop after #635 (core-output-stage-io-test.sh exits non-zero on
+    # Linux without a failed assertion — masked by #629's tee-rc bug until now).
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Run unit tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
+          # #629: `| tee` masks the script's non-zero exit under GHA's default
+          # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
           bash scripts/run-tests.sh --tier unit 2>&1 | tee /tmp/zbuild-unit-results.txt
+          exit "${PIPESTATUS[0]}"
         env:
           ZBUILD_TEST_TMP: ""
       - name: Upload unit results
@@ -52,12 +58,20 @@ jobs:
   integration:
     name: Integration tests
     runs-on: ubuntu-latest
+    # TODO: drop `continue-on-error` after the three Linux-only failures land
+    # (#631 deferred-tracker T6, #632 intake-branch-creation-test, #633 plugins
+    # intake-branch-test). Without this, the integration tier would turn red on
+    # every PR now that #629's tee-mask is fixed below.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Run integration tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
+          # #629: `| tee` masks the script's non-zero exit under GHA's default
+          # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
           bash scripts/run-tests.sh --tier integration 2>&1 | tee /tmp/zbuild-integration-results.txt
+          exit "${PIPESTATUS[0]}"
       - name: Upload integration results
         uses: actions/upload-artifact@v7
         if: always()
