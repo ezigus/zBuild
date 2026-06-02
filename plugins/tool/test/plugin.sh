@@ -169,7 +169,21 @@ _test_run_inner() {
     # (set per-stage in the template).
     local test_rc=0
     local raw_output
-    raw_output="$(cd "$tmp" && eval "$test_cmd" 2>&1)" || test_rc=$?
+    # #645: the test subprocess must look like a fresh user shell. The runner
+    # exports ZBUILD_STAGE_IO_FD=3 and opens fd 3 for banners; if the test
+    # subshell inherits both, capture_stage_io calls inside tests write banners
+    # to fd 3 — escaping our 2>&1 capture and producing phantom failures in
+    # tests that grep stderr for the banner (T11/T51 in
+    # core-output-stage-io-test.sh) or depend on inherited fd state
+    # (router-claude-flags T1-T3). Unset the var AND close fd 3 so stage-io.sh
+    # falls back to fd 2 and the captured raw_output matches what direct
+    # `npm test` would produce.
+    raw_output="$(
+        cd "$tmp" \
+            && unset ZBUILD_STAGE_IO_FD \
+            && exec 3>&- \
+            && eval "$test_cmd" 2>&1
+    )" || test_rc=$?
 
     # Truncate output to 10 KB to keep artifact manageable
     test_output="$(printf '%s' "$raw_output" | head -c 10240)"
