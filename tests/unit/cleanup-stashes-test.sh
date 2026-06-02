@@ -148,7 +148,7 @@ fi
 # ── TC-10: tmpdir scanner picks up matching old dirs ────────────────────────
 FAKE_TMP="$TEST_TEMP_DIR/faketmp"
 mkdir -p "$FAKE_TMP"
-mkdir -p "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/pipeline-runner.XYZ" "$FAKE_TMP/unrelated-dir"
+mkdir -p "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/zb-loop-iters.XYZABC" "$FAKE_TMP/unrelated-dir"
 # Age ALL fixture dirs by 2 hours (Codex P1 on #599: original applied
 # `touch -d` only to one dir in the GNU branch, leaving the other two with
 # current mtimes → scanner correctly skipped them under age_hours=1 → false
@@ -158,12 +158,12 @@ if touch -d "@${_age_target}" "$FAKE_TMP/zb-applycheck-fwd-12345" 2>/dev/null; t
     # GNU touch (Linux): apply to all fixture dirs.
     touch -d "@${_age_target}" \
         "$FAKE_TMP/zbuild-test-stage.ABCDE" \
-        "$FAKE_TMP/pipeline-runner.XYZ" \
+        "$FAKE_TMP/zb-loop-iters.XYZABC" \
         "$FAKE_TMP/unrelated-dir"
 else
     # BSD touch (macOS): -t YYYYMMDDhhmm.SS
     ts="$(date -r ${_age_target} "+%Y%m%d%H%M.%S")"
-    touch -t "$ts" "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/pipeline-runner.XYZ" "$FAKE_TMP/unrelated-dir"
+    touch -t "$ts" "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/zb-loop-iters.XYZABC" "$FAKE_TMP/unrelated-dir"
 fi
 TMPDIR="$FAKE_TMP" plan_tmp="$(TMPDIR="$FAKE_TMP" _cleanup_scan_zbuild_tmpdirs 1 || true)"
 if grep -q "zb-applycheck-fwd-12345" <<<"$plan_tmp"; then
@@ -176,10 +176,10 @@ if grep -q "zbuild-test-stage.ABCDE" <<<"$plan_tmp"; then
 else
     assert_fail "tmpdir scanner finds zbuild-test-stage.* dir" "got: $plan_tmp"
 fi
-if grep -q "pipeline-runner.XYZ" <<<"$plan_tmp"; then
-    assert_pass "tmpdir scanner finds pipeline-runner.* dir"
+if grep -q "zb-loop-iters.XYZABC" <<<"$plan_tmp"; then
+    assert_pass "tmpdir scanner finds zb-loop-iters.* dir"
 else
-    assert_fail "tmpdir scanner finds pipeline-runner.* dir" "got: $plan_tmp"
+    assert_fail "tmpdir scanner finds zb-loop-iters.* dir" "got: $plan_tmp"
 fi
 if grep -q "unrelated-dir" <<<"$plan_tmp"; then
     assert_fail "tmpdir scanner ignores unrelated dirs" "got: $plan_tmp"

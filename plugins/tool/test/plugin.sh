@@ -72,6 +72,14 @@ _test_run_inner() {
 
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
+    # #628: function-scoped RETURN trap self-cleans the staging dir on every
+    # exit path (missing-diff guard, apply-fail return, success). No conflict
+    # with the runner's SCRIPT-level EXIT trap (_runner_abort_trap) — RETURN
+    # fires per-function-frame only. Single-quoted body: $tmp is expanded at
+    # trap-install time and "frozen" into the trap action so reassigning
+    # $tmp later (never happens here, but defensively) wouldn't redirect rm.
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp' 2>/dev/null || true" RETURN
     local verdict="error"
     local exit_code=2
     local diff_applied=false
@@ -81,7 +89,7 @@ _test_run_inner() {
     if [[ ! -f "$diff_patch_path" ]]; then
         _test_write_result "$output_json" \
             "error" 2 0 0 "" "false" "$test_cmd"
-        rm -rf "$tmp"
+        # #628: $tmp cleanup handled by RETURN trap above.
         emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=missing_diff_patch"
         return 0
     fi
@@ -144,7 +152,6 @@ _test_run_inner() {
             # MUST call _test_emit_io_end").
             _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 \
                 0 0 "diff_apply_failed"
-            # tmpdir cleanup: addressed by RETURN trap in #628
             emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
             return 0
         fi
@@ -222,7 +229,7 @@ _test_run_inner() {
         "$verdict" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$test_cmd" "$reason"
 
-    rm -rf "$tmp"
+    # #628: $tmp cleanup handled by RETURN trap installed at top of function.
     emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}"
     return 0
 }
