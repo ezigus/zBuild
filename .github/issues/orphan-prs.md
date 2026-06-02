@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-05-30T18:21:43Z (rolling 30-PR window)_
+_Last updated: 2026-05-31T18:22:34Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -78,3 +78,9 @@ _Last updated: 2026-05-30T18:21:43Z (rolling 30-PR window)_
 | #493 | fix(#491): stage-io ordering contract (ADR-015 amendment + #481 fix) | 2026-05-30 |
 | #487 | feat(#484): intake creates feature branch from issue (fail-closed) | 2026-05-30 |
 | #480 | [manifest-sync] Drift reconciliation | 2026-05-30 |
+| #543 | feat(banner): drop stage-io: prefix + blank-line spacing between stages (#523) | 2026-05-31 |
+| #536 | fix(build): classify git apply --check rc=128 as corrupt_format / tool_state (#529) | 2026-05-31 |
+| #532 | docs(ADR-020): propose deferred-work tracker workflow | 2026-05-31 |
+| #522 | docs(adr): cross-reference cleanup + missed-amendment audit fixups | 2026-05-31 |
+| #516 | feat(runner): stage-start + stage-end timestamps with duration (#508) | 2026-05-31 |
+| #500 | feat(#496): inter-stage data contract + pre-flight validator (ADR-020) | 2026-05-31 |
