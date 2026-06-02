@@ -579,6 +579,16 @@ route_to_model_loop() {
     # Per-iteration temp dir outside the caller's artifacts dir so the parity
     # goldens that snapshot artifact filenames are not polluted by iter files.
     local _loop_tmp; _loop_tmp="$(mktemp -d "${TMPDIR:-/tmp}/zb-loop-iters.XXXXXX")"
+    # #628: function-scoped RETURN trap self-cleans on every exit path
+    # (SIGINT propagation, 3-consecutive-timeout fatal, capture_diff error,
+    # done_sentinel, no_progress, max_iterations). Previously two of those
+    # paths skipped cleanup. RETURN fires per-function-frame; does not
+    # conflict with the runner's SCRIPT-level EXIT trap or the loop's
+    # INT/TERM signal traps installed by _route_loop_install_traps.
+    # Single-quoted body: $_loop_tmp is expanded NOW and frozen into the
+    # trap action, so any future reassignment can't redirect rm.
+    # shellcheck disable=SC2064
+    trap "rm -rf '$_loop_tmp' 2>/dev/null || true" RETURN
 
     local static_prompt prev_diff="" timeout_recur=0
     static_prompt="$(cat "$prompt_file")"
@@ -776,7 +786,7 @@ ${_diff_pointer}"
             fi
             rm -f "$stderr_file" "$json_file"
             _route_loop_clear_traps
-            rm -rf "$_loop_tmp" 2>/dev/null || true
+            # #628: $_loop_tmp cleanup handled by RETURN trap above.
             return 130
         fi
 
@@ -869,7 +879,7 @@ ${_diff_pointer}"
                 "reason=done_sentinel" 2>/dev/null || true
             rm -f "$json_file"
             _route_loop_clear_traps
-            rm -rf "$_loop_tmp" 2>/dev/null || true
+            # #628: $_loop_tmp cleanup handled by RETURN trap above.
             return 0
         fi
         rm -f "$json_file"
@@ -878,7 +888,7 @@ ${_diff_pointer}"
         _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
             _ROUTE_LOOP_TERMINATED_REASON="error"
             _route_loop_clear_traps
-            rm -rf "$_loop_tmp" 2>/dev/null || true
+            # #628: $_loop_tmp cleanup handled by RETURN trap above.
             return 2
         }
 
@@ -900,7 +910,7 @@ ${_diff_pointer}"
                 "iterations=$iter" \
                 "empty_iter_streak=$empty_iter_count" 2>/dev/null || true
             _route_loop_clear_traps
-            rm -rf "$_loop_tmp" 2>/dev/null || true
+            # #628: $_loop_tmp cleanup handled by RETURN trap above.
             return 0
         fi
     done
@@ -911,7 +921,7 @@ ${_diff_pointer}"
         "input_tokens=$_ROUTE_LOOP_INPUT_TOKENS" \
         "output_tokens=$_ROUTE_LOOP_OUTPUT_TOKENS" 2>/dev/null || true
     _route_loop_clear_traps
-    rm -rf "$_loop_tmp" 2>/dev/null || true
+    # #628: $_loop_tmp cleanup handled by RETURN trap above.
     return 1
 }
 

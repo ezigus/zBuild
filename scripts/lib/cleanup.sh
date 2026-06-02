@@ -298,7 +298,11 @@ _cleanup_scan_stashes() {
 # ─── Tmpdir scanner (#594) ──────────────────────────────────────────────────
 # _cleanup_scan_zbuild_tmpdirs <age_hours>
 # Globs ${TMPDIR:-/tmp} for zb-applycheck-*, zbuild-test-stage.*,
-# pipeline-runner.* — older than cutoff. Emits: "<path>\tprune\t<reason>".
+# zb-loop-iters.* — older than cutoff. Emits: "<path>\tprune\t<reason>".
+# #628: dropped `pipeline-runner.*` — nothing in zbuild ever creates that
+# pattern (false positive carried over from Wave 5 scaffolding). Added
+# `zb-loop-iters.*` so the Pattern-2 loop's per-iter dir is reaped if
+# something bypasses the RETURN trap (defence in depth).
 _cleanup_scan_zbuild_tmpdirs() {
     local age_hours="$1"
     local now; now="$(date +%s)"
@@ -307,7 +311,7 @@ _cleanup_scan_zbuild_tmpdirs() {
     tmpd="${tmpd%/}"
     [[ -d "$tmpd" ]] || return 0
     local pattern path mtime age_h
-    for pattern in "zb-applycheck-*" "zbuild-test-stage.*" "pipeline-runner.*"; do
+    for pattern in "zb-applycheck-*" "zbuild-test-stage.*" "zb-loop-iters.*"; do
         for path in "$tmpd"/$pattern; do
             [[ -e "$path" ]] || continue
             mtime="$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || echo "0")"
