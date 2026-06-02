@@ -59,6 +59,10 @@ echo "OK-RESPONSE"
 exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
+# setup_test_env already prepends $TEST_TEMP_DIR/bin to PATH, but pin it
+# again explicitly so a future change to the helper cannot let a real
+# `claude` on the runner shadow the stub and silently invalidate this test.
+export PATH="$TEST_TEMP_DIR/bin:$PATH"
 
 source "$REPO_ROOT/core/router/route.sh"
 

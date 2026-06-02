@@ -354,8 +354,10 @@ _route_call_claude() {
     # #647: defense-in-depth fd isolation. Close fd 3 and unset
     # ZBUILD_STAGE_IO_FD inside the spawned subshell so the runner's
     # stage-io capture chokepoint never leaks into the claude subprocess
-    # (parallel companion to #645's fix at the test-plugin site). All 5
-    # agent plugins that call route_to_model inherit this protection.
+    # (parallel companion to #645's fix at the test-plugin site). The 4
+    # agent plugins that route via route_to_model (plan, test_assessment,
+    # review, security-lens) all inherit this protection; the build
+    # plugin gets the same protection from route_to_model_loop below.
     local response
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
