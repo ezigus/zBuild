@@ -81,7 +81,7 @@ else
         "marker '$MARKER' missing from .test_output: $TEST_OUT"
 fi
 
-# exit_code numeric + verdict=pass (5 tests passed → pass per parser).
+# exit_code numeric + verdict=pass (3 passed, 0 failed → pass per parser).
 EC="$(jq -r '.exit_code' "$OUT_JSON" 2>/dev/null)"
 if [[ "$EC" =~ ^[0-9]+$ ]]; then
     assert_pass "empty-diff: .exit_code is numeric ($EC)"
