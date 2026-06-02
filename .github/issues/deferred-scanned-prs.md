@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-01T12:24:10Z_
+_Last updated: 2026-06-02T03:48:28Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -69,3 +69,25 @@ _Last updated: 2026-06-01T12:24:10Z_
 | #573 | feat(#560): deferred-tracker dup annotation + update-in-place (sub-2 of #555) | 2026-06-01 |
 | #565 | feat(#559): LLM tiebreaker for borderline Jaccard scores (fail-open) — sub-6 of #555 | 2026-06-01 |
 | #564 | feat(#558): gha_compute_similarity Jaccard helper + ADR-020 v2 (sub-1 of #555) | 2026-06-01 |
+| #644 | chore: drop unit step continue-on-error (#635 fixed) | 2026-06-02 |
+| #643 | fix(#628): RETURN traps for tmpdir self-cleanup + remove false-positive pattern | 2026-06-02 |
+| #642 | fix(#635): broaden T45 skip guard to cover Linux CI | 2026-06-02 |
+| #641 | fix(#627): test_assessment fail-CLOSED on missing/malformed input | 2026-06-02 |
+| #640 | fix(#626): defensive jq writer in _test_write_result | 2026-06-02 |
+| #638 | chore: drop integration step continue-on-error (96/96 passing) | 2026-06-02 |
+| #637 | fix(#632, #633): unset CI + bypass closed-issue gate in intake-branch tests | 2026-06-02 |
+| #636 | fix(#631): T6 use sha256 content hash instead of mtime | 2026-06-02 |
+| #634 | fix(#625): test plugin positional args + empty diff.patch guard | 2026-06-02 |
+| #630 | fix(#629): CI pipefail + temporarily mark integration continue-on-error | 2026-06-02 |
+| #624 | fix(#623): I1 plugin setup missing test_assessment + update I1b count 5→6 | 2026-06-02 |
+| #622 | fix(#619): runner abort-trap test deterministic failure + output noise cleanup | 2026-06-02 |
+| #620 | fix(runner): export ZBUILD_STATE_DIR so #617 branch-state injection fires (#618) | 2026-06-02 |
+| #617 | feat(intake,route): branch-cumulative context in iter prompts (#614) | 2026-06-02 |
+| #616 | fix(sigint): propagate rc=130 through router → build → runner (#612) | 2026-06-02 |
+| #615 | fix(build,router): loop_complete clarity + empty-diff safety net (#613) | 2026-06-02 |
+| #611 | feat(build): pipeline commits per cycle iter using COMMIT_SUMMARY marker (#608) | 2026-06-02 |
+| #610 | fix(redaction): allowlist on initial pass + idempotent markers (#606) | 2026-06-02 |
+| #609 | fix(test): silence git clean + checkout in test plugin prep (#607) | 2026-06-02 |
+| #605 | fix(build): strip the stash dance — LLM edits in place, capture git diff HEAD directly (#602) | 2026-06-02 |
+| #604 | feat(test): ZBUILD_TEST_QUIET=1 suppresses per-assertion echoes (#600) | 2026-06-02 |
+| #603 | fix(portability): replace grep -P with portable equivalents in 3 tests (#601) | 2026-06-02 |
