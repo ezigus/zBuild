@@ -113,10 +113,14 @@ else
         "size=$(wc -c < "$ITER1_DIFF") head=$(head -c 200 "$ITER1_DIFF")"
 fi
 
-if git -C "$REPO" log --oneline | head -1 | grep -q 'iter1 A'; then
+# Avoid `git log | head` under set -e: git receives SIGPIPE → non-zero rc
+# kills the test on Linux (macOS is forgiving). Read full log; grep -q
+# scans for the marker.
+iter1_log="$(git -C "$REPO" log --oneline 2>/dev/null || true)"
+if printf '%s\n' "$iter1_log" | grep -q 'iter1 A'; then
     assert_pass "iter1: commit landed at HEAD"
 else
-    assert_fail "iter1: commit landed at HEAD" "log=$(git -C "$REPO" log --oneline | head -3)"
+    assert_fail "iter1: commit landed at HEAD" "log=$iter1_log"
 fi
 
 # ─── Iter 2: write file_B.txt; expect cumulative A+B ────────────────────────
@@ -194,14 +198,14 @@ git clone -q "$REPO" "$SNAPSHOT" 2>/dev/null
 clone_rc=$?
 ( cd "$SNAPSHOT" && git -c advice.detachedHead=false checkout -q "$BASELINE" 2>/dev/null )
 checkout_rc=$?
-git -C "$SNAPSHOT" apply --check "$ITER2_DIFF" 2>/tmp/zb-apply-err
+git -C "$SNAPSHOT" apply --check "$ITER2_DIFF" 2>$TEST_TEMP_DIR/apply-err.log
 apply_rc=$?
 set -e
 
 if [[ $clone_rc -eq 0 && $checkout_rc -eq 0 && $apply_rc -eq 0 ]]; then
     assert_pass "cumulative diff.patch applies cleanly to baseline snapshot (test-stage rsync model)"
 else
-    apply_err="$(head -3 /tmp/zb-apply-err 2>/dev/null || echo '<no err>')"
+    apply_err="$(head -3 $TEST_TEMP_DIR/apply-err.log 2>/dev/null || echo '<no err>')"
     assert_fail "cumulative diff.patch applies cleanly to baseline snapshot" \
         "clone_rc=$clone_rc checkout_rc=$checkout_rc apply_rc=$apply_rc apply_err=$apply_err"
 fi
