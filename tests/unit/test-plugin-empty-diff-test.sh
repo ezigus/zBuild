@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# Tests: plugins/tool/test/plugin.sh — empty-diff.patch must skip the
-# `git apply --check` guard and proceed to run the test command (#625).
+# Tests: plugins/tool/test/plugin.sh — empty diff.patch must run the test
+# command against the rsync'd HEAD (#625 → #662 / Wave 12-C).
 #
-# Background: post-#608 the build commits each iter to HEAD, so the canonical
-# diff.patch (`git diff HEAD`) is EMPTY on every successful iter. The original
-# guard at line 129 called `git apply --check` on the empty file, which
-# returns 128 with "No valid patches in input", dropping into the broken
-# apply-failure path (the dogfood crash root cause).
-#
-# Fix: guard apply-check with [[ -s "$diff_patch_path" ]] so empty patches
-# skip apply entirely and tests run against HEAD.
+# Background: post-#608 the build commits each iter to HEAD. Wave 10A (#625)
+# added a `[[ -s "$diff_patch_path" ]]` guard so empty patches skipped the
+# `git apply --check` step. Wave 12-C (#662) removed the apply block entirely
+# — test now ALWAYS runs against the rsync'd HEAD regardless of diff.patch
+# size. This test pins the contract that an empty diff.patch produces a real
+# parsed verdict (not the historic apply-failure verdict).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -135,7 +135,7 @@ diff_applied3="$(_json_key "$OUT_JSON_3" '.diff_applied')"
 
 assert_eq "verdict is 'pass'" "pass" "$verdict3"
 assert_eq "exit_code is 0" "0" "$exit_code3"
-assert_eq "diff_applied is true" "true" "$diff_applied3"
+assert_eq "diff_applied is false (W12-C deprecated)" "false" "$diff_applied3"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Test 4: failing test_cmd → verdict=fail, plugin still exits 0
@@ -397,7 +397,8 @@ assert_eq "[subprocess] verdict=pass preserved" "pass" "$verdict11"
 # `git apply`'d diff.patch, so the build's WT edits had to be re-applied.
 # Post-#602: the build's edits ARE the WT (no stash dance), so rsync just
 # copies them and tests run directly. Verdict still resolves to pass via
-# the mock test_cmd; diff_applied is set unconditionally to true.
+# the mock test_cmd. Wave 12-C (#662): diff_applied is now always false
+# (deprecated field, no apply step runs).
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "12. #602: dirty WT rsyncs intact (no reset, no apply)"
 
@@ -453,7 +454,7 @@ assert_file_exists "#548: test-results.json written" "$OUT_JSON_12"
 verdict12="$(_json_key "$OUT_JSON_12" '.verdict')"
 diff_applied12="$(_json_key "$OUT_JSON_12" '.diff_applied')"
 assert_eq "#548: verdict=pass (patch applied against clean HEAD)" "pass" "$verdict12"
-assert_eq "#548: diff_applied=true" "true" "$diff_applied12"
+assert_eq "W12-C: diff_applied=false (deprecated)" "false" "$diff_applied12"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Test 5: test_finalize runs cleanly

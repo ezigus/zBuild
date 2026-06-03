@@ -2,9 +2,11 @@
 # plugins/tool/test/plugin.sh — Test Stage plugin (ADR-013, issue #342)
 #
 # Kind: tool  Tier: T0  (NO LLM calls — NEVER call route_to_model)
-# Applies diff.patch from the artifact directory in a temp copy of the repo,
-# runs the project test suite, and writes test-results.json.
+# Rsyncs the repo HEAD (which post-#608 contains the committed iter work)
+# into a temp dir, runs the project test suite, and writes test-results.json.
 # Always exits 0; verdict is encoded in the artifact.
+# Wave 12-C (#662) removed the historic `git apply diff.patch` step — see
+# ADR-020 amendment §A; diff.patch is now consumed only by review + audit.
 #
 # Hook prefix: test_  (plugin hooks use <plugin>_<verb> convention)
 # Sourced library: no set -euo pipefail.
@@ -61,8 +63,12 @@ test_run() {
 }
 
 # ─── _test_run_inner ──────────────────────────────────────────────────────────
-# Core logic: apply diff in a temp dir, run tests, write artifact.
+# Core logic: rsync repo HEAD to a temp dir, run tests, write artifact.
 # Always returns 0 — verdict is in the JSON.
+# Wave 12-C (#662): no longer applies diff.patch (path retained as positional
+# arg for back-compat with existing callers; the missing-diff guard below is
+# kept as defense-in-depth so a broken pipeline state still produces a valid
+# artifact).
 # Usage: _test_run_inner <diff_patch_path> <repo_root> <output_json> <test_cmd>
 _test_run_inner() {
     local diff_patch_path="$1"
@@ -117,14 +123,19 @@ _test_run_inner() {
         _test_seq="$_STAGE_IO_LAST_SEQ"
     fi
 
-    # ── Copy repo + reset to HEAD + apply canonical diff ─────────────────────
-    # #602 + codex P1 on #605: rsync brings the LLM's working-tree edits, BUT
-    # in the scope-violation case the build emptied diff.patch while leaving
-    # rejected edits in the working tree. If we just trust the rsync, the
-    # test runs against code that will not be in the PR. Fix: reset temp to
-    # HEAD and apply the CANONICAL diff.patch artifact (which build
-    # sanctioned). Restores the Wave 1 #548 contract. Empty diff.patch is
-    # fine — tests just run against HEAD.
+    # ── Copy repo to tmpdir; tests run against committed HEAD ────────────────
+    # Wave 12-C (#662) + ADR-020 amendment §A: after Wave 1 #608 the build
+    # commits each iter to HEAD, so the actual work is already in the source
+    # repo HEAD. rsync brings it to the tmpdir; `git checkout HEAD -- .` +
+    # `clean -fdq` resets any stray working-tree state so tests run against
+    # exactly the committed state.
+    #
+    # The historic `git apply --check diff.patch` + `git apply` block lived
+    # here from Wave 1 #548 as scope-violation transport. Wave 12-B (#667)
+    # made diff.patch the CUMULATIVE branch delta since intake baseline —
+    # which describes work already committed to HEAD. Applying it would be a
+    # dup-apply guaranteed to fail. Removed entirely; diff.patch is now
+    # consumed only by review (LLM context) and operators (audit).
     if command -v rsync >/dev/null 2>&1; then
         rsync -a "$repo_root/" "$tmp/" 2>/dev/null || \
             cp -r "$repo_root/." "$tmp/"
@@ -133,31 +144,11 @@ _test_run_inner() {
     fi
     git -C "$tmp" checkout HEAD -- . >/dev/null 2>&1 || true
     git -C "$tmp" clean -fdq >/dev/null 2>&1 || true
-    # #608 + #625: post-#608 the build commits each iter to HEAD, so a
-    # `git diff HEAD` artifact is empty whenever no further edits were made.
-    # The `-s` guard skips apply-check for zero-byte patches (tests run
-    # against HEAD); without it, `git apply --check` returns 128 and falls
-    # into the apply-failure path below.
-    if [[ -s "$diff_patch_path" ]]; then
-        if ! git -C "$tmp" apply --check "$diff_patch_path" 2>/dev/null; then
-            test_output="diff_apply_failed: canonical diff.patch does not apply"
-            # #625: exit_code MUST be numeric — jq --argjson rejects strings.
-            # Slot the label into the trailing `reason` field, use exit_code=2
-            # as the apply-failure sentinel (matches missing-diff guard above).
-            _test_write_result "$output_json" "error" 2 \
-                0 0 "$test_output" false "$test_cmd" "diff_apply_failed"
-            # Copilot P2 on #634: this exit path MUST close the stage-io
-            # banner pair opened above and emit plugin.run.complete to match
-            # the contract documented at line ~95 ("every exit path below
-            # MUST call _test_emit_io_end").
-            _test_emit_io_end "$_test_seq" "$_test_t0_us" "error" 2 \
-                0 0 "diff_apply_failed"
-            emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=diff_apply_failed"
-            return 0
-        fi
-        git -C "$tmp" apply "$diff_patch_path" 2>/dev/null || true
-    fi
-    diff_applied=true
+    # Wave 12-C (#662): diff_applied is now deprecated — no apply step runs
+    # in any path, so the field stays `false` for the whole run. The JSON slot
+    # is preserved for schema_version 1 back-compat (consumers may still read
+    # it; review's redaction/prompt path is tolerant either way).
+    diff_applied=false
 
     # ── Run test command ───────────────────────────────────────────────────────
     # #600 + codex P2 on #604: DO NOT export ZBUILD_TEST_QUIET=1 here. Doing
@@ -219,7 +210,7 @@ _test_run_inner() {
         # Fail-safe: parser did not recognize this runner. Do NOT trust the
         # `pass` verdict implied by rc=0; mark verdict=error with a distinct
         # reason so consumers can distinguish from #485 silent failures and
-        # from `diff_apply_failed` above.
+        # from other error reasons.
         verdict="error"
         reason="summary_unavailable"
     fi
@@ -355,7 +346,8 @@ _test_emit_failures_summary() {
 # parser did not recognize this runner's output (honest fail-safe — never
 # fabricate counts). The `reason` field is optional and emitted only when
 # non-empty; values include `summary_unavailable` (#584 fail-safe),
-# `silent_failure` (#485 no-op guard), `diff_apply_failed` (callers above).
+# `silent_failure` (#485 no-op guard). Wave 12-C (#662) removed the
+# `diff_apply_failed` reason — no caller writes it anymore.
 # #626: sanitize a numeric slot — accept "null", integers, or fall back to "null".
 # Anything else (whitespace, "abc", embedded quotes) becomes JSON null so jq
 # --argjson never barfs and the writer stays fail-CLOSED.

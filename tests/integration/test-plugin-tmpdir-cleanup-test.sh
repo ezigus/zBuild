@@ -75,11 +75,13 @@ assert_eq "missing-diff: no zbuild-test-stage.* leaked in TMPDIR" \
     "0" "$(_count_leaked)"
 
 # ───────────────────────────────────────────────────────────────────────────
-print_test_section "2. apply-failure (#625 path, previously leaked)"
+print_test_section "2. non-empty diff.patch path (W12-C: diff ignored, tmpdir still cleaned)"
 # ───────────────────────────────────────────────────────────────────────────
 
-# Construct a non-empty diff.patch that CANNOT apply to the seeded HEAD.
-# Refers to a file that doesn't exist with a bogus line context.
+# Wave 12-C (#662) removed the apply path; a non-empty diff.patch no longer
+# triggers a distinct exit branch. We still exercise the non-empty-diff input
+# slot to confirm the RETURN trap from #628 fires on the normal completion
+# path even when a (now-ignored) bad patch is supplied.
 BAD_PATCH="$ARTIFACT_DIR/diff.patch"
 cat > "$BAD_PATCH" <<'PATCH'
 diff --git a/no-such-file.txt b/no-such-file.txt
@@ -92,14 +94,21 @@ index 0000001..0000002 100644
 PATCH
 
 JSON2="$ARTIFACT_DIR/test-results-apply-fail.json"
-_test_run_inner "$BAD_PATCH" "$REPO_FIXTURE" "$JSON2" "true" \
+# Use a parseable passing test_cmd so the parsed-verdict path is exercised.
+_test_run_inner "$BAD_PATCH" "$REPO_FIXTURE" "$JSON2" \
+    $'printf \'%s\\n\' "Tests:       0 failed, 1 passed, 1 total"; exit 0' \
     >/dev/null 2>&1 || true
 
-assert_eq "apply-fail: verdict=error" \
-    "error" "$(jq -r '.verdict' "$JSON2" 2>/dev/null || echo MISSING)"
-assert_eq "apply-fail: reason=diff_apply_failed" \
-    "diff_apply_failed" "$(jq -r '.reason' "$JSON2" 2>/dev/null || echo MISSING)"
-assert_eq "apply-fail: no zbuild-test-stage.* leaked in TMPDIR" \
+assert_eq "non-empty-diff: verdict=pass (diff ignored, test_cmd parsed)" \
+    "pass" "$(jq -r '.verdict' "$JSON2" 2>/dev/null || echo MISSING)"
+NON_EMPTY_REASON="$(jq -r '.reason // empty' "$JSON2" 2>/dev/null)"
+if [[ "$NON_EMPTY_REASON" == "diff_apply_failed" ]]; then
+    assert_fail "non-empty-diff: no diff_apply_failed reason (W12-C)" \
+        "got: $NON_EMPTY_REASON"
+else
+    assert_pass "non-empty-diff: no diff_apply_failed reason (reason='$NON_EMPTY_REASON')"
+fi
+assert_eq "non-empty-diff: no zbuild-test-stage.* leaked in TMPDIR" \
     "0" "$(_count_leaked)"
 
 # ───────────────────────────────────────────────────────────────────────────
