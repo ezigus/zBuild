@@ -43,10 +43,24 @@ outputs:
     path: ${state_dir}/intake.md
     type: intake.md
     required: true
-  # intake-branch.txt is a side-effect of branch creation; not declared
-  # here because branch creation is opt-out via ZBUILD_INTAKE_SKIP_BRANCH
-  # (tests that aren't git repos disable it). pr-open consumes the file
-  # opportunistically with a fallback. Issue #484.
+  # ADR-020 / #663: side-channel outputs previously documented as
+  # "intentional side-effects". intake-baseline-ref.txt is written when
+  # the intake-baseline capture succeeds; intake-branch.txt is written
+  # when branch creation succeeds (opt-out via ZBUILD_INTAKE_SKIP_BRANCH;
+  # tests that aren't git repos disable it). Both are required:false
+  # so downstream consumers must fall back gracefully when absent
+  # (pr-open does this; see #484). primary:false — scope_manifest is the
+  # canonical primary artifact per #507.
+  - id: intake_baseline_ref
+    path: ${state_dir}/intake-baseline-ref.txt
+    type: text
+    primary: false
+    required: false
+  - id: intake_branch
+    path: ${state_dir}/intake-branch.txt
+    type: text
+    primary: false
+    required: false
 
 provides:
   artifact_type: [scope-manifest.md, intake.md]
