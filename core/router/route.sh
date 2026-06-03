@@ -15,6 +15,9 @@ source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 # ADR-015 v1 (#438): stage-io chokepoint — capture LLM prompt/response when
 # the current stage declares io.destinations. Sourced library is idempotent.
 source "$_ZBUILD_ROOT/core/output/stage-io.sh"
+# ADR-024 / #671 (Wave 13-B): fresh-user-shell helper for the claude spawn
+# subshells below (the 4 spawn sites in _route_call_claude + the loop).
+source "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -351,24 +354,27 @@ _route_call_claude() {
         return 2
     fi
 
-    # #647: defense-in-depth fd isolation. Close fd 3 and unset
-    # ZBUILD_STAGE_IO_FD inside the spawned subshell so the runner's
-    # stage-io capture chokepoint never leaks into the claude subprocess
-    # (parallel companion to #645's fix at the test-plugin site). The 4
-    # agent plugins that route via route_to_model (plan, test_assessment,
-    # review, security-lens) all inherit this protection; the build
-    # plugin gets the same protection from route_to_model_loop below.
+    # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class
+    # subprocess — it MUST NOT see ZBUILD_* pipeline state. _zbuild_make_fresh_shell
+    # scrubs the entire ZBUILD_* namespace and closes fd 3 (the ADR-015
+    # stage-io channel). Supersedes Wave 11C (#647)'s narrow
+    # `unset ZBUILD_STAGE_IO_FD; exec 3>&-` pair — the wider scrub also
+    # covers ZBUILD_RUN_ID + ZBUILD_EVENTS_JSONL leaks that Wave 13 dogfood
+    # discovered would otherwise trigger the C6 precondition refusal when
+    # the spawned process recurses into route_to_model. The C6 precondition
+    # itself runs in the PARENT scope, not the spawn subshell. The 4 agent
+    # plugins that route via route_to_model (plan, test_assessment, review,
+    # security-lens) all inherit this protection; the build plugin gets the
+    # same protection from route_to_model_loop below.
     local response
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
-            unset ZBUILD_STAGE_IO_FD
-            exec 3>&-
+            _zbuild_make_fresh_shell
             "${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
         )" || rc=$?
     else
         response="$(
-            unset ZBUILD_STAGE_IO_FD
-            exec 3>&-
+            _zbuild_make_fresh_shell
             claude "${_claude_args[@]}" 2>"$stderr_file"
         )" || rc=$?
     fi
@@ -799,23 +805,25 @@ ${_diff_pointer}"
         _claude_args+=(--output-format json)
 
         # Run claude in $cwd as background child so signal trap can kill it.
-        # #647: defense-in-depth fd isolation — close fd 3 and unset
-        # ZBUILD_STAGE_IO_FD inside the background subshell so the runner's
-        # stage-io capture chokepoint never leaks into claude. The build
+        # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class
+        # subprocess. _zbuild_make_fresh_shell scrubs ZBUILD_* + closes fd 3.
+        # Supersedes Wave 11C (#647)'s narrow per-var unset; the build
         # plugin (the loop's primary caller) inherits this protection.
+        # Copilot P1 on #673: guard cd BEFORE the helper, because the
+        # helper disables errexit (fresh-user-shell posture). A failed
+        # cd here would otherwise silently spawn claude from the
+        # runner's cwd instead of $cwd.
         if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
             (
-                cd "$cwd" \
-                    && unset ZBUILD_STAGE_IO_FD \
-                    && exec 3>&- \
-                    && "${_tout_cmd[@]}" claude "${_claude_args[@]}"
+                cd "$cwd" || exit 99
+                _zbuild_make_fresh_shell
+                "${_tout_cmd[@]}" claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         else
             (
-                cd "$cwd" \
-                    && unset ZBUILD_STAGE_IO_FD \
-                    && exec 3>&- \
-                    && claude "${_claude_args[@]}"
+                cd "$cwd" || exit 99
+                _zbuild_make_fresh_shell
+                claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         fi
         _ROUTE_LOOP_CHILD_PID=$!

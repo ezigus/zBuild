@@ -27,19 +27,16 @@ echo -n "bootstrap" > "$HOME/.zbuild/scope-override-token"
 export ZBUILD_SCOPE_OVERRIDE=1
 unset ZBUILD_RUN_ID 2>/dev/null || true
 
-# Mock claude: records --model arg, echoes "ok"
-cat > "$TEST_TEMP_DIR/bin/claude" << 'MOCK'
-#!/usr/bin/env bash
-while [[ $# -gt 0 ]]; do
-    [[ "$1" == "--model" && -n "${2:-}" ]] && printf '%s\n' "$2" > "${ZBUILD_TEST_MODEL_FILE:-/dev/null}" && shift 2 && continue
-    shift
-done
-echo "ok"
-exit 0
-MOCK
+# Mock claude: records --model arg, echoes "ok".
+# ADR-024 / #671 (Wave 13-B): the claude spawn is a fresh-user-shell —
+# _zbuild_make_fresh_shell scrubs the ZBUILD_* namespace before exec, so
+# the mock CANNOT read a ZBUILD_*-prefixed sidechannel env var. The
+# sidechannel uses a non-ZBUILD_* path written into the mock at creation
+# time via printf so it survives the scrub.
+_LAST_MODEL_FILE="$TEST_TEMP_DIR/last_model"
+printf '#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do\n    [[ "$1" == "--model" && -n "${2:-}" ]] && printf "%%s\\n" "$2" > "%s" && shift 2 && continue\n    shift\ndone\necho "ok"\nexit 0\n' "$_LAST_MODEL_FILE" > "$TEST_TEMP_DIR/bin/claude"
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
-export ZBUILD_TEST_MODEL_FILE="$TEST_TEMP_DIR/last_model"
 
 # shellcheck source=../route.sh
 source "$REPO_ROOT/core/router/route.sh"

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# scripts/lib/env-scrub.sh — fresh-user-shell env scrub helper (ADR-024, #671)
+#
+# Provides _zbuild_make_fresh_shell — the single semantic contract used at
+# every fresh-user-shell spawn site (per ADR-024). Replaces the per-variable
+# `unset ZBUILD_STAGE_IO_FD && exec 3>&-` ritual that Wave 11A (#645) and
+# Wave 11C (#647) shipped as tactical fixes; those tactical fixes did not
+# generalize across new ZBUILD_* variables (Wave 13 dogfood discovered
+# ZBUILD_RUN_ID + ZBUILD_EVENTS_JSONL leaks triggering the router's C6
+# precondition refusal). The wildcard scrub here strictly supersets the
+# narrow scrubs — every variable they touched is included.
+#
+# Sourced library: no set -euo pipefail (would mutate caller options).
+
+[[ -n "${_ZBUILD_ENV_SCRUB_LOADED:-}" ]] && return 0
+_ZBUILD_ENV_SCRUB_LOADED=1
+
+# _zbuild_make_fresh_shell
+#
+# Preamble call for subshells that should look like a fresh user terminal
+# (per ADR-024 fresh-user-shell class). Scrubs all ZBUILD_*-prefixed env
+# vars in the current shell + closes the runner's stage-io fd 3 (opened
+# by runner via `exec 3>&2`).
+#
+# Preserves: PATH, HOME, USER, SHELL, TERM, TMPDIR and any other non-ZBUILD_*
+# parent env vars — the user-shell vars the spawned process legitimately needs.
+#
+# Why wildcard scrub instead of per-var unsets:
+#   #645/Wave 11A unset only ZBUILD_STAGE_IO_FD and missed ZBUILD_RUN_ID
+#   + ZBUILD_EVENTS_JSONL. The router's C6 precondition reads those and
+#   refuses to spawn claude when they leak. Per-var scrub doesn't generalize.
+_zbuild_make_fresh_shell() {
+    # Clear shell options that a fresh user shell would not have inherited.
+    # The runner sets `set -euo pipefail` at the top of its scripts; that
+    # leaks into $(...) subshells. A real user terminal runs `npm test`
+    # (or `claude`) without -e / -u / -o pipefail. Restore that posture so
+    # the spawned process sees the same option set the user would. Without
+    # this, any unbound non-ZBUILD_* var or any nonzero-rc command in a
+    # spawned wrapper script kills the subshell before the real spawn.
+    set +e +u +o pipefail 2>/dev/null || true
+    local _v
+    while IFS= read -r _v; do
+        [[ -z "$_v" ]] && continue
+        unset "$_v"
+    done < <(compgen -v 2>/dev/null | grep '^ZBUILD_' || true)
+    exec 3>&-
+}
