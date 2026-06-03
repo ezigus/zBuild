@@ -52,6 +52,14 @@ inputs:
     path: "${artifact_dir}/test-results.json"
     source: stage:test
     required: true
+  # ADR-020 / #663: review consumes test-assessment.json when present (see
+  # plugin.sh:78); optional because graceful fallback to test-results.json
+  # exists when test_assessment stage is not wired into the template.
+  - id: test_assessment
+    type: file
+    path: "${artifact_dir}/test-assessment.json"
+    source: stage:test_assessment
+    required: false
 
 outputs:
   - id: review

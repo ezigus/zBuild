@@ -34,6 +34,15 @@ inputs:
     type: file
     source: stage:intake
     required: true
+  # ADR-020 / #663: build reads the baseline ref captured by intake to
+  # constrain diff generation when present. Optional because branch
+  # capture is opt-out (ZBUILD_INTAKE_SKIP_BRANCH) and not all templates
+  # wire intake → build directly.
+  - id: intake_baseline_ref
+    type: text
+    path: "${state_dir}/intake-baseline-ref.txt"
+    source: stage:intake
+    required: false
   - id: plan
     type: file
     path: "${artifact_dir}/plan.json"
