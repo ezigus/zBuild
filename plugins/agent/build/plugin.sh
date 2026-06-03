@@ -504,6 +504,87 @@ _build_stage_run_inner() {
         "$_plan_title" \
         "$_iter_n" || true
 
+    # ─── #661 / ADR-020 amendment: cumulative baseline→HEAD rewrite ──────────
+    # After per-iter commit (#608) lands the work, rewrite diff.patch as the
+    # CUMULATIVE branch delta `git diff $intake_baseline..HEAD`, not the
+    # per-iter working-tree delta captured above. This makes the artifact
+    # represent the branch's full work-so-far across all build iterations and
+    # lets the test stage rsync+apply against a baseline snapshot without
+    # dup-applying already-committed content.
+    #
+    # The earlier `git diff HEAD` capture (line ~252) drove scope validation
+    # and numstat parsing — those need the pre-commit working-tree view and
+    # are now done. The artifact at $output_diff_patch is overwritten here.
+    #
+    # Scope-violation path skips this rewrite: the artifact was already zeroed
+    # at line ~374 and the commit was skipped, so cumulative == zero anyway.
+    # Fallback (no baseline ref) preserves pre-#617 behavior by re-emitting
+    # `git diff HEAD` — empty after commit but identical to the legacy
+    # resumed-run path.
+    # Skip the cumulative rewrite when:
+    #   - scope_violation: artifact already zeroed; commit was skipped.
+    #   - _diff_failure: the original `git diff HEAD` already failed and
+    #     fired loop.git_diff_failed; re-running the same primitive in the
+    #     non-baseline fallback below would emit a duplicate event and
+    #     break golden parity goldens (tests/golden/parity/event-sequence).
+    #     When a baseline ref IS present, the rewrite is worth retrying
+    #     against the baseline regardless of the working-tree-diff failure.
+    if [[ "$scope_violation" != "true" ]]; then
+        # state_dir convention: artifact_dir == $state_dir/artifacts (per
+        # build_stage_run). The intake-baseline-ref.txt lives at the
+        # state_dir root per plugins/agent/intake/plugin.sh:375. Prefer the
+        # caller-derived state_dir over $ZBUILD_STATE_DIR so tests that drive
+        # build_stage_run with a state_file outside ZBUILD_STATE_DIR (the
+        # runner export) still resolve the baseline correctly.
+        local _baseline_sha="" _state_dir_for_baseline=""
+        _state_dir_for_baseline="$(dirname "$artifact_dir")"
+        if [[ -f "$_state_dir_for_baseline/intake-baseline-ref.txt" ]]; then
+            _baseline_sha="$(cat "$_state_dir_for_baseline/intake-baseline-ref.txt" \
+                2>/dev/null || true)"
+        elif [[ -n "${ZBUILD_STATE_DIR:-}" \
+              && -f "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" ]]; then
+            _baseline_sha="$(cat "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" \
+                2>/dev/null || true)"
+        fi
+        local _do_rewrite="false"
+        if [[ -n "$_baseline_sha" ]]; then
+            _do_rewrite="true"
+        elif [[ "$_diff_failure" != "true" ]]; then
+            # Fallback path (no baseline, no prior failure) — retain pre-#617
+            # `git diff HEAD` semantics so resumed runs without an intake
+            # baseline keep their legacy artifact shape.
+            _do_rewrite="true"
+        fi
+        if [[ "$_do_rewrite" == "true" ]]; then
+            local cum_rc=0
+            if [[ -n "$_baseline_sha" ]]; then
+                git -C "$repo_root" diff "$_baseline_sha..HEAD" \
+                    > "$output_diff_patch" 2>/dev/null || cum_rc=$?
+            else
+                git -C "$repo_root" diff HEAD \
+                    > "$output_diff_patch" 2>/dev/null || cum_rc=$?
+            fi
+            if [[ $cum_rc -ne 0 ]]; then
+                warn "_build_stage_run_inner: cumulative diff failed in $repo_root rc=$cum_rc baseline=${_baseline_sha:-<none>}"
+                emit_event "loop.git_diff_failed" "plugin=build" \
+                    "cwd=$repo_root" "rc=$cum_rc" "phase=cumulative"
+                : > "$output_diff_patch"
+            fi
+        fi
+        # #530 trailing-newline invariant — re-enforce on the rewritten file.
+        if [[ -s "$output_diff_patch" ]]; then
+            local _cum_last_byte
+            _cum_last_byte="$(tail -c1 "$output_diff_patch" \
+                | od -An -tx1 | tr -d ' \n')"
+            if [[ "$_cum_last_byte" != "0a" ]]; then
+                printf '\n' >> "$output_diff_patch"
+                emit_event "build.diff.trailing_newline_restored" "plugin=build" \
+                    "last_byte=0x${_cum_last_byte}" "phase=cumulative" \
+                    >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+
     emit_event "plugin.run.complete" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \

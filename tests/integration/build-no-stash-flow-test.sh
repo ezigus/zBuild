@@ -96,6 +96,11 @@ EOF
 STATE_FILE="$STATE_DIR/state.json"
 printf '{"issue":602,"branch":"feat/602"}' > "$STATE_FILE"
 
+# #661: pin intake baseline so build emits cumulative diff.patch (the
+# post-commit `git diff $baseline..HEAD` covers the agent's edits which
+# `git diff HEAD` no longer does after #608 committed them).
+git -C "$REPO" rev-parse HEAD > "$STATE_DIR/intake-baseline-ref.txt"
+
 DRIVER="$TEST_TEMP_DIR/driver.sh"
 cat > "$DRIVER" <<EOF
 set -euo pipefail
