@@ -35,6 +35,9 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "sigint-aborts-pipeline — rc=130 chain halts pipeline (#612)"
 setup_test_env "sigint-aborts-pipeline"
+# Wave 12-E (#664): default is enforce. Stub plugins used here lack honest
+# inputs/outputs blocks; opt out — this suite tests SIGINT chain semantics.
+export ZBUILD_CONTRACT_VALIDATOR=warn
 _test_cleanup_hook() {
     if [[ "${KEEP_TMP:-0}" == "1" ]]; then
         echo "KEEPTEMP=$TEST_TEMP_DIR" >&2

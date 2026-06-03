@@ -14,6 +14,9 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "runner verdict-driven indicators (#507)"
 setup_test_env "verdict-indicators"
+# Wave 12-E (#664): default is enforce. Stub plugins used here lack honest
+# inputs/outputs blocks; opt out — this suite tests verdict indicators.
+export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
