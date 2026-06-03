@@ -3,10 +3,15 @@ name: Test Stage
 kind: tool
 version: 0.1.0
 description: |
-  Applies the build-stage diff.patch in a temporary directory and runs the
-  project test suite. Captures exit code and output; always exits 0 so the
-  pipeline engine reads the verdict from the artifact rather than the plugin
-  exit code. Never invokes route_to_model (T0 tool — no LLM dependency).
+  Rsyncs the repo HEAD (which post-#608 contains the committed iter work)
+  into a temporary directory and runs the project test suite. Captures exit
+  code and output; always exits 0 so the pipeline engine reads the verdict
+  from the artifact rather than the plugin exit code. Never invokes
+  route_to_model (T0 tool — no LLM dependency).
+
+  Wave 12-C (#662) removed the historic `git apply diff.patch` step — see
+  ADR-020 amendment §A. diff.patch is now consumed only by the review stage
+  (LLM context) and operators (audit).
 
 hooks:
   init: test_init

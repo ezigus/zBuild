@@ -144,7 +144,11 @@ _test_run_inner() {
     fi
     git -C "$tmp" checkout HEAD -- . >/dev/null 2>&1 || true
     git -C "$tmp" clean -fdq >/dev/null 2>&1 || true
-    diff_applied=true
+    # Wave 12-C (#662): diff_applied is now deprecated — no apply step runs
+    # in any path, so the field stays `false` for the whole run. The JSON slot
+    # is preserved for schema_version 1 back-compat (consumers may still read
+    # it; review's redaction/prompt path is tolerant either way).
+    diff_applied=false
 
     # ── Run test command ───────────────────────────────────────────────────────
     # #600 + codex P2 on #604: DO NOT export ZBUILD_TEST_QUIET=1 here. Doing
