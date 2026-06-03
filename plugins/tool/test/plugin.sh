@@ -173,7 +173,11 @@ _test_run_inner() {
     # dogfood discovered were triggering router C6 precondition refusals
     # when the test subprocess recursed back into the router.
     raw_output="$(
-        cd "$tmp"
+        # Copilot P1 on #673: guard cd BEFORE the helper, because the
+        # helper disables errexit (fresh-user-shell posture). A failed
+        # cd here would otherwise silently run the test command against
+        # the runner's cwd instead of the rsync'd staging dir.
+        cd "$tmp" || exit 99
         _zbuild_make_fresh_shell
         eval "$test_cmd" 2>&1
     )" || test_rc=$?

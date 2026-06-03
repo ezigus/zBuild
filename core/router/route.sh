@@ -809,15 +809,19 @@ ${_diff_pointer}"
         # subprocess. _zbuild_make_fresh_shell scrubs ZBUILD_* + closes fd 3.
         # Supersedes Wave 11C (#647)'s narrow per-var unset; the build
         # plugin (the loop's primary caller) inherits this protection.
+        # Copilot P1 on #673: guard cd BEFORE the helper, because the
+        # helper disables errexit (fresh-user-shell posture). A failed
+        # cd here would otherwise silently spawn claude from the
+        # runner's cwd instead of $cwd.
         if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
             (
-                cd "$cwd"
+                cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
                 "${_tout_cmd[@]}" claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         else
             (
-                cd "$cwd"
+                cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
                 claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
