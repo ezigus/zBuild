@@ -255,14 +255,16 @@ assert_contains_regex "TC-9: unknown var diagnostic" "$err_out" "bogus_var|unkno
 rm -f "$STATE_FILE"
 rm -rf "$PLUGINS_ROOT/agent/bad-var"
 
-# TC-10: warn-default — empty ZBUILD_CONTRACT_VALIDATOR == warn behavior
+# TC-10: enforce-default (Wave 12-E #664) — empty ZBUILD_CONTRACT_VALIDATOR
+# now means `enforce`. A missing producer must therefore return rc=2.
 unset ZBUILD_CONTRACT_VALIDATOR
 rc=0
 _contract_validate_pipeline "intake
 plan
 build
 review" "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
-assert_eq "TC-10: default (unset) ≡ warn (rc=0 on violation)" "0" "$rc"
+assert_eq "TC-10: default (unset) ≡ enforce (rc=2 on violation)" "2" "$rc"
+rm -f "$STATE_FILE"
 
 cleanup_test_env
 print_test_results

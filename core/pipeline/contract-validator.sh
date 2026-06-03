@@ -15,11 +15,17 @@
 # Integration: called from core/pipeline/runner.sh:~165 after load_template +
 # init_state but before the --dry-run branch and before the stage loop.
 #
-# Rollout: gated by ZBUILD_CONTRACT_VALIDATOR=warn|enforce (default `warn`
-# for the first release). In `warn` mode, violations are reported on stderr
-# and a `pipeline.preflight.fail` event is emitted, but the pipeline is
-# allowed to proceed; in `enforce` mode the function returns rc=2 and the
-# runner halts before any stage starts.
+# Rollout: gated by ZBUILD_CONTRACT_VALIDATOR=warn|enforce. As of Wave 12-E
+# (#664), the default is `enforce` — manifest contracts were made honest by
+# Wave 12-D so the validator is now safe to fail-closed by default. In
+# `warn` mode (explicit opt-out), violations are reported on stderr and a
+# `pipeline.preflight.fail` event is emitted, but the pipeline is allowed
+# to proceed; in `enforce` mode (default) the function returns rc=2 and
+# the runner halts before any stage starts.
+#
+# Output-uniqueness rule (ADR-020 amendment §D, Wave 12-A): each output
+# `id` value MUST be claimed by exactly one stage manifest across the
+# template's resolved stage set. Duplicate producers are a hard violation.
 #
 # Bash 5+. Sourced library; do not add `set -euo pipefail`.
 
@@ -109,8 +115,10 @@ _contract_validate_pipeline() {
     local template_stages_csv="$1" plugins_root="$2" state_file="$3"
     local state_dir; state_dir="$(dirname "${state_file:-/dev/null}")"
 
-    # Mode (decision #2). Default `warn` for the first release.
-    local mode="${ZBUILD_CONTRACT_VALIDATOR:-warn}"
+    # Mode (decision #2). Default `enforce` as of Wave 12-E (#664) —
+    # contracts are honest after Wave 12-D so fail-closed is safe.
+    # Operators can opt out with ZBUILD_CONTRACT_VALIDATOR=warn.
+    local mode="${ZBUILD_CONTRACT_VALIDATOR:-enforce}"
     case "$mode" in
         warn|enforce) ;;
         *)
@@ -144,8 +152,14 @@ _contract_validate_pipeline() {
     # Also build per-stage available list to check `stage:X` references
     declare -A _CV_STAGE_OUTPUTS_OK=()  # key="stage:id" → 1 if stage X has output id
 
-    # Pass 1: collect every stage's outputs into _CV_STAGE_OUTPUTS_OK
+    # Pass 1: collect every stage's outputs into _CV_STAGE_OUTPUTS_OK.
+    # Also track producers-per-output-id for the output-uniqueness check
+    # (ADR-020 amendment §D, Wave 12-E #664): each output id MUST be
+    # claimed by exactly one stage manifest across the resolved stage set.
     local -A _CV_STAGE_MANIFEST=()
+    local -A _CV_OUTPUT_PRODUCERS=()   # key=output_id  → space-delimited list of stages
+    local -a violations=()
+    local fail_count=0
     local stage manifest
     for stage in "${stages[@]}"; do
         manifest="$(manifest_graph_collect "$plugins_root" "$stage" 2>/dev/null || true)"
@@ -169,13 +183,35 @@ _contract_validate_pipeline() {
             local out_id="${outrec%%|*}"
             [[ -z "$out_id" ]] && continue
             _CV_STAGE_OUTPUTS_OK["$stage:$out_id"]=1
+            # Append this stage to the producer list for output-uniqueness.
+            local _prev="${_CV_OUTPUT_PRODUCERS[$out_id]:-}"
+            if [[ -z "$_prev" ]]; then
+                _CV_OUTPUT_PRODUCERS["$out_id"]="$stage"
+            else
+                _CV_OUTPUT_PRODUCERS["$out_id"]="$_prev $stage"
+            fi
         done < <(manifest_graph_get_outputs "$manifest")
+    done
+
+    # Output-uniqueness check (ADR-020 amendment §D, Wave 12-E #664):
+    # any output id claimed by >1 stage is a hard contract violation.
+    local _uniq_id
+    for _uniq_id in "${!_CV_OUTPUT_PRODUCERS[@]}"; do
+        local _producers="${_CV_OUTPUT_PRODUCERS[$_uniq_id]}"
+        # Count words via array
+        local -a _plist=()
+        # shellcheck disable=SC2206
+        _plist=( $_producers )
+        if [[ ${#_plist[@]} -gt 1 ]]; then
+            # Report against the FIRST producer for stable ordering;
+            # name all producers in the message.
+            violations+=("${_plist[0]}|DUPLICATE_OUTPUT|$_uniq_id|output id '$_uniq_id' is declared by multiple stages: ${_producers// /, } — each output id MUST be claimed by exactly one stage (ADR-020 §D)")
+            fail_count=$((fail_count + 1))
+        fi
     done
 
     # Pass 2: walk stages in order; for each, validate inputs against the
     # cumulative _CV_AVAILABLE map, then merge this stage's outputs into it.
-    local -a violations=()
-    local fail_count=0
 
     for stage in "${stages[@]}"; do
         manifest="${_CV_STAGE_MANIFEST[$stage]:-}"
@@ -407,7 +443,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED|DUPLICATE_OUTPUT)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

@@ -21,6 +21,9 @@ source "$REPO_ROOT/core/state/resume.sh"
 print_test_header "pipeline resume — CLI + auto-resume policy (#225)"
 
 setup_test_env "pipeline-resume"
+# Wave 12-E (#664): default is enforce. Stub plugins used here lack honest
+# inputs/outputs blocks; opt out — this suite tests resume policy.
+export ZBUILD_CONTRACT_VALIDATOR=warn
 STATE_FILE="$TEST_TEMP_DIR/state/pipeline-state.json"
 mkdir -p "$(dirname "$STATE_FILE")"
 

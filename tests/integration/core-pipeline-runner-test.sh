@@ -14,6 +14,9 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)"
 setup_test_env "pipeline-runner"
+# Wave 12-E (#664): default is enforce. Stub plugins below lack honest
+# inputs/outputs blocks; opt out — this suite tests runner mechanics.
+export ZBUILD_CONTRACT_VALIDATOR=warn
 
 # Use shared factory from test-helpers.sh (Wave 4)
 _make_plugin() { mock_plugin_factory "$@" >/dev/null; }   # #619: suppress factory's path echo

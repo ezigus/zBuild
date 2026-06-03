@@ -20,6 +20,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "runner: exports ZBUILD_STATE_DIR to child plugins (#618)"
 setup_test_env "runner-618-export-state-dir"
+# Wave 12-E (#664): default is enforce. This test uses synthetic stub
+# plugins without honest inputs/outputs blocks; opt out of contract
+# validation since the assertions target runner mechanics, not contracts.
+export ZBUILD_CONTRACT_VALIDATOR=warn
 
 # ─── Shared env: point all subsystems at the test temp dir ──────────────────
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
