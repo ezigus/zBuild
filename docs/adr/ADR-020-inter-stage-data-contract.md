@@ -534,7 +534,8 @@ new contract; Waves 12-B…12-E implement it.
   Inter-stage work flows via git commits, NOT via patch transport.
 - **New semantic**: `diff.patch` is the **cumulative branch delta
   since the intake baseline**, computed as
-  `git diff $(cat state/intake-baseline-ref.txt)..HEAD`. It is a
+  `git diff $(cat ${state_dir}/intake-baseline-ref.txt)..HEAD`
+  (i.e. `$ZBUILD_STATE_DIR/intake-baseline-ref.txt`). It is a
   **read-only audit/LLM-context artifact**, NOT a transport patch.
 - Build rewrites `diff.patch` once per iter, AFTER the per-iter
   commit lands. There is exactly one `diff.patch` per pipeline run
@@ -557,6 +558,15 @@ the source of truth):
   entry from the "Reads" column. Agent 1 audit confirmed it is
   neither declared in the test-assessment manifest nor read by the
   code. It was aspirational, never wired.
+- **#572 amendment alignment**: the sample manifest in the
+  "LLM-interpreted verdict stages (#572, ADR-022)" amendment above
+  lists `diff_patch` as a `required: false` input to
+  `test_assessment`. That sample is **superseded by this
+  amendment** — the input is removed from the manifest in Wave 12-D
+  (#663). The #572 sample is retained verbatim only so older review
+  trails reading the original wording stay parseable; readers
+  reconciling current manifests with the ADR should treat this
+  section as authoritative.
 - **`test` row**: `diff_patch` is *informational only*. Test does
   NOT apply it; tests run against the rsync'd HEAD (which already
   contains the committed work). Wave 12-D will either downgrade
@@ -580,7 +590,10 @@ bypass flagged in ADR-020:223-240 above).
 The bypass closes as follows:
 
 - Intake's manifest formally declares `intake_baseline_ref` as an
-  output of type `text/plain` at path `${state_dir}/intake-baseline-ref.txt`.
+  output of `type: file` at path
+  `${state_dir}/intake-baseline-ref.txt` (the `file` type matches the
+  existing convention used by other plain-text artifact rows in
+  manifests across `plugins/`).
 - Build's manifest declares `intake_baseline_ref` as an optional
   input (`required: false`) so a freshly-resumed build can recover
   the baseline without re-running intake. When absent, build falls
