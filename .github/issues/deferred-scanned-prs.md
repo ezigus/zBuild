@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-02T19:45:50Z_
+_Last updated: 2026-06-03T03:48:41Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -97,3 +97,9 @@ _Last updated: 2026-06-02T19:45:50Z_
 | #651 | fix(#646): stage-output framing — discrepancy warn inside banner + blank line between stages | 2026-06-02 |
 | #650 | fix(#647): defense-in-depth fd 3 / ZBUILD_STAGE_IO_FD isolation in router | 2026-06-02 |
 | #648 | [manifest-sync] Drift reconciliation | 2026-06-02 |
+| #669 | feat(contract-validator): output-uniqueness + warn→enforce flip (Wave 12-E, #664) | 2026-06-03 |
+| #668 | refactor(test): remove vestigial git apply step (Wave 12-C) | 2026-06-03 |
+| #667 | feat(build): cumulative diff.patch since intake baseline (Wave 12-B) | 2026-06-03 |
+| #666 | chore(contracts): complete manifest declarations (review + intake + build) (Wave 12-D) | 2026-06-03 |
+| #665 | docs(adr-020): cumulative diff.patch semantics + output-uniqueness (Wave 12-A) | 2026-06-03 |
+| #649 | fix(#645): isolate test subprocess from runner stage-io fd | 2026-06-03 |
