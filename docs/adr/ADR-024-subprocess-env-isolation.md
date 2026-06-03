@@ -1,9 +1,9 @@
 # ADR-024: Subprocess Environment Isolation Contracts
 
-**Status:** Proposed (2026-06-03)
+**Status:** Accepted (2026-06-03, flipped from Proposed in Wave 13-B #671)
 **Date:** 2026-06-03
 **Depends on:** ADR-015 (stage-io capture, fd 3 contract)
-**Implements (forthcoming):** #671 (helper `_zbuild_make_fresh_shell` + apply at both call sites). Umbrella: #670.
+**Implemented by:** #671 (helper `_zbuild_make_fresh_shell` in `scripts/lib/env-scrub.sh` + applied at test plugin + 4 router spawn sites). Umbrella: #670.
 
 ## Context
 

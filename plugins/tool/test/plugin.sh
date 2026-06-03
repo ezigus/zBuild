@@ -30,6 +30,9 @@ source "$_ZBUILD_TEST_STAGE_ROOT/core/output/stage-io.sh"
 # shellcheck source=./lib/parse.sh
 # #584: pattern bank for known test runners + honest fail-safe.
 source "$_ZBUILD_TEST_STAGE_DIR/lib/parse.sh"
+# shellcheck source=../../../scripts/lib/env-scrub.sh
+# ADR-024 / #671: fresh-user-shell helper for the eval subshell below.
+source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/env-scrub.sh"
 
 # ─── test_init ────────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
@@ -160,20 +163,19 @@ _test_run_inner() {
     # (set per-stage in the template).
     local test_rc=0
     local raw_output
-    # #645: the test subprocess must look like a fresh user shell. The runner
-    # exports ZBUILD_STAGE_IO_FD=3 and opens fd 3 for banners; if the test
-    # subshell inherits both, capture_stage_io calls inside tests write banners
-    # to fd 3 — escaping our 2>&1 capture and producing phantom failures in
-    # tests that grep stderr for the banner (T11/T51 in
-    # core-output-stage-io-test.sh) or depend on inherited fd state
-    # (router-claude-flags T1-T3). Unset the var AND close fd 3 so stage-io.sh
-    # falls back to fd 2 and the captured raw_output matches what direct
-    # `npm test` would produce.
+    # ADR-024 / #671 (Wave 13-B): the test subprocess is a fresh-user-shell
+    # class spawn — it must look exactly like the user running `npm test`
+    # from their own login shell with no zBuild runner in the process tree.
+    # _zbuild_make_fresh_shell scrubs the entire ZBUILD_* namespace and
+    # closes fd 3 (the ADR-015 stage-io channel). This supersedes Wave 11A
+    # (#645)'s narrow `unset ZBUILD_STAGE_IO_FD && exec 3>&-` — the wider
+    # scrub also covers ZBUILD_RUN_ID + ZBUILD_EVENTS_JSONL, which Wave 13
+    # dogfood discovered were triggering router C6 precondition refusals
+    # when the test subprocess recursed back into the router.
     raw_output="$(
-        cd "$tmp" \
-            && unset ZBUILD_STAGE_IO_FD \
-            && exec 3>&- \
-            && eval "$test_cmd" 2>&1
+        cd "$tmp"
+        _zbuild_make_fresh_shell
+        eval "$test_cmd" 2>&1
     )" || test_rc=$?
 
     # Truncate output to 10 KB to keep artifact manageable
