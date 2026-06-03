@@ -116,6 +116,15 @@ OUT_SUMMARY_PROMPT="$ARTIFACT_DIR_PROMPT/build-summary.json"
 # Configure mock to edit tests/fixtures/build-test-dummy.txt inside the repo.
 REPO_PROMPT="$(setup_build_repo "repo_prompt")"
 export ZBUILD_REPO_ROOT="$REPO_PROMPT"
+# #661 / ADR-020 amendment: build's diff.patch is now the cumulative
+# baseline→HEAD delta. Set ZBUILD_STATE_DIR + write intake-baseline-ref.txt
+# pinned to the seed SHA so post-commit `git diff $baseline..HEAD` returns
+# the dummy file the mock loop adds (rather than empty `git diff HEAD`).
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_prompt"
+mkdir -p "$ZBUILD_STATE_DIR"
+# Mirror intake's `printf '%s'` write — raw 40-char SHA, no trailing newline.
+printf '%s' "$(git -C "$REPO_PROMPT" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
 MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
 MOCK_LOOP_EDIT_CONTENT="dummy"
 MOCK_LOOP_ITERATIONS=2
@@ -251,6 +260,12 @@ OUT_SUMMARY_T3="$ARTIFACT_DIR_T3/build-summary.json"
 
 REPO_T3="$(setup_build_repo "repo_t3")"
 export ZBUILD_REPO_ROOT="$REPO_T3"
+# #661: pin baseline ref for cumulative diff.patch (see T_PROMPT_2 comment).
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_t3"
+mkdir -p "$ZBUILD_STATE_DIR"
+# Mirror intake's `printf '%s'` write — raw SHA, no trailing newline.
+printf '%s' "$(git -C "$REPO_T3" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
 MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
 MOCK_LOOP_EDIT_CONTENT="dummy content"
 MOCK_LOOP_ITERATIONS=3
