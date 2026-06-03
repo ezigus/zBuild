@@ -94,7 +94,7 @@ assert_contains "TC-1: error names the duplicate id" "$err_out" "diff_patch"
 assert_contains "TC-1: error names producer 'build'" "$err_out" "build"
 assert_contains "TC-1: error names producer 'extra_build'" "$err_out" "extra_build"
 assert_contains_regex "TC-1: error indicates duplicate/multiple producers" \
-    "$err_out" "duplicate|multiple|more than one|DUPLICATE_OUTPUT"
+    "$err_out" "multiple|more than one|OUTPUT_DUP"
 
 rm -f "$STATE_FILE"
 

@@ -120,7 +120,7 @@ _contract_validate_pipeline() {
     # Operators can opt out with ZBUILD_CONTRACT_VALIDATOR=warn.
     local mode="${ZBUILD_CONTRACT_VALIDATOR:-enforce}"
     case "$mode" in
-        warn|enforce) ;;
+        warn|enforce|off) ;;
         *)
             # Unknown mode: degrade to warn but log it.
             mode="warn"
@@ -195,20 +195,22 @@ _contract_validate_pipeline() {
 
     # Output-uniqueness check (ADR-020 amendment §D, Wave 12-E #664):
     # any output id claimed by >1 stage is a hard contract violation.
+    # Iterate keys in sorted order — Bash assoc-array iteration order is
+    # implementation-defined; sorting guarantees stable error rendering.
     local _uniq_id
-    for _uniq_id in "${!_CV_OUTPUT_PRODUCERS[@]}"; do
+    while IFS= read -r _uniq_id; do
+        [[ -z "$_uniq_id" ]] && continue
         local _producers="${_CV_OUTPUT_PRODUCERS[$_uniq_id]}"
-        # Count words via array
         local -a _plist=()
         # shellcheck disable=SC2206
         _plist=( $_producers )
         if [[ ${#_plist[@]} -gt 1 ]]; then
             # Report against the FIRST producer for stable ordering;
             # name all producers in the message.
-            violations+=("${_plist[0]}|DUPLICATE_OUTPUT|$_uniq_id|output id '$_uniq_id' is declared by multiple stages: ${_producers// /, } — each output id MUST be claimed by exactly one stage (ADR-020 §D)")
+            violations+=("${_plist[0]}|OUTPUT_DUP|$_uniq_id|output id '$_uniq_id' is declared by multiple stages: ${_producers// /, } — each output id MUST be claimed by exactly one stage (ADR-020 §D)")
             fail_count=$((fail_count + 1))
         fi
-    done
+    done < <(printf '%s\n' "${!_CV_OUTPUT_PRODUCERS[@]}" | LC_ALL=C sort)
 
     # Pass 2: walk stages in order; for each, validate inputs against the
     # cumulative _CV_AVAILABLE map, then merge this stage's outputs into it.
@@ -443,7 +445,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED|DUPLICATE_OUTPUT)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED|OUTPUT_DUP)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)
