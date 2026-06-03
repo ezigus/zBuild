@@ -29,12 +29,12 @@ config:
   tier_default: T0
   test_cmd_default: "npm test"
 
-inputs:
-  - id: diff_patch
-    type: file
-    path: "${artifact_dir}/diff.patch"
-    source: stage:build
-    required: true
+# Wave 12-C (#662): no declared inputs.
+# Post-#608 + Wave 12-B (#667), the test stage rsyncs the repo HEAD (which
+# already contains the committed iter work) and runs the test suite directly.
+# diff.patch is consumed by the review stage (LLM context) and operators
+# (audit) — not by test. See ADR-020 amendment §A.
+inputs: []
 
 outputs:
   - id: test_results
