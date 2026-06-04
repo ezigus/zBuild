@@ -296,12 +296,17 @@ for doc in "$MUTATION_DIR"/*.md; do
     fi
 done
 
-echo
-echo "─── Mutation test results ──────────────────────────────"
-for line in "${results[@]}"; do
-    echo "  $line"
-done
-echo "──────────────────────────────────────────────────────"
+# Match the other tiers' output shape: emit just the count line on full pass.
+# On failure, surface the per-spec results table so the failing entries are
+# visible without re-running.
+if [[ $failed -ne 0 ]]; then
+    echo
+    echo "─── Mutation test results ──────────────────────────────"
+    for line in "${results[@]}"; do
+        echo "  $line"
+    done
+    echo "──────────────────────────────────────────────────────"
+fi
 echo "mutation: $passed/$((passed + failed)) passed"
 
 [[ $failed -eq 0 ]]
