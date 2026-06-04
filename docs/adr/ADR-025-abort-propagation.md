@@ -1,7 +1,8 @@
 # ADR-025: Abort Propagation Contract
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-06-04
+**Accepted:** 2026-06-04 (Wave 15-B #684 ships the helpers + dispatch-site conversion)
 **Depends on:** ADR-006 (resume contract), ADR-024 (subprocess env isolation — sentinel-file precedent)
 **Implemented by:** #684 (Wave 15-B impl: helper + dispatch-site conversion). Umbrella: #679.
 

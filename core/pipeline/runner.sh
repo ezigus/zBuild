@@ -8,6 +8,9 @@ _RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "$_RUNNER_DIR/../.." && pwd)"
 
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
+# ADR-025 (Wave 15-B #684) abort-propagation helpers — sourced before any
+# dispatch site can call them; idempotent source guard inside.
+source "$_ZBUILD_ROOT/scripts/lib/abort-propagation.sh"
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
@@ -825,6 +828,13 @@ main() {
     _RUNNER_SIGINT_RECEIVED=0
 
     _runner_abort_trap() {
+        # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
+        # exit path — clean end, normal failure, or abort — so a follow-on
+        # zbuild invocation in the same state_dir never sees a stale
+        # signal. Runs BEFORE the short-circuit because the
+        # `_runner_ended=true` path is the common case (every successful
+        # run hits it) and that path also needs the cleanup.
+        _zbuild_disarm_abort_sentinel
         [[ "$_runner_ended" == "true" ]] && return 0
         # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere.
         # Fail-closed: if we cannot mark the pipeline interrupted, emit an error event so the
@@ -860,7 +870,12 @@ main() {
     # #612: INT/TERM trap — flag the SIGINT cause then exit. Setting the flag
     # before exit lets the EXIT trap emit `pipeline.aborted reason=sigint`.
     # `exit 130` triggers _runner_abort_trap (EXIT) which writes state + events.
+    # ADR-025 (Wave 15-B #684): arm the cross-subshell abort sentinel FIRST so
+    # any in-flight subshell (cycle iter, strategy fanout) sees the signal via
+    # _zbuild_check_abort even if rc=130 has not yet propagated up to them.
+    # Composition is additive — the existing `exit 130` body is preserved.
     _runner_signal_trap() {
+        _zbuild_arm_abort_sentinel
         _RUNNER_SIGINT_RECEIVED=1
         # Re-raise the standard 128+SIGINT exit code so the parent shell sees
         # the cancellation, not a clean 0.
@@ -1166,6 +1181,14 @@ main() {
     # than the per-stage cardinal (which collides across stages on retries).
     local _runner_linear_cardinal=0
     for stage in "${active_stages[@]}"; do
+        # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
+        # armed by SIGINT between iterations. Bail BEFORE spawning the next
+        # stage so the abort observes within one stage boundary. Existing
+        # post-flight rc=130 check at the end of this loop body stays.
+        if ! _zbuild_check_abort; then
+            _RUNNER_SIGINT_RECEIVED=1
+            return 130
+        fi
         _runner_linear_cardinal=$(( _runner_linear_cardinal + 1 ))
         # When resuming, skip stages already marked complete unless --from-stage overrides
         if $resume_mode && [[ -z "$skip_until_stage" ]]; then
