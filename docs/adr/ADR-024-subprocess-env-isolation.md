@@ -294,3 +294,80 @@ The impl sequence (Wave 13-B):
 - ADR-024 status flips from Proposed to Accepted in the Wave 13-B PR.
 
 This PR (closing #670) lands only the ADR text.
+
+## Amendment 2026-06-03 (#674 / Wave 14) — Two-layer contract: process boundary + test-mode env
+
+Wave 13-B (#673) shipped `_zbuild_make_fresh_shell` and converted the test plugin + four router claude-spawn sites. That fixed the env-divergence bug class at the process boundary. Three test failures remained — verified to pass when run directly on `main`, but fail under the pipeline `test` stage:
+
+1. `tests/integration/core-router-route-test.sh` Tr-5 — assumes `ZBUILD_ROUTER_TIMEOUT=450` survives into the subshell.
+2. `plugins/tool/test/tests/test-test.sh` section 6 — assumes the runner's fd 3 redirection survives through `_test_run_inner`'s helper-protected subshell.
+3. `plugins/tool/test/tests/test-test.sh` section 7 — same banner-on-fd-3 contract.
+
+These are not source-code regressions and not bugs in `_zbuild_make_fresh_shell`. They are pre-ADR-024 tests written when the runner's full environment was assumed to flow through subshell boundaries. The wider scrub legitimately strips that assumption. Per-test patching is the same treadmill the original ADR rejected at the variable level: it scales with the test corpus, not with the contract.
+
+The fix lives one layer up. The runner scrubs at the process boundary (Layer 1, correct). Inside the resulting fresh shell, the test harness constructs deterministic test-mode env state before any test file runs (Layer 2, new). Tests source the harness instead of relying on inheritance.
+
+### The two-layer contract
+
+**Layer 1 — Process boundary** (existing, unchanged):
+
+- Owned by `scripts/lib/env-scrub.sh::_zbuild_make_fresh_shell`.
+- Applied at every fresh-user-shell subshell-spawn site (test plugin's `eval "$test_cmd"`, router's four `claude` spawns).
+- Strips every `ZBUILD_*`-prefixed env var, closes fd 3, neutralizes shell options (`set +e +u +o pipefail`).
+- Preserves user-shell vars (PATH, HOME, USER, SHELL, TERM, TMPDIR, etc.).
+- Scope: the *boundary* between runner and spawned child. The helper does not know what env state the spawned child needs to do its own work — it only knows what state must not leak through.
+
+**Layer 2 — Test-mode env** (new, owned by Wave 14-B #675):
+
+- Owned by `tests/lib/test-harness.sh`.
+- Applied *inside* the fresh shell (and inside individual test entry points or a harness-aware runner like `tests/run-all.sh`), before any test file's first assertion.
+- Constructs canonical test-mode env state:
+  - `ZBUILD_RUN_ID` — deterministic per-invocation id (e.g., `test-$$`).
+  - `ZBUILD_STATE_DIR` — isolated per-run tmpdir (auto-created).
+  - `ZBUILD_EVENTS_JSONL` — fresh empty events file under the tmpdir.
+  - `ZBUILD_EVENT_SCHEMA` — canonical schema path.
+  - `ZBUILD_ARTIFACT_DIR` — isolated per-run artifact dir under the tmpdir.
+- Auto-cleanup via additive EXIT trap composition (the harness composes its cleanup onto any pre-existing trap rather than overwriting it).
+- Scoped helpers for individual test conditions:
+  - `zb_test_with_router_timeout` — pin `ZBUILD_ROUTER_TIMEOUT` for a single test case.
+  - `zb_test_with_stage` — pin stage-context vars for a single test case.
+  - `zb_test_capture_fd3` — re-establish a fd-3 sink for a single test case that asserts on the ADR-015 stage-io banner.
+- Helpers use `( ... )` subshell isolation so mutations do not leak into adjacent test cases.
+
+### Why two layers
+
+The runner does not know what env state tests need. The test harness does. Splitting ownership at the process boundary keeps both contracts small:
+
+- Future runner additions to the `ZBUILD_*` namespace do not ripple into tests, because tests are not in the inheritance chain by design. The Layer 1 scrub strictly widens; the Layer 2 harness names exactly what test mode requires.
+- Future tests do not write env-setup boilerplate. They source the harness and call helpers for case-specific conditions.
+- The bug class — "test assumes inherited env that the scrub strips" — is killed at the architectural boundary, not test-by-test. Wave 14-B migrates the three discovered sites; future tests start with the harness in place and never enter the failure mode.
+
+### Boundary contract
+
+- Tests MUST source the harness (or be run through a harness-aware entry point like `tests/run-all.sh`) rather than rely on inheritance from the runner.
+- Tests MAY use the scoped helpers (`zb_test_with_router_timeout`, `zb_test_with_stage`, `zb_test_capture_fd3`) for cases that need additional env conditions beyond the canonical baseline. Mutations stay scoped to the helper's subshell.
+- Production code — runner, plugins, agents, cycle orchestrators — does NOT know about Layer 2. The harness is invisible from outside the test scope. Nothing in `core/`, `plugins/`, or `scripts/` imports `tests/lib/test-harness.sh`.
+
+### Motivating discoveries
+
+Three failures surfaced under the pipeline `test` stage on the Wave 13 dogfood run, each passing when invoked directly on `main`:
+
+1. `tests/integration/core-router-route-test.sh` Tr-5 — depends on `ZBUILD_ROUTER_TIMEOUT=450` propagation into the inner subshell, scrubbed by Layer 1.
+2. `plugins/tool/test/tests/test-test.sh` section 6 — depends on fd 3 surviving through `_test_run_inner`'s helper-protected subshell; fd 3 is closed by Layer 1.
+3. `plugins/tool/test/tests/test-test.sh` section 7 — same fd-3 banner contract.
+
+Wave 14-B (#675) migrates these three sites to the harness. Future `ZBUILD_*` additions will not reopen the class because tests source canonical env rather than inherit it.
+
+### Reference dogfood
+
+Wave 13 dogfood `20260603193616-48336` exposed all three failures simultaneously. Cited for traceability.
+
+### References
+
+- ADR-024 main body (Layer 1).
+- ADR-015 — stage-io capture; the fd 3 channel whose Layer 1 closure motivated discovery (2)/(3).
+- ADR-020 — inter-stage data contract; sibling contract at the same conceptual boundary.
+- #672 (Wave 13-A) — ADR-024 Proposed.
+- #673 (Wave 13-B) — `_zbuild_make_fresh_shell` helper + first call sites; flipped ADR-024 to Accepted.
+- #674 (this amendment).
+- #675 (Wave 14-B) — `tests/lib/test-harness.sh` implementation + migration of the three discovered sites.
