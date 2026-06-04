@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-03T03:48:41Z_
+_Last updated: 2026-06-04T03:48:14Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -103,3 +103,8 @@ _Last updated: 2026-06-03T03:48:41Z_
 | #666 | chore(contracts): complete manifest declarations (review + intake + build) (Wave 12-D) | 2026-06-03 |
 | #665 | docs(adr-020): cumulative diff.patch semantics + output-uniqueness (Wave 12-A) | 2026-06-03 |
 | #649 | fix(#645): isolate test subprocess from runner stage-io fd | 2026-06-03 |
+| #677 | feat(test-harness): canonical test-mode env-init + migrate 3 failing tests (Wave 14-B) | 2026-06-04 |
+| #676 | docs(adr-024): two-layer contract amendment (Wave 14-A) | 2026-06-04 |
+| #673 | feat(env-scrub): _zbuild_make_fresh_shell helper + apply at test plugin and router (Wave 13-B) | 2026-06-04 |
+| #672 | docs(adr-024): Subprocess Environment Isolation Contracts (Proposed) | 2026-06-04 |
+| #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
