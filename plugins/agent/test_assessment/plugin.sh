@@ -37,6 +37,11 @@ source "$_TEST_ASSESSMENT_ROOT/core/event-bus/event-bus.sh"
 source "$_TEST_ASSESSMENT_ROOT/core/router/route.sh"
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/artifact-render.sh"
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+# Wave 15-C / #681: defense-in-depth — the test plugin already sanitizes,
+# but a second pass here protects against future test-results.json shapes
+# (e.g. cycle-iter mirrors that side-channel an unsanitized field).
+source "$_TEST_ASSESSMENT_ROOT/scripts/lib/test-output-sanitize.sh"
 
 # Cap on test_output bytes embedded in the prompt — keep tail so the most
 # recent (typically most-failure-revealing) lines survive truncation.
@@ -150,6 +155,9 @@ _test_assessment_run_inner() {
     test_failed="$(printf '%s' "$test_content" | jq -r '.failed // 0' 2>/dev/null || echo 0)"
     test_passed="$(printf '%s' "$test_content" | jq -r '.passed // 0' 2>/dev/null || echo 0)"
     test_output="$(printf '%s' "$test_content" | jq -r '.test_output // ""' 2>/dev/null || echo "")"
+    # Wave 15-C (#681): sanitize before prompt splice. Idempotent — if the
+    # test plugin already stripped decoration this is a no-op.
+    test_output="$(printf '%s' "$test_output" | _zbuild_sanitize_test_output)"
 
     local build_verdict build_iters build_term
     build_verdict="$(printf '%s' "$build_content" | jq -r '.verdict // "unknown"' 2>/dev/null || echo unknown)"

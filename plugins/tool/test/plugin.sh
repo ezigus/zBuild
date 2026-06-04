@@ -33,6 +33,10 @@ source "$_ZBUILD_TEST_STAGE_DIR/lib/parse.sh"
 # shellcheck source=../../../scripts/lib/env-scrub.sh
 # ADR-024 / #671: fresh-user-shell helper for the eval subshell below.
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/env-scrub.sh"
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+# Wave 15-C / #681: strip stage-io banners + ANSI + redaction-tag wrappers
+# before truncation so the 10KB head-c budget carries signal, not decoration.
+source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/test-output-sanitize.sh"
 
 # ─── test_init ────────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
@@ -182,8 +186,10 @@ _test_run_inner() {
         eval "$test_cmd" 2>&1
     )" || test_rc=$?
 
-    # Truncate output to 10 KB to keep artifact manageable
-    test_output="$(printf '%s' "$raw_output" | head -c 10240)"
+    # Truncate output to 10 KB to keep artifact manageable. Wave 15-C (#681)
+    # sanitizes first so the head-c budget carries signal, not framework
+    # decoration (banner pairs, ANSI color codes, redaction-tag wrappers).
+    test_output="$(printf '%s' "$raw_output" | _zbuild_sanitize_test_output | head -c 10240)"
 
     exit_code="$test_rc"
 

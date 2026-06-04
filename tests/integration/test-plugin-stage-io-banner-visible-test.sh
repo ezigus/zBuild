@@ -96,16 +96,21 @@ case "$captured" in
         ;;
 esac
 
-# Core assertion: the stage-io banner string (end stage-io: <stage>) must be
-# visible in the captured output. Pre-fix it goes to fd 3 → not in captured.
-case "$captured" in
-    *"end stage-io: fdcheck"*)
-        assert_pass "banner visible in captured raw_output (subshell fd-isolated)"
-        ;;
-    *)
-        assert_fail "banner missing from captured raw_output — fd 3 leaked into eval subshell. captured=$captured"
-        ;;
-esac
+# Core assertion: stage-io content lines (in: / out:) must be visible in the
+# captured output. Pre-fix they go to fd 3 (the sentinel file) → never reach
+# the plugin's `2>&1`. Post-fix the subshell closes fd 3 so stage-io falls
+# back to fd 2 and `2>&1` captures both content lines. Wave 15-C (#681)
+# adjusted this assertion from the `end stage-io: <stage>` banner (which the
+# sanitizer now strips as framework decoration) to the `in:`/`out:` content
+# lines, which are genuine signal and pass through sanitization unchanged.
+in_seen=0; out_seen=0
+case "$captured" in *"in: in"*) in_seen=1 ;; esac
+case "$captured" in *"out: out"*) out_seen=1 ;; esac
+if (( in_seen == 1 && out_seen == 1 )); then
+    assert_pass "stage-io content visible in captured raw_output (subshell fd-isolated)"
+else
+    assert_fail "stage-io content missing from captured raw_output — fd 3 leaked into eval subshell. captured=$captured"
+fi
 
 # Close parent fd 3.
 exec 3>&-
