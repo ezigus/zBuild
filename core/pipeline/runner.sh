@@ -896,10 +896,10 @@ main() {
     if $resume_mode; then
         # ADR-025 (Wave 15-E #685): defensive sentinel cleanup at resume entry.
         # The normal SIGINT path's EXIT trap already disarms the sentinel
-        # (runner.sh:837), but a hard kill (-9), host crash, or any path that
-        # skipped the EXIT trap can leave a stale .abort.signal. Without this
-        # disarm the first _zbuild_check_abort pre-flight in the dispatch loop
-        # (runner.sh:1188) would observe the stale sentinel and abort the
+        # in `_runner_abort_trap`, but a hard kill (-9), host crash, or any
+        # path that skipped the EXIT trap can leave a stale .abort.signal.
+        # Without this disarm the first `_zbuild_check_abort` pre-flight in
+        # the dispatch loop would observe the stale sentinel and abort the
         # resumed run immediately. Resume must always start from a clean
         # signal channel.
         _zbuild_disarm_abort_sentinel

@@ -164,16 +164,9 @@ else
     assert_fail "sentinel re-armed" "could not create: $STATE_DIR/.abort.signal"
 fi
 
-# Now make build succeed on resume so the pipeline can complete.
-cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<'PLUG'
-build_run() {
-    return 0
-}
-PLUG
-
-# Probe: log every stage that gets dispatched on resume so we can verify
-# intake is skipped. Plugin run hooks fire from inside the runner; the
-# marker files identify which stages were entered.
+# Rewrite intake and build to drop a marker file when entered, so we can
+# verify intake is skipped (already complete) and build is re-run on
+# resume. Build also succeeds this time so the pipeline can complete.
 INTAKE_RESUME_MARKER="$TEST_TEMP_DIR/intake-ran-on-resume"
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<PLUG
 intake_run() {
