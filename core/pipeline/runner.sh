@@ -894,6 +894,15 @@ main() {
     [[ ${#_DETECTED_PLATFORMS[@]} -eq 0 ]] && _DETECTED_PLATFORMS=("generic")
 
     if $resume_mode; then
+        # ADR-025 (Wave 15-E #685): defensive sentinel cleanup at resume entry.
+        # The normal SIGINT path's EXIT trap already disarms the sentinel
+        # in `_runner_abort_trap`, but a hard kill (-9), host crash, or any
+        # path that skipped the EXIT trap can leave a stale .abort.signal.
+        # Without this disarm the first `_zbuild_check_abort` pre-flight in
+        # the dispatch loop would observe the stale sentinel and abort the
+        # resumed run immediately. Resume must always start from a clean
+        # signal channel.
+        _zbuild_disarm_abort_sentinel
         eb_emit_event "pipeline.resume" "run_id=$_runner_run_id" "issue=$_runner_issue"
         info "Pipeline resuming — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
         if [[ -n "$from_stage" ]]; then
