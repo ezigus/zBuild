@@ -938,23 +938,44 @@ main() {
         #   (c) future waves will background plugin dispatch, at which
         #       point this trap loop becomes the primary kill path.
         if [[ "${ZBUILD_RUNNER_JOB_CONTROL:-0}" == "1" ]]; then
-            local _pgid _pgids_snapshot=""
+            local _child_pid _pgid _pgids_snapshot="" _self_pgid=""
+            # Resolve the runner's own PGID so we never signal it (would
+            # be suicide; the trap's `exit` below handles runner teardown).
+            if command -v ps >/dev/null 2>&1; then
+                _self_pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
+            fi
+            _w15h_collect_pgid() {
+                # Resolve a child PID to its current PGID via `ps` (which
+                # is reliable even when the PID is not the group leader)
+                # and append it to the dedup snapshot. Falls back to the
+                # PID itself when `ps` cannot resolve (e.g. child already
+                # exited) — kill is best-effort 2>/dev/null anyway.
+                local _pid="$1" _resolved=""
+                [[ -z "$_pid" ]] && return 0
+                if command -v ps >/dev/null 2>&1; then
+                    _resolved="$(ps -o pgid= -p "$_pid" 2>/dev/null | tr -d ' ' || true)"
+                fi
+                [[ -z "$_resolved" ]] && _resolved="$_pid"
+                # Skip runner's own PGID — protects against self-signal
+                # when a child's PGID resolved to the runner's group
+                # (can happen when `set -m` was not effective for that
+                # spawn site, e.g. a sync call that pre-dated the flag).
+                [[ -n "$_self_pgid" && "$_resolved" == "$_self_pgid" ]] && return 0
+                case " $_pgids_snapshot " in *" $_resolved "*) return 0;; esac
+                _pgids_snapshot+="$_resolved "
+            }
             # Source 1: bash-tracked background jobs.
-            while IFS= read -r _pgid; do
-                [[ -z "$_pgid" ]] && continue
-                case " $_pgids_snapshot " in *" $_pgid "*) continue;; esac
-                _pgids_snapshot+="$_pgid "
+            while IFS= read -r _child_pid; do
+                _w15h_collect_pgid "$_child_pid"
             done < <(jobs -p 2>/dev/null)
-            # Source 2: all direct children (catches foreground subshells).
+            # Source 2: all direct children (catches foreground subshells
+            # which bash does NOT list in `jobs -p`).
             if command -v pgrep >/dev/null 2>&1; then
-                while IFS= read -r _pgid; do
-                    [[ -z "$_pgid" ]] && continue
-                    case " $_pgids_snapshot " in *" $_pgid "*) continue;; esac
-                    _pgids_snapshot+="$_pgid "
+                while IFS= read -r _child_pid; do
+                    _w15h_collect_pgid "$_child_pid"
                 done < <(pgrep -P $$ 2>/dev/null)
             fi
-            # TERM each unique PGID. `set -m` guarantees PGID == PID for
-            # every child of this shell.
+            # TERM each unique resolved PGID.
             for _pgid in $_pgids_snapshot; do
                 kill -TERM -- "-$_pgid" 2>/dev/null || true
             done

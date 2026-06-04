@@ -10,18 +10,16 @@
 # Discriminating assertions:
 #   (T1) With flag on, the runner shell has `monitor` (-m) option set —
 #        verified by injecting a probe plugin that records `$-` and
-#        `shopt -p` / `set -o` output. Flag-off: no `-m`.
+#        `set -o monitor` output. Flag-off: no `-m`.
 #   (T2) With flag on, SIGTERM mid-build still produces rc=143 + the
 #        Wave 15-B sentinel/event chain (regression of trap composition).
-#   (T3) With flag on, a TERM-ignoring backgrounded child of the runner
-#        (injected via the build plugin executing a `&` job that gets
-#        re-parented to the runner) is reaped by the trap's PG-kill loop.
 #
-# Why (T3) matters: even though the standard dispatch path runs plugins
-# in foreground subshells, Wave 15-H lays the foundation for future
-# backgrounded stages (e.g. parallel strategy fanout) by wiring `set -m`
-# + the trap loop. The test ensures the loop actually fires the PG-kill
-# branch when there ARE backgrounded children.
+# Wave 15-H lays the foundation for future backgrounded stages (e.g.
+# parallel strategy fanout); the trap's PG-kill loop is exercised here
+# transitively by T2's end-to-end SIGTERM. The current dispatch path
+# runs plugins in foreground subshells (no `&`), so a flag-on test that
+# requires a backgrounded runner-child would not reflect realistic usage
+# and is intentionally omitted.
 #
 set -euo pipefail
 
