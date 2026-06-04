@@ -11,11 +11,13 @@ Three consecutive discoveries of the same abort-propagation bug class —
 each at a different dispatch site — have shipped tactical per-site fixes
 that did not generalize:
 
-1. **#612 (Wave 8)** — `route_to_model_loop` swallowed SIGINT-driven child
-   exits, returning rc=0 when the child claude was killed. Tactical fix at
-   `core/router/route.sh:527-539, 636, 841-863` installed an INT/TERM trap
-   that captures the child pid, signals it, and returns rc=130 from the
-   loop. The trap installer (`_route_loop_install_traps`) and signal
+1. **#612 (Wave 8)** — `route_to_model_loop` did not distinguish a
+   SIGINT-driven child exit (rc=130) from a generic per-iteration failure
+   and continued the loop, spawning another iteration after the user
+   hit Ctrl-C. Tactical fix at `core/router/route.sh:527-539, 636, 841-863`
+   installed an INT/TERM trap that captures the child pid, signals it,
+   and surfaces rc=130 from the loop so the caller can propagate.
+   The trap installer (`_route_loop_install_traps`) and signal
    handler (`_route_loop_on_signal`) are the per-site primitives.
 2. **#616 (Wave 8)** — same bug class one layer up: the build plugin
    captured rc=130 from the router but then ran post-processing as if the
@@ -58,13 +60,18 @@ A single framework-owned helper, `_zbuild_propagate_abort`, lives in
 
 ```
 _zbuild_propagate_abort <child_rc>
-  returns 130 if child_rc == 130, else 0
+  returns <child_rc> if <child_rc> is an abort rc (130 today;
+  130 or 143 once Wave 15-F #686 ships SIGTERM parity), else 0
 ```
 
-Every dispatcher calls it immediately after capturing each child rc.
-Greppable — `grep -r _zbuild_propagate_abort` enumerates every dispatch
-site participating in the contract. Single point to evolve when SIGTERM
-parity ships (Wave 15-F #686 adds rc=143).
+The helper returns the abort rc it was given, not a hard-coded 130.
+This means the SIGTERM widening in #686 is a one-line change to the
+helper's classifier (add 143 to the recognised set) and does not change
+the helper's signature or the call-site contract. Every dispatcher calls
+it immediately after capturing each child rc. Greppable —
+`grep -r _zbuild_propagate_abort` enumerates every dispatch site
+participating in the contract. Single point to evolve when SIGTERM parity
+ships.
 
 ### Layer 2 — sentinel file `${ZBUILD_STATE_DIR}/.abort.signal`
 
@@ -136,8 +143,10 @@ discipline for the test harness.
 ## SIGTERM extension
 
 ADR-025 anticipates rc=143 (128 + SIGTERM) carrying the same semantics
-as rc=130. The helpers are written to check for both rc values in a
-single comparison once Wave 15-F (#686) ships SIGTERM parity. The
+as rc=130. The `_zbuild_propagate_abort` helper returns the abort rc it
+was given (not a hard-coded 130), so widening to rc=143 is a one-line
+change to the helper's internal classifier and leaves the signature,
+the call-site contract, and the sentinel-file pathway unchanged. The
 sentinel file is signal-agnostic — any abort cause writes the same
 sentinel. This ADR scopes the contract to SIGINT for now; #686 widens
 it without changing the helper signatures or call-site contract.
@@ -181,8 +190,11 @@ Future candidates:
   more aggressive isolation that puts each child in its own process
   group and forwards SIGINT to the whole group, letting the kernel do
   propagation. Rejected for this ADR: `set -m` interacts badly with
-  bash's existing trap handling in subshells, and the failure modes are
-  shell-version-specific (bash 3.2 on macOS vs bash 5 on Linux CI). A
+  bash's existing trap handling in subshells, and even within zBuild's
+  supported Bash 5+ baseline the job-control semantics are subtle —
+  failure modes differ across Bash 5 minor versions and across platforms
+  (macOS Homebrew Bash 5.x vs Linux CI Bash 5.x), and the failures are
+  hard to reproduce without live SIGINT timing. A
   flag-gated reconsider ships as Wave 15-H (#688). If/when that lands,
   the helpers become no-ops in process-group mode; the call-site
   contract is unchanged.
@@ -256,9 +268,11 @@ changes in this PR. The status flips to **Accepted** when Wave 15-B
 The impl sequence (Wave 15-B):
 
 - Ship `_zbuild_propagate_abort` and `_zbuild_check_abort` in
-  `scripts/lib/abort-propagation.sh`. The first returns 130 when its
-  argument is 130, else 0. The second returns 130 when
-  `${ZBUILD_STATE_DIR}/.abort.signal` exists, else 0.
+  `scripts/lib/abort-propagation.sh`. The first returns its argument rc when the argument is an abort rc
+  (130 today; widened in #686), else 0. The second returns 130 when
+  `${ZBUILD_STATE_DIR}/.abort.signal` exists, else 0. Both signatures
+  are stable across the SIGTERM widening — only the abort-rc classifier
+  inside `_zbuild_propagate_abort` changes.
 - Wire the sentinel-write step into `_runner_signal_trap`
   (`core/pipeline/runner.sh:863-872`) as the first action, composed
   additively onto the existing `exit 130` body. Wire the sentinel-
