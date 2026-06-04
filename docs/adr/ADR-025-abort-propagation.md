@@ -247,6 +247,41 @@ Future candidates:
 - **Wave 15-H (#688)** — reconsider process-group signal forwarding
   (alternative b) once helper baseline is in place.
 
+## Implementation Notes (Proposed — 2026-06-04)
+
+This ADR ships in **Proposed** status. No code, no test, no event-schema
+changes in this PR. The status flips to **Accepted** when Wave 15-B
+(#684) lands the helpers and converts the three dispatch sites.
+
+The impl sequence (Wave 15-B):
+
+- Ship `_zbuild_propagate_abort` and `_zbuild_check_abort` in
+  `scripts/lib/abort-propagation.sh`. The first returns 130 when its
+  argument is 130, else 0. The second returns 130 when
+  `${ZBUILD_STATE_DIR}/.abort.signal` exists, else 0.
+- Wire the sentinel-write step into `_runner_signal_trap`
+  (`core/pipeline/runner.sh:863-872`) as the first action, composed
+  additively onto the existing `exit 130` body. Wire the sentinel-
+  remove step into `_runner_abort_trap` after the
+  `pipeline.aborted` event emission, also composed additively.
+- Convert `_cycle_iter_dispatch` at
+  `core/pipeline/cycle-orchestrator.sh:664-681` to call
+  `_zbuild_check_abort` before `cycle_dispatch_stage` and
+  `_zbuild_propagate_abort` after capturing `rc=$?`. Both calls use
+  `|| return $?` to propagate rc=130 upward.
+- Convert the runner's linear stage loop to the same two-helper-call
+  shape for parity.
+- Convert `route_to_model_loop`'s body (`core/router/route.sh:527-539, 636, 841-863`)
+  to call the helpers around its `claude` spawn.
+- Add subprocess-boundary integration tests that assert:
+  (a) rc=130 from a child propagates up through cycle orchestrator;
+  (b) a sentinel written by a sibling dispatcher aborts the next
+  iteration's pre-flight check;
+  (c) the sentinel is removed by `_runner_abort_trap` on clean exit.
+- ADR-025 status flips from Proposed to Accepted in the Wave 15-B PR.
+
+This PR (closing #679) lands only the ADR text.
+
 ## Status flip
 
 ADR-025 ships in **Proposed** status. The status flips from Proposed to
