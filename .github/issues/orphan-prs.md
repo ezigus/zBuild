@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-06-02T19:13:47Z_
+_Last updated: 2026-06-04T03:23:50Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -94,3 +94,4 @@ _Last updated: 2026-06-02T19:13:47Z_
 | #588 | fix(test-harness): open fd 3 in run-tests.sh + relax stage-io guard with warn+event fallback (#586) | 2026-06-02 |
 | #657 | docs(adr-013): taxonomy-only scope clarification (ADR-016 prerequisite) | 2026-06-02 |
 | #648 | [manifest-sync] Drift reconciliation | 2026-06-02 |
+| #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
