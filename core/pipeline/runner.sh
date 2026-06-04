@@ -1010,7 +1010,13 @@ main() {
         local _RUNNER_CYCLE_UNCONVERGED=0
         local _RUNNER_CYCLE_UNCONVERGED_REASON=""
         local _RUNNER_CYCLE_UNCONVERGED_ID=""
+        # #682 (Wave 15-D): cardinal counter for the cycle-aware dispatch loop.
+        # Each unit (stage OR cycle) occupies ONE cardinal slot — cycles render
+        # internal `<iter>.<position>` labels via the orchestrator while linear
+        # stages render the cardinal directly via ZBUILD_STAGE_IO_SEQ_LABEL.
+        local _runner_cardinal=0
         for _unit in "${_TPL_DISPATCH_UNITS[@]}"; do
+            _runner_cardinal=$(( _runner_cardinal + 1 ))
             case "$_unit" in
                 cycle:*)
                     local _cyc_id="${_unit#cycle:}"
@@ -1101,8 +1107,10 @@ main() {
                     local _ts; _ts="$(_runner_now_short)"
                     echo -e "${CYAN}${BOLD}▸${RESET} Running stage: ${_sc}${BOLD}${_ust}${RESET}  ${DIM}(started ${_ts})${RESET}" >&2
                     export ZBUILD_CURRENT_STAGE="$_ust"
+                    # #682: linear stage in cycle-aware dispatch — cardinal label.
+                    export ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_cardinal"
                     set +e; cycle_dispatch_stage "$_ust" 0 "$state_file"; _rc=$?; set -e
-                    unset ZBUILD_CURRENT_STAGE
+                    unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_SEQ_LABEL
                     if [[ $_rc -ne 0 ]]; then
                         _update_stage_status "$state_file" "$_ust" "failed"
                         _set_pipeline_status "$state_file" "interrupted"
@@ -1152,7 +1160,13 @@ main() {
     fi
 
     local stage
+    # #682 (Wave 15-D): cardinal counter for the legacy linear stage loop.
+    # Increments per active stage; exported as ZBUILD_STAGE_IO_SEQ_LABEL so the
+    # stage-io banner renders `seq=N` reflecting position in the pipeline rather
+    # than the per-stage cardinal (which collides across stages on retries).
+    local _runner_linear_cardinal=0
     for stage in "${active_stages[@]}"; do
+        _runner_linear_cardinal=$(( _runner_linear_cardinal + 1 ))
         # When resuming, skip stages already marked complete unless --from-stage overrides
         if $resume_mode && [[ -z "$skip_until_stage" ]]; then
             local stage_status
@@ -1218,6 +1232,11 @@ main() {
         # capture_stage_io can attribute artifacts to the right stage.
         # Unset after plugin invocation to avoid leaking across stage boundaries.
         export ZBUILD_CURRENT_STAGE="$stage"
+        # #682 (Wave 15-D): expose cardinal seq label so stage-io banner shows
+        # the linear pipeline position (e.g. intake=1, plan=2, build=3, review=4)
+        # instead of the per-stage retry counter. Banner reads this via
+        # ZBUILD_STAGE_IO_SEQ_LABEL fallback inside stage_io_begin.
+        export ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_linear_cardinal"
 
         # Intentional fail-open: missing/empty template roles = no-template path (handled below)
         local roles_out; roles_out="$(template_stage_roles "$stage" 2>/dev/null || true)"
@@ -1389,7 +1408,8 @@ main() {
 
         # ADR-015 v1 (#438): clear the current-stage env so subsequent code
         # running between stages doesn't accidentally tag artifacts.
-        unset ZBUILD_CURRENT_STAGE
+        # #682: also unset the seq label so it doesn't leak across stages.
+        unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_SEQ_LABEL
     done
 
     _set_pipeline_status "$state_file" "complete"
