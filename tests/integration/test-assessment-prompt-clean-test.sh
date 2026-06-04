@@ -125,4 +125,4 @@ fi
 
 cleanup_test_env
 print_test_results
-exit $((FAIL > 0))
+# print_test_results exits with $FAIL — no explicit exit needed.

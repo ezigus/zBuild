@@ -32,15 +32,17 @@ _ZBUILD_TEST_OUTPUT_SANITIZE_LOADED=1
 #
 # Usage: printf '%s' "$raw" | _zbuild_sanitize_test_output
 _zbuild_sanitize_test_output() {
-    # Transform 1 (wrapper strip) is applied first via awk so it can span
-    # lines if needed. The remaining four transforms are per-line and chain
-    # through sed. The wrapper regex is non-greedy enough for the realistic
-    # inline-path shape `<out-of-scope-context>/abs/path</out-of-scope-context>`
-    # — multiple occurrences on one line each strip independently.
-    # Step 1: strip ANSI first so banner/separator pattern matches aren't
-    # foiled by embedded color codes between the box-drawing characters.
-    # Step 2: awk handles transforms 1, 2, 3, 5 (wrapper-strip + line drops
-    # with a 90% threshold for decorative separators).
+    # Pipeline order matters for correctness:
+    #   1. sed strips ANSI CSI sequences across the whole stream first, so
+    #      banner / separator pattern matches in step 2 are not foiled by
+    #      color codes embedded between the box-drawing characters.
+    #   2. awk processes the (now-ANSI-free) stream line-by-line. Per line
+    #      it (a) strips <out-of-scope-context>…</out-of-scope-context>
+    #      wrappers — multiple occurrences per line each strip independently;
+    #      the inner content is assumed to not contain `<` so the wrapper
+    #      shape stays self-contained on one line — (b) drops the truncation
+    #      footer, (c) drops the ══/── stage-io banner pairs, and (d) drops
+    #      decorative separators whose visible content is ≥ 90% `═`/`─`.
     sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' | awk '
     {
         # Transform 1: strip <out-of-scope-context>…</out-of-scope-context>
