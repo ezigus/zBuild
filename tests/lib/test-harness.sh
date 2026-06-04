@@ -55,6 +55,9 @@ zb_test_init_env() {
 
     export ZBUILD_STATE_DIR
     ZBUILD_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zb-test-harness.XXXXXX")"
+    # Freeze the harness-owned tmpdir path at init time so cleanup removes
+    # the exact dir we created even if a later test reassigns ZBUILD_STATE_DIR.
+    _ZB_TEST_HARNESS_OWNED_DIR="$ZBUILD_STATE_DIR"
 
     export ZBUILD_RUN_ID="test-$$-${RANDOM}"
     export ZBUILD_EVENTS_JSONL="$ZBUILD_STATE_DIR/events.jsonl"
@@ -69,9 +72,9 @@ zb_test_init_env() {
 }
 
 _zb_test_init_env_cleanup() {
-    if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "$ZBUILD_STATE_DIR" \
-          && "$ZBUILD_STATE_DIR" == */zb-test-harness.* ]]; then
-        rm -rf "$ZBUILD_STATE_DIR"
+    if [[ -n "${_ZB_TEST_HARNESS_OWNED_DIR:-}" && -d "$_ZB_TEST_HARNESS_OWNED_DIR" \
+          && "$_ZB_TEST_HARNESS_OWNED_DIR" == */zb-test-harness.* ]]; then
+        rm -rf "$_ZB_TEST_HARNESS_OWNED_DIR"
     fi
 }
 
@@ -93,15 +96,16 @@ zb_test_with_stage() {
 
 # ─── zb_test_capture_fd3 FN [ARGS...] ───────────────────────────────────────
 # Run FN with fd 3 redirected to a tmpfile and ZBUILD_STAGE_IO_FD=3 exported
-# in scope. Echoes the captured content to stdout so callers can do
-# `out="$(zb_test_capture_fd3 my_fn ...)"`. The tmpfile is removed before
-# return.
+# in scope. Echoes ONLY the captured fd-3 content to stdout so callers can do
+# `out="$(zb_test_capture_fd3 my_fn ...)"` without contamination from FN's
+# own stdout. FN's stdout is redirected to stderr; FN's stderr is left
+# untouched. The tmpfile is removed before return.
 zb_test_capture_fd3() {
     local tmpfile
     tmpfile="$(mktemp "${TMPDIR:-/tmp}/zb-test-fd3.XXXXXX")"
     (
         export ZBUILD_STAGE_IO_FD=3
-        "$@" 3>"$tmpfile"
+        "$@" 3>"$tmpfile" >&2
     )
     local rc=$?
     cat "$tmpfile"
