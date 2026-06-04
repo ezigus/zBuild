@@ -9,6 +9,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../../../tests/lib/test-harness.sh
+source "$REPO_ROOT/tests/lib/test-harness.sh"
 
 print_test_header "plugin: test-stage (tool/test — issue #342)"
 
@@ -210,11 +212,14 @@ export -f template_stage_io_dests template_stage_io_tail_lines template_stage_io
 
 # Helper: run _test_run_inner with banner stream captured on fd 3.
 # Usage: _run_with_banner <banner_out_file> <patch> <repo> <out_json> <test_cmd>
+# Wave 14-B / #675: delegate fd-3 setup + ZBUILD_STAGE_IO_FD=3 to the canonical
+# test-harness helper. Decouples the helper from inherited parent fd state so
+# the assertion holds whether the test file is invoked directly or under the
+# pipeline test stage (ADR-024 Layer 2).
 _run_with_banner() {
     local banner_out="$1"; shift
-    : > "$banner_out"
-    # Use fd 3 for banners so it doesn't collide with the harness's stderr.
-    ZBUILD_STAGE_IO_FD=3 _test_run_inner "$@" 3>"$banner_out" 2>/dev/null
+    _run_with_banner_inner() { _test_run_inner "$@" 2>/dev/null; }
+    zb_test_capture_fd3 _run_with_banner_inner "$@" > "$banner_out"
 }
 
 # Mock npm binary that prints a custom line. Reused across tests.
