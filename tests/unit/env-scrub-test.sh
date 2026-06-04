@@ -60,7 +60,35 @@ fd_probe="$(
 assert_eq "fd 3 closed after helper" "CLOSED" "$fd_probe"
 assert_eq "sentinel file received no writes" "" "$(cat "$SENTINEL" 2>/dev/null || true)"
 
-print_test_section "3. idempotent on repeat call"
+print_test_section "3. scrubs _TPL_* (Wave 15-I / #683)"
+
+# Wave 15-I: template.sh load_template EXPORTS per-stage _TPL_STAGE_* env vars.
+# These survived `npm test` fork boundary pre-fix and contaminated integration
+# tests running under the pipeline test stage (fd-3 sentinel leak via leaked
+# _TPL_STAGE_IO_DESTS_test; Tr-5 router timeout via leaked
+# _TPL_STAGE_ROUTER_TIMEOUT_plan). The scrub now covers _TPL_* too.
+tpl_result="$(
+    export _TPL_STAGE_IO_DESTS_test="file,stdout"
+    export _TPL_STAGE_ROUTER_TIMEOUT_plan=300
+    export _TPL_STAGES_FOO=bar
+    export NON_TPL_KEEP=keepme
+    _zbuild_make_fresh_shell 2>/dev/null
+    printf '_TPL_STAGE_IO_DESTS_test=%s\n' "${_TPL_STAGE_IO_DESTS_test:-<unset>}"
+    printf '_TPL_STAGE_ROUTER_TIMEOUT_plan=%s\n' "${_TPL_STAGE_ROUTER_TIMEOUT_plan:-<unset>}"
+    printf '_TPL_STAGES_FOO=%s\n' "${_TPL_STAGES_FOO:-<unset>}"
+    printf 'NON_TPL_KEEP=%s\n' "${NON_TPL_KEEP:-<unset>}"
+)"
+
+assert_contains "_TPL_STAGE_IO_DESTS_test unset after scrub" \
+    "_TPL_STAGE_IO_DESTS_test=<unset>" "$tpl_result"
+assert_contains "_TPL_STAGE_ROUTER_TIMEOUT_plan unset after scrub" \
+    "_TPL_STAGE_ROUTER_TIMEOUT_plan=<unset>" "$tpl_result"
+assert_contains "_TPL_STAGES_FOO unset after scrub" \
+    "_TPL_STAGES_FOO=<unset>" "$tpl_result"
+assert_contains "NON_TPL_KEEP preserved" \
+    "NON_TPL_KEEP=keepme" "$tpl_result"
+
+print_test_section "4. idempotent on repeat call"
 
 idem_rc=0
 (
