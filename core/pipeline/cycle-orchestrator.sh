@@ -650,9 +650,22 @@ _cycle_iter_dispatch() {
         _prior_stage_set=1
         _prior_stage="$ZBUILD_CURRENT_STAGE"
     fi
+    # #682 (Wave 15-D): track 1-based position within _CYCLE_STAGES[] so each
+    # member dispatch publishes a hierarchical `<iter>.<position>` seq label
+    # via ZBUILD_STAGE_IO_SEQ_LABEL. The stage-io banner picks this up and
+    # renders e.g. `seq=1.2` instead of the per-stage cardinal. Empty label
+    # means cardinal fallback (back-compat).
+    local _cyc_pos=0
     for s in "${_CYCLE_STAGES[@]}"; do
+        _cyc_pos=$(( _cyc_pos + 1 ))
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
+        # #682: hierarchical seq label, e.g. iter 2 member 3 → "2.3".
+        export ZBUILD_STAGE_IO_SEQ_LABEL="${iter}.${_cyc_pos}"
+        # #682: 1 blank line BEFORE every member-stage banner (within-iter gap).
+        # Mirrors Wave 11B's linear-runner blank line — keeps consecutive stage
+        # banners from rendering flush. Best-effort; never aborts on bad fd.
+        printf '\n' >&2 2>/dev/null || true
         # #566: stage identity must propagate to subshells so router/stage-io,
         # per-stage timeouts, redaction scope, and cost-ledger events all
         # resolve `${ZBUILD_CURRENT_STAGE}` correctly inside cycles.
@@ -679,7 +692,7 @@ _cycle_iter_dispatch() {
             fail=$(( fail + 1 ))
         fi
     done
-    unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID
+    unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
     # #566: restore caller's ZBUILD_CURRENT_STAGE — preserves prior value if
     # set, or unsets (we own the var only within this loop).
     if [[ $_prior_stage_set -eq 1 ]]; then
@@ -801,6 +814,14 @@ cycle_orchestrator_run() {
         _CYCLE_TRAP_ITER="$iter"
         _CYCLE_LAST_ITERATIONS="$iter"
 
+        # #682: 2 blank lines BEFORE each iter separator (inter-iter gap),
+        # except before the very first iter where 1 blank is enough — the
+        # divider function already prints its own leading `\n`, so emit ONE
+        # extra blank here for iter>=2 (giving the operator a clear visual
+        # break between iters distinct from within-iter stage gaps).
+        if [[ "$iter" -ge 2 ]]; then
+            printf '\n' >&2 2>/dev/null || true
+        fi
         # #524 iter-begin hook — operator-visible iter divider. Runner registers
         # `cycle_iter_begin_hook` to call _render_cycle_iter_divider. Best-effort
         # (never aborts cycle on hook failure). Records wall clock for elapsed.

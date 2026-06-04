@@ -24,6 +24,7 @@ declare -gA _STAGE_IO_PENDING        # holds the begin-time metadata JSON keyed 
 declare -gA _STAGE_IO_PENDING_INPUT  # holds the begin-time input by stage:seq
 declare -gA _STAGE_IO_PENDING_KIND   # holds the begin-time kind by stage:seq
 declare -gA _STAGE_IO_PENDING_DESTS  # holds the begin-time dests by stage:seq
+declare -gA _STAGE_IO_PENDING_LABEL  # #682: holds the begin-time seq label (e.g. "1.2") by stage:seq
 _STAGE_IO_LAST_SEQ=""
 
 _STAGE_IO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -197,12 +198,21 @@ stage_io_begin() {
     local stage="" kind=""
     local input="__ZBUILD_STAGE_IO_UNSET__"
     local persist_input_path=""
+    # #682 (Wave 15-D): hierarchical seq label. When non-empty, the rendered
+    # banner heading uses this string verbatim in place of `seq=N`. The
+    # internal cardinal counter (_STAGE_IO_LAST_SEQ + the seq stored in the
+    # artifact record) is unchanged — only the on-screen label diverges.
+    # Operator effect: cycle members render `seq=1.1`, `seq=1.2`, ...;
+    # linear stages render `seq=1`, `seq=2`, ... while pairing logic stays
+    # cardinal-integer-keyed for stage_io_end.
+    local seq_label="${ZBUILD_STAGE_IO_SEQ_LABEL:-}"
     local -a meta_keys=() meta_vals=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --stage)    stage="${2:-}"; shift 2 ;;
             --kind)     kind="${2:-}"; shift 2 ;;
             --input)    input="${2:-}"; shift 2 ;;
+            --seq-label) seq_label="${2:-}"; shift 2 ;;
             # #505: optional override — banner uses --input (operator-facing,
             # possibly deduped), but artifact .input reads from this file
             # (full LLM payload, postmortem fidelity). Default off; plan/
@@ -276,6 +286,9 @@ stage_io_begin() {
     fi
     _STAGE_IO_PENDING_KIND[$key]="$kind"
     _STAGE_IO_PENDING_DESTS[$key]="$dests_nl"
+    # #682: stash label for stage_io_end to use on the output heading.
+    # Empty string means "fall back to cardinal seq" (back-compat).
+    _STAGE_IO_PENDING_LABEL[$key]="$seq_label"
     _STAGE_IO_START_NS[$key]="$(_stage_io_now_ms)"
 
     # Banner — only emit if stdout destination is configured.
@@ -289,7 +302,9 @@ stage_io_begin() {
                 break
             fi
         done
-        _stage_io_stdout_begin "$stage" "$kind" "$seq" "$input" "$_artifact_id" \
+        # #682: display label (e.g. "1.2") for banner; empty falls back to seq.
+        local _display_seq="${seq_label:-$seq}"
+        _stage_io_stdout_begin "$stage" "$kind" "$_display_seq" "$input" "$_artifact_id" \
             >&"${ZBUILD_STAGE_IO_FD:-2}" || true
     fi
 
@@ -354,6 +369,9 @@ stage_io_end() {
 
     local input="${_STAGE_IO_PENDING_INPUT[$key]:-}"
     local dests_nl="${_STAGE_IO_PENDING_DESTS[$key]:-}"
+    # #682: snapshot the hierarchical seq label before pending unset below.
+    # Empty string means "render cardinal seq" (back-compat fallback).
+    local seq_label_snap="${_STAGE_IO_PENDING_LABEL[$key]:-}"
 
     # Merge metadata: begin's stash first, then end's.
     local meta_blob="${_STAGE_IO_PENDING[$key]}"
@@ -377,6 +395,7 @@ stage_io_end() {
     unset '_STAGE_IO_PENDING_INPUT[$key]'
     unset '_STAGE_IO_PENDING_KIND[$key]'
     unset '_STAGE_IO_PENDING_DESTS[$key]'
+    unset '_STAGE_IO_PENDING_LABEL[$key]'
     unset '_STAGE_IO_START_NS[$key]'
 
     # If no destinations were configured, nothing more to do.
@@ -458,7 +477,10 @@ stage_io_end() {
             stdout)
                 # Output-phase banner only (begin already emitted the input
                 # section). Uses the same fd-3 convention.
-                _stage_io_stdout_end "$record" >&"${ZBUILD_STAGE_IO_FD:-2}" || true
+                # #682: pass seq-display label (e.g. "1.2") so output heading
+                # matches the input heading. Empty label → cardinal seq.
+                _stage_io_stdout_end "$record" "$seq_label_snap" \
+                    >&"${ZBUILD_STAGE_IO_FD:-2}" || true
                 ;;
             gh_comment)
                 _stage_io_to_gh_comment "$record" || true
@@ -989,10 +1011,16 @@ _stage_io_stdout_begin() {
 #   ── end stage-io: <stage> ──
 _stage_io_stdout_end() {
     local record="$1"
+    # #682: optional display label (e.g. "1.2"). When non-empty, replaces the
+    # cardinal `seq=N` token on the banner heading. The artifact record's
+    # `.seq` (and pairing logic) stays cardinal integer.
+    local seq_label="${2:-}"
     local stage kind seq output exit_code duration_ms metadata
     stage="$(printf '%s' "$record" | jq -r '.stage')"
     kind="$(printf '%s' "$record" | jq -r '.kind')"
     seq="$(printf '%s' "$record" | jq -r '.seq')"
+    # Use label for on-screen rendering; fall back to cardinal seq.
+    local display_seq="${seq_label:-$seq}"
     output="$(printf '%s' "$record" | jq -r '.output')"
     exit_code="$(printf '%s' "$record" | jq -r '.exit_code // ""')"
     duration_ms="$(printf '%s' "$record" | jq -r '.duration_ms // ""')"
@@ -1039,8 +1067,8 @@ _stage_io_stdout_end() {
     fi
     # #523: drop literal "stage-io:" label from the heading (see input-banner
     # comment above). End-trailer prefix retained at L1049.
-    _prefix_v="${stage} [${kind}] seq=${seq} output ${status} ${dur}"
-    _prefix_a="${_color}${_bold}${stage}${_reset} [${kind}] seq=${seq} output ${_status_color}${status}${_reset} ${dur}"
+    _prefix_v="${stage} [${kind}] seq=${display_seq} output ${status} ${dur}"
+    _prefix_a="${_color}${_bold}${stage}${_reset} [${kind}] seq=${display_seq} output ${_status_color}${status}${_reset} ${dur}"
 
     # #491 §v4 layer-2 fd contract: route ALL banner writes from this helper to
     # ${ZBUILD_STAGE_IO_FD:-2}. Mirrors _stage_io_stdout_begin; see comment there.
