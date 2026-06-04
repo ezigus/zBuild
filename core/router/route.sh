@@ -122,6 +122,24 @@ _ROUTE_MODEL_ID="" _ROUTE_PROVIDER="" _ROUTE_COST_IN="" _ROUTE_COST_OUT=""
 _ROUTE_CACHE_ELIGIBLE="false" _ROUTE_OVERRIDE_SOURCE="" _ROUTE_RESPONSE=""
 _ROUTE_INPUT_TOKENS=0 _ROUTE_OUTPUT_TOKENS=0
 _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
+
+# Wave 15-G (#687): claude is spawned in its own process group so the loop
+# signal handler can TERM/KILL the entire tree (claude + any helpers it
+# spawns) — not just the top-level PID. The narrow per-PID kill from Wave
+# 8 (#612) leaves trap-ignoring or fork-spawning children alive, so SIGINT
+# can take many seconds to unwind. With a PG kill we can guarantee a
+# bounded grace window. `_ROUTE_PG_PREFIX` is an array — empty when setsid
+# is unavailable (e.g. plain macOS without util-linux), in which case the
+# loop spawn falls back to the per-PID kill from Wave 8 (the signal handler
+# also adds a 1s-delayed SIGKILL backstop in that mode, so a wedged child
+# is still bounded — the PG-kill upgrade is what guarantees the <2.5s
+# budget). The `-w` flag waits for the child and forwards its exit code,
+# so callers see the same rc as before.
+if command -v setsid >/dev/null 2>&1 && setsid -w true >/dev/null 2>&1; then
+    _ROUTE_PG_PREFIX=(setsid -w)
+else
+    _ROUTE_PG_PREFIX=()
+fi
 # ADR-018 (#469): captured tool_uses[] envelope when JSON output mode is active.
 # Empty when JSON mode off or envelope lacked the field. Consumers (review
 # audit) read this AFTER route_to_model returns. Not exported to subshells —
@@ -366,16 +384,23 @@ _route_call_claude() {
     # plugins that route via route_to_model (plan, test_assessment, review,
     # security-lens) all inherit this protection; the build plugin gets the
     # same protection from route_to_model_loop below.
+    # Wave 15-G (#687): also wrap the sync (non-loop) spawn in `setsid -w`
+    # when available so a Ctrl-C delivered to the foreground PGID still
+    # targets the whole claude tree, not just the top-level PID. The sync
+    # form has no _route_loop_on_signal handler — it relies on the kernel
+    # to forward SIGINT to the foreground process group — so setsid here
+    # is a pure isolation/cleanup win (no behavior change when PG_PREFIX
+    # is empty, which is the macOS-no-util-linux path).
     local response
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
             _zbuild_make_fresh_shell
-            "${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
+            "${_ROUTE_PG_PREFIX[@]}" "${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
         )" || rc=$?
     else
         response="$(
             _zbuild_make_fresh_shell
-            claude "${_claude_args[@]}" 2>"$stderr_file"
+            "${_ROUTE_PG_PREFIX[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
         )" || rc=$?
     fi
 
@@ -502,6 +527,10 @@ _ROUTE_LOOP_INPUT_TOKENS=0
 _ROUTE_LOOP_OUTPUT_TOKENS=0
 _ROUTE_LOOP_LAST_RESPONSE=""
 _ROUTE_LOOP_CHILD_PID=""
+# Wave 15-G (#687): PGID of the in-flight claude spawn (when known).
+# Set alongside _ROUTE_LOOP_CHILD_PID at the spawn site, cleared after wait.
+# Signal handler kills the whole group; falls back to the PID when empty.
+_ROUTE_LOOP_CHILD_PGID=""
 # #646: deferred-final-banner-close handshake. Only populated when the
 # caller passed --defer-final-banner-close AND the loop reached the
 # DONE-sentinel exit path on a successful iteration (other exit reasons —
@@ -533,8 +562,21 @@ _route_loop_clear_traps() {
 }
 _route_loop_on_signal() {
     local sig="$1"
-    if [[ -n "${_ROUTE_LOOP_CHILD_PID:-}" ]]; then
-        kill "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true
+    # Wave 15-G (#687): TERM the whole process group, schedule a SIGKILL
+    # 1s later in a detached subshell. The grace window covers claude's
+    # normal cleanup; the KILL covers trap-ignoring or wedged children.
+    # Falls back to the per-PID kill from Wave 8 (#612) when the PGID is
+    # unknown (e.g. setsid unavailable AND the bash job-control fallback
+    # in the spawn subshell did not capture a PGID). Negative arg to kill
+    # targets the process group: `kill -- -PGID`.
+    if [[ -n "${_ROUTE_LOOP_CHILD_PGID:-}" ]]; then
+        kill -TERM -- "-$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true
+        { sleep 1 && kill -KILL -- "-$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true; } &
+        disown 2>/dev/null || true
+    elif [[ -n "${_ROUTE_LOOP_CHILD_PID:-}" ]]; then
+        kill -TERM "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true
+        { sleep 1 && kill -KILL "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true; } &
+        disown 2>/dev/null || true
     fi
     _ROUTE_LOOP_TERMINATED_REASON="signal"
     eb_emit_event "loop.terminated.signal" \
@@ -813,22 +855,60 @@ ${_diff_pointer}"
         # helper disables errexit (fresh-user-shell posture). A failed
         # cd here would otherwise silently spawn claude from the
         # runner's cwd instead of $cwd.
+        #
+        # Wave 15-G (#687): wrap the spawn in `setsid -w` (when available) so
+        # the claude tree lives in its own process group. _route_loop_on_signal
+        # then TERM/KILLs the whole group rather than the top-level PID, which
+        # is what lets the loop pre-abort in <2.5s even when claude (or any
+        # child it spawned) ignores or delays SIGTERM. When setsid is not
+        # installed (plain macOS without util-linux), _ROUTE_PG_PREFIX is
+        # empty and the signal handler falls back to the per-PID kill from
+        # Wave 8 (#612) — same behavior as before this wave.
+        #
+        # `exec` so the subshell PROCESS is replaced by setsid (when
+        # available) or by gtimeout/claude (when not). This makes $! point
+        # at the actual session leader — `kill -- -$!` then targets the
+        # whole claude tree in setsid mode. Without exec, $! would point at
+        # the bash subshell that wraps setsid; the new session/PGID would
+        # belong to the setsid child (one fork below), and bash's PGID
+        # would still be the parent runner's — so `kill -- -$!` would TERM
+        # the runner, not claude.
         if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                "${_tout_cmd[@]}" claude "${_claude_args[@]}"
+                exec "${_ROUTE_PG_PREFIX[@]}" "${_tout_cmd[@]}" claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         else
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                claude "${_claude_args[@]}"
+                exec "${_ROUTE_PG_PREFIX[@]}" claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         fi
         _ROUTE_LOOP_CHILD_PID=$!
+        # Wave 15-G (#687): with setsid -w, the child IS the session/process
+        # group leader → PGID == PID, and `kill -- -PGID` is safe (targets
+        # only the claude tree, never the parent runner).
+        # Without setsid the spawn subshell inherits the parent's PGID, so
+        # using `kill -- -PGID` would also kill the runner. Only set the
+        # PGID when we can prove it differs from the runner's own PGID;
+        # otherwise leave it empty and the handler falls back to the per-
+        # PID kill (same behavior as Wave 8 #612, plus the 1s KILL backstop).
+        if [[ ${#_ROUTE_PG_PREFIX[@]} -gt 0 ]]; then
+            _ROUTE_LOOP_CHILD_PGID="$_ROUTE_LOOP_CHILD_PID"
+        else
+            _ROUTE_LOOP_CHILD_PGID=""
+            local _child_pgid _self_pgid
+            _child_pgid="$(ps -o pgid= -p "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null | tr -d ' ' || true)"
+            _self_pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ' || true)"
+            if [[ -n "$_child_pgid" && -n "$_self_pgid" && "$_child_pgid" != "$_self_pgid" ]]; then
+                _ROUTE_LOOP_CHILD_PGID="$_child_pgid"
+            fi
+        fi
         wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
         _ROUTE_LOOP_CHILD_PID=""
+        _ROUTE_LOOP_CHILD_PGID=""
 
         # #612: rc=130 means the child claude was interrupted by SIGINT (either
         # delivered to the foreground process group by the operator's Ctrl-C, or
@@ -838,11 +918,18 @@ ${_diff_pointer}"
         # impossible to interrupt. Short-circuit here: emit a terminal signal
         # event, set the reason, clear traps, return 130 so callers (build
         # plugin, runner) can propagate the abort.
-        if [[ $rc -eq 130 ]]; then
-            warn "route_to_model_loop: claude interrupted (rc=130) iter=$iter — propagating SIGINT"
+        #
+        # Wave 15-G (#687): also short-circuit on rc=143 (SIGTERM) and any
+        # rc when _route_loop_on_signal already marked the reason as "signal".
+        # The PG-kill path can produce 143 (TERM landed cleanly) or 137 (KILL
+        # backstop fired) instead of 130 — all three are signal-class exits
+        # and must NOT be swallowed by the loop's generic-error continue.
+        if [[ $rc -eq 130 || $rc -eq 143 || $rc -eq 137 \
+              || "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "signal" ]]; then
+            warn "route_to_model_loop: claude interrupted (rc=$rc) iter=$iter — propagating signal"
             _ROUTE_LOOP_TERMINATED_REASON="signal"
             eb_emit_event "loop.terminated.signal" \
-                "iterations=$iter" "child_rc=130" \
+                "iterations=$iter" "child_rc=$rc" \
                 "model_id=$_ROUTE_MODEL_ID" 2>/dev/null || true
             # Close the per-iteration stage_io banner on the signal path so
             # we don't orphan it into the EXIT trap.
