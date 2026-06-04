@@ -825,7 +825,12 @@ main() {
     # #612: SIGINT marker — set by the INT trap so the EXIT trap can record
     # `pipeline.aborted reason=sigint` durably (the trap itself runs in the
     # signal handler context; we centralize the state/event writes in EXIT).
+    # Wave 15-F (#686): _RUNNER_ABORT_REASON records which signal fired
+    # (sigint|sigterm) so the EXIT trap can emit reason=sigint vs reason=sigterm.
+    # _RUNNER_SIGINT_RECEIVED is preserved (set on either signal) for backward
+    # compatibility with any consumer keying off the legacy marker.
     _RUNNER_SIGINT_RECEIVED=0
+    _RUNNER_ABORT_REASON=""
 
     _runner_abort_trap() {
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
@@ -844,15 +849,19 @@ main() {
                 "run_id=$_runner_run_id" "issue=$_runner_issue" \
                 "reason=abort_trap_set_status_failed" 2>/dev/null || true
         fi
-        # #612: when the abort was caused by SIGINT, emit a distinguishable
-        # `pipeline.aborted reason=sigint status=interrupted` event so the
-        # operator/postmortem can tell a Ctrl-C from an OOM or fatal stage rc.
-        # Always emit the legacy `pipeline.abort` too so existing consumers
-        # don't break.
+        # #612: when the abort was caused by a signal, emit a distinguishable
+        # `pipeline.aborted reason=<sigint|sigterm> status=interrupted` event so
+        # the operator/postmortem can tell a Ctrl-C / kill from an OOM or fatal
+        # stage rc. Always emit the legacy `pipeline.abort` too so existing
+        # consumers don't break.
+        # Wave 15-F (#686): reason carries the signal name (sigint|sigterm)
+        # captured by _runner_signal_trap. Fall back to "sigint" for backward
+        # compat if the marker is set but the reason was not recorded (a path
+        # that should not occur but is cheap to guard).
         if [[ "${_RUNNER_SIGINT_RECEIVED:-0}" == "1" ]]; then
             eb_emit_event "pipeline.aborted" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                "reason=sigint" "status=interrupted" 2>/dev/null || true
+                "reason=${_RUNNER_ABORT_REASON:-sigint}" "status=interrupted" 2>/dev/null || true
         fi
         # Fail-closed: if abort event cannot be emitted, that is still non-fatal for the trap
         # itself (the process is exiting), but we do not silently swallow the failure.
@@ -867,24 +876,43 @@ main() {
         # Wrap in a subshell so a non-zero rc inside doesn't abort the trap.
         ( _render_pipeline_end "aborted" ) || true
     }
-    # #612: INT/TERM trap — flag the SIGINT cause then exit. Setting the flag
-    # before exit lets the EXIT trap emit `pipeline.aborted reason=sigint`.
-    # `exit 130` triggers _runner_abort_trap (EXIT) which writes state + events.
+    # #612 / Wave 15-F (#686): INT/TERM trap — flag the signal cause then
+    # exit. Setting the marker + reason before exit lets the EXIT trap emit
+    # `pipeline.aborted reason=<sigint|sigterm>`.
+    # `exit 130` (SIGINT) or `exit 143` (SIGTERM) triggers _runner_abort_trap
+    # (EXIT) which writes state + events.
     # ADR-025 (Wave 15-B #684): arm the cross-subshell abort sentinel FIRST so
     # any in-flight subshell (cycle iter, strategy fanout) sees the signal via
-    # _zbuild_check_abort even if rc=130 has not yet propagated up to them.
-    # Composition is additive — the existing `exit 130` body is preserved.
+    # _zbuild_check_abort even if the abort rc has not yet propagated up to
+    # them. Composition is additive — the existing `exit 130` body is preserved
+    # and a parallel `exit 143` path is added for SIGTERM.
     _runner_signal_trap() {
+        local _sig="${1:-INT}"
         _zbuild_arm_abort_sentinel
         _RUNNER_SIGINT_RECEIVED=1
-        # Re-raise the standard 128+SIGINT exit code so the parent shell sees
-        # the cancellation, not a clean 0.
-        exit 130
+        case "$_sig" in
+            TERM)
+                _RUNNER_ABORT_REASON="sigterm"
+                # Re-raise the standard 128+SIGTERM exit code so the parent
+                # shell sees the cancellation, not a clean 0.
+                exit 143
+                ;;
+            *)
+                _RUNNER_ABORT_REASON="sigint"
+                # Re-raise the standard 128+SIGINT exit code so the parent
+                # shell sees the cancellation, not a clean 0.
+                exit 130
+                ;;
+        esac
     }
     trap '_runner_abort_trap' EXIT
-    # #612: only INT — SIGTERM is left at default disposition so the existing
-    # `kill mid-run emits pipeline.abort` behavior (test 10) is preserved.
-    trap '_runner_signal_trap' INT
+    # Wave 15-F (#686): TERM is now trapped with the same semantics as INT
+    # (additive parity — SIGINT path is unchanged). The pre-15-F default
+    # disposition for TERM (`kill mid-run emits pipeline.abort`) is preserved
+    # by the EXIT trap, which still emits `pipeline.abort` after recording
+    # `pipeline.aborted reason=sigterm`.
+    trap '_runner_signal_trap INT' INT
+    trap '_runner_signal_trap TERM' TERM
 
     # Detect platforms (writes state/platforms.json; returns "generic" if none found)
     local _DETECTED_PLATFORMS=()

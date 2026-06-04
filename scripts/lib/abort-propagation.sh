@@ -35,15 +35,16 @@ _zbuild_abort_sentinel_path() {
 }
 
 # _zbuild_propagate_abort <child_rc>
-#   Returns <child_rc> if <child_rc> is an abort rc (130 today; 130|143
-#   once Wave 15-F #686 ships SIGTERM parity), else returns 0.
-#   Stable signature across the SIGTERM widening — only the classifier
-#   below changes.
+#   Returns <child_rc> if <child_rc> is an abort rc (rc ∈ {130, 143}),
+#   else returns 0. 130 = 128+SIGINT, 143 = 128+SIGTERM.
+#   Stable signature across the SIGTERM widening (Wave 15-F #686) — only
+#   the classifier below changes; all dispatch-site callers benefit
+#   automatically.
 _zbuild_propagate_abort() {
     local _rc="${1:-0}"
     case "$_rc" in
         130) return 130 ;;
-        # Wave 15-F (#686) will add: 143) return 143 ;;
+        143) return 143 ;;
         *) return 0 ;;
     esac
 }
