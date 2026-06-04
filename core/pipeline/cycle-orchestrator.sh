@@ -31,6 +31,9 @@ _CYCLE_ORCH_ROOT="$(cd "$_CYCLE_ORCH_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$_CYCLE_ORCH_ROOT/scripts/lib/helpers.sh"
+# ADR-025 (Wave 15-B #684) abort-propagation contract helpers.
+# shellcheck source=../../scripts/lib/abort-propagation.sh
+source "$_CYCLE_ORCH_ROOT/scripts/lib/abort-propagation.sh"
 # shellcheck source=../state/atomic.sh
 source "$_CYCLE_ORCH_ROOT/core/state/atomic.sh"
 # shellcheck source=../state/resume.sh
@@ -657,6 +660,17 @@ _cycle_iter_dispatch() {
     # means cardinal fallback (back-compat).
     local _cyc_pos=0
     for s in "${_CYCLE_STAGES[@]}"; do
+        # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
+        # armed by the runner's SIGINT trap between this stage and the last.
+        # Bail before spawning the next child so the abort observes at the
+        # earliest possible dispatch boundary. THIS is the dogfood-bug fix:
+        # Wave 15 dogfood saw rc=130 swallowed because the previous shape
+        # treated every non-zero rc as a generic stage failure (fail++) and
+        # kept iterating after Ctrl-C.
+        if ! _zbuild_check_abort; then
+            [[ $_had_e -eq 1 ]] && set -e
+            return 130
+        fi
         _cyc_pos=$(( _cyc_pos + 1 ))
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
@@ -678,6 +692,15 @@ _cycle_iter_dispatch() {
         rc=$?
         # Restore caller's errexit if they had it on
         [[ $_had_e -eq 1 ]] && set -e
+        # ADR-025 (Wave 15-B #684) post-flight: rc=130 from the child means
+        # SIGINT propagated up through the dispatch chain. Surface 130 from
+        # this iter so the outer for-iter loop returns 130 to the runner,
+        # which already maps rc=130 → pipeline.aborted reason=sigint.
+        _zbuild_propagate_abort "$rc"
+        local _abort_rc=$?
+        if [[ $_abort_rc -ne 0 ]]; then
+            return "$_abort_rc"
+        fi
         verdict="${_CYCLE_DISPATCH_VERDICT:-}"
         status="${_CYCLE_DISPATCH_STATUS:-}"
         if [[ -z "$verdict" ]]; then
@@ -833,11 +856,35 @@ cycle_orchestrator_run() {
             cycle_iter_begin_hook "$cycle_id" "$iter" "$_CYCLE_MAX_ITER" || true
         fi
 
+        # ADR-025 (Wave 15-B #684) pre-flight: check the sentinel before
+        # starting each new cycle iteration so a SIGINT between iterations
+        # is honored at the iter boundary (not buried until the next stage
+        # boundary inside _cycle_iter_dispatch).
+        if ! _zbuild_check_abort; then
+            _CYCLE_LAST_TERMINATED_REASON="aborted"
+            _cycle_clear_traps
+            { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 130; }
+        fi
+
         # Dispatch the cycle's stages in order.
-        if ! _cycle_iter_dispatch "$iter" "$state_file"; then
+        set +e
+        _cycle_iter_dispatch "$iter" "$state_file"
+        local _iter_rc=$?
+        [[ $_ORCH_HAD_E -eq 1 ]] && set -e
+        # ADR-025 (Wave 15-B #684): rc=130 from the per-iter dispatch is the
+        # abort signal — surface it distinctly from the generic error path
+        # (rc=4 / config_invalid) so the runner can map it to
+        # pipeline.aborted reason=sigint. Without this branch, the old
+        # `if ! _cycle_iter_dispatch` shape collapses 130 into 4.
+        if [[ $_iter_rc -eq 130 ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="aborted"
+            _cycle_clear_traps
+            return 130
+        fi
+        if [[ $_iter_rc -ne 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="error"
             _cycle_clear_traps
-            { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+            return 4
         fi
         # Re-install (defensive — _cycle_iter_dispatch re-installs inside the
         # per-stage loop but a stage might have left them cleared on the path
