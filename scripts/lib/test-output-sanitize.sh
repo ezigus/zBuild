@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# scripts/lib/test-output-sanitize.sh — test_output sanitizer (Wave 15-C, #681)
+# scripts/lib/test-output-sanitize.sh — LLM-prompt sanitizer (Wave 15-C #681; Wave 16-B #699)
 #
-# Strips framework decoration from captured test runner output before it lands
-# in (a) the test plugin's 10KB truncation budget and (b) the test_assessment
-# LLM prompt splice. Per #681 the dogfood prompts were ~200 lines of decoration
-# wrapping ~5 lines of signal — banner pairs, redaction-tag wrappers, ANSI,
-# decorative separators, and a truncation footer pointing at a file the LLM
-# cannot read. The transforms here delete only the framework decoration and
-# preserve every byte of genuine runner stdout/stderr.
+# Strips framework decoration from arbitrary text that's about to be spliced
+# into an LLM prompt. Original use case (Wave 15-C): captured test_output
+# headed for the test plugin's truncation budget and the test_assessment
+# prompt. Wave 16-B (#699) generalises the helper to the review prompt as
+# well — plan/diff/scope-manifest/test-results text blocks all flow through
+# the same redactor wrap (`<out-of-scope-context>` tags) and stage_io banner
+# machinery, so the same 5 transforms cleanly remove framework decoration
+# anywhere a text artifact gets spliced into an LLM prompt.
+#
+# The transforms delete only framework decoration; every byte of genuine
+# content is preserved.
 #
 # Sourced library: no set -euo pipefail (would mutate caller options).
 
 [[ -n "${_ZBUILD_TEST_OUTPUT_SANITIZE_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_OUTPUT_SANITIZE_LOADED=1
 
-# _zbuild_sanitize_test_output
+# _zbuild_sanitize_for_llm  (canonical entry point — Wave 16-B #699)
 #
-# Reads test_output text on stdin, applies 5 transforms, writes the cleaned
+# Reads decorated text on stdin, applies 5 transforms, writes the cleaned
 # output to stdout. Idempotent (sanitize ∘ sanitize == sanitize).
 #
 # Transforms (per #681):
@@ -27,11 +31,12 @@ _ZBUILD_TEST_OUTPUT_SANITIZE_LOADED=1
 #   5. Strip "↪ [N more lines · full at /path/x.json]" truncation-footer lines
 #
 # Preserves: ✓/✗ marks (after ANSI strip), test names, assertion messages,
-# expected/got values, runner stdout/stderr, summary counts, exit codes, and
-# multi-line bash from genuine test failures.
+# expected/got values, runner stdout/stderr, summary counts, exit codes,
+# multi-line bash from genuine test failures, plan text, diff hunks, scope
+# manifest entries.
 #
-# Usage: printf '%s' "$raw" | _zbuild_sanitize_test_output
-_zbuild_sanitize_test_output() {
+# Usage: printf '%s' "$raw" | _zbuild_sanitize_for_llm
+_zbuild_sanitize_for_llm() {
     # Pipeline order matters for correctness:
     #   1. sed strips ANSI CSI sequences across the whole stream first, so
     #      banner / separator pattern matches in step 2 are not foiled by
@@ -75,4 +80,12 @@ _zbuild_sanitize_test_output() {
         print line
     }
     '
+}
+
+# _zbuild_sanitize_test_output — Wave 15-C name, kept as a back-compat alias.
+# Wave 16-B (#699) renamed the canonical entry point to _zbuild_sanitize_for_llm
+# because the helper is general (not test-specific). Existing call sites in the
+# test plugin and the test_assessment plugin continue to work unchanged.
+_zbuild_sanitize_test_output() {
+    _zbuild_sanitize_for_llm "$@"
 }

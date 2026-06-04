@@ -31,6 +31,13 @@ source "$_REVIEW_ROOT/scripts/lib/artifact-render.sh"
 # #506: shared numstat banner formatter (operator-banner override input).
 # shellcheck source=../../../scripts/lib/numstat-format.sh
 source "$_REVIEW_ROOT/scripts/lib/numstat-format.sh"
+# Wave 16-B (#699): sanitize text blocks before splicing into the LLM prompt,
+# and prepend a structure-first diff-stat summary so the model orients on
+# what-changed before being asked to read full hunks.
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+source "$_REVIEW_ROOT/scripts/lib/test-output-sanitize.sh"
+# shellcheck source=../../../scripts/lib/diff-stat.sh
+source "$_REVIEW_ROOT/scripts/lib/diff-stat.sh"
 
 # Valid verdict values per manifest config.valid_verdicts
 _REVIEW_VALID_VERDICTS="approve request_changes block"
@@ -269,12 +276,57 @@ REVIEW_PROMPT
     local plan_md diff_md
     plan_md="$(render_artifact plan "$plan_content")"
     diff_md="$(render_artifact diff "$diff_content")"
+
+    # Wave 16-B (#699): sanitize every text block that flows into the LLM
+    # prompt — strip framework decoration (redaction-tag wrappers, banner
+    # pairs, decorative separators, ANSI codes, truncation footers) that
+    # might be present in upstream artifacts. Per #681 dogfood the model
+    # ignores ~200 lines of decoration over ~5 lines of signal otherwise.
+    local plan_md_clean diff_md_clean
+    plan_md_clean="$(printf '%s' "$plan_md" | _zbuild_sanitize_for_llm)"
+    diff_md_clean="$(printf '%s' "$diff_md" | _zbuild_sanitize_for_llm)"
+
+    # Build a structured test-results summary from the raw JSON. The previous
+    # implementation spliced the whole JSON envelope, which (a) buries the
+    # signal (verdict + counts + .test_output) inside JSON syntax the model
+    # has to parse and (b) hides framework decoration from the sanitizer
+    # because newlines inside .test_output are JSON-escaped, so line-wise
+    # transforms can't fire. Extract the fields we actually want the model
+    # to see, sanitize the free-text .test_output independently, and splice
+    # the result back as bare text.
+    local _test_verdict _test_passed _test_failed _test_exit _test_output
+    _test_verdict="$(printf '%s' "$test_content" | jq -r '.verdict // .status // "unknown"' 2>/dev/null || echo unknown)"
+    _test_passed="$(printf '%s' "$test_content" | jq -r '.passed // 0' 2>/dev/null || echo 0)"
+    _test_failed="$(printf '%s' "$test_content" | jq -r '.failed // 0' 2>/dev/null || echo 0)"
+    _test_exit="$(printf '%s' "$test_content" | jq -r '.exit_code // empty' 2>/dev/null || true)"
+    _test_output="$(printf '%s' "$test_content" | jq -r '.test_output // ""' 2>/dev/null || echo "")"
+    if [[ -n "$_test_output" ]]; then
+        _test_output="$(printf '%s' "$_test_output" | _zbuild_sanitize_for_llm)"
+    fi
+    local test_summary
+    if [[ -n "$_test_exit" ]]; then
+        printf -v test_summary 'verdict: %s\npassed: %s\nfailed: %s\nexit_code: %s' \
+            "$_test_verdict" "$_test_passed" "$_test_failed" "$_test_exit"
+    else
+        printf -v test_summary 'verdict: %s\npassed: %s\nfailed: %s' \
+            "$_test_verdict" "$_test_passed" "$_test_failed"
+    fi
+    if [[ -n "$_test_output" ]]; then
+        printf -v test_summary '%s\n\noutput:\n%s' "$test_summary" "$_test_output"
+    fi
+
+    # Wave 16-B (#699): structure-first diff-stat summary at the TOP of the
+    # prompt so the LLM sees file count + per-file churn before any hunks.
+    local diff_stat_block
+    diff_stat_block="$(_zbuild_diff_stat "$diff_patch_path")"
+
     local prompt
-    printf -v prompt '%s\nPlan:\n%s\n\nDiff:\n%s\n\nTest results:\n%s\n' \
+    printf -v prompt '%s\n%s\n\nPlan:\n%s\n\nDiff:\n%s\n\nTest results:\n%s\n' \
         "$_review_instructions" \
-        "$plan_md" \
-        "$diff_md" \
-        "$test_content"
+        "$diff_stat_block" \
+        "$plan_md_clean" \
+        "$diff_md_clean" \
+        "$test_summary"
 
     # Write prompt to a temp file for redaction (apply_scope_redaction takes file paths)
     local prompt_file="$artifact_dir/review-prompt.txt"
