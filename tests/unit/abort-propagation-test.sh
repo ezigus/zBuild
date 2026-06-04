@@ -28,6 +28,13 @@ _zbuild_propagate_abort 130
 rc=$?
 assert_eq "rc=130 → returns 130" "130" "$rc"
 
+print_test_section "1b. _zbuild_propagate_abort: rc=143 propagates as 143 (Wave 15-F)"
+
+# Wave 15-F (#686): SIGTERM parity — 143 = 128+SIGTERM is an abort rc.
+_zbuild_propagate_abort 143
+rc=$?
+assert_eq "rc=143 → returns 143" "143" "$rc"
+
 print_test_section "2. _zbuild_propagate_abort: rc=0 → 0"
 
 _zbuild_propagate_abort 0
