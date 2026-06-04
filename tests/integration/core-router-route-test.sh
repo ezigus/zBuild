@@ -9,6 +9,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../lib/test-harness.sh
+source "$REPO_ROOT/tests/lib/test-harness.sh"
 
 print_test_header "core/router/route — ADR-003 model router stub (issue #84)"
 setup_test_env "router"
@@ -485,13 +487,11 @@ unset ZBUILD_CURRENT_STAGE
 
 # ─── Tr-5: empty-string per-stage var falls through to env ───────────────────
 # Set stage var explicitly to empty (e.g. stage with no router block exported as empty).
+# Wave 14-B / #675: scope stage + router_timeout via harness helpers so caller
+# env stays clean even when invoked under pipeline test stage (ADR-024 Layer 2).
 load_template "$ROUTER_TIMEOUT_FIXTURE"
-ZBUILD_CURRENT_STAGE=plan   # plan not in fixture → accessor returns empty
-export ZBUILD_ROUTER_TIMEOUT=450
-tr5_val="$(_route_resolve_timeout)"
+tr5_val="$(zb_test_with_stage plan zb_test_with_router_timeout 450 _route_resolve_timeout)"
 assert_eq "Tr-5 empty per-stage falls through to env=450" "450" "$tr5_val"
-unset ZBUILD_ROUTER_TIMEOUT
-unset ZBUILD_CURRENT_STAGE
 
 # ─── Tr-6: model.route event JSONL contains timeout_s field ──────────────────
 : > "$ZBUILD_EVENTS_JSONL"
