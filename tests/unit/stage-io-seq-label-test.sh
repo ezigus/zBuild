@@ -41,6 +41,7 @@ _reset_pending() {
     for k in "${!_STAGE_IO_PENDING_INPUT[@]}"; do unset '_STAGE_IO_PENDING_INPUT[$k]'; done
     for k in "${!_STAGE_IO_PENDING_KIND[@]}";  do unset '_STAGE_IO_PENDING_KIND[$k]';  done
     for k in "${!_STAGE_IO_PENDING_DESTS[@]}"; do unset '_STAGE_IO_PENDING_DESTS[$k]'; done
+    for k in "${!_STAGE_IO_PENDING_LABEL[@]}"; do unset '_STAGE_IO_PENDING_LABEL[$k]'; done
     for k in "${!_STAGE_IO_START_NS[@]}";      do unset '_STAGE_IO_START_NS[$k]';      done
 }
 
@@ -136,6 +137,12 @@ exec 3>&-
 banner="$(cat "$fd3")"
 input_header="$(printf '%s\n' "$banner" | grep -m1 'input' || true)"
 assert_contains "L4 explicit --seq-label wins over env" "$input_header" "seq=4 input"
+
+# Clear pending state before cleanup so the EXIT orphan-finalizer doesn't
+# recreate $TEST_TEMP_DIR / write partial artifacts after cleanup_test_env
+# has wiped it. L4 intentionally skips stage_io_end to validate flag wins
+# over env at begin-time; we drain pending here instead of pairing.
+_reset_pending
 
 print_test_results
 cleanup_test_env
