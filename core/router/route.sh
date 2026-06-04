@@ -384,23 +384,25 @@ _route_call_claude() {
     # plugins that route via route_to_model (plan, test_assessment, review,
     # security-lens) all inherit this protection; the build plugin gets the
     # same protection from route_to_model_loop below.
-    # Wave 15-G (#687): also wrap the sync (non-loop) spawn in `setsid -w`
-    # when available so a Ctrl-C delivered to the foreground PGID still
-    # targets the whole claude tree, not just the top-level PID. The sync
-    # form has no _route_loop_on_signal handler — it relies on the kernel
-    # to forward SIGINT to the foreground process group — so setsid here
-    # is a pure isolation/cleanup win (no behavior change when PG_PREFIX
-    # is empty, which is the macOS-no-util-linux path).
+    # Wave 15-G (#687): the SYNC (non-loop) form deliberately does NOT use
+    # setsid. The sync path has no _route_loop_on_signal handler to forward
+    # an operator abort to the spawned claude's session — moving claude
+    # into its own session/PGID via setsid would mean a terminal Ctrl-C
+    # delivered by the kernel to the foreground process group would NOT
+    # reach claude, leaving it (and any children) running until gtimeout
+    # eventually fires. The loop sites get setsid because the loop's
+    # trap manually re-delivers the signal to the captured PGID.
+    # (Copilot review #696 caught this; see PR description.)
     local response
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
             _zbuild_make_fresh_shell
-            "${_ROUTE_PG_PREFIX[@]}" "${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
+            "${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
         )" || rc=$?
     else
         response="$(
             _zbuild_make_fresh_shell
-            "${_ROUTE_PG_PREFIX[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
+            claude "${_claude_args[@]}" 2>"$stderr_file"
         )" || rc=$?
     fi
 
@@ -569,15 +571,20 @@ _route_loop_on_signal() {
     # unknown (e.g. setsid unavailable AND the bash job-control fallback
     # in the spawn subshell did not capture a PGID). Negative arg to kill
     # targets the process group: `kill -- -PGID`.
+    # Copilot review #696: disown only the specific backstop job, not all
+    # background jobs — `disown` with no args can detach unrelated jobs
+    # (including the in-flight claude this trap was triggered to abort).
+    local _backstop_pid=""
     if [[ -n "${_ROUTE_LOOP_CHILD_PGID:-}" ]]; then
         kill -TERM -- "-$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true
         { sleep 1 && kill -KILL -- "-$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true; } &
-        disown 2>/dev/null || true
+        _backstop_pid=$!
     elif [[ -n "${_ROUTE_LOOP_CHILD_PID:-}" ]]; then
         kill -TERM "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true
         { sleep 1 && kill -KILL "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true; } &
-        disown 2>/dev/null || true
+        _backstop_pid=$!
     fi
+    [[ -n "$_backstop_pid" ]] && { disown "$_backstop_pid" 2>/dev/null || true; }
     _ROUTE_LOOP_TERMINATED_REASON="signal"
     eb_emit_event "loop.terminated.signal" \
         "signal=$sig" \

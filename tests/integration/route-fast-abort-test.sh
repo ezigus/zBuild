@@ -10,8 +10,10 @@
 # entire group, then KILL-ing 1s later as a fallback.
 #
 # Strategy: stub `claude` traps and IGNORES SIGTERM, then sleeps for a
-# long time. Drive route_to_model_loop in a subshell, send SIGINT after
-# ~500ms, and assert:
+# long time. Drive route_to_model_loop in a subshell, send SIGTERM to the
+# driver after ~500ms (TERM not INT; non-interactive backgrounded bash
+# inherits SIG_IGN for SIGINT — see the longer note above the driver
+# spawn below), and assert:
 #   - the loop returns 130 within ~2.5s wall-clock
 #   - no stub-claude processes are left running
 #
@@ -167,12 +169,14 @@ elapsed_ms=$(( (end_ts - start_ts) / 1000000 ))
 
 # ─── Assertions ──────────────────────────────────────────────────────────────
 
-# (1) Abort within 2500ms wall-clock from SIGINT delivery to driver exit.
+# (1) Abort within 2500ms wall-clock from signal delivery to driver exit.
 #     TERM grace = 1s, KILL backstop = 1s, plus some unwind slack = 2.5s.
+#     (We send SIGTERM to the driver — see header note about SIGINT
+#     SIG_IGN inheritance in non-interactive backgrounded bash.)
 if [[ $elapsed_ms -le 2500 ]]; then
-    assert_pass "loop aborted within 2500ms of SIGINT (actual=${elapsed_ms}ms)"
+    assert_pass "loop aborted within 2500ms of signal (actual=${elapsed_ms}ms)"
 else
-    assert_fail "loop aborted within 2500ms of SIGINT" \
+    assert_fail "loop aborted within 2500ms of signal" \
         "actual=${elapsed_ms}ms — per-PID kill bounced off claude's TERM trap (Wave 15-G regression)"
 fi
 
@@ -208,7 +212,7 @@ fi
 assert_eq "no leftover stub-claude processes after abort" "0" "$leftover"
 
 # (3) The driver actually saw rc=130 (or any signal exit) — i.e. the loop
-#     returned the SIGINT exit code, not a generic failure. If the
+#     returned a signal-class exit code (130), not a generic failure. If the
 #     watchdog killed it instead, loop.rc may be missing.
 if [[ -f "$TEST_TEMP_DIR/loop.rc" ]]; then
     rc_line="$(cat "$TEST_TEMP_DIR/loop.rc" 2>/dev/null || true)"
