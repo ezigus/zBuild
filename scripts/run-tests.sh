@@ -96,9 +96,12 @@ case "$tier" in
     overall_rc=0
     total_passed=0
     total_count=0
-    # Stream each tier's output live AND parse its trailing "name: P/T passed"
-    # line for a cross-tier rollup. Process-sub keeps the while in the current
-    # shell so the totals persist.
+    # Per-tier rc is written to this file from inside the subshell so an
+    # aborted runner (no summary line emitted) is still reflected in the
+    # overall exit code — relying only on parsed totals would mask infra
+    # errors that crash before the "name: P/T passed" line prints.
+    rc_file="$(mktemp -t zbuild-tier-rc.XXXXXX)"
+    trap 'rm -f "$rc_file"' EXIT
     while IFS= read -r line; do
       echo "$line"
       if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed ]]; then
@@ -107,10 +110,15 @@ case "$tier" in
       fi
     done < <(
       for t in unit integration e2e golden; do
-        run_tier "$t" || true
+        if run_tier "$t"; then rc=0; else rc=$?; fi
+        echo "$t $rc" >> "$rc_file"
       done
-      bash "$SCRIPT_DIR/run-mutation.sh" || true
+      if bash "$SCRIPT_DIR/run-mutation.sh"; then rc=0; else rc=$?; fi
+      echo "mutation $rc" >> "$rc_file"
     )
+    while read -r _name rc; do
+      [[ "$rc" -ne 0 ]] && overall_rc=1
+    done < "$rc_file"
     if [[ $total_passed -ne $total_count ]]; then
       overall_rc=1
     fi
