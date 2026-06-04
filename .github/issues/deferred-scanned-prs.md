@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-04T03:48:14Z_
+_Last updated: 2026-06-04T19:18:12Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -108,3 +108,13 @@ _Last updated: 2026-06-04T03:48:14Z_
 | #673 | feat(env-scrub): _zbuild_make_fresh_shell helper + apply at test plugin and router (Wave 13-B) | 2026-06-04 |
 | #672 | docs(adr-024): Subprocess Environment Isolation Contracts (Proposed) | 2026-06-04 |
 | #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
+| #697 | feat(runner): flag-gated job-control + PG signal forwarding (Wave 15-H, #688) | 2026-06-04 |
+| #696 | feat(router): faster pre-abort of in-flight claude via process-group kill (Wave 15-G) | 2026-06-04 |
+| #695 | feat(abort-prop): SIGTERM signal handling parity (Wave 15-F) | 2026-06-04 |
+| #694 | feat(resume): aborted-run resume verification + sentinel cleanup on resume (Wave 15-E) | 2026-06-04 |
+| #693 | feat(abort-prop): _zbuild_propagate_abort helper + dispatch-site conversion (Wave 15-B) | 2026-06-04 |
+| #692 | feat(test,test_assessment): sanitize test_output for LLM prompt (Wave 15-C, #681) | 2026-06-04 |
+| #691 | feat(stage-io): hierarchical seq labels + visual spacing for cycle iters (Wave 15-D) | 2026-06-04 |
+| #690 | fix(test-env): scrub _TPL_* env vars in fresh-user-shell helper (Wave 15-I, #683) | 2026-06-04 |
+| #689 | docs(adr-025): Abort Propagation Contract (Proposed) (Wave 15-A) | 2026-06-04 |
+| #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-04 |
