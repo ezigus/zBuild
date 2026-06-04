@@ -696,11 +696,13 @@ _cycle_iter_dispatch() {
         # SIGINT propagated up through the dispatch chain. Surface 130 from
         # this iter so the outer for-iter loop returns 130 to the runner,
         # which already maps rc=130 → pipeline.aborted reason=sigint.
-        _zbuild_propagate_abort "$rc"
-        local _abort_rc=$?
-        if [[ $_abort_rc -ne 0 ]]; then
-            return "$_abort_rc"
-        fi
+        # Copilot P1 on #693: use the ADR-025-recommended `|| return $?`
+        # form. `_zbuild_propagate_abort "$rc"` as a bare command after
+        # the `set -e` restore above could terminate the function
+        # immediately under errexit before any explicit `return` ran.
+        # The `||` form inhibits errexit for the call and lets the
+        # explicit `return $?` carry the abort rc cleanly.
+        _zbuild_propagate_abort "$rc" || return $?
         verdict="${_CYCLE_DISPATCH_VERDICT:-}"
         status="${_CYCLE_DISPATCH_STATUS:-}"
         if [[ -z "$verdict" ]]; then
