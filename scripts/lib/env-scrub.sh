@@ -18,12 +18,15 @@ _ZBUILD_ENV_SCRUB_LOADED=1
 # _zbuild_make_fresh_shell
 #
 # Preamble call for subshells that should look like a fresh user terminal
-# (per ADR-024 fresh-user-shell class). Scrubs all ZBUILD_*-prefixed env
-# vars in the current shell + closes the runner's stage-io fd 3 (opened
+# (per ADR-024 fresh-user-shell class). Scrubs all runner-internal env vars
+# in the current shell — both ZBUILD_*-prefixed (session/runner state) and
+# _TPL_*-prefixed (template per-stage state exported by load_template,
+# added Wave 15-I / #683) — and closes the runner's stage-io fd 3 (opened
 # by runner via `exec 3>&2`).
 #
-# Preserves: PATH, HOME, USER, SHELL, TERM, TMPDIR and any other non-ZBUILD_*
-# parent env vars — the user-shell vars the spawned process legitimately needs.
+# Preserves: PATH, HOME, USER, SHELL, TERM, TMPDIR and any other non-
+# (ZBUILD_|_TPL_) parent env vars — the user-shell vars the spawned process
+# legitimately needs.
 #
 # Why wildcard scrub instead of per-var unsets:
 #   #645/Wave 11A unset only ZBUILD_STAGE_IO_FD and missed ZBUILD_RUN_ID

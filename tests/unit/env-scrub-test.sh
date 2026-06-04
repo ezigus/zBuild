@@ -5,7 +5,9 @@
 #   1. ZBUILD_* env vars are scrubbed in the calling shell
 #   2. Non-ZBUILD_* vars are preserved
 #   3. fd 3 is closed after the helper runs
-#   4. Helper is idempotent (second call is a no-op, no error)
+#   4. _TPL_* env vars are scrubbed; non-_TPL_ vars preserved
+#      (Wave 15-I / #683 — template state must not survive the boundary)
+#   5. Helper is idempotent (second call is a no-op, no error)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
