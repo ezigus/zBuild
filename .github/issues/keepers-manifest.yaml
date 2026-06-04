@@ -3909,11 +3909,12 @@ issues:
     title: "Plugin registry: YAML-structural manifest validation (replace fragile grep for redaction requirement)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-1, foundation, safety-primitive]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/294
       Replace fragile grep-based manifest validation with proper
       YAML-structural parsing for redaction requirement checks.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-02T11:27:14Z). Recorded by manifest-sync.'
   - id: state-read-fail-closed-json
     title: "State read fail-closed on JSON corruption — narrow lift from Phase 2 #38"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -3947,11 +3948,12 @@ issues:
     title: "Plugin lockfile: hash plugin.sh (and all plugin files), reverify before source"
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1, foundation, safety-primitive]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/290
       Plugin lockfile currently only hashes manifest.yaml; extend it to
       also hash plugin.sh (and all plugin files) and reverify before sourcing.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-02T11:49:59Z). Recorded by manifest-sync.'
   - id: router-precondition-fail-closed
     title: "Router precondition fail-closed when ZBUILD_RUN_ID or ZBUILD_EVENTS_JSONL unset + gate --skip-precondition behind operator override + audit event"
     milestone: "Phase 1 — Pipeline & Intelligence"
