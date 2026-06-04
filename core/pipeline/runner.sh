@@ -832,6 +832,30 @@ main() {
     _RUNNER_SIGINT_RECEIVED=0
     _RUNNER_ABORT_REASON=""
 
+    # Wave 15-H (#688): flag-gated bash job-control + process-group signal
+    # forwarding. Default OFF — flag-off behavior is byte-identical to today.
+    # When ZBUILD_RUNNER_JOB_CONTROL=1:
+    #   - `set -m` enables job control so every backgrounded child gets its
+    #     own PGID equal to its PID;
+    #   - the SIGINT/TERM trap walks `jobs -p` and TERM-then-KILL's each
+    #     PGID, reaping whole subtrees (not just direct PIDs).
+    # This is belt-and-suspenders to the existing per-site kills:
+    #   - Wave 8 (#612) per-PID kill in the build plugin,
+    #   - Wave 15-G (#687) PG-kill in the router around `setsid -w` claude.
+    # Both stay as fallback; Wave 15-H adds wider coverage for any future
+    # backgrounded children of the runner shell. Safety considerations:
+    #   - `jobs -p` is empty when no backgrounded children exist → trap loop
+    #     is a safe no-op (no spurious kills).
+    #   - `set -m` makes bash auto-disown completed children; the existing
+    #     synchronous foreground dispatch path (plugin_hook_call subshells)
+    #     is unaffected because `wait` semantics on direct foreground
+    #     children are preserved.
+    #   - The runner's own PGID becomes its session leader's PGID; the
+    #     test harness's kernel-pgrp delivery still reaches it.
+    if [[ "${ZBUILD_RUNNER_JOB_CONTROL:-0}" == "1" ]]; then
+        set -m
+    fi
+
     _runner_abort_trap() {
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
@@ -890,6 +914,60 @@ main() {
         local _sig="${1:-INT}"
         _zbuild_arm_abort_sentinel
         _RUNNER_SIGINT_RECEIVED=1
+        # Wave 15-H (#688): flag-gated process-group signal forwarding. When
+        # `set -m` is on (via ZBUILD_RUNNER_JOB_CONTROL=1 at startup), every
+        # child of this shell — backgrounded OR foreground subshell — has its
+        # own PGID == its PID, so `kill -- -PID` reaches the whole subtree.
+        # We enumerate direct children via two complementary sources:
+        #   1. `jobs -p` — backgrounded jobs known to bash
+        #   2. `pgrep -P $$` — all direct children, including foreground
+        #      subshells bash does NOT list in `jobs -p`
+        # We TERM each PGID, then schedule a 1s-grace KILL backstop for any
+        # child that traps and ignores TERM. Per-site kills (Wave 8 build
+        # plugin, Wave 15-G router) remain as fallback — this is belt-and-
+        # suspenders, not replacement.
+        #
+        # Known limitation: bash defers signal-trap delivery until the
+        # current foreground command returns. With `set -m`, a foreground
+        # plugin subshell is in its own PGID, so a kernel-pgrp TERM to the
+        # runner does NOT reach it directly; the trap fires only after the
+        # subshell returns naturally. This is acceptable because:
+        #   (a) the flag is OPT-IN (default OFF, byte-identical to today);
+        #   (b) the router's Wave 15-G PG-kill already handles the slow
+        #       claude-spawning path (the realistic blocker);
+        #   (c) future waves will background plugin dispatch, at which
+        #       point this trap loop becomes the primary kill path.
+        if [[ "${ZBUILD_RUNNER_JOB_CONTROL:-0}" == "1" ]]; then
+            local _pgid _pgids_snapshot=""
+            # Source 1: bash-tracked background jobs.
+            while IFS= read -r _pgid; do
+                [[ -z "$_pgid" ]] && continue
+                case " $_pgids_snapshot " in *" $_pgid "*) continue;; esac
+                _pgids_snapshot+="$_pgid "
+            done < <(jobs -p 2>/dev/null)
+            # Source 2: all direct children (catches foreground subshells).
+            if command -v pgrep >/dev/null 2>&1; then
+                while IFS= read -r _pgid; do
+                    [[ -z "$_pgid" ]] && continue
+                    case " $_pgids_snapshot " in *" $_pgid "*) continue;; esac
+                    _pgids_snapshot+="$_pgid "
+                done < <(pgrep -P $$ 2>/dev/null)
+            fi
+            # TERM each unique PGID. `set -m` guarantees PGID == PID for
+            # every child of this shell.
+            for _pgid in $_pgids_snapshot; do
+                kill -TERM -- "-$_pgid" 2>/dev/null || true
+            done
+            if [[ -n "$_pgids_snapshot" ]]; then
+                ( sleep 1
+                  local _pg
+                  for _pg in $_pgids_snapshot; do
+                      kill -KILL -- "-$_pg" 2>/dev/null || true
+                  done
+                ) &
+                disown $! 2>/dev/null || true
+            fi
+        fi
         case "$_sig" in
             TERM)
                 _RUNNER_ABORT_REASON="sigterm"
