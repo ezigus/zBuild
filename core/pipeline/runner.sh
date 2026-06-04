@@ -1180,10 +1180,16 @@ main() {
                     _cyc_stages_csv="${!_cyc_stages_var:-}"
                     local _cyc_max="${!_cyc_max_var:-?}"
                     _render_cycle_entry "$_cyc_id" "$_cyc_max" "$_cyc_stages_csv"
+                    # #698 (Wave 16-A): publish the cycle's pipeline-cardinal so
+                    # the orchestrator can render 3-level member labels
+                    # ("<cycle_cardinal>.<iter>.<position>"). Unset after the
+                    # call so the var never leaks into the next dispatch unit.
+                    export ZBUILD_CYCLE_CARDINAL="$_runner_cardinal"
                     set +e
                     cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file"
                     _rc=$?
                     set -e
+                    unset ZBUILD_CYCLE_CARDINAL
                     _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file"
                     # #511 Pin 7 / #527 / #528 — halt-vs-continue rc table:
                     # rc 0 (converged)         → CONTINUE; happy path.

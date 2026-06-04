@@ -674,8 +674,17 @@ _cycle_iter_dispatch() {
         _cyc_pos=$(( _cyc_pos + 1 ))
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
-        # #682: hierarchical seq label, e.g. iter 2 member 3 → "2.3".
-        export ZBUILD_STAGE_IO_SEQ_LABEL="${iter}.${_cyc_pos}"
+        # #682 (Wave 15-D) + #698 (Wave 16-A): hierarchical seq label.
+        # 3-level when the runner exports its cycle cardinal:
+        #   "<cycle_cardinal>.<iter>.<position>" — e.g. "3.2.1".
+        # 2-level back-compat fallback when the cardinal is absent (e.g.
+        # orchestrator invoked standalone in a unit/integration test):
+        #   "<iter>.<position>" — e.g. "2.1".
+        if [[ -n "${ZBUILD_CYCLE_CARDINAL:-}" ]]; then
+            export ZBUILD_STAGE_IO_SEQ_LABEL="${ZBUILD_CYCLE_CARDINAL}.${iter}.${_cyc_pos}"
+        else
+            export ZBUILD_STAGE_IO_SEQ_LABEL="${iter}.${_cyc_pos}"
+        fi
         # #682: 1 blank line BEFORE every member-stage banner (within-iter gap).
         # Mirrors Wave 11B's linear-runner blank line — keeps consecutive stage
         # banners from rendering flush. Best-effort; never aborts on bad fd.
