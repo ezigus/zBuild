@@ -94,10 +94,28 @@ case "$tier" in
     ;;
   all)
     overall_rc=0
-    for t in unit integration e2e golden; do
-      run_tier "$t" || overall_rc=1
-    done
-    bash "$SCRIPT_DIR/run-mutation.sh" || overall_rc=1
+    total_passed=0
+    total_count=0
+    # Stream each tier's output live AND parse its trailing "name: P/T passed"
+    # line for a cross-tier rollup. Process-sub keeps the while in the current
+    # shell so the totals persist.
+    while IFS= read -r line; do
+      echo "$line"
+      if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed ]]; then
+        total_passed=$((total_passed + BASH_REMATCH[1]))
+        total_count=$((total_count + BASH_REMATCH[2]))
+      fi
+    done < <(
+      for t in unit integration e2e golden; do
+        run_tier "$t" || true
+      done
+      bash "$SCRIPT_DIR/run-mutation.sh" || true
+    )
+    if [[ $total_passed -ne $total_count ]]; then
+      overall_rc=1
+    fi
+    echo
+    echo "total: $total_passed/$total_count passed"
     exit $overall_rc
     ;;
   *)
