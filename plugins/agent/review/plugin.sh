@@ -295,10 +295,23 @@ REVIEW_PROMPT
     # to see, sanitize the free-text .test_output independently, and splice
     # the result back as bare text.
     local _test_verdict _test_passed _test_failed _test_exit _test_output
-    _test_verdict="$(printf '%s' "$test_content" | jq -r '.verdict // .status // "unknown"' 2>/dev/null || echo unknown)"
-    _test_passed="$(printf '%s' "$test_content" | jq -r '.passed // 0' 2>/dev/null || echo 0)"
-    _test_failed="$(printf '%s' "$test_content" | jq -r '.failed // 0' 2>/dev/null || echo 0)"
-    _test_exit="$(printf '%s' "$test_content" | jq -r '.exit_code // empty' 2>/dev/null || true)"
+    # Single jq pass extracts scalar fields (one per line) so we don't
+    # reparse $test_content (which can be large via .test_output) once per
+    # field. Scalars are constrained to single-line strings/numbers, so
+    # line-delimited output is safe. .test_output is read separately
+    # because its multi-line content would break the line split.
+    local _scalars
+    _scalars="$(printf '%s' "$test_content" | jq -r '
+        (.verdict // .status // "unknown"),
+        (.passed // 0 | tostring),
+        (.failed // 0 | tostring),
+        (.exit_code // "" | tostring)
+    ' 2>/dev/null || printf 'unknown\n0\n0\n\n')"
+    { IFS= read -r _test_verdict
+      IFS= read -r _test_passed
+      IFS= read -r _test_failed
+      IFS= read -r _test_exit
+    } <<<"$_scalars"
     _test_output="$(printf '%s' "$test_content" | jq -r '.test_output // ""' 2>/dev/null || echo "")"
     if [[ -n "$_test_output" ]]; then
         _test_output="$(printf '%s' "$_test_output" | _zbuild_sanitize_for_llm)"
