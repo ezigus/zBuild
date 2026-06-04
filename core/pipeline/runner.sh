@@ -1089,17 +1089,22 @@ main() {
                     # rc 5 (blocked, #528)     → HALT; status=interrupted. Review
                     #                            does NOT run on blocked (upstream
                     #                            input structurally broken).
-                    # rc 130 (aborted)         → HALT; status=interrupted.
-                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 130 ]]; then
+                    # rc 130 (aborted=SIGINT)  → HALT; status=interrupted.
+                    # rc 143 (aborted=SIGTERM) → HALT; status=interrupted (Wave 15-F).
+                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 130 || $_rc -eq 143 ]]; then
                         _set_pipeline_status "$state_file" "interrupted"
-                        # #612: distinguish SIGINT-driven cycle abort so the
-                        # postmortem event stream can answer "was this Ctrl-C?"
-                        # without parsing per-cycle terminated_reason fields.
-                        if [[ $_rc -eq 130 ]]; then
+                        # #612 / Wave 15-F (#686): distinguish signal-driven cycle
+                        # abort (SIGINT or SIGTERM) so the postmortem event stream
+                        # can answer "was this Ctrl-C / kill?" without parsing
+                        # per-cycle terminated_reason fields.
+                        if [[ $_rc -eq 130 || $_rc -eq 143 ]]; then
+                            local _abort_reason="sigint"
+                            [[ $_rc -eq 143 ]] && _abort_reason="sigterm"
                             _RUNNER_SIGINT_RECEIVED=1
+                            _RUNNER_ABORT_REASON="$_abort_reason"
                             eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
                                 "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=sigint" "status=interrupted" 2>/dev/null || true
+                                "reason=$_abort_reason" "status=interrupted" 2>/dev/null || true
                         fi
                         eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
@@ -1107,9 +1112,11 @@ main() {
                         _render_pipeline_end "failed"
                         _runner_ended=true
                         error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
-                        # Codex P2 on #616: propagate rc=130 distinctly.
-                        if [[ $_rc -eq 130 ]]; then
-                            return 130
+                        # Codex P2 on #616 / Wave 15-F: propagate rc=130 + rc=143
+                        # distinctly so callers can distinguish Ctrl-C / kill from
+                        # a generic cycle failure.
+                        if [[ $_rc -eq 130 || $_rc -eq 143 ]]; then
+                            return $_rc
                         fi
                         return 1
                     fi
@@ -1210,11 +1217,16 @@ main() {
     local _runner_linear_cardinal=0
     for stage in "${active_stages[@]}"; do
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
-        # armed by SIGINT between iterations. Bail BEFORE spawning the next
-        # stage so the abort observes within one stage boundary. Existing
-        # post-flight rc=130 check at the end of this loop body stays.
+        # armed by SIGINT or SIGTERM between iterations. Bail BEFORE spawning
+        # the next stage so the abort observes within one stage boundary.
+        # Existing post-flight rc=130/143 check at the end of this loop body
+        # stays. Wave 15-F (#686): if the signal trap recorded reason=sigterm,
+        # propagate 143 rather than 130 so callers see the distinct rc.
         if ! _zbuild_check_abort; then
             _RUNNER_SIGINT_RECEIVED=1
+            if [[ "${_RUNNER_ABORT_REASON:-sigint}" == "sigterm" ]]; then
+                return 143
+            fi
             return 130
         fi
         _runner_linear_cardinal=$(( _runner_linear_cardinal + 1 ))
@@ -1429,15 +1441,19 @@ main() {
             _update_stage_status "$state_file" "$stage" "failed"
             _set_pipeline_status "$state_file" "interrupted"
             eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
-            # #612: rc=130 from a stage means the SIGINT propagation chain
-            # reached us (route_to_model_loop saw child rc=130 → build plugin
-            # propagated 130 → here). Emit `pipeline.aborted reason=sigint` so
-            # postmortems can distinguish Ctrl-C from OOM/fatal errors.
-            if [[ $rc -eq 130 ]]; then
+            # #612 / Wave 15-F (#686): rc=130 (SIGINT) or rc=143 (SIGTERM)
+            # from a stage means the signal-propagation chain reached us
+            # (route_to_model_loop saw child rc=130/143 → build plugin
+            # propagated → here). Emit `pipeline.aborted reason=<sigint|sigterm>`
+            # so postmortems can distinguish Ctrl-C / kill from OOM/fatal errors.
+            if [[ $rc -eq 130 || $rc -eq 143 ]]; then
+                local _abort_reason="sigint"
+                [[ $rc -eq 143 ]] && _abort_reason="sigterm"
                 _RUNNER_SIGINT_RECEIVED=1
+                _RUNNER_ABORT_REASON="$_abort_reason"
                 eb_emit_event "pipeline.aborted" "stage=$stage" \
                     "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                    "reason=sigint" "status=interrupted" 2>/dev/null || true
+                    "reason=$_abort_reason" "status=interrupted" 2>/dev/null || true
             fi
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
@@ -1449,10 +1465,11 @@ main() {
             _f2_ts="$(_runner_now_short)"
             _f2_dur="$(_runner_duration_token "$stage")"
             error "Stage $stage failed (rc=$rc, finished ${_f2_ts} · ${_f2_dur})"
-            # Codex P2 on #616: propagate rc=130 distinctly so callers
-            # can distinguish operator Ctrl-C from a generic stage failure.
-            if [[ $rc -eq 130 ]]; then
-                return 130
+            # Codex P2 on #616 / Wave 15-F: propagate rc=130 + rc=143
+            # distinctly so callers can distinguish operator Ctrl-C / kill
+            # from a generic stage failure.
+            if [[ $rc -eq 130 || $rc -eq 143 ]]; then
+                return $rc
             fi
             return 1
         fi

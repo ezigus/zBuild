@@ -13,12 +13,12 @@
 #
 # Assertions:
 #   - Runner exits 143 distinctly (not 0, not 1, not 130).
-#   - Wall-clock < 4s (signal handler exits promptly).
+#   - Wall-clock ≤ 5s (signal handler exits promptly).
 #   - `test` stage never runs (sentinel file absent).
 #   - pipeline-state.json status=interrupted.
 #   - `pipeline.aborted reason=sigterm` event in events.jsonl.
 #
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
