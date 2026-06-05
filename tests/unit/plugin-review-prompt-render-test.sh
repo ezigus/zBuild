@@ -92,8 +92,12 @@ if printf '%s' "$captured" | grep -qF '"title": "Review test"'; then
 else
     assert_pass "IR3 raw plan JSON not in prompt"
 fi
-# Test results stay raw fenced text — they should appear verbatim.
-assert_contains "IR3 test results preserved raw" "$captured" '"status":"passed"'
+# Wave 16-B (#699): test results are now spliced as a structured summary
+# (verdict/passed/failed[/exit_code][/output]) extracted from the JSON via jq,
+# not as the raw JSON envelope. Assert the summary fields appear.
+assert_contains "IR3 test results summary verdict line" "$captured" "verdict: passed"
+assert_contains "IR3 test results summary passed count" "$captured" "passed: 3"
+assert_contains "IR3 test results summary failed count" "$captured" "failed: 0"
 
 cleanup_test_env
 print_test_results
