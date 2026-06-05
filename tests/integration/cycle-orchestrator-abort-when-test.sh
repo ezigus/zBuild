@@ -112,4 +112,16 @@ _zbuild_propagate_abort 0; rc3=$?
 set -e
 assert_eq "T5: rc=0 returns 0 (non-abort)" "0" "$rc3"
 
+# T6 (Copilot P1): grep the runner source to confirm rc=6 is in the halt
+# class. This is a structural assertion — if a future change drops rc=6
+# from the runner dispatch table, abort_when would silently no-op at the
+# pipeline level even though the orchestrator returned cycle_abort.
+RUNNER_FILE="$REPO_ROOT/core/pipeline/runner.sh"
+if grep -E '_rc -eq 6' "$RUNNER_FILE" >/dev/null 2>&1; then
+    assert_pass "T6: runner halt-class includes rc=6"
+else
+    assert_fail "T6: runner halt-class includes rc=6" \
+        "runner.sh does not branch on rc=6 in cycle dispatch table"
+fi
+
 print_test_results

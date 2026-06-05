@@ -172,4 +172,28 @@ assert_eq "T9: build router.timeout_s=900" "900" \
 assert_eq "T10: intake io dests" "file,stdout" \
     "${_TPL_STAGE_IO_DESTS_intake:-}"
 
+# T11 (Copilot P2): inline-list `flow: [a, b]` form is detected as new shape
+# and parses correctly (mirrors what the cycle `flow:` already supports).
+INLINE_TPL="$TEST_TEMP_DIR/inline-flow.yaml"
+cat > "$INLINE_TPL" <<'EOF'
+id: inline
+flow: [intake, plan, review]
+
+intake:
+  roles: [intake]
+
+plan:
+  roles: [planner]
+
+review:
+  roles: [reviewer]
+EOF
+_TPL_STAGES=()
+_TPL_CYCLES=()
+set +e
+load_template "$INLINE_TPL"; rc=$?
+set -e
+assert_eq "T11: inline flow form loads rc=0" "0" "$rc"
+assert_eq "T11: stages from inline flow" "intake plan review" "${_TPL_STAGES[*]}"
+
 print_test_results

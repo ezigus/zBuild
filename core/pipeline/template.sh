@@ -970,7 +970,9 @@ _tpl_validate_io_dests() {
 _tpl_is_new_shape() {
     local file="$1"
     local has_flow=0 has_stages=0
-    if awk 'BEGIN{rc=1} /^flow:[[:space:]]*$/ {rc=0; exit} END{exit rc}' "$file"; then
+    # Copilot P2: accept both block form `flow:\n  - x` AND inline list form
+    # `flow: [a, b]`. Either matches.
+    if awk 'BEGIN{rc=1} /^flow:[[:space:]]*$/ {rc=0; exit} /^flow:[[:space:]]*\[/ {rc=0; exit} END{exit rc}' "$file"; then
         has_flow=1
     fi
     if awk 'BEGIN{rc=1} /^stages:[[:space:]]*$/ {rc=0; exit} END{exit rc}' "$file"; then
@@ -1041,9 +1043,27 @@ _tpl_translate_new_shape() {
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
         in_plateau = 0; in_diverg = 0; in_feedback = 0; in_fb_item = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+        # Copilot P2: fb_kind must reset per-section so a prior "to" cannot
+        # leak into the next section feedback parsing.
+        fb_kind = ""
+    }
+    function finalize_pending_fb() {
+        # Copilot P1: flush an in-flight feedback item before the section
+        # closes. Without this, the LAST feedback edge in every cycle is
+        # silently dropped because we previously only flushed on the NEXT
+        # `- from:` opener.
+        if (in_fb_item && (fb_from_stage != "" || fb_to_stage != "")) {
+            nfb++
+            fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
+            in_fb_item = 0
+            fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+            fb_kind = ""
+        }
     }
     function flush_section(   k) {
         if (cur_key == "" || is_reserved(cur_key)) return
+        # Finalize any in-flight feedback item now (Copilot P1).
+        finalize_pending_fb()
         # Always emit a defs-style row carrying the attr payload — downstream
         # code already merges this into stage_def_row[].
         defs_out = defs_out cur_key "|" sec_roles "|" sec_strategy "|" \
@@ -1066,9 +1086,23 @@ _tpl_translate_new_shape() {
     }
 
     # ── Top-level flow: list ──────────────────────────────────────────────────
+    # Block form: `flow:` then `- a` / `- b` items.
     /^flow:[[:space:]]*$/ {
         flush_section(); reset_section(); cur_key = ""
         in_flow = 1; next
+    }
+    # Copilot P2: inline-list form: `flow: [a, b, c]` on a single line.
+    /^flow:[[:space:]]*\[/ {
+        flush_section(); reset_section(); cur_key = ""
+        line = $0
+        sub(/^[^[]*\[/, "", line); sub(/\].*$/, "", line)
+        gsub(/[[:space:]]/, "", line)
+        n = split(line, items, /,/)
+        for (i = 1; i <= n; i++) {
+            if (items[i] != "") { flow_n++; flow[flow_n] = items[i] }
+        }
+        in_flow = 0
+        next
     }
     in_flow && /^[[:space:]]+-[[:space:]]/ {
         item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
@@ -1208,22 +1242,32 @@ _tpl_translate_new_shape() {
                 in_feedback = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; next
             }
             if (in_feedback && $0 ~ /^[[:space:]]+-[[:space:]]+from:/) {
+                # Close previous in-flight item.
                 if (fb_from_stage != "" || fb_to_stage != "") {
                     nfb++
                     fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
                 }
                 fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
                 in_fb_item = 1
-                # inline form: - from: { stage: X, output: Y }
+                # Copilot P1: default fb_kind to "from" so subsequent
+                # indented `stage:`/`output:` lines belonging to a multi-
+                # line `- from:` opener attribute correctly. Inline form
+                # (- from: { stage: X, output: Y }) overrides below.
+                fb_kind = "from"
                 line = $0
                 sub(/^[[:space:]]+-[[:space:]]+from:[[:space:]]*\{?/, "", line)
                 sub(/\}.*$/, "", line)
-                n = split(line, kv, /,[[:space:]]*/)
-                for (i = 1; i <= n; i++) {
-                    split(kv[i], pair, /:[[:space:]]*/)
-                    key = trim(pair[1]); val = trim(pair[2])
-                    if (key == "stage")  fb_from_stage = val
-                    if (key == "output") fb_from_output = val
+                # Inline form is detected via presence of a `{` or non-empty
+                # stripped payload. If empty, we are in multi-line form.
+                gsub(/[[:space:]]/, "", line)
+                if (line != "") {
+                    n = split(line, kv, /,[[:space:]]*/)
+                    for (i = 1; i <= n; i++) {
+                        split(kv[i], pair, /:[[:space:]]*/)
+                        key = trim(pair[1]); val = trim(pair[2])
+                        if (key == "stage")  fb_from_stage = val
+                        if (key == "output") fb_from_output = val
+                    }
                 }
                 next
             }
