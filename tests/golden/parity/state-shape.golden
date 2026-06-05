@@ -17,7 +17,7 @@
     "test": "complete"
   },
   "stage_verdicts": {
-    "build": "pass",
+    "build": "fail",
     "intake": "pass",
     "plan": "pass",
     "pr": "pass",

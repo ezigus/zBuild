@@ -53,7 +53,7 @@ verdict_classify() {
             echo "pass" ;;
         request_changes)
             echo "warn" ;;
-        fail|error|block|scope_violation|corrupt_diff)
+        fail|error|block|scope_violation|corrupt_diff|empty_diff)
             echo "fail" ;;
         ""|null)
             echo "unknown" ;;
