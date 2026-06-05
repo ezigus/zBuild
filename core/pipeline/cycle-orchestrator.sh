@@ -882,15 +882,25 @@ _cycle_iter_dispatch() {
             # cycle's own predicates already terminated correctly; the
             # outer's perspective on this member is "converged pass" (rc=0)
             # or "failed fail" (rc!=0).
+            # Wave 19-D-1 (#731/#734 Copilot review): emit
+            # cycle.member.dispatch.complete BEFORE returning on abort rcs
+            # (6/130/143) so the documented start+complete pairing holds
+            # even on abort paths. Without this, forensics see a start
+            # with no matching complete and cannot reconstruct the
+            # dispatched-but-aborted sequence.
             case "$rc" in
                 0) _CYCLE_DISPATCH_VERDICT="pass"
                    _CYCLE_DISPATCH_VERDICT_RAW="pass"
                    _CYCLE_DISPATCH_STATUS="complete" ;;
                 6) # cycle_abort propagates outward immediately.
                    _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "cycle_abort" "aborted"
                    _cycle_clear_traps
                    return 6 ;;
-                130|143) _cycle_clear_traps; return "$rc" ;;
+                130|143)
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+                   _cycle_clear_traps
+                   return "$rc" ;;
                 *) _CYCLE_DISPATCH_VERDICT="fail"
                    _CYCLE_DISPATCH_VERDICT_RAW="fail"
                    _CYCLE_DISPATCH_STATUS="failed" ;;
@@ -922,7 +932,16 @@ _cycle_iter_dispatch() {
         # immediately under errexit before any explicit `return` ran.
         # The `||` form inhibits errexit for the call and lets the
         # explicit `return $?` carry the abort rc cleanly.
-        _zbuild_propagate_abort "$rc" || return $?
+        # Wave 19-D-1 (#731/#734 Copilot review): emit dispatch.complete
+        # BEFORE propagating an abort rc so the start+complete pairing
+        # holds on signal-driven aborts (rc=130/143) and rc=6 from leaf
+        # stages. The RAW verdict isn't yet read (predicate-blob update
+        # happens BELOW), so report "aborted" as both verdict and status.
+        if ! _zbuild_propagate_abort "$rc"; then
+            local _propagate_rc=$?
+            _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+            return "$_propagate_rc"
+        fi
         # Wave 19-A (#717): prefer the RAW verdict for cycle predicate
         # evaluation (exit_when / abort_when / until compare against the raw
         # template-declared value, e.g. `value: approve`). Fall back to the

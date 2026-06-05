@@ -266,4 +266,5 @@ outer_complete_count=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=
 assert_eq "outer cycle.complete emitted" "1" "$outer_complete_count"
 
 print_test_results
+cleanup_test_env
 exit $((FAIL > 0))
