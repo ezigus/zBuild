@@ -91,6 +91,22 @@ _cycle_emit() {
     _emit_high_event_banner "$type" "$@" || true
 }
 
+# Wave 19-C-1 (#725): always-on predicate-evaluation instrumentation. Emitted
+# from _cycle_check_until (kind=exit_when) and _cycle_check_abort_when
+# (kind=abort_when) after each evaluation. Lets operators see exactly what
+# the predicate compared and whether it matched — answering the "did the
+# predicate even fire?" / "what verdict did it actually see?" forensic
+# questions without instrumenting the orchestrator post-hoc.
+_cycle_emit_predicate() {
+    local kind="$1" stage="$2" field="$3" op="$4" expected="$5" actual="$6" match="$7"
+    eb_emit_event "cycle.predicate.evaluated" \
+        "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
+        "iter=${_CYCLE_TRAP_ITER:-0}" \
+        "kind=$kind" "stage=$stage" "field=$field" "op=$op" \
+        "expected=$expected" "actual=$actual" "match=$match" \
+        2>/dev/null || true
+}
+
 # ─── Trap composition (silent-failure findings #5, #6) ───────────────────────
 # Cycle owns ONLY INT/TERM. Runner owns EXIT. On signal: emit cycle.aborted,
 # clear traps, return 130. Must be re-installed after each stage dispatch
@@ -287,13 +303,17 @@ _cycle_check_until() {
     if [[ -z "$actual" || "$actual" == "null" ]]; then
         _cycle_emit "cycle.iteration.verdict_missing" \
             "iter=$_CYCLE_TRAP_ITER" "stage=$stage" "field=$field"
+        _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "" "false"
         return 1
     fi
+    local _match="false"
+    local _rc=1
     case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && return 0 ;;
-        ne) [[ "$actual" != "$expected" ]] && return 0 ;;
+        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
     esac
-    return 1
+    _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    return $_rc
 }
 
 # ─── _cycle_check_abort_when <verdicts_blob> ─────────────────────────────────
@@ -317,12 +337,18 @@ _cycle_check_abort_when() {
     local actual
     actual="$(jq -r --arg s "$stage" --arg f "$field" \
         '.[$s][$f] // empty' <<< "$blob" 2>/dev/null || true)"
-    [[ -z "$actual" || "$actual" == "null" ]] && return 1
+    if [[ -z "$actual" || "$actual" == "null" ]]; then
+        _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "" "false"
+        return 1
+    fi
+    local _match="false"
+    local _rc=1
     case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && return 0 ;;
-        ne) [[ "$actual" != "$expected" ]] && return 0 ;;
+        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
     esac
-    return 1
+    _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    return $_rc
 }
 
 # ─── _cycle_check_max_iterations <iter> <max> ────────────────────────────────
