@@ -1112,7 +1112,17 @@ main() {
         fi
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
         local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
-        _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+        # Wave 19-A (#717): the cycle orchestrator's exit_when / abort_when /
+        # until predicates compare against the RAW verdict value declared in
+        # the template (e.g. `value: approve`). runner_read_stage_verdict
+        # returns the CLASSIFIED verdict (approve→pass, request_changes→warn)
+        # which is correct for the operator-facing indicator glyph but wrong
+        # for predicate evaluation — without the raw read, exit_when on
+        # review.verdict==approve never matches and review_cycle runs to
+        # max_iterations instead of converging cleanly (dogfood
+        # 20260605055348-2232 symptom).
+        _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+        [[ -z "$_CYCLE_DISPATCH_VERDICT" ]] && _CYCLE_DISPATCH_VERDICT="missing"
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else
