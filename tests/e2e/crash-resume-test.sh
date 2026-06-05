@@ -88,9 +88,15 @@ ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl" \
 ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
     bash "$ZBUILD_CLI" pipeline start --goal "test crash resume" 2>/dev/null &
 pipeline_pid=$!
-# Wait up to 5s for state file to appear, then SIGKILL.
+# Wait up to 5s for state file to appear AND contain a status field
+# (intake writes status BEFORE entering the long sleep). Without the status
+# check, the file can exist but be empty when SIGKILL arrives, causing the
+# Test 3 status assertion to fail with an empty value.
 for _i in 1 2 3 4 5 6 7 8 9 10; do
-    [[ -f "$STATE_FILE" ]] && break
+    if [[ -f "$STATE_FILE" ]]; then
+        _st="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || true)"
+        [[ -n "$_st" ]] && break
+    fi
     sleep 0.5
 done
 kill -9 "$pipeline_pid" 2>/dev/null || true
