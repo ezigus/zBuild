@@ -445,10 +445,8 @@ _build_stage_run_inner() {
     # sees real signal and the outer cycle's predicate sees an honest result.
     local build_verdict="pass"
     [[ "$scope_violation" == "true" ]] && build_verdict="scope_violation"
-    local _files_changed_count
-    _files_changed_count="$(jq -r 'length' <<< "$files_changed_json" 2>/dev/null || echo 0)"
     if [[ "$terminated_reason" == "done_sentinel" \
-          && "${_files_changed_count:-0}" -eq 0 \
+          && "${files_changed_count:-0}" -eq 0 \
           && "$scope_violation" != "true" ]]; then
         build_verdict="empty_diff"
     fi
