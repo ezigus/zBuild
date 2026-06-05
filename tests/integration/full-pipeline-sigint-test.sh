@@ -106,13 +106,20 @@ elapsed=$(( end_ts - start_ts ))
 print_test_section "T1: runner exits rc=130 distinctly (SIGINT chain)"
 assert_eq "runner rc=130" "130" "$runner_rc"
 
-print_test_section "T2: pipeline halts within 4s (no further iterations)"
+print_test_section "T2: pipeline halts within 6s (no further iterations)"
 # Budget matches the #612 sigint-aborts-pipeline-test baseline; with the
 # fix the runner halts on the first stage rc=130 instead of iterating.
-if [[ "$elapsed" -le 4 ]]; then
+#
+# Originally 4s; bumped to 6s on #727 because:
+#   1. date(1) granularity is 1s → boundary cases (4.5s wall) tip to 5s
+#   2. Wave 19 (template-resolver, two-channel verdict, recursive seq-prefix)
+#      added ~1s of runner startup overhead under GHA's slower runners
+#   3. The test's intent is "halt FAST, not iterate" — 6s still proves
+#      single-stage abort vs. multi-iter (which would be 30s+)
+if [[ "$elapsed" -le 6 ]]; then
     assert_pass "pipeline halted in ${elapsed}s"
 else
-    assert_fail "pipeline halted in ≤4s" "actual=${elapsed}s"
+    assert_fail "pipeline halted in ≤6s" "actual=${elapsed}s"
 fi
 
 print_test_section "T3: test stage never starts (build rc=130 halts linear loop)"
