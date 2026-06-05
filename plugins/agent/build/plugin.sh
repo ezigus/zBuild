@@ -437,8 +437,19 @@ _build_stage_run_inner() {
     # #507: .verdict field paired with .scope_violation drives the runner's
     # stage-complete indicator (ADR-020 amendment).
     # #602: schema_version 4 — `apply_check` field removed with the stash dance.
+    # Wave 19-D-3 (#733): empty-diff done_sentinel is a structural failure.
+    # Dogfood 20260605140602-80831 iter 3 saw the LLM emit done_sentinel
+    # WITHOUT producing any code changes — verdict was "pass" so the cycle
+    # consumed an iter on no progress. Setting verdict=empty_diff classifies
+    # to fail via verdict_classify so the cycle's plateau/divergence detector
+    # sees real signal and the outer cycle's predicate sees an honest result.
     local build_verdict="pass"
     [[ "$scope_violation" == "true" ]] && build_verdict="scope_violation"
+    if [[ "$terminated_reason" == "done_sentinel" \
+          && "${files_changed_count:-0}" -eq 0 \
+          && "$scope_violation" != "true" ]]; then
+        build_verdict="empty_diff"
+    fi
 
     # #602: the post-loop apply-check (introduced in #509, extended bidirectional
     # in #530) ran `git stash push -u` → `git apply --check` → `git stash pop`
