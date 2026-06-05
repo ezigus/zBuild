@@ -47,7 +47,9 @@ resolve_template_file() {
     if [[ -n "${TEST_TEMP_DIR:-}" ]]; then
         merged_file="${TEST_TEMP_DIR}/zbuild-tpl-${id}-$$.yaml"
     else
-        merged_file="$(mktemp /tmp/zbuild-tpl-XXXXXX.yaml)"
+        # macOS/BSD mktemp requires XXXXXX at end (no trailing extension).
+        # Mirrors the ${TMPDIR:-/tmp}/name.XXXXXX pattern used elsewhere.
+        merged_file="$(mktemp "${TMPDIR:-/tmp}/zbuild-tpl.XXXXXX")"
     fi
 
     # ADR-016 full-replace: emit base file minus its stages:/stage_definitions: blocks,

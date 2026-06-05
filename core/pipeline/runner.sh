@@ -565,7 +565,9 @@ main() {
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
     local template_file
-    if ! template_file="$(resolve_template_file "$template" "$_ZBUILD_ROOT" 2>&1)"; then
+    # Per-repo overrides live under the target repo's working tree (#653/#724
+    # Copilot finding): use $PWD, not $_ZBUILD_ROOT (the install tree).
+    if ! template_file="$(resolve_template_file "$template" "$PWD" 2>&1)"; then
         error "$template_file"
         return 2
     fi
