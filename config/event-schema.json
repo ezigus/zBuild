@@ -65,6 +65,7 @@
     "cycle.auto_enabled",
     "cycle.disabled",
     "cycle.unconverged",
+    "cycle.predicate.evaluated",
     "review.test_status.missing",
     "review.jq.parse_error",
     "test_assessment.missing_input",
