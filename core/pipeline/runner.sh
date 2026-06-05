@@ -24,6 +24,7 @@ source "$_ZBUILD_ROOT/core/memory/contract.sh"
 memory_init || { echo "runner: memory backend failed to initialize" >&2; exit 2; }
 source "$_ZBUILD_ROOT/core/detect/platforms.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template.sh"
+source "$_ZBUILD_ROOT/core/pipeline/template-resolver.sh"
 source "$_ZBUILD_ROOT/core/pipeline/resolver.sh"
 # shellcheck source=../orch/contract.sh
 source "$_ZBUILD_ROOT/core/orch/contract.sh"
@@ -563,7 +564,11 @@ main() {
 
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
-    local template_file="$_ZBUILD_ROOT/config/templates/${template}.yaml"
+    local template_file
+    if ! template_file="$(resolve_template_file "$template" "$_ZBUILD_ROOT" 2>&1)"; then
+        error "$template_file"
+        return 2
+    fi
 
     # Cross-check: ZBUILD_STATE_FILE vs --issue (issue #296 Δ-4)
     # Placed before --dry-run so dry-run also surfaces mismatches.
