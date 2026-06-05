@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-06-05T12:07:31Z_
+_Last updated: 2026-06-05T18:37:55Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -97,3 +97,8 @@ _Last updated: 2026-06-05T12:07:31Z_
 | #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
 | #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-05 |
 | #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
+| #729 | fix(cycle): defensive RAW-channel + symmetric nested-cycle write (Wave 19-C-2, #726) | 2026-06-05 |
+| #727 | feat(cycle): cycle.predicate.evaluated instrumentation (Wave 19-C-1, #725) | 2026-06-05 |
+| #724 | feat(runner): template resolver with .zbuild/templates/ search path + required extends (#653, Wave-447 sub-2) | 2026-06-05 |
+| #723 | fix(manifest): state:merged → closed + correct Phase 3 milestone title | 2026-06-05 |
+| #722 | chore(manifest): backfill 123 orphan issues + declare 3 missing labels | 2026-06-05 |
