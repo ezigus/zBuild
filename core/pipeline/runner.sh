@@ -1205,15 +1205,21 @@ main() {
                     #                            input structurally broken).
                     # rc 130 (aborted=SIGINT)  → HALT; status=interrupted.
                     # rc 143 (aborted=SIGTERM) → HALT; status=interrupted (Wave 15-F).
-                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 130 || $_rc -eq 143 ]]; then
+                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 130 || $_rc -eq 143 ]]; then
+                        # ADR-027 (Wave 17-B #703): rc=6 cycle_abort halts
+                        # the pipeline + propagates outward distinctly from
+                        # signal-driven aborts (rc=130/143) and blocked
+                        # (rc=5). The runner emits pipeline.aborted with
+                        # reason=cycle_abort and returns rc=6 to its caller.
                         _set_pipeline_status "$state_file" "interrupted"
                         # #612 / Wave 15-F (#686): distinguish signal-driven cycle
                         # abort (SIGINT or SIGTERM) so the postmortem event stream
                         # can answer "was this Ctrl-C / kill?" without parsing
                         # per-cycle terminated_reason fields.
-                        if [[ $_rc -eq 130 || $_rc -eq 143 ]]; then
+                        if [[ $_rc -eq 130 || $_rc -eq 143 || $_rc -eq 6 ]]; then
                             local _abort_reason="sigint"
                             [[ $_rc -eq 143 ]] && _abort_reason="sigterm"
+                            [[ $_rc -eq 6 ]] && _abort_reason="cycle_abort"
                             _RUNNER_SIGINT_RECEIVED=1
                             _RUNNER_ABORT_REASON="$_abort_reason"
                             eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
@@ -1229,7 +1235,7 @@ main() {
                         # Codex P2 on #616 / Wave 15-F: propagate rc=130 + rc=143
                         # distinctly so callers can distinguish Ctrl-C / kill from
                         # a generic cycle failure.
-                        if [[ $_rc -eq 130 || $_rc -eq 143 ]]; then
+                        if [[ $_rc -eq 130 || $_rc -eq 143 || $_rc -eq 6 ]]; then
                             return $_rc
                         fi
                         return 1

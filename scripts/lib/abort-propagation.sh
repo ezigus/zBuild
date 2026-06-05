@@ -35,16 +35,21 @@ _zbuild_abort_sentinel_path() {
 }
 
 # _zbuild_propagate_abort <child_rc>
-#   Returns <child_rc> if <child_rc> is an abort rc (rc ∈ {130, 143}),
-#   else returns 0. 130 = 128+SIGINT, 143 = 128+SIGTERM.
-#   Stable signature across the SIGTERM widening (Wave 15-F #686) — only
-#   the classifier below changes; all dispatch-site callers benefit
-#   automatically.
+#   Returns <child_rc> if <child_rc> is an abort rc, else returns 0.
+#   Abort rc classes (one-line additions per ADR widening):
+#     130 = 128+SIGINT      (Wave 15-B)
+#     143 = 128+SIGTERM     (Wave 15-F #686)
+#       6 = cycle_abort     (ADR-027 / Wave 17-B #703) — abort_when predicate
+#           match inside a cycle; propagates outward through enclosing cycles
+#           to the runner, distinct from rc=5 (blocked) and rc=130/143 (signal).
+#   Stable signature across widenings — only the classifier changes; all
+#   dispatch-site callers benefit automatically.
 _zbuild_propagate_abort() {
     local _rc="${1:-0}"
     case "$_rc" in
         130) return 130 ;;
         143) return 143 ;;
+        6)   return 6 ;;
         *) return 0 ;;
     esac
 }

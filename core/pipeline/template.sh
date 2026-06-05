@@ -13,6 +13,12 @@ _ZBUILD_ROOT="$(cd "$_ZBUILD_TEMPLATE_DIR/../.." && pwd)"
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../plugin-registry/registry.sh
 source "$_ZBUILD_ROOT/core/plugin-registry/registry.sh"
+# ADR-027 (Wave 17-B #703): template.deprecated_shape event on old-shape load.
+# Defensive source — event-bus is a no-op when ZBUILD_EVENTS_JSONL is unset.
+if ! declare -F eb_emit_event >/dev/null 2>&1; then
+    # shellcheck source=../event-bus/event-bus.sh
+    source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+fi
 
 # ADR-013 canonical stage sequence — stability contract, not user-configurable.
 # Exactly these 11 ids, in this order:
@@ -101,13 +107,45 @@ load_template() {
     _TPL_STAGES=()
     _TPL_CYCLES=()
 
+    # ADR-027 (Wave 17-B #703): shape detector. The new shape uses `flow:` at
+    # top level + per-stage top-level sections discriminated by `type:`. The
+    # old shape (Wave 15-D era) uses `stages:` + `stage_definitions:`. Detect
+    # which we're loading; old shape routes through the legacy parsers
+    # unchanged AND fires `template.deprecated_shape` so operators can find
+    # stragglers before the shim removal (one release window).
+    local _tpl_shape="old"
+    if _tpl_is_new_shape "$template_file"; then
+        _tpl_shape="new"
+    else
+        # Emit the deprecation event with run_id cleared so it does not enter
+        # any C6-style "last-event-for-this-run" precondition chain (template
+        # load is a process-level concern, not a pipeline-run event). The
+        # event still appears in events.jsonl for ops-dashboard visibility.
+        (
+            unset ZBUILD_RUN_ID
+            eb_emit_event "template.deprecated_shape" \
+                "template_file=$template_file" "shape=pre_adr_027" \
+                2>/dev/null || true
+        )
+    fi
+
     # ADR-021 v2 parser: scan `stages:` block, emitting interleaved S|/IC|/FB|
     # rows. Inline cycle entries (IC|) reference cycle member stages by id;
     # per-stage attrs for those members come from `stage_definitions:` (parsed
     # separately below).
+    # ADR-027 (Wave 17-B): new-shape templates are translated by
+    # _tpl_translate_new_shape into the same pipe-delimited row format the
+    # legacy pipeline downstream code already consumes — single internal
+    # representation; the shim is purely upstream.
     local stage_rows defs_rows
-    stage_rows="$(_tpl_parse_stages_v2 "$template_file")"
-    defs_rows="$(_tpl_parse_stage_definitions "$template_file")"
+    if [[ "$_tpl_shape" == "new" ]]; then
+        local _translated; _translated="$(_tpl_translate_new_shape "$template_file")" || return 1
+        stage_rows="${_translated%%$'\037'*}"
+        defs_rows="${_translated#*$'\037'}"
+    else
+        stage_rows="$(_tpl_parse_stages_v2 "$template_file")"
+        defs_rows="$(_tpl_parse_stage_definitions "$template_file")"
+    fi
 
     # Build map: stage id → "S|<id>|<roles>|<strategy>|<io...>|<router...>"
     # First load defs into the map; then non-cycle stage rows from `stages:`
@@ -182,7 +220,63 @@ load_template() {
                 local -a members=($cstages)
                 IFS="$IFS_save"
                 local m m_row m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi
+                # Dedupe set: stage ids already added to _TPL_STAGES via a
+                # prior IC| row in the same template (nested-cycle case).
+                # Without this a parent cycle re-adds its descendant cycle's
+                # members and breaks the canonical-order validator.
                 for m in "${members[@]}"; do
+                    # ADR-027 (Wave 17-B): cycle-as-member. If `m` is itself
+                    # a known cycle (registered by an earlier IC| row from
+                    # the translator topo pre-pass), recursively expand its
+                    # member list into the flat _TPL_STAGES[] view rather
+                    # than treating `m` as a leaf stage id (cycle ids are
+                    # not canonical and would fail validation).
+                    local _m_is_cycle=0 _cyc
+                    for _cyc in "${_TPL_CYCLES[@]}"; do
+                        [[ "$_cyc" == "$m" ]] && _m_is_cycle=1 && break
+                    done
+                    if [[ $_m_is_cycle -eq 1 ]]; then
+                        local _inner_safe="${m//-/_}"
+                        local _inner_stages_var="_TPL_CYCLE_STAGES_${_inner_safe}"
+                        local _inner_csv="${!_inner_stages_var:-}"
+                        local IFS_save2="$IFS"; IFS=','
+                        # shellcheck disable=SC2206
+                        local -a _inner_members=($_inner_csv)
+                        IFS="$IFS_save2"
+                        local _im
+                        for _im in "${_inner_members[@]}"; do
+                            # Dedupe — already added via descendant IC|.
+                            local _already=0 _ex
+                            for _ex in "${collected_ids[@]}"; do
+                                [[ "$_ex" == "$_im" ]] && _already=1 && break
+                            done
+                            [[ $_already -eq 1 ]] && continue
+                            m_row="${stage_def_row[$_im]:-}"
+                            if [[ -z "$m_row" ]]; then
+                                error "load_template: nested cycle '$m' references stage '$_im' but no top-level section exists"
+                                return 1
+                            fi
+                            IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi <<< "$m_row"
+                            collected_ids+=("$_im")
+                            collected_io_dests+=("$m_iod")
+                            collected_io_tail+=("$m_iot")
+                            collected_io_redact+=("$m_ior")
+                            collected_router_timeout+=("$m_rt")
+                            collected_router_max_turns+=("$m_rmt")
+                            collected_router_max_iterations+=("$m_rmi")
+                            stage_data_rows+=("$_im|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
+                        done
+                        continue
+                    fi
+                    # Dedupe leaf member too (in case a descendant cycle
+                    # already added this id).
+                    local _already=0 _ex
+                    for _ex in "${collected_ids[@]}"; do
+                        [[ "$_ex" == "$m" ]] && _already=1 && break
+                    done
+                    if [[ $_already -eq 1 ]]; then
+                        continue
+                    fi
                     m_row="${stage_def_row[$m]:-}"
                     if [[ -z "$m_row" ]]; then
                         error "load_template: cycle '$cid' references stage '$m' but no 'stage_definitions.$m' entry exists"
@@ -198,6 +292,21 @@ load_template() {
                     collected_router_max_iterations+=("$m_rmi")
                     stage_data_rows+=("$m|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
                 done
+                ;;
+            AW)
+                # ADR-027 (Wave 17-B): abort_when predicate for a cycle.
+                # Format: <cid>|<stage>|<field>|<op>|<value>
+                local aw_cid aw_stage aw_field aw_op aw_value
+                IFS='|' read -r aw_cid aw_stage aw_field aw_op aw_value <<< "$payload"
+                local aw_safe="${aw_cid//-/_}"
+                printf -v "_TPL_CYCLE_ABORT_WHEN_STAGE_${aw_safe}" '%s' "$aw_stage"
+                printf -v "_TPL_CYCLE_ABORT_WHEN_FIELD_${aw_safe}" '%s' "$aw_field"
+                printf -v "_TPL_CYCLE_ABORT_WHEN_OP_${aw_safe}"    '%s' "$aw_op"
+                printf -v "_TPL_CYCLE_ABORT_WHEN_VALUE_${aw_safe}" '%s' "$aw_value"
+                export "_TPL_CYCLE_ABORT_WHEN_STAGE_${aw_safe}" \
+                       "_TPL_CYCLE_ABORT_WHEN_FIELD_${aw_safe}" \
+                       "_TPL_CYCLE_ABORT_WHEN_OP_${aw_safe}" \
+                       "_TPL_CYCLE_ABORT_WHEN_VALUE_${aw_safe}"
                 ;;
             FB)
                 # Feedback row for the most-recent cycle. Format:
@@ -253,6 +362,32 @@ load_template() {
 
     _tpl_validate_cycles || return 1
     _tpl_build_dispatch_units || return 1
+
+    # ADR-027 (Wave 17-B #703): stage-type discriminator. Every stage in
+    # _TPL_STAGES[] is `leaf` by default; cycle ids get `cycle`. The
+    # orchestrator reads `_TPL_STAGE_TYPE_<id>` at dispatch time to decide
+    # whether to recurse (cycle-as-member) or invoke the leaf path.
+    local _st_id _st_safe
+    for _st_id in "${_TPL_STAGES[@]}"; do
+        _st_safe="${_st_id//-/_}"
+        # Default: leaf. Cycle ids are overwritten below.
+        printf -v "_TPL_STAGE_TYPE_${_st_safe}" '%s' "leaf"
+        export "_TPL_STAGE_TYPE_${_st_safe}"
+    done
+    for _st_id in "${_TPL_CYCLES[@]}"; do
+        _st_safe="${_st_id//-/_}"
+        printf -v "_TPL_STAGE_TYPE_${_st_safe}" '%s' "cycle"
+        export "_TPL_STAGE_TYPE_${_st_safe}"
+        # ADR-027 lexicon parity: _TPL_CYCLE_FLOW_<id> aliases the existing
+        # _TPL_CYCLE_STAGES_<id> so callers using ADR-027 names work.
+        local _cf_src="_TPL_CYCLE_STAGES_${_st_safe}"
+        printf -v "_TPL_CYCLE_FLOW_${_st_safe}" '%s' "${!_cf_src:-}"
+        export "_TPL_CYCLE_FLOW_${_st_safe}"
+    done
+
+    # ADR-027 contract validator (Wave 17-B #703): reference-graph acyclicity.
+    # If any cycle's flow transitively includes itself, refuse to load.
+    _tpl_validate_flow_acyclic || return 1
 }
 
 # ─── _tpl_parse_stages_v2 — parse `stages:` block with inline cycle support ──
@@ -611,9 +746,26 @@ _tpl_validate_cycles() {
 
         # Each stage must be a known _TPL_STAGES entry; positions must be
         # contiguous-ascending (no gaps, no out-of-order).
+        # ADR-027 (Wave 17-B): a member that is itself a cycle is skipped
+        # for canonical-position checks — it isn't in _TPL_STAGES[] by
+        # design (only leaf stages are). The cycle's own validator runs
+        # separately when its own _TPL_CYCLE_STAGES_<id> is checked.
         local first_pos=-1 last_pos=-1
         local s
         for s in "${cs[@]}"; do
+            local _s_type_var="_TPL_STAGE_TYPE_${s//-/_}"
+            local _s_type="${!_s_type_var:-leaf}"
+            if [[ "$_s_type" == "cycle" ]]; then
+                continue
+            fi
+            # Also skip cycle-id check via _TPL_CYCLES membership (the
+            # _TPL_STAGE_TYPE_* var isn't set until later in load_template
+            # — defensive when called during the per-cycle pre-pass).
+            local _is_cyc=0 _c
+            for _c in "${_TPL_CYCLES[@]}"; do
+                [[ "$_c" == "$s" ]] && _is_cyc=1 && break
+            done
+            [[ $_is_cyc -eq 1 ]] && continue
             local pos=-1 i
             for i in "${!_TPL_STAGES[@]}"; do
                 if [[ "${_TPL_STAGES[$i]}" == "$s" ]]; then
@@ -808,6 +960,443 @@ _tpl_validate_io_dests() {
         done
     done
     return 0
+}
+
+# ─── ADR-027 helpers (Wave 17-B #703) ─────────────────────────────────────────
+#
+# _tpl_is_new_shape — heuristic: top-level `flow:` key AND NO top-level
+# `stages:` key indicates ADR-027 shape. The two never coexist; if both
+# appear we treat as old shape (safer default — old-shape parser is mature).
+_tpl_is_new_shape() {
+    local file="$1"
+    local has_flow=0 has_stages=0
+    # Copilot P2: accept both block form `flow:\n  - x` AND inline list form
+    # `flow: [a, b]`. Either matches.
+    if awk 'BEGIN{rc=1} /^flow:[[:space:]]*$/ {rc=0; exit} /^flow:[[:space:]]*\[/ {rc=0; exit} END{exit rc}' "$file"; then
+        has_flow=1
+    fi
+    if awk 'BEGIN{rc=1} /^stages:[[:space:]]*$/ {rc=0; exit} END{exit rc}' "$file"; then
+        has_stages=1
+    fi
+    [[ $has_flow -eq 1 && $has_stages -eq 0 ]]
+}
+
+# _tpl_translate_new_shape — read an ADR-027 template and emit the same
+# pipe-delimited row stream that _tpl_parse_stages_v2 + _tpl_parse_stage_definitions
+# emit for the old shape. Output is two streams separated by an ASCII Unit
+# Separator (\037): <stage_rows>\037<defs_rows>.
+#
+# Strategy: a single AWK pass walks the file in two phases:
+#   1. Read top-level `flow:` block → ordered list of stage IDs.
+#   2. Read every top-level stage section (key at column 0, not in the
+#      reserved set {id, name, extends, defaults, flow, _comment}). For each
+#      section emit either:
+#        - a defs-style row (always — gives downstream the attr payload), AND
+#        - a stage row in flow-order:
+#            * leaf  → S| row in the position determined by the top-level
+#                      flow index
+#            * cycle → IC| row at that position + FB| rows for feedback
+# Keeping the existing pipe schema means downstream consumers (validators,
+# orchestrator, runner) need zero changes.
+_tpl_translate_new_shape() {
+    local file="$1"
+    awk -v US=$'\037' '
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    function strip_inline_list(line,    s) {
+        s = line; sub(/^[^[]*\[/, "", s); sub(/\].*$/, "", s)
+        gsub(/[[:space:]]/, "", s); return s
+    }
+    function is_reserved(k) {
+        return (k == "id" || k == "name" || k == "extends" || k == "defaults" \
+                || k == "flow" || k == "_comment")
+    }
+    BEGIN {
+        in_flow = 0
+        flow_n = 0
+        cur_key = ""
+        cur_indent_unit = 2
+        # per-section accumulators
+        sec_type = "leaf"
+        sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""
+        # cycle accumulators
+        cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
+        cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
+        cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
+        cyc_plateau = ""; cyc_diverg = ""
+        nfb = 0
+        in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
+        in_cflow = 0; in_exit_when = 0; in_abort_when = 0
+        in_plateau = 0; in_diverg = 0; in_feedback = 0; in_fb_item = 0
+        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+    }
+    function reset_section() {
+        sec_type = "leaf"
+        sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""
+        cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
+        cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
+        cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
+        cyc_plateau = ""; cyc_diverg = ""
+        nfb = 0
+        in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
+        in_cflow = 0; in_exit_when = 0; in_abort_when = 0
+        in_plateau = 0; in_diverg = 0; in_feedback = 0; in_fb_item = 0
+        fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+        # Copilot P2: fb_kind must reset per-section so a prior "to" cannot
+        # leak into the next section feedback parsing.
+        fb_kind = ""
+    }
+    function finalize_pending_fb() {
+        # Copilot P1: flush an in-flight feedback item before the section
+        # closes. Without this, the LAST feedback edge in every cycle is
+        # silently dropped because we previously only flushed on the NEXT
+        # `- from:` opener.
+        if (in_fb_item && (fb_from_stage != "" || fb_to_stage != "")) {
+            nfb++
+            fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
+            in_fb_item = 0
+            fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+            fb_kind = ""
+        }
+    }
+    function flush_section(   k) {
+        if (cur_key == "" || is_reserved(cur_key)) return
+        # Finalize any in-flight feedback item now (Copilot P1).
+        finalize_pending_fb()
+        # Always emit a defs-style row carrying the attr payload — downstream
+        # code already merges this into stage_def_row[].
+        defs_out = defs_out cur_key "|" sec_roles "|" sec_strategy "|" \
+                   sec_io_dests "|" sec_io_tail "|" sec_io_redact "|" \
+                   sec_rt "|" sec_rmt "|" sec_rmi "\n"
+        # Stash per-key so we can also emit per-stage rows in flow order.
+        sec_kind[cur_key] = sec_type
+        sec_payload[cur_key] = sec_roles "|" sec_strategy "|" sec_io_dests "|" \
+                               sec_io_tail "|" sec_io_redact "|" sec_rt "|" sec_rmt "|" sec_rmi
+        if (sec_type == "cycle") {
+            cyc_data[cur_key] = cyc_flow "|" cyc_max "|" cyc_on_max "|" \
+                                cyc_us "|" cyc_uf "|" cyc_uo "|" cyc_uv "|" \
+                                cyc_plateau "|" cyc_diverg
+            cyc_abort[cur_key] = cyc_as "|" cyc_af "|" cyc_ao "|" cyc_av
+            cyc_fb_count[cur_key] = nfb
+            for (k = 1; k <= nfb; k++) {
+                cyc_fb[cur_key, k] = fb[k]
+            }
+        }
+    }
+
+    # ── Top-level flow: list ──────────────────────────────────────────────────
+    # Block form: `flow:` then `- a` / `- b` items.
+    /^flow:[[:space:]]*$/ {
+        flush_section(); reset_section(); cur_key = ""
+        in_flow = 1; next
+    }
+    # Copilot P2: inline-list form: `flow: [a, b, c]` on a single line.
+    /^flow:[[:space:]]*\[/ {
+        flush_section(); reset_section(); cur_key = ""
+        line = $0
+        sub(/^[^[]*\[/, "", line); sub(/\].*$/, "", line)
+        gsub(/[[:space:]]/, "", line)
+        n = split(line, items, /,/)
+        for (i = 1; i <= n; i++) {
+            if (items[i] != "") { flow_n++; flow[flow_n] = items[i] }
+        }
+        in_flow = 0
+        next
+    }
+    in_flow && /^[[:space:]]+-[[:space:]]/ {
+        item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
+        if (item != "") { flow_n++; flow[flow_n] = item }
+        next
+    }
+    # Top-level non-indented line — end any current scope.
+    /^[a-zA-Z_]/ {
+        in_flow = 0
+        flush_section(); reset_section()
+        line = $0
+        cur_key = line; sub(/:.*$/, "", cur_key); cur_key = trim(cur_key)
+        next
+    }
+
+    # ── Within a stage section ────────────────────────────────────────────────
+    cur_key != "" && !is_reserved(cur_key) {
+        # type:
+        if ($0 ~ /^[[:space:]]+type:[[:space:]]*cycle[[:space:]]*$/) {
+            sec_type = "cycle"; next
+        }
+        # roles:
+        if ($0 ~ /^[[:space:]]+roles:/) {
+            in_roles = 0
+            line = $0
+            if (line ~ /\[/) {
+                sub(/^[^[]*\[/, "", line); sub(/\].*$/, "", line)
+                gsub(/[[:space:]]/, "", line); sec_roles = line
+            } else { in_roles = 1 }
+            next
+        }
+        if (in_roles && $0 ~ /^[[:space:]]+-[[:space:]]/) {
+            item = $0; gsub(/^[[:space:]]+-[[:space:]]+/, "", item); gsub(/[[:space:]]*$/, "", item)
+            if (item != "") sec_roles = (sec_roles == "" ? item : sec_roles "," item)
+            next
+        }
+        if (in_roles) { in_roles = 0 }
+        # strategy:
+        if ($0 ~ /^[[:space:]]+strategy:/) {
+            v = $0; sub(/^[[:space:]]+strategy:[[:space:]]*/, "", v); sec_strategy = trim(v); next
+        }
+        # io block
+        if ($0 ~ /^[[:space:]]+io:[[:space:]]*$/) {
+            in_io_block = 1; in_router_block = 0; next
+        }
+        if ($0 ~ /^[[:space:]]+router:[[:space:]]*$/) {
+            in_io_block = 0; in_router_block = 1; next
+        }
+        if (in_io_block && $0 ~ /^[[:space:]]+destinations:/) {
+            line = $0
+            if (line ~ /\[/) {
+                sub(/^[^[]*\[/, "", line); sub(/\].*$/, "", line)
+                gsub(/[[:space:]]/, "", line); sec_io_dests = line; in_io_dests = 0
+            } else { in_io_dests = 1 }
+            next
+        }
+        if (in_io_dests && $0 ~ /^[[:space:]]+-[[:space:]]/) {
+            item = $0; gsub(/^[[:space:]]+-[[:space:]]+/, "", item); gsub(/[[:space:]]*$/, "", item)
+            if (item != "") sec_io_dests = (sec_io_dests == "" ? item : sec_io_dests "," item)
+            next
+        }
+        if (in_io_block && $0 ~ /^[[:space:]]+tail_lines:/) {
+            v = $0; sub(/^[[:space:]]+tail_lines:[[:space:]]*/, "", v); sec_io_tail = trim(v); next
+        }
+        if (in_io_block && $0 ~ /^[[:space:]]+redact:/) {
+            v = $0; sub(/^[[:space:]]+redact:[[:space:]]*/, "", v); sec_io_redact = trim(v); next
+        }
+        if (in_router_block && $0 ~ /^[[:space:]]+timeout_s:/) {
+            v = $0; sub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", v); sec_rt = trim(v); next
+        }
+        if (in_router_block && $0 ~ /^[[:space:]]+max_turns:/) {
+            v = $0; sub(/^[[:space:]]+max_turns:[[:space:]]*/, "", v); sec_rmt = trim(v); next
+        }
+        if (in_router_block && $0 ~ /^[[:space:]]+max_iterations:/) {
+            # router.max_iterations vs cycle.max_iterations distinguished by context.
+            if (sec_type == "cycle") {
+                v = $0; sub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); cyc_max = trim(v)
+            } else {
+                v = $0; sub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); sec_rmi = trim(v)
+            }
+            next
+        }
+
+        # ── cycle-only ─────────────────────────────────────────────────────────
+        if (sec_type == "cycle") {
+            if ($0 ~ /^[[:space:]]+flow:/) {
+                in_cflow = 0
+                if ($0 ~ /\[/) {
+                    cyc_flow = strip_inline_list($0); in_cflow = 0
+                } else { in_cflow = 1 }
+                in_exit_when = 0; in_abort_when = 0; in_plateau = 0; in_diverg = 0; in_feedback = 0
+                next
+            }
+            if (in_cflow && $0 ~ /^[[:space:]]+-[[:space:]]/) {
+                item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
+                if (item != "") cyc_flow = (cyc_flow == "" ? item : cyc_flow "," item)
+                next
+            }
+            if (in_cflow && $0 ~ /^[[:space:]]+[a-z_]+:/) { in_cflow = 0 }
+            if ($0 ~ /^[[:space:]]+max_iterations:/) {
+                v = $0; sub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); cyc_max = trim(v); next
+            }
+            if ($0 ~ /^[[:space:]]+on_max:/) {
+                v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); cyc_on_max = trim(v); next
+            }
+            if ($0 ~ /^[[:space:]]+exit_when:[[:space:]]*$/) {
+                in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_feedback = 0; next
+            }
+            if ($0 ~ /^[[:space:]]+abort_when:[[:space:]]*$/) {
+                in_abort_when = 1; in_exit_when = 0; in_cflow = 0; in_feedback = 0; next
+            }
+            if (in_exit_when && $0 ~ /^[[:space:]]+stage:/) {
+                v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_us = trim(v); next
+            }
+            if (in_exit_when && $0 ~ /^[[:space:]]+field:/) {
+                v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cyc_uf = trim(v); next
+            }
+            if (in_exit_when && $0 ~ /^[[:space:]]+op:/) {
+                v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cyc_uo = trim(v); next
+            }
+            if (in_exit_when && $0 ~ /^[[:space:]]+value:/) {
+                v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_uv = trim(v); next
+            }
+            if (in_abort_when && $0 ~ /^[[:space:]]+stage:/) {
+                v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_as = trim(v); next
+            }
+            if (in_abort_when && $0 ~ /^[[:space:]]+field:/) {
+                v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cyc_af = trim(v); next
+            }
+            if (in_abort_when && $0 ~ /^[[:space:]]+op:/) {
+                v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cyc_ao = trim(v); next
+            }
+            if (in_abort_when && $0 ~ /^[[:space:]]+value:/) {
+                v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_av = trim(v); next
+            }
+            if ($0 ~ /^[[:space:]]+feedback:[[:space:]]*$/) {
+                in_feedback = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; next
+            }
+            if (in_feedback && $0 ~ /^[[:space:]]+-[[:space:]]+from:/) {
+                # Close previous in-flight item.
+                if (fb_from_stage != "" || fb_to_stage != "") {
+                    nfb++
+                    fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
+                }
+                fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
+                in_fb_item = 1
+                # Copilot P1: default fb_kind to "from" so subsequent
+                # indented `stage:`/`output:` lines belonging to a multi-
+                # line `- from:` opener attribute correctly. Inline form
+                # (- from: { stage: X, output: Y }) overrides below.
+                fb_kind = "from"
+                line = $0
+                sub(/^[[:space:]]+-[[:space:]]+from:[[:space:]]*\{?/, "", line)
+                sub(/\}.*$/, "", line)
+                # Inline form is detected via presence of a `{` or non-empty
+                # stripped payload. If empty, we are in multi-line form.
+                gsub(/[[:space:]]/, "", line)
+                if (line != "") {
+                    n = split(line, kv, /,[[:space:]]*/)
+                    for (i = 1; i <= n; i++) {
+                        split(kv[i], pair, /:[[:space:]]*/)
+                        key = trim(pair[1]); val = trim(pair[2])
+                        if (key == "stage")  fb_from_stage = val
+                        if (key == "output") fb_from_output = val
+                    }
+                }
+                next
+            }
+            if (in_feedback && in_fb_item) {
+                if ($0 ~ /^[[:space:]]+from:[[:space:]]*$/) { fb_kind = "from"; next }
+                if ($0 ~ /^[[:space:]]+to:[[:space:]]*$/)   { fb_kind = "to"; next }
+                if ($0 ~ /^[[:space:]]+stage:/) {
+                    v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); v = trim(v)
+                    if (fb_kind == "from") fb_from_stage = v
+                    else if (fb_kind == "to") fb_to_stage = v
+                    next
+                }
+                if ($0 ~ /^[[:space:]]+output:/) {
+                    v = $0; sub(/^[[:space:]]+output:[[:space:]]*/, "", v); fb_from_output = trim(v); next
+                }
+                if ($0 ~ /^[[:space:]]+input:/) {
+                    v = $0; sub(/^[[:space:]]+input:[[:space:]]*/, "", v); fb_to_field = trim(v); next
+                }
+                if ($0 ~ /^[[:space:]]+required:/) {
+                    v = $0; sub(/^[[:space:]]+required:[[:space:]]*/, "", v); fb_required = trim(v); next
+                }
+            }
+        }
+        next
+    }
+
+    END {
+        flush_section()
+
+        # ADR-027 (Wave 17-B): emit rows in top-level flow order. For each
+        # cycle in the flow, first DFS-emit descendant cycles (innermost
+        # first) so the loader registers nested cycles before their parents.
+        # The loader IC handler then sees a parent cycle whose members may
+        # include already-registered cycle ids, and expands them into the
+        # flat _TPL_STAGES[] view recursively.
+        for (i = 1; i <= flow_n; i++) {
+            k = flow[i]
+            kind = sec_kind[k]
+            if (kind == "") kind = "leaf"
+            if (kind == "cycle") {
+                emit_cycle_dfs(k)
+            } else {
+                p = sec_payload[k]
+                print "S|" k "|" p
+            }
+        }
+        # Now defs stream (separator US, second half)
+        printf "%s", US
+        for (k in sec_payload) {
+            print k "|" sec_payload[k]
+        }
+    }
+
+    function emit_cycle_dfs(k,    j, mems, m, n) {
+        if (emitted[k]) return
+        emitted[k] = 1
+        # Recurse into descendant cycles first.
+        n = split(cyc_flow_per[k] ? cyc_flow_per[k] : extract_cyc_flow(k), mems, /,/)
+        for (j = 1; j <= n; j++) {
+            m = mems[j]
+            if (sec_kind[m] == "cycle") emit_cycle_dfs(m)
+        }
+        d = cyc_data[k]
+        print "IC|" k "|" d
+        cnt = cyc_fb_count[k] + 0
+        for (j = 1; j <= cnt; j++) print "FB|" k "|" cyc_fb[k, j]
+        aw = cyc_abort[k]
+        if (aw != "" && aw != "|||") print "AW|" k "|" aw
+    }
+    function extract_cyc_flow(k,    d) {
+        # cyc_data[k] = cyc_flow|cmax|conmax|cus|cuf|cuo|cuv|cplateau|cdiverg
+        d = cyc_data[k]
+        sub(/\|.*$/, "", d)
+        return d
+    }
+    ' "$file"
+}
+
+# _tpl_validate_flow_acyclic — ADR-027 reference-graph acyclicity.
+# Detects when a cycle id appears in any of its descendants flows. For each
+# cycle, walks the transitive _TPL_CYCLE_FLOW_* graph and refuses to load if
+# the cycle's own id is reachable from itself. Uses a module-level visited
+# map (_TPL_FLOW_VISITED) so the recursive helper does not need a nameref
+# (avoids Bash circular-nameref warnings on common names like `_vis`).
+declare -gA _TPL_FLOW_VISITED=()
+_tpl_validate_flow_acyclic() {
+    [[ ${#_TPL_CYCLES[@]} -eq 0 ]] && return 0
+    local cid
+    for cid in "${_TPL_CYCLES[@]}"; do
+        _TPL_FLOW_VISITED=()
+        if _tpl_flow_reaches "$cid" "$cid"; then
+            error "load_template: cycle '$cid' transitively includes itself in a descendant flow (reference cycle, ADR-027 forbids)"
+            return 1
+        fi
+    done
+    return 0
+}
+
+# _tpl_flow_reaches <start_cycle> <target_id>
+# DFS through nested cycle flows. Returns 0 if target reachable from start,
+# 1 otherwise. Uses module-level _TPL_FLOW_VISITED for the visited set.
+_tpl_flow_reaches() {
+    local start="$1" target="$2"
+    local safe="${start//-/_}"
+    local flow_var="_TPL_CYCLE_FLOW_${safe}"
+    local flow="${!flow_var:-}"
+    if [[ -z "$flow" ]]; then
+        # Fall back to _TPL_CYCLE_STAGES_<id> (the legacy alias).
+        flow_var="_TPL_CYCLE_STAGES_${safe}"
+        flow="${!flow_var:-}"
+    fi
+    [[ -z "$flow" ]] && return 1
+    local IFS_save="$IFS"; IFS=','
+    # shellcheck disable=SC2206
+    local -a members=($flow)
+    IFS="$IFS_save"
+    local m
+    for m in "${members[@]}"; do
+        [[ "$m" == "$target" ]] && return 0
+        [[ -n "${_TPL_FLOW_VISITED[$m]:-}" ]] && continue
+        _TPL_FLOW_VISITED[$m]=1
+        local type_var="_TPL_STAGE_TYPE_${m//-/_}"
+        if [[ "${!type_var:-}" == "cycle" ]]; then
+            if _tpl_flow_reaches "$m" "$target"; then
+                return 0
+            fi
+        fi
+    done
+    return 1
 }
 
 template_stage_roles() {
