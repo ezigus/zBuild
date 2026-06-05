@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-04T19:18:12Z_
+_Last updated: 2026-06-05T03:48:02Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -118,3 +118,11 @@ _Last updated: 2026-06-04T19:18:12Z_
 | #690 | fix(test-env): scrub _TPL_* env vars in fresh-user-shell helper (Wave 15-I, #683) | 2026-06-04 |
 | #689 | docs(adr-025): Abort Propagation Contract (Proposed) (Wave 15-A) | 2026-06-04 |
 | #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-04 |
+| #713 | chore(template): migrate standard.yaml to recursive flow format (Wave 17-C) | 2026-06-05 |
+| #712 | feat(template): recursive flow loader + cycle-as-member orchestrator (Wave 17-B) | 2026-06-05 |
+| #711 | docs(adr-013, adr-016): amendments for recursive flow format (Wave 17-D) | 2026-06-05 |
+| #710 | docs(adr-026): Review Remediation Cycle (Proposed) (Wave 18-A) | 2026-06-05 |
+| #709 | docs(adr-027): Recursive Flow Template Format (Proposed) (Wave 17-A) | 2026-06-05 |
+| #700 | fix(stage-io): 3-level cycle seq labels (Wave 16-A, closes #698) | 2026-06-05 |
+| #701 | feat(review): sanitize prompt + diff-stat summary with bare paths (Wave 16-B) | 2026-06-05 |
+| #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
