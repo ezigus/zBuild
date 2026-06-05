@@ -1,6 +1,6 @@
 # ADR-027: Recursive Flow Template Format
 
-**Status:** Proposed
+**Status:** Accepted (flipped from Proposed in Wave 17-B / #703)
 **Date:** 2026-06-05
 **Depends on:** ADR-013 (canonical stage list), ADR-016 (per-repository template resolution), ADR-020 (inter-stage data contract), ADR-021 v2 (pipeline cycle semantics)
 **Implemented by:** #703 (Wave 17-B template loader + validator), #704 (Wave 17-C migration of `config/templates/standard.yaml` + golden updates), #705 (Wave 17-D amendments to ADR-013 and ADR-016).

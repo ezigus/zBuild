@@ -1,4 +1,5 @@
 memory.backend.init
+template.deprecated_shape
 pipeline.init
 pipeline.start
 stage.start

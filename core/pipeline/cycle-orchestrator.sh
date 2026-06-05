@@ -296,6 +296,35 @@ _cycle_check_until() {
     return 1
 }
 
+# ─── _cycle_check_abort_when <verdicts_blob> ─────────────────────────────────
+# ADR-027 (Wave 17-B #703). Mirrors _cycle_check_until against the per-cycle
+# _TPL_CYCLE_ABORT_WHEN_* fields. Returns 0 if predicate fired (abort), else 1.
+# Missing field → 1 (NEVER spuriously abort). No event-emit here — the caller
+# in cycle_orchestrator_run emits cycle.complete reason=cycle_abort via the
+# terminal-rc fan-in.
+_cycle_check_abort_when() {
+    local blob="$1"
+    local safe="${_CYCLE_TRAP_CYCLE_ID//-/_}"
+    local stage_var="_TPL_CYCLE_ABORT_WHEN_STAGE_${safe}"
+    local stage="${!stage_var:-}"
+    local field_var="_TPL_CYCLE_ABORT_WHEN_FIELD_${safe}"
+    local field="${!field_var:-}"
+    local op_var="_TPL_CYCLE_ABORT_WHEN_OP_${safe}"
+    local op="${!op_var:-}"
+    local val_var="_TPL_CYCLE_ABORT_WHEN_VALUE_${safe}"
+    local expected="${!val_var:-}"
+    [[ -z "$stage" || -z "$field" || -z "$op" || -z "$expected" ]] && return 1
+    local actual
+    actual="$(jq -r --arg s "$stage" --arg f "$field" \
+        '.[$s][$f] // empty' <<< "$blob" 2>/dev/null || true)"
+    [[ -z "$actual" || "$actual" == "null" ]] && return 1
+    case "$op" in
+        eq) [[ "$actual" == "$expected" ]] && return 0 ;;
+        ne) [[ "$actual" != "$expected" ]] && return 0 ;;
+    esac
+    return 1
+}
+
 # ─── _cycle_check_max_iterations <iter> <max> ────────────────────────────────
 # Strict `iter >= max` → terminate. NO auto-extend.
 _cycle_check_max_iterations() {
@@ -659,6 +688,11 @@ _cycle_iter_dispatch() {
     # renders e.g. `seq=1.2` instead of the per-stage cardinal. Empty label
     # means cardinal fallback (back-compat).
     local _cyc_pos=0
+    # ADR-027 (Wave 17-B #703): cycle-as-member support. For each cycle
+    # member, check `_TPL_STAGE_TYPE_<member>` — if it's `cycle`, recurse
+    # into cycle_orchestrator_run for that nested cycle and map its terminal
+    # rc onto the verdict blob (converged→pass, others→fail). rc=6 (the new
+    # cycle_abort class) propagates outward unchanged.
     for s in "${_CYCLE_STAGES[@]}"; do
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by the runner's SIGINT trap between this stage and the last.
@@ -696,6 +730,45 @@ _cycle_iter_dispatch() {
         # Re-install traps — silent-failure finding #6: nested route loops
         # clobber INT/TERM. Reassert ownership after each stage.
         _cycle_install_traps
+        # ADR-027: cycle-as-member branch. Check the stage type discriminator
+        # the loader set. If this member is itself a cycle, recurse into the
+        # orchestrator with its own state — recursion depth is bounded by
+        # max_iterations at each level + the load-time acyclicity check in
+        # _tpl_validate_flow_acyclic. Otherwise fall through to leaf dispatch.
+        local _member_type_var="_TPL_STAGE_TYPE_${s//-/_}"
+        local _member_type="${!_member_type_var:-leaf}"
+        if [[ "$_member_type" == "cycle" ]]; then
+            set +e
+            # Save outer cycle's state — recursion clobbers _CYCLE_* globals.
+            local _outer_cid="$_CYCLE_TRAP_CYCLE_ID"
+            local _outer_iter="$_CYCLE_TRAP_ITER"
+            local _outer_max="$_CYCLE_MAX_ITER"
+            cycle_orchestrator_run "$s" "$state_dir" "$state_file"
+            rc=$?
+            # Restore outer state for verdict bookkeeping.
+            _CYCLE_TRAP_CYCLE_ID="$_outer_cid"
+            _CYCLE_TRAP_ITER="$_outer_iter"
+            _CYCLE_MAX_ITER="$_outer_max"
+            [[ $_had_e -eq 1 ]] && set -e
+            # Map nested-cycle terminal rc → outer verdict/status.
+            case "$rc" in
+                0) _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete" ;;
+                6) # cycle_abort propagates outward immediately.
+                   _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
+                   _cycle_clear_traps
+                   return 6 ;;
+                130|143) _cycle_clear_traps; return "$rc" ;;
+                *) _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_STATUS="failed" ;;
+            esac
+            verdict="$_CYCLE_DISPATCH_VERDICT"
+            status="$_CYCLE_DISPATCH_STATUS"
+            blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
+                '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            if [[ $rc -ne 0 ]]; then
+                fail=$(( fail + 1 ))
+            fi
+            continue
+        fi
         set +e
         cycle_dispatch_stage "$s" "$iter" "$state_file"
         rc=$?
@@ -781,6 +854,7 @@ _cycle_handle_terminal_rc() {
         3)   reason="divergence" ;;
         4)   reason="${_CYCLE_LAST_TERMINATED_REASON:-config_invalid}" ;;
         5)   reason="blocked" ;;
+        6)   reason="cycle_abort" ;;
         130) reason="aborted" ;;
         *)   reason="error" ;;
     esac
@@ -925,6 +999,16 @@ cycle_orchestrator_run() {
         _cycle_record_iter_outcome "$history_file" "$iter" \
             "$h_verdict" "$h_status" "$failure_count" || true
 
+        # ADR-027 (Wave 17-B #703): abort_when predicate. If matched, the
+        # cycle returns rc=6 (cycle_abort) which propagates through every
+        # enclosing cycle to the runner via _zbuild_propagate_abort. Evaluated
+        # AFTER exit_when so converged-via-exit_when takes priority on tie.
+        local abort_matched=1
+        local _aw_stage_var="_TPL_CYCLE_ABORT_WHEN_STAGE_${cycle_id//-/_}"
+        if [[ -n "${!_aw_stage_var:-}" ]]; then
+            _cycle_check_abort_when "$verdicts_blob"; abort_matched=$?
+        fi
+
         # Decide overall status for the SINGLE atomic write (ADR-021: never
         # split state writes within an iter boundary).
         local overall_status="in_progress"
@@ -932,6 +1016,9 @@ cycle_orchestrator_run() {
         if [[ "$converged" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"
             overall_status="complete"; term_rc=0
+        elif [[ "$abort_matched" -eq 0 ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
+            overall_status="cycle_abort"; term_rc=6
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             _CYCLE_LAST_TERMINATED_REASON="max_iterations"
             overall_status="max_iterations"; term_rc=1
