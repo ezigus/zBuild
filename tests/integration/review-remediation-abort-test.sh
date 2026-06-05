@@ -101,12 +101,20 @@ total_dispatch_n="$(wc -l < "$_DISPATCH_LOG" | tr -d ' ')"
 assert_eq "T2: exactly 4 total dispatches (1 inner cycle + 1 review)" \
     "4" "$total_dispatch_n"
 
-# ─── T3: cycle.complete with reason=cycle_abort emitted ──────────────────────
-if grep -E '"type":"cycle.(complete|aborted)"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
-   | grep -q '"reason":"cycle_abort"\|cycle_id.*review_cycle'; then
-    assert_pass "T3: cycle terminal event references review_cycle + cycle_abort"
+# ─── T3: cycle.complete with reason=cycle_abort emitted on the OUTER cycle ───
+# Copilot P2 (#715): use a single jq filter that asserts BOTH cycle_id and
+# reason on the SAME jsonl line, avoiding the alternation false-positive
+# where an unrelated cycle event with only one of the two fields satisfies
+# the predicate.
+abort_hit="$(jq -r '. | select(
+        (.type == "cycle.complete" or .type == "cycle.aborted") and
+        (.data.cycle_id == "review_cycle") and
+        (.data.reason == "cycle_abort")
+    ) | .type' < "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+if [[ -n "$abort_hit" ]]; then
+    assert_pass "T3: outer review_cycle emits ${abort_hit} reason=cycle_abort"
 else
-    assert_fail "T3: cycle terminal event" \
+    assert_fail "T3: outer cycle terminal event with reason=cycle_abort" \
         "missing in $ZBUILD_EVENTS_JSONL"
 fi
 

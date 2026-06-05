@@ -7,7 +7,10 @@
 # operator — _RUNNER_CYCLE_UNCONVERGED is set, but the cycle does NOT abort).
 #
 # Asserts:
-#   T1: orchestrator returns rc=0 (continue path, NOT abort)
+#   T1: orchestrator returns rc=1 (max_iterations termination CLASS — distinct
+#       from rc=0 converged and from rc=6 cycle_abort). The runner reads
+#       _CYCLE_ON_MAX=continue to translate rc=1 into pipeline fall-through
+#       (NOT halt); the rc=1 itself is the orchestrator's max_iterations class.
 #   T1: _CYCLE_LAST_TERMINATED_REASON=max_iterations
 #   T2: exactly 2 review dispatches (the max_iterations cap)
 #   T3: cycle.complete reason=max_iterations event emitted
