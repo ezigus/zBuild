@@ -138,6 +138,57 @@ banner="$(cat "$fd3")"
 input_header="$(printf '%s\n' "$banner" | grep -m1 'input' || true)"
 assert_contains "L4 explicit --seq-label wins over env" "$input_header" "seq=4 input"
 
+# ─── L5: Wave 19-B — recursive prefix labels render verbatim ─────────────────
+# When ZBUILD_SEQ_PREFIX accumulates through nested cycles, the orchestrator
+# computes labels with arbitrary depth ("3.1.1.1.1" for 2-level nest,
+# "3.1.1.1.1.1.1" for 3-level). stage_io_begin must render WHATEVER it gets —
+# no parsing, no truncation, no segment-count assumption.
+_reset_pending
+fd3="$TEST_TEMP_DIR/l5.fd3"
+: > "$fd3"
+exec 3>"$fd3"
+ZBUILD_STAGE_IO_FD=3 \
+ZBUILD_TERM_WIDTH_OVERRIDE=120 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
+    stage_io_begin --stage build --kind llm --input "PROMPT" \
+        --seq-label "3.1.1.1.1" >/dev/null
+seq_v="$_STAGE_IO_LAST_SEQ"
+ZBUILD_STAGE_IO_FD=3 \
+ZBUILD_TERM_WIDTH_OVERRIDE=120 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12346000 \
+    stage_io_end --stage build --kind llm --seq "$seq_v" \
+        --output "RESP" --duration-ms 1000 >/dev/null
+exec 3>&-
+banner="$(cat "$fd3")"
+input_header="$(printf '%s\n' "$banner" | grep -m1 'input' || true)"
+output_header="$(printf '%s\n' "$banner" | grep -m1 'output OK' || true)"
+assert_contains "L5 (Wave 19-B) 5-segment label renders verbatim (input)" \
+    "$input_header" "seq=3.1.1.1.1 input"
+assert_contains "L5 (Wave 19-B) 5-segment label renders verbatim (output)" \
+    "$output_header" "seq=3.1.1.1.1 output OK"
+
+# ─── L6: Wave 19-B — 7-segment (3-level nest) label renders verbatim ─────────
+_reset_pending
+fd3="$TEST_TEMP_DIR/l6.fd3"
+: > "$fd3"
+exec 3>"$fd3"
+ZBUILD_STAGE_IO_FD=3 \
+ZBUILD_TERM_WIDTH_OVERRIDE=120 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
+    stage_io_begin --stage build --kind llm --input "PROMPT" \
+        --seq-label "3.1.1.1.1.1.1" >/dev/null
+seq_v="$_STAGE_IO_LAST_SEQ"
+ZBUILD_STAGE_IO_FD=3 \
+ZBUILD_TERM_WIDTH_OVERRIDE=120 \
+ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12346000 \
+    stage_io_end --stage build --kind llm --seq "$seq_v" \
+        --output "RESP" --duration-ms 1000 >/dev/null
+exec 3>&-
+banner="$(cat "$fd3")"
+input_header="$(printf '%s\n' "$banner" | grep -m1 'input' || true)"
+assert_contains "L6 (Wave 19-B) 7-segment label renders verbatim" \
+    "$input_header" "seq=3.1.1.1.1.1.1 input"
+
 # Clear pending state before cleanup so the EXIT orphan-finalizer doesn't
 # recreate $TEST_TEMP_DIR / write partial artifacts after cleanup_test_env
 # has wiped it. L4 intentionally skips stage_io_end to validate flag wins
