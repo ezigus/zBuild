@@ -4472,7 +4472,7 @@ issues:
     title: "feat(cycle): wire concrete build/test cycle + manifest cycle_feedback source (F2) (#511)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: []
-    state: merged
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/521
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
@@ -4667,7 +4667,7 @@ issues:
     closed_reason: 'Closed via GitHub. Recorded by manifest-sync orphan backfill.'
   - id: phase-0-5-555-sub-5-manifest-sync-to-mark-closed-fuzzy-propo-563
     title: "[Phase 0.5] [#555 sub-5] manifest-sync: TO_MARK_CLOSED fuzzy proposed-change (PR-gated)"
-    milestone: "Phase 3 — Cost & Self-Hosting"
+    milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, foundation, automated]
     state: open
     body: |
@@ -4866,7 +4866,7 @@ issues:
     title: "feat(build): pipeline commits per cycle iter using COMMIT_SUMMARY marker (#608)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: []
-    state: merged
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/611
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
@@ -4901,7 +4901,7 @@ issues:
     title: "fix(build,router): loop_complete clarity + empty-diff safety net (#613)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: []
-    state: merged
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/615
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
@@ -4909,7 +4909,7 @@ issues:
     title: "fix(sigint): propagate rc=130 through router → build → runner (#612)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: []
-    state: merged
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/616
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
@@ -4917,7 +4917,7 @@ issues:
     title: "feat(intake,route): branch-cumulative context in iter prompts (#614)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: []
-    state: merged
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/617
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
