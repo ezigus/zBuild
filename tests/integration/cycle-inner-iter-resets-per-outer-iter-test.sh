@@ -26,7 +26,9 @@
 # Assertions:
 #   - inner cycle.start fires TWICE (once per outer iter)
 #   - both inner cycle.start events have iter=1 (fresh start, not 4)
-#   - inner history file ends with only iter=2's row (from outer iter 2)
+#   - inner history file contains exactly 2 rows (iters 1 and 2 — from
+#     outer iter 2's inner run), proving truncation between outer iters
+#     (not 4 rows accumulated across both outer iters)
 #   - outer cycle.iteration.complete fires twice
 #   - outer cycle.complete reason=converged
 set -euo pipefail
@@ -168,11 +170,11 @@ print_test_section "inner history file truncated on outer iter 2"
 # T9: inner history file ends with the LAST outer iter's iter rows only.
 # After outer iter 2 completes, inner history should contain exactly 2 rows
 # (from outer iter 2's inner run), NOT 4 rows accumulated across outer iters.
-history_row_count=$(wc -l < "$INNER_HISTORY" 2>/dev/null | tr -d ' ')
+history_row_count=$(wc -l "$INNER_HISTORY" 2>/dev/null | awk '{print $1}' || echo 0)
 assert_eq "T9: inner history file contains 2 rows (truncated on outer iter 2 entry)" "2" "$history_row_count"
 
 # T10: the rows in the inner history are iter 1 and iter 2 (NOT iter 3, 4).
-history_iters=$(jq -r '.n' "$INNER_HISTORY" 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//')
+history_iters=$( { jq -r '.n' "$INNER_HISTORY" 2>/dev/null || true; } | sort -u | tr '\n' ',' | sed 's/,$//')
 assert_eq "T10: inner history rows have iter=1 and iter=2 only (reset on outer iter 2)" "1,2" "$history_iters"
 
 print_test_section "outer cycle emits expected events"
