@@ -244,3 +244,77 @@ runner_read_stage_verdict() {
     fi
     echo "$cls"
 }
+
+# ─── runner_read_stage_verdict_raw <state_dir> <manifest> <stage> <rc> ───────
+# Wave 19-A (#717): returns the RAW verdict string from the plugin's primary
+# output JSON (e.g. "approve", "request_changes", "block", "pass"), without
+# collapsing approve→pass / request_changes→warn.
+#
+# Why a sibling of runner_read_stage_verdict: the original function returns
+# the CLASSIFIED verdict (pass|warn|fail|unknown + structural-failure
+# pass-through) which is correct for the operator-facing indicator glyph,
+# but the cycle orchestrator's exit_when/abort_when/until predicates compare
+# against the RAW value declared in the template (e.g. `value: approve`).
+# Without the raw read, exit_when on review.verdict==approve never matches
+# because the dispatch blob stores "pass" not "approve" — the dogfood
+# 20260605055348-2232 symptom: review approved, but pipeline ran to
+# max_iterations instead of converging via exit_when.
+#
+# Side-effects: NONE here (no events). Callers are expected to ALSO call
+# runner_read_stage_verdict in the same dispatch pass (which is what
+# cycle_dispatch_stage at runner.sh:~1115 does today: populates
+# _CYCLE_DISPATCH_VERDICT via the classified call AND
+# _CYCLE_DISPATCH_VERDICT_RAW via this raw call). That ordering ensures
+# diagnostic events (stage.verdict.missing, pipeline.indicator.unknown_verdict)
+# fire exactly once for the artifact — emitting them here too would double-
+# count.
+runner_read_stage_verdict_raw() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+
+    # rc != 0 → no verdict semantics; mirror the classified path's "fail"
+    # so cycle predicates evaluating `verdict == fail` still match.
+    if [[ "$rc" -ne 0 ]]; then
+        echo "fail"; return 0
+    fi
+
+    if [[ -z "$manifest" || ! -f "$manifest" ]]; then
+        echo ""; return 0
+    fi
+
+    local prim_path
+    prim_path="$(_verdict_primary_output_path "$manifest")"
+    if [[ -z "$prim_path" ]]; then
+        # No primary declared — rc-fallback semantics: pass.
+        echo "pass"; return 0
+    fi
+
+    local resolved
+    resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
+
+    if [[ ! -s "$resolved" ]]; then
+        echo ""; return 0
+    fi
+
+    # Non-JSON primary: presence == pass (rc-fallback semantics).
+    case "$resolved" in
+        *.json) ;;
+        *) echo "pass"; return 0 ;;
+    esac
+
+    if ! jq empty "$resolved" >/dev/null 2>&1; then
+        echo ""; return 0
+    fi
+
+    local raw_verdict=""
+    case "$stage" in
+        build)
+            raw_verdict="$(_verdict_extract_from_build_summary "$resolved")" ;;
+        security-lens)
+            raw_verdict="pass" ;;
+        *)
+            raw_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
+            [[ -z "$raw_verdict" || "$raw_verdict" == "null" ]] && raw_verdict="pass"
+            ;;
+    esac
+    printf '%s' "$raw_verdict"
+}
