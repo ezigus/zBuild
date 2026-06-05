@@ -168,4 +168,18 @@ assert_eq "T7: runner_read_stage_verdict_raw returns raw 'approve' (not classifi
 CLS=$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$REVIEW_MANIFEST" "review" 0)
 assert_eq "T8: runner_read_stage_verdict (classified) unchanged: approve→pass" "pass" "$CLS"
 
+# T9: regression-lock the two-channel separation — _CYCLE_DISPATCH_VERDICT
+# holds the classified value (used by state_helpers.sh for .stage_verdicts
+# AND by the stage:* dispatch branch for the stage.complete event), and
+# _CYCLE_DISPATCH_VERDICT_RAW holds the raw value (used by the cycle
+# orchestrator for exit_when / abort_when / until predicate evaluation).
+# This split was Copilot-flagged P1 on the initial fix: persisting raw
+# values into .stage_verdicts would silently break the verdict_class
+# contract documented in state_helpers.sh:91. Verify the separation by
+# simulating what runner.sh's cycle_dispatch_stage does.
+_CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$REVIEW_MANIFEST" "review" 0)"
+_CYCLE_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$ZBUILD_STATE_DIR" "$REVIEW_MANIFEST" "review" 0)"
+assert_eq "T9a: _CYCLE_DISPATCH_VERDICT (classified)=pass (state_helpers.sh contract)" "pass" "$_CYCLE_DISPATCH_VERDICT"
+assert_eq "T9b: _CYCLE_DISPATCH_VERDICT_RAW=approve (orchestrator predicate input)" "approve" "$_CYCLE_DISPATCH_VERDICT_RAW"
+
 print_test_results

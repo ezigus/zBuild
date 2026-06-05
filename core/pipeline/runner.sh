@@ -1102,27 +1102,40 @@ main() {
     cycle_dispatch_stage() {
         local _cd_stage="$1" _cd_iter="$2" _cd_state="$3"
         _CYCLE_DISPATCH_VERDICT=""
+        _CYCLE_DISPATCH_VERDICT_RAW=""
         _CYCLE_DISPATCH_STATUS=""
         local _cd_plugin_dir _cd_rc=0
         _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
         if [[ -z "$_cd_plugin_dir" ]]; then
             _CYCLE_DISPATCH_VERDICT="error"
+            _CYCLE_DISPATCH_VERDICT_RAW="error"
             _CYCLE_DISPATCH_STATUS="failed"
             return 1
         fi
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
         local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
-        # Wave 19-A (#717): the cycle orchestrator's exit_when / abort_when /
-        # until predicates compare against the RAW verdict value declared in
-        # the template (e.g. `value: approve`). runner_read_stage_verdict
-        # returns the CLASSIFIED verdict (approve→pass, request_changes→warn)
-        # which is correct for the operator-facing indicator glyph but wrong
-        # for predicate evaluation — without the raw read, exit_when on
-        # review.verdict==approve never matches and review_cycle runs to
+        # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
+        # unknown + structural-failure pass-through) — used for .stage_verdicts
+        # persistence (state_helpers.sh: verdict_class contract) and the
+        # `stage.complete verdict=...` event emitted at runner.sh:1309 in the
+        # `stage:*` dispatch branch. Mutating this to raw values like "approve"
+        # would silently break the indicator-glyph + stage.verdicts contract.
+        _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+        # Wave 19-A (#717): _CYCLE_DISPATCH_VERDICT_RAW is the parallel RAW
+        # verdict (e.g. "approve", "request_changes", "block") consumed by the
+        # cycle orchestrator's exit_when / abort_when / until predicates which
+        # compare against the RAW template-declared value. Without this
+        # separate channel, exit_when on review.verdict==approve never matches
+        # (the classifier collapses approve→pass) and review_cycle runs to
         # max_iterations instead of converging cleanly (dogfood
-        # 20260605055348-2232 symptom).
-        _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
-        [[ -z "$_CYCLE_DISPATCH_VERDICT" ]] && _CYCLE_DISPATCH_VERDICT="missing"
+        # 20260605055348-2232 symptom: pipeline ran ~10m, review approved,
+        # then external interruption — but the cycle was structurally
+        # unconvergeable regardless of the interrupt). Diagnostic events
+        # (stage.verdict.missing, pipeline.indicator.unknown_verdict) are
+        # emitted by the CLASSIFIED runner_read_stage_verdict call above —
+        # the raw call here is side-effect-free and won't duplicate them.
+        _CYCLE_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+        [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else

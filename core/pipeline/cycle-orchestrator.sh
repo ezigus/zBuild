@@ -813,7 +813,16 @@ _cycle_iter_dispatch() {
         # The `||` form inhibits errexit for the call and lets the
         # explicit `return $?` carry the abort rc cleanly.
         _zbuild_propagate_abort "$rc" || return $?
-        verdict="${_CYCLE_DISPATCH_VERDICT:-}"
+        # Wave 19-A (#717): prefer the RAW verdict for cycle predicate
+        # evaluation (exit_when / abort_when / until compare against the raw
+        # template-declared value, e.g. `value: approve`). Fall back to the
+        # classified _CYCLE_DISPATCH_VERDICT for back-compat with dispatch
+        # hooks (test stubs, future strategies) that have not yet been
+        # updated to publish the raw channel. The classified value remains
+        # authoritative for state_helpers.sh's .stage_verdicts contract and
+        # the operator-facing stage.complete event — only the in-cycle
+        # predicate-evaluation blob switches to raw.
+        verdict="${_CYCLE_DISPATCH_VERDICT_RAW:-${_CYCLE_DISPATCH_VERDICT:-}}"
         status="${_CYCLE_DISPATCH_STATUS:-}"
         if [[ -z "$verdict" ]]; then
             verdict="missing"
