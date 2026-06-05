@@ -107,6 +107,32 @@ _cycle_emit_predicate() {
         2>/dev/null || true
 }
 
+# Wave 19-D-1 (#731): per-member dispatch instrumentation. Emitted by
+# _cycle_iter_dispatch at the start of each member's dispatch (BEFORE the
+# nested-cycle recursion or leaf cycle_dispatch_stage call) and at the
+# complete boundary (AFTER rc is captured and verdict is mapped). Answers
+# "did the for-loop reach member X?" deterministically from events.jsonl —
+# without these, the dogfood 20260605140602-80831 forensics required
+# code-reading to deduce that review was never dispatched.
+_cycle_emit_member_dispatch_start() {
+    local position="$1" member="$2" kind="$3"
+    eb_emit_event "cycle.member.dispatch.start" \
+        "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
+        "iter=${_CYCLE_TRAP_ITER:-0}" \
+        "position=$position" "member=$member" "kind=$kind" \
+        2>/dev/null || true
+}
+
+_cycle_emit_member_dispatch_complete() {
+    local position="$1" member="$2" rc="$3" verdict="$4" status="$5"
+    eb_emit_event "cycle.member.dispatch.complete" \
+        "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
+        "iter=${_CYCLE_TRAP_ITER:-0}" \
+        "position=$position" "member=$member" \
+        "rc=$rc" "verdict=$verdict" "status=$status" \
+        2>/dev/null || true
+}
+
 # ─── Trap composition (silent-failure findings #5, #6) ───────────────────────
 # Cycle owns ONLY INT/TERM. Runner owns EXIT. On signal: emit cycle.aborted,
 # clear traps, return 130. Must be re-installed after each stage dispatch
@@ -744,6 +770,12 @@ _cycle_iter_dispatch() {
             return 130
         fi
         _cyc_pos=$(( _cyc_pos + 1 ))
+        # Wave 19-D-1 (#731): emit start event BEFORE dispatching this member.
+        # Kind is derived from the type discriminator below — compute it now so
+        # the start event records it. Same `_TPL_STAGE_TYPE_<safe>` indirection.
+        local _member_type_var_pre="_TPL_STAGE_TYPE_${s//-/_}"
+        local _member_kind_pre="${!_member_type_var_pre:-leaf}"
+        _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
         # Wave 19-B (#718): N-level recursive seq label via prefix accumulation.
@@ -870,6 +902,9 @@ _cycle_iter_dispatch() {
             if [[ $rc -ne 0 ]]; then
                 fail=$(( fail + 1 ))
             fi
+            # Wave 19-D-1 (#731): nested-cycle dispatch.complete with verdict
+            # mapped from the nested cycle's terminal rc.
+            _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             continue
         fi
         set +e
@@ -910,6 +945,11 @@ _cycle_iter_dispatch() {
         if [[ $rc -ne 0 ]]; then
             fail=$(( fail + 1 ))
         fi
+        # Wave 19-D-1 (#731): leaf-dispatch complete event. Mirrors the
+        # nested-cycle path above. Reports the RAW verdict (the value
+        # already used in the predicate-evaluation blob), the rc the
+        # dispatch returned, and the status string.
+        _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
     done
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
     # #566: restore caller's ZBUILD_CURRENT_STAGE — preserves prior value if

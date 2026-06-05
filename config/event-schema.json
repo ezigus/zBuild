@@ -66,6 +66,8 @@
     "cycle.disabled",
     "cycle.unconverged",
     "cycle.predicate.evaluated",
+    "cycle.member.dispatch.start",
+    "cycle.member.dispatch.complete",
     "review.test_status.missing",
     "review.jq.parse_error",
     "test_assessment.missing_input",
