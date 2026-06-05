@@ -2,10 +2,11 @@
 # tests/unit/lint-contract-cycle-feedback-test.sh — Wave 18-C (#708).
 #
 # Asserts the cycle-feedback wiring lint catches stale/honest mismatches
-# between a template's `cycles[].feedback[]` block and the producer/consumer
-# manifests. Fixtures construct minimal plugins + a template at $TEST_TEMP_DIR
-# and invoke `scripts/lib/lint-contract.sh` with ZBUILD_PLUGINS_ROOT +
-# ZBUILD_TEMPLATES_ROOTS pointed at the fixture.
+# between a template's `feedback:` block (inside a `type: cycle` stage
+# section, per ADR-027 recursive flow format) and the producer/consumer
+# manifests. Fixtures construct minimal plugins + a template at
+# $TEST_TEMP_DIR and invoke `scripts/lib/lint-contract.sh` with
+# ZBUILD_PLUGINS_ROOT + ZBUILD_TEMPLATES_ROOTS pointed at the fixture.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,8 +78,14 @@ EOF
 
 # ─── helper: write template with feedback wire (parameterized) ──────────────
 # args: <template_id> <from_stage> <from_output> <to_stage> <to_input>
+#
+# Copilot P2: clears $TEMPLATES_ROOT before writing, so each test case
+# exercises ONLY its own fixture. Without this, run_lint scans every
+# template ever written by earlier cases, which can both leak unrelated
+# diagnostics and let a stale-case substring satisfy a later assertion.
 write_template() {
     local tid="$1" fs="$2" fo="$3" ts="$4" ti="$5"
+    find "$TEMPLATES_ROOT" -mindepth 1 -delete 2>/dev/null || true
     cat > "$TEMPLATES_ROOT/$tid.yaml" <<EOF
 id: $tid
 name: $tid
