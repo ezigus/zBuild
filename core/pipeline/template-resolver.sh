@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# core/pipeline/template-resolver.sh — Per-repo template override loader (issue #653)
+# ADR-016 (full-replace overlay). Sourced library; no set -euo pipefail.
+
+[[ -n "${_ZBUILD_TEMPLATE_RESOLVER_LOADED:-}" ]] && return 0
+_ZBUILD_TEMPLATE_RESOLVER_LOADED=1
+
+_TEMPLATE_RESOLVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_TEMPLATE_RESOLVER_ROOT="$(cd "$_TEMPLATE_RESOLVER_DIR/../.." && pwd)"
+
+# resolve_template_file <id> <repo_root>
+#
+# Returns the path to the effective template file via stdout:
+#   - If <repo_root>/.zbuild/templates/<id>.yaml exists: validate extends:,
+#     merge stages: and stage_definitions: over the base (ADR-016 full-replace),
+#     write to a temp file, and print that path.
+#   - Otherwise: print config/templates/<id>.yaml (shipped path, no merge).
+# Exits 1 with a structured error if extends: is missing or the base is absent.
+resolve_template_file() {
+    local id="$1"
+    local repo_root="${2:-$_TEMPLATE_RESOLVER_ROOT}"
+
+    local per_repo_file="$repo_root/.zbuild/templates/${id}.yaml"
+    local shipped_file="$_TEMPLATE_RESOLVER_ROOT/config/templates/${id}.yaml"
+
+    if [[ ! -f "$per_repo_file" ]]; then
+        echo "$shipped_file"
+        return 0
+    fi
+
+    local extends_id
+    extends_id="$(awk '/^extends:[[:space:]]/ { v=$0; sub(/^extends:[[:space:]]+/, "", v); sub(/[[:space:]]*$/, "", v); if (v != "" && v != "null") { print v; exit } }' "$per_repo_file")"
+
+    if [[ -z "$extends_id" ]]; then
+        echo "template-resolver: per-repo template '${id}' is missing required 'extends:' key" >&2
+        return 1
+    fi
+
+    local base_file="$_TEMPLATE_RESOLVER_ROOT/config/templates/${extends_id}.yaml"
+    if [[ ! -f "$base_file" ]]; then
+        echo "template-resolver: per-repo template '${id}' extends '${extends_id}' but config/templates/${extends_id}.yaml does not exist" >&2
+        return 1
+    fi
+
+    # Write merged file to temp dir (TEST_TEMP_DIR in tests, mktemp in production).
+    local merged_file
+    if [[ -n "${TEST_TEMP_DIR:-}" ]]; then
+        merged_file="${TEST_TEMP_DIR}/zbuild-tpl-${id}-$$.yaml"
+    else
+        # macOS/BSD mktemp requires XXXXXX at end (no trailing extension).
+        # Mirrors the ${TMPDIR:-/tmp}/name.XXXXXX pattern used elsewhere.
+        merged_file="$(mktemp "${TMPDIR:-/tmp}/zbuild-tpl.XXXXXX")"
+    fi
+
+    # ADR-016 full-replace: emit base file minus its stages:/stage_definitions: blocks,
+    # then append the per-repo stages:/stage_definitions: blocks wholesale.
+    awk '
+        /^stages:[[:space:]]*$/ { in_stages=1; next }
+        /^stage_definitions:[[:space:]]*$/ { in_defs=1; next }
+        in_stages && /^[a-zA-Z_]/ { in_stages=0 }
+        in_defs   && /^[a-zA-Z_]/ { in_defs=0 }
+        in_stages || in_defs { next }
+        { print }
+    ' "$base_file" > "$merged_file"
+
+    # Extract and append stages: block from per-repo file.
+    awk '
+        /^stages:[[:space:]]*$/ { in_block=1; print; next }
+        in_block && /^[a-zA-Z_]/ { in_block=0 }
+        in_block { print }
+    ' "$per_repo_file" >> "$merged_file"
+
+    # Extract and append stage_definitions: block from per-repo file.
+    awk '
+        /^stage_definitions:[[:space:]]*$/ { in_block=1; print; next }
+        in_block && /^[a-zA-Z_]/ { in_block=0 }
+        in_block { print }
+    ' "$per_repo_file" >> "$merged_file"
+
+    echo "$merged_file"
+    return 0
+}
