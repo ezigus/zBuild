@@ -282,6 +282,49 @@ plugin prompt integration. This matches the ADR-then-impl precedent
 set by ADR-024 (flipped on #673) and ADR-027 (flips on #703). No code,
 no test, no event-schema changes in this PR. Only the ADR text.
 
+## Implementation Notes (Proposed — 2026-06-05)
+
+This ADR ships in **Proposed** status. No code, no test, no
+event-schema changes in this PR. The status flips to **Accepted** when
+Wave 18-B (#707) lands the `review_cycle` template wiring + build
+manifest input + build plugin prompt integration.
+
+The impl sequence:
+
+- **Wave 18-B (#707)** — migrate `config/templates/standard.yaml` so
+  the top-level `flow:` becomes `[intake, plan, review_cycle]` and add
+  the `review_cycle` stage section verbatim from the "Example wire"
+  block above; add `prior_review_feedback` to
+  `plugins/tool/build/manifest.yaml` `inputs:` with
+  `source: cycle_feedback, required: false`; extend
+  `plugins/tool/build/plugin.sh` with a `_build_read_prior_review`
+  helper that mirrors `_build_read_prior_failures` (presence + non-empty
+  check per ADR-021 v2 #511 Pin 5, prepend `## Prior review feedback`
+  section to the LLM prompt). ADR-026 flips Proposed → Accepted on this
+  merge.
+- **Wave 18-C (#708)** — contract lint enforcing ADR-027 invariants;
+  the new `review_cycle` section is in scope for the reserved-key set
+  check, `flow:` ID resolution (`build_test_cycle`, `review` resolve to
+  top-level sections), cycle membership acyclicity (`review_cycle`
+  contains `build_test_cycle` which does NOT transitively contain
+  `review_cycle`), and `on_max` enum (`continue | abort_pipeline`).
+
+No back-compat shim is needed for ADR-026 specifically — the outer
+cycle is a pure additive wiring on top of the ADR-027 shape, which
+itself ships with its own back-compat shim (Wave 17-B). Per-repo
+templates that override `standard.yaml` without declaring
+`review_cycle` continue to run with no remediation loop (the legacy
+behavior of dead-ending on `request_changes`), and operators can opt in
+by declaring the cycle in their override.
+
+The ADR-021 v2 `_RUNNER_CYCLE_UNCONVERGED` flag and
+`cycle.unconverged` event (#527/#528 amendment) already cover the
+on_max=continue fall-through. No new event types are introduced; the
+existing `cycle.start`, `cycle.iteration.complete`, `cycle.complete`
+(with `reason ∈ {converged, max_iterations, plateau, divergence,
+blocked, verdict_missing, aborted, error}`), and `cycle.aborted` cover
+the outer cycle's lifecycle identically to the inner cycle's.
+
 ## References
 
 - [ADR-019](ADR-019-review-fail-closed-on-test-failure.md) — review
