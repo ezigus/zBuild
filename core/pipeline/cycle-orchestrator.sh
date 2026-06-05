@@ -708,17 +708,21 @@ _cycle_iter_dispatch() {
         _cyc_pos=$(( _cyc_pos + 1 ))
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
-        # #682 (Wave 15-D) + #698 (Wave 16-A): hierarchical seq label.
-        # 3-level when the runner exports its cycle cardinal:
-        #   "<cycle_cardinal>.<iter>.<position>" — e.g. "3.2.1".
-        # 2-level back-compat fallback when the cardinal is absent (e.g.
-        # orchestrator invoked standalone in a unit/integration test):
-        #   "<iter>.<position>" — e.g. "2.1".
-        if [[ -n "${ZBUILD_CYCLE_CARDINAL:-}" ]]; then
-            export ZBUILD_STAGE_IO_SEQ_LABEL="${ZBUILD_CYCLE_CARDINAL}.${iter}.${_cyc_pos}"
+        # Wave 19-B (#718): N-level recursive seq label via prefix accumulation.
+        # Each cycle entry appends `.<iter>.<position>` to the inherited prefix
+        # in ZBUILD_SEQ_PREFIX. Bottoms out at any depth — single-cycle templates
+        # get 3-segment labels (prefix=cardinal, e.g. "3.1.1"), nested cycles get
+        # 5/7/... segments (prefix="3.1.1" for the inner cycle's children, so
+        # build = "3.1.1.1.1"). Back-compat path: when ZBUILD_SEQ_PREFIX is
+        # unset (orchestrator invoked standalone in a unit/integration test),
+        # the label is the 2-level "<iter>.<position>".
+        local _member_label
+        if [[ -n "${ZBUILD_SEQ_PREFIX:-}" ]]; then
+            _member_label="${ZBUILD_SEQ_PREFIX}.${iter}.${_cyc_pos}"
         else
-            export ZBUILD_STAGE_IO_SEQ_LABEL="${iter}.${_cyc_pos}"
+            _member_label="${iter}.${_cyc_pos}"
         fi
+        export ZBUILD_STAGE_IO_SEQ_LABEL="$_member_label"
         # #682: 1 blank line BEFORE every member-stage banner (within-iter gap).
         # Mirrors Wave 11B's linear-runner blank line — keeps consecutive stage
         # banners from rendering flush. Best-effort; never aborts on bad fd.
@@ -739,6 +743,17 @@ _cycle_iter_dispatch() {
         local _member_type="${!_member_type_var:-leaf}"
         if [[ "$_member_type" == "cycle" ]]; then
             set +e
+            # Wave 19-B (#718): set ZBUILD_SEQ_PREFIX to this member's label so
+            # the nested cycle's children inherit the full path
+            # ("<outer_prefix>.<outer_iter>.<outer_pos>"). Save the prior prefix
+            # and restore it on return so sibling members of THIS cycle keep
+            # using the outer prefix.
+            local _prior_seq_prefix_set=0 _prior_seq_prefix=""
+            if [[ -n "${ZBUILD_SEQ_PREFIX+x}" ]]; then
+                _prior_seq_prefix_set=1
+                _prior_seq_prefix="$ZBUILD_SEQ_PREFIX"
+            fi
+            export ZBUILD_SEQ_PREFIX="$_member_label"
             # Save outer cycle's state — recursion clobbers _CYCLE_* globals.
             # ADR-026 / Wave 18-B (#707): also save _CYCLE_FEEDBACK (and the
             # outer cycle's exit_when/abort_when arrays implicitly via
@@ -761,6 +776,14 @@ _cycle_iter_dispatch() {
             local -a _outer_stages=( "${_CYCLE_STAGES[@]}" )
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
+            # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
+            # (verdict normal, rc=6, rc=130, rc=143). Prefix must not leak to
+            # sibling members of THIS cycle or to callers above.
+            if [[ $_prior_seq_prefix_set -eq 1 ]]; then
+                export ZBUILD_SEQ_PREFIX="$_prior_seq_prefix"
+            else
+                unset ZBUILD_SEQ_PREFIX
+            fi
             # Restore outer state for verdict bookkeeping, exit/abort
             # predicate evaluation, AND outer feedback wiring (so the
             # outer's _cycle_apply_feedback at iter end sees its own edges,

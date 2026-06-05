@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Integration test: cycle orchestrator threads hierarchical seq labels to the
-# per-stage banner via ZBUILD_STAGE_IO_SEQ_LABEL (#682 Wave 15-D, #698 Wave 16-A).
+# per-stage banner via ZBUILD_STAGE_IO_SEQ_LABEL (#682 Wave 15-D, #698 Wave 16-A,
+# #718 Wave 19-B).
 #
 # Drives cycle_orchestrator_run TWICE against a 2-iter, 3-stage cycle:
 #
 #   Pass A (3-level, runner-driven path):
-#     ZBUILD_CYCLE_CARDINAL=3 → labels "<cardinal>.<iter>.<position>"
+#     ZBUILD_SEQ_PREFIX=3 → labels "<prefix>.<iter>.<position>"
 #     iter 1: build=3.1.1, test=3.1.2, test_assessment=3.1.3
 #     iter 2: build=3.2.1, test=3.2.2, test_assessment=3.2.3
 #
 #   Pass B (2-level back-compat, orchestrator invoked standalone):
-#     ZBUILD_CYCLE_CARDINAL unset → labels "<iter>.<position>"
+#     ZBUILD_SEQ_PREFIX unset → labels "<iter>.<position>"
 #     iter 1: build=1.1, test=1.2, test_assessment=1.3
 #     iter 2: build=2.1, test=2.2, test_assessment=2.3
 set -euo pipefail
@@ -80,8 +81,8 @@ YAML
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 load_template "$TPL"
 
-# Pass A: simulate the runner publishing the cycle's pipeline-cardinal.
-export ZBUILD_CYCLE_CARDINAL=3
+# Pass A: simulate the runner publishing the cycle's seq prefix (cardinal).
+export ZBUILD_SEQ_PREFIX=3
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
 assert_eq "orchestrator converged (pass A, 3-level)" "0" "$rc"
 
@@ -100,10 +101,10 @@ expect_label 2 build           "3.2.1"
 expect_label 2 test            "3.2.2"
 expect_label 2 test_assessment "3.2.3"
 
-# Pass B: orchestrator invoked standalone (no cardinal env) → 2-level
+# Pass B: orchestrator invoked standalone (no prefix env) → 2-level
 # back-compat path. This is the contract that protects unit/integration tests
 # that drive the orchestrator directly without going through the runner.
-unset ZBUILD_CYCLE_CARDINAL
+unset ZBUILD_SEQ_PREFIX
 : > "$LABEL_LOG"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
