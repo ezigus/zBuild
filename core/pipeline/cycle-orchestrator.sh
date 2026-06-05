@@ -720,6 +720,18 @@ _cycle_iter_dispatch() {
     # rc onto the verdict blob (converged→pass, others→fail). rc=6 (the new
     # cycle_abort class) propagates outward unchanged.
     for s in "${_CYCLE_STAGES[@]}"; do
+        # Wave 19-C-2 (#726) defensive clear. Every member dispatch starts
+        # from a known-empty RAW baseline. The runner's cycle_dispatch_stage
+        # always re-publishes _CYCLE_DISPATCH_VERDICT_RAW (runner.sh:1144)
+        # for leaf stages; the nested-cycle branch below also sets it
+        # explicitly. Clearing here is belt-and-suspenders for any future
+        # dispatch path that forgets to set RAW — empty is preferable to a
+        # stale prior-member value bleeding into this member's predicate
+        # blob entry at line 870+ below. Mirrors `cycle_dispatch_stage`'s
+        # own line 1111-1113 pattern.
+        _CYCLE_DISPATCH_VERDICT=""
+        _CYCLE_DISPATCH_VERDICT_RAW=""
+        _CYCLE_DISPATCH_STATUS=""
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by the runner's SIGINT trap between this stage and the last.
         # Bail before spawning the next child so the abort observes at the
@@ -828,14 +840,28 @@ _cycle_iter_dispatch() {
             _CYCLE_STAGES=( "${_outer_stages[@]}" )
             [[ $_had_e -eq 1 ]] && set -e
             # Map nested-cycle terminal rc → outer verdict/status.
+            # Wave 19-C-2 (#726): set RAW symmetrically with the classified
+            # VERDICT so the outer's blob entry for this nested-cycle member
+            # has both channels populated. Without this, _CYCLE_DISPATCH_VERDICT_RAW
+            # would carry whatever the inner cycle's LAST stage published,
+            # leaking inner state into the outer cycle's blob. The outer's
+            # predicate (line 870+) reads RAW first, so a leaked inner value
+            # would corrupt the outer's verdict accumulation. The nested
+            # cycle's own predicates already terminated correctly; the
+            # outer's perspective on this member is "converged pass" (rc=0)
+            # or "failed fail" (rc!=0).
             case "$rc" in
-                0) _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete" ;;
+                0) _CYCLE_DISPATCH_VERDICT="pass"
+                   _CYCLE_DISPATCH_VERDICT_RAW="pass"
+                   _CYCLE_DISPATCH_STATUS="complete" ;;
                 6) # cycle_abort propagates outward immediately.
                    _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
                    _cycle_clear_traps
                    return 6 ;;
                 130|143) _cycle_clear_traps; return "$rc" ;;
-                *) _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_STATUS="failed" ;;
+                *) _CYCLE_DISPATCH_VERDICT="fail"
+                   _CYCLE_DISPATCH_VERDICT_RAW="fail"
+                   _CYCLE_DISPATCH_STATUS="failed" ;;
             esac
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
