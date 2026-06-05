@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-05T03:48:02Z_
+_Last updated: 2026-06-05T19:09:14Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -126,3 +126,12 @@ _Last updated: 2026-06-05T03:48:02Z_
 | #700 | fix(stage-io): 3-level cycle seq labels (Wave 16-A, closes #698) | 2026-06-05 |
 | #701 | feat(review): sanitize prompt + diff-stat summary with bare paths (Wave 16-B) | 2026-06-05 |
 | #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
+| #729 | fix(cycle): defensive RAW-channel + symmetric nested-cycle write (Wave 19-C-2, #726) | 2026-06-05 |
+| #727 | feat(cycle): cycle.predicate.evaluated instrumentation (Wave 19-C-1, #725) | 2026-06-05 |
+| #724 | feat(runner): template resolver with .zbuild/templates/ search path + required extends (#653, Wave-447 sub-2) | 2026-06-05 |
+| #723 | fix(manifest): state:merged → closed + correct Phase 3 milestone title | 2026-06-05 |
+| #722 | chore(manifest): backfill 123 orphan issues + declare 3 missing labels | 2026-06-05 |
+| #720 | fix(cycle): exit_when reads raw verdict so review.approve converges (Wave 19-A) | 2026-06-05 |
+| #719 | feat(stage-io): N-level recursive seq labels (Wave 19-B) | 2026-06-05 |
+| #716 | chore(contracts): cycle-feedback wiring lint + review.review_md output (Wave 18-C) | 2026-06-05 |
+| #715 | feat(build,review): prior_review_feedback + standard.yaml review_cycle (Wave 18-B) | 2026-06-05 |
