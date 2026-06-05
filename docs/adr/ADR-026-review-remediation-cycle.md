@@ -1,6 +1,6 @@
 # ADR-026: Review Remediation Cycle
 
-**Status:** Proposed
+**Status:** Accepted (flipped from Proposed in Wave 18-B / #707)
 **Date:** 2026-06-05
 **Depends on:** ADR-019 (review fail-CLOSED on test failure), ADR-020 (inter-stage data contract), ADR-021 v2 (pipeline cycle semantics), ADR-027 (recursive flow template format)
 **Implemented by:** #707 (Wave 18-B `review_cycle` wiring in `config/templates/standard.yaml` + build manifest `prior_review_feedback` input), #708 (Wave 18-C contract lint).

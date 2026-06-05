@@ -89,13 +89,16 @@ A_EVENTS="$A_DIR/events/events.jsonl"
 
 assert_eq "A: pipeline_status=failed (NOT complete — the actual bug fix)" \
     "failed" "$(jq -r '.status' "$A_STATE" 2>/dev/null)"
-assert_eq "A: stage_statuses.review=complete (review RAN)" \
-    "complete" "$(jq -r '.stage_statuses.review' "$A_STATE" 2>/dev/null)"
-assert_eq "A: stage_verdicts.review=request_changes (ADR-019 coercion fired)" \
-    "request_changes" "$(jq -r '.stage_verdicts.review' "$A_STATE" 2>/dev/null)"
-# #568: until.stage is now `test_assessment` (3-stage cycle).
-assert_eq "A: stage_statuses.test_assessment=failed (cycle unconverged signal propagated)" \
-    "failed" "$(jq -r '.stage_statuses.test_assessment' "$A_STATE" 2>/dev/null)"
+# Wave 18-B (#707): standard.yaml now wraps `review` inside the outer
+# review_cycle (ADR-026), and cycle_orchestrator_run is stubbed in this
+# test. Review no longer dispatches as a standalone post-cycle stage; the
+# outer cycle IS review's dispatch container. The original assertions
+# below (review RAN, ADR-019 coercion fired post-cycle, test_assessment
+# stage_status=failed propagated) targeted the OLD shape where review was
+# a sibling AFTER build_test_cycle. With the stub, no member stage state
+# leaks out. The pipeline_status assertion above (failed) is the core
+# rc→status contract; the cycle.unconverged event assertion below is the
+# rc→event contract. Both survive the new shape.
 if grep -q '"type":"cycle.unconverged"' "$A_EVENTS" 2>/dev/null && \
    grep -q '"reason":"max_iterations"' "$A_EVENTS" 2>/dev/null; then
     assert_pass "A: cycle.unconverged event emitted with reason=max_iterations"

@@ -11,6 +11,7 @@
 ./artifacts/review-prompt.redacted.txt
 ./artifacts/review-prompt.txt
 ./artifacts/review.json
+./artifacts/review.md
 ./artifacts/test-results.json
 ./intake.md
 ./mock-repo/seed.txt

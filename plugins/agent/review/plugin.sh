@@ -539,6 +539,35 @@ REVIEW_PROMPT
             summary: $summary
         }' | atomic_write "$output_review_json"
 
+    # ADR-026 / Wave 18-B (#707): write review.md alongside review.json so
+    # the outer review_cycle can wire review_md → build.prior_review_feedback
+    # via the cycle orchestrator's _cycle_apply_feedback. Mirrors
+    # test_assessment's test-assessment.md sibling-of-json pattern (#568).
+    # The artifact is declared optional in manifest.yaml; templates that do
+    # NOT wire review_cycle pay only the cheap render cost.
+    # Copilot P2 (#715): write the markdown sibling via atomic_write to match
+    # the canonical sibling-artifact pattern (test_assessment writes both
+    # JSON+MD atomically). Plain redirection would leak a partial file if
+    # the renderer aborts mid-write, and the prior `|| : >` fallback could
+    # additionally truncate a partial output on renderer non-zero rc — both
+    # paths now flow through atomic_write's rename-into-place contract.
+    local _review_md_path="${output_review_json%.json}.md"
+    local _review_md_body=""
+    if declare -F render_review_md >/dev/null 2>&1; then
+        local _review_json_body
+        _review_json_body="$(cat "$output_review_json" 2>/dev/null || true)"
+        _review_md_body="$(render_review_md "$_review_json_body" 2>/dev/null || true)"
+    fi
+    if [[ -z "$_review_md_body" ]]; then
+        # Renderer unavailable OR returned empty — emit a minimal markdown so
+        # the cycle feedback wiring sees a non-empty file. Never silent-fail
+        # to empty file.
+        _review_md_body="$(printf '# Review (verdict: %s)\n\n%s\n' \
+            "$verdict" "${summary:-}")"
+    fi
+    printf '%s' "$_review_md_body" | atomic_write "$_review_md_path" \
+        2>/dev/null || true
+
     emit_event "plugin.run.complete" "plugin=review" \
         "verdict=$verdict" \
         "issues_count=$issues_count" \

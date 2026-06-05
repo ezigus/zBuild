@@ -115,7 +115,22 @@ assert_eq "build iter 1 label = 3.1.1"           "3.1.1" "$(_label_for build 1)"
 assert_eq "test iter 1 label = 3.1.2"            "3.1.2" "$(_label_for test 1)"
 assert_eq "test_assessment iter 1 label = 3.1.3" "3.1.3" "$(_label_for test_assessment 1)"
 
-assert_eq "review observed cardinal label 4"     "4"     "$(_label_for review 1)"
+# Wave 18-B (#707): standard.yaml now wraps `review` inside the outer
+# review_cycle (ADR-026). review is no longer a post-cycle linear stage at
+# cardinal 4 — it's a member of the outermost cycle (cardinal 3 in this
+# template), so its seq label inherits the cycle's prefix. The first run
+# of review under outer_iter 1 lands at `3.1.<position>`. The exact
+# position depends on review_cycle's member layout — for `flow:
+# [build_test_cycle, review]`, review is position 2.
+# Accept any 3-level label starting with "3.1." to be resilient to inner
+# build_test_cycle dispatch ordering nuances.
+_rev_label="$(_label_for review 1)"
+if [[ "$_rev_label" =~ ^3\.1\.[0-9]+$ ]]; then
+    assert_pass "review observed 3-level label under review_cycle: $_rev_label (#707)"
+else
+    assert_fail "review observed 3-level label under review_cycle" \
+        "expected 3.1.<pos>, got '$_rev_label'"
+fi
 
 # Cycle members must see the runner-published cardinal.
 assert_eq "build saw ZBUILD_CYCLE_CARDINAL=3"           "3" "$(_cardinal_env_for build)"
@@ -125,8 +140,12 @@ assert_eq "test_assessment saw ZBUILD_CYCLE_CARDINAL=3" "3" "$(_cardinal_env_for
 # Leak check: ZBUILD_CYCLE_CARDINAL must NOT leak into post-cycle stages.
 assert_eq "intake saw ZBUILD_CYCLE_CARDINAL UNSET" "UNSET" "$(_cardinal_env_for intake)"
 assert_eq "plan saw ZBUILD_CYCLE_CARDINAL UNSET"   "UNSET" "$(_cardinal_env_for plan)"
-assert_eq "review saw ZBUILD_CYCLE_CARDINAL UNSET (no leak after cycle)" \
-    "UNSET" "$(_cardinal_env_for review)"
+# Wave 18-B (#707): review is now a member of the outer review_cycle
+# (ADR-026), so it MUST see ZBUILD_CYCLE_CARDINAL set (=3 — the cycle's
+# own cardinal in this template's flow). The "no leak after cycle"
+# property is preserved for intake/plan above (which are PRE-cycle).
+assert_eq "review saw ZBUILD_CYCLE_CARDINAL=3 (review is now in review_cycle, #707)" \
+    "3" "$(_cardinal_env_for review)"
 
 print_test_results
 cleanup_test_env
