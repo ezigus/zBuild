@@ -66,12 +66,21 @@ for _row in "${_cases[@]}"; do
     _state="$_dir/state/pipeline-state.json"
     _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
     assert_eq "rc=$_rc → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
-    _got_review="$(jq -r '.stage_statuses.review // "absent"' "$_state" 2>/dev/null)"
+    # Wave 18-B (#707): standard.yaml now wraps `review` inside the outer
+    # review_cycle (ADR-026); the cycle is the LAST dispatch unit so no
+    # post-cycle stage exists to assert "ran/skipped" on. The pipeline_status
+    # check above is the canonical rc→status mapping assertion. Use `plan`
+    # (pre-cycle) as a smoke that stage:* dispatch ran when rc∈{0,1,2,3}
+    # (continue path) — plan ALWAYS dispatches regardless of cycle rc, so
+    # we just confirm it landed for the continue cases.
+    _got_plan="$(jq -r '.stage_statuses.plan // "absent"' "$_state" 2>/dev/null)"
     if [[ "$_exp_review" == "1" ]]; then
-        assert_eq "rc=$_rc → review dispatched (stage_statuses.review=complete)" "complete" "$_got_review"
-    else
-        assert_eq "rc=$_rc → review SKIPPED (stage_statuses.review=absent)" "absent" "$_got_review"
+        assert_eq "rc=$_rc → plan dispatched (stage_statuses.plan=complete) [#707]" \
+            "complete" "$_got_plan"
     fi
+    # Halt-class cases (rc∈{4,5,130}) abort before reaching pipeline finalize;
+    # plan may or may not be recorded depending on when the halt fires. Don't
+    # over-assert. The pipeline_status above is the authoritative check.
 done
 
 # _RUNNER_CYCLE_UNCONVERGED flag — verified indirectly through pipeline_status,

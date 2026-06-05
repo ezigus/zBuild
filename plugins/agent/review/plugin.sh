@@ -539,6 +539,27 @@ REVIEW_PROMPT
             summary: $summary
         }' | atomic_write "$output_review_json"
 
+    # ADR-026 / Wave 18-B (#707): write review.md alongside review.json so
+    # the outer review_cycle can wire review_md → build.prior_review_feedback
+    # via the cycle orchestrator's _cycle_apply_feedback. Mirrors
+    # test_assessment's test-assessment.md sibling-of-json pattern (#568).
+    # The artifact is declared optional in manifest.yaml; templates that do
+    # NOT wire review_cycle pay only the cheap render cost.
+    local _review_md_path="${output_review_json%.json}.md"
+    if declare -F render_review_md >/dev/null 2>&1; then
+        local _review_json_body
+        _review_json_body="$(cat "$output_review_json" 2>/dev/null || true)"
+        render_review_md "$_review_json_body" > "$_review_md_path" 2>/dev/null \
+            || : > "$_review_md_path"
+    else
+        # Renderer unavailable — emit a minimal markdown so the cycle feedback
+        # wiring sees a non-empty file. Never silent-fail to empty stdout.
+        {
+            printf '# Review (verdict: %s)\n\n' "$verdict"
+            [[ -n "$summary" ]] && printf '%s\n' "$summary"
+        } > "$_review_md_path" 2>/dev/null || true
+    fi
+
     emit_event "plugin.run.complete" "plugin=review" \
         "verdict=$verdict" \
         "issues_count=$issues_count" \

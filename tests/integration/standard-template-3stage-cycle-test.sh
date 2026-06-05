@@ -49,9 +49,19 @@ assert_eq "T1: _TPL_STAGES[3]=test" "test" "${_TPL_STAGES[3]:-}"
 assert_eq "T1: _TPL_STAGES[4]=test_assessment" "test_assessment" "${_TPL_STAGES[4]:-}"
 assert_eq "T1: _TPL_STAGES[5]=review" "review" "${_TPL_STAGES[5]:-}"
 
-assert_eq "T1: exactly 1 cycle" "1" "${#_TPL_CYCLES[@]}"
-assert_eq "T1: cycle id=build_test_cycle" "build_test_cycle" "${_TPL_CYCLES[0]}"
-assert_eq "T1: cycle.stages CSV is build,test,test_assessment" \
+# Wave 18-B (#707): standard.yaml now wraps build_test_cycle + review in
+# the outer review_cycle (ADR-026). The inner build_test_cycle still has
+# the same flow (build,test,test_assessment) and same exit_when/feedback;
+# the outer review_cycle is its parent.
+assert_eq "T1: exactly 2 cycles (build_test_cycle + review_cycle outer)" \
+    "2" "${#_TPL_CYCLES[@]}"
+# _TPL_CYCLES order is innermost-first per emit_cycle_dfs (Wave 17-B), so
+# build_test_cycle comes before review_cycle.
+assert_contains "T1: build_test_cycle registered" \
+    "${_TPL_CYCLES[*]}" "build_test_cycle"
+assert_contains "T1: review_cycle (outer) registered" \
+    "${_TPL_CYCLES[*]}" "review_cycle"
+assert_eq "T1: inner cycle.stages CSV is build,test,test_assessment" \
     "build,test,test_assessment" "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
 assert_eq "T1: until.stage=test_assessment" \
     "test_assessment" "${_TPL_CYCLE_UNTIL_STAGE_build_test_cycle:-}"
@@ -70,13 +80,19 @@ assert_contains "T1: feedback from test_assessment:test_assessment_md" \
 assert_contains "T1: feedback to build:prior_test_assessment" \
     "$fb" "build:prior_test_assessment"
 
-# dispatch units: stage:intake, stage:plan, cycle:build_test_cycle, stage:review
-assert_eq "T1: 4 dispatch units" "4" "${#_TPL_DISPATCH_UNITS[@]}"
-has_cyc=0
+# Wave 18-B (#707): dispatch units now fold to [stage:intake, stage:plan,
+# cycle:review_cycle] — review_cycle is the outermost cycle and absorbs
+# build_test_cycle (member) + review (member) in its dispatch unit. The
+# inner build_test_cycle no longer surfaces as a top-level dispatch unit;
+# the cycle orchestrator recurses into it via _TPL_STAGE_TYPE_<id>=cycle.
+assert_eq "T1: 3 dispatch units (intake/plan/review_cycle)" \
+    "3" "${#_TPL_DISPATCH_UNITS[@]}"
+has_outer=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_test_cycle" ]] && has_cyc=1
+    [[ "$u" == "cycle:review_cycle" ]] && has_outer=1
 done
-assert_eq "T1: dispatch units include cycle:build_test_cycle" "1" "$has_cyc"
+assert_eq "T1: dispatch units include cycle:review_cycle (outer)" \
+    "1" "$has_outer"
 
 # ─── Orchestrator harness ────────────────────────────────────────────────────
 # shellcheck disable=SC1090

@@ -22,17 +22,26 @@ FIXT="$REPO_ROOT/tests/fixtures/templates"
 # contain exactly ONE cycle:build_test_cycle entry between stage:plan and
 # stage:review. Pre-F2 expectation (zero cycles) is obsoleted by #511.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-assert_eq "standard.yaml: 1 cycle declared (#511 F2)" "1" "${#_TPL_CYCLES[@]}"
+# Wave 18-B (#707): standard.yaml now declares 2 cycles — the inner
+# build_test_cycle (#511 F2) and the outer review_cycle (ADR-026).
+assert_eq "standard.yaml: 2 cycles declared (#511 F2 + #707 ADR-026)" \
+    "2" "${#_TPL_CYCLES[@]}"
 assert_eq "standard.yaml: cycle id is build_test_cycle" "build_test_cycle" "${_TPL_CYCLES[0]}"
 # stages = intake, plan, build, test, test_assessment, review (6 — #568).
-# build+test+test_assessment absorbed into 1 cycle unit → 4 dispatch units total
-# (stage:intake, stage:plan, cycle:build_test_cycle, stage:review).
-assert_eq "standard.yaml: 4 dispatch units" "4" "${#_TPL_DISPATCH_UNITS[@]}"
+# Wave 18-B (#707): build_test_cycle is now wrapped inside the outer
+# review_cycle (ADR-026), so review_cycle is the OUTERMOST cycle and absorbs
+# ALL of build/test/test_assessment/review under a single dispatch unit →
+# 3 dispatch units total (stage:intake, stage:plan, cycle:review_cycle).
+assert_eq "standard.yaml: 3 dispatch units" "3" "${#_TPL_DISPATCH_UNITS[@]}"
 has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_test_cycle" ]] && has_cycle_unit=1
+    # Wave 18-B (#707): the outermost cycle (review_cycle) is what surfaces
+    # in dispatch; build_test_cycle is recursed into via cycle-as-member
+    # dispatch (_TPL_STAGE_TYPE_<id>=cycle, Wave 17-B).
+    [[ "$u" == "cycle:review_cycle" ]] && has_cycle_unit=1
 done
-assert_eq "standard.yaml: declares cycle:build_test_cycle unit" "1" "$has_cycle_unit"
+assert_eq "standard.yaml: declares cycle:review_cycle dispatch unit (#707 outermost)" \
+    "1" "$has_cycle_unit"
 
 # T2: cycle-converges-iter2 — one cycle declared, dispatch unit emitted once
 load_template "$FIXT/cycle-converges-iter2.yaml"
@@ -175,7 +184,10 @@ assert_eq "overlap: load_template rc != 0" "1" "$rc"
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 assert_eq "regression: standard.yaml still has 6 stages (#568)" "6" "${#_TPL_STAGES[@]}"
 # #511 F2: standard.yaml now declares one cycle (build_test_cycle).
-assert_eq "regression: standard.yaml has one cycle (build_test_cycle)" "1" "${#_TPL_CYCLES[@]}"
+# Wave 18-B (#707): standard.yaml now declares 2 cycles after ADR-026
+# (inner build_test_cycle + outer review_cycle).
+assert_eq "regression: standard.yaml has 2 cycles (build_test_cycle + review_cycle)" \
+    "2" "${#_TPL_CYCLES[@]}"
 
 # ───────────────────────── #585: v2 inline cycle syntax ──────────────────────
 
@@ -221,10 +233,12 @@ expected_flat="intake plan build test test_assessment review"
 actual_flat="${_TPL_STAGES[*]}"
 assert_eq "v2/flat: _TPL_STAGES expansion preserves canonical order" "$expected_flat" "$actual_flat"
 
-# T13: _TPL_DISPATCH_UNITS[] = stage:intake stage:plan cycle:build_test_cycle stage:review
-expected_units="stage:intake stage:plan cycle:build_test_cycle stage:review"
+# T13: Wave 18-B (#707) — review_cycle is now the OUTERMOST cycle and
+# absorbs build_test_cycle + review under one dispatch unit.
+expected_units="stage:intake stage:plan cycle:review_cycle"
 actual_units="${_TPL_DISPATCH_UNITS[*]}"
-assert_eq "v2/dispatch: units match expected" "$expected_units" "$actual_units"
+assert_eq "v2/dispatch: units match expected (#707 outermost-cycle folding)" \
+    "$expected_units" "$actual_units"
 
 # T14: stage_definitions attr propagation — build's router.timeout_s=900
 # comes from standard.yaml's stage_definitions.build.router.timeout_s.

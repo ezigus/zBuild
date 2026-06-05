@@ -740,15 +740,43 @@ _cycle_iter_dispatch() {
         if [[ "$_member_type" == "cycle" ]]; then
             set +e
             # Save outer cycle's state — recursion clobbers _CYCLE_* globals.
+            # ADR-026 / Wave 18-B (#707): also save _CYCLE_FEEDBACK (and the
+            # outer cycle's exit_when/abort_when arrays implicitly via
+            # _CYCLE_TRAP_CYCLE_ID, which _cycle_apply_feedback uses to
+            # rebuild the iter-next feedback dir path). Without restoring
+            # _CYCLE_FEEDBACK, the outer cycle's post-iter _cycle_apply_feedback
+            # would use the INNER cycle's feedback edges (e.g. inner
+            # build_test_cycle's prior_test_assessment) instead of the outer
+            # review_cycle's review→build prior_review_feedback edge, silently
+            # dropping the ADR-026 wiring.
             local _outer_cid="$_CYCLE_TRAP_CYCLE_ID"
             local _outer_iter="$_CYCLE_TRAP_ITER"
             local _outer_max="$_CYCLE_MAX_ITER"
+            local _outer_on_max="$_CYCLE_ON_MAX"
+            local _outer_until_stage="$_CYCLE_UNTIL_STAGE"
+            local _outer_until_field="$_CYCLE_UNTIL_FIELD"
+            local _outer_until_op="$_CYCLE_UNTIL_OP"
+            local _outer_until_value="$_CYCLE_UNTIL_VALUE"
+            local -a _outer_feedback=( "${_CYCLE_FEEDBACK[@]}" )
+            local -a _outer_stages=( "${_CYCLE_STAGES[@]}" )
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
-            # Restore outer state for verdict bookkeeping.
+            # Restore outer state for verdict bookkeeping, exit/abort
+            # predicate evaluation, AND outer feedback wiring (so the
+            # outer's _cycle_apply_feedback at iter end sees its own edges,
+            # not the inner cycle's, and _cycle_check_until evaluates the
+            # OUTER's exit_when stage/field/op/value, not the inner's
+            # clobbered residue).
             _CYCLE_TRAP_CYCLE_ID="$_outer_cid"
             _CYCLE_TRAP_ITER="$_outer_iter"
             _CYCLE_MAX_ITER="$_outer_max"
+            _CYCLE_ON_MAX="$_outer_on_max"
+            _CYCLE_UNTIL_STAGE="$_outer_until_stage"
+            _CYCLE_UNTIL_FIELD="$_outer_until_field"
+            _CYCLE_UNTIL_OP="$_outer_until_op"
+            _CYCLE_UNTIL_VALUE="$_outer_until_value"
+            _CYCLE_FEEDBACK=( "${_outer_feedback[@]}" )
+            _CYCLE_STAGES=( "${_outer_stages[@]}" )
             [[ $_had_e -eq 1 ]] && set -e
             # Map nested-cycle terminal rc → outer verdict/status.
             case "$rc" in

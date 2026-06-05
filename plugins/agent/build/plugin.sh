@@ -143,11 +143,26 @@ _build_stage_run_inner() {
     local _feedback_body
     _feedback_body="$(_build_read_prior_assessment 2>/dev/null || true)"
 
+    # ADR-026 / Wave 18-B (#707): outer-cycle review-remediation feedback.
+    # Empty when not running inside review_cycle, when the feedback dir is
+    # not exported, or when the file is missing/empty (silent-failure guard,
+    # see _build_read_prior_review). Independent of prior_test_assessment —
+    # both can co-exist when build runs as a member of build_test_cycle
+    # nested inside review_cycle (review feedback drove the outer iter,
+    # test_assessment feedback drove the inner iter).
+    local _review_feedback_body
+    _review_feedback_body="$(_build_read_prior_review 2>/dev/null || true)"
+
     {
         printf '%s\n' "$_task_header"
         printf '## ORIGINAL TASK (immutable across iterations)\n'
         printf '%s\n\n' "$plan_payload"
         printf '## INSTRUCTIONS\n%s\n' "$_build_instructions"
+        if [[ -n "$_review_feedback_body" ]]; then
+            printf '\n## PRIOR REVIEW FEEDBACK (from a prior review iteration)\n'
+            printf '%s\n' "$_review_feedback_body"
+            printf 'Address the reviewer findings above before emitting LOOP_COMPLETE.\n'
+        fi
         if [[ -n "$_feedback_body" ]]; then
             local _prev_iter=$(( _iter_n - 1 ))
             [[ "$_prev_iter" -lt 1 ]] && _prev_iter=1
@@ -629,6 +644,36 @@ _build_read_prior_assessment() {
     local f="$fb_dir/prior_test_assessment.txt"
     # `-s`: present AND non-empty. `-f` alone would let empty-but-present
     # files through and inject a no-op section (silent failure).
+    [[ ! -s "$f" ]] && return 0
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "$body" ]] && return 0
+    printf '%s' "$body"
+}
+
+# ─── _build_read_prior_review (ADR-026 / Wave 18-B / #707) ────────────────────
+# Read the prior outer-cycle iter's review markdown wired by the cycle
+# orchestrator's _cycle_apply_feedback as
+# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_review_feedback.txt (sourced from the
+# review stage's review_md output per ADR-026). Returns the raw review body
+# on stdout OR empty stdout when:
+#   - not running in a cycle (ZBUILD_CYCLE_ITER unset)
+#   - cycle feedback dir not exported
+#   - file missing OR empty (silent-failure guard: `[[ -s file ]]`)
+#
+# Independent of the inner build_test_cycle's prior_test_assessment feedback:
+# when build runs as a member of build_test_cycle nested inside review_cycle,
+# both feedback files can coexist for the same iter (review feedback came
+# from a prior outer iter; test_assessment feedback came from a prior inner
+# iter of the current outer iter). Each helper checks its own file.
+#
+# Empty stdout → caller omits the PRIOR REVIEW FEEDBACK section entirely
+# (NEVER silent emit — mirrors _build_read_prior_assessment shape).
+_build_read_prior_review() {
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
+    local f="$fb_dir/prior_review_feedback.txt"
     [[ ! -s "$f" ]] && return 0
     local body
     body="$(cat "$f" 2>/dev/null)" || return 0

@@ -830,11 +830,33 @@ _tpl_validate_cycles() {
 # Walks _TPL_STAGES[] in order. Each stage belongs to at most one cycle
 # (validated above). On entering a cycle's first stage, emit one "cycle:<id>"
 # unit covering the whole cycle. All other stages become "stage:<id>".
+#
+# ADR-026 / Wave 18-B (#707): when cycles nest (a cycle's `flow:` member is
+# itself a cycle), the OUTERMOST enclosing cycle owns dispatch — the runner
+# invokes cycle_orchestrator_run on the outermost, which then recurses into
+# inner cycles via _TPL_STAGE_TYPE_<id>=cycle (Wave 17-B). The dispatch
+# sequence must emit exactly one `cycle:<outermost>` unit covering all leaf
+# stages reachable from the outermost cycle, in their _TPL_STAGES order.
+# Without this folding, a leaf member of an inner cycle that is also the
+# first member of the outer cycle would be absorbed into `cycle:<inner>`
+# and the OUTER cycle would never appear in dispatch, silently dropping
+# the outer-cycle semantics (exit_when, abort_when, feedback).
 _tpl_build_dispatch_units() {
     _TPL_DISPATCH_UNITS=()
-    # Map: stage → cycle_id (if any)
+    # Map: stage → immediate enclosing cycle id (if any)
     local -A stage_to_cycle=()
-    local -A cycle_first_stage=()
+    # Map: cycle_id → its parent cycle id (if any). A cycle A is the parent
+    # of cycle B when A's CSV-stage list contains B as a member.
+    local -A cycle_parent=()
+    # Build a quick "is this id a registered cycle" set. We CANNOT rely on
+    # _TPL_STAGE_TYPE_<id> here because _tpl_build_dispatch_units runs in
+    # load_template BEFORE the type discriminator vars are populated. The
+    # _TPL_CYCLES array IS populated by this point (translator topo pre-pass
+    # registers cycles before this function fires).
+    local -A is_cycle=()
+    local _c
+    for _c in "${_TPL_CYCLES[@]}"; do is_cycle[$_c]=1; done
+
     local cid
     for cid in "${_TPL_CYCLES[@]}"; do
         local safe="${cid//-/_}"
@@ -844,24 +866,42 @@ _tpl_build_dispatch_units() {
         # shellcheck disable=SC2206
         local -a cs=($stages_csv)
         IFS="$IFS_save"
-        local idx=0 s
+        local s
         for s in "${cs[@]}"; do
-            stage_to_cycle[$s]="$cid"
-            if [[ $idx -eq 0 ]]; then
-                cycle_first_stage[$cid]="$s"
+            if [[ -n "${is_cycle[$s]:-}" ]]; then
+                cycle_parent[$s]="$cid"
+            else
+                # Inner cycle's claim wins over outer when they overlap (which
+                # shouldn't happen under acyclicity, but be explicit). Don't
+                # overwrite an existing entry.
+                [[ -z "${stage_to_cycle[$s]:-}" ]] && stage_to_cycle[$s]="$cid"
             fi
-            idx=$((idx + 1))
         done
     done
 
+    # Resolve each cycle to its outermost ancestor.
+    local -A cycle_outermost=()
+    for cid in "${_TPL_CYCLES[@]}"; do
+        local cur="$cid" parent
+        while :; do
+            parent="${cycle_parent[$cur]:-}"
+            [[ -z "$parent" ]] && break
+            cur="$parent"
+        done
+        cycle_outermost[$cid]="$cur"
+    done
+
     local s
+    local -A emitted_outer=()
     for s in "${_TPL_STAGES[@]}"; do
         local in_cycle="${stage_to_cycle[$s]:-}"
         if [[ -n "$in_cycle" ]]; then
-            if [[ "${cycle_first_stage[$in_cycle]}" == "$s" ]]; then
-                _TPL_DISPATCH_UNITS+=("cycle:$in_cycle")
+            local outer="${cycle_outermost[$in_cycle]:-$in_cycle}"
+            if [[ -z "${emitted_outer[$outer]:-}" ]]; then
+                _TPL_DISPATCH_UNITS+=("cycle:$outer")
+                emitted_outer[$outer]=1
             fi
-            # subsequent cycle stages are absorbed under the cycle unit
+            # subsequent stages absorbed under the outermost cycle unit
         else
             _TPL_DISPATCH_UNITS+=("stage:$s")
         fi

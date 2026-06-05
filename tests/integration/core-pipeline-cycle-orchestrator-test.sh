@@ -143,11 +143,18 @@ assert_contains "T5: cycle_iterations[build-test].status present" "$ci_present" 
 # obsoleted by this PR; the F1 regression intent (no cycle leaks into linear
 # templates) is preserved by tests using cycle-less fixtures.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
+# Wave 18-B (#707): standard.yaml now wraps build_test_cycle in the outer
+# review_cycle (ADR-026). The runner dispatches the OUTERMOST cycle, and
+# the orchestrator recurses into the inner cycle via _TPL_STAGE_TYPE_<id>
+# (Wave 17-B). Either top-level cycle unit satisfies the #511 contract
+# that the cycle framework is wired through dispatch.
 has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_test_cycle" ]] && has_cycle_unit=1
+    [[ "$u" == "cycle:build_test_cycle" || "$u" == "cycle:review_cycle" ]] \
+        && has_cycle_unit=1
 done
-assert_eq "T6: standard.yaml declares cycle:build_test_cycle unit (#511)" "1" "$has_cycle_unit"
+assert_eq "T6: standard.yaml declares a cycle dispatch unit (#511 + #707)" \
+    "1" "$has_cycle_unit"
 
 # ─── T7 (#524): operator-visible cycle banners on fd 2 ────────────────────────
 # Wire the runner-style hooks, then run a converging cycle. Capture stderr and

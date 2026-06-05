@@ -68,6 +68,16 @@ outputs:
     required: true
     # ADR-020 amendment (#507): primary output; .verdict drives indicator.
     primary: true
+  # ADR-026 / Wave 18-B (#707): markdown rendering of review.json that the
+  # outer review_cycle feeds back into build's prior_review_feedback input
+  # via _cycle_apply_feedback. Mirrors test_assessment_md shape. Optional so
+  # legacy templates that DO NOT wire review_cycle continue to work; the
+  # review plugin always writes the file when review.json is written (the
+  # rendering is cheap), but consumers that don't reference it pay nothing.
+  - id: review_md
+    path: "${artifact_dir}/review.md"
+    type: markdown
+    required: false
 
 state:
   persisted:
