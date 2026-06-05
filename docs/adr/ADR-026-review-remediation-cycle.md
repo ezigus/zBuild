@@ -87,9 +87,9 @@ retry.
    input: prior_review_feedback, required: false }`. Build's
    `manifest.yaml` adds `prior_review_feedback` to its `inputs:` with
    `source: cycle_feedback` — the same shape as the existing
-   `prior_test_failures` / `prior_test_assessment` inputs (ADR-020
-   amendment for cycle feedback; ADR-021 v2 #511 consumer-side
-   declaration requirement).
+   `prior_test_assessment` input (ADR-020 amendment for cycle
+   feedback; ADR-021 v2 #511 consumer-side declaration requirement;
+   `plugins/agent/build/manifest.yaml:58-60`).
 6. **Plan is one-shot at the top level.** The remediation cycle does
    NOT wrap `plan`. Each remediation iteration re-runs build, test,
    test_assessment, and review with the new feedback context; `plan`
@@ -103,7 +103,8 @@ retry.
    ADR-021 v2 #511 Pin 5), prepends a `## Prior review feedback`
    section to the LLM prompt. Empty file → preamble omitted entirely
    (never silent emit). The integration mirrors the existing
-   `_build_read_prior_failures` helper for `prior_test_failures`.
+   `_build_read_prior_assessment` helper for `prior_test_assessment`
+   (`plugins/agent/build/plugin.sh:625`).
 
 ## Boundary
 
@@ -141,12 +142,14 @@ What changes:
   top-level `flow:` becomes `[intake, plan, review_cycle]`;
   `build_test_cycle` and `review` move from top-level siblings into
   `review_cycle.flow:`. Wave 18-B (#707) owns this migration.
-- **`plugins/tool/build/manifest.yaml`** gains a `prior_review_feedback`
-  entry in `inputs:` with `source: cycle_feedback, required: false`.
-- **`plugins/tool/build/plugin.sh`** gains a check for the feedback
+- **`plugins/agent/build/manifest.yaml`** gains a
+  `prior_review_feedback` entry in `inputs:` with
+  `source: cycle_feedback, required: false`.
+- **`plugins/agent/build/plugin.sh`** gains a check for the feedback
   artifact and prepends a `## Prior review feedback` section to the
   LLM prompt when the file is present and non-empty. Mirrors
-  `_build_read_prior_failures` (ADR-021 v2 #511 Pin 5).
+  `_build_read_prior_assessment` (ADR-021 v2 #511 Pin 5;
+  `plugins/agent/build/plugin.sh:625`).
 - **Contract lint** (Wave 18-C, #708) enforces ADR-027 invariants
   including that the new `review_cycle` section is well-formed under
   the recursive `flow:` shape (reserved key set, flow ID resolution,
@@ -295,10 +298,10 @@ The impl sequence:
   the top-level `flow:` becomes `[intake, plan, review_cycle]` and add
   the `review_cycle` stage section verbatim from the "Example wire"
   block above; add `prior_review_feedback` to
-  `plugins/tool/build/manifest.yaml` `inputs:` with
+  `plugins/agent/build/manifest.yaml` `inputs:` with
   `source: cycle_feedback, required: false`; extend
-  `plugins/tool/build/plugin.sh` with a `_build_read_prior_review`
-  helper that mirrors `_build_read_prior_failures` (presence + non-empty
+  `plugins/agent/build/plugin.sh` with a `_build_read_prior_review`
+  helper that mirrors `_build_read_prior_assessment` (presence + non-empty
   check per ADR-021 v2 #511 Pin 5, prepend `## Prior review feedback`
   section to the LLM prompt). ADR-026 flips Proposed → Accepted on this
   merge.
