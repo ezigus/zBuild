@@ -352,6 +352,39 @@ ADR-016 (per-repo template resolution), and ADR-024 (flipped on #673 in
 Wave 13-B). No code, no test, no event-schema changes in this PR. Only the
 ADR text.
 
+## Implementation Notes (Proposed — 2026-06-05)
+
+This ADR ships in **Proposed** status. No code, no test, no event-schema
+changes in this PR. The status flips to **Accepted** when Wave 17-B
+(#703) lands the template loader + validator + back-compat shim.
+
+The impl sequence:
+
+- **Wave 17-B (#703)** — template loader in `scripts/lib/template-loader.sh`
+  that implements the six "Loader contract" rules above; contract validator
+  that enforces reserved-key set, `flow:` ID resolution, cycle membership
+  acyclicity, `on_max` enum, and predicate `op` enum; back-compat shim that
+  rewrites the pre-ADR-027 shape into the new shape internally and emits
+  `template.format.deprecated` events. ADR-027 flips Proposed → Accepted on
+  this merge.
+- **Wave 17-C (#704)** — migrate `config/templates/standard.yaml` to the
+  ADR-027 shape (the example in section 5 above becomes the new file
+  verbatim); rewrite every golden under `tests/golden/` that snapshots the
+  pre-ADR-027 shape.
+- **Wave 17-D (#705)** — amend ADR-013 with a clarifying note that cycle
+  stages are stages (no taxonomy content change); amend ADR-016 so per-repo
+  overrides patch into stage sections by ID under the new shape.
+- **Back-compat shim lifecycle** — the shim ships in Wave 17-B and lives
+  for one tagged-release window. It is removed in the release after Wave
+  17-C lands. The `template.format.deprecated` event surfaces in operator
+  dashboards so any per-repo template using the old shape is visible
+  before the shim removal.
+- **Wave 18 builds on this** — #706 (ADR-026), #707 (`review_cycle`),
+  #708 (contract lint enforcing ADR-027 invariants) all assume the
+  recursive `flow:` shape is in place.
+
+This PR (closing #702) lands only the ADR text.
+
 ## References
 
 - [ADR-013](ADR-013-canonical-stage-list.md) — canonical stage taxonomy;
