@@ -937,8 +937,14 @@ _cycle_iter_dispatch() {
         # holds on signal-driven aborts (rc=130/143) and rc=6 from leaf
         # stages. The RAW verdict isn't yet read (predicate-blob update
         # happens BELOW), so report "aborted" as both verdict and status.
-        if ! _zbuild_propagate_abort "$rc"; then
-            local _propagate_rc=$?
+        # Use the `|| _propagate_rc=$?` form to BOTH capture the rc AND
+        # inhibit errexit at the call site (the same reason the prior
+        # `|| return $?` form was chosen — see runner.sh:1278 comment).
+        # `if ! _zbuild_propagate_abort ...; then $?` loses the original
+        # rc because bash's `!` resets $? to 0/1 of the negation.
+        local _propagate_rc=0
+        _zbuild_propagate_abort "$rc" || _propagate_rc=$?
+        if [[ $_propagate_rc -ne 0 ]]; then
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
             return "$_propagate_rc"
         fi
