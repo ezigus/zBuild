@@ -6,9 +6,11 @@
 # Drives runner.sh end-to-end with the standard template (4 dispatch units:
 # intake, plan, cycle:build_test_cycle, review). Mocks plugins to log the
 # observed ZBUILD_STAGE_IO_SEQ_LABEL and the visibility of ZBUILD_CYCLE_CARDINAL.
-# The mock test_assessment converges on iter 1 so the loop runs once — the
-# 3-level prefix and the cardinal-leak guarantee are both verifiable from a
-# single iter (the same code path emits every iter's label).
+# The mock test_assessment defaults to verdict=pass (its stage_dir is unset in
+# this mock harness, so the conditional write never fires); the cycle therefore
+# converges in a single iter. That one iter is enough — the 3-level prefix and
+# the cardinal-leak guarantee are both verifiable from one iter because the
+# same code path emits every iter's label.
 #
 # Pinned assertions:
 #   intake          = "1"               (linear cardinal, no cycle env)
@@ -18,7 +20,7 @@
 #   review          = "4"               (cardinal continues past the cycle slot
 #                                        AND ZBUILD_CYCLE_CARDINAL is UNSET —
 #                                        the unset-on-return contract)
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -35,7 +37,6 @@ PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 LABEL_LOG="$TEST_TEMP_DIR/labels.log"
-ITER_STATE="$TEST_TEMP_DIR/iter.state"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 export ZBUILD_STATE_DIR="$STATE_DIR"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
@@ -45,14 +46,12 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_CYCLES_ENABLED=1
 export ZBUILD_CONTRACT_VALIDATOR=warn
 export ZBUILD_SEQ_LABEL_LOG="$LABEL_LOG"
-export ZBUILD_ITER_STATE="$ITER_STATE"
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 : > "$LABEL_LOG"
-printf '0\n' > "$ITER_STATE"
 
-# Mock plugin factory: logs observed seq label + the cycle cardinal env (to
-# verify no leak into post-cycle stages). For test_assessment, drives convergence
-# on iter 2 by writing test_assessment.json with verdict=pass; iter 1 = fail.
+# Mock plugin factory: every plugin logs the seq label + the visibility of
+# ZBUILD_CYCLE_CARDINAL (so the assertions can pin both the 3-level format
+# AND the no-leak-into-pre/post-cycle-stages contract).
 _make_plugin() {
     local id="$1"
     local dir="$PLUGINS_ROOT/agent/$id"
@@ -76,18 +75,6 @@ ${fn}() {
         "\${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \\
         "\${ZBUILD_CYCLE_CARDINAL:-UNSET}" \\
         >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
-    local stage_dir="\${ZBUILD_STAGE_DIR:-}"
-    local iter="\${ZBUILD_CYCLE_ITER:-0}"
-    if [[ "$id" == "test_assessment" && -n "\$stage_dir" ]]; then
-        local verdict="fail"
-        [[ "\$iter" -ge 2 ]] && verdict="pass"
-        printf '{"schema_version":1,"verdict":"%s","summary":"x"}\n' "\$verdict" \\
-            > "\$stage_dir/test_assessment.json" 2>/dev/null || true
-    fi
-    if [[ "$id" == "review" && -n "\$stage_dir" ]]; then
-        printf '{"schema_version":1,"verdict":"approve","confidence":0.9,"issues":[],"summary":"x"}\n' \\
-            > "\$stage_dir/review.json" 2>/dev/null || true
-    fi
     return 0
 }
 PLUGIN
