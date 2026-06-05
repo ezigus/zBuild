@@ -338,3 +338,24 @@ The "should" question is governed elsewhere:
 Consequently, the "subtractive composition" rule in §"Stage sequence" remains true (templates may omit stages and the runner validates only that present IDs are members of the taxonomy), but the rule about *which* omissions matter to a particular pipeline is template-family-specific, not engine-hardcoded. Future shipped templates (e.g., a hypothetical `issue-creation` family) define their own expected stage set by being what they are; the engine knows nothing about that beyond ID validity.
 
 References: ADR-016 (per-repository template resolution), ADR-021 v2 (cycle/composite structural mechanism), #447 (implementation umbrella), #652/#653/#654/#655/#656 (sub-issues for ADR-016 + impl).
+
+## Amendment 2026-06-05 (#705 / ADR-027) — Cycles are stages-with-flows
+
+ADR-027 (Wave 17-A) codifies the recursive flow template format: a cycle is a stage that happens to contain its own mini-flow, declared by `type: cycle` on a top-level stage section with its own `flow:` member list. The runner walks any `flow:` the same way at any depth. This amendment clarifies how this ADR's taxonomy composes with that recursive shape; it does NOT change the taxonomy itself.
+
+**Taxonomy scope unchanged.** The canonical stage list in §"Stage sequence" and the per-stage attribute table in §"Canonical stage definitions" remain the authoritative source for **leaf** stage IDs (`intake`, `plan`, `design`, `build`, `test`, `test_assessment`, `review`, `compound_quality`, `pr`, `deploy`, `validate`, `monitor`) and their `kind`, `tier`, `lifecycle_hooks`, `expected_artifact`, and `blocking` attrs. Adding a new leaf stage ID or changing a leaf's attrs still requires an ADR-013 revision.
+
+**Cycle stage IDs are template-defined.** Cycle stages (e.g., `build_test_cycle`, `review_cycle`) are NOT members of the canonical leaf set. Each template defines its own cycle stage IDs as sibling top-level sections, named to describe what the cycle does. Cycle stage IDs are scoped to the template that declares them; two templates may use different cycle IDs without conflict, and a cycle ID in one template MUST NOT collide with any canonical leaf ID from this ADR.
+
+**Validation applies recursively to leaf occurrences.** The runner walks the flat resolved flow (the post-`extends`-merge, post-recursive-flatten execution order; ADR-027 §"Loader contract"). At every leaf occurrence in any `flow:` — whether that `flow:` is the top-level one or nested inside a cycle stage's section, at any depth — the loader validates the stage ID against:
+
+1. The canonical leaf set from this ADR's §"Canonical stage definitions" table, OR
+2. A sibling cycle stage ID defined in the same template (a top-level section with `type: cycle`).
+
+An ID that resolves to neither is rejected at template-load time with a structured error, parity with the existing canonical-ID validation. The "subtractive composition" rule (templates MAY omit leaf stages) and the "canonical order" rule (when leaf stages appear, they must appear in canonical relative order) both still hold at every level: a cycle's `flow:` member list is a contiguous subsequence of the canonical order for the leaves it contains, just as the top-level `flow:` was under the pre-ADR-027 shape.
+
+**Per-stage attrs follow the section, not the position.** Under ADR-027 every stage's attrs (gate, roles, io, router, etc.) live in its top-level section keyed by stage ID. A leaf referenced from inside a cycle's `flow:` has the same section as a leaf referenced from the top-level `flow:` — there is no inline-vs-hoisted split. This kills the prior friction where cycle members needed a parallel `stage_definitions:` map; the taxonomy attrs from this ADR apply to a leaf stage's section once, regardless of where the ID is referenced.
+
+**Cycle stage attrs are not taxonomy-governed.** Cycle stages carry `type: cycle`, their own `flow:`, `exit_when:`, optional `abort_when:`, `max_iterations:`, `on_max:`, and `feedback:`. These attrs are governed by ADR-027 §"Decision" and ADR-021 v2's cycle execution model — NOT by this ADR's per-stage attribute table. The taxonomy in §"Canonical stage definitions" is intentionally silent on cycle stages because their identity is template-defined and their per-stage shape comes from the cycle contract, not the leaf contract.
+
+References: ADR-027 §"Decision" and §"Loader contract" (Wave 17-A), Wave 17-B (#703, template loader + validator + back-compat shim), Wave 17-C (#704, `config/templates/standard.yaml` migration), ADR-021 v2 (cycle execution model), the 2026-06-02 amendment above (taxonomy-only scope clarification — extended here from "flattened, resolved stage set" to "flat resolved flow at every depth").

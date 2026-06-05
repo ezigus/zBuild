@@ -416,3 +416,55 @@ The impl sequence is:
   enumerated under "Impl tests" in Consequences.
 
 This PR (closing #652) lands only the ADR text.
+
+## Amendment 2026-06-05 (#705 / ADR-027) — Override semantics under the recursive flow shape
+
+ADR-027 (Wave 17-A) replaces the parallel `stages:` + `stage_definitions:` template shape with a single recursive `flow:` plus per-stage top-level sections keyed by stage ID. This amendment updates the per-repository override semantics in §"Decision" lock 1 and the resolver step order (§"Resolver step order" step 5) to match the new shape. The six decision locks, the resume contract (B1), the diff event shape (lock 5, modulo the underlying flat-flow comparison), and the backward-compat silence rule (F2) are **otherwise unchanged**.
+
+### `extends:` resolution under ADR-027
+
+The lock 2 contract (`extends: REQUIRED` in every per-repo override, depth exactly 1, resolves only to shipped template IDs) is preserved verbatim. What changes is how the override's content is composed onto the base now that the base is in the ADR-027 flat-per-stage shape.
+
+The resolver loads the base template per ADR-027 §"Loader contract" (reserved metadata extraction, stage section enumeration, cycle recursion). The override is parsed under the same rules. Then, for each **top-level key** in the override:
+
+1. **Reserved metadata key** (a key in ADR-027's reserved set: `{id, name, extends, defaults, flow, _comment}`). The override's value REPLACES the base's value for that key wholesale. The override's `flow:` fully replaces the base's `flow:` when present.
+2. **Stage section key** (any other top-level key — the stage ID). REPLACE the base's matching top-level section with the override's section. There is no field-level merge inside the stage section. A stage section present only in the override is ADDED to the merged template. A stage section present only in the base is KEPT.
+
+This preserves lock 1's full-replace contract ("there is no field-level merge with the shipped file") at the new granularity unit: in the pre-ADR-027 shape that unit was an entry in `stages:` or an entry in `stage_definitions:`; under ADR-027 it is a top-level stage section keyed by ID. The motivating reason is the same as the original lock 1 alternative analysis: silent half-merges of cycle-member attrs are too easy to misread, and full-replace + `extends:` keeps the resolved shape obvious.
+
+### `flow:` replacement at every depth
+
+Under ADR-027, `flow:` exists at the top level AND inside each cycle stage's section. Override semantics apply at every depth:
+
+- The **top-level `flow:`** is fully replaced by the override's top-level `flow:` when present (per the reserved-metadata rule above).
+- A **cycle stage's inner `flow:`** is replaced as part of replacing the whole cycle stage section. When an override defines a top-level section for a cycle stage ID that exists in the base (e.g., `build_test_cycle:`), the override's entire section — including its `type:`, `flow:`, `exit_when:`, optional `abort_when:`, `max_iterations:`, `on_max:`, and `feedback:` — replaces the base's same-id section wholesale. There is no field-level merge inside a cycle stage section either.
+
+This means an operator who wants to change a cycle's member list, exit predicate, or iteration cap restates the entire cycle section in the override. The override file is verbose but unambiguous; the resolved shape is what the file literally says.
+
+### Resolver step order (revised step 5)
+
+The resolver step order in §"Resolver step order" is unchanged in sequence and intent; only step 5's wording is revised to match the new shape. Step 5 now reads:
+
+> **5. overlay** — full-replace overlay of override onto base per the ADR-027 shape: for each top-level key in the override, REPLACE the base's matching top-level key (reserved metadata OR stage section keyed by stage ID); keys present only in the override are ADDED; keys present only in the base are KEPT. No field-level merge inside stage sections or cycle stage sections — to avoid silent half-merges of cycle members.
+
+Step 6 (`flatten_cycles`) still applies, but the flattening is now ADR-027's recursive `flow:` walk (per ADR-027 §"Loader contract" rules 4–6) rather than ADR-021 v2's `type: cycle` inline expansion. The output of step 6 is the same in shape: a flat `_TPL_STAGES[]` array used by step 7 (ADR-013 canonical-ID validation, per the ADR-013 amendment of the same date) and step 8 (ADR-020 contract validation). Steps 9–12 (snapshot, emit_resolved, emit_diff, honor_validation) are unchanged.
+
+### Diff event under the new shape
+
+Lock 5's `pipeline.template.diff_from_base` event continues to compute its `stages_in_base_not_in_override` and `stages_added` arrays against the **post-flatten flat stage list** (F3 in the original Decision). The flatten step's output shape is unchanged (a flat array of leaf stage IDs in canonical order), so the diff event payload is unchanged. What changes is the underlying mechanism: the resolver flattens via ADR-027's recursive `flow:` walk rather than ADR-021 v2's `type: cycle` inline expansion. The diff is still scoped to stage-level add/remove only (Q2); attribute-level modification detection remains deferred.
+
+### Resume contract unchanged
+
+The snapshot at `state/artifacts/template.resolved.yaml` (B1) still captures the fully resolved template post-extends, post-overlay, post-flatten. Under ADR-027 the snapshot is written in the new flat-per-stage shape. Resume reads the snapshot as before; the C3 cases (`--template` on resume with `template_id` agree/disagree) are unchanged.
+
+### Back-compat shim window
+
+ADR-027 §"Migration story" ships a one-release back-compat shim that accepts pre-ADR-027 templates (`stages:` + `stage_definitions:` + inline cycles) and rewrites them internally to the new shape before the runner sees them. During this shim window:
+
+- A per-repo override file may be authored in EITHER shape. The shim normalizes both before overlay.
+- An override and its base may be in DIFFERENT shapes (e.g., a pre-ADR-027 override extending a migrated shipped base). The shim normalizes both to the new shape, then the overlay rules above apply.
+- The `template.format.deprecated` event fires per file in the old shape, surfacing in operator dashboards so any per-repo template still using the old shape is visible before the shim removal.
+
+After the shim window closes (one tagged release after Wave 17-C lands), per-repo overrides MUST be in the ADR-027 shape; the pre-ADR-027 shape is a load-time error.
+
+References: ADR-027 §"Decision" and §"Loader contract" (Wave 17-A), Wave 17-B (#703, template loader + validator + back-compat shim), Wave 17-C (#704, `config/templates/standard.yaml` migration + golden updates), ADR-021 v2 (cycle execution model — unchanged; only the declaration shape moves to ADR-027), ADR-013 amendment of the same date (recursive taxonomy validation at every leaf occurrence).
