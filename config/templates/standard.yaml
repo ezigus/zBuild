@@ -4,77 +4,111 @@ extends: null
 defaults:
   strategy: fanout
 
-stages:
-  - id: intake
-    gate: auto
-    roles: [intake]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-  - id: plan
-    gate: auto
-    roles: [planner]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-    router:
-      timeout_s: 300
-      max_turns: 25
-  # ADR-021 + ADR-022 (#568): build/test/test_assessment outer cycle. The cycle
-  # converges on the LLM-issued test_assessment verdict (Pattern 1 stage from
-  # #567), not on the raw test rc. When the assessment is not `pass`, the cycle
-  # re-enters build with the prior assessment markdown injected as a prompt
-  # preamble (wired via `feedback.to.input=prior_test_assessment`, consumed by
-  # `plugins/agent/build` whose manifest declares the matching `source:
-  # cycle_feedback` input — renamed in #571). On termination via max_iterations,
-  # plateau, or divergence, the runner CONTINUES to review so the ADR-019
-  # fail-closed gate runs as the final arbiter.
-  # ADR-021 v2 (#585): cycle lives inline in `stages:` (execution order); per-
-  # stage attrs for cycle members are hoisted into `stage_definitions:`.
-  - id: build_test_cycle
-    type: cycle
-    stages: [build, test, test_assessment]
-    until:
-      stage: test_assessment
-      field: verdict
-      op: eq
-      value: pass
-    max_iterations: 3
-    on_max: continue
-    feedback:
-      - from: { stage: test_assessment, output: test_assessment_md }
-        to: { stage: build, input: prior_test_assessment, required: false }
-  - id: review
-    gate: auto
-    roles: [reviewer]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-    router:
-      timeout_s: 300
-      max_turns: 25
+# ─── Flow ───────────────────────────────────────────────────────────────
+# Top-level execution order. Per ADR-027 (recursive flow format), `flow:`
+# is the single ordered stage list and every ID below resolves to a
+# top-level stage section. Cycles are first-class stages — `build_test_cycle`
+# is a cycle whose own `flow:` references three top-level stages (build,
+# test, test_assessment) that are also defined as sections below.
+flow:
+  - intake
+  - plan
+  - build_test_cycle
+  - review
 
-stage_definitions:
-  build:
-    gate: auto
-    roles: [builder]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-    router:
-      timeout_s: 900
-  test:
-    gate: auto
-    roles: [tester]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-  test_assessment:
-    gate: auto
-    roles: [test_assessment]
-    io:
-      destinations: [file, stdout]
-      tail_lines: 200
-    router:
-      timeout_s: 300
-      max_turns: 25
+# ─── intake (leaf) ──────────────────────────────────────────────────────
+intake:
+  gate: auto
+  roles: [intake]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── plan (leaf) ────────────────────────────────────────────────────────
+plan:
+  gate: auto
+  roles: [planner]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── build_test_cycle (cycle stage with mini-flow) ──────────────────────
+# ADR-021 + ADR-022 (#568): build/test/test_assessment outer cycle. The cycle
+# converges on the LLM-issued test_assessment verdict (Pattern 1 stage from
+# #567), not on the raw test rc. When the assessment is not `pass`, the cycle
+# re-enters build with the prior assessment markdown injected as a prompt
+# preamble (wired via `feedback.to.input=prior_test_assessment`, consumed by
+# `plugins/agent/build` whose manifest declares the matching `source:
+# cycle_feedback` input — renamed in #571). On termination via max_iterations,
+# plateau, or divergence, the runner CONTINUES to review so the ADR-019
+# fail-closed gate runs as the final arbiter.
+# ADR-027 (#704): cycle is declared as a top-level stage section with
+# `type: cycle` and its own `flow:` listing member stage IDs. Member stages
+# (build, test, test_assessment) live as their own top-level sections below
+# — recursive symmetry, one language. The `until:` predicate from ADR-021 v2
+# is renamed `exit_when:` to make the break-out contract explicit (it ends
+# THIS cycle and returns control to the next sibling in the outer `flow:`).
+build_test_cycle:
+  type: cycle
+  flow:
+    - build
+    - test
+    - test_assessment
+  exit_when:
+    stage: test_assessment
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+  feedback:
+    - from:
+        stage: test_assessment
+        output: test_assessment_md
+      to:
+        stage: build
+        input: prior_test_assessment
+        required: false
+
+# ─── build (leaf, cycle member) ─────────────────────────────────────────
+build:
+  gate: auto
+  roles: [builder]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 900
+
+# ─── test (leaf, cycle member) ──────────────────────────────────────────
+test:
+  gate: auto
+  roles: [tester]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── test_assessment (leaf, cycle member) ───────────────────────────────
+test_assessment:
+  gate: auto
+  roles: [test_assessment]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── review (leaf) ──────────────────────────────────────────────────────
+review:
+  gate: auto
+  roles: [reviewer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
