@@ -72,6 +72,96 @@ plan_run() {
 }
 
 # ─── _plan_validate_scope ───────────────────────────────────────────────────
+# Wave 19-F (#738): validate the produced plan against the issue body's
+# Definition-of-done / Anti-patterns / 5-test trial discipline. Returns 0
+# if the plan honors the operational requirements, 1 otherwise. Side
+# effects: emits plan.dod_violation or plan.flow_wiring_missing events
+# describing the gap so the operator can see exactly which rule fired.
+#
+# Args:
+#   $1 = plan_json (string content, valid JSON per schema)
+#   $2 = goal_text (raw issue body the plan was decomposed from)
+_plan_validate_dod_discipline() {
+    local plan_json="$1"
+    local goal_text="$2"
+
+    if [[ -z "$plan_json" || -z "$goal_text" ]]; then
+        return 0
+    fi
+
+    # Detect issue-body sections that trigger discipline.
+    local has_dod=0 has_5test=0 has_antipatterns=0
+    if printf '%s' "$goal_text" | grep -Eqi '^#+[[:space:]]*(Definition of done|Acceptance criteria)\b'; then
+        has_dod=1
+    fi
+    if printf '%s' "$goal_text" | grep -Eqi '^#+[[:space:]]*5-test trial\b'; then
+        has_5test=1
+    fi
+    if printf '%s' "$goal_text" | grep -Eqi '^#+[[:space:]]*Anti-patterns\b'; then
+        has_antipatterns=1
+    fi
+
+    # No operational sections → no enforcement.
+    if [[ $has_dod -eq 0 && $has_5test -eq 0 && $has_antipatterns -eq 0 ]]; then
+        return 0
+    fi
+
+    # Flatten plan steps + notes into a single searchable blob.
+    local plan_blob=""
+    plan_blob="$(printf '%s' "$plan_json" | jq -r '
+        [(.title // ""),
+         (.notes // ""),
+         (.steps // [] | map(.description // "") | join("\n"))
+        ] | join("\n")' 2>/dev/null || true)"
+
+    # Forbidden-phrase enforcement (DoD or Anti-patterns).
+    if [[ $has_dod -eq 1 || $has_antipatterns -eq 1 ]]; then
+        local _forbidden_re='may be toggled off|may be disabled|declared but disabled|optional gated by config|future follow-up|may be optional'
+        if printf '%s' "$plan_blob" | grep -Eqi "$_forbidden_re"; then
+            local _matched
+            _matched="$(printf '%s' "$plan_blob" | grep -Eoi "$_forbidden_re" | head -1)"
+            emit_event "plan.dod_violation" "plugin=plan" \
+                "reason=forbidden_phrase" "phrase=${_matched:-unknown}" \
+                2>/dev/null || true
+            return 1
+        fi
+    fi
+
+    # Anti-pattern matching against per-issue patterns (best-effort: any
+    # quoted string after a ❌ marker in the Anti-patterns section).
+    if [[ $has_antipatterns -eq 1 ]]; then
+        local _patterns
+        _patterns="$(printf '%s' "$goal_text" | awk '/^#+[[:space:]]*Anti-patterns/,/^#+[[:space:]]/' | grep -Eo '❌[[:space:]]*"[^"]+"' | sed 's/^❌[[:space:]]*"//; s/"$//' | head -20)"
+        local _ap
+        while IFS= read -r _ap; do
+            [[ -z "$_ap" ]] && continue
+            if printf '%s' "$plan_blob" | grep -Fqi "$_ap"; then
+                emit_event "plan.dod_violation" "plugin=plan" \
+                    "reason=anti_pattern_match" "pattern=$_ap" \
+                    2>/dev/null || true
+                return 1
+            fi
+        done <<< "$_patterns"
+    fi
+
+    # Migration-keeper enforcement: if 5-test trial present, plan MUST touch
+    # config/templates/standard.yaml (or any file under config/templates/).
+    if [[ $has_5test -eq 1 ]]; then
+        local _touches_template=0
+        if printf '%s' "$plan_json" | jq -r '.steps // [] | map(.files // []) | flatten | .[]' 2>/dev/null | grep -Eq '^config/templates/'; then
+            _touches_template=1
+        fi
+        if [[ $_touches_template -eq 0 ]]; then
+            emit_event "plan.flow_wiring_missing" "plugin=plan" \
+                "reason=no_template_change" \
+                2>/dev/null || true
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
 # Walk plan.json's steps[].files[] and emit one plan.scope.violation event per
 # offending path. Fail-soft: prints the violation count to stdout (caller adds
 # it to plugin.run.complete) and returns 0 even when violations are found.
@@ -233,6 +323,38 @@ Rules:
   entry MUST be a string repo-relative path under a scope-manifest prefix.
 - Keep steps small and independently testable.
 
+## Issue-body discipline (Wave 19-F, #738)
+
+If the goal text contains sections titled "Definition of done", "Acceptance
+criteria", "Anti-patterns", or "5-test trial" (or similar operational
+checklists), you MUST honor the following:
+
+1. Treat every Definition-of-done checkbox as a hard requirement. Each step
+   in your plan MUST contribute to satisfying at least one DoD checkbox,
+   and your plan in aggregate MUST satisfy all DoD checkboxes. Steps that
+   leave any DoD item unmet are invalid — reject your own draft and re-plan.
+
+2. Refuse any step that matches an Anti-pattern enumerated in the issue.
+   If a reasonable-sounding step seems to match an Anti-pattern, that
+   proves you've misread the issue — add a note in `notes` requesting
+   clarification rather than producing a plan that violates the
+   Anti-pattern.
+
+3. Do not invent permissions the issue body doesn't grant. If the issue is
+   silent about whether something is optional, gated, or deferrable, treat
+   it as required. The plan MUST NOT contain phrases like "may be toggled
+   off", "optional", "gated by config", "future follow-up", or
+   "declared but disabled" unless the issue body explicitly grants that
+   latitude.
+
+4. For migration keepers (issues with a "5-test trial" section or that cite
+   KEEPERS §), the plan MUST wire the migrated code into the live execution
+   path. Plans that create scaffolding (manifests, plugin directories,
+   stage sections) without modifying the actual dispatched flow are invalid.
+   Concretely: if the issue migrates stage X, the plan MUST include a step
+   that modifies `config/templates/standard.yaml` (or its referenced
+   template) so X appears in the live `flow:` and runs in a dogfood.
+
 Goal:
 PLAN_PROMPT
 )"
@@ -332,10 +454,19 @@ PLAN_PROMPT
     scope_violations="$(_plan_validate_scope "$plan_json" "$scope_manifest")"
     [[ -z "$scope_violations" ]] && scope_violations=0
 
+    # Wave 19-F (#738): DoD discipline check. Fail-soft like scope_violations
+    # so the plan.json reaches review for verdict; the diagnostic event
+    # gives review explicit signal to request_changes.
+    local dod_discipline_pass=1
+    if ! _plan_validate_dod_discipline "$plan_json" "$redacted_content"; then
+        dod_discipline_pass=0
+    fi
+
     emit_event "plugin.run.complete" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \
         "scope_violations=$scope_violations" \
+        "dod_discipline_pass=$dod_discipline_pass" \
         "artifact=plan.json"
     return 0
 }

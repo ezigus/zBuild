@@ -88,6 +88,8 @@
     "intake.refused.issue_closed",
     "intake.override.closed_issue_allowed",
     "plan.scope.violation",
+    "plan.dod_violation",
+    "plan.flow_wiring_missing",
     "review.scope.violation",
     "review.test_status.coerced",
     "router.max_iterations.override_ignored",
