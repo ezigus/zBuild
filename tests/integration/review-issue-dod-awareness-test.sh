@@ -75,7 +75,10 @@ route_to_model() {
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
 atomic_write() { cat > "$1"; }
 extract_first_json_object() { cat; }
-render_artifact() { cat; }
+# render_artifact <kind> <content> — print arg2 (matches the legitimate
+# signature; bare `cat` would hang waiting on stdin in interactive runs
+# per Copilot #742 review).
+render_artifact() { printf '%s' "$2"; }
 _zbuild_sanitize_for_llm() { cat; }
 _zbuild_diff_stat() { printf '## Changed files (0 total)\n'; }
 
@@ -186,6 +189,18 @@ EOF
 # Need a real diff-stat block based on this patch. Override the helper.
 _zbuild_diff_stat() { printf '## Changed files (1 total, +3 -0)\n+3 -0  plugins/agent/example/plugin.sh\n'; }
 
+# Make the redaction stub simulate the dogfood failure mode: wrap any
+# reference to plugins/agent/example/plugin.sh with
+# <out-of-scope-context>...</...> tags (mirrors apply_scope_redaction's
+# behavior for files OUTSIDE the scope manifest). Pre-fix, the diff-stat
+# block was redacted along with the rest of the prompt and the LLM saw
+# `<out-of-scope-context>` instead of the file path. Post-fix, diff-stat
+# is substituted via placeholder AFTER redaction so the path survives.
+apply_scope_redaction() {
+    sed 's|plugins/agent/example/plugin.sh|<out-of-scope-context>plugins/agent/example/plugin.sh</out-of-scope-context>|g' "$1" > "$2"
+    return 0
+}
+
 : > "$CAPTURED_PROMPT_FILE"
 rm -f "$REVIEW_OUT"
 
@@ -210,8 +225,9 @@ else
     assert_fail "T_DS3: diff-stat header MUST be present" "missing"
 fi
 
-# Restore default stub for subsequent sections.
+# Restore default stubs for subsequent sections.
 _zbuild_diff_stat() { printf '## Changed files (0 total)\n'; }
+apply_scope_redaction() { cp "$1" "$2"; return 0; }
 
 print_test_section "4. intake.md present but empty → graceful fallback"
 
