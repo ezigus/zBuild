@@ -5,16 +5,17 @@
 # Bug: dogfood 20260607140638-60666 (issue 12) — pipeline reported
 # pipeline.abort despite review.verdict=approve. Wave 19-D-1 instrumentation
 # pinpointed it: _cycle_check_abort_when returns 1 when its predicate does
-# not match (the GOOD case — verdict=approve, not block). At
-# cycle-orchestrator.sh:1186 the call is bare under reactivated set -e,
-# so bash errexit kills cycle_orchestrator_run before reaching the
-# cycle.iteration.complete and cycle.complete emits.
+# NOT match (the GOOD case — verdict=approve, not block). The call site
+# in cycle_orchestrator_run's iter-end logic was a bare command under a
+# potentially-active errexit state, where the symmetric exit_when call
+# used a set +e/set -e dance to defend against it. Bash errexit kills
+# cycle_orchestrator_run before reaching the cycle.iteration.complete and
+# cycle.complete emits.
 #
-# Compare: the exit_when call at lines 1170-1173 uses a set +e/set -e
-# dance. The abort_when path was missing the same guard — 5-line copy-paste
-# oversight from Wave 17-B (ADR-027, #703). Synthetic tests didn't repro
-# because none defined abort_when in their templates; only standard.yaml's
-# review_cycle has BOTH exit_when AND abort_when.
+# 5-line copy-paste oversight from Wave 17-B (ADR-027, #703) adding
+# abort_when. Synthetic tests didn't repro because none defined abort_when
+# in their templates; only standard.yaml's review_cycle has BOTH
+# exit_when AND abort_when.
 #
 # This is the failing-test-first TDD regression lock.
 set -euo pipefail
