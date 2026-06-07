@@ -97,14 +97,9 @@ load_template "$TPL" || assert_fail "template load"
 # Exercise the exact errexit context the runner uses. The orchestrator
 # runs with set +e internally but the caller (runner) typically has set -e
 # active. Set -e here to mirror that, then call.
-# Mirror runner.sh's set -e context. The orchestrator's set +e at line 996
-# is supposed to insulate the function from the caller's errexit, but the
-# inner set +e/set -e dance at lines 1170-1173 RE-arms set -e if the caller
-# had it on. That re-armed errexit then trips on the bare abort_when call
-# at line 1186 when the predicate returns 1 (the GOOD case — no match).
-# Use `|| rc=$?` so the test itself doesn't crash on the orchestrator's
-# errexit-driven exit; that pattern matches how runner.sh calls into the
-# orchestrator.
+# Mirror runner.sh's set -e context. Capture rc via `|| rc=$?` so the
+# test itself doesn't crash on any errexit-driven exit from inside the
+# orchestrator; matches how runner.sh calls into the orchestrator.
 set -e
 rc=0
 cycle_orchestrator_run "the_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE" || rc=$?
@@ -276,14 +271,9 @@ EOF
 _TPL_STAGES=(); _TPL_CYCLES=()
 load_template "$TPL2" || assert_fail "no-abort-when template load"
 
-# Mirror runner.sh's set -e context. The orchestrator's set +e at line 996
-# is supposed to insulate the function from the caller's errexit, but the
-# inner set +e/set -e dance at lines 1170-1173 RE-arms set -e if the caller
-# had it on. That re-armed errexit then trips on the bare abort_when call
-# at line 1186 when the predicate returns 1 (the GOOD case — no match).
-# Use `|| rc=$?` so the test itself doesn't crash on the orchestrator's
-# errexit-driven exit; that pattern matches how runner.sh calls into the
-# orchestrator.
+# Mirror runner.sh's set -e context. Capture rc via `|| rc=$?` so the
+# test itself doesn't crash on any errexit-driven exit from inside the
+# orchestrator; matches how runner.sh calls into the orchestrator.
 set -e
 rc=0
 cycle_orchestrator_run "the_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE" || rc=$?
