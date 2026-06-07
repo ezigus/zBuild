@@ -1180,10 +1180,25 @@ cycle_orchestrator_run() {
         # cycle returns rc=6 (cycle_abort) which propagates through every
         # enclosing cycle to the runner via _zbuild_propagate_abort. Evaluated
         # AFTER exit_when so converged-via-exit_when takes priority on tie.
+        # Wave 19-E (#737): defensive set +e dance around the abort_when call,
+        # mirroring the exit_when pattern at lines 1170-1173. The orchestrator
+        # runs with set +e internally so the bare call should not trigger
+        # errexit, but symmetric handling eliminates a class of fragility
+        # (e.g. set -e accidentally re-armed by an earlier code path that
+        # forgets the _ce sentinel). Dogfood 20260607140638-60666 exhibited
+        # the orchestrator emitting the abort_when predicate event and then
+        # never reaching cycle.iteration.complete — symptoms consistent with
+        # an unexpected errexit termination at this site. The synthetic test
+        # cycle-abort-when-no-match-converges-test.sh doesn't reproduce the
+        # exact production failure (mock cycle_dispatch_stage diverges from
+        # the runner's real file-IO path), but locks the contract that
+        # abort_when-defined-but-not-matching converges cleanly.
         local abort_matched=1
         local _aw_stage_var="_TPL_CYCLE_ABORT_WHEN_STAGE_${cycle_id//-/_}"
         if [[ -n "${!_aw_stage_var:-}" ]]; then
-            _cycle_check_abort_when "$verdicts_blob"; abort_matched=$?
+            local _ce2=0; case $- in *e*) _ce2=1 ;; esac
+            set +e; _cycle_check_abort_when "$verdicts_blob"; abort_matched=$?
+            [[ $_ce2 -eq 1 ]] && set -e
         fi
 
         # Decide overall status for the SINGLE atomic write (ADR-021: never
