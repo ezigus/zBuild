@@ -62,7 +62,8 @@ inputs:
     required: false
   # Wave 19-G (#739): the original issue body (intake.md). Review checks
   # the diff against the issue's Definition of done — not just the plan.
-  # Optional so legacy/template templates without intake stage keep working.
+  # Optional so direct _review_run_inner callers (tests) and flows where
+  # intake.md isn't populated still produce the legacy prompt shape.
   - id: intake_goal
     type: file
     path: "${state_dir}/intake.md"
