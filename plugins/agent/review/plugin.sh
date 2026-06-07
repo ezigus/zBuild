@@ -164,7 +164,8 @@ review_run() {
         "$artifact_dir/diff.patch" \
         "$artifact_dir/test-results.json" \
         "$artifact_dir/review.json" \
-        "$artifact_dir"
+        "$artifact_dir" \
+        "$state_dir/intake.md"
 }
 
 # Inner implementation — unit-testable with explicit paths.
@@ -175,6 +176,7 @@ review_run() {
 #   $4 = test-results.json path
 #   $5 = output review.json path
 #   $6 = artifact_dir (for intermediate files)
+#   $7 = intake.md path (Wave 19-G, #739 — optional; issue body for DoD verify)
 _review_run_inner() {
     local scope_manifest="$1"
     local plan_json_path="$2"
@@ -182,6 +184,7 @@ _review_run_inner() {
     local test_results_json_path="$4"
     local output_review_json="$5"
     local artifact_dir="${6:-$(dirname "$output_review_json")}"
+    local intake_md_path="${7:-}"
 
     if [[ -z "$output_review_json" ]]; then
         error "_review_run_inner: output path required"
@@ -269,6 +272,32 @@ Verdict definitions:
   request_changes — fixable issues found; not blocking but need attention
   block           — critical issues; must not proceed to PR
 
+## Wave 19-G verification discipline (#739)
+
+You may see THREE source-of-truth artifacts that can disagree:
+- The Issue body (if present) is AUTHORITATIVE. It states what "done" means.
+- The Plan is the plan agent's interpretation of the issue.
+- The Diff is the build agent's implementation of the plan.
+
+When the issue body is present, evaluate the DIFF against the ISSUE'S
+Definition of done (not just against the plan):
+
+- approve: the DIFF satisfies the ISSUE'S Definition of done AND tests pass.
+- request_changes: the diff matches the plan but the plan failed to capture
+  the issue's intent (a plan-issue gap). Cite the specific DoD checkbox the
+  diff doesn't satisfy in your issues[] array. The build agent will iterate
+  on this feedback.
+- block: structural defect that no build iteration can fix.
+
+If the issue body contains a "Definition of done" or "5-test trial" section,
+you MUST evaluate each checkbox against the actual diff and call out unmet
+items in issues[].
+
+If the issue body contains an "Anti-patterns the plan agent MUST refuse"
+section, you MUST check the plan AND the diff against each anti-pattern.
+Matching any anti-pattern is grounds for request_changes regardless of
+plan-conformance.
+
 REVIEW_PROMPT
 )"
     # ADR-018: render plan and diff as markdown for LLM consumption. Test
@@ -328,18 +357,55 @@ REVIEW_PROMPT
         printf -v test_summary '%s\n\noutput:\n%s' "$test_summary" "$_test_output"
     fi
 
-    # Wave 16-B (#699): structure-first diff-stat summary at the TOP of the
-    # prompt so the LLM sees file count + per-file churn before any hunks.
+    # Wave 16-B (#699): structure-first diff-stat summary.
+    # Wave 19-G (#739): diff-stat is intentionally EXCLUDED from the
+    # redaction pass below. The previous shape put diff-stat at the top of
+    # the prompt, which then ran through apply_scope_redaction — wiping
+    # every file path to `<out-of-scope-context>` when the scope manifest
+    # didn't list those prefixes. The reviewer LLM literally couldn't see
+    # which files changed (see dogfood 20260607140638-60666 where all 30
+    # rows rendered as `<out-of-scope-context>`). File paths are public
+    # signal (they appear in commits) — the diff CONTENT is what scope
+    # redaction protects. So we redact the rest of the prompt, then
+    # PREPEND the diff-stat block to the redacted payload before sending.
     local diff_stat_block
     diff_stat_block="$(_zbuild_diff_stat "$diff_patch_path")"
 
+    # Wave 19-G (#739): read intake.md (the original issue body) so review
+    # can verify the diff against the issue's Definition of done — not just
+    # the plan. Optional: graceful fallback to empty string when intake stage
+    # didn't write a body (legacy template paths).
+    local intake_body=""
+    if [[ -n "$intake_md_path" && -f "$intake_md_path" ]]; then
+        intake_body="$(cat "$intake_md_path" 2>/dev/null || true)"
+        intake_body="$(printf '%s' "$intake_body" | _zbuild_sanitize_for_llm)"
+    fi
+
+    # Wave 19-G (#739): build the prompt with a placeholder for diff-stat
+    # at the same position the legacy prompt used (right after instructions,
+    # before plan/diff). Diff-stat itself is substituted in AFTER redaction
+    # so file paths in the diff-stat header don't get wiped to
+    # `<out-of-scope-context>` markers (dogfood 20260607140638-60666 saw
+    # all 30 paths wiped). The placeholder is a string the redactor won't
+    # touch.
+    local _DIFF_STAT_PLACEHOLDER="__ZBUILD_DIFF_STAT_PLACEHOLDER_19G__"
     local prompt
-    printf -v prompt '%s\n%s\n\nPlan:\n%s\n\nDiff:\n%s\n\nTest results:\n%s\n' \
-        "$_review_instructions" \
-        "$diff_stat_block" \
-        "$plan_md_clean" \
-        "$diff_md_clean" \
-        "$test_summary"
+    if [[ -n "$intake_body" ]]; then
+        printf -v prompt '%s\n%s\n\nIssue body (authoritative — what "done" means):\n%s\n\nPlan (plan agent interpretation):\n%s\n\nDiff:\n%s\n\nTest results:\n%s\n' \
+            "$_review_instructions" \
+            "$_DIFF_STAT_PLACEHOLDER" \
+            "$intake_body" \
+            "$plan_md_clean" \
+            "$diff_md_clean" \
+            "$test_summary"
+    else
+        printf -v prompt '%s\n%s\n\nPlan:\n%s\n\nDiff:\n%s\n\nTest results:\n%s\n' \
+            "$_review_instructions" \
+            "$_DIFF_STAT_PLACEHOLDER" \
+            "$plan_md_clean" \
+            "$diff_md_clean" \
+            "$test_summary"
+    fi
 
     # Write prompt to a temp file for redaction (apply_scope_redaction takes file paths)
     local prompt_file="$artifact_dir/review-prompt.txt"
@@ -355,6 +421,11 @@ REVIEW_PROMPT
 
     local redacted_prompt
     redacted_prompt="$(cat "$redacted_prompt_file")"
+
+    # Wave 19-G (#739): substitute the placeholder with the unredacted
+    # diff-stat block. File paths are public signal (they appear in
+    # commits); only diff CONTENT needs scope redaction.
+    redacted_prompt="${redacted_prompt//"$_DIFF_STAT_PLACEHOLDER"/$diff_stat_block}"
 
     # ─── Route to LLM (T2 per manifest config.tier_default) ─────────────────
     # ADR-018 (#476): Pattern 1 stages with tools MUST use JSON envelope mode.
