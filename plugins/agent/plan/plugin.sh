@@ -71,7 +71,7 @@ plan_run() {
         "$artifacts_dir"
 }
 
-# ─── _plan_validate_scope ───────────────────────────────────────────────────
+# ─── _plan_validate_dod_discipline ──────────────────────────────────────────
 # Wave 19-F (#738): validate the produced plan against the issue body's
 # Definition-of-done / Anti-patterns / 5-test trial discipline. Returns 0
 # if the plan honors the operational requirements, 1 otherwise. Side
@@ -115,8 +115,11 @@ _plan_validate_dod_discipline() {
         ] | join("\n")' 2>/dev/null || true)"
 
     # Forbidden-phrase enforcement (DoD or Anti-patterns).
+    # Each alternative matches independently — `optional` alone is a hit,
+    # `gated by config` alone is a hit. Word-boundary anchored where
+    # plausible to avoid spurious matches against benign use ("optionally").
     if [[ $has_dod -eq 1 || $has_antipatterns -eq 1 ]]; then
-        local _forbidden_re='may be toggled off|may be disabled|declared but disabled|optional gated by config|future follow-up|may be optional'
+        local _forbidden_re='may be toggled off|may be disabled|declared but disabled|gated by config|future follow-up|may be optional|\boptional\b'
         if printf '%s' "$plan_blob" | grep -Eqi "$_forbidden_re"; then
             local _matched
             _matched="$(printf '%s' "$plan_blob" | grep -Eoi "$_forbidden_re" | head -1)"
@@ -127,11 +130,21 @@ _plan_validate_dod_discipline() {
         fi
     fi
 
-    # Anti-pattern matching against per-issue patterns (best-effort: any
-    # quoted string after a ❌ marker in the Anti-patterns section).
+    # Anti-pattern matching against per-issue patterns (any quoted string
+    # after a ❌ marker in the Anti-patterns section). The awk range walks
+    # from the Anti-patterns header forward until either the NEXT header
+    # of equal-or-shallower depth OR EOF. Using only `/^#+[[:space:]]/` as
+    # the end pattern incorrectly matches the start header itself,
+    # collapsing the range to a single line. Track whether we've seen the
+    # opening header so we don't immediately close on it.
     if [[ $has_antipatterns -eq 1 ]]; then
         local _patterns
-        _patterns="$(printf '%s' "$goal_text" | awk '/^#+[[:space:]]*Anti-patterns/,/^#+[[:space:]]/' | grep -Eo '❌[[:space:]]*"[^"]+"' | sed 's/^❌[[:space:]]*"//; s/"$//' | head -20)"
+        _patterns="$(printf '%s' "$goal_text" | awk '
+            BEGIN { in_section=0 }
+            /^#+[[:space:]]*Anti-patterns/ { in_section=1; next }
+            in_section && /^#+[[:space:]]/ { in_section=0; next }
+            in_section { print }
+        ' | grep -Eo '❌[[:space:]]*"[^"]+"' | sed 's/^❌[[:space:]]*"//; s/"$//' | head -20)"
         local _ap
         while IFS= read -r _ap; do
             [[ -z "$_ap" ]] && continue

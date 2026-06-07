@@ -88,18 +88,30 @@ PLAN_TOUCHES_TEMPLATE='{"schema_version":1,"title":"x","goal":"x","steps":[{"id"
 set +e; _plan_validate_dod_discipline "$PLAN_TOUCHES_TEMPLATE" "$GOAL_KEEPER"; rc8=$?; set -e
 assert_eq "T8: 5-test trial keeper + plan touches standard.yaml = rc=0" "0" "$rc8"
 
-print_test_section "5. Anti-patterns header present + matching phrase → validation fails"
+print_test_section "5. Anti-patterns header present + per-issue pattern match → validation fails"
 
+# Per-issue anti-patterns use issue-specific phrases NOT in the global
+# forbidden list, to actually exercise the awk-extraction loop.
 GOAL_WITH_ANTI="Migrate X
 ## Anti-patterns the plan agent MUST refuse
 
-- ❌ \"may be toggled off\"
-- ❌ \"declared but disabled\""
+- ❌ \"side-channel via env var\"
+- ❌ \"shadow registry of legacy callbacks\"
 
-PLAN_MATCHES_ANTI='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"declared but disabled in standard.yaml","files":["config/templates/standard.yaml"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+## Notes
+Other section follows."
+
+PLAN_MATCHES_ANTI='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add side-channel via env var fallback","files":["config/templates/standard.yaml"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_MATCHES_ANTI" "$GOAL_WITH_ANTI"; rc9=$?; set -e
-assert_eq "T9: Anti-patterns + plan matches 'declared but disabled' = rc=1" "1" "$rc9"
+assert_eq "T9: Anti-patterns + plan matches per-issue 'side-channel via env var' = rc=1" "1" "$rc9"
+
+# Sanity: a clean plan against the SAME anti-patterns goal passes (proves
+# T9's failure was due to the per-issue match, not some other rule).
+PLAN_CLEAN_AGAINST_ANTI='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add proper feature","files":["config/templates/standard.yaml"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+
+set +e; _plan_validate_dod_discipline "$PLAN_CLEAN_AGAINST_ANTI" "$GOAL_WITH_ANTI"; rc9b=$?; set -e
+assert_eq "T9b: Anti-patterns + clean plan = rc=0 (proves per-issue extraction is bounded)" "0" "$rc9b"
 
 print_test_section "6. Acceptance criteria header (alias for DoD) triggers same discipline"
 
