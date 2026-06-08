@@ -87,9 +87,46 @@ ${fn}() {
 PLUGIN
 }
 
+# Override for impact: declares a primary output so exit_when can read the
+# verdict, and writes {"verdict":"complete"} so plan_impact_cycle converges
+# after iter 1 instead of running to max_iterations.
+_make_impact_plugin() {
+    local dir="$PLUGINS_ROOT/agent/impact"
+    cat > "$dir/manifest.yaml" <<'EOF'
+id: impact
+name: Test impact
+kind: agent
+version: 0.0.1
+hooks:
+  run: impact_run
+requires:
+  core:
+    - redaction
+outputs:
+  - id: impact_out
+    path: ${artifact_dir}/impact.json
+    type: json
+    required: true
+    primary: true
+EOF
+    cat > "$dir/plugin.sh" <<'PLUG'
+impact_run() {
+    printf 'stage=impact label=%s prefix_env=%s\n' \
+        "${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \
+        "${ZBUILD_SEQ_PREFIX:-UNSET}" \
+        >> "${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    printf '{"verdict":"complete"}' > "$state_dir/artifacts/impact.json"
+    return 0
+}
+PLUG
+}
+
 for s in intake plan impact build test test_assessment review; do
     _make_plugin "$s"
 done
+_make_impact_plugin
 
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e
