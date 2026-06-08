@@ -55,8 +55,10 @@ echo "iter" >> "\$mark"
 # Simulate work done in the repo.
 printf 'feature\n' > "$REPO/feature.txt" 2>/dev/null || true
 # Emit the JSON envelope with LOOP_COMPLETE in .result, then exit 124.
-jq -n --arg r \$'All changes complete.\nCOMMIT_SUMMARY: finish migration\nLOOP_COMPLETE' \\
-    '{type:"result", subtype:"success", is_error:false, result:\$r, num_turns:18, usage:{input_tokens:50, output_tokens:2000, cache_read_input_tokens:100000, cache_creation_input_tokens:5000}}'
+# The heredoc above uses MOCK (unquoted-heredoc) so we need \$ to defer
+# variable expansion to runtime. The jq command is written on a single
+# line to avoid the \\\\ literal-backslash trap from earlier review.
+jq -n --arg r \$'All changes complete.\nCOMMIT_SUMMARY: finish migration\nLOOP_COMPLETE' '{type:"result", subtype:"success", is_error:false, result:\$r, num_turns:18, usage:{input_tokens:50, output_tokens:2000, cache_read_input_tokens:100000, cache_creation_input_tokens:5000}}'
 exit 124
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"

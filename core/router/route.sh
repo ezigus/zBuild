@@ -1016,11 +1016,16 @@ ${_diff_pointer}"
             local _diag_base="${_iter_stage_id:-loop}-iter${iter}-error"
             local _diag_json_path=""
             local _diag_stderr_path=""
-            if [[ -s "$json_file" ]]; then
+            # Copilot #745: preserve on -f (existence) not -s (non-empty).
+            # An EMPTY stderr or json file is itself a forensic signal —
+            # the dogfood 20260607181657-82646 iters 1+2 had both empty
+            # AND that emptiness was the discoverable fact. Preserving
+            # empty files makes that fact reproducible in postmortem.
+            if [[ -f "$json_file" ]]; then
                 _diag_json_path="$_diag_dir/${_diag_base}.raw-claude-output.json"
                 cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
             fi
-            if [[ -s "$stderr_file" ]]; then
+            if [[ -f "$stderr_file" ]]; then
                 _diag_stderr_path="$_diag_dir/${_diag_base}.raw-claude-stderr.txt"
                 cp "$stderr_file" "$_diag_stderr_path" 2>/dev/null || _diag_stderr_path=""
             fi
