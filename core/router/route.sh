@@ -958,12 +958,89 @@ ${_diff_pointer}"
         fi
 
         if [[ $rc -ne 0 ]]; then
+            # Wave 19-I Fix A (#743): if rc=124 (gtimeout SIGTERM) AND the
+            # captured .result already contains LOOP_COMPLETE on its own
+            # line, claude finished the work but the wrapper killed it
+            # during final CLI exit. Honor the sentinel and terminate the
+            # loop with done_sentinel reason rather than discarding the
+            # work-done signal and retrying. Dogfood 20260607181657-82646
+            # iter 4 exhibited this: 900s wall time + LOOP_COMPLETE in
+            # output + rc=124 → loop wasted iter 5 on already-complete code.
+            if [[ $rc -eq 124 && -s "$json_file" ]]; then
+                local _rc124_result
+                _rc124_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
+                if printf '%s\n' "$_rc124_result" | \
+                   grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+                    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+                    _ROUTE_LOOP_ITERATIONS=$iter
+                    eb_emit_event "router.loop.iter.timeout_with_sentinel" \
+                        "iteration=$iter" "rc=$rc" \
+                        "stage=${_iter_stage_id:-unknown}" \
+                        "model_id=$_ROUTE_MODEL_ID" \
+                        "reason=gtimeout_after_loop_complete" \
+                        2>/dev/null || true
+                    if [[ -n "$_iter_stage_io_seq" ]]; then
+                        stage_io_end \
+                            --stage "$_iter_stage_id" \
+                            --kind llm \
+                            --seq "$_iter_stage_io_seq" \
+                            --output "$_rc124_result" \
+                            --exit-code 0 \
+                            --metadata "iter=$iter" \
+                            --metadata "terminated=gtimeout_after_sentinel" \
+                            >/dev/null 2>&1 || true
+                    fi
+                    eb_emit_event "loop.complete" \
+                        "iterations=$iter" \
+                        "model_id=$_ROUTE_MODEL_ID" \
+                        "reason=done_sentinel" 2>/dev/null || true
+                    rm -f "$stderr_file" "$json_file"
+                    _route_loop_clear_traps
+                    return 0
+                fi
+            fi
             local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
             warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
             eb_emit_event "loop.iteration.error" \
                 "iteration=$iter" "rc=$rc" \
                 "model_id=$_ROUTE_MODEL_ID" \
                 "reason=claude_rc_nonzero" 2>/dev/null || true
+            # Wave 19-I Fix B (#743): preserve diagnostic artifacts BEFORE
+            # the existing rm -f below. Without this, $json_file and
+            # $stderr_file are deleted immediately and every future "why
+            # did claude rc=N?" forensic round has no data to work from.
+            # Dogfood 20260607181657-82646 iters 1+2 left only empty
+            # stage-io artifacts; we'd had to guess what went wrong.
+            local _diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts}/stage-io"
+            mkdir -p "$_diag_dir" 2>/dev/null || true
+            local _diag_base="${_iter_stage_id:-loop}-iter${iter}-error"
+            local _diag_json_path=""
+            local _diag_stderr_path=""
+            if [[ -s "$json_file" ]]; then
+                _diag_json_path="$_diag_dir/${_diag_base}.raw-claude-output.json"
+                cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
+            fi
+            if [[ -s "$stderr_file" ]]; then
+                _diag_stderr_path="$_diag_dir/${_diag_base}.raw-claude-stderr.txt"
+                cp "$stderr_file" "$_diag_stderr_path" 2>/dev/null || _diag_stderr_path=""
+            fi
+            local _diag_is_error="" _diag_err_text="" _diag_num_turns="" _diag_out_tokens=""
+            if [[ -n "$_diag_json_path" ]]; then
+                _diag_is_error="$(jq -r '.is_error // empty' "$_diag_json_path" 2>/dev/null || true)"
+                _diag_err_text="$(jq -r '.error // empty' "$_diag_json_path" 2>/dev/null | head -c 200 || true)"
+                _diag_num_turns="$(jq -r '.num_turns // empty' "$_diag_json_path" 2>/dev/null || true)"
+                _diag_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_diag_json_path" 2>/dev/null || true)"
+            fi
+            eb_emit_event "router.loop.iter.error.diagnostic" \
+                "iteration=$iter" "rc=$rc" \
+                "stage=${_iter_stage_id:-unknown}" \
+                "raw_json_path=${_diag_json_path:-absent}" \
+                "raw_stderr_path=${_diag_stderr_path:-absent}" \
+                "is_error=${_diag_is_error:-absent}" \
+                "error_text=${_diag_err_text:-absent}" \
+                "num_turns=${_diag_num_turns:-absent}" \
+                "output_tokens=${_diag_out_tokens:-absent}" \
+                2>/dev/null || true
             # #482: close the per-iteration banner on the error path so we
             # don't orphan it into the EXIT trap. Output is whatever (if
             # anything) ended up in json_file before the failure.
