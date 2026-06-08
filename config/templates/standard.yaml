@@ -15,15 +15,8 @@ defaults:
 # them by ID per ADR-027's recursive symmetry rule.
 flow:
   - intake
-  - plan
+  - plan_impact_cycle
   - review_cycle
-# Wave 19-J (#744): plan_impact_cycle is DECLARED below but not yet wired
-# into the live flow. Activating it requires updating ~18 test files that
-# assume the 6-MVP-stage shape; that test-update work ships as a separate
-# follow-up. The infrastructure here is functional and exercised by
-# tests/integration/impact-pipeline-test.sh; the next standard.yaml-flow
-# PR will just swap `- plan` → `- plan_impact_cycle` once those tests
-# accept the expanded 7-stage flatten shape.
 
 # ─── intake (leaf) ──────────────────────────────────────────────────────
 intake:

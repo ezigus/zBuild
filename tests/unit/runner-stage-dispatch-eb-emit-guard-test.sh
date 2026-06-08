@@ -107,19 +107,18 @@ _assert_warn_and_no_abort() {
         "1" "$_hit_flag"
 }
 
-# Wave 18-B (#707): standard.yaml now wraps review inside the outer
-# review_cycle (ADR-026). The runner dispatches the outermost cycle as
-# `cycle:review_cycle`; review no longer surfaces as a top-level stage:*
-# unit. To exercise the stage:* arm's eb_emit_event guards (the bug
-# repro), we assert behavior on `plan` instead — plan still dispatches
-# through stage:* BEFORE the (stubbed) cycle and exercises the same code
-# path the original `review` dispatch did.
+# Wave 19-J (#746): standard.yaml now wraps plan inside plan_impact_cycle;
+# both plan and review_cycle are no longer top-level stage:* units. The
+# only pre-cycle linear stage:* unit is `intake`. To exercise the stage:*
+# arm's eb_emit_event guards (the bug repro), we assert behavior on
+# `intake` — intake dispatches through stage:* BEFORE the cycles and
+# exercises the same code path the original `review` dispatch did.
 
 # ─── S1: converged cycle, eb_emit_event stage.start fails ────────────────────
 _dir="$(_drive_with_failing_eb 0 "converged" "stage.start")"
 _state="$_dir/state/pipeline-state.json"
-_got_stage="$(jq -r '.stage_statuses.plan // "absent"' "$_state" 2>/dev/null)"
-assert_eq "S1 #547: stage.start fail — plan dispatched (converged) [#707]" \
+_got_stage="$(jq -r '.stage_statuses.intake // "absent"' "$_state" 2>/dev/null)"
+assert_eq "S1 #547: stage.start fail — intake dispatched (converged) [#746]" \
     "complete" "$_got_stage"
 _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
 assert_eq "S1 #547: stage.start fail — pipeline_status=complete" \
@@ -129,8 +128,8 @@ _assert_warn_and_no_abort "S1 #547" "$_dir" "stage.start"
 # ─── S2: max_iterations cycle, eb_emit_event stage.start fails (bug repro) ───
 _dir="$(_drive_with_failing_eb 1 "max_iterations" "stage.start")"
 _state="$_dir/state/pipeline-state.json"
-_got_stage="$(jq -r '.stage_statuses.plan // "absent"' "$_state" 2>/dev/null)"
-assert_eq "S2 #547: stage.start fail — plan dispatched (max_iterations) [#707]" \
+_got_stage="$(jq -r '.stage_statuses.intake // "absent"' "$_state" 2>/dev/null)"
+assert_eq "S2 #547: stage.start fail — intake dispatched (max_iterations) [#746]" \
     "complete" "$_got_stage"
 _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
 assert_eq "S2 #547: stage.start fail — pipeline_status=failed" \
@@ -140,8 +139,8 @@ _assert_warn_and_no_abort "S2 #547" "$_dir" "stage.start"
 # ─── S3: eb_emit_event stage.complete fails — must warn, pipeline completes ──
 _dir="$(_drive_with_failing_eb 0 "converged" "stage.complete")"
 _state="$_dir/state/pipeline-state.json"
-_got_stage="$(jq -r '.stage_statuses.plan // "absent"' "$_state" 2>/dev/null)"
-assert_eq "S3 #547: stage.complete fail — plan still marked complete [#707]" \
+_got_stage="$(jq -r '.stage_statuses.intake // "absent"' "$_state" 2>/dev/null)"
+assert_eq "S3 #547: stage.complete fail — intake still marked complete [#746]" \
     "complete" "$_got_stage"
 _assert_warn_and_no_abort "S3 #547" "$_dir" "stage.complete"
 

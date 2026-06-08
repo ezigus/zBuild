@@ -87,7 +87,7 @@ ${fn}() {
 PLUGIN
 }
 
-for s in intake plan build test test_assessment review; do
+for s in intake plan impact build test test_assessment review; do
     _make_plugin "$s"
 done
 
@@ -115,8 +115,10 @@ _prefix_env_for() {
         | sed -n 's/.*prefix_env=\(.*\)$/\1/p'
 }
 
-assert_eq "intake observed cardinal label 1"     "1"     "$(_label_for intake 1)"
-assert_eq "plan observed cardinal label 2"       "2"     "$(_label_for plan 1)"
+assert_eq "intake observed cardinal label 1"     "1"       "$(_label_for intake 1)"
+# #746: plan is now inside plan_impact_cycle (cardinal 2, iter 1, pos 1).
+assert_eq "plan observed label 2.1.1"            "2.1.1"   "$(_label_for plan 1)"
+assert_eq "impact observed label 2.1.2"          "2.1.2"   "$(_label_for impact 1)"
 
 # Wave 19-B (#718): build/test/test_assessment live inside review_cycle (card 3)
 # → build_test_cycle (pos 1, iter 1) → leaves at "3.1.1.<inner_iter>.<inner_pos>".
@@ -137,7 +139,9 @@ assert_eq "test_assessment saw ZBUILD_SEQ_PREFIX=3.1.1" "3.1.1" "$(_prefix_env_f
 
 # Leak check: ZBUILD_SEQ_PREFIX must NOT leak into pre-cycle stages.
 assert_eq "intake saw ZBUILD_SEQ_PREFIX UNSET" "UNSET" "$(_prefix_env_for intake)"
-assert_eq "plan saw ZBUILD_SEQ_PREFIX UNSET"   "UNSET" "$(_prefix_env_for plan)"
+# #746: plan + impact are inside plan_impact_cycle (cardinal 2); they see prefix "2".
+assert_eq "plan saw ZBUILD_SEQ_PREFIX=2"   "2" "$(_prefix_env_for plan)"
+assert_eq "impact saw ZBUILD_SEQ_PREFIX=2" "2" "$(_prefix_env_for impact)"
 # review is a direct leaf member of review_cycle so it sees the outer prefix "3".
 assert_eq "review saw ZBUILD_SEQ_PREFIX=3 (direct member of review_cycle)" \
     "3" "$(_prefix_env_for review)"

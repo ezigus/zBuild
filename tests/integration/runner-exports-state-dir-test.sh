@@ -73,6 +73,8 @@ _make_plugin() { mock_plugin_factory "$@"; }
 
 _make_plugin "intake"          "agent" 0 >/dev/null
 _make_plugin "plan"            "agent" 0 >/dev/null
+# #746: standard template now includes impact between plan and build (plan_impact_cycle).
+_make_plugin "impact"          "agent" 0 >/dev/null
 _make_capture_plugin "build"   "agent"
 _make_plugin "test"            "tool"  0 >/dev/null
 _make_plugin "test_assessment" "agent" 0 >/dev/null
