@@ -93,7 +93,8 @@ set -e
 echo "route_rc=\$rc" >&2
 EOF
 
-bash "$DRIVER" >/dev/null 2>/dev/null || true
+DRIVER_STDERR="$TEST_TEMP_DIR/driver.stderr.txt"
+bash "$DRIVER" >/dev/null 2>"$DRIVER_STDERR" || true
 
 print_test_section "sync rc=1 preserves diagnostic artifacts + emits diagnostic event"
 
@@ -149,9 +150,13 @@ else
 fi
 
 # T11: the [event-bus] WARN for unknown event type 'router.error' must NOT
-# appear — schema drift fix.
-if grep -q "unknown event type 'router.error'" "$ZBUILD_EVENTS_DIR"/*.log 2>/dev/null; then
-    assert_fail "T11: router.error is registered in event-schema.json (no unknown-type warning)" "warn present"
+# appear in the driver's captured stderr — schema drift fix.
+# Copilot review #750: was grepping a non-existent .log file under
+# ZBUILD_EVENTS_DIR. Event-bus warnings go to stderr; capture driver
+# stderr above and grep there for an honest signal.
+if grep -q "unknown event type 'router.error'" "$DRIVER_STDERR" 2>/dev/null; then
+    assert_fail "T11: router.error is registered in event-schema.json (no unknown-type warning)" \
+        "warn present in driver stderr: $(grep -o "unknown event type[^[:space:]]*" "$DRIVER_STDERR" | head -3)"
 else
     assert_pass "T11: router.error is registered in event-schema.json (no unknown-type warning)"
 fi

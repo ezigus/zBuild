@@ -421,16 +421,23 @@ _route_call_claude() {
         # [[ -s ]] (non-empty) — empty is itself a forensic signal.
         local _sync_diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts}/stage-io"
         mkdir -p "$_sync_diag_dir" 2>/dev/null || true
-        local _sync_diag_base="${ZBUILD_CURRENT_STAGE:-router}-sync-error-$$-$(date +%s)"
-        local _sync_json_path=""
-        local _sync_stderr_path=""
-        if [[ -n "$response" ]]; then
-            _sync_json_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-output.json"
-            printf '%s' "$response" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
-        fi
+        # Predictable name per ADR-015 §F: <stage>-sync-error.* — last
+        # failure for a given stage in a run wins (forensics want most
+        # recent). Copilot review on #750: dropped pid+ts suffix that
+        # made artifacts hard to locate without grepping events.jsonl.
+        local _sync_diag_base="${ZBUILD_CURRENT_STAGE:-router}-sync-error"
+        local _sync_json_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-output.json"
+        local _sync_stderr_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-stderr.txt"
+        # ALWAYS write both files, even when $response is empty or
+        # $stderr_file is absent — empty/missing IS the forensic signal
+        # (Copilot review on #750: skipping the write when empty meant
+        # the diagnostic event reported raw_json_path=absent, losing the
+        # very "empty is signal" case Wave 19-I shipped this contract for).
+        printf '%s' "$response" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
         if [[ -f "$stderr_file" ]]; then
-            _sync_stderr_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-stderr.txt"
             cp "$stderr_file" "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
+        else
+            : > "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
         fi
         local _sync_is_error="" _sync_err_text="" _sync_num_turns=""
         if [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then

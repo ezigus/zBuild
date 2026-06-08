@@ -931,11 +931,18 @@ security-lens, compound-quality-cycle).
 
 When the claude CLI exits rc≠0:
 1. Before any cleanup, persist the JSON envelope and stderr to
-   `${ZBUILD_ARTIFACT_DIR}/stage-io/<stage>-<sync|iterN>-error.<raw-claude-output.json|raw-claude-stderr.txt>`.
-2. Use `[[ -f ]]` (existence) not `[[ -s ]]` (non-empty) — an empty
-   file is itself a forensic signal (Copilot review #745 caught this;
-   dogfood 20260607181657-82646 iters 1+2 left both empty *and*
-   that emptiness was the discoverable fact).
+   predictable paths:
+   - sync: `${ZBUILD_ARTIFACT_DIR}/stage-io/<stage>-sync-error.{raw-claude-output.json,raw-claude-stderr.txt}`
+   - loop: `${ZBUILD_ARTIFACT_DIR}/stage-io/<stage>-iter<N>-error.{raw-claude-output.json,raw-claude-stderr.txt}`
+   Last failure per stage wins on sync (forensics want most recent;
+   collisions are intentional). Loop disambiguates via iteration index.
+2. ALWAYS write the artifact files — even when `$response` is empty or
+   the stderr file is absent. Empty/missing IS the forensic signal
+   (Copilot reviews #745 and #750 both caught variants of "skipped the
+   write on empty input, losing the very case the contract exists for").
+   Use `[[ -f ]]` (existence) not `[[ -s ]]` (non-empty) when reading
+   back; the absence of a file means the preservation step itself
+   failed, which is a higher-priority signal.
 3. Emit `router.error.diagnostic` (sync) or
    `router.loop.iter.error.diagnostic` (loop) with parsed
    `.is_error`, `.error` (first 200 chars), `.num_turns`, and the
