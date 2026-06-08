@@ -408,9 +408,53 @@ _route_call_claude() {
 
     if [[ $rc -ne 0 ]]; then
         local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
-        rm -f "$stderr_file"
         error "claude CLI failed (rc=$rc) model=$_ROUTE_MODEL_ID tier=$tier${snip:+: $snip}"
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" "reason=claude_cli_failed"
+        # Wave 19-K (#748): mirror Wave 19-I Fix B for the SYNC path.
+        # Six stages call this path (design, plan, review, test_assessment,
+        # security-lens, compound-quality-cycle); without preservation
+        # every "why did claude rc=N?" forensic round re-encounters the
+        # gap that issue 12 dogfood 20260608054707-48308 hit on
+        # test_assessment. $response holds claude's stdout JSON envelope
+        # (captured into a variable above) — persist it to disk now so
+        # the diagnostic event can cite it. Use [[ -f ]] (existence) not
+        # [[ -s ]] (non-empty) — empty is itself a forensic signal.
+        local _sync_diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts}/stage-io"
+        mkdir -p "$_sync_diag_dir" 2>/dev/null || true
+        # Predictable name per ADR-015 §F: <stage>-sync-error.* — last
+        # failure for a given stage in a run wins (forensics want most
+        # recent). Copilot review on #750: dropped pid+ts suffix that
+        # made artifacts hard to locate without grepping events.jsonl.
+        local _sync_diag_base="${ZBUILD_CURRENT_STAGE:-router}-sync-error"
+        local _sync_json_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-output.json"
+        local _sync_stderr_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-stderr.txt"
+        # ALWAYS write both files, even when $response is empty or
+        # $stderr_file is absent — empty/missing IS the forensic signal
+        # (Copilot review on #750: skipping the write when empty meant
+        # the diagnostic event reported raw_json_path=absent, losing the
+        # very "empty is signal" case Wave 19-I shipped this contract for).
+        printf '%s' "$response" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
+        if [[ -f "$stderr_file" ]]; then
+            cp "$stderr_file" "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
+        else
+            : > "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
+        fi
+        local _sync_is_error="" _sync_err_text="" _sync_num_turns=""
+        if [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
+            _sync_is_error="$(jq -r '.is_error // empty' "$_sync_json_path" 2>/dev/null || true)"
+            _sync_err_text="$(jq -r '.error // empty' "$_sync_json_path" 2>/dev/null | head -c 200 || true)"
+            _sync_num_turns="$(jq -r '.num_turns // empty' "$_sync_json_path" 2>/dev/null || true)"
+        fi
+        eb_emit_event "router.error.diagnostic" \
+            "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
+            "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
+            "raw_json_path=${_sync_json_path:-absent}" \
+            "raw_stderr_path=${_sync_stderr_path:-absent}" \
+            "is_error=${_sync_is_error:-absent}" \
+            "error_text=${_sync_err_text:-absent}" \
+            "num_turns=${_sync_num_turns:-absent}" \
+            2>/dev/null || true
+        rm -f "$stderr_file"
         return 1
     fi
     rm -f "$stderr_file"

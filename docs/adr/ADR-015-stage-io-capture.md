@@ -911,3 +911,52 @@ Goldens live under `tests/golden/cycle-banners/` paired
 (`.layout.txt`/`.colored.txt`) per termination reason. Determinism is
 pinned via the same env vars used by the v5 stage banner goldens
 (`ZBUILD_TERM_WIDTH_OVERRIDE`, `ZBUILD_STAGE_IO_NOW_MS_OVERRIDE`).
+
+## Amendment §F: Forensic Failure-Mode Preservation (Wave 19-I + 19-K, 2026-06-08)
+
+The success-path capture above (`stage_io_begin` / `stage_io_end`) handles
+the **happy path** — agent stage prompt + LLM response, command stage
+argv + stdout/stderr/rc. But when the LLM call itself fails (claude rc≠0)
+the router historically `rm -f`'d the only forensic data — the raw JSON
+envelope and stderr — immediately after emitting a coarse
+`router.error` event. Postmortems were left guessing whether the failure
+was rate-limit, token-limit, max-turns, or network.
+
+Wave 19-I (#743/PR #745) shipped this contract for the **LOOP** path
+(`route_to_model_loop`); Wave 19-K (#748) shipped parity for the **SYNC**
+path (`route_to_model`, used by design, plan, review, test_assessment,
+security-lens, compound-quality-cycle).
+
+**Contract (both paths):**
+
+When the claude CLI exits rc≠0:
+1. Before any cleanup, persist the JSON envelope and stderr to
+   predictable paths:
+   - sync: `${ZBUILD_ARTIFACT_DIR}/stage-io/<stage>-sync-error.{raw-claude-output.json,raw-claude-stderr.txt}`
+   - loop: `${ZBUILD_ARTIFACT_DIR}/stage-io/<stage>-iter<N>-error.{raw-claude-output.json,raw-claude-stderr.txt}`
+   Last failure per stage wins on sync (forensics want most recent;
+   collisions are intentional). Loop disambiguates via iteration index.
+2. ALWAYS write the artifact files — even when `$response` is empty or
+   the stderr file is absent. Empty/missing IS the forensic signal
+   (Copilot reviews #745 and #750 both caught variants of "skipped the
+   write on empty input, losing the very case the contract exists for").
+   Use `[[ -f ]]` (existence) not `[[ -s ]]` (non-empty) when reading
+   back; the absence of a file means the preservation step itself
+   failed, which is a higher-priority signal.
+3. Emit `router.error.diagnostic` (sync) or
+   `router.loop.iter.error.diagnostic` (loop) with parsed
+   `.is_error`, `.error` (first 200 chars), `.num_turns`, and the
+   preserved-file paths so operators grep events.jsonl without
+   opening files.
+4. The original `router.error` / `loop.iteration.error` event
+   continues to fire — diagnostics augment, never replace.
+
+**Why both events, not one:** the original event has been an integration
+point since early waves. Removing it would silently break alert rules
+keyed on `type=router.error`. The diagnostic event is additive — new
+consumers subscribe to `*.diagnostic`, old consumers keep working.
+
+**Schema-as-warn invariant:** any failure-mode event registered must
+also appear in `config/event-schema.json` `known_types`. Wave 19-K also
+fixed schema drift for `router.error` itself (emitted since early waves,
+never registered — hence `[event-bus] WARN: unknown event type 'router.error'`).

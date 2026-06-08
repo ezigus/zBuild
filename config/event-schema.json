@@ -36,6 +36,8 @@
     "model.outcome",
     "router.timeout.override_ignored",
     "router.max_turns.override_ignored",
+    "router.error",
+    "router.error.diagnostic",
     "stage.io.captured",
     "stage.io.error",
     "stage.io.render.fallback",
