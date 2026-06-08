@@ -182,22 +182,37 @@ IMPACT_PROMPT
         return 1
     fi
 
-    # Validate verdict field.
-    local verdict
-    verdict="$(printf '%s' "$impact_json" | jq -r '.verdict // empty' 2>/dev/null || true)"
-    if [[ "$verdict" != "complete" && "$verdict" != "incomplete" ]]; then
-        warn "_impact_run_inner: invalid verdict '$verdict', defaulting to incomplete"
-        impact_json="$(printf '%s' "$impact_json" | jq '. + {verdict:"incomplete"}' 2>/dev/null || echo "$impact_json")"
-        verdict="incomplete"
+    # Copilot #747: strict schema validation — fail with plugin.run.error
+    # rather than silently degrading. impact.json drives cycle convergence,
+    # so a malformed response that grants verdict=incomplete via the soft
+    # default could let max_iterations=3 + on_max=continue ship a
+    # half-validated plan downstream. Mirrors test_assessment / plan
+    # behavior (jq -e on a structural assertion, then error event).
+    if ! printf '%s' "$impact_json" | jq -e '
+        type == "object"
+        and (.schema_version == 1)
+        and (.verdict | type == "string" and (. == "complete" or . == "incomplete"))
+        and (.missing | type == "array")
+        and (.impact_feedback_md | type == "string")
+    ' >/dev/null 2>&1; then
+        error "_impact_run_inner: impact.json schema violation (requires schema_version=1, verdict ∈ {complete,incomplete}, missing[], impact_feedback_md string)"
+        emit_event "plugin.run.error" "plugin=impact" "reason=schema_violation"
+        return 1
     fi
+
+    local verdict
+    verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo incomplete)"
 
     # Write impact.json
     printf '%s\n' "$impact_json" | atomic_write "$output_impact_json"
 
     # Extract and write impact_feedback.md sibling for cycle feedback wiring.
+    # Copilot #747: atomic_write preserves the rename-into-place contract so
+    # a mid-write interrupt doesn't leave a partial feedback file that the
+    # cycle orchestrator could read on the next iter.
     local feedback_md
     feedback_md="$(printf '%s' "$impact_json" | jq -r '.impact_feedback_md // ""' 2>/dev/null || true)"
-    printf '%s\n' "$feedback_md" > "$artifact_dir/impact_feedback.md"
+    printf '%s\n' "$feedback_md" | atomic_write "$artifact_dir/impact_feedback.md"
 
     # Emit verdict event for cycle predicate consumption.
     case "$verdict" in

@@ -93,7 +93,6 @@
     "impact.verdict.complete",
     "impact.verdict.incomplete",
     "impact.scope.expanded",
-    "plan_impact.unconverged",
     "review.scope.violation",
     "review.test_status.coerced",
     "router.max_iterations.override_ignored",
