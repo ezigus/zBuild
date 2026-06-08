@@ -81,7 +81,23 @@ _test_harness_cleanup() {
     if [[ -n "${AUTO_TEST_TEMP_DIR:-}" && -d "$AUTO_TEST_TEMP_DIR" ]]; then
         rm -rf "$AUTO_TEST_TEMP_DIR"
     fi
+    # Wave 19-L (#749): rm each named TEST_TEMP_DIR setup_test_env created
+    # so tests that forgot _test_cleanup_hook / cleanup_test_env stop
+    # leaking. Path-prefix guard against accidental rm-rf-/: each tracked
+    # path must live under TMPDIR and start with the harness mktemp
+    # pattern (mktemp -d always returns an absolute path).
+    local _trk_tmpd="${TMPDIR:-/tmp}"
+    _trk_tmpd="${_trk_tmpd%/}"
+    local _trk
+    for _trk in "${_TRACKED_TEST_TEMP_DIRS[@]:-}"; do
+        [[ -z "$_trk" ]] && continue
+        [[ "$_trk" == "$_trk_tmpd"/* ]] || continue
+        [[ -d "$_trk" ]] && rm -rf "$_trk" 2>/dev/null || true
+    done
 }
+# Wave 19-L: initialize the tracking array (declared here so setup_test_env
+# can += without `unbound variable` under set -u).
+_TRACKED_TEST_TEMP_DIRS=()
 trap '_test_harness_cleanup' EXIT INT TERM
 
 # ─── Assertions ──────────────────────────────────────────────────────────────
@@ -203,6 +219,13 @@ setup_test_env() {
     # Clean up auto-created temp dir and create a named one
     [[ -n "$TEST_TEMP_DIR" && -d "$TEST_TEMP_DIR" ]] && rm -rf "$TEST_TEMP_DIR"
     TEST_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/${test_name}.XXXXXX")
+    # Wave 19-L (#749): register the named TEST_TEMP_DIR for cleanup in the
+    # master trap. Without this, tests that forget to set _test_cleanup_hook
+    # or call cleanup_test_env leak the named dir. Audit (2026-06-08) found
+    # 44 of 245 setup_test_env callsites had this gap → 1,261 leaked dirs.
+    # The master trap (_test_harness_cleanup) reads _TRACKED_TEST_TEMP_DIRS
+    # and rm -rf's each, in addition to AUTO_TEST_TEMP_DIR.
+    _TRACKED_TEST_TEMP_DIRS+=("$TEST_TEMP_DIR")
     mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
     mkdir -p "$TEST_TEMP_DIR/bin"
     mkdir -p "$TEST_TEMP_DIR/project"
