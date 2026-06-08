@@ -45,6 +45,11 @@ ORIG_PATH="${PATH}"
 # even if individual tests later reassign TEST_TEMP_DIR in their own setup_env.
 AUTO_TEST_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/zb-test-auto.XXXXXX")
 TEST_TEMP_DIR="$AUTO_TEST_TEMP_DIR"
+# Wave 19-L (#751 Copilot review): freeze the tmp-root at source time so
+# the master trap's prefix guard stays valid even when tests re-export
+# TMPDIR (e.g., to $TEST_TEMP_DIR/_tmp for sandbox mktemp shims).
+_ZB_TEST_TMP_ROOT="${TMPDIR:-/tmp}"
+_ZB_TEST_TMP_ROOT="${_ZB_TEST_TMP_ROOT%/}"
 mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
 mkdir -p "$TEST_TEMP_DIR/bin"
 mkdir -p "$TEST_TEMP_DIR/_tmp"
@@ -84,14 +89,16 @@ _test_harness_cleanup() {
     # Wave 19-L (#749): rm each named TEST_TEMP_DIR setup_test_env created
     # so tests that forgot _test_cleanup_hook / cleanup_test_env stop
     # leaking. Path-prefix guard against accidental rm-rf-/: each tracked
-    # path must live under TMPDIR and start with the harness mktemp
-    # pattern (mktemp -d always returns an absolute path).
-    local _trk_tmpd="${TMPDIR:-/tmp}"
-    _trk_tmpd="${_trk_tmpd%/}"
+    # path must live under the source-time tmp-root captured in
+    # _ZB_TEST_TMP_ROOT. Using the CURRENT $TMPDIR would fail when tests
+    # re-export TMPDIR (Copilot review #751); the source-time root is
+    # stable for the process lifetime since AUTO_TEST_TEMP_DIR was created
+    # there. (mktemp -d always returns an absolute path so the prefix
+    # check is meaningful.)
     local _trk
     for _trk in "${_TRACKED_TEST_TEMP_DIRS[@]:-}"; do
         [[ -z "$_trk" ]] && continue
-        [[ "$_trk" == "$_trk_tmpd"/* ]] || continue
+        [[ "$_trk" == "$_ZB_TEST_TMP_ROOT"/* ]] || continue
         [[ -d "$_trk" ]] && rm -rf "$_trk" 2>/dev/null || true
     done
 }

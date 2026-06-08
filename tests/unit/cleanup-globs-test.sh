@@ -53,7 +53,9 @@ local_backdate "$SYNTH_TMP/unrelated-dir.NOTOURS"
 
 print_test_section "scanner emits prune lines for all three leak patterns"
 
-TMPDIR="$SYNTH_TMP" out="$(_cleanup_scan_zbuild_tmpdirs 24 2>/dev/null || true)"
+# Scope TMPDIR to the subshell only — bare `TMPDIR=… out=…` would persist
+# TMPDIR for the rest of the script (Copilot review #751). Subshell isolates.
+out="$(TMPDIR="$SYNTH_TMP" _cleanup_scan_zbuild_tmpdirs 24 2>/dev/null || true)"
 
 if grep -q "zb-test-auto.ABC123" <<<"$out"; then
     assert_pass "T1: scanner finds zb-test-auto.* pattern"
