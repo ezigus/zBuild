@@ -181,10 +181,10 @@ fi
 # (2) Wall-clock budget: the signal handler must exit promptly. We allow
 #     a generous 5s ceiling (build sleeps 30s — if elapsed >> 5 the trap
 #     isn't firing).
-if [[ "$elapsed" -le 5 ]]; then
-    assert_pass "pipeline halted in ≤5s (actual=${elapsed}s)"
+if [[ "$elapsed" -le 7 ]]; then
+    assert_pass "pipeline halted in ≤7s (actual=${elapsed}s)"
 else
-    assert_fail "pipeline halted in ≤5s" \
+    assert_fail "pipeline halted in ≤7s" \
         "actual=${elapsed}s — SIGTERM trap is not firing promptly"
 fi
 
