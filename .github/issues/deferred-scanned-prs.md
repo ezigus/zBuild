@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-06T03:47:19Z_
+_Last updated: 2026-06-08T03:48:02Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -138,3 +138,8 @@ _Last updated: 2026-06-06T03:47:19Z_
 | #736 | fix(build): empty-diff done_sentinel produces verdict=empty_diff (Wave 19-D-3, #733) | 2026-06-06 |
 | #735 | test(cycle): inner cycle resets per outer iter — regression lock (Wave 19-D-2, #732) | 2026-06-06 |
 | #734 | feat(cycle): cycle.member.dispatch.{start,complete} instrumentation (Wave 19-D-1, #731) | 2026-06-06 |
+| #747 | feat(impact): impact-analyzer plugin + plan_impact_cycle infrastructure (Wave 19-J, #744) | 2026-06-08 |
+| #745 | fix(router): sentinel-on-rc124 + preserve claude raw output on rc!=0 (Wave 19-I, #743) | 2026-06-08 |
+| #742 | feat(review): review reads intake.md + DoD verification + unredact diff-stat (Wave 19-G, #739) | 2026-06-08 |
+| #741 | feat(plan): plan agent honors issue DoD + 5-test trial discipline (Wave 19-F, #738) | 2026-06-08 |
+| #740 | fix(cycle): defensive set +e guard on abort_when predicate call (Wave 19-E, #737) | 2026-06-08 |
