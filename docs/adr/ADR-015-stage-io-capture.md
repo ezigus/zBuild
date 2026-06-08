@@ -911,3 +911,45 @@ Goldens live under `tests/golden/cycle-banners/` paired
 (`.layout.txt`/`.colored.txt`) per termination reason. Determinism is
 pinned via the same env vars used by the v5 stage banner goldens
 (`ZBUILD_TERM_WIDTH_OVERRIDE`, `ZBUILD_STAGE_IO_NOW_MS_OVERRIDE`).
+
+## Amendment §F: Forensic Failure-Mode Preservation (Wave 19-I + 19-K, 2026-06-08)
+
+The success-path capture above (`stage_io_begin` / `stage_io_end`) handles
+the **happy path** — agent stage prompt + LLM response, command stage
+argv + stdout/stderr/rc. But when the LLM call itself fails (claude rc≠0)
+the router historically `rm -f`'d the only forensic data — the raw JSON
+envelope and stderr — immediately after emitting a coarse
+`router.error` event. Postmortems were left guessing whether the failure
+was rate-limit, token-limit, max-turns, or network.
+
+Wave 19-I (#743/PR #745) shipped this contract for the **LOOP** path
+(`route_to_model_loop`); Wave 19-K (#748) shipped parity for the **SYNC**
+path (`route_to_model`, used by design, plan, review, test_assessment,
+security-lens, compound-quality-cycle).
+
+**Contract (both paths):**
+
+When the claude CLI exits rc≠0:
+1. Before any cleanup, persist the JSON envelope and stderr to
+   `${ZBUILD_ARTIFACT_DIR}/stage-io/<stage>-<sync|iterN>-error.<raw-claude-output.json|raw-claude-stderr.txt>`.
+2. Use `[[ -f ]]` (existence) not `[[ -s ]]` (non-empty) — an empty
+   file is itself a forensic signal (Copilot review #745 caught this;
+   dogfood 20260607181657-82646 iters 1+2 left both empty *and*
+   that emptiness was the discoverable fact).
+3. Emit `router.error.diagnostic` (sync) or
+   `router.loop.iter.error.diagnostic` (loop) with parsed
+   `.is_error`, `.error` (first 200 chars), `.num_turns`, and the
+   preserved-file paths so operators grep events.jsonl without
+   opening files.
+4. The original `router.error` / `loop.iteration.error` event
+   continues to fire — diagnostics augment, never replace.
+
+**Why both events, not one:** the original event has been an integration
+point since early waves. Removing it would silently break alert rules
+keyed on `type=router.error`. The diagnostic event is additive — new
+consumers subscribe to `*.diagnostic`, old consumers keep working.
+
+**Schema-as-warn invariant:** any failure-mode event registered must
+also appear in `config/event-schema.json` `known_types`. Wave 19-K also
+fixed schema drift for `router.error` itself (emitted since early waves,
+never registered — hence `[event-bus] WARN: unknown event type 'router.error'`).
