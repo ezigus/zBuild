@@ -243,6 +243,24 @@ _plan_validate_scope() {
     printf '%s' "$violations"
 }
 
+# Wave 19-J (#744): read prior impact analyzer's gap report from cycle
+# feedback. Mirrors _build_read_prior_review (ADR-026 / Wave 18-B). Returns
+# raw markdown body on stdout, empty when no cycle context or no feedback
+# file. Cycle orchestrator's _cycle_apply_feedback wires impact_feedback_md
+# → prior_impact_feedback.txt per the plan_impact_cycle.feedback wiring in
+# config/templates/standard.yaml.
+_plan_read_prior_impact_feedback() {
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
+    local f="$fb_dir/prior_impact_feedback.txt"
+    [[ ! -s "$f" ]] && return 0
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "$body" ]] && return 0
+    printf '%s' "$body"
+}
+
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
@@ -378,9 +396,21 @@ PLAN_PROMPT
     if [[ -f "$scope_manifest" ]]; then
         manifest_body="$(cat "$scope_manifest")"
     fi
+    # Wave 19-J (#744): on cycle iter ≥ 2 of plan_impact_cycle, splice the
+    # prior impact analyzer's gap report into the prompt so the plan agent
+    # can expand step.files[] for the named gaps. Empty when not running
+    # in plan_impact_cycle OR when impact reported verdict=complete.
+    local _impact_feedback_body
+    _impact_feedback_body="$(_plan_read_prior_impact_feedback 2>/dev/null || true)"
+
     local prompt
-    printf -v prompt '%s\n%s\n\nScope manifest (allowed path prefixes):\n%s\n' \
-        "$_plan_instructions" "$redacted_content" "$manifest_body"
+    if [[ -n "$_impact_feedback_body" ]]; then
+        printf -v prompt '%s\n%s\n\nScope manifest (allowed path prefixes):\n%s\n\n## PRIOR IMPACT FEEDBACK (from previous plan_impact_cycle iter)\n%s\n\nExpand step.files[] to address the named gaps. Do NOT change strategic structure unless impact identified a step as fundamentally mis-scoped.\n' \
+            "$_plan_instructions" "$redacted_content" "$manifest_body" "$_impact_feedback_body"
+    else
+        printf -v prompt '%s\n%s\n\nScope manifest (allowed path prefixes):\n%s\n' \
+            "$_plan_instructions" "$redacted_content" "$manifest_body"
+    fi
 
     # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────
     # ADR-018 (#476): Pattern 1 stages with tools MUST use JSON envelope mode.

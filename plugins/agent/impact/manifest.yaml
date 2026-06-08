@@ -1,0 +1,63 @@
+id: impact
+name: Impact Analyzer Stage
+kind: agent
+version: 0.1.0
+description: |
+  Wave 19-J (#744). Scope-completeness verifier for plan.json. Consumes
+  scope-manifest.md and plan.json (or any plan-shaped artifact with
+  steps[] / files[]); traces dependencies via Grep/Read; flags test
+  and config files that the plan's modifications would invalidate but
+  that aren't listed in any step.files[]. Emits impact.json with a
+  structured verdict (complete | incomplete) plus impact_feedback.md
+  rendered for cycle feedback wiring back into the plan stage.
+
+hooks:
+  init: impact_init
+  run: impact_run
+  finalize: impact_finalize
+  cleanup: impact_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: impact.json
+  schema_version: 1
+
+config:
+  tier_default: T1
+  valid_verdicts:
+    - complete
+    - incomplete
+
+inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
+
+outputs:
+  - id: impact
+    path: "${artifact_dir}/impact.json"
+    type: impact.json
+    required: true
+    primary: true
+  - id: impact_feedback_md
+    path: "${artifact_dir}/impact_feedback.md"
+    type: markdown
+    required: false
+
+state:
+  persisted:
+    - last_verdict
+  reconstructed: []

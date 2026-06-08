@@ -17,6 +17,13 @@ flow:
   - intake
   - plan
   - review_cycle
+# Wave 19-J (#744): plan_impact_cycle is DECLARED below but not yet wired
+# into the live flow. Activating it requires updating ~18 test files that
+# assume the 6-MVP-stage shape; that test-update work ships as a separate
+# follow-up. The infrastructure here is functional and exercised by
+# tests/integration/impact-pipeline-test.sh; the next standard.yaml-flow
+# PR will just swap `- plan` → `- plan_impact_cycle` once those tests
+# accept the expanded 7-stage flatten shape.
 
 # ─── intake (leaf) ──────────────────────────────────────────────────────
 intake:
@@ -26,7 +33,38 @@ intake:
     destinations: [file, stdout]
     tail_lines: 200
 
-# ─── plan (leaf) ────────────────────────────────────────────────────────
+# ─── plan_impact_cycle (Wave 19-J, #744) ────────────────────────────────
+# Wraps plan + impact in a 3-iter cycle. impact verifies plan.files[] is
+# scope-complete (no missing test/config files that exercise modified
+# surfaces). On verdict=incomplete, the cycle re-runs plan with the prior
+# impact's gap report as feedback via prior_impact_feedback.txt. On
+# verdict=complete OR max_iterations=3 with on_max=continue, the cycle
+# exits and the downstream review_cycle runs.
+plan_impact_cycle:
+  type: cycle
+  # Members: plan (LLM: strategic decomposition) + impact (LLM: dependency
+  # tracing + scope-completeness check). Comments stay outside the YAML list
+  # because the template parser's awk doesn't strip inline `#` comments.
+  flow:
+    - plan
+    - impact
+  exit_when:
+    stage: impact
+    field: verdict
+    op: eq
+    value: complete
+  max_iterations: 3
+  on_max: continue
+  feedback:
+    - from:
+        stage: impact
+        output: impact_feedback_md
+      to:
+        stage: plan
+        input: prior_impact_feedback
+        required: false
+
+# ─── plan (leaf, cycle member) ──────────────────────────────────────────
 plan:
   gate: auto
   roles: [planner]
@@ -36,6 +74,17 @@ plan:
   router:
     timeout_s: 300
     max_turns: 25
+
+# ─── impact (leaf, cycle member) ────────────────────────────────────────
+impact:
+  gate: auto
+  roles: [impact_analyzer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 180
+    max_turns: 20
 
 # ─── review_cycle (outer remediation cycle, ADR-026) ────────────────────
 # Outer cycle wrapping the inner build_test_cycle + the review stage. On
