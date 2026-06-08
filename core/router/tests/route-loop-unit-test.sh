@@ -385,6 +385,42 @@ route_to_model_loop "T2" "$PROMPT_FILE" "$TEST_TEMP_DIR" 0 2>/dev/null; re_rc=$?
 set -e
 assert_exit_code "max_iterations=0 → rc=2" "2" "$re_rc"
 
+# ─── R-arg-mtpc: --max-turns-per-call validation (#762 Copilot review #764) ──
+# Per-call override must still enforce 1..200. The 0 sentinel is allowed
+# only via the resolver chain (template > env > default), never via explicit
+# --max-turns-per-call.
+print_test_section "R-arg-mtpc: --max-turns-per-call validation"
+REPOMTPC=$(make_repo "repo-mtpc")
+COUNTERMTPC="$TEST_TEMP_DIR/counter-mtpc"
+install_mock_claude "$COUNTERMTPC" 1 ""
+
+set +e
+route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" 1 --max-turns-per-call 0 >/dev/null 2>&1; mtpc0_rc=$?
+set -e
+assert_exit_code "--max-turns-per-call 0 → rc=2 (0 sentinel disallowed for per-call)" "2" "$mtpc0_rc"
+
+set +e
+route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" 1 --max-turns-per-call 201 >/dev/null 2>&1; mtpc201_rc=$?
+set -e
+assert_exit_code "--max-turns-per-call 201 → rc=2 (above 1..200 bound)" "2" "$mtpc201_rc"
+
+set +e
+route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" 1 --max-turns-per-call abc >/dev/null 2>&1; mtpc_abc_rc=$?
+set -e
+assert_exit_code "--max-turns-per-call abc → rc=2 (non-numeric)" "2" "$mtpc_abc_rc"
+
+set +e
+route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" 1 --max-turns-per-call -1 >/dev/null 2>&1; mtpc_neg_rc=$?
+set -e
+assert_exit_code "--max-turns-per-call -1 → rc=2 (negatives)" "2" "$mtpc_neg_rc"
+
+# Valid per-call override should succeed.
+install_mock_claude "$COUNTERMTPC" 1 ""
+set +e
+route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" 1 --max-turns-per-call 50 >/dev/null 2>&1; mtpc_ok_rc=$?
+set -e
+assert_exit_code "--max-turns-per-call 50 → rc=0 (within 1..200)" "0" "$mtpc_ok_rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

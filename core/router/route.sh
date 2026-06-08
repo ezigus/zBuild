@@ -289,12 +289,17 @@ _route_resolve_max_turns() {
 # Emits `template`, `env`, or `default`. The `default` branch is currently
 # unreachable (compile-time default is 25, not 0) but kept for forward
 # compatibility if the default ever changes.
+# Copilot review #764: compare numerically so "00", "000" etc. (accepted
+# by the ^[0-9]+$ validator) classify correctly.
 _route_classify_max_turns_source() {
+    local _tpl_val=""
     if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] \
-        && command -v template_stage_router_max_turns >/dev/null 2>&1 \
-        && [[ "$(template_stage_router_max_turns "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)" == "0" ]]; then
+        && command -v template_stage_router_max_turns >/dev/null 2>&1; then
+        _tpl_val="$(template_stage_router_max_turns "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
+    fi
+    if [[ "$_tpl_val" =~ ^[0-9]+$ ]] && [[ "$_tpl_val" -eq 0 ]]; then
         printf '%s' "template"
-    elif [[ -n "${ZBUILD_ROUTER_MAX_TURNS:-}" && "${ZBUILD_ROUTER_MAX_TURNS}" == "0" ]]; then
+    elif [[ "${ZBUILD_ROUTER_MAX_TURNS:-}" =~ ^[0-9]+$ ]] && [[ "${ZBUILD_ROUTER_MAX_TURNS}" -eq 0 ]]; then
         printf '%s' "env"
     else
         printf '%s' "default"
@@ -726,7 +731,19 @@ route_to_model_loop() {
         error "route_to_model_loop: max_turns must be integer in 0..200, got: $mt"
         return 2
     fi
-    [[ -n "$max_turns_per_call" ]] && mt="$max_turns_per_call"
+    # Copilot review #764: per-call override must still be validated.
+    # The sentinel (0) is allowed only via the resolver chain
+    # (template > env > default); explicit --max-turns-per-call always
+    # enforces 1..200 per ADR-018 Amendment N "Loop mode" clause.
+    if [[ -n "$max_turns_per_call" ]]; then
+        if ! [[ "$max_turns_per_call" =~ ^[0-9]+$ ]] \
+            || [[ "$max_turns_per_call" -lt 1 ]] \
+            || [[ "$max_turns_per_call" -gt 200 ]]; then
+            error "route_to_model_loop: --max-turns-per-call must be integer in 1..200, got: $max_turns_per_call"
+            return 2
+        fi
+        mt="$max_turns_per_call"
+    fi
 
     local secs; secs="$(_route_resolve_timeout)"
     local -a _tout_cmd=()

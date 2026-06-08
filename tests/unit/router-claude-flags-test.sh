@@ -197,6 +197,28 @@ omitted_source="$(jq -r 'select(.type=="router.max_turns.flag_omitted") | .data.
 assert_eq "T4d: flag_omitted event source=template" "template" "$omitted_source"
 unset ZBUILD_CURRENT_STAGE
 
+# ─── T4e: "00" (leading-zero zero) classifies correctly as env-sentinel ──────
+# Copilot review #764: source detection must compare numerically so values
+# like "00" / "000" (accepted by ^[0-9]+$ validator) classify correctly
+# rather than falling through to "default".
+_install_recording_mock
+export ZBUILD_ROUTER_MAX_TURNS=00
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T4e: ZBUILD_ROUTER_MAX_TURNS=00 → rc=0 (numeric zero)" "0" "$rc"
+argv="$(_read_argv)"
+if grep -qx -- "--max-turns" <<< "$argv"; then
+    assert_fail "T4e: argv MUST NOT contain --max-turns when value is 00" "argv: $argv"
+else
+    assert_pass "T4e: --max-turns flag omitted for numeric-zero '00'"
+fi
+omitted_source="$(jq -r 'select(.type=="router.max_turns.flag_omitted") | .data.source // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+assert_eq "T4e: flag_omitted source classified as env (not default)" "env" "$omitted_source"
+unset ZBUILD_ROUTER_MAX_TURNS
+
 # ─── T5: empty env falls back to default (25) ────────────────────────────────
 _install_recording_mock
 export ZBUILD_ROUTER_MAX_TURNS=""
