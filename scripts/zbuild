@@ -572,7 +572,7 @@ UPHELP
                     target="${line%%$'\t'*}"
                     [[ -d "$target" ]] || continue
                     case "$target" in
-                        */zb-applycheck-*|*/zbuild-test-stage.*|*/pipeline-runner.*)
+                        */zb-applycheck-*|*/zbuild-test-stage.*|*/zb-loop-iters.*|*/zb-test-auto.*|*/zb-test.*)
                             rm -rf -- "$target" 2>/dev/null || true ;;
                     esac
                 done <<<"$cl_tmp_plan"
