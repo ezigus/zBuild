@@ -20,6 +20,7 @@ dist/
 .swarm/
 .claude-flow/
 ruvector.db
+pipeline-state.json
 # Anchor to repo root only — core/state/ (source tree) must NOT be ignored.
 /state/
 *.db-wal
