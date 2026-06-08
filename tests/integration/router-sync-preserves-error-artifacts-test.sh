@@ -161,6 +161,26 @@ else
     assert_pass "T11: router.error is registered in event-schema.json (no unknown-type warning)"
 fi
 
+# T12: user-facing stderr line surfaces error_max_turns subtype clearly (#762)
+# The router must include a human-readable summary BEFORE the rc=1 log line
+# so operators see the cause in the terminal, not just in forensic files.
+if grep -qE 'claude max_turns reached \(turns=13, output_tokens=0' "$DRIVER_STDERR"; then
+    assert_pass "T12: stderr surfaces 'claude max_turns reached (turns=13, ...)' human-readable line"
+else
+    assert_fail "T12: stderr MUST surface human-readable max_turns line" \
+        "driver stderr: $(head -c 500 "$DRIVER_STDERR")"
+fi
+
+# T13: human line precedes the rc=1 diagnostic line in stderr
+human_ln="$(grep -n 'claude max_turns reached' "$DRIVER_STDERR" 2>/dev/null | head -1 | cut -d: -f1)"
+rc1_ln="$(grep -n 'rc=1\|route_rc=' "$DRIVER_STDERR" 2>/dev/null | head -1 | cut -d: -f1)"
+if [[ -n "$human_ln" && -n "$rc1_ln" && "$human_ln" -le "$rc1_ln" ]]; then
+    assert_pass "T13: human-readable line precedes rc=1 logging"
+else
+    assert_fail "T13: human-readable line should precede rc=1 logging" \
+        "human_ln=$human_ln rc1_ln=$rc1_ln"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

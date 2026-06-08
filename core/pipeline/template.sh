@@ -949,8 +949,11 @@ _tpl_validate_io_knobs() {
             fi
         fi
         if [[ -n "$rmt" ]]; then
-            if ! [[ "$rmt" =~ ^[0-9]+$ ]] || [[ "$rmt" -lt 1 ]] || [[ "$rmt" -gt 200 ]]; then
-                error "template: router.max_turns for stage '$stage' must be integer in 1..200, got: $rmt"
+            # ADR-018 Amendment N (#762): max_turns=0 is a sentinel meaning
+            # "omit --max-turns flag from claude argv". Negatives and >200
+            # remain invalid.
+            if ! [[ "$rmt" =~ ^[0-9]+$ ]] || [[ "$rmt" -gt 200 ]]; then
+                error "template: router.max_turns for stage '$stage' must be integer in 0..200, got: $rmt"
                 return 1
             fi
         fi
