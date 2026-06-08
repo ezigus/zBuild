@@ -19,14 +19,28 @@ jobs:
         run: bash legacy/scripts/sw 2>&1 | grep -q "disabled" || exit 1
 
   lint:
-    name: Lint (shellcheck)
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
-      - name: Shellcheck all scripts
+      - name: Forbidden model names (haiku/sonnet/opus literals)
         run: |
+          # Fail if any hardcoded model names found (ADR-003)
+          count=$(grep -rEn 'claude-haiku|claude-sonnet|claude-opus|gpt-[0-9]|llama-[0-9]|mistral-' \
+            core/ plugins/ scripts/ \
+            --include="*.sh" --include="*.yaml" --include="*.json" \
+            --exclude-dir=".git" | wc -l | tr -d ' ')
+          if [[ "$count" -gt 0 ]]; then
+            echo "ERROR: $count hardcoded model name(s) found (ADR-003 violation)"
+            grep -rEn 'claude-haiku|claude-sonnet|claude-opus|gpt-[0-9]|llama-[0-9]|mistral-' \
+              core/ plugins/ scripts/ --include="*.sh" --include="*.yaml" --include="*.json"
+            exit 1
+          fi
+          echo "OK: no hardcoded model names in core/plugins/scripts"
+      - name: Shellcheck (.sh files)
+        if: always()
+        run: |
+          sudo apt-get install -y shellcheck
           find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
             | xargs -0 shellcheck --severity=warning
 
@@ -113,26 +127,6 @@ jobs:
           fi
           exit $rc
 
-  lint-no-hardcoded-models:
-    name: Lint (no hardcoded model names — ADR-003)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Reject hardcoded model names
-        run: |
-          # Fail if any hardcoded model names found (ADR-003)
-          count=$(grep -rEn 'claude-haiku|claude-sonnet|claude-opus|gpt-[0-9]|llama-[0-9]|mistral-' \
-            core/ plugins/ scripts/ \
-            --include="*.sh" --include="*.yaml" --include="*.json" \
-            --exclude-dir=".git" | wc -l | tr -d ' ')
-          if [[ "$count" -gt 0 ]]; then
-            echo "ERROR: $count hardcoded model name(s) found (ADR-003 violation)"
-            grep -rEn 'claude-haiku|claude-sonnet|claude-opus|gpt-[0-9]|llama-[0-9]|mistral-' \
-              core/ plugins/ scripts/ --include="*.sh" --include="*.yaml" --include="*.json"
-            exit 1
-          fi
-          echo "OK: no hardcoded model names in core/plugins/scripts"
-
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
@@ -149,7 +143,7 @@ jobs:
   summary:
     name: Summary
     runs-on: ubuntu-latest
-    needs: [smoke, lint, unit, integration, e2e-mocked, golden, mutation-lint, lint-no-hardcoded-models, coverage]
+    needs: [smoke, lint, unit, integration, e2e-mocked, golden, mutation-lint, coverage]
     if: always()
     steps:
       - uses: actions/checkout@v6
@@ -166,5 +160,4 @@ jobs:
           echo "| e2e-mocked | ${{ needs.e2e-mocked.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| golden | ${{ needs.golden.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| mutation-lint | ${{ needs.mutation-lint.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| lint-no-hardcoded-models | ${{ needs.lint-no-hardcoded-models.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| coverage | ${{ needs.coverage.result }} |" >> "$GITHUB_STEP_SUMMARY"
