@@ -36,13 +36,39 @@ _zb_test_chain_exit_trap() {
         trap "$new_cmd" EXIT
         return 0
     fi
-    # `trap -p EXIT` prints: trap -- 'cmd1; cmd2' EXIT
-    # Strip the wrapper to extract the inner command string.
-    local inner
-    inner="${existing#trap -- \'}"
-    inner="${inner%\' EXIT}"
+    # Wave 19-L (#749 Copilot review on #751): the prior implementation
+    # did `${existing#trap -- \'}; ${existing%\' EXIT}` string-slicing.
+    # Two failure modes:
+    #   (a) different bash builds quote `trap -p` differently → extraction
+    #       silently produces empty inner → clobbers prior trap → leak.
+    #   (b) when the trap body contains single quotes (common: file paths
+    #       in single-quoted redirects), `trap -p` emits the `'\''`
+    #       escape sequence. Re-injecting the captured string into a new
+    #       `trap "$inner; $new_cmd"` line embeds those literal `'\''`
+    #       chars in the new trap body, and bash re-parses them as
+    #       broken quoting on next exit ("unexpected EOF" errors).
+    #
+    # Fix: ALWAYS chain via a unique-named function rather than
+    # reconstructing the trap string. The function eval's the original
+    # `trap -p` output (which is bash's own canonical re-loadable form),
+    # so quoting is preserved exactly. The new EXIT trap is then a
+    # simple two-statement line that needs no re-escaping.
+    local _fname="_zb_test_chained_prior_${RANDOM}_${RANDOM}"
+    # Strip the `trap -- ` prefix AND the ` EXIT` suffix so eval sees
+    # only the body (single-quoted). Bash's `trap -p EXIT` output is
+    # always exactly `trap -- '<body>' EXIT` (with `'\''` escapes inside
+    # the body for embedded single quotes).
+    local _exist_body="${existing#trap -- }"
+    _exist_body="${_exist_body% EXIT}"
+    # shellcheck disable=SC2294  # intentional: trap -p output is a valid command
+    eval "$_fname() { eval ${_exist_body}; }" 2>/dev/null || {
+        echo "WARN: _zb_test_chain_exit_trap could not preserve prior trap; running new_cmd only" >&2
+        # shellcheck disable=SC2064
+        trap "$new_cmd" EXIT
+        return 0
+    }
     # shellcheck disable=SC2064
-    trap "${inner}; ${new_cmd}" EXIT
+    trap "$_fname; $new_cmd" EXIT
 }
 
 # ─── zb_test_init_env: populate canonical Layer 2 env ───────────────────────

@@ -311,7 +311,13 @@ _cleanup_scan_zbuild_tmpdirs() {
     tmpd="${tmpd%/}"
     [[ -d "$tmpd" ]] || return 0
     local pattern path mtime age_h
-    for pattern in "zb-applycheck-*" "zbuild-test-stage.*" "zb-loop-iters.*"; do
+    # Wave 19-L (#749): added zb-test-auto.* and zb-test.* — these are the
+    # actual filesystem-name shapes the test harness produces (auto-init
+    # tempdir at test-helpers.sh:46, and the default-named dir from
+    # setup_test_env when no name is passed). Issue 12 dogfood audit found
+    # 1,261 leaked dirs / ~13GB in /var/folders/.../T/ because operators'
+    # `zbuild cleanup --apply` did not match these patterns.
+    for pattern in "zb-applycheck-*" "zbuild-test-stage.*" "zb-loop-iters.*" "zb-test-auto.*" "zb-test.*"; do
         for path in "$tmpd"/$pattern; do
             [[ -e "$path" ]] || continue
             mtime="$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || echo "0")"
