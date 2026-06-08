@@ -37,6 +37,14 @@ inputs:
     type: string
     source: external
     required: true
+  # Wave 19-J (#744): cycle feedback from impact analyzer. Populated by
+  # cycle orchestrator's _cycle_apply_feedback on iter ≥ 2 of
+  # plan_impact_cycle when impact returned verdict=incomplete. Optional —
+  # plan ignores when absent (legacy invocation without cycle context).
+  - id: prior_impact_feedback
+    type: file
+    source: cycle_feedback
+    required: false
 
 outputs:
   - id: plan

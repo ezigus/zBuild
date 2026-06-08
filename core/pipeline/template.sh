@@ -21,10 +21,11 @@ if ! declare -F eb_emit_event >/dev/null 2>&1; then
 fi
 
 # ADR-013 canonical stage sequence — stability contract, not user-configurable.
-# Exactly these 11 ids, in this order:
-#   intake plan design build test test_assessment review compound_quality pr deploy validate monitor
+# Wave 19-J (#744): added `impact` between plan and design (ADR-013 amendment).
+# Exactly these 13 ids, in this order:
+#   intake plan impact design build test test_assessment review compound_quality pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan design build test test_assessment review compound_quality pr deploy validate monitor
+    intake plan impact design build test test_assessment review compound_quality pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template
