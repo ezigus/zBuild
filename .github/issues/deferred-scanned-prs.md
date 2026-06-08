@@ -6,7 +6,7 @@ found. Once a PR appears here, it is never re-scanned.
 
 See [ADR-020](../../docs/adr/ADR-020-deferred-tracker.md) for design rationale.
 
-_Last updated: 2026-06-08T03:48:02Z_
+_Last updated: 2026-06-08T19:17:50Z_
 
 | PR | Title | Scanned |
 |---|---|---|
@@ -143,3 +143,7 @@ _Last updated: 2026-06-08T03:48:02Z_
 | #742 | feat(review): review reads intake.md + DoD verification + unredact diff-stat (Wave 19-G, #739) | 2026-06-08 |
 | #741 | feat(plan): plan agent honors issue DoD + 5-test trial discipline (Wave 19-F, #738) | 2026-06-08 |
 | #740 | fix(cycle): defensive set +e guard on abort_when predicate call (Wave 19-E, #737) | 2026-06-08 |
+| #760 | ci(lint): consolidate shellcheck + model-name guard into one Lint job (#728) | 2026-06-08 |
+| #759 | fix(cleanup): extend apply whitelist + integration test for tmpdir patterns (#752) | 2026-06-08 |
+| #751 | fix(test-helpers): clean named TEST_TEMP_DIR + sweep test-stage globs (Wave 19-L, #749) | 2026-06-08 |
+| #750 | fix(router): sync-path claude raw output preservation (Wave 19-K, #748) | 2026-06-08 |
