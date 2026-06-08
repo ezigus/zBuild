@@ -122,7 +122,9 @@ else
 fi
 
 # ─── T4: invalid env values are rejected with rc=2 ───────────────────────────
-for bad in 0 "-3" abc; do
+# ADR-018 Amendment N (#762): 0 is now a valid sentinel (omit --max-turns flag).
+# Only negatives, non-numeric, and >200 remain invalid.
+for bad in "-3" "-1" abc 201; do
     _install_recording_mock
     export ZBUILD_ROUTER_MAX_TURNS="$bad"
     : > "$ZBUILD_EVENTS_JSONL"
@@ -135,6 +137,86 @@ for bad in 0 "-3" abc; do
         jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)"
     assert_eq "T4: invalid '$bad' emits reason=invalid_max_turns" "invalid_max_turns" "$reason"
 done
+unset ZBUILD_ROUTER_MAX_TURNS
+
+# ─── T4b: max_turns=0 sentinel — flag must be ABSENT from argv ───────────────
+# ADR-018 Amendment N (#762): router.max_turns=0 means "omit --max-turns".
+_install_recording_mock
+export ZBUILD_ROUTER_MAX_TURNS=0
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T4b: max_turns=0 sentinel → rc=0 (valid)" "0" "$rc"
+argv="$(_read_argv)"
+if grep -qx -- "--max-turns" <<< "$argv"; then
+    assert_fail "T4b: argv MUST NOT contain --max-turns when sentinel=0" "argv: $argv"
+else
+    assert_pass "T4b: --max-turns flag omitted when sentinel=0"
+fi
+# Emit a flag_omitted event documenting the sentinel resolution.
+omitted_count="$(grep '"router.max_turns.flag_omitted"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "T4b: router.max_turns.flag_omitted event emitted" "1" "$omitted_count"
+omitted_source="$(jq -r 'select(.type=="router.max_turns.flag_omitted") | .data.source // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+assert_eq "T4b: flag_omitted event has source=env" "env" "$omitted_source"
+unset ZBUILD_ROUTER_MAX_TURNS
+
+# ─── T4d: per-stage template max_turns=0 → flag omitted, source=template ─────
+_install_recording_mock
+T4D_FIXTURE="$TEST_TEMP_DIR/sentinel-fixture.yaml"
+cat > "$T4D_FIXTURE" <<'EOF'
+id: sentinel-fixture
+name: Sentinel Fixture
+defaults:
+  strategy: fanout
+
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
+    router:
+      max_turns: 0
+EOF
+load_template "$T4D_FIXTURE"
+export ZBUILD_CURRENT_STAGE=build
+unset ZBUILD_ROUTER_MAX_TURNS
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T4d: template max_turns=0 sentinel → rc=0" "0" "$rc"
+argv="$(_read_argv)"
+if grep -qx -- "--max-turns" <<< "$argv"; then
+    assert_fail "T4d: argv MUST NOT contain --max-turns under template sentinel" "argv: $argv"
+else
+    assert_pass "T4d: --max-turns flag omitted under template sentinel"
+fi
+omitted_source="$(jq -r 'select(.type=="router.max_turns.flag_omitted") | .data.source // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+assert_eq "T4d: flag_omitted event source=template" "template" "$omitted_source"
+unset ZBUILD_CURRENT_STAGE
+
+# ─── T4e: "00" (leading-zero zero) classifies correctly as env-sentinel ──────
+# Copilot review #764: source detection must compare numerically so values
+# like "00" / "000" (accepted by ^[0-9]+$ validator) classify correctly
+# rather than falling through to "default".
+_install_recording_mock
+export ZBUILD_ROUTER_MAX_TURNS=00
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T4e: ZBUILD_ROUTER_MAX_TURNS=00 → rc=0 (numeric zero)" "0" "$rc"
+argv="$(_read_argv)"
+if grep -qx -- "--max-turns" <<< "$argv"; then
+    assert_fail "T4e: argv MUST NOT contain --max-turns when value is 00" "argv: $argv"
+else
+    assert_pass "T4e: --max-turns flag omitted for numeric-zero '00'"
+fi
+omitted_source="$(jq -r 'select(.type=="router.max_turns.flag_omitted") | .data.source // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+assert_eq "T4e: flag_omitted source classified as env (not default)" "env" "$omitted_source"
 unset ZBUILD_ROUTER_MAX_TURNS
 
 # ─── T5: empty env falls back to default (25) ────────────────────────────────

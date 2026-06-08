@@ -116,7 +116,8 @@ rc=\$?
 set -e
 EOF
 
-bash "$DRIVER" >/dev/null 2>/dev/null || true
+DRIVER_STDERR="$TEST_TEMP_DIR/driver.stderr.txt"
+bash "$DRIVER" >/dev/null 2>"$DRIVER_STDERR" || true
 
 print_test_section "rc=1 iter preserves diagnostic artifacts + emits diagnostic event"
 
@@ -170,6 +171,36 @@ fi
 # T10: diagnostic event surfaces the preserved-file paths.
 diag_json_path="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.raw_json_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "T10: diagnostic event raw_json_path matches the preserved file" "$RAW_JSON_PATH" "$diag_json_path"
+
+# T11: loop path also surfaces error_max_turns to driver stderr (#762).
+# The mock claude returns subtype=error_max_turns; the router must emit a
+# clear human-readable line before the rc=1 logging so terminal users see why.
+DRIVER_STDERR_FILE="${DRIVER_STDERR:-}"
+if [[ -z "$DRIVER_STDERR_FILE" || ! -f "$DRIVER_STDERR_FILE" ]]; then
+    # Fallback: some tests pipe driver output to a known temp file
+    DRIVER_STDERR_FILE="$TEST_TEMP_DIR/driver.stderr.txt"
+fi
+if [[ -f "$DRIVER_STDERR_FILE" ]] && grep -qE 'claude max_turns reached \(turns=[0-9]+' "$DRIVER_STDERR_FILE"; then
+    assert_pass "T11: loop-path stderr surfaces 'claude max_turns reached' human-readable line"
+else
+    assert_fail "T11: loop-path stderr MUST surface human-readable max_turns line" \
+        "DRIVER_STDERR_FILE=$DRIVER_STDERR_FILE present=$([[ -f "$DRIVER_STDERR_FILE" ]] && echo yes || echo no)"
+fi
+
+# T12: legacy terse warn line is REPLACED by the human-readable message when
+# subtype=error_max_turns. The "route_to_model_loop: claude rc=" prefix MUST
+# NOT appear when the new clear message is shown.
+if [[ -f "$DRIVER_STDERR_FILE" ]]; then
+    set +e
+    legacy_warn_count="$(grep -c 'route_to_model_loop: claude rc=' "$DRIVER_STDERR_FILE" 2>/dev/null)"
+    set -e
+    if [[ "$legacy_warn_count" -eq 0 ]]; then
+        assert_pass "T12: legacy terse warn line replaced by human-readable message"
+    else
+        assert_fail "T12: legacy 'route_to_model_loop: claude rc=...' should NOT coexist with new clear line" \
+            "found $legacy_warn_count legacy warn lines"
+    fi
+fi
 
 cleanup_test_env
 print_test_results

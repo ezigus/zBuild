@@ -284,6 +284,28 @@ _route_resolve_max_turns() {
         router.max_turns.override_ignored
 }
 
+# ADR-018 Amendment N (#762): when max_turns resolves to the 0 sentinel,
+# classify which source set it (template > env > default) for telemetry.
+# Emits `template`, `env`, or `default`. The `default` branch is currently
+# unreachable (compile-time default is 25, not 0) but kept for forward
+# compatibility if the default ever changes.
+# Copilot review #764: compare numerically so "00", "000" etc. (accepted
+# by the ^[0-9]+$ validator) classify correctly.
+_route_classify_max_turns_source() {
+    local _tpl_val=""
+    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] \
+        && command -v template_stage_router_max_turns >/dev/null 2>&1; then
+        _tpl_val="$(template_stage_router_max_turns "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
+    fi
+    if [[ "$_tpl_val" =~ ^[0-9]+$ ]] && [[ "$_tpl_val" -eq 0 ]]; then
+        printf '%s' "template"
+    elif [[ "${ZBUILD_ROUTER_MAX_TURNS:-}" =~ ^[0-9]+$ ]] && [[ "${ZBUILD_ROUTER_MAX_TURNS}" -eq 0 ]]; then
+        printf '%s' "env"
+    else
+        printf '%s' "default"
+    fi
+}
+
 # ADR-018 (#467): per-stage router.max_iterations > $ZBUILD_ROUTER_MAX_ITERATIONS > 10 default.
 _route_resolve_max_iterations() {
     _route_resolve_knob template_stage_router_max_iterations ZBUILD_ROUTER_MAX_ITERATIONS 10 \
@@ -352,15 +374,24 @@ _route_call_claude() {
     # works. Tools are available to claude --print unless disallowed; we forbid
     # only EnterPlanMode/ExitPlanMode and skip the permission prompt (headless).
     local max_turns; max_turns="$(_route_resolve_max_turns)"
-    if [[ ! "$max_turns" =~ ^[0-9]+$ ]] || [[ "$max_turns" -lt 1 ]] || [[ "$max_turns" -gt 200 ]]; then
-        error "router: max_turns must be integer in 1..200, got: $max_turns"
+    # ADR-018 Amendment N (#762): max_turns=0 is a sentinel meaning "omit
+    # the --max-turns flag from claude argv; defer to claude CLI default".
+    # Negatives, non-numeric, and >200 remain invalid.
+    if [[ ! "$max_turns" =~ ^[0-9]+$ ]] || [[ "$max_turns" -gt 200 ]]; then
+        error "router: max_turns must be integer in 0..200, got: $max_turns"
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
             "reason=invalid_max_turns" "max_turns=$max_turns"
         return 2
     fi
 
     local -a _claude_args=(-p "$prompt" --print --model "$_ROUTE_MODEL_ID")
-    _claude_args+=(--max-turns "$max_turns")
+    if [[ "$max_turns" -gt 0 ]]; then
+        _claude_args+=(--max-turns "$max_turns")
+    else
+        eb_emit_event "router.max_turns.flag_omitted" \
+            "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+            "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
+    fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
     _claude_args+=(--dangerously-skip-permissions)
     [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
@@ -407,44 +438,40 @@ _route_call_claude() {
     fi
 
     if [[ $rc -ne 0 ]]; then
-        local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
-        error "claude CLI failed (rc=$rc) model=$_ROUTE_MODEL_ID tier=$tier${snip:+: $snip}"
-        eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" "reason=claude_cli_failed"
-        # Wave 19-K (#748): mirror Wave 19-I Fix B for the SYNC path.
-        # Six stages call this path (design, plan, review, test_assessment,
-        # security-lens, compound-quality-cycle); without preservation
-        # every "why did claude rc=N?" forensic round re-encounters the
-        # gap that issue 12 dogfood 20260608054707-48308 hit on
-        # test_assessment. $response holds claude's stdout JSON envelope
-        # (captured into a variable above) — persist it to disk now so
-        # the diagnostic event can cite it. Use [[ -f ]] (existence) not
-        # [[ -s ]] (non-empty) — empty is itself a forensic signal.
+        # Wave 19-K (#748) + #762: mirror Wave 19-I Fix B for the SYNC path.
+        # Persist diagnostic artifacts BEFORE the terse error log so the
+        # human-readable message can cite the diagnostic path and include
+        # parsed fields (#762: surface error_max_turns subtype to terminal).
         local _sync_diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts}/stage-io"
         mkdir -p "$_sync_diag_dir" 2>/dev/null || true
-        # Predictable name per ADR-015 §F: <stage>-sync-error.* — last
-        # failure for a given stage in a run wins (forensics want most
-        # recent). Copilot review on #750: dropped pid+ts suffix that
-        # made artifacts hard to locate without grepping events.jsonl.
         local _sync_diag_base="${ZBUILD_CURRENT_STAGE:-router}-sync-error"
         local _sync_json_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-output.json"
         local _sync_stderr_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-stderr.txt"
-        # ALWAYS write both files, even when $response is empty or
-        # $stderr_file is absent — empty/missing IS the forensic signal
-        # (Copilot review on #750: skipping the write when empty meant
-        # the diagnostic event reported raw_json_path=absent, losing the
-        # very "empty is signal" case Wave 19-I shipped this contract for).
         printf '%s' "$response" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
         if [[ -f "$stderr_file" ]]; then
             cp "$stderr_file" "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
         else
             : > "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
         fi
-        local _sync_is_error="" _sync_err_text="" _sync_num_turns=""
+        # Parse JSON envelope fields once; #762 adds subtype/output_tokens/cost.
+        local _sync_is_error="" _sync_err_text="" _sync_num_turns="" _sync_subtype="" _sync_out_tokens="" _sync_cost=""
         if [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
             _sync_is_error="$(jq -r '.is_error // empty' "$_sync_json_path" 2>/dev/null || true)"
             _sync_err_text="$(jq -r '.error // empty' "$_sync_json_path" 2>/dev/null | head -c 200 || true)"
             _sync_num_turns="$(jq -r '.num_turns // empty' "$_sync_json_path" 2>/dev/null || true)"
+            _sync_subtype="$(jq -r '.subtype // empty' "$_sync_json_path" 2>/dev/null || true)"
+            _sync_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_sync_json_path" 2>/dev/null || true)"
+            _sync_cost="$(jq -r '.total_cost_usd // empty' "$_sync_json_path" 2>/dev/null || true)"
         fi
+        # #762: surface error_max_turns to the terminal with a human-readable
+        # one-liner. Falls back to the legacy stderr-snip message otherwise.
+        local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
+        if [[ "$_sync_subtype" == "error_max_turns" ]]; then
+            error "claude max_turns reached (turns=${_sync_num_turns:-?}, output_tokens=${_sync_out_tokens:-?}, cost=\$${_sync_cost:-?}) — diagnostic: ${_sync_json_path:-absent}"
+        else
+            error "claude CLI failed (rc=$rc) model=$_ROUTE_MODEL_ID tier=$tier${snip:+: $snip}"
+        fi
+        eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" "reason=claude_cli_failed"
         eb_emit_event "router.error.diagnostic" \
             "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
             "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
@@ -453,6 +480,7 @@ _route_call_claude() {
             "is_error=${_sync_is_error:-absent}" \
             "error_text=${_sync_err_text:-absent}" \
             "num_turns=${_sync_num_turns:-absent}" \
+            "subtype=${_sync_subtype:-absent}" \
             2>/dev/null || true
         rm -f "$stderr_file"
         return 1
@@ -698,11 +726,24 @@ route_to_model_loop() {
     fi
 
     local mt; mt="$(_route_resolve_max_turns)"
-    if ! [[ "$mt" =~ ^[0-9]+$ ]] || [[ "$mt" -lt 1 ]] || [[ "$mt" -gt 200 ]]; then
-        error "route_to_model_loop: max_turns must be integer in 1..200, got: $mt"
+    # ADR-018 Amendment N (#762): max_turns=0 is a sentinel (omit flag).
+    if ! [[ "$mt" =~ ^[0-9]+$ ]] || [[ "$mt" -gt 200 ]]; then
+        error "route_to_model_loop: max_turns must be integer in 0..200, got: $mt"
         return 2
     fi
-    [[ -n "$max_turns_per_call" ]] && mt="$max_turns_per_call"
+    # Copilot review #764: per-call override must still be validated.
+    # The sentinel (0) is allowed only via the resolver chain
+    # (template > env > default); explicit --max-turns-per-call always
+    # enforces 1..200 per ADR-018 Amendment N "Loop mode" clause.
+    if [[ -n "$max_turns_per_call" ]]; then
+        if ! [[ "$max_turns_per_call" =~ ^[0-9]+$ ]] \
+            || [[ "$max_turns_per_call" -lt 1 ]] \
+            || [[ "$max_turns_per_call" -gt 200 ]]; then
+            error "route_to_model_loop: --max-turns-per-call must be integer in 1..200, got: $max_turns_per_call"
+            return 2
+        fi
+        mt="$max_turns_per_call"
+    fi
 
     local secs; secs="$(_route_resolve_timeout)"
     local -a _tout_cmd=()
@@ -892,7 +933,15 @@ ${_diff_pointer}"
         json_file="$(mktemp "${TMPDIR:-/tmp}/zb-loop-json.XXXXXX")"
 
         local -a _claude_args=(-p "$final_prompt" --print --model "$_ROUTE_MODEL_ID")
-        _claude_args+=(--max-turns "$mt")
+        # ADR-018 Amendment N (#762): omit --max-turns when sentinel mt=0.
+        if [[ "$mt" -gt 0 ]]; then
+            _claude_args+=(--max-turns "$mt")
+        elif [[ "$iter" -eq 1 ]]; then
+            # Emit sentinel-resolution telemetry once per loop run (iter 1).
+            eb_emit_event "router.max_turns.flag_omitted" \
+                "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+                "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
+        fi
         _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
         _claude_args+=(--dangerously-skip-permissions)
         _claude_args+=(--output-format json)
@@ -1043,28 +1092,14 @@ ${_diff_pointer}"
                     return 0
                 fi
             fi
-            local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
-            warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
-            eb_emit_event "loop.iteration.error" \
-                "iteration=$iter" "rc=$rc" \
-                "model_id=$_ROUTE_MODEL_ID" \
-                "reason=claude_rc_nonzero" 2>/dev/null || true
-            # Wave 19-I Fix B (#743): preserve diagnostic artifacts BEFORE
-            # the existing rm -f below. Without this, $json_file and
-            # $stderr_file are deleted immediately and every future "why
-            # did claude rc=N?" forensic round has no data to work from.
-            # Dogfood 20260607181657-82646 iters 1+2 left only empty
-            # stage-io artifacts; we'd had to guess what went wrong.
+            # Wave 19-I Fix B (#743) + #762: preserve diagnostic artifacts
+            # BEFORE the warn/error log so the human-readable message can
+            # cite the path and parsed fields (including subtype for #762).
             local _diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts}/stage-io"
             mkdir -p "$_diag_dir" 2>/dev/null || true
             local _diag_base="${_iter_stage_id:-loop}-iter${iter}-error"
             local _diag_json_path=""
             local _diag_stderr_path=""
-            # Copilot #745: preserve on -f (existence) not -s (non-empty).
-            # An EMPTY stderr or json file is itself a forensic signal —
-            # the dogfood 20260607181657-82646 iters 1+2 had both empty
-            # AND that emptiness was the discoverable fact. Preserving
-            # empty files makes that fact reproducible in postmortem.
             if [[ -f "$json_file" ]]; then
                 _diag_json_path="$_diag_dir/${_diag_base}.raw-claude-output.json"
                 cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
@@ -1073,13 +1108,28 @@ ${_diff_pointer}"
                 _diag_stderr_path="$_diag_dir/${_diag_base}.raw-claude-stderr.txt"
                 cp "$stderr_file" "$_diag_stderr_path" 2>/dev/null || _diag_stderr_path=""
             fi
-            local _diag_is_error="" _diag_err_text="" _diag_num_turns="" _diag_out_tokens=""
+            # Parse envelope fields once; #762 adds subtype/cost.
+            local _diag_is_error="" _diag_err_text="" _diag_num_turns="" _diag_out_tokens="" _diag_subtype="" _diag_cost=""
             if [[ -n "$_diag_json_path" ]]; then
                 _diag_is_error="$(jq -r '.is_error // empty' "$_diag_json_path" 2>/dev/null || true)"
                 _diag_err_text="$(jq -r '.error // empty' "$_diag_json_path" 2>/dev/null | head -c 200 || true)"
                 _diag_num_turns="$(jq -r '.num_turns // empty' "$_diag_json_path" 2>/dev/null || true)"
                 _diag_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_diag_json_path" 2>/dev/null || true)"
+                _diag_subtype="$(jq -r '.subtype // empty' "$_diag_json_path" 2>/dev/null || true)"
+                _diag_cost="$(jq -r '.total_cost_usd // empty' "$_diag_json_path" 2>/dev/null || true)"
             fi
+            # #762: surface error_max_turns subtype with a human-readable line.
+            # Falls back to the legacy stderr-snip warning otherwise.
+            local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
+            if [[ "$_diag_subtype" == "error_max_turns" ]]; then
+                error "claude max_turns reached (turns=${_diag_num_turns:-?}, output_tokens=${_diag_out_tokens:-?}, cost=\$${_diag_cost:-?}) — diagnostic: ${_diag_json_path:-absent}"
+            else
+                warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
+            fi
+            eb_emit_event "loop.iteration.error" \
+                "iteration=$iter" "rc=$rc" \
+                "model_id=$_ROUTE_MODEL_ID" \
+                "reason=claude_rc_nonzero" 2>/dev/null || true
             eb_emit_event "router.loop.iter.error.diagnostic" \
                 "iteration=$iter" "rc=$rc" \
                 "stage=${_iter_stage_id:-unknown}" \
@@ -1089,6 +1139,7 @@ ${_diff_pointer}"
                 "error_text=${_diag_err_text:-absent}" \
                 "num_turns=${_diag_num_turns:-absent}" \
                 "output_tokens=${_diag_out_tokens:-absent}" \
+                "subtype=${_diag_subtype:-absent}" \
                 2>/dev/null || true
             # #482: close the per-iteration banner on the error path so we
             # don't orphan it into the EXIT trap. Output is whatever (if
