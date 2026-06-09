@@ -77,7 +77,11 @@ impact:
     tail_lines: 200
   router:
     timeout_s: 180
-    max_turns: 20
+    # #763: raised from 20 → 25 to match template-wide norm. impact does
+    # open-ended symbol tracing whose cost scales with the symbol count;
+    # the 20-turn cap was the lowest in the template and the failure mode
+    # (silently truncating impact_feedback_md) is worse than build's loud abort.
+    max_turns: 25
 
 # ─── review_cycle (outer remediation cycle, ADR-026) ────────────────────
 # Outer cycle wrapping the inner build_test_cycle + the review stage. On
@@ -176,6 +180,11 @@ build:
     tail_lines: 200
   router:
     timeout_s: 900
+    # ADR-018 Amendment 1 (#762/#763): sentinel 0 = omit --max-turns flag.
+    # Build is the only stage that mutates files via Edit/Write/Bash; tool
+    # budget scales with the plan's file count. Dogfood #754 hit the 25
+    # ceiling at 10K output tokens / $1.21 cost. Defer to claude CLI default.
+    max_turns: 0
 
 # ─── test (leaf, cycle member) ──────────────────────────────────────────
 test:

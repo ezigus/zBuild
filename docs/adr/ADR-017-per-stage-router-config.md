@@ -286,3 +286,16 @@ accessor pattern when they land.
 A separate issue tracked alongside this ADR (**#456 — intake refuse-on-closed**)
 is *not* covered here — it's a behavioral guard in the intake plugin, not a
 router contract change, and has no interaction with this ADR's status.
+
+## Amendment 1 (Wave 19-M, #762/#763) — `router.max_turns` accepts 0 sentinel
+
+`router.max_turns` uniquely accepts `0` as a sentinel meaning "omit the
+`--max-turns` flag from claude argv" (semantics per ADR-018 Amendment 1).
+Other `router.*` knobs (`timeout_s`, `max_iterations`, future additions) retain
+their strict positive lower bounds. The validator-rejection invariant for
+`1..200` is explicitly widened to `0..200` for this knob only.
+
+The sentinel is honored at all three resolution points: per-stage template
+field (`router.max_turns: 0`), env-var (`ZBUILD_ROUTER_MAX_TURNS=0`), and
+the compile-time default (still `25`; `0` would only apply if the default
+itself ever changed — see ADR-018 Amendment 1 forward-compat note).
