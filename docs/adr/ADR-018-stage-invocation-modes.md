@@ -776,3 +776,40 @@ The contract:
 Implementation: `plugins/agent/build/plugin.sh::_build_parse_commit_summary`
 and `::_build_commit_iteration`. The instruction is rendered into every
 build prompt's INSTRUCTIONS section via `_build_compose_instructions`.
+
+## Amendment — `max_turns: 0` sentinel for unbounded turns (Wave 19-M, #762/#763)
+
+The original contract bounded `router.max_turns` to integer `1..200`. The build
+stage's Pattern-2 inter-turn loop exhausts 25 turns on legitimate multi-file
+refactors (#754 dogfood: hit cap at 10K output tokens, $1.21 cost), and the
+underlying `claude` CLI treats an absent `--max-turns` flag as "no per-invocation
+cap" (provider-side cap still applies).
+
+Revised contract: `router.max_turns` accepts integer `0..200`.
+
+- `0` is a sentinel meaning "omit `--max-turns` from claude argv". The flag is
+  not passed; provider-default applies. Negatives and >200 remain
+  `reason=invalid_max_turns`.
+- Precedence unchanged: per-stage template > `$ZBUILD_ROUTER_MAX_TURNS` > 25.
+  Env-var `ZBUILD_ROUTER_MAX_TURNS=0` is honored with identical semantics.
+- Loop mode: the resolved sentinel applies to the per-call `--max-turns` flag.
+  The loop's separate `max-iterations` cap (this ADR §"Pattern 2") is
+  unaffected and retains its `1..50` validator. Explicit
+  `--max-turns-per-call` overrides ALWAYS enforce `1..200` — the sentinel is
+  rejected when passed as an explicit per-call argument, so an operator
+  experimenting with `--max-turns-per-call 0` gets a loud `invalid_max_turns`
+  failure rather than silent unbounded behavior.
+- Telemetry: a new event `router.max_turns.flag_omitted` (payload: `resolved=0`,
+  `source=template|env|default`) is emitted when the sentinel is the resolved
+  value. The existing `router.max_turns.override_ignored` event keeps its
+  prior semantics (per-stage vs env conflict only). Source classification is
+  numeric (`-eq 0`) so values like `"00"` / `"000"` (accepted by the
+  `^[0-9]+$` validator) classify correctly.
+- Default for all LLM stages remains 25. `build` opts into the sentinel in
+  `config/templates/standard.yaml`; other stages would need a separate ADR
+  to adopt.
+
+Rollback: revert the three validators (`core/router/route.sh` L355, L716;
+`core/pipeline/template.sh` L953) to `-lt 1` and drop the conditional argv
+hoist. Templates with `max_turns: 0` would fail validation post-rollback,
+which is the desired loud failure mode.
