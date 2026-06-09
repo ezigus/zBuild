@@ -16,6 +16,7 @@ defaults:
 flow:
   - intake
   - plan_impact_cycle
+  - design
   - review_cycle
 
 # ─── intake (leaf) ──────────────────────────────────────────────────────
@@ -85,6 +86,20 @@ impact:
     # operator pain is wasted iters and re-runs — raising the floor avoids
     # that on legitimately large-PR symbol-tracing work.
     max_turns: 25
+
+# ─── design (leaf) ─────────────────────────────────────────────────────────
+# Design stage: reads plan.json, produces design.md with a ```scope fenced
+# block listing the authoritative file scope for the build stage (superset
+# of plan.json files). Wired here per #754 (A1 migration). The build plugin
+# reads design.md when present; falls back to plan.json scope on hotfix
+# templates that skip this stage.
+design:
+  gate: auto
+  roles: [designer]
+  io:
+    destinations: [file, stdout]
+  router:
+    timeout_s: 600
 
 # ─── review_cycle (outer remediation cycle, ADR-026) ────────────────────
 # Outer cycle wrapping the inner build_test_cycle + the review stage. On
@@ -183,11 +198,14 @@ build:
     tail_lines: 200
   router:
     timeout_s: 900
-    # ADR-018 sentinel amendment (Wave 19-M, #762): 0 = omit --max-turns flag.
     # Build is the only stage that mutates files via Edit/Write/Bash; tool
-    # budget scales with the plan's file count. Dogfood #754 hit the 25
-    # ceiling at 10K output tokens / $1.21 cost. Defer to claude CLI default.
-    max_turns: 0
+    # budget scales with the plan's file count. Dogfood #754 hit 25 at 10K
+    # output tokens / $1.21 cost. The sentinel `max_turns: 0` (per
+    # ADR-018, Wave 19-M, #762) omits --max-turns but claude CLI's OWN
+    # default when the flag is absent is ALSO 25 — confirmed by repeat dogfood
+    # 2026-06-09 at run_id=20260608212404. Use the validator-allowed max
+    # (200) for ~8x headroom and a loud failure if the plan truly needs more.
+    max_turns: 200
 
 # ─── test (leaf, cycle member) ──────────────────────────────────────────
 test:
