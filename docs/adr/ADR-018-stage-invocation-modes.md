@@ -777,7 +777,7 @@ Implementation: `plugins/agent/build/plugin.sh::_build_parse_commit_summary`
 and `::_build_commit_iteration`. The instruction is rendered into every
 build prompt's INSTRUCTIONS section via `_build_compose_instructions`.
 
-## Amendment 1 (Wave 19-M, #762/#763) — `max_turns: 0` sentinel for unbounded turns
+## Amendment — `max_turns: 0` sentinel for unbounded turns (Wave 19-M, #762/#763)
 
 The original contract bounded `router.max_turns` to integer `1..200`. The build
 stage's Pattern-2 inter-turn loop exhausts 25 turns on legitimate multi-file
@@ -795,8 +795,10 @@ Revised contract: `router.max_turns` accepts integer `0..200`.
 - Loop mode: the resolved sentinel applies to the per-call `--max-turns` flag.
   The loop's separate `max-iterations` cap (this ADR §"Pattern 2") is
   unaffected and retains its `1..50` validator. Explicit
-  `--max-turns-per-call` overrides ALWAYS enforce `1..200` (sentinel rejected
-  for per-call overrides per Copilot review #764).
+  `--max-turns-per-call` overrides ALWAYS enforce `1..200` — the sentinel is
+  rejected when passed as an explicit per-call argument, so an operator
+  experimenting with `--max-turns-per-call 0` gets a loud `invalid_max_turns`
+  failure rather than silent unbounded behavior.
 - Telemetry: a new event `router.max_turns.flag_omitted` (payload: `resolved=0`,
   `source=template|env|default`) is emitted when the sentinel is the resolved
   value. The existing `router.max_turns.override_ignored` event keeps its

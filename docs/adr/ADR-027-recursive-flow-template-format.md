@@ -423,9 +423,10 @@ This PR (closing #702) lands only the ADR text.
 ## Note (Wave 19-M, #762/#763)
 
 The `max_turns: 25` value shown in schema examples is the conventional
-default. As of ADR-018 Amendment 1, `router.max_turns: 0` is also valid:
-sentinel meaning "omit `--max-turns` from claude argv; defer to claude CLI
-default". The `build` stage in `config/templates/standard.yaml` opts into
-this sentinel; other stages remain at the conventional 25. Templates that
-copy the schema examples verbatim will continue to work — only stages that
-explicitly want the unbounded behavior set `max_turns: 0`.
+default. As of the ADR-018 sentinel amendment (Wave 19-M, #762),
+`router.max_turns: 0` is also valid: sentinel meaning "omit `--max-turns`
+from claude argv; defer to claude CLI default". The `build` stage in
+`config/templates/standard.yaml` opts into this sentinel; other stages
+remain at the conventional 25. Templates that copy the schema examples
+verbatim will continue to work — only stages that explicitly want the
+unbounded behavior set `max_turns: 0`.
