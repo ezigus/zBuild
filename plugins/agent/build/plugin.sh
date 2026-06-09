@@ -110,6 +110,21 @@ _build_stage_run_inner() {
         jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"
 
+    # #754: if design.md exists (produced by the design stage), use its
+    # ```scope block as the authoritative scope (strict superset of plan files).
+    # Fallback to plan_files_csv when design stage is absent (hotfix pipelines).
+    local design_md_path="$artifact_dir/design.md"
+    local resolved_scope_csv="$plan_files_csv"
+    if [[ -s "$design_md_path" ]]; then
+        local _design_scope
+        _design_scope="$(_extract_scope_from_design "$design_md_path" 2>/dev/null || echo "")"
+        if [[ -n "$_design_scope" ]]; then
+            resolved_scope_csv="$_design_scope"
+            emit_event "build.design_scope_used" "plugin=build" \
+                "source=design.md" >/dev/null 2>&1 || true
+        fi
+    fi
+
     # ─── Write build prompt (ADR-018 Pattern 2, #571 v2 framing) ─────────────
     # Three-section framed structure the LLM sees on every iteration:
     #   1. ORIGINAL TASK (immutable across iterations) — issue goal + plan md
@@ -136,7 +151,7 @@ _build_stage_run_inner() {
     _task_header="$(_build_render_task_header "$_iter_n" "$_iter_max")"
 
     local _build_instructions
-    _build_instructions="$(_build_compose_instructions "$plan_files_csv")"
+    _build_instructions="$(_build_compose_instructions "$resolved_scope_csv")"
 
     # Iter 2+: pull prior test_assessment markdown. Empty when no cycle or
     # file missing/empty (silent-failure guard — see _build_read_prior_assessment).
@@ -178,7 +193,7 @@ _build_stage_run_inner() {
     # #606 Bug A1: pass the plan files CSV as the allowlist on the initial
     # redaction pass. Previously this was empty, so in-scope plan paths got
     # wrapped in <out-of-scope-context> before the agent loop ever saw them.
-    if ! apply_scope_redaction "$prompt_input_file" "$redacted_file" "$scope_manifest" "$plan_files_csv" "0"; then
+    if ! apply_scope_redaction "$prompt_input_file" "$redacted_file" "$scope_manifest" "$resolved_scope_csv" "0"; then
         error "_build_stage_run_inner: redaction failed; refusing to emit"
         emit_event "plugin.run.error" "plugin=build" "reason=redaction_failed"
         return 1
@@ -218,7 +233,7 @@ _build_stage_run_inner() {
     # _route_loop_close_final_banner after _build_emit_changed_files_summary
     # below (or unconditionally on the early-exit paths).
     route_to_model_loop "$tier" "$redacted_file" "$repo_root" "$max_iter" \
-        --scope-allowlist "$plan_files_csv" \
+        --scope-allowlist "$resolved_scope_csv" \
         --defer-final-banner-close || router_rc=$?
 
     local iterations="${_ROUTE_LOOP_ITERATIONS:-0}"
@@ -329,14 +344,14 @@ _build_stage_run_inner() {
     # ─── Scope post-validation via git diff --name-status -z ─────────────────
     local scope_violation="false"
     local -a scope_violations=()
-    if [[ -n "$diff_content" && -n "$plan_files_csv" ]]; then
+    if [[ -n "$diff_content" && -n "$resolved_scope_csv" ]]; then
         local -a allowed_files=()
         local IFS_save="$IFS"
         IFS=','
         # shellcheck disable=SC2206,SC2034
         # SC2206: word-split intentional. SC2034: passed to _build_path_in_scope
         # via nameref (local -n _allowed_ref), which shellcheck cannot follow.
-        allowed_files=( $plan_files_csv )
+        allowed_files=( $resolved_scope_csv )
         IFS="$IFS_save"
 
         # name-status -z output: <STATUS>\0<path1>[\0<path2>] for renames.
@@ -500,7 +515,7 @@ _build_stage_run_inner() {
     # duplication. #587 removed the banner entirely — the function now emits
     # `build.discrepancy.detected` + `build.diff.empty_after_done_sentinel`
     # events plus a single-line stderr `warn` instead.
-    _BUILD_PLAN_FILES_CSV="$plan_files_csv" \
+    _BUILD_PLAN_FILES_CSV="$resolved_scope_csv" \
     _build_emit_changed_files_summary \
         "$repo_root" "$terminated_reason" \
         "$scope_violation" "$pre_zero_numstat" || true
@@ -523,7 +538,7 @@ _build_stage_run_inner() {
     _plan_title="$(printf '%s' "$plan_json" | jq -r '.title // ""' 2>/dev/null || echo "")"
     _build_commit_iteration \
         "$repo_root" \
-        "$plan_files_csv" \
+        "$resolved_scope_csv" \
         "$scope_violation" \
         "$build_verdict" \
         "${_ROUTE_LOOP_LAST_RESPONSE:-}" \
@@ -630,6 +645,36 @@ _build_stage_run_inner() {
     # #602: no more fail-CLOSED rc-wins path — the apply-check gate that
     # forced rc=1 on `verdict=corrupt_diff` was removed with the stash dance.
     return 0
+}
+
+# ─── _extract_scope_from_design <design_md_path> ────────────────────────────────
+# Parse the ```scope fenced block from design.md and return a CSV of file paths.
+# Returns empty string (not an error) when the block is absent or empty.
+# Legacy citation: pipeline-stages.sh:38-71 (_extract_scope_from_design).
+_extract_scope_from_design() {
+    local design_md_path="$1"
+    [[ -f "$design_md_path" ]] || return 0
+    local in_block=0
+    local -a entries=()
+    while IFS= read -r line; do
+        if [[ "$in_block" -eq 0 && "$line" == '```scope' ]]; then
+            in_block=1
+            continue
+        fi
+        if [[ "$in_block" -eq 1 ]]; then
+            [[ "$line" == '```' ]] && break
+            local _trimmed
+            _trimmed="$(printf '%s' "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')"
+            [[ -n "$_trimmed" ]] && entries+=("$_trimmed")
+        fi
+    done < "$design_md_path"
+    if [[ ${#entries[@]} -eq 0 ]]; then
+        return 0
+    fi
+    local IFS_save="$IFS"
+    IFS=','
+    printf '%s' "${entries[*]}"
+    IFS="$IFS_save"
 }
 
 # ─── _build_read_prior_assessment (#571, renamed from _build_read_prior_failures)

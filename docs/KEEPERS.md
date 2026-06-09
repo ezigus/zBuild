@@ -45,7 +45,7 @@ The original spec listed 11 items here. After re-verification, items split into 
 3. **Skill registry success-rate self-improvement** (`legacy/scripts/lib/skill-memory.sh:144-176`, `legacy/scripts/lib/pipeline-state.sh:325/608`) — verified: records successes/failures, sorts by success rate at `legacy/scripts/lib/skill-memory.sh:173`, recommendations consumed at `legacy/scripts/sw-pipeline.sh:1703` to steer retries. Real closed loop.
 4. **Two-phase complexity** (initial LLM + post-build reassessment, `legacy/scripts/sw-intelligence.sh:533`, `legacy/scripts/lib/pipeline-intelligence.sh:1238`) — carry forward.
 5. **Vitals composite as circuit-breaker input** — `legacy/scripts/lib/loop-convergence.sh:101-132` (`check_circuit_breaker`) reads `pipeline_compute_vitals()` JSON at `:108`, branches on `verdict == "abort"` at `:111` to trip the breaker. This is real control, not just telemetry. Weights at `legacy/scripts/lib/sw-pipeline-vitals.sh:56-59` are env-tunable but static defaults. Carry forward as core; treat weights as configuration, not learned parameters.
-6. **Scope manifest as fenced markdown in design.md** (`legacy/scripts/lib/pipeline-stages.sh:42`) — artifact-as-contract pattern; carry forward.
+6. **Scope manifest as fenced markdown in design.md** (`legacy/scripts/lib/pipeline-stages.sh:42`) — artifact-as-contract pattern; carry forward. Migrated: `plugins/agent/design/plugin.sh`.
 7. **Three-tier memory recall cascade** (`legacy/scripts/lib/pipeline-stages-build.sh:209`, `legacy/scripts/lib/ruflo-adapter.sh:2383/2429/2443`) — goal-scoped → issue-scoped → repo-scoped. Verified plumbed. Legacy native memory has no embeddings (`legacy/scripts/sw-memory.sh:197-206`, `_has_embeddings` returns false), but `legacy/scripts/lib/ruflo-adapter.sh:2376-2440` provides HNSW vector recall via the ruflo MCP layer under per-repo / per-issue namespaces (legacy uses `shipwright-repo-{hash}` / `shipwright-{hash}-{ISSUE_NUMBER}`; zBuild will use its own `zbuild-repo-{hash}` / `zbuild-{hash}-{ISSUE_NUMBER}` namespaces to avoid cross-talk). Carry forward as side-service with the existing two-tier (native TF-IDF + ruflo HNSW) backing.
 8. **Adaptive cycle limits with convergence/divergence/plateau detection** (`legacy/scripts/lib/pipeline-intelligence.sh:351/1604`) — carry forward; plateau predicate is already a pure testable function.
 9. **Cost ledger + baselines feeding routing** (`legacy/scripts/sw-cost.sh`, `lib/cost/*`) — carry forward as side service; `--render-plain` markdown output is a keeper.
@@ -154,6 +154,7 @@ Still add golden-file diffing as a new capability (confirmed zero golden tests i
 | "Scope redaction" | Single chokepoint helper (`_apply_scope_redaction`) replacing 9 direct call sites; core engine I/O wrapper. |
 | "Multi-tier locking" | Core engine for in-process / per-host; cross-machine claim mechanism is a decision point (Section M). |
 | "Resume contract" | Explicit two-tier: persisted (stage status, SELF_HEAL_COUNT, scope manifest, cost ledger, CURRENT_ITERATION) vs reconstructed (runtime caches, loop-state.md). |
+| "§A.6 Scope manifest as fenced markdown in design.md" | `plugins/agent/design/` — `_design_stage_run_inner` writes the \`\`\`scope block; `plugins/agent/build/plugin.sh:_extract_scope_from_design` reads it. |
 
 ---
 
