@@ -56,6 +56,21 @@ plan_impact_cycle:
         stage: plan
         input: prior_impact_feedback
         required: false
+    # #773: self-feedback edge — plan's own prior plan.json becomes the next
+    # iter's prior_plan input. Without this, plan iter N+1 only sees the
+    # latest impact gap report and re-plans from scratch, regressing the
+    # amendments from iter N's impact feedback. With this edge, iter N+1
+    # receives both prior state (this edge) AND the gap delta (edge above);
+    # plan's prompt instructs the agent to REFINE rather than re-create.
+    # The cycle orchestrator's _cycle_apply_feedback already supports self-
+    # edges; no orchestrator change.
+    - from:
+        stage: plan
+        output: plan
+      to:
+        stage: plan
+        input: prior_plan
+        required: false
 
 # ─── plan (leaf, cycle member) ──────────────────────────────────────────
 plan:

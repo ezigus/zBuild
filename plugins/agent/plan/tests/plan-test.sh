@@ -349,6 +349,184 @@ apply_scope_redaction() {
     return 0
 }
 
+# ─── #773 cycle feedback (prior_plan + prior_impact_feedback) ────────────────
+# Issue #773 root cause: plan iter N+1 was re-planning from goal + latest
+# feedback, losing all amendments older than one iter. Fix: add prior_plan
+# self-feedback edge so iter N+1 sees its own prior plan.json AND impact's
+# latest gap report. Canonical splice order is impact-first, plan-second.
+
+CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+
+# Helper: reset captures + state for a cycle-feedback subcase.
+_773_reset() {
+    : > "$_CAPTURED_PROMPT_FILE"
+    : > "$_CAPTURED_ENVELOPE_FILE"
+    : > "$_CAPTURED_ARTIFACT_FILE"
+    rm -rf "$TEST_TEMP_DIR/cycle-feedback"
+    mkdir -p "$TEST_TEMP_DIR/cycle-feedback"
+    unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
+}
+
+# ─── #773-A: prior_plan only present → '## PRIOR PLAN' heading appears ──────
+_773_reset
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+printf '%s' '{"schema_version":1,"steps":[{"id":"step-1","files":["a.sh","b.sh"]}]}' > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-A: plan_run rc=0 with prior_plan only" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "#773-A: prompt contains '## PRIOR PLAN' heading" \
+    "$captured_prompt" "## PRIOR PLAN"
+assert_contains "#773-A: prompt contains prior plan body" \
+    "$captured_prompt" '"files":["a.sh","b.sh"]'
+
+# ─── #773-B: both present → impact-first, plan-second canonical order ───────
+_773_reset
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+printf '%s' "GAP_SENTINEL_IMPACT_BODY" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_impact_feedback.txt"
+printf '%s' "PRIOR_SENTINEL_PLAN_BODY" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-B: plan_run rc=0 with both feedback files" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+# Both headings present.
+assert_contains "#773-B: PRIOR IMPACT heading present" "$captured_prompt" "## PRIOR IMPACT FEEDBACK"
+assert_contains "#773-B: PRIOR PLAN heading present" "$captured_prompt" "## PRIOR PLAN"
+# Both bodies present.
+assert_contains "#773-B: prior_impact body present" "$captured_prompt" "GAP_SENTINEL_IMPACT_BODY"
+assert_contains "#773-B: prior_plan body present" "$captured_prompt" "PRIOR_SENTINEL_PLAN_BODY"
+# Canonical ordering: impact heading appears BEFORE plan heading. grep -b
+# emits byte-offset:line; pick the offset before the first colon.
+_impact_pos="$(grep -bo '## PRIOR IMPACT' <<<"$captured_prompt" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_plan_pos="$(grep -bo '## PRIOR PLAN' <<<"$captured_prompt" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+if [[ -n "$_impact_pos" && -n "$_plan_pos" && "$_impact_pos" -lt "$_plan_pos" ]]; then
+    assert_pass "#773-B: canonical order — impact heading precedes plan heading"
+else
+    assert_fail "#773-B: canonical order — impact=$_impact_pos plan=$_plan_pos"
+fi
+
+# ─── #773-C: neither file present (iter=2 but empty dir) → no headings ──────
+_773_reset
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-C: plan_run rc=0 with empty feedback dir" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+# #773 review: positively assert prompt is non-empty + contains the goal
+# text before negative-heading assertions; prevents false-pass when plan_run
+# short-circuits and writes an empty prompt.
+assert_contains "#773-C: captured_prompt is non-empty (guard)" "$captured_prompt" "test goal"
+if grep -q "## PRIOR PLAN" <<<"$captured_prompt"; then
+    assert_fail "#773-C: no '## PRIOR PLAN' heading when prior_plan.txt absent"
+else
+    assert_pass "#773-C: no '## PRIOR PLAN' heading when prior_plan.txt absent"
+fi
+if grep -q "## PRIOR IMPACT" <<<"$captured_prompt"; then
+    assert_fail "#773-C: no '## PRIOR IMPACT' heading when prior_impact_feedback.txt absent"
+else
+    assert_pass "#773-C: no '## PRIOR IMPACT' heading when prior_impact_feedback.txt absent"
+fi
+
+# ─── #773-D: printf-%s safety — prior_plan body containing literal '%d' ─────
+# Regression guard: prompt construction must use printf '%s' positional args,
+# NOT printf -v fmt with the body interpolated as a format string. A body
+# containing '%d' would crash printf -v with "missing format character".
+_773_reset
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+printf '%s' 'literal %d %s %% safety-check' > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-D: plan_run rc=0 with literal '%' in prior_plan body" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "#773-D: literal '%d %s %%' survives into prompt verbatim" \
+    "$captured_prompt" 'literal %d %s %% safety-check'
+
+# ─── #773-E: iter=1 (no cycle context) → backwards-compat clean prompt ──────
+_773_reset
+# Explicitly unset cycle context — non-cycle invocation path.
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-E: plan_run rc=0 with no cycle env" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "#773-E: captured_prompt is non-empty (guard)" "$captured_prompt" "test goal"
+if grep -q "## PRIOR PLAN\|## PRIOR IMPACT" <<<"$captured_prompt"; then
+    assert_fail "#773-E: no PRIOR headings when not in cycle"
+else
+    assert_pass "#773-E: no PRIOR headings when not in cycle"
+fi
+
+# ─── #773-F: empty-file fail-soft — zero-byte prior_plan.txt ────────────────
+_773_reset
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+: > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"  # zero bytes
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-F: plan_run rc=0 with empty prior_plan.txt" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "#773-F: captured_prompt is non-empty (guard)" "$captured_prompt" "test goal"
+if grep -q "## PRIOR PLAN" <<<"$captured_prompt"; then
+    assert_fail "#773-F: empty prior_plan.txt should NOT emit heading"
+else
+    assert_pass "#773-F: empty prior_plan.txt does not emit heading"
+fi
+
+# ─── #773-G: whitespace-only prior_plan.txt → no heading (regression guard) ─
+# review-required: with the [[ -s file ]] guard alone, a file containing
+# only spaces/newlines would emit a heading with empty body — reintroducing
+# the amnesia regression in another form. New non-whitespace content check
+# in _plan_read_prior_plan must catch this.
+_773_reset
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+printf '   \n\n\t  \n' > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-G: plan_run rc=0 with whitespace-only prior_plan.txt" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+if grep -q "## PRIOR PLAN" <<<"$captured_prompt"; then
+    assert_fail "#773-G: whitespace-only prior_plan.txt should NOT emit heading"
+else
+    assert_pass "#773-G: whitespace-only prior_plan.txt does not emit heading"
+fi
+
+# ─── #773-H: iter=1 + feedback dir populated → iter-guard suppresses splice ─
+# review-required: prevents stale ZBUILD_CYCLE_FEEDBACK_DIR (e.g. left over
+# from a prior run) from re-injecting old state on iter 1 of a fresh cycle.
+_773_reset
+export ZBUILD_CYCLE_ITER=1
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+printf '%s' "STALE_PRIOR_PLAN_SENTINEL" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
+printf '%s' "STALE_PRIOR_IMPACT_SENTINEL" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_impact_feedback.txt"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-H: plan_run rc=0 with iter=1 + stale feedback" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "#773-H: captured_prompt is non-empty (guard)" "$captured_prompt" "test goal"
+if grep -q "STALE_PRIOR_PLAN_SENTINEL\|STALE_PRIOR_IMPACT_SENTINEL" <<<"$captured_prompt"; then
+    assert_fail "#773-H: iter=1 must suppress stale feedback splice"
+else
+    assert_pass "#773-H: iter=1 suppresses stale feedback splice (iter≥2 guard)"
+fi
+
+# ─── #773-I: prior_plan only (no impact) → coherent trailer, no dangling ref ─
+# review-required: when prior_plan present but prior_impact_feedback absent,
+# the trailer must NOT instruct the agent to address gaps in a section that
+# doesn't exist in the prompt.
+_773_reset
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback"
+printf '%s' "PLAN_ONLY_BODY_SENTINEL" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "#773-I: plan_run rc=0 with prior_plan only" "0" "$rc"
+captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "#773-I: PRIOR PLAN heading present" "$captured_prompt" "## PRIOR PLAN"
+# Trailer must NOT reference PRIOR IMPACT FEEDBACK when that section is absent.
+if grep -q "addressing the gaps in PRIOR IMPACT FEEDBACK" <<<"$captured_prompt"; then
+    assert_fail "#773-I: trailer must not reference missing PRIOR IMPACT FEEDBACK"
+else
+    assert_pass "#773-I: trailer does not reference missing PRIOR IMPACT FEEDBACK"
+fi
+
+# Cleanup env for downstream tests.
+unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
+
 # ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
 set +e
 plan_finalize >/dev/null 2>&1
