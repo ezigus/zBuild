@@ -960,3 +960,29 @@ consumers subscribe to `*.diagnostic`, old consumers keep working.
 also appear in `config/event-schema.json` `known_types`. Wave 19-K also
 fixed schema drift for `router.error` itself (emitted since early waves,
 never registered — hence `[event-bus] WARN: unknown event type 'router.error'`).
+
+## Amendment — `impact` renderer added (#768, 2026-06-09)
+
+The artifact renderer registry (`scripts/lib/artifact-render.sh`) at this
+ADR's v1 cutoff enumerated `plan`, `diff`, `review`, `test_assessment`.
+The `impact` stage shipped in Wave 19-J (#744) without an entry, so the
+terminal display dumped the full JSON envelope rather than rendering the
+structured `impact_feedback_md` field. PR #768 adds:
+
+- `render_impact_md` in `scripts/lib/artifact-render.sh`. Renders a
+  one-line summary header (`Impact: verdict=<v>, missing=<n>`) followed
+  by `impact_feedback_md` as raw markdown. Empty feedback (verdict=complete
+  with no gaps) renders header-only. Prose preamble preserved as LLM
+  comment for forensics (see #767 contract-violation capture).
+- Producer-side tagging in `plugins/agent/impact/plugin.sh`: sets
+  `ZBUILD_ROUTER_ARTIFACT_ID=impact` before `route_to_model`, mirrors
+  the plan/review/test_assessment pattern. Restore on both branches
+  (unset on `__UNSET__`, otherwise re-export prior).
+- Registry entry: `register_artifact_renderer "impact" "render_impact_md"`.
+
+Registered artifact ids: `plan`, `diff`, `review`, `test_assessment`,
+`impact`. `intake` and `build` deliberately have no renderer — intake has
+no LLM-structured terminal output; build's terminal artifact is the
+`diff.patch`, already covered by the `diff` renderer at downstream
+consumers. `security-lens` is an outstanding renderer gap tracked in
+ADR-018 §v4 (separate follow-up).

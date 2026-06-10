@@ -29,6 +29,7 @@ _rows=(
     "plan|plan|$REPO_ROOT/plugins/agent/plan/plugin.sh"
     "review|review|$REPO_ROOT/plugins/agent/review/plugin.sh"
     "security-lens|security-lens|$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
+    "impact|impact|$REPO_ROOT/plugins/agent/impact/plugin.sh"
 )
 
 for row in "${_rows[@]}"; do
