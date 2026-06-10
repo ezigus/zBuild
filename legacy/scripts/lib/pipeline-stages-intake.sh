@@ -1001,4 +1001,379 @@ Fix these issues in the new plan."
     log_stage "plan" "Generated plan.md (${line_count} lines, $(echo "$checklist" | wc -l | xargs) tasks)"
 }
 
+stage_design() {
+    CURRENT_STAGE_ID="design"
+    # Consume retry context if this is a retry attempt
+    local _retry_ctx="${ARTIFACTS_DIR}/.retry-context-design.md"
+    local _design_retry_hints=""
+    if [[ -s "$_retry_ctx" ]]; then
+        _design_retry_hints=$(cat "$_retry_ctx" 2>/dev/null || true)
+        rm -f "$_retry_ctx"
+    fi
+    local plan_file="$ARTIFACTS_DIR/plan.md"
+    local design_file="$ARTIFACTS_DIR/design.md"
+
+    if [[ ! -s "$plan_file" ]]; then
+        warn "No plan found — skipping design stage"
+        return 0
+    fi
+
+    if ! command -v claude >/dev/null 2>&1; then
+        error "Claude CLI not found — cannot generate design"
+        return 1
+    fi
+
+    info "Generating Architecture Decision Record..."
+
+    # Gather rich architecture context (call-graph, dependencies)
+    local arch_struct_context=""
+    if type gather_architecture_context &>/dev/null; then
+        arch_struct_context=$(gather_architecture_context "${PROJECT_ROOT:-.}" 2>/dev/null || true)
+    fi
+    arch_struct_context=$(prune_context_section "architecture" "$arch_struct_context" 5000)
+
+    # Memory integration — inject context if memory system available
+    local memory_context=""
+    if type intelligence_search_memory >/dev/null 2>&1; then
+        local mem_dir="${HOME}/.shipwright/memory"
+        memory_context=$(intelligence_search_memory "design stage architecture patterns for: ${GOAL:-}" "$mem_dir" 5 2>/dev/null) || true
+    fi
+    if [[ -z "$memory_context" ]] && [[ -x "$SCRIPT_DIR/sw-memory.sh" ]]; then
+        memory_context=$(bash "$SCRIPT_DIR/sw-memory.sh" inject "design" 2>/dev/null) || true
+    fi
+    memory_context=$(prune_context_section "memory" "$memory_context" 10000)
+
+    # Inject cross-pipeline discoveries for design stage
+    local design_discoveries=""
+    if [[ -x "$SCRIPT_DIR/sw-discovery.sh" ]]; then
+        design_discoveries=$("$SCRIPT_DIR/sw-discovery.sh" inject "*.md,*.ts,*.tsx,*.js" 2>/dev/null | head -20 || true)
+    fi
+    design_discoveries=$(prune_context_section "discoveries" "$design_discoveries" 3000)
+
+    # Inject architecture model patterns if available
+    local arch_context=""
+    local repo_hash
+    repo_hash=$(echo -n "$PROJECT_ROOT" | shasum -a 256 2>/dev/null | cut -c1-12 || echo "unknown")
+    local arch_model_file="${HOME}/.shipwright/memory/${repo_hash}/architecture.json"
+    if [[ -f "$arch_model_file" ]]; then
+        local arch_patterns
+        arch_patterns=$(jq -r '
+            [.patterns // [] | .[] | "- \(.name // "unnamed"): \(.description // "no description")"] | join("\n")
+        ' "$arch_model_file" 2>/dev/null) || true
+        local arch_layers
+        arch_layers=$(jq -r '
+            [.layers // [] | .[] | "- \(.name // "unnamed"): \(.path // "")"] | join("\n")
+        ' "$arch_model_file" 2>/dev/null) || true
+        if [[ -n "$arch_patterns" || -n "$arch_layers" ]]; then
+            arch_context="Previous designs in this repo follow these patterns:
+${arch_patterns:+Patterns:
+${arch_patterns}
+}${arch_layers:+Layers:
+${arch_layers}}"
+        fi
+    fi
+    arch_context=$(prune_context_section "intelligence" "$arch_context" 5000)
+
+    # Inject rejected design approaches and anti-patterns from memory
+    local design_antipatterns=""
+    if type intelligence_search_memory >/dev/null 2>&1; then
+        local rejected_designs
+        rejected_designs=$(intelligence_search_memory "rejected design approaches anti-patterns for: ${GOAL:-}" "${HOME}/.shipwright/memory" 3 2>/dev/null) || true
+        if [[ -n "$rejected_designs" ]]; then
+            rejected_designs=$(prune_context_section "antipatterns" "$rejected_designs" 5000)
+            design_antipatterns="
+## Rejected Approaches (from past reviews)
+These design approaches were rejected in past reviews. Avoid repeating them:
+${rejected_designs}
+"
+        fi
+    fi
+
+    # Build design prompt with plan + project context
+    local project_lang
+    project_lang=$(detect_project_lang)
+
+    local design_prompt="You are a senior software architect. Review the implementation plan below and produce an Architecture Decision Record (ADR).
+
+## Goal
+${GOAL}
+
+## Implementation Plan
+$(cat "$plan_file")
+
+## Project Context
+- Language: ${project_lang}
+- Test command: ${TEST_CMD:-not configured}
+- Task type: ${TASK_TYPE:-feature}
+${arch_struct_context:+
+## Architecture Context (import graph, modules, test map)
+${arch_struct_context}
+}${memory_context:+
+## Historical Context (from memory)
+${memory_context}
+}${arch_context:+
+## Architecture Model (from previous designs)
+${arch_context}
+}${design_antipatterns}${design_discoveries:+
+## Discoveries from Other Pipelines
+${design_discoveries}
+}
+## Required Output — Architecture Decision Record
+
+Produce this EXACT format:
+
+# Design: ${GOAL}
+
+## Context
+[What problem we're solving, constraints from the codebase]
+
+## Decision
+[The chosen approach — be specific about patterns, data flow, error handling]
+
+## Alternatives Considered
+1. [Alternative A] — Pros: ... / Cons: ...
+2. [Alternative B] — Pros: ... / Cons: ...
+
+## Implementation Plan
+- Files to create: [list with full paths]
+- Files to modify: [list with full paths]
+- Dependencies: [new deps if any]
+- Risk areas: [fragile code, performance concerns]
+
+## Validation Criteria
+- [ ] [How we'll know the design is correct — testable criteria]
+- [ ] [Additional validation items]
+
+## Scope (REQUIRED — machine-parsed by the build pipeline)
+Include this section EXACTLY — the build loop reads the fenced block to enforce file boundaries.
+
+\`\`\`scope
+scripts/lib/example.sh
+scripts/lib/another.sh
+src/components/
+\`\`\`
+
+List EVERY file or directory the implementation will touch, one entry per line.
+- Exact file paths (e.g. \`scripts/lib/helpers.sh\`) or directory prefixes ending in \`/\` (e.g. \`src/\`)
+- Globs are supported: \`**/*.ts\` matches all TypeScript files recursively
+- Only list files in THIS repo — no external deps
+- The build agent will NOT edit files outside this list; if a change genuinely requires
+  an unlisted file, it will emit \`<<<LOOP:SCOPE_ESCALATION:reason>>>\` to pause for human review.
+
+Be concrete and specific. Reference actual file paths in the codebase. Consider edge cases and failure modes."
+
+    # Inject skill prompts for design stage
+    local _skill_prompts=""
+    if type skill_load_from_plan >/dev/null 2>&1; then
+        _skill_prompts=$(skill_load_from_plan "design" 2>/dev/null || true)
+    elif type skill_select_adaptive >/dev/null 2>&1; then
+        local _skill_files
+        _skill_files=$(skill_select_adaptive "${INTELLIGENCE_ISSUE_TYPE:-backend}" "design" "${ISSUE_BODY:-}" "${INTELLIGENCE_COMPLEXITY:-5}" 2>/dev/null || true)
+        if [[ -n "$_skill_files" ]]; then
+            _skill_prompts=$(while IFS= read -r _path; do
+                [[ -z "$_path" || ! -f "$_path" ]] && continue
+                cat "$_path" 2>/dev/null
+            done <<< "$_skill_files")
+        fi
+    elif type skill_load_prompts >/dev/null 2>&1; then
+        _skill_prompts=$(skill_load_prompts "${INTELLIGENCE_ISSUE_TYPE:-backend}" "design" 2>/dev/null || true)
+    fi
+    if [[ -n "$_skill_prompts" ]]; then
+        _skill_prompts=$(prune_context_section "skills" "$_skill_prompts" 8000)
+        design_prompt="${design_prompt}
+## Skill Guidance (${INTELLIGENCE_ISSUE_TYPE:-backend} issue, AI-selected)
+${_skill_prompts}
+"
+    fi
+
+    # Inject ruflo vector-similar past outcomes for this issue type (design stage).
+    if declare -f ruflo_recall_similar_outcomes >/dev/null 2>&1 && \
+       declare -f ruflo_available >/dev/null 2>&1 && \
+       ruflo_available; then
+        local _ruflo_design_ctx
+        _ruflo_design_ctx=$(ruflo_recall_similar_outcomes \
+            "${INTELLIGENCE_ISSUE_TYPE:-backend}" "" 2>/dev/null || true)
+        if [[ -n "$_ruflo_design_ctx" ]]; then
+            design_prompt="${design_prompt}
+## Similar Past Outcomes (ruflo semantic search)
+${_ruflo_design_ctx}
+"
+        fi
+    fi
+
+    # Inject prior stage context from ruflo (supplements file-based artifacts)
+    if declare -f ruflo_available >/dev/null 2>&1 && \
+       declare -f ruflo_recall >/dev/null 2>&1 && \
+       ruflo_available; then
+        local _prior_context
+        _prior_context=$(ruflo_recall "plan and decisions from previous stages for ${TASK_TYPE:-feature}" \
+            "pipeline-${SHIPWRIGHT_PIPELINE_ID:-unknown}" 2>/dev/null || true)
+        if [[ -n "$_prior_context" ]]; then
+            design_prompt="${design_prompt}
+
+## Prior Stage Context (from ruflo memory)
+${_prior_context}"
+        fi
+        design_prompt="${design_prompt}
+
+## Ruflo Memory Available
+Ruflo MCP tools are available in this session. Use mcp__ruflo__memory_store to persist
+important decisions and mcp__ruflo__memory_search to recall prior context from namespace
+'pipeline-${SHIPWRIGHT_PIPELINE_ID:-unknown}'."
+    fi
+
+    # Inject intake-stage historical context (set by stage_intake ruflo recall)
+    if [[ -n "${INTELLIGENCE_INTAKE_CTX:-}" ]]; then
+        design_prompt="${design_prompt}
+
+## Intake Context (historical patterns from ruflo)
+$(printf '%s\n' "${INTELLIGENCE_INTAKE_CTX}")"
+    fi
+
+    # Guard total prompt size
+    design_prompt=$(guard_prompt_size "design" "$design_prompt")
+
+    local design_model
+    design_model=$(jq -r --arg id "design" '(.stages[] | select(.id == $id) | .config.model) // .defaults.model // "opus"' "$PIPELINE_CONFIG" 2>/dev/null) || true
+    [[ -n "$MODEL" ]] && design_model="$MODEL"
+    [[ -z "$design_model" || "$design_model" == "null" ]] && design_model="opus"
+    # Intelligence model routing (when no explicit CLI --model override)
+    if [[ -z "$MODEL" && -n "${CLAUDE_MODEL:-}" ]]; then
+        design_model="$CLAUDE_MODEL"
+    fi
+
+    local _token_log="${ARTIFACTS_DIR}/.claude-tokens-design.log"
+    # Run claude in background so bash's wait builtin handles it — interruptible by
+    # USR1/INT/TERM traps unlike a blocking foreground call. Allows watchdog to push
+    # the WIP branch on GHA timeout without waiting for claude to finish.
+    claude --print --model "$design_model" --max-turns 25 \
+        --disallowed-tools "EnterPlanMode,ExitPlanMode" \
+        --dangerously-skip-permissions \
+        "$design_prompt" < /dev/null > "$design_file" 2>"$_token_log" &
+    local _claude_bg_pid=$!
+    wait "$_claude_bg_pid" || true
+    parse_claude_tokens "$_token_log"
+
+    # Claude may write to disk via tools instead of stdout — rescue those files
+    local _design_rescue
+    for _design_rescue in "${PROJECT_ROOT}/design-adr.md" "${PROJECT_ROOT}/design.md" \
+                           "${PROJECT_ROOT}/ADR.md" "${PROJECT_ROOT}/DESIGN.md"; do
+        if [[ -s "$_design_rescue" ]] && [[ $(wc -l < "$design_file" 2>/dev/null | xargs) -lt 10 ]]; then
+            info "Design written to ${_design_rescue} via tools — adopting as design artifact"
+            cat "$_design_rescue" >> "$design_file"
+            rm -f "$_design_rescue"
+            break
+        fi
+    done
+
+    if [[ ! -s "$design_file" ]]; then
+        error "Design generation failed — empty output"
+        return 1
+    fi
+
+    # Validate design content — detect API/CLI errors masquerading as designs
+    local _design_fatal="Invalid API key|invalid_api_key|authentication_error|API key expired"
+    _design_fatal="${_design_fatal}|rate_limit_error|overloaded_error|Could not resolve host|ANTHROPIC_API_KEY"
+    if grep -qiE "$_design_fatal" "$design_file" 2>/dev/null; then
+        error "Design stage produced API/CLI error instead of a design: $(head -1 "$design_file" | cut -c1-100)"
+        return 1
+    fi
+
+    local line_count
+    line_count=$(_trim "$(wc -l < "$design_file")")
+    if [[ "$line_count" -lt 3 ]]; then
+        error "Design too short (${line_count} lines) — likely an error, not a real design"
+        return 1
+    fi
+    info "Design saved: ${DIM}$design_file${RESET} (${line_count} lines)"
+
+    # Enforce scope-fence policy (require_scope_fence: warn|error|off; default: warn).
+    # warn (default): log a notice and proceed — zero behaviour change for existing repos.
+    # error: exit non-zero with a message; operator must add a scope fence or set warn/off.
+    # off:  skip the check entirely (legacy issue replay).
+    local _sfence_mode="warn"
+    if [[ -s "${PIPELINE_CONFIG:-}" ]]; then
+        local _sfence_cfg
+        _sfence_cfg=$(jq -r '.require_scope_fence // "warn"' "${PIPELINE_CONFIG}" 2>/dev/null || echo "warn")
+        [[ "$_sfence_cfg" == "error" || "$_sfence_cfg" == "off" ]] && _sfence_mode="$_sfence_cfg"
+    fi
+
+    if [[ "$_sfence_mode" != "off" ]]; then
+        local _scope_fence_lines=""
+        if declare -f _extract_scope_from_design >/dev/null 2>&1; then
+            _scope_fence_lines=$(_extract_scope_from_design "$ARTIFACTS_DIR" 2>/dev/null || true)
+        fi
+
+        if [[ -z "$_scope_fence_lines" ]]; then
+            if [[ "$_sfence_mode" == "error" ]]; then
+                error "design.md is missing required \`scope\` fence — set require_scope_fence: warn or off in pipeline config to disable enforcement"
+                return 1
+            else
+                warn "design.md has no \`\`\`scope block — scope-redaction inactive for this issue (set require_scope_fence: error to enforce)"
+                emit_event "pipeline.scope_manifest_missing" \
+                    "stage=design" "issue=${ISSUE_NUMBER:-0}" 2>/dev/null || true
+            fi
+        else
+            local _fence_file_count
+            _fence_file_count=$(printf '%s\n' "$_scope_fence_lines" | grep -c '[^[:space:]]' 2>/dev/null || echo "0")
+            emit_event "pipeline.scope_manifest_loaded" \
+                "stage=design" "issue=${ISSUE_NUMBER:-0}" "file_count=${_fence_file_count}" 2>/dev/null || true
+            info "Scope fence loaded: ${_fence_file_count} entries — path redaction active"
+        fi
+    fi
+
+    # Persist design (and plan, if present) to issue-scoped snapshot.
+    if [[ -n "${ISSUE_NUMBER:-}" ]]; then
+        local _snap_dir="${ARTIFACTS_DIR}/issue-${ISSUE_NUMBER}"
+        mkdir -p "$_snap_dir"
+        cp "$design_file" "$_snap_dir/design.md"
+        [[ -s "${ARTIFACTS_DIR}/plan.md" ]] && cp "${ARTIFACTS_DIR}/plan.md" "$_snap_dir/plan.md"
+        [[ -s "${ARTIFACTS_DIR}/context-bundle.md" ]] && cp "${ARTIFACTS_DIR}/context-bundle.md" "$_snap_dir/context-bundle.md"
+        [[ -s "${ARTIFACTS_DIR}/dod.md" ]] && cp "${ARTIFACTS_DIR}/dod.md" "$_snap_dir/dod.md"
+    fi
+
+    # Extract file lists for build stage awareness
+    local files_to_create files_to_modify
+    files_to_create=$(sed -n '/Files to create/,/^-\|^#\|^$/p' "$design_file" 2>/dev/null | grep -E '^\s*-' | head -20 || true)
+    files_to_modify=$(sed -n '/Files to modify/,/^-\|^#\|^$/p' "$design_file" 2>/dev/null | grep -E '^\s*-' | head -20 || true)
+
+    if [[ -n "$files_to_create" || -n "$files_to_modify" ]]; then
+        info "Design scope: ${DIM}$(echo "$files_to_create $files_to_modify" | grep -c '^\s*-' || true) file(s)${RESET}"
+    fi
+
+    # Post design to GitHub issue
+    if [[ -n "$ISSUE_NUMBER" ]]; then
+        local design_summary
+        design_summary=$(head -60 "$design_file")
+        gh_comment_issue "$ISSUE_NUMBER" "## 📐 Architecture Decision Record
+
+<details>
+<summary>Click to expand ADR (${line_count} lines)</summary>
+
+${design_summary}
+
+</details>
+
+---
+_Generated by \`shipwright pipeline\` design stage at $(now_iso)_"
+    fi
+
+    # Push design to wiki
+    gh_wiki_page "Pipeline-Design-${ISSUE_NUMBER:-inline}" "$(<"$design_file")"
+
+    # Store design artifact in ruflo for cross-stage context
+    if declare -f ruflo_store >/dev/null 2>&1 && [[ -s "$design_file" ]]; then
+        ruflo_store "stage-design-result" \
+            "$(head -c 4000 "$design_file" 2>/dev/null || true)" \
+            "pipeline-${SHIPWRIGHT_PIPELINE_ID:-unknown}" || true
+    fi
+
+    # Index design ADR into ruflo for downstream stage compliance checking
+    if declare -f ruflo_index_adr_artifacts >/dev/null 2>&1; then
+        ruflo_index_adr_artifacts 2>/dev/null || true
+    fi
+
+    log_stage "design" "Generated design.md (${line_count} lines)"
+}
+
 # ─── TDD: Generate tests before implementation ─────────────────────────────────

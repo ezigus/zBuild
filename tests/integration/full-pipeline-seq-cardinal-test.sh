@@ -84,11 +84,10 @@ expect_label() {
 expect_label intake          "1"
 expect_label plan            "2"
 expect_label impact          "3"
-expect_label design          "4"
-expect_label build           "5"
-expect_label test            "6"
-expect_label test_assessment "7"
-expect_label review          "8"
+expect_label build           "4"
+expect_label test            "5"
+expect_label test_assessment "6"
+expect_label review          "7"
 
 print_test_results
 cleanup_test_env
