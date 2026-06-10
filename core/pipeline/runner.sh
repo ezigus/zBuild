@@ -1220,12 +1220,19 @@ main() {
                     # cycle-as-member branch). Unset after the call so the var
                     # never leaks into the next dispatch unit.
                     export ZBUILD_SEQ_PREFIX="$_runner_cardinal"
-                    set +e
-                    cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file"
-                    _rc=$?
-                    set -e
+                    # ADR-021 + #766: cycle_orchestrator_run may return rc∈{1,2,3}
+                    # for soft termination (max_iterations/plateau/divergence).
+                    # A bare function-call statement whose return value is non-zero
+                    # under `set -e` causes the runner shell to exit, bypassing the
+                    # rc-table branches below. Wrap the call in `&& _rc=0 || _rc=$?`
+                    # so the rc is captured without tripping set -e. (The earlier
+                    # `set +e` + post-restore pattern was fragile because callees
+                    # could re-enable set -e mid-stream — observed in run_id
+                    # 20260608223447-42915 where pipeline.abort fired between
+                    # cycle.complete and where cycle.unconverged should have emitted.)
+                    cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file" && _rc=0 || _rc=$?
                     unset ZBUILD_SEQ_PREFIX
-                    _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file"
+                    _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file" || true
                     # #511 Pin 7 / #527 / #528 — halt-vs-continue rc table:
                     # rc 0 (converged)         → CONTINUE; happy path.
                     # rc 1 (max_iter)          → CONTINUE; review gate runs;
@@ -1288,7 +1295,11 @@ main() {
                         # so review's ADR-019 fail-closed gate has a clean signal.
                         local _until_stage_var="_TPL_CYCLE_UNTIL_STAGE_${_cyc_id//-/_}"
                         local _until_stage="${!_until_stage_var:-test}"
-                        _update_stage_status "$state_file" "$_until_stage" "failed"
+                        # #766: _update_stage_status may fail when the until-stage
+                        # isn't yet in stage_statuses (e.g., it's a cycle member).
+                        # Best-effort; the cycle.unconverged event below is the
+                        # durable signal.
+                        _update_stage_status "$state_file" "$_until_stage" "failed" || true
                         eb_emit_event "cycle.unconverged" \
                             "cycle_id=$_cyc_id" \
                             "iter=${_CYCLE_LAST_ITERATIONS:-0}" \

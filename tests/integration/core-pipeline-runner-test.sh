@@ -42,6 +42,8 @@ _make_plugin "intake"          "agent" 0
 _make_plugin "plan"            "agent" 0
 # #746: standard template now includes impact between plan and build (plan_impact_cycle).
 _make_plugin "impact"          "agent" 0
+# Standard template adds `design` between impact and build (post-#746).
+_make_plugin "design"          "agent" 0
 _make_plugin "build"           "agent" 0
 # #485: standard template now includes the test stage between build and review.
 _make_plugin "test"            "tool"  0
@@ -91,7 +93,7 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
     # #746: 7 stages (intake, plan, impact, build, test, test_assessment, review).
-    assert_eq "$stage_event emitted for each MVP stage (7x)" "7" "$count"
+    assert_eq "$stage_event emitted for each MVP stage (8x)" "8" "$count"
 done
 
 # ─── Test 7: ADR-006 stage status enum — "complete" not "success" ───────────
@@ -235,6 +237,8 @@ _make_role_plugin "intake-agent"          "intake"          0
 _make_role_plugin "plan-agent"            "planner"         0
 # #746: impact_analyzer role added for the impact stage
 _make_role_plugin "impact-agent"          "impact_analyzer" 0
+# #754: standard template adds `design` between impact and build.
+_make_role_plugin "design-agent"          "designer"        0
 _make_role_plugin "build-agent"           "builder"         0
 # #485: tester role added for the test stage
 _make_role_plugin "test-agent"            "tester"          0
@@ -247,8 +251,8 @@ set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppr
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-# #746: 7 stages now (added impact).
-assert_eq "role-based dispatch: 7 stage.complete events" "7" "$role_complete"
+# #746: 8 stages now (added impact + design).
+assert_eq "role-based dispatch: 8 stage.complete events" "8" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
 assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"
@@ -264,9 +268,9 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
-# #746: 7 stages × 2 platforms = 14 plugin.run.start events via fanout
+# #746: 8 stages × 2 platforms = 16 plugin.run.start events via fanout
 plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
-assert_eq "fanout 2 platforms: 14 plugin.run.start events (7 stages × 2)" "14" "$plugin_run_count"
+assert_eq "fanout 2 platforms: 16 plugin.run.start events (8 stages × 2)" "16" "$plugin_run_count"
 
 # ─── Test 14: partial fanout failure — stage.fail + pipeline.end status=failed ─
 # Platform-specific success (node) + generic failure (ios fallback) → partial.
@@ -512,6 +516,8 @@ _make_plugin "intake"          "agent" 0 >/dev/null
 _make_plugin "plan"            "agent" 0 >/dev/null
 # #746: standard template now includes impact (plan_impact_cycle).
 _make_plugin "impact"          "agent" 0 >/dev/null
+# #754: standard template now includes design between impact and build.
+_make_plugin "design"          "agent" 0 >/dev/null
 _make_plugin "build"           "agent" 0 >/dev/null
 _make_plugin "test"            "tool"  0 >/dev/null
 # #623: standard template's build_test_cycle (#582) requires test_assessment.
@@ -533,12 +539,12 @@ assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:2
 assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
 
 # I1b: exactly 7 'started ' and 7 'finished ' suffixes (one per stage).
-# Standard template now has 7 stages after #746 added impact to
+# Standard template now has 8 stages after #746 + #754 added impact to
 # plan_impact_cycle: intake, plan, impact, build, test, test_assessment, review.
 started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 7 'started ' suffixes" "7" "$started_count"
+assert_eq "I1b #508: exactly 8 'started ' suffixes" "8" "$started_count"
 finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 7 'finished ' suffixes" "7" "$finished_count"
+assert_eq "I1b #508: exactly 8 'finished ' suffixes" "8" "$finished_count"
 
 # ─── Test I2 (#508): failure path emits ✗ with rc + finished + duration ─────
 _make_plugin "build" "agent" 1 >/dev/null

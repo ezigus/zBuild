@@ -41,14 +41,15 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 
-assert_eq "T1: _TPL_STAGES has 7 entries" "7" "${#_TPL_STAGES[@]}"
+assert_eq "T1: _TPL_STAGES has 8 entries" "8" "${#_TPL_STAGES[@]}"
 assert_eq "T1: _TPL_STAGES[0]=intake" "intake" "${_TPL_STAGES[0]:-}"
 assert_eq "T1: _TPL_STAGES[1]=plan" "plan" "${_TPL_STAGES[1]:-}"
 assert_eq "T1: _TPL_STAGES[2]=impact" "impact" "${_TPL_STAGES[2]:-}"
-assert_eq "T1: _TPL_STAGES[3]=build" "build" "${_TPL_STAGES[3]:-}"
-assert_eq "T1: _TPL_STAGES[4]=test" "test" "${_TPL_STAGES[4]:-}"
-assert_eq "T1: _TPL_STAGES[5]=test_assessment" "test_assessment" "${_TPL_STAGES[5]:-}"
-assert_eq "T1: _TPL_STAGES[6]=review" "review" "${_TPL_STAGES[6]:-}"
+assert_eq "T1: _TPL_STAGES[3]=design" "design" "${_TPL_STAGES[3]:-}"
+assert_eq "T1: _TPL_STAGES[4]=build" "build" "${_TPL_STAGES[4]:-}"
+assert_eq "T1: _TPL_STAGES[5]=test" "test" "${_TPL_STAGES[5]:-}"
+assert_eq "T1: _TPL_STAGES[6]=test_assessment" "test_assessment" "${_TPL_STAGES[6]:-}"
+assert_eq "T1: _TPL_STAGES[7]=review" "review" "${_TPL_STAGES[7]:-}"
 
 # #746: standard.yaml now wraps plan+impact in plan_impact_cycle (Wave 19-J).
 # Total cycles: plan_impact_cycle + build_test_cycle + review_cycle = 3.
@@ -79,19 +80,24 @@ assert_contains "T1: feedback from test_assessment:test_assessment_md" \
 assert_contains "T1: feedback to build:prior_test_assessment" \
     "$fb" "build:prior_test_assessment"
 
-# #746: dispatch units fold to [stage:intake, cycle:plan_impact_cycle,
-# cycle:review_cycle] — plan_impact_cycle wraps plan+impact; review_cycle
-# is the outermost review cycle absorbing build_test_cycle + review.
-assert_eq "T1: 3 dispatch units (intake/plan_impact_cycle/review_cycle)" \
-    "3" "${#_TPL_DISPATCH_UNITS[@]}"
+# #746 + #754: dispatch units fold to [stage:intake, cycle:plan_impact_cycle,
+# stage:design, cycle:review_cycle] — plan_impact_cycle wraps plan+impact;
+# design is a linear leaf between the cycles; review_cycle is the outermost
+# review cycle absorbing build_test_cycle + review.
+assert_eq "T1: 4 dispatch units (intake/plan_impact_cycle/design/review_cycle)" \
+    "4" "${#_TPL_DISPATCH_UNITS[@]}"
 has_pic=0
 has_outer=0
+has_design=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:plan_impact_cycle" ]] && has_pic=1
     [[ "$u" == "cycle:review_cycle" ]] && has_outer=1
+    [[ "$u" == "stage:design" ]] && has_design=1
 done
 assert_eq "T1: dispatch units include cycle:plan_impact_cycle" \
     "1" "$has_pic"
+assert_eq "T1: dispatch units include stage:design (#754)" \
+    "1" "$has_design"
 assert_eq "T1: dispatch units include cycle:review_cycle (outer)" \
     "1" "$has_outer"
 

@@ -63,6 +63,7 @@ mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "plan"   "agent" 0 >/dev/null
 # #746: standard template now includes impact between plan and build (plan_impact_cycle).
 mock_plugin_factory "impact" "agent" 0 >/dev/null
+mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
 # Build stage will be overridden below to sleep — create the manifest now.
 mock_plugin_factory "build"  "agent" 0 >/dev/null
 mock_plugin_factory "test"   "tool"  0 >/dev/null
@@ -181,12 +182,13 @@ else
 fi
 
 # (2) Wall-clock budget: the signal handler must exit promptly. We allow
-#     a generous 5s ceiling (build sleeps 30s — if elapsed >> 5 the trap
-#     isn't firing).
-if [[ "$elapsed" -le 7 ]]; then
-    assert_pass "pipeline halted in ≤7s (actual=${elapsed}s)"
+#     a generous 9s ceiling (build sleeps 30s — if elapsed >> 9 the trap
+#     isn't firing). Bumped 7→9 on #766: #754's design stage adds ~0.5s
+#     of plugin-lookup startup that tips the GHA boundary.
+if [[ "$elapsed" -le 9 ]]; then
+    assert_pass "pipeline halted in ≤9s (actual=${elapsed}s)"
 else
-    assert_fail "pipeline halted in ≤7s" \
+    assert_fail "pipeline halted in ≤9s" \
         "actual=${elapsed}s — SIGTERM trap is not firing promptly"
 fi
 
