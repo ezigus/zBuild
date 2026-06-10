@@ -151,7 +151,12 @@ IMPACT_PROMPT
     local tier="${ZBUILD_IMPACT_TIER:-T1}"
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
+    local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1
+    # #768: tag stage-io capture so render_artifact dispatches to
+    # render_impact_md (Impact: verdict=..., missing=...) instead of dumping
+    # the raw JSON envelope. Mirrors the plan/review/test_assessment pattern.
+    export ZBUILD_ROUTER_ARTIFACT_ID=impact
 
     set +e
     raw_response="$(route_to_model "$tier" "$redacted_prompt")"
@@ -162,6 +167,11 @@ IMPACT_PROMPT
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
         export ZBUILD_ROUTER_JSON_OUTPUT="$_prev_json_env"
+    fi
+    if [[ "$_prev_artifact_env" == "__UNSET__" ]]; then
+        unset ZBUILD_ROUTER_ARTIFACT_ID
+    else
+        export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
     fi
 
     if [[ $router_rc -ne 0 ]]; then

@@ -580,8 +580,66 @@ render_test_assessment_md() {
     _artifact_emit_llm_comment "$_prose"
 }
 
+# ─── render_impact_md (#768) ─────────────────────────────────────────────────
+# Renders the impact stage's JSON envelope to a one-line summary header
+# (Impact: verdict=<v>, missing=<n>) followed by the structured
+# `impact_feedback_md` field as raw markdown. Empty feedback (verdict=complete
+# with no gaps) renders the header only. Prose preamble (contract violations
+# from haiku at T1, see #767) is preserved as an LLM comment for forensics.
+render_impact_md() {
+    local input="$1"
+    if [[ -z "$input" ]]; then
+        printf '_empty impact_'
+        return 0
+    fi
+
+    local _prose _json
+    _artifact_split_prose_json "$input" _prose _json
+
+    if [[ -z "$_json" ]]; then
+        if [[ "$input" == *'{'* ]]; then
+            local fence; fence="$(_artifact_pick_fence "$input")"
+            printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+            return 0
+        fi
+        if [[ -n "$_prose" ]]; then
+            printf '# Impact: (no JSON returned)'
+            _artifact_emit_llm_comment "$_prose"
+            return 0
+        fi
+        local fence; fence="$(_artifact_pick_fence "$input")"
+        printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+        return 0
+    fi
+
+    if ! printf '%s' "$_json" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$_json")"
+        printf '%s\n%s\n%s' "$fence" "$_json" "$fence"
+        _artifact_emit_llm_comment "$_prose"
+        return 0
+    fi
+
+    input="$_json"
+
+    local verdict missing_count feedback_md
+    verdict="$(printf '%s' "$input" | jq -r '.verdict // empty' 2>/dev/null)"
+    missing_count="$(printf '%s' "$input" | jq -r '.missing | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
+    feedback_md="$(printf '%s' "$input" | jq -r '.impact_feedback_md // empty' 2>/dev/null)"
+
+    printf 'Impact: verdict=%s, missing=%s\n' \
+        "$(_artifact_md_escape_inline "${verdict:-unknown}")" \
+        "$(_artifact_md_escape_inline "${missing_count:-0}")"
+
+    if [[ -n "$feedback_md" ]]; then
+        printf '\n%s\n' "$(_artifact_md_escape_block "$feedback_md")"
+    fi
+
+    _artifact_emit_llm_comment "$_prose"
+}
+
 # ─── Register built-ins (idempotent) ────────────────────────────────────────
 register_artifact_renderer "plan"            "render_plan_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "diff"            "render_diff_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "review"          "render_review_md"          >/dev/null 2>&1 || true
 register_artifact_renderer "test_assessment" "render_test_assessment_md" >/dev/null 2>&1 || true
+register_artifact_renderer "impact"          "render_impact_md"          >/dev/null 2>&1 || true
