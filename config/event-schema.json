@@ -96,6 +96,7 @@
     "impact.verdict.complete",
     "impact.verdict.incomplete",
     "impact.scope.expanded",
+    "impact.contract.violation",
     "review.scope.violation",
     "review.test_status.coerced",
     "router.max_iterations.override_ignored",

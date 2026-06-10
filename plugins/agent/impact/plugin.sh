@@ -86,18 +86,31 @@ _impact_run_inner() {
     # ─── Build prompt ────────────────────────────────────────────────────────
     local _impact_instructions
     _impact_instructions="$(cat <<'IMPACT_PROMPT'
-You are an Impact Analyzer agent. Your job is to verify that a plan's
-declared scope (steps[].files[]) is COMPLETE — that it lists every file
-the plan's modifications would invalidate or require updating.
+OUTPUT CONTRACT (read first, obey absolutely):
+- Respond with EXACTLY ONE JSON object. Nothing else.
+- Your first output character MUST be `{`. Your last MUST be `}`.
+- NO prose preamble (no "Based on my analysis", no "Here is the result").
+- NO markdown code fences (no ```json, no ``` wrapping).
+- NO explanation. If you feel the urge to explain, put it inside the
+  `impact_feedback_md` field.
+
+CORRECT example:
+  {"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":""}
+
+INCORRECT examples (DO NOT do any of these):
+  Based on my analysis... {"schema_version":1,...}
+  ```json
+  {"schema_version":1,...}
+  ```
+
+You are an Impact Analyzer agent. Emit a verdict object stating whether a
+plan's declared scope (steps[].files[]) is complete — i.e., lists every
+file the plan's modifications would invalidate or require updating.
 
 Tool use:
 - You MAY use the Read tool to inspect files referenced in the plan.
 - You MAY use the Grep tool to search the repo for symbols and references.
 - Do NOT call Edit, Write, or Bash. This stage is read-only.
-
-Output contract:
-- Your FINAL response must be a SINGLE JSON object — no markdown code fences,
-  no commentary before or after the JSON.
 
 Required JSON schema:
 
@@ -114,6 +127,8 @@ Required JSON schema:
     "impact_feedback_md": "<markdown report fed back to the plan agent on the next cycle iter>"
   }
 
+REMINDER: your response begins with `{`. No prose, no fences.
+
 Rules:
 - For each plan step.files[] entry, identify symbols defined in those files
   (function names, exported variables, template stage IDs, etc).
@@ -125,6 +140,8 @@ Rules:
 - The impact_feedback_md is what the plan agent will read on iter N+1 if
   you returned incomplete. Make it actionable: name the missing files
   per step, cite the symbol or reference that linked them.
+
+REMINDER: output begins with `{`. No preamble.
 
 PLAN:
 IMPACT_PROMPT
@@ -180,10 +197,29 @@ IMPACT_PROMPT
         return 1
     fi
 
-    # Extract JSON object from response.
-    local impact_json=""
+    # #767: Extract JSON AND surrounding prose using the sibling helper so
+    # any contract-violating prose preamble/postamble is preserved as a
+    # sidecar artifact (impact-stray-prose.txt) instead of silently discarded.
+    # The stronger prompt above tells haiku to emit clean JSON; this captures
+    # forensics when it still doesn't.
+    local impact_json="" impact_prose=""
     if [[ -n "$raw_response" ]]; then
-        impact_json="$(printf '%s' "$raw_response" | extract_first_json_object 2>/dev/null || true)"
+        local _esp_out
+        _esp_out="$(printf '%s' "$raw_response" | extract_json_and_surrounding_prose 2>/dev/null || true)"
+        impact_prose="$(awk '/^__PROSE__$/{p=1;next} /^__JSON__$/{p=0;next} p' <<<"$_esp_out")"
+        impact_json="$(awk '/^__JSON__$/{j=1;next} j' <<<"$_esp_out")"
+    fi
+
+    # #767: persist captured prose to a sidecar AND emit a contract-violation
+    # event so operators can spot model drift in events.jsonl. Best-effort
+    # writes; failure does not block verdict extraction.
+    if [[ -n "$impact_prose" ]]; then
+        local _prose_sidecar="$artifact_dir/impact-stray-prose.txt"
+        printf '%s\n' "$impact_prose" > "$_prose_sidecar" 2>/dev/null || true
+        emit_event "impact.contract.violation" \
+            "plugin=impact" \
+            "prose_length=${#impact_prose}" \
+            "sidecar=$_prose_sidecar" 2>/dev/null || true
     fi
 
     if [[ -z "$impact_json" ]]; then
