@@ -95,9 +95,6 @@ _design_stage_run_inner() {
         jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"
 
-    local plan_title
-    plan_title="$(printf '%s' "$plan_json" | jq -r '.title // ""' 2>/dev/null || echo "")"
-
     # ─── Write design prompt ─────────────────────────────────────────────────
     local prompt_file="$artifact_dir/design-prompt.txt"
     local _scope_list=""

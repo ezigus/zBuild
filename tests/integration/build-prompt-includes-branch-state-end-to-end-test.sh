@@ -95,6 +95,7 @@ EOF
 mock_plugin_factory "plan" "agent" 0 >/dev/null
 # #746: standard template now includes impact between plan and build (plan_impact_cycle).
 mock_plugin_factory "impact" "agent" 0 >/dev/null
+mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
 
 # ─── Build stub: sources route.sh and invokes route_to_model_loop ───────────
 # This mirrors what the real build plugin does at runner.sh dispatch time —

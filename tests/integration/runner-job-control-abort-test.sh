@@ -68,6 +68,7 @@ export ZBUILD_CYCLES_ENABLED=0
 mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "plan"   "agent" 0 >/dev/null
 mock_plugin_factory "impact" "agent" 0 >/dev/null
+mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
 mock_plugin_factory "test"   "tool"  0 >/dev/null
 mock_plugin_factory "test_assessment" "agent" 0 >/dev/null

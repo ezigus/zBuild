@@ -63,6 +63,7 @@ mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "plan"   "agent" 0 >/dev/null
 # #746: standard template now includes impact between plan and build (plan_impact_cycle).
 mock_plugin_factory "impact" "agent" 0 >/dev/null
+mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
 # Build stage will be overridden below to sleep — create the manifest now.
 mock_plugin_factory "build"  "agent" 0 >/dev/null
 mock_plugin_factory "test"   "tool"  0 >/dev/null
