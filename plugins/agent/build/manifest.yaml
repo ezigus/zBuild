@@ -73,15 +73,6 @@ inputs:
     path: "${cycle_feedback_dir}/prior_review_feedback.txt"
     source: cycle_feedback
     required: false
-  # #754: design stage scope manifest. When the pipeline includes a design
-  # stage (standard template), design.md provides the authoritative build
-  # scope (strict superset of plan.json files). Optional — absent in hotfix
-  # or other templates that skip the design stage.
-  - id: design_md
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
-    required: false
 
 outputs:
   - id: diff_patch
