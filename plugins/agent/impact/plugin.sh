@@ -89,16 +89,33 @@ _impact_run_inner() {
 OUTPUT CONTRACT (read first, obey absolutely):
 - Respond with EXACTLY ONE JSON object. Nothing else.
 - Your first output character MUST be `{`. Your last MUST be `}`.
-- NO prose preamble (no "Based on my analysis", no "Here is the result").
 - NO markdown code fences (no ```json, no ``` wrapping).
-- NO explanation. If you feel the urge to explain, put it inside the
-  `impact_feedback_md` field.
 
-CORRECT example:
+FORBIDDEN — your response MUST NOT contain any of these strings ANYWHERE,
+not before the JSON, not after it, not inside any field:
+  - "Based on my analysis"
+  - "Here is"
+  - "Here's"
+  - "After reviewing"
+  - "I've identified"
+
+If you have observations, put them inside the `impact_feedback_md` field —
+NEVER before or after the JSON object. The string outside the `{...}`
+envelope must be empty.
+
+CORRECT example (single line, no fence, no preamble):
   {"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":""}
+
+CORRECT example with observations (note: observations go INSIDE the field,
+NOT outside the JSON):
+  {"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-1","files_to_add":["a.sh"],"reason":"r"}],"impact_feedback_md":"## Gap\n- step-1 missing a.sh"}
 
 INCORRECT examples (DO NOT do any of these):
   Based on my analysis... {"schema_version":1,...}
+  Here is the verdict: {...}
+  Here's what I found: {...}
+  After reviewing the plan, {"schema_version":1,...}
+  I've identified the following gaps: {...}
   ```json
   {"schema_version":1,...}
   ```

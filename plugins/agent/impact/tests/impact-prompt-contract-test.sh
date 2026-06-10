@@ -62,6 +62,38 @@ prose_part="$(awk '/^__PROSE__$/{p=1;next} /^__JSON__$/{p=0;next} p' <<<"$out")"
 assert_contains "T5: clean JSON extracted as-is" "$json_part" '"verdict":"incomplete"'
 assert_eq "T5: empty prose when no preamble" "" "$(printf '%s' "$prose_part" | tr -d '[:space:]')"
 
+# ─── #774 prompt hardening: explicit FORBIDDEN list + escape valve ──────────
+# Dogfood #754 (run_id 20260610065040-35172) showed 3/3 impact iters fired
+# impact.contract.violation with decreasing prose lengths (258→117→113).
+# The contract block was directionally correct but the model kept emitting
+# the same handful of preamble phrases. Pin them by literal match so the
+# prompt explicitly refuses them.
+
+# T6: FORBIDDEN list names each observed prose preamble verbatim.
+PROMPT_BODY="$(cat "$PROMPT_FILE")"
+for phrase in 'Based on my analysis' "Here is" "Here's" 'After reviewing' "I've identified"; do
+    assert_contains "T6: FORBIDDEN list names '$phrase' verbatim" \
+        "$PROMPT_BODY" "$phrase"
+done
+
+# T7: explicit FORBIDDEN heading present (locks the section so it can't drift
+# back to interleaved soft language).
+assert_contains "T7: prompt has explicit FORBIDDEN heading" \
+    "$PROMPT_BODY" "FORBIDDEN"
+
+# T8: prominent escape valve directing observations into the JSON field
+# instead of around the envelope. Phrased so the model can't miss it.
+assert_contains "T8: prompt directs observations into impact_feedback_md field" \
+    "$PROMPT_BODY" "impact_feedback_md"
+assert_contains "T8: prompt explicitly forbids prose AROUND the envelope" \
+    "$PROMPT_BODY" "before or after"
+
+# T9: defensive parser kept in place — #771 recovery still load-bearing at
+# any prompt-quality level. Regression guard against accidentally removing
+# the safety net when the preventive path is hardened.
+assert_contains "T9: extract_json_and_surrounding_prose still in plugin (#771 safety net)" \
+    "$PROMPT_BODY" "extract_json_and_surrounding_prose"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
