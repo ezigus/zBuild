@@ -54,6 +54,7 @@ EOF
 # ─── Test: verdict_classify pure mapping ─────────────────────────────────────
 print_test_section "verdict_classify table"
 for pair in "pass:pass" "approve:pass" "request_changes:warn" \
+            "incomplete:warn" \
             "fail:fail" "error:fail" "block:fail" "scope_violation:fail" \
             ":unknown" "weird:unknown"; do
     raw="${pair%%:*}"; want="${pair##*:}"
