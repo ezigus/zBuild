@@ -16,7 +16,6 @@ defaults:
 flow:
   - intake
   - plan_impact_cycle
-  - design
   - review_cycle
 
 # ─── intake (leaf) ──────────────────────────────────────────────────────
@@ -86,20 +85,6 @@ impact:
     # operator pain is wasted iters and re-runs — raising the floor avoids
     # that on legitimately large-PR symbol-tracing work.
     max_turns: 25
-
-# ─── design (leaf) ─────────────────────────────────────────────────────────
-# Design stage: reads plan.json, produces design.md with a ```scope fenced
-# block listing the authoritative file scope for the build stage (superset
-# of plan.json files). Wired here per #754 (A1 migration). The build plugin
-# reads design.md when present; falls back to plan.json scope on hotfix
-# templates that skip this stage.
-design:
-  gate: auto
-  roles: [designer]
-  io:
-    destinations: [file, stdout]
-  router:
-    timeout_s: 600
 
 # ─── review_cycle (outer remediation cycle, ADR-026) ────────────────────
 # Outer cycle wrapping the inner build_test_cycle + the review stage. On
