@@ -51,7 +51,11 @@ verdict_classify() {
     case "$raw" in
         pass|approve)
             echo "pass" ;;
-        request_changes)
+        # #775: `incomplete` is impact's "cycle has not converged yet" verdict
+        # (analogous to review's `request_changes`) — iterating, not done.
+        # Maps to warn, not fail. Without this, every impact-incomplete fired
+        # a `pipeline.indicator.unknown_verdict` event 1× per iter.
+        request_changes|incomplete)
             echo "warn" ;;
         fail|error|block|scope_violation|corrupt_diff|empty_diff)
             echo "fail" ;;

@@ -120,11 +120,18 @@ _artifact_md_escape_inline() {
 }
 
 # ─── _artifact_md_escape_block <s> — multi-line user-controlled text ─────────
-# Preserves newlines; strips ANSI; escapes backticks.
+# Preserves newlines; strips ANSI escapes.
+#
+# #777: backtick escaping removed. The previous behavior escaped all backticks
+# to `\\\`` which broke LLM-authored markdown bodies containing inline-code
+# spans (the dogfood showed `assert_eq foo` rendering as literal `\\`assert_eq
+# foo\\\``). Stage-io banner safety is provided by the outer banner's fence
+# isolation, not by per-block backtick escaping. As a side effect this also
+# fixes #776 — fence markers in llm-comment prose now render as ```` ``` ````
+# instead of ```` \\\`\\\` ```` triggers, restoring readable forensic output.
 _artifact_md_escape_block() {
     local s="$1"
     s="$(printf '%s' "$s" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
-    s="${s//\`/\\\`}"
     printf '%s' "$s"
 }
 

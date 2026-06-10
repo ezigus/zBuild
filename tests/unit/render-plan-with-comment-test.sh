@@ -111,14 +111,24 @@ else
     assert_pass "C9 fences alone do NOT produce comment block"
 fi
 
-# ─── C10: backticks/ANSI in prose are escaped via _artifact_md_escape_block ─
-# Backticks must be escaped so the comment block body cannot break out of the
-# enclosing markdown context.
-input='Here is `evil` prose.
+# ─── C10 (#777): backticks in prose body preserved (NOT escaped) ────────────
+# Prior behavior escaped all backticks to `\\\`` which broke LLM-authored
+# markdown bodies with inline-code spans (dogfood: `assert_eq foo` rendered
+# as literal `\\`assert_eq foo\\\``). New contract: block content preserves
+# backticks verbatim; stage-io banner safety comes from outer fence
+# isolation, not per-block escaping. Inline fields (titles, verdicts) still
+# escape via _artifact_md_escape_inline — see P5 in artifact-render-plan-test.
+input='Here is `inline-code` prose.
 
 '"$PLAN"
 out="$(render_plan_md "$input")"
-assert_contains "C10 backticks in prose escaped" "$out" '\`evil\`'
+assert_contains "C10 inline-code backticks preserved verbatim" "$out" '`inline-code`'
+case "$out" in
+    *'\`'*)
+        assert_fail "C10 output must NOT contain backslash-escaped backticks" ;;
+    *)
+        assert_pass "C10 output contains no backslash-escaped backticks" ;;
+esac
 
 # ─── C11: review renderer gets the same split treatment ────────────────────
 REVIEW='{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}'
