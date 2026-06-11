@@ -39,20 +39,22 @@ _make_record() {
         }'
 }
 
-# ─── B1: metadata.artifact=plan renders input as markdown ────────────────────
+# ─── B1 (#785): metadata.artifact=plan does NOT render input ────────────────
+# The input to an LLM stage is the PROMPT (a text artifact), not the
+# structured response shape render_plan_md expects. Dispatching on input
+# mis-rendered the prompt's embedded schema literal. Pre-#785 this test
+# pinned that broken behavior; now it pins the corrected passthrough.
 plan_json='{"title":"My plan","goal":"do thing"}'
 rec="$(_make_record build llm "$plan_json" "ok" '{"artifact":"plan"}')"
 out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
-assert_contains "B1 input rendered as markdown heading" "$out" "# Plan: My plan"
-assert_contains "B1 input rendered Goal field" "$out" "**Goal:** do thing"
-# Original raw JSON should NOT appear verbatim in the input section.
-if printf '%s' "$out" | sed -n '/── input ──/,/── output ──/p' | grep -qF '{"title"'; then
-    assert_fail "B1 raw JSON not in input section" "raw JSON leaked"
+# Input section now shows the prompt verbatim (no render_plan_md dispatch).
+if printf '%s' "$out" | sed -n '/── input ──/,/── output ──/p' | grep -qF '{"title":"My plan"'; then
+    assert_pass "B1 (#785) input shows raw prompt (no render dispatch)"
 else
-    assert_pass "B1 raw JSON not in input section"
+    assert_fail "B1 (#785) input should show raw prompt verbatim" "got: $out"
 fi
 
-# ─── B2: metadata.artifact=diff renders input through diff renderer ──────────
+# ─── B2 (#785): metadata.artifact=diff also passthrough on input side ───────
 diff_text='diff --git a/x.sh b/x.sh
 --- a/x.sh
 +++ b/x.sh
@@ -61,7 +63,8 @@ diff_text='diff --git a/x.sh b/x.sh
 +b'
 rec="$(_make_record review llm "$diff_text" "ok" '{"artifact":"diff"}')"
 out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
-assert_contains "B2 diff heading rendered" "$out" "## a/x.sh"
+# Input section shows the raw diff text (no render_diff_md dispatch).
+assert_contains "B2 (#785) input shows raw diff verbatim" "$out" "diff --git a/x.sh"
 
 # ─── B3: unknown artifact id → passthrough (no error, raw input shown) ───────
 rec="$(_make_record plan llm "raw text body" "ok" '{"artifact":"nope-unknown"}')"
