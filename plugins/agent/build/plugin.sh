@@ -153,6 +153,52 @@ _build_stage_run_inner() {
     local _review_feedback_body
     _review_feedback_body="$(_build_read_prior_review 2>/dev/null || true)"
 
+    # #784: detect scope mismatch — test_assessment named files outside
+    # plan.files[]. Without this, build would loop on no-op LOOP_COMPLETEs
+    # (scope guard refuses out-of-scope edits, LLM gives up, claims complete
+    # despite feedback unaddressed). Escalate to operator: write build-summary
+    # with verdict=error reason=scope_mismatch, emit forensic event, return
+    # rc=0 so the cycle terminates gracefully through ADR-021's error class.
+    if [[ -n "$_feedback_body" && -n "$plan_files_csv" ]]; then
+        local _out_of_scope_files
+        _out_of_scope_files="$(_build_detect_scope_mismatch "$_feedback_body" "$plan_files_csv")"
+        if [[ -n "$_out_of_scope_files" ]]; then
+            local _oos_csv
+            _oos_csv="$(printf '%s' "$_out_of_scope_files" | tr '\n' ',' | sed 's/,$//')"
+            error "_build_stage_run_inner: scope mismatch — test_assessment names out-of-scope files: $_oos_csv"
+            emit_event "build.scope.escalation_required" \
+                "plugin=build" \
+                "reason=scope_mismatch" \
+                "out_of_scope_files=$_oos_csv" 2>/dev/null || true
+            # Write build-summary with verdict=error so cycle predicate sees it.
+            local _bs_json
+            _bs_json="$(jq -nc \
+                --arg verdict "error" \
+                --arg reason "scope_mismatch" \
+                --arg oos "$_oos_csv" '
+                {
+                    schema_version: 2,
+                    verdict: $verdict,
+                    reason: $reason,
+                    out_of_scope_files: ($oos | split(",")),
+                    iterations: 0,
+                    files_changed_count: 0,
+                    lines_added: 0,
+                    lines_removed: 0,
+                    diff_truncated: false,
+                    scope_violation: false
+                }
+            ' 2>/dev/null || printf '{"schema_version":2,"verdict":"error","reason":"scope_mismatch"}')"
+            printf '%s\n' "$_bs_json" > "$artifact_dir/build-summary.json"
+            emit_event "plugin.run.complete" \
+                "plugin=build" \
+                "kind=agent" \
+                "verdict=error" \
+                "artifact=build-summary.json" 2>/dev/null || true
+            return 0
+        fi
+    fi
+
     {
         printf '%s\n' "$_task_header"
         printf '## ORIGINAL TASK (immutable across iterations)\n'
@@ -690,6 +736,37 @@ _build_read_prior_review() {
     body="$(cat "$f" 2>/dev/null)" || return 0
     [[ -z "$body" ]] && return 0
     printf '%s' "$body"
+}
+
+# #784: detect when test_assessment's failure_summary_md names file paths
+# NOT in plan.files[]. Returns list of out-of-scope paths (one per line),
+# empty if none found.
+#
+# Heuristic: scan the body for `tests/...`, `plugins/...`, `config/...`,
+# `core/...`, `scripts/...`, `docs/...` paths (covering all zbuild surfaces).
+# Repo-relative only — skips absolute paths and URLs.
+_build_detect_scope_mismatch() {
+    local feedback_body="$1"
+    local plan_files_csv="$2"
+    [[ -z "$feedback_body" ]] && return 0
+    [[ -z "$plan_files_csv" ]] && return 0
+
+    # Match repo-relative path strings (with backtick or word boundary on either side).
+    # Stop at quotes, backticks, whitespace, or punctuation.
+    local matches
+    matches="$(printf '%s' "$feedback_body" \
+        | grep -oE '(tests|plugins|config|core|scripts|docs)/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*\.(sh|json|yaml|md|golden|txt)' \
+        2>/dev/null | sort -u || true)"
+    [[ -z "$matches" ]] && return 0
+
+    local m
+    while IFS= read -r m; do
+        [[ -z "$m" ]] && continue
+        case ",$plan_files_csv," in
+            *",$m,"*) ;;
+            *) printf '%s\n' "$m" ;;
+        esac
+    done <<< "$matches"
 }
 
 # _build_render_task_header <iter> <max_iter>
