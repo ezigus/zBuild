@@ -94,6 +94,40 @@ assert_contains "T8: prompt explicitly forbids prose AROUND the envelope" \
 assert_contains "T9: extract_json_and_surrounding_prose still in plugin (#771 safety net)" \
     "$PROMPT_BODY" "extract_json_and_surrounding_prose"
 
+# ─── #783 postamble FORBIDDEN — model emits banned phrases AFTER `}` ────────
+# Wave 2 dogfood (run_id 20260610184141-48161) impact iter 2 emitted clean
+# JSON but appended "Based on my comprehensive analysis..." and "I've
+# identified..." AFTER the closing brace. PR #779's FORBIDDEN list catches
+# preamble; this issue extends it to postamble + adds FINAL RULE sentinel.
+
+PROMPT_BODY_783="$(cat "$PROMPT_FILE")"
+
+# T10: FINAL RULE sentence — last instruction the model reads before PLAN:.
+assert_contains "T10: prompt has FINAL RULE sentinel" \
+    "$PROMPT_BODY_783" "FINAL RULE"
+assert_contains "T10: FINAL RULE says 'ends at' or 'output NOTHING'" \
+    "$PROMPT_BODY_783" "output NOTHING"
+
+# T11: extended FORBIDDEN list names the iter-2 observed variants.
+for variant in 'Based on my comprehensive analysis' 'Now I have' 'Let me' 'I have all the information'; do
+    assert_contains "T11: FORBIDDEN names '$variant' verbatim" \
+        "$PROMPT_BODY_783" "$variant"
+done
+
+# T12: explicit PREFIX/POSTFIX or "before AND after" emphasis — the model
+# must read the rule as bidirectional, not "don't START with".
+case "$PROMPT_BODY_783" in
+    *"AFTER"*|*"postamble"*|*"after the JSON"*)
+        assert_pass "T12: prompt explicitly names POSTAMBLE / 'after the JSON'" ;;
+    *)
+        assert_fail "T12: prompt must explicitly name AFTER/postamble" ;;
+esac
+
+# T13: parser still in place — defensive recovery from #771/#774 is the
+# safety net at any prompt-quality level (regression guard).
+assert_contains "T13: extract_json_and_surrounding_prose still present (#771 safety net)" \
+    "$PROMPT_BODY_783" "extract_json_and_surrounding_prose"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

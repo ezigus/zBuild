@@ -97,14 +97,22 @@ OUTPUT CONTRACT (read first, obey absolutely):
 FORBIDDEN — your response MUST NOT contain any of these strings ANYWHERE,
 not before the JSON, not after it, not inside any field:
   - "Based on my analysis"
+  - "Based on my comprehensive analysis"
   - "Here is"
   - "Here's"
   - "After reviewing"
   - "I've identified"
+  - "Now I have"
+  - "Let me"
+  - "I have all the information"
 
 If you have observations, put them inside the `impact_feedback_md` field —
 NEVER before or after the JSON object. The string outside the `{...}`
 envelope must be empty.
+
+FINAL RULE: after your closing brace `}`, output NOTHING — not even a
+newline, not even one character. Your response ends at `}`. Postamble
+content is the same violation as preamble; both fire impact.contract.violation.
 
 CORRECT example (single line, no fence, no preamble):
   {"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":""}
