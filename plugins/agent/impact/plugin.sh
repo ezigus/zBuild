@@ -28,6 +28,9 @@ source "$_IMPACT_ROOT/core/redaction/scope-redaction.sh"
 source "$_IMPACT_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_IMPACT_ROOT/core/router/route.sh"
+# #781: deterministic scope prefilter (CLAUDE.md test-scope rule).
+# shellcheck source=../../../scripts/lib/impact-prefilter.sh
+source "$_IMPACT_ROOT/scripts/lib/impact-prefilter.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 impact_init() {
@@ -160,12 +163,37 @@ Rules:
 
 REMINDER: output begins with `{`. No preamble.
 
-PLAN:
 IMPACT_PROMPT
 )"
 
+    # #781: deterministic prefilter. Runs CLAUDE.md's "Test scope discovery"
+    # rule (grep tests/ for old numeric shape values + scan tests/golden/**)
+    # and produces a JSON array of candidate gaps. Spliced BETWEEN the
+    # instructions block and the PLAN: marker so the LLM reads the gaps as
+    # context, then sees the plan body. shape-change-golden entries are
+    # CLAUDE.md mandates (post-LLM bash merge enforces them); shape-change-
+    # numeric entries are advisory (LLM may drop with a reason).
+    local _impact_repo_root="${ZBUILD_REPO_ROOT:-${_IMPACT_ROOT:-$(pwd)}}"
+    local _prefilter_candidates="[]"
+    _prefilter_candidates="$(_impact_scope_prefilter "$plan_content" "$_impact_repo_root" 2>/dev/null || printf '[]')"
+    local _candidate_gaps_section=""
+    if [[ "$_prefilter_candidates" != "[]" ]] && [[ -n "$_prefilter_candidates" ]]; then
+        # No trailing newlines in this substitution body — $(...) strips them;
+        # the printf -v below adds the separators explicitly.
+        _candidate_gaps_section="$(printf 'CANDIDATE GAPS (deterministic prefilter — you MUST VALIDATE each and KEEP all entries with source=shape-change-golden; you MAY drop false-positive shape-change-numeric entries with a one-line reason):\n%s' "$_prefilter_candidates")"
+    fi
+
+    # Assemble: instructions → CANDIDATE GAPS (if any) → PLAN: marker → plan body.
+    # PLAN: lives on its OWN line (no embedded `]PLAN:` collisions when the
+    # candidates JSON closes with `]`).
     local prompt
-    printf -v prompt '%s\n%s\n' "$_impact_instructions" "$plan_content"
+    if [[ -n "$_candidate_gaps_section" ]]; then
+        printf -v prompt '%s\n\n%s\n\nPLAN:\n%s\n' \
+            "$_impact_instructions" "$_candidate_gaps_section" "$plan_content"
+    else
+        printf -v prompt '%s\n\nPLAN:\n%s\n' \
+            "$_impact_instructions" "$plan_content"
+    fi
 
     local prompt_file="$artifact_dir/impact-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"
@@ -261,6 +289,45 @@ IMPACT_PROMPT
         error "_impact_run_inner: impact.json schema violation (requires schema_version=1, verdict ∈ {complete,incomplete}, missing[], impact_feedback_md string)"
         emit_event "plugin.run.error" "plugin=impact" "reason=schema_violation"
         return 1
+    fi
+
+    # #781: enforce shape-change-golden floor. If the prefilter surfaced
+    # golden snapshots (CLAUDE.md mandate, not heuristic) and the LLM dropped
+    # them, bash-merge back into missing[] using jq NATIVE SET DIFFERENCE
+    # (review: CSV substring containment was vulnerable to path collisions
+    # like "parity/.golden" vs "special/parity/.golden"). shape-change-numeric
+    # candidates are advisory (LLM may drop as false positives). Failures
+    # inside this merge are HARD ERRORS — silently keeping verdict=complete
+    # would defeat the exact regression #781 fixes.
+    if [[ "$_prefilter_candidates" != "[]" ]] && [[ -n "$_prefilter_candidates" ]]; then
+        local _missing_golden_json
+        if ! _missing_golden_json="$(jq -nc \
+                --argjson candidates "$_prefilter_candidates" \
+                --argjson llm_missing "$(printf '%s' "$impact_json" | jq -c '.missing // []')" '
+            ($candidates | map(select(.source == "shape-change-golden") | .files_to_add[])) as $forced |
+            ($llm_missing | map(.files_to_add // [] | .[])) as $present |
+            ($forced - $present | unique)
+        ' 2>/dev/null)"; then
+            error "_impact_run_inner: prefilter floor merge (jq) failed — refusing to ship LLM verdict unchanged (#781)"
+            emit_event "plugin.run.error" "plugin=impact" "reason=prefilter_merge_failed"
+            return 1
+        fi
+        if [[ "$_missing_golden_json" != "[]" ]] && [[ -n "$_missing_golden_json" ]]; then
+            if ! impact_json="$(printf '%s' "$impact_json" | jq -c \
+                    --argjson files "$_missing_golden_json" '
+                .verdict = "incomplete" |
+                .missing += [{
+                    step_id: "prefilter",
+                    files_to_add: $files,
+                    reason: ("deterministic prefilter floor (#781): shape-change detected; " +
+                             "event-sequence golden snapshots required regardless of LLM judgment")
+                }]
+            ' 2>/dev/null)"; then
+                error "_impact_run_inner: prefilter floor injection (jq) failed — refusing to ship (#781)"
+                emit_event "plugin.run.error" "plugin=impact" "reason=prefilter_inject_failed"
+                return 1
+            fi
+        fi
     fi
 
     local verdict

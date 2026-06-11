@@ -25,6 +25,15 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 : > "$ZBUILD_EVENTS_JSONL"
 
+# #781: point ZBUILD_REPO_ROOT at an empty dir so the deterministic prefilter
+# (which scans real tests/golden/** and runs CLAUDE.md grep) is a no-op for
+# THIS test. These tests pre-date the prefilter and pin LLM pass-through
+# behavior; entangling them with prefilter side-effects would obscure the
+# original contract. Issue #781's prefilter has its own regression test at
+# tests/integration/impact-prefilter-781-regression-test.sh.
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/no-prefilter-root"
+mkdir -p "$ZBUILD_REPO_ROOT/config"  # config/shape-change-paths.txt absent → prefilter rc=1
+
 ARTIFACTS="$TEST_TEMP_DIR/state/artifacts"
 STATE_DIR="$TEST_TEMP_DIR/state"
 mkdir -p "$ARTIFACTS"
