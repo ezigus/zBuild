@@ -932,6 +932,11 @@ _stage_io_compose_banner() {
 # — but since this helper doesn't have the merged metadata yet, we accept an
 # optional artifact_id argument for that dispatch.
 _stage_io_stdout_begin() {
+    # #785: artifact_id was previously used to dispatch render_artifact on
+    # the input side; renderer dispatch is now output-only and this
+    # parameter is no longer read. Kept for API stability with callers that
+    # already pass it.
+    # shellcheck disable=SC2034
     local stage="$1" kind="$2" seq="$3" input="$4" artifact_id="${5:-}"
 
     local tail_lines
@@ -943,11 +948,11 @@ _stage_io_stdout_begin() {
     # The persisted artifact record still receives the full prompt — only the
     # rendered banner body is substituted. Used by the review stage to show
     # a numstat file-change summary while the LLM still gets the full diff.
-    # Also clears artifact_id so the override body bypasses the registry
-    # renderer (which would otherwise re-process the already-formatted text).
+    # #785: artifact_id is no longer read on the input side (renderer dispatch
+    # is output-only). The override body is plain text so it just flows
+    # through _stage_io_head; no need to clear artifact_id.
     if [[ -n "${ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE:-}" ]]; then
         input="${ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE}"
-        artifact_id=""
     fi
 
     input="$(_stage_io_strip_ansi "$input")"
@@ -985,13 +990,14 @@ _stage_io_stdout_begin() {
         printf '\n'
         case "$kind" in
             llm)
-                if [[ -n "$artifact_id" ]]; then
-                    local _rendered
-                    _rendered="$(render_artifact "$artifact_id" "$input" 2>/dev/null)"
-                    _stage_io_head_with_hint "$_rendered" "$tail_lines" "$stage" "$seq"
-                else
-                    _stage_io_head_with_hint "$input" "$tail_lines" "$stage" "$seq"
-                fi
+                # #785: artifact-id renderer dispatch is OUTPUT-side only.
+                # The INPUT to an LLM stage is the prompt — a text artifact,
+                # not the structured response shape the renderer expects.
+                # Dispatching render_impact_md / render_plan_md on a prompt
+                # mis-renders the embedded JSON schema literal and shunts the
+                # OUTPUT CONTRACT into a "── llm comment ──" block. Always
+                # pretty-print the input as plain text.
+                _stage_io_head_with_hint "$input" "$tail_lines" "$stage" "$seq"
                 ;;
             command)
                 _stage_io_render_command_argv "$input"
@@ -1144,20 +1150,16 @@ _stage_io_to_stdout() {
     case "$kind" in
         llm)
             printf '── input ──\n'
-            # ADR-018: when metadata.artifact is set (plan|diff|review|...), the
-            # input is a known artifact shape — route through the renderer
-            # registry so the banner shows markdown instead of raw JSON/patch.
-            # Unknown ids fall through render_artifact's passthrough.
+            # #785: artifact-id renderer dispatch is OUTPUT-side only. The
+            # INPUT to an LLM stage is the prompt — a text artifact, not the
+            # structured response shape the renderer expects. Pretty-print
+            # input as text so the operator sees the prompt verbatim, not a
+            # mis-rendered JSON-schema split. Output-side reads metadata.artifact
+            # below.
+            _stage_io_head "$input" "$tail_lines"
+            printf '\n── output ──\n'
             local _artifact_id
             _artifact_id="$(printf '%s' "$metadata" | jq -r '.artifact // empty' 2>/dev/null || true)"
-            if [[ -n "$_artifact_id" ]]; then
-                local _rendered_input
-                _rendered_input="$(render_artifact "$_artifact_id" "$input" 2>/dev/null)"
-                _stage_io_head "$_rendered_input" "$tail_lines"
-            else
-                _stage_io_head "$input" "$tail_lines"
-            fi
-            printf '\n── output ──\n'
             # ADR-018 (#483): symmetric output-side dispatch. When the producer
             # plugin tagged the capture with metadata.artifact (e.g. plan,
             # review), route the output through the renderer registry so the
