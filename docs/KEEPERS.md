@@ -28,6 +28,12 @@ The spec is organized as the original was, with deltas called out.
 
 Treating compound_quality as 2 will let pre-flight failures escape into cycles and leave backtrack tangled with rescoring.
 
+**A.6 — Design stage migration (issue #754):**
+
+- `stage_design` (`legacy/scripts/lib/pipeline-stages-intake.sh:1004`) → `plugins/agent/design/`
+- `_extract_scope_from_design` (`legacy/scripts/lib/pipeline-stages.sh:38-71`) → `plugins/agent/design/plugin.sh` + `plugins/agent/build/plugin.sh`
+- Scope manifest as fenced markdown in design.md is now the primary authoritative scope source for the build stage (with plan.json as fallback). See `plugins/agent/design/manifest.yaml`.
+
 **New stages (zBuild-only, not carried from legacy):**
 
 - **`test_assessment` — LLM-interpreted test verdict (NEW for zBuild, not in legacy).** Sits between the deterministic `test` tool stage and the `review` agent stage. Reads `test-results.json` + optional `diff.patch`; writes `test-assessment.json` with semantic verdict (`pass|fail|error|inconclusive`), human-readable diagnosis, and a markdown `failure_summary_md` field. Source of truth for (1) the `build_test_cycle`'s `until:` predicate (ADR-021 §"test_assessment as until: source"), (2) review's coercion source (ADR-019 §7), (3) build's inter-iter feedback preamble (ADR-020 LLM-interpreted verdict stages subsection). Pattern 1 stage per ADR-018 with registered renderer `render_test_assessment_md`. Full record in ADR-022.
@@ -151,6 +157,7 @@ Still add golden-file diffing as a new capability (confirmed zero golden tests i
 | "Vitals composite" | Core engine subsystem (not "side service"); already wired into circuit breaker at `legacy/scripts/lib/loop-convergence.sh:111`. |
 | "Memory recall (3-tier)" | Side service with two-backend split: native TF-IDF (`legacy/scripts/sw-memory.sh`) + ruflo HNSW (`legacy/scripts/lib/ruflo-adapter.sh:2376-2440`). |
 | "UCB1 + SPRT model router" | UCB1 + Thompson router (SPRT does not exist; see Section L wishlist). |
+| "Scope manifest as fenced markdown in design.md" (`legacy/scripts/lib/pipeline-stages.sh:42`) | `plugins/agent/design/` — design stage produces design.md with ```scope block; build stage reads it as authoritative scope source (plan.json fallback). Migrated in issue #754. |
 | "Scope redaction" | Single chokepoint helper (`_apply_scope_redaction`) replacing 9 direct call sites; core engine I/O wrapper. |
 | "Multi-tier locking" | Core engine for in-process / per-host; cross-machine claim mechanism is a decision point (Section M). |
 | "Resume contract" | Explicit two-tier: persisted (stage status, SELF_HEAL_COUNT, scope manifest, cost ledger, CURRENT_ITERATION) vs reconstructed (runtime caches, loop-state.md). |

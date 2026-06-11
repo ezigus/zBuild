@@ -80,14 +80,15 @@ expect_label() {
 }
 
 # Cardinal numbering — one per linear stage in order.
-# #746: impact added between plan and build (plan_impact_cycle flattened).
+# #754: design added between plan_impact_cycle and review_cycle.
 expect_label intake          "1"
 expect_label plan            "2"
 expect_label impact          "3"
-expect_label build           "4"
-expect_label test            "5"
-expect_label test_assessment "6"
-expect_label review          "7"
+expect_label design          "4"
+expect_label build           "5"
+expect_label test            "6"
+expect_label test_assessment "7"
+expect_label review          "8"
 
 print_test_results
 cleanup_test_env
