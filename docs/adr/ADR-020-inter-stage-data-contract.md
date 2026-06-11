@@ -652,3 +652,11 @@ enforced from first appearance, not warned-then-enforced.
   (`intake_baseline_ref`, `test_assessment` row fix, `test` row fix).
 - #664 — Wave 12-E, validator output-uniqueness rule +
   `warn → enforce` default flip.
+
+---
+
+## Amendment (2026-06-11) — schema validator diagnostic contract
+
+The dogfood `run_id 20260611072619-15296` showed test_assessment's validator reporting "schema validation failed" when the actual root cause was a JSON parse error (unescaped `"` inside a markdown string field). Conflating parse-level and structure-level failures obscures the root cause for operators AND for the LLM on next iter (since `failure_summary_md` becomes the next prompt's feedback).
+
+**Validator helpers MUST distinguish parse vs structure failures.** ADR-022 v2 codifies this for test_assessment; ADR-028 generalizes via the shared framework. Plugin manifests should declare which response fields carry markdown (`markdown-fields`) so the framework auto-generates the escape-required portion of the OUTPUT CONTRACT.
