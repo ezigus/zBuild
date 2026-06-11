@@ -211,3 +211,41 @@ test and review, not after.
 - #568 (standard.yaml cycle wiring): not yet implemented
 - #569 (review consumer precedence): not yet implemented
 - #571 (build prompt consumes `prior_test_failures` from assessment): not yet implemented
+
+---
+
+## Amendment v2 (2026-06-11) — JSON-string field escaping contract
+
+### Background
+
+`#754` dogfood `run_id 20260611072619-15296` test_assessment iter 1: the LLM emitted a JSON envelope where `failure_summary_md` contained a markdown table with literal `"3"` / `"4"` cells. Those raw double-quotes broke the JSON parse at column 3208. `jq -e` failed; the plugin's error message was "schema validation failed" — but the real failure was "JSON parse error at the unescaped `\"` inside a string field."
+
+### Rules
+
+**S1. All JSON-string fields in the agent envelope MUST escape `"` as `\"`.**
+
+- This is a generic JSON requirement, but it's the most common LLM-output bug for stages whose response carries markdown bodies (test_assessment's `failure_summary_md`, impact's `impact_feedback_md`, review's `review_md`).
+- The OUTPUT CONTRACT block in the prompt MUST include an explicit example of escape: a CORRECT shows `"summary":"He said \"hi\""`, INCORRECT shows the same with raw quotes.
+
+**S2. Schema-validation error messages MUST distinguish parse-level vs structure-level failures.**
+
+- `jq -e` failing because the input isn't valid JSON ≠ the JSON being valid but missing a required field. Conflating them under "schema validation failed" obscures the root cause.
+- Validator helper should: (a) `jq empty` first to test parseability with diagnostic; (b) on parse-fail, surface column number + 40-char context window; (c) only then run the schema `jq -e` expression.
+
+**S3. Stage-level renderer fence selection MUST account for embedded backtick fences in markdown body fields.**
+
+- `_artifact_pick_fence` already handles this for outer rendering (`#777`). Confirm test_assessment's `render_test_assessment_md` uses the same helper for any field containing markdown.
+
+### Verification
+
+- New unit test: feed test_assessment validator a JSON envelope with unescaped `"` inside `failure_summary_md`; assert error message names "JSON parse error" + column + context.
+- Existing parser tests must continue to pass.
+
+### Folds into Phase 3 (shared LLM-agent framework)
+
+The escape requirement + diagnostic-rich validator both fold into the planned `scripts/lib/llm-agent-stage.sh` shared framework. Per-stage envelope-spec declares "fields that carry markdown" → framework auto-generates the escape-example portion of the OUTPUT CONTRACT.
+
+### Cites
+
+- Dogfood `run_id 20260611072619-15296` test_assessment iter 1, column 3208 of the raw response
+- PR #783 (FORBIDDEN list + FINAL RULE for impact) — same family, different surface

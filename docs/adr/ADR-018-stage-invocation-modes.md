@@ -813,3 +813,13 @@ Rollback: revert the three validators (`core/router/route.sh` L355, L716;
 `core/pipeline/template.sh` L953) to `-lt 1` and drop the conditional argv
 hoist. Templates with `max_turns: 0` would fail validation post-rollback,
 which is the desired loud failure mode.
+
+---
+
+## Amendment v3 (2026-06-11)
+
+The Pattern 1 (single-turn JSON envelope) and Pattern 2 (agent-loop with sentinel) per-stage implementations have accreted ad-hoc contract blocks across PRs #767/#771/#774/#783. Each fix added to ONE stage; analogous bugs hit other Pattern 1 stages unprotected (test_assessment's unescaped-quote JSON parse failure — see ADR-022 v2).
+
+**ADR-028 codifies the shared LLM-agent stage framework** that consolidates: OUTPUT CONTRACT renderer, envelope parser, schema validator, error class registry, and router rc classifier. All Pattern 1 stages MUST migrate to the framework once it ships.
+
+Pattern 2 stages (build) keep their loop-with-sentinel shape but adopt the shared envelope parser + router rc classifier as they don't carry full JSON-envelope concerns.

@@ -553,3 +553,59 @@ Cumulative effect across a multi-iter cycle: HEAD advances by exactly
 one commit per successful build iteration. `test_assessment` running
 on iter N sees the iter (N-1) commit on HEAD and `git diff --numstat`
 against the cycle's seed reflects the cumulative work.
+
+---
+
+## Amendment v3 (2026-06-11) — pipeline-status aggregation, rc propagation, pre-LLM gate prohibition
+
+### Background
+
+The #754 dogfood (`run_id 20260611072619-15296`) surfaced three contract gaps:
+
+1. `plan_impact_cycle` exhausted `max_iterations=3` with `on_max=continue`; the pipeline correctly fell forward through `review_cycle` (build converged, review approved, 332/332 tests pass) — but the final pipeline status reported `✗ Pipeline failed — cycle 'plan_impact_cycle' did not converge`. The aggregator treats ANY cycle `unconverged` as terminal even when `on_max=continue` was specifically designed to defer the decision downstream.
+
+2. `claude max_turns reached` (`rc=124` from `gtimeout`) was translated to `rc=1` by the router before the agent plugin's classify helper saw it. PR #788's `_router_rc_classify` maps rc=124 → verdict=error correctly, but the upstream translation defeats it.
+
+3. PR #789 (subsequently reverted via #791) added a pre-LLM scope-mismatch gate in build that bypassed the entire feedback contract — build iter 2 never received `prior_test_assessment` because the gate short-circuited before `route_to_model_loop`.
+
+### Rules
+
+**R1. `on_max` MUST be honored at the pipeline-status aggregator.**
+
+- `on_max: continue` MUST NOT propagate to pipeline-terminal failure. The cycle records `cycle.unconverged` as an event for forensics; the pipeline final status is computed from the FINAL stage that ran.
+- `on_max: abort` exhaustion DOES propagate. The cycle records `cycle.aborted` and the pipeline final status is `failed`.
+- Pipeline aggregator logic: walk the dispatch units in order; if the LAST unit produced `verdict=pass|approve`, pipeline succeeds. If a `cycle.unconverged` event has `on_max=continue`, treat as a warning, NOT a failure.
+
+**R2. Router rc propagation: rc=124 and rc=137 MUST reach the agent plugin verbatim.**
+
+- `route_to_model` (and any `route_to_model_loop` shim) MUST NOT translate rc=124 (gtimeout) or rc=137 (SIGKILL/OOM) to rc=1.
+- Each agent plugin runs `_router_rc_classify` on the returned rc; the classify helper maps to (verdict, reason).
+- Generic rc>0 (claude-emitted error) still maps to verdict=fail; rc=124/137 are reserved for infra failures.
+
+**R3. Pre-LLM gates in cycle members are forbidden.**
+
+- "Pre-LLM gate" = any code path inside a cycle member's `_*_run_inner` that short-circuits before `route_to_model` returns, AND skips the LLM call because of cycle-feedback state.
+- Enforcement: cycle members MUST run the LLM with the current iter's feedback context. The LLM either attempts an in-scope solution OR emits its sentinel with a diagnostic.
+- Post-LLM diagnostics are fine and encouraged: enrich `build-summary.json` / `impact.json` with reason codes after the LLM call. They signal without bypassing the cycle's iteration contract.
+- The per-edit scope guard (file-write refusal at the Edit tool layer) is the correct enforcement layer for scope safety. It runs WHILE the LLM is in the loop, not before.
+
+**Rationale:** the cycle's purpose IS to give the LLM iterated feedback. Pre-LLM gates that read prior_test_assessment/prior_impact_feedback and decide "skip the LLM this round" defeat the entire reason cycles exist.
+
+### Affected components
+
+- `core/pipeline/runner.sh` (pipeline aggregator) — R1
+- `core/router/route.sh` (rc preservation) — R2
+- All cycle member plugins (`plan`, `impact`, `build`, `test_assessment`, `review`) — R3
+- `scripts/lib/lint-contract.sh` — should add a static check that no cycle member plugin shortcuts to `return 0` before `route_to_model` based on cycle-feedback state (heuristic: `_*_run_inner` body must contain `route_to_model` between any `prior_*_feedback` read and the first non-zero `return`).
+
+### Verification
+
+- New test `tests/unit/cycle-on-max-continue-pipeline-status-test.sh`: drive a cycle to exhaustion with `on_max=continue`, assert pipeline final status is success when downstream succeeds.
+- Extend `core/router/route.sh` tests with rc=124 preservation; assert the rc returned to caller is 124, not 1.
+- Lint rule + test for R3 enforcement.
+
+### Cites
+
+- Dogfood `run_id 20260611072619-15296` (the misleading "Pipeline failed" on a substantively successful run)
+- PR #788 (`_router_rc_classify`) defeated by upstream rc translation
+- PR #789 (broken pre-LLM gate) reverted via PR #791
