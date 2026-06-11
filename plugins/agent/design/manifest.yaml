@@ -1,0 +1,54 @@
+id: design
+name: Design Stage
+kind: agent
+version: 0.1.0
+description: |
+  Design stage agent. Reads plan.json produced by the plan stage and invokes
+  the LLM (T2) to produce an ADR-style design.md containing a fenced ```scope
+  block whose entries are a superset of plan.json's files[]. The scope block
+  becomes the authoritative scope source consumed by the build stage.
+  # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design)
+  # legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design)
+
+hooks:
+  init: design_stage_init
+  run: design_stage_run
+  finalize: design_stage_finalize
+  cleanup: design_stage_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: design.md
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
+
+outputs:
+  - id: design
+    path: "${artifact_dir}/design.md"
+    type: text/markdown
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []

@@ -109,7 +109,7 @@ fi
 assert_eq "all-pass: runner exits 0" "0" "$rc"
 
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-for stage in intake plan impact build test test_assessment review; do
+for stage in intake plan impact design build test test_assessment review; do
     if grep -E "✓.*Stage.*${stage}.*complete" <<<"$err" >/dev/null; then
         assert_pass "all-pass: ✓ on $stage line"
     else
@@ -117,9 +117,9 @@ for stage in intake plan impact build test test_assessment review; do
     fi
 done
 
-# Verdict attribute on stage.complete events (#746: now 7 stages)
+# Verdict attribute on stage.complete events (#754: now 8 stages)
 all_pass_with_verdict=$(grep '"stage.complete"' "$EVENTS_JSONL" | grep -c '"pass"' || true)
-[[ "$all_pass_with_verdict" -ge 7 ]] \
+[[ "$all_pass_with_verdict" -ge 8 ]] \
     && assert_pass "stage.complete carries verdict=pass for each stage" \
     || assert_fail "stage.complete carries verdict=pass for each stage" "got $all_pass_with_verdict"
 

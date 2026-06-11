@@ -73,6 +73,15 @@ inputs:
     path: "${cycle_feedback_dir}/prior_review_feedback.txt"
     source: cycle_feedback
     required: false
+  # #754: design stage produces design.md with a ```scope block that overrides
+  # plan.json's files[] as the authoritative scope for the build agent.
+  # Optional (required:false) — absent when design stage was skipped or not
+  # wired in the template.
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: false
 
 outputs:
   - id: diff_patch

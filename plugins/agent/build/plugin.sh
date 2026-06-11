@@ -110,6 +110,34 @@ _build_stage_run_inner() {
         jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"
 
+    # #754: if design.md is present and contains a ```scope block, use it as the
+    # authoritative scope source, overriding plan.json's files[].
+    # legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design)
+    local _design_md_path="$artifact_dir/design.md"
+    if [[ ! -f "$_design_md_path" ]]; then
+        local _state_dir_for_design; _state_dir_for_design="$(dirname "$artifact_dir")"
+        local _candidate="$_state_dir_for_design/artifacts/design.md"
+        [[ -f "$_candidate" ]] && _design_md_path="$_candidate"
+    fi
+    local _scope_source="plan"
+    if [[ -f "$_design_md_path" ]] && grep -q '^```scope' "$_design_md_path" 2>/dev/null; then
+        local _design_csv
+        _design_csv="$(_extract_scope_from_design "$_design_md_path" 2>/dev/null || echo "")"
+        if [[ -n "$_design_csv" ]]; then
+            plan_files_csv="$_design_csv"
+            _scope_source="design"
+        fi
+    fi
+    if [[ "$_scope_source" == "design" ]]; then
+        local _scope_file_count=0
+        if [[ -n "$plan_files_csv" ]]; then
+            _scope_file_count="$(printf '%s' "$plan_files_csv" | tr ',' '\n' | grep -c '.' 2>/dev/null || echo 0)"
+        fi
+        emit_event "build.scope_injected" "plugin=build" \
+            "source=$_scope_source" "file_count=$_scope_file_count" \
+            >/dev/null 2>&1 || true
+    fi
+
     # ─── Write build prompt (ADR-018 Pattern 2, #571 v2 framing) ─────────────
     # Three-section framed structure the LLM sees on every iteration:
     #   1. ORIGINAL TASK (immutable across iterations) — issue goal + plan md
@@ -1102,4 +1130,32 @@ build_stage_finalize() {
 build_stage_cleanup() {
     emit_event "plugin.cleanup.complete" "plugin=build"
     return 0
+}
+
+# #754: parse a ```scope fenced block in design.md and return a CSV of files.
+# Empty when no fenced block found.
+# legacy-citation: legacy/scripts/lib/pipeline-stages.sh:38-71
+_extract_scope_from_design() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+
+    local in_block=0
+    local -a files=()
+    while IFS= read -r line; do
+        if [[ "$line" == '```scope' ]]; then
+            in_block=1
+            continue
+        fi
+        if [[ $in_block -eq 1 && "$line" == '```' ]]; then
+            break
+        fi
+        if [[ $in_block -eq 1 && -n "$line" ]]; then
+            files+=("$line")
+        fi
+    done < "$design_md"
+
+    if [[ ${#files[@]} -gt 0 ]]; then
+        local IFS=','
+        printf '%s' "${files[*]}"
+    fi
 }
