@@ -451,6 +451,24 @@ _build_stage_run_inner() {
         build_verdict="empty_diff"
     fi
 
+    # #792: post-LLM no-progress diagnostic. When build emitted LOOP_COMPLETE
+    # with empty diff AND prior_test_assessment named files outside plan
+    # scope, enrich build-summary.json with reason=no_progress_scope_blocked.
+    # NOT a short-circuit (build's LLM already ran with the feedback in its
+    # prompt — see _feedback_body splice at line ~155). The signal tells the
+    # operator "build's LLM tried but couldn't fix this without broader scope."
+    local build_reason=""
+    local out_of_scope_files_json="[]"
+    if [[ "$build_verdict" == "empty_diff" && -n "${_feedback_body:-}" && -n "$plan_files_csv" ]]; then
+        local _oos_paths
+        _oos_paths="$(_build_detect_out_of_scope_files "$_feedback_body" "$plan_files_csv")"
+        if [[ -n "$_oos_paths" ]]; then
+            build_reason="no_progress_scope_blocked"
+            out_of_scope_files_json="$(printf '%s\n' "$_oos_paths" \
+                | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
+        fi
+    fi
+
     # #602: the post-loop apply-check (introduced in #509, extended bidirectional
     # in #530) ran `git stash push -u` → `git apply --check` → `git stash pop`
     # to validate the patch against a clean tree. `git stash pop` is best-effort
@@ -474,6 +492,8 @@ _build_stage_run_inner() {
         --argjson scope_violations "$violations_json" \
         --argjson loop_input_tokens "$loop_input_tokens" \
         --argjson loop_output_tokens "$loop_output_tokens" \
+        --arg reason "$build_reason" \
+        --argjson out_of_scope_files "$out_of_scope_files_json" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
         '{
             schema_version: $schema_version,
@@ -490,7 +510,9 @@ _build_stage_run_inner() {
             loop_input_tokens: $loop_input_tokens,
             loop_output_tokens: $loop_output_tokens,
             notes: $notes
-        }' | atomic_write "$output_summary_json"
+        }
+        + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
+        ' | atomic_write "$output_summary_json"
 
     # ─── #587: post-loop discrepancy + numstat summary (no banner) ───────────
     # Originally (#498) this emitted a [computed] stage_io banner pair after
@@ -690,6 +712,51 @@ _build_read_prior_review() {
     body="$(cat "$f" 2>/dev/null)" || return 0
     [[ -z "$body" ]] && return 0
     printf '%s' "$body"
+}
+
+# #792: detect when test_assessment's failure_summary_md names file paths
+# NOT in plan.files[]. Returns list of out-of-scope paths (one per line),
+# empty if none found.
+#
+# This is a POST-LLM DIAGNOSTIC, not a pre-LLM gate (#784/PR #789 had the
+# wrong shape — short-circuited build iter 2 entirely). The helper enriches
+# build-summary.json when build emitted LOOP_COMPLETE with empty diff AND
+# the prior test_assessment named files outside plan scope. The signal
+# tells the operator "build couldn't fix this without broader scope"
+# without bypassing the feedback contract.
+#
+# Heuristic: scan for repo-relative paths (tests/, plugins/, config/, core/,
+# scripts/, docs/) followed by NEITHER a colon-digit (line citation) NOR a
+# closing-paren-line-citation pattern. Filters citations like "at foo.sh:42"
+# (mentioned the file, didn't request a change) while keeping change-requests.
+_build_detect_out_of_scope_files() {
+    local feedback_body="$1"
+    local plan_files_csv="$2"
+    [[ -z "$feedback_body" ]] && return 0
+    [[ -z "$plan_files_csv" ]] && return 0
+
+    # Strip path:NNN line citations FIRST so they don't survive into the match.
+    # e.g. "see foo.sh:42 for context" → "see  for context"
+    local cleaned
+    cleaned="$(printf '%s' "$feedback_body" \
+        | sed -E 's#(tests|plugins|config|core|scripts|docs)/[A-Za-z0-9_./-]+\.(sh|json|yaml|md|golden|txt):[0-9]+##g' \
+        2>/dev/null || true)"
+
+    # Match remaining repo-relative paths (change-requests, not citations).
+    local matches
+    matches="$(printf '%s' "$cleaned" \
+        | grep -oE '(tests|plugins|config|core|scripts|docs)/[A-Za-z0-9_./-]+\.(sh|json|yaml|md|golden|txt)' \
+        2>/dev/null | sort -u || true)"
+    [[ -z "$matches" ]] && return 0
+
+    local m
+    while IFS= read -r m; do
+        [[ -z "$m" ]] && continue
+        case ",$plan_files_csv," in
+            *",$m,"*) ;;
+            *) printf '%s\n' "$m" ;;
+        esac
+    done <<< "$matches"
 }
 
 # _build_render_task_header <iter> <max_iter>
