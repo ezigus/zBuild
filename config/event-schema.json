@@ -112,6 +112,7 @@
     "loop.terminated.signal",
     "loop.diff_capture_warning",
     "build.scope.violation",
+    "build.scope.escalation_required",
     "build.empty_diff",
     "build.numstat.precondition_failed",
     "build.numstat.truncated",
