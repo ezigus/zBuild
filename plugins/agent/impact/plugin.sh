@@ -31,6 +31,9 @@ source "$_IMPACT_ROOT/core/router/route.sh"
 # #781: deterministic scope prefilter (CLAUDE.md test-scope rule).
 # shellcheck source=../../../scripts/lib/impact-prefilter.sh
 source "$_IMPACT_ROOT/scripts/lib/impact-prefilter.sh"
+# #782: router rc → verdict/reason mapping (ADR-021 error class for timeouts).
+# shellcheck source=../../../scripts/lib/router-rc-classify.sh
+source "$_IMPACT_ROOT/scripts/lib/router-rc-classify.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 impact_init() {
@@ -245,8 +248,22 @@ IMPACT_PROMPT
     fi
 
     if [[ $router_rc -ne 0 ]]; then
-        error "_impact_run_inner: router rc=$router_rc"
-        emit_event "plugin.run.error" "plugin=impact" "reason=router_rc_nonzero" "router_rc=$router_rc"
+        # #782: ADR-021 error class for infra timeouts (rc=124 = gtimeout).
+        # Write impact.json with verdict=error so the cycle's blocked-
+        # predicate can distinguish "router timed out" from "model wrong".
+        # Fail-soft return so the cycle can record the error verdict and
+        # decide on its own termination (rather than blowing up the runner).
+        local _rc_verdict _rc_reason
+        _router_rc_classify "$router_rc" _rc_verdict _rc_reason
+        error "_impact_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
+        emit_event "plugin.run.error" "plugin=impact" "reason=$_rc_reason" "router_rc=$router_rc"
+        if [[ "$_rc_verdict" == "error" ]]; then
+            printf '{"schema_version":1,"verdict":"error","reason":"%s","missing":[],"impact_feedback_md":""}\n' \
+                "$_rc_reason" > "$output_impact_json"
+            # Emit verdict event for cycle predicate consumption.
+            emit_event "impact.verdict.error" "plugin=impact" "artifact=impact.json" "reason=$_rc_reason"
+            return 0
+        fi
         return 1
     fi
 
@@ -290,7 +307,7 @@ IMPACT_PROMPT
     if ! printf '%s' "$impact_json" | jq -e '
         type == "object"
         and (.schema_version == 1)
-        and (.verdict | type == "string" and (. == "complete" or . == "incomplete"))
+        and (.verdict | type == "string" and (. == "complete" or . == "incomplete" or . == "error"))
         and (.missing | type == "array")
         and (.impact_feedback_md | type == "string")
     ' >/dev/null 2>&1; then

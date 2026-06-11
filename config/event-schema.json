@@ -95,6 +95,7 @@
     "plan.flow_wiring_missing",
     "impact.verdict.complete",
     "impact.verdict.incomplete",
+    "impact.verdict.error",
     "impact.scope.expanded",
     "impact.contract.violation",
     "review.scope.violation",

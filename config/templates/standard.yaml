@@ -91,7 +91,12 @@ impact:
     destinations: [file, stdout]
     tail_lines: 200
   router:
-    timeout_s: 180
+    # #782: bumped 180 → 240 — impact prompts grow as cycle iters accumulate
+    # prior_plan + prior_impact_feedback + CANDIDATE GAPS (#781). Haiku at
+    # T1 was brushing the 180s cap on iter 1 of large-issue prompts. Timeout
+    # rc=124 still maps to verdict=error via _router_rc_classify, but raising
+    # the floor reduces operator-visible timeouts on legitimately complex inputs.
+    timeout_s: 240
     # #763: raised from 20 → 25 to match template-wide norm. impact does
     # open-ended symbol tracing whose cost scales with the symbol count;
     # the 20-turn cap was the lowest in the template and had no rationale
