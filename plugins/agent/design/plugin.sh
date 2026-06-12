@@ -200,7 +200,12 @@ DESIGN_PROMPT
         return 1
     fi
 
-    if ! grep -q '^\`\`\`scope' "$output_design_md" 2>/dev/null; then
+    # #817: single-quoted backticks need no escaping. Prior pattern
+    # '^\`\`\`scope' worked on macOS BSD grep (silently drops unknown \X
+    # escapes) but failed on Linux GNU grep (treats \` as backslash+backtick).
+    # Use plain literal triple-backticks; the existing _extract_scope_from_design
+    # below already uses the unescaped form, so this aligns the two.
+    if ! grep -q '^```scope' "$output_design_md" 2>/dev/null; then
         warn "_design_stage_run_inner: design.md missing scope block — design output incomplete"
         emit_event "plugin.run.error" "plugin=design" "reason=missing_scope_block"
         return 1
