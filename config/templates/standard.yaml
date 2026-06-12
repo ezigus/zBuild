@@ -36,6 +36,7 @@ intake:
 # exits and the downstream review_cycle runs.
 plan_impact_cycle:
   type: cycle
+  description: Refine the plan until impact analysis is complete
   # Members: plan (LLM: strategic decomposition) + impact (LLM: dependency
   # tracing + scope-completeness check). Comments stay outside the YAML list
   # because the template parser's awk doesn't strip inline `#` comments.
@@ -145,6 +146,7 @@ design:
 # `to:` (handled); review_cycle follows the same convention.
 review_cycle:
   type: cycle
+  description: Code review of build output until reviewer approves
   flow:
     - build_test_cycle
     - review
@@ -187,6 +189,7 @@ review_cycle:
 # THIS cycle and returns control to the next sibling in the outer `flow:`).
 build_test_cycle:
   type: cycle
+  description: Implement plus test loop until test_assessment passes
   flow:
     - build
     - test

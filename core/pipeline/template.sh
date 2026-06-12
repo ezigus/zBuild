@@ -195,9 +195,10 @@ load_template() {
                 ;;
             IC)
                 # Inline cycle entry. Format:
-                # <cid>|<cstages>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>
-                local cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg
-                IFS='|' read -r cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg <<< "$payload"
+                # <cid>|<cstages>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>|<cdesc>
+                # #831: cdesc is the optional operator-facing description.
+                local cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg cdesc
+                IFS='|' read -r cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg cdesc <<< "$payload"
                 [[ -z "$cid" ]] && continue
                 _TPL_CYCLES+=("$cid")
                 local safe="${cid//-/_}"
@@ -210,11 +211,13 @@ load_template() {
                 printf -v "_TPL_CYCLE_UNTIL_VALUE_${safe}"   '%s' "$cuvalue"
                 printf -v "_TPL_CYCLE_PLATEAU_W_${safe}"     '%s' "$cplateau"
                 printf -v "_TPL_CYCLE_DIVERGENCE_W_${safe}"  '%s' "$cdiverg"
+                printf -v "_TPL_CYCLE_DESCRIPTION_${safe}"   '%s' "${cdesc:-}"
                 export "_TPL_CYCLE_STAGES_${safe}" "_TPL_CYCLE_MAX_${safe}" \
                        "_TPL_CYCLE_ON_MAX_${safe}" "_TPL_CYCLE_UNTIL_STAGE_${safe}" \
                        "_TPL_CYCLE_UNTIL_FIELD_${safe}" "_TPL_CYCLE_UNTIL_OP_${safe}" \
                        "_TPL_CYCLE_UNTIL_VALUE_${safe}" "_TPL_CYCLE_PLATEAU_W_${safe}" \
-                       "_TPL_CYCLE_DIVERGENCE_W_${safe}"
+                       "_TPL_CYCLE_DIVERGENCE_W_${safe}" \
+                       "_TPL_CYCLE_DESCRIPTION_${safe}"
                 # Expand cycle members in order into the flat stage list.
                 local IFS_save="$IFS"; IFS=','
                 # shellcheck disable=SC2206
@@ -396,8 +399,9 @@ load_template() {
 #   S|<id>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>
 #     for regular `- id:` stage entries (full attr payload, same shape as the
 #     legacy _tpl_parse_stage_data output)
-#   IC|<cid>|<cstages_csv>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>
-#     for `- id: …; type: cycle` entries
+#   IC|<cid>|<cstages_csv>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>|<cdesc>
+#     for `- id: …; type: cycle` entries. <cdesc> is the optional operator-
+#     facing description (#831); empty when the YAML omits `description:`.
 #   FB|<cid>|<from_stage>:<from_output>|<to_stage>:<to_input>:<required>
 #     one row per feedback record in the most-recently opened cycle
 # Caller distinguishes by leading tag; preserves declaration order.
@@ -415,7 +419,7 @@ _tpl_parse_stages_v2() {
     function flush_entry(   k) {
         if (current_id == "") return
         if (entry_kind == "cycle") {
-            print "IC|" current_id "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg
+            print "IC|" current_id "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg "|" cdesc
             if (fb_from_stage != "" || fb_to_stage != "") {
                 nfb++
                 fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
@@ -431,7 +435,7 @@ _tpl_parse_stages_v2() {
         current_io_tail = ""; current_io_redact = ""; current_router_timeout = ""
         current_router_max_turns = ""; current_router_max_iterations = ""
         cstages = ""; cmax = ""; conmax = ""; custage = ""; cufield = ""
-        cuop = ""; cuvalue = ""; cplateau = ""; cdiverg = ""
+        cuop = ""; cuvalue = ""; cplateau = ""; cdiverg = ""; cdesc = ""
         nfb = 0
         in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0
         in_stages_list = 0; in_until = 0; in_plateau = 0; in_diverg = 0
@@ -481,6 +485,13 @@ _tpl_parse_stages_v2() {
     }
     in_stages && entry_kind == "cycle" && /^[[:space:]]+on_max:/ {
         v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); conmax = trim(v); next
+    }
+    # #831: optional operator-facing description. Renderer-only; never used in
+    # control flow. Strip a single layer of surrounding "..." or '...' quotes.
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+description:[[:space:]]*/ {
+        v = $0; sub(/^[[:space:]]+description:[[:space:]]*/, "", v); v = trim(v)
+        gsub(/^"|"$/, "", v); gsub(/^'\''|'\''$/, "", v)
+        cdesc = v; next
     }
     in_stages && entry_kind == "cycle" && /^[[:space:]]+until:[[:space:]]*$/ {
         in_until = 1; in_plateau = 0; in_diverg = 0; in_feedback = 0; next
@@ -1068,6 +1079,7 @@ _tpl_translate_new_shape() {
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
         cyc_plateau = ""; cyc_diverg = ""
+        cyc_desc = ""
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
@@ -1082,6 +1094,7 @@ _tpl_translate_new_shape() {
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
         cyc_plateau = ""; cyc_diverg = ""
+        cyc_desc = ""
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
@@ -1120,7 +1133,7 @@ _tpl_translate_new_shape() {
         if (sec_type == "cycle") {
             cyc_data[cur_key] = cyc_flow "|" cyc_max "|" cyc_on_max "|" \
                                 cyc_us "|" cyc_uf "|" cyc_uo "|" cyc_uv "|" \
-                                cyc_plateau "|" cyc_diverg
+                                cyc_plateau "|" cyc_diverg "|" cyc_desc
             cyc_abort[cur_key] = cyc_as "|" cyc_af "|" cyc_ao "|" cyc_av
             cyc_fb_count[cur_key] = nfb
             for (k = 1; k <= nfb; k++) {
@@ -1251,6 +1264,14 @@ _tpl_translate_new_shape() {
             }
             if ($0 ~ /^[[:space:]]+on_max:/) {
                 v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); cyc_on_max = trim(v); next
+            }
+            # #831: optional operator-facing description. Strip a single
+            # layer of surrounding "..." or single-quotes; never used in
+            # control flow.
+            if ($0 ~ /^[[:space:]]+description:[[:space:]]*/) {
+                v = $0; sub(/^[[:space:]]+description:[[:space:]]*/, "", v); v = trim(v)
+                gsub(/^"|"$/, "", v); gsub(/^'\''|'\''$/, "", v)
+                cyc_desc = v; next
             }
             if ($0 ~ /^[[:space:]]+exit_when:[[:space:]]*$/) {
                 in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_feedback = 0; next
