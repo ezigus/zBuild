@@ -120,9 +120,13 @@ _term_width() {
 }
 
 # ─── ANSI stripping ─────────────────────────────────────────────────────────
+# Unused as of 2026-06-12; if revived, add LC_ALL=C prefix per #830 to avoid
+# BSD sed "RE error: illegal byte sequence" on non-UTF-8 input. See
+# scripts/lib/test-output-sanitize.sh + core/output/stage-io.sh for the
+# pattern.
 strip_ansi() {
     # Strip ANSI color/style codes from stdin
-    sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g'
+    LC_ALL=C sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g'
 }
 
 # ─── extract_first_json_object (#478) ───────────────────────────────────────
