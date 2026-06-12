@@ -112,7 +112,10 @@ _artifact_jq_or_passthrough() {
 # attacker-controlled title can't break out of our intended block structure.
 _artifact_md_escape_inline() {
     local s="$1"
-    s="$(printf '%s' "$s" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
+    # #830: LC_ALL=C so sed treats input as raw bytes; otherwise non-UTF-8
+    # fragments in attacker- or LLM-controlled titles abort with "RE error:
+    # illegal byte sequence" on macOS BSD sed.
+    s="$(printf '%s' "$s" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
     s="${s//$'\r'/ }"
     s="${s//$'\n'/ }"
     s="${s//\`/\\\`}"
@@ -131,7 +134,8 @@ _artifact_md_escape_inline() {
 # instead of ```` \\\`\\\` ```` triggers, restoring readable forensic output.
 _artifact_md_escape_block() {
     local s="$1"
-    s="$(printf '%s' "$s" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
+    # #830: LC_ALL=C — same rationale as _artifact_md_escape_inline.
+    s="$(printf '%s' "$s" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
     printf '%s' "$s"
 }
 

@@ -55,7 +55,7 @@ INCLUDE  = ['/core/', '/scripts/lib/']
 EXCLUDE  = ['/tests/', '-test.sh', '-unit-test.sh']
 
 covered = defaultdict(set)
-with open(trace_file) as fh:
+with open(trace_file, encoding='utf-8', errors='replace') as fh:
     for line in fh:
         m = re.match(r'^TRACE:(.*?):(\d+):', line)
         if m:
@@ -78,7 +78,7 @@ rows = []
 for src in sorted(covered):
     if not os.path.isfile(src):
         continue
-    with open(src) as fh:
+    with open(src, encoding='utf-8', errors='replace') as fh:
         lines = fh.readlines()
     executable = sum(
         1 for ln in lines

@@ -48,7 +48,14 @@ _zbuild_sanitize_for_llm() {
     #      shape stays self-contained on one line — (b) drops the truncation
     #      footer, (c) drops the ══/── stage-io banner pairs, and (d) drops
     #      decorative separators whose visible content is ≥ 90% `═`/`─`.
-    sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' | awk '
+    # #830: LC_ALL=C makes sed/awk treat input as raw bytes rather than
+    # locale-encoded characters. Without it, BSD sed (macOS) and GNU sed
+    # (Linux under unset LANG) abort with "RE error: illegal byte sequence"
+    # on any non-UTF-8 byte in npm test output (binary failure dumps,
+    # escape-char fragments). POSIX command-prefix scoping means the
+    # variable applies only to this child process; the caller's locale
+    # is unaffected.
+    LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' | LC_ALL=C awk '
     {
         # Transform 1: strip <out-of-scope-context>…</out-of-scope-context>
         # wrappers, keep inner content. Repeat per line to catch multiple
