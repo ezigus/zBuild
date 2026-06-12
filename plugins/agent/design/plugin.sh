@@ -154,9 +154,16 @@ DESIGN_PROMPT
 
     export ZBUILD_SCOPE_MANIFEST="$scope_manifest"
 
+    # #825: opt into --defer-final-banner-close so the OUTPUT banner stays
+    # open until we override _ROUTE_LOOP_FINAL_OUTPUT below with the actual
+    # design.md content. Without the override, the banner shows claude's
+    # stdout summary ("Design document written to..."), which is useless to
+    # the operator. The single-file-artifact's value is the file content.
+    # Mirrors build's deferred-close pattern (plugins/agent/build/plugin.sh).
     local router_rc=0
     route_to_model_loop "$tier" "$redacted_file" "$repo_root" "$max_iter" \
-        --scope-allowlist "$plan_files_csv" || router_rc=$?
+        --scope-allowlist "$plan_files_csv" \
+        --defer-final-banner-close || router_rc=$?
 
     if [[ $router_rc -eq 130 ]]; then
         warn "_design_stage_run_inner: route_to_model_loop rc=130 (SIGINT) — propagating abort"
@@ -208,7 +215,25 @@ DESIGN_PROMPT
     if ! grep -q '^```scope' "$output_design_md" 2>/dev/null; then
         warn "_design_stage_run_inner: design.md missing scope block — design output incomplete"
         emit_event "plugin.run.error" "plugin=design" "reason=missing_scope_block"
+        # Failure path: don't override the banner output; let the deferred
+        # close (if any) flush claude's stdout summary so the operator sees
+        # the LLM's diagnostic message rather than a missing-file artifact.
+        if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+            _route_loop_close_final_banner || true
+        fi
         return 1
+    fi
+
+    # #825: override the OUTPUT banner payload with the actual design.md
+    # content BEFORE flushing the deferred-close banner. Without this,
+    # the banner shows claude's stdout summary ("Design document written
+    # to...") rather than the on-disk artifact. The single-file-artifact's
+    # value IS the file content; show that to the operator. Existing
+    # stage-io tail-N truncation handles long files naturally (40-line tail
+    # + "full at <path>" hint).
+    if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+        _ROUTE_LOOP_FINAL_OUTPUT="$(cat "$output_design_md" 2>/dev/null || true)"
+        _route_loop_close_final_banner || true
     fi
 
     # Atomically finalize design.md (#507 contract).
