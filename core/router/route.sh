@@ -279,7 +279,17 @@ _route_resolve_timeout() {
 }
 
 # ADR-018 (#466): per-stage router.max_turns > $ZBUILD_ROUTER_MAX_TURNS > 25 default.
+# ADR-029 G3 (#812): when the cycle orchestrator detects a router timeout for
+# this stage, it sets ZBUILD_ROUTER_MAX_TURNS_OVERRIDE so the next dispatch
+# of the same stage uses an escalated budget (+50%, capped at 2× base). The
+# override wins over the per-stage template AND the env knob because that's
+# the entire point — escalation must beat the static config that already
+# proved too small.
 _route_resolve_max_turns() {
+    if [[ "${ZBUILD_ROUTER_MAX_TURNS_OVERRIDE:-}" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$ZBUILD_ROUTER_MAX_TURNS_OVERRIDE"
+        return 0
+    fi
     _route_resolve_knob template_stage_router_max_turns ZBUILD_ROUTER_MAX_TURNS 25 \
         router.max_turns.override_ignored
 }

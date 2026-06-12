@@ -73,6 +73,7 @@
     "cycle.member.dispatch.complete",
     "cycle.member.timeout",
     "cycle.member.timeout_abandoned",
+    "cycle.member.max_turns.escalated",
     "review.test_status.missing",
     "review.jq.parse_error",
     "test_assessment.missing_input",
