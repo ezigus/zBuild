@@ -139,3 +139,23 @@ Migration is staged across 4 PRs, one plugin per PR:
 5. **Migrate `impact`** — last because it has the most accumulated complexity (FORBIDDEN list, FINAL RULE, prefilter integration, contract violation events). Consolidates impact's ~100-line prompt into the framework's ~50-line canonical form.
 
 Each migration PR cites this ADR + the relevant per-stage ADR. Re-dogfood after each migration to measure `*.contract.violation` rate reduction.
+
+---
+
+## Amendment v1.1 (2026-06-11) — foundation PR scope clarification
+
+After multi-agent design synthesis for PR #798 (the framework foundation PR), the following scope clarifications were made:
+
+**File path:** `scripts/lib/llm-agent.sh` (NOT `llm-agent-stage.sh` as the original ADR proposed). The renamed file makes Pattern 1 scope explicit; Pattern 2 (build's loop-with-sentinel) remains separate.
+
+**Escape-repair deferred to v2.** The multi-agent critique flagged in-shim mutation as risky; v1 ships fail-soft (parse error with column + 40-char context, no automatic repair). The ADR-022 dogfood payload (column 3208) is the v2 regression target. Until v2, the cycle's existing feedback loop carries the diagnostic to the next iter's plan/build prompt.
+
+**`_llm_with_json_output` added as a 6th helper.** Pattern 1 stages all save/restore `ZBUILD_ROUTER_JSON_OUTPUT` around `route_to_model`; the helper consolidates that boilerplate (ADR-018 §330-345).
+
+**`_llm_emit_violation` event class is positional, not env.** Original sketch used `_LLM_VIOLATION_EVENT_TYPE` env var; that risks cross-invocation leak. Positional arg per call.
+
+**`--verdicts none` semantics codified.** When a stage's response has no `.verdict` field (plan emits raw plan.json), the contract MUST omit the verdict enum line AND the schema validator MUST NOT assert `.verdict`. This decouples the helper from the verdict-bearing assumption.
+
+**Per-stage OUTPUT CONTRACT goldens.** Each migration PR (2-5) adds a `tests/golden/llm-contract/<stage>-output-contract.golden` byte-pinning the rendered block. Catches accidental contract drift during future patches.
+
+**Renderer interop integration test required as foundation gate.** `_llm_envelope_parse` MUST produce byte-identical splits with `_artifact_split_prose_json` (artifact-render.sh) — guards #510 llm-comment rendering against parser drift.
