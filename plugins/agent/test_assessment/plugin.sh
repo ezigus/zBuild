@@ -35,6 +35,9 @@ source "$_TEST_ASSESSMENT_ROOT/core/redaction/scope-redaction.sh"
 source "$_TEST_ASSESSMENT_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_TEST_ASSESSMENT_ROOT/core/router/route.sh"
+# ADR-028: shared LLM-agent stage framework (PR 4/5 — test_assessment migration).
+# shellcheck source=../../../scripts/lib/llm-agent.sh
+source "$_TEST_ASSESSMENT_ROOT/scripts/lib/llm-agent.sh"
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/artifact-render.sh"
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
@@ -178,23 +181,10 @@ _test_assessment_run_inner() {
     plan_md="$(render_artifact plan "$plan_content" 2>/dev/null || printf '%s' "$plan_content")"
 
     # ─── Compose prompt ──────────────────────────────────────────────────────
-    # Static heredoc — no expansion. Schema and contract live inline.
-    local _ta_instructions
-    _ta_instructions="$(cat <<'TA_PROMPT'
-You are a test-results assessment agent. Examine the test output in light of
-the plan and the build claim, then produce a structured JSON verdict.
-
-Tool use:
-- You may use the Read tool to inspect files referenced in the plan or in the
-  test output. Do NOT call Edit, Write, or Bash. This stage is read-only.
-
-Output contract:
-- Your FINAL response must be a SINGLE JSON object — no markdown code fences,
-  no commentary before or after the JSON.
-- Your response MUST begin with `{` and contain nothing other than the JSON object.
-
-Required JSON schema:
-
+    # ADR-028: canonical OUTPUT CONTRACT block from framework. ADR-022 v2:
+    # failure_summary_md is a markdown free-text field (escape required).
+    local _ta_schema
+    _ta_schema="$(cat <<'TA_SCHEMA'
   {
     "schema_version": 1,
     "verdict": "pass" | "fail" | "error" | "inconclusive",
@@ -206,6 +196,25 @@ Required JSON schema:
     "failure_summary_md": "<markdown report fed back to the build stage>",
     "iter": <integer>
   }
+TA_SCHEMA
+)"
+    local _output_contract_block
+    _output_contract_block="$(_llm_output_contract \
+        --stage test_assessment \
+        --verdicts "pass,fail,error,inconclusive" \
+        --schema-json "$_ta_schema" \
+        --markdown-fields "failure_summary_md")"
+
+    # Static heredoc — no expansion. The remaining body explains semantics +
+    # tool-use; the OUTPUT CONTRACT/schema are prepended from the framework.
+    local _ta_instructions
+    _ta_instructions="$(cat <<'TA_PROMPT'
+You are a test-results assessment agent. Examine the test output in light of
+the plan and the build claim, then produce a structured JSON verdict.
+
+Tool use:
+- You may use the Read tool to inspect files referenced in the plan or in the
+  test output. Do NOT call Edit, Write, or Bash. This stage is read-only.
 
 Verdict semantics:
   pass          — tests pass AND build genuinely complete AND your reasoning
@@ -224,6 +233,9 @@ Rules:
 
 TA_PROMPT
 )"
+    _ta_instructions="$_output_contract_block
+
+$_ta_instructions"
 
     local prompt
     printf -v prompt '%s\n\nPLAN:\n%s\n\nBUILD CLAIM:\n verdict=%s iterations=%s terminated_reason=%s\n\nBRANCH NUMSTAT:\n%s\n\nTEST SUMMARY:\n verdict=%s passed=%s failed=%s\n\nTEST OUTPUT (verbatim, possibly truncated):\n%s\n' \

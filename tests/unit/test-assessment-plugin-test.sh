@@ -127,7 +127,7 @@ prompt="$(cat "$_CAPTURED_PROMPT")"
 assert_contains "T7 prompt mentions verdict enum" "$prompt" "verdict"
 assert_contains "T7 prompt mentions agrees_with_build_complete" "$prompt" "agrees_with_build_complete"
 assert_contains "T7 prompt mentions failure_summary_md" "$prompt" "failure_summary_md"
-assert_contains "T7 prompt declares SINGLE JSON object" "$prompt" "SINGLE JSON"
+assert_contains "T7 prompt declares EXACTLY ONE JSON object (ADR-028)" "$prompt" "EXACTLY ONE JSON object"
 assert_contains "T7 prompt embeds test_output" "$prompt" "AuthTest"
 assert_contains "T7 prompt embeds build verdict" "$prompt" "complete"
 
