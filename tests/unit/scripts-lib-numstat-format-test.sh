@@ -118,5 +118,30 @@ else
     assert_fail "V6 unrelated" "should NOT match"
 fi
 
+# ─── V7: #818 — `./` is universal allow ─────────────────────────────────────
+# Intake emits `+ ./` for the `generic` platform meaning "everything". The
+# numstat formatter's prefix-check helper used to require tokens to literally
+# start with `./`, which spuriously rejected every path. Special-case the
+# `./` entry as universal allow.
+print_test_section "V7 #818: ./ universal allow"
+allowed=( "./" )
+if _numstat_path_in_scope "plugins/agent/cq-preflight/manifest.yaml" allowed; then
+    assert_pass "V7 ./ universal: plugins/... path in scope"
+else
+    assert_fail "V7 ./ universal: plugins/... should be in scope"
+fi
+if _numstat_path_in_scope "core/router/route.sh" allowed; then
+    assert_pass "V7 ./ universal: core/... path in scope"
+else
+    assert_fail "V7 ./ universal: core/... should be in scope"
+fi
+# Regression: narrow allowlist still wraps OOS paths (no leak from V7 change).
+allowed=( "plugins/" )
+if ! _numstat_path_in_scope "core/router/route.sh" allowed; then
+    assert_pass "V7 regression: narrow + plugins/ still wraps core/..."
+else
+    assert_fail "V7 regression: narrow allowlist should NOT match unrelated path"
+fi
+
 cleanup_test_env
 print_test_results

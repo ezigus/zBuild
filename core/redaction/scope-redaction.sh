@@ -166,7 +166,7 @@ apply_scope_redaction() {
         print result
     }
     # ── helper: tokenize path-like substrings in plain (non-marker) text ──
-    function tokenize_paths(text,    out, rest, before, token, after, in_scope, stripped, i, a) {
+    function tokenize_paths(text,    out, rest, before, token, after, in_scope, stripped, i, a, ext_ok, prefix_ok) {
         out = ""
         rest = text
         while (match(rest, /[A-Za-z0-9._-]*\/[A-Za-z0-9._\/-]+/)) {
@@ -183,12 +183,39 @@ apply_scope_redaction() {
                 rest = after
                 continue
             }
+            # #818: tighten the path detector. The bare slash-and-letters
+            # regex above also matches prose fragments like "cycle/plateau"
+            # or "plateau/convergence". A token only counts as a path if it
+            # EITHER ends in a file extension (`.sh`, `.json`, `.yaml`, etc.)
+            # OR starts with a known repo-top-level directory
+            # OR is an absolute path (begins with `/` — covers /etc/passwd,
+            # /usr/bin/foo, and other Unix system paths that the redactor
+            # MUST continue to catch per the chokepoint contract).
+            ext_ok    = (token ~ /\.[A-Za-z0-9]{1,8}$/)
+            prefix_ok = (token ~ /^(\.\/)?(core|scripts|plugins|tests|docs|config|legacy)\//) || (token ~ /^\//)
+            if (!ext_ok && !prefix_ok) {
+                # Not a path-looking token — leave verbatim, no wrap, no log
+                # (counter_log is reserved for the digit-only case).
+                out = out before token
+                rest = after
+                continue
+            }
             # Check if token starts with any allowed prefix (with optional leading ./)
             in_scope = 0
             stripped = token
             sub(/^\.\//, "", stripped)
             for (i = 1; i <= n_allow; i++) {
                 a = allow[i]
+                # #818: treat `./` as universal allow. Intake emits `+ ./`
+                # for the `generic` platform meaning "everything"; the prior
+                # literal-prefix match required tokens to START with `./`,
+                # so paths like `plugins/agent/X/manifest.yaml` (no leading
+                # `./`) were spuriously wrapped. Universal `./` matches any
+                # token that survived the path-detection check above.
+                if (a == "./") {
+                    in_scope = 1
+                    break
+                }
                 # Match if stripped starts with allowed prefix, OR if token == allowed exactly
                 if (index(stripped, a) == 1 || index(token, a) == 1) {
                     in_scope = 1
