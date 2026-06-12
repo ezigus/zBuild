@@ -48,22 +48,15 @@ source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 route_to_model_loop() {
     local _prompt_file="$2"
     [[ -f "$_prompt_file" ]] && cp "$_prompt_file" "$_MOCK_ROUTE_PROMPT_CAPTURE"
+    # Default body: a minimal valid design.md with a scope block. printf-built
+    # to avoid heredoc backtick/quote portability quirks between bash 3.2
+    # (macOS) and bash 5.x (Linux CI). Backticks are written as %s args.
     local _body
     if [[ -n "${MOCK_DESIGN_BODY:-}" ]]; then
         _body="$MOCK_DESIGN_BODY"
     else
-        # Plain single-quoted heredoc — backticks are literal here.
-        _body="$(cat <<'BODY'
-# Design
-
-## Decision
-Implement per plan.
-
-```scope
-foo.sh
-```
-BODY
-)"
+        local _bt='```'
+        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n' "$_bt" "$_bt")"
     fi
     if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]]; then
         mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
@@ -138,13 +131,9 @@ printf '# Operator-owned design doc\n' > "$fixture/design.md"
 git -C "$fixture" add design.md >/dev/null
 git -C "$fixture" commit -m 'pre-existing design doc' --quiet >/dev/null
 MOCK_DESIGN_WRITE_PATH="$fixture/design.md"   # LLM overwrites the tracked file
-MOCK_DESIGN_BODY="$(cat <<'BODY'
-# Overwritten by LLM
-```scope
-foo.sh
-```
-BODY
-)"
+_bt='```'
+MOCK_DESIGN_BODY="$(printf '# Overwritten by LLM\n%sscope\nfoo.sh\n%s\n' "$_bt" "$_bt")"
+unset _bt
 set +e
 _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
 rc=$?
