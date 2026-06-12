@@ -118,7 +118,13 @@ ${scope_list}
 
 ## Instructions
 
-Produce a design.md that includes:
+Write the design document to this EXACT absolute path:
+  $output_design_md
+Do NOT write to ./design.md, design.md, or any other path. The harvester
+expects the file at the absolute path above; any other location is a
+contract violation that will fail this stage.
+
+The design document MUST include:
 1. A brief architectural decision summary (goal, context, decision).
 2. A \`\`\`scope fenced block listing all files that will be touched by this
    task. The scope block MUST be a superset of the seed scope above — every
@@ -130,7 +136,7 @@ path/to/file1
 path/to/file2
 \`\`\`
 
-Keep design.md focused and under 200 lines. Emit LOOP_COMPLETE when done.
+Keep the document focused and under 200 lines. Emit LOOP_COMPLETE when done.
 DESIGN_PROMPT
 
     local redacted_file="$artifact_dir/design-prompt.redacted.txt"
@@ -161,6 +167,30 @@ DESIGN_PROMPT
         warn "_design_stage_run_inner: route_to_model_loop rc=$router_rc — design stage failed"
         emit_event "plugin.run.error" "plugin=design" "reason=router_error" "rc=$router_rc"
         return 1
+    fi
+
+    # ADR-018 Pattern 2 single-file-artifact contract (#817): recover stray
+    # design.md written by the LLM to repo root despite the explicit
+    # destination path in the prompt. Two cases:
+    #   - sibling at $repo_root/design.md is NOT git-tracked → mv into place
+    #     and emit `design.stray.recovered` for forensics
+    #   - sibling IS git-tracked → refuse (legitimate operator-checked-in
+    #     doc; never touch). Emit `design.stray.conflict reason=tracked` and
+    #     fail so the operator notices the mis-write.
+    if [[ ! -f "$output_design_md" ]]; then
+        local _stray="$repo_root/design.md"
+        if [[ -f "$_stray" ]]; then
+            if git -C "$repo_root" ls-files --error-unmatch "design.md" >/dev/null 2>&1; then
+                error "_design_stage_run_inner: tracked design.md at repo root; refusing to relocate (operator-owned)"
+                emit_event "design.stray.conflict" "plugin=design" "path=$_stray" "reason=tracked"
+                return 1
+            fi
+            mkdir -p "$artifact_dir"
+            if mv "$_stray" "$output_design_md" 2>/dev/null; then
+                warn "_design_stage_run_inner: recovered design.md from repo root → $output_design_md"
+                emit_event "design.stray.recovered" "plugin=design" "from=$_stray" "to=$output_design_md"
+            fi
+        fi
     fi
 
     # Assert the scope block is present in design.md.
