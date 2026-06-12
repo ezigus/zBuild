@@ -55,6 +55,10 @@ _numstat_path_in_scope() {
     local _ns_entry
     for _ns_entry in "${_ns_pis_allowed_ref[@]}"; do
         [[ -z "$_ns_entry" ]] && continue
+        # #818: treat `./` as universal allow. Intake emits `+ ./` for the
+        # `generic` platform meaning "everything"; literal-prefix matching
+        # would otherwise miss every path that doesn't start with `./`.
+        [[ "$_ns_entry" == "./" ]] && return 0
         [[ "$path" == "$_ns_entry" ]] && return 0
         if [[ "$_ns_entry" == */ ]]; then
             [[ "$path" == "${_ns_entry}"* ]] && return 0
