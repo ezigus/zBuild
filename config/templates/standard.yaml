@@ -47,7 +47,13 @@ plan_impact_cycle:
     field: verdict
     op: eq
     value: complete
-  max_iterations: 3
+  # max_iterations: 5 (raised from 3 in #819 — dogfood run_id 20260612060213-30653
+  # showed monotonic gap-shrinkage 5→2→1 across 3 iters but didn't reach
+  # complete; impact's second-order dependency discovery is genuinely
+  # incremental on large migrations. Each iter is ~5min; worst-case cost
+  # added: ~10min. on_max: continue preserved per ADR-021 R1 — ADR-019's
+  # fail-closed review gate is the final arbiter.).
+  max_iterations: 5
   on_max: continue
   feedback:
     - from:
