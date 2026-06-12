@@ -140,10 +140,11 @@ assert_contains "plan prompt describes a step's description field" \
     "$captured_prompt" '"description"'
 assert_contains "plan prompt describes a step's files field" \
     "$captured_prompt" '"files"'
-assert_contains "plan prompt demands a SINGLE JSON object response" \
-    "$captured_prompt" "SINGLE JSON object"
+# ADR-028 PR 2/5: framework renders canonical OUTPUT CONTRACT phrasing.
+assert_contains "plan prompt demands exactly one JSON object response" \
+    "$captured_prompt" "EXACTLY ONE JSON object"
 assert_contains "plan prompt forbids markdown code fences" \
-    "$captured_prompt" "no markdown code fences"
+    "$captured_prompt" "NO markdown code fences"
 assert_contains "plan prompt still includes the goal text" \
     "$captured_prompt" "test goal"
 
@@ -308,10 +309,10 @@ assert_eq "#478: plan.json parsed from prose-prefixed payload" "1" "$schema_v"
 
 # ─── Test 13d (#478): prompt hardening — explicit "MUST begin with {" rule ──
 captured_prompt_478="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
-assert_contains "#478: plan prompt demands response begins with '{'" \
-    "$captured_prompt_478" 'Your response MUST begin with `{`'
-assert_contains "#478: plan prompt forbids leading/trailing prose" \
-    "$captured_prompt_478" "no leading prose, no trailing prose, no markdown fences"
+assert_contains "#478: plan prompt demands first character must be {" \
+    "$captured_prompt_478" 'first output character MUST be `{`'
+assert_contains "#478 / ADR-028: prompt forbids prose before/after JSON" \
+    "$captured_prompt_478" "NO prose before, after, or around the JSON envelope"
 
 # Restore the original canned plan for any tests below
 CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
