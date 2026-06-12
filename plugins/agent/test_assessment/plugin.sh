@@ -167,8 +167,25 @@ _test_assessment_run_inner() {
     build_iters="$(printf '%s' "$build_content" | jq -r '.iterations // 0' 2>/dev/null || echo 0)"
     build_term="$(printf '%s' "$build_content" | jq -r '.terminated_reason // "complete"' 2>/dev/null || echo complete)"
 
+    # #824: use intake-captured baseline sha so cumulative branch numstat
+    # reflects ALL work since cycle start, including UNCOMMITTED worktree
+    # changes (which build's per-iter diff.patch artifact misses on timeout
+    # paths). Fail-closed if baseline missing — silent fallback to the old
+    # `branch_numstat` would re-introduce the dogfood loop bug.
+    local _baseline_ref_file="$state_dir/intake-baseline-ref.txt"
+    local _baseline_sha=""
+    if [[ -f "$_baseline_ref_file" ]]; then
+        _baseline_sha="$(head -1 "$_baseline_ref_file" | tr -d '[:space:]')"
+    fi
     local numstat
-    numstat="$(branch_numstat 2>/dev/null || echo unknown)"
+    if [[ -z "$_baseline_sha" ]]; then
+        error "_test_assessment_run_inner: intake-baseline-ref.txt missing at $_baseline_ref_file — fail-CLOSED"
+        emit_event "test_assessment.missing_baseline" "plugin=test_assessment" \
+            "path=$_baseline_ref_file"
+        return 2
+    fi
+    numstat="$(branch_numstat_since "$_baseline_sha" 2>/dev/null || echo unknown)"
+    [[ -z "$numstat" ]] && numstat="unknown"
 
     # Truncate test_output (keep tail).
     local output_bytes="$ZBUILD_TEST_ASSESSMENT_OUTPUT_BYTES"
@@ -230,6 +247,29 @@ Rules:
 - failure_summary_md is the artifact the build stage reads next iter; write
   the markdown body you want the next build prompt to see.
 - branch_numstat MUST be copied verbatim from the BRANCH NUMSTAT field below.
+
+## Verification discipline (#824)
+
+The BUILD CLAIM and BRANCH NUMSTAT fields above are DERIVED signals. They
+can be stale or misclassified — for example, build's scope_violation
+handling on timeout writes verdict=scope_violation even when the worktree
+has real implementation files from mid-iteration Edit/Write calls.
+
+Before returning verdict=fail or verdict=inconclusive based on "no work
+visible in numstat", you MUST spot-check the actual repo state using the
+Read tool against the plan's files[] entries.
+
+- If the artifacts named in the plan exist on disk and match the plan's
+  intent, return verdict=pass EVEN IF the per-iter diff is 0/0/0 — that
+  means the cycle has already converged and the build agent is correctly
+  emitting LOOP_COMPLETE on a no-op.
+- Only return fail/inconclusive if a spot-check confirms the deliverables
+  are actually missing or wrong.
+
+The Read tool is granted for exactly this purpose. Failing to use it when
+the BUILD CLAIM and BRANCH NUMSTAT disagree with what tests pass is a
+contract violation that produces the build_test_cycle infinite loop
+documented in #824.
 
 TA_PROMPT
 )"

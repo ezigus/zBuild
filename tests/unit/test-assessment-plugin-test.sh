@@ -24,11 +24,27 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/test_assessment"
 
 # ─── Fixture state dir ────────────────────────────────────────────────────────
+# #824: also initialize a git fixture inside TEST_TEMP_DIR so the plugin can
+# read intake-baseline-ref.txt and run `git diff <baseline_sha>` for the
+# cumulative numstat. Without this, the plugin fails-closed with rc=2 +
+# test_assessment.missing_baseline event.
+GIT_FIXTURE="$TEST_TEMP_DIR/repo"
+mkdir -p "$GIT_FIXTURE"
+git -C "$GIT_FIXTURE" init --quiet >/dev/null 2>&1
+git -C "$GIT_FIXTURE" config user.email 'test@example.com' >/dev/null
+git -C "$GIT_FIXTURE" config user.name  'test' >/dev/null
+printf 'seed\n' > "$GIT_FIXTURE/SEED"
+git -C "$GIT_FIXTURE" add SEED >/dev/null
+git -C "$GIT_FIXTURE" commit -m 'baseline' --quiet >/dev/null
+_BASELINE_SHA="$(git -C "$GIT_FIXTURE" rev-parse HEAD)"
+cd "$GIT_FIXTURE"
+
 STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
 echo '{"schema_version":1,"run_id":"test","issue":"567","stage_statuses":{}}' > "$STATE_FILE"
+printf '%s\n' "$_BASELINE_SHA" > "$STATE_DIR/intake-baseline-ref.txt"
 
 cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/

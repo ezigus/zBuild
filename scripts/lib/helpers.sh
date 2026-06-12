@@ -525,3 +525,78 @@ branch_numstat() {
     printf 'files=%d add=%d del=%d\n' "$files" "$add" "$del"
     return 0
 }
+
+# ─── branch_numstat_since <baseline_sha> (#824) ─────────────────────────────
+# Cumulative numstat against a known baseline sha — used by test_assessment
+# to compute branch changes since the intake-captured HEAD baseline.
+#
+# Critical difference vs `branch_numstat`: uses `git diff <sha>` (no `..HEAD`),
+# which compares the WORKTREE+INDEX against <sha>. This includes uncommitted
+# changes — the dogfood failure mode where build-stage timeouts produced
+# real worktree files but no per-iter commits would otherwise show as 0/0/0
+# under the existing `<sha>..HEAD` form.
+#
+# Output: same shape as `branch_numstat`:
+#   files=<N> add=<A> del=<B>   on success
+#   unknown                     if sha is not a valid commit or not in a git repo
+#
+# Returns 0 on success, 1 if <baseline_sha> is empty/unset, 2 on git error.
+branch_numstat_since() {
+    local baseline="${1:-}"
+    if [[ -z "$baseline" ]]; then
+        return 1
+    fi
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        printf 'unknown\n'
+        return 0
+    fi
+    if ! git rev-parse --verify --quiet "${baseline}^{commit}" >/dev/null 2>&1; then
+        printf 'unknown\n'
+        return 2
+    fi
+
+    # #824: untracked files are invisible to `git diff` without a prior
+    # `git add -N` (intent-to-add). Build's Pattern 2 helper does this
+    # exact pre-pass (see plugins/agent/build/plugin.sh + ADR-018 §"corrupt-diff
+    # gate"). Without it, the dogfood loop scenario — where mid-LLM Edit/Write
+    # calls created new untracked files — would still report files=0. We DO
+    # NOT use `git add -N` here because test_assessment is supposed to be
+    # read-only (ADR-018 Pattern 1). Instead, run two passes: tracked diff
+    # via `git diff <baseline>` + untracked counted via `git ls-files
+    # --others`.
+    local raw
+    raw="$(git diff --numstat "$baseline" 2>/dev/null || true)"
+    local untracked_raw
+    untracked_raw="$(git ls-files --others --exclude-standard 2>/dev/null || true)"
+
+    local files=0 add=0 del=0
+    local adds dels path a_n d_n
+    if [[ -n "$raw" ]]; then
+        while IFS=$'\t' read -r adds dels path; do
+            [[ -z "$path" ]] && continue
+            files=$((files + 1))
+            a_n=0; d_n=0
+            [[ "$adds" =~ ^[0-9]+$ ]] && a_n="$adds"
+            [[ "$dels" =~ ^[0-9]+$ ]] && d_n="$dels"
+            add=$((add + a_n))
+            del=$((del + d_n))
+        done <<< "$raw"
+    fi
+    if [[ -n "$untracked_raw" ]]; then
+        local _u_path _u_lines
+        while IFS= read -r _u_path; do
+            [[ -z "$_u_path" ]] && continue
+            files=$((files + 1))
+            _u_lines=0
+            if [[ -f "$_u_path" ]]; then
+                _u_lines="$(wc -l < "$_u_path" 2>/dev/null | tr -d ' ' || echo 0)"
+                if [[ -s "$_u_path" ]] && [[ "$(tail -c 1 "$_u_path" 2>/dev/null)" != $'\n' ]]; then
+                    _u_lines=$((_u_lines + 1))
+                fi
+            fi
+            add=$((add + _u_lines))
+        done <<< "$untracked_raw"
+    fi
+    printf 'files=%d add=%d del=%d\n' "$files" "$add" "$del"
+    return 0
+}
