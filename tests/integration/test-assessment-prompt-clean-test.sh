@@ -24,11 +24,26 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
+# #824: test_assessment now fail-closes if intake-baseline-ref.txt is
+# missing. Set up a git fixture so the plugin can read the baseline + run
+# git diff against it.
+_FIX_REPO="$TEST_TEMP_DIR/repo"
+mkdir -p "$_FIX_REPO"
+git -C "$_FIX_REPO" init --quiet >/dev/null 2>&1
+git -C "$_FIX_REPO" config user.email 'test@example.com' >/dev/null
+git -C "$_FIX_REPO" config user.name  'test' >/dev/null
+printf 'seed\n' > "$_FIX_REPO/SEED"
+git -C "$_FIX_REPO" add SEED >/dev/null
+git -C "$_FIX_REPO" commit -m 'baseline' --quiet >/dev/null
+_FIX_BASELINE_SHA="$(git -C "$_FIX_REPO" rev-parse HEAD)"
+cd "$_FIX_REPO"
+
 STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
 echo '{"schema_version":1,"run_id":"clean","issue":"681","stage_statuses":{}}' > "$STATE_FILE"
+printf '%s\n' "$_FIX_BASELINE_SHA" > "$STATE_DIR/intake-baseline-ref.txt"
 cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/
 + plugins/
