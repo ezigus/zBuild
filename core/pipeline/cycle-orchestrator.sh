@@ -76,6 +76,11 @@ _CYCLE_TRAP_HISTORY_FILE=""
 # zeroed on any non-timeout dispatch.
 declare -gA _CYCLE_TIMEOUT_RUN=()
 
+# ADR-029 G3 (#812): per-member max_turns base captured at the FIRST timeout.
+# Stores the original (pre-bump) budget so escalation math stays anchored
+# even after the override is in effect. Reset on success.
+declare -gA _CYCLE_TURNS_BASE=()
+
 # ─── Per-iter start-wall-clock cache (#524) ──────────────────────────────────
 # Populated by the iter-begin hook (orchestrator) and read by the iter-complete
 # hook to compute elapsed_s for the operator-visible iter-complete trailer.
@@ -937,11 +942,48 @@ _cycle_iter_dispatch() {
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             continue
         fi
+        # ─── ADR-029 G3: per-stage max_turns escalation (#812) ───────────
+        # If a previous iter recorded a router timeout for this stage,
+        # capture the original (pre-bump) budget so escalation math stays
+        # anchored. Then export ZBUILD_ROUTER_MAX_TURNS_OVERRIDE = round
+        # (base * 1.5), capped at base * 2. The router's resolver checks
+        # this OVERRIDE first (route.sh _route_resolve_max_turns). We
+        # unset the override after dispatch so it doesn't leak to sibling
+        # members of THIS iter.
+        local _g3_prior_override_set=0 _g3_prior_override=""
+        if [[ -n "${ZBUILD_ROUTER_MAX_TURNS_OVERRIDE+x}" ]]; then
+            _g3_prior_override_set=1
+            _g3_prior_override="$ZBUILD_ROUTER_MAX_TURNS_OVERRIDE"
+        fi
+        if [[ "${_CYCLE_TIMEOUT_RUN[$s]:-0}" -ge 1 ]] \
+            && [[ -n "${_CYCLE_TURNS_BASE[$s]:-}" ]]; then
+            local _g3_base="${_CYCLE_TURNS_BASE[$s]}"
+            # Escalate +50% rounded, cap at 2× base. base must be >0 and
+            # finite (the resolver default is 25).
+            local _g3_bumped=$(( _g3_base + (_g3_base / 2) ))
+            local _g3_cap=$(( _g3_base * 2 ))
+            [[ $_g3_bumped -gt $_g3_cap ]] && _g3_bumped=$_g3_cap
+            [[ $_g3_bumped -lt 1 ]] && _g3_bumped=1
+            export ZBUILD_ROUTER_MAX_TURNS_OVERRIDE="$_g3_bumped"
+            eb_emit_event "cycle.member.max_turns.escalated" \
+                "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
+                "iter=$iter" "stage=$s" \
+                "base=$_g3_base" "bumped=$_g3_bumped" "cap=$_g3_cap" 2>/dev/null || true
+        fi
+
         set +e
         cycle_dispatch_stage "$s" "$iter" "$state_file"
         rc=$?
         # Restore caller's errexit if they had it on
         [[ $_had_e -eq 1 ]] && set -e
+
+        # Restore the prior G3 override state (if any) so this stage's
+        # bump doesn't bleed into the next sibling member's dispatch.
+        if [[ $_g3_prior_override_set -eq 1 ]]; then
+            export ZBUILD_ROUTER_MAX_TURNS_OVERRIDE="$_g3_prior_override"
+        else
+            unset ZBUILD_ROUTER_MAX_TURNS_OVERRIDE
+        fi
         # ADR-025 (Wave 15-B #684) post-flight: rc=130 from the child means
         # SIGINT propagated up through the dispatch chain. Surface 130 from
         # this iter so the outer for-iter loop returns 130 to the runner,
@@ -1009,6 +1051,26 @@ _cycle_iter_dispatch() {
         if [[ "$verdict" == "error" ]] && \
            [[ "$_g2_reason" == "router_timeout" || "$_g2_reason" == "router_oom_kill" ]]; then
             _CYCLE_TIMEOUT_RUN["$s"]=$(( ${_CYCLE_TIMEOUT_RUN["$s"]:-0} + 1 ))
+            # ADR-029 G3: capture max_turns base on FIRST timeout so the
+            # next iter dispatches with an escalated budget. If a per-stage
+            # template override exists, use it; otherwise fall back to env;
+            # otherwise the compile-time default (25). Calling the template
+            # helper directly (mirrors _route_resolve_max_turns logic) so the
+            # captured base is the actual budget that was just exhausted.
+            if [[ -z "${_CYCLE_TURNS_BASE[$s]:-}" ]]; then
+                local _g3_capture=""
+                if command -v template_stage_router_max_turns >/dev/null 2>&1; then
+                    _g3_capture="$(template_stage_router_max_turns "$s" 2>/dev/null || true)"
+                fi
+                if [[ ! "$_g3_capture" =~ ^[0-9]+$ ]] || [[ "$_g3_capture" -le 0 ]]; then
+                    if [[ "${ZBUILD_ROUTER_MAX_TURNS:-}" =~ ^[0-9]+$ ]] && [[ "${ZBUILD_ROUTER_MAX_TURNS}" -gt 0 ]]; then
+                        _g3_capture="$ZBUILD_ROUTER_MAX_TURNS"
+                    else
+                        _g3_capture="25"
+                    fi
+                fi
+                _CYCLE_TURNS_BASE["$s"]="$_g3_capture"
+            fi
             eb_emit_event "cycle.member.timeout" \
                 "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
                 "iter=$iter" "stage=$s" \
@@ -1031,6 +1093,9 @@ _cycle_iter_dispatch() {
             # Reset the per-member counter on any successful (or non-timeout)
             # dispatch — only CONSECUTIVE timeouts trigger fast-abandon.
             _CYCLE_TIMEOUT_RUN["$s"]=0
+            # ADR-029 G3: also clear the captured base so a future timeout
+            # re-anchors from the (possibly re-tuned) current budget.
+            unset "_CYCLE_TURNS_BASE[$s]"
         fi
     done
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
@@ -1133,6 +1198,9 @@ cycle_orchestrator_run() {
     # MUST NOT leak between runs (different cycle ids would collide if a
     # member name repeats; a re-entry should reset the fast-abandon budget).
     _CYCLE_TIMEOUT_RUN=()
+    # ADR-029 G3 (#812): per-member max_turns base captured at first timeout.
+    # Same lifecycle as _CYCLE_TIMEOUT_RUN.
+    _CYCLE_TURNS_BASE=()
 
     if ! _cycle_load_template "$cycle_id"; then
         _CYCLE_LAST_TERMINATED_REASON="config_invalid"
