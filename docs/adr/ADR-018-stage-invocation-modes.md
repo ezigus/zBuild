@@ -100,9 +100,13 @@ Scope declaration: the prompt states which paths the stage may read (scope-manif
 by default for read-only analyzers). Pipeline post-validates tool-use log if
 available in `--output-format json` responses.
 
-**Current users:** plan, review, security-lens.
-**Future users:** design, compound_quality, TDD-spec, and any stage that produces
-a structured artifact from analysis.
+**Current users:** plan, review, security-lens, test_assessment, impact.
+**Future users:** compound_quality, TDD-spec, and any stage that produces
+a structured JSON artifact from analysis.
+
+(Amendment v4 / #816: `design` was previously listed as a future Pattern 1
+user. Survey of `plugins/agent/design/plugin.sh` showed it is implemented as
+Pattern 2 — see §Amendment v4 below.)
 
 ---
 
@@ -126,9 +130,37 @@ Scope declaration: the prompt states which files the stage may touch (e.g.
   set `scope_violation=true` in the stage summary. The stage continues to the next
   pipeline step (review verdicts on the violation rather than the pipeline aborting).
 
-**Current users:** build.
+**Current users:** build, design (amendment v4 / #816).
 **Future users:** test-fix loops, deploy-validate retry loops, any stage where
 iterative working-tree editing is required.
+
+#### Pattern 2 outputs — derived diff vs single-file artifact
+
+Pattern 2 has two output shapes; both share the agent-loop mechanism
+(`route_to_model_loop`, scope-allowlist, `LOOP_COMPLETE` sentinel, working-tree
+edits across N iterations) and differ only in how the pipeline harvests the
+artifact after the loop closes:
+
+- **Derived-diff shape** (`build`): pipeline runs `git diff HEAD` post-loop and
+  writes `diff.patch`. The prompt instructs the LLM NOT to emit a unified diff;
+  it makes working-tree edits through Edit/Write tools and the pipeline derives
+  the canonical artifact deterministically.
+- **Single-file-artifact shape** (`design`): the LLM writes one named file
+  (e.g. `design.md`) directly via Edit/Write. The pipeline harvests by path
+  resolved through the ADR-015 stage-io path-resolver (no literal layout pinned
+  here). Plugins in this shape MUST inject the absolute destination path into
+  the LLM prompt — the LLM defaults to its CWD otherwise. If the LLM writes
+  the artifact to a repo-root sibling instead of the declared path AND that
+  sibling is NOT git-tracked, the plugin SHOULD `mv` it into the resolver-
+  supplied destination and emit `<plugin>.stray.recovered` for forensics. If
+  the sibling IS git-tracked, the plugin MUST refuse to relocate it and emit
+  `<plugin>.stray.conflict reason=tracked` (a tracked file at that path is a
+  legitimate operator-checked-in document). Event names use dot-namespaced
+  segments (no underscores) per existing event-schema.json convention.
+
+Both shapes use the same `route_to_model_loop` entrypoint and the same
+LOOP_COMPLETE termination semantics; the distinction is purely in
+post-loop artifact harvest.
 
 #### Implementation Notes — corrupt-diff gate (issue #509)
 
@@ -296,8 +328,9 @@ Adding a new stage is a plugin fill-in, not a template or router change:
 
 | If the new stage… | Use pattern | Checklist |
 |---|---|---|
-| Produces a structured artifact from analysis | **Pattern 1** | (1) heredoc prompt; (2) declare scope source; (3) optionally register renderer |
-| Iteratively modifies the working tree until a condition is met | **Pattern 2** | (1) heredoc prompt with DONE sentinel rule; (2) declare scope source; (3) define loop termination condition; (4) post-validate derived artifact |
+| Produces a structured JSON artifact from analysis | **Pattern 1** | (1) heredoc prompt; (2) declare scope source; (3) optionally register renderer |
+| Iteratively edits the working tree; canonical artifact is a derived diff | **Pattern 2** (derived-diff, see §Pattern 2 outputs) | (1) heredoc prompt with DONE sentinel rule; (2) declare scope source; (3) define loop termination condition; (4) post-validate derived diff |
+| Iteratively edits the working tree; canonical artifact is a single named file | **Pattern 2** (single-file-artifact, see §Pattern 2 outputs) | (1) heredoc prompt with DONE sentinel rule + absolute destination path; (2) declare scope source; (3) post-run fallback `mv` from repo-root sibling; (4) `_cleanup` hook removes stray untracked copies |
 | Deterministic only (tests, lint, diff apply, intake's `gh issue view`) | **No LLM** | Pure bash + emit events |
 
 Once Issues A + B ship, adding any new stage requires zero changes to
@@ -823,3 +856,44 @@ The Pattern 1 (single-turn JSON envelope) and Pattern 2 (agent-loop with sentine
 **ADR-028 codifies the shared LLM-agent stage framework** that consolidates: OUTPUT CONTRACT renderer, envelope parser, schema validator, error class registry, and router rc classifier. All Pattern 1 stages MUST migrate to the framework once it ships.
 
 Pattern 2 stages (build) keep their loop-with-sentinel shape but adopt the shared envelope parser + router rc classifier as they don't carry full JSON-envelope concerns.
+
+---
+
+## Amendment v4 (2026-06-12, #816) — design reclassified Pattern 2
+
+Dogfood `run_id 20260612060213-30653` (issue #755) failed when the design
+stage's LLM wrote `design.md` to its CWD (`$repo_root`) and the plugin
+checked for the file at `$artifact_dir/design.md`. Investigation showed:
+
+- The classification table at line 40 (frozen-shipwright reference) and
+  the Pattern 1 "Future users" list at line ~104 named `design` as Pattern 1.
+- The actual implementation in `plugins/agent/design/plugin.sh` uses
+  `route_to_model_loop` with `cwd=$repo_root` — Pattern 2 mechanics
+  (iterative agent loop, working-tree edits, `Iteration N/10` prompt) — to
+  produce a single `design.md` artifact.
+
+Per CLAUDE.md ("if implementation drifts from spec, the spec wins") and
+the dogfood evidence that the iterative-loop shape is operationally correct,
+this amendment **reclassifies design from Pattern 1 to Pattern 2** and
+codifies the "single-file-artifact" output shape inside the existing
+Pattern 2 contract (no new pattern class introduced).
+
+Companion implementation lands in #817 — design plugin gains: (a) absolute
+destination path injected into the LLM prompt; (b) post-LLM fallback `mv`
+from `$repo_root/design.md` → `$artifact_dir/design.md` when the sibling
+is untracked; (c) fail-fast refusal when the sibling is tracked (preserves
+operator-checked-in design docs); (d) two new events for forensics —
+`design.stray.recovered` and `design.stray.conflict`.
+
+Issues #756 / #757 / #758 (A3/A4/A5 agent migrations) have been edited
+to cite this ADR and require an explicit Pattern 1 / Pattern 2 (with
+sub-shape) decision in their PR body, preventing future drift.
+
+The plugin header comment at `plugins/agent/design/plugin.sh:6` is updated
+from `"Pattern 1 — single-shot LLM output"` to
+`"Pattern 2 — agent-loop, single-file artifact"` as part of #817.
+
+Rollback: revert this amendment + reverse the line-40 / line-103 / decision-
+table edits + remove the "Pattern 2 outputs" sub-section. The implementation
+in #817 still works correctly under either classification (the dest-path
+contract is plugin-internal); the ADR drift would simply re-emerge.

@@ -2,9 +2,11 @@
 # Tests: plan/review/security-lens symmetrically opt-in to producer-side
 # artifact tagging (#483, ADR-018 Implementation Notes).
 #
-# This is a table-driven sanity check that all three Pattern 1 stages export
+# This is a table-driven sanity check that all Pattern 1 stages export
 # ZBUILD_ROUTER_ARTIFACT_ID around their route_to_model call with the
-# expected id. Per-plugin tests already exercise the same invariant on the
+# expected id. Design is intentionally excluded — it is Pattern 2 per
+# ADR-018 Amendment v4 (#816) and uses route_to_model_loop, not the
+# Pattern 1 single-shot route. Per-plugin tests already exercise the same invariant on the
 # plugin's own run path; this test is the cross-plugin parity lock.
 set -euo pipefail
 
