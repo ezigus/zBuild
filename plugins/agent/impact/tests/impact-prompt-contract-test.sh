@@ -11,19 +11,28 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "impact prompt contract + parser + forensics (#767)"
 setup_test_env "impact-prompt-contract"
 
-PROMPT_FILE="$REPO_ROOT/plugins/agent/impact/plugin.sh"
+# ADR-028 PR 5/5: OUTPUT CONTRACT / FORBIDDEN / FINAL RULE moved into the
+# shared llm-agent framework. The plugin sources it; the contract still
+# lives in source, just split across two files now. Concatenate for the
+# grep-based assertions below.
+PROMPT_SOURCES="$(cat "$REPO_ROOT/plugins/agent/impact/plugin.sh" \
+                      "$REPO_ROOT/scripts/lib/llm-agent.sh")"
+PROMPT_FILE="$(mktemp -t impact-contract-prompt.XXXXXX)"
+printf '%s' "$PROMPT_SOURCES" > "$PROMPT_FILE"
+trap 'rm -f "$PROMPT_FILE"' EXIT
 
-# T1: prompt strengthening
+# T1: prompt strengthening (ADR-028 canonical OUTPUT CONTRACT block).
+# Consolidation: CORRECT/INCORRECT examples and the duplicate REMINDER
+# ("response begins with") were redundant with FORBIDDEN+FINAL RULE; the
+# framework block states each rule exactly once. See PR #807 / ADR-028.
 assert_contains "T1: prompt has explicit OUTPUT CONTRACT block" \
     "$(cat "$PROMPT_FILE")" "OUTPUT CONTRACT"
 assert_contains "T1: prompt requires first character {" \
     "$(cat "$PROMPT_FILE")" "first output character MUST be"
-assert_contains "T1: prompt has CORRECT example" \
-    "$(cat "$PROMPT_FILE")" "CORRECT example"
-assert_contains "T1: prompt has INCORRECT example" \
-    "$(cat "$PROMPT_FILE")" "INCORRECT example"
-assert_contains "T1: prompt repeats reminder before PLAN" \
-    "$(cat "$PROMPT_FILE")" "response begins with"
+assert_contains "T1: prompt declares EXACTLY ONE JSON object" \
+    "$(cat "$PROMPT_FILE")" "EXACTLY ONE JSON object"
+assert_contains "T1: prompt has FINAL RULE preventing postamble" \
+    "$(cat "$PROMPT_FILE")" "FINAL RULE"
 
 # T2: parser switched
 assert_contains "T2: parser switched to extract_json_and_surrounding_prose" \
@@ -86,7 +95,7 @@ assert_contains "T7: prompt has explicit FORBIDDEN heading" \
 assert_contains "T8: prompt directs observations into impact_feedback_md field" \
     "$PROMPT_BODY" "impact_feedback_md"
 assert_contains "T8: prompt explicitly forbids prose AROUND the envelope" \
-    "$PROMPT_BODY" "before or after"
+    "$PROMPT_BODY" "before, after, or around"
 
 # T9: defensive parser kept in place — #771 recovery still load-bearing at
 # any prompt-quality level. Regression guard against accidentally removing
