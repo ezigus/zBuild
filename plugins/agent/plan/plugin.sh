@@ -27,6 +27,9 @@ source "$_PLAN_ROOT/core/redaction/scope-redaction.sh"
 source "$_PLAN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_PLAN_ROOT/core/router/route.sh"
+# ADR-028: shared LLM-agent stage framework (PR 2/5 — plan migration).
+# shellcheck source=../../../scripts/lib/llm-agent.sh
+source "$_PLAN_ROOT/scripts/lib/llm-agent.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 plan_init() {
@@ -337,24 +340,11 @@ _plan_run_inner() {
     # Invite Read for context-gathering inside the scope-manifest; forbid
     # mutating tools. Inline the scope-manifest verbatim as ground truth so
     # the LLM does not hallucinate paths. Pipeline post-validates files[].
-    local _plan_instructions
-    _plan_instructions="$(cat <<'PLAN_PROMPT'
-You are a software planning agent. Decompose the goal into concrete
-implementation steps.
-
-Tool use:
-- You may use the Read tool to inspect files within the scope-manifest
-  before producing the plan. Read only paths under the scope-manifest
-  prefixes listed at the end of this prompt.
-- Do NOT call Edit, Write, or Bash. This stage is read-only.
-
-Output contract:
-- Your FINAL response must be a SINGLE JSON object — no markdown code fences,
-  no commentary before or after the JSON.
-- Your response MUST begin with `{` and contain nothing other than the JSON object — no leading prose, no trailing prose, no markdown fences.
-
-Required JSON schema:
-
+    # ADR-028: canonical OUTPUT CONTRACT block from framework. Plan has no
+    # `.verdict` field so verdicts=none (omits the enum line and decouples
+    # validation from a verdict assumption).
+    local _plan_schema
+    _plan_schema="$(cat <<'PLAN_SCHEMA'
   {
     "schema_version": 1,
     "title": "<short title>",
@@ -370,6 +360,24 @@ Required JSON schema:
     "estimated_total_lines": <integer>,
     "notes": "<optional caveats; empty string if none>"
   }
+PLAN_SCHEMA
+)"
+    local _output_contract_block
+    _output_contract_block="$(_llm_output_contract \
+        --stage plan \
+        --verdicts none \
+        --schema-json "$_plan_schema")"
+
+    local _plan_instructions
+    _plan_instructions="$(cat <<'PLAN_PROMPT'
+You are a software planning agent. Decompose the goal into concrete
+implementation steps.
+
+Tool use:
+- You may use the Read tool to inspect files within the scope-manifest
+  before producing the plan. Read only paths under the scope-manifest
+  prefixes listed at the end of this prompt.
+- Do NOT call Edit, Write, or Bash. This stage is read-only.
 
 Rules:
 - `schema_version` MUST be the integer 1.
@@ -415,6 +423,10 @@ checklists), you MUST honor the following:
 Goal:
 PLAN_PROMPT
 )"
+    # Prepend the framework-rendered OUTPUT CONTRACT block (ADR-028).
+    _plan_instructions="$_output_contract_block
+
+$_plan_instructions"
     # Inline the scope-manifest verbatim (ground truth). Falls back to a
     # placeholder if the manifest file is unreadable so the prompt remains
     # well-formed; redaction has already fail-closed in that case above.
