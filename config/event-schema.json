@@ -71,6 +71,8 @@
     "cycle.predicate.evaluated",
     "cycle.member.dispatch.start",
     "cycle.member.dispatch.complete",
+    "cycle.member.timeout",
+    "cycle.member.timeout_abandoned",
     "review.test_status.missing",
     "review.jq.parse_error",
     "test_assessment.missing_input",
