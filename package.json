@@ -12,23 +12,7 @@
   "bugs": {
     "url": "https://github.com/ezigus/zBuild/issues"
   },
-  "bin": {
-    "zbuild": "scripts/zbuild",
-    "zb": "scripts/zbuild"
-  },
-  "files": [
-    "scripts/",
-    "core/",
-    "plugins/",
-    "config/",
-    "docs/",
-    "install.sh",
-    "LICENSE",
-    "README.md",
-    "CLAUDE.md"
-  ],
   "scripts": {
-    "install:global": "npm pack && npm install -g \"$(ls zbuild-*.tgz | tail -1)\" && rm zbuild-*.tgz",
     "test": "bash tests/run-all.sh",
     "test:unit": "bash scripts/run-tests.sh --tier unit",
     "test:integration": "bash scripts/run-tests.sh --tier integration",
