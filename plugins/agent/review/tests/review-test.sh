@@ -360,27 +360,27 @@ assert_eq "review exports ZBUILD_ROUTER_ARTIFACT_ID=review around route_to_model
 
 captured_prompt="$(cat "$_CAPTURED_REVIEW_PROMPT")"
 
-# Kept hygiene tokens
-if echo "$captured_prompt" | grep -q "no markdown code fences"; then
-    assert_pass "prompt contains 'no markdown code fences'"
+# Kept hygiene tokens (ADR-028 canonical phrasing).
+if echo "$captured_prompt" | grep -q "NO markdown code fences"; then
+    assert_pass "prompt contains 'NO markdown code fences'"
 else
-    assert_fail "prompt missing 'no markdown code fences'" "got: $(echo "$captured_prompt" | head -5)"
+    assert_fail "prompt missing 'NO markdown code fences'" "got: $(echo "$captured_prompt" | head -5)"
 fi
 
-if echo "$captured_prompt" | grep -qi "SINGLE JSON object"; then
-    assert_pass "prompt contains 'SINGLE JSON object'"
+if echo "$captured_prompt" | grep -q "EXACTLY ONE JSON object"; then
+    assert_pass "prompt contains 'EXACTLY ONE JSON object'"
 else
-    assert_fail "prompt missing 'SINGLE JSON object'" "got: $(echo "$captured_prompt" | head -5)"
+    assert_fail "prompt missing 'EXACTLY ONE JSON object'" "got: $(echo "$captured_prompt" | head -5)"
 fi
 
-# #478: prompt hardening — explicit "MUST begin with {" rule
-if echo "$captured_prompt" | grep -qF 'Your response MUST begin with `{`'; then
-    assert_pass "#478: review prompt demands response begins with '{'"
+# #478: prompt hardening — explicit "first character MUST be {" rule (canonical phrasing).
+if echo "$captured_prompt" | grep -qF 'first output character MUST be `{`'; then
+    assert_pass "#478: review prompt demands first output character '{'"
 else
-    assert_fail "#478: review prompt missing 'MUST begin with {' rule"
+    assert_fail "#478: review prompt missing 'first character MUST be {' rule"
 fi
-if echo "$captured_prompt" | grep -qF "no leading prose, no trailing prose, no markdown fences"; then
-    assert_pass "#478: review prompt forbids leading/trailing prose"
+if echo "$captured_prompt" | grep -qF "NO prose before, after, or around the JSON envelope"; then
+    assert_pass "#478: review prompt forbids prose around envelope"
 else
     assert_fail "#478: review prompt missing prose prohibition"
 fi
