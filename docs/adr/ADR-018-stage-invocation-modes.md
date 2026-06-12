@@ -149,12 +149,14 @@ artifact after the loop closes:
   (e.g. `design.md`) directly via Edit/Write. The pipeline harvests by path
   resolved through the ADR-015 stage-io path-resolver (no literal layout pinned
   here). Plugins in this shape MUST inject the absolute destination path into
-  the LLM prompt — the LLM defaults to its CWD otherwise. If the LLM writes to
-  a repo-root sibling instead of the declared path, the plugin's post-run
-  verification SHOULD `mv` it into the resolver-supplied destination and emit
-  `<plugin>.stray_file.recovered` for forensics. Stray-file cleanup outside the
-  declared destination is a plugin concern (per-plugin `_cleanup` hook); the
-  cleanup MUST refuse to delete files that are git-tracked.
+  the LLM prompt — the LLM defaults to its CWD otherwise. If the LLM writes
+  the artifact to a repo-root sibling instead of the declared path AND that
+  sibling is NOT git-tracked, the plugin SHOULD `mv` it into the resolver-
+  supplied destination and emit `<plugin>.stray.recovered` for forensics. If
+  the sibling IS git-tracked, the plugin MUST refuse to relocate it and emit
+  `<plugin>.stray.conflict reason=tracked` (a tracked file at that path is a
+  legitimate operator-checked-in document). Event names use dot-namespaced
+  segments (no underscores) per existing event-schema.json convention.
 
 Both shapes use the same `route_to_model_loop` entrypoint and the same
 LOOP_COMPLETE termination semantics; the distinction is purely in
@@ -878,9 +880,10 @@ Pattern 2 contract (no new pattern class introduced).
 
 Companion implementation lands in #817 — design plugin gains: (a) absolute
 destination path injected into the LLM prompt; (b) post-LLM fallback `mv`
-from `$repo_root/design.md` → `$artifact_dir/design.md`; (c) cleanup of
-untracked stray repo-root copies; (d) new `design.stray_file.recovered`
-event for forensics.
+from `$repo_root/design.md` → `$artifact_dir/design.md` when the sibling
+is untracked; (c) fail-fast refusal when the sibling is tracked (preserves
+operator-checked-in design docs); (d) two new events for forensics —
+`design.stray.recovered` and `design.stray.conflict`.
 
 Issues #756 / #757 / #758 (A3/A4/A5 agent migrations) have been edited
 to cite this ADR and require an explicit Pattern 1 / Pattern 2 (with
