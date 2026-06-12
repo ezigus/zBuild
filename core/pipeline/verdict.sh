@@ -272,6 +272,32 @@ runner_read_stage_verdict() {
 # diagnostic events (stage.verdict.missing, pipeline.indicator.unknown_verdict)
 # fire exactly once for the artifact — emitting them here too would double-
 # count.
+# ─── runner_read_stage_reason <state_dir> <manifest> <stage> <rc> ───────────
+# ADR-029 G2 (#810): when a stage produced verdict=error, return the .reason
+# string from its primary output JSON. Used by the cycle orchestrator's
+# G2 fast-abandon: a reason of `router_timeout` / `router_oom_kill` from
+# `_router_rc_classify` is the signal that this dispatch was infra-failed
+# (not a recoverable model error).
+#
+# Side-effects: NONE here. No events emitted; the classified verdict reader
+# already covered diagnostic events for this dispatch pass.
+runner_read_stage_reason() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    if [[ "$rc" -ne 0 ]]; then echo ""; return 0; fi
+    if [[ -z "$manifest" || ! -f "$manifest" ]]; then echo ""; return 0; fi
+    local prim_path resolved
+    prim_path="$(_verdict_primary_output_path "$manifest")"
+    [[ -z "$prim_path" ]] && { echo ""; return 0; }
+    resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
+    [[ ! -s "$resolved" ]] && { echo ""; return 0; }
+    case "$resolved" in
+        *.json) ;;
+        *)      echo ""; return 0 ;;
+    esac
+    jq empty "$resolved" >/dev/null 2>&1 || { echo ""; return 0; }
+    jq -r '.reason // empty' "$resolved" 2>/dev/null || echo ""
+}
+
 runner_read_stage_verdict_raw() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
 

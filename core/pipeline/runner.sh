@@ -1114,6 +1114,7 @@ main() {
         _CYCLE_DISPATCH_VERDICT=""
         _CYCLE_DISPATCH_VERDICT_RAW=""
         _CYCLE_DISPATCH_STATUS=""
+        _CYCLE_DISPATCH_REASON=""
         local _cd_plugin_dir _cd_rc=0
         _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
         if [[ -z "$_cd_plugin_dir" ]]; then
@@ -1146,6 +1147,11 @@ main() {
         # the raw call here is side-effect-free and won't duplicate them.
         _CYCLE_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
         [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
+        # ADR-029 G2 (#810): expose the .reason channel when verdict=error so
+        # the cycle orchestrator can distinguish router_timeout / router_oom_kill
+        # (infra-failure → counts toward fast-abandon threshold) from other
+        # error reasons (don't burn the abandon budget).
+        _CYCLE_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else

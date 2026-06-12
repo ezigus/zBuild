@@ -70,6 +70,12 @@ _CYCLE_TRAP_CYCLE_ID=""
 _CYCLE_TRAP_ITER=0
 _CYCLE_TRAP_HISTORY_FILE=""
 
+# ADR-029 G2 (#810): per-member consecutive router-timeout counter.
+# Resets on every cycle_orchestrator_run entry. Incremented when a leaf
+# member returns verdict=error reason=router_timeout|router_oom_kill;
+# zeroed on any non-timeout dispatch.
+declare -gA _CYCLE_TIMEOUT_RUN=()
+
 # ─── Per-iter start-wall-clock cache (#524) ──────────────────────────────────
 # Populated by the iter-begin hook (orchestrator) and read by the iter-complete
 # hook to compute elapsed_s for the operator-visible iter-complete trailer.
@@ -460,6 +466,19 @@ _cycle_detect_blocked() {
         v="$(jq -r --arg s "$s" '.[$s].verdict // empty' <<< "$blob" 2>/dev/null || true)"
         case "$v" in
             error|corrupt_diff|block)
+                # ADR-029 G2 (#810): a verdict=error from this iter that
+                # came from a router timeout/OOM is recoverable — the
+                # member loop's G2 logic owns the abandon decision and
+                # already terminated rc=4 if it hit threshold. If we
+                # reached _cycle_detect_blocked, the counter is still
+                # under threshold, so let the cycle iterate once more.
+                # Without this skip, the first verdict=error would
+                # always shadow G2's count-to-2 rule.
+                if [[ "$v" == "error" ]] && \
+                   [[ -n "${_CYCLE_TIMEOUT_RUN[$s]:-}" ]] && \
+                   [[ "${_CYCLE_TIMEOUT_RUN[$s]}" -ge 1 ]]; then
+                    continue
+                fi
                 # Stash matched stage/verdict so caller can emit cycle.blocked
                 # with the originating context (event ordering MED #9).
                 _CYCLE_BLOCKED_STAGE="$s"
@@ -758,6 +777,7 @@ _cycle_iter_dispatch() {
         _CYCLE_DISPATCH_VERDICT=""
         _CYCLE_DISPATCH_VERDICT_RAW=""
         _CYCLE_DISPATCH_STATUS=""
+        _CYCLE_DISPATCH_REASON=""
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by the runner's SIGINT trap between this stage and the last.
         # Bail before spawning the next child so the abort observes at the
@@ -975,6 +995,43 @@ _cycle_iter_dispatch() {
         # already used in the predicate-evaluation blob), the rc the
         # dispatch returned, and the status string.
         _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+
+        # ─── ADR-029 G2: repeated-timeout fast abandon (#810) ────────────
+        # When a member returns verdict=error AND reason ∈ {router_timeout,
+        # router_oom_kill}, increment that member's consecutive-timeout
+        # counter (scoped to this cycle's run). Reset on any non-timeout
+        # dispatch. On 2nd consecutive timeout, emit
+        # `cycle.member.timeout_abandoned` and terminate the cycle now —
+        # a third 900s retry would burn budget on what is almost certainly
+        # an over-budget context (per ADR-029, the dogfood pattern that
+        # motivated this rule was 3× 900s = 45min wasted before failing).
+        local _g2_reason="${_CYCLE_DISPATCH_REASON:-}"
+        if [[ "$verdict" == "error" ]] && \
+           [[ "$_g2_reason" == "router_timeout" || "$_g2_reason" == "router_oom_kill" ]]; then
+            _CYCLE_TIMEOUT_RUN["$s"]=$(( ${_CYCLE_TIMEOUT_RUN["$s"]:-0} + 1 ))
+            eb_emit_event "cycle.member.timeout" \
+                "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
+                "iter=$iter" "stage=$s" \
+                "reason=$_g2_reason" \
+                "consecutive=${_CYCLE_TIMEOUT_RUN[$s]}" 2>/dev/null || true
+            if [[ "${_CYCLE_TIMEOUT_RUN[$s]}" -ge 2 ]]; then
+                eb_emit_event "cycle.member.timeout_abandoned" \
+                    "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
+                    "iter=$iter" "stage=$s" \
+                    "reason=$_g2_reason" \
+                    "consecutive=${_CYCLE_TIMEOUT_RUN[$s]}" 2>/dev/null || true
+                warn "cycle: $s repeated router timeout (${_CYCLE_TIMEOUT_RUN[$s]}× $_g2_reason) — abandoning iter $iter and terminating cycle (ADR-029 G2)"
+                _CYCLE_LAST_TERMINATED_REASON="timeout_abandoned"
+                _CYCLE_LAST_VERDICTS_BLOB="$blob"
+                _CYCLE_LAST_FAILURE_COUNT="$fail"
+                [[ $_had_e -eq 1 ]] && set -e
+                return 4
+            fi
+        else
+            # Reset the per-member counter on any successful (or non-timeout)
+            # dispatch — only CONSECUTIVE timeouts trigger fast-abandon.
+            _CYCLE_TIMEOUT_RUN["$s"]=0
+        fi
     done
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
     # #566: restore caller's ZBUILD_CURRENT_STAGE — preserves prior value if
@@ -1071,6 +1128,11 @@ cycle_orchestrator_run() {
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
     _CYCLE_ITER_START_MS=()
+    # ADR-029 G2 (#810): clear per-member router-timeout counters at every
+    # cycle entry. The map persists across iters WITHIN a single run, but
+    # MUST NOT leak between runs (different cycle ids would collide if a
+    # member name repeats; a re-entry should reset the fast-abandon budget).
+    _CYCLE_TIMEOUT_RUN=()
 
     if ! _cycle_load_template "$cycle_id"; then
         _CYCLE_LAST_TERMINATED_REASON="config_invalid"
@@ -1144,7 +1206,12 @@ cycle_orchestrator_run() {
             return 130
         fi
         if [[ $_iter_rc -ne 0 ]]; then
-            _CYCLE_LAST_TERMINATED_REASON="error"
+            # ADR-029 G2: preserve timeout_abandoned reason if the iter
+            # dispatcher already set it (the abandon path is a documented
+            # rc=4 with a more specific reason than generic "error").
+            if [[ "${_CYCLE_LAST_TERMINATED_REASON:-}" != "timeout_abandoned" ]]; then
+                _CYCLE_LAST_TERMINATED_REASON="error"
+            fi
             _cycle_clear_traps
             return 4
         fi
