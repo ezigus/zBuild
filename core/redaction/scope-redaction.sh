@@ -187,9 +187,12 @@ apply_scope_redaction() {
             # regex above also matches prose fragments like "cycle/plateau"
             # or "plateau/convergence". A token only counts as a path if it
             # EITHER ends in a file extension (`.sh`, `.json`, `.yaml`, etc.)
-            # OR starts with a known repo-top-level directory.
+            # OR starts with a known repo-top-level directory
+            # OR is an absolute path (begins with `/` — covers /etc/passwd,
+            # /usr/bin/foo, and other Unix system paths that the redactor
+            # MUST continue to catch per the chokepoint contract).
             ext_ok    = (token ~ /\.[A-Za-z0-9]{1,8}$/)
-            prefix_ok = (token ~ /^(\.\/)?(core|scripts|plugins|tests|docs|config|legacy)\//)
+            prefix_ok = (token ~ /^(\.\/)?(core|scripts|plugins|tests|docs|config|legacy)\//) || (token ~ /^\//)
             if (!ext_ok && !prefix_ok) {
                 # Not a path-looking token — leave verbatim, no wrap, no log
                 # (counter_log is reserved for the digit-only case).
