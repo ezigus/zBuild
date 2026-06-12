@@ -119,7 +119,7 @@ Resolution at startup: read config, look up the named backend in the plugin regi
 
 ### Graceful degradation rules
 
-1. **Default backend always works.** Out-of-box experience requires nothing more than `npm install -g zbuild`.
+1. **Default backend always works.** Out-of-box experience requires nothing more than `./install.sh` (per ADR-023).
 2. **Optional backend can be configured but unavailable at runtime** (e.g., ruflo daemon crashed). Each backend declares `fallback_to_default_on_error: true|false`. If true, runtime falls back to default with a `backend.degraded` event; if false, hard-fails with a clear error.
 3. **Backend capabilities are declarative.** Callers query `<backend>_capabilities` and choose a code path based on what's available. Example: pipeline-intelligence might do vector search if `vector_search` is in capabilities, TF-IDF otherwise.
 

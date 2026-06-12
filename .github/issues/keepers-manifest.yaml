@@ -134,12 +134,12 @@ milestones:
     description: |
       Scaffolding required to run zBuild end-to-end at all — pipeline runner,
       model router stub, intake/output stages, security-lens LLM wiring — plus
-      install paths (npm publish, one-shot installer) and CI integration
-      (reusable workflow, daemon-in-Actions, auth docs). Not keepers; new code
-      that the manifest didn't originally cover. Ships when:
+      install path (`install.sh` per ADR-023) and CI integration (reusable
+      workflow, daemon-in-Actions, auth docs). Not keepers; new code that the
+      manifest didn't originally cover. Ships when:
       'zbuild pipeline start --goal "..." --scope src/' produces a real
-      security audit comment on a GitHub issue, AND `npx zbuild` works from
-      a clean machine.
+      security audit comment on a GitHub issue, AND `./install.sh` from a
+      clean machine puts a working `zbuild` on PATH (per ADR-023).
 # ─── Issues ─────────────────────────────────────────────────────────────────
 # Body template (markdown) used for every keeper issue. Substitution placeholders:
 #   ${spec_cite}      — KEEPERS section
@@ -985,12 +985,13 @@ issues:
   #   #213  cipar-4      Output destination dispatch table (supersedes mvp-5a)
   #   #225  mvp-rsm-1    `zbuild pipeline resume` CLI + auto-resume policy
   #
-  # Wave B — Distribution (npm publish is the gate; rest parallel after)
-  #   #88   inst-1       npm publish 0.1.0 (SERIAL — gates B+C tracks)
-  #     ├─ #89   inst-2  One-shot installer (parallel with #91)
-  #     ├─ #91   ci-1    Reusable workflow .github/workflows/zbuild-pipeline.yml
-  #     └─ #90   inst-3  Doctor verifies install (after #88+#89)
-  #   #93   ci-3        Auth + permissions docs (parallel anytime)
+  # Wave B — Distribution
+  #   SUPERSEDED by ADR-023 (#595): distribution is install-from-source via
+  #   `./install.sh`. npm publish path retired in #838.
+  #   #89   inst-2       One-shot installer (./install.sh — landed via #595)
+  #   #91   ci-1         Reusable workflow .github/workflows/zbuild-pipeline.yml
+  #   #90   inst-3       Doctor verifies install
+  #   #93   ci-3         Auth + permissions docs (parallel anytime)
   #
   # Wave C — Backend contracts (3 independent serial chains, parallel between)
   #   Memory:        #215 → #216 (SQLite default) → #217 (ruflo optional)
@@ -1252,26 +1253,26 @@ issues:
     closed_reason: 'Merged PR #240 (2026-05-24).'
   # ─── Phase 0.5 — Installation (3 issues) ────────────────────────────────
   - id: inst-1
-    title: "[Phase 0.5] npm publish flow (complete release.yml, first 0.1.0 publish)"
+    title: "[Phase 0.5] npm publish flow (SUPERSEDED by ADR-023 / #838)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: [phase-0, foundation, cli-ux]
     body: |
-      .github/workflows/release.yml is drafted but the npm publish step is
-      commented out pending 0.1.0. Complete the flow + ship the first
-      publish so `npm install -g zbuild` works.
+      SUPERSEDED. Original scope was to publish zbuild to the npm registry and
+      ship `npm install -g zbuild` as the install path. ADR-023 (#595)
+      replaced that plan with `./install.sh` + `$ZBUILD_HOME` as the single
+      source of truth install path. The npm-distribution scaffolding was
+      retired in #838 (package.json `install:global`/`bin`/`files` removed,
+      `.github/workflows/release.yml` deleted).
 
-      Scope:
+      Historical scope (kept for record only — DO NOT EXECUTE):
       - Bump version in package.json to 0.1.0
       - Uncomment + test npm publish step in release.yml
       - Add NPM_TOKEN secret to the repo
       - Tag v0.1.0; verify the workflow runs and publishes
       - Verify on clean machine: `npx zbuild --version` and
         `npm install -g zbuild && zbuild --version`
-
-      Should land AFTER MVP-1..5 so the first published version actually does
-      something (runs a security audit) rather than printing stubs.
     state: closed
-    closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:18:53Z). Recorded by manifest-sync.'
+    closed_reason: 'Superseded by ADR-023 (#595) / #838 — install path is `./install.sh`, not npm.'
   - id: inst-2
     title: "[Phase 0.5] One-shot installer (curl | bash)"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -2203,12 +2204,14 @@ issues:
       legacy/demo/: full-demo.tape, hero.tape (asciinema), sample LinkedIn
       post, package.json with sample workflows. Onboarding accelerant.
   - id: l-24
-    title: "[L] Postinstall script (npm install side-effects)"
+    title: "[L] Post-install script (install.sh side-effects)"
     milestone: "Wishlist — Post-stabilization"
     labels: [wishlist, cli-ux]
     body: |
-      `scripts/postinstall.mjs` behavior — PATH check, completion install,
-      first-run wizard offer. Polish for the `npm install -g zbuild` flow.
+      Post-install side-effects to land at the end of `install.sh` (per
+      ADR-023): PATH check, shell-completion install, first-run wizard offer.
+      Previously framed as an `npm install -g zbuild` postinstall.mjs hook;
+      that path was retired in #838. Same UX goals, different mechanism.
   - id: l-25
     title: "[L] Jira tracker adapter (bidirectional sync)"
     milestone: "Wishlist — Post-stabilization"
