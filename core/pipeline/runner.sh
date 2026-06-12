@@ -429,12 +429,25 @@ _render_cycle_entry() {
 
 # ─── _render_cycle_iter_divider <cycle_id> <iter> <max> ───────────────────────
 # Light `─` CYAN sub-divider for each iter boundary, e.g.
-# `─── iter 2/5 ───────────────────`. Emitted by the orchestrator's iter-begin
-# hook BEFORE the first per-stage banner of the iter.
+# `─── build_test_cycle iter 2/5 ─────`. When this cycle is nested inside
+# another cycle the orchestrator has already set ZBUILD_SEQ_PREFIX (e.g.
+# `4.1`) — surface it as a `[<prefix>]` prefix so operators can tell at a
+# glance which outer iter this divider belongs to:
+#   outer (no prefix): `─── review_cycle iter 1/2 ───`
+#   inner (prefix set): `─── [4.1] build_test_cycle iter 1/3 ───`
+# Reuses the seq-prefix machinery from Wave 19-B #718 / cycle-orchestrator.sh:888
+# — no new plumbing, no hook-signature change. Emitted by the orchestrator's
+# iter-begin hook BEFORE the first per-stage banner of the iter.
 _render_cycle_iter_divider() {
     local cycle_id="$1" iter="$2" max="$3"
+    local prefix="${ZBUILD_SEQ_PREFIX:-}"
+    local label
+    if [[ -n "$prefix" ]]; then
+        label=" [${prefix}] ${cycle_id} iter ${iter}/${max} "
+    else
+        label=" ${cycle_id} iter ${iter}/${max} "
+    fi
     local width; width="$(_term_width)"
-    local label=" iter ${iter}/${max} "
     local sides=$(( (width - ${#label}) / 2 ))
     [[ "$sides" -lt 2 ]] && sides=2
     local bar
