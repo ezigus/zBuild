@@ -483,7 +483,15 @@ _route_call_claude() {
             "subtype=${_sync_subtype:-absent}" \
             2>/dev/null || true
         rm -f "$stderr_file"
-        return 1
+        # ADR-021 v3 R2: rc=124 (gtimeout SIGTERM) and rc=137 (SIGKILL/OOM)
+        # are infra failures and MUST reach the agent plugin verbatim — they
+        # carry max_turns/timeout semantics that `_router_rc_classify` maps
+        # to verdict=error. Other claude-emitted error rcs collapse to rc=1
+        # (caller's classify path still maps generic >0 to verdict=fail).
+        case "$rc" in
+            124|137) return "$rc" ;;
+            *)       return 1 ;;
+        esac
     fi
     rm -f "$stderr_file"
 
