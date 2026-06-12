@@ -3,7 +3,8 @@
 # ║  plugins/agent/design — Design stage agent (issue #754)                   ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
-# Stage: design (ADR-013 T2, Pattern 1 — single-shot LLM output)
+# Stage: design (ADR-013 T2, ADR-018 Pattern 2 — agent-loop, single-file artifact)
+# (Reclassified from Pattern 1 in ADR-018 Amendment v4, #816.)
 # Produces: state/artifacts/design.md with embedded ```scope fenced block
 #
 # Lifecycle:
