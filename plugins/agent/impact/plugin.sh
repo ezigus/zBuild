@@ -28,6 +28,10 @@ source "$_IMPACT_ROOT/core/redaction/scope-redaction.sh"
 source "$_IMPACT_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_IMPACT_ROOT/core/router/route.sh"
+# ADR-028: shared LLM-agent stage framework (PR 5/5 — impact migration +
+# consolidates accreted bloat from PRs #767/#771/#774/#783).
+# shellcheck source=../../../scripts/lib/llm-agent.sh
+source "$_IMPACT_ROOT/scripts/lib/llm-agent.sh"
 # #781: deterministic scope prefilter (CLAUDE.md test-scope rule).
 # shellcheck source=../../../scripts/lib/impact-prefilter.sh
 source "$_IMPACT_ROOT/scripts/lib/impact-prefilter.sh"
@@ -90,61 +94,13 @@ _impact_run_inner() {
     plan_content="$(cat "$plan_json_path")"
 
     # ─── Build prompt ────────────────────────────────────────────────────────
-    local _impact_instructions
-    _impact_instructions="$(cat <<'IMPACT_PROMPT'
-OUTPUT CONTRACT (read first, obey absolutely):
-- Respond with EXACTLY ONE JSON object. Nothing else.
-- Your first output character MUST be `{`. Your last MUST be `}`.
-- NO markdown code fences (no ```json, no ``` wrapping).
-
-FORBIDDEN — your response MUST NOT contain any of these strings ANYWHERE,
-not before the JSON, not after it, not inside any field:
-  - "Based on my analysis"
-  - "Based on my comprehensive analysis"
-  - "Here is"
-  - "Here's"
-  - "After reviewing"
-  - "I've identified"
-  - "Now I have"
-  - "Let me"
-  - "I have all the information"
-
-If you have observations, put them inside the `impact_feedback_md` field —
-NEVER before or after the JSON object. The string outside the `{...}`
-envelope must be empty.
-
-FINAL RULE: after your closing brace `}`, output NOTHING — not even a
-newline, not even one character. Your response ends at `}`. Postamble
-content is the same violation as preamble; both fire impact.contract.violation.
-
-CORRECT example (single line, no fence, no preamble):
-  {"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":""}
-
-CORRECT example with observations (note: observations go INSIDE the field,
-NOT outside the JSON):
-  {"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-1","files_to_add":["a.sh"],"reason":"r"}],"impact_feedback_md":"## Gap\n- step-1 missing a.sh"}
-
-INCORRECT examples (DO NOT do any of these):
-  Based on my analysis... {"schema_version":1,...}
-  Here is the verdict: {...}
-  Here's what I found: {...}
-  After reviewing the plan, {"schema_version":1,...}
-  I've identified the following gaps: {...}
-  ```json
-  {"schema_version":1,...}
-  ```
-
-You are an Impact Analyzer agent. Emit a verdict object stating whether a
-plan's declared scope (steps[].files[]) is complete — i.e., lists every
-file the plan's modifications would invalidate or require updating.
-
-Tool use:
-- You MAY use the Read tool to inspect files referenced in the plan.
-- You MAY use the Grep tool to search the repo for symbols and references.
-- Do NOT call Edit, Write, or Bash. This stage is read-only.
-
-Required JSON schema:
-
+    # ADR-028: canonical OUTPUT CONTRACT from framework. Consolidates the
+    # quadruple-redundant "begins with `{`" / FORBIDDEN / INCORRECT-examples
+    # / REMINDER triplets that PRs #767/#771/#774/#783 accreted (see plan
+    # in docs/adr/ADR-028). impact_feedback_md is a markdown free-text
+    # field → ADR-022 v2 escape requirement applies.
+    local _impact_schema
+    _impact_schema="$(cat <<'IMPACT_SCHEMA'
   {
     "schema_version": 1,
     "verdict": "complete" | "incomplete",
@@ -157,8 +113,25 @@ Required JSON schema:
     ],
     "impact_feedback_md": "<markdown report fed back to the plan agent on the next cycle iter>"
   }
+IMPACT_SCHEMA
+)"
+    local _output_contract_block
+    _output_contract_block="$(_llm_output_contract \
+        --stage impact \
+        --verdicts "complete,incomplete" \
+        --schema-json "$_impact_schema" \
+        --markdown-fields "impact_feedback_md")"
 
-REMINDER: your response begins with `{`. No prose, no fences.
+    local _impact_instructions
+    _impact_instructions="$(cat <<'IMPACT_PROMPT'
+You are an Impact Analyzer agent. Emit a verdict object stating whether a
+plan's declared scope (steps[].files[]) is complete — i.e., lists every
+file the plan's modifications would invalidate or require updating.
+
+Tool use:
+- You MAY use the Read tool to inspect files referenced in the plan.
+- You MAY use the Grep tool to search the repo for symbols and references.
+- Do NOT call Edit, Write, or Bash. This stage is read-only.
 
 Rules:
 - For each plan step.files[] entry, identify symbols defined in those files
@@ -172,10 +145,11 @@ Rules:
   you returned incomplete. Make it actionable: name the missing files
   per step, cite the symbol or reference that linked them.
 
-REMINDER: output begins with `{`. No preamble.
-
 IMPACT_PROMPT
 )"
+    _impact_instructions="$_output_contract_block
+
+$_impact_instructions"
 
     # #781: deterministic prefilter. Runs CLAUDE.md's "Test scope discovery"
     # rule (grep tests/ for old numeric shape values + scan tests/golden/**)
@@ -194,16 +168,22 @@ IMPACT_PROMPT
         _candidate_gaps_section="$(printf 'CANDIDATE GAPS (deterministic prefilter — you MUST VALIDATE each and KEEP all entries with source=shape-change-golden; you MAY drop false-positive shape-change-numeric entries with a one-line reason):\n%s' "$_prefilter_candidates")"
     fi
 
+    # ADR-028 PR 5/5: pretty-print plan JSON via `jq -e .` so operator-visible
+    # impact-prompt.txt artifact is readable (was one giant ~1500-char line).
+    # rc=0 on valid JSON (pretty-printed); rc!=0 on malformed → passthrough.
+    local plan_pretty
+    plan_pretty="$(printf '%s' "$plan_content" | jq -e . 2>/dev/null)" || plan_pretty="$plan_content"
+
     # Assemble: instructions → CANDIDATE GAPS (if any) → PLAN: marker → plan body.
     # PLAN: lives on its OWN line (no embedded `]PLAN:` collisions when the
     # candidates JSON closes with `]`).
     local prompt
     if [[ -n "$_candidate_gaps_section" ]]; then
         printf -v prompt '%s\n\n%s\n\nPLAN:\n%s\n' \
-            "$_impact_instructions" "$_candidate_gaps_section" "$plan_content"
+            "$_impact_instructions" "$_candidate_gaps_section" "$plan_pretty"
     else
         printf -v prompt '%s\n\nPLAN:\n%s\n' \
-            "$_impact_instructions" "$plan_content"
+            "$_impact_instructions" "$plan_pretty"
     fi
 
     local prompt_file="$artifact_dir/impact-prompt.txt"
