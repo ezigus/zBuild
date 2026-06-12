@@ -11,6 +11,9 @@ source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 # ADR-025 (Wave 15-B #684) abort-propagation helpers — sourced before any
 # dispatch site can call them; idempotent source guard inside.
 source "$_ZBUILD_ROOT/scripts/lib/abort-propagation.sh"
+# #796 / ADR-021 v3 R1: pipeline final status helper honoring on_max=continue.
+# shellcheck source=../../scripts/lib/runner-final-status.sh
+source "$_ZBUILD_ROOT/scripts/lib/runner-final-status.sh"
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
@@ -1191,6 +1194,9 @@ main() {
         local _RUNNER_CYCLE_UNCONVERGED=0
         local _RUNNER_CYCLE_UNCONVERGED_REASON=""
         local _RUNNER_CYCLE_UNCONVERGED_ID=""
+        # #796 / ADR-021 v3 R1: capture on_max value of the unconverged cycle
+        # so the final-status aggregator can honor on_max=continue.
+        local _RUNNER_CYCLE_UNCONVERGED_ON_MAX=""
         # #682 (Wave 15-D): cardinal counter for the cycle-aware dispatch loop.
         # Each unit (stage OR cycle) occupies ONE cardinal slot — cycles render
         # internal `<iter>.<position>` labels via the orchestrator while linear
@@ -1286,6 +1292,11 @@ main() {
                         _RUNNER_CYCLE_UNCONVERGED=1
                         _RUNNER_CYCLE_UNCONVERGED_REASON="$_CYCLE_LAST_TERMINATED_REASON"
                         _RUNNER_CYCLE_UNCONVERGED_ID="$_cyc_id"
+                        # #796 / ADR-021 v3 R1: capture on_max value for the
+                        # final-status aggregator. _TPL_CYCLE_ON_MAX_<id> is
+                        # populated by the template parser.
+                        local _on_max_var="_TPL_CYCLE_ON_MAX_${_cyc_id//-/_}"
+                        _RUNNER_CYCLE_UNCONVERGED_ON_MAX="${!_on_max_var:-abort}"
                         # Propagate the cycle's unconverged signal as the until-stage
                         # failure (typically `test`) so review's `_review_derive_test_status`
                         # sees an unambiguous failure. Without this, review's #485
@@ -1348,13 +1359,41 @@ main() {
             esac
         done
         # #527: when any cycle terminated unconverged (rc∈{1,2,3}), the pipeline
-        # outcome is `failed` even if review approved (and per ADR-019/#485,
-        # review's fail-closed gate should have coerced approve → request_changes
-        # via the stage_statuses[until]=failed signal we propagated above).
-        # Only write `complete` when every cycle converged AND every stage
-        # succeeded — preserving the silent-failure invariant that "complete"
-        # truly means "no non-convergence anywhere in the run".
+        # outcome USED TO BE always `failed`. #796 / ADR-021 v3 R1 amends this:
+        # on_max=continue MUST NOT propagate to terminal failure. The
+        # aggregator now honors per-cycle on_max semantics + downstream
+        # success. The cycle.unconverged event still fires for forensics.
+        #
+        # Determine downstream success. Two paths:
+        #  - No unconverged: treat as success (preserves pre-#796 behavior
+        #    where a converged pipeline is always pipeline=complete).
+        #  - Unconverged with on_max=continue: check review.json verdict.
+        #    If review approved/passed, downstream rescued; else not.
+        local _downstream_success=1
         if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
+            local _review_json
+            _review_json="$(dirname "$state_file")/artifacts/review.json"
+            if [[ -f "$_review_json" ]]; then
+                local _review_verdict
+                _review_verdict="$(jq -r '.verdict // empty' "$_review_json" 2>/dev/null || echo)"
+                case "$_review_verdict" in
+                    approve|pass) _downstream_success=1 ;;
+                    *) _downstream_success=0 ;;
+                esac
+            else
+                # No review.json on an unconverged run → nothing rescued; failed.
+                _downstream_success=0
+            fi
+        fi
+
+        local _final_status=""
+        _runner_compute_final_status \
+            "${_RUNNER_CYCLE_UNCONVERGED:-0}" \
+            "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX" \
+            "$_downstream_success" \
+            _final_status
+
+        if [[ "$_final_status" == "failed" ]]; then
             _set_pipeline_status "$state_file" "failed"
             eb_emit_event "pipeline.end" "status=failed" \
                 "cycle=$_RUNNER_CYCLE_UNCONVERGED_ID" \
@@ -1364,13 +1403,15 @@ main() {
             error "Pipeline failed — cycle '$_RUNNER_CYCLE_UNCONVERGED_ID' did not converge (reason=$_RUNNER_CYCLE_UNCONVERGED_REASON); run_id=$_runner_run_id"
             return 1
         fi
+
         _set_pipeline_status "$state_file" "complete"
         eb_emit_event "pipeline.end" "status=success" "run_id=$_runner_run_id" "issue=$_runner_issue"
-        # #525: persisted event payload stays "status=success" (existing
-        # contract — do not break consumers). Banner reads ADR-006 state
-        # enum "complete" for the operator-facing glyph + word.
         _render_pipeline_end "complete"
         _runner_ended=true
+        if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
+            # #796: succeeded with warning — cycle didn't converge but on_max=continue
+            warn "Pipeline complete with warning — cycle '$_RUNNER_CYCLE_UNCONVERGED_ID' did not converge (reason=$_RUNNER_CYCLE_UNCONVERGED_REASON), on_max=continue allowed fall-through"
+        fi
         success "Pipeline complete — run_id=$_runner_run_id"
         return 0
     fi

@@ -201,12 +201,19 @@ assert_eq "T1.2: cycle.unconverged event emitted (proves runner continues past c
 abort_count="$(jq -c 'select(.type=="pipeline.abort")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T1.3: pipeline.abort MUST NOT fire on on_max=continue cycle exhaustion" "0" "$abort_count"
 
-# T1.4: pipeline.end status=failed is the correct terminal event (unconverged → failed)
+# T1.4: pipeline.end emitted exactly once
 end_count="$(jq -c 'select(.type=="pipeline.end")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T1.4: pipeline.end emitted exactly once" "1" "$end_count"
 
+# T1.5 (amended #796 / ADR-021 v3 R1): when on_max=continue AND downstream review
+# verdict=approve, pipeline.end status=success (NOT failed). The cycle.unconverged
+# event still fires for forensics, but pipeline status reflects the FINAL stage
+# outcome — review approved, so pipeline succeeded with a warning.
+# Previously (#527, pre-#796) this was "failed" — that contradicted on_max=continue
+# semantics and produced false-failure operator banners on substantively
+# successful runs (dogfood run_id 20260611072619-15296).
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
-assert_eq "T1.5: pipeline.end status=failed (unconverged → failed, NOT complete, NOT aborted)" "failed" "$end_status"
+assert_eq "T1.5: pipeline.end status=success (on_max=continue + review approved, #796)" "success" "$end_status"
 
 print_test_section "T2: review_cycle dispatched after plan_impact_cycle exhausted"
 
