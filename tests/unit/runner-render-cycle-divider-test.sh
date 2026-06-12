@@ -58,6 +58,9 @@ emit_cycle_banner() {
             iter-divider-2-5)
                 _render_cycle_iter_divider build-test 2 5
                 ;;
+            iter-divider-2-5-nested)
+                ZBUILD_SEQ_PREFIX='4.1' _render_cycle_iter_divider build-test 2 5
+                ;;
             iter-complete-pass)
                 _render_cycle_iter_complete 2 pass -1 1 4
                 ;;
@@ -99,6 +102,7 @@ emit_cycle_banner() {
 declare -a VARIANTS=(
     "entry-build-test"
     "iter-divider-2-5"
+    "iter-divider-2-5-nested"
     "iter-complete-pass"
     "exit-converged"
     "exit-max-iterations"
