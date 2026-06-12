@@ -46,8 +46,9 @@ Commands:
   pipeline status        Show resume recommendation for the current state file
                          [--run-id <id>]
   cleanup                Prune stale zbuild/issue-* branches + old state files
-                         + zb-applycheck-* stashes + zb-applycheck/zbuild-test-stage/
-                         pipeline-runner tmpdirs. Also prunes worktree orphans.
+                         + zb-applycheck-* stashes + leaked zbuild tmpdirs
+                         (patterns: ZBUILD_TMPDIR_PATTERNS in lib/cleanup.sh).
+                         Also prunes worktree orphans.
                          [--branches] [--state-dirs] [--stashes] [--tmpdirs]
                          [--dry-run|--apply|--force]
                          [--age-days N]    (state files; default 14)
@@ -565,18 +566,10 @@ UPHELP
         if $cl_tmpdirs; then
             cl_tmp_plan="$(_cleanup_scan_zbuild_tmpdirs "$cl_age_hours" || true)"
             _cleanup_render_plan "tmpdirs" "$cl_tmp_plan" "$cl_dry_run" "$cl_quiet"
-            if [[ "$cl_dry_run" != "true" ]]; then
-                target=""
-                while IFS= read -r line; do
-                    [[ -z "$line" ]] && continue
-                    target="${line%%$'\t'*}"
-                    [[ -d "$target" ]] || continue
-                    case "$target" in
-                        */zb-applycheck-*|*/zbuild-test-stage.*|*/zb-loop-iters.*|*/zb-test-auto.*|*/zb-test.*)
-                            rm -rf -- "$target" 2>/dev/null || true ;;
-                    esac
-                done <<<"$cl_tmp_plan"
-            fi
+            # #752: apply lives in cleanup.sh next to the scanner so both
+            # read ZBUILD_TMPDIR_PATTERNS — an inline whitelist here drifted
+            # from the scanner twice (#628, #749).
+            _cleanup_apply_tmpdir_plan "$cl_tmp_plan" "$cl_dry_run"
         fi
 
         # Auto-prune worktree orphans (cheap, idempotent; only inside a repo).

@@ -251,11 +251,15 @@ _cleanup_is_active_run() {
     return 1
 }
 
+# Stash-message prefix gate — single source of truth (#752 discipline).
+# Scanner, applier, and restore all match against THIS prefix.
+ZBUILD_APPLYCHECK_PREFIX="zb-applycheck-"
+
 # ─── Stash scanner (#594) ───────────────────────────────────────────────────
 # _cleanup_scan_stashes <force_bool> <age_hours>
 # Emits: "stash@{N}\t<decision>\t<reason>"
 # decision ∈ {prune, skip}; reason includes message + run_id + reason text.
-# ONLY considers stashes whose message starts with "zb-applycheck-".
+# ONLY considers stashes whose message starts with $ZBUILD_APPLYCHECK_PREFIX.
 _cleanup_scan_stashes() {
     local force="$1" age_hours="$2"
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
@@ -270,7 +274,7 @@ _cleanup_scan_stashes() {
         local msg="${subject#On *: }"
         msg="${msg#WIP on *: }"
         case "$msg" in
-            zb-applycheck-*) ;;
+            "$ZBUILD_APPLYCHECK_PREFIX"*) ;;
             *) continue ;;  # never even mention non-prefix stashes
         esac
         # Extract run_id = trailing digits after final '-'.
@@ -295,14 +299,29 @@ _cleanup_scan_stashes() {
     unset _ZBUILD_UNUSED
 }
 
+# ─── Tmpdir patterns — single source of truth (#752) ────────────────────────
+# Both the scanner and the applier read THIS array; never inline the globs
+# anywhere else. The list drifted twice when it lived in two places (#628
+# added zb-loop-iters.* scanner-only; #749 added zb-test-auto.*/zb-test.*
+# scanner-only), each time making `--apply` a silent no-op for the new
+# patterns while dry-run looked correct.
+# Pattern provenance: zb-applycheck-* (apply-check stashes/dirs),
+# zbuild-test-stage.* (plugins/tool/test), zb-loop-iters.* (Pattern-2 loop
+# per-iter dirs, reaped here if something bypasses the RETURN trap),
+# zb-test-auto.* (test-helpers.sh auto-init), zb-test.* (setup_test_env
+# default name). #628 dropped pipeline-runner.* — nothing ever creates it.
+ZBUILD_TMPDIR_PATTERNS=(
+    "zb-applycheck-*"
+    "zbuild-test-stage.*"
+    "zb-loop-iters.*"
+    "zb-test-auto.*"
+    "zb-test.*"
+)
+
 # ─── Tmpdir scanner (#594) ──────────────────────────────────────────────────
 # _cleanup_scan_zbuild_tmpdirs <age_hours>
-# Globs ${TMPDIR:-/tmp} for zb-applycheck-*, zbuild-test-stage.*,
-# zb-loop-iters.* — older than cutoff. Emits: "<path>\tprune\t<reason>".
-# #628: dropped `pipeline-runner.*` — nothing in zbuild ever creates that
-# pattern (false positive carried over from Wave 5 scaffolding). Added
-# `zb-loop-iters.*` so the Pattern-2 loop's per-iter dir is reaped if
-# something bypasses the RETURN trap (defence in depth).
+# Globs ${TMPDIR:-/tmp} for ZBUILD_TMPDIR_PATTERNS entries older than cutoff.
+# Emits: "<path>\tprune\t<reason>".
 _cleanup_scan_zbuild_tmpdirs() {
     local age_hours="$1"
     local now; now="$(date +%s)"
@@ -311,13 +330,7 @@ _cleanup_scan_zbuild_tmpdirs() {
     tmpd="${tmpd%/}"
     [[ -d "$tmpd" ]] || return 0
     local pattern path mtime age_h
-    # Wave 19-L (#749): added zb-test-auto.* and zb-test.* — these are the
-    # actual filesystem-name shapes the test harness produces (auto-init
-    # tempdir at test-helpers.sh:46, and the default-named dir from
-    # setup_test_env when no name is passed). Issue 12 dogfood audit found
-    # 1,261 leaked dirs / ~13GB in /var/folders/.../T/ because operators'
-    # `zbuild cleanup --apply` did not match these patterns.
-    for pattern in "zb-applycheck-*" "zbuild-test-stage.*" "zb-loop-iters.*" "zb-test-auto.*" "zb-test.*"; do
+    for pattern in "${ZBUILD_TMPDIR_PATTERNS[@]}"; do
         for path in "$tmpd"/$pattern; do
             [[ -e "$path" ]] || continue
             mtime="$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || echo "0")"
@@ -327,6 +340,34 @@ _cleanup_scan_zbuild_tmpdirs() {
             printf '%s\tprune\tpattern=%s age=%sh\n' "$path" "$pattern" "$age_h"
         done
     done
+}
+
+# ─── Tmpdir applier (#752) ──────────────────────────────────────────────────
+# _cleanup_apply_tmpdir_plan <plan_TSV> <dry_run_bool>
+# Re-validates each target's basename against ZBUILD_TMPDIR_PATTERNS at
+# delete-time (defence in depth, same discipline as the stash applier) —
+# but against the SAME array the scanner used, so the validation can never
+# drift out of sync with the scan.
+_cleanup_apply_tmpdir_plan() {
+    local data="$1" dry_run="$2"
+    [[ "$dry_run" == "true" ]] && return 0
+    [[ -z "$data" ]] && return 0
+    local line target base pattern matched
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        target="${line%%$'\t'*}"
+        [[ -d "$target" ]] || continue
+        base="${target##*/}"
+        matched="false"
+        for pattern in "${ZBUILD_TMPDIR_PATTERNS[@]}"; do
+            # shellcheck disable=SC2254  # unquoted expansion IS the glob match
+            case "$base" in
+                $pattern) matched="true"; break ;;
+            esac
+        done
+        [[ "$matched" == "true" ]] || continue
+        rm -rf -- "$target" 2>/dev/null || true
+    done <<<"$data"
 }
 
 # ─── Stash applier (#594) ───────────────────────────────────────────────────
@@ -356,7 +397,7 @@ _cleanup_apply_stash_plan() {
         local subject
         subject="$(git stash list --format='%gd	%s' 2>/dev/null | awk -F'\t' -v r="$ref" '$1==r{print $2}')"
         local msg="${subject#On *: }"; msg="${msg#WIP on *: }"
-        case "$msg" in zb-applycheck-*) ;; *) continue ;; esac
+        case "$msg" in "$ZBUILD_APPLYCHECK_PREFIX"*) ;; *) continue ;; esac
         git stash drop -q "$ref" >/dev/null 2>&1 || true
     done <<<"$sorted"
 }
@@ -378,9 +419,9 @@ _cleanup_restore_stash() {
     fi
     local msg="${subject#On *: }"; msg="${msg#WIP on *: }"
     case "$msg" in
-        zb-applycheck-*) ;;
+        "$ZBUILD_APPLYCHECK_PREFIX"*) ;;
         *)
-            error "restore-stash: $ref is not a zb-applycheck-* stash (msg: $msg)"
+            error "restore-stash: $ref is not a ${ZBUILD_APPLYCHECK_PREFIX}* stash (msg: $msg)"
             return 2
             ;;
     esac
