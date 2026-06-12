@@ -26,6 +26,9 @@ source "$_REVIEW_ROOT/core/redaction/scope-redaction.sh"
 source "$_REVIEW_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_REVIEW_ROOT/core/router/route.sh"
+# ADR-028: shared LLM-agent stage framework (PR 3/5 — review migration).
+# shellcheck source=../../../scripts/lib/llm-agent.sh
+source "$_REVIEW_ROOT/scripts/lib/llm-agent.sh"
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_REVIEW_ROOT/scripts/lib/artifact-render.sh"
 # #506: shared numstat banner formatter (operator-banner override input).
@@ -230,14 +233,29 @@ _review_run_inner() {
     # ADR-018 (#469): Pattern 1 — one-shot with tools. Read is available for
     # diff verification; Edit/Write/Bash are forbidden. Final-output contract
     # remains a SINGLE JSON object with no fences and no prose.
+    # ADR-028: canonical OUTPUT CONTRACT block from framework. Review's verdict
+    # vocab is approve|request_changes|block.
+    local _review_schema
+    _review_schema="$(cat <<'REVIEW_SCHEMA'
+  {
+    "verdict": "approve" | "request_changes" | "block",
+    "confidence": <float 0.0-1.0>,
+    "issues": ["<string>", ...],
+    "summary": "<string>"
+  }
+REVIEW_SCHEMA
+)"
+    local _output_contract_block
+    _output_contract_block="$(_llm_output_contract \
+        --stage review \
+        --verdicts "approve,request_changes,block" \
+        --schema-json "$_review_schema" \
+        --markdown-fields "summary")"
+
     local _review_instructions
     _review_instructions="$(cat <<'REVIEW_PROMPT'
 You are a code review agent. Examine the diff to determine whether it correctly
 implements the plan.
-
-Final-output contract:
-Your FINAL response must be a SINGLE JSON object — no markdown code fences, no
-prose before or after the JSON.
 
 Tool-use policy:
 You MAY use the Read tool to inspect files referenced by the diff to verify
@@ -248,23 +266,11 @@ Scope redaction:
 Files outside the declared scope appear in the diff as `<out-of-scope-context>`
 markers — do NOT attempt to Read those paths.
 
-Required JSON schema:
-
-  {
-    "verdict": "approve" | "request_changes" | "block",
-    "confidence": <float 0.0-1.0>,
-    "issues": ["<string>", ...],
-    "summary": "<string>"
-  }
-
 Rules:
 - `schema_version` is implicit (1).
 - `verdict` MUST be exactly one of: approve, request_changes, block.
 - `issues` is an array of strings; empty array [] if no issues found.
 - `confidence` is a float between 0.0 and 1.0.
-- Do not include reasoning, explanations, or prose in the FINAL response —
-  just the JSON.
-- Your response MUST begin with `{` and contain nothing other than the JSON object — no leading prose, no trailing prose, no markdown fences.
 - An approve verdict requires that test results show tests passed; if test results are missing, unknown, or failed, return request_changes (not approve).
 
 Verdict definitions:
@@ -300,6 +306,9 @@ plan-conformance.
 
 REVIEW_PROMPT
 )"
+    _review_instructions="$_output_contract_block
+
+$_review_instructions"
     # ADR-018: render plan and diff as markdown for LLM consumption. Test
     # results stay as raw fenced text — no test-results renderer (see #470).
     local plan_md diff_md
