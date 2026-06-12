@@ -411,10 +411,53 @@ _build_stage_run_inner() {
     local pre_zero_numstat=""
     if [[ "$scope_violation" == "true" ]]; then
         pre_zero_numstat="$(git -C "$repo_root" diff HEAD --numstat 2>/dev/null || true)"
-        warn "_build_stage_run_inner: scope violation — writing empty diff.patch"
-        diff_content=""
-        # #530: file was already written directly above; zero it now.
-        : > "$output_diff_patch"
+        # #827: distinguish "LLM deliberately wrote out-of-scope" (clean run
+        # rc<2) from "timeout caught LLM mid-edit, partial work happens to
+        # touch OOS" (rc>=2 fatal). The clean-run case keeps the existing
+        # fail-CLOSED empty-diff behavior — LLM had time to follow the
+        # contract and chose not to, so refuse to propagate. The timeout
+        # case reverts only the OOS paths and preserves the in-scope diff;
+        # otherwise the dogfood build_test_cycle loop reproduces (real
+        # in-scope work is lost on every triple-timeout). The pipeline
+        # can then commit the in-scope work and the cycle progresses.
+        if [[ $router_rc -ge 2 ]]; then
+            warn "_build_stage_run_inner: scope violation under router rc=$router_rc — reverting OOS paths, preserving in-scope diff (#827)"
+            local _oos_path
+            for _oos_path in "${scope_violations[@]}"; do
+                [[ -z "$_oos_path" ]] && continue
+                # Restore tracked OOS files to HEAD state. For untracked OOS
+                # files (no HEAD entry), unlink them — checkout would no-op.
+                if git -C "$repo_root" ls-files --error-unmatch -- "$_oos_path" >/dev/null 2>&1; then
+                    git -C "$repo_root" checkout HEAD -- "$_oos_path" 2>/dev/null || true
+                else
+                    rm -f "$repo_root/$_oos_path" 2>/dev/null || true
+                fi
+            done
+            # Re-capture diff after OOS revert. The diff now reflects only
+            # in-scope work, which is safe to commit.
+            git -C "$repo_root" diff HEAD > "$output_diff_patch" 2>/dev/null || true
+            if [[ -s "$output_diff_patch" ]]; then
+                diff_content="$(cat "$output_diff_patch"; printf x)"
+                diff_content="${diff_content%x}"
+            else
+                diff_content=""
+            fi
+            # Important: clear scope_violation flag so downstream (verdict,
+            # commit semantics, scope-violation events) treats this iter as
+            # a normal timeout-error build with in-scope work to commit.
+            # OOS detail is preserved in the new event below for forensics
+            # AND in scope_violations[] for the build-summary's audit field.
+            scope_violation="false"
+            emit_event "build.timeout.partial_work_preserved" "plugin=build" \
+                "router_rc=$router_rc" \
+                "oos_paths_reverted=${#scope_violations[@]}" \
+                "in_scope_diff_bytes=${#diff_content}"
+        else
+            warn "_build_stage_run_inner: scope violation — writing empty diff.patch"
+            diff_content=""
+            # #530: file was already written directly above; zero it now.
+            : > "$output_diff_patch"
+        fi
     fi
 
     # Empty-diff signal: emit warn event when prose-only / no edits produced.
