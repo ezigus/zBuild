@@ -185,13 +185,17 @@ set -e
 
 print_test_section "T1: events.jsonl chain around plan_impact_cycle exhaustion"
 
-# T1.1: cycle.complete reason=max_iterations was emitted (orchestrator emits
-# once internally + runner's _cycle_handle_terminal_rc may emit again; we
-# tolerate ≥1 since the duplicate-emit is a pre-existing concern out of scope).
-mi_count="$(jq -c 'select(.type=="cycle.complete" and .data.reason=="max_iterations" and .data.cycle_id=="plan_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+# T1.1: cycle.complete fired with a non-convergence terminal reason for
+# plan_impact_cycle. Accept any of {max_iterations, plateau, divergence} —
+# the test's intent (per #766) is to verify the runner continues past
+# cycle exit, NOT to pin a specific reason. After #819 raised
+# max_iterations from 3 to 5, plateau detection (default window=3) now
+# fires before max_iter when failure_count plateaus at 0; both are valid
+# non-convergence signals.
+mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterations" or .data.reason=="plateau" or .data.reason=="divergence") and .data.cycle_id=="plan_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$mi_count" -ge 1 ]] \
-    && assert_pass "T1.1: cycle.complete reason=max_iterations fired for plan_impact_cycle (count=$mi_count)" \
-    || assert_fail "T1.1: cycle.complete reason=max_iterations MUST fire" "count=$mi_count"
+    && assert_pass "T1.1: cycle.complete fired with non-convergence reason for plan_impact_cycle (count=$mi_count)" \
+    || assert_fail "T1.1: cycle.complete MUST fire with non-convergence reason" "count=$mi_count"
 
 # T1.2: cycle.unconverged event MUST be emitted (proves runner.sh:1292 reached)
 unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="plan_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
