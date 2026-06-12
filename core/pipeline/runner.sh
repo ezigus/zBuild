@@ -398,7 +398,7 @@ _render_stage_divider() {
 # (max + stages). Emitted by the runner BEFORE cycle_orchestrator_run so the
 # operator's eye finds the cycle boundary before the first iter divider.
 _render_cycle_entry() {
-    local cycle_id="$1" max="$2" stages_csv="${3:-}"
+    local cycle_id="$1" max="$2" stages_csv="${3:-}" description="${4:-}"
     local width; width="$(_term_width)"
     local label=" cycle: ${cycle_id} "
     local sides=$(( (width - ${#label}) / 2 ))
@@ -414,6 +414,13 @@ _render_cycle_entry() {
         printf '%b%b▸%b Entering cycle: %b%b%s%b\n' \
             "${LIGHT_BLUE:-}" "${BOLD:-}" "${RESET:-}" \
             "${LIGHT_BLUE:-}" "${BOLD:-}" "$cycle_id" "${RESET:-}"
+        # #831: operator-facing description on its own DIM line, between the
+        # Entering-cycle headline and the (max_iterations=…) trailer. Skipped
+        # entirely when description is empty so templates without it render
+        # identically to the pre-#831 banner (golden tests stay valid).
+        if [[ -n "$description" ]]; then
+            printf '%b  %s%b\n' "${DIM:-}" "$description" "${RESET:-}"
+        fi
         printf '%b  (max_iterations=%s · stages=%s)%b\n' \
             "${DIM:-}" "$max" "$stages_csv" "${RESET:-}"
         printf '\n'
@@ -1221,7 +1228,11 @@ main() {
                     local _cyc_max_var="_TPL_CYCLE_MAX_${_cyc_safe}"
                     _cyc_stages_csv="${!_cyc_stages_var:-}"
                     local _cyc_max="${!_cyc_max_var:-?}"
-                    _render_cycle_entry "$_cyc_id" "$_cyc_max" "$_cyc_stages_csv"
+                    # #831: pass the optional operator-facing description so
+                    # the banner can include it (renderer no-op when empty).
+                    local _cyc_desc_var="_TPL_CYCLE_DESCRIPTION_${_cyc_safe}"
+                    local _cyc_desc="${!_cyc_desc_var:-}"
+                    _render_cycle_entry "$_cyc_id" "$_cyc_max" "$_cyc_stages_csv" "$_cyc_desc"
                     # #698 (Wave 16-A) → Wave 19-B (#718): publish the cycle's
                     # seq-prefix (= its pipeline-cardinal at top level) so the
                     # orchestrator can render N-level member labels via
