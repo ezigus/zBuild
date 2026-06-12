@@ -584,6 +584,21 @@ _cycle_apply_feedback() {
     export ZBUILD_CYCLE_FEEDBACK_DIR="$fb_dir"
     [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]] && return 0
 
+    # ADR-029 G1 (#814): per-feedback-field context budget. Defaults to 50000
+    # chars (~12K tokens at 4 chars/token); operators override via env knob
+    # ZBUILD_CYCLE_MAX_FIELD_CHARS=<n>. Strategy is tail_truncate (keep the
+    # most-recent tail; drop the oldest head — accumulating feedback artifacts
+    # tend to grow at the head as agents prepend new diagnostic context).
+    # The yaml-level `context_budget.{max_prompt_chars,compress_strategy}`
+    # schema declared in ADR-029 G1 is deferred to a follow-up issue; this
+    # env-knob path covers the dogfood-observed bloat case (a single
+    # prior_test_assessment that ballooned across iters) without needing
+    # the template-loader awk parser to grow new keys.
+    local _g1_max_field_chars="${ZBUILD_CYCLE_MAX_FIELD_CHARS:-50000}"
+    if [[ ! "$_g1_max_field_chars" =~ ^[0-9]+$ ]] || [[ "$_g1_max_field_chars" -le 0 ]]; then
+        _g1_max_field_chars=50000
+    fi
+
     local rec
     for rec in "${_CYCLE_FEEDBACK[@]}"; do
         # "from_stage:from_output|to_stage:to_field:required"
@@ -615,6 +630,28 @@ _cycle_apply_feedback() {
                 "iter_next=$iter_next" "from_stage=$from_stage" \
                 "to_field=$to_field" "reason=copy_failed"
             return 1
+        fi
+
+        # ADR-029 G1: if the copied feedback file exceeds the per-field
+        # budget, tail_truncate it in-place. The tail (last N chars) is
+        # the most-recent content; prepend a sentinel marker so the
+        # downstream agent can see truncation occurred (and won't be
+        # misled into thinking that's the entire history).
+        local _g1_size
+        _g1_size="$(wc -c < "$dst" 2>/dev/null | tr -d ' ' || echo 0)"
+        if [[ "$_g1_size" =~ ^[0-9]+$ ]] && [[ "$_g1_size" -gt "$_g1_max_field_chars" ]]; then
+            local _g1_marker="… [ADR-029 G1 tail_truncate: dropped $((_g1_size - _g1_max_field_chars)) leading chars; kept tail of $_g1_max_field_chars / $_g1_size] …"
+            local _g1_tmp; _g1_tmp="$(mktemp -t zbuild-g1-truncate.XXXXXX 2>/dev/null || true)"
+            if [[ -n "$_g1_tmp" ]]; then
+                printf '%s\n' "$_g1_marker" > "$_g1_tmp"
+                tail -c "$_g1_max_field_chars" "$dst" >> "$_g1_tmp" 2>/dev/null || true
+                mv "$_g1_tmp" "$dst" 2>/dev/null || rm -f "$_g1_tmp"
+                _cycle_emit "cycle.context.compressed" \
+                    "iter_next=$iter_next" "to_field=$to_field" \
+                    "from_stage=$from_stage" "from_output=$from_output" \
+                    "original_chars=$_g1_size" "final_chars=$_g1_max_field_chars" \
+                    "strategy=tail_truncate"
+            fi
         fi
     done
     # #511 Pin 9: atomic `.complete` sentinel — written AFTER all feedback
