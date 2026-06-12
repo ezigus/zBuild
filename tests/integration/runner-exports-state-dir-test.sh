@@ -80,6 +80,11 @@ _make_plugin "design"          "agent" 0 >/dev/null
 _make_capture_plugin "build"   "agent"
 _make_plugin "test"            "tool"  0 >/dev/null
 _make_plugin "test_assessment" "agent" 0 >/dev/null
+# #755: 4 CQ stages now sit between build_test_cycle and review in review_cycle.
+_make_plugin "cq-preflight"   "agent" 0 >/dev/null
+_make_plugin "cq-audit-plan"  "agent" 0 >/dev/null
+_make_plugin "cq-cycle"       "agent" 0 >/dev/null
+_make_plugin "cq-backtrack"   "agent" 0 >/dev/null
 _make_plugin "review"          "agent" 0 >/dev/null
 
 # ─── Run the runner end-to-end ──────────────────────────────────────────────

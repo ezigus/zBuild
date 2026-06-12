@@ -234,8 +234,28 @@ requires:
 EOF
 printf 'test_assessment_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/test_assessment/plugin.sh"
 
-# Write state: all pre-review stages complete, review pending.
+# #755: 4 CQ stages (cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack) are now
+# in _TPL_STAGES. Add stubs so the runner can load them if needed.
+for _cq in cq-preflight cq-audit-plan cq-cycle cq-backtrack; do
+    _fn="${_cq//-/_}_run"
+    mkdir -p "$INT_PLUGINS_ROOT/agent/$_cq"
+    cat > "$INT_PLUGINS_ROOT/agent/$_cq/manifest.yaml" <<EOF
+id: $_cq
+name: Test $_cq
+kind: agent
+version: 0.0.1
+hooks:
+  run: ${_fn}
+requires:
+  core:
+    - redaction
+EOF
+    printf '%s() { return 0; }\n' "$_fn" > "$INT_PLUGINS_ROOT/agent/$_cq/plugin.sh"
+done
+
+# Write state: all pre-review stages complete (including CQ stages), review pending.
 # #485: added test=complete. #568: added test_assessment=complete.
+# #755: added cq-preflight/cq-audit-plan/cq-cycle/cq-backtrack=complete.
 INT_STATE_FILE="$INT_STATE_DIR/pipeline-state.json"
 jq -n \
     --arg run_id "integ-test-resume-225" \
@@ -244,7 +264,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: 225,
-        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", review: "pending"},
+        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", "cq-preflight": "complete", "cq-audit-plan": "complete", "cq-cycle": "complete", "cq-backtrack": "complete", review: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -279,7 +299,7 @@ assert_eq "integration: review stage_status=complete after resume" "complete" "$
 # Verify intake/plan/build were skipped (events.jsonl should show only 1 stage.start for review)
 if [[ -f "$INT_EVENTS_DIR/events.jsonl" ]]; then
     _stage_starts="$(grep -c '"stage.start"' "$INT_EVENTS_DIR/events.jsonl" || true)"
-    assert_eq "integration: only 1 stage.start (skipped 5 complete stages)" "1" "$_stage_starts"
+    assert_eq "integration: only 1 stage.start (skipped 11 complete stages)" "1" "$_stage_starts"
     _resume_event="$(grep -c '"pipeline.resume"' "$INT_EVENTS_DIR/events.jsonl" || true)"
     assert_eq "integration: pipeline.resume event emitted" "1" "$_resume_event"
 fi

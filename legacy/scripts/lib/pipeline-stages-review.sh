@@ -701,6 +701,8 @@ ${review_summary}
 }
 
 # ─── Compound Quality (fallback) ────────────────────────────────────────────
+# MIGRATED (#755): stage_compound_quality → plugins/agent/cq-{preflight,audit-plan,cycle,backtrack}/
+# See legacy/migrated/A2-compound-quality.md
 # Basic implementation: adversarial review, negative testing, e2e checks, DoD audit.
 # If pipeline-intelligence.sh was sourced first, its enhanced version takes priority.
 if ! type stage_compound_quality >/dev/null 2>&1; then

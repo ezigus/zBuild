@@ -1,0 +1,65 @@
+id: cq-cycle
+name: CQ Audit Cycle
+kind: agent
+version: 0.1.0
+description: |
+  Iterative audit cycle. Dispatches selected lens plugins (adversarial,
+  architecture, simulation, security, correctness). Detects plateau and
+  divergence. Re-scores after each audit pass and emits findings.
+  Does NOT contain backtrack logic — that is cq-backtrack's concern.
+  legacy-citation: pipeline-intelligence.sh:2198+ (compound_quality cycle loop)
+
+hooks:
+  init: cq_cycle_init
+  run: cq_cycle_run
+  finalize: cq_cycle_finalize
+  cleanup: cq_cycle_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: cq-cycle.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+  valid_verdicts:
+    - converged
+    - plateau
+    - diverged
+
+inputs:
+  - id: cq_audit_plan
+    type: file
+    path: "${artifact_dir}/cq-audit-plan.json"
+    source: stage:cq-audit-plan
+    required: true
+  - id: diff_patch
+    type: file
+    path: "${artifact_dir}/diff.patch"
+    source: stage:build
+    required: true
+  - id: prior_cycle_feedback
+    type: file
+    path: "${cycle_feedback_dir}/prior-cycle-feedback.md"
+    source: cycle_feedback
+    required: false
+
+outputs:
+  - id: cq_cycle
+    path: "${artifact_dir}/cq-cycle.json"
+    type: cq-cycle.json
+    required: true
+    primary: true
+
+state:
+  persisted:
+    - last_verdict
+    - last_cycle_count
+  reconstructed: []

@@ -114,33 +114,34 @@ design:
     max_turns: 0
 
 # ─── review_cycle (outer remediation cycle, ADR-026) ────────────────────
-# Outer cycle wrapping the inner build_test_cycle + the review stage. On
-# review.verdict=approve, exit_when fires and control returns to the next
-# sibling in the OUTER scope's flow (none — pipeline ends successfully).
-# On review.verdict=block, abort_when fires (rc=6 cycle_abort, ADR-025) and
-# propagates outward to terminate the pipeline. On review.verdict=
-# request_changes, the cycle re-iterates: the inner build_test_cycle re-
-# runs, this time with the prior review.review_md piped to build's
-# prior_review_feedback input via the feedback edge below (consumed by
-# plugins/agent/build whose manifest declares the matching source:
-# cycle_feedback input — Wave 18-B). max_iterations: 2 caps worst-case
-# remediation spend; on_max: continue matches ADR-019's fall-through to
-# operator (the unconverged verdict still records, the pipeline ends with
-# _RUNNER_CYCLE_UNCONVERGED set per ADR-021 v2 #527/#528). Plan is NOT
-# wrapped — re-running plan on review feedback is a deferred decision
-# (ADR-026 Alternative (c)).
+# Outer cycle wrapping the inner build_test_cycle + the 4 CQ stages + the
+# review stage. After build_test_cycle converges, the 4 compound-quality
+# stages run in order (cq-preflight → cq-audit-plan → cq-cycle →
+# cq-backtrack) before review. On review.verdict=approve, exit_when fires
+# and control returns to the next sibling in the OUTER scope's flow (none —
+# pipeline ends successfully). On review.verdict=block, abort_when fires
+# (rc=6 cycle_abort, ADR-025) and propagates outward to terminate the
+# pipeline. On review.verdict=request_changes, the cycle re-iterates.
+# max_iterations: 2 caps worst-case remediation spend; on_max: continue
+# matches ADR-019's fall-through to operator (ADR-021 v2 #527/#528).
 #
-# NB (Wave 18-B): the feedback `to:` MUST use block form. The Wave 17-B
-# template translator (_tpl_translate_new_shape, core/pipeline/template.sh)
-# handles block form of `to:` (multi-line stage/input/required) but does
-# NOT yet handle the inline single-line `to: { stage, input, required }`
-# form. Using inline form here would silently drop the feedback edge.
-# Today's build_test_cycle below uses inline `from:` (handled) + block
-# `to:` (handled); review_cycle follows the same convention.
+# cq-preflight exits non-zero on gate failure (verdict=fail), which causes
+# the runner to fail the stage (blocking=true per ADR-013) and abort the
+# cycle, skipping cq-audit-plan, cq-cycle, cq-backtrack, and review.
+#
+# NB (Wave 18-B): the feedback `to:` MUST use block form. See build_test_cycle
+# comment below for the block-form constraint rationale.
+#
+# Issue #755: cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack replace
+# the monolithic compound_quality orchestrator stage.
 review_cycle:
   type: cycle
   flow:
     - build_test_cycle
+    - cq-preflight
+    - cq-audit-plan
+    - cq-cycle
+    - cq-backtrack
     - review
   exit_when:
     stage: review
@@ -232,6 +233,61 @@ test_assessment:
     tail_lines: 200
   router:
     timeout_s: 300
+    max_turns: 25
+
+# ─── cq-preflight (leaf, cycle member) ─────────────────────────────────
+# Non-cyclic fast-fail: bash-compat, coverage floor, untested-functions.
+# Exits non-zero on failure so downstream CQ stages are skipped.
+# issue #755 / legacy-citation: pipeline-intelligence.sh:2042-2195
+cq-preflight:
+  gate: auto
+  roles: [cq_preflight]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 120
+    max_turns: 25
+
+# ─── cq-audit-plan (leaf, cycle member) ─────────────────────────────────
+# Reads quality-score history, selects audit lenses and intensity.
+# issue #755 / legacy-citation: pipeline-intelligence.sh:429-508
+cq-audit-plan:
+  gate: auto
+  roles: [cq_audit_plan]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 120
+    max_turns: 25
+
+# ─── cq-cycle (leaf, cycle member) ──────────────────────────────────────
+# Iterative audit loop; dispatches selected lenses, tracks convergence.
+# issue #755 / legacy-citation: pipeline-intelligence.sh:2198+
+cq-cycle:
+  gate: auto
+  roles: [cq_cycle]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    # cq-cycle drives multi-lens LLM calls; sentinel 0 omits --max-turns
+    # from claude argv (ADR-018 Wave 19-M, #762) — no cap, claude decides.
+    max_turns: 0
+
+# ─── cq-backtrack (leaf, cycle member) ──────────────────────────────────
+# Classifies findings, routes architecture findings to design stage.
+# issue #755 / legacy-citation: pipeline-intelligence.sh:1343/1745
+cq-backtrack:
+  gate: auto
+  roles: [cq_backtrack]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 120
     max_turns: 25
 
 # ─── review (leaf) ──────────────────────────────────────────────────────

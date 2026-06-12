@@ -1,0 +1,66 @@
+id: cq-backtrack
+name: CQ Backtrack Router
+kind: agent
+version: 0.1.0
+description: |
+  Classifies cycle findings by category and emits recovery.suggestion
+  targeting the design stage when architecture-class findings remain after
+  the cycle cap. Routes architecture findings back to design stage, sets
+  target_stage accordingly. Non-blocking: degrades to continue-with-warning
+  rather than halting.
+  legacy-citation: pipeline-intelligence.sh:1343/1745 (backtrack-to-stage,
+  compound_rebuild_with_feedback)
+
+hooks:
+  init: cq_backtrack_init
+  run: cq_backtrack_run
+  finalize: cq_backtrack_finalize
+  cleanup: cq_backtrack_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: cq-backtrack.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+  valid_verdicts:
+    - continue
+    - backtrack
+
+inputs:
+  - id: cq_cycle
+    type: file
+    path: "${artifact_dir}/cq-cycle.json"
+    source: stage:cq-cycle
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
+  - id: build_summary
+    type: file
+    path: "${artifact_dir}/build-summary.json"
+    source: stage:build
+    required: false
+
+outputs:
+  - id: cq_backtrack
+    path: "${artifact_dir}/cq-backtrack.json"
+    type: cq-backtrack.json
+    required: true
+    primary: true
+
+state:
+  persisted:
+    - last_verdict
+    - last_target_stage
+  reconstructed: []

@@ -37,7 +37,7 @@ build's task requires reading before writing.
 | Stage | Mode | `claude` flags |
 |---|---|---|
 | intake | bash only (no LLM) | `gh issue view` |
-| plan, design, review, compound_quality, TDD | **one-shot** `claude --print` with tools | `--disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns 25 --dangerously-skip-permissions` |
+| plan, design, review, cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, TDD | **one-shot** `claude --print` with tools | `--disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns 25 --dangerously-skip-permissions` |
 | build | **agent-loop** — multi-turn; Claude edits the working tree; `git diff` fed back between turns | `claude -p … --output-format json --disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns N --dangerously-skip-permissions` |
 
 `claude --print` is **not** a "no-tools" mode. Tools are available unless explicitly
@@ -101,7 +101,7 @@ by default for read-only analyzers). Pipeline post-validates tool-use log if
 available in `--output-format json` responses.
 
 **Current users:** plan, review, security-lens.
-**Future users:** design, compound_quality, TDD-spec, and any stage that produces
+**Future users:** design, cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, TDD-spec, and any stage that produces
 a structured artifact from analysis.
 
 ---
@@ -603,7 +603,7 @@ Decision point #8 — JSON envelope mandatory for Pattern 1 with tools
     `ZBUILD_REVIEW_AUDIT_TOOL_USE` gate only controls the tool-uses
     side-channel.
   - Decision point #8 codifies the rule in §"Pattern 1" so future stages
-    (design, compound_quality, etc.) inherit it.
+    (design, cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, etc.) inherit it.
 - Tests extended:
   - Unit shadows of `route_to_model` capture `ZBUILD_ROUTER_JSON_OUTPUT`
     at call time and assert it equals `1`.

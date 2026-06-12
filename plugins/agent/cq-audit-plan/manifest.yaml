@@ -1,0 +1,59 @@
+id: cq-audit-plan
+name: CQ Audit Plan Selection
+kind: agent
+version: 0.1.0
+description: |
+  Selects which compound-quality audit lenses run and at what intensity
+  based on quality-score history and intelligence-cache complexity.
+  Reads quality-scores.jsonl history, branches on avg_score and critical-
+  finding count, checks intelligence-cache complexity, emits
+  pipeline.audit_selection event.
+  legacy-citation: pipeline-intelligence.sh:429-508 (pipeline_select_audits)
+
+hooks:
+  init: cq_audit_plan_init
+  run: cq_audit_plan_run
+  finalize: cq_audit_plan_finalize
+  cleanup: cq_audit_plan_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: cq-audit-plan.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: cq_preflight
+    type: file
+    path: "${artifact_dir}/cq-preflight.json"
+    source: stage:cq-preflight
+    required: true
+  - id: quality_scores
+    type: file
+    path: "${state_dir}/quality-scores.jsonl"
+    required: false
+  - id: intelligence_cache
+    type: file
+    path: "${state_dir}/intelligence-cache.json"
+    required: false
+
+outputs:
+  - id: cq_audit_plan
+    path: "${artifact_dir}/cq-audit-plan.json"
+    type: cq-audit-plan.json
+    required: true
+    primary: true
+
+state:
+  persisted:
+    - last_intensity
+  reconstructed: []

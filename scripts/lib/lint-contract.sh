@@ -34,7 +34,7 @@ _PLUGINS_ROOT="${ZBUILD_PLUGINS_ROOT:-$_LINT_CONTRACT_REPO/plugins}"
 # data contract. Backend services (cache/memory/orchestrator/claim-coordinator)
 # don't read/produce stage artifacts and are intentionally excluded. The
 # explicit allowlist below mirrors ADR-013's canonical stage set.
-_LC_STAGE_IDS_TO_CHECK=(intake plan design build test test_assessment review compound_quality pr deploy validate monitor security-lens)
+_LC_STAGE_IDS_TO_CHECK=(intake plan design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor security-lens)
 
 _lc_id_in_scope() {
     local id="$1" s

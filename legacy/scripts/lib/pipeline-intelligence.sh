@@ -425,6 +425,7 @@ pipeline_adaptive_cycles() {
 # ──────────────────────────────────────────────────────────────────────────────
 # 5. Intelligent Audit Selection
 # AI-driven audit selection — all audits enabled, intensity varies.
+# MIGRATED (#755): pipeline_select_audits → plugins/agent/cq-audit-plan/
 # ──────────────────────────────────────────────────────────────────────────────
 pipeline_select_audits() {
     local audit_intensity
@@ -1956,6 +1957,12 @@ pipeline_run_ruflo_cq_hive() {
     return 1
 }
 
+# MIGRATED (#755): stage_compound_quality → split into 4 plugins:
+#   preflight gates  → plugins/agent/cq-preflight/
+#   audit selection  → plugins/agent/cq-audit-plan/
+#   cycle/plateau    → plugins/agent/cq-cycle/
+#   backtrack        → plugins/agent/cq-backtrack/
+# See legacy/migrated/A2-compound-quality.md
 stage_compound_quality() {
     CURRENT_STAGE_ID="compound_quality"
 

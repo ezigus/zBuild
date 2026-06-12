@@ -1,0 +1,64 @@
+id: cq-preflight
+name: CQ Pre-flight Gates
+kind: agent
+version: 0.1.0
+description: |
+  Compound-quality pre-flight gates (ADR-013 §compound_quality sub-phases,
+  issue #755). Non-cyclic fast-fail checks: bash 3.2 compatibility, test-
+  coverage floor, untested-functions. Failure aborts without entering the
+  audit cycle.
+  legacy-citation: pipeline-intelligence.sh:2042-2195
+
+hooks:
+  init: cq_preflight_init
+  run: cq_preflight_run
+  finalize: cq_preflight_finalize
+  cleanup: cq_preflight_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: cq-preflight.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+  valid_verdicts:
+    - pass
+    - fail
+  coverage_threshold: 60
+
+inputs:
+  - id: diff_patch
+    type: file
+    path: "${artifact_dir}/diff.patch"
+    source: stage:build
+    required: true
+  - id: test_results
+    type: file
+    path: "${artifact_dir}/test-results.json"
+    source: stage:test
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
+
+outputs:
+  - id: cq_preflight
+    path: "${artifact_dir}/cq-preflight.json"
+    type: cq-preflight.json
+    required: true
+    primary: true
+
+state:
+  persisted:
+    - last_verdict
+  reconstructed: []

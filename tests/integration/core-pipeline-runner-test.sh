@@ -49,6 +49,11 @@ _make_plugin "build"           "agent" 0
 _make_plugin "test"            "tool"  0
 # #568: standard template inserts test_assessment between test and review.
 _make_plugin "test_assessment" "agent" 0
+# #755: standard template now includes 4 CQ stages between test_assessment and review.
+_make_plugin "cq-preflight"   "agent" 0
+_make_plugin "cq-audit-plan"  "agent" 0
+_make_plugin "cq-cycle"       "agent" 0
+_make_plugin "cq-backtrack"   "agent" 0
 _make_plugin "review"          "agent" 0
 
 # ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
@@ -92,8 +97,9 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 # ─── Test 6: stage lifecycle events emitted ─────────────────────────────────
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
-    # #754: 8 stages (intake, plan, impact, design, build, test, test_assessment, review).
-    assert_eq "$stage_event emitted for each MVP stage (8x)" "8" "$count"
+    # #755: 12 stages (intake, plan, impact, design, build, test, test_assessment,
+    # cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, review).
+    assert_eq "$stage_event emitted for each stage (12x)" "12" "$count"
 done
 
 # ─── Test 7: ADR-006 stage status enum — "complete" not "success" ───────────
@@ -244,6 +250,11 @@ _make_role_plugin "build-agent"           "builder"         0
 _make_role_plugin "test-agent"            "tester"          0
 # #568: test_assessment role added for the new assessment stage
 _make_role_plugin "test-assessment-agent" "test_assessment" 0
+# #755: 4 CQ stage roles added
+_make_role_plugin "cq-preflight-agent"   "cq_preflight"   0
+_make_role_plugin "cq-audit-plan-agent"  "cq_audit_plan"  0
+_make_role_plugin "cq-cycle-agent"       "cq_cycle"       0
+_make_role_plugin "cq-backtrack-agent"   "cq_backtrack"   0
 _make_role_plugin "review-agent"          "reviewer"        0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
@@ -251,8 +262,8 @@ set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppr
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-# #754: 8 stages now (added design).
-assert_eq "role-based dispatch: 8 stage.complete events" "8" "$role_complete"
+# #755: 12 stages (added 4 CQ stages).
+assert_eq "role-based dispatch: 12 stage.complete events" "12" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
 assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"

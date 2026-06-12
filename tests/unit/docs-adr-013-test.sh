@@ -47,12 +47,15 @@ for section in "Context" "Decision" "Consequences" "Implementation Notes"; do
 done
 
 # ---------------------------------------------------------------------------
-# TC-3: All 12 canonical stage ids are present in the document
+# TC-3: All 15 canonical stage ids are present in the document
 # ---------------------------------------------------------------------------
 # Use grep -w for portable word-boundary matching (POSIX/BSD/GNU compatible).
+# Issue #755: compound_quality replaced by 4 CQ leaf stages (cq-preflight,
+# cq-audit-plan, cq-cycle, cq-backtrack).
 canonical_stages=(
-    intake plan design build test test_assessment review
-    compound_quality pr deploy validate monitor
+    intake plan design build test test_assessment
+    cq-preflight cq-audit-plan cq-cycle cq-backtrack
+    review pr deploy validate monitor
 )
 
 for stage_id in "${canonical_stages[@]}"; do
@@ -79,19 +82,19 @@ for field in "${required_fields[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# TC-5: compound_quality sub-phases defined with canonical ids
+# TC-5: CQ stage IDs (former compound_quality sub-phases) present in ADR-013
 # ---------------------------------------------------------------------------
-# audit_plan (not plan) is the second sub-phase per ADR-013 §"compound_quality
-# sub-phases". Testing the exact token prevents false-green matches on the
-# generic word "plan" which appears as a stage id throughout the file.
-compound_subphases=(preflight audit_plan cycle backtrack)
+# Issue #755: compound_quality sub-phases are now first-class leaf stages.
+# The stage IDs (cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack) must
+# appear in ADR-013 as part of the amendment documenting the split.
+cq_stage_ids=(cq-preflight cq-audit-plan cq-cycle cq-backtrack)
 
-for subphase in "${compound_subphases[@]}"; do
+for cq_id in "${cq_stage_ids[@]}"; do
     set +e
-    grep -qw -- "${subphase}" "$ADR_FILE"
+    grep -q -- "${cq_id}" "$ADR_FILE"
     rc=$?
     set -e
-    assert_eq "TC-5: compound_quality sub-phase '${subphase}' defined in ADR-013" "0" "$rc"
+    assert_eq "TC-5: CQ stage id '${cq_id}' present in ADR-013" "0" "$rc"
 done
 
 # ---------------------------------------------------------------------------

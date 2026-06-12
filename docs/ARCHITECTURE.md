@@ -41,10 +41,10 @@ System view, plugin contract, data flow, state model, glossary. Complements [KEE
 │    stage handlers)    integrations)      self-heal strategies)      │
 │                                                                     │
 │   kind: orchestrator  kind: claim-       kind: daemon               │
-│   (compound_quality   coordinator        (poll, triage, patrol,     │
-│    4-phase, patrol)   (github-labels     fleet-failover)            │
-│                       default,                                      │
-│                       ttl-leases later)                             │
+│   (cq-preflight,      coordinator        (poll, triage, patrol,     │
+│    cq-audit-plan,     (github-labels     fleet-failover)            │
+│    cq-cycle,          default,                                      │
+│    cq-backtrack)      ttl-leases later)                             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -180,7 +180,7 @@ zbuild pipeline start --issue 42
    ├─▶ [state.update(stage_status, CURRENT_ITERATION) → atomic_write + .bak]
    │
    ▼
-[compound_quality orchestrator runs (4-phase: preflight → audit_plan → cycle → backtrack) — see ADR-013]
+[4 CQ leaf stages run: cq-preflight → cq-audit-plan → cq-cycle → cq-backtrack — see ADR-013]
    │
    ▼
 [github.update_live_comment(pipeline-progress-marker, new_status)]

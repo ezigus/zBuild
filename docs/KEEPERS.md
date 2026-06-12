@@ -20,13 +20,13 @@ The spec is organized as the original was, with deltas called out.
 
 **Re-cleave required:**
 
-- `stage_compound_quality` (`legacy/scripts/lib/pipeline-intelligence.sh:1959-2972`, 1013 LoC) must split into **four** plugins, not two:
-  1. **Pre-flight gates** (`:2042-2195`) — bash-compat check, coverage, untested-functions. Non-cyclic, fail-fast.
-  2. **Audit-plan selection** (`:2028-2036`, delegates to `pipeline_select_audits` at `:429-508` — verified that this reads `quality-scores.jsonl` history at `:453-482` and adjusts intensity).
-  3. **Cycle / plateau loop** (`:2198+`).
-  4. **Backtrack-to-stage** (embedded in the loop, must be lifted to its own concern).
+- **MIGRATED (#755):** `stage_compound_quality` (`legacy/scripts/lib/pipeline-intelligence.sh:1959-2972`, 1013 LoC) has been split into **four** plugins:
+  1. **cq-preflight** (`plugins/agent/cq-preflight/`) — bash-compat check, coverage, untested-functions. Non-cyclic, fail-fast. (legacy: `:2042-2195`)
+  2. **cq-audit-plan** (`plugins/agent/cq-audit-plan/`) — audit intensity selection via `pipeline_select_audits`. (legacy: `pipeline_select_audits :429-508`)
+  3. **cq-cycle** (`plugins/agent/cq-cycle/`) — iterative audit loop with convergence/plateau/divergence detection. (legacy: `:2198+`)
+  4. **cq-backtrack** (`plugins/agent/cq-backtrack/`) — architecture-finding backtrack routing to design stage. (legacy: `:1343/1745`)
 
-Treating compound_quality as 2 will let pre-flight failures escape into cycles and leave backtrack tangled with rescoring.
+See tombstone at `legacy/migrated/A2-compound-quality.md`.
 
 **A.6 — Design stage migration (issue #754):**
 
@@ -168,7 +168,7 @@ Still add golden-file diffing as a new capability (confirmed zero golden tests i
 
 Original NOT-keeping list + new additions:
 
-- The 1013-line `stage_compound_quality` monolith (split into 4 per Section A).
+- The 1013-line `stage_compound_quality` monolith (split into 4 per Section A — DONE #755).
 - The 2974-line `legacy/scripts/lib/pipeline-intelligence.sh` junk drawer.
 - The 4309-line `legacy/scripts/sw-pipeline.sh` god-script (CLI + engine + selfheal + errors).
 - Three separate named self-healing loops — collapse into one engine driven by recovery plugins.
@@ -268,7 +268,7 @@ Behaviors not wired today; build after migration stabilizes (not blocking Phase 
 ### Milestones
 
 1. **Phase 0: Core Engine Foundation** — ships when redaction chokepoint, CURRENT_ITERATION persistence, plugin registry skeleton, event bus, first agent plugin (security lens), new repo, and legacy import are all done.
-2. **Phase 1: Pipeline & Intelligence (Sections A + B)** — stage handlers wrapped as plugins, compound_quality split into 4 modules, audit auto-select working, memory recall live.
+2. **Phase 1: Pipeline & Intelligence (Sections A + B)** — stage handlers wrapped as plugins, compound_quality split into 4 modules (DONE #755: cq-preflight/cq-audit-plan/cq-cycle/cq-backtrack), audit auto-select working, memory recall live.
 3. **Phase 2: Reliability & Safety Primitives (Section C)** — 9 redaction sites unified through chokepoint, admission-gate ordering documented, JSON corruption recovery wired into hot path, disk-space check on every artifact write, 7 hidden guards lifted.
 4. **Phase 3: Daemon & Autonomous Ops (Section D)** — claim-coordinator default plugin live, label-based control plane preserved, triage/patrol/health daemon plugins migrated, peer failover working.
 5. **Phase 4: CLI, UX, Skills, Personas (Sections E + F)** — CLI surface matches the legacy E-section behavior, 7 compound-audit lenses migrated as agent plugins, skill registry closed-loop preserved, status JSON / doctor / live-comment marker intact.
@@ -339,7 +339,7 @@ Phase 0 ships when steps 0 through 7 land and Phase 1 issues are unblocked.
 ### Engine
 - `legacy/scripts/sw-pipeline.sh` — 4309 LoC, 27 sectioned zones, centralized dispatch at `:1572`
 - `legacy/scripts/lib/pipeline-stages-{intake,build,review,delivery,monitor}.sh`
-- `legacy/scripts/lib/pipeline-intelligence.sh` — 2974 LoC; `stage_compound_quality` at `:1959-2972`; audit auto-select at `:429-508`
+- `legacy/scripts/lib/pipeline-intelligence.sh` — 2974 LoC; `stage_compound_quality` at `:1959-2972` (migrated → cq-* plugins #755); audit auto-select at `:429-508` (migrated → cq-audit-plan #755)
 - `legacy/scripts/lib/compound-audit.sh` — 7-lens cascade with prompt taxonomy
 - `legacy/scripts/lib/loop-convergence.sh` — `check_circuit_breaker` at `:101-132`
 

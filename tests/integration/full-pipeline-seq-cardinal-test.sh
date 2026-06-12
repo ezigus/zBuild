@@ -64,7 +64,7 @@ ${fn}() {
 EOF
 }
 
-for s in intake plan impact design build test test_assessment review; do
+for s in intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
     _make_logging_plugin "$s"
 done
 
@@ -81,6 +81,8 @@ expect_label() {
 
 # Cardinal numbering — one per linear stage in order.
 # #754: design added between plan_impact_cycle and review_cycle.
+# #755: 4 CQ stages (cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack)
+#       added inside review_cycle between build_test_cycle and review.
 expect_label intake          "1"
 expect_label plan            "2"
 expect_label impact          "3"
@@ -88,7 +90,11 @@ expect_label design          "4"
 expect_label build           "5"
 expect_label test            "6"
 expect_label test_assessment "7"
-expect_label review          "8"
+expect_label cq-preflight    "8"
+expect_label cq-audit-plan   "9"
+expect_label cq-cycle        "10"
+expect_label cq-backtrack    "11"
+expect_label review          "12"
 
 print_test_results
 cleanup_test_env

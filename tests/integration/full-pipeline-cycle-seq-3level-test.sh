@@ -124,7 +124,7 @@ impact_run() {
 PLUG
 }
 
-for s in intake plan impact design build test test_assessment review; do
+for s in intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
     _make_plugin "$s"
 done
 _make_impact_plugin
@@ -165,9 +165,15 @@ assert_eq "build iter 1 label = 4.1.1.1.1"           "4.1.1.1.1" "$(_label_for b
 assert_eq "test iter 1 label = 4.1.1.1.2"            "4.1.1.1.2" "$(_label_for test 1)"
 assert_eq "test_assessment iter 1 label = 4.1.1.1.3" "4.1.1.1.3" "$(_label_for test_assessment 1)"
 
-# Wave 19-B: review is at position 2 of review_cycle (iter 1) → 3-segment
-# "4.1.2".
-assert_eq "review iter 1 label = 4.1.2"              "4.1.2"     "$(_label_for review 1)"
+# #755: CQ stages (cq-preflight=pos2, cq-audit-plan=pos3, cq-cycle=pos4,
+# cq-backtrack=pos5) are direct members of review_cycle between build_test_cycle
+# and review. review moves to pos 6.
+assert_eq "cq-preflight iter 1 label = 4.1.2"  "4.1.2"  "$(_label_for cq-preflight 1)"
+assert_eq "cq-audit-plan iter 1 label = 4.1.3" "4.1.3"  "$(_label_for cq-audit-plan 1)"
+assert_eq "cq-cycle iter 1 label = 4.1.4"      "4.1.4"  "$(_label_for cq-cycle 1)"
+assert_eq "cq-backtrack iter 1 label = 4.1.5"  "4.1.5"  "$(_label_for cq-backtrack 1)"
+# review is now at position 6 of review_cycle (iter 1) → "4.1.6".
+assert_eq "review iter 1 label = 4.1.6"        "4.1.6"  "$(_label_for review 1)"
 
 # Inside the nested build_test_cycle, members must see ZBUILD_SEQ_PREFIX="4.1.1"
 # (review_cycle's prefix 4 → its iter 1, pos 1 = build_test_cycle).
@@ -180,7 +186,9 @@ assert_eq "intake saw ZBUILD_SEQ_PREFIX UNSET" "UNSET" "$(_prefix_env_for intake
 # #746: plan + impact are inside plan_impact_cycle (cardinal 2); they see prefix "2".
 assert_eq "plan saw ZBUILD_SEQ_PREFIX=2"   "2" "$(_prefix_env_for plan)"
 assert_eq "impact saw ZBUILD_SEQ_PREFIX=2" "2" "$(_prefix_env_for impact)"
-# review is a direct leaf member of review_cycle so it sees the outer prefix "4".
+# CQ stages and review are direct leaf members of review_cycle so they see prefix "4".
+assert_eq "cq-preflight saw ZBUILD_SEQ_PREFIX=4 (direct member of review_cycle)" \
+    "4" "$(_prefix_env_for cq-preflight)"
 assert_eq "review saw ZBUILD_SEQ_PREFIX=4 (direct member of review_cycle)" \
     "4" "$(_prefix_env_for review)"
 

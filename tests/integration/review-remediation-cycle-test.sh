@@ -7,7 +7,7 @@
 #
 # Asserts:
 #   T1: standard.yaml's review_cycle parses with the ADR-026 shape (outer
-#       flow=[build_test_cycle,review], exit_when=review.verdict==approve,
+#       flow=[build_test_cycle,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review], exit_when=review.verdict==approve,
 #       abort_when=review.verdict==block, feedback review→build wires
 #       prior_review_feedback)
 #   T2: outer cycle converges in iter 2 (rc=0, reason=converged)
@@ -41,8 +41,8 @@ has_outer=0
 for c in "${_TPL_CYCLES[@]}"; do [[ "$c" == "review_cycle" ]] && has_outer=1; done
 assert_eq "T1: review_cycle is a registered cycle" "1" "$has_outer"
 
-assert_eq "T1: review_cycle.flow = build_test_cycle,review" \
-    "build_test_cycle,review" "${_TPL_CYCLE_STAGES_review_cycle:-}"
+assert_eq "T1: review_cycle.flow = build_test_cycle,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" \
+    "build_test_cycle,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" "${_TPL_CYCLE_STAGES_review_cycle:-}"
 assert_eq "T1: exit_when.stage=review" \
     "review" "${_TPL_CYCLE_UNTIL_STAGE_review_cycle:-}"
 assert_eq "T1: exit_when.field=verdict" \
