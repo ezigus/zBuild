@@ -719,7 +719,11 @@ _stage_io_strip_ansi() {
     # Use sed with the GNU/BSD-common ERE form. \x1b is the ESC character.
     # Two passes: first strip CSI (ESC [ ... <letter|~>), then strip any
     # remaining bare-ESC sequences (ESC <char>).
-    printf '%s' "$content" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g'
+    # #830: LC_ALL=C so sed processes raw bytes. Without it, BSD sed aborts
+    # with "RE error: illegal byte sequence" on any non-UTF-8 byte (binary
+    # fragments embedded in captured LLM/command output). Helper is called
+    # from multiple paths so inline prefix is safer than caller-side env.
+    printf '%s' "$content" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g'
 }
 
 # ─── _stage_io_pretty_print — pretty-print JSON, pass through otherwise ─────
