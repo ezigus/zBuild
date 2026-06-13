@@ -304,6 +304,28 @@ section, you MUST check the plan AND the diff against each anti-pattern.
 Matching any anti-pattern is grounds for request_changes regardless of
 plan-conformance.
 
+## Assertion integrity (#840 / ADR-030)
+
+Governed scope expansion lets the build agent edit TEST files it was not
+originally scoped for (to fix collateral that pins values the change
+invalidates). This opens one hazard: a build could make a red test pass by
+WEAKENING it rather than fixing the code. You MUST guard against this.
+
+When the diff modifies test files, scrutinize every changed assertion:
+- An assertion may be UPDATED to a new correct expected value (e.g. a stage
+  count "8" → "12" because the change genuinely added stages). That is fine.
+- An assertion MUST NOT be DELETED, commented out, loosened (tightened →
+  loose comparison, exact → "contains", removing edge cases), or have its
+  expected value changed to something that no longer reflects real intent
+  JUST to make a failing test pass. That is gaming the gate.
+- A whole test or test case removed to silence a failure is a `block`-level
+  defect unless the issue explicitly retired that behavior.
+
+If you find a weakened/deleted assertion that exists only to pass, set
+`request_changes` (or `block` for outright deletion of behavior coverage)
+and cite the specific assertion in issues[]. An approve is NOT permitted
+while a test was weakened to go green.
+
 REVIEW_PROMPT
 )"
     _review_instructions="$_output_contract_block
