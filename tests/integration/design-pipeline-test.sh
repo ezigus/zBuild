@@ -143,6 +143,11 @@ PLUGEOF
 _make_plugin "build"           "agent" 0 >/dev/null
 _make_plugin "test"            "tool"  0 >/dev/null
 _make_plugin "test_assessment" "agent" 0 >/dev/null
+# #755: review_cycle.flow now includes the 4 compound_quality stages.
+_make_plugin "cq-preflight"    "agent" 0 >/dev/null
+_make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
+_make_plugin "cq-cycle"        "agent" 0 >/dev/null
+_make_plugin "cq-backtrack"    "agent" 0 >/dev/null
 _make_plugin "review"          "agent" 0 >/dev/null
 
 # ─── Run the pipeline end-to-end ─────────────────────────────────────────────

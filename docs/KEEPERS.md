@@ -18,15 +18,16 @@ The spec is organized as the original was, with deltas called out.
 - Stage handlers already live in modular files: `legacy/scripts/lib/pipeline-stages-{intake,build,review,delivery,monitor}.sh`. Plugin migration wraps these; do not rewrite.
 - Gate semantics (auto / approve / budget / score / scope / smoke) and template subtractive composition (hotfix disables stages, doesn't fork code) — confirmed and carry forward.
 
-**Re-cleave required:**
+**Re-cleave DONE (issue #755, 2026-06-13):**
 
-- `stage_compound_quality` (`legacy/scripts/lib/pipeline-intelligence.sh:1959-2972`, 1013 LoC) must split into **four** plugins, not two:
-  1. **Pre-flight gates** (`:2042-2195`) — bash-compat check, coverage, untested-functions. Non-cyclic, fail-fast.
-  2. **Audit-plan selection** (`:2028-2036`, delegates to `pipeline_select_audits` at `:429-508` — verified that this reads `quality-scores.jsonl` history at `:453-482` and adjusts intensity).
-  3. **Cycle / plateau loop** (`:2198+`).
-  4. **Backtrack-to-stage** (embedded in the loop, must be lifted to its own concern).
+`stage_compound_quality` has been split into four independent leaf-stage agent plugins:
 
-Treating compound_quality as 2 will let pre-flight failures escape into cycles and leave backtrack tangled with rescoring.
+1. **`cq-preflight`** → `plugins/agent/cq-preflight/` — bash-compat check, coverage, untested-functions. Non-cyclic, fail-fast. Source: `pipeline-intelligence.sh:2042-2195`.
+2. **`cq-audit-plan`** → `plugins/agent/cq-audit-plan/` — reads `quality-scores.jsonl` history, emits `audit-plan.json`. Source: `pipeline-intelligence.sh:429-508`.
+3. **`cq-cycle`** → `plugins/agent/cq-cycle/` — iterative audit loop, emits `quality-feedback.md`. Source: `pipeline-intelligence.sh:2236-2900`.
+4. **`cq-backtrack`** → `plugins/agent/cq-backtrack/` — architecture-class backtrack, non-blocking. Source: `pipeline-intelligence.sh:1339-1422`.
+
+See tombstone: `legacy/migrated/A2-compound-quality.md`.
 
 **A.6 — Design stage migration (issue #754):**
 

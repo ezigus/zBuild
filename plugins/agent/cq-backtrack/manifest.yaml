@@ -1,0 +1,52 @@
+id: cq-backtrack
+name: CQ Backtrack Recovery
+kind: agent
+version: 0.1.0
+description: |
+  Reads classified-findings.json needs_backtrack flag from cq-cycle. If
+  unresolved architecture-class findings remain after the cycle cap, emits
+  a recovery.suggestion event targeting the design stage. Non-blocking:
+  backtrack exhaustion degrades to continue-with-warning rather than halting.
+  # legacy-citation: pipeline_backtrack_to_stage at pipeline-intelligence.sh:1339-1422
+
+hooks:
+  run: cq_backtrack_run
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: cq_backtrack
+  artifact_type: cq-backtrack-result.json
+  schema_version: 1
+
+config:
+  tier_default: T1
+  max_backtrack_attempts: 2
+
+inputs:
+  - id: findings
+    type: file
+    path: "${artifact_dir}/review.findings.json"
+    source: stage:cq-cycle
+    required: true
+  - id: quality_feedback
+    type: file
+    path: "${artifact_dir}/quality-feedback.md"
+    source: stage:cq-cycle
+    required: false
+
+outputs:
+  - id: backtrack_result
+    path: ${artifact_dir}/cq-backtrack-result.json
+    type: json
+    required: true
+    primary: true
+
+state:
+  persisted: [backtrack_count]
+  reconstructed: []

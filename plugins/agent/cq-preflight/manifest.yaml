@@ -1,0 +1,52 @@
+id: cq-preflight
+name: CQ Pre-flight Gates
+kind: agent
+version: 0.1.0
+description: |
+  Pre-flight checks for the compound-quality pipeline. Runs bash-compat
+  check, coverage floor check, and untested-function scan before any audit
+  cycles begin. Fail-fast: non-zero exit skips cq-audit-plan, cq-cycle,
+  and cq-backtrack.
+  # legacy-citation: pipeline-intelligence.sh:1959 (stage_compound_quality
+  # entry point); pre-flight logic at :2042-2195.
+
+hooks:
+  run: cq_preflight_run
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: cq_preflight
+  artifact_type: cq-preflight-result.json
+  schema_version: 1
+
+config:
+  tier_default: T1
+  coverage_floor: 29
+
+inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  - id: test_results
+    type: file
+    path: "${artifact_dir}/test-results.json"
+    source: stage:test
+    required: false
+
+outputs:
+  - id: preflight_result
+    path: ${artifact_dir}/cq-preflight-result.json
+    type: json
+    required: true
+    primary: true
+
+state:
+  persisted: [last_coverage_score]
+  reconstructed: []

@@ -173,6 +173,10 @@ mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/plan" \
          "$INT_PLUGINS_ROOT/agent/design" \
          "$INT_PLUGINS_ROOT/agent/build" "$INT_PLUGINS_ROOT/tool/test" \
          "$INT_PLUGINS_ROOT/agent/test_assessment" \
+         "$INT_PLUGINS_ROOT/agent/cq-preflight" \
+         "$INT_PLUGINS_ROOT/agent/cq-audit-plan" \
+         "$INT_PLUGINS_ROOT/agent/cq-cycle" \
+         "$INT_PLUGINS_ROOT/agent/cq-backtrack" \
          "$INT_PLUGINS_ROOT/agent/review" \
          "$INT_STATE_DIR" "$INT_EVENTS_DIR"
 
@@ -234,6 +238,23 @@ requires:
 EOF
 printf 'test_assessment_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/test_assessment/plugin.sh"
 
+# #755: 4 CQ leaf stages replacing compound_quality (all run before review).
+for _cq_stage in cq-preflight cq-audit-plan cq-cycle cq-backtrack; do
+    _cq_fn="${_cq_stage//-/_}_run"
+    cat > "$INT_PLUGINS_ROOT/agent/$_cq_stage/manifest.yaml" <<EOF
+id: $_cq_stage
+name: Test $_cq_stage
+kind: agent
+version: 0.0.1
+hooks:
+  run: ${_cq_fn}
+requires:
+  core:
+    - redaction
+EOF
+    printf '%s() { return 0; }\n' "$_cq_fn" > "$INT_PLUGINS_ROOT/agent/$_cq_stage/plugin.sh"
+done
+
 # Write state: all pre-review stages complete, review pending.
 # #485: added test=complete. #568: added test_assessment=complete.
 INT_STATE_FILE="$INT_STATE_DIR/pipeline-state.json"
@@ -244,7 +265,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: 225,
-        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", review: "pending"},
+        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", "cq-preflight": "complete", "cq-audit-plan": "complete", "cq-cycle": "complete", "cq-backtrack": "complete", review: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",

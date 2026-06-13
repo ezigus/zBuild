@@ -129,6 +129,11 @@ EOF
 # ─── Pass-through stubs for downstream stages ───────────────────────────────
 mock_plugin_factory "test"            "tool"  0 >/dev/null
 mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
+# #755: review_cycle.flow now includes the 4 compound_quality stages.
+mock_plugin_factory "cq-preflight"    "agent" 0 >/dev/null
+mock_plugin_factory "cq-audit-plan"   "agent" 0 >/dev/null
+mock_plugin_factory "cq-cycle"        "agent" 0 >/dev/null
+mock_plugin_factory "cq-backtrack"    "agent" 0 >/dev/null
 mock_plugin_factory "review"          "agent" 0 >/dev/null
 
 # ─── Mock claude shim: capture the iter-1 prompt to PROMPT_CAPTURE ──────────

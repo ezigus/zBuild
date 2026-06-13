@@ -49,6 +49,11 @@ _make_plugin "build"           "agent" 0
 _make_plugin "test"            "tool"  0
 # #568: standard template inserts test_assessment between test and review.
 _make_plugin "test_assessment" "agent" 0
+# #755: compound_quality split into 4 CQ leaf stages before review.
+_make_plugin "cq-preflight"    "agent" 0
+_make_plugin "cq-audit-plan"   "agent" 0
+_make_plugin "cq-cycle"        "agent" 0
+_make_plugin "cq-backtrack"    "agent" 0
 _make_plugin "review"          "agent" 0
 
 # ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
@@ -92,8 +97,9 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 # ─── Test 6: stage lifecycle events emitted ─────────────────────────────────
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
-    # #754: 8 stages (intake, plan, impact, design, build, test, test_assessment, review).
-    assert_eq "$stage_event emitted for each MVP stage (8x)" "8" "$count"
+    # #755: 12 stages (intake, plan, impact, design, build, test, test_assessment,
+    # cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, review).
+    assert_eq "$stage_event emitted for each MVP stage (12x)" "12" "$count"
 done
 
 # ─── Test 7: ADR-006 stage status enum — "complete" not "success" ───────────
@@ -244,6 +250,11 @@ _make_role_plugin "build-agent"           "builder"         0
 _make_role_plugin "test-agent"            "tester"          0
 # #568: test_assessment role added for the new assessment stage
 _make_role_plugin "test-assessment-agent" "test_assessment" 0
+# #755: 4 CQ leaf stages replacing compound_quality
+_make_role_plugin "cq-preflight-agent"   "cq_preflight"    0
+_make_role_plugin "cq-audit-plan-agent"  "cq_audit_plan"   0
+_make_role_plugin "cq-cycle-agent"       "cq_cycle"        0
+_make_role_plugin "cq-backtrack-agent"   "cq_backtrack"    0
 _make_role_plugin "review-agent"          "reviewer"        0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
@@ -251,8 +262,8 @@ set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppr
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-# #754: 8 stages now (added design).
-assert_eq "role-based dispatch: 8 stage.complete events" "8" "$role_complete"
+# #755: 12 stages now (added 4 CQ stages).
+assert_eq "role-based dispatch: 12 stage.complete events" "12" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
 assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"
@@ -268,9 +279,9 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
-# #754: 8 stages × 2 platforms = 16 plugin.run.start events via fanout
+# #755: 12 stages × 2 platforms = 24 plugin.run.start events via fanout
 plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
-assert_eq "fanout 2 platforms: 16 plugin.run.start events (8 stages × 2)" "16" "$plugin_run_count"
+assert_eq "fanout 2 platforms: 24 plugin.run.start events (12 stages × 2)" "24" "$plugin_run_count"
 
 # ─── Test 14: partial fanout failure — stage.fail + pipeline.end status=failed ─
 # Platform-specific success (node) + generic failure (ios fallback) → partial.
@@ -524,6 +535,13 @@ _make_plugin "test"            "tool"  0 >/dev/null
 # Without it the cycle fails with verdict=error, cycle blocked, rc=5 —
 # `set -e` kills the test before I1's assertions run.
 _make_plugin "test_assessment" "agent" 0 >/dev/null
+# #755: review_cycle.flow now includes the 4 compound_quality stages; without
+# stubs the cycle hits cq-preflight (no plugin), fails rc=5, and `set -e` kills
+# I1 before its assertions run.
+_make_plugin "cq-preflight"    "agent" 0 >/dev/null
+_make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
+_make_plugin "cq-cycle"        "agent" 0 >/dev/null
+_make_plugin "cq-backtrack"    "agent" 0 >/dev/null
 _make_plugin "review"          "agent" 0 >/dev/null
 
 I1_STDERR="$TEST_TEMP_DIR/i1.runner.stderr"
@@ -538,13 +556,14 @@ assert_contains "I1 #508: stderr carries UTC timestamps" "$I1_OUT" "UTC"
 assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:25:45 UTC"
 assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
 
-# I1b: exactly 8 'started ' and 8 'finished ' suffixes (one per stage).
-# Standard template now has 8 stages after #754 added design:
-# intake, plan, impact, design, build, test, test_assessment, review.
+# I1b: exactly 12 'started ' and 12 'finished ' suffixes (one per stage).
+# Standard template has 12 stages after #755 added the 4 compound_quality
+# stages as siblings of review: intake, plan, impact, design, build, test,
+# test_assessment, cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, review.
 started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 8 'started ' suffixes" "8" "$started_count"
+assert_eq "I1b #508: exactly 12 'started ' suffixes" "12" "$started_count"
 finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 8 'finished ' suffixes" "8" "$finished_count"
+assert_eq "I1b #508: exactly 12 'finished ' suffixes" "12" "$finished_count"
 
 # ─── Test I2 (#508): failure path emits ✗ with rc + finished + duration ─────
 _make_plugin "build" "agent" 1 >/dev/null

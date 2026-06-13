@@ -99,6 +99,11 @@ _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass","scope_v
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
+# #755: 4 CQ stages replace compound_quality between test_assessment and review.
+_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
+_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
+_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
+_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 if [[ $rc -ne 0 ]]; then
@@ -109,7 +114,7 @@ fi
 assert_eq "all-pass: runner exits 0" "0" "$rc"
 
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-for stage in intake plan impact design build test test_assessment review; do
+for stage in intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
     if grep -E "✓.*Stage.*${stage}.*complete" <<<"$err" >/dev/null; then
         assert_pass "all-pass: ✓ on $stage line"
     else
@@ -117,9 +122,9 @@ for stage in intake plan impact design build test test_assessment review; do
     fi
 done
 
-# Verdict attribute on stage.complete events (#754: now 8 stages)
+# Verdict attribute on stage.complete events (#755: now 12 stages)
 all_pass_with_verdict=$(grep '"stage.complete"' "$EVENTS_JSONL" | grep -c '"pass"' || true)
-[[ "$all_pass_with_verdict" -ge 8 ]] \
+[[ "$all_pass_with_verdict" -ge 12 ]] \
     && assert_pass "stage.complete carries verdict=pass for each stage" \
     || assert_fail "stage.complete carries verdict=pass for each stage" "got $all_pass_with_verdict"
 
@@ -138,6 +143,11 @@ _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builde
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"fail"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"fail"}' test_assessment
+# #755: CQ stages (stubs only; pipeline halts before reaching them in this scenario).
+_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
+_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
+_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
+_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
@@ -158,6 +168,11 @@ _make_verdict_plugin build  agent build-summary.json '{"scope_violation":true}' 
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
+# #755: CQ stages (stubs only; pipeline halts before reaching them in this scenario).
+_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
+_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
+_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
+_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
@@ -178,6 +193,11 @@ _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builde
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
+# #755: CQ stages run before review; all pass so review_cycle reaches review.
+_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
+_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
+_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
+_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"request_changes"}' reviewer
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"

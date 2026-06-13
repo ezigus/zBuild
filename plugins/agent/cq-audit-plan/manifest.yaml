@@ -1,0 +1,51 @@
+id: cq-audit-plan
+name: CQ Audit Plan Selection
+kind: agent
+version: 0.1.0
+description: |
+  Selects which audit lenses run and at what intensity for the CQ cycle,
+  based on quality-score history from learning memory (ADR-011). Reads
+  quality-scores.jsonl history and intelligence-cache.json; emits
+  audit-plan.json consumed by cq-cycle.
+  # legacy-citation: pipeline_select_audits at pipeline-intelligence.sh:429-508
+
+hooks:
+  run: cq_audit_plan_run
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: cq_audit_plan
+  artifact_type: audit-plan.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+  default_intensity: standard
+
+inputs:
+  - id: preflight_result
+    type: file
+    path: "${artifact_dir}/cq-preflight-result.json"
+    source: stage:cq-preflight
+    required: true
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+
+outputs:
+  - id: audit_plan
+    path: ${artifact_dir}/audit-plan.json
+    type: json
+    required: true
+    primary: true
+
+state:
+  persisted: [quality_scores_pointer, last_audit_intensity]
+  reconstructed: []

@@ -47,12 +47,13 @@ for section in "Context" "Decision" "Consequences" "Implementation Notes"; do
 done
 
 # ---------------------------------------------------------------------------
-# TC-3: All 12 canonical stage ids are present in the document
+# TC-3: All 15 canonical stage ids are present in the document
 # ---------------------------------------------------------------------------
 # Use grep -w for portable word-boundary matching (POSIX/BSD/GNU compatible).
 canonical_stages=(
-    intake plan design build test test_assessment review
-    compound_quality pr deploy validate monitor
+    intake plan design build test test_assessment
+    cq-preflight cq-audit-plan cq-cycle cq-backtrack
+    review pr deploy validate monitor
 )
 
 for stage_id in "${canonical_stages[@]}"; do
@@ -79,19 +80,17 @@ for field in "${required_fields[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# TC-5: compound_quality sub-phases defined with canonical ids
+# TC-5: 4 CQ stage ids are present in the document (formerly compound_quality sub-phases)
 # ---------------------------------------------------------------------------
-# audit_plan (not plan) is the second sub-phase per ADR-013 §"compound_quality
-# sub-phases". Testing the exact token prevents false-green matches on the
-# generic word "plan" which appears as a stage id throughout the file.
-compound_subphases=(preflight audit_plan cycle backtrack)
+# The 4 compound-quality stages became first-class canonical stage IDs in #755.
+compound_subphases=(cq-preflight cq-audit-plan cq-cycle cq-backtrack)
 
 for subphase in "${compound_subphases[@]}"; do
     set +e
     grep -qw -- "${subphase}" "$ADR_FILE"
     rc=$?
     set -e
-    assert_eq "TC-5: compound_quality sub-phase '${subphase}' defined in ADR-013" "0" "$rc"
+    assert_eq "TC-5: CQ stage id '${subphase}' defined in ADR-013" "0" "$rc"
 done
 
 # ---------------------------------------------------------------------------
