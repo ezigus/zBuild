@@ -577,6 +577,71 @@ _cycle_resolve_from_path() {
     return 0
 }
 
+# ─── _cycle_resolve_scope_expansion <cycle_id> <state_dir> (#840 / ADR-030) ──
+# Reads a scope_expansion_request emitted by a member (build-summary.json),
+# resolves it against the cycle's scope_policy via scripts/lib/scope-governance.sh,
+# and acts. Echoes the decision: none | grant | deny.
+#   grant   → granted paths written to <state_dir>/scope-expansion-grant.txt and
+#             exported as ZBUILD_SCOPE_EXPANSION_GRANT (build merges it next iter);
+#             the request is cleared so it does not re-trigger; cycle CONTINUES.
+#   deny    → caller terminates the cycle with blocked_on_scope (NO loop). Covers
+#             the default-off case: a non-expandable cycle resolves every request
+#             to deny, so a structurally-blocked build abandons cleanly.
+#   none    → no request present; cycle proceeds normally.
+# The security floor lives in scope-governance.sh and is unbreachable here.
+_cycle_resolve_scope_expansion() {
+    local cycle_id="$1" state_dir="$2"
+    local safe="${cycle_id//-/_}"
+
+    local bsj="$state_dir/artifacts/build-summary.json"
+    [[ -f "$bsj" ]] || { echo "none"; return 0; }
+
+    local req
+    req="$(jq -c 'if (.scope_expansion_request? // null) == null then empty
+                  elif ((.scope_expansion_request.files? // []) | length) == 0 then empty
+                  else .scope_expansion_request end' "$bsj" 2>/dev/null)"
+    [[ -z "$req" ]] && { echo "none"; return 0; }
+
+    # Load the resolver core (idempotent source guard inside the lib).
+    local _gov="${_ZBUILD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/scripts/lib/scope-governance.sh"
+    # shellcheck source=/dev/null
+    [[ -f "$_gov" ]] && source "$_gov"
+    if ! declare -F scope_resolve_request >/dev/null 2>&1; then
+        # Resolver unavailable — fail safe to deny (clean abandon, never loop).
+        echo "deny"; return 0
+    fi
+
+    local expandable autogrant escalate
+    local ev="_TPL_CYCLE_SCOPE_EXPANDABLE_${safe}"; expandable="${!ev:-false}"
+    local av="_TPL_CYCLE_SCOPE_AUTO_GRANT_${safe}"; autogrant="${!av:-}"
+    local sv="_TPL_CYCLE_SCOPE_ESCALATE_${safe}";   escalate="${!sv:-none}"
+
+    local decision action
+    decision="$(scope_resolve_request "$req" "$expandable" "$autogrant" "$escalate" 2>/dev/null)"
+    action="$(jq -r '.action // "deny"' <<<"$decision" 2>/dev/null || echo deny)"
+
+    if [[ "$action" == "grant" ]]; then
+        local grant_file="$state_dir/scope-expansion-grant.txt"
+        jq -r '.granted[]?' <<<"$decision" 2>/dev/null > "$grant_file"
+        export ZBUILD_SCOPE_EXPANSION_GRANT="$grant_file"
+        # Clear the request so the same files are not re-granted next iter.
+        local _tmp="$bsj.tmp.$$"
+        if jq 'del(.scope_expansion_request)' "$bsj" > "$_tmp" 2>/dev/null; then
+            mv -f "$_tmp" "$bsj"
+        else
+            rm -f "$_tmp"
+        fi
+        eb_emit_event "cycle.scope.granted" "cycle_id=$cycle_id" \
+            "files=$(jq -r '[.granted[]?] | join(",")' <<<"$decision" 2>/dev/null)" 2>/dev/null || true
+        echo "grant"; return 0
+    fi
+
+    # escalate (v1) and deny both end the cycle cleanly — no loop.
+    eb_emit_event "cycle.scope.denied" "cycle_id=$cycle_id" \
+        "action=$action" "reason=$(jq -r '.reason // ""' <<<"$decision" 2>/dev/null)" 2>/dev/null || true
+    echo "deny"; return 0
+}
+
 _cycle_apply_feedback() {
     local iter_next="$1" state_dir="$2"
     local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter_next}/feedback"
@@ -1191,6 +1256,7 @@ _cycle_handle_terminal_rc() {
         4)   reason="${_CYCLE_LAST_TERMINATED_REASON:-config_invalid}" ;;
         5)   reason="blocked" ;;
         6)   reason="cycle_abort" ;;
+        7)   reason="blocked_on_scope" ;;
         130) reason="aborted" ;;
         *)   reason="error" ;;
     esac
@@ -1372,6 +1438,18 @@ cycle_orchestrator_run() {
             [[ $_ce2 -eq 1 ]] && set -e
         fi
 
+        # #840 (ADR-030): resolve any scope_expansion_request a member emitted
+        # this iter. grant → wider write-scope for the next iter (cycle
+        # continues); deny → blocked_on_scope terminal below (NO loop). Runs
+        # AFTER converged/abort so a converged iter is never overridden, and
+        # BEFORE max_iterations so a structurally-blocked build abandons in one
+        # iter instead of grinding to max_iterations (the dogfood failure).
+        local _scope_action="none"
+        if [[ "$converged" -ne 0 ]]; then
+            local _se=0; case $- in *e*) _se=1 ;; esac
+            set +e; _scope_action="$(_cycle_resolve_scope_expansion "$cycle_id" "$state_dir")"; [[ $_se -eq 1 ]] && set -e
+        fi
+
         # Decide overall status for the SINGLE atomic write (ADR-021: never
         # split state writes within an iter boundary).
         local overall_status="in_progress"
@@ -1382,6 +1460,11 @@ cycle_orchestrator_run() {
         elif [[ "$abort_matched" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
             overall_status="cycle_abort"; term_rc=6
+        elif [[ "$_scope_action" == "deny" ]]; then
+            # #840: build needs out-of-scope files the policy won't grant (or
+            # the cycle is not expandable). Abandon cleanly — never loop.
+            _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
+            overall_status="blocked_on_scope"; term_rc=7
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             _CYCLE_LAST_TERMINATED_REASON="max_iterations"
             overall_status="max_iterations"; term_rc=1
