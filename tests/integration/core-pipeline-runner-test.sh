@@ -535,6 +535,13 @@ _make_plugin "test"            "tool"  0 >/dev/null
 # Without it the cycle fails with verdict=error, cycle blocked, rc=5 —
 # `set -e` kills the test before I1's assertions run.
 _make_plugin "test_assessment" "agent" 0 >/dev/null
+# #755: review_cycle.flow now includes the 4 compound_quality stages; without
+# stubs the cycle hits cq-preflight (no plugin), fails rc=5, and `set -e` kills
+# I1 before its assertions run.
+_make_plugin "cq-preflight"    "agent" 0 >/dev/null
+_make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
+_make_plugin "cq-cycle"        "agent" 0 >/dev/null
+_make_plugin "cq-backtrack"    "agent" 0 >/dev/null
 _make_plugin "review"          "agent" 0 >/dev/null
 
 I1_STDERR="$TEST_TEMP_DIR/i1.runner.stderr"
@@ -549,13 +556,14 @@ assert_contains "I1 #508: stderr carries UTC timestamps" "$I1_OUT" "UTC"
 assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:25:45 UTC"
 assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
 
-# I1b: exactly 8 'started ' and 8 'finished ' suffixes (one per stage).
-# Standard template now has 8 stages after #754 added design:
-# intake, plan, impact, design, build, test, test_assessment, review.
+# I1b: exactly 12 'started ' and 12 'finished ' suffixes (one per stage).
+# Standard template has 12 stages after #755 added the 4 compound_quality
+# stages as siblings of review: intake, plan, impact, design, build, test,
+# test_assessment, cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, review.
 started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 8 'started ' suffixes" "8" "$started_count"
+assert_eq "I1b #508: exactly 12 'started ' suffixes" "12" "$started_count"
 finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 8 'finished ' suffixes" "8" "$finished_count"
+assert_eq "I1b #508: exactly 12 'finished ' suffixes" "12" "$finished_count"
 
 # ─── Test I2 (#508): failure path emits ✗ with rc + finished + duration ─────
 _make_plugin "build" "agent" 1 >/dev/null
