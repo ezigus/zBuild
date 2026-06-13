@@ -197,8 +197,12 @@ load_template() {
                 # Inline cycle entry. Format:
                 # <cid>|<cstages>|<cmax>|<conmax>|<custage>|<cufield>|<cuop>|<cuvalue>|<cplateau>|<cdiverg>|<cdesc>
                 # #831: cdesc is the optional operator-facing description.
+                # #840: cexpand/cautogrant/cescalate/condeny carry scope_policy
+                # (ADR-030); auto_grant is csv (comma never conflicts with the
+                # pipe field separator). Absent block ⇒ safe defaults below.
                 local cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg cdesc
-                IFS='|' read -r cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg cdesc <<< "$payload"
+                local cexpand cautogrant cescalate condeny
+                IFS='|' read -r cid cstages cmax conmax custage cufield cuop cuvalue cplateau cdiverg cdesc cexpand cautogrant cescalate condeny <<< "$payload"
                 [[ -z "$cid" ]] && continue
                 _TPL_CYCLES+=("$cid")
                 local safe="${cid//-/_}"
@@ -212,12 +216,20 @@ load_template() {
                 printf -v "_TPL_CYCLE_PLATEAU_W_${safe}"     '%s' "$cplateau"
                 printf -v "_TPL_CYCLE_DIVERGENCE_W_${safe}"  '%s' "$cdiverg"
                 printf -v "_TPL_CYCLE_DESCRIPTION_${safe}"   '%s' "${cdesc:-}"
+                # #840 scope_policy with ADR-030 safe defaults (omitted block ⇒
+                # not expandable ⇒ governed-deny ⇒ clean abandon).
+                printf -v "_TPL_CYCLE_SCOPE_EXPANDABLE_${safe}" '%s' "${cexpand:-false}"
+                printf -v "_TPL_CYCLE_SCOPE_AUTO_GRANT_${safe}" '%s' "${cautogrant:-}"
+                printf -v "_TPL_CYCLE_SCOPE_ESCALATE_${safe}"   '%s' "${cescalate:-none}"
+                printf -v "_TPL_CYCLE_SCOPE_ON_DENY_${safe}"    '%s' "${condeny:-abandon}"
                 export "_TPL_CYCLE_STAGES_${safe}" "_TPL_CYCLE_MAX_${safe}" \
                        "_TPL_CYCLE_ON_MAX_${safe}" "_TPL_CYCLE_UNTIL_STAGE_${safe}" \
                        "_TPL_CYCLE_UNTIL_FIELD_${safe}" "_TPL_CYCLE_UNTIL_OP_${safe}" \
                        "_TPL_CYCLE_UNTIL_VALUE_${safe}" "_TPL_CYCLE_PLATEAU_W_${safe}" \
                        "_TPL_CYCLE_DIVERGENCE_W_${safe}" \
-                       "_TPL_CYCLE_DESCRIPTION_${safe}"
+                       "_TPL_CYCLE_DESCRIPTION_${safe}" \
+                       "_TPL_CYCLE_SCOPE_EXPANDABLE_${safe}" "_TPL_CYCLE_SCOPE_AUTO_GRANT_${safe}" \
+                       "_TPL_CYCLE_SCOPE_ESCALATE_${safe}" "_TPL_CYCLE_SCOPE_ON_DENY_${safe}"
                 # Expand cycle members in order into the flat stage list.
                 local IFS_save="$IFS"; IFS=','
                 # shellcheck disable=SC2206
@@ -419,7 +431,7 @@ _tpl_parse_stages_v2() {
     function flush_entry(   k) {
         if (current_id == "") return
         if (entry_kind == "cycle") {
-            print "IC|" current_id "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg "|" cdesc
+            print "IC|" current_id "|" cstages "|" cmax "|" conmax "|" custage "|" cufield "|" cuop "|" cuvalue "|" cplateau "|" cdiverg "|" cdesc "|" cexpand "|" cautogrant "|" cescalate "|" condeny
             if (fb_from_stage != "" || fb_to_stage != "") {
                 nfb++
                 fb[nfb] = fb_from_stage ":" fb_from_output "|" fb_to_stage ":" fb_to_field ":" fb_required
@@ -436,10 +448,11 @@ _tpl_parse_stages_v2() {
         current_router_max_turns = ""; current_router_max_iterations = ""
         cstages = ""; cmax = ""; conmax = ""; custage = ""; cufield = ""
         cuop = ""; cuvalue = ""; cplateau = ""; cdiverg = ""; cdesc = ""
+        cexpand = ""; cautogrant = ""; cescalate = ""; condeny = ""
         nfb = 0
         in_roles = 0; in_io_dests = 0; in_io_block = 0; in_router_block = 0
         in_stages_list = 0; in_until = 0; in_plateau = 0; in_diverg = 0
-        in_feedback = 0; in_fb_item = 0
+        in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
     }
     BEGIN { reset_entry() }
@@ -493,8 +506,27 @@ _tpl_parse_stages_v2() {
         gsub(/^"|"$/, "", v); gsub(/^'\''|'\''$/, "", v)
         cdesc = v; next
     }
+    # #840 scope_policy (ADR-030): nested block, children guarded by
+    # in_scope_policy. auto_grant inline list [a, b] → csv a,b.
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+scope_policy:[[:space:]]*$/ {
+        in_scope_policy = 1; in_until = 0; in_plateau = 0; in_diverg = 0; in_feedback = 0; next
+    }
+    in_stages && entry_kind == "cycle" && in_scope_policy && /^[[:space:]]+expandable:/ {
+        v = $0; sub(/^[[:space:]]+expandable:[[:space:]]*/, "", v); cexpand = trim(v); next
+    }
+    in_stages && entry_kind == "cycle" && in_scope_policy && /^[[:space:]]+auto_grant:/ {
+        v = $0; sub(/^[[:space:]]+auto_grant:[[:space:]]*/, "", v); v = trim(v)
+        gsub(/^\[|\]$/, "", v); gsub(/[[:space:]]/, "", v)
+        cautogrant = v; next
+    }
+    in_stages && entry_kind == "cycle" && in_scope_policy && /^[[:space:]]+escalate:/ {
+        v = $0; sub(/^[[:space:]]+escalate:[[:space:]]*/, "", v); cescalate = trim(v); next
+    }
+    in_stages && entry_kind == "cycle" && in_scope_policy && /^[[:space:]]+on_deny:/ {
+        v = $0; sub(/^[[:space:]]+on_deny:[[:space:]]*/, "", v); condeny = trim(v); next
+    }
     in_stages && entry_kind == "cycle" && /^[[:space:]]+until:[[:space:]]*$/ {
-        in_until = 1; in_plateau = 0; in_diverg = 0; in_feedback = 0; next
+        in_until = 1; in_plateau = 0; in_diverg = 0; in_feedback = 0; in_scope_policy = 0; next
     }
     in_stages && entry_kind == "cycle" && in_until && /^[[:space:]]+stage:/ {
         v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); custage = trim(v); next
@@ -508,16 +540,16 @@ _tpl_parse_stages_v2() {
     in_stages && entry_kind == "cycle" && in_until && /^[[:space:]]+value:/ {
         v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cuvalue = trim(v); next
     }
-    in_stages && entry_kind == "cycle" && /^[[:space:]]+plateau:[[:space:]]*$/ { in_plateau = 1; in_until = 0; in_diverg = 0; next }
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+plateau:[[:space:]]*$/ { in_plateau = 1; in_until = 0; in_diverg = 0; in_scope_policy = 0; next }
     in_stages && entry_kind == "cycle" && in_plateau && /^[[:space:]]+window:/ {
         v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cplateau = trim(v); next
     }
-    in_stages && entry_kind == "cycle" && /^[[:space:]]+divergence:[[:space:]]*$/ { in_diverg = 1; in_until = 0; in_plateau = 0; next }
+    in_stages && entry_kind == "cycle" && /^[[:space:]]+divergence:[[:space:]]*$/ { in_diverg = 1; in_until = 0; in_plateau = 0; in_scope_policy = 0; next }
     in_stages && entry_kind == "cycle" && in_diverg && /^[[:space:]]+window:/ {
         v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cdiverg = trim(v); next
     }
     in_stages && entry_kind == "cycle" && /^[[:space:]]+feedback:[[:space:]]*$/ {
-        in_feedback = 1; in_until = 0; in_plateau = 0; in_diverg = 0; next
+        in_feedback = 1; in_until = 0; in_plateau = 0; in_diverg = 0; in_scope_policy = 0; next
     }
     in_stages && entry_kind == "cycle" && in_feedback && /^[[:space:]]+-[[:space:]]+from:/ {
         if (fb_from_stage != "" || fb_to_stage != "") {
@@ -819,6 +851,34 @@ _tpl_validate_cycles() {
             return 1
         fi
 
+        # #840 scope_policy enum validation (ADR-030). All fields optional;
+        # absent ⇒ safe defaults already applied by the consumer. When present,
+        # values MUST be from the closed vocabularies — the template names
+        # behaviors, it cannot express logic.
+        local sx_var="_TPL_CYCLE_SCOPE_EXPANDABLE_${safe}"; local sx="${!sx_var:-false}"
+        if [[ "$sx" != "true" && "$sx" != "false" ]]; then
+            error "cycle '$cid': scope_policy.expandable must be true|false, got: $sx"
+            return 1
+        fi
+        local sag_var="_TPL_CYCLE_SCOPE_AUTO_GRANT_${safe}"; local sag="${!sag_var:-}"
+        if [[ -n "$sag" ]]; then
+            local _cls
+            local _save_ifs="$IFS"; IFS=','
+            # shellcheck disable=SC2206
+            local -a _classes=($sag)
+            IFS="$_save_ifs"
+            for _cls in "${_classes[@]}"; do
+                case "$_cls" in
+                    collateral_tests|collateral_config|collateral_docs|structural) : ;;
+                    *) error "cycle '$cid': scope_policy.auto_grant unknown class '$_cls' (valid: collateral_tests, collateral_config, collateral_docs, structural)"; return 1 ;;
+                esac
+            done
+        fi
+        local sesc_var="_TPL_CYCLE_SCOPE_ESCALATE_${safe}"; local sesc="${!sesc_var:-none}"
+        case "$sesc" in structural|none) : ;; *) error "cycle '$cid': scope_policy.escalate must be structural|none, got: $sesc"; return 1 ;; esac
+        local sod_var="_TPL_CYCLE_SCOPE_ON_DENY_${safe}"; local sod="${!sod_var:-abandon}"
+        case "$sod" in abandon) : ;; *) error "cycle '$cid': scope_policy.on_deny must be abandon, got: $sod"; return 1 ;; esac
+
         # until.stage must be in cs[]
         local us_var="_TPL_CYCLE_UNTIL_STAGE_${safe}"
         local us="${!us_var:-}"
@@ -1080,10 +1140,11 @@ _tpl_translate_new_shape() {
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
         cyc_plateau = ""; cyc_diverg = ""
         cyc_desc = ""
+        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
-        in_plateau = 0; in_diverg = 0; in_feedback = 0; in_fb_item = 0
+        in_plateau = 0; in_diverg = 0; in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
     }
     function reset_section() {
@@ -1095,10 +1156,11 @@ _tpl_translate_new_shape() {
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
         cyc_plateau = ""; cyc_diverg = ""
         cyc_desc = ""
+        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
-        in_plateau = 0; in_diverg = 0; in_feedback = 0; in_fb_item = 0
+        in_plateau = 0; in_diverg = 0; in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
         # Copilot P2: fb_kind must reset per-section so a prior "to" cannot
         # leak into the next section feedback parsing.
@@ -1133,7 +1195,8 @@ _tpl_translate_new_shape() {
         if (sec_type == "cycle") {
             cyc_data[cur_key] = cyc_flow "|" cyc_max "|" cyc_on_max "|" \
                                 cyc_us "|" cyc_uf "|" cyc_uo "|" cyc_uv "|" \
-                                cyc_plateau "|" cyc_diverg "|" cyc_desc
+                                cyc_plateau "|" cyc_diverg "|" cyc_desc "|" \
+                                cyc_expand "|" cyc_autogrant "|" cyc_escalate "|" cyc_ondeny
             cyc_abort[cur_key] = cyc_as "|" cyc_af "|" cyc_ao "|" cyc_av
             cyc_fb_count[cur_key] = nfb
             for (k = 1; k <= nfb; k++) {
@@ -1273,11 +1336,29 @@ _tpl_translate_new_shape() {
                 gsub(/^"|"$/, "", v); gsub(/^'\''|'\''$/, "", v)
                 cyc_desc = v; next
             }
+            # #840 scope_policy (ADR-030): nested block; children guarded by
+            # in_scope_policy. auto_grant inline list [a, b] → csv a,b.
+            if ($0 ~ /^[[:space:]]+scope_policy:[[:space:]]*$/) {
+                in_scope_policy = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_feedback = 0; next
+            }
+            if (in_scope_policy && $0 ~ /^[[:space:]]+expandable:/) {
+                v = $0; sub(/^[[:space:]]+expandable:[[:space:]]*/, "", v); cyc_expand = trim(v); next
+            }
+            if (in_scope_policy && $0 ~ /^[[:space:]]+auto_grant:/) {
+                v = $0; sub(/^[[:space:]]+auto_grant:[[:space:]]*/, "", v); v = trim(v)
+                gsub(/^\[|\]$/, "", v); gsub(/[[:space:]]/, "", v); cyc_autogrant = v; next
+            }
+            if (in_scope_policy && $0 ~ /^[[:space:]]+escalate:/) {
+                v = $0; sub(/^[[:space:]]+escalate:[[:space:]]*/, "", v); cyc_escalate = trim(v); next
+            }
+            if (in_scope_policy && $0 ~ /^[[:space:]]+on_deny:/) {
+                v = $0; sub(/^[[:space:]]+on_deny:[[:space:]]*/, "", v); cyc_ondeny = trim(v); next
+            }
             if ($0 ~ /^[[:space:]]+exit_when:[[:space:]]*$/) {
-                in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_feedback = 0; next
+                in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_feedback = 0; in_scope_policy = 0; next
             }
             if ($0 ~ /^[[:space:]]+abort_when:[[:space:]]*$/) {
-                in_abort_when = 1; in_exit_when = 0; in_cflow = 0; in_feedback = 0; next
+                in_abort_when = 1; in_exit_when = 0; in_cflow = 0; in_feedback = 0; in_scope_policy = 0; next
             }
             if (in_exit_when && $0 ~ /^[[:space:]]+stage:/) {
                 v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_us = trim(v); next
