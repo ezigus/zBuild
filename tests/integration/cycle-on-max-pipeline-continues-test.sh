@@ -138,6 +138,11 @@ _make_plugin "design"          "designer"
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
 _make_plugin "test_assessment" "test_assessment"
+# #755: review_cycle.flow now includes the 4 compound_quality stages.
+_make_plugin "cq-preflight"    "cq_preflight"
+_make_plugin "cq-audit-plan"   "cq_audit_plan"
+_make_plugin "cq-cycle"        "cq_cycle"
+_make_plugin "cq-backtrack"    "cq_backtrack"
 _make_plugin "review"          "reviewer"
 
 # Force test_assessment to emit verdict=pass so build_test_cycle converges fast.

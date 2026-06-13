@@ -39,6 +39,27 @@ four independent leaf-stage agent plugins.
 - [x] T4: cq-audit-plan runs before cq-cycle
 - [x] T5: cq-backtrack runs after cq-cycle and before review
 
+## Legacy source removed (this PR)
+
+Per the pruning protocol (CLAUDE.md "Working with legacy/"), the explicitly-named
+legacy citations were removed:
+
+- `pipeline-stages-review.sh` — the `stage_compound_quality` fallback block.
+- `pipeline-intelligence.sh` — `stage_compound_quality` (was 1959-2972) and
+  `pipeline_select_audits` (was 429-508).
+
+Both files still parse (`bash -n`) with no dangling callers — every caller of
+the removed functions lived inside `stage_compound_quality` itself.
+
+## Retained pending their own prune
+
+`pipeline_backtrack_to_stage` and `compound_rebuild_with_feedback` remain in
+`pipeline-intelligence.sh`. They were NOT named in this issue's legacy citation
+and are interlinked (rebuild → backtrack); their behavior is reimplemented in
+`cq-backtrack`/`cq-cycle`. Now dead (uncalled), they are deferred to a dedicated
+legacy-prune pass to keep this migration's diff bounded and safe.
+
 ## Remaining blockers
 
-- None. All 4 plugins are first-class leaf stages in standard.yaml.
+- None for the functional migration. All 4 plugins are first-class leaf stages
+  in standard.yaml; the named legacy source is removed.
