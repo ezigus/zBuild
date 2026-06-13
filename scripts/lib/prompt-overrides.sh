@@ -69,9 +69,12 @@ load_prompt_override() {
     # Hardlink containment: realpath cannot see through a hardlink (it has no
     # link target), so a hardlink to an out-of-tree file passes the check above
     # and would leak that file's content. A legitimate override is never a
-    # hardlink — refuse anything with link count > 1. (BSD stat -f %l / GNU -c %h.)
+    # hardlink — refuse anything with link count > 1. GNU `stat -c %h` MUST be
+    # tried first: GNU `-f` means --file-system (succeeds with wrong output), so
+    # a BSD-first order silently rejects every file on Linux. BSD stat rejects
+    # `-c` and falls through to `-f %l`.
     local nlink
-    nlink="$(stat -f '%l' "$real_file" 2>/dev/null || stat -c '%h' "$real_file" 2>/dev/null || echo 1)"
+    nlink="$(stat -c '%h' "$real_file" 2>/dev/null || stat -f '%l' "$real_file" 2>/dev/null || echo 1)"
     [[ "$nlink" == "1" ]] || return 0
 
     # Sanitize the (operator-exportable) size cap: a non-numeric value would make
