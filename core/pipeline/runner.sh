@@ -517,6 +517,11 @@ _render_cycle_exit() {
             glyph="✗"; color="${RED:-}"
             text="Cycle ${cycle_id} halted: blocked"
             ;;
+        blocked_on_scope)
+            # #840: build needs out-of-scope files the policy won't grant.
+            glyph="⚠"; color="${YELLOW:-}"
+            text="Cycle ${cycle_id} halted: blocked on scope (needs files outside write-scope)"
+            ;;
         error|config_invalid)
             glyph="✗"; color="${RED:-}"
             text="Cycle ${cycle_id} failed: ${reason}"
@@ -1281,9 +1286,13 @@ main() {
                     # rc 5 (blocked, #528)     → HALT; status=interrupted. Review
                     #                            does NOT run on blocked (upstream
                     #                            input structurally broken).
+                    # rc 7 (blocked_on_scope,  → HALT; status=interrupted. #840:
+                    #   ADR-030)                  build needs out-of-scope files
+                    #                            the policy won't grant; review is
+                    #                            pointless. Operator widens scope.
                     # rc 130 (aborted=SIGINT)  → HALT; status=interrupted.
                     # rc 143 (aborted=SIGTERM) → HALT; status=interrupted (Wave 15-F).
-                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 130 || $_rc -eq 143 ]]; then
+                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 7 || $_rc -eq 130 || $_rc -eq 143 ]]; then
                         # ADR-027 (Wave 17-B #703): rc=6 cycle_abort halts
                         # the pipeline + propagates outward distinctly from
                         # signal-driven aborts (rc=130/143) and blocked

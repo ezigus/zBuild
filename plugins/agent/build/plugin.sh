@@ -138,6 +138,23 @@ _build_stage_run_inner() {
             >/dev/null 2>&1 || true
     fi
 
+    # #840 (ADR-030): consume a scope grant the cycle orchestrator wrote after a
+    # prior iter's scope_expansion_request was auto-granted. Each granted path
+    # becomes in-scope for THIS iter, so build can finally edit the collateral
+    # file (e.g. the test pinning the old value) it was blocked on.
+    if [[ -n "${ZBUILD_SCOPE_EXPANSION_GRANT:-}" && -f "$ZBUILD_SCOPE_EXPANSION_GRANT" ]]; then
+        local _granted
+        while IFS= read -r _granted; do
+            [[ -z "$_granted" ]] && continue
+            case ",$plan_files_csv," in
+                *",$_granted,"*) ;;  # already in scope
+                *) plan_files_csv="${plan_files_csv:+$plan_files_csv,}$_granted" ;;
+            esac
+        done < "$ZBUILD_SCOPE_EXPANSION_GRANT"
+        emit_event "build.scope_grant_applied" "plugin=build" \
+            "grant_file=$ZBUILD_SCOPE_EXPANSION_GRANT" >/dev/null 2>&1 || true
+    fi
+
     # ─── Write build prompt (ADR-018 Pattern 2, #571 v2 framing) ─────────────
     # Three-section framed structure the LLM sees on every iteration:
     #   1. ORIGINAL TASK (immutable across iterations) — issue goal + plan md
@@ -530,6 +547,8 @@ _build_stage_run_inner() {
     # operator "build's LLM tried but couldn't fix this without broader scope."
     local build_reason=""
     local out_of_scope_files_json="[]"
+    # #840 (ADR-030): the scope_expansion_request the cycle orchestrator reads.
+    local scope_expansion_request_json=""
     if [[ "$build_verdict" == "empty_diff" && -n "${_feedback_body:-}" && -n "$plan_files_csv" ]]; then
         local _oos_paths
         _oos_paths="$(_build_detect_out_of_scope_files "$_feedback_body" "$plan_files_csv")"
@@ -537,6 +556,11 @@ _build_stage_run_inner() {
             build_reason="no_progress_scope_blocked"
             out_of_scope_files_json="$(printf '%s\n' "$_oos_paths" \
                 | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
+            # Turn the OOS files into a governed scope_expansion_request. The
+            # orchestrator resolves it against the cycle's scope_policy: grant
+            # (build retries with the file in scope) / deny (blocked_on_scope,
+            # clean abandon). Replaces the old silent dead-end.
+            scope_expansion_request_json="$(_build_scope_expansion_request "$_oos_paths" "$_feedback_body" 2>/dev/null || true)"
         fi
     fi
 
@@ -565,6 +589,7 @@ _build_stage_run_inner() {
         --argjson loop_output_tokens "$loop_output_tokens" \
         --arg reason "$build_reason" \
         --argjson out_of_scope_files "$out_of_scope_files_json" \
+        --argjson scope_expansion_request "${scope_expansion_request_json:-null}" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
         '{
             schema_version: $schema_version,
@@ -583,6 +608,7 @@ _build_stage_run_inner() {
             notes: $notes
         }
         + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
+        + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
         ' | atomic_write "$output_summary_json"
 
     # ─── #587: post-loop discrepancy + numstat summary (no banner) ───────────
@@ -828,6 +854,52 @@ _build_detect_out_of_scope_files() {
             *) printf '%s\n' "$m" ;;
         esac
     done <<< "$matches"
+}
+
+# _build_scope_expansion_request <oos_files_newline> <feedback_body> (#840)
+# Builds an ADR-030 scope_expansion_request from the out-of-scope files build is
+# blocked on. Per file: classify by path-shape (scope_collateral_class) and
+# derive `evidence` — a quoted literal from the test feedback that is ALSO
+# present in the file (the OLD value build needs to change; still in the file
+# because build hasn't been allowed to change it). Files with no derivable
+# evidence are included with empty evidence — the resolver denies those, which
+# yields a clean blocked_on_scope abandon, never a loop. Echoes {files:[...]} or
+# nothing if there are no files.
+_build_scope_expansion_request() {
+    local oos="$1" feedback="$2"
+    [[ -z "$oos" ]] && return 0
+    local _gov; _gov="$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/scope-governance.sh"
+    # shellcheck source=/dev/null
+    [[ -f "$_gov" ]] && source "$_gov"
+    declare -F scope_collateral_class >/dev/null 2>&1 || return 0
+
+    # Candidate evidence tokens: quoted literals (≥2 chars) in the feedback.
+    local -a tokens=()
+    local _t
+    while IFS= read -r _t; do
+        [[ -n "$_t" ]] && tokens+=("$_t")
+    done < <(printf '%s' "$feedback" \
+        | grep -oE "'[^']{2,}'|\"[^\"]{2,}\"" 2>/dev/null \
+        | sed -E "s/^['\"]//; s/['\"]\$//" | sort -u)
+
+    local entries="[]" f cls ev
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        cls="$(scope_collateral_class "$f")"
+        ev=""
+        if [[ -f "$f" ]]; then
+            for _t in "${tokens[@]:-}"; do
+                [[ -z "$_t" ]] && continue
+                if LC_ALL=C grep -qF -- "$_t" "$f" 2>/dev/null; then ev="$_t"; break; fi
+            done
+        fi
+        entries="$(jq -c --arg p "$f" --arg c "$cls" --arg e "$ev" \
+            '. + [{path:$p, category:$c, evidence:$e, reason:"build blocked on out-of-scope file named in test feedback"}]' \
+            <<<"$entries" 2>/dev/null || printf '%s' "$entries")"
+    done <<< "$oos"
+
+    [[ "$entries" == "[]" ]] && return 0
+    jq -nc --argjson f "$entries" '{files:$f}' 2>/dev/null || true
 }
 
 # _build_render_task_header <iter> <max_iter>

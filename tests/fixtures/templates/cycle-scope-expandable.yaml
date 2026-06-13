@@ -1,0 +1,26 @@
+id: cycle-scope-expandable
+name: Cycle with governed scope expansion (ADR-030 #840)
+defaults:
+  strategy: fanout
+stages:
+  - id: build-test
+    type: cycle
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 5
+    on_max: continue
+    scope_policy:
+      expandable: true
+      auto_grant: [collateral_tests, collateral_config]
+      escalate: structural
+      on_deny: abandon
+
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]
