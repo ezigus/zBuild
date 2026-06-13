@@ -33,6 +33,8 @@ source "$_DESIGN_ROOT/core/event-bus/event-bus.sh"
 source "$_DESIGN_ROOT/core/router/route.sh"
 # shellcheck source=../../../core/output/stage-io.sh
 source "$_DESIGN_ROOT/core/output/stage-io.sh"
+# shellcheck source=../../../scripts/lib/prompt-overrides.sh
+source "$_DESIGN_ROOT/scripts/lib/prompt-overrides.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 design_stage_init() {
@@ -145,6 +147,17 @@ The design document MUST include:
        count, a name list, an ordering). For every constant, count, list,
        or name your change alters, GREP the repo for the OLD value and add
        every file that pins it.
+     - every file that EXHAUSTIVELY ENUMERATES a set you are GROWING and would
+       silently break by OMISSION. When your change adds a member to a closed
+       set — a new case, branch, entry, member, route, or stage — there is NO
+       old value to grep: the breakage is the MISSING new line, not a stale
+       one. Find these by the ENUMERATION PATTERN, not by a value — every place
+       that lists the CURRENT membership in full (a branch handling each
+       member, a registry or table naming each member, a fixture or assertion
+       pinning the set's SIZE or its exact roster). A downstream build that
+       grows the set but leaves an exhaustive enumeration untouched ships a
+       file that is now wrong by absence. If your repository defines which
+       enumerations matter, consult its design override overlay below, if present.
      - every CONFIG/SCHEMA/GOLDEN that encodes a shape you are changing
        (config/, *.json, event-schema, tests/golden/, snapshots).
      - every DOC/ADR that describes the contract you are changing.
@@ -161,6 +174,20 @@ path/to/file2
 Keep the prose focused and under 200 lines (the scope block may be as long
 as completeness requires). Emit LOOP_COMPLETE when done.
 DESIGN_PROMPT
+
+    # ADR-032: append the per-repo prompt override AFTER the core contract (so
+    # the operator overlay can never precede or weaken the shipped charter) and
+    # BEFORE redaction below (so the override text is redaction-covered,
+    # ADR-004). Fail-open: a repo with no .zbuild/prompts/design-overrides.md
+    # appends nothing and behaves byte-identically.
+    local _design_override
+    _design_override="$(load_prompt_override "design")"
+    if [[ -n "$_design_override" ]]; then
+        {
+            printf '\n\n## Project-specific guidance (operator override)\n\n'
+            printf '%s\n' "$_design_override"
+        } >> "$prompt_input_file"
+    fi
 
     local redacted_file="$artifact_dir/design-prompt.redacted.txt"
 
