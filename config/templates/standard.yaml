@@ -117,7 +117,11 @@ design:
     destinations: [file, stdout]
     tail_lines: 200
   router:
-    timeout_s: 300
+    # #841: raised 300→600. Design now charters EXHAUSTIVE scope discovery —
+    # it actively Greps the whole repo for files pinning values the change
+    # invalidates (test counts, goldens, configs, docs). Repo-wide search at
+    # max_turns=0 needs headroom; a 300s cap truncated the enumeration.
+    timeout_s: 600
     max_turns: 0
 
 # ─── review_cycle (outer remediation cycle, ADR-026) ────────────────────

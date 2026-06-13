@@ -116,6 +116,15 @@ $(printf '%s' "$plan_json" | jq -r '.description // .goal // ""' 2>/dev/null)
 ## Seed scope (from plan.files[])
 ${scope_list}
 
+## Tools (read-only — this stage may NOT modify the working tree)
+- You MAY use the Read tool to inspect any file in the repository.
+- You MAY use the Grep tool to search the whole repository for symbols,
+  constants, references, and hardcoded values.
+- You MAY use the Glob tool to discover files by pattern.
+- Do NOT call Edit, Write, or Bash for implementation. The ONLY file you
+  write is the design.md at the exact path below. Your job is to ENUMERATE
+  scope, not to implement.
+
 ## Instructions
 
 Write the design document to this EXACT absolute path:
@@ -126,17 +135,31 @@ contract violation that will fail this stage.
 
 The design document MUST include:
 1. A brief architectural decision summary (goal, context, decision).
-2. A \`\`\`scope fenced block listing all files that will be touched by this
-   task. The scope block MUST be a superset of the seed scope above — every
-   file in the seed scope must appear in your \`\`\`scope block.
+2. A \`\`\`scope fenced block that is an EXHAUSTIVE enumeration of every file
+   in the repository that this change touches, invalidates, references,
+   validates, documents, or assumes anything about — NOT merely the seed
+   scope. The seed above is a starting point, never the answer. You MUST
+   actively search the repo (Read/Grep/Glob) and include:
+     - every TEST that asserts behavior you are changing — INCLUDING tests
+       that hardcode a value you are changing (a stage count, an event
+       count, a name list, an ordering). For every constant, count, list,
+       or name your change alters, GREP the repo for the OLD value and add
+       every file that pins it.
+     - every CONFIG/SCHEMA/GOLDEN that encodes a shape you are changing
+       (config/, *.json, event-schema, tests/golden/, snapshots).
+     - every DOC/ADR that describes the contract you are changing.
+     - every SOURCE file that references a symbol you add, remove, or rename.
+   A scope that merely echoes the seed is a FAILURE of this stage — the
+   downstream build can only touch files you list here.
 
-The \`\`\`scope block format:
+The \`\`\`scope block format (one repo-relative path per line):
 \`\`\`scope
 path/to/file1
 path/to/file2
 \`\`\`
 
-Keep the document focused and under 200 lines. Emit LOOP_COMPLETE when done.
+Keep the prose focused and under 200 lines (the scope block may be as long
+as completeness requires). Emit LOOP_COMPLETE when done.
 DESIGN_PROMPT
 
     local redacted_file="$artifact_dir/design-prompt.redacted.txt"
