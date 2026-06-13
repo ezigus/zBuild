@@ -20,6 +20,7 @@ source "$_CQ_PREFLIGHT_ROOT/core/redaction/scope-redaction.sh"
 source "$_CQ_PREFLIGHT_ROOT/core/event-bus/event-bus.sh"
 
 cq_preflight_run() {
+    # shellcheck disable=SC2034  # hook-signature positional; unused in this stage
     local state_dir="$1"
     local artifact_dir="$2"
 

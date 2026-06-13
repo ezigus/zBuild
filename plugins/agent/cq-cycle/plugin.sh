@@ -97,6 +97,7 @@ cq_cycle_run() {
 }
 
 cq_cycle_cleanup() {
+    # shellcheck disable=SC2034  # hook-signature positional; unused in cleanup
     local state_dir="$1"
     local artifact_dir="$2"
     eb_emit_event "cq.cycle.cleanup" "stage=cq-cycle" 2>/dev/null || true
