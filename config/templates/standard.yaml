@@ -201,6 +201,20 @@ build_test_cycle:
     value: pass
   max_iterations: 3
   on_max: continue
+  # ADR-030 (#840): governed scope expansion. build is the first actor with
+  # ground truth (it ran the tests); when the plan's write-scope omits a file
+  # whose old value the change invalidates (e.g. a test pinning the old stage
+  # count), build emits a scope_expansion_request rather than silently
+  # reverting. The cycle auto-grants low-risk collateral (test/config/doc files
+  # that carry verified evidence of the change), escalates structural asks, and
+  # — on any deny — abandons cleanly (blocked_on_scope) instead of looping to
+  # max_iterations. The security floor (legacy/, secrets, out-of-repo) is core,
+  # never expressible here.
+  scope_policy:
+    expandable: true
+    auto_grant: [collateral_tests, collateral_config, collateral_docs]
+    escalate: structural
+    on_deny: abandon
   feedback:
     - from:
         stage: test_assessment
