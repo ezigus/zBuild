@@ -41,7 +41,7 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 
-assert_eq "T1: _TPL_STAGES has 8 entries" "8" "${#_TPL_STAGES[@]}"
+assert_eq "T1: _TPL_STAGES has 12 entries" "12" "${#_TPL_STAGES[@]}"
 assert_eq "T1: _TPL_STAGES[0]=intake" "intake" "${_TPL_STAGES[0]:-}"
 assert_eq "T1: _TPL_STAGES[1]=plan" "plan" "${_TPL_STAGES[1]:-}"
 assert_eq "T1: _TPL_STAGES[2]=impact" "impact" "${_TPL_STAGES[2]:-}"
@@ -49,7 +49,11 @@ assert_eq "T1: _TPL_STAGES[3]=design" "design" "${_TPL_STAGES[3]:-}"
 assert_eq "T1: _TPL_STAGES[4]=build" "build" "${_TPL_STAGES[4]:-}"
 assert_eq "T1: _TPL_STAGES[5]=test" "test" "${_TPL_STAGES[5]:-}"
 assert_eq "T1: _TPL_STAGES[6]=test_assessment" "test_assessment" "${_TPL_STAGES[6]:-}"
-assert_eq "T1: _TPL_STAGES[7]=review" "review" "${_TPL_STAGES[7]:-}"
+assert_eq "T1: _TPL_STAGES[7]=cq-preflight" "cq-preflight" "${_TPL_STAGES[7]:-}"
+assert_eq "T1: _TPL_STAGES[8]=cq-audit-plan" "cq-audit-plan" "${_TPL_STAGES[8]:-}"
+assert_eq "T1: _TPL_STAGES[9]=cq-cycle" "cq-cycle" "${_TPL_STAGES[9]:-}"
+assert_eq "T1: _TPL_STAGES[10]=cq-backtrack" "cq-backtrack" "${_TPL_STAGES[10]:-}"
+assert_eq "T1: _TPL_STAGES[11]=review" "review" "${_TPL_STAGES[11]:-}"
 
 # #746: standard.yaml now wraps plan+impact in plan_impact_cycle (Wave 19-J).
 # Total cycles: plan_impact_cycle + build_test_cycle + review_cycle = 3.

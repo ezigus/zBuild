@@ -27,11 +27,12 @@ not require them to be implemented.
 
 ### Stage sequence
 
-The canonical pipeline sequence is **exactly 12 stages in this order**:
+The canonical pipeline sequence is **exactly 15 stages in this order**:
 
 ```
-intake → plan → design → build → test → test_assessment → review →
-compound_quality → pr → deploy → validate → monitor
+intake → plan → design → build → test → test_assessment →
+cq-preflight → cq-audit-plan → cq-cycle → cq-backtrack →
+review → pr → deploy → validate → monitor
 ```
 
 The runner validates every stage id in a template against this list at
@@ -66,8 +67,11 @@ Each stage is defined by:
 | build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
 | test_assessment | agent | T2 | init, run, finalize, cleanup | test-assessment.json | true |
+| cq-preflight | agent | T1 | init, run, finalize | cq-preflight-result.json | true |
+| cq-audit-plan | agent | T2 | init, run, finalize | audit-plan.json | true |
+| cq-cycle | agent | T3 | init, run, finalize, cleanup | quality-feedback.md | true |
+| cq-backtrack | agent | T1 | init, run, finalize | recovery-suggestion.json | false |
 | review | agent | T2 | init, run, finalize | review.json | true |
-| compound_quality | orchestrator | T3 | init, run, finalize, cleanup | compound-quality-result.json | true |
 | pr | tool | T0 | init, run, finalize | pr-url.txt | true |
 | deploy | tool | T0 | init, run, finalize | deploy.log | true |
 | validate | tool | T0 | init, run, finalize | validate-result.json | true |
@@ -84,10 +88,12 @@ Each stage is defined by:
 - `monitor` is `daemon`: it runs a poll loop that outlives the pipeline run;
   the one-shot `run` contract of `tool`/`agent` does not fit.  Per ADR-001,
   `daemon` plugins use `tick` (not `run`) as their periodic entry point.
-- `compound_quality` is `orchestrator`: it drives multiple `agent` sub-plugins
-  through a multi-phase loop.  It is the only stage that uses the orchestrator
-  `run` hook signature (upstream artifacts in, downstream artifacts + verdict
-  out per ADR-001 §"Required interfaces per kind").
+- `cq-preflight`, `cq-audit-plan`, `cq-cycle`, and `cq-backtrack` replace the
+  former `compound_quality` orchestrator.  Each is an independent `agent` leaf
+  stage with its own manifest, plugin, and artifact contract.  The four stages
+  execute sequentially; `cq-preflight` failure is fail-fast (skips the
+  remaining three).  `cq-cycle` is T3 because it drives multi-lens audit
+  reasoning; the others are T1/T2.
 
 ### Tier assignment rationale
 
@@ -98,29 +104,21 @@ Each stage is defined by:
   `intake` declares T1 as forward-compatibility for a planned planning prompt;
   the Phase 0.5 stub makes no LLM call yet, but the manifest already declares
   `requires.core: [redaction]` to enforce the chokepoint contract.
-- T2 (`plan`, `build`, `review`): standard reasoning; balanced cost/quality.
-- T3 (`design`, `compound_quality`): architecture-level decisions and
-  multi-lens audit require the highest available reasoning tier.
+- T2 (`plan`, `build`, `review`, `cq-audit-plan`): standard reasoning; balanced cost/quality.
+- T3 (`design`, `cq-cycle`): architecture-level decisions and multi-lens audit
+  require the highest available reasoning tier.
 
-### compound_quality sub-phases
+### CQ stage responsibilities
 
-`compound_quality` is the only stage with internal phases.  Its orchestrator
-plugin executes them in this order:
+The former `compound_quality` orchestrator is replaced by four independent leaf
+stages executed in sequence within the `review_cycle` flow:
 
-```
-preflight → audit_plan → cycle → backtrack
-```
-
-| Sub-phase | Purpose |
+| Stage | Purpose |
 |---|---|
-| `preflight` | Non-cyclic fast-fail checks (bash-compat, coverage floor, untested functions). Failure aborts immediately without entering the cycle loop. |
-| `audit_plan` | Selects which audit lenses run and at what intensity, based on quality-score history from learning memory (ADR-011). |
-| `cycle` | Iterative audit loop.  Dispatches selected lens plugins (security, logic, performance, architecture, correctness, edge-case, pessimist).  Detects plateau and divergence. |
-| `backtrack` | If unresolved architecture-class findings remain after the cycle cap, emits `recovery.suggestion` targeting the design stage.  Non-blocking: backtrack exhaustion degrades to "continue with warning" rather than halting. |
-
-The four sub-phase ids (`preflight`, `audit_plan`, `cycle`, `backtrack`) MUST
-be used in event payloads and plugin manifests when referencing compound_quality
-internals.
+| `cq-preflight` | Non-cyclic fast-fail checks (bash-compat, coverage floor, untested functions). Failure aborts immediately; the remaining three CQ stages are skipped. |
+| `cq-audit-plan` | Selects which audit lenses run and at what intensity, based on quality-score history from learning memory (ADR-011). Emits `audit-plan.json` consumed by `cq-cycle`. |
+| `cq-cycle` | Iterative audit loop. Dispatches selected lens plugins (security, logic, performance, architecture, correctness, edge-case, pessimist). Detects plateau and divergence. Emits `quality-feedback.md` and `review.findings.json`. |
+| `cq-backtrack` | If unresolved architecture-class findings remain after the cycle cap, emits `recovery.suggestion` targeting the design stage. Non-blocking: backtrack exhaustion degrades to "continue with warning" rather than halting. |
 
 ### Artifact paths and the fail-closed rule
 
@@ -186,7 +184,7 @@ the active template until its implementation phase ships:
 | Stage | Required from phase | Status |
 |---|---|---|
 | intake | Phase 0.5 | Shipped — plugin + tests + parity coverage |
-| compound_quality | Phase 0.5 | Shipped — security-lens only; full 7-lens suite deferred to Phase 1 |
+| cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack | Phase 1 | Shipped — 4 leaf stages replacing compound_quality (issue #755) |
 | plan, design, build, test, review | Phase 1 | Planned — not yet shipped |
 | pr | Phase 1 (optional) | Planned — not yet shipped |
 | deploy, validate, monitor | Phase 3 | Planned — not yet shipped |
@@ -200,8 +198,8 @@ the active template until its implementation phase ships:
   typos.
 - Tier assignments document architectural invariants (T0 = never LLM) that
   previously lived only in convention.
-- The compound_quality sub-phase vocabulary is stable; event payloads and
-  plugin manifests can reference it without ambiguity.
+- The CQ stage vocabulary (cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack)
+  is stable; event payloads and plugin manifests can reference it without ambiguity.
 
 **Bad:**
 
@@ -214,9 +212,9 @@ the active template until its implementation phase ships:
 
 - Whether stages beyond `intake` may run with intra-stage parallelism by
   default (currently per-template opt-in via ADR-009 strategy).
-- The exact convergence criteria for the compound_quality cycle sub-phase
+- The exact convergence criteria for the cq-cycle plateau detection
   (plateau N, divergence threshold).  Tracked in #12 and #13–#16.
-- UCB1 bandit selection within compound_quality lens scheduling (ADR-003 §UCB1
+- UCB1 bandit selection within cq-cycle lens scheduling (ADR-003 §UCB1
   deferred to #29).
 
 ## Implementation Notes (Phase 0.5 — issue #292)
@@ -307,7 +305,7 @@ linear dispatch is byte-identical to today (regression-locked in
 ## References
 
 - [ARCHITECTURE.md §3](../ARCHITECTURE.md#3-data-flow-a-zbuild-pipeline-start-traversal) — data flow traversal
-- [KEEPERS.md §A](../KEEPERS.md#section-a--pipeline--stage-composition-verified) — stage dispatch and compound_quality 4-phase split
+- [KEEPERS.md §A](../KEEPERS.md#section-a--pipeline--stage-composition-verified) — stage dispatch and CQ 4-plugin migration
 - [ARCHITECTURE.md §2](../ARCHITECTURE.md#2-plugin-contract) — plugin contract, fail-closed scanner ("absent evidence IS blocking evidence")
 - [ADR-001 §Fail-closed scanner contract](ADR-001-plugin-contract.md#fail-closed-scanner-contract) — synthetic blocking finding when declared artifact is missing after exit 0
 - [ADR-003](ADR-003-models-as-data.md) — tier ordinals T0–T4
@@ -343,7 +341,7 @@ References: ADR-016 (per-repository template resolution), ADR-021 v2 (cycle/comp
 
 ADR-027 (Wave 17-A) codifies the recursive flow template format: a cycle is a stage that happens to contain its own mini-flow, declared by `type: cycle` on a top-level stage section with its own `flow:` member list. The runner walks any `flow:` the same way at any depth. This amendment clarifies how this ADR's taxonomy composes with that recursive shape; it does NOT change the taxonomy itself.
 
-**Taxonomy scope unchanged.** The canonical stage list in §"Stage sequence" and the per-stage attribute table in §"Canonical stage definitions" remain the authoritative source for **leaf** stage IDs (`intake`, `plan`, `design`, `build`, `test`, `test_assessment`, `review`, `compound_quality`, `pr`, `deploy`, `validate`, `monitor`) and their `kind`, `tier`, `lifecycle_hooks`, `expected_artifact`, and `blocking` attrs. Adding a new leaf stage ID or changing a leaf's attrs still requires an ADR-013 revision.
+**Taxonomy scope unchanged.** The canonical stage list in §"Stage sequence" and the per-stage attribute table in §"Canonical stage definitions" remain the authoritative source for **leaf** stage IDs (`intake`, `plan`, `design`, `build`, `test`, `test_assessment`, `cq-preflight`, `cq-audit-plan`, `cq-cycle`, `cq-backtrack`, `review`, `pr`, `deploy`, `validate`, `monitor`) and their `kind`, `tier`, `lifecycle_hooks`, `expected_artifact`, and `blocking` attrs. Adding a new leaf stage ID or changing a leaf's attrs still requires an ADR-013 revision.
 
 **Cycle stage IDs are template-defined.** Cycle stages (e.g., `build_test_cycle`, `review_cycle`) are NOT members of the canonical leaf set. Each template defines its own cycle stage IDs as sibling top-level sections, named to describe what the cycle does. Cycle stage IDs are scoped to the template that declares them; two templates may use different cycle IDs without conflict, and a cycle ID in one template MUST NOT collide with any canonical leaf ID from this ADR.
 
@@ -361,3 +359,22 @@ The "subtractive composition" rule (templates MAY omit leaf stages) and the "can
 **Cycle stage attrs are not taxonomy-governed.** Cycle stages carry `type: cycle`, their own `flow:`, `exit_when:`, optional `abort_when:`, `max_iterations:`, `on_max:`, and `feedback:`. These attrs are governed by ADR-027 §"Decision" and ADR-021 v2's cycle execution model — NOT by this ADR's per-stage attribute table. The taxonomy in §"Canonical stage definitions" is intentionally silent on cycle stages because their identity is template-defined and their per-stage shape comes from the cycle contract, not the leaf contract.
 
 References: ADR-027 §"Decision" and §"Loader contract" (Wave 17-A), Wave 17-B (#703, template loader + validator + back-compat shim), Wave 17-C (#704, `config/templates/standard.yaml` migration), ADR-021 v2 (cycle execution model), the 2026-06-02 amendment above (taxonomy-only scope clarification — extended here from "flattened, resolved stage set" to "flat resolved flow at every depth").
+
+## Amendment 2026-06-13 (#755) — compound_quality replaced by 4 CQ leaf stages
+
+`compound_quality` (orchestrator, T3) is removed from the canonical taxonomy.
+It is replaced by four independent `agent` leaf stages inserted between
+`test_assessment` and `review`:
+
+| id | kind | tier | expected_artifact | blocking |
+|---|---|---|---|---|
+| cq-preflight | agent | T1 | cq-preflight-result.json | true |
+| cq-audit-plan | agent | T2 | audit-plan.json | true |
+| cq-cycle | agent | T3 | quality-feedback.md | true |
+| cq-backtrack | agent | T1 | cq-backtrack-result.json | false |
+
+The canonical stage count grows from 12 to 15. The stage sequence is now:
+`intake → plan → design → build → test → test_assessment → cq-preflight →
+cq-audit-plan → cq-cycle → cq-backtrack → review → pr → deploy → validate → monitor`
+
+Tombstone: `legacy/migrated/A2-compound-quality.md`. Implementation: issue #755.

@@ -1,0 +1,63 @@
+id: cq-cycle
+name: CQ Audit Cycle
+kind: agent
+version: 0.1.0
+description: |
+  Iterative audit cycle. Dispatches selected lens plugins (security, logic,
+  performance, architecture, correctness, edge-case, pessimist) based on the
+  audit-plan.json from cq-audit-plan. Detects plateau and divergence.
+  Emits quality-feedback.md and review.findings.json.
+  # legacy-citation: while-cycle loop at pipeline-intelligence.sh:2236-2900
+
+hooks:
+  run: cq_cycle_run
+  cleanup: cq_cycle_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: cq_cycle
+  artifact_type: review.findings.json
+  schema_version: 1
+
+config:
+  tier_default: T3
+  max_cycle_iterations: 3
+  plateau_window: 2
+  divergence_window: 3
+
+inputs:
+  - id: audit_plan
+    type: file
+    path: "${artifact_dir}/audit-plan.json"
+    source: stage:cq-audit-plan
+    required: true
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  - id: diff_patch
+    type: file
+    path: "${artifact_dir}/diff.patch"
+    source: stage:build
+    required: false
+
+outputs:
+  - id: findings
+    path: ${artifact_dir}/review.findings.json
+    type: json
+    required: true
+    primary: true
+  - id: quality_feedback
+    path: ${artifact_dir}/quality-feedback.md
+    type: markdown
+    required: true
+
+state:
+  persisted: [last_cycle_score, classified_findings_pointer]
+  reconstructed: [git_diff]

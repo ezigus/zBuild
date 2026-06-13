@@ -185,7 +185,7 @@ assert_eq "overlap: load_template rc != 0" "1" "$rc"
 # T9: regression — load_template still succeeds and _TPL_STAGES intact when
 # cycles: absent.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-assert_eq "regression: standard.yaml still has 8 stages (#754)" "8" "${#_TPL_STAGES[@]}"
+assert_eq "regression: standard.yaml still has 12 stages (#755)" "12" "${#_TPL_STAGES[@]}"
 # Wave 19-J (#746): standard.yaml now declares 3 cycles after wiring
 # plan_impact_cycle (plan_impact_cycle + inner build_test_cycle + outer review_cycle).
 assert_eq "regression: standard.yaml has 3 cycles (plan_impact + build_test_cycle + review_cycle)" \
@@ -231,7 +231,7 @@ assert_eq "v2/namespace: build_test_cycle absent from flat _TPL_STAGES" "0" "$fl
 
 # T12: _TPL_STAGES[] flat list includes cycle members in order.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-expected_flat="intake plan impact design build test test_assessment review"
+expected_flat="intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review"
 actual_flat="${_TPL_STAGES[*]}"
 assert_eq "v2/flat: _TPL_STAGES expansion preserves canonical order" "$expected_flat" "$actual_flat"
 

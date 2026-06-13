@@ -134,7 +134,7 @@ assert_eq "load_template missing file returns non-zero" "1" "$rc"
 # #568: standard.yaml now also includes test_assessment between test and review.
 load_template "$STANDARD_TPL"
 stage_count="${#_TPL_STAGES[@]}"
-assert_eq "standard template has 8 stages" "8" "$stage_count"
+assert_eq "standard template has 12 stages" "12" "$stage_count"
 
 # ─── Test 3: stage order is preserved in _TPL_STAGES ─────────────────────────
 assert_eq "_TPL_STAGES[0] is intake"          "intake"          "${_TPL_STAGES[0]}"
@@ -144,7 +144,11 @@ assert_eq "_TPL_STAGES[3] is design"          "design"          "${_TPL_STAGES[3
 assert_eq "_TPL_STAGES[4] is build"           "build"           "${_TPL_STAGES[4]}"
 assert_eq "_TPL_STAGES[5] is test"            "test"            "${_TPL_STAGES[5]}"
 assert_eq "_TPL_STAGES[6] is test_assessment" "test_assessment" "${_TPL_STAGES[6]}"
-assert_eq "_TPL_STAGES[7] is review"          "review"          "${_TPL_STAGES[7]}"
+assert_eq "_TPL_STAGES[7] is cq-preflight"    "cq-preflight"    "${_TPL_STAGES[7]}"
+assert_eq "_TPL_STAGES[8] is cq-audit-plan"   "cq-audit-plan"   "${_TPL_STAGES[8]}"
+assert_eq "_TPL_STAGES[9] is cq-cycle"        "cq-cycle"        "${_TPL_STAGES[9]}"
+assert_eq "_TPL_STAGES[10] is cq-backtrack"   "cq-backtrack"    "${_TPL_STAGES[10]}"
+assert_eq "_TPL_STAGES[11] is review"         "review"          "${_TPL_STAGES[11]}"
 
 # ─── Test 3b: #485 — test stage roles include tester ──────────────────────────
 roles_test="$(template_stage_roles "test")"
@@ -202,7 +206,7 @@ assert_contains "review roles contains auditor"  "$roles_review" "auditor"
 # ─── Test 14: reload standard template — state is fully reset ─────────────────
 load_template "$STANDARD_TPL"
 reload_count="${#_TPL_STAGES[@]}"
-assert_eq "reloaded standard template still has 8 stages (#754)" "8" "$reload_count"
+assert_eq "reloaded standard template still has 12 stages (#755)" "12" "$reload_count"
 assert_eq "reloaded _TPL_DEFAULT_STRATEGY=fanout" "fanout" "$_TPL_DEFAULT_STRATEGY"
 
 # ─── Test 15: unknown stage id → load_template returns non-zero ───────────────

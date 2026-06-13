@@ -64,7 +64,7 @@ schema violation; CI lint and the runtime validator both reject it.
 **`required:` defaults to `true` at parse time.** Empty `required:` value
 (key present, no value) is malformed. Use `required: false` for optional
 inputs (e.g., security-lens's `diff_patch` side-channel from build —
-present in main pipeline but not when compound_quality runs standalone).
+present in main pipeline but not when cq-cycle's security-lens invocation runs standalone).
 
 ### Closed templating-var set
 
@@ -162,18 +162,22 @@ Resume-mode artifact-existence checks are deferred to a follow-up issue
 (tracked in the implementation notes below); the schema and runtime gate
 are shipped in this PR.
 
-### compound_quality dynamic fan-in (decision #8)
+### CQ stage artifact chain (decision #8)
 
-`compound_quality` is an orchestrator that fans out to lens plugins
-selected at runtime (`security-lens`, future `logic-lens`, etc.). The
-inter-stage contract codified here is for the *linear* stage list; the
-orchestrator's per-lens fan-out is NOT validated by this MVP. A
-follow-up issue will add `dynamic_inputs: from_role: <role>` for
-compound_quality's `inputs:` block so the validator can verify the lens
-role has at least one registered provider. Until then, security-lens
-declares its inputs against the runtime sources (`stage:intake`,
-`stage:build`) with `required: false` on the diff side-channel so the
-plugin can run standalone outside the compound_quality orchestrator.
+`compound_quality` has been replaced by four independent leaf stages:
+`cq-preflight`, `cq-audit-plan`, `cq-cycle`, and `cq-backtrack`. Each
+is a first-class leaf stage with its own manifest `inputs:` and
+`outputs:` blocks validated by the contract validator. The former
+orchestrator fan-out is now an implementation detail inside
+`cq-cycle/plugin.sh` — `cq-cycle` invokes lens plugins internally and
+is not itself a dynamic fan-in target from the inter-stage validator's
+perspective.
+
+`security-lens` and future lens plugins continue to declare inputs
+against runtime sources (`stage:intake`, `stage:build`) with
+`required: false` on the diff side-channel so they can run standalone.
+No `dynamic_inputs: from_role:` entry is needed since the orchestrator
+layer no longer exists at the stage level.
 
 ### Pre-flight error format
 
@@ -274,7 +278,7 @@ behavior change scoped to the explicit-violation path.
 - Flip default from `warn` to `enforce` after one release cycle.
 - Resume-mode artifact-existence check (decision #7 — stricter check on
   disk, beyond stage_statuses).
-- `dynamic_inputs: from_role:` for compound_quality fan-in (decision #8).
+- `dynamic_inputs: from_role:` for CQ lens fan-in (decision #8 — now inside cq-cycle).
 - Audit the two known contract-bypass paths (template-missing fallback,
   strategy rc=4 fallback) and either bring them under the contract or
   document them in ADR-001.

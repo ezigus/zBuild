@@ -153,6 +153,10 @@ review_cycle:
   description: Code review of build output until reviewer approves
   flow:
     - build_test_cycle
+    - cq-preflight
+    - cq-audit-plan
+    - cq-cycle
+    - cq-backtrack
     - review
   exit_when:
     stage: review
@@ -260,6 +264,63 @@ test_assessment:
   router:
     timeout_s: 300
     max_turns: 25
+
+# ─── cq-preflight (leaf, cycle member) ─────────────────────────────────
+# Pre-flight gates: bash-compat check, coverage floor, untested-function scan.
+# Fail-fast: non-zero exit skips all remaining CQ plugins (issue #755).
+# legacy-citation: pipeline-intelligence.sh:2042-2195
+cq-preflight:
+  gate: auto
+  roles: [cq_preflight]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 120
+    max_turns: 10
+
+# ─── cq-audit-plan (leaf, cycle member) ─────────────────────────────────
+# Selects which audit lenses run and at what intensity based on quality-score
+# history. Emits audit-plan.json consumed by cq-cycle (issue #755).
+# legacy-citation: pipeline-intelligence.sh:429-508
+cq-audit-plan:
+  gate: auto
+  roles: [cq_audit_plan]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 120
+    max_turns: 15
+
+# ─── cq-cycle (leaf, cycle member) ──────────────────────────────────────
+# Iterative audit loop: dispatches selected lens plugins, detects plateau and
+# divergence, emits quality-feedback.md and review.findings.json (issue #755).
+# legacy-citation: pipeline-intelligence.sh:2236-2900
+cq-cycle:
+  gate: auto
+  roles: [cq_cycle]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 900
+    max_turns: 0
+
+# ─── cq-backtrack (leaf, cycle member) ──────────────────────────────────
+# Reads needs_backtrack from cq-cycle findings; emits recovery.suggestion
+# targeting design on architecture-class findings. Non-blocking: exhaustion
+# degrades to continue-with-warning (issue #755).
+# legacy-citation: pipeline-intelligence.sh:1339-1422
+cq-backtrack:
+  gate: auto
+  roles: [cq_backtrack]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 120
+    max_turns: 10
 
 # ─── review (leaf) ──────────────────────────────────────────────────────
 review:
