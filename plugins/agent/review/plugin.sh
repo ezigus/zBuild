@@ -41,6 +41,8 @@ source "$_REVIEW_ROOT/scripts/lib/numstat-format.sh"
 source "$_REVIEW_ROOT/scripts/lib/test-output-sanitize.sh"
 # shellcheck source=../../../scripts/lib/diff-stat.sh
 source "$_REVIEW_ROOT/scripts/lib/diff-stat.sh"
+# shellcheck source=../../../scripts/lib/prompt-overrides.sh
+source "$_REVIEW_ROOT/scripts/lib/prompt-overrides.sh"
 
 # Valid verdict values per manifest config.valid_verdicts
 _REVIEW_VALID_VERDICTS="approve request_changes block"
@@ -441,6 +443,10 @@ $_review_instructions"
     # Write prompt to a temp file for redaction (apply_scope_redaction takes file paths)
     local prompt_file="$artifact_dir/review-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"
+
+    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
+    # redaction (so it is redaction-covered and cannot weaken the charter).
+    append_prompt_override "$prompt_file" "review"
 
     # ─── Redaction chokepoint (REQUIRED — refuse to call LLM without it) ────
     local redacted_prompt_file="$artifact_dir/review-prompt.redacted.txt"

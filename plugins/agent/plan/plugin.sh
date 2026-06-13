@@ -30,6 +30,8 @@ source "$_PLAN_ROOT/core/router/route.sh"
 # ADR-028: shared LLM-agent stage framework (PR 2/5 — plan migration).
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_PLAN_ROOT/scripts/lib/llm-agent.sh"
+# shellcheck source=../../../scripts/lib/prompt-overrides.sh
+source "$_PLAN_ROOT/scripts/lib/prompt-overrides.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 plan_init() {
@@ -484,6 +486,21 @@ $_plan_instructions"
         # iter where impact ran but no plan-self-edge has populated yet, or a
         # template that wires only the impact→plan edge).
         prompt+=$'\nExpand step.files[] to address the named gaps. Do NOT change strategic structure unless impact identified a step as fundamentally mis-scoped.\n'
+    fi
+
+    # ADR-032 (#855): plan assembles its prompt in $prompt AFTER the goal is
+    # redacted, so the override is redacted in its OWN pass and spliced in AFTER
+    # the contract (_plan_instructions) — preserving both invariants: the
+    # override is redaction-covered and follows the shipped charter.
+    local _plan_ov; _plan_ov="$(load_prompt_override "plan")"
+    if [[ -n "$_plan_ov" ]]; then
+        local _ov_in="$artifact_dir/plan-override.txt"
+        local _ov_red="$artifact_dir/plan-override.redacted.txt"
+        printf '%s\n' "$_plan_ov" > "$_ov_in"
+        if apply_scope_redaction "$_ov_in" "$_ov_red" "$scope_manifest" "" "0"; then
+            prompt+=$'\n\n'"$ZBUILD_PROMPT_OVERRIDE_DELIMITER"$'\n\n'
+            prompt+="$(cat "$_ov_red")"$'\n'
+        fi
     fi
 
     # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────

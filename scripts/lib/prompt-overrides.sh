@@ -94,3 +94,21 @@ load_prompt_override() {
     cat "$override_file"
     return 0
 }
+
+# The delimiter under which every stage appends its operator override. Single-
+# sourced so the wording can't drift across stages.
+ZBUILD_PROMPT_OVERRIDE_DELIMITER="## Project-specific guidance (operator override)"
+
+# append_prompt_override <prompt_file> <stage> — append stage's per-repo override
+# (if any) to an ALREADY-ASSEMBLED prompt file, under the operator delimiter.
+# Call AFTER the core contract is written to the file and BEFORE redaction, so
+# the override is redaction-covered and cannot precede/weaken the charter. No-op
+# (byte-identical) when no override exists. Stages whose prompt is assembled in a
+# shell variable rather than a file (e.g. plan) inline the equivalent instead.
+append_prompt_override() {
+    local prompt_file="$1" stage="$2" ov
+    ov="$(load_prompt_override "$stage")"
+    [[ -n "$ov" ]] || return 0
+    { printf '\n\n%s\n\n' "$ZBUILD_PROMPT_OVERRIDE_DELIMITER"
+      printf '%s\n' "$ov"; } >> "$prompt_file"
+}

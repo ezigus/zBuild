@@ -42,6 +42,8 @@ source "$_BUILD_ROOT/scripts/lib/artifact-render.sh"
 # #506: shared numstat banner formatter (also used by review).
 # shellcheck source=../../../scripts/lib/numstat-format.sh
 source "$_BUILD_ROOT/scripts/lib/numstat-format.sh"
+# shellcheck source=../../../scripts/lib/prompt-overrides.sh
+source "$_BUILD_ROOT/scripts/lib/prompt-overrides.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 build_stage_init() {
@@ -217,6 +219,10 @@ _build_stage_run_inner() {
             printf 'Fix the issues above before emitting LOOP_COMPLETE.\n'
         fi
     } > "$prompt_input_file"
+
+    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
+    # redaction (so it is redaction-covered and cannot weaken the charter).
+    append_prompt_override "$prompt_input_file" "build"
 
     local redacted_file="$artifact_dir/build-prompt.redacted.txt"
 
