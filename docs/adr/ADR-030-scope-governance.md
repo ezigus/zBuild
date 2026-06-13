@@ -1,4 +1,4 @@
-# ADR-030 — Scope model: read/write split, security floor, governed expansion
+# ADR-030 — Scope model (read/write split, security floor, governed expansion)
 
 **Status:** Proposed (2026-06-13)
 **Related:** ADR-002 (legacy freeze), ADR-004 (redaction chokepoint), ADR-021 (cycle semantics), ADR-026 (review-remediation cycle), ADR-027 (recursive-flow template)
@@ -71,7 +71,7 @@ Letting build expand into test files opens one hazard: a build could pass a red 
 - **Security is strictly preserved.** Read-scope and the floor are unchanged in spirit and unweakened by the declarative layer; the floor is the one chokepoint every grant crosses.
 - **Stage-agnostic.** The request/resolve mechanism is not build-specific — any agent-loop stage that mutates files under scope (future: cq-cycle, cq-backtrack) inherits it.
 
-## Implementation notes
+## Implementation Notes
 
 Delivered in tested increments under #840:
 - **R1 (this ADR + `scripts/lib/scope-governance.sh` + unit tests):** the pure floor/detector/resolver core. No runtime-behavior change — nothing consumes it yet, so existing pipelines are untouched.
