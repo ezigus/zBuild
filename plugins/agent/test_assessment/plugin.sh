@@ -45,6 +45,8 @@ source "$_TEST_ASSESSMENT_ROOT/scripts/lib/artifact-render.sh"
 # but a second pass here protects against future test-results.json shapes
 # (e.g. cycle-iter mirrors that side-channel an unsanitized field).
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/test-output-sanitize.sh"
+# shellcheck source=../../../scripts/lib/prompt-overrides.sh
+source "$_TEST_ASSESSMENT_ROOT/scripts/lib/prompt-overrides.sh"
 
 # Cap on test_output bytes embedded in the prompt — keep tail so the most
 # recent (typically most-failure-revealing) lines survive truncation.
@@ -289,6 +291,9 @@ $_ta_instructions"
     # ─── Redaction chokepoint (ADR-004, required) ────────────────────────────
     local prompt_file="$artifact_dir/test-assessment-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"
+    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
+    # redaction (so it is redaction-covered and cannot weaken the charter).
+    append_prompt_override "$prompt_file" "test_assessment"
     local redacted_file="$artifact_dir/test-assessment-prompt.redacted.txt"
     if ! apply_scope_redaction "$prompt_file" "$redacted_file" \
         "$scope_manifest" "" "${ZBUILD_CYCLE_ID:-0}"; then

@@ -38,6 +38,8 @@ source "$_IMPACT_ROOT/scripts/lib/impact-prefilter.sh"
 # #782: router rc → verdict/reason mapping (ADR-021 error class for timeouts).
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_IMPACT_ROOT/scripts/lib/router-rc-classify.sh"
+# shellcheck source=../../../scripts/lib/prompt-overrides.sh
+source "$_IMPACT_ROOT/scripts/lib/prompt-overrides.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 impact_init() {
@@ -188,6 +190,10 @@ $_impact_instructions"
 
     local prompt_file="$artifact_dir/impact-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"
+
+    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
+    # redaction (so it is redaction-covered and cannot weaken the charter).
+    append_prompt_override "$prompt_file" "impact"
 
     # ─── Redaction chokepoint (REQUIRED — ADR-004) ──────────────────────────
     local redacted_prompt_file="$artifact_dir/impact-prompt.redacted.txt"

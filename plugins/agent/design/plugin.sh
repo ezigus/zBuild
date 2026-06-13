@@ -180,14 +180,7 @@ DESIGN_PROMPT
     # BEFORE redaction below (so the override text is redaction-covered,
     # ADR-004). Fail-open: a repo with no .zbuild/prompts/design-overrides.md
     # appends nothing and behaves byte-identically.
-    local _design_override
-    _design_override="$(load_prompt_override "design")"
-    if [[ -n "$_design_override" ]]; then
-        {
-            printf '\n\n## Project-specific guidance (operator override)\n\n'
-            printf '%s\n' "$_design_override"
-        } >> "$prompt_input_file"
-    fi
+    append_prompt_override "$prompt_input_file" "design"
 
     local redacted_file="$artifact_dir/design-prompt.redacted.txt"
 
