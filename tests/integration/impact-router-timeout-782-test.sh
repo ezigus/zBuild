@@ -36,6 +36,11 @@ echo "+ ./" > "$SCOPE_MANIFEST"
 PLAN_JSON="$ARTIFACTS/plan.json"
 echo '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["plugins/agent/foo/plugin.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$PLAN_JSON"
 
+# #842: impact reads design.md's ```scope block; signature is now
+# <scope_manifest> <design_md> <plan_json> <impact_out> [artifact_dir].
+DESIGN_MD="$ARTIFACTS/design.md"
+printf '# Design\n\n```scope\nplugins/agent/foo/plugin.sh\n```\n' > "$DESIGN_MD"
+
 # Empty prefilter env so #781 is no-op in these tests.
 export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/empty-root"; mkdir -p "$ZBUILD_REPO_ROOT/config"
 
@@ -51,7 +56,7 @@ IMPACT_OUT="$ARTIFACTS/impact.json"
 rm -f "$IMPACT_OUT"
 
 rc=0
-_impact_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS" || rc=$?
+_impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS" || rc=$?
 
 assert_eq "I1: plugin returns rc=0 on rc=124 (graceful error class)" "0" "$rc"
 assert_file_exists "I2: impact.json written" "$IMPACT_OUT"
@@ -83,7 +88,7 @@ route_to_model() { return 1; }
 rm -f "$IMPACT_OUT"
 
 rc=0
-_impact_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS" || rc=$?
+_impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS" || rc=$?
 
 assert_eq "I5: plugin returns rc=1 on rc=1 (fail class)" "1" "$rc"
 
