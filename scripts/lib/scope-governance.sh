@@ -58,12 +58,19 @@ scope_floor_denied() {
 # resolver applies the floor first; this only names the structural category.
 scope_collateral_class() {
     local path="$1"
+    # Anchor collateral to DIRECTORY PREFIXES, not bare extensions (#870):
+    # `*.json`/`*.golden`/`*.md` matched anywhere previously, so a source-tree
+    # file like core/router/models.json self-classified as collateral_config
+    # and became auto-grantable. Collateral requires the matching directory; the
+    # source trees (core/, scripts/, plugins/) are always structural regardless
+    # of extension.
     case "$path" in
-        tests/*|*.golden) echo "collateral_tests"; return 0 ;;
-        config/*|*.json)  echo "collateral_config"; return 0 ;;
-        docs/*|*.md)      echo "collateral_docs"; return 0 ;;
+        tests/*)  echo "collateral_tests"; return 0 ;;
+        config/*) echo "collateral_config"; return 0 ;;
+        docs/*)   echo "collateral_docs"; return 0 ;;
     esac
-    # Everything else (core/, scripts/, plugins/ source, etc.) is structural.
+    # Everything else (core/, scripts/, plugins/ source, root-level files) is
+    # structural — escalated, never collateral-auto-granted.
     echo "structural"
 }
 
@@ -107,11 +114,12 @@ scope_resolve_request() {
         return 0
     fi
 
-    local i path category evidence cls
+    local i path category evidence created cls
     for (( i=0; i<n; i++ )); do
         path="$(jq -r ".files[$i].path // empty" <<<"$req")"
         category="$(jq -r ".files[$i].category // empty" <<<"$req")"
         evidence="$(jq -r ".files[$i].evidence // empty" <<<"$req")"
+        created="$(jq -r ".files[$i].created // false" <<<"$req")"
 
         # Floor is absolute.
         if scope_floor_denied "$path"; then
@@ -131,10 +139,30 @@ scope_resolve_request() {
             fi
             continue
         fi
-        # Collateral class — must be enabled in auto_grant AND have evidence.
+        # Collateral class — must be enabled in auto_grant.
         if [[ ",$auto_grant_csv," != *",$cls,"* ]]; then
             denied+=("$path"); reasons+=("class-not-enabled:$cls:$path"); continue
         fi
+        # Created-collateral lane (#870): a NEW collateral file the build authored
+        # while implementing the plan (a regenerated golden, a new fixture/test/
+        # config) carries no pre-existing token, so the evidence-in-file check
+        # can't apply. Its existence on disk + collateral class + floor-pass IS
+        # the grant basis. The floor and structural checks above already ran, so
+        # `created` can NEVER grant a floored or source-tree path.
+        if [[ "$created" == "true" ]]; then
+            # A symlink leaf can resolve past the string-floor (config/x ->
+            # ../legacy/y, or -> /etc/...) and `-f` follows it. A real created
+            # collateral file is never a symlink — reject so the floor stays
+            # non-bypassable via the filesystem layer (#870 security review).
+            if [[ -L "$path" ]]; then
+                denied+=("$path"); reasons+=("created-symlink:$path"); continue
+            fi
+            if [[ -f "$path" ]]; then
+                granted+=("$path"); continue
+            fi
+            denied+=("$path"); reasons+=("created-not-found:$path"); continue
+        fi
+        # Edited collateral — must point at a real token linking it to the change.
         if ! scope_evidence_present "$path" "$evidence"; then
             denied+=("$path"); reasons+=("no-evidence:$path"); continue
         fi

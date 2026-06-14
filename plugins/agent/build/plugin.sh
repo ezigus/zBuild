@@ -380,6 +380,10 @@ _build_stage_run_inner() {
     # ─── Scope post-validation via git diff --name-status -z ─────────────────
     local scope_violation="false"
     local -a scope_violations=()
+    # #870: out-of-scope files the build CREATED this iter (git status A). These
+    # are candidates for governed auto-grant of build-created collateral (a new
+    # golden/fixture/config the change produces that design didn't scope).
+    local -a scope_violations_created=()
     if [[ -n "$diff_content" && -n "$plan_files_csv" ]]; then
         local -a allowed_files=()
         local IFS_save="$IFS"
@@ -421,6 +425,10 @@ _build_stage_run_inner() {
                 if ! _build_path_in_scope "$p" allowed_files; then
                     scope_violation="true"
                     scope_violations+=("$p")
+                    # #870: a NEWLY-created (status A) OOS file is a candidate
+                    # for created-collateral auto-grant (classified in the
+                    # request helper; only collateral classes are requested).
+                    [[ "$status" =~ ^A ]] && scope_violations_created+=("$p")
                     emit_event "build.scope.violation" "plugin=build" \
                         "path=$p" "status=$status"
                 fi
@@ -568,6 +576,17 @@ _build_stage_run_inner() {
             # clean abandon). Replaces the old silent dead-end.
             scope_expansion_request_json="$(_build_scope_expansion_request "$_oos_paths" "$_feedback_body" 2>/dev/null || true)"
         fi
+    fi
+
+    # #870: a build that CREATED an auto-grant-class collateral file the design
+    # didn't scope (a new golden/fixture/config the change produces) must emit a
+    # governed request for it (created:true) — not silently fail-close into a
+    # scope_violation loop. Fires on the scope_violation verdict path (mutually
+    # exclusive with the empty_diff branch above). The orchestrator resolves it:
+    # grant (build retries with the file in scope → commits) / deny (one-shot
+    # blocked_on_scope abandon).
+    if [[ -z "$scope_expansion_request_json" && ${#scope_violations_created[@]} -gt 0 ]]; then
+        scope_expansion_request_json="$(_build_created_collateral_request "${scope_violations_created[@]}" 2>/dev/null || true)"
     fi
 
     # #602: the post-loop apply-check (introduced in #509, extended bidirectional
@@ -903,6 +922,37 @@ _build_scope_expansion_request() {
             '. + [{path:$p, category:$c, evidence:$e, reason:"build blocked on out-of-scope file named in test feedback"}]' \
             <<<"$entries" 2>/dev/null || printf '%s' "$entries")"
     done <<< "$oos"
+
+    [[ "$entries" == "[]" ]] && return 0
+    jq -nc --argjson f "$entries" '{files:$f}' 2>/dev/null || true
+}
+
+# _build_created_collateral_request <created_path> [created_path...]  (#870)
+# Build a governed scope_expansion_request for files the build CREATED this iter
+# that are out of scope but are auto-grant-class COLLATERAL (new golden/fixture/
+# config the change legitimately produces). Each entry carries created:true so
+# the resolver grants it on class+floor without a pre-existing evidence token
+# (a brand-new file has none). Source-tree/structural created files are dropped
+# here (the resolver would deny them anyway) so they don't poison the request
+# into an all-or-nothing deny. Echoes {files:[...]} or nothing.
+_build_created_collateral_request() {
+    (( $# == 0 )) && return 0
+    local _gov; _gov="$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/scope-governance.sh"
+    # shellcheck source=/dev/null
+    [[ -f "$_gov" ]] && source "$_gov"
+    declare -F scope_collateral_class >/dev/null 2>&1 || return 0
+
+    local entries="[]" f cls
+    for f in "$@"; do
+        [[ -z "$f" ]] && continue
+        cls="$(scope_collateral_class "$f")"
+        # Only request collateral classes; structural/source created files are
+        # not auto-grantable and would force an all-deny — leave them to fail.
+        [[ "$cls" == collateral_* ]] || continue
+        entries="$(jq -c --arg p "$f" --arg c "$cls" \
+            '. + [{path:$p, category:$c, created:true, evidence:"", reason:"build created new collateral artifact while implementing the plan"}]' \
+            <<<"$entries" 2>/dev/null || printf '%s' "$entries")"
+    done
 
     [[ "$entries" == "[]" ]] && return 0
     jq -nc --argjson f "$entries" '{files:$f}' 2>/dev/null || true
