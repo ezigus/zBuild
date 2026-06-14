@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  plugins/agent/impact — Impact Analyzer Stage (Wave 19-J, #744)           ║
+# ║  plugins/agent/impact — Impact Analyzer Stage (#842)                      ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
-# Wraps the plan stage in plan_impact_cycle. Consumes plan.json + scope
-# manifest; uses LLM judgment + Grep tool calls to trace which test/config
-# files the plan's modifications would invalidate but aren't listed in any
-# step.files[]. Emits impact.json { verdict: complete | incomplete, ... }
-# and impact_feedback.md for cycle feedback wiring back into plan.
-#
-# Forward-compat: the input contract is "any plan-shaped artifact with
-# steps[] each having files[]." When test_plan + arch_plan + coder_plan
-# ship later with a plan_merger producing unified_plan.json, this plugin
-# processes it identically — no impact-layer changes needed.
+# Member of design_impact_cycle. Reads design.md's ```scope block (the
+# exhaustive enumeration produced by the design stage) and adversarially
+# finds post-design CONSEQUENCES: files the change touches but design missed.
+# Emits impact.json { verdict: complete | incomplete, ... } and
+# impact_feedback.md wired back into design.prior_impact_feedback.
+# plan.json is retained as secondary input for the deterministic prefilter.
 
 [[ -n "${_ZBUILD_IMPACT_LOADED:-}" ]] && return 0
 _ZBUILD_IMPACT_LOADED=1
@@ -62,38 +58,66 @@ impact_run() {
 
     _impact_run_inner \
         "$state_dir/scope-manifest.md" \
+        "$artifacts_dir/design.md" \
         "$artifacts_dir/plan.json" \
         "$artifacts_dir/impact.json" \
         "$artifacts_dir"
 }
 
+# Extract the ```scope block from design.md; returns CSV of file paths on stdout.
+_impact_extract_scope_from_design() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+    local in_block=0
+    local -a files=()
+    while IFS= read -r line; do
+        if [[ "$line" == '```scope' ]]; then
+            in_block=1; continue
+        fi
+        if [[ $in_block -eq 1 && "$line" == '```' ]]; then break; fi
+        if [[ $in_block -eq 1 && -n "$line" ]]; then files+=("$line"); fi
+    done < "$design_md"
+    if [[ ${#files[@]} -gt 0 ]]; then
+        local IFS=','; printf '%s' "${files[*]}"
+    fi
+}
+
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
-#   $2 = plan.json path
-#   $3 = output impact.json path
-#   $4 = artifact_dir (for intermediate files)
+#   $2 = design.md path (primary scope source)
+#   $3 = plan.json path (secondary — for deterministic prefilter)
+#   $4 = output impact.json path
+#   $5 = artifact_dir (for intermediate files)
 _impact_run_inner() {
     local scope_manifest="$1"
-    local plan_json_path="$2"
-    local output_impact_json="$3"
-    local artifact_dir="${4:-$(dirname "$output_impact_json")}"
+    local design_md_path="$2"
+    local plan_json_path="$3"
+    local output_impact_json="$4"
+    local artifact_dir="${5:-$(dirname "$output_impact_json")}"
 
-    if [[ -z "$scope_manifest" || -z "$plan_json_path" || -z "$output_impact_json" ]]; then
-        error "_impact_run_inner: requires <scope_manifest> <plan_json_path> <output_impact_json> [artifact_dir]"
+    if [[ -z "$scope_manifest" || -z "$design_md_path" || -z "$output_impact_json" ]]; then
+        error "_impact_run_inner: requires <scope_manifest> <design_md_path> <plan_json_path> <output_impact_json> [artifact_dir]"
         return 2
     fi
 
     mkdir -p "$artifact_dir"
 
-    if [[ ! -f "$plan_json_path" ]]; then
-        error "_impact_run_inner: plan.json not found at $plan_json_path"
-        emit_event "plugin.run.error" "plugin=impact" "reason=missing_plan_json"
+    if [[ ! -f "$design_md_path" ]]; then
+        error "_impact_run_inner: design.md not found at $design_md_path"
+        emit_event "plugin.run.error" "plugin=impact" "reason=missing_design_md"
         return 2
     fi
 
-    local plan_content
-    plan_content="$(cat "$plan_json_path")"
+    # Extract scope from design.md's ```scope block (primary source).
+    local scope_csv=""
+    scope_csv="$(_impact_extract_scope_from_design "$design_md_path" 2>/dev/null || echo "")"
+
+    # plan.json is secondary — used only by the deterministic prefilter.
+    local plan_content=""
+    if [[ -f "$plan_json_path" ]]; then
+        plan_content="$(cat "$plan_json_path")"
+    fi
 
     # ─── Build prompt ────────────────────────────────────────────────────────
     # ADR-028: canonical OUTPUT CONTRACT from framework. Consolidates the
@@ -113,7 +137,7 @@ _impact_run_inner() {
         "reason": "<why these files need to be in scope>"
       }
     ],
-    "impact_feedback_md": "<markdown report fed back to the plan agent on the next cycle iter>"
+    "impact_feedback_md": "<markdown report fed back to the design agent on the next cycle iter>"
   }
 IMPACT_SCHEMA
 )"
@@ -124,28 +148,36 @@ IMPACT_SCHEMA
         --schema-json "$_impact_schema" \
         --markdown-fields "impact_feedback_md")"
 
+    # Build design.md scope summary for the prompt.
+    local _scope_list=""
+    if [[ -n "$scope_csv" ]]; then
+        _scope_list="$(printf '%s' "$scope_csv" | tr ',' '\n' | sed 's/^/- /')"
+    fi
+
     local _impact_instructions
     _impact_instructions="$(cat <<'IMPACT_PROMPT'
-You are an Impact Analyzer agent. Emit a verdict object stating whether a
-plan's declared scope (steps[].files[]) is complete — i.e., lists every
-file the plan's modifications would invalidate or require updating.
+You are an Impact Analyzer agent. The design stage has already produced an
+EXHAUSTIVE scope block enumerating every file the change touches. Your job
+is adversarial consequence-finding: identify files that are MISSING from
+the design scope block — files the change invalidates, references, validates,
+documents, or assumes something about — that the design agent overlooked.
 
 Tool use:
-- You MAY use the Read tool to inspect files referenced in the plan.
+- You MAY use the Read tool to inspect files in the design scope.
 - You MAY use the Grep tool to search the repo for symbols and references.
 - Do NOT call Edit, Write, or Bash. This stage is read-only.
 
 Rules:
-- For each plan step.files[] entry, identify symbols defined in those files
-  (function names, exported variables, template stage IDs, etc).
-- Grep the repo for those symbols. Find files NOT already listed in any
-  step.files[] that reference them.
-- For each gap, add an entry to missing[] with the step_id, the files
-  to add, and a one-line reason.
+- For each file in the DESIGN SCOPE BLOCK, identify symbols, constants,
+  counts, or stage IDs defined or changed there.
+- Grep the repo for those symbols. Find files NOT already listed in the
+  DESIGN SCOPE BLOCK that reference or pin them.
+- For each gap, add an entry to missing[] with a step_id (use the closest
+  logical grouping), the files to add, and a one-line reason.
 - If no gaps found, return verdict="complete" with missing=[].
-- The impact_feedback_md is what the plan agent will read on iter N+1 if
-  you returned incomplete. Make it actionable: name the missing files
-  per step, cite the symbol or reference that linked them.
+- The impact_feedback_md is what the design agent reads on iter N+1 when
+  you returned incomplete. Make it actionable: name the missing files,
+  cite the symbol or reference that linked them.
 
 IMPACT_PROMPT
 )"
@@ -155,10 +187,9 @@ $_impact_instructions"
 
     # #781: deterministic prefilter. Runs CLAUDE.md's "Test scope discovery"
     # rule (grep tests/ for old numeric shape values + scan tests/golden/**)
-    # and produces a JSON array of candidate gaps. Spliced BETWEEN the
-    # instructions block and the PLAN: marker so the LLM reads the gaps as
-    # context, then sees the plan body. shape-change-golden entries are
-    # CLAUDE.md mandates (post-LLM bash merge enforces them); shape-change-
+    # using plan.json for shape inference. Produces a JSON array of candidate
+    # gaps spliced BEFORE the DESIGN SCOPE BLOCK. shape-change-golden entries
+    # are CLAUDE.md mandates (post-LLM bash merge enforces them); shape-change-
     # numeric entries are advisory (LLM may drop with a reason).
     local _impact_repo_root="${ZBUILD_REPO_ROOT:-${_IMPACT_ROOT:-$(pwd)}}"
     local _prefilter_candidates="[]"
@@ -170,22 +201,14 @@ $_impact_instructions"
         _candidate_gaps_section="$(printf 'CANDIDATE GAPS (deterministic prefilter — you MUST VALIDATE each and KEEP all entries with source=shape-change-golden; you MAY drop false-positive shape-change-numeric entries with a one-line reason):\n%s' "$_prefilter_candidates")"
     fi
 
-    # ADR-028 PR 5/5: pretty-print plan JSON via `jq -e .` so operator-visible
-    # impact-prompt.txt artifact is readable (was one giant ~1500-char line).
-    # rc=0 on valid JSON (pretty-printed); rc!=0 on malformed → passthrough.
-    local plan_pretty
-    plan_pretty="$(printf '%s' "$plan_content" | jq -e . 2>/dev/null)" || plan_pretty="$plan_content"
-
-    # Assemble: instructions → CANDIDATE GAPS (if any) → PLAN: marker → plan body.
-    # PLAN: lives on its OWN line (no embedded `]PLAN:` collisions when the
-    # candidates JSON closes with `]`).
+    # Assemble: instructions → CANDIDATE GAPS (if any) → DESIGN SCOPE BLOCK.
     local prompt
     if [[ -n "$_candidate_gaps_section" ]]; then
-        printf -v prompt '%s\n\n%s\n\nPLAN:\n%s\n' \
-            "$_impact_instructions" "$_candidate_gaps_section" "$plan_pretty"
+        printf -v prompt '%s\n\n%s\n\nDESIGN SCOPE BLOCK:\n%s\n' \
+            "$_impact_instructions" "$_candidate_gaps_section" "$_scope_list"
     else
-        printf -v prompt '%s\n\nPLAN:\n%s\n' \
-            "$_impact_instructions" "$plan_pretty"
+        printf -v prompt '%s\n\nDESIGN SCOPE BLOCK:\n%s\n' \
+            "$_impact_instructions" "$_scope_list"
     fi
 
     local prompt_file="$artifact_dir/impact-prompt.txt"

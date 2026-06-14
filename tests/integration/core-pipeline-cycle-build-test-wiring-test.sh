@@ -32,10 +32,10 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-# Wave 19-J (#746): standard.yaml now declares 3 cycles — plan_impact_cycle
-# (Wave 19-J), the inner build_test_cycle (this test's focus), and the outer
+# #842: standard.yaml now declares 3 cycles — design_impact_cycle
+# (#842), the inner build_test_cycle (this test's focus), and the outer
 # review_cycle (ADR-026).
-assert_eq "T1: standard.yaml declares 3 cycles (plan_impact + inner + outer ADR-026)" \
+assert_eq "T1: standard.yaml declares 3 cycles (design_impact + inner + outer ADR-026)" \
     "3" "${#_TPL_CYCLES[@]}"
 has_inner=0
 for c in "${_TPL_CYCLES[@]}"; do
@@ -45,17 +45,17 @@ assert_eq "T1: inner build_test_cycle is registered" "1" "$has_inner"
 # Wave 18-B (#707): the outer review_cycle absorbs build_test_cycle under
 # dispatch (cycle-as-member, Wave 17-B). The runner dispatches the
 # OUTERMOST cycle; build_test_cycle is recursed into via _TPL_STAGE_TYPE.
-# Wave 19-J (#746): plan_impact_cycle is now the second dispatch unit.
+# #842: design_impact_cycle is now the second dispatch unit (after plan leaf).
 has_cyc=0
-has_plan_impact=0
+has_design_impact=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:review_cycle" ]] && has_cyc=1
-    [[ "$u" == "cycle:plan_impact_cycle" ]] && has_plan_impact=1
+    [[ "$u" == "cycle:design_impact_cycle" ]] && has_design_impact=1
 done
 assert_eq "T1: dispatch units include cycle:review_cycle (outermost, #707)" \
     "1" "$has_cyc"
-assert_eq "T1: dispatch units include cycle:plan_impact_cycle (#746)" \
-    "1" "$has_plan_impact"
+assert_eq "T1: dispatch units include cycle:design_impact_cycle (#842)" \
+    "1" "$has_design_impact"
 # #568: feedback wiring is now (test_assessment/test_assessment_md →
 # build/prior_test_assessment) — the LLM-issued assessment markdown, not the
 # raw test-failures dump. The 3-stage cycle's full feedback semantics are

@@ -3,13 +3,13 @@ name: Impact Analyzer Stage
 kind: agent
 version: 0.1.0
 description: |
-  Wave 19-J (#744). Scope-completeness verifier for plan.json. Consumes
-  scope-manifest.md and plan.json (or any plan-shaped artifact with
-  steps[] / files[]); traces dependencies via Grep/Read; flags test
-  and config files that the plan's modifications would invalidate but
-  that aren't listed in any step.files[]. Emits impact.json with a
+  Post-design adversarial consequence-finder (#842). Reads design.md's
+  ```scope block (the exhaustive enumeration produced by the design stage)
+  and finds files that the change touches, invalidates, or requires updating
+  but that are MISSING from that scope block. Emits impact.json with a
   structured verdict (complete | incomplete) plus impact_feedback.md
-  rendered for cycle feedback wiring back into the plan stage.
+  rendered for cycle feedback wiring back into the design stage. plan.json
+  retained as secondary input for the deterministic shape-change prefilter.
 
 hooks:
   init: impact_init
@@ -40,11 +40,17 @@ inputs:
     type: file
     source: stage:intake
     required: true
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: true
+  # Secondary: plan.json retained for the deterministic shape-change prefilter.
   - id: plan
     type: file
     path: "${artifact_dir}/plan.json"
     source: stage:plan
-    required: true
+    required: false
 
 outputs:
   - id: impact

@@ -107,12 +107,12 @@ _assert_warn_and_no_abort() {
         "1" "$_hit_flag"
 }
 
-# Wave 19-J (#746): standard.yaml now wraps plan inside plan_impact_cycle;
-# both plan and review_cycle are no longer top-level stage:* units. The
-# only pre-cycle linear stage:* unit is `intake`. To exercise the stage:*
-# arm's eb_emit_event guards (the bug repro), we assert behavior on
-# `intake` — intake dispatches through stage:* BEFORE the cycles and
-# exercises the same code path the original `review` dispatch did.
+# #842: standard.yaml makes plan a leaf + design_impact_cycle the next dispatch
+# unit; review_cycle is the outer. The only pre-cycle linear stage:* unit is
+# `intake`. To exercise the stage:* arm's eb_emit_event guards (the bug
+# repro), we assert behavior on `intake` — intake dispatches through stage:*
+# BEFORE the cycles and exercises the same code path the original `review`
+# dispatch did.
 
 # ─── S1: converged cycle, eb_emit_event stage.start fails ────────────────────
 _dir="$(_drive_with_failing_eb 0 "converged" "stage.start")"

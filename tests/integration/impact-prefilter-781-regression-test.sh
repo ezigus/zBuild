@@ -46,6 +46,18 @@ cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + tests/
 SCOPE
 
+# #842: impact reads design.md's ```scope block; impact_run needs it present.
+# The prefilter (shape detection + golden floor) still reads plan.json, so
+# design.md is inert for these assertions — it only supplies the scope block.
+cat > "$ARTIFACTS_DIR/design.md" <<'DESIGN'
+# Design
+
+```scope
+config/templates/standard.yaml
+plugins/agent/foo/plugin.sh
+```
+DESIGN
+
 # Source plugin (loads helpers + bootstrap + prefilter lib + mocks).
 # shellcheck source=../../plugins/agent/impact/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
@@ -132,14 +144,15 @@ captured="$(cat "$_CAPTURED_IMPACT_PROMPT_FILE")"
 assert_contains "I4: prompt contains CANDIDATE GAPS sentinel" \
     "$captured" "CANDIDATE GAPS"
 
-# I4b (review fix): CANDIDATE GAPS sentinel appears BEFORE the PLAN: marker,
-# not after. Otherwise the LLM parses gaps as part of the plan body.
+# I4b (review fix): CANDIDATE GAPS sentinel appears BEFORE the DESIGN SCOPE
+# BLOCK marker (#842 renamed PLAN: → DESIGN SCOPE BLOCK:), not after.
+# Otherwise the LLM parses gaps as part of the scope body.
 cand_line="$(printf '%s\n' "$captured" | grep -n 'CANDIDATE GAPS' | head -1 | cut -d: -f1 || true)"
-plan_line="$(printf '%s\n' "$captured" | grep -n '^PLAN:$' | head -1 | cut -d: -f1 || true)"
-if [[ -n "$cand_line" && -n "$plan_line" && "$cand_line" -lt "$plan_line" ]]; then
-    assert_pass "I4b: CANDIDATE GAPS precedes PLAN: marker in prompt"
+scope_line="$(printf '%s\n' "$captured" | grep -n '^DESIGN SCOPE BLOCK:$' | head -1 | cut -d: -f1 || true)"
+if [[ -n "$cand_line" && -n "$scope_line" && "$cand_line" -lt "$scope_line" ]]; then
+    assert_pass "I4b: CANDIDATE GAPS precedes DESIGN SCOPE BLOCK: marker in prompt"
 else
-    assert_fail "I4b: ordering broken cand_line=$cand_line plan_line=$plan_line"
+    assert_fail "I4b: ordering broken cand_line=$cand_line scope_line=$scope_line"
 fi
 
 # ─── I3: non-shape plan → no forcing, verdict=complete ──────────────────────

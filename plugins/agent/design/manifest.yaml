@@ -41,6 +41,19 @@ inputs:
     path: "${artifact_dir}/plan.json"
     source: stage:plan
     required: true
+  # design_impact_cycle feedback (iter ≥ 2): impact's gap report wired back
+  # so design can expand its scope block to cover missed consequences.
+  - id: prior_impact_feedback
+    type: file
+    source: cycle_feedback
+    required: false
+  # Self-feedback edge (mirrors #773 lesson from plan_impact_cycle): design's
+  # own prior design.md becomes the next iter's prior_design input so design
+  # iter N+1 refines rather than re-creates.
+  - id: prior_design
+    type: file
+    source: cycle_feedback
+    required: false
 
 outputs:
   - id: design

@@ -93,7 +93,7 @@ EOF
 
 # ─── Plan stub: pass-through ────────────────────────────────────────────────
 mock_plugin_factory "plan" "agent" 0 >/dev/null
-# #746: standard template now includes impact between plan and build (plan_impact_cycle).
+# #842: standard template now includes impact inside design_impact_cycle.
 mock_plugin_factory "impact" "agent" 0 >/dev/null
 mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
 

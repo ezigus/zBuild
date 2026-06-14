@@ -37,25 +37,6 @@ inputs:
     type: string
     source: external
     required: true
-  # Wave 19-J (#744): cycle feedback from impact analyzer. Populated by
-  # cycle orchestrator's _cycle_apply_feedback on iter ≥ 2 of
-  # plan_impact_cycle when impact returned verdict=incomplete. Optional —
-  # plan ignores when absent (legacy invocation without cycle context).
-  - id: prior_impact_feedback
-    type: file
-    source: cycle_feedback
-    required: false
-  # #773: plan's OWN prior iteration output as JSON-as-text. Self-feedback
-  # edge wired in config/templates/standard.yaml plan_impact_cycle.feedback.
-  # Body is plan.json verbatim (cycle-orchestrator raw-copy convention).
-  # Plan iter N+1 splices this into its prompt as the seed plan to REFINE
-  # rather than re-create — root cause fix for #773 (plan iter 3 regressed
-  # iter 2's amendments because it had no view of its prior state, only the
-  # latest impact gap delta).
-  - id: prior_plan
-    type: file
-    source: cycle_feedback
-    required: false
 
 outputs:
   - id: plan

@@ -56,8 +56,8 @@ PATHS
 cat > "$FAKE_ROOT/config/templates/standard.yaml" <<'YAML'
 flow:
   - intake
-  - plan_impact_cycle
-  - design
+  - plan
+  - design_impact_cycle
   - review_cycle
   - extra1
   - extra2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration: Wave 19-J (#744) — impact agent + plan_impact_cycle.
+# Integration: #744/#842 — impact agent + design_impact_cycle.
 #
 # Drives _impact_run_inner directly with a stubbed route_to_model that
 # returns a synthetic verdict. Asserts:
@@ -63,6 +63,19 @@ cat > "$PLAN_JSON" <<'EOF'
 }
 EOF
 
+# #842: impact reads design.md's ```scope block as the primary scope source;
+# signature is <scope_manifest> <design_md> <plan_json> <impact_out> [dir].
+# route_to_model is stubbed below, so the scope content only needs to be valid.
+DESIGN_MD="$ARTIFACTS/design.md"
+cat > "$DESIGN_MD" <<'EOF'
+# Design
+
+```scope
+config/templates/standard.yaml
+tests/integration/new-test.sh
+```
+EOF
+
 # Stub plugin bootstrap + emit_event before sourcing plugin
 zbuild_plugin_bootstrap() { _ZBUILD_PLUGIN_DIR="$REPO_ROOT/plugins/agent/impact"; _ZBUILD_PLUGIN_ROOT="$REPO_ROOT"; }
 emit_event() { return 0; }
@@ -90,7 +103,7 @@ IMPACT_OUT="$ARTIFACTS/impact.json"
 rm -f "$IMPACT_OUT" "$ARTIFACTS/impact_feedback.md"
 
 set +e
-_impact_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS"
+_impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS"
 rc=$?
 set -e
 
@@ -125,7 +138,7 @@ route_to_model() {
 rm -f "$IMPACT_OUT" "$ARTIFACTS/impact_feedback.md"
 
 set +e
-_impact_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS"
+_impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS"
 rc=$?
 set -e
 
@@ -173,7 +186,7 @@ route_to_model() {
 
 UNIFIED_IMPACT_OUT="$ARTIFACTS/impact-unified.json"
 set +e
-_impact_run_inner "$SCOPE_MANIFEST" "$UNIFIED_PLAN" "$UNIFIED_IMPACT_OUT" "$ARTIFACTS"
+_impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$UNIFIED_PLAN" "$UNIFIED_IMPACT_OUT" "$ARTIFACTS"
 rc=$?
 set -e
 

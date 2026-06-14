@@ -44,8 +44,8 @@ load_template "$REPO_ROOT/config/templates/standard.yaml"
 assert_eq "T1: _TPL_STAGES has 12 entries" "12" "${#_TPL_STAGES[@]}"
 assert_eq "T1: _TPL_STAGES[0]=intake" "intake" "${_TPL_STAGES[0]:-}"
 assert_eq "T1: _TPL_STAGES[1]=plan" "plan" "${_TPL_STAGES[1]:-}"
-assert_eq "T1: _TPL_STAGES[2]=impact" "impact" "${_TPL_STAGES[2]:-}"
-assert_eq "T1: _TPL_STAGES[3]=design" "design" "${_TPL_STAGES[3]:-}"
+assert_eq "T1: _TPL_STAGES[2]=design" "design" "${_TPL_STAGES[2]:-}"
+assert_eq "T1: _TPL_STAGES[3]=impact" "impact" "${_TPL_STAGES[3]:-}"
 assert_eq "T1: _TPL_STAGES[4]=build" "build" "${_TPL_STAGES[4]:-}"
 assert_eq "T1: _TPL_STAGES[5]=test" "test" "${_TPL_STAGES[5]:-}"
 assert_eq "T1: _TPL_STAGES[6]=test_assessment" "test_assessment" "${_TPL_STAGES[6]:-}"
@@ -55,12 +55,12 @@ assert_eq "T1: _TPL_STAGES[9]=cq-cycle" "cq-cycle" "${_TPL_STAGES[9]:-}"
 assert_eq "T1: _TPL_STAGES[10]=cq-backtrack" "cq-backtrack" "${_TPL_STAGES[10]:-}"
 assert_eq "T1: _TPL_STAGES[11]=review" "review" "${_TPL_STAGES[11]:-}"
 
-# #746: standard.yaml now wraps plan+impact in plan_impact_cycle (Wave 19-J).
-# Total cycles: plan_impact_cycle + build_test_cycle + review_cycle = 3.
-assert_eq "T1: exactly 3 cycles (plan_impact_cycle + build_test_cycle + review_cycle)" \
+# #842: standard.yaml now wraps design+impact in design_impact_cycle.
+# Total cycles: design_impact_cycle + build_test_cycle + review_cycle = 3.
+assert_eq "T1: exactly 3 cycles (design_impact_cycle + build_test_cycle + review_cycle)" \
     "3" "${#_TPL_CYCLES[@]}"
-assert_contains "T1: plan_impact_cycle registered" \
-    "${_TPL_CYCLES[*]}" "plan_impact_cycle"
+assert_contains "T1: design_impact_cycle registered" \
+    "${_TPL_CYCLES[*]}" "design_impact_cycle"
 assert_contains "T1: build_test_cycle registered" \
     "${_TPL_CYCLES[*]}" "build_test_cycle"
 assert_contains "T1: review_cycle (outer) registered" \
@@ -84,24 +84,23 @@ assert_contains "T1: feedback from test_assessment:test_assessment_md" \
 assert_contains "T1: feedback to build:prior_test_assessment" \
     "$fb" "build:prior_test_assessment"
 
-# #746/#754: dispatch units fold to [stage:intake, cycle:plan_impact_cycle,
-# stage:design, cycle:review_cycle] — design sits between plan_impact_cycle
-# and review_cycle; plan_impact_cycle wraps plan+impact; review_cycle is the
-# outermost review cycle absorbing build_test_cycle + review.
-assert_eq "T1: 4 dispatch units (intake/plan_impact_cycle/design/review_cycle)" \
+# #842/#754: dispatch units fold to [stage:intake, stage:plan,
+# cycle:design_impact_cycle, cycle:review_cycle] — plan is a leaf;
+# design_impact_cycle wraps design+impact; review_cycle is the outermost cycle.
+assert_eq "T1: 4 dispatch units (intake/plan/design_impact_cycle/review_cycle)" \
     "4" "${#_TPL_DISPATCH_UNITS[@]}"
-has_pic=0
+has_dic=0
 has_outer=0
-has_design=0
+has_plan=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:plan_impact_cycle" ]] && has_pic=1
+    [[ "$u" == "cycle:design_impact_cycle" ]] && has_dic=1
     [[ "$u" == "cycle:review_cycle" ]] && has_outer=1
-    [[ "$u" == "stage:design" ]] && has_design=1
+    [[ "$u" == "stage:plan" ]] && has_plan=1
 done
-assert_eq "T1: dispatch units include cycle:plan_impact_cycle" \
-    "1" "$has_pic"
-assert_eq "T1: dispatch units include stage:design" \
-    "1" "$has_design"
+assert_eq "T1: dispatch units include cycle:design_impact_cycle" \
+    "1" "$has_dic"
+assert_eq "T1: dispatch units include stage:plan (leaf)" \
+    "1" "$has_plan"
 assert_eq "T1: dispatch units include cycle:review_cycle (outer)" \
     "1" "$has_outer"
 

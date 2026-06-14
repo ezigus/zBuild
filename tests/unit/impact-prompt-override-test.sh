@@ -56,13 +56,18 @@ run_impact() {
     local artifact_dir="$1"
     mkdir -p "$artifact_dir"
     local plan_path="$artifact_dir/plan.json"
+    local design_path="$artifact_dir/design.md"
     local impact_path="$artifact_dir/impact.json"
     make_plan "$plan_path"
+    # #842: impact reads design.md's ```scope block as the primary scope source,
+    # so _impact_run_inner takes <scope_manifest> <design_md> <plan> <impact> [dir].
+    printf '# Design\n\n```scope\nx.sh\n```\n' > "$design_path"
     local scope_manifest="$TEST_TEMP_DIR/state/scope-manifest.md"
     printf '# Scope\n- x.sh\n' > "$scope_manifest"
     set +e
     _impact_run_inner \
         "$scope_manifest" \
+        "$design_path" \
         "$plan_path" \
         "$impact_path" \
         "$artifact_dir" >/dev/null 2>&1

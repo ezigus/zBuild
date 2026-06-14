@@ -92,7 +92,7 @@ print_test_section "all-pass: every stage line ends with ✓"
 rm -rf "$PLUGINS_ROOT"
 _make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
 _make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
-# #746: standard template now includes impact between plan and build (plan_impact_cycle).
+# #842: standard template now includes impact inside design_impact_cycle.
 _make_verdict_plugin impact agent impact.json '{"verdict":"pass"}' impact_analyzer
 _make_verdict_plugin design agent design.md '{"verdict":"pass"}' designer
 _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass","scope_violation":false}' builder

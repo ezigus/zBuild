@@ -248,50 +248,6 @@ _plan_validate_scope() {
     printf '%s' "$violations"
 }
 
-# Wave 19-J (#744): read prior impact analyzer's gap report from cycle
-# feedback. Mirrors _build_read_prior_review (ADR-026 / Wave 18-B). Returns
-# raw markdown body on stdout, empty when no cycle context or no feedback
-# file. Cycle orchestrator's _cycle_apply_feedback wires impact_feedback_md
-# → prior_impact_feedback.txt per the plan_impact_cycle.feedback wiring in
-# config/templates/standard.yaml.
-_plan_read_prior_impact_feedback() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    # #773 review: iter must be ≥ 2 — iter 1 has no prior to refine. Guards
-    # against stale ZBUILD_CYCLE_FEEDBACK_DIR re-entering from a previous run.
-    [[ "$iter" =~ ^[0-9]+$ ]] || return 0
-    (( iter < 2 )) && return 0
-    local f="$fb_dir/prior_impact_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    # Whitespace-only bodies are content-empty; suppress the heading.
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s' "$body"
-}
-
-# #773: read plan's own prior iteration output (the previous plan.json body
-# as JSON-as-text) from cycle feedback. Mirrors _plan_read_prior_impact_feedback
-# fail-soft contract (same iter≥2 + non-whitespace guards). Wired via the
-# plan→plan self-feedback edge in config/templates/standard.yaml
-# plan_impact_cycle.feedback. The body is JSON-as-text per cycle-orchestrator's
-# raw-copy convention; we splice it into the prompt verbatim as the seed plan
-# that iter N+1 should REFINE, not re-create.
-_plan_read_prior_plan() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    [[ "$iter" =~ ^[0-9]+$ ]] || return 0
-    (( iter < 2 )) && return 0
-    local f="$fb_dir/prior_plan.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s' "$body"
-}
-
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
@@ -436,57 +392,11 @@ $_plan_instructions"
     if [[ -f "$scope_manifest" ]]; then
         manifest_body="$(cat "$scope_manifest")"
     fi
-    # Wave 19-J (#744): on cycle iter ≥ 2 of plan_impact_cycle, splice the
-    # prior impact analyzer's gap report into the prompt so the plan agent
-    # can expand step.files[] for the named gaps. Empty when not running
-    # in plan_impact_cycle OR when impact reported verdict=complete.
-    local _impact_feedback_body
-    _impact_feedback_body="$(_plan_read_prior_impact_feedback 2>/dev/null || true)"
-    # #773: on cycle iter ≥ 2, also splice the prior plan.json body so the
-    # agent REFINES its prior plan instead of re-creating from scratch.
-    # Without this, plan iter N+1 sees only the latest impact gap report and
-    # loses every amendment older than one iter (root cause of #773).
-    local _prior_plan_body
-    _prior_plan_body="$(_plan_read_prior_plan 2>/dev/null || true)"
-
-    # Incremental accumulator pattern (#773 review): append sections one at
-    # a time using printf '%s' with POSITIONAL args, NOT printf -v with a
-    # format-string that interpolates LLM-or-JSON bodies. Bodies containing
-    # literal '%d', '%s', or '%%' would crash printf-as-format.
-    #
-    # Canonical splice order (locked, see #773-B test): base prompt → impact
-    # feedback section → prior plan section. Impact-first because the gap
-    # report is the smaller, more actionable input; prior plan provides the
-    # full prior state that the agent should preserve while addressing gaps.
     local prompt=""
     prompt+="$_plan_instructions"$'\n'
     prompt+="$redacted_content"$'\n\n'
     prompt+=$'Scope manifest (allowed path prefixes):\n'
     prompt+="$manifest_body"$'\n'
-
-    if [[ -n "$_impact_feedback_body" ]]; then
-        prompt+=$'\n## PRIOR IMPACT FEEDBACK (from previous plan_impact_cycle iter)\n'
-        prompt+="$_impact_feedback_body"$'\n'
-    fi
-
-    # #773 review: trailer instruction must match what's actually present in
-    # the prompt. Three cases, no dangling references to missing sections:
-    if [[ -n "$_prior_plan_body" ]]; then
-        prompt+=$'\n## PRIOR PLAN (your previous iteration\'s output — refine, do not recreate)\n'
-        prompt+="$_prior_plan_body"$'\n'
-        if [[ -n "$_impact_feedback_body" ]]; then
-            prompt+=$'\nRefine the PRIOR PLAN by addressing the gaps in PRIOR IMPACT FEEDBACK. Preserve every step.files[] entry from the PRIOR PLAN unless impact identified it as wrong; only ADD entries for the named gaps.\n'
-        else
-            # prior_plan only — no gap report this iter. Tell the agent to
-            # refine in place; do NOT reference the missing impact section.
-            prompt+=$'\nRefine the PRIOR PLAN. Preserve every step.files[] entry unless one is clearly wrong; only ADD entries when a gap is evident.\n'
-        fi
-    elif [[ -n "$_impact_feedback_body" ]]; then
-        # Wave 19-J path — impact feedback without prior plan (e.g. first cycle
-        # iter where impact ran but no plan-self-edge has populated yet, or a
-        # template that wires only the impact→plan edge).
-        prompt+=$'\nExpand step.files[] to address the named gaps. Do NOT change strategic structure unless impact identified a step as fundamentally mis-scoped.\n'
-    fi
 
     # ADR-032 (#855): plan assembles its prompt in $prompt AFTER the goal is
     # redacted, so the override is redacted in its OWN pass and spliced in AFTER

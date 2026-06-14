@@ -65,6 +65,38 @@ design_stage_run() {
         "$artifacts_dir"
 }
 
+# design_impact_cycle iter ≥ 2: read impact's gap report from cycle feedback.
+# Returns raw markdown body on stdout; empty when no cycle context or no file.
+_design_read_prior_impact_feedback() {
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
+    [[ "$iter" =~ ^[0-9]+$ ]] || return 0
+    (( iter < 2 )) && return 0
+    local f="$fb_dir/prior_impact_feedback.txt"
+    [[ ! -s "$f" ]] && return 0
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "${body//[[:space:]]/}" ]] && return 0
+    printf '%s' "$body"
+}
+
+# design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
+# design.md body for iter N+1 to refine rather than re-create.
+_design_read_prior_design() {
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
+    [[ "$iter" =~ ^[0-9]+$ ]] || return 0
+    (( iter < 2 )) && return 0
+    local f="$fb_dir/prior_design.txt"
+    [[ ! -s "$f" ]] && return 0
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "${body//[[:space:]]/}" ]] && return 0
+    printf '%s' "$body"
+}
+
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
@@ -174,6 +206,29 @@ path/to/file2
 Keep the prose focused and under 200 lines (the scope block may be as long
 as completeness requires). Emit LOOP_COMPLETE when done.
 DESIGN_PROMPT
+
+    # design_impact_cycle feedback: on iter ≥ 2, splice prior impact gap-report
+    # and prior design.md into the prompt so design EXPANDS its scope block
+    # (impact feedback) and REFINES rather than re-creates (self-feedback).
+    local _impact_fb_body
+    _impact_fb_body="$(_design_read_prior_impact_feedback 2>/dev/null || true)"
+    local _prior_design_body
+    _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
+    if [[ -n "$_impact_fb_body" ]]; then
+        printf '\n## PRIOR IMPACT FEEDBACK (from previous design_impact_cycle iter)\n%s\n' \
+            "$_impact_fb_body" >> "$prompt_input_file"
+    fi
+    if [[ -n "$_prior_design_body" ]]; then
+        printf '\n## PRIOR DESIGN (your previous iteration — refine, do not recreate)\n%s\n' \
+            "$_prior_design_body" >> "$prompt_input_file"
+        if [[ -n "$_impact_fb_body" ]]; then
+            printf '\nExpand the PRIOR DESIGN scope block to cover the gaps named in PRIOR IMPACT FEEDBACK. Preserve all existing scope entries; only ADD the missing ones.\n' \
+                >> "$prompt_input_file"
+        else
+            printf '\nRefine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
+                >> "$prompt_input_file"
+        fi
+    fi
 
     # ADR-032: append the per-repo prompt override AFTER the core contract (so
     # the operator overlay can never precede or weaken the shipped charter) and

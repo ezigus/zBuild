@@ -7,16 +7,16 @@ defaults:
 # ─── Flow ───────────────────────────────────────────────────────────────
 # Top-level execution order. Per ADR-027 (recursive flow format), `flow:`
 # is the single ordered stage list and every ID below resolves to a
-# top-level stage section. Cycles are first-class stages — `review_cycle`
-# is the outer review-remediation cycle (ADR-026) whose own `flow:`
-# references `build_test_cycle` (the inner build/test convergence cycle)
-# and `review` (the LLM verdict gate, ADR-019). Both `build_test_cycle`
-# and `review` remain top-level sections below; `review_cycle` references
-# them by ID per ADR-027's recursive symmetry rule.
+# top-level stage section. plan is a leaf at position 2. Cycles:
+# design_impact_cycle (design→impact, 3 iter, #842) at position 3 owns
+# exhaustive scope enumeration + post-design consequence finding; the
+# outer review_cycle (ADR-026) at position 4 absorbs build_test_cycle
+# and review. All cycle members remain top-level sections below per
+# ADR-027's recursive symmetry rule.
 flow:
   - intake
-  - plan_impact_cycle
-  - design
+  - plan
+  - design_impact_cycle
   - review_cycle
 
 # ─── intake (leaf) ──────────────────────────────────────────────────────
@@ -27,56 +27,45 @@ intake:
     destinations: [file, stdout]
     tail_lines: 200
 
-# ─── plan_impact_cycle (Wave 19-J, #744) ────────────────────────────────
-# Wraps plan + impact in a 3-iter cycle. impact verifies plan.files[] is
-# scope-complete (no missing test/config files that exercise modified
-# surfaces). On verdict=incomplete, the cycle re-runs plan with the prior
-# impact's gap report as feedback via prior_impact_feedback.txt. On
-# verdict=complete OR max_iterations=3 with on_max=continue, the cycle
-# exits and the downstream review_cycle runs.
-plan_impact_cycle:
+# ─── design_impact_cycle (#842) ─────────────────────────────────────────
+# Wraps design + impact in a 3-iter cycle. design exhaustively enumerates
+# scope (```scope block per ADR-841); impact adversarially finds post-design
+# CONSEQUENCES the design agent may have missed. On verdict=incomplete the
+# cycle re-runs design with the prior impact gap-report wired as
+# prior_impact_feedback, and design's own prior output as prior_design
+# (self-feedback edge, mirrors the #773 lesson: design iter N+1 refines
+# rather than re-creates). On verdict=complete OR max_iterations=3 with
+# on_max=continue, exits to review_cycle.
+design_impact_cycle:
   type: cycle
-  description: Refine the plan until impact analysis is complete
-  # Members: plan (LLM: strategic decomposition) + impact (LLM: dependency
-  # tracing + scope-completeness check). Comments stay outside the YAML list
-  # because the template parser's awk doesn't strip inline `#` comments.
+  description: Discover post-design consequences until impact analysis is complete
   flow:
-    - plan
+    - design
     - impact
   exit_when:
     stage: impact
     field: verdict
     op: eq
     value: complete
-  # max_iterations: 5 (raised from 3 in #819 — dogfood run_id 20260612060213-30653
-  # showed monotonic gap-shrinkage 5→2→1 across 3 iters but didn't reach
-  # complete; impact's second-order dependency discovery is genuinely
-  # incremental on large migrations. Each iter is ~5min; worst-case cost
-  # added: ~10min. on_max: continue preserved per ADR-021 R1 — ADR-019's
-  # fail-closed review gate is the final arbiter.).
-  max_iterations: 5
+  max_iterations: 3
   on_max: continue
   feedback:
     - from:
         stage: impact
         output: impact_feedback_md
       to:
-        stage: plan
+        stage: design
         input: prior_impact_feedback
         required: false
-    # #773: self-feedback edge — plan's own prior plan.json becomes the next
-    # iter's prior_plan input. Without this, plan iter N+1 only sees the
-    # latest impact gap report and re-plans from scratch, regressing the
-    # amendments from iter N's impact feedback.
     - from:
-        stage: plan
-        output: plan
+        stage: design
+        output: design
       to:
-        stage: plan
-        input: prior_plan
+        stage: design
+        input: prior_design
         required: false
 
-# ─── plan (leaf, cycle member) ──────────────────────────────────────────
+# ─── plan (leaf) ────────────────────────────────────────────────────────
 plan:
   gate: auto
   roles: [planner]
@@ -87,7 +76,11 @@ plan:
     timeout_s: 300
     max_turns: 25
 
-# ─── impact (leaf, cycle member) ────────────────────────────────────────
+# ─── impact (leaf, cycle member of design_impact_cycle) ─────────────────
+# Adversarial post-design consequence-finder. Reads design.md's ```scope
+# block and finds files the change touches but that design missed. Emits
+# impact.json {verdict: complete|incomplete} + impact_feedback.md fed back
+# into design's prior_impact_feedback on the next cycle iter.
 impact:
   gate: auto
   roles: [impact_analyzer]
@@ -96,19 +89,13 @@ impact:
     tail_lines: 200
   router:
     timeout_s: 180
-    # #763: raised from 20 → 25 to match template-wide norm. impact does
-    # open-ended symbol tracing whose cost scales with the symbol count;
-    # the 20-turn cap was the lowest in the template and had no rationale
-    # for being lower than other read-only stages. Hitting the cap produces
-    # subtype=error_max_turns surfaced to the operator (per #762), but the
-    # operator pain is wasted iters and re-runs — raising the floor avoids
-    # that on legitimately large-PR symbol-tracing work.
     max_turns: 25
 
-# ─── design (leaf) ──────────────────────────────────────────────────────
-# Produces design.md with a ```scope block that is a superset of plan.json's
-# files[]. The build stage reads design.md as the authoritative scope source
-# with plan.json as fallback. Sits between plan_impact_cycle and review_cycle.
+# ─── design (leaf, cycle member of design_impact_cycle) ─────────────────
+# Exhaustive scope enumerator (ADR-841). Reads plan.json and actively
+# searches the repo (Read/Grep/Glob) to produce design.md with a ```scope
+# block covering every file the change touches, invalidates, documents, or
+# assumes. The scope block is the authoritative source for build.
 # legacy-citation: pipeline-stages-intake.sh:1004 / pipeline-stages.sh:38-71
 design:
   gate: auto

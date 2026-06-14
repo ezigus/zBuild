@@ -80,12 +80,12 @@ expect_label() {
 }
 
 # Cardinal numbering — one per linear stage in order.
-# #754: design added between plan_impact_cycle and review_cycle.
+# #842: plan is now a leaf; design_impact_cycle wraps design+impact at positions 3-4.
 # #755: 4 CQ stages replace compound_quality between test_assessment and review.
 expect_label intake          "1"
 expect_label plan            "2"
-expect_label impact          "3"
-expect_label design          "4"
+expect_label design          "3"
+expect_label impact          "4"
 expect_label build           "5"
 expect_label test            "6"
 expect_label test_assessment "7"
