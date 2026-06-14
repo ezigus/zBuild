@@ -589,6 +589,22 @@ _build_stage_run_inner() {
         scope_expansion_request_json="$(_build_created_collateral_request "${scope_violations_created[@]}" 2>/dev/null || true)"
     fi
 
+    # REC-1 (#879): build did valid in-scope work (verdict=pass) but the prior
+    # assessment feedback names out-of-scope files the change still requires —
+    # the full suite is red because of them. Emit a governed request so the
+    # cycle grants collateral and the next iter fixes them; never converge a
+    # clean "pass" while OOS files are unrequested, never loop. Mutually
+    # exclusive with the branches above via the -z guard.
+    if [[ -z "$scope_expansion_request_json" ]]; then
+        scope_expansion_request_json="$(_build_pending_collateral_request \
+            "$build_verdict" "${_feedback_body:-}" "$plan_files_csv" 2>/dev/null || true)"
+        if [[ -n "$scope_expansion_request_json" ]]; then
+            build_reason="scope_request_pending"
+            out_of_scope_files_json="$(jq -c '[.files[].path]' \
+                <<<"$scope_expansion_request_json" 2>/dev/null || echo '[]')"
+        fi
+    fi
+
     # #602: the post-loop apply-check (introduced in #509, extended bidirectional
     # in #530) ran `git stash push -u` → `git apply --check` → `git stash pop`
     # to validate the patch against a clean tree. `git stash pop` is best-effort
@@ -925,6 +941,24 @@ _build_scope_expansion_request() {
 
     [[ "$entries" == "[]" ]] && return 0
     jq -nc --argjson f "$entries" '{files:$f}' 2>/dev/null || true
+}
+
+# _build_pending_collateral_request <verdict> <feedback_body> <plan_files_csv> (REC-1 #879)
+# Build did valid IN-SCOPE work (verdict=pass) but the prior-assessment feedback
+# names out-of-scope files the change still requires (the suite is red because of
+# them). Emit a governed scope_expansion_request so the cycle grants collateral
+# and the next iter fixes them — instead of converging "pass" with a red suite
+# and looping. Distinct from Path A (empty_diff) and Path B (created): this fires
+# when build HAS in-scope edits yet still needs OOS files. Echoes the request
+# JSON, or nothing. The resolver (not build) enforces the floor — source files
+# are classified structural and denied/escalated, collateral is auto-grantable.
+_build_pending_collateral_request() {
+    local verdict="$1" feedback="$2" plan_csv="$3"
+    [[ "$verdict" == "pass" && -n "$feedback" && -n "$plan_csv" ]] || return 0
+    local oos
+    oos="$(_build_detect_out_of_scope_files "$feedback" "$plan_csv")"
+    [[ -n "$oos" ]] || return 0
+    _build_scope_expansion_request "$oos" "$feedback"
 }
 
 # _build_created_collateral_request <created_path> [created_path...]  (#870)
