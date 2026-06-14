@@ -325,8 +325,9 @@ $_impact_instructions"
         return 1
     fi
 
-    # #781: enforce shape-change-golden floor. If the prefilter surfaced
-    # golden snapshots (CLAUDE.md mandate, not heuristic) and the LLM dropped
+    # #781/#881: enforce the shape-change hard floor. shape-change-golden
+    # (event-sequence snapshots) AND shape-change-order (`_TPL_STAGES[N]` index
+    # assertions) are CLAUDE.md mandates, not heuristics — if the LLM dropped
     # them, bash-merge back into missing[] using jq NATIVE SET DIFFERENCE
     # (review: CSV substring containment was vulnerable to path collisions
     # like "parity/.golden" vs "special/parity/.golden"). shape-change-numeric
@@ -338,7 +339,7 @@ $_impact_instructions"
         if ! _missing_golden_json="$(jq -nc \
                 --argjson candidates "$_prefilter_candidates" \
                 --argjson llm_missing "$(printf '%s' "$impact_json" | jq -c '.missing // []')" '
-            ($candidates | map(select(.source == "shape-change-golden") | .files_to_add[])) as $forced |
+            ($candidates | map(select(.source == "shape-change-golden" or .source == "shape-change-order") | .files_to_add[])) as $forced |
             ($llm_missing | map(.files_to_add // [] | .[])) as $present |
             ($forced - $present | unique)
         ' 2>/dev/null)"; then
@@ -353,8 +354,8 @@ $_impact_instructions"
                 .missing += [{
                     step_id: "prefilter",
                     files_to_add: $files,
-                    reason: ("deterministic prefilter floor (#781): shape-change detected; " +
-                             "event-sequence golden snapshots required regardless of LLM judgment")
+                    reason: ("deterministic prefilter floor (#781/#881): shape-change detected; " +
+                             "event-sequence goldens + stage-order (_TPL_STAGES[N]) tests required regardless of LLM judgment")
                 }]
             ' 2>/dev/null)"; then
                 error "_impact_run_inner: prefilter floor injection (jq) failed — refusing to ship (#781)"

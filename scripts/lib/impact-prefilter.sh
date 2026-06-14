@@ -160,13 +160,31 @@ _impact_list_event_goldens() {
     done < <(find "$tests_root/golden" -name 'event-sequence.golden' -type f 2>/dev/null || true)
 }
 
+# ─── _impact_list_order_assertions <tests_root> ─────────────────────────────
+# PREV-1 (#881): tests that pin a stage by its POSITION in the canonical order
+# via the indexed form `_TPL_STAGES[N]`. A reorder invalidates these even though
+# the stage SET is unchanged — invisible to the numeric-count and golden
+# detectors. Anchored strictly to the indexed form so bare `impact`/`design`
+# names or un-indexed membership checks never over-match. Repo-relative output.
+_impact_list_order_assertions() {
+    local tests_root="$1"
+    [[ -d "$tests_root" ]] || return 0
+    local f
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        local rel="${f#"$tests_root/"}"
+        rel="tests/$rel"
+        printf '%s\n' "$rel"
+    done < <(grep -rlE '(^|[^A-Za-z0-9_])_TPL_STAGES\[[0-9]+\]' "$tests_root" 2>/dev/null || true)
+}
+
 # ─── _impact_scope_prefilter <plan_json> <repo_root> ────────────────────────
 # Orchestrator. Returns a JSON array (potentially empty). Each element:
 #   {
 #     "step_id": "prefilter",
 #     "files_to_add": ["..."],
 #     "reason": "deterministic prefilter (CLAUDE.md test-scope rule): ...",
-#     "source": "shape-change-numeric" | "shape-change-golden"
+#     "source": "shape-change-numeric" | "shape-change-golden" | "shape-change-order"
 #   }
 #
 # Empty array when no shape change detected (no-op for non-shape plans).
@@ -233,6 +251,36 @@ _impact_scope_prefilter() {
                     reason: ("deterministic prefilter (CLAUDE.md test-scope rule): " +
                              "shape-change detected; event-sequence golden snapshots pin pipeline event order"),
                     source: "shape-change-golden"
+                }]
+            ' 2>/dev/null || printf '%s' "$results")"
+        fi
+    fi
+
+    # Stage-order assertions — PREV-1 (#881): tests pinning a stage by its index
+    # (`_TPL_STAGES[N]`). Always candidates when shape change detected, mirroring
+    # the golden floor. Filtered against step_files_csv like the others.
+    local order_files
+    order_files="$(_impact_list_order_assertions "$tests_root")"
+    if [[ -n "$order_files" ]]; then
+        local of filtered_order=""
+        while IFS= read -r of; do
+            [[ -z "$of" ]] && continue
+            case ",$step_files_csv," in
+                *",$of,"*) ;;
+                *) filtered_order+="$of"$'\n' ;;
+            esac
+        done <<< "$order_files"
+        filtered_order="${filtered_order%$'\n'}"
+        if [[ -n "$filtered_order" ]]; then
+            local order_json
+            order_json="$(printf '%s\n' "$filtered_order" | jq -R . | jq -s .)"
+            results="$(printf '%s' "$results" | jq --argjson files "$order_json" '
+                . + [{
+                    step_id: "prefilter",
+                    files_to_add: $files,
+                    reason: ("deterministic prefilter (CLAUDE.md test-scope rule): " +
+                             "shape-change detected; tests pin stage order via _TPL_STAGES[N] index"),
+                    source: "shape-change-order"
                 }]
             ' 2>/dev/null || printf '%s' "$results")"
         fi
