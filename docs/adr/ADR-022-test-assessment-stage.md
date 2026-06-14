@@ -65,8 +65,9 @@ Introduce `test_assessment` as a canonical Pattern 1 stage slotted between
    uncertainty path that does NOT trigger blocked termination.
 
 5. **Verdict invariant.** `verdict == pass` REQUIRES
-   `test.verdict != "fail" && test.failed == 0 && agrees_with_build_complete && build.verdict == pass`
-   (the `test.verdict != "fail"` clause was added by Amendment v3 / #847;
+   `test.verdict == "pass" && test.failed == 0 && agrees_with_build_complete && build.verdict == pass`
+   (the `test.verdict == "pass"` clause was added by Amendment v3 / #847;
+   it excludes `fail`, `error`, AND `unknown` — stronger than `!= "fail"`;
    see below). The assessment can downgrade structural pass into `fail` /
    `inconclusive`, but it can NEVER upgrade structural failure into
    convergence. This invariant is enforced at the consumer side
@@ -201,7 +202,7 @@ test and review, not after.
 - **Manifest output ids**: `test_assessment` (primary, the `.json` artifact) and `test_assessment_md` (the rendered MD). The cycle feedback (#568) wires `from: { stage: test_assessment, output: test_assessment_md }` — the MD file is what flows back to build as `prior_test_failures.txt`.
 - **Renderer**: `render_test_assessment_md` registered via `register_artifact_renderer "test_assessment" "render_test_assessment_md"` in `scripts/lib/artifact-render.sh`.
 - **branch_numstat helper**: lives in `scripts/lib/helpers.sh`; fail-OPEN with fallback chain (origin/main → main → master → HEAD~50 → HEAD~1 → "unknown"). NOT a safety gate — LLM signal only.
-- **Verdict invariant**: enforced by the plugin POST-LLM (not by the LLM): `verdict==pass` requires `test.verdict != "fail" && test.failed==0 && agrees_with_build_complete && build.verdict==pass` (the `test.verdict != "fail"` clause is Amendment v3 / #847). Downgrade emits `test_assessment.downgrade` with `reason`, `test_failed`, `test_verdict`, `worktree_status`, `build_verdict`, `agrees` fields; `reason=worktree_not_durable` when a dirty worktree + non-pass `test.verdict` triggered the downgrade.
+- **Verdict invariant**: enforced by the plugin POST-LLM (not by the LLM): `verdict==pass` requires `test.verdict == "pass" && test.failed==0 && agrees_with_build_complete && build.verdict==pass` (the `test.verdict == "pass"` clause is Amendment v3 / #847 — note it excludes `error`/`unknown`, not just `fail`). Downgrade emits `test_assessment.downgrade` with `reason`, `test_failed`, `test_verdict`, `worktree_status`, `build_verdict`, `agrees` fields; `reason=worktree_not_durable` when a dirty worktree + non-pass `test.verdict` triggered the downgrade.
 - **Redaction**: ALL inputs flow through `apply_scope_redaction` with `$ZBUILD_CYCLE_ID` for telemetry attribution.
 - **Cycle-iter dual-path write**: artifact written to both `cycle-<id>/iter-<N>/` and the flat manifest-primary path so it survives `_cycle_pre_iter_cleanup` while remaining resolvable by `_cycle_apply_feedback`.
 
@@ -267,9 +268,12 @@ whose runner did not emit an integer count) passed straight through.
 ### Rules
 
 1. **Invariant extension (Pin 5).** `verdict==pass` now additionally REQUIRES
-   `test.verdict != "fail"`. Any LLM `pass` is downgraded to `inconclusive`
-   when `test-results.json` records `verdict=fail`, regardless of the `.failed`
-   count. Enforced by the plugin POST-LLM, not by the LLM.
+   `test.verdict == "pass"`. Any LLM `pass` is downgraded to `inconclusive`
+   when `test-results.json` records **any** non-pass verdict (`fail`, `error`,
+   or `unknown`), regardless of the `.failed` count — the `test` stage can emit
+   `verdict=error` (e.g. summary_unavailable / silent_failure), so `== "pass"`
+   is the correct gate, not merely `!= "fail"`. Enforced by the plugin POST-LLM,
+   not by the LLM.
 2. **Worktree durability.** The plugin computes `worktree_status`
    (`git status --porcelain` → clean|dirty) and surfaces it in the prompt. When
    the worktree is dirty AND `test.verdict != "pass"`, a `pass` is downgraded

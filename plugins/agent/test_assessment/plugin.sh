@@ -286,10 +286,11 @@ When WORKTREE STATUS is dirty the repo contains uncommitted changes that are
 about to be reverted (scope-violation edits). Files visible on disk via Read
 are transient — they may disappear before the next test run.
 
-Hard guard: if WORKTREE STATUS is dirty AND TEST SUMMARY verdict is fail,
-you MUST return verdict=inconclusive. Do NOT return pass based on Read
-spot-checks when the worktree is dirty and tests show failures — the
-files you read may not survive the pending revert.
+Hard guard: if WORKTREE STATUS is dirty AND TEST SUMMARY verdict is NOT
+pass (fail, error, or unknown), you MUST return verdict=inconclusive. Do
+NOT return pass based on Read spot-checks when the worktree is dirty and
+the tests did not pass — the files you read may not survive the pending
+revert.
 
 Only upgrade to pass when WORKTREE STATUS is clean OR TEST SUMMARY
 verdict is already pass.
@@ -433,7 +434,7 @@ $_ta_instructions"
     local downgrade_note=""
     if [[ $downgraded -eq 1 ]]; then
         if [[ $worktree_not_durable -eq 1 ]]; then
-            downgrade_note="verdict downgraded: worktree dirty + test_verdict=fail (not durable; transient edits about to be reverted)"
+            downgrade_note="verdict downgraded: worktree dirty + test_verdict=$test_verdict (non-pass, not durable; transient edits about to be reverted)"
         else
             downgrade_note="verdict downgraded: build/test disagreement (test_failed=$test_failed test_verdict=$test_verdict agrees=$llm_agrees build_verdict=$build_verdict)"
         fi
