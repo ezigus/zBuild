@@ -24,6 +24,10 @@ cq_backtrack_run() {
     # shellcheck disable=SC2034  # hook-signature positional; unused in this stage
     local _stage_id="$1"
     local state_file="$2"
+    if [[ -z "$state_file" ]]; then
+        error "cq_backtrack_run: requires <stage_id> <state_file>"
+        return 2
+    fi
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifact_dir="$state_dir/artifacts"
 

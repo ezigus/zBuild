@@ -130,6 +130,11 @@ rc_t4=$?
 set -e
 
 assert_eq "T4: cq_cycle_cleanup exits 0" "0" "$rc_t4"
+if echo "$stderr_t4" | grep -qE "unbound variable|Not a directory"; then
+    assert_fail "T4: no 'unbound variable' or 'Not a directory' error" "$stderr_t4"
+else
+    assert_pass "T4: no fatal env errors in cq_cycle_cleanup"
+fi
 
 # ─── T5: cq_backtrack_run writes cq-backtrack-result.json ───────────────────
 set +e
@@ -150,10 +155,9 @@ fi
 
 # ─── T6: golden snapshot — sorted artifact basenames ────────────────────────
 actual_artifacts="$(find "$ARTIFACTS_DIR" -maxdepth 1 -type f \
-    -exec basename {} \; 2>/dev/null | sort | tr '\n' '\n')"
-actual_artifacts="$(printf '%s' "$actual_artifacts" | sort)"
+    -exec basename {} \; 2>/dev/null | sort)"
 
-GOLDEN_DIR="$REPO_ROOT/tests/golden"
+export GOLDEN_DIR="$REPO_ROOT/tests/golden"
 if ! assert_golden "cq-plugins-real-dispatch-artifacts" "$actual_artifacts"; then
     assert_fail "T6: artifact golden snapshot matches" \
         "run with UPDATE_GOLDEN=1 to regenerate"
