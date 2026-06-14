@@ -169,7 +169,11 @@ Tool use:
 
 Rules:
 - For each file in the DESIGN SCOPE BLOCK, identify symbols, constants,
-  counts, or stage IDs defined or changed there.
+  counts, stage IDs, or ORDERING/POSITION/SEQUENCE assertions (e.g. a test
+  asserting an array index like _TPL_STAGES[2], or "X comes before Y")
+  defined or changed there. A change that REORDERS stages invalidates every
+  test that pins a stage by its position/index, even if the stage set is
+  unchanged.
 - Grep the repo for those symbols. Find files NOT already listed in the
   DESIGN SCOPE BLOCK that reference or pin them.
 - For each gap, add an entry to missing[] with a step_id (use the closest
