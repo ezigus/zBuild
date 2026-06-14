@@ -75,8 +75,8 @@ fi
 
 # ─── T5: empty ZBUILD_SEQ_PREFIX (set but empty) treated as outer ───────
 OUT5="$TEST_TEMP_DIR/emptyprefix.stderr"
-ZBUILD_SEQ_PREFIX='' _render_cycle_iter_divider plan_impact_cycle 3 5 2> "$OUT5"
-if grep -qF 'plan_impact_cycle iter 3/5' "$OUT5" && ! grep -qF '[]' "$OUT5"; then
+ZBUILD_SEQ_PREFIX='' _render_cycle_iter_divider design_impact_cycle 3 5 2> "$OUT5"
+if grep -qF 'design_impact_cycle iter 3/5' "$OUT5" && ! grep -qF '[]' "$OUT5"; then
     assert_pass "T5: empty seq prefix → no empty '[]' chip, just cycle_id"
 else
     assert_fail "T5: empty prefix renders incorrectly" "got: $(cat "$OUT5")"

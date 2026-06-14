@@ -40,10 +40,9 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 _make_plugin "intake"          "agent" 0
 _make_plugin "plan"            "agent" 0
-# #746: standard template now includes impact between plan and build (plan_impact_cycle).
-_make_plugin "impact"          "agent" 0
-# Standard template adds `design` between impact and build (post-#746).
+# #842: standard template now wraps design+impact in design_impact_cycle (plan is a leaf).
 _make_plugin "design"          "agent" 0
+_make_plugin "impact"          "agent" 0
 _make_plugin "build"           "agent" 0
 # #485: standard template now includes the test stage between build and review.
 _make_plugin "test"            "tool"  0
@@ -525,9 +524,9 @@ fi
 rm -rf "$PLUGINS_ROOT/agent" "$PLUGINS_ROOT/tool"
 _make_plugin "intake"          "agent" 0 >/dev/null
 _make_plugin "plan"            "agent" 0 >/dev/null
-# #746: standard template now includes impact (plan_impact_cycle).
+# #842: standard template now includes impact inside design_impact_cycle.
 _make_plugin "impact"          "agent" 0 >/dev/null
-# #754: standard template now includes design between impact and build.
+# #842: design is a cycle member of design_impact_cycle.
 _make_plugin "design"          "agent" 0 >/dev/null
 _make_plugin "build"           "agent" 0 >/dev/null
 _make_plugin "test"            "tool"  0 >/dev/null

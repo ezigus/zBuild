@@ -21,12 +21,12 @@ if ! declare -F eb_emit_event >/dev/null 2>&1; then
 fi
 
 # ADR-013 canonical stage sequence — stability contract, not user-configurable.
-# Wave 19-J (#744): added `impact` between plan and design (ADR-013 amendment).
+# Issue #842: swapped impact after design (design_impact_cycle; ADR-013 amendment).
 # Issue #755: compound_quality split into cq-preflight cq-audit-plan cq-cycle cq-backtrack.
 # Exactly these 16 ids, in this order:
-#   intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+#   intake plan design impact build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+    intake plan design impact build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template

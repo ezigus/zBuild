@@ -609,3 +609,37 @@ The #754 dogfood (`run_id 20260611072619-15296`) surfaced three contract gaps:
 - Dogfood `run_id 20260611072619-15296` (the misleading "Pipeline failed" on a substantively successful run)
 - PR #788 (`_router_rc_classify`) defeated by upstream rc translation
 - PR #789 (broken pre-LLM gate) reverted via PR #791
+
+---
+
+## Amendment v4 (2026-06-14, #842) — design_impact_cycle replaces plan_impact_cycle
+
+### Background
+
+The `plan_impact_cycle` (plan→impact, up to 5 iter) was introduced in Wave 19-J (#744) to verify that plan's `steps[].files[]` was scope-complete. Dogfood experience showed two structural problems:
+
+1. **Impact was symbol-grepping a prediction.** plan.json's `files[]` was produced *before any design search*, so impact traced dependencies from a list that hadn't yet been validated against the actual repo topology. Gaps were found because plan missed files, not because design found them.
+2. **plan re-plans on impact feedback.** On `incomplete`, the cycle re-ran plan — a costly LLM re-plan whose principal task (scope discovery) should belong to design (which actively Greps the repo).
+
+### Decision
+
+Replace `plan_impact_cycle` with `design_impact_cycle`:
+
+- **plan** becomes a **leaf** (no cycle). It produces `plan.json` as before; it no longer receives cycle feedback. The re-plan-on-impact regression (#773) is eliminated.
+- **design_impact_cycle** (design→impact, 3 iter, `on_max=continue`) is the successor. design runs *first*, exhaustively enumerating scope via Read/Grep/Glob (ADR-841). impact then adversarially finds post-design consequences design missed. On `incomplete`, the cycle re-runs design with:
+  - `prior_impact_feedback` (impact's gap report → `design.prior_impact_feedback`)
+  - `prior_design` (design self-feedback edge, mirrors #773 lesson: design iter N+1 refines rather than re-creates)
+
+### Impact on cycle semantics
+
+The `on_max=continue` dogfood example from v3 (line 565) cited `plan_impact_cycle`; the same pattern now applies to `design_impact_cycle`. The `_runner_cycle_unconverged` flag semantics are identical.
+
+The cycle-id in state records, events.jsonl, and `_TPL_CYCLE_FEEDBACK_*` variable names changes from `plan_impact_cycle` to `design_impact_cycle`. No orchestrator code change is required; only the template and plugin wiring changes.
+
+### Affected components
+
+- `config/templates/standard.yaml` — topology change (plan leaf, design_impact_cycle)
+- `plugins/agent/plan/manifest.yaml`, `plugin.sh` — remove cycle_feedback inputs
+- `plugins/agent/design/manifest.yaml`, `plugin.sh` — add cycle_feedback inputs + prompt splice
+- `plugins/agent/impact/manifest.yaml`, `plugin.sh` — primary input changes from plan.json to design.md
+- Test files pinning `plan_impact_cycle` — updated to `design_impact_cycle`

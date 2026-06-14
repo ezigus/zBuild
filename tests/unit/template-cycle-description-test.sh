@@ -158,10 +158,10 @@ load_template "$REPO_ROOT/config/templates/standard.yaml" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "T5: standard.yaml loads rc=0" "0" "$rc"
-if [[ -n "${_TPL_CYCLE_DESCRIPTION_plan_impact_cycle:-}" ]]; then
-    assert_pass "T5: plan_impact_cycle has description ('${_TPL_CYCLE_DESCRIPTION_plan_impact_cycle}')"
+if [[ -n "${_TPL_CYCLE_DESCRIPTION_design_impact_cycle:-}" ]]; then
+    assert_pass "T5: design_impact_cycle has description ('${_TPL_CYCLE_DESCRIPTION_design_impact_cycle}')"
 else
-    assert_fail "T5: plan_impact_cycle missing description"
+    assert_fail "T5: design_impact_cycle missing description"
 fi
 if [[ -n "${_TPL_CYCLE_DESCRIPTION_review_cycle:-}" ]]; then
     assert_pass "T5: review_cycle has description ('${_TPL_CYCLE_DESCRIPTION_review_cycle}')"

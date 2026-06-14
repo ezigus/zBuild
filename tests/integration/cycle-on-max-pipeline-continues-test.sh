@@ -38,7 +38,7 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 # ─── Stub plugins (every required role) ──────────────────────────────────
 # intake/plan/build/test/test_assessment/review succeed.
-# impact ALWAYS emits verdict=incomplete so plan_impact_cycle exhausts.
+# impact ALWAYS emits verdict=incomplete so design_impact_cycle exhausts.
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
     local dir="$PLUGINS_ROOT/agent/$id"
@@ -62,7 +62,41 @@ ${fn}() { return $rc; }
 PLUG
 }
 
-# Override impact to emit verdict=incomplete via primary artifact (so cycle exit_when never matches)
+# Override design to produce design.md with a scope block (so impact's input contract holds)
+_make_design_plugin() {
+    local dir="$PLUGINS_ROOT/agent/design"
+    mkdir -p "$dir"
+    cat > "$dir/manifest.yaml" <<'EOF'
+id: design
+name: Test design
+kind: agent
+version: 0.0.1
+hooks:
+  run: design_run
+requires:
+  core:
+    - redaction
+provides:
+  role: designer
+outputs:
+  - id: design_out
+    path: ${artifact_dir}/design.md
+    type: text/markdown
+    required: true
+    primary: true
+EOF
+    cat > "$dir/plugin.sh" <<'PLUG'
+design_run() {
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    printf '# Design\n```scope\nf.txt\n```\n' > "$state_dir/artifacts/design.md"
+    return 0
+}
+PLUG
+}
+
+# Override impact to emit verdict=incomplete via primary artifact
+# (so design_impact_cycle exit_when never matches, exhausting max_iterations).
 _make_impact_plugin() {
     local dir="$PLUGINS_ROOT/agent/impact"
     mkdir -p "$dir"
@@ -96,7 +130,7 @@ impact_run() {
 PLUG
 }
 
-# Override plan so it always produces a valid plan.json (so impact's input contract holds)
+# Override plan so it always produces a valid plan.json (plan is now a leaf — no cycle feedback).
 _make_plan_plugin() {
     local dir="$PLUGINS_ROOT/agent/plan"
     mkdir -p "$dir"
@@ -130,11 +164,11 @@ plan_run() {
 PLUG
 }
 
-# Stubs for every other role the standard template needs.
+# Stubs for every role the standard template needs.
 _make_plugin "intake"          "intake"
 _make_plan_plugin
+_make_design_plugin
 _make_impact_plugin
-_make_plugin "design"          "designer"
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
 _make_plugin "test_assessment" "test_assessment"
@@ -188,22 +222,19 @@ bash "$REPO_ROOT/core/pipeline/runner.sh" \
 runner_rc=$?
 set -e
 
-print_test_section "T1: events.jsonl chain around plan_impact_cycle exhaustion"
+print_test_section "T1: events.jsonl chain around design_impact_cycle exhaustion"
 
 # T1.1: cycle.complete fired with a non-convergence terminal reason for
-# plan_impact_cycle. Accept any of {max_iterations, plateau, divergence} —
+# design_impact_cycle. Accept any of {max_iterations, plateau, divergence} —
 # the test's intent (per #766) is to verify the runner continues past
-# cycle exit, NOT to pin a specific reason. After #819 raised
-# max_iterations from 3 to 5, plateau detection (default window=3) now
-# fires before max_iter when failure_count plateaus at 0; both are valid
-# non-convergence signals.
-mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterations" or .data.reason=="plateau" or .data.reason=="divergence") and .data.cycle_id=="plan_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+# cycle exit, NOT to pin a specific reason.
+mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterations" or .data.reason=="plateau" or .data.reason=="divergence") and .data.cycle_id=="design_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$mi_count" -ge 1 ]] \
-    && assert_pass "T1.1: cycle.complete fired with non-convergence reason for plan_impact_cycle (count=$mi_count)" \
+    && assert_pass "T1.1: cycle.complete fired with non-convergence reason for design_impact_cycle (count=$mi_count)" \
     || assert_fail "T1.1: cycle.complete MUST fire with non-convergence reason" "count=$mi_count"
 
 # T1.2: cycle.unconverged event MUST be emitted (proves runner.sh:1292 reached)
-unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="plan_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="design_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)" "1" "$unconv_count"
 
 # T1.3: pipeline.abort (EXIT trap) MUST NOT fire on the on_max=continue path
@@ -224,12 +255,12 @@ assert_eq "T1.4: pipeline.end emitted exactly once" "1" "$end_count"
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "T1.5: pipeline.end status=success (on_max=continue + review approved, #796)" "success" "$end_status"
 
-print_test_section "T2: review_cycle dispatched after plan_impact_cycle exhausted"
+print_test_section "T2: review_cycle dispatched after design_impact_cycle exhausted"
 
 # T2.1: review_cycle entered (build runs at least once because review_cycle's inner build_test_cycle runs)
 build_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="build")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$build_run_count" -ge 1 ]] \
-    && assert_pass "T2.1: build plugin ran (proves review_cycle was dispatched after plan_impact_cycle exhausted)" \
+    && assert_pass "T2.1: build plugin ran (proves review_cycle was dispatched after design_impact_cycle exhausted)" \
     || assert_fail "T2.1: build plugin did NOT run (runner stopped before review_cycle)" "build_run_count=$build_run_count"
 
 # T2.2: review stage ran (proves review_cycle's review member dispatched)

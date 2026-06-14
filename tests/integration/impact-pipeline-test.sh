@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration: Wave 19-J (#744) — impact agent + plan_impact_cycle.
+# Integration: #744/#842 — impact agent + design_impact_cycle.
 #
 # Drives _impact_run_inner directly with a stubbed route_to_model that
 # returns a synthetic verdict. Asserts:
