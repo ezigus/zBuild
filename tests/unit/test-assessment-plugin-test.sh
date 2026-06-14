@@ -207,6 +207,38 @@ else
 fi
 assert_file_not_exists "T11 no artifact on malformed response" "$ARTIFACTS_DIR/test-assessment.json"
 
+# ─── Test 12: dirty-worktree + verdict=fail in test-results → inconclusive ───
+# Regression for #847: LLM says pass with agrees=true, build says pass, but
+# test-results.json has verdict=fail and failed=0 (stale/missing count shape)
+# AND the worktree is dirty (uncommitted file = transient scope-violation edit).
+# The stage must downgrade to inconclusive with reason=worktree_not_durable.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR12'
+{"schema_version":1,"verdict":"fail","exit_code":1,"passed":5,"failed":0,"test_output":"tests exited non-zero but count not captured","diff_applied":true,"test_cmd":"npm test"}
+TR12
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS12'
+{"schema_version":1,"verdict":"pass","iterations":2,"terminated_reason":"complete"}
+BS12
+# Add an uncommitted file to make git status --porcelain non-empty (dirty worktree).
+printf 'scope-violation edit\n' > "$GIT_FIXTURE/dirty-file.txt"
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"looks ok","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"unknown","failure_summary_md":"All good.","iter":2}'
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T12 dirty+verdict=fail run returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T12 verdict downgraded to inconclusive (not pass)" "inconclusive" "$v"
+note_present="$(printf '%s' "$content" | jq -r '.required_changes | map(select(. | test("durable|dirty"))) | length' 2>/dev/null)"
+if [[ "$note_present" -ge 1 ]] 2>/dev/null; then
+    assert_pass "T12 downgrade note mentions dirty/durable in required_changes"
+else
+    assert_fail "T12 downgrade note mentions dirty/durable in required_changes" "no note"
+fi
+# Clean up dirty file so it doesn't affect other tests.
+rm -f "$GIT_FIXTURE/dirty-file.txt"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

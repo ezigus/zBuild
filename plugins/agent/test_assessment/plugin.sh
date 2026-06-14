@@ -189,6 +189,13 @@ _test_assessment_run_inner() {
     numstat="$(branch_numstat_since "$_baseline_sha" 2>/dev/null || echo unknown)"
     [[ -z "$numstat" ]] && numstat="unknown"
 
+    # Compute worktree durability: dirty means uncommitted changes are present
+    # (scope-violation edits about to be reverted — files on disk are transient).
+    local _wt_dirty_count
+    _wt_dirty_count="$(git status --porcelain 2>/dev/null | wc -l | tr -d '[:space:]')"
+    local worktree_status="clean"
+    [[ "${_wt_dirty_count:-0}" -gt 0 ]] && worktree_status="dirty"
+
     # Truncate test_output (keep tail).
     local output_bytes="$ZBUILD_TEST_ASSESSMENT_OUTPUT_BYTES"
     if [[ ${#test_output} -gt $output_bytes ]]; then
@@ -273,6 +280,21 @@ the BUILD CLAIM and BRANCH NUMSTAT disagree with what tests pass is a
 contract violation that produces the build_test_cycle infinite loop
 documented in #824.
 
+## Pass guard for dirty worktree (#847)
+
+When WORKTREE STATUS is dirty the repo contains uncommitted changes that are
+about to be reverted (scope-violation edits). Files visible on disk via Read
+are transient — they may disappear before the next test run.
+
+Hard guard: if WORKTREE STATUS is dirty AND TEST SUMMARY verdict is NOT
+pass (fail, error, or unknown), you MUST return verdict=inconclusive. Do
+NOT return pass based on Read spot-checks when the worktree is dirty and
+the tests did not pass — the files you read may not survive the pending
+revert.
+
+Only upgrade to pass when WORKTREE STATUS is clean OR TEST SUMMARY
+verdict is already pass.
+
 TA_PROMPT
 )"
     _ta_instructions="$_output_contract_block
@@ -280,11 +302,12 @@ TA_PROMPT
 $_ta_instructions"
 
     local prompt
-    printf -v prompt '%s\n\nPLAN:\n%s\n\nBUILD CLAIM:\n verdict=%s iterations=%s terminated_reason=%s\n\nBRANCH NUMSTAT:\n%s\n\nTEST SUMMARY:\n verdict=%s passed=%s failed=%s\n\nTEST OUTPUT (verbatim, possibly truncated):\n%s\n' \
+    printf -v prompt '%s\n\nPLAN:\n%s\n\nBUILD CLAIM:\n verdict=%s iterations=%s terminated_reason=%s\n\nBRANCH NUMSTAT:\n%s\n\nWORKTREE STATUS:\n%s\n\nTEST SUMMARY:\n verdict=%s passed=%s failed=%s\n\nTEST OUTPUT (verbatim, possibly truncated):\n%s\n' \
         "$_ta_instructions" \
         "$plan_md" \
         "$build_verdict" "$build_iters" "$build_term" \
         "$numstat" \
+        "$worktree_status" \
         "$test_verdict" "$test_passed" "$test_failed" \
         "$test_output"
 
@@ -369,23 +392,37 @@ $_ta_instructions"
 
     local final_verdict="$llm_verdict"
     local downgraded=0
+    local worktree_not_durable=0
     if [[ "$llm_verdict" == "pass" ]]; then
         local ok=1
         # test.failed must be 0
         if [[ "$test_failed" =~ ^[0-9]+$ ]]; then
             (( test_failed != 0 )) && ok=0
         fi
+        # (a) test_verdict from test-results.json must be pass — catches
+        # zero-count but non-zero exit scenarios (e.g. verdict=fail, failed=0).
+        [[ "$test_verdict" != "pass" ]] && ok=0
         [[ "$llm_agrees" != "true" ]] && ok=0
         [[ "$build_verdict" != "pass" ]] && ok=0
+        # (b) dirty worktree + non-pass test_verdict = not durable; files on
+        # disk are transient scope-violation edits about to be reverted.
+        if [[ "$worktree_status" == "dirty" && "$test_verdict" != "pass" ]]; then
+            ok=0
+            worktree_not_durable=1
+        fi
         if [[ $ok -eq 0 ]]; then
             final_verdict="inconclusive"
             downgraded=1
+            local _downgrade_reason="build_test_disagreement"
+            [[ $worktree_not_durable -eq 1 ]] && _downgrade_reason="worktree_not_durable"
             emit_event "test_assessment.downgrade" \
                 "plugin=test_assessment" \
                 "from=pass" \
                 "to=inconclusive" \
-                "reason=build_test_disagreement" \
+                "reason=$_downgrade_reason" \
                 "test_failed=$test_failed" \
+                "test_verdict=$test_verdict" \
+                "worktree_status=$worktree_status" \
                 "build_verdict=$build_verdict" \
                 "agrees=$llm_agrees"
         fi
@@ -396,7 +433,11 @@ $_ta_instructions"
     # is preserved as the LLM emitted it (the build feedback body).
     local downgrade_note=""
     if [[ $downgraded -eq 1 ]]; then
-        downgrade_note="verdict downgraded: build/test disagreement (test_failed=$test_failed agrees=$llm_agrees build_verdict=$build_verdict)"
+        if [[ $worktree_not_durable -eq 1 ]]; then
+            downgrade_note="verdict downgraded: worktree dirty + test_verdict=$test_verdict (non-pass, not durable; transient edits about to be reverted)"
+        else
+            downgrade_note="verdict downgraded: build/test disagreement (test_failed=$test_failed test_verdict=$test_verdict agrees=$llm_agrees build_verdict=$build_verdict)"
+        fi
     fi
 
     local final_json
