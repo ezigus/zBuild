@@ -46,8 +46,11 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"
     if [[ "$stage" == "build" ]]; then
         if [[ "${MOCK_REQUEST_ITER:-0}" == "$iter" && -n "${MOCK_REQUEST_JSON:-}" ]]; then
-            jq -n --argjson r "$MOCK_REQUEST_JSON" \
-                '{schema_version:4, verdict:"empty_diff", scope_expansion_request:$r}' \
+            # MOCK_BUILD_VERDICT lets a test model REC-1 (#879): build did valid
+            # in-scope work (verdict=pass) yet still emits a request. Default
+            # empty_diff preserves the older Path-A scenarios.
+            jq -n --argjson r "$MOCK_REQUEST_JSON" --arg v "${MOCK_BUILD_VERDICT:-empty_diff}" \
+                '{schema_version:4, verdict:$v, scope_expansion_request:$r}' \
                 > "$ZBUILD_STATE_DIR/artifacts/build-summary.json"
         else
             jq -n '{schema_version:4, verdict:"pass"}' > "$ZBUILD_STATE_DIR/artifacts/build-summary.json"
@@ -139,6 +142,32 @@ if grep -q 'cycle.scope.denied' "$ZBUILD_EVENTS_JSONL"; then
     assert_fail "T5: created collateral must NOT be denied"
 else
     assert_pass "T5: created collateral not denied (no blocked_on_scope loop)"
+fi
+
+# ─── T6 (REC-1 #879): build verdict=pass + collateral request → grant → converge ─
+# The #842 dogfood case: build did valid IN-SCOPE work (verdict=pass) but the
+# suite is red because an out-of-scope test pins an old value. REC-1 makes build
+# emit a request even on verdict=pass; the cycle grants collateral and the next
+# iter fixes it — never converge "pass" with a red suite, never loop.
+_seed_state
+load_template "$FIXT/cycle-scope-expandable.yaml"
+PASS_REL="tests/unit/pins-order-test.sh"
+mkdir -p "$TEST_TEMP_DIR/repo/tests/unit"
+printf 'assert "still asserts 8 stages"\n' > "$TEST_TEMP_DIR/repo/$PASS_REL"
+MOCK_TEST_VERDICTS="fail,pass"
+MOCK_REQUEST_ITER=1
+MOCK_BUILD_VERDICT="pass"
+MOCK_REQUEST_JSON="$(jq -nc --arg p "$PASS_REL" '{files:[{path:$p, category:"collateral_tests", evidence:"8 stages", reason:"in-scope work done but OOS test pins old value"}]}')"
+pushd "$TEST_TEMP_DIR/repo" >/dev/null || exit 1
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
+popd >/dev/null || exit 1
+unset MOCK_BUILD_VERDICT
+assert_eq "T6: pass+request → converges rc=0 (no loop)" "0" "$rc"
+assert_event_emitted "T6: cycle.scope.granted emitted" "$ZBUILD_EVENTS_JSONL" "cycle.scope.granted"
+if grep -q 'cycle.scope.denied' "$ZBUILD_EVENTS_JSONL"; then
+    assert_fail "T6: pass+request collateral must NOT be denied"
+else
+    assert_pass "T6: pass+request not denied (no blocked_on_scope loop)"
 fi
 
 cleanup_test_env
