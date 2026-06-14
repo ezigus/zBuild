@@ -133,5 +133,23 @@ if [[ -n "$OLDJSONL" ]]; then export ZBUILD_EVENTS_JSONL="$OLDJSONL"; else unset
 if [[ -n "$OLDDB" ]]; then export ZBUILD_EVENTS_DB="$OLDDB"; else unset ZBUILD_EVENTS_DB; fi
 if [[ -n "$OLDSCHEMA" ]]; then export ZBUILD_EVENT_SCHEMA="$OLDSCHEMA"; else unset ZBUILD_EVENT_SCHEMA; fi
 
+# ─── G6: cq.* event types golden ────────────────────────────────────────────
+# Pins the sorted list of registered cq.* event types.  Any addition or
+# removal of cq.* entries in event-schema.json breaks this golden and
+# requires a deliberate UPDATE_GOLDEN=1 re-seed.
+_cq_types="$(jq -r '
+  .known_types[]
+  | select(test("^cq\\."))
+' "$REPO_ROOT/config/event-schema.json" | sort)"
+set +e
+assert_golden "cq-event-types" "$_cq_types"
+g6_rc=$?
+set -e
+if [[ $g6_rc -eq 0 ]]; then
+    assert_pass "G6: registered cq.* event types match golden"
+else
+    assert_fail "G6: registered cq.* event types" "assert_golden returned $g6_rc"
+fi
+
 print_test_results
 exit $((FAIL > 0))
