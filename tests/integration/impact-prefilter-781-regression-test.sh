@@ -115,6 +115,16 @@ case "$missing_files_csv" in
         assert_fail "I2: parity golden missing: $missing_files_csv" ;;
 esac
 
+# I2d (#881 PREV-1): the shape-change-order floor forces real tests pinning
+# stage order via _TPL_STAGES[N] into missing[] even though the LLM returned
+# missing=[]. core-pipeline-template-test.sh is such a test in the real tree.
+case "$missing_files_csv" in
+    *"core-pipeline-template-test.sh"*)
+        assert_pass "I2d: stage-order test forced into missing[] (PREV-1 floor)" ;;
+    *)
+        assert_fail "I2d: order test not floored: $missing_files_csv" ;;
+esac
+
 # I2b (#781 contract pinning): forced entry has step_id="prefilter" and
 # reason contains "#781" + "shape-change" so downstream consumers can
 # distinguish prefilter-floor entries from LLM-emitted gaps.
@@ -206,8 +216,10 @@ assert_eq "I5: exactly 2 distinct goldens (no duplicates)" "2" "$distinct_golden
 llm_reason_preserved="$(jq -r '[.missing[] | select(.reason == "LLM caught one golden")] | length' "$ARTIFACTS_DIR/impact.json")"
 assert_eq "I5: LLM-provided missing[] entry preserved" "1" "$llm_reason_preserved"
 
-# Forced prefilter entry adds ONLY the missing golden, not the one LLM already had.
-forced_files="$(jq -r '[.missing[] | select(.step_id == "prefilter") | .files_to_add[]?] | sort | join(",")' "$ARTIFACTS_DIR/impact.json")"
+# Forced prefilter entry adds ONLY the missing GOLDEN, not the one LLM already
+# had. (#881: the floor also surfaces shape-change-order tests from the real
+# tests/ tree — filter to *.golden so this pins golden-floor behavior only.)
+forced_files="$(jq -r '[.missing[] | select(.step_id == "prefilter") | .files_to_add[]? | select(endswith("event-sequence.golden"))] | sort | join(",")' "$ARTIFACTS_DIR/impact.json")"
 assert_eq "I5: forced entry adds only the parity golden (the missing one)" \
     "tests/golden/parity/event-sequence.golden" "$forced_files"
 
@@ -217,8 +229,10 @@ CANNED_IMPACT_RESPONSE='{"schema_version":1,"verdict":"incomplete","missing":[{"
 
 set +e; impact_run "impact" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "I6: impact_run rc=0 no-op merge" "0" "$rc"
-forced_entry_count="$(jq -r '[.missing[] | select(.step_id == "prefilter")] | length' "$ARTIFACTS_DIR/impact.json")"
-assert_eq "I6: no forced prefilter entry when LLM covered both" "0" "$forced_entry_count"
+# #881: count forced GOLDEN files (order-assertion candidates from the real
+# tests/ tree are a separate, expected floor and not asserted here).
+forced_golden_count="$(jq -r '[.missing[] | select(.step_id == "prefilter") | .files_to_add[]? | select(endswith("event-sequence.golden"))] | length' "$ARTIFACTS_DIR/impact.json")"
+assert_eq "I6: no forced golden when LLM covered both" "0" "$forced_golden_count"
 
 cleanup_test_env
 print_test_results
