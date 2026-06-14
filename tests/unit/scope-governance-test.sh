@@ -117,6 +117,55 @@ assert_eq "structural + escalate=structural → escalate" "escalate" "$(jq -r '.
 DEC="$(scope_resolve_request "$REQ_STRUCT" "true" "collateral_tests" "none")"
 assert_eq "structural + escalate=none → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
 
+# ─── #870: classification anchored to directory prefix (security) ─────────
+# Source-tree files must NOT self-classify as collateral via a bare extension.
+for p in core/router/models.json scripts/lib/x.golden core/redaction/notes.md \
+         plugins/agent/build/x.json package.json; do
+    cls="$(scope_collateral_class "$p")"
+    assert_eq "anchor: '$p' is structural (not collateral)" "structural" "$cls"
+done
+assert_eq "anchor: tests/golden/x.golden → collateral_tests" "collateral_tests" "$(scope_collateral_class tests/golden/x.golden)"
+assert_eq "anchor: tests/foo-test.sh → collateral_tests" "collateral_tests" "$(scope_collateral_class tests/foo-test.sh)"
+assert_eq "anchor: config/x.json → collateral_config" "collateral_config" "$(scope_collateral_class config/x.json)"
+assert_eq "anchor: docs/x.md → collateral_docs" "collateral_docs" "$(scope_collateral_class docs/x.md)"
+
+# ─── #870: source-tree file cannot be auto-granted via extension spoof ────
+mkdir -p "$TEST_TEMP_DIR/repo/core/router"
+printf 'token-xyz\n' > "$TEST_TEMP_DIR/repo/core/router/models.json"
+pushd "$TEST_TEMP_DIR/repo" >/dev/null || exit 1
+REQ_SPOOF="$(jq -nc '{files:[{path:"core/router/models.json", category:"collateral_config", evidence:"token-xyz", reason:"spoof"}]}')"
+DEC="$(scope_resolve_request "$REQ_SPOOF" "true" "collateral_config" "none")"
+assert_eq "spoof: core/*.json named collateral → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
+popd >/dev/null || exit 1
+
+# ─── #870: created-collateral lane — new file grants WITHOUT a token ──────
+mkdir -p "$TEST_TEMP_DIR/repo/tests/golden" "$TEST_TEMP_DIR/repo/core"
+printf 'a\nb\nc\n' > "$TEST_TEMP_DIR/repo/tests/golden/new-built.golden"
+printf 'x\n' > "$TEST_TEMP_DIR/repo/core/new.sh"
+pushd "$TEST_TEMP_DIR/repo" >/dev/null || exit 1
+REQ_CREATED="$(jq -nc '{files:[{path:"tests/golden/new-built.golden", category:"collateral_tests", created:true, evidence:"", reason:"build authored new golden"}]}')"
+DEC="$(scope_resolve_request "$REQ_CREATED" "true" "collateral_tests,collateral_config" "structural")"
+assert_eq "created collateral (empty evidence) → grant" "grant" "$(jq -r '.action' <<<"$DEC")"
+assert_eq "created collateral granted path" "tests/golden/new-built.golden" "$(jq -r '.granted[0]' <<<"$DEC")"
+REQ_CREATED_FLOOR="$(jq -nc '{files:[{path:"legacy/x.golden", created:true, evidence:"", reason:"x"}]}')"
+DEC="$(scope_resolve_request "$REQ_CREATED_FLOOR" "true" "collateral_tests" "structural")"
+assert_eq "created:true cannot bypass floor → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
+REQ_CREATED_SRC="$(jq -nc '{files:[{path:"core/new.sh", created:true, evidence:"", reason:"x"}]}')"
+DEC="$(scope_resolve_request "$REQ_CREATED_SRC" "true" "collateral_tests" "none")"
+assert_eq "created:true cannot grant source → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
+REQ_CREATED_GONE="$(jq -nc '{files:[{path:"tests/golden/does-not-exist.golden", created:true, evidence:"", reason:"x"}]}')"
+DEC="$(scope_resolve_request "$REQ_CREATED_GONE" "true" "collateral_tests" "structural")"
+assert_eq "created:true non-existent path → deny" "deny" "$(jq -r '.action' <<<"$DEC")"
+# created:true SYMLINK leaf (tests/golden/link -> ../../legacy/real) → deny:
+# -f follows the link past the string-floor; the -L guard must reject it.
+mkdir -p "$TEST_TEMP_DIR/repo/legacy"
+printf 'secret\n' > "$TEST_TEMP_DIR/repo/legacy/real.golden"
+ln -s ../../legacy/real.golden "$TEST_TEMP_DIR/repo/tests/golden/link.golden"
+REQ_CREATED_SYM="$(jq -nc '{files:[{path:"tests/golden/link.golden", created:true, evidence:"", reason:"symlink attack"}]}')"
+DEC="$(scope_resolve_request "$REQ_CREATED_SYM" "true" "collateral_tests" "structural")"
+assert_eq "created:true symlink leaf → deny (floor non-bypassable via FS)" "deny" "$(jq -r '.action' <<<"$DEC")"
+popd >/dev/null || exit 1
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

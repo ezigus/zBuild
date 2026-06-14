@@ -118,6 +118,29 @@ MOCK_REQUEST_ITER=0   # never emit a request
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
 assert_eq "T4: no request → converges normally rc=0" "0" "$rc"
 
+# ─── T5 (#870): created-collateral request (empty evidence) → grant → converge ─
+# The exact dogfood case (#862): build CREATED a new golden not in scope. The
+# old evidence-required path DENIED it (no token in a brand-new file) → loop.
+# created:true now grants on class+floor → converge in one extra iter, no loop.
+_seed_state
+load_template "$FIXT/cycle-scope-expandable.yaml"
+CREATED_REL="tests/golden/created-by-build.golden"
+mkdir -p "$TEST_TEMP_DIR/repo/tests/golden"
+printf 'snapshot-line\n' > "$TEST_TEMP_DIR/repo/$CREATED_REL"
+MOCK_TEST_VERDICTS="fail,pass"
+MOCK_REQUEST_ITER=1
+MOCK_REQUEST_JSON="$(jq -nc --arg p "$CREATED_REL" '{files:[{path:$p, category:"collateral_tests", created:true, evidence:"", reason:"build created new golden"}]}')"
+pushd "$TEST_TEMP_DIR/repo" >/dev/null || exit 1
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
+popd >/dev/null || exit 1
+assert_eq "T5: created collateral (empty evidence) → converges rc=0 (no loop)" "0" "$rc"
+assert_event_emitted "T5: cycle.scope.granted emitted" "$ZBUILD_EVENTS_JSONL" "cycle.scope.granted"
+if grep -q 'cycle.scope.denied' "$ZBUILD_EVENTS_JSONL"; then
+    assert_fail "T5: created collateral must NOT be denied"
+else
+    assert_pass "T5: created collateral not denied (no blocked_on_scope loop)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

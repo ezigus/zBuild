@@ -52,6 +52,30 @@ source "$REPO_ROOT/scripts/lib/scope-governance.sh"
 DEC="$(scope_resolve_request "$REQ" "true" "collateral_tests" "structural")"
 assert_eq "T4: emitted request resolves to grant" "grant" "$(jq -r '.action' <<<"$DEC")"
 
+# ─── #870: created-collateral request emission ───────────────────────────
+# Build CREATED a new golden + a new config + a source file this iter. The
+# created-collateral request must include the two collateral files (created:true,
+# empty evidence) and DROP the source file (structural, not auto-grantable).
+mkdir -p "$TEST_TEMP_DIR/repo/tests/golden" "$TEST_TEMP_DIR/repo/config" "$TEST_TEMP_DIR/repo/core"
+printf 'a\nb\n' > "$TEST_TEMP_DIR/repo/tests/golden/new.golden"
+printf '{}\n'    > "$TEST_TEMP_DIR/repo/config/new.json"
+printf 'x\n'     > "$TEST_TEMP_DIR/repo/core/new.sh"
+CREQ="$(_build_created_collateral_request "tests/golden/new.golden" "core/new.sh" "config/new.json")"
+assert_eq "T5: created request has 2 files (golden+config, source dropped)" "2" "$(jq -r '.files | length' <<<"$CREQ")"
+assert_eq "T5: golden created:true" "true" "$(jq -r '.files[] | select(.path=="tests/golden/new.golden") | .created' <<<"$CREQ")"
+assert_eq "T5: golden class collateral_tests" "collateral_tests" "$(jq -r '.files[] | select(.path=="tests/golden/new.golden") | .category' <<<"$CREQ")"
+if jq -e '.files[] | select(.path=="core/new.sh")' <<<"$CREQ" >/dev/null 2>&1; then
+    assert_fail "T5: source file must NOT be in created request"
+else
+    assert_pass "T5: source file dropped from created request"
+fi
+# T6: the created request resolves to GRANT (the dogfood case, end-to-end).
+DEC="$(cd "$TEST_TEMP_DIR/repo" && scope_resolve_request "$CREQ" "true" "collateral_tests,collateral_config" "structural")"
+assert_eq "T6: created-collateral request resolves to grant" "grant" "$(jq -r '.action' <<<"$DEC")"
+# T7: all-source created files → no request emitted (nothing to grant).
+CREQ2="$(_build_created_collateral_request "core/a.sh" "scripts/lib/b.sh")"
+assert_eq "T7: all-source created → empty request" "" "$CREQ2"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
