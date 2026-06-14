@@ -485,6 +485,16 @@ _build_stage_run_inner() {
                 "in_scope_diff_bytes=${#diff_content}"
         else
             warn "_build_stage_run_inner: scope violation — writing empty diff.patch"
+            # REC-2 (#880): revert EDITED out-of-scope files to HEAD so (a) the
+            # working tree is clean for the next iter and (b) the OLD value is
+            # restored for the scope_expansion_request evidence check below.
+            # `checkout HEAD` no-ops on created (untracked) files — those are
+            # left in place for the #870 created-collateral lane.
+            local _rev_path
+            for _rev_path in "${scope_violations[@]}"; do
+                [[ -z "$_rev_path" ]] && continue
+                git -C "$repo_root" checkout HEAD -- "$_rev_path" 2>/dev/null || true
+            done
             diff_content=""
             # #530: file was already written directly above; zero it now.
             : > "$output_diff_patch"
@@ -600,6 +610,28 @@ _build_stage_run_inner() {
             "$build_verdict" "${_feedback_body:-}" "$plan_files_csv" 2>/dev/null || true)"
         if [[ -n "$scope_expansion_request_json" ]]; then
             build_reason="scope_request_pending"
+            out_of_scope_files_json="$(jq -c '[.files[].path]' \
+                <<<"$scope_expansion_request_json" 2>/dev/null || echo '[]')"
+        fi
+    fi
+
+    # REC-2 (#880): build EDITED existing out-of-scope collateral in a clean run
+    # (verdict=scope_violation). The clean-run revert above restored those files
+    # to HEAD, so the old value is present for the evidence check. Emit a governed
+    # request for the edited (non-created) OOS files so the cycle grants
+    # collateral and the next iter legitimately edits them — instead of silently
+    # discarding the edit. One request class per iter (precedence: empty_diff →
+    # created → REC-1 → this): if an iter both creates AND edits OOS collateral,
+    # the created request lands first and the edited file (already reverted to
+    # HEAD, so the tree stays clean) surfaces on the next iter. Mutually
+    # exclusive with the branches above.
+    if [[ -z "$scope_expansion_request_json" && ${#scope_violations[@]} -gt 0 ]]; then
+        scope_expansion_request_json="$(_build_edited_collateral_request \
+            "${_feedback_body:-}" \
+            "$(printf '%s\n' "${scope_violations_created[@]:-}")" \
+            "$(printf '%s\n' "${scope_violations[@]}")" 2>/dev/null || true)"
+        if [[ -n "$scope_expansion_request_json" ]]; then
+            build_reason="${build_reason:-scope_request_pending}"
             out_of_scope_files_json="$(jq -c '[.files[].path]' \
                 <<<"$scope_expansion_request_json" 2>/dev/null || echo '[]')"
         fi
@@ -959,6 +991,29 @@ _build_pending_collateral_request() {
     oos="$(_build_detect_out_of_scope_files "$feedback" "$plan_csv")"
     [[ -n "$oos" ]] || return 0
     _build_scope_expansion_request "$oos" "$feedback"
+}
+
+# _build_edited_collateral_request <feedback> <created_newline> <oos_newline> (REC-2 #880)
+# Out-of-scope files build EDITED (not created) in a clean run. The caller reverts
+# them to HEAD first so the OLD value is present for the evidence check; this
+# reuses the evidence-based request builder (collateral auto-grantable with a
+# verified token; source stays structural for the resolver to deny — build only
+# constructs). Created files are excluded — they take the #870 created lane.
+_build_edited_collateral_request() {
+    local feedback="$1" created_nl="$2" oos_nl="$3"
+    [[ -z "$oos_nl" ]] && return 0
+    local created_csv; created_csv="$(printf '%s' "$created_nl" | tr '\n' ',')"
+    local edited="" f
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        case ",$created_csv," in
+            *",$f,"*) ;;          # created → skip (handled by _build_created_collateral_request)
+            *) edited+="$f"$'\n' ;;
+        esac
+    done <<< "$oos_nl"
+    edited="${edited%$'\n'}"
+    [[ -z "$edited" ]] && return 0
+    _build_scope_expansion_request "$edited" "$feedback"
 }
 
 # _build_created_collateral_request <created_path> [created_path...]  (#870)

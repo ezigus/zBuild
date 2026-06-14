@@ -52,8 +52,13 @@ MOCK_ROUTER_RC=0
 # shellcheck disable=SC2317
 route_to_model_loop() {
     local _repo="$3"
-    echo "in-scope work from LLM" > "$_repo/in_scope.txt"
-    echo "OOS work from LLM"      > "$_repo/oos.txt"
+    if [[ -n "${MOCK_EDIT_TARGET:-}" ]]; then
+        # REC-2: edit an EXISTING out-of-scope file (no in-scope work).
+        printf 'NEW value (build edit)\n' > "$_repo/$MOCK_EDIT_TARGET"
+    else
+        echo "in-scope work from LLM" > "$_repo/in_scope.txt"
+        echo "OOS work from LLM"      > "$_repo/oos.txt"
+    fi
     _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="${MOCK_TERMINATED_REASON:-done_sentinel}"
     _ROUTE_LOOP_INPUT_TOKENS=5
@@ -168,6 +173,45 @@ if grep -q '"type":"build.timeout.partial_work_preserved"' "$ZBUILD_EVENTS_JSONL
     assert_fail "T2: timeout-preserved event should NOT fire on clean run"
 else
     assert_pass "T2: no spurious build.timeout.partial_work_preserved on clean run"
+fi
+
+# ─── T3 (REC-2 #880): clean run + EDITED existing OOS collateral → request + revert ─
+# build edits an existing out-of-scope test file (no in-scope work). Instead of
+# silently reverting with no record, build emits a governed scope_expansion_request
+# for it AND reverts the file to HEAD (old value restored for the evidence check).
+_setup_fixture t3
+OOS_REL="tests/oos-pin-test.sh"
+mkdir -p "$REPO/tests"
+printf 'assert_eq "pins" "%s" "$n"\n' "'8 stages'" > "$REPO/$OOS_REL"
+git -C "$REPO" add "$OOS_REL"
+git -C "$REPO" -c commit.gpgsign=false commit -q -m "add oos test"
+BASELINE="$(git -C "$REPO" rev-parse HEAD)"
+printf '%s' "$BASELINE" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+# Feedback names the OOS file with the old value → evidence for the grant.
+# shellcheck disable=SC2317
+_build_read_prior_assessment() { printf "test failed: %s pins '8 stages'\n" "$OOS_REL"; }
+MOCK_ROUTER_RC=0
+MOCK_TERMINATED_REASON="done_sentinel"
+MOCK_EDIT_TARGET="$OOS_REL"
+set +e
+_build_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$DIFF_PATCH" "$SUMMARY_JSON" "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+unset MOCK_EDIT_TARGET
+unset -f _build_read_prior_assessment
+assert_eq "T3: clean run rc=0" "0" "$rc"
+# A scope_expansion_request for the edited OOS collateral is emitted.
+req_path="$(jq -r '.scope_expansion_request.files[]?.path // empty' "$SUMMARY_JSON" 2>/dev/null | head -1)"
+assert_eq "T3: request emitted for edited OOS file" "$OOS_REL" "$req_path"
+req_cat="$(jq -r '.scope_expansion_request.files[]? | select(.path=="'"$OOS_REL"'") | .category' "$SUMMARY_JSON" 2>/dev/null)"
+assert_eq "T3: classified collateral_tests" "collateral_tests" "$req_cat"
+req_ev="$(jq -r '.scope_expansion_request.files[]? | select(.path=="'"$OOS_REL"'") | .evidence' "$SUMMARY_JSON" 2>/dev/null)"
+assert_eq "T3: evidence = old value (file reverted, token present)" "8 stages" "$req_ev"
+# The OOS file was reverted to HEAD (old value restored, not build's new value).
+if grep -q '8 stages' "$REPO/$OOS_REL" 2>/dev/null && ! grep -q 'NEW value' "$REPO/$OOS_REL" 2>/dev/null; then
+    assert_pass "T3: edited OOS file reverted to HEAD (old value restored)"
+else
+    assert_fail "T3: OOS file not reverted" "content: $(cat "$REPO/$OOS_REL" 2>/dev/null)"
 fi
 
 cleanup_test_env
