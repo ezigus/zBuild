@@ -23,8 +23,15 @@ source "$_CQ_CYCLE_ROOT/core/event-bus/event-bus.sh"
 source "$_CQ_CYCLE_ROOT/core/router/route.sh"
 
 cq_cycle_run() {
-    local state_dir="$1"
-    local artifact_dir="$2"
+    # shellcheck disable=SC2034  # hook-signature positional; unused in this stage
+    local _stage_id="$1"
+    local state_file="$2"
+    if [[ -z "$state_file" ]]; then
+        error "cq_cycle_run: requires <stage_id> <state_file>"
+        return 2
+    fi
+    local state_dir; state_dir="$(dirname "$state_file")"
+    local artifact_dir="$state_dir/artifacts"
 
     local findings_file="$artifact_dir/review.findings.json"
     local feedback_file="$artifact_dir/quality-feedback.md"
@@ -51,7 +58,7 @@ cq_cycle_run() {
         local iter_findings=()
         local lens
         for lens in "${lenses[@]}"; do
-            local lens_plugin_dir="$ZBUILD_PLUGINS_ROOT/agent/${lens}-lens"
+            local lens_plugin_dir="${ZBUILD_PLUGINS_ROOT:-$_CQ_CYCLE_ROOT/plugins}/agent/${lens}-lens"
             if [[ ! -d "$lens_plugin_dir" ]]; then
                 continue
             fi
@@ -98,8 +105,8 @@ cq_cycle_run() {
 
 cq_cycle_cleanup() {
     # shellcheck disable=SC2034  # hook-signature positional; unused in cleanup
-    local state_dir="$1"
-    local artifact_dir="$2"
+    local _stage_id="$1"
+    local _state_file="$2"
     eb_emit_event "cq.cycle.cleanup" "stage=cq-cycle" 2>/dev/null || true
     return 0
 }

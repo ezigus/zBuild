@@ -21,8 +21,15 @@ source "$_CQ_BACKTRACK_ROOT/core/redaction/scope-redaction.sh"
 source "$_CQ_BACKTRACK_ROOT/core/event-bus/event-bus.sh"
 
 cq_backtrack_run() {
-    local state_dir="$1"
-    local artifact_dir="$2"
+    # shellcheck disable=SC2034  # hook-signature positional; unused in this stage
+    local _stage_id="$1"
+    local state_file="$2"
+    if [[ -z "$state_file" ]]; then
+        error "cq_backtrack_run: requires <stage_id> <state_file>"
+        return 2
+    fi
+    local state_dir; state_dir="$(dirname "$state_file")"
+    local artifact_dir="$state_dir/artifacts"
 
     local result_file="$artifact_dir/cq-backtrack-result.json"
     local findings_file="$artifact_dir/review.findings.json"
