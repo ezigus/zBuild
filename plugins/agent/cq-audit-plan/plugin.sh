@@ -20,8 +20,11 @@ source "$_CQ_AUDIT_PLAN_ROOT/core/redaction/scope-redaction.sh"
 source "$_CQ_AUDIT_PLAN_ROOT/core/event-bus/event-bus.sh"
 
 cq_audit_plan_run() {
-    local state_dir="$1"
-    local artifact_dir="$2"
+    # shellcheck disable=SC2034  # hook-signature positional; unused in this stage
+    local _stage_id="$1"
+    local state_file="$2"
+    local state_dir; state_dir="$(dirname "$state_file")"
+    local artifact_dir="$state_dir/artifacts"
 
     local audit_plan_file="$artifact_dir/audit-plan.json"
 
