@@ -79,7 +79,7 @@ _test_compute_target_files() {
                 # Make relative to repo_root
                 _match="${_match#$repo_root/}"
                 all_files+=("$_match")
-            done < <(grep -rl "$_bn" "$_tests_dir" 2>/dev/null || true)
+            done < <(grep -rlF -- "$_bn" "$_tests_dir" 2>/dev/null || true)
         done
     fi
 
@@ -90,48 +90,34 @@ _test_compute_target_files() {
 }
 
 # ─── _test_build_targeted_cmd (ADR-034 / #846) ───────────────────────────────
-# Converts a newline-delimited list of test file paths into a runnable command.
-# .sh files → direct bash invocation (chained with &&).
-# Empty file list → returns base_cmd unchanged (full-suite fallback).
-# Mixed or non-.sh files → returns base_cmd unchanged (unrecognized runner).
-# Usage: _test_build_targeted_cmd <base_cmd> <file_list>
+# Renders the repo-configurable targeted-run command. <template> is a command
+# containing the literal `{files}`, which is replaced with the shell-quoted,
+# space-separated list of target test files. Echoes the rendered command, or an
+# EMPTY string when <template> or <file_list> is empty (the caller then runs the
+# full suite — never a broken targeted command).
+#
+# The targeted runner is responsible for emitting output the verdict parser
+# recognises and for running every file independently (no `&&` short-circuit).
+# zbuild's default — `scripts/run-tests.sh --files {files}` — does both: it loops
+# the files and emits the `unit: N/M passed` tier-summary, identical to the full
+# run. Other repos set ZBUILD_TEST_CMD_TARGETED to their framework's subset
+# command (e.g. `jest {files}`, `pytest {files}`, `cargo test {files}`).
+# Usage: _test_build_targeted_cmd <template> <file_list>
 _test_build_targeted_cmd() {
-    local base_cmd="$1"
-    local file_list="$2"
+    local template="$1" file_list="$2"
+    [[ -z "$template" || -z "$file_list" ]] && return 0
+    # Guard a misconfigured template (no {files}) — silently dropping the file
+    # list would run the WRONG command. Empty return → caller runs the full suite.
+    [[ "$template" != *'{files}'* ]] && return 0
 
-    if [[ -z "$file_list" ]]; then
-        printf '%s' "$base_cmd"
-        return 0
-    fi
-
-    local _any_sh=0 _any_other=0 _f
+    local _files_q="" _f
     while IFS= read -r _f; do
         [[ -z "$_f" ]] && continue
-        case "$_f" in
-            *.sh) _any_sh=1 ;;
-            *)    _any_other=1 ;;
-        esac
+        _files_q="${_files_q:+$_files_q }'${_f}'"
     done <<< "$file_list"
+    [[ -z "$_files_q" ]] && return 0
 
-    # Only build a targeted cmd when ALL files are .sh test scripts
-    if [[ "$_any_sh" -eq 1 && "$_any_other" -eq 0 ]]; then
-        local _parts=""
-        while IFS= read -r _f; do
-            [[ -z "$_f" ]] && continue
-            if [[ -n "$_parts" ]]; then
-                _parts="${_parts} && bash '${_f}'"
-            else
-                _parts="bash '${_f}'"
-            fi
-        done <<< "$file_list"
-        if [[ -n "$_parts" ]]; then
-            printf '%s' "$_parts"
-            return 0
-        fi
-    fi
-
-    # Fallback: non-.sh or mixed → run full suite
-    printf '%s' "$base_cmd"
+    printf '%s' "${template/\{files\}/$_files_q}"
 }
 
 # ─── test_init ────────────────────────────────────────────────────────────────
@@ -260,11 +246,15 @@ _test_run_inner() {
     diff_applied=false
 
     # ── ADR-034 / #846: choose targeted or full-suite command ─────────────────
-    # On iter 2+, if ZBUILD_TEST_RED_SET or ZBUILD_TEST_CHANGED_FILES is set
-    # AND ZBUILD_TEST_FULL_SUITE_GATE is NOT set, attempt a targeted run.
+    # On iter 2+, if ZBUILD_TEST_RED_SET or ZBUILD_TEST_CHANGED_FILES is set AND
+    # ZBUILD_TEST_FULL_SUITE_GATE is NOT set, attempt a targeted run.
     # _test_compute_target_files uses $tmp (the rsync'd copy) as repo_root so
-    # relative paths are stable between iters. If no target files are found OR
-    # the runner is not .sh-based, falls back to full_cmd → run_mode stays full.
+    # relative paths are stable between iters. The targeted-run COMMAND is
+    # repo-configurable (ZBUILD_TEST_CMD_TARGETED, a `{files}` template); it
+    # defaults to the repo's `scripts/run-tests.sh --files {files}` subset mode
+    # when present (it emits the recognised `unit: N/M passed` format). If neither
+    # is available — or no target files were found — we fall back to the full
+    # command and run_mode stays "full" (never a broken targeted run).
     local run_mode="full"
     local actual_test_cmd="$test_cmd"
     if [[ -z "$_zbtr_full_gate" ]] && [[ -n "$_zbtr_red_set" || -n "$_zbtr_changed" ]]; then
@@ -273,9 +263,13 @@ _test_run_inner() {
                          ZBUILD_TEST_CHANGED_FILES="$_zbtr_changed" \
                          _test_compute_target_files "$tmp")"
         if [[ -n "$_target_files" ]]; then
+            local _targeted_tmpl="${ZBUILD_TEST_CMD_TARGETED:-}"
+            if [[ -z "$_targeted_tmpl" && -f "$tmp/scripts/run-tests.sh" ]]; then
+                _targeted_tmpl='bash scripts/run-tests.sh --files {files}'
+            fi
             local _targeted_cmd
-            _targeted_cmd="$(_test_build_targeted_cmd "$test_cmd" "$_target_files")"
-            if [[ "$_targeted_cmd" != "$test_cmd" ]]; then
+            _targeted_cmd="$(_test_build_targeted_cmd "$_targeted_tmpl" "$_target_files")"
+            if [[ -n "$_targeted_cmd" ]]; then
                 actual_test_cmd="$_targeted_cmd"
                 run_mode="targeted"
             fi
@@ -388,12 +382,17 @@ _test_run_inner() {
             printf '%s\n' "$_rel_paths" \
                 | jq -Rn '[inputs | select(. != "")]' 2>/dev/null \
                 | atomic_write "$_red_set_path" 2>/dev/null || true
+        else
+            # A clean run clears any STALE red-set so the next iter does not
+            # target already-fixed files (missing == empty, honestly applied).
+            rm -f "$_red_set_path" 2>/dev/null || true
         fi
     }
 
+    # Record the command that actually ran (targeted or full), not the base cmd.
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
-        "$test_output" "$diff_applied" "$test_cmd" "$reason" "$run_mode"
+        "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
     emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \

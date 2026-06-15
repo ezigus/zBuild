@@ -536,18 +536,18 @@ assert_contains "T14: grep-matched path included" "$_target_t14" "references-sou
 _t14_unrelated="$(printf '%s\n' "$_target_t14" | grep -c "unrelated" || true)"
 assert_eq "T14: unrelated test not included" "0" "$_t14_unrelated"
 
-# ─── T15: _test_build_targeted_cmd — bash invocation for .sh files ────────────
-print_test_section "T15. _test_build_targeted_cmd builds bash command for .sh files"
+# ─── T15: _test_build_targeted_cmd — renders the configurable {files} template ─
+print_test_section "T15. _test_build_targeted_cmd renders the {files} template"
 
 _files_t15="$(printf '%s\n' "tests/unit/foo-test.sh" "tests/unit/bar-test.sh")"
-_cmd_t15="$(_test_build_targeted_cmd "npm test" "$_files_t15")"
-assert_contains "T15: cmd contains bash invocation" "$_cmd_t15" "bash '"
-assert_contains "T15: cmd references foo-test.sh" "$_cmd_t15" "foo-test.sh"
+_cmd_t15="$(_test_build_targeted_cmd 'bash scripts/run-tests.sh --files {files}' "$_files_t15")"
+assert_contains "T15: {files} replaced with the quoted file list" \
+    "$_cmd_t15" "--files 'tests/unit/foo-test.sh' 'tests/unit/bar-test.sh'"
 assert_contains "T15: cmd references bar-test.sh" "$_cmd_t15" "bar-test.sh"
 
-# Empty file list → fallback to base_cmd
-_cmd_t15_empty="$(_test_build_targeted_cmd "npm test" "")"
-assert_eq "T15: empty list returns base_cmd" "npm test" "$_cmd_t15_empty"
+# Empty template OR empty file list → empty string (caller falls back to full).
+assert_eq "T15: empty template returns empty" "" "$(_test_build_targeted_cmd "" "$_files_t15")"
+assert_eq "T15: empty file list returns empty" "" "$(_test_build_targeted_cmd 'x {files}' "")"
 
 # ─── T16: _test_run_inner with ZBUILD_TEST_RED_SET → run_mode=targeted ────────
 print_test_section "T16. _test_run_inner with ZBUILD_TEST_RED_SET writes run_mode=targeted"
@@ -579,6 +579,7 @@ printf '' > "$PATCH_T16"
 
 set +e
 ZBUILD_TEST_RED_SET="$RED_SET_T16" \
+    ZBUILD_TEST_CMD_TARGETED='bash {files}' \
     _test_run_inner "$PATCH_T16" "$REPO_T16" "$OUT_JSON_T16" "npm test"
 rc_t16=$?
 set -e
@@ -608,6 +609,16 @@ assert_eq "T17: run_mode=full (gate forces full suite)" "full" "$_run_mode_t17"
 
 # Unset to avoid bleeding into other tests in this session
 unset ZBUILD_TEST_RED_SET ZBUILD_TEST_FULL_SUITE_GATE ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+
+# ─── T18: a clean run clears a STALE red-set (#846 Copilot review) ────────────
+print_test_section "T18. clean run removes a stale test-red-set.json"
+OUT_JSON_T18="$ARTIFACT_DIR/test-results-t18.json"
+STALE_RED_T18="$(dirname "$OUT_JSON_T18")/test-red-set.json"
+printf '["tests/unit/already-fixed-test.sh"]\n' > "$STALE_RED_T18"
+set +e
+_test_run_inner "$PATCH_T16" "$REPO_T16" "$OUT_JSON_T18" $'printf \'unit: 1/1 passed\\n\''
+set -e
+assert_file_not_exists "T18: stale red-set removed after a no-failure run" "$STALE_RED_T18"
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }

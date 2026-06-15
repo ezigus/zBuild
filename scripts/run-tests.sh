@@ -8,6 +8,28 @@ TESTS_DIR="$REPO_ROOT/tests"
 PLUGINS_DIR="$REPO_ROOT/plugins"
 CORE_DIR="$REPO_ROOT/core"
 
+# #846: targeted subset mode — run ONLY the given files (each in its own process,
+# so a failing file never blocks the rest — no `&&` short-circuit), emitting the
+# same `unit: N/M passed` + `unit: FAIL <f>` format run_tier uses. This keeps the
+# build_test_cycle targeted re-run's output format identical to the full run, so
+# the test plugin's verdict parser and red-set extractor recognise it.
+if [[ "${1:-}" == "--files" ]]; then
+  shift
+  _tf_passed=0; _tf_failed=0; _tf_total=0
+  for _tf in "$@"; do
+    [[ -n "$_tf" ]] || continue
+    _tf_total=$((_tf_total + 1))
+    _tf_out="$(mktemp -t zbuild-test-targeted.XXXXXX)"
+    if bash "$_tf" 3>/dev/null >"$_tf_out" 2>&1; then
+      _tf_passed=$((_tf_passed + 1)); rm -f "$_tf_out"
+    else
+      _tf_failed=$((_tf_failed + 1)); echo "unit: FAIL $_tf" >&2; cat "$_tf_out" >&2 || true; rm -f "$_tf_out"
+    fi
+  done
+  echo "unit: $_tf_passed/$_tf_total passed"
+  [[ $_tf_failed -eq 0 ]] && exit 0 || exit 1
+fi
+
 tier="${1:-}"
 if [[ "$tier" == "--tier" ]]; then
   tier="${2:-all}"

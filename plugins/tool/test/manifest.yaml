@@ -33,6 +33,10 @@ provides:
 config:
   tier_default: T0
   test_cmd_default: "npm test"
+  # #846/ADR-034: targeted re-run command template ({files} placeholder, set via
+  # ZBUILD_TEST_CMD_TARGETED). Empty default → the stage auto-uses
+  # `scripts/run-tests.sh --files {files}` when the repo has it, else runs full.
+  test_cmd_targeted_default: ""
 
 # Wave 12-C (#662): no declared inputs.
 # Post-#608 + Wave 12-B (#667), the test stage rsyncs the repo HEAD (which
