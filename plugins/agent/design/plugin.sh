@@ -35,6 +35,8 @@ source "$_DESIGN_ROOT/core/router/route.sh"
 source "$_DESIGN_ROOT/core/output/stage-io.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_DESIGN_ROOT/scripts/lib/prompt-overrides.sh"
+# shellcheck source=../../../scripts/lib/acceptance-block.sh
+source "$_DESIGN_ROOT/scripts/lib/acceptance-block.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 design_stage_init() {
@@ -203,8 +205,24 @@ path/to/file1
 path/to/file2
 \`\`\`
 
-Keep the prose focused and under 200 lines (the scope block may be as long
-as completeness requires). Emit LOOP_COMPLETE when done.
+3. A \`\`\`acceptance fenced block listing behavioral claims (SPEC: lines) and
+   test file paths (TESTFILES: section). Each SPEC line describes one
+   observable, testable behavior change this implementation must satisfy.
+   The TESTFILES section lists the test files that will verify those specs —
+   one repo-relative path per line. Use the file names from plan.files[]
+   when they are test files, and derive any additional test files needed.
+
+The \`\`\`acceptance block format:
+\`\`\`acceptance
+SPEC: <one observable behavior this change must satisfy>
+SPEC: <another behavioral claim>
+TESTFILES:
+tests/unit/some-test.sh
+tests/integration/other-test.sh
+\`\`\`
+
+Keep the prose focused and under 200 lines (the scope block and acceptance
+block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 DESIGN_PROMPT
 
     # design_impact_cycle feedback: on iter ≥ 2, splice prior impact gap-report
@@ -321,6 +339,40 @@ DESIGN_PROMPT
         fi
         return 1
     fi
+
+    # Assert the acceptance block is present in design.md.
+    local _ab_out
+    if ! _ab_out="$(extract_acceptance_block "$output_design_md" 2>/dev/null)"; then
+        warn "_design_stage_run_inner: design.md missing acceptance block — design output incomplete"
+        emit_event "plugin.run.error" "plugin=design" "reason=missing_acceptance_block"
+        if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+            _route_loop_close_final_banner || true
+        fi
+        return 1
+    fi
+
+    # Parse TESTFILES from the acceptance block and write failing stubs for
+    # any that do not already exist. Existing files (e.g. from a prior cycle)
+    # are left untouched so a passing test is never regressed to red.
+    local _testfiles_section=0
+    local _stubs_written=0
+    while IFS= read -r _tf_line; do
+        if [[ "$_tf_line" == 'TESTFILES:' ]]; then
+            _testfiles_section=1
+            continue
+        fi
+        [[ $_testfiles_section -eq 0 ]] && continue
+        [[ -z "$_tf_line" ]] && continue
+        local _tf_abs
+        _tf_abs="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/$_tf_line"
+        if [[ ! -f "$_tf_abs" ]]; then
+            mkdir -p "$(dirname "$_tf_abs")"
+            printf '#!/usr/bin/env bash\nset -euo pipefail\n# Stub: failing until implemented (acceptance contract)\nexit 1\n' > "$_tf_abs"
+            chmod +x "$_tf_abs"
+            _stubs_written=$(( _stubs_written + 1 ))
+        fi
+    done <<< "$_ab_out"
+    emit_event "design.acceptance_tests.written" "plugin=design" "count=$_stubs_written"
 
     # #825: override the OUTPUT banner payload with the actual design.md
     # content BEFORE flushing the deferred-close banner. Without this,
