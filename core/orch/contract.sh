@@ -33,7 +33,12 @@ _ZBUILD_ORCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "${_ZBUILD_ORCH_DIR}/../.." && pwd)"
 
 # ─── Scratch directory for pool state ───────────────────────────────────────
-ZBUILD_ORCH_SCRATCH="${ZBUILD_ORCH_SCRATCH:-${HOME}/.zbuild/state/orch}"
+# #898: the default is computed at use-time in `_strategy_orch_scratch_dir`
+# (core/pipeline/strategies/common.sh) so it can be re-rooted under the per-run
+# state dir (~/.zbuild/state/runs/<run_id>/orch) once ZBUILD_RUN_ID is known —
+# the orchestrator analog of #887/#889. An explicit ZBUILD_ORCH_SCRATCH still
+# overrides. (Was: a flat ~/.zbuild/state/orch baked here at source time, before
+# run_id existed, which made per-run isolation impossible.)
 
 # ─── _orch_not_implemented ───────────────────────────────────────────────────
 # Emits an event and returns 1. Used by contract stubs before a backend loads.

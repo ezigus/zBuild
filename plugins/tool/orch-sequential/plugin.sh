@@ -4,7 +4,9 @@
 #
 # Provides: orchestrator-backend / sequential
 # This backend executes each work unit synchronously with no background jobs.
-# Pool state is stored under ${TMPDIR:-/tmp}/zbuild-pool-<pool_id>/results/.
+# Pool state is stored under
+# ${ZBUILD_POOL_ROOT:-${TMPDIR}/zbuild-runs/<run_id>}/zbuild-pool-<pool_id>/results/
+# (#898 per-run isolation).
 #
 # Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail here.
 
@@ -24,6 +26,15 @@ _orch_seq_validate_pool_id() {
     return 0
 }
 
+# ─── _orch_seq_pool_dir (#898) ───────────────────────────────────────────────
+# Per-run-namespaced pool dir; identical contract to the bash-parallel backend's
+# _orch_par_pool_dir. ZBUILD_POOL_ROOT overrides (default:
+# ${TMPDIR}/zbuild-runs/<run_id>). ZBUILD_RUN_ID is exported by the runner.
+_orch_seq_pool_dir() {
+    local _root="${ZBUILD_POOL_ROOT:-${TMPDIR:-/tmp}/zbuild-runs/${ZBUILD_RUN_ID:-default}}"
+    printf '%s' "${_root}/zbuild-pool-${1}"
+}
+
 # ─── orch_spawn ──────────────────────────────────────────────────────────────
 # Contract: orch_spawn <pool_id> [count] [role_arg]
 # Creates the pool results directory.  count and role_arg are accepted for
@@ -31,7 +42,7 @@ _orch_seq_validate_pool_id() {
 orch_spawn() {
     local pool_id="$1"
     _orch_seq_validate_pool_id "$pool_id" "orch_spawn" || return 1
-    mkdir -p "${TMPDIR:-/tmp}/zbuild-pool-${pool_id}/results"
+    mkdir -p "$(_orch_seq_pool_dir "$pool_id")/results"
     return 0
 }
 
@@ -45,7 +56,7 @@ orch_dispatch() {
     local pool_id="$1"
     local work_unit="$2"
     _orch_seq_validate_pool_id "$pool_id" "orch_dispatch" || return 1
-    local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
+    local pool_dir; pool_dir="$(_orch_seq_pool_dir "$pool_id")"
     local slot_id
     slot_id="$(date +%s%N)-$$-${RANDOM}"
     local result_base="${pool_dir}/results/${slot_id}"
@@ -73,7 +84,7 @@ orch_collect() {
     # Accept --timeout flag without error; value is discarded.
     _orch_seq_validate_pool_id "$pool_id" "orch_collect" || return 1
 
-    local pool_dir="${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
+    local pool_dir; pool_dir="$(_orch_seq_pool_dir "$pool_id")"
     local pass_count=0 fail_count=0
 
     if [[ ! -d "${pool_dir}/results" ]]; then
@@ -110,7 +121,7 @@ orch_collect() {
 orch_shutdown() {
     local pool_id="$1"
     _orch_seq_validate_pool_id "$pool_id" "orch_shutdown" || return 1
-    rm -rf "${TMPDIR:-/tmp}/zbuild-pool-${pool_id}"
+    rm -rf "$(_orch_seq_pool_dir "$pool_id")"
     return 0
 }
 

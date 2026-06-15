@@ -40,11 +40,11 @@ fi
 # ─── Test 2: spawn → pool directory created ─────────────────────────────────
 print_test_section "2. spawn creates pool results directory"
 orch_spawn "p1" 1 ""
-if [[ -d "$TMPDIR/zbuild-pool-p1/results" ]]; then
+if [[ -d "$(_orch_seq_pool_dir p1)/results" ]]; then
     assert_pass "spawn creates results/ subdir"
 else
     assert_fail "spawn creates results/ subdir" \
-        "expected $TMPDIR/zbuild-pool-p1/results to exist"
+        "expected $(_orch_seq_pool_dir p1)/results to exist"
 fi
 
 # ─── Test 3: dispatch + collect — all-pass (rc=0) ───────────────────────────
@@ -89,13 +89,13 @@ assert_eq "orch_collect rc=2 when results are mixed" "2" "$collect_rc"
 # ─── Test 6: shutdown removes pool dir ──────────────────────────────────────
 print_test_section "6. shutdown cleans up the pool directory"
 orch_spawn "doomed" 0 ""
-if [[ -d "$TMPDIR/zbuild-pool-doomed" ]]; then
+if [[ -d "$(_orch_seq_pool_dir doomed)" ]]; then
     orch_shutdown "doomed"
-    if [[ ! -d "$TMPDIR/zbuild-pool-doomed" ]]; then
+    if [[ ! -d "$(_orch_seq_pool_dir doomed)" ]]; then
         assert_pass "shutdown removes pool directory"
     else
         assert_fail "shutdown removes pool directory" \
-            "$TMPDIR/zbuild-pool-doomed still exists"
+            "$(_orch_seq_pool_dir doomed) still exists"
     fi
 else
     assert_fail "spawn precondition" "pool dir not created by spawn"
