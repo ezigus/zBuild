@@ -28,10 +28,12 @@ setup_test_env "build-618-branch-state-e2e"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
-# State dir matches runner.sh's default ($HOME/.zbuild/state) since we do not
-# export ZBUILD_STATE_DIR — the test's whole point is that the runner exports
-# it for its own children.
-STATE_DIR="$HOME/.zbuild/state"
+# #887: pin HOME to a temp dir (avoid polluting the real ~/.zbuild) + a fixed
+# run_id so the runner's per-run state dir ($HOME/.zbuild/state/runs/<run_id>/)
+# is deterministic. ZBUILD_STATE_DIR stays UNEXPORTED — the test's whole point
+# is that the runner exports the resolved (now per-run) dir for its children.
+HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
+STATE_DIR="$HOME_DIR/.zbuild/state/runs/run-618"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 PROMPT_CAPTURE="$TEST_TEMP_DIR/build-prompt-capture.txt"
 
@@ -158,7 +160,8 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 # ─── Run the runner end-to-end ──────────────────────────────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$PROMPT_CAPTURE"
 set +e
-bash "$RUNNER" --issue 618 >/dev/null 2>&1
+# #887: pinned HOME + run_id so the per-run state dir is the one STATE_DIR points at.
+env ZBUILD_RUN_ID="run-618" HOME="$HOME_DIR" bash "$RUNNER" --issue 618 >/dev/null 2>&1
 rc=$?
 set -e
 

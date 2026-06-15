@@ -17,6 +17,11 @@ source "$_ZBUILD_ROOT/scripts/lib/runner-final-status.sh"
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
+# #887: capture whether the operator PINNED any events location BEFORE
+# event-bus.sh defaults them to $HOME/.zbuild/state — so per-run isolation
+# overrides only the default, never an explicit operator/test override.
+_ZBUILD_EVENTS_PINNED=""
+[[ -n "${ZBUILD_EVENTS_DIR:-}${ZBUILD_EVENTS_JSONL:-}${ZBUILD_EVENTS_DB:-}" ]] && _ZBUILD_EVENTS_PINNED=1
 source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 source "$_ZBUILD_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../config/config.sh
@@ -592,6 +597,12 @@ main() {
 
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    # #887: when neither ZBUILD_STATE_DIR nor ZBUILD_STATE_FILE is set, a fresh
+    # run roots its state under runs/<run_id>/ so concurrent runs never share a
+    # state dir / artifacts. Explicit overrides (tests, CLI resume) win and skip
+    # the re-root. Resolved here; applied once run_id is known (fresh-start block).
+    local _state_is_default=false
+    [[ -z "${ZBUILD_STATE_DIR:-}" && -z "${ZBUILD_STATE_FILE:-}" ]] && _state_is_default=true
     local template_file
     # Per-repo overrides live under the target repo's working tree (#653/#724
     # Copilot finding): use $PWD, not $_ZBUILD_ROOT (the install tree).
@@ -812,16 +823,26 @@ main() {
     fi
 
     if ! $resume_mode; then
-        # Fresh start: clear any existing state
-        if [[ -f "$state_file" ]]; then
-            rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
-        fi
         # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
-        # to prevent path traversal when run_id is used in report-${run_id}.md filenames.
+        # to prevent path traversal when run_id is used in report-${run_id}.md filenames
+        # AND in the per-run state dir below (#887). Generated BEFORE the re-root.
         local _raw_run_id="${ZBUILD_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
         _runner_run_id="${_raw_run_id//[^a-zA-Z0-9_.-]/}"
         # Fall back to generated ID if sanitization emptied the value
         [[ -z "$_runner_run_id" ]] && _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
+        # #887: default state → isolate under runs/<run_id>/ so concurrent runs
+        # never share artifacts. run_id is path-sanitized above. Done before
+        # init_state so the per-run state file is the one created.
+        if $_state_is_default; then
+            state_dir="$HOME/.zbuild/state/runs/$_runner_run_id"
+            mkdir -p "$state_dir"
+            state_file="$state_dir/pipeline-state.json"
+            _runner_state_file="$state_file"
+        fi
+        # Fresh start: clear any existing state at the (now per-run) path
+        if [[ -f "$state_file" ]]; then
+            rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
+        fi
         _runner_issue="${issue:-0}"
         init_state "$state_file" "$_runner_run_id" "$_runner_issue"
         # Persist goal so resume can reconstruct the correct runner args.
@@ -845,6 +866,29 @@ main() {
     # the resolved state_dir. Without this export the var is unset in plugin
     # subshells and the #617 BRANCH STATE block is silently skipped.
     export ZBUILD_STATE_DIR="$state_dir"
+    # #887: events must follow the (possibly per-run) state dir, else two runs'
+    # events interleave in one events.jsonl. event-bus.sh defaults all three
+    # vars to $HOME/.zbuild/state at SOURCE time, so for the per-run default we
+    # must FORCE + export them (a plain :- would keep the stale flat value).
+    # An explicit state dir respects whatever events location is already set.
+    if [[ -z "$_ZBUILD_EVENTS_PINNED" ]]; then
+        # Operator did NOT pin events → follow the resolved state dir. This
+        # covers fresh per-run (state_dir=runs/<id>) AND resume (state_dir
+        # re-derived from ZBUILD_STATE_FILE's dirname), so a resumed run's
+        # events stay in its per-run dir instead of leaking to the flat default.
+        export ZBUILD_EVENTS_DIR="$state_dir"
+        export ZBUILD_EVENTS_JSONL="$state_dir/events.jsonl"
+        export ZBUILD_EVENTS_DB="$state_dir/events.db"
+    else
+        # Operator pinned an events location → respect + export as-is.
+        export ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
+    fi
+    # #887: latest-run pointer so `zbuild resume --latest` / `--attach` resolve
+    # the most recent per-run dir without a scan. Only for the per-run default
+    # (never pollute an explicit/test state dir). Atomic swap via ln -sfn.
+    if [[ "$state_dir" == "$HOME/.zbuild/state/runs/"* ]]; then
+        ln -sfn "$state_dir" "$HOME/.zbuild/state/latest" 2>/dev/null || true
+    fi
 
     # Mark pipeline as in_progress
     _set_pipeline_status "$state_file" "in_progress"

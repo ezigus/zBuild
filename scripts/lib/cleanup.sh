@@ -108,7 +108,8 @@ _cleanup_scan_state_files() {
     local now; now="$(date +%s)"
     local cutoff=$(( now - age_days * 86400 ))
     local f
-    for f in "$state_dir"/pipeline-state*.json; do
+    # #887: per-run state lives under runs/<id>/; scan those AND the legacy flat path.
+    for f in "$state_dir"/runs/*/pipeline-state*.json "$state_dir"/pipeline-state*.json; do
         [[ -f "$f" ]] || continue
         # Skip .bak / .lock siblings (we never glob them anyway since pattern
         # ends in .json, but stay defensive).
@@ -234,7 +235,8 @@ _cleanup_is_active_run() {
     local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
     [[ -d "$state_dir" ]] || return 1
     local f
-    for f in "$state_dir"/pipeline-state*.json; do
+    # #887: include per-run dirs (runs/<id>/) alongside the legacy flat path.
+    for f in "$state_dir"/runs/*/pipeline-state*.json "$state_dir"/pipeline-state*.json; do
         [[ -f "$f" ]] || continue
         case "$f" in *.bak|*.lock) continue ;; esac
         local file_rid status
