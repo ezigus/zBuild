@@ -183,6 +183,16 @@ Rules:
   you returned incomplete. Make it actionable: name the missing files,
   cite the symbol or reference that linked them.
 
+BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
+- You have a LIMITED number of tool calls. Do NOT exhaust them grepping
+  exhaustively — a partial-but-emitted verdict beats running out of turns
+  and returning nothing.
+- Triage: target the HIGHEST-RISK gaps first (renamed/removed symbols, shape
+  counts, order assertions, goldens). A handful of focused greps, not a sweep.
+- STOP exploring and EMIT your JSON verdict well before your budget runs out.
+  If unsure but out of budget, return verdict="incomplete" with the gaps you
+  DID find — never keep searching past the point of being able to answer.
+
 IMPACT_PROMPT
 )"
     _impact_instructions="$_output_contract_block
@@ -277,7 +287,22 @@ $_impact_instructions"
             emit_event "impact.verdict.error" "plugin=impact" "artifact=impact.json" "reason=$_rc_reason"
             return 0
         fi
-        return 1
+        # #892: best-effort verdict on a non-infra router failure (rc=1 — the
+        # max_turns case). Was a fail-CLOSED return 1 with NO impact.json, which
+        # gave the cycle a MISSING artifact (cycle.feedback.missing) and an empty
+        # iteration. Instead write verdict=incomplete (so the cycle RE-ITERATES,
+        # another shot) with a best-effort note telling design its scope was not
+        # adversarially verified. The per-turn tool calls are NOT recoverable
+        # from the CLI's non-streaming output, so the note is a generic signal.
+        local _be_md
+        _be_md="$(printf 'Impact analysis did not complete (router rc=%s, reason=%s). The design scope block was NOT adversarially verified this iteration; treat it as unconfirmed. Re-run impact with a tighter, verdict-first pass.' \
+            "$router_rc" "$_rc_reason")"
+        jq -nc --arg md "$_be_md" \
+            '{schema_version:1, verdict:"incomplete", reason:"router_failed", missing:[], impact_feedback_md:$md}' \
+            > "$output_impact_json" 2>/dev/null \
+            || printf '{"schema_version":1,"verdict":"incomplete","reason":"router_failed","missing":[],"impact_feedback_md":"impact did not complete (router rc=%s)"}\n' "$router_rc" > "$output_impact_json"
+        emit_event "impact.verdict.incomplete" "plugin=impact" "artifact=impact.json" "reason=router_failed_best_effort"
+        return 0
     fi
 
     # #767: Extract JSON AND surrounding prose using the sibling helper so
