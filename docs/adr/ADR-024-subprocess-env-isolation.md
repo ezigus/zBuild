@@ -372,7 +372,7 @@ Wave 13 dogfood `20260603193616-48336` exposed all three failures simultaneously
 - #674 (this amendment).
 - #675 (Wave 14-B) — `tests/lib/test-harness.sh` implementation + migration of the three discovered sites.
 
-## Amendment (2026-06-15, #897) — deterministic tests isolate TMPDIR
+## Amendment 2026-06-15 (#897) — deterministic tests isolate TMPDIR
 
 Env-var scrubbing (Layer 1) addresses the process environment, but a test that
 asserts over a **shared filesystem namespace** — e.g. globbing
@@ -386,8 +386,8 @@ MUST pin `TMPDIR` to a per-test directory under `TEST_TEMP_DIR`
 (`export TMPDIR="$TEST_TEMP_DIR/iso-tmp"`) so its globs and cleanups are scoped
 to its own run and cannot see or delete a sibling run's temp. Prior art:
 `tests/integration/route-loop-tmpdir-cleanup-test.sh`,
-`test-plugin-tmpdir-cleanup-test.sh`; `core-pipeline-strategy-test.sh` brought
-into compliance in #897.
+`tests/integration/test-plugin-tmpdir-cleanup-test.sh`;
+`tests/integration/core-pipeline-strategy-test.sh` brought into compliance in #897.
 
 NOTE: this is a test-isolation contract. The real engine's orchestrator scratch
 (`ZBUILD_ORCH_SCRATCH`) and pool dirs are not yet run-namespaced — that is
