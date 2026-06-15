@@ -37,7 +37,7 @@ Rules:
 - Each `SPEC:` line is a self-contained, falsifiable behavioral claim. It must be possible to determine whether the claim is satisfied without reading prose.
 - The `TESTFILES:` sentinel is required and must appear after all `SPEC:` lines. Each subsequent non-blank line names one test file (repo-relative path) that verifies the claims above it.
 - Test files named in `TESTFILES:` must be written (or amended) by `build` before the block is considered satisfied. They may not exist yet at design time — this is intentional: the block is a test-first directive.
-- A `design.md` with no `\`\`\`acceptance` block is tolerated for backwards compatibility; `test_assessment` falls back to prose-based judgment as today.
+- A `design.md` with no `\`\`\`acceptance` block is a **hard design failure** once the design stage emits the block (see Amendment 2026-06-15). `design` fails closed (`reason=missing_acceptance_block`, rc=1) rather than producing a design artifact that downstream stages cannot grade. (Superseded the original backwards-compatibility tolerance.)
 - The block is not a scope declaration. File paths in `TESTFILES:` do not grant write-scope; that remains the responsibility of the `\`\`\`scope` block and ADR-030 scope governance.
 
 ### test_assessment consumption
@@ -77,3 +77,11 @@ Delivered in two artifacts under #864:
 - **`tests/unit/acceptance-block-test.sh`** — five test cases covering absent block, well-formed single-entry, multi-entry, malformed (no closing fence / missing TESTFILES), and co-presence with a `\`\`\`scope` block. Sources `scripts/lib/test-helpers.sh`.
 
 Stage wiring (`test_assessment` consumption) is deferred to a follow-up issue per Anti-pattern #1 (no stage manifest changes in this piece).
+
+## Amendment 2026-06-15 (#865)
+
+843-B (#865) makes `design` **emit** the `\`\`\`acceptance` block (it parses `TESTFILES:` and writes red-first failing stubs for any named test file that does not yet exist, emitting `design.acceptance_tests.written`). With the design stage now responsible for producing the block, the original backwards-compatibility tolerance in the Decision's rules is **superseded**:
+
+- A missing `\`\`\`acceptance` block in `design.md` is no longer "tolerated." `_design_stage_run_inner` (`plugins/agent/design/plugin.sh`) calls `extract_acceptance_block` on its output and, when no block is present, **fails closed**: it warns, emits `plugin.run.error` with `reason=missing_acceptance_block`, and returns `rc=1`. The design artifact is never handed downstream without a machine-readable acceptance bar.
+- This is a HARD post-condition, not a SOFT warning. The reasoning: a `design.md` that omits the acceptance block leaves `test_assessment`, `impact`, and `review` back in the "infer the bar from prose" state this ADR exists to eliminate. Tolerating it would let the very failure mode the contract prevents re-enter silently. Failing closed surfaces the gap at the design stage, where it is cheap to fix, rather than after a build loop.
+- The don't-weaken charter (above) applies to the block's presence as well as its `SPEC:` lines: a design revision may not drop the acceptance block to escape the post-condition.
