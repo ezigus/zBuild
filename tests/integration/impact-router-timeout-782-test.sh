@@ -82,7 +82,10 @@ case "$events" in
         assert_fail "I4: impact.verdict.error event NOT emitted" ;;
 esac
 
-# ─── I5: rc=1 (non-timeout) preserves existing fail-closed contract ─────────
+# ─── I5 (#892): rc=1 (max_turns/non-timeout) → best-effort verdict=incomplete ─
+# Was fail-closed (rc=1, no impact.json). Now impact NEVER returns empty on a
+# router failure: it writes verdict=incomplete + a best-effort feedback note so
+# the cycle re-iterates (another shot) instead of getting a missing artifact.
 route_to_model() { return 1; }
 : > "$ZBUILD_EVENTS_JSONL"
 rm -f "$IMPACT_OUT"
@@ -90,7 +93,19 @@ rm -f "$IMPACT_OUT"
 rc=0
 _impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS" || rc=$?
 
-assert_eq "I5: plugin returns rc=1 on rc=1 (fail class)" "1" "$rc"
+assert_eq "I5: plugin returns rc=0 (best-effort, not fail-closed)" "0" "$rc"
+assert_file_exists "I5: impact.json written (never empty)" "$IMPACT_OUT"
+assert_eq "I5: verdict=incomplete" "incomplete" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null)"
+_i5_fb="$(jq -r '.impact_feedback_md // ""' "$IMPACT_OUT" 2>/dev/null)"
+if [[ -n "${_i5_fb//[[:space:]]/}" ]]; then
+    assert_pass "I5: impact_feedback_md is a non-empty best-effort note"
+else
+    assert_fail "I5: impact_feedback_md should carry a best-effort note"
+fi
+case "$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" in
+    *'"type":"impact.verdict.incomplete"'*) assert_pass "I5: impact.verdict.incomplete emitted" ;;
+    *) assert_fail "I5: impact.verdict.incomplete event NOT emitted" ;;
+esac
 
 cleanup_test_env
 print_test_results
