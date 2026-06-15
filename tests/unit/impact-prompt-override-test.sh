@@ -99,6 +99,9 @@ DELIMITER="## Project-specific guidance (operator override)"
 assert_contains "I1 override delimiter present" "$prompt_with_body" "$DELIMITER"
 assert_contains "I1 override marker present" "$prompt_with_body" "IMPACT_OV_MARKER"
 
+# ─── I1c (PREV-2 #882): charter instructs finding ordering/position assertions ─
+assert_contains "I1c charter hunts ordering assertions" "$prompt_with_body" "ORDERING/POSITION/SEQUENCE"
+
 # ─── I2: ordering — delimiter appears AFTER core-contract anchor ─────────────
 contract_line="$(grep -nF -- "$IMPACT_CONTRACT_ANCHOR" "$prompt_with" 2>/dev/null | head -1 | cut -d: -f1)"
 delim_line="$(grep -nF -- "$DELIMITER" "$prompt_with" 2>/dev/null | head -1 | cut -d: -f1)"
