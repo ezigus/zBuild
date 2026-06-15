@@ -27,6 +27,16 @@ export ORCH_SPY_LOG
 export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
+# #897: isolate TMPDIR to a per-test directory. _purge_stale_pools and the
+# pool-leak assertion below glob ${TMPDIR}/zbuild-pool-* — a machine-wide
+# namespace. Under concurrent runs (parallel dogfooding) a sibling run's
+# in-flight pool dir is miscounted as a leak (or this test purges the sibling's
+# dir). Pinning TMPDIR scopes the glob to this test's private temp. Mirrors
+# route-loop-tmpdir-cleanup-test.sh and test-plugin-tmpdir-cleanup-test.sh.
+ISOLATED_TMP="$TEST_TEMP_DIR/iso-tmp"
+mkdir -p "$ISOLATED_TMP"
+export TMPDIR="$ISOLATED_TMP"
+
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 # Spy orch-bash-parallel plugin that records all orch contract calls.
