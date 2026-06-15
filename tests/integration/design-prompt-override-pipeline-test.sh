@@ -23,7 +23,7 @@ source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 route_to_model_loop() {
     [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]] && {
         mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
-        printf '# Design\n\n## Decision\nd\n\n```scope\nfoo.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
+        printf '# Design\n\n## Decision\nd\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC: placeholder test\nTESTFILES:\ntests/unit/placeholder-test.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
     }
     _ROUTE_LOOP_FINAL_OUTPUT="ok"; _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
