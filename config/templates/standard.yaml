@@ -89,7 +89,11 @@ impact:
     tail_lines: 200
   router:
     timeout_s: 180
-    max_turns: 25
+    # #891: impact is the most tool-heavy stage (Reads every design-scope file
+    # + repo-wide greps for symbols/enumerations/order assertions). The generic
+    # 25 default starved it (max_turns reached on a trivial issue in run
+    # 20260615092055-4885). 45 gives headroom for the larger wave issues.
+    max_turns: 45
 
 # ─── design (leaf, cycle member of design_impact_cycle) ─────────────────
 # Exhaustive scope enumerator (ADR-841). Reads plan.json and actively
