@@ -477,6 +477,138 @@ assert_exit_code "test_finalize exits 0" "0" "$rc5"
 finalize_count="$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 assert_gt "plugin.finalize.complete event emitted" "$finalize_count" "0"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tests T13-T17: ADR-034 / #846 — targeted test re-run helpers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── T13: _test_extract_failing_files — correct paths from FAIL lines ─────────
+print_test_section "T13. _test_extract_failing_files extracts FAIL paths"
+
+FAIL_OUTPUT_T13="$(cat <<'EOF'
+unit: FAIL /repo/tests/unit/foo-test.sh
++ some extra context line
+unit: 108/126 passed
+integration: FAIL /repo/tests/integration/bar-test.sh
+integration: 75/77 passed
+e2e: 7/7 passed
+golden: 1/1 passed
+EOF
+)"
+
+_extracted_t13="$(_test_extract_failing_files "$FAIL_OUTPUT_T13")"
+assert_contains "T13: foo-test.sh present" "$_extracted_t13" "foo-test.sh"
+assert_contains "T13: bar-test.sh present" "$_extracted_t13" "bar-test.sh"
+_t13_count="$(printf '%s\n' "$_extracted_t13" | grep -c '.' || true)"
+assert_eq "T13: exactly 2 paths extracted" "2" "$_t13_count"
+
+# ─── T13b: _test_extract_failing_files — empty when no failures ───────────────
+print_test_section "T13b. _test_extract_failing_files returns empty on all-pass"
+
+PASS_OUTPUT_T13B="$(cat <<'EOF'
+unit: 10/10 passed
+integration: 5/5 passed
+e2e: 2/2 passed
+EOF
+)"
+
+_extracted_t13b="$(_test_extract_failing_files "$PASS_OUTPUT_T13B")"
+assert_eq "T13b: empty output when no FAIL lines" "" "$_extracted_t13b"
+
+# ─── T14: _test_compute_target_files — unions red-set + affected ──────────────
+print_test_section "T14. _test_compute_target_files unions red-set and grep-affected"
+
+REPO_T14="$TEST_TEMP_DIR/repo-t14"
+mkdir -p "$REPO_T14/tests/unit" "$REPO_T14/tests/integration"
+printf '#!/bin/bash\n# references: source_module.sh\necho hello\n' \
+    > "$REPO_T14/tests/unit/references-source-test.sh"
+printf '#!/bin/bash\necho world\n' \
+    > "$REPO_T14/tests/integration/unrelated-test.sh"
+
+RED_SET_T14="$TEST_TEMP_DIR/red-set-t14.json"
+printf '["tests/unit/prev-fail-test.sh"]\n' > "$RED_SET_T14"
+
+_target_t14="$(ZBUILD_TEST_RED_SET="$RED_SET_T14" \
+               ZBUILD_TEST_CHANGED_FILES="core/source_module.sh" \
+               _test_compute_target_files "$REPO_T14")"
+assert_contains "T14: red-set path included" "$_target_t14" "prev-fail-test.sh"
+assert_contains "T14: grep-matched path included" "$_target_t14" "references-source-test.sh"
+# Deduplication: grep match + red-set overlap would still appear once
+_t14_unrelated="$(printf '%s\n' "$_target_t14" | grep -c "unrelated" || true)"
+assert_eq "T14: unrelated test not included" "0" "$_t14_unrelated"
+
+# ─── T15: _test_build_targeted_cmd — bash invocation for .sh files ────────────
+print_test_section "T15. _test_build_targeted_cmd builds bash command for .sh files"
+
+_files_t15="$(printf '%s\n' "tests/unit/foo-test.sh" "tests/unit/bar-test.sh")"
+_cmd_t15="$(_test_build_targeted_cmd "npm test" "$_files_t15")"
+assert_contains "T15: cmd contains bash invocation" "$_cmd_t15" "bash '"
+assert_contains "T15: cmd references foo-test.sh" "$_cmd_t15" "foo-test.sh"
+assert_contains "T15: cmd references bar-test.sh" "$_cmd_t15" "bar-test.sh"
+
+# Empty file list → fallback to base_cmd
+_cmd_t15_empty="$(_test_build_targeted_cmd "npm test" "")"
+assert_eq "T15: empty list returns base_cmd" "npm test" "$_cmd_t15_empty"
+
+# ─── T16: _test_run_inner with ZBUILD_TEST_RED_SET → run_mode=targeted ────────
+print_test_section "T16. _test_run_inner with ZBUILD_TEST_RED_SET writes run_mode=targeted"
+
+OUT_JSON_T16="$ARTIFACT_DIR/test-results-t16.json"
+REPO_T16="$TEST_TEMP_DIR/repo-t16"
+mkdir -p "$REPO_T16"
+git -C "$REPO_T16" init -q
+git -C "$REPO_T16" -c user.name="zbuild-test" -c user.email="test@zbuild" \
+    commit --allow-empty -m "init" -q
+
+# Create a test file in the repo so the targeted runner can reference it
+mkdir -p "$REPO_T16/tests/unit"
+cat > "$REPO_T16/tests/unit/targeted-test.sh" <<'TARGETED_EOF'
+#!/usr/bin/env bash
+printf 'unit: 1/1 passed\n'
+exit 0
+TARGETED_EOF
+chmod +x "$REPO_T16/tests/unit/targeted-test.sh"
+git -C "$REPO_T16" add .
+git -C "$REPO_T16" -c user.name="zbuild-test" -c user.email="test@zbuild" \
+    commit -m "add test" -q
+
+RED_SET_T16="$TEST_TEMP_DIR/red-set-t16.json"
+printf '["tests/unit/targeted-test.sh"]\n' > "$RED_SET_T16"
+
+PATCH_T16="$ARTIFACT_DIR/diff-t16.patch"
+printf '' > "$PATCH_T16"
+
+set +e
+ZBUILD_TEST_RED_SET="$RED_SET_T16" \
+    _test_run_inner "$PATCH_T16" "$REPO_T16" "$OUT_JSON_T16" "npm test"
+rc_t16=$?
+set -e
+
+assert_exit_code "T16: plugin exits 0" "0" "$rc_t16"
+assert_file_exists "T16: test-results.json written" "$OUT_JSON_T16"
+_run_mode_t16="$(_json_key "$OUT_JSON_T16" '.run_mode')"
+assert_eq "T16: run_mode=targeted written to JSON" "targeted" "$_run_mode_t16"
+
+# ─── T17: _test_run_inner with ZBUILD_TEST_FULL_SUITE_GATE=1 → run_mode=full ──
+print_test_section "T17. ZBUILD_TEST_FULL_SUITE_GATE=1 forces full suite, run_mode=full"
+
+OUT_JSON_T17="$ARTIFACT_DIR/test-results-t17.json"
+
+set +e
+ZBUILD_TEST_RED_SET="$RED_SET_T16" \
+    ZBUILD_TEST_FULL_SUITE_GATE=1 \
+    _test_run_inner "$PATCH_T16" "$REPO_T16" "$OUT_JSON_T17" \
+        $'printf \'unit: 1/1 passed\n\''
+rc_t17=$?
+set -e
+
+assert_exit_code "T17: plugin exits 0" "0" "$rc_t17"
+assert_file_exists "T17: test-results.json written" "$OUT_JSON_T17"
+_run_mode_t17="$(_json_key "$OUT_JSON_T17" '.run_mode')"
+assert_eq "T17: run_mode=full (gate forces full suite)" "full" "$_run_mode_t17"
+
+# Unset to avoid bleeding into other tests in this session
+unset ZBUILD_TEST_RED_SET ZBUILD_TEST_FULL_SUITE_GATE ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 
