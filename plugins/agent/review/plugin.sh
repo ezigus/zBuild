@@ -417,8 +417,18 @@ $_review_instructions"
     # signal (they appear in commits) — the diff CONTENT is what scope
     # redaction protects. So we redact the rest of the prompt, then
     # PREPEND the diff-stat block to the redacted payload before sending.
-    local diff_stat_block
-    diff_stat_block="$(_zbuild_diff_stat "$diff_patch_path")"
+    # #896: stat the SAME diff the LLM judges (the merge-base diff in
+    # diff_content), not the per-run diff.patch — which is empty on a resumed/
+    # green run and would mislabel the change as "0 files" while the prompt body
+    # shows the full diff. In the fallback case diff_content IS diff.patch, so
+    # the stat is unchanged there.
+    local diff_stat_block _diff_stat_src
+    _diff_stat_src="$(mktemp "${TMPDIR:-/tmp}/zb-review-diffstat-XXXXXX")"
+    # Trailing newline matters: diff_content arrives via $(...) which strips it,
+    # and `git apply --numstat` miscounts a patch whose final line lacks one.
+    printf '%s\n' "$diff_content" > "$_diff_stat_src"
+    diff_stat_block="$(_zbuild_diff_stat "$_diff_stat_src")"
+    rm -f "$_diff_stat_src"
 
     # Wave 19-G (#739): read intake.md (the original issue body) so review
     # can verify the diff against the issue's Definition of done — not just

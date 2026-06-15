@@ -45,7 +45,7 @@ ARTIFACTS_DIR="$ZBUILD_STATE_DIR/artifacts"
 mkdir -p "$ARTIFACTS_DIR" "$ZBUILD_EVENTS_DIR"
 : > "$ZBUILD_EVENTS_JSONL"
 printf '{"schema_version":1,"status":"in_progress"}' > "$ZBUILD_STATE_FILE"
-printf '%s\n' "$_BASELINE_SHA" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+printf '%s' "$_BASELINE_SHA" > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"  # raw SHA, no trailing newline (matches real intake)
 cat > "$ZBUILD_STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/
 + plugins/
