@@ -92,7 +92,8 @@ _find_state_file() {
     local state_dir="$1" run_id="$2"
     if [[ -n "$run_id" ]]; then
         local f
-        for f in "$state_dir"/pipeline-state*.json; do
+        # #887: scan per-run dirs (runs/<id>/) AND the legacy flat path (back-compat).
+        for f in "$state_dir"/runs/*/pipeline-state*.json "$state_dir"/pipeline-state*.json; do
             [[ -f "$f" ]] || continue
             if jq -e --arg id "$run_id" '.run_id == $id' "$f" >/dev/null 2>&1; then
                 echo "$f"; return 0
@@ -100,6 +101,10 @@ _find_state_file() {
         done
         error "No state file found for run-id: $run_id"
         exit 1
+    fi
+    # #887: no run_id → prefer the latest-run pointer; fall back to flat legacy.
+    if [[ -L "$state_dir/latest" && -f "$state_dir/latest/pipeline-state.json" ]]; then
+        echo "$state_dir/latest/pipeline-state.json"; return 0
     fi
     echo "$state_dir/pipeline-state.json"
 }
@@ -134,7 +139,13 @@ fi
 
 if [[ "${1:-}" == "--resume-latest" ]]; then
     _state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
-    _state_file="$_state_dir/pipeline-state.json"
+    # #887: most-recent run lives under runs/<id>/ via the `latest` pointer;
+    # fall back to the legacy flat state file.
+    if [[ -L "$_state_dir/latest" && -f "$_state_dir/latest/pipeline-state.json" ]]; then
+        _state_file="$_state_dir/latest/pipeline-state.json"
+    else
+        _state_file="$_state_dir/pipeline-state.json"
+    fi
     if [[ ! -f "$_state_file" ]]; then
         error "--resume-latest: no state file found at $_state_file; nothing to resume"
         exit 1
@@ -152,7 +163,22 @@ if [[ "${1:-}" == "--attach" ]]; then
     [[ -z "${2:-}" ]] && { error "--attach requires a run_id"; usage; exit 2; }
     _attach_run_id="$2"
     _state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
-    _events_file="${ZBUILD_EVENTS_JSONL:-$_state_dir/events.jsonl}"
+    # #887: per-run runs write events to runs/<run_id>/events.jsonl. Find the
+    # run's own state file by run_id (per-run dirs + legacy flat) WITHOUT the
+    # exit-on-miss of _find_state_file, then take its sibling events.jsonl. An
+    # operator-pinned ZBUILD_EVENTS_JSONL still wins; otherwise fall back to flat.
+    if [[ -n "${ZBUILD_EVENTS_JSONL:-}" ]]; then
+        _events_file="$ZBUILD_EVENTS_JSONL"
+    else
+        _events_file="$_state_dir/events.jsonl"
+        _attach_f=""
+        for _attach_f in "$_state_dir"/runs/*/pipeline-state*.json "$_state_dir"/pipeline-state*.json; do
+            [[ -f "$_attach_f" ]] || continue
+            if jq -e --arg id "$_attach_run_id" '.run_id == $id' "$_attach_f" >/dev/null 2>&1; then
+                _events_file="$(dirname "$_attach_f")/events.jsonl"; break
+            fi
+        done
+    fi
     if [[ ! -f "$_events_file" ]]; then
         error "--attach: event log not found at $_events_file"
         exit 1

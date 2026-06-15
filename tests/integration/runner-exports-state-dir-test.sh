@@ -102,13 +102,15 @@ env -u ZBUILD_STATE_DIR \
     ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_RUN_ID="run-618" \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
     bash "$RUNNER" --issue 618 >/dev/null 2>&1
 rc=$?
 set -e
-# When ZBUILD_STATE_DIR is unset, runner.sh:561 defaults to $HOME/.zbuild/state.
-EXPECTED_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state"
+# #887: with ZBUILD_STATE_DIR unset, a fresh run roots state under
+# $HOME/.zbuild/state/runs/<run_id>/ (per-run isolation). run_id is pinned above.
+EXPECTED_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state/runs/run-618"
 
 assert_eq "runner exits 0" "0" "$rc"
 assert_file_exists "build stub captured its env" "$ENV_CAPTURE"
