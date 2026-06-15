@@ -207,10 +207,26 @@ _review_run_inner() {
         plan_content="{}"
     fi
 
-    if [[ -f "$diff_patch_path" ]]; then
+    # #896: review must judge the CUMULATIVE branch-vs-default-branch diff, not
+    # the per-run diff.patch (git diff intake-baseline..HEAD), which is EMPTY on
+    # a resumed/green run where build no-ops, or when the implementation was
+    # committed before intake. Resolve the merge-base with the default branch
+    # (the same basis the operator banner uses) and diff against it. The raw diff
+    # is SAFE here: it is spliced into the prompt BEFORE the apply_scope_redaction
+    # chokepoint below, so out-of-scope file PATHS are still wrapped
+    # <out-of-scope-context> exactly as the diff.patch path was. Fallback chain
+    # (never crashes): merge-base diff → diff.patch artifact → sentinel.
+    local _mb_base _mb_diff=""
+    _mb_base="$(_review_resolve_merge_base)"
+    if [[ -n "$_mb_base" ]]; then
+        _mb_diff="$(git diff "$_mb_base" HEAD 2>/dev/null || true)"
+    fi
+    if [[ -n "$_mb_diff" ]]; then
+        diff_content="$_mb_diff"
+    elif [[ -f "$diff_patch_path" ]]; then
         diff_content="$(cat "$diff_patch_path")"
     else
-        warn "review_run: diff.patch not found at $diff_patch_path; using empty"
+        warn "review_run: no merge-base diff and diff.patch not found at $diff_patch_path; using empty"
         diff_content="(no diff available)"
     fi
 
@@ -683,6 +699,23 @@ $_review_instructions"
     return 0
 }
 
+# ─── _review_resolve_merge_base (#896) ──────────────────────────────────────
+# Resolve the merge-base of HEAD against the default branch — origin/main, then
+# main, then HEAD~1. Echoes the base SHA, or empty string if none resolves.
+# Fail-soft: never propagates git errors. Shared by the banner numstat and the
+# review LLM's diff source so operator and model judge the SAME basis (the full
+# branch-vs-default-branch change set, not the per-run intake-baseline diff).
+_review_resolve_merge_base() {
+    local _base="" _candidate
+    for _candidate in "origin/main" "main" "HEAD~1"; do
+        if git rev-parse --verify "$_candidate" >/dev/null 2>&1; then
+            _base="$(git merge-base "$_candidate" HEAD 2>/dev/null || true)"
+            [[ -n "$_base" ]] && break
+        fi
+    done
+    printf '%s' "$_base"
+}
+
 # ─── _review_set_banner_override ────────────────────────────────────────────
 # #506: Compute a numstat-style file-change summary for the operator-visible
 # stage_io banner and export it via ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE. The
@@ -718,14 +751,8 @@ _review_set_banner_override() {
         done < <(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$scope_manifest" 2>/dev/null || true)
     fi
 
-    # Resolve a merge-base ref. Best-effort; never propagate git errors.
-    local _base="" _candidate
-    for _candidate in "origin/main" "main" "HEAD~1"; do
-        if git rev-parse --verify "$_candidate" >/dev/null 2>&1; then
-            _base="$(git merge-base "$_candidate" HEAD 2>/dev/null || true)"
-            [[ -n "$_base" ]] && break
-        fi
-    done
+    # Resolve a merge-base ref (shared with the LLM diff source, #896).
+    local _base; _base="$(_review_resolve_merge_base)"
 
     local _raw=""
     if [[ -n "$_base" ]]; then

@@ -299,3 +299,36 @@ whose runner did not emit an integer count) passed straight through.
 
 - Dogfood `run_id 20260612173055-58001` test_assessment false-pass
 - Issue #847; implemented in `plugins/agent/test_assessment/plugin.sh` (commit `b1bd72d`)
+
+## Amendment v4 (2026-06-15, #895) — empty_diff is convergence-eligible when the suite is green
+
+The `pass` invariant (Pin 5) required `build.verdict == pass`, which downgraded a
+legitimate no-op convergence to `inconclusive`. When build emits `empty_diff`
+(done_sentinel + 0 files changed + no scope_violation = "the work is already
+implemented") and the suite is green, that is a real convergence, not a failure.
+Rejecting it made `build_test_cycle` never satisfy
+`until: test_assessment.verdict == pass`, livelocking to `max_iterations`
+(dogfood `run_id 20260615100734-32729`, re-dogfood of #846).
+
+**Amended invariant.** `verdict == pass` requires `test.verdict == "pass"` AND
+`test.failed == 0` AND `agrees_with_build_complete == true` AND
+`build.verdict ∈ { pass, empty_diff }`. All other build verdicts
+(`scope_violation`, `corrupt_diff`, `error`, `block`, `unknown`) stay rejected.
+
+**Durability guard.** An `empty_diff` that left a DIRTY worktree is NOT durable
+(build claimed no changes yet files are uncommitted) → downgrade to
+`inconclusive` with `reason=worktree_not_durable`, consistent with the #847 guard.
+
+**Scope boundary.** This relaxation lives ONLY in the test_assessment
+cycle-convergence gate. The build-stage indicator still classifies `empty_diff`
+as `fail` via `core/pipeline/verdict.sh` (a separate consumer, pinned by
+`build-empty-diff-done-sentinel-test.sh`) — unchanged.
+
+### Verification
+
+- `tests/unit/test-assessment-plugin-test.sh` T13 (empty_diff+green → pass, no
+  downgrade event), T14 (empty_diff+dirty → inconclusive), T15 (empty_diff+test
+  fail → inconclusive), T16 (scope_violation+green → inconclusive).
+- `tests/integration/build-test-cycle-noop-converges-test.sh` — real orchestrator
+  + real test_assessment: a no-op build on a green suite converges in 1 iter
+  (pre-fix: max_iterations).
