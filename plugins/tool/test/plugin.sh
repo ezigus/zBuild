@@ -371,9 +371,8 @@ _test_run_inner() {
     # Stores the repo-relative paths of files that failed so the next iter can
     # target them without re-running the full suite. Paths are made relative to
     # $tmp (the rsync'd repo copy) by stripping the leading "$tmp/" prefix.
-    # Written as a JSON array; empty array when no failures (avoids absent-file
-    # ambiguity: an absent red-set means "no prior run", whereas [] means "clean
-    # run with no new failures to re-target").
+    # Written as a JSON array ONLY when failures exist; absent when no failures
+    # ("missing == empty": absent red-set means clean run or no prior run).
     local _red_set_path
     _red_set_path="$(dirname "$output_json")/test-red-set.json"
     {
@@ -389,8 +388,6 @@ _test_run_inner() {
             printf '%s\n' "$_rel_paths" \
                 | jq -Rn '[inputs | select(. != "")]' 2>/dev/null \
                 | atomic_write "$_red_set_path" 2>/dev/null || true
-        else
-            printf '[]\n' | atomic_write "$_red_set_path" 2>/dev/null || true
         fi
     }
 
