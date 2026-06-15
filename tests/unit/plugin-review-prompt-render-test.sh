@@ -66,6 +66,12 @@ EOF
 scope_manifest="$TEST_TEMP_DIR/state/scope-manifest.md"
 touch "$scope_manifest"
 
+# #896: review now derives the LLM diff from the cwd repo's merge-base. This test
+# verifies rendering of the FIXTURE diff.patch, so run it from a non-git dir where
+# merge-base does not resolve → review falls back to the fixture diff.patch. (In an
+# ambient git checkout, merge-base would otherwise yield the real repo diff.)
+cd "$TEST_TEMP_DIR"
+
 set +e
 _review_run_inner \
     "$scope_manifest" \

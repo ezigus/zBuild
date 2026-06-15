@@ -38,6 +38,23 @@ source "$_TEST_ASSESSMENT_ROOT/core/router/route.sh"
 # ADR-028: shared LLM-agent stage framework (PR 4/5 — test_assessment migration).
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/llm-agent.sh"
+
+# ─── _ta_build_verdict_convergeable (#895) ───────────────────────────────────
+# Build verdicts eligible for build_test_cycle convergence when the suite is
+# green. `pass` = normal success. `empty_diff` = build emitted done_sentinel
+# with 0 files changed (work already implemented) — a green suite on empty_diff
+# is a legitimate convergence, not a livelock. All other verdicts
+# (scope_violation, corrupt_diff, error, block, unknown) stay rejected: transient
+# or structural-failure states that are not durable convergence.
+# NOTE: this is the test_assessment cycle-convergence gate ONLY. The build-stage
+# indicator still classifies empty_diff as `fail` via core/pipeline/verdict.sh
+# (a different consumer) — that is correct and unchanged.
+_ta_build_verdict_convergeable() {
+    case "$1" in
+        pass|empty_diff) return 0 ;;
+        *)               return 1 ;;
+    esac
+}
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/artifact-render.sh"
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
@@ -403,7 +420,18 @@ $_ta_instructions"
         # zero-count but non-zero exit scenarios (e.g. verdict=fail, failed=0).
         [[ "$test_verdict" != "pass" ]] && ok=0
         [[ "$llm_agrees" != "true" ]] && ok=0
-        [[ "$build_verdict" != "pass" ]] && ok=0
+        # #895: accept the convergence-eligible build-verdict allowlist
+        # (pass | empty_diff), not pass-only. empty_diff = build found the work
+        # already done; a green suite on it is real convergence, not a livelock.
+        _ta_build_verdict_convergeable "$build_verdict" || ok=0
+        # #895: an empty_diff that left a DIRTY worktree is not durable — build
+        # claimed no changes yet files are uncommitted on disk. Reject so we do
+        # not converge over transient state (the #847 guard below only fires
+        # when test_verdict != pass).
+        if [[ "$build_verdict" == "empty_diff" && "$worktree_status" == "dirty" ]]; then
+            ok=0
+            worktree_not_durable=1
+        fi
         # (b) dirty worktree + non-pass test_verdict = not durable; files on
         # disk are transient scope-violation edits about to be reverted.
         if [[ "$worktree_status" == "dirty" && "$test_verdict" != "pass" ]]; then
@@ -434,7 +462,7 @@ $_ta_instructions"
     local downgrade_note=""
     if [[ $downgraded -eq 1 ]]; then
         if [[ $worktree_not_durable -eq 1 ]]; then
-            downgrade_note="verdict downgraded: worktree dirty + test_verdict=$test_verdict (non-pass, not durable; transient edits about to be reverted)"
+            downgrade_note="verdict downgraded: worktree dirty — uncommitted changes are transient (about to be reverted), not durable for convergence (test_verdict=$test_verdict build_verdict=$build_verdict)"
         else
             downgrade_note="verdict downgraded: build/test disagreement (test_failed=$test_failed test_verdict=$test_verdict agrees=$llm_agrees build_verdict=$build_verdict)"
         fi

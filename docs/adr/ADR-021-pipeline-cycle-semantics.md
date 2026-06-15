@@ -643,3 +643,19 @@ The cycle-id in state records, events.jsonl, and `_TPL_CYCLE_FEEDBACK_*` variabl
 - `plugins/agent/design/manifest.yaml`, `plugin.sh` — add cycle_feedback inputs + prompt splice
 - `plugins/agent/impact/manifest.yaml`, `plugin.sh` — primary input changes from plan.json to design.md
 - Test files pinning `plan_impact_cycle` — updated to `design_impact_cycle`
+
+## Amendment v5 (2026-06-15, #895) — no-op convergence (empty_diff + green)
+
+A cycle member may legitimately produce "no change needed" — e.g. the
+`build_test_cycle` build stage emits `build.verdict=empty_diff` (done_sentinel,
+0 files changed) when the work is already implemented. When all downstream
+signals are green (tests pass, the assessment LLM agrees), this is a
+**convergence outcome, not a failure**: the cycle's `until:` predicate MUST be
+allowed to fire. Treating a no-op build as "not done" makes the cycle re-iterate
+on an already-complete branch and livelock to `max_iterations`
+(dogfood `run_id 20260615100734-32729`, re-dogfood of #846).
+
+Convergence vs. stall is decided by the downstream signal, not by the presence
+of a diff: **no-change + green = converge; no-change + red = re-iterate.** The
+gate that enforces this for `build_test_cycle` is the test_assessment verdict
+invariant (ADR-022 Amendment v4).

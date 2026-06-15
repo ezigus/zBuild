@@ -101,6 +101,11 @@ route_to_model() {
     return 0
 }
 
+# #896: review derives the LLM diff (and the diff-stat header) from the cwd repo's
+# merge-base. This test asserts on the FIXTURE diff.patch, so run from a non-git dir
+# where merge-base does not resolve → review falls back to the fixture diff.patch.
+cd "$TEST_TEMP_DIR"
+
 set +e
 _review_run_inner \
     "$SCOPE_MANIFEST" \

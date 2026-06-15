@@ -664,3 +664,36 @@ enforced from first appearance, not warned-then-enforced.
 The dogfood `run_id 20260611072619-15296` showed test_assessment's validator reporting "schema validation failed" when the actual root cause was a JSON parse error (unescaped `"` inside a markdown string field). Conflating parse-level and structure-level failures obscures the root cause for operators AND for the LLM on next iter (since `failure_summary_md` becomes the next prompt's feedback).
 
 **Validator helpers MUST distinguish parse vs structure failures.** ADR-022 v2 codifies this for test_assessment; ADR-028 generalizes via the shared framework. Plugin manifests should declare which response fields carry markdown (`markdown-fields`) so the framework auto-generates the escape-required portion of the OUTPUT CONTRACT.
+
+---
+
+## Amendment (2026-06-15, #896) — review judges the cumulative branch diff (merge-base basis)
+
+`diff.patch` is the per-run cumulative diff `git diff <intake-baseline>..HEAD`
+(Wave 12 / #661) — correct as the build/test apply-check artifact and as the
+audit record of what THIS run changed. But the **review** stage must judge
+whether the BRANCH satisfies the issue, which is the full
+`git diff <merge-base(default-branch)>..HEAD` change set. When work was committed
+to the branch before intake (a re-dogfood) or build no-ops on a green resumed
+run, the intake-baseline diff is EMPTY, and review wrongly reported "nothing
+implemented → request_changes" while the operator banner (already merge-base
+based) showed the real change — driving a review/build livelock
+(dogfood `run_id 20260615100734-32729`).
+
+**Contract.** The review LLM's diff basis is the merge-base diff (`origin/main` →
+`main` → `HEAD~1`, fail-soft fallback to `diff.patch` then a sentinel) — the SAME
+basis as the operator banner, via the shared `_review_resolve_merge_base` helper.
+`diff.patch` is UNCHANGED: it remains the per-run, intake-baseline audit artifact
+consumed by the test stage's apply-check and `build-diff-cumulative-test.sh`.
+Redaction is unaffected — the merge-base diff flows through the same
+`apply_scope_redaction` chokepoint at review render time, so out-of-scope paths
+are wrapped identically.
+
+### Verification
+
+- `tests/unit/review-merge-base-diff-test.sh` MB1 (empty diff.patch + branch
+  commits → LLM judges the branch diff), MB2 (no resolvable base → diff.patch
+  fallback, no crash).
+- `tests/unit/plugins-review-banner-test.sh`, `plugin-review-prompt-render-test.sh`,
+  `review-prompt-override-test.sh`, `plugins/agent/review/tests/review-test.sh`
+  (redaction) — unregressed.

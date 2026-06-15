@@ -239,6 +239,86 @@ fi
 # Clean up dirty file so it doesn't affect other tests.
 rm -f "$GIT_FIXTURE/dirty-file.txt"
 
+# ─── Test 13: empty_diff build + green suite → CONVERGES (verdict=pass) ───────
+# Regression for #895 (build_test_cycle livelock). build emits verdict=empty_diff
+# (done_sentinel, 0 files changed = work already implemented). With tests green
+# and the LLM agreeing the build is complete, the cycle MUST converge:
+# test_assessment returns pass, NOT inconclusive. On the pre-fix code, line 406
+# rejected any build_verdict != pass, downgrading to inconclusive and livelocking
+# the cycle to max_iterations.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR13'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TR13
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS13'
+{"schema_version":1,"verdict":"empty_diff","iterations":1,"terminated_reason":"done_sentinel"}
+BS13
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"all green, nothing to change","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"unknown","failure_summary_md":"All good.","iter":1}'
+_dg_before="$(grep -c 'test_assessment.downgrade' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"; _dg_before="${_dg_before:-0}"
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T13 empty_diff+green run returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T13 empty_diff + green converges (verdict=pass, not inconclusive)" "pass" "$v"
+_dg_after="$(grep -c 'test_assessment.downgrade' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"; _dg_after="${_dg_after:-0}"
+if [[ "$_dg_after" -eq "$_dg_before" ]]; then
+    assert_pass "T13 no test_assessment.downgrade event on converge"
+else
+    assert_fail "T13 no test_assessment.downgrade event on converge" "downgrade emitted ($_dg_before -> $_dg_after)"
+fi
+
+# ─── Test 14: empty_diff + DIRTY worktree → inconclusive (not durable) ────────
+# #895 durability guard: an empty_diff build that left an uncommitted worktree
+# is suspect (build claimed no changes yet files are on disk). Must NOT converge
+# even with green tests — the on-disk state is transient.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+printf 'uncommitted\n' > "$GIT_FIXTURE/dirty-file.txt"
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T14 empty_diff+dirty run returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T14 empty_diff + dirty worktree → inconclusive" "inconclusive" "$v"
+rm -f "$GIT_FIXTURE/dirty-file.txt"
+
+# ─── Test 15: empty_diff + test_verdict=fail → inconclusive ──────────────────
+# Even on empty_diff, a non-pass test_verdict must block convergence (line 404).
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR15'
+{"schema_version":1,"verdict":"fail","exit_code":1,"passed":378,"failed":1,"test_output":"1 file failures","diff_applied":true,"test_cmd":"npm test"}
+TR15
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T15 empty_diff + test fail → inconclusive" "inconclusive" "$v"
+
+# ─── Test 16: scope_violation + green suite → inconclusive (allowlist guard) ──
+# The converge allowlist is exactly {pass, empty_diff}. scope_violation must
+# STILL downgrade even when tests pass (transient out-of-scope edits being
+# reverted) — the fix must not widen the allowlist beyond empty_diff.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR16'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TR16
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS16'
+{"schema_version":1,"verdict":"scope_violation","iterations":1,"terminated_reason":"scope_violation"}
+BS16
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T16 scope_violation + green stays inconclusive" "inconclusive" "$v"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
