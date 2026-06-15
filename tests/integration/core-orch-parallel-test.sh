@@ -170,7 +170,7 @@ set -e
 assert_exit_code "orch_collect returns 1 (all-fail) for non-zero worker exit" "1" "$collect_rc"
 
 # On failure, pool dir should remain (not cleaned up)
-pool_dir="${TMPDIR}/zbuild-pool-${pool}"
+pool_dir="$(_orch_par_pool_dir "$pool")"  # #898: per-run namespaced path
 if [[ -d "$pool_dir" ]]; then
     assert_pass "pool dir remains when orch_collect returns non-zero"
 else
@@ -191,7 +191,7 @@ orch_dispatch "$pool" "$unit" >/dev/null
 # Give dispatch time to write PID files
 sleep 0.2
 
-pool_dir="${TMPDIR}/zbuild-pool-${pool}"
+pool_dir="$(_orch_par_pool_dir "$pool")"  # #898: per-run namespaced path
 
 # Pool dir should exist now
 if [[ -d "$pool_dir" ]]; then
@@ -277,7 +277,7 @@ assert_exit_code "round 1: orch_collect returns 0" "0" "$rc_r1"
 assert_contains "round 1: output contains round-1" "$out_r1" "round-1"
 
 # After successful collect, pool dir should be removed (clean state)
-pool_dir="${TMPDIR}/zbuild-pool-${pool}"
+pool_dir="$(_orch_par_pool_dir "$pool")"  # #898: per-run namespaced path
 if [[ ! -d "$pool_dir" ]]; then
     assert_pass "pool dir removed after successful collect (between rounds)"
 else

@@ -37,6 +37,20 @@ _strategy_validate_platform() {
     return 0
 }
 
+# ─── _strategy_orch_scratch_dir ──────────────────────────────────────────────
+# #898: resolve the orch scratch dir. Default → per-run isolation under
+# ~/.zbuild/state/runs/<run_id>/orch (the orchestrator analog of #889 state
+# isolation) so concurrent runs never share scratch. An explicit
+# ZBUILD_ORCH_SCRATCH overrides. ZBUILD_RUN_ID is exported by the runner before
+# any stage dispatch (falls back to "default" only if somehow unset).
+_strategy_orch_scratch_dir() {
+    if [[ -n "${ZBUILD_ORCH_SCRATCH:-}" ]]; then
+        printf '%s' "$ZBUILD_ORCH_SCRATCH"
+    else
+        printf '%s' "${HOME}/.zbuild/state/runs/${ZBUILD_RUN_ID:-default}/orch"
+    fi
+}
+
 # ─── _strategy_make_work_unit <plugin_dir> <stage> <state_file> <platform> ───
 # Creates a self-contained executable shell script that calls plugin_hook_call.
 # Validates stage and platform before baking into the script body.
@@ -49,7 +63,7 @@ _strategy_make_work_unit() {
     _strategy_validate_platform "$platform" || return 2
     [[ -z "$plugin_dir" ]] && { warn "strategy: _strategy_make_work_unit: empty plugin_dir" || true; return 2; }
 
-    local scratch_dir="${ZBUILD_ORCH_SCRATCH:-${HOME}/.zbuild/state/orch}"
+    local scratch_dir; scratch_dir="$(_strategy_orch_scratch_dir)"
     mkdir -p "$scratch_dir" 2>/dev/null && chmod 700 "$scratch_dir" 2>/dev/null || {
         warn "strategy: cannot create orch scratch dir: ${scratch_dir}" || true
         return 1

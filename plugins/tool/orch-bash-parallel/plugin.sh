@@ -8,7 +8,7 @@
 # the backend-specific bits: pool-dir naming, pool_id validation, and the
 # orch_capabilities declaration.
 #
-# Pool layout: ${TMPDIR:-/tmp}/zbuild-pool-<pool_id>/{results,pids}/
+# Pool layout: ${ZBUILD_POOL_ROOT:-${TMPDIR}/zbuild-runs/<run_id>}/zbuild-pool-<pool_id>/{results,pids}/ (#898)
 #
 # Sourced library: inherits caller's pipefail; no set -euo pipefail.
 
@@ -26,7 +26,11 @@ source "$_ZBUILD_ORCH_PAR_ROOT/core/orch/local_engine.sh"
 
 # ─── _orch_par_pool_dir ──────────────────────────────────────────────────────
 _orch_par_pool_dir() {
-    printf '%s' "${TMPDIR:-/tmp}/zbuild-pool-${1}"
+    # #898: namespace pool dirs per run so concurrent runs never share the
+    # ${TMPDIR}/zbuild-pool-* namespace. ZBUILD_POOL_ROOT overrides (default:
+    # ${TMPDIR}/zbuild-runs/<run_id>). ZBUILD_RUN_ID is exported by the runner.
+    local _root="${ZBUILD_POOL_ROOT:-${TMPDIR:-/tmp}/zbuild-runs/${ZBUILD_RUN_ID:-default}}"
+    printf '%s' "${_root}/zbuild-pool-${1}"
 }
 
 # ─── _orch_par_validate_pool_id ──────────────────────────────────────────────

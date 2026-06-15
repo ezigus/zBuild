@@ -40,7 +40,9 @@ print_test_section "1. orch_spawn creates pool dir with results/ and pids/ subdi
 pool="$(_pool t1)"
 orch_spawn "$pool"
 
-pool_dir="${TMPDIR}/zbuild-pool-${pool}"
+# #898: ask the plugin where the pool dir lives (now per-run namespaced) rather
+# than hardcoding the flat ${TMPDIR}/zbuild-pool-* path.
+pool_dir="$(_orch_par_pool_dir "$pool")"
 
 if [[ -d "$pool_dir" ]]; then
     assert_pass "orch_spawn creates pool directory: $pool_dir"
