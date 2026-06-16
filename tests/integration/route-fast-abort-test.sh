@@ -22,6 +22,14 @@
 # After Wave 15-G: TERM goes to the whole process group, and the 1s
 # delayed SIGKILL closes the window even if the entire group ignored
 # TERM. Either way the loop exits within budget.
+#
+# #905: the SIGKILL escalation is now SYNCHRONOUS — _route_loop_on_signal
+# blocks (via a local, reaped watchdog) until the child tree is actually
+# reaped before returning, instead of detaching `{ sleep 1 && kill; } &`
+# and returning immediately. The old detached backstop raced the caller's
+# exit, intermittently leaving the stub alive past the assertion window
+# (the route-fast-abort CI flake). Assertion (2) below now requires the
+# stub dead within 500ms of loop-return, encoding that synchronous contract.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -180,15 +188,19 @@ else
         "actual=${elapsed_ms}ms — per-PID kill bounced off claude's TERM trap (Wave 15-G regression)"
 fi
 
-# (2) No stub-claude process from this driver is still running. We wait
-#     up to 2s for the 1s-delayed SIGKILL backstop to land before
-#     asserting — under normal abort the TERM grace + KILL fallback is
-#     ≤1.5s, but the test schedules them with `&` so they race the
-#     assertion. The wait is bounded; if the stub is still alive after
-#     2s the abort genuinely leaked.
+# (2) No stub-claude process from this driver is still running. #905 made the
+#     abort SYNCHRONOUS — _route_loop_on_signal does not return until the child
+#     tree has been SIGKILLed and reaped, so by the time the driver exited (the
+#     `wait "$DRV_PID"` above returned) the stub is already dead. We allow only
+#     a short 500ms reap window for the kernel to clear the reparented zombie's
+#     PID slot — NOT a multi-second wait for a detached backstop to fire. If the
+#     stub is still alive after 500ms the abort leaked (the pre-#905 bug: the
+#     `{ sleep 1 && kill -KILL; } &` backstop raced the caller's exit).
+#     Millisecond-precise deadline (not integer `date +%s`, whose second-
+#     granularity made the old window race between ~1s and ~2s under load).
 leftover=0
-deadline=$(( $(date +%s) + 2 ))
-while [[ $(date +%s) -lt $deadline ]]; do
+deadline_ns=$(( $(date +%s%N) + 500000000 ))
+while [[ $(date +%s%N) -lt $deadline_ns ]]; do
     leftover=0
     if [[ -f "$PID_FILE" ]]; then
         while IFS= read -r p; do
@@ -199,7 +211,7 @@ while [[ $(date +%s) -lt $deadline ]]; do
         done < "$PID_FILE"
     fi
     [[ $leftover -eq 0 ]] && break
-    sleep 0.1
+    sleep 0.05
 done
 # Best-effort cleanup of any still-alive stubs so the suite doesn't accrue
 # zombies, AFTER the assertion read its final count.

@@ -654,27 +654,58 @@ _route_loop_clear_traps() {
 }
 _route_loop_on_signal() {
     local sig="$1"
-    # Wave 15-G (#687): TERM the whole process group, schedule a SIGKILL
-    # 1s later in a detached subshell. The grace window covers claude's
-    # normal cleanup; the KILL covers trap-ignoring or wedged children.
-    # Falls back to the per-PID kill from Wave 8 (#612) when the PGID is
-    # unknown (e.g. setsid unavailable AND the bash job-control fallback
-    # in the spawn subshell did not capture a PGID). Negative arg to kill
-    # targets the process group: `kill -- -PGID`.
-    # Copilot review #696: disown only the specific backstop job, not all
-    # background jobs — `disown` with no args can detach unrelated jobs
-    # (including the in-flight claude this trap was triggered to abort).
-    local _backstop_pid=""
-    if [[ -n "${_ROUTE_LOOP_CHILD_PGID:-}" ]]; then
-        kill -TERM -- "-$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true
-        { sleep 1 && kill -KILL -- "-$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true; } &
-        _backstop_pid=$!
-    elif [[ -n "${_ROUTE_LOOP_CHILD_PID:-}" ]]; then
-        kill -TERM "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true
-        { sleep 1 && kill -KILL "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || true; } &
-        _backstop_pid=$!
+    # Wave 15-G (#687): TERM the whole process group, then SIGKILL after a 1s
+    # grace. The grace covers claude's normal cleanup; the KILL covers
+    # trap-ignoring or wedged children. Falls back to the per-PID kill from
+    # Wave 8 (#612) when the PGID is unknown (setsid unavailable AND the spawn
+    # subshell did not capture a distinct PGID). Negative arg targets the
+    # process group: `kill -- -PGID`.
+    #
+    # #905: the abort is SYNCHRONOUS — this handler does not return until the
+    # child tree has actually been signalled-to-death. The previous design
+    # detached the SIGKILL as `{ sleep 1 && kill -KILL; } &` and returned
+    # immediately; route_to_model_loop (and its caller/driver) could then
+    # unwind and exit while a TERM-ignoring claude was still alive, the backstop
+    # KILL landing up to a second later — or never, if that orphaned backstop
+    # was lost to the caller's own teardown. The result was orphaned claude
+    # processes surviving an abort (the route-fast-abort-test leak, flaky under
+    # load). Here the SIGKILL escalation runs in a *local* watchdog that we
+    # reap, and we sweep the whole group before returning, so by the time the
+    # loop returns 130 no process from this spawn is still running. Graceful
+    # children still abort fast — they exit on TERM and `wait` returns before
+    # the watchdog fires; only trap-ignoring children pay the full 1s grace.
+    local _pid="${_ROUTE_LOOP_CHILD_PID:-}"
+    local _pgid="${_ROUTE_LOOP_CHILD_PGID:-}"
+    if [[ -n "$_pid" || -n "$_pgid" ]]; then
+        local _wd=""
+        if [[ -n "$_pgid" ]]; then
+            kill -TERM -- "-$_pgid" 2>/dev/null || true
+            { sleep 1 && kill -KILL -- "-$_pgid" 2>/dev/null || true; } &
+            _wd=$!
+        else
+            kill -TERM "$_pid" 2>/dev/null || true
+            { sleep 1 && kill -KILL "$_pid" 2>/dev/null || true; } &
+            _wd=$!
+        fi
+        # Wait for the group leader: graceful children exit on TERM (fast);
+        # trap-ignoring children are SIGKILLed by the watchdog at the grace.
+        # Either way `wait` returns only once the leader has been reaped.
+        [[ -n "$_pid" ]] && { wait "$_pid" 2>/dev/null || true; }
+        # The leader exiting does NOT imply the group drained — claude may have
+        # spawned children, or a `gtimeout`/`setsid` wrapper may outlive or
+        # predecease it. Sweep the WHOLE group with a final synchronous SIGKILL
+        # so no member survives (and so a leader that exited gracefully before
+        # the watchdog fired doesn't leave siblings behind — the watchdog is
+        # torn down next, so this sweep is the only guaranteed group kill in
+        # that case). Then stand down + reap the watchdog so we never leave a
+        # detached `sleep`/kill orphan behind.
+        [[ -n "$_pgid" ]] && { kill -KILL -- "-$_pgid" 2>/dev/null || true; }
+        [[ -n "$_pid" ]] && { kill -KILL "$_pid" 2>/dev/null || true; }
+        if [[ -n "$_wd" ]]; then
+            kill -KILL "$_wd" 2>/dev/null || true
+            wait "$_wd" 2>/dev/null || true
+        fi
     fi
-    [[ -n "$_backstop_pid" ]] && { disown "$_backstop_pid" 2>/dev/null || true; }
     _ROUTE_LOOP_TERMINATED_REASON="signal"
     eb_emit_event "loop.terminated.signal" \
         "signal=$sig" \
