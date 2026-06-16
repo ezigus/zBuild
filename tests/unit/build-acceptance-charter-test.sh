@@ -237,6 +237,30 @@ else
     assert_fail "H1: _build_read_acceptance_testfiles helper must exist" "missing"
 fi
 
+# ─── H3 (Copilot review): unsafe TESTFILES paths are not surfaced ─────────────
+# TESTFILES come from an LLM-produced design.md; absolute and ".."-containing
+# paths must be filtered out (mirrors design's guard) so the build prompt never
+# advertises an out-of-tree target design would reject.
+if declare -F _build_read_acceptance_testfiles >/dev/null 2>&1; then
+    UNSAFE_DESIGN_MD="$ARTIFACT_DIR/design-unsafe.md"
+    {
+        printf '# Design\n\n```acceptance\nSPEC: s\nTESTFILES:\n'
+        printf '../escape-test.sh\n'
+        printf '/tmp/zbuild-abs-test.sh\n'
+        printf 'tests/unit/safe-charter-test.sh\n'
+        printf '```\n'
+    } > "$UNSAFE_DESIGN_MD"
+    unsafe_out="$(_build_read_acceptance_testfiles "$UNSAFE_DESIGN_MD" 2>/dev/null || true)"
+    case "$unsafe_out" in
+        *".."*|*"/tmp/"*)
+            assert_fail "H3: unsafe TESTFILES path leaked into output" "got: $unsafe_out" ;;
+        *"tests/unit/safe-charter-test.sh"*)
+            assert_pass "H3: absolute/.. TESTFILES paths filtered; safe path kept" ;;
+        *)
+            assert_fail "H3: safe TESTFILES path must survive filtering" "got: $unsafe_out" ;;
+    esac
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

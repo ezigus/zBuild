@@ -859,7 +859,19 @@ _build_read_acceptance_testfiles() {
             in_testfiles=1
             continue
         fi
-        [[ $in_testfiles -eq 1 && -n "$line" ]] && printf '%s\n' "$line"
+        if [[ $in_testfiles -eq 1 && -n "$line" ]]; then
+            line="${line%$'\r'}"   # tolerate a CRLF design.md
+            [[ -z "$line" ]] && continue
+            # ADR-031: TESTFILES are repo-relative and grant no write-scope.
+            # The list comes from an LLM-produced artifact; mirror design's guard
+            # (plugins/agent/design/plugin.sh) and never surface an absolute or
+            # ".."-containing path into the build prompt — design would reject it,
+            # so the prompt must not advertise it as a target.
+            if [[ "$line" == /* || "/$line/" == *"/../"* ]]; then
+                continue
+            fi
+            printf '%s\n' "$line"
+        fi
     done <<< "$block_output"
 }
 
