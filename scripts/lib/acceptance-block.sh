@@ -2,7 +2,13 @@
 # Acceptance-block extractor — parses the ```acceptance fenced block from a
 # design.md artifact and emits structured output for test_assessment consumption.
 # See ADR-031 for block format specification.
-set -euo pipefail
+#
+# This file is source-only (a pure function, never executed directly), so it
+# deliberately does NOT `set -euo pipefail` at top level: doing so mutates the
+# shell options of any caller that sources it (e.g. plugins/agent/design),
+# altering their control flow. This matches the no-side-effect-on-source
+# convention of the sibling core/ and scripts/lib/ libraries. The function
+# below is self-contained (guarded parameter expansions + explicit returns).
 
 [[ -n "${_ACCEPTANCE_BLOCK_LOADED:-}" ]] && return 0
 _ACCEPTANCE_BLOCK_LOADED=1

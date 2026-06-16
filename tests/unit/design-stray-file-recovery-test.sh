@@ -48,15 +48,15 @@ source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 route_to_model_loop() {
     local _prompt_file="$2"
     [[ -f "$_prompt_file" ]] && cp "$_prompt_file" "$_MOCK_ROUTE_PROMPT_CAPTURE"
-    # Default body: a minimal valid design.md with a scope block. printf-built
-    # to avoid heredoc backtick/quote portability quirks between bash 3.2
-    # (macOS) and bash 5.x (Linux CI). Backticks are written as %s args.
+    # Default body: a minimal valid design.md with scope + acceptance blocks.
+    # printf-built (backticks passed as %s args) to avoid heredoc backtick/quote
+    # quirks — not a portability shim; zBuild enforces a Bash 5+ floor.
     local _body
     if [[ -n "${MOCK_DESIGN_BODY:-}" ]]; then
         _body="$MOCK_DESIGN_BODY"
     else
         local _bt='```'
-        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n' "$_bt" "$_bt")"
+        _body="$(printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: foo works\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' "$_bt" "$_bt" "$_bt" "$_bt")"
     fi
     if [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]]; then
         mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
