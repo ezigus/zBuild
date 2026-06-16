@@ -200,6 +200,14 @@ build_test_cycle:
     value: pass
   max_iterations: 3
   on_max: continue
+  # #845/ADR-021: flat-velocity plateau early-exit. When failure_count shows no
+  # improvement (delta <= 0) for `window` consecutive iters, abandon with
+  # reason=plateau instead of burning the full max_iterations. window=2 (< the
+  # max_iterations of 3) so a stuck cycle bails after iter 2 and actually SAVES
+  # iter 3 — window=3 would only relabel the max_iterations exit, saving nothing.
+  # This is the case that motivated #845 (failure_count=11 flat across 3 iters).
+  velocity_plateau:
+    window: 2
   # ADR-030 (#840): governed scope expansion. build is the first actor with
   # ground truth (it ran the tests); when the plan's write-scope omits a file
   # whose old value the change invalidates (e.g. a test pinning the old stage

@@ -43,6 +43,13 @@ assert_eq "standard.yaml: declares cycle:design_impact_cycle dispatch unit (#842
     "1" "$has_design_impact_cycle"
 assert_eq "standard.yaml: declares stage:plan dispatch unit (leaf, #842)" \
     "1" "$has_plan_stage"
+# #845: the velocity-plateau early-exit must be WIRED INTO THE LIVE build_test_cycle,
+# not just exist behind an opt-in default. This pins the production wiring so the
+# feature can't silently regress to inert (window unset = disabled). window=2 (<
+# max_iterations=3) is what makes a stuck cycle abandon early instead of relabelling
+# the ceiling exit. See ADR-021 "Flat-velocity plateau termination" amendment.
+assert_eq "standard.yaml: build_test_cycle wires velocity_plateau.window=2 (#845 live flow)" \
+    "2" "${_TPL_CYCLE_VELOCITY_PLATEAU_W_build_test_cycle:-}"
 
 # T2: cycle-converges-iter2 — one cycle declared, dispatch unit emitted once
 load_template "$FIXT/cycle-converges-iter2.yaml"

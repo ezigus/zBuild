@@ -659,3 +659,47 @@ Convergence vs. stall is decided by the downstream signal, not by the presence
 of a diff: **no-change + green = converge; no-change + red = re-iterate.** The
 gate that enforces this for `build_test_cycle` is the test_assessment verdict
 invariant (ADR-022 Amendment v4).
+
+## Amendment — Flat-velocity plateau termination (#845)
+
+The existing `plateau` detector (`_cycle_detect_plateau`) fires only on a
+**verdict+status+failure_count tuple identical** for N iters; `divergence` fires
+only when `failure_count` **strictly increases**. Neither catches a cycle that
+makes no forward progress while still varying — `failure_count` flat or
+oscillating without strictly rising (e.g. 11→11→11 or 5→6→5). The motivating
+dogfood (`20260612173055-58001`) burned the full `max_iterations` on
+`failure_count=11` identical across all three iters because the tuple detector
+fires only AFTER `max_iterations` and divergence saw no strict increase.
+
+**Predicate:** `_cycle_detect_velocity_plateau <history_file> <window>` fires
+when `failure_count[i] >= failure_count[i-1]` (per-iter delta ≤ 0 — no
+improvement) for `window` consecutive iteration pairs. It reuses the existing
+exit surface: `rc=2`, `reason=plateau`, `cycle.plateau` event — distinguished
+from the tuple path by `evidence=velocity_flat` (vs `verdict_tuple_identical`),
+set via the `_CYCLE_PLATEAU_TYPE`/`_CYCLE_LAST_PLATEAU_EVIDENCE` global so the
+single-fan-in emit block reports which detector fired.
+
+**Template key (opt-in).** `velocity_plateau: { window: K }` as a sibling of the
+existing `plateau:`/`divergence:` blocks. Omitted or non-numeric → disabled
+(`_CYCLE_VELOCITY_PLATEAU_WINDOW=0`); unlike tuple-plateau there is no active
+default, so cycles that don't declare it are unaffected. `window < 2` →
+`cycle.metric.invalid`, treated as disabled.
+
+**Position in the chain — BEFORE `max_iterations`.** This is the key difference
+from tuple-plateau: a flat cycle must abandon *early* to save iterations, not at
+the ceiling. So velocity-plateau is evaluated before the `max_iterations` check.
+
+**Priority (revised):**
+`until > cycle_abort > blocked_on_scope > velocity_plateau > max_iterations > plateau (tuple) > divergence > blocked > signal`.
+
+**Skip logic (mirrors tuple-plateau):** emit `cycle.plateau.skipped
+reason=insufficient_history` and do not fire when `iter < 2` or history has fewer
+than `window` rows.
+
+**Live wiring (#845).** The production `build_test_cycle` in
+`config/templates/standard.yaml` sets `velocity_plateau: { window: 2 }`. With
+`max_iterations: 3`, a stuck cycle abandons after iter 2 (`reason=plateau`)
+instead of running to iter 3 — `window=2 < max_iterations` is what actually saves
+an iteration (window=3 would only relabel the ceiling exit). Without this live
+wiring the detector is inert and the motivating dogfood is not fixed: the feature
+must run in the dispatched flow, not merely exist behind an opt-in default.
