@@ -171,6 +171,24 @@ _test_pattern_cargo() {
         "$verdict" "$passed" "$failed" "$passed" "$failed" "$rc"
 }
 
+# ─── _test_extract_failing_files ─────────────────────────────────────────────
+# Parses raw test output for zbuild runall FAIL markers and echoes the unique
+# sorted list of test file paths that failed (ADR-034 / issue #846).
+# Pattern matched: ^(unit|integration|e2e|golden|mutation): FAIL <path>
+# Outputs one absolute path per line, sorted, deduplicated.
+# Outputs nothing when no FAIL lines are present (empty → no red set to grow).
+# Usage: _test_extract_failing_files <raw_output>
+_test_extract_failing_files() {
+    local raw="$1"
+    # `grep ... || true`: when no FAIL lines exist grep exits 1; the `|| true`
+    # keeps the pipeline exit code at 0 so callers with `set -e` do not abort.
+    printf '%s\n' "$raw" \
+        | grep -E '^(unit|integration|e2e|golden|mutation): FAIL ' \
+        | awk '{print $NF}' \
+        | sort -u \
+        || true
+}
+
 # ─── _test_parse_summary (orchestrator) ───────────────────────────────────────
 # Dispatch to pattern functions in fixed order; first non-empty match wins.
 # Anchors enforce mutual exclusivity by construction.

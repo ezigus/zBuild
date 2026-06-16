@@ -38,6 +38,88 @@ source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/env-scrub.sh"
 # before truncation so the 10KB head-c budget carries signal, not decoration.
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/test-output-sanitize.sh"
 
+# ─── _test_compute_target_files (ADR-034 / #846) ─────────────────────────────
+# Unions the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
+# paths) with any test files inside $repo_root/tests that grep-reference at
+# least one basename from ZBUILD_TEST_CHANGED_FILES (comma-separated list).
+# Deduplicates the result. Outputs one relative path per line (relative to
+# repo_root). Empty when both inputs are absent/empty.
+# Usage: _test_compute_target_files <repo_root>
+_test_compute_target_files() {
+    local repo_root="$1"
+    local red_set_json="${ZBUILD_TEST_RED_SET:-}"
+    local changed_files_csv="${ZBUILD_TEST_CHANGED_FILES:-}"
+
+    local -a all_files=()
+
+    # Add files from red-set JSON (array of repo-relative paths)
+    if [[ -n "$red_set_json" && -f "$red_set_json" ]]; then
+        local _rf
+        while IFS= read -r _rf; do
+            [[ -n "$_rf" ]] && all_files+=("$_rf")
+        done < <(jq -r '.[]? // empty' "$red_set_json" 2>/dev/null || true)
+    fi
+
+    # Add test files that grep-reference any changed source file by basename
+    if [[ -n "$changed_files_csv" ]]; then
+        local _tests_dir="$repo_root/tests"
+        local _IFS_save="$IFS"; IFS=','
+        local -a _changed_arr=()
+        read -ra _changed_arr <<< "$changed_files_csv"
+        IFS="$_IFS_save"
+        local _cf _bn _match
+        for _cf in "${_changed_arr[@]}"; do
+            # Trim whitespace
+            _cf="${_cf## }"; _cf="${_cf%% }"
+            [[ -z "$_cf" ]] && continue
+            _bn="$(basename "$_cf")"
+            [[ -z "$_bn" ]] && continue
+            while IFS= read -r _match; do
+                [[ -z "$_match" ]] && continue
+                # Make relative to repo_root
+                _match="${_match#$repo_root/}"
+                all_files+=("$_match")
+            done < <(grep -rlF -- "$_bn" "$_tests_dir" 2>/dev/null || true)
+        done
+    fi
+
+    # Deduplicate and emit sorted list (skip blanks)
+    if [[ ${#all_files[@]} -gt 0 ]]; then
+        printf '%s\n' "${all_files[@]}" | sort -u | grep -v '^[[:space:]]*$' || true
+    fi
+}
+
+# ─── _test_build_targeted_cmd (ADR-034 / #846) ───────────────────────────────
+# Renders the repo-configurable targeted-run command. <template> is a command
+# containing the literal `{files}`, which is replaced with the shell-quoted,
+# space-separated list of target test files. Echoes the rendered command, or an
+# EMPTY string when <template> or <file_list> is empty (the caller then runs the
+# full suite — never a broken targeted command).
+#
+# The targeted runner is responsible for emitting output the verdict parser
+# recognises and for running every file independently (no `&&` short-circuit).
+# zbuild's default — `scripts/run-tests.sh --files {files}` — does both: it loops
+# the files and emits the `unit: N/M passed` tier-summary, identical to the full
+# run. Other repos set ZBUILD_TEST_CMD_TARGETED to their framework's subset
+# command (e.g. `jest {files}`, `pytest {files}`, `cargo test {files}`).
+# Usage: _test_build_targeted_cmd <template> <file_list>
+_test_build_targeted_cmd() {
+    local template="$1" file_list="$2"
+    [[ -z "$template" || -z "$file_list" ]] && return 0
+    # Guard a misconfigured template (no {files}) — silently dropping the file
+    # list would run the WRONG command. Empty return → caller runs the full suite.
+    [[ "$template" != *'{files}'* ]] && return 0
+
+    local _files_q="" _f
+    while IFS= read -r _f; do
+        [[ -z "$_f" ]] && continue
+        _files_q="${_files_q:+$_files_q }'${_f}'"
+    done <<< "$file_list"
+    [[ -z "$_files_q" ]] && return 0
+
+    printf '%s' "${template/\{files\}/$_files_q}"
+}
+
 # ─── test_init ────────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
 test_init() {
@@ -82,6 +164,12 @@ _test_run_inner() {
     local repo_root="$2"
     local output_json="$3"
     local test_cmd="$4"
+
+    # ADR-034 / #846: read targeted-run control vars BEFORE mktemp / fresh-shell
+    # so they're captured in the parent shell (not scrubbed by _zbuild_make_fresh_shell).
+    local _zbtr_red_set="${ZBUILD_TEST_RED_SET:-}"
+    local _zbtr_changed="${ZBUILD_TEST_CHANGED_FILES:-}"
+    local _zbtr_full_gate="${ZBUILD_TEST_FULL_SUITE_GATE:-}"
 
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
@@ -157,6 +245,37 @@ _test_run_inner() {
     # it; review's redaction/prompt path is tolerant either way).
     diff_applied=false
 
+    # ── ADR-034 / #846: choose targeted or full-suite command ─────────────────
+    # On iter 2+, if ZBUILD_TEST_RED_SET or ZBUILD_TEST_CHANGED_FILES is set AND
+    # ZBUILD_TEST_FULL_SUITE_GATE is NOT set, attempt a targeted run.
+    # _test_compute_target_files uses $tmp (the rsync'd copy) as repo_root so
+    # relative paths are stable between iters. The targeted-run COMMAND is
+    # repo-configurable (ZBUILD_TEST_CMD_TARGETED, a `{files}` template); it
+    # defaults to the repo's `scripts/run-tests.sh --files {files}` subset mode
+    # when present (it emits the recognised `unit: N/M passed` format). If neither
+    # is available — or no target files were found — we fall back to the full
+    # command and run_mode stays "full" (never a broken targeted run).
+    local run_mode="full"
+    local actual_test_cmd="$test_cmd"
+    if [[ -z "$_zbtr_full_gate" ]] && [[ -n "$_zbtr_red_set" || -n "$_zbtr_changed" ]]; then
+        local _target_files
+        _target_files="$(ZBUILD_TEST_RED_SET="$_zbtr_red_set" \
+                         ZBUILD_TEST_CHANGED_FILES="$_zbtr_changed" \
+                         _test_compute_target_files "$tmp")"
+        if [[ -n "$_target_files" ]]; then
+            local _targeted_tmpl="${ZBUILD_TEST_CMD_TARGETED:-}"
+            if [[ -z "$_targeted_tmpl" && -f "$tmp/scripts/run-tests.sh" ]]; then
+                _targeted_tmpl='bash scripts/run-tests.sh --files {files}'
+            fi
+            local _targeted_cmd
+            _targeted_cmd="$(_test_build_targeted_cmd "$_targeted_tmpl" "$_target_files")"
+            if [[ -n "$_targeted_cmd" ]]; then
+                actual_test_cmd="$_targeted_cmd"
+                run_mode="targeted"
+            fi
+        fi
+    fi
+
     # ── Run test command ───────────────────────────────────────────────────────
     # #600 + codex P2 on #604: DO NOT export ZBUILD_TEST_QUIET=1 here. Doing
     # so would quiet the captured raw_output that downstream consumers depend
@@ -183,7 +302,7 @@ _test_run_inner() {
         # the runner's cwd instead of the rsync'd staging dir.
         cd "$tmp" || exit 99
         _zbuild_make_fresh_shell
-        eval "$test_cmd" 2>&1
+        eval "$actual_test_cmd" 2>&1
     )" || test_rc=$?
 
     # Truncate output to 10 KB to keep artifact manageable. Wave 15-C (#681)
@@ -242,12 +361,42 @@ _test_run_inner() {
     [[ "$_failed_for_summary" == "null" ]] && _failed_for_summary=0
     _test_emit_failures_summary "$_tfs_path" "$verdict" "$_failed_for_summary" "$exit_code" "$raw_output"
 
+    # ── ADR-034 / #846: write test-red-set.json from this run's failures ──────
+    # Stores the repo-relative paths of files that failed so the next iter can
+    # target them without re-running the full suite. Paths are made relative to
+    # $tmp (the rsync'd repo copy) by stripping the leading "$tmp/" prefix.
+    # Written as a JSON array ONLY when failures exist; absent when no failures
+    # ("missing == empty": absent red-set means clean run or no prior run).
+    local _red_set_path
+    _red_set_path="$(dirname "$output_json")/test-red-set.json"
+    {
+        local _raw_fail_paths _rel_paths
+        _raw_fail_paths="$(_test_extract_failing_files "$raw_output")"
+        if [[ -n "$_raw_fail_paths" ]]; then
+            _rel_paths="$(printf '%s\n' "$_raw_fail_paths" \
+                | sed "s|^${tmp}/||" | sort -u | grep -v '^[[:space:]]*$')"
+        else
+            _rel_paths=""
+        fi
+        if [[ -n "$_rel_paths" ]]; then
+            printf '%s\n' "$_rel_paths" \
+                | jq -Rn '[inputs | select(. != "")]' 2>/dev/null \
+                | atomic_write "$_red_set_path" 2>/dev/null || true
+        else
+            # A clean run clears any STALE red-set so the next iter does not
+            # target already-fixed files (missing == empty, honestly applied).
+            rm -f "$_red_set_path" 2>/dev/null || true
+        fi
+    }
+
+    # Record the command that actually ran (targeted or full), not the base cmd.
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
-        "$test_output" "$diff_applied" "$test_cmd" "$reason"
+        "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
-    emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}"
+    emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \
+        "run_mode=${run_mode}"
     return 0
 }
 
@@ -393,6 +542,10 @@ _test_write_result() {
     local diff_applied="$7"
     local test_cmd="$8"
     local reason="${9:-}"
+    # ADR-034 / #846: run_mode field (full|targeted). Defaults to "full" so
+    # callers that do not pass the arg (e.g. the missing-diff guard path) get
+    # the safe default that does not suppress cycle convergence.
+    local run_mode="${10:-full}"
 
     local dir
     dir="$(dirname "$path")"
@@ -427,6 +580,7 @@ _test_write_result() {
         --argjson diff_applied "$diff_applied_json" \
         --arg test_cmd "$test_cmd" \
         --arg reason "$reason" \
+        --arg run_mode "$run_mode" \
         '{
             schema_version: 1,
             verdict: $verdict,
@@ -435,7 +589,8 @@ _test_write_result() {
             failed: $failed,
             test_output: $test_output,
             diff_applied: $diff_applied,
-            test_cmd: $test_cmd
+            test_cmd: $test_cmd,
+            run_mode: $run_mode
         } + (if $reason != "" then {reason: $reason} else {} end)' \
         2>/dev/null \
       | atomic_write "$path"

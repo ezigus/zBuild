@@ -647,6 +647,31 @@ _cycle_apply_feedback() {
     local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter_next}/feedback"
     mkdir -p "$fb_dir" 2>/dev/null || true
     export ZBUILD_CYCLE_FEEDBACK_DIR="$fb_dir"
+
+    # ADR-034 / #846: wire targeted-test artifacts for the next iter's test stage.
+    # ZBUILD_TEST_RED_SET  → path to test-red-set.json from the just-completed run.
+    # ZBUILD_TEST_CHANGED_FILES → comma-separated files_changed[] from build-summary.json.
+    # Both are exported (or unset when absent) so _test_run_inner on iter N+1 can
+    # build the targeted set without querying the state dir itself.
+    local _tr_red_set="$state_dir/artifacts/test-red-set.json"
+    if [[ -f "$_tr_red_set" ]]; then
+        export ZBUILD_TEST_RED_SET="$_tr_red_set"
+    else
+        unset ZBUILD_TEST_RED_SET 2>/dev/null || true
+    fi
+    local _bsj="$state_dir/artifacts/build-summary.json"
+    if [[ -f "$_bsj" ]]; then
+        local _changed_csv
+        _changed_csv="$(jq -r '[.files_changed[]? | tostring] | join(",")' "$_bsj" 2>/dev/null || true)"
+        if [[ -n "$_changed_csv" ]]; then
+            export ZBUILD_TEST_CHANGED_FILES="$_changed_csv"
+        else
+            unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+        fi
+    else
+        unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+    fi
+
     [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]] && return 0
 
     # ADR-029 G1 (#814): per-feedback-field context budget. Defaults to 50000
@@ -1234,6 +1259,25 @@ _cycle_iter_dispatch() {
     return 0
 }
 
+# ─── _cycle_read_test_run_mode (ADR-034 / #846) ─────────────────────────────
+# Reads the run_mode field from artifacts/test-results.json in the given
+# state_dir. Echoes "targeted" or "full". Defaults to "full" on any read
+# failure (missing file, missing field, jq error) — fail-closed: unknown mode
+# never suppresses convergence.
+# Usage: _cycle_read_test_run_mode <state_dir>
+_cycle_read_test_run_mode() {
+    local state_dir="$1"
+    local trj="$state_dir/artifacts/test-results.json"
+    if [[ -s "$trj" ]]; then
+        local _mode
+        _mode="$(jq -r '.run_mode // "full"' "$trj" 2>/dev/null || echo "full")"
+        case "$_mode" in
+            targeted|full) printf '%s' "$_mode"; return 0 ;;
+        esac
+    fi
+    printf 'full'
+}
+
 # ─── _cycle_handle_terminal_rc — runner-facing helper ────────────────────────
 # Maps orchestrator rc → reason → (a) cycle.complete event (durable, fd-event)
 # and (b) operator-fd-2 exit banner via registered `cycle_exit_hook`.
@@ -1304,6 +1348,11 @@ cycle_orchestrator_run() {
     # ADR-029 G3 (#812): per-member max_turns base captured at first timeout.
     # Same lifecycle as _CYCLE_TIMEOUT_RUN.
     _CYCLE_TURNS_BASE=()
+    # ADR-034 / #846: clear any stale full-suite-gate flag at cycle entry so
+    # it does not bleed from a previous cycle invocation in the same process.
+    # Must happen here (before any early return) so even config-invalid paths
+    # leave the env clean for subsequent callers.
+    unset ZBUILD_TEST_FULL_SUITE_GATE 2>/dev/null || true
 
     if ! _cycle_load_template "$cycle_id"; then
         _CYCLE_LAST_TERMINATED_REASON="config_invalid"
@@ -1326,6 +1375,10 @@ cycle_orchestrator_run() {
         "cycle_id=$cycle_id" "iter=1" \
         "max=$_CYCLE_MAX_ITER" \
         "stages=${_CYCLE_STAGES[*]}" 2>/dev/null || true
+
+    # ADR-034 / #846: tracks whether targeted convergence fired in the previous
+    # iter (1) → set ZBUILD_TEST_FULL_SUITE_GATE before dispatching this iter.
+    local _full_suite_gate_pending=0
 
     local iter
     for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
@@ -1359,6 +1412,17 @@ cycle_orchestrator_run() {
             _CYCLE_LAST_TERMINATED_REASON="aborted"
             _cycle_clear_traps
             { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 130; }
+        fi
+
+        # ADR-034 / #846: manage ZBUILD_TEST_FULL_SUITE_GATE lifecycle.
+        # If targeted convergence fired last iter, arm the gate env var NOW
+        # (before dispatch) so the test stage sees it. Otherwise, ensure any
+        # stale value from a prior gate iter is cleared so it cannot bleed.
+        if [[ "$_full_suite_gate_pending" -eq 1 ]]; then
+            export ZBUILD_TEST_FULL_SUITE_GATE=1
+            _full_suite_gate_pending=0
+        else
+            unset ZBUILD_TEST_FULL_SUITE_GATE 2>/dev/null || true
         fi
 
         # Dispatch the cycle's stages in order.
@@ -1409,6 +1473,25 @@ cycle_orchestrator_run() {
         local _ce=0; case $- in *e*) _ce=1 ;; esac
         set +e; _cycle_check_until "$verdicts_blob"; converged=$?
         [[ $_ce -eq 1 ]] && set -e
+
+        # ADR-034 / #846: full-suite gate intercept. If convergence predicate
+        # fired (converged=0) but the test stage ran in targeted mode, the
+        # targeted result is insufficient: we need a full-suite confirmation.
+        # Suppress convergence exactly once by setting converged=1 and arming
+        # ZBUILD_TEST_FULL_SUITE_GATE for the next iter (via the pending flag).
+        # Fail-safe: if we're already at max_iterations, we cannot add an extra
+        # iter — let max_iterations fire naturally below instead of looping.
+        if [[ "$converged" -eq 0 ]]; then
+            local _gate_run_mode; _gate_run_mode="$(_cycle_read_test_run_mode "$state_dir")"
+            if [[ "$_gate_run_mode" == "targeted" ]] \
+               && ! _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
+                converged=1  # suppress: full-suite confirmation still needed
+                _full_suite_gate_pending=1
+                _cycle_emit "cycle.test.full_suite_gate" \
+                    "iter=$iter" "run_mode=targeted" \
+                    "reason=targeted_pass_requires_full_suite_confirmation"
+            fi
+        fi
 
         # Record the history row FIRST — termination checks need durable data.
         _cycle_record_iter_outcome "$history_file" "$iter" \
