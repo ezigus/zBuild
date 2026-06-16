@@ -52,6 +52,11 @@ inputs:
     path: "${artifact_dir}/build-summary.json"
     source: stage:build
     required: false
+  - id: design_md
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: false
 
 outputs:
   - id: test_assessment

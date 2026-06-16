@@ -1,6 +1,6 @@
 # ADR-031 — Behavioral acceptance contract
 
-**Status:** Proposed (2026-06-15)
+**Status:** Accepted (2026-06-16)
 **Related:** ADR-007 (test strategy), ADR-022 (test-assessment stage), ADR-027 (recursive-flow template format), ADR-030 (scope governance)
 **Issue:** #864
 
@@ -76,7 +76,7 @@ Delivered in two artifacts under #864:
 - **`scripts/lib/acceptance-block.sh`** — pure parser; no side effects, no LLM calls. Exports `extract_acceptance_block <design_md>`. Mirrors `_extract_scope_from_design` guard-and-loop idiom from `plugins/agent/design/plugin.sh:351-374`.
 - **`tests/unit/acceptance-block-test.sh`** — five test cases covering absent block, well-formed single-entry, multi-entry, malformed (no closing fence / missing TESTFILES), and co-presence with a `\`\`\`scope` block. Sources `scripts/lib/test-helpers.sh`.
 
-Stage wiring (`test_assessment` consumption) is deferred to a follow-up issue per Anti-pattern #1 (no stage manifest changes in this piece).
+Stage wiring (`test_assessment` consumption) is implemented in issue #867 (843-D) via `plugins/agent/test_assessment/plugin.sh` + manifest; see ADR-022 Amendment v5 for the full specification and downgrade event taxonomy.
 
 ## Amendment 2026-06-15 (#865)
 

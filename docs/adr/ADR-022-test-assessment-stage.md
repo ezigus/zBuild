@@ -332,3 +332,53 @@ as `fail` via `core/pipeline/verdict.sh` (a separate consumer, pinned by
 - `tests/integration/build-test-cycle-noop-converges-test.sh` — real orchestrator
   + real test_assessment: a no-op build on a green suite converges in 1 iter
   (pre-fix: max_iterations).
+
+## Amendment v5 (2026-06-16, #843-D) — acceptance-block input and pass-invariant extension (ADR-031)
+
+### New Pin 10: acceptance-criteria input
+
+`test_assessment` now consumes the `\`\`\`acceptance` block from `design.md`
+(ADR-031). The stage manifest adds `design_md` as an optional input (`required:
+false`); when `design.md` is absent the acceptance path is a no-op and the
+plugin proceeds exactly as before.
+
+`plugins/agent/test_assessment/plugin.sh` sources
+`scripts/lib/acceptance-block.sh` and calls `extract_acceptance_block` on the
+`design.md` path. When the block is present the plugin:
+
+1. **TESTFILES existence gate (pre-LLM).** Every file listed under `TESTFILES:`
+   must exist on disk. A missing file triggers `verdict=fail` with
+   `reason=acceptance_not_verified` and `acceptance_verified=false` immediately,
+   before any LLM call, and emits `test_assessment.acceptance_fail`.
+
+2. **SPEC claims in prompt.** All `SPEC:` lines from the block are appended
+   to the LLM prompt under an `ACCEPTANCE CRITERIA` section, together with the
+   `TESTFILES:` list.
+
+3. **`acceptance_verified` schema field.** The LLM OUTPUT CONTRACT adds
+   `"acceptance_verified": true | false` when the block is present; the jq
+   schema-validation expression requires the field is a boolean.
+
+4. **Pass-invariant extension.** After the existing pass-invariant check
+   (Pin 5 + Amendments v3/v4), an additional downgrade is enforced:
+   when the acceptance block is present and `final_verdict` is still `pass`,
+   `acceptance_verified == false` downgrades `pass → fail` with
+   `reason=acceptance_llm_rejected`. This fires only when the existing invariant
+   did not already downgrade, so the two paths are mutually exclusive.
+
+### Updated downgrade event taxonomy
+
+| `reason` field | Source | `to` verdict |
+|---|---|---|
+| `build_test_disagreement` | existing Pin 5 | `inconclusive` |
+| `worktree_not_durable` | Amendment v3/v4 | `inconclusive` |
+| `acceptance_not_verified` | Amendment v5 (pre-LLM) | `fail` (written directly) |
+| `acceptance_llm_rejected` | Amendment v5 (post-LLM) | `fail` (downgrade) |
+
+### Verification
+
+- `tests/unit/test-assessment-plugin-test.sh` T17 (block + testfiles + av=true →
+  pass), T18 (testfile missing → pre-LLM fail), T19 (testfiles present + av=false
+  → pass→fail), T20 (no design.md → no-op, LLM verdict used).
+- `tests/integration/test-assessment-acceptance-flow-test.sh` — IT-1 through IT-4
+  covering all four paths (happy, missing-file, llm-rejected, no-design-md).
