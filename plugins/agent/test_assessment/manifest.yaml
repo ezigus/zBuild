@@ -52,7 +52,7 @@ inputs:
     path: "${artifact_dir}/build-summary.json"
     source: stage:build
     required: false
-  - id: design_md
+  - id: design
     type: file
     path: "${artifact_dir}/design.md"
     source: stage:design
