@@ -1,0 +1,23 @@
+id: cycle-velocity-plateau
+name: Cycle that exits early on flat failure_count velocity
+defaults:
+  strategy: fanout
+stages:
+  - id: build-test
+    type: cycle
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 5
+    on_max: continue
+    velocity_plateau:
+      window: 2
+
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]

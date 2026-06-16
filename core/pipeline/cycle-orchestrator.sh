@@ -64,6 +64,8 @@ readonly _CYCLE_DEFAULT_DIVERGENCE_WINDOW=2
 _CYCLE_LAST_TERMINATED_REASON=""
 _CYCLE_LAST_ITERATIONS=0
 _CYCLE_LAST_HISTORY_FILE=""
+_CYCLE_VELOCITY_PLATEAU_WINDOW=0  # 0 = disabled until template sets velocity_plateau.window
+_CYCLE_LAST_PLATEAU_EVIDENCE=""
 
 # Internal trap-state (mirrors _route_loop_* convention in route.sh).
 _CYCLE_TRAP_CYCLE_ID=""
@@ -176,7 +178,7 @@ _cycle_on_signal() {
 #   _CYCLE_UNTIL_FIELD  (verdict|status)
 #   _CYCLE_UNTIL_OP     (eq|ne)
 #   _CYCLE_UNTIL_VALUE  (string)
-#   _CYCLE_PLATEAU_WINDOW / _CYCLE_DIVERGENCE_WINDOW
+#   _CYCLE_PLATEAU_WINDOW / _CYCLE_DIVERGENCE_WINDOW / _CYCLE_VELOCITY_PLATEAU_WINDOW
 #   _CYCLE_FEEDBACK[]   (flat list: "from_stage:from_output:to_stage:to_field:required")
 # Returns: 0 valid; 4 invalid (emits cycle.config.invalid).
 _cycle_load_template() {
@@ -193,6 +195,7 @@ _cycle_load_template() {
     _CYCLE_UNTIL_VALUE=""
     _CYCLE_PLATEAU_WINDOW="$_CYCLE_DEFAULT_PLATEAU_WINDOW"
     _CYCLE_DIVERGENCE_WINDOW="$_CYCLE_DEFAULT_DIVERGENCE_WINDOW"
+    _CYCLE_VELOCITY_PLATEAU_WINDOW=0  # 0 = disabled; only set when template has velocity_plateau.window
 
     # Pull from template-parser side-channel vars.
     local stages_var="_TPL_CYCLE_STAGES_${safe}"
@@ -283,6 +286,8 @@ _cycle_load_template() {
 
     local pw="${!pw_var:-}"; [[ -n "$pw" && "$pw" =~ ^[0-9]+$ ]] && _CYCLE_PLATEAU_WINDOW="$pw"
     local dw="${!dw_var:-}"; [[ -n "$dw" && "$dw" =~ ^[0-9]+$ ]] && _CYCLE_DIVERGENCE_WINDOW="$dw"
+    local vpw_var="_TPL_CYCLE_VELOCITY_PLATEAU_W_${safe}"
+    local vpw="${!vpw_var:-}"; [[ -n "$vpw" && "$vpw" =~ ^[0-9]+$ ]] && _CYCLE_VELOCITY_PLATEAU_WINDOW="$vpw"
 
     # Feedback: pipe-delimited records "from_stage:from_output|to_stage:to_field:required"
     local fb_blob="${!fb_var:-}"
@@ -425,7 +430,55 @@ _cycle_detect_plateau() {
     local tail_rows; tail_rows="$(tail -n "$window" "$history_file" 2>/dev/null)"
     local distinct
     distinct="$(printf '%s\n' "$tail_rows" | jq -r '"\(.verdict)|\(.status)|\(.failure_count)"' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
-    [[ "$distinct" == "1" ]]
+    if [[ "$distinct" == "1" ]]; then
+        _CYCLE_LAST_PLATEAU_EVIDENCE="verdict_tuple_identical"
+        return 0
+    fi
+    return 1
+}
+
+# ─── _cycle_detect_velocity_plateau <history_file> <window> ──────────────────
+# No consecutive pair in the last <window> failure_counts shows a decrease →
+# velocity plateau (flat or worsening). Fires BEFORE max_iterations (priority
+# 1.5) so a stalled cycle exits early without consuming all iterations.
+# Skip + emit cycle.plateau.skipped when iter<2 OR history_lines<window.
+_cycle_detect_velocity_plateau() {
+    local history_file="$1" window="$2"
+    # window=0 means the feature is disabled (no velocity_plateau.window in template).
+    [[ "$window" -eq 0 ]] 2>/dev/null && return 1
+    if ! [[ "$window" =~ ^[0-9]+$ ]] || [[ "$window" -lt 2 ]]; then
+        _cycle_emit "cycle.metric.invalid" "metric=velocity_plateau_window" "value=$window"
+        return 1
+    fi
+    if [[ "$_CYCLE_TRAP_ITER" -lt 2 ]]; then
+        _cycle_emit "cycle.plateau.skipped" "iter=$_CYCLE_TRAP_ITER" \
+            "reason=insufficient_history"
+        return 1
+    fi
+    local lines=0
+    [[ -f "$history_file" ]] && lines="$(wc -l < "$history_file" 2>/dev/null | tr -d ' ')"
+    if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -lt "$window" ]]; then
+        _cycle_emit "cycle.plateau.skipped" "iter=$_CYCLE_TRAP_ITER" \
+            "reason=insufficient_history" "have=$lines" "need=$window"
+        return 1
+    fi
+    # Tail the last <window> rows; extract failure_count values.
+    local tail_rows; tail_rows="$(tail -n "$window" "$history_file" 2>/dev/null)"
+    local -a fcs=()
+    local row
+    while IFS= read -r row; do
+        local fc; fc="$(jq -r '.failure_count // 0' <<< "$row" 2>/dev/null || echo "0")"
+        fcs+=("$fc")
+    done <<< "$tail_rows"
+    # Plateau if no consecutive pair shows a strict decrease (fc[i] > fc[i+1]).
+    local i
+    for (( i=0; i < ${#fcs[@]} - 1; i++ )); do
+        if (( ${fcs[$i]} > ${fcs[$(( i + 1 ))]} )) 2>/dev/null; then
+            return 1  # found a decrease → not a velocity plateau
+        fi
+    done
+    _CYCLE_LAST_PLATEAU_EVIDENCE="velocity_flat"
+    return 0
 }
 
 # ─── _cycle_detect_blocked <verdicts_blob> <iter> ────────────────────────────
@@ -996,6 +1049,19 @@ _cycle_iter_dispatch() {
             local _outer_until_value="$_CYCLE_UNTIL_VALUE"
             local -a _outer_feedback=( "${_CYCLE_FEEDBACK[@]}" )
             local -a _outer_stages=( "${_CYCLE_STAGES[@]}" )
+            # #845: the termination-window globals are per-cycle config and the
+            # nested run reloads them from the INNER cycle's template. They must
+            # be restored too, or the inner window leaks into the outer cycle's
+            # termination eval. This is benign for plateau/divergence (both
+            # default to the same window, so inner==outer in practice) but NOT
+            # for velocity_plateau: it defaults to 0 (disabled) and the live
+            # build_test_cycle sets window=2, so an unrestored value would make
+            # the outer review_cycle abandon via velocity-plateau BEFORE its
+            # max_iterations check ever runs (regression caught by
+            # review-remediation-max-iter-test). Restore all three for the class.
+            local _outer_plateau_w="$_CYCLE_PLATEAU_WINDOW"
+            local _outer_diverg_w="$_CYCLE_DIVERGENCE_WINDOW"
+            local _outer_velopl_w="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
@@ -1022,6 +1088,9 @@ _cycle_iter_dispatch() {
             _CYCLE_UNTIL_VALUE="$_outer_until_value"
             _CYCLE_FEEDBACK=( "${_outer_feedback[@]}" )
             _CYCLE_STAGES=( "${_outer_stages[@]}" )
+            _CYCLE_PLATEAU_WINDOW="$_outer_plateau_w"
+            _CYCLE_DIVERGENCE_WINDOW="$_outer_diverg_w"
+            _CYCLE_VELOCITY_PLATEAU_WINDOW="$_outer_velopl_w"
             [[ $_had_e -eq 1 ]] && set -e
             # Map nested-cycle terminal rc → outer verdict/status.
             # Wave 19-C-2 (#726): set RAW symmetrically with the classified
@@ -1466,6 +1535,7 @@ cycle_orchestrator_run() {
 
         # Termination evaluation (priority order — see ADR-021):
         #   1) until satisfied (converged)
+        #   1.5) velocity_plateau (iter ≥ 2, fires before max_iterations)
         #   2) max_iterations
         #   3) plateau (iter ≥ 2)
         #   4) divergence (iter ≥ K+1)
@@ -1548,6 +1618,9 @@ cycle_orchestrator_run() {
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
             overall_status="blocked_on_scope"; term_rc=7
+        elif _cycle_detect_velocity_plateau "$history_file" "$_CYCLE_VELOCITY_PLATEAU_WINDOW"; then
+            _CYCLE_LAST_TERMINATED_REASON="plateau"
+            overall_status="plateau"; term_rc=2
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             _CYCLE_LAST_TERMINATED_REASON="max_iterations"
             overall_status="max_iterations"; term_rc=1
@@ -1590,7 +1663,11 @@ cycle_orchestrator_run() {
             # cycle.divergence) stay inline since they carry termination-
             # specific evidence the central helper doesn't know about.
             case "$term_rc" in
-                2) eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=verdict_tuple_identical" "streak=$_CYCLE_PLATEAU_WINDOW" 2>/dev/null || true ;;
+                2) # #845: report the window of whichever plateau detector fired
+                   # (evidence tells which) — not always the tuple window.
+                   local _plateau_streak="$_CYCLE_PLATEAU_WINDOW"
+                   [[ "$_CYCLE_LAST_PLATEAU_EVIDENCE" == "velocity_flat" ]] && _plateau_streak="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
+                   eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" "streak=$_plateau_streak" 2>/dev/null || true ;;
                 3) eb_emit_event "cycle.divergence" "cycle_id=$cycle_id" "iter=$iter" "velocity_history=$failure_count" 2>/dev/null || true ;;
                 5) # #528: emit cycle.blocked between cycle.iteration.complete
                    # (already emitted above) and cycle.complete reason=blocked
