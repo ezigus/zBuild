@@ -285,11 +285,20 @@ and `wait`s on the child before returning:
 kill -TERM -- "-$PGID"                       # (or per-PID fallback)
 { sleep 1 && kill -KILL -- "-$PGID"; } &     # LOCAL watchdog, not disowned
 wd=$!
-wait "$child"        # graceful child exits on TERM (fast); trap-ignoring
-                     # child is SIGKILLed by the watchdog at the grace — either
-                     # way wait returns only once the child is reaped
+wait "$leader"       # graceful leader exits on TERM (fast); trap-ignoring
+                     # leader is SIGKILLed by the watchdog at the grace — either
+                     # way wait returns only once the leader is reaped
+kill -KILL -- "-$PGID"         # final synchronous sweep of the WHOLE group:
+                               # the leader exiting does not imply the group
+                               # drained (claude's children, gtimeout wrapper),
+                               # and a leader that exited gracefully before the
+                               # watchdog fired would otherwise leave siblings
 kill -KILL "$wd"; wait "$wd"   # tear down + reap the watchdog; no orphan
 ```
+
+`wait` targets only the group *leader*, so the leader exiting early (graceful
+TERM) must not cancel the group kill before lingering members die — hence the
+unconditional final group SIGKILL sweep before the watchdog is reaped.
 
 This preserves the abort-latency budget (graceful children still abort in
 milliseconds; only trap-ignoring children pay the full 1s grace, well within

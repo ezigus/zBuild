@@ -661,19 +661,19 @@ _route_loop_on_signal() {
     # subshell did not capture a distinct PGID). Negative arg targets the
     # process group: `kill -- -PGID`.
     #
-    # #903: the abort is SYNCHRONOUS — this handler does not return until the
-    # child tree has actually been reaped. The previous design detached the
-    # SIGKILL as `{ sleep 1 && kill -KILL; } &` and returned immediately;
-    # route_to_model_loop (and its caller/driver) could then unwind and exit
-    # while a TERM-ignoring claude was still alive, the backstop KILL landing
-    # up to a second later — or never, if that orphaned backstop was lost to
-    # the caller's own teardown. The result was orphaned claude processes
-    # surviving an abort (the route-fast-abort-test leak, flaky under load).
-    # Here the SIGKILL grace runs in a *local* watchdog that we reap, and we
-    # `wait` on the child before returning, so by the time the loop returns
-    # 130 no claude from this spawn is still running. Graceful children still
-    # abort fast — they exit on TERM and `wait` returns before the watchdog
-    # fires; only trap-ignoring children pay the full 1s grace.
+    # #905: the abort is SYNCHRONOUS — this handler does not return until the
+    # child tree has actually been signalled-to-death. The previous design
+    # detached the SIGKILL as `{ sleep 1 && kill -KILL; } &` and returned
+    # immediately; route_to_model_loop (and its caller/driver) could then
+    # unwind and exit while a TERM-ignoring claude was still alive, the backstop
+    # KILL landing up to a second later — or never, if that orphaned backstop
+    # was lost to the caller's own teardown. The result was orphaned claude
+    # processes surviving an abort (the route-fast-abort-test leak, flaky under
+    # load). Here the SIGKILL escalation runs in a *local* watchdog that we
+    # reap, and we sweep the whole group before returning, so by the time the
+    # loop returns 130 no process from this spawn is still running. Graceful
+    # children still abort fast — they exit on TERM and `wait` returns before
+    # the watchdog fires; only trap-ignoring children pay the full 1s grace.
     local _pid="${_ROUTE_LOOP_CHILD_PID:-}"
     local _pgid="${_ROUTE_LOOP_CHILD_PGID:-}"
     if [[ -n "$_pid" || -n "$_pgid" ]]; then
@@ -687,12 +687,20 @@ _route_loop_on_signal() {
             { sleep 1 && kill -KILL "$_pid" 2>/dev/null || true; } &
             _wd=$!
         fi
-        # Block until the child is gone: graceful children exit on TERM (fast);
+        # Wait for the group leader: graceful children exit on TERM (fast);
         # trap-ignoring children are SIGKILLed by the watchdog at the grace.
-        # Either way `wait` returns only once the child has been reaped.
+        # Either way `wait` returns only once the leader has been reaped.
         [[ -n "$_pid" ]] && { wait "$_pid" 2>/dev/null || true; }
-        # Tear down the watchdog (already fired, or now moot) and reap it so we
-        # never leave a detached `sleep`/kill orphan behind.
+        # The leader exiting does NOT imply the group drained — claude may have
+        # spawned children, or a `gtimeout`/`setsid` wrapper may outlive or
+        # predecease it. Sweep the WHOLE group with a final synchronous SIGKILL
+        # so no member survives (and so a leader that exited gracefully before
+        # the watchdog fired doesn't leave siblings behind — the watchdog is
+        # torn down next, so this sweep is the only guaranteed group kill in
+        # that case). Then stand down + reap the watchdog so we never leave a
+        # detached `sleep`/kill orphan behind.
+        [[ -n "$_pgid" ]] && { kill -KILL -- "-$_pgid" 2>/dev/null || true; }
+        [[ -n "$_pid" ]] && { kill -KILL "$_pid" 2>/dev/null || true; }
         if [[ -n "$_wd" ]]; then
             kill -KILL "$_wd" 2>/dev/null || true
             wait "$_wd" 2>/dev/null || true
