@@ -1663,7 +1663,11 @@ cycle_orchestrator_run() {
             # cycle.divergence) stay inline since they carry termination-
             # specific evidence the central helper doesn't know about.
             case "$term_rc" in
-                2) eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" "streak=$_CYCLE_PLATEAU_WINDOW" 2>/dev/null || true ;;
+                2) # #845: report the window of whichever plateau detector fired
+                   # (evidence tells which) — not always the tuple window.
+                   local _plateau_streak="$_CYCLE_PLATEAU_WINDOW"
+                   [[ "$_CYCLE_LAST_PLATEAU_EVIDENCE" == "velocity_flat" ]] && _plateau_streak="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
+                   eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" "streak=$_plateau_streak" 2>/dev/null || true ;;
                 3) eb_emit_event "cycle.divergence" "cycle_id=$cycle_id" "iter=$iter" "velocity_history=$failure_count" 2>/dev/null || true ;;
                 5) # #528: emit cycle.blocked between cycle.iteration.complete
                    # (already emitted above) and cycle.complete reason=blocked

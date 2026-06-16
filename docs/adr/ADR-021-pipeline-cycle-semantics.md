@@ -671,13 +671,17 @@ dogfood (`20260612173055-58001`) burned the full `max_iterations` on
 `failure_count=11` identical across all three iters because the tuple detector
 fires only AFTER `max_iterations` and divergence saw no strict increase.
 
-**Predicate:** `_cycle_detect_velocity_plateau <history_file> <window>` fires
-when `failure_count[i] >= failure_count[i-1]` (per-iter delta ≤ 0 — no
-improvement) for `window` consecutive iteration pairs. It reuses the existing
-exit surface: `rc=2`, `reason=plateau`, `cycle.plateau` event — distinguished
-from the tuple path by `evidence=velocity_flat` (vs `verdict_tuple_identical`),
-set via the `_CYCLE_PLATEAU_TYPE`/`_CYCLE_LAST_PLATEAU_EVIDENCE` global so the
-single-fan-in emit block reports which detector fired.
+**Predicate:** `_cycle_detect_velocity_plateau <history_file> <window>` examines
+the last `window` history rows and fires when **no consecutive pair shows a
+strict decrease** — i.e. every one of the `window - 1` deltas among those rows
+is ≤ 0 (`failure_count[i] >= failure_count[i-1]`, no improvement). So `window`
+is a count of iterations, not of pairs: `window: 2` inspects 2 rows / 1 delta.
+It reuses the existing exit surface: `rc=2`, `reason=plateau`, `cycle.plateau`
+event — distinguished from the tuple path by `evidence=velocity_flat` (vs
+`verdict_tuple_identical`), set via the
+`_CYCLE_PLATEAU_TYPE`/`_CYCLE_LAST_PLATEAU_EVIDENCE` global. The `cycle.plateau`
+event's `streak` field reports the window of whichever detector fired (the
+velocity window when `evidence=velocity_flat`, the tuple window otherwise).
 
 **Template key (opt-in).** `velocity_plateau: { window: K }` as a sibling of the
 existing `plateau:`/`divergence:` blocks. Omitted or non-numeric → disabled

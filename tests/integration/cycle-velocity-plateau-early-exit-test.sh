@@ -58,5 +58,10 @@ assert_event_emitted "T1: cycle.plateau emitted" "$ZBUILD_EVENTS_JSONL" "cycle.p
 # Verify cycle.plateau carries evidence=velocity_flat
 plateau_event="$(grep '"cycle.plateau"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
 assert_contains "T1: evidence=velocity_flat in plateau event" "$plateau_event" "velocity_flat"
+# Pin the streak too: it MUST report the velocity window (2), not the tuple
+# window — guards the bug where the emit hardcoded _CYCLE_PLATEAU_WINDOW
+# regardless of which detector fired (Copilot review on PR #914).
+assert_contains "T1: streak=2 (velocity window, not tuple window) in plateau event" \
+    "$plateau_event" '"streak":"2"'
 
 print_test_results
