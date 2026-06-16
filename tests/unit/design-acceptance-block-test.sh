@@ -8,6 +8,7 @@
 #   (d) rejects a design.md that has a scope block but no acceptance block (rc=1)
 #   (e) leaves existing test files untouched (does not regress a passing test)
 #   (f) emits design.acceptance_tests.written with the correct count
+#   (g) rejects unsafe (absolute / "..") TESTFILES paths — no write-scope escape
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -175,6 +176,41 @@ else
     assert_fail "T3: wrong count for acceptance_tests.written" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
+unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
+
+# ─── T5 (#865 review): unsafe TESTFILES paths are rejected, never written ────
+# The acceptance block is an LLM-produced artifact; absolute paths and ".."
+# components must not let a stub escape ZBUILD_REPO_ROOT (ADR-031: TESTFILES
+# grants no write-scope). Only the safe sibling path may be written.
+_setup_fixture t5
+MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
+_t5_bt='```'
+_t5_abs="$TEST_TEMP_DIR/zbuild-t5-escape-test.sh"
+rm -f "$_t5_abs"
+MOCK_DESIGN_BODY="$(printf '# Design\n\n## Decision\nd.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: safe\nTESTFILES:\n../zbuild-t5-escape-test.sh\n%s\ntests/unit/safe-stub-test.sh\n%s\n' \
+    "$_t5_bt" "$_t5_bt" "$_t5_bt" "$_t5_abs" "$_t5_bt")"
+set +e
+_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
+rc=$?
+set -e
+assert_eq "T5: mixed safe/unsafe TESTFILES returns rc=0" "0" "$rc"
+[[ -f "$FIXTURE_DIR/tests/unit/safe-stub-test.sh" ]] \
+    && assert_pass "T5: safe TESTFILES path written" \
+    || assert_fail "T5: safe path should have been written"
+[[ ! -e "$FIXTURE_DIR/../zbuild-t5-escape-test.sh" ]] \
+    && assert_pass "T5: parent-escape (..) path not written outside repo root" \
+    || assert_fail "T5: parent-escape path escaped repo root"
+[[ ! -e "$_t5_abs" ]] \
+    && assert_pass "T5: absolute path not written" \
+    || assert_fail "T5: absolute path was written outside repo root"
+# Only the safe stub counts toward the written total.
+if grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -q '"count":"1"'; then
+    assert_pass "T5: acceptance_tests.written count=1 (unsafe paths excluded)"
+else
+    assert_fail "T5: wrong count after rejecting unsafe paths" \
+        "events: $(cat "$ZBUILD_EVENTS_JSONL")"
+fi
+rm -f "$_t5_abs" "$FIXTURE_DIR/../zbuild-t5-escape-test.sh"
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 
 # ─── T4: extract_acceptance_block returns 0 on a well-formed design.md ───────

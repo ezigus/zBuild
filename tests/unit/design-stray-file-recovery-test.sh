@@ -49,8 +49,8 @@ route_to_model_loop() {
     local _prompt_file="$2"
     [[ -f "$_prompt_file" ]] && cp "$_prompt_file" "$_MOCK_ROUTE_PROMPT_CAPTURE"
     # Default body: a minimal valid design.md with scope + acceptance blocks.
-    # printf-built to avoid heredoc backtick/quote portability quirks between
-    # bash 3.2 (macOS) and bash 5.x (Linux CI). Backticks written as %s args.
+    # printf-built (backticks passed as %s args) to avoid heredoc backtick/quote
+    # quirks — not a portability shim; zBuild enforces a Bash 5+ floor.
     local _body
     if [[ -n "${MOCK_DESIGN_BODY:-}" ]]; then
         _body="$MOCK_DESIGN_BODY"

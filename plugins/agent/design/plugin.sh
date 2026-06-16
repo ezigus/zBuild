@@ -362,7 +362,16 @@ DESIGN_PROMPT
             continue
         fi
         [[ $_testfiles_section -eq 0 ]] && continue
+        _tf_line="${_tf_line%$'\r'}"   # tolerate a CRLF design.md
         [[ -z "$_tf_line" ]] && continue
+        # ADR-031: TESTFILES paths are repo-relative and grant NO write-scope.
+        # This list comes from an LLM-produced artifact, so reject absolute
+        # paths and any ".." component — otherwise a stub could be written
+        # outside ZBUILD_REPO_ROOT (directory traversal).
+        if [[ "$_tf_line" == /* || "/$_tf_line/" == *"/../"* ]]; then
+            warn "_design_stage_run_inner: rejecting out-of-tree TESTFILES path: $_tf_line"
+            continue
+        fi
         local _tf_abs
         _tf_abs="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/$_tf_line"
         if [[ ! -f "$_tf_abs" ]]; then
