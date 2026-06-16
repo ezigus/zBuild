@@ -44,6 +44,9 @@ source "$_BUILD_ROOT/scripts/lib/artifact-render.sh"
 source "$_BUILD_ROOT/scripts/lib/numstat-format.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_BUILD_ROOT/scripts/lib/prompt-overrides.sh"
+# ADR-031 (#866): acceptance-block extractor for charter injection into prompt.
+# shellcheck source=../../../scripts/lib/acceptance-block.sh
+source "$_BUILD_ROOT/scripts/lib/acceptance-block.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 build_stage_init() {
@@ -121,6 +124,13 @@ _build_stage_run_inner() {
         local _candidate="$_state_dir_for_design/artifacts/design.md"
         [[ -f "$_candidate" ]] && _design_md_path="$_candidate"
     fi
+    # ADR-031 (#866): extract acceptance test file paths from design.md for
+    # charter injection. Captured here so _design_md_path is already resolved.
+    local _acceptance_testfiles=""
+    if [[ -f "$_design_md_path" ]]; then
+        _acceptance_testfiles="$(_build_read_acceptance_testfiles "$_design_md_path" 2>/dev/null || true)"
+    fi
+
     local _scope_source="plan"
     if [[ -f "$_design_md_path" ]] && grep -q '^```scope' "$_design_md_path" 2>/dev/null; then
         local _design_csv
@@ -205,6 +215,13 @@ _build_stage_run_inner() {
         printf '## ORIGINAL TASK (immutable across iterations)\n'
         printf '%s\n\n' "$plan_payload"
         printf '## INSTRUCTIONS\n%s\n' "$_build_instructions"
+        if [[ -n "$_acceptance_testfiles" ]]; then
+            printf '\n## ACCEPTANCE TESTS (you MUST make these pass — you MUST NOT weaken, modify assertions of, or delete them)\n'
+            local _at_tf
+            while IFS= read -r _at_tf; do
+                [[ -n "$_at_tf" ]] && printf -- '- %s\n' "$_at_tf"
+            done <<< "$_acceptance_testfiles"
+        fi
         if [[ -n "$_review_feedback_body" ]]; then
             printf '\n## PRIOR REVIEW FEEDBACK (from a prior review iteration)\n'
             printf '%s\n' "$_review_feedback_body"
@@ -822,6 +839,28 @@ _build_stage_run_inner() {
     # #602: no more fail-CLOSED rc-wins path — the apply-check gate that
     # forced rc=1 on `verdict=corrupt_diff` was removed with the stash dance.
     return 0
+}
+
+# _build_read_acceptance_testfiles <design_md_path> (ADR-031 / #866)
+# Returns only the TESTFILES paths from the ```acceptance block in design.md,
+# one per line. Empty when design.md is absent, has no acceptance block, or
+# the block has no TESTFILES section. Used to inject the acceptance charter
+# section into the build prompt so the LLM sees which test files it MUST pass
+# and is explicitly prohibited from weakening.
+_build_read_acceptance_testfiles() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    [[ -z "$block_output" ]] && return 0
+    local in_testfiles=0 line
+    while IFS= read -r line; do
+        if [[ "$line" == "TESTFILES:" ]]; then
+            in_testfiles=1
+            continue
+        fi
+        [[ $in_testfiles -eq 1 && -n "$line" ]] && printf '%s\n' "$line"
+    done <<< "$block_output"
 }
 
 # ─── _build_read_prior_assessment (#571, renamed from _build_read_prior_failures)
