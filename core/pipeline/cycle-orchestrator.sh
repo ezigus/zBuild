@@ -1049,6 +1049,19 @@ _cycle_iter_dispatch() {
             local _outer_until_value="$_CYCLE_UNTIL_VALUE"
             local -a _outer_feedback=( "${_CYCLE_FEEDBACK[@]}" )
             local -a _outer_stages=( "${_CYCLE_STAGES[@]}" )
+            # #845: the termination-window globals are per-cycle config and the
+            # nested run reloads them from the INNER cycle's template. They must
+            # be restored too, or the inner window leaks into the outer cycle's
+            # termination eval. This is benign for plateau/divergence (both
+            # default to the same window, so inner==outer in practice) but NOT
+            # for velocity_plateau: it defaults to 0 (disabled) and the live
+            # build_test_cycle sets window=2, so an unrestored value would make
+            # the outer review_cycle abandon via velocity-plateau BEFORE its
+            # max_iterations check ever runs (regression caught by
+            # review-remediation-max-iter-test). Restore all three for the class.
+            local _outer_plateau_w="$_CYCLE_PLATEAU_WINDOW"
+            local _outer_diverg_w="$_CYCLE_DIVERGENCE_WINDOW"
+            local _outer_velopl_w="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
@@ -1075,6 +1088,9 @@ _cycle_iter_dispatch() {
             _CYCLE_UNTIL_VALUE="$_outer_until_value"
             _CYCLE_FEEDBACK=( "${_outer_feedback[@]}" )
             _CYCLE_STAGES=( "${_outer_stages[@]}" )
+            _CYCLE_PLATEAU_WINDOW="$_outer_plateau_w"
+            _CYCLE_DIVERGENCE_WINDOW="$_outer_diverg_w"
+            _CYCLE_VELOCITY_PLATEAU_WINDOW="$_outer_velopl_w"
             [[ $_had_e -eq 1 ]] && set -e
             # Map nested-cycle terminal rc → outer verdict/status.
             # Wave 19-C-2 (#726): set RAW symmetrically with the classified
