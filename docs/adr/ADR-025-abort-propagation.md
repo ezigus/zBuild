@@ -260,6 +260,48 @@ Future candidates:
 - **Wave 15-H (#688)** — reconsider process-group signal forwarding
   (alternative b) once helper baseline is in place.
 
+## Amendment (#905, 2026-06-15) — the loop signal handler reaps synchronously
+
+Wave 15-G (#687) gave `_route_loop_on_signal` a process-group kill: TERM the
+whole group, then escalate to SIGKILL after a 1s grace so a trap-ignoring or
+wedged claude still dies. That escalation was **detached** — scheduled as
+`{ sleep 1 && kill -KILL -- -PGID; } &` and `disown`ed — and the handler
+returned 130 immediately. claude routinely ignores/delays SIGTERM, so in
+practice the child is only ever reaped by that detached backstop ~1s later,
+*after* `route_to_model_loop` has already returned and its caller/driver has
+unwound and exited. The backstop is then an orphan racing the caller's
+teardown; the SIGKILL can land late, or be lost entirely if the orphan is
+reaped before its `sleep` elapses. The observable failure was orphaned claude
+processes surviving an abort — a flaky `route-fast-abort-test.sh` leak under
+CI load.
+
+**Amended contract: the loop signal handler aborts synchronously.**
+`_route_loop_on_signal` MUST NOT return until the child tree it signalled has
+actually been reaped. The implementation keeps the TERM→grace→KILL escalation
+but runs the SIGKILL grace in a **local watchdog that the handler itself reaps**,
+and `wait`s on the child before returning:
+
+```
+kill -TERM -- "-$PGID"                       # (or per-PID fallback)
+{ sleep 1 && kill -KILL -- "-$PGID"; } &     # LOCAL watchdog, not disowned
+wd=$!
+wait "$child"        # graceful child exits on TERM (fast); trap-ignoring
+                     # child is SIGKILLed by the watchdog at the grace — either
+                     # way wait returns only once the child is reaped
+kill -KILL "$wd"; wait "$wd"   # tear down + reap the watchdog; no orphan
+```
+
+This preserves the abort-latency budget (graceful children still abort in
+milliseconds; only trap-ignoring children pay the full 1s grace, well within
+the loop's 2.5s ceiling) and the rc=130 propagation, while guaranteeing that a
+caller observing rc=130 can rely on **no claude from that spawn still
+running**. It does not reintroduce alternative (b)'s `set -m` job-control
+concerns — the process group still comes from the spawn-site `setsid -w`
+(Wave 15-G), unchanged; only the *escalation* moved from detached to
+synchronous. `route-fast-abort-test.sh` is strengthened to assert the stub is
+dead within 500ms of loop-return (was: a 1–2s wait for the detached backstop),
+encoding the synchronous contract as a regression guard.
+
 ## Implementation Notes (Proposed — 2026-06-04)
 
 This ADR ships in **Proposed** status. No code, no test, no event-schema
