@@ -44,7 +44,7 @@ impact_json='{"schema_version":1,"verdict":"incomplete","missing":[
 _impact_drop_nonexistent_missing "$FAKE_ROOT"
 
 real_kept="$(printf '%s' "$impact_json" | jq -r '.missing[].files_to_add[]' 2>/dev/null)"
-assert_contains "H1: existing path kept" "$real_kept" "core/existing.sh"
+assert_contains "[SPEC-1] H1: existing path kept (non-existent stripped, entry preserved)" "$real_kept" "core/existing.sh"
 case "$real_kept" in
     *"ghost/does-not-exist.sh"*)
         assert_fail "H1: ghost path must be dropped" "$real_kept" ;;
@@ -65,7 +65,7 @@ impact_json='{"schema_version":1,"verdict":"incomplete","missing":[
 _impact_drop_nonexistent_missing "$FAKE_ROOT"
 
 h2_verdict="$(printf '%s' "$impact_json" | jq -r '.verdict')"
-assert_eq "H2: verdict flipped to complete" "complete" "$h2_verdict"
+assert_eq "[SPEC-2] H2: all-ghost → missing[] empties → verdict flips to complete" "complete" "$h2_verdict"
 
 h2_missing_len="$(printf '%s' "$impact_json" | jq '.missing | length')"
 assert_eq "H2: missing[] is empty" "0" "$h2_missing_len"
@@ -83,7 +83,7 @@ else
 fi
 
 if grep -q "dropped_count=2" "$EVENTS_LOG"; then
-    assert_pass "H2: event carries dropped_count=2"
+    assert_pass "[SPEC-3] H2: impact.hallucination.filtered carries dropped_count=2 (+ verdict_flipped)"
 else
     assert_fail "H2: event missing dropped_count=2" "$(cat "$EVENTS_LOG")"
 fi
@@ -98,7 +98,7 @@ impact_json='{"schema_version":1,"verdict":"incomplete","missing":[
 _impact_drop_nonexistent_missing "$FAKE_ROOT"
 
 h3_files="$(printf '%s' "$impact_json" | jq -r '.missing[].files_to_add[]' 2>/dev/null)"
-assert_contains "H3: floor entry (existing file) not dropped" "$h3_files" "plugins/agent/impact/plugin.sh"
+assert_contains "[SPEC-4] H3: prefilter-forced existing entry never dropped (floor integrity)" "$h3_files" "plugins/agent/impact/plugin.sh"
 
 h3_verdict="$(printf '%s' "$impact_json" | jq -r '.verdict')"
 assert_eq "H3: verdict stays incomplete (floor gap remains)" "incomplete" "$h3_verdict"
@@ -117,11 +117,11 @@ impact_json='{"schema_version":1,"verdict":"error","reason":"timeout","missing":
 _impact_drop_nonexistent_missing "$FAKE_ROOT"
 
 h4_verdict="$(printf '%s' "$impact_json" | jq -r '.verdict')"
-assert_eq "H4: verdict=error never flipped by hallucination filter" "error" "$h4_verdict"
+assert_eq "[SPEC-5] H4: verdict=error never flipped by hallucination filter" "error" "$h4_verdict"
 
 # ─── C1: charter mandate text present in plugin.sh ──────────────────────────
 PLUGIN_SH="$REPO_ROOT/plugins/agent/impact/plugin.sh"
-assert_contains "C1: charter has EXISTENCE VERIFICATION heading" \
+assert_contains "[SPEC-6] C1: charter has EXISTENCE VERIFICATION heading" \
     "$(cat "$PLUGIN_SH")" "EXISTENCE VERIFICATION"
 assert_contains "C1: charter prohibits non-existent paths in files_to_add" \
     "$(cat "$PLUGIN_SH")" "NEVER list a path you cannot verify"
