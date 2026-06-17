@@ -26,12 +26,16 @@ SCHEMA="$REPO_ROOT/config/event-schema.json"
 
 # Grep string-literal event types (no $ chars) from all agent plugins + core.
 # Matches both `emit_event "x.y"` and the `eb_emit_event "x.y"` core form (the
-# `eb_` prefix is absorbed by the leading `.*`).
-_emitted_types="$(grep -rh \
+# `eb_` prefix is absorbed by the leading `.*`). Restricted to `*.sh` and
+# full-line comments are dropped (`^[[:space:]]*#`) so an event name MENTIONED
+# in a comment/example doesn't falsely fail the guard — only real call sites
+# count.
+_emitted_types="$(grep -rh --include='*.sh' \
     -E 'emit_event[[:space:]]+"[a-z][a-z0-9._-]+"' \
     "$REPO_ROOT/plugins/agent/" \
     "$REPO_ROOT/core/" \
     2>/dev/null \
+    | grep -vE '^[[:space:]]*#' \
     | sed -E 's/.*emit_event[[:space:]]+"([a-z][a-z0-9._-]+)".*/\1/' \
     | sort -u \
     || true)"
