@@ -157,6 +157,26 @@
     "cq.cycle.cleanup",
     "cq.backtrack.start",
     "cq.backtrack.exhausted",
-    "cq.backtrack.complete"
+    "cq.backtrack.complete",
+    "backend.degraded",
+    "backend.missing",
+    "build.aborted",
+    "build.diff.empty_after_done_sentinel",
+    "build.scope_grant_applied",
+    "build.scope_injected",
+    "cost.budget_exceeded",
+    "cycle.scope.denied",
+    "cycle.scope.granted",
+    "memory.backend.init",
+    "orch.contract.not_implemented",
+    "pipeline.aborted",
+    "pipeline.skip_to_stage",
+    "pipeline.state.error",
+    "review.test_assessment.consumed",
+    "router.precondition.refused",
+    "router.precondition.skipped",
+    "router.precondition.violated",
+    "strategy.composite.unimplemented",
+    "template.deprecated_shape"
   ]
 }
