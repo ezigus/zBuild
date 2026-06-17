@@ -83,6 +83,7 @@
     "test_assessment.missing_input",
     "test_assessment.missing_baseline",
     "test_assessment.downgrade",
+    "test_assessment.acceptance_fail",
     "pipeline.from_stage.rejected",
     "build.cycle.max_turns_clamped",
     "registry.discovery",

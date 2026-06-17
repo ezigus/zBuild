@@ -319,6 +319,157 @@ content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
 v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
 assert_eq "T16 scope_violation + green stays inconclusive" "inconclusive" "$v"
 
+# ─── Test 17: acceptance block present + testfiles exist + LLM av=true → pass ─
+# Happy path: design.md has an acceptance block, named testfile exists, and the
+# LLM returns acceptance_verified=true alongside a pass verdict.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR17'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TR17
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS17'
+{"schema_version":1,"verdict":"pass","iterations":1,"terminated_reason":"complete"}
+BS17
+mkdir -p "$GIT_FIXTURE/tests/unit"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$GIT_FIXTURE/tests/unit/t17-acceptance-test.sh"
+cat > "$ARTIFACTS_DIR/design.md" <<'DM17'
+# Design
+
+```acceptance
+SPEC: test_assessment verifies acceptance criteria from design.md
+SPEC: acceptance_verified=true when all specs are grounded in passing tests
+TESTFILES:
+tests/unit/t17-acceptance-test.sh
+```
+DM17
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"all green","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"unknown","acceptance_verified":true,"failure_summary_md":"All good.","iter":1}'
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T17 acceptance+pass returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T17 acceptance_verified=true + pass verdict preserved" "pass" "$v"
+rm -f "$ARTIFACTS_DIR/design.md" "$GIT_FIXTURE/tests/unit/t17-acceptance-test.sh"
+
+# ─── Test 18: testfile missing → verdict=fail (pre-LLM) ──────────────────────
+# When a TESTFILE named in the acceptance block does not exist, the plugin must
+# fail-closed BEFORE calling the LLM (no token spend).
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR18'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TR18
+cat > "$ARTIFACTS_DIR/design.md" <<'DM18'
+# Design
+
+```acceptance
+SPEC: test_assessment fails closed when TESTFILES are absent
+TESTFILES:
+tests/unit/nonexistent-test-file.sh
+```
+DM18
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T18 missing testfile returns rc=0" "0" "$rc"
+assert_file_exists "T18 test-assessment.json written on pre-LLM fail" "$ARTIFACTS_DIR/test-assessment.json"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T18 missing testfile → verdict=fail" "fail" "$v"
+reason="$(printf '%s' "$content" | jq -r '.reason // ""' 2>/dev/null)"
+assert_eq "T18 reason=acceptance_not_verified" "acceptance_not_verified" "$reason"
+rm -f "$ARTIFACTS_DIR/design.md"
+
+# ─── Test 21 (Copilot review): unsafe TESTFILES path → fail-closed ───────────
+# A TESTFILES path from the LLM-produced design.md that is absolute or contains
+# ".." must be rejected fail-closed (verdict=fail, no LLM call) so the gate can
+# never reference a file outside the repo — mirrors the design + build guards.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR21'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TR21
+cat > "$ARTIFACTS_DIR/design.md" <<'DM21'
+# Design
+
+```acceptance
+SPEC: unsafe acceptance testfile paths are rejected
+TESTFILES:
+../escape-test.sh
+/tmp/zbuild-abs-test.sh
+```
+DM21
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T21 unsafe testfile returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json" 2>/dev/null)"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T21 unsafe testfile path → verdict=fail" "fail" "$v"
+reason="$(printf '%s' "$content" | jq -r '.reason // ""' 2>/dev/null)"
+assert_eq "T21 reason=acceptance_not_verified" "acceptance_not_verified" "$reason"
+rm -f "$ARTIFACTS_DIR/design.md"
+
+# ─── Test 19: testfiles present + LLM acceptance_verified=false → fail ───────
+# When the LLM returns acceptance_verified=false with a pass verdict, the stage
+# must downgrade pass→fail with reason=acceptance_llm_rejected.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR19'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TR19
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS19'
+{"schema_version":1,"verdict":"pass","iterations":1,"terminated_reason":"complete"}
+BS19
+mkdir -p "$GIT_FIXTURE/tests/unit"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$GIT_FIXTURE/tests/unit/t19-acceptance-test.sh"
+cat > "$ARTIFACTS_DIR/design.md" <<'DM19'
+# Design
+
+```acceptance
+SPEC: spec that the LLM cannot verify
+TESTFILES:
+tests/unit/t19-acceptance-test.sh
+```
+DM19
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"looks ok","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"unknown","acceptance_verified":false,"failure_summary_md":"Spec not grounded.","iter":1}'
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T19 acceptance_verified=false returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T19 acceptance_verified=false downgrades pass→fail" "fail" "$v"
+note_present="$(printf '%s' "$content" | jq -r '.required_changes | map(select(. | test("acceptance"))) | length' 2>/dev/null)"
+if [[ "$note_present" -ge 1 ]] 2>/dev/null; then
+    assert_pass "T19 downgrade note mentions acceptance in required_changes"
+else
+    assert_fail "T19 downgrade note mentions acceptance in required_changes" "no note"
+fi
+rm -f "$ARTIFACTS_DIR/design.md" "$GIT_FIXTURE/tests/unit/t19-acceptance-test.sh"
+
+# ─── Test 20: no design.md → acceptance check skipped, plugin runs normally ──
+# When design.md is absent the acceptance path is a no-op: the plugin calls the
+# LLM as normal and emits whatever verdict the LLM returns.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md" \
+      "$ARTIFACTS_DIR/design.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR20'
+{"schema_version":1,"verdict":"fail","exit_code":1,"passed":5,"failed":2,"test_output":"2 failing","diff_applied":true,"test_cmd":"npm test"}
+TR20
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS20'
+{"schema_version":1,"verdict":"pass","iterations":1,"terminated_reason":"complete"}
+BS20
+CANNED_RESPONSE='{"schema_version":1,"verdict":"fail","summary":"2 failing","diagnosis":"missing impl","required_changes":["fix it"],"agrees_with_build_complete":false,"branch_numstat":"unknown","failure_summary_md":"Tests failed.","iter":1}'
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T20 no design.md returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T20 no design.md → LLM verdict preserved (fail)" "fail" "$v"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -64,6 +64,8 @@ source "$_TEST_ASSESSMENT_ROOT/scripts/lib/artifact-render.sh"
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/test-output-sanitize.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/prompt-overrides.sh"
+# shellcheck source=../../../scripts/lib/acceptance-block.sh
+source "$_TEST_ASSESSMENT_ROOT/scripts/lib/acceptance-block.sh"
 
 # Cap on test_output bytes embedded in the prompt — keep tail so the most
 # recent (typically most-failure-revealing) lines survive truncation.
@@ -99,7 +101,8 @@ test_assessment_run() {
         "$artifact_dir/test-assessment.json" \
         "$artifact_dir/test-assessment.md" \
         "$artifact_dir" \
-        "$state_dir"
+        "$state_dir" \
+        "$artifact_dir/design.md"
 }
 
 # Inner: explicit-path unit-testable form.
@@ -112,6 +115,7 @@ test_assessment_run() {
 #   $6 = output test-assessment.md path (flat / manifest primary)
 #   $7 = artifact_dir (for intermediate redaction files)
 #   $8 = state_dir   (for cycle-iter artifact mirror)
+#   $9 = design.md path (optional; acceptance-block consumed when present, ADR-031)
 _test_assessment_run_inner() {
     local scope_manifest="$1"
     local test_results_path="$2"
@@ -121,6 +125,7 @@ _test_assessment_run_inner() {
     local output_md="$6"
     local artifact_dir="${7:-$(dirname "$output_json")}"
     local state_dir="${8:-$(dirname "$artifact_dir")}"
+    local design_md="${9:-}"
 
     mkdir -p "$artifact_dir"
 
@@ -186,6 +191,51 @@ _test_assessment_run_inner() {
     build_iters="$(printf '%s' "$build_content" | jq -r '.iterations // 0' 2>/dev/null || echo 0)"
     build_term="$(printf '%s' "$build_content" | jq -r '.terminated_reason // "complete"' 2>/dev/null || echo complete)"
 
+    # ─── Acceptance-block (ADR-031) ──────────────────────────────────────────
+    local -a _ab_specs=() _ab_testfiles=() _ab_missing=()
+    local _ab_present=0
+    if [[ -n "$design_md" && -f "$design_md" ]]; then
+        local _ab_raw
+        if _ab_raw="$(extract_acceptance_block "$design_md" 2>/dev/null)"; then
+            _ab_present=1
+            local _ab_in_tf=0
+            while IFS= read -r _ab_line; do
+                if [[ "$_ab_line" == "TESTFILES:" ]]; then
+                    _ab_in_tf=1
+                elif [[ $_ab_in_tf -eq 1 && -n "$_ab_line" ]]; then
+                    _ab_line="${_ab_line%$'\r'}"   # tolerate a CRLF design.md
+                    [[ -z "$_ab_line" ]] && continue
+                    # ADR-031: TESTFILES are repo-relative and grant no scope.
+                    # Reject absolute / ".."-containing paths from the LLM-produced
+                    # design.md, fail-closed (mirrors the design + build guards) so
+                    # the gate can never reference a file outside the repo.
+                    if [[ "$_ab_line" == /* || "/$_ab_line/" == *"/../"* ]]; then
+                        _ab_missing+=("$_ab_line")
+                        continue
+                    fi
+                    _ab_testfiles+=("$_ab_line")
+                elif [[ "$_ab_line" == SPEC:* ]]; then
+                    _ab_specs+=("$_ab_line")
+                fi
+            done <<< "$_ab_raw"
+            # Deterministic TESTFILES existence gate (pre-LLM, no token spend)
+            local _tf
+            for _tf in "${_ab_testfiles[@]+"${_ab_testfiles[@]}"}"; do
+                [[ -f "$_tf" ]] || _ab_missing+=("$_tf")
+            done
+        fi
+    fi
+    if [[ ${#_ab_missing[@]} -gt 0 ]]; then
+        local _miss_str; _miss_str="$(printf ' %s' "${_ab_missing[@]}")"
+        emit_event "test_assessment.acceptance_fail" \
+            "plugin=test_assessment" "reason=acceptance_not_verified" \
+            "missing=${_miss_str# }" 2>/dev/null || true
+        _test_assessment_write_acceptance_fail \
+            "$output_json" "$output_md" "$state_dir" \
+            "acceptance-block TESTFILES missing:${_miss_str}"
+        return 0
+    fi
+
     # #824: use intake-captured baseline sha so cumulative branch numstat
     # reflects ALL work since cycle start, including UNCOMMITTED worktree
     # changes (which build's per-iter diff.patch artifact misses on timeout
@@ -226,9 +276,11 @@ _test_assessment_run_inner() {
     # ─── Compose prompt ──────────────────────────────────────────────────────
     # ADR-028: canonical OUTPUT CONTRACT block from framework. ADR-022 v2:
     # failure_summary_md is a markdown free-text field (escape required).
+    # ADR-031: acceptance_verified added when acceptance block is present.
+    local _av_schema_field=""
+    [[ $_ab_present -eq 1 ]] && _av_schema_field=$'    "acceptance_verified": true | false,\n'
     local _ta_schema
-    _ta_schema="$(cat <<'TA_SCHEMA'
-  {
+    _ta_schema='  {
     "schema_version": 1,
     "verdict": "pass" | "fail" | "error" | "inconclusive",
     "summary": "<one-paragraph synthesis>",
@@ -236,11 +288,9 @@ _test_assessment_run_inner() {
     "required_changes": ["<actionable change>", "..."],
     "agrees_with_build_complete": true | false,
     "branch_numstat": "<verbatim from input>",
-    "failure_summary_md": "<markdown report fed back to the build stage>",
+'"${_av_schema_field}"'    "failure_summary_md": "<markdown report fed back to the build stage>",
     "iter": <integer>
-  }
-TA_SCHEMA
-)"
+  }'
     local _output_contract_block
     _output_contract_block="$(_llm_output_contract \
         --stage test_assessment \
@@ -318,6 +368,24 @@ TA_PROMPT
 
 $_ta_instructions"
 
+    # Build acceptance-block prompt section when present (ADR-031)
+    local _ab_prompt=""
+    if [[ $_ab_present -eq 1 ]]; then
+        _ab_prompt=$'\n\nACCEPTANCE CRITERIA (from design.md):\n'
+        local _s
+        for _s in "${_ab_specs[@]+"${_ab_specs[@]}"}"; do
+            _ab_prompt+="$_s"$'\n'
+        done
+        if [[ ${#_ab_testfiles[@]} -gt 0 ]]; then
+            _ab_prompt+=$'TESTFILES:\n'
+            local _tf2
+            for _tf2 in "${_ab_testfiles[@]}"; do
+                _ab_prompt+="$_tf2"$'\n'
+            done
+        fi
+        _ab_prompt+=$'\nSet acceptance_verified=true ONLY when every SPEC claim is grounded in passing test output AND all TESTFILES are present and passing.\n'
+    fi
+
     local prompt
     printf -v prompt '%s\n\nPLAN:\n%s\n\nBUILD CLAIM:\n verdict=%s iterations=%s terminated_reason=%s\n\nBRANCH NUMSTAT:\n%s\n\nWORKTREE STATUS:\n%s\n\nTEST SUMMARY:\n verdict=%s passed=%s failed=%s\n\nTEST OUTPUT (verbatim, possibly truncated):\n%s\n' \
         "$_ta_instructions" \
@@ -327,6 +395,7 @@ $_ta_instructions"
         "$worktree_status" \
         "$test_verdict" "$test_passed" "$test_failed" \
         "$test_output"
+    [[ -n "$_ab_prompt" ]] && prompt+="$_ab_prompt"
 
     # ─── Redaction chokepoint (ADR-004, required) ────────────────────────────
     local prompt_file="$artifact_dir/test-assessment-prompt.txt"
@@ -395,6 +464,9 @@ $_ta_instructions"
         and (.required_changes | type=="array")
         and (.required_changes | all(type=="string"))
         and (.agrees_with_build_complete | type=="boolean")'
+    # When acceptance block present, require acceptance_verified boolean (ADR-031)
+    [[ $_ab_present -eq 1 ]] && \
+        schema_expr="$schema_expr and (.acceptance_verified | type==\"boolean\")"
     if ! printf '%s' "$stripped" | jq -e "$schema_expr" >/dev/null 2>&1; then
         error "test_assessment_run: LLM response failed schema validation"
         emit_event "plugin.run.error" "plugin=test_assessment" \
@@ -456,12 +528,32 @@ $_ta_instructions"
         fi
     fi
 
+    # ─── Acceptance-block downgrade (ADR-031) ────────────────────────────────
+    # Only fires when block is present AND verdict is still pass after above.
+    local _ab_llm_rejected=0
+    if [[ $_ab_present -eq 1 && "$final_verdict" == "pass" ]]; then
+        local _llm_av
+        _llm_av="$(printf '%s' "$stripped" | jq -r '.acceptance_verified // "false"' 2>/dev/null || echo "false")"
+        if [[ "$_llm_av" != "true" ]]; then
+            final_verdict="fail"
+            downgraded=1
+            _ab_llm_rejected=1
+            emit_event "test_assessment.downgrade" \
+                "plugin=test_assessment" \
+                "from=pass" "to=fail" \
+                "reason=acceptance_llm_rejected" \
+                "acceptance_verified=$_llm_av"
+        fi
+    fi
+
     # Rewrite verdict + (when downgraded) append a required_changes note,
     # then ensure branch_numstat is the helper's verbatim line. failure_summary_md
     # is preserved as the LLM emitted it (the build feedback body).
     local downgrade_note=""
     if [[ $downgraded -eq 1 ]]; then
-        if [[ $worktree_not_durable -eq 1 ]]; then
+        if [[ $_ab_llm_rejected -eq 1 ]]; then
+            downgrade_note="verdict downgraded to fail: acceptance criteria not verified (acceptance_verified=false in LLM response)"
+        elif [[ $worktree_not_durable -eq 1 ]]; then
             downgrade_note="verdict downgraded: worktree dirty — uncommitted changes are transient (about to be reverted), not durable for convergence (test_verdict=$test_verdict build_verdict=$build_verdict)"
         else
             downgrade_note="verdict downgraded: build/test disagreement (test_failed=$test_failed test_verdict=$test_verdict agrees=$llm_agrees build_verdict=$build_verdict)"
@@ -508,6 +600,35 @@ $_ta_instructions"
         "downgraded=$downgraded" \
         "artifact=test-assessment.json"
     return 0
+}
+
+# ─── pre-LLM acceptance fail writer (ADR-031) ───────────────────────────────
+# Writes test-assessment.json with verdict=fail when TESTFILES are missing.
+# Args: $1=output_json $2=output_md $3=state_dir $4=detail
+_test_assessment_write_acceptance_fail() {
+    local output_json="$1" output_md="$2" state_dir="$3" detail="$4"
+    local final_json
+    final_json="$(jq -nc \
+        --arg detail "$detail" \
+        '{schema_version:1, verdict:"fail", reason:"acceptance_not_verified",
+          summary:$detail, diagnosis:$detail, required_changes:[],
+          agrees_with_build_complete:false, branch_numstat:"unknown",
+          acceptance_verified:false,
+          failure_summary_md:("Acceptance check failed: " + $detail), iter:0}')"
+    local rendered_md
+    rendered_md="$(render_test_assessment_md "$final_json" 2>/dev/null || \
+        printf '# Test Assessment: fail\n\n%s\n' "$detail")"
+    printf '%s\n' "$final_json" | atomic_write "$output_json"
+    printf '%s\n' "$rendered_md" | atomic_write "$output_md"
+    if [[ -n "${ZBUILD_CYCLE_ID:-}" && -n "${ZBUILD_CYCLE_ITER:-}" ]]; then
+        local iter_dir="$state_dir/cycle-${ZBUILD_CYCLE_ID}/iter-${ZBUILD_CYCLE_ITER}"
+        mkdir -p "$iter_dir"
+        printf '%s\n' "$final_json"  | atomic_write "$iter_dir/test-assessment.json"
+        printf '%s\n' "$rendered_md" | atomic_write "$iter_dir/test-assessment.md"
+    fi
+    emit_event "plugin.run.complete" "stage=test_assessment" \
+        "plugin=test_assessment" "verdict=fail" \
+        "reason=acceptance_not_verified" "artifact=test-assessment.json" 2>/dev/null || true
 }
 
 # ─── fail-CLOSED error result writer (#627) ─────────────────────────────────
