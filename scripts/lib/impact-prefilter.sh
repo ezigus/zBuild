@@ -288,3 +288,79 @@ _impact_scope_prefilter() {
 
     printf '%s\n' "$results"
 }
+
+# ─── _impact_drop_nonexistent_missing <repo_root> ────────────────────────────
+# Post-LLM hallucination filter (#911). Strips missing[].files_to_add paths
+# that do not exist on disk (relative to repo_root). Drops missing[] entries
+# whose files_to_add becomes empty after stripping. If missing[] empties out
+# and the original verdict was 'incomplete', flips verdict to 'complete'.
+#
+# Reads and modifies $impact_json in the caller's scope.
+# Emits impact.hallucination.filtered with dropped_count and verdict_flipped.
+#
+# Must run AFTER the prefilter floor merge so forced-existing floor entries
+# are never targeted by this drop.
+_impact_drop_nonexistent_missing() {
+    local _repo_root="${1:-${ZBUILD_REPO_ROOT:-$(pwd)}}"
+
+    # Collect every files_to_add path from missing[] (whitespace-stripped).
+    local _raw_paths
+    _raw_paths="$(printf '%s' "$impact_json" \
+        | jq -r '.missing[]?.files_to_add[]?' 2>/dev/null \
+        | sed 's/[[:space:]]//g; /^$/d')" || true
+    [[ -z "$_raw_paths" ]] && return 0
+
+    # Identify ghost paths (do not exist on disk).
+    local _ghost_paths=()
+    local _p
+    while IFS= read -r _p; do
+        [[ -z "$_p" ]] && continue
+        if [[ ! -e "$_repo_root/$_p" ]]; then
+            _ghost_paths+=("$_p")
+        fi
+    done <<< "$_raw_paths"
+
+    [[ ${#_ghost_paths[@]} -eq 0 ]] && return 0
+
+    # Build jq-consumable JSON array of ghost paths.
+    local _ghost_json
+    _ghost_json="$(printf '%s\n' "${_ghost_paths[@]}" \
+        | jq -Rsc 'split("\n") | map(select(length > 0))')"
+
+    local _original_verdict
+    _original_verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo "incomplete")"
+
+    # Filter: strip ghost paths; drop entries with empty files_to_add.
+    local _filtered
+    _filtered="$(printf '%s' "$impact_json" | jq -c --argjson ghosts "$_ghost_json" '
+        .missing |= map(
+            .files_to_add |= map(
+                ltrimstr(" ") | rtrimstr(" ") | select(length > 0)
+            ) |
+            .files_to_add |= map(
+                . as $p | select(($ghosts | index($p)) == null)
+            ) |
+            select(.files_to_add | length > 0)
+        )
+    ' 2>/dev/null)" || true
+
+    [[ -z "$_filtered" ]] && return 0
+
+    local _dropped="${#_ghost_paths[@]}"
+    local _verdict_flipped=false
+
+    # Flip verdict incomplete→complete only if missing[] became empty.
+    local _new_len
+    _new_len="$(printf '%s' "$_filtered" | jq '.missing | length' 2>/dev/null || echo 1)"
+    if [[ "$_new_len" -eq 0 && "$_original_verdict" == "incomplete" ]]; then
+        _filtered="$(printf '%s' "$_filtered" | jq -c '.verdict = "complete"' 2>/dev/null)" || true
+        [[ -n "$_filtered" ]] && _verdict_flipped=true
+    fi
+
+    [[ -n "$_filtered" ]] && impact_json="$_filtered"
+
+    emit_event "impact.hallucination.filtered" \
+        "plugin=impact" \
+        "dropped_count=${_dropped}" \
+        "verdict_flipped=${_verdict_flipped}" 2>/dev/null || true
+}

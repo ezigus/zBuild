@@ -107,6 +107,7 @@
     "impact.verdict.error",
     "impact.scope.expanded",
     "impact.contract.violation",
+    "impact.hallucination.filtered",
     "review.scope.violation",
     "review.test_status.coerced",
     "router.max_iterations.override_ignored",
