@@ -114,11 +114,19 @@ fi
 
 # The scope-block path must NOT be duplicated into the decisions section (it is
 # already the build scope); assert the in-fence content is excluded from prose.
-dd_section="$(printf '%s\n' "$prompt" | awk '/## DESIGN DECISIONS/{f=1;next} f&&/^## /{exit} f{print}')"
-if printf '%s' "$dd_section" | grep -qF '```'; then
-    assert_fail "IT5: decisions section must not contain a fenced block" "fence leaked"
+# Boundary: slice between the DESIGN DECISIONS and ACCEPTANCE TESTS section lines
+# (computed above) — NOT the next '## ', because the design prose itself carries
+# '## Decision'/'## Context' headings that would truncate the slice early and
+# make this check vacuously pass (Copilot review).
+if [[ -n "$dd_line" && -n "$at_line" && "$dd_line" -lt "$at_line" ]]; then
+    dd_section="$(printf '%s\n' "$prompt" | sed -n "$((dd_line + 1)),$((at_line - 1))p")"
 else
-    assert_pass "IT5: decisions section excludes fenced-block content"
+    dd_section="$(printf '%s\n' "$prompt" | awk '/## DESIGN DECISIONS/{f=1;next} f{print}')"
+fi
+if printf '%s' "$dd_section" | grep -qF '```'; then
+    assert_fail "IT5: decisions section must not contain a fenced block" "fence leaked: $dd_section"
+else
+    assert_pass "IT5: decisions section (DESIGN DECISIONS..ACCEPTANCE TESTS) excludes fences"
 fi
 
 cleanup_test_env
