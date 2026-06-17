@@ -26,12 +26,8 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
-_make_plugin() { mock_plugin_factory "$@"; }
-for s in intake plan impact design build test test_assessment \
-         cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
-    kind="agent"; [[ "$s" == "test" ]] && kind="tool"
-    _make_plugin "$s" "$kind" 0 >/dev/null
-done
+# #921: standard roster single-sourced (was a hand-maintained for-loop).
+register_standard_pipeline_stubs
 
 HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
 

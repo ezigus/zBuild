@@ -58,6 +58,9 @@ BUILD_STARTED="$TEST_TEMP_DIR/build-started"
 TEST_RAN="$TEST_TEMP_DIR/test-ran"
 export BUILD_STARTED TEST_RAN
 
+# #921: intentional 8-stage subset (ZBUILD_CYCLES_ENABLED=0 → cq-* never load;
+# SIGTERM fires while build sleeps). Do NOT replace with
+# register_standard_pipeline_stubs — the partial roster is deliberate.
 # Fast stub for intake + plan (instant 0).
 mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "plan"   "agent" 0 >/dev/null
