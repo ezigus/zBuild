@@ -663,12 +663,15 @@ $_review_instructions"
     # change. Deterministic complement to the LLM verdict; the acceptance-gate
     # stage (ADR-036) is the producer-side teeth, this is the exit-gate guard.
     # No acceptance block → no-op (composable). block is never demoted.
+    # Skip when the merge-base diff basis is unavailable (initial commit, shallow
+    # clone, detached checkout without main/origin/main): we cannot compute which
+    # files changed, so we must not coerce on an empty diff. The acceptance-gate
+    # stage (ADR-036) remains the primary, basis-independent teeth.
     local _design_md="$artifact_dir/design.md"
-    if [[ "$verdict" == "approve" ]] && grep -q '^```acceptance' "$_design_md" 2>/dev/null; then
+    if [[ "$verdict" == "approve" ]] && [[ -n "${_mb_base:-}" ]] \
+       && grep -q '^```acceptance' "$_design_md" 2>/dev/null; then
         local _changed_files="" _gap_specs="" _spec_id _tf _covered
-        if [[ -n "${_mb_base:-}" ]]; then
-            _changed_files="$(git diff --name-only "$_mb_base" HEAD 2>/dev/null || true)"
-        fi
+        _changed_files="$(git diff --name-only "$_mb_base" HEAD 2>/dev/null || true)"
         while IFS= read -r _spec_id; do
             [[ -z "$_spec_id" ]] && continue
             _covered=0
