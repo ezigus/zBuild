@@ -37,15 +37,11 @@ inputs:
   # security-lens runs inside compound_quality (orchestrator). It does NOT
   # participate in the linear inter-stage contract validated by ADR-020 at
   # pipeline-start; compound_quality dynamic fan-in is tracked as a follow-up
-  # (`dynamic_inputs: from_role:`). The two declared inputs below describe
-  # the orchestrator's hand-in, not a stage:X edge — they use the
-  # `stage:build` source for the diff side-channel and `stage:intake` for
-  # the scope manifest, mirroring how compound_quality is wired today.
-  - id: diff_patch
-    type: file
-    path: "${artifact_dir}/diff.patch"
-    source: stage:build
-    required: false
+  # (`dynamic_inputs: from_role:`).
+  # 843-I (#924): the former `diff_patch` input was declared but never read by
+  # the plugin (a misleading contract). Removed. The scan-target question
+  # (intake goal vs diff.patch) is the separate V2 follow-up; if the scan pivots
+  # to the diff, the input is re-introduced there as a consumed edge.
   - id: scope_manifest
     type: file
     source: stage:intake

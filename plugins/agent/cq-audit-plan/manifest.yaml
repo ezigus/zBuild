@@ -29,11 +29,15 @@ config:
   default_intensity: standard
 
 inputs:
+  # 843-I (#924): cq-audit-plan does NOT read this artifact — the fail-fast gate
+  # is enforced externally by cq-preflight's non-zero exit, not by data. Declared
+  # required:false so composing cq-audit-plan without cq-preflight is not a false
+  # contract-validator barrier.
   - id: preflight_result
     type: file
     path: "${artifact_dir}/cq-preflight-result.json"
     source: stage:cq-preflight
-    required: true
+    required: false
   - id: scope_manifest
     type: file
     source: stage:intake

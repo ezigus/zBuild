@@ -43,6 +43,10 @@ cq_backtrack_run() {
     fi
 
     local max_attempts="${ZBUILD_CQ_MAX_BACKTRACK_ATTEMPTS:-2}"
+    # 843-I (#924): recovery target is config-driven (default design) so a
+    # template that omits the design stage can retarget instead of emitting a
+    # recovery.suggestion naming a non-existent stage.
+    local target_stage="${ZBUILD_BACKTRACK_TARGET_STAGE:-design}"
     local attempt_count=0
     local count_file="$state_dir/cq-backtrack-count"
     if [[ -f "$count_file" ]]; then
@@ -55,7 +59,7 @@ cq_backtrack_run() {
             printf '%d\n' "$attempt_count" > "$count_file"
             action="backtrack"
             eb_emit_event "recovery.suggestion" "stage=cq-backtrack" \
-                "target_stage=design" "reason=architecture_findings" \
+                "target_stage=$target_stage" "reason=architecture_findings" \
                 "attempt=$attempt_count"
         else
             # Exhausted backtrack budget — degrade to continue-with-warning

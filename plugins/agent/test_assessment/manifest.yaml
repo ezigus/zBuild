@@ -52,6 +52,17 @@ inputs:
     path: "${artifact_dir}/build-summary.json"
     source: stage:build
     required: false
+  # 843-I (#924): test_assessment reads intake-baseline-ref.txt to compute the
+  # cumulative branch numstat. Declared here (was an UNDECLARED dependency) so
+  # the contract is honest. required:false mirrors intake's opt-out output
+  # (ZBUILD_INTAKE_SKIP_BRANCH) + build's same input; the plugin still
+  # fail-closes (rc=2) when the ref is absent rather than silently falling back
+  # — that fail-closed is intentional (preserves the #847-era anti-regression).
+  - id: intake_baseline_ref
+    type: text
+    path: "${state_dir}/intake-baseline-ref.txt"
+    source: stage:intake
+    required: false
   - id: design
     # carries the ```acceptance block (ADR-031); optional for backwards-compat
     type: file
