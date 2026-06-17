@@ -44,11 +44,14 @@ assert_eq "V8: ZBUILD_BACKTRACK_TARGET_STAGE overrides target_stage" "plan" "$tg
 
 # ── Manifest-contract assertions (honest declarations) ───────────────────────
 _input_required() {  # _input_required <manifest> <input_id> → prints true|false|MISSING
-    awk -v id="$2" '
-        /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ { cur=$0; sub(/.*id:[[:space:]]*/,"",cur); req="" }
-        /^[[:space:]]*required:[[:space:]]*/ { r=$0; sub(/.*required:[[:space:]]*/,"",r);
-            if (cur==id) print r }
-    ' "$1" | head -1
+    local val
+    val="$(awk -v id="$2" '
+        /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ { cur=$0; sub(/.*id:[[:space:]]*/,"",cur) }
+        /^[[:space:]]*required:[[:space:]]*/ {
+            if (cur==id) { r=$0; sub(/.*required:[[:space:]]*/,"",r); print r; exit }
+        }
+    ' "$1")"
+    printf '%s' "${val:-MISSING}"
 }
 
 TA="$REPO_ROOT/plugins/agent/test_assessment/manifest.yaml"
