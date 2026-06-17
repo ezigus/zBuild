@@ -33,26 +33,27 @@ echo "FD3_OPEN"
 PROBE
 chmod +x "$FAKE_TIER/tests/unit/fd3-probe-test.sh"
 
-# Run a slimmed-down equivalent of the harness loop: we re-source run-tests.sh's
-# spawn pattern by grepping for the `bash "$f"` line and exercising it.
-# Simpler: just invoke scripts/run-tests.sh with a TESTS_DIR override.
-# But scripts/run-tests.sh has no override; we patch it for this test by sourcing
-# the file content and replacing TESTS_DIR.
-
-# Use bash to invoke just the spawn line — replicate the exact pattern at :68.
+# #929 moved the spawn into the shared `_rt_run` helper. The fd-3 contract now
+# lives there: `"${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1`.
+# Assert that helper line still opens fd 3 for the child (and, per #929, also
+# guards stdin with </dev/null).
 out="$(mktemp -t fd3probe.XXXXXX)"
 set +e
-# Simulate the harness invocation. After the fix, fd 3 must be open here.
-# We extract the actual spawn line from scripts/run-tests.sh and replay it.
-spawn_line="$(grep -E '^\s+if bash "\$f"' "$REPO_ROOT/scripts/run-tests.sh" | head -1)"
+spawn_line="$(grep -E 'bash "\$1"' "$REPO_ROOT/scripts/run-tests.sh" | head -1)"
 set -e
 
-assert_pass "harness spawn line found"
+[[ -n "$spawn_line" ]] \
+    && assert_pass "_rt_run spawn line found" \
+    || assert_fail "_rt_run spawn line not found in run-tests.sh"
 
-# Parse: assert the line includes '3>'
+# Parse: assert the line includes '3>' (fd 3, #586) and '</dev/null' (stdin, #929)
 case "$spawn_line" in
-    *"3>"*) assert_pass "T1 run-tests.sh:68 includes fd 3 redirection" ;;
-    *)      assert_fail "T1 run-tests.sh:68 missing fd 3 redirection (got: $spawn_line)" ;;
+    *"3>"*) assert_pass "T1 _rt_run includes fd 3 redirection (#586)" ;;
+    *)      assert_fail "T1 _rt_run missing fd 3 redirection (got: $spawn_line)" ;;
+esac
+case "$spawn_line" in
+    *"</dev/null"*) assert_pass "T1b _rt_run guards stdin with </dev/null (#929)" ;;
+    *)              assert_fail "T1b _rt_run missing </dev/null stdin guard (got: $spawn_line)" ;;
 esac
 
 # ─── Functional test: invoke fixture through the actual harness ─────────────
