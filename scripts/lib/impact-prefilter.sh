@@ -331,11 +331,16 @@ _impact_drop_nonexistent_missing() {
     _original_verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo "incomplete")"
 
     # Filter: strip ghost paths; drop entries with empty files_to_add.
+    # Normalize each path by removing ALL whitespace (gsub "\\s") so the
+    # comparison key matches _ghost_paths, which was built with the same
+    # `sed 's/[[:space:]]//g'` normalization. A space-only trim here would let a
+    # path with a tab or trailing \r be detected-as-ghost yet not removed
+    # (Copilot review): detection (bash) and removal (jq) must normalize alike.
     local _filtered
     _filtered="$(printf '%s' "$impact_json" | jq -c --argjson ghosts "$_ghost_json" '
         .missing |= map(
             .files_to_add |= map(
-                ltrimstr(" ") | rtrimstr(" ") | select(length > 0)
+                gsub("\\s";"") | select(length > 0)
             ) |
             .files_to_add |= map(
                 . as $p | select(($ghosts | index($p)) == null)

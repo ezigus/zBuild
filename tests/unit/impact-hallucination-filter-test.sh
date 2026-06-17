@@ -119,6 +119,20 @@ _impact_drop_nonexistent_missing "$FAKE_ROOT"
 h4_verdict="$(printf '%s' "$impact_json" | jq -r '.verdict')"
 assert_eq "[SPEC-5] H4: verdict=error never flipped by hallucination filter" "error" "$h4_verdict"
 
+# ─── H5 (Copilot review): a ghost path with embedded whitespace is dropped ───
+# Ghost detection (bash, strips ALL whitespace) and removal (jq) must normalize
+# alike — otherwise a path with a tab/\r is detected-as-ghost yet left in
+# missing[]. Here the only path is a non-existent one carrying a trailing tab.
+: > "$EVENTS_LOG"
+impact_json='{"schema_version":1,"verdict":"incomplete","missing":[
+  {"step_id":"s5","files_to_add":["ghost/tabbed.sh\t"],"reason":"r5"}
+],"impact_feedback_md":""}'
+_impact_drop_nonexistent_missing "$FAKE_ROOT"
+h5_len="$(printf '%s' "$impact_json" | jq '.missing | length')"
+assert_eq "[SPEC-1] H5: whitespace-laden ghost path dropped (missing[] empties)" "0" "$h5_len"
+h5_verdict="$(printf '%s' "$impact_json" | jq -r '.verdict')"
+assert_eq "H5: verdict flips to complete after whitespace-ghost drop" "complete" "$h5_verdict"
+
 # ─── C1: charter mandate text present in plugin.sh ──────────────────────────
 PLUGIN_SH="$REPO_ROOT/plugins/agent/impact/plugin.sh"
 assert_contains "[SPEC-6] C1: charter has EXISTENCE VERIFICATION heading" \
