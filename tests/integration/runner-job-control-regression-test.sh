@@ -53,20 +53,8 @@ mkdir -p "$HOME/.zbuild"
 printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 
 # All stages succeed instantly — pure happy path.
-mock_plugin_factory "intake" "agent" 0 >/dev/null
-mock_plugin_factory "plan"   "agent" 0 >/dev/null
-# #842: standard template wraps design+impact in design_impact_cycle (plan is a leaf).
-mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
-mock_plugin_factory "impact" "agent" 0 >/dev/null
-mock_plugin_factory "build"  "agent" 0 >/dev/null
-mock_plugin_factory "test"   "tool"  0 >/dev/null
-mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
-# #755: review_cycle.flow now includes the 4 compound_quality stages.
-mock_plugin_factory "cq-preflight" "agent" 0 >/dev/null
-mock_plugin_factory "cq-audit-plan" "agent" 0 >/dev/null
-mock_plugin_factory "cq-cycle" "agent" 0 >/dev/null
-mock_plugin_factory "cq-backtrack" "agent" 0 >/dev/null
-mock_plugin_factory "review" "agent" 0 >/dev/null
+# #921: standard roster single-sourced (was a 12-line mock_plugin_factory block).
+register_standard_pipeline_stubs
 
 set +e
 bash "$RUNNER" --goal "w15h job-control happy path" \

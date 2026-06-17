@@ -68,25 +68,10 @@ ${fn}() {
 EOF
 }
 
-# Plain pass-through stubs for the non-capturing stages.
-_make_plugin() { mock_plugin_factory "$@"; }
-
-_make_plugin "intake"          "agent" 0 >/dev/null
-_make_plugin "plan"            "agent" 0 >/dev/null
-# #842: standard template now includes impact inside design_impact_cycle.
-_make_plugin "impact"          "agent" 0 >/dev/null
-# #842: design is a cycle member of design_impact_cycle (before review_cycle).
-_make_plugin "design"          "agent" 0 >/dev/null
+# #921: standard roster single-sourced; build is then overridden with the
+# env-capture plugin (the test's assertion mechanism).
+register_standard_pipeline_stubs
 _make_capture_plugin "build"   "agent"
-_make_plugin "test"            "tool"  0 >/dev/null
-_make_plugin "test_assessment" "agent" 0 >/dev/null
-# #755: standard review_cycle.flow now includes 4 compound_quality stages
-# between build_test_cycle and review.
-_make_plugin "cq-preflight"    "agent" 0 >/dev/null
-_make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
-_make_plugin "cq-cycle"        "agent" 0 >/dev/null
-_make_plugin "cq-backtrack"    "agent" 0 >/dev/null
-_make_plugin "review"          "agent" 0 >/dev/null
 
 # ─── Run the runner end-to-end ──────────────────────────────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$ENV_CAPTURE"

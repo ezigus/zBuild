@@ -61,6 +61,9 @@ export ZBUILD_SCOPE_OVERRIDE=1
 mkdir -p "$HOME/.zbuild"
 printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 
+# #921: intentional 8-stage subset (ZBUILD_CYCLES_ENABLED=0 → cq-* never load;
+# build returns 130 before later stages). Do NOT replace with
+# register_standard_pipeline_stubs — the partial roster is deliberate.
 mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "plan"   "agent" 0 >/dev/null
 # #842: standard template now includes impact inside design_impact_cycle.

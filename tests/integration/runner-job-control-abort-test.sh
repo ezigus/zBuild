@@ -65,19 +65,8 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_CYCLES_ENABLED=0
 
-mock_plugin_factory "intake" "agent" 0 >/dev/null
-mock_plugin_factory "plan"   "agent" 0 >/dev/null
-mock_plugin_factory "impact" "agent" 0 >/dev/null
-mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
-mock_plugin_factory "build"  "agent" 0 >/dev/null
-mock_plugin_factory "test"   "tool"  0 >/dev/null
-mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
-# #755: review_cycle.flow now includes the 4 compound_quality stages.
-mock_plugin_factory "cq-preflight" "agent" 0 >/dev/null
-mock_plugin_factory "cq-audit-plan" "agent" 0 >/dev/null
-mock_plugin_factory "cq-cycle" "agent" 0 >/dev/null
-mock_plugin_factory "cq-backtrack" "agent" 0 >/dev/null
-mock_plugin_factory "review" "agent" 0 >/dev/null
+# #921: standard roster single-sourced; intake/build/test get custom bodies below.
+register_standard_pipeline_stubs
 
 # Probe intake records $- (set of shell option flags) to a marker so we
 # can introspect whether the runner shell has 'm' (monitor mode) set.
