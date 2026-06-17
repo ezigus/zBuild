@@ -203,6 +203,16 @@ _test_assessment_run_inner() {
                 if [[ "$_ab_line" == "TESTFILES:" ]]; then
                     _ab_in_tf=1
                 elif [[ $_ab_in_tf -eq 1 && -n "$_ab_line" ]]; then
+                    _ab_line="${_ab_line%$'\r'}"   # tolerate a CRLF design.md
+                    [[ -z "$_ab_line" ]] && continue
+                    # ADR-031: TESTFILES are repo-relative and grant no scope.
+                    # Reject absolute / ".."-containing paths from the LLM-produced
+                    # design.md, fail-closed (mirrors the design + build guards) so
+                    # the gate can never reference a file outside the repo.
+                    if [[ "$_ab_line" == /* || "/$_ab_line/" == *"/../"* ]]; then
+                        _ab_missing+=("$_ab_line")
+                        continue
+                    fi
                     _ab_testfiles+=("$_ab_line")
                 elif [[ "$_ab_line" == SPEC:* ]]; then
                     _ab_specs+=("$_ab_line")

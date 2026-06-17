@@ -381,6 +381,36 @@ reason="$(printf '%s' "$content" | jq -r '.reason // ""' 2>/dev/null)"
 assert_eq "T18 reason=acceptance_not_verified" "acceptance_not_verified" "$reason"
 rm -f "$ARTIFACTS_DIR/design.md"
 
+# ─── Test 21 (Copilot review): unsafe TESTFILES path → fail-closed ───────────
+# A TESTFILES path from the LLM-produced design.md that is absolute or contains
+# ".." must be rejected fail-closed (verdict=fail, no LLM call) so the gate can
+# never reference a file outside the repo — mirrors the design + build guards.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR21'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TR21
+cat > "$ARTIFACTS_DIR/design.md" <<'DM21'
+# Design
+
+```acceptance
+SPEC: unsafe acceptance testfile paths are rejected
+TESTFILES:
+../escape-test.sh
+/tmp/zbuild-abs-test.sh
+```
+DM21
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T21 unsafe testfile returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json" 2>/dev/null)"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "T21 unsafe testfile path → verdict=fail" "fail" "$v"
+reason="$(printf '%s' "$content" | jq -r '.reason // ""' 2>/dev/null)"
+assert_eq "T21 reason=acceptance_not_verified" "acceptance_not_verified" "$reason"
+rm -f "$ARTIFACTS_DIR/design.md"
+
 # ─── Test 19: testfiles present + LLM acceptance_verified=false → fail ───────
 # When the LLM returns acceptance_verified=false with a pass verdict, the stage
 # must downgrade pass→fail with reason=acceptance_llm_rejected.

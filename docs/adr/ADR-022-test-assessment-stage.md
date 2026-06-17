@@ -338,9 +338,9 @@ as `fail` via `core/pipeline/verdict.sh` (a separate consumer, pinned by
 ### New Pin 10: acceptance-criteria input
 
 `test_assessment` now consumes the `\`\`\`acceptance` block from `design.md`
-(ADR-031). The stage manifest adds `design_md` as an optional input (`required:
-false`); when `design.md` is absent the acceptance path is a no-op and the
-plugin proceeds exactly as before.
+(ADR-031). The stage manifest adds the `design` input (`id: design`, `path:
+artifacts/design.md`) as optional (`required: false`); when `design.md` is
+absent the acceptance path is a no-op and the plugin proceeds exactly as before.
 
 `plugins/agent/test_assessment/plugin.sh` sources
 `scripts/lib/acceptance-block.sh` and calls `extract_acceptance_block` on the
