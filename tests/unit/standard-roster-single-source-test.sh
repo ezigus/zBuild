@@ -25,10 +25,17 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 source "$REPO_ROOT/core/pipeline/template.sh"
 
 # ── G1: load_template populates _TPL_STAGES (the flat leaf-stage view) ────────
+# Capture stderr so a parse failure surfaces the real error (keeps the guard
+# "loud") instead of degrading to a bare empty-array assertion.
 _TPL_STAGES=(); _TPL_CYCLES=()
-load_template "$REPO_ROOT/config/templates/standard.yaml" >/dev/null 2>&1 || true
-assert_eq "G1: load_template populates _TPL_STAGES" "1" \
-    "$([[ ${#_TPL_STAGES[@]} -gt 0 ]] && echo 1 || echo 0)"
+_lt_err="$TEST_TEMP_DIR/load_template.err"
+load_template "$REPO_ROOT/config/templates/standard.yaml" >/dev/null 2>"$_lt_err" || true
+if [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
+    assert_pass "G1: load_template populates _TPL_STAGES"
+else
+    assert_fail "G1: load_template populates _TPL_STAGES" \
+        "empty _TPL_STAGES — load_template stderr: $(cat "$_lt_err" 2>/dev/null)"
+fi
 
 # ── G2: helper roster ids == template leaf stages, in order ──────────────────
 mapfile -t helper_ids < <(standard_stage_ids)
@@ -74,5 +81,4 @@ set +e; build_run; rc=$?; set -e
 assert_eq "G5: ZBUILD_STUB_RC_build override applied to build stub" "7" "$rc"
 
 cleanup_test_env
-print_test_results
-exit $((FAIL > 0))
+print_test_results  # exits with $FAIL
