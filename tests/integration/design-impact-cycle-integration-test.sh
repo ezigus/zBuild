@@ -98,6 +98,11 @@ MD
 # plan.json (secondary input)
 printf '{"schema_version":1,"steps":[]}' > "$T2_ARTS/plan.json"
 
+# #911: hallucination filter checks existence in ZBUILD_REPO_ROOT. Create the
+# stub file so filter keeps it and verdict stays incomplete as T2 expects.
+mkdir -p "$FAKE_REPO_ROOT/tests/integration"
+printf '# stub\n' > "$FAKE_REPO_ROOT/tests/integration/standard-template-3stage-cycle-test.sh"
+
 # Stub route_to_model to return a synthetic incomplete response.
 route_to_model() {
     printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/integration/standard-template-3stage-cycle-test.sh"],"reason":"test pins cycle count"}],"impact_feedback_md":"## Gap report\\n- Missing: tests/integration/standard-template-3stage-cycle-test.sh (pins cycle count)"}'

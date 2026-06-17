@@ -33,6 +33,11 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 # tests/integration/impact-prefilter-781-regression-test.sh.
 export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/no-prefilter-root"
 mkdir -p "$ZBUILD_REPO_ROOT/config"  # config/shape-change-paths.txt absent → prefilter rc=1
+# Stub the paths referenced in the synthetic LLM verdict so the hallucination
+# filter (#911) does not drop them (they must exist under ZBUILD_REPO_ROOT).
+mkdir -p "$ZBUILD_REPO_ROOT/tests/unit" "$ZBUILD_REPO_ROOT/tests/integration"
+touch "$ZBUILD_REPO_ROOT/tests/unit/template-test.sh"
+touch "$ZBUILD_REPO_ROOT/tests/integration/runner-test.sh"
 
 ARTIFACTS="$TEST_TEMP_DIR/state/artifacts"
 STATE_DIR="$TEST_TEMP_DIR/state"
