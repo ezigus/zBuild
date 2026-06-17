@@ -77,3 +77,31 @@ targeting never actually worked.
   drives the REAL cycle + REAL test stage: iter-1 full (seeds red set) → iter-2
   `run_mode=targeted` → `cycle.test.full_suite_gate` → iter-3 full → converged. (Red
   before this fix: targeted run → `verdict=error` → blocked.)
+
+## Amendment (2026-06-17, #929) — `--files` invocation hardening
+
+The targeted-rerun contract is "run each file in its own process so a failure
+never blocks the rest." But the `{files}` list is built partly by grepping
+`tests/` for a changed source basename (`_test_compute_target_files`), which can
+surface **non-test** paths (mutation `*.md` specs, fixtures, sourced helpers).
+`scripts/run-tests.sh --files` ran **every** passed path as `bash "$f"` with no
+filter, no stdin guard, and no timeout — so a markdown spec (`tests/mutation/cache.md`,
+unbalanced backtick → bash blocks on stdin) **wedged the build_test_cycle test
+stage for 3.5 hours** in a #911 dogfood (CI never hit it — CI uses the tier path,
+not `--files`).
+
+Hardened both the `--files` and tier loops (via the shared `_rt_run` helper):
+1. **Filter:** `--files` skips any input that is not `*-test.sh` (before the
+   `N/M` count, so the denominator only reflects real tests).
+2. **Stdin guard:** every test-file invocation runs with `</dev/null` — a file
+   that reads stdin gets EOF instead of blocking.
+3. **Per-file timeout:** each invocation is wrapped in `gtimeout`/`timeout`
+   (`ZBUILD_TEST_FILE_TIMEOUT`, default 300s, 0 disables; degrades to no-timeout
+   when neither is installed). A hung/looping file is killed and surfaces as a
+   normal `FAIL <file>` — the honest outcome — never an unbounded wait. The
+   load-bearing `3>/dev/null` (#586 stage-io fd-3 guard) is preserved.
+
+The output grammar the verdict parser keys on (`unit: N/M passed`,
+`unit: FAIL <path>`) is unchanged. Verified by `tests/unit/run-tests-files-guard-test.sh`
+(non-test skipped; stdin-reading test returns; infinite-loop test killed by the
+per-file timeout, not the outer bound) + the updated `tests/unit/scripts-run-tests-fd3-test.sh`.
