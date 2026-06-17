@@ -98,7 +98,7 @@ The canonical inter-stage data flow as of Phase 1:
 |---------|-------------------------------------------------------|-----------------------------------------------------------------|
 | intake  | external: `gh_issue_view` / `gh_issue_body`           | `scope_manifest` → `scope-manifest.md`, `intake_goal` → `intake.md` |
 | plan    | `scope_manifest` (intake), `goal_string` (external)   | `plan` → `plan.json`                                            |
-| build   | `scope_manifest` (intake), `plan` (plan)              | `diff_patch` → `diff.patch`, `build_summary` → `build-summary.json` |
+| build   | `scope_manifest` (intake), `plan` (plan), `design` (design, optional — scope block + acceptance TESTFILES + decision prose) | `diff_patch` → `diff.patch`, `build_summary` → `build-summary.json` |
 | test    | `diff_patch` (build)                                  | `test_results` → `test-results.json`                            |
 | test_assessment | `test_results` (test), `diff_patch` (build, optional) | `test_assessment` → `test-assessment.json`              |
 | review  | `scope_manifest`, `plan`, `diff_patch`, `test_results`, `test_assessment` (optional, ADR-022) | `review` → `review.json` |
@@ -697,3 +697,36 @@ are wrapped identically.
 - `tests/unit/plugins-review-banner-test.sh`, `plugin-review-prompt-render-test.sh`,
   `review-prompt-override-test.sh`, `plugins/agent/review/tests/review-test.sh`
   (redaction) — unregressed.
+
+---
+
+## Amendment (2026-06-17, #916) — build consumes design.md decision prose
+
+**Context.** Build already consumed two slices of `design.md`: the ` ```scope `
+block (authoritative scope override, #754) and the ` ```acceptance ` block's
+TESTFILES (charter injection, ADR-031/#866). It ignored the **decision prose** —
+the architectural-decision summary the design stage is required to write. This
+produced a design↔build divergence: design could state "build must do X", build
+(driven by `plan.json`) never saw it, and the directive was silently lost
+(observed across the #866 and #867 dogfoods).
+
+**Contract.** Build now also consumes the **narrative prose** of `design.md` —
+every line OUTSIDE any fenced block — via `_build_read_design_decisions`,
+injected as a `## DESIGN DECISIONS` section in the build prompt **between
+`## INSTRUCTIONS` and `## ACCEPTANCE TESTS`**. The prose is capped
+(`_BUILD_DESIGN_DECISIONS_MAX_LINES`, default 120) and the section is omitted
+entirely when `design.md` is absent or has no out-of-fence prose (no silent
+no-op section). The fenced ` ```scope `/` ```acceptance ` content is explicitly
+excluded (a fence-toggle, not a first-fence cut) to avoid duplicating the
+scope-override and acceptance-charter injections. The `design` input stays
+`required: false`; absence degrades gracefully. No producer change — the design
+stage already emits this prose.
+
+**Verification.** `tests/unit/build-design-decisions-test.sh` (D1–D6 + helper),
+`tests/integration/design-build-decisions-flow-test.sh` (persisted build-prompt.txt
+carries the section, ordered before ACCEPTANCE TESTS, fence content excluded).
+
+**Deferred (#919, ISSUE-E-2).** Surfacing the same decision prose to the `review`
+prompt so review can verify build honored design's directives — tracked
+separately because it requires extracting the helper to a shared lib and defining
+review's design-vs-plan-vs-issue precedence.
