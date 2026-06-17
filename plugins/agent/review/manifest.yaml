@@ -37,11 +37,14 @@ inputs:
     type: file
     source: stage:intake
     required: true
+  # 843-I (#924): review degrades to diff-only when plan.json is absent
+  # (plugin.sh: "using empty"), so the contract is honestly optional rather
+  # than required:true with silent degradation (prior contract-code mismatch).
   - id: plan
     type: file
     path: "${artifact_dir}/plan.json"
     source: stage:plan
-    required: true
+    required: false
   - id: diff_patch
     type: file
     path: "${artifact_dir}/diff.patch"
