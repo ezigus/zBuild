@@ -17,14 +17,23 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
+# Resolve a REAL timeout command BEFORE setup_test_env prepends its mock bin to
+# PATH (the harness can install a stub `timeout` that ignores the duration —
+# test-helpers.sh). Capture the absolute path so the outer bound and the G3
+# per-file-timeout assertion both use a real, enforcing timeout — never a stub.
+_REAL_TIMEOUT=""
+if   command -v gtimeout >/dev/null 2>&1; then _REAL_TIMEOUT="$(command -v gtimeout)"
+elif command -v timeout  >/dev/null 2>&1; then _REAL_TIMEOUT="$(command -v timeout)"; fi
+
 print_test_header "run-tests.sh --files guard: non-test/hanging files can't wedge it (#929)"
 setup_test_env "run-tests-files-guard"
 
-# Portable outer bound so this test can never hang, even against unfixed code.
+# Outer safety bound (real timeout only) so this test can never hang, even
+# against unfixed code. When no real timeout exists on the host, the bound is
+# empty and G3 (which needs an enforcing timeout) is skipped — G1/G2 are
+# inherently hang-free with the fix present (skip / EOF), so they always run.
 _OUTER=()
-if   command -v gtimeout >/dev/null 2>&1; then _OUTER=(gtimeout 30)
-elif command -v timeout  >/dev/null 2>&1; then _OUTER=(timeout 30)
-fi
+[[ -n "$_REAL_TIMEOUT" ]] && _OUTER=("$_REAL_TIMEOUT" 30)
 
 FX="$TEST_TEMP_DIR/fx"
 mkdir -p "$FX"
@@ -62,17 +71,23 @@ case "$out" in
 esac
 
 # ─── G3: an infinite-loop *-test.sh is killed by the per-file timeout → FAIL ──
-# Short per-file timeout so the loop is bounded; outer gtimeout is the backstop.
-out="$(ZBUILD_TEST_FILE_TIMEOUT=3 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$FX/infinite-loop-test.sh" 2>&1)"
-rc=$?
-# run-tests.sh exits 1 when a file fails; the OUTER bound (30s) must NOT be what
-# stopped it — the per-file timeout (3s) should. rc=124 here would mean the
-# outer bound fired = the per-file timeout did NOT work = still wedged.
-assert_eq "G3: infinite-loop test failed via per-file timeout, not outer bound" "1" "$rc"
-case "$out" in
-    *"unit: FAIL $FX/infinite-loop-test.sh"*) assert_pass "G3: hung test surfaced as FAIL (not a hang)" ;;
-    *) assert_fail "G3: infinite-loop test must surface as FAIL" "out: $out" ;;
-esac
+# Requires a REAL enforcing timeout — run-tests.sh degrades to no-timeout when
+# none exists, so there is nothing to assert on such a host. Gate accordingly.
+if [[ -n "$_REAL_TIMEOUT" ]]; then
+    # Short per-file timeout so the loop is bounded; outer bound is the backstop.
+    out="$(ZBUILD_TEST_FILE_TIMEOUT=3 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$FX/infinite-loop-test.sh" 2>&1)"
+    rc=$?
+    # run-tests.sh exits 1 when a file fails; the OUTER bound (30s) must NOT be
+    # what stopped it — the per-file timeout (3s) should. rc=124 here would mean
+    # the outer bound fired = the per-file timeout did NOT work = still wedged.
+    assert_eq "G3: infinite-loop test failed via per-file timeout, not outer bound" "1" "$rc"
+    case "$out" in
+        *"unit: FAIL $FX/infinite-loop-test.sh"*) assert_pass "G3: hung test surfaced as FAIL (not a hang)" ;;
+        *) assert_fail "G3: infinite-loop test must surface as FAIL" "out: $out" ;;
+    esac
+else
+    assert_pass "G3: skipped — no real gtimeout/timeout on host (run-tests.sh degrades to no-timeout)"
+fi
 
 cleanup_test_env
 print_test_results
