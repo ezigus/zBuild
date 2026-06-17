@@ -144,6 +144,7 @@ review_cycle:
   description: Code review of build output until reviewer approves
   flow:
     - build_test_cycle
+    - acceptance-gate
     - cq-preflight
     - cq-audit-plan
     - cq-cycle
@@ -263,6 +264,23 @@ test_assessment:
   router:
     timeout_s: 300
     max_turns: 25
+
+# ─── acceptance-gate (leaf, cycle member) ──────────────────────────────
+# Mechanical (non-LLM) acceptance-contract gate (ADR-036, issue #922).
+# Level 1: every SPEC-n has a [SPEC-n]-tagged assertion. Level 2: each tagged
+# test fails at the merge-base baseline and passes at HEAD (negative control —
+# rejects tautological "green but inert" tests). No-op pass when the design
+# acceptance block is absent (composability). Placed right after the build/test
+# cycle so a broken acceptance contract fails fast, before the CQ stages.
+acceptance-gate:
+  gate: auto
+  roles: [acceptance_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 10
 
 # ─── cq-preflight (leaf, cycle member) ─────────────────────────────────
 # Pre-flight gates: bash-compat check, coverage floor, untested-function scan.

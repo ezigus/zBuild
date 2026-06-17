@@ -173,6 +173,7 @@ mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/plan" \
          "$INT_PLUGINS_ROOT/agent/design" \
          "$INT_PLUGINS_ROOT/agent/build" "$INT_PLUGINS_ROOT/tool/test" \
          "$INT_PLUGINS_ROOT/agent/test_assessment" \
+         "$INT_PLUGINS_ROOT/agent/acceptance-gate" \
          "$INT_PLUGINS_ROOT/agent/cq-preflight" \
          "$INT_PLUGINS_ROOT/agent/cq-audit-plan" \
          "$INT_PLUGINS_ROOT/agent/cq-cycle" \
@@ -239,7 +240,8 @@ EOF
 printf 'test_assessment_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/test_assessment/plugin.sh"
 
 # #755: 4 CQ leaf stages replacing compound_quality (all run before review).
-for _cq_stage in cq-preflight cq-audit-plan cq-cycle cq-backtrack; do
+# #922: acceptance-gate runs before the CQ stages — register it with the same loop.
+for _cq_stage in acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack; do
     _cq_fn="${_cq_stage//-/_}_run"
     cat > "$INT_PLUGINS_ROOT/agent/$_cq_stage/manifest.yaml" <<EOF
 id: $_cq_stage
@@ -265,7 +267,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: 225,
-        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", "cq-preflight": "complete", "cq-audit-plan": "complete", "cq-cycle": "complete", "cq-backtrack": "complete", review: "pending"},
+        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", "acceptance-gate": "complete", "cq-preflight": "complete", "cq-audit-plan": "complete", "cq-cycle": "complete", "cq-backtrack": "complete", review: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",

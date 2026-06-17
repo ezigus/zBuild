@@ -121,7 +121,7 @@ impact_run() {
 PLUG
 }
 
-for s in intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
+for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
     _make_plugin "$s"
 done
 # Override design: logs seq label AND writes design.md so impact's input contract holds.
@@ -181,13 +181,14 @@ assert_eq "build iter 1 label = 4.1.1.1.1"           "4.1.1.1.1" "$(_label_for b
 assert_eq "test iter 1 label = 4.1.1.1.2"            "4.1.1.1.2" "$(_label_for test 1)"
 assert_eq "test_assessment iter 1 label = 4.1.1.1.3" "4.1.1.1.3" "$(_label_for test_assessment 1)"
 
-# #755: cq-* stages are direct members of review_cycle at positions 2-5.
-# review shifts from pos 2 to pos 6 → "4.1.6".
-assert_eq "cq-preflight iter 1 label = 4.1.2"        "4.1.2"     "$(_label_for cq-preflight 1)"
-assert_eq "cq-audit-plan iter 1 label = 4.1.3"       "4.1.3"     "$(_label_for cq-audit-plan 1)"
-assert_eq "cq-cycle iter 1 label = 4.1.4"            "4.1.4"     "$(_label_for cq-cycle 1)"
-assert_eq "cq-backtrack iter 1 label = 4.1.5"        "4.1.5"     "$(_label_for cq-backtrack 1)"
-assert_eq "review iter 1 label = 4.1.6"              "4.1.6"     "$(_label_for review 1)"
+# #922: acceptance-gate is review_cycle pos 2 (after build_test_cycle); the CQ
+# stages shift to positions 3-6 and review to pos 7.
+assert_eq "acceptance-gate iter 1 label = 4.1.2"     "4.1.2"     "$(_label_for acceptance-gate 1)"
+assert_eq "cq-preflight iter 1 label = 4.1.3"        "4.1.3"     "$(_label_for cq-preflight 1)"
+assert_eq "cq-audit-plan iter 1 label = 4.1.4"       "4.1.4"     "$(_label_for cq-audit-plan 1)"
+assert_eq "cq-cycle iter 1 label = 4.1.5"            "4.1.5"     "$(_label_for cq-cycle 1)"
+assert_eq "cq-backtrack iter 1 label = 4.1.6"        "4.1.6"     "$(_label_for cq-backtrack 1)"
+assert_eq "review iter 1 label = 4.1.7"              "4.1.7"     "$(_label_for review 1)"
 
 # Inside the nested build_test_cycle, members must see ZBUILD_SEQ_PREFIX="4.1.1"
 # (review_cycle's prefix 4 → its iter 1, pos 1 = build_test_cycle).

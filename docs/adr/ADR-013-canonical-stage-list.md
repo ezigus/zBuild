@@ -67,6 +67,7 @@ Each stage is defined by:
 | build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
 | test_assessment | agent | T2 | init, run, finalize, cleanup | test-assessment.json | true |
+| acceptance-gate | agent | T1 | init, run, finalize | acceptance-gate-result.json | true |
 | cq-preflight | agent | T1 | init, run, finalize | cq-preflight-result.json | true |
 | cq-audit-plan | agent | T2 | init, run, finalize | audit-plan.json | true |
 | cq-cycle | agent | T3 | init, run, finalize, cleanup | quality-feedback.md | true |
@@ -341,7 +342,7 @@ References: ADR-016 (per-repository template resolution), ADR-021 v2 (cycle/comp
 
 ADR-027 (Wave 17-A) codifies the recursive flow template format: a cycle is a stage that happens to contain its own mini-flow, declared by `type: cycle` on a top-level stage section with its own `flow:` member list. The runner walks any `flow:` the same way at any depth. This amendment clarifies how this ADR's taxonomy composes with that recursive shape; it does NOT change the taxonomy itself.
 
-**Taxonomy scope unchanged.** The canonical stage list in §"Stage sequence" and the per-stage attribute table in §"Canonical stage definitions" remain the authoritative source for **leaf** stage IDs (`intake`, `plan`, `design`, `build`, `test`, `test_assessment`, `cq-preflight`, `cq-audit-plan`, `cq-cycle`, `cq-backtrack`, `review`, `pr`, `deploy`, `validate`, `monitor`) and their `kind`, `tier`, `lifecycle_hooks`, `expected_artifact`, and `blocking` attrs. Adding a new leaf stage ID or changing a leaf's attrs still requires an ADR-013 revision.
+**Taxonomy scope unchanged.** The canonical stage list in §"Stage sequence" and the per-stage attribute table in §"Canonical stage definitions" remain the authoritative source for **leaf** stage IDs (`intake`, `plan`, `design`, `build`, `test`, `test_assessment`, `acceptance-gate`, `cq-preflight`, `cq-audit-plan`, `cq-cycle`, `cq-backtrack`, `review`, `pr`, `deploy`, `validate`, `monitor`) and their `kind`, `tier`, `lifecycle_hooks`, `expected_artifact`, and `blocking` attrs. Adding a new leaf stage ID or changing a leaf's attrs still requires an ADR-013 revision.
 
 **Cycle stage IDs are template-defined.** Cycle stages (e.g., `build_test_cycle`, `review_cycle`) are NOT members of the canonical leaf set. Each template defines its own cycle stage IDs as sibling top-level sections, named to describe what the cycle does. Cycle stage IDs are scoped to the template that declares them; two templates may use different cycle IDs without conflict, and a cycle ID in one template MUST NOT collide with any canonical leaf ID from this ADR.
 
@@ -378,3 +379,22 @@ The canonical stage count grows from 12 to 15. The stage sequence is now:
 cq-audit-plan → cq-cycle → cq-backtrack → review → pr → deploy → validate → monitor`
 
 Tombstone: `legacy/migrated/A2-compound-quality.md`. Implementation: issue #755.
+
+## Amendment 2026-06-17 (#922 / ADR-036) — acceptance-gate leaf stage
+
+ADR-036 adds a mechanical (non-LLM) **`acceptance-gate`** leaf stage that
+enforces the behavioral acceptance contract has teeth: every `SPEC-n` in the
+design `acceptance` block must have a `[SPEC-n]`-tagged assertion that fails at
+the merge-base baseline and passes at HEAD (negative control). It is inserted
+after `test_assessment`, and in the standard template runs inside `review_cycle`
+immediately after `build_test_cycle` (fail-fast, before the CQ stages). When the
+design acceptance block is absent it is a no-op pass, so it composes into any
+template.
+
+The canonical stage count grows from 16 to 17. The leaf stage sequence is now:
+`intake → plan → design → impact → build → test → test_assessment →
+acceptance-gate → cq-preflight → cq-audit-plan → cq-cycle → cq-backtrack →
+review → pr → deploy → validate → monitor`
+
+Implementation: issue #922. See ADR-036 for the gate's contract and the
+SPEC-id / `[SPEC-n]` tagging convention.

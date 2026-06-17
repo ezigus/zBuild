@@ -41,8 +41,8 @@ has_outer=0
 for c in "${_TPL_CYCLES[@]}"; do [[ "$c" == "review_cycle" ]] && has_outer=1; done
 assert_eq "T1: review_cycle is a registered cycle" "1" "$has_outer"
 
-assert_eq "T1: review_cycle.flow = build_test_cycle,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" \
-    "build_test_cycle,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" "${_TPL_CYCLE_STAGES_review_cycle:-}"
+assert_eq "T1: review_cycle.flow = build_test_cycle,acceptance-gate,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" \
+    "build_test_cycle,acceptance-gate,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" "${_TPL_CYCLE_STAGES_review_cycle:-}"
 assert_eq "T1: exit_when.stage=review" \
     "review" "${_TPL_CYCLE_UNTIL_STAGE_review_cycle:-}"
 assert_eq "T1: exit_when.field=verdict" \
@@ -162,12 +162,11 @@ assert_eq "T2: reason=converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}
 review_dispatch_n="$(grep -c 'stage=review' "$_DISPATCH_LOG" || true)"
 assert_eq "T2: exactly 2 review dispatches (= 2 outer iters)" \
     "2" "$review_dispatch_n"
-# Outer iter 1 → inner runs (3 stages × 1 inner iter = 3 dispatches) +
-# review = 4. Outer iter 2 → inner runs again (3 dispatches) + review = 4.
-# Total = 8 dispatches across the cycle.
+# Each outer iter dispatches 3 inner (build/test/test_assessment) +
+# acceptance-gate + 4 cq-* + review = 9 (#922). 2 outer iters → 18 total.
 total_dispatch_n="$(wc -l < "$_DISPATCH_LOG" | tr -d ' ')"
-assert_eq "T2: total dispatches across both outer iters = 16" \
-    "16" "$total_dispatch_n"
+assert_eq "T2: total dispatches across both outer iters = 18" \
+    "18" "$total_dispatch_n"
 
 # ─── T3: iter-2 feedback file landed with iter-1 review.md content ───────────
 FB_PATH="$CASE_DIR/state/cycle-review_cycle/iter-2/feedback/prior_review_feedback.txt"

@@ -131,6 +131,8 @@ EOF
 # ─── Pass-through stubs for downstream stages ───────────────────────────────
 mock_plugin_factory "test"            "tool"  0 >/dev/null
 mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
+# #922: acceptance-gate leaf stage (ADR-036).
+mock_plugin_factory "acceptance-gate" "agent" 0 >/dev/null
 # #755: review_cycle.flow now includes the 4 compound_quality stages.
 mock_plugin_factory "cq-preflight"    "agent" 0 >/dev/null
 mock_plugin_factory "cq-audit-plan"   "agent" 0 >/dev/null

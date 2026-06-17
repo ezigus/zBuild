@@ -1,0 +1,53 @@
+id: acceptance-gate
+name: Acceptance Contract Gate
+kind: agent
+version: 0.1.0
+description: |
+  Mechanical (non-LLM) acceptance-contract gate (ADR-036, issue #922).
+  Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
+  [SPEC-n]-tagged assertion across the declared TESTFILES.
+  Level 2 (negative control): each SPEC-n's tagged test must FAIL at the
+  merge-base baseline and PASS at HEAD — a test that passes without the
+  implementation is tautological and is rejected.
+  No-op pass (verdict=pass, reason=skipped) when no acceptance block is
+  present, so the stage is freely composable into any template. Never
+  invokes a model.
+
+hooks:
+  run: acceptance_gate_run
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: acceptance_gate
+  artifact_type: acceptance-gate-result.json
+  schema_version: 1
+
+config:
+  tier_default: T1
+
+inputs:
+  # The acceptance block lives in design.md. Declared required:false (ADR-020
+  # optional-input convention, #511) so the gate composes into templates that
+  # do not run design — absent block → no-op pass.
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: false
+
+outputs:
+  - id: gate_result
+    path: ${artifact_dir}/acceptance-gate-result.json
+    type: json
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []
