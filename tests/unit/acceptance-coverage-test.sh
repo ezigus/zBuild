@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Tests: ADR-036 (#922) — Level-1 SPEC→assertion tag-presence coverage gate.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/acceptance-coverage.sh
+source "$REPO_ROOT/scripts/lib/acceptance-coverage.sh"
+
+print_test_header "acceptance coverage — Level-1 SPEC tag-presence (#922)"
+setup_test_env "acceptance-coverage"
+
+ROOT="$TEST_TEMP_DIR"          # acts as repo_root for relative TESTFILES
+mkdir -p "$ROOT/tests"
+
+_design() {  # _design <acceptance-body>  → writes $ROOT/design.md, echoes path
+    local body="$1"
+    {
+        printf '# Design\n\n## Decision\nd.\n\n```scope\nfoo.sh\n```\n\n'
+        printf '```acceptance\n%s\n```\n' "$body"
+    } > "$ROOT/design.md"
+    printf '%s' "$ROOT/design.md"
+}
+
+# ── C1: all SPECs tagged → pass, no UNTAGGED output ───────────────────────────
+printf 'assert_eq "[SPEC-1] foo" 1 1\n'  > "$ROOT/tests/a-test.sh"
+printf 'assert_eq "[SPEC-2] bar" 1 1\n'  > "$ROOT/tests/b-test.sh"
+dm="$(_design "SPEC-1: foo works
+SPEC-2: bar works
+TESTFILES:
+tests/a-test.sh
+tests/b-test.sh")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C1: all-tagged → rc=0" "0" "$rc"
+assert_eq "C1: no UNTAGGED lines" "" "$out"
+
+# ── C2: one SPEC untagged → fail, names SPEC-2 ────────────────────────────────
+printf 'assert_eq "[SPEC-1] foo" 1 1\n'  > "$ROOT/tests/a-test.sh"
+printf 'assert_eq "unrelated label" 1 1\n' > "$ROOT/tests/b-test.sh"
+dm="$(_design "SPEC-1: foo works
+SPEC-2: bar works
+TESTFILES:
+tests/a-test.sh
+tests/b-test.sh")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C2: one untagged → rc=1" "1" "$rc"
+assert_eq "C2: names the untagged spec" "UNTAGGED SPEC-2" "$out"
+
+# ── C3: no acceptance block → no SPEC-n ids → no-op pass ──────────────────────
+{ printf '# Design\n\n## Decision\nd.\n\n```scope\nfoo.sh\n```\n'; } > "$ROOT/design.md"
+set +e; out="$(acceptance_coverage_check "$ROOT/design.md" "$ROOT")"; rc=$?; set -e
+assert_eq "C3: no block → rc=0" "0" "$rc"
+assert_eq "C3: no UNTAGGED lines" "" "$out"
+
+# ── C4: SPECs declared but zero TESTFILES → every SPEC untagged ───────────────
+dm="$(_design "SPEC-1: foo works
+TESTFILES:")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C4: SPEC with no TESTFILES → rc=1" "1" "$rc"
+assert_eq "C4: names the untagged spec" "UNTAGGED SPEC-1" "$out"
+
+# ── C5: TESTFILE listed but missing on disk → untagged ────────────────────────
+rm -f "$ROOT/tests/missing-test.sh"
+dm="$(_design "SPEC-1: foo works
+TESTFILES:
+tests/missing-test.sh")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C5: missing TESTFILE on disk → rc=1" "1" "$rc"
+assert_eq "C5: names the untagged spec" "UNTAGGED SPEC-1" "$out"
+
+# ── C6: legacy bare 'SPEC:' lines carry no id → not gated (no-op pass) ─────────
+dm="$(_design "SPEC: legacy untagged claim
+TESTFILES:
+tests/a-test.sh")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C6: bare SPEC: (no id) → rc=0 (not gated)" "0" "$rc"
+
+cleanup_test_env
+print_test_results  # exits with $FAIL

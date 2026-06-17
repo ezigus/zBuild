@@ -50,7 +50,7 @@ extract_acceptance_block() {
             fi
             if [[ $in_testfiles -eq 1 ]]; then
                 [[ -n "$line" ]] && testfiles+=("$line")
-            elif [[ "$line" == SPEC:* ]]; then
+            elif [[ "$line" == SPEC:* || "$line" =~ ^SPEC-[0-9]+: ]]; then
                 specs+=("$line")
             fi
         fi
@@ -73,4 +73,47 @@ extract_acceptance_block() {
 
     [[ $found_testfiles -eq 1 ]] || return 1
     return 0
+}
+
+# acceptance_list_spec_ids <design_md>  (ADR-036 / #922)
+# Prints each STABLE SPEC id (e.g. "SPEC-1", "SPEC-2") from the ```acceptance
+# block, one per line, in declaration order. Only `SPEC-<n>:` lines carry an
+# id; bare legacy `SPEC:` lines are intentionally ignored (they have no id to
+# map to a [SPEC-n]-tagged assertion). Returns 0 when ≥1 id is found, else 1.
+acceptance_list_spec_ids() {
+    local design_md="${1:-}"
+    local block_output line ids_found=0
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
+    [[ -z "$block_output" ]] && return 1
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^(SPEC-[0-9]+): ]]; then
+            printf '%s\n' "${BASH_REMATCH[1]}"
+            ids_found=1
+        fi
+    done <<< "$block_output"
+    [[ $ids_found -eq 1 ]]
+}
+
+# acceptance_list_testfiles <design_md>  (ADR-036 / #922)
+# Prints the repo-relative TESTFILES paths from the ```acceptance block, one
+# per line. Mirrors the path-traversal guard used by build (never surfaces an
+# absolute or ".."-containing path). Empty when the block/TESTFILES is absent.
+acceptance_list_testfiles() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+    local block_output line in_testfiles=0
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    [[ -z "$block_output" ]] && return 0
+    while IFS= read -r line; do
+        if [[ "$line" == "TESTFILES:" ]]; then
+            in_testfiles=1
+            continue
+        fi
+        if [[ $in_testfiles -eq 1 && -n "$line" ]]; then
+            line="${line%$'\r'}"
+            [[ -z "$line" ]] && continue
+            [[ "$line" == /* || "/$line/" == *"/../"* ]] && continue
+            printf '%s\n' "$line"
+        fi
+    done <<< "$block_output"
 }

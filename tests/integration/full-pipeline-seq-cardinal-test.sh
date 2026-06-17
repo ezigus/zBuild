@@ -64,7 +64,7 @@ ${fn}() {
 EOF
 }
 
-for s in intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
+for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
     _make_logging_plugin "$s"
 done
 
@@ -89,11 +89,13 @@ expect_label impact          "4"
 expect_label build           "5"
 expect_label test            "6"
 expect_label test_assessment "7"
-expect_label cq-preflight    "8"
-expect_label cq-audit-plan   "9"
-expect_label cq-cycle        "10"
-expect_label cq-backtrack    "11"
-expect_label review          "12"
+# #922: acceptance-gate inserted after test_assessment (ADR-036), shifting CQ+review.
+expect_label acceptance-gate "8"
+expect_label cq-preflight    "9"
+expect_label cq-audit-plan   "10"
+expect_label cq-cycle        "11"
+expect_label cq-backtrack    "12"
+expect_label review          "13"
 
 print_test_results
 cleanup_test_env

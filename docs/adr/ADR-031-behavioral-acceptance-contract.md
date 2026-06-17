@@ -1,8 +1,15 @@
 # ADR-031 — Behavioral acceptance contract
 
 **Status:** Implemented (2026-06-17)
-**Related:** ADR-007 (test strategy), ADR-022 (test-assessment stage), ADR-027 (recursive-flow template format), ADR-030 (scope governance)
+**Related:** ADR-007 (test strategy), ADR-022 (test-assessment stage), ADR-027 (recursive-flow template format), ADR-030 (scope governance), ADR-036 (acceptance-contract teeth)
 **Issue:** #864
+
+> **Superseded in part by ADR-036 (#922).** This ADR's test-first ordering and
+> don't-weaken charter were "enforced by convention / process, not automation."
+> ADR-036 replaces that with the mechanical `acceptance-gate` stage: stable
+> `SPEC-n:` ids, `[SPEC-n]`-tagged assertions, and a baseline negative-control
+> that rejects tautological tests. Where this ADR says "by convention," read
+> "by the acceptance-gate (ADR-036)."
 
 ## Context
 

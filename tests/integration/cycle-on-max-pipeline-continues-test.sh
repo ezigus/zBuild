@@ -172,6 +172,8 @@ _make_impact_plugin
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
 _make_plugin "test_assessment" "test_assessment"
+# #922: acceptance-gate leaf stage (ADR-036).
+_make_plugin "acceptance-gate" "acceptance_gate"
 # #755: review_cycle.flow now includes the 4 compound_quality stages.
 _make_plugin "cq-preflight"    "cq_preflight"
 _make_plugin "cq-audit-plan"   "cq_audit_plan"

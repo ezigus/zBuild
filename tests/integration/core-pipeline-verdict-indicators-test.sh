@@ -99,6 +99,8 @@ _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass","scope_v
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
+# #922: acceptance-gate leaf stage after test_assessment (ADR-036).
+_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
 # #755: 4 CQ stages replace compound_quality between test_assessment and review.
 _make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
 _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
@@ -114,7 +116,7 @@ fi
 assert_eq "all-pass: runner exits 0" "0" "$rc"
 
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-for stage in intake plan impact design build test test_assessment cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
+for stage in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
     if grep -E "✓.*Stage.*${stage}.*complete" <<<"$err" >/dev/null; then
         assert_pass "all-pass: ✓ on $stage line"
     else
@@ -143,6 +145,7 @@ _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builde
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"fail"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"fail"}' test_assessment
+_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
 # #755: CQ stages (stubs only; pipeline halts before reaching them in this scenario).
 _make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
 _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
@@ -168,6 +171,7 @@ _make_verdict_plugin build  agent build-summary.json '{"scope_violation":true}' 
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
+_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
 # #755: CQ stages (stubs only; pipeline halts before reaching them in this scenario).
 _make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
 _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
@@ -193,6 +197,7 @@ _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builde
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
+_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
 # #755: CQ stages run before review; all pass so review_cycle reaches review.
 _make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
 _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan

@@ -495,6 +495,7 @@ _ZBUILD_STANDARD_ROSTER=(
     "build:agent:"
     "test:tool:"
     "test_assessment:agent:"
+    "acceptance-gate:agent:acceptance_gate"
     "cq-preflight:agent:"
     "cq-audit-plan:agent:"
     "cq-cycle:agent:"

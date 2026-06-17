@@ -57,8 +57,8 @@ EOF
     printf '%s() { return 0; }\n' "$fn" > "$dir/plugin.sh"
 }
 
-# Create stubs for all 12 leaf stages in standard.yaml
-for s in intake plan impact design build test_assessment review \
+# Create stubs for all leaf stages in standard.yaml (#922: + acceptance-gate)
+for s in intake plan impact design build test_assessment acceptance-gate review \
           cq-preflight cq-audit-plan cq-cycle cq-backtrack; do
     _make_stub "$s"
 done

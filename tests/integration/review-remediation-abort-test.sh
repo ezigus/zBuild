@@ -98,10 +98,10 @@ review_dispatch_n="$(grep -c 'stage=review' "$_DISPATCH_LOG" || true)"
 assert_eq "T2: exactly 1 review dispatch (no iter 2)" \
     "1" "$review_dispatch_n"
 total_dispatch_n="$(wc -l < "$_DISPATCH_LOG" | tr -d ' ')"
-# #755: review_cycle iter 1 now dispatches 3 build_test_cycle members
-# (build/test/test_assessment) + 4 cq-* stages + review = 8.
-assert_eq "T2: exactly 8 total dispatches (3 inner + 4 cq-* + 1 review)" \
-    "8" "$total_dispatch_n"
+# #755/#922: review_cycle iter 1 dispatches 3 build_test_cycle members
+# (build/test/test_assessment) + acceptance-gate + 4 cq-* stages + review = 9.
+assert_eq "T2: exactly 9 total dispatches (3 inner + 1 gate + 4 cq-* + 1 review)" \
+    "9" "$total_dispatch_n"
 
 # ─── T3: cycle.complete with reason=cycle_abort emitted on the OUTER cycle ───
 # Copilot P2 (#715): use a single jq filter that asserts BOTH cycle_id and
