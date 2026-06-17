@@ -43,6 +43,11 @@ source "$_REVIEW_ROOT/scripts/lib/test-output-sanitize.sh"
 source "$_REVIEW_ROOT/scripts/lib/diff-stat.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_REVIEW_ROOT/scripts/lib/prompt-overrides.sh"
+# 843-H (#923): acceptance-block + coverage helpers for the mechanical
+# acceptance-coverage gate (downgrade approve when a design SPEC's tagged test
+# is not touched in the diff under review).
+# shellcheck source=../../../scripts/lib/acceptance-block.sh
+source "$_REVIEW_ROOT/scripts/lib/acceptance-block.sh"
 
 # Valid verdict values per manifest config.valid_verdicts
 _REVIEW_VALID_VERDICTS="approve request_changes block"
@@ -649,6 +654,51 @@ $_review_instructions"
             "coerced_verdict=request_changes" \
             "test_status=$test_status" \
             "test_exit_code=$test_exit_code_485"
+    fi
+
+    # ─── 843-H (#923): mechanical acceptance-coverage gate ───────────────────
+    # Downgrade approve → request_changes when a design SPEC-n has no
+    # [SPEC-n]-tagged TESTFILE present in the diff under review — i.e. the test
+    # that makes the behavior load-bearing was not created/amended in this
+    # change. Deterministic complement to the LLM verdict; the acceptance-gate
+    # stage (ADR-036) is the producer-side teeth, this is the exit-gate guard.
+    # No acceptance block → no-op (composable). block is never demoted.
+    # Skip when the merge-base diff basis is unavailable (initial commit, shallow
+    # clone, detached checkout without main/origin/main): we cannot compute which
+    # files changed, so we must not coerce on an empty diff. The acceptance-gate
+    # stage (ADR-036) remains the primary, basis-independent teeth.
+    local _design_md="$artifact_dir/design.md"
+    if [[ "$verdict" == "approve" ]] && [[ -n "${_mb_base:-}" ]] \
+       && grep -q '^```acceptance' "$_design_md" 2>/dev/null; then
+        local _changed_files="" _gap_specs="" _spec_id _tf _covered
+        _changed_files="$(git diff --name-only "$_mb_base" HEAD 2>/dev/null || true)"
+        while IFS= read -r _spec_id; do
+            [[ -z "$_spec_id" ]] && continue
+            _covered=0
+            while IFS= read -r _tf; do
+                [[ -z "$_tf" ]] && continue
+                grep -qF "[$_spec_id]" "$_tf" 2>/dev/null || continue
+                if printf '%s\n' "$_changed_files" | grep -qxF "$_tf"; then
+                    _covered=1; break
+                fi
+            done < <(acceptance_list_testfiles "$_design_md")
+            [[ "$_covered" -eq 0 ]] && _gap_specs+="${_gap_specs:+,}$_spec_id"
+        done < <(acceptance_list_spec_ids "$_design_md" 2>/dev/null || true)
+        if [[ -n "$_gap_specs" ]]; then
+            warn "review_run: verdict coerced approve→request_changes (acceptance coverage gap: $_gap_specs)"
+            verdict="request_changes"
+            local _cov_note="acceptance coverage gap: SPEC(s) $_gap_specs have no [SPEC-n]-tagged test touched in the diff"
+            issues_json="$(printf '%s' "$issues_json" \
+                | jq --arg n "$_cov_note" '. + [$n]' 2>/dev/null \
+                || jq -n --arg n "$_cov_note" '[$n]')"
+            if [[ -n "$summary" ]]; then
+                summary="[coverage gap: $_gap_specs] $summary"
+            else
+                summary="[coverage gap: $_gap_specs]"
+            fi
+            emit_event "review.acceptance_coverage.gap" \
+                "plugin=review" "stage=review" "specs=$_gap_specs"
+        fi
     fi
 
     # ─── Write review.json ───────────────────────────────────────────────────
