@@ -180,6 +180,7 @@
     "pipeline.skip_to_stage",
     "pipeline.state.error",
     "review.test_assessment.consumed",
+    "review.acceptance_coverage.gap",
     "router.precondition.refused",
     "router.precondition.skipped",
     "router.precondition.violated",
