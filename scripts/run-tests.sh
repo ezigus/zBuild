@@ -8,6 +8,32 @@ TESTS_DIR="$REPO_ROOT/tests"
 PLUGINS_DIR="$REPO_ROOT/plugins"
 CORE_DIR="$REPO_ROOT/core"
 
+# #929: per-file isolation so a non-test or hanging file can never wedge the run
+# (a markdown mutation spec executed as bash blocked on stdin for 3.5h in a
+# #911 dogfood). Bounds EACH individual test-file invocation in both the
+# --files and tier loops — NOT the mutation orchestrator, which is a separate
+# long-running invocation. Override the bound via ZBUILD_TEST_FILE_TIMEOUT
+# (seconds; 0 disables). Degrades to no-timeout when neither gtimeout nor
+# timeout is installed (best-effort, same convention as core/router/route.sh).
+_RT_FILE_TIMEOUT="${ZBUILD_TEST_FILE_TIMEOUT:-300}"
+_rt_tout=()
+if [[ "$_RT_FILE_TIMEOUT" != "0" ]]; then
+  if   command -v gtimeout >/dev/null 2>&1; then _rt_tout=("gtimeout" "$_RT_FILE_TIMEOUT")
+  elif command -v timeout  >/dev/null 2>&1; then _rt_tout=("timeout"  "$_RT_FILE_TIMEOUT")
+  fi
+fi
+
+# _rt_run <test_file> <out_file> — run one test file in isolation:
+#   - stdin from /dev/null  → a file that reads stdin gets EOF, never blocks
+#   - fd 3 → /dev/null      → #586 stage-io load-time guard (LOAD-BEARING)
+#   - time-bounded          → a hung/looping file is killed (rc 124/137/143),
+#                             which lands in the caller's failure branch (the
+#                             honest outcome for a hang), never an infinite wait
+# Returns the child's exit code.
+_rt_run() {
+  "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
+}
+
 # #846: targeted subset mode — run ONLY the given files (each in its own process,
 # so a failing file never blocks the rest — no `&&` short-circuit), emitting the
 # same `unit: N/M passed` + `unit: FAIL <f>` format run_tier uses. This keeps the
@@ -18,9 +44,17 @@ if [[ "${1:-}" == "--files" ]]; then
   _tf_passed=0; _tf_failed=0; _tf_total=0
   for _tf in "$@"; do
     [[ -n "$_tf" ]] || continue
+    # #929: only execute *-test.sh files. The targeted-rerun list can include
+    # grep-referenced non-tests (mutation *.md specs, fixtures, sourced helpers)
+    # that error or HANG when run as bash. Skip them BEFORE the count so the
+    # `unit: N/M passed` denominator only reflects real tests.
+    if [[ "$_tf" != *-test.sh ]]; then
+      echo "skip non-test: $_tf" >&2
+      continue
+    fi
     _tf_total=$((_tf_total + 1))
     _tf_out="$(mktemp -t zbuild-test-targeted.XXXXXX)"
-    if bash "$_tf" 3>/dev/null >"$_tf_out" 2>&1; then
+    if _rt_run "$_tf" "$_tf_out"; then
       _tf_passed=$((_tf_passed + 1)); rm -f "$_tf_out"
     else
       _tf_failed=$((_tf_failed + 1)); echo "unit: FAIL $_tf" >&2; cat "$_tf_out" >&2 || true; rm -f "$_tf_out"
@@ -87,12 +121,13 @@ run_tier() {
     # previous "run silent, then re-run on fail to show output" pattern.
     local out
     out="$(mktemp -t "zbuild-test-$name.XXXXXX")"
-    # Open fd 3 to /dev/null so any sourced module that respects
+    # _rt_run keeps fd 3 → /dev/null so any sourced module that respects
     # ZBUILD_STAGE_IO_FD=3 (the production runner default — see
     # core/pipeline/runner.sh:869) finds the fd open for write. Without this,
     # stage-io.sh's load-time guard would abort sourcing for every test that
-    # pulls in that module under the unit harness. (#586)
-    if bash "$f" 3>/dev/null >"$out" 2>&1; then
+    # pulls in that module under the unit harness (#586). It also bounds the
+    # run with a per-file timeout + stdin guard (#929).
+    if _rt_run "$f" "$out"; then
       passed=$((passed + 1))
       rm -f "$out"
     else
