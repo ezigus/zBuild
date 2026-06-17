@@ -130,6 +130,12 @@ _build_stage_run_inner() {
     if [[ -f "$_design_md_path" ]]; then
         _acceptance_testfiles="$(_build_read_acceptance_testfiles "$_design_md_path" 2>/dev/null || true)"
     fi
+    # #916 (ADR-020): the design.md DECISION PROSE, so build honors design's
+    # narrative directives ("build must do X") — not only its scope/acceptance.
+    local _design_decisions=""
+    if [[ -f "$_design_md_path" ]]; then
+        _design_decisions="$(_build_read_design_decisions "$_design_md_path" 2>/dev/null || true)"
+    fi
 
     local _scope_source="plan"
     if [[ -f "$_design_md_path" ]] && grep -q '^```scope' "$_design_md_path" 2>/dev/null; then
@@ -215,6 +221,11 @@ _build_stage_run_inner() {
         printf '## ORIGINAL TASK (immutable across iterations)\n'
         printf '%s\n\n' "$plan_payload"
         printf '## INSTRUCTIONS\n%s\n' "$_build_instructions"
+        if [[ -n "$_design_decisions" ]]; then
+            printf '\n## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)\n'
+            printf '%s\n' "$_design_decisions"
+            printf 'Where a design decision above conflicts with the plan, follow the design decision.\n'
+        fi
         if [[ -n "$_acceptance_testfiles" ]]; then
             printf '\n## ACCEPTANCE TESTS (you MUST make these pass — you MUST NOT weaken, modify assertions of, or delete them)\n'
             local _at_tf
@@ -873,6 +884,37 @@ _build_read_acceptance_testfiles() {
             printf '%s\n' "$line"
         fi
     done <<< "$block_output"
+}
+
+# _build_read_design_decisions <design_md_path>  (ISSUE-E / #916, ADR-020)
+# Extract the design.md DECISION PROSE — the narrative/architectural-decision
+# summary the design stage writes (plugins/agent/design/plugin.sh) — while
+# EXCLUDING every fenced block (```scope / ```acceptance / any ```...). The
+# scope + acceptance slices already reach build via _extract_scope_from_design
+# and _build_read_acceptance_testfiles; re-injecting them here only burns prompt
+# budget. Bounded to _BUILD_DESIGN_DECISIONS_MAX_LINES so a runaway design.md
+# can't dominate the build prompt. Empty stdout when design.md is absent or has
+# no prose outside fences → caller omits the section entirely (NEVER silent emit).
+#
+# NB: a naive `sed '/^```/q'` stops at the FIRST fence and drops all prose that
+# FOLLOWS the scope/acceptance blocks (design.md routinely has trailing prose).
+# We use a fence-TOGGLE so every out-of-fence line survives, in document order.
+_BUILD_DESIGN_DECISIONS_MAX_LINES="${_BUILD_DESIGN_DECISIONS_MAX_LINES:-120}"
+_build_read_design_decisions() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+    local body
+    body="$(awk -v cap="$_BUILD_DESIGN_DECISIONS_MAX_LINES" '
+        /^```/ { infence = !infence; next }
+        infence { next }
+        { print; emitted++ }
+        emitted >= cap { exit }
+    ' "$design_md" 2>/dev/null || true)"
+    # Trim leading blank lines so the injected block starts tight (sed '/./,$!d'
+    # is portable BSD+GNU; trailing blank lines are harmless).
+    body="$(printf '%s\n' "$body" | sed '/./,$!d')"
+    [[ -z "${body//[[:space:]]/}" ]] && return 0
+    printf '%s\n' "$body"
 }
 
 # ─── _build_read_prior_assessment (#571, renamed from _build_read_prior_failures)
