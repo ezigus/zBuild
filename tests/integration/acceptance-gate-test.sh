@@ -111,5 +111,17 @@ assert_eq "S4: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 assert_eq "S4: reason=skipped" "skipped" "$(jq -r .reason <<<"$RESULT")"
 assert_event_emitted "S4: skipped event" "$EVENTS" "acceptance.gate.skipped"
 
+# ── S5: malformed acceptance block (fence but no TESTFILES) → fail closed ─────
+REPO5="$(_build_repo gate-malformed '#!/usr/bin/env bash
+# [SPEC-1] x
+exit 0')"
+cat > "$REPO5/design.md" <<'EOF'
+```acceptance
+SPEC-1: missing testfiles section and closing fence
+EOF
+set +e; _run_gate "$REPO5"; set -e
+assert_eq "S5: malformed block → rc=1 (fail closed, not skipped)" "1" "$RC"
+assert_eq "S5: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

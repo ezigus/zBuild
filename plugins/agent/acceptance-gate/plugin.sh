@@ -43,12 +43,22 @@ acceptance_gate_run() {
 
     eb_emit_event "acceptance.gate.start" "stage=acceptance-gate"
 
-    # No-op pass when the acceptance block is absent (composability contract).
-    if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
+    # Distinguish ABSENT from MALFORMED: extract_acceptance_block returns
+    # non-zero for both, so check for the fence first. No fence → no-op pass
+    # (composability). Fence present but unparseable → fail closed (a malformed
+    # contract must NOT bypass the gate).
+    if [[ ! -f "$design_md" ]] || ! grep -q '^```acceptance' "$design_md" 2>/dev/null; then
         printf '{"verdict":"pass","reason":"skipped","failures":[]}\n' | atomic_write "$result_file"
         eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=no_acceptance_block"
         eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
         return 0
+    fi
+    if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
+        printf '{"verdict":"fail","reason":"malformed_acceptance_block","failures":["malformed_acceptance_block"]}\n' \
+            | atomic_write "$result_file"
+        eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
+        eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
+        return 1
     fi
 
     local verdict="pass"

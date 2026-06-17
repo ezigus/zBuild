@@ -103,9 +103,11 @@ acceptance_negctl_check() {
             [[ -z "$tf" ]] && continue
             grep -qF "[$spec_id]" "$repo_root/$tf" 2>/dev/null || continue
             saw_tagged=1
+            # The baseline run is EXPECTED to fail; capture rc via `|| rc=$?`
+            # so a non-zero exit never aborts the caller under `set -e`.
             local rc_base=0 rc_head=0
-            _negctl_run "$wt_dir/$tf" "$wt_dir"; rc_base=$?
-            _negctl_run "$repo_root/$tf" "$repo_root"; rc_head=$?
+            _negctl_run "$wt_dir/$tf" "$wt_dir" || rc_base=$?
+            _negctl_run "$repo_root/$tf" "$repo_root" || rc_head=$?
             if [[ "$rc_base" -ne 0 && "$rc_head" -eq 0 ]]; then
                 found_control=1; break
             elif [[ "$rc_base" -eq 0 ]]; then
