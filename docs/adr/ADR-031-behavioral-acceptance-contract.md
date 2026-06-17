@@ -1,6 +1,6 @@
 # ADR-031 — Behavioral acceptance contract
 
-**Status:** Accepted (2026-06-16)
+**Status:** Implemented (2026-06-17)
 **Related:** ADR-007 (test strategy), ADR-022 (test-assessment stage), ADR-027 (recursive-flow template format), ADR-030 (scope governance)
 **Issue:** #864
 
@@ -85,3 +85,16 @@ Stage wiring (`test_assessment` consumption) is implemented in issue #867 (843-D
 - A missing `\`\`\`acceptance` block in `design.md` is no longer "tolerated." `_design_stage_run_inner` (`plugins/agent/design/plugin.sh`) calls `extract_acceptance_block` on its output and, when no block is present, **fails closed**: it warns, emits `plugin.run.error` with `reason=missing_acceptance_block`, and returns `rc=1`. The design artifact is never handed downstream without a machine-readable acceptance bar.
 - This is a HARD post-condition, not a SOFT warning. The reasoning: a `design.md` that omits the acceptance block leaves `test_assessment`, `impact`, and `review` back in the "infer the bar from prose" state this ADR exists to eliminate. Tolerating it would let the very failure mode the contract prevents re-enter silently. Failing closed surfaces the gap at the design stage, where it is cheap to fix, rather than after a build loop.
 - The don't-weaken charter (above) applies to the block's presence as well as its `SPEC:` lines: a design revision may not drop the acceptance block to escape the post-condition.
+
+## Amendment 2026-06-17 (#867, 843-D) — Stage wiring complete
+
+843-D (#867) delivers the `test_assessment` consumption half of the contract. The ADR is now **fully implemented** across all three issues (#864, #865, #867).
+
+Delivered in this PR:
+
+- **`plugins/agent/test_assessment/plugin.sh`** — sources `acceptance-block.sh`, runs the TESTFILES existence gate (pre-LLM, hard fail-closed on any missing file), injects the `SPEC:` lines and `TESTFILES:` list into the LLM prompt, validates `acceptance_verified` boolean in the schema expression, and applies the downgrade taxonomy: `acceptance_llm_rejected` (pass→fail when `acceptance_verified=false`) and `acceptance_not_verified` (pre-LLM fail for missing TESTFILES). Returns `rc=1` fail-closed only on the TESTFILES gate; all other paths return `rc=0` with the verdict encoded in the artifact.
+- **`plugins/agent/test_assessment/manifest.yaml`** — adds `id: design` input (`path: artifacts/design.md`, `required: false`); the optional flag preserves backwards-compatibility when no design artifact is present. The input carries the acceptance block consumed by arg `$9` in the plugin.
+- **Unit tests T17–T20** (`tests/unit/test-assessment-plugin-test.sh`) — acceptance happy path, missing TESTFILE gate, LLM-rejected downgrade, and no-design-md no-op.
+- **Integration tests IT-1–IT-4** (`tests/integration/test-assessment-acceptance-flow-test.sh`) — end-to-end flow covering the same four scenarios against the full plugin sourced in a git fixture.
+
+The downgrade event taxonomy added to ADR-022 Amendment v5 covers these two downgrade reasons. No further amendments to this ADR are expected.

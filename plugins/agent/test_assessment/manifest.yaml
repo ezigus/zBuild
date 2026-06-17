@@ -53,6 +53,7 @@ inputs:
     source: stage:build
     required: false
   - id: design
+    # carries the ```acceptance block (ADR-031); optional for backwards-compat
     type: file
     path: "${artifact_dir}/design.md"
     source: stage:design
