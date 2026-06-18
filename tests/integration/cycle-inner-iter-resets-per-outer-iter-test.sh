@@ -65,9 +65,9 @@ defaults:
   strategy: fanout
 
 flow:
-  - review_cycle
+  - build_review_cycle
 
-review_cycle:
+build_review_cycle:
   type: cycle
   flow:
     - build_test_cycle
@@ -133,7 +133,7 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 _TPL_STAGES=(); _TPL_CYCLES=()
 load_template "$TPL" || assert_fail "template load"
 
-set +e; cycle_orchestrator_run "review_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
+set +e; cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
 
 print_test_section "outer iter 2 entered and converges"
 
@@ -179,26 +179,26 @@ assert_eq "T10: inner history rows have iter=1 and iter=2 only (reset on outer i
 
 print_test_section "outer cycle emits expected events"
 
-outer_iter_complete=$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+outer_iter_complete=$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="build_review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T11: outer cycle.iteration.complete emitted twice" "2" "$outer_iter_complete"
 
-outer_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
 assert_eq "T12: outer cycle.complete reason=converged" "converged" "$outer_complete"
 
 print_test_section "Wave 19-D-1 member.dispatch events span both outer iters"
 
 # Outer iter 1: dispatches build_test_cycle (kind=cycle) + review (kind=leaf). 2 start events.
 # Outer iter 2: same. 2 more start events. Total: 4 dispatch.start at the outer cycle.
-outer_dispatch_starts=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+outer_dispatch_starts=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="build_review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T13: 4 cycle.member.dispatch.start at outer (2 members × 2 iters)" "4" "$outer_dispatch_starts"
 
 # Each outer iter dispatches inner_cycle then review. So we should see this
 # exact ordering at the outer level: build_test_cycle, review, build_test_cycle, review.
-outer_dispatch_members=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="review_cycle") | .data.member' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+outer_dispatch_members=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="build_review_cycle") | .data.member' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
 assert_eq "T14: outer member dispatch order is build_test_cycle,review,build_test_cycle,review" "build_test_cycle,review,build_test_cycle,review" "$outer_dispatch_members"
 
 # Inner cycle's dispatch.complete on iter 1 (after inner returns rc=1) records verdict=fail.
-inner_member_complete_verdicts=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.cycle_id=="review_cycle" and .data.member=="build_test_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sort -u)
+inner_member_complete_verdicts=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.cycle_id=="build_review_cycle" and .data.member=="build_test_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sort -u)
 assert_eq "T15: inner_cycle dispatch.complete verdict=fail (max_iter mapping)" "fail" "$inner_member_complete_verdicts"
 
 print_test_results

@@ -108,7 +108,7 @@ _assert_warn_and_no_abort() {
 }
 
 # #842: standard.yaml makes plan a leaf + design_impact_cycle the next dispatch
-# unit; review_cycle is the outer. The only pre-cycle linear stage:* unit is
+# unit; build_review_cycle is the outer. The only pre-cycle linear stage:* unit is
 # `intake`. To exercise the stage:* arm's eb_emit_event guards (the bug
 # repro), we assert behavior on `intake` — intake dispatches through stage:*
 # BEFORE the cycles and exercises the same code path the original `review`

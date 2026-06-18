@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration: ADR-026 review remediation cycle ABORT path (Wave 18-B, #707).
 #
-# Drives the OUTER review_cycle with review.verdict=block on iter 1:
+# Drives the OUTER build_review_cycle with review.verdict=block on iter 1:
 #   abort_when fires (rc=6 cycle_abort), propagates outward, terminates the
 #   pipeline. Test stage from iter 2 NEVER runs.
 #
@@ -22,7 +22,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "ADR-026 review_cycle — block → cycle_abort propagation (#707)"
+print_test_header "ADR-026 build_review_cycle — block → cycle_abort propagation (#707)"
 setup_test_env "review-remediation-abort-707"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -79,7 +79,7 @@ cycle_dispatch_stage() {
 }
 
 set +e
-cycle_orchestrator_run "review_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
+cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
 RC=$?
 set -e
 
@@ -98,7 +98,7 @@ review_dispatch_n="$(grep -c 'stage=review' "$_DISPATCH_LOG" || true)"
 assert_eq "T2: exactly 1 review dispatch (no iter 2)" \
     "1" "$review_dispatch_n"
 total_dispatch_n="$(wc -l < "$_DISPATCH_LOG" | tr -d ' ')"
-# #755/#922: review_cycle iter 1 dispatches 3 build_test_cycle members
+# #755/#922: build_review_cycle iter 1 dispatches 3 build_test_cycle members
 # (build/test/test_assessment) + acceptance-gate + 4 cq-* stages + review = 9.
 assert_eq "T2: exactly 9 total dispatches (3 inner + 1 gate + 4 cq-* + 1 review)" \
     "9" "$total_dispatch_n"
@@ -110,11 +110,11 @@ assert_eq "T2: exactly 9 total dispatches (3 inner + 1 gate + 4 cq-* + 1 review)
 # the predicate.
 abort_hit="$(jq -r '. | select(
         (.type == "cycle.complete" or .type == "cycle.aborted") and
-        (.data.cycle_id == "review_cycle") and
+        (.data.cycle_id == "build_review_cycle") and
         (.data.reason == "cycle_abort")
     ) | .type' < "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
 if [[ -n "$abort_hit" ]]; then
-    assert_pass "T3: outer review_cycle emits ${abort_hit} reason=cycle_abort"
+    assert_pass "T3: outer build_review_cycle emits ${abort_hit} reason=cycle_abort"
 else
     assert_fail "T3: outer cycle terminal event with reason=cycle_abort" \
         "missing in $ZBUILD_EVENTS_JSONL"

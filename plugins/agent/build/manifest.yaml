@@ -61,13 +61,13 @@ inputs:
     source: cycle_feedback
     required: false
   # ADR-026 / Wave 18-B (#707): cross-iter feedback from the prior review
-  # stage when build executes inside the review_remediation cycle (review_cycle
+  # stage when build executes inside the review_remediation cycle (build_review_cycle
   # in standard.yaml). ALWAYS optional (required:false); absent/empty file →
   # PRIOR REVIEW FEEDBACK section omitted entirely (see
   # _build_read_prior_review). Mirrors prior_test_assessment shape — path
   # resolves via ${cycle_feedback_dir} → $ZBUILD_CYCLE_FEEDBACK_DIR exported
   # by cycle-orchestrator::_cycle_apply_feedback. The feedback wiring (review
-  # → build) is declared in standard.yaml's review_cycle section by Wave 18-B.
+  # → build) is declared in standard.yaml's build_review_cycle section by Wave 18-B.
   - id: prior_review_feedback
     type: text/markdown
     path: "${cycle_feedback_dir}/prior_review_feedback.txt"

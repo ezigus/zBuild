@@ -14,7 +14,7 @@
 #
 # 5-line copy-paste oversight from Wave 17-B (ADR-027, #703) adding
 # abort_when. Synthetic tests didn't repro because none defined abort_when
-# in their templates; only standard.yaml's review_cycle has BOTH
+# in their templates; only standard.yaml's build_review_cycle has BOTH
 # exit_when AND abort_when.
 #
 # This is the failing-test-first TDD regression lock.
@@ -144,7 +144,7 @@ print_test_section "nested-cycle production scenario (mirror dogfood 20260607140
 rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 
-# This shape mirrors standard.yaml: outer review_cycle = [build_test_cycle, review]
+# This shape mirrors standard.yaml: outer build_review_cycle = [build_test_cycle, review]
 # with BOTH exit_when AND abort_when. Inner build_test_cycle converges, then
 # review approves. Outer should converge via exit_when on review.verdict=approve.
 TPL_NESTED="$TEST_TEMP_DIR/nested-prod.yaml"
@@ -155,9 +155,9 @@ defaults:
   strategy: fanout
 
 flow:
-  - review_cycle
+  - build_review_cycle
 
-review_cycle:
+build_review_cycle:
   type: cycle
   flow:
     - build_test_cycle
@@ -219,21 +219,21 @@ load_template "$TPL_NESTED" || assert_fail "nested template load"
 
 set -e
 rc=0
-cycle_orchestrator_run "review_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE" || rc=$?
+cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE" || rc=$?
 
 # T11: nested-outer cycle returns rc=0.
-assert_eq "T11: nested review_cycle returns rc=0" "0" "$rc"
+assert_eq "T11: nested build_review_cycle returns rc=0" "0" "$rc"
 
-# T12: outer review_cycle's iteration.complete fired (the dogfood-missing event).
-nested_iter_complete=$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "T12: nested review_cycle's cycle.iteration.complete fired (dogfood-missing event)" "1" "$nested_iter_complete"
+# T12: outer build_review_cycle's iteration.complete fired (the dogfood-missing event).
+nested_iter_complete=$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="build_review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "T12: nested build_review_cycle's cycle.iteration.complete fired (dogfood-missing event)" "1" "$nested_iter_complete"
 
-# T13: outer review_cycle's cycle.complete fired with reason=converged.
-nested_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
-assert_eq "T13: nested review_cycle cycle.complete reason=converged" "converged" "$nested_complete"
+# T13: outer build_review_cycle's cycle.complete fired with reason=converged.
+nested_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+assert_eq "T13: nested build_review_cycle cycle.complete reason=converged" "converged" "$nested_complete"
 
 # T14: outer's abort_when predicate fired (proves _cycle_check_abort_when ran).
-nested_abort_pred=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="review_cycle" and .data.kind=="abort_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+nested_abort_pred=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="abort_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T14: outer's abort_when predicate event fired" "1" "$nested_abort_pred"
 
 print_test_section "regression guard: cycle without abort_when (unchanged path) still works"

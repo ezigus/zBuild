@@ -379,7 +379,7 @@ The impl sequence:
   17-C lands. The `template.format.deprecated` event surfaces in operator
   dashboards so any per-repo template using the old shape is visible
   before the shim removal.
-- **Wave 18 builds on this** — #706 (ADR-026), #707 (`review_cycle`),
+- **Wave 18 builds on this** — #706 (ADR-026), #707 (`build_review_cycle`),
   #708 (contract lint enforcing ADR-027 invariants) all assume the
   recursive `flow:` shape is in place.
 
@@ -415,7 +415,7 @@ This PR (closing #702) lands only the ADR text.
 - Issue #705 (Wave 17-D) — amend ADR-013 (cycle-stages-are-stages note)
   and ADR-016 (override semantics under ADR-027).
 - Issue #706 (Wave 18-A) — ADR-026 builds on the recursive-flow shape.
-- Issue #707 (Wave 18-B) — `review_cycle` uses ADR-027 to declare a
+- Issue #707 (Wave 18-B) — `build_review_cycle` uses ADR-027 to declare a
   multi-stage review remediation loop.
 - Issue #708 (Wave 18-C) — contract lint enforces ADR-027 invariants
   (reserved key set, flow ID resolution, cycle acyclicity).

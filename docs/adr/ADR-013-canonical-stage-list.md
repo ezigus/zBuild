@@ -112,7 +112,7 @@ Each stage is defined by:
 ### CQ stage responsibilities
 
 The former `compound_quality` orchestrator is replaced by four independent leaf
-stages executed in sequence within the `review_cycle` flow:
+stages executed in sequence within the `build_review_cycle` flow:
 
 | Stage | Purpose |
 |---|---|
@@ -344,7 +344,7 @@ ADR-027 (Wave 17-A) codifies the recursive flow template format: a cycle is a st
 
 **Taxonomy scope unchanged.** The canonical stage list in §"Stage sequence" and the per-stage attribute table in §"Canonical stage definitions" remain the authoritative source for **leaf** stage IDs (`intake`, `plan`, `design`, `build`, `test`, `test_assessment`, `acceptance-gate`, `cq-preflight`, `cq-audit-plan`, `cq-cycle`, `cq-backtrack`, `review`, `pr`, `deploy`, `validate`, `monitor`) and their `kind`, `tier`, `lifecycle_hooks`, `expected_artifact`, and `blocking` attrs. Adding a new leaf stage ID or changing a leaf's attrs still requires an ADR-013 revision.
 
-**Cycle stage IDs are template-defined.** Cycle stages (e.g., `build_test_cycle`, `review_cycle`) are NOT members of the canonical leaf set. Each template defines its own cycle stage IDs as sibling top-level sections, named to describe what the cycle does. Cycle stage IDs are scoped to the template that declares them; two templates may use different cycle IDs without conflict, and a cycle ID in one template MUST NOT collide with any canonical leaf ID from this ADR.
+**Cycle stage IDs are template-defined.** Cycle stages (e.g., `build_test_cycle`, `build_review_cycle`) are NOT members of the canonical leaf set. Each template defines its own cycle stage IDs as sibling top-level sections, named to describe what the cycle does. Cycle stage IDs are scoped to the template that declares them; two templates may use different cycle IDs without conflict, and a cycle ID in one template MUST NOT collide with any canonical leaf ID from this ADR.
 
 **ID validation applies to every `flow:` member at every depth.** The runner walks the resolved flow recursively (post-`extends`-merge per ADR-027 §"Loader contract"). Every member of any `flow:` — whether that `flow:` is the top-level one or nested inside a cycle stage's section, at any depth — must resolve at template-load time to exactly one of:
 
@@ -386,7 +386,7 @@ ADR-036 adds a mechanical (non-LLM) **`acceptance-gate`** leaf stage that
 enforces the behavioral acceptance contract has teeth: every `SPEC-n` in the
 design `acceptance` block must have a `[SPEC-n]`-tagged assertion that fails at
 the merge-base baseline and passes at HEAD (negative control). It is inserted
-after `test_assessment`, and in the standard template runs inside `review_cycle`
+after `test_assessment`, and in the standard template runs inside `build_review_cycle`
 immediately after `build_test_cycle` (fail-fast, before the CQ stages). When the
 design acceptance block is absent it is a no-op pass, so it composes into any
 template.

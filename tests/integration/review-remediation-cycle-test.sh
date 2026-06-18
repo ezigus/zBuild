@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Integration: ADR-026 review remediation cycle (Wave 18-B, #707).
 #
-# Drives the OUTER review_cycle (wraps inner build_test_cycle + review):
+# Drives the OUTER build_review_cycle (wraps inner build_test_cycle + review):
 #   iter 1: review.verdict=request_changes → cycle re-iterates
 #   iter 2: review.verdict=approve → exit_when fires, cycle terminates
 #
 # Asserts:
-#   T1: standard.yaml's review_cycle parses with the ADR-026 shape (outer
+#   T1: standard.yaml's build_review_cycle parses with the ADR-026 shape (outer
 #       flow=[build_test_cycle,review], exit_when=review.verdict==approve,
 #       abort_when=review.verdict==block, feedback review→build wires
 #       prior_review_feedback)
@@ -25,54 +25,54 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "ADR-026 review_cycle remediation — request_changes → approve (#707)"
+print_test_header "ADR-026 build_review_cycle remediation — request_changes → approve (#707)"
 setup_test_env "review-remediation-cycle-707"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 
-# ─── T1: standard.yaml's review_cycle parses with the ADR-026 shape ──────────
+# ─── T1: standard.yaml's build_review_cycle parses with the ADR-026 shape ──────────
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
 _TPL_STAGES=(); _TPL_CYCLES=()
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 
-# review_cycle must be registered.
+# build_review_cycle must be registered.
 has_outer=0
-for c in "${_TPL_CYCLES[@]}"; do [[ "$c" == "review_cycle" ]] && has_outer=1; done
-assert_eq "T1: review_cycle is a registered cycle" "1" "$has_outer"
+for c in "${_TPL_CYCLES[@]}"; do [[ "$c" == "build_review_cycle" ]] && has_outer=1; done
+assert_eq "T1: build_review_cycle is a registered cycle" "1" "$has_outer"
 
-assert_eq "T1: review_cycle.flow = build_test_cycle,acceptance-gate,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" \
-    "build_test_cycle,acceptance-gate,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" "${_TPL_CYCLE_STAGES_review_cycle:-}"
+assert_eq "T1: build_review_cycle.flow = build_test_cycle,acceptance-gate,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" \
+    "build_test_cycle,acceptance-gate,cq-preflight,cq-audit-plan,cq-cycle,cq-backtrack,review" "${_TPL_CYCLE_STAGES_build_review_cycle:-}"
 assert_eq "T1: exit_when.stage=review" \
-    "review" "${_TPL_CYCLE_UNTIL_STAGE_review_cycle:-}"
+    "review" "${_TPL_CYCLE_UNTIL_STAGE_build_review_cycle:-}"
 assert_eq "T1: exit_when.field=verdict" \
-    "verdict" "${_TPL_CYCLE_UNTIL_FIELD_review_cycle:-}"
+    "verdict" "${_TPL_CYCLE_UNTIL_FIELD_build_review_cycle:-}"
 assert_eq "T1: exit_when.op=eq" \
-    "eq" "${_TPL_CYCLE_UNTIL_OP_review_cycle:-}"
+    "eq" "${_TPL_CYCLE_UNTIL_OP_build_review_cycle:-}"
 assert_eq "T1: exit_when.value=approve" \
-    "approve" "${_TPL_CYCLE_UNTIL_VALUE_review_cycle:-}"
+    "approve" "${_TPL_CYCLE_UNTIL_VALUE_build_review_cycle:-}"
 assert_eq "T1: abort_when.stage=review" \
-    "review" "${_TPL_CYCLE_ABORT_WHEN_STAGE_review_cycle:-}"
+    "review" "${_TPL_CYCLE_ABORT_WHEN_STAGE_build_review_cycle:-}"
 assert_eq "T1: abort_when.value=block" \
-    "block" "${_TPL_CYCLE_ABORT_WHEN_VALUE_review_cycle:-}"
+    "block" "${_TPL_CYCLE_ABORT_WHEN_VALUE_build_review_cycle:-}"
 assert_eq "T1: max_iterations=2" \
-    "2" "${_TPL_CYCLE_MAX_review_cycle:-}"
+    "2" "${_TPL_CYCLE_MAX_build_review_cycle:-}"
 assert_eq "T1: on_max=continue" \
-    "continue" "${_TPL_CYCLE_ON_MAX_review_cycle:-}"
+    "continue" "${_TPL_CYCLE_ON_MAX_build_review_cycle:-}"
 
-fb="${_TPL_CYCLE_FEEDBACK_review_cycle:-}"
+fb="${_TPL_CYCLE_FEEDBACK_build_review_cycle:-}"
 assert_contains "T1: feedback from review:review_md" \
     "$fb" "review:review_md"
 assert_contains "T1: feedback to build:prior_review_feedback" \
     "$fb" "build:prior_review_feedback"
 
-# Dispatch: review_cycle is the OUTERMOST cycle and absorbs both
+# Dispatch: build_review_cycle is the OUTERMOST cycle and absorbs both
 # build_test_cycle and review under one dispatch unit.
 has_dispatch_outer=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:review_cycle" ]] && has_dispatch_outer=1
+    [[ "$u" == "cycle:build_review_cycle" ]] && has_dispatch_outer=1
 done
-assert_eq "T1: dispatch includes cycle:review_cycle (outermost)" \
+assert_eq "T1: dispatch includes cycle:build_review_cycle (outermost)" \
     "1" "$has_dispatch_outer"
 
 # ─── Orchestrator harness ────────────────────────────────────────────────────
@@ -149,12 +149,12 @@ cycle_dispatch_stage() {
 }
 
 set +e
-cycle_orchestrator_run "review_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
+cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
 RC=$?
 set -e
 
 # ─── T2: cycle converges on iter 2 ───────────────────────────────────────────
-assert_eq "T2: review_cycle rc=0 (converged)" "0" "$RC"
+assert_eq "T2: build_review_cycle rc=0 (converged)" "0" "$RC"
 assert_eq "T2: reason=converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 # Review dispatches uniquely identify OUTER iters (the inner build_test_cycle
 # does not invoke review). 1 review dispatch on outer iter 1 + 1 on outer
@@ -169,7 +169,7 @@ assert_eq "T2: total dispatches across both outer iters = 18" \
     "18" "$total_dispatch_n"
 
 # ─── T3: iter-2 feedback file landed with iter-1 review.md content ───────────
-FB_PATH="$CASE_DIR/state/cycle-review_cycle/iter-2/feedback/prior_review_feedback.txt"
+FB_PATH="$CASE_DIR/state/cycle-build_review_cycle/iter-2/feedback/prior_review_feedback.txt"
 if [[ -s "$FB_PATH" ]]; then
     assert_pass "T3: outer iter-2 feedback file prior_review_feedback.txt present + non-empty"
 else
@@ -181,7 +181,7 @@ assert_contains "T3: feedback carries findings body" \
     "$(cat "$FB_PATH" 2>/dev/null)" "address nil-guard"
 
 # .complete sentinel must be present (#511 Pin 9)
-if [[ -e "$CASE_DIR/state/cycle-review_cycle/iter-2/feedback/.complete" ]]; then
+if [[ -e "$CASE_DIR/state/cycle-build_review_cycle/iter-2/feedback/.complete" ]]; then
     assert_pass "T3: iter-2 feedback .complete sentinel written"
 else
     assert_fail "T3: iter-2 feedback .complete sentinel" "missing"
@@ -198,7 +198,7 @@ fi
 # feedback dir directly (simulating what the inner cycle's build dispatch
 # sees on its FIRST iter under outer iter 2).
 export ZBUILD_CYCLE_ITER=1
-export ZBUILD_CYCLE_FEEDBACK_DIR="$CASE_DIR/state/cycle-review_cycle/iter-2/feedback"
+export ZBUILD_CYCLE_FEEDBACK_DIR="$CASE_DIR/state/cycle-build_review_cycle/iter-2/feedback"
 saw_iter2="$(_build_read_prior_review 2>/dev/null || true)"
 assert_contains "T4: build read iter-1 review header from outer iter-2 feedback" \
     "$saw_iter2" "Review (outer_iter 1)"
@@ -207,7 +207,7 @@ assert_contains "T4: build read iter-1 review findings body" \
 
 # Conversely: outer iter 1's feedback dir is iter-1/feedback — should not
 # carry any prior review (this is the FIRST outer iter).
-export ZBUILD_CYCLE_FEEDBACK_DIR="$CASE_DIR/state/cycle-review_cycle/iter-1/feedback"
+export ZBUILD_CYCLE_FEEDBACK_DIR="$CASE_DIR/state/cycle-build_review_cycle/iter-1/feedback"
 saw_iter1="$(_build_read_prior_review 2>/dev/null || true)"
 assert_eq "T4: build sees empty prior_review_feedback on outer iter 1" \
     "" "$saw_iter1"

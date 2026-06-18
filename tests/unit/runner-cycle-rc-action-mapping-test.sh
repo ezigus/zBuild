@@ -37,7 +37,7 @@ _drive() {
         # shellcheck disable=SC1091
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
         # Make the stub cycle-aware: design_impact_cycle always converges (rc=0)
-        # so this test focuses on review_cycle's rc → status mapping.
+        # so this test focuses on build_review_cycle's rc → status mapping.
         eval "cycle_orchestrator_run() {
             if [[ \"\$1\" == \"design_impact_cycle\" ]]; then
                 _CYCLE_LAST_TERMINATED_REASON=\"converged\"
@@ -78,7 +78,7 @@ for _row in "${_cases[@]}"; do
     _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
     assert_eq "rc=$_rc → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
     # #842: standard.yaml wraps plan as a leaf + design_impact_cycle (design+impact)
-    # and review inside the outer review_cycle (ADR-026). The only top-level
+    # and review inside the outer build_review_cycle (ADR-026). The only top-level
     # stage:* unit is intake. Use `intake` as a smoke that stage:* dispatch
     # ran when rc∈{0,1,2,3} (continue path).
     _got_intake="$(jq -r '.stage_statuses.intake // "absent"' "$_state" 2>/dev/null)"
