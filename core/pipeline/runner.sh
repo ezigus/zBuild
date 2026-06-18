@@ -1400,7 +1400,10 @@ main() {
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue" \
                             2>/dev/null || true
-                        warn "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON — continuing to next dispatch unit so review fail-closed gate runs (pipeline_status will be 'failed')"
+                        # #938: gate the message on on_max so it matches the
+                        # status _runner_compute_final_status computes (continue
+                        # + downstream approve → complete, not failed).
+                        warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
                     fi
                     ;;
                 stage:*)
