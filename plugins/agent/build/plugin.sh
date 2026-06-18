@@ -207,11 +207,11 @@ _build_stage_run_inner() {
     _feedback_body="$(_build_read_prior_assessment 2>/dev/null || true)"
 
     # ADR-026 / Wave 18-B (#707): outer-cycle review-remediation feedback.
-    # Empty when not running inside review_cycle, when the feedback dir is
+    # Empty when not running inside build_review_cycle, when the feedback dir is
     # not exported, or when the file is missing/empty (silent-failure guard,
     # see _build_read_prior_review). Independent of prior_test_assessment —
     # both can co-exist when build runs as a member of build_test_cycle
-    # nested inside review_cycle (review feedback drove the outer iter,
+    # nested inside build_review_cycle (review feedback drove the outer iter,
     # test_assessment feedback drove the inner iter).
     local _review_feedback_body
     _review_feedback_body="$(_build_read_prior_review 2>/dev/null || true)"
@@ -959,7 +959,7 @@ _build_read_prior_assessment() {
 #   - file missing OR empty (silent-failure guard: `[[ -s file ]]`)
 #
 # Independent of the inner build_test_cycle's prior_test_assessment feedback:
-# when build runs as a member of build_test_cycle nested inside review_cycle,
+# when build runs as a member of build_test_cycle nested inside build_review_cycle,
 # both feedback files can coexist for the same iter (review feedback came
 # from a prior outer iter; test_assessment feedback came from a prior inner
 # iter of the current outer iter). Each helper checks its own file.

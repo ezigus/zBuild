@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Integration test (#782): impact plugin handles router rc=124 (gtimeout) by
-# writing impact.json with verdict=error reason=router_timeout, NOT
-# returning rc=1 from the plugin (which would collapse error class into fail).
+# Integration test (#782 + #937): impact plugin handles router failures
+# gracefully (never returns rc=1 with a missing artifact).
+#
+# #937 amends #782: a TIMEOUT (rc=124) is RECOVERABLE — impact writes a
+# best-effort verdict=incomplete (re-iterate) instead of an empty verdict=error,
+# mirroring #892's rc=1 handling. reason=router_timeout is preserved in the
+# plugin.run.error event AND the impact.json reason for postmortems. Genuine
+# infra errors (OOM rc=137) keep verdict=error so the cycle blocked-predicate
+# can flag them.
 #
 # Pinned assertions:
 #   I1: rc=124 → plugin returns rc=0 (graceful)
-#   I2: impact.json written with verdict=error reason=router_timeout
+#   I2: rc=124 → impact.json verdict=incomplete (best-effort), reason=router_timeout
 #   I3: plugin.run.error event emitted with reason=router_timeout
-#   I4: impact.verdict.error event emitted for cycle predicate consumption
-#   I5: rc=1 (other) → plugin returns rc=1 (existing fail-closed contract preserved)
+#   I4: impact.verdict.incomplete event emitted (cycle re-iterates with signal)
+#   I5: rc=1 (max_turns) → best-effort verdict=incomplete (#892)
+#   I6: rc=137 (OOM) → verdict=error (error class preserved for genuine infra fail)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +26,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "impact router rc=124 → verdict=error (#782)"
+print_test_header "impact router rc=124 → best-effort incomplete (#937); rc=137 → error (#782)"
 setup_test_env "impact-router-timeout-782"
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
@@ -62,10 +69,17 @@ assert_eq "I1: plugin returns rc=0 on rc=124 (graceful error class)" "0" "$rc"
 assert_file_exists "I2: impact.json written" "$IMPACT_OUT"
 
 verdict="$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null)"
-assert_eq "I2: verdict=error" "error" "$verdict"
+assert_eq "I2: rc=124 → verdict=incomplete (best-effort, re-iterate)" "incomplete" "$verdict"
 
 reason="$(jq -r '.reason // empty' "$IMPACT_OUT" 2>/dev/null)"
-assert_eq "I2: reason=router_timeout" "router_timeout" "$reason"
+assert_eq "I2: reason=router_timeout preserved in artifact" "router_timeout" "$reason"
+
+_i2_fb="$(jq -r '.impact_feedback_md // ""' "$IMPACT_OUT" 2>/dev/null)"
+if [[ -n "${_i2_fb//[[:space:]]/}" ]]; then
+    assert_pass "I2: best-effort note present (re-iterate signal)"
+else
+    assert_fail "I2: impact_feedback_md should carry a best-effort note"
+fi
 
 events="$(cat "$ZBUILD_EVENTS_JSONL")"
 case "$events" in
@@ -76,10 +90,10 @@ case "$events" in
 esac
 
 case "$events" in
-    *'"type":"impact.verdict.error"'*)
-        assert_pass "I4: impact.verdict.error event emitted (cycle predicate)" ;;
+    *'"type":"impact.verdict.incomplete"'*)
+        assert_pass "I4: impact.verdict.incomplete emitted (cycle re-iterates)" ;;
     *)
-        assert_fail "I4: impact.verdict.error event NOT emitted" ;;
+        assert_fail "I4: impact.verdict.incomplete event NOT emitted" ;;
 esac
 
 # ─── I5 (#892): rc=1 (max_turns/non-timeout) → best-effort verdict=incomplete ─
@@ -106,6 +120,18 @@ case "$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" in
     *'"type":"impact.verdict.incomplete"'*) assert_pass "I5: impact.verdict.incomplete emitted" ;;
     *) assert_fail "I5: impact.verdict.incomplete event NOT emitted" ;;
 esac
+
+# ─── I6 (#782 preserved): rc=137 (OOM) → verdict=error (genuine infra failure) ─
+# A timeout is recoverable (best-effort incomplete); an OOM kill is a genuine
+# infra error and keeps the verdict=error class so the cycle can flag it.
+route_to_model() { return 137; }
+: > "$ZBUILD_EVENTS_JSONL"
+rm -f "$IMPACT_OUT"
+rc=0
+_impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$ARTIFACTS" || rc=$?
+assert_eq "I6: rc=137 plugin returns rc=0 (graceful)" "0" "$rc"
+assert_eq "I6: rc=137 (OOM) → verdict=error (error class preserved, not best-effort)" \
+    "error" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

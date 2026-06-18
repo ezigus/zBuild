@@ -438,7 +438,7 @@ _render_cycle_entry() {
 # another cycle the orchestrator has already set ZBUILD_SEQ_PREFIX (e.g.
 # `4.1`) — surface it as a `[<prefix>]` prefix so operators can tell at a
 # glance which outer iter this divider belongs to:
-#   outer (no prefix): `─── review_cycle iter 1/2 ───`
+#   outer (no prefix): `─── build_review_cycle iter 1/2 ───`
 #   inner (prefix set): `─── [4.1] build_test_cycle iter 1/3 ───`
 # Reuses the seq-prefix machinery from Wave 19-B #718 / cycle-orchestrator.sh:888
 # — no new plumbing, no hook-signature change. Emitted by the orchestrator's
@@ -1206,7 +1206,7 @@ main() {
         # cycle orchestrator's exit_when / abort_when / until predicates which
         # compare against the RAW template-declared value. Without this
         # separate channel, exit_when on review.verdict==approve never matches
-        # (the classifier collapses approve→pass) and review_cycle runs to
+        # (the classifier collapses approve→pass) and build_review_cycle runs to
         # max_iterations instead of converging cleanly (dogfood
         # 20260605055348-2232 symptom: pipeline ran ~10m, review approved,
         # then external interruption — but the cycle was structurally
@@ -1400,7 +1400,10 @@ main() {
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue" \
                             2>/dev/null || true
-                        warn "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON — continuing to next dispatch unit so review fail-closed gate runs (pipeline_status will be 'failed')"
+                        # #938: gate the message on on_max so it matches the
+                        # status _runner_compute_final_status computes (continue
+                        # + downstream approve → complete, not failed).
+                        warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
                     fi
                     ;;
                 stage:*)

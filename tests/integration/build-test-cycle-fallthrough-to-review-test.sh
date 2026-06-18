@@ -90,7 +90,7 @@ A_EVENTS="$A_DIR/events/events.jsonl"
 assert_eq "A: pipeline_status=failed (NOT complete — the actual bug fix)" \
     "failed" "$(jq -r '.status' "$A_STATE" 2>/dev/null)"
 # Wave 18-B (#707): standard.yaml now wraps `review` inside the outer
-# review_cycle (ADR-026), and cycle_orchestrator_run is stubbed in this
+# build_review_cycle (ADR-026), and cycle_orchestrator_run is stubbed in this
 # test. Review no longer dispatches as a standalone post-cycle stage; the
 # outer cycle IS review's dispatch container. The original assertions
 # below (review RAN, ADR-019 coercion fired post-cycle, test_assessment

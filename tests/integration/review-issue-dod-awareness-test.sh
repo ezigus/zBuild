@@ -81,6 +81,12 @@ extract_first_json_object() { cat; }
 render_artifact() { printf '%s' "$2"; }
 _zbuild_sanitize_for_llm() { cat; }
 _zbuild_diff_stat() { printf '## Changed files (0 total)\n'; }
+# #939: stub the merge-base diff source so the prompt uses the provided (empty)
+# diff.patch fixture, NOT the real working-dir branch-vs-main diff. Without this
+# _review_run_inner splices the actual repo diff into the prompt, so any branch
+# with many changed files (e.g. the #939 rename) floods the prompt and breaks
+# these prompt-content assertions. Hermeticity fix exposed by #939.
+_review_resolve_merge_base() { printf ''; }
 
 print_test_section "1. intake.md present → prompt contains issue body section"
 

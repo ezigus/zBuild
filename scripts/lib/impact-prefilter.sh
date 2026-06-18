@@ -369,3 +369,244 @@ _impact_drop_nonexistent_missing() {
         "dropped_count=${_dropped}" \
         "verdict_flipped=${_verdict_flipped}" 2>/dev/null || true
 }
+
+# ─── _impact_envelope_schema_ok <json> ───────────────────────────────────────
+# The impact envelope schema gate, factored out so the happy-path validation in
+# plugin.sh AND the recovery helper below share ONE definition and never drift.
+# rc=0 iff $1 is a valid impact envelope.
+_impact_envelope_schema_ok() {
+    printf '%s' "${1:-}" | jq -e '
+        type == "object"
+        and (.schema_version == 1)
+        and (.verdict | type == "string" and (. == "complete" or . == "incomplete" or . == "error"))
+        and (.missing | type == "array")
+        and (.impact_feedback_md | type == "string")
+    ' >/dev/null 2>&1
+}
+
+# ─── _impact_recover_envelope_json <raw_response> (#908) ──────────────────────
+# Schema-aware recovery from a LAST-wins misselection. The shared parser
+# extract_json_and_surrounding_prose (helpers.sh) returns the LAST top-level
+# balanced object — deliberate (#478/ADR-018) to defend brace-bearing PREAMBLE.
+# Impact's OUTPUT CONTRACT emits the envelope FIRST, so a brace-bearing
+# POSTAMBLE ("...: {note:x}", or an example after a stray ```json fence) makes
+# LAST-wins hand back the wrong object and the schema gate fails -> empty
+# iteration (#908). This re-scans the ORIGINAL raw response, enumerates EVERY
+# top-level balanced object in document order (same string/escape/array-depth
+# grammar as the shared parser), and prints the FIRST that passes the impact
+# schema gate. rc=0 + object on stdout when recovered; rc=1 + empty otherwise
+# (caller falls through to the genuine-malformed error path). Impact-local on
+# purpose: the shared LAST-wins contract (X6/E8/E16) is untouched.
+_impact_recover_envelope_json() {
+    local _raw="${1:-}"
+    [[ -z "$_raw" ]] && return 1
+
+    # Enumerate every top-level balanced object, in order, RS-delimited (\x1e)
+    # so embedded newlines/braces inside an object survive the boundary.
+    local _candidates
+    _candidates="$(printf '%s' "$_raw" | awk '
+        BEGIN { buf = "" }
+        { buf = buf $0 "\n" }
+        END {
+            # Pre-pass mirrors extract_json_and_surrounding_prose (helpers.sh):
+            # BOM, opening/closing ```json|``` fences, trailing newline. We
+            # ADDITIONALLY strip CR (gsub /\r/) — a hardening beyond the shared
+            # parser pre-pass, harmless for single-byte JSON.
+            sub(/^\xef\xbb\xbf/, "", buf)
+            gsub(/\r/, "", buf)
+            sub(/^[[:space:]]*```json[[:space:]]*\n?/, "", buf)
+            sub(/^[[:space:]]*```[[:space:]]*\n?/, "", buf)
+            sub(/\n?[[:space:]]*```[[:space:]]*$/, "", buf)
+            sub(/\n$/, "", buf)
+
+            n = length(buf); depth = 0; arr_depth = 0
+            in_string = 0; escape = 0; start = -1
+            for (i = 1; i <= n; i++) {
+                c = substr(buf, i, 1)
+                if (escape) { escape = 0; continue }
+                if (in_string) {
+                    if (c == "\\") { escape = 1; continue }
+                    if (c == "\"") { in_string = 0 }
+                    continue
+                }
+                if (c == "\"") { in_string = 1; continue }
+                if (c == "[") { if (depth == 0) arr_depth++; continue }
+                if (c == "]") { if (depth == 0 && arr_depth > 0) arr_depth--; continue }
+                if (c == "{") {
+                    if (depth == 0 && arr_depth > 0) continue   # object inside top-level array
+                    if (depth == 0) start = i
+                    depth++; continue
+                }
+                if (c == "}") {
+                    if (depth > 0) {
+                        depth--
+                        if (depth == 0 && start > 0) {
+                            # RS-delimit with \x1e. Keep \x1e the TRAILING token
+                            # of this format: the awk \x escape is greedy, so a
+                            # following hex digit (\x1e then B) would fold into
+                            # one byte and silently corrupt the delimiter. A raw
+                            # 0x1e inside a model string would mis-split, but
+                            # control bytes below 0x20 are invalid in JSON and
+                            # fail the schema gate anyway, so no envelope is lost.
+                            printf "%s\x1e", substr(buf, start, i - start + 1)
+                            start = -1
+                        }
+                    }
+                }
+            }
+        }
+    ')"
+    [[ -z "$_candidates" ]] && return 1
+
+    # Recover ONLY when exactly one top-level object bears a `schema_version`
+    # key. The brace-bearing-postamble case #908 targets has exactly one such
+    # envelope (the postamble junk — {note}, {summary} — lacks schema_version).
+    # If MORE than one object bears schema_version the response is AMBIGUOUS — a
+    # preamble EXAMPLE plus the real answer (Codex review): recovering the first
+    # would risk shipping the example as the verdict when the real (LAST) object
+    # is malformed, re-introducing the half-validated-plan risk the strict gate
+    # avoids. Fail closed in that case; the honest schema_violation error is
+    # safer than a fabricated recovery. Zero bearers → nothing to recover.
+    local _obj _envelope="" _count=0
+    while IFS= read -r -d $'\x1e' _obj || [[ -n "$_obj" ]]; do
+        [[ -z "$_obj" ]] && continue
+        if printf '%s' "$_obj" | jq -e 'has("schema_version")' >/dev/null 2>&1; then
+            _count=$((_count + 1))
+            _envelope="$_obj"
+        fi
+    done < <(printf '%s' "$_candidates")
+    [[ "$_count" -eq 1 ]] || return 1
+    if _impact_envelope_schema_ok "$_envelope"; then
+        printf '%s' "$_envelope"
+        return 0
+    fi
+    return 1
+}
+
+# ─── _impact_path_is_collateral <path> (#936) ────────────────────────────────
+# rc=0 if the path is a downstream-recoverable collateral class (tests/, config/,
+# docs/ — what ADR-030 scope-governance auto-grants); rc=1 for structural source
+# paths (core/, scripts/, plugins/, root) which are NOT recoverable if
+# under-scoped. Mirrors scope_collateral_class (scripts/lib/scope-governance.sh)
+# without pulling that lib into the impact path.
+_impact_path_is_collateral() {
+    case "${1:-}" in
+        tests/*|config/*|docs/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# ─── _impact_converge_on_overscope <repo_root> <artifact_dir> <plan_json> (#936)
+# Over-scope-safe deterministic convergence backstop. design_impact_cycle never
+# converges when impact re-flags real-but-irrelevant adjacent files: missing[]
+# stays non-empty with REAL paths, #911 never flips the verdict, and the cycle
+# maxes out (on_max=continue) instead of converging. This flips verdict
+# incomplete->complete ONLY in the provably-safe over-scope case, so a real
+# reference gap or a structural omission is NEVER masked. Never drops a file;
+# only flips the verdict. Reads/mutates $impact_json in caller scope (mirrors
+# _impact_drop_nonexistent_missing).
+#
+# Fires iff ALL hold (else returns 0, no event):
+#   1. verdict == "incomplete"                       (error is never flipped)
+#   2. NOT _impact_detect_shape_change               (shape regime: run full budget)
+#   3. no missing[] entry has step_id=="prefilter"   (#781/#881 floor veto)
+#   4. ZBUILD_CYCLE_ITER>=2 AND the non-floor missing[] file SET is IDENTICAL to
+#      the prior verdict-producing iter (true plateau, per-run sidecar) — not a
+#      one-shot existence check; a cascade (different set each iter) never fires
+#   5. EVERY remaining file is collateral-class (tests/|config/|docs/) — the only
+#      classes recoverable downstream if this convergence under-scoped
+#   6. EVERY remaining file EXISTS on disk (defensive; #911 already dropped ghosts)
+#
+# The sidecar is written EVERY verdict-producing iter (this function only runs on
+# genuine schema-valid responses; the #782/#892/#937 synthetic envelopes early-
+# return before reaching it), so it records this iter set for the NEXT compare.
+_impact_converge_on_overscope() {
+    local _repo_root="${1:-${ZBUILD_REPO_ROOT:-$(pwd)}}"
+    local _artifact_dir="${2:-}"
+    local _plan_json="${3:-}"
+    local _design_scope_csv="${4:-}"
+
+    # (1) verdict must be incomplete.
+    local _verdict
+    _verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo "")"
+    [[ "$_verdict" == "incomplete" ]] || return 0
+
+    # Current NON-FLOOR missing[] file set (sorted, deduped, whitespace-stripped).
+    # sort -u handles dedup; no separate jq `unique` needed (Codex review).
+    local _nonfloor
+    _nonfloor="$(printf '%s' "$impact_json" | jq -r '
+        .missing[]? | select(.step_id != "prefilter") | .files_to_add[]?' 2>/dev/null \
+        | sed 's/[[:space:]]//g; /^$/d' | sort -u)"
+
+    # Persist this iter set for the NEXT iter compare; capture prior first.
+    # Sidecar is a newline-delimited path list (.txt), NOT JSON (Codex review).
+    local _sidecar="" _prior=""
+    if [[ -n "$_artifact_dir" ]]; then
+        _sidecar="$_artifact_dir/impact-prior-missing.txt"
+        [[ -f "$_sidecar" ]] && _prior="$(cat "$_sidecar" 2>/dev/null || true)"
+        printf '%s\n' "$_nonfloor" > "$_sidecar" 2>/dev/null || true
+    fi
+
+    # (3) floor veto — any prefilter entry present blocks the flip.
+    local _floor_n
+    _floor_n="$(printf '%s' "$impact_json" \
+        | jq '[.missing[]? | select(.step_id=="prefilter")] | length' 2>/dev/null || echo 1)"
+    [[ "$_floor_n" == "0" ]] || return 0
+
+    # Non-floor set must be non-empty (something to converge on).
+    [[ -n "$_nonfloor" ]] || return 0
+
+    # (2) shape-change suppression — a shape change is exactly when a silent
+    # omission is unrecoverable. Check BOTH the plan AND the design.md scope
+    # block: in design_impact_cycle the AUTHORITATIVE scope is design.md, and
+    # design can add a shape file the plan omitted; the floor keys off the plan,
+    # so without the design check a shape change could slip through as a plateau
+    # (Codex review).
+    if [[ -n "$_plan_json" ]] && _impact_detect_shape_change "$_plan_json" "$_repo_root" >/dev/null 2>&1; then
+        return 0
+    fi
+    if [[ -n "$_design_scope_csv" ]]; then
+        local _design_plan
+        _design_plan="$(printf '%s' "$_design_scope_csv" \
+            | jq -Rs 'rtrimstr("\n") | {steps:[{files:(split(",") | map(select(length>0)))}]}' 2>/dev/null || echo "")"
+        if [[ -n "$_design_plan" ]] && _impact_detect_shape_change "$_design_plan" "$_repo_root" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    # (4) iter-awareness + TRUE plateau: iter>=2 AND identical set since prior.
+    local _iter="${ZBUILD_CYCLE_ITER:-}"
+    [[ "$_iter" =~ ^[0-9]+$ ]] || return 0
+    (( _iter >= 2 )) || return 0
+    [[ -n "$_prior" ]] || return 0
+    [[ "$_prior" == "$_nonfloor" ]] || return 0
+
+    # (5)+(6) every remaining file collateral-class AND present on disk.
+    # Reject absolute paths and any `..` traversal FIRST: a non-canonical path
+    # like `tests/../scripts/lib/x.sh` would pass the prefix-based collateral
+    # check yet resolve (via -e) to a structural file, hiding a structural
+    # omission. ADR-030's floor denies such paths; mirror that here (Codex review).
+    local _p
+    while IFS= read -r _p; do
+        [[ -z "$_p" ]] && continue
+        case "$_p" in /*|*..*) return 0 ;; esac
+        _impact_path_is_collateral "$_p" || return 0
+        [[ -e "$_repo_root/$_p" ]] || return 0
+    done <<< "$_nonfloor"
+
+    # All conditions met — flip verdict, emit plateau event.
+    local _carried
+    _carried="$(printf '%s' "$_nonfloor" | tr '\n' ',')"
+    _carried="${_carried%,}"
+
+    local _flipped
+    _flipped="$(printf '%s' "$impact_json" | jq -c '.verdict = "complete"' 2>/dev/null)" || return 0
+    [[ -n "$_flipped" ]] && impact_json="$_flipped"
+
+    emit_event "impact.scope.plateau" \
+        "plugin=impact" \
+        "reason=overscope_only" \
+        "carried_files=${_carried}" \
+        "iter=${_iter}" \
+        "verdict_flipped=true" 2>/dev/null || true
+}

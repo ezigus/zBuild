@@ -81,6 +81,23 @@ status=""
 _runner_compute_final_status 1 "" 1 status
 assert_eq "T6: empty on_max defaults to abort behavior → failed" "failed" "$status"
 
+# ─── #938: the mid-run unconverged warning must match the computed status ─────
+# runner.sh previously hardcoded "(pipeline_status will be 'failed')" on any
+# cycle rc in {1,2,3}, contradicting an on_max=continue + downstream-approve run
+# that actually computes "complete". The message is now gated on on_max.
+# T7: on_max=continue → message must NOT predict 'failed'; it defers to review.
+msg="$(_runner_unconverged_msg "design_impact_cycle" 1 "max_iterations" "continue")"
+case "$msg" in
+    *"will be 'failed'"*) assert_fail "T7: on_max=continue msg wrongly predicts failed" "$msg" ;;
+    *) assert_pass "T7: on_max=continue msg does not predict failed" ;;
+esac
+assert_contains "T7: on_max=continue msg defers to the downstream review gate" \
+    "$msg" "depends on the downstream review gate"
+# T8: on_max=abort → message retains the terminal-failure prediction.
+msg="$(_runner_unconverged_msg "x" 1 "max_iterations" "abort")"
+assert_contains "T8: on_max=abort msg predicts failed (terminal)" \
+    "$msg" "pipeline_status will be 'failed'"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

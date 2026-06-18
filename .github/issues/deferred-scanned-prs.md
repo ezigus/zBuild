@@ -134,7 +134,7 @@ _Last updated: 2026-06-08T19:17:50Z_
 | #720 | fix(cycle): exit_when reads raw verdict so review.approve converges (Wave 19-A) | 2026-06-05 |
 | #719 | feat(stage-io): N-level recursive seq labels (Wave 19-B) | 2026-06-05 |
 | #716 | chore(contracts): cycle-feedback wiring lint + review.review_md output (Wave 18-C) | 2026-06-05 |
-| #715 | feat(build,review): prior_review_feedback + standard.yaml review_cycle (Wave 18-B) | 2026-06-05 |
+| #715 | feat(build,review): prior_review_feedback + standard.yaml build_review_cycle (Wave 18-B) | 2026-06-05 |
 | #736 | fix(build): empty-diff done_sentinel produces verdict=empty_diff (Wave 19-D-3, #733) | 2026-06-06 |
 | #735 | test(cycle): inner cycle resets per outer iter — regression lock (Wave 19-D-2, #732) | 2026-06-06 |
 | #734 | feat(cycle): cycle.member.dispatch.{start,complete} instrumentation (Wave 19-D-1, #731) | 2026-06-06 |

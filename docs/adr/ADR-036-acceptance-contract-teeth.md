@@ -70,7 +70,7 @@ template and is omittable from any other — honoring stage independence.
 
 ### 5. Placement
 
-In the standard template the gate runs inside `review_cycle` immediately after
+In the standard template the gate runs inside `build_review_cycle` immediately after
 `build_test_cycle`, before the CQ stages — a broken acceptance contract fails
 fast. Because it is its own stage it does **not** depend on `test_assessment`
 changes (#867).
@@ -104,7 +104,7 @@ changes (#867).
   `cq-preflight`; writes `acceptance-gate-result.json` (`{"verdict","failures"}`),
   returns rc=1 on fail (picked up mechanically by `runner_read_stage_verdict`'s
   `*` branch — no `verdict.sh` change). `design` is declared `required: false`.
-- **Wiring**: `review_cycle.flow` (after `build_test_cycle`), `_ZBUILD_CANONICAL_STAGES`
+- **Wiring**: `build_review_cycle.flow` (after `build_test_cycle`), `_ZBUILD_CANONICAL_STAGES`
   (template.sh, 16→17), `_LC_STAGE_IDS_TO_CHECK` (lint-contract.sh), the test roster
   (`_ZBUILD_STANDARD_ROSTER` + `register_standard_pipeline_stubs`, #921), ADR-013,
   and the event schema.

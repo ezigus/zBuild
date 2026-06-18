@@ -3,7 +3,7 @@
 # ZBUILD_SEQ_PREFIX so operators can tell which outer iter the inner
 # divider belongs to (#832).
 #
-#   outer (no prefix): `─── review_cycle iter 1/2 ───`
+#   outer (no prefix): `─── build_review_cycle iter 1/2 ───`
 #   inner (prefix set): `─── [4.1] build_test_cycle iter 1/3 ───`
 #
 # Reuses ZBUILD_SEQ_PREFIX from Wave 19-B #718 (set by cycle-orchestrator
@@ -28,9 +28,9 @@ source "$REPO_ROOT/core/pipeline/runner.sh"
 # ─── T1: outer cycle (no ZBUILD_SEQ_PREFIX) → cycle_id present, no chip ──
 OUT1="$TEST_TEMP_DIR/outer.stderr"
 unset ZBUILD_SEQ_PREFIX
-_render_cycle_iter_divider review_cycle 1 2 2> "$OUT1"
-if grep -q 'review_cycle iter 1/2' "$OUT1"; then
-    assert_pass "T1: outer divider contains 'review_cycle iter 1/2'"
+_render_cycle_iter_divider build_review_cycle 1 2 2> "$OUT1"
+if grep -q 'build_review_cycle iter 1/2' "$OUT1"; then
+    assert_pass "T1: outer divider contains 'build_review_cycle iter 1/2'"
 else
     assert_fail "T1: outer divider missing cycle_id+iter" "got: $(cat "$OUT1")"
 fi

@@ -3,7 +3,7 @@
 **Status:** Accepted (flipped from Proposed in Wave 18-B / #707)
 **Date:** 2026-06-05
 **Depends on:** ADR-019 (review fail-CLOSED on test failure), ADR-020 (inter-stage data contract), ADR-021 v2 (pipeline cycle semantics), ADR-027 (recursive flow template format)
-**Implemented by:** #707 (Wave 18-B `review_cycle` wiring in `config/templates/standard.yaml` + build manifest `prior_review_feedback` input), #708 (Wave 18-C contract lint).
+**Implemented by:** #707 (Wave 18-B `build_review_cycle` wiring in `config/templates/standard.yaml` + build manifest `prior_review_feedback` input), #708 (Wave 18-C contract lint).
 
 ## Context
 
@@ -137,11 +137,11 @@ What stays the same:
 
 What changes:
 
-- **`config/templates/standard.yaml`** gains an outer `review_cycle`
+- **`config/templates/standard.yaml`** gains an outer `build_review_cycle`
   stage section under the ADR-027 recursive `flow:` shape. The
-  top-level `flow:` becomes `[intake, plan, review_cycle]`;
+  top-level `flow:` becomes `[intake, plan, build_review_cycle]`;
   `build_test_cycle` and `review` move from top-level siblings into
-  `review_cycle.flow:`. Wave 18-B (#707) owns this migration.
+  `build_review_cycle.flow:`. Wave 18-B (#707) owns this migration.
 - **`plugins/agent/build/manifest.yaml`** gains a
   `prior_review_feedback` entry in `inputs:` with
   `source: cycle_feedback, required: false`.
@@ -151,17 +151,17 @@ What changes:
   `_build_read_prior_assessment` (ADR-021 v2 #511 Pin 5;
   `plugins/agent/build/plugin.sh:625`).
 - **Contract lint** (Wave 18-C, #708) enforces ADR-027 invariants
-  including that the new `review_cycle` section is well-formed under
+  including that the new `build_review_cycle` section is well-formed under
   the recursive `flow:` shape (reserved key set, flow ID resolution,
   cycle membership acyclicity).
 
 ## Example wire
 
-The `review_cycle` section in `config/templates/standard.yaml` under
+The `build_review_cycle` section in `config/templates/standard.yaml` under
 the ADR-027 shape:
 
 ```yaml
-review_cycle:
+build_review_cycle:
   type: cycle
   flow:
     - build_test_cycle
@@ -194,7 +194,7 @@ The top-level `flow:` becomes:
 flow:
   - intake
   - plan
-  - review_cycle
+  - build_review_cycle
 ```
 
 `build_test_cycle`, `build`, `test`, `test_assessment`, and `review`
@@ -227,7 +227,7 @@ are referenced by ID from inside a cycle's `flow:`).
   resume contract.
 
 - **(c) Plan in the remediation cycle.** Wrap `plan` alongside
-  `build_test_cycle` and `review` in `review_cycle.flow:` so a
+  `build_test_cycle` and `review` in `build_review_cycle.flow:` so a
   `request_changes` review re-runs planning with the review feedback
   in hand, producing a new `plan.json` that drives subsequent build
   iterations. Rejected for now: plan is the most expensive
@@ -253,7 +253,7 @@ are referenced by ID from inside a cycle's `flow:`).
 - Aligns with shipwright's autonomous-pipeline model: review feedback
   is a first-class control signal, not a dead-letter output.
 - The remediation loop is visible in the template. An operator reading
-  `standard.yaml` sees `review_cycle` in the top-level `flow:` and can
+  `standard.yaml` sees `build_review_cycle` in the top-level `flow:` and can
   trace exactly which stages iterate under which conditions. No hidden
   file-based magic.
 
@@ -279,7 +279,7 @@ are referenced by ID from inside a cycle's `flow:`).
 ## Status flip
 
 ADR-026 ships in **Proposed** status. The status flips from Proposed
-to **Accepted** when Wave 18-B (#707) merges the `review_cycle`
+to **Accepted** when Wave 18-B (#707) merges the `build_review_cycle`
 template wiring + build manifest `prior_review_feedback` input + build
 plugin prompt integration. This matches the ADR-then-impl precedent
 set by ADR-024 (flipped on #673) and ADR-027 (flips on #703). No code,
@@ -289,14 +289,14 @@ no test, no event-schema changes in this PR. Only the ADR text.
 
 This ADR ships in **Proposed** status. No code, no test, no
 event-schema changes in this PR. The status flips to **Accepted** when
-Wave 18-B (#707) lands the `review_cycle` template wiring + build
+Wave 18-B (#707) lands the `build_review_cycle` template wiring + build
 manifest input + build plugin prompt integration.
 
 The impl sequence:
 
 - **Wave 18-B (#707)** — migrate `config/templates/standard.yaml` so
-  the top-level `flow:` becomes `[intake, plan, review_cycle]` and add
-  the `review_cycle` stage section verbatim from the "Example wire"
+  the top-level `flow:` becomes `[intake, plan, build_review_cycle]` and add
+  the `build_review_cycle` stage section verbatim from the "Example wire"
   block above; add `prior_review_feedback` to
   `plugins/agent/build/manifest.yaml` `inputs:` with
   `source: cycle_feedback, required: false`; extend
@@ -306,17 +306,17 @@ The impl sequence:
   section to the LLM prompt). ADR-026 flips Proposed → Accepted on this
   merge.
 - **Wave 18-C (#708)** — contract lint enforcing ADR-027 invariants;
-  the new `review_cycle` section is in scope for the reserved-key set
+  the new `build_review_cycle` section is in scope for the reserved-key set
   check, `flow:` ID resolution (`build_test_cycle`, `review` resolve to
-  top-level sections), cycle membership acyclicity (`review_cycle`
+  top-level sections), cycle membership acyclicity (`build_review_cycle`
   contains `build_test_cycle` which does NOT transitively contain
-  `review_cycle`), and `on_max` enum (`continue | abort_pipeline`).
+  `build_review_cycle`), and `on_max` enum (`continue | abort_pipeline`).
 
 No back-compat shim is needed for ADR-026 specifically — the outer
 cycle is a pure additive wiring on top of the ADR-027 shape, which
 itself ships with its own back-compat shim (Wave 17-B). Per-repo
 templates that override `standard.yaml` without declaring
-`review_cycle` continue to run with no remediation loop (the legacy
+`build_review_cycle` continue to run with no remediation loop (the legacy
 behavior of dead-ending on `request_changes`), and operators can opt in
 by declaring the cycle in their override.
 
@@ -345,7 +345,7 @@ the outer cycle's lifecycle identically to the inner cycle's.
 - [ADR-025](ADR-025-abort-propagation.md) — abort propagation; the
   `abort_when: block` path uses rc=5 cycle_abort class from this ADR.
 - [ADR-027](ADR-027-recursive-flow-template-format.md) — recursive
-  flow template format; ADR-026's `review_cycle` declaration uses
+  flow template format; ADR-026's `build_review_cycle` declaration uses
   ADR-027's `type: cycle` shape with member stages at the top level.
 - `legacy/scripts/lib/pipeline-stages-delivery.sh:676-687` —
   shipwright `_write_merge_retry_ctx_review` precedent. ADR-026 maps
@@ -355,7 +355,7 @@ the outer cycle's lifecycle identically to the inner cycle's.
 - Issue #703 (Wave 17-B) — template loader + `abort_when` mechanism
   this ADR reuses.
 - Issue #706 (Wave 18-A) — this ADR.
-- Issue #707 (Wave 18-B) — `review_cycle` template + build plugin
+- Issue #707 (Wave 18-B) — `build_review_cycle` template + build plugin
   impl; flips ADR-026 to Accepted.
 - Issue #708 (Wave 18-C) — contract lint enforcing ADR-027 invariants
-  including the new `review_cycle` section shape.
+  including the new `build_review_cycle` section shape.

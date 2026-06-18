@@ -5,23 +5,23 @@
 #
 # Drives runner.sh end-to-end with the standard template (#842 topology):
 #   stage:intake, stage:plan (leaf), cycle:design_impact_cycle (design→impact),
-#   cycle:review_cycle (build_test_cycle + cq-* + review).
+#   cycle:build_review_cycle (build_test_cycle + cq-* + review).
 # Mocks plugins to log the observed ZBUILD_STAGE_IO_SEQ_LABEL and the
 # visibility of ZBUILD_SEQ_PREFIX.
 #
 # Pinned assertions (#842: plan is leaf at cardinal 2, design_impact_cycle
-# is cardinal 3, review_cycle is cardinal 4):
+# is cardinal 3, build_review_cycle is cardinal 4):
 #   intake          = "1"               (linear cardinal, no cycle env)
 #   plan            = "2"               (linear leaf, no cycle env)
 #   design_impact_cycle (cardinal 3) → leaves:
 #     design        = "3.1.1"
 #     impact        = "3.1.2"
-#   review_cycle (cardinal 4) → build_test_cycle (pos 1) → leaves at
+#   build_review_cycle (cardinal 4) → build_test_cycle (pos 1) → leaves at
 #     prefix "4.1.1":
 #       build           = "4.1.1.1.1"
 #       test            = "4.1.1.1.2"
 #       test_assessment = "4.1.1.1.3"
-#   review_cycle (cardinal 4) → cq-* at positions 2-5, review at pos 6.
+#   build_review_cycle (cardinal 4) → cq-* at positions 2-5, review at pos 6.
 #
 # Wave 19-B also requires ZBUILD_SEQ_PREFIX visibility inside cycle members
 # (the prefix the orchestrator passes down) AND no leak to pre-cycle stages.
@@ -174,14 +174,14 @@ assert_eq "plan observed label 2"                "2"       "$(_label_for plan 1)
 assert_eq "design observed label 3.1.1"          "3.1.1"   "$(_label_for design 1)"
 assert_eq "impact observed label 3.1.2"          "3.1.2"   "$(_label_for impact 1)"
 
-# Wave 19-B (#718): build/test/test_assessment live inside review_cycle (card 4)
+# Wave 19-B (#718): build/test/test_assessment live inside build_review_cycle (card 4)
 # → build_test_cycle (pos 1, iter 1) → leaves at "4.1.1.<inner_iter>.<inner_pos>".
-# review_cycle is now cardinal 4 (design_impact_cycle occupies cardinal 3).
+# build_review_cycle is now cardinal 4 (design_impact_cycle occupies cardinal 3).
 assert_eq "build iter 1 label = 4.1.1.1.1"           "4.1.1.1.1" "$(_label_for build 1)"
 assert_eq "test iter 1 label = 4.1.1.1.2"            "4.1.1.1.2" "$(_label_for test 1)"
 assert_eq "test_assessment iter 1 label = 4.1.1.1.3" "4.1.1.1.3" "$(_label_for test_assessment 1)"
 
-# #922: acceptance-gate is review_cycle pos 2 (after build_test_cycle); the CQ
+# #922: acceptance-gate is build_review_cycle pos 2 (after build_test_cycle); the CQ
 # stages shift to positions 3-6 and review to pos 7.
 assert_eq "acceptance-gate iter 1 label = 4.1.2"     "4.1.2"     "$(_label_for acceptance-gate 1)"
 assert_eq "cq-preflight iter 1 label = 4.1.3"        "4.1.3"     "$(_label_for cq-preflight 1)"
@@ -191,12 +191,12 @@ assert_eq "cq-backtrack iter 1 label = 4.1.6"        "4.1.6"     "$(_label_for c
 assert_eq "review iter 1 label = 4.1.7"              "4.1.7"     "$(_label_for review 1)"
 
 # Inside the nested build_test_cycle, members must see ZBUILD_SEQ_PREFIX="4.1.1"
-# (review_cycle's prefix 4 → its iter 1, pos 1 = build_test_cycle).
+# (build_review_cycle's prefix 4 → its iter 1, pos 1 = build_test_cycle).
 assert_eq "build saw ZBUILD_SEQ_PREFIX=4.1.1"           "4.1.1" "$(_prefix_env_for build)"
 assert_eq "test saw ZBUILD_SEQ_PREFIX=4.1.1"            "4.1.1" "$(_prefix_env_for test)"
 assert_eq "test_assessment saw ZBUILD_SEQ_PREFIX=4.1.1" "4.1.1" "$(_prefix_env_for test_assessment)"
 
-# #755: cq-* stages are direct leaf members of review_cycle; they see prefix "4".
+# #755: cq-* stages are direct leaf members of build_review_cycle; they see prefix "4".
 assert_eq "cq-preflight saw ZBUILD_SEQ_PREFIX=4"  "4" "$(_prefix_env_for cq-preflight)"
 assert_eq "cq-audit-plan saw ZBUILD_SEQ_PREFIX=4" "4" "$(_prefix_env_for cq-audit-plan)"
 assert_eq "cq-cycle saw ZBUILD_SEQ_PREFIX=4"      "4" "$(_prefix_env_for cq-cycle)"
@@ -209,8 +209,8 @@ assert_eq "plan saw ZBUILD_SEQ_PREFIX UNSET (linear leaf, no cycle)" "UNSET" "$(
 # #842: design + impact are inside design_impact_cycle (cardinal 3); they see prefix "3".
 assert_eq "design saw ZBUILD_SEQ_PREFIX=3" "3" "$(_prefix_env_for design)"
 assert_eq "impact saw ZBUILD_SEQ_PREFIX=3" "3" "$(_prefix_env_for impact)"
-# review is a direct leaf member of review_cycle so it sees the outer prefix "4".
-assert_eq "review saw ZBUILD_SEQ_PREFIX=4 (direct member of review_cycle)" \
+# review is a direct leaf member of build_review_cycle so it sees the outer prefix "4".
+assert_eq "review saw ZBUILD_SEQ_PREFIX=4 (direct member of build_review_cycle)" \
     "4" "$(_prefix_env_for review)"
 
 print_test_results

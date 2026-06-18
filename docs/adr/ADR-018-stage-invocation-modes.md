@@ -897,3 +897,51 @@ Rollback: revert this amendment + reverse the line-40 / line-103 / decision-
 table edits + remove the "Pattern 2 outputs" sub-section. The implementation
 in #817 still works correctly under either classification (the dest-path
 contract is plugin-internal); the ADR drift would simply re-emerge.
+
+## Amendment (#908, 2026-06-18) — impact-local schema-aware envelope recovery
+
+`extract_json_and_surrounding_prose` / `extract_first_json_object`
+(`scripts/lib/helpers.sh`) are **LAST-wins**: when a response holds multiple
+top-level balanced objects they return the LAST one. This is deliberate (#478):
+models tend to emit brace-bearing *examples* in a PREAMBLE and the real answer
+last (`"Here's an example {a:1}. Real plan: {...}"`). Tests X6 / E8 / E16 lock
+it and the preamble defense is load-bearing for plan/review/security-lens/
+test_assessment — it stays.
+
+The `impact` stage inverts that assumption: under its OUTPUT CONTRACT it emits
+the envelope FIRST, then (under budget pressure) sometimes appends a postamble.
+When that postamble carries a top-level `{...}` — a `"Based on my analysis:
+{note:x}"` aside, or an example after a stray ```json fence — LAST-wins selects
+the postamble object. It lacks `schema_version`, fails the `jq -e` gate in
+`plugins/agent/impact/plugin.sh`, and `_impact_run_inner` returns 1 → an EMPTY
+impact iteration that stalls `design_impact_cycle` (#908, observed three runs
+running). #908's first half (the BUDGET DISCIPLINE prompt nudge, T17) only
+reduces likelihood; this amendment closes the parse fragility itself.
+
+**Decision.** The shared LAST-wins parser is NOT changed. On a schema-gate
+FAILURE only, impact re-scans `raw_response` via `_impact_recover_envelope_json`
+(`scripts/lib/impact-prefilter.sh`), which enumerates EVERY top-level balanced
+object (same string/escape/array-depth brace grammar as the shared parser) and
+returns the FIRST that passes the impact schema gate (`_impact_envelope_schema_ok`,
+shared by the happy-path validation so the two never drift). On success the
+recovered object replaces `impact_json` and `impact.envelope.recovered` is
+emitted (`reason`, `prose_length`, `recovered_bytes`); on failure impact errors
+exactly as before (`reason=schema_violation`). The happy path is unchanged —
+recovery never runs when the first-extracted object already validates.
+
+**Why impact-local, not a global flip to FIRST-wins:** the other Pattern-1
+consumers rely on LAST-wins for preamble-example defense and do not all carry
+`schema_version`; a global flip would regress X6/E8/E16. Generalizing the
+schema-aware recovery to the Pattern-1 framework (`_llm_envelope_parse`) is
+tracked as a follow-up.
+
+**Invariants preserved (all run AFTER recovery, on the recovered object):** the
+#767 prose sidecar (written before the gate), the #781/#881 prefilter floor, the
+#911 hallucination drop, and the #892 router-fail best-effort verdict.
+
+**Tests:** `tests/unit/impact-envelope-recovery-test.sh` (helper, U1–U8),
+`plugins/agent/impact/tests/impact-prompt-contract-test.sh` T19 ([SPEC-2]),
+`tests/integration/impact-envelope-recovery-test.sh` (R1–R6). T18 was demoted
+from `[SPEC-2]` to an untagged regression guard — it exercised the shared parser
+on a postamble with no balanced object, so it passed at baseline and could not
+satisfy the ADR-036 fail-first requirement.

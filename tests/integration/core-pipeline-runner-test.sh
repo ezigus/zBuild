@@ -540,7 +540,7 @@ _make_plugin "test"            "tool"  0 >/dev/null
 _make_plugin "test_assessment" "agent" 0 >/dev/null
 # #922: acceptance-gate leaf stage after test_assessment (ADR-036).
 _make_plugin "acceptance-gate" "agent" 0 >/dev/null
-# #755: review_cycle.flow now includes the 4 compound_quality stages; without
+# #755: build_review_cycle.flow now includes the 4 compound_quality stages; without
 # stubs the cycle hits cq-preflight (no plugin), fails rc=5, and `set -e` kills
 # I1 before its assertions run.
 _make_plugin "cq-preflight"    "agent" 0 >/dev/null
@@ -662,10 +662,12 @@ cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
 intake_run() { sleep 15; return 0; }
 EOF
 
-# Flaky-kill mitigation (per #494): retry up to twice if the kill races
-# pipeline.start emission.
+# Flaky-kill mitigation (per #494): retry if the kill races pipeline.start
+# emission. Bumped 2→5 (#908 wave): on loaded CI runners the kill can land in
+# the window AFTER pipeline.start but BEFORE the abort EXIT trap is installed,
+# so a small settle delay + more attempts make the compound flake negligible.
 i6_ok=0
-for _attempt in 1 2; do
+for _attempt in 1 2 3 4 5; do
     rm -f "$I6_EVENTS_JSONL" "$I6_STDERR"
     ZBUILD_PLUGINS_ROOT="$I6_PLUGINS" \
     ZBUILD_STATE_DIR="$I6_STATE_DIR" \
@@ -681,6 +683,9 @@ for _attempt in 1 2; do
         fi
         sleep 0.1
     done
+    # Let the abort EXIT trap install before killing (closes the race window
+    # the comment above describes — pipeline.start fires just before the trap).
+    sleep 0.3
     kill "$i6_pid" 2>/dev/null || true
     wait "$i6_pid" 2>/dev/null || true
     if [[ -f "$I6_STDERR" ]] && grep -q "Pipeline aborted:" "$I6_STDERR"; then

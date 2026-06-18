@@ -743,11 +743,11 @@ $_review_instructions"
         }' | atomic_write "$output_review_json"
 
     # ADR-026 / Wave 18-B (#707): write review.md alongside review.json so
-    # the outer review_cycle can wire review_md → build.prior_review_feedback
+    # the outer build_review_cycle can wire review_md → build.prior_review_feedback
     # via the cycle orchestrator's _cycle_apply_feedback. Mirrors
     # test_assessment's test-assessment.md sibling-of-json pattern (#568).
     # The artifact is declared optional in manifest.yaml; templates that do
-    # NOT wire review_cycle pay only the cheap render cost.
+    # NOT wire build_review_cycle pay only the cheap render cost.
     # Copilot P2 (#715): write the markdown sibling via atomic_write to match
     # the canonical sibling-artifact pattern (test_assessment writes both
     # JSON+MD atomically). Plain redirection would leak a partial file if

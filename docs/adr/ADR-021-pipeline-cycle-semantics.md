@@ -562,7 +562,7 @@ against the cycle's seed reflects the cumulative work.
 
 The #754 dogfood (`run_id 20260611072619-15296`) surfaced three contract gaps:
 
-1. `plan_impact_cycle` exhausted `max_iterations=3` with `on_max=continue`; the pipeline correctly fell forward through `review_cycle` (build converged, review approved, 332/332 tests pass) — but the final pipeline status reported `✗ Pipeline failed — cycle 'plan_impact_cycle' did not converge`. The aggregator treats ANY cycle `unconverged` as terminal even when `on_max=continue` was specifically designed to defer the decision downstream.
+1. `plan_impact_cycle` exhausted `max_iterations=3` with `on_max=continue`; the pipeline correctly fell forward through `build_review_cycle` (build converged, review approved, 332/332 tests pass) — but the final pipeline status reported `✗ Pipeline failed — cycle 'plan_impact_cycle' did not converge`. The aggregator treats ANY cycle `unconverged` as terminal even when `on_max=continue` was specifically designed to defer the decision downstream.
 
 2. `claude max_turns reached` (`rc=124` from `gtimeout`) was translated to `rc=1` by the router before the agent plugin's classify helper saw it. PR #788's `_router_rc_classify` maps rc=124 → verdict=error correctly, but the upstream translation defeats it.
 
@@ -707,3 +707,58 @@ instead of running to iter 3 — `window=2 < max_iterations` is what actually sa
 an iteration (window=3 would only relabel the ceiling exit). Without this live
 wiring the detector is inert and the motivating dogfood is not fixed: the feature
 must run in the dispatched flow, not merely exist behind an opt-in default.
+
+## Amendment (#936, 2026-06-18) — over-scope-safe deterministic convergence for design_impact_cycle
+
+`design_impact_cycle` exits only on `impact.verdict == complete`. When impact
+re-flags real-but-irrelevant adjacent files (the changed file's reference
+closure — a *different* existing file each iter), `missing[]` stays non-empty
+with real paths, the #911 hallucination drop never flips the verdict, and the
+cycle burns all `max_iterations` exiting via `on_max=continue` (not convergence).
+There is no diff at impact time (the cycle runs before build), so a diff
+cross-check is impossible.
+
+**Asymmetric-risk principle.** Over-scoping is HARMLESS at this stage: the cycle
+runs before build and build derives its write-scope from design.md's scope block,
+so converging "early" on an over-scoped design costs nothing downstream.
+UNDER-scoping is the dangerous direction, but it remains recoverable by three
+mechanisms that this change preserves: (1) the deterministic #781/#881 prefilter
+floor (shape/golden/order mandates), (2) ADR-030 scope-governance (build requests
+collateral mid-cycle), and (3) build's full-suite test stage (a missed file
+surfaces as a red test). Mechanisms (2)+(3) only cover the COLLATERAL classes
+(`tests/`, `config/`, `docs/`) — a structural `core/`/`scripts/`/`plugins/`
+omission is NOT recoverable.
+
+**Decision.** `_impact_converge_on_overscope` (scripts/lib/impact-prefilter.sh,
+called after the #911 drop) flips `incomplete→complete` ONLY when EVERY condition
+holds: verdict=incomplete; NOT a detected shape-change; no floor entry
+(`step_id==prefilter`); `ZBUILD_CYCLE_ITER>=2` AND the non-floor `missing[]` file
+SET is identical to the prior verdict-producing iter (a TRUE plateau, tracked via
+the per-run sidecar `impact-prior-missing.txt` written after the schema gate —
+never on a #782/#892/#937 synthetic envelope); EVERY remaining file is
+collateral-class; EVERY remaining file exists. It only flips the verdict, never
+drops a file, and emits `impact.scope.plateau`. A structural cascade (the
+motivating dogfood: `scripts/lib/*` files, a different one each iter) does NOT
+satisfy these conditions and correctly terminates via `on_max=continue` — the
+safe fallback. The PRIMARY reduction of over-scoping is a charter tightening in
+`_impact_instructions` (referential adjacency = a real gap; lexical/directory
+adjacency = not a gap), so impact stops chasing the reference closure at the
+source.
+
+## Amendment (#937, 2026-06-18) — router TIMEOUT is recoverable (best-effort), not a terminal error
+
+ADR-021 v2 (#782) codified an `error` verdict class for infra-origin router
+failures so the cycle blocked-predicate could distinguish them from recoverable
+`fail`. In practice a router **timeout** (rc=124) wrote `verdict=error` with an
+EMPTY `missing[]`/feedback — wasting the whole cycle iteration (observed eating
+iter-1 of dogfood `20260617195045-6103`). #892 had already given the rc=1
+(max_turns) case a best-effort `verdict=incomplete` so the cycle re-iterates with
+signal; #937 extends that to the rc=124 timeout. A timeout is transient and
+re-runnable, so impact now writes a best-effort `verdict=incomplete` with a
+turn-aware note (and `reason=router_timeout` in BOTH the `plugin.run.error` event
+and the impact.json artifact) instead of an empty error. Genuine infra failures
+(OOM rc=137, claude crash) KEEP `verdict=error` — the error class still exists,
+its boundary is just drawn at non-recoverable failures. The synthetic best-effort
+envelope short-circuits before the schema gate, so it never reaches the #936
+over-scope backstop and never writes its plateau sidecar (a timeout iter is not a
+verdict-producing iter).

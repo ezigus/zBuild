@@ -7,6 +7,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# #908: recovery helper under test (T19) lives in the impact prefilter lib.
+source "$REPO_ROOT/scripts/lib/impact-prefilter.sh"
 
 print_test_header "impact prompt contract + parser + forensics (#767)"
 setup_test_env "impact-prompt-contract"
@@ -154,6 +156,86 @@ assert_contains "T15: charter prohibits listing paths not verified present" \
 # T16: directive to use Read or Grep to confirm existence first.
 assert_contains "T16: charter requires existence confirmation via Read/Grep" \
     "$PROMPT_BODY_911" "confirm the file exists"
+
+# ─── #936: relevance / adjacency charter (reduces reference-closure over-scope) ─
+PROMPT_BODY_936="$(cat "$REPO_ROOT/plugins/agent/impact/plugin.sh")"
+assert_contains "T_936a: charter has RELEVANCE mandate (cite the changed reference)" \
+    "$PROMPT_BODY_936" "a file is a scope gap ONLY if it references"
+assert_contains "T_936b: charter excludes topical/directory ADJACENCY" \
+    "$PROMPT_BODY_936" "ADJACENCY IS NOT A GAP"
+assert_contains "T_936c: charter forbids chasing the reference closure" \
+    "$PROMPT_BODY_936" "Do NOT chase transitive references"
+
+# ─── #908: BUDGET DISCIPLINE restatement of postamble prohibition ─────────────
+# Three consecutive dogfood runs showed the model emitting correct JSON then
+# appending prose commentary or a stray ```json fence after `}`. The FINAL RULE
+# lives in llm-agent.sh (shared framework) but the BUDGET DISCIPLINE block —
+# which the model reads last, under budget pressure — previously had no
+# restatement. T17 checks plugin.sh ALONE so it fails at baseline and proves
+# the sentence lives in the same closing-budget context.
+
+PLUGIN_SH_BODY="$(cat "$REPO_ROOT/plugins/agent/impact/plugin.sh")"
+
+# T17: BUDGET DISCIPLINE block in plugin.sh restates the postamble prohibition.
+assert_contains "[SPEC-1] T17: BUDGET DISCIPLINE in plugin.sh restates postamble prohibition (output NOTHING)" \
+    "$PLUGIN_SH_BODY" "output NOTHING"
+
+# ─── #908: functional parser assertion — dogfood-observed trailing-prose pattern ─
+# T18: feed the exact pattern observed in three consecutive dogfood runs
+# (valid JSON envelope + forbidden phrase + stray ```json fence) through the
+# parser and assert the JSON part is valid schema_version-1 and the stray
+# material ends up in the prose sidecar.  This closes the gap between X4
+# (generic postamble) and a test that specifically covers the impact
+# contract-violation event path (prose_length > 0, json valid).
+
+t18_raw='{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}
+Based on my comprehensive analysis, the changes look good.
+```json'
+
+t18_out="$(printf '%s' "$t18_raw" | extract_json_and_surrounding_prose 2>/dev/null)"
+t18_json="$(awk '/^__JSON__$/{j=1;next} j' <<<"$t18_out")"
+t18_prose="$(awk '/^__PROSE__$/{p=1;next} /^__JSON__$/{p=0;next} p' <<<"$t18_out")"
+
+# [SPEC-2] JSON part must be a valid schema_version-1 object
+if printf '%s' "$t18_json" | jq -e 'type=="object" and .schema_version==1' >/dev/null 2>&1; then
+    assert_pass "T18: extracted JSON is valid schema_version-1 object"
+else
+    assert_fail "T18: extracted JSON is valid schema_version-1 object" "$t18_json"
+fi
+
+# [SPEC-2] prose sidecar must be non-empty (stray material captured, not lost)
+t18_prose_trimmed="$(printf '%s' "$t18_prose" | tr -d '[:space:]')"
+if [ -n "$t18_prose_trimmed" ]; then
+    assert_pass "T18: prose sidecar is non-empty (stray postamble captured)"
+else
+    assert_fail "T18: prose sidecar is non-empty (stray postamble captured)" "(empty)"
+fi
+
+# ─── #908: T19 [SPEC-2] — schema-aware recovery beats LAST-wins on a
+# brace-bearing postamble. The genuine envelope is emitted FIRST; the model then
+# appends a postamble carrying its OWN {...}. extract_json_and_surrounding_prose
+# is LAST-wins (#478) so it returns the POSTAMBLE object → schema gate fails →
+# empty impact iteration (#908). _impact_recover_envelope_json re-selects the
+# FIRST schema-valid envelope. Fails at merge-base (helper absent); passes after.
+# [SPEC-2] is reassigned here from the tautological/orphan T18 (which only
+# exercised the shared parser on a postamble with no balanced object).
+t19_raw='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["x"],"reason":"r"}],"impact_feedback_md":"add x"}
+Based on my analysis: {"note":"the changes look complete"}'
+
+# Motivation guard: the SHARED parser is LAST-wins and misselects the postamble.
+t19_shared="$(printf '%s' "$t19_raw" | extract_json_and_surrounding_prose 2>/dev/null | awk '/^__JSON__$/{j=1;next} j')"
+if printf '%s' "$t19_shared" | jq -e '.schema_version==1' >/dev/null 2>&1; then
+    assert_fail "T19: shared parser is LAST-wins and misselects the postamble (motivation)" "$t19_shared"
+else
+    assert_pass "T19: shared parser misselects the postamble (LAST-wins), recovery needed"
+fi
+
+# Recovery: the FIRST schema-valid envelope is returned; verdict reads from it.
+t19_recovered="$(_impact_recover_envelope_json "$t19_raw" 2>/dev/null || true)"
+assert_eq "[SPEC-2] T19: recovery selects the genuine schema_version envelope" \
+    "1" "$(printf '%s' "$t19_recovered" | jq -r '.schema_version' 2>/dev/null)"
+assert_eq "[SPEC-2] T19: recovered verdict reads from the genuine envelope" \
+    "incomplete" "$(printf '%s' "$t19_recovered" | jq -r '.verdict' 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

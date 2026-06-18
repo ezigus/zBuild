@@ -145,7 +145,7 @@ _make_plugin "test"            "tool"  0 >/dev/null
 _make_plugin "test_assessment" "agent" 0 >/dev/null
 # #922: acceptance-gate leaf stage (ADR-036).
 _make_plugin "acceptance-gate" "agent" 0 >/dev/null
-# #755: review_cycle.flow now includes the 4 compound_quality stages.
+# #755: build_review_cycle.flow now includes the 4 compound_quality stages.
 _make_plugin "cq-preflight"    "agent" 0 >/dev/null
 _make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
 _make_plugin "cq-cycle"        "agent" 0 >/dev/null
