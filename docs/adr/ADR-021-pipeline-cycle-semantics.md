@@ -744,3 +744,21 @@ safe fallback. The PRIMARY reduction of over-scoping is a charter tightening in
 `_impact_instructions` (referential adjacency = a real gap; lexical/directory
 adjacency = not a gap), so impact stops chasing the reference closure at the
 source.
+
+## Amendment (#937, 2026-06-18) — router TIMEOUT is recoverable (best-effort), not a terminal error
+
+ADR-021 v2 (#782) codified an `error` verdict class for infra-origin router
+failures so the cycle blocked-predicate could distinguish them from recoverable
+`fail`. In practice a router **timeout** (rc=124) wrote `verdict=error` with an
+EMPTY `missing[]`/feedback — wasting the whole cycle iteration (observed eating
+iter-1 of dogfood `20260617195045-6103`). #892 had already given the rc=1
+(max_turns) case a best-effort `verdict=incomplete` so the cycle re-iterates with
+signal; #937 extends that to the rc=124 timeout. A timeout is transient and
+re-runnable, so impact now writes a best-effort `verdict=incomplete` with a
+turn-aware note (and `reason=router_timeout` in BOTH the `plugin.run.error` event
+and the impact.json artifact) instead of an empty error. Genuine infra failures
+(OOM rc=137, claude crash) KEEP `verdict=error` — the error class still exists,
+its boundary is just drawn at non-recoverable failures. The synthetic best-effort
+envelope short-circuits before the schema gate, so it never reaches the #936
+over-scope backstop and never writes its plateau sidecar (a timeout iter is not a
+verdict-producing iter).
