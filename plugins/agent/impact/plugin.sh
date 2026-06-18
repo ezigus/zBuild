@@ -296,27 +296,33 @@ $_impact_instructions"
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_impact_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
         emit_event "plugin.run.error" "plugin=impact" "reason=$_rc_reason" "router_rc=$router_rc"
-        if [[ "$_rc_verdict" == "error" ]]; then
+        # #937: a TIMEOUT (rc=124, reason=router_timeout) is RECOVERABLE — fall
+        # through to the #892 best-effort verdict=incomplete path (re-iterate)
+        # rather than writing an empty verdict=error that wastes the iteration.
+        # The plugin.run.error event above already preserves reason=router_timeout
+        # for postmortems. Genuine infra errors (OOM rc=137, claude crash) keep
+        # verdict=error so the cycle's blocked-predicate can flag them.
+        if [[ "$_rc_verdict" == "error" && "$_rc_reason" != "router_timeout" ]]; then
             printf '{"schema_version":1,"verdict":"error","reason":"%s","missing":[],"impact_feedback_md":""}\n' \
                 "$_rc_reason" > "$output_impact_json"
             # Emit verdict event for cycle predicate consumption.
             emit_event "impact.verdict.error" "plugin=impact" "artifact=impact.json" "reason=$_rc_reason"
             return 0
         fi
-        # #892: best-effort verdict on a non-infra router failure (rc=1 — the
-        # max_turns case). Was a fail-CLOSED return 1 with NO impact.json, which
-        # gave the cycle a MISSING artifact (cycle.feedback.missing) and an empty
+        # #892 + #937: best-effort verdict on a RECOVERABLE router failure —
+        # rc=1 (max_turns) OR rc=124 (timeout). Was a fail-CLOSED return 1 with
+        # NO impact.json, which gave the cycle a MISSING artifact and an empty
         # iteration. Instead write verdict=incomplete (so the cycle RE-ITERATES,
-        # another shot) with a best-effort note telling design its scope was not
-        # adversarially verified. The per-turn tool calls are NOT recoverable
-        # from the CLI's non-streaming output, so the note is a generic signal.
+        # another shot) with a best-effort note. The reason field carries the
+        # classified reason ($_rc_reason — e.g. router_timeout) so the artifact,
+        # not just the event, records what failed.
         local _be_md
         _be_md="$(printf 'Impact analysis did not complete (router rc=%s, reason=%s). The design scope block was NOT adversarially verified this iteration; treat it as unconfirmed. Re-run impact with a tighter, verdict-first pass.' \
             "$router_rc" "$_rc_reason")"
-        jq -nc --arg md "$_be_md" \
-            '{schema_version:1, verdict:"incomplete", reason:"router_failed", missing:[], impact_feedback_md:$md}' \
+        jq -nc --arg md "$_be_md" --arg reason "$_rc_reason" \
+            '{schema_version:1, verdict:"incomplete", reason:$reason, missing:[], impact_feedback_md:$md}' \
             > "$output_impact_json" 2>/dev/null \
-            || printf '{"schema_version":1,"verdict":"incomplete","reason":"router_failed","missing":[],"impact_feedback_md":"impact did not complete (router rc=%s)"}\n' "$router_rc" > "$output_impact_json"
+            || printf '{"schema_version":1,"verdict":"incomplete","reason":"%s","missing":[],"impact_feedback_md":"impact did not complete (router rc=%s)"}\n' "$_rc_reason" "$router_rc" > "$output_impact_json"
         emit_event "impact.verdict.incomplete" "plugin=impact" "artifact=impact.json" "reason=router_failed_best_effort"
         return 0
     fi
