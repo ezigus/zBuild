@@ -109,6 +109,7 @@
     "impact.contract.violation",
     "impact.hallucination.filtered",
     "impact.envelope.recovered",
+    "impact.scope.plateau",
     "review.scope.violation",
     "review.test_status.coerced",
     "router.max_iterations.override_ignored",

@@ -157,6 +157,15 @@ assert_contains "T15: charter prohibits listing paths not verified present" \
 assert_contains "T16: charter requires existence confirmation via Read/Grep" \
     "$PROMPT_BODY_911" "confirm the file exists"
 
+# ─── #936: relevance / adjacency charter (reduces reference-closure over-scope) ─
+PROMPT_BODY_936="$(cat "$REPO_ROOT/plugins/agent/impact/plugin.sh")"
+assert_contains "T_936a: charter has RELEVANCE mandate (cite the changed reference)" \
+    "$PROMPT_BODY_936" "a file is a scope gap ONLY if it references"
+assert_contains "T_936b: charter excludes topical/directory ADJACENCY" \
+    "$PROMPT_BODY_936" "ADJACENCY IS NOT A GAP"
+assert_contains "T_936c: charter forbids chasing the reference closure" \
+    "$PROMPT_BODY_936" "Do NOT chase transitive references"
+
 # ─── #908: BUDGET DISCIPLINE restatement of postamble prohibition ─────────────
 # Three consecutive dogfood runs showed the model emitting correct JSON then
 # appending prose commentary or a stray ```json fence after `}`. The FINAL RULE

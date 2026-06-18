@@ -707,3 +707,40 @@ instead of running to iter 3 — `window=2 < max_iterations` is what actually sa
 an iteration (window=3 would only relabel the ceiling exit). Without this live
 wiring the detector is inert and the motivating dogfood is not fixed: the feature
 must run in the dispatched flow, not merely exist behind an opt-in default.
+
+## Amendment (#936, 2026-06-18) — over-scope-safe deterministic convergence for design_impact_cycle
+
+`design_impact_cycle` exits only on `impact.verdict == complete`. When impact
+re-flags real-but-irrelevant adjacent files (the changed file's reference
+closure — a *different* existing file each iter), `missing[]` stays non-empty
+with real paths, the #911 hallucination drop never flips the verdict, and the
+cycle burns all `max_iterations` exiting via `on_max=continue` (not convergence).
+There is no diff at impact time (the cycle runs before build), so a diff
+cross-check is impossible.
+
+**Asymmetric-risk principle.** Over-scoping is HARMLESS at this stage: the cycle
+runs before build and build derives its write-scope from design.md's scope block,
+so converging "early" on an over-scoped design costs nothing downstream.
+UNDER-scoping is the dangerous direction, but it remains recoverable by three
+mechanisms that this change preserves: (1) the deterministic #781/#881 prefilter
+floor (shape/golden/order mandates), (2) ADR-030 scope-governance (build requests
+collateral mid-cycle), and (3) build's full-suite test stage (a missed file
+surfaces as a red test). Mechanisms (2)+(3) only cover the COLLATERAL classes
+(`tests/`, `config/`, `docs/`) — a structural `core/`/`scripts/`/`plugins/`
+omission is NOT recoverable.
+
+**Decision.** `_impact_converge_on_overscope` (scripts/lib/impact-prefilter.sh,
+called after the #911 drop) flips `incomplete→complete` ONLY when EVERY condition
+holds: verdict=incomplete; NOT a detected shape-change; no floor entry
+(`step_id==prefilter`); `ZBUILD_CYCLE_ITER>=2` AND the non-floor `missing[]` file
+SET is identical to the prior verdict-producing iter (a TRUE plateau, tracked via
+the per-run sidecar `impact-prior-missing.txt` written after the schema gate —
+never on a #782/#892/#937 synthetic envelope); EVERY remaining file is
+collateral-class; EVERY remaining file exists. It only flips the verdict, never
+drops a file, and emits `impact.scope.plateau`. A structural cascade (the
+motivating dogfood: `scripts/lib/*` files, a different one each iter) does NOT
+satisfy these conditions and correctly terminates via `on_max=continue` — the
+safe fallback. The PRIMARY reduction of over-scoping is a charter tightening in
+`_impact_instructions` (referential adjacency = a real gap; lexical/directory
+adjacency = not a gap), so impact stops chasing the reference closure at the
+source.

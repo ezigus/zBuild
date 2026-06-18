@@ -482,3 +482,131 @@ _impact_recover_envelope_json() {
     fi
     return 1
 }
+
+# ─── _impact_path_is_collateral <path> (#936) ────────────────────────────────
+# rc=0 if the path is a downstream-recoverable collateral class (tests/, config/,
+# docs/ — what ADR-030 scope-governance auto-grants); rc=1 for structural source
+# paths (core/, scripts/, plugins/, root) which are NOT recoverable if
+# under-scoped. Mirrors scope_collateral_class (scripts/lib/scope-governance.sh)
+# without pulling that lib into the impact path.
+_impact_path_is_collateral() {
+    case "${1:-}" in
+        tests/*|config/*|docs/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# ─── _impact_converge_on_overscope <repo_root> <artifact_dir> <plan_json> (#936)
+# Over-scope-safe deterministic convergence backstop. design_impact_cycle never
+# converges when impact re-flags real-but-irrelevant adjacent files: missing[]
+# stays non-empty with REAL paths, #911 never flips the verdict, and the cycle
+# maxes out (on_max=continue) instead of converging. This flips verdict
+# incomplete->complete ONLY in the provably-safe over-scope case, so a real
+# reference gap or a structural omission is NEVER masked. Never drops a file;
+# only flips the verdict. Reads/mutates $impact_json in caller scope (mirrors
+# _impact_drop_nonexistent_missing).
+#
+# Fires iff ALL hold (else returns 0, no event):
+#   1. verdict == "incomplete"                       (error is never flipped)
+#   2. NOT _impact_detect_shape_change               (shape regime: run full budget)
+#   3. no missing[] entry has step_id=="prefilter"   (#781/#881 floor veto)
+#   4. ZBUILD_CYCLE_ITER>=2 AND the non-floor missing[] file SET is IDENTICAL to
+#      the prior verdict-producing iter (true plateau, per-run sidecar) — not a
+#      one-shot existence check; a cascade (different set each iter) never fires
+#   5. EVERY remaining file is collateral-class (tests/|config/|docs/) — the only
+#      classes recoverable downstream if this convergence under-scoped
+#   6. EVERY remaining file EXISTS on disk (defensive; #911 already dropped ghosts)
+#
+# The sidecar is written EVERY verdict-producing iter (this function only runs on
+# genuine schema-valid responses; the #782/#892/#937 synthetic envelopes early-
+# return before reaching it), so it records this iter set for the NEXT compare.
+_impact_converge_on_overscope() {
+    local _repo_root="${1:-${ZBUILD_REPO_ROOT:-$(pwd)}}"
+    local _artifact_dir="${2:-}"
+    local _plan_json="${3:-}"
+    local _design_scope_csv="${4:-}"
+
+    # (1) verdict must be incomplete.
+    local _verdict
+    _verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo "")"
+    [[ "$_verdict" == "incomplete" ]] || return 0
+
+    # Current NON-FLOOR missing[] file set (sorted, deduped, whitespace-stripped).
+    # sort -u handles dedup; no separate jq `unique` needed (Codex review).
+    local _nonfloor
+    _nonfloor="$(printf '%s' "$impact_json" | jq -r '
+        .missing[]? | select(.step_id != "prefilter") | .files_to_add[]?' 2>/dev/null \
+        | sed 's/[[:space:]]//g; /^$/d' | sort -u)"
+
+    # Persist this iter set for the NEXT iter compare; capture prior first.
+    # Sidecar is a newline-delimited path list (.txt), NOT JSON (Codex review).
+    local _sidecar="" _prior=""
+    if [[ -n "$_artifact_dir" ]]; then
+        _sidecar="$_artifact_dir/impact-prior-missing.txt"
+        [[ -f "$_sidecar" ]] && _prior="$(cat "$_sidecar" 2>/dev/null || true)"
+        printf '%s\n' "$_nonfloor" > "$_sidecar" 2>/dev/null || true
+    fi
+
+    # (3) floor veto — any prefilter entry present blocks the flip.
+    local _floor_n
+    _floor_n="$(printf '%s' "$impact_json" \
+        | jq '[.missing[]? | select(.step_id=="prefilter")] | length' 2>/dev/null || echo 1)"
+    [[ "$_floor_n" == "0" ]] || return 0
+
+    # Non-floor set must be non-empty (something to converge on).
+    [[ -n "$_nonfloor" ]] || return 0
+
+    # (2) shape-change suppression — a shape change is exactly when a silent
+    # omission is unrecoverable. Check BOTH the plan AND the design.md scope
+    # block: in design_impact_cycle the AUTHORITATIVE scope is design.md, and
+    # design can add a shape file the plan omitted; the floor keys off the plan,
+    # so without the design check a shape change could slip through as a plateau
+    # (Codex review).
+    if [[ -n "$_plan_json" ]] && _impact_detect_shape_change "$_plan_json" "$_repo_root" >/dev/null 2>&1; then
+        return 0
+    fi
+    if [[ -n "$_design_scope_csv" ]]; then
+        local _design_plan
+        _design_plan="$(printf '%s' "$_design_scope_csv" \
+            | jq -Rs 'rtrimstr("\n") | {steps:[{files:(split(",") | map(select(length>0)))}]}' 2>/dev/null || echo "")"
+        if [[ -n "$_design_plan" ]] && _impact_detect_shape_change "$_design_plan" "$_repo_root" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    # (4) iter-awareness + TRUE plateau: iter>=2 AND identical set since prior.
+    local _iter="${ZBUILD_CYCLE_ITER:-}"
+    [[ "$_iter" =~ ^[0-9]+$ ]] || return 0
+    (( _iter >= 2 )) || return 0
+    [[ -n "$_prior" ]] || return 0
+    [[ "$_prior" == "$_nonfloor" ]] || return 0
+
+    # (5)+(6) every remaining file collateral-class AND present on disk.
+    # Reject absolute paths and any `..` traversal FIRST: a non-canonical path
+    # like `tests/../scripts/lib/x.sh` would pass the prefix-based collateral
+    # check yet resolve (via -e) to a structural file, hiding a structural
+    # omission. ADR-030's floor denies such paths; mirror that here (Codex review).
+    local _p
+    while IFS= read -r _p; do
+        [[ -z "$_p" ]] && continue
+        case "$_p" in /*|*..*) return 0 ;; esac
+        _impact_path_is_collateral "$_p" || return 0
+        [[ -e "$_repo_root/$_p" ]] || return 0
+    done <<< "$_nonfloor"
+
+    # All conditions met — flip verdict, emit plateau event.
+    local _carried
+    _carried="$(printf '%s' "$_nonfloor" | tr '\n' ',')"
+    _carried="${_carried%,}"
+
+    local _flipped
+    _flipped="$(printf '%s' "$impact_json" | jq -c '.verdict = "complete"' 2>/dev/null)" || return 0
+    [[ -n "$_flipped" ]] && impact_json="$_flipped"
+
+    emit_event "impact.scope.plateau" \
+        "plugin=impact" \
+        "reason=overscope_only" \
+        "carried_files=${_carried}" \
+        "iter=${_iter}" \
+        "verdict_flipped=true" 2>/dev/null || true
+}
