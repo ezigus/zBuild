@@ -32,6 +32,13 @@ export PATH="$TEST_TEMP_DIR/bin:$PATH"
 # shellcheck source=../../../../plugins/agent/review/plugin.sh
 source "$REPO_ROOT/plugins/agent/review/plugin.sh"
 
+# #939 hermeticity: stub the merge-base diff source so the review prompt uses the
+# test's fixture diff, not the real working-dir branch-vs-main diff. Without this
+# a branch with many changed files (e.g. the #939 rename) splices the actual repo
+# diff into the prompt and the redaction-count assertion sees unexpected content.
+# See the matching note in tests/integration/review-issue-dod-awareness-test.sh.
+_review_resolve_merge_base() { printf ''; }
+
 # ─── Real redaction chokepoint (issue #360) ───────────────────────────────────
 # Previously this file stubbed apply_scope_redaction with `cp` passthrough,
 # which meant a regression bypassing the chokepoint would still pass the test.
