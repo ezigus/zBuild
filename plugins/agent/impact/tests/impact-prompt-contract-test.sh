@@ -169,6 +169,37 @@ PLUGIN_SH_BODY="$(cat "$REPO_ROOT/plugins/agent/impact/plugin.sh")"
 assert_contains "[SPEC-1] T17: BUDGET DISCIPLINE in plugin.sh restates postamble prohibition (output NOTHING)" \
     "$PLUGIN_SH_BODY" "output NOTHING"
 
+# ─── #908: functional parser assertion — dogfood-observed trailing-prose pattern ─
+# T18: feed the exact pattern observed in three consecutive dogfood runs
+# (valid JSON envelope + forbidden phrase + stray ```json fence) through the
+# parser and assert the JSON part is valid schema_version-1 and the stray
+# material ends up in the prose sidecar.  This closes the gap between X4
+# (generic postamble) and a test that specifically covers the impact
+# contract-violation event path (prose_length > 0, json valid).
+
+t18_raw='{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}
+Based on my comprehensive analysis, the changes look good.
+```json'
+
+t18_out="$(printf '%s' "$t18_raw" | extract_json_and_surrounding_prose 2>/dev/null)"
+t18_json="$(awk '/^__JSON__$/{j=1;next} j' <<<"$t18_out")"
+t18_prose="$(awk '/^__PROSE__$/{p=1;next} /^__JSON__$/{p=0;next} p' <<<"$t18_out")"
+
+# [SPEC-2] JSON part must be a valid schema_version-1 object
+if printf '%s' "$t18_json" | jq -e 'type=="object" and .schema_version==1' >/dev/null 2>&1; then
+    assert_pass "[SPEC-2] T18: extracted JSON is valid schema_version-1 object"
+else
+    assert_fail "[SPEC-2] T18: extracted JSON is valid schema_version-1 object" "$t18_json"
+fi
+
+# [SPEC-2] prose sidecar must be non-empty (stray material captured, not lost)
+t18_prose_trimmed="$(printf '%s' "$t18_prose" | tr -d '[:space:]')"
+if [ -n "$t18_prose_trimmed" ]; then
+    assert_pass "[SPEC-2] T18: prose sidecar is non-empty (stray postamble captured)"
+else
+    assert_fail "[SPEC-2] T18: prose sidecar is non-empty (stray postamble captured)" "(empty)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
