@@ -283,6 +283,46 @@ end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSON
 # [SPEC-4]
 assert_eq "T4 [SPEC-4]: pipeline.end status=success when all CQ stages pass" "success" "$end_status"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# T5: on_max=continue — design_impact_cycle exhausts max_iterations (verdict=
+# incomplete), build_review_cycle still runs and review approves → status=success.
+# Regression: blocking enforcement must not break the on_max=continue soft-fail path.
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "T5: on_max=continue convergence soft-fail unaffected by blocking enforcement"
+
+# Force impact to always return incomplete so design_impact_cycle exhausts max_iterations.
+cat > "$PLUGINS_ROOT/agent/impact/plugin.sh" <<'PLUG'
+impact_run() {
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    printf '{"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"forced incomplete"}' \
+        > "$state_dir/artifacts/impact.json"
+    return 0
+}
+PLUG
+# Restore review to return approve (so build_review_cycle converges once it runs).
+cat > "$PLUGINS_ROOT/agent/review/plugin.sh" <<'PLUG'
+review_run() {
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    printf '{"schema_version":1,"verdict":"approve","summary":"ok","issues":[],"confidence":0.99,"review_md":"ok"}' \
+        > "$state_dir/artifacts/review.json"
+    return 0
+}
+PLUG
+
+_run_pipeline
+
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "T5: on_max=continue + downstream review approved → pipeline.end status=success" "success" "$end_status"
+
+# Verify cycle.unconverged fired (proves the on_max=continue path was exercised).
+unconv="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="design_impact_cycle")' \
+    "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+[[ "$unconv" -ge 1 ]] \
+    && assert_pass "T5: cycle.unconverged emitted for design_impact_cycle (on_max=continue path confirmed)" \
+    || assert_fail "T5: cycle.unconverged not emitted — on_max=continue path not exercised" "unconv=$unconv"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

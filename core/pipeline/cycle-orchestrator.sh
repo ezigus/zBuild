@@ -169,13 +169,13 @@ _cycle_on_signal() {
 }
 
 # ─── _cycle_member_is_blocking <stage_id> ────────────────────────────────────
-# ADR-013 blocking table (CQ-3 / issue #863). Returns 0 when the member halts
-# the cycle on failure; 1 for non-blocking members (e.g. cq-backtrack).
+# ADR-013 blocking table (CQ-3 / issue #863). Reads the template-parsed
+# _TPL_STAGE_BLOCKING_<safe_id> export set by template.sh from the `blocking:`
+# YAML attribute. Returns 0 when the member halts the cycle on failure.
 _cycle_member_is_blocking() {
-    case "$1" in
-        cq-preflight|cq-audit-plan|cq-cycle) return 0 ;;
-        *) return 1 ;;
-    esac
+    local _blk_safe="${1//-/_}"
+    local _blk_var="_TPL_STAGE_BLOCKING_${_blk_safe}"
+    [[ "${!_blk_var:-}" == "true" ]]
 }
 
 # ─── _cycle_load_template <cycle_id> ─────────────────────────────────────────
