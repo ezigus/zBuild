@@ -198,6 +198,8 @@ BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
 - STOP exploring and EMIT your JSON verdict well before your budget runs out.
   If unsure but out of budget, return verdict="incomplete" with the gaps you
   DID find — never keep searching past the point of being able to answer.
+- After emitting the closing `}`, output NOTHING — no trailing commentary,
+  no ` ``` ` or ` ```json ` fence, no summary sentence.
 
 IMPACT_PROMPT
 )"

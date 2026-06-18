@@ -155,6 +155,20 @@ assert_contains "T15: charter prohibits listing paths not verified present" \
 assert_contains "T16: charter requires existence confirmation via Read/Grep" \
     "$PROMPT_BODY_911" "confirm the file exists"
 
+# ─── #908: BUDGET DISCIPLINE restatement of postamble prohibition ─────────────
+# Three consecutive dogfood runs showed the model emitting correct JSON then
+# appending prose commentary or a stray ```json fence after `}`. The FINAL RULE
+# lives in llm-agent.sh (shared framework) but the BUDGET DISCIPLINE block —
+# which the model reads last, under budget pressure — previously had no
+# restatement. T17 checks plugin.sh ALONE so it fails at baseline and proves
+# the sentence lives in the same closing-budget context.
+
+PLUGIN_SH_BODY="$(cat "$REPO_ROOT/plugins/agent/impact/plugin.sh")"
+
+# T17: BUDGET DISCIPLINE block in plugin.sh restates the postamble prohibition.
+assert_contains "[SPEC-1] T17: BUDGET DISCIPLINE in plugin.sh restates postamble prohibition (output NOTHING)" \
+    "$PLUGIN_SH_BODY" "output NOTHING"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
