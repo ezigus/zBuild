@@ -102,7 +102,7 @@ route_to_model() {
 export -f route_to_model
 : > "$ZBUILD_EVENTS_JSONL"
 verdict="$(run_and_get_verdict "$TEST_TEMP_DIR/t3-art")"
-assert_eq "T3: unfenced approve (control) → approve" "approve" "$verdict"
+assert_eq "[SPEC-4] T3: unfenced approve (control) → approve" "approve" "$verdict"
 
 # ─── T4 [SPEC-3]: fenced request_changes + trailing approve example → request_changes
 # Verifies no silent promotion: the fence body is authoritative even when the
