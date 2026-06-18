@@ -369,3 +369,103 @@ _impact_drop_nonexistent_missing() {
         "dropped_count=${_dropped}" \
         "verdict_flipped=${_verdict_flipped}" 2>/dev/null || true
 }
+
+# ─── _impact_envelope_schema_ok <json> ───────────────────────────────────────
+# The impact envelope schema gate, factored out so the happy-path validation in
+# plugin.sh AND the recovery helper below share ONE definition and never drift.
+# rc=0 iff $1 is a valid impact envelope.
+_impact_envelope_schema_ok() {
+    printf '%s' "${1:-}" | jq -e '
+        type == "object"
+        and (.schema_version == 1)
+        and (.verdict | type == "string" and (. == "complete" or . == "incomplete" or . == "error"))
+        and (.missing | type == "array")
+        and (.impact_feedback_md | type == "string")
+    ' >/dev/null 2>&1
+}
+
+# ─── _impact_recover_envelope_json <raw_response> (#908) ──────────────────────
+# Schema-aware recovery from a LAST-wins misselection. The shared parser
+# extract_json_and_surrounding_prose (helpers.sh) returns the LAST top-level
+# balanced object — deliberate (#478/ADR-018) to defend brace-bearing PREAMBLE.
+# Impact's OUTPUT CONTRACT emits the envelope FIRST, so a brace-bearing
+# POSTAMBLE ("...: {note:x}", or an example after a stray ```json fence) makes
+# LAST-wins hand back the wrong object and the schema gate fails -> empty
+# iteration (#908). This re-scans the ORIGINAL raw response, enumerates EVERY
+# top-level balanced object in document order (same string/escape/array-depth
+# grammar as the shared parser), and prints the FIRST that passes the impact
+# schema gate. rc=0 + object on stdout when recovered; rc=1 + empty otherwise
+# (caller falls through to the genuine-malformed error path). Impact-local on
+# purpose: the shared LAST-wins contract (X6/E8/E16) is untouched.
+_impact_recover_envelope_json() {
+    local _raw="${1:-}"
+    [[ -z "$_raw" ]] && return 1
+
+    # Enumerate every top-level balanced object, in order, RS-delimited (\x1e)
+    # so embedded newlines/braces inside an object survive the boundary.
+    local _candidates
+    _candidates="$(printf '%s' "$_raw" | awk '
+        BEGIN { buf = "" }
+        { buf = buf $0 "\n" }
+        END {
+            # Same pre-pass as extract_json_and_surrounding_prose (helpers.sh):
+            # BOM, opening/closing ```json|``` fences, CR, trailing newline.
+            sub(/^\xef\xbb\xbf/, "", buf)
+            gsub(/\r/, "", buf)
+            sub(/^[[:space:]]*```json[[:space:]]*\n?/, "", buf)
+            sub(/^[[:space:]]*```[[:space:]]*\n?/, "", buf)
+            sub(/\n?[[:space:]]*```[[:space:]]*$/, "", buf)
+            sub(/\n$/, "", buf)
+
+            n = length(buf); depth = 0; arr_depth = 0
+            in_string = 0; escape = 0; start = -1
+            for (i = 1; i <= n; i++) {
+                c = substr(buf, i, 1)
+                if (escape) { escape = 0; continue }
+                if (in_string) {
+                    if (c == "\\") { escape = 1; continue }
+                    if (c == "\"") { in_string = 0 }
+                    continue
+                }
+                if (c == "\"") { in_string = 1; continue }
+                if (c == "[") { if (depth == 0) arr_depth++; continue }
+                if (c == "]") { if (depth == 0 && arr_depth > 0) arr_depth--; continue }
+                if (c == "{") {
+                    if (depth == 0 && arr_depth > 0) continue   # object inside top-level array
+                    if (depth == 0) start = i
+                    depth++; continue
+                }
+                if (c == "}") {
+                    if (depth > 0) {
+                        depth--
+                        if (depth == 0 && start > 0) {
+                            # RS-delimit with \x1e. Keep \x1e the TRAILING token
+                            # of this format: the awk \x escape is greedy, so a
+                            # following hex digit (\x1e then B) would fold into
+                            # one byte and silently corrupt the delimiter. A raw
+                            # 0x1e inside a model string would mis-split, but
+                            # control bytes below 0x20 are invalid in JSON and
+                            # fail the schema gate anyway, so no envelope is lost.
+                            printf "%s\x1e", substr(buf, start, i - start + 1)
+                            start = -1
+                        }
+                    }
+                }
+            }
+        }
+    ')"
+    [[ -z "$_candidates" ]] && return 1
+
+    # Walk candidates in document order; return the FIRST that passes the full
+    # impact schema gate (so recovery never admits a weaker object than the
+    # happy path would).
+    local _obj
+    while IFS= read -r -d $'\x1e' _obj || [[ -n "$_obj" ]]; do
+        [[ -z "$_obj" ]] && continue
+        if _impact_envelope_schema_ok "$_obj"; then
+            printf '%s' "$_obj"
+            return 0
+        fi
+    done < <(printf '%s' "$_candidates")
+    return 1
+}

@@ -350,16 +350,28 @@ $_impact_instructions"
     # default could let max_iterations=3 + on_max=continue ship a
     # half-validated plan downstream. Mirrors test_assessment / plan
     # behavior (jq -e on a structural assertion, then error event).
-    if ! printf '%s' "$impact_json" | jq -e '
-        type == "object"
-        and (.schema_version == 1)
-        and (.verdict | type == "string" and (. == "complete" or . == "incomplete" or . == "error"))
-        and (.missing | type == "array")
-        and (.impact_feedback_md | type == "string")
-    ' >/dev/null 2>&1; then
-        error "_impact_run_inner: impact.json schema violation (requires schema_version=1, verdict ∈ {complete,incomplete}, missing[], impact_feedback_md string)"
-        emit_event "plugin.run.error" "plugin=impact" "reason=schema_violation"
-        return 1
+    if ! _impact_envelope_schema_ok "$impact_json"; then
+        # #908: the shared parser is LAST-wins (#478/ADR-018) and impact emits
+        # its envelope FIRST. A brace-bearing postamble (commentary, or an
+        # example after a stray ```json fence) makes LAST-wins select the
+        # postamble object and fail the gate. Before erroring, attempt
+        # schema-aware recovery: re-scan the ORIGINAL raw response for the FIRST
+        # top-level object that passes the impact schema gate. The #767 prose
+        # sidecar was already written above; the #781/#881 floor, #911 drop, and
+        # #892 router-fail handling all run AFTER this on the recovered object.
+        local _recovered=""
+        _recovered="$(_impact_recover_envelope_json "$raw_response" 2>/dev/null || true)"
+        if [[ -n "$_recovered" ]]; then
+            impact_json="$_recovered"
+            emit_event "impact.envelope.recovered" "plugin=impact" \
+                "reason=last_wins_postamble" \
+                "prose_length=${#impact_prose}" \
+                "recovered_bytes=${#_recovered}" "artifact=impact.json"
+        else
+            error "_impact_run_inner: impact.json schema violation (requires schema_version=1, verdict ∈ {complete,incomplete,error}, missing[], impact_feedback_md string)"
+            emit_event "plugin.run.error" "plugin=impact" "reason=schema_violation"
+            return 1
+        fi
     fi
 
     # #781/#881: enforce the shape-change hard floor. shape-change-golden
