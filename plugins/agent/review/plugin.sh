@@ -580,11 +580,15 @@ $_review_instructions"
         # in extract_first_json_object cannot select a trailing example that
         # appears outside the fence (prose-before-fence also defeats the
         # ^-anchored pre-pass inside the helper).
+        # Use a here-string (not `printf | grep`): under `set -o pipefail`,
+        # `grep -q` closes the pipe on first match and SIGPIPEs printf, so the
+        # pipeline would report non-zero and the probe could read as "no fence"
+        # on a large response. The awk extracts ONLY the first fenced block
+        # (exits at its closing fence) so multiple fenced blocks can't concat.
         local _unfenced_input="$raw_response"
-        if printf '%s' "$raw_response" | grep -qE '^[[:space:]]*```(json)?[[:space:]]*$'; then
+        if grep -qE '^[[:space:]]*```(json)?[[:space:]]*$' <<< "$raw_response"; then
             local _fence_body
-            _fence_body="$(printf '%s' "$raw_response" \
-                | awk '/^[[:space:]]*```(json)?[[:space:]]*$/{p=!p; next} p{print}')"
+            _fence_body="$(awk '/^[[:space:]]*```(json)?[[:space:]]*$/{ if (p) exit; p=1; next } p { print }' <<< "$raw_response")"
             if [[ -n "$_fence_body" ]]; then
                 _unfenced_input="$_fence_body"
             fi

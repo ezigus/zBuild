@@ -51,10 +51,10 @@ run_and_get_verdict() {
     local art_dir="$1"
     mkdir -p "$art_dir"
     local review_out="$art_dir/review.json"
-    set +e
+    # `|| true` swallows a non-zero rc without toggling errexit (this script runs
+    # `set -uo pipefail`, not -e, so a bare `set -e` here would wrongly enable it).
     _review_run_inner "$SCOPE" "$PLAN" "$DIFF" "$TEST_RESULTS" "$review_out" "$art_dir" \
-        >/dev/null 2>&1
-    set -e
+        >/dev/null 2>&1 || true
     jq -r '.verdict // empty' "$review_out" 2>/dev/null || true
 }
 
