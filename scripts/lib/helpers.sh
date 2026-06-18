@@ -40,6 +40,22 @@ success() { echo -e "${GREEN}${BOLD}✓${RESET} $*"; }
 warn()    { echo -e "${YELLOW}${BOLD}⚠${RESET} $*" >&2; }
 error()   { echo -e "${RED}${BOLD}✗${RESET} $*" >&2; }
 
+# ─── atomic_replace <src> <dst> ─────────────────────────────────────────────
+# Copy src to a unique temp in dst's directory, then rename it into place. A
+# concurrent reader of dst never observes a torn intermediate (mv is an atomic
+# rename on a POSIX filesystem; the temp shares dst's dir → same filesystem).
+# Returns 1 (cleaning up the temp) on copy failure. Does NOT validate JSON,
+# check disk space, or preserve mode — callers own that. (#909 / ADR-006)
+atomic_replace() {
+    local src="$1" dst="$2"
+    local tmp; tmp="$(mktemp "${dst}.tmp.XXXXXX")"
+    if ! cp -- "$src" "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        return 1
+    fi
+    mv -- "$tmp" "$dst"
+}
+
 # ─── Atomic write (tmp + mv + .bak rotation) ────────────────────────────────
 # Usage: atomic_write <target_path> < content_on_stdin
 atomic_write() {
@@ -61,8 +77,10 @@ atomic_write() {
 
     local tmp; tmp="$(mktemp "${target}.tmp.XXXXXX")"
     cat > "$tmp"
-    # Rotate previous to .bak before replacing
-    [[ -f "$target" ]] && cp "$target" "${target}.bak"
+    # Rotate previous to .bak before replacing — atomic so a concurrent reader
+    # never sees a torn .bak (the corruption-recovery source). Best-effort: a
+    # failed rotation does not abort the main write. (#909)
+    [[ -f "$target" ]] && atomic_replace "$target" "${target}.bak"
     mv "$tmp" "$target"
 }
 
