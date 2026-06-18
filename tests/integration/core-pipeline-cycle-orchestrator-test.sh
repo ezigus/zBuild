@@ -144,13 +144,13 @@ assert_contains "T5: cycle_iterations[build-test].status present" "$ci_present" 
 # templates) is preserved by tests using cycle-less fixtures.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 # Wave 18-B (#707): standard.yaml now wraps build_test_cycle in the outer
-# review_cycle (ADR-026). The runner dispatches the OUTERMOST cycle, and
+# build_review_cycle (ADR-026). The runner dispatches the OUTERMOST cycle, and
 # the orchestrator recurses into the inner cycle via _TPL_STAGE_TYPE_<id>
 # (Wave 17-B). Either top-level cycle unit satisfies the #511 contract
 # that the cycle framework is wired through dispatch.
 has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_test_cycle" || "$u" == "cycle:review_cycle" ]] \
+    [[ "$u" == "cycle:build_test_cycle" || "$u" == "cycle:build_review_cycle" ]] \
         && has_cycle_unit=1
 done
 assert_eq "T6: standard.yaml declares a cycle dispatch unit (#511 + #707)" \

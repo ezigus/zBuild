@@ -5335,7 +5335,7 @@ issues:
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
     closed_reason: 'Closed via GitHub. Recorded by manifest-sync orphan backfill.'
   - id: wave-18-b-feat-build-review-prior-review-feedback-standard-y-707
-    title: "Wave 18-B: feat(build,review): prior_review_feedback + standard.yaml review_cycle"
+    title: "Wave 18-B: feat(build,review): prior_review_feedback + standard.yaml build_review_cycle"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
     labels: []
     state: closed

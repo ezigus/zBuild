@@ -58,7 +58,7 @@ flow:
   - intake
   - plan
   - design_impact_cycle
-  - review_cycle
+  - build_review_cycle
   - extra1
   - extra2
   - extra3

@@ -540,7 +540,7 @@ _make_plugin "test"            "tool"  0 >/dev/null
 _make_plugin "test_assessment" "agent" 0 >/dev/null
 # #922: acceptance-gate leaf stage after test_assessment (ADR-036).
 _make_plugin "acceptance-gate" "agent" 0 >/dev/null
-# #755: review_cycle.flow now includes the 4 compound_quality stages; without
+# #755: build_review_cycle.flow now includes the 4 compound_quality stages; without
 # stubs the cycle hits cq-preflight (no plugin), fails rc=5, and `set -e` kills
 # I1 before its assertions run.
 _make_plugin "cq-preflight"    "agent" 0 >/dev/null

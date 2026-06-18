@@ -34,7 +34,7 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 # #842: standard.yaml now declares 3 cycles — design_impact_cycle
 # (#842), the inner build_test_cycle (this test's focus), and the outer
-# review_cycle (ADR-026).
+# build_review_cycle (ADR-026).
 assert_eq "T1: standard.yaml declares 3 cycles (design_impact + inner + outer ADR-026)" \
     "3" "${#_TPL_CYCLES[@]}"
 has_inner=0
@@ -42,17 +42,17 @@ for c in "${_TPL_CYCLES[@]}"; do
     [[ "$c" == "build_test_cycle" ]] && has_inner=1
 done
 assert_eq "T1: inner build_test_cycle is registered" "1" "$has_inner"
-# Wave 18-B (#707): the outer review_cycle absorbs build_test_cycle under
+# Wave 18-B (#707): the outer build_review_cycle absorbs build_test_cycle under
 # dispatch (cycle-as-member, Wave 17-B). The runner dispatches the
 # OUTERMOST cycle; build_test_cycle is recursed into via _TPL_STAGE_TYPE.
 # #842: design_impact_cycle is now the second dispatch unit (after plan leaf).
 has_cyc=0
 has_design_impact=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:review_cycle" ]] && has_cyc=1
+    [[ "$u" == "cycle:build_review_cycle" ]] && has_cyc=1
     [[ "$u" == "cycle:design_impact_cycle" ]] && has_design_impact=1
 done
-assert_eq "T1: dispatch units include cycle:review_cycle (outermost, #707)" \
+assert_eq "T1: dispatch units include cycle:build_review_cycle (outermost, #707)" \
     "1" "$has_cyc"
 assert_eq "T1: dispatch units include cycle:design_impact_cycle (#842)" \
     "1" "$has_design_impact"
@@ -226,7 +226,7 @@ mkdir -p "$T6_TMP/state" "$T6_TMP/events"
 ) || true
 # Wave 18-B (#707): standard.yaml now wraps `review` AND the inner
 # build_test_cycle (with its test_assessment member) inside the outer
-# review_cycle (ADR-026). cycle_orchestrator_run is stubbed so no member
+# build_review_cycle (ADR-026). cycle_orchestrator_run is stubbed so no member
 # state surfaces — the runner only sees the cycle's terminal rc. The
 # original assertions targeted the OLD shape where test_assessment+review
 # were standalone stages reachable post-cycle. The pipeline_status check

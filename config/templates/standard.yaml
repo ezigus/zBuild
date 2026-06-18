@@ -10,14 +10,14 @@ defaults:
 # top-level stage section. plan is a leaf at position 2. Cycles:
 # design_impact_cycle (design→impact, 3 iter, #842) at position 3 owns
 # exhaustive scope enumeration + post-design consequence finding; the
-# outer review_cycle (ADR-026) at position 4 absorbs build_test_cycle
+# outer build_review_cycle (ADR-026) at position 4 absorbs build_test_cycle
 # and review. All cycle members remain top-level sections below per
 # ADR-027's recursive symmetry rule.
 flow:
   - intake
   - plan
   - design_impact_cycle
-  - review_cycle
+  - build_review_cycle
 
 # ─── intake (leaf) ──────────────────────────────────────────────────────
 intake:
@@ -35,7 +35,7 @@ intake:
 # prior_impact_feedback, and design's own prior output as prior_design
 # (self-feedback edge, mirrors the #773 lesson: design iter N+1 refines
 # rather than re-creates). On verdict=complete OR max_iterations=3 with
-# on_max=continue, exits to review_cycle.
+# on_max=continue, exits to build_review_cycle.
 design_impact_cycle:
   type: cycle
   description: Discover post-design consequences until impact analysis is complete
@@ -115,7 +115,7 @@ design:
     timeout_s: 600
     max_turns: 0
 
-# ─── review_cycle (outer remediation cycle, ADR-026) ────────────────────
+# ─── build_review_cycle (outer remediation cycle, ADR-026) ────────────────────
 # Outer cycle wrapping the inner build_test_cycle + the review stage. On
 # review.verdict=approve, exit_when fires and control returns to the next
 # sibling in the OUTER scope's flow (none — pipeline ends successfully).
@@ -138,10 +138,10 @@ design:
 # NOT yet handle the inline single-line `to: { stage, input, required }`
 # form. Using inline form here would silently drop the feedback edge.
 # Today's build_test_cycle below uses inline `from:` (handled) + block
-# `to:` (handled); review_cycle follows the same convention.
-review_cycle:
+# `to:` (handled); build_review_cycle follows the same convention.
+build_review_cycle:
   type: cycle
-  description: Code review of build output until reviewer approves
+  description: Build, gate, and review until approved
   flow:
     - build_test_cycle
     - acceptance-gate

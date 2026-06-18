@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration: ADR-026 review remediation cycle MAX-ITER path (Wave 18-B, #707).
 #
-# Drives the OUTER review_cycle with review.verdict=request_changes EVERY
+# Drives the OUTER build_review_cycle with review.verdict=request_changes EVERY
 # iteration. exit_when never fires; max_iterations: 2 cap is hit; on_max:
 # continue lets the pipeline fall through (matches ADR-019 fall-through to
 # operator — _RUNNER_CYCLE_UNCONVERGED is set, but the cycle does NOT abort).
@@ -26,7 +26,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "ADR-026 review_cycle — max_iterations exhausted, on_max=continue (#707)"
+print_test_header "ADR-026 build_review_cycle — max_iterations exhausted, on_max=continue (#707)"
 setup_test_env "review-remediation-max-iter-707"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -85,7 +85,7 @@ cycle_dispatch_stage() {
 }
 
 set +e
-cycle_orchestrator_run "review_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
+cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
 RC=$?
 set -e
 
@@ -94,7 +94,7 @@ set -e
 # The runner reads _CYCLE_ON_MAX=continue to decide fall-through vs. halt
 # (ADR-021 v2 #527/#528). What matters here is that rc != 6 — block aborts
 # would propagate rc=6 outward; max_iter does NOT.
-assert_eq "T1: review_cycle rc=1 (max_iterations class)" "1" "$RC"
+assert_eq "T1: build_review_cycle rc=1 (max_iterations class)" "1" "$RC"
 if [[ "$RC" -ne 6 ]]; then
     assert_pass "T1: rc != 6 — max_iter is distinct from cycle_abort"
 else

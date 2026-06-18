@@ -562,7 +562,7 @@ against the cycle's seed reflects the cumulative work.
 
 The #754 dogfood (`run_id 20260611072619-15296`) surfaced three contract gaps:
 
-1. `plan_impact_cycle` exhausted `max_iterations=3` with `on_max=continue`; the pipeline correctly fell forward through `review_cycle` (build converged, review approved, 332/332 tests pass) — but the final pipeline status reported `✗ Pipeline failed — cycle 'plan_impact_cycle' did not converge`. The aggregator treats ANY cycle `unconverged` as terminal even when `on_max=continue` was specifically designed to defer the decision downstream.
+1. `plan_impact_cycle` exhausted `max_iterations=3` with `on_max=continue`; the pipeline correctly fell forward through `build_review_cycle` (build converged, review approved, 332/332 tests pass) — but the final pipeline status reported `✗ Pipeline failed — cycle 'plan_impact_cycle' did not converge`. The aggregator treats ANY cycle `unconverged` as terminal even when `on_max=continue` was specifically designed to defer the decision downstream.
 
 2. `claude max_turns reached` (`rc=124` from `gtimeout`) was translated to `rc=1` by the router before the agent plugin's classify helper saw it. PR #788's `_router_rc_classify` maps rc=124 → verdict=error correctly, but the upstream translation defeats it.
 

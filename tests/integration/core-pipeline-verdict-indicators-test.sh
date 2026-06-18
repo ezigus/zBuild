@@ -198,7 +198,7 @@ _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
 # #568: standard template now requires a test_assessment stage between test and review.
 _make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
 _make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
-# #755: CQ stages run before review; all pass so review_cycle reaches review.
+# #755: CQ stages run before review; all pass so build_review_cycle reaches review.
 _make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
 _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
 _make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle

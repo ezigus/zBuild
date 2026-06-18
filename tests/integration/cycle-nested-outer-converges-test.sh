@@ -3,7 +3,7 @@
 # emit reliably when a leaf member converges AFTER an inner cycle returned.
 #
 # Bug: dogfood 20260605080106-63324 ran cleanly (review verdict=approve,
-# cycle-review_cycle-history.jsonl row written with status=complete) but
+# cycle-build_review_cycle-history.jsonl row written with status=complete) but
 # the outer cycle's `cycle.iteration.complete` and `cycle.complete` events
 # never emitted. The runner's EXIT trap fired `pipeline.abort` instead of
 # `pipeline.end status=success`.
@@ -40,7 +40,7 @@ STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
 rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 
-# Mirrors standard.yaml review_cycle shape: outer cycle [inner_cycle, leaf]
+# Mirrors standard.yaml build_review_cycle shape: outer cycle [inner_cycle, leaf]
 # where the outer's exit_when matches on the leaf's raw verdict AFTER the
 # inner cycle has run and converged. Reproduces the exact production scenario
 # from dogfood 20260605080106-63324.
@@ -52,9 +52,9 @@ defaults:
   strategy: fanout
 
 flow:
-  - review_cycle
+  - build_review_cycle
 
-review_cycle:
+build_review_cycle:
   type: cycle
   flow:
     - build_test_cycle
@@ -131,24 +131,24 @@ set -e
 assert_eq "T1: template loads rc=0" "0" "$rc"
 
 set +e
-cycle_orchestrator_run "review_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?
+cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?
 set -e
 
 print_test_section "outer cycle converges + emits all expected events"
 
 # T2: outer cycle returns rc=0 (converged via exit_when on iter 1).
-assert_eq "T2: review_cycle rc=0 (converged on review.verdict==approve)" "0" "$rc"
+assert_eq "T2: build_review_cycle rc=0 (converged on review.verdict==approve)" "0" "$rc"
 
 # T3: cycle.iteration.complete fired for the OUTER cycle.
 # The bug: this never emitted in production despite history file being written.
-outer_iter_count=$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "T3: cycle.iteration.complete fired for review_cycle (the gap dogfood exposed)" "1" "$outer_iter_count"
+outer_iter_count=$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="build_review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "T3: cycle.iteration.complete fired for build_review_cycle (the gap dogfood exposed)" "1" "$outer_iter_count"
 
 # T4: cycle.complete reason=converged fired for the OUTER cycle.
-outer_complete=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "T4: cycle.complete fired for review_cycle" "1" "$outer_complete"
+outer_complete=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "T4: cycle.complete fired for build_review_cycle" "1" "$outer_complete"
 
-outer_reason=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_reason=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
 assert_eq "T5: cycle.complete reason=converged (not aborted/max_iterations)" "converged" "$outer_reason"
 
 # T6: inner cycle ALSO emitted both events (was working pre-fix; regression
@@ -166,13 +166,13 @@ print_test_section "19-C-1 instrumentation: predicate-event diagnostic"
 # from the original plan — if this event is missing entirely, the predicate
 # function was never reached (H2). If actual≠approve, verdict accumulation
 # is broken (H1/H3). If match=true and actual=approve, the bug is downstream.
-outer_predicate=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="review_cycle" and .data.kind=="exit_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "T8: cycle.predicate.evaluated fires for review_cycle exit_when (19-C-1 instrumentation)" "1" "$outer_predicate"
+outer_predicate=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "T8: cycle.predicate.evaluated fires for build_review_cycle exit_when (19-C-1 instrumentation)" "1" "$outer_predicate"
 
-outer_predicate_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="review_cycle" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_predicate_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
 assert_eq "T9: predicate match=true (verdict_raw=approve reached the outer predicate)" "true" "$outer_predicate_match"
 
-outer_predicate_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="review_cycle" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_predicate_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
 assert_eq "T10: predicate actual=approve (RAW verdict propagated, not classified)" "approve" "$outer_predicate_actual"
 
 print_test_section "terminated_reason and iteration count"

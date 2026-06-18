@@ -1037,7 +1037,7 @@ _cycle_iter_dispatch() {
             # _CYCLE_FEEDBACK, the outer cycle's post-iter _cycle_apply_feedback
             # would use the INNER cycle's feedback edges (e.g. inner
             # build_test_cycle's prior_test_assessment) instead of the outer
-            # review_cycle's review→build prior_review_feedback edge, silently
+            # build_review_cycle's review→build prior_review_feedback edge, silently
             # dropping the ADR-026 wiring.
             local _outer_cid="$_CYCLE_TRAP_CYCLE_ID"
             local _outer_iter="$_CYCLE_TRAP_ITER"
@@ -1056,7 +1056,7 @@ _cycle_iter_dispatch() {
             # default to the same window, so inner==outer in practice) but NOT
             # for velocity_plateau: it defaults to 0 (disabled) and the live
             # build_test_cycle sets window=2, so an unrestored value would make
-            # the outer review_cycle abandon via velocity-plateau BEFORE its
+            # the outer build_review_cycle abandon via velocity-plateau BEFORE its
             # max_iterations check ever runs (regression caught by
             # review-remediation-max-iter-test). Restore all three for the class.
             local _outer_plateau_w="$_CYCLE_PLATEAU_WINDOW"

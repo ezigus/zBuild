@@ -57,15 +57,15 @@ assert_eq "T1: _TPL_STAGES[11]=cq-backtrack" "cq-backtrack" "${_TPL_STAGES[11]:-
 assert_eq "T1: _TPL_STAGES[12]=review" "review" "${_TPL_STAGES[12]:-}"
 
 # #842: standard.yaml now wraps design+impact in design_impact_cycle.
-# Total cycles: design_impact_cycle + build_test_cycle + review_cycle = 3.
-assert_eq "T1: exactly 3 cycles (design_impact_cycle + build_test_cycle + review_cycle)" \
+# Total cycles: design_impact_cycle + build_test_cycle + build_review_cycle = 3.
+assert_eq "T1: exactly 3 cycles (design_impact_cycle + build_test_cycle + build_review_cycle)" \
     "3" "${#_TPL_CYCLES[@]}"
 assert_contains "T1: design_impact_cycle registered" \
     "${_TPL_CYCLES[*]}" "design_impact_cycle"
 assert_contains "T1: build_test_cycle registered" \
     "${_TPL_CYCLES[*]}" "build_test_cycle"
-assert_contains "T1: review_cycle (outer) registered" \
-    "${_TPL_CYCLES[*]}" "review_cycle"
+assert_contains "T1: build_review_cycle (outer) registered" \
+    "${_TPL_CYCLES[*]}" "build_review_cycle"
 assert_eq "T1: inner cycle.stages CSV is build,test,test_assessment" \
     "build,test,test_assessment" "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
 assert_eq "T1: until.stage=test_assessment" \
@@ -86,23 +86,23 @@ assert_contains "T1: feedback to build:prior_test_assessment" \
     "$fb" "build:prior_test_assessment"
 
 # #842/#754: dispatch units fold to [stage:intake, stage:plan,
-# cycle:design_impact_cycle, cycle:review_cycle] — plan is a leaf;
-# design_impact_cycle wraps design+impact; review_cycle is the outermost cycle.
-assert_eq "T1: 4 dispatch units (intake/plan/design_impact_cycle/review_cycle)" \
+# cycle:design_impact_cycle, cycle:build_review_cycle] — plan is a leaf;
+# design_impact_cycle wraps design+impact; build_review_cycle is the outermost cycle.
+assert_eq "T1: 4 dispatch units (intake/plan/design_impact_cycle/build_review_cycle)" \
     "4" "${#_TPL_DISPATCH_UNITS[@]}"
 has_dic=0
 has_outer=0
 has_plan=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:design_impact_cycle" ]] && has_dic=1
-    [[ "$u" == "cycle:review_cycle" ]] && has_outer=1
+    [[ "$u" == "cycle:build_review_cycle" ]] && has_outer=1
     [[ "$u" == "stage:plan" ]] && has_plan=1
 done
 assert_eq "T1: dispatch units include cycle:design_impact_cycle" \
     "1" "$has_dic"
 assert_eq "T1: dispatch units include stage:plan (leaf)" \
     "1" "$has_plan"
-assert_eq "T1: dispatch units include cycle:review_cycle (outer)" \
+assert_eq "T1: dispatch units include cycle:build_review_cycle (outer)" \
     "1" "$has_outer"
 
 # ─── Orchestrator harness ────────────────────────────────────────────────────

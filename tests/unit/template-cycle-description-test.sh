@@ -163,10 +163,10 @@ if [[ -n "${_TPL_CYCLE_DESCRIPTION_design_impact_cycle:-}" ]]; then
 else
     assert_fail "T5: design_impact_cycle missing description"
 fi
-if [[ -n "${_TPL_CYCLE_DESCRIPTION_review_cycle:-}" ]]; then
-    assert_pass "T5: review_cycle has description ('${_TPL_CYCLE_DESCRIPTION_review_cycle}')"
+if [[ -n "${_TPL_CYCLE_DESCRIPTION_build_review_cycle:-}" ]]; then
+    assert_pass "T5: build_review_cycle has description ('${_TPL_CYCLE_DESCRIPTION_build_review_cycle}')"
 else
-    assert_fail "T5: review_cycle missing description"
+    assert_fail "T5: build_review_cycle missing description"
 fi
 if [[ -n "${_TPL_CYCLE_DESCRIPTION_build_test_cycle:-}" ]]; then
     assert_pass "T5: build_test_cycle has description ('${_TPL_CYCLE_DESCRIPTION_build_test_cycle}')"

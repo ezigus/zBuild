@@ -174,7 +174,7 @@ _make_plugin "test"            "tester"
 _make_plugin "test_assessment" "test_assessment"
 # #922: acceptance-gate leaf stage (ADR-036).
 _make_plugin "acceptance-gate" "acceptance_gate"
-# #755: review_cycle.flow now includes the 4 compound_quality stages.
+# #755: build_review_cycle.flow now includes the 4 compound_quality stages.
 _make_plugin "cq-preflight"    "cq_preflight"
 _make_plugin "cq-audit-plan"   "cq_audit_plan"
 _make_plugin "cq-cycle"        "cq_cycle"
@@ -257,18 +257,18 @@ assert_eq "T1.4: pipeline.end emitted exactly once" "1" "$end_count"
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "T1.5: pipeline.end status=success (on_max=continue + review approved, #796)" "success" "$end_status"
 
-print_test_section "T2: review_cycle dispatched after design_impact_cycle exhausted"
+print_test_section "T2: build_review_cycle dispatched after design_impact_cycle exhausted"
 
-# T2.1: review_cycle entered (build runs at least once because review_cycle's inner build_test_cycle runs)
+# T2.1: build_review_cycle entered (build runs at least once because build_review_cycle's inner build_test_cycle runs)
 build_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="build")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$build_run_count" -ge 1 ]] \
-    && assert_pass "T2.1: build plugin ran (proves review_cycle was dispatched after design_impact_cycle exhausted)" \
-    || assert_fail "T2.1: build plugin did NOT run (runner stopped before review_cycle)" "build_run_count=$build_run_count"
+    && assert_pass "T2.1: build plugin ran (proves build_review_cycle was dispatched after design_impact_cycle exhausted)" \
+    || assert_fail "T2.1: build plugin did NOT run (runner stopped before build_review_cycle)" "build_run_count=$build_run_count"
 
-# T2.2: review stage ran (proves review_cycle's review member dispatched)
+# T2.2: review stage ran (proves build_review_cycle's review member dispatched)
 review_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="review")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$review_run_count" -ge 1 ]] \
-    && assert_pass "T2.2: review plugin ran (proves review_cycle reached its review member)" \
+    && assert_pass "T2.2: review plugin ran (proves build_review_cycle reached its review member)" \
     || assert_fail "T2.2: review plugin did NOT run" "review_run_count=$review_run_count"
 
 cleanup_test_env
