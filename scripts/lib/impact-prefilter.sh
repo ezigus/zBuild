@@ -408,8 +408,10 @@ _impact_recover_envelope_json() {
         BEGIN { buf = "" }
         { buf = buf $0 "\n" }
         END {
-            # Same pre-pass as extract_json_and_surrounding_prose (helpers.sh):
-            # BOM, opening/closing ```json|``` fences, CR, trailing newline.
+            # Pre-pass mirrors extract_json_and_surrounding_prose (helpers.sh):
+            # BOM, opening/closing ```json|``` fences, trailing newline. We
+            # ADDITIONALLY strip CR (gsub /\r/) — a hardening beyond the shared
+            # parser pre-pass, harmless for single-byte JSON.
             sub(/^\xef\xbb\xbf/, "", buf)
             gsub(/\r/, "", buf)
             sub(/^[[:space:]]*```json[[:space:]]*\n?/, "", buf)
@@ -456,16 +458,27 @@ _impact_recover_envelope_json() {
     ')"
     [[ -z "$_candidates" ]] && return 1
 
-    # Walk candidates in document order; return the FIRST that passes the full
-    # impact schema gate (so recovery never admits a weaker object than the
-    # happy path would).
-    local _obj
+    # Recover ONLY when exactly one top-level object bears a `schema_version`
+    # key. The brace-bearing-postamble case #908 targets has exactly one such
+    # envelope (the postamble junk — {note}, {summary} — lacks schema_version).
+    # If MORE than one object bears schema_version the response is AMBIGUOUS — a
+    # preamble EXAMPLE plus the real answer (Codex review): recovering the first
+    # would risk shipping the example as the verdict when the real (LAST) object
+    # is malformed, re-introducing the half-validated-plan risk the strict gate
+    # avoids. Fail closed in that case; the honest schema_violation error is
+    # safer than a fabricated recovery. Zero bearers → nothing to recover.
+    local _obj _envelope="" _count=0
     while IFS= read -r -d $'\x1e' _obj || [[ -n "$_obj" ]]; do
         [[ -z "$_obj" ]] && continue
-        if _impact_envelope_schema_ok "$_obj"; then
-            printf '%s' "$_obj"
-            return 0
+        if printf '%s' "$_obj" | jq -e 'has("schema_version")' >/dev/null 2>&1; then
+            _count=$((_count + 1))
+            _envelope="$_obj"
         fi
     done < <(printf '%s' "$_candidates")
+    [[ "$_count" -eq 1 ]] || return 1
+    if _impact_envelope_schema_ok "$_envelope"; then
+        printf '%s' "$_envelope"
+        return 0
+    fi
     return 1
 }

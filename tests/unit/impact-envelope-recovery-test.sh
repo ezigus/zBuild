@@ -59,23 +59,31 @@ u4_out="$(_impact_recover_envelope_json "$u4_raw" 2>/dev/null)"
 assert_eq "U4: sole envelope returned verbatim" \
     '{"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"x"}' "$u4_out"
 
-# ─── U5: two valid envelopes -> FIRST wins (vs shared LAST-wins) ────────────
+# ─── U5: two schema_version-bearing envelopes -> AMBIGUOUS -> no recovery ────
+# Could be a preamble example + the real answer; recovering either risks
+# shipping the wrong one. Fail closed (Codex review on PR #935).
 u5_raw='{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"FIRST"}
 trailing {"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"SECOND"}'
-u5_out="$(_impact_recover_envelope_json "$u5_raw" 2>/dev/null)"
-assert_contains "U5: FIRST valid envelope wins (opposite of shared LAST-wins)" "$u5_out" "FIRST"
-case "$u5_out" in
-    *SECOND*) assert_fail "U5: returned SECOND, must be FIRST" "$u5_out" ;;
-    *) assert_pass "U5: did not return the SECOND envelope" ;;
-esac
+set +e
+u5_out="$(_impact_recover_envelope_json "$u5_raw" 2>/dev/null)"; u5_rc=$?
+set -e
+assert_eq "U5: two schema-bearing objects -> ambiguous -> empty (fail closed)" "" "$u5_out"
+assert_eq "U5: two schema-bearing objects -> rc=1 (no recovery)" "1" "$u5_rc"
 
-# ─── U6: weak first schema object skipped, full envelope returned ───────────
-# A {"schema_version":1} stub (missing verdict/missing/feedback) must NOT be
-# returned; recovery re-validates each candidate against the full gate.
-u6_raw='{"schema_version":1}
-{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"REAL"}'
-u6_out="$(_impact_recover_envelope_json "$u6_raw" 2>/dev/null)"
-assert_contains "U6: weak first schema stub skipped, full envelope returned" "$u6_out" "REAL"
+# ─── U6 (Codex P2): preamble EXAMPLE (valid) + malformed real answer, both
+# bearing schema_version -> ambiguous -> NO recovery. Prevents shipping the
+# example as the verdict when the real (LAST) object is malformed. This is the
+# exact half-validated-plan risk the strict gate was avoiding.
+u6_raw='Example: {"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"EXAMPLE"}
+Real answer: {"schema_version":1,"verdict":"incomplete","missing":[]}'
+set +e
+u6_out="$(_impact_recover_envelope_json "$u6_raw" 2>/dev/null)"; u6_rc=$?
+set -e
+case "$u6_out" in
+    *EXAMPLE*) assert_fail "U6: must NOT recover the preamble example as the verdict" "$u6_out" ;;
+    *) assert_pass "U6: did not ship the preamble example as the verdict" ;;
+esac
+assert_eq "U6: example + malformed-real (2 schema objects) -> rc=1 (fail closed)" "1" "$u6_rc"
 
 # ─── U7: braces inside a JSON string value are not mis-split ─────────────────
 u7_raw='{"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"see {a} and }{ here"}
