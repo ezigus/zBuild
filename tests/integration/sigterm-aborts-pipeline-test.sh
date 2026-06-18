@@ -138,7 +138,7 @@ fi
 # Wait up to 10s for the build stage to start (proves the runner is
 # established and trap is installed). Without this, racing the SIGTERM
 # in before traps are armed could hit the bash default disposition.
-for _ in $(seq 1 100); do
+for _ in $(seq 1 600); do
     [[ -f "$BUILD_STARTED" ]] && break
     sleep 0.1
 done

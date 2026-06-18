@@ -181,7 +181,7 @@ runner_pid=$!
 # BEFORE the abort EXIT trap is installed, so kill during that window
 # misses the trap entirely. Sibling tests A2 and I6 use this same pattern. #619.
 t10_ready=0
-for _ in $(seq 1 100); do
+for _ in $(seq 1 600); do
     if [[ -f "$EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$EVENTS_JSONL" 2>/dev/null; then
         t10_ready=1
         break
@@ -399,7 +399,7 @@ a2_pid=$!
 # installed and events.jsonl exists) before sending SIGTERM. A fixed sleep
 # races with slow CI runners — poll up to 10 s instead.
 a2_ready=0
-for _ in $(seq 1 100); do
+for _ in $(seq 1 600); do
     if [[ -f "$A2_EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$A2_EVENTS_JSONL" 2>/dev/null; then
         a2_ready=1
         break
@@ -677,7 +677,7 @@ for _attempt in 1 2 3 4 5; do
     NO_COLOR=1 \
     bash "$RUNNER" --issue 83 2>"$I6_STDERR" >/dev/null &
     i6_pid=$!
-    for _ in $(seq 1 100); do
+    for _ in $(seq 1 600); do
         if [[ -f "$I6_EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$I6_EVENTS_JSONL" 2>/dev/null; then
             break
         fi

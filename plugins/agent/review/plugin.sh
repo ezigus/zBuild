@@ -574,8 +574,27 @@ $_review_instructions"
         # final turn; the model can still preface its JSON with prose
         # *inside* the final turn. Helper passes input through verbatim on
         # no-match so downstream parsing falls back to the existing defaults.
+        #
+        # #933: If raw_response contains a fenced JSON block (```json…``` or
+        # ```…```), extract the block body as the sole input so "LAST wins"
+        # in extract_first_json_object cannot select a trailing example that
+        # appears outside the fence (prose-before-fence also defeats the
+        # ^-anchored pre-pass inside the helper).
+        # Use a here-string (not `printf | grep`): under `set -o pipefail`,
+        # `grep -q` closes the pipe on first match and SIGPIPEs printf, so the
+        # pipeline would report non-zero and the probe could read as "no fence"
+        # on a large response. The awk extracts ONLY the first fenced block
+        # (exits at its closing fence) so multiple fenced blocks can't concat.
+        local _unfenced_input="$raw_response"
+        if grep -qE '^[[:space:]]*```(json)?[[:space:]]*$' <<< "$raw_response"; then
+            local _fence_body
+            _fence_body="$(awk '/^[[:space:]]*```(json)?[[:space:]]*$/{ if (p) exit; p=1; next } p { print }' <<< "$raw_response")"
+            if [[ -n "$_fence_body" ]]; then
+                _unfenced_input="$_fence_body"
+            fi
+        fi
         local stripped
-        stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"
+        stripped="$(printf '%s' "$_unfenced_input" | extract_first_json_object)"
 
         verdict="$(printf '%s' "$stripped" \
             | jq -r '.verdict // empty' 2>/dev/null || true)"
