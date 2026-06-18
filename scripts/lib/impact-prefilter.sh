@@ -524,6 +524,7 @@ _impact_converge_on_overscope() {
     local _repo_root="${1:-${ZBUILD_REPO_ROOT:-$(pwd)}}"
     local _artifact_dir="${2:-}"
     local _plan_json="${3:-}"
+    local _design_scope_csv="${4:-}"
 
     # (1) verdict must be incomplete.
     local _verdict
@@ -531,15 +532,17 @@ _impact_converge_on_overscope() {
     [[ "$_verdict" == "incomplete" ]] || return 0
 
     # Current NON-FLOOR missing[] file set (sorted, deduped, whitespace-stripped).
+    # sort -u handles dedup; no separate jq `unique` needed (Codex review).
     local _nonfloor
     _nonfloor="$(printf '%s' "$impact_json" | jq -r '
-        [.missing[]? | select(.step_id != "prefilter") | .files_to_add[]?]
-        | unique | .[]' 2>/dev/null | sed 's/[[:space:]]//g; /^$/d' | sort -u)"
+        .missing[]? | select(.step_id != "prefilter") | .files_to_add[]?' 2>/dev/null \
+        | sed 's/[[:space:]]//g; /^$/d' | sort -u)"
 
     # Persist this iter set for the NEXT iter compare; capture prior first.
+    # Sidecar is a newline-delimited path list (.txt), NOT JSON (Codex review).
     local _sidecar="" _prior=""
     if [[ -n "$_artifact_dir" ]]; then
-        _sidecar="$_artifact_dir/impact-prior-missing.json"
+        _sidecar="$_artifact_dir/impact-prior-missing.txt"
         [[ -f "$_sidecar" ]] && _prior="$(cat "$_sidecar" 2>/dev/null || true)"
         printf '%s\n' "$_nonfloor" > "$_sidecar" 2>/dev/null || true
     fi
@@ -553,10 +556,22 @@ _impact_converge_on_overscope() {
     # Non-floor set must be non-empty (something to converge on).
     [[ -n "$_nonfloor" ]] || return 0
 
-    # (2) shape-change suppression — the glob list can miss the shape file, and a
-    # shape change is exactly when a silent omission is unrecoverable.
+    # (2) shape-change suppression — a shape change is exactly when a silent
+    # omission is unrecoverable. Check BOTH the plan AND the design.md scope
+    # block: in design_impact_cycle the AUTHORITATIVE scope is design.md, and
+    # design can add a shape file the plan omitted; the floor keys off the plan,
+    # so without the design check a shape change could slip through as a plateau
+    # (Codex review).
     if [[ -n "$_plan_json" ]] && _impact_detect_shape_change "$_plan_json" "$_repo_root" >/dev/null 2>&1; then
         return 0
+    fi
+    if [[ -n "$_design_scope_csv" ]]; then
+        local _design_plan
+        _design_plan="$(printf '%s' "$_design_scope_csv" \
+            | jq -Rs 'rtrimstr("\n") | {steps:[{files:(split(",") | map(select(length>0)))}]}' 2>/dev/null || echo "")"
+        if [[ -n "$_design_plan" ]] && _impact_detect_shape_change "$_design_plan" "$_repo_root" >/dev/null 2>&1; then
+            return 0
+        fi
     fi
 
     # (4) iter-awareness + TRUE plateau: iter>=2 AND identical set since prior.
@@ -567,9 +582,14 @@ _impact_converge_on_overscope() {
     [[ "$_prior" == "$_nonfloor" ]] || return 0
 
     # (5)+(6) every remaining file collateral-class AND present on disk.
+    # Reject absolute paths and any `..` traversal FIRST: a non-canonical path
+    # like `tests/../scripts/lib/x.sh` would pass the prefix-based collateral
+    # check yet resolve (via -e) to a structural file, hiding a structural
+    # omission. ADR-030's floor denies such paths; mirror that here (Codex review).
     local _p
     while IFS= read -r _p; do
         [[ -z "$_p" ]] && continue
+        case "$_p" in /*|*..*) return 0 ;; esac
         _impact_path_is_collateral "$_p" || return 0
         [[ -e "$_repo_root/$_p" ]] || return 0
     done <<< "$_nonfloor"

@@ -73,7 +73,7 @@ set +e; impact_run "impact" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "P1: iter1 impact_run rc=0" "0" "$rc"
 assert_eq "P1: iter1 verdict stays incomplete (first pass never fires)" \
     "incomplete" "$(jq -r '.verdict' "$ARTIFACTS_DIR/impact.json" 2>/dev/null)"
-assert_file_exists "P1: prior-missing sidecar written" "$ARTIFACTS_DIR/impact-prior-missing.json"
+assert_file_exists "P1: prior-missing sidecar written" "$ARTIFACTS_DIR/impact-prior-missing.txt"
 
 # ─── P2/P3: iter 2 same set -> backstop converges + event ───────────────────
 : > "$ZBUILD_EVENTS_JSONL"
@@ -86,7 +86,7 @@ assert_eq "P3: impact.scope.plateau emitted exactly once" "1" \
     "$(grep -c 'impact.scope.plateau' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
 
 # ─── P4 (control): a STRUCTURAL file in the set blocks convergence ──────────
-rm -f "$ARTIFACTS_DIR/impact-prior-missing.json"
+rm -f "$ARTIFACTS_DIR/impact-prior-missing.txt"
 CANNED_IMPACT_RESPONSE="{\"schema_version\":1,\"verdict\":\"incomplete\",\"missing\":[{\"step_id\":\"s1\",\"files_to_add\":[\"$COLLATERAL_REL\",\"scripts/lib/impact-prefilter.sh\"],\"reason\":\"adjacent\"}],\"impact_feedback_md\":\"gap\"}"
 export ZBUILD_CYCLE_ITER=1
 set +e; impact_run "impact" "$STATE_FILE" >/dev/null 2>&1; set -e

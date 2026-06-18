@@ -46,7 +46,7 @@ mkdir -p "$FAKE_ROOT/config/templates"
 printf 'config/templates/*.yaml\n' > "$FAKE_ROOT/config/shape-change-paths.txt"
 
 ARTDIR="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ARTDIR"
-SIDE="$ARTDIR/impact-prior-missing.json"
+SIDE="$ARTDIR/impact-prior-missing.txt"
 NONSHAPE_PLAN='{"schema_version":1,"steps":[{"id":"s","files":["plugins/agent/foo/plugin.sh"],"estimated_lines":1}]}'
 SHAPE_PLAN='{"schema_version":1,"steps":[{"id":"s","files":["config/templates/standard.yaml"],"estimated_lines":1}]}'
 
@@ -118,6 +118,24 @@ impact_json='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s
 _set_prior $'tests/unit/a-test.sh'
 ZBUILD_CYCLE_ITER=2 _impact_converge_on_overscope "$FAKE_ROOT" "$ARTDIR" "$SHAPE_PLAN"
 assert_eq "[SPEC-7] shape-change plan → stays incomplete (run full iteration budget)" \
+    "incomplete" "$(printf '%s' "$impact_json" | jq -r .verdict)"
+
+# ─── SPEC-8 (Codex P2): shape file in the DESIGN SCOPE (not the plan) → no fire
+# design can add a shape file the plan omitted; the floor keys off the plan, so
+# the backstop must also inspect the design scope (4th arg).
+impact_json='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/unit/a-test.sh"],"reason":"adj"}],"impact_feedback_md":""}'
+_set_prior $'tests/unit/a-test.sh'
+ZBUILD_CYCLE_ITER=2 _impact_converge_on_overscope "$FAKE_ROOT" "$ARTDIR" "$NONSHAPE_PLAN" "config/templates/standard.yaml"
+assert_eq "[SPEC-8] shape file in design scope → stays incomplete (plan was non-shape)" \
+    "incomplete" "$(printf '%s' "$impact_json" | jq -r .verdict)"
+
+# ─── SPEC-9 (Codex P2): a `..` traversal path → no fire ─────────────────────
+# tests/../scripts/lib/d.sh passes the prefix collateral check yet resolves to a
+# structural file; the traversal guard must refuse to converge.
+impact_json='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/../scripts/lib/d.sh"],"reason":"adj"}],"impact_feedback_md":""}'
+_set_prior 'tests/../scripts/lib/d.sh'
+ZBUILD_CYCLE_ITER=2 _impact_converge_on_overscope "$FAKE_ROOT" "$ARTDIR" "$NONSHAPE_PLAN"
+assert_eq "[SPEC-9] '..' traversal path → stays incomplete (no structural hiding)" \
     "incomplete" "$(printf '%s' "$impact_json" | jq -r .verdict)"
 
 cleanup_test_env

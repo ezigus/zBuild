@@ -734,7 +734,7 @@ called after the #911 drop) flips `incomplete→complete` ONLY when EVERY condit
 holds: verdict=incomplete; NOT a detected shape-change; no floor entry
 (`step_id==prefilter`); `ZBUILD_CYCLE_ITER>=2` AND the non-floor `missing[]` file
 SET is identical to the prior verdict-producing iter (a TRUE plateau, tracked via
-the per-run sidecar `impact-prior-missing.json` written after the schema gate —
+the per-run sidecar `impact-prior-missing.txt` written after the schema gate —
 never on a #782/#892/#937 synthetic envelope); EVERY remaining file is
 collateral-class; EVERY remaining file exists. It only flips the verdict, never
 drops a file, and emits `impact.scope.plateau`. A structural cascade (the

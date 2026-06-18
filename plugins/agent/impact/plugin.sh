@@ -435,7 +435,7 @@ $_impact_instructions"
     # instead of maxing out. Floor entries, structural paths (core/scripts/
     # plugins), and shape changes all suppress the flip — a real reference gap or
     # an unrecoverable omission is never masked. Only flips verdict, never drops.
-    _impact_converge_on_overscope "${_impact_repo_root}" "$artifact_dir" "$plan_content"
+    _impact_converge_on_overscope "${_impact_repo_root}" "$artifact_dir" "$plan_content" "$scope_csv"
 
     local verdict
     verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo incomplete)"
