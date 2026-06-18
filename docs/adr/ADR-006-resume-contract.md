@@ -191,11 +191,28 @@ Inserted between the existing resume sequence's step 3 and step 4:
 Without this hand-off, a `kill -9` during iter 2 of a 3-iter cycle would
 restart from iter 1, losing progress and any cumulative state.
 
+## Amendment — atomic `.bak` rotation via `atomic_replace` (issue #909)
+
+The `.bak` rotation in `atomic_write` (the "Persisted" write path above) previously used
+`cp "$target" "${target}.bak"` — a read + separate write — so a concurrent reader (or a crash
+mid-copy) could observe a torn `.bak`. Because `.bak` is the **corruption-recovery source**
+(the Resume sequence reads it on primary failure; `read_state`/`locked_state_update`/`validate_json`
+restore from it), a torn backup silently defeats recovery — and the flock-less fallback in
+`core/state/atomic.sh` makes this race live on systems without `flock`.
+
+Issue #909 introduces `atomic_replace <src> <dst>` (`scripts/lib/helpers.sh`): copy to a unique
+temp **in dst's directory**, then `mv` (atomic rename on a POSIX filesystem). `atomic_write` now
+rotates `.bak` via `atomic_replace`. The **contract is unchanged** — `.bak` remains the recovery
+source and the Resume sequence is unchanged — but the guarantee is now stronger: a crash or
+concurrent writer leaves either the old `.bak` or a complete new one, never a partial one. The
+mirror-image recovery *restores* (`.bak`→target) are converted to the same primitive under #946.
+
 ## Implementation Notes (Phase 0.5 — issue #291)
 
 - **24h auto/manual resume boundary** is implemented at `core/state/resume.sh:178–199` (`age_seconds -lt 86400` → `auto_resume`, else `manual_resume_only`). Both BSD and GNU date parsing supported.
 - **`current_iteration` persistence** is wired through `init_state()` (resume.sh:63 sets 0) and surfaces in the resume event at resume.sh:96.
 - **Test coverage gaps tracked separately:** #299 (24h boundary not exercised), #300 (runner abort-trap state-write failure path not exercised by mutation A2).
+- **Atomic `.bak` rotation (issue #909):** `atomic_write` rotates `.bak` via `atomic_replace` (`scripts/lib/helpers.sh`, temp+rename). Regression-guarded by `tests/unit/scripts-lib-atomic-replace-test.sh` (incl. a concurrent-reader negative control) and the 50× stability loop in `tests/integration/concurrent-state-test.sh`. The `.bak`→target *restore* sites are converted under #946.
 
 ## References
 

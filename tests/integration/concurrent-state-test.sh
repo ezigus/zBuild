@@ -84,6 +84,28 @@ else
     assert_pass ".bak file rotation: accepted (may not exist if writes were perfectly sequential)"
 fi
 
+# ─── 50x stability: .bak is never torn across repeated concurrent writes ──────
+# #909: atomic_write rotates .bak via atomic_replace (temp+rename), so 10
+# concurrent writers can never leave a torn .bak. Pre-fix (bare cp) this loop
+# intermittently observes a corrupt .bak. CPU-cheap (no sleeps/external calls).
+STAB="$EVENTS_DIR/stability.json"
+torn_rounds=0
+for round in $(seq 1 50); do
+    SPIDS=()
+    for i in $(seq 1 10); do
+        (
+            source "$REPO_ROOT/scripts/lib/helpers.sh"
+            printf '{"round":%d,"writer":%d}' "$round" "$i" | atomic_write "$STAB"
+        ) &
+        SPIDS+=($!)
+    done
+    for pid in "${SPIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+    if [[ -f "${STAB}.bak" ]] && ! jq empty "${STAB}.bak" >/dev/null 2>&1; then
+        torn_rounds=$((torn_rounds + 1))
+    fi
+done
+assert_eq "50x stability: zero torn .bak across 50 rounds of 10 concurrent writers" "0" "$torn_rounds"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

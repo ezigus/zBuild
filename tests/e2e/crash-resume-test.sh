@@ -120,6 +120,17 @@ else
     assert_fail "state file is valid JSON after SIGKILL" "state file absent"
 fi
 
+# ─── Test 2b (#909): if a .bak rotation exists, it must be valid JSON ──────────
+# .bak is the corruption-recovery source; atomic_write rotates it via
+# atomic_replace (temp+rename) so a SIGKILL can never leave a torn backup.
+if [[ -f "${STATE_FILE}.bak" ]]; then
+    if jq empty "${STATE_FILE}.bak" 2>/dev/null; then
+        assert_pass ".bak is valid JSON after SIGKILL (recovery path intact)"
+    else
+        assert_fail ".bak is valid JSON after SIGKILL" "jq parse failed on ${STATE_FILE}.bak"
+    fi
+fi
+
 # ─── Test 3: State status is interrupted (not complete or corrupt) ────────────
 if [[ -f "$STATE_FILE" ]]; then
     status="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || true)"
