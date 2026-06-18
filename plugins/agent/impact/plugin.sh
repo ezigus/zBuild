@@ -167,6 +167,12 @@ Tool use:
 - You MAY use the Grep tool to search the repo for symbols and references.
 - Do NOT call Edit, Write, or Bash. This stage is read-only.
 
+EXISTENCE VERIFICATION (mandatory — do not skip):
+- Before adding any path to missing[].files_to_add, confirm the file exists
+  in the repository using the Read or Grep tool.
+- NEVER list a path you cannot verify is present in the repo. Non-existent
+  paths MUST NOT be flagged as scope gaps.
+
 Rules:
 - For each file in the DESIGN SCOPE BLOCK, identify symbols, constants,
   counts, stage IDs, or ORDERING/POSITION/SEQUENCE assertions (e.g. a test
@@ -393,6 +399,12 @@ $_impact_instructions"
             fi
         fi
     fi
+
+    # #911: deterministic hallucination post-filter. Strips missing[].files_to_add
+    # paths that do not exist on disk; drops entries that become empty; flips
+    # verdict incomplete→complete when missing[] is fully cleared.
+    # Runs AFTER prefilter floor merge so forced-existing floor entries are safe.
+    _impact_drop_nonexistent_missing "${_impact_repo_root}"
 
     local verdict
     verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo incomplete)"

@@ -137,6 +137,24 @@ esac
 assert_contains "T13: extract_json_and_surrounding_prose still present (#771 safety net)" \
     "$PROMPT_BODY_783" "extract_json_and_surrounding_prose"
 
+# ─── #911: charter mandate — existence verification before files_to_add ──────
+# Regression guard: if the charter rule is removed from _impact_instructions,
+# the LLM loses the explicit prohibition on hallucinated paths.
+
+PROMPT_BODY_911="$(cat "$PROMPT_FILE")"
+
+# T14: explicit EXISTENCE VERIFICATION heading present.
+assert_contains "T14: charter has EXISTENCE VERIFICATION heading" \
+    "$PROMPT_BODY_911" "EXISTENCE VERIFICATION"
+
+# T15: prohibition on unverifiable paths — the key rule.
+assert_contains "T15: charter prohibits listing paths not verified present" \
+    "$PROMPT_BODY_911" "NEVER list a path you cannot verify"
+
+# T16: directive to use Read or Grep to confirm existence first.
+assert_contains "T16: charter requires existence confirmation via Read/Grep" \
+    "$PROMPT_BODY_911" "confirm the file exists"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
