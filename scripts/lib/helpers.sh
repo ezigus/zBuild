@@ -48,12 +48,18 @@ error()   { echo -e "${RED}${BOLD}✗${RESET} $*" >&2; }
 # check disk space, or preserve mode — callers own that. (#909 / ADR-006)
 atomic_replace() {
     local src="$1" dst="$2"
-    local tmp; tmp="$(mktemp "${dst}.tmp.XXXXXX")"
+    local tmp
+    # Every failure path returns non-zero (never aborts a `set -e` caller) and
+    # leaves no stray temp.
+    tmp="$(mktemp "${dst}.tmp.XXXXXX")" || return 1
     if ! cp -- "$src" "$tmp" 2>/dev/null; then
         rm -f "$tmp"
         return 1
     fi
-    mv -- "$tmp" "$dst"
+    if ! mv -- "$tmp" "$dst" 2>/dev/null; then
+        rm -f "$tmp"
+        return 1
+    fi
 }
 
 # ─── Atomic write (tmp + mv + .bak rotation) ────────────────────────────────
@@ -79,8 +85,12 @@ atomic_write() {
     cat > "$tmp"
     # Rotate previous to .bak before replacing — atomic so a concurrent reader
     # never sees a torn .bak (the corruption-recovery source). Best-effort: a
-    # failed rotation does not abort the main write. (#909)
-    [[ -f "$target" ]] && atomic_replace "$target" "${target}.bak"
+    # failed rotation must NOT abort the main write (the `|| warn` keeps it from
+    # tripping `set -e` callers). (#909)
+    if [[ -f "$target" ]]; then
+        atomic_replace "$target" "${target}.bak" \
+            || warn "atomic_write: .bak rotation failed for $target (best-effort, continuing)"
+    fi
     mv "$tmp" "$target"
 }
 
