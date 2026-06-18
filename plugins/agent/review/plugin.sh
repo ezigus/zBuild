@@ -574,8 +574,23 @@ $_review_instructions"
         # final turn; the model can still preface its JSON with prose
         # *inside* the final turn. Helper passes input through verbatim on
         # no-match so downstream parsing falls back to the existing defaults.
+        #
+        # #933: If raw_response contains a fenced JSON block (```json…``` or
+        # ```…```), extract the block body as the sole input so "LAST wins"
+        # in extract_first_json_object cannot select a trailing example that
+        # appears outside the fence (prose-before-fence also defeats the
+        # ^-anchored pre-pass inside the helper).
+        local _unfenced_input="$raw_response"
+        if printf '%s' "$raw_response" | grep -qE '^[[:space:]]*```(json)?[[:space:]]*$'; then
+            local _fence_body
+            _fence_body="$(printf '%s' "$raw_response" \
+                | awk '/^[[:space:]]*```(json)?[[:space:]]*$/{p=!p; next} p{print}')"
+            if [[ -n "$_fence_body" ]]; then
+                _unfenced_input="$_fence_body"
+            fi
+        fi
         local stripped
-        stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"
+        stripped="$(printf '%s' "$_unfenced_input" | extract_first_json_object)"
 
         verdict="$(printf '%s' "$stripped" \
             | jq -r '.verdict // empty' 2>/dev/null || true)"
