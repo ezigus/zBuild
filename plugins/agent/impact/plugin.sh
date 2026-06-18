@@ -184,6 +184,14 @@ Rules:
   DESIGN SCOPE BLOCK that reference or pin them.
 - For each gap, add an entry to missing[] with a step_id (use the closest
   logical grouping), the files to add, and a one-line reason.
+- RELEVANCE: a file is a scope gap ONLY if it references a symbol, constant,
+  count, stage id, ORDER/position, or path that THIS change adds, removes,
+  renames, reorders, or re-counts. Name that specific reference in the reason.
+- ADJACENCY IS NOT A GAP: a file is NOT missing merely because it lives in the
+  same directory, imports a shared lib, or sits in the changed file's reference
+  closure. Do NOT chase transitive references. Return verdict="complete" once
+  every file that pins a CHANGED symbol/count/order/path is already in the
+  DESIGN SCOPE BLOCK, even if topically-related files remain unlisted.
 - If no gaps found, return verdict="complete" with missing=[].
 - The impact_feedback_md is what the design agent reads on iter N+1 when
   you returned incomplete. Make it actionable: name the missing files,
@@ -419,6 +427,15 @@ $_impact_instructions"
     # verdict incomplete→complete when missing[] is fully cleared.
     # Runs AFTER prefilter floor merge so forced-existing floor entries are safe.
     _impact_drop_nonexistent_missing "${_impact_repo_root}"
+
+    # #936: over-scope-safe convergence backstop. After ghosts are dropped, if
+    # impact only re-flags real-but-irrelevant COLLATERAL adjacents in a TRUE
+    # plateau (same non-floor set, past the first verdict iter, non-shape-change,
+    # no floor entry), flip verdict->complete so design_impact_cycle converges
+    # instead of maxing out. Floor entries, structural paths (core/scripts/
+    # plugins), and shape changes all suppress the flip — a real reference gap or
+    # an unrecoverable omission is never masked. Only flips verdict, never drops.
+    _impact_converge_on_overscope "${_impact_repo_root}" "$artifact_dir" "$plan_content"
 
     local verdict
     verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo incomplete)"
