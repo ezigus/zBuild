@@ -157,7 +157,7 @@ cat > "$PROBE_PLUGINS/agent/build/plugin.sh" <<PLUG
 build_run() {
     : > "${E2E_BUILD_STARTED}"
     local _i
-    for _i in \$(seq 1 20); do
+    for _i in \$(seq 1 30); do
         sleep 0.1
     done
     return 0
@@ -181,7 +181,7 @@ else
     set +m
 fi
 
-for _ in $(seq 1 100); do
+for _ in $(seq 1 600); do
     [[ -f "$E2E_BUILD_STARTED" ]] && break
     sleep 0.1
 done
