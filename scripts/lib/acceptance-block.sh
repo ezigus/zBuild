@@ -50,7 +50,7 @@ extract_acceptance_block() {
             fi
             if [[ $in_testfiles -eq 1 ]]; then
                 [[ -n "$line" ]] && testfiles+=("$line")
-            elif [[ "$line" == SPEC:* || "$line" =~ ^SPEC-[0-9]+: ]]; then
+            elif [[ "$line" == SPEC:* || "$line" =~ ^SPEC-[0-9]+(\[[a-z]+\])?: ]]; then
                 specs+=("$line")
             fi
         fi
@@ -86,12 +86,23 @@ acceptance_list_spec_ids() {
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
     [[ -z "$block_output" ]] && return 1
     while IFS= read -r line; do
-        if [[ "$line" =~ ^(SPEC-[0-9]+): ]]; then
+        if [[ "$line" =~ ^(SPEC-[0-9]+)(\[[a-z]+\])?: ]]; then
             printf '%s\n' "${BASH_REMATCH[1]}"
             ids_found=1
         fi
     done <<< "$block_output"
     [[ $ids_found -eq 1 ]]
+}
+
+# acceptance_spec_is_guard <design_md> <spec_id>
+# Returns 0 when the SPEC line for spec_id carries a [guard] classifier,
+# 1 otherwise (unclassified or [change] = not a guard).
+acceptance_spec_is_guard() {
+    local design_md="${1:-}" spec_id="${2:-}"
+    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 1
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
+    grep -qF "${spec_id}[guard]:" <<< "$block_output"
 }
 
 # acceptance_list_testfiles <design_md>  (ADR-036 / #922)
