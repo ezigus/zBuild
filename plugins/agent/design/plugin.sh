@@ -99,6 +99,27 @@ _design_read_prior_design() {
     printf '%s' "$body"
 }
 
+# _design_assert_live_flow <design_md>
+# Returns 0 when the live-flow requirement is satisfied:
+#   - no explicit [change]-classified SPEC exists (unclassified or all [guard]) → pass
+#   - ≥1 TESTFILE begins with tests/integration/ → pass
+# Returns 1 when a [change] SPEC exists but all TESTFILEs are under tests/unit/.
+_design_assert_live_flow() {
+    local design_md="$1"
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    # Live-flow requirement only triggers for explicitly [change]-classified SPECs.
+    grep -qF "[change]:" <<< "$block_output" || return 0
+    local tf
+    while IFS= read -r tf; do
+        [[ -z "$tf" ]] && continue
+        if [[ "$tf" == tests/integration/* ]]; then
+            return 0
+        fi
+    done < <(acceptance_list_testfiles "$design_md" 2>/dev/null || true)
+    return 1
+}
+
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
@@ -206,27 +227,36 @@ path/to/file2
 \`\`\`
 
 3. A \`\`\`acceptance fenced block listing behavioral claims with STABLE NUMERIC
-   IDS (SPEC-1:, SPEC-2:, …) and test file paths (TESTFILES: section). Each SPEC
-   line carries a permanent id and describes ONE observable, testable behavior
-   change this implementation must satisfy. The TESTFILES section lists the test
-   files that verify those specs — one repo-relative path per line. Use the file
-   names from plan.files[] when they are test files, and derive any additional
-   test files needed.
+   IDS and CLASSIFICATION TAGS, and test file paths (TESTFILES: section). Each
+   SPEC line carries a permanent id, a type tag, and describes ONE observable,
+   testable behavior change this implementation must satisfy.
+
+   CLASSIFICATION (required on every SPEC-n line):
+   - \`SPEC-n[change]:\` — a NEW behavior that did not exist before; the tagged
+     test MUST FAIL at the merge-base baseline and PASS after this change.
+   - \`SPEC-n[guard]:\` — an INVARIANT that must not regress; do NOT contort it
+     to fail at baseline. The acceptance-gate skips the negative control for
+     guards.
+   Unclassified \`SPEC-n:\` lines are accepted for backward compatibility but
+   new designs should always classify.
+
+   LIVE-FLOW REQUIREMENT: when ANY \`[change]\`-classified SPEC exists, at least
+   ONE TESTFILE must be under \`tests/integration/\` (a live path that exercises
+   the production code, not a mocked unit). If all TESTFILES are under
+   \`tests/unit/\`, the design stage rejects the block.
 
    TAGGING RULE (ADR-036, enforced mechanically by the acceptance-gate stage):
    each TESTFILE must contain at least one assertion whose LABEL includes the
    matching [SPEC-n] tag, e.g. assert_eq "[SPEC-1] carry-over count" exp act.
    The gate fails the build if any SPEC-n has no [SPEC-n]-tagged assertion, AND
-   it runs each tagged assertion against the merge-base baseline (before this
-   change) — the assertion MUST FAIL there. A test that passes without the
-   implementation is tautological and is rejected; a bare \`exit 1\` stub does
-   NOT satisfy the gate. Write ONE SPEC per assertion so the negative control
-   can isolate each behavior.
+   it runs each [change]-tagged assertion against the merge-base baseline —
+   the assertion MUST FAIL there. Write ONE SPEC per assertion so the negative
+   control can isolate each behavior.
 
 The \`\`\`acceptance block format:
 \`\`\`acceptance
-SPEC-1: <one observable behavior this change must satisfy>
-SPEC-2: <another behavioral claim>
+SPEC-1[change]: <one new behavior this change introduces>
+SPEC-2[guard]: <an invariant this change must not break>
 TESTFILES:
 tests/unit/some-test.sh
 tests/integration/other-test.sh
@@ -356,6 +386,19 @@ DESIGN_PROMPT
     if ! _ab_out="$(extract_acceptance_block "$output_design_md" 2>/dev/null)"; then
         warn "_design_stage_run_inner: design.md missing acceptance block — design output incomplete"
         emit_event "plugin.run.error" "plugin=design" "reason=missing_acceptance_block"
+        if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+            _route_loop_close_final_banner || true
+        fi
+        return 1
+    fi
+
+    # Live-flow post-condition: when ≥1 explicit [change] SPEC exists, ≥1
+    # TESTFILE must be under tests/integration/. All-unit coverage on a change
+    # SPEC means no integration path exercises the production code.
+    if ! _design_assert_live_flow "$output_design_md"; then
+        warn "_design_stage_run_inner: [change] SPEC present but no tests/integration/ TESTFILE"
+        emit_event "design.missing_live_flow_spec" "plugin=design"
+        emit_event "plugin.run.error" "plugin=design" "reason=missing_live_flow_spec"
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
             _route_loop_close_final_banner || true
         fi

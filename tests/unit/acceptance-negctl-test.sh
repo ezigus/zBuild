@@ -117,5 +117,33 @@ set +e; OUT2="$(acceptance_negctl_check "$DM2" "$REPO2")"; RC2=$?; set -e
 assert_eq "NC-E: merge-base==HEAD → SKIP no_impl_delta" "NEGCTL SKIP no_impl_delta" "$OUT2"
 assert_eq "NC-E: skip is not a failure (rc=0)" "0" "$RC2"
 
+# ── NC-F: guard-classified SPEC gets NEGCTL SKIP guard_spec ──────────────────
+# Build a repo with a guard SPEC whose test is tautological (always passes).
+# negctl must SKIP it (not report tautology), so overall rc=0.
+REPO3="$(setup_git_temp_repo negctl-repo3)"
+(
+    cd "$REPO3"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\n# [SPEC-1] guard: always passes\nexit 0\n' > tests/guard-test.sh
+    chmod +x tests/guard-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec"
+)
+DM3="$REPO3/design.md"
+cat > "$DM3" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/guard-test.sh
+```
+EOF
+
+set +e
+OUT3="$(acceptance_negctl_check "$DM3" "$REPO3")"; RC3=$?
+set -e
+assert_eq "[SPEC-3] NC-F: guard SPEC → NEGCTL SKIP guard_spec" \
+    "NEGCTL SKIP guard_spec SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3")"
+assert_eq "[SPEC-3] NC-F: guard skip yields overall rc=0" "0" "$RC3"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
