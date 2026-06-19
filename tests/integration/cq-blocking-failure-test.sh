@@ -266,6 +266,12 @@ review_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="revie
 [[ "$review_count" -ge 1 ]] \
     && assert_pass "T3 [SPEC-3]: review ran after non-blocking cq-backtrack failure" \
     || assert_fail "T3 [SPEC-3]: review should run after non-blocking failure" "review_count=$review_count"
+# [SPEC-6] design SPEC: cq-backtrack fails (non-blocking) → review IS dispatched.
+# (cq-backtrack was non-blocking before #863 too, so this is a regression guard,
+# not a fail-at-baseline change — see #913 change-vs-guard SPEC follow-up.)
+[[ "$review_count" -ge 1 ]] \
+    && assert_pass "T3 [SPEC-6]: cq-backtrack non-blocking failure → review IS dispatched" \
+    || assert_fail "T3 [SPEC-6]: review must be dispatched after a non-blocking failure" "review_count=$review_count"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-4] All CQ stages pass, review approves → pipeline.end status=success
@@ -282,6 +288,36 @@ _run_pipeline
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 # [SPEC-4]
 assert_eq "T4 [SPEC-4]: pipeline.end status=success when all CQ stages pass" "success" "$end_status"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [SPEC-5] cq-audit-plan fails (blocking, cq-preflight passing) → cq-cycle NOT
+#   dispatched AND pipeline.end status=failed. Proves blocking enforcement is not
+#   cq-preflight-specific: ANY blocking member halts the loop + fail-fasts. Fails
+#   at baseline (pre-#863 the cycle swallowed the rc and ran to status=success).
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "T6 [SPEC-5]: cq-audit-plan (blocking) failure → halt + status=failed"
+
+# cq-preflight passes (restored at T3); make cq-audit-plan fail.
+cat > "$PLUGINS_ROOT/agent/cq-audit-plan/plugin.sh" <<'PLUG'
+cq_audit_plan_run() { return 1; }
+PLUG
+
+_run_pipeline
+
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+# [SPEC-5]
+assert_eq "T6 [SPEC-5]: pipeline.end status=failed when blocking cq-audit-plan fails" "failed" "$end_status"
+
+# cq-cycle must NOT have run (fail-fast skips the rest after a blocking failure).
+cqcycle_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="cq-cycle")' \
+    "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+# [SPEC-5]
+assert_eq "T6 [SPEC-5]: cq-cycle did NOT run after cq-audit-plan blocking failure" "0" "$cqcycle_count"
+
+# Restore cq-audit-plan to pass so subsequent sections are unaffected.
+cat > "$PLUGINS_ROOT/agent/cq-audit-plan/plugin.sh" <<'PLUG'
+cq_audit_plan_run() { return 0; }
+PLUG
 
 # ─────────────────────────────────────────────────────────────────────────────
 # T5: on_max=continue — design_impact_cycle exhausts max_iterations (verdict=
