@@ -1,12 +1,12 @@
 # ADR-037 — Objective gates vs. semantic judgment (PR-handoff + template merge policy)
 
 **Status:** Accepted (2026-06-19)
-**Related:** ADR-038 (adversarial multi-lens review report), ADR-036 (acceptance teeth — amended),
-ADR-019 (review fail-closed — amended), ADR-031 (behavioral acceptance contract — amended),
-ADR-022 (test-assessment — superseded), ADR-026 (review-remediation cycle — superseded),
-ADR-013 (canonical stage list — amended), ADR-021 (cycle semantics — amended),
-ADR-030 (scope governance — amended), ADR-020 (inter-stage data contract — amended),
-ADR-033 (compile/typecheck gate — promoted), ADR-029 (context budget — kept)
+**Related** — dispositions below are **PLANNED** (declared in §6, executed in I13 / #979); **this PR edits no existing ADR**:
+- peer: ADR-038 (adversarial multi-lens review report)
+- supersede-planned: ADR-022, ADR-026
+- amend-planned: ADR-036, ADR-019, ADR-031, ADR-013, ADR-021, ADR-030, ADR-020, ADR-015
+- promote-planned: ADR-033
+- kept (unaffected): ADR-029, ADR-017, ADR-003, ADR-027, ADR-034
 **Issue:** #967 (EPIC #966, I1)
 
 ## Context

@@ -1,10 +1,10 @@
 # ADR-038 — Adversarial multi-lens review report (evidence-fed, advisory)
 
 **Status:** Accepted (2026-06-19)
-**Related:** ADR-037 (objective gates vs. semantic judgment), ADR-022 (test-assessment — superseded),
-ADR-019 (review fail-closed — amended), ADR-026 (review-remediation cycle — superseded),
-ADR-030 (scope governance — R3 assertion-integrity folded in), ADR-036 (acceptance teeth — amended),
-EPIC #966
+**Related** — dispositions below are **PLANNED** (the map lives in ADR-037 §6, executed in I13 / #979); **this PR edits no existing ADR**:
+- peer: ADR-037 (objective gates vs. semantic judgment); EPIC #966
+- supersede-planned: ADR-022, ADR-026
+- amend-planned: ADR-019, ADR-036, ADR-030 (R3 assertion-integrity folded into a review lens)
 **Issue:** #967 (EPIC #966, I1)
 
 ## Context
