@@ -241,7 +241,7 @@ _build_stage_run_inner() {
         fi
         if [[ -n "$_acceptance_testfiles" ]]; then
             printf '\n## ACCEPTANCE TESTS (you MUST make these pass — you MUST NOT weaken, modify assertions of, or delete them)\n'
-            printf 'Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion that FAILS at the merge-base baseline and passes here. A tautological assertion that passes without your implementation is rejected.\n'
+            printf 'Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.\n'
             local _at_tf
             while IFS= read -r _at_tf; do
                 [[ -n "$_at_tf" ]] && printf -- '- %s\n' "$_at_tf"

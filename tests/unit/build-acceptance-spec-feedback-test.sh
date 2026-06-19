@@ -62,9 +62,10 @@ DESIGN_MD="$ARTIFACT_DIR/design.md"
 
 _drive_build() {
     : > "$_MOCK_ROUTE_CAPTURE"
+    local _e; case $- in *e*) _e=1 ;; *) _e=0 ;; esac   # save errexit; restore (don't force-enable)
     set +e
     _build_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$DIFF_PATCH" "$SUMMARY_JSON" "$ARTIFACT_DIR" >/dev/null 2>&1
-    set -e
+    [[ "$_e" -eq 1 ]] && set -e
     cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo ''
 }
 
