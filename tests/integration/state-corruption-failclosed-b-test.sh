@@ -316,8 +316,10 @@ print_test_section "Scenario 11: empty-primary recovery restores complete large 
 reset_scenario
 
 PAD="$(head -c 200000 /dev/zero | tr '\0' 'z')"   # 200KB padding field
-LARGE_GOOD="$(jq -nc --arg pad "$PAD" '{schema_version:1,current_stage:"plan",status:"completed",pad:$pad}')"
-printf '%s' "$LARGE_GOOD" > "${STATE_FILE}.bak"
+# Build the .bak with printf (a bash builtin → no ARG_MAX limit); passing a 200KB
+# value as a jq --arg overflows execve's argument list on Linux. The pad is plain
+# 'z' chars so it needs no JSON escaping.
+printf '{"schema_version":1,"current_stage":"plan","status":"completed","pad":"%s"}' "$PAD" > "${STATE_FILE}.bak"
 : > "$STATE_FILE"   # empty primary → triggers the :58 empty-recovery branch
 
 set +e
