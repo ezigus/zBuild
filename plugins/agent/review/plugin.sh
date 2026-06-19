@@ -113,9 +113,9 @@ _review_derive_test_status() {
                 inconclusive)
                     # ADR-019 §7 amendment: inconclusive means the LLM could not
                     # judge convergence semantics, not that tests failed. Fall
-                    # through to test-results.json; if it shows pass, approve
-                    # stands. Fail-closed: only pass in test-results overrides;
-                    # any other result returns unknown so coercion is preserved.
+                    # through to test-results.json; only a pass there lets approve
+                    # stand. Fail-closed is preserved: fail/error → "failed" and
+                    # missing/malformed → "unknown", both of which still coerce.
                     ;;
                 *) ;;  # fall through to test-results.json
             esac
