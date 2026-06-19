@@ -1334,9 +1334,12 @@ main() {
                     #   ADR-030)                  build needs out-of-scope files
                     #                            the policy won't grant; review is
                     #                            pointless. Operator widens scope.
+                    # rc 8 (blocking_member    → HALT; status=failed. ADR-013: a
+                    #   _failure, ADR-013)        blocking CQ member (cq-preflight,
+                    #                            cq-audit-plan, cq-cycle) failed.
                     # rc 130 (aborted=SIGINT)  → HALT; status=interrupted.
                     # rc 143 (aborted=SIGTERM) → HALT; status=interrupted (Wave 15-F).
-                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 7 || $_rc -eq 130 || $_rc -eq 143 ]]; then
+                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 7 || $_rc -eq 8 || $_rc -eq 130 || $_rc -eq 143 ]]; then
                         # ADR-027 (Wave 17-B #703): rc=6 cycle_abort halts
                         # the pipeline + propagates outward distinctly from
                         # signal-driven aborts (rc=130/143) and blocked

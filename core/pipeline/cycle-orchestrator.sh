@@ -168,6 +168,16 @@ _cycle_on_signal() {
     return 130
 }
 
+# ─── _cycle_member_is_blocking <stage_id> ────────────────────────────────────
+# ADR-013 blocking table (CQ-3 / issue #863). Reads the template-parsed
+# _TPL_STAGE_BLOCKING_<safe_id> export set by template.sh from the `blocking:`
+# YAML attribute. Returns 0 when the member halts the cycle on failure.
+_cycle_member_is_blocking() {
+    local _blk_safe="${1//-/_}"
+    local _blk_var="_TPL_STAGE_BLOCKING_${_blk_safe}"
+    [[ "${!_blk_var:-}" == "true" ]]
+}
+
 # ─── _cycle_load_template <cycle_id> ─────────────────────────────────────────
 # Reads template-parser cycle vars set by template.sh::_tpl_parse_cycle_data.
 # Validates max_iterations bounds + required fields. Populates:
@@ -1118,6 +1128,11 @@ _cycle_iter_dispatch() {
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "cycle_abort" "aborted"
                    _cycle_clear_traps
                    return 6 ;;
+                8) # blocking_member_failure propagates outward.
+                   _CYCLE_LAST_TERMINATED_REASON="blocking_member_failure"
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "blocking_member_failure" "failed"
+                   _cycle_clear_traps
+                   return 8 ;;
                 130|143)
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
                    _cycle_clear_traps
@@ -1233,6 +1248,19 @@ _cycle_iter_dispatch() {
         # already used in the predicate-evaluation blob), the rc the
         # dispatch returned, and the status string.
         _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+
+        # CQ-3 / ADR-013 (#863): blocking member enforcement. If the member
+        # is in the ADR-013 blocking table and returned non-zero, halt the
+        # cycle immediately (rc=8) so the pipeline can emit status=failed.
+        if [[ $rc -ne 0 ]] && _cycle_member_is_blocking "$s"; then
+            _cycle_emit "cycle.member.blocking_failure" \
+                "iter=$iter" "stage=$s" "rc=$rc"
+            _CYCLE_LAST_TERMINATED_REASON="blocking_member_failure"
+            _CYCLE_LAST_VERDICTS_BLOB="$blob"
+            _CYCLE_LAST_FAILURE_COUNT="$fail"
+            [[ $_had_e -eq 1 ]] && set -e
+            return 8
+        fi
 
         # ─── ADR-029 G2: repeated-timeout fast abandon (#810) ────────────
         # When a member returns verdict=error AND reason ∈ {router_timeout,
@@ -1370,6 +1398,7 @@ _cycle_handle_terminal_rc() {
         5)   reason="blocked" ;;
         6)   reason="cycle_abort" ;;
         7)   reason="blocked_on_scope" ;;
+        8)   reason="blocking_member_failure" ;;
         130) reason="aborted" ;;
         *)   reason="error" ;;
     esac
@@ -1499,6 +1528,12 @@ cycle_orchestrator_run() {
         _cycle_iter_dispatch "$iter" "$state_file"
         local _iter_rc=$?
         [[ $_ORCH_HAD_E -eq 1 ]] && set -e
+        # CQ-3 / ADR-013 (#863): blocking member failure — propagate rc=8 outward
+        # immediately so runner.sh can emit pipeline.end status=failed.
+        if [[ $_iter_rc -eq 8 ]]; then
+            _cycle_clear_traps
+            { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 8; }
+        fi
         # ADR-025 (Wave 15-B #684): rc=130 from the per-iter dispatch is the
         # abort signal — surface it distinctly from the generic error path
         # (rc=4 / config_invalid) so the runner can map it to

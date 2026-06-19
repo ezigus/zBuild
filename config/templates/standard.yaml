@@ -288,6 +288,7 @@ acceptance-gate:
 # legacy-citation: pipeline-intelligence.sh:2042-2195
 cq-preflight:
   gate: auto
+  blocking: true
   roles: [cq_preflight]
   io:
     destinations: [file, stdout]
@@ -302,6 +303,7 @@ cq-preflight:
 # legacy-citation: pipeline-intelligence.sh:429-508
 cq-audit-plan:
   gate: auto
+  blocking: true
   roles: [cq_audit_plan]
   io:
     destinations: [file, stdout]
@@ -316,6 +318,7 @@ cq-audit-plan:
 # legacy-citation: pipeline-intelligence.sh:2236-2900
 cq-cycle:
   gate: auto
+  blocking: true
   roles: [cq_cycle]
   io:
     destinations: [file, stdout]
