@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-06-05T12:07:31Z_
+_Last updated: 2026-06-19T18:40:18Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -97,3 +97,7 @@ _Last updated: 2026-06-05T12:07:31Z_
 | #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
 | #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-05 |
 | #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
+| #955 | [#38] [C] wire validate_json into get_state_field — JSON corruption recovery on every state read | 2026-06-19 |
+| #910 | [843-C] build charter: satisfy acceptance tests without weakening them (closes #866) | 2026-06-19 |
+| #907 | [843-B] design emits the acceptance block + writes failing acceptance tests (closes #865) | 2026-06-19 |
+| #904 | docs(adr): ADR-031 acceptance block mandatory once design emits it (#865) | 2026-06-19 |
