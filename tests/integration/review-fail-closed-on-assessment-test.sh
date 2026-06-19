@@ -95,7 +95,11 @@ if [[ -f "$REVIEW_OUT" ]]; then
     assert_eq "C2: assessment=pass keeps LLM approve" "approve" "$verdict"
 fi
 
-# ─── Case 3: assessment.verdict=inconclusive → coerced to request_changes ────
+# ─── Case 3: assessment.verdict=inconclusive + test-results=pass → approve stands
+# [SPEC-2] ADR-019 §7 amendment: inconclusive means the LLM could not judge
+# convergence semantics, not that tests failed. With a definitive pass in
+# test-results.json, _review_derive_test_status returns "passed" and approve
+# is preserved. (Change-behavior SPEC — pre-fix baseline returns request_changes.)
 : > "$ZBUILD_EVENTS_JSONL"
 ART_DIR="$TEST_TEMP_DIR/c3-art"; mkdir -p "$ART_DIR"
 SCOPE="$TEST_TEMP_DIR/c3-scope.md"; printf '+ .\n' > "$SCOPE"
@@ -110,7 +114,28 @@ _review_run_inner "$SCOPE" "$PLAN" "$DIFF" "$TEST" "$REVIEW_OUT" "$ART_DIR" >/de
 set -e
 if [[ -f "$REVIEW_OUT" ]]; then
     verdict="$(jq -r '.verdict' "$REVIEW_OUT" 2>/dev/null)"
-    assert_eq "C3: assessment=inconclusive → coerced to request_changes" "request_changes" "$verdict"
+    assert_eq "[SPEC-2] C3: assessment=inconclusive + test-results=pass → approve stands" "approve" "$verdict"
+fi
+
+# ─── Case 4: assessment.verdict=inconclusive + test-results=fail → still coerced
+# [SPEC-3] Fail-closed preservation: inconclusive + fail in test-results.json must
+# still coerce approve → request_changes. The fallback only saves approve when the
+# structural evidence is positive (test-results=pass).
+: > "$ZBUILD_EVENTS_JSONL"
+ART_DIR="$TEST_TEMP_DIR/c4-art"; mkdir -p "$ART_DIR"
+SCOPE="$TEST_TEMP_DIR/c4-scope.md"; printf '+ .\n' > "$SCOPE"
+PLAN="$ART_DIR/plan.json";   printf '{"steps":[]}' > "$PLAN"
+DIFF="$ART_DIR/diff.patch";  printf 'no diff\n'    > "$DIFF"
+TEST="$ART_DIR/test-results.json";    printf '{"verdict":"fail"}' > "$TEST"
+ASSESS="$ART_DIR/test-assessment.json"; printf '{"verdict":"inconclusive"}' > "$ASSESS"
+REVIEW_OUT="$ART_DIR/review.json"
+
+set +e
+_review_run_inner "$SCOPE" "$PLAN" "$DIFF" "$TEST" "$REVIEW_OUT" "$ART_DIR" >/dev/null 2>&1
+set -e
+if [[ -f "$REVIEW_OUT" ]]; then
+    verdict="$(jq -r '.verdict' "$REVIEW_OUT" 2>/dev/null)"
+    assert_eq "[SPEC-3] C4: assessment=inconclusive + test-results=fail → still coerced to request_changes" "request_changes" "$verdict"
 fi
 
 print_test_results

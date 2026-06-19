@@ -60,10 +60,29 @@ dir="$(mk_case t3 '{"verdict":"error"}' '{"verdict":"pass"}')"
 out="$(_review_derive_test_status "$dir/test-results.json")"
 assert_eq "T3: assessment error → 'failed'" "failed" "$out"
 
-# ─── Test 4: assessment.verdict=inconclusive → "unknown" ─────────────────────
+# ─── Test 4: assessment.verdict=inconclusive + test-results=pass → "passed" ───
+# [SPEC-2] ADR-019 §7 amendment: inconclusive means the LLM could not judge
+# convergence semantics, not that tests failed. Fall through to test-results.json;
+# a definitive pass there means approve stands. (Change-behavior SPEC — this
+# assertion returns "unknown" on the pre-fix baseline, "passed" after the fix.)
 dir="$(mk_case t4 '{"verdict":"inconclusive"}' '{"verdict":"pass"}')"
 out="$(_review_derive_test_status "$dir/test-results.json")"
-assert_eq "T4: assessment inconclusive → 'unknown'" "unknown" "$out"
+assert_eq "[SPEC-2] T4: assessment inconclusive + test-results=pass → 'passed'" "passed" "$out"
+
+# ─── Test 4b: assessment.verdict=inconclusive + test-results=fail → "failed" ──
+# [SPEC-3] Fail-closed preservation: inconclusive + definitive fail in
+# test-results.json must still return "failed" (not unknown). The fallback only
+# saves approve when structural evidence is positive.
+dir="$(mk_case t4b '{"verdict":"inconclusive"}' '{"verdict":"fail"}')"
+out="$(_review_derive_test_status "$dir/test-results.json")"
+assert_eq "[SPEC-3] T4b: assessment inconclusive + test-results=fail → 'failed'" "failed" "$out"
+
+# ─── Test 4c: assessment.verdict=inconclusive + no test-results → "unknown" ───
+# [SPEC-3] Fail-closed: no test-results.json means we cannot verify pass.
+# Must still return unknown so the ADR-019 §485 coerce gate fires.
+dir="$(mk_case t4c '{"verdict":"inconclusive"}' '')"
+out="$(_review_derive_test_status "$dir/test-results.json")"
+assert_eq "[SPEC-3] T4c: assessment inconclusive + no test-results → 'unknown'" "unknown" "$out"
 
 # ─── Test 5: assessment absent + test=pass → "passed" (fallback) ─────────────
 dir="$(mk_case t5 '' '{"verdict":"pass"}')"

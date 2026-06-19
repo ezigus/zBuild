@@ -270,6 +270,38 @@ else
     assert_fail "T13 no test_assessment.downgrade event on converge" "downgrade emitted ($_dg_before -> $_dg_after)"
 fi
 
+# ─── Test 13a: empty_diff + LLM agrees=false + green suite → CONVERGES ──────────
+# [SPEC-1] Regression for issue #954/#38 iter-2 inner-full-suite-gate plateau:
+# build_verdict=empty_diff, test_verdict=pass, test_failed=0, worktree=clean, but
+# the LLM returns agrees_with_build_complete=false (it cannot interpret empty_diff
+# as "build completed"). The stage MUST converge (verdict=pass), NOT downgrade to
+# inconclusive. Objective evidence is conclusive; LLM opinion must not veto it
+# for empty_diff. (Change-behavior SPEC — pre-fix baseline returns inconclusive.)
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR13A'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":406,"failed":0,"test_output":"total: 406/406 passed","diff_applied":true,"test_cmd":"npm test"}
+TR13A
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS13A'
+{"schema_version":1,"verdict":"empty_diff","iterations":1,"terminated_reason":"done_sentinel"}
+BS13A
+# LLM returns agrees_with_build_complete=false — the exact bug scenario.
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"all green","diagnosis":"","required_changes":[],"agrees_with_build_complete":false,"branch_numstat":"unknown","failure_summary_md":"All good.","iter":1}'
+_dg_before13a="$(grep -c 'test_assessment.downgrade' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"; _dg_before13a="${_dg_before13a:-0}"
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-1] T13a empty_diff+llm-disagrees+green returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "[SPEC-1] T13a empty_diff + agrees=false + green → pass (not inconclusive)" "pass" "$v"
+_dg_after13a="$(grep -c 'test_assessment.downgrade' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"; _dg_after13a="${_dg_after13a:-0}"
+if [[ "$_dg_after13a" -eq "$_dg_before13a" ]]; then
+    assert_pass "[SPEC-1] T13a no test_assessment.downgrade event when empty_diff converges"
+else
+    assert_fail "[SPEC-1] T13a no test_assessment.downgrade event" "downgrade emitted ($_dg_before13a -> $_dg_after13a)"
+fi
+
 # ─── Test 14: empty_diff + DIRTY worktree → inconclusive (not durable) ────────
 # #895 durability guard: an empty_diff build that left an uncommitted worktree
 # is suspect (build claimed no changes yet files are on disk). Must NOT converge
