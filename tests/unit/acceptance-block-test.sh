@@ -172,9 +172,9 @@ acceptance_spec_is_guard "$tc6_file" "SPEC-1"; tc6_guard_rc=$?
 acceptance_spec_is_guard "$tc6_file" "SPEC-2"; tc6_change_rc=$?
 acceptance_spec_is_guard "$tc6_file" "SPEC-99"; tc6_miss_rc=$?
 set -e
-assert_eq "[SPEC-1] TC-6: [guard] SPEC recognized as guard (rc=0)" "0" "$tc6_guard_rc"
-assert_eq "[SPEC-1] TC-6: [change] SPEC not recognized as guard (rc=1)" "1" "$tc6_change_rc"
-assert_eq "[SPEC-1] TC-6: missing SPEC not recognized as guard (rc=1)" "1" "$tc6_miss_rc"
+assert_eq "TC-6: [guard] SPEC recognized as guard (rc=0)" "0" "$tc6_guard_rc"
+assert_eq "TC-6: [change] SPEC not recognized as guard (rc=1)" "1" "$tc6_change_rc"
+assert_eq "TC-6: missing SPEC not recognized as guard (rc=1)" "1" "$tc6_miss_rc"
 
 # ── TC-7: acceptance_list_spec_ids returns bare ids from classified lines ─────
 tc7_file="$WORK_DIR/tc7_design.md"
@@ -191,10 +191,10 @@ EOF
 set +e
 tc7_out="$(acceptance_list_spec_ids "$tc7_file")"; tc7_rc=$?
 set -e
-assert_eq "[SPEC-2] TC-7: acceptance_list_spec_ids returns 0 with classified ids" "0" "$tc7_rc"
-assert_eq "[SPEC-2] TC-7: first id is bare SPEC-1" "1" "$(echo "$tc7_out" | grep -c '^SPEC-1$')"
-assert_eq "[SPEC-2] TC-7: second id is bare SPEC-2" "1" "$(echo "$tc7_out" | grep -c '^SPEC-2$')"
-assert_eq "[SPEC-2] TC-7: third id is bare SPEC-3" "1" "$(echo "$tc7_out" | grep -c '^SPEC-3$')"
+assert_eq "TC-7: acceptance_list_spec_ids returns 0 with classified ids" "0" "$tc7_rc"
+assert_eq "TC-7: first id is bare SPEC-1" "1" "$(echo "$tc7_out" | grep -c '^SPEC-1$')"
+assert_eq "TC-7: second id is bare SPEC-2" "1" "$(echo "$tc7_out" | grep -c '^SPEC-2$')"
+assert_eq "TC-7: third id is bare SPEC-3" "1" "$(echo "$tc7_out" | grep -c '^SPEC-3$')"
 
 cleanup_test_env
 print_test_results

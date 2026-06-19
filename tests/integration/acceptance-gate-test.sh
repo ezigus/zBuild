@@ -137,8 +137,8 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO6"; set -e
-assert_eq "[SPEC-6] S6: guard SPEC with tautological test → rc=0" "0" "$RC"
-assert_eq "[SPEC-6] S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S6: guard SPEC with tautological test → rc=0" "0" "$RC"
+assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── S7: change SPEC with tautological test still caught ───────────────────────
 # A [change]-classified SPEC with a tautological test must still fail (negctl
@@ -154,8 +154,8 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO7"; set -e
-assert_eq "[SPEC-7] S7: [change] SPEC with tautological test → rc=1" "1" "$RC"
-assert_eq "[SPEC-7] S7: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S7: [change] SPEC with tautological test → rc=1" "1" "$RC"
+assert_eq "S7: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 
 cleanup_test_env
 print_test_results  # exits with $FAIL

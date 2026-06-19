@@ -141,9 +141,9 @@ EOF
 set +e
 OUT3="$(acceptance_negctl_check "$DM3" "$REPO3")"; RC3=$?
 set -e
-assert_eq "[SPEC-3] NC-F: guard SPEC → NEGCTL SKIP guard_spec" \
+assert_eq "NC-F: guard SPEC → NEGCTL SKIP guard_spec" \
     "NEGCTL SKIP guard_spec SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3")"
-assert_eq "[SPEC-3] NC-F: guard skip yields overall rc=0" "0" "$RC3"
+assert_eq "NC-F: guard skip yields overall rc=0" "0" "$RC3"
 
 cleanup_test_env
 print_test_results  # exits with $FAIL
