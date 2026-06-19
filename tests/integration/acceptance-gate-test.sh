@@ -123,5 +123,39 @@ set +e; _run_gate "$REPO5"; set -e
 assert_eq "S5: malformed block → rc=1 (fail closed, not skipped)" "1" "$RC"
 assert_eq "S5: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 
+# ── S6: guard SPEC with tautological test → verdict=pass (NEGCTL SKIP) ────────
+# A [guard]-classified SPEC with a test that always passes at baseline must
+# be accepted (negctl skips it) rather than rejected as tautological.
+REPO6="$(_build_repo gate-guard '#!/usr/bin/env bash
+# [SPEC-1] guard: invariant that must not regress
+exit 0')"
+cat > "$REPO6/design.md" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate "$REPO6"; set -e
+assert_eq "S6: guard SPEC with tautological test → rc=0" "0" "$RC"
+assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+
+# ── S7: change SPEC with tautological test still caught ───────────────────────
+# A [change]-classified SPEC with a tautological test must still fail (negctl
+# runs baseline check for change SPECs; guard-skip must not apply here).
+REPO7="$(_build_repo gate-change-taut '#!/usr/bin/env bash
+# [SPEC-1] change: always true
+exit 0')"
+cat > "$REPO7/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: new behavior introduced
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate "$REPO7"; set -e
+assert_eq "S7: [change] SPEC with tautological test → rc=1" "1" "$RC"
+assert_eq "S7: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

@@ -98,6 +98,11 @@ acceptance_negctl_check() {
     local spec_id rc=0
     while IFS= read -r spec_id; do
         [[ -z "$spec_id" ]] && continue
+        # Guard SPECs are invariants, not expected to fail at baseline; skip negctl.
+        if acceptance_spec_is_guard "$design_md" "$spec_id"; then
+            printf 'NEGCTL SKIP guard_spec %s\n' "$spec_id"
+            continue
+        fi
         local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0
         for tf in "${testfiles[@]:-}"; do
             [[ -z "$tf" ]] && continue

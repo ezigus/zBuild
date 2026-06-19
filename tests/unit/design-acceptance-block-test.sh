@@ -224,6 +224,45 @@ ab_rc=$?
 set -e
 assert_eq "T4: extract_acceptance_block returns 0 on well-formed design.md" "0" "$ab_rc"
 
+# ─── T6: acceptance_spec_is_guard works for [guard]-classified SPEC ──────────
+work_file_t6="$TEST_TEMP_DIR/tc6_design.md"
+_t6_bt='```'
+printf '# Design\n\n%sacceptance\nSPEC-1[guard]: invariant\nSPEC-2[change]: new behavior\nTESTFILES:\ntests/unit/foo-test.sh\ntests/integration/bar-test.sh\n%s\n' \
+    "$_t6_bt" "$_t6_bt" > "$work_file_t6"
+set +e
+acceptance_spec_is_guard "$work_file_t6" "SPEC-1"; t6_guard_rc=$?
+acceptance_spec_is_guard "$work_file_t6" "SPEC-2"; t6_change_rc=$?
+set -e
+assert_eq "T6: [guard] SPEC recognized (rc=0)" "0" "$t6_guard_rc"
+assert_eq "T6: [change] SPEC not a guard (rc=1)" "1" "$t6_change_rc"
+
+# ─── T7: acceptance_list_spec_ids returns bare ids from classified lines ──────
+work_file_t7="$TEST_TEMP_DIR/tc7_design.md"
+_t7_bt='```'
+printf '# Design\n\n%sacceptance\nSPEC-1[change]: first\nSPEC-2[guard]: second\nSPEC-3: unclassified\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
+    "$_t7_bt" "$_t7_bt" > "$work_file_t7"
+set +e
+t7_out="$(acceptance_list_spec_ids "$work_file_t7")"; t7_rc=$?
+set -e
+assert_eq "T7: acceptance_list_spec_ids returns 0" "0" "$t7_rc"
+assert_eq "T7: SPEC-1 listed (bare, no classifier)" "1" "$(echo "$t7_out" | grep -c '^SPEC-1$')"
+assert_eq "T7: SPEC-2 listed (bare, no classifier)" "1" "$(echo "$t7_out" | grep -c '^SPEC-2$')"
+assert_eq "T7: SPEC-3 listed (bare, unclassified)" "1" "$(echo "$t7_out" | grep -c '^SPEC-3$')"
+
+# ─── T8: acceptance_spec_is_guard returns correct values for each type ────────
+work_file_t8="$TEST_TEMP_DIR/tc8_design.md"
+_t8_bt='```'
+printf '# Design\n\n%sacceptance\nSPEC-1[guard]: g\nSPEC-2[change]: c\nSPEC-3: u\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
+    "$_t8_bt" "$_t8_bt" > "$work_file_t8"
+set +e
+acceptance_spec_is_guard "$work_file_t8" "SPEC-1"; t8_g=$?
+acceptance_spec_is_guard "$work_file_t8" "SPEC-2"; t8_c=$?
+acceptance_spec_is_guard "$work_file_t8" "SPEC-3"; t8_u=$?
+set -e
+assert_eq "T8: [guard] is guard (rc=0)" "0" "$t8_g"
+assert_eq "T8: [change] is not guard (rc=1)" "1" "$t8_c"
+assert_eq "T8: unclassified is not guard (rc=1)" "1" "$t8_u"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
