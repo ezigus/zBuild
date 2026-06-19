@@ -159,6 +159,7 @@ Still add golden-file diffing as a new capability (confirmed zero golden tests i
 | "Memory recall (3-tier)" | Side service with two-backend split: native TF-IDF (`legacy/scripts/sw-memory.sh`) + ruflo HNSW (`legacy/scripts/lib/ruflo-adapter.sh:2376-2440`). |
 | "UCB1 + SPRT model router" | UCB1 + Thompson router (SPRT does not exist; see Section L wishlist). |
 | "Scope manifest as fenced markdown in design.md" (`legacy/scripts/lib/pipeline-stages.sh:42`) | `plugins/agent/design/` — design stage produces design.md with ```scope block; build stage reads it as authoritative scope source (plan.json fallback). Migrated in issue #754. |
+| "JSON corruption recovery (`legacy/scripts/lib/helpers.sh:179`, `validate_json`)" | `core/state/atomic.sh` (`read_state`, `_zbuild_lsu_validate_and_copy`) + `scripts/lib/helpers.sh` (`validate_json` primitive); wired into every state read as of issue #38. |
 | "Scope redaction" | Single chokepoint helper (`_apply_scope_redaction`) replacing 9 direct call sites; core engine I/O wrapper. |
 | "Multi-tier locking" | Core engine for in-process / per-host; cross-machine claim mechanism is a decision point (Section M). |
 | "Resume contract" | Explicit two-tier: persisted (stage status, SELF_HEAL_COUNT, scope manifest, cost ledger, CURRENT_ITERATION) vs reconstructed (runtime caches, loop-state.md). |

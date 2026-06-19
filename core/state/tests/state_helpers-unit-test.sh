@@ -129,6 +129,40 @@ assert_contains "scope-override.md contains run_id" \
 
 unset ZBUILD_SCOPE_PATHS
 
+# ─── Section 8: get_state_field corruption recovery ──────────────────────────
+print_test_section "Section 8: get_state_field corruption recovery [SPEC-1..3]"
+
+CORRUPT_DIR="$TEST_TEMP_DIR/state-corrupt"
+mkdir -p "$CORRUPT_DIR"
+CORRUPT_STATE="$CORRUPT_DIR/pipeline-state.json"
+
+# Seed a valid state so we have a known field value to recover.
+init_state "$CORRUPT_STATE" "run-corrupt-test" 99 >/dev/null
+
+# Stash a valid .bak copy, then corrupt the main file.
+cp "$CORRUPT_STATE" "${CORRUPT_STATE}.bak"
+echo "NOT_JSON{{{" > "$CORRUPT_STATE"
+
+# [SPEC-1] Corrupt main + valid .bak → recover and return correct field.
+val="$(get_state_field "$CORRUPT_STATE" '.issue' '0')"
+assert_eq "[SPEC-1] get_state_field recovers from .bak when main is corrupt" "99" "$val"
+
+# Corrupt both files (main was already restored by the previous call; corrupt again).
+echo "NOT_JSON{{{" > "$CORRUPT_STATE"
+echo "ALSO_BAD" > "${CORRUPT_STATE}.bak"
+
+# [SPEC-2] Both corrupt → return default, exit 0 (no crash).
+val="$(get_state_field "$CORRUPT_STATE" '.issue' 'fallback99')"
+assert_eq "[SPEC-2] get_state_field returns default when both main and .bak are corrupt" "fallback99" "$val"
+
+# [SPEC-3] Valid file (no corruption) still returns correct field after wiring.
+CLEAN_DIR="$TEST_TEMP_DIR/state-clean"
+mkdir -p "$CLEAN_DIR"
+CLEAN_STATE="$CLEAN_DIR/pipeline-state.json"
+init_state "$CLEAN_STATE" "run-clean-test" 77 >/dev/null
+val="$(get_state_field "$CLEAN_STATE" '.issue' '0')"
+assert_eq "[SPEC-3] get_state_field returns correct field for valid state file" "77" "$val"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
