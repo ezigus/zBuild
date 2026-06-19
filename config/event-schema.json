@@ -78,7 +78,6 @@
     "design.stray.recovered",
     "design.stray.conflict",
     "design.acceptance_tests.written",
-    "design.missing_live_flow_spec",
     "review.test_status.missing",
     "review.jq.parse_error",
     "test_assessment.missing_input",
