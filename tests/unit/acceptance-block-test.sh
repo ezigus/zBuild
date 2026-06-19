@@ -196,6 +196,144 @@ assert_eq "TC-7: first id is bare SPEC-1" "1" "$(echo "$tc7_out" | grep -c '^SPE
 assert_eq "TC-7: second id is bare SPEC-2" "1" "$(echo "$tc7_out" | grep -c '^SPEC-2$')"
 assert_eq "TC-7: third id is bare SPEC-3" "1" "$(echo "$tc7_out" | grep -c '^SPEC-3$')"
 
+# ── TC-8: acceptance_list_wiring — WIRING: none returns "none" token ──────────
+# [SPEC-1] acceptance_list_wiring prints "none" and returns 0 for WIRING: none
+tc8_file="$WORK_DIR/tc8_design.md"
+cat > "$tc8_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+WIRING: none
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+
+set +e
+tc8_out="$(acceptance_list_wiring "$tc8_file")"
+tc8_rc=$?
+set -e
+assert_eq "[SPEC-1] TC-8: WIRING: none returns 0" "0" "$tc8_rc"
+assert_eq "[SPEC-1] TC-8: WIRING: none prints 'none' token" "none" "$tc8_out"
+
+# ── TC-9: acceptance_list_wiring — single path target ────────────────────────
+# [SPEC-2] acceptance_list_wiring prints the declared single wiring path
+tc9_file="$WORK_DIR/tc9_design.md"
+cat > "$tc9_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+WIRING:
+plugins/agent/acceptance-gate/plugin.sh
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+
+set +e
+tc9_out="$(acceptance_list_wiring "$tc9_file")"
+tc9_rc=$?
+set -e
+assert_eq "[SPEC-2] TC-9: single WIRING path returns 0" "0" "$tc9_rc"
+assert_eq "[SPEC-2] TC-9: single path printed" "plugins/agent/acceptance-gate/plugin.sh" "$tc9_out"
+
+# ── TC-10: acceptance_list_wiring — multi-path WIRING section ────────────────
+# [SPEC-3] acceptance_list_wiring prints all declared wiring paths
+tc10_file="$WORK_DIR/tc10_design.md"
+cat > "$tc10_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+WIRING:
+plugins/agent/acceptance-gate/plugin.sh
+config/event-schema.json
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+
+set +e
+tc10_out="$(acceptance_list_wiring "$tc10_file")"
+tc10_rc=$?
+set -e
+assert_eq "[SPEC-3] TC-10: multi-path WIRING returns 0" "0" "$tc10_rc"
+assert_eq "[SPEC-3] TC-10: first wiring path present" "1" "$(echo "$tc10_out" | grep -c 'plugins/agent/acceptance-gate/plugin.sh')"
+assert_eq "[SPEC-3] TC-10: second wiring path present" "1" "$(echo "$tc10_out" | grep -c 'config/event-schema.json')"
+
+# ── TC-11: acceptance_list_wiring — absent WIRING section returns non-zero ───
+# [SPEC-4] acceptance_list_wiring returns 1 when no WIRING: section declared
+tc11_file="$WORK_DIR/tc11_design.md"
+cat > "$tc11_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+
+set +e
+tc11_out="$(acceptance_list_wiring "$tc11_file")"
+tc11_rc=$?
+set -e
+assert_eq "[SPEC-4] TC-11: absent WIRING section returns non-zero" "1" "$tc11_rc"
+assert_eq "[SPEC-4] TC-11: absent WIRING produces empty output" "" "$tc11_out"
+
+# ── TC-12: WIRING: after TESTFILES: is not collected as a testfile ────────────
+# Defensive: design.md may have TESTFILES: before WIRING: — parser must not
+# include WIRING: or wiring paths in the testfile list.
+tc12_file="$WORK_DIR/tc12_design.md"
+cat > "$tc12_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+TESTFILES:
+tests/unit/foo-test.sh
+tests/integration/bar-test.sh
+WIRING:
+plugins/agent/acceptance-gate/plugin.sh
+```
+EOF
+
+set +e
+tc12_tf="$(acceptance_list_testfiles "$tc12_file")"
+tc12_wiring="$(acceptance_list_wiring "$tc12_file")"; tc12_wiring_rc=$?
+set -e
+assert_eq "TC-12: TESTFILES list excludes WIRING: sentinel" "0" \
+    "$(echo "$tc12_tf" | grep -c '^WIRING:$' || true)"
+assert_eq "TC-12: TESTFILES list excludes wiring path" "0" \
+    "$(echo "$tc12_tf" | grep -c 'acceptance-gate/plugin.sh' || true)"
+assert_eq "TC-12: TESTFILES list contains first testfile" "1" \
+    "$(echo "$tc12_tf" | grep -c 'foo-test.sh')"
+assert_eq "TC-12: TESTFILES list contains second testfile" "1" \
+    "$(echo "$tc12_tf" | grep -c 'bar-test.sh')"
+assert_eq "[SPEC-2] TC-12: acceptance_list_wiring still parses WIRING after TESTFILES" "0" \
+    "$tc12_wiring_rc"
+assert_eq "[SPEC-2] TC-12: wiring path returned when WIRING after TESTFILES" \
+    "plugins/agent/acceptance-gate/plugin.sh" "$tc12_wiring"
+
+# ── TC-13: acceptance_list_wiring — path-traversal guard drops unsafe targets ─
+# A WIRING path that is absolute or contains '..' must never be surfaced as a
+# revert target (it could ablate a file outside the repo tree). Mixed with a
+# safe path, only the safe one is returned.
+tc13_file="$WORK_DIR/tc13_design.md"
+cat > "$tc13_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+TESTFILES:
+tests/unit/foo-test.sh
+WIRING:
+../../etc/passwd
+/etc/hosts
+config/templates/standard.yaml
+EOF
+printf '%s\n' '```' >> "$tc13_file"
+
+set +e
+tc13_out="$(acceptance_list_wiring "$tc13_file")"
+set -e
+assert_eq "TC-13: traversal '..' path dropped" "0" \
+    "$(printf '%s\n' "$tc13_out" | grep -c 'passwd' || true)"
+assert_eq "TC-13: absolute path dropped" "0" \
+    "$(printf '%s\n' "$tc13_out" | grep -c '/etc/hosts' || true)"
+assert_eq "TC-13: safe wiring path retained" "1" \
+    "$(printf '%s\n' "$tc13_out" | grep -c '^config/templates/standard.yaml$' || true)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

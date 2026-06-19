@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# plugins/agent/acceptance-gate — mechanical acceptance-contract gate (ADR-036, #922)
+# plugins/agent/acceptance-gate — mechanical acceptance-contract gate (ADR-036, #922/#956)
 #
 # Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
 #          [SPEC-n]-tagged assertion across the declared TESTFILES.
 # Level 2: each SPEC-n's tagged test must fail at the merge-base baseline and
 #          pass at HEAD (negative control — rejects tautological "green but
 #          inert" tests, the #844 defect class).
+# Level 3: if the design declares a WIRING: section, revert each declared file
+#          to merge-base (keeping all other changes at HEAD) and require ≥1
+#          TESTFILE to flip pass→fail — proving the wiring is load-bearing.
+#          WIRING: none exempts the check. (ADR-036 Level-3, #956)
 # No-op pass when the acceptance block is absent (composability). No model call.
 
 [[ -n "${_ZBUILD_ACCEPTANCE_GATE_LOADED:-}" ]] && return 0
@@ -23,6 +27,8 @@ source "$_AG_ROOT/scripts/lib/acceptance-block.sh"
 source "$_AG_ROOT/scripts/lib/acceptance-coverage.sh"
 # shellcheck source=../../../scripts/lib/acceptance-negctl.sh
 source "$_AG_ROOT/scripts/lib/acceptance-negctl.sh"
+# shellcheck source=../../../scripts/lib/acceptance-reachability.sh
+source "$_AG_ROOT/scripts/lib/acceptance-reachability.sh"
 
 acceptance_gate_run() {
     # shellcheck disable=SC2034  # hook-signature positional; unused here
@@ -104,6 +110,36 @@ acceptance_gate_run() {
                     ;;
             esac
         done < <(acceptance_negctl_check "$design_md" "$repo_root" || true)
+    fi
+
+    # ── Level 3: reachability (only if Level 1 and Level 2 clean) ────────────
+    if [[ "$verdict" == "pass" ]]; then
+        # Only run Level-3 when a WIRING: section is present.
+        local wiring_present=0
+        acceptance_list_wiring "$design_md" >/dev/null 2>&1 && wiring_present=1
+        if [[ "$wiring_present" -eq 1 ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                case "$line" in
+                    "REACHABILITY PASS "*) : ;;  # wiring is load-bearing
+                    "REACHABILITY EXEMPT none")
+                        eb_emit_event "acceptance.gate.wiring_exempt" "stage=acceptance-gate" ;;
+                    "REACHABILITY SKIP "*)   : ;;  # no_impl_delta
+                    "REACHABILITY FAIL inert_wiring "*)
+                        local target="${line#REACHABILITY FAIL inert_wiring }"
+                        failures+=("inert_wiring:$target")
+                        verdict="fail"
+                        eb_emit_event "acceptance.gate.inert_wiring" "stage=acceptance-gate" \
+                            "target=$target"
+                        ;;
+                    "REACHABILITY ERROR "*)
+                        local detail="${line#REACHABILITY ERROR }"
+                        failures+=("reachability_error:$detail")
+                        verdict="fail"
+                        ;;
+                esac
+            done < <(acceptance_reachability_check "$design_md" "$repo_root" || true)
+        fi
     fi
 
     # ── Write result artifact ────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 id: acceptance-gate
 name: Acceptance Contract Gate
 kind: agent
-version: 0.1.0
+version: 0.2.0
 description: |
   Mechanical (non-LLM) acceptance-contract gate (ADR-036, issue #922).
   Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
