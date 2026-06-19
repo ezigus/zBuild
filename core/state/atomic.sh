@@ -113,12 +113,14 @@ read_state() {
     # ${state_file}.bak right now, so the restore must be atomic (#946). A failed
     # restore must not report success on a still-corrupt file.
     if [[ -f "${state_file}.bak" ]] && validate_json "${state_file}.bak" >/dev/null 2>&1; then
-        warn "read_state: recovered $state_file from .bak"
         if atomic_replace "${state_file}.bak" "$state_file"; then
+            warn "read_state: recovered $state_file from .bak"  # log only on actual success
             cat "$state_file"
             return 0
         fi
-        warn "read_state: atomic_replace failed restoring $state_file from .bak"
+        # .bak is valid but the restore failed — fail closed with the accurate cause.
+        error "read_state: ${state_file}.bak is valid but restore failed (atomic_replace); failing closed"
+        return 2
     fi
     error "read_state: $state_file and .bak both corrupt"
     return 2

@@ -115,6 +115,7 @@ TORN="$TEST_TEMP_DIR/torn-f"; DONE="$TEST_TEMP_DIR/done-f"; rm -f "$TORN" "$DONE
             # a size strictly between the marker and the full file is a partial copy
             [[ "$b" -gt "$CORRUPT_LEN" && "$b" -lt "$EXP_BYTES" ]] && { touch "$TORN"; break; }
         fi
+        sleep 0.001   # avoid a busy-wait pinning a core on CI (Case E does the same)
     done
 ) &
 reader=$!

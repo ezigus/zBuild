@@ -114,7 +114,10 @@ validate_json() {
             success "validate_json: recovered $path from .bak"
             return 0
         fi
-        warn "validate_json: atomic_replace failed restoring $path from .bak"
+        # .bak is valid but the restore itself failed (disk full, permissions) —
+        # fail closed with the accurate cause, not the misleading "both corrupt".
+        error "validate_json: ${path}.bak is valid but restore failed (atomic_replace); $path left unrecovered"
+        return 2
     fi
     error "validate_json: both $path and ${path}.bak are corrupt"
     return 2
