@@ -108,9 +108,15 @@ _review_derive_test_status() {
                     ;;
             esac
             case "$_av" in
-                pass)         printf 'passed\n';  return 0 ;;
-                fail|error)   printf 'failed\n';  return 0 ;;
-                inconclusive) printf 'unknown\n'; return 0 ;;
+                pass)       printf 'passed\n';  return 0 ;;
+                fail|error) printf 'failed\n';  return 0 ;;
+                inconclusive)
+                    # ADR-019 §7 amendment: inconclusive means the LLM could not
+                    # judge convergence semantics, not that tests failed. Fall
+                    # through to test-results.json; only a pass there lets approve
+                    # stand. Fail-closed is preserved: fail/error → "failed" and
+                    # missing/malformed → "unknown", both of which still coerce.
+                    ;;
                 *) ;;  # fall through to test-results.json
             esac
         fi

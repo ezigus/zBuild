@@ -491,7 +491,13 @@ $_ta_instructions"
         # (a) test_verdict from test-results.json must be pass — catches
         # zero-count but non-zero exit scenarios (e.g. verdict=fail, failed=0).
         [[ "$test_verdict" != "pass" ]] && ok=0
-        [[ "$llm_agrees" != "true" ]] && ok=0
+        # When build_verdict=empty_diff, the LLM may return agrees_with_build_complete=false
+        # because it cannot interpret "empty_diff" as a successful build completion.
+        # Objective evidence (test_verdict=pass, test_failed=0, clean worktree) is
+        # conclusive; the LLM's subjective agreement must not veto it for empty_diff.
+        if [[ "$build_verdict" != "empty_diff" ]]; then
+            [[ "$llm_agrees" != "true" ]] && ok=0
+        fi
         # #895: accept the convergence-eligible build-verdict allowlist
         # (pass | empty_diff), not pass-only. empty_diff = build found the work
         # already done; a green suite on it is real convergence, not a livelock.
