@@ -125,7 +125,7 @@ design:
 # runs, this time with the prior review.review_md piped to build's
 # prior_review_feedback input via the feedback edge below (consumed by
 # plugins/agent/build whose manifest declares the matching source:
-# cycle_feedback input — Wave 18-B). max_iterations: 2 caps worst-case
+# cycle_feedback input — Wave 18-B). max_iterations: 3 (#951) caps worst-case
 # remediation spend; on_max: continue matches ADR-019's fall-through to
 # operator (the unconverged verdict still records, the pipeline ends with
 # _RUNNER_CYCLE_UNCONVERGED set per ADR-021 v2 #527/#528). Plan is NOT
@@ -160,7 +160,10 @@ build_review_cycle:
     field: verdict
     op: eq
     value: block
-  max_iterations: 2
+  # #951 Layer 3: bumped 2→3 to match design_impact_cycle/build_test_cycle. The
+  # acceptance-coverage remediation lane (Layer 2 feedback below) needs one more
+  # iter of headroom; on_max=continue bounds worst-case spend regardless.
+  max_iterations: 3
   on_max: continue
   feedback:
     - from:
@@ -169,6 +172,19 @@ build_review_cycle:
       to:
         stage: build
         input: prior_review_feedback
+        required: false
+    # #951 Layer 2: feed the acceptance-gate's coverage finding (untagged SPEC
+    # ids) back to build directly + structured, so build adds missing [SPEC-n]
+    # tags inside the cycle instead of discovering it late via review's coerced
+    # verdict. from.output MUST be the manifest output id `gate_result` (NOT a
+    # filename) — _cycle_resolve_from_path looks it up in acceptance-gate's
+    # outputs[]. required:false so iter-1 (no gate result yet) does not abort.
+    - from:
+        stage: acceptance-gate
+        output: gate_result
+      to:
+        stage: build
+        input: prior_acceptance_feedback
         required: false
 
 # ─── build_test_cycle (cycle stage with mini-flow) ──────────────────────

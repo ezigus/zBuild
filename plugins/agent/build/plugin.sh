@@ -130,6 +130,14 @@ _build_stage_run_inner() {
     if [[ -f "$_design_md_path" ]]; then
         _acceptance_testfiles="$(_build_read_acceptance_testfiles "$_design_md_path" 2>/dev/null || true)"
     fi
+    # #951 Layer 1: enumerate the design's stable SPEC ids so the build can be
+    # mandated to tag every one + self-verify. acceptance_list_spec_ids returns
+    # empty when the acceptance block is absent or has only legacy bare SPEC:
+    # lines → the enumeration block self-omits (never an empty "tag SPEC-" mandate).
+    local _acceptance_spec_ids=""
+    if [[ -f "$_design_md_path" ]]; then
+        _acceptance_spec_ids="$(acceptance_list_spec_ids "$_design_md_path" 2>/dev/null || true)"
+    fi
     # #916 (ADR-020): the design.md DECISION PROSE, so build honors design's
     # narrative directives ("build must do X") — not only its scope/acceptance.
     local _design_decisions=""
@@ -215,6 +223,11 @@ _build_stage_run_inner() {
     # test_assessment feedback drove the inner iter).
     local _review_feedback_body
     _review_feedback_body="$(_build_read_prior_review 2>/dev/null || true)"
+    # #951 Layer 2: structured acceptance-coverage gaps (untagged SPEC ids) from
+    # the prior outer iter's acceptance-gate. Advisory + re-verify against the
+    # current tree; authoritative over review prose on acceptance matters.
+    local _acceptance_gap_ids
+    _acceptance_gap_ids="$(_build_read_prior_acceptance 2>/dev/null || true)"
 
     {
         printf '%s\n' "$_task_header"
@@ -234,10 +247,32 @@ _build_stage_run_inner() {
                 [[ -n "$_at_tf" ]] && printf -- '- %s\n' "$_at_tf"
             done <<< "$_acceptance_testfiles"
         fi
+        # #951 Layer 1: enumerate the exact SPEC ids the design declared + a
+        # tag-all/self-verify mandate. Guarded on a non-empty id list (no empty
+        # mandate). HEDGE: only CHANGE-behavior SPECs must fail at the baseline;
+        # a GUARD/invariant SPEC is tagged but NOT contorted to fail (the gate's
+        # guard exemption is #913). This makes the gate a backstop, not the
+        # first signal the build sees.
+        if [[ -n "$_acceptance_spec_ids" ]]; then
+            printf '\n### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)\n'
+            printf 'Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.\n'
+            local _sid
+            while IFS= read -r _sid; do
+                [[ -n "$_sid" ]] && printf -- '- [%s] needs a `[%s]`-tagged assertion (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid" "$_sid"
+            done <<< "$_acceptance_spec_ids"
+        fi
         if [[ -n "$_review_feedback_body" ]]; then
             printf '\n## PRIOR REVIEW FEEDBACK (from a prior review iteration)\n'
             printf '%s\n' "$_review_feedback_body"
             printf 'Address the reviewer findings above before emitting LOOP_COMPLETE.\n'
+        fi
+        if [[ -n "$_acceptance_gap_ids" ]]; then
+            printf '\n## ACCEPTANCE COVERAGE GAPS (add [SPEC-n] tags for these)\n'
+            printf 'The acceptance gate (ADR-036) found these SPEC ids have NO [SPEC-n]-tagged assertion in the diff. This is AUTHORITATIVE over any review prose on acceptance coverage. Adding a missing [SPEC-n] label to an existing acceptance assertion is REQUIRED and is NOT "weakening" — only changing the asserted values is forbidden:\n'
+            local _gap
+            while IFS= read -r _gap; do
+                [[ -n "$_gap" ]] && printf -- '- [%s] add a `[%s]`-tagged assertion (re-verify it still reflects the real behavior)\n' "$_gap" "$_gap"
+            done <<< "$_acceptance_gap_ids"
         fi
         if [[ -n "$_feedback_body" ]]; then
             local _prev_iter=$(( _iter_n - 1 ))
@@ -976,6 +1011,33 @@ _build_read_prior_review() {
     body="$(cat "$f" 2>/dev/null)" || return 0
     [[ -z "$body" ]] && return 0
     printf '%s' "$body"
+}
+
+# ─── _build_read_prior_acceptance (#951 Layer 2 / ADR-036) ────────────────────
+# Read the prior outer-cycle iter's acceptance-gate-result.json wired by
+# _cycle_apply_feedback as $ZBUILD_CYCLE_FEEDBACK_DIR/prior_acceptance_feedback.txt
+# (sourced from acceptance-gate's gate_result output). Prints ONLY the SPEC ids
+# with an `untagged_spec:<id>` failure — one per line — so build can add the
+# missing [SPEC-n] tags. DELIBERATELY excludes other failure classes
+# (tautology:<id> is a design/guard issue for #913; negctl_error/worktree_failed/
+# baseline_resolve_failed are infra, not build's fault) — never surface those as
+# actionable. Empty stdout when not in a cycle, dir unset, file missing/empty,
+# verdict=pass, or no untagged_spec failures → caller omits the section.
+#
+# NB (#919 convergence): this is the inline artifact-injection reader; #919's
+# shared extractor should subsume _build_read_prior_acceptance/_review/_assessment.
+_build_read_prior_acceptance() {
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
+    local f="$fb_dir/prior_acceptance_feedback.txt"
+    [[ ! -s "$f" ]] && return 0
+    jq -r '
+        if (.verdict? // "pass") == "pass" then empty
+        else (.failures // [])[]
+             | select(type == "string" and startswith("untagged_spec:"))
+             | sub("^untagged_spec:"; "")
+        end' "$f" 2>/dev/null || return 0
 }
 
 # #792: detect when test_assessment's failure_summary_md names file paths

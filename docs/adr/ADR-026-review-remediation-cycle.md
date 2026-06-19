@@ -359,3 +359,14 @@ the outer cycle's lifecycle identically to the inner cycle's.
   impl; flips ADR-026 to Accepted.
 - Issue #708 (Wave 18-C) — contract lint enforcing ADR-027 invariants
   including the new `build_review_cycle` section shape.
+
+## Amendment (#951, 2026-06-18) — second feedback edge + budget 2→3
+
+`build_review_cycle` now carries TWO feedback edges (mirroring `design_impact_cycle`'s
+two-edge precedent): `review.review_md → build.prior_review_feedback` (Wave 18-B) AND
+`acceptance-gate.gate_result → build.prior_acceptance_feedback` (#951 — the ADR-036
+coverage-gap loop). `max_iterations` is raised 2→3 to align with
+`design_impact_cycle`/`build_test_cycle` and give the acceptance-coverage remediation
+lane one more iteration of headroom; `on_max: continue` bounds worst-case spend
+regardless. The #863 dogfood (run 20260618181546-49266) exhausted the old 2-iter
+budget on a coverage gap the build could now fix in-cycle.

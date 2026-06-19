@@ -105,11 +105,11 @@ assert_eq "T1: _CYCLE_LAST_TERMINATED_REASON=max_iterations" \
 assert_eq "T1: _CYCLE_ON_MAX=continue preserved on outer cycle" \
     "continue" "${_CYCLE_ON_MAX:-}"
 
-# ─── T2: exactly 2 outer iters (= max_iterations cap) ────────────────────────
-# Review dispatches uniquely identify outer iters. max_iterations: 2.
+# ─── T2: exactly 3 outer iters (= max_iterations cap) ────────────────────────
+# Review dispatches uniquely identify outer iters. max_iterations: 3 (#951).
 review_dispatch_n="$(grep -c 'stage=review' "$_DISPATCH_LOG" || true)"
-assert_eq "T2: exactly 2 review dispatches (= max_iterations: 2)" \
-    "2" "$review_dispatch_n"
+assert_eq "T2: exactly 3 review dispatches (= max_iterations: 3)" \
+    "3" "$review_dispatch_n"
 
 # ─── T3: cycle.complete with reason=max_iterations ───────────────────────────
 if grep '"type":"cycle.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
