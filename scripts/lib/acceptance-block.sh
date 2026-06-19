@@ -49,7 +49,12 @@ extract_acceptance_block() {
                 continue
             fi
             if [[ $in_testfiles -eq 1 ]]; then
-                [[ -n "$line" ]] && testfiles+=("$line")
+                # Stop testfile collection at WIRING: sentinel (may appear after TESTFILES:)
+                if [[ "$line" == 'WIRING:'* ]]; then
+                    in_testfiles=0
+                elif [[ -n "$line" ]]; then
+                    testfiles+=("$line")
+                fi
             elif [[ "$line" == SPEC:* || "$line" =~ ^SPEC-[0-9]+(\[[a-z]+\])?: ]]; then
                 specs+=("$line")
             fi
@@ -179,6 +184,8 @@ acceptance_list_testfiles() {
         if [[ $in_testfiles -eq 1 && -n "$line" ]]; then
             line="${line%$'\r'}"
             [[ -z "$line" ]] && continue
+            # Stop at WIRING: sentinel (defensive: may appear after TESTFILES: in output)
+            [[ "$line" == 'WIRING:'* ]] && break
             [[ "$line" == /* || "/$line/" == *"/../"* ]] && continue
             printf '%s\n' "$line"
         fi

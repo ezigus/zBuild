@@ -275,6 +275,38 @@ set -e
 assert_eq "[SPEC-4] TC-11: absent WIRING section returns non-zero" "1" "$tc11_rc"
 assert_eq "[SPEC-4] TC-11: absent WIRING produces empty output" "" "$tc11_out"
 
+# ── TC-12: WIRING: after TESTFILES: is not collected as a testfile ────────────
+# Defensive: design.md may have TESTFILES: before WIRING: — parser must not
+# include WIRING: or wiring paths in the testfile list.
+tc12_file="$WORK_DIR/tc12_design.md"
+cat > "$tc12_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+TESTFILES:
+tests/unit/foo-test.sh
+tests/integration/bar-test.sh
+WIRING:
+plugins/agent/acceptance-gate/plugin.sh
+```
+EOF
+
+set +e
+tc12_tf="$(acceptance_list_testfiles "$tc12_file")"
+tc12_wiring="$(acceptance_list_wiring "$tc12_file")"; tc12_wiring_rc=$?
+set -e
+assert_eq "TC-12: TESTFILES list excludes WIRING: sentinel" "0" \
+    "$(echo "$tc12_tf" | grep -c '^WIRING:$' || true)"
+assert_eq "TC-12: TESTFILES list excludes wiring path" "0" \
+    "$(echo "$tc12_tf" | grep -c 'acceptance-gate/plugin.sh' || true)"
+assert_eq "TC-12: TESTFILES list contains first testfile" "1" \
+    "$(echo "$tc12_tf" | grep -c 'foo-test.sh')"
+assert_eq "TC-12: TESTFILES list contains second testfile" "1" \
+    "$(echo "$tc12_tf" | grep -c 'bar-test.sh')"
+assert_eq "[SPEC-2] TC-12: acceptance_list_wiring still parses WIRING after TESTFILES" "0" \
+    "$tc12_wiring_rc"
+assert_eq "[SPEC-2] TC-12: wiring path returned when WIRING after TESTFILES" \
+    "plugins/agent/acceptance-gate/plugin.sh" "$tc12_wiring"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
