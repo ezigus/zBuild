@@ -168,8 +168,10 @@ assert_eq "[SPEC-3] get_state_field returns correct field for valid state file" 
 resume_sh_path="$REPO_ROOT/core/state/resume.sh"
 assert_file_exists "[SPEC-4] core/state/resume.sh exists at canonical location" \
     "$resume_sh_path"
-spec4_hit="$(grep -c 'validate_json' "$resume_sh_path" 2>/dev/null || echo 0)"
-assert_eq "[SPEC-4] validate_json is wired into core/state/resume.sh (mapping-table landing)" "1" "$spec4_hit"
+# Presence check (not an exact count) so the assertion is robust to additional
+# validate_json call sites being added to resume.sh later. rc=0 → present.
+spec4_rc=0; grep -q 'validate_json' "$resume_sh_path" 2>/dev/null || spec4_rc=$?
+assert_eq "[SPEC-4] validate_json is wired into core/state/resume.sh (mapping-table landing)" "0" "$spec4_rc"
 
 # [SPEC-5] Baseline symptom: raw jq on a corrupt file returns the default (no
 # recovery without validate_json). This proves that SPEC-1 recovery is solely

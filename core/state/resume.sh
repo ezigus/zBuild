@@ -108,7 +108,8 @@ get_state_field() {
         echo "$default"
         return 0
     fi
-    # Validate and attempt .bak recovery before reading. rc=2 means both corrupt.
+    # Validate and attempt .bak recovery before reading. rc=2 is unrecoverable
+    # (main and .bak both corrupt, or the .bak restore itself failed) → default.
     # Suppress stderr — callers are read-only and must not be flooded by warnings.
     local _gsf_rc=0
     validate_json "$state_file" >/dev/null 2>&1 || _gsf_rc=$?
