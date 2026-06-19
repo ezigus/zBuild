@@ -122,6 +122,7 @@ acceptance_list_wiring() {
     local in_block=0 in_wiring=0 found_wiring=0
 
     while IFS= read -r line; do
+        line="${line%$'\r'}"  # tolerate CRLF on ALL lines (sentinels + paths)
         if [[ "$line" == '```acceptance' ]]; then
             in_block=1
             continue
@@ -136,7 +137,6 @@ acceptance_list_wiring() {
                     TESTFILES:|SPEC:*|SPEC-[0-9]*) in_wiring=0 ;;
                     '') continue ;;
                     *)
-                        line="${line%$'\r'}"
                         [[ -z "$line" ]] && continue
                         [[ "$line" == /* || "/$line/" == *"/../"* ]] && continue
                         printf '%s\n' "$line"

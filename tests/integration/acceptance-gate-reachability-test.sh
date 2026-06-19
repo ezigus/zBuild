@@ -166,5 +166,47 @@ assert_eq "R3: WIRING: none → gate rc=0" "0" "$RC"
 assert_eq "R3: WIRING: none → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 assert_event_emitted "R3: wiring_exempt event emitted" "$EVENTS" "acceptance.gate.wiring_exempt"
 
+# ── R4: WIRING block with ONLY unsafe (traversal/absolute) paths → FAIL CLOSED ─
+# A declared WIRING section whose every target is rejected by the path-traversal
+# guard must NOT silently skip Level-3 (that would let an author bypass the gate).
+# Load-bearing setup (L1/L2 pass) so the run reaches Level-3.
+REPO_R4="$(setup_git_temp_repo "reach-r4")"
+(
+    cd "$REPO_R4"
+    "$GIT" checkout -q -b feature
+    printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > wiring.sh
+    chmod +x wiring.sh
+    mkdir -p tests
+    cat > tests/feature-test.sh <<'TESTEOF'
+#!/usr/bin/env bash
+# [SPEC-1] my_feature is provided by wiring.sh
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+[[ -f "$repo_root/wiring.sh" ]] || exit 1
+# shellcheck disable=SC1090
+source "$repo_root/wiring.sh"
+my_feature
+TESTEOF
+    chmod +x tests/feature-test.sh
+    "$GIT" add -A
+    "$GIT" commit -q -m "feat: wiring + tests"
+) >/dev/null 2>&1
+
+cat > "$REPO_R4/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: my_feature is provided by wiring.sh
+WIRING:
+../../etc/passwd
+/etc/hosts
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+
+set +e; _run_gate "$REPO_R4"; set -e
+assert_eq "[SPEC-6] R4: only-unsafe WIRING → gate fails closed (rc=1)" "1" "$RC"
+assert_eq "[SPEC-6] R4: only-unsafe WIRING → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+r4_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
+assert_contains "[SPEC-6] R4: failures records empty_wiring_targets" "$r4_failures" "reachability_error:empty_wiring_targets"
+
 cleanup_test_env
 print_test_results

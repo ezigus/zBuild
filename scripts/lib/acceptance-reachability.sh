@@ -64,16 +64,24 @@ acceptance_reachability_check() {
         return 0
     fi
 
-    # Collect WIRING targets.
+    # Was a WIRING section declared at all? (rc=0 even if every path is filtered)
+    local wiring_declared=1
+    acceptance_list_wiring "$design_md" >/dev/null 2>&1 || wiring_declared=0
+
+    # Collect WIRING targets (path-traversal-unsafe paths are filtered out upstream).
     local -a wiring_targets=()
     local wt
     while IFS= read -r wt; do
         [[ -n "$wt" ]] && wiring_targets+=("$wt")
     done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)
 
-    # No WIRING section → no-op (caller should not call us in this case, but safe).
     if [[ ${#wiring_targets[@]} -eq 0 ]]; then
-        return 0
+        # No WIRING section → genuine no-op (caller normally guards on this too).
+        [[ "$wiring_declared" -eq 0 ]] && return 0
+        # WIRING declared but every target was rejected (unsafe/empty) → FAIL CLOSED.
+        # A gate must never silently skip because the author gave only bad paths.
+        printf 'REACHABILITY ERROR empty_wiring_targets\n'
+        return 1
     fi
 
     # WIRING: none → exempt.
@@ -106,6 +114,7 @@ acceptance_reachability_check() {
         if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
             printf 'REACHABILITY ERROR worktree_failed %s\n' "$target"
             rc=1
+            rm -rf "$wt_dir" 2>/dev/null || true  # don't leak the mktemp dir (trap is per-return)
             continue
         fi
 
@@ -114,8 +123,15 @@ acceptance_reachability_check() {
             [[ -z "$cf" ]] && continue
             [[ "$cf" == "$target" ]] && continue  # leave WIRING file at merge-base
             mkdir -p "$wt_dir/$(dirname "$cf")"
-            git -C "$repo_root" show "HEAD:$cf" > "$wt_dir/$cf" 2>/dev/null || true
-            chmod +x "$wt_dir/$cf" 2>/dev/null || true
+            # Overlay HEAD version; if the file was DELETED at HEAD, git show fails —
+            # remove it from the baseline overlay rather than leaving a truncated empty
+            # file (which would corrupt the flip detection).
+            if git -C "$repo_root" show "HEAD:$cf" > "$wt_dir/$cf.zbtmp" 2>/dev/null; then
+                mv "$wt_dir/$cf.zbtmp" "$wt_dir/$cf"
+                chmod +x "$wt_dir/$cf" 2>/dev/null || true
+            else
+                rm -f "$wt_dir/$cf.zbtmp" "$wt_dir/$cf" 2>/dev/null || true
+            fi
         done
 
         # Ensure testfiles are overlaid from HEAD (may not be in changed_files if unchanged).
