@@ -106,10 +106,15 @@ validate_json() {
         return 0
     fi
     warn "validate_json: $path is corrupt; attempting .bak recovery"
+    # Restore atomically (#946): a concurrent reader of $path must never observe a
+    # torn intermediate during recovery. A failed restore must NOT report success —
+    # fall through to the fail-closed error (the bare `cp` here used to swallow it).
     if [[ -f "${path}.bak" ]] && jq empty "${path}.bak" >/dev/null 2>&1; then
-        cp "${path}.bak" "$path"
-        success "validate_json: recovered $path from .bak"
-        return 0
+        if atomic_replace "${path}.bak" "$path"; then
+            success "validate_json: recovered $path from .bak"
+            return 0
+        fi
+        warn "validate_json: atomic_replace failed restoring $path from .bak"
     fi
     error "validate_json: both $path and ${path}.bak are corrupt"
     return 2
