@@ -344,6 +344,16 @@ load_template() {
                 # shellcheck disable=SC2163
                 export "${var?}"
                 ;;
+            BL)
+                # ADR-013 blocking attribute (CQ-3 / issue #863).
+                # Format: <stage_id>|true
+                local bl_id bl_val
+                IFS='|' read -r bl_id bl_val <<< "$payload"
+                [[ "$bl_val" == "true" ]] || continue
+                local bl_safe="${bl_id//-/_}"
+                printf -v "_TPL_STAGE_BLOCKING_${bl_safe}" '%s' "true"
+                export "_TPL_STAGE_BLOCKING_${bl_safe}"
+                ;;
         esac
     done <<< "$stage_rows"
 
@@ -1140,7 +1150,7 @@ _tpl_translate_new_shape() {
         # per-section accumulators
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_blocking = ""
         # cycle accumulators
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
@@ -1157,7 +1167,7 @@ _tpl_translate_new_shape() {
     function reset_section() {
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_blocking = ""
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
@@ -1199,6 +1209,8 @@ _tpl_translate_new_shape() {
         sec_kind[cur_key] = sec_type
         sec_payload[cur_key] = sec_roles "|" sec_strategy "|" sec_io_dests "|" \
                                sec_io_tail "|" sec_io_redact "|" sec_rt "|" sec_rmt "|" sec_rmi
+        # ADR-013 (CQ-3 / issue #863): stash blocking attribute for BL| row emission.
+        sec_blocking_val[cur_key] = sec_blocking
         if (sec_type == "cycle") {
             cyc_data[cur_key] = cyc_flow "|" cyc_max "|" cyc_on_max "|" \
                                 cyc_us "|" cyc_uf "|" cyc_uo "|" cyc_uv "|" \
@@ -1311,6 +1323,10 @@ _tpl_translate_new_shape() {
                 v = $0; sub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); sec_rmi = trim(v)
             }
             next
+        }
+        # blocking: (ADR-013 / CQ-3 #863) — leaf stage attribute; ignored for cycles.
+        if ($0 ~ /^[[:space:]]+blocking:/) {
+            v = $0; sub(/^[[:space:]]+blocking:[[:space:]]*/, "", v); sec_blocking = trim(v); next
         }
 
         # ── cycle-only ─────────────────────────────────────────────────────────
@@ -1485,6 +1501,10 @@ _tpl_translate_new_shape() {
                 print "S|" k "|" p
             }
         }
+        # ADR-013 (CQ-3 / issue #863): BL| rows for blocking leaf stages.
+        for (k in sec_blocking_val) {
+            if (sec_blocking_val[k] == "true") print "BL|" k "|true"
+        }
         # Now defs stream (separator US, second half)
         printf "%s", US
         for (k in sec_payload) {
@@ -1647,5 +1667,14 @@ template_stage_router_max_iterations() {
     local stage_id="$1"
     local safe_id="${stage_id//-/_}"
     local var="_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
+    echo "${!var:-}"
+}
+
+# ADR-013 (CQ-3 / issue #863): per-stage blocking attribute (true/empty).
+# Returns "true" when stage is a blocking cycle member; empty otherwise.
+template_stage_blocking() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_BLOCKING_${safe_id}"
     echo "${!var:-}"
 }

@@ -28,9 +28,9 @@ source "$REPO_ROOT/core/pipeline/runner.sh"
 # ─── T1: outer cycle (no ZBUILD_SEQ_PREFIX) → cycle_id present, no chip ──
 OUT1="$TEST_TEMP_DIR/outer.stderr"
 unset ZBUILD_SEQ_PREFIX
-_render_cycle_iter_divider build_review_cycle 1 2 2> "$OUT1"
-if grep -q 'build_review_cycle iter 1/2' "$OUT1"; then
-    assert_pass "T1: outer divider contains 'build_review_cycle iter 1/2'"
+_render_cycle_iter_divider build_review_cycle 1 3 2> "$OUT1"
+if grep -q 'build_review_cycle iter 1/3' "$OUT1"; then
+    assert_pass "T1: outer divider contains 'build_review_cycle iter 1/3'"
 else
     assert_fail "T1: outer divider missing cycle_id+iter" "got: $(cat "$OUT1")"
 fi

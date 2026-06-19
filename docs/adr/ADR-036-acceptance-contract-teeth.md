@@ -119,3 +119,28 @@ changes (#867).
   is judged load-bearing. The prompt mandates one SPEC per assertion to mitigate.
 - The review-side coverage complement (downgrade `approve` when a SPEC's test is
   untouched in the diff) is tracked separately (843-H / #923).
+
+## Amendment (#951, 2026-06-18) — closing the coverage-gap loop to build
+
+The gate runs as a `build_review_cycle` member after `build_test_cycle` and before
+`review`, writing `acceptance-gate-result.json` (`failures[]`) and coercing review's
+verdict on a coverage gap. But that finding reached build only one outer iteration
+late, as prose in `review_md` — so a correct, review-approved build could exhaust
+the cycle budget on a missing `[SPEC-n]` tag (#863 dogfood run 20260618181546-49266).
+#951 closes the loop:
+
+- The gate's `failures[]` — the `untagged_spec:<id>` entries ONLY — is fed back to
+  build as a structured `prior_acceptance_feedback` input via a SECOND
+  `build_review_cycle` feedback edge (`acceptance-gate.gate_result →
+  build.prior_acceptance_feedback`). Build injects an `## ACCEPTANCE COVERAGE GAPS`
+  block enumerating the exact untagged ids, authoritative over review prose; adding a
+  missing `[SPEC-n]` label is explicitly permitted (NOT "weakening").
+- Build's prompt ALSO proactively enumerates every design SPEC id
+  (`acceptance_list_spec_ids`) with a tag-all/self-verify mandate (only CHANGE SPECs
+  must fail at baseline; GUARD SPECs are tagged but not contorted), so the gate is a
+  backstop, not the first signal.
+- Only `untagged_spec` failures are surfaced to build. A `tautology:<id>` failure (a
+  no-change GUARD SPEC the negative control rejects) is NOT actionable by build — the
+  change-vs-guard classification that exempts guards from the negative control is
+  design-side (folded into #913). `negctl_error`/`worktree_failed` (infra) are never
+  surfaced as build-actionable.

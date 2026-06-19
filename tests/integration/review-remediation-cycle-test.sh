@@ -55,8 +55,8 @@ assert_eq "T1: abort_when.stage=review" \
     "review" "${_TPL_CYCLE_ABORT_WHEN_STAGE_build_review_cycle:-}"
 assert_eq "T1: abort_when.value=block" \
     "block" "${_TPL_CYCLE_ABORT_WHEN_VALUE_build_review_cycle:-}"
-assert_eq "T1: max_iterations=2" \
-    "2" "${_TPL_CYCLE_MAX_build_review_cycle:-}"
+assert_eq "T1: max_iterations=3" \
+    "3" "${_TPL_CYCLE_MAX_build_review_cycle:-}"
 assert_eq "T1: on_max=continue" \
     "continue" "${_TPL_CYCLE_ON_MAX_build_review_cycle:-}"
 
@@ -65,6 +65,11 @@ assert_contains "T1: feedback from review:review_md" \
     "$fb" "review:review_md"
 assert_contains "T1: feedback to build:prior_review_feedback" \
     "$fb" "build:prior_review_feedback"
+# #951 Layer 2: second feedback edge acceptance-gate.gate_result → build.
+assert_contains "T1: feedback from acceptance-gate:gate_result (#951)" \
+    "$fb" "acceptance-gate:gate_result"
+assert_contains "T1: feedback to build:prior_acceptance_feedback (#951)" \
+    "$fb" "build:prior_acceptance_feedback"
 
 # Dispatch: build_review_cycle is the OUTERMOST cycle and absorbs both
 # build_test_cycle and review under one dispatch unit.
