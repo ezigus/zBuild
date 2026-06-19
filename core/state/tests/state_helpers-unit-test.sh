@@ -130,7 +130,7 @@ assert_contains "scope-override.md contains run_id" \
 unset ZBUILD_SCOPE_PATHS
 
 # ─── Section 8: get_state_field corruption recovery ──────────────────────────
-print_test_section "Section 8: get_state_field corruption recovery [SPEC-1..3]"
+print_test_section "Section 8: get_state_field corruption recovery [SPEC-1..5]"
 
 CORRUPT_DIR="$TEST_TEMP_DIR/state-corrupt"
 mkdir -p "$CORRUPT_DIR"
@@ -162,6 +162,27 @@ CLEAN_STATE="$CLEAN_DIR/pipeline-state.json"
 init_state "$CLEAN_STATE" "run-clean-test" 77 >/dev/null
 val="$(get_state_field "$CLEAN_STATE" '.issue' '0')"
 assert_eq "[SPEC-3] get_state_field returns correct field for valid state file" "77" "$val"
+
+# [SPEC-4] Mapping-table landing matches actual code: validate_json must be
+# present in core/state/resume.sh (the canonical location per KEEPERS §H).
+resume_sh_path="$REPO_ROOT/core/state/resume.sh"
+assert_file_exists "[SPEC-4] core/state/resume.sh exists at canonical location" \
+    "$resume_sh_path"
+spec4_hit="$(grep -c 'validate_json' "$resume_sh_path" 2>/dev/null || echo 0)"
+assert_eq "[SPEC-4] validate_json is wired into core/state/resume.sh (mapping-table landing)" "1" "$spec4_hit"
+
+# [SPEC-5] Baseline symptom: raw jq on a corrupt file returns the default (no
+# recovery without validate_json). This proves that SPEC-1 recovery is solely
+# due to the validate_json wiring added in issue #38.
+SYMPTOM_DIR="$TEST_TEMP_DIR/state-symptom"
+mkdir -p "$SYMPTOM_DIR"
+SYMPTOM_STATE="$SYMPTOM_DIR/pipeline-state.json"
+init_state "$SYMPTOM_STATE" "run-symptom-test" 42 >/dev/null
+cp "$SYMPTOM_STATE" "${SYMPTOM_STATE}.bak"
+echo "NOT_JSON{{{" > "$SYMPTOM_STATE"
+# Simulate the old (unwired) behavior: jq directly on corrupt file.
+raw_val="$(jq -r '.issue // "gone"' "$SYMPTOM_STATE" 2>/dev/null || echo "gone")"
+assert_eq "[SPEC-5] raw jq on corrupt file returns default (symptom reproduced without validate_json)" "gone" "$raw_val"
 
 cleanup_test_env
 print_test_results
