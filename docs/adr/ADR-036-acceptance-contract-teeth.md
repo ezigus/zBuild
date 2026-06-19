@@ -144,3 +144,38 @@ the cycle budget on a missing `[SPEC-n]` tag (#863 dogfood run 20260618181546-49
   change-vs-guard classification that exempts guards from the negative control is
   design-side (folded into #913). `negctl_error`/`worktree_failed` (infra) are never
   surfaced as build-actionable.
+
+## Amendment (#956, 2026-06-19) — Level 3: reachability (the wiring negative control)
+
+Level 2 reverts the *implementation* and requires a SPEC test to fail — proving the
+code does real work. It cannot prove the code is *reached by the production path*: a
+new library implemented but never wired into the live dispatch still passes, because
+the SPEC test exercises it directly. This is the "green but inert" class (#845 plateau
+detector never wired into `standard.yaml`; #913 live-flow post-condition gated on a
+token authors never emitted).
+
+Level 3 is the **dual of the Level-2 negative control** — an integration-level ablation
+that reverts the *wiring* instead of the implementation:
+
+- **`WIRING:` declaration** in the ```acceptance block names the separable file(s) that
+  activate the behavior in the live path (a `config/templates/*.yaml` flow entry, a
+  dispatch/registration file), one repo-relative path per line. `WIRING: none` is an
+  explicit pure-utility exemption (recorded via `acceptance.gate.wiring_exempt`, never a
+  silent skip). Parsed by `acceptance_list_wiring` (`scripts/lib/acceptance-block.sh`);
+  absolute / `..` paths are rejected by the path-traversal guard.
+- **`acceptance-reachability.sh`** creates a detached worktree at the merge-base, overlays
+  every changed file from HEAD EXCEPT the WIRING target (leaving the wiring at baseline),
+  re-runs the declared TESTFILES, and requires ≥1 to flip pass→fail. No flip →
+  `REACHABILITY FAIL inert_wiring <target>`.
+- The gate runs Level 3 only after Levels 1+2 pass (composability); a `WIRING`-less block
+  is a no-op. An `inert_wiring:<target>` failure is a **hard** gate failure (verdict=fail,
+  `acceptance.gate.inert_wiring` emitted), coercing review like every other gate failure.
+  Granularity is per-file; an in-file default must be extracted to a separable WIRING
+  target (region-level `path:anchor` revert is deferred).
+
+**Self-hosting note:** because Level 3 (and the `WIRING:` grammar) extends what the gate
+reads from `design.md`, a dogfood that *uses* the new grammar cannot be validated by the
+*installed* (pre-`WIRING`) engine in the same run — the contract reader is pinned to the
+install (ADR-023) while the test runner uses the working tree. Such grammar-extending
+changes are hand-landed, then installed; thereafter grammar-dependent features dogfood
+normally. Build-side consumption of `inert_wiring` (so build self-corrects) is #957.

@@ -307,6 +307,33 @@ assert_eq "[SPEC-2] TC-12: acceptance_list_wiring still parses WIRING after TEST
 assert_eq "[SPEC-2] TC-12: wiring path returned when WIRING after TESTFILES" \
     "plugins/agent/acceptance-gate/plugin.sh" "$tc12_wiring"
 
+# ── TC-13: acceptance_list_wiring — path-traversal guard drops unsafe targets ─
+# A WIRING path that is absolute or contains '..' must never be surfaced as a
+# revert target (it could ablate a file outside the repo tree). Mixed with a
+# safe path, only the safe one is returned.
+tc13_file="$WORK_DIR/tc13_design.md"
+cat > "$tc13_file" <<'EOF'
+```acceptance
+SPEC-1[change]: something new
+TESTFILES:
+tests/unit/foo-test.sh
+WIRING:
+../../etc/passwd
+/etc/hosts
+config/templates/standard.yaml
+EOF
+printf '%s\n' '```' >> "$tc13_file"
+
+set +e
+tc13_out="$(acceptance_list_wiring "$tc13_file")"
+set -e
+assert_eq "TC-13: traversal '..' path dropped" "0" \
+    "$(printf '%s\n' "$tc13_out" | grep -c 'passwd' || true)"
+assert_eq "TC-13: absolute path dropped" "0" \
+    "$(printf '%s\n' "$tc13_out" | grep -c '/etc/hosts' || true)"
+assert_eq "TC-13: safe wiring path retained" "1" \
+    "$(printf '%s\n' "$tc13_out" | grep -c '^config/templates/standard.yaml$' || true)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
