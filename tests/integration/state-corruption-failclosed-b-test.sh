@@ -306,6 +306,42 @@ if [[ -f "$STATE_FILE" ]]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Scenario 11 (#946) — empty-primary recovery restores the COMPLETE .bak
+#              (atomic_replace, not a torn cp) into the working state
+# ─────────────────────────────────────────────────────────────────────────────
+# Targets the empty-file recovery branch in _zbuild_lsu_validate_and_copy
+# (core/state/atomic.sh) — now atomic_replace. A large .bak proves the restore
+# carries the whole file through to the update fn, not a truncated prefix.
+print_test_section "Scenario 11: empty-primary recovery restores complete large .bak (#946)"
+reset_scenario
+
+PAD="$(head -c 200000 /dev/zero | tr '\0' 'z')"   # 200KB padding field
+# Build the .bak with printf (a bash builtin → no ARG_MAX limit); passing a 200KB
+# value as a jq --arg overflows execve's argument list on Linux. The pad is plain
+# 'z' chars so it needs no JSON escaping.
+printf '{"schema_version":1,"current_stage":"plan","status":"completed","pad":"%s"}' "$PAD" > "${STATE_FILE}.bak"
+: > "$STATE_FILE"   # empty primary → triggers the :58 empty-recovery branch
+
+set +e
+locked_state_update "$STATE_FILE" append_tested_fn
+lsu_rc=$?
+set -e
+
+assert_eq "scenario 11: empty-primary recovery returns 0" "0" "$lsu_rc"
+if [[ -f "$STATE_FILE" ]]; then
+    set +e; jq empty "$STATE_FILE" >/dev/null 2>&1; jq_rc=$?; set -e
+    assert_eq "scenario 11: final state is valid JSON" "0" "$jq_rc"
+    if [[ $jq_rc -eq 0 ]]; then
+        assert_eq "scenario 11: complete pad recovered (no truncation through restore)" \
+            "${#PAD}" "$(jq -r '.pad | length' "$STATE_FILE")"
+        assert_eq "scenario 11: recovered field survives (stage=plan)" \
+            "plan" "$(jq -r '.current_stage // empty' "$STATE_FILE")"
+        assert_eq "scenario 11: update fn applied to recovered data (tested=true)" \
+            "true" "$(jq -r '.tested // empty' "$STATE_FILE")"
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 cleanup_test_env
 print_test_results

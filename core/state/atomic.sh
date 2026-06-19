@@ -55,7 +55,11 @@ locked_state_update() {
         if [[ ! -s "$sf" ]]; then
             warn "locked_state_update: $sf is empty; attempting .bak recovery"
             if [[ -f "${sf}.bak" ]] && jq empty "${sf}.bak" >/dev/null 2>&1; then
-                cp "${sf}.bak" "$sf"
+                # Atomic restore (#946) — a concurrent read_state must never see a
+                # torn $sf. A failed restore fails closed rather than silently
+                # passing an empty/torn file to the update function.
+                atomic_replace "${sf}.bak" "$sf" \
+                    || { error "locked_state_update: atomic_replace failed restoring $sf from .bak; failing closed"; return 2; }
             else
                 emit_event "state.corruption.unrecoverable" \
                     "state_file=$sf" "reason=empty_and_no_valid_bak" 2>/dev/null || true
@@ -105,11 +109,18 @@ read_state() {
         return 0
     fi
     # Corruption — try .bak
+    # read_state holds no flock — a concurrent atomic_write may be rotating
+    # ${state_file}.bak right now, so the restore must be atomic (#946). A failed
+    # restore must not report success on a still-corrupt file.
     if [[ -f "${state_file}.bak" ]] && validate_json "${state_file}.bak" >/dev/null 2>&1; then
-        warn "read_state: recovered $state_file from .bak"
-        cp "${state_file}.bak" "$state_file"
-        cat "$state_file"
-        return 0
+        if atomic_replace "${state_file}.bak" "$state_file"; then
+            warn "read_state: recovered $state_file from .bak"  # log only on actual success
+            cat "$state_file"
+            return 0
+        fi
+        # .bak is valid but the restore failed — fail closed with the accurate cause.
+        error "read_state: ${state_file}.bak is valid but restore failed (atomic_replace); failing closed"
+        return 2
     fi
     error "read_state: $state_file and .bak both corrupt"
     return 2

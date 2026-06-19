@@ -12,6 +12,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 # shellcheck source=../core/state/resume.sh
 source "$REPO_ROOT/core/state/resume.sh"
+# shellcheck source=../core/state/atomic.sh
+source "$REPO_ROOT/core/state/atomic.sh"  # read_state (idempotent via load sentinel)
 
 print_test_header "core/state — atomic + resume contract"
 
@@ -51,6 +53,17 @@ if validate_json "$STATE_FILE" >/dev/null 2>&1; then
 else
     assert_fail "validate_json should have recovered from .bak"
 fi
+
+# ─── read_state recovers from corrupt main via atomic restore (#946) ──────────
+# read_state holds no flock; its .bak→main restore must be atomic (atomic_replace),
+# return 0, emit the recovered content, and leave main as valid JSON. (.bak=3 here.)
+printf 'corrupt}}}' > "$STATE_FILE"   # invalid JSON; .bak remains valid (current_iteration=3)
+set +e; rs_out="$(read_state "$STATE_FILE" 2>/dev/null)"; rs_rc=$?; set -e
+assert_eq "read_state returns 0 recovering from .bak" "0" "$rs_rc"
+assert_eq "read_state output is the recovered .bak content" "3" \
+    "$(printf '%s' "$rs_out" | jq -r .current_iteration)"
+assert_eq "read_state rewrote main from .bak (valid JSON)" "3" \
+    "$(jq -r .current_iteration "$STATE_FILE")"
 
 cleanup_test_env
 print_test_results

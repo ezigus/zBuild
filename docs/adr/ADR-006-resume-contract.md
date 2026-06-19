@@ -207,12 +207,20 @@ source and the Resume sequence is unchanged — but the guarantee is now stronge
 concurrent writer leaves either the old `.bak` or a complete new one, never a partial one. The
 mirror-image recovery *restores* (`.bak`→target) are converted to the same primitive under #946.
 
+Issue #946 completes the pair: the three recovery restores — `validate_json` (`scripts/lib/helpers.sh`),
+`read_state` and `locked_state_update`'s empty-recovery branch (`core/state/atomic.sh`) — previously
+used a bare `cp "${x}.bak" "$x"`, so a reader holding no lock (notably `read_state`, called outside
+the flock) could observe a torn target *during recovery*. All three now restore via `atomic_replace`,
+and a failed restore **fails closed** (returns the corruption error) rather than reporting false
+success on a still-corrupt file — closing a latent silent-failure the bare `cp` masked.
+
 ## Implementation Notes (Phase 0.5 — issue #291)
 
 - **24h auto/manual resume boundary** is implemented at `core/state/resume.sh:178–199` (`age_seconds -lt 86400` → `auto_resume`, else `manual_resume_only`). Both BSD and GNU date parsing supported.
 - **`current_iteration` persistence** is wired through `init_state()` (resume.sh:63 sets 0) and surfaces in the resume event at resume.sh:96.
 - **Test coverage gaps tracked separately:** #299 (24h boundary not exercised), #300 (runner abort-trap state-write failure path not exercised by mutation A2).
-- **Atomic `.bak` rotation (issue #909):** `atomic_write` rotates `.bak` via `atomic_replace` (`scripts/lib/helpers.sh`, temp+rename). Regression-guarded by `tests/unit/scripts-lib-atomic-replace-test.sh` (incl. a concurrent-reader negative control) and the 50× stability loop in `tests/integration/concurrent-state-test.sh`. The `.bak`→target *restore* sites are converted under #946.
+- **Atomic `.bak` rotation (issue #909):** `atomic_write` rotates `.bak` via `atomic_replace` (`scripts/lib/helpers.sh`, temp+rename). Regression-guarded by `tests/unit/scripts-lib-atomic-replace-test.sh` (incl. a concurrent-reader negative control) and the 50× stability loop in `tests/integration/concurrent-state-test.sh`.
+- **Atomic recovery restore (issue #946):** the three `.bak`→target restores (`validate_json` in `scripts/lib/helpers.sh`; `read_state` and the empty-recovery branch of `locked_state_update` in `core/state/atomic.sh`) restore via `atomic_replace` and fail closed on restore failure. Guarded by Case F (`[SPEC-3]`, a 12-writer concurrent-restore negative control proven to tear under bare `cp`) in `tests/unit/scripts-lib-atomic-replace-test.sh`, a `read_state` recovery case in `tests/unit/core-state-test.sh`, and Scenario 11 (complete large-`.bak` recovery) in `tests/integration/state-corruption-failclosed-b-test.sh`.
 
 ## References
 

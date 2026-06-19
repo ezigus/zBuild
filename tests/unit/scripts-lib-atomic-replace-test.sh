@@ -86,6 +86,61 @@ set +e; jq empty "$DST" >/dev/null 2>&1; jr=$?; set -e
 assert_eq "E: final dst is valid JSON" "0" "$jr"
 assert_eq "[SPEC-2] no stray .tmp.* after concurrent replacements" "0" "$(_strays dst-e)"
 
+# ── F [SPEC-3] (#946): recovery RESTORE is atomic — reader never sees torn target
+# validate_json recovers a corrupt target from its .bak. With a bare `cp` restore
+# a concurrent reader observes the partial target mid-copy; atomic_replace
+# (temp+rename) flips it in a single rename. 12 concurrent workers each corrupt
+# the shared target then call validate_json — overlapping restores widen the torn
+# window (the gated single-restore window is too narrow to observe reliably).
+#
+# Torn-detection is by SIZE BAND, not jq validity: the test must distinguish the
+# restore's partial write from the small invalid marker it writes to TRIGGER
+# recovery. The marker is a few dozen bytes (one atomic write); a bare-cp partial
+# of the multi-MB .bak lands strictly between the marker size and EXP_BYTES; an
+# atomic rename only ever exposes the marker size or full EXP_BYTES, never the
+# band. 4MB so the partial-copy window is wide. Verified: bare cp trips $TORN
+# 3/3, atomic_replace 0/3 (negative control is load-bearing, not tautological).
+BLOB="$(head -c 4000000 /dev/zero | tr '\0' 'x')"
+TEMPL="$TEST_TEMP_DIR/templ-f"; printf '{"data":"%s"}' "$BLOB" > "$TEMPL"
+EXP_BYTES="$(wc -c < "$TEMPL" | tr -d ' ')"
+CORRUPT='not-valid-json-corrupt-marker'   # invalid JSON, single small write
+CORRUPT_LEN="${#CORRUPT}"
+TARGET="$TEST_TEMP_DIR/target-f"
+cp "$TEMPL" "${TARGET}.bak"           # valid large .bak (the recovery source)
+TORN="$TEST_TEMP_DIR/torn-f"; DONE="$TEST_TEMP_DIR/done-f"; rm -f "$TORN" "$DONE"
+(
+    while [[ ! -f "$DONE" ]]; do
+        if [[ -f "$TARGET" ]]; then
+            b="$(wc -c < "$TARGET" 2>/dev/null | tr -d ' ' || echo 0)"
+            # a size strictly between the marker and the full file is a partial copy
+            [[ "$b" -gt "$CORRUPT_LEN" && "$b" -lt "$EXP_BYTES" ]] && { touch "$TORN"; break; }
+        fi
+        sleep 0.001   # avoid a busy-wait pinning a core on CI (Case E does the same)
+    done
+) &
+reader=$!
+fpids=()
+for _w in $(seq 1 12); do
+    ( source "$REPO_ROOT/scripts/lib/helpers.sh"
+      for _ in $(seq 1 40); do
+          printf '%s' "$CORRUPT" > "$TARGET"   # invalid JSON → triggers .bak recovery (empty is "valid" to jq)
+          validate_json "$TARGET" >/dev/null 2>&1 || true
+      done ) &
+    fpids+=($!)
+done
+for p in "${fpids[@]}"; do wait "$p" 2>/dev/null || true; done
+touch "$DONE"; wait "$reader" 2>/dev/null || true
+if [[ -f "$TORN" ]]; then
+    assert_fail "[SPEC-3] recovery restore: reader never observed a torn target" "torn read detected during validate_json recovery"
+else
+    assert_pass "[SPEC-3] recovery restore: reader never observed a torn target"
+fi
+# Final restore yields the complete .bak content (valid + full byte-count).
+printf '%s' "$CORRUPT" > "$TARGET"; validate_json "$TARGET" >/dev/null 2>&1 || true
+set +e; jq empty "$TARGET" >/dev/null 2>&1; jr=$?; set -e
+assert_eq "F: target is valid JSON after recovery" "0" "$jr"
+assert_eq "F: target byte-count equals .bak (no truncation)" "$EXP_BYTES" "$(wc -c < "$TARGET" | tr -d ' ')"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
