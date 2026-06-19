@@ -168,6 +168,8 @@
     "acceptance.gate.tautology",
     "acceptance.gate.baseline_resolve_failed",
     "acceptance.gate.worktree_failed",
+    "acceptance.gate.inert_wiring",
+    "acceptance.gate.wiring_exempt",
     "backend.degraded",
     "backend.missing",
     "build.aborted",

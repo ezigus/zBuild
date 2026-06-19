@@ -105,6 +105,62 @@ acceptance_spec_is_guard() {
     grep -qF "${spec_id}[guard]:" <<< "$block_output"
 }
 
+# acceptance_list_wiring <design_md>  (ADR-036 Level-3 / #956)
+# Prints the WIRING targets declared in the ```acceptance block, one per line.
+# The special token "none" is printed as-is when WIRING: none is declared
+# (pure-utility exemption). Path-traversal guard applied (same as testfiles).
+# Returns 0 when a WIRING: section is present (even if "none"), 1 when absent.
+acceptance_list_wiring() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 1
+
+    local in_block=0 in_wiring=0 found_wiring=0
+
+    while IFS= read -r line; do
+        if [[ "$line" == '```acceptance' ]]; then
+            in_block=1
+            continue
+        fi
+        if [[ $in_block -eq 1 && "$line" == '```' ]]; then
+            break
+        fi
+        if [[ $in_block -eq 1 ]]; then
+            # Stop wiring collection when a new recognized sentinel is hit
+            if [[ $in_wiring -eq 1 ]]; then
+                case "$line" in
+                    TESTFILES:|SPEC:*|SPEC-[0-9]*) in_wiring=0 ;;
+                    '') continue ;;
+                    *)
+                        line="${line%$'\r'}"
+                        [[ -z "$line" ]] && continue
+                        [[ "$line" == /* || "/$line/" == *"/../"* ]] && continue
+                        printf '%s\n' "$line"
+                        continue
+                        ;;
+                esac
+            fi
+            if [[ "$line" == 'WIRING: none' ]]; then
+                printf 'none\n'
+                found_wiring=1
+                in_wiring=0
+            elif [[ "$line" == 'WIRING:' ]]; then
+                found_wiring=1
+                in_wiring=1
+            elif [[ "$line" == 'WIRING: '* ]]; then
+                # inline single path (not "none")
+                local wpath="${line#WIRING: }"
+                wpath="${wpath%$'\r'}"
+                [[ -z "$wpath" || "$wpath" == /* || "/$wpath/" == *"/../"* ]] || printf '%s\n' "$wpath"
+                found_wiring=1
+                in_wiring=0
+            fi
+        fi
+    done < "$design_md"
+
+    [[ $found_wiring -eq 1 ]] && return 0
+    return 1
+}
+
 # acceptance_list_testfiles <design_md>  (ADR-036 / #922)
 # Prints the repo-relative TESTFILES paths from the ```acceptance block, one
 # per line. Mirrors the path-traversal guard used by build (never surfaces an

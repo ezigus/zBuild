@@ -231,10 +231,27 @@ The \`\`\`acceptance block format:
 \`\`\`acceptance
 SPEC-1[change]: <one new behavior this change introduces>
 SPEC-2[guard]: <an invariant this change must not break>
+WIRING: <repo-relative-path-to-wiring-file>
 TESTFILES:
 tests/unit/some-test.sh
 tests/integration/other-test.sh
 \`\`\`
+
+WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
+- Declare the SEPARABLE wiring file that connects the new behavior to the
+  live production call-path (e.g. the plugin registration file, the source
+  directive, the dispatch table entry). This is NOT the implementation file
+  itself — it is the file whose presence/modification routes the live path
+  to the new implementation.
+- One repo-relative path per line (multi-line WIRING: section is allowed):
+    WIRING:
+    plugins/agent/acceptance-gate/plugin.sh
+    config/event-schema.json
+- For pure-utility changes (helpers with no live dispatch path), declare
+  \`WIRING: none\` to explicitly exempt the reachability check.
+- The acceptance-gate will revert the declared WIRING file to the merge-base
+  (keeping all other implementation changes at HEAD) and require ≥1 TESTFILE
+  to flip pass→fail — proving the wiring is load-bearing, not inert.
 
 Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
