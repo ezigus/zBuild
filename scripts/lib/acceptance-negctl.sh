@@ -43,6 +43,13 @@ _negctl_run() {
     (
         cd "$cwd" || exit 2
         unset ZBUILD_TEST_QUIET
+        # #983: the negctl sandbox must never inherit test-runner parallelism from
+        # the pipeline env. A tagged TESTFILE that invokes run-tests.sh could
+        # otherwise fan a non-parallel-safe tier out and deadlock — the #983
+        # fork-bomb hit BOTH the test-stage AND this sandbox. The test stage scrubs
+        # via _zbuild_make_fresh_shell (plugins/tool/test/plugin.sh); _negctl_run
+        # does not, so scrub the parallelism knobs explicitly here.
+        unset ZBUILD_TEST_PARALLEL_JOBS ZBUILD_PARALLEL_SAFE_TIERS
         "${runner[@]}" >/dev/null 2>&1
     )
 }
