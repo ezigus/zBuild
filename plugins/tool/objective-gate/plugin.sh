@@ -31,8 +31,118 @@ objective_gate_init() {
     return 0
 }
 
+# ─── _og_run_coverage_floor ──────────────────────────────────────────────────
+# Invokes ZBUILD_COVERAGE_CMD or scripts/check-coverage.sh. Parses coverage %.
+# Hard-blocks if below floor (exit 1); warns on instrumentation failure (exit 2).
+# Sets caller's coverage_pct and appends to fail_reason when appropriate.
+_og_run_coverage_floor() {
+    local _og_root="$1"
+    local coverage_cmd="${ZBUILD_COVERAGE_CMD:-}"
+    local coverage_floor="${ZBUILD_COVERAGE_FLOOR:-29}"
+    local cov_rc=0
+    local cov_out=""
+
+    if [[ -n "$coverage_cmd" ]]; then
+        cov_out="$(bash -c "$coverage_cmd" 2>&1)" || cov_rc=$?
+    else
+        local cov_script="$_og_root/scripts/check-coverage.sh"
+        if [[ -f "$cov_script" ]]; then
+            cov_out="$(COVERAGE_FLOOR="$coverage_floor" bash "$cov_script" 2>&1)" || cov_rc=$?
+        else
+            # No coverage script available — skip gate (composability).
+            coverage_pct=0
+            return 0
+        fi
+    fi
+
+    # Parse coverage percentage from output (e.g. "Statements   : 31.2%")
+    coverage_pct="$(printf '%s\n' "$cov_out" | grep -o '[0-9][0-9]*\.[0-9]*%' | head -1 | tr -d '%')"
+    [[ -z "$coverage_pct" ]] && coverage_pct=0
+
+    if [[ $cov_rc -eq 2 ]]; then
+        # Instrumentation failure — warn but don't hard-block.
+        _og_emit "objective_gate.coverage.fail" "exit_code=$cov_rc" "instrumentation=failed"
+        return 0
+    fi
+
+    if [[ $cov_rc -ne 0 ]]; then
+        _og_emit "objective_gate.coverage.fail" "exit_code=$cov_rc" "coverage_pct=$coverage_pct"
+        fail_reason="coverage_fail"
+        return 0
+    fi
+
+    _og_emit "objective_gate.coverage.pass" "coverage_pct=$coverage_pct"
+}
+
+# ─── _og_run_scope_adherence ─────────────────────────────────────────────────
+# Reads plan.json from artifacts_dir, extracts steps[].files[], diffs against
+# git diff --name-only. Files in plan but not in diff → scope_gaps[].
+# Any gap → fail_reason=scope_fail. No-op when plan.json absent.
+_og_run_scope_adherence() {
+    local artifacts_dir="$1"
+    local plan_json="$artifacts_dir/plan.json"
+
+    if [[ ! -f "$plan_json" ]]; then
+        # No plan.json — composability: skip silently (same as absent acceptance block).
+        return 0
+    fi
+
+    local diff_cmd="${ZBUILD_DIFF_CMD:-git diff --name-only "${ZBUILD_BASELINE_SHA:-HEAD~1}"..HEAD}"
+    local diff_files=""
+    diff_files="$(bash -c "$diff_cmd" 2>/dev/null || true)"
+
+    local plan_files=""
+    plan_files="$(jq -r '.steps[]?.files[]? // empty' "$plan_json" 2>/dev/null || true)"
+
+    scope_gaps=()
+    local pf
+    while IFS= read -r pf; do
+        [[ -z "$pf" ]] && continue
+        if ! printf '%s\n' "$diff_files" | grep -qxF "$pf"; then
+            scope_gaps+=("$pf")
+        fi
+    done <<< "$plan_files"
+
+    if [[ ${#scope_gaps[@]} -gt 0 ]]; then
+        _og_emit "objective_gate.scope.fail" "gap_count=${#scope_gaps[@]}"
+        [[ -z "$fail_reason" ]] && fail_reason="scope_fail"
+    else
+        _og_emit "objective_gate.scope.pass"
+    fi
+}
+
+# ─── _og_emit_report_signals ─────────────────────────────────────────────────
+# Computes coverage-delta vs last_coverage_pct in state and quality-score.
+# Emits advisory events — never sets fail_reason.
+_og_emit_report_signals() {
+    local state_file="$1"
+    local cov_pct="$2"
+    local scope_ok="$3"
+
+    local last_pct=0
+    if [[ -n "$state_file" && -f "$state_file" ]]; then
+        last_pct="$(grep -o '"last_coverage_pct":[0-9.]*' "$state_file" | grep -o '[0-9.]*$' || echo 0)"
+    fi
+
+    local delta=0
+    # Simple integer delta (truncate decimals for portability).
+    delta=$(( ${cov_pct%%.*} - ${last_pct%%.*} ))
+
+    local quality_score=0
+    if [[ "$scope_ok" == "1" ]]; then
+        quality_score="${cov_pct%%.*}"
+    else
+        quality_score=$(( ${cov_pct%%.*} / 2 ))
+    fi
+
+    coverage_delta="$delta"
+    _og_emit "objective_gate.coverage_delta" "delta=$delta"
+    _og_emit "objective_gate.quality_score" "score=$quality_score"
+}
+
 # ─── objective_gate_run ───────────────────────────────────────────────────────
-# Hard-blocks on test suite or lint failure (returns 1); writes the artifact.
+# Hard-blocks on test suite, lint, coverage-floor, or scope-adherence failure.
+# Writes enriched artifact with coverage_pct, coverage_delta, scope_ok, quality_score.
 # Args: $1 = stage_id, $2 = state_file
 objective_gate_run() {
     local stage_id="${1:-objective-gate}"; : "$stage_id"
@@ -53,6 +163,8 @@ objective_gate_run() {
     _og_emit "plugin.run.start" "plugin=objective-gate"
 
     local test_rc=0 lint_rc=0 fail_reason=""
+    local coverage_pct=0 coverage_delta=0
+    local scope_gaps=()
 
     # Run test suite — T0 hard gate: any non-zero exit blocks merge.
     bash -c "$test_cmd" >/dev/null 2>&1 || test_rc=$?
@@ -73,14 +185,33 @@ objective_gate_run() {
         _og_emit "objective_gate.lint.pass" "exit_code=0"
     fi
 
+    # Coverage floor gate (I4 — requires post-build artifacts).
+    _og_run_coverage_floor "$_OG_ROOT"
+
+    # Scope-adherence gate (I4 — requires plan.json in artifacts_dir).
+    _og_run_scope_adherence "$artifacts_dir"
+
+    # Scope ok = no gaps found (after scope check).
+    local scope_ok=0
+    [[ ${#scope_gaps[@]} -eq 0 ]] && scope_ok=1
+
+    # Emit advisory report signals (coverage-delta, quality-score).
+    _og_emit_report_signals "$state_file" "$coverage_pct" "$scope_ok"
+
     if [[ -n "$fail_reason" ]]; then
-        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d}\n' \
-            "$fail_reason" "$test_rc" "$lint_rc" | atomic_write "$result_path"
+        local gaps_json="[]"
+        if [[ ${#scope_gaps[@]} -gt 0 ]]; then
+            gaps_json="[$(printf '"%s",' "${scope_gaps[@]}" | sed 's/,$//')]"
+        fi
+        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"scope_gaps":%s}\n' \
+            "$fail_reason" "$test_rc" "$lint_rc" "$coverage_pct" "$coverage_delta" "$scope_ok" "$gaps_json" \
+            | atomic_write "$result_path"
         _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=fail"
         return 1
     fi
 
-    printf '{"verdict":"pass","test_rc":0,"lint_rc":0}\n' | atomic_write "$result_path"
+    printf '{"verdict":"pass","test_rc":0,"lint_rc":0,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"scope_gaps":[]}\n' \
+        "$coverage_pct" "$coverage_delta" "$scope_ok" | atomic_write "$result_path"
     _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=pass"
     return 0
 }

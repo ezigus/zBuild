@@ -98,8 +98,7 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 # ─── Test 6: stage lifecycle events emitted ─────────────────────────────────
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
-    # #755: 12 stages (intake, plan, impact, design, build, test, test_assessment,
-    # cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, review).
+    # #755: 12 stages + #922: acceptance-gate = 13.
     assert_eq "$stage_event emitted for each MVP stage (13x)" "13" "$count"
 done
 
@@ -265,7 +264,7 @@ set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppr
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-# #755: 12 stages now (added 4 CQ stages).
+# #755: 12 stages + #922: acceptance-gate = 13.
 assert_eq "role-based dispatch: 13 stage.complete events" "13" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
@@ -282,7 +281,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
-# #755: 12 stages × 2 platforms = 24 plugin.run.start events via fanout
+# #922: 13 stages × 2 platforms = 26 plugin.run.start events via fanout
 plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
 assert_eq "fanout 2 platforms: 26 plugin.run.start events (13 stages × 2)" "26" "$plugin_run_count"
 
@@ -538,7 +537,9 @@ _make_plugin "test"            "tool"  0 >/dev/null
 # Without it the cycle fails with verdict=error, cycle blocked, rc=5 —
 # `set -e` kills the test before I1's assertions run.
 _make_plugin "test_assessment" "agent" 0 >/dev/null
-# #922: acceptance-gate leaf stage after test_assessment (ADR-036).
+# #970: objective-gate leaf stage after test_assessment (ADR-037 §1 I4).
+_make_plugin "objective-gate"  "tool"  0 >/dev/null
+# #922: acceptance-gate leaf stage after objective-gate (ADR-036).
 _make_plugin "acceptance-gate" "agent" 0 >/dev/null
 # #755: build_review_cycle.flow now includes the 4 compound_quality stages; without
 # stubs the cycle hits cq-preflight (no plugin), fails rc=5, and `set -e` kills
@@ -561,10 +562,8 @@ assert_contains "I1 #508: stderr carries UTC timestamps" "$I1_OUT" "UTC"
 assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:25:45 UTC"
 assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
 
-# I1b: exactly 12 'started ' and 12 'finished ' suffixes (one per stage).
-# Standard template has 12 stages after #755 added the 4 compound_quality
-# stages as siblings of review: intake, plan, impact, design, build, test,
-# test_assessment, cq-preflight, cq-audit-plan, cq-cycle, cq-backtrack, review.
+# I1b: exactly 13 'started ' and 13 'finished ' suffixes (one per stage).
+# Standard template has 13 stages; objective-gate lives in simple.yaml only.
 started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
 assert_eq "I1b #508: exactly 13 'started ' suffixes" "13" "$started_count"
 finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)

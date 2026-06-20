@@ -197,6 +197,12 @@
     "objective_gate.lint.start",
     "objective_gate.lint.fail",
     "objective_gate.lint.pass",
-    "objective_gate.complete"
+    "objective_gate.complete",
+    "objective_gate.coverage.pass",
+    "objective_gate.coverage.fail",
+    "objective_gate.coverage_delta",
+    "objective_gate.scope.pass",
+    "objective_gate.scope.fail",
+    "objective_gate.quality_score"
   ]
 }
