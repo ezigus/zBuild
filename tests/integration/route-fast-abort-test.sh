@@ -160,8 +160,19 @@ DRV_LOG="$TEST_TEMP_DIR/driver.log"
 bash "$DRIVER" >"$DRV_LOG" 2>&1 &
 DRV_PID=$!
 
-# Give the driver time to spawn claude.
-sleep 0.6
+# Poll until stub-claude records its PID (readiness signal) before sending TERM,
+# instead of a fixed `sleep 0.6` that raced claude-spawn under CI load (#947).
+# 50ms steps up to a 5s ceiling; the 8s watchdog above is the hard backstop.
+spawn_ceiling_ms=5000
+spawn_deadline_ns=$(( $(date +%s%N) + spawn_ceiling_ms * 1000000 ))
+pid_ready=0
+while [[ $(date +%s%N) -lt $spawn_deadline_ns ]]; do
+    if [[ -s "$PID_FILE" ]]; then
+        pid_ready=1
+        break
+    fi
+    sleep 0.05
+done
 
 start_ts=$(date +%s%N)
 kill -TERM "$DRV_PID" 2>/dev/null || true
@@ -176,6 +187,17 @@ kill -KILL "$WATCHDOG_PID" 2>/dev/null || true
 elapsed_ms=$(( (end_ts - start_ts) / 1000000 ))
 
 # ─── Assertions ──────────────────────────────────────────────────────────────
+
+# (0) Spawn readiness (#947): the poll above observed stub-claude record its PID
+#     *before* we sent TERM. A premature signal (the old fixed `sleep 0.6` racing
+#     spawn under load) would make the abort-timing assertion below measure a
+#     no-op, so fail loudly here instead of silently passing.
+if [[ "$pid_ready" == "1" ]]; then
+    assert_pass "stub-claude PID recorded before signal (readiness poll, not fixed sleep)"
+else
+    assert_fail "stub-claude PID recorded before signal" \
+        "poll hit ${spawn_ceiling_ms}ms ceiling with empty PID_FILE — spawn raced or failed"
+fi
 
 # (1) Abort within 2500ms wall-clock from signal delivery to driver exit.
 #     TERM grace = 1s, KILL backstop = 1s, plus some unwind slack = 2.5s.
