@@ -1,4 +1,5 @@
 name: zbuild daemon (label-triggered pipeline)
+run-name: "zbuild · issue #${{ github.event.issue.number }} — ${{ github.event.issue.title }}"
 
 # Daemon-in-Actions mode — issue #92.
 #
@@ -19,7 +20,7 @@ env:
   ZBUILD_TRIGGER_LABEL: zbuild-run
 
 permissions:
-  contents: read
+  contents: write          # pr-open pushes the work branch (CI-3 #1002)
   issues: write
   pull-requests: write
 

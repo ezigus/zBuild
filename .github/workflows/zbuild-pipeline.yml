@@ -1,4 +1,5 @@
 name: zbuild pipeline
+run-name: "zbuild · issue #${{ inputs.issue_number || 'goal' }}"
 
 # Reusable workflow: call from other workflows via `uses:` with workflow_call.
 # Manual trigger available via workflow_dispatch for one-off runs.
@@ -46,7 +47,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write          # pr-open pushes the work branch (CI-3 #1002)
   issues: write
   pull-requests: write
 
@@ -64,11 +65,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Install Claude CLI
+        # Pinned for reproducible CI (CI-2 #1001); the router shells out to `claude`.
+        run: npm install -g @anthropic-ai/claude-code@2.1.183
+
       - name: Install zbuild
         run: bash install.sh
 
       - name: Run pipeline
+        # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
+        # fast with a clear error when the secret is missing.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set — the LLM stages cannot authenticate. Set it in repo Settings → Secrets."
+            exit 1
+          fi
           args=()
           if [[ -n "${{ inputs.goal }}" ]]; then
             args+=(--goal "${{ inputs.goal }}")

@@ -68,10 +68,11 @@ else
     assert_fail "permissions.issues: write" "got: '$perm_issues'"
 fi
 
-if [[ "$perm_contents" == "read" ]]; then
-    assert_pass "permissions.contents: read"
+# contents: write — the pipeline's pr-open pushes the work branch (CI-3 #1002).
+if [[ "$perm_contents" == "write" ]]; then
+    assert_pass "permissions.contents: write"
 else
-    assert_fail "permissions.contents: read" "got: '$perm_contents'"
+    assert_fail "permissions.contents: write" "got: '$perm_contents'"
 fi
 
 if [[ "$perm_pr" == "write" ]]; then
