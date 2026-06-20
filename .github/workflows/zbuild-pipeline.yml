@@ -65,6 +65,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Configure git identity
+        # CI-7 (#999): the build stage commits work with `git commit --author`,
+        # but git ALSO needs a committer identity (user.name/user.email). A fresh
+        # runner has none, so the commit fails → build.commit.skipped commit_failed
+        # → the generated work is never committed and is lost. Set a bot identity.
+        run: |
+          git config --global user.name  "zbuild-pipeline[bot]"
+          git config --global user.email "zbuild-pipeline[bot]@users.noreply.github.com"
+
       - name: Install Claude CLI
         # Pinned for reproducible CI (CI-2 #1001); the router shells out to `claude`.
         run: npm install -g @anthropic-ai/claude-code@2.1.183
@@ -76,10 +85,24 @@ jobs:
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
         env:
+          # CI-6 (#999): prefer the Claude subscription OAuth token (no per-token
+          # API billing for dogfoods); fall back to a raw API key if that's all
+          # that's configured. `claude setup-token` mints CLAUDE_CODE_OAUTH_TOKEN.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # CI-5: pin state to the workspace so runner state, events, and the
+          # router's stage-io diagnostics land under ./state/ — which the Upload
+          # step captures. Default is $HOME/.zbuild/state (= /home/runner/...),
+          # which the workspace-relative upload path can never see.
+          ZBUILD_STATE_DIR: ${{ github.workspace }}/state
         run: |
-          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-            echo "::error::ANTHROPIC_API_KEY secret is not set — the LLM stages cannot authenticate. Set it in repo Settings → Secrets."
+          if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+            # OAuth token present → unset the API key so claude uses the
+            # subscription, not pay-per-token billing (which also re-introduces
+            # the "Credit balance is too low" failure mode).
+            unset ANTHROPIC_API_KEY
+          elif [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+            echo "::error::Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set — the LLM stages cannot authenticate. Set one in repo Settings → Secrets (run 'claude setup-token' for the OAuth token)."
             exit 1
           fi
           args=()
@@ -93,10 +116,37 @@ jobs:
           fi
           bash scripts/zbuild pipeline start "${args[@]}"
 
+      - name: Push work branch (preserve work on pass OR fail)
+        # CI-7 (#999): push the pipeline's work branch to origin no matter the
+        # outcome, so a CI dogfood's output is never lost when the runner is torn
+        # down. On failure the branch is there to inspect; on success it's ready
+        # for a PR. Only pushes when the branch exists and carries commits.
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch="${ZBUILD_WORKSPACE_BRANCH}"
+          if ! git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null; then
+            echo "::warning::work branch '$branch' not found — pipeline aborted before intake created it; nothing to push"
+            exit 0
+          fi
+          new_commits="$(git rev-list --count "$branch" ^"${{ github.sha }}" 2>/dev/null || echo 0)"
+          if [[ "$new_commits" -eq 0 ]]; then
+            echo "::notice::'$branch' has no commits beyond base — build produced nothing to push"
+            exit 0
+          fi
+          git push --force-with-lease origin "refs/heads/$branch:refs/heads/$branch" \
+            && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
+            || { echo "::error::failed to push '$branch'"; exit 1; }
+
       - name: Upload pipeline artifacts
-        if: success()
+        # CI-5: upload on FAILURE too — a failed run is exactly when the router's
+        # diagnostic stderr (route.sh:459, *.raw-claude-stderr.txt) is needed.
+        # Capture the whole state/ tree (run dirs, events, stage-io diags), not
+        # just state/artifacts/, so model-call failures are debuggable from CI.
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: 'pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}'
-          path: state/artifacts/
+          path: state/
           if-no-files-found: ignore
