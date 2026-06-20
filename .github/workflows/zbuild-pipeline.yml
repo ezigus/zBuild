@@ -77,6 +77,11 @@ jobs:
         # fast with a clear error when the secret is missing.
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # CI-5: pin state to the workspace so runner state, events, and the
+          # router's stage-io diagnostics land under ./state/ — which the Upload
+          # step captures. Default is $HOME/.zbuild/state (= /home/runner/...),
+          # which the workspace-relative upload path can never see.
+          ZBUILD_STATE_DIR: ${{ github.workspace }}/state
         run: |
           if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
             echo "::error::ANTHROPIC_API_KEY secret is not set — the LLM stages cannot authenticate. Set it in repo Settings → Secrets."
