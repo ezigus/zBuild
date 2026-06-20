@@ -1,4 +1,5 @@
 name: zbuild pipeline
+run-name: "zbuild · issue #${{ inputs.issue_number || 'goal' }}"
 
 # Reusable workflow: call from other workflows via `uses:` with workflow_call.
 # Manual trigger available via workflow_dispatch for one-off runs.
@@ -46,7 +47,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write          # pr-open pushes the work branch (CI-3 #1002)
   issues: write
   pull-requests: write
 
@@ -58,11 +59,16 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ZBUILD_WORKSPACE_BRANCH: zbuild/issue-${{ inputs.issue_number }}-ci
+      # CI-2 (#1001): the router shells out to the `claude` CLI; auth via API key.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       # Model selection is governed by config/models.json + core/router — never hardcoded here.
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code   # provides the `claude` binary on PATH (CI-2 #1001)
 
       - name: Install zbuild
         run: bash install.sh
