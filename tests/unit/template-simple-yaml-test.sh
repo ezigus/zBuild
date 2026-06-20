@@ -51,6 +51,12 @@ for _s in "${_expected_stages[@]}"; do
     _i=$((_i + 1))
 done
 
+# [SPEC-2] merge_policy is a reserved template-level knob, NOT a stage section
+# (#968 review): it must never appear in _TPL_STAGES nor as a phantom stage def.
+_mp_is_stage=0
+for _s in "${_TPL_STAGES[@]}"; do [[ "$_s" == "merge_policy" ]] && _mp_is_stage=1; done
+assert_eq "[SPEC-2] merge_policy is not parsed as a stage" "0" "$_mp_is_stage"
+
 # ─── SPEC-3: stage roles, io destinations, and router knobs match simple.yaml ─
 # CHANGE: at merge-base the file was absent → all stage vars were unset.
 
