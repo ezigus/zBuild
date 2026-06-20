@@ -1,0 +1,46 @@
+id: objective-gate
+name: Objective Gate Stage
+kind: tool
+version: 0.1.0
+description: |
+  Deterministic, LLM-free T0 tool stage (ADR-037 §1, issue #969, EPIC #966 I3).
+  Runs the project test suite (ZBUILD_TEST_CMD or default 'npm test') and
+  lint/shellcheck (ZBUILD_LINT_CMD or default 'npm run lint'). Hard-blocks
+  the pipeline on any non-zero exit by returning 1. Writes verdict=fail or
+  verdict=pass to objective-gate-result.json.
+  ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls (enforced by tests).
+
+hooks:
+  init: objective_gate_init
+  run: objective_gate_run
+  finalize: objective_gate_finalize
+  cleanup: objective_gate_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: objective-gate
+  artifact_type: objective-gate-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+  test_cmd_default: "npm test"
+  lint_cmd_default: "npm run lint"
+
+inputs: []
+
+outputs:
+  - id: objective_gate_result
+    path: "${artifact_dir}/objective-gate-result.json"
+    type: objective-gate-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: [last_verdict, last_test_rc, last_lint_rc]
+  reconstructed: []

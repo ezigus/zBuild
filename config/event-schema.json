@@ -190,6 +190,13 @@
     "router.precondition.skipped",
     "router.precondition.violated",
     "strategy.composite.unimplemented",
-    "template.deprecated_shape"
+    "template.deprecated_shape",
+    "objective_gate.suite.start",
+    "objective_gate.suite.fail",
+    "objective_gate.suite.pass",
+    "objective_gate.lint.start",
+    "objective_gate.lint.fail",
+    "objective_gate.lint.pass",
+    "objective_gate.complete"
   ]
 }

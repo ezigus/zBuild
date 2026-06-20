@@ -63,6 +63,7 @@ Each stage is defined by:
 |---|---|---|---|---|---|
 | intake | agent | T1 | init, run, finalize | scope-manifest.md† | true |
 | plan | agent | T2 | init, run, finalize | plan.json | true |
+| objective-gate | tool | T0 | init, run, finalize, cleanup | objective-gate-result.json | true |
 | design | agent | T3 | init, run, finalize | design.md | true |
 | build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
@@ -398,3 +399,21 @@ review → pr → deploy → validate → monitor`
 
 Implementation: issue #922. See ADR-036 for the gate's contract and the
 SPEC-id / `[SPEC-n]` tagging convention.
+
+## Amendment 2026-06-20 (#969 / ADR-037 §1) — objective-gate leaf stage
+
+ADR-037 §1 introduces a deterministic, LLM-free objective gate layer. The first
+stage in this layer is **`objective-gate`** (kind: tool, tier T0), which runs the
+project test suite and lint/shellcheck, hard-blocking the pipeline (returns 1) on
+any non-zero exit. It is inserted after `plan` and before `design`, so no LLM
+stage executes on a red suite.
+
+The Decision table grows from 16 to 17 entries. The `_ZBUILD_CANONICAL_STAGES`
+runtime array grows from 17 to 18 (adding `objective-gate` after `plan`). The
+leaf stage sequence is now:
+`intake → plan → objective-gate → design → impact → build → test →
+test_assessment → acceptance-gate → cq-preflight → cq-audit-plan → cq-cycle →
+cq-backtrack → review → pr → deploy → validate → monitor`
+
+Implementation: issue #969 (EPIC #966 I3). See ADR-037 §1 for the objective gate
+contract and §3 for the no-LLM invariant.
