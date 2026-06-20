@@ -45,7 +45,7 @@ jobs:
       issue_number: ${{ fromJson(needs.trigger.outputs.issue_number) }}
       dry_run: false
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: inherit
 
 # ─── Job 3: post-run cleanup — remove label and post comment ─────────────────
   post-run:
