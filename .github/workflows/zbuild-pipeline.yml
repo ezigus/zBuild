@@ -135,7 +135,14 @@ jobs:
             echo "::notice::'$branch' has no commits beyond base — build produced nothing to push"
             exit 0
           fi
-          git push --force-with-lease origin "refs/heads/$branch:refs/heads/$branch" \
+          # Plain --force (not --force-with-lease): this is a disposable,
+          # pipeline-owned branch (zbuild/issue-N-ci) that each run regenerates,
+          # and the runner's shallow checkout never fetches refs/remotes/origin/
+          # $branch, so a lease has no expected value to compare against and git
+          # rejects the push as "stale info" whenever a prior run already pushed
+          # the branch. Last-writer-wins is the intended behavior here — the
+          # current run's work is always what we want on origin (#947 CI-7 fix).
+          git push --force origin "refs/heads/$branch:refs/heads/$branch" \
             && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
             || { echo "::error::failed to push '$branch'"; exit 1; }
 
