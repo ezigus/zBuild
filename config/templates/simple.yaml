@@ -9,10 +9,11 @@ defaults:
   strategy: fanout
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Two-line simplified pipeline (ADR-037 EPIC #966 I2). Omits design_impact_cycle
-# and cq-* stages; starts closer to the intended final simple shape so that
-# subsequent issues (#969-#979) can build the new pipeline here while
-# standard.yaml continues to serve production.
+# Flat 7-stage simplified pipeline (ADR-037 EPIC #966 I2).
+# Omits: impact, test_assessment, acceptance-gate, cq-* stages (targeted for
+# removal in #979). Starts closer to the intended final shape so subsequent
+# issues (#969-#979) can build the new pipeline here while standard.yaml
+# continues to serve production.
 #
 # Future insertion points (per ADR-037 §3):
 #   After plan:   objective-gate stages land here (#969, #970, #971)
@@ -21,10 +22,12 @@ flow:
   - intake
   - plan
   # TODO #969: insert objective-gate (pre-build) here
-  - build_test_cycle
+  - design
+  - build
+  - test
   # TODO #972: insert evidence-collection stage here
-  - acceptance-gate
   - review
+  - pr
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:
@@ -45,34 +48,18 @@ plan:
     timeout_s: 300
     max_turns: 25
 
-# ─── build_test_cycle (cycle) ────────────────────────────────────────────────
-# Simplified build+test loop without the outer build_review_cycle. Exits when
-# test_assessment passes; continues on max_iterations (ADR-019 fall-through).
-# TODO #973: add evidence-fed review feedback edge here (#973-#974)
-build_test_cycle:
-  type: cycle
-  description: Implement plus test loop until test_assessment passes
-  flow:
-    - build
-    - test
-    - test_assessment
-  exit_when:
-    stage: test_assessment
-    field: verdict
-    op: eq
-    value: pass
-  max_iterations: 3
-  on_max: continue
-  feedback:
-    - from:
-        stage: test_assessment
-        output: test_assessment_md
-      to:
-        stage: build
-        input: prior_test_assessment
-        required: false
+# ─── design (leaf) ───────────────────────────────────────────────────────────
+design:
+  gate: auto
+  roles: [designer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 0
 
-# ─── build (leaf, cycle member) ──────────────────────────────────────────────
+# ─── build (leaf) ────────────────────────────────────────────────────────────
 build:
   gate: auto
   roles: [builder]
@@ -83,37 +70,13 @@ build:
     timeout_s: 900
     max_turns: 0
 
-# ─── test (leaf, cycle member) ───────────────────────────────────────────────
+# ─── test (leaf) ─────────────────────────────────────────────────────────────
 test:
   gate: auto
   roles: [tester]
   io:
     destinations: [file, stdout]
     tail_lines: 200
-
-# ─── test_assessment (leaf, cycle member) ────────────────────────────────────
-test_assessment:
-  gate: auto
-  roles: [test_assessment]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 300
-    max_turns: 25
-
-# ─── acceptance-gate (leaf) ──────────────────────────────────────────────────
-# Mechanical acceptance-contract gate (ADR-036). Placed after build_test_cycle
-# so a broken acceptance contract fails before review.
-acceptance-gate:
-  gate: auto
-  roles: [acceptance_gate]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 600
-    max_turns: 10
 
 # ─── review (leaf) ───────────────────────────────────────────────────────────
 # TODO #974: wire evidence-fed review inputs here
@@ -126,3 +89,12 @@ review:
   router:
     timeout_s: 300
     max_turns: 25
+
+# ─── pr (leaf) ───────────────────────────────────────────────────────────────
+# T0 tool stage (ADR-013): opens the pull request; no LLM call.
+pr:
+  gate: auto
+  roles: [pr]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
