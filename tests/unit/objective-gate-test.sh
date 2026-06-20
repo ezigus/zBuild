@@ -31,14 +31,14 @@ assert_eq "[SPEC-1] plugin.sh sources without error (exit 0)" "0" "$_spec1_rc"
 
 # ─── Shared test fixture ──────────────────────────────────────────────────────
 
-_tmpdir="$(mktemp -d)"
+# Use the harness-managed TEST_TEMP_DIR (setup_test_env) for fixtures so the
+# harness EXIT trap (_test_cleanup_hook / tracked-tmpdir cleanup) is preserved
+# — a custom `trap … EXIT` here would clobber it. (#998 review)
+_tmpdir="$TEST_TEMP_DIR"
 _state_file="$_tmpdir/state.json"
 _artifacts_dir="$_tmpdir/artifacts"
 printf '{"issue":"969"}\n' > "$_state_file"
 mkdir -p "$_artifacts_dir"
-
-# Trap to clean up the temp dir on test exit.
-trap 'rm -rf "$_tmpdir"' EXIT
 
 # ─── SPEC-2: test suite failure → verdict=fail, rc=1 ─────────────────────────
 # CHANGE: at merge-base plugin.sh did not exist → functions undefined → call
