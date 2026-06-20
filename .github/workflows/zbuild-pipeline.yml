@@ -94,9 +94,13 @@ jobs:
           bash scripts/zbuild pipeline start "${args[@]}"
 
       - name: Upload pipeline artifacts
-        if: success()
+        # CI-5: upload on FAILURE too — a failed run is exactly when the router's
+        # diagnostic stderr (route.sh:459, *.raw-claude-stderr.txt) is needed.
+        # Capture the whole state/ tree (run dirs, events, stage-io diags), not
+        # just state/artifacts/, so model-call failures are debuggable from CI.
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: 'pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}'
-          path: state/artifacts/
+          path: state/
           if-no-files-found: ignore
