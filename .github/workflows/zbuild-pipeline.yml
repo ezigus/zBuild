@@ -76,6 +76,10 @@ jobs:
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
         env:
+          # CI-6 (#999): prefer the Claude subscription OAuth token (no per-token
+          # API billing for dogfoods); fall back to a raw API key if that's all
+          # that's configured. `claude setup-token` mints CLAUDE_CODE_OAUTH_TOKEN.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # CI-5: pin state to the workspace so runner state, events, and the
           # router's stage-io diagnostics land under ./state/ — which the Upload
@@ -83,8 +87,13 @@ jobs:
           # which the workspace-relative upload path can never see.
           ZBUILD_STATE_DIR: ${{ github.workspace }}/state
         run: |
-          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-            echo "::error::ANTHROPIC_API_KEY secret is not set — the LLM stages cannot authenticate. Set it in repo Settings → Secrets."
+          if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+            # OAuth token present → unset the API key so claude uses the
+            # subscription, not pay-per-token billing (which also re-introduces
+            # the "Credit balance is too low" failure mode).
+            unset ANTHROPIC_API_KEY
+          elif [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+            echo "::error::Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set — the LLM stages cannot authenticate. Set one in repo Settings → Secrets (run 'claude setup-token' for the OAuth token)."
             exit 1
           fi
           args=()
