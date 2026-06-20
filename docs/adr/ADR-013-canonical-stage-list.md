@@ -73,6 +73,7 @@ Each stage is defined by:
 | cq-cycle | agent | T3 | init, run, finalize, cleanup | quality-feedback.md | true |
 | cq-backtrack | agent | T1 | init, run, finalize | recovery-suggestion.json | false |
 | review | agent | T2 | init, run, finalize | review.json | true |
+| review-report | agent | T2 | init, run, finalize | report.json | false |
 | pr | tool | T0 | init, run, finalize | pr-url.txt | true |
 | deploy | tool | T0 | init, run, finalize | deploy.log | true |
 | validate | tool | T0 | init, run, finalize | validate-result.json | true |
@@ -398,3 +399,22 @@ review → pr → deploy → validate → monitor`
 
 Implementation: issue #922. See ADR-036 for the gate's contract and the
 SPEC-id / `[SPEC-n]` tagging convention.
+
+## Amendment 2026-06-20 (#972) — review-report informational report stage
+
+`review-report` (agent, T2) is inserted between `review` and `pr`. It fans out
+across multiple review lenses (correctness, security, test-coverage,
+plan-conformance) in a single LLM pass and emits an informational `report.json`
+with `merge_readiness: ready|advisory|needs_attention`. It has no `verdict`
+field, no `block`/`coerce` mechanic, and `blocking: false` — it never halts the
+pipeline. It attaches `report.md` to the PR as a comment when
+`ZBUILD_PR_NUMBER` is set (fail-soft: `gh` error never aborts the plugin). The
+`simple.yaml` template wires `intake → review-report` as a minimal
+non-blocking-review pipeline alternative to `standard.yaml`.
+
+The canonical stage count grows from 17 to 18. The leaf stage sequence is now:
+`intake → plan → design → impact → build → test → test_assessment →
+acceptance-gate → cq-preflight → cq-audit-plan → cq-cycle → cq-backtrack →
+review → review-report → pr → deploy → validate → monitor`
+
+Implementation: issue #972.

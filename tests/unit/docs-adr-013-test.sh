@@ -47,14 +47,14 @@ for section in "Context" "Decision" "Consequences" "Implementation Notes"; do
 done
 
 # ---------------------------------------------------------------------------
-# TC-3: All 16 canonical stage ids are present in the document
+# TC-3: All canonical stage ids are present in the document
 # ---------------------------------------------------------------------------
 # Use grep -w for portable word-boundary matching (POSIX/BSD/GNU compatible).
 canonical_stages=(
     intake plan design build test test_assessment
     acceptance-gate
     cq-preflight cq-audit-plan cq-cycle cq-backtrack
-    review pr deploy validate monitor
+    review review-report pr deploy validate monitor
 )
 
 for stage_id in "${canonical_stages[@]}"; do
@@ -133,6 +133,25 @@ found_sorted=$(awk '
 
 assert_eq "TC-7: stage id set in Decision table matches canonical list exactly" \
     "$canonical_sorted" "$found_sorted"
+
+# ---------------------------------------------------------------------------
+# [SPEC-6]: review-report appears in ADR-013 Decision table (CHANGE)
+# ---------------------------------------------------------------------------
+set +e
+grep -q "review-report" "$ADR_FILE"
+spec6_rc=$?
+set -e
+assert_eq "[SPEC-6] review-report present in ADR-013 Decision table" "0" "$spec6_rc"
+
+# ---------------------------------------------------------------------------
+# [SPEC-1]: review-report is in _ZBUILD_CANONICAL_STAGES in template.sh (CHANGE)
+# ---------------------------------------------------------------------------
+TEMPLATE_SH="$REPO_ROOT/core/pipeline/template.sh"
+set +e
+grep -q "review-report" "$TEMPLATE_SH"
+spec1_rc=$?
+set -e
+assert_eq "[SPEC-1] review-report present in _ZBUILD_CANONICAL_STAGES (template.sh)" "0" "$spec1_rc"
 
 # ---------------------------------------------------------------------------
 # TC-8: All expected_artifact table cells are non-empty

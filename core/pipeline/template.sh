@@ -24,10 +24,10 @@ fi
 # Issue #842: swapped impact after design (design_impact_cycle; ADR-013 amendment).
 # Issue #755: compound_quality split into cq-preflight cq-audit-plan cq-cycle cq-backtrack.
 # Issue #922: acceptance-gate inserted after test_assessment (ADR-036 / ADR-013 amendment).
-# Exactly these 17 ids, in this order:
-#   intake plan design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+# Exactly these 18 ids, in this order:
+#   intake plan design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review review-report pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+    intake plan design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review review-report pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template

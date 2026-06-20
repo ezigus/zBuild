@@ -1,0 +1,73 @@
+id: review-report
+name: Review Report Stage
+kind: agent
+version: 0.1.0
+description: |
+  Multi-lens review report agent (issue #972). Fans out across correctness,
+  security, test-coverage, and plan-conformance lenses in a single LLM pass.
+  Emits an informational report.json with merge_readiness:
+  ready|advisory|needs_attention. No verdict field, no block/coerce mechanic.
+  Posts report.md to the PR as a comment when ZBUILD_PR_NUMBER is set
+  (fail-soft: gh error never aborts the plugin).
+
+hooks:
+  init: review_report_init
+  run: review_report_run
+  finalize: review_report_finalize
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: report.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: false
+  - id: diff_patch
+    type: file
+    path: "${artifact_dir}/diff.patch"
+    source: stage:build
+    required: false
+  - id: test_results
+    type: file
+    path: "${artifact_dir}/test-results.json"
+    source: stage:test
+    required: false
+  - id: intake_goal
+    type: file
+    path: "${state_dir}/intake.md"
+    source: stage:intake
+    required: false
+
+outputs:
+  - id: report
+    path: "${artifact_dir}/report.json"
+    type: report.json
+    required: true
+    primary: true
+  - id: report_md
+    path: "${artifact_dir}/report.md"
+    type: markdown
+    required: false
+
+state:
+  persisted:
+    - last_lens_scores
+  reconstructed: []

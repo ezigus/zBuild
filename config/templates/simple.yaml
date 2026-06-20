@@ -1,0 +1,37 @@
+id: simple
+name: Simple Pipeline
+extends: null
+defaults:
+  strategy: fanout
+
+# ─── Flow ───────────────────────────────────────────────────────────────
+# Minimal pipeline: intake + informational review-report only.
+# Omits design_impact_cycle, build_test_cycle, CQ stages, and build_review_cycle.
+# review-report is NOT inside any exit_when/abort_when cycle — structural
+# guarantee that review never hard-blocks merge (issue #972, ADR-013 Amendment
+# 2026-06-20). The pr-open plugin (which reads review.json verdict=block) is
+# also absent so there is no merge coupling whatsoever.
+flow:
+  - intake
+  - review-report
+
+# ─── intake (leaf) ──────────────────────────────────────────────────────
+intake:
+  gate: auto
+  roles: [intake]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── review-report (leaf) ───────────────────────────────────────────────
+# Single LLM pass across correctness/security/test-coverage/plan-conformance
+# lenses. Emits report.json + report.md (informational; no verdict field).
+# Posts report.md as a PR comment when ZBUILD_PR_NUMBER is set (fail-soft).
+review-report:
+  gate: auto
+  roles: [review-report]
+  io:
+    destinations: [file, stdout, gh_comment]
+    tail_lines: 400
+  router:
+    max_turns: 1
