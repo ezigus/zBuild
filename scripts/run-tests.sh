@@ -153,12 +153,19 @@ run_tier() {
       (
         if _rt_run "$f" "${_base}.out"; then
           printf '0' > "${_base}.rc"
+          # Success: aggregation only reads .out for FAILED slots, so drop it now
+          # — parity with the serial path, keeps the job dir small (#1011 review).
+          rm -f "${_base}.out"
         else
           printf '%s' "$?" > "${_base}.rc"
         fi
       ) &
       _pids+=($!)
-      # drain oldest slot when pool is full
+      # Drain the OLDEST slot when the pool is full (FIFO). #1011 review suggested
+      # `wait -n` for tighter utilization, but that needs bash 4.3+ and macOS ships
+      # bash 3.2 — FIFO drain is the portable choice and still bounds concurrency
+      # to $_par_jobs. Test files are short + uniform, so head-of-line stall is
+      # negligible here; revisit with `wait -n` if a bash-4 floor is adopted.
       if [[ ${#_pids[@]} -ge $_par_jobs ]]; then
         wait "${_pids[0]}" 2>/dev/null || true
         _pids=("${_pids[@]:1}")
