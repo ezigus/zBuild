@@ -222,7 +222,7 @@ _rr_run_inner() {
     # Route to LLM (T2 tier per manifest)
     local router_out router_rc=0
     set +e
-    router_out="$(route_to_model "T2" "$prompt" 2>/dev/null)"
+    router_out="$(route_to_model "T2" "$prompt")"
     router_rc=$?
     set -e
 
