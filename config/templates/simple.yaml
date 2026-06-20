@@ -1,0 +1,128 @@
+id: simple
+name: Simple Pipeline
+extends: null
+
+# ADR-037 §4: per-template merge policy. Wired to runtime behavior in #975.
+merge_policy: auto_unless_flagged
+
+defaults:
+  strategy: fanout
+
+# ─── Flow ────────────────────────────────────────────────────────────────────
+# Two-line simplified pipeline (ADR-037 EPIC #966 I2). Omits design_impact_cycle
+# and cq-* stages; starts closer to the intended final simple shape so that
+# subsequent issues (#969-#979) can build the new pipeline here while
+# standard.yaml continues to serve production.
+#
+# Future insertion points (per ADR-037 §3):
+#   After plan:   objective-gate stages land here (#969, #970, #971)
+#   After test:   evidence-fed review stages land here (#972, #973, #974)
+flow:
+  - intake
+  - plan
+  # TODO #969: insert objective-gate (pre-build) here
+  - build_test_cycle
+  # TODO #972: insert evidence-collection stage here
+  - acceptance-gate
+  - review
+
+# ─── intake (leaf) ───────────────────────────────────────────────────────────
+intake:
+  gate: auto
+  roles: [intake]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── plan (leaf) ─────────────────────────────────────────────────────────────
+plan:
+  gate: auto
+  roles: [planner]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── build_test_cycle (cycle) ────────────────────────────────────────────────
+# Simplified build+test loop without the outer build_review_cycle. Exits when
+# test_assessment passes; continues on max_iterations (ADR-019 fall-through).
+# TODO #973: add evidence-fed review feedback edge here (#973-#974)
+build_test_cycle:
+  type: cycle
+  description: Implement plus test loop until test_assessment passes
+  flow:
+    - build
+    - test
+    - test_assessment
+  exit_when:
+    stage: test_assessment
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+  feedback:
+    - from:
+        stage: test_assessment
+        output: test_assessment_md
+      to:
+        stage: build
+        input: prior_test_assessment
+        required: false
+
+# ─── build (leaf, cycle member) ──────────────────────────────────────────────
+build:
+  gate: auto
+  roles: [builder]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 900
+    max_turns: 0
+
+# ─── test (leaf, cycle member) ───────────────────────────────────────────────
+test:
+  gate: auto
+  roles: [tester]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── test_assessment (leaf, cycle member) ────────────────────────────────────
+test_assessment:
+  gate: auto
+  roles: [test_assessment]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── acceptance-gate (leaf) ──────────────────────────────────────────────────
+# Mechanical acceptance-contract gate (ADR-036). Placed after build_test_cycle
+# so a broken acceptance contract fails before review.
+acceptance-gate:
+  gate: auto
+  roles: [acceptance_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 10
+
+# ─── review (leaf) ───────────────────────────────────────────────────────────
+# TODO #974: wire evidence-fed review inputs here
+review:
+  gate: auto
+  roles: [reviewer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
