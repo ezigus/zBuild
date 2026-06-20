@@ -57,6 +57,7 @@ jobs:
 
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ZBUILD_WORKSPACE_BRANCH: zbuild/issue-${{ inputs.issue_number }}-ci
       # Model selection is governed by config/models.json + core/router — never hardcoded here.
 
     steps:
