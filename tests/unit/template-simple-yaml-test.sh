@@ -37,14 +37,15 @@ set -e
 
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
-# ─── SPEC-2: _TPL_STAGES has exactly 7 entries in canonical order ─────────────
+# ─── SPEC-2: _TPL_STAGES has exactly 8 entries in canonical order ─────────────
 # CHANGE: at merge-base the file was absent → _TPL_STAGES was empty / wrong.
-# The required flat sequence is intake→plan→design→build→test→review→pr with
-# test_assessment and acceptance-gate explicitly omitted (ADR-037 / issue #968 DoD).
+# The required flat sequence is intake→plan→objective-gate→design→build→test→review→pr
+# with test_assessment and acceptance-gate explicitly omitted (ADR-037 / issue #968 DoD).
+# objective-gate inserted at index 2 per issue #969.
 
-assert_eq "[SPEC-2] _TPL_STAGES count is 7" "7" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-2] _TPL_STAGES count is 8" "8" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(intake plan design build test review pr)
+_expected_stages=(intake plan objective-gate design build test review pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -69,6 +70,10 @@ assert_eq "[SPEC-3] plan roles"             "planner"     "$_TPL_STAGE_ROLES_pla
 assert_eq "[SPEC-3] plan io_dests"          "file,stdout" "$_TPL_STAGE_IO_DESTS_plan"
 assert_eq "[SPEC-3] plan router timeout"    "300"         "$_TPL_STAGE_ROUTER_TIMEOUT_plan"
 assert_eq "[SPEC-3] plan router max_turns"  "25"          "$_TPL_STAGE_ROUTER_MAX_TURNS_plan"
+
+# objective-gate (T0 tool — no router section)
+assert_eq "[SPEC-3] objective-gate roles"    "objective-gate" "$_TPL_STAGE_ROLES_objective_gate"
+assert_eq "[SPEC-3] objective-gate io_dests" "file,stdout"    "$_TPL_STAGE_IO_DESTS_objective_gate"
 
 # design
 assert_eq "[SPEC-3] design roles"            "designer"    "$_TPL_STAGE_ROLES_design"
@@ -112,18 +117,19 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── Non-SPEC: dispatch units are 7 flat stage units (no cycles) ─────────────
+# ─── Non-SPEC: dispatch units are 8 flat stage units (no cycles) ─────────────
 # simple.yaml uses a flat flow with no cycle stages, so every dispatch unit
 # is stage:<id>. This confirms the loader did not misclassify any leaf.
 
-assert_eq "dispatch units count is 7" "7" "${#_TPL_DISPATCH_UNITS[@]}"
-assert_eq "dispatch[0] stage:intake"  "stage:intake"  "${_TPL_DISPATCH_UNITS[0]}"
-assert_eq "dispatch[1] stage:plan"    "stage:plan"    "${_TPL_DISPATCH_UNITS[1]}"
-assert_eq "dispatch[2] stage:design"  "stage:design"  "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "dispatch[3] stage:build"   "stage:build"   "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "dispatch[4] stage:test"    "stage:test"    "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "dispatch[5] stage:review"  "stage:review"  "${_TPL_DISPATCH_UNITS[5]}"
-assert_eq "dispatch[6] stage:pr"      "stage:pr"      "${_TPL_DISPATCH_UNITS[6]}"
+assert_eq "dispatch units count is 8" "8" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "dispatch[0] stage:intake"          "stage:intake"          "${_TPL_DISPATCH_UNITS[0]}"
+assert_eq "dispatch[1] stage:plan"            "stage:plan"            "${_TPL_DISPATCH_UNITS[1]}"
+assert_eq "dispatch[2] stage:objective-gate"  "stage:objective-gate"  "${_TPL_DISPATCH_UNITS[2]}"
+assert_eq "dispatch[3] stage:design"          "stage:design"          "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "dispatch[4] stage:build"           "stage:build"           "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "dispatch[5] stage:test"            "stage:test"            "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "dispatch[6] stage:review"          "stage:review"          "${_TPL_DISPATCH_UNITS[6]}"
+assert_eq "dispatch[7] stage:pr"              "stage:pr"              "${_TPL_DISPATCH_UNITS[7]}"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 

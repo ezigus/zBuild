@@ -9,7 +9,7 @@ defaults:
   strategy: fanout
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Flat 7-stage simplified pipeline (ADR-037 EPIC #966 I2).
+# Flat 8-stage simplified pipeline (ADR-037 EPIC #966 I2+I3).
 # Omits: impact, test_assessment, acceptance-gate, cq-* stages (targeted for
 # removal in #979). Starts closer to the intended final shape so subsequent
 # issues (#969-#979) can build the new pipeline here while standard.yaml
@@ -21,7 +21,7 @@ defaults:
 flow:
   - intake
   - plan
-  # TODO #969: insert objective-gate (pre-build) here
+  - objective-gate
   - design
   - build
   - test
@@ -47,6 +47,16 @@ plan:
   router:
     timeout_s: 300
     max_turns: 25
+
+# ─── objective-gate (leaf) ───────────────────────────────────────────────────
+# T0 tool stage (ADR-013, ADR-037 §1, issue #969): runs the test suite +
+# lint/shellcheck; hard-blocks on any failure; no LLM call.
+objective-gate:
+  gate: auto
+  roles: [objective-gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
 
 # ─── design (leaf) ───────────────────────────────────────────────────────────
 design:
