@@ -9,13 +9,22 @@ git/worktree/global-config/process), every finding then re-verified by direct gr
 ## Method + baseline
 
 `scripts/lib/test-helpers.sh` `setup_test_env()` (line ~224) gives **each test** a unique per-test
-`TEST_TEMP_DIR` (`mktemp`), exports `HOME="$TEST_TEMP_DIR/home"` (line ~242), sandboxes `TMPDIR`, and
-installs a `mktemp` shim that redirects bare `mktemp`/`mktemp -d` under `TEST_TEMP_DIR`. **146 of 148**
+`TEST_TEMP_DIR` — created via `mktemp -d "${TMPDIR:-/tmp}/<name>.XXXXXX"` — and exports
+`HOME="$TEST_TEMP_DIR/home"` and `PATH="$TEST_TEMP_DIR/bin:$PATH"`. **146 of 148**
 `tests/integration/*.sh` call it.
+
+Two precision points the audit relies on (verified against the harness, corrected per #1005 review):
+- `setup_test_env` **does not export `TMPDIR`** — it only *reads* it to choose where `TEST_TEMP_DIR`
+  lives. A process that calls bare `mktemp` still lands under the *real* `TMPDIR` (or `/tmp`), not
+  `TEST_TEMP_DIR`. That's safe for *collision* purposes (mktemp yields unique names) but means a **fixed**
+  path like `/tmp/mark` is genuinely shared.
+- The `mktemp` **shim is macOS-only** (`uname -s == Darwin`, line ~47). On the Linux CI runners it is
+  **absent**, so the fixed-path fallbacks below (`/tmp/mark`, `/tmp/gh-calls.log`) are the actual CI
+  exposure if their `*_FILE` env var is ever unset — not merely a latent macOS concern.
 
 **Headline:** the integration suite is *largely already parallel-safe*, because the planned runner runs
 each test file as its own subprocess (`scripts/run-tests.sh` per-file loop) and `setup_test_env`
-isolates HOME/TMPDIR/state per subprocess. The findings below are therefore mostly **latent** — fixed
+isolates HOME/PATH/state per subprocess. The findings below are therefore mostly **latent** — fixed
 shared values that collide only if HOME/env isolation is bypassed (a shared-worktree or env-stripping
 runner). They are cheap to harden and should land before A3d flips the tier to parallel.
 

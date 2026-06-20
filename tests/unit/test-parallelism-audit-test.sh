@@ -35,6 +35,15 @@ while IFS= read -r _name; do
 done < <(grep -oE '[a-z0-9][a-z0-9-]*-test\.sh' "$AUDIT" | sort -u)
 assert_eq "audit references only real integration tests (checked=$_checked)" "0" "$_missing"
 
+# Non-empty floor (review #1005): the existence check above passes vacuously if
+# the doc names zero *-test.sh files (e.g. an edit strips/renames every mention).
+# The audit cites well over 10 distinct test files; a floor catches that rot.
+if [[ "$_checked" -ge 10 ]]; then
+    assert_pass "audit names a substantial test list (checked=$_checked ≥ 10)"
+else
+    assert_fail "audit names a substantial test list" "checked=$_checked (<10) — the doc lost its file references"
+fi
+
 # ── 3: clean-class invariant — no git worktree / global config in integration ─
 # The audit certified these classes empty; a new offender must re-open the audit.
 # `|| true`: grep exits 1 when there are no matches, which would abort under
