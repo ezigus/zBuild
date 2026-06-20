@@ -153,7 +153,7 @@ _rr_write_markdown() {
         printf '### Lens Findings\n\n'
         jq -r '.lenses[] | "#### \(.name) (score: \(.score)/10)\n\n" + (
             if (.findings | length) > 0 then
-                (.findings[] | "- " + .) | join("\n")
+                [.findings[] | "- " + .] | join("\n")
             else "No findings.\n"
             end
         ) + "\n"' "$report_json" 2>/dev/null || true
