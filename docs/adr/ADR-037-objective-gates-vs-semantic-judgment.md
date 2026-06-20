@@ -124,7 +124,7 @@ Delivered as the additive-first, subtractive-last rollout of EPIC #966, via a pa
 `config/templates/simple.yaml` template (A/B-proven, then cut over):
 
 - **#968** — `simple.yaml` skeleton + the `merge_policy` field (default `auto_unless_flagged`).
-- **#969–#971** — the objective gate layer: suite-green + lint (#969), coverage-floor + scope-adherence
+- **#969–#971** — the objective gate layer: suite-green + lint (#969 ✓ delivered), coverage-floor + scope-adherence
   (#970), `negctl` + reachability + shape/golden-order floor de-ceremonied (#971).
 - **#972–#974** — the semantic review (ADR-038): report stage (#972), per-lens evidence (#973), rehomed
   cq + persona lenses (#974).
