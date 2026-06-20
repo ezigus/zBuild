@@ -1139,8 +1139,11 @@ _tpl_translate_new_shape() {
         gsub(/[[:space:]]/, "", s); return s
     }
     function is_reserved(k) {
+        # Template-level metadata keys (not stage sections). merge_policy is an
+        # ADR-037 §4 per-template knob; reserving it stops the new-shape
+        # translator from emitting it as a phantom stage definition (#968 review).
         return (k == "id" || k == "name" || k == "extends" || k == "defaults" \
-                || k == "flow" || k == "_comment")
+                || k == "flow" || k == "_comment" || k == "merge_policy")
     }
     BEGIN {
         in_flow = 0
