@@ -65,6 +65,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Configure git identity
+        # CI-7 (#999): the build stage commits work with `git commit --author`,
+        # but git ALSO needs a committer identity (user.name/user.email). A fresh
+        # runner has none, so the commit fails → build.commit.skipped commit_failed
+        # → the generated work is never committed and is lost. Set a bot identity.
+        run: |
+          git config --global user.name  "zbuild-pipeline[bot]"
+          git config --global user.email "zbuild-pipeline[bot]@users.noreply.github.com"
+
       - name: Install Claude CLI
         # Pinned for reproducible CI (CI-2 #1001); the router shells out to `claude`.
         run: npm install -g @anthropic-ai/claude-code@2.1.183
@@ -106,6 +115,29 @@ jobs:
             args+=(--dry-run)
           fi
           bash scripts/zbuild pipeline start "${args[@]}"
+
+      - name: Push work branch (preserve work on pass OR fail)
+        # CI-7 (#999): push the pipeline's work branch to origin no matter the
+        # outcome, so a CI dogfood's output is never lost when the runner is torn
+        # down. On failure the branch is there to inspect; on success it's ready
+        # for a PR. Only pushes when the branch exists and carries commits.
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch="${ZBUILD_WORKSPACE_BRANCH}"
+          if ! git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null; then
+            echo "::warning::work branch '$branch' not found — pipeline aborted before intake created it; nothing to push"
+            exit 0
+          fi
+          new_commits="$(git rev-list --count "$branch" ^"${{ github.sha }}" 2>/dev/null || echo 0)"
+          if [[ "$new_commits" -eq 0 ]]; then
+            echo "::notice::'$branch' has no commits beyond base — build produced nothing to push"
+            exit 0
+          fi
+          git push --force-with-lease origin "refs/heads/$branch:refs/heads/$branch" \
+            && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
+            || { echo "::error::failed to push '$branch'"; exit 1; }
 
       - name: Upload pipeline artifacts
         # CI-5: upload on FAILURE too — a failed run is exactly when the router's
