@@ -39,7 +39,8 @@ EXCERPT_MAX="${DEFERRED_EXCERPT_MAX:-500}"
 EXCERPT_CONTEXT="${DEFERRED_EXCERPT_CONTEXT:-300}"
 PAGINATION_LIMIT=25
 LOG_PATH_DEFAULT="$REPO_ROOT/.github/issues/deferred-scanned-prs.md"
-DRIFT_SENTINEL="$REPO_ROOT/.deferred-drift"
+_sentinel_root="${ZBUILD_REPO_ROOT:-$REPO_ROOT}"
+DRIFT_SENTINEL="$_sentinel_root/.deferred-drift"
 # Bootstrap = first-ever run with empty log. 200 default; override via env for
 # larger repos / one-off rescans (issue #540 review feedback — 30 was too small).
 BOOTSTRAP_WINDOW_PRS="${DEFERRED_TRACKER_BOOTSTRAP_PRS:-200}"
