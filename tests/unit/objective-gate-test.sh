@@ -105,11 +105,12 @@ rm -f "$_artifacts_dir/objective-gate-result.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"   # AC-1: empty diff → ablation gates SKIP (no live test exec)
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec4_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -139,11 +140,12 @@ rm -f "$_artifacts_dir/objective-gate-result.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"   # AC-1: empty diff → ablation gates SKIP (no live test exec)
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec6_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -165,11 +167,12 @@ rm -f "$_artifacts_dir/objective-gate-result.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="false"
+export ZBUILD_DIFF_CMD="true"   # AC-1: empty diff → ablation gates SKIP (no live test exec)
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec7_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -194,11 +197,12 @@ rm -f "$_artifacts_dir/plan.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"   # AC-1: empty diff → ablation gates SKIP (no live test exec)
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec8_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -253,11 +257,12 @@ rm -f "$_artifacts_dir/objective-gate-result.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"   # AC-1: empty diff → ablation gates SKIP (no live test exec)
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec10_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -288,11 +293,12 @@ export ZBUILD_LINT_CMD="true"
 # summary. The parser must pick the Total (50.0), NOT the first per-file row
 # (10.0) — Copilot #1009 finding. Also confirms quality_score reaches the JSON.
 export ZBUILD_COVERAGE_CMD='printf "%s\n" "| a.sh | 1 | 10 | 10.0%" "Total: 10/20 lines (50.0%)"'
+export ZBUILD_DIFF_CMD="true"   # AC-1: empty diff → ablation gates SKIP (no live test exec)
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec14_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
