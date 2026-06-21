@@ -24,6 +24,11 @@ on:
         required: false
         type: boolean
         default: false
+      template:
+        description: 'Pipeline template id (e.g. simple, standard). Empty = zbuild default (standard).'
+        required: false
+        type: string
+        default: ''
     # NOTE: do not declare `secrets: GITHUB_TOKEN` here — GITHUB_TOKEN is a
     # reserved name auto-provided to every workflow. Declaring it makes the
     # workflow file invalid, which causes GitHub to emit a phantom "workflow
@@ -45,6 +50,11 @@ on:
         required: false
         type: boolean
         default: false
+      template:
+        description: 'Pipeline template id (e.g. simple, standard). Empty = zbuild default (standard).'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write          # pr-open pushes the work branch (CI-3 #1002)
@@ -113,6 +123,9 @@ jobs:
           fi
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)
+          fi
+          if [[ -n "${{ inputs.template }}" ]]; then
+            args+=(--template "${{ inputs.template }}")
           fi
           bash scripts/zbuild pipeline start "${args[@]}"
 
