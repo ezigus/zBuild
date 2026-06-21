@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # scope-manifest-b1-regression-test.sh
 # B1.6 5-trial regression suite for _extract_scope_from_design.
-# Tests the migrated function (plugins/agent/design/plugin.sh:444-467,
-# plugins/agent/build/plugin.sh:1554-1577) and verifies the legacy source
+# Exercises the design-plugin copy (plugins/agent/design/plugin.sh:444-471)
+# behaviorally, and asserts the build-plugin copy
+# (plugins/agent/build/plugin.sh:1554-1581) is byte-identical (SPEC-6) so both
+# migrated copies are covered. Verifies the legacy source
 # (legacy/scripts/lib/pipeline-stages.sh:38-71) has been pruned.
 set -uo pipefail
 
@@ -17,7 +19,7 @@ print_test_header "scope-manifest B1.6 regression: _extract_scope_from_design (#
 setup_test_env "scope-manifest-b1"
 
 # Source design plugin to get _extract_scope_from_design.
-# shellcheck disable=SC1091
+# shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
 _bt='```'
@@ -44,6 +46,21 @@ printf '# Design\n\n%sscope\nfoo.sh\n\nbar.sh\n%s\n' \
     "$_bt" "$_bt" > "$TEST_TEMP_DIR/t1/blanks.md"
 _t1d="$(_extract_scope_from_design "$TEST_TEMP_DIR/t1/blanks.md")"
 assert_eq "[SPEC-2] blank lines inside scope block are stripped" "foo.sh,bar.sh" "$_t1d"
+
+# ─── T7 [SPEC-7]: trailing whitespace on the ```scope fence still extracts ────
+# Regression: build's guard (grep -q '^```scope') matches a padded fence, so an
+# exact-match extractor would silently fall back to plan.json (#25 review).
+# (Run before the T5 simulation below, which redefines the function to a stub.)
+printf '# Design\n\n%sscope   \nfoo.sh\nbar.sh\n%s  \n' "$_bt" "$_bt" > "$TEST_TEMP_DIR/t1/ws.md"
+_t7="$(_extract_scope_from_design "$TEST_TEMP_DIR/t1/ws.md")"
+assert_eq "[SPEC-7] trailing whitespace on scope fence still extracts (no silent fallback)" \
+    "foo.sh,bar.sh" "$_t7"
+
+# ─── T8 [SPEC-8]: whitespace-only lines inside the block are stripped ─────────
+printf '# Design\n\n%sscope\nfoo.sh\n   \nbar.sh\n%s\n' "$_bt" "$_bt" > "$TEST_TEMP_DIR/t1/wsline.md"
+_t8="$(_extract_scope_from_design "$TEST_TEMP_DIR/t1/wsline.md")"
+assert_eq "[SPEC-8] whitespace-only lines inside scope block are stripped" \
+    "foo.sh,bar.sh" "$_t8"
 
 # ─── T3 [SPEC-3]: legacy-citation comment discoverable in design plugin ───────
 _t3_cnt=$(grep -c "legacy-citation.*pipeline-stages.sh:38" \
@@ -78,6 +95,15 @@ if [[ -f "$_sim_design_md" ]] && grep -q '^```scope' "$_sim_design_md" 2>/dev/nu
 fi
 assert_eq "[SPEC-5] T5 simulation: scope_source stays plan when _extract_scope_from_design returns empty" \
     "plan" "$_sim_scope_source"
+
+# ─── T6 [SPEC-6]: build-plugin copy is byte-identical to design's ────────────
+# The migrated function is duplicated in design + build; the behavioral cases
+# above run the design copy, so prove the build copy is identical (covers both).
+_extract_fn() { awk '/^_extract_scope_from_design\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$1"; }
+_design_fn="$(_extract_fn "$REPO_ROOT/plugins/agent/design/plugin.sh")"
+_build_fn="$(_extract_fn "$REPO_ROOT/plugins/agent/build/plugin.sh")"
+assert_eq "[SPEC-6] build copy of _extract_scope_from_design is byte-identical to design copy" \
+    "$_design_fn" "$_build_fn"
 
 cleanup_test_env
 print_test_results

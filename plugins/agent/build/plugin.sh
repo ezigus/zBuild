@@ -1558,14 +1558,20 @@ _extract_scope_from_design() {
     local in_block=0
     local -a files=()
     while IFS= read -r line; do
-        if [[ "$line" == '```scope' ]]; then
+        # Tolerate trailing whitespace on the fence lines — legacy used
+        # /^```scope[[:space:]]*$/, and build's guard (grep -q '^```scope')
+        # matches a whitespace-padded fence, so an exact match here would
+        # silently drop the scope and fall back to plan.json (#25 review).
+        if [[ "$line" =~ ^'```scope'[[:space:]]*$ ]]; then
             in_block=1
             continue
         fi
-        if [[ $in_block -eq 1 && "$line" == '```' ]]; then
+        if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then
             break
         fi
-        if [[ $in_block -eq 1 && -n "$line" ]]; then
+        # Keep lines with any non-whitespace; drop whitespace-only lines
+        # (faithful to legacy `grep -v '^[[:space:]]*$'`).
+        if [[ $in_block -eq 1 && -n "${line//[[:space:]]/}" ]]; then
             files+=("$line")
         fi
     done < "$design_md"
