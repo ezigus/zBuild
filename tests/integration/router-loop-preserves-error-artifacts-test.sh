@@ -49,10 +49,15 @@ mkdir -p "$REPO"
 # exits rc=1. NO LOOP_COMPLETE in .result (so the Fix-A sentinel rescue
 # does NOT trigger — this iter must hit the preservation path).
 MARK_FILE="$TEST_TEMP_DIR/llm-call.mark"
+if [[ -n "$MARK_FILE" ]]; then
+    assert_pass "[SPEC-1] MARK_FILE non-empty at setup"
+else
+    assert_fail "[SPEC-1] MARK_FILE non-empty at setup" "MARK_FILE is empty or unset"
+fi
 mkdir -p "$TEST_TEMP_DIR/bin"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
-mark="\${MARK_FILE:-/tmp/mark}"
+mark="$MARK_FILE"
 echo "iter" >> "\$mark"
 # Stop after 2 iters to bound the test (no-progress safety net will fire).
 if [[ "\$(wc -l < "\$mark" 2>/dev/null | tr -d ' ')" -ge 2 ]]; then
@@ -65,6 +70,14 @@ jq -n '{type:"result", subtype:"error_max_turns", is_error:true, error:"max_turn
 exit 1
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
+assert_contains "[SPEC-2] mock-claude bakes concrete MARK_FILE path at write time" \
+    "$(cat "$TEST_TEMP_DIR/bin/claude")" "$MARK_FILE"
+mock_body="$(cat "$TEST_TEMP_DIR/bin/claude")"
+if ! grep -qF '/tmp/mark' <<< "$mock_body" 2>/dev/null; then
+    assert_pass "[SPEC-3] mock-claude has no /tmp/mark fallback"
+else
+    assert_fail "[SPEC-3] mock-claude has no /tmp/mark fallback" "found /tmp/mark in mock body"
+fi
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 export MARK_FILE
 
