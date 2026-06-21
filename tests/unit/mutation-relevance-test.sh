@@ -26,13 +26,15 @@ setup_test_env "mutation-relevance"
 # only up to the main-loop sentinel.
 HARNESS="$REPO_ROOT/scripts/run-mutation.sh"
 HARNESS_SUB="$TEST_TEMP_DIR/harness-fns.sh"
-# Strip the harness's `trap '_restore_patches' EXIT INT TERM` line — without
-# that strip the source would install a trap that clobbers test-helpers.sh's
-# cleanup_test_env hook (#322 review L32). The relevance helpers are the only
-# part of run-mutation.sh we need here.
+# Strip the harness's top-level trap install lines — without that strip the
+# source would install a trap that clobbers test-helpers.sh's cleanup_test_env
+# hook (#322 review L32). The relevance helpers are the only part of
+# run-mutation.sh we need here. The _restore_patches rule is retained for
+# resilience (it now matches nothing — #992 replaced it with _mut_teardown).
 awk '
     /^# ─── Main loop ───/ { exit }
     /^trap .*_restore_patches/ { next }
+    /^trap .*_mut_teardown/ { next }
     { print }
 ' "$HARNESS" > "$HARNESS_SUB"
 

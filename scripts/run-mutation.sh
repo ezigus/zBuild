@@ -1,36 +1,84 @@
 #!/usr/bin/env bash
-# scripts/run-mutation.sh — mutation testing harness (issue #298)
+# scripts/run-mutation.sh — mutation testing harness (issue #298, parallel #992)
 #
 # For each tests/mutation/*.md spec:
 #   1. Lint required structural sections (## File / ## Mutation /
 #      ## Expected failing test / ## Result / ## Patch / ## Test).
-#   2. Extract the ```bash code block under ## Patch — apply it (mutates code).
-#   3. Extract the ```bash code block under ## Test — run it; expect non-zero.
-#   4. Restore EVERY patch-touched file (tracked → git checkout; untracked →
-#      rm). EXIT trap restores on crash too.
+#   2. Extract the ```bash code block under ## Patch / ## Test.
+#   3. Apply the patch + run the test INSIDE A DEDICATED git worktree at HEAD
+#      (never the live working tree), expecting the test to fail (non-zero =
+#      mutation caught). Each mutant runs in its own throwaway worktree, so
+#      mutants are isolated and the run parallelizes (#992).
 #
 # Safety invariants:
 #   - Refuses to run if any mutation-target dir (core/plugins/scripts/tests)
-#     has uncommitted tracked changes OR untracked files. Prevents conflating
-#     user's WIP with patch artifacts.
-#   - Restores ONLY patch-introduced changes (tracks pre/post snapshots);
-#     never touches user's pre-existing work elsewhere.
-#   - .mutbak cleanup scoped to mutation-target dirs.
+#     has uncommitted tracked changes OR untracked files. The live tree is
+#     never mutated; per-mutant worktrees are checked out from HEAD.
+#   - Worktrees are torn down per-mutant (RETURN trap) and swept again on exit.
+#   - Accounting is byte-for-byte identical to the prior serial runner: the
+#     result lines and final `mutation: P/T passed` are emitted in glob order.
+#
+# Parallelism (#992):
+#   - ZBUILD_MUTATION_PARALLEL_JOBS — UNSET ⇒ CPU-count default (cap 8);
+#     0 or 1 ⇒ serial.
+#   - ZBUILD_MUTATION_TEST_TIMEOUT  — per-mutant test bound (seconds, default
+#     300; 0 ⇒ no timeout).
+#   - ZBUILD_MUTATION_DIR           — override the spec dir (for tests).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-MUTATION_DIR="$REPO_ROOT/tests/mutation"
+MUTATION_DIR="${ZBUILD_MUTATION_DIR:-$REPO_ROOT/tests/mutation}"
 MUTATE_DIRS=(core plugins scripts tests)
 
 passed=0
 failed=0
 results=()
 
-# Files the current/last patch added or modified — for EXIT-trap restore.
-declare -a _PATCH_MODIFIED=()
-declare -a _PATCH_UNTRACKED=()
+# Per-run scratch dir for staged patch/test blocks + per-slot result files.
+job_dir=""
+# PIDs of in-flight worktree mutant subshells (for teardown best-effort kill).
+declare -a _mut_pids=()
+
+# _zb_default_jobs — portable CPU-count for the parallel-by-default path.
+# Linux has `nproc`; macOS does not (uses `sysctl -n hw.ncpu`). Falls back to 4
+# and caps at 8 so a many-core host doesn't oversubscribe the bounded pool.
+_zb_default_jobs() {
+    local n
+    n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
+    [[ "$n" =~ ^[1-9][0-9]*$ ]] || n=4
+    (( n > 8 )) && n=8
+    printf '%s' "$n"
+}
+
+# _mut_resolve_jobs — UNSET ⇒ computed default; explicit 0/1 ⇒ serial (1);
+# explicit N ⇒ N. Distinguish UNSET from an explicit value via ${VAR+x}.
+_mut_resolve_jobs() {
+    local j
+    if [[ -z "${ZBUILD_MUTATION_PARALLEL_JOBS+x}" ]]; then
+        j="$(_zb_default_jobs)"
+    else
+        j="$ZBUILD_MUTATION_PARALLEL_JOBS"
+    fi
+    [[ "$j" =~ ^[1-9][0-9]*$ ]] || j=1
+    printf '%s' "$j"
+}
+
+# Per-mutant test timeout probe (mirrors run-tests.sh:18-24). 0 ⇒ no timeout.
+# Validate: a non-integer would make `timeout` exit non-zero immediately, which
+# the harness would miscount as "caught" (PASS) — masking an uncaught mutation.
+_MUT_TEST_TIMEOUT="${ZBUILD_MUTATION_TEST_TIMEOUT:-300}"
+if [[ ! "$_MUT_TEST_TIMEOUT" =~ ^[0-9]+$ ]]; then
+    echo "run-mutation.sh: invalid ZBUILD_MUTATION_TEST_TIMEOUT='$_MUT_TEST_TIMEOUT' (want non-negative integer seconds); using 300" >&2
+    _MUT_TEST_TIMEOUT=300
+fi
+_mut_tout=()
+if [[ "$_MUT_TEST_TIMEOUT" != "0" ]]; then
+    if   command -v gtimeout >/dev/null 2>&1; then _mut_tout=("gtimeout" "$_MUT_TEST_TIMEOUT")
+    elif command -v timeout  >/dev/null 2>&1; then _mut_tout=("timeout"  "$_MUT_TEST_TIMEOUT")
+    fi
+fi
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -135,24 +183,6 @@ _check_mutation_relevance() {
     return 1
 }
 
-# Restore everything the last patch touched: `git checkout --` tracked
-# modifications (always tried, even if file was deleted), and `rm` untracked
-# files the patch created. Then forget the lists.
-_restore_patches() {
-    local f
-    for f in "${_PATCH_MODIFIED[@]:-}"; do
-        [[ -z "$f" ]] && continue
-        # Try checkout unconditionally — handles deleted/renamed files too.
-        git -C "$REPO_ROOT" checkout -- "$f" 2>/dev/null || true
-    done
-    for f in "${_PATCH_UNTRACKED[@]:-}"; do
-        [[ -z "$f" ]] && continue
-        rm -f "$REPO_ROOT/$f" 2>/dev/null || true
-    done
-    _PATCH_MODIFIED=()
-    _PATCH_UNTRACKED=()
-}
-
 # Refuse if the working tree has ANY change in mutation-target dirs.
 # This is essential: patch detection compares snapshots, and a pre-existing
 # diff would be either silently restored (data loss) or silently skipped
@@ -171,46 +201,110 @@ _assert_clean_targets() {
     fi
 }
 
-# Snapshot current tracked-modifications + untracked in mutation-target dirs.
-# Emits two newline-delimited lists separated by a sentinel "---".
-_snapshot_targets() {
-    (cd "$REPO_ROOT" && git diff --name-only -- "${MUTATE_DIRS[@]}" 2>/dev/null || true)
-    echo "---SNAPSHOT-SEPARATOR---"
-    (cd "$REPO_ROOT" && git ls-files --others --exclude-standard -- "${MUTATE_DIRS[@]}" 2>/dev/null || true)
+# _run_one_mutant_in_worktree <doc> <slot_base> — run one already-gated mutant
+# in a throwaway git worktree at HEAD, never the live tree. Reads the staged
+# ${slot_base}.patch / ${slot_base}.test (NOT inherited arrays) so it is safe to
+# run in a `( … ) &` subshell. Writes the result line to ${slot_base}.line and
+# pass|fail to ${slot_base}.status. The RETURN trap removes the worktree.
+_run_one_mutant_in_worktree() {
+    local doc="$1" slot_base="$2"
+    local name; name="$(basename "$doc")"
+    local patch_code test_code
+    patch_code="$(cat "${slot_base}.patch")"
+    test_code="$(cat "${slot_base}.test")"
+
+    local wt; wt=$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.XXXXXX")
+    # shellcheck disable=SC2064
+    trap "git -C '$REPO_ROOT' worktree remove --force '$wt' >/dev/null 2>&1 || true; rm -rf '$wt' 2>/dev/null || true" RETURN
+
+    if ! git -C "$REPO_ROOT" worktree add --detach "$wt" HEAD >/dev/null 2>&1; then
+        printf 'FAIL  %s  (worktree add failed)' "$name" > "${slot_base}.line"
+        printf 'fail' > "${slot_base}.status"
+        return
+    fi
+
+    if ! ( cd "$wt" && bash -c "set -euo pipefail; $patch_code" ) >/dev/null 2>&1; then
+        printf 'FAIL  %s  (patch failed)' "$name" > "${slot_base}.line"
+        printf 'fail' > "${slot_base}.status"
+        return
+    fi
+
+    if [[ -z "$(git -C "$wt" status --porcelain -- core plugins scripts tests)" ]]; then
+        printf 'FAIL  %s  (no-op patch)' "$name" > "${slot_base}.line"
+        printf 'fail' > "${slot_base}.status"
+        return
+    fi
+
+    # Run targeted test; expect NON-ZERO (caught). stdin from /dev/null so a
+    # `read`-blocked test gets EOF; fd3→/dev/null mirrors the #586 stage-io guard.
+    local test_rc
+    set +e
+    ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) </dev/null >/dev/null 2>&1 3>/dev/null
+    test_rc=$?
+    set -e
+
+    if [[ $test_rc -ne 0 ]]; then
+        printf 'PASS  %s  (caught: rc=%s)' "$name" "$test_rc" > "${slot_base}.line"
+        printf 'pass' > "${slot_base}.status"
+    else
+        printf 'FAIL  %s  (mutation slipped past test — coverage gap)' "$name" > "${slot_base}.line"
+        printf 'fail' > "${slot_base}.status"
+    fi
 }
 
-# Diff two snapshots; populate _PATCH_MODIFIED + _PATCH_UNTRACKED with NEW
-# entries only (entries that appeared post-patch but not pre-patch).
-_compute_patch_delta() {
-    local pre="$1" post="$2"
-    local pre_mod pre_unt post_mod post_unt
-    pre_mod="$(echo "$pre"  | awk '/^---SNAPSHOT-SEPARATOR---$/{exit} {print}')"
-    pre_unt="$(echo "$pre"  | awk '/^---SNAPSHOT-SEPARATOR---$/{seen=1; next} seen{print}')"
-    post_mod="$(echo "$post" | awk '/^---SNAPSHOT-SEPARATOR---$/{exit} {print}')"
-    post_unt="$(echo "$post" | awk '/^---SNAPSHOT-SEPARATOR---$/{seen=1; next} seen{print}')"
-
-    local f
-    while IFS= read -r f; do
-        [[ -z "$f" ]] && continue
-        grep -Fxq "$f" <<< "$pre_mod" || _PATCH_MODIFIED+=("$f")
-    done <<< "$post_mod"
-
-    while IFS= read -r f; do
-        [[ -z "$f" ]] && continue
-        grep -Fxq "$f" <<< "$pre_unt" || _PATCH_UNTRACKED+=("$f")
-    done <<< "$post_unt"
+# Best-effort teardown: kill in-flight mutant subshells, prune + sweep any
+# leftover zb-mut.* worktrees, drop the job dir. Idempotent. Replaces the old
+# _restore_patches EXIT trap.
+_mut_teardown() {
+    local p wt_path line
+    for p in "${_mut_pids[@]:-}"; do
+        [[ -n "$p" ]] && kill "$p" 2>/dev/null || true
+    done
+    git -C "$REPO_ROOT" worktree prune >/dev/null 2>&1 || true
+    # Match by the zb-mut. basename our mktemp -d produces — robust across tmp
+    # roots ($TMPDIR on macOS is /var/folders/.../T/, with a /private prefix in
+    # `git worktree list` output; a tmp-root allow-list misses cases — #992).
+    while IFS= read -r line; do
+        case "$line" in
+            worktree\ *)
+                wt_path="${line#worktree }"
+                case "${wt_path##*/}" in
+                    zb-mut.*)
+                        git -C "$REPO_ROOT" worktree remove --force "$wt_path" >/dev/null 2>&1 || true
+                        rm -rf "$wt_path" 2>/dev/null || true
+                        ;;
+                esac
+                ;;
+        esac
+    done < <(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null || true)
+    [[ -n "$job_dir" ]] && rm -rf "$job_dir" 2>/dev/null || true
 }
 
-# EXIT trap restores last patch's touched files; never touches pre-existing.
-trap '_restore_patches' EXIT INT TERM
+trap '_mut_teardown' EXIT INT TERM
 
 # ─── Main loop ──────────────────────────────────────────────────────────────
 
 _assert_clean_targets
 
+job_dir="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut-jobs.XXXXXX")"
+_par_jobs="$(_mut_resolve_jobs)"
+
+# Parallel arrays keyed by idx (glob order): the spec doc path, a pre-decided
+# gate result line (set ⇒ skip dispatch), and the dispatch worklist.
+declare -a doc_for_idx=()
+declare -a gate_line=()
+declare -a gate_status=()
+declare -a gate_decided=()
+declare -a dispatch=()
+
+# ── Phase A: serial gating (no worktrees). Records a pre-decided result line
+#    for every gate-rejected spec; stages patch/test + enqueues the rest. ──
+idx=0
 for doc in "$MUTATION_DIR"/*.md; do
     [[ -f "$doc" ]] || continue
     name="$(basename "$doc")"
+    doc_for_idx[idx]="$doc"
+    gate_decided[idx]=0
 
     structural_ok=1
     for section in "## File" "## Mutation" "## Expected failing test" "## Result" "## Patch" "## Test"; do
@@ -220,8 +314,10 @@ for doc in "$MUTATION_DIR"/*.md; do
         fi
     done
     if [[ $structural_ok -eq 0 ]]; then
-        failed=$((failed + 1))
-        results+=("FAIL  $name  (structural)")
+        gate_line[idx]="FAIL  $name  (structural)"
+        gate_status[idx]="fail"
+        gate_decided[idx]=1
+        idx=$((idx + 1))
         continue
     fi
 
@@ -231,16 +327,20 @@ for doc in "$MUTATION_DIR"/*.md; do
     _check_mutation_relevance "$doc" || relevance_rc=$?
     if [[ $relevance_rc -eq 2 ]]; then
         echo "FAIL $name: could not parse File and/or Expected failing test paths (missing or test file absent)" >&2
-        failed=$((failed + 1))
-        results+=("FAIL  $name  (relevance: unparseable / missing test file)")
+        gate_line[idx]="FAIL  $name  (relevance: unparseable / missing test file)"
+        gate_status[idx]="fail"
+        gate_decided[idx]=1
+        idx=$((idx + 1))
         continue
     fi
     if [[ $relevance_rc -eq 1 ]]; then
         file_path_msg="$(_extract_backticked_path "$doc" "## File")"
         test_path_msg="$(_extract_backticked_path "$doc" "## Expected failing test")"
         echo "FAIL $name: expected-failing-test '$test_path_msg' has no path/content link to mutated '$file_path_msg' (#309)" >&2
-        failed=$((failed + 1))
-        results+=("FAIL  $name  (relevance: test does not exercise mutated file)")
+        gate_line[idx]="FAIL  $name  (relevance: test does not exercise mutated file)"
+        gate_status[idx]="fail"
+        gate_decided[idx]=1
+        idx=$((idx + 1))
         continue
     fi
 
@@ -248,52 +348,53 @@ for doc in "$MUTATION_DIR"/*.md; do
     test_code="$(_extract_bash_block "$doc" "## Test")"
     if [[ -z "$patch_code" || -z "$test_code" ]]; then
         echo "FAIL $name: ## Patch and/or ## Test bash block is empty" >&2
-        failed=$((failed + 1))
-        results+=("FAIL  $name  (empty patch/test block)")
+        gate_line[idx]="FAIL  $name  (empty patch/test block)"
+        gate_status[idx]="fail"
+        gate_decided[idx]=1
+        idx=$((idx + 1))
         continue
     fi
 
-    # Snapshot, patch, snapshot, compute delta.
-    pre_snap="$(_snapshot_targets)"
+    printf '%s' "$patch_code" > "$job_dir/$idx.patch"
+    printf '%s' "$test_code"  > "$job_dir/$idx.test"
+    dispatch+=("$idx")
+    idx=$((idx + 1))
+done
+n_specs=$idx
 
-    if ! (cd "$REPO_ROOT" && bash -c "set -euo pipefail; $patch_code"); then
-        echo "FAIL $name: patch script returned non-zero" >&2
-        # Compute delta first so _restore_patches knows what to clean.
-        post_snap="$(_snapshot_targets)"
-        _compute_patch_delta "$pre_snap" "$post_snap"
-        _restore_patches
-        failed=$((failed + 1))
-        results+=("FAIL  $name  (patch failed)")
-        continue
+# ── Phase B: bounded-parallel worktree execution over the dispatch worklist.
+#    FIFO pool capped at $_par_jobs (bash-3.2-safe; no `wait -n`). ──
+_mut_pids=()
+for d_idx in "${dispatch[@]:-}"; do
+    [[ -z "$d_idx" ]] && continue
+    ( _run_one_mutant_in_worktree "${doc_for_idx[d_idx]}" "$job_dir/$d_idx" ) &
+    _mut_pids+=($!)
+    if [[ ${#_mut_pids[@]} -ge $_par_jobs ]]; then
+        wait "${_mut_pids[0]}" 2>/dev/null || true
+        _mut_pids=("${_mut_pids[@]:1}")
     fi
+done
+for _pid in "${_mut_pids[@]:-}"; do
+    [[ -n "$_pid" ]] && wait "$_pid" 2>/dev/null || true
+done
+_mut_pids=()
 
-    post_snap="$(_snapshot_targets)"
-    _compute_patch_delta "$pre_snap" "$post_snap"
-
-    if [[ ${#_PATCH_MODIFIED[@]} -eq 0 && ${#_PATCH_UNTRACKED[@]} -eq 0 ]]; then
-        echo "FAIL $name: patch ran but touched no files (sed/awk no-op?)" >&2
-        _restore_patches   # cleans any spurious .mutbak even if patch was no-op
-        failed=$((failed + 1))
-        results+=("FAIL  $name  (no-op patch)")
-        continue
-    fi
-
-    # Run targeted test; expect NON-ZERO.
-    set +e
-    (cd "$REPO_ROOT" && bash -c "$test_code") >/dev/null 2>&1
-    test_rc=$?
-    set -e
-
-    _restore_patches
-
-    if [[ $test_rc -ne 0 ]]; then
-        passed=$((passed + 1))
-        results+=("PASS  $name  (caught: rc=$test_rc)")
+# ── Aggregate in glob order. Gate-decided idx use the stored line; dispatched
+#    idx read the per-slot .line/.status the worktree subshell wrote. ──
+for ((i = 0; i < n_specs; i++)); do
+    if [[ "${gate_decided[i]}" -eq 1 ]]; then
+        line="${gate_line[i]}"
+        status="${gate_status[i]}"
     else
-        echo "FAIL $name: mutation was NOT caught — test passed despite the mutation" >&2
-        failed=$((failed + 1))
-        results+=("FAIL  $name  (mutation slipped past test — coverage gap)")
+        line="$(cat "$job_dir/$i.line" 2>/dev/null || printf 'FAIL  %s  (no result)' "$(basename "${doc_for_idx[i]}")")"
+        status="$(cat "$job_dir/$i.status" 2>/dev/null || printf 'fail')"
     fi
+    if [[ "$status" == "pass" ]]; then
+        passed=$((passed + 1))
+    else
+        failed=$((failed + 1))
+    fi
+    results+=("$line")
 done
 
 # Match the other tiers' output shape: emit just the count line on full pass.
