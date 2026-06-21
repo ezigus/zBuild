@@ -25,6 +25,7 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "claim-coordinator race (ADR-005, issue #308)"
 
 setup_test_env "claim-race"
+skip_unless_platform linux
 
 PLUGIN_DIR="$REPO_ROOT/plugins/claim-coordinator/github-labels"
 
@@ -34,14 +35,6 @@ export ZBUILD_CLAIM_STORE="$TEST_TEMP_DIR/claim-store"
 # Tight backoff window so the test runs in <2s per race.
 export ZBUILD_CLAIM_BACKOFF_MIN_MS=10
 export ZBUILD_CLAIM_BACKOFF_MAX_MS=80
-
-# Skip cleanly on systems without flock (the local-fs backend requires it
-# for atomicity). claim_coordinator_init enforces this; we mirror the check
-# here so the test is honest about why it skipped.
-if ! command -v flock >/dev/null 2>&1; then
-    echo "SKIP: 'flock' not available on this system (install util-linux on macOS via 'brew install util-linux')" >&2
-    exit 0
-fi
 
 # Manifest validation gate — the plugin must be a valid claim-coordinator.
 # shellcheck source=../core/plugin-registry/registry.sh

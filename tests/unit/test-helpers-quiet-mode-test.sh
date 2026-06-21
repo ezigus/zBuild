@@ -96,9 +96,9 @@ out="$(run_in_subshell 'export ZBUILD_TEST_QUIET=1' '
     print_test_results || true')"
 clean="$(printf '%s' "$out" | sed -E $'s/\x1b\\[[0-9;]*m//g')"
 if [[ "$clean" == *"45/47"* ]] && [[ "$clean" == *"2"* ]] && [[ "$clean" == *"FAIL"* ]]; then
-    assert_pass "V7 quiet=1: compact summary on failures"
+    assert_pass "[SPEC-5] V7 quiet=1: compact summary on failures (guard: FAIL path unaffected by SKIP branch)"
 else
-    assert_fail "V7 quiet=1: compact summary on failures" "got: $clean"
+    assert_fail "[SPEC-5] V7 quiet=1: compact summary on failures (guard: FAIL path unaffected by SKIP branch)" "got: $clean"
 fi
 
 # ─── V8: per-process scope — outer process unaffected by inner quiet=1 ────────

@@ -42,24 +42,11 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "integration: route_to_model_loop fast pre-abort via PG kill (#687)"
 setup_test_env "route-fast-abort"
-
 # Wave 15-G's fast-abort guarantee relies on `setsid -w` to isolate the
 # claude process group so the loop signal handler can TERM/KILL the whole
-# tree safely. On hosts without setsid (e.g. plain macOS without util-linux)
-# the implementation falls back to the per-PID kill from Wave 8 (#612),
-# which does not satisfy the 2.5s budget by design — the kernel still has
-# to wait for the trap-ignoring child to consume the eventual SIGKILL the
-# 1s-delayed backstop sends to the bash subshell, but the orphaned claude
-# is not in a kill-able PG. CI (ubuntu-latest) ships util-linux setsid, so
-# this test's contract is enforced there. Skip locally on no-setsid hosts
-# with a clear marker so devs aren't confused.
-if ! command -v setsid >/dev/null 2>&1 || ! setsid -w true >/dev/null 2>&1; then
-    echo "  SKIP: setsid -w unavailable on this host — Wave 15-G PG-kill"
-    echo "        path not exercisable. CI (ubuntu-latest) covers it."
-    cleanup_test_env
-    print_test_results
-    exit 0
-fi
+# tree safely. The setsid -w PG-kill contract is Linux-specific;
+# CI (ubuntu-latest) covers it.
+skip_unless_platform linux
 
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"

@@ -33,6 +33,7 @@ RESET='\033[0m'
 PASS=0
 FAIL=0
 TOTAL=0
+SKIP=0
 FAILURES=()
 
 # ─── Auto-initialize TEST_TEMP_DIR ──────────────────────────────────────────
@@ -382,6 +383,36 @@ MOCK
     chmod +x "$mock_bin"
 }
 
+# ─── Platform Skip Guards ─────────────────────────────────────────────────────
+
+skip_unless_platform() {
+    local required="$1"
+    local current
+    current="$(uname -s 2>/dev/null)"
+    case "$current" in
+        Darwin) current="macos" ;;
+        Linux)  current="linux" ;;
+    esac
+    [[ "$current" == "$required" ]] && return 0
+    SKIP=$((SKIP + 1))
+    echo -e "  ${YELLOW}SKIP${RESET}: requires '$required', running on '$current'" >&2
+    print_test_results
+}
+
+skip_on_platform() {
+    local excluded="$1"
+    local current
+    current="$(uname -s 2>/dev/null)"
+    case "$current" in
+        Darwin) current="macos" ;;
+        Linux)  current="linux" ;;
+    esac
+    [[ "$current" != "$excluded" ]] && return 0
+    SKIP=$((SKIP + 1))
+    echo -e "  ${YELLOW}SKIP${RESET}: excluded on '$excluded'" >&2
+    print_test_results
+}
+
 # ─── Output Helpers ──────────────────────────────────────────────────────────
 
 print_test_header() {
@@ -399,6 +430,12 @@ print_test_section() {
 }
 
 print_test_results() {
+    if [[ "${SKIP:-0}" -gt 0 ]]; then
+        echo ""
+        echo -e "  ${YELLOW}${BOLD}SKIP${RESET}"
+        echo ""
+        exit 0
+    fi
     # #600: in quiet mode, emit a single-line compact summary FIRST so the
     # pipeline operator can scan a 30-line test-stage banner instead of ~150.
     # The full multi-line block follows unchanged (no info loss for humans
