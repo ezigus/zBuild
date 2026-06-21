@@ -51,7 +51,11 @@ _known_types="$(jq -r '.known_types[]' "$SCHEMA")"
 _missing=()
 while IFS= read -r _type; do
     [[ -z "$_type" ]] && continue
-    if ! printf '%s\n' "$_known_types" | grep -qxF "$_type"; then
+    # Here-string, NOT `printf ... | grep -q`: grep -q exits on first match, which
+    # SIGPIPEs the still-writing printf; under `set -o pipefail` that turns a FOUND
+    # match into a non-zero pipeline → false "not registered". The flake surfaced
+    # once the unit tier went parallel-by-default (#984). A here-string has no pipe.
+    if ! grep -qxF "$_type" <<< "$_known_types"; then
         _missing+=("$_type")
     fi
 done <<< "$_emitted_types"
