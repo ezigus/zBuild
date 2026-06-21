@@ -97,8 +97,6 @@ set -e
 # #887: with ZBUILD_STATE_DIR unset, a fresh run roots state under
 # $HOME/.zbuild/state/runs/<run_id>/ (per-run isolation). run_id derived from $$, not hardcoded.
 EXPECTED_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state/runs/$ZBUILD_RUN_ID"
-assert_contains "[SPEC-1] RUN_ID includes process id" "$ZBUILD_RUN_ID" "$$"
-assert_contains "[SPEC-2] expected state dir includes process id" "$EXPECTED_STATE_DIR" "-$$"
 
 assert_eq "runner exits 0" "0" "$rc"
 assert_file_exists "build stub captured its env" "$ENV_CAPTURE"

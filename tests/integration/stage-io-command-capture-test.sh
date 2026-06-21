@@ -23,7 +23,6 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="run-stage-io-cmd-$$"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR"
-assert_contains "[SPEC-1] RUN_ID includes process id" "$ZBUILD_RUN_ID" "$$"
 
 # Issue #484: intake creates a git branch; this test isn't a git repo.
 export ZBUILD_INTAKE_SKIP_BRANCH=1

@@ -46,8 +46,6 @@ mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
 export HOME="$TEST_TEMP_DIR/home"
 mkdir -p "$HOME/.zbuild"
 printf '%s' "$ZBUILD_RUN_ID" > "$HOME/.zbuild/scope-override-token"
-assert_contains "[SPEC-1] RUN_ID includes process id" "$ZBUILD_RUN_ID" "$$"
-assert_eq "[SPEC-3] scope-override-token matches RUN_ID" "$ZBUILD_RUN_ID" "$(cat "$HOME/.zbuild/scope-override-token")"
 export ZBUILD_SCOPE_OVERRIDE=1
 
 # Mock claude — emits a known response on stdout

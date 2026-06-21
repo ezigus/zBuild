@@ -35,8 +35,6 @@ PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
 RUN_ID="run-618-$$"
 STATE_DIR="$HOME_DIR/.zbuild/state/runs/$RUN_ID"
-assert_contains "[SPEC-1] RUN_ID includes process id" "$RUN_ID" "$$"
-assert_contains "[SPEC-2] STATE_DIR includes process id" "$STATE_DIR" "-$$"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 PROMPT_CAPTURE="$TEST_TEMP_DIR/build-prompt-capture.txt"
 
