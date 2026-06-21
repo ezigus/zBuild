@@ -57,12 +57,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - name: Ensure Bash 5 (macOS)
+      - name: Ensure Bash 5 + flock (macOS)
         if: runner.os == 'macOS'
-        # macOS ships Bash 3.2; the suite requires Bash 5 (install.sh:39). This
-        # makes the dependency explicit and puts a 5.x `bash` on PATH ahead of
-        # /bin/bash for the subshells run-tests.sh spawns. Idempotent.
-        run: brew install bash
+        # macOS ships Bash 3.2 (suite needs Bash 5, install.sh) and no `flock`
+        # (the local-fs claim backend needs it; clean runners lack it). Mirror
+        # install.sh's macOS prereqs so the unit tier runs the same on both OSes.
+        # Idempotent; puts a 5.x `bash` on PATH ahead of /bin/bash for subshells.
+        run: brew install bash flock
       - name: Run unit tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
