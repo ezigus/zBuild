@@ -17,6 +17,26 @@
 [[ -n "${_TEST_HELPERS_LOADED:-}" ]] && return 0
 _TEST_HELPERS_LOADED=1
 
+# ─── Re-entrancy guard (#971): refuse a test invoked inside another test run ──
+# Every *-test.sh sources this file first, so this is the universal chokepoint.
+# A test executed from WITHIN another test run — e.g. objective-ablation's negctl/
+# reachability gates run `bash <changed-test>` directly — would re-enter the gate
+# logic and fork-bomb the pipeline test stage (the recurring #929/#983/#971 class).
+# The #983 guard in run-tests.sh only catches run-tests.sh-mediated nesting; the
+# ablation's direct `bash` bypasses it. This guard catches BOTH paths.
+# The sentinel has NO leading underscore so env-scrub's ^(ZBUILD_|_TPL_) clears it
+# at every fresh-user-shell boundary (the pipeline test stage), avoiding a stale-
+# value false refusal. Fixture-isolated nested runs set ZBUILD_TESTS_DIR and are
+# exempt (mirrors the #983 guard's exemption). The guard fires ONLY when $0 is a
+# `*-test.sh` being EXECUTED (`bash <test>.sh` — the ablation/fork-bomb path), not
+# when a script merely sources this file for introspection (`bash -c "source …"`,
+# where $0 is `bash`) — so test-helpers' own self-tests are unaffected.
+if [[ -n "${ZBUILD_TEST_EXEC_ACTIVE:-}" && -z "${ZBUILD_TESTS_DIR:-}" && "${0##*/}" == *-test.sh ]]; then
+    echo "test-helpers.sh: refusing nested test invocation (re-entrancy guard #971)" >&2
+    exit 2
+fi
+export ZBUILD_TEST_EXEC_ACTIVE=1
+
 # ─── Colors ──────────────────────────────────────────────────────────────────
 CYAN='\033[38;2;0;212;255m'
 GREEN='\033[38;2;74;222;128m'
