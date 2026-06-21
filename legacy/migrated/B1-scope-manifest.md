@@ -1,7 +1,8 @@
 # Migration Tombstone: B1-scope-manifest
 
 **Migration date:** 2026-06-21
-**Issue:** #754
+**Migrated under:** #754 ([A1] design stage → kind:agent plugin)
+**Pruned + 5-trial under:** #25 ([B1] scope manifest as fenced markdown — this tombstone)
 
 ## Function mapping
 
