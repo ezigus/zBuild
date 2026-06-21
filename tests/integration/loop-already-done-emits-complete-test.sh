@@ -50,16 +50,29 @@ mkdir -p "$REPO"
 
 # Stub claude: produces NO edits, emits LOOP_COMPLETE on iter 1.
 MARK_FILE="$TEST_TEMP_DIR/llm-call.mark"
+if [[ -n "$MARK_FILE" ]]; then
+    assert_pass "[SPEC-1] MARK_FILE non-empty at setup"
+else
+    assert_fail "[SPEC-1] MARK_FILE non-empty at setup" "MARK_FILE is empty or unset"
+fi
 mkdir -p "$TEST_TEMP_DIR/bin"
-cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
+cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
-mark="${MARK_FILE:-/tmp/mark}"
-echo "iter" >> "$mark"
-jq -n --arg r $'branch already contains the required change\nLOOP_COMPLETE' \
-    '{result:$r, usage:{input_tokens:5, output_tokens:3}}'
+mark="$MARK_FILE"
+echo "iter" >> "\$mark"
+jq -n --arg r \$'branch already contains the required change\nLOOP_COMPLETE' \
+    '{result:\$r, usage:{input_tokens:5, output_tokens:3}}'
 exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
+assert_contains "[SPEC-2] mock-claude bakes concrete MARK_FILE path at write time" \
+    "$(cat "$TEST_TEMP_DIR/bin/claude")" "$MARK_FILE"
+mock_body="$(cat "$TEST_TEMP_DIR/bin/claude")"
+if ! grep -qF '/tmp/mark' <<< "$mock_body" 2>/dev/null; then
+    assert_pass "[SPEC-3] mock-claude has no /tmp/mark fallback"
+else
+    assert_fail "[SPEC-3] mock-claude has no /tmp/mark fallback" "found /tmp/mark in mock body"
+fi
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 export MARK_FILE
 

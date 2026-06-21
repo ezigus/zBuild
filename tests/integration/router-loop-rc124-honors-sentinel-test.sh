@@ -47,21 +47,32 @@ mkdir -p "$REPO"
 # Stub claude: writes a file (so diff is non-empty), emits a JSON envelope
 # with LOOP_COMPLETE in .result, then exits rc=124 (gtimeout-after-sentinel).
 MARK_FILE="$TEST_TEMP_DIR/llm-call.mark"
+if [[ -n "$MARK_FILE" ]]; then
+    assert_pass "[SPEC-1] MARK_FILE non-empty at setup"
+else
+    assert_fail "[SPEC-1] MARK_FILE non-empty at setup" "MARK_FILE is empty or unset"
+fi
 mkdir -p "$TEST_TEMP_DIR/bin"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
-mark="\${MARK_FILE:-/tmp/mark}"
+mark="$MARK_FILE"
 echo "iter" >> "\$mark"
 # Simulate work done in the repo.
 printf 'feature\n' > "$REPO/feature.txt" 2>/dev/null || true
 # Emit the JSON envelope with LOOP_COMPLETE in .result, then exit 124.
-# The heredoc above uses MOCK (unquoted-heredoc) so we need \$ to defer
-# variable expansion to runtime. The jq command is written on a single
-# line to avoid the \\\\ literal-backslash trap from earlier review.
+# mark is baked at write time; \$ defers other variable expansion to runtime.
 jq -n --arg r \$'All changes complete.\nCOMMIT_SUMMARY: finish migration\nLOOP_COMPLETE' '{type:"result", subtype:"success", is_error:false, result:\$r, num_turns:18, usage:{input_tokens:50, output_tokens:2000, cache_read_input_tokens:100000, cache_creation_input_tokens:5000}}'
 exit 124
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
+assert_contains "[SPEC-2] mock-claude bakes concrete MARK_FILE path at write time" \
+    "$(cat "$TEST_TEMP_DIR/bin/claude")" "$MARK_FILE"
+mock_body="$(cat "$TEST_TEMP_DIR/bin/claude")"
+if ! grep -qF '/tmp/mark' <<< "$mock_body" 2>/dev/null; then
+    assert_pass "[SPEC-3] mock-claude has no /tmp/mark fallback"
+else
+    assert_fail "[SPEC-3] mock-claude has no /tmp/mark fallback" "found /tmp/mark in mock body"
+fi
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 export MARK_FILE
 
