@@ -45,6 +45,33 @@ any `config/templates/*.yaml` that lists stages and any `tests/golden/`
 snapshot that pins the full event sequence — these break by omission
 identically.
 
+**ABS-2 boundary (read with ABS-3):** "rescope templates that list stages" means
+templates that ACTUALLY CONTAIN the stage you are touching. It does NOT mean add
+your stage to every template.
+
+## Rule ABS-3 — a canonical stage absent from a template is a SUBSET, not a gap
+
+ABS-1/ABS-2 fire only when YOUR change adds, removes, renames, or REORDERS a
+stage that a given template's `flow:` actually contains. They never license
+ADDING a stage to a template that does not currently use it.
+
+`_ZBUILD_CANONICAL_STAGES` is the set of VALID stage ids; each template uses a
+SUBSET of them in canonical order. A stage that is in the canonical list but
+absent from `standard.yaml` (or `simple.yaml`) is CORRECT BY DESIGN — not a
+missing-enumeration gap. EPIC #966's A/B strategy is built on exactly this: new
+objective/review stages land in `simple.yaml` ONLY; `standard.yaml` stays
+untouched until the explicit hand-cutover (#978/#979).
+
+Therefore:
+- Do NOT scope `config/templates/standard.yaml` or `_ZBUILD_STANDARD_ROSTER`
+  into a change that only adds or moves a stage in `simple.yaml`.
+- Moving a stage's POSITION in `_ZBUILD_CANONICAL_STAGES` only requires
+  rescoping templates that ACTUALLY contain that stage. A template that omits
+  the stage is unaffected (its leaf ids remain a valid subsequence).
+- "Stage X is in `_ZBUILD_CANONICAL_STAGES` but not in template Y" is NEVER, by
+  itself, a scope gap. Adding X to Y is a deliberate cutover decision, not a
+  consequence the impact stage should demand.
+
 ## How to find them
 
 ```
