@@ -64,6 +64,13 @@ _eb_known_type() {
     return 1
 }
 
+# _eb_strip_ansi — strip CSI + bare-ESC sequences from a string before JSONL emission.
+# Ported from legacy/scripts/lib/helpers.sh:431-437; two-pass form mirrors _stage_io_strip_ansi.
+# LC_ALL=C so sed processes raw bytes without aborting on non-UTF-8 sequences (issue #830).
+_eb_strip_ansi() {
+    printf '%s' "$1" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g'
+}
+
 # ─── eb_emit_event — single source of truth for events ──────────────────────
 # Usage:
 #   eb_emit_event <type> [key1=val1] [key2=val2] ...
@@ -84,7 +91,7 @@ eb_emit_event() {
     local key val
     for arg in "$@"; do
         key="${arg%%=*}"
-        val="${arg#*=}"
+        val="$(_eb_strip_ansi "${arg#*=}")"
         payload="$(echo "$payload" | jq --arg k "$key" --arg v "$val" '. + {($k): $v}')"
     done
 
@@ -96,10 +103,10 @@ eb_emit_event() {
         ts="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
     fi
 
-    local run_id="${ZBUILD_RUN_ID:-}"
+    local run_id; run_id="$(_eb_strip_ansi "${ZBUILD_RUN_ID:-}")"
     local issue="${ZBUILD_ISSUE:-0}"
-    local plugin="${ZBUILD_PLUGIN:-}"
-    local kind="${ZBUILD_PLUGIN_KIND:-}"
+    local plugin; plugin="$(_eb_strip_ansi "${ZBUILD_PLUGIN:-}")"
+    local kind; kind="$(_eb_strip_ansi "${ZBUILD_PLUGIN_KIND:-}")"
 
     # Validate-or-cast $issue to a non-negative integer. Coming from env, an
     # unsanitized string here would break the SQL INSERT below ($issue is
