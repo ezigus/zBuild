@@ -27,9 +27,13 @@ echo "Running unit tests with PS4 tracing (floor: ${FLOOR}%)..."
 # PS4 format: TRACE:<source>:<lineno>:  — Python parser matches this prefix.
 # BASH_XTRACEFD=9 writes xtrace to fd 9 (not stderr), keeping test output clean.
 # BASH_ENV injects set -x into every child bash so sourced core/*.sh lines appear.
+# #984: FORCE SERIAL here. The unit tier is parallel-by-default now, but PS4
+# line-tracing funnels every child's xtrace to one fd-9 trace file — concurrent
+# workers would interleave/corrupt it and skew coverage. Coverage must run serial.
 PS4='TRACE:${BASH_SOURCE[0]-}:${LINENO}:' \
 BASH_XTRACEFD=9 \
 BASH_ENV="$BASH_ENV_FILE" \
+ZBUILD_TEST_PARALLEL_JOBS=0 \
     bash "$REPO_ROOT/scripts/run-tests.sh" --tier unit 9>"$TRACE_FILE"
 
 TRACE_LINES="$(wc -l < "$TRACE_FILE" | tr -d ' ')"
