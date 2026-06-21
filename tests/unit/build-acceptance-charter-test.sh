@@ -119,7 +119,7 @@ assert_eq "setup: _build_stage_run_inner rc=0" "0" "$rc_charter"
 captured_prompt="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
 
 # AC1: charter section header present.
-if printf '%s' "$captured_prompt" | grep -qF "## ACCEPTANCE TESTS"; then
+if grep -qF "## ACCEPTANCE TESTS" <<< "$captured_prompt"; then
     assert_pass "AC1: prompt contains acceptance-charter section header"
 else
     assert_fail "AC1: prompt must contain '## ACCEPTANCE TESTS' header" \
@@ -127,13 +127,13 @@ else
 fi
 
 # AC2: each TESTFILES path appears in the prompt.
-if printf '%s' "$captured_prompt" | grep -qF "tests/unit/build-acceptance-charter-test.sh"; then
+if grep -qF "tests/unit/build-acceptance-charter-test.sh" <<< "$captured_prompt"; then
     assert_pass "AC2a: prompt contains first TESTFILES path"
 else
     assert_fail "AC2a: prompt must contain 'tests/unit/build-acceptance-charter-test.sh'" \
         "path not found in prompt"
 fi
-if printf '%s' "$captured_prompt" | grep -qF "tests/unit/build-prompt-framing-test.sh"; then
+if grep -qF "tests/unit/build-prompt-framing-test.sh" <<< "$captured_prompt"; then
     assert_pass "AC2b: prompt contains second TESTFILES path"
 else
     assert_fail "AC2b: prompt must contain 'tests/unit/build-prompt-framing-test.sh'" \
@@ -141,7 +141,7 @@ else
 fi
 
 # AC3: explicit MUST NOT weaken prohibition present.
-if printf '%s' "$captured_prompt" | grep -qF "MUST NOT weaken"; then
+if grep -qF "MUST NOT weaken" <<< "$captured_prompt"; then
     assert_pass "AC3: prompt contains 'MUST NOT weaken' prohibition"
 else
     assert_fail "AC3: prompt must contain 'MUST NOT weaken'" \

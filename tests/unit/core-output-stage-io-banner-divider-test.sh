@@ -72,12 +72,12 @@ assert_contains "D1 input header uses ═ glyph"  "$input_header"  "═"
 assert_contains "D1 output header uses ═ glyph" "$output_header" "═"
 # Input header MUST NOT contain ── (light dashes); the only ── in the file
 # belongs to the end-trailer.
-if printf '%s' "$input_header" | grep -q "──"; then
+if grep -q "──" <<< "$input_header"; then
     assert_fail "D1 input header has NO ── glyphs" "found in: $input_header"
 else
     assert_pass "D1 input header has NO ── glyphs"
 fi
-if printf '%s' "$output_header" | grep -q "──"; then
+if grep -q "──" <<< "$output_header"; then
     assert_fail "D1 output header has NO ── glyphs" "found in: $output_header"
 else
     assert_pass "D1 output header has NO ── glyphs"
@@ -91,12 +91,12 @@ assert_contains "D1 input header preserves v4 (post-#523) substring"  "$input_he
 assert_contains "D1 output header preserves v4 (post-#523) substring" "$output_header" "plan [llm] seq=1 output OK 1.2s"
 # #523 negative assertion: heading lines must NOT carry the legacy "stage-io:"
 # label any more (only the end-trailer keeps it).
-if printf '%s' "$input_header" | grep -q "stage-io:"; then
+if grep -q "stage-io:" <<< "$input_header"; then
     assert_fail "D1 input header has NO 'stage-io:' prefix (#523)" "found in: $input_header"
 else
     assert_pass "D1 input header has NO 'stage-io:' prefix (#523)"
 fi
-if printf '%s' "$output_header" | grep -q "stage-io:"; then
+if grep -q "stage-io:" <<< "$output_header"; then
     assert_fail "D1 output header has NO 'stage-io:' prefix (#523)" "found in: $output_header"
 else
     assert_pass "D1 output header has NO 'stage-io:' prefix (#523)"
@@ -135,7 +135,7 @@ assert_contains "D2 colored: stage name 'plan' wrapped in BLUE+BOLD" \
     "$banner_c" "${ESC_BLUE}${ESC_BOLD}plan${ESC_RESET}"
 
 # ═ runs wrapped in LIGHT_BLUE somewhere on the header line.
-if printf '%s' "$banner_c" | grep -qF "${ESC_LIGHT_BLUE}══"; then
+if grep -qF "${ESC_LIGHT_BLUE}══" <<< "$banner_c"; then
     assert_pass "D2 colored: ═ runs wrapped in LIGHT_BLUE"
 else
     assert_fail "D2 colored: ═ runs wrapped in LIGHT_BLUE" \
@@ -148,7 +148,7 @@ ESC_CYAN=$'\033[38;2;0;212;255m'
 ESC_YELLOW=$'\033[38;2;250;204;21m'
 ESC_PURPLE=$'\033[38;2;124;58;237m'
 for legacy in "$ESC_CYAN" "$ESC_YELLOW" "$ESC_PURPLE"; do
-    if printf '%s' "$banner_c" | grep -qF "${legacy}${ESC_BOLD}plan"; then
+    if grep -qF "${legacy}${ESC_BOLD}plan" <<< "$banner_c"; then
         assert_fail "D2 no legacy non-BLUE escape wraps stage 'plan'" \
             "found legacy escape wrapping plan"
     fi

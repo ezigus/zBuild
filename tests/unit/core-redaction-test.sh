@@ -78,7 +78,7 @@ EOF
 apply_scope_redaction "$INPUT" "$OUTPUT" "$MANIFEST" >/dev/null
 # The inside-fence occurrence must NOT be wrapped in markers
 fence_lines="$(awk '/```/{n++; next} n==1' "$OUTPUT")"
-if echo "$fence_lines" | grep -q '<out-of-scope-context>'; then
+if grep -q '<out-of-scope-context>' <<< "$fence_lines"; then
     assert_fail "code-fence contents were redacted (should be preserved verbatim)" "$fence_lines"
 else
     assert_pass "code-fence contents preserved verbatim"
@@ -86,7 +86,7 @@ fi
 
 # Outside-fence path must be wrapped
 outside="$(awk '/```/{n++; next} n==0 || n==2' "$OUTPUT")"
-if echo "$outside" | grep -q '<out-of-scope-context>'; then
+if grep -q '<out-of-scope-context>' <<< "$outside"; then
     assert_pass "outside-fence path is redacted"
 else
     assert_fail "outside-fence path was NOT redacted" "$outside"

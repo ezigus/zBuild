@@ -52,14 +52,14 @@ EOF
 apply_scope_redaction "$INPUT" "$OUTPUT" "$MANIFEST"
 out="$(cat "$OUTPUT")"
 
-if printf '%s\n' "$out" | grep -q "src/included/file.go"; then
+if grep -q "src/included/file.go" <<< "$out"; then
     assert_pass "in-scope path is preserved"
 else
     assert_fail "in-scope path is preserved" "missing: src/included/file.go"
 fi
 
 # Out-of-scope path is wrapped in <out-of-scope-context> tags (not deleted)
-if printf '%s\n' "$out" | grep -q "out-of-scope-context"; then
+if grep -q "out-of-scope-context" <<< "$out"; then
     assert_pass "out-of-scope path is wrapped in out-of-scope-context tags"
 else
     assert_fail "out-of-scope path is wrapped in out-of-scope-context tags" "no marker found in output"

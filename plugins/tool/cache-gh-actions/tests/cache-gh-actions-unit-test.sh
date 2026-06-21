@@ -51,7 +51,7 @@ else
 fi
 
 # The plugin must emit a diagnostic to stderr so the caller knows why rc=2.
-if echo "$traversal_out" | grep -qiE "(invalid|traversal|rejected|forbidden|unsafe|illegal)"; then
+if grep -qiE "(invalid|traversal|rejected|forbidden|unsafe|illegal)" <<< "$traversal_out"; then
     assert_pass "traversal key: rejection diagnostic on stderr"
 else
     assert_fail "traversal key: rejection diagnostic on stderr" \
@@ -132,7 +132,7 @@ if [[ "$long_rc" -eq 2 ]]; then
     assert_pass "very long key: cache_pull exits 2 (explicit rejection)"
 elif [[ "$long_rc" -eq 0 ]]; then
     # Truncation path: verify the dest is empty/miss (no crash, no corruption)
-    if echo "$long_out" | grep -qF "CACHE_MISS"; then
+    if grep -qF "CACHE_MISS" <<< "$long_out"; then
         assert_pass "very long key: cache_pull exits 0 with CACHE_MISS (safe truncation)"
     else
         assert_fail "very long key: cache_pull exits 0 with CACHE_MISS (safe truncation)" \
@@ -180,7 +180,7 @@ fi
 
 # Regardless of outcome, the raw comma must not appear verbatim in any
 # generated file path under RUNNER_TEMP — that would be a shell safety bug.
-if find "$RUNNER_TEMP" -name '*,*' 2>/dev/null | grep -q ','; then
+if grep -q ',' <<< "$(find "$RUNNER_TEMP" -name '*,*' 2>/dev/null)"; then
     assert_fail "comma key: no file path under RUNNER_TEMP contains a raw comma" \
         "comma found in path under $RUNNER_TEMP"
 else

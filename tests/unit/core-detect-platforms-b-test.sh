@@ -125,7 +125,7 @@ cat > "$REPO_DIR/.zbuild/platforms.json" <<'V2DIS'
 }
 V2DIS
 result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
-if ! echo "$result" | grep -qF "node"; then
+if ! grep -qF "node" <<< "$result"; then
     assert_pass \
         "#196: disable_detection path → indicator files inside excluded subtree not counted"
 else
@@ -343,10 +343,10 @@ assert_eq \
     "#197: tie, no override, no fallback → engine does not crash (exit 0)" \
     "0" "$detect_exit"
 # Either both platforms appear (multi-platform output) or an "ambiguous" marker
-if echo "$result" | grep -qF "ios" && echo "$result" | grep -qF "node"; then
+if grep -qF "ios" <<< "$result" && grep -qF "node" <<< "$result"; then
     assert_pass \
         "#197: tie, no override, no fallback → both platforms present in output"
-elif echo "$result" | grep -qF "ambiguous"; then
+elif grep -qF "ambiguous" <<< "$result"; then
     assert_pass \
         "#197: tie, no override, no fallback → ambiguous marker in output"
 else

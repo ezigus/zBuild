@@ -36,7 +36,7 @@ if [[ "$OUT_INLINE" == *bold* ]]; then
 else
     assert_fail "T1: inline escape dropped content" "got: $OUT_INLINE"
 fi
-if printf '%s' "$OUT_INLINE" | grep -q $'\x1b' 2>/dev/null; then
+if grep -q $'\x1b' 2>/dev/null <<< "$OUT_INLINE"; then
     assert_fail "T1: inline escape left ANSI sequence intact" \
         "got bytes: $(printf '%s' "$OUT_INLINE" | od -c | head -2)"
 else
@@ -57,7 +57,7 @@ if [[ "$OUT_BLOCK" == *'line2 red'* ]]; then
 else
     assert_fail "T2: block escape dropped content" "got: $OUT_BLOCK"
 fi
-if printf '%s' "$OUT_BLOCK" | grep -q $'\x1b' 2>/dev/null; then
+if grep -q $'\x1b' 2>/dev/null <<< "$OUT_BLOCK"; then
     assert_fail "T2: block escape left ANSI sequence intact"
 else
     assert_pass "T2: ANSI stripped from block output"

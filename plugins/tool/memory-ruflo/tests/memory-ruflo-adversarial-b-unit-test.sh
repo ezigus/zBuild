@@ -129,7 +129,7 @@ case "$_action" in
             [[ -z "$_f" ]] && continue
             _k="$(basename "$_f")"
             _v="$(cat "$_f" 2>/dev/null || true)"
-            if printf '%s%s' "$_k" "$_v" | grep -qF "$_query" 2>/dev/null; then
+            if grep -qF "$_query" 2>/dev/null <<< "$_k$_v"; then
                 [[ $_first -eq 0 ]] && _results+=','
                 _preview="${_v:0:50}"
                 _preview="${_preview//\\/\\\\}"
@@ -241,7 +241,7 @@ if [[ "$iso_val" == "value-from-A" ]]; then
     set +e
     _caps="$(memory_capabilities 2>/dev/null)"
     set -e
-    if echo "$_caps" | grep -q "repo_scoping"; then
+    if grep -q "repo_scoping" <<< "$_caps"; then
         assert_fail "namespace isolation: project-B must not see project-A value" \
             "got '$iso_val' — repo_scoping advertised but not enforced"
     else
@@ -281,7 +281,7 @@ set -e
 assert_exit_code "list_namespaces: exits 0" "0" "$list_rc"
 
 # The bare namespace 'list-strip-ns' must be present in the output.
-if echo "$list_out" | grep -qF "list-strip-ns"; then
+if grep -qF "list-strip-ns" <<< "$list_out"; then
     assert_pass "list_namespaces: bare namespace 'list-strip-ns' appears in output"
 else
     assert_fail "list_namespaces: bare namespace 'list-strip-ns' appears in output" \
@@ -291,7 +291,7 @@ fi
 # If the plugin applied a prefix (put_log_ns != 'list-strip-ns'), that prefix
 # must NOT appear in the list output.
 if [[ -n "$_put_log_ns" && "$_put_log_ns" != "list-strip-ns" ]]; then
-    if echo "$list_out" | grep -qF "$_put_log_ns"; then
+    if grep -qF "$_put_log_ns" <<< "$list_out"; then
         assert_fail "list_namespaces: prefixed namespace '$_put_log_ns' is NOT in output (must be stripped)" \
             "raw prefix leaked into: $list_out"
     else

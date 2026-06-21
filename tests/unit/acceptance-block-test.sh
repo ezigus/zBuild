@@ -147,7 +147,7 @@ set -e
 assert_eq "TC-5: returns 0 with both blocks" "0" "$tc5_rc"
 assert_contains "TC-5: acceptance SPEC present" "$tc5_out" "SPEC: only acceptance block content is extracted"
 # scope block content must not appear in output
-if echo "$tc5_out" | grep -q "^scripts/lib/acceptance-block.sh$"; then
+if grep -q "^scripts/lib/acceptance-block.sh$" <<< "$tc5_out"; then
     FAIL=$((FAIL + 1))
     printf "  \033[31m✗\033[0m TC-5: scope block content leaked into output\n"
 else

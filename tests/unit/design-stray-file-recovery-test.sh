@@ -140,7 +140,7 @@ rc=$?
 set -e
 assert_eq "T2: tracked-conflict branch returns rc=1" "1" "$rc"
 if grep -q '"design.stray.conflict"' "$ZBUILD_EVENTS_JSONL" && \
-   grep '"design.stray.conflict"' "$ZBUILD_EVENTS_JSONL" | grep -q '"reason":"tracked"'; then
+   grep -q '"reason":"tracked"' <<< "$(grep '"design.stray.conflict"' "$ZBUILD_EVENTS_JSONL")"; then
     assert_pass "T2: design.stray.conflict reason=tracked emitted"
 else
     assert_fail "T2: design.stray.conflict missing or wrong reason" "events: $(cat "$ZBUILD_EVENTS_JSONL")"

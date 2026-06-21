@@ -86,7 +86,7 @@ case "$verb" in
             [[ -z "$f" ]] && continue
             k="$(basename "$f")"
             v="$(cat "$f" 2>/dev/null || true)"
-            if printf '%s' "$k$v" | grep -qF "$query" 2>/dev/null; then
+            if grep -qF "$query" 2>/dev/null <<< "$k$v"; then
                 [[ $first -eq 0 ]] && results+=','
                 preview="${v:0:50}"
                 preview="${preview//\\/\\\\}"
@@ -210,7 +210,7 @@ set -e
 
 assert_exit_code "memory_backend_init exits 1 when ruflo absent" "1" "$missing_rc"
 
-if echo "$missing_out" | grep -qiE "(ruflo|not found|unavailable|missing|required|dependency)"; then
+if grep -qiE "(ruflo|not found|unavailable|missing|required|dependency)" <<< "$missing_out"; then
     assert_pass "memory_backend_init: diagnostic on stderr when ruflo absent"
 else
     assert_fail "memory_backend_init: diagnostic on stderr when ruflo absent" "stderr was: $missing_out"

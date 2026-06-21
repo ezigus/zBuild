@@ -44,7 +44,7 @@ assert_contains "R4: prompt forbids iterating when nothing left to do" \
     "$out" "Do NOT keep iterating"
 
 # R5: old wording must be gone — "and tests would pass" was the narrow phrasing.
-if printf '%s' "$out" | grep -qF "tests would pass"; then
+if grep -qF "tests would pass" <<< "$out"; then
     assert_fail "R5: old narrow wording 'tests would pass' must be removed" \
         "found legacy phrasing"
 else

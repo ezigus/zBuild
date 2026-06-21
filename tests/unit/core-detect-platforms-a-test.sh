@@ -65,7 +65,7 @@ rm -f "$STATE_DIR/platforms.json"
 _make_platform_plugin "security-lens-ios" "ios"
 result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
 assert_contains "ios plugin declared but no indicator files → generic" "$result" "generic"
-if echo "$result" | grep -qF "ios"; then
+if grep -qF "ios" <<< "$result"; then
     assert_fail "ios should NOT appear when no indicator files present"
 else
     assert_pass "ios not returned when indicator files absent"
@@ -232,7 +232,7 @@ rm -rf "$PLUGINS_ROOT/agent/sig-node-high"
 _make_signal_plugin "sig-node-nomatch" "node" "high"
 # No indicator files created — repo is empty
 result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
-if ! echo "$result" | grep -qF "node"; then
+if ! grep -qF "node" <<< "$result"; then
     assert_pass \
         "#195: detect.signals with no matching files → platform NOT detected"
 else
@@ -282,7 +282,7 @@ result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
 assert_contains \
     "#195: generic-platform-marker present → generic in output" \
     "$result" "generic"
-if ! echo "$result" | grep -vF "generic" | grep -qE '\S'; then
+if ! grep -qE '\S' <<< "$(grep -vF "generic" <<< "$result")"; then
     assert_pass \
         "#195: generic-platform-marker only → no unexpected named platforms"
 else

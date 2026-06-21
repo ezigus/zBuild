@@ -50,7 +50,7 @@ out="$(render_plan_md "$inj")"
 # Backticks in title must be escaped so user can't open a fence.
 assert_contains "P5 title backticks escaped" "$out" '\`backtick\`'
 # Newlines collapsed to spaces (single-line heading invariant).
-if printf '%s' "$out" | head -1 | grep -qF "newline"; then
+if grep -qF "newline" <<< "$(printf '%s' "$out" | head -1)"; then
     assert_pass "P5 newline collapsed onto heading line"
 else
     assert_fail "P5 newline collapsed onto heading line" "got: $(printf '%s' "$out" | head -1)"
@@ -75,7 +75,7 @@ assert_contains "P7 notes content" "$out" "keep it tidy"
 inp='{"title":"t","dod":"completion criteria here","foo":"bar"}'
 out="$(render_plan_md "$inp")"
 # No DoD section.
-if printf '%s' "$out" | grep -qE '^## DoD'; then
+if grep -qE '^## DoD' <<< "$out"; then
     assert_fail "P8 no DoD section invented" "got DoD heading"
 else
     assert_pass "P8 no DoD section invented"

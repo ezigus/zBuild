@@ -60,7 +60,7 @@ assert_eq "(2b) ZBUILD_STAGE_IO_FD=0 refused at module load" "2" "$rc_fd0"
 
 # Error message must mention "forbidden" or fd number for operator clarity.
 fd1_err="$(ZBUILD_STAGE_IO_FD=1 bash -c "source \"$REPO_ROOT/core/output/stage-io.sh\"" 2>&1 >/dev/null || true)"
-if printf '%s' "$fd1_err" | grep -q "ZBUILD_STAGE_IO_FD=1"; then
+if grep -q "ZBUILD_STAGE_IO_FD=1" <<< "$fd1_err"; then
     assert_pass "(2c) fd-1 error message mentions ZBUILD_STAGE_IO_FD=1"
 else
     assert_fail "(2c) fd-1 error message mentions ZBUILD_STAGE_IO_FD=1" \

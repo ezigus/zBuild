@@ -150,7 +150,7 @@ prompt_noov_content="$(cat "$prompt_noov" 2>/dev/null || echo '')"
 assert_eq "inner rc=0 without override" "0" "$rc_noov"
 
 # ─── T4: no override file → no delimiter, anchor still present ───────────────
-if printf '%s' "$prompt_noov_content" | grep -qF "$DELIM"; then
+if grep -qF "$DELIM" <<< "$prompt_noov_content"; then
     assert_fail "T4 no delimiter without override" "delimiter leaked into prompt"
 else
     assert_pass "T4 no delimiter without override"

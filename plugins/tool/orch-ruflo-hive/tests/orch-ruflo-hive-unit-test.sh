@@ -174,7 +174,7 @@ export PATH="$_saved_path"
 
 assert_exit_code "orch_spawn exits 1 when ruflo not in PATH" "1" "$rc_noruflo"
 
-if echo "$diag_out" | grep -qiF "ruflo" 2>/dev/null; then
+if grep -qiF "ruflo" 2>/dev/null <<< "$diag_out"; then
     assert_pass "diagnostic message mentions ruflo"
 else
     assert_fail "diagnostic message mentions ruflo" "output: $diag_out"

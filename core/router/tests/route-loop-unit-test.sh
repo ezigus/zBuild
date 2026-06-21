@@ -172,7 +172,7 @@ print_test_section "R6: DONE-sentinel parsing variants"
 
 _assert_done_sentinel_match() {
     local desc="$1" text="$2"
-    if printf '%s\n' "$text" | grep -qE '^[[:space:]]*LOOP_COMPLETE[[:space:]]*$' 2>/dev/null; then
+    if grep -qE '^[[:space:]]*LOOP_COMPLETE[[:space:]]*$' 2>/dev/null <<< "$text"; then
         assert_pass "$desc"
     else
         assert_fail "$desc" "no anchored match"
@@ -180,7 +180,7 @@ _assert_done_sentinel_match() {
 }
 _assert_done_sentinel_nomatch() {
     local desc="$1" text="$2"
-    if printf '%s\n' "$text" | grep -qE '^[[:space:]]*LOOP_COMPLETE[[:space:]]*$' 2>/dev/null; then
+    if grep -qE '^[[:space:]]*LOOP_COMPLETE[[:space:]]*$' 2>/dev/null <<< "$text"; then
         assert_fail "$desc" "unexpectedly matched"
     else
         assert_pass "$desc"
@@ -262,7 +262,7 @@ assert_eq "R8 3 output banners (one per iteration)" "3" "$r8_output_count"
 
 # Each iteration's seq increments: seq=1, seq=2, seq=3.
 for _seq in 1 2 3; do
-    if printf '%s\n' "$r8_banner" | grep -qE "══ build \[llm\] seq=${_seq} input ══"; then
+    if grep -qE "══ build \[llm\] seq=${_seq} input ══" <<< "$r8_banner"; then
         assert_pass "R8 input banner seq=$_seq present"
     else
         assert_fail "R8 input banner seq=$_seq present" "missing in: $(printf '%s' "$r8_banner" | head -c 400)"
@@ -327,7 +327,7 @@ assert_eq "R8b 3 input banners (incl. failed iter)"  "3" "$r8b_input_count"
 assert_eq "R8b 3 output banners (incl. failed iter)" "3" "$r8b_output_count"
 
 # Failed iteration banner has FAIL status (error=true triggers FAIL render).
-if printf '%s\n' "$(cat "$R8B_FD3")" | grep -qE '══ build \[llm\] seq=2 output FAIL'; then
+if grep -qE '══ build \[llm\] seq=2 output FAIL' <<< "$(cat "$R8B_FD3")"; then
     assert_pass "R8b failed iter banner shows FAIL"
 else
     assert_fail "R8b failed iter banner shows FAIL" \

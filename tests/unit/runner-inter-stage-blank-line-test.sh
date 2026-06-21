@@ -40,8 +40,7 @@ _test_cleanup_hook() { cleanup_test_env; }
 # unit test). The pattern matches lines that emit a blank to fd 2 within
 # the 30 lines preceding `_render_stage_divider "$stage"`.
 RUNNER_SRC="$REPO_ROOT/core/pipeline/runner.sh"
-if grep -B30 '_render_stage_divider "\$stage"' "$RUNNER_SRC" 2>/dev/null \
-        | grep -qE "printf '\\\\n' >&2"; then
+if grep -qE "printf '\\\\n' >&2" <<< "$(grep -B30 '_render_stage_divider "\$stage"' "$RUNNER_SRC" 2>/dev/null)"; then
     assert_pass "runner.sh main loop emits leading blank line to fd 2 before _render_stage_divider"
 else
     assert_fail "runner.sh main loop emits leading blank line to fd 2 before _render_stage_divider" \

@@ -87,7 +87,7 @@ memory_search() {
         val="\$(cat "\$f" 2>/dev/null || true)"
         # Escape embedded newlines in value
         val="\${val//$'\n'/\\\\n}"
-        if printf '%s' "\$key\$val" | grep -qF "\$query" 2>/dev/null; then
+        if grep -qF "\$query" 2>/dev/null <<< "\$key\$val"; then
             printf '%s\t%s\n' "\$key" "\$val"
             count=\$((count + 1))
             if [[ -n "\$limit" && "\$count" -ge "\$limit" ]]; then

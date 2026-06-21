@@ -148,7 +148,7 @@ prompt_file_b="$artifact_dir_b/review-prompt.txt"
 prompt_body_b="$(cat "$prompt_file_b" 2>/dev/null || echo '')"
 
 # ─── R4: no override → no delimiter, but core contract anchor still present ──
-if printf '%s' "$prompt_body_b" | grep -qF "$DELIM"; then
+if grep -qF "$DELIM" <<< "$prompt_body_b"; then
     assert_fail "R4 no delimiter without override" "override delimiter leaked with no override file"
 else
     assert_pass "R4 no delimiter without override"

@@ -69,7 +69,7 @@ else
 fi
 
 # ── TC-3: old stash is a prune candidate ────────────────────────────────────
-if grep -E 'prune' <<<"$plan" | grep -q "30693"; then
+if grep -q "30693" <<< "$(grep -E 'prune' <<<"$plan")"; then
     assert_pass "old zb-applycheck stash marked prune"
 else
     assert_fail "old zb-applycheck stash marked prune" "got: $plan"
@@ -78,7 +78,7 @@ fi
 # ── TC-4: active-run skip — add a stash whose run_id matches in-progress ────
 _make_stash "zb-applycheck-fwd-99999" 7200
 plan2="$(_cleanup_scan_stashes false 1 || true)"
-if grep -E 'prune' <<<"$plan2" | grep -q "99999"; then
+if grep -q "99999" <<< "$(grep -E 'prune' <<<"$plan2")"; then
     assert_fail "active-run stash skipped (fail-CLOSED)" "got: $plan2"
 else
     assert_pass "active-run stash skipped (fail-CLOSED)"

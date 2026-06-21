@@ -88,7 +88,7 @@ input='For example {"foo":"bar"}. The real plan: {"valid":true}'
 out="$(run "$input")"
 assert_eq "X6 LAST balanced object wins" '{"valid":true}' "$(_split_slice "$out" json)"
 # The earlier inline-example object survives inside prose.
-if printf '%s' "$(_split_slice "$out" prose)" | grep -qF '{"foo":"bar"}'; then
+if grep -qF '{"foo":"bar"}' <<< "$(_split_slice "$out" prose)"; then
     assert_pass "X6 earlier inline-example object survives in prose"
 else
     assert_fail "X6 earlier inline-example object survives in prose" \

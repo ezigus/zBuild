@@ -158,7 +158,7 @@ if [[ "$rc" != "2" ]]; then
     assert_pass "ZBUILD_STATE_FILE matching issue does not hit mismatch guard (rc=$rc)"
 else
     out_check="$(env "ZBUILD_STATE_FILE=$MATCH_STATE" bash "$REPO_ROOT/core/pipeline/runner.sh" --issue 42 2>&1)" || true
-    if echo "$out_check" | grep -q "mismatch"; then
+    if grep -q "mismatch" <<< "$out_check"; then
         assert_fail "ZBUILD_STATE_FILE matching issue should not trigger mismatch guard"
     else
         assert_pass "ZBUILD_STATE_FILE matching issue does not trigger mismatch guard"

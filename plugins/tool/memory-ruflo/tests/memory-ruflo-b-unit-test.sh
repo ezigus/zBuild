@@ -86,7 +86,7 @@ case "$verb" in
             [[ -z "$f" ]] && continue
             k="$(basename "$f")"
             v="$(cat "$f" 2>/dev/null || true)"
-            if printf '%s' "$k$v" | grep -qF "$query" 2>/dev/null; then
+            if grep -qF "$query" 2>/dev/null <<< "$k$v"; then
                 [[ $first -eq 0 ]] && results+=','
                 preview="${v:0:50}"
                 preview="${preview//\\/\\\\}"
@@ -169,7 +169,7 @@ assert_exit_code "memory_search exits 0" "0" "$search_rc"
 assert_contains "memory_search: output contains key" "$search_out" "fruit-key"
 assert_contains "memory_search: output contains value" "$search_out" "fruit-value"
 
-if printf '%s' "$search_out" | grep -q $'fruit-key\tfruit-value'; then
+if grep -q $'fruit-key\tfruit-value' <<< "$search_out"; then
     assert_pass "memory_search: output is tab-separated key<TAB>value"
 else
     assert_fail "memory_search: output is tab-separated key<TAB>value" \
@@ -231,7 +231,7 @@ assert_contains "memory_list_namespaces: ns-beta is listed" "$ns_list_out" "ns-b
 ns_alpha_lines="$(printf '%s\n' "$ns_list_out" | grep -c '^ns-alpha$' 2>/dev/null || echo 0)"
 assert_eq "memory_list_namespaces: ns-alpha appears on its own line" "1" "$ns_alpha_lines"
 
-if printf '%s\n' "$ns_list_out" | grep -q 'zbuild-repo-'; then
+if grep -q 'zbuild-repo-' <<< "$ns_list_out"; then
     assert_fail "memory_list_namespaces: repo prefix is stripped from output" \
         "raw prefix found in: $ns_list_out"
 else

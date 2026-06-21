@@ -84,13 +84,13 @@ install_envelope_mock_claude --file "$REVIEW_CANNED" --record-prompt "$PROMPT1"
 )
 assert_eq "MB1 _review_run_inner rc=0" "0" "$(cat "$TEST_TEMP_DIR/rc1")"
 llm1="$(cat "$PROMPT1" 2>/dev/null || true)"
-if printf '%s' "$llm1" | grep -qF 'diff --git a/core/foo.sh b/core/foo.sh'; then
+if grep -qF 'diff --git a/core/foo.sh b/core/foo.sh' <<< "$llm1"; then
     assert_pass "MB1 LLM prompt contains the branch diff despite EMPTY diff.patch"
 else
     assert_fail "MB1 LLM prompt missing branch diff (judged empty per-run diff)" \
         "first 300: $(printf '%s' "$llm1" | head -c 300)"
 fi
-if printf '%s' "$llm1" | grep -qF '+b'; then
+if grep -qF '+b' <<< "$llm1"; then
     assert_pass "MB1 LLM prompt contains the branch hunk additions"
 else
     assert_fail "MB1 LLM prompt missing branch hunk additions" "n/a"
@@ -141,7 +141,7 @@ install_envelope_mock_claude --file "$REVIEW_CANNED" --record-prompt "$PROMPT2"
 )
 assert_eq "MB2 _review_run_inner rc=0 (fallback, no crash)" "0" "$(cat "$TEST_TEMP_DIR/rc2")"
 llm2="$(cat "$PROMPT2" 2>/dev/null || true)"
-if printf '%s' "$llm2" | grep -qF 'FALLBACK_MARKER'; then
+if grep -qF 'FALLBACK_MARKER' <<< "$llm2"; then
     assert_pass "MB2 LLM prompt uses diff.patch content when no base resolves"
 else
     assert_fail "MB2 LLM prompt missing diff.patch fallback content" \

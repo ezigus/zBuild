@@ -36,7 +36,7 @@ local_backdate() {
 print_test_section "pattern list is a non-empty array"
 
 pattern_count=0
-if declare -p ZBUILD_TMPDIR_PATTERNS 2>/dev/null | grep -q 'declare -a'; then
+if grep -q 'declare -a' <<< "$(declare -p ZBUILD_TMPDIR_PATTERNS 2>/dev/null)"; then
     assert_pass "T1: ZBUILD_TMPDIR_PATTERNS is an array"
     pattern_count="${#ZBUILD_TMPDIR_PATTERNS[@]}"
 else

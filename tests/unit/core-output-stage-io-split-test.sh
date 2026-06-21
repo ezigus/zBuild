@@ -71,13 +71,13 @@ s1_banner="$(cat "$s1_fd3")"
 assert_contains "S1 banner has input header (#523)" "$s1_banner" "plan [llm] seq=1 input"
 assert_contains "S1 banner has prompt body" "$s1_banner" "PROMPT_BODY"
 # No output section yet
-if printf '%s' "$s1_banner" | grep -q "seq=1 output"; then
+if grep -q "seq=1 output" <<< "$s1_banner"; then
     assert_fail "S1 begin must NOT emit output banner" "got: $s1_banner"
 else
     assert_pass "S1 begin does NOT emit output banner"
 fi
 # No end-trailer yet
-if printf '%s' "$s1_banner" | grep -q "end stage-io"; then
+if grep -q "end stage-io" <<< "$s1_banner"; then
     assert_fail "S1 begin must NOT emit end-trailer" "got: $s1_banner"
 else
     assert_pass "S1 begin does NOT emit end-trailer"

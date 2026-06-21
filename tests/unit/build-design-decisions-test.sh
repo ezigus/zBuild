@@ -102,12 +102,12 @@ tests/unit/build-design-decisions-test.sh
 ```
 DESIGN
 prompt="$(_run_build)"
-if printf '%s' "$prompt" | grep -qF "## DESIGN DECISIONS"; then
+if grep -qF "## DESIGN DECISIONS" <<< "$prompt"; then
     assert_pass "D1: prompt contains '## DESIGN DECISIONS' header"
 else
     assert_fail "D1: prompt must contain '## DESIGN DECISIONS' header" "not found"
 fi
-if printf '%s' "$prompt" | grep -qF "register the new event in config/event-schema.json"; then
+if grep -qF "register the new event in config/event-schema.json" <<< "$prompt"; then
     assert_pass "D2: prompt contains the decision prose sentence"
 else
     assert_fail "D2: prompt must contain the decision prose" "sentence not found"
@@ -116,7 +116,7 @@ fi
 # ─── D3: design.md absent → no DESIGN DECISIONS section ───────────────────────
 rm -f "$DESIGN_MD"
 prompt="$(_run_build)"
-if printf '%s' "$prompt" | grep -qF "## DESIGN DECISIONS"; then
+if grep -qF "## DESIGN DECISIONS" <<< "$prompt"; then
     assert_fail "D3: no DESIGN DECISIONS section when design.md absent" "section present"
 else
     assert_pass "D3: DESIGN DECISIONS section omitted when design.md absent"
@@ -134,7 +134,7 @@ tests/unit/build-design-decisions-test.sh
 ```
 DESIGN
 prompt="$(_run_build)"
-if printf '%s' "$prompt" | grep -qF "## DESIGN DECISIONS"; then
+if grep -qF "## DESIGN DECISIONS" <<< "$prompt"; then
     assert_fail "D4: no section when design.md has only fenced blocks" "section present"
 else
     assert_pass "D4: DESIGN DECISIONS omitted when design.md is all fenced blocks"
@@ -156,13 +156,13 @@ core/INFENCE_SCOPE_MARKER.sh
 Decision prose AFTER the block.
 DESIGN
 d5_out="$(_build_read_design_decisions "$D5_MD" 2>/dev/null || true)"
-if printf '%s' "$d5_out" | grep -qF "Decision prose before the block." \
-   && printf '%s' "$d5_out" | grep -qF "Decision prose AFTER the block."; then
+if grep -qF "Decision prose before the block." <<< "$d5_out" \
+   && grep -qF "Decision prose AFTER the block." <<< "$d5_out"; then
     assert_pass "D5: prose before AND after a fence both survive (fence-toggle)"
 else
     assert_fail "D5: prose after the first fence must survive" "got: $d5_out"
 fi
-if printf '%s' "$d5_out" | grep -qF "INFENCE_SCOPE_MARKER"; then
+if grep -qF "INFENCE_SCOPE_MARKER" <<< "$d5_out"; then
     assert_fail "D5: in-fence content must be excluded" "fence content leaked: $d5_out"
 else
     assert_pass "D5: in-fence (scope block) content excluded from decisions"

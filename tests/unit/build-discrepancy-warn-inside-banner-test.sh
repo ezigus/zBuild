@@ -228,7 +228,7 @@ else
 fi
 
 # (5) No [computed] banner pair reintroduced (#587 contract).
-if printf '%s\n' "$fd2" | grep -q "build \[computed\]"; then
+if grep -q "build \[computed\]" <<< "$fd2"; then
     assert_fail "no [computed] banner pair (preserves #587 removal)" \
         "found build [computed] in fd2 capture"
 else

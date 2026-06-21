@@ -115,7 +115,7 @@ case "$_action" in
             [[ -z "$_f" ]] && continue
             _k="$(basename "$_f")"
             _v="$(cat "$_f" 2>/dev/null || true)"
-            if printf '%s%s' "$_k" "$_v" | grep -qF "$_query" 2>/dev/null; then
+            if grep -qF "$_query" 2>/dev/null <<< "$_k$_v"; then
                 [[ $_first -eq 0 ]] && _results+=','
                 _preview="${_v:0:50}"
                 _preview="${_preview//\\/\\\\}"
@@ -312,7 +312,7 @@ elif [[ "$flag_rc" -eq 0 ]]; then
     assert_pass "'--dangerous' namespace: plugin passed it safely to ruflo (rc=0)"
 else
     # rc=1 may be a ruflo flag-parse error — check stderr.
-    if echo "$flag_out" | grep -qiE "(unknown option|invalid flag|illegal option|unrecognized|--)"; then
+    if grep -qiE "(unknown option|invalid flag|illegal option|unrecognized|--)" <<< "$flag_out"; then
         assert_fail "'--dangerous' namespace: not consumed as a CLI flag" \
             "ruflo appears to have parsed '--dangerous' as a flag: $flag_out"
     else
@@ -363,7 +363,7 @@ absent_msg="$(
 )"
 set -e
 
-if echo "$absent_msg" | grep -qiE "(ruflo|not found|unavailable|missing|required|command)"; then
+if grep -qiE "(ruflo|not found|unavailable|missing|required|command)" <<< "$absent_msg"; then
     assert_pass "ruflo absent: diagnostic mentions ruflo or 'not found'"
 else
     assert_fail "ruflo absent: diagnostic mentions ruflo or 'not found'" \
