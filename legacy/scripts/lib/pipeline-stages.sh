@@ -35,40 +35,6 @@ TASKS_FILE="${TASKS_FILE:-}"
 
 # ─── Scope helpers (T1.2 / T2.4) ───────────────────────────────────────────
 
-# _extract_scope_from_design — Extract file paths from a fenced ```scope block in design.md.
-# Usage: _extract_scope_from_design [artifacts_dir]
-# Output: newline-separated file paths (blank lines stripped); empty when block absent or file missing.
-# Fail-open: returns empty on any error so callers can skip the guard gracefully.
-_extract_scope_from_design() {
-    local artifacts_dir="${1:-${ARTIFACTS_DIR:-${PROJECT_ROOT:-.}/.claude/pipeline-artifacts}}"
-    local issue_suffix="${ISSUE_NUMBER:+/issue-${ISSUE_NUMBER}}"
-    local design_file="${artifacts_dir}${issue_suffix}/design.md"
-    [[ -f "$design_file" ]] || design_file="${artifacts_dir}/design.md"
-    [[ -f "$design_file" ]] || return 0
-
-    local _scope_out
-    _scope_out=$(awk '/^```scope[[:space:]]*$/{found=1; next} found && /^```/{exit} found{print}' \
-        "$design_file" 2>/dev/null \
-        | grep -v '^[[:space:]]*$' || true)
-
-    if [ -z "$_scope_out" ]; then
-        declare -f emit_event >/dev/null 2>&1 && \
-            emit_event "pipeline.scope_manifest_missing" \
-                "stage=${PIPELINE_STAGE:-unknown}" \
-                "issue=${ISSUE_NUMBER:-0}" 2>/dev/null || true
-    else
-        local _file_count
-        _file_count=$(printf '%s\n' "$_scope_out" | grep -c . 2>/dev/null || true)
-        _file_count=${_file_count:-0}
-        declare -f emit_event >/dev/null 2>&1 && \
-            emit_event "pipeline.scope_manifest_loaded" \
-                "stage=${PIPELINE_STAGE:-unknown}" \
-                "issue=${ISSUE_NUMBER:-0}" \
-                "file_count=${_file_count}" 2>/dev/null || true
-    fi
-
-    printf '%s\n' "$_scope_out"
-}
 
 # _compute_scope_violations — Compare changed_files against scope_allowlist.
 # Usage: _compute_scope_violations <changed_files_newline_sep> <scope_allowlist_newline_sep>
