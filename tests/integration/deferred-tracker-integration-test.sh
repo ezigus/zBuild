@@ -19,6 +19,7 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "deferred-tracker — integration (ADR-020 / #531)"
 setup_test_env "deferred-tracker-integration"
+_test_cleanup_hook() { rm -f "$REPO_ROOT/.deferred-drift"; }
 
 export RUNNER_TEMP="$TEST_TEMP_DIR"
 TEST_LOG="$TEST_TEMP_DIR/scanned-prs.md"
@@ -27,7 +28,7 @@ mkdir -p "$MOCK_EDIT_BODY_DIR"
 
 # ─── Mock gh: configurable via fixture env vars ─────────────────────────────
 mock_binary "gh" '
-GH_CALLS_LOG="${GH_CALLS_LOG:-/tmp/gh-calls.log}"
+GH_CALLS_LOG="${GH_CALLS_LOG:-'"$TEST_TEMP_DIR"'/gh-calls.log}"
 echo "gh $*" >> "$GH_CALLS_LOG"
 
 # Extract --jq arg if present (for gh JSON output filtering)
@@ -96,6 +97,13 @@ case "${1:-} ${2:-}" in
         ;;
 esac
 '
+
+# [SPEC-3]: gh mock binary baked to TEST_TEMP_DIR, no /tmp/gh-calls.log fallback
+assert_eq "[SPEC-3] gh mock binary has no /tmp/gh-calls.log fallback" "0" \
+    "$(grep -cF '/tmp/gh-calls.log' "$TEST_TEMP_DIR/bin/gh" 2>/dev/null || true)"
+# [SPEC-4]: cleanup hook registers REPO_ROOT sentinel removal (belt-and-suspenders)
+assert_contains "[SPEC-4] cleanup hook registers REPO_ROOT sentinel removal" \
+    "$(declare -f _test_cleanup_hook 2>/dev/null || true)" "deferred-drift"
 
 # Common: empty log to start
 cat > "$TEST_LOG" <<'EOF'
@@ -352,16 +360,21 @@ cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
 [{"number":100},{"number":200}]
 EOF
 # Delete any prior sentinel
-rm -f "$REPO_ROOT/.deferred-drift"
+rm -f "$REPO_ROOT/.deferred-drift" "$TEST_TEMP_DIR/.deferred-drift"
 rc=0
-bash "$REPO_ROOT/scripts/deferred-tracker.sh" --apply --log "$TEST_LOG" >/dev/null 2>&1 || rc=$?
+ZBUILD_REPO_ROOT="$TEST_TEMP_DIR" bash "$REPO_ROOT/scripts/deferred-tracker.sh" --apply --log "$TEST_LOG" >/dev/null 2>&1 || rc=$?
 assert_eq "T10 REGRESSION: >=2 open → exit 2 (fail loud)" "2" "$rc"
-if [[ -f "$REPO_ROOT/.deferred-drift" ]]; then
-    assert_pass "T10: .deferred-drift sentinel written"
+if [[ -f "$TEST_TEMP_DIR/.deferred-drift" ]]; then
+    assert_pass "[SPEC-1] T10: sentinel written under ZBUILD_REPO_ROOT (sandbox)"
 else
-    assert_fail "T10: .deferred-drift sentinel missing"
+    assert_fail "[SPEC-1] T10: sentinel NOT written under ZBUILD_REPO_ROOT"
 fi
-rm -f "$REPO_ROOT/.deferred-drift"
+if [[ ! -f "$REPO_ROOT/.deferred-drift" ]]; then
+    assert_pass "[SPEC-2] T10: REPO_ROOT sentinel not created (hermetic)"
+else
+    assert_fail "[SPEC-2] T10: REPO_ROOT sentinel unexpectedly created (hermeticity breach)"
+fi
+rm -f "$TEST_TEMP_DIR/.deferred-drift"
 create_calls=$(grep -c "issue create" "$GH_CALLS_LOG" || true)
 assert_eq "T10: no issue created on multi-open" "0" "$create_calls"
 
@@ -563,5 +576,9 @@ else
     assert_contains "T23 fallback: helper exists" \
         "$(grep -c '^annotate_candidates_with_dups()' "$REPO_ROOT/scripts/deferred-tracker.sh")" "1"
 fi
+
+# [SPEC-5]: deferred-tracker.sh DRIFT_SENTINEL respects ZBUILD_REPO_ROOT
+assert_eq "[SPEC-5] deferred-tracker.sh respects ZBUILD_REPO_ROOT for DRIFT_SENTINEL" "1" \
+    "$(grep -c 'ZBUILD_REPO_ROOT' "$REPO_ROOT/scripts/deferred-tracker.sh" 2>/dev/null || echo 0)"
 
 print_test_results
