@@ -4,9 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TESTS_DIR="$REPO_ROOT/tests"
-PLUGINS_DIR="$REPO_ROOT/plugins"
-CORE_DIR="$REPO_ROOT/core"
+TESTS_DIR="${ZBUILD_TESTS_DIR:-$REPO_ROOT/tests}"
+PLUGINS_DIR="${ZBUILD_PLUGINS_DIR:-$REPO_ROOT/plugins}"
+CORE_DIR="${ZBUILD_CORE_DIR:-$REPO_ROOT/core}"
 
 # #929: per-file isolation so a non-test or hanging file can never wedge the run
 # (a markdown mutation spec executed as bash blocked on stdin for 3.5h in a
@@ -64,6 +64,19 @@ if [[ "${1:-}" == "--files" ]]; then
   [[ $_tf_failed -eq 0 ]] && exit 0 || exit 1
 fi
 
+# #983 re-entrancy guard: refuse a nested REAL-tier run (no fixture override)
+# while already inside a run-tests.sh invocation. A test that runs the real suite
+# would otherwise fork-bomb the run (the #983 dogfood failure mode). Fixture-
+# isolated nested calls set ZBUILD_TESTS_DIR and are exempt. The var name has NO
+# leading underscore so env-scrub's ^(ZBUILD_|_TPL_) clears it at every fresh-
+# user-shell boundary (the pipeline test stage) — avoiding a stale-value false
+# refusal. The --files targeted path above is exempt (it exits before here).
+if [[ -n "${ZBUILD_RUN_TESTS_ACTIVE:-}" && -z "${ZBUILD_TESTS_DIR:-}" ]]; then
+  echo "run-tests.sh: refusing nested real-tier invocation (re-entrancy guard #983)" >&2
+  exit 2
+fi
+export ZBUILD_RUN_TESTS_ACTIVE=1
+
 tier="${1:-}"
 if [[ "$tier" == "--tier" ]]; then
   tier="${2:-all}"
@@ -112,6 +125,75 @@ run_tier() {
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "$name: 0/0 passed (empty tier)"
     return 0
+  fi
+
+  # Bounded parallel execution when ZBUILD_TEST_PARALLEL_JOBS is set to N > 0.
+  # Each job writes its rc and output to a private slot; aggregation is serial
+  # after all jobs finish so FAIL lines and the summary stay in a stable order.
+  #
+  # #983: parallelism is gated to a per-tier allow-list. The integration tier is
+  # NOT parallel-safe yet — its route.sh/claude-spawning tests deadlock when run
+  # concurrently (the #983 dogfood fork-bomb). #991 makes it safe and widens the
+  # list. Non-safe tiers stay serial even when ZBUILD_TEST_PARALLEL_JOBS is set.
+  local _par_safe_tiers="${ZBUILD_PARALLEL_SAFE_TIERS:-unit}"
+  local _par_jobs="${ZBUILD_TEST_PARALLEL_JOBS:-0}"
+  case " $_par_safe_tiers " in *" $name "*) : ;; *) _par_jobs=0 ;; esac
+  if [[ "$_par_jobs" =~ ^[1-9][0-9]*$ ]]; then
+    # Test hook (#983): signal the parallel path was taken so tests can assert
+    # activation directly rather than infer it from counts. Never set in production.
+    [[ -n "${_ZBUILD_PAR_ACTIVE_FILE:-}" ]] && printf '%s\n' "$name" >> "${_ZBUILD_PAR_ACTIVE_FILE}"
+    local _job_dir
+    _job_dir="$(mktemp -d -t "zbuild-par-$name.XXXXXX")"
+    local -a _pids=()
+    local _slot=0
+    for f in "${files[@]}"; do
+      _slot=$((_slot + 1))
+      local _base="$_job_dir/$_slot"
+      printf '%s' "$f" > "${_base}.file"
+      (
+        if _rt_run "$f" "${_base}.out"; then
+          printf '0' > "${_base}.rc"
+          # Success: aggregation only reads .out for FAILED slots, so drop it now
+          # — parity with the serial path, keeps the job dir small (#1011 review).
+          rm -f "${_base}.out"
+        else
+          printf '%s' "$?" > "${_base}.rc"
+        fi
+      ) &
+      _pids+=($!)
+      # Drain the OLDEST slot when the pool is full (FIFO). #1011 review suggested
+      # `wait -n` for tighter utilization, but that needs bash 4.3+ and macOS ships
+      # bash 3.2 — FIFO drain is the portable choice and still bounds concurrency
+      # to $_par_jobs. Test files are short + uniform, so head-of-line stall is
+      # negligible here; revisit with `wait -n` if a bash-4 floor is adopted.
+      if [[ ${#_pids[@]} -ge $_par_jobs ]]; then
+        wait "${_pids[0]}" 2>/dev/null || true
+        _pids=("${_pids[@]:1}")
+      fi
+    done
+    # drain remaining background jobs
+    for _pid in "${_pids[@]}"; do
+      wait "$_pid" 2>/dev/null || true
+    done
+    # serial aggregation in submission order
+    local _i
+    for _i in $(seq 1 $_slot); do
+      total=$((total + 1))
+      local _rc _file
+      _rc=$(cat "$_job_dir/$_i.rc" 2>/dev/null || printf '1')
+      _file=$(cat "$_job_dir/$_i.file" 2>/dev/null || printf 'unknown')
+      if [[ "$_rc" -eq 0 ]]; then
+        passed=$((passed + 1))
+      else
+        failed=$((failed + 1))
+        echo "$name: FAIL $_file" >&2
+        cat "$_job_dir/$_i.out" >&2 || true
+      fi
+    done
+    rm -rf "$_job_dir"
+    echo "$name: $passed/$total passed"
+    [[ $failed -eq 0 ]]
+    return
   fi
 
   for f in "${files[@]}"; do
