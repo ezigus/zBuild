@@ -45,6 +45,11 @@ jobs:
     with:
       issue_number: ${{ fromJson(needs.trigger.outputs.issue_number) }}
       dry_run: false
+      # EPIC #966: label-triggered runs use the new objective-gate + evidence-fed
+      # review line (simple.yaml), which emits #972's merge-readiness report
+      # instead of the legacy coercive review verdict. Flip to '' (or 'standard')
+      # to revert the daemon to the legacy template.
+      template: simple
     secrets: inherit
 
 # ─── Job 3: post-run cleanup — remove label and post comment ─────────────────
