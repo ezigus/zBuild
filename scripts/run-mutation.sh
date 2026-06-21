@@ -66,7 +66,13 @@ _mut_resolve_jobs() {
 }
 
 # Per-mutant test timeout probe (mirrors run-tests.sh:18-24). 0 ⇒ no timeout.
+# Validate: a non-integer would make `timeout` exit non-zero immediately, which
+# the harness would miscount as "caught" (PASS) — masking an uncaught mutation.
 _MUT_TEST_TIMEOUT="${ZBUILD_MUTATION_TEST_TIMEOUT:-300}"
+if [[ ! "$_MUT_TEST_TIMEOUT" =~ ^[0-9]+$ ]]; then
+    echo "run-mutation.sh: invalid ZBUILD_MUTATION_TEST_TIMEOUT='$_MUT_TEST_TIMEOUT' (want non-negative integer seconds); using 300" >&2
+    _MUT_TEST_TIMEOUT=300
+fi
 _mut_tout=()
 if [[ "$_MUT_TEST_TIMEOUT" != "0" ]]; then
     if   command -v gtimeout >/dev/null 2>&1; then _mut_tout=("gtimeout" "$_MUT_TEST_TIMEOUT")

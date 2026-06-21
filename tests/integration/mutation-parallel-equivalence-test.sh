@@ -138,7 +138,13 @@ PAR_OUT="$TEST_TEMP_DIR/parallel.out"
 ser_rc="$(_run_fixture 1 "$SER_OUT")"
 par_rc="$(_run_fixture 4 "$PAR_OUT")"
 
-assert_eq "serial and parallel stdout are byte-identical" "$(cat "$SER_OUT")" "$(cat "$PAR_OUT")"
+# True byte-for-byte comparison via cmp — `assert_eq "$(cat …)" …` would strip
+# trailing newlines in command substitution and mask a real difference.
+if cmp -s "$SER_OUT" "$PAR_OUT"; then
+    assert_pass "serial and parallel stdout are byte-identical"
+else
+    assert_fail "serial and parallel stdout are byte-identical" "$(diff "$SER_OUT" "$PAR_OUT" | head -20)"
+fi
 assert_eq "serial and parallel exit codes match" "$ser_rc" "$par_rc"
 assert_contains "output carries the mutation: P/T passed line" "$(cat "$SER_OUT")" "mutation: 1/3 passed"
 assert_contains "caught fixture is accounted PASS" "$(cat "$SER_OUT")" "PASS  01-caught.md  (caught: rc="
@@ -159,6 +165,24 @@ assert_eq "no zb-mut. worktree path remains registered" "0" "$stray"
 print_test_section "3. read-blocked test gets EOF; sleeping test is time-bounded"
 TIMEDIR="$TEST_TEMP_DIR/mutation-timeout"
 mkdir -p "$TIMEDIR"
+
+# Install an ENFORCING gtimeout shim at the front of PATH ($TEST_TEMP_DIR/bin is
+# already first — test-helpers.sh:88) so this test deterministically exercises
+# the runner's timeout path even on hosts lacking real GNU timeout, where
+# setup_test_env installs a NON-enforcing `timeout` stub the runner would
+# otherwise pick up. run-mutation.sh probes gtimeout first, so this shim wins.
+cat > "$TEST_TEMP_DIR/bin/gtimeout" <<'SHIM'
+#!/usr/bin/env bash
+_dur="$1"; shift
+"$@" &
+_cmd=$!
+( sleep "$_dur"; kill -KILL "$_cmd" 2>/dev/null ) &
+_watch=$!
+wait "$_cmd" 2>/dev/null; _rc=$?
+kill "$_watch" 2>/dev/null; wait "$_watch" 2>/dev/null || true
+exit "$_rc"
+SHIM
+chmod +x "$TEST_TEMP_DIR/bin/gtimeout"
 
 # A test that reads stdin must terminate via </dev/null EOF and be accounted.
 cat > "$TIMEDIR/01-stdin.md" <<'EOF'
