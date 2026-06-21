@@ -417,3 +417,25 @@ cq-backtrack → review → pr → deploy → validate → monitor`
 
 Implementation: issue #969 (EPIC #966 I3). See ADR-037 §1 for the objective gate
 contract and §3 for the no-LLM invariant.
+
+## Amendment 2026-06-20 (#970 / ADR-037 §1 I4) — objective-gate repositioned
+
+Issue #970 (EPIC #966 I4) extends objective-gate with a coverage-floor hard gate
+and a scope-adherence hard gate, both of which require post-build artifacts (the
+coverage report and the `git diff`). This makes the prior position (after `plan`,
+before `design`) unsuitable — those artifacts are not yet available at that point.
+
+**objective-gate moves from position 2 (after `plan`) to position 7
+(after `test_assessment`, before `acceptance-gate`).**
+
+The canonical array `_ZBUILD_CANONICAL_STAGES` in `core/pipeline/template.sh`
+is updated accordingly. The `simple.yaml` flat flow is updated to place
+`objective-gate` after `test` (index 5). `standard.yaml` does not include
+`objective-gate` in this issue — it lives in `simple.yaml` only.
+
+The `_ZBUILD_CANONICAL_STAGES` sequence is now (18 entries):
+`intake → plan → design → impact → build → test → test_assessment →
+objective-gate → acceptance-gate → cq-preflight → cq-audit-plan → cq-cycle →
+cq-backtrack → review → pr → deploy → validate → monitor`
+
+Implementation: issue #970 (EPIC #966 I4).

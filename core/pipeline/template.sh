@@ -25,10 +25,12 @@ fi
 # Issue #755: compound_quality split into cq-preflight cq-audit-plan cq-cycle cq-backtrack.
 # Issue #922: acceptance-gate inserted after test_assessment (ADR-036 / ADR-013 amendment).
 # Issue #969: objective-gate inserted after plan (ADR-037 §1 / ADR-013 amendment).
+# Issue #970: objective-gate moved to position 7 (after test_assessment, before acceptance-gate) so
+#   post-build artifacts (coverage, diff) are available (ADR-037 §1 / ADR-013 amendment).
 # Exactly these 18 ids, in this order:
-#   intake plan objective-gate design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+#   intake plan design impact build test test_assessment objective-gate acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan objective-gate design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+    intake plan design impact build test test_assessment objective-gate acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template

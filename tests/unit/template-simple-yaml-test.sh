@@ -38,14 +38,14 @@ set -e
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
 # ─── SPEC-2: _TPL_STAGES has exactly 8 entries in canonical order ─────────────
-# CHANGE: at merge-base the file was absent → _TPL_STAGES was empty / wrong.
-# The required flat sequence is intake→plan→objective-gate→design→build→test→review→pr
-# with test_assessment and acceptance-gate explicitly omitted (ADR-037 / issue #968 DoD).
-# objective-gate inserted at index 2 per issue #969.
+# CHANGE: issue #970 moves objective-gate from index 2 (after plan) to index 5
+# (after test, before review). The required flat sequence is now:
+#   intake→plan→design→build→test→objective-gate→review→pr
+# test_assessment and acceptance-gate explicitly omitted (ADR-037 / issue #968 DoD).
 
 assert_eq "[SPEC-2] _TPL_STAGES count is 8" "8" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(intake plan objective-gate design build test review pr)
+_expected_stages=(intake plan design build test objective-gate review pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -117,19 +117,31 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── Non-SPEC: dispatch units are 8 flat stage units (no cycles) ─────────────
-# simple.yaml uses a flat flow with no cycle stages, so every dispatch unit
-# is stage:<id>. This confirms the loader did not misclassify any leaf.
+# ─── SPEC-11: dispatch units are 8 flat stage units (no cycles) ──────────────
+# GUARD: simple.yaml uses a flat flow with no cycle stages, so every dispatch
+# unit is stage:<id>. This confirms the loader did not misclassify any leaf.
 
-assert_eq "dispatch units count is 8" "8" "${#_TPL_DISPATCH_UNITS[@]}"
-assert_eq "dispatch[0] stage:intake"          "stage:intake"          "${_TPL_DISPATCH_UNITS[0]}"
-assert_eq "dispatch[1] stage:plan"            "stage:plan"            "${_TPL_DISPATCH_UNITS[1]}"
-assert_eq "dispatch[2] stage:objective-gate"  "stage:objective-gate"  "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "dispatch[3] stage:design"          "stage:design"          "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "dispatch[4] stage:build"           "stage:build"           "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "dispatch[5] stage:test"            "stage:test"            "${_TPL_DISPATCH_UNITS[5]}"
-assert_eq "dispatch[6] stage:review"          "stage:review"          "${_TPL_DISPATCH_UNITS[6]}"
-assert_eq "dispatch[7] stage:pr"              "stage:pr"              "${_TPL_DISPATCH_UNITS[7]}"
+assert_eq "[SPEC-11] dispatch units count is 8" "8" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "[SPEC-11] dispatch[0] stage:intake"  "stage:intake"  "${_TPL_DISPATCH_UNITS[0]}"
+assert_eq "[SPEC-11] dispatch[1] stage:plan"    "stage:plan"    "${_TPL_DISPATCH_UNITS[1]}"
+assert_eq "[SPEC-11] dispatch[2] stage:design"  "stage:design"  "${_TPL_DISPATCH_UNITS[2]}"
+assert_eq "[SPEC-11] dispatch[3] stage:build"   "stage:build"   "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "[SPEC-11] dispatch[4] stage:test"    "stage:test"    "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "[SPEC-11] dispatch[5] stage:objective-gate" "stage:objective-gate" "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "[SPEC-11] dispatch[6] stage:review"  "stage:review"  "${_TPL_DISPATCH_UNITS[6]}"
+assert_eq "[SPEC-11] dispatch[7] stage:pr"      "stage:pr"      "${_TPL_DISPATCH_UNITS[7]}"
+
+# ─── SPEC-12: objective-gate is at index 5 in _TPL_STAGES (after test) ────────
+# CHANGE: at merge-base objective-gate was at index 2. Issue #970 moves it to
+# index 5. This assertion fails at baseline and passes with the new order.
+
+assert_eq "[SPEC-12] _TPL_STAGES[5] == objective-gate" "objective-gate" "${_TPL_STAGES[5]}"
+
+# ─── SPEC-13: design is at index 2 (shifted from prior index 3) ──────────────
+# CHANGE: issue #970 moves objective-gate out of position 2, so design shifts
+# from index 3 to index 2. This assertion fails at baseline and passes here.
+
+assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 

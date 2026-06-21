@@ -9,22 +9,23 @@ defaults:
   strategy: fanout
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Flat 8-stage simplified pipeline (ADR-037 EPIC #966 I2+I3).
+# Flat 8-stage simplified pipeline (ADR-037 EPIC #966 I2+I3+I4).
 # Omits: impact, test_assessment, acceptance-gate, cq-* stages (targeted for
 # removal in #979). Starts closer to the intended final shape so subsequent
 # issues (#969-#979) can build the new pipeline here while standard.yaml
 # continues to serve production.
 #
-# Future insertion points (per ADR-037 §3):
-#   After plan:   objective-gate stages land here (#969, #970, #971)
-#   After test:   evidence-fed review stages land here (#972, #973, #974)
+# Stage order (issue #970): objective-gate moved to after test (index 5) so
+# post-build artifacts (coverage report, git diff) are available for the
+# coverage-floor and scope-adherence gates.
+#   After test:   objective-gate (#970) then evidence-fed review stages (#972, #973, #974)
 flow:
   - intake
   - plan
-  - objective-gate
   - design
   - build
   - test
+  - objective-gate
   # TODO #972: insert evidence-collection stage here
   - review
   - pr
