@@ -54,6 +54,19 @@ _oa_run_test() {
     )
 }
 
+# ─── _oa_is_test_file <path> ─────────────────────────────────────────────────
+# A changed path is a test file if it ends in -test.sh AND lives under a tests/
+# directory — matching scripts/run-tests.sh's discovery: top-level tests/, plus
+# co-located core/*/tests/ and plugins/*/*/tests/ (incl. *-unit-test.sh, which
+# also ends in -test.sh). The old `tests/*-test.sh` glob missed the co-located
+# tests (Copilot #1025): a tautological core/plugin test change could slip past
+# negctl, and reachability would incorrectly SKIP when only such tests changed.
+_oa_is_test_file() {
+    local f="$1"
+    [[ "$f" == *-test.sh ]] || return 1
+    [[ "$f" == tests/* || "$f" == */tests/* ]]
+}
+
 # ─── _og_ablation_negctl <repo_root> ─────────────────────────────────────────
 # Changed *-test.sh files are the negctl targets. For each:
 #   baseline worktree (merge-base impl + HEAD test) → expect non-zero
@@ -80,7 +93,7 @@ _og_ablation_negctl() {
     local f
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        [[ "$f" == tests/*-test.sh || "$f" == tests/*/*-test.sh ]] || continue
+        _oa_is_test_file "$f" || continue
         [[ -f "$repo_root/$f" ]] && test_files+=("$f")
     done < <(_oa_diff_files "$repo_root")
 
@@ -157,7 +170,7 @@ _og_ablation_reachability() {
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
         all_changed+=("$f")
-        if [[ "$f" == tests/*-test.sh || "$f" == tests/*/*-test.sh ]]; then
+        if _oa_is_test_file "$f"; then
             [[ -f "$repo_root/$f" ]] && test_files+=("$f")
         else
             impl_files+=("$f")
