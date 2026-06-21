@@ -44,9 +44,12 @@ print_test_header "integration: route_to_model_loop fast pre-abort via PG kill (
 setup_test_env "route-fast-abort"
 # Wave 15-G's fast-abort guarantee relies on `setsid -w` to isolate the
 # claude process group so the loop signal handler can TERM/KILL the whole
-# tree safely. The setsid -w PG-kill contract is Linux-specific;
-# CI (ubuntu-latest) covers it.
+# tree safely. The contract is Linux-specific AND needs a working `setsid -w`:
+# on a Linux host without util-linux (or without -w support) route.sh falls back
+# to per-PID kill, which can't satisfy the 2.5s budget — so SKIP rather than fail
+# a contract that isn't exercisable. CI (ubuntu-latest) ships setsid and runs it.
 skip_unless_platform linux
+skip_unless_capable "setsid -w unavailable — Wave 15-G PG-kill not exercisable" setsid -w true
 
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"

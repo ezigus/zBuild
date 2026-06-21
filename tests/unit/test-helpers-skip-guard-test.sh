@@ -99,4 +99,46 @@ else
     assert_fail "[SPEC-6] SKIP counter initializes to 0" "got: $out"
 fi
 
+# ─── [SPEC-7]: skip_unless_platform rejects an unknown platform (fails loudly) ─
+# A typo must NOT silently skip; it must exit non-zero with an ERROR, not run on.
+out="$(run_in_subshell "skip_unless_platform lniux; echo SHOULD_NOT_APPEAR")"
+rc=$?
+clean="$(strip_ansi "$out")"
+if [[ $rc -ne 0 ]] && [[ "$clean" == *"ERROR"* ]] && [[ "$out" != *"SHOULD_NOT_APPEAR"* ]]; then
+    assert_pass "[SPEC-7] skip_unless_platform invalid platform: exits non-zero with ERROR"
+else
+    assert_fail "[SPEC-7] skip_unless_platform invalid platform: exits non-zero with ERROR" \
+        "rc=$rc out=$clean"
+fi
+
+# ─── [SPEC-8]: skip_on_platform rejects an unknown platform (fails loudly) ────
+out="$(run_in_subshell "skip_on_platform darwin; echo SHOULD_NOT_APPEAR")"
+rc=$?
+clean="$(strip_ansi "$out")"
+if [[ $rc -ne 0 ]] && [[ "$clean" == *"ERROR"* ]] && [[ "$out" != *"SHOULD_NOT_APPEAR"* ]]; then
+    assert_pass "[SPEC-8] skip_on_platform invalid platform: exits non-zero with ERROR"
+else
+    assert_fail "[SPEC-8] skip_on_platform invalid platform: exits non-zero with ERROR" \
+        "rc=$rc out=$clean"
+fi
+
+# ─── [SPEC-9]: skip_unless_capable with a passing probe → execution continues ─
+out="$(run_in_subshell 'skip_unless_capable "cannot happen" true; echo CONTINUED')"
+if [[ "$out" == *"CONTINUED"* ]]; then
+    assert_pass "[SPEC-9] skip_unless_capable passing probe: execution continues"
+else
+    assert_fail "[SPEC-9] skip_unless_capable passing probe: execution continues" "got: $out"
+fi
+
+# ─── [SPEC-10]: skip_unless_capable with a failing probe → exits 0 with SKIP ──
+out="$(run_in_subshell 'skip_unless_capable "probe failed" false; echo SHOULD_NOT_APPEAR')"
+rc=$?
+clean="$(strip_ansi "$out")"
+if [[ $rc -eq 0 ]] && [[ "$clean" == *"SKIP"* ]] && [[ "$out" != *"SHOULD_NOT_APPEAR"* ]]; then
+    assert_pass "[SPEC-10] skip_unless_capable failing probe: exits 0 with SKIP"
+else
+    assert_fail "[SPEC-10] skip_unless_capable failing probe: exits 0 with SKIP" \
+        "rc=$rc out=$clean"
+fi
+
 print_test_results

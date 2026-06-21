@@ -25,7 +25,11 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "claim-coordinator race (ADR-005, issue #308)"
 
 setup_test_env "claim-race"
+# Linux-only AND needs `flock`: the local-fs claim backend requires it for
+# atomicity (claim_coordinator_init hard-fails without it), so SKIP cleanly on a
+# Linux host lacking util-linux rather than surfacing a confusing failure.
 skip_unless_platform linux
+skip_unless_capable "flock unavailable — local-fs claim backend requires it" command -v flock
 
 PLUGIN_DIR="$REPO_ROOT/plugins/claim-coordinator/github-labels"
 

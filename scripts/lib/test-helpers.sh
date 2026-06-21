@@ -385,8 +385,22 @@ MOCK
 
 # ─── Platform Skip Guards ─────────────────────────────────────────────────────
 
+# Fail loudly on an unknown platform argument. A typo (e.g. `lniux`) must NOT
+# silently skip a test forever while still reporting success — that would let CI
+# mask a test that never runs. Exits non-zero so the mistake surfaces.
+_require_known_platform() {
+    case "$1" in
+        linux|macos) return 0 ;;
+        *)
+            echo -e "  ${RED}ERROR${RESET}: unknown platform '$1' (expected: linux|macos)" >&2
+            exit 2
+            ;;
+    esac
+}
+
 skip_unless_platform() {
     local required="$1"
+    _require_known_platform "$required"
     local current
     current="$(uname -s 2>/dev/null)"
     case "$current" in
@@ -401,6 +415,7 @@ skip_unless_platform() {
 
 skip_on_platform() {
     local excluded="$1"
+    _require_known_platform "$excluded"
     local current
     current="$(uname -s 2>/dev/null)"
     case "$current" in
@@ -410,6 +425,20 @@ skip_on_platform() {
     [[ "$current" != "$excluded" ]] && return 0
     SKIP=$((SKIP + 1))
     echo -e "  ${YELLOW}SKIP${RESET}: excluded on '$excluded'" >&2
+    print_test_results
+}
+
+# Capability gate: SKIP cleanly when the platform is right but a required tool is
+# absent or lacks a needed feature, so an unexercisable contract is an honest
+# SKIP instead of a confusing failure. Args: a human-readable label, then a probe
+# command (+args) run with output suppressed — e.g.
+#   skip_unless_capable "setsid -w unavailable" setsid -w true
+#   skip_unless_capable "flock unavailable" command -v flock
+skip_unless_capable() {
+    local label="$1"; shift
+    "$@" >/dev/null 2>&1 && return 0
+    SKIP=$((SKIP + 1))
+    echo -e "  ${YELLOW}SKIP${RESET}: $label" >&2
     print_test_results
 }
 
