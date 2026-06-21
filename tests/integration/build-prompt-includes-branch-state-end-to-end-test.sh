@@ -33,7 +33,8 @@ PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 # is deterministic. ZBUILD_STATE_DIR stays UNEXPORTED — the test's whole point
 # is that the runner exports the resolved (now per-run) dir for its children.
 HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
-STATE_DIR="$HOME_DIR/.zbuild/state/runs/run-618"
+RUN_ID="run-618-$$"
+STATE_DIR="$HOME_DIR/.zbuild/state/runs/$RUN_ID"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 PROMPT_CAPTURE="$TEST_TEMP_DIR/build-prompt-capture.txt"
 
@@ -163,7 +164,7 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$PROMPT_CAPTURE"
 set +e
 # #887: pinned HOME + run_id so the per-run state dir is the one STATE_DIR points at.
-env ZBUILD_RUN_ID="run-618" HOME="$HOME_DIR" bash "$RUNNER" --issue 618 >/dev/null 2>&1
+env ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --issue 618 >/dev/null 2>&1
 rc=$?
 set -e
 

@@ -21,7 +21,7 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
-export ZBUILD_RUN_ID="banner-split-test"
+export ZBUILD_RUN_ID="banner-split-test-$$"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
 
 # Operator override so route_to_model accepts --skip-precondition

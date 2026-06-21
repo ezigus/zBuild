@@ -79,6 +79,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$ENV_CAPTURE"
 # proves the runner itself exports the variable (vs the parent shell leaking
 # it through). The runner will compute state_dir from $HOME/.zbuild/state.
 mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
+ZBUILD_RUN_ID="run-618-$$"
 set +e
 env -u ZBUILD_STATE_DIR \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
@@ -87,15 +88,15 @@ env -u ZBUILD_STATE_DIR \
     ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 \
-    ZBUILD_RUN_ID="run-618" \
+    ZBUILD_RUN_ID="$ZBUILD_RUN_ID" \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
     bash "$RUNNER" --issue 618 >/dev/null 2>&1
 rc=$?
 set -e
 # #887: with ZBUILD_STATE_DIR unset, a fresh run roots state under
-# $HOME/.zbuild/state/runs/<run_id>/ (per-run isolation). run_id is pinned above.
-EXPECTED_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state/runs/run-618"
+# $HOME/.zbuild/state/runs/<run_id>/ (per-run isolation). run_id derived from $$, not hardcoded.
+EXPECTED_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state/runs/$ZBUILD_RUN_ID"
 
 assert_eq "runner exits 0" "0" "$rc"
 assert_file_exists "build stub captured its env" "$ENV_CAPTURE"

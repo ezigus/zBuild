@@ -278,7 +278,7 @@ GOOD_MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
 # Set ZBUILD_RUN_ID so the C6 check sees run events.
-export ZBUILD_RUN_ID="c6-test-run-id"
+export ZBUILD_RUN_ID="c6-test-run-id-$$"
 : > "$ZBUILD_EVENTS_JSONL"
 
 # Emit a non-redaction event for this run_id (stage.start, not redaction.applied)

@@ -29,7 +29,7 @@ setup_test_env "stage-io-gh-ansi-strip"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
-export ZBUILD_RUN_ID="gh-ansi-strip"
+export ZBUILD_RUN_ID="gh-ansi-strip-$$"
 export ZBUILD_ISSUE="42"
 export ZBUILD_OUTPUT_GH_COMMENT=1
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
