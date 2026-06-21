@@ -51,11 +51,12 @@ _ZBUILD_LINT_CMD_save="${ZBUILD_LINT_CMD:-}"
 export ZBUILD_TEST_CMD="false"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec2_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -77,11 +78,12 @@ rm -f "$_artifacts_dir/objective-gate-result.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="false"
 export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec3_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
