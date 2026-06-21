@@ -680,29 +680,38 @@ render_review_report_md() {
         printf '\n%s\n' "$(_artifact_md_escape_block "$summary")"
     fi
 
+    # esc mirrors _artifact_md_escape_inline in jq: strip ANSI/CSI, collapse
+    # CR/LF to a space, escape backticks — LLM-controlled fields (.file/.message)
+    # must not break the markdown layout or inject formatting (Copilot #1028).
+    local _jq_esc='def esc: tostring
+        | gsub("\u001b\\[[0-9;?]*[A-Za-z~]"; "")
+        | gsub("\u001b."; "")
+        | gsub("[\r\n]"; " ")
+        | gsub("`"; "\\`");'
+
     printf '\n### Lens Findings\n'
     # Bracketed array → join (NOT a bare stream piped into join — that silently
     # blanks the section, the PR #1004 regression this guards against).
-    printf '%s' "$input" | jq -r '
+    printf '%s' "$input" | jq -r "$_jq_esc"'
         .lenses[] |
-        "\n#### \(.name) (score: \(.score)/10)\n" +
+        "\n#### \(.name|esc) (score: \(.score)/10)\n" +
         ( if ((.findings // []) | length) > 0
           then ( [ .findings[] |
-                   "- [\(.severity)] \(.file)" +
+                   "- [\(.severity|esc)] \(.file|esc)" +
                    (if .line then ":\(.line)" else "" end) +
-                   " — \(.message)" ] | join("\n") )
+                   " — \(.message|esc)" ] | join("\n") )
           else "No findings." end )' 2>/dev/null || true
 
     local flat_len
     flat_len="$(printf '%s' "$input" | jq -r '.findings | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
     if [[ "$flat_len" -gt 0 ]] 2>/dev/null; then
         printf '\n\n### Merge-Readiness Findings (de-duped)\n'
-        printf '%s' "$input" | jq -r '
+        printf '%s' "$input" | jq -r "$_jq_esc"'
             [ .findings[] |
-              "- [\(.severity)] \(.file)" +
+              "- [\(.severity|esc)] \(.file|esc)" +
               (if .line then ":\(.line)" else "" end) +
-              " — \(.messages | join("; "))" +
-              " _(lenses: \(.lenses | join(", ")))_" ] | join("\n")' 2>/dev/null || true
+              " — \((.messages | map(esc) | join("; ")))" +
+              " _(lenses: \((.lenses | map(esc) | join(", "))))_" ] | join("\n")' 2>/dev/null || true
         printf '\n'
     fi
 }

@@ -22,8 +22,14 @@ _RR_LENSES=(correctness security test-coverage design-conformance)
 _RR_SEV_RANK='{"low":1,"medium":2,"high":3,"critical":4}'
 
 # Proximity window (lines): two findings on the same file+category within this
-# many lines de-dupe to one. Override with ZBUILD_RR_PROXIMITY_WINDOW.
-_rr_proximity_window() { printf '%s' "${ZBUILD_RR_PROXIMITY_WINDOW:-10}"; }
+# many lines de-dupe to one. Override with ZBUILD_RR_PROXIMITY_WINDOW. Clamped
+# to a positive integer — a 0 or non-integer would be a jq division-by-zero /
+# --argjson parse error that degrades the whole report to the fallback.
+_rr_proximity_window() {
+    local w="${ZBUILD_RR_PROXIMITY_WINDOW:-10}"
+    [[ "$w" =~ ^[1-9][0-9]*$ ]] || w=10
+    printf '%s' "$w"
+}
 
 # ─── _rr_lens_charter <lens> ────────────────────────────────────────────────
 # The distinct question each lens asks. ADR-038: lenses differ by the artifact
@@ -166,6 +172,7 @@ _rr_fanout_lenses() {
     local total="${#_RR_LENSES[@]}" i=0
     while [[ $i -lt $total ]]; do
         local j=0
+        local -a _batch_pids=()
         while [[ $j -lt $max && $((i + j)) -lt $total ]]; do
             lens="${_RR_LENSES[$((i + j))]}"
             (
@@ -178,9 +185,13 @@ _rr_fanout_lenses() {
                 printf '%s' "$_out" > "$artifact_dir/lens-$lens.out"
                 printf '%s' "$_rc"  > "$artifact_dir/lens-$lens.rc"
             ) &
+            _batch_pids+=("$!")
             j=$((j + 1))
         done
-        wait
+        # Wait only on THIS batch's subshells (not a bare `wait` that would also
+        # block on any unrelated background job the caller may be running).
+        local _p
+        for _p in "${_batch_pids[@]}"; do wait "$_p" 2>/dev/null || true; done
         i=$((i + max))
     done
 

@@ -132,4 +132,30 @@ else
     assert_fail "[SPEC-6] redaction_failed event should be emitted" "absent"
 fi
 
+# ─── SPEC-7: markdown-injection hardening + proximity clamp (Copilot #1028) ──
+# LLM-controlled message with a newline + backtick + ANSI must not break the
+# bullet layout: render via the registered renderer and assert it is sanitized.
+_adv_report="$(jq -nc '{schema_version:1, merge_readiness:"advisory",
+  lenses:[{name:"correctness",score:5,findings:[
+    {file:"core/x.sh",category:"logic",severity:"high",line:7,
+     message:"line1\nline2 `tick`"}]}],
+  findings:[{file:"core/x.sh",category:"logic",line:7,severity:"high",
+     lenses:["correctness"],messages:["line1\nline2 `tick`"]}],
+  summary:"adv"}')"
+_adv_md="$(render_review_report_md "$_adv_report")"
+if printf '%s' "$_adv_md" | grep -q '`tick`'; then
+    assert_fail "[SPEC-7] backtick in LLM message must be escaped" "raw backtick present"
+else
+    assert_pass "[SPEC-7] backtick in LLM message is escaped"
+fi
+# The finding bullet must stay a single line (newline collapsed to a space).
+if printf '%s' "$_adv_md" | grep -qE '^- \[high\] core/x.sh:7 .*line1 line2'; then
+    assert_pass "[SPEC-7] newline in LLM message collapsed (bullet stays one line)"
+else
+    assert_fail "[SPEC-7] newline must be collapsed in the bullet" "bullet split across lines"
+fi
+# Proximity window of 0 (or garbage) must clamp, not crash the aggregate.
+_clamp="$(ZBUILD_RR_PROXIMITY_WINDOW=0 _rr_aggregate "$artifact_dir/review-report-lenses.json" 2>/dev/null | jq -r '.merge_readiness // "ERR"')"
+assert_contains "[SPEC-7] bad proximity window clamps (no aggregation crash)" "ready advisory needs_attention" "$_clamp"
+
 print_test_results
