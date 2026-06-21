@@ -21,13 +21,15 @@ export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
-export ZBUILD_RUN_ID="run-stage-io-int"
+export ZBUILD_RUN_ID="run-stage-io-int-$$"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR"
 
 # Operator override token to allow --skip-precondition in this isolated HOME.
 export HOME="$TEST_TEMP_DIR/home"
 mkdir -p "$HOME/.zbuild"
 echo -n "$ZBUILD_RUN_ID" > "$HOME/.zbuild/scope-override-token"
+assert_contains "[SPEC-1] RUN_ID includes process id" "$ZBUILD_RUN_ID" "$$"
+assert_eq "[SPEC-3] scope-override-token matches RUN_ID" "$ZBUILD_RUN_ID" "$(cat "$HOME/.zbuild/scope-override-token")"
 export ZBUILD_SCOPE_OVERRIDE=1
 
 # Canned claude stub
