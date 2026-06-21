@@ -62,11 +62,19 @@ jobs:
         # macOS ships Bash 3.2 (suite needs Bash 5, install.sh) and no `flock`
         # (the local-fs claim backend needs it; clean runners lack it). Mirror
         # install.sh's macOS prereqs so the unit tier runs the same on both OSes.
-        # Idempotent; puts a 5.x `bash` on PATH ahead of /bin/bash for subshells.
-        run: brew install bash flock
+        run: |
+          brew install bash flock
+          # Prepend Homebrew's bin so subsequent run: steps deterministically use
+          # Bash 5 — PATH precedence vs the system /bin/bash 3.2 varies across
+          # macOS runner images/arches (Copilot review #1031).
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          bash --version | head -1
       - name: Run unit tier
         run: |
-          export ZBUILD_TEST_TMP="$(mktemp -d)"
+          # Explicit mktemp template (cf. core/router/route.sh:823): macOS's
+          # templateless `mktemp -d` ignores $TMPDIR and uses /var/folders, so an
+          # explicit template keeps the temp dir consistent across OSes (#1031).
+          export ZBUILD_TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-unit.XXXXXX")"
           # #629: `| tee` masks the script's non-zero exit under GHA's default
           # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
           bash scripts/run-tests.sh --tier unit 2>&1 | tee /tmp/zbuild-unit-results.txt
