@@ -371,7 +371,10 @@ if [[ ! -f "$REPO_ROOT/.deferred-drift" ]]; then
 else
     assert_fail "[SPEC-2] T10: REPO_ROOT sentinel unexpectedly created (hermeticity breach)"
 fi
-rm -f "$TEST_TEMP_DIR/.deferred-drift"
+# Remove BOTH the sandbox sentinel and any repo-root one a regression may have
+# written — immediately, not at EXIT — so later T-cases (which keep calling
+# deferred-tracker) can't see a stray live-tree sentinel (Copilot review #1023).
+rm -f "$TEST_TEMP_DIR/.deferred-drift" "$REPO_ROOT/.deferred-drift"
 create_calls=$(grep -c "issue create" "$GH_CALLS_LOG" || true)
 assert_eq "T10: no issue created on multi-open" "0" "$create_calls"
 
