@@ -26,7 +26,9 @@ flow:
   - build
   - test
   - objective-gate
-  # TODO #972: insert evidence-collection stage here
+  # #972: the `review` stage emits the evidence-fed multi-lens merge-readiness
+  # report (no new flow stage — it is bound to a dedicated plugin by role).
+  # #973 feeds each lens distinct mechanical evidence.
   - review
   - pr
 
@@ -90,10 +92,13 @@ test:
     tail_lines: 200
 
 # ─── review (leaf) ───────────────────────────────────────────────────────────
-# TODO #974: wire evidence-fed review inputs here
+# ADR-038 (#972): advisory multi-lens merge-readiness report. Bound by role to
+# plugins/agent/review-report (provides.role: review_report) — NOT the legacy
+# `review` verdict plugin (which standard.yaml still uses). Never coerces a
+# merge decision; never hard-blocks. #974 rehomes the full cq+persona lens roster.
 review:
   gate: auto
-  roles: [reviewer]
+  roles: [review_report]
   io:
     destinations: [file, stdout]
     tail_lines: 200
