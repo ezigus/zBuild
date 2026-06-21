@@ -24,15 +24,27 @@ check_bin() {
 }
 
 prereqs_ok=true
-for bin in bash git jq gh rsync; do
+
+# macOS: ensure the two formulae zbuild cannot run without and that the base
+# system lacks — Bash 5 (system /bin/bash is frozen at 3.2) and flock (the
+# local-fs claim backend requires it for atomicity). Idempotent; only attempts
+# when Homebrew is present, then the checks below confirm the result.
+if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    command -v flock >/dev/null 2>&1 || brew install flock
+    bash -c '(( BASH_VERSINFO[0] >= 5 ))' >/dev/null 2>&1 || brew install bash
+fi
+
+# flock is required: the local-fs claim-coordinator backend uses it for atomic
+# label leases (ADR-005). On Linux it ships with util-linux; on macOS via brew.
+for bin in bash git jq gh rsync flock; do
     check_bin "$bin" || prereqs_ok=false
 done
 
 if [[ "$prereqs_ok" != "true" ]]; then
     error "Install missing prerequisites and re-run ./install.sh"
     echo
-    echo "  macOS:   brew install bash git jq gh rsync"
-    echo "  Linux:   sudo apt install bash git jq gh rsync"
+    echo "  macOS:   brew install bash git jq gh rsync flock"
+    echo "  Linux:   sudo apt install bash git jq gh rsync util-linux"
     exit 1
 fi
 

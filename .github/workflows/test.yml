@@ -46,12 +46,35 @@ jobs:
 
   unit:
     name: Unit tests
-    runs-on: ubuntu-latest
+    # B1b (#995): run the unit tier on Linux AND macOS to catch BSD-vs-GNU and
+    # Bash-3.2-vs-5 divergences invisible to Linux-only CI. Unit tier only (cost);
+    # mutation/e2e stay Linux. fail-fast: false so a macOS-only failure still lets
+    # the ubuntu leg report (and vice versa).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+      - name: Ensure Bash 5 + flock (macOS)
+        if: runner.os == 'macOS'
+        # macOS ships Bash 3.2 (suite needs Bash 5, install.sh) and no `flock`
+        # (the local-fs claim backend needs it; clean runners lack it). Mirror
+        # install.sh's macOS prereqs so the unit tier runs the same on both OSes.
+        run: |
+          brew install bash flock
+          # Prepend Homebrew's bin so subsequent run: steps deterministically use
+          # Bash 5 — PATH precedence vs the system /bin/bash 3.2 varies across
+          # macOS runner images/arches (Copilot review #1031).
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          bash --version | head -1
       - name: Run unit tier
         run: |
-          export ZBUILD_TEST_TMP="$(mktemp -d)"
+          # Explicit mktemp template (cf. core/router/route.sh:823): macOS's
+          # templateless `mktemp -d` ignores $TMPDIR and uses /var/folders, so an
+          # explicit template keeps the temp dir consistent across OSes (#1031).
+          export ZBUILD_TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-unit.XXXXXX")"
           # #629: `| tee` masks the script's non-zero exit under GHA's default
           # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
           bash scripts/run-tests.sh --tier unit 2>&1 | tee /tmp/zbuild-unit-results.txt
@@ -62,7 +85,9 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: unit-results
+          # Per-OS name: two matrix legs uploading the same artifact name collide
+          # on upload-artifact@v4+. Nothing downloads this (coverage re-runs).
+          name: unit-results-${{ matrix.os }}
           path: /tmp/zbuild-unit-results.txt
           if-no-files-found: ignore
 

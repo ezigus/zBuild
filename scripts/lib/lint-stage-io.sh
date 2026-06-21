@@ -66,7 +66,11 @@ else
     else
         # BSD grep: drop \b (no word-boundary in BRE/ERE) — match on the token
         # name literally; same-line requirement preserved by the single-line scan.
-        _ere='(route_to_model(_loop)?|run_captured_command)[^\n]*2> */dev/null'
+        # NOTE: use `.*` not `[^\n]*` — in BSD ERE `[^\n]` is a bracket excluding
+        # the literal chars `\` and `n` (NOT "non-newline"), so a callsite with an
+        # `n` in the gap (e.g. run_captured_command) never matched (#995, macOS CI).
+        # grep is line-based, so `.` already cannot span newlines.
+        _ere='(route_to_model(_loop)?|run_captured_command).*2> */dev/null'
         _offenders="$(grep -Ern --include='*.sh' "$_ere" "${_targets[@]}" 2>/dev/null || true)"
     fi
 fi
