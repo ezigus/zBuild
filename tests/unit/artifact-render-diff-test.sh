@@ -87,7 +87,7 @@ Binary files a/img.png and b/img.png differ'
 out="$(render_diff_md "$d")"
 assert_contains "D8 binary heading" "$out" '## a/img.png'
 assert_contains "D8 binary placeholder" "$out" '_binary changes_'
-if printf '%s' "$out" | grep -qE '\`\`\`diff'; then
+if grep -qE '\`\`\`diff' <<< "$out"; then
     assert_fail "D8 no diff fence for binary" "fence emitted"
 else
     assert_pass "D8 no diff fence for binary"

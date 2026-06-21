@@ -88,7 +88,7 @@ assert_eq "U1c divider visible width == 100" "100" "$plain_len"
 # Math: label="$ plan " (6), ts="03:25:45 UTC" (12). mid_bar = w - 22 - 2.
 # mid_bar <= 2 when w <= 26. Use w=24 to force degrade.
 out_narrow="$(_divider_no_color plan 22 12345000)"
-if printf '%s' "$out_narrow" | grep -q "03:25:45 UTC"; then
+if grep -q "03:25:45 UTC" <<< "$out_narrow"; then
     assert_fail "U1d narrow terminal drops timestamp" "found ts in: $out_narrow"
 else
     assert_pass "U1d narrow terminal drops timestamp"
@@ -150,7 +150,7 @@ assert_contains "U3d fail line keeps ✗ glyph" "$fail_line" "✗"
 
 # ─── U4: NO_COLOR strips ANSI but timestamps + glyphs survive ───────────────
 out_nc="$(_divider_no_color plan 100 12345000)"
-if printf '%s' "$out_nc" | grep -q $'\x1b\\['; then
+if grep -q $'\x1b\\[' <<< "$out_nc"; then
     assert_fail "U4 NO_COLOR strips ANSI from divider" "found ESC[ in: $out_nc"
 else
     assert_pass "U4 NO_COLOR strips ANSI from divider"

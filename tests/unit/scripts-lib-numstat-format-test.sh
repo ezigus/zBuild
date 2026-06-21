@@ -25,13 +25,13 @@ print_test_section "V1 basic numstat → +A -R path lines + total footer"
 raw=$'12\t0\tcore/foo.sh\n3\t5\tcore/bar.sh'
 allowed=( "core/" )
 out="$(format_numstat "$raw" allowed)"
-if printf '%s' "$out" | grep -qF '+12 -0  core/foo.sh' && \
-   printf '%s' "$out" | grep -qF '+3 -5  core/bar.sh'; then
+if grep -qF '+12 -0  core/foo.sh' <<< "$out" && \
+   grep -qF '+3 -5  core/bar.sh' <<< "$out"; then
     assert_pass "V1 per-file lines render with +A -R prefix"
 else
     assert_fail "V1 per-file lines" "got: $out"
 fi
-if printf '%s' "$out" | grep -qF 'total: 2 files, +15 -5'; then
+if grep -qF 'total: 2 files, +15 -5' <<< "$out"; then
     assert_pass "V1 footer aggregates files/adds/dels"
 else
     assert_fail "V1 footer" "got: $out"
@@ -48,8 +48,8 @@ print_test_section "V2 out-of-scope path → <out-of-scope-context>"
 raw=$'4\t0\tcore/in.sh\n9\t9\tsecrets/leak.env'
 allowed=( "core/" )
 out="$(format_numstat "$raw" allowed)"
-if printf '%s' "$out" | grep -qF '<out-of-scope-context>' && \
-   ! printf '%s' "$out" | grep -qF 'secrets/leak.env'; then
+if grep -qF '<out-of-scope-context>' <<< "$out" && \
+   ! grep -qF 'secrets/leak.env' <<< "$out"; then
     assert_pass "V2 out-of-scope path masked, real path absent"
 else
     assert_fail "V2 redaction" "got: $out"
@@ -60,8 +60,8 @@ print_test_section "V3 binary file (numstat \"-\\t-\\tpath\") renders"
 raw=$'-\t-\tassets/logo.png'
 allowed=( "assets/" )
 out="$(format_numstat "$raw" allowed)"
-if printf '%s' "$out" | grep -qF '+- --  assets/logo.png' && \
-   printf '%s' "$out" | grep -qF 'total: 1 files, +0 -0'; then
+if grep -qF '+- --  assets/logo.png' <<< "$out" && \
+   grep -qF 'total: 1 files, +0 -0' <<< "$out"; then
     assert_pass "V3 binary file rendered, totals stay numeric"
 else
     assert_fail "V3 binary" "got: $out"
@@ -77,7 +77,7 @@ done
 big="${big%$'\n'}"
 allowed=( "core/" )
 out="$(format_numstat "$big" allowed --full-at "diff.patch")"
-if printf '%s' "$out" | grep -qE '↪ \[10 more files · full at diff\.patch\]'; then
+if grep -qE '↪ \[10 more files · full at diff\.patch\]' <<< "$out"; then
     assert_pass "V4 truncation hint uses --full-at value"
 else
     assert_fail "V4 truncation hint" "got: $(printf '%s' "$out" | tail -5)"
@@ -92,8 +92,8 @@ print_test_section "V5 empty allowlist → no redaction"
 raw=$'1\t0\tany/where/file.sh'
 allowed=()
 out="$(format_numstat "$raw" allowed)"
-if printf '%s' "$out" | grep -qF 'any/where/file.sh' && \
-   ! printf '%s' "$out" | grep -qF '<out-of-scope-context>'; then
+if grep -qF 'any/where/file.sh' <<< "$out" && \
+   ! grep -qF '<out-of-scope-context>' <<< "$out"; then
     assert_pass "V5 empty allowlist leaves path verbatim"
 else
     assert_fail "V5 empty allowlist" "got: $out"

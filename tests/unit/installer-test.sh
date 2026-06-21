@@ -193,7 +193,7 @@ output="$(_run_installer 2>&1)"
 rc=$?
 set -e
 assert_eq "TC-5: multiple missing → exits 1" "1" "$rc"
-if echo "$output" | grep -qE "jq|git"; then
+if grep -qE "jq|git" <<< "$output"; then
     assert_pass "TC-5: missing tools mentioned in output"
 else
     assert_fail "TC-5: missing tools mentioned in output" "output: $output"
@@ -298,7 +298,7 @@ output="$(_run_installer \
 rc=$?
 set -e
 assert_eq "TC-10: missing gh still exits 0" "0" "$rc"
-if echo "$output" | grep -qi "gh"; then
+if grep -qi "gh" <<< "$output"; then
     assert_pass "TC-10: gh warning present in output"
 else
     assert_fail "TC-10: gh warning present in output" "no mention of gh in output"
@@ -322,7 +322,7 @@ output="$(env PATH="$bin_11:$_INST_PATH" \
 rc=$?
 set -e
 assert_eq "TC-11: exits 0 when BIN_DIR on PATH" "0" "$rc"
-if echo "$output" | grep -q "not on your PATH"; then
+if grep -q "not on your PATH" <<< "$output"; then
     assert_fail "TC-11: no PATH advisory when BIN_DIR already on PATH" \
         "advisory was printed unexpectedly"
 else
@@ -340,7 +340,7 @@ output="$(_run_installer \
     2>&1)"
 # rc may be non-zero if zbuild doctor can't run; that's acceptable here.
 set -e
-if echo "$output" | grep -q "not on your PATH"; then
+if grep -q "not on your PATH" <<< "$output"; then
     assert_pass "TC-12: PATH advisory printed when BIN_DIR absent from PATH"
 else
     assert_fail "TC-12: PATH advisory printed when BIN_DIR absent from PATH" \
@@ -357,7 +357,7 @@ output="$(_run_installer \
 rc=$?
 set -e
 assert_eq "TC-13: exits 0" "0" "$rc"
-if echo "$output" | grep -qi "installation complete\|Install.*complete"; then
+if grep -qi "installation complete\|Install.*complete" <<< "$output"; then
     assert_pass "TC-13: completion message present"
 else
     assert_fail "TC-13: completion message present" "output: $output"

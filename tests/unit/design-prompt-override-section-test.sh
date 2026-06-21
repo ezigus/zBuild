@@ -72,7 +72,7 @@ fi
 if grep -qE '_make_plugin|mock_plugin_factory|_make_role_plugin' "$PROMPT_A"; then
     # It is allowed ONLY inside the operator-override section, never in the charter.
     charter_only="$(awk '/## Project-specific guidance/{exit} {print}' "$PROMPT_A")"
-    if printf '%s' "$charter_only" | grep -qE '_make_plugin|mock_plugin_factory'; then
+    if grep -qE '_make_plugin|mock_plugin_factory' <<< "$charter_only"; then
         assert_fail "D1b: shipped charter must contain ZERO target vocabulary"
     else
         assert_pass "D1b: target tokens appear only in the override section, not the charter"

@@ -93,7 +93,7 @@ assert_contains "IR2 plan rendered as markdown" "$captured" "# Plan: Review test
 assert_contains "IR2 diff rendered with file heading" "$captured" "## a/x.sh"
 
 # ─── IR3: raw JSON does NOT leak into the prompt ────────────────────────────
-if printf '%s' "$captured" | grep -qF '"title": "Review test"'; then
+if grep -qF '"title": "Review test"' <<< "$captured"; then
     assert_fail "IR3 raw plan JSON not in prompt" "raw plan JSON leaked"
 else
     assert_pass "IR3 raw plan JSON not in prompt"

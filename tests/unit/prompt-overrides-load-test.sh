@@ -43,7 +43,7 @@ assert_eq "L3: empty content when empty file" "" "$out"
 out="$(load_prompt_override '../../../../etc/passwd')"; rc=$?
 assert_eq "L4: rc 0 on traversal stage" "0" "$rc"
 assert_eq "L4: empty on traversal stage" "" "$out"
-if printf '%s' "$out" | grep -q 'root:'; then
+if grep -q 'root:' <<< "$out"; then
     assert_fail "L4: must NOT leak /etc/passwd content"
 else
     assert_pass "L4: no /etc/passwd leak via traversal stage"
@@ -52,7 +52,7 @@ fi
 # L5: absolute-path stage arg → rejected.
 out="$(load_prompt_override '/etc/passwd')"; rc=$?
 assert_eq "L5: empty on absolute stage" "" "$out"
-if printf '%s' "$out" | grep -q 'root:'; then
+if grep -q 'root:' <<< "$out"; then
     assert_fail "L5: must NOT leak via absolute stage"
 else
     assert_pass "L5: no leak via absolute stage"
@@ -62,7 +62,7 @@ fi
 ln -s /etc/passwd "$PROMPTS/intake-overrides.md"
 out="$(load_prompt_override intake)"; rc=$?
 assert_eq "L6: rc 0 on symlink-out" "0" "$rc"
-if printf '%s' "$out" | grep -q 'root:'; then
+if grep -q 'root:' <<< "$out"; then
     assert_fail "L6: symlink-out must NOT leak target content" "got: $(printf '%s' "$out" | head -1)"
 else
     assert_pass "L6: symlink-out rejected, no leak"
@@ -73,7 +73,7 @@ REPO_B="$TEST_TEMP_DIR/repoB"; mkdir -p "$REPO_B/.zbuild/prompts"
 printf 'FROM_B overlay\n' > "$REPO_B/.zbuild/prompts/design-overrides.md"
 out="$(ZBUILD_REPO_ROOT="$REPO_B" load_prompt_override design)"
 assert_contains "L7: reads override under ZBUILD_REPO_ROOT" "$out" "FROM_B"
-if printf '%s' "$out" | grep -q 'OVERRIDE_MARKER_L1'; then
+if grep -q 'OVERRIDE_MARKER_L1' <<< "$out"; then
     assert_fail "L7: must not read repo A's override when root is B"
 else
     assert_pass "L7: does not bleed repo A override into repo B"
@@ -109,7 +109,7 @@ fi
 echo "HARDLINK_SECRET root:x:0:0" > "$TEST_TEMP_DIR/outside-secret.txt"
 if ln "$TEST_TEMP_DIR/outside-secret.txt" "$PROMPTS/monitor-overrides.md" 2>/dev/null; then
     out="$(load_prompt_override monitor)"
-    if printf '%s' "$out" | grep -q 'HARDLINK_SECRET'; then
+    if grep -q 'HARDLINK_SECRET' <<< "$out"; then
         assert_fail "L12: hardlink-out must NOT leak file content"
     else
         assert_pass "L12: hardlink-out rejected, no leak"
@@ -125,7 +125,7 @@ printf 'FROM_EXTERNAL_DIR root:x\n' > "$EXT_DIR/deploy-overrides.md"
 REPO_SL="$TEST_TEMP_DIR/repo-symlinkdir"; mkdir -p "$REPO_SL/.zbuild"
 ln -s "$EXT_DIR" "$REPO_SL/.zbuild/prompts"
 out="$(ZBUILD_REPO_ROOT="$REPO_SL" load_prompt_override deploy)"
-if printf '%s' "$out" | grep -q 'FROM_EXTERNAL_DIR'; then
+if grep -q 'FROM_EXTERNAL_DIR' <<< "$out"; then
     assert_fail "L13: symlinked prompts dir must NOT read out-of-tree content"
 else
     assert_pass "L13: symlinked-out prompts dir rejected"
@@ -146,7 +146,7 @@ fi
 printf 'CAP_MARKER_L15 content stays intact\n' > "$PROMPTS/audit-overrides.md"
 out="$(ZBUILD_PROMPT_OVERRIDE_MAX_BYTES=not-a-number load_prompt_override audit)"
 assert_contains "L15: non-numeric cap → override intact (default fallback)" "$out" "CAP_MARKER_L15"
-if printf '%s' "$out" | grep -q 'truncated'; then
+if grep -q 'truncated' <<< "$out"; then
     assert_fail "L15: non-numeric cap must NOT truncate"
 else
     assert_pass "L15: non-numeric cap did not truncate"

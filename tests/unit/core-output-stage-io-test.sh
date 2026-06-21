@@ -279,14 +279,14 @@ out36b="$(_stage_io_to_stdout "$rec36b" 2>/dev/null)"
 
 assert_contains "T36b decoded command starts with bare 'gh'" "$out36b" "$ gh issue view 291"
 # Critical: NO $'...' wrapper should appear in human-readable output.
-if echo "$out36b" | grep -qF "$'"; then
+if grep -qF "$'" <<< "$out36b"; then
     assert_fail "T36b decoded command must NOT contain ANSI-C \$'...' wrapper" "got: $(echo "$out36b" | grep -F "$'" | head -1)"
 else
     assert_pass "T36b decoded command must NOT contain ANSI-C \$'...' wrapper"
 fi
 # Real newlines from the jq filter should appear as actual newlines in the
 # multi-line single-quoted block, NOT as the literal characters \n.
-if echo "$out36b" | grep -qF '\n| (.body'; then
+if grep -qF '\n| (.body' <<< "$out36b"; then
     assert_fail "T36b multi-line arg should render as real newlines, not \\\\n escapes" "got: $(echo "$out36b" | grep -F '\n')"
 else
     assert_pass "T36b multi-line arg renders as real newlines, not \\\\n escapes"
@@ -317,7 +317,7 @@ out36d="$(_stage_io_to_stdout "$rec36d" 2>/dev/null)"
 assert_contains "T36d minified JSON output gets indented" "$out36d" '  "schema_version": 1'
 assert_contains "T36d nested array also indented" "$out36d" '      "id": "step-1"'
 # The original minified blob should NOT appear as one giant line anywhere.
-if echo "$out36d" | grep -qF '{"schema_version":1,'; then
+if grep -qF '{"schema_version":1,' <<< "$out36d"; then
     assert_fail "T36d minified blob must NOT survive as one line after pretty-print" "got: still minified"
 else
     assert_pass "T36d minified blob must NOT survive as one line after pretty-print"
@@ -337,7 +337,7 @@ rec36f="$(_t440_make_record plan llm "prompt" "$fenced" "" "1000")"
 out36f="$(_stage_io_to_stdout "$rec36f" 2>/dev/null)"
 assert_contains "T36f fenced JSON gets indented" "$out36f" '  "a": 1'
 # Original fence markers should NOT survive (stripped before pretty-print).
-if echo "$out36f" | grep -qF '```json'; then
+if grep -qF '```json' <<< "$out36f"; then
     assert_fail "T36f fence markers should be stripped" "got: fence still there"
 else
     assert_pass "T36f fence markers stripped"
@@ -364,12 +364,12 @@ assert_contains "T36h before-ESC text preserved" "$out36h" "before"
 assert_contains "T36h middle text preserved" "$out36h" "middle"
 assert_contains "T36h after-ESC text preserved" "$out36h" "after"
 # Critical: the BPM markers must be GONE from rendered output.
-if printf '%s' "$out36h" | grep -qF $'\e[200~'; then
+if grep -qF $'\e[200~' <<< "$out36h"; then
     assert_fail "T36h \\e[200~ stripped from rendered output" "still present"
 else
     assert_pass "T36h \\e[200~ stripped from rendered output"
 fi
-if printf '%s' "$out36h" | grep -qF $'\e[201~'; then
+if grep -qF $'\e[201~' <<< "$out36h"; then
     assert_fail "T36h \\e[201~ stripped from rendered output" "still present"
 else
     assert_pass "T36h \\e[201~ stripped from rendered output"
@@ -382,7 +382,7 @@ colored=$'plain \e[31mred\e[0m \e[1;32mbold-green\e[0m end'
 rec36i="$(_t440_make_record build command "ls" "$colored" "0" "100")"
 out36i="$(_stage_io_to_stdout "$rec36i" 2>/dev/null)"
 assert_contains "T36i text preserved with colors stripped" "$out36i" "plain red bold-green end"
-if printf '%s' "$out36i" | LC_ALL=C grep -Fq $'\033['; then
+if LC_ALL=C grep -Fq $'\033[' <<< "$out36i"; then
     assert_fail "T36i no ESC[ sequences remain" "still present"
 else
     assert_pass "T36i no ESC[ sequences remain"

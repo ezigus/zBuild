@@ -83,17 +83,17 @@ tests/unit/build-acceptance-spec-feedback-test.sh
 DESIGN
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 p="$(_drive_build)"
-if printf '%s' "$p" | grep -qF "SPEC IDS YOU MUST COVER"; then
+if grep -qF "SPEC IDS YOU MUST COVER" <<< "$p"; then
     assert_pass "L1a: prompt has the SPEC-id enumeration header"
 else
     assert_fail "L1a: prompt must enumerate SPEC ids" "(missing)"
 fi
 for sid in SPEC-1 SPEC-2 SPEC-3; do
-    printf '%s' "$p" | grep -qF "[$sid]" \
+    grep -qF "[$sid]" <<< "$p" \
         && assert_pass "L1a: prompt enumerates [$sid]" \
         || assert_fail "L1a: prompt must enumerate [$sid]" "(missing)"
 done
-printf '%s' "$p" | grep -qiE 'guard|not contorted' \
+grep -qiE 'guard|not contorted' <<< "$p" \
     && assert_pass "L1b: prompt carries the change-vs-guard hedge" \
     || assert_fail "L1b: prompt must hedge guard SPECs" "(missing)"
 
@@ -108,7 +108,7 @@ tests/unit/build-acceptance-spec-feedback-test.sh
 ```
 DESIGN
 p="$(_drive_build)"
-printf '%s' "$p" | grep -qF "SPEC IDS YOU MUST COVER" \
+grep -qF "SPEC IDS YOU MUST COVER" <<< "$p" \
     && assert_fail "L1c: must NOT enumerate when there are no SPEC-n ids" "(present)" \
     || assert_pass "L1c: enumeration block self-omits on id-less acceptance block"
 
@@ -137,17 +137,17 @@ printf '%s' '{"verdict":"fail","failures":["untagged_spec:SPEC-2"]}' \
     > "$FB/prior_acceptance_feedback.txt"
 export ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB"
 p="$(_drive_build)"
-printf '%s' "$p" | grep -qF "ACCEPTANCE COVERAGE GAPS" \
+grep -qF "ACCEPTANCE COVERAGE GAPS" <<< "$p" \
     && assert_pass "L2b: prompt injects ACCEPTANCE COVERAGE GAPS block" \
     || assert_fail "L2b: gap block must inject when gaps present" "(missing)"
 # the gap block names the untagged id
-printf '%s' "$p" | grep -A6 'ACCEPTANCE COVERAGE GAPS' | grep -qF "[SPEC-2]" \
+grep -qF "[SPEC-2]" <<< "$(grep -A6 'ACCEPTANCE COVERAGE GAPS' <<< "$p")" \
     && assert_pass "L2b: gap block names the untagged [SPEC-2]" \
     || assert_fail "L2b: gap block must name [SPEC-2]" "(missing)"
 # absent gap file → block omitted
 rm -f "$FB/prior_acceptance_feedback.txt"
 p="$(_drive_build)"
-printf '%s' "$p" | grep -qF "ACCEPTANCE COVERAGE GAPS" \
+grep -qF "ACCEPTANCE COVERAGE GAPS" <<< "$p" \
     && assert_fail "L2b: gap block must omit when no gap file" "(present)" \
     || assert_pass "L2b: gap block omits when no gap file present"
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR

@@ -43,12 +43,12 @@ out="$(render_review_md '{"verdict":"approve"}')"
 assert_contains "V4 minimal heading" "$out" "# Review"
 assert_contains "V4 minimal verdict" "$out" "**Verdict:** approve"
 # No Issues / Summary sections.
-if printf '%s' "$out" | grep -qE '^## Issues'; then
+if grep -qE '^## Issues' <<< "$out"; then
     assert_fail "V4 no Issues section when missing" "issues heading present"
 else
     assert_pass "V4 no Issues section when missing"
 fi
-if printf '%s' "$out" | grep -qE '^## Summary'; then
+if grep -qE '^## Summary' <<< "$out"; then
     assert_fail "V4 no Summary section when missing" "summary heading present"
 else
     assert_pass "V4 no Summary section when missing"
@@ -62,7 +62,7 @@ assert_contains "V5 second issue" "$out" "- baz"
 
 # ─── V6: empty issues array → no Issues section ─────────────────────────────
 out="$(render_review_md '{"verdict":"approve","issues":[]}')"
-if printf '%s' "$out" | grep -qE '^## Issues'; then
+if grep -qE '^## Issues' <<< "$out"; then
     assert_fail "V6 empty issues → no section" "issues heading present"
 else
     assert_pass "V6 empty issues → no section"

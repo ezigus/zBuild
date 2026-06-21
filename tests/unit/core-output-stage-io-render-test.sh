@@ -48,7 +48,7 @@ plan_json='{"title":"My plan","goal":"do thing"}'
 rec="$(_make_record build llm "$plan_json" "ok" '{"artifact":"plan"}')"
 out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
 # Input section now shows the prompt verbatim (no render_plan_md dispatch).
-if printf '%s' "$out" | sed -n '/── input ──/,/── output ──/p' | grep -qF '{"title":"My plan"'; then
+if grep -qF '{"title":"My plan"' <<< "$(printf '%s' "$out" | sed -n '/── input ──/,/── output ──/p')"; then
     assert_pass "B1 (#785) input shows raw prompt (no render dispatch)"
 else
     assert_fail "B1 (#785) input should show raw prompt verbatim" "got: $out"
@@ -87,7 +87,7 @@ out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
 assert_contains "B5 output rendered as markdown heading" "$out" "# Plan: Out plan"
 assert_contains "B5 output rendered Goal field" "$out" "**Goal:** render output"
 # Original raw JSON should NOT appear verbatim in the output section.
-if printf '%s' "$out" | sed -n '/── output ──/,/── end stage-io/p' | grep -qF '{"title":"Out plan"'; then
+if grep -qF '{"title":"Out plan"' <<< "$(printf '%s' "$out" | sed -n '/── output ──/,/── end stage-io/p')"; then
     assert_fail "B5 raw JSON not in output section" "raw JSON leaked"
 else
     assert_pass "B5 raw JSON not in output section"

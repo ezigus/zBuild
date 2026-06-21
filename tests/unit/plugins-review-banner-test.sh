@@ -128,28 +128,28 @@ banner_all="$(cat "$BANNER" 2>/dev/null || true)"
 banner_input="$(printf '%s' "$banner_all" | sed -n '/seq=[0-9]* input /,/seq=[0-9]* output /p')"
 
 print_test_section "operator banner INPUT body"
-if printf '%s' "$banner_input" | grep -qF '── changed files ──'; then
+if grep -qF '── changed files ──' <<< "$banner_input"; then
     assert_pass "banner input contains '── changed files ──' heading"
 else
     assert_fail "banner input missing heading" \
         "got: $(printf '%s' "$banner_input" | head -20)"
 fi
 
-if printf '%s' "$banner_input" | grep -qE '^\+[0-9]+ -[0-9]+  core/foo\.sh$'; then
+if grep -qE '^\+[0-9]+ -[0-9]+  core/foo\.sh$' <<< "$banner_input"; then
     assert_pass "banner input contains '+N -M core/foo.sh' numstat line"
 else
     assert_fail "banner input missing numstat line for core/foo.sh" \
         "got: $(printf '%s' "$banner_input")"
 fi
 
-if printf '%s' "$banner_input" | grep -qE '^total: [0-9]+ files, \+[0-9]+ -[0-9]+'; then
+if grep -qE '^total: [0-9]+ files, \+[0-9]+ -[0-9]+' <<< "$banner_input"; then
     assert_pass "banner input contains 'total:' footer"
 else
     assert_fail "banner input missing total footer" \
         "got: $(printf '%s' "$banner_input")"
 fi
 
-if printf '%s' "$banner_input" | grep -qF 'diff --git'; then
+if grep -qF 'diff --git' <<< "$banner_input"; then
     assert_fail "banner input leaked raw diff body (should be numstat only)" \
         "got: $(printf '%s' "$banner_input" | head -30)"
 else
@@ -162,13 +162,13 @@ llm_prompt="$(cat "$PROMPT_RECORD" 2>/dev/null || true)"
 if [[ -z "$llm_prompt" ]]; then
     assert_fail "LLM prompt recorder empty" "expected -p capture in $PROMPT_RECORD"
 else
-    if printf '%s' "$llm_prompt" | grep -qF 'diff --git a/core/foo.sh b/core/foo.sh'; then
+    if grep -qF 'diff --git a/core/foo.sh b/core/foo.sh' <<< "$llm_prompt"; then
         assert_pass "LLM prompt contains full 'diff --git a/... b/...' body"
     else
         assert_fail "LLM prompt missing full diff body" \
             "first 200 chars: $(printf '%s' "$llm_prompt" | head -c 200)"
     fi
-    if printf '%s' "$llm_prompt" | grep -qF '+b'; then
+    if grep -qF '+b' <<< "$llm_prompt"; then
         assert_pass "LLM prompt contains diff hunk additions"
     else
         assert_fail "LLM prompt missing diff hunk additions" "n/a"

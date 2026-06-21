@@ -115,7 +115,7 @@ set -e
 
 # design.acceptance_tests.written event with count=2
 if grep -q '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    if grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" | grep -q '"count":"2"'; then
+    if grep -q '"count":"2"' <<< "$(grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL")"; then
         assert_pass "T1: design.acceptance_tests.written count=2"
     else
         assert_fail "T1: design.acceptance_tests.written has wrong count" \
@@ -138,7 +138,7 @@ rc=$?
 set -e
 assert_eq "T2: missing acceptance block returns rc=1" "1" "$rc"
 if grep -q '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null && \
-   grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" | grep -q '"reason":"missing_acceptance_block"'; then
+   grep -q '"reason":"missing_acceptance_block"' <<< "$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL")"; then
     assert_pass "T2: plugin.run.error reason=missing_acceptance_block emitted"
 else
     assert_fail "T2: missing_acceptance_block error not emitted" \
@@ -159,7 +159,7 @@ rc=$?
 set -e
 assert_eq "T3: existing file scenario returns rc=0" "0" "$rc"
 existing_content="$(cat "$FIXTURE_DIR/tests/unit/existing-test.sh")"
-if echo "$existing_content" | grep -q "existing content"; then
+if grep -q "existing content" <<< "$existing_content"; then
     assert_pass "T3: existing test file content preserved (not overwritten)"
 else
     assert_fail "T3: existing test file was overwritten" \
@@ -170,7 +170,7 @@ fi
     || assert_fail "T3: new-test.sh stub not created"
 
 # count=1 (only the new stub was written, not the pre-existing one)
-if grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -q '"count":"1"'; then
+if grep -q '"count":"1"' <<< "$(grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"; then
     assert_pass "T3: acceptance_tests.written count=1 (skipped pre-existing)"
 else
     assert_fail "T3: wrong count for acceptance_tests.written" \
@@ -204,7 +204,7 @@ assert_eq "T5: mixed safe/unsafe TESTFILES returns rc=0" "0" "$rc"
     && assert_pass "T5: absolute path not written" \
     || assert_fail "T5: absolute path was written outside repo root"
 # Only the safe stub counts toward the written total.
-if grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -q '"count":"1"'; then
+if grep -q '"count":"1"' <<< "$(grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"; then
     assert_pass "T5: acceptance_tests.written count=1 (unsafe paths excluded)"
 else
     assert_fail "T5: wrong count after rejecting unsafe paths" \

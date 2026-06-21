@@ -87,7 +87,7 @@ assert_contains "IB2 prompt has markdown plan heading" "$captured" "# Plan: Test
 assert_contains "IB2 prompt has rendered Goal field" "$captured" "**Goal:** Verify markdown rendering"
 
 # ─── IB3: raw JSON shape is NOT in the prompt ────────────────────────────────
-if printf '%s' "$captured" | grep -qF '"title": "Test plan"'; then
+if grep -qF '"title": "Test plan"' <<< "$captured"; then
     assert_fail "IB3 raw plan.json content not in prompt" "raw JSON leaked"
 else
     assert_pass "IB3 raw plan.json content not in prompt"

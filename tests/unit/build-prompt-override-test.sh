@@ -137,7 +137,7 @@ assert_eq "build inner rc=0 (no override)" "0" "$rc"
 prompt_body_no="$(cat "$prompt_txt" 2>/dev/null || echo '')"
 
 # ─── B4: no delimiter (no empty-section noise) + core contract intact ────────
-if printf '%s' "$prompt_body_no" | grep -qF '## Project-specific guidance (operator override)'; then
+if grep -qF '## Project-specific guidance (operator override)' <<< "$prompt_body_no"; then
     assert_fail "B4 no override delimiter when file absent" "delimiter leaked"
 else
     assert_pass "B4 no override delimiter when file absent"

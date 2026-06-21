@@ -85,7 +85,7 @@ assert_contains "T4 end-trailer carries ✓ icon for OK" "$banner" "end stage-io
 
 # ─── T5: NO_COLOR / non-tty fd → banner contains no ANSI escapes ─────────────
 # fd 3 is a file (not a tty); _stage_io_banner_use_color returns false.
-if printf '%s' "$banner" | grep -q $'\x1b\\['; then
+if grep -q $'\x1b\\[' <<< "$banner"; then
     assert_fail "T5 non-tty fd → no ANSI escapes" "found ESC[ in banner"
 else
     assert_pass "T5 non-tty fd → no ANSI escapes"
@@ -109,7 +109,7 @@ ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345500 \
         --output "R" --duration-ms 500 >/dev/null
 exec 3>&-
 banner_c="$(cat "$fd3b")"
-if printf '%s' "$banner_c" | grep -q $'\x1b\\['; then
+if grep -q $'\x1b\\[' <<< "$banner_c"; then
     assert_pass "T6 FORCE_COLOR=1 reinstates ANSI escapes"
 else
     assert_fail "T6 FORCE_COLOR=1 reinstates ANSI escapes" "no ESC[ found"
@@ -148,7 +148,7 @@ ZBUILD_STAGE_IO_FD=3 \
         --output "short out" --duration-ms 10 >/dev/null
 exec 3>&-
 banner_s="$(cat "$fd3d")"
-if printf '%s' "$banner_s" | grep -q '↪ \['; then
+if grep -q '↪ \[' <<< "$banner_s"; then
     assert_fail "T8 short content has NO truncation hint" "found hint in: $banner_s"
 else
     assert_pass "T8 short content has NO truncation hint"
@@ -209,7 +209,7 @@ NO_COLOR=1 ZBUILD_STAGE_IO_FD=3 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
         --output "R" --duration-ms 1 >/dev/null
 exec 3>&-
 banner_t11="$(cat "$fd_t11")"
-if printf '%s' "$banner_t11" | grep -q $'\x1b\\['; then
+if grep -q $'\x1b\\[' <<< "$banner_t11"; then
     assert_fail "T11 NO_COLOR strips all ANSI from banner" "found ESC[ in: $banner_t11"
 else
     assert_pass "T11 NO_COLOR strips all ANSI from banner"

@@ -106,7 +106,7 @@ assert_contains "F4: iter 1 has INSTRUCTIONS section" "$iter1_prompt" \
     "## INSTRUCTIONS"
 
 # F5: CURRENT ITERATION FEEDBACK section ABSENT on iter 1
-if printf '%s' "$iter1_prompt" | grep -qF "## CURRENT ITERATION FEEDBACK"; then
+if grep -qF "## CURRENT ITERATION FEEDBACK" <<< "$iter1_prompt"; then
     assert_fail "F5: iter 1 must NOT include CURRENT ITERATION FEEDBACK" \
         "found unexpected section"
 else
@@ -170,7 +170,7 @@ _build_stage_run_inner \
 set -e
 
 iter2_empty_prompt="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
-if printf '%s' "$iter2_empty_prompt" | grep -qF "## CURRENT ITERATION FEEDBACK"; then
+if grep -qF "## CURRENT ITERATION FEEDBACK" <<< "$iter2_empty_prompt"; then
     assert_fail "F10: empty feedback file must NOT emit FEEDBACK section" \
         "silent-failure guard violated"
 else

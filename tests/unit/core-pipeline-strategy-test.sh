@@ -252,7 +252,7 @@ else
     assert_fail "composite: exits non-zero" "rc=0 — should be deferred error"
 fi
 
-if echo "$composite_out" | grep -qiE "composite|phase.1|deferred|not.implemented"; then
+if grep -qiE "composite|phase.1|deferred|not.implemented" <<< "$composite_out"; then
     assert_pass "composite: output contains deferral message"
 else
     assert_fail "composite: output contains deferral message" "output: $composite_out"

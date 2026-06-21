@@ -171,7 +171,7 @@ result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)" || detect_rc=$
 assert_eq \
     "B-6 [SPEC]: invalid .zbuild/platforms.json → detection does not crash (exit 0)" \
     "0" "$detect_rc"
-if echo "$result" | grep -qF "NOT"; then
+if grep -qF "NOT" <<< "$result"; then
     assert_fail \
         "B-6 [SPEC]: invalid JSON content must not appear in detected platforms"
 else
@@ -261,8 +261,8 @@ if [[ -x "$ZBUILD_CLI" ]]; then
         fi
     else
         # Must produce a legible error — not a silent crash.
-        if echo "$explain_output" | grep -qiE \
-            "not.*(implement|support|available)|deferred|unknown.*option|usage|help"; then
+        if grep -qiE \
+            "not.*(implement|support|available)|deferred|unknown.*option|usage|help" <<< "$explain_output"; then
             assert_pass \
                 "C-14 [SPEC] (deferred): --explain not yet implemented — clean error returned"
         else
@@ -300,7 +300,7 @@ assert_eq \
 assert_contains \
     "D-16 [REGRESSION]: ZBUILD_PLATFORM_OVERRIDE → overridden platform returned" \
     "$result" "forced-regression-platform"
-if echo "$result" | grep -qF "ios"; then
+if grep -qF "ios" <<< "$result"; then
     assert_fail \
         "D-16 [REGRESSION]: ZBUILD_PLATFORM_OVERRIDE → ios must NOT appear (override short-circuits)"
 else

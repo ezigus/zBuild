@@ -178,7 +178,7 @@ else
 fi
 
 # ─── Assertion 5: per-iter commit fired (file_iter2.txt is at HEAD) ─────────
-if git -C "$REPO" ls-tree --name-only HEAD | grep -q 'file_iter2.txt'; then
+if grep -q 'file_iter2.txt' <<< "$(git -C "$REPO" ls-tree --name-only HEAD)"; then
     assert_pass "A5: commit landed file_iter2.txt at HEAD (#608 preserved)"
 else
     assert_fail "A5: commit landed file_iter2.txt at HEAD" "ls-tree=$(git -C "$REPO" ls-tree --name-only HEAD | tr '\n' ' ')"
@@ -239,7 +239,7 @@ else
 fi
 
 # Confirm the commit still landed in fallback mode.
-if git -C "$REPO2" ls-tree --name-only HEAD | grep -q 'fallback.txt'; then
+if grep -q 'fallback.txt' <<< "$(git -C "$REPO2" ls-tree --name-only HEAD)"; then
     assert_pass "F2: fallback commit landed fallback.txt at HEAD"
 else
     assert_fail "F2: fallback commit landed at HEAD" "ls-tree empty"

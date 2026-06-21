@@ -25,7 +25,7 @@ PLAN='{"schema_version":1,"title":"T","steps":[{"description":"d","files":["a"]}
 # ─── C1: pure JSON → plan only, no comment marker (regression lock) ─────────
 out="$(render_plan_md "$PLAN")"
 assert_contains "C1 plan heading present"     "$out" "# Plan: T"
-if printf '%s' "$out" | grep -qF "── llm comment ──"; then
+if grep -qF "── llm comment ──" <<< "$out"; then
     assert_fail "C1 no comment marker on pure-JSON input" "got: $out"
 else
     assert_pass "C1 no comment marker on pure-JSON input"
@@ -105,7 +105,7 @@ input='```json
 ```'
 out="$(render_plan_md "$input")"
 assert_contains "C9 fenced JSON renders as plan" "$out" "# Plan: T"
-if printf '%s' "$out" | grep -qF "── llm comment ──"; then
+if grep -qF "── llm comment ──" <<< "$out"; then
     assert_fail "C9 fences alone do NOT produce comment block" "got: $out"
 else
     assert_pass "C9 fences alone do NOT produce comment block"
@@ -144,7 +144,7 @@ assert_contains "C11 review prose preserved"   "$out" "Reviewer note: looks fine
 # ─── C12: review pure JSON → no comment marker (regression lock) ───────────
 out="$(render_review_md "$REVIEW")"
 assert_contains "C12 review heading present" "$out" "# Review"
-if printf '%s' "$out" | grep -qF "── llm comment ──"; then
+if grep -qF "── llm comment ──" <<< "$out"; then
     assert_fail "C12 no comment marker on pure-JSON review" "got: $out"
 else
     assert_pass "C12 no comment marker on pure-JSON review"
