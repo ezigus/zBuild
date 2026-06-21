@@ -143,13 +143,14 @@ _adv_report="$(jq -nc '{schema_version:1, merge_readiness:"advisory",
      lenses:["correctness"],messages:["line1\nline2 `tick`"]}],
   summary:"adv"}')"
 _adv_md="$(render_review_report_md "$_adv_report")"
-if printf '%s' "$_adv_md" | grep -q '`tick`'; then
+# here-strings (NOT the pipe-into-grep SIGPIPE antipattern guarded by #1015).
+if grep -q '`tick`' <<< "$_adv_md"; then
     assert_fail "[SPEC-7] backtick in LLM message must be escaped" "raw backtick present"
 else
     assert_pass "[SPEC-7] backtick in LLM message is escaped"
 fi
 # The finding bullet must stay a single line (newline collapsed to a space).
-if printf '%s' "$_adv_md" | grep -qE '^- \[high\] core/x.sh:7 .*line1 line2'; then
+if grep -qE '^- \[high\] core/x.sh:7 .*line1 line2' <<< "$_adv_md"; then
     assert_pass "[SPEC-7] newline in LLM message collapsed (bullet stays one line)"
 else
     assert_fail "[SPEC-7] newline must be collapsed in the bullet" "bullet split across lines"
