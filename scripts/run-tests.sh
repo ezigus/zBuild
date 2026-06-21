@@ -34,6 +34,17 @@ _rt_run() {
   "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
 }
 
+# _zb_default_jobs — portable CPU-count for the #984 parallel-by-default path.
+# Linux has `nproc`; macOS does not (uses `sysctl -n hw.ncpu`). Falls back to 4
+# and caps at 8 so a many-core host doesn't oversubscribe the bounded pool.
+_zb_default_jobs() {
+  local n
+  n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
+  [[ "$n" =~ ^[1-9][0-9]*$ ]] || n=4
+  (( n > 8 )) && n=8
+  printf '%s' "$n"
+}
+
 # #846: targeted subset mode — run ONLY the given files (each in its own process,
 # so a failing file never blocks the rest — no `&&` short-circuit), emitting the
 # same `unit: N/M passed` + `unit: FAIL <f>` format run_tier uses. This keeps the
@@ -135,8 +146,18 @@ run_tier() {
   # NOT parallel-safe yet — its route.sh/claude-spawning tests deadlock when run
   # concurrently (the #983 dogfood fork-bomb). #991 makes it safe and widens the
   # list. Non-safe tiers stay serial even when ZBUILD_TEST_PARALLEL_JOBS is set.
+  #
+  # #984: safe tiers run parallel BY DEFAULT. Distinguish UNSET (→ computed
+  # default job count) from an EXPLICIT value (honored as-is; 0 = serial escape
+  # hatch) via ${VAR+x}. The default lives here (not in CI/env) so unit also
+  # parallelizes in the pipeline test stage, which scrubs ZBUILD_* before npm test.
   local _par_safe_tiers="${ZBUILD_PARALLEL_SAFE_TIERS:-unit}"
-  local _par_jobs="${ZBUILD_TEST_PARALLEL_JOBS:-0}"
+  local _par_jobs
+  if [[ -z "${ZBUILD_TEST_PARALLEL_JOBS+x}" ]]; then
+    _par_jobs="$(_zb_default_jobs)"
+  else
+    _par_jobs="$ZBUILD_TEST_PARALLEL_JOBS"
+  fi
   case " $_par_safe_tiers " in *" $name "*) : ;; *) _par_jobs=0 ;; esac
   if [[ "$_par_jobs" =~ ^[1-9][0-9]*$ ]]; then
     # Test hook (#983): signal the parallel path was taken so tests can assert
