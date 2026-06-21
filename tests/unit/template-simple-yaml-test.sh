@@ -92,7 +92,7 @@ assert_eq "[SPEC-3] test roles"    "tester"       "$_TPL_STAGE_ROLES_test"
 assert_eq "[SPEC-3] test io_dests" "file,stdout"  "$_TPL_STAGE_IO_DESTS_test"
 
 # review
-assert_eq "[SPEC-3] review roles"            "reviewer"    "$_TPL_STAGE_ROLES_review"
+assert_eq "[SPEC-3] review roles"            "review_report" "$_TPL_STAGE_ROLES_review"
 assert_eq "[SPEC-3] review io_dests"         "file,stdout" "$_TPL_STAGE_IO_DESTS_review"
 assert_eq "[SPEC-3] review router timeout"   "300"         "$_TPL_STAGE_ROUTER_TIMEOUT_review"
 assert_eq "[SPEC-3] review router max_turns" "25"          "$_TPL_STAGE_ROUTER_MAX_TURNS_review"

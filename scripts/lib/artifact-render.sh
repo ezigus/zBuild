@@ -648,9 +648,78 @@ render_impact_md() {
     _artifact_emit_llm_comment "$_prose"
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Built-in renderer: render_review_report_md (#972 / ADR-038)
+# Input: review-report.json. Fields: merge_readiness (ready|advisory|
+#        needs_attention), summary, lenses[] ({name, score, findings[]}),
+#        findings[] (flat de-duped: {file, category, severity, line, lenses[],
+#        messages[]}). Renders the readiness header + summary, a per-lens
+#        findings section, and the de-duped merge-readiness findings.
+# NOTE: the per-lens bullet list builds an ARRAY before join() — the un-bracketed
+#       stream form silently blanked the section (PR #1004 bug, commit 7995000).
+# ═══════════════════════════════════════════════════════════════════════════
+render_review_report_md() {
+    local input="$1"
+    if [[ -z "$input" ]]; then
+        printf '_empty review report_'
+        return 0
+    fi
+    if ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$input")"
+        printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+        return 0
+    fi
+
+    local readiness summary
+    readiness="$(printf '%s' "$input" | jq -r '.merge_readiness // "advisory"' 2>/dev/null)"
+    summary="$(printf '%s' "$input" | jq -r '.summary // empty' 2>/dev/null)"
+
+    printf '## Review Report\n'
+    printf '\n**Merge Readiness:** %s\n' "$(_artifact_md_escape_inline "${readiness:-advisory}")"
+    if [[ -n "$summary" ]]; then
+        printf '\n%s\n' "$(_artifact_md_escape_block "$summary")"
+    fi
+
+    # esc mirrors _artifact_md_escape_inline in jq: strip ANSI/CSI, collapse
+    # CR/LF to a space, escape backticks — LLM-controlled fields (.file/.message)
+    # must not break the markdown layout or inject formatting (Copilot #1028).
+    local _jq_esc='def esc: tostring
+        | gsub("\u001b\\[[0-9;?]*[A-Za-z~]"; "")
+        | gsub("\u001b."; "")
+        | gsub("[\r\n]"; " ")
+        | gsub("`"; "\\`");'
+
+    printf '\n### Lens Findings\n'
+    # Bracketed array → join (NOT a bare stream piped into join — that silently
+    # blanks the section, the PR #1004 regression this guards against).
+    printf '%s' "$input" | jq -r "$_jq_esc"'
+        .lenses[] |
+        "\n#### \(.name|esc) (score: \(.score)/10)\n" +
+        ( if ((.findings // []) | length) > 0
+          then ( [ .findings[] |
+                   "- [\(.severity|esc)] \(.file|esc)" +
+                   (if .line then ":\(.line)" else "" end) +
+                   " — \(.message|esc)" ] | join("\n") )
+          else "No findings." end )' 2>/dev/null || true
+
+    local flat_len
+    flat_len="$(printf '%s' "$input" | jq -r '.findings | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
+    if [[ "$flat_len" -gt 0 ]] 2>/dev/null; then
+        printf '\n\n### Merge-Readiness Findings (de-duped)\n'
+        printf '%s' "$input" | jq -r "$_jq_esc"'
+            [ .findings[] |
+              "- [\(.severity|esc)] \(.file|esc)" +
+              (if .line then ":\(.line)" else "" end) +
+              " — \((.messages | map(esc) | join("; ")))" +
+              " _(lenses: \((.lenses | map(esc) | join(", "))))_" ] | join("\n")' 2>/dev/null || true
+        printf '\n'
+    fi
+}
+
 # ─── Register built-ins (idempotent) ────────────────────────────────────────
 register_artifact_renderer "plan"            "render_plan_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "diff"            "render_diff_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "review"          "render_review_md"          >/dev/null 2>&1 || true
 register_artifact_renderer "test_assessment" "render_test_assessment_md" >/dev/null 2>&1 || true
 register_artifact_renderer "impact"          "render_impact_md"          >/dev/null 2>&1 || true
+register_artifact_renderer "review_report"   "render_review_report_md"   >/dev/null 2>&1 || true
