@@ -1,9 +1,9 @@
 id: objective-gate
 name: Objective Gate Stage
 kind: tool
-version: 0.2.0
+version: 0.3.0
 description: |
-  Deterministic, LLM-free T0 tool stage (ADR-037 §1, issues #969/#970, EPIC #966 I3+I4).
+  Deterministic, LLM-free T0 tool stage (ADR-037 §1, issues #969/#970/#971, EPIC #966 I3+I4+I5).
   Hard gates (any failure returns 1, blocks the pipeline):
     1. Test suite: ZBUILD_TEST_CMD or default 'npm test'.
     2. Lint/shellcheck: ZBUILD_LINT_CMD or default 'npm run lint'.
@@ -11,6 +11,12 @@ description: |
        (ZBUILD_COVERAGE_FLOOR, default 29). Exit 2 = instrumentation warn, not block.
     4. Scope adherence: plan.json steps[].files[] must all appear in git diff.
        No-op (pass) when plan.json absent from artifacts_dir.
+    5. Negctl ablation: changed *-test.sh files must fail at merge-base (impl reverted)
+       and pass at HEAD. SKIP when no test files changed. (#971, I5)
+    6. Reachability ablation: changed non-test files must cause ≥1 test flip when reverted.
+       SKIP when no impl or test files changed. (#971, I5)
+    7. Shape floor: if a shape-change file is in diff, event-sequence.golden and
+       _TPL_STAGES[N]-indexed test files must also appear in diff. (#971, I5)
   Report signals (never block, advisory only):
     - coverage_delta: measured coverage vs last_coverage_pct in state.
     - quality_score: derived metric (coverage_pct weighted by scope_ok).

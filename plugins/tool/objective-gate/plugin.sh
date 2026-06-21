@@ -18,6 +18,8 @@ _OG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_OG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# shellcheck source=../../../scripts/lib/objective-ablation.sh
+source "$_OG_ROOT/scripts/lib/objective-ablation.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _og_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
@@ -144,6 +146,85 @@ _og_emit_report_signals() {
     _og_emit "objective_gate.quality_score" "score=$quality_score"
 }
 
+# ─── _og_run_negctl ──────────────────────────────────────────────────────────
+# Calls _og_ablation_negctl and parses the ABLATION_NEGCTL verdict.
+# Sets caller's negctl_verdict (skip|pass|fail) via dynamic scoping.
+# Sets fail_reason=negctl_fail on FAIL (if not already set).
+_og_run_negctl() {
+    local repo_root="$1"
+    local _negctl_out=""
+    if declare -f _og_ablation_negctl >/dev/null 2>&1; then
+        _negctl_out="$(_og_ablation_negctl "$repo_root")"
+    fi
+    case "$_negctl_out" in
+        *"ABLATION_NEGCTL PASS"*)
+            negctl_verdict="pass"
+            _og_emit "objective_gate.negctl.pass"
+            ;;
+        *"ABLATION_NEGCTL FAIL"*)
+            negctl_verdict="fail"
+            [[ -z "$fail_reason" ]] && fail_reason="negctl_fail"
+            _og_emit "objective_gate.negctl.fail" "detail=${_negctl_out##*ABLATION_NEGCTL FAIL }"
+            ;;
+        *)
+            negctl_verdict="skip"
+            _og_emit "objective_gate.negctl.skip"
+            ;;
+    esac
+}
+
+# ─── _og_run_reachability ─────────────────────────────────────────────────────
+# Calls _og_ablation_reachability and parses the ABLATION_REACH verdict.
+# Sets caller's reachability_verdict (skip|pass|fail) via dynamic scoping.
+_og_run_reachability() {
+    local repo_root="$1"
+    local _reach_out=""
+    if declare -f _og_ablation_reachability >/dev/null 2>&1; then
+        _reach_out="$(_og_ablation_reachability "$repo_root")"
+    fi
+    case "$_reach_out" in
+        *"ABLATION_REACH PASS"*)
+            reachability_verdict="pass"
+            _og_emit "objective_gate.reachability.pass"
+            ;;
+        *"ABLATION_REACH FAIL"*)
+            reachability_verdict="fail"
+            [[ -z "$fail_reason" ]] && fail_reason="reachability_fail"
+            _og_emit "objective_gate.reachability.fail" "detail=${_reach_out##*ABLATION_REACH FAIL }"
+            ;;
+        *)
+            reachability_verdict="skip"
+            _og_emit "objective_gate.reachability.skip"
+            ;;
+    esac
+}
+
+# ─── _og_run_shape_floor ──────────────────────────────────────────────────────
+# Calls _og_ablation_shape_floor and parses the ABLATION_SHAPE verdict.
+# Sets caller's shape_floor_verdict (skip|pass|fail) via dynamic scoping.
+_og_run_shape_floor() {
+    local repo_root="$1"
+    local _shape_out=""
+    if declare -f _og_ablation_shape_floor >/dev/null 2>&1; then
+        _shape_out="$(_og_ablation_shape_floor "$repo_root")"
+    fi
+    case "$_shape_out" in
+        *"ABLATION_SHAPE PASS"*)
+            shape_floor_verdict="pass"
+            _og_emit "objective_gate.shape_floor.pass"
+            ;;
+        *"ABLATION_SHAPE FAIL"*)
+            shape_floor_verdict="fail"
+            [[ -z "$fail_reason" ]] && fail_reason="shape_floor_fail"
+            _og_emit "objective_gate.shape_floor.fail" "detail=${_shape_out##*ABLATION_SHAPE FAIL }"
+            ;;
+        *)
+            shape_floor_verdict="skip"
+            _og_emit "objective_gate.shape_floor.skip"
+            ;;
+    esac
+}
+
 # ─── objective_gate_run ───────────────────────────────────────────────────────
 # Hard-blocks on test suite, lint, coverage-floor, or scope-adherence failure.
 # Writes enriched artifact with coverage_pct, coverage_delta, scope_ok, quality_score.
@@ -169,6 +250,7 @@ objective_gate_run() {
     local test_rc=0 lint_rc=0 fail_reason=""
     local coverage_pct=0 coverage_delta=0 quality_score=0
     local scope_gaps=()
+    local negctl_verdict="skip" reachability_verdict="skip" shape_floor_verdict="skip"
 
     # Run test suite — T0 hard gate: any non-zero exit blocks merge.
     bash -c "$test_cmd" >/dev/null 2>&1 || test_rc=$?
@@ -195,6 +277,11 @@ objective_gate_run() {
     # Scope-adherence gate (I4 — requires plan.json in artifacts_dir).
     _og_run_scope_adherence "$artifacts_dir"
 
+    # Ablation gates (I5 — de-ceremonied negctl, reachability, shape floor).
+    _og_run_negctl "$_OG_ROOT"
+    _og_run_reachability "$_OG_ROOT"
+    _og_run_shape_floor "$_OG_ROOT"
+
     # Scope ok = no gaps found (after scope check).
     local scope_ok=0
     [[ ${#scope_gaps[@]} -eq 0 ]] && scope_ok=1
@@ -208,15 +295,17 @@ objective_gate_run() {
         if [[ ${#scope_gaps[@]} -gt 0 ]]; then
             gaps_json="$(printf '%s\n' "${scope_gaps[@]}" | jq -R . | jq -sc .)"
         fi
-        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":%s}\n' \
+        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":%s,"negctl_verdict":"%s","reachability_verdict":"%s","shape_floor_verdict":"%s"}\n' \
             "$fail_reason" "$test_rc" "$lint_rc" "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" "$gaps_json" \
+            "$negctl_verdict" "$reachability_verdict" "$shape_floor_verdict" \
             | atomic_write "$result_path"
         _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=fail"
         return 1
     fi
 
-    printf '{"verdict":"pass","test_rc":0,"lint_rc":0,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":[]}\n' \
-        "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" | atomic_write "$result_path"
+    printf '{"verdict":"pass","test_rc":0,"lint_rc":0,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":[],"negctl_verdict":"%s","reachability_verdict":"%s","shape_floor_verdict":"%s"}\n' \
+        "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" \
+        "$negctl_verdict" "$reachability_verdict" "$shape_floor_verdict" | atomic_write "$result_path"
     _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=pass"
     return 0
 }

@@ -307,6 +307,53 @@ else
         "file not found: $_spec14_result"
 fi
 
+# ─── SPEC-11/12/13: ablation gates SKIP on empty diff → pass + verdict fields ─
+# CHANGE: ablation verdict fields absent at merge-base; now SKIP when diff empty.
+# ZBUILD_DIFF_CMD="true" → empty diff → all three ablation gates emit SKIP.
+# Overall verdict must still be pass; result JSON must contain all three fields.
+
+rm -f "$_artifacts_dir/objective-gate-result.json"
+rm -f "$_artifacts_dir/plan.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"
+set +e
+objective_gate_run "objective-gate" "$_state_file"
+_spec11_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+
+assert_eq "[SPEC-11] negctl skips on empty diff → overall rc=0" "0" "$_spec11_rc"
+_spec_result="$_artifacts_dir/objective-gate-result.json"
+if [[ -f "$_spec_result" ]]; then
+    _s11_v="$(grep -o '"negctl_verdict":"[^"]*"' "$_spec_result" | cut -d'"' -f4 || echo 'ERROR')"
+    assert_eq "[SPEC-11] negctl_verdict=skip when diff is empty" "skip" "$_s11_v"
+else
+    assert_fail "[SPEC-11] objective-gate-result.json written for ablation skip check" \
+        "file not found: $_spec_result"
+fi
+
+if [[ -f "$_spec_result" ]]; then
+    _s12_v="$(grep -o '"reachability_verdict":"[^"]*"' "$_spec_result" | cut -d'"' -f4 || echo 'ERROR')"
+    assert_eq "[SPEC-12] reachability_verdict=skip when diff is empty" "skip" "$_s12_v"
+else
+    assert_fail "[SPEC-12] objective-gate-result.json written for reachability skip check" \
+        "file not found: $_spec_result"
+fi
+
+if [[ -f "$_spec_result" ]]; then
+    _s13_v="$(grep -o '"shape_floor_verdict":"[^"]*"' "$_spec_result" | cut -d'"' -f4 || echo 'ERROR')"
+    assert_eq "[SPEC-13] shape_floor_verdict=skip when diff is empty" "skip" "$_s13_v"
+    _s13_verdict="$(grep -o '"verdict":"[^"]*"' "$_spec_result" | cut -d'"' -f4 || echo 'ERROR')"
+    assert_eq "[SPEC-13] overall verdict=pass when all ablation gates skip" "pass" "$_s13_verdict"
+else
+    assert_fail "[SPEC-13] objective-gate-result.json written for shape floor skip check" \
+        "file not found: $_spec_result"
+fi
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
