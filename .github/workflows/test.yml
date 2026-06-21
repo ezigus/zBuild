@@ -46,9 +46,23 @@ jobs:
 
   unit:
     name: Unit tests
-    runs-on: ubuntu-latest
+    # B1b (#995): run the unit tier on Linux AND macOS to catch BSD-vs-GNU and
+    # Bash-3.2-vs-5 divergences invisible to Linux-only CI. Unit tier only (cost);
+    # mutation/e2e stay Linux. fail-fast: false so a macOS-only failure still lets
+    # the ubuntu leg report (and vice versa).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+      - name: Ensure Bash 5 (macOS)
+        if: runner.os == 'macOS'
+        # macOS ships Bash 3.2; the suite requires Bash 5 (install.sh:39). This
+        # makes the dependency explicit and puts a 5.x `bash` on PATH ahead of
+        # /bin/bash for the subshells run-tests.sh spawns. Idempotent.
+        run: brew install bash
       - name: Run unit tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -62,7 +76,9 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: unit-results
+          # Per-OS name: two matrix legs uploading the same artifact name collide
+          # on upload-artifact@v4+. Nothing downloads this (coverage re-runs).
+          name: unit-results-${{ matrix.os }}
           path: /tmp/zbuild-unit-results.txt
           if-no-files-found: ignore
 
