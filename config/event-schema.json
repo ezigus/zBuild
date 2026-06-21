@@ -203,6 +203,15 @@
     "objective_gate.coverage_delta",
     "objective_gate.scope.pass",
     "objective_gate.scope.fail",
-    "objective_gate.quality_score"
+    "objective_gate.quality_score",
+    "objective_gate.negctl.pass",
+    "objective_gate.negctl.fail",
+    "objective_gate.negctl.skip",
+    "objective_gate.reachability.pass",
+    "objective_gate.reachability.fail",
+    "objective_gate.reachability.skip",
+    "objective_gate.shape_floor.pass",
+    "objective_gate.shape_floor.fail",
+    "objective_gate.shape_floor.skip"
   ]
 }
