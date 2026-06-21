@@ -282,7 +282,10 @@ rm -f "$_artifacts_dir/objective-gate-result.json"
 rm -f "$_artifacts_dir/plan.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
-export ZBUILD_COVERAGE_CMD='echo "Statements : 42.5%"'
+# Mimic check-coverage.sh output: a per-file table row FIRST, then the "Total:"
+# summary. The parser must pick the Total (50.0), NOT the first per-file row
+# (10.0) — Copilot #1009 finding. Also confirms quality_score reaches the JSON.
+export ZBUILD_COVERAGE_CMD='printf "%s\n" "| a.sh | 1 | 10 | 10.0%" "Total: 10/20 lines (50.0%)"'
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec14_rc=$?
@@ -295,7 +298,10 @@ assert_eq "[SPEC-14] objective_gate_run returns 0 when coverage cmd emits a pass
 _spec14_result="$_artifacts_dir/objective-gate-result.json"
 if [[ -f "$_spec14_result" ]]; then
     _spec14_cov="$(grep -o '"coverage_pct":[0-9.]*' "$_spec14_result" | grep -o '[0-9.]*$' || echo 'ERROR')"
-    assert_eq "[SPEC-14] coverage_pct from real parse path propagates to result JSON" "42.5" "$_spec14_cov"
+    assert_eq "[SPEC-14] coverage_pct parses the Total line, not the first per-file row" "50.0" "$_spec14_cov"
+    _spec14_has_quality=0
+    grep -q '"quality_score"' "$_spec14_result" && _spec14_has_quality=1
+    assert_eq "[SPEC-14] quality_score field written to result JSON (per design/manifest)" "1" "$_spec14_has_quality"
 else
     assert_fail "[SPEC-14] objective-gate-result.json written for coverage-parse check" \
         "file not found: $_spec14_result"

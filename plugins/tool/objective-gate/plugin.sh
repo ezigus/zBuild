@@ -55,8 +55,11 @@ _og_run_coverage_floor() {
         fi
     fi
 
-    # Parse coverage percentage from output (e.g. "Statements   : 31.2%")
-    coverage_pct="$(printf '%s\n' "$cov_out" | grep -o '[0-9][0-9]*\.[0-9]*%' | head -1 | tr -d '%')"
+    # Parse the OVERALL coverage % from check-coverage.sh's "Total: ... (NN.N%)"
+    # summary line — never the first % token, which is a per-file table row.
+    # Fall back to the LAST % seen (the summary is last) when no Total: line.
+    coverage_pct="$(printf '%s\n' "$cov_out" | grep -iE '^Total:' | grep -o '[0-9][0-9]*\.[0-9]*%' | tail -1 | tr -d '%')"
+    [[ -z "$coverage_pct" ]] && coverage_pct="$(printf '%s\n' "$cov_out" | grep -o '[0-9][0-9]*\.[0-9]*%' | tail -1 | tr -d '%')"
     [[ -z "$coverage_pct" ]] && coverage_pct=0
 
     if [[ $cov_rc -eq 2 ]]; then
@@ -128,7 +131,8 @@ _og_emit_report_signals() {
     # Simple integer delta (truncate decimals for portability).
     delta=$(( ${cov_pct%%.*} - ${last_pct%%.*} ))
 
-    local quality_score=0
+    # quality_score is bare (no `local`) so it propagates to the caller's frame
+    # (dynamic scoping) for inclusion in the result JSON — see objective_gate_run.
     if [[ "$scope_ok" == "1" ]]; then
         quality_score="${cov_pct%%.*}"
     else
@@ -163,7 +167,7 @@ objective_gate_run() {
     _og_emit "plugin.run.start" "plugin=objective-gate"
 
     local test_rc=0 lint_rc=0 fail_reason=""
-    local coverage_pct=0 coverage_delta=0
+    local coverage_pct=0 coverage_delta=0 quality_score=0
     local scope_gaps=()
 
     # Run test suite — T0 hard gate: any non-zero exit blocks merge.
@@ -199,19 +203,20 @@ objective_gate_run() {
     _og_emit_report_signals "$state_file" "$coverage_pct" "$scope_ok"
 
     if [[ -n "$fail_reason" ]]; then
+        # JSON-escape each gap (paths may contain quotes/backslashes) via jq.
         local gaps_json="[]"
         if [[ ${#scope_gaps[@]} -gt 0 ]]; then
-            gaps_json="[$(printf '"%s",' "${scope_gaps[@]}" | sed 's/,$//')]"
+            gaps_json="$(printf '%s\n' "${scope_gaps[@]}" | jq -R . | jq -sc .)"
         fi
-        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"scope_gaps":%s}\n' \
-            "$fail_reason" "$test_rc" "$lint_rc" "$coverage_pct" "$coverage_delta" "$scope_ok" "$gaps_json" \
+        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":%s}\n' \
+            "$fail_reason" "$test_rc" "$lint_rc" "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" "$gaps_json" \
             | atomic_write "$result_path"
         _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=fail"
         return 1
     fi
 
-    printf '{"verdict":"pass","test_rc":0,"lint_rc":0,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"scope_gaps":[]}\n' \
-        "$coverage_pct" "$coverage_delta" "$scope_ok" | atomic_write "$result_path"
+    printf '{"verdict":"pass","test_rc":0,"lint_rc":0,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":[]}\n' \
+        "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" | atomic_write "$result_path"
     _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=pass"
     return 0
 }

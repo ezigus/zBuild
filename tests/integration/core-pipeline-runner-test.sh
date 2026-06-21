@@ -537,9 +537,9 @@ _make_plugin "test"            "tool"  0 >/dev/null
 # Without it the cycle fails with verdict=error, cycle blocked, rc=5 —
 # `set -e` kills the test before I1's assertions run.
 _make_plugin "test_assessment" "agent" 0 >/dev/null
-# #970: objective-gate leaf stage after test_assessment (ADR-037 §1 I4).
-_make_plugin "objective-gate"  "tool"  0 >/dev/null
-# #922: acceptance-gate leaf stage after objective-gate (ADR-036).
+# NB: objective-gate is NOT registered here — it lives in simple.yaml only, not
+# the standard template this test exercises (#970). See the 13-stage count below.
+# #922: acceptance-gate leaf stage after test_assessment (ADR-036).
 _make_plugin "acceptance-gate" "agent" 0 >/dev/null
 # #755: build_review_cycle.flow now includes the 4 compound_quality stages; without
 # stubs the cycle hits cq-preflight (no plugin), fails rc=5, and `set -e` kills
