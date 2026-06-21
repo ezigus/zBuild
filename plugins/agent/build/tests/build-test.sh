@@ -587,6 +587,88 @@ MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 
+# ─── T_SANITIZE (#721): sanitizer wired into build feedback paths ─────────────
+# Tests SPEC-1 (CHANGE), SPEC-2 (CHANGE), SPEC-7 (GUARD).
+# SPEC-1 and SPEC-2 must FAIL at the merge-base baseline (before the
+# sanitizer source + pipe are wired) because noisy bytes would reach the
+# captured prompt.  SPEC-7 is a guard — genuine text always survives.
+print_test_section "T_SANITIZE (#721): _zbuild_sanitize_for_llm strips noise from build feedback"
+
+ARTIFACT_DIR_SAN="$TEST_TEMP_DIR/artifacts_san"
+mkdir -p "$ARTIFACT_DIR_SAN"
+PLAN_JSON_SAN="$ARTIFACT_DIR_SAN/plan.json"
+cat > "$PLAN_JSON_SAN" <<'EOF'
+{
+  "schema_version": 1,
+  "files": ["tests/fixtures/build-sanitize.txt"],
+  "steps": [{"id":"step-1","description":"sanitize test","files":["tests/fixtures/build-sanitize.txt"],"estimated_lines":1}]
+}
+EOF
+
+export ZBUILD_CYCLE_ITER=2
+export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/fb-san"
+mkdir -p "$ZBUILD_CYCLE_FEEDBACK_DIR"
+
+# prior_test_assessment: ANSI escape codes + banner + genuine content
+_ANSI_ESC=$'\x1b'
+printf '%s\n' \
+    "${_ANSI_ESC}[32mANSI-WAS-HERE${_ANSI_ESC}[0m" \
+    "══ ZBUILD-ANSI-BANNER ══" \
+    "Genuine feedback: fix the auth module" \
+    > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt"
+
+# prior_review_feedback: banner with unique sentinel + genuine content
+printf '%s\n' \
+    "══ ZBUILD-SPEC2-REVIEW-BANNER ══" \
+    "${_ANSI_ESC}[31mREVIEW-ANSI${_ANSI_ESC}[0m" \
+    "Genuine review: missing test coverage" \
+    > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_review_feedback.txt"
+
+REPO_SAN="$(setup_build_repo "repo_san")"
+export ZBUILD_REPO_ROOT="$REPO_SAN"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_san"
+mkdir -p "$ZBUILD_STATE_DIR"
+printf '%s' "$(git -C "$REPO_SAN" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+: > "$_CAPTURED_PROMPT_FILE"
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" "$PLAN_JSON_SAN" \
+    "$ARTIFACT_DIR_SAN/diff.patch" \
+    "$ARTIFACT_DIR_SAN/build-summary.json" \
+    "$ARTIFACT_DIR_SAN" >/dev/null 2>&1
+set -e
+
+# SPEC-1 (CHANGE): ANSI escape bytes from _feedback_body stripped before prompt
+_esc_count="$(LC_ALL=C tr -cd $'\x1b' < "$_CAPTURED_PROMPT_FILE" | wc -c | tr -d ' ')"
+assert_eq "[SPEC-1] build _feedback_body ANSI escape bytes stripped before LLM prompt" \
+    "0" "$_esc_count"
+
+# SPEC-2 (CHANGE): banner sentinel from _review_feedback_body dropped before prompt
+if grep -q "ZBUILD-SPEC2-REVIEW-BANNER" "$_CAPTURED_PROMPT_FILE" 2>/dev/null; then
+    assert_fail "[SPEC-2] build _review_feedback_body banner line dropped before LLM prompt"
+else
+    assert_pass "[SPEC-2] build _review_feedback_body banner line dropped before LLM prompt"
+fi
+
+# SPEC-7 (GUARD): genuine content from feedback survives sanitization
+_san_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
+assert_contains "[SPEC-7] build feedback genuine content survives sanitize" \
+    "$_san_prompt" "Genuine feedback: fix the auth module"
+
+unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR 2>/dev/null || true
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 cleanup_test_env

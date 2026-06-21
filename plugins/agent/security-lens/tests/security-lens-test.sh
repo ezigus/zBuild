@@ -344,6 +344,46 @@ captured_seclens_artifact="$(cat "$_CAPTURED_SECLENS_ARTIFACT" 2>/dev/null || tr
 assert_eq "R10 (#483): security-lens exports ZBUILD_ROUTER_ARTIFACT_ID=security-lens around route_to_model" \
     "security-lens" "$captured_seclens_artifact"
 
+# ─── R11 (#721 SPEC-5, SPEC-6): sanitizer strips noise from redacted_content ──
+# SPEC-5 (CHANGE): ANSI bytes from redacted_content stripped — fails at
+# baseline because without the sanitizer source+pipe the bytes reach the
+# prompt verbatim. SPEC-6 (GUARD): genuine security content always survives.
+#
+# Shadow route_to_model to capture the full prompt at call time (the claude
+# mock captures argv/stdout but not the assembled prompt string).
+_CAPTURED_SECLENS_PROMPT_R11="$TEST_TEMP_DIR/captured-seclens-prompt-r11.txt"
+: > "$_CAPTURED_SECLENS_PROMPT_R11"
+route_to_model() {
+    # Capture the full prompt (arg $2) for noise-content assertions.
+    printf '%s' "${2:-}" > "$_CAPTURED_SECLENS_PROMPT_R11"
+    printf '%s\n' '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+    return 0
+}
+
+_SECLENS_ANSI_ESC=$'\x1b'
+NOISY_SEC_INPUT="$TEST_TEMP_DIR/noisy-sec-input.txt"
+printf '%s\n' \
+    "${_SECLENS_ANSI_ESC}[31mANSI-NOISE-SECLENS${_SECLENS_ANSI_ESC}[0m" \
+    "<out-of-scope-context>OOS-SEC-WRAPPED</out-of-scope-context>" \
+    "Genuine security content: check for SQL injection" \
+    > "$NOISY_SEC_INPUT"
+
+OUTPUT_R11="$TEST_TEMP_DIR/findings_r11.json"
+set +e
+_security_lens_run_inner "$NOISY_SEC_INPUT" "$MANIFEST" "$OUTPUT_R11" "$TEST_TEMP_DIR" \
+    >/dev/null 2>&1
+set -e
+
+# SPEC-5 (CHANGE): ANSI escape bytes from redacted_content stripped before LLM
+_r11_esc_count="$(LC_ALL=C tr -cd $'\x1b' < "$_CAPTURED_SECLENS_PROMPT_R11" | wc -c | tr -d ' ')"
+assert_eq "[SPEC-5] security-lens redacted_content ANSI bytes stripped before LLM prompt" \
+    "0" "$_r11_esc_count"
+
+# SPEC-6 (GUARD): genuine security content survives sanitize
+_r11_prompt="$(cat "$_CAPTURED_SECLENS_PROMPT_R11")"
+assert_contains "[SPEC-6] security-lens redacted_content genuine content survives sanitize" \
+    "$_r11_prompt" "Genuine security content: check for SQL injection"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -400,6 +400,47 @@ fi
 # Cleanup env for downstream tests.
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR 2>/dev/null || true
 
+# ─── T_SANITIZE (#721): sanitizer strips noise from plan redacted_content ─────
+# SPEC-3 (CHANGE): OOS-marker tags stripped — fails at baseline because
+# without the sanitizer source+pipe the tags reach the LLM prompt verbatim.
+# SPEC-4 (GUARD): genuine goal text always survives (tagged but not contorted).
+print_test_header "T_SANITIZE (#721): _zbuild_sanitize_for_llm applied to plan redacted_content"
+
+_PLAN_SAN_ARTIFACTS="$TEST_TEMP_DIR/artifacts-plan-san"
+mkdir -p "$_PLAN_SAN_ARTIFACTS"
+
+_PLAN_ANSI_ESC=$'\x1b'
+# Noisy goal text: OOS wrapper tags + ANSI + genuine content.
+# apply_scope_redaction mock copies verbatim → tags reach redacted_content.
+_NOISY_PLAN_GOAL="<out-of-scope-context>OOS-WRAPPED-CONTENT</out-of-scope-context>
+${_PLAN_ANSI_ESC}[31mANSI-PLAN-NOISE${_PLAN_ANSI_ESC}[0m
+Genuine goal: implement the feature"
+
+CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+: > "$_CAPTURED_PROMPT_FILE"
+
+set +e
+_plan_run_inner \
+    "$STATE_DIR/scope-manifest.md" \
+    "$_NOISY_PLAN_GOAL" \
+    "$_PLAN_SAN_ARTIFACTS/plan.json" \
+    "$_PLAN_SAN_ARTIFACTS" >/dev/null 2>&1
+rc_plan_san=$?
+set -e
+assert_eq "T_SANITIZE: _plan_run_inner rc=0" "0" "$rc_plan_san"
+
+# SPEC-3 (CHANGE): OOS-marker tags stripped from plan's redacted_content
+if grep -qF "<out-of-scope-context>" "$_CAPTURED_PROMPT_FILE" 2>/dev/null; then
+    assert_fail "[SPEC-3] plan redacted_content OOS-marker tags stripped before LLM prompt"
+else
+    assert_pass "[SPEC-3] plan redacted_content OOS-marker tags stripped before LLM prompt"
+fi
+
+# SPEC-4 (GUARD): genuine goal text outside OOS tags survives sanitize
+_plan_san_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
+assert_contains "[SPEC-4] plan redacted_content genuine text survives sanitize" \
+    "$_plan_san_prompt" "Genuine goal: implement the feature"
+
 # ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
 set +e
 plan_finalize >/dev/null 2>&1
