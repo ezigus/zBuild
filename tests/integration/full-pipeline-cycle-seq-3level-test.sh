@@ -181,8 +181,7 @@ assert_eq "build iter 1 label = 4.1.1.1.1"           "4.1.1.1.1" "$(_label_for b
 assert_eq "test iter 1 label = 4.1.1.1.2"            "4.1.1.1.2" "$(_label_for test 1)"
 assert_eq "test_assessment iter 1 label = 4.1.1.1.3" "4.1.1.1.3" "$(_label_for test_assessment 1)"
 
-# #922: acceptance-gate is build_review_cycle pos 2 (after build_test_cycle); the CQ
-# stages shift to positions 3-6 and review to pos 7.
+# acceptance-gate is build_review_cycle pos 2 (after build_test_cycle).
 assert_eq "acceptance-gate iter 1 label = 4.1.2"     "4.1.2"     "$(_label_for acceptance-gate 1)"
 assert_eq "cq-preflight iter 1 label = 4.1.3"        "4.1.3"     "$(_label_for cq-preflight 1)"
 assert_eq "cq-audit-plan iter 1 label = 4.1.4"       "4.1.4"     "$(_label_for cq-audit-plan 1)"

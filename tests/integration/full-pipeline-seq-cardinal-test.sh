@@ -89,7 +89,7 @@ expect_label impact          "4"
 expect_label build           "5"
 expect_label test            "6"
 expect_label test_assessment "7"
-# #922: acceptance-gate inserted after test_assessment (ADR-036), shifting CQ+review.
+# #922: acceptance-gate after test_assessment (ADR-036).
 expect_label acceptance-gate "8"
 expect_label cq-preflight    "9"
 expect_label cq-audit-plan   "10"

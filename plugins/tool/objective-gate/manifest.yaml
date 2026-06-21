@@ -1,13 +1,19 @@
 id: objective-gate
 name: Objective Gate Stage
 kind: tool
-version: 0.1.0
+version: 0.2.0
 description: |
-  Deterministic, LLM-free T0 tool stage (ADR-037 §1, issue #969, EPIC #966 I3).
-  Runs the project test suite (ZBUILD_TEST_CMD or default 'npm test') and
-  lint/shellcheck (ZBUILD_LINT_CMD or default 'npm run lint'). Hard-blocks
-  the pipeline on any non-zero exit by returning 1. Writes verdict=fail or
-  verdict=pass to objective-gate-result.json.
+  Deterministic, LLM-free T0 tool stage (ADR-037 §1, issues #969/#970, EPIC #966 I3+I4).
+  Hard gates (any failure returns 1, blocks the pipeline):
+    1. Test suite: ZBUILD_TEST_CMD or default 'npm test'.
+    2. Lint/shellcheck: ZBUILD_LINT_CMD or default 'npm run lint'.
+    3. Coverage floor: ZBUILD_COVERAGE_CMD or scripts/check-coverage.sh
+       (ZBUILD_COVERAGE_FLOOR, default 29). Exit 2 = instrumentation warn, not block.
+    4. Scope adherence: plan.json steps[].files[] must all appear in git diff.
+       No-op (pass) when plan.json absent from artifacts_dir.
+  Report signals (never block, advisory only):
+    - coverage_delta: measured coverage vs last_coverage_pct in state.
+    - quality_score: derived metric (coverage_pct weighted by scope_ok).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls (enforced by tests).
 
 hooks:
@@ -31,8 +37,14 @@ config:
   tier_default: T0
   test_cmd_default: "npm test"
   lint_cmd_default: "npm run lint"
+  coverage_cmd_default: "scripts/check-coverage.sh"
+  diff_cmd_default: "git diff --name-only HEAD~1..HEAD"
 
-inputs: []
+inputs:
+  - id: plan_json
+    source: artifacts
+    path: plan.json
+    required: false
 
 outputs:
   - id: objective_gate_result
@@ -42,5 +54,5 @@ outputs:
     primary: true
 
 state:
-  persisted: [last_verdict, last_test_rc, last_lint_rc]
+  persisted: [last_verdict, last_test_rc, last_lint_rc, last_coverage_pct]
   reconstructed: []

@@ -126,7 +126,7 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
         fi
 
         case "$in_source" in
-            ""|external)
+            ""|external|artifacts)
                 if [[ "$in_source" == "external" && -z "${_LC_EXTERNAL_OK[$in_id]:-}" ]]; then
                     _complain "$rel: input '$in_id' uses source: external for id NOT in allowlist [$(manifest_graph_external_allowlist)] [ADR-020 decision 6]"
                 fi
