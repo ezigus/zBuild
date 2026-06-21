@@ -20,6 +20,8 @@ UPSTREAM="$TEST_TEMP_DIR/upstream.git"
 REPO="$TEST_TEMP_DIR/repo"
 git init -q --bare -b main "$UPSTREAM"
 git init -q -b main "$REPO"
+_outer_cwd="$(pwd)"   # capture caller CWD so SPEC-1 asserts it is unchanged
+(
 cd "$REPO"
 git config user.email "t@example.com"
 git config user.name "t"
@@ -48,6 +50,12 @@ git commit -q -m local
 
 # Back to main (safe current branch)
 git checkout -q main
+)
+if [[ "$(pwd)" == "$_outer_cwd" ]]; then
+    assert_pass "[SPEC-1] init subshell preserves outer CWD (bare-cd in init block does not pollute top-level shell)"
+else
+    assert_fail "[SPEC-1] init subshell preserves outer CWD" "cwd=$(pwd) expected=$_outer_cwd"
+fi
 
 # State dir
 STATE_DIR="$TEST_TEMP_DIR/state"
@@ -78,6 +86,10 @@ exit 0'
 export ZBUILD_STATE_DIR="$STATE_DIR"
 
 # ── TC-1: bare invocation → dry-run, exit 0, no deletes ─────────────────────
+# Restore CWD on exit via the harness cleanup hook — the master EXIT trap calls
+# _test_cleanup_hook before removing the tracked TEST_TEMP_DIR. A competing
+# `trap … EXIT` here would clobber _test_harness_cleanup and leak the temp dir.
+_test_cleanup_hook() { cd "$REPO_ROOT" 2>/dev/null || true; }
 cd "$REPO"
 out="$("$ZBUILD" cleanup 2>&1)"; rc=$?
 assert_exit_code "bare cleanup exit 0" 0 "$rc"
