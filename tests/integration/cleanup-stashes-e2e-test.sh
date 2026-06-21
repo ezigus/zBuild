@@ -17,13 +17,6 @@ ZBUILD="$REPO_ROOT/scripts/zbuild"
 
 REPO="$TEST_TEMP_DIR/repo"
 git init -q -b main "$REPO"
-cd "$REPO"
-git config user.email "t@example.com"
-git config user.name "t"
-git config commit.gpgsign false
-echo seed > seed.txt
-git add seed.txt
-git commit -q -m seed
 
 # Seed: one old applycheck stash, one new applycheck stash, one unrelated.
 _make_stash() {
@@ -38,9 +31,25 @@ _make_stash() {
         git stash push -q -u -m "$message"
     fi
 }
-_make_stash "zb-applycheck-fwd-30693" 7200
-_make_stash "zb-applycheck-fwd-39827" 60
-_make_stash "manual-leftover" 7200
+
+_outer_cwd="$(pwd)"   # capture caller CWD so SPEC-2 asserts it is unchanged
+(
+    cd "$REPO"
+    git config user.email "t@example.com"
+    git config user.name "t"
+    git config commit.gpgsign false
+    echo seed > seed.txt
+    git add seed.txt
+    git commit -q -m seed
+    _make_stash "zb-applycheck-fwd-30693" 7200
+    _make_stash "zb-applycheck-fwd-39827" 60
+    _make_stash "manual-leftover" 7200
+)
+if [[ "$(pwd)" == "$_outer_cwd" ]]; then
+    assert_pass "[SPEC-2] init subshell preserves outer CWD (bare-cd in init block does not pollute top-level shell)"
+else
+    assert_fail "[SPEC-2] init subshell preserves outer CWD" "cwd=$(pwd) expected=$_outer_cwd"
+fi
 
 # State dir (empty: nothing in-progress)
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
@@ -50,6 +59,11 @@ mkdir -p "$ZBUILD_STATE_DIR"
 mock_binary "gh" 'exit 0'
 
 # ── TC-1: bare cleanup → dry-run banner, no stashes dropped ─────────────────
+# Restore CWD on exit via the harness cleanup hook — the master EXIT trap calls
+# _test_cleanup_hook before removing the tracked TEST_TEMP_DIR. A competing
+# `trap … EXIT` here would clobber _test_harness_cleanup and leak the temp dir.
+_test_cleanup_hook() { cd "$REPO_ROOT" 2>/dev/null || true; }
+cd "$REPO"
 count_before="$(git stash list | wc -l | tr -d ' ')"
 out="$("$ZBUILD" cleanup 2>&1)"; rc=$?
 assert_exit_code "bare cleanup exit 0" 0 "$rc"

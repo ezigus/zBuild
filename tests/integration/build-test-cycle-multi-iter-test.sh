@@ -95,12 +95,28 @@ route_to_model_loop() {
     return 0
 }
 
-ZBUILD_CYCLE_ITER=1 \
-cd "$REPO" && \
-_build_stage_run_inner \
-    "$SCOPE_MANIFEST" "$ART/plan.json" \
-    "$DIFF_PATCH" "$SUMMARY_JSON" "$ART" \
-    >/dev/null 2>&1 || true
+_outer_cwd="$(pwd)"   # capture caller CWD so SPEC-3 asserts it is unchanged
+(
+    cd "$REPO"
+    ZBUILD_CYCLE_ITER=1 _build_stage_run_inner \
+        "$SCOPE_MANIFEST" "$ART/plan.json" \
+        "$DIFF_PATCH" "$SUMMARY_JSON" "$ART"
+) >/dev/null 2>&1 || true
+
+# [SPEC-3] subshell must not pollute outer CWD after iter-1 call (fails at baseline where cd runs top-level)
+_cwd="$(pwd)"
+if [[ "$_cwd" == "$_outer_cwd" ]]; then
+    assert_pass "[SPEC-3] outer CWD unchanged after iter-1 subshell"
+else
+    assert_fail "[SPEC-3] outer CWD unchanged after iter-1 subshell" "cwd=$_cwd"
+fi
+# [SPEC-4] ZBUILD_CYCLE_ITER=1 reaches _build_stage_run_inner (banner contains 'iter 1/')
+if grep -q 'iter 1/' "$ART/build-prompt.txt" 2>/dev/null; then
+    assert_pass "[SPEC-4] iter-1 prompt banner contains 'iter 1/'"
+else
+    assert_fail "[SPEC-4] iter-1 prompt banner contains 'iter 1/'" \
+        "$(head -5 "$ART/build-prompt.txt" 2>/dev/null || echo '<missing>')"
+fi
 
 # Snapshot iter-1 artifact state.
 ITER1_DIFF="$TEST_TEMP_DIR/iter1.patch"
@@ -142,12 +158,20 @@ route_to_model_loop() {
     return 0
 }
 
-ZBUILD_CYCLE_ITER=2 \
-cd "$REPO" && \
-_build_stage_run_inner \
-    "$SCOPE_MANIFEST" "$ART/plan.json" \
-    "$DIFF_PATCH" "$SUMMARY_JSON" "$ART" \
-    >/dev/null 2>&1 || true
+(
+    cd "$REPO"
+    ZBUILD_CYCLE_ITER=2 _build_stage_run_inner \
+        "$SCOPE_MANIFEST" "$ART/plan.json" \
+        "$DIFF_PATCH" "$SUMMARY_JSON" "$ART"
+) >/dev/null 2>&1 || true
+
+# [SPEC-5] ZBUILD_CYCLE_ITER=2 reaches _build_stage_run_inner (banner contains 'iter 2/', fails at baseline)
+if grep -q 'iter 2/' "$ART/build-prompt.txt" 2>/dev/null; then
+    assert_pass "[SPEC-5] iter-2 prompt banner contains 'iter 2/'"
+else
+    assert_fail "[SPEC-5] iter-2 prompt banner contains 'iter 2/'" \
+        "$(head -5 "$ART/build-prompt.txt" 2>/dev/null || echo '<missing>')"
+fi
 
 ITER2_DIFF="$TEST_TEMP_DIR/iter2.patch"
 cp -f "$DIFF_PATCH" "$ITER2_DIFF"
@@ -210,7 +234,6 @@ else
         "clone_rc=$clone_rc checkout_rc=$checkout_rc apply_rc=$apply_rc apply_err=$apply_err"
 fi
 
-cd "$REPO_ROOT"
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
