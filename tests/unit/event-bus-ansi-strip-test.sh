@@ -31,8 +31,10 @@ last="$(tail -1 "$ZBUILD_EVENTS_JSONL")"
 output_val="$(printf '%s' "$last" | jq -r '.data.output')"
 assert_eq "[SPEC-1] ANSI stripped from payload value" "green" "$output_val"
 
-# also assert zero ESC bytes in the full record
-esc_count="$(printf '%s' "$last" | LC_ALL=C grep -cP '\x1b' || true)"
+# also assert zero ESC bytes in the full record.
+# Count ESC (0x1b) bytes via `tr` rather than `grep -P` — BSD grep (macOS CI
+# matrix, #995) has no -P/PCRE, so `grep -cP '\x1b'` errors and yields empty.
+esc_count="$(printf '%s' "$last" | LC_ALL=C tr -cd '\033' | wc -c | tr -d ' ')"
 assert_eq "[SPEC-1] no ESC bytes in JSONL record" "0" "$esc_count"
 
 # ─── SPEC-2: ANSI in envelope field (plugin) is stripped ────────────────────
