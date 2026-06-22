@@ -10,37 +10,27 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FLOOR="${COVERAGE_FLOOR:-70}"
 
 TRACE_FILE="$(mktemp -t zbuild-coverage.XXXXXX)"
-BASH_ENV_FILE="$(mktemp -t zbuild-bash-env.XXXXXX)"
 # shellcheck disable=SC2064
-trap "rm -f '$TRACE_FILE' '$BASH_ENV_FILE'" EXIT
-
-# BASH_ENV is sourced by every non-interactive bash subprocess (including
-# `bash "$f"` invocations in run-tests.sh). It injects `set -x` so that
-# child processes also emit xtrace output via fd 9 → TRACE_FILE.
-printf 'set -x\n' > "$BASH_ENV_FILE"
+trap "rm -f '$TRACE_FILE'" EXIT
 
 export ZBUILD_TEST_TMP
 ZBUILD_TEST_TMP="$(mktemp -d)"
 
-echo "Running unit tests with PS4 tracing (floor: ${FLOOR}%)..."
+echo "Running unit tests with coverage tracing (floor: ${FLOOR}%)..."
 
-# PS4 format: TRACE:<source>:<lineno>:  — Python parser matches this prefix.
-# BASH_XTRACEFD=9 writes xtrace to fd 9 (not stderr), keeping test output clean.
-# BASH_ENV injects set -x into every child bash so sourced core/*.sh lines appear.
-# #984: FORCE SERIAL here. The unit tier is parallel-by-default now, but PS4
-# line-tracing funnels every child's xtrace to one fd-9 trace file — concurrent
-# workers would interleave/corrupt it and skew coverage. Coverage must run serial.
-PS4='TRACE:${BASH_SOURCE[0]-}:${LINENO}:' \
-BASH_XTRACEFD=9 \
-BASH_ENV="$BASH_ENV_FILE" \
-ZBUILD_TEST_PARALLEL_JOBS=0 \
-    bash "$REPO_ROOT/scripts/run-tests.sh" --tier unit 9>"$TRACE_FILE"
+# #993: the runner owns the trace mechanism. We just ask it for a merged
+# coverage trace at $TRACE_FILE; run-tests.sh wires PS4/BASH_XTRACEFD/BASH_ENV,
+# gives each test its own trace file (so parallel workers never share fd 9), and merges them — so
+# coverage runs under the parallel unit tier without one shared fd-9 trace
+# getting corrupted (replaces the old forced-serial workaround). The PS4 format
+# (`TRACE:<source>:<lineno>:`) the parser below matches is set by the runner.
+bash "$REPO_ROOT/scripts/run-tests.sh" --tier unit --coverage-trace "$TRACE_FILE"
 
 TRACE_LINES="$(wc -l < "$TRACE_FILE" | tr -d ' ')"
 echo "Trace lines captured: ${TRACE_LINES}"
 
 if [[ "$TRACE_LINES" -eq 0 ]]; then
-    echo "ERROR: trace file is empty — PS4/BASH_XTRACEFD not supported on this bash" >&2
+    echo "ERROR: trace file is empty — coverage tracing produced no output" >&2
     exit 2
 fi
 

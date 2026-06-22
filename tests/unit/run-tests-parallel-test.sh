@@ -27,7 +27,7 @@
 # SPEC-9  CHANGE  unit runs PARALLEL BY DEFAULT when JOBS is UNSET (#984)
 # SPEC-10 GUARD   JOBS=0 is the serial escape hatch (NOT activated) even by default
 # SPEC-11 GUARD   non-safe tier (integration) stays serial BY DEFAULT (JOBS unset)
-# SPEC-12 GUARD   check-coverage.sh forces JOBS=0 (PS4 trace needs serial, #984)
+# SPEC-12 GUARD   check-coverage.sh delegates tracing to the runner (--coverage-trace), no force-serial (#993)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,8 +74,9 @@ _run_tier() {
   : > "$ACT_FILE"   # reset the activation hook each call
   # `env -u` clears any AMBIENT ZBUILD_TEST_PARALLEL_JOBS / SAFE_TIERS so the
   # "unset → default-parallel" SPECs are hermetic. Without this, a caller env
-  # that sets JOBS (e.g. check-coverage.sh forces JOBS=0) would leak in and make
-  # the no-JOBS cases run serial. Explicit "$@" assignments re-add after -u.
+  # that sets JOBS (e.g. an explicit ZBUILD_TEST_PARALLEL_JOBS=0 escape hatch)
+  # would leak in and make the no-JOBS cases run serial. Explicit "$@"
+  # assignments re-add after -u.
   env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
       ZBUILD_TESTS_DIR="$FAKE_TESTS" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
@@ -166,15 +167,19 @@ _run_tier integration
 assert_eq "[SPEC-11] non-safe tier 'integration' stays serial by default (JOBS unset)" \
   "" "$_LAST_ACTIVATED"
 
-# ─── [SPEC-12] GUARD: coverage forces serial (PS4 trace can't run parallel) ───
-# check-coverage.sh must pin ZBUILD_TEST_PARALLEL_JOBS=0 on its traced unit run,
-# else concurrent workers interleave the fd-9 trace and skew coverage (#984).
+# ─── [SPEC-12] GUARD: coverage delegates tracing to the runner, runs parallel ─
+# #993 (was #984's force-serial): check-coverage.sh no longer wires PS4/fd-9 or
+# pins ZBUILD_TEST_PARALLEL_JOBS=0. It asks the runner for a merged trace via
+# `--coverage-trace`; run-tests.sh owns per-test trace files + merge, so
+# coverage runs safely under the parallel unit tier.
 _cov="$REPO_ROOT/scripts/check-coverage.sh"
-if grep -Eq 'ZBUILD_TEST_PARALLEL_JOBS=0' "$_cov" 2>/dev/null; then
-  assert_pass "[SPEC-12] check-coverage.sh forces ZBUILD_TEST_PARALLEL_JOBS=0 for the traced run"
+_cov_has_trace=$(grep -c -- '--coverage-trace' "$_cov" 2>/dev/null || true)
+_cov_has_serial=$(grep -c 'ZBUILD_TEST_PARALLEL_JOBS=0' "$_cov" 2>/dev/null || true)
+if [[ "$_cov_has_trace" -gt 0 && "$_cov_has_serial" -eq 0 ]]; then
+  assert_pass "[SPEC-12] check-coverage.sh delegates tracing via --coverage-trace and does not force serial"
 else
-  assert_fail "[SPEC-12] check-coverage.sh must force ZBUILD_TEST_PARALLEL_JOBS=0 (PS4 trace needs serial)" \
-    "no ZBUILD_TEST_PARALLEL_JOBS=0 found in $_cov"
+  assert_fail "[SPEC-12] check-coverage.sh must request a runner trace (--coverage-trace) and not force ZBUILD_TEST_PARALLEL_JOBS=0" \
+    "--coverage-trace=$_cov_has_trace JOBS=0=$_cov_has_serial in $_cov"
 fi
 
 cleanup_test_env
