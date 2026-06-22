@@ -10,7 +10,7 @@ jobs:
     name: Smoke (CLI sanity + legacy sentinel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: CLI sanity
         run: |
           bash scripts/zbuild --version
@@ -22,7 +22,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Forbidden model names (haiku/sonnet/opus literals)
         run: |
           # Fail if any hardcoded model names found (ADR-003)
@@ -56,7 +56,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Ensure Bash 5 + flock (macOS)
         if: runner.os == 'macOS'
         # macOS ships Bash 3.2 (suite needs Bash 5, install.sh) and no `flock`
@@ -95,7 +95,7 @@ jobs:
     name: Integration tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run integration tier
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -115,7 +115,7 @@ jobs:
     name: E2E (mocked)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run e2e tier (mocked claude+gh)
         run: |
           export ZBUILD_TEST_TMP="$(mktemp -d)"
@@ -131,7 +131,7 @@ jobs:
     name: Golden contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run golden tier
         run: bash scripts/run-tests.sh --tier golden
 
@@ -139,7 +139,7 @@ jobs:
     name: Mutation docs lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run mutation doc validation
         run: |
           output="$(bash scripts/run-tests.sh --tier mutation 2>&1)" && rc=0 || rc=$?
@@ -157,7 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit, integration]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run coverage (unit tests)
         env:
           # Floor is 25% — reflects measured baseline (kcov never produced data).
@@ -171,7 +171,7 @@ jobs:
     needs: [smoke, lint, unit, integration, e2e-mocked, golden, mutation-lint, coverage]
     if: always()
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Write job summary
         run: |
           echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
