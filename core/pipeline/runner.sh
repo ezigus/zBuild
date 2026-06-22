@@ -1339,7 +1339,21 @@ main() {
                     #                            cq-audit-plan, cq-cycle) failed.
                     # rc 130 (aborted=SIGINT)  → HALT; status=interrupted.
                     # rc 143 (aborted=SIGTERM) → HALT; status=interrupted (Wave 15-F).
-                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 7 || $_rc -eq 8 || $_rc -eq 130 || $_rc -eq 143 ]]; then
+                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 7 || $_rc -eq 8 || $_rc -eq 9 || $_rc -eq 130 || $_rc -eq 143 ]]; then
+                        # #1024: rc=9 = llm_unavailable; status=aborted (distinct from interrupted).
+                        if [[ $_rc -eq 9 ]]; then
+                            _set_pipeline_status "$state_file" "aborted"
+                            _zbuild_runner_write_llm_abort "$state_file"
+                            eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
+                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                                "reason=llm_unavailable" "status=aborted" 2>/dev/null || true
+                            eb_emit_event "pipeline.end" "status=aborted" "cycle=$_cyc_id" \
+                                "run_id=$_runner_run_id" "issue=$_runner_issue"
+                            _render_pipeline_end "aborted"
+                            _runner_ended=true
+                            error "Cycle $_cyc_id aborted rc=$_rc: LLM CLI unavailable"
+                            return 9
+                        fi
                         # ADR-027 (Wave 17-B #703): rc=6 cycle_abort halts
                         # the pipeline + propagates outward distinctly from
                         # signal-driven aborts (rc=130/143) and blocked
@@ -1429,6 +1443,23 @@ main() {
                     unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_SEQ_LABEL
                     if [[ $_rc -ne 0 ]]; then
                         _update_stage_status "$state_file" "$_ust" "failed"
+                        if [[ $_rc -eq 9 ]]; then
+                            # #1024: llm_unavailable abort — status=aborted.
+                            _set_pipeline_status "$state_file" "aborted"
+                            _zbuild_runner_write_llm_abort "$state_file"
+                            eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
+                                || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r)"; true; }
+                            eb_emit_event "pipeline.aborted" "stage=$_ust" \
+                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                                "reason=llm_unavailable" "status=aborted" 2>/dev/null || true
+                            eb_emit_event "pipeline.end" "status=aborted" "stage=$_ust" "rc=$_rc" \
+                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                                || { _r=$?; warn "eb_emit_event pipeline.end status=aborted failed (rc=$_r)"; true; }
+                            _render_pipeline_end "aborted" "$_ust" "$_rc"
+                            _runner_ended=true
+                            error "Stage $_ust aborted (rc=$_rc): LLM CLI unavailable"
+                            return 9
+                        fi
                         _set_pipeline_status "$state_file" "interrupted"
                         eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
                             || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
@@ -1735,6 +1766,25 @@ main() {
         else
             # ADR-001: exit 1 (recoverable) and 2 (fatal) both halt v1.
             _update_stage_status "$state_file" "$stage" "failed"
+            # #1024: rc=9 = llm_unavailable abort — pipeline status is "aborted",
+            # not "interrupted". Handle before the general failure path.
+            if [[ $rc -eq 9 ]]; then
+                _set_pipeline_status "$state_file" "aborted"
+                _zbuild_runner_write_llm_abort "$state_file"
+                eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
+                eb_emit_event "pipeline.aborted" "stage=$stage" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                    "reason=llm_unavailable" "status=aborted" 2>/dev/null || true
+                eb_emit_event "pipeline.end" "status=aborted" "stage=$stage" "rc=$rc" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue"
+                _render_pipeline_end "aborted" "$stage" "$rc"
+                _runner_ended=true
+                local _fa_ts _fa_dur
+                _fa_ts="$(_runner_now_short)"
+                _fa_dur="$(_runner_duration_token "$stage")"
+                error "Stage $stage aborted (rc=$rc, finished ${_fa_ts} · ${_fa_dur}): LLM CLI unavailable"
+                return 9
+            fi
             _set_pipeline_status "$state_file" "interrupted"
             eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
             # #612 / Wave 15-F (#686): rc=130 (SIGINT) or rc=143 (SIGTERM)
