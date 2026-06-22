@@ -20,7 +20,7 @@ echo "Running unit tests with coverage tracing (floor: ${FLOOR}%)..."
 
 # #993: the runner owns the trace mechanism. We just ask it for a merged
 # coverage trace at $TRACE_FILE; run-tests.sh wires PS4/BASH_XTRACEFD/BASH_ENV,
-# gives each (parallel) worker its own per-test trace, and merges them — so
+# gives each test its own trace file (so parallel workers never share fd 9), and merges them — so
 # coverage runs under the parallel unit tier without one shared fd-9 trace
 # getting corrupted (replaces the old forced-serial workaround). The PS4 format
 # (`TRACE:<source>:<lineno>:`) the parser below matches is set by the runner.

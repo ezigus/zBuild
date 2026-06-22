@@ -170,7 +170,7 @@ assert_eq "[SPEC-11] non-safe tier 'integration' stays serial by default (JOBS u
 # ─── [SPEC-12] GUARD: coverage delegates tracing to the runner, runs parallel ─
 # #993 (was #984's force-serial): check-coverage.sh no longer wires PS4/fd-9 or
 # pins ZBUILD_TEST_PARALLEL_JOBS=0. It asks the runner for a merged trace via
-# `--coverage-trace`; run-tests.sh owns per-worker trace files + merge, so
+# `--coverage-trace`; run-tests.sh owns per-test trace files + merge, so
 # coverage runs safely under the parallel unit tier.
 _cov="$REPO_ROOT/scripts/check-coverage.sh"
 _cov_has_trace=$(grep -c -- '--coverage-trace' "$_cov" 2>/dev/null || true)

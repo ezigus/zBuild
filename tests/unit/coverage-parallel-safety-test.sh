@@ -5,7 +5,7 @@
 # Before #993, coverage forced the unit tier serial: parallel workers all
 # inherited one fd-9 handle and clobbered the shared trace file, so coverage
 # under parallel was corrupt/undercounted. The runner now gives each test its own
-# per-worker trace file and merges them. This test proves the merged set of
+# per-test trace file and merges them. This test proves the merged set of
 # traced (file,line) pairs is (1) non-empty, (2) identical across two parallel
 # runs (stable, not racy), and (3) identical to the serial baseline (no undercount
 # vs serial). It is load-bearing: the --coverage-trace capability does not exist

@@ -111,9 +111,21 @@ fi
 _RT_COVERAGE_TRACE=""
 _rt_expect_cov=0
 for _rt_arg in "$@"; do
-  if [[ $_rt_expect_cov -eq 1 ]]; then _RT_COVERAGE_TRACE="$_rt_arg"; _rt_expect_cov=0; continue; fi
+  if [[ $_rt_expect_cov -eq 1 ]]; then
+    # Fail fast on a missing/flag-like value rather than silently mis-parsing
+    # `--coverage-trace --tier` as a path, or ignoring a dangling flag (#993 review).
+    if [[ -z "$_rt_arg" || "$_rt_arg" == --* ]]; then
+      echo "run-tests.sh: --coverage-trace requires a file path argument" >&2
+      exit 1
+    fi
+    _RT_COVERAGE_TRACE="$_rt_arg"; _rt_expect_cov=0; continue
+  fi
   [[ "$_rt_arg" == "--coverage-trace" ]] && _rt_expect_cov=1
 done
+if [[ $_rt_expect_cov -eq 1 ]]; then
+  echo "run-tests.sh: --coverage-trace requires a file path argument" >&2
+  exit 1
+fi
 if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
   _RT_BASH_ENV_FILE="$(mktemp -t zbuild-cov-bashenv.XXXXXX)"
   printf 'set -x\n' > "$_RT_BASH_ENV_FILE"
@@ -308,7 +320,10 @@ case "$tier" in
     # overall exit code — relying only on parsed totals would mask infra
     # errors that crash before the "name: P/T passed" line prints.
     rc_file="$(mktemp -t zbuild-tier-rc.XXXXXX)"
-    trap 'rm -f "$rc_file"' EXIT
+    # Also clean the coverage BASH_ENV temp file here: this EXIT trap replaces the
+    # one the --coverage-trace setup installed above, so fold its cleanup in to
+    # avoid leaking that temp file on the `--tier all --coverage-trace` path (#993 review).
+    trap 'rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"' EXIT
     while IFS= read -r line; do
       echo "$line"
       if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed ]]; then
