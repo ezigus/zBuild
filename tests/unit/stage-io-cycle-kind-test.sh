@@ -238,6 +238,60 @@ fi
 unset _TPL_CYCLE_ABORT_WHEN_STAGE_build_test_cycle _TPL_CYCLE_ABORT_WHEN_FIELD_build_test_cycle \
       _TPL_CYCLE_ABORT_WHEN_OP_build_test_cycle _TPL_CYCLE_ABORT_WHEN_VALUE_build_test_cycle
 
+# ─── [SPEC-10] orchestrator call-site fd contract — banner survives stdout-only
+# This is the production call-site simulation: ZBUILD_STAGE_IO_FD UNSET (so the
+# fallback fd 2 is used) and the call wrapped with `>/dev/null` ONLY (stdout
+# suppressed so the reserved seq doesn't leak — read from _STAGE_IO_LAST_SEQ).
+# fd 2 must NOT be redirected: the banner writes to fd 2 and MUST reach the
+# operator. The old `>/dev/null 2>&1` form sent fd 2 to /dev/null too, swallowing
+# the banner in production — this spec fails against that form.
+unset ZBUILD_STAGE_IO_FD 2>/dev/null || true
+rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
+spec10_in_stdout="$TEST_TEMP_DIR/spec10.in.stdout"
+spec10_in_stderr="$TEST_TEMP_DIR/spec10.in.stderr"
+# INPUT begin: stdout→file (assert empty of banner), stderr→file (assert banner
+# present). Match the orchestrator EXACTLY: `>/dev/null` only — but redirect to
+# capture files instead of /dev/null so we can assert both channels.
+stage_io_begin --kind cycle --stage build_test_cycle --seq-label "1" \
+    --input "prior_test_assessment(fail, 3 changes)" \
+    >"$spec10_in_stdout" 2>"$spec10_in_stderr" || true
+spec10_seq="$_STAGE_IO_LAST_SEQ"
+spec10_in_stdout_content="$(cat "$spec10_in_stdout")"
+spec10_in_stderr_content="$(cat "$spec10_in_stderr")"
+# Banner reached fd 2 (the WHOLE POINT of #833).
+assert_contains "[SPEC-10] INPUT banner reaches fd 2 (production fallback)" \
+    "$spec10_in_stderr_content" "[cycle]"
+assert_contains "[SPEC-10] INPUT banner fd 2 carries the input digest" \
+    "$spec10_in_stderr_content" "prior_test_assessment"
+# stdout carried only the reserved seq (no banner leak into runner stream).
+if grep -q '\[cycle\]' <<< "$spec10_in_stdout_content"; then
+    assert_fail "[SPEC-10] INPUT banner must NOT leak into stdout" "got on stdout: ${spec10_in_stdout_content:0:80}"
+else
+    assert_pass "[SPEC-10] INPUT banner does NOT leak into stdout (only seq)"
+fi
+
+# OUTPUT end: symmetric — stderr must carry the banner, stdout must be empty.
+spec10_out_stdout="$TEST_TEMP_DIR/spec10.out.stdout"
+spec10_out_stderr="$TEST_TEMP_DIR/spec10.out.stderr"
+stage_io_end --stage build_test_cycle --kind cycle --seq "$spec10_seq" \
+    --output "exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+velocity=-3 failure_count=3" \
+    >"$spec10_out_stdout" 2>"$spec10_out_stderr" || true
+spec10_out_stdout_content="$(cat "$spec10_out_stdout")"
+spec10_out_stderr_content="$(cat "$spec10_out_stderr")"
+assert_contains "[SPEC-10] OUTPUT banner reaches fd 2 (production fallback)" \
+    "$spec10_out_stderr_content" "[cycle]"
+assert_contains "[SPEC-10] OUTPUT banner fd 2 carries the predicate eval" \
+    "$spec10_out_stderr_content" "NOT MATCHED (got=fail)"
+if [[ -z "$spec10_out_stdout_content" ]]; then
+    assert_pass "[SPEC-10] OUTPUT end writes nothing to stdout"
+else
+    assert_fail "[SPEC-10] OUTPUT end writes nothing to stdout" "got on stdout: ${spec10_out_stdout_content:0:80}"
+fi
+# SPEC-5 still holds under the production fd: NO file artifact written.
+assert_file_not_exists "[SPEC-10] no file artifact under production fd path" \
+    "$ZBUILD_STATE_DIR/artifacts/stage-io/build_test_cycle-${spec10_seq}.json"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

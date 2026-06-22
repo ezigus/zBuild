@@ -1648,8 +1648,14 @@ cycle_orchestrator_run() {
         if declare -F stage_io_begin >/dev/null 2>&1; then
             local _cycle_in_digest
             _cycle_in_digest="$(_cycle_render_feedback_digest "$iter" "$state_dir")"
+            # Suppress ONLY stdout: stage_io_begin prints the reserved seq on
+            # fd 1 (read here from _STAGE_IO_LAST_SEQ), which must NOT leak into
+            # the runner stream. Do NOT redirect fd 2 — the banner writes to
+            # ${ZBUILD_STAGE_IO_FD:-2}, and a `2>&1` here would swallow it into
+            # /dev/null in production (ZBUILD_STAGE_IO_FD unset → fd 2),
+            # defeating the entire operator-visible banner (#833 / PR #1039).
             stage_io_begin --kind cycle --stage "$cycle_id" --seq-label "$iter" \
-                --input "$_cycle_in_digest" >/dev/null 2>&1 || true
+                --input "$_cycle_in_digest" >/dev/null || true
             _CYCLE_IO_SEQ[$iter]="${_STAGE_IO_LAST_SEQ:-}"
         fi
 
@@ -1849,8 +1855,11 @@ cycle_orchestrator_run() {
         if [[ -n "${_CYCLE_IO_SEQ[$iter]:-}" ]] && declare -F stage_io_end >/dev/null 2>&1; then
             local _cycle_out_body
             _cycle_out_body="$(_cycle_render_predicate_result "$iter")"
+            # Suppress stdout only (stage_io_end prints nothing useful on fd 1);
+            # do NOT redirect fd 2 — a `2>&1` here would swallow the OUTPUT
+            # banner into /dev/null in production (#833 / PR #1039).
             stage_io_end --stage "$cycle_id" --kind cycle --seq "${_CYCLE_IO_SEQ[$iter]}" \
-                --output "$_cycle_out_body" >/dev/null 2>&1 || true
+                --output "$_cycle_out_body" >/dev/null || true
         fi
 
         if [[ $term_rc -ge 0 ]]; then
