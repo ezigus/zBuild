@@ -35,6 +35,15 @@ _zbuild_propagate_abort 143
 rc=$?
 assert_eq "rc=143 → returns 143" "143" "$rc"
 
+print_test_section "1c. _zbuild_propagate_abort: rc=9 propagates as 9 (#1024 llm_unavailable)"
+
+# [SPEC-8] #1024: a sustained AI-CLI failure aborts with rc=9 (llm_unavailable).
+# Load-bearing negative control — at merge-base rc=9 fell through to *)→0, so the
+# fast-fail abort would have been silently swallowed instead of propagating.
+_zbuild_propagate_abort 9
+rc=$?
+assert_eq "rc=9 → returns 9 (llm_unavailable abort)" "9" "$rc"
+
 print_test_section "2. _zbuild_propagate_abort: rc=0 → 0"
 
 _zbuild_propagate_abort 0
