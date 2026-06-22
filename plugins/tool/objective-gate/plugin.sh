@@ -21,6 +21,12 @@ source "$_OG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/objective-ablation.sh
 source "$_OG_ROOT/scripts/lib/objective-ablation.sh" 2>/dev/null || true
 
+# Source locked_state_update for cross-run coverage baseline persistence.
+if ! declare -F locked_state_update >/dev/null 2>&1; then
+    # shellcheck source=../../../core/state/atomic.sh
+    source "$_OG_ROOT/core/state/atomic.sh" 2>/dev/null || true
+fi
+
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _og_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
@@ -43,6 +49,7 @@ _og_run_coverage_floor() {
     local coverage_floor="${ZBUILD_COVERAGE_FLOOR:-29}"
     local cov_rc=0
     local cov_out=""
+    coverage_ran=0
 
     if [[ -n "$coverage_cmd" ]]; then
         cov_out="$(bash -c "$coverage_cmd" 2>&1)" || cov_rc=$?
@@ -76,6 +83,7 @@ _og_run_coverage_floor() {
         return 0
     fi
 
+    coverage_ran=1
     _og_emit "objective_gate.coverage.pass" "coverage_pct=$coverage_pct"
 }
 
@@ -225,6 +233,15 @@ _og_run_shape_floor() {
     esac
 }
 
+# ─── _og_persist_coverage_pct ────────────────────────────────────────────────
+# jq transformer for locked_state_update: writes last_coverage_pct into state.
+# Caller sets _og_persist_pct before calling locked_state_update. MUST stay
+# compact (`-c`): _og_emit_report_signals reads the field with a grep that assumes
+# `"key":value` (no space), so a pretty-printed `"key": value` would read empty.
+_og_persist_coverage_pct() {
+    jq -c --argjson p "${_og_persist_pct:-0}" '. + {"last_coverage_pct": $p}'
+}
+
 # ─── objective_gate_run ───────────────────────────────────────────────────────
 # Hard-blocks on test suite, lint, coverage-floor, or scope-adherence failure.
 # Writes enriched artifact with coverage_pct, coverage_delta, scope_ok, quality_score.
@@ -248,7 +265,7 @@ objective_gate_run() {
     _og_emit "plugin.run.start" "plugin=objective-gate"
 
     local test_rc=0 lint_rc=0 fail_reason=""
-    local coverage_pct=0 coverage_delta=0 quality_score=0
+    local coverage_pct=0 coverage_delta=0 quality_score=0 coverage_ran=0
     local scope_gaps=()
     local negctl_verdict="skip" reachability_verdict="skip" shape_floor_verdict="skip"
 
@@ -288,6 +305,14 @@ objective_gate_run() {
 
     # Emit advisory report signals (coverage-delta, quality-score).
     _og_emit_report_signals "$state_file" "$coverage_pct" "$scope_ok"
+
+    # Persist coverage baseline for next-run delta computation (both paths).
+    if [[ -n "$state_file" && -f "$state_file" && "$coverage_ran" == "1" ]]; then
+        if declare -F locked_state_update >/dev/null 2>&1; then
+            _og_persist_pct="$coverage_pct"
+            locked_state_update "$state_file" "_og_persist_coverage_pct" || true
+        fi
+    fi
 
     if [[ -n "$fail_reason" ]]; then
         # JSON-escape each gap (paths may contain quotes/backslashes) via jq.
