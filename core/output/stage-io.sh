@@ -142,6 +142,16 @@ _stage_io_orphan_finalizer() {
         eb_emit_event "stage.io.error" \
             "stage=$stage" "seq=$seq" "kind=$kind" \
             "reason=output_never_emitted" 2>/dev/null || true
+        # #833: kind=cycle is fd-2-only chrome and must NEVER touch the
+        # filesystem (SPEC-5 "NEVER file"). An orphaned cycle begin (e.g. the
+        # cycle aborted between the INPUT begin and OUTPUT end) still gets the
+        # diagnostic event above, but no .partial.json artifact. This branch
+        # matters now that the runner's MAIN process sources stage-io (#833) —
+        # the orphan finalizer is armed for all kinds there, not just plugin
+        # subshells.
+        if [[ "$kind" == "cycle" ]]; then
+            continue
+        fi
         # Best-effort partial record so the operator can still inspect the input.
         local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
         local io_dir="$state_dir/artifacts/stage-io"
@@ -235,7 +245,8 @@ stage_io_begin() {
 
     [[ -z "$stage" ]] && { error "stage_io_begin: --stage required"; return 2; }
     [[ -z "$kind"  ]] && { error "stage_io_begin: --kind required";  return 2; }
-    case "$kind" in llm|command|computed) : ;;
+    # #833: `cycle` joins the kind enum for per-iter cycle boundary banners.
+    case "$kind" in llm|command|computed|cycle) : ;;
         *) error "stage_io_begin: unknown --kind '$kind'"; return 2 ;;
     esac
     [[ "$input" == "__ZBUILD_STAGE_IO_UNSET__" ]] && \
@@ -243,6 +254,11 @@ stage_io_begin() {
 
     local dests_nl
     dests_nl="$(template_stage_io_dests "$stage" 2>/dev/null || true)"
+    # #833: cycles have NO template io: block, so template_stage_io_dests is
+    # empty and the dest-gated banner path below would suppress the cycle
+    # banner. Force stdout-only (fd-2 routing) so the banner renders; never
+    # file, never gh_comment — mirrors the §v6 cycle-divider operator-chrome.
+    if [[ "$kind" == "cycle" ]]; then dests_nl="stdout"; fi
 
     # Reserve seq even when no destinations (callers may still pair end);
     # but skip filesystem ls when no io_dir exists.
@@ -449,7 +465,7 @@ stage_io_end() {
 
     # Validate against locked schema
     if ! printf '%s' "$record" | jq -e \
-        'has("schema_version") and .schema_version==1 and has("stage") and has("kind") and (.kind|IN("llm","command","computed")) and has("input") and has("output") and has("ts")' \
+        'has("schema_version") and .schema_version==1 and has("stage") and has("kind") and (.kind|IN("llm","command","computed","cycle")) and has("input") and has("output") and has("ts")' \
         >/dev/null 2>&1; then
         eb_emit_event "stage.io.error" "stage=$stage" "reason=schema_invalid" 2>/dev/null || true
         return 2
@@ -559,8 +575,8 @@ capture_stage_io() {
         return 2
     fi
     case "$kind" in
-        llm|command|computed) : ;;
-        *) error "capture_stage_io: unknown --kind '$kind' (valid: llm, command, computed)"; return 2 ;;
+        llm|command|computed|cycle) : ;;
+        *) error "capture_stage_io: unknown --kind '$kind' (valid: llm, command, computed, cycle)"; return 2 ;;
     esac
     if [[ "$input" == "__ZBUILD_STAGE_IO_UNSET__" ]]; then
         error "capture_stage_io: --input is required"
@@ -627,6 +643,12 @@ _stage_io_render_status() {
             fi
             ;;
         computed)
+            printf 'OK'
+            ;;
+        cycle)
+            # #833: cycle boundary banners have no exit-code / error semantics
+            # at the banner layer — termination evidence lives in the OUTPUT
+            # body. Status icon is always OK.
             printf 'OK'
             ;;
     esac
@@ -1003,6 +1025,12 @@ _stage_io_stdout_begin() {
                 # pretty-print the input as plain text.
                 _stage_io_head_with_hint "$input" "$tail_lines" "$stage" "$seq"
                 ;;
+            cycle)
+                # #833: cycle INPUT is a pre-formatted feedback-edge digest
+                # (plain text). Render head-with-hint like llm, but no artifact
+                # renderer — the digest is already operator-ready.
+                _stage_io_head_with_hint "$input" "$tail_lines" "$stage" "$seq"
+                ;;
             command)
                 _stage_io_render_command_argv "$input"
                 ;;
@@ -1106,6 +1134,15 @@ _stage_io_stdout_end() {
             computed)
                 printf 'out: %s\n' "$output"
                 ;;
+            cycle)
+                # #833: cycle OUTPUT is the termination-predicate eval +
+                # velocity (pre-formatted plain text). Reuse the llm
+                # no-artifact body; NO `── exit: ──` line (cycles have no
+                # command-style exit code).
+                local _pretty_cyc_out
+                _pretty_cyc_out="$(_stage_io_pretty_print "$output")"
+                _stage_io_tail_with_hint "$_pretty_cyc_out" "$tail_lines" "$stage" "$seq"
+                ;;
         esac
         # #499: end-trailer keeps the lighter ── close (rc-colored per #492).
         printf '%b── end stage-io: %s %s ──%b\n' "$_end_color" "$stage" "$_icon" "$_reset"
@@ -1199,6 +1236,18 @@ _stage_io_to_stdout() {
             ;;
         computed)
             printf 'in: %s\nout: %s\n' "$input" "$output"
+            ;;
+        cycle)
+            # #833: cycle banners route to fd-2 only (never gh_comment), so
+            # this renderer is never reached for kind=cycle in production.
+            # Provide a plain input/output symmetry arm for completeness so a
+            # direct caller (or future dest) renders the digest + predicate
+            # text verbatim.
+            printf '── input ──\n'
+            _stage_io_head "$input" "$tail_lines"
+            printf '\n── output ──\n'
+            _stage_io_tail "$output" "$tail_lines"
+            printf '\n'
             ;;
     esac
 

@@ -1,0 +1,4 @@
+══ build_test_cycle [cycle] seq=2 output OK 1000.0s ════════════════════════════════ 03:42:25 UTC ══
+exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+velocity=-3 failure_count=3
+── end stage-io: build_test_cycle ✓ ──

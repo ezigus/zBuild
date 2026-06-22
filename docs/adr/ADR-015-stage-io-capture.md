@@ -986,3 +986,104 @@ no LLM-structured terminal output; build's terminal artifact is the
 `diff.patch`, already covered by the `diff` renderer at downstream
 consumers. `security-lens` is an outstanding renderer gap tracked in
 ADR-018 §v4 (separate follow-up).
+
+## Amendment §G — `cycle` kind: per-iter cycle boundary banners (issue #833)
+
+The §v6 amendment gave operators per-iter *leaf* stage banners
+(`══ <stage> [<kind>] seq=N input/output ══`) inside outer cycles, plus
+cycle entry/iter/exit chrome dividers. But the cycles themselves
+(`design_impact_cycle`, `build_review_cycle`, `build_test_cycle`) emitted
+only events at their boundaries — there was no operator-visible banner
+showing what each iteration *consumed* (the feedback edges) or *concluded*
+(the termination-predicate eval). Issue #833 adds a fourth stage-io kind,
+`cycle`, to fill that gap.
+
+**`cycle` joins `llm`/`command`/`computed` as a kind.** No new event type:
+the cycle OUTPUT banner pairs through the existing `stage_io_begin` /
+`stage_io_end` chokepoint and emits the already-registered
+`stage.io.captured` event with `stage=<cycle_id>` and `kind=cycle`. The
+change is purely additive — a kind enum value plus body branches; the
+record envelope, the event contract, and the fd contract are all unchanged.
+
+**INPUT banner — feedback-edge digest.** Emitted right after
+`cycle_iter_begin_hook` (before the first inner leaf's input banner). Body is
+derived *per cycle* from `_CYCLE_FEEDBACK[]` cross-referenced against the
+present `iter-<N>/feedback/<to_field>.txt` artifacts:
+
+- present → `<to_field>(<digest>)` where digest is the JSON `.verdict` when
+  the artifact parses as JSON, else its first ~40 chars;
+  `test_assessment`-bearing fields also append `, N changes` from
+  `required_changes` length.
+- required + missing → `<to_field>(MISSING)`.
+- optional + missing → omitted.
+- iteration 1 (or no edges) → `(no feedback — first iteration)`.
+
+Edges are comma-joined. The digest helper
+(`_cycle_render_feedback_digest`) is pure / read-only / `2>/dev/null`-guarded
+— it never trips errexit and never mutates state.
+
+**OUTPUT banner — termination-predicate eval + velocity.** Emitted *after*
+the `cycle.iteration.complete` event and around `cycle_iter_complete_hook`,
+before the `↳ iter complete` trailer — preserving the §v6 event-FIRST /
+banner-SECOND ordering contract. Body is two lines:
+
+```
+<exit_when|abort_when> stage=<s> field=<f> op=<op> value=<v> → MATCHED|NOT MATCHED (got=<actual>)
+velocity=<0-failure_count> failure_count=<failure_count>
+```
+
+`_cycle_check_until` and `_cycle_check_abort_when` already compute the
+kind/stage/field/op/expected/actual/match tuple; they now stash it into
+`_CYCLE_LAST_PREDICATE_*` so `_cycle_render_predicate_result` can restate it
+without recomputation. `abort_when` is the kind when the abort predicate
+fired. `velocity = 0 - failure_count`, mirroring `cycle.iteration.complete`.
+
+**Routing contract.** Cycles have NO template `io:` block, so
+`template_stage_io_dests "<cycle_id>"` returns empty and the normal
+dest-gated path would suppress the banner. When `kind == cycle`,
+`stage_io_begin` forces `dests = stdout` only — fd-2 routing (via
+`ZBUILD_STAGE_IO_FD`, default 2; the runner opens fd 3 → stderr), NEVER
+`file`, NEVER `gh_comment`. This mirrors the §v6 cycle-divider chrome:
+operator-visible logging, never a persisted artifact and never a GitHub
+comment. (The runner's main process does not otherwise source
+`core/output/stage-io.sh` — only plugin subshells do via `route.sh` — so
+`cycle-orchestrator.sh` sources it directly; the module's load guard makes
+the re-source a no-op.)
+
+**Nesting.** INPUT precedes the first inner-leaf input banner of the
+iteration; OUTPUT follows the last inner-leaf end banner and the
+`cycle.iteration.complete` event. The cycle banner uses the cycle stage-id
+namespace for its seq counter (`_CYCLE_IO_SEQ[<iter>]`), distinct from the
+leaf stage-id namespaces — so inner-leaf hierarchical seq labels (`N.k`,
+`N.k.i.j`) are unchanged.
+
+**Predicate stash precedence.** `_cycle_check_until` always stashes its
+exit_when evaluation into `_CYCLE_LAST_PREDICATE_*`. `_cycle_check_abort_when`
+overwrites the stash *only when its abort predicate actually matched* — on a
+normal / converged iter (abort_when configured but NOT matching) the stash
+retains the exit_when evaluation, so the OUTPUT banner shows the predicate
+that actually drove the iteration rather than a misleading
+`abort_when ... NOT MATCHED`.
+
+**Orphan finalizer (main-process arming).** Sourcing
+`core/output/stage-io.sh` from `cycle-orchestrator.sh` arms
+`_stage_io_orphan_finalizer` (the EXIT trap that records unpaired
+`stage_io_begin`s) in the runner's MAIN process for the first time —
+previously only plugin subshells sourced stage-io. The finalizer still emits
+the `stage.io.error reason=output_never_emitted` diagnostic event for every
+kind, but it is **kind-aware for the file write**: `kind=cycle` is skipped, so
+an orphaned cycle INPUT begin (e.g. the cycle aborted between the INPUT begin
+and the OUTPUT end via a blocking-member `rc=8` or SIGINT `rc=130`) never
+produces a `<cycle_id>-<seq>.partial.json` artifact. This preserves the
+kind=cycle "fd-2 only, NEVER file" invariant on abnormal exit, not just the
+happy path.
+
+**Known limitation — full-suite-gate iter.** When the ADR-034 full-suite
+gate suppresses an otherwise-converged iteration (`converged` flipped back to
+1 so a targeted-mode pass is re-confirmed with a full suite next iter), the
+exit_when evaluation stashed for that iter is `MATCHED`. The OUTPUT banner for
+the gate-suppressed iter therefore renders `exit_when ... → MATCHED` even
+though the cycle deliberately continued. This is cosmetic — the durable
+`cycle.test.full_suite_gate` event records the real reason — and is left
+unfixed to keep the predicate-stash logic simple; operators reading the
+banner should consult the gate event for gate-suppressed iters.

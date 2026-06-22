@@ -45,6 +45,12 @@ source "$_CYCLE_ORCH_ROOT/core/pipeline/template.sh"
 # shellcheck source=../output/event-banners.sh
 # #526: operator-visible WARN banner for HIGH-severity cycle events.
 source "$_CYCLE_ORCH_ROOT/core/output/event-banners.sh"
+# #833: cycle INPUT/OUTPUT boundary banners go through the stage-io chokepoint
+# (kind=cycle). The runner's main process does NOT otherwise source stage-io
+# (only plugin subshells do, via route.sh), so source it here. stage-io.sh has
+# its own load guard, so this is a no-op when already sourced.
+# shellcheck source=../output/stage-io.sh
+source "$_CYCLE_ORCH_ROOT/core/output/stage-io.sh"
 # #511 F2 Pin 2: resolve feedback source paths via the from-stage manifest's
 # outputs[id==<X>].path entry (so the orchestrator stops assuming the legacy
 # `artifacts/<stage>/<output>` layout that real plugins do NOT follow).
@@ -66,6 +72,21 @@ _CYCLE_LAST_ITERATIONS=0
 _CYCLE_LAST_HISTORY_FILE=""
 _CYCLE_VELOCITY_PLATEAU_WINDOW=0  # 0 = disabled until template sets velocity_plateau.window
 _CYCLE_LAST_PLATEAU_EVIDENCE=""
+
+# #833: last-evaluated termination predicate, stashed by _cycle_check_until /
+# _cycle_check_abort_when, read by _cycle_render_predicate_result for the
+# cycle OUTPUT banner. kind = exit_when | abort_when.
+_CYCLE_LAST_PREDICATE_KIND=""
+_CYCLE_LAST_PREDICATE_STAGE=""
+_CYCLE_LAST_PREDICATE_FIELD=""
+_CYCLE_LAST_PREDICATE_OP=""
+_CYCLE_LAST_PREDICATE_EXPECTED=""
+_CYCLE_LAST_PREDICATE_ACTUAL=""
+_CYCLE_LAST_PREDICATE_MATCH=""
+
+# #833: per-iter cycle-banner seq counters, keyed by iter. Holds the reserved
+# seq from stage_io_begin so the matching stage_io_end can pair correctly.
+declare -gA _CYCLE_IO_SEQ=()
 
 # Internal trap-state (mirrors _route_loop_* convention in route.sh).
 _CYCLE_TRAP_CYCLE_ID=""
@@ -356,6 +377,8 @@ _cycle_check_until() {
         _cycle_emit "cycle.iteration.verdict_missing" \
             "iter=$_CYCLE_TRAP_ITER" "stage=$stage" "field=$field"
         _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "" "false"
+        # #833: stash for the cycle OUTPUT banner (missing → empty actual).
+        _cycle_stash_predicate "exit_when" "$stage" "$field" "$op" "$expected" "" "false"
         return 1
     fi
     local _match="false"
@@ -365,7 +388,108 @@ _cycle_check_until() {
         ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
     esac
     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    # #833: stash the just-evaluated predicate so _cycle_render_predicate_result
+    # can restate it on the cycle OUTPUT banner.
+    _cycle_stash_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     return $_rc
+}
+
+# ─── _cycle_stash_predicate — record last predicate eval for OUTPUT banner ───
+# #833: the cycle OUTPUT banner restates the most-recently evaluated
+# termination predicate. Both _cycle_check_until and _cycle_check_abort_when
+# already compute kind/stage/field/op/expected/actual/match; stash them here so
+# _cycle_render_predicate_result can format them without recomputation.
+_cycle_stash_predicate() {
+    _CYCLE_LAST_PREDICATE_KIND="$1"
+    _CYCLE_LAST_PREDICATE_STAGE="$2"
+    _CYCLE_LAST_PREDICATE_FIELD="$3"
+    _CYCLE_LAST_PREDICATE_OP="$4"
+    _CYCLE_LAST_PREDICATE_EXPECTED="$5"
+    _CYCLE_LAST_PREDICATE_ACTUAL="$6"
+    _CYCLE_LAST_PREDICATE_MATCH="$7"
+}
+
+# ─── _cycle_render_feedback_digest <iter> <state_dir> (#833) ─────────────────
+# Builds the cycle INPUT-banner body: a comma-joined digest of the feedback
+# edges consumed this iter. For each edge in _CYCLE_FEEDBACK[] (same parse as
+# _cycle_apply_feedback), inspect $state_dir/cycle-<id>/iter-<iter>/feedback/
+# <to_field>.txt:
+#   present       → "<to_field>(<digest>)"  (verdict from JSON, else ~40-char
+#                    head; test_assessment also appends ", N changes")
+#   required+miss → "<to_field>(MISSING)"
+#   optional+miss → skipped
+# iter==1 (or no edges) → "(no feedback — first iteration)".
+# Pure/read-only, 2>/dev/null-guarded, never trips errexit.
+_cycle_render_feedback_digest() {
+    local iter="$1" state_dir="$2"
+    if [[ "$iter" == "1" ]] || [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]]; then
+        printf '(no feedback — first iteration)'
+        return 0
+    fi
+    local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter}/feedback"
+    local -a parts=()
+    local rec
+    for rec in "${_CYCLE_FEEDBACK[@]}"; do
+        # "from_stage:from_output|to_stage:to_field:required"
+        local to_part="${rec#*|}"
+        local rest="${to_part#*:}"
+        local to_field="${rest%%:*}"
+        local required="${rest#*:}"
+        local f="$fb_dir/${to_field}.txt"
+        if [[ -f "$f" ]]; then
+            local content digest
+            content="$(cat "$f" 2>/dev/null || true)"
+            # Prefer a JSON .verdict; else the first ~40 chars (single line).
+            digest="$(jq -r '.verdict // empty' <<< "$content" 2>/dev/null || true)"
+            if [[ -z "$digest" ]]; then
+                digest="$(printf '%s' "$content" | tr '\n' ' ' | cut -c1-40)"
+            fi
+            # test_assessment edges carry required_changes — append its count.
+            if [[ "$to_field" == *test_assessment* ]]; then
+                local n_changes
+                n_changes="$(jq -r '(.required_changes // []) | length' <<< "$content" 2>/dev/null || true)"
+                if [[ "$n_changes" =~ ^[0-9]+$ ]]; then
+                    digest="${digest}, ${n_changes} changes"
+                fi
+            fi
+            parts+=( "${to_field}(${digest})" )
+        elif [[ "$required" == "true" ]]; then
+            parts+=( "${to_field}(MISSING)" )
+        fi
+    done
+    if [[ ${#parts[@]} -eq 0 ]]; then
+        printf '(no feedback — first iteration)'
+        return 0
+    fi
+    local IFS_save="$IFS"; IFS=','
+    printf '%s' "${parts[*]}"
+    IFS="$IFS_save"
+    return 0
+}
+
+# ─── _cycle_render_predicate_result <iter> (#833) ────────────────────────────
+# Builds the cycle OUTPUT-banner body from the last-stashed predicate eval:
+#   line1: <kind> stage=<s> field=<f> op=<op> value=<v> → MATCHED|NOT MATCHED (got=<actual>)
+#   line2: velocity=<0-fc> failure_count=<fc>
+# velocity = 0 - _CYCLE_LAST_FAILURE_COUNT (mirrors cycle.iteration.complete).
+# Pure/read-only; no errexit hazard.
+_cycle_render_predicate_result() {
+    local iter="$1"
+    local kind="${_CYCLE_LAST_PREDICATE_KIND:-exit_when}"
+    local stage="${_CYCLE_LAST_PREDICATE_STAGE:-}"
+    local field="${_CYCLE_LAST_PREDICATE_FIELD:-}"
+    local op="${_CYCLE_LAST_PREDICATE_OP:-}"
+    local expected="${_CYCLE_LAST_PREDICATE_EXPECTED:-}"
+    local actual="${_CYCLE_LAST_PREDICATE_ACTUAL:-}"
+    local match="${_CYCLE_LAST_PREDICATE_MATCH:-false}"
+    local fc="${_CYCLE_LAST_FAILURE_COUNT:-0}"
+    [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
+    local matched_str="NOT MATCHED (got=${actual})"
+    [[ "$match" == "true" ]] && matched_str="MATCHED (got=${actual})"
+    printf '%s stage=%s field=%s op=%s value=%s → %s\nvelocity=%s failure_count=%s' \
+        "$kind" "$stage" "$field" "$op" "$expected" "$matched_str" \
+        "$(( 0 - fc ))" "$fc"
+    return 0
 }
 
 # ─── _cycle_check_abort_when <verdicts_blob> ─────────────────────────────────
@@ -391,6 +515,9 @@ _cycle_check_abort_when() {
         '.[$s][$f] // empty' <<< "$blob" 2>/dev/null || true)"
     if [[ -z "$actual" || "$actual" == "null" ]]; then
         _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "" "false"
+        # #833 NOTE #2: do NOT overwrite the predicate stash here — abort_when
+        # did not fire (missing actual), so the cycle OUTPUT banner must keep
+        # showing the exit_when evaluation _cycle_check_until already stashed.
         return 1
     fi
     local _match="false"
@@ -400,6 +527,14 @@ _cycle_check_abort_when() {
         ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
     esac
     _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    # #833 NOTE #2: only let abort_when overwrite the OUTPUT-banner predicate
+    # stash when it ACTUALLY matched (the terminating predicate). On a normal /
+    # converged iter, abort_when evaluates to NOT MATCHED — leaving its eval in
+    # the stash would mis-render the banner as `abort_when ... NOT MATCHED`
+    # instead of the exit_when evaluation that actually drove the iteration.
+    if [[ "$_match" == "true" ]]; then
+        _cycle_stash_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    fi
     return $_rc
 }
 
@@ -1438,6 +1573,8 @@ cycle_orchestrator_run() {
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
     _CYCLE_ITER_START_MS=()
+    # #833: reset per-iter cycle-banner seq counters for this run.
+    _CYCLE_IO_SEQ=()
     # ADR-029 G2 (#810): clear per-member router-timeout counters at every
     # cycle entry. The map persists across iters WITHIN a single run, but
     # MUST NOT leak between runs (different cycle ids would collide if a
@@ -1500,6 +1637,20 @@ cycle_orchestrator_run() {
             # handle broken-fd tolerance. `|| true` keeps a hook failure from
             # aborting the cycle.
             cycle_iter_begin_hook "$cycle_id" "$iter" "$_CYCLE_MAX_ITER" || true
+        fi
+
+        # #833: cycle INPUT banner — digest of feedback edges consumed this
+        # iter. Build the digest into a var FIRST (command-sub in a var is
+        # fine — it's pure), then call stage_io_begin DIRECTLY so its
+        # assoc-array seq-reservation side effects persist (we read the
+        # reserved seq from _STAGE_IO_LAST_SEQ, the capture_stage_io idiom).
+        # kind=cycle forces dests=stdout-only (fd-2) inside stage_io_begin.
+        if declare -F stage_io_begin >/dev/null 2>&1; then
+            local _cycle_in_digest
+            _cycle_in_digest="$(_cycle_render_feedback_digest "$iter" "$state_dir")"
+            stage_io_begin --kind cycle --stage "$cycle_id" --seq-label "$iter" \
+                --input "$_cycle_in_digest" >/dev/null 2>&1 || true
+            _CYCLE_IO_SEQ[$iter]="${_STAGE_IO_LAST_SEQ:-}"
         fi
 
         # ADR-025 (Wave 15-B #684) pre-flight: check the sentinel before
@@ -1689,6 +1840,17 @@ cycle_orchestrator_run() {
         if declare -F cycle_iter_complete_hook >/dev/null 2>&1; then
             cycle_iter_complete_hook "$cycle_id" "$iter" "$h_verdict" \
                 "$(( 0 - failure_count ))" "$failure_count" || true
+        fi
+
+        # #833: cycle OUTPUT banner — termination-predicate eval + velocity.
+        # Event-FIRST (cycle.iteration.complete above), banner-SECOND ordering
+        # is preserved. Pairs with the INPUT banner via _CYCLE_IO_SEQ[$iter].
+        # kind=cycle keeps it fd-2 / stdout-only.
+        if [[ -n "${_CYCLE_IO_SEQ[$iter]:-}" ]] && declare -F stage_io_end >/dev/null 2>&1; then
+            local _cycle_out_body
+            _cycle_out_body="$(_cycle_render_predicate_result "$iter")"
+            stage_io_end --stage "$cycle_id" --kind cycle --seq "${_CYCLE_IO_SEQ[$iter]}" \
+                --output "$_cycle_out_body" >/dev/null 2>&1 || true
         fi
 
         if [[ $term_rc -ge 0 ]]; then

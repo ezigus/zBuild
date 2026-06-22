@@ -63,6 +63,18 @@ rc=$?
 set -e
 assert_eq "T4 unknown --kind returns rc=2" "2" "$rc"
 
+# ─── T4b: kind=cycle is accepted → rc=0 (#833) ───────────────────────────────
+# cycle joins llm/command/computed as a recognized kind. Use stdout dest so the
+# capture is a no-file path (matches the cycle's fd-2-only routing intent).
+_MOCK_DESTS="stdout"
+set +e
+capture_stage_io --stage build_test_cycle --kind cycle --input "(no feedback — first iteration)" \
+    --output "exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T4b kind=cycle accepted returns rc=0" "0" "$rc"
+_MOCK_DESTS="file"
+
 # ─── T5: malformed --metadata → rc=2 ─────────────────────────────────────────
 set +e
 capture_stage_io --stage plan --kind llm --input "i" --output "o" --metadata "no_equals_sign" >/dev/null 2>&1

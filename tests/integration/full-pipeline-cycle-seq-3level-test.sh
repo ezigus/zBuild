@@ -212,5 +212,35 @@ assert_eq "impact saw ZBUILD_SEQ_PREFIX=3" "3" "$(_prefix_env_for impact)"
 assert_eq "review saw ZBUILD_SEQ_PREFIX=4 (direct member of build_review_cycle)" \
     "4" "$(_prefix_env_for review)"
 
+# ─── #833: cycle INPUT/OUTPUT banners appear (kind=cycle) ────────────────────
+# The orchestrator emits a `[cycle]` banner per iter for each cycle. The runner
+# routes stage-io banners to stderr (captured into runner.out by 2>&1 above).
+runner_out="$(cat "$TEST_TEMP_DIR/runner.out" 2>/dev/null || true)"
+if grep -q '\[cycle\].*input' <<< "$runner_out"; then
+    assert_pass "#833 cycle INPUT banner ([cycle] ... input) present in pipeline output"
+else
+    assert_fail "#833 cycle INPUT banner present" "no '[cycle] ... input' line in runner.out"
+fi
+if grep -q '\[cycle\].*output' <<< "$runner_out"; then
+    assert_pass "#833 cycle OUTPUT banner ([cycle] ... output) present in pipeline output"
+else
+    assert_fail "#833 cycle OUTPUT banner present" "no '[cycle] ... output' line in runner.out"
+fi
+# The cycle banner's stage token is the cycle id, distinct from the leaf ids —
+# proving the cycle seq counter uses the cycle stage-id namespace.
+if grep -qE 'design_impact_cycle \[cycle\]|build_review_cycle \[cycle\]|build_test_cycle \[cycle\]' <<< "$runner_out"; then
+    assert_pass "#833 cycle banner stage token is a cycle id (distinct namespace)"
+else
+    assert_fail "#833 cycle banner stage token is a cycle id" "no cycle-id [cycle] banner found"
+fi
+
+# ─── #833 regression guard: inner-leaf hierarchical seq labels UNCHANGED ─────
+# The cycle banner uses the cycle stage-id namespace, so leaf labels (N.k) must
+# not shift. Re-assert the key leaf labels (already pinned above; restated here
+# as the explicit no-regression contract the #833 change must preserve).
+assert_eq "#833 design leaf label still 3.1.1"          "3.1.1"     "$(_label_for design 1)"
+assert_eq "#833 build leaf label still 4.1.1.1.1"       "4.1.1.1.1" "$(_label_for build 1)"
+assert_eq "#833 test_assessment leaf label still 4.1.1.1.3" "4.1.1.1.3" "$(_label_for test_assessment 1)"
+
 print_test_results
 cleanup_test_env
