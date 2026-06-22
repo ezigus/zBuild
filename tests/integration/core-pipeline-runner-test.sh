@@ -56,6 +56,8 @@ _make_plugin "cq-audit-plan"   "agent" 0
 _make_plugin "cq-cycle"        "agent" 0
 _make_plugin "cq-backtrack"    "agent" 0
 _make_plugin "review"          "agent" 0
+# #756: standard template now includes pr leaf stage after build_review_cycle.
+_make_plugin "pr"              "agent" 0
 
 # ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
 set +e; bash "$RUNNER" 2>/dev/null; rc=$?; set -e
@@ -98,8 +100,8 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 # ─── Test 6: stage lifecycle events emitted ─────────────────────────────────
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
-    # #755: 12 stages + #922: acceptance-gate = 13.
-    assert_eq "$stage_event emitted for each MVP stage (13x)" "13" "$count"
+    # #755: 12 stages + #922: acceptance-gate + #756: pr = 14.
+    assert_eq "[SPEC-1] $stage_event emitted for each MVP stage (14x)" "14" "$count"
 done
 
 # ─── Test 7: ADR-006 stage status enum — "complete" not "success" ───────────
@@ -258,14 +260,16 @@ _make_role_plugin "cq-audit-plan-agent"  "cq_audit_plan"   0
 _make_role_plugin "cq-cycle-agent"       "cq_cycle"        0
 _make_role_plugin "cq-backtrack-agent"   "cq_backtrack"    0
 _make_role_plugin "review-agent"          "reviewer"        0
+# #756: pr leaf stage after build_review_cycle uses pr_delivery role.
+_make_role_plugin "pr-agent"             "pr_delivery"     0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
 set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-# #755: 12 stages + #922: acceptance-gate = 13.
-assert_eq "role-based dispatch: 13 stage.complete events" "13" "$role_complete"
+# #755: 12 stages + #922: acceptance-gate + #756: pr = 14.
+assert_eq "role-based dispatch: 14 stage.complete events" "14" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
 assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"
@@ -281,9 +285,9 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
-# #922: 13 stages × 2 platforms = 26 plugin.run.start events via fanout
+# #756: 14 stages × 2 platforms = 28 plugin.run.start events via fanout
 plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
-assert_eq "fanout 2 platforms: 26 plugin.run.start events (13 stages × 2)" "26" "$plugin_run_count"
+assert_eq "fanout 2 platforms: 28 plugin.run.start events (14 stages × 2)" "28" "$plugin_run_count"
 
 # ─── Test 14: partial fanout failure — stage.fail + pipeline.end status=failed ─
 # Platform-specific success (node) + generic failure (ios fallback) → partial.
@@ -549,6 +553,8 @@ _make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
 _make_plugin "cq-cycle"        "agent" 0 >/dev/null
 _make_plugin "cq-backtrack"    "agent" 0 >/dev/null
 _make_plugin "review"          "agent" 0 >/dev/null
+# #756: pr leaf stage after build_review_cycle.
+_make_plugin "pr"              "agent" 0 >/dev/null
 
 I1_STDERR="$TEST_TEMP_DIR/i1.runner.stderr"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
@@ -562,12 +568,12 @@ assert_contains "I1 #508: stderr carries UTC timestamps" "$I1_OUT" "UTC"
 assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:25:45 UTC"
 assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
 
-# I1b: exactly 13 'started ' and 13 'finished ' suffixes (one per stage).
-# Standard template has 13 stages; objective-gate lives in simple.yaml only.
+# I1b: exactly 14 'started ' and 14 'finished ' suffixes (one per stage).
+# Standard template has 14 stages (#756: pr added); objective-gate lives in simple.yaml only.
 started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 13 'started ' suffixes" "13" "$started_count"
+assert_eq "I1b #508: exactly 14 'started ' suffixes" "14" "$started_count"
 finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 13 'finished ' suffixes" "13" "$finished_count"
+assert_eq "I1b #508: exactly 14 'finished ' suffixes" "14" "$finished_count"
 
 # ─── Test I2 (#508): failure path emits ✗ with rc + finished + duration ─────
 _make_plugin "build" "agent" 1 >/dev/null

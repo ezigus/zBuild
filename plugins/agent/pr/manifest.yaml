@@ -1,0 +1,63 @@
+id: pr
+name: PR Stage
+kind: agent
+version: 0.1.0
+description: |
+  PR delivery agent (kind:agent, T2). Reads review.json and refuses if verdict==block.
+  Reads plan.json and design.md for PR body context. Invokes the pr-open tool plugin
+  (T0) for the actual gh pr create call. ZBUILD_DRY_RUN=1 writes mock artifacts.
+  ADR-018 Pattern 1 (one-shot): compose body, call pr-open, done — no iteration loop.
+  # legacy-citation: pipeline-stages-delivery.sh:81 (stage_pr)
+
+hooks:
+  init: pr_stage_init
+  run: pr_stage_run
+  finalize: pr_stage_finalize
+  cleanup: pr_stage_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  artifact_type: pr-url.txt
+  role: pr_delivery
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: review
+    type: file
+    path: "${artifact_dir}/review.json"
+    source: stage:review
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: false
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: false
+
+outputs:
+  - id: pr_url
+    path: ${artifact_dir}/pr-url.txt
+    type: pr-url.txt
+    required: true
+    primary: true
+  - id: pr_result
+    path: ${artifact_dir}/pr-result.json
+    type: pr-result.json
+    required: true
+
+state:
+  persisted: []
+  reconstructed: []

@@ -41,7 +41,7 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/standard.yaml"
 
-assert_eq "T1: _TPL_STAGES has 13 entries" "13" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-1] T1: _TPL_STAGES has 14 entries (pr added, #756)" "14" "${#_TPL_STAGES[@]}"
 assert_eq "T1: _TPL_STAGES[0]=intake" "intake" "${_TPL_STAGES[0]:-}"
 assert_eq "T1: _TPL_STAGES[1]=plan" "plan" "${_TPL_STAGES[1]:-}"
 assert_eq "T1: _TPL_STAGES[2]=design" "design" "${_TPL_STAGES[2]:-}"
@@ -55,6 +55,7 @@ assert_eq "T1: _TPL_STAGES[9]=cq-audit-plan" "cq-audit-plan" "${_TPL_STAGES[9]:-
 assert_eq "T1: _TPL_STAGES[10]=cq-cycle" "cq-cycle" "${_TPL_STAGES[10]:-}"
 assert_eq "T1: _TPL_STAGES[11]=cq-backtrack" "cq-backtrack" "${_TPL_STAGES[11]:-}"
 assert_eq "T1: _TPL_STAGES[12]=review" "review" "${_TPL_STAGES[12]:-}"
+assert_eq "[SPEC-1] T1: _TPL_STAGES[13]=pr" "pr" "${_TPL_STAGES[13]:-}"
 
 # #842: standard.yaml now wraps design+impact in design_impact_cycle.
 # Total cycles: design_impact_cycle + build_test_cycle + build_review_cycle = 3.
@@ -88,15 +89,17 @@ assert_contains "T1: feedback to build:prior_test_assessment" \
 # #842/#754: dispatch units fold to [stage:intake, stage:plan,
 # cycle:design_impact_cycle, cycle:build_review_cycle] — plan is a leaf;
 # design_impact_cycle wraps design+impact; build_review_cycle is the outermost cycle.
-assert_eq "T1: 4 dispatch units (intake/plan/design_impact_cycle/build_review_cycle)" \
-    "4" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "[SPEC-6] T1: 5 dispatch units (intake/plan/design_impact_cycle/build_review_cycle/pr)" \
+    "5" "${#_TPL_DISPATCH_UNITS[@]}"
 has_dic=0
 has_outer=0
 has_plan=0
+has_pr=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:design_impact_cycle" ]] && has_dic=1
     [[ "$u" == "cycle:build_review_cycle" ]] && has_outer=1
     [[ "$u" == "stage:plan" ]] && has_plan=1
+    [[ "$u" == "stage:pr" ]] && has_pr=1
 done
 assert_eq "T1: dispatch units include cycle:design_impact_cycle" \
     "1" "$has_dic"
@@ -104,6 +107,8 @@ assert_eq "T1: dispatch units include stage:plan (leaf)" \
     "1" "$has_plan"
 assert_eq "T1: dispatch units include cycle:build_review_cycle (outer)" \
     "1" "$has_outer"
+assert_eq "[SPEC-6] T1: dispatch units include stage:pr (leaf, #756)" \
+    "1" "$has_pr"
 
 # ─── Orchestrator harness ────────────────────────────────────────────────────
 # shellcheck disable=SC1090

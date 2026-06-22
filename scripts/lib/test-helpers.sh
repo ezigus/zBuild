@@ -587,6 +587,7 @@ _ZBUILD_STANDARD_ROSTER=(
     "cq-cycle:agent:"
     "cq-backtrack:agent:"
     "review:agent:"
+    "pr:agent:pr_delivery"
 )
 
 # ── standard_stage_ids ────────────────────────────────────────────────────────

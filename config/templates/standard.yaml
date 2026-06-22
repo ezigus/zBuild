@@ -18,6 +18,7 @@ flow:
   - plan
   - design_impact_cycle
   - build_review_cycle
+  - pr
 
 # ─── intake (leaf) ──────────────────────────────────────────────────────
 intake:
@@ -362,6 +363,22 @@ cq-backtrack:
 review:
   gate: auto
   roles: [reviewer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── pr (leaf) ──────────────────────────────────────────────────────────────
+# kind:agent T2 (ADR-013 Amendment: pr kind:tool→agent, tier:T0→T2, #756).
+# Reads review.json (verdict guard), plan.json, design.md for PR body context.
+# Invokes pr-open tool plugin (T0) for the actual gh pr create call.
+# ADR-018 Pattern 1 (one-shot): compose body, call pr-open, done.
+# legacy-citation: pipeline-stages-delivery.sh:81
+pr:
+  gate: auto
+  roles: [pr_delivery]
   io:
     destinations: [file, stdout]
     tail_lines: 200
