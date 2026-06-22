@@ -30,8 +30,16 @@ fi
 #                             which lands in the caller's failure branch (the
 #                             honest outcome for a hang), never an infinite wait
 # Returns the child's exit code.
+# Optional 3rd arg: a per-invocation trace file. When set, fd 9 is opened to it
+# so a child bash with BASH_XTRACEFD=9 (coverage mode — see --coverage-trace
+# below) writes its xtrace there. One file per test means parallel workers never
+# share one fd-9 handle, which is what corrupted coverage before (#993).
 _rt_run() {
-  "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
+  if [[ -n "${3:-}" ]]; then
+    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1
+  else
+    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
+  fi
 }
 
 # _zb_default_jobs — portable CPU-count for the #984 parallel-by-default path.
@@ -93,6 +101,29 @@ if [[ "$tier" == "--tier" ]]; then
   tier="${2:-all}"
 fi
 
+# #993: coverage-trace ownership. check-coverage.sh delegates tracing to the
+# runner via `--coverage-trace <path>` instead of wiring PS4/BASH_XTRACEFD/
+# BASH_ENV itself. When set, the runner turns on xtrace line-tracing for each
+# child test bash (PS4 emits `TRACE:<src>:<lineno>:`; BASH_ENV injects `set -x`
+# into every child; BASH_XTRACEFD=9 routes it to fd 9), gives EACH test its own
+# trace file (so parallel workers never share one fd-9 handle), and merges them
+# into <path> at the end. The coverage script stays a dumb consumer.
+_RT_COVERAGE_TRACE=""
+_rt_expect_cov=0
+for _rt_arg in "$@"; do
+  if [[ $_rt_expect_cov -eq 1 ]]; then _RT_COVERAGE_TRACE="$_rt_arg"; _rt_expect_cov=0; continue; fi
+  [[ "$_rt_arg" == "--coverage-trace" ]] && _rt_expect_cov=1
+done
+if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
+  _RT_BASH_ENV_FILE="$(mktemp -t zbuild-cov-bashenv.XXXXXX)"
+  printf 'set -x\n' > "$_RT_BASH_ENV_FILE"
+  # shellcheck disable=SC2064
+  trap "rm -f '$_RT_BASH_ENV_FILE'" EXIT
+  export PS4='TRACE:${BASH_SOURCE[0]-}:${LINENO}:'
+  export BASH_XTRACEFD=9
+  export BASH_ENV="$_RT_BASH_ENV_FILE"
+fi
+
 run_tier() {
   local name="$1"
   local dir="$TESTS_DIR/$name"
@@ -138,6 +169,14 @@ run_tier() {
     return 0
   fi
 
+  # #993: in coverage mode each test writes its own per-test trace into this dir;
+  # they are merged into $_RT_COVERAGE_TRACE at the end of the tier. Kept separate
+  # from the parallel job dir, so it works for both the parallel and serial paths.
+  local _cov_dir=""
+  if [[ -n "${_RT_COVERAGE_TRACE:-}" ]]; then
+    _cov_dir="$(mktemp -d -t "zbuild-cov-$name.XXXXXX")"
+  fi
+
   # Bounded parallel execution when ZBUILD_TEST_PARALLEL_JOBS is set to N > 0.
   # Each job writes its rc and output to a private slot; aggregation is serial
   # after all jobs finish so FAIL lines and the summary stay in a stable order.
@@ -172,7 +211,7 @@ run_tier() {
       local _base="$_job_dir/$_slot"
       printf '%s' "$f" > "${_base}.file"
       (
-        if _rt_run "$f" "${_base}.out"; then
+        if _rt_run "$f" "${_base}.out" "${_cov_dir:+$_cov_dir/$_slot.trace}"; then
           printf '0' > "${_base}.rc"
           # Success: aggregation only reads .out for FAILED slots, so drop it now
           # — parity with the serial path, keeps the job dir small (#1011 review).
@@ -212,6 +251,10 @@ run_tier() {
       fi
     done
     rm -rf "$_job_dir"
+    if [[ -n "$_cov_dir" ]]; then
+      cat "$_cov_dir"/*.trace > "$_RT_COVERAGE_TRACE" 2>/dev/null || :
+      rm -rf "$_cov_dir"
+    fi
     echo "$name: $passed/$total passed"
     [[ $failed -eq 0 ]]
     return
@@ -230,7 +273,7 @@ run_tier() {
     # stage-io.sh's load-time guard would abort sourcing for every test that
     # pulls in that module under the unit harness (#586). It also bounds the
     # run with a per-file timeout + stdin guard (#929).
-    if _rt_run "$f" "$out"; then
+    if _rt_run "$f" "$out" "${_cov_dir:+$_cov_dir/$total.trace}"; then
       passed=$((passed + 1))
       rm -f "$out"
     else
@@ -241,6 +284,10 @@ run_tier() {
     fi
   done
 
+  if [[ -n "$_cov_dir" ]]; then
+    cat "$_cov_dir"/*.trace > "$_RT_COVERAGE_TRACE" 2>/dev/null || :
+    rm -rf "$_cov_dir"
+  fi
   echo "$name: $passed/$total passed"
   [[ $failed -eq 0 ]]
 }
