@@ -104,6 +104,12 @@ declare -gA _CYCLE_TIMEOUT_RUN=()
 # even after the override is in effect. Reset on success.
 declare -gA _CYCLE_TURNS_BASE=()
 
+# ADR-029 G2/G3 cross-iteration persistence (#844): keyed by cycle_id:stage_name.
+# Survive cycle_orchestrator_run re-entry for nested invocations of the same
+# cycle_id so stages that burned timeout budget carry their count forward.
+declare -gA _CYCLE_TIMEOUT_RUN_PERSIST=()
+declare -gA _CYCLE_TURNS_BASE_PERSIST=()
+
 # ─── Per-iter start-wall-clock cache (#524) ──────────────────────────────────
 # Populated by the iter-begin hook (orchestrator) and read by the iter-complete
 # hook to compute elapsed_s for the operator-visible iter-complete trailer.
@@ -1410,6 +1416,8 @@ _cycle_iter_dispatch() {
         if [[ "$verdict" == "error" ]] && \
            [[ "$_g2_reason" == "router_timeout" || "$_g2_reason" == "router_oom_kill" ]]; then
             _CYCLE_TIMEOUT_RUN["$s"]=$(( ${_CYCLE_TIMEOUT_RUN["$s"]:-0} + 1 ))
+            # Sync to persist map so the incremented count survives re-entry.
+            _CYCLE_TIMEOUT_RUN_PERSIST["${_CYCLE_TRAP_CYCLE_ID}:$s"]="${_CYCLE_TIMEOUT_RUN[$s]}"
             # ADR-029 G3: capture max_turns base on FIRST timeout so the
             # next iter dispatches with an escalated budget. If a per-stage
             # template override exists, use it; otherwise fall back to env;
@@ -1429,6 +1437,7 @@ _cycle_iter_dispatch() {
                     fi
                 fi
                 _CYCLE_TURNS_BASE["$s"]="$_g3_capture"
+                _CYCLE_TURNS_BASE_PERSIST["${_CYCLE_TRAP_CYCLE_ID}:$s"]="$_g3_capture"
             fi
             eb_emit_event "cycle.member.timeout" \
                 "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
@@ -1452,9 +1461,11 @@ _cycle_iter_dispatch() {
             # Reset the per-member counter on any successful (or non-timeout)
             # dispatch — only CONSECUTIVE timeouts trigger fast-abandon.
             _CYCLE_TIMEOUT_RUN["$s"]=0
+            _CYCLE_TIMEOUT_RUN_PERSIST["${_CYCLE_TRAP_CYCLE_ID}:$s"]=0
             # ADR-029 G3: also clear the captured base so a future timeout
             # re-anchors from the (possibly re-tuned) current budget.
             unset "_CYCLE_TURNS_BASE[$s]"
+            unset "_CYCLE_TURNS_BASE_PERSIST[${_CYCLE_TRAP_CYCLE_ID}:$s]"
         fi
     done
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
@@ -1566,6 +1577,9 @@ cycle_orchestrator_run() {
         { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
     fi
 
+    # ADR-029 G2/G3 cross-iteration persistence (#844): capture the outer cycle's
+    # ID before overwriting so we can detect nested re-entry below.
+    local _parent_cid="${_CYCLE_TRAP_CYCLE_ID:-}"
     _CYCLE_TRAP_CYCLE_ID="$cycle_id"
     _CYCLE_TRAP_ITER=0
     _CYCLE_LAST_TERMINATED_REASON=""
@@ -1575,14 +1589,33 @@ cycle_orchestrator_run() {
     _CYCLE_ITER_START_MS=()
     # #833: reset per-iter cycle-banner seq counters for this run.
     _CYCLE_IO_SEQ=()
-    # ADR-029 G2 (#810): clear per-member router-timeout counters at every
-    # cycle entry. The map persists across iters WITHIN a single run, but
-    # MUST NOT leak between runs (different cycle ids would collide if a
-    # member name repeats; a re-entry should reset the fast-abandon budget).
+    # ADR-029 G2 (#810): reset baseline — may be overwritten immediately below
+    # if this is a nested re-entry (same cycle_id dispatched by outer iteration).
     _CYCLE_TIMEOUT_RUN=()
-    # ADR-029 G3 (#812): per-member max_turns base captured at first timeout.
-    # Same lifecycle as _CYCLE_TIMEOUT_RUN.
+    # ADR-029 G3 (#812): per-member max_turns base. Same lifecycle.
     _CYCLE_TURNS_BASE=()
+    # ADR-029 G2/G3 cross-iteration persistence (#844): nested re-entry restores
+    # accumulated counters so G2/G3 thresholds carry across outer-cycle iters.
+    # Top-level entry clears stale persist state to prevent cross-run bleed.
+    if [[ -n "$_parent_cid" && "$_parent_cid" != "$cycle_id" ]]; then
+        local _pk _pfx="${cycle_id}:"
+        for _pk in "${!_CYCLE_TIMEOUT_RUN_PERSIST[@]}"; do
+            [[ "$_pk" == "${_pfx}"* ]] && \
+                _CYCLE_TIMEOUT_RUN["${_pk#"$_pfx"}"]="${_CYCLE_TIMEOUT_RUN_PERSIST[$_pk]}"
+        done
+        for _pk in "${!_CYCLE_TURNS_BASE_PERSIST[@]}"; do
+            [[ "$_pk" == "${_pfx}"* ]] && \
+                _CYCLE_TURNS_BASE["${_pk#"$_pfx"}"]="${_CYCLE_TURNS_BASE_PERSIST[$_pk]}"
+        done
+    else
+        local _pk _pfx="${cycle_id}:"
+        for _pk in "${!_CYCLE_TIMEOUT_RUN_PERSIST[@]}"; do
+            [[ "$_pk" == "${_pfx}"* ]] && unset "_CYCLE_TIMEOUT_RUN_PERSIST[$_pk]"
+        done
+        for _pk in "${!_CYCLE_TURNS_BASE_PERSIST[@]}"; do
+            [[ "$_pk" == "${_pfx}"* ]] && unset "_CYCLE_TURNS_BASE_PERSIST[$_pk]"
+        done
+    fi
     # ADR-034 / #846: clear any stale full-suite-gate flag at cycle entry so
     # it does not bleed from a previous cycle invocation in the same process.
     # Must happen here (before any early return) so even config-invalid paths
