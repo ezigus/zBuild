@@ -423,11 +423,14 @@ export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD='printf "%s\n" "Total: 10/20 lines (50.0%)"'
 export ZBUILD_DIFF_CMD="true"
+# Pin artifacts under TEST_TEMP_DIR: with an empty state_file the plugin would
+# otherwise fall back to ${TMPDIR:-/tmp}/zbuild-og-artifacts and pollute /tmp.
+export ZBUILD_ARTIFACT_DIR="$_artifacts_dir"
 set +e
 objective_gate_run "objective-gate" ""
 _spec17_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_ARTIFACT_DIR
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 

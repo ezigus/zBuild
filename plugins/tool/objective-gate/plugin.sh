@@ -83,7 +83,11 @@ _og_run_coverage_floor() {
         return 0
     fi
 
-    coverage_ran=1
+    # Mark coverage as "ran" only when a real percentage was parsed (parsed
+    # values carry a decimal, e.g. "31.6"; the fallback above is the literal
+    # "0"). This keeps an empty/garbled coverage output from overwriting the
+    # persisted baseline with 0 (#1012 review).
+    [[ "$coverage_pct" != "0" ]] && coverage_ran=1
     _og_emit "objective_gate.coverage.pass" "coverage_pct=$coverage_pct"
 }
 
@@ -234,12 +238,13 @@ _og_run_shape_floor() {
 }
 
 # ─── _og_persist_coverage_pct ────────────────────────────────────────────────
-# jq transformer for locked_state_update: writes last_coverage_pct into state.
-# Caller sets _og_persist_pct before calling locked_state_update. MUST stay
-# compact (`-c`): _og_emit_report_signals reads the field with a grep that assumes
-# `"key":value` (no space), so a pretty-printed `"key": value` would read empty.
+# jq transformer for locked_state_update: writes last_coverage_pct into state and
+# bumps updated_at (parity with set_state_field). Caller sets _og_persist_pct
+# first. MUST stay compact (`-c`): _og_emit_report_signals reads the field with a
+# grep that assumes `"key":value` (no space), so a pretty `"key": value` reads empty.
 _og_persist_coverage_pct() {
-    jq -c --argjson p "${_og_persist_pct:-0}" '. + {"last_coverage_pct": $p}'
+    jq -c --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "${_og_persist_pct:-0}" \
+       '. + {"last_coverage_pct": $p, "updated_at": $now}'
 }
 
 # ─── objective_gate_run ───────────────────────────────────────────────────────
