@@ -1,0 +1,4 @@
+[38;2;100;200;255m══[0m [38;2;0;212;255m[1mbuild_test_cycle[0m [cycle] seq=2 output [38;2;74;222;128mOK[0m 1000.0s [38;2;100;200;255m════════════════════════════════[0m 03:42:25 UTC [38;2;100;200;255m══[0m
+exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+velocity=-3 failure_count=3
+[38;2;74;222;128m── end stage-io: build_test_cycle ✓ ──[0m
