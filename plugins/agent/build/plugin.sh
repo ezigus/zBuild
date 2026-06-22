@@ -47,6 +47,9 @@ source "$_BUILD_ROOT/scripts/lib/prompt-overrides.sh"
 # ADR-031 (#866): acceptance-block extractor for charter injection into prompt.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_BUILD_ROOT/scripts/lib/acceptance-block.sh"
+# #721: strip stage-io banners and ANSI from feedback text before LLM prompt.
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+source "$_BUILD_ROOT/scripts/lib/test-output-sanitize.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 build_stage_init() {
@@ -213,6 +216,11 @@ _build_stage_run_inner() {
     # file missing/empty (silent-failure guard — see _build_read_prior_assessment).
     local _feedback_body
     _feedback_body="$(_build_read_prior_assessment 2>/dev/null || true)"
+    # #721: strip stage-io banners, ANSI codes, and OOS-marker tags before
+    # splicing into the prompt — prior_test_assessment.txt is captured
+    # pipeline output and is the primary noise vector for this stage.
+    [[ -n "$_feedback_body" ]] && \
+        _feedback_body="$(printf '%s' "$_feedback_body" | _zbuild_sanitize_for_llm)"
 
     # ADR-026 / Wave 18-B (#707): outer-cycle review-remediation feedback.
     # Empty when not running inside build_review_cycle, when the feedback dir is
@@ -223,6 +231,10 @@ _build_stage_run_inner() {
     # test_assessment feedback drove the inner iter).
     local _review_feedback_body
     _review_feedback_body="$(_build_read_prior_review 2>/dev/null || true)"
+    # #721: sanitize review feedback — prior_review_feedback.txt originates
+    # from the review stage's stage-io machinery and may carry banner lines.
+    [[ -n "$_review_feedback_body" ]] && \
+        _review_feedback_body="$(printf '%s' "$_review_feedback_body" | _zbuild_sanitize_for_llm)"
     # #951 Layer 2: structured acceptance-coverage gaps (untagged SPEC ids) from
     # the prior outer iter's acceptance-gate. Advisory + re-verify against the
     # current tree; authoritative over review prose on acceptance matters.

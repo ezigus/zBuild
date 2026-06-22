@@ -10,6 +10,11 @@
 # machinery, so the same 5 transforms cleanly remove framework decoration
 # anywhere a text artifact gets spliced into an LLM prompt.
 #
+# Call sites (issue #721): test, test_assessment, review, build (_feedback_body
+# + _review_feedback_body), plan (redacted_content), security-lens
+# (redacted_content). All five plugins that splice potentially noisy pipeline
+# artifact text into a prompt route it through _zbuild_sanitize_for_llm.
+#
 # The transforms delete only framework decoration; every byte of genuine
 # content is preserved.
 #

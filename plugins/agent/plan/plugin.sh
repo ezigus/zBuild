@@ -32,6 +32,9 @@ source "$_PLAN_ROOT/core/router/route.sh"
 source "$_PLAN_ROOT/scripts/lib/llm-agent.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_PLAN_ROOT/scripts/lib/prompt-overrides.sh"
+# #721: strip OOS-marker tags and ANSI from goal text before LLM prompt.
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+source "$_PLAN_ROOT/scripts/lib/test-output-sanitize.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 plan_init() {
@@ -282,6 +285,9 @@ _plan_run_inner() {
 
     local redacted_content
     redacted_content="$(cat "$redacted_file")"
+    # #721: strip OOS-marker wrappers and ANSI codes — goal text may carry
+    # <out-of-scope-context> tags inserted by the redaction step.
+    redacted_content="$(printf '%s' "$redacted_content" | _zbuild_sanitize_for_llm)"
 
     # Build prompt from redacted goal. The instruction block declares the
     # plan.json schema inline because the validator below (jq -e at the

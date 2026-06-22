@@ -27,6 +27,9 @@ source "$_SEC_LENS_ROOT/core/redaction/scope-redaction.sh"
 source "$_SEC_LENS_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_SEC_LENS_ROOT/core/router/route.sh"
+# #721: strip stage-io banners and ANSI from input before LLM prompt.
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+source "$_SEC_LENS_ROOT/scripts/lib/test-output-sanitize.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 security_lens_init() {
@@ -93,6 +96,9 @@ _security_lens_run_inner() {
     local sys_prompt redacted_content prompt
     sys_prompt="$(cat "$_SEC_LENS_DIR/prompts/security.md")"
     redacted_content="$(cat "$redacted")"
+    # #721: strip OOS-marker tags and ANSI codes — input may carry
+    # <out-of-scope-context> wrappers and ANSI fragments from terminal capture.
+    redacted_content="$(printf '%s' "$redacted_content" | _zbuild_sanitize_for_llm)"
     prompt="${sys_prompt}"$'\n\n'"${redacted_content}"
 
     # ─── Route to LLM (hardcoded T3, matching manifest config.tier_default) ──
