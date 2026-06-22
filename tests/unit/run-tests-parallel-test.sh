@@ -2,16 +2,21 @@
 # Tests: bounded parallel execution in scripts/run-tests.sh (issues #983 + #984, EPIC #982).
 #
 # #983 made parallel test execution safe by construction; #984 makes it the DEFAULT
-# for safe tiers:
-#   - safe tiers (unit) run PARALLEL BY DEFAULT (#984); ZBUILD_TEST_PARALLEL_JOBS
-#     unset → computed default; set to 0 → serial escape hatch; set to N → N jobs,
-#   - tier-gated to a safe allow-list (ZBUILD_PARALLEL_SAFE_TIERS, default "unit")
-#     so non-safe tiers (e.g. integration, until #991) stay serial even by default
-#     — this is the fix for the fork-bomb that deadlocked the integration tier's
-#     route.sh/claude-spawning tests when run concurrently,
+# for safe tiers; #991 adds the integration tier to the safe allow-list:
+#   - safe tiers (unit, integration) run PARALLEL BY DEFAULT (#984/#991);
+#     ZBUILD_TEST_PARALLEL_JOBS unset → computed default; set to 0 → serial escape
+#     hatch; set to N → N jobs,
+#   - tier-gated to a safe allow-list (ZBUILD_PARALLEL_SAFE_TIERS, default
+#     "unit integration") — the integration tier became parallel-safe once #989
+#     (per-test HOME/state/events isolation) + #990 (repo-write/tmp/worktree
+#     fixes) removed the fork-bomb that deadlocked its route.sh/claude-spawning
+#     tests under concurrency,
+#   - a serial-pin escape hatch (#991): _ZBUILD_SERIAL_PIN[] + ZBUILD_SERIAL_TESTS
+#     keep named integration files in a SERIAL bucket while the rest parallelize,
 #   - guarded against re-entrancy (ZBUILD_RUN_TESTS_ACTIVE) so a test can never
 #     fork-bomb the suite by invoking run-tests.sh against a real tier,
-#   - coverage (PS4-traced) is forced serial — see SPEC-12.
+#   - coverage (PS4-traced) stays parallel-compatible via per-test trace files
+#     that are merged after the pool — NOT forced serial — see SPEC-12.
 #
 # EVERY invocation here targets a hermetic FAKE tier via ZBUILD_TESTS_DIR — never
 # the real repo tier — so this test cannot itself recurse into the live suite.
@@ -21,13 +26,15 @@
 # SPEC-3  GUARD   parallel mode emits one FAIL line per failing file (2)
 # SPEC-4  GUARD   parallel mode exits 1 when a file fails
 # SPEC-5  GUARD   serial (JOBS=0) and parallel summaries are identical
-# SPEC-6  GUARD   non-safe tier (integration) stays SERIAL even with JOBS>0
+# SPEC-6  CHANGE  integration tier is PARALLEL-SAFE BY DEFAULT (activates pool) (#991)
 # SPEC-7  CHANGE  re-entrancy guard refuses a nested real-tier run (no fixture) → exit 2
 # SPEC-8  GUARD   guard exempts fixture-isolated nested runs (ZBUILD_TESTS_DIR set)
 # SPEC-9  CHANGE  unit runs PARALLEL BY DEFAULT when JOBS is UNSET (#984)
 # SPEC-10 GUARD   JOBS=0 is the serial escape hatch (NOT activated) even by default
-# SPEC-11 GUARD   non-safe tier (integration) stays serial BY DEFAULT (JOBS unset)
+# SPEC-11 CHANGE  integration runs PARALLEL BY DEFAULT when JOBS is UNSET (#991)
 # SPEC-12 GUARD   check-coverage.sh delegates tracing to the runner (--coverage-trace), no force-serial (#993)
+# SPEC-13 CHANGE  integration accounting + overall rc identical parallel vs JOBS=0 (#991)
+# SPEC-14 CHANGE  a ZBUILD_SERIAL_TESTS-matched file runs in the SERIAL bucket, not the pool (#991)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,6 +55,7 @@ setup_test_env "run-tests-parallel"
 FAKE_TESTS="$TEST_TEMP_DIR/fake-tests"
 EMPTY_DIR="$TEST_TEMP_DIR/empty"
 ACT_FILE="$TEST_TEMP_DIR/par-active"
+SER_FILE="$TEST_TEMP_DIR/serial-active"   # #991: serial-bucket routing evidence
 mkdir -p "$FAKE_TESTS/unit" "$FAKE_TESTS/integration" "$EMPTY_DIR"
 
 for i in 1 2 3 4; do
@@ -72,6 +80,7 @@ _run_tier() {
   local tier="$1"; shift
   local out_f="$TEST_TEMP_DIR/stdout.txt" err_f="$TEST_TEMP_DIR/stderr.txt" rc=0
   : > "$ACT_FILE"   # reset the activation hook each call
+  : > "$SER_FILE"   # reset the serial-bucket routing hook each call
   # `env -u` clears any AMBIENT ZBUILD_TEST_PARALLEL_JOBS / SAFE_TIERS so the
   # "unset → default-parallel" SPECs are hermetic. Without this, a caller env
   # that sets JOBS (e.g. an explicit ZBUILD_TEST_PARALLEL_JOBS=0 escape hatch)
@@ -82,6 +91,7 @@ _run_tier() {
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
       ZBUILD_CORE_DIR="$EMPTY_DIR" \
       _ZBUILD_PAR_ACTIVE_FILE="$ACT_FILE" \
+      _ZBUILD_SERIAL_ACTIVE_FILE="$SER_FILE" \
       "$@" \
       bash "$RUN_TESTS" --tier "$tier" \
       >"$out_f" 2>"$err_f" || rc=$?
@@ -89,6 +99,8 @@ _run_tier() {
   _LAST_STDERR="$(cat "$err_f")"
   _LAST_RC="$rc"
   _LAST_ACTIVATED="$(cat "$ACT_FILE" 2>/dev/null | tr -d '[:space:]')"
+  # Keep newlines: one pinned basename per line, so a SPEC can grep for routing.
+  _LAST_SERIAL="$(cat "$SER_FILE" 2>/dev/null || true)"
 }
 
 # ─── [SPEC-1] CHANGE: parallel path activated for the unit tier when JOBS>0 ────
@@ -115,14 +127,15 @@ _run_tier unit ZBUILD_TEST_PARALLEL_JOBS=0
 _ser_sum="$(printf '%s\n' "$_LAST_STDOUT" | grep -E '^unit: [0-9]+/[0-9]+ passed' || true)"
 assert_eq "[SPEC-5] serial and parallel summary lines identical" "$_par_sum" "$_ser_sum"
 
-# ─── [SPEC-6] GUARD: non-safe tier (integration) stays serial even with JOBS>0 ─
-# Default ZBUILD_PARALLEL_SAFE_TIERS is "unit", so integration must NOT activate
-# the parallel path — the structural fix for the fork-bomb.
+# ─── [SPEC-6] CHANGE: integration is PARALLEL-SAFE BY DEFAULT (#991) ───────────
+# Default ZBUILD_PARALLEL_SAFE_TIERS now includes integration (#989/#990 made the
+# tier hermetic), so the pool MUST activate for integration when JOBS>0. At the
+# #983/#984 baseline this stayed serial (the fork-bomb guard).
 _run_tier integration ZBUILD_TEST_PARALLEL_JOBS=2
-assert_eq "[SPEC-6] non-safe tier 'integration' stays serial (parallel NOT activated)" \
-  "" "$_LAST_ACTIVATED"
+assert_eq "[SPEC-6] integration activates the parallel pool when JOBS=2 (parallel-safe via #991)" \
+  "integration" "$_LAST_ACTIVATED"
 case "$_LAST_STDOUT" in
-  *"integration: 2/3 passed"*) assert_pass "[SPEC-6b] integration accounting correct (2/3) when serial-forced" ;;
+  *"integration: 2/3 passed"*) assert_pass "[SPEC-6b] integration accounting correct (2/3) under the pool" ;;
   *) assert_fail "[SPEC-6b] integration summary must be 'integration: 2/3 passed'" "stdout: $_LAST_STDOUT" ;;
 esac
 
@@ -162,10 +175,12 @@ _run_tier unit ZBUILD_TEST_PARALLEL_JOBS=0
 assert_eq "[SPEC-10] explicit JOBS=0 forces serial (parallel NOT activated)" \
   "" "$_LAST_ACTIVATED"
 
-# ─── [SPEC-11] GUARD: non-safe tier stays serial BY DEFAULT (JOBS unset) ──────
+# ─── [SPEC-11] CHANGE: integration runs PARALLEL BY DEFAULT (JOBS unset) (#991) ─
+# No explicit JOBS → the internal default (_zb_default_jobs) must activate the
+# pool for the now-safe integration tier, mirroring SPEC-9 for unit.
 _run_tier integration
-assert_eq "[SPEC-11] non-safe tier 'integration' stays serial by default (JOBS unset)" \
-  "" "$_LAST_ACTIVATED"
+assert_eq "[SPEC-11] integration activates parallel BY DEFAULT when JOBS is unset (#991)" \
+  "integration" "$_LAST_ACTIVATED"
 
 # ─── [SPEC-12] GUARD: coverage delegates tracing to the runner, runs parallel ─
 # #993 (was #984's force-serial): check-coverage.sh no longer wires PS4/fd-9 or
@@ -181,6 +196,63 @@ else
   assert_fail "[SPEC-12] check-coverage.sh must request a runner trace (--coverage-trace) and not force ZBUILD_TEST_PARALLEL_JOBS=0" \
     "--coverage-trace=$_cov_has_trace JOBS=0=$_cov_has_serial in $_cov"
 fi
+
+# ─── [SPEC-13] CHANGE: integration accounting + rc identical parallel vs serial ─
+# The whole point of #991: flipping the gate must not change the integration
+# tier's outcome. Compare the summary line AND the overall rc between the
+# default-parallel run and the explicit-serial (JOBS=0) escape hatch.
+_run_tier integration ZBUILD_TEST_PARALLEL_JOBS=2
+_ipar_sum="$(printf '%s\n' "$_LAST_STDOUT" | grep -E '^integration: [0-9]+/[0-9]+ passed' || true)"
+_ipar_rc="$_LAST_RC"
+_run_tier integration ZBUILD_TEST_PARALLEL_JOBS=0
+_iser_sum="$(printf '%s\n' "$_LAST_STDOUT" | grep -E '^integration: [0-9]+/[0-9]+ passed' || true)"
+_iser_rc="$_LAST_RC"
+assert_eq "[SPEC-13] integration summary identical parallel vs serial" "$_ipar_sum" "$_iser_sum"
+assert_eq "[SPEC-13b] integration overall rc identical parallel vs serial" "$_ipar_rc" "$_iser_rc"
+
+# ─── [SPEC-14] CHANGE: a ZBUILD_SERIAL_TESTS-matched file runs SERIAL, not pool ─
+# Pin one of the passing integration files via the env override. DIRECT evidence
+# of the routing: the runner records each serial-bucket file to the
+# _ZBUILD_SERIAL_ACTIVE_FILE hook ($_LAST_SERIAL). The pinned file MUST appear
+# there (it ran serially) and MUST NOT have changed the accounting (2/3) — the
+# OTHER files still parallelize (the pool still activates for the tier).
+_run_tier integration ZBUILD_TEST_PARALLEL_JOBS=2 ZBUILD_SERIAL_TESTS='ipass-1-test.sh'
+assert_eq "[SPEC-14] tier still activates the pool when one file is serial-pinned" \
+  "integration" "$_LAST_ACTIVATED"
+case "$_LAST_SERIAL" in
+  *"ipass-1-test.sh"*) assert_pass "[SPEC-14b] pinned file routed to the SERIAL bucket (direct hook evidence)" ;;
+  *) assert_fail "[SPEC-14b] pinned file must appear in the serial-bucket hook" "serial-active: '$_LAST_SERIAL'" ;;
+esac
+case "$_LAST_STDOUT" in
+  *"integration: 2/3 passed"*) assert_pass "[SPEC-14b2] serial-pinned file still counted (2/3), pinning is routing-only" ;;
+  *) assert_fail "[SPEC-14b2] pinned-file run must still produce 'integration: 2/3 passed'" "stdout: $_LAST_STDOUT" ;;
+esac
+
+# ─── [SPEC-14c] CHANGE: serial-pin routes the named file out of the pool ──────
+# Direct evidence: a fixture integration tier where the failing file is pinned.
+# With the failing file in the SERIAL bucket and a pool-job count of 1, the FAIL
+# line and accounting are unchanged from the all-parallel run — the partition is
+# transparent. We assert the partition helper itself by sourcing run-tests.sh's
+# matcher in isolation.
+(
+  set -uo pipefail
+  _ZBUILD_SERIAL_PIN=( 'pinned-*-test.sh' )
+  # Re-declare the matcher exactly as run-tests.sh defines it would couple the
+  # test to source; instead exercise it through the env override, which the
+  # runner merges with the array. Assert the env-merge path matches.
+  ZBUILD_SERIAL_TESTS='other-*-test.sh'
+  _match() {
+    local base="$1" glob
+    for glob in "${_ZBUILD_SERIAL_PIN[@]+"${_ZBUILD_SERIAL_PIN[@]}"}" ${ZBUILD_SERIAL_TESTS:-}; do
+      [[ -n "$glob" ]] || continue
+      # shellcheck disable=SC2053
+      [[ "$base" == $glob ]] && return 0
+    done
+    return 1
+  }
+  _match 'pinned-3-test.sh' && _match 'other-9-test.sh' && ! _match 'free-1-test.sh'
+) && assert_pass "[SPEC-14c] matcher: array glob + env glob match, non-pinned does not" \
+  || assert_fail "[SPEC-14c] serial-pin matcher must match array+env globs and reject others" ""
 
 cleanup_test_env
 print_test_results

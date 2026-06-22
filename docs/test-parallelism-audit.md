@@ -98,3 +98,51 @@ the `run-618-$$` fix, but the residual risk is asymmetric — the latter is the 
    hygiene + the `ZBUILD_CYCLE_ITER` bug. Partition by file so #989/#990 never edit the same test.
 3. **A3d (#991):** after the above, flip the integration tier to parallel and prove 10× stable; the 2
    non-`setup_test_env` files need no change.
+
+## A3d (#991) outcome — integration tier flipped to parallel
+
+The integration tier is now in the default `ZBUILD_PARALLEL_SAFE_TIERS` list and runs through
+the bounded FIFO pool. Two pool/stability changes accompanied the flip:
+
+- **`wait -n` pool reaping.** The pool previously drained the *oldest* slot (a bash-3.2-era
+  choice). The integration tier has a long-pole test (`core-pipeline-runner-test.sh` ≈ 193 s),
+  and draining-oldest let it head-of-line-block the whole pool — capping the speedup at ~1.85×.
+  The pool now reaps *any* finished slot via `wait -n` (bash 4.3+; this repo floors at bash 5),
+  with a drain-oldest fallback. Aggregation still reads results by submission slot, so output
+  ordering is unchanged.
+
+- **Serial-pin escape hatch + the 5 pinned tests.** Increasing real concurrency (the point of
+  `wait -n`) surfaced 5 tests that **pass serially but fail when the pool saturates the host** —
+  they assert tight wall-clock budgets (signal-abort latency / kill-mid-run timing, 4–8 s) that
+  are only reliable on an un-saturated machine. These are pinned to the serial bucket
+  (`_ZBUILD_SERIAL_PIN` in `scripts/run-tests.sh`; `ZBUILD_SERIAL_TESTS` env override), running
+  sequentially after the pool:
+
+  | Test | Reason |
+  |------|--------|
+  | `core-pipeline-runner-test.sh` | sleep-stub + kill-mid-run timing; ~193 s long-pole |
+  | `compound-quality-pipeline-test.sh` | heavy full-pipeline timing under load |
+  | `full-pipeline-sigint-test.sh` | asserts pipeline halts within 6–8 s (already bumped for slow runners) |
+  | `sigint-aborts-pipeline-test.sh` | asserts total wall-clock < 4 s |
+  | `sigterm-aborts-pipeline-test.sh` | asserts wall-clock ≤ 5 s |
+  | `manifest-sync-similarity-test.sh` | MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (surfaced on CI #1047) |
+
+  These are **not** hermeticity bugs (each is isolated via `setup_test_env`); they are
+  inherently load-sensitive. Follow-up: make their budgets load-tolerant (scale by a load factor
+  or use a mock clock) so they can rejoin the parallel pool.
+
+  **The serial-pin bucket runs FIRST, before the parallel pool** — these tests are pinned
+  precisely because they're timing-sensitive, so they execute on an *unloaded* machine rather
+  than after the pool has saturated all cores. Running them after the pool flaked
+  `full-pipeline-sigint` on a slow 2-core CI runner (#1047) **even though it was pinned**;
+  running them first fixes that. Pool and serial-bucket coverage traces use distinct `p<n>`/`s<n>`
+  filename prefixes so execution order never collides them. The local 8-core 10× proof was clean;
+  the extra pin + the reorder were driven by the weaker CI runner — the empirical-not-static
+  lesson, again.
+
+**Timing (local, 8-core):** serial 1095 s → parallel (`wait -n` + 5 pins) ≈ 466 s (**~2.35×**).
+
+**10× stability:** `--tier integration` run 10× in parallel — **10/10 clean, 0 flakes**
+(`170/170 passed` each, ~440 s/run, local 8-core). The 5 pins above were identified by running
+the freshly-`wait -n`-sharpened pool, which surfaced them consistently before they were pinned.
+
