@@ -173,3 +173,6 @@ _CYCLE_TRAP_CYCLE_ID="outer-cycle"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t3=$?; set -e
 assert_eq "[SPEC-3] guard: pass resets restored counter; G2 does not fire (rc=1, not 4)" \
     "1" "$rc_t3"
+
+print_test_results
+exit $((FAIL > 0))
