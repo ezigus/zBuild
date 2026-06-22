@@ -53,6 +53,18 @@ _zb_default_jobs() {
   printf '%s' "$n"
 }
 
+# _rt_tier_budget — total job budget the cross-tier-concurrency path (#997) splits
+# between the parallel unit tier and the parallel mutation tier. Defaults to the
+# CPU-count budget; ZBUILD_TIER_BUDGET overrides it so the floor/ceil split is
+# deterministic in tests regardless of host CPU count.
+_rt_tier_budget() {
+  if [[ "${ZBUILD_TIER_BUDGET:-}" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s' "$ZBUILD_TIER_BUDGET"
+  else
+    _zb_default_jobs
+  fi
+}
+
 # #846: targeted subset mode — run ONLY the given files (each in its own process,
 # so a failing file never blocks the rest — no `&&` short-circuit), emitting the
 # same `unit: N/M passed` + `unit: FAIL <f>` format run_tier uses. This keeps the
@@ -320,10 +332,65 @@ case "$tier" in
     # overall exit code — relying only on parsed totals would mask infra
     # errors that crash before the "name: P/T passed" line prints.
     rc_file="$(mktemp -t zbuild-tier-rc.XXXXXX)"
+    # #997: concurrency gate. The 5 tiers run concurrently by default so the
+    # ~8min mutation tier overlaps the others. ZBUILD_TIER_CONCURRENCY=0 is the
+    # serial escape hatch; UPDATE_GOLDEN forces serial because golden-snapshot
+    # regeneration mutates shared fixtures and must not race the other tiers.
+    _tier_conc=1
+    [[ "${ZBUILD_TIER_CONCURRENCY:-1}" == 0 ]] && _tier_conc=0
+    [[ "${UPDATE_GOLDEN:-0}" == 1 ]] && _tier_conc=0
+    # buf_dir holds each tier's separately-captured stdout/stderr/trace for the
+    # concurrent path; empty (and never created) on the serial path.
+    buf_dir=""
     # Also clean the coverage BASH_ENV temp file here: this EXIT trap replaces the
     # one the --coverage-trace setup installed above, so fold its cleanup in to
-    # avoid leaking that temp file on the `--tier all --coverage-trace` path (#993 review).
-    trap 'rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"' EXIT
+    # avoid leaking that temp file on the `--tier all --coverage-trace` path (#993
+    # review). buf_dir cleanup folds in for the #997 concurrent path.
+    # Guard the buf_dir cleanup: on the serial path buf_dir is "" and an
+    # unguarded `rm -rf ""` errors (and could perturb the trap's exit). The
+    # `[[ -z ]] ||` form is a no-op (rc 0) when buf_dir is empty.
+    trap 'rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"; [[ -z "${buf_dir:-}" ]] || rm -rf "$buf_dir"' EXIT
+    if [[ $_tier_conc -eq 1 ]]; then
+      # Split the job budget: unit gets floor(B/2), mutation gets the rest. The
+      # other three file-tiers run serial within themselves (JOBS=0) — they are
+      # short and overlap each other at the tier level, so spending the budget on
+      # the two genuinely parallelizable tiers maximizes throughput.
+      _B="$(_rt_tier_budget)"
+      _ujobs=$(( _B / 2 )); (( _ujobs < 1 )) && _ujobs=1
+      _mjobs=$(( _B - _ujobs )); (( _mjobs < 1 )) && _mjobs=1
+      buf_dir="$(mktemp -d -t zbuild-tier-buf.XXXXXX)"
+      # Launch each tier in its own background subshell. Each writes stdout and
+      # stderr to SEPARATE files so they can be replayed to their ORIGINAL fds —
+      # run_tier writes its summary to stdout but `name: FAIL <f>` to stderr, so a
+      # 2>&1 merge would corrupt byte-parity with the serial path (the #997
+      # make-or-break detail). A private TMPDIR per tier avoids cross-tier temp
+      # collisions now that tiers run at once — nested UNDER buf_dir so it is
+      # portable (mkdir -p, no templateless `mktemp -d` which fails on BSD/macOS)
+      # and swept by the EXIT trap (no leak).
+      for t in unit integration e2e golden; do
+        (
+          export TMPDIR="$buf_dir/tmp-$t"; mkdir -p "$TMPDIR"
+          if [[ "$t" == unit ]]; then
+            export ZBUILD_TEST_PARALLEL_JOBS=$_ujobs
+          else
+            export ZBUILD_TEST_PARALLEL_JOBS=0
+          fi
+          # #993: give each tier its OWN private trace file so concurrent tiers
+          # never share the merged-trace fd. run_tier merges its per-test traces
+          # into this path; the parent concatenates them in canonical order below.
+          [[ -n "$_RT_COVERAGE_TRACE" ]] && _RT_COVERAGE_TRACE="$buf_dir/$t.trace"
+          if run_tier "$t"; then rc=0; else rc=$?; fi
+          echo "$t $rc" >> "$rc_file"
+        ) > "$buf_dir/$t.out" 2> "$buf_dir/$t.err" &
+      done
+      (
+        export TMPDIR="$buf_dir/tmp-mutation"; mkdir -p "$TMPDIR"
+        export ZBUILD_MUTATION_PARALLEL_JOBS=$_mjobs
+        if bash "$SCRIPT_DIR/run-mutation.sh"; then rc=0; else rc=$?; fi
+        echo "mutation $rc" >> "$rc_file"
+      ) > "$buf_dir/mutation.out" 2> "$buf_dir/mutation.err" &
+      wait
+    fi
     while IFS= read -r line; do
       echo "$line"
       if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed ]]; then
@@ -331,13 +398,34 @@ case "$tier" in
         total_count=$((total_count + BASH_REMATCH[2]))
       fi
     done < <(
-      for t in unit integration e2e golden; do
-        if run_tier "$t"; then rc=0; else rc=$?; fi
-        echo "$t $rc" >> "$rc_file"
-      done
-      if bash "$SCRIPT_DIR/run-mutation.sh"; then rc=0; else rc=$?; fi
-      echo "mutation $rc" >> "$rc_file"
+      if [[ $_tier_conc -eq 1 ]]; then
+        # Replay captured STDOUT in canonical tier order so summary lines + the
+        # accumulator sums are byte-identical to the serial path.
+        cat "$buf_dir/unit.out" "$buf_dir/integration.out" "$buf_dir/e2e.out" \
+            "$buf_dir/golden.out" "$buf_dir/mutation.out"
+      else
+        for t in unit integration e2e golden; do
+          if run_tier "$t"; then rc=0; else rc=$?; fi
+          echo "$t $rc" >> "$rc_file"
+        done
+        if bash "$SCRIPT_DIR/run-mutation.sh"; then rc=0; else rc=$?; fi
+        echo "mutation $rc" >> "$rc_file"
+      fi
     )
+    if [[ $_tier_conc -eq 1 ]]; then
+      # Replay captured STDERR (FAIL lines + child output) to fd 2 in canonical
+      # order — these streamed live in the serial path and were never buffered.
+      for t in unit integration e2e golden mutation; do
+        cat "$buf_dir/$t.err" >&2 2>/dev/null || true
+      done
+      # Concatenate per-tier coverage traces in canonical order (mutation has no
+      # trace). Each tier wrote its own private trace → no shared-fd race (#993).
+      if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
+        cat "$buf_dir"/unit.trace "$buf_dir"/integration.trace \
+            "$buf_dir"/e2e.trace "$buf_dir"/golden.trace \
+            > "$_RT_COVERAGE_TRACE" 2>/dev/null || :
+      fi
+    fi
     while read -r _name rc; do
       [[ "$rc" -ne 0 ]] && overall_rc=1
     done < "$rc_file"
