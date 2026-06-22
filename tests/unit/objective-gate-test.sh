@@ -362,6 +362,80 @@ else
         "file not found: $_spec_result"
 fi
 
+# ─── SPEC-15: last_coverage_pct written to state after a passing run ─────────
+# CHANGE: persistence was never implemented at merge-base. Now after
+# objective_gate_run with a real coverage percentage, state_file must contain
+# the last_coverage_pct field so the next run can compute a true delta.
+
+rm -f "$_artifacts_dir/objective-gate-result.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD='printf "%s\n" "Total: 10/20 lines (50.0%)"'
+export ZBUILD_DIFF_CMD="true"
+set +e
+objective_gate_run "objective-gate" "$_state_file"
+_spec15_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+
+assert_eq "[SPEC-15] objective_gate_run returns 0 when coverage passes" "0" "$_spec15_rc"
+# Truncate at decimal so assertion is independent of jq integer-vs-float rendering.
+_spec15_last_pct="$(grep -o '"last_coverage_pct":[0-9.]*' "$_state_file" | grep -o '[0-9.]*$' | cut -d. -f1 || echo 'NOT_FOUND')"
+assert_eq "[SPEC-15] last_coverage_pct persisted to state after run" "50" "$_spec15_last_pct"
+
+# ─── SPEC-16: second run coverage_delta uses persisted baseline ───────────────
+# CHANGE: delta was always vs 0 (no persistence). Now run2 reads last=50 from
+# state and computes delta = 55-50 = 5. State updated to last_coverage_pct=55.
+
+rm -f "$_artifacts_dir/objective-gate-result.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD='printf "%s\n" "Total: 11/20 lines (55.0%)"'
+export ZBUILD_DIFF_CMD="true"
+set +e
+objective_gate_run "objective-gate" "$_state_file"
+_spec16_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+
+assert_eq "[SPEC-16] second run returns 0" "0" "$_spec16_rc"
+_spec16_result="$_artifacts_dir/objective-gate-result.json"
+if [[ -f "$_spec16_result" ]]; then
+    _spec16_delta="$(grep -oE '"coverage_delta":[^,}]+' "$_spec16_result" | cut -d: -f2 | tr -dc '0-9-' || echo 'ERROR')"
+    assert_eq "[SPEC-16] coverage_delta=5 on second run (55-50 baseline)" "5" "$_spec16_delta"
+    # Truncate at decimal so assertion is independent of jq integer-vs-float rendering.
+    _spec16_last_pct="$(grep -o '"last_coverage_pct":[0-9.]*' "$_state_file" | grep -o '[0-9.]*$' | cut -d. -f1 || echo 'NOT_FOUND')"
+    assert_eq "[SPEC-16] last_coverage_pct updated to 55 after second run" "55" "$_spec16_last_pct"
+else
+    assert_fail "[SPEC-16] objective-gate-result.json written for second run" \
+        "file not found: $_spec16_result"
+fi
+
+# ─── SPEC-17: persist is a no-op when state_file is absent ───────────────────
+# GUARD: objective_gate_run must succeed without a state_file; no persist error.
+
+rm -f "$_artifacts_dir/objective-gate-result.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD='printf "%s\n" "Total: 10/20 lines (50.0%)"'
+export ZBUILD_DIFF_CMD="true"
+# Pin artifacts under TEST_TEMP_DIR: with an empty state_file the plugin would
+# otherwise fall back to ${TMPDIR:-/tmp}/zbuild-og-artifacts and pollute /tmp.
+export ZBUILD_ARTIFACT_DIR="$_artifacts_dir"
+set +e
+objective_gate_run "objective-gate" ""
+_spec17_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_ARTIFACT_DIR
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+
+assert_eq "[SPEC-17] objective_gate_run returns 0 with no state_file (persist skipped)" "0" "$_spec17_rc"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
