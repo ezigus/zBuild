@@ -163,6 +163,7 @@ Still add golden-file diffing as a new capability (confirmed zero golden tests i
 | "Scope redaction" | Single chokepoint helper (`_apply_scope_redaction`) replacing 9 direct call sites; core engine I/O wrapper. |
 | "Multi-tier locking" | Core engine for in-process / per-host; cross-machine claim mechanism is a decision point (Section M). |
 | "Resume contract" | Explicit two-tier: persisted (stage status, SELF_HEAL_COUNT, scope manifest, cost ledger, CURRENT_ITERATION) vs reconstructed (runtime caches, loop-state.md). |
+| "ANSI stripping in event log emission (`legacy/scripts/lib/helpers.sh:431-437`)" | `core/event-bus/event-bus.sh` — `_eb_strip_ansi` (private), called by `eb_emit_event` on every payload value and string envelope field. Migrated in issue #c-9. |
 
 ---
 
