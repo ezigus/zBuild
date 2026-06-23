@@ -448,6 +448,21 @@ skip_on_platform() {
     print_test_results
 }
 
+# zbuild_wall_budget <linux_seconds> [macos_seconds] — OS-aware wall-clock budget
+# for timing assertions. Shared macOS CI runners are slower and saturate, so
+# latency bounds tuned for Linux breach there even when run un-loaded (#996, B1c).
+# Keep the tight Linux bound as the regression detector; widen on macOS (default
+# 3x) while staying well under the no-abort baseline so the assertion still proves
+# its intent (abort-promptly vs run-to-completion), not just "eventually finished".
+zbuild_wall_budget() {
+    local linux="$1" mac="${2:-$(( $1 * 3 ))}"
+    if [[ "$(uname -s 2>/dev/null)" == "Darwin" ]]; then
+        printf '%s' "$mac"
+    else
+        printf '%s' "$linux"
+    fi
+}
+
 # Capability gate: SKIP cleanly when the platform is right but a required tool is
 # absent or lacks a needed feature, so an unexercisable contract is an honest
 # SKIP instead of a confusing failure. Args: a human-readable label, then a probe

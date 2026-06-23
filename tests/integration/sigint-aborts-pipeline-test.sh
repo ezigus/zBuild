@@ -140,10 +140,14 @@ fi
 
 # (1) Wall-clock budget: < 4s. Without the fix, the route loop iterates 5x
 #     against the rc=130 mock; with the fix it bails after the first call.
-if [[ "$elapsed" -le 4 ]]; then
-    assert_pass "pipeline halted in ≤4s end-to-end (actual=${elapsed}s)"
+# #996: OS-aware budget — 4s on Linux (sharp regression detector; without the
+# fix the loop iterates 5x), wider on macOS CI (slower/saturated runners). The
+# Linux leg remains the precise gate against the route-loop regression.
+_sigint_budget="$(zbuild_wall_budget 4 12)"
+if [[ "$elapsed" -le "$_sigint_budget" ]]; then
+    assert_pass "pipeline halted in ≤${_sigint_budget}s end-to-end (actual=${elapsed}s)"
 else
-    assert_fail "pipeline halted in ≤4s end-to-end" \
+    assert_fail "pipeline halted in ≤${_sigint_budget}s end-to-end" \
         "actual=${elapsed}s — route loop is still iterating on rc=130"
 fi
 

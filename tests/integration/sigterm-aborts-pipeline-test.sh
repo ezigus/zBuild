@@ -188,10 +188,14 @@ fi
 #     a generous 9s ceiling (build sleeps 30s — if elapsed >> 9 the trap
 #     isn't firing). Bumped 7→9 on #766: #754's design stage adds ~0.5s
 #     of plugin-lookup startup that tips the GHA boundary.
-if [[ "$elapsed" -le 9 ]]; then
-    assert_pass "pipeline halted in ≤9s (actual=${elapsed}s)"
+# #996: OS-aware budget — 9s on Linux (regression detector), wider on macOS CI
+# (slower/saturated runners). Build sleeps 30s, so the macOS bound stays well
+# under that: elapsed >> budget still means the trap isn't firing.
+_sigterm_budget="$(zbuild_wall_budget 9 24)"
+if [[ "$elapsed" -le "$_sigterm_budget" ]]; then
+    assert_pass "pipeline halted in ≤${_sigterm_budget}s (actual=${elapsed}s)"
 else
-    assert_fail "pipeline halted in ≤9s" \
+    assert_fail "pipeline halted in ≤${_sigterm_budget}s" \
         "actual=${elapsed}s — SIGTERM trap is not firing promptly"
 fi
 

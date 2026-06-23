@@ -124,10 +124,13 @@ print_test_section "T2: pipeline halts within 6s (no further iterations)"
 #      lookup per pipeline-start adds ~0.5s on GHA's slower runners.
 #   4. The test's intent is "halt FAST, not iterate" — 8s still proves
 #      single-stage abort vs. multi-iter (which would be 30s+).
-if [[ "$elapsed" -le 8 ]]; then
-    assert_pass "pipeline halted in ${elapsed}s"
+# #996: OS-aware budget — 8s on Linux (regression detector), wider on macOS CI
+# (slower/saturated runners). Still proves single-stage abort vs multi-iter (30s+).
+_sigint_budget="$(zbuild_wall_budget 8 24)"
+if [[ "$elapsed" -le "$_sigint_budget" ]]; then
+    assert_pass "pipeline halted in ${elapsed}s (≤${_sigint_budget}s)"
 else
-    assert_fail "pipeline halted in ≤8s" "actual=${elapsed}s"
+    assert_fail "pipeline halted in ≤${_sigint_budget}s" "actual=${elapsed}s"
 fi
 
 print_test_section "T3: test stage never starts (build rc=130 halts linear loop)"
