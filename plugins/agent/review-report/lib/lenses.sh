@@ -16,7 +16,9 @@ _ZBUILD_RR_LENSES_LOADED=1
 
 # I6 fixed roster (mirrors manifest config.lenses; #974 makes it config-driven
 # and adds the full cq + persona content). Each entry is one independent LLM call.
-_RR_LENSES=(correctness security test-coverage design-conformance)
+# I8a adds the cq audit half: integration, error-handling, performance, edge-case
+# (charter text rehomed from legacy/scripts/lib/compound-audit.sh lines 34-74).
+_RR_LENSES=(correctness security test-coverage design-conformance integration error-handling performance edge-case)
 
 # Severity ordinal map (jq-injected for max-severity selection in dedup).
 _RR_SEV_RANK='{"low":1,"medium":2,"high":3,"critical":4}'
@@ -44,6 +46,14 @@ _rr_lens_charter() {
             printf '%s' "Examine whether the changed lines are exercised by tests: untested public functions, missing edge-case coverage, and assertions that are too weak to catch a regression." ;;
         design-conformance)
             printf '%s' "Examine whether the change implements what the plan and design described: missing pieces, out-of-scope additions, and divergence from the stated approach." ;;
+        integration)
+            printf '%s' "Examine the change for integration problems: missing imports, broken call chains, mismatched interfaces between modules, functions called with wrong argument shapes, and wiring gaps where new code is not connected to existing code." ;;
+        error-handling)
+            printf '%s' "Examine the change for error-handling gaps: silent error swallowing, missing error paths when external commands fail, inconsistent error patterns, and unchecked return values." ;;
+        performance)
+            printf '%s' "Examine the change for performance problems: O(n^2) or worse loop patterns, unbounded memory allocation or file reads, missing pagination or streaming for large data, and repeated expensive operations that could be cached." ;;
+        edge-case)
+            printf '%s' "Examine the change for edge-case gaps: zero-length inputs, empty strings and arrays, boundary values at maximum or minimum, Unicode and special characters in data paths, and concurrent access timing issues." ;;
         *)
             printf '%s' "Examine the change for issues relevant to the ${1} concern." ;;
     esac
