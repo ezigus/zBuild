@@ -44,7 +44,7 @@ _zbuild_reset_cli_fail
 _zbuild_record_cli_fail   # simulates review-stage failure
 _zbuild_record_cli_fail   # simulates test_assessment-stage failure
 
-set +e; _llm_check_cli_fail_abort; _i1_rc=$?; set -e
+_llm_check_cli_fail_abort; _i1_rc=$?
 assert_eq "[SPEC-2] counter accumulates across sequential records: two → rc=9" "9" "$_i1_rc"
 
 # ─── I2 [SPEC-7]: single failure below threshold → no abort (guard) ──────────
@@ -52,7 +52,7 @@ assert_eq "[SPEC-2] counter accumulates across sequential records: two → rc=9"
 # This is the GUARD invariant: single transient CLI blip must not kill pipeline.
 _zbuild_reset_cli_fail
 _zbuild_record_cli_fail   # count=1, threshold=2 → no abort yet
-set +e; _llm_check_cli_fail_abort; _i2_rc=$?; set -e
+_llm_check_cli_fail_abort; _i2_rc=$?
 assert_eq "[SPEC-7] single failure below threshold=2 → rc=0 (no abort)" "0" "$_i2_rc"
 
 # ─── I3 [SPEC-5]: abort message includes run_id and failure count ─────────────
@@ -69,7 +69,7 @@ assert_contains "[SPEC-5] abort message contains failure count (2)" "$_i3_msg" "
 # After _zbuild_reset_cli_fail (called when a model call succeeds), the
 # accumulated count is zero and abort must not fire.
 _zbuild_reset_cli_fail
-set +e; _llm_check_cli_fail_abort; _i4_rc=$?; set -e
+_llm_check_cli_fail_abort; _i4_rc=$?
 assert_eq "I4: reset clears counter — subsequent abort check returns 0" "0" "$_i4_rc"
 
 # ─── I5: custom ZBUILD_LLM_FAIL_THRESHOLD honored ────────────────────────────
@@ -78,7 +78,7 @@ assert_eq "I4: reset clears counter — subsequent abort check returns 0" "0" "$
 _zbuild_reset_cli_fail
 export ZBUILD_LLM_FAIL_THRESHOLD=1
 _zbuild_record_cli_fail   # count=1 ≥ threshold=1 → abort immediately
-set +e; _llm_check_cli_fail_abort; _i5_rc=$?; set -e
+_llm_check_cli_fail_abort; _i5_rc=$?
 assert_eq "I5: threshold=1 → single failure triggers abort (rc=9)" "9" "$_i5_rc"
 export ZBUILD_LLM_FAIL_THRESHOLD=2
 

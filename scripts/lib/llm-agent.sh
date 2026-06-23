@@ -337,14 +337,14 @@ _llm_check_cli_fail_abort() {
     fi
     if [[ "$_count" -ge "$_threshold" ]]; then
         local _run_id="${ZBUILD_RUN_ID:-unknown}"
+        # Emit only the llm_unavailable signal here. The runner is the single
+        # authoritative source of pipeline.aborted reason=llm_unavailable when it
+        # observes rc=9 (core/pipeline/runner.sh) — emitting it here too would
+        # produce duplicate abort events for one run (Copilot review on #1024).
         emit_event "pipeline.llm_unavailable" \
             "reason=llm_unavailable" \
             "count=$_count" \
             "threshold=$_threshold" \
-            "run_id=$_run_id" 2>/dev/null || true
-        emit_event "pipeline.aborted" \
-            "reason=llm_unavailable" \
-            "count=$_count" \
             "run_id=$_run_id" 2>/dev/null || true
         printf '✗ Pipeline aborted: the model CLI failed %s consecutive times (run_id=%s). Check your claude CLI installation and API key.\n' \
             "$_count" "$_run_id" >&2

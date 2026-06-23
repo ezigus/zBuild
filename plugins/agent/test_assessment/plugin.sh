@@ -466,6 +466,11 @@ $_ta_instructions"
         return 1
     fi
 
+    # AC-4 (#1024): reaching here means the model call succeeded (rc=0, non-empty
+    # envelope). Reset the consecutive CLI-failure counter so the abort threshold
+    # tracks *consecutive* failures, not cumulative blips (Copilot review on #1024).
+    _zbuild_reset_cli_fail
+
     # ─── Parse + schema-validate ─────────────────────────────────────────────
     local stripped
     stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"

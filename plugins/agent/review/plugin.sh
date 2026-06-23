@@ -566,8 +566,15 @@ $_review_instructions"
     # "router rc=non-zero" so an empty model output doesn't masquerade as a
     # legitimate verdict downstream.
     if [[ $router_rc -eq 0 && -z "$raw_response" ]]; then
+        # AC-1/AC-2 (#1024): an empty .result envelope is a failed model call, not a
+        # verdict. Count it toward the consecutive-failure abort like a router error
+        # (Copilot review on #1024) so repeated empty responses fast-fail (rc=9).
         error "review_run: router returned empty .result envelope; refusing to emit verdict"
         emit_event "plugin.run.error" "plugin=review" "reason=empty_result_envelope"
+        _zbuild_record_cli_fail
+        local _ff_rc=0
+        _llm_check_cli_fail_abort || _ff_rc=$?
+        [[ $_ff_rc -eq 9 ]] && return 9
         return 1
     fi
 
@@ -590,6 +597,10 @@ $_review_instructions"
     fi
 
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
+        # AC-4 (#1024): a successful (non-empty) model call resets the consecutive
+        # CLI-failure counter so the abort threshold tracks *consecutive* failures,
+        # not cumulative blips across the run (Copilot review on #1024).
+        _zbuild_reset_cli_fail
         # #478: slice the LAST top-level balanced JSON object out of the
         # response. Envelope mode (#476) separates reasoning turns from the
         # final turn; the model can still preface its JSON with prose
