@@ -148,6 +148,71 @@ if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
   export BASH_ENV="$_RT_BASH_ENV_FILE"
 fi
 
+# #991 serial-pin escape hatch: basename globs of integration tests that MUST
+# stay serial even though the tier is parallel-safe by default. EMPTY by default
+# — the #989/#990 hermeticity work made all 150 integration tests parallel-safe.
+# Populate ONLY when the 10× stability run proves a specific file flakes under
+# concurrency, each entry with a one-line reason comment. ZBUILD_SERIAL_TESTS
+# (space/newline-separated basename globs) merges with this array at runtime so
+# an operator can pin a file without editing source.
+# #991: these integration tests assert a TIGHT wall-clock budget (signal-abort
+# latency / kill-mid-run timing, 4–8s) that is only reliable on an un-saturated
+# host. They pass serially (the 170/170 baseline) but fail when the parallel pool
+# runs 8 heavy tests at once and CPU saturation stretches signal delivery + runner
+# startup past the budget. Pinned to the serial bucket so they run un-loaded after
+# the pool. (Follow-up: make the budgets load-tolerant so they can parallelize.)
+_ZBUILD_SERIAL_PIN=(
+  'core-pipeline-runner-test.sh'        # sleep-stub + kill-mid-run timing (~193s)
+  'compound-quality-pipeline-test.sh'   # heavy full-pipeline timing under load
+  'full-pipeline-sigint-test.sh'        # asserts pipeline halts within 6–8s
+  'sigint-aborts-pipeline-test.sh'      # asserts total wall-clock < 4s
+  'sigterm-aborts-pipeline-test.sh'     # asserts wall-clock <= 5s
+  'manifest-sync-similarity-test.sh'    # MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (CI #1047)
+)
+
+# _rt_is_serial_pinned <basename> — true if the basename matches any pin glob
+# from _ZBUILD_SERIAL_PIN or the ZBUILD_SERIAL_TESTS env override.
+_rt_is_serial_pinned() {
+    local base="$1" glob
+    # `set -f` for the loop word-split: ZBUILD_SERIAL_TESTS is intentionally
+    # split on whitespace into globs, but must NOT undergo pathname expansion —
+    # an unquoted pin like `*-test.sh` would otherwise expand to matching files
+    # in the CWD before being used as a pattern. noglob disables that expansion
+    # only; it does NOT affect the `[[ "$base" == $glob ]]` pattern match below.
+    local _had_noglob=0
+    [[ $- == *f* ]] && _had_noglob=1
+    set -f
+    for glob in "${_ZBUILD_SERIAL_PIN[@]+"${_ZBUILD_SERIAL_PIN[@]}"}" ${ZBUILD_SERIAL_TESTS:-}; do
+        [[ -n "$glob" ]] || continue
+        # shellcheck disable=SC2053
+        if [[ "$base" == $glob ]]; then
+            [[ "$_had_noglob" -eq 0 ]] && set +f
+            return 0
+        fi
+    done
+    [[ "$_had_noglob" -eq 0 ]] && set +f
+    return 1
+}
+
+# _rt_run_serial_file <tier> <file> <cov_dir> — run one test file serially,
+# updating the caller's passed/failed/total. Factored so both the serial path
+# and the parallel path's serial-pin bucket share one body (#991).
+_rt_run_serial_file() {
+    local name="$1" f="$2" cov_dir="$3"
+    total=$((total + 1))
+    local out
+    out="$(mktemp -t "zbuild-test-$name.XXXXXX")"
+    if _rt_run "$f" "$out" "${cov_dir:+$cov_dir/s$total.trace}"; then
+        passed=$((passed + 1))
+        rm -f "$out"
+    else
+        failed=$((failed + 1))
+        echo "$name: FAIL $f" >&2
+        cat "$out" >&2 || true
+        rm -f "$out"
+    fi
+}
+
 run_tier() {
   local name="$1"
   local dir="$TESTS_DIR/$name"
@@ -205,16 +270,22 @@ run_tier() {
   # Each job writes its rc and output to a private slot; aggregation is serial
   # after all jobs finish so FAIL lines and the summary stay in a stable order.
   #
-  # #983: parallelism is gated to a per-tier allow-list. The integration tier is
-  # NOT parallel-safe yet — its route.sh/claude-spawning tests deadlock when run
-  # concurrently (the #983 dogfood fork-bomb). #991 makes it safe and widens the
-  # list. Non-safe tiers stay serial even when ZBUILD_TEST_PARALLEL_JOBS is set.
+  # #983: parallelism is gated to a per-tier allow-list. Non-safe tiers stay
+  # serial even when ZBUILD_TEST_PARALLEL_JOBS is set.
+  #
+  # #991: the integration tier is now parallel-safe and is in the default
+  # allow-list. The #983 fork-bomb (route.sh/claude-spawning tests deadlocking
+  # under concurrency) is resolved by per-test isolation: #989 gives every test
+  # its own HOME/state/events dir, and #990 fixes the repo-write/tmp/worktree
+  # races. A static survey found all 150 integration tests safe; the empirical
+  # 10× stability proof gates the merge. The _ZBUILD_SERIAL_PIN escape hatch
+  # (top of file) re-pins any file that later proves flaky.
   #
   # #984: safe tiers run parallel BY DEFAULT. Distinguish UNSET (→ computed
   # default job count) from an EXPLICIT value (honored as-is; 0 = serial escape
-  # hatch) via ${VAR+x}. The default lives here (not in CI/env) so unit also
-  # parallelizes in the pipeline test stage, which scrubs ZBUILD_* before npm test.
-  local _par_safe_tiers="${ZBUILD_PARALLEL_SAFE_TIERS:-unit}"
+  # hatch) via ${VAR+x}. The default lives here (not in CI/env) so the tiers also
+  # parallelize in the pipeline test stage, which scrubs ZBUILD_* before npm test.
+  local _par_safe_tiers="${ZBUILD_PARALLEL_SAFE_TIERS:-unit integration}"
   local _par_jobs
   if [[ -z "${ZBUILD_TEST_PARALLEL_JOBS+x}" ]]; then
     _par_jobs="$(_zb_default_jobs)"
@@ -226,16 +297,50 @@ run_tier() {
     # Test hook (#983): signal the parallel path was taken so tests can assert
     # activation directly rather than infer it from counts. Never set in production.
     [[ -n "${_ZBUILD_PAR_ACTIVE_FILE:-}" ]] && printf '%s\n' "$name" >> "${_ZBUILD_PAR_ACTIVE_FILE}"
+    # #991: partition out serial-pinned files (basename matches an escape-hatch
+    # glob). The pinned ones run serially FIRST — on an UNLOADED machine, before
+    # the pool saturates all cores — because they are pinned precisely for being
+    # wall-clock/timing sensitive (running them after the pool stressed a slow CI
+    # runner is what flaked full-pipeline-sigint on #1047). The rest run through
+    # the FIFO pool. With no pins (default) _serial_files is empty → all files run
+    # parallel and output is byte-identical to the pre-#991 behaviour.
+    local -a _parallel_files=() _serial_files=()
+    for f in "${files[@]}"; do
+      if _rt_is_serial_pinned "$(basename "$f")"; then
+        _serial_files+=("$f")
+      else
+        _parallel_files+=("$f")
+      fi
+    done
+    # Serial-pin bucket FIRST (unloaded). Trace files use the `s<n>` prefix; the
+    # pool uses `p<n>` — distinct namespaces, so order never collides traces.
+    for f in "${_serial_files[@]+"${_serial_files[@]}"}"; do
+      # Test hook (#991): record serial-bucket routing so a test can prove a
+      # pinned file ran HERE, not in the pool. Mirrors _ZBUILD_PAR_ACTIVE_FILE.
+      [[ -n "${_ZBUILD_SERIAL_ACTIVE_FILE:-}" ]] && printf '%s\n' "$(basename "$f")" >> "${_ZBUILD_SERIAL_ACTIVE_FILE}"
+      _rt_run_serial_file "$name" "$f" "$_cov_dir"
+    done
     local _job_dir
     _job_dir="$(mktemp -d -t "zbuild-par-$name.XXXXXX")"
     local -a _pids=()
     local _slot=0
-    for f in "${files[@]}"; do
+    local _inflight=0
+    # #991: reap ANY finished slot via `wait -n` (bash 4.3+) instead of draining
+    # the OLDEST. A long test in the oldest slot (e.g. core-pipeline-runner ~193s)
+    # otherwise head-of-line-blocks the whole pool — capping the integration tier's
+    # parallel speedup at ~1.85x instead of ~5.5x. Falls back to drain-oldest on
+    # bash < 4.3. Aggregation below reads results BY SUBMISSION SLOT, so completion
+    # order never changes the output (#1011 review; this repo floors at bash 5).
+    local _waitn=0
+    if (( BASH_VERSINFO[0] > 4 || ( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3 ) )); then
+      _waitn=1
+    fi
+    for f in "${_parallel_files[@]+"${_parallel_files[@]}"}"; do
       _slot=$((_slot + 1))
       local _base="$_job_dir/$_slot"
       printf '%s' "$f" > "${_base}.file"
       (
-        if _rt_run "$f" "${_base}.out" "${_cov_dir:+$_cov_dir/$_slot.trace}"; then
+        if _rt_run "$f" "${_base}.out" "${_cov_dir:+$_cov_dir/p$_slot.trace}"; then
           printf '0' > "${_base}.rc"
           # Success: aggregation only reads .out for FAILED slots, so drop it now
           # — parity with the serial path, keeps the job dir small (#1011 review).
@@ -244,21 +349,29 @@ run_tier() {
           printf '%s' "$?" > "${_base}.rc"
         fi
       ) &
-      _pids+=($!)
-      # Drain the OLDEST slot when the pool is full (FIFO). #1011 review suggested
-      # `wait -n` for tighter utilization, but that needs bash 4.3+ and macOS ships
-      # bash 3.2 — FIFO drain is the portable choice and still bounds concurrency
-      # to $_par_jobs. Test files are short + uniform, so head-of-line stall is
-      # negligible here; revisit with `wait -n` if a bash-4 floor is adopted.
-      if [[ ${#_pids[@]} -ge $_par_jobs ]]; then
-        wait "${_pids[0]}" 2>/dev/null || true
-        _pids=("${_pids[@]:1}")
+      _inflight=$((_inflight + 1))
+      # Track pids only on the fallback path; `wait -n` needs no pid bookkeeping.
+      if [[ "$_waitn" -eq 0 ]]; then
+        _pids+=($!)
+      fi
+      if [[ "$_inflight" -ge "$_par_jobs" ]]; then
+        if [[ "$_waitn" -eq 1 ]]; then
+          wait -n 2>/dev/null || true
+        else
+          wait "${_pids[0]}" 2>/dev/null || true
+          _pids=("${_pids[@]:1}")
+        fi
+        _inflight=$((_inflight - 1))
       fi
     done
     # drain remaining background jobs
-    for _pid in "${_pids[@]}"; do
-      wait "$_pid" 2>/dev/null || true
-    done
+    if [[ "$_waitn" -eq 1 ]]; then
+      wait 2>/dev/null || true
+    else
+      for _pid in "${_pids[@]+"${_pids[@]}"}"; do
+        wait "$_pid" 2>/dev/null || true
+      done
+    fi
     # serial aggregation in submission order
     local _i
     for _i in $(seq 1 $_slot); do
@@ -284,28 +397,16 @@ run_tier() {
     return
   fi
 
+  # Serial path: capture each file's output once into a tempfile (replayed on
+  # failure) to avoid the double-execution side effects (state writes, event
+  # emits) of the old "run silent, re-run on fail" pattern. _rt_run keeps fd 3 →
+  # /dev/null so a sourced module honoring ZBUILD_STAGE_IO_FD=3 (the production
+  # runner default, core/pipeline/runner.sh:869) finds it open for write —
+  # otherwise stage-io.sh's load-time guard aborts sourcing under the unit
+  # harness (#586) — and bounds the run with a per-file timeout + stdin guard
+  # (#929). The body is shared with the #991 serial-pin bucket via the helper.
   for f in "${files[@]}"; do
-    total=$((total + 1))
-    # Capture once into a tempfile; replay on failure. Avoids the
-    # double-execution side effects (state writes, event emits) of the
-    # previous "run silent, then re-run on fail to show output" pattern.
-    local out
-    out="$(mktemp -t "zbuild-test-$name.XXXXXX")"
-    # _rt_run keeps fd 3 → /dev/null so any sourced module that respects
-    # ZBUILD_STAGE_IO_FD=3 (the production runner default — see
-    # core/pipeline/runner.sh:869) finds the fd open for write. Without this,
-    # stage-io.sh's load-time guard would abort sourcing for every test that
-    # pulls in that module under the unit harness (#586). It also bounds the
-    # run with a per-file timeout + stdin guard (#929).
-    if _rt_run "$f" "$out" "${_cov_dir:+$_cov_dir/$total.trace}"; then
-      passed=$((passed + 1))
-      rm -f "$out"
-    else
-      failed=$((failed + 1))
-      echo "$name: FAIL $f" >&2
-      cat "$out" >&2 || true
-      rm -f "$out"
-    fi
+    _rt_run_serial_file "$name" "$f" "$_cov_dir"
   done
 
   if [[ -n "$_cov_dir" ]]; then
