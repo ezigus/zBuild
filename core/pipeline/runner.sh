@@ -630,12 +630,25 @@ main() {
         fi
     fi
 
-    # Load template; fall back to built-in stage list if template missing or empty
+    # Load template, distinguishing "not found" from "found but invalid":
+    #   - template FILE missing (resolve_template_file returns a non-existent
+    #     path) → fall back to the built-in stage list (Test 11).
+    #   - file EXISTS but load_template fails → a genuine config error, e.g. an
+    #     invalid merge_policy enum (#1057 review): surface its stderr (no
+    #     2>/dev/null) and abort, rather than masking it as "not found".
+    #   - loads cleanly but defines no stages → built-in fallback.
     local active_stages=()
-    if load_template "$template_file" 2>/dev/null && [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
-        active_stages=("${_TPL_STAGES[@]}")
-    else
+    if [[ ! -f "$template_file" ]]; then
         warn "Template '$template' not found; using built-in stage list"
+        active_stages=(intake security-lens output)
+    elif ! load_template "$template_file"; then
+        error "Failed to load template '$template' (see error above); aborting"
+        return 2
+    elif [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
+        active_stages=("${_TPL_STAGES[@]}")
+        info "merge_policy: ${_TPL_MERGE_POLICY:-auto_unless_flagged}"
+    else
+        warn "Template '$template' defines no stages; using built-in stage list"
         active_stages=(intake security-lens output)
     fi
 

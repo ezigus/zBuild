@@ -35,6 +35,7 @@ readonly _ZBUILD_CANONICAL_STAGES=(
 
 # Module-level state — populated by load_template
 _TPL_DEFAULT_STRATEGY="fanout"
+_TPL_MERGE_POLICY="auto_unless_flagged"
 _TPL_STAGES=()
 # ADR-021 (#512): list of dispatch units in template order. Each entry is
 # "stage:<id>" or "cycle:<id>". Empty `cycles:` block → every unit is "stage:<id>"
@@ -109,6 +110,18 @@ load_template() {
 
     _TPL_DEFAULT_STRATEGY="$(yaml_get "$template_file" "defaults.strategy")"
     [[ -z "$_TPL_DEFAULT_STRATEGY" ]] && _TPL_DEFAULT_STRATEGY="fanout"
+
+    local _raw_merge_policy
+    _raw_merge_policy="$(yaml_get "$template_file" "merge_policy")"
+    if [[ -z "$_raw_merge_policy" ]]; then
+        _TPL_MERGE_POLICY="auto_unless_flagged"
+    elif [[ "$_raw_merge_policy" == "auto_unless_flagged" || "$_raw_merge_policy" == "auto" || "$_raw_merge_policy" == "manual" ]]; then
+        _TPL_MERGE_POLICY="$_raw_merge_policy"
+    else
+        error "load_template: invalid merge_policy '${_raw_merge_policy}' (valid: auto_unless_flagged | auto | manual)"
+        return 1
+    fi
+    export _TPL_MERGE_POLICY
 
     _TPL_STAGES=()
     _TPL_CYCLES=()
@@ -1683,4 +1696,10 @@ template_stage_blocking() {
     local safe_id="${stage_id//-/_}"
     local var="_TPL_STAGE_BLOCKING_${safe_id}"
     echo "${!var:-}"
+}
+
+# ADR-037 §4: resolved merge_policy for the loaded template.
+# Returns one of: auto_unless_flagged | auto | manual
+template_merge_policy() {
+    echo "${_TPL_MERGE_POLICY:-auto_unless_flagged}"
 }
