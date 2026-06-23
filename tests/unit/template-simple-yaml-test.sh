@@ -143,6 +143,14 @@ assert_eq "[SPEC-12] _TPL_STAGES[5] == objective-gate" "objective-gate" "${_TPL_
 
 assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
 
+# ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
+# GUARD: A3-pr adds plugins/agent/pr-delivery (role: pr_delivery) for standard.yaml only.
+# simple.yaml's pr stage keeps roles: [pr] — bound to the pr-open tool plugin,
+# not the new pr agent. This guard confirms the migration did not inadvertently
+# change simple.yaml's pr role binding.
+assert_eq "[SPEC-6] simple.yaml: pr roles remain pr (not pr_delivery, guard)" \
+    "pr" "${_TPL_STAGE_ROLES_pr}"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

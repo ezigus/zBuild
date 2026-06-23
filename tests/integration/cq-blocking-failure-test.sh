@@ -168,6 +168,8 @@ _make_plugin "cq-audit-plan"   "cq_audit_plan"
 _make_plugin "cq-cycle"        "cq_cycle"
 _make_plugin "cq-backtrack"    "cq_backtrack"
 _make_plugin "review"          "reviewer"
+# #756: pr leaf stage after build_review_cycle uses the pr_delivery role.
+_make_plugin "pr"              "pr_delivery"
 
 # test_assessment: always emit verdict=pass so build_test_cycle converges.
 cat > "$PLUGINS_ROOT/agent/test_assessment/plugin.sh" <<'PLUG'

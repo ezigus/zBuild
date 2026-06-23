@@ -60,6 +60,12 @@ done
 assert_eq "G3: standard_stage_count() == template leaf count" \
     "${#template_ids[@]}" "$(standard_stage_count)"
 
+# ── SPEC-5: standard roster count = 14 (pr stage added, A3-pr migration #756) ─
+# CHANGE: baseline roster had 13 entries (no pr). _ZBUILD_STANDARD_ROSTER now
+# includes "pr:agent:pr_delivery" making the count 14.
+assert_eq "[SPEC-5] standard roster has 14 entries (pr added, #756)" \
+    "14" "$(standard_stage_count)"
+
 # ── G4: register_standard_pipeline_stubs lays down every leaf stage's dir ─────
 register_standard_pipeline_stubs
 missing=0

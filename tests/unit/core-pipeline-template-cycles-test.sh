@@ -26,16 +26,19 @@ load_template "$REPO_ROOT/config/templates/standard.yaml"
 # the inner build_test_cycle (#511 F2), and the outer build_review_cycle (ADR-026).
 assert_eq "standard.yaml: 3 cycles declared (#842 design_impact + #511 F2 + #707 ADR-026)" \
     "3" "${#_TPL_CYCLES[@]}"
-# Dispatch units: stage:intake, stage:plan, cycle:design_impact_cycle, cycle:build_review_cycle (4 total).
+# Dispatch units: stage:intake, stage:plan, cycle:design_impact_cycle,
+# cycle:build_review_cycle, stage:pr (5 total). #756 added the pr delivery leaf.
 # plan is now a leaf; design_impact_cycle wraps design+impact.
-assert_eq "standard.yaml: 4 dispatch units" "4" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "standard.yaml: 5 dispatch units" "5" "${#_TPL_DISPATCH_UNITS[@]}"
 has_cycle_unit=0
 has_design_impact_cycle=0
 has_plan_stage=0
+has_pr_stage=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
     [[ "$u" == "cycle:build_review_cycle" ]] && has_cycle_unit=1
     [[ "$u" == "cycle:design_impact_cycle" ]] && has_design_impact_cycle=1
     [[ "$u" == "stage:plan" ]] && has_plan_stage=1
+    [[ "$u" == "stage:pr" ]] && has_pr_stage=1
 done
 assert_eq "standard.yaml: declares cycle:build_review_cycle dispatch unit (#707 outermost)" \
     "1" "$has_cycle_unit"
@@ -43,6 +46,8 @@ assert_eq "standard.yaml: declares cycle:design_impact_cycle dispatch unit (#842
     "1" "$has_design_impact_cycle"
 assert_eq "standard.yaml: declares stage:plan dispatch unit (leaf, #842)" \
     "1" "$has_plan_stage"
+assert_eq "standard.yaml: declares stage:pr dispatch unit (leaf, #756)" \
+    "1" "$has_pr_stage"
 # #845: the velocity-plateau early-exit must be WIRED INTO THE LIVE build_test_cycle,
 # not just exist behind an opt-in default. This pins the production wiring so the
 # feature can't silently regress to inert (window unset = disabled). window=2 (<
@@ -190,7 +195,7 @@ assert_eq "overlap: load_template rc != 0" "1" "$rc"
 # T9: regression — load_template still succeeds and _TPL_STAGES intact when
 # cycles: absent.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-assert_eq "regression: standard.yaml still has 13 stages (#922)" "13" "${#_TPL_STAGES[@]}"
+assert_eq "regression: standard.yaml still has 14 stages (#922, +pr #756)" "14" "${#_TPL_STAGES[@]}"
 # #842: standard.yaml now declares 3 cycles after wiring
 # design_impact_cycle (design_impact_cycle + inner build_test_cycle + outer build_review_cycle).
 assert_eq "regression: standard.yaml has 3 cycles (design_impact + build_test_cycle + build_review_cycle)" \
@@ -236,13 +241,13 @@ assert_eq "v2/namespace: build_test_cycle absent from flat _TPL_STAGES" "0" "$fl
 
 # T12: _TPL_STAGES[] flat list includes cycle members in order.
 load_template "$REPO_ROOT/config/templates/standard.yaml"
-expected_flat="intake plan design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review"
+expected_flat="intake plan design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr"
 actual_flat="${_TPL_STAGES[*]}"
 assert_eq "v2/flat: _TPL_STAGES expansion preserves canonical order" "$expected_flat" "$actual_flat"
 
 # T13: Wave 18-B (#707) — build_review_cycle is now the OUTERMOST cycle and
 # absorbs build_test_cycle + review under one dispatch unit.
-expected_units="stage:intake stage:plan cycle:design_impact_cycle cycle:build_review_cycle"
+expected_units="stage:intake stage:plan cycle:design_impact_cycle cycle:build_review_cycle stage:pr"
 actual_units="${_TPL_DISPATCH_UNITS[*]}"
 assert_eq "v2/dispatch: units match expected (#842 design_impact + #707 outermost-cycle folding)" \
     "$expected_units" "$actual_units"

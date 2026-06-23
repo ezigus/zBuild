@@ -64,7 +64,7 @@ ${fn}() {
 EOF
 }
 
-for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
+for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr; do
     _make_logging_plugin "$s"
 done
 
@@ -96,6 +96,10 @@ expect_label cq-audit-plan   "10"
 expect_label cq-cycle        "11"
 expect_label cq-backtrack    "12"
 expect_label review          "13"
+# #756: pr leaf stage added after build_review_cycle at cardinal position 14.
+expect_label pr              "14"
+assert_eq "[SPEC-1] pr stage runs at cardinal position 14" "14" \
+    "$(grep "^stage=pr " "$LABEL_LOG" | head -1 | sed -n 's/.*label=\(.*\)$/\1/p')"
 
 print_test_results
 cleanup_test_env
