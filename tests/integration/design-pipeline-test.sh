@@ -151,6 +151,8 @@ _make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
 _make_plugin "cq-cycle"        "agent" 0 >/dev/null
 _make_plugin "cq-backtrack"    "agent" 0 >/dev/null
 _make_plugin "review"          "agent" 0 >/dev/null
+# #756: pr leaf stage after build_review_cycle.
+_make_plugin "pr"              "agent" 0 >/dev/null
 
 # ─── Run the pipeline end-to-end ─────────────────────────────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"

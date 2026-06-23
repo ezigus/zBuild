@@ -107,6 +107,8 @@ _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq
 _make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
 _make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
+# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
+_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
 set +e; _run_pipeline; rc=$?; set -e
 if [[ $rc -ne 0 ]]; then
     echo "--- runner.err on failure ---" >&2
@@ -116,7 +118,7 @@ fi
 assert_eq "all-pass: runner exits 0" "0" "$rc"
 
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-for stage in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
+for stage in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr; do
     if grep -E "✓.*Stage.*${stage}.*complete" <<<"$err" >/dev/null; then
         assert_pass "all-pass: ✓ on $stage line"
     else
@@ -152,6 +154,8 @@ _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq
 _make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
 _make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
+# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
+_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 if grep -E "✗.*Stage.*test.*complete" <<<"$err" >/dev/null; then
@@ -178,6 +182,8 @@ _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq
 _make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
 _make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
+# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
+_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 if grep -E "✗.*Stage.*build.*complete" <<<"$err" >/dev/null; then
@@ -204,6 +210,8 @@ _make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq
 _make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
 _make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
 _make_verdict_plugin review agent review.json '{"verdict":"request_changes"}' reviewer
+# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
+_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
 set +e; _run_pipeline; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 if grep -E "⚠.*Stage.*review.*complete" <<<"$err" >/dev/null; then

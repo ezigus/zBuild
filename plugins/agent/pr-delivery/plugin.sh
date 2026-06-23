@@ -29,9 +29,11 @@ source "$_PR_ROOT/core/event-bus/event-bus.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 pr_stage_init() {
-    export ZBUILD_PLUGIN="pr"
+    export ZBUILD_PLUGIN="pr-delivery"
     export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.run.start" "plugin=pr"
+    # The framework (plugin_hook_call) emits plugin.run.start/complete; init only
+    # emits plugin.init.start, matching the review/build/test_assessment agents.
+    emit_event "plugin.init.start" "plugin=pr-delivery"
     return 0
 }
 
@@ -42,15 +44,17 @@ pr_stage_run() {
         error "pr_stage_run: state_file argument required"
         return 2
     fi
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local artifacts_dir="$state_dir/artifacts"
-    mkdir -p "$artifacts_dir"
-    _pr_stage_run_inner "$artifacts_dir"
+    # Thread the real state_file through — pr-open reads .issue from it, and the
+    # runner passes it as $2, NOT via ZBUILD_STATE_FILE (which is unset here).
+    _pr_stage_run_inner "$state_file"
 }
 
 # ADR-018 Pattern 1 (one-shot): verdict guard → dry-run/pr-open → done.
 _pr_stage_run_inner() {
-    local artifacts_dir="$1"
+    local state_file="$1"
+    local state_dir; state_dir="$(dirname "$state_file")"
+    local artifacts_dir="$state_dir/artifacts"
+    mkdir -p "$artifacts_dir"
     local review_json="$artifacts_dir/review.json"
     local pr_url_out="$artifacts_dir/pr-url.txt"
     local pr_result_out="$artifacts_dir/pr-result.json"
@@ -81,7 +85,7 @@ _pr_stage_run_inner() {
         # shellcheck source=../../tool/pr-open/plugin.sh
         source "$pr_open_plugin"
         if type pr_open_run >/dev/null 2>&1; then
-            pr_open_run "pr" "${ZBUILD_STATE_FILE:-}" || return $?
+            pr_open_run "pr" "$state_file" || return $?
             return 0
         fi
     fi
@@ -102,7 +106,7 @@ _pr_stage_run_inner() {
 
 # ─── finalize ───────────────────────────────────────────────────────────────
 pr_stage_finalize() {
-    emit_event "plugin.run.complete" "plugin=pr"
+    emit_event "plugin.finalize.complete" "plugin=pr-delivery"
     return 0
 }
 

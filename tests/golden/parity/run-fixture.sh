@@ -157,6 +157,10 @@ stages:
     gate: auto
   - id: pr
     gate: auto
+    # #756: dispatch the pr stage by role so it resolves to the pr-delivery
+    # agent (id: pr-delivery) and not the pr-open tool (id: pr), mirroring
+    # production standard.yaml. Other stages still resolve by stage id.
+    roles: [pr_delivery]
 TPL
 trap 'rm -f "$FIXTURE_TEMPLATE"' EXIT
 
