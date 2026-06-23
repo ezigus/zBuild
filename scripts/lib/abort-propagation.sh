@@ -50,6 +50,7 @@ _zbuild_propagate_abort() {
         130) return 130 ;;
         143) return 143 ;;
         6)   return 6 ;;
+        9)   return 9 ;;   # llm_unavailable (#1024)
         *) return 0 ;;
     esac
 }

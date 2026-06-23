@@ -439,20 +439,37 @@ $_ta_instructions"
         error "test_assessment_run: router rc=0 with empty envelope"
         emit_event "plugin.run.error" "plugin=test_assessment" \
             "reason=empty_result_envelope"
+        _zbuild_record_cli_fail
+        local _ff_rc=0
+        _llm_check_cli_fail_abort || _ff_rc=$?
+        [[ $_ff_rc -eq 9 ]] && return 9
         return 1
     fi
     if [[ $router_rc -eq 1 ]]; then
         warn "test_assessment_run: router rc=1 (recoverable); no artifact"
         emit_event "plugin.run.error" "plugin=test_assessment" \
             "reason=router_recoverable" "router_rc=1"
+        _zbuild_record_cli_fail
+        local _ff_rc=0
+        _llm_check_cli_fail_abort || _ff_rc=$?
+        [[ $_ff_rc -eq 9 ]] && return 9
         return 1
     fi
     if [[ $router_rc -ne 0 ]]; then
         error "test_assessment_run: router rc=$router_rc (fatal)"
         emit_event "plugin.run.error" "plugin=test_assessment" \
             "reason=router_fatal" "router_rc=$router_rc"
+        _zbuild_record_cli_fail
+        local _ff_rc=0
+        _llm_check_cli_fail_abort || _ff_rc=$?
+        [[ $_ff_rc -eq 9 ]] && return 9
         return 1
     fi
+
+    # AC-4 (#1024): reaching here means the model call succeeded (rc=0, non-empty
+    # envelope). Reset the consecutive CLI-failure counter so the abort threshold
+    # tracks *consecutive* failures, not cumulative blips (Copilot review on #1024).
+    _zbuild_reset_cli_fail
 
     # ─── Parse + schema-validate ─────────────────────────────────────────────
     local stripped

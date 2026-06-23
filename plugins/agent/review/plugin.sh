@@ -566,15 +566,41 @@ $_review_instructions"
     # "router rc=non-zero" so an empty model output doesn't masquerade as a
     # legitimate verdict downstream.
     if [[ $router_rc -eq 0 && -z "$raw_response" ]]; then
+        # AC-1/AC-2 (#1024): an empty .result envelope is a failed model call, not a
+        # verdict. Count it toward the consecutive-failure abort like a router error
+        # (Copilot review on #1024) so repeated empty responses fast-fail (rc=9).
         error "review_run: router returned empty .result envelope; refusing to emit verdict"
         emit_event "plugin.run.error" "plugin=review" "reason=empty_result_envelope"
+        _zbuild_record_cli_fail
+        local _ff_rc=0
+        _llm_check_cli_fail_abort || _ff_rc=$?
+        [[ $_ff_rc -eq 9 ]] && return 9
         return 1
     fi
 
     # ─── Parse verdict from LLM response ────────────────────────────────────
     local verdict="" confidence="" issues_json="[]" summary=""
 
+    if [[ $router_rc -ne 0 ]]; then
+        # AC-1 (#1024): never coerce a failed model call into a semantic verdict.
+        # Track consecutive failures; if threshold reached, abort pipeline (rc=9).
+        _zbuild_record_cli_fail
+        local _ff_rc=0
+        _llm_check_cli_fail_abort || _ff_rc=$?
+        if [[ $_ff_rc -eq 9 ]]; then
+            return 9
+        fi
+        error "review_run: router rc=$router_rc; no artifact written"
+        emit_event "plugin.run.error" "plugin=review" \
+            "reason=router_failed" "router_rc=$router_rc"
+        return 1
+    fi
+
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
+        # AC-4 (#1024): a successful (non-empty) model call resets the consecutive
+        # CLI-failure counter so the abort threshold tracks *consecutive* failures,
+        # not cumulative blips across the run (Copilot review on #1024).
+        _zbuild_reset_cli_fail
         # #478: slice the LAST top-level balanced JSON object out of the
         # response. Envelope mode (#476) separates reasoning turns from the
         # final turn; the model can still preface its JSON with prose
@@ -614,13 +640,6 @@ $_review_instructions"
         fi
         summary="$(printf '%s' "$stripped" \
             | jq -r '.summary // ""' 2>/dev/null || true)"
-    elif [[ $router_rc -eq 1 ]]; then
-        warn "review_run: router rc=1 (recoverable); defaulting verdict"
-    elif [[ $router_rc -ne 0 ]]; then
-        error "review_run: router rc=$router_rc (fatal); refusing to emit"
-        emit_event "plugin.run.error" "plugin=review" \
-            "reason=router_fatal" "router_rc=$router_rc"
-        return 1
     fi
 
     # ─── Validate verdict; default to request_changes if invalid ─────────────

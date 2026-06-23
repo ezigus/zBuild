@@ -282,3 +282,73 @@ _llm_with_json_output() {
     fi
     return $_rc
 }
+
+# ─── CLI failure fast-fail (#1024, ADR-028 amendment) ───────────────────────
+# File-based counter so consecutive failures accumulate across Pattern 1 plugin
+# subshell invocations within the same pipeline run. Counter file lives under
+# ${ZBUILD_STATE_DIR}/.llm_cli_fail_count; absent = 0.
+#
+# Threshold: ZBUILD_LLM_FAIL_THRESHOLD (default 2, matching ADR-029 G2).
+# rc=9 is the new pipeline-abort class for llm_unavailable.
+
+_zbuild_cli_fail_counter_path() {
+    local _dir="${ZBUILD_STATE_DIR:-}"
+    if [[ -n "$_dir" ]]; then
+        printf '%s/.llm_cli_fail_count' "$_dir"
+    else
+        # No state dir: use a per-PID path so parallel test runs don't collide.
+        printf '%s/.zbuild_llm_cli_fail_%s' "${TMPDIR:-/tmp}" "$$"
+    fi
+}
+
+_zbuild_record_cli_fail() {
+    local _path; _path="$(_zbuild_cli_fail_counter_path)"
+    local _prev=0
+    if [[ -f "$_path" ]]; then
+        local _raw; _raw="$(cat "$_path" 2>/dev/null || true)"
+        [[ "$_raw" =~ ^[0-9]+$ ]] && _prev="$_raw"
+    fi
+    local _next=$(( _prev + 1 ))
+    printf '%s' "$_next" > "$_path" 2>/dev/null || true
+    emit_event "llm.cli_fail" \
+        "count=$_next" \
+        "run_id=${ZBUILD_RUN_ID:-}" 2>/dev/null || true
+    return 0
+}
+
+_zbuild_reset_cli_fail() {
+    local _path; _path="$(_zbuild_cli_fail_counter_path)"
+    rm -f "$_path" 2>/dev/null || true
+    return 0
+}
+
+# _llm_check_cli_fail_abort — returns 9 when the consecutive CLI failure count
+# has reached ZBUILD_LLM_FAIL_THRESHOLD (default 2); returns 0 otherwise.
+# When rc=9 is returned, emits pipeline.aborted reason=llm_unavailable and
+# prints a clear terminal message to stderr. The runner handles the actual
+# state-file writes and pipeline.end events when it observes rc=9.
+_llm_check_cli_fail_abort() {
+    local _threshold="${ZBUILD_LLM_FAIL_THRESHOLD:-2}"
+    local _path; _path="$(_zbuild_cli_fail_counter_path)"
+    local _count=0
+    if [[ -f "$_path" ]]; then
+        local _raw; _raw="$(cat "$_path" 2>/dev/null || true)"
+        [[ "$_raw" =~ ^[0-9]+$ ]] && _count="$_raw"
+    fi
+    if [[ "$_count" -ge "$_threshold" ]]; then
+        local _run_id="${ZBUILD_RUN_ID:-unknown}"
+        # Emit only the llm_unavailable signal here. The runner is the single
+        # authoritative source of pipeline.aborted reason=llm_unavailable when it
+        # observes rc=9 (core/pipeline/runner.sh) — emitting it here too would
+        # produce duplicate abort events for one run (Copilot review on #1024).
+        emit_event "pipeline.llm_unavailable" \
+            "reason=llm_unavailable" \
+            "count=$_count" \
+            "threshold=$_threshold" \
+            "run_id=$_run_id" 2>/dev/null || true
+        printf '✗ Pipeline aborted: the model CLI failed %s consecutive times (run_id=%s). Check your claude CLI installation and API key.\n' \
+            "$_count" "$_run_id" >&2
+        return 9
+    fi
+    return 0
+}

@@ -826,6 +826,102 @@ else
     assert_fail "#485 t17: prompt missing 'approve verdict requires' rule"
 fi
 
+# ─── Test 18: [SPEC-3] router rc!=0 → no review.json, no coercion (#1024) ────
+# CHANGE: before #1024 a failing router caused fall-through to verdict parsing
+# with empty raw_response, which defaulted to request_changes and WROTE
+# review.json. After #1024 the plugin returns non-zero immediately; no artifact.
+print_test_section "18. [SPEC-3] router_rc=1 → no review.json, no coercion (#1024 AC-1)"
+_install_passing_test_results
+
+_SPEC3_STATE_DIR="$(mktemp -d)"
+export ZBUILD_STATE_DIR="$_SPEC3_STATE_DIR"
+export ZBUILD_LLM_FAIL_THRESHOLD=99   # prevent abort so we isolate the no-artifact check
+
+route_to_model() { return 1; }
+
+OUTPUT_SPEC3="$ARTIFACT_DIR/review-spec3.json"
+rm -f "$OUTPUT_SPEC3"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" "$FIXTURE_DIR/plan.json" "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" "$OUTPUT_SPEC3" "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ $rc -ne 0 ]]; then
+    assert_pass "[SPEC-3] router_rc=1 → _review_run_inner returns non-zero"
+else
+    assert_fail "[SPEC-3] router_rc=1 → expected non-zero rc from _review_run_inner" "got rc=0"
+fi
+assert_file_not_exists "[SPEC-3] router_rc=1 → no review.json written (no coercion)" "$OUTPUT_SPEC3"
+unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD
+rm -rf "$_SPEC3_STATE_DIR"
+
+# ─── Test 19: [SPEC-4] router rc=0+empty → no review.json (#1024 AC-1 guard) ─
+# GUARD: the empty-envelope check (added in #476) must not regress — an rc=0
+# with empty response must still be refused, producing no artifact.
+print_test_section "19. [SPEC-4] router rc=0+empty → no review.json (empty-envelope guard)"
+_install_passing_test_results
+
+route_to_model() { printf ''; return 0; }
+
+OUTPUT_SPEC4="$ARTIFACT_DIR/review-spec4.json"
+rm -f "$OUTPUT_SPEC4"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" "$FIXTURE_DIR/plan.json" "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" "$OUTPUT_SPEC4" "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ $rc -ne 0 ]]; then
+    assert_pass "[SPEC-4] router rc=0+empty → _review_run_inner returns non-zero"
+else
+    assert_fail "[SPEC-4] router rc=0+empty → expected non-zero rc" "got rc=0"
+fi
+assert_file_not_exists "[SPEC-4] router rc=0+empty → no review.json written" "$OUTPUT_SPEC4"
+
+# ─── Test 20: [SPEC-6] two router failures → rc=9 (#1024 AC-2) ───────────────
+# CHANGE: two consecutive failures at threshold=2 cause the second
+# _review_run_inner call to return rc=9 (pipeline abort, not just rc=1).
+print_test_section "20. [SPEC-6] two router failures at threshold → rc=9 (#1024 AC-2)"
+_install_passing_test_results
+
+_SPEC6_STATE_DIR="$(mktemp -d)"
+export ZBUILD_STATE_DIR="$_SPEC6_STATE_DIR"
+export ZBUILD_LLM_FAIL_THRESHOLD=2
+export ZBUILD_RUN_ID="spec6-test-$$"
+_zbuild_reset_cli_fail
+
+route_to_model() { return 1; }
+
+# First call: below threshold → non-zero but NOT rc=9
+OUTPUT_SPEC6A="$ARTIFACT_DIR/review-spec6a.json"
+rm -f "$OUTPUT_SPEC6A"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" "$FIXTURE_DIR/plan.json" "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" "$OUTPUT_SPEC6A" "$ARTIFACT_DIR" >/dev/null 2>&1
+rc_first=$?
+set -e
+if [[ $rc_first -ne 0 && $rc_first -ne 9 ]]; then
+    assert_pass "[SPEC-6] first failure below threshold returns non-zero but not rc=9"
+else
+    assert_fail "[SPEC-6] first failure should return rc=1 (not 0 or 9)" "got rc=$rc_first"
+fi
+
+# Second call: at threshold → must return rc=9
+OUTPUT_SPEC6B="$ARTIFACT_DIR/review-spec6b.json"
+rm -f "$OUTPUT_SPEC6B"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" "$FIXTURE_DIR/plan.json" "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" "$OUTPUT_SPEC6B" "$ARTIFACT_DIR" >/dev/null 2>&1
+rc_second=$?
+set -e
+assert_eq "[SPEC-6] second failure at threshold=2 → rc=9" "9" "$rc_second"
+assert_file_not_exists "[SPEC-6] no review.json written on rc=9 abort" "$OUTPUT_SPEC6B"
+unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD ZBUILD_RUN_ID
+rm -rf "$_SPEC6_STATE_DIR"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

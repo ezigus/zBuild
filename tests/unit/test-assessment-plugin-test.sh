@@ -502,6 +502,58 @@ content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
 v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
 assert_eq "T20 no design.md → LLM verdict preserved (fail)" "fail" "$v"
 
+# ─── Test 22: [SPEC-8] router rc!=0 → no test-assessment.json (#1024 AC-1) ────
+# CHANGE: before #1024, a router failure in test_assessment fell through to
+# verdict parsing with empty raw_response, producing a schema-violation error
+# but still potentially writing an error artifact. After #1024 the plugin
+# returns non-zero immediately with no artifact written.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TR22'
+{"schema_version":1,"verdict":"fail","exit_code":1,"passed":5,"failed":3,"test_output":"FAIL","diff_applied":true,"test_cmd":"npm test"}
+TR22
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BS22'
+{"schema_version":1,"verdict":"pass","iterations":1,"terminated_reason":"complete"}
+BS22
+
+_SPEC8_STATE_DIR="$(mktemp -d)"
+export ZBUILD_STATE_DIR="$_SPEC8_STATE_DIR"
+export ZBUILD_LLM_FAIL_THRESHOLD=99   # prevent abort so we isolate the no-artifact check
+
+route_to_model() { return 1; }
+
+set +e
+_test_assessment_run_inner \
+    "$STATE_DIR/scope-manifest.md" \
+    "$ARTIFACTS_DIR/test-results.json" \
+    "$ARTIFACTS_DIR/plan.json" \
+    "$ARTIFACTS_DIR/build-summary.json" \
+    "$ARTIFACTS_DIR/test-assessment.json" \
+    "$ARTIFACTS_DIR/test-assessment.md" \
+    "$ARTIFACTS_DIR" \
+    "$STATE_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ $rc -ne 0 ]]; then
+    assert_pass "[SPEC-8] router_rc=1 → test_assessment_run_inner returns non-zero"
+else
+    assert_fail "[SPEC-8] router_rc=1 → expected non-zero rc" "got rc=0"
+fi
+assert_file_not_exists "[SPEC-8] router_rc=1 → no test-assessment.json written (no coercion)" \
+    "$ARTIFACTS_DIR/test-assessment.json"
+unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD
+rm -rf "$_SPEC8_STATE_DIR"
+
+# Restore the original route_to_model mock so cleanup is clean.
+CANNED_RESPONSE='{"schema_version":1,"verdict":"fail","summary":"restored","diagnosis":"","required_changes":[],"agrees_with_build_complete":false,"branch_numstat":"unknown","failure_summary_md":"X.","iter":1}'
+route_to_model() {
+    printf '%s' "${1:-}" > "$_CAPTURED_TIER"
+    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT"
+    printf '%s' "${ZBUILD_ROUTER_JSON_OUTPUT:-unset}" > "$_CAPTURED_ENV_JSON"
+    printf '%s' "${ZBUILD_ROUTER_ARTIFACT_ID:-unset}" > "$_CAPTURED_ARTIFACT_ID"
+    printf '%s\n' "$CANNED_RESPONSE"
+    return 0
+}
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

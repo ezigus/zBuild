@@ -165,5 +165,62 @@ rc=$?
 set -e
 assert_eq "E1: minimal args → rc=0" "0" "$rc"
 
+# ─── CLI failure fast-fail helpers (#1024) ───────────────────────────────────
+# Use an isolated temp dir as ZBUILD_STATE_DIR so counter files don't bleed.
+_FF_STATE_DIR="$(mktemp -d)"
+export ZBUILD_STATE_DIR="$_FF_STATE_DIR"
+
+# Reset helper before each group.
+_ff_reset() { _zbuild_reset_cli_fail; }
+
+# FF1 [SPEC-7]: below threshold → _llm_check_cli_fail_abort returns 0 (no abort).
+# This is a GUARD: single failure must not trip fast-fail.
+_ff_reset
+export ZBUILD_LLM_FAIL_THRESHOLD=2
+_zbuild_record_cli_fail
+set +e; _llm_check_cli_fail_abort; rc=$?; set -e
+assert_eq "[SPEC-7] one failure (below threshold=2) → no abort (rc=0)" "0" "$rc"
+
+# FF2 [SPEC-2]: at threshold → _llm_check_cli_fail_abort returns 9 (abort).
+# This is a CHANGE: new fast-fail behavior; fails at baseline (function absent).
+_ff_reset
+_zbuild_record_cli_fail
+_zbuild_record_cli_fail
+set +e; _llm_check_cli_fail_abort; rc=$?; set -e
+assert_eq "[SPEC-2] two failures (at threshold=2) → abort rc=9" "9" "$rc"
+
+# FF3: custom threshold via ZBUILD_LLM_FAIL_THRESHOLD.
+_ff_reset
+export ZBUILD_LLM_FAIL_THRESHOLD=3
+_zbuild_record_cli_fail
+_zbuild_record_cli_fail
+set +e; _llm_check_cli_fail_abort; rc=$?; set -e
+assert_eq "FF3: two failures below threshold=3 → no abort" "0" "$rc"
+_zbuild_record_cli_fail
+set +e; _llm_check_cli_fail_abort; rc=$?; set -e
+assert_eq "FF3: three failures at threshold=3 → abort rc=9" "9" "$rc"
+export ZBUILD_LLM_FAIL_THRESHOLD=2
+
+# FF4 [SPEC-5]: abort message includes run_id.
+# This is a CHANGE: new terminal message behavior; fails at baseline (function absent).
+_ff_reset
+export ZBUILD_RUN_ID="test-run-ff4"
+_zbuild_record_cli_fail; _zbuild_record_cli_fail
+msg="$(_llm_check_cli_fail_abort 2>&1 || true)"
+assert_contains "[SPEC-5] abort message contains run_id" "$msg" "test-run-ff4"
+assert_contains "[SPEC-5] abort message contains failure count" "$msg" "2"
+unset ZBUILD_RUN_ID
+
+# FF5: _zbuild_reset_cli_fail clears counter.
+_ff_reset
+_zbuild_record_cli_fail; _zbuild_record_cli_fail
+_zbuild_reset_cli_fail
+set +e; _llm_check_cli_fail_abort; rc=$?; set -e
+assert_eq "FF5: reset clears counter — no abort after reset" "0" "$rc"
+
+# Cleanup temp dir.
+rm -rf "$_FF_STATE_DIR"
+unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD
+
 print_test_results
 exit $((FAIL > 0))
