@@ -93,12 +93,37 @@ jobs:
 
   integration:
     name: Integration tests
-    runs-on: ubuntu-latest
+    # B1c (#996): run the integration tier on Linux AND macOS now that it is
+    # parallel + hermetic (A3d #991, which bounds macOS runner-minutes) and the
+    # OS-gating helpers exist (B1a #994). The integration tier exercises the
+    # subprocess/flock/mktemp/signal surface where BSD-vs-GNU divergences bite,
+    # so it's worth the same matrix the unit job already runs (B1b #995).
+    # fail-fast: false so a macOS-only failure still lets ubuntu report (and vice versa).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      - name: Ensure Bash 5 + flock (macOS)
+        if: runner.os == 'macOS'
+        # macOS ships Bash 3.2 (suite needs Bash 5, install.sh) and no `flock`
+        # (the local-fs claim backend needs it; clean runners lack it). Mirror
+        # install.sh's macOS prereqs so the tier runs the same on both OSes.
+        run: |
+          brew install bash flock
+          # Prepend Homebrew's bin so subsequent run: steps deterministically use
+          # Bash 5 — PATH precedence vs the system /bin/bash 3.2 varies across
+          # macOS runner images/arches (Copilot review #1031).
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          bash --version | head -1
       - name: Run integration tier
         run: |
-          export ZBUILD_TEST_TMP="$(mktemp -d)"
+          # Explicit mktemp template (cf. the unit job, #1031): macOS's
+          # templateless `mktemp -d` ignores $TMPDIR and uses /var/folders, so an
+          # explicit template keeps the temp dir consistent across OSes.
+          export ZBUILD_TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-integration.XXXXXX")"
           # #629: `| tee` masks the script's non-zero exit under GHA's default
           # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
           bash scripts/run-tests.sh --tier integration 2>&1 | tee /tmp/zbuild-integration-results.txt
@@ -107,7 +132,9 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: integration-results
+          # Per-OS name: two matrix legs uploading the same artifact name collide
+          # on upload-artifact@v4+ (cf. the unit job).
+          name: integration-results-${{ matrix.os }}
           path: /tmp/zbuild-integration-results.txt
           if-no-files-found: ignore
 
