@@ -140,6 +140,8 @@ mock_plugin_factory "cq-audit-plan"   "agent" 0 >/dev/null
 mock_plugin_factory "cq-cycle"        "agent" 0 >/dev/null
 mock_plugin_factory "cq-backtrack"    "agent" 0 >/dev/null
 mock_plugin_factory "review"          "agent" 0 >/dev/null
+# #756: standard template now ends with a pr delivery stage (role pr_delivery).
+mock_plugin_factory "pr"              "agent" 0 "" "pr_delivery" >/dev/null
 
 # ─── Mock claude shim: capture the iter-1 prompt to PROMPT_CAPTURE ──────────
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK

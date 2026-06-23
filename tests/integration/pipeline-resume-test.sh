@@ -179,6 +179,7 @@ mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/plan" \
          "$INT_PLUGINS_ROOT/agent/cq-cycle" \
          "$INT_PLUGINS_ROOT/agent/cq-backtrack" \
          "$INT_PLUGINS_ROOT/agent/review" \
+         "$INT_PLUGINS_ROOT/agent/pr" \
          "$INT_STATE_DIR" "$INT_EVENTS_DIR"
 
 # Plugins: all 7 standard-template stages succeed (#746 added impact, #754 added design)
@@ -209,6 +210,21 @@ requires:
     - redaction
 EOF
 printf 'review_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/review/plugin.sh"
+
+# #756: standard template now ends with a pr delivery stage (role pr_delivery).
+cat > "$INT_PLUGINS_ROOT/agent/pr/manifest.yaml" <<EOF
+id: pr
+name: Test pr
+kind: agent
+version: 0.0.1
+hooks:
+  run: pr_run
+provides:
+  role: pr_delivery
+requires:
+  core: []
+EOF
+printf 'pr_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/pr/plugin.sh"
 
 # #485: minimal test-stage plugin (tool kind) so the resume can reach review.
 cat > "$INT_PLUGINS_ROOT/tool/test/manifest.yaml" <<EOF
@@ -267,7 +283,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: 225,
-        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", "acceptance-gate": "complete", "cq-preflight": "complete", "cq-audit-plan": "complete", "cq-cycle": "complete", "cq-backtrack": "complete", review: "pending"},
+        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", "acceptance-gate": "complete", "cq-preflight": "complete", "cq-audit-plan": "complete", "cq-cycle": "complete", "cq-backtrack": "complete", review: "pending", pr: "complete"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
