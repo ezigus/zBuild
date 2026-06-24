@@ -23,18 +23,48 @@ source "$REPO_ROOT/core/pipeline/template-resolver.sh"
 
 SIMPLE_TPL="$REPO_ROOT/config/templates/simple.yaml"
 
-# ─── SPEC-1: simple.yaml loads and _TPL_MERGE_POLICY == manual ───────────────
-# CHANGE: load_template previously discarded merge_policy → _TPL_MERGE_POLICY
-# was unset/empty. Now it must be parsed and exported as "manual".
+# ─── SPEC-1: manual enum via temp template (I9-B: moved off simple.yaml) ─────
+# CHANGE I9-B (#1050): simple.yaml restored to auto_unless_flagged, so manual
+# enum coverage moves to a temp template written inline (same pattern as SPEC-2..5).
+
+_tpl_manual="$TEST_TEMP_DIR/manual.yaml"
+cat > "$_tpl_manual" <<'YAML'
+id: test-manual
+name: Test Manual
+extends: null
+merge_policy: manual
+defaults:
+  strategy: fanout
+flow:
+  - intake
+intake:
+  gate: auto
+  roles: [intake]
+  io:
+    destinations: [file]
+    tail_lines: 50
+YAML
+
+set +e
+load_template "$_tpl_manual"
+_rc_man=$?
+set -e
+
+assert_eq "[SPEC-1] load_template (manual via temp template) exit 0" "0" "$_rc_man"
+assert_eq "[SPEC-1] _TPL_MERGE_POLICY == manual via temp template" "manual" "$_TPL_MERGE_POLICY"
+
+# ─── SPEC-5: simple.yaml now loads as auto_unless_flagged (I9-B) ─────────────
+# CHANGE I9-B (#1050): simple.yaml restored from manual back to auto_unless_flagged.
+# Fails at baseline where simple.yaml still had merge_policy: manual.
 
 set +e
 load_template "$SIMPLE_TPL"
 _load_rc=$?
 set -e
 
-assert_eq "[SPEC-1] load_template simple.yaml exit 0" "0" "$_load_rc"
-assert_eq "[SPEC-1] _TPL_MERGE_POLICY == manual after loading simple.yaml" \
-    "manual" "$_TPL_MERGE_POLICY"
+assert_eq "[SPEC-5] load_template simple.yaml exit 0" "0" "$_load_rc"
+assert_eq "[SPEC-5] _TPL_MERGE_POLICY == auto_unless_flagged after loading simple.yaml" \
+    "auto_unless_flagged" "$_TPL_MERGE_POLICY"
 
 # ─── SPEC-2: merge_policy: auto ──────────────────────────────────────────────
 # CHANGE: previously discarded; now parsed. Fails at baseline.

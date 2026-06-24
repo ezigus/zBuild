@@ -3,7 +3,7 @@ name: Simple Pipeline
 extends: null
 
 # ADR-037 §4: per-template merge policy. Wired to runtime behavior in #975.
-merge_policy: manual
+merge_policy: auto_unless_flagged
 
 defaults:
   strategy: fanout

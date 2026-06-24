@@ -79,6 +79,20 @@ _pr_stage_run_inner() {
         return 0
     fi
 
+    # Auto-merge path (ADR-037 §4 / I9-B #1050): when policy is auto, delegate to
+    # the merge plugin which internally handles gate-absent/fail → PR fallback.
+    if [[ "${_TPL_MERGE_POLICY:-auto_unless_flagged}" == "auto" ]]; then
+        local merge_plugin="$_PR_ROOT/plugins/tool/merge/plugin.sh"
+        if [[ -f "$merge_plugin" ]]; then
+            # shellcheck source=../../tool/merge/plugin.sh
+            source "$merge_plugin"
+            if type merge_run >/dev/null 2>&1; then
+                merge_run "pr" "$state_file" || return $?
+                return 0
+            fi
+        fi
+    fi
+
     # Invoke pr-open tool plugin via the plugin registry
     local pr_open_plugin="$_PR_ROOT/plugins/tool/pr-open/plugin.sh"
     if [[ -f "$pr_open_plugin" ]]; then
