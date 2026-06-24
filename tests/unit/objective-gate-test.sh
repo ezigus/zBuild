@@ -436,6 +436,79 @@ export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
 assert_eq "[SPEC-17] objective_gate_run returns 0 with no state_file (persist skipped)" "0" "$_spec17_rc"
 
+# ─── SPEC-18: in-scope diff passes the scope-leak gate ───────────────────────
+# CHANGE: scope-leak gate absent at merge-base. After implementation, when diff
+# paths are all covered by scope-manifest.md prefixes, verdict stays pass and
+# the scope_leak_files field is present (and empty) in the result JSON.
+
+_spec18_manifest="$_tmpdir/scope-manifest-18.md"
+printf '+ tests/\n' > "$_spec18_manifest"
+
+rm -f "$_artifacts_dir/objective-gate-result.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="printf '%s\n' tests/unit/foo.sh"
+export ZBUILD_SCOPE_MANIFEST="$_spec18_manifest"
+set +e
+objective_gate_run "objective-gate" "$_state_file"
+_spec18_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_SCOPE_MANIFEST
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+
+assert_eq "[SPEC-18] rc=0 for in-scope diff (scope-leak gate)" "0" "$_spec18_rc"
+_spec18_result="$_artifacts_dir/objective-gate-result.json"
+if [[ -f "$_spec18_result" ]]; then
+    _spec18_verdict="$(grep -o '"verdict":"[^"]*"' "$_spec18_result" | cut -d'"' -f4 || echo 'ERROR')"
+    assert_eq "[SPEC-18] verdict=pass for in-scope diff" "pass" "$_spec18_verdict"
+    _spec18_has_field=0
+    grep -q '"scope_leak_files"' "$_spec18_result" && _spec18_has_field=1
+    assert_eq "[SPEC-18] scope_leak_files field present in result JSON" "1" "$_spec18_has_field"
+else
+    assert_fail "[SPEC-18] objective-gate-result.json written for in-scope diff" \
+        "file not found: $_spec18_result"
+fi
+
+# ─── SPEC-19: out-of-scope diff fails with reason=scope_leak ─────────────────
+# CHANGE: scope-leak gate absent at merge-base. After implementation, when diff
+# contains a path not covered by scope-manifest.md (replicating the #989
+# regression where .zbuild/prompts/design-overrides.md was deleted out of
+# scope), verdict=fail, reason=scope_leak, and scope_leak_files names the path.
+
+_spec19_manifest="$_tmpdir/scope-manifest-19.md"
+printf '+ tests/\n' > "$_spec19_manifest"
+
+rm -f "$_artifacts_dir/objective-gate-result.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="printf '%s\n' .zbuild/prompts/design-overrides.md"
+export ZBUILD_SCOPE_MANIFEST="$_spec19_manifest"
+set +e
+objective_gate_run "objective-gate" "$_state_file"
+_spec19_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_SCOPE_MANIFEST
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+
+assert_eq "[SPEC-19] rc=1 for out-of-scope diff (scope-leak gate)" "1" "$_spec19_rc"
+_spec19_result="$_artifacts_dir/objective-gate-result.json"
+if [[ -f "$_spec19_result" ]]; then
+    _spec19_verdict="$(grep -o '"verdict":"[^"]*"' "$_spec19_result" | cut -d'"' -f4 || echo 'ERROR')"
+    _spec19_reason="$(grep -o '"reason":"[^"]*"' "$_spec19_result" | cut -d'"' -f4 || echo 'ERROR')"
+    assert_eq "[SPEC-19] verdict=fail for out-of-scope diff" "fail" "$_spec19_verdict"
+    assert_eq "[SPEC-19] reason=scope_leak for out-of-scope diff" "scope_leak" "$_spec19_reason"
+    _spec19_leak_has_path=0
+    grep -q '".zbuild/prompts/design-overrides.md"' "$_spec19_result" && _spec19_leak_has_path=1
+    assert_eq "[SPEC-19] scope_leak_files contains the offending path" "1" "$_spec19_leak_has_path"
+else
+    assert_fail "[SPEC-19] objective-gate-result.json written for out-of-scope diff" \
+        "file not found: $_spec19_result"
+fi
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
