@@ -47,6 +47,10 @@ config:
     - security
     - test-coverage
     - design-conformance
+    - integration
+    - error-handling
+    - performance
+    - edge-case
 
 inputs:
   - id: scope_manifest

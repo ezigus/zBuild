@@ -33,6 +33,14 @@ route_to_model() {
         printf '%s' '{"score":6,"findings":[{"file":"core/x.sh","category":"logic","severity":"medium","line":42,"message":"off-by-one in loop"}]}'
     elif [[ "$prompt" == *'"security" review lens'* ]]; then
         printf '%s' '{"score":3,"findings":[{"file":"core/x.sh","category":"logic","severity":"high","line":47,"message":"same region higher severity"},{"file":"core/y.sh","category":"injection","severity":"critical","line":10,"message":"shell injection risk"}]}'
+    elif [[ "$prompt" == *'"integration" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"error-handling" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"performance" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"edge-case" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
     fi
@@ -59,12 +67,12 @@ _rr_run_inner "$scope_manifest" "$evidence" "$out_json" "$out_md"
 _run_rc=$?
 set -e
 
-# ─── SPEC-1: N-way lens fan-out — 4 separate LLM calls, 4 lens sections ──────
+# ─── SPEC-1: N-way lens fan-out — 8 separate LLM calls, 8 lens sections ──────
 assert_eq "[SPEC-1] run returns 0 (advisory never aborts)" "0" "$_run_rc"
 _call_count="$(wc -l < "$_RR_CALLS" | tr -d ' ')"
-assert_eq "[SPEC-1] one LLM call per lens (4 separate calls, not 1 prompt)" "4" "$_call_count"
-assert_eq "[SPEC-1] report has 4 lenses" "4" "$(jq '.lenses | length' "$out_json")"
-for _lens in correctness security test-coverage design-conformance; do
+assert_eq "[SPEC-1] one LLM call per lens (8 separate calls, not 1 prompt)" "8" "$_call_count"
+assert_eq "[SPEC-1] report has 8 lenses" "8" "$(jq '.lenses | length' "$out_json")"
+for _lens in correctness security test-coverage design-conformance integration error-handling performance edge-case; do
     assert_contains "[SPEC-1] md has lens section: $_lens" "$(cat "$out_md")" "#### $_lens"
 done
 
@@ -158,5 +166,17 @@ fi
 # Proximity window of 0 (or garbage) must clamp, not crash the aggregate.
 _clamp="$(ZBUILD_RR_PROXIMITY_WINDOW=0 _rr_aggregate "$artifact_dir/review-report-lenses.json" 2>/dev/null | jq -r '.merge_readiness // "ERR"')"
 assert_contains "[SPEC-7] bad proximity window clamps (no aggregation crash)" "ready advisory needs_attention" "$_clamp"
+
+# ─── SPEC-8: new cq audit lenses resolve to named charter branches ────────────
+# Each new lens must return a non-empty charter that contains a key phrase from
+# its named case branch — NOT the wildcard fallback text (I8a, ADR-038 §4).
+_charter_int="$(_rr_lens_charter integration)"
+assert_contains "[SPEC-8] integration charter names mismatched interfaces" "$_charter_int" "interfaces"
+_charter_eh="$(_rr_lens_charter error-handling)"
+assert_contains "[SPEC-8] error-handling charter names silent error swallowing" "$_charter_eh" "silent error"
+_charter_perf="$(_rr_lens_charter performance)"
+assert_contains "[SPEC-8] performance charter names O(n^2) pattern" "$_charter_perf" "O(n^2)"
+_charter_ec="$(_rr_lens_charter edge-case)"
+assert_contains "[SPEC-8] edge-case charter names zero-length inputs" "$_charter_ec" "zero-length"
 
 print_test_results
