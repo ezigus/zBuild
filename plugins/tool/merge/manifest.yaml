@@ -1,0 +1,55 @@
+id: merge
+name: Auto-Merge Stage
+kind: tool
+version: 0.1.0
+description: |
+  Auto-merge tool plugin (ADR-037 §4, I9-B / #1050). When merge_policy: auto is
+  active and artifacts/objective-gate-result.json carries verdict: pass, merges the
+  branch via `gh pr merge --squash --auto`. Falls back to calling pr_open_run (PR path)
+  when the gate artifact is absent or verdict != pass. Refuses if on main/master.
+  No LLM dependency — T0 tool stage (ADR-013).
+
+hooks:
+  init: merge_init
+  run: merge_run
+  finalize: merge_finalize
+  cleanup: merge_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+
+provides:
+  artifact_type: merge-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+
+inputs:
+  - id: objective_gate_result
+    type: file
+    path: "${artifact_dir}/objective-gate-result.json"
+    source: stage:objective-gate
+    required: false
+  - id: review
+    type: file
+    path: "${artifact_dir}/review.json"
+    source: stage:review
+    required: true
+
+outputs:
+  - id: merge_result
+    path: ${artifact_dir}/merge-result.json
+    type: merge-result.json
+    required: true
+    primary: true
+  - id: pr_url
+    path: ${artifact_dir}/pr-url.txt
+    type: pr-url.txt
+    required: false
+
+state:
+  persisted: []
+  reconstructed: []
