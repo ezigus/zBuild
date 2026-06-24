@@ -151,6 +151,11 @@ assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
 assert_eq "[SPEC-6] simple.yaml: pr roles remain pr (not pr_delivery, guard)" \
     "pr" "${_TPL_STAGE_ROLES_pr}"
 
+# ─── SPEC-7 (I9-A): template_merge_policy() accessor returns "manual" for simple.yaml ─
+# CHANGE: load_template previously discarded merge_policy; this assertion fails
+# at baseline (function did not exist / returned empty) and passes after I9-A.
+assert_eq "[SPEC-7] template_merge_policy() == manual" "manual" "$(template_merge_policy)"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
