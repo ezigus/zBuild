@@ -41,6 +41,12 @@ route_to_model() {
         printf '%s' '{"score":10,"findings":[]}'
     elif [[ "$prompt" == *'"edge-case" review lens'* ]]; then
         printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"architecture" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"red-team" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"maintainability" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
     fi
@@ -67,12 +73,12 @@ _rr_run_inner "$scope_manifest" "$evidence" "$out_json" "$out_md"
 _run_rc=$?
 set -e
 
-# ─── SPEC-1: N-way lens fan-out — 8 separate LLM calls, 8 lens sections ──────
+# ─── SPEC-1: N-way lens fan-out — 11 separate LLM calls, 11 lens sections ─────
 assert_eq "[SPEC-1] run returns 0 (advisory never aborts)" "0" "$_run_rc"
 _call_count="$(wc -l < "$_RR_CALLS" | tr -d ' ')"
-assert_eq "[SPEC-1] one LLM call per lens (8 separate calls, not 1 prompt)" "8" "$_call_count"
-assert_eq "[SPEC-1] report has 8 lenses" "8" "$(jq '.lenses | length' "$out_json")"
-for _lens in correctness security test-coverage design-conformance integration error-handling performance edge-case; do
+assert_eq "[SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)" "11" "$_call_count"
+assert_eq "[SPEC-1] report has 11 lenses" "11" "$(jq '.lenses | length' "$out_json")"
+for _lens in correctness security test-coverage design-conformance integration error-handling performance edge-case architecture red-team maintainability; do
     assert_contains "[SPEC-1] md has lens section: $_lens" "$(cat "$out_md")" "#### $_lens"
 done
 
@@ -178,5 +184,17 @@ _charter_perf="$(_rr_lens_charter performance)"
 assert_contains "[SPEC-8] performance charter names O(n^2) pattern" "$_charter_perf" "O(n^2)"
 _charter_ec="$(_rr_lens_charter edge-case)"
 assert_contains "[SPEC-8] edge-case charter names zero-length inputs" "$_charter_ec" "zero-length"
+
+# ─── SPEC-9: architecture lens resolves to named charter branch ───────────────
+_charter_arch="$(_rr_lens_charter architecture)"
+assert_contains "[SPEC-9] architecture charter names layer-boundary violations" "$_charter_arch" "layer-boundary"
+
+# ─── SPEC-10: red-team lens resolves to named charter branch ─────────────────
+_charter_rt="$(_rr_lens_charter red-team)"
+assert_contains "[SPEC-10] red-team charter names race conditions" "$_charter_rt" "race condition"
+
+# ─── SPEC-11: maintainability lens resolves to named charter branch ───────────
+_charter_maint="$(_rr_lens_charter maintainability)"
+assert_contains "[SPEC-11] maintainability charter names code smells" "$_charter_maint" "code smell"
 
 print_test_results
