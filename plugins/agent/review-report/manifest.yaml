@@ -51,6 +51,9 @@ config:
     - error-handling
     - performance
     - edge-case
+    - architecture
+    - red-team
+    - maintainability
 
 inputs:
   - id: scope_manifest

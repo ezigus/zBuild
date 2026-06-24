@@ -18,7 +18,10 @@ _ZBUILD_RR_LENSES_LOADED=1
 # and adds the full cq + persona content). Each entry is one independent LLM call.
 # I8a adds the cq audit half: integration, error-handling, performance, edge-case
 # (charter text rehomed from legacy/scripts/lib/compound-audit.sh lines 34-74).
-_RR_LENSES=(correctness security test-coverage design-conformance integration error-handling performance edge-case)
+# I8b adds the persona half: architecture, red-team, maintainability
+# (charter text distilled from legacy/scripts/sw-architecture-enforcer.sh,
+# sw-adversarial.sh, and sw-developer-simulation.sh).
+_RR_LENSES=(correctness security test-coverage design-conformance integration error-handling performance edge-case architecture red-team maintainability)
 
 # Severity ordinal map (jq-injected for max-severity selection in dedup).
 _RR_SEV_RANK='{"low":1,"medium":2,"high":3,"critical":4}'
@@ -54,6 +57,12 @@ _rr_lens_charter() {
             printf '%s' "Examine the change for performance problems: O(n^2) or worse loop patterns, unbounded memory allocation or file reads, missing pagination or streaming for large data, and repeated expensive operations that could be cached." ;;
         edge-case)
             printf '%s' "Examine the change for edge-case gaps: zero-length inputs, empty strings and arrays, boundary values at maximum or minimum, Unicode and special characters in data paths, and concurrent access timing issues." ;;
+        architecture)
+            printf '%s' "Examine the change for architectural violations: layer-boundary breaches, coupling between components that should be isolated, divergence from established patterns and conventions, and structural decisions that would impede future evolution." ;;
+        red-team)
+            printf '%s' "Examine the change as a hostile reviewer looking for exploitable flaws: race conditions, privilege escalation paths, logic errors that can be triggered by adversarial input, and security assumptions that break under adversarial conditions." ;;
+        maintainability)
+            printf '%s' "Examine the change for long-term maintainability risks: code smells, poor naming, unclear logic, coupling issues, missing tests, and violations of established patterns that make future changes harder." ;;
         *)
             printf '%s' "Examine the change for issues relevant to the ${1} concern." ;;
     esac
