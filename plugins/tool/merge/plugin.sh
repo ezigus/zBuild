@@ -59,6 +59,16 @@ merge_run() {
         return $?
     fi
 
+    # ADR-001/#358 fail-closed: pr-open refuses to publish without a review
+    # verdict on disk. Mirror that on the auto-merge path — NEVER auto-merge
+    # without review.json. Missing → route to the PR path (which itself
+    # fail-closes), so a clean objective gate can't merge an unreviewed branch.
+    if [[ ! -f "$artifacts_dir/review.json" ]]; then
+        warn "merge_run: review.json absent — fail-closed, routing to PR path (ADR-001/#358)"
+        _merge_pr_fallback "$stage_id" "$state_file" "$merge_result_out" "review_absent"
+        return $?
+    fi
+
     _merge_run_inner "$stage_id" "$state_file" "$merge_result_out"
     return $?
 }
@@ -141,11 +151,17 @@ _merge_run_inner() {
         pr_title="zbuild: automated merge"
     fi
 
-    # Create non-draft PR then immediately squash-merge
+    # Create non-draft PR then immediately squash-merge. Include a Closes link so
+    # the issue auto-closes on merge and the PR isn't flagged as an orphan by the
+    # manifest-sync automation (scripts/manifest-sync.sh).
+    local pr_body="Auto-merged by zBuild (merge_policy: auto)."
+    if [[ -n "$issue_num" && "$issue_num" != "0" ]]; then
+        pr_body="${pr_body}"$'\n\n'"Closes #${issue_num}"
+    fi
     local gh_output
     if ! gh_output="$(gh pr create \
         --title "$pr_title" \
-        --body "Auto-merged by zBuild (merge_policy: auto)." 2>&1)"; then
+        --body "$pr_body" 2>&1)"; then
         error "merge_run: gh pr create failed: $gh_output"
         jq -n --arg reason "$gh_output" \
             '{"schema_version":1,"status":"error","reason":$reason}' \
@@ -182,6 +198,23 @@ _merge_run_inner() {
         '{"schema_version":$schema_version,"status":$status,"pr_url":$pr_url,
           "pr_number":$pr_number,"branch":$branch,"issue":$issue}' \
         > "$merge_result_out"
+
+    # Manifest contract: pr-delivery declares pr-result.json as a REQUIRED output
+    # (plugins/agent/pr-delivery/manifest.yaml). The auto-merge path must write it
+    # too (mirror pr-open's schema, status=merged, draft=false) so the pr stage's
+    # scan_plugin_outputs check is satisfied — the PR was created then squash-merged.
+    local pr_result_out="$artifacts_dir/pr-result.json"
+    jq -n \
+        --argjson schema_version 1 \
+        --arg status "merged" \
+        --arg pr_url "$pr_url" \
+        --argjson pr_number "${pr_number:-0}" \
+        --argjson draft false \
+        --arg branch "$target_branch" \
+        --argjson issue "${issue_num:-0}" \
+        '{schema_version: $schema_version, status: $status, pr_url: $pr_url,
+          pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
+        > "$pr_result_out"
 
     emit_event "plugin.run.complete" "plugin=merge" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}"
