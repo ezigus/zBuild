@@ -41,6 +41,13 @@ _test_cleanup_hook() {
     fi
 }
 
+# #996: skip on macOS CI. This test sends `kill -TERM` to a process group and
+# asserts the pipeline aborts; the macOS CI harness's process-group/signal-delivery
+# semantics don't reliably land the signal on the build stage (and macOS lacks
+# `timeout` as a backstop), so it flakes/hangs there. The SIGTERM-abort behavior is
+# fully covered on the Linux leg. Follow-up: harden for the macOS matrix, then un-gate.
+skip_on_platform macos
+
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"

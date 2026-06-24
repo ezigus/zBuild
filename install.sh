@@ -25,12 +25,15 @@ check_bin() {
 
 prereqs_ok=true
 
-# macOS: ensure the two formulae zbuild cannot run without and that the base
-# system lacks — Bash 5 (system /bin/bash is frozen at 3.2) and flock (the
-# local-fs claim backend requires it for atomicity). Idempotent; only attempts
-# when Homebrew is present, then the checks below confirm the result.
+# macOS: ensure the formulae zbuild cannot run well without and that the base
+# system lacks — Bash 5 (system /bin/bash is frozen at 3.2), flock (the local-fs
+# claim backend requires it for atomicity), and coreutils for `gtimeout` (macOS
+# has no `timeout`; route.sh and scripts/run-tests.sh use gtimeout to bound model
+# calls + hung test files — without it those timeouts silently no-op). Idempotent;
+# only attempts when Homebrew is present.
 if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
-    command -v flock >/dev/null 2>&1 || brew install flock
+    command -v flock    >/dev/null 2>&1 || brew install flock
+    command -v gtimeout >/dev/null 2>&1 || brew install coreutils
     bash -c '(( BASH_VERSINFO[0] >= 5 ))' >/dev/null 2>&1 || brew install bash
 fi
 
@@ -43,7 +46,7 @@ done
 if [[ "$prereqs_ok" != "true" ]]; then
     error "Install missing prerequisites and re-run ./install.sh"
     echo
-    echo "  macOS:   brew install bash git jq gh rsync flock"
+    echo "  macOS:   brew install bash git jq gh rsync flock coreutils"
     echo "  Linux:   sudo apt install bash git jq gh rsync util-linux"
     exit 1
 fi

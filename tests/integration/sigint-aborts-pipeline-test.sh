@@ -46,6 +46,14 @@ _test_cleanup_hook() {
     fi
 }
 
+# #996: skip on macOS CI. This test drives a kernel-pgrp SIGINT chain and asserts
+# the pipeline aborts within a tight wall-clock budget. On the macOS CI harness the
+# process-group/signal-delivery semantics don't reliably land the signal on the
+# target stage (and macOS lacks `timeout` as a backstop), so it flakes/hangs there.
+# The SIGINT-abort behavior is fully covered on the Linux leg. Follow-up: harden
+# these signal-abort tests for the macOS matrix, then un-gate. (cf. route-fast-abort)
+skip_on_platform macos
+
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"

@@ -18,6 +18,13 @@ setup_test_env "pipeline-runner"
 # inputs/outputs blocks; opt out — this suite tests runner mechanics.
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
+# #996: skip on macOS CI. Several tests here kill the runner mid-`sleep`-stub and
+# assert signal-driven abort/banner timing; the macOS CI harness's process-group
+# signal semantics make those flake/hang (despite the gtimeout backstop). The
+# runner mechanics are OS-agnostic and fully covered on the Linux leg. Follow-up:
+# harden the kill-mid-run blocks for the macOS matrix, then un-gate.
+skip_on_platform macos
+
 # Use shared factory from test-helpers.sh (Wave 4)
 _make_plugin() { mock_plugin_factory "$@" >/dev/null; }   # #619: suppress factory's path echo
 
