@@ -172,7 +172,17 @@ requires:
     - redaction
 EOF
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 10; return 0; }
+intake_run() {
+    # #996: block with NO forked child. A `sleep` would (a) orphan on a macOS
+    # abort and (b) DEFER the runner's signal trap until it returns (so a kill
+    # mid-run is swallowed and the pipeline proceeds). A builtin `read` on a
+    # never-fed FIFO blocks until the signal interrupts it immediately.
+    local _f="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}/.zb-intake-block.$$.fifo"
+    mkfifo "$_f" 2>/dev/null || true
+    exec 9<>"$_f"
+    read -r -u 9 _ || true
+    return 0
+}
 EOF
 
 bash "$RUNNER" --issue 83 >/dev/null 2>&1 &
@@ -358,7 +368,15 @@ requires:
     - redaction
 EOF
 cat > "$A2_PLUGINS/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 15; return 0; }
+intake_run() {
+    # #996: block with NO forked child (see the intake stub above) — interrupted
+    # immediately by the abort signal, no orphan, no deferred trap.
+    local _f="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}/.zb-intake-block.$$.fifo"
+    mkfifo "$_f" 2>/dev/null || true
+    exec 9<>"$_f"
+    read -r -u 9 _ || true
+    return 0
+}
 EOF
 
 # Fast downstream plugins (never reached due to kill)
@@ -664,7 +682,17 @@ requires:
     - redaction
 EOF
 cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 15; return 0; }
+intake_run() {
+    # #996: block with NO forked child. The old `sleep 15` deferred the runner's
+    # SIGTERM trap until it returned, so the kill was swallowed and the pipeline
+    # ran on to `plan` without emitting the abort banner (macOS CI). A builtin
+    # `read` on a never-fed FIFO is interrupted by the signal immediately.
+    local _f="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}/.zb-intake-block.$$.fifo"
+    mkfifo "$_f" 2>/dev/null || true
+    exec 9<>"$_f"
+    read -r -u 9 _ || true
+    return 0
+}
 EOF
 
 # Flaky-kill mitigation (per #494): retry if the kill races pipeline.start
