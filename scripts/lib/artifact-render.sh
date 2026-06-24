@@ -670,14 +670,18 @@ render_review_report_md() {
         return 0
     fi
 
-    local readiness summary
+    local readiness summary escalation_note
     readiness="$(printf '%s' "$input" | jq -r '.merge_readiness // "advisory"' 2>/dev/null)"
     summary="$(printf '%s' "$input" | jq -r '.summary // empty' 2>/dev/null)"
+    escalation_note="$(printf '%s' "$input" | jq -r '.escalation_note // empty' 2>/dev/null)"
 
     printf '## Review Report\n'
     printf '\n**Merge Readiness:** %s\n' "$(_artifact_md_escape_inline "${readiness:-advisory}")"
     if [[ -n "$summary" ]]; then
         printf '\n%s\n' "$(_artifact_md_escape_block "$summary")"
+    fi
+    if [[ -n "$escalation_note" && "$escalation_note" != "null" ]]; then
+        printf '\n> **Advisory:** %s\n' "$(_artifact_md_escape_inline "$escalation_note")"
     fi
 
     # esc mirrors _artifact_md_escape_inline in jq: strip ANSI/CSI, collapse

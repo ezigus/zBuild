@@ -14,14 +14,33 @@
 [[ -n "${_ZBUILD_RR_LENSES_LOADED:-}" ]] && return 0
 _ZBUILD_RR_LENSES_LOADED=1
 
-# I6 fixed roster (mirrors manifest config.lenses; #974 makes it config-driven
-# and adds the full cq + persona content). Each entry is one independent LLM call.
-# I8a adds the cq audit half: integration, error-handling, performance, edge-case
-# (charter text rehomed from legacy/scripts/lib/compound-audit.sh lines 34-74).
-# I8b adds the persona half: architecture, red-team, maintainability
-# (charter text distilled from legacy/scripts/sw-architecture-enforcer.sh,
-# sw-adversarial.sh, and sw-developer-simulation.sh).
-_RR_LENSES=(correctness security test-coverage design-conformance integration error-handling performance edge-case architecture red-team maintainability)
+# Load _RR_LENSES from manifest.yaml config.lenses; fail-soft to the hardcoded list.
+# BASH_SOURCE[0] is this file (lenses.sh); ".." reaches the plugin root containing manifest.yaml.
+_rr_load_lenses() {
+    local _manifest_dir _manifest _item
+    _manifest_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" || true
+    _manifest="${_manifest_dir}/manifest.yaml"
+    local -a _items=()
+    if [[ -f "$_manifest" ]]; then
+        while IFS= read -r _item; do
+            [[ -n "$_item" ]] && _items+=("$_item")
+        done < <(awk '
+            BEGIN { in_cfg=0; in_lst=0 }
+            /^config:$/              { in_cfg=1; next }
+            in_cfg && /^[^ ]/        { in_cfg=0; in_lst=0; next }
+            in_cfg && /^  lenses:$/  { in_lst=1; next }
+            in_lst && /^  [^ #]/     { in_lst=0 }
+            in_lst && /^    - [a-z]/ { val=substr($0,7); gsub(/[[:space:]]+$/,"",val); if (val!="") print val }
+        ' "$_manifest" 2>/dev/null)
+    fi
+    if [[ "${#_items[@]}" -gt 0 ]]; then
+        _RR_LENSES=("${_items[@]}")
+    else
+        # Fail-soft: manifest absent or unparseable — use known-good list.
+        _RR_LENSES=(correctness security test-coverage design-conformance integration error-handling performance edge-case architecture red-team maintainability)
+    fi
+}
+_rr_load_lenses
 
 # Severity ordinal map (jq-injected for max-severity selection in dedup).
 _RR_SEV_RANK='{"low":1,"medium":2,"high":3,"critical":4}'
@@ -252,13 +271,15 @@ _rr_aggregate() {
           ) as $flat
         | ( [ $lenses[].score ] ) as $scores
         | ( [ $flat[].severity ] ) as $sevs
+        | (
+            if ($sevs | any(. == "critical")) then "needs_attention"
+            elif ($scores | any(. <= 3)) then "needs_attention"
+            elif ($flat | length) == 0 and ($scores | all(. >= 7)) then "ready"
+            else "advisory" end
+          ) as $readiness
         | {
             schema_version: 1,
-            merge_readiness: (
-              if ($sevs | any(. == "critical")) then "needs_attention"
-              elif ($scores | any(. <= 3)) then "needs_attention"
-              elif ($flat | length) == 0 and ($scores | all(. >= 7)) then "ready"
-              else "advisory" end),
+            merge_readiness: $readiness,
             lenses: $lenses,
             findings: $flat,
             summary: (
@@ -266,6 +287,11 @@ _rr_aggregate() {
               + "\($lenses | length) lens(es)"
               + " (\([ $sevs[] | select(. == "critical") ] | length) critical, "
               + "\([ $sevs[] | select(. == "high") ] | length) high)."
+            ),
+            escalation_note: (
+              if $readiness == "needs_attention" then
+                "One or more lenses scored <=3 or found a critical-severity issue; consider requesting a tier-2 expert review or escalating to a senior reviewer before merging. Advisory only — this does not block the pipeline."
+              else null end
             )
           }' "$lenses_file" 2>/dev/null \
     || printf '{"schema_version":1,"merge_readiness":"advisory","lenses":[],"findings":[],"summary":"Report unavailable: aggregation error."}'

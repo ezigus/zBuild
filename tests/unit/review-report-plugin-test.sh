@@ -197,4 +197,36 @@ assert_contains "[SPEC-10] red-team charter names race conditions" "$_charter_rt
 _charter_maint="$(_rr_lens_charter maintainability)"
 assert_contains "[SPEC-11] maintainability charter names code smells" "$_charter_maint" "code smell"
 
+# ─── SPEC-12: _RR_LENSES sourced from manifest config.lenses, not hardcoded ──
+# Change spec: _rr_load_lenses function must exist (absent at baseline).
+if declare -f _rr_load_lenses >/dev/null 2>&1; then
+    assert_pass "[SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)"
+else
+    assert_fail "[SPEC-12] _rr_load_lenses function must exist (manifest-driven roster)" "function absent"
+fi
+# The loaded _RR_LENSES content must match the manifest config.lenses section.
+_manifest_lenses="$(awk '
+    BEGIN { in_cfg=0; in_lst=0 }
+    /^config:$/              { in_cfg=1; next }
+    in_cfg && /^[^ ]/        { in_cfg=0; in_lst=0; next }
+    in_cfg && /^  lenses:$/  { in_lst=1; next }
+    in_lst && /^  [^ #]/     { in_lst=0 }
+    in_lst && /^    - [a-z]/ { val=substr($0,7); gsub(/[[:space:]]+$/,"",val); if (val!="") printf "%s ", val }
+' "$REPO_ROOT/plugins/agent/review-report/manifest.yaml" | sed 's/ $//')"
+_actual_lenses="${_RR_LENSES[*]}"
+assert_eq "[SPEC-12] _RR_LENSES content matches manifest config.lenses" \
+    "$_manifest_lenses" "$_actual_lenses"
+
+# ─── SPEC-13: needs_attention report carries escalation_note + routing note ───
+# Change spec: _rr_aggregate must emit escalation_note when merge_readiness=needs_attention.
+# out_json is from the main run above (security lens score=3 + critical finding → needs_attention).
+_esc_note="$(jq -r '.escalation_note // empty' "$out_json" 2>/dev/null)"
+if [[ -n "$_esc_note" ]]; then
+    assert_pass "[SPEC-13] needs_attention JSON carries non-empty escalation_note"
+else
+    assert_fail "[SPEC-13] needs_attention report must carry escalation_note in JSON" "field absent or null"
+fi
+assert_contains "[SPEC-13] rendered markdown contains the routing advisory blockquote" \
+    "$(cat "$out_md")" "Advisory:"
+
 print_test_results

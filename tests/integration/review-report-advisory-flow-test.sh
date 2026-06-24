@@ -94,4 +94,20 @@ else
     assert_pass "[SPEC-3] report carries no verdict (no coercion)"
 fi
 
+# ─── SPEC-12: manifest-driven roster present in integration context ────────────
+if declare -f _rr_load_lenses >/dev/null 2>&1; then
+    assert_pass "[SPEC-12] _rr_load_lenses function present in integration context"
+else
+    assert_fail "[SPEC-12] _rr_load_lenses function must exist (manifest-driven roster)" "absent"
+fi
+
+# ─── SPEC-13: escalation_note flows end-to-end into the advisory report ───────
+# score=2 + critical finding → needs_attention → escalation_note must be non-null.
+_esc_note="$(jq -r '.escalation_note // empty' "$state_dir/artifacts/review-report.json" 2>/dev/null)"
+if [[ -n "$_esc_note" ]]; then
+    assert_pass "[SPEC-13] needs_attention report has escalation_note (integration end-to-end)"
+else
+    assert_fail "[SPEC-13] needs_attention report must have escalation_note (integration)" "absent"
+fi
+
 print_test_results
