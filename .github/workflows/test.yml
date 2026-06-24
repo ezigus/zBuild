@@ -57,13 +57,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - name: Ensure Bash 5 + flock (macOS)
+      - name: Ensure Bash 5 + flock + coreutils (macOS)
         if: runner.os == 'macOS'
-        # macOS ships Bash 3.2 (suite needs Bash 5, install.sh) and no `flock`
-        # (the local-fs claim backend needs it; clean runners lack it). Mirror
+        # macOS ships Bash 3.2 (suite needs Bash 5, install.sh), no `flock` (the
+        # local-fs claim backend needs it), and no `timeout` — coreutils provides
+        # `gtimeout`, which scripts/run-tests.sh uses to bound a hung test file
+        # (without it the per-file timeout silently no-ops and a hang runs forever,
+        # #996). Clean runners lack all three. Mirror
         # install.sh's macOS prereqs so the unit tier runs the same on both OSes.
         run: |
-          brew install bash flock
+          brew install bash flock coreutils
           # Prepend Homebrew's bin so subsequent run: steps deterministically use
           # Bash 5 — PATH precedence vs the system /bin/bash 3.2 varies across
           # macOS runner images/arches (Copilot review #1031).
@@ -106,13 +109,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - name: Ensure Bash 5 + flock (macOS)
+      - name: Ensure Bash 5 + flock + coreutils (macOS)
         if: runner.os == 'macOS'
-        # macOS ships Bash 3.2 (suite needs Bash 5, install.sh) and no `flock`
-        # (the local-fs claim backend needs it; clean runners lack it). Mirror
+        # macOS ships Bash 3.2 (suite needs Bash 5, install.sh), no `flock` (the
+        # local-fs claim backend needs it), and no `timeout` — coreutils provides
+        # `gtimeout`, which scripts/run-tests.sh uses to bound a hung test file
+        # (without it the per-file timeout silently no-ops and a hang runs forever,
+        # #996). Clean runners lack all three. Mirror
         # install.sh's macOS prereqs so the tier runs the same on both OSes.
         run: |
-          brew install bash flock
+          brew install bash flock coreutils
           # Prepend Homebrew's bin so subsequent run: steps deterministically use
           # Bash 5 — PATH precedence vs the system /bin/bash 3.2 varies across
           # macOS runner images/arches (Copilot review #1031).

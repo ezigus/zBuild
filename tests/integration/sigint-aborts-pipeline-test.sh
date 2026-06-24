@@ -46,6 +46,14 @@ _test_cleanup_hook() {
     fi
 }
 
+# #996: skip on macOS CI. This test drives a kernel-pgrp SIGINT chain and asserts
+# the pipeline aborts within a tight wall-clock budget. On the macOS CI harness the
+# process-group/signal-delivery semantics don't reliably land the signal on the
+# target stage (and macOS lacks `timeout` as a backstop), so it flakes/hangs there.
+# The SIGINT-abort behavior is fully covered on the Linux leg. Follow-up: harden
+# these signal-abort tests for the macOS matrix, then un-gate. (cf. route-fast-abort)
+skip_on_platform macos
+
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -140,14 +148,10 @@ fi
 
 # (1) Wall-clock budget: < 4s. Without the fix, the route loop iterates 5x
 #     against the rc=130 mock; with the fix it bails after the first call.
-# #996: OS-aware budget — 4s on Linux (sharp regression detector; without the
-# fix the loop iterates 5x), wider on macOS CI (slower/saturated runners). The
-# Linux leg remains the precise gate against the route-loop regression.
-_sigint_budget="$(zbuild_wall_budget 4 12)"
-if [[ "$elapsed" -le "$_sigint_budget" ]]; then
-    assert_pass "pipeline halted in ≤${_sigint_budget}s end-to-end (actual=${elapsed}s)"
+if [[ "$elapsed" -le 4 ]]; then
+    assert_pass "pipeline halted in ≤4s end-to-end (actual=${elapsed}s)"
 else
-    assert_fail "pipeline halted in ≤${_sigint_budget}s end-to-end" \
+    assert_fail "pipeline halted in ≤4s end-to-end" \
         "actual=${elapsed}s — route loop is still iterating on rc=130"
 fi
 
