@@ -483,6 +483,12 @@ print_test_results() {
         echo ""
         echo -e "  ${YELLOW}${BOLD}SKIP${RESET}"
         echo ""
+        # #1063 follow-up: record this file as skipped so run-tests.sh can report
+        # skips distinctly. A skipped file exits 0 and would otherwise tally as a
+        # PASS, hiding platform gating (e.g. #996's skip_on_platform macos shows up
+        # as a confusing "172/172 passed" with no indication 8 tests were skipped).
+        [[ -n "${ZBUILD_TEST_SKIP_LOG:-}" ]] \
+            && printf '%s\n' "${0##*/}" >> "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || true
         exit 0
     fi
     # #600: in quiet mode, emit a single-line compact summary FIRST so the

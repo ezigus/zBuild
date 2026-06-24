@@ -213,6 +213,23 @@ _rt_run_serial_file() {
     fi
 }
 
+# #1063 follow-up: emit a tier summary, appending "(N skipped)" when test files
+# reported platform/capability skips during this tier (e.g. #996's
+# skip_on_platform macos). A skipped file exits 0 and is tallied as a pass, so
+# without this the gating is invisible ("172/172 passed" on every platform). The
+# suffix is appended AFTER the "P/T passed" token so existing parsers (the
+# build_test_cycle verdict parser, the --tier all aggregation) are unaffected.
+# Reads and clears the per-tier ZBUILD_TEST_SKIP_LOG.
+_rt_emit_summary() {
+    local _name="$1" _passed="$2" _total="$3" _sk=0 _note=""
+    if [[ -n "${ZBUILD_TEST_SKIP_LOG:-}" && -f "${ZBUILD_TEST_SKIP_LOG}" ]]; then
+        _sk="$(grep -c . "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || echo 0)"
+        rm -f "$ZBUILD_TEST_SKIP_LOG"
+    fi
+    [[ "$_sk" -gt 0 ]] && _note=" ($_sk skipped)"
+    echo "$_name: $_passed/$_total passed$_note"
+}
+
 run_tier() {
   local name="$1"
   local dir="$TESTS_DIR/$name"
@@ -257,6 +274,13 @@ run_tier() {
     echo "$name: 0/0 passed (empty tier)"
     return 0
   fi
+
+  # #1063 follow-up: per-tier skip log. Each test file's print_test_results
+  # appends its basename here when it ends in a SKIP (skip_on_platform / capability
+  # gate). Exported so the spawned test processes inherit it; read + cleared by
+  # _rt_emit_summary at the end of this tier. Per-tier (not global) so concurrent
+  # tiers in `--tier all` don't cross-count.
+  export ZBUILD_TEST_SKIP_LOG; ZBUILD_TEST_SKIP_LOG="$(mktemp -t "zbuild-skip-$name.XXXXXX")"
 
   # #993: in coverage mode each test writes its own per-test trace into this dir;
   # they are merged into $_RT_COVERAGE_TRACE at the end of the tier. Kept separate
@@ -392,7 +416,7 @@ run_tier() {
       cat "$_cov_dir"/*.trace > "$_RT_COVERAGE_TRACE" 2>/dev/null || :
       rm -rf "$_cov_dir"
     fi
-    echo "$name: $passed/$total passed"
+    _rt_emit_summary "$name" "$passed" "$total"
     [[ $failed -eq 0 ]]
     return
   fi
@@ -413,7 +437,7 @@ run_tier() {
     cat "$_cov_dir"/*.trace > "$_RT_COVERAGE_TRACE" 2>/dev/null || :
     rm -rf "$_cov_dir"
   fi
-  echo "$name: $passed/$total passed"
+  _rt_emit_summary "$name" "$passed" "$total"
   [[ $failed -eq 0 ]]
 }
 
@@ -428,6 +452,7 @@ case "$tier" in
     overall_rc=0
     total_passed=0
     total_count=0
+    total_skipped=0
     # Per-tier rc is written to this file from inside the subshell so an
     # aborted runner (no summary line emitted) is still reflected in the
     # overall exit code — relying only on parsed totals would mask infra
@@ -494,9 +519,10 @@ case "$tier" in
     fi
     while IFS= read -r line; do
       echo "$line"
-      if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed ]]; then
+      if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed(\ \(([0-9]+)\ skipped\))? ]]; then
         total_passed=$((total_passed + BASH_REMATCH[1]))
         total_count=$((total_count + BASH_REMATCH[2]))
+        total_skipped=$((total_skipped + ${BASH_REMATCH[4]:-0}))
       fi
     done < <(
       if [[ $_tier_conc -eq 1 ]]; then
@@ -534,7 +560,8 @@ case "$tier" in
       overall_rc=1
     fi
     echo
-    echo "total: $total_passed/$total_count passed"
+    _ts_note=""; [[ "${total_skipped:-0}" -gt 0 ]] && _ts_note=" (${total_skipped} skipped)"
+    echo "total: $total_passed/$total_count passed${_ts_note}"
     exit $overall_rc
     ;;
   *)
