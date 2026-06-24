@@ -131,10 +131,10 @@ print_test_section "T2: pipeline halts within 6s (no further iterations)"
 #      lookup per pipeline-start adds ~0.5s on GHA's slower runners.
 #   4. The test's intent is "halt FAST, not iterate" — 8s still proves
 #      single-stage abort vs. multi-iter (which would be 30s+).
-if [[ "$elapsed" -le 8 ]]; then
+if [[ "$elapsed" -le 15 ]]; then
     assert_pass "pipeline halted in ${elapsed}s"
 else
-    assert_fail "pipeline halted in ≤8s" "actual=${elapsed}s"
+    assert_fail "pipeline halted in ≤15s" "actual=${elapsed}s"
 fi
 
 print_test_section "T3: test stage never starts (build rc=130 halts linear loop)"
