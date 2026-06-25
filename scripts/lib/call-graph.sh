@@ -48,10 +48,12 @@ call_graph_produce() {
     for (( _cg_i=0; _cg_i<${#_cg_funcs[@]}; _cg_i++ )); do
         local _fn="${_cg_funcs[$_cg_i]}" _ff="${_cg_files[$_cg_i]}"
 
-        # Callers: repo-wide grep for invocations (excludes definition lines).
+        # Callers: source-tree grep for invocations (excludes tests/, legacy/, .git/).
         local _callers="[]"
         _callers="$(
-            { grep -rn --include="*.sh" -w "$_fn" "$_cg_root" 2>/dev/null || true; } \
+            { grep -rn --include="*.sh" \
+                --exclude-dir=tests --exclude-dir=legacy --exclude-dir=.git \
+                -w "$_fn" "$_cg_root" 2>/dev/null || true; } \
             | { grep -vE "${_fn}[[:space:]]*\(\)" 2>/dev/null || true; } \
             | { grep -v "^Binary" 2>/dev/null || true; } \
             | awk -F: '{printf "%s:%s\n",$1,$2}' \
