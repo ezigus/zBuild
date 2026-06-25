@@ -94,7 +94,7 @@ _og_run_coverage_floor() {
     [[ "$coverage_pct" != "0" ]] && coverage_ran=1
     _og_emit "objective_gate.coverage.pass" "coverage_pct=$coverage_pct"
 
-    if [[ -n "$_map_out" && -f "$_map_out" ]]; then
+    if [[ -n "$_map_out" && -s "$_map_out" ]]; then
         coverage_map_path="$_map_out"
         _og_emit "objective_gate.coverage_map.written" "path=$coverage_map_path"
     fi

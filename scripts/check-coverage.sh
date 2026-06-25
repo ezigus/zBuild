@@ -110,8 +110,9 @@ if map_out:
     try:
         with open(map_out, 'w', encoding='utf-8') as _f:
             json.dump(cmap, _f)
-    except OSError:
-        pass
+    except OSError as _e:
+        # Fail-soft (coverage-map is advisory evidence) but surface why.
+        print(f"WARN: could not write coverage map to {map_out}: {_e}", file=sys.stderr)
 
 if overall < floor:
     print(f"ERROR: {overall:.1f}% is below the {floor}% floor", file=sys.stderr)

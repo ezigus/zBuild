@@ -182,8 +182,8 @@ _rr_populate_artifact_registry() {
 }
 
 # ─── _rr_register_lens_artifact <lens> <path> ───────────────────────────────
-# Register a per-lens artifact path so callers (e.g. objective-gate) can wire
-# distinct evidence without sourcing private internals.
+# Register a per-lens artifact path. Called by the review-report plugin (before
+# _rr_fanout_lenses) to wire distinct evidence without sourcing private internals.
 _rr_register_lens_artifact() {
     local lens="$1" path="$2"
     _RR_LENS_ARTIFACT_REGISTRY["$lens"]="$path"
