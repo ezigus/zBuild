@@ -92,50 +92,39 @@ _og_run_coverage_floor() {
 }
 
 # ─── _og_run_diff_scope_leak_check ──────────────────────────────────────────
-# Reads scope-manifest.md, parses '+ <prefix>' lines (same awk idiom as
-# scope-redaction.sh), then checks each diff path against those prefixes.
-# Paths not covered by any prefix accumulate in scope_leak_files[] (dynamic
-# scoping — caller owns the declaration). Sets fail_reason=scope_leak when
-# non-empty. No-op when manifest absent (composability).
+# Reads plan.json steps[].files[] (the SAME declared-scope source as
+# _og_run_scope_adherence) as the allow-set, then flags every diff path the
+# plan did NOT declare into scope_leak_files[]. Sets fail_reason=scope_leak
+# when non-empty. plan.json — not the redaction scope-manifest — is the source
+# of truth: the redaction manifest emits '+ ./' (allow-all) for the generic
+# platform, which made an earlier manifest-based gate inert for the common case.
+# No-op when plan.json is absent or declares no files (composability).
 _og_run_diff_scope_leak_check() {
-    local manifest_path="$1"
+    local artifacts_dir="$1"
+    local plan_json="$artifacts_dir/plan.json"
 
-    if [[ ! -f "$manifest_path" ]]; then
+    if [[ ! -f "$plan_json" ]]; then
         return 0
     fi
 
-    local allow_lines=""
-    allow_lines="$(awk '/^\+/ { sub(/^\+[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); if (length($0)) print $0 }' "$manifest_path")"
+    local plan_files=""
+    plan_files="$(jq -r '.steps[]?.files[]? // empty' "$plan_json" 2>/dev/null || true)"
+    # No declared files → no scope to enforce; skip rather than flag everything.
+    [[ -z "$plan_files" ]] && return 0
 
     local diff_cmd="${ZBUILD_DIFF_CMD:-git diff --name-only "${ZBUILD_BASELINE_SHA:-HEAD~1}"..HEAD}"
     local diff_files=""
     diff_files="$(bash -c "$diff_cmd" 2>/dev/null || true)"
 
-    local allowed_prefixes=()
-    local ap
-    while IFS= read -r ap; do
-        [[ -z "$ap" ]] && continue
-        allowed_prefixes+=("$ap")
-    done <<< "$allow_lines"
-
     scope_leak_files=()
     local df
     while IFS= read -r df; do
         [[ -z "$df" ]] && continue
-        local matched=0
-        local entry
-        for entry in "${allowed_prefixes[@]}"; do
-            [[ -z "$entry" ]] && continue
-            # Universal allow (intake emits './' for generic platform).
-            [[ "$entry" == "./" ]] && { matched=1; break; }
-            [[ "$df" == "$entry" ]] && { matched=1; break; }
-            if [[ "$entry" == */ ]]; then
-                [[ "$df" == "${entry}"* ]] && { matched=1; break; }
-            else
-                [[ "$df" == "${entry}/"* ]] && { matched=1; break; }
-            fi
-        done
-        [[ "$matched" -eq 0 ]] && scope_leak_files+=("$df")
+        # A diff path is in-scope only if the plan declared it (exact match,
+        # same idiom as _og_run_scope_adherence). Anything else is a leak.
+        if ! printf '%s\n' "$plan_files" | grep -qxF "$df"; then
+            scope_leak_files+=("$df")
+        fi
     done <<< "$diff_files"
 
     if [[ ${#scope_leak_files[@]} -gt 0 ]]; then
@@ -353,12 +342,9 @@ objective_gate_run() {
     # Scope-adherence gate (I4 — requires plan.json in artifacts_dir).
     _og_run_scope_adherence "$artifacts_dir"
 
-    # Diff scope-leak gate — reject diff paths not covered by scope manifest.
-    local _og_scope_manifest="${ZBUILD_SCOPE_MANIFEST:-}"
-    if [[ -z "$_og_scope_manifest" && -n "$state_file" ]]; then
-        _og_scope_manifest="$(dirname "$state_file")/scope-manifest.md"
-    fi
-    _og_run_diff_scope_leak_check "$_og_scope_manifest"
+    # Diff scope-leak gate — reject diff paths the plan didn't declare
+    # (plan.json files[] in artifacts_dir; same source as scope-adherence).
+    _og_run_diff_scope_leak_check "$artifacts_dir"
 
     # Ablation gates (I5 — de-ceremonied negctl, reachability, shape floor).
     _og_run_negctl "$_OG_ROOT"

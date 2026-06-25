@@ -437,24 +437,24 @@ export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 assert_eq "[SPEC-17] objective_gate_run returns 0 with no state_file (persist skipped)" "0" "$_spec17_rc"
 
 # ─── SPEC-18: in-scope diff passes the scope-leak gate ───────────────────────
-# CHANGE: scope-leak gate absent at merge-base. After implementation, when diff
-# paths are all covered by scope-manifest.md prefixes, verdict stays pass and
-# the scope_leak_files field is present (and empty) in the result JSON.
+# CHANGE: scope-leak gate absent at merge-base. After implementation, when every
+# diff path is declared in plan.json steps[].files[], verdict stays pass and
+# scope_leak_files is present AND empty in the result JSON.
 
-_spec18_manifest="$_tmpdir/scope-manifest-18.md"
-printf '+ tests/\n' > "$_spec18_manifest"
+_spec18_plan="$_artifacts_dir/plan.json"
+printf '{"steps":[{"files":["tests/unit/foo.sh"]}]}\n' > "$_spec18_plan"
 
 rm -f "$_artifacts_dir/objective-gate-result.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="true"
 export ZBUILD_DIFF_CMD="printf '%s\n' tests/unit/foo.sh"
-export ZBUILD_SCOPE_MANIFEST="$_spec18_manifest"
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec18_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_SCOPE_MANIFEST
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+rm -f "$_spec18_plan"
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -463,34 +463,38 @@ _spec18_result="$_artifacts_dir/objective-gate-result.json"
 if [[ -f "$_spec18_result" ]]; then
     _spec18_verdict="$(grep -o '"verdict":"[^"]*"' "$_spec18_result" | cut -d'"' -f4 || echo 'ERROR')"
     assert_eq "[SPEC-18] verdict=pass for in-scope diff" "pass" "$_spec18_verdict"
-    _spec18_has_field=0
-    grep -q '"scope_leak_files"' "$_spec18_result" && _spec18_has_field=1
-    assert_eq "[SPEC-18] scope_leak_files field present in result JSON" "1" "$_spec18_has_field"
+    # Field must be present AND empty (Copilot #1067: a presence-only check let a
+    # regression slip). scope_leak_files is rendered as an empty JSON array.
+    _spec18_empty=0
+    grep -qE '"scope_leak_files":[[:space:]]*\[[[:space:]]*\]' "$_spec18_result" && _spec18_empty=1
+    assert_eq "[SPEC-18] scope_leak_files present AND empty for in-scope diff" "1" "$_spec18_empty"
 else
     assert_fail "[SPEC-18] objective-gate-result.json written for in-scope diff" \
         "file not found: $_spec18_result"
 fi
 
 # ─── SPEC-19: out-of-scope diff fails with reason=scope_leak ─────────────────
-# CHANGE: scope-leak gate absent at merge-base. After implementation, when diff
-# contains a path not covered by scope-manifest.md (replicating the #989
+# CHANGE: scope-leak gate absent at merge-base. After implementation, when the
+# diff contains a path NOT declared in plan.json (replicating the #989
 # regression where .zbuild/prompts/design-overrides.md was deleted out of
 # scope), verdict=fail, reason=scope_leak, and scope_leak_files names the path.
 
-_spec19_manifest="$_tmpdir/scope-manifest-19.md"
-printf '+ tests/\n' > "$_spec19_manifest"
+_spec19_plan="$_artifacts_dir/plan.json"
+printf '{"steps":[{"files":["tests/unit/foo.sh"]}]}\n' > "$_spec19_plan"
 
 rm -f "$_artifacts_dir/objective-gate-result.json"
 export ZBUILD_TEST_CMD="true"
 export ZBUILD_LINT_CMD="true"
 export ZBUILD_COVERAGE_CMD="true"
-export ZBUILD_DIFF_CMD="printf '%s\n' .zbuild/prompts/design-overrides.md"
-export ZBUILD_SCOPE_MANIFEST="$_spec19_manifest"
+# Diff touches the declared file (so scope-ADHERENCE passes) PLUS an
+# out-of-plan path (so the scope-LEAK gate is what fires, not scope_fail).
+export ZBUILD_DIFF_CMD="printf '%s\n' tests/unit/foo.sh .zbuild/prompts/design-overrides.md"
 set +e
 objective_gate_run "objective-gate" "$_state_file"
 _spec19_rc=$?
 set -e
-unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_SCOPE_MANIFEST
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+rm -f "$_spec19_plan"
 export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
 export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
 
@@ -507,6 +511,45 @@ if [[ -f "$_spec19_result" ]]; then
 else
     assert_fail "[SPEC-19] objective-gate-result.json written for out-of-scope diff" \
         "file not found: $_spec19_result"
+fi
+
+# ─── SPEC-20: gate is NOT inert for the generic platform (Copilot #1067) ──────
+# The earlier manifest-based gate treated intake's '+ ./' (generic-platform
+# allow-all) as a universal allow, so out-of-scope edits were never caught on
+# the common path. plan.json is now the source of truth: an out-of-plan diff
+# path must still leak even when a '+ ./' redaction scope-manifest is present.
+
+_spec20_plan="$_artifacts_dir/plan.json"
+printf '{"steps":[{"files":["tests/unit/foo.sh"]}]}\n' > "$_spec20_plan"
+_spec20_manifest="$_tmpdir/scope-manifest-20.md"
+printf '+ ./\n' > "$_spec20_manifest"   # generic-platform allow-all (the inert trap)
+
+rm -f "$_artifacts_dir/objective-gate-result.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="printf '%s\n' tests/unit/foo.sh core/secret-leak.sh"
+export ZBUILD_SCOPE_MANIFEST="$_spec20_manifest"
+set +e
+objective_gate_run "objective-gate" "$_state_file"
+_spec20_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_SCOPE_MANIFEST
+rm -f "$_spec20_plan"
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+
+assert_eq "[SPEC-20] rc=1 — '+ ./' manifest does NOT make the gate inert" "1" "$_spec20_rc"
+_spec20_result="$_artifacts_dir/objective-gate-result.json"
+if [[ -f "$_spec20_result" ]]; then
+    _spec20_reason="$(grep -o '"reason":"[^"]*"' "$_spec20_result" | cut -d'"' -f4 || echo 'ERROR')"
+    assert_eq "[SPEC-20] reason=scope_leak despite generic '+ ./' manifest" "scope_leak" "$_spec20_reason"
+    _spec20_has_path=0
+    grep -q '"core/secret-leak.sh"' "$_spec20_result" && _spec20_has_path=1
+    assert_eq "[SPEC-20] scope_leak_files names the out-of-plan path" "1" "$_spec20_has_path"
+else
+    assert_fail "[SPEC-20] objective-gate-result.json written for generic-platform leak" \
+        "file not found: $_spec20_result"
 fi
 
 # ─── Results ─────────────────────────────────────────────────────────────────
