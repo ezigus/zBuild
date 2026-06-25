@@ -72,6 +72,9 @@ _rr_run_inner() {
 
     local tier="${ZBUILD_REVIEW_REPORT_TIER:-T2}"
 
+    # Register per-lens artifacts before fan-out so each lens gets distinct evidence.
+    _rr_populate_artifact_registry "$artifact_dir"
+
     # Fan out the lenses (bounded-parallel) → combined per-lens results.
     local lenses_file
     lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier")"

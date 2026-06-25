@@ -552,6 +552,55 @@ else
         "file not found: $_spec20_result"
 fi
 
+# ─── SPEC-1/SPEC-2: reachability-ablation.json written with correct fields ───
+# CHANGE: reachability-ablation.json not written at merge-base. After
+# implementation, objective_gate_run must write it unconditionally to
+# artifacts_dir containing negctl_verdict and reachability_verdict fields
+# with values derived from the canned ablation stubs (DoD-1 coverage).
+
+_og_ablation_negctl()       { printf 'ABLATION_NEGCTL PASS\n'; }
+_og_ablation_reachability() { printf 'ABLATION_REACH FAIL detail-text\n'; }
+
+rm -f "$_artifacts_dir/reachability-ablation.json"
+export ZBUILD_TEST_CMD="true"
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"
+set +e
+objective_gate_run "objective-gate" "$_state_file"
+_spec_ra_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+export ZBUILD_TEST_CMD="$_ZBUILD_TEST_CMD_save"
+export ZBUILD_LINT_CMD="$_ZBUILD_LINT_CMD_save"
+unset -f _og_ablation_negctl _og_ablation_reachability
+
+_spec_ra_path="$_artifacts_dir/reachability-ablation.json"
+if [[ -f "$_spec_ra_path" ]]; then
+    assert_pass "[SPEC-1] reachability-ablation.json written unconditionally by objective_gate_run"
+    _ra_has_nv=0
+    grep -q '"negctl_verdict"' "$_spec_ra_path" && _ra_has_nv=1
+    assert_eq "[SPEC-1] reachability-ablation.json contains negctl_verdict field" "1" "$_ra_has_nv"
+    _ra_has_rv=0
+    grep -q '"reachability_verdict"' "$_spec_ra_path" && _ra_has_rv=1
+    assert_eq "[SPEC-1] reachability-ablation.json contains reachability_verdict field" "1" "$_ra_has_rv"
+    _ra_nv="$(jq -r '.negctl_verdict // empty' "$_spec_ra_path" 2>/dev/null || echo 'ERROR')"
+    assert_eq "[SPEC-2] negctl_verdict=pass matches canned stub output" "pass" "$_ra_nv"
+    _ra_rv="$(jq -r '.reachability_verdict // empty' "$_spec_ra_path" 2>/dev/null || echo 'ERROR')"
+    assert_eq "[SPEC-2] reachability_verdict=fail matches canned stub output" "fail" "$_ra_rv"
+else
+    assert_fail "[SPEC-1] reachability-ablation.json written unconditionally by objective_gate_run" \
+        "file not found: $_spec_ra_path"
+    assert_fail "[SPEC-1] reachability-ablation.json contains negctl_verdict field" \
+        "file not found: $_spec_ra_path"
+    assert_fail "[SPEC-1] reachability-ablation.json contains reachability_verdict field" \
+        "file not found: $_spec_ra_path"
+    assert_fail "[SPEC-2] negctl_verdict=pass matches canned stub output" \
+        "file not found: $_spec_ra_path"
+    assert_fail "[SPEC-2] reachability_verdict=fail matches canned stub output" \
+        "file not found: $_spec_ra_path"
+fi
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

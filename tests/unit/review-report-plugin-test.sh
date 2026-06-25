@@ -266,4 +266,60 @@ assert_contains "[SPEC-15] security prompt uses shared bundle (no per-lens artif
     "$_security_prompt" "SHARED BUNDLE DATA"
 unset '_RR_LENS_ARTIFACT_REGISTRY[correctness]'
 
+# ─── SPEC-3: _rr_populate_artifact_registry registers design-conformance ──────
+# CHANGE: _rr_populate_artifact_registry absent at merge-base. After
+# implementation, function must exist and set _RR_LENS_ARTIFACT_REGISTRY
+# ["design-conformance"] to the reachability-ablation.json path when non-empty.
+
+if declare -f _rr_populate_artifact_registry >/dev/null 2>&1; then
+    assert_pass "[SPEC-3] _rr_populate_artifact_registry function exists"
+    _spec3_dir="$TEST_TEMP_DIR/spec3"
+    mkdir -p "$_spec3_dir"
+    _spec3_ablation="$_spec3_dir/reachability-ablation.json"
+    printf '{"negctl_verdict":"pass","negctl_detail":"ABLATION_NEGCTL PASS","reachability_verdict":"pass","reachability_detail":"ABLATION_REACH PASS"}\n' \
+        > "$_spec3_ablation"
+    # Reset registry entry so we start from a clean state.
+    unset '_RR_LENS_ARTIFACT_REGISTRY[design-conformance]'
+    _rr_populate_artifact_registry "$_spec3_dir"
+    _spec3_reg="${_RR_LENS_ARTIFACT_REGISTRY[design-conformance]:-}"
+    assert_eq "[SPEC-3] design-conformance registered to reachability-ablation.json" \
+        "$_spec3_ablation" "$_spec3_reg"
+    # Verify no-op when file is absent.
+    unset '_RR_LENS_ARTIFACT_REGISTRY[design-conformance]'
+    _rr_populate_artifact_registry "$TEST_TEMP_DIR/nonexistent-dir"
+    _spec3_noop="${_RR_LENS_ARTIFACT_REGISTRY[design-conformance]:-}"
+    assert_eq "[SPEC-3] _rr_populate_artifact_registry is no-op when ablation absent" \
+        "" "$_spec3_noop"
+else
+    assert_fail "[SPEC-3] _rr_populate_artifact_registry function must exist" "function absent"
+    assert_fail "[SPEC-3] design-conformance registered to reachability-ablation.json" "function absent"
+    assert_fail "[SPEC-3] _rr_populate_artifact_registry is no-op when ablation absent" "function absent"
+fi
+
+# ─── SPEC-4: design-conformance prompt embeds ablation artifact content ───────
+# CHANGE: design-conformance lens had no registered artifact at merge-base and
+# fell back to the shared diff bundle. After implementation, _rr_run_inner calls
+# _rr_populate_artifact_registry so the prompt for design-conformance contains
+# the reachability-ablation.json evidence, not the shared bundle.
+
+apply_scope_redaction() { cp "$1" "$2"; return 0; }   # restore for this test
+_spec4_dir="$TEST_TEMP_DIR/spec4"
+mkdir -p "$_spec4_dir"
+_spec4_ablation="$_spec4_dir/reachability-ablation.json"
+printf '{"negctl_verdict":"pass","negctl_detail":"ABLATION_NEGCTL PASS","reachability_verdict":"skip","reachability_detail":"SPEC4_UNIQUE_ABLATION_CONTENT"}\n' \
+    > "$_spec4_ablation"
+printf 'SHARED BUNDLE DATA ONLY\n' > "$_spec4_dir/diff.patch"
+# Reset registry so _rr_run_inner's populate call wires it fresh.
+unset '_RR_LENS_ARTIFACT_REGISTRY[design-conformance]'
+set +e
+_rr_run_inner "$scope_manifest" "$_spec4_dir/diff.patch" \
+    "$_spec4_dir/review-report.json" "$_spec4_dir/review-report.md"
+set -e
+_spec4_dc_prompt="$(cat "$_spec4_dir/lens-design-conformance-prompt.txt" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-4] design-conformance prompt contains ablation artifact content" \
+    "$_spec4_dc_prompt" "SPEC4_UNIQUE_ABLATION_CONTENT"
+_spec4_sec_prompt="$(cat "$_spec4_dir/lens-security-prompt.txt" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-4] security prompt still uses shared bundle (not ablation)" \
+    "$_spec4_sec_prompt" "SHARED BUNDLE DATA ONLY"
+
 print_test_results

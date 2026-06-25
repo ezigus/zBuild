@@ -202,7 +202,7 @@ _og_emit_report_signals() {
 
 # ─── _og_run_negctl ──────────────────────────────────────────────────────────
 # Calls _og_ablation_negctl and parses the ABLATION_NEGCTL verdict.
-# Sets caller's negctl_verdict (skip|pass|fail) via dynamic scoping.
+# Sets caller's negctl_verdict (skip|pass|fail) and negctl_detail via dynamic scoping.
 # Sets fail_reason=negctl_fail on FAIL (if not already set).
 _og_run_negctl() {
     local repo_root="$1"
@@ -210,6 +210,7 @@ _og_run_negctl() {
     if declare -f _og_ablation_negctl >/dev/null 2>&1; then
         _negctl_out="$(_og_ablation_negctl "$repo_root")"
     fi
+    negctl_detail="$_negctl_out"
     case "$_negctl_out" in
         *"ABLATION_NEGCTL PASS"*)
             negctl_verdict="pass"
@@ -229,13 +230,14 @@ _og_run_negctl() {
 
 # ─── _og_run_reachability ─────────────────────────────────────────────────────
 # Calls _og_ablation_reachability and parses the ABLATION_REACH verdict.
-# Sets caller's reachability_verdict (skip|pass|fail) via dynamic scoping.
+# Sets caller's reachability_verdict (skip|pass|fail) and reachability_detail via dynamic scoping.
 _og_run_reachability() {
     local repo_root="$1"
     local _reach_out=""
     if declare -f _og_ablation_reachability >/dev/null 2>&1; then
         _reach_out="$(_og_ablation_reachability "$repo_root")"
     fi
+    reachability_detail="$_reach_out"
     case "$_reach_out" in
         *"ABLATION_REACH PASS"*)
             reachability_verdict="pass"
@@ -316,6 +318,7 @@ objective_gate_run() {
     local scope_gaps=()
     local scope_leak_files=()
     local negctl_verdict="skip" reachability_verdict="skip" shape_floor_verdict="skip"
+    local negctl_detail="" reachability_detail=""
 
     # Run test suite — T0 hard gate: any non-zero exit blocks merge.
     bash -c "$test_cmd" >/dev/null 2>&1 || test_rc=$?
@@ -350,6 +353,16 @@ objective_gate_run() {
     _og_run_negctl "$_OG_ROOT"
     _og_run_reachability "$_OG_ROOT"
     _og_run_shape_floor "$_OG_ROOT"
+
+    # Persist full ablation output unconditionally (even on skip) so review-report
+    # can always find a candidate to register for the design-conformance lens.
+    jq -n \
+        --arg nv "$negctl_verdict" \
+        --arg nd "$negctl_detail" \
+        --arg rv "$reachability_verdict" \
+        --arg rd "$reachability_detail" \
+        '{"negctl_verdict":$nv,"negctl_detail":$nd,"reachability_verdict":$rv,"reachability_detail":$rd}' \
+        | atomic_write "$artifacts_dir/reachability-ablation.json"
 
     # Scope ok = no gaps found (after scope check).
     local scope_ok=0
