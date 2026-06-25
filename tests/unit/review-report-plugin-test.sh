@@ -266,4 +266,74 @@ assert_contains "[SPEC-15] security prompt uses shared bundle (no per-lens artif
     "$_security_prompt" "SHARED BUNDLE DATA"
 unset '_RR_LENS_ARTIFACT_REGISTRY[correctness]'
 
+# ─── SPEC-3: _rr_register_lens_artifact exists and updates _RR_LENS_ARTIFACT_REGISTRY ─
+# CHANGE: function absent at merge-base. After implementation it must exist and
+# set _RR_LENS_ARTIFACT_REGISTRY[<lens>]=<path> so callers can wire evidence
+# without sourcing private internals.
+
+if declare -f _rr_register_lens_artifact >/dev/null 2>&1; then
+    _spec3_artifact="$TEST_TEMP_DIR/spec3-artifact.txt"
+    printf 'SPEC3 CONTENT\n' > "$_spec3_artifact"
+    _rr_register_lens_artifact "test-coverage" "$_spec3_artifact"
+    _spec3_registered="${_RR_LENS_ARTIFACT_REGISTRY[test-coverage]:-}"
+    assert_eq "[SPEC-3] _rr_register_lens_artifact sets registry entry" \
+        "$_spec3_artifact" "$_spec3_registered"
+    unset '_RR_LENS_ARTIFACT_REGISTRY[test-coverage]'
+else
+    assert_fail "[SPEC-3] _rr_register_lens_artifact function must exist" "function absent"
+fi
+
+# ─── SPEC-4: _rr_run_inner wires coverage-map.json to test-coverage lens ─────
+# CHANGE: at merge-base _rr_run_inner never called _rr_register_lens_artifact, so
+# test-coverage always received the shared diff bundle. After implementation it must
+# register coverage-map.json for test-coverage when the file exists in artifact_dir.
+
+apply_scope_redaction() { cp "$1" "$2"; return 0; }   # ensure cp-stub active
+unset _RR_LENS_ARTIFACT_REGISTRY; declare -A _RR_LENS_ARTIFACT_REGISTRY  # hard reset
+_spec4_dir="$TEST_TEMP_DIR/spec4"
+mkdir -p "$_spec4_dir"
+printf '{"files":[{"file":"core/x.sh","covered":5,"total":10,"pct":50.0}],"total_pct":50.0}\n' \
+    > "$_spec4_dir/coverage-map.json"
+printf 'SPEC4 SHARED BUNDLE\n' > "$_spec4_dir/diff.patch"
+: > "$_RR_CALLS"
+set +e
+_rr_run_inner "$scope_manifest" "$_spec4_dir/diff.patch" \
+    "$_spec4_dir/review-report.json" "$_spec4_dir/review-report.md"
+_spec4_rc=$?
+set -e
+
+assert_eq "[SPEC-4] _rr_run_inner returns 0 when coverage-map present" "0" "$_spec4_rc"
+
+# ─── SPEC-5: test-coverage lens prompt embeds coverage-map content ────────────
+# CHANGE: at merge-base test-coverage always got the shared bundle. After
+# implementation the prompt file must contain the coverage-map artifact content.
+
+_spec5_tc_prompt="$(cat "$_spec4_dir/lens-test-coverage-prompt.txt" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-5] test-coverage prompt embeds coverage-map file entry" \
+    "$_spec5_tc_prompt" "core/x.sh"
+_spec5_sec_prompt="$(cat "$_spec4_dir/lens-security-prompt.txt" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-5] security prompt uses shared bundle (no per-lens override)" \
+    "$_spec5_sec_prompt" "SPEC4 SHARED BUNDLE"
+
+# ─── SPEC-6: fail-soft — test-coverage falls back to shared bundle when absent ─
+# GUARD: when coverage-map.json is absent, _rr_run_inner must still return 0 and
+# the test-coverage lens must receive the shared diff bundle (no hard failure).
+
+unset _RR_LENS_ARTIFACT_REGISTRY; declare -A _RR_LENS_ARTIFACT_REGISTRY  # hard reset
+_spec6_dir="$TEST_TEMP_DIR/spec6"
+mkdir -p "$_spec6_dir"
+# Intentionally NO coverage-map.json in this dir.
+printf 'SPEC6 SHARED BUNDLE\n' > "$_spec6_dir/diff.patch"
+: > "$_RR_CALLS"
+set +e
+_rr_run_inner "$scope_manifest" "$_spec6_dir/diff.patch" \
+    "$_spec6_dir/review-report.json" "$_spec6_dir/review-report.md"
+_spec6_rc=$?
+set -e
+
+assert_eq "[SPEC-6] _rr_run_inner returns 0 when coverage-map absent (fail-soft)" "0" "$_spec6_rc"
+_spec6_tc_prompt="$(cat "$_spec6_dir/lens-test-coverage-prompt.txt" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-6] test-coverage falls back to shared bundle when map absent" \
+    "$_spec6_tc_prompt" "SPEC6 SHARED BUNDLE"
+
 print_test_results

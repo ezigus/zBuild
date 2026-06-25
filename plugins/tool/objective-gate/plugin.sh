@@ -45,18 +45,22 @@ objective_gate_init() {
 # Sets caller's coverage_pct and appends to fail_reason when appropriate.
 _og_run_coverage_floor() {
     local _og_root="$1"
+    local _artifacts_dir="${2:-}"
     local coverage_cmd="${ZBUILD_COVERAGE_CMD:-}"
     local coverage_floor="${ZBUILD_COVERAGE_FLOOR:-29}"
     local cov_rc=0
     local cov_out=""
+    local _map_out=""
     coverage_ran=0
+    coverage_map_path=""
 
     if [[ -n "$coverage_cmd" ]]; then
         cov_out="$(bash -c "$coverage_cmd" 2>&1)" || cov_rc=$?
     else
         local cov_script="$_og_root/scripts/check-coverage.sh"
         if [[ -f "$cov_script" ]]; then
-            cov_out="$(COVERAGE_FLOOR="$coverage_floor" bash "$cov_script" 2>&1)" || cov_rc=$?
+            [[ -n "$_artifacts_dir" ]] && _map_out="$_artifacts_dir/coverage-map.json"
+            cov_out="$(COVERAGE_FLOOR="$coverage_floor" ZBUILD_COVERAGE_MAP_OUT="$_map_out" bash "$cov_script" 2>&1)" || cov_rc=$?
         else
             # No coverage script available — skip gate (composability).
             coverage_pct=0
@@ -89,6 +93,11 @@ _og_run_coverage_floor() {
     # persisted baseline with 0 (#1012 review).
     [[ "$coverage_pct" != "0" ]] && coverage_ran=1
     _og_emit "objective_gate.coverage.pass" "coverage_pct=$coverage_pct"
+
+    if [[ -n "$_map_out" && -f "$_map_out" ]]; then
+        coverage_map_path="$_map_out"
+        _og_emit "objective_gate.coverage_map.written" "path=$coverage_map_path"
+    fi
 }
 
 # ─── _og_run_diff_scope_leak_check ──────────────────────────────────────────
@@ -312,7 +321,7 @@ objective_gate_run() {
     _og_emit "plugin.run.start" "plugin=objective-gate"
 
     local test_rc=0 lint_rc=0 fail_reason=""
-    local coverage_pct=0 coverage_delta=0 quality_score=0 coverage_ran=0
+    local coverage_pct=0 coverage_delta=0 quality_score=0 coverage_ran=0 coverage_map_path=""
     local scope_gaps=()
     local scope_leak_files=()
     local negctl_verdict="skip" reachability_verdict="skip" shape_floor_verdict="skip"
@@ -337,7 +346,7 @@ objective_gate_run() {
     fi
 
     # Coverage floor gate (I4 — requires post-build artifacts).
-    _og_run_coverage_floor "$_OG_ROOT"
+    _og_run_coverage_floor "$_OG_ROOT" "$artifacts_dir"
 
     # Scope-adherence gate (I4 — requires plan.json in artifacts_dir).
     _og_run_scope_adherence "$artifacts_dir"

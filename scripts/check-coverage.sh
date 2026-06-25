@@ -39,6 +39,7 @@ python3 - "$TRACE_FILE" "$REPO_ROOT" "$FLOOR" <<'PYEOF'
 import sys
 import os
 import re
+import json
 from collections import defaultdict
 
 trace_file = sys.argv[1]
@@ -96,6 +97,21 @@ for rel, executed, executable, pct in rows:
 
 overall = total_covered / total_exec * 100
 print(f"\nTotal: {total_covered}/{total_exec} lines ({overall:.1f}%)")
+
+map_out = os.environ.get('ZBUILD_COVERAGE_MAP_OUT', '')
+if map_out:
+    cmap = {
+        "files": [
+            {"file": r, "covered": e, "total": x, "pct": round(p, 1)}
+            for r, e, x, p in rows
+        ],
+        "total_pct": round(overall, 1)
+    }
+    try:
+        with open(map_out, 'w', encoding='utf-8') as _f:
+            json.dump(cmap, _f)
+    except OSError:
+        pass
 
 if overall < floor:
     print(f"ERROR: {overall:.1f}% is below the {floor}% floor", file=sys.stderr)
