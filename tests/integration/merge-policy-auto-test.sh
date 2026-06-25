@@ -7,8 +7,8 @@
 #   [SPEC-2] merge_policy==auto + gate verdict==fail → PR fallback: pr-url.txt
 #            written, merge-result.json status==pr_fallback
 #   [SPEC-3] merge_policy==auto + gate artifact absent → PR fallback: same as SPEC-2
-#   [SPEC-4] merge_policy==auto_unless_flagged → always opens PR (unchanged behavior):
-#            pr-url.txt written, no merge-result.json
+#   [SPEC-4] merge_policy==auto_unless_flagged + review-report absent → PR (fail-closed):
+#            pr-url.txt written, no merge-result.json (review-report absent → fail-closed)
 #   [SPEC-5] merge_policy==auto + gate pass but review.json absent → fail-closed:
 #            PR fallback (status==pr_fallback), gh pr merge NOT called (ADR-001/#358)
 set -euo pipefail
@@ -160,10 +160,10 @@ _gh_merge3=0
 [[ "$_merge_calls3" == *"merged"* ]] && _gh_merge3=1
 assert_eq "[SPEC-3] gh pr merge NOT called when gate artifact absent" "0" "$_gh_merge3"
 
-# ─── SPEC-4: auto_unless_flagged → always opens PR (unchanged behavior) ───────
-print_test_section "SPEC-4: merge_policy==auto_unless_flagged → always opens draft PR"
+# ─── SPEC-4: auto_unless_flagged + review-report absent → PR (fail-closed) ────
+print_test_section "SPEC-4: merge_policy==auto_unless_flagged + review-report absent → opens draft PR (fail-closed)"
 
-_sf4="$(_setup_run s4 pass)"  # even with gate pass, auto_unless_flagged still opens PR
+_sf4="$(_setup_run s4 pass)"  # no review-report.json → fail-closed, opens PR
 _art4="$(dirname "$_sf4")/artifacts"
 > "$_MERGE_RECORD"
 
