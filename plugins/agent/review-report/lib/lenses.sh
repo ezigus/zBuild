@@ -169,6 +169,18 @@ _rr_parse_lens_out() {
         }' 2>/dev/null || printf '%s' "$empty"
 }
 
+# ─── _rr_populate_artifact_registry <artifact_dir> ──────────────────────────
+# Registers per-lens artifacts before _rr_fanout_lenses runs. Sets
+# _RR_LENS_ARTIFACT_REGISTRY["design-conformance"] to reachability-ablation.json
+# when that file is non-empty (#1077 resolver registration).
+_rr_populate_artifact_registry() {
+    local artifact_dir="$1"
+    local ablation_path="$artifact_dir/reachability-ablation.json"
+    if [[ -s "$ablation_path" ]]; then
+        _RR_LENS_ARTIFACT_REGISTRY["design-conformance"]="$ablation_path"
+    fi
+}
+
 # ─── _rr_lens_evidence <lens> <artifact_dir> ────────────────────────────────
 # Returns the registered artifact path for the lens when _RR_LENS_ARTIFACT_REGISTRY
 # has a non-empty file entry, or empty stdout to signal fallback to shared bundle.
