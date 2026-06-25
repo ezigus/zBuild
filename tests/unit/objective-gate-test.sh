@@ -601,6 +601,61 @@ else
         "file not found: $_spec_ra_path"
 fi
 
+# ─── SPEC-1: coverage-map.json written when using default cov_script path ────
+# CHANGE: at merge-base, _og_run_coverage_floor never set ZBUILD_COVERAGE_MAP_OUT
+# and never wrote coverage-map.json. After implementation it must write the file
+# to artifacts_dir when the default check-coverage.sh path is used (not ZBUILD_COVERAGE_CMD).
+
+_spec_cm_root="$_tmpdir/spec-cm-root"
+mkdir -p "$_spec_cm_root/scripts"
+_spec_cm_dir="$_tmpdir/spec-cm-artifacts"
+mkdir -p "$_spec_cm_dir"
+
+# Stub: write a minimal coverage-map.json and emit a passing Total line.
+cat > "$_spec_cm_root/scripts/check-coverage.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${ZBUILD_COVERAGE_MAP_OUT:-}" ]]; then
+    printf '{"files":[{"file":"core/x.sh","covered":5,"total":10,"pct":50.0}],"total_pct":50.0}' \
+        > "$ZBUILD_COVERAGE_MAP_OUT"
+fi
+printf 'Total: 5/10 lines (50.0%%)\n'
+STUB
+chmod +x "$_spec_cm_root/scripts/check-coverage.sh"
+
+# Reset dynamic-scoped vars before calling the helper directly.
+coverage_pct=0; coverage_ran=0; coverage_map_path=""; fail_reason=""
+unset ZBUILD_COVERAGE_CMD
+set +e
+_og_run_coverage_floor "$_spec_cm_root" "$_spec_cm_dir"
+_spec1_cov_rc=$?
+set -e
+
+if [[ -f "$_spec_cm_dir/coverage-map.json" ]]; then
+    assert_pass "[SPEC-1] coverage-map.json written to artifacts_dir by _og_run_coverage_floor"
+else
+    assert_fail "[SPEC-1] coverage-map.json must be written when default cov_script used" \
+        "file absent: $_spec_cm_dir/coverage-map.json"
+fi
+
+# ─── SPEC-2: coverage-map.json has the expected JSON structure ────────────────
+# CHANGE: at merge-base the file was never written. After implementation it must
+# contain a "files" array (each entry with covered/total/pct) and "total_pct".
+
+if [[ -f "$_spec_cm_dir/coverage-map.json" ]]; then
+    _spec2_has_files=0
+    _spec2_has_total=0
+    jq -e '.files | type == "array"' "$_spec_cm_dir/coverage-map.json" >/dev/null 2>&1 \
+        && _spec2_has_files=1
+    jq -e '.total_pct | type == "number"' "$_spec_cm_dir/coverage-map.json" >/dev/null 2>&1 \
+        && _spec2_has_total=1
+    assert_eq "[SPEC-2] coverage-map.json has files array" "1" "$_spec2_has_files"
+    assert_eq "[SPEC-2] coverage-map.json has total_pct number" "1" "$_spec2_has_total"
+else
+    assert_fail "[SPEC-2] coverage-map.json absent — cannot check JSON structure" \
+        "file absent: $_spec_cm_dir/coverage-map.json"
+fi
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

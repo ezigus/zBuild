@@ -181,6 +181,14 @@ _rr_populate_artifact_registry() {
     fi
 }
 
+# ─── _rr_register_lens_artifact <lens> <path> ───────────────────────────────
+# Register a per-lens artifact path. Called by the review-report plugin (before
+# _rr_fanout_lenses) to wire distinct evidence without sourcing private internals.
+_rr_register_lens_artifact() {
+    local lens="$1" path="$2"
+    _RR_LENS_ARTIFACT_REGISTRY["$lens"]="$path"
+}
+
 # ─── _rr_lens_evidence <lens> <artifact_dir> ────────────────────────────────
 # Returns the registered artifact path for the lens when _RR_LENS_ARTIFACT_REGISTRY
 # has a non-empty file entry, or empty stdout to signal fallback to shared bundle.

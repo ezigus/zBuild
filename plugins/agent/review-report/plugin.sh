@@ -74,6 +74,11 @@ _rr_run_inner() {
 
     # Register per-lens artifacts before fan-out so each lens gets distinct evidence.
     _rr_populate_artifact_registry "$artifact_dir"
+    # Wire coverage-map artifact to test-coverage lens when available (fail-soft).
+    local _cmap="$artifact_dir/coverage-map.json"
+    if [[ -s "$_cmap" ]]; then
+        _rr_register_lens_artifact "test-coverage" "$_cmap"
+    fi
 
     # Fan out the lenses (bounded-parallel) → combined per-lens results.
     local lenses_file
