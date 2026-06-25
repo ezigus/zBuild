@@ -229,4 +229,41 @@ fi
 assert_contains "[SPEC-13] rendered markdown contains the routing advisory blockquote" \
     "$(cat "$out_md")" "Advisory:"
 
+# ─── SPEC-14: _rr_lens_evidence — registered lens returns path, unregistered empty ─
+if declare -f _rr_lens_evidence >/dev/null 2>&1; then
+    _spec14_artifact="$TEST_TEMP_DIR/spec14-artifact.txt"
+    printf 'spec14 content\n' > "$_spec14_artifact"
+    _RR_LENS_ARTIFACT_REGISTRY[correctness]="$_spec14_artifact"
+    _spec14_result="$(_rr_lens_evidence "correctness" "$artifact_dir")"
+    assert_eq "[SPEC-14] registered lens returns its artifact path" \
+        "$_spec14_artifact" "$_spec14_result"
+    _spec14_result2="$(_rr_lens_evidence "security" "$artifact_dir")"
+    assert_eq "[SPEC-14] unregistered lens returns empty stdout" \
+        "" "$_spec14_result2"
+    unset '_RR_LENS_ARTIFACT_REGISTRY[correctness]'
+else
+    assert_fail "[SPEC-14] _rr_lens_evidence function must exist" "function absent"
+fi
+
+# ─── SPEC-15: per-lens artifact wires into prompt; unregistered falls back ───
+apply_scope_redaction() { cp "$1" "$2"; return 0; }   # restore for per-lens test
+_spec15_dir="$TEST_TEMP_DIR/spec15"
+mkdir -p "$_spec15_dir"
+printf 'SHARED BUNDLE DATA\n' > "$_spec15_dir/diff.patch"
+_spec15_artifact="$TEST_TEMP_DIR/spec15-correctness.txt"
+printf 'CORRECTNESS SPECIFIC ARTIFACT\n' > "$_spec15_artifact"
+declare -A _RR_LENS_ARTIFACT_REGISTRY 2>/dev/null || true
+_RR_LENS_ARTIFACT_REGISTRY[correctness]="$_spec15_artifact"
+: > "$_RR_CALLS"
+set +e
+_rr_fanout_lenses "$scope_manifest" "$_spec15_dir/diff.patch" "$_spec15_dir" "T2"
+set -e
+_correctness_prompt="$(cat "$_spec15_dir/lens-correctness-prompt.txt" 2>/dev/null || echo MISSING)"
+_security_prompt="$(cat "$_spec15_dir/lens-security-prompt.txt" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-15] correctness prompt embeds per-lens artifact content" \
+    "$_correctness_prompt" "CORRECTNESS SPECIFIC ARTIFACT"
+assert_contains "[SPEC-15] security prompt uses shared bundle (no per-lens artifact)" \
+    "$_security_prompt" "SHARED BUNDLE DATA"
+unset '_RR_LENS_ARTIFACT_REGISTRY[correctness]'
+
 print_test_results

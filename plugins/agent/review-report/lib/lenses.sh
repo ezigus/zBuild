@@ -45,6 +45,10 @@ _rr_load_lenses
 # Severity ordinal map (jq-injected for max-severity selection in dedup).
 _RR_SEV_RANK='{"low":1,"medium":2,"high":3,"critical":4}'
 
+# Per-lens artifact registry: maps lens name → artifact path. Empty by default;
+# producer issues populate entries before calling _rr_fanout_lenses.
+declare -A _RR_LENS_ARTIFACT_REGISTRY=()
+
 # Proximity window (lines): two findings on the same file+category within this
 # many lines de-dupe to one. Override with ZBUILD_RR_PROXIMITY_WINDOW. Clamped
 # to a positive integer — a 0 or non-integer would be a jq division-by-zero /
@@ -165,6 +169,18 @@ _rr_parse_lens_out() {
         }' 2>/dev/null || printf '%s' "$empty"
 }
 
+# ─── _rr_lens_evidence <lens> <artifact_dir> ────────────────────────────────
+# Returns the registered artifact path for the lens when _RR_LENS_ARTIFACT_REGISTRY
+# has a non-empty file entry, or empty stdout to signal fallback to shared bundle.
+_rr_lens_evidence() {
+    local lens="$1"
+    local path="${_RR_LENS_ARTIFACT_REGISTRY[$lens]:-}"
+    if [[ -n "$path" && -s "$path" ]]; then
+        printf '%s' "$path"
+    fi
+    return 0
+}
+
 # ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> ─
 # Bounded-parallel: redact the shared evidence bundle once (the ADR-004
 # chokepoint; #973 moves this per-lens when evidence diverges), then run each
@@ -201,9 +217,24 @@ _rr_fanout_lenses() {
     fi
 
     # Build all prompts up front (sequential, local), then launch in batches.
-    local lens
+    # Per-lens evidence: if a lens has a registered artifact, redact it
+    # independently (ADR-004 chokepoint per artifact); otherwise use the
+    # pre-redacted shared bundle.
+    local lens _lens_specific_path _lens_ev_content _lens_redacted
     for lens in "${_RR_LENSES[@]}"; do
-        _rr_build_lens_prompt "$lens" "$evidence_content" \
+        _lens_specific_path="$(_rr_lens_evidence "$lens" "$artifact_dir")"
+        if [[ -n "$_lens_specific_path" ]]; then
+            _lens_redacted="$artifact_dir/lens-$lens-evidence.redacted.txt"
+            if apply_scope_redaction "$_lens_specific_path" "$_lens_redacted" "$scope_manifest" "" "0"; then
+                _lens_ev_content="$(cat "$_lens_redacted")"
+            else
+                emit_event "review_report.lens.evidence.redaction_failed" "lens=$lens" 2>/dev/null || true
+                _lens_ev_content="$evidence_content"
+            fi
+        else
+            _lens_ev_content="$evidence_content"
+        fi
+        _rr_build_lens_prompt "$lens" "$_lens_ev_content" \
             > "$artifact_dir/lens-$lens-prompt.txt"
     done
 
