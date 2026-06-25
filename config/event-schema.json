@@ -83,6 +83,7 @@
     "review_report.evidence.redaction_failed",
     "review_report.lens.failed",
     "review_report.lens.unparseable",
+    "review_report.lens.evidence.redaction_failed",
     "test_assessment.missing_input",
     "test_assessment.missing_baseline",
     "test_assessment.downgrade",
