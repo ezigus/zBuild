@@ -30,6 +30,8 @@ source "$_RR_ROOT/core/router/route.sh"
 source "$_RR_ROOT/scripts/lib/artifact-render.sh"
 # shellcheck source=lib/lenses.sh
 source "$_RR_DIR/lib/lenses.sh"
+# shellcheck source=../../../scripts/lib/call-graph.sh
+source "$_RR_ROOT/scripts/lib/call-graph.sh"
 
 # ─── review_report_init ─────────────────────────────────────────────────────
 review_report_init() {
@@ -69,6 +71,18 @@ _rr_run_inner() {
     fi
     local artifact_dir; artifact_dir="$(dirname "$out_json")"
     mkdir -p "$artifact_dir"
+
+    # Produce call-graph artifact for architecture/correctness lenses (fail-soft).
+    local _cg_out="$artifact_dir/call-graph.json" _cg_rc=0
+    call_graph_produce "$evidence" "$_RR_ROOT" "$_cg_out" || _cg_rc=$?
+    if [[ $_cg_rc -eq 0 && -s "$_cg_out" ]]; then
+        local _cg_n
+        _cg_n="$(jq -r '.changed_surface | length' "$_cg_out" 2>/dev/null || echo 0)"
+        if [[ "${_cg_n:-0}" -gt 0 ]]; then
+            _RR_LENS_ARTIFACT_REGISTRY[architecture]="$_cg_out"
+            _RR_LENS_ARTIFACT_REGISTRY[correctness]="$_cg_out"
+        fi
+    fi
 
     local tier="${ZBUILD_REVIEW_REPORT_TIER:-T2}"
 
