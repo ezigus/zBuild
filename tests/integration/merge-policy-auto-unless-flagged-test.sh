@@ -219,5 +219,30 @@ _gh_merge6=0
 [[ "$_merge_calls6" == *"merged"* ]] && _gh_merge6=1
 assert_eq "[SPEC-6] gh pr merge NOT called when gate verdict=fail" "0" "$_gh_merge6"
 
+# ─── SPEC-7: gate pass + HIGH finding but readiness=advisory → PR open ───────
+# DoD #1051: a top-severity (critical/high) finding must escalate even when the
+# aggregator classified readiness as advisory (lenses.sh forces needs_attention
+# only on `critical`/low score, so a `high` finding lands as advisory). The
+# policy independently guards on findings[].severity. (Copilot #1068.)
+print_test_section "SPEC-7: auto_unless_flagged + gate pass + high finding + advisory → PR open"
+
+_sf7="$(_setup_run s7 pass advisory)"
+printf '{"schema_version":1,"merge_readiness":"advisory","findings":[{"severity":"high","title":"SQL injection in query builder"}]}\n' \
+    > "$(dirname "$_sf7")/artifacts/review-report.json"
+_art7="$(dirname "$_sf7")/artifacts"
+> "$_MERGE_RECORD"
+
+export _TPL_MERGE_POLICY="auto_unless_flagged"
+( pr_stage_run "pr" "$_sf7" ) >/dev/null 2>&1; _rc7=$?
+
+assert_eq "[SPEC-7] pr_stage_run exits 0 on PR-open path (high+advisory)" "0" "$_rc7"
+assert_file_exists "[SPEC-7] pr-url.txt written (escalated despite advisory)" "$_art7/pr-url.txt"
+assert_file_not_exists "[SPEC-7] no merge-result.json for high finding + advisory" \
+    "$_art7/merge-result.json"
+_merge_calls7="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+_gh_merge7=0
+[[ "$_merge_calls7" == *"merged"* ]] && _gh_merge7=1
+assert_eq "[SPEC-7] gh pr merge NOT called for high-severity finding (advisory)" "0" "$_gh_merge7"
+
 # ─── Results ──────────────────────────────────────────────────────────────────
 print_test_results

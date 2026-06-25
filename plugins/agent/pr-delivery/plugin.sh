@@ -101,10 +101,17 @@ _pr_stage_run_inner() {
         if [[ -f "$_auf_gate_json" ]]; then
             _auf_gate_verdict="$(jq -r '.verdict // empty' "$_auf_gate_json" 2>/dev/null || true)"
         fi
+        local _auf_top_sev=0
         if [[ -f "$_auf_report_json" ]]; then
             _auf_readiness="$(jq -r '.merge_readiness // empty' "$_auf_report_json" 2>/dev/null || true)"
+            # DoD #1051: escalate on ANY top-severity (critical/high) finding, even
+            # if readiness is advisory. The aggregator (lenses.sh) forces
+            # needs_attention only on `critical` or a low lens score, so a `high`
+            # finding would otherwise slip through as advisory and auto-merge.
+            _auf_top_sev="$(jq '[.findings[]? | select(.severity == "critical" or .severity == "high")] | length' "$_auf_report_json" 2>/dev/null || echo 0)"
+            [[ "$_auf_top_sev" =~ ^[0-9]+$ ]] || _auf_top_sev=0
         fi
-        if [[ "$_auf_gate_verdict" == "pass" && \
+        if [[ "$_auf_gate_verdict" == "pass" && "$_auf_top_sev" -eq 0 && \
               ( "$_auf_readiness" == "ready" || "$_auf_readiness" == "advisory" ) ]]; then
             local merge_plugin="$_PR_ROOT/plugins/tool/merge/plugin.sh"
             if [[ -f "$merge_plugin" ]]; then
