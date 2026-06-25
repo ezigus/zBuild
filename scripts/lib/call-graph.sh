@@ -18,8 +18,12 @@ call_graph_produce() {
     _cg_gfor="$(basename "${_cg_diff:-unknown.patch}")"
 
     # Write the empty/fallback artifact up front so the caller always has a file.
-    printf '{"schema_version":1,"generated_for":"%s","changed_surface":[]}\n' \
-        "$_cg_gfor" > "$_cg_out" 2>/dev/null || true
+    # Use jq to JSON-escape generated_for (a diff basename could contain quotes).
+    jq -nc --arg gf "$_cg_gfor" \
+        '{schema_version:1, generated_for:$gf, changed_surface:[]}' \
+        > "$_cg_out" 2>/dev/null \
+        || printf '{"schema_version":1,"generated_for":"unknown.patch","changed_surface":[]}\n' \
+            > "$_cg_out" 2>/dev/null || true
 
     [[ -z "$_cg_diff" || ! -s "$_cg_diff" ]] && return 0
 

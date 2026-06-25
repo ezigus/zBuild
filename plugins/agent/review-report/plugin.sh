@@ -79,8 +79,8 @@ _rr_run_inner() {
         local _cg_n
         _cg_n="$(jq -r '.changed_surface | length' "$_cg_out" 2>/dev/null || echo 0)"
         if [[ "${_cg_n:-0}" -gt 0 ]]; then
-            _RR_LENS_ARTIFACT_REGISTRY[architecture]="$_cg_out"
-            _RR_LENS_ARTIFACT_REGISTRY[correctness]="$_cg_out"
+            _rr_register_lens_artifact "architecture" "$_cg_out"
+            _rr_register_lens_artifact "correctness" "$_cg_out"
         fi
     fi
 
