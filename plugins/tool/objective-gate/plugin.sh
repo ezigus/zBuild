@@ -91,6 +91,48 @@ _og_run_coverage_floor() {
     _og_emit "objective_gate.coverage.pass" "coverage_pct=$coverage_pct"
 }
 
+# ─── _og_run_diff_scope_leak_check ──────────────────────────────────────────
+# Reads plan.json steps[].files[] (the SAME declared-scope source as
+# _og_run_scope_adherence) as the allow-set, then flags every diff path the
+# plan did NOT declare into scope_leak_files[]. Sets fail_reason=scope_leak
+# when non-empty. plan.json — not the redaction scope-manifest — is the source
+# of truth: the redaction manifest emits '+ ./' (allow-all) for the generic
+# platform, which made an earlier manifest-based gate inert for the common case.
+# No-op when plan.json is absent or declares no files (composability).
+_og_run_diff_scope_leak_check() {
+    local artifacts_dir="$1"
+    local plan_json="$artifacts_dir/plan.json"
+
+    if [[ ! -f "$plan_json" ]]; then
+        return 0
+    fi
+
+    local plan_files=""
+    plan_files="$(jq -r '.steps[]?.files[]? // empty' "$plan_json" 2>/dev/null || true)"
+    # No declared files → no scope to enforce; skip rather than flag everything.
+    [[ -z "$plan_files" ]] && return 0
+
+    local diff_cmd="${ZBUILD_DIFF_CMD:-git diff --name-only "${ZBUILD_BASELINE_SHA:-HEAD~1}"..HEAD}"
+    local diff_files=""
+    diff_files="$(bash -c "$diff_cmd" 2>/dev/null || true)"
+
+    scope_leak_files=()
+    local df
+    while IFS= read -r df; do
+        [[ -z "$df" ]] && continue
+        # A diff path is in-scope only if the plan declared it (exact match,
+        # same idiom as _og_run_scope_adherence). Anything else is a leak.
+        if ! printf '%s\n' "$plan_files" | grep -qxF "$df"; then
+            scope_leak_files+=("$df")
+        fi
+    done <<< "$diff_files"
+
+    if [[ ${#scope_leak_files[@]} -gt 0 ]]; then
+        _og_emit "objective_gate.scope_leak.fail" "leak_count=${#scope_leak_files[@]}"
+        [[ -z "$fail_reason" ]] && fail_reason="scope_leak"
+    fi
+}
+
 # ─── _og_run_scope_adherence ─────────────────────────────────────────────────
 # Reads plan.json from artifacts_dir, extracts steps[].files[], diffs against
 # git diff --name-only. Files in plan but not in diff → scope_gaps[].
@@ -272,6 +314,7 @@ objective_gate_run() {
     local test_rc=0 lint_rc=0 fail_reason=""
     local coverage_pct=0 coverage_delta=0 quality_score=0 coverage_ran=0
     local scope_gaps=()
+    local scope_leak_files=()
     local negctl_verdict="skip" reachability_verdict="skip" shape_floor_verdict="skip"
 
     # Run test suite — T0 hard gate: any non-zero exit blocks merge.
@@ -299,6 +342,10 @@ objective_gate_run() {
     # Scope-adherence gate (I4 — requires plan.json in artifacts_dir).
     _og_run_scope_adherence "$artifacts_dir"
 
+    # Diff scope-leak gate — reject diff paths the plan didn't declare
+    # (plan.json files[] in artifacts_dir; same source as scope-adherence).
+    _og_run_diff_scope_leak_check "$artifacts_dir"
+
     # Ablation gates (I5 — de-ceremonied negctl, reachability, shape floor).
     _og_run_negctl "$_OG_ROOT"
     _og_run_reachability "$_OG_ROOT"
@@ -320,20 +367,24 @@ objective_gate_run() {
     fi
 
     if [[ -n "$fail_reason" ]]; then
-        # JSON-escape each gap (paths may contain quotes/backslashes) via jq.
+        # JSON-escape each gap/leak (paths may contain quotes/backslashes) via jq.
         local gaps_json="[]"
         if [[ ${#scope_gaps[@]} -gt 0 ]]; then
             gaps_json="$(printf '%s\n' "${scope_gaps[@]}" | jq -R . | jq -sc .)"
         fi
-        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":%s,"negctl_verdict":"%s","reachability_verdict":"%s","shape_floor_verdict":"%s"}\n' \
-            "$fail_reason" "$test_rc" "$lint_rc" "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" "$gaps_json" \
+        local scope_leak_files_json="[]"
+        if [[ ${#scope_leak_files[@]} -gt 0 ]]; then
+            scope_leak_files_json="$(printf '%s\n' "${scope_leak_files[@]}" | jq -R . | jq -sc .)"
+        fi
+        printf '{"verdict":"fail","reason":"%s","test_rc":%d,"lint_rc":%d,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":%s,"scope_leak_files":%s,"negctl_verdict":"%s","reachability_verdict":"%s","shape_floor_verdict":"%s"}\n' \
+            "$fail_reason" "$test_rc" "$lint_rc" "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" "$gaps_json" "$scope_leak_files_json" \
             "$negctl_verdict" "$reachability_verdict" "$shape_floor_verdict" \
             | atomic_write "$result_path"
         _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=fail"
         return 1
     fi
 
-    printf '{"verdict":"pass","test_rc":0,"lint_rc":0,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":[],"negctl_verdict":"%s","reachability_verdict":"%s","shape_floor_verdict":"%s"}\n' \
+    printf '{"verdict":"pass","test_rc":0,"lint_rc":0,"coverage_pct":%s,"coverage_delta":%d,"scope_ok":%d,"quality_score":%d,"scope_gaps":[],"scope_leak_files":[],"negctl_verdict":"%s","reachability_verdict":"%s","shape_floor_verdict":"%s"}\n' \
         "$coverage_pct" "$coverage_delta" "$scope_ok" "$quality_score" \
         "$negctl_verdict" "$reachability_verdict" "$shape_floor_verdict" | atomic_write "$result_path"
     _og_emit "plugin.run.complete" "plugin=objective-gate" "verdict=pass"

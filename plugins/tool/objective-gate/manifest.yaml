@@ -11,6 +11,9 @@ description: |
        (ZBUILD_COVERAGE_FLOOR, default 29). Exit 2 = instrumentation warn, not block.
     4. Scope adherence: plan.json steps[].files[] must all appear in git diff.
        No-op (pass) when plan.json absent from artifacts_dir.
+    4b. Diff scope-leak: diff paths not covered by scope-manifest.md prefixes
+        → fail, reason=scope_leak, scope_leak_files names offenders.
+        No-op when scope-manifest.md absent (ZBUILD_SCOPE_MANIFEST override for tests).
     5. Negctl ablation: changed *-test.sh files must fail at merge-base (impl reverted)
        and pass at HEAD. SKIP when no test files changed. (#971, I5)
     6. Reachability ablation: changed non-test files must cause ≥1 test flip when reverted.
