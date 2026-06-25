@@ -117,19 +117,18 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── SPEC-11: dispatch units are 8 flat stage units (no cycles) ──────────────
-# GUARD: simple.yaml uses a flat flow with no cycle stages, so every dispatch
-# unit is stage:<id>. This confirms the loader did not misclassify any leaf.
+# ─── SPEC-11: dispatch units are 6 (build/test/objective-gate collapsed into cycle) ──
+# CHANGE: simple.yaml now wraps build, test, and objective-gate in build_test_cycle
+# (EPIC #966 I10 / #976). The three leaf stages collapse into a single cycle unit,
+# reducing _TPL_DISPATCH_UNITS from 8 to 6. dispatch[3] becomes cycle:build_test_cycle.
 
-assert_eq "[SPEC-11] dispatch units count is 8" "8" "${#_TPL_DISPATCH_UNITS[@]}"
-assert_eq "[SPEC-11] dispatch[0] stage:intake"  "stage:intake"  "${_TPL_DISPATCH_UNITS[0]}"
-assert_eq "[SPEC-11] dispatch[1] stage:plan"    "stage:plan"    "${_TPL_DISPATCH_UNITS[1]}"
-assert_eq "[SPEC-11] dispatch[2] stage:design"  "stage:design"  "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "[SPEC-11] dispatch[3] stage:build"   "stage:build"   "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "[SPEC-11] dispatch[4] stage:test"    "stage:test"    "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] stage:objective-gate" "stage:objective-gate" "${_TPL_DISPATCH_UNITS[5]}"
-assert_eq "[SPEC-11] dispatch[6] stage:review"  "stage:review"  "${_TPL_DISPATCH_UNITS[6]}"
-assert_eq "[SPEC-11] dispatch[7] stage:pr"      "stage:pr"      "${_TPL_DISPATCH_UNITS[7]}"
+assert_eq "[SPEC-11] dispatch units count is 6" "6" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "[SPEC-11] dispatch[0] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[0]}"
+assert_eq "[SPEC-11] dispatch[1] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[1]}"
+assert_eq "[SPEC-11] dispatch[2] stage:design"         "stage:design"         "${_TPL_DISPATCH_UNITS[2]}"
+assert_eq "[SPEC-11] dispatch[3] cycle:build_test_cycle" "cycle:build_test_cycle" "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "[SPEC-11] dispatch[4] stage:review"         "stage:review"         "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[5]}"
 
 # ─── SPEC-12: objective-gate is at index 5 in _TPL_STAGES (after test) ────────
 # CHANGE: at merge-base objective-gate was at index 2. Issue #970 moves it to
@@ -142,6 +141,28 @@ assert_eq "[SPEC-12] _TPL_STAGES[5] == objective-gate" "objective-gate" "${_TPL_
 # from index 3 to index 2. This assertion fails at baseline and passes here.
 
 assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
+
+# ─── SPEC-14: build_test_cycle appears in _TPL_CYCLES ────────────────────────
+# CHANGE: simple.yaml previously had no cycles. After #976, build_test_cycle is
+# declared as a cycle, so it MUST appear in _TPL_CYCLES. This assertion fails at
+# the pre-#976 baseline (where _TPL_CYCLES is empty for simple.yaml).
+
+_spec14_found=0
+for _cyc in "${_TPL_CYCLES[@]}"; do
+    [[ "$_cyc" == "build_test_cycle" ]] && _spec14_found=1 && break
+done
+assert_eq "[SPEC-14] build_test_cycle appears in _TPL_CYCLES" "1" "$_spec14_found"
+
+# ─── SPEC-15: build_test_cycle exit_when predicate is objective-gate.verdict==pass ──
+# CHANGE: exit_when variables are only populated when the cycle section exists.
+# At baseline (no cycle), these vars are unset, so these assertions fail at baseline.
+
+assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_STAGE_build_test_cycle == objective-gate" \
+    "objective-gate" "${_TPL_CYCLE_UNTIL_STAGE_build_test_cycle:-}"
+assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_FIELD_build_test_cycle == verdict" \
+    "verdict" "${_TPL_CYCLE_UNTIL_FIELD_build_test_cycle:-}"
+assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle == pass" \
+    "pass" "${_TPL_CYCLE_UNTIL_VALUE_build_test_cycle:-}"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 

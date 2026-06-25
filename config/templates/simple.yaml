@@ -9,28 +9,54 @@ defaults:
   strategy: fanout
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Flat 8-stage simplified pipeline (ADR-037 EPIC #966 I2+I3+I4).
-# Omits: impact, test_assessment, acceptance-gate, cq-* stages (targeted for
-# removal in #979). Starts closer to the intended final shape so subsequent
-# issues (#969-#979) can build the new pipeline here while standard.yaml
-# continues to serve production.
+# 6-unit simplified pipeline (ADR-037 EPIC #966 I10 / #976).
+# build, test, and objective-gate are wrapped in build_test_cycle, which exits
+# when the T0 objective-gate returns verdict=pass (deterministic convergence
+# signal — no LLM judgment). standard.yaml retains its test_assessment-driven
+# cycle untouched (ABS-3).
 #
-# Stage order (issue #970): objective-gate moved to after test (index 5) so
-# post-build artifacts (coverage report, git diff) are available for the
-# coverage-floor and scope-adherence gates.
-#   After test:   objective-gate (#970) then evidence-fed review stages (#972, #973, #974)
+# Dispatch units: intake, plan, design, build_test_cycle, review, pr.
+# _TPL_STAGES still enumerates 8 leaf stages (cycle members expand individually).
 flow:
   - intake
   - plan
   - design
-  - build
-  - test
-  - objective-gate
+  - build_test_cycle
   # #972: the `review` stage emits the evidence-fed multi-lens merge-readiness
   # report (no new flow stage — it is bound to a dedicated plugin by role).
   # #973 feeds each lens distinct mechanical evidence.
   - review
   - pr
+
+# ─── build_test_cycle (cycle — EPIC #966 I10 / #976) ────────────────────────
+# Wraps build + test + objective-gate in a convergence loop. Exits when the T0
+# objective-gate returns verdict=pass (deterministic signal — no LLM judgment).
+# On max_iterations=5 with on_max=continue, falls through to review so the
+# advisory review stage still runs. velocity_plateau.window=2 abandons early
+# when failure_count shows no improvement for 2 consecutive iters.
+# scope_policy mirrors standard.yaml's build_test_cycle (ADR-030 / #840):
+# auto-grant low-risk collateral, escalate structural asks, abandon on deny.
+build_test_cycle:
+  type: cycle
+  description: Build and test loop until objective-gate passes
+  flow:
+    - build
+    - test
+    - objective-gate
+  exit_when:
+    stage: objective-gate
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 5
+  on_max: continue
+  velocity_plateau:
+    window: 2
+  scope_policy:
+    expandable: true
+    auto_grant: [collateral_tests, collateral_config, collateral_docs]
+    escalate: structural
+    on_deny: abandon
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:
