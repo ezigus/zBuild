@@ -239,6 +239,14 @@ fi
 # Clean up dirty file so it doesn't affect other tests.
 rm -f "$GIT_FIXTURE/dirty-file.txt"
 
+# ─── [standard.yaml convergence class — not applicable to simple.yaml (I10-C)] ──
+# T13, T13a, T14, T15, T16 verify the pass-invariant coercion that drives
+# convergence in standard.yaml's build_test_cycle (empty_diff promotion,
+# build-verdict allowlist, dirty-worktree durability guard). In simple.yaml
+# (I10-C) test_assessment is absent from the cycle; objective-gate is the sole
+# convergence driver; these coercion rules are not applicable there. The [SPEC-3]
+# guard below confirms the standard convergence path is unchanged by I10-C.
+
 # ─── Test 13: empty_diff build + green suite → CONVERGES (verdict=pass) ───────
 # Regression for #895 (build_test_cycle livelock). build emits verdict=empty_diff
 # (done_sentinel, 0 files changed = work already implemented). With tests green
@@ -262,7 +270,7 @@ set -e
 assert_eq "T13 empty_diff+green run returns rc=0" "0" "$rc"
 content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
 v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
-assert_eq "T13 empty_diff + green converges (verdict=pass, not inconclusive)" "pass" "$v"
+assert_eq "[SPEC-3] T13 empty_diff + green converges (verdict=pass, not inconclusive) — standard.yaml convergence class intact" "pass" "$v"
 _dg_after="$(grep -c 'test_assessment.downgrade' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"; _dg_after="${_dg_after:-0}"
 if [[ "$_dg_after" -eq "$_dg_before" ]]; then
     assert_pass "T13 no test_assessment.downgrade event on converge"
@@ -553,6 +561,57 @@ route_to_model() {
     printf '%s\n' "$CANNED_RESPONSE"
     return 0
 }
+
+# ─── Test ADV-1: [SPEC-1] advisory mode — no pass-invariant downgrade ────────
+# CHANGE (I10-C): when ZBUILD_TEST_ASSESSMENT_ADVISORY=1 the plugin must return
+# the LLM verdict directly without convergence-class enforcement. Here the LLM
+# says pass but test-results.json has verdict=fail and failed=3 — in standard
+# mode the pass invariant downgrades to inconclusive. In advisory mode the LLM
+# pass must be emitted as-is. This assertion FAILS at baseline (before I10-C)
+# because the downgrade still fires, producing inconclusive instead of pass.
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TRADV1'
+{"schema_version":1,"verdict":"fail","exit_code":1,"passed":5,"failed":3,"test_output":"FAIL AuthTest","diff_applied":true,"test_cmd":"npm test"}
+TRADV1
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BSADV1'
+{"schema_version":1,"verdict":"pass","iterations":1,"terminated_reason":"complete"}
+BSADV1
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"advisory","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"unknown","failure_summary_md":"Advisory.","iter":1}'
+export ZBUILD_TEST_ASSESSMENT_ADVISORY=1
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-1] T-ADV-1 advisory mode run returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "[SPEC-1] T-ADV-1 advisory mode: LLM pass emitted directly (no downgrade to inconclusive)" "pass" "$v"
+unset ZBUILD_TEST_ASSESSMENT_ADVISORY
+
+# ─── Test ADV-2: [SPEC-2] advisory mode — scope_violation build does not block ─
+# CHANGE (I10-C): in advisory mode the build-verdict convergeable allowlist is
+# bypassed. With ZBUILD_TEST_ASSESSMENT_ADVISORY=1, build_verdict=scope_violation
+# must not downgrade a LLM pass — the verdict passes through as-is. In standard
+# mode scope_violation is not in the allowlist {pass, empty_diff} and would cause
+# inconclusive. This assertion FAILS at baseline (before I10-C).
+rm -f "$ARTIFACTS_DIR/test-assessment.json" "$ARTIFACTS_DIR/test-assessment.md"
+cat > "$ARTIFACTS_DIR/test-results.json" <<'TRADV2'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":379,"failed":0,"test_output":"total: 379/379 passed","diff_applied":true,"test_cmd":"npm test"}
+TRADV2
+cat > "$ARTIFACTS_DIR/build-summary.json" <<'BSADV2'
+{"schema_version":1,"verdict":"scope_violation","iterations":1,"terminated_reason":"scope_violation"}
+BSADV2
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"advisory scope_violation","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"unknown","failure_summary_md":"Advisory.","iter":1}'
+export ZBUILD_TEST_ASSESSMENT_ADVISORY=1
+set +e
+test_assessment_run "test_assessment" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-2] T-ADV-2 advisory mode with scope_violation run returns rc=0" "0" "$rc"
+content="$(cat "$ARTIFACTS_DIR/test-assessment.json")"
+v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
+assert_eq "[SPEC-2] T-ADV-2 advisory mode: scope_violation build does not block LLM pass (convergeable allowlist bypassed)" "pass" "$v"
+unset ZBUILD_TEST_ASSESSMENT_ADVISORY
 
 cleanup_test_env
 print_test_results

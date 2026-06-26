@@ -382,3 +382,44 @@ absent the acceptance path is a no-op and the plugin proceeds exactly as before.
   → pass→fail), T20 (no design.md → no-op, LLM verdict used).
 - `tests/integration/test-assessment-acceptance-flow-test.sh` — IT-1 through IT-4
   covering all four paths (happy, missing-file, llm-rejected, no-design-md).
+
+## Amendment v6 (2026-06-26, I10-C) — advisory mode for simple.yaml (ZBUILD_TEST_ASSESSMENT_ADVISORY)
+
+### Context
+
+`simple.yaml` (ADR-037 / EPIC #966) uses `objective-gate` as its sole
+convergence driver (`exit_when: objective-gate.verdict == pass`). `test_assessment`
+is absent from `simple.yaml`'s `build_test_cycle` entirely. If it were ever wired
+in as an optional advisory stage, the pass-invariant coercion block (Pin 5 +
+Amendments v3/v4) would be dead weight — `objective-gate` already owns convergence
+so coercing `test_assessment.verdict` to `inconclusive` serves no purpose and
+could mask a useful LLM signal.
+
+### Decision
+
+**Advisory mode env var.** Setting `ZBUILD_TEST_ASSESSMENT_ADVISORY=1` in the
+stage environment bypasses the entire pass-invariant coercion block
+(`_ta_build_verdict_convergeable` check, empty_diff promotion, dirty-worktree
+durability guard, build_test_disagreement downgrade). The LLM verdict is returned
+unchanged.
+
+**Scope boundary.** Advisory mode affects ONLY the pass-invariant coercion block
+(the "standard.yaml convergence class"). The acceptance-block downgrade (Amendment
+v5, ADR-031) is NOT suppressed — advisory mode is about bypassing convergence
+gating, not acceptance-criteria enforcement.
+
+**standard.yaml unchanged.** The env var is never set in standard.yaml's execution
+context. `_ta_build_verdict_convergeable` and all downgrade logic remain fully
+active for standard.yaml runs (guard: `tests/unit/test-assessment-plugin-test.sh`
+T13/T13a/T14/T15/T16).
+
+### Verification
+
+- `tests/unit/test-assessment-plugin-test.sh` T-ADV-1 ([SPEC-1]): advisory mode,
+  LLM says pass, tests failed → pass emitted directly (no downgrade to inconclusive).
+  FAILS at pre-I10-C baseline.
+- `tests/unit/test-assessment-plugin-test.sh` T-ADV-2 ([SPEC-2]): advisory mode,
+  LLM says pass, build says scope_violation → pass emitted directly (convergeable
+  allowlist bypassed). FAILS at pre-I10-C baseline.
+- `tests/unit/test-assessment-plugin-test.sh` T13 ([SPEC-3] guard): standard
+  (non-advisory) mode, empty_diff + green → pass (convergence class intact).

@@ -40,6 +40,14 @@ flow:
 # I10-B (#1089): max_iterations raised to 5 so the exit_when predicate is
 # load-bearing for convergence. Cycle re-runs build/test/objective-gate until
 # objective-gate emits verdict:pass or max_iterations is exhausted.
+#
+# I10-C: test_assessment is permanently retired as convergence driver for this
+# template. Convergence is owned exclusively by objective-gate via exit_when
+# below. The empty_diff/coercion convergence class in test_assessment/plugin.sh
+# is not applicable here — simple.yaml does not include test_assessment in this
+# cycle at all. If test_assessment is ever wired in as an advisory stage in a
+# future issue, set ZBUILD_TEST_ASSESSMENT_ADVISORY=1 in the stage env so the
+# pass-invariant coercion is suppressed (ADR-022 Amendment v6).
 build_test_cycle:
   type: cycle
   flow:

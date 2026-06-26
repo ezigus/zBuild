@@ -499,7 +499,14 @@ $_ta_instructions"
     local final_verdict="$llm_verdict"
     local downgraded=0
     local worktree_not_durable=0
-    if [[ "$llm_verdict" == "pass" ]]; then
+    # Advisory mode (I10-C, ADR-022 Amendment v6): bypass pass-invariant coercion
+    # entirely and emit the LLM verdict as-is. simple.yaml uses objective-gate as
+    # its convergence driver; test_assessment is advisory-only there and must not
+    # apply the standard.yaml convergence class (empty_diff promotion,
+    # build-verdict allowlist, dirty-worktree durability guard).
+    if [[ -n "${ZBUILD_TEST_ASSESSMENT_ADVISORY:-}" ]]; then
+        : # bypass pass-invariant coercion; final_verdict stays as llm_verdict
+    elif [[ "$llm_verdict" == "pass" ]]; then
         local ok=1
         # test.failed must be 0
         if [[ "$test_failed" =~ ^[0-9]+$ ]]; then
