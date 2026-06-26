@@ -35,11 +35,35 @@ fi
 # below) writes its xtrace there. One file per test means parallel workers never
 # share one fd-9 handle, which is what corrupted coverage before (#993).
 _rt_run() {
-  if [[ -n "${3:-}" ]]; then
-    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1
-  else
-    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
+  # #1058 Phase A: per-test-file wall-clock instrumentation. Entirely gated on
+  # ZBUILD_TEST_TIMING_FILE being set+non-empty — when unset this function's
+  # behavior + output is byte-identical to the pre-#1058 version (the parallel
+  # path's byte-identical-output guarantee depends on this). EPOCHREALTIME is a
+  # bash builtin (free, no fork) so the unset-path cost is two var reads. The
+  # timing append never affects the test rc (`|| true`) — instrumentation must
+  # never turn a green run red.
+  if [[ -z "${ZBUILD_TEST_TIMING_FILE:-}" ]]; then
+    if [[ -n "${3:-}" ]]; then
+      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1
+    else
+      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
+    fi
+    return
   fi
+  local _t0 _t1 _rc=0
+  _t0="$EPOCHREALTIME"
+  if [[ -n "${3:-}" ]]; then
+    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1 || _rc=$?
+  else
+    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1 || _rc=$?
+  fi
+  _t1="$EPOCHREALTIME"
+  # One small line per file → atomic under POSIX (< PIPE_BUF) so concurrent
+  # pool workers `>>`-appending the shared file never interleave a line.
+  awk -v t0="$_t0" -v t1="$_t1" -v p="$1" \
+    'BEGIN { printf "file %d %s\n", (t1 - t0) * 1000, p }' \
+    >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
+  return "$_rc"
 }
 
 # _zb_default_jobs — portable CPU-count for the #984 parallel-by-default path.
@@ -230,10 +254,28 @@ _rt_emit_summary() {
     echo "$_name: $_passed/$_total passed$_note"
 }
 
+# #1058 Phase A: append one `tier <ms> <name>` line for a finished tier. Gated on
+# ZBUILD_TEST_TIMING_FILE; no-op + zero output when unset (preserves byte-identical
+# default behavior). Never affects the caller's rc (`|| true`). <t0> is the
+# EPOCHREALTIME captured at run_tier entry.
+_rt_emit_tier_time() {
+    local _name="$1" _t0="$2"
+    [[ -n "${ZBUILD_TEST_TIMING_FILE:-}" ]] || return 0
+    local _t1="$EPOCHREALTIME"
+    awk -v t0="$_t0" -v t1="$_t1" -v n="$_name" \
+        'BEGIN { printf "tier %d %s\n", (t1 - t0) * 1000, n }' \
+        >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
+}
+
 run_tier() {
   local name="$1"
   local dir="$TESTS_DIR/$name"
   local passed=0 failed=0 total=0
+
+  # #1058 Phase A: per-tier wall-clock. Captured at entry, emitted just before
+  # each return (parallel + serial paths) via _rt_emit_tier_time. Gated on
+  # ZBUILD_TEST_TIMING_FILE so the unset-path is byte-identical to pre-#1058.
+  local _rt_tier_t0="$EPOCHREALTIME"
 
   local files=()
 
@@ -272,6 +314,7 @@ run_tier() {
 
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "$name: 0/0 passed (empty tier)"
+    _rt_emit_tier_time "$name" "$_rt_tier_t0"
     return 0
   fi
 
@@ -417,6 +460,7 @@ run_tier() {
       rm -rf "$_cov_dir"
     fi
     _rt_emit_summary "$name" "$passed" "$total"
+    _rt_emit_tier_time "$name" "$_rt_tier_t0"
     [[ $failed -eq 0 ]]
     return
   fi
@@ -438,6 +482,7 @@ run_tier() {
     rm -rf "$_cov_dir"
   fi
   _rt_emit_summary "$name" "$passed" "$total"
+  _rt_emit_tier_time "$name" "$_rt_tier_t0"
   [[ $failed -eq 0 ]]
 }
 
