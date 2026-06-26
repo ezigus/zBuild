@@ -656,6 +656,132 @@ else
         "file absent: $_spec_cm_dir/coverage-map.json"
 fi
 
+# ═══════════════════════════════════════════════════════════════════════════
+# #1058 Phase B — objective gate REUSES the test stage's full-suite result
+# instead of re-running the suite on the identical committed work-tree.
+# SAFETY-CRITICAL: reuse must never mask a failure; on ANY doubt the gate
+# re-runs the full suite (fail closed).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Build a self-contained git work-tree whose committed HEAD^{tree} SHA is stable,
+# so a seeded test-results.json can carry a matching (or mismatching) tree_sha.
+# Sets _pb_root (the repo path) and _pb_tree (the tree SHA) for the caller. Runs
+# in the caller's shell (no command substitution) so the vars survive set -u.
+_pb_make_repo() {
+    _pb_root="$TEST_TEMP_DIR/pb-repo-$RANDOM$RANDOM"
+    mkdir -p "$_pb_root/artifacts"
+    git -C "$_pb_root" init -q
+    git -C "$_pb_root" config user.email t@t.t
+    git -C "$_pb_root" config user.name t
+    printf 'v1\n' > "$_pb_root/file.txt"
+    git -C "$_pb_root" add -A
+    git -C "$_pb_root" commit -qm init
+    _pb_tree="$(git -C "$_pb_root" rev-parse 'HEAD^{tree}')"
+}
+
+# Seed an artifacts/test-results.json. Args: <root> <tree_sha> <verdict> <run_mode>
+_pb_seed_results() {
+    local root="$1" tree="$2" verdict="$3" mode="$4"
+    jq -n --arg t "$tree" --arg v "$verdict" --arg m "$mode" \
+        '{schema_version:1, verdict:$v, run_mode:$m, tree_sha:$t,
+          exit_code:0, passed:1, failed:0, test_output:"", diff_applied:false,
+          test_cmd:"x"}' > "$root/artifacts/test-results.json"
+}
+
+# Run objective_gate_run with a test_cmd that records its invocation by touching
+# a marker file. Returns the gate rc; sets _pb_marker_present=1 if test_cmd ran.
+# Args: <root> [extra-env assignments are taken from the current environment].
+_pb_run_gate() {
+    local root="$1"
+    local marker="$root/test_cmd_invoked.marker"
+    rm -f "$marker"
+    local _save_test="${ZBUILD_TEST_CMD:-}" _save_lint="${ZBUILD_LINT_CMD:-}"
+    local _save_root="${ZBUILD_REPO_ROOT:-}"
+    export ZBUILD_TEST_CMD="touch '$marker'"   # records invocation; exits 0
+    export ZBUILD_LINT_CMD="true"
+    export ZBUILD_COVERAGE_CMD="true"
+    export ZBUILD_DIFF_CMD="true"
+    export ZBUILD_REPO_ROOT="$root"
+    local _state="$root/state.json"
+    printf '{"issue":"1058"}\n' > "$_state"
+    set +e
+    objective_gate_run "objective-gate" "$_state"
+    _pb_gate_rc=$?
+    set -e
+    unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD
+    export ZBUILD_TEST_CMD="$_save_test"
+    export ZBUILD_LINT_CMD="$_save_lint"
+    if [[ -n "$_save_root" ]]; then export ZBUILD_REPO_ROOT="$_save_root"; else unset ZBUILD_REPO_ROOT; fi
+    if [[ -f "$marker" ]]; then _pb_marker_present=1; else _pb_marker_present=0; fi
+}
+
+# ─── SPEC-PB1: matching tree_sha + verdict=pass + run_mode=full → REUSE ───────
+# Gate must NOT invoke test_cmd (stub marker absent) and must pass (rc=0).
+_pb_make_repo
+_pb_seed_results "$_pb_root" "$_pb_tree" "pass" "full"
+_pb_run_gate "$_pb_root"
+assert_eq "[SPEC-PB1] gate does NOT invoke test_cmd on reuse" "0" "$_pb_marker_present"
+assert_eq "[SPEC-PB1] gate passes (rc=0) on reuse" "0" "$_pb_gate_rc"
+_pb_v="$(grep -o '"verdict":"[^"]*"' "$_pb_root/artifacts/objective-gate-result.json" | cut -d'"' -f4)"
+assert_eq "[SPEC-PB1] gate verdict=pass on reuse" "pass" "$_pb_v"
+
+# ─── SPEC-PB2: tree_sha MISMATCH → RE-RUN (stub invoked) ──────────────────────
+_pb_make_repo
+_pb_seed_results "$_pb_root" "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" "pass" "full"
+_pb_run_gate "$_pb_root"
+assert_eq "[SPEC-PB2] gate RE-RUNS test_cmd on tree_sha mismatch" "1" "$_pb_marker_present"
+
+# ─── SPEC-PB3: verdict != pass → RE-RUN (stub invoked) ────────────────────────
+_pb_make_repo
+_pb_seed_results "$_pb_root" "$_pb_tree" "fail" "full"
+_pb_run_gate "$_pb_root"
+assert_eq "[SPEC-PB3] gate RE-RUNS test_cmd when artifact verdict!=pass" "1" "$_pb_marker_present"
+
+# ─── SPEC-PB4: run_mode=targeted → RE-RUN (non-authoritative) ─────────────────
+_pb_make_repo
+_pb_seed_results "$_pb_root" "$_pb_tree" "pass" "targeted"
+_pb_run_gate "$_pb_root"
+assert_eq "[SPEC-PB4] gate RE-RUNS test_cmd for targeted (non-authoritative) run" "1" "$_pb_marker_present"
+
+# ─── SPEC-PB5: test-results.json ABSENT → RE-RUN ─────────────────────────────
+_pb_make_repo
+# no _pb_seed_results call → artifact absent
+_pb_run_gate "$_pb_root"
+assert_eq "[SPEC-PB5] gate RE-RUNS test_cmd when test-results.json absent" "1" "$_pb_marker_present"
+
+# ─── SPEC-PB6: seeded SUITE FAILURE still fails gate closed (reuse never masks) ─
+# Even with a perfectly matching+pass+full artifact, when reuse is bypassed the
+# live suite failing must fail the gate. Here we force a re-run via the escape
+# hatch AND make the live suite fail; the gate must return 1, verdict=fail.
+_pb_make_repo
+_pb_seed_results "$_pb_root" "$_pb_tree" "pass" "full"
+_pb_state="$_pb_root/state.json"; printf '{"issue":"1058"}\n' > "$_pb_state"
+_pb_save_test="${ZBUILD_TEST_CMD:-}"; _pb_save_lint="${ZBUILD_LINT_CMD:-}"; _pb_save_root="${ZBUILD_REPO_ROOT:-}"
+export ZBUILD_OBJECTIVE_GATE_NO_REUSE=1
+export ZBUILD_TEST_CMD="false"   # live suite FAILS
+export ZBUILD_LINT_CMD="true"
+export ZBUILD_COVERAGE_CMD="true"
+export ZBUILD_DIFF_CMD="true"
+export ZBUILD_REPO_ROOT="$_pb_root"
+set +e
+objective_gate_run "objective-gate" "$_pb_state"
+_pb_pb6_rc=$?
+set -e
+unset ZBUILD_COVERAGE_CMD ZBUILD_DIFF_CMD ZBUILD_OBJECTIVE_GATE_NO_REUSE
+export ZBUILD_TEST_CMD="$_pb_save_test"; export ZBUILD_LINT_CMD="$_pb_save_lint"
+if [[ -n "$_pb_save_root" ]]; then export ZBUILD_REPO_ROOT="$_pb_save_root"; else unset ZBUILD_REPO_ROOT; fi
+assert_eq "[SPEC-PB6] seeded-pass artifact does NOT mask a live suite failure (rc=1)" "1" "$_pb_pb6_rc"
+_pb_pb6_v="$(grep -o '"verdict":"[^"]*"' "$_pb_root/artifacts/objective-gate-result.json" | cut -d'"' -f4)"
+assert_eq "[SPEC-PB6] gate verdict=fail on live suite failure" "fail" "$_pb_pb6_v"
+
+# ─── SPEC-PB7: ZBUILD_OBJECTIVE_GATE_NO_REUSE=1 forces RE-RUN even on a match ──
+_pb_make_repo
+_pb_seed_results "$_pb_root" "$_pb_tree" "pass" "full"
+export ZBUILD_OBJECTIVE_GATE_NO_REUSE=1
+_pb_run_gate "$_pb_root"
+unset ZBUILD_OBJECTIVE_GATE_NO_REUSE
+assert_eq "[SPEC-PB7] escape hatch forces re-run despite matching artifact" "1" "$_pb_marker_present"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

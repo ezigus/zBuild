@@ -413,11 +413,22 @@ _test_run_inner() {
     local _timing_json=""
     _timing_json="$(_test_summarize_timing "$_zbt_timing_log")" || _timing_json=""
 
+    # #1058 Phase B: only a FULL-suite run is an authoritative result for the
+    # whole work-tree, so only then record the committed work-tree SHA so the
+    # objective gate can safely reuse this result instead of re-running the suite
+    # on the identical tree. Targeted/partial runs are NOT authoritative — leave
+    # tree_sha empty so the gate fails closed (re-runs) for those. Empty on any
+    # git failure → same fail-closed fallback.
+    local _tree_sha=""
+    if [[ "$run_mode" == "full" ]]; then
+        _tree_sha="$(git -C "$repo_root" rev-parse 'HEAD^{tree}' 2>/dev/null || echo)"
+    fi
+
     # Record the command that actually ran (targeted or full), not the base cmd.
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode" \
-        "$_timing_json"
+        "$_timing_json" "$_tree_sha"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
     emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \
@@ -620,6 +631,11 @@ _test_write_result() {
     # field omitted (mirrors the `reason` field's omit-when-empty contract). A
     # malformed value is dropped by the jq fromjson guard below — never crashes.
     local timing_json="${11:-}"
+    # #1058 Phase B: optional committed work-tree SHA. Written ONLY for an
+    # authoritative full-suite run (caller passes empty otherwise). Empty string
+    # → field omitted, so a consumer (objective gate) that requires a matching
+    # tree_sha fails closed and re-runs. Never written for targeted runs.
+    local tree_sha="${12:-}"
 
     local dir
     dir="$(dirname "$path")"
@@ -656,6 +672,7 @@ _test_write_result() {
         --arg reason "$reason" \
         --arg run_mode "$run_mode" \
         --arg timing "$timing_json" \
+        --arg tree_sha "$tree_sha" \
         '{
             schema_version: 1,
             verdict: $verdict,
@@ -668,7 +685,8 @@ _test_write_result() {
             run_mode: $run_mode
         }
         + (if $reason != "" then {reason: $reason} else {} end)
-        + (if $timing != "" then (try {timing: ($timing | fromjson)} catch {}) else {} end)' \
+        + (if $timing != "" then (try {timing: ($timing | fromjson)} catch {}) else {} end)
+        + (if $tree_sha != "" then {tree_sha: $tree_sha} else {} end)' \
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"
