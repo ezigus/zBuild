@@ -300,6 +300,49 @@ _og_persist_coverage_pct() {
        '. + {"last_coverage_pct": $p, "updated_at": $now}'
 }
 
+# ─── _og_can_reuse_suite ─────────────────────────────────────────────────────
+# #1058 Phase B: decide whether the gate may REUSE the test stage's full-suite
+# result (test-results.json) instead of re-running `npm test` on the identical
+# committed work-tree. Returns 0 (reuse) ONLY when ALL hold:
+#   • ZBUILD_OBJECTIVE_GATE_NO_REUSE is unset/empty (escape hatch forces re-run)
+#   • test-results.json exists and parses
+#   • its .run_mode == "full"      (targeted runs are NOT authoritative)
+#   • its .verdict  == "pass"
+#   • its .tree_sha is non-empty and EQUALS the current committed work-tree SHA
+# Any other condition (missing field, mismatch, unreadable git tree) returns 1
+# (fail closed → caller runs the suite). Repo root is derived exactly as the
+# test plugin does so both compute the same tree.
+# Usage: _og_can_reuse_suite <artifacts_dir>
+_og_can_reuse_suite() {
+    local artifacts_dir="$1"
+
+    # Escape hatch: any non-empty value forces a full re-run.
+    [[ -n "${ZBUILD_OBJECTIVE_GATE_NO_REUSE:-}" ]] && return 1
+
+    local results_json="$artifacts_dir/test-results.json"
+    [[ -f "$results_json" ]] || return 1
+
+    # Single jq read of the three relevant fields; bail closed if jq can't parse.
+    local _parsed
+    _parsed="$(jq -r '[(.tree_sha // ""), (.verdict // ""), (.run_mode // "")] | @tsv' \
+        "$results_json" 2>/dev/null)" || return 1
+    local _art_tree _art_verdict _art_mode
+    IFS=$'\t' read -r _art_tree _art_verdict _art_mode <<< "$_parsed"
+
+    [[ "$_art_mode" == "full" ]] || return 1
+    [[ "$_art_verdict" == "pass" ]] || return 1
+    [[ -n "$_art_tree" ]] || return 1
+
+    local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo)}"
+    [[ -n "$repo_root" ]] || return 1
+    local _cur_sha
+    _cur_sha="$(git -C "$repo_root" rev-parse 'HEAD^{tree}' 2>/dev/null || echo)"
+    [[ -n "$_cur_sha" ]] || return 1
+
+    [[ "$_art_tree" == "$_cur_sha" ]] || return 1
+    return 0
+}
+
 # ─── objective_gate_run ───────────────────────────────────────────────────────
 # Hard-blocks on test suite, lint, coverage-floor, or scope-adherence failure.
 # Writes enriched artifact with coverage_pct, coverage_delta, scope_ok, quality_score.
@@ -330,10 +373,24 @@ objective_gate_run() {
     local negctl_detail="" reachability_detail=""
 
     # Run test suite — T0 hard gate: any non-zero exit blocks merge.
-    bash -c "$test_cmd" >/dev/null 2>&1 || test_rc=$?
+    # #1058 Phase B: attempt to REUSE the test stage's full-suite result instead
+    # of re-running the identical suite on the same committed work-tree. This is
+    # SAFETY-CRITICAL: reuse must NEVER let a broken build pass the gate, so it
+    # fails closed (runs the suite) on ANY doubt — missing artifact, missing or
+    # mismatched tree_sha, non-pass verdict, a targeted (non-authoritative) run,
+    # an unreadable git tree, or the ZBUILD_OBJECTIVE_GATE_NO_REUSE escape hatch.
+    local _suite_reused=0
+    if _og_can_reuse_suite "$artifacts_dir"; then
+        test_rc=0
+        _suite_reused=1
+    else
+        bash -c "$test_cmd" >/dev/null 2>&1 || test_rc=$?
+    fi
     if [[ $test_rc -ne 0 ]]; then
         fail_reason="suite_fail"
         _og_emit "objective_gate.suite.fail" "exit_code=$test_rc"
+    elif [[ $_suite_reused -eq 1 ]]; then
+        _og_emit "objective_gate.suite.pass" "exit_code=0" "reused=1"
     else
         _og_emit "objective_gate.suite.pass" "exit_code=0"
     fi
