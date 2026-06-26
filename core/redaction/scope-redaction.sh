@@ -87,15 +87,19 @@ apply_scope_redaction() {
     # ─── Redact with awk (fence-aware, allowlist-driven) ────────────────────
     local size_before; size_before=$(wc -c < "$input")
     local counter_skipped_log="$output.counter-skipped"
+    local counter_neutralized_log="$output.counter-neutralized"
     : > "$counter_skipped_log"
+    : > "$counter_neutralized_log"
 
     ZBUILD_REDACTION_ALLOW="$allow_lines" \
     ZBUILD_REDACTION_COUNTER_LOG="$counter_skipped_log" \
+    ZBUILD_REDACTION_NEUTRALIZED_LOG="$counter_neutralized_log" \
     awk '
     BEGIN {
         n_allow = 0
         allow_data = ENVIRON["ZBUILD_REDACTION_ALLOW"]
         counter_log = ENVIRON["ZBUILD_REDACTION_COUNTER_LOG"]
+        neutralized_log = ENVIRON["ZBUILD_REDACTION_NEUTRALIZED_LOG"]
         n = split(allow_data, lines, "\n")
         for (i = 1; i <= n; i++) {
             if (length(lines[i]) > 0) {
@@ -152,7 +156,8 @@ apply_scope_redaction() {
                 cpos = index(rest, close_tag)
                 if (cpos == 0) {
                     n = length(open_tag)
-                    result = substr(result, 1, length(result) - n) "[OOS-MARKER-MALFORMED]"
+                    result = substr(result, 1, length(result) - n) "&lt;out-of-scope-context&gt;"
+                    print substr(rest, 1, 60) >> neutralized_log
                     result = result tokenize_paths(rest)
                     rest = ""
                     depth = 0
@@ -251,6 +256,18 @@ apply_scope_redaction() {
             "cycle=$cycle_id"
     fi
     rm -f "$counter_skipped_log"
+
+    if [[ -s "$counter_neutralized_log" ]]; then
+        local neutralized_count neutralized_sample
+        neutralized_count=$(wc -l < "$counter_neutralized_log" | tr -d ' ')
+        neutralized_sample="$(head -3 "$counter_neutralized_log" | tr '\n' ',' | sed 's/,$//')"
+        emit_event "redaction.marker_neutralized" \
+            "input=$input" \
+            "count=$neutralized_count" \
+            "sample=$neutralized_sample" \
+            "cycle=$cycle_id"
+    fi
+    rm -f "$counter_neutralized_log"
 
     emit_event "redaction.applied" \
         "input=$input" \

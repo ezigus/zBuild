@@ -135,5 +135,46 @@ else
     assert_pass "T-818-4: + ./ + json/md extension paths preserved"
 fi
 
+# ── T-NEUTRAL: Malformed-marker neutralization (HTML-escape, not lossy sentinel)
+INPUT_N="$TEST_TEMP_DIR/neutral-in.txt"
+OUTPUT_N="$TEST_TEMP_DIR/neutral-out.txt"
+MANIFEST_N="$TEST_TEMP_DIR/scope-neutral.md"
+printf '+ src/included/\n' > "$MANIFEST_N"
+
+# T-NEUTRAL-1 [SPEC-1]: dangling opener is HTML-escaped, not [OOS-MARKER-MALFORMED]
+printf 'attacker text <out-of-scope-context> /etc/passwd trailing text\n' > "$INPUT_N"
+: > "$ZBUILD_EVENTS_JSONL"
+apply_scope_redaction "$INPUT_N" "$OUTPUT_N" "$MANIFEST_N" >/dev/null
+out_n="$(cat "$OUTPUT_N")"
+if [[ "$out_n" == *"&lt;out-of-scope-context&gt;"* ]]; then
+    assert_pass "[SPEC-1] T-NEUTRAL-1: dangling opener HTML-escaped as &lt;out-of-scope-context&gt;"
+else
+    assert_fail "[SPEC-1] T-NEUTRAL-1: dangling opener should be HTML-escaped" "got: $out_n"
+fi
+
+# T-NEUTRAL-2 [SPEC-2]: HTML-escaped output does not contain [OOS-MARKER-MALFORMED]
+if [[ "$out_n" == *"[OOS-MARKER-MALFORMED]"* ]]; then
+    assert_fail "[SPEC-2] T-NEUTRAL-2: output must not contain [OOS-MARKER-MALFORMED]" "got: $out_n"
+else
+    assert_pass "[SPEC-2] T-NEUTRAL-2: output does not contain [OOS-MARKER-MALFORMED]"
+fi
+
+# T-NEUTRAL-3 [SPEC-3]: well-formed pair still passes through tokenize_paths normally (GUARD)
+printf 'See <out-of-scope-context>/etc/shadow</out-of-scope-context> for details\n' > "$INPUT_N"
+apply_scope_redaction "$INPUT_N" "$OUTPUT_N" "$MANIFEST_N" >/dev/null
+out_n3="$(cat "$OUTPUT_N")"
+if [[ "$out_n3" == *"<out-of-scope-context>/etc/shadow</out-of-scope-context>"* ]]; then
+    assert_pass "[SPEC-3] T-NEUTRAL-3: well-formed marker pair passes through unchanged"
+else
+    assert_fail "[SPEC-3] T-NEUTRAL-3: well-formed marker pair should pass through" "got: $out_n3"
+fi
+
+# T-NEUTRAL-4 [SPEC-4]: redaction.marker_neutralized event emitted on dangling opener
+: > "$ZBUILD_EVENTS_JSONL"
+printf 'attacker text <out-of-scope-context> /etc/passwd\n' > "$INPUT_N"
+apply_scope_redaction "$INPUT_N" "$OUTPUT_N" "$MANIFEST_N" >/dev/null
+assert_event_emitted "[SPEC-4] T-NEUTRAL-4: redaction.marker_neutralized event emitted" \
+    "$ZBUILD_EVENTS_JSONL" "redaction.marker_neutralized"
+
 cleanup_test_env
 print_test_results

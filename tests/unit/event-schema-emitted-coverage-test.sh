@@ -69,5 +69,12 @@ else
     done
 fi
 
+# [SPEC-5] redaction.marker_neutralized must be registered in event-schema.json known_types
+if grep -qxF "redaction.marker_neutralized" <<< "$_known_types"; then
+    assert_pass "[SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types"
+else
+    assert_fail "[SPEC-5] redaction.marker_neutralized is NOT registered in event-schema.json known_types"
+fi
+
 print_test_results
 exit $((FAIL > 0))
