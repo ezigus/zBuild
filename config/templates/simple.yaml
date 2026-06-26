@@ -9,19 +9,22 @@ defaults:
   strategy: fanout
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Flat 8-stage simplified pipeline (ADR-037 EPIC #966 I2+I3+I4).
+# Simplified pipeline (ADR-037 EPIC #966 I2+I3+I4): 6 top-level flow units —
+# intake, plan, design, build_test_cycle, review, pr — where build_test_cycle
+# groups the build/test/objective-gate leaves (8 leaf stages total).
 # Omits: impact, test_assessment, acceptance-gate, cq-* stages (targeted for
 # removal in #979). Starts closer to the intended final shape so subsequent
 # issues (#969-#979) can build the new pipeline here while standard.yaml
 # continues to serve production.
 #
-# Stage order (issue #970): objective-gate moved to after test (index 5) so
-# post-build artifacts (coverage report, git diff) are available for the
-# coverage-floor and scope-adherence gates.
+# Stage order (issue #970): objective-gate runs after test (now inside
+# build_test_cycle) so post-build artifacts (coverage report, git diff) are
+# available for the coverage-floor and scope-adherence gates.
 #   After test:   objective-gate (#970) then evidence-fed review stages (#972, #973, #974)
 #
 # I10-A (#976): build/test/objective-gate wrapped in build_test_cycle (ADR-021).
-# Convergence semantics (real exit_when predicate) land in I10-B.
+# The exit_when predicate is concrete and parsed, but not yet load-bearing for
+# convergence — see the cycle block below. I10-B makes it drive looping.
 flow:
   - intake
   - plan
@@ -35,8 +38,10 @@ flow:
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # I10-A (#976): structural skeleton — wraps build/test/objective-gate into a
-# cycle. exit_when predicate is placeholder; real convergence semantics land
-# in I10-B. max_iterations:1 preserves flat-equivalent single-pass behavior.
+# cycle. The exit_when predicate below is concrete (parsed and asserted by the
+# unit test), but max_iterations:1 forces a single pass, so it does NOT yet
+# drive looping — behavior stays flat-equivalent. I10-B raises max_iterations
+# to make the predicate load-bearing for convergence.
 build_test_cycle:
   type: cycle
   flow:
