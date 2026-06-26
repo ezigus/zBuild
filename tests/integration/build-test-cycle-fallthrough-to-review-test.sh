@@ -24,6 +24,29 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "cycle fall-through → review → pipeline=failed (#527)"
 setup_test_env "cycle-fallthrough-527"
 
+# ─── Source-once optimization (#1096 / PC3) ────────────────────────────────────
+# runner.sh transitively sources ~20 core modules; doing that per case (×7)
+# dominated runtime. Hoist the source to the parent ONCE; each case still runs
+# in its own SUBSHELL purely for isolation, but inherits the already-sourced
+# functions (no re-source). Per-case state lives entirely in subshell-local env
+# vars + stub redefinitions, so nothing leaks between cases — identical coverage.
+#
+# ZBUILD_EVENTS_DIR is pinned BEFORE the parent source so event-bus.sh captures
+# _ZBUILD_EVENTS_PINNED=1 at source time (runner.sh L23-24). That flag is
+# inherited by every subshell, so main() will NOT override each case's pinned
+# events location (runner.sh L887) — events land in the case's own events dir.
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+export ZBUILD_CYCLES_ENABLED=1
+export ZBUILD_CONTRACT_VALIDATOR=warn
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/_source_once_events"
+# runner.sh runs `set -e`; isolate the one-time source so a transient nonzero
+# during init can't abort the harness, then drop back to lenient mode.
+set +e
+# shellcheck disable=SC1091
+source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+set +e
+
 # ─── Shared test fixture: drive runner.sh end-to-end with mocked cycle + review ─
 # Each case runs in a SUBSHELL so sourced runner state doesn't leak between
 # cases. The runner's main() is invoked with --template standard so the cycle
@@ -34,16 +57,10 @@ _run_case() {
 
     (
         set +e
-        export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
         export ZBUILD_EVENTS_DIR="$_case_tmp/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
         export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
         export ZBUILD_STATE_DIR="$_case_tmp/state"; mkdir -p "$ZBUILD_STATE_DIR"
         export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
-        export ZBUILD_CYCLES_ENABLED=1
-        export ZBUILD_CONTRACT_VALIDATOR=warn
-        export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-        # shellcheck disable=SC1091
-        source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
 
         # Stub cycle orchestrator: return configured rc, set the LAST_TERMINATED_REASON
         # the way the real orchestrator does (see core/pipeline/cycle-orchestrator.sh).
