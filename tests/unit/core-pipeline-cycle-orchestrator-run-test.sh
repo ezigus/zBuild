@@ -161,4 +161,23 @@ set +e; cycle_orchestrator_run "no-such-cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 assert_eq "T12 config_invalid rc=4" "4" "$rc_t12b"
 assert_eq "[SPEC-2] _CYCLE_TRAP_CYCLE_ID cleared after config_invalid return" "" "$_CYCLE_TRAP_CYCLE_ID"
 
+# [SPEC-3]: two sequential top-level calls — second must NOT be misclassified as
+#   nested re-entry. At baseline _CYCLE_TRAP_CYCLE_ID="build-test" after the first
+#   call; the second call with cycle_id="review-remediation" sees _parent_cid=
+#   "build-test" != "review-remediation", enters the nested-reentry restore branch,
+#   and loads the planted persist into _CYCLE_TIMEOUT_RUN (assertion fails). With
+#   the fix, _CYCLE_TRAP_CYCLE_ID="" after the first call → _parent_cid="" →
+#   top-level path → persist is cleared, not restored.
+_seed
+load_template "$FIXT/cycle-converges-iter2.yaml"
+MOCK_VERDICTS="build:pass;test:pass"
+_CYCLE_TRAP_CYCLE_ID=""
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t12c_1=$?; set -e
+# Plant stale persist for the second cycle — a top-level call must clear it.
+_CYCLE_TIMEOUT_RUN_PERSIST["review-remediation:s1"]=3
+set +e; cycle_orchestrator_run "review-remediation" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t12c_2=$?; set -e
+assert_eq "T12c first call rc=0" "0" "$rc_t12c_1"
+assert_eq "T12c second call config_invalid rc=4" "4" "$rc_t12c_2"
+assert_eq "[SPEC-3] second sequential top-level call clears stale persist (not restores)" "" "${_CYCLE_TIMEOUT_RUN[s1]:-}"
+
 print_test_results
