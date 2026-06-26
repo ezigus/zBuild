@@ -113,3 +113,23 @@ _zbuild_runner_set_llm_abort_reason() {
 _zbuild_runner_write_llm_abort() {
     locked_state_update "$1" "_zbuild_runner_set_llm_abort_reason"
 }
+
+# _zbuild_read_objective_gate_verdict <state_dir>
+# Reads $state_dir/artifacts/objective-gate-result.json and echoes "pass",
+# "fail", or "missing". Fail-closed: absent or malformed JSON → "missing".
+# Used by runner.sh cycle_dispatch_stage and integration tests to evaluate
+# the objective-gate convergence predicate without LLM verdict machinery.
+_zbuild_read_objective_gate_verdict() {
+    local state_dir="$1"
+    local artifact="$state_dir/artifacts/objective-gate-result.json"
+    if [[ ! -f "$artifact" ]]; then
+        echo "missing"
+        return 0
+    fi
+    local verdict
+    verdict="$(jq -r '.verdict // empty' "$artifact" 2>/dev/null || true)"
+    case "${verdict:-}" in
+        pass|fail) echo "$verdict" ;;
+        *)         echo "missing" ;;
+    esac
+}

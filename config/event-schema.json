@@ -195,6 +195,8 @@
     "router.precondition.violated",
     "strategy.composite.unimplemented",
     "template.deprecated_shape",
+    "cycle.test.full_suite_gate",
+    "build_test_cycle.exit_when.suite_green",
     "objective_gate.suite.start",
     "objective_gate.suite.fail",
     "objective_gate.suite.pass",

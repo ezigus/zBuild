@@ -37,11 +37,9 @@ flow:
   - pr
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
-# I10-A (#976): structural skeleton — wraps build/test/objective-gate into a
-# cycle. The exit_when predicate below is concrete (parsed and asserted by the
-# unit test), but max_iterations:1 forces a single pass, so it does NOT yet
-# drive looping — behavior stays flat-equivalent. I10-B raises max_iterations
-# to make the predicate load-bearing for convergence.
+# I10-B (#1089): max_iterations raised to 5 so the exit_when predicate is
+# load-bearing for convergence. Cycle re-runs build/test/objective-gate until
+# objective-gate emits verdict:pass or max_iterations is exhausted.
 build_test_cycle:
   type: cycle
   flow:
@@ -53,7 +51,7 @@ build_test_cycle:
     field: verdict
     op: eq
     value: pass
-  max_iterations: 1
+  max_iterations: 5
   on_max: continue
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
