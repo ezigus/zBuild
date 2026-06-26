@@ -1,0 +1,20 @@
+id: runner-state-dir-minimal
+name: Runner State-Dir Minimal (#1097 PC4 perf fixture)
+extends: null
+defaults:
+  strategy: fanout
+
+# Minimal two-leaf roster used ONLY by runner-exports-state-dir-test.sh (#618).
+# The behavior under test — the runner exporting ZBUILD_STATE_DIR (and the
+# pre-existing ZBUILD_RUN_ID / ZBUILD_ISSUE / ZBUILD_GOAL) into a child
+# plugin's env — is NOT stage-count dependent, so the full ~14-stage standard
+# roster is unnecessary overhead. intake satisfies the runner's first-stage
+# expectations; build is the env-capture stage the test overrides to record
+# the child env (#1097: stub-roster reduction for ~21s → faster runtime).
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]
+  - id: build
+    gate: auto
+    roles: [builder]
