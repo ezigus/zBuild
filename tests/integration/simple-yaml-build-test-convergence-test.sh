@@ -108,11 +108,14 @@ cycle_dispatch_stage() {
                     > "$_st_art/objective-gate-result.json"
                 _CYCLE_DISPATCH_VERDICT_RAW="pass"
                 _CYCLE_DISPATCH_VERDICT="pass"
-                # Call the I10-B helper and emit the suite-green event.
+                # Call the I10-B helper and emit the suite-green event. Do NOT
+                # suppress eb_emit_event failures: an unregistered/invalid event
+                # schema must fail the run (and thus SPEC-3), not pass silently
+                # (Copilot review).
                 local _g_v; _g_v="$(_zbuild_read_objective_gate_verdict "$_st_state_dir")"
                 if [[ "$_g_v" == "pass" ]]; then
                     eb_emit_event "build_test_cycle.exit_when.suite_green" \
-                        "iter=$_st_iter" "verdict=pass" 2>/dev/null || true
+                        "iter=$_st_iter" "verdict=pass"
                 fi
             fi
             ;;
@@ -134,14 +137,25 @@ assert_eq "[SPEC-3] terminated reason is converged (not max_iterations)" \
 assert_eq "[SPEC-3] cycle ran exactly 2 iterations (fail then pass)" \
     "2" "${_CYCLE_LAST_ITERATIONS:-}"
 
-# ─── SPEC-4: build_test_cycle.exit_when.suite_green is a registered event ────
-print_test_section "SPEC-4: build_test_cycle.exit_when.suite_green in event-schema.json"
+# ─── SPEC-4: build_test_cycle.exit_when.suite_green registered AND emitted ───
+print_test_section "SPEC-4: build_test_cycle.exit_when.suite_green registered + emitted"
 
 if grep -q '"build_test_cycle.exit_when.suite_green"' "$REPO_ROOT/config/event-schema.json"; then
     assert_pass "[SPEC-4] build_test_cycle.exit_when.suite_green registered in event-schema.json"
 else
     assert_fail "[SPEC-4] build_test_cycle.exit_when.suite_green registered in event-schema.json" \
         "event type missing from config/event-schema.json"
+fi
+
+# Assert the event was actually written to the JSONL during the converged run.
+# eb_emit_event enforces schema registration, so a real emission also guards the
+# schema — a grep of the schema alone would pass even if nothing ever fired
+# (Copilot review).
+if grep -q '"build_test_cycle.exit_when.suite_green"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[SPEC-4] suite_green event emitted to events.jsonl during convergence"
+else
+    assert_fail "[SPEC-4] suite_green event emitted to events.jsonl during convergence" \
+        "event not found in $ZBUILD_EVENTS_JSONL"
 fi
 
 # ─── No-LLM guard: events.jsonl must not contain model.route events ──────────

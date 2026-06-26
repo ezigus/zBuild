@@ -1229,9 +1229,13 @@ main() {
         # the raw call here is side-effect-free and won't duplicate them.
         _CYCLE_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
         [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
-        # I10-B (#1089): when objective-gate passes, confirm via the artifact
-        # and emit a first-class durable event for the convergence path.
-        if [[ "$_cd_stage" == "objective-gate" && "$_CYCLE_DISPATCH_VERDICT_RAW" == "pass" ]]; then
+        # I10-B (#1089): when objective-gate passes INSIDE build_test_cycle,
+        # confirm via the artifact and emit a first-class durable event for the
+        # convergence path. Gated on _ZB_CYCLE_ID (exported by the cycle
+        # orchestrator) so an objective-gate pass in any other cycle does not
+        # emit a build_test_cycle-named event (Copilot review).
+        if [[ "$_cd_stage" == "objective-gate" && "$_CYCLE_DISPATCH_VERDICT_RAW" == "pass" \
+              && "${_ZB_CYCLE_ID:-}" == "build_test_cycle" ]]; then
             local _og_v; _og_v="$(_zbuild_read_objective_gate_verdict "$state_dir")"
             if [[ "$_og_v" == "pass" ]]; then
                 eb_emit_event "build_test_cycle.exit_when.suite_green" \
