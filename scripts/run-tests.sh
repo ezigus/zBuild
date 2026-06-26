@@ -61,7 +61,7 @@ _rt_run() {
   # One small line per file → atomic under POSIX (< PIPE_BUF) so concurrent
   # pool workers `>>`-appending the shared file never interleave a line.
   awk -v t0="$_t0" -v t1="$_t1" -v p="$1" \
-    'BEGIN { printf "file %d %s\n", (t1 - t0) * 1000, p }' \
+    'BEGIN { d = (t1 - t0) * 1000; if (d < 0) d = 0; printf "file %d %s\n", d, p }' \
     >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
   return "$_rc"
 }
@@ -263,7 +263,7 @@ _rt_emit_tier_time() {
     [[ -n "${ZBUILD_TEST_TIMING_FILE:-}" ]] || return 0
     local _t1="$EPOCHREALTIME"
     awk -v t0="$_t0" -v t1="$_t1" -v n="$_name" \
-        'BEGIN { printf "tier %d %s\n", (t1 - t0) * 1000, n }' \
+        'BEGIN { d = (t1 - t0) * 1000; if (d < 0) d = 0; printf "tier %d %s\n", d, n }' \
         >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
 }
 

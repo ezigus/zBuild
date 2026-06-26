@@ -174,10 +174,11 @@ _test_run_inner() {
     # #1058 Phase A: in-pipeline test-timing instrumentation. The artifact dir
     # is the dir of output_json. run-tests.sh appends `file <ms> <path>` and
     # `tier <ms> <name>` lines here when this var is set+non-empty. It must be
-    # injected INTO the eval command (below), not exported, because the test
-    # subprocess runs under _zbuild_make_fresh_shell which scrubs the whole
-    # ZBUILD_* namespace — mirrors how ZBUILD_TEST_RED_SET/CHANGED_FILES are
-    # re-supplied to the targeted-files helper. The raw log is left as an
+    # exported INSIDE the eval subshell (below), AFTER _zbuild_make_fresh_shell,
+    # because that fresh shell scrubs the whole ZBUILD_* namespace — a plain
+    # parent-level export would be wiped before the suite runs. Mirrors how
+    # ZBUILD_TEST_RED_SET/CHANGED_FILES are re-supplied to the targeted-files
+    # helper. The raw log is left as an
     # artifact; a `timing` summary is folded into test-results.json after the run.
     local _zbt_timing_log
     _zbt_timing_log="$(dirname "$output_json")/test-timing.log"
