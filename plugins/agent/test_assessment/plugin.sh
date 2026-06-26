@@ -504,7 +504,7 @@ $_ta_instructions"
     # its convergence driver; test_assessment is advisory-only there and must not
     # apply the standard.yaml convergence class (empty_diff promotion,
     # build-verdict allowlist, dirty-worktree durability guard).
-    if [[ -n "${ZBUILD_TEST_ASSESSMENT_ADVISORY:-}" ]]; then
+    if [[ "${ZBUILD_TEST_ASSESSMENT_ADVISORY:-0}" == "1" ]]; then
         emit_event "test_assessment.advisory_mode" \
             "plugin=test_assessment" \
             "llm_verdict=$llm_verdict" 2>/dev/null || true
