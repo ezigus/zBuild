@@ -1,0 +1,13 @@
+id: verdict-indicator-test
+name: Verdict Indicator — single test stage (#1095 PC2 fixture)
+extends: null
+defaults:
+  strategy: fanout
+
+# Minimal single-stage roster: exercises the test verdict→indicator mapping
+# without booting the full ~14-stage standard roster. The runner halts on
+# rc!=0 only; synthetic plugins return 0, so the verdict drives the glyph.
+stages:
+  - id: test
+    gate: auto
+    roles: [tester]

@@ -1,0 +1,12 @@
+id: verdict-indicator-review
+name: Verdict Indicator — single review stage (#1095 PC2 fixture)
+extends: null
+defaults:
+  strategy: fanout
+
+# Minimal single-stage roster: exercises the review request_changes→indicator
+# mapping without booting the full ~14-stage standard roster.
+stages:
+  - id: review
+    gate: auto
+    roles: [reviewer]

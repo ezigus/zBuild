@@ -1,0 +1,12 @@
+id: verdict-indicator-build
+name: Verdict Indicator — single build stage (#1095 PC2 fixture)
+extends: null
+defaults:
+  strategy: fanout
+
+# Minimal single-stage roster: exercises the build scope_violation→indicator
+# mapping without booting the full ~14-stage standard roster.
+stages:
+  - id: build
+    gate: auto
+    roles: [builder]
