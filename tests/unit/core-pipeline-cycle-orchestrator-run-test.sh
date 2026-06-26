@@ -140,4 +140,25 @@ assert_eq "write_iter rc=0" "0" "$rc"
 ilen="$(jq -r '.cycle_iterations["x1"].iter | length' "$STATE_FILE")"
 assert_eq "iter array has 1 entry" "1" "$ilen"
 
+# T12: _CYCLE_TRAP_CYCLE_ID cleared at every top-level return path
+# [SPEC-1]: cleared on success (convergence) path — fails at baseline where
+#   the orchestrator leaves _CYCLE_TRAP_CYCLE_ID="build-test" on exit.
+_seed
+load_template "$FIXT/cycle-converges-iter2.yaml"
+MOCK_VERDICTS="build:pass;test:pass"
+_CYCLE_TRAP_CYCLE_ID=""
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t12a=$?; set -e
+assert_eq "T12 success rc=0" "0" "$rc_t12a"
+assert_eq "[SPEC-1] _CYCLE_TRAP_CYCLE_ID cleared after top-level success" "" "$_CYCLE_TRAP_CYCLE_ID"
+
+# [SPEC-2]: cleared on config_invalid error path — _CYCLE_TRAP_CYCLE_ID is
+#   written at line 1583 before the template check fails; without the fix it
+#   remains "no-such-cycle" on exit.
+_seed
+load_template "$FIXT/cycle-converges-iter2.yaml"
+_CYCLE_TRAP_CYCLE_ID=""
+set +e; cycle_orchestrator_run "no-such-cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t12b=$?; set -e
+assert_eq "T12 config_invalid rc=4" "4" "$rc_t12b"
+assert_eq "[SPEC-2] _CYCLE_TRAP_CYCLE_ID cleared after config_invalid return" "" "$_CYCLE_TRAP_CYCLE_ID"
+
 print_test_results
