@@ -68,9 +68,26 @@ ${fn}() {
 EOF
 }
 
-# #921: standard roster single-sourced; build is then overridden with the
-# env-capture plugin (the test's assertion mechanism).
-register_standard_pipeline_stubs
+# #1097 (PC4): the env-export behavior under test is NOT stage-count
+# dependent, so we drive the runner with a MINIMAL two-leaf template
+# (intake → build) instead of the full ~14-stage standard roster — the prior
+# register_standard_pipeline_stubs path ran every standard stage just to reach
+# the build env-capture, dominating the ~21s runtime. We install the fixture
+# into config/templates/ for the duration of the test (same mechanism as
+# pipeline-preflight-missing-stage-test.sh) and invoke with --template below.
+MINIMAL_TEMPLATE_SRC="$REPO_ROOT/tests/fixtures/templates/runner-state-dir-minimal.yaml"
+MINIMAL_TEMPLATE_INSTALLED="$REPO_ROOT/config/templates/runner-state-dir-minimal.yaml"
+cp "$MINIMAL_TEMPLATE_SRC" "$MINIMAL_TEMPLATE_INSTALLED"
+# Removes the installed fixture even on Ctrl-C / signal exit. Temp-dir cleanup
+# is handled by the explicit cleanup_test_env at the end + the harness master
+# trap, so this hook is scoped to the fixture file only.
+_test_cleanup_hook() {
+    rm -f "$MINIMAL_TEMPLATE_INSTALLED" 2>/dev/null || true
+}
+
+# intake is the only non-capture stage in the minimal roster; build is then
+# overridden with the env-capture plugin (the test's assertion mechanism).
+mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
 _make_capture_plugin "build"   "agent"
 
 # ─── Run the runner end-to-end ──────────────────────────────────────────────
@@ -91,7 +108,7 @@ env -u ZBUILD_STATE_DIR \
     ZBUILD_RUN_ID="$ZBUILD_RUN_ID" \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
-    bash "$RUNNER" --issue 618 >/dev/null 2>&1
+    bash "$RUNNER" --issue 618 --template runner-state-dir-minimal >/dev/null 2>&1
 rc=$?
 set -e
 # #887: with ZBUILD_STATE_DIR unset, a fresh run roots state under
