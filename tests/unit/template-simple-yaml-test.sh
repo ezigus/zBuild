@@ -117,19 +117,43 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── SPEC-11: dispatch units are 8 flat stage units (no cycles) ──────────────
-# GUARD: simple.yaml uses a flat flow with no cycle stages, so every dispatch
-# unit is stage:<id>. This confirms the loader did not misclassify any leaf.
+# ─── SPEC-11: dispatch units are 6 (build/test/objective-gate grouped in cycle)
+# CHANGE (I10-A #976): simple.yaml gains build_test_cycle, so the three leaf
+# stages (build, test, objective-gate) collapse into one cycle dispatch unit.
+# Count drops from 8 → 6: intake, plan, design, cycle:build_test_cycle, review, pr.
 
-assert_eq "[SPEC-11] dispatch units count is 8" "8" "${#_TPL_DISPATCH_UNITS[@]}"
-assert_eq "[SPEC-11] dispatch[0] stage:intake"  "stage:intake"  "${_TPL_DISPATCH_UNITS[0]}"
-assert_eq "[SPEC-11] dispatch[1] stage:plan"    "stage:plan"    "${_TPL_DISPATCH_UNITS[1]}"
-assert_eq "[SPEC-11] dispatch[2] stage:design"  "stage:design"  "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "[SPEC-11] dispatch[3] stage:build"   "stage:build"   "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "[SPEC-11] dispatch[4] stage:test"    "stage:test"    "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] stage:objective-gate" "stage:objective-gate" "${_TPL_DISPATCH_UNITS[5]}"
-assert_eq "[SPEC-11] dispatch[6] stage:review"  "stage:review"  "${_TPL_DISPATCH_UNITS[6]}"
-assert_eq "[SPEC-11] dispatch[7] stage:pr"      "stage:pr"      "${_TPL_DISPATCH_UNITS[7]}"
+assert_eq "[SPEC-11] dispatch units count is 6" "6" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "[SPEC-11] dispatch[0] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[0]}"
+assert_eq "[SPEC-11] dispatch[1] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[1]}"
+assert_eq "[SPEC-11] dispatch[2] stage:design"         "stage:design"         "${_TPL_DISPATCH_UNITS[2]}"
+assert_eq "[SPEC-11] dispatch[3] cycle:build_test_cycle" "cycle:build_test_cycle" "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "[SPEC-11] dispatch[4] stage:review"         "stage:review"         "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[5]}"
+
+# ─── SPEC-14: build_test_cycle is registered with correct stages and max ──────
+# CHANGE (I10-A #976): _TPL_CYCLES must contain build_test_cycle with its three
+# member stages and max_iterations:1 (flat-equivalent single-pass).
+
+_btc_in_cycles=0
+for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
+assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
+assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
+    "build,test,objective-gate" "$_TPL_CYCLE_STAGES_build_test_cycle"
+assert_eq "[SPEC-14] _TPL_CYCLE_MAX_build_test_cycle" \
+    "1" "$_TPL_CYCLE_MAX_build_test_cycle"
+
+# ─── SPEC-15: build_test_cycle exit_when predicate fields are set correctly ───
+# CHANGE (I10-A #976): the exit_when block must parse into UNTIL_* vars so the
+# cycle validator and runner can resolve the break-out condition.
+
+assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_STAGE_build_test_cycle" \
+    "objective-gate" "$_TPL_CYCLE_UNTIL_STAGE_build_test_cycle"
+assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_FIELD_build_test_cycle" \
+    "verdict" "$_TPL_CYCLE_UNTIL_FIELD_build_test_cycle"
+assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle" \
+    "eq" "$_TPL_CYCLE_UNTIL_OP_build_test_cycle"
+assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
+    "pass" "$_TPL_CYCLE_UNTIL_VALUE_build_test_cycle"
 
 # ─── SPEC-12: objective-gate is at index 5 in _TPL_STAGES (after test) ────────
 # CHANGE: at merge-base objective-gate was at index 2. Issue #970 moves it to
