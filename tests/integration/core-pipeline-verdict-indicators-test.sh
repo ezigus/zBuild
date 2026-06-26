@@ -87,6 +87,33 @@ _run_pipeline() {
     bash "$RUNNER" --issue 83 2>"$TEST_TEMP_DIR/runner.err" >/dev/null
 }
 
+# #1095 (PC2): scenarios 2–4 each assert one verdict→glyph mapping on a single
+# stage. Booting the full ~14-stage standard roster (~13s each) just to read one
+# glyph is wasteful. Instead install a minimal single-stage fixture template into
+# the canonical templates dir for the run's duration and drive the runner with it
+# (~1.3s each). Fixtures removed via _test_cleanup_hook (survives Ctrl-C).
+_VERDICT_FIXTURE_SRC_DIR="$REPO_ROOT/tests/fixtures/templates"
+_VERDICT_INSTALLED_TEMPLATES=()
+_install_verdict_fixture() {
+    local id="$1"
+    local src="$_VERDICT_FIXTURE_SRC_DIR/${id}.yaml"
+    local dst="$REPO_ROOT/config/templates/${id}.yaml"
+    cp "$src" "$dst"
+    _VERDICT_INSTALLED_TEMPLATES+=("$dst")
+}
+_test_cleanup_hook() {
+    local f
+    for f in "${_VERDICT_INSTALLED_TEMPLATES[@]:-}"; do
+        [[ -n "$f" ]] && rm -f "$f" 2>/dev/null || true
+    done
+}
+
+# _run_pipeline_template <template-id> — single-stage fixture run.
+_run_pipeline_template() {
+    rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+    bash "$RUNNER" --issue 83 --template "$1" 2>"$TEST_TEMP_DIR/runner.err" >/dev/null
+}
+
 # ─── Scenario 1: all-pass → every line ends with ✓ ───────────────────────────
 print_test_section "all-pass: every stage line ends with ✓"
 rm -rf "$PLUGINS_ROOT"
@@ -137,26 +164,13 @@ verdict_intake="$(jq -r '.stage_verdicts.intake // empty' "$STATE_DIR/pipeline-s
 assert_eq "state.stage_verdicts.intake == pass" "pass" "$verdict_intake"
 
 # ─── Scenario 2: test verdict=fail → ✗ on test line ──────────────────────────
+# #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects
+# the `test` stage glyph, so the other 13 standard stages add no coverage here.
 print_test_section "test verdict=fail produces ✗"
 rm -rf "$PLUGINS_ROOT"
-_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
-_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
-_make_verdict_plugin impact agent impact.json '{"verdict":"pass"}' impact_analyzer
-_make_verdict_plugin design agent design.md '{"verdict":"pass"}' designer
-_make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builder
-_make_verdict_plugin test   tool  test-results.json  '{"verdict":"fail"}' tester
-# #568: standard template now requires a test_assessment stage between test and review.
-_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"fail"}' test_assessment
-_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
-# #755: CQ stages (stubs only; pipeline halts before reaching them in this scenario).
-_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
-_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
-_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
-_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
-_make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
-# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
-_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
-set +e; _run_pipeline; rc=$?; set -e
+_install_verdict_fixture verdict-indicator-test
+_make_verdict_plugin test tool test-results.json '{"verdict":"fail"}' tester
+set +e; _run_pipeline_template verdict-indicator-test; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 if grep -E "✗.*Stage.*test.*complete" <<<"$err" >/dev/null; then
     assert_pass "test verdict=fail -> ✗ on test line"
@@ -165,26 +179,13 @@ else
 fi
 
 # ─── Scenario 3: build scope_violation=true → ✗ on build line ────────────────
+# #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects
+# the `build` stage glyph.
 print_test_section "build scope_violation=true produces ✗"
 rm -rf "$PLUGINS_ROOT"
-_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
-_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
-_make_verdict_plugin impact agent impact.json '{"verdict":"pass"}' impact_analyzer
-_make_verdict_plugin design agent design.md '{"verdict":"pass"}' designer
-_make_verdict_plugin build  agent build-summary.json '{"scope_violation":true}' builder
-_make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
-# #568: standard template now requires a test_assessment stage between test and review.
-_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
-_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
-# #755: CQ stages (stubs only; pipeline halts before reaching them in this scenario).
-_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
-_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
-_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
-_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
-_make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
-# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
-_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
-set +e; _run_pipeline; rc=$?; set -e
+_install_verdict_fixture verdict-indicator-build
+_make_verdict_plugin build agent build-summary.json '{"scope_violation":true}' builder
+set +e; _run_pipeline_template verdict-indicator-build; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 if grep -E "✗.*Stage.*build.*complete" <<<"$err" >/dev/null; then
     assert_pass "build scope_violation=true -> ✗ on build line"
@@ -193,26 +194,13 @@ else
 fi
 
 # ─── Scenario 4: review request_changes → ⚠ on review line ───────────────────
+# #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects
+# the `review` stage glyph.
 print_test_section "review request_changes produces ⚠"
 rm -rf "$PLUGINS_ROOT"
-_make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
-_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
-_make_verdict_plugin impact agent impact.json '{"verdict":"pass"}' impact_analyzer
-_make_verdict_plugin design agent design.md '{"verdict":"pass"}' designer
-_make_verdict_plugin build  agent build-summary.json '{"verdict":"pass"}' builder
-_make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
-# #568: standard template now requires a test_assessment stage between test and review.
-_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
-_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
-# #755: CQ stages run before review; all pass so build_review_cycle reaches review.
-_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
-_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
-_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
-_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
+_install_verdict_fixture verdict-indicator-review
 _make_verdict_plugin review agent review.json '{"verdict":"request_changes"}' reviewer
-# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
-_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
-set +e; _run_pipeline; rc=$?; set -e
+set +e; _run_pipeline_template verdict-indicator-review; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 if grep -E "⚠.*Stage.*review.*complete" <<<"$err" >/dev/null; then
     assert_pass "review request_changes -> ⚠ on review line"
