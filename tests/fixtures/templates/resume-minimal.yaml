@@ -1,0 +1,50 @@
+id: resume-minimal
+name: Resume Minimal Pipeline
+extends: null
+defaults:
+  strategy: fanout
+
+# Minimal 3-leaf roster (#1098, PC5): the resume-after-SIGINT contract
+# (full-pipeline-sigint resume path, Wave 15-E #685) is NOT stage-count
+# dependent — it needs only: a stage BEFORE build (intake) to prove resume
+# skips an already-complete stage, the build stage that SIGINTs / re-runs,
+# and a stage AFTER build (test) to prove resume continues past build.
+# Replaces the full ~14-stage standard roster the test used to register so
+# the two real subprocess runs (SIGINT + --resume) drive far fewer dispatch
+# units. Linear flow, no cycles (resume logic is the same either way).
+#
+# Stages declare NO `roles:` block on purpose. With roles, the runner routes
+# the stage through the fanout strategy (orch pool), which collapses a child
+# rc=130 into a generic rc=1 — that would break the SIGINT-propagation
+# contract (build returns 130 → runner must exit 130). Without roles, the
+# runner resolves the plugin by stage ID and calls plugin_hook_call directly,
+# preserving the leaf's exact rc (the same effective dispatch the standard
+# template gets via cycle_dispatch_stage for its cycle-member build).
+flow:
+  - intake
+  - build
+  - test
+
+# ─── intake (leaf) ───────────────────────────────────────────────────────────
+intake:
+  gate: auto
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── build (leaf) ────────────────────────────────────────────────────────────
+build:
+  gate: auto
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 900
+    max_turns: 0
+
+# ─── test (leaf) ─────────────────────────────────────────────────────────────
+test:
+  gate: auto
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200

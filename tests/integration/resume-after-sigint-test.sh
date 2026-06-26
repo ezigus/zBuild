@@ -43,7 +43,19 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "resume-after-sigint — aborted run resumes from build (#685, Wave 15-E)"
 setup_test_env "resume-after-sigint-w15e"
 export ZBUILD_CONTRACT_VALIDATOR=warn
+
+# #1098 (PC5): drive a MINIMAL 3-leaf template (intake → build → test) instead
+# of the full ~14-stage standard roster. The resume-after-SIGINT contract is
+# not stage-count dependent — it needs only a stage before build (to prove
+# resume skips it), the build stage that SIGINTs, and a stage after (to prove
+# resume continues). Far fewer dispatch units across the two real subprocess
+# runs. Install the fixture into the canonical templates dir for this test's
+# duration; the cleanup hook removes it even on Ctrl-C / signal exit.
+FIXTURE_SRC="$REPO_ROOT/tests/fixtures/templates/resume-minimal.yaml"
+INSTALLED_TEMPLATE="$REPO_ROOT/config/templates/resume-minimal.yaml"
+cp "$FIXTURE_SRC" "$INSTALLED_TEMPLATE"
 _test_cleanup_hook() {
+    rm -f "$INSTALLED_TEMPLATE" 2>/dev/null || true
     if [[ "${KEEP_TMP:-0}" == "1" ]]; then
         echo "KEEPTEMP=$TEST_TEMP_DIR" >&2
     else
@@ -77,9 +89,16 @@ export ZBUILD_SCOPE_OVERRIDE=1
 mkdir -p "$HOME/.zbuild"
 printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 
-# Standard roster, all initially succeed; build/test rewritten on-the-fly between
-# phases below. #921: roster single-sourced via register_standard_pipeline_stubs.
-register_standard_pipeline_stubs
+# Minimal roster (#1098): intake → build → test, all initially succeed;
+# intake/build/test rewritten on-the-fly between phases below. kinds match the
+# on-the-fly overrides further down (intake/build under agent/, test under
+# tool/). No `provides.role` — resume-minimal.yaml declares no roles[], so the
+# runner resolves these by stage ID and dispatches via plugin_hook_call, which
+# preserves the build stub's rc=130 (the SIGINT contract). Routing build through
+# the role/fanout path would collapse 130→1 (see fixture header).
+mock_plugin_factory "intake" "agent" 0 >/dev/null
+mock_plugin_factory "build"  "agent" 0 >/dev/null
+mock_plugin_factory "test"   "tool"  0 >/dev/null
 
 # ── Phase 1 ────────────────────────────────────────────────────────────────
 # build_run arms the sentinel (mimicking the runner SIGINT trap firing in a
@@ -105,7 +124,7 @@ test_run() {
 PLUG
 
 set +e
-bash "$RUNNER" --goal "w15e resume after sigint" \
+bash "$RUNNER" --template resume-minimal --goal "w15e resume after sigint" \
     >"$TEST_TEMP_DIR/phase1.stdout" 2>"$TEST_TEMP_DIR/phase1.stderr"
 phase1_rc=$?
 set -e
@@ -182,7 +201,7 @@ PLUG
 rm -f "$TEST_MARKER"
 
 set +e
-bash "$RUNNER" --resume --goal "w15e resume after sigint" \
+bash "$RUNNER" --resume --template resume-minimal --goal "w15e resume after sigint" \
     >"$TEST_TEMP_DIR/phase2.stdout" 2>"$TEST_TEMP_DIR/phase2.stderr"
 phase2_rc=$?
 set -e
