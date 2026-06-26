@@ -67,7 +67,7 @@ Each stage is defined by:
 | design | agent | T3 | init, run, finalize | design.md | true |
 | build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
-| test_assessment | agent | T2 | init, run, finalize, cleanup | test-assessment.json | true |
+| test_assessment | agent | T2 | init, run, finalize, cleanup | test-assessment.json | true†† |
 | acceptance-gate | agent | T1 | init, run, finalize | acceptance-gate-result.json | true |
 | cq-preflight | agent | T1 | init, run, finalize | cq-preflight-result.json | true |
 | cq-audit-plan | agent | T2 | init, run, finalize | audit-plan.json | true |
@@ -80,6 +80,8 @@ Each stage is defined by:
 | monitor | daemon | T1 | init, tick, finalize, cleanup | monitor-report.md | false |
 
 † `intake`'s `scope-manifest.md` is written to `state/scope-manifest.md` directly, not under `state/artifacts/`, because every downstream redaction call must find it at this stable path.
+
+†† `test_assessment` canonical membership and `blocking: true` are unchanged. Its pass-invariant coercion (the "standard.yaml convergence class") is suppressed when `ZBUILD_TEST_ASSESSMENT_ADVISORY=1` is set in the stage environment; canonical stage id, tier, artifact contract, and lifecycle hooks are unaffected. See ADR-022 Amendment v6 (I10-C).
 
 ### Kind assignment rationale
 

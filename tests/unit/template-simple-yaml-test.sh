@@ -182,6 +182,13 @@ assert_eq "[SPEC-6] simple.yaml: pr roles remain pr (not pr_delivery, guard)" \
 assert_eq "[SPEC-7] template_merge_policy() == auto_unless_flagged" \
     "auto_unless_flagged" "$(template_merge_policy)"
 
+# I10-C (#1090) retirement guard: test_assessment is excluded from
+# build_test_cycle and convergence is owned by objective-gate. That invariant is
+# already enforced above — SPEC-14 pins _TPL_CYCLE_STAGES to
+# "build,test,objective-gate" (test_assessment absent) and SPEC-15 pins the
+# exit_when source to objective-gate. No separate assertion is added here to
+# avoid duplicating those checks (Copilot review).
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

@@ -431,6 +431,15 @@ empty-feedback omission rule (#511 Pin 5) is unchanged: an empty
 the cycle's `stages[]` keep `until: { stage: test, field: verdict }` and
 the F2 wiring is unchanged. The amendment is opt-in via the stage list.
 
+**simple.yaml uses `objective-gate` as its `until:` source (I10-C).** In
+`simple.yaml`'s `build_test_cycle`, `test_assessment` is absent from the
+cycle entirely. Convergence is driven by `objective-gate.verdict == pass`
+(mechanical tool-stage verdict, no LLM interpretation required). The
+`test_assessment`-as-`until:` source pattern described in this amendment
+applies to `standard.yaml` only. If `test_assessment` is ever wired as an
+advisory stage in `simple.yaml`, `ZBUILD_TEST_ASSESSMENT_ADVISORY=1` must
+be set so the pass-invariant coercion is suppressed (ADR-022 Amendment v6).
+
 ---
 
 ## Amendment §"Cycle declaration syntax v2" (#585)
