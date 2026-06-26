@@ -19,18 +19,37 @@ defaults:
 # post-build artifacts (coverage report, git diff) are available for the
 # coverage-floor and scope-adherence gates.
 #   After test:   objective-gate (#970) then evidence-fed review stages (#972, #973, #974)
+#
+# I10-A (#976): build/test/objective-gate wrapped in build_test_cycle (ADR-021).
+# Convergence semantics (real exit_when predicate) land in I10-B.
 flow:
   - intake
   - plan
   - design
-  - build
-  - test
-  - objective-gate
+  - build_test_cycle
   # #972: the `review` stage emits the evidence-fed multi-lens merge-readiness
   # report (no new flow stage — it is bound to a dedicated plugin by role).
   # #973 feeds each lens distinct mechanical evidence.
   - review
   - pr
+
+# ─── build_test_cycle (cycle) ────────────────────────────────────────────────
+# I10-A (#976): structural skeleton — wraps build/test/objective-gate into a
+# cycle. exit_when predicate is placeholder; real convergence semantics land
+# in I10-B. max_iterations:3 / on_max:continue matches ADR-021 defaults.
+build_test_cycle:
+  type: cycle
+  flow:
+    - build
+    - test
+    - objective-gate
+  exit_when:
+    stage: objective-gate
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:
