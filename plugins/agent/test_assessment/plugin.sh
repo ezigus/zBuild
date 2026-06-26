@@ -505,7 +505,9 @@ $_ta_instructions"
     # apply the standard.yaml convergence class (empty_diff promotion,
     # build-verdict allowlist, dirty-worktree durability guard).
     if [[ -n "${ZBUILD_TEST_ASSESSMENT_ADVISORY:-}" ]]; then
-        : # bypass pass-invariant coercion; final_verdict stays as llm_verdict
+        emit_event "test_assessment.advisory_mode" \
+            "plugin=test_assessment" \
+            "llm_verdict=$llm_verdict" 2>/dev/null || true
     elif [[ "$llm_verdict" == "pass" ]]; then
         local ok=1
         # test.failed must be 0
