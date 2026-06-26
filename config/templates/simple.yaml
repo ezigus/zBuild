@@ -36,7 +36,7 @@ flow:
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # I10-A (#976): structural skeleton — wraps build/test/objective-gate into a
 # cycle. exit_when predicate is placeholder; real convergence semantics land
-# in I10-B. max_iterations:3 / on_max:continue matches ADR-021 defaults.
+# in I10-B. max_iterations:1 preserves flat-equivalent single-pass behavior.
 build_test_cycle:
   type: cycle
   flow:
@@ -48,7 +48,7 @@ build_test_cycle:
     field: verdict
     op: eq
     value: pass
-  max_iterations: 3
+  max_iterations: 1
   on_max: continue
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────

@@ -132,7 +132,7 @@ assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "$
 
 # ─── SPEC-14: build_test_cycle is registered with correct stages and max ──────
 # CHANGE (I10-A #976): _TPL_CYCLES must contain build_test_cycle with its three
-# member stages and max_iterations:3.
+# member stages and max_iterations:1 (flat-equivalent single-pass).
 
 _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
@@ -140,7 +140,7 @@ assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
     "build,test,objective-gate" "$_TPL_CYCLE_STAGES_build_test_cycle"
 assert_eq "[SPEC-14] _TPL_CYCLE_MAX_build_test_cycle" \
-    "3" "$_TPL_CYCLE_MAX_build_test_cycle"
+    "1" "$_TPL_CYCLE_MAX_build_test_cycle"
 
 # ─── SPEC-15: build_test_cycle exit_when predicate fields are set correctly ───
 # CHANGE (I10-A #976): the exit_when block must parse into UNTIL_* vars so the
