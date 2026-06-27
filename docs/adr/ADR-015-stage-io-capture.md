@@ -1087,3 +1087,36 @@ though the cycle deliberately continued. This is cosmetic — the durable
 `cycle.test.full_suite_gate` event records the real reason — and is left
 unfixed to keep the predicate-stash logic simple; operators reading the
 banner should consult the gate event for gate-suppressed iters.
+
+## Amendment §H — `command`-kind capture is MANDATORY for external-command stages (issue #1115)
+
+The opt-in default in §"Opt-in vs. opt-out" governs *destinations* (an absent
+`io:` block means no output is persisted/published — the fail-closed privacy
+posture). It does NOT license a stage to bypass the chokepoint and run an
+external command with its output discarded. **Any stage that runs an external
+command MUST wrap that command in `stage_io_begin --kind command` /
+`stage_io_end` (or the `run_captured_command` wrapper, which does so for it).**
+Capture remains a hot-path no-op when the stage declares no destinations — the
+begin returns an empty seq and the end is a no-op — so the obligation costs
+nothing when observability is off, but it guarantees the banner appears the
+moment an operator turns destinations on.
+
+**Motivating case — `objective-gate`.** `plugins/tool/objective-gate/plugin.sh`
+ran the test suite and lint as `bash -c "$cmd" >/dev/null 2>&1`, discarding the
+output entirely. Because the discard happened *inside* the plugin — not gated by
+the template `io:` block — the operator saw NO banner for the single most
+expensive command in the pipeline (the full suite, ~13 min), even though the
+`objective-gate` stage declares `io: { destinations: [file, stdout] }`. The fix
+captures stdout+stderr (no `>/dev/null`), keeps the full raw output in a
+`objective-gate-{suite,lint}-output.log` artifact, and feeds a truncated
+verdict+summary to `stage_io_end --output` — mirroring the `test` plugin's
+`_test_emit_io_end`. When the ADR-034 full-suite result is reused (no command
+runs), the pair still emits, with the INPUT banner carrying a
+`[reused] cached full-suite result tree=<sha>` note. The gate logic is
+unchanged; the banner is additive observability only.
+
+This generalizes the §v4 ordering contract's "every stage that performs work
+MUST emit its input banner before the action and its output banner after" from
+an ordering rule into a presence rule: *discarding* a command's output is the
+same defect as emitting the banners out of order — both deny the operator the
+record the chokepoint exists to provide.
