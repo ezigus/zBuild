@@ -36,12 +36,6 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="invariant-test-$$"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
 
-# #996: skip on macOS CI. The per-stage banner-stream capture this asserts comes
-# up empty on the macOS CI runner (passes 12/12 locally — it's a CI-environment
-# output-capture difference, not a code bug). The ordering invariant is fully
-# covered on the Linux leg. Follow-up: diagnose the macOS CI banner capture, un-gate.
-skip_on_platform macos
-
 export HOME="$TEST_TEMP_DIR/home"
 mkdir -p "$HOME/.zbuild"
 export ZBUILD_SCOPE_OVERRIDE=1
@@ -62,7 +56,13 @@ exec stdbuf -oL -eL "$SLOW_FIXTURE" "\$@"
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 # stdbuf isn't on macOS by default — shim to a no-op so the mock still runs.
-if ! command -v stdbuf >/dev/null 2>&1; then
+# #1059: ALSO force the no-op shim on macOS even when a real stdbuf IS present.
+# The GitHub arm64e macOS runners brew-install coreutils, whose stdbuf injects an
+# arm64 libstdbuf.so via DYLD_INSERT_LIBRARIES — incompatible with the arm64e
+# process, so dyld terminates the driver before it emits any banner (empty fd-3,
+# the macOS-CI failure this test was gated for). The no-op shim avoids the
+# dylib injection entirely.
+if ! command -v stdbuf >/dev/null 2>&1 || [[ "$(uname -s)" == "Darwin" ]]; then
     cat > "$TEST_TEMP_DIR/bin/stdbuf" <<'STDBUF'
 #!/usr/bin/env bash
 # stdbuf shim: skip the -o/-e flags and exec the rest.

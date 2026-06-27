@@ -31,6 +31,7 @@ _eb_init() {
     if command -v sqlite3 >/dev/null 2>&1 && [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
         local _eb_init_err
         _eb_init_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
+PRAGMA busy_timeout=2000;
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -152,6 +153,7 @@ eb_emit_event() {
         _payload_esc="$(_eb_sql_escape "$payload")"
         local _eb_emit_err
         _eb_emit_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<SQL 2>&1
+PRAGMA busy_timeout=2000;
 INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version)
 VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);
 SQL

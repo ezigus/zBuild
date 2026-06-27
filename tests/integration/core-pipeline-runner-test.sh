@@ -18,11 +18,17 @@ setup_test_env "pipeline-runner"
 # inputs/outputs blocks; opt out — this suite tests runner mechanics.
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
-# #996: skip on macOS CI. Several tests here kill the runner mid-`sleep`-stub and
-# assert signal-driven abort/banner timing; the macOS CI harness's process-group
+# #996/#1059: skip on macOS CI. Several tests here kill the runner mid-`sleep`-stub
+# and assert signal-driven abort/banner timing; the macOS CI harness's process-group
 # signal semantics make those flake/hang (despite the gtimeout backstop). The
-# runner mechanics are OS-agnostic and fully covered on the Linux leg. Follow-up:
-# harden the kill-mid-run blocks for the macOS matrix, then un-gate.
+# runner mechanics are OS-agnostic and fully covered on the Linux leg.
+# #1059 attempted a bounded FIFO `read -t` blocking primitive (replacing the
+# foreground `sleep` stubs so the TERM trap fires immediately): it passed on the
+# Linux CI leg AND locally on macOS, but the kill-mid-run abort STILL failed only
+# on the shared arm64e GitHub macOS runner — i.e. genuinely macOS-CI-incompatible
+# under current shared-runner signal-delivery semantics, not a budget/trap issue.
+# Documented-as-incompatible per the #1059 DoD; the other 7 #996-gated tests were
+# un-gated in #1059. Re-attempt only with a macOS-CI-specific signal harness.
 skip_on_platform macos
 
 # Use shared factory from test-helpers.sh (Wave 4)
