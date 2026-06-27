@@ -56,7 +56,13 @@ exec stdbuf -oL -eL "$SLOW_FIXTURE" "\$@"
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 # stdbuf isn't on macOS by default — shim to a no-op so the mock still runs.
-if ! command -v stdbuf >/dev/null 2>&1; then
+# #1059: ALSO force the no-op shim on macOS even when a real stdbuf IS present.
+# The GitHub arm64e macOS runners brew-install coreutils, whose stdbuf injects an
+# arm64 libstdbuf.so via DYLD_INSERT_LIBRARIES — incompatible with the arm64e
+# process, so dyld terminates the driver before it emits any banner (empty fd-3,
+# the macOS-CI failure this test was gated for). The no-op shim avoids the
+# dylib injection entirely.
+if ! command -v stdbuf >/dev/null 2>&1 || [[ "$(uname -s)" == "Darwin" ]]; then
     cat > "$TEST_TEMP_DIR/bin/stdbuf" <<'STDBUF'
 #!/usr/bin/env bash
 # stdbuf shim: skip the -o/-e flags and exec the rest.
@@ -247,18 +253,6 @@ for row in "${STAGES[@]}"; do
     # Per-row override token must equal the row's run_id (router C6 contract).
     row_run_id="${ZBUILD_RUN_ID}-${stage_id}"
     printf '%s' "$row_run_id" > "$HOME/.zbuild/scope-override-token"
-
-    # Durability guard: on macOS /var/folders a freshly written file can lag the
-    # subprocess read, so _route_check_precondition would fail-closed and the
-    # banner capture would come up empty. Read the token back and confirm it
-    # equals row_run_id before launching the driver.
-    token_readback="$(cat "$HOME/.zbuild/scope-override-token" 2>/dev/null || echo '')"
-    if [[ "$token_readback" != "$row_run_id" ]]; then
-        assert_fail "[$stage_id] override-token durable before driver launch" \
-            "wrote=$row_run_id read=$token_readback"
-        overall_fail=1
-        continue
-    fi
 
     # Reset the slow-mock marker between rows so the per-row delta is clean.
     : > "$SLOW_MARK"

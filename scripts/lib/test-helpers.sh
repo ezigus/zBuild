@@ -544,42 +544,6 @@ skip_unless_capable() {
     print_test_results
 }
 
-# ─── Bounded Blocking Primitives (#1059) ──────────────────────────────────────
-
-# Block until signaled, but HARD-BOUNDED so it can never hang. A foreground
-# `sleep` defers bash's TERM trap until the sleep returns; `read -t` is
-# interrupted immediately by a signal (EINTR) AND is bounded by <max_s>, so a
-# kill-mid-run aborts at once while a missed signal still wakes at the deadline.
-# (An unbounded read was the prior infinite-hang per #1059.) Opening a private
-# FIFO read+write on fd 8 makes open() return immediately with no writer.
-_test_block_until_signaled() {
-    local max_s="${1:-30}" fifo
-    fifo="$(mktemp -u "${TMPDIR:-/tmp}/zb-blk.XXXXXX")"
-    if mkfifo "$fifo" 2>/dev/null; then
-        exec 8<>"$fifo"
-        rm -f "$fifo"
-        # `|| true`: read -t returns >128 on timeout/EINTR; would abort under set -e.
-        IFS= read -r -t "$max_s" -u 8 _ 2>/dev/null || true
-        exec 8>&- 2>/dev/null || true
-    else
-        # mkfifo unavailable: a backgrounded sleep is still bounded + interruptible.
-        sleep "$max_s" &
-        wait $! 2>/dev/null || true
-    fi
-    return 0
-}
-
-# Poll for a path to appear, returning 0 the instant it exists else 1 after
-# <deadline_s> (default 30, polled every 0.05s).
-_wait_for_file() {
-    local path="$1" deadline_s="${2:-30}" i
-    for ((i = 0; i < deadline_s * 20; i++)); do
-        [[ -e "$path" ]] && return 0
-        sleep 0.05
-    done
-    return 1
-}
-
 # ─── Output Helpers ──────────────────────────────────────────────────────────
 
 print_test_header() {
