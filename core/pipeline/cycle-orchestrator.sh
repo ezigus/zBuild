@@ -192,6 +192,7 @@ _cycle_on_signal() {
         "iter=${_CYCLE_TRAP_ITER}" \
         "signal=$sig" 2>/dev/null || true
     _cycle_clear_traps
+    _CYCLE_TRAP_CYCLE_ID=''
     return 130
 }
 
@@ -1624,7 +1625,7 @@ cycle_orchestrator_run() {
 
     if ! _cycle_load_template "$cycle_id"; then
         _CYCLE_LAST_TERMINATED_REASON="config_invalid"
-        { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+        { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
     fi
 
     local history_file="$state_dir/cycle-${cycle_id}-history.jsonl"
@@ -1634,7 +1635,7 @@ cycle_orchestrator_run() {
 
     _cycle_state_init "$state_file" "$cycle_id" "$history_file" "$_CYCLE_MAX_ITER" || {
         error "cycle_orchestrator_run: state init failed for $cycle_id"
-        { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+        { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
     }
 
     _cycle_install_traps
@@ -1699,7 +1700,7 @@ cycle_orchestrator_run() {
         if ! _zbuild_check_abort; then
             _CYCLE_LAST_TERMINATED_REASON="aborted"
             _cycle_clear_traps
-            { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 130; }
+            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 130; }
         fi
 
         # ADR-034 / #846: manage ZBUILD_TEST_FULL_SUITE_GATE lifecycle.
@@ -1722,7 +1723,7 @@ cycle_orchestrator_run() {
         # immediately so runner.sh can emit pipeline.end status=failed.
         if [[ $_iter_rc -eq 8 ]]; then
             _cycle_clear_traps
-            { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 8; }
+            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 8; }
         fi
         # ADR-025 (Wave 15-B #684): rc=130 from the per-iter dispatch is the
         # abort signal — surface it distinctly from the generic error path
@@ -1732,6 +1733,7 @@ cycle_orchestrator_run() {
         if [[ $_iter_rc -eq 130 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="aborted"
             _cycle_clear_traps
+            _CYCLE_TRAP_CYCLE_ID=''
             return 130
         fi
         if [[ $_iter_rc -ne 0 ]]; then
@@ -1742,6 +1744,7 @@ cycle_orchestrator_run() {
                 _CYCLE_LAST_TERMINATED_REASON="error"
             fi
             _cycle_clear_traps
+            _CYCLE_TRAP_CYCLE_ID=''
             return 4
         fi
         # Re-install (defensive — _cycle_iter_dispatch re-installs inside the
@@ -1919,7 +1922,7 @@ cycle_orchestrator_run() {
             esac
             _cycle_handle_terminal_rc "$term_rc" "$cycle_id" "$state_file"
             _cycle_clear_traps
-            { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return "$term_rc"; }
+            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return "$term_rc"; }
         fi
 
         # Not terminating — wire feedback for next iter.
@@ -1931,12 +1934,12 @@ cycle_orchestrator_run() {
             # + exit banner). rc=130 → reason=aborted in handler map.
             _cycle_handle_terminal_rc 130 "$cycle_id" "$state_file"
             _cycle_clear_traps
-            { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
         fi
     done
 
     # Loop fell through without hitting max_iterations in the body — defensive
     _CYCLE_LAST_TERMINATED_REASON="max_iterations"
     _cycle_clear_traps
-    { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
+    { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
 }
