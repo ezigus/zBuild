@@ -679,12 +679,15 @@ _pb_make_repo() {
     _pb_tree="$(git -C "$_pb_root" rev-parse 'HEAD^{tree}')"
 }
 
-# Seed an artifacts/test-results.json. Args: <root> <tree_sha> <verdict> <run_mode>
+# Seed an artifacts/test-results.json.
+# Args: <root> <tree_sha> <verdict> <run_mode> [exit_code]
+# exit_code defaults to 0; a fail-reuse fixture (#1116) seeds it non-zero so the
+# gate can propagate it into test_rc and HARD-BLOCK.
 _pb_seed_results() {
-    local root="$1" tree="$2" verdict="$3" mode="$4"
-    jq -n --arg t "$tree" --arg v "$verdict" --arg m "$mode" \
+    local root="$1" tree="$2" verdict="$3" mode="$4" ec="${5:-0}"
+    jq -n --arg t "$tree" --arg v "$verdict" --arg m "$mode" --argjson ec "$ec" \
         '{schema_version:1, verdict:$v, run_mode:$m, tree_sha:$t,
-          exit_code:0, passed:1, failed:0, test_output:"", diff_applied:false,
+          exit_code:$ec, passed:1, failed:0, test_output:"", diff_applied:false,
           test_cmd:"x"}' > "$root/artifacts/test-results.json"
 }
 
@@ -731,11 +734,13 @@ _pb_seed_results "$_pb_root" "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" "pass" "
 _pb_run_gate "$_pb_root"
 assert_eq "[SPEC-PB2] gate RE-RUNS test_cmd on tree_sha mismatch" "1" "$_pb_marker_present"
 
-# ─── SPEC-PB3: verdict != pass → RE-RUN (stub invoked) ────────────────────────
+# ─── SPEC-PB3: verdict=error → RE-RUN (non-authoritative) ─────────────────────
+# #1116: only an `error` (interrupted/unparseable) verdict is non-authoritative;
+# a definitive pass/fail on a matching tree is now reused (see SPEC-PB8/PB9).
 _pb_make_repo
-_pb_seed_results "$_pb_root" "$_pb_tree" "fail" "full"
+_pb_seed_results "$_pb_root" "$_pb_tree" "error" "full"
 _pb_run_gate "$_pb_root"
-assert_eq "[SPEC-PB3] gate RE-RUNS test_cmd when artifact verdict!=pass" "1" "$_pb_marker_present"
+assert_eq "[SPEC-PB3] gate RE-RUNS test_cmd when artifact verdict=error" "1" "$_pb_marker_present"
 
 # ─── SPEC-PB4: run_mode=targeted → RE-RUN (non-authoritative) ─────────────────
 _pb_make_repo
@@ -781,6 +786,30 @@ export ZBUILD_OBJECTIVE_GATE_NO_REUSE=1
 _pb_run_gate "$_pb_root"
 unset ZBUILD_OBJECTIVE_GATE_NO_REUSE
 assert_eq "[SPEC-PB7] escape hatch forces re-run despite matching artifact" "1" "$_pb_marker_present"
+
+# ─── SPEC-PB8: matching tree + verdict=fail + run_mode=full → REUSE the FAIL ───
+# #1116: a cached FAIL on a provably identical tree is authoritative. The gate
+# must NOT re-run the suite (spy marker absent) yet must still HARD-BLOCK: rc=1,
+# result verdict=fail, and test_rc carried over from the cached non-zero exit_code.
+_pb_make_repo
+_pb_seed_results "$_pb_root" "$_pb_tree" "fail" "full" 7
+_pb_run_gate "$_pb_root"
+assert_eq "[SPEC-PB8] gate does NOT re-run the suite on a cached fail (reuse)" "0" "$_pb_marker_present"
+assert_eq "[SPEC-PB8] gate HARD-BLOCKS (rc=1) on a reused fail" "1" "$_pb_gate_rc"
+_pb_v8="$(grep -o '"verdict":"[^"]*"' "$_pb_root/artifacts/objective-gate-result.json" | cut -d'"' -f4)"
+assert_eq "[SPEC-PB8] gate verdict=fail on a reused fail" "fail" "$_pb_v8"
+_pb_trc8="$(grep -o '"test_rc":[0-9-]*' "$_pb_root/artifacts/objective-gate-result.json" | cut -d: -f2)"
+assert_eq "[SPEC-PB8] test_rc is the cached non-zero exit_code (gate blocks)" "7" "$_pb_trc8"
+
+# ─── SPEC-PB9: verdict=pass + matching tree + full → REUSE the PASS (unchanged) ─
+# #1116 must not regress the pass-reuse path: spy absent, suite portion passes.
+_pb_make_repo
+_pb_seed_results "$_pb_root" "$_pb_tree" "pass" "full"
+_pb_run_gate "$_pb_root"
+assert_eq "[SPEC-PB9] gate does NOT re-run the suite on a cached pass (reuse)" "0" "$_pb_marker_present"
+assert_eq "[SPEC-PB9] gate passes (rc=0) on a reused pass" "0" "$_pb_gate_rc"
+_pb_trc9="$(grep -o '"test_rc":[0-9-]*' "$_pb_root/artifacts/objective-gate-result.json" | cut -d: -f2)"
+assert_eq "[SPEC-PB9] test_rc=0 on a reused pass" "0" "$_pb_trc9"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 
