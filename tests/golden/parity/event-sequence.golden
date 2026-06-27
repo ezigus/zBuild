@@ -39,6 +39,7 @@ plugin.run.complete
 stage.complete
 stage.start
 plugin.run.start
+redaction.marker_neutralized
 redaction.applied
 model.route
 model.outcome
