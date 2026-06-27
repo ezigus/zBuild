@@ -1503,6 +1503,31 @@ _cycle_iter_dispatch() {
     return 0
 }
 
+# ─── _cycle_acceptance_terminal_failure <state_dir> (#1044) ──────────────────
+# Returns 0 (terminal) iff the acceptance-gate is a member of this cycle AND it
+# wrote verdict==fail with >=1 failure that is NOT an untagged_spec: class.
+# untagged_spec is RECOVERABLE (fed back to build via the #951 edge), so it must
+# NOT hard-abort — only tautology/inert_wiring/negctl_error/reachability_error
+# (terminal classes) make the verdict load-bearing at completion. The membership
+# guard ensures inner cycles (build_test_cycle) that don't run acceptance-gate
+# are never affected. Missing file / jq absence / parse failure → return 1
+# (never falsely block).
+_cycle_acceptance_terminal_failure() {
+    local state_dir="$1"
+    command -v jq >/dev/null 2>&1 || return 1
+    local _is_member=0 _s
+    for _s in "${_CYCLE_STAGES[@]}"; do
+        [[ "$_s" == "acceptance-gate" ]] && _is_member=1 && break
+    done
+    [[ $_is_member -eq 1 ]] || return 1
+    local result="$state_dir/artifacts/acceptance-gate-result.json"
+    [[ -s "$result" ]] || return 1
+    jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || return 1
+    # At least one failure entry that is NOT untagged_spec: → terminal class.
+    jq -e '[.failures[]? | select((. | startswith("untagged_spec:")) | not)] | length > 0' \
+        "$result" >/dev/null 2>&1
+}
+
 # ─── _cycle_read_test_run_mode (ADR-034 / #846) ─────────────────────────────
 # Reads the run_mode field from artifacts/test-results.json in the given
 # state_dir. Echoes "targeted" or "full". Defaults to "full" on any read
@@ -1845,7 +1870,18 @@ cycle_orchestrator_run() {
         # split state writes within an iter boundary).
         local overall_status="in_progress"
         local term_rc=-1
-        if [[ "$converged" -eq 0 ]]; then
+        if _cycle_acceptance_terminal_failure "$state_dir"; then
+            # #1044: acceptance-gate verdict=fail with a terminal (non-feedback)
+            # failure class outranks review.verdict==approve — make the gate's
+            # contract load-bearing so the pipeline halts (failed) instead of
+            # converging to complete. untagged_spec is excluded by the helper so
+            # the #951 feedback loop is preserved.
+            _CYCLE_LAST_TERMINATED_REASON="acceptance_contract_failed"
+            overall_status="acceptance_failed"; term_rc=8
+            eb_emit_event "cycle.acceptance.terminal_failure" \
+                "cycle_id=$cycle_id" "reason=acceptance_contract_failed" \
+                2>/dev/null || true
+        elif [[ "$converged" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"
             overall_status="complete"; term_rc=0
         elif [[ "$abort_matched" -eq 0 ]]; then
