@@ -68,6 +68,7 @@ _cases=(
     "3|divergence|failed|1"
     "4|config_invalid|interrupted|0"
     "5|blocked|interrupted|0"
+    "8|blocking_member_failure|failed|0"
     "130|aborted|interrupted|0"
 )
 
@@ -76,7 +77,9 @@ for _row in "${_cases[@]}"; do
     _dir="$(_drive "$_rc" "$_reason")"
     _state="$_dir/state/pipeline-state.json"
     _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
-    assert_eq "rc=$_rc → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
+    _assert_label="rc=$_rc → pipeline_status=$_exp_status"
+    [[ "$_rc" == "8" ]] && _assert_label="rc=8 [SPEC-3]: blocking_member_failure → pipeline_status=failed"
+    assert_eq "$_assert_label" "$_exp_status" "$_got_status"
     # #842: standard.yaml wraps plan as a leaf + design_impact_cycle (design+impact)
     # and review inside the outer build_review_cycle (ADR-026). The only top-level
     # stage:* unit is intake. Use `intake` as a smoke that stage:* dispatch

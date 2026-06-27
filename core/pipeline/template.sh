@@ -123,6 +123,14 @@ load_template() {
     fi
     export _TPL_MERGE_POLICY
 
+    # Unset stale per-stage blocking flags before clearing the stage list so a
+    # second load_template call in the same process does not carry over flags
+    # from a prior template that declared blocking:true for a stage that the
+    # new template does not. (Bug fix for PR #950 post-merge issue #952.)
+    local _prev_s
+    for _prev_s in "${_TPL_STAGES[@]}"; do
+        unset "_TPL_STAGE_BLOCKING_${_prev_s//-/_}"
+    done
     _TPL_STAGES=()
     _TPL_CYCLES=()
 

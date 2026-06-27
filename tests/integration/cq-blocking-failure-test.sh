@@ -229,6 +229,10 @@ end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSON
 # [SPEC-1]
 assert_eq "T1 [SPEC-1]: pipeline.end status=failed when cq-preflight fails" "failed" "$end_status"
 
+# [SPEC-4] state file .status must equal "failed" (not "interrupted") for rc=8.
+state_status="$(jq -r '.status' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
+assert_eq "T1 [SPEC-4]: state file status=failed when cq-preflight blocks" "failed" "$state_status"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-2] After cq-preflight fails, cq-audit-plan, cq-cycle, cq-backtrack
 #          must NOT run (plugin.run.start count = 0 for each)
@@ -309,6 +313,10 @@ _run_pipeline
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 # [SPEC-5]
 assert_eq "T6 [SPEC-5]: pipeline.end status=failed when blocking cq-audit-plan fails" "failed" "$end_status"
+
+# [SPEC-4] state file .status must also equal "failed" for blocking cq-audit-plan.
+state_status_t6="$(jq -r '.status' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
+assert_eq "T6 [SPEC-4]: state file status=failed when cq-audit-plan blocks" "failed" "$state_status_t6"
 
 # cq-cycle must NOT have run (fail-fast skips the rest after a blocking failure).
 cqcycle_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="cq-cycle")' \

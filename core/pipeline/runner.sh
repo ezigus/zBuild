@@ -1454,7 +1454,13 @@ main() {
                         # signal-driven aborts (rc=130/143) and blocked
                         # (rc=5). The runner emits pipeline.aborted with
                         # reason=cycle_abort and returns rc=6 to its caller.
-                        _set_pipeline_status "$state_file" "interrupted"
+                        # ADR-013: rc=8 (blocking_member_failure) → status=failed to
+                        # match the pipeline.end status=failed event emitted below.
+                        if [[ $_rc -eq 8 ]]; then
+                            _set_pipeline_status "$state_file" "failed"
+                        else
+                            _set_pipeline_status "$state_file" "interrupted"
+                        fi
                         # #612 / Wave 15-F (#686): distinguish signal-driven cycle
                         # abort (SIGINT or SIGTERM) so the postmortem event stream
                         # can answer "was this Ctrl-C / kill?" without parsing
