@@ -108,4 +108,83 @@ for _row in "${_cases[@]}"; do
     esac
 done
 
+# ─── Linear-dispatch coverage (pipeline-contracts mutation guard) ─────────────
+# The pipeline-contracts.md mutation changes _update_stage_status "complete"
+# to "done" in the LINEAR stage dispatch path (runner.sh:1836). The cycle-aware
+# dispatch is a separate code path — the _drive() cases above use
+# ZBUILD_CYCLES_ENABLED=1 and exercise only the cycle path, so that mutation
+# slips past those assertions. This section runs with ZBUILD_CYCLES_ENABLED=0
+# and stubs template_stage_roles to empty so all stages use the backward-compat
+# direct plugin_hook_call path (not orch_spawn, which requires real infra).
+_linear_tmp="$(mktemp -d "$TEST_TEMP_DIR/lin-XXXXXX")"
+(
+    set +e
+    export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+    export ZBUILD_EVENTS_DIR="$_linear_tmp/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+    export ZBUILD_STATE_DIR="$_linear_tmp/state"; mkdir -p "$ZBUILD_STATE_DIR"
+    export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
+    export ZBUILD_CYCLES_ENABLED=0
+    export ZBUILD_CONTRACT_VALIDATOR=warn
+    export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+    # Stub roles to empty so all stages use the direct plugin_hook_call path
+    # (backward-compat branch at runner.sh:1754) instead of orch_spawn.
+    template_stage_roles() { echo ""; }
+    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+    runner_read_stage_verdict() { echo "pass"; }
+    plugin_hook_call() {
+        local sf="$4"; local artdir; artdir="$(dirname "$sf")/artifacts"; mkdir -p "$artdir"
+        printf '{"verdict":"approve","summary":"ok","issues":[],"confidence":0.99,"review_md":"ok"}' \
+            > "$artdir/review.json"
+        return 0
+    }
+    main --issue 999 --template standard >/dev/null 2>&1
+)
+_lin_state="$_linear_tmp/state/pipeline-state.json"
+_lin_intake="$(jq -r '.stage_statuses.intake // "absent"' "$_lin_state" 2>/dev/null)"
+# [pipeline-contracts mutation guard]: linear-dispatch sets stage status "complete" not "done".
+# If _update_stage_status "$state_file" "$stage" "complete" is mutated to "done"
+# at runner.sh:1836, this assertion catches it (cycles-disabled path).
+assert_eq "linear-dispatch: intake stage_statuses=complete (pipeline-contracts mutation guard)" \
+    "complete" "$_lin_intake"
+
+# ─── Abort-trap coverage (runner-fail-closed mutation guard) ──────────────────
+# The runner-fail-closed-mutations.md mutation suppresses eb_emit_event
+# "pipeline.abort" in _runner_abort_trap. The _drive() cases never reach this
+# code because _runner_ended=true is set before exit on every normal/cycle path.
+# This test exits mid-run (plugin calls `exit 143`) so _runner_ended stays false
+# and _runner_abort_trap must emit pipeline.abort.
+_abort_tmp="$(mktemp -d "$TEST_TEMP_DIR/abort-XXXXXX")"
+(
+    set +e
+    export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+    export ZBUILD_EVENTS_DIR="$_abort_tmp/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+    export ZBUILD_EVENTS_JSONL="$_abort_tmp/events/events.jsonl"
+    export ZBUILD_STATE_DIR="$_abort_tmp/state"; mkdir -p "$ZBUILD_STATE_DIR"
+    export ZBUILD_STATE_FILE="$_abort_tmp/state/pipeline-state.json"
+    export ZBUILD_CYCLES_ENABLED=0
+    export ZBUILD_CONTRACT_VALIDATOR=warn
+    export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+    template_stage_roles() { echo ""; }
+    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+    runner_read_stage_verdict() { echo "pass"; }
+    plugin_hook_call() {
+        # Exiting here leaves _runner_ended=false so the EXIT trap fires
+        # _runner_abort_trap which must emit pipeline.abort.
+        exit 143
+    }
+    main --issue 999 --template standard >/dev/null 2>&1
+)
+_abort_ev="$_abort_tmp/events/events.jsonl"
+_abort_count="$(grep -c '"type":"pipeline.abort"' "$_abort_ev" 2>/dev/null || echo 0)"
+# [runner-fail-closed mutation guard]: abort trap must emit pipeline.abort.
+# If eb_emit_event "pipeline.abort" is replaced with `true` in _runner_abort_trap,
+# this assertion fails.
+assert_eq "abort trap emits pipeline.abort (runner-fail-closed mutation guard)" \
+    "1" "$_abort_count"
+
 print_test_results
