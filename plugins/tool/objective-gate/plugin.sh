@@ -18,6 +18,12 @@ _OG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_OG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# shellcheck source=../../../core/output/stage-io.sh
+# ADR-015 §"command-kind capture is MANDATORY" (#1115): the suite + lint runs are
+# the most expensive external commands in the pipeline; wrapping them in
+# stage_io_begin/_end gives the operator the standard input/output banner pair
+# instead of a silent ~13-min stall. No-op when the stage declares no io: dests.
+source "$_OG_ROOT/core/output/stage-io.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/objective-ablation.sh
 source "$_OG_ROOT/scripts/lib/objective-ablation.sh" 2>/dev/null || true
 
@@ -343,6 +349,51 @@ _og_can_reuse_suite() {
     return 0
 }
 
+# ─── _og_io_output_summary ────────────────────────────────────────────────────
+# Build the OUTPUT-banner body for a command-kind capture: the verdict + exit
+# code, plus a short recognizable summary line lifted from the raw output (e.g.
+# `unit: 12/12 passed`, `mutation 20/22`). The FULL raw output is kept in an
+# artifact by the caller — only this truncated summary reaches the banner. When
+# the suite result was REUSED (no command ran) the body is a one-line cache note.
+# Usage: _og_io_output_summary <verdict> <exit_code> <raw_output> <reused>
+_og_io_output_summary() {
+    local verdict="$1" exit_code="$2" raw="$3" reused="$4"
+    if [[ "$reused" == "1" ]]; then
+        printf 'verdict=%s [reused] cached full-suite result\n' "$verdict"
+        return 0
+    fi
+    printf 'verdict=%s exit_code=%s\n' "$verdict" "$exit_code"
+    # Lift the last few tier/mutation/pass-fail summary lines so the banner shows
+    # signal, not the whole log. Best-effort: empty when nothing matches.
+    local summary_line
+    summary_line="$(printf '%s\n' "$raw" \
+        | grep -iE '([0-9]+/[0-9]+|[0-9]+ (passed|failed)|mutation|Tests:|shellcheck)' \
+        | tail -n 3 || true)"
+    [[ -n "$summary_line" ]] && printf '%s\n' "$summary_line"
+    return 0
+}
+
+# ─── _og_emit_io_end ──────────────────────────────────────────────────────────
+# Close a command-kind stage-io banner pair opened by stage_io_begin. Computes
+# wall duration from $t0_us and calls stage_io_end. Best-effort — failures are
+# swallowed so they can never affect the gate verdict. No-op when seq is empty
+# (begin suppressed because the stage declares no io: destinations). Mirrors the
+# test plugin's _test_emit_io_end (#497).
+# Usage: _og_emit_io_end <seq> <t0_us> <verdict> <exit_code> <output>
+_og_emit_io_end() {
+    local seq="$1" t0_us="$2" verdict="$3" exit_code="$4" output="$5"
+    [[ -z "$seq" ]] && return 0
+    local t1_us="${EPOCHREALTIME/./}"
+    local dur_ms=$(( (10#${t1_us} - 10#${t0_us}) / 1000 ))
+    (( dur_ms < 0 )) && dur_ms=0
+    stage_io_end --stage objective-gate --kind command --seq "$seq" \
+        --output "$output" \
+        --exit-code "$exit_code" \
+        --duration-ms "$dur_ms" \
+        --metadata "verdict=$verdict" 2>/dev/null || true
+    return 0
+}
+
 # ─── objective_gate_run ───────────────────────────────────────────────────────
 # Hard-blocks on test suite, lint, coverage-floor, or scope-adherence failure.
 # Writes enriched artifact with coverage_pct, coverage_delta, scope_ok, quality_score.
@@ -383,9 +434,33 @@ objective_gate_run() {
     if _og_can_reuse_suite "$artifacts_dir"; then
         test_rc=0
         _suite_reused=1
-    else
-        bash -c "$test_cmd" >/dev/null 2>&1 || test_rc=$?
     fi
+
+    # ── ADR-015 (#1115): stage-io banner pair around the suite run ─────────────
+    # INPUT banner shows the command (or a [reused] cache note); OUTPUT banner
+    # shows the verdict + a short summary. Capture stdout+stderr (NOT >/dev/null)
+    # so the banner + artifact carry it. Begin is suppressed (seq empty) when the
+    # stage declares no io: destinations — the gate then behaves as before.
+    local _suite_raw="" _suite_input _suite_seq="" _suite_t0_us="${EPOCHREALTIME/./}"
+    if [[ $_suite_reused -eq 1 ]]; then
+        local _reuse_root _reuse_tree
+        _reuse_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo)}"
+        _reuse_tree="$(git -C "$_reuse_root" rev-parse 'HEAD^{tree}' 2>/dev/null || echo unknown)"
+        _suite_input="$(printf '%q' "[reused] cached full-suite result tree=$_reuse_tree")"
+    else
+        _suite_input="$(printf '%q' "$test_cmd")"
+    fi
+    if stage_io_begin --stage objective-gate --kind command \
+            --input "$_suite_input" >/dev/null 2>&1; then
+        _suite_seq="$_STAGE_IO_LAST_SEQ"
+    fi
+
+    if [[ $_suite_reused -ne 1 ]]; then
+        _suite_raw="$(bash -c "$test_cmd" 2>&1)" || test_rc=$?
+        # Keep the full raw suite output as an artifact; only the banner truncates.
+        printf '%s\n' "$_suite_raw" > "$artifacts_dir/objective-gate-suite-output.log" 2>/dev/null || true
+    fi
+
     if [[ $test_rc -ne 0 ]]; then
         fail_reason="suite_fail"
         _og_emit "objective_gate.suite.fail" "exit_code=$test_rc"
@@ -395,15 +470,30 @@ objective_gate_run() {
         _og_emit "objective_gate.suite.pass" "exit_code=0"
     fi
 
-    # Run lint / shellcheck — always run even when suite failed so both results
-    # are captured in the artifact for operator visibility.
-    bash -c "$lint_cmd" >/dev/null 2>&1 || lint_rc=$?
+    local _suite_verdict="pass"; [[ $test_rc -ne 0 ]] && _suite_verdict="fail"
+    _og_emit_io_end "$_suite_seq" "$_suite_t0_us" "$_suite_verdict" "$test_rc" \
+        "$(_og_io_output_summary "$_suite_verdict" "$test_rc" "$_suite_raw" "$_suite_reused")"
+
+    # ── Run lint / shellcheck — always run even when suite failed so both ──────
+    # results are captured in the artifact for operator visibility. Wrapped in a
+    # second stage-io banner pair (ADR-015 #1115); output captured, not discarded.
+    local _lint_raw="" _lint_input _lint_seq="" _lint_t0_us="${EPOCHREALTIME/./}"
+    _lint_input="$(printf '%q' "$lint_cmd")"
+    if stage_io_begin --stage objective-gate --kind command \
+            --input "$_lint_input" >/dev/null 2>&1; then
+        _lint_seq="$_STAGE_IO_LAST_SEQ"
+    fi
+    _lint_raw="$(bash -c "$lint_cmd" 2>&1)" || lint_rc=$?
+    printf '%s\n' "$_lint_raw" > "$artifacts_dir/objective-gate-lint-output.log" 2>/dev/null || true
     if [[ $lint_rc -ne 0 ]]; then
         [[ -z "$fail_reason" ]] && fail_reason="lint_fail"
         _og_emit "objective_gate.lint.fail" "exit_code=$lint_rc"
     else
         _og_emit "objective_gate.lint.pass" "exit_code=0"
     fi
+    local _lint_verdict="pass"; [[ $lint_rc -ne 0 ]] && _lint_verdict="fail"
+    _og_emit_io_end "$_lint_seq" "$_lint_t0_us" "$_lint_verdict" "$lint_rc" \
+        "$(_og_io_output_summary "$_lint_verdict" "$lint_rc" "$_lint_raw" "0")"
 
     # Coverage floor gate (I4 — requires post-build artifacts).
     _og_run_coverage_floor "$_OG_ROOT" "$artifacts_dir"
