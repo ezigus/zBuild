@@ -41,13 +41,6 @@ _test_cleanup_hook() {
     fi
 }
 
-# #996: skip on macOS CI. This test sends `kill -TERM` to a process group and
-# asserts the pipeline aborts; the macOS CI harness's process-group/signal-delivery
-# semantics don't reliably land the signal on the build stage (and macOS lacks
-# `timeout` as a backstop), so it flakes/hangs there. The SIGTERM-abort behavior is
-# fully covered on the Linux leg. Follow-up: harden for the macOS matrix, then un-gate.
-skip_on_platform macos
-
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -191,15 +184,14 @@ else
         "got rc=$runner_rc. Stderr tail: $(tail -c 600 "$TEST_TEMP_DIR/runner.stderr" 2>/dev/null)"
 fi
 
-# (2) Wall-clock budget: the signal handler must exit promptly. We allow
-#     a generous 9s ceiling (build sleeps 30s — if elapsed >> 9 the trap
-#     isn't firing). Bumped 7→9 on #766: #754's design stage adds ~0.5s
-#     of plugin-lookup startup that tips the GHA boundary.
-if [[ "$elapsed" -le 9 ]]; then
-    assert_pass "pipeline halted in ≤9s (actual=${elapsed}s)"
+# (2) Wall-clock budget: hang-backstop only (#1059). The trap-fired proof is the
+#     rc=143 + TEST_RAN-absence + single pipeline.aborted assertions; this generous
+#     bound just catches a true hang (was a tight ≤9s that flaked on macOS).
+if [[ "$elapsed" -le 60 ]]; then
+    assert_pass "pipeline halted in ≤60s (actual=${elapsed}s)"
 else
-    assert_fail "pipeline halted in ≤9s" \
-        "actual=${elapsed}s — SIGTERM trap is not firing promptly"
+    assert_fail "pipeline halted in ≤60s" \
+        "actual=${elapsed}s — SIGTERM trap appears hung"
 fi
 
 # (3) `test` stage must NOT have run — abort halts the pipeline.

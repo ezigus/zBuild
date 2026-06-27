@@ -36,12 +36,6 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="invariant-test-$$"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
 
-# #996: skip on macOS CI. The per-stage banner-stream capture this asserts comes
-# up empty on the macOS CI runner (passes 12/12 locally — it's a CI-environment
-# output-capture difference, not a code bug). The ordering invariant is fully
-# covered on the Linux leg. Follow-up: diagnose the macOS CI banner capture, un-gate.
-skip_on_platform macos
-
 export HOME="$TEST_TEMP_DIR/home"
 mkdir -p "$HOME/.zbuild"
 export ZBUILD_SCOPE_OVERRIDE=1
@@ -253,6 +247,18 @@ for row in "${STAGES[@]}"; do
     # Per-row override token must equal the row's run_id (router C6 contract).
     row_run_id="${ZBUILD_RUN_ID}-${stage_id}"
     printf '%s' "$row_run_id" > "$HOME/.zbuild/scope-override-token"
+
+    # Durability guard: on macOS /var/folders a freshly written file can lag the
+    # subprocess read, so _route_check_precondition would fail-closed and the
+    # banner capture would come up empty. Read the token back and confirm it
+    # equals row_run_id before launching the driver.
+    token_readback="$(cat "$HOME/.zbuild/scope-override-token" 2>/dev/null || echo '')"
+    if [[ "$token_readback" != "$row_run_id" ]]; then
+        assert_fail "[$stage_id] override-token durable before driver launch" \
+            "wrote=$row_run_id read=$token_readback"
+        overall_fail=1
+        continue
+    fi
 
     # Reset the slow-mock marker between rows so the per-row delta is clean.
     : > "$SLOW_MARK"

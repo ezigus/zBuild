@@ -24,12 +24,6 @@ print_test_header "per-run state isolation (#887)"
 setup_test_env "per-run-state-isolation-887"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
-# #996: skip on macOS CI. T6 (events follow STATE_FILE dir) fails on the macOS CI
-# runner — a path/symlink resolution difference (passes 12/12 locally). The
-# per-run state isolation is fully covered on the Linux leg. Follow-up: diagnose
-# the macOS CI path handling, un-gate.
-skip_on_platform macos
-
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 # #921: standard roster single-sourced (was a hand-maintained for-loop).
@@ -116,11 +110,27 @@ env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EV
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-eee" HOME="$HOME_DIR" PATH="$PATH" \
     bash "$RUNNER" --issue 887 --no-resume >/dev/null 2>&1
-set -e
+t6_rc=$?; set -e
+# macOS $TMPDIR is /var/folders (/var -> /private/var symlink), so a literal
+# substring match on the captured ZBUILD_EVENTS_DIR can disagree with the
+# expected RESUME_DIR. Canonicalize both via `pwd -P` before comparing, and
+# keep the original `*/runs/run-eee*` substring as an accepted alternative.
+# t6_rc is folded into the failure message so a future CI failure self-diagnoses
+# (rc!=0 => runner exited early before the build stub; else => wrong dir).
 ev2="$(cat "$ENVCAP2" 2>/dev/null || echo)"
+ev2_dir="${ev2#ZBUILD_EVENTS_DIR=}"
+ev2_canon="$(cd "$ev2_dir" 2>/dev/null && pwd -P || printf '%s' "$ev2_dir")"
+resume_canon="$(cd "$RESUME_DIR" 2>/dev/null && pwd -P || printf '%s' "$RESUME_DIR")"
 case "$ev2" in
     *"/runs/run-eee"*) assert_pass "T6: explicit STATE_FILE → events follow its dir (not flat)" ;;
-    *) assert_fail "T6: events did not follow STATE_FILE dir" "got: $ev2" ;;
+    *)
+        if [[ -n "$ev2_dir" && "$ev2_canon" == "$resume_canon" ]]; then
+            assert_pass "T6: explicit STATE_FILE → events follow its dir (canonicalized)"
+        else
+            assert_fail "T6: events did not follow STATE_FILE dir" \
+                "runner_rc=$t6_rc got=$ev2 (canon=$ev2_canon) expected=$resume_canon"
+        fi
+        ;;
 esac
 
 cleanup_test_env

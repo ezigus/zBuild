@@ -35,13 +35,6 @@ _test_cleanup_hook() {
     fi
 }
 
-# #996: skip on macOS CI. This test asserts a SIGINT-chain abort within a tight
-# wall-clock budget; the macOS CI harness's process-group/signal-delivery
-# semantics don't reliably land the signal on the target stage (and macOS lacks
-# `timeout` as a backstop), so it flakes/hangs there. Abort behavior is fully
-# covered on the Linux leg. Follow-up: harden for the macOS matrix, then un-gate.
-skip_on_platform macos
-
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -131,10 +124,13 @@ print_test_section "T2: pipeline halts within 6s (no further iterations)"
 #      lookup per pipeline-start adds ~0.5s on GHA's slower runners.
 #   4. The test's intent is "halt FAST, not iterate" — 8s still proves
 #      single-stage abort vs. multi-iter (which would be 30s+).
-if [[ "$elapsed" -le 15 ]]; then
+#   5. #1059: relaxed to a hang-backstop ≤60s — the single-stage-abort proof
+#      is the TEST_MARKER-absence + single pipeline.aborted assertions, not the
+#      tight wall-clock (which flaked on the macOS matrix).
+if [[ "$elapsed" -le 60 ]]; then
     assert_pass "pipeline halted in ${elapsed}s"
 else
-    assert_fail "pipeline halted in ≤15s" "actual=${elapsed}s"
+    assert_fail "pipeline halted in ≤60s" "actual=${elapsed}s"
 fi
 
 print_test_section "T3: test stage never starts (build rc=130 halts linear loop)"

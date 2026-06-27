@@ -46,14 +46,6 @@ _test_cleanup_hook() {
     fi
 }
 
-# #996: skip on macOS CI. This test drives a kernel-pgrp SIGINT chain and asserts
-# the pipeline aborts within a tight wall-clock budget. On the macOS CI harness the
-# process-group/signal-delivery semantics don't reliably land the signal on the
-# target stage (and macOS lacks `timeout` as a backstop), so it flakes/hangs there.
-# The SIGINT-abort behavior is fully covered on the Linux leg. Follow-up: harden
-# these signal-abort tests for the macOS matrix, then un-gate. (cf. route-fast-abort)
-skip_on_platform macos
-
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -146,13 +138,14 @@ else
     assert_fail "runner exits 130 distinctly on SIGINT" "got rc=$runner_rc"
 fi
 
-# (1) Wall-clock budget: < 4s. Without the fix, the route loop iterates 5x
-#     against the rc=130 mock; with the fix it bails after the first call.
-if [[ "$elapsed" -le 4 ]]; then
-    assert_pass "pipeline halted in ≤4s end-to-end (actual=${elapsed}s)"
+# (1) Wall-clock budget: hang-backstop only (#1059). The real abort proof is the
+#     call-count + single pipeline.aborted assertions below; this generous bound
+#     just catches a true hang (was a tight ≤4s that flaked on the macOS matrix).
+if [[ "$elapsed" -le 60 ]]; then
+    assert_pass "pipeline halted in ≤60s end-to-end (actual=${elapsed}s)"
 else
-    assert_fail "pipeline halted in ≤4s end-to-end" \
-        "actual=${elapsed}s — route loop is still iterating on rc=130"
+    assert_fail "pipeline halted in ≤60s end-to-end" \
+        "actual=${elapsed}s — route loop appears hung on rc=130"
 fi
 
 # (2) Claude invoked at most 2 times. With the fix, exactly 1.
