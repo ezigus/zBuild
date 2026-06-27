@@ -307,17 +307,21 @@ _og_persist_coverage_pct() {
 }
 
 # ─── _og_can_reuse_suite ─────────────────────────────────────────────────────
-# #1058 Phase B: decide whether the gate may REUSE the test stage's full-suite
-# result (test-results.json) instead of re-running `npm test` on the identical
-# committed work-tree. Returns 0 (reuse) ONLY when ALL hold:
+# #1058 Phase B / #1116: decide whether the gate may REUSE the test stage's
+# full-suite result (test-results.json) instead of re-running `npm test` on the
+# identical committed work-tree. Returns 0 (reuse) ONLY when ALL hold:
 #   • ZBUILD_OBJECTIVE_GATE_NO_REUSE is unset/empty (escape hatch forces re-run)
 #   • test-results.json exists and parses
 #   • its .run_mode == "full"      (targeted runs are NOT authoritative)
-#   • its .verdict  == "pass"
+#   • its .verdict  ∈ {pass, fail}  (a DEFINITIVE verdict — #1116). A cached FAIL
+#     on a provably identical tree is just as authoritative as a PASS: re-running
+#     a deterministic suite cannot change it, and the caller propagates the cached
+#     exit_code so a reused fail still HARD-BLOCKS the gate. verdict == "error"
+#     (interrupted / unparseable) is NOT authoritative and forces a re-run.
 #   • its .tree_sha is non-empty and EQUALS the current committed work-tree SHA
-# Any other condition (missing field, mismatch, unreadable git tree) returns 1
-# (fail closed → caller runs the suite). Repo root is derived exactly as the
-# test plugin does so both compute the same tree.
+# Any other condition (missing field, mismatch, unreadable git tree, verdict=error)
+# returns 1 (fail closed → caller runs the suite). Repo root is derived exactly as
+# the test plugin does so both compute the same tree.
 # Usage: _og_can_reuse_suite <artifacts_dir>
 _og_can_reuse_suite() {
     local artifacts_dir="$1"
@@ -336,7 +340,12 @@ _og_can_reuse_suite() {
     IFS=$'\t' read -r _art_tree _art_verdict _art_mode <<< "$_parsed"
 
     [[ "$_art_mode" == "full" ]] || return 1
-    [[ "$_art_verdict" == "pass" ]] || return 1
+    # #1116: a DEFINITIVE verdict (pass OR fail) is authoritative on an identical
+    # tree; only an `error` (interrupted/unparseable) verdict forces a re-run.
+    case "$_art_verdict" in
+        pass | fail) ;;
+        *) return 1 ;;
+    esac
     [[ -n "$_art_tree" ]] || return 1
 
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo)}"
@@ -430,10 +439,24 @@ objective_gate_run() {
     # fails closed (runs the suite) on ANY doubt — missing artifact, missing or
     # mismatched tree_sha, non-pass verdict, a targeted (non-authoritative) run,
     # an unreadable git tree, or the ZBUILD_OBJECTIVE_GATE_NO_REUSE escape hatch.
-    local _suite_reused=0
+    local _suite_reused=0 _reuse_verdict="pass"
     if _og_can_reuse_suite "$artifacts_dir"; then
-        test_rc=0
         _suite_reused=1
+        # #1116: a reused FAIL must still HARD-BLOCK, so propagate the cached
+        # exit_code into test_rc (a reused PASS keeps 0). Read verdict+exit_code
+        # at the reuse decision; default to a passing posture if jq can't parse.
+        local _reuse_parsed _reuse_ec=0
+        _reuse_parsed="$(jq -r '[(.verdict // "pass"), (.exit_code // 0)] | @tsv' \
+            "$artifacts_dir/test-results.json" 2>/dev/null)" || _reuse_parsed=$'pass\t0'
+        IFS=$'\t' read -r _reuse_verdict _reuse_ec <<< "$_reuse_parsed"
+        if [[ "$_reuse_verdict" == "fail" ]]; then
+            # SAFETY-CRITICAL: never let a reused fail pass the gate — force a
+            # non-zero test_rc even if the cached exit_code is bogusly 0/empty.
+            [[ "$_reuse_ec" =~ ^-?[0-9]+$ ]] && test_rc="$_reuse_ec" || test_rc=1
+            [[ "$test_rc" -eq 0 ]] && test_rc=1
+        else
+            test_rc=0
+        fi
     fi
 
     # ── ADR-015 (#1115): stage-io banner pair around the suite run ─────────────
@@ -463,7 +486,12 @@ objective_gate_run() {
 
     if [[ $test_rc -ne 0 ]]; then
         fail_reason="suite_fail"
-        _og_emit "objective_gate.suite.fail" "exit_code=$test_rc"
+        # #1116: emit reused=1 for BOTH verdicts so reuse is observable on a fail too.
+        if [[ $_suite_reused -eq 1 ]]; then
+            _og_emit "objective_gate.suite.fail" "exit_code=$test_rc" "reused=1"
+        else
+            _og_emit "objective_gate.suite.fail" "exit_code=$test_rc"
+        fi
     elif [[ $_suite_reused -eq 1 ]]; then
         _og_emit "objective_gate.suite.pass" "exit_code=0" "reused=1"
     else
