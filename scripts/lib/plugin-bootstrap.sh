@@ -76,6 +76,11 @@ zbuild_plugin_bootstrap() {
     # Publish resolved paths for the caller.
     _ZBUILD_PLUGIN_DIR="$_pdir"
     _ZBUILD_PLUGIN_ROOT="$_proot"
+    # #963: directory the read-only acceptance-grammar libs are sourced from.
+    # Defaults to this engine's own scripts/lib (normal runs unchanged); a
+    # self-host dogfood sets ZBUILD_CONTRACT_LIB_DIR to a working-tree snapshot
+    # so contract-reader stages parse the dogfood's OWN grammar (ADR-023).
+    _ZBUILD_CONTRACT_LIB_DIR="${ZBUILD_CONTRACT_LIB_DIR:-$_proot/scripts/lib}"
 
     # shellcheck source=./helpers.sh
     source "$_helpers" || {

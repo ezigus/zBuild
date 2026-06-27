@@ -35,8 +35,9 @@ source "$_DESIGN_ROOT/core/router/route.sh"
 source "$_DESIGN_ROOT/core/output/stage-io.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_DESIGN_ROOT/scripts/lib/prompt-overrides.sh"
+# #963: read-only grammar lib from _ZBUILD_CONTRACT_LIB_DIR (self-host redirect).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
-source "$_DESIGN_ROOT/scripts/lib/acceptance-block.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 design_stage_init() {
