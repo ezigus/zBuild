@@ -510,33 +510,35 @@ _scope_ref="$(shasum -a 256 "$STATE_DIR/scope-manifest.md" | cut -d' ' -f1)"
 # Pre-seed the cache in the namespaced layout (Pillar E). repo_id/scope_key are
 # derived by the plugin; we seed all candidate leaves so resume resolves
 # regardless of how repo_id/scope_key hash out for this fixture.
+# Seed a cache leaf the lib's read contract will accept. plan_context_read_for_resume
+# refuses on ANY key mismatch (Pillar E), including repo_id — so the seed MUST
+# embed the repo_id the plugin computes (derived below) and the scope_key, exactly
+# as Wave A's plan_context_write does.
 _seed_plan_context() {
-    local dir="$1"
+    local dir="$1" repo_id="$2" scope_key="$3"
     mkdir -p "$dir"
     jq -n \
         --arg gh "$_gh" \
         --arg sr "$_scope_ref" \
+        --arg repo "$repo_id" \
+        --arg sk "$scope_key" \
         --arg pr "$_RESUME_TOKEN exploration from a prior exhausted run" \
         '{schema_version:1,goal_hash:$gh,scope_manifest_ref:$sr,
           status:"scope_too_large",num_turns:25,partial_reasoning:$pr,
-          candidate_split:true,run_id:"prior-run",created_at:"2026-06-26T00:00:00Z"}' \
+          candidate_split:true,run_id:"prior-run",repo_id:$repo,scope_key:$sk,
+          branch:"test",created_at:"2026-06-26T00:00:00Z"}' \
         > "$dir/$_gh.json"
     printf '# plan-context\n## Accumulated exploration\n%s\n' "$_RESUME_TOKEN" \
         > "$dir/$_gh.md"
 }
-# Seed every plausible namespace so the resume lookup is harness-robust: the
-# plugin computes <repo_id>/<scope_key>/<goal_hash>; we mirror by walking the
-# scope_key candidates (issue number, else scope_manifest_ref) under a wildcard
-# repo_id, plus a flat fallback. The behavior under test is "resume happened",
-# not the exact namespace math (that is SPEC-5, owned elsewhere).
+# Seed the EXACT namespaced leaf the plugin reads: <repo_id>/<scope_key>/
+# <goal_hash>.json. repo_id is derived the same way the plugin derives it (via
+# plan_context_repo_id, sourced transitively through plugin.sh); scope_key is
+# ZBUILD_ISSUE_NUMBER when present (Pillar E). The behavior under test is
+# "resume happened", not the namespace math (that is SPEC-5, owned elsewhere).
 export ZBUILD_ISSUE_NUMBER=999
-for _scope_key in 999 "$_scope_ref"; do
-    _seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR"/*/"$_scope_key" 2>/dev/null || true
-done
-# The glob above will not expand (no repo_id dir yet); also seed a deterministic
-# spot the plugin can reach by computing repo_id itself. We additionally seed a
-# flat leaf so a non-namespaced lookup still resolves the sentinel.
-_seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR"
+_seed_repo_id="$(plan_context_repo_id)"
+_seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR/$_seed_repo_id/999" "$_seed_repo_id" "999"
 set +e
 plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
 rc=$?

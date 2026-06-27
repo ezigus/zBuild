@@ -35,6 +35,12 @@ source "$_PLAN_ROOT/scripts/lib/prompt-overrides.sh"
 # #721: strip OOS-marker tags and ANSI from goal text before LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_PLAN_ROOT/scripts/lib/test-output-sanitize.sh"
+# #1052: durable plan-context cache + max_turns envelope recovery (EPIC #966).
+# shellcheck source=../../../scripts/lib/plan-context.sh
+source "$_PLAN_ROOT/scripts/lib/plan-context.sh"
+# #1052: router rc → verdict/reason classifier (shared with impact).
+# shellcheck source=../../../scripts/lib/router-rc-classify.sh
+source "$_PLAN_ROOT/scripts/lib/router-rc-classify.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 plan_init() {
@@ -404,6 +410,56 @@ $_plan_instructions"
     prompt+=$'Scope manifest (allowed path prefixes):\n'
     prompt+="$manifest_body"$'\n'
 
+    # ─── Resume (Pillar B, #1052) ───────────────────────────────────────────
+    # Before any operator override, look up a prior exhausted exploration for
+    # THIS repo+scope+goal and splice it in. plan_context_read_for_resume gates
+    # on ZBUILD_PLAN_RESUME != 0 AND goal_hash/repo_id/scope_manifest_ref match
+    # AND status != complete; any mismatch echoes nothing / rc=1 → no splice.
+    # The cached reasoning was redacted against the PRIOR run's manifest (which
+    # may differ), so it gets its OWN redaction pass here — NEVER splice
+    # unredacted cache (mirror the operator-override redaction below).
+    local _resume_repo_id _resume_goal_hash _resume_scope_ref _resume_text
+    _resume_repo_id="$(plan_context_repo_id)"
+    _resume_goal_hash="$(plan_context_goal_hash "$goal_text")"
+    if [[ -f "$scope_manifest" ]]; then
+        _resume_scope_ref="$(shasum -a 256 "$scope_manifest" | cut -d' ' -f1)"
+    else
+        _resume_scope_ref="absent"
+    fi
+    # scope_key mirrors Pillar E: issue number when present, else manifest hash.
+    local _resume_scope_key="${ZBUILD_ISSUE_NUMBER:-$_resume_scope_ref}"
+    _resume_text="$(plan_context_read_for_resume \
+        "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash" "$_resume_scope_ref" 2>/dev/null || true)"
+    if [[ -n "$_resume_text" ]]; then
+        # Emit the resume event BEFORE the resume redaction pass so the LAST
+        # event the router sees on its next model call is `redaction.applied`
+        # (emitted by apply_scope_redaction below, or by the operator-override
+        # pass). The router's C6 precondition refuses to spawn claude unless the
+        # immediately-preceding event is redaction.applied — interleaving
+        # plan.context.resumed after that redaction would trip C6 (rc=2).
+        local _resume_json_path _prior_status _prior_turns
+        _resume_json_path="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+        _prior_status="$(jq -r '.status // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
+        _prior_turns="$(jq -r '.num_turns // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
+        emit_event "plan.context.resumed" "plugin=plan" \
+            "goal_hash=$_resume_goal_hash" \
+            "prior_status=$_prior_status" \
+            "prior_num_turns=$_prior_turns"
+
+        local _resume_in="$artifact_dir/plan-resume.txt"
+        local _resume_red="$artifact_dir/plan-resume.redacted.txt"
+        printf '%s\n' "$_resume_text" > "$_resume_in"
+        if apply_scope_redaction "$_resume_in" "$_resume_red" "$scope_manifest" "" "0"; then
+            # Splice the REDACTED body verbatim (mirror the operator-override
+            # splice below). Do NOT run _zbuild_sanitize_for_llm here:
+            # sanitize's transform 1 UNWRAPS <out-of-scope-context> markers and
+            # keeps their inner content, which would re-expose out-of-scope text
+            # that redaction just protected. The wrapper IS the protection.
+            prompt+=$'\n## PRIOR EXPLORATION CONTEXT (resumed)\n\n'
+            prompt+="$(cat "$_resume_red")"$'\n'
+        fi
+    fi
+
     # ADR-032 (#855): plan assembles its prompt in $prompt AFTER the goal is
     # redacted, so the override is redacted in its OWN pass and spliced in AFTER
     # the contract (_plan_instructions) — preserving both invariants: the
@@ -452,6 +508,10 @@ $_plan_instructions"
 
     # ─── Parse: strip fences, validate JSON with .steps array ───────────────
     local plan_json=""
+    # #1052: set when a plan was salvaged from a max_turns envelope; the
+    # recovery branch already persisted plan-context status=complete, so the
+    # success-persist block below must not re-emit plan.context.persisted.
+    local _plan_recovered=0
     # #476: distinguish empty-envelope from schema-failure so a future
     # regression (e.g. envelope mode silently disabled) emits a different
     # `reason=` and is grep-detectable.
@@ -481,14 +541,132 @@ $_plan_instructions"
         return 1
     fi
 
-    # ─── Validate: fail if we still have no usable plan ─────────────────────
+    # ─── Recovery + scope_too_large (Pillars C/D, #1052) ────────────────────
+    # We have no plan from the happy path. Before failing, mirror impact's
+    # resilience: (1) try to RECOVER a complete plan an exhausted model may
+    # still have emitted (from raw_response AND the router's max_turns sidecar
+    # .result); (2) if the failure is specifically error_max_turns/timeout/oom,
+    # turn it into a TERMINAL scope_too_large signal (rc=10) instead of an empty
+    # plugin.run.error; (3) otherwise keep the existing claude_cli_failed path.
     if [[ -z "$plan_json" ]]; then
-        local _reason="invalid_plan_response"
-        [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
-        [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
-        error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
-        emit_event "plugin.run.error" "plugin=plan" "reason=$_reason"
-        return 1
+        # (a) Envelope recovery — ONLY on a router FAILURE (rc != 0), i.e. the
+        # budget-exhaustion / crash path. A model that hit max_turns may still
+        # have emitted a valid final plan; try the captured response first, then
+        # the router's diagnostic sidecar .result (route.sh persists the failed
+        # envelope there; route_to_model returned empty on the non-zero exit).
+        # We deliberately do NOT recover on an rc=0 schema failure: the
+        # happy-path validator above is STRICTER than _plan_envelope_schema_ok
+        # (it also requires files[] be strings), so a well-formed-but-invalid
+        # rc=0 response must stay a schema_violation, not be resurrected here.
+        local _recovered="" _sidecar_blob=""
+        if [[ "$router_rc" -ne 0 ]]; then
+            if [[ -n "$raw_response" ]]; then
+                _recovered="$(_plan_recover_envelope_json "$raw_response" 2>/dev/null || true)"
+            fi
+            _sidecar_blob="$(plan_context_recover_sidecar_reasoning "${ZBUILD_CURRENT_STAGE:-plan}" "$artifact_dir" 2>/dev/null || true)"
+            if [[ -z "$_recovered" && -n "$_sidecar_blob" ]]; then
+                _recovered="$(_plan_recover_envelope_json "$_sidecar_blob" 2>/dev/null || true)"
+            fi
+        fi
+        if [[ -n "$_recovered" ]]; then
+            # A genuine, schema-valid plan surfaced — treat as success. plan.json
+            # is written by the shared "Write plan.json" path below (fall-through).
+            plan_json="$_recovered"
+            _plan_recovered=1
+            emit_event "plan.envelope.recovered" "plugin=plan" \
+                "artifact=plan.json" "recovered_bytes=${#_recovered}"
+            # Persist context status=complete + mirror into the per-run artifacts.
+            local _rec_ctx_json
+            _rec_ctx_json="$(plan_context_write \
+                "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")"
+            printf '%s\n' "$_rec_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
+            local _rec_md_path
+            _rec_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+            [[ -f "$_rec_md_path" ]] && cp "$_rec_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
+            emit_event "plan.context.persisted" "plugin=plan" \
+                "goal_hash=$_resume_goal_hash" "status=complete" "recovered=1"
+            # Fall through to the normal post-validate / run.complete path below.
+        else
+            # (b) No recoverable plan. Classify the failure: error_max_turns (or
+            # an infra timeout/oom CONFIRMED by the sidecar subtype) becomes the
+            # terminal scope_too_large abort. Anything else stays the existing
+            # claude_cli_failed / plugin.run.error path.
+            local _stl_rc_verdict _stl_rc_reason
+            _router_rc_classify "$router_rc" _stl_rc_verdict _stl_rc_reason
+            local _stl_subtype=""
+            local _stl_sidecar="$artifact_dir/stage-io/${ZBUILD_CURRENT_STAGE:-plan}-sync-error.raw-claude-output.json"
+            if [[ ! -f "$_stl_sidecar" ]]; then
+                # Glob-fallback to the newest matching sidecar (mirror the lib).
+                local _stl_f _stl_newest=""
+                for _stl_f in "$artifact_dir"/stage-io/"${ZBUILD_CURRENT_STAGE:-plan}"-*error*.raw-claude-output.json; do
+                    [[ -e "$_stl_f" ]] || continue
+                    if [[ -z "$_stl_newest" || "$_stl_f" -nt "$_stl_newest" ]]; then _stl_newest="$_stl_f"; fi
+                done
+                _stl_sidecar="$_stl_newest"
+            fi
+            if [[ -n "$_stl_sidecar" && -f "$_stl_sidecar" ]]; then
+                _stl_subtype="$(jq -r '.subtype // ""' "$_stl_sidecar" 2>/dev/null || true)"
+            fi
+            # The discriminator (per the DoD): scope_too_large iff the model
+            # exhausted its budget — subtype=error_max_turns, OR a router
+            # timeout/oom that the sidecar confirms as a turn-budget exhaustion.
+            local _is_scope_too_large=0
+            if [[ "$_stl_subtype" == "error_max_turns" ]]; then
+                _is_scope_too_large=1
+            elif [[ "$_stl_rc_reason" == "router_timeout" || "$_stl_rc_reason" == "router_oom_kill" ]] \
+                 && [[ "$_stl_subtype" == "error_max_turns" ]]; then
+                _is_scope_too_large=1
+            fi
+
+            if [[ "$_is_scope_too_large" -eq 1 ]]; then
+                # Recover partial reasoning + num_turns from the sidecar.
+                local _stl_reasoning _stl_turns
+                _stl_reasoning="$_sidecar_blob"
+                [[ -z "$_stl_reasoning" ]] && _stl_reasoning="$(plan_context_recover_sidecar_reasoning "${ZBUILD_CURRENT_STAGE:-plan}" "$artifact_dir" 2>/dev/null || true)"
+                _stl_turns="$(jq -r '.num_turns // ""' "$_stl_sidecar" 2>/dev/null || true)"
+
+                # Persist scope_too_large context (cross-run cache + per-run copy).
+                local _stl_ctx_json
+                _stl_ctx_json="$(plan_context_write \
+                    "$_resume_goal_hash" "$_resume_scope_key" "scope_too_large" \
+                    "$_stl_turns" "$_stl_reasoning" "$_resume_scope_ref")"
+                printf '%s\n' "$_stl_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
+                local _stl_md_path
+                _stl_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+                [[ -f "$_stl_md_path" ]] && cp "$_stl_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
+
+                emit_event "plan.context.persisted" "plugin=plan" \
+                    "goal_hash=$_resume_goal_hash" "status=scope_too_large"
+                emit_event "plan.scope_too_large" "plugin=plan" \
+                    "goal_hash=$_resume_goal_hash" \
+                    "num_turns=${_stl_turns:-unknown}" \
+                    "candidate_split=true"
+
+                # Terminal message (stderr) — mirror llm-agent.sh:349 shape.
+                printf '✗ Pipeline aborted: plan stage exhausted its turn budget (turns=%s) without a complete plan. The issue is likely too large — SPLIT IT into smaller sub-issues. Partial exploration saved to %s; re-running this issue will resume from it.\n' \
+                    "${_stl_turns:-unknown}" "$artifact_dir/plan-context.md" >&2
+
+                # D9 (#1024) guard: scope_too_large is a SUCCESSFUL model run that
+                # hit a budget, NOT CLI unavailability. The plan plugin never
+                # calls _zbuild_record_cli_fail (only review/test_assessment do),
+                # so the #1024 counter is untouched here — rc=10 (scope_too_large)
+                # and rc=9 (llm_unavailable) stay semantically distinct. Reset
+                # defensively in case a future wrapper records it for this path.
+                _zbuild_reset_cli_fail 2>/dev/null || true
+
+                # No fake plan.json. Terminal abort code (Wave A: rc=10, NOT rc=8;
+                # rc=8 is blocking_member_failure per ADR-013).
+                return 10
+            fi
+
+            # (c) Genuine non-max_turns failure → existing claude_cli_failed path.
+            local _reason="invalid_plan_response"
+            [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
+            [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
+            error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
+            emit_event "plugin.run.error" "plugin=plan" "reason=$_reason"
+            return 1
+        fi
     fi
 
     # ─── Write plan.json ─────────────────────────────────────────────────────
@@ -512,12 +690,36 @@ $_plan_instructions"
         dod_discipline_pass=0
     fi
 
+    # ─── Persist plan-context on success (Pillar A, #1052) ──────────────────
+    # plan.json stays the PRIMARY verdict-bearing artifact (ADR-020); the
+    # plan-context cache is SECONDARY (durable cross-run resume hint). On a
+    # normal valid plan, write status=complete to the namespaced cache and
+    # mirror it into the per-run artifacts dir. Skip when the plan was already
+    # persisted by the recovery branch above.
+    if [[ "$_plan_recovered" -ne 1 ]]; then
+        local _ok_ctx_json
+        _ok_ctx_json="$(plan_context_write \
+            "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")"
+        printf '%s\n' "$_ok_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
+        local _ok_md_path
+        _ok_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+        [[ -f "$_ok_md_path" ]] && cp "$_ok_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
+        emit_event "plan.context.persisted" "plugin=plan" \
+            "goal_hash=$_resume_goal_hash" "status=complete"
+    fi
+
     emit_event "plugin.run.complete" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \
         "scope_violations=$scope_violations" \
         "dod_discipline_pass=$dod_discipline_pass" \
         "artifact=plan.json"
+
+    # ─── Opportunistic GC (Pillar F, #1052) ─────────────────────────────────
+    # Self-trim the cross-run cache so it never grows unbounded; gated by
+    # ZBUILD_PLAN_CONTEXT_GC (default 1) and quota-bounded inside the helper.
+    plan_context_gc 2>/dev/null || true
+
     return 0
 }
 
