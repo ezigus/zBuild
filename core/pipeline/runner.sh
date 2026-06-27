@@ -65,10 +65,14 @@ Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
   --from-stage <s>  Skip ahead to stage <s> when resuming (emits warning)
   --no-resume       Force fresh start even if an in_progress state exists
   --force           Resume even if status=aborted
+  --self-host       Dogfood zBuild's own engine: redirect read-only contract-
+                    grammar libs to a working-tree snapshot (#963, ADR-023)
 
 Environment:
   ZBUILD_PLATFORM_OVERRIDE  Force a single platform; detection short-circuits.
   ZBUILD_SCOPE_PATHS        Newline-delimited scope paths; written as '+ <path>' entries.
+  ZBUILD_SELF_HOST          Set to 1 to enable self-host mode (same as --self-host).
+  ZBUILD_CONTRACT_LIB_DIR   Override dir contract-reader stages source grammar libs from.
 EOF
 }
 
@@ -555,9 +559,33 @@ _render_cycle_exit() {
     } >&2 2>/dev/null || true
 }
 
+# #963: snapshot the read-only acceptance-grammar libs into the run's state dir
+# for self-host dogfooding, so contract-reader stages read the TARGET working
+# tree's grammar while the installed engine tree stays immutable (ADR-023).
+# Snapshotted ONCE per run: an already-populated snapshot is never re-copied, so
+# a mid-run working-tree edit cannot mutate what the readers parse. merge-base.sh
+# is a transitive dependency of the negctl/reachability libs (they source it from
+# their own dir), so it is included to keep the snapshot a self-contained root.
+_runner_snapshot_contract_libs() {
+    local src_lib="$1" snapshot_dir="$2"
+    [[ -z "$src_lib" || -z "$snapshot_dir" ]] && return 2
+    # once-guard: a populated snapshot is authoritative for the whole run.
+    [[ -f "$snapshot_dir/acceptance-block.sh" ]] && return 0
+    mkdir -p "$snapshot_dir" || return 1
+    local _lib
+    for _lib in acceptance-block.sh acceptance-coverage.sh acceptance-negctl.sh \
+                acceptance-reachability.sh merge-base.sh; do
+        [[ -f "$src_lib/$_lib" ]] && cp "$src_lib/$_lib" "$snapshot_dir/$_lib"
+    done
+    return 0
+}
+
 main() {
     local issue="" goal="" dry_run=false template="standard"
     local resume_mode=false from_stage="" no_resume=false force=false
+    # #963: self-host mode — redirect read-only contract-grammar libs to a
+    # working-tree snapshot. Honors ZBUILD_SELF_HOST=1 (resolved after parse).
+    local self_host=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -574,6 +602,7 @@ main() {
             --resume)     resume_mode=true; shift ;;
             --no-resume)  no_resume=true;  shift ;;
             --force)      force=true;      shift ;;
+            --self-host)  self_host=true;  shift ;;
             --from-stage)
                 [[ -z "${2:-}" ]] && { error "--from-stage requires a value"; _usage; return 2; }
                 from_stage="$2"; shift 2 ;;
@@ -581,6 +610,9 @@ main() {
             *) error "Unknown argument: $1"; _usage; return 2 ;;
         esac
     done
+
+    # #963: ZBUILD_SELF_HOST=1 is equivalent to the --self-host flag.
+    [[ "${ZBUILD_SELF_HOST:-0}" == "1" ]] && self_host=true
 
     if [[ -z "$issue" && -z "$goal" ]]; then
         error "Must specify --issue <N> or --goal \"<text>\""
@@ -901,6 +933,27 @@ main() {
     # (never pollute an explicit/test state dir). Atomic swap via ln -sfn.
     if [[ "$state_dir" == "$HOME/.zbuild/state/runs/"* ]]; then
         ln -sfn "$state_dir" "$HOME/.zbuild/state/latest" 2>/dev/null || true
+    fi
+
+    # #963: self-host — redirect the read-only acceptance-grammar libs that the
+    # contract-reader stages (acceptance-gate, test_assessment, design) source to
+    # a ONE-TIME snapshot of the TARGET working tree. This lets a dogfood of a
+    # grammar-extending change read its OWN design with its OWN grammar, instead
+    # of the installed (old) engine's reader mis-parsing it. Snapshotted into the
+    # run's state dir so the installed engine tree stays immutable (ADR-023).
+    # Non-self-host runs leave ZBUILD_CONTRACT_LIB_DIR unset → readers source from
+    # the installed engine, unchanged.
+    if $self_host; then
+        local _wt_root _snap_dir
+        _wt_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+        _snap_dir="$state_dir/contract-lib-snapshot"
+        if _runner_snapshot_contract_libs "$_wt_root/scripts/lib" "$_snap_dir"; then
+            export ZBUILD_CONTRACT_LIB_DIR="$_snap_dir"
+            eb_emit_event "selfhost.contract_lib.snapshot" \
+                "dir=$_snap_dir" "src=$_wt_root/scripts/lib" 2>/dev/null || true
+        else
+            warn "self-host: contract-lib snapshot failed; readers fall back to installed grammar"
+        fi
     fi
 
     # Mark pipeline as in_progress

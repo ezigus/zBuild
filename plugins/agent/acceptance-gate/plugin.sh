@@ -21,14 +21,16 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _AG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_AG_ROOT/core/event-bus/event-bus.sh"
+# #963: source the read-only grammar libs from _ZBUILD_CONTRACT_LIB_DIR (set by
+# zbuild_plugin_bootstrap above) so a self-host run reads the working-tree grammar.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
-source "$_AG_ROOT/scripts/lib/acceptance-block.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
 # shellcheck source=../../../scripts/lib/acceptance-coverage.sh
-source "$_AG_ROOT/scripts/lib/acceptance-coverage.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-coverage.sh"
 # shellcheck source=../../../scripts/lib/acceptance-negctl.sh
-source "$_AG_ROOT/scripts/lib/acceptance-negctl.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh"
 # shellcheck source=../../../scripts/lib/acceptance-reachability.sh
-source "$_AG_ROOT/scripts/lib/acceptance-reachability.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh"
 
 acceptance_gate_run() {
     # shellcheck disable=SC2034  # hook-signature positional; unused here

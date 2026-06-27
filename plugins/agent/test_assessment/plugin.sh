@@ -64,8 +64,9 @@ source "$_TEST_ASSESSMENT_ROOT/scripts/lib/artifact-render.sh"
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/test-output-sanitize.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_TEST_ASSESSMENT_ROOT/scripts/lib/prompt-overrides.sh"
+# #963: read-only grammar lib from _ZBUILD_CONTRACT_LIB_DIR (self-host redirect).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
-source "$_TEST_ASSESSMENT_ROOT/scripts/lib/acceptance-block.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
 
 # Cap on test_output bytes embedded in the prompt — keep tail so the most
 # recent (typically most-failure-revealing) lines survive truncation.
