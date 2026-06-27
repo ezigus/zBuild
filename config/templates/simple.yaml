@@ -61,6 +61,27 @@ build_test_cycle:
     value: pass
   max_iterations: 5
   on_max: continue
+  # I10-B follow-up (#1117): feedback edge so the cycle can CONVERGE instead of
+  # spinning build(no-op)→test(fail)→objective-gate(fail). Without this, every
+  # iteration re-runs build with the identical original task and zero failure
+  # context, so build sees the work already committed and emits empty_diff.
+  # The edge carries the test stage's failure summary into the next-iter build
+  # prompt. It reuses build's EXISTING prior_test_assessment cycle_feedback input
+  # (the build plugin already splices that file into its prompt as CURRENT
+  # ITERATION FEEDBACK); simple.yaml omits the test_assessment stage, so the
+  # producer is the test stage's test-failures-summary.md (manifest output id
+  # test_failures_summary). required:false — the summary is ABSENT when no test
+  # fails (missing==empty semantics), and a missing producer must NOT abort the
+  # cycle. NB (Wave 18-B): the `to:` MUST use block form (the template translator
+  # handles block `to:`, not the inline `to: { ... }` form).
+  feedback:
+    - from:
+        stage: test
+        output: test_failures_summary
+      to:
+        stage: build
+        input: prior_test_assessment
+        required: false
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:
