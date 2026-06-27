@@ -182,4 +182,19 @@ else
     assert_fail "[SPEC-6] --older-than 14d keeps the 1d-old complete"
 fi
 
+# [SPEC-6] created_at is honored INDEPENDENTLY of mtime. A leaf whose mtime is
+# FRESH but whose created_at is 30d old must still be pruned by --older-than 14d
+# (age_epoch prefers created_at). Guards the BSD date-parse: a doubled-Z parse
+# failure would silently fall back to the fresh mtime and skip the prune.
+rm -rf "$ZBUILD_PLAN_CONTEXT_DIR"
+_write_ctx "repoA" "issue-300" "h_oldcreate_freshmtime" "complete" 30
+touch "$ZBUILD_PLAN_CONTEXT_DIR/repoA/issue-300/h_oldcreate_freshmtime.json" \
+      "$ZBUILD_PLAN_CONTEXT_DIR/repoA/issue-300/h_oldcreate_freshmtime.md"
+bash "$CLEANUP" --older-than 14d --status complete --force >/dev/null 2>&1
+if [[ ! -f "$ZBUILD_PLAN_CONTEXT_DIR/repoA/issue-300/h_oldcreate_freshmtime.json" ]]; then
+    assert_pass "[SPEC-6] created_at (30d) prunes despite fresh mtime"
+else
+    assert_fail "[SPEC-6] created_at (30d) prunes despite fresh mtime" "parse fell back to mtime?"
+fi
+
 print_test_results

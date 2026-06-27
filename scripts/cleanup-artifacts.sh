@@ -216,9 +216,13 @@ _ctx_created_epoch() {
         iso="$(jq -r '.created_at // ""' "$json" 2>/dev/null)" || iso=""
     fi
     [[ -z "$iso" ]] && { echo ""; return; }
-    # ISO8601 → epoch (GNU then BSD).
+    # ISO8601 → epoch (GNU then BSD). For the BSD branch, normalize to exactly one
+    # trailing Z: strip the Z, drop any fractional seconds, re-add Z. A bare
+    # "${iso%%.*}Z" would DOUBLE the Z on a no-fraction stamp (2026-01-01T00:00:00Z
+    # → ...00ZZ), failing the parse so the caller silently falls back to mtime.
+    local _bsd="${iso%Z}"; _bsd="${_bsd%%.*}Z"
     date -d "$iso" +%s 2>/dev/null \
-        || date -j -f "%Y-%m-%dT%H:%M:%SZ" "${iso%%.*}Z" +%s 2>/dev/null \
+        || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$_bsd" +%s 2>/dev/null \
         || echo ""
 }
 

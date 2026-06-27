@@ -365,10 +365,11 @@ export ZBUILD_PLAN_RESUME=1
 # Run 1: error mock whose partial reasoning references an out-of-scope PATH. The
 # scope-manifest allows only core/ and plugins/, so legacy/ is out of scope.
 # apply_scope_redaction wraps out-of-scope PATHS in <out-of-scope-context> tags
-# and the plan's _zbuild_sanitize_for_llm pass then strips the wrapped content
-# entirely — so the out-of-scope token must live INSIDE the path to be scrubbed
-# (a bare free-floating token is not a path and is not what scope redaction
-# targets). File channel (scrub-safe) so it reaches the sidecar.
+# (the resume splice keeps those tags — it does NOT run _zbuild_sanitize_for_llm,
+# which would strip them; see plugin.sh) — so the out-of-scope token must live
+# INSIDE a path to be wrapped (a bare free-floating token is not a path and is
+# not what scope redaction targets). File channel (scrub-safe) so it reaches the
+# sidecar.
 _GUARD_RESULT="$TEST_TEMP_DIR/guard-run1-result.txt"
 printf '%s' "explored the file legacy/frozen/OUT_OF_SCOPE_SECRET.sh while planning" > "$_GUARD_RESULT"
 _install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_GUARD_RESULT" --rc 1

@@ -455,10 +455,11 @@ $_plan_instructions"
         printf '%s\n' "$_resume_text" > "$_resume_in"
         if apply_scope_redaction "$_resume_in" "$_resume_red" "$scope_manifest" "" "0"; then
             # Splice the REDACTED body verbatim (mirror the operator-override
-            # splice below). Do NOT run _zbuild_sanitize_for_llm here:
-            # sanitize's transform 1 UNWRAPS <out-of-scope-context> markers and
-            # keeps their inner content, which would re-expose out-of-scope text
-            # that redaction just protected. The wrapper IS the protection.
+            # splice below). Do NOT run _zbuild_sanitize_for_llm here: redaction
+            # marks out-of-scope paths by WRAPPING them in <out-of-scope-context>
+            # markers, and sanitize's transform 1 strips those markers while
+            # keeping the inner text — so the resumed context would lose the very
+            # markers that flag it as out-of-scope. The markers ARE the protection.
             prompt+=$'\n## PRIOR EXPLORATION CONTEXT (resumed)\n\n'
             prompt+="$(cat "$_resume_red")"$'\n'
 
