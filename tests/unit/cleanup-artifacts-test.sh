@@ -20,6 +20,8 @@ CLEANUP="$REPO_ROOT/scripts/cleanup-artifacts.sh"
 # ── Fake cache builder ───────────────────────────────────────────────────────
 # Layout mirrors Pillar E: $ZBUILD_PLAN_CONTEXT_DIR/<repo_id>/<scope_key>/<goal_hash>.{json,md}
 export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context"
+# Hermetic state root — never prune the developer's real ~/.zbuild/state/runs.
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 
 # Set a file's mtime to N days ago (GNU then BSD touch).
 _set_age_days() {
@@ -147,7 +149,7 @@ export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context"
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-6] never deletes the active $ZBUILD_RUN_ID state dir
 # ─────────────────────────────────────────────────────────────────────────────
-runs_dir="$HOME/.zbuild/state/runs"
+runs_dir="$ZBUILD_STATE_DIR/runs"
 mkdir -p "$runs_dir/active-run" "$runs_dir/stale-run"
 _set_age_days "$runs_dir/active-run" 30
 _set_age_days "$runs_dir/stale-run" 30

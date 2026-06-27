@@ -15,7 +15,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Roots we are allowed to touch. Resolve to absolute (canonical) paths so the
 # containment guard below can never be fooled by .. or a symlink escape.
 PLAN_CONTEXT_DIR="${ZBUILD_PLAN_CONTEXT_DIR:-$HOME/.zbuild/plan-context}"
-STATE_ROOT="$HOME/.zbuild/state"
+# Honor the same state-base override the `zbuild` CLI uses so an operator (or a
+# hermetic test) can repoint pruning away from the real ~/.zbuild/state — a bare
+# `--older-than 0d --force` against the real root would otherwise prune live runs.
+STATE_ROOT="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
 
 # Source plan-context.sh if a sibling agent has written it (for plan_context_gc
 # parity), but DEGRADE GRACEFULLY — this CLI implements its own pruning so the
@@ -132,20 +135,23 @@ _duration_to_secs() {
     fi
 }
 
-# Portable mtime in epoch seconds.
+# Portable mtime in epoch seconds. GNU stat first (Linux CI), then BSD (macOS):
+# BSD `stat -c` fails cleanly (no stdout), but GNU `stat -f` is `--file-system`
+# and leaks a multi-line block to stdout even when its format operand fails — so
+# a BSD-first order pollutes the value with non-numeric text on Linux.
 _mtime() {
     local p="$1"
-    stat -f %m "$p" 2>/dev/null || stat -c %Y "$p" 2>/dev/null || echo 0
+    stat -c %Y "$p" 2>/dev/null || stat -f %m "$p" 2>/dev/null || echo 0
 }
 
-# Size in bytes of a file or directory tree.
+# Size in bytes of a file or directory tree. Same GNU-first ordering as _mtime.
 _size_bytes() {
     local p="$1" total
     if [[ -d "$p" ]]; then
         total="$(du -sk "$p" 2>/dev/null | awk '{print $1}')"
         printf '%s\n' "$(( ${total:-0} * 1024 ))"
     elif [[ -f "$p" ]]; then
-        stat -f %z "$p" 2>/dev/null || stat -c %s "$p" 2>/dev/null || echo 0
+        stat -c %s "$p" 2>/dev/null || stat -f %z "$p" 2>/dev/null || echo 0
     else
         echo 0
     fi

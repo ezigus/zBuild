@@ -33,6 +33,10 @@ export ZBUILD_GOAL="add a health check endpoint"
 export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo"
 export ZBUILD_TEST_CMD="true"
 export NO_GITHUB=true
+# #1052: isolate the plan-context cache so the run neither pollutes the real
+# ~/.zbuild/plan-context nor resumes from a prior run's leaf (which would make
+# the happy-path emit plan.context.resumed and break the event golden).
+export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context"
 
 # Create a minimal fake repo for the test stage to copy+apply into
 mkdir -p "$TEST_TEMP_DIR/repo/.git"

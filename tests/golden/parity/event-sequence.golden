@@ -12,6 +12,7 @@ plugin.run.start
 redaction.applied
 model.route
 model.outcome
+plan.context.persisted
 plugin.run.complete
 plugin.run.complete
 stage.complete
