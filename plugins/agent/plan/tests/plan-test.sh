@@ -604,6 +604,11 @@ else
 fi
 _resumed_count="$(jq -r 'select(.type=="plan.context.resumed") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "[SPEC-2][guard] no plan.context.resumed on scope-manifest change" "0" "$_resumed_count"
+# A cache leaf EXISTS for the goal_hash but the scope_manifest_ref guard
+# rejected it — this must surface as plan.context.resume_skipped, not a silent
+# degrade (#1052 review observability fix).
+assert_event_emitted "[SPEC-2][guard] plan.context.resume_skipped fires on guard mismatch" \
+    "$EVENTS_FILE" "plan.context.resume_skipped"
 # Restore the canonical manifest for downstream tests.
 cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/

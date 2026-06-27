@@ -110,6 +110,7 @@
     "plan.flow_wiring_missing",
     "plan.context.persisted",
     "plan.context.resumed",
+    "plan.context.resume_skipped",
     "plan.scope_too_large",
     "plan.envelope.recovered",
     "impact.verdict.complete",

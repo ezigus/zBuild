@@ -430,22 +430,26 @@ $_plan_instructions"
     local _resume_scope_key="${ZBUILD_ISSUE_NUMBER:-$_resume_scope_ref}"
     _resume_text="$(plan_context_read_for_resume \
         "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash" "$_resume_scope_ref" 2>/dev/null || true)"
+    # Observability (#1052 review): when a cache leaf EXISTS for the computed key
+    # but resume returned empty/rejected (corrupt parse OR a guard mismatch —
+    # goal_hash/repo_id/scope_manifest_ref/status), surface it instead of a
+    # silent degrade. ZBUILD_PLAN_RESUME=0 is an explicit operator opt-out, not a
+    # skip worth reporting, so exclude it.
+    if [[ -z "$_resume_text" && "${ZBUILD_PLAN_RESUME:-1}" != "0" ]]; then
+        local _resume_leaf
+        _resume_leaf="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+        if [[ -f "$_resume_leaf" ]]; then
+            emit_event "plan.context.resume_skipped" "plugin=plan" \
+                "goal_hash=$_resume_goal_hash" \
+                "reason=rejected_or_corrupt"
+            # Re-run the goal redaction so the LAST pre-router event stays
+            # redaction.applied (C6 precondition); the resume_skipped emit above
+            # would otherwise be last in the no-operator-override case.
+            apply_scope_redaction "$goal_input_file" "$redacted_file" "$scope_manifest" "" "0" \
+                >/dev/null 2>&1 || true
+        fi
+    fi
     if [[ -n "$_resume_text" ]]; then
-        # Emit the resume event BEFORE the resume redaction pass so the LAST
-        # event the router sees on its next model call is `redaction.applied`
-        # (emitted by apply_scope_redaction below, or by the operator-override
-        # pass). The router's C6 precondition refuses to spawn claude unless the
-        # immediately-preceding event is redaction.applied — interleaving
-        # plan.context.resumed after that redaction would trip C6 (rc=2).
-        local _resume_json_path _prior_status _prior_turns
-        _resume_json_path="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-        _prior_status="$(jq -r '.status // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
-        _prior_turns="$(jq -r '.num_turns // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
-        emit_event "plan.context.resumed" "plugin=plan" \
-            "goal_hash=$_resume_goal_hash" \
-            "prior_status=$_prior_status" \
-            "prior_num_turns=$_prior_turns"
-
         local _resume_in="$artifact_dir/plan-resume.txt"
         local _resume_red="$artifact_dir/plan-resume.redacted.txt"
         printf '%s\n' "$_resume_text" > "$_resume_in"
@@ -457,6 +461,28 @@ $_plan_instructions"
             # that redaction just protected. The wrapper IS the protection.
             prompt+=$'\n## PRIOR EXPLORATION CONTEXT (resumed)\n\n'
             prompt+="$(cat "$_resume_red")"$'\n'
+
+            # Emit plan.context.resumed ONLY AFTER a SUCCESSFUL resume redaction
+            # + splice. A fail-closed redaction must never leave
+            # plan.context.resumed as the last pre-router event (the original bug):
+            # the router's C6 precondition refuses to spawn claude unless the
+            # immediately-preceding event is redaction.applied.
+            local _resume_json_path _prior_status _prior_turns
+            _resume_json_path="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+            _prior_status="$(jq -r '.status // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
+            _prior_turns="$(jq -r '.num_turns // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
+            emit_event "plan.context.resumed" "plugin=plan" \
+                "goal_hash=$_resume_goal_hash" \
+                "prior_status=$_prior_status" \
+                "prior_num_turns=$_prior_turns"
+
+            # Re-run the resume redaction so the LAST event before the router is
+            # redaction.applied (C6 precondition). Emitting plan.context.resumed
+            # above would otherwise be the last pre-router event in the common
+            # no-operator-override case; this idempotent re-redaction restores
+            # the invariant without faking an event.
+            apply_scope_redaction "$_resume_in" "$_resume_red" "$scope_manifest" "" "0" \
+                >/dev/null 2>&1 || true
         fi
     fi
 
@@ -576,29 +602,43 @@ $_plan_instructions"
             emit_event "plan.envelope.recovered" "plugin=plan" \
                 "artifact=plan.json" "recovered_bytes=${#_recovered}"
             # Persist context status=complete + mirror into the per-run artifacts.
-            local _rec_ctx_json
+            # Only emit plan.context.persisted when the write actually succeeded
+            # (its atomic mv rc) — a failed write must not report a false-positive.
+            local _rec_ctx_json _rec_ctx_rc=0
             _rec_ctx_json="$(plan_context_write \
-                "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")"
-            printf '%s\n' "$_rec_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
-            local _rec_md_path
-            _rec_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-            [[ -f "$_rec_md_path" ]] && cp "$_rec_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
-            emit_event "plan.context.persisted" "plugin=plan" \
-                "goal_hash=$_resume_goal_hash" "status=complete" "recovered=1"
+                "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")" || _rec_ctx_rc=$?
+            if [[ "$_rec_ctx_rc" -eq 0 ]]; then
+                printf '%s\n' "$_rec_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
+                local _rec_md_path
+                _rec_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+                [[ -f "$_rec_md_path" ]] && cp "$_rec_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
+                emit_event "plan.context.persisted" "plugin=plan" \
+                    "goal_hash=$_resume_goal_hash" "status=complete" "recovered=1"
+            fi
             # Fall through to the normal post-validate / run.complete path below.
         else
-            # (b) No recoverable plan. Classify the failure: error_max_turns (or
-            # an infra timeout/oom CONFIRMED by the sidecar subtype) becomes the
-            # terminal scope_too_large abort. Anything else stays the existing
+            # (b) No recoverable plan. The failure becomes the terminal
+            # scope_too_large abort iff the model exhausted its turn budget
+            # (sidecar subtype=error_max_turns). Anything else stays the existing
             # claude_cli_failed / plugin.run.error path.
-            local _stl_rc_verdict _stl_rc_reason
-            _router_rc_classify "$router_rc" _stl_rc_verdict _stl_rc_reason
             local _stl_subtype=""
-            local _stl_sidecar="$artifact_dir/stage-io/${ZBUILD_CURRENT_STAGE:-plan}-sync-error.raw-claude-output.json"
+            # Resolve the sidecar dir from the SAME expression route.sh writes it
+            # to, so a caller that set ZBUILD_ARTIFACT_DIR differently from the
+            # plugin's local $artifact_dir still finds the max_turns envelope.
+            # Fall back to $artifact_dir (existing behavior) when both env unset.
+            local _stl_sidecar_base
+            if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
+                _stl_sidecar_base="$ZBUILD_ARTIFACT_DIR"
+            elif [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+                _stl_sidecar_base="$ZBUILD_STATE_DIR/artifacts"
+            else
+                _stl_sidecar_base="$artifact_dir"
+            fi
+            local _stl_sidecar="$_stl_sidecar_base/stage-io/${ZBUILD_CURRENT_STAGE:-plan}-sync-error.raw-claude-output.json"
             if [[ ! -f "$_stl_sidecar" ]]; then
                 # Glob-fallback to the newest matching sidecar (mirror the lib).
                 local _stl_f _stl_newest=""
-                for _stl_f in "$artifact_dir"/stage-io/"${ZBUILD_CURRENT_STAGE:-plan}"-*error*.raw-claude-output.json; do
+                for _stl_f in "$_stl_sidecar_base"/stage-io/"${ZBUILD_CURRENT_STAGE:-plan}"-*error*.raw-claude-output.json; do
                     [[ -e "$_stl_f" ]] || continue
                     if [[ -z "$_stl_newest" || "$_stl_f" -nt "$_stl_newest" ]]; then _stl_newest="$_stl_f"; fi
                 done
@@ -607,14 +647,14 @@ $_plan_instructions"
             if [[ -n "$_stl_sidecar" && -f "$_stl_sidecar" ]]; then
                 _stl_subtype="$(jq -r '.subtype // ""' "$_stl_sidecar" 2>/dev/null || true)"
             fi
-            # The discriminator (per the DoD): scope_too_large iff the model
-            # exhausted its budget — subtype=error_max_turns, OR a router
-            # timeout/oom that the sidecar confirms as a turn-budget exhaustion.
+            # The deliberate discriminator (per the DoD): scope_too_large fires
+            # SOLELY on subtype=error_max_turns — the model burning its turn
+            # budget. A hard router timeout/oom WITHOUT that subtype is genuine
+            # CLI failure and correctly stays on the claude_cli_failed/rc=1 path.
+            # (A prior router_timeout/oom branch was unreachable: it required the
+            # same error_max_turns subtype the if above already matches.)
             local _is_scope_too_large=0
             if [[ "$_stl_subtype" == "error_max_turns" ]]; then
-                _is_scope_too_large=1
-            elif [[ "$_stl_rc_reason" == "router_timeout" || "$_stl_rc_reason" == "router_oom_kill" ]] \
-                 && [[ "$_stl_subtype" == "error_max_turns" ]]; then
                 _is_scope_too_large=1
             fi
 
@@ -626,17 +666,21 @@ $_plan_instructions"
                 _stl_turns="$(jq -r '.num_turns // ""' "$_stl_sidecar" 2>/dev/null || true)"
 
                 # Persist scope_too_large context (cross-run cache + per-run copy).
-                local _stl_ctx_json
+                # Only emit plan.context.persisted when the write succeeded (its
+                # atomic mv rc); the terminal plan.scope_too_large + rc=10 still
+                # fire regardless so the abort signal is never lost.
+                local _stl_ctx_json _stl_ctx_rc=0
                 _stl_ctx_json="$(plan_context_write \
                     "$_resume_goal_hash" "$_resume_scope_key" "scope_too_large" \
-                    "$_stl_turns" "$_stl_reasoning" "$_resume_scope_ref")"
-                printf '%s\n' "$_stl_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
-                local _stl_md_path
-                _stl_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-                [[ -f "$_stl_md_path" ]] && cp "$_stl_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
-
-                emit_event "plan.context.persisted" "plugin=plan" \
-                    "goal_hash=$_resume_goal_hash" "status=scope_too_large"
+                    "$_stl_turns" "$_stl_reasoning" "$_resume_scope_ref")" || _stl_ctx_rc=$?
+                if [[ "$_stl_ctx_rc" -eq 0 ]]; then
+                    printf '%s\n' "$_stl_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
+                    local _stl_md_path
+                    _stl_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+                    [[ -f "$_stl_md_path" ]] && cp "$_stl_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
+                    emit_event "plan.context.persisted" "plugin=plan" \
+                        "goal_hash=$_resume_goal_hash" "status=scope_too_large"
+                fi
                 emit_event "plan.scope_too_large" "plugin=plan" \
                     "goal_hash=$_resume_goal_hash" \
                     "num_turns=${_stl_turns:-unknown}" \
@@ -697,15 +741,19 @@ $_plan_instructions"
     # mirror it into the per-run artifacts dir. Skip when the plan was already
     # persisted by the recovery branch above.
     if [[ "$_plan_recovered" -ne 1 ]]; then
-        local _ok_ctx_json
+        # Only emit plan.context.persisted when the write succeeded (its atomic
+        # mv rc); a failed cache write must not report a false-positive persist.
+        local _ok_ctx_json _ok_ctx_rc=0
         _ok_ctx_json="$(plan_context_write \
-            "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")"
-        printf '%s\n' "$_ok_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
-        local _ok_md_path
-        _ok_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-        [[ -f "$_ok_md_path" ]] && cp "$_ok_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
-        emit_event "plan.context.persisted" "plugin=plan" \
-            "goal_hash=$_resume_goal_hash" "status=complete"
+            "$_resume_goal_hash" "$_resume_scope_key" "complete" "" "" "$_resume_scope_ref")" || _ok_ctx_rc=$?
+        if [[ "$_ok_ctx_rc" -eq 0 ]]; then
+            printf '%s\n' "$_ok_ctx_json" > "$artifact_dir/plan-context.json" 2>/dev/null || true
+            local _ok_md_path
+            _ok_md_path="$(plan_context_md_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+            [[ -f "$_ok_md_path" ]] && cp "$_ok_md_path" "$artifact_dir/plan-context.md" 2>/dev/null || true
+            emit_event "plan.context.persisted" "plugin=plan" \
+                "goal_hash=$_resume_goal_hash" "status=complete"
+        fi
     fi
 
     emit_event "plugin.run.complete" "stage=plan" \

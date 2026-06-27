@@ -99,6 +99,10 @@ rm -rf "$ZBUILD_PLAN_CONTEXT_DIR"
 _write_ctx "repoA" "issue-200" "h_newest" "complete" 1
 _write_ctx "repoA" "issue-200" "h_mid"    "complete" 5
 _write_ctx "repoA" "issue-200" "h_oldest" "complete" 10
+# A scope_too_large among the "oldest beyond N" must survive --max-entries: it
+# is always retained and never counts toward the deletable budget (mirrors
+# plan_context_gc). Make it the OLDEST so it would be pruned if status-blind.
+_write_ctx "repoA" "issue-200" "h_old_stl" "scope_too_large" 20
 # Keep newest 1; --older-than huge so age filter never fires (isolate LRU).
 bash "$CLEANUP" --older-than 9999d --max-entries 1 --force >/dev/null 2>&1
 ns="$ZBUILD_PLAN_CONTEXT_DIR/repoA/issue-200"
@@ -111,6 +115,11 @@ if [[ ! -f "$ns/h_mid.json" && ! -f "$ns/h_oldest.json" ]]; then
     assert_pass "[SPEC-6] --max-entries deletes older entries"
 else
     assert_fail "[SPEC-6] --max-entries deletes older entries" "mid/oldest still present"
+fi
+if [[ -f "$ns/h_old_stl.json" ]]; then
+    assert_pass "[SPEC-6] --max-entries never deletes scope_too_large (resumable)"
+else
+    assert_fail "[SPEC-6] --max-entries never deletes scope_too_large (resumable)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

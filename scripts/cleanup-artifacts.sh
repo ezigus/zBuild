@@ -297,6 +297,16 @@ _prune_namespace() {
         [[ -z "$line" ]] && continue
         mtime="${line%%|*}"
         path="${line#*|}"
+
+        # scope_too_large contexts are ALWAYS retained (resumable) and never
+        # count toward the deletable budget — mirror plan_context_gc in
+        # scripts/lib/plan-context.sh. Skip them before the LRU index advances
+        # so --max-entries can never destroy a resumable context.
+        if [[ "$(_ctx_status "$path")" == "scope_too_large" ]]; then
+            kept_for_lru+=("$mtime|$path")
+            continue
+        fi
+
         i=$(( i + 1 ))
 
         # --max-entries: delete anything beyond the newest N (LRU by mtime).

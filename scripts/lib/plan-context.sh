@@ -130,11 +130,15 @@ plan_context_write() {
             created_at: $created_at
         }')"
 
-    local json_path md_path ns_dir
+    local json_path md_path ns_dir base_dir
     json_path="$(plan_context_path "$repo_id" "$scope_key" "$goal_hash")"
     md_path="$(plan_context_md_path "$repo_id" "$scope_key" "$goal_hash")"
     ns_dir="$(dirname "$json_path")"
+    # The cache holds model-authored reasoning; keep the base dir user-private
+    # (0700) per review. mkdir must succeed; chmod is best-effort.
+    base_dir="$(plan_context_dir)"
     mkdir -p "$ns_dir"
+    chmod 700 "$base_dir" 2>/dev/null || true
 
     # PID/run-scoped temp + atomic mv (Pillar E concurrency contract): a reader
     # either sees the prior leaf or the new one, never a partial.
@@ -143,7 +147,13 @@ plan_context_write() {
     md_tmp="${md_path}.tmp.$$.${ZBUILD_RUN_ID:-0}"
 
     printf '%s\n' "$json" > "$json_tmp"
-    mv "$json_tmp" "$json_path"
+    # Check the primary JSON write's atomic mv: a failed write must NOT report
+    # success (no echoed success JSON) or plugin.sh would emit a false-positive
+    # plan.context.persisted. The .md banner below stays best-effort.
+    if ! mv "$json_tmp" "$json_path"; then
+        rm -f "$json_tmp" 2>/dev/null || true
+        return 1
+    fi
 
     {
         printf '# plan-context — %s\n\n' "$status"
@@ -216,11 +226,26 @@ plan_context_read_for_resume() {
 plan_context_recover_sidecar_reasoning() {
     local stage="$1" artifact_dir="$2"
 
-    local sidecar="$artifact_dir/stage-io/${stage}-sync-error.raw-claude-output.json"
+    # Resolve the sidecar dir from the SAME expression route.sh writes it to
+    # (${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-...}/artifacts}/stage-io), so a
+    # caller that set ZBUILD_ARTIFACT_DIR differently from $artifact_dir still
+    # finds the router's max_turns envelope. Falls back to the passed-in
+    # $artifact_dir (the existing behavior) when neither env var is set.
+    local sidecar_base
+    if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
+        sidecar_base="$ZBUILD_ARTIFACT_DIR"
+    elif [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+        sidecar_base="$ZBUILD_STATE_DIR/artifacts"
+    else
+        sidecar_base="$artifact_dir"
+    fi
+    local sidecar_dir="$sidecar_base/stage-io"
+
+    local sidecar="$sidecar_dir/${stage}-sync-error.raw-claude-output.json"
     if [[ ! -f "$sidecar" ]]; then
         # Glob-fallback: newest <stage>-*error*.raw-claude-output.json
         local newest="" f
-        for f in "$artifact_dir"/stage-io/"${stage}"-*error*.raw-claude-output.json; do
+        for f in "$sidecar_dir"/"${stage}"-*error*.raw-claude-output.json; do
             [[ -e "$f" ]] || continue
             if [[ -z "$newest" || "$f" -nt "$newest" ]]; then
                 newest="$f"
