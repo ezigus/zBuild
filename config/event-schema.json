@@ -77,6 +77,7 @@
     "cycle.member.timeout_abandoned",
     "cycle.member.max_turns.escalated",
     "cycle.context.compressed",
+    "cycle.acceptance.terminal_failure",
     "design.stray.recovered",
     "design.stray.conflict",
     "design.acceptance_tests.written",
