@@ -1539,7 +1539,12 @@ _cycle_handle_terminal_rc() {
     case "$rc" in
         0)   reason="converged" ;;
         1)   reason="max_iterations" ;;
-        2)   reason="plateau" ;;
+        # #1117: rc=2 is the plateau-class soft-continue bucket. The no-progress
+        # stall-break shares this rc but sets a distinct _CYCLE_LAST_TERMINATED_REASON
+        # ("stalled"); prefer it so cycle.complete restates the real terminal
+        # reason. Genuine plateau paths set the reason to "plateau", so this is a
+        # no-op for them.
+        2)   reason="${_CYCLE_LAST_TERMINATED_REASON:-plateau}" ;;
         3)   reason="divergence" ;;
         4)   reason="${_CYCLE_LAST_TERMINATED_REASON:-config_invalid}" ;;
         5)   reason="blocked" ;;
@@ -1760,6 +1765,11 @@ cycle_orchestrator_run() {
             '.[$s].verdict // "missing"' <<< "$verdicts_blob" 2>/dev/null)"
         h_status="$(jq -r --arg s "$_CYCLE_UNTIL_STAGE" \
             '.[$s].status // "missing"' <<< "$verdicts_blob" 2>/dev/null)"
+        # #1117: the build member's raw verdict, for the no-progress stall-break
+        # below. Empty for cycles without a `build` member (naturally disables
+        # the stall-break there).
+        local _build_verdict
+        _build_verdict="$(jq -r '.build.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
 
         # Termination evaluation (priority order — see ADR-021):
         #   1) until satisfied (converged)
@@ -1846,6 +1856,21 @@ cycle_orchestrator_run() {
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
             overall_status="blocked_on_scope"; term_rc=7
+        elif [[ "$_build_verdict" == "empty_diff" && "$iter" -ge 2 ]]; then
+            # #1117: no-progress stall-break. The build member produced no diff
+            # (empty_diff) while exit_when is still UNsatisfied (converged != 0 —
+            # guaranteed by this chain's head). Re-running build will reproduce
+            # the same empty diff, so the remaining iterations cannot converge —
+            # terminate now instead of spinning to max_iterations. iter>=2 gives
+            # iter 1's legitimate pre-committed empty_diff exactly one feedback-
+            # informed retry before declaring the stall (an empty_diff that
+            # coincides with exit_when==pass exits via the `converged` head above,
+            # never here). Plateau-class (term_rc=2 → runner continues to review,
+            # marks the cycle unconverged) with a DISTINCT reason + cycle.stalled
+            # event so forensics tell a stall from a generic flat-velocity plateau.
+            _CYCLE_LAST_TERMINATED_REASON="stalled"
+            _CYCLE_LAST_PLATEAU_EVIDENCE="empty_diff_no_progress"
+            overall_status="stalled"; term_rc=2
         elif _cycle_detect_velocity_plateau "$history_file" "$_CYCLE_VELOCITY_PLATEAU_WINDOW"; then
             _CYCLE_LAST_TERMINATED_REASON="plateau"
             overall_status="plateau"; term_rc=2
@@ -1905,11 +1930,21 @@ cycle_orchestrator_run() {
             # cycle.divergence) stay inline since they carry termination-
             # specific evidence the central helper doesn't know about.
             case "$term_rc" in
-                2) # #845: report the window of whichever plateau detector fired
-                   # (evidence tells which) — not always the tuple window.
-                   local _plateau_streak="$_CYCLE_PLATEAU_WINDOW"
-                   [[ "$_CYCLE_LAST_PLATEAU_EVIDENCE" == "velocity_flat" ]] && _plateau_streak="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
-                   eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" "streak=$_plateau_streak" 2>/dev/null || true ;;
+                2) if [[ "$_CYCLE_LAST_TERMINATED_REASON" == "stalled" ]]; then
+                       # #1117: no-progress stall (empty_diff build + unsatisfied
+                       # exit_when). Distinct event, mirrors the plateau/divergence
+                       # emit shape (diagnostic evidence the central fan-in helper
+                       # doesn't carry).
+                       eb_emit_event "cycle.stalled" "cycle_id=$cycle_id" "iter=$iter" \
+                           "stage=build" "verdict=empty_diff" \
+                           "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" 2>/dev/null || true
+                   else
+                       # #845: report the window of whichever plateau detector fired
+                       # (evidence tells which) — not always the tuple window.
+                       local _plateau_streak="$_CYCLE_PLATEAU_WINDOW"
+                       [[ "$_CYCLE_LAST_PLATEAU_EVIDENCE" == "velocity_flat" ]] && _plateau_streak="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
+                       eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" "streak=$_plateau_streak" 2>/dev/null || true
+                   fi ;;
                 3) eb_emit_event "cycle.divergence" "cycle_id=$cycle_id" "iter=$iter" "velocity_history=$failure_count" 2>/dev/null || true ;;
                 5) # #528: emit cycle.blocked between cycle.iteration.complete
                    # (already emitted above) and cycle.complete reason=blocked

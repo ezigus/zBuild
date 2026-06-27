@@ -55,6 +55,10 @@ inputs:
   # Path resolves via ${cycle_feedback_dir} → $ZBUILD_CYCLE_FEEDBACK_DIR
   # exported by cycle-orchestrator::_cycle_apply_feedback. The feedback
   # wiring (test_assessment → build) is declared in standard.yaml by #568.
+  # #1117: simple.yaml (which omits test_assessment) reuses this same input —
+  # its build_test_cycle feedback edge wires the test stage's
+  # test_failures_summary into this file, so the failure detail still reaches
+  # the build prompt without a second, dead input field.
   - id: prior_test_assessment
     type: text/markdown
     path: "${cycle_feedback_dir}/prior_test_assessment.txt"

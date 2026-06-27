@@ -54,6 +54,7 @@
     "cycle.start",
     "cycle.complete",
     "cycle.plateau",
+    "cycle.stalled",
     "cycle.divergence",
     "cycle.iteration.complete",
     "cycle.aborted",
