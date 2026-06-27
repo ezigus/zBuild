@@ -2467,6 +2467,8 @@ issues:
       - Aggregate state/artifacts/<stage>-<platform>.* into stage output
       - Event: stage.fanout {stage, platforms, parallelism}
       - Tests: 2-platform fixture, verify both run in parallel + both artifacts
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-05T12:15:33Z). Recorded by manifest-sync.'
   - id: plat-10
     title: "[Phase 1] Composite strategy (one invocation with multi-platform context)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -2495,6 +2497,8 @@ issues:
       - Config flag: per_platform_halt_on_fail (default false)
       - Use case: strong isolation needs (e.g., release stages)
       - Tests: serialization + halt-on-fail behavior
+    state: closed
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-05T12:15:38Z). Recorded by manifest-sync.'
   # ─── Phase 4 — Platform CLI surface (2 issues) ─────────────────────────
   - id: plat-7
     title: "[Phase 4] CLI: zbuild detect platforms [--explain] [--repo <root>]"
@@ -4672,10 +4676,11 @@ issues:
     title: "[Phase 0.5] [#555 sub-5] manifest-sync: TO_MARK_CLOSED fuzzy proposed-change (PR-gated)"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
     labels: [phase-3, foundation, automated]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/563
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-27T00:03:35Z). Recorded by manifest-sync.'
   - id: fix-banner-build-cycle-stages-route-sh-llm-banner-invisible--566
     title: "fix(banner): build/cycle stages — route.sh [llm] banner invisible inside cycle context"
     milestone: "Phase 0.5 — MVP Pipeline & Distribution"
@@ -5081,10 +5086,11 @@ issues:
     title: "Wave-447 sub-2: feat(runner): template resolver with .zbuild/templates/ search path + required extends:"
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/653
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-05T15:09:26Z). Recorded by manifest-sync.'
   - id: wave-447-sub-3-feat-runner-emit-pipeline-template-resolved-e-654
     title: "Wave-447 sub-3: feat(runner): emit pipeline.template.resolved event with resolved shape"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -5374,7 +5380,8 @@ issues:
     title: "feat(sanitize): extend test-output-sanitize coverage to build/plan/security-lens (contingent)"
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/721
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-22T01:35:00Z). Recorded by manifest-sync.'

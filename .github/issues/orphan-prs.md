@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-06-05T12:07:31Z_
+_Last updated: 2026-06-27T03:26:34Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -97,3 +97,8 @@ _Last updated: 2026-06-05T12:07:31Z_
 | #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
 | #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-05 |
 | #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
+| #1092 | perf(test-infra): test-timing instrumentation + run-once-per-tree gate reuse (#1058 A+B) | 2026-06-27 |
+| #1065 | test-infra: surface skipped tests in run-tests summaries (follow-up to #1063/#996) | 2026-06-27 |
+| #1064 | [#1050] [simplify I9-B] merge_policy: auto mode (auto-merge on clean objective gates) | 2026-06-27 |
+| #1047 | [#991] test-infra(A3d): run the integration tier in parallel (EPIC #982) | 2026-06-27 |
+| #1043 | [#997] test-infra(A5): run --tier all tiers concurrently (EPIC #982) | 2026-06-27 |
