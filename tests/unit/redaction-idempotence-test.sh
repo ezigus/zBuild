@@ -98,5 +98,21 @@ else
     assert_pass "dangling opener was neutralized"
 fi
 
+# [SPEC-1] Dangling opener must be HTML-escaped (lossless), not the lossy sentinel
+if grep -F '&lt;out-of-scope-context&gt;' "$EVIL_OUT" >/dev/null; then
+    assert_pass "[SPEC-1] dangling opener is HTML-escaped as &lt;out-of-scope-context&gt;"
+else
+    assert_fail "[SPEC-1] dangling opener should be HTML-escaped as &lt;out-of-scope-context&gt;" \
+        "evidence: $(cat "$EVIL_OUT")"
+fi
+
+# [SPEC-2] Output must not contain the lossy [OOS-MARKER-MALFORMED] sentinel
+if grep -F '[OOS-MARKER-MALFORMED]' "$EVIL_OUT" >/dev/null; then
+    assert_fail "[SPEC-2] output must not contain [OOS-MARKER-MALFORMED]" \
+        "evidence: $(cat "$EVIL_OUT")"
+else
+    assert_pass "[SPEC-2] output does not contain [OOS-MARKER-MALFORMED]"
+fi
+
 cleanup_test_env
 print_test_results
