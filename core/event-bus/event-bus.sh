@@ -32,7 +32,6 @@ _eb_init() {
         local _eb_init_err
         _eb_init_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
 PRAGMA busy_timeout=2000;
-PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,

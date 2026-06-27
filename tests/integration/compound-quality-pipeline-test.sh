@@ -23,6 +23,17 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "compound_quality migration — 4 CQ leaf-stage plugins (issue #755)"
 setup_test_env "compound-quality-pipeline-755"
+
+# #996/#1059: skip on macOS CI. This heavy test drives the full standard pipeline
+# 4× (hundreds of back-to-back event emits). #1059 added PRAGMA busy_timeout to the
+# SQLite event mirror (event-bus.sh) which removed one stall, and the test passed on
+# one macOS CI run — but an INTERMITTENT stall persists on the shared macOS runner
+# (it stalled after T1 on a subsequent run with identical code), matching the
+# pre-existing "second CI-only stall" noted when #996 first gated it. Passes 8/8 on
+# Linux CI and locally on macOS. Documented genuinely-macOS-CI-incompatible per the
+# #1059 DoD rather than re-rolled to a lucky green; re-attempt with a bounded
+# per-emit timeout + an isolated-DB harness.
+skip_on_platform macos
 export ZBUILD_CONTRACT_VALIDATOR=warn
 export ZBUILD_CYCLES_ENABLED=0
 
