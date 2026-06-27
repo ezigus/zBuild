@@ -147,6 +147,192 @@ else
     assert_pass "variant 4 (#483): raw JSON absent from output section"
 fi
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  Issue #1052 — plan-stage resilience integration SPEC tests (RED until Wave B)
+#  These cross the real subprocess boundary via the error mock claude on PATH.
+#  route.sh persists the failed envelope to
+#    ${ZBUILD_ARTIFACT_DIR:-$ZBUILD_STATE_DIR/artifacts}/stage-io/<stage>-sync-error.raw-claude-output.json
+#  so the plan plugin must recover from that sidecar. We point the artifact dir
+#  at the test state dir and set ZBUILD_CURRENT_STAGE=plan so the sidecar base
+#  name is plan-sync-error.
+# ═══════════════════════════════════════════════════════════════════════════
+print_test_header "Issue #1052 — plan resilience (subprocess boundary, error mock)"
+
+# Route the router's diagnostic sidecar into the test artifacts dir.
+export ZBUILD_STATE_DIR="$STATE_DIR"
+export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
+export ZBUILD_CURRENT_STAGE=plan
+# Cross-run cache isolated under the test temp dir.
+export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context-cache"
+mkdir -p "$ZBUILD_PLAN_CONTEXT_DIR"
+
+# ─── [SPEC-3][change] max_turns envelope → rc=8 / scope_too_large ─────────────
+# A max_turns failure must become a terminal rc=8 with plan.scope_too_large
+# emitted, plan-context status=scope_too_large, a "SPLIT IT" message on stderr,
+# and NO fake plan.json written.
+print_test_section "[SPEC-3][change] max_turns → rc=8 scope_too_large"
+rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+: > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_GOAL="a very large goal that exhausts the turn budget"
+# Default error mock = error_max_turns, exit 1.
+install_envelope_mock_claude_error
+unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RESULT ZBUILD_MOCK_RC ZBUILD_MOCK_NUM_TURNS 2>/dev/null || true
+_S3_STDERR="$TEST_TEMP_DIR/s3-stderr.txt"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>"$_S3_STDERR"
+rc=$?
+set -e
+assert_eq "[SPEC-3] max_turns plan_run returns rc=8" "8" "$rc"
+assert_event_emitted "[SPEC-3] plan.scope_too_large emitted" \
+    "$ZBUILD_EVENTS_JSONL" "plan.scope_too_large"
+_s3_status="$(jq -r '.status // empty' "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true)"
+assert_eq "[SPEC-3] plan-context status=scope_too_large" "scope_too_large" "$_s3_status"
+_s3_err="$(cat "$_S3_STDERR" 2>/dev/null || true)"
+assert_contains_regex "[SPEC-3] terminal stderr says SPLIT IT" \
+    "$_s3_err" "SPLIT IT"
+assert_file_not_exists "[SPEC-3] no fake plan.json written on scope_too_large" \
+    "$ARTIFACTS_DIR/plan.json"
+
+# ─── [SPEC-3][guard] non-max_turns crash stays claude_cli_failed ─────────────
+# A genuine CLI crash (different subtype) must NOT become rc=8 and must NOT emit
+# plan.scope_too_large — it stays on the existing claude_cli_failed path.
+print_test_section "[SPEC-3][guard] non-max_turns crash stays claude_cli_failed"
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
+: > "$ZBUILD_EVENTS_JSONL"
+install_envelope_mock_claude_error
+export ZBUILD_MOCK_SUBTYPE="error_during_execution"
+export ZBUILD_MOCK_RC=1
+export ZBUILD_MOCK_RESULT="crashed partway, not a turn-budget exhaustion"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ "$rc" -eq 8 ]]; then
+    assert_fail "[SPEC-3][guard] non-max_turns crash must NOT return rc=8" "got rc=$rc"
+else
+    assert_pass "[SPEC-3][guard] non-max_turns crash does not return rc=8 (rc=$rc)"
+fi
+_s3g_count="$(jq -r 'select(.type=="plan.scope_too_large") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[SPEC-3][guard] no plan.scope_too_large on non-max_turns crash" "0" "$_s3g_count"
+unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RC ZBUILD_MOCK_RESULT 2>/dev/null || true
+
+# ─── [SPEC-1][change] partial reasoning captured from sidecar ────────────────
+# The partial reasoning carried in the failed envelope's .result must surface in
+# plan-context.md after crossing the subprocess boundary.
+print_test_section "[SPEC-1][change] partial reasoning from sidecar in plan-context.md"
+rm -f "$ARTIFACTS_DIR/plan-context.md" 2>/dev/null || true
+: > "$ZBUILD_EVENTS_JSONL"
+install_envelope_mock_claude_error
+export ZBUILD_MOCK_SUBTYPE="error_max_turns"
+export ZBUILD_MOCK_RESULT="SIDECAR_PARTIAL_REASONING_SENTINEL: explored core/router and plugins/agent/plan"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+assert_file_exists "[SPEC-1] plan-context.md written on scope_too_large" \
+    "$ARTIFACTS_DIR/plan-context.md"
+_s1_md="$(cat "$ARTIFACTS_DIR/plan-context.md" 2>/dev/null || true)"
+assert_contains "[SPEC-1] plan-context.md carries partial reasoning from sidecar" \
+    "$_s1_md" "SIDECAR_PARTIAL_REASONING_SENTINEL"
+unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RESULT 2>/dev/null || true
+
+# ─── [SPEC-4][change] max_turns envelope whose .result is a valid plan ────────
+# Even on a max_turns exit, if the envelope's .result is a schema-valid plan it
+# must be recovered: status=complete, rc=0, plan.envelope.recovered emitted, and
+# a real plan.json written.
+print_test_section "[SPEC-4][change] recover a valid plan from a max_turns envelope"
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
+: > "$ZBUILD_EVENTS_JSONL"
+install_envelope_mock_claude_error
+export ZBUILD_MOCK_SUBTYPE="error_max_turns"
+export ZBUILD_MOCK_RC=1
+export ZBUILD_MOCK_RESULT='{"schema_version":1,"title":"recovered-from-envelope","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-4] recovered valid plan → rc=0" "0" "$rc"
+assert_event_emitted "[SPEC-4] plan.envelope.recovered emitted" \
+    "$ZBUILD_EVENTS_JSONL" "plan.envelope.recovered"
+assert_file_exists "[SPEC-4] plan.json written from recovered envelope" \
+    "$ARTIFACTS_DIR/plan.json"
+_s4_title="$(jq -r '.title // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "[SPEC-4] plan.json is the recovered plan" "recovered-from-envelope" "$_s4_title"
+_s4_status="$(jq -r '.status // empty' "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true)"
+assert_eq "[SPEC-4] plan-context status=complete after recovery" "complete" "$_s4_status"
+unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RC ZBUILD_MOCK_RESULT 2>/dev/null || true
+
+# ─── [SPEC-2][change] dogfood: run1 (error) → run2 (success) resumes ──────────
+# Run 1 with the error mock writes exhausted context to the goal-hash cache.
+# Run 2 with a success mock (prompt recorded) must resume — the recorded prompt
+# carries the prior exploration and plan.context.resumed fires.
+print_test_section "[SPEC-2][change] dogfood resume across two runs"
+rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+: > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_GOAL="dogfood resume goal across two runs"
+export ZBUILD_PLAN_RESUME=1
+export ZBUILD_ISSUE_NUMBER=999
+# Run 1: error mock with a distinctive partial reasoning sentinel.
+install_envelope_mock_claude_error
+export ZBUILD_MOCK_SUBTYPE="error_max_turns"
+export ZBUILD_MOCK_RESULT="DOGFOOD_RUN1_EXPLORATION: mapped the router and plan plugin"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RESULT ZBUILD_MOCK_RC 2>/dev/null || true
+# Run 2: success mock that records the prompt it received.
+: > "$ZBUILD_EVENTS_JSONL"
+_RUN2_PROMPT="$TEST_TEMP_DIR/run2-prompt.txt"
+: > "$_RUN2_PROMPT"
+_RUN2_PLAN="$TEST_TEMP_DIR/run2-canned.json"
+printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$_RUN2_PLAN"
+install_envelope_mock_claude --record-prompt "$_RUN2_PROMPT" --file "$_RUN2_PLAN"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-2] dogfood run 2 returns rc=0" "0" "$rc"
+_run2_prompt_body="$(cat "$_RUN2_PROMPT" 2>/dev/null || true)"
+assert_contains "[SPEC-2] run 2 prompt carries run-1 exploration sentinel" \
+    "$_run2_prompt_body" "DOGFOOD_RUN1_EXPLORATION"
+assert_contains "[SPEC-2] run 2 prompt carries PRIOR EXPLORATION CONTEXT heading" \
+    "$_run2_prompt_body" "PRIOR EXPLORATION CONTEXT"
+assert_event_emitted "[SPEC-2] plan.context.resumed fired on run 2" \
+    "$ZBUILD_EVENTS_JSONL" "plan.context.resumed"
+
+# ─── [SPEC-2][guard] resumed context redacted in the real-router prompt ───────
+# When the cached reasoning carries an out-of-scope token, the resumed splice
+# must pass through apply_scope_redaction so the recorded prompt has it redacted.
+print_test_section "[SPEC-2][guard] resumed context redacted before the prompt"
+rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
+: > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_GOAL="redaction guard resume goal"
+export ZBUILD_PLAN_RESUME=1
+# Run 1: error mock whose partial reasoning references an out-of-scope path. The
+# scope-manifest allows only core/ and plugins/, so legacy/ is out of scope.
+install_envelope_mock_claude_error
+export ZBUILD_MOCK_SUBTYPE="error_max_turns"
+export ZBUILD_MOCK_RESULT="explored OUT_OF_SCOPE_SECRET in legacy/frozen/credentials.sh while planning"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RESULT 2>/dev/null || true
+# Run 2: success mock that records the prompt. The redaction chokepoint must
+# scrub the out-of-scope token from the spliced prior context.
+: > "$ZBUILD_EVENTS_JSONL"
+_GUARD_PROMPT="$TEST_TEMP_DIR/guard-prompt.txt"
+: > "$_GUARD_PROMPT"
+install_envelope_mock_claude --record-prompt "$_GUARD_PROMPT" --file "$_RUN2_PLAN"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_guard_prompt_body="$(cat "$_GUARD_PROMPT" 2>/dev/null || true)"
+if grep -qF "OUT_OF_SCOPE_SECRET" <<<"$_guard_prompt_body"; then
+    assert_fail "[SPEC-2][guard] out-of-scope token must be redacted from resumed prompt"
+else
+    assert_pass "[SPEC-2][guard] out-of-scope token redacted from resumed prompt"
+fi
+unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER 2>/dev/null || true
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -57,7 +57,7 @@ verdict_classify() {
         # a `pipeline.indicator.unknown_verdict` event 1× per iter.
         request_changes|incomplete)
             echo "warn" ;;
-        fail|error|block|scope_violation|corrupt_diff|empty_diff)
+        fail|error|block|scope_violation|corrupt_diff|empty_diff|scope_too_large)
             echo "fail" ;;
         ""|null)
             echo "unknown" ;;

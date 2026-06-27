@@ -51,6 +51,7 @@ _zbuild_propagate_abort() {
         143) return 143 ;;
         6)   return 6 ;;
         9)   return 9 ;;   # llm_unavailable (#1024)
+        10)  return 10 ;;  # scope_too_large (#1052) — plan exhausted turn budget; SPLIT THE ISSUE. rc=8 was unavailable (blocking_member_failure, ADR-013); rc=10 is the next free terminal abort rc.
         *) return 0 ;;
     esac
 }
