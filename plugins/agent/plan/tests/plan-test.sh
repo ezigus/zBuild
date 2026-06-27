@@ -441,6 +441,223 @@ _plan_san_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
 assert_contains "[SPEC-4] plan redacted_content genuine text survives sanitize" \
     "$_plan_san_prompt" "Genuine goal: implement the feature"
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  Issue #1052 — Plan-stage resilience SPEC tests (RED until Wave B plugin.sh)
+#  These drive through plan_run / _plan_run_inner (which exist) and the
+#  envelope-recovery helpers from scripts/lib/plan-context.sh. They assert on
+#  OBSERVABLE behavior (events, files, prompt content, rc) so they fail on the
+#  unimplemented behavior, not on harness/sourcing errors.
+# ═══════════════════════════════════════════════════════════════════════════
+print_test_header "Issue #1052 — plan-stage resilience (resumable context + recovery)"
+
+# Restore a clean passthrough redaction + canned-plan mock for these tests.
+apply_scope_redaction() {
+    local _input="$1" _output="$2"
+    cat "$_input" > "$_output"
+    return 0
+}
+CANNED_PLAN='{"schema_version":1,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+
+# Isolate the cross-run plan-context cache under the test temp dir so no real
+# $HOME/.zbuild/plan-context is touched and goal-hash collisions across tests
+# are impossible.
+export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context-cache"
+mkdir -p "$ZBUILD_PLAN_CONTEXT_DIR"
+
+# goal_hash formula (plan §Pillar A): normalized pre-redaction goal text.
+_spec_goal_hash() {
+    printf '%s' "$1" | tr -d '[:space:]' | shasum -a 256 | cut -d' ' -f1
+}
+
+# ─── [SPEC-1][change] plan persists plan-context.json on success ─────────────
+# On a successful plan run, the plugin must persist a durable plan-context
+# artifact (status=complete, goal_hash set) and emit plan.context.persisted;
+# the human-readable plan-context.md must be readable.
+print_test_section "[SPEC-1][change] persist plan-context on success"
+: > "$EVENTS_FILE"
+export ZBUILD_GOAL="test goal"
+CANNED_PLAN='{"schema_version":1,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-1] plan_run rc=0 on success" "0" "$rc"
+assert_event_emitted "[SPEC-1] plan.context.persisted emitted on success" \
+    "$EVENTS_FILE" "plan.context.persisted"
+# plan-context.json lives in the per-run artifacts dir (a copy) on every outcome.
+assert_file_exists "[SPEC-1] plan-context.json written to artifacts" \
+    "$ARTIFACTS_DIR/plan-context.json"
+_ctx_status="$(jq -r '.status // empty' "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true)"
+assert_eq "[SPEC-1] plan-context status=complete on success" "complete" "$_ctx_status"
+_ctx_gh="$(jq -r '.goal_hash // empty' "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true)"
+assert_eq "[SPEC-1] plan-context goal_hash matches normalized goal" \
+    "$(_spec_goal_hash "test goal")" "$_ctx_gh"
+assert_file_exists "[SPEC-1] plan-context.md readable" \
+    "$ARTIFACTS_DIR/plan-context.md"
+
+# ─── [SPEC-2][change] resume splices PRIOR EXPLORATION CONTEXT from cache ─────
+# A pre-seeded namespaced cache entry (status != complete, matching goal_hash +
+# scope_manifest_ref) must be spliced into the captured prompt under a
+# `PRIOR EXPLORATION CONTEXT` heading and plan.context.resumed must fire.
+print_test_section "[SPEC-2][change] resume splices prior exploration context"
+: > "$EVENTS_FILE"
+: > "$_CAPTURED_PROMPT_FILE"
+export ZBUILD_GOAL="resume me please"
+export ZBUILD_PLAN_RESUME=1
+_RESUME_TOKEN="PRIOR_EXPLORATION_SENTINEL_42"
+_gh="$(_spec_goal_hash "resume me please")"
+_scope_ref="$(shasum -a 256 "$STATE_DIR/scope-manifest.md" | cut -d' ' -f1)"
+# Pre-seed the cache in the namespaced layout (Pillar E). repo_id/scope_key are
+# derived by the plugin; we seed all candidate leaves so resume resolves
+# regardless of how repo_id/scope_key hash out for this fixture.
+# Seed a cache leaf the lib's read contract will accept. plan_context_read_for_resume
+# refuses on ANY key mismatch (Pillar E), including repo_id — so the seed MUST
+# embed the repo_id the plugin computes (derived below) and the scope_key, exactly
+# as Wave A's plan_context_write does.
+_seed_plan_context() {
+    local dir="$1" repo_id="$2" scope_key="$3"
+    mkdir -p "$dir"
+    jq -n \
+        --arg gh "$_gh" \
+        --arg sr "$_scope_ref" \
+        --arg repo "$repo_id" \
+        --arg sk "$scope_key" \
+        --arg pr "$_RESUME_TOKEN exploration from a prior exhausted run" \
+        '{schema_version:1,goal_hash:$gh,scope_manifest_ref:$sr,
+          status:"scope_too_large",num_turns:25,partial_reasoning:$pr,
+          candidate_split:true,run_id:"prior-run",repo_id:$repo,scope_key:$sk,
+          branch:"test",created_at:"2026-06-26T00:00:00Z"}' \
+        > "$dir/$_gh.json"
+    printf '# plan-context\n## Accumulated exploration\n%s\n' "$_RESUME_TOKEN" \
+        > "$dir/$_gh.md"
+}
+# Seed the EXACT namespaced leaf the plugin reads: <repo_id>/<scope_key>/
+# <goal_hash>.json. repo_id is derived the same way the plugin derives it (via
+# plan_context_repo_id, sourced transitively through plugin.sh); scope_key is
+# ZBUILD_ISSUE_NUMBER when present (Pillar E). The behavior under test is
+# "resume happened", not the namespace math (that is SPEC-5, owned elsewhere).
+export ZBUILD_ISSUE_NUMBER=999
+_seed_repo_id="$(plan_context_repo_id)"
+_seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR/$_seed_repo_id/999" "$_seed_repo_id" "999"
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-2] plan_run rc=0 with resume enabled" "0" "$rc"
+_resume_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "[SPEC-2] prompt carries PRIOR EXPLORATION CONTEXT heading" \
+    "$_resume_prompt" "PRIOR EXPLORATION CONTEXT"
+assert_contains "[SPEC-2] prompt carries the prior exploration sentinel" \
+    "$_resume_prompt" "$_RESUME_TOKEN"
+assert_event_emitted "[SPEC-2] plan.context.resumed emitted" \
+    "$EVENTS_FILE" "plan.context.resumed"
+
+# ─── [SPEC-2][guard] resume refused on mismatch / disable ────────────────────
+# Resume must NOT happen on: goal_hash mismatch, scope-manifest change, or
+# ZBUILD_PLAN_RESUME=0. In each case no PRIOR EXPLORATION CONTEXT splice and no
+# plan.context.resumed event.
+print_test_section "[SPEC-2][guard] resume refused on mismatch / disable"
+
+# (a) ZBUILD_PLAN_RESUME=0 disables resume even with a matching cache entry.
+: > "$EVENTS_FILE"; : > "$_CAPTURED_PROMPT_FILE"
+export ZBUILD_PLAN_RESUME=0
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; set -e
+_guard_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+if grep -qF "$_RESUME_TOKEN" <<<"$_guard_prompt"; then
+    assert_fail "[SPEC-2][guard] ZBUILD_PLAN_RESUME=0 must not splice prior context"
+else
+    assert_pass "[SPEC-2][guard] ZBUILD_PLAN_RESUME=0 must not splice prior context"
+fi
+_resumed_count="$(jq -r 'select(.type=="plan.context.resumed") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[SPEC-2][guard] no plan.context.resumed when disabled" "0" "$_resumed_count"
+
+# (b) goal_hash mismatch — different goal text, same cache → no resume.
+: > "$EVENTS_FILE"; : > "$_CAPTURED_PROMPT_FILE"
+export ZBUILD_PLAN_RESUME=1
+export ZBUILD_GOAL="a completely different goal that does not match the cache"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; set -e
+_guard_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+if grep -qF "$_RESUME_TOKEN" <<<"$_guard_prompt"; then
+    assert_fail "[SPEC-2][guard] goal_hash mismatch must not splice prior context"
+else
+    assert_pass "[SPEC-2][guard] goal_hash mismatch must not splice prior context"
+fi
+_resumed_count="$(jq -r 'select(.type=="plan.context.resumed") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[SPEC-2][guard] no plan.context.resumed on goal_hash mismatch" "0" "$_resumed_count"
+
+# (c) scope-manifest change — matching goal_hash but the manifest hash differs
+# from the seeded scope_manifest_ref → refuse resume (Pillar B condition).
+: > "$EVENTS_FILE"; : > "$_CAPTURED_PROMPT_FILE"
+export ZBUILD_GOAL="resume me please"
+# Mutate the live manifest so its hash no longer matches the seeded ref.
+cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE2'
++ core/
++ plugins/
++ scripts/
+SCOPE2
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; set -e
+_guard_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+if grep -qF "$_RESUME_TOKEN" <<<"$_guard_prompt"; then
+    assert_fail "[SPEC-2][guard] scope-manifest change must not splice prior context"
+else
+    assert_pass "[SPEC-2][guard] scope-manifest change must not splice prior context"
+fi
+_resumed_count="$(jq -r 'select(.type=="plan.context.resumed") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[SPEC-2][guard] no plan.context.resumed on scope-manifest change" "0" "$_resumed_count"
+# A cache leaf EXISTS for the goal_hash but the scope_manifest_ref guard
+# rejected it — this must surface as plan.context.resume_skipped, not a silent
+# degrade (#1052 review observability fix).
+assert_event_emitted "[SPEC-2][guard] plan.context.resume_skipped fires on guard mismatch" \
+    "$EVENTS_FILE" "plan.context.resume_skipped"
+# Restore the canonical manifest for downstream tests.
+cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
++ core/
++ plugins/
+SCOPE
+unset ZBUILD_ISSUE_NUMBER ZBUILD_PLAN_RESUME 2>/dev/null || true
+export ZBUILD_GOAL="test goal"
+
+# ─── [SPEC-4][change] envelope recovery from prose-wrapped/last-turn result ───
+# _plan_recover_envelope_json must salvage exactly one schema-valid plan object
+# out of a prose-wrapped / multi-turn response and the plugin must emit
+# plan.envelope.recovered when it does.
+print_test_section "[SPEC-4][change] envelope recovery of a single schema-bearer"
+_VALID_PLAN='{"schema_version":1,"title":"recovered","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":3}],"estimated_total_lines":3,"notes":""}'
+_PROSE_WRAPPED="I explored the repo across several turns. Here is the final plan:
+
+$_VALID_PLAN
+
+That completes my planning."
+set +e
+_recovered="$(_plan_recover_envelope_json "$_PROSE_WRAPPED" 2>/dev/null)"
+_rec_rc=$?
+set -e
+assert_eq "[SPEC-4] _plan_recover_envelope_json returns rc=0 on single bearer" "0" "$_rec_rc"
+_rec_sv="$(printf '%s' "$_recovered" | jq -r '.schema_version // empty' 2>/dev/null || true)"
+assert_eq "[SPEC-4] recovered object has schema_version=1" "1" "$_rec_sv"
+_rec_steps="$(printf '%s' "$_recovered" | jq -r '.steps | length' 2>/dev/null || echo 0)"
+assert_gt "[SPEC-4] recovered object has non-empty steps[]" "$_rec_steps" "0"
+
+# ─── [SPEC-4][guard] recovery fails closed on two schema-bearers ─────────────
+# Ambiguity must fail closed (#908): two schema-valid objects → no recovery.
+print_test_section "[SPEC-4][guard] recovery fails closed on ambiguity"
+_TWO_BEARERS="First candidate:
+$_VALID_PLAN
+Second candidate:
+$_VALID_PLAN"
+set +e
+_plan_recover_envelope_json "$_TWO_BEARERS" >/dev/null 2>&1
+_amb_rc=$?
+set -e
+assert_eq "[SPEC-4][guard] two schema-bearers → recovery rc!=0 (fail closed)" \
+    "1" "$_amb_rc"
+# A bearer missing steps[] must also be rejected by the shared predicate.
+set +e
+_plan_envelope_schema_ok '{"schema_version":1,"title":"t","steps":[]}' >/dev/null 2>&1
+_nosteps_rc=$?
+set -e
+assert_eq "[SPEC-4][guard] object missing non-empty steps[] rejected" "1" "$_nosteps_rc"
+
 # ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
 set +e
 plan_finalize >/dev/null 2>&1

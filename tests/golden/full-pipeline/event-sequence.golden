@@ -4,6 +4,7 @@ redaction.applied
 plugin.run.error
 plugin.init.start
 redaction.applied
+plan.context.persisted
 plugin.run.complete
 plugin.finalize.complete
 plugin.init.start

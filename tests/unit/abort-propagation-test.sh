@@ -44,6 +44,17 @@ _zbuild_propagate_abort 9
 rc=$?
 assert_eq "rc=9 → returns 9 (llm_unavailable abort)" "9" "$rc"
 
+print_test_section "1d. _zbuild_propagate_abort: rc=10 propagates as 10 (#1052 scope_too_large)"
+
+# #1052: the plan stage exhausting its turn budget aborts with rc=10
+# (scope_too_large — SPLIT THE ISSUE). Distinct from rc=8 (blocking_member_failure,
+# ADR-013) and rc=9 (llm_unavailable, #1024). Load-bearing negative control: at
+# merge-base rc=10 fell through to *)→0, so the terminal scope-too-large abort
+# would have been silently swallowed instead of propagating.
+_zbuild_propagate_abort 10
+rc=$?
+assert_eq "rc=10 → returns 10 (scope_too_large abort)" "10" "$rc"
+
 print_test_section "2. _zbuild_propagate_abort: rc=0 → 0"
 
 _zbuild_propagate_abort 0
