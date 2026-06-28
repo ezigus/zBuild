@@ -19,19 +19,22 @@ setup_test_env "pipeline-runner"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 # #1157: this suite runs on ALL platforms (no skip). It was previously gated off
-# macOS (#996/#1059) on the hypothesis that the shared macOS runner can't deliver
-# the kill-mid-run signal — but that was never proven. What IS true: the abort
-# behavior is correct (verified locally), while the *timing* of the kill-mid-run
-# checks is nondeterministic on the heavily-parallel CI tier — bash defers the
-# TERM trap until the foreground `sleep` stub returns (~the stub duration), and
-# the orphaned `sleep` defers the runner's exit. So those specific signal-race
-# checks are ADVISORY (run + warn, never fail) via _advisory; every other
-# runner-mechanics assertion in this suite stays fatal on both platforms.
-_advisory() {  # <ok:0|1> <name> [detail]
+# macOS (#996/#1059) on an unproven hypothesis that the shared macOS runner can't
+# deliver the kill-mid-run signal. The real prior failures were a cascade of test
+# bugs — all fixed here — not signal nondeterminism: a grep -c "0\n0" parse, a
+# blocking `wait` on the orphaned-sleep-deferred exit, a post-kill poll shorter
+# than the trap deferral, the run-tests.sh empty-skip-log bug, and the SQLite
+# mirror making the spawn-heavy file exceed the macOS 300s budget. With those
+# fixed the kill-mid-run abort checks are reliable, so they are FATAL (they carry
+# the runner fail-closed mutation coverage — see runner-fail-closed-mutations.md).
+# _kill_assert centralizes the deterministic pattern: anchor on plugin.run.start,
+# poll PAST the deferred trap (bash runs TERM only after the foreground sleep
+# returns), never block on the deferred exit.
+_kill_assert() {  # <ok:0|1> <name> [detail]
     if [[ "$1" == "1" ]]; then
         assert_pass "$2"
     else
-        echo "  ⚠ ADVISORY (#1157, not failing): $2${3:+ — $3}" >&2
+        assert_fail "$2" "${3:-}"
     fi
 }
 
@@ -208,7 +211,7 @@ runner_pid=$!
 # This removes the "kill landed after pipeline.start but before the plugin was
 # running / the trap was armed" race the prior pipeline.start anchor left open
 # (#494/#908). Shared wait_for_event poll replaces the inline loop. #619.
-# #1157: poll-not-block + advisory (see _advisory at top). bash defers the TERM
+# #1157: poll-not-block + FATAL via _kill_assert (see top). bash defers the TERM
 # trap behind the foreground `sleep` stub, so poll for the deferred pipeline.abort
 # event (~25s) and never block on the sleep-deferred exit; then force-reap.
 t10_abort_ok=0
@@ -219,7 +222,7 @@ if wait_for_event "$EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
 fi
 kill -KILL "$runner_pid" 2>/dev/null || true
 wait "$runner_pid" 2>/dev/null || true
-_advisory "$t10_abort_ok" "kill mid-run emits pipeline.abort"
+_kill_assert "$t10_abort_ok" "kill mid-run emits pipeline.abort"
 
 # ─── Test 11: --template flag parsed; missing template falls back gracefully ──
 _make_plugin "intake"  "agent" 0
@@ -424,7 +427,7 @@ a2_pid=$!
 # blocks in `sleep 15`, so the trap is armed and there is a live child to kill —
 # removing the pre-trap / not-yet-running kill window. Shared wait_for_event
 # poll replaces the inline loop. #619.
-# #1157: poll-not-block + advisory (see _advisory at top). Same as Test 10/I6 —
+# #1157: poll-not-block + FATAL via _kill_assert (see top). Same as Test 10/I6 —
 # the TERM trap is deferred behind the foreground `sleep`; poll the deferred
 # event, never block on the sleep-deferred exit, then force-reap.
 a2_abort_ok=0
@@ -437,8 +440,8 @@ if wait_for_event "$A2_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
 fi
 kill -KILL "$a2_pid" 2>/dev/null || true
 wait "$a2_pid" 2>/dev/null || true
-_advisory "$a2_abort_ok" "A2 abort trap: pipeline.abort event emitted on kill"
-_advisory "$a2_no_state_err" "A2 abort trap: no state.error when state file writable"
+_kill_assert "$a2_abort_ok" "A2 abort trap: pipeline.abort event emitted on kill"
+_kill_assert "$a2_no_state_err" "A2 abort trap: no state.error when state file writable"
 
 # ─── Test A2b: abort trap marks pipeline as interrupted in state ───────────────
 a2_state_file="$A2_STATE_DIR/pipeline-state.json"
@@ -447,7 +450,7 @@ if [[ -f "$a2_state_file" ]] && \
    [[ "$(jq -r '.status // empty' "$a2_state_file" 2>/dev/null || true)" == "interrupted" ]]; then
     a2_interrupted_ok=1
 fi
-_advisory "$a2_interrupted_ok" "A2 abort trap: pipeline status=interrupted in state"
+_kill_assert "$a2_interrupted_ok" "A2 abort trap: pipeline status=interrupted in state"
 
 # ─── Test A3: artifact contract — plugin declares provides.artifact_type ──────
 # ARCHITECTURE.md §2: if a plugin declares provides.artifact_type but writes
@@ -736,9 +739,9 @@ wait "$i6_pid" 2>/dev/null || true
 
 i6_ev_detail="$( [[ -f "$I6_EVENTS_JSONL" ]] && tr '\n' '|' < "$I6_EVENTS_JSONL" | head -c 200 )"
 i6_err_detail="$( [[ -f "$I6_STDERR" ]] && tr '\n' '|' < "$I6_STDERR" | head -c 200 )"
-_advisory "$i6_event_ok" "I6 #525: SIGTERM emits pipeline.abort event via EXIT trap" \
+_kill_assert "$i6_event_ok" "I6 #525: SIGTERM emits pipeline.abort event via EXIT trap" \
     "events: $i6_ev_detail"
-_advisory "$i6_banner_ok" "I6 #525: SIGTERM emits ✗ aborted terminal banner" \
+_kill_assert "$i6_banner_ok" "I6 #525: SIGTERM emits ✗ aborted terminal banner" \
     "stderr: $i6_err_detail"
 
 
