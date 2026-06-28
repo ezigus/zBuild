@@ -42,10 +42,11 @@ provides:
   role: review_aggregator
   schema_version: 1
 
-config:
-  # Proximity window (lines): two findings on the same file+category within this
-  # many lines de-dupe to one. Mirrors ZBUILD_RR_PROXIMITY_WINDOW from ADR-038.
-  proximity_window: 10
+# Proximity-window de-dupe (lines): two findings on the same file+category
+# within this many lines collapse to one. Controlled at runtime via the
+# ZBUILD_RR_PROXIMITY_WINDOW env knob (default 10), shared with review-report
+# (ADR-038). No manifest `config:` block — the plugin reads the env directly, so
+# declaring it here would be advertised-but-ignored (PR #1161 review).
 
 inputs:
   # The lens group's per-lens results, read by glob from the shared artifacts

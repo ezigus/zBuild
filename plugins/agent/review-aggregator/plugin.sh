@@ -85,7 +85,9 @@ _ra_collect_lenses() {
                   severity: (if (.severity|tostring|ascii_downcase) as $s
                              | ["low","medium","high","critical"] | index($s)
                              then (.severity|tostring|ascii_downcase) else "low" end),
-                  line: (.line // null),
+                  line: (.line | if type=="number" then floor
+                                 elif type=="string" then (tonumber? // null)
+                                 else null end),
                   message: (.message // (.|tostring))
                 } else {
                   file: "unknown", category: "general", severity: "low",
