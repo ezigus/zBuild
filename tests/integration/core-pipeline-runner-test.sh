@@ -190,23 +190,24 @@ EOF
 
 bash "$RUNNER" --issue 83 >/dev/null 2>&1 &
 runner_pid=$!
-# Wait for pipeline.start to be IN events.jsonl (not just for the file to
-# exist). File existence races: memory.backend.init writes to the file
-# BEFORE the abort EXIT trap is installed, so kill during that window
-# misses the trap entirely. Sibling tests A2 and I6 use this same pattern. #619.
-t10_ready=0
-for _ in $(seq 1 600); do
-    if [[ -f "$EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$EVENTS_JSONL" 2>/dev/null; then
-        t10_ready=1
-        break
-    fi
-    sleep 0.1
-done
-[[ "$t10_ready" -eq 1 ]] || echo "WARN: Test 10 runner never emitted pipeline.start within 10s" >&2
+# #1149: wait for the SLOW intake stage's plugin.run.start, not merely
+# pipeline.start. plugin.run.start is emitted strictly AFTER pipeline.start
+# (runner.sh L1185) which is itself AFTER the abort EXIT/TERM traps install
+# (L1152-1159) — so by the time it appears the trap is armed AND intake is
+# blocked in `sleep 10`, giving a live, killable child and a wide kill window.
+# This removes the "kill landed after pipeline.start but before the plugin was
+# running / the trap was armed" race the prior pipeline.start anchor left open
+# (#494/#908). Shared wait_for_event poll replaces the inline loop. #619.
+wait_for_event "$EVENTS_JSONL" '"plugin.run.start"' \
+    || echo "WARN: Test 10 runner never emitted plugin.run.start within bound" >&2
 kill "$runner_pid" 2>/dev/null || true
 wait "$runner_pid" 2>/dev/null || true
 
 if [[ -f "$EVENTS_JSONL" ]]; then
+    # The abort event is written by the EXIT trap before the process exits, so
+    # it is present once `wait` returns — but poll briefly to absorb any flush
+    # lag on a loaded box before the single-shot count read.
+    wait_for_event "$EVENTS_JSONL" '"pipeline.abort"' 50 0.1 || true
     abort_count=$(grep -c '"pipeline.abort"' "$EVENTS_JSONL" || true)
     assert_eq "kill mid-run emits pipeline.abort" "1" "$abort_count"
 else
@@ -411,22 +412,18 @@ ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A2_DIR/events.db" \
 bash "$RUNNER" --issue 83 >/dev/null 2>&1 &   # #619: suppress info banner
 a2_pid=$!
-# Wait until the runner has emitted pipeline.start (proof the abort trap is
-# installed and events.jsonl exists) before sending SIGTERM. A fixed sleep
-# races with slow CI runners — poll up to 10 s instead.
-a2_ready=0
-for _ in $(seq 1 600); do
-    if [[ -f "$A2_EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$A2_EVENTS_JSONL" 2>/dev/null; then
-        a2_ready=1
-        break
-    fi
-    sleep 0.1
-done
-[[ "$a2_ready" -eq 1 ]] || echo "WARN: A2 runner never emitted pipeline.start within 10s" >&2
+# #1149: anchor the kill on the slow stage's plugin.run.start (not just
+# pipeline.start). It is emitted after the abort trap installs AND after intake
+# blocks in `sleep 15`, so the trap is armed and there is a live child to kill —
+# removing the pre-trap / not-yet-running kill window. Shared wait_for_event
+# poll replaces the inline loop. #619.
+wait_for_event "$A2_EVENTS_JSONL" '"plugin.run.start"' \
+    || echo "WARN: A2 runner never emitted plugin.run.start within bound" >&2
 kill "$a2_pid" 2>/dev/null || true
 wait "$a2_pid" 2>/dev/null || true
 
 if [[ -f "$A2_EVENTS_JSONL" ]]; then
+    wait_for_event "$A2_EVENTS_JSONL" '"pipeline.abort"' 50 0.1 || true
     a2_abort=$(grep -c '"pipeline.abort"' "$A2_EVENTS_JSONL" || true)
     assert_eq "A2 abort trap: pipeline.abort event emitted on kill" "1" "$a2_abort"
     # Verify no pipeline.state.error (state file write should have succeeded)
@@ -680,10 +677,14 @@ cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
 intake_run() { sleep 15; return 0; }
 EOF
 
-# Flaky-kill mitigation (per #494): retry if the kill races pipeline.start
-# emission. Bumped 2→5 (#908 wave): on loaded CI runners the kill can land in
-# the window AFTER pipeline.start but BEFORE the abort EXIT trap is installed,
-# so a small settle delay + more attempts make the compound flake negligible.
+# Flaky-kill mitigation (per #494/#908): retry on the rare signal-delivery quirk.
+# #1149: the deterministic anchor is the slow stage's plugin.run.start, which is
+# emitted AFTER the abort EXIT/TERM traps install (runner.sh L1152-1159 <
+# pipeline.start L1185 < plugin.run.start) AND after intake blocks in `sleep 15`.
+# Waiting for it (vs the old pipeline.start poll + a speculative `sleep 0.3`
+# settle) proves the trap is armed and a live child is killable, closing the
+# pre-trap / not-yet-running kill window the prior anchor left open. The retry
+# loop remains as cheap insurance for genuine kernel signal-delivery races.
 i6_ok=0
 for _attempt in 1 2 3 4 5; do
     rm -f "$I6_EVENTS_JSONL" "$I6_STDERR"
@@ -695,15 +696,7 @@ for _attempt in 1 2 3 4 5; do
     NO_COLOR=1 \
     bash "$RUNNER" --issue 83 2>"$I6_STDERR" >/dev/null &
     i6_pid=$!
-    for _ in $(seq 1 600); do
-        if [[ -f "$I6_EVENTS_JSONL" ]] && grep -q '"pipeline.start"' "$I6_EVENTS_JSONL" 2>/dev/null; then
-            break
-        fi
-        sleep 0.1
-    done
-    # Let the abort EXIT trap install before killing (closes the race window
-    # the comment above describes — pipeline.start fires just before the trap).
-    sleep 0.3
+    wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' || true
     kill "$i6_pid" 2>/dev/null || true
     wait "$i6_pid" 2>/dev/null || true
     if [[ -f "$I6_STDERR" ]] && grep -q "Pipeline aborted:" "$I6_STDERR"; then

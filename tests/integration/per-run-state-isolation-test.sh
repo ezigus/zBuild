@@ -26,8 +26,31 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
-# #921: standard roster single-sourced (was a hand-maintained for-loop).
-register_standard_pipeline_stubs
+# #1149 (EPIC #1129 R2): the state-isolation contract is NOT stage-count
+# dependent — it only needs the runner to start, root its state dir, and reach a
+# build env-capture stage. Drive a MINIMAL two-leaf template (intake → build)
+# instead of the full ~14-stage standard roster, which made each of T6's SIX
+# subprocess runner invocations ~22s (~132s total). Under a loaded shared CI box
+# (where the event-bus SQLite mirror can block up to busy_timeout=2000 per event,
+# #1059 Class B) that cumulative cost drifted toward the 300s per-file harness
+# timeout (scripts/run-tests.sh), whose gtimeout SIGTERM killed the runner
+# mid-T6 → runner_rc=143. Fewer stages ⇒ far fewer event writes ⇒ each run drops
+# to a few seconds, restoring a wide margin. Same fixture+mechanism as
+# runner-exports-state-dir-test.sh (#1097 PC4) and resume-after-sigint-test.sh
+# (#1098 PC5). Assertions are unchanged — only the per-invocation cost shrinks.
+MINIMAL_TEMPLATE_SRC="$REPO_ROOT/tests/fixtures/templates/runner-state-dir-minimal.yaml"
+MINIMAL_TEMPLATE_INSTALLED="$REPO_ROOT/config/templates/runner-state-dir-minimal.yaml"
+cp "$MINIMAL_TEMPLATE_SRC" "$MINIMAL_TEMPLATE_INSTALLED"
+# Remove the installed fixture even on Ctrl-C / signal exit (temp-dir teardown is
+# handled by cleanup_test_env + the harness master trap; this is fixture-only).
+_test_cleanup_hook() {
+    rm -f "$MINIMAL_TEMPLATE_INSTALLED" 2>/dev/null || true
+}
+# Two-leaf roster matching the minimal template: intake (first stage) + build
+# (the env-capture stage T5/T6 overwrite below). build is overwritten per-test,
+# so register it as a plain stub here only to satisfy registry resolution.
+mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
+mock_plugin_factory "build"  "agent" 0 "" "" >/dev/null
 
 HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
 
@@ -40,7 +63,7 @@ run_pipeline() {
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue 887 --no-resume >/dev/null 2>&1
+        bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
     local rc=$?; set -e; return $rc
 }
 
@@ -72,7 +95,7 @@ env ZBUILD_STATE_DIR="$EXPLICIT" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ccc" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume >/dev/null 2>&1
+    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
 rc=$?; set -e
 assert_eq "T4: explicit-state run exits 0" "0" "$rc"
 assert_file_exists "T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)" "$EXPLICIT/pipeline-state.json"
@@ -109,7 +132,7 @@ env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EV
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-eee" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume >/dev/null 2>&1
+    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
 t6_rc=$?; set -e
 # macOS $TMPDIR is /var/folders (/var -> /private/var symlink), so a literal
 # substring match on the captured ZBUILD_EVENTS_DIR can disagree with the
