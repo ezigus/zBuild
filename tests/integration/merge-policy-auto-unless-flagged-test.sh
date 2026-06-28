@@ -54,7 +54,7 @@ _setup_run() {
         > "$d/pipeline-state.json"
     if [[ -n "$gate_verdict" ]]; then
         printf '{"schema_version":1,"verdict":"%s"}\n' "$gate_verdict" \
-            > "$d/artifacts/objective-gate-result.json"
+            > "$d/artifacts/gate-aggregator-result.json"
     fi
     if [[ -n "$report_readiness" ]]; then
         printf '{"schema_version":1,"merge_readiness":"%s","findings":[]}\n' "$report_readiness" \

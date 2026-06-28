@@ -19,7 +19,7 @@ _TEST_HELPERS_LOADED=1
 
 # ─── Re-entrancy guard (#971): refuse a test invoked inside another test run ──
 # Every *-test.sh sources this file first, so this is the universal chokepoint.
-# A test executed from WITHIN another test run — e.g. objective-ablation's negctl/
+# A test executed from WITHIN another test run — e.g. the ablation negctl/
 # reachability gates run `bash <changed-test>` directly — would re-enter the gate
 # logic and fork-bomb the pipeline test stage (the recurring #929/#983/#971 class).
 # The #983 guard in run-tests.sh only catches run-tests.sh-mediated nesting; the

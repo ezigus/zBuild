@@ -6,7 +6,7 @@
 # from the test stage, #1133) and NEVER re-runs the linter. Reads the `lint`
 # block and maps lint.status → verdict (skipped→skip, fail→fail, pass→pass).
 # Absent file or missing block → skip. Writes verdict to lint-result.json and
-# always returns rc=0 (verdict-in-artifact, mirrors objective-gate).
+# always returns rc=0 (verdict-in-artifact, mirrors shape-floor).
 #
 # Hook prefix: lint_gate_
 # Sourced library: no set -euo pipefail.

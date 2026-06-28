@@ -14,8 +14,8 @@
 #         verdict!=pass ⇒ cycle terminates reason=stalled within <=2 iterations
 #         (NOT max_iterations=5), emitting cycle.stalled.
 # SPEC-4: empty_diff + gate-aggregator verdict=pass ⇒ converged (no false stall).
-# B6 (#1138, ADR-040): build_test_cycle converges on the gate-aggregator verdict,
-# not objective-gate — the stub drives the decomposed gate roster.
+# B6 (#1138, ADR-040): build_test_cycle converges on the gate-aggregator verdict
+# — the stub drives the decomposed gate roster.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

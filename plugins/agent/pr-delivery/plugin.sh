@@ -95,7 +95,7 @@ _pr_stage_run_inner() {
     # gate passes AND review-report.json merge_readiness is ready or advisory.
     # Absent review-report → fail-closed (fall through to pr_open_run). ADR-001/#358.
     elif [[ "${_TPL_MERGE_POLICY:-auto_unless_flagged}" == "auto_unless_flagged" ]]; then
-        local _auf_gate_json="$artifacts_dir/objective-gate-result.json"
+        local _auf_gate_json="$artifacts_dir/gate-aggregator-result.json"
         local _auf_report_json="$artifacts_dir/review-report.json"
         local _auf_gate_verdict="" _auf_readiness=""
         if [[ -f "$_auf_gate_json" ]]; then

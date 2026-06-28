@@ -38,12 +38,12 @@ set -e
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
 # ─── SPEC-2: _TPL_STAGES has exactly 14 entries in canonical order ────────────
-# CHANGE (B6 #1138, ADR-040): build_test_cycle is recomposed from the monolithic
-# objective-gate to the decomposed mechanical gates + gate-aggregator. The flat
+# CHANGE (B6 #1138, ADR-040): build_test_cycle is recomposed from the retired
+# monolithic gate to the decomposed mechanical gates + gate-aggregator. The flat
 # sequence is now:
 #   intake→plan→design→build→test→shape-floor→acceptance-gate→lint→coverage→
 #   mutation→secret-scan→gate-aggregator→review→pr
-# objective-gate is UNREFERENCED (deleted in B7); test_assessment stays omitted.
+# The monolithic gate is gone (deleted in B7 #1139); test_assessment stays omitted.
 
 assert_eq "[SPEC-2] _TPL_STAGES count is 14" "14" "${#_TPL_STAGES[@]}"
 
@@ -84,11 +84,6 @@ assert_eq "[SPEC-3] mutation roles"         "mutation_gate"   "$_TPL_STAGE_ROLES
 assert_eq "[SPEC-3] secret-scan roles"      "secret_scan"     "$_TPL_STAGE_ROLES_secret_scan"
 assert_eq "[SPEC-3] gate-aggregator roles"  "gate_aggregator" "$_TPL_STAGE_ROLES_gate_aggregator"
 assert_eq "[SPEC-3] gate-aggregator io_dests" "file,stdout"   "$_TPL_STAGE_IO_DESTS_gate_aggregator"
-
-# objective-gate is no longer a stage in simple.yaml (B6 #1138 cutover): its role
-# var must be UNSET (the section was removed; convergence is via gate-aggregator).
-assert_eq "[SPEC-3] objective-gate stage removed (role var unset)" \
-    "" "${_TPL_STAGE_ROLES_objective_gate:-}"
 
 # design
 assert_eq "[SPEC-3] design roles"            "designer"    "$_TPL_STAGE_ROLES_design"
@@ -175,16 +170,15 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
     "pass" "$_TPL_CYCLE_UNTIL_VALUE_build_test_cycle"
 
 # ─── SPEC-12: shape-floor is at index 5 in _TPL_STAGES (after test) ───────────
-# CHANGE (B6 #1138): index 5 was objective-gate; after the cutover the first
-# mechanical gate (shape-floor) occupies the slot right after the test stage.
+# CHANGE (B6 #1138): the first mechanical gate (shape-floor) occupies the slot
+# right after the test stage.
 
 assert_eq "[SPEC-12] _TPL_STAGES[5] == shape-floor" "shape-floor" "${_TPL_STAGES[5]}"
 assert_eq "[SPEC-12] _TPL_STAGES[11] == gate-aggregator (cycle exit_when source)" \
     "gate-aggregator" "${_TPL_STAGES[11]}"
 
 # ─── SPEC-13: design is at index 2 (shifted from prior index 3) ──────────────
-# CHANGE: issue #970 moves objective-gate out of position 2, so design shifts
-# from index 3 to index 2. This assertion fails at baseline and passes here.
+# CHANGE: design sits at index 2 in the flat sequence (after intake, plan).
 
 assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
 
@@ -202,12 +196,11 @@ assert_eq "[SPEC-6] simple.yaml: pr roles remain pr (not pr_delivery, guard)" \
 assert_eq "[SPEC-7] template_merge_policy() == auto_unless_flagged" \
     "auto_unless_flagged" "$(template_merge_policy)"
 
-# Retirement guards (I10-C #1090 + B6 #1138): test_assessment AND objective-gate
-# are both excluded from build_test_cycle; convergence is owned by the
-# gate-aggregator. That invariant is already enforced above — SPEC-14 pins
-# _TPL_CYCLE_STAGES to the decomposed gate roster (test_assessment + objective-gate
-# both absent) and SPEC-15 pins the exit_when source to gate-aggregator. No
-# separate assertion is added here to avoid duplicating those checks.
+# Retirement guards (I10-C #1090 + B6 #1138): test_assessment is excluded from
+# build_test_cycle; convergence is owned by the gate-aggregator. That invariant
+# is already enforced above — SPEC-14 pins _TPL_CYCLE_STAGES to the decomposed
+# gate roster (test_assessment absent) and SPEC-15 pins the exit_when source to
+# gate-aggregator. No separate assertion is added here to avoid duplicating those checks.
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 

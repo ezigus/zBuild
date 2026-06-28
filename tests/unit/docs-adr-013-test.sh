@@ -51,7 +51,7 @@ done
 # ---------------------------------------------------------------------------
 # Use grep -w for portable word-boundary matching (POSIX/BSD/GNU compatible).
 canonical_stages=(
-    intake plan objective-gate design build test test_assessment
+    intake plan design build test test_assessment
     acceptance-gate
     cq-preflight cq-audit-plan cq-cycle cq-backtrack
     review pr deploy validate monitor

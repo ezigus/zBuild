@@ -4,7 +4,7 @@ kind: tool
 version: 0.1.0
 description: |
   Auto-merge tool plugin (ADR-037 §4, I9-B / #1050, I9-C / #1051). When
-  merge_policy: auto is active and objective-gate-result.json verdict is pass,
+  merge_policy: auto is active and gate-aggregator-result.json verdict is pass,
   merges via `gh pr merge --squash --auto`. When merge_policy: auto_unless_flagged,
   pr-delivery additionally requires review-report.json merge_readiness to be ready
   or advisory before delegating here; absent review-report is fail-closed (PR path).
@@ -30,10 +30,10 @@ config:
   tier_default: T0
 
 inputs:
-  - id: objective_gate_result
+  - id: gate_aggregator_result
     type: file
-    path: "${artifact_dir}/objective-gate-result.json"
-    source: stage:objective-gate
+    path: "${artifact_dir}/gate-aggregator-result.json"
+    source: stage:gate-aggregator
     required: false
   - id: review
     type: file

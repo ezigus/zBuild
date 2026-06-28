@@ -19,7 +19,7 @@ description: |
     - any REQUIRED gate artifact missing or malformed → verdict=fail (NOT skip);
       a gate that did not run cannot be trusted to have passed.
   Always returns rc=0; the verdict lives in gate-aggregator-result.json
-  (ADR-004 verdict-in-artifact convention, mirrors objective-gate/shape-floor).
+  (ADR-040 verdict-in-artifact convention, mirrors shape-floor).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
@@ -44,8 +44,8 @@ config:
   tier_default: T0
 
 # The gate results are read by filename from the shared artifacts dir (the same
-# dir each gate writes into), mirroring objective-gate's `source: artifacts`
-# reads. required:false at the wiring level keeps the aggregator composable
+# dir each gate writes into), via `source: artifacts` reads.
+# required:false at the wiring level keeps the aggregator composable
 # (a template need not wire every gate); the runtime fail-closes on a missing
 # REQUIRED gate independently of this static-wiring flag.
 inputs:

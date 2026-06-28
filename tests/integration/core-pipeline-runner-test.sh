@@ -561,8 +561,6 @@ _make_plugin "test"            "tool"  0 >/dev/null
 # Without it the cycle fails with verdict=error, cycle blocked, rc=5 —
 # `set -e` kills the test before I1's assertions run.
 _make_plugin "test_assessment" "agent" 0 >/dev/null
-# NB: objective-gate is NOT registered here — it lives in simple.yaml only, not
-# the standard template this test exercises (#970). See the 13-stage count below.
 # #922: acceptance-gate leaf stage after test_assessment (ADR-036).
 _make_plugin "acceptance-gate" "agent" 0 >/dev/null
 # #755: build_review_cycle.flow now includes the 4 compound_quality stages; without
@@ -589,7 +587,7 @@ assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:2
 assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
 
 # I1b: exactly 14 'started ' and 14 'finished ' suffixes (one per stage).
-# Standard template has 14 stages (#756: pr added); objective-gate lives in simple.yaml only.
+# Standard template has 14 stages (#756: pr added).
 started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
 assert_eq "I1b #508: exactly 14 'started ' suffixes" "14" "$started_count"
 finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)

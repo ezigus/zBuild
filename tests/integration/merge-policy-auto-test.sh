@@ -36,7 +36,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 _MERGE_RECORD="$TEST_TEMP_DIR/merge-calls.txt"
 
-# Helper: build a state dir with review.json and optional objective-gate artifact.
+# Helper: build a state dir with review.json and optional gate-aggregator artifact.
 # Usage: _setup_run <tag> [gate_verdict]
 #   gate_verdict: omit = absent, "pass" or "fail"
 _setup_run() {
@@ -50,7 +50,7 @@ _setup_run() {
         > "$d/pipeline-state.json"
     if [[ -n "$gate_verdict" ]]; then
         printf '{"schema_version":1,"verdict":"%s"}\n' "$gate_verdict" \
-            > "$d/artifacts/objective-gate-result.json"
+            > "$d/artifacts/gate-aggregator-result.json"
     fi
     printf '%s/pipeline-state.json' "$d"
 }

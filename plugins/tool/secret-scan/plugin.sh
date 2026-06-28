@@ -5,8 +5,8 @@
 # because this stage never sends text to a model; it is a purely local scan.)
 # Blocks when hardcoded secrets/credentials or .env files are introduced in the
 # merge-base..HEAD diff (CLAUDE.md security rules). Writes verdict to
-# secret-scan-result.json and ALWAYS returns 0 (verdict-in-artifact convention,
-# mirrors plugins/tool/objective-gate).
+# secret-scan-result.json and ALWAYS returns 0 (ADR-040 verdict-in-artifact
+# convention, mirrors shape-floor).
 #
 # Hook prefix: secret_scan_
 # Sourced library: no set -euo pipefail.

@@ -13,8 +13,8 @@ description: |
   Floor preference: the `floor` recorded in test-results.json wins; otherwise
   ZBUILD_MUTATION_FLOOR (default 0). When test-results.json is absent or carries
   no `mutation` block → verdict=skip.
-  Always returns rc=0; the verdict lives in mutation-result.json (ADR-004
-  verdict-in-artifact convention, mirrors objective-gate/shape-floor).
+  Always returns rc=0; the verdict lives in mutation-result.json (ADR-040
+  verdict-in-artifact convention, mirrors shape-floor).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:

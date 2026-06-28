@@ -5,10 +5,10 @@
 # After the cutover, the build_test_cycle exit_when predicate is
 # gate-aggregator.verdict == pass — the single merge-blocking convergence
 # construct in the decomposed pipeline (ADR-040 §5). This replaces the retired
-# objective-gate convergence path.
+# monolithic gate convergence path.
 #
 # SPEC-1: simple.yaml's build_test_cycle exit_when is wired to gate-aggregator
-# SPEC-2: the cycle roster is the decomposed gate set (objective-gate absent)
+# SPEC-2: the cycle roster is the decomposed gate set
 # SPEC-3: cycle converges at iter 2 (gate-aggregator: fail iter 1, pass iter 2)
 # SPEC-4: convergence is artifact-driven only — no model.route (LLM) events
 set -uo pipefail
@@ -58,16 +58,12 @@ assert_eq "[SPEC-1] exit_when field is verdict" \
 assert_eq "[SPEC-1] exit_when value is pass" \
     "pass" "${_TPL_CYCLE_UNTIL_VALUE_build_test_cycle:-}"
 
-# ─── SPEC-2: decomposed gate roster (objective-gate retired) ─────────────────
+# ─── SPEC-2: decomposed gate roster ──────────────────────────────────────────
 print_test_section "SPEC-2: cycle roster is the decomposed mechanical gate set"
 
 assert_eq "[SPEC-2] _TPL_CYCLE_STAGES_build_test_cycle" \
     "build,test,shape-floor,acceptance-gate,lint,coverage,mutation,secret-scan,gate-aggregator" \
     "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
-case ",${_TPL_CYCLE_STAGES_build_test_cycle:-}," in
-    *,objective-gate,*) assert_fail "[SPEC-2] objective-gate is NOT a cycle member" "still present" ;;
-    *)                  assert_pass "[SPEC-2] objective-gate is NOT a cycle member" ;;
-esac
 
 # ─── SPEC-3: fail→pass convergence at iter 2 ─────────────────────────────────
 # Stub cycle_dispatch_stage: gate-aggregator returns fail on iter 1, pass on

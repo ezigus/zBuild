@@ -14,12 +14,11 @@ defaults:
 # build_test_cycle groups the build/test leaves plus the decomposed mechanical
 # gate stages.
 #
-# I10-A..C historically wrapped build/test/objective-gate in build_test_cycle.
-# B6 (#1138, ADR-040 — amends ADR-013/ADR-021/ADR-019; executes ADR-037 §6)
-# CUTS OVER convergence from the monolithic objective-gate to the composable
-# mechanical gates + gate-aggregator. objective-gate is now UNREFERENCED here
-# (the plugin is deleted in B7); the single merge-blocking construct is the
-# gate-aggregator verdict (ADR-040 §5), reached via the cycle's exit_when.
+# B6 (#1138, ADR-040 — amends ADR-013/ADR-021/ADR-019; executes ADR-037 §6) CUTS
+# OVER convergence from the retired monolithic gate to the composable mechanical
+# gates + gate-aggregator (the monolith plugin was removed in B7 #1139). The
+# single merge-blocking construct is the gate-aggregator verdict (ADR-040 §5),
+# reached via the cycle's exit_when.
 flow:
   - intake
   - plan

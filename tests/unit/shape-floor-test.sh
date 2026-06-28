@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests: scripts/lib/shape-floor.sh (ADR-040, issue #1134, EPIC #1129)
-# The un-gameable shape-floor check, extracted from objective-ablation.sh (#971).
+# The un-gameable shape-floor check (extracted from the retired ablation logic, #971).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

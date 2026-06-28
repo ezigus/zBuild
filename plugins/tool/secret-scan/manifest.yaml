@@ -18,7 +18,7 @@ description: |
       (matched against the diff path; '#' comments + blanks ignored).
     - Inline pragma on the offending line: 'allowlist secret' or 'secret-scan:allow'.
   Verdict: secret found -> fail (file:line listed); clean diff -> pass; empty
-  diff (or no merge-base) -> skip. ALWAYS rc=0 (ADR-004 verdict-in-artifact);
+  diff (or no merge-base) -> skip. ALWAYS rc=0 (ADR-040 verdict-in-artifact);
   the verdict lives in secret-scan-result.json, never an exit code.
 
 hooks:
