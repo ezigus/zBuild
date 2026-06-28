@@ -9,25 +9,34 @@ defaults:
   strategy: fanout
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Simplified pipeline (ADR-037 EPIC #966 / ADR-040 EPIC #1129): 6 top-level flow
-# units — intake, plan, design, build_test_cycle, review, pr — where
-# build_test_cycle groups the build/test leaves plus the decomposed mechanical
-# gate stages.
+# Simplified pipeline (ADR-037 EPIC #966 / ADR-040 EPIC #1129): 7 top-level flow
+# units — intake, plan, design, build_test_cycle, review_lenses, review-aggregator,
+# pr — where build_test_cycle groups the build/test leaves plus the decomposed
+# mechanical gate stages, and review_lenses is the advisory lens group.
 #
-# B6 (#1138, ADR-040 — amends ADR-013/ADR-021/ADR-019; executes ADR-037 §6) CUTS
-# OVER convergence from the retired monolithic gate to the composable mechanical
-# gates + gate-aggregator (the monolith plugin was removed in B7 #1139). The
-# single merge-blocking construct is the gate-aggregator verdict (ADR-040 §5),
-# reached via the cycle's exit_when.
+# I10-A..C historically wrapped build/test/objective-gate in build_test_cycle.
+# B6 (#1138, ADR-040 — amends ADR-013/ADR-021/ADR-019; executes ADR-037 §6) CUT
+# OVER convergence from the retired monolithic objective-gate to the composable
+# mechanical gates + gate-aggregator; the objective-gate plugin was then removed
+# in B7 (#1139). The single merge-blocking construct is the gate-aggregator
+# verdict (ADR-040 §5), reached via the cycle's exit_when.
+#
+# C3 (#1142, ADR-040 §3 — supersedes ADR-038's single-stage fan-out; ADR-039
+# parallel group; follows ADR-030 scope governance) CUTS OVER the lens side: the
+# monolithic `review` stage (ADR-038's hand-rolled review-report fan-out, now
+# UNREFERENCED here) is replaced by `review_lenses` — a `type: parallel`
+# `aggregate: advisory` group of first-class lens stages — followed by
+# `review-aggregator`, which merges the per-lens results into ONE advisory
+# merge-readiness report. The lens group is ADVISORY: it NEVER feeds the cycle's
+# exit_when/convergence (that remains the gate-aggregator, ADR-040 §5) and never
+# blocks merge. The B5 no-LLM-on-convergence-path invariant therefore holds.
 flow:
   - intake
   - plan
   - design
   - build_test_cycle
-  # #972: the `review` stage emits the evidence-fed multi-lens merge-readiness
-  # report (no new flow stage — it is bound to a dedicated plugin by role).
-  # #973 feeds each lens distinct mechanical evidence.
-  - review
+  - review_lenses
+  - review-aggregator
   - pr
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
@@ -217,20 +226,101 @@ gate-aggregator:
     destinations: [file, stdout]
     tail_lines: 200
 
-# ─── review (leaf) ───────────────────────────────────────────────────────────
-# ADR-038 (#972): advisory multi-lens merge-readiness report. Bound by role to
-# plugins/agent/review-report (provides.role: review_report) — NOT the legacy
-# `review` verdict plugin (which standard.yaml still uses). Never coerces a
-# merge decision; never hard-blocks. #974 rehomes the full cq+persona lens roster.
-review:
+# ─── review_lenses (parallel group, ADVISORY) ────────────────────────────────
+# C3 (#1142, ADR-040 §3 / ADR-039): advisory multi-lens merge-readiness review.
+# Each lens is a first-class `kind: agent` stage (plugins/agent/review-lens, bound
+# by role review_lens) running ONE isolated, redacted LLM call over evidence it is
+# fed (ADR-038 §2 isolated-call discipline, preserved). The lens id derives from
+# the member stage name (the review-lens plugin strips the `lens-` prefix:
+# lens-security→security, lens-red-team→red-team, lens-scope→scope, …).
+#
+# aggregate: advisory — this group is NEVER on a merge-blocking path: it has no
+# exit_when, drives no convergence, and never hard-blocks (a failed/unparseable
+# lens degrades to an empty result and the member still returns 0, ADR-040 §4).
+# Convergence is owned by the build_test_cycle's gate-aggregator exit_when above;
+# the B5 (#1137) no-LLM-on-convergence-path invariant therefore holds.
+review_lenses:
+  type: parallel
+  flow:
+    - lens-security
+    - lens-performance
+    - lens-red-team
+    - lens-correctness
+    - lens-scope
+  max_parallel: 4
+  on_member_error: continue
+  aggregate: advisory
+
+# ─── lens-* (leaf, review_lenses members) ────────────────────────────────────
+# All five bind by role to the SAME review-lens plugin (provides.role: review_lens);
+# they differ only by the lens id derived from the stage name (its charter +
+# preferred evidence artifact). Advisory T2 agent stages — no blocking contract.
+lens-security:
   gate: auto
-  roles: [review_report]
+  roles: [review_lens]
   io:
     destinations: [file, stdout]
     tail_lines: 200
   router:
     timeout_s: 300
     max_turns: 25
+
+lens-performance:
+  gate: auto
+  roles: [review_lens]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+lens-red-team:
+  gate: auto
+  roles: [review_lens]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+lens-correctness:
+  gate: auto
+  roles: [review_lens]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# lens-scope (ADR-030): WARN-ONLY scope-advisory lens — compares the declared
+# scope manifest against the diff and flags out-of-scope edits or in-scope files
+# left untouched. Never blocks (advisory member of the advisory group).
+lens-scope:
+  gate: auto
+  roles: [review_lens]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── review-aggregator (leaf, ADVISORY) ──────────────────────────────────────
+# C2 (#1141, ADR-040 §3/§4): merges the review_lenses members' lens-*.json results
+# (glob from the shared artifacts dir) into ONE advisory merge-readiness report
+# (review-report.json + review-report.md). Does NO LLM call — it merges lens JSON
+# only. Bound by role review_aggregator to plugins/agent/review-aggregator. Always
+# writes the report and returns 0; never recommends a merge action, never blocks.
+# The report.json filename is unchanged, so merge / pr-delivery consume it as before.
+review-aggregator:
+  gate: auto
+  roles: [review_aggregator]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
 
 # ─── pr (leaf) ───────────────────────────────────────────────────────────────
 # T0 tool stage (ADR-013): opens the pull request; no LLM call.
