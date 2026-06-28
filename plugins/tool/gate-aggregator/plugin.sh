@@ -9,7 +9,7 @@
 # {pass, skip}. FAIL-CLOSED (ADR-019, re-expressed by ADR-040): a missing /
 # malformed REQUIRED gate, or any fail/error verdict → verdict=fail. Writes the
 # verdict to gate-aggregator-result.json and ALWAYS returns 0 (verdict-in-
-# artifact, mirrors objective-gate/shape-floor).
+# artifact, mirrors shape-floor).
 #
 # Hook prefix: gate_aggregator_
 # Sourced library: no set -euo pipefail.

@@ -243,7 +243,7 @@ rm -f "$GIT_FIXTURE/dirty-file.txt"
 # T13, T13a, T14, T15, T16 verify the pass-invariant coercion that drives
 # convergence in standard.yaml's build_test_cycle (empty_diff promotion,
 # build-verdict allowlist, dirty-worktree durability guard). In simple.yaml
-# (I10-C) test_assessment is absent from the cycle; objective-gate is the sole
+# (I10-C) test_assessment is absent from the cycle; the gate-aggregator is the sole
 # convergence driver; these coercion rules are not applicable there. The [SPEC-3]
 # guard below confirms the standard convergence path is unchanged by I10-C.
 

@@ -18,7 +18,7 @@ source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 
 print_test_header "plugin manifest contract audit — ADR-020 (#496)"
 
-# The 8 stage-bound plugin manifests: the 7 migrated in #496 + objective-gate (#969).
+# The 7 stage-bound plugin manifests migrated in #496.
 STAGE_MANIFESTS=(
     "plugins/agent/intake/manifest.yaml"
     "plugins/agent/plan/manifest.yaml"
@@ -27,7 +27,6 @@ STAGE_MANIFESTS=(
     "plugins/agent/security-lens/manifest.yaml"
     "plugins/tool/test/manifest.yaml"
     "plugins/tool/pr-open/manifest.yaml"
-    "plugins/tool/objective-gate/manifest.yaml"
 )
 
 for rel in "${STAGE_MANIFESTS[@]}"; do

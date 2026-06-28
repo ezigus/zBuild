@@ -34,7 +34,7 @@ _PLUGINS_ROOT="${ZBUILD_PLUGINS_ROOT:-$_LINT_CONTRACT_REPO/plugins}"
 # data contract. Backend services (cache/memory/orchestrator/claim-coordinator)
 # don't read/produce stage artifacts and are intentionally excluded. The
 # explicit allowlist below mirrors ADR-013's canonical stage set.
-_LC_STAGE_IDS_TO_CHECK=(intake plan objective-gate design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor security-lens)
+_LC_STAGE_IDS_TO_CHECK=(intake plan design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor security-lens)
 
 _lc_id_in_scope() {
     local id="$1" s
@@ -403,7 +403,7 @@ done
 # the decomposed gate taxonomy — those declaring at least one `type: parallel`
 # group with a BLOCKING aggregate (anything other than `advisory`). Legacy
 # templates with no parallel group (e.g. standard.yaml's review/impact/
-# test_assessment cycles, simple.yaml's current objective-gate cycle) keep their
+# test_assessment cycles, simple.yaml's build_test_cycle) keep their
 # existing convergence semantics and are NOT retro-checked — ADR-040 recomposes
 # the new pipeline, it does not break the production template. When a template is
 # later recomposed onto the gate-aggregator parallel group, this guard activates

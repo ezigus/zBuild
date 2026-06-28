@@ -70,12 +70,6 @@ inputs:
     path: "${artifact_dir}/diff.patch"
     source: stage:build
     required: true
-  # Placeholder evidence bundle for I6 (#973 swaps per-lens evidence sources).
-  - id: objective_gate
-    type: file
-    path: "${artifact_dir}/objective-gate.json"
-    source: stage:objective-gate
-    required: false
   - id: intake_goal
     type: file
     path: "${state_dir}/intake.md"

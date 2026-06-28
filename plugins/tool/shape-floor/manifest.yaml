@@ -4,7 +4,7 @@ kind: tool
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 tool stage (ADR-040, ADR-037 §1, issue #1134, EPIC #1129).
-  The un-gameable shape-floor check, extracted from objective-ablation.sh.
+  The un-gameable shape-floor check (extracted from the retired ablation logic, #971).
 
   Shape floor: if any merge-base→HEAD diff file matches a glob in
   config/shape-change-paths.txt, a "shape change" is in flight. The pipeline's
@@ -18,7 +18,7 @@ description: |
   Merge-base is resolved via zbuild_resolve_merge_base (origin/main → main →
   HEAD~1), NOT HEAD~1, so the floor sees the full branch change set.
 
-  Always returns rc=0; the verdict lives in the artifact (mirrors objective-gate).
+  Always returns rc=0; the verdict lives in the artifact (ADR-004 verdict-in-artifact).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:

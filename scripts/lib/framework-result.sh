@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/framework-result.sh — shared test-framework result (ADR-040, #1133)
 #
-# Generalizes objective-gate's lint/coverage/mutation read-out into reusable
+# Generalizes the retired gate's lint/coverage/mutation read-out into reusable
 # functions the `test` stage calls so a single run records suite + lint +
 # coverage + mutation into test-results.json. Later read-out gates then consume
 # ONE result instead of re-running the framework.
@@ -83,7 +83,7 @@ framework_run_lint() {
 # ─── framework_run_coverage ───────────────────────────────────────────────────
 # Runs ZBUILD_COVERAGE_CMD, or (when unset) the in-tree scripts/check-coverage.sh
 # relative to the current directory. An explicitly empty ZBUILD_COVERAGE_CMD="",
-# or an absent default script, is a skip. Reuses objective-gate's `Total:`-line
+# or an absent default script, is a skip. Reuses the retired gate's `Total:`-line
 # percentage parse. The script's exit code drives the status: 0 → measured,
 # 1 → below_floor, 2 → error (instrumentation), anything else → error.
 # Echoes the coverage JSON block. Usage: framework_run_coverage

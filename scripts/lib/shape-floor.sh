@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # scripts/lib/shape-floor.sh — un-gameable shape-floor check (ADR-040, #1134)
 #
-# Extracted from scripts/lib/objective-ablation.sh (_og_ablation_shape_floor,
-# #971) so the shape floor can live as its OWN T0 tool stage (ADR-037 keeps the
-# un-gameable mechanical checks). This is an ADDITIVE copy — objective-ablation.sh
-# and the objective-gate plugin are untouched (their retirement is #1139).
+# Extracted (B2 #1134) from the retired ablation shape-floor logic (#971) so the
+# shape floor can live as its OWN T0 tool stage (ADR-037 keeps the un-gameable
+# mechanical checks). The monolithic gate it came from was removed in #1139.
 #
 # The check: if any merge-base→HEAD diff file matches a glob in
 # config/shape-change-paths.txt, a "shape change" is in flight. A shape change

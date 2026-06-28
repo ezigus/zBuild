@@ -88,7 +88,16 @@ No stage upgrades, coerces, or self-certifies a *merge authorization*; merge hap
 `merge_policy`. The fail-closed principle of ADR-019 survives, re-expressed as the objective
 suite-green gate (a non-green suite halts before review) rather than as verdict coercion.
 
-### 6. Supersede / amend map (declared here; **executed in I13 / #979**, not by this ADR)
+### 6. Supersede / amend map (declared here; **EXECUTED via EPIC #1129 / ADR-040**, not by this ADR)
+
+> **EXECUTED (2026-06-28, EPIC #1129).** The retirement was carried out by the
+> ADR-040 composable gate+lens decomposition rather than the originally-planned
+> single I13 / #979 step: the monolithic `objective-gate` plugin and
+> `scripts/lib/objective-ablation.sh` are deleted (B7 #1139), with `simple.yaml`
+> cut over to the decomposed mechanical gates + `gate-aggregator` (B6 #1138).
+> ADR-013 is amended to strike the `objective-gate` row (see its 2026-06-28
+> amendment); the mechanical teeth (`negctl`, reachability, shape-floor) survive
+> as their own T0 gate stages.
 
 This ADR is authored additively and does not edit other ADRs. The retirement step executes:
 

@@ -63,7 +63,6 @@ Each stage is defined by:
 |---|---|---|---|---|---|
 | intake | agent | T1 | init, run, finalize | scope-manifest.md† | true |
 | plan | agent | T2 | init, run, finalize | plan.json | true |
-| objective-gate | tool | T0 | init, run, finalize, cleanup | objective-gate-result.json | true |
 | design | agent | T3 | init, run, finalize | design.md | true |
 | build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
@@ -441,3 +440,29 @@ objective-gate → acceptance-gate → cq-preflight → cq-audit-plan → cq-cyc
 cq-backtrack → review → pr → deploy → validate → monitor`
 
 Implementation: issue #970 (EPIC #966 I4).
+
+## Amendment 2026-06-28 (#1139 / ADR-037 §6 — EXECUTED, EPIC #1129 B7) — objective-gate removed
+
+EPIC #1129 (ADR-040) decomposes the monolithic objective gate into composable
+mechanical gate stages (`shape-floor`, `lint`, `coverage`, `mutation`,
+`secret-scan`) collapsed by a single `gate-aggregator` convergence verdict
+(ADR-040 §5). With `simple.yaml` cut over (B6 #1138), the `objective-gate` stage
+is now unreferenced and its plugin is deleted (B7 #1139). This **executes** the
+ADR-037 §6 supersede/amend map entry for ADR-013.
+
+**The `objective-gate` row is struck from the Decision table** (back to 16 leaf
+entries) and removed from the `_ZBUILD_CANONICAL_STAGES` runtime array in
+`core/pipeline/template.sh`. The merge-blocking convergence construct is now the
+`gate-aggregator` verdict (`gate-aggregator-result.json`), which the
+`merge`/`pr-delivery` auto-merge predicate reads in its place.
+
+**Cycle / parallel member-id canonical exemption (clarification).** The
+decomposed gate stages (`shape-floor`, `lint`, `coverage`, `mutation`,
+`secret-scan`, `gate-aggregator`) live as canonical leaf ids in the runtime
+array but are exercised only as members of a cycle (`build_test_cycle`) or a
+`type: parallel` group (ADR-039). Per the 2026-06-05 (#705 / ADR-027) amendment,
+canonical leaf membership and contiguous-subsequence order are enforced on every
+`flow:` member at every depth; cycle/parallel **container** ids remain
+template-defined and are not members of the canonical leaf set.
+
+Implementation: issue #1139 (EPIC #1129 B7). See ADR-037 §6 and ADR-040.

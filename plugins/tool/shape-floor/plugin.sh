@@ -6,7 +6,7 @@
 # shape-change file is in the merge-base→HEAD diff, the event-sequence goldens
 # and _TPL_STAGES[N]-indexed order tests must also be in the diff. Writes
 # verdict=skip|pass|fail to shape-floor-result.json. Always returns rc=0 — the
-# verdict lives in the artifact (mirrors objective-gate's artifact convention).
+# verdict lives in the artifact (ADR-004 verdict-in-artifact convention).
 #
 # Hook prefix: shape_floor_
 # Sourced library: no set -euo pipefail.

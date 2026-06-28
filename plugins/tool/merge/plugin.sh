@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # plugins/tool/merge/plugin.sh — Auto-Merge Tool (ADR-037 §4, I9-B / #1050)
-# Merges the branch via `gh pr merge --squash --auto` when objective gates pass.
-# Falls back to pr_open_run (draft PR) when gate is absent or verdict != pass.
+# Merges the branch via `gh pr merge --squash --auto` when the convergence gate
+# passes. Falls back to pr_open_run (draft PR) when gate is absent or != pass.
 # Safety constraints:
 #   - Refuses if on main/master (rc=2)
-#   - Falls back to PR path if objective-gate-result.json absent or verdict != pass
+#   - Falls back to PR path if gate-aggregator-result.json absent or verdict != pass
 #   - Never opens a draft PR on the merge path
 # Sourced library: no set -euo pipefail.
 
@@ -43,10 +43,10 @@ merge_run() {
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    local gate_json="$artifacts_dir/objective-gate-result.json"
+    local gate_json="$artifacts_dir/gate-aggregator-result.json"
     local merge_result_out="$artifacts_dir/merge-result.json"
 
-    # Read objective gate verdict
+    # Read convergence gate verdict
     local gate_verdict=""
     if [[ -f "$gate_json" ]]; then
         gate_verdict="$(jq -r '.verdict // empty' "$gate_json" 2>/dev/null || true)"
