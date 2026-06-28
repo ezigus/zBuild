@@ -209,7 +209,7 @@ t10_abort_ok=0
 if wait_for_event "$EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     kill -TERM "$runner_pid" 2>/dev/null || true
     wait_for_event "$EVENTS_JSONL" '"pipeline.abort"' 250 0.1 || true
-    [[ "$(grep -c '"pipeline.abort"' "$EVENTS_JSONL" 2>/dev/null || echo 0)" -ge 1 ]] && t10_abort_ok=1
+    grep -q '"pipeline.abort"' "$EVENTS_JSONL" 2>/dev/null && t10_abort_ok=1
 fi
 kill -KILL "$runner_pid" 2>/dev/null || true
 wait "$runner_pid" 2>/dev/null || true
@@ -426,8 +426,8 @@ a2_no_state_err=0
 if wait_for_event "$A2_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     kill -TERM "$a2_pid" 2>/dev/null || true
     wait_for_event "$A2_EVENTS_JSONL" '"pipeline.abort"' 250 0.1 || true
-    [[ "$(grep -c '"pipeline.abort"' "$A2_EVENTS_JSONL" 2>/dev/null || echo 0)" -ge 1 ]] && a2_abort_ok=1
-    [[ "$(grep -c '"pipeline.state.error"' "$A2_EVENTS_JSONL" 2>/dev/null || echo 0)" -eq 0 ]] && a2_no_state_err=1
+    grep -q '"pipeline.abort"' "$A2_EVENTS_JSONL" 2>/dev/null && a2_abort_ok=1
+    grep -q '"pipeline.state.error"' "$A2_EVENTS_JSONL" 2>/dev/null || a2_no_state_err=1
 fi
 kill -KILL "$a2_pid" 2>/dev/null || true
 wait "$a2_pid" 2>/dev/null || true
