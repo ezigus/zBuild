@@ -43,6 +43,11 @@ _TPL_STAGES=()
 _TPL_DISPATCH_UNITS=()
 # ADR-021: list of cycle ids declared in template (in declaration order).
 _TPL_CYCLES=()
+# ADR-039 (#1130): list of parallel group ids declared in template (in
+# declaration order). Sibling of _TPL_CYCLES — a `type: parallel` group folds
+# to one "parallel:<gid>" dispatch unit. Template-layer parse/validate only;
+# execution lands in a later issue.
+_TPL_PARALLEL_GROUPS=()
 
 # ADR-015 v1 (#438): recognized io.destination tokens. Unknown tokens fail at
 # template load time with an actionable error listing the valid set.
@@ -76,6 +81,15 @@ _tpl_validate_stages() {
         if [[ $pos -eq -1 ]]; then
             error "load_template: unknown stage id '${stage_id}' (valid: ${canonical_list})"
             return 1
+        fi
+
+        # ADR-039 (#1130): parallel-group members run concurrently — their
+        # relative declaration order carries no meaning, so exempt them from the
+        # canonical-order check (membership is still enforced above). Mirrors the
+        # cycle-member skip in _tpl_validate_cycles.
+        local _pmof_var="_TPL_PARALLEL_MEMBER_OF_${stage_id//-/_}"
+        if [[ -n "${!_pmof_var:-}" ]]; then
+            continue
         fi
 
         # Check order preservation
@@ -125,6 +139,7 @@ load_template() {
 
     _TPL_STAGES=()
     _TPL_CYCLES=()
+    _TPL_PARALLEL_GROUPS=()
 
     # ADR-027 (Wave 17-B #703): shape detector. The new shape uses `flow:` at
     # top level + per-stage top-level sections discriminated by `type:`. The
@@ -328,6 +343,58 @@ load_template() {
                     stage_data_rows+=("$m|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
                 done
                 ;;
+            IP)
+                # ADR-039 (#1130): inline parallel group entry. Format:
+                # <gid>|<members_csv>|<max_parallel>|<on_member_error>
+                # Mirrors IC| (cycle). Members are leaf stages expanded into the
+                # flat _TPL_STAGES[] with per-stage attr vars (from the defs map),
+                # exactly like cycle members.
+                local pid pmembers pmax ponerr
+                IFS='|' read -r pid pmembers pmax ponerr <<< "$payload"
+                [[ -z "$pid" ]] && continue
+                _TPL_PARALLEL_GROUPS+=("$pid")
+                local psafe="${pid//-/_}"
+                printf -v "_TPL_PARALLEL_FLOW_${psafe}"   '%s' "$pmembers"
+                printf -v "_TPL_PARALLEL_MAX_${psafe}"    '%s' "$pmax"
+                printf -v "_TPL_PARALLEL_ON_ERR_${psafe}" '%s' "${ponerr:-continue}"
+                export "_TPL_PARALLEL_FLOW_${psafe}" "_TPL_PARALLEL_MAX_${psafe}" \
+                       "_TPL_PARALLEL_ON_ERR_${psafe}"
+                # Expand parallel members in declaration order into the flat
+                # stage list (per-stage attrs come from stage_def_row, like
+                # cycle members).
+                local p_IFS_save="$IFS"; IFS=','
+                # shellcheck disable=SC2206
+                local -a pmembers_arr=($pmembers)
+                IFS="$p_IFS_save"
+                local pm pm_row pm_roles pm_strat pm_iod pm_iot pm_ior pm_rt pm_rmt pm_rmi
+                for pm in "${pmembers_arr[@]}"; do
+                    [[ -z "$pm" ]] && continue
+                    # Dedupe — a member already added (defensive; validator
+                    # rejects cross-group overlap separately).
+                    local _p_already=0 _p_ex
+                    for _p_ex in "${collected_ids[@]}"; do
+                        [[ "$_p_ex" == "$pm" ]] && _p_already=1 && break
+                    done
+                    [[ $_p_already -eq 1 ]] && continue
+                    pm_row="${stage_def_row[$pm]:-}"
+                    if [[ -z "$pm_row" ]]; then
+                        error "load_template: parallel group '$pid' references stage '$pm' but no top-level section / 'stage_definitions.$pm' entry exists"
+                        return 1
+                    fi
+                    IFS='|' read -r pm_roles pm_strat pm_iod pm_iot pm_ior pm_rt pm_rmt pm_rmi <<< "$pm_row"
+                    collected_ids+=("$pm")
+                    collected_io_dests+=("$pm_iod")
+                    collected_io_tail+=("$pm_iot")
+                    collected_io_redact+=("$pm_ior")
+                    collected_router_timeout+=("$pm_rt")
+                    collected_router_max_turns+=("$pm_rmt")
+                    collected_router_max_iterations+=("$pm_rmi")
+                    stage_data_rows+=("$pm|$pm_roles|$pm_strat|$pm_iod|$pm_iot|$pm_ior|$pm_rt|$pm_rmt|$pm_rmi")
+                    local pm_safe="${pm//-/_}"
+                    printf -v "_TPL_PARALLEL_MEMBER_OF_${pm_safe}" '%s' "$pid"
+                    export "_TPL_PARALLEL_MEMBER_OF_${pm_safe}"
+                done
+                ;;
             AW)
                 # ADR-027 (Wave 17-B): abort_when predicate for a cycle.
                 # Format: <cid>|<stage>|<field>|<op>|<value>
@@ -406,6 +473,7 @@ load_template() {
     done
 
     _tpl_validate_cycles || return 1
+    _tpl_validate_parallel || return 1
     _tpl_build_dispatch_units || return 1
 
     # ADR-027 (Wave 17-B #703): stage-type discriminator. Every stage in
@@ -428,6 +496,13 @@ load_template() {
         local _cf_src="_TPL_CYCLE_STAGES_${_st_safe}"
         printf -v "_TPL_CYCLE_FLOW_${_st_safe}" '%s' "${!_cf_src:-}"
         export "_TPL_CYCLE_FLOW_${_st_safe}"
+    done
+    # ADR-039 (#1130): parallel group ids get _TPL_STAGE_TYPE_<gid>=parallel
+    # (sibling of the cycle discriminator). Members remain leaf (set above).
+    for _st_id in "${_TPL_PARALLEL_GROUPS[@]}"; do
+        _st_safe="${_st_id//-/_}"
+        printf -v "_TPL_STAGE_TYPE_${_st_safe}" '%s' "parallel"
+        export "_TPL_STAGE_TYPE_${_st_safe}"
     done
 
     # ADR-027 contract validator (Wave 17-B #703): reference-graph acyclicity.
@@ -931,6 +1006,86 @@ _tpl_validate_cycles() {
     return 0
 }
 
+# ─── _tpl_validate_parallel — enforce ADR-039 invariants ─────────────────────
+# - each group has >=1 member
+# - members disjoint from cycle members and from other parallel groups
+# - max_parallel is empty or a positive integer
+# - on_member_error ∈ {continue, collect}
+_tpl_validate_parallel() {
+    [[ ${#_TPL_PARALLEL_GROUPS[@]} -eq 0 ]] && return 0
+
+    # Build the set of all cycle members for disjointness checks.
+    local -A cycle_member=()
+    local cid
+    for cid in "${_TPL_CYCLES[@]}"; do
+        local c_safe="${cid//-/_}"
+        local c_var="_TPL_CYCLE_STAGES_${c_safe}"
+        local c_csv="${!c_var:-}"
+        local c_IFS_save="$IFS"; IFS=','
+        # shellcheck disable=SC2206
+        local -a cms=($c_csv)
+        IFS="$c_IFS_save"
+        local cm
+        for cm in "${cms[@]}"; do
+            [[ -n "$cm" ]] && cycle_member[$cm]=1
+        done
+    done
+
+    local gid
+    local -A seen_member=()
+    for gid in "${_TPL_PARALLEL_GROUPS[@]}"; do
+        local safe="${gid//-/_}"
+        local flow_var="_TPL_PARALLEL_FLOW_${safe}"
+        local flow_csv="${!flow_var:-}"
+        local g_IFS_save="$IFS"; IFS=','
+        # shellcheck disable=SC2206
+        local -a ms=($flow_csv)
+        IFS="$g_IFS_save"
+
+        # >=1 member
+        local member_count=0 m
+        for m in "${ms[@]}"; do
+            [[ -n "$m" ]] && member_count=$((member_count + 1))
+        done
+        if [[ $member_count -eq 0 ]]; then
+            error "parallel group '$gid': no members declared (>=1 required)"
+            return 1
+        fi
+
+        for m in "${ms[@]}"; do
+            [[ -z "$m" ]] && continue
+            if [[ -n "${cycle_member[$m]:-}" ]]; then
+                error "parallel group '$gid': member '$m' is also a cycle member (parallel members must be disjoint from cycles)"
+                return 1
+            fi
+            if [[ -n "${seen_member[$m]:-}" ]]; then
+                error "parallel group '$gid': member '$m' is in another parallel group (parallel groups must not overlap)"
+                return 1
+            fi
+            seen_member[$m]=1
+        done
+
+        # max_parallel: empty (unbounded) or a positive integer.
+        local max_var="_TPL_PARALLEL_MAX_${safe}"
+        local max="${!max_var:-}"
+        if [[ -n "$max" ]]; then
+            if ! [[ "$max" =~ ^[0-9]+$ ]] || [[ "$max" -lt 1 ]]; then
+                error "parallel group '$gid': max_parallel must be empty or a positive integer, got: $max"
+                return 1
+            fi
+        fi
+
+        # on_member_error: closed vocabulary (the template names behavior).
+        local onerr_var="_TPL_PARALLEL_ON_ERR_${safe}"
+        local onerr="${!onerr_var:-continue}"
+        case "$onerr" in
+            continue|collect) : ;;
+            *) error "parallel group '$gid': on_member_error must be continue|collect, got: $onerr"; return 1 ;;
+        esac
+    done
+    return 0
+}
+
 # ─── _tpl_build_dispatch_units — assemble runner dispatch sequence ───────────
 # Walks _TPL_STAGES[] in order. Each stage belongs to at most one cycle
 # (validated above). On entering a cycle's first stage, emit one "cycle:<id>"
@@ -996,10 +1151,33 @@ _tpl_build_dispatch_units() {
         cycle_outermost[$cid]="$cur"
     done
 
+    # ADR-039 (#1130): map each leaf stage → its enclosing parallel group (if
+    # any). A parallel group folds to one "parallel:<gid>" unit, symmetric to
+    # "cycle:<id>". Validation guarantees members are disjoint from cycles, so a
+    # stage is in at most one of {cycle, parallel}.
+    local -A stage_to_parallel=()
+    local pg
+    for pg in "${_TPL_PARALLEL_GROUPS[@]}"; do
+        local psafe="${pg//-/_}"
+        local pflow_var="_TPL_PARALLEL_FLOW_${psafe}"
+        local pflow_csv="${!pflow_var:-}"
+        local p_IFS_save="$IFS"; IFS=','
+        # shellcheck disable=SC2206
+        local -a pms=($pflow_csv)
+        IFS="$p_IFS_save"
+        local pm
+        for pm in "${pms[@]}"; do
+            [[ -z "$pm" ]] && continue
+            [[ -z "${stage_to_parallel[$pm]:-}" ]] && stage_to_parallel[$pm]="$pg"
+        done
+    done
+
     local s
     local -A emitted_outer=()
+    local -A emitted_parallel=()
     for s in "${_TPL_STAGES[@]}"; do
         local in_cycle="${stage_to_cycle[$s]:-}"
+        local in_parallel="${stage_to_parallel[$s]:-}"
         if [[ -n "$in_cycle" ]]; then
             local outer="${cycle_outermost[$in_cycle]:-$in_cycle}"
             if [[ -z "${emitted_outer[$outer]:-}" ]]; then
@@ -1007,6 +1185,12 @@ _tpl_build_dispatch_units() {
                 emitted_outer[$outer]=1
             fi
             # subsequent stages absorbed under the outermost cycle unit
+        elif [[ -n "$in_parallel" ]]; then
+            if [[ -z "${emitted_parallel[$in_parallel]:-}" ]]; then
+                _TPL_DISPATCH_UNITS+=("parallel:$in_parallel")
+                emitted_parallel[$in_parallel]=1
+            fi
+            # subsequent members absorbed under the same parallel unit
         else
             _TPL_DISPATCH_UNITS+=("stage:$s")
         fi
@@ -1177,6 +1361,8 @@ _tpl_translate_new_shape() {
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
+        # ADR-039 (#1130): parallel-group accumulators.
+        par_flow = ""; par_max = ""; par_onerr = "continue"; in_pflow = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
@@ -1193,6 +1379,8 @@ _tpl_translate_new_shape() {
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
+        # ADR-039 (#1130): parallel-group accumulators.
+        par_flow = ""; par_max = ""; par_onerr = "continue"; in_pflow = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
@@ -1241,6 +1429,10 @@ _tpl_translate_new_shape() {
                 cyc_fb[cur_key, k] = fb[k]
             }
         }
+        # ADR-039 (#1130): stash parallel-group data for IP| emission.
+        if (sec_type == "parallel") {
+            par_data[cur_key] = par_flow "|" par_max "|" par_onerr
+        }
     }
 
     # ── Top-level flow: list ──────────────────────────────────────────────────
@@ -1281,6 +1473,10 @@ _tpl_translate_new_shape() {
         # type:
         if ($0 ~ /^[[:space:]]+type:[[:space:]]*cycle[[:space:]]*$/) {
             sec_type = "cycle"; next
+        }
+        # ADR-039 (#1130): parallel group discriminator (sibling of cycle).
+        if ($0 ~ /^[[:space:]]+type:[[:space:]]*parallel[[:space:]]*$/) {
+            sec_type = "parallel"; next
         }
         # roles:
         if ($0 ~ /^[[:space:]]+roles:/) {
@@ -1497,6 +1693,32 @@ _tpl_translate_new_shape() {
                 }
             }
         }
+
+        # ── parallel-only (ADR-039 #1130) ────────────────────────────────────
+        # Generalizes the cycle nested-`flow:` parser to the parallel group:
+        # members come from a nested `flow:` list; max_parallel / on_member_error
+        # are the only other knobs.
+        if (sec_type == "parallel") {
+            if ($0 ~ /^[[:space:]]+flow:/) {
+                in_pflow = 0
+                if ($0 ~ /\[/) {
+                    par_flow = strip_inline_list($0); in_pflow = 0
+                } else { in_pflow = 1 }
+                next
+            }
+            if (in_pflow && $0 ~ /^[[:space:]]+-[[:space:]]/) {
+                item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
+                if (item != "") par_flow = (par_flow == "" ? item : par_flow "," item)
+                next
+            }
+            if (in_pflow && $0 ~ /^[[:space:]]+[a-z_]+:/) { in_pflow = 0 }
+            if ($0 ~ /^[[:space:]]+max_parallel:/) {
+                v = $0; sub(/^[[:space:]]+max_parallel:[[:space:]]*/, "", v); par_max = trim(v); next
+            }
+            if ($0 ~ /^[[:space:]]+on_member_error:/) {
+                v = $0; sub(/^[[:space:]]+on_member_error:[[:space:]]*/, "", v); par_onerr = trim(v); next
+            }
+        }
         next
     }
 
@@ -1515,6 +1737,11 @@ _tpl_translate_new_shape() {
             if (kind == "") kind = "leaf"
             if (kind == "cycle") {
                 emit_cycle_dfs(k)
+            } else if (kind == "parallel") {
+                # ADR-039 (#1130): one IP| row at the group flow position.
+                # Members are leaves declared as their own top-level sections;
+                # the loader expands them from the defs stream (like cycles).
+                print "IP|" k "|" par_data[k]
             } else {
                 p = sec_payload[k]
                 print "S|" k "|" p
