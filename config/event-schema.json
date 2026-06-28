@@ -230,6 +230,9 @@
     "objective_gate.shape_floor.fail",
     "objective_gate.shape_floor.skip",
     "objective_gate.scope_leak.fail",
+    "shape_floor.pass",
+    "shape_floor.fail",
+    "shape_floor.skip",
     "llm.cli_fail",
     "pipeline.llm_unavailable"
   ]

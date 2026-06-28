@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# scripts/lib/shape-floor.sh — un-gameable shape-floor check (ADR-040, #1134)
+#
+# Extracted from scripts/lib/objective-ablation.sh (_og_ablation_shape_floor,
+# #971) so the shape floor can live as its OWN T0 tool stage (ADR-037 keeps the
+# un-gameable mechanical checks). This is an ADDITIVE copy — objective-ablation.sh
+# and the objective-gate plugin are untouched (their retirement is #1139).
+#
+# The check: if any merge-base→HEAD diff file matches a glob in
+# config/shape-change-paths.txt, a "shape change" is in flight. A shape change
+# touches the pipeline's observable surface, so the event-sequence golden
+# snapshots AND the _TPL_STAGES[N]-indexed order-assertion tests MUST also be in
+# the diff — otherwise the change silently drifts the pipeline shape past its
+# pinned tests. Missing any → FAIL missing_floor_files.
+#
+# Public function:
+#   _sf_shape_floor <repo_root> → echoes SHAPE_FLOOR PASS|FAIL|SKIP
+#
+# Merge-base resolution: zbuild_resolve_merge_base (merge-base.sh) — proper
+# merge-base against the default branch (origin/main → main → HEAD~1), NOT
+# HEAD~1, so the floor sees the full branch change set.
+#
+# Source-only; no `set -e` at top level (would mutate caller options).
+
+[[ -n "${_ZBUILD_SHAPE_FLOOR_LOADED:-}" ]] && return 0
+_ZBUILD_SHAPE_FLOOR_LOADED=1
+
+_SF_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./merge-base.sh
+source "$_SF_LIB_DIR/merge-base.sh"
+# shellcheck source=./impact-prefilter.sh
+source "$_SF_LIB_DIR/impact-prefilter.sh"
+
+# ─── _sf_diff_files <repo_root> ──────────────────────────────────────────────
+# Prints changed file paths (one per line) between merge-base and HEAD.
+# ZBUILD_DIFF_CMD overrides for testability.
+_sf_diff_files() {
+    local repo_root="$1"
+    local diff_cmd="${ZBUILD_DIFF_CMD:-}"
+    if [[ -n "$diff_cmd" ]]; then
+        bash -c "$diff_cmd" 2>/dev/null || true
+        return
+    fi
+    local base_sha
+    base_sha="$(zbuild_resolve_merge_base "$repo_root")"
+    [[ -z "$base_sha" ]] && return
+    git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true
+}
+
+# ─── _sf_shape_floor <repo_root> ─────────────────────────────────────────────
+# If any diff file matches config/shape-change-paths.txt → shape change detected.
+# Then verifies event-sequence.golden files AND _TPL_STAGES[N]-indexed test files
+# are also in the diff. Missing any → SHAPE_FLOOR FAIL missing_floor_files.
+# Reuses _impact_list_event_goldens and _impact_list_order_assertions (impact-prefilter.sh).
+_sf_shape_floor() {
+    local repo_root="$1"
+    local paths_file="$repo_root/config/shape-change-paths.txt"
+
+    local diff_files
+    diff_files="$(_sf_diff_files "$repo_root")"
+
+    # Detect shape change.
+    local shape_change=0
+    if [[ -f "$paths_file" && -n "$diff_files" ]]; then
+        local pattern pf
+        while IFS= read -r pattern; do
+            pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+            [[ -z "$pattern" || "$pattern" == "#"* ]] && continue
+            while IFS= read -r pf; do
+                [[ -z "$pf" ]] && continue
+                # shellcheck disable=SC2053
+                if [[ "$pf" == $pattern ]]; then
+                    shape_change=1
+                    break 2
+                fi
+            done <<< "$diff_files"
+        done < "$paths_file"
+    fi
+
+    if [[ $shape_change -eq 0 ]]; then
+        printf 'SHAPE_FLOOR SKIP no_shape_change\n'
+        return 0
+    fi
+
+    # Verify golden files are in diff.
+    local tests_root="$repo_root/tests"
+    local missing=0 golden order_file
+    while IFS= read -r golden; do
+        [[ -z "$golden" ]] && continue
+        if ! printf '%s\n' "$diff_files" | grep -qxF "$golden"; then
+            missing=1; break
+        fi
+    done < <(_impact_list_event_goldens "$tests_root")
+
+    # Verify _TPL_STAGES[N]-indexed test files are in diff.
+    if [[ $missing -eq 0 ]]; then
+        while IFS= read -r order_file; do
+            [[ -z "$order_file" ]] && continue
+            if ! printf '%s\n' "$diff_files" | grep -qxF "$order_file"; then
+                missing=1; break
+            fi
+        done < <(_impact_list_order_assertions "$tests_root")
+    fi
+
+    if [[ $missing -eq 1 ]]; then
+        printf 'SHAPE_FLOOR FAIL missing_floor_files\n'
+    else
+        printf 'SHAPE_FLOOR PASS\n'
+    fi
+}
