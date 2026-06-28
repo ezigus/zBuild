@@ -1,0 +1,90 @@
+id: gate-aggregator
+name: Gate Aggregator
+kind: tool
+version: 0.1.0
+description: |
+  Deterministic, LLM-free T0 convergence aggregator (ADR-040 §2, EPIC #1129 B5,
+  issue #1137). Collapses the mechanical gate stages into ONE convergence verdict
+  — the single merge-blocking construct in the decomposed pipeline (ADR-040 §5).
+
+  Must-pass set (each read from its recorded result artifact in the shared
+  artifacts dir): suite (the `test` stage / test-results.json), shape-floor,
+  acceptance-gate, lint, coverage, mutation, secret-scan.
+
+  Verdict: pass IFF every must-pass gate's artifact is PRESENT, well-formed, and
+  carries a verdict in {pass, skip}. A gate that ran and self-skipped (verdict
+  "skip" — e.g. shape-floor with no shape change, secret-scan on an empty diff)
+  is treated as pass-equivalent. FAIL-CLOSED (ADR-019, re-expressed by ADR-040):
+    - any gate verdict == fail (or test's "error") → verdict=fail
+    - any REQUIRED gate artifact missing or malformed → verdict=fail (NOT skip);
+      a gate that did not run cannot be trusted to have passed.
+  Always returns rc=0; the verdict lives in gate-aggregator-result.json
+  (ADR-004 verdict-in-artifact convention, mirrors objective-gate/shape-floor).
+  ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
+
+hooks:
+  init: gate_aggregator_init
+  run: gate_aggregator_run
+  finalize: gate_aggregator_finalize
+  cleanup: gate_aggregator_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: gate_aggregator
+  primary: true
+  artifact_type: gate-aggregator-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+
+# The gate results are read by filename from the shared artifacts dir (the same
+# dir each gate writes into), mirroring objective-gate's `source: artifacts`
+# reads. required:false at the wiring level keeps the aggregator composable
+# (a template need not wire every gate); the runtime fail-closes on a missing
+# REQUIRED gate independently of this static-wiring flag.
+inputs:
+  - id: test_results
+    source: artifacts
+    path: test-results.json
+    required: false
+  - id: shape_floor_result
+    source: artifacts
+    path: shape-floor-result.json
+    required: false
+  - id: gate_result
+    source: artifacts
+    path: acceptance-gate-result.json
+    required: false
+  - id: lint_result
+    source: artifacts
+    path: lint-result.json
+    required: false
+  - id: coverage_result
+    source: artifacts
+    path: coverage-result.json
+    required: false
+  - id: mutation_result
+    source: artifacts
+    path: mutation-result.json
+    required: false
+  - id: secret_scan_result
+    source: artifacts
+    path: secret-scan-result.json
+    required: false
+
+outputs:
+  - id: gate_aggregator_result
+    path: "${artifact_dir}/gate-aggregator-result.json"
+    type: gate-aggregator-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: [last_verdict]
+  reconstructed: []
