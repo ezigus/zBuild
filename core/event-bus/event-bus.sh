@@ -27,11 +27,22 @@ ZBUILD_EVENT_SCHEMA="${ZBUILD_EVENT_SCHEMA:-${_ZBUILD_ROOT_FOR_EVENTS}/config/ev
 _eb_init() {
     mkdir -p "$ZBUILD_EVENTS_DIR"
     : > "${ZBUILD_EVENTS_JSONL}.lock" 2>/dev/null || true
+    # DEDICATED lock for the SQLite mirror write, SEPARATE from the jsonl lock.
+    # The mirror is best-effort, so it must never contend for the lock that
+    # guards the authoritative jsonl append — distinct locks guarantee a slow
+    # mirror write can never block the source-of-truth append (#1153).
+    : > "${ZBUILD_EVENTS_DB}.lock" 2>/dev/null || true
     # SQLite is optional — only init if sqlite3 is present
     if command -v sqlite3 >/dev/null 2>&1 && [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
         local _eb_init_err
-        _eb_init_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
-PRAGMA busy_timeout=2000;
+        # busy_timeout via -cmd (no stdout echo, unlike PRAGMA busy_timeout=N).
+        # Concurrent mirror writes are serialized by flock (ADR-005) in
+        # eb_emit_event — flock is the deterministic primitive zbuild requires,
+        # whereas sqlite3 is optional. The timeout is just a cheap safety net
+        # for a stale lock holder (#1059 chose 2000ms). The mirror stays in the
+        # default journal mode: no concurrent reader of events.db exists (jsonl
+        # is the only read path, via eb_query_events).
+        _eb_init_err="$(sqlite3 -cmd ".timeout 2000" "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -151,14 +162,33 @@ eb_emit_event() {
         _plugin_esc="$(_eb_sql_escape "$plugin")"
         _kind_esc="$(_eb_sql_escape "$kind")"
         _payload_esc="$(_eb_sql_escape "$payload")"
-        local _eb_emit_err
-        _eb_emit_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<SQL 2>&1
-PRAGMA busy_timeout=2000;
-INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version)
-VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);
-SQL
-        )" || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
+        local _eb_insert_sql
+        _eb_insert_sql="INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version) VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);"
+        # Serialize the mirror INSERT with flock on the DEDICATED db lock (NOT
+        # the jsonl lock): flock is the deterministic primitive zbuild requires
+        # (ADR-005), so concurrent emitters (#1131) no longer collide on the
+        # mirror write. Separate lock ⇒ the best-effort mirror can never block
+        # the authoritative jsonl append above. flock-timeout ⇒ drop the mirror
+        # write (exit 0), never fail the emit (#1153).
+        if zbuild_has_flock; then
+            (
+                flock -w 5 9 || exit 0
+                _eb_mirror_insert "$_eb_insert_sql"
+            ) 9>"${ZBUILD_EVENTS_DB}.lock"
+        else
+            _eb_mirror_insert "$_eb_insert_sql"
+        fi
     fi
+}
+
+# _eb_mirror_insert — run one best-effort mirror INSERT; warn (never fail) on
+# sqlite3 error. Caller serializes via flock. busy_timeout via -cmd (no stdout,
+# unlike PRAGMA busy_timeout=N which echoes the value) is a safety net for a
+# stale lock holder (#1059 chose the 2000ms window).
+_eb_mirror_insert() {
+    local _eb_emit_err
+    _eb_emit_err="$(sqlite3 -cmd ".timeout 2000" "$ZBUILD_EVENTS_DB" "$1" 2>&1)" \
+        || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
 }
 
 # _eb_sql_escape: double single-quotes for SQLite single-quoted string literals.
