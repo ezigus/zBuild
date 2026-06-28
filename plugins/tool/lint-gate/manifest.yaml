@@ -11,7 +11,7 @@ description: |
     - lint.status fail     → verdict=fail
     - lint.status pass     → verdict=pass
   When test-results.json is absent or carries no `lint` block → verdict=skip.
-  Always returns rc=0; the verdict lives in lint-result.json (ADR-004
+  Always returns rc=0; the verdict lives in lint-result.json (ADR-040
   verdict-in-artifact convention, mirrors shape-floor).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 

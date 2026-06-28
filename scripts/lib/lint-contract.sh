@@ -33,7 +33,11 @@ _PLUGINS_ROOT="${ZBUILD_PLUGINS_ROOT:-$_LINT_CONTRACT_REPO/plugins}"
 # ADR-020 lint scope: only stage-bound plugins participate in the inter-stage
 # data contract. Backend services (cache/memory/orchestrator/claim-coordinator)
 # don't read/produce stage artifacts and are intentionally excluded. The
-# explicit allowlist below mirrors ADR-013's canonical stage set.
+# explicit allowlist below is a CURATED SUBSET of ADR-013's canonical stages —
+# the LLM/agent stages that exchange the inter-stage data contract. The T0
+# read-out gate plugins (shape-floor, lint/coverage/mutation, secret-scan,
+# gate-aggregator) are deliberately NOT listed here; their manifests are
+# validated by plugin-manifest-contract-audit instead (PR #1163 review).
 _LC_STAGE_IDS_TO_CHECK=(intake plan design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor security-lens)
 
 _lc_id_in_scope() {

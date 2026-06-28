@@ -19,7 +19,7 @@ description: |
     - any REQUIRED gate artifact missing or malformed → verdict=fail (NOT skip);
       a gate that did not run cannot be trusted to have passed.
   Always returns rc=0; the verdict lives in gate-aggregator-result.json
-  (ADR-004 verdict-in-artifact convention, mirrors shape-floor).
+  (ADR-040 verdict-in-artifact convention, mirrors shape-floor).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:

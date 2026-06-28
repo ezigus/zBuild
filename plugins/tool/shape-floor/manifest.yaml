@@ -18,7 +18,7 @@ description: |
   Merge-base is resolved via zbuild_resolve_merge_base (origin/main → main →
   HEAD~1), NOT HEAD~1, so the floor sees the full branch change set.
 
-  Always returns rc=0; the verdict lives in the artifact (ADR-004 verdict-in-artifact).
+  Always returns rc=0; the verdict lives in the artifact (ADR-040 verdict-in-artifact).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
