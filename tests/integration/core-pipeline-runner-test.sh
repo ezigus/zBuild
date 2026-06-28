@@ -685,7 +685,23 @@ EOF
 # settle) proves the trap is armed and a live child is killable, closing the
 # pre-trap / not-yet-running kill window the prior anchor left open. The retry
 # loop remains as cheap insurance for genuine kernel signal-delivery races.
-i6_ok=0
+#
+# #1156: two robustness fixes for the load-dependent CI flake on the ubuntu leg:
+#   1. Only kill once plugin.run.start is CONFIRMED — never kill on a (rare)
+#      pre-kill-anchor timeout, which could land the signal before the trap is
+#      armed and produce neither event nor banner. A timed-out attempt retries.
+#   2. Verify the AUTHORITATIVE `pipeline.abort` event (mirrors the Test 10 / A2
+#      siblings) AND the stderr banner, each via a POST-kill poll to absorb
+#      scheduling/flush lag the prior single-shot `grep` raced against. The
+#      banner is the racier signal: the abort EXIT trap emits the event FIRST
+#      and renders the banner LAST, so the event is the durable record and a
+#      single un-polled `grep` immediately after `wait` can miss a banner that
+#      lands a beat later under load. Asserting the polled event keeps the
+#      proof anchored on the reliable record; polling the banner (now made
+#      deterministic at all render sites by the runner.sh _render_pipeline_end
+#      errexit fix in this change) keeps the original #525 intent intact.
+i6_event_ok=0
+i6_banner_ok=0
 for _attempt in 1 2 3 4 5; do
     rm -f "$I6_EVENTS_JSONL" "$I6_STDERR"
     ZBUILD_PLUGINS_ROOT="$I6_PLUGINS" \
@@ -696,15 +712,37 @@ for _attempt in 1 2 3 4 5; do
     NO_COLOR=1 \
     bash "$RUNNER" --issue 83 2>"$I6_STDERR" >/dev/null &
     i6_pid=$!
-    wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' || true
+    # Generous explicit pre-kill budget; only kill on a CONFIRMED anchor so a
+    # slow-startup box never gets a premature (pre-trap) kill.
+    if ! wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' 600 0.1; then
+        kill "$i6_pid" 2>/dev/null || true
+        wait "$i6_pid" 2>/dev/null || true
+        continue
+    fi
     kill "$i6_pid" 2>/dev/null || true
     wait "$i6_pid" 2>/dev/null || true
-    if [[ -f "$I6_STDERR" ]] && grep -q "Pipeline aborted:" "$I6_STDERR"; then
-        i6_ok=1; break
+    # Poll post-kill: the trap emits the event then renders the banner; both can
+    # lag the `wait` return under load. Treat the attempt as good only when both
+    # are observed.
+    wait_for_event "$I6_EVENTS_JSONL" '"pipeline.abort"' 50 0.1 || true
+    if grep -q '"pipeline.abort"' "$I6_EVENTS_JSONL" 2>/dev/null; then
+        i6_event_ok=1
     fi
+    wait_for_event "$I6_STDERR" "Pipeline aborted:" 50 0.1 || true
+    if grep -q "Pipeline aborted:" "$I6_STDERR" 2>/dev/null; then
+        i6_banner_ok=1
+    fi
+    [[ "$i6_event_ok" -eq 1 && "$i6_banner_ok" -eq 1 ]] && break
 done
 
-if [[ "$i6_ok" -eq 1 ]]; then
+if [[ "$i6_event_ok" -eq 1 ]]; then
+    assert_pass "I6 #525: SIGTERM emits pipeline.abort event via EXIT trap"
+else
+    assert_fail "I6 #525: SIGTERM emits pipeline.abort event via EXIT trap" \
+                "events: $(tr '\n' '|' < "$I6_EVENTS_JSONL" 2>/dev/null | head -c 400)"
+fi
+
+if [[ "$i6_banner_ok" -eq 1 ]]; then
     assert_pass "I6 #525: SIGTERM emits ✗ aborted terminal banner"
 else
     assert_fail "I6 #525: SIGTERM emits ✗ aborted terminal banner" \

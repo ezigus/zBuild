@@ -254,12 +254,22 @@ _render_pipeline_end() {
     local rc_hint="${3:-}"
     local run_id="${_runner_run_id:-?}"
     local issue="${_runner_issue:-?}"
-    local dur; dur="$(_runner_pipeline_duration_token)"
-    local glyph; glyph="$(_pipeline_status_glyph "$status")"
-    local color; color="$(_pipeline_status_color "$status")"
+    # Best-effort value gathering. Each `$(...)` here forks a helper that may
+    # itself fork an external (awk in the duration token, date/tput in the
+    # clock/width helpers). Most call sites invoke this banner DIRECTLY under the
+    # runner's `set -e` (e.g. the cycle/stage abort + LLM/scope-abort paths) —
+    # not wrapped in `|| true` — so a transient under-load fork failure in any
+    # one of these bare assignments would trip errexit and abort the render
+    # BEFORE the printf block, silently dropping the operator's terminal banner
+    # mid-teardown. `|| fallback` neutralizes errexit at each assignment so the
+    # banner is always emitted once the function is reached, on every call site.
+    # (#1156)
+    local dur; dur="$(_runner_pipeline_duration_token)" || dur='?s'
+    local glyph; glyph="$(_pipeline_status_glyph "$status")" || glyph='✗'
+    local color; color="$(_pipeline_status_color "$status")" || color=''
     local frame="${BLUE:-}"
-    local ts; ts="$(_runner_now_short)"
-    local width; width="$(_term_width)"
+    local ts; ts="$(_runner_now_short)" || ts='??:??:?? UTC'
+    local width; width="$(_term_width)" || width=80
 
     # Map status → operator-friendly verb for line 2. Tracks event payload
     # verbatim so "status=<X>" agrees with the verb. ("success" in legacy
