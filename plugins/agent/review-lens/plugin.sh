@@ -208,6 +208,10 @@ _review_lens_run_inner() {
         return 0
     fi
 
+    # Primary output (manifest provides.outputs, primary:true) is
+    # lens-${ZBUILD_REVIEW_LENS_ID}.json — here "$out" resolves to
+    # $artifact_dir/lens-$lens.json (same file; $lens is the resolved id). Written
+    # atomically below to satisfy the #507 primary-output atomicity contract.
     printf '%s' "$normalized" | atomic_write "$out"
     local score findings_count
     score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
