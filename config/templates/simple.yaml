@@ -9,22 +9,17 @@ defaults:
   strategy: fanout
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
-# Simplified pipeline (ADR-037 EPIC #966 I2+I3+I4): 6 top-level flow units —
-# intake, plan, design, build_test_cycle, review, pr — where build_test_cycle
-# groups the build/test/objective-gate leaves (8 leaf stages total).
-# Omits: impact, test_assessment, acceptance-gate, cq-* stages (targeted for
-# removal in #979). Starts closer to the intended final shape so subsequent
-# issues (#969-#979) can build the new pipeline here while standard.yaml
-# continues to serve production.
+# Simplified pipeline (ADR-037 EPIC #966 / ADR-040 EPIC #1129): 6 top-level flow
+# units — intake, plan, design, build_test_cycle, review, pr — where
+# build_test_cycle groups the build/test leaves plus the decomposed mechanical
+# gate stages.
 #
-# Stage order (issue #970): objective-gate runs after test (now inside
-# build_test_cycle) so post-build artifacts (coverage report, git diff) are
-# available for the coverage-floor and scope-adherence gates.
-#   After test:   objective-gate (#970) then evidence-fed review stages (#972, #973, #974)
-#
-# I10-A (#976): build/test/objective-gate wrapped in build_test_cycle (ADR-021).
-# The exit_when predicate is concrete and parsed, but not yet load-bearing for
-# convergence — see the cycle block below. I10-B makes it drive looping.
+# I10-A..C historically wrapped build/test/objective-gate in build_test_cycle.
+# B6 (#1138, ADR-040 — amends ADR-013/ADR-021/ADR-019; executes ADR-037 §6)
+# CUTS OVER convergence from the monolithic objective-gate to the composable
+# mechanical gates + gate-aggregator. objective-gate is now UNREFERENCED here
+# (the plugin is deleted in B7); the single merge-blocking construct is the
+# gate-aggregator verdict (ADR-040 §5), reached via the cycle's exit_when.
 flow:
   - intake
   - plan
@@ -37,50 +32,66 @@ flow:
   - pr
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
-# I10-B (#1089): max_iterations raised to 5 so the exit_when predicate is
-# load-bearing for convergence. Cycle re-runs build/test/objective-gate until
-# objective-gate emits verdict:pass or max_iterations is exhausted.
-#
-# I10-C: test_assessment is permanently retired as convergence driver for this
-# template. Convergence is owned exclusively by objective-gate via exit_when
-# below. The empty_diff/coercion convergence class in test_assessment/plugin.sh
-# is not applicable here — simple.yaml does not include test_assessment in this
-# cycle at all. If test_assessment is ever wired in as an advisory stage in a
-# future issue, set ZBUILD_TEST_ASSESSMENT_ADVISORY=1 in the stage env so the
-# pass-invariant coercion is suppressed (ADR-022 Amendment v6).
+# B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
+# mechanical gates (shape-floor, acceptance-gate, lint, coverage, mutation,
+# secret-scan) and finally the gate-aggregator, which collapses every must-pass
+# gate into ONE convergence verdict. exit_when fires on gate-aggregator.verdict
+# == pass — the ADR-019 fail-closed contract re-expressed as a single composable
+# construct (ADR-040 §5). The individual gates are NON-blocking (no blocking:true):
+# they emit verdict-in-artifact (ADR-004) and the cycle iterates-to-fix; the loop
+# converges via exit_when, never via per-gate hard-blocks. max_iterations: 5 with
+# on_max: continue (ADR-019 fall-through to operator — the unconverged verdict
+# still records, the pipeline continues to review).
 build_test_cycle:
   type: cycle
+  description: Build, test, and run the mechanical gates until gate-aggregator passes
   flow:
     - build
     - test
-    - objective-gate
+    - shape-floor
+    - acceptance-gate
+    - lint
+    - coverage
+    - mutation
+    - secret-scan
+    - gate-aggregator
   exit_when:
-    stage: objective-gate
+    stage: gate-aggregator
     field: verdict
     op: eq
     value: pass
   max_iterations: 5
   on_max: continue
-  # I10-B follow-up (#1117): feedback edge so the cycle can CONVERGE instead of
-  # spinning build(no-op)→test(fail)→objective-gate(fail). Without this, every
-  # iteration re-runs build with the identical original task and zero failure
-  # context, so build sees the work already committed and emits empty_diff.
-  # The edge carries the test stage's failure summary into the next-iter build
-  # prompt. It reuses build's EXISTING prior_test_assessment cycle_feedback input
-  # (the build plugin already splices that file into its prompt as CURRENT
-  # ITERATION FEEDBACK); simple.yaml omits the test_assessment stage, so the
-  # producer is the test stage's test-failures-summary.md (manifest output id
-  # test_failures_summary). required:false — the summary is ABSENT when no test
-  # fails (missing==empty semantics), and a missing producer must NOT abort the
-  # cycle. NB (Wave 18-B): the `to:` MUST use block form (the template translator
-  # handles block `to:`, not the inline `to: { ... }` form).
+  # Feedback edges so the cycle can CONVERGE instead of spinning
+  # build(no-op)→…→gate-aggregator(fail). Both reuse build's EXISTING
+  # cycle_feedback inputs (the build plugin already splices these into its prompt).
+  # required:false — a producer is ABSENT when the corresponding gate self-skips
+  # or no failure occurred (missing==empty semantics), and a missing producer must
+  # NOT abort the cycle. NB (Wave 18-B): the `to:` MUST use block form (the
+  # template translator handles block `to:`, not the inline `to: { ... }` form).
   feedback:
+    # #1117 edge (retained): the test stage's failure summary carries into the
+    # next-iter build prompt via build's prior_test_assessment input.
     - from:
         stage: test
         output: test_failures_summary
       to:
         stage: build
         input: prior_test_assessment
+        required: false
+    # B6 (#1138) NEW edge: the acceptance-gate's coverage finding (untagged SPEC
+    # ids) feeds build directly + structured, so build adds missing [SPEC-n] tags
+    # inside the cycle. This is an acceptance-gate→build edge mirroring the Layer-2
+    # edge already proven in standard.yaml's build_review_cycle (#951) — it is NOT
+    # a revival of the retired ADR-026/#951 build_review_cycle review→build edge.
+    # from.output MUST be the manifest output id `gate_result` (NOT a filename) —
+    # _cycle_resolve_from_path looks it up in acceptance-gate's outputs[].
+    - from:
+        stage: acceptance-gate
+        output: gate_result
+      to:
+        stage: build
+        input: prior_acceptance_feedback
         required: false
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
@@ -102,16 +113,6 @@ plan:
     timeout_s: 300
     max_turns: 25
 
-# ─── objective-gate (leaf) ───────────────────────────────────────────────────
-# T0 tool stage (ADR-013, ADR-037 §1, issue #969): runs the test suite +
-# lint/shellcheck; hard-blocks on any failure; no LLM call.
-objective-gate:
-  gate: auto
-  roles: [objective-gate]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
 # ─── design (leaf) ───────────────────────────────────────────────────────────
 design:
   gate: auto
@@ -123,7 +124,7 @@ design:
     timeout_s: 600
     max_turns: 0
 
-# ─── build (leaf) ────────────────────────────────────────────────────────────
+# ─── build (leaf, cycle member) ──────────────────────────────────────────────
 build:
   gate: auto
   roles: [builder]
@@ -134,10 +135,85 @@ build:
     timeout_s: 900
     max_turns: 0
 
-# ─── test (leaf) ─────────────────────────────────────────────────────────────
+# ─── test (leaf, cycle member) ───────────────────────────────────────────────
 test:
   gate: auto
   roles: [tester]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── shape-floor (leaf, cycle member) ────────────────────────────────────────
+# T0 tool gate (ADR-040, #1134): un-gameable shape-floor check. verdict-in-artifact.
+shape-floor:
+  gate: auto
+  roles: [shape_floor]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── acceptance-gate (leaf, cycle member) ────────────────────────────────────
+# Mechanical (non-LLM) acceptance-contract gate (ADR-036, #922). No-op pass when
+# the design acceptance block is absent (its design input is required:false in the
+# manifest — design already emits the SPEC/WIRING block). Its gate_result feeds
+# the acceptance→build feedback edge above.
+acceptance-gate:
+  gate: auto
+  roles: [acceptance_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 10
+
+# ─── lint (leaf, cycle member) ───────────────────────────────────────────────
+# T0 read-out gate (ADR-040, #1135): maps the shared test-results.json lint block
+# to a verdict; never re-runs the linter. verdict-in-artifact.
+lint:
+  gate: auto
+  roles: [lint_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── coverage (leaf, cycle member) ───────────────────────────────────────────
+# T0 read-out gate (ADR-040, #1135): maps the shared test-results.json coverage
+# block to a verdict; never re-runs coverage. verdict-in-artifact.
+coverage:
+  gate: auto
+  roles: [coverage_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── mutation (leaf, cycle member) ───────────────────────────────────────────
+# T0 read-out gate (ADR-040, #1135): maps the shared test-results.json mutation
+# block to a verdict; never re-runs the mutation harness. verdict-in-artifact.
+mutation:
+  gate: auto
+  roles: [mutation_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── secret-scan (leaf, cycle member) ────────────────────────────────────────
+# T0 tool gate (ADR-040, #1136): blocks hardcoded secrets/.env in the diff.
+# verdict-in-artifact (skip on empty diff).
+secret-scan:
+  gate: auto
+  roles: [secret_scan]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── gate-aggregator (leaf, cycle member) ────────────────────────────────────
+# T0 convergence aggregator (ADR-040 §2/§5, #1137): collapses the must-pass gate
+# set into ONE verdict. This is the cycle's exit_when source and the single
+# merge-blocking construct in the decomposed pipeline. verdict-in-artifact.
+gate-aggregator:
+  gate: auto
+  roles: [gate_aggregator]
   io:
     destinations: [file, stdout]
     tail_lines: 200

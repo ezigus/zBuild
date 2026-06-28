@@ -37,15 +37,17 @@ set -e
 
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
-# ─── SPEC-2: _TPL_STAGES has exactly 8 entries in canonical order ─────────────
-# CHANGE: issue #970 moves objective-gate from index 2 (after plan) to index 5
-# (after test, before review). The required flat sequence is now:
-#   intake→plan→design→build→test→objective-gate→review→pr
-# test_assessment and acceptance-gate explicitly omitted (ADR-037 / issue #968 DoD).
+# ─── SPEC-2: _TPL_STAGES has exactly 14 entries in canonical order ────────────
+# CHANGE (B6 #1138, ADR-040): build_test_cycle is recomposed from the monolithic
+# objective-gate to the decomposed mechanical gates + gate-aggregator. The flat
+# sequence is now:
+#   intake→plan→design→build→test→shape-floor→acceptance-gate→lint→coverage→
+#   mutation→secret-scan→gate-aggregator→review→pr
+# objective-gate is UNREFERENCED (deleted in B7); test_assessment stays omitted.
 
-assert_eq "[SPEC-2] _TPL_STAGES count is 8" "8" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-2] _TPL_STAGES count is 14" "14" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(intake plan design build test objective-gate review pr)
+_expected_stages=(intake plan design build test shape-floor acceptance-gate lint coverage mutation secret-scan gate-aggregator review pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -71,9 +73,22 @@ assert_eq "[SPEC-3] plan io_dests"          "file,stdout" "$_TPL_STAGE_IO_DESTS_
 assert_eq "[SPEC-3] plan router timeout"    "300"         "$_TPL_STAGE_ROUTER_TIMEOUT_plan"
 assert_eq "[SPEC-3] plan router max_turns"  "25"          "$_TPL_STAGE_ROUTER_MAX_TURNS_plan"
 
-# objective-gate (T0 tool — no router section)
-assert_eq "[SPEC-3] objective-gate roles"    "objective-gate" "$_TPL_STAGE_ROLES_objective_gate"
-assert_eq "[SPEC-3] objective-gate io_dests" "file,stdout"    "$_TPL_STAGE_IO_DESTS_objective_gate"
+# decomposed mechanical gates (B6 #1138, ADR-040) — bound by role, not stage id.
+# shape-floor / lint / coverage / mutation / secret-scan / gate-aggregator are T0
+# tools (no router section); acceptance-gate is the mechanical T1 contract gate.
+assert_eq "[SPEC-3] shape-floor roles"      "shape_floor"     "$_TPL_STAGE_ROLES_shape_floor"
+assert_eq "[SPEC-3] acceptance-gate roles"  "acceptance_gate" "$_TPL_STAGE_ROLES_acceptance_gate"
+assert_eq "[SPEC-3] lint roles"             "lint_gate"       "$_TPL_STAGE_ROLES_lint"
+assert_eq "[SPEC-3] coverage roles"         "coverage_gate"   "$_TPL_STAGE_ROLES_coverage"
+assert_eq "[SPEC-3] mutation roles"         "mutation_gate"   "$_TPL_STAGE_ROLES_mutation"
+assert_eq "[SPEC-3] secret-scan roles"      "secret_scan"     "$_TPL_STAGE_ROLES_secret_scan"
+assert_eq "[SPEC-3] gate-aggregator roles"  "gate_aggregator" "$_TPL_STAGE_ROLES_gate_aggregator"
+assert_eq "[SPEC-3] gate-aggregator io_dests" "file,stdout"   "$_TPL_STAGE_IO_DESTS_gate_aggregator"
+
+# objective-gate is no longer a stage in simple.yaml (B6 #1138 cutover): its role
+# var must be UNSET (the section was removed; convergence is via gate-aggregator).
+assert_eq "[SPEC-3] objective-gate stage removed (role var unset)" \
+    "" "${_TPL_STAGE_ROLES_objective_gate:-}"
 
 # design
 assert_eq "[SPEC-3] design roles"            "designer"    "$_TPL_STAGE_ROLES_design"
@@ -117,10 +132,11 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── SPEC-11: dispatch units are 6 (build/test/objective-gate grouped in cycle)
-# CHANGE (I10-A #976): simple.yaml gains build_test_cycle, so the three leaf
-# stages (build, test, objective-gate) collapse into one cycle dispatch unit.
-# Count drops from 8 → 6: intake, plan, design, cycle:build_test_cycle, review, pr.
+# ─── SPEC-11: dispatch units are 6 (all build_test_cycle members grouped) ─────
+# B6 (#1138): the cycle now has 9 members (build, test, shape-floor,
+# acceptance-gate, lint, coverage, mutation, secret-scan, gate-aggregator) but
+# they still collapse into ONE cycle dispatch unit. Count stays 6: intake, plan,
+# design, cycle:build_test_cycle, review, pr.
 
 assert_eq "[SPEC-11] dispatch units count is 6" "6" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[0]}"
@@ -131,16 +147,18 @@ assert_eq "[SPEC-11] dispatch[4] stage:review"         "stage:review"         "$
 assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[5]}"
 
 # ─── SPEC-14 / SPEC-5: build_test_cycle registered with correct stages and max ─
-# CHANGE (I10-A #976): _TPL_CYCLES must contain build_test_cycle with its three
-# member stages. CHANGE (I10-B #1089 / SPEC-5): max_iterations raised from 1
-# to 5 so the exit_when predicate drives looping (was single-pass skeleton).
+# CHANGE (B6 #1138, ADR-040): _TPL_CYCLES must contain build_test_cycle with its
+# 9 decomposed members (build/test + the mechanical gates + gate-aggregator).
+# max_iterations stays 5 (I10-B #1089) — the exit_when predicate (now on
+# gate-aggregator) drives looping.
 
 _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
 assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "build,test,objective-gate" "$_TPL_CYCLE_STAGES_build_test_cycle"
-assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 5 (I10-B raises from 1)" \
+    "build,test,shape-floor,acceptance-gate,lint,coverage,mutation,secret-scan,gate-aggregator" \
+    "$_TPL_CYCLE_STAGES_build_test_cycle"
+assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 5 (I10-B)" \
     "5" "$_TPL_CYCLE_MAX_build_test_cycle"
 
 # ─── SPEC-15: build_test_cycle exit_when predicate fields are set correctly ───
@@ -148,7 +166,7 @@ assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 5 (I10-B raises
 # cycle validator and runner can resolve the break-out condition.
 
 assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_STAGE_build_test_cycle" \
-    "objective-gate" "$_TPL_CYCLE_UNTIL_STAGE_build_test_cycle"
+    "gate-aggregator" "$_TPL_CYCLE_UNTIL_STAGE_build_test_cycle"
 assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_FIELD_build_test_cycle" \
     "verdict" "$_TPL_CYCLE_UNTIL_FIELD_build_test_cycle"
 assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle" \
@@ -156,11 +174,13 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle" \
 assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
     "pass" "$_TPL_CYCLE_UNTIL_VALUE_build_test_cycle"
 
-# ─── SPEC-12: objective-gate is at index 5 in _TPL_STAGES (after test) ────────
-# CHANGE: at merge-base objective-gate was at index 2. Issue #970 moves it to
-# index 5. This assertion fails at baseline and passes with the new order.
+# ─── SPEC-12: shape-floor is at index 5 in _TPL_STAGES (after test) ───────────
+# CHANGE (B6 #1138): index 5 was objective-gate; after the cutover the first
+# mechanical gate (shape-floor) occupies the slot right after the test stage.
 
-assert_eq "[SPEC-12] _TPL_STAGES[5] == objective-gate" "objective-gate" "${_TPL_STAGES[5]}"
+assert_eq "[SPEC-12] _TPL_STAGES[5] == shape-floor" "shape-floor" "${_TPL_STAGES[5]}"
+assert_eq "[SPEC-12] _TPL_STAGES[11] == gate-aggregator (cycle exit_when source)" \
+    "gate-aggregator" "${_TPL_STAGES[11]}"
 
 # ─── SPEC-13: design is at index 2 (shifted from prior index 3) ──────────────
 # CHANGE: issue #970 moves objective-gate out of position 2, so design shifts
@@ -182,12 +202,12 @@ assert_eq "[SPEC-6] simple.yaml: pr roles remain pr (not pr_delivery, guard)" \
 assert_eq "[SPEC-7] template_merge_policy() == auto_unless_flagged" \
     "auto_unless_flagged" "$(template_merge_policy)"
 
-# I10-C (#1090) retirement guard: test_assessment is excluded from
-# build_test_cycle and convergence is owned by objective-gate. That invariant is
-# already enforced above — SPEC-14 pins _TPL_CYCLE_STAGES to
-# "build,test,objective-gate" (test_assessment absent) and SPEC-15 pins the
-# exit_when source to objective-gate. No separate assertion is added here to
-# avoid duplicating those checks (Copilot review).
+# Retirement guards (I10-C #1090 + B6 #1138): test_assessment AND objective-gate
+# are both excluded from build_test_cycle; convergence is owned by the
+# gate-aggregator. That invariant is already enforced above — SPEC-14 pins
+# _TPL_CYCLE_STAGES to the decomposed gate roster (test_assessment + objective-gate
+# both absent) and SPEC-15 pins the exit_when source to gate-aggregator. No
+# separate assertion is added here to avoid duplicating those checks.
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 

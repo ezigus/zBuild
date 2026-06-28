@@ -27,10 +27,17 @@ fi
 # Issue #969: objective-gate inserted after plan (ADR-037 §1 / ADR-013 amendment).
 # Issue #970: objective-gate moved to position 7 (after test_assessment, before acceptance-gate) so
 #   post-build artifacts (coverage, diff) are available (ADR-037 §1 / ADR-013 amendment).
-# Exactly these 18 ids, in this order:
-#   intake plan design impact build test test_assessment objective-gate acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+# Issue #1138 [B6] (ADR-040, EPIC #1129): the decomposed mechanical gate stages
+#   are canonicalized so simple.yaml's build_test_cycle can converge via the
+#   composable gates + gate-aggregator instead of the monolithic objective-gate.
+#   shape-floor lands after test; lint/coverage/mutation/secret-scan/gate-aggregator
+#   after acceptance-gate. No single template uses both objective-gate AND the
+#   decomposed gates, so their relative order here is unconstrained (membership +
+#   monotonic order are still enforced per template).
+# Exactly these 24 ids, in this order:
+#   intake plan design impact build test shape-floor test_assessment objective-gate acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan design impact build test test_assessment objective-gate acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+    intake plan design impact build test shape-floor test_assessment objective-gate acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template

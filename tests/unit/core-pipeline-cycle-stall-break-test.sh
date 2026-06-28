@@ -10,10 +10,12 @@
 # SPEC-2: the simple.yaml edge parses + the producer (test:test_failures_summary)
 #         resolves to a path that EXISTS in simple.yaml's flow (no required-edge
 #         cycle.feedback.missing surprise — it is required:false regardless).
-# SPEC-3: the stall-break fires — build verdict=empty_diff + objective-gate
+# SPEC-3: the stall-break fires — build verdict=empty_diff + gate-aggregator
 #         verdict!=pass ⇒ cycle terminates reason=stalled within <=2 iterations
 #         (NOT max_iterations=5), emitting cycle.stalled.
-# SPEC-4: empty_diff + objective-gate verdict=pass ⇒ converged (no false stall).
+# SPEC-4: empty_diff + gate-aggregator verdict=pass ⇒ converged (no false stall).
+# B6 (#1138, ADR-040): build_test_cycle converges on the gate-aggregator verdict,
+# not objective-gate — the stub drives the decomposed gate roster.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,8 +47,13 @@ source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 # EXISTS in simple.yaml's flow — the test stage is a cycle member).
 print_test_section "SPEC-2: feedback edge parses + producer resolves to a real artifact"
 
-assert_eq "[SPEC-2] simple.yaml build_test_cycle feedback edge parsed" \
-    "test:test_failures_summary|build:prior_test_assessment:false" \
+# B6 (#1138): two feedback edges now — the #1117 test→build edge plus the new
+# acceptance-gate→build edge (ADR-040). They parse as newline-joined FB records
+# in declaration order.
+_expected_fb="test:test_failures_summary|build:prior_test_assessment:false
+acceptance-gate:gate_result|build:prior_acceptance_feedback:false"
+assert_eq "[SPEC-2] simple.yaml build_test_cycle feedback edges parsed" \
+    "$_expected_fb" \
     "${_TPL_CYCLE_FEEDBACK_build_test_cycle:-}"
 
 _RESOLVE_DIR="$TEST_TEMP_DIR/resolve"
@@ -74,10 +81,15 @@ cat > "$FB_STATE/artifacts/test-failures-summary.md" <<'TFS'
 - tests/unit/example-test.sh: assert_eq "[SPEC-3] foo" expected=3 actual=2 FAILED
 TFS
 
-# Load the parsed edge into the orchestrator's feedback array (mirrors what
-# _cycle_load_template does at cycle entry) and wire it for the next iter. The
-# simple.yaml edge is a single newline-free record, so a one-element array.
-_CYCLE_FEEDBACK=("${_TPL_CYCLE_FEEDBACK_build_test_cycle}")
+# Load the parsed edges into the orchestrator's feedback array (mirrors what
+# _cycle_load_template does at cycle entry: split the newline-joined FB records).
+# B6 (#1138): simple.yaml now declares two edges; the acceptance-gate→build edge
+# is required:false and its producer is absent here, so it is skipped without
+# error while the test→build edge still delivers prior_test_assessment.txt.
+_fb_IFS_save="$IFS"; IFS=$'\n'
+# shellcheck disable=SC2206
+_CYCLE_FEEDBACK=(${_TPL_CYCLE_FEEDBACK_build_test_cycle})
+IFS="$_fb_IFS_save"
 set +e
 _cycle_apply_feedback 2 "$FB_STATE"; _fb_rc=$?
 set -e
@@ -93,8 +105,9 @@ assert_contains "[SPEC-1] feedback references the failure detail" \
 
 # ─── SPEC-3 / SPEC-4 (stall-break vs converge) ───────────────────────────────
 # Drive the REAL cycle_orchestrator_run with a stubbed dispatch hook. build always
-# emits empty_diff; objective-gate verdict is parameterized.
-_OG_VERDICT="fail"
+# emits empty_diff; every mechanical gate passes; the gate-aggregator (the cycle's
+# exit_when stage after the B6 #1138 cutover) verdict is parameterized.
+_GA_VERDICT="fail"
 # shellcheck disable=SC2317
 cycle_dispatch_stage() {
     local _st_stage="$1" _st_iter="$2" _st_state_file="$3"
@@ -115,11 +128,16 @@ cycle_dispatch_stage() {
             printf '{"schema_version":1,"verdict":"pass","exit_code":0,"passed":1,"failed":0}' \
                 > "$_art/test-results.json"
             ;;
-        objective-gate)
-            printf '{"schema_version":1,"verdict":"%s","summary":"x"}' "$_OG_VERDICT" \
-                > "$_art/objective-gate-result.json"
-            _CYCLE_DISPATCH_VERDICT="$_OG_VERDICT"
-            _CYCLE_DISPATCH_VERDICT_RAW="$_OG_VERDICT"
+        gate-aggregator)
+            printf '{"schema_version":1,"verdict":"%s","summary":"x"}' "$_GA_VERDICT" \
+                > "$_art/gate-aggregator-result.json"
+            _CYCLE_DISPATCH_VERDICT="$_GA_VERDICT"
+            _CYCLE_DISPATCH_VERDICT_RAW="$_GA_VERDICT"
+            ;;
+        *)
+            # shape-floor, acceptance-gate, lint, coverage, mutation, secret-scan:
+            # all pass (verdict defaults set above) so only the aggregator gates.
+            :
             ;;
     esac
     return 0
@@ -138,7 +156,7 @@ _run_cycle() {
 }
 
 print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ stall within <=2 iters (not 5)"
-_OG_VERDICT="fail"
+_GA_VERDICT="fail"
 _run_cycle "stall"
 assert_eq "[SPEC-3] cycle rc=2 (plateau-class soft-continue)" "2" "$_RUN_RC"
 assert_eq "[SPEC-3] terminated reason is stalled" "stalled" "${_CYCLE_LAST_TERMINATED_REASON:-}"
@@ -148,7 +166,7 @@ assert_eq "[SPEC-3] terminated reason is stalled" "stalled" "${_CYCLE_LAST_TERMI
 assert_contains "[SPEC-3] cycle.stalled event emitted" "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.stalled"
 
 print_test_section "SPEC-4: empty_diff + gate=pass ⇒ converged (no false stall)"
-_OG_VERDICT="pass"
+_GA_VERDICT="pass"
 _run_cycle "converge"
 assert_eq "[SPEC-4] cycle rc=0 (converged)" "0" "$_RUN_RC"
 assert_eq "[SPEC-4] terminated reason is converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"
