@@ -51,6 +51,8 @@ source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
 source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
 # ADR-021 (#512) outer-cycle orchestrator (F1, flag-gated by ZBUILD_CYCLES_ENABLED).
 source "$_ZBUILD_ROOT/core/pipeline/cycle-orchestrator.sh"
+# ADR-039 (#1131) parallel stage-group executor (sibling of the cycle orchestrator).
+source "$_ZBUILD_ROOT/core/pipeline/parallel-orchestrator.sh"
 
 _usage() {
     # Usage shown on error or --help. Unix convention: stderr (#619).
@@ -432,6 +434,34 @@ _render_cycle_entry() {
         fi
         printf '%b  (max_iterations=%s · stages=%s)%b\n' \
             "${DIM:-}" "$max" "$stages_csv" "${RESET:-}"
+        printf '\n'
+    } >&2 2>/dev/null || true
+}
+
+# ─── _render_parallel_entry <group_id> <max_parallel> <members_csv> ──────────
+# ADR-039 (#1131): clone of _render_cycle_entry for a parallel stage group.
+# Heavy `═` LIGHT_BLUE divider + `▸ Entering parallel group <id>` line + DIM
+# trailer (max_parallel + members). Emitted by the runner BEFORE
+# parallel_group_run so the operator's eye finds the group boundary first.
+_render_parallel_entry() {
+    local group_id="$1" max="$2" members_csv="${3:-}"
+    local width; width="$(_term_width)"
+    local label=" parallel: ${group_id} "
+    local sides=$(( (width - ${#label}) / 2 ))
+    [[ "$sides" -lt 2 ]] && sides=2
+    local bar
+    printf -v bar '%*s' "$sides" ''
+    bar="${bar// /═}"
+    {
+        printf '\n'
+        printf '%b%s%b%s%b%b%s%b\n' \
+            "${LIGHT_BLUE:-}" "$bar" "${BOLD:-}" "$label" "${RESET:-}" \
+            "${LIGHT_BLUE:-}" "$bar" "${RESET:-}"
+        printf '%b%b▸%b Entering parallel group: %b%b%s%b\n' \
+            "${LIGHT_BLUE:-}" "${BOLD:-}" "${RESET:-}" \
+            "${LIGHT_BLUE:-}" "${BOLD:-}" "$group_id" "${RESET:-}"
+        printf '%b  (max_parallel=%s · members=%s)%b\n' \
+            "${DIM:-}" "$max" "$members_csv" "${RESET:-}"
         printf '\n'
     } >&2 2>/dev/null || true
 }
@@ -1240,6 +1270,27 @@ main() {
             ;;
     esac
 
+    # ADR-039 (#1131): a parallel group is a first-class dispatch unit — it is
+    # NOT behind ZBUILD_CYCLES_ENABLED (that flag gates cycle convergence only).
+    # Detect any parallel:<gid> unit so the cycle-aware dispatch loop runs even
+    # for a template that has parallel groups but no cycles.
+    local _template_has_parallel=0 _pu
+    if [[ ${#_TPL_DISPATCH_UNITS[@]} -gt 0 ]]; then
+        for _pu in "${_TPL_DISPATCH_UNITS[@]}"; do
+            [[ "$_pu" == parallel:* ]] && _template_has_parallel=1 && break
+        done
+    fi
+    # Enter the dispatch-unit loop when cycles are active OR the template has a
+    # parallel group with no cycles. When cycles exist but are env-disabled, the
+    # legacy linear path stays authoritative (parallel members then degrade to
+    # sequential dispatch there) so the cycle env-override is never weakened.
+    local _run_dispatch_units=0
+    if [[ $_has_cycle_unit -eq 1 ]]; then
+        _run_dispatch_units=1
+    elif [[ $_template_has_parallel -eq 1 && $_template_has_cycle -eq 0 ]]; then
+        _run_dispatch_units=1
+    fi
+
     # cycle_dispatch_stage hook — F1 uses the same per-stage path that the
     # legacy stage loop uses. Returns the stage's rc; the orchestrator owns the
     # iteration semantics. Sets _CYCLE_DISPATCH_VERDICT / _CYCLE_DISPATCH_STATUS
@@ -1308,6 +1359,45 @@ main() {
         return $_cd_rc
     }
 
+    # ADR-039 (#1131): parallel-group member dispatch hook. Mirrors
+    # cycle_dispatch_stage's plugin invocation + verdict readback, but publishes
+    # the _PARALLEL_DISPATCH_* channel so it can run concurrently in a member
+    # subshell without racing the cycle channel. The member subshell reads these
+    # globals (they are subshell-local copies — no cross-member contention) and
+    # writes its private per-slot sidecars; the parent never reads this channel.
+    parallel_dispatch_stage() {
+        local _pd_stage="$1" _pd_state="$2"
+        _PARALLEL_DISPATCH_VERDICT=""
+        _PARALLEL_DISPATCH_VERDICT_RAW=""
+        _PARALLEL_DISPATCH_STATUS=""
+        _PARALLEL_DISPATCH_REASON=""
+        local _pd_plugin_dir _pd_rc=0
+        _pd_plugin_dir="$(_find_plugin_for_stage "$_pd_stage" "$plugins_root" 2>/dev/null || true)"
+        if [[ -z "$_pd_plugin_dir" ]]; then
+            _PARALLEL_DISPATCH_VERDICT="error"
+            _PARALLEL_DISPATCH_VERDICT_RAW="error"
+            _PARALLEL_DISPATCH_STATUS="failed"
+            return 1
+        fi
+        set +e; plugin_hook_call "$_pd_plugin_dir" run "$_pd_stage" "$_pd_state"; _pd_rc=$?; set -e
+        local _pd_manifest="$_pd_plugin_dir/manifest.yaml"
+        # CLASSIFIED verdict (pass|warn|fail|…) — authoritative for the
+        # .stage_verdicts contract + indicator glyph, recorded by the parent.
+        _PARALLEL_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "missing")"
+        # RAW verdict computed for the future aggregator (ADR-039 §4 group-verdict
+        # collapse, a later issue); kept on its own channel so the predicate path
+        # can consume the template-declared value verbatim, mirroring the cycle.
+        _PARALLEL_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "missing")"
+        [[ -z "$_PARALLEL_DISPATCH_VERDICT_RAW" ]] && _PARALLEL_DISPATCH_VERDICT_RAW="missing"
+        _PARALLEL_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "")"
+        if [[ $_pd_rc -eq 0 ]]; then
+            _PARALLEL_DISPATCH_STATUS="complete"
+        else
+            _PARALLEL_DISPATCH_STATUS="failed"
+        fi
+        return $_pd_rc
+    }
+
     # #524: register cycle banner hooks. The orchestrator calls these (when
     # declared) at iter-begin, iter-complete, and exit. Definitions are local
     # to the runner so the orchestrator stays event-emit + control-flow only
@@ -1337,7 +1427,7 @@ main() {
         _render_cycle_exit "$_h_cycle_id" "$_h_reason" "$_h_iter" "$_h_max"
     }
 
-    if [[ $_has_cycle_unit -eq 1 ]]; then
+    if [[ $_run_dispatch_units -eq 1 ]]; then
         local _unit _rc=0
         # #527: track non-zero cycle terminations across the dispatch loop so the
         # final pipeline_status write below reflects unconverged outcomes as
@@ -1516,6 +1606,50 @@ main() {
                         # status _runner_compute_final_status computes (continue
                         # + downstream approve → complete, not failed).
                         warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
+                    fi
+                    ;;
+                parallel:*)
+                    # ADR-039 (#1131): a parallel stage group occupies ONE
+                    # cardinal slot (like a cycle). Render the entry banner,
+                    # publish the cardinal as ZBUILD_SEQ_PREFIX so members render
+                    # `<cardinal>.<slot>` seq labels, then dispatch the group.
+                    local _pg_id="${_unit#parallel:}"
+                    local _pg_safe="${_pg_id//-/_}"
+                    local _pg_flow_var="_TPL_PARALLEL_FLOW_${_pg_safe}"
+                    local _pg_flow_csv="${!_pg_flow_var:-}"
+                    local _pg_max_var="_TPL_PARALLEL_MAX_${_pg_safe}"
+                    local _pg_max="${!_pg_max_var:-auto}"
+                    _render_parallel_entry "$_pg_id" "$_pg_max" "$_pg_flow_csv"
+                    export ZBUILD_SEQ_PREFIX="$_runner_cardinal"
+                    # `&& _rc=0 || _rc=$?` captures the rc without tripping set -e.
+                    parallel_group_run "$_pg_id" "$state_dir" "$state_file" && _rc=0 || _rc=$?
+                    unset ZBUILD_SEQ_PREFIX
+                    if [[ $_rc -eq 130 || $_rc -eq 143 ]]; then
+                        local _pg_abort_reason="sigint"
+                        [[ $_rc -eq 143 ]] && _pg_abort_reason="sigterm"
+                        _RUNNER_SIGINT_RECEIVED=1
+                        _RUNNER_ABORT_REASON="$_pg_abort_reason"
+                        _set_pipeline_status "$state_file" "interrupted"
+                        eb_emit_event "pipeline.aborted" "parallel=$_pg_id" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                            "reason=$_pg_abort_reason" "status=interrupted" 2>/dev/null || true
+                        eb_emit_event "pipeline.end" "status=failed" "parallel=$_pg_id" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue"
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        error "Parallel group $_pg_id aborted (rc=$_rc)"
+                        return "$_rc"
+                    fi
+                    if [[ $_rc -ne 0 ]]; then
+                        # rc=1 (on_member_error=collect, a member failed) or a
+                        # config error → halt the pipeline as failed.
+                        _set_pipeline_status "$state_file" "failed"
+                        eb_emit_event "pipeline.end" "status=failed" "parallel=$_pg_id" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue"
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        error "Parallel group $_pg_id failed (rc=$_rc)"
+                        return 1
                     fi
                     ;;
                 stage:*)
