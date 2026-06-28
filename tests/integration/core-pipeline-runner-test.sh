@@ -715,23 +715,35 @@ for _attempt in 1 2 3 4 5; do
     # Generous explicit pre-kill budget; only kill on a CONFIRMED anchor so a
     # slow-startup box never gets a premature (pre-trap) kill.
     if ! wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' 600 0.1; then
-        kill "$i6_pid" 2>/dev/null || true
+        kill -KILL "$i6_pid" 2>/dev/null || true
         wait "$i6_pid" 2>/dev/null || true
         continue
     fi
-    kill "$i6_pid" 2>/dev/null || true
-    wait "$i6_pid" 2>/dev/null || true
-    # Poll post-kill: the trap emits the event then renders the banner; both can
-    # lag the `wait` return under load. Treat the attempt as good only when both
-    # are observed.
-    wait_for_event "$I6_EVENTS_JSONL" '"pipeline.abort"' 50 0.1 || true
+    kill -TERM "$i6_pid" 2>/dev/null || true
+    # #1157: do NOT block on `wait` here, and poll with a budget that exceeds the
+    # stub's `sleep 15`. Bash does NOT interrupt a running foreground `sleep` to
+    # service the TERM trap — the trap (and thus the pipeline.abort event +
+    # banner) fires only AFTER `sleep 15` returns, i.e. ~15s after the kill. The
+    # original `wait` then 5s-poll both depended on that ~15s teardown completing
+    # within budget; under loaded CI that produced the "exit-1, no clean ✗" hang
+    # (blocking wait) and the 179/180 miss (5s poll < 15s deferral). Instead:
+    # poll directly for the deferred event/banner with a budget > 15s + margin,
+    # then force-reap. (Stub left as `sleep 15`: an interruptible primitive fires
+    # the trap promptly but #1059 found it still fails the shared macOS runner;
+    # this suite is macOS-gated and runs only on Linux, where polling past the
+    # deferral is simpler and robust.)
+    wait_for_event "$I6_EVENTS_JSONL" '"pipeline.abort"' 300 0.1 || true
     if grep -q '"pipeline.abort"' "$I6_EVENTS_JSONL" 2>/dev/null; then
         i6_event_ok=1
     fi
-    wait_for_event "$I6_STDERR" "Pipeline aborted:" 50 0.1 || true
+    wait_for_event "$I6_STDERR" "Pipeline aborted:" 100 0.1 || true
     if grep -q "Pipeline aborted:" "$I6_STDERR" 2>/dev/null; then
         i6_banner_ok=1
     fi
+    # Force-reap the sleep-deferred runner so the next attempt starts clean and
+    # we never block on the deferred exit.
+    kill -KILL "$i6_pid" 2>/dev/null || true
+    wait "$i6_pid" 2>/dev/null || true
     [[ "$i6_event_ok" -eq 1 && "$i6_banner_ok" -eq 1 ]] && break
 done
 
