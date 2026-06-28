@@ -37,6 +37,9 @@ source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/env-scrub.sh"
 # Wave 15-C / #681: strip stage-io banners + ANSI + redaction-tag wrappers
 # before truncation so the 10KB head-c budget carries signal, not decoration.
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/test-output-sanitize.sh"
+# shellcheck source=../../../scripts/lib/framework-result.sh
+# ADR-040 / #1133: opt-in shared lint/coverage/mutation read-out helpers.
+source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/framework-result.sh"
 
 # ─── _test_compute_target_files (ADR-034 / #846) ─────────────────────────────
 # Unions the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
@@ -425,11 +428,24 @@ _test_run_inner() {
         _tree_sha="$(git -C "$repo_root" rev-parse 'HEAD^{tree}' 2>/dev/null || echo)"
     fi
 
+    # ── ADR-040 / #1133: opt-in shared framework result ───────────────────────
+    # When opted in, record lint + coverage + mutation alongside the suite
+    # result so later read-out gates consume ONE result. lint/coverage run in
+    # $tmp (the committed work-tree copy the suite ran against); mutation is
+    # parsed from the suite output already captured (no extra run). Each block
+    # is JSON or "" — empty (default) → omitted, keeping output byte-unchanged.
+    local _fr_lint="" _fr_cov="" _fr_mut=""
+    if _test_framework_enabled; then
+        _fr_lint="$(cd "$tmp" 2>/dev/null && framework_run_lint)" || _fr_lint=""
+        _fr_cov="$(cd "$tmp" 2>/dev/null && framework_run_coverage)" || _fr_cov=""
+        _fr_mut="$(framework_parse_mutation "$raw_output")" || _fr_mut=""
+    fi
+
     # Record the command that actually ran (targeted or full), not the base cmd.
     _test_write_result "$output_json" \
         "$verdict" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode" \
-        "$_timing_json" "$_tree_sha"
+        "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
     emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \
@@ -581,10 +597,25 @@ _test_summarize_timing() {
     ' 2>/dev/null || return 1
 }
 
+# ─── _test_framework_enabled (ADR-040 / #1133) ───────────────────────────────
+# The shared framework result (lint/coverage/mutation blocks) is OPT-IN so the
+# default test behavior stays byte-unchanged. It activates when
+# ZBUILD_FRAMEWORK_RESULT is truthy OR when any framework command is explicitly
+# configured (a generic target wiring ZBUILD_LINT_CMD/ZBUILD_COVERAGE_CMD).
+_test_framework_enabled() {
+    case "${ZBUILD_FRAMEWORK_RESULT:-}" in
+        1|true|yes|on) return 0 ;;
+    esac
+    [[ -n "${ZBUILD_LINT_CMD+x}" || -n "${ZBUILD_COVERAGE_CMD+x}" ]] && return 0
+    return 1
+}
+
 # ─── _test_write_result ───────────────────────────────────────────────────────
 # Writes test-results.json atomically via a temp file.
 # Usage: _test_write_result <path> <verdict> <exit_code> <passed> <failed>
 #                            <test_output> <diff_applied> <test_cmd> [reason]
+#                            [run_mode] [timing_json] [tree_sha]
+#                            [lint_json] [coverage_json] [mutation_json]
 # #584: passed/failed may be the literal token "null" to record that the
 # parser did not recognize this runner's output (honest fail-safe — never
 # fabricate counts). The `reason` field is optional and emitted only when
@@ -637,6 +668,13 @@ _test_write_result() {
     # → field omitted, so a consumer (objective gate) that requires a matching
     # tree_sha fails closed and re-runs. Never written for targeted runs.
     local tree_sha="${12:-}"
+    # ADR-040 / #1133: optional pre-rendered framework-result blocks. Each is a
+    # JSON object string or "" — empty → field omitted (mirrors timing's
+    # omit-when-empty contract) so the default test path stays byte-unchanged.
+    # A malformed value is dropped by the jq fromjson guard below — never crashes.
+    local lint_json="${13:-}"
+    local coverage_json="${14:-}"
+    local mutation_json="${15:-}"
 
     local dir
     dir="$(dirname "$path")"
@@ -674,6 +712,9 @@ _test_write_result() {
         --arg run_mode "$run_mode" \
         --arg timing "$timing_json" \
         --arg tree_sha "$tree_sha" \
+        --arg lint "$lint_json" \
+        --arg coverage "$coverage_json" \
+        --arg mutation "$mutation_json" \
         '{
             schema_version: 1,
             verdict: $verdict,
@@ -687,7 +728,10 @@ _test_write_result() {
         }
         + (if $reason != "" then {reason: $reason} else {} end)
         + (if $timing != "" then (try {timing: ($timing | fromjson)} catch {}) else {} end)
-        + (if $tree_sha != "" then {tree_sha: $tree_sha} else {} end)' \
+        + (if $tree_sha != "" then {tree_sha: $tree_sha} else {} end)
+        + (if $lint != "" then (try {lint: ($lint | fromjson)} catch {}) else {} end)
+        + (if $coverage != "" then (try {coverage: ($coverage | fromjson)} catch {}) else {} end)
+        + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)' \
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"
