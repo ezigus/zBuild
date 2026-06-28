@@ -38,8 +38,10 @@ fi
 #   parallel-group members (order-exempt — only membership is enforced); the
 #   review-aggregator is a leaf placed after `review` and before `pr`. No single
 #   template uses both the legacy `review` stage AND the decomposed lenses, so their
-#   relative order here is unconstrained (membership + monotonic order still enforced
-#   per template).
+#   relative order here is unconstrained. Per template, membership is always
+#   enforced; canonical monotonic order is enforced for ordinary stages but NOT for
+#   parallel-group members (order-exempt — _tpl_validate_stages skips the order
+#   check for them; only membership is verified).
 # Exactly these 29 ids, in this order:
 #   intake plan design impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(

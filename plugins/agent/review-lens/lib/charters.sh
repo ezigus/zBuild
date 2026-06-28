@@ -41,7 +41,7 @@ _rl_lens_charter() {
         maintainability)
             printf '%s' "Examine the change for long-term maintainability risks: code smells, poor naming, unclear logic, coupling issues, missing tests, and violations of established patterns that make future changes harder." ;;
         scope)
-            printf '%s' "WARN ONLY (advisory, never blocking): compare the change against the declared scope. Flag files edited in the diff that the planned scope did not list (out-of-scope edits), and files the scope listed but the diff did not touch (in-scope-but-untouched). Report each as a low/medium finding describing the scope drift; never recommend reverting or blocking." ;;
+            printf '%s' "WARN ONLY (advisory, never blocking): compare the change against the PLANNED scope (the plan's declared file list / scope manifest). Flag files edited in the diff that the planned scope did not list (out-of-scope edits), and files the planned scope listed but the diff did not touch (in-scope-but-untouched). Report each as a low/medium finding describing the scope drift; never recommend reverting or blocking." ;;
         *)
             printf '%s' "Examine the change for issues relevant to the ${1} concern." ;;
     esac
