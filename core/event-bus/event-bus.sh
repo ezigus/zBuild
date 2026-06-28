@@ -177,13 +177,16 @@ eb_emit_event() {
         _eb_insert_sql="INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version) VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);"
         # Serialize the mirror INSERT with flock on the DEDICATED db lock (NOT
         # the jsonl lock): flock is the deterministic primitive zbuild requires
-        # (ADR-005), so concurrent emitters (#1131) no longer collide on the
-        # mirror write. Separate lock ⇒ the best-effort mirror can never block
-        # the authoritative jsonl append above. flock-timeout ⇒ drop the mirror
-        # write (exit 0), never fail the emit (#1153).
+        # (ADR-005), so concurrent emitters (#1131) never collide on the mirror
+        # write. NON-BLOCKING (-n): if another emitter holds the lock, SKIP this
+        # best-effort mirror write rather than wait — the mirror is unread
+        # (events.jsonl is the only read path) so a dropped row is harmless,
+        # and never waiting means a high-emit-rate pipeline (parallel members,
+        # kill-mid-run tests) pays ZERO added latency for the mirror. Separate
+        # lock ⇒ the mirror can never block the authoritative jsonl append.
         if zbuild_has_flock; then
             (
-                flock -w 5 9 || exit 0
+                flock -n 9 || exit 0
                 _eb_mirror_insert "$_eb_insert_sql"
             ) 9>"${ZBUILD_EVENTS_DB}.lock"
         else

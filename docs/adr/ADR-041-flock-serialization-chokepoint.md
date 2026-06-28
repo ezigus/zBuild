@@ -34,8 +34,12 @@ Corollaries:
   writer never blocks an authoritative one (e.g. the event-bus SQLite mirror
   uses `events.db.lock`, separate from `events.jsonl.lock`, so the mirror can
   never stall the source-of-truth jsonl append — #1153).
-- A bounded wait (`flock -w N`) that times out must fail soft for best-effort
-  writers (drop the write, never fail the caller).
+- A **best-effort** writer (e.g. the unread event-bus SQLite mirror) acquires
+  its lock NON-BLOCKING (`flock -n`) and SKIPS the write on contention rather
+  than waiting — so a high-frequency emitter (parallel members, kill-timing
+  tests) pays zero added latency and a dropped row is harmless (#1153). An
+  **authoritative** writer may use a bounded wait (`flock -w N`) and must fail
+  soft on timeout (never abort the caller).
 
 ## Consequences
 
@@ -43,9 +47,9 @@ Corollaries:
   probabilistic (a tool's internal busy-retry) or timing-based (`sleep`).
 - One discoverable convention; new code has a clear answer for "how do I make
   this safe under concurrency."
-- Strict serialization can be marginally slower than letting a tool interleave
-  retries under low contention, but real call sites emit sparsely; the
-  determinism and decoupling are the win (#1153).
+- Authoritative serialization is deterministic (no probabilistic busy-retry);
+  best-effort writers use non-blocking acquire so they add no latency under
+  contention (they skip instead) — important for high-emit-rate paths (#1153).
 - `flock` remains a hard install prerequisite (ADR-005); the best-effort
   fallback keeps non-flock environments functional but unserialized.
 
