@@ -95,6 +95,7 @@
     "review_lens.redaction_failed",
     "review_lens.failed",
     "review_lens.unparseable",
+    "review_aggregator.no_lenses",
     "test_assessment.missing_input",
     "test_assessment.missing_baseline",
     "test_assessment.downgrade",
