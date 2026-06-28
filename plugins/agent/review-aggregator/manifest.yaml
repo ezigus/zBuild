@@ -1,0 +1,78 @@
+id: review-aggregator
+name: Review Aggregator (advisory merge-readiness)
+kind: agent
+version: 0.1.0
+description: |
+  Collapses N parallel advisory review-lens outputs into ONE advisory
+  merge-readiness report (ADR-040 §3/§4, EPIC #1129 C2; evolves ADR-038).
+
+  Globs the lens group's lens-<name>.json results from the shared artifacts
+  dir, de-dupes their findings by file + category + proximity window, carries
+  the max severity + the union of contributing lenses + the union of messages,
+  and renders an advisory report (review-report.json + review-report.md). The
+  dedup/severity/union logic is ported verbatim from review-report's
+  _rr_aggregate so the collapsed report matches the legacy single-stage fan-out.
+
+  Does NO LLM call — it merges lens JSON only (no router, no redaction
+  chokepoint traffic). Advisory only: it never recommends a merge action and
+  never gates the pipeline. It always writes review-report.json first and
+  returns 0 (an empty / absent lens group degrades to an empty report).
+
+  Bound by ROLE (resolver.sh reads provides.role). Deliberately NO
+  provides.artifact_type: declaring it makes contracts.sh synthesize a BLOCKING
+  contract-violated findings.json on a miss — this stage is advisory, so it opts
+  out of that machinery. The C3 cutover wires it as the `aggregate: advisory`
+  group's aggregator and retires review-report's hand-rolled fan-out.
+
+hooks:
+  init: review_aggregator_init
+  run: review_aggregator_run
+  finalize: review_aggregator_finalize
+
+requires:
+  # `redaction` is mandatory for kind: agent (ADR-004 / validate_manifest), even
+  # though this aggregator sends no text to a model — it only merges lens JSON.
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: review_aggregator
+  schema_version: 1
+
+# Proximity-window de-dupe (lines): two findings on the same file+category
+# within this many lines collapse to one. Controlled at runtime via the
+# ZBUILD_RR_PROXIMITY_WINDOW env knob (default 10), shared with review-report
+# (ADR-038). No manifest `config:` block — the plugin reads the env directly, so
+# declaring it here would be advertised-but-ignored (PR #1161 review).
+
+inputs:
+  # The lens group's per-lens results, read by glob from the shared artifacts
+  # dir (each review-lens stage writes lens-<name>.json there). required:false
+  # keeps the aggregator composable — an empty group degrades to an empty report.
+  - id: lens_results
+    type: glob
+    path: "${artifact_dir}/lens-*.json"
+    source: stage:review-lens
+    required: false
+
+outputs:
+  # FIRST entry — always written; keeps the stage green without opting into the
+  # blocking artifact-contract (no provides.artifact_type above).
+  - id: review_report
+    path: "${artifact_dir}/review-report.json"
+    type: review-report.json
+    required: true
+    primary: true
+  - id: review_report_md
+    path: "${artifact_dir}/review-report.md"
+    type: markdown
+    required: false
+
+state:
+  persisted:
+    - last_merge_readiness
+    - last_lens_count
+  reconstructed: []
