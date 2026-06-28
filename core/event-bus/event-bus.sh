@@ -23,15 +23,34 @@ ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-${ZBUILD_EVENTS_DIR}/events.jsonl}"
 ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-${ZBUILD_EVENTS_DIR}/events.db}"
 ZBUILD_EVENT_SCHEMA="${ZBUILD_EVENT_SCHEMA:-${_ZBUILD_ROOT_FOR_EVENTS}/config/event-schema.json}"
 
+# ─── _eb_mirror_enabled — is the optional SQLite mirror active? ─────────────
+# True only when sqlite3 is installed AND a real DB path is configured.
+# ZBUILD_EVENTS_DB=/dev/null is the "JSONL only, no mirror" sentinel (parity
+# fixtures use it); its `.lock` path is unwritable, so the mirror — including
+# the dedicated lock — must be skipped entirely, not just fail-soft (#1153).
+_eb_mirror_enabled() {
+    [[ "$ZBUILD_EVENTS_DB" != "/dev/null" ]] && command -v sqlite3 >/dev/null 2>&1
+}
+
 # ─── _eb_init — idempotent setup (dir, lockfile, SQLite schema) ─────────────
 _eb_init() {
     mkdir -p "$ZBUILD_EVENTS_DIR"
     : > "${ZBUILD_EVENTS_JSONL}.lock" 2>/dev/null || true
-    # SQLite is optional — only init if sqlite3 is present
-    if command -v sqlite3 >/dev/null 2>&1 && [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
+    # SQLite mirror (optional, best-effort) — set up the dedicated mirror lock
+    # (SEPARATE from the jsonl lock, so a slow mirror never blocks the
+    # authoritative append, #1153) and schema only when the mirror is enabled.
+    if _eb_mirror_enabled; then
+        : > "${ZBUILD_EVENTS_DB}.lock" 2>/dev/null || true
+      if [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
         local _eb_init_err
-        _eb_init_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
-PRAGMA busy_timeout=2000;
+        # busy_timeout via -cmd (no stdout echo, unlike PRAGMA busy_timeout=N).
+        # Concurrent mirror writes are serialized by flock (ADR-005) in
+        # eb_emit_event — flock is the deterministic primitive zbuild requires,
+        # whereas sqlite3 is optional. The timeout is just a cheap safety net
+        # for a stale lock holder (#1059 chose 2000ms). The mirror stays in the
+        # default journal mode: no concurrent reader of events.db exists (jsonl
+        # is the only read path, via eb_query_events).
+        _eb_init_err="$(sqlite3 -cmd ".timeout 2000" "$ZBUILD_EVENTS_DB" <<'SQL' 2>&1
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -48,6 +67,7 @@ CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
 CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
 SQL
         )" || { [[ -n "$_eb_init_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_init_err" >&2; }
+      fi
     fi
 }
 
@@ -142,8 +162,10 @@ eb_emit_event() {
     # Escape every string field — previously only $payload was escaped, so a
     # plugin emitting e.g. ZBUILD_PLUGIN_KIND="x'); DROP TABLE events;--"
     # could corrupt the event store. $issue is validated as integer above
-    # and interpolated unquoted (INTEGER column).
-    if command -v sqlite3 >/dev/null 2>&1; then
+    # and interpolated unquoted (INTEGER column). Skipped (incl. the flock on
+    # the dedicated lock) when the mirror is disabled — e.g. ZBUILD_EVENTS_DB=
+    # /dev/null, whose .lock redirect would otherwise fail the emit (#1153).
+    if _eb_mirror_enabled; then
         local _ts_esc _rid_esc _type_esc _plugin_esc _kind_esc _payload_esc
         _ts_esc="$(_eb_sql_escape "$ts")"
         _rid_esc="$(_eb_sql_escape "$run_id")"
@@ -151,14 +173,43 @@ eb_emit_event() {
         _plugin_esc="$(_eb_sql_escape "$plugin")"
         _kind_esc="$(_eb_sql_escape "$kind")"
         _payload_esc="$(_eb_sql_escape "$payload")"
-        local _eb_emit_err
-        _eb_emit_err="$(sqlite3 "$ZBUILD_EVENTS_DB" <<SQL 2>&1
-PRAGMA busy_timeout=2000;
-INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version)
-VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);
-SQL
-        )" || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
+        local _eb_insert_sql
+        _eb_insert_sql="INSERT INTO events (ts, run_id, issue, type, plugin, kind, payload, schema_version) VALUES ('$_ts_esc', '$_rid_esc', $issue, '$_type_esc', '$_plugin_esc', '$_kind_esc', '$_payload_esc', 1);"
+        # Serialize the mirror INSERT with flock on the DEDICATED db lock (NOT
+        # the jsonl lock): flock is the deterministic primitive zbuild requires
+        # (ADR-005), so concurrent emitters (#1131) never collide on the mirror
+        # write. NON-BLOCKING (-n): if another emitter holds the lock, SKIP this
+        # best-effort mirror write rather than wait — the mirror is unread
+        # (events.jsonl is the only read path) so a dropped row is harmless,
+        # and never waiting means a high-emit-rate pipeline (parallel members,
+        # kill-mid-run tests) pays ZERO added latency for the mirror. Separate
+        # lock ⇒ the mirror can never block the authoritative jsonl append.
+        if zbuild_has_flock; then
+            (
+                flock -n 9 || exit 0
+                _eb_mirror_insert "$_eb_insert_sql"
+            ) 9>"${ZBUILD_EVENTS_DB}.lock"
+        else
+            _eb_mirror_insert "$_eb_insert_sql"
+        fi
     fi
+
+    # Fire-and-forget: emit MUST never fail its caller — eb_emit_event is called
+    # bare under `set -e` throughout the pipeline, so the best-effort mirror's
+    # rc (or a flock-block rc) must not become this function's rc. Without this
+    # the trailing mirror block's exit code propagated out and aborted stages
+    # (build:fail / test:error) when the INSERT returned non-zero (#1153 fix).
+    return 0
+}
+
+# _eb_mirror_insert — run one best-effort mirror INSERT; warn (never fail) on
+# sqlite3 error. Caller serializes via flock. busy_timeout via -cmd (no stdout,
+# unlike PRAGMA busy_timeout=N which echoes the value) is a safety net for a
+# stale lock holder (#1059 chose the 2000ms window).
+_eb_mirror_insert() {
+    local _eb_emit_err
+    _eb_emit_err="$(sqlite3 -cmd ".timeout 2000" "$ZBUILD_EVENTS_DB" "$1" 2>&1)" \
+        || { [[ -n "$_eb_emit_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_emit_err" >&2; }
 }
 
 # _eb_sql_escape: double single-quotes for SQLite single-quoted string literals.
