@@ -233,6 +233,9 @@
     "shape_floor.pass",
     "shape_floor.fail",
     "shape_floor.skip",
+    "secret_scan.pass",
+    "secret_scan.fail",
+    "secret_scan.skip",
     "llm.cli_fail",
     "pipeline.llm_unavailable"
   ]
