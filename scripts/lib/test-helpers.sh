@@ -718,6 +718,34 @@ register_standard_pipeline_stubs() {
     done
 }
 
+# ── wait_for_event ────────────────────────────────────────────────────────────
+# Bounded poll for a grep pattern to appear in an events/state file (#619's
+# "wait-for-event-content" pattern; reused by #887/#1127/#1149). Replaces the
+# anti-pattern of a fixed `sleep N` followed by a single-shot read of an
+# event/state file — that races a slow CI box (the writer may not have flushed
+# the line yet). This polls the file until the content appears, bounded by a
+# generous timeout so a genuinely-never-emitted event still fails fast-enough
+# instead of hanging.
+#
+# Usage: wait_for_event <file> <grep_pattern> [max_iters=600] [interval=0.1]
+#   - <grep_pattern> is a basic-regex passed to `grep -q` (quote JSON fragments,
+#     e.g. '"pipeline.start"').
+#   - Default bound: 600 × 0.1s = 60s — generous enough for a loaded shared CI
+#     runner, short enough to never wedge the suite.
+# Returns 0 as soon as the pattern is present; 1 if the bound elapses first.
+# Does NOT assert — callers decide whether a timeout is fatal so the failure
+# message stays test-specific.
+wait_for_event() {
+    local file="$1" pattern="$2" max_iters="${3:-600}" interval="${4:-0.1}" i
+    for (( i = 0; i < max_iters; i++ )); do
+        if [[ -f "$file" ]] && grep -q "$pattern" "$file" 2>/dev/null; then
+            return 0
+        fi
+        sleep "$interval"
+    done
+    return 1
+}
+
 # ── assert_event_emitted ──────────────────────────────────────────────────────
 # Asserts that an event of the given type appears in the JSONL events log.
 #
