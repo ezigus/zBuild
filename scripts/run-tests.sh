@@ -15,7 +15,11 @@ CORE_DIR="${ZBUILD_CORE_DIR:-$REPO_ROOT/core}"
 # long-running invocation. Override the bound via ZBUILD_TEST_FILE_TIMEOUT
 # (seconds; 0 disables). Degrades to no-timeout when neither gtimeout nor
 # timeout is installed (best-effort, same convention as core/router/route.sh).
-_RT_FILE_TIMEOUT="${ZBUILD_TEST_FILE_TIMEOUT:-300}"
+# #1157: default 300→480. The spawn-heavy core-pipeline-runner suite (un-gated
+# onto macOS) legitimately needs ~300s on the slow shared macOS runner, leaving
+# no headroom for runner-speed variance. 480 gives margin without masking a real
+# hang (a genuinely wedged file still fails, just later). Overridable as before.
+_RT_FILE_TIMEOUT="${ZBUILD_TEST_FILE_TIMEOUT:-480}"
 _rt_tout=()
 if [[ "$_RT_FILE_TIMEOUT" != "0" ]]; then
   if   command -v gtimeout >/dev/null 2>&1; then _rt_tout=("gtimeout" "$_RT_FILE_TIMEOUT")
