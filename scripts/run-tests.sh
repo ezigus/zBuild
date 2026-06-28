@@ -247,10 +247,15 @@ _rt_run_serial_file() {
 _rt_emit_summary() {
     local _name="$1" _passed="$2" _total="$3" _sk=0 _note=""
     if [[ -n "${ZBUILD_TEST_SKIP_LOG:-}" && -f "${ZBUILD_TEST_SKIP_LOG}" ]]; then
-        _sk="$(grep -c . "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || echo 0)"
+        # NB: `grep -c` PRINTS "0" and EXITS non-zero on zero matches, so the old
+        # `|| echo 0` appended a SECOND "0" → "0\n0" → an arithmetic syntax error
+        # below whenever the skip log existed but was empty (0 skips in the tier,
+        # e.g. once core-pipeline-runner stopped skipping on macOS, #1157). Use
+        # `|| true` (grep already emitted the "0") + a default for a missing read.
+        _sk="$(grep -c . "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || true)"
         rm -f "$ZBUILD_TEST_SKIP_LOG"
     fi
-    [[ "$_sk" -gt 0 ]] && _note=" ($_sk skipped)"
+    [[ "${_sk:-0}" -gt 0 ]] && _note=" ($_sk skipped)"
     echo "$_name: $_passed/$_total passed$_note"
 }
 

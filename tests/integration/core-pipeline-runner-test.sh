@@ -189,7 +189,7 @@ requires:
     - redaction
 EOF
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 10; return 0; }
+intake_run() { sleep 5; return 0; }
 EOF
 
 bash "$RUNNER" --issue 83 >/dev/null 2>&1 &
@@ -208,7 +208,7 @@ runner_pid=$!
 t10_abort_ok=0
 if wait_for_event "$EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     kill -TERM "$runner_pid" 2>/dev/null || true
-    wait_for_event "$EVENTS_JSONL" '"pipeline.abort"' 250 0.1 || true
+    wait_for_event "$EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
     grep -q '"pipeline.abort"' "$EVENTS_JSONL" 2>/dev/null && t10_abort_ok=1
 fi
 kill -KILL "$runner_pid" 2>/dev/null || true
@@ -373,7 +373,7 @@ requires:
     - redaction
 EOF
 cat > "$A2_PLUGINS/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 15; return 0; }
+intake_run() { sleep 5; return 0; }
 EOF
 
 # Fast downstream plugins (never reached due to kill)
@@ -425,7 +425,7 @@ a2_abort_ok=0
 a2_no_state_err=0
 if wait_for_event "$A2_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     kill -TERM "$a2_pid" 2>/dev/null || true
-    wait_for_event "$A2_EVENTS_JSONL" '"pipeline.abort"' 250 0.1 || true
+    wait_for_event "$A2_EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
     grep -q '"pipeline.abort"' "$A2_EVENTS_JSONL" 2>/dev/null && a2_abort_ok=1
     grep -q '"pipeline.state.error"' "$A2_EVENTS_JSONL" 2>/dev/null || a2_no_state_err=1
 fi
@@ -675,7 +675,7 @@ requires:
     - redaction
 EOF
 cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 15; return 0; }
+intake_run() { sleep 5; return 0; }
 EOF
 
 # Flaky-kill mitigation (per #494/#908): retry on the rare signal-delivery quirk.
@@ -721,7 +721,7 @@ i6_pid=$!
 # is nondeterministic on the parallel CI tier, so warn rather than fail.
 if wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     kill -TERM "$i6_pid" 2>/dev/null || true
-    wait_for_event "$I6_EVENTS_JSONL" '"pipeline.abort"' 250 0.1 || true
+    wait_for_event "$I6_EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
     grep -q '"pipeline.abort"' "$I6_EVENTS_JSONL" 2>/dev/null && i6_event_ok=1
     grep -q "Pipeline aborted:" "$I6_STDERR" 2>/dev/null && i6_banner_ok=1
 fi
