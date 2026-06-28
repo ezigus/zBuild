@@ -723,15 +723,18 @@ bash "$RUNNER" --issue 83 2>"$I6_STDERR" >/dev/null &
 i6_pid=$!
 # Anchor the kill on plugin.run.start (trap armed + live child). Fail-fast (~15s):
 # locally it is near-instant; a box that can't get there in 15s is too sick to
-# test signals on and must not stall the tier. Poll past the deferred trap: bash
-# does NOT interrupt the foreground `sleep 15` to service TERM, so the abort
-# event/banner only fire ~15s after the kill — poll 25s, never block on the
-# (sleep-deferred) exit, then force-reap. Result is ADVISORY (#1157): the timing
-# is nondeterministic on the parallel CI tier, so warn rather than fail.
+# test signals on and must not stall the tier. Poll PAST the deferred trap: bash
+# does NOT interrupt the foreground `sleep` stub to service TERM, so the abort
+# event then banner fire only after the sleep returns — poll the event, THEN
+# poll the banner SEPARATELY (the trap renders the banner AFTER emitting the
+# event, so it lands a beat later — a single un-polled grep here raced it, and
+# the subsequent kill -9 could truncate the render). Only force-reap once both
+# are observed (or their polls expire), never blocking on the sleep-deferred exit.
 if wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
     kill -TERM "$i6_pid" 2>/dev/null || true
     wait_for_event "$I6_EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
     grep -q '"pipeline.abort"' "$I6_EVENTS_JSONL" 2>/dev/null && i6_event_ok=1
+    wait_for_event "$I6_STDERR" "Pipeline aborted:" 80 0.1 || true
     grep -q "Pipeline aborted:" "$I6_STDERR" 2>/dev/null && i6_banner_ok=1
 fi
 kill -KILL "$i6_pid" 2>/dev/null || true
