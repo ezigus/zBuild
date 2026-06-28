@@ -56,6 +56,11 @@ source "$_CYCLE_ORCH_ROOT/core/output/stage-io.sh"
 # `artifacts/<stage>/<output>` layout that real plugins do NOT follow).
 # shellcheck source=../../scripts/lib/manifest-graph.sh
 source "$_CYCLE_ORCH_ROOT/scripts/lib/manifest-graph.sh"
+# ADR-039 (#1132): a cycle member may be a `type: parallel` group — dispatch it
+# via the A2 parallel orchestrator. Load guard makes this a no-op when already
+# sourced; parallel-orchestrator.sh does NOT source us back (no cycle).
+# shellcheck source=./parallel-orchestrator.sh
+source "$_CYCLE_ORCH_ROOT/core/pipeline/parallel-orchestrator.sh"
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 # HARDCODED ceiling — checked BEFORE the template's max_iterations value (silent-
@@ -1292,6 +1297,65 @@ _cycle_iter_dispatch() {
             fi
             # Wave 19-D-1 (#731): nested-cycle dispatch.complete with verdict
             # mapped from the nested cycle's terminal rc.
+            _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+            continue
+        fi
+        # ADR-039 (#1132, amends ADR-021): parallel-group-as-member branch.
+        # If this member is a `type: parallel` group, run it concurrently via
+        # A2's parallel_group_run and map the group's aggregate rc onto this
+        # member's verdict blob EXACTLY like the nested-cycle branch above —
+        # the group id keys the blob so the cycle's exit_when/abort_when can
+        # reference it (e.g. `stage: <gid>, field: verdict, value: pass`).
+        if [[ "$_member_type" == "parallel" ]]; then
+            if ! declare -F parallel_group_run >/dev/null 2>&1; then
+                error "cycle_orchestrator: parallel member '$s' but parallel-orchestrator not loaded"
+                _cycle_emit "cycle.config.invalid" "iter=$iter" "stage=$s" \
+                    "reason=no_parallel_orchestrator"
+                [[ $_had_e -eq 1 ]] && set -e
+                return 1
+            fi
+            set +e
+            # The group's members inherit "<member_label>.<slot>" seq labels —
+            # export the prefix for the group, save/restore like nested-cycle.
+            local _prior_seq_prefix_set=0 _prior_seq_prefix=""
+            if [[ -n "${ZBUILD_SEQ_PREFIX+x}" ]]; then
+                _prior_seq_prefix_set=1
+                _prior_seq_prefix="$ZBUILD_SEQ_PREFIX"
+            fi
+            export ZBUILD_SEQ_PREFIX="$_member_label"
+            parallel_group_run "$s" "$_state_dir" "$state_file"
+            rc=$?
+            if [[ $_prior_seq_prefix_set -eq 1 ]]; then
+                export ZBUILD_SEQ_PREFIX="$_prior_seq_prefix"
+            else
+                unset ZBUILD_SEQ_PREFIX
+            fi
+            # The group owned its own INT/TERM traps and cleared them on return;
+            # reassert the cycle's ownership for the rest of this iter.
+            _cycle_install_traps
+            [[ $_had_e -eq 1 ]] && set -e
+            # Map group terminal rc → outer verdict/status. rc=0 (all members
+            # passed, or on_member_error=continue) → pass; 130/143 (signal)
+            # propagate outward; everything else (collect failure / config) → fail.
+            case "$rc" in
+                0) _CYCLE_DISPATCH_VERDICT="pass"
+                   _CYCLE_DISPATCH_VERDICT_RAW="pass"
+                   _CYCLE_DISPATCH_STATUS="complete" ;;
+                130|143)
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+                   _cycle_clear_traps
+                   return "$rc" ;;
+                *) _CYCLE_DISPATCH_VERDICT="fail"
+                   _CYCLE_DISPATCH_VERDICT_RAW="fail"
+                   _CYCLE_DISPATCH_STATUS="failed" ;;
+            esac
+            verdict="$_CYCLE_DISPATCH_VERDICT"
+            status="$_CYCLE_DISPATCH_STATUS"
+            blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
+                '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            if [[ $rc -ne 0 ]]; then
+                fail=$(( fail + 1 ))
+            fi
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             continue
         fi

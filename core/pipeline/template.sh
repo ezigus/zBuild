@@ -318,6 +318,53 @@ load_template() {
                         done
                         continue
                     fi
+                    # ADR-039 (#1132): parallel-group cycle member. If `m` is a
+                    # known parallel group (registered by the IP| row the
+                    # translator emits BEFORE this IC| row), its leaf members are
+                    # already in the flat list (the IP| handler expanded them).
+                    # Skip re-adding `m` itself — the group id is not a leaf and
+                    # would fail the stage_def lookup below. Any not-yet-collected
+                    # member is expanded dedupe-safely (mirrors the cycle branch).
+                    local _m_is_parallel=0 _pg
+                    for _pg in "${_TPL_PARALLEL_GROUPS[@]}"; do
+                        [[ "$_pg" == "$m" ]] && _m_is_parallel=1 && break
+                    done
+                    if [[ $_m_is_parallel -eq 1 ]]; then
+                        local _pg_safe="${m//-/_}"
+                        local _pg_flow_var="_TPL_PARALLEL_FLOW_${_pg_safe}"
+                        local _pg_csv="${!_pg_flow_var:-}"
+                        local IFS_save3="$IFS"; IFS=','
+                        # shellcheck disable=SC2206
+                        local -a _pg_members=($_pg_csv)
+                        IFS="$IFS_save3"
+                        local _pm
+                        for _pm in "${_pg_members[@]}"; do
+                            [[ -z "$_pm" ]] && continue
+                            local _palready=0 _pex
+                            for _pex in "${collected_ids[@]}"; do
+                                [[ "$_pex" == "$_pm" ]] && _palready=1 && break
+                            done
+                            [[ $_palready -eq 1 ]] && continue
+                            m_row="${stage_def_row[$_pm]:-}"
+                            if [[ -z "$m_row" ]]; then
+                                error "load_template: parallel group '$m' references stage '$_pm' but no top-level section exists"
+                                return 1
+                            fi
+                            IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi <<< "$m_row"
+                            collected_ids+=("$_pm")
+                            collected_io_dests+=("$m_iod")
+                            collected_io_tail+=("$m_iot")
+                            collected_io_redact+=("$m_ior")
+                            collected_router_timeout+=("$m_rt")
+                            collected_router_max_turns+=("$m_rmt")
+                            collected_router_max_iterations+=("$m_rmi")
+                            stage_data_rows+=("$_pm|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
+                            local _pm_safe="${_pm//-/_}"
+                            printf -v "_TPL_PARALLEL_MEMBER_OF_${_pm_safe}" '%s' "$m"
+                            export "_TPL_PARALLEL_MEMBER_OF_${_pm_safe}"
+                        done
+                        continue
+                    fi
                     # Dedupe leaf member too (in case a descendant cycle
                     # already added this id).
                     local _already=0 _ex
@@ -918,6 +965,14 @@ _tpl_validate_cycles() {
                 [[ "$_c" == "$s" ]] && _is_cyc=1 && break
             done
             [[ $_is_cyc -eq 1 ]] && continue
+            # ADR-039 (#1132): a member that is a parallel group is likewise not
+            # in _TPL_STAGES[] (only its leaf members are). Skip it here — the
+            # group structure is validated by _tpl_validate_parallel.
+            local _is_par=0 _pg
+            for _pg in "${_TPL_PARALLEL_GROUPS[@]}"; do
+                [[ "$_pg" == "$s" ]] && _is_par=1 && break
+            done
+            [[ $_is_par -eq 1 ]] && continue
             local pos=-1 i
             for i in "${!_TPL_STAGES[@]}"; do
                 if [[ "${_TPL_STAGES[$i]}" == "$s" ]]; then
@@ -945,11 +1000,16 @@ _tpl_validate_cycles() {
             seen_stage[$s]=1
         done
 
-        if [[ $first_pos -le $prev_end ]]; then
-            error "cycle '$cid': overlaps a previously declared cycle"
-            return 1
+        # A cycle whose members are ALL nested cycles / parallel groups has no
+        # canonical leaf position of its own (first_pos stays -1) — there is
+        # nothing to overlap-check or advance prev_end with. (#1132)
+        if [[ $first_pos -ne -1 ]]; then
+            if [[ $first_pos -le $prev_end ]]; then
+                error "cycle '$cid': overlaps a previously declared cycle"
+                return 1
+            fi
+            prev_end=$last_pos
         fi
-        prev_end=$last_pos
 
         # max_iterations required + bounded
         local max_var="_TPL_CYCLE_MAX_${safe}"
@@ -1116,6 +1176,12 @@ _tpl_build_dispatch_units() {
     local -A is_cycle=()
     local _c
     for _c in "${_TPL_CYCLES[@]}"; do is_cycle[$_c]=1; done
+    # ADR-039 (#1132): set of registered parallel group ids — a cycle's flow
+    # member may name one; its LEAF members must fold under the enclosing
+    # cycle unit (not a separate top-level "parallel:<gid>").
+    local -A is_parallel=()
+    local _pgid
+    for _pgid in "${_TPL_PARALLEL_GROUPS[@]}"; do is_parallel[$_pgid]=1; done
 
     local cid
     for cid in "${_TPL_CYCLES[@]}"; do
@@ -1130,6 +1196,23 @@ _tpl_build_dispatch_units() {
         for s in "${cs[@]}"; do
             if [[ -n "${is_cycle[$s]:-}" ]]; then
                 cycle_parent[$s]="$cid"
+            elif [[ -n "${is_parallel[$s]:-}" ]]; then
+                # ADR-039 (#1132): map the group's leaf members to the enclosing
+                # cycle so they absorb under "cycle:<id>". Without this the leaves
+                # would map only to stage_to_parallel and emit a stray top-level
+                # "parallel:<gid>" unit, double-dispatching the group.
+                local _pg_safe="${s//-/_}"
+                local _pg_flow_var="_TPL_PARALLEL_FLOW_${_pg_safe}"
+                local _pg_csv="${!_pg_flow_var:-}"
+                local _pg_ifs="$IFS"; IFS=','
+                # shellcheck disable=SC2206
+                local -a _pg_ms=($_pg_csv)
+                IFS="$_pg_ifs"
+                local _pgm
+                for _pgm in "${_pg_ms[@]}"; do
+                    [[ -z "$_pgm" ]] && continue
+                    [[ -z "${stage_to_cycle[$_pgm]:-}" ]] && stage_to_cycle[$_pgm]="$cid"
+                done
             else
                 # Inner cycle's claim wins over outer when they overlap (which
                 # shouldn't happen under acyclicity, but be explicit). Don't
@@ -1765,7 +1848,17 @@ _tpl_translate_new_shape() {
         n = split(cyc_flow_per[k] ? cyc_flow_per[k] : extract_cyc_flow(k), mems, /,/)
         for (j = 1; j <= n; j++) {
             m = mems[j]
-            if (sec_kind[m] == "cycle") emit_cycle_dfs(m)
+            if (sec_kind[m] == "cycle") {
+                emit_cycle_dfs(m)
+            } else if (sec_kind[m] == "parallel" && !emitted[m]) {
+                # ADR-039 (#1132): a parallel-group cycle member must be
+                # registered (IP| row) BEFORE the enclosing cycle IC| row so the
+                # loader cycle expander sees _TPL_PARALLEL_GROUPS populated and
+                # recurses into the group members. Guarded by emitted[] (same as
+                # cycles) so a group never double-emits.
+                emitted[m] = 1
+                print "IP|" m "|" par_data[m]
+            }
         }
         d = cyc_data[k]
         print "IC|" k "|" d
