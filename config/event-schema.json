@@ -252,6 +252,8 @@
     "mutation_gate.pass",
     "mutation_gate.fail",
     "mutation_gate.skip",
+    "gate_aggregator.pass",
+    "gate_aggregator.fail",
     "llm.cli_fail",
     "pipeline.llm_unavailable"
   ]

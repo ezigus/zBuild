@@ -52,10 +52,34 @@ _lc_id_in_scope() {
 declare -A _LC_STAGE_MANIFEST=()
 declare -A _LC_STAGE_OUTPUTS=()
 declare -A _LC_STAGE_INPUT_SOURCE=()
+declare -A _LC_STAGE_KIND=()   # manifest id → kind (tool|agent|…) — ADR-040 §5 guard
+declare -A _LC_ROLE_KIND=()    # provides.role → kind — for role-bound template stages
 declare -A _LC_EXTERNAL_OK=()
 for a in $(manifest_graph_external_allowlist); do
     _LC_EXTERNAL_OK["$a"]=1
 done
+
+# _lc_manifest_field <manifest> <top-level-key> — echo a top-level scalar value.
+_lc_manifest_field() {
+    awk -v k="$2" '
+        $0 ~ "^" k ":[[:space:]]*" {
+            sub("^" k ":[[:space:]]*", ""); sub(/[[:space:]]*#.*/, "")
+            gsub(/^["'"'"']|["'"'"']$/, ""); print; exit
+        }
+    ' "$1" 2>/dev/null
+}
+
+# _lc_manifest_role <manifest> — echo provides.role (nested one level under provides:).
+_lc_manifest_role() {
+    awk '
+        /^provides:/ { inp=1; next }
+        inp && /^[A-Za-z_]/ { inp=0 }
+        inp && /^[[:space:]]+role:[[:space:]]*/ {
+            sub(/^[[:space:]]+role:[[:space:]]*/, ""); sub(/[[:space:]]*#.*/, "")
+            gsub(/^["'"'"']|["'"'"']$/, ""); print; exit
+        }
+    ' "$1" 2>/dev/null
+}
 
 _offences=0
 
@@ -63,6 +87,10 @@ while IFS= read -r -d '' m; do
     id="$(manifest_graph_get_stage_id "$m")"
     [[ -z "$id" ]] && continue
     _LC_STAGE_MANIFEST["$id"]="$m"
+    _kind="$(_lc_manifest_field "$m" kind)"
+    [[ -n "$_kind" ]] && _LC_STAGE_KIND["$id"]="$_kind"
+    _role="$(_lc_manifest_role "$m")"
+    [[ -n "$_role" && -n "$_kind" ]] && _LC_ROLE_KIND["$_role"]="$_kind"
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         out_id="${rec%%|*}"
@@ -362,6 +390,151 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
         done
 
         unset _tpl_stages _tpl_cycle_members
+    done < <(find "$_tpl_root" -maxdepth 2 -name '*.yaml' -type f -print0 2>/dev/null)
+done
+
+# ─── ADR-040 §5: convergence-path invariant guard ───────────────────────────
+# "No kind:agent / LLM stage may appear in the must-pass set or in any exit_when
+# predicate." Promotes ADR-037 §3's prose spot-check to a STRUCTURAL property of
+# the resolved template: every stage on a merge-blocking convergence path must be
+# kind:tool, T0, no-LLM.
+#
+# Scope (the discriminator): the invariant applies only to templates that adopt
+# the decomposed gate taxonomy — those declaring at least one `type: parallel`
+# group with a BLOCKING aggregate (anything other than `advisory`). Legacy
+# templates with no parallel group (e.g. standard.yaml's review/impact/
+# test_assessment cycles, simple.yaml's current objective-gate cycle) keep their
+# existing convergence semantics and are NOT retro-checked — ADR-040 recomposes
+# the new pipeline, it does not break the production template. When a template is
+# later recomposed onto the gate-aggregator parallel group, this guard activates
+# for it automatically.
+
+# Parse one template into convergence records:
+#   ST|<sid>            TYPE|<sid>|<type>      AG|<sid>|<aggregate>
+#   ROLE|<sid>|<role>   MEMBER|<sid>|<member>  EW|<sid>|<exit/abort_when target>
+# `stage:` keys inside feedback blocks are NOT captured as EW: in_ew is armed
+# only by an exit_when:/abort_when: opener and disarmed the moment its single
+# `stage:` is read (or any sibling key intervenes).
+_lc_parse_convergence() {
+    awk '
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    BEGIN { sid=""; in_ew=0; in_flow=0 }
+    { sub(/[[:space:]]*#.*/, "", $0) }
+    /^[A-Za-z_][A-Za-z0-9_-]*:[[:space:]]*$/ {
+        sid=$0; sub(/:.*$/, "", sid); in_ew=0; in_flow=0
+        printf "ST|%s\n", sid; next
+    }
+    sid=="" { next }
+    /^[[:space:]]+type:[[:space:]]*/ {
+        v=$0; sub(/^[[:space:]]+type:[[:space:]]*/, "", v)
+        printf "TYPE|%s|%s\n", sid, trim(v); in_ew=0; in_flow=0; next
+    }
+    /^[[:space:]]+aggregate:[[:space:]]*/ {
+        v=$0; sub(/^[[:space:]]+aggregate:[[:space:]]*/, "", v)
+        printf "AG|%s|%s\n", sid, trim(v); in_ew=0; in_flow=0; next
+    }
+    /^[[:space:]]+roles:[[:space:]]*\[/ {
+        v=$0; sub(/^[^[]*\[/, "", v); sub(/\].*/, "", v)
+        n=split(v, a, ","); r=trim(a[1])
+        if (r != "") printf "ROLE|%s|%s\n", sid, r
+        in_ew=0; in_flow=0; next
+    }
+    /^[[:space:]]+(exit_when|abort_when):[[:space:]]*$/ { in_ew=1; in_flow=0; next }
+    /^[[:space:]]+flow:[[:space:]]*$/ { in_flow=1; in_ew=0; next }
+    in_flow && /^[[:space:]]+-[[:space:]]+[A-Za-z_][A-Za-z0-9_-]*[[:space:]]*$/ {
+        m=$0; sub(/^[[:space:]]+-[[:space:]]+/, "", m)
+        printf "MEMBER|%s|%s\n", sid, trim(m); next
+    }
+    in_ew && /^[[:space:]]+stage:[[:space:]]*/ {
+        v=$0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v)
+        printf "EW|%s|%s\n", sid, trim(v); in_ew=0; next
+    }
+    in_flow && /^[[:space:]]+[A-Za-z_]/ { in_flow=0 }
+    in_ew && /^[[:space:]]+[A-Za-z_]/ { in_ew=0 }
+    ' "$1" 2>/dev/null
+}
+
+declare -A _cv_type=() _cv_agg=() _cv_role=() _cv_members=()
+
+# _cv_kind <stage_id> — resolve a template stage to its plugin kind. Prefers the
+# section's role binding (e.g. section `review` → role review_report → agent),
+# falls back to a manifest whose id == stage id. Empty when unresolvable (an
+# unknown stage is NOT flagged — the guard never false-positives on a typo).
+_cv_kind() {
+    local s="$1" role="${_cv_role[$1]:-}"
+    if [[ -n "$role" && -n "${_LC_ROLE_KIND[$role]:-}" ]]; then
+        printf '%s\n' "${_LC_ROLE_KIND[$role]}"; return 0
+    fi
+    printf '%s\n' "${_LC_STAGE_KIND[$s]:-}"
+}
+
+# _cv_expand <stage_id> [visited] — echo the effective LEAF stage ids of a target:
+# a parallel/cycle group expands to its members (transitively); a leaf is itself.
+_cv_expand() {
+    local t="$1" seen="${2:-}"
+    case " $seen " in *" $t "*) return 0 ;; esac
+    seen="$seen $t"
+    local mems="${_cv_members[$t]:-}" ty="${_cv_type[$t]:-}"
+    if [[ -n "$mems" && ( "$ty" == "parallel" || "$ty" == "cycle" ) ]]; then
+        local mm
+        while IFS= read -r mm; do
+            [[ -z "$mm" ]] && continue
+            _cv_expand "$mm" "$seen"
+        done <<< "$mems"
+    else
+        printf '%s\n' "$t"
+    fi
+}
+
+for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
+    [[ -d "$_tpl_root" ]] || continue
+    while IFS= read -r -d '' tfile; do
+        trel="${tfile#"$_LINT_CONTRACT_REPO"/}"
+        _cv_type=(); _cv_agg=(); _cv_role=(); _cv_members=()
+        _cv_ew_pairs=()
+        while IFS= read -r _row; do
+            case "$_row" in
+                TYPE\|*)   _r="${_row#TYPE|}";   _cv_type["${_r%%|*}"]="${_r#*|}" ;;
+                AG\|*)     _r="${_row#AG|}";     _cv_agg["${_r%%|*}"]="${_r#*|}" ;;
+                ROLE\|*)   _r="${_row#ROLE|}";   _cv_role["${_r%%|*}"]="${_r#*|}" ;;
+                MEMBER\|*) _r="${_row#MEMBER|}"; _cv_members["${_r%%|*}"]+="${_r#*|}"$'\n' ;;
+                EW\|*)     _cv_ew_pairs+=("${_row#EW|}") ;;
+            esac
+        done < <(_lc_parse_convergence "$tfile")
+
+        # Discriminator: does this template adopt the decomposed gate taxonomy?
+        _cv_strict=0
+        for _s in "${!_cv_type[@]}"; do
+            [[ "${_cv_type[$_s]}" == "parallel" ]] || continue
+            [[ "${_cv_agg[$_s]:-all_pass}" != "advisory" ]] && _cv_strict=1
+        done
+        if [[ $_cv_strict -eq 1 ]]; then
+            # RULE A — must-pass set: members of a blocking parallel group must be tool.
+            for _s in "${!_cv_type[@]}"; do
+                [[ "${_cv_type[$_s]}" == "parallel" ]] || continue
+                _agg="${_cv_agg[$_s]:-all_pass}"
+                [[ "$_agg" == "advisory" ]] && continue
+                while IFS= read -r _leaf; do
+                    [[ -z "$_leaf" ]] && continue
+                    if [[ "$(_cv_kind "$_leaf")" == "agent" ]]; then
+                        _complain "$trel: parallel group '$_s' (aggregate: $_agg) is on the must-pass/convergence path but member '$_leaf' is kind:agent (LLM); convergence-feeding stages must be kind:tool T0 [ADR-040 §5]"
+                    fi
+                done < <(_cv_expand "$_s")
+            done
+            # RULE B — exit_when/abort_when: target must not be (or contain) an LLM stage.
+            for _pair in "${_cv_ew_pairs[@]}"; do
+                _ows="${_pair%%|*}"; _tgt="${_pair#*|}"
+                if [[ "${_cv_type[$_tgt]:-}" == "parallel" && "${_cv_agg[$_tgt]:-all_pass}" == "advisory" ]]; then
+                    _complain "$trel: exit_when/abort_when in '$_ows' targets parallel group '$_tgt' whose aggregate is 'advisory' (an advisory group never drives convergence) [ADR-040 §5]"
+                fi
+                while IFS= read -r _leaf; do
+                    [[ -z "$_leaf" ]] && continue
+                    if [[ "$(_cv_kind "$_leaf")" == "agent" ]]; then
+                        _complain "$trel: exit_when/abort_when in '$_ows' references '$_tgt' which resolves to kind:agent (LLM) leaf '$_leaf'; no LLM stage may sit on a merge-blocking convergence path [ADR-040 §5]"
+                    fi
+                done < <(_cv_expand "$_tgt")
+            done
+        fi
     done < <(find "$_tpl_root" -maxdepth 2 -name '*.yaml' -type f -print0 2>/dev/null)
 done
 
