@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Integration test: simple.yaml build_test_cycle exit_when predicate convergence (I10-B #1089)
+# Integration test: simple.yaml build_test_cycle convergence via gate-aggregator
+# (B6 #1138, ADR-040 — amends ADR-013/ADR-021/ADR-019; executes ADR-037 §6).
 #
-# Verifies that raising max_iterations to 5 makes the exit_when predicate
-# (objective-gate.verdict == pass) load-bearing for cycle termination.
+# After the cutover, the build_test_cycle exit_when predicate is
+# gate-aggregator.verdict == pass — the single merge-blocking convergence
+# construct in the decomposed pipeline (ADR-040 §5). This replaces the retired
+# objective-gate convergence path.
 #
-# SPEC-1: _zbuild_read_objective_gate_verdict returns "pass" for a passing artifact
-# SPEC-2: _zbuild_read_objective_gate_verdict returns "missing" when artifact absent
-# SPEC-3: cycle converges at iter 2 (objective-gate: fail iter 1, pass iter 2)
-# SPEC-4: build_test_cycle.exit_when.suite_green is a registered event type
-# (SPEC-5 is in tests/unit/template-simple-yaml-test.sh)
+# SPEC-1: simple.yaml's build_test_cycle exit_when is wired to gate-aggregator
+# SPEC-2: the cycle roster is the decomposed gate set (objective-gate absent)
+# SPEC-3: cycle converges at iter 2 (gate-aggregator: fail iter 1, pass iter 2)
+# SPEC-4: convergence is artifact-driven only — no model.route (LLM) events
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +21,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "simple.yaml build_test_cycle: exit_when convergence (I10-B #1089)"
+print_test_header "simple.yaml build_test_cycle: gate-aggregator convergence (B6 #1138)"
 setup_test_env "simple-yaml-build-test-convergence"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -46,35 +48,31 @@ source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 
 ARTIFACTS_DIR="$ZBUILD_STATE_DIR/artifacts"
 
-# ─── SPEC-1: _zbuild_read_objective_gate_verdict returns "pass" ─────────────
-print_test_section "SPEC-1: _zbuild_read_objective_gate_verdict (pass artifact)"
+# ─── SPEC-1: exit_when wired to gate-aggregator ──────────────────────────────
+print_test_section "SPEC-1: build_test_cycle exit_when source is gate-aggregator"
 
-printf '{"schema_version":1,"verdict":"pass","summary":"all green"}' \
-    > "$ARTIFACTS_DIR/objective-gate-result.json"
+assert_eq "[SPEC-1] exit_when stage is gate-aggregator" \
+    "gate-aggregator" "${_TPL_CYCLE_UNTIL_STAGE_build_test_cycle:-}"
+assert_eq "[SPEC-1] exit_when field is verdict" \
+    "verdict" "${_TPL_CYCLE_UNTIL_FIELD_build_test_cycle:-}"
+assert_eq "[SPEC-1] exit_when value is pass" \
+    "pass" "${_TPL_CYCLE_UNTIL_VALUE_build_test_cycle:-}"
 
-set +e
-_spec1_verdict="$(_zbuild_read_objective_gate_verdict "$ZBUILD_STATE_DIR")"
-set -e
+# ─── SPEC-2: decomposed gate roster (objective-gate retired) ─────────────────
+print_test_section "SPEC-2: cycle roster is the decomposed mechanical gate set"
 
-assert_eq "[SPEC-1] _zbuild_read_objective_gate_verdict returns pass for passing artifact" \
-    "pass" "${_spec1_verdict:-}"
+assert_eq "[SPEC-2] _TPL_CYCLE_STAGES_build_test_cycle" \
+    "build,test,shape-floor,acceptance-gate,lint,coverage,mutation,secret-scan,gate-aggregator" \
+    "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
+case ",${_TPL_CYCLE_STAGES_build_test_cycle:-}," in
+    *,objective-gate,*) assert_fail "[SPEC-2] objective-gate is NOT a cycle member" "still present" ;;
+    *)                  assert_pass "[SPEC-2] objective-gate is NOT a cycle member" ;;
+esac
 
-# ─── SPEC-2: _zbuild_read_objective_gate_verdict returns "missing" ───────────
-print_test_section "SPEC-2: _zbuild_read_objective_gate_verdict (absent artifact)"
-
-rm -f "$ARTIFACTS_DIR/objective-gate-result.json"
-
-set +e
-_spec2_verdict="$(_zbuild_read_objective_gate_verdict "$ZBUILD_STATE_DIR")"
-set -e
-
-assert_eq "[SPEC-2] _zbuild_read_objective_gate_verdict returns missing when artifact absent" \
-    "missing" "${_spec2_verdict:-}"
-
-# ─── SPEC-3: fail→pass convergence at iter 2 ────────────────────────────────
-# Stub cycle_dispatch_stage: objective-gate returns fail on iter 1, pass on
-# iter 2. Build and test always return pass. The cycle must converge at iter 2
-# via the exit_when predicate (not by hitting max_iterations=5).
+# ─── SPEC-3: fail→pass convergence at iter 2 ─────────────────────────────────
+# Stub cycle_dispatch_stage: gate-aggregator returns fail on iter 1, pass on
+# iter 2. Build/test and every other gate always pass. The cycle must converge
+# at iter 2 via the exit_when predicate (not by hitting max_iterations=5).
 print_test_section "SPEC-3: fail→pass convergence at iter 2 (exit_when predicate)"
 
 # shellcheck disable=SC2317
@@ -97,29 +95,22 @@ cycle_dispatch_stage() {
             printf '{"schema_version":1,"verdict":"pass","exit_code":0}' \
                 > "$_st_art/test-results.json"
             ;;
-        objective-gate)
+        gate-aggregator)
             if [[ "$_st_iter" -le 1 ]]; then
-                printf '{"schema_version":1,"verdict":"fail","summary":"tests failed"}' \
-                    > "$_st_art/objective-gate-result.json"
+                printf '{"schema_version":1,"verdict":"fail","summary":"a gate failed"}' \
+                    > "$_st_art/gate-aggregator-result.json"
                 _CYCLE_DISPATCH_VERDICT_RAW="fail"
                 _CYCLE_DISPATCH_VERDICT="fail"
             else
-                printf '{"schema_version":1,"verdict":"pass","summary":"all green"}' \
-                    > "$_st_art/objective-gate-result.json"
+                printf '{"schema_version":1,"verdict":"pass","summary":"all gates pass"}' \
+                    > "$_st_art/gate-aggregator-result.json"
                 _CYCLE_DISPATCH_VERDICT_RAW="pass"
                 _CYCLE_DISPATCH_VERDICT="pass"
-                # Call the I10-B helper and emit the suite-green event. Do NOT
-                # suppress eb_emit_event failures: an unregistered/invalid event
-                # schema must fail the run (and thus SPEC-3), not pass silently
-                # (Copilot review).
-                local _g_v; _g_v="$(_zbuild_read_objective_gate_verdict "$_st_state_dir")"
-                if [[ "$_g_v" == "pass" ]]; then
-                    eb_emit_event "build_test_cycle.exit_when.suite_green" \
-                        "iter=$_st_iter" "verdict=pass"
-                fi
             fi
             ;;
         *)
+            # shape-floor, acceptance-gate, lint, coverage, mutation, secret-scan
+            # all pass (defaults above); only the aggregator drives convergence.
             _CYCLE_DISPATCH_VERDICT_RAW="pass"
             ;;
     esac
@@ -137,34 +128,19 @@ assert_eq "[SPEC-3] terminated reason is converged (not max_iterations)" \
 assert_eq "[SPEC-3] cycle ran exactly 2 iterations (fail then pass)" \
     "2" "${_CYCLE_LAST_ITERATIONS:-}"
 
-# ─── SPEC-4: build_test_cycle.exit_when.suite_green registered AND emitted ───
-print_test_section "SPEC-4: build_test_cycle.exit_when.suite_green registered + emitted"
+# ─── SPEC-4: convergence is artifact-driven only (no LLM) ─────────────────────
+# The exit_when predicate keys on gate-aggregator (a T0 tool) and consumes only
+# result artifacts, never an LLM call (ADR-037 §3). NB: the flow's gates are
+# LLM-free, but acceptance-gate is kind:agent / T1 (it shells negctl+reachability
+# mechanically, no model call) — so "no model.route" is the precise invariant,
+# not "every gate is a T0 tool".
+print_test_section "SPEC-4: no model.route events — convergence uses artifacts only"
 
-if grep -q '"build_test_cycle.exit_when.suite_green"' "$REPO_ROOT/config/event-schema.json"; then
-    assert_pass "[SPEC-4] build_test_cycle.exit_when.suite_green registered in event-schema.json"
-else
-    assert_fail "[SPEC-4] build_test_cycle.exit_when.suite_green registered in event-schema.json" \
-        "event type missing from config/event-schema.json"
-fi
-
-# Assert the event was actually written to the JSONL during the converged run.
-# eb_emit_event enforces schema registration, so a real emission also guards the
-# schema — a grep of the schema alone would pass even if nothing ever fired
-# (Copilot review).
-if grep -q '"build_test_cycle.exit_when.suite_green"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-4] suite_green event emitted to events.jsonl during convergence"
-else
-    assert_fail "[SPEC-4] suite_green event emitted to events.jsonl during convergence" \
-        "event not found in $ZBUILD_EVENTS_JSONL"
-fi
-
-# ─── No-LLM guard: events.jsonl must not contain model.route events ──────────
-# The exit_when predicate must use only the objective-gate artifact, never LLM.
 if grep -q '"model\.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_fail "no model.route events in events.jsonl — exit_when uses artifact only" \
+    assert_fail "[SPEC-4] no model.route events in events.jsonl — exit_when uses artifact only" \
         "LLM was consulted; LLM must not gate convergence"
 else
-    assert_pass "no model.route events in events.jsonl — exit_when uses artifact only"
+    assert_pass "[SPEC-4] no model.route events in events.jsonl — exit_when uses artifact only"
 fi
 
 cleanup_test_env

@@ -82,7 +82,8 @@ inputs:
   # ALWAYS optional (required:false); absent/empty → ACCEPTANCE COVERAGE GAPS
   # section omitted (see _build_read_prior_acceptance, which surfaces ONLY
   # untagged_spec:<id> failures). Feedback wiring (acceptance-gate → build) is
-  # declared in standard.yaml's build_review_cycle by #951.
+  # declared in standard.yaml's build_review_cycle by #951, and — after the
+  # ADR-040 cutover (#1138) — in simple.yaml's build_test_cycle as well.
   - id: prior_acceptance_feedback
     type: text/json
     path: "${cycle_feedback_dir}/prior_acceptance_feedback.txt"
