@@ -103,3 +103,4 @@ The engine refuses to start with multiple `claim-coordinator` plugins enabled �
 - [KEEPERS.md §L item 10, 11](../KEEPERS.md#section-l--post-stabilization-wishlist) — wishlist for TTL-leases and dashboard variants.
 - `legacy/scripts/lib/daemon-state.sh:602-720` — original label-based logic, source for the default plugin.
 - `legacy/scripts/lib/fleet-failover.sh` — peer-release pattern, applies to all coordinator implementations.
+- [ADR-041 — flock serialization chokepoint](ADR-041-flock-serialization-chokepoint.md) — generalizes this ADR's `flock`-for-atomicity use (and its required-tool justification) into the repo-wide serialization policy.
