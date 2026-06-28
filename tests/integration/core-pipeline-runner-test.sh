@@ -18,18 +18,25 @@ setup_test_env "pipeline-runner"
 # inputs/outputs blocks; opt out — this suite tests runner mechanics.
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
-# #996/#1059: skip on macOS CI. Several tests here kill the runner mid-`sleep`-stub
-# and assert signal-driven abort/banner timing; the macOS CI harness's process-group
-# signal semantics make those flake/hang (despite the gtimeout backstop). The
-# runner mechanics are OS-agnostic and fully covered on the Linux leg.
-# #1059 attempted a bounded FIFO `read -t` blocking primitive (replacing the
-# foreground `sleep` stubs so the TERM trap fires immediately): it passed on the
-# Linux CI leg AND locally on macOS, but the kill-mid-run abort STILL failed only
-# on the shared arm64e GitHub macOS runner — i.e. genuinely macOS-CI-incompatible
-# under current shared-runner signal-delivery semantics, not a budget/trap issue.
-# Documented-as-incompatible per the #1059 DoD; the other 7 #996-gated tests were
-# un-gated in #1059. Re-attempt only with a macOS-CI-specific signal harness.
-skip_on_platform macos
+# #1157: this suite runs on ALL platforms (no skip). It was previously gated off
+# macOS (#996/#1059) on an unproven hypothesis that the shared macOS runner can't
+# deliver the kill-mid-run signal. The real prior failures were a cascade of test
+# bugs — all fixed here — not signal nondeterminism: a grep -c "0\n0" parse, a
+# blocking `wait` on the orphaned-sleep-deferred exit, a post-kill poll shorter
+# than the trap deferral, the run-tests.sh empty-skip-log bug, and the SQLite
+# mirror making the spawn-heavy file exceed the macOS 300s budget. With those
+# fixed the kill-mid-run abort checks are reliable, so they are FATAL (they carry
+# the runner fail-closed mutation coverage — see runner-fail-closed-mutations.md).
+# _kill_assert centralizes the deterministic pattern: anchor on plugin.run.start,
+# poll PAST the deferred trap (bash runs TERM only after the foreground sleep
+# returns), never block on the deferred exit.
+_kill_assert() {  # <ok:0|1> <name> [detail]
+    if [[ "$1" == "1" ]]; then
+        assert_pass "$2"
+    else
+        assert_fail "$2" "${3:-}"
+    fi
+}
 
 # Use shared factory from test-helpers.sh (Wave 4)
 _make_plugin() { mock_plugin_factory "$@" >/dev/null; }   # #619: suppress factory's path echo
@@ -42,7 +49,13 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 export ZBUILD_STATE_DIR="$STATE_DIR"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$EVENTS_JSONL"
-export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
+# #1157: disable the SQLite mirror suite-wide. This file asserts only on
+# events.jsonl (the source of truth) — nothing reads events.db — so the mirror
+# is pure per-spawn + per-emit overhead (a sqlite3 fork per event). /dev/null is
+# the graceful "no mirror" sentinel (#1153), and skipping it keeps this
+# spawn-heavy suite well under the 300s per-file budget on the slow shared macOS
+# runner. (Mirror behavior itself is covered by event-bus-concurrency-test.sh.)
+export ZBUILD_EVENTS_DB="/dev/null"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 # #511 F2: these tests pre-date the standard.yaml cycle wiring and assert
 # a strictly LINEAR per-stage banner/event sequence (e.g. "exactly 5 started
@@ -185,7 +198,7 @@ requires:
     - redaction
 EOF
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 10; return 0; }
+intake_run() { sleep 5; return 0; }
 EOF
 
 bash "$RUNNER" --issue 83 >/dev/null 2>&1 &
@@ -198,21 +211,18 @@ runner_pid=$!
 # This removes the "kill landed after pipeline.start but before the plugin was
 # running / the trap was armed" race the prior pipeline.start anchor left open
 # (#494/#908). Shared wait_for_event poll replaces the inline loop. #619.
-wait_for_event "$EVENTS_JSONL" '"plugin.run.start"' \
-    || echo "WARN: Test 10 runner never emitted plugin.run.start within bound" >&2
-kill "$runner_pid" 2>/dev/null || true
-wait "$runner_pid" 2>/dev/null || true
-
-if [[ -f "$EVENTS_JSONL" ]]; then
-    # The abort event is written by the EXIT trap before the process exits, so
-    # it is present once `wait` returns — but poll briefly to absorb any flush
-    # lag on a loaded box before the single-shot count read.
-    wait_for_event "$EVENTS_JSONL" '"pipeline.abort"' 50 0.1 || true
-    abort_count=$(grep -c '"pipeline.abort"' "$EVENTS_JSONL" || true)
-    assert_eq "kill mid-run emits pipeline.abort" "1" "$abort_count"
-else
-    assert_fail "events.jsonl not created (needed to verify abort event)"
+# #1157: poll-not-block + FATAL via _kill_assert (see top). bash defers the TERM
+# trap behind the foreground `sleep` stub, so poll for the deferred pipeline.abort
+# event (~25s) and never block on the sleep-deferred exit; then force-reap.
+t10_abort_ok=0
+if wait_for_event "$EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
+    kill -TERM "$runner_pid" 2>/dev/null || true
+    wait_for_event "$EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
+    grep -q '"pipeline.abort"' "$EVENTS_JSONL" 2>/dev/null && t10_abort_ok=1
 fi
+kill -KILL "$runner_pid" 2>/dev/null || true
+wait "$runner_pid" 2>/dev/null || true
+_kill_assert "$t10_abort_ok" "kill mid-run emits pipeline.abort"
 
 # ─── Test 11: --template flag parsed; missing template falls back gracefully ──
 _make_plugin "intake"  "agent" 0
@@ -372,7 +382,7 @@ requires:
     - redaction
 EOF
 cat > "$A2_PLUGINS/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 15; return 0; }
+intake_run() { sleep 5; return 0; }
 EOF
 
 # Fast downstream plugins (never reached due to kill)
@@ -409,7 +419,7 @@ ZBUILD_PLUGINS_ROOT="$A2_PLUGINS" \
 ZBUILD_STATE_DIR="$A2_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A2_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
-ZBUILD_EVENTS_DB="$A2_DIR/events.db" \
+ZBUILD_EVENTS_DB="/dev/null" \
 bash "$RUNNER" --issue 83 >/dev/null 2>&1 &   # #619: suppress info banner
 a2_pid=$!
 # #1149: anchor the kill on the slow stage's plugin.run.start (not just
@@ -417,30 +427,30 @@ a2_pid=$!
 # blocks in `sleep 15`, so the trap is armed and there is a live child to kill —
 # removing the pre-trap / not-yet-running kill window. Shared wait_for_event
 # poll replaces the inline loop. #619.
-wait_for_event "$A2_EVENTS_JSONL" '"plugin.run.start"' \
-    || echo "WARN: A2 runner never emitted plugin.run.start within bound" >&2
-kill "$a2_pid" 2>/dev/null || true
-wait "$a2_pid" 2>/dev/null || true
-
-if [[ -f "$A2_EVENTS_JSONL" ]]; then
-    wait_for_event "$A2_EVENTS_JSONL" '"pipeline.abort"' 50 0.1 || true
-    a2_abort=$(grep -c '"pipeline.abort"' "$A2_EVENTS_JSONL" || true)
-    assert_eq "A2 abort trap: pipeline.abort event emitted on kill" "1" "$a2_abort"
-    # Verify no pipeline.state.error (state file write should have succeeded)
-    a2_state_err=$(grep -c '"pipeline.state.error"' "$A2_EVENTS_JSONL" || true)
-    assert_eq "A2 abort trap: no state.error when state file writable" "0" "$a2_state_err"
-else
-    assert_fail "A2 abort trap: events.jsonl not created"
+# #1157: poll-not-block + FATAL via _kill_assert (see top). Same as Test 10/I6 —
+# the TERM trap is deferred behind the foreground `sleep`; poll the deferred
+# event, never block on the sleep-deferred exit, then force-reap.
+a2_abort_ok=0
+a2_no_state_err=0
+if wait_for_event "$A2_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
+    kill -TERM "$a2_pid" 2>/dev/null || true
+    wait_for_event "$A2_EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
+    grep -q '"pipeline.abort"' "$A2_EVENTS_JSONL" 2>/dev/null && a2_abort_ok=1
+    grep -q '"pipeline.state.error"' "$A2_EVENTS_JSONL" 2>/dev/null || a2_no_state_err=1
 fi
+kill -KILL "$a2_pid" 2>/dev/null || true
+wait "$a2_pid" 2>/dev/null || true
+_kill_assert "$a2_abort_ok" "A2 abort trap: pipeline.abort event emitted on kill"
+_kill_assert "$a2_no_state_err" "A2 abort trap: no state.error when state file writable"
 
 # ─── Test A2b: abort trap marks pipeline as interrupted in state ───────────────
 a2_state_file="$A2_STATE_DIR/pipeline-state.json"
-if [[ -f "$a2_state_file" ]]; then
-    a2_status="$(jq -r '.status // empty' "$a2_state_file" 2>/dev/null || true)"
-    assert_eq "A2 abort trap: pipeline status=interrupted in state" "interrupted" "$a2_status"
-else
-    assert_fail "A2 abort trap: state file not created"
+a2_interrupted_ok=0
+if [[ -f "$a2_state_file" ]] && \
+   [[ "$(jq -r '.status // empty' "$a2_state_file" 2>/dev/null || true)" == "interrupted" ]]; then
+    a2_interrupted_ok=1
 fi
+_kill_assert "$a2_interrupted_ok" "A2 abort trap: pipeline status=interrupted in state"
 
 # ─── Test A3: artifact contract — plugin declares provides.artifact_type ──────
 # ARCHITECTURE.md §2: if a plugin declares provides.artifact_type but writes
@@ -515,7 +525,7 @@ ZBUILD_PLUGINS_ROOT="$A3_PLUGINS" \
 ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
-ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
+ZBUILD_EVENTS_DB="/dev/null" \
 bash "$RUNNER" --issue 83 >/dev/null 2>&1 || true   # #619: suppress info banner
 
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
@@ -674,7 +684,7 @@ requires:
     - redaction
 EOF
 cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
-intake_run() { sleep 15; return 0; }
+intake_run() { sleep 5; return 0; }
 EOF
 
 # Flaky-kill mitigation (per #494/#908): retry on the rare signal-delivery quirk.
@@ -685,31 +695,57 @@ EOF
 # settle) proves the trap is armed and a live child is killable, closing the
 # pre-trap / not-yet-running kill window the prior anchor left open. The retry
 # loop remains as cheap insurance for genuine kernel signal-delivery races.
-i6_ok=0
-for _attempt in 1 2 3 4 5; do
-    rm -f "$I6_EVENTS_JSONL" "$I6_STDERR"
-    ZBUILD_PLUGINS_ROOT="$I6_PLUGINS" \
-    ZBUILD_STATE_DIR="$I6_STATE_DIR" \
-    ZBUILD_EVENTS_DIR="$I6_EVENTS_DIR" \
-    ZBUILD_EVENTS_JSONL="$I6_EVENTS_JSONL" \
-    ZBUILD_EVENTS_DB="$I6_DIR/events.db" \
-    NO_COLOR=1 \
-    bash "$RUNNER" --issue 83 2>"$I6_STDERR" >/dev/null &
-    i6_pid=$!
-    wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' || true
-    kill "$i6_pid" 2>/dev/null || true
-    wait "$i6_pid" 2>/dev/null || true
-    if [[ -f "$I6_STDERR" ]] && grep -q "Pipeline aborted:" "$I6_STDERR"; then
-        i6_ok=1; break
-    fi
-done
-
-if [[ "$i6_ok" -eq 1 ]]; then
-    assert_pass "I6 #525: SIGTERM emits ✗ aborted terminal banner"
-else
-    assert_fail "I6 #525: SIGTERM emits ✗ aborted terminal banner" \
-                "stderr: $(tr '\n' '|' < "$I6_STDERR" 2>/dev/null | head -c 400)"
+#
+# #1156: two robustness fixes for the load-dependent CI flake on the ubuntu leg:
+#   1. Only kill once plugin.run.start is CONFIRMED — never kill on a (rare)
+#      pre-kill-anchor timeout, which could land the signal before the trap is
+#      armed and produce neither event nor banner. A timed-out attempt retries.
+#   2. Verify the AUTHORITATIVE `pipeline.abort` event (mirrors the Test 10 / A2
+#      siblings) AND the stderr banner, each via a POST-kill poll to absorb
+#      scheduling/flush lag the prior single-shot `grep` raced against. The
+#      banner is the racier signal: the abort EXIT trap emits the event FIRST
+#      and renders the banner LAST, so the event is the durable record and a
+#      single un-polled `grep` immediately after `wait` can miss a banner that
+#      lands a beat later under load. Asserting the polled event keeps the
+#      proof anchored on the reliable record; polling the banner (now made
+#      deterministic at all render sites by the runner.sh _render_pipeline_end
+#      errexit fix in this change) keeps the original #525 intent intact.
+i6_event_ok=0
+i6_banner_ok=0
+rm -f "$I6_EVENTS_JSONL" "$I6_STDERR"
+ZBUILD_PLUGINS_ROOT="$I6_PLUGINS" \
+ZBUILD_STATE_DIR="$I6_STATE_DIR" \
+ZBUILD_EVENTS_DIR="$I6_EVENTS_DIR" \
+ZBUILD_EVENTS_JSONL="$I6_EVENTS_JSONL" \
+ZBUILD_EVENTS_DB="/dev/null" \
+NO_COLOR=1 \
+bash "$RUNNER" --issue 83 2>"$I6_STDERR" >/dev/null &
+i6_pid=$!
+# Anchor the kill on plugin.run.start (trap armed + live child). Fail-fast (~15s):
+# locally it is near-instant; a box that can't get there in 15s is too sick to
+# test signals on and must not stall the tier. Poll PAST the deferred trap: bash
+# does NOT interrupt the foreground `sleep` stub to service TERM, so the abort
+# event then banner fire only after the sleep returns — poll the event, THEN
+# poll the banner SEPARATELY (the trap renders the banner AFTER emitting the
+# event, so it lands a beat later — a single un-polled grep here raced it, and
+# the subsequent kill -9 could truncate the render). Only force-reap once both
+# are observed (or their polls expire), never blocking on the sleep-deferred exit.
+if wait_for_event "$I6_EVENTS_JSONL" '"plugin.run.start"' 150 0.1; then
+    kill -TERM "$i6_pid" 2>/dev/null || true
+    wait_for_event "$I6_EVENTS_JSONL" '"pipeline.abort"' 120 0.1 || true
+    grep -q '"pipeline.abort"' "$I6_EVENTS_JSONL" 2>/dev/null && i6_event_ok=1
+    wait_for_event "$I6_STDERR" "Pipeline aborted:" 80 0.1 || true
+    grep -q "Pipeline aborted:" "$I6_STDERR" 2>/dev/null && i6_banner_ok=1
 fi
+kill -KILL "$i6_pid" 2>/dev/null || true
+wait "$i6_pid" 2>/dev/null || true
+
+i6_ev_detail="$( [[ -f "$I6_EVENTS_JSONL" ]] && tr '\n' '|' < "$I6_EVENTS_JSONL" | head -c 200 )"
+i6_err_detail="$( [[ -f "$I6_STDERR" ]] && tr '\n' '|' < "$I6_STDERR" | head -c 200 )"
+_kill_assert "$i6_event_ok" "I6 #525: SIGTERM emits pipeline.abort event via EXIT trap" \
+    "events: $i6_ev_detail"
+_kill_assert "$i6_banner_ok" "I6 #525: SIGTERM emits ✗ aborted terminal banner" \
+    "stderr: $i6_err_detail"
 
 
 # ─── Test R1 (#619): _usage() writes to stderr, not stdout ────────────────────
