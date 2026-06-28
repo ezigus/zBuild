@@ -1,0 +1,58 @@
+id: coverage-gate
+name: Coverage Read-out Gate
+kind: tool
+version: 0.1.0
+description: |
+  Deterministic, LLM-free T0 read-out gate (ADR-040, issue #1135, EPIC #1129).
+  A THIN read-out gate: it consumes the SHARED test-framework result
+  (test-results.json, produced by the test stage / #1133) and NEVER re-runs the
+  coverage tool. Reads the `coverage` block and maps it to a verdict:
+    - coverage.status skipped | error      → verdict=skip
+    - coverage.status below_floor          → verdict=fail
+    - coverage.status measured & pct<floor → verdict=fail
+    - otherwise                            → verdict=pass
+  Floor preference: the `floor` recorded in test-results.json wins; otherwise
+  ZBUILD_COVERAGE_FLOOR (default 29). When test-results.json is absent or carries
+  no `coverage` block → verdict=skip.
+  Always returns rc=0; the verdict lives in coverage-result.json (ADR-004
+  verdict-in-artifact convention, mirrors objective-gate/shape-floor).
+  ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
+
+hooks:
+  init: coverage_gate_init
+  run: coverage_gate_run
+  finalize: coverage_gate_finalize
+  cleanup: coverage_gate_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: coverage_gate
+  artifact_type: coverage-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+  coverage_floor: 29
+
+inputs:
+  - id: test_results
+    type: file
+    path: "${artifact_dir}/test-results.json"
+    source: stage:test
+    required: false
+
+outputs:
+  - id: coverage_result
+    path: "${artifact_dir}/coverage-result.json"
+    type: coverage-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []
