@@ -155,30 +155,38 @@ assert_event_emitted "T1: parallel.member.dispatch.complete emitted" \
 start_n="$(grep -c '"parallel.member.dispatch.start"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "T1: 3 member dispatch.start events" "3" "$start_n"
 
-# ── T2: concurrency — 3 members each sleep 1s run in <3s (serial sum = 3s). The
-#       1s margin keeps the integer-second timer robust on a loaded CI host.
-print_test_section "T2: members run concurrently (wall-clock < serial sum)"
+# ── T2: concurrency proven by EVENT OVERLAP, not wall-clock. Every member emits
+#       dispatch.start BEFORE its sleep and dispatch.complete after; in the
+#       flock-ordered jsonl, all N starts therefore precede the first complete
+#       IFF the members ran concurrently (serial dispatch would interleave
+#       complete(N) before start(N+1)). This is deterministic and independent of
+#       CI load — replacing a brittle integer-second wall-clock margin that
+#       flaked at exactly 3s under loaded CI.
+print_test_section "T2: members run concurrently (start-before-complete overlap)"
 
 _seed_state
+: > "$ZBUILD_EVENTS_JSONL"   # isolate T2's member events
 parallel_dispatch_stage() {
     sleep 1
     _PARALLEL_DISPATCH_VERDICT="pass"; _PARALLEL_DISPATCH_STATUS="complete"
     return 0
 }
 
-t_start="$(date +%s)"
 set +e
 parallel_group_run "gates" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null
 rc=$?
 set -e
-t_end="$(date +%s)"
-elapsed=$(( t_end - t_start ))
-
 assert_eq "T2: group rc=0 (all pass)" "0" "$rc"
-if [[ "$elapsed" -lt 3 ]]; then
-    assert_pass "T2: 3×1s members complete in <3s (elapsed: ${elapsed}s) → concurrent"
+
+# Last member start vs first member complete by line order (jsonl is flock-ordered
+# by emission time). last_start < first_complete ⇒ all members were in flight
+# simultaneously ⇒ concurrent.
+last_start_line="$(grep -n 'parallel.member.dispatch.start' "$ZBUILD_EVENTS_JSONL" | tail -1 | cut -d: -f1)"
+first_complete_line="$(grep -n 'parallel.member.dispatch.complete' "$ZBUILD_EVENTS_JSONL" | head -1 | cut -d: -f1)"
+if [[ -n "$last_start_line" && -n "$first_complete_line" && "$last_start_line" -lt "$first_complete_line" ]]; then
+    assert_pass "T2: all members started before any completed (start@$last_start_line < complete@$first_complete_line) → concurrent"
 else
-    assert_fail "T2: 3×1s members complete in <3s" "elapsed: ${elapsed}s (serial would be ~3s+)"
+    assert_fail "T2: members overlap" "last_start=$last_start_line first_complete=$first_complete_line (serial would interleave)"
 fi
 
 # ── T3: on_member_error=collect → a member failure fails the group (rc=1). ────
