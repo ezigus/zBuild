@@ -240,6 +240,15 @@
     "secret_scan.pass",
     "secret_scan.fail",
     "secret_scan.skip",
+    "lint_gate.pass",
+    "lint_gate.fail",
+    "lint_gate.skip",
+    "coverage_gate.pass",
+    "coverage_gate.fail",
+    "coverage_gate.skip",
+    "mutation_gate.pass",
+    "mutation_gate.fail",
+    "mutation_gate.skip",
     "llm.cli_fail",
     "pipeline.llm_unavailable"
   ]
