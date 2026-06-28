@@ -23,17 +23,25 @@ ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-${ZBUILD_EVENTS_DIR}/events.jsonl}"
 ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-${ZBUILD_EVENTS_DIR}/events.db}"
 ZBUILD_EVENT_SCHEMA="${ZBUILD_EVENT_SCHEMA:-${_ZBUILD_ROOT_FOR_EVENTS}/config/event-schema.json}"
 
+# ─── _eb_mirror_enabled — is the optional SQLite mirror active? ─────────────
+# True only when sqlite3 is installed AND a real DB path is configured.
+# ZBUILD_EVENTS_DB=/dev/null is the "JSONL only, no mirror" sentinel (parity
+# fixtures use it); its `.lock` path is unwritable, so the mirror — including
+# the dedicated lock — must be skipped entirely, not just fail-soft (#1153).
+_eb_mirror_enabled() {
+    [[ "$ZBUILD_EVENTS_DB" != "/dev/null" ]] && command -v sqlite3 >/dev/null 2>&1
+}
+
 # ─── _eb_init — idempotent setup (dir, lockfile, SQLite schema) ─────────────
 _eb_init() {
     mkdir -p "$ZBUILD_EVENTS_DIR"
     : > "${ZBUILD_EVENTS_JSONL}.lock" 2>/dev/null || true
-    # DEDICATED lock for the SQLite mirror write, SEPARATE from the jsonl lock.
-    # The mirror is best-effort, so it must never contend for the lock that
-    # guards the authoritative jsonl append — distinct locks guarantee a slow
-    # mirror write can never block the source-of-truth append (#1153).
-    : > "${ZBUILD_EVENTS_DB}.lock" 2>/dev/null || true
-    # SQLite is optional — only init if sqlite3 is present
-    if command -v sqlite3 >/dev/null 2>&1 && [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
+    # SQLite mirror (optional, best-effort) — set up the dedicated mirror lock
+    # (SEPARATE from the jsonl lock, so a slow mirror never blocks the
+    # authoritative append, #1153) and schema only when the mirror is enabled.
+    if _eb_mirror_enabled; then
+        : > "${ZBUILD_EVENTS_DB}.lock" 2>/dev/null || true
+      if [[ ! -f "$ZBUILD_EVENTS_DB" ]]; then
         local _eb_init_err
         # busy_timeout via -cmd (no stdout echo, unlike PRAGMA busy_timeout=N).
         # Concurrent mirror writes are serialized by flock (ADR-005) in
@@ -59,6 +67,7 @@ CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
 CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
 SQL
         )" || { [[ -n "$_eb_init_err" ]] && echo "[event-bus] WARN: sqlite3 failed: $_eb_init_err" >&2; }
+      fi
     fi
 }
 
@@ -153,8 +162,10 @@ eb_emit_event() {
     # Escape every string field — previously only $payload was escaped, so a
     # plugin emitting e.g. ZBUILD_PLUGIN_KIND="x'); DROP TABLE events;--"
     # could corrupt the event store. $issue is validated as integer above
-    # and interpolated unquoted (INTEGER column).
-    if command -v sqlite3 >/dev/null 2>&1; then
+    # and interpolated unquoted (INTEGER column). Skipped (incl. the flock on
+    # the dedicated lock) when the mirror is disabled — e.g. ZBUILD_EVENTS_DB=
+    # /dev/null, whose .lock redirect would otherwise fail the emit (#1153).
+    if _eb_mirror_enabled; then
         local _ts_esc _rid_esc _type_esc _plugin_esc _kind_esc _payload_esc
         _ts_esc="$(_eb_sql_escape "$ts")"
         _rid_esc="$(_eb_sql_escape "$run_id")"
@@ -179,6 +190,13 @@ eb_emit_event() {
             _eb_mirror_insert "$_eb_insert_sql"
         fi
     fi
+
+    # Fire-and-forget: emit MUST never fail its caller — eb_emit_event is called
+    # bare under `set -e` throughout the pipeline, so the best-effort mirror's
+    # rc (or a flock-block rc) must not become this function's rc. Without this
+    # the trailing mirror block's exit code propagated out and aborted stages
+    # (build:fail / test:error) when the INSERT returned non-zero (#1153 fix).
+    return 0
 }
 
 # _eb_mirror_insert — run one best-effort mirror INSERT; warn (never fail) on
