@@ -129,8 +129,11 @@ assert_eq "[SPEC-3] cycle ran exactly 2 iterations (fail then pass)" \
     "2" "${_CYCLE_LAST_ITERATIONS:-}"
 
 # ─── SPEC-4: convergence is artifact-driven only (no LLM) ─────────────────────
-# The gate-aggregator and every mechanical gate are T0 tools (ADR-037 §3) — the
-# exit_when predicate must use only their result artifacts, never an LLM call.
+# The exit_when predicate keys on gate-aggregator (a T0 tool) and consumes only
+# result artifacts, never an LLM call (ADR-037 §3). NB: the flow's gates are
+# LLM-free, but acceptance-gate is kind:agent / T1 (it shells negctl+reachability
+# mechanically, no model call) — so "no model.route" is the precise invariant,
+# not "every gate is a T0 tool".
 print_test_section "SPEC-4: no model.route events — convergence uses artifacts only"
 
 if grep -q '"model\.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
