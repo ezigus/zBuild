@@ -43,11 +43,18 @@ for _tpl in simple standard; do
     _sf="$TEST_TEMP_DIR/$_tpl-state/pipeline-state.json"
     mkdir -p "$(dirname "$_sf")"
     set +e
-    ZBUILD_CONTRACT_VALIDATOR=enforce \
-        _contract_validate_pipeline "$_stages_nl" "$REPO_ROOT/plugins" "$_sf" >/dev/null 2>&1
+    # Capture the validator's diagnostic so a failure names the stranded
+    # stage/input (the whole point of this guard) rather than just "expected 0".
+    _cv_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce \
+        _contract_validate_pipeline "$_stages_nl" "$REPO_ROOT/plugins" "$_sf" 2>&1)"
     _rc=$?
     set -e
-    assert_eq "[$_tpl.yaml] preflight contract satisfied — every required input has a producer (rc=0)" "0" "$_rc"
+    if [[ "$_rc" -eq 0 ]]; then
+        assert_pass "[$_tpl.yaml] preflight contract satisfied — every required input has a producer"
+    else
+        assert_fail "[$_tpl.yaml] preflight contract satisfied — every required input has a producer" \
+            "validator rc=$_rc: $(printf '%s' "$_cv_out" | tr '\n' '|' | head -c 500)"
+    fi
 done
 
 cleanup_test_env
