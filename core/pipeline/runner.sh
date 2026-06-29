@@ -1312,7 +1312,9 @@ main() {
         _CYCLE_DISPATCH_STATUS=""
         _CYCLE_DISPATCH_REASON=""
         local _cd_plugin_dir _cd_rc=0
-        _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
+        # ADR-042: resolve role-then-id (uniform with leaf + parallel paths) so a
+        # role-bound cycle member whose plugin id ≠ stage name resolves correctly.
+        _cd_plugin_dir="$(resolve_stage_plugin "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
         if [[ -z "$_cd_plugin_dir" ]]; then
             _CYCLE_DISPATCH_VERDICT="error"
             _CYCLE_DISPATCH_VERDICT_RAW="error"
@@ -1369,7 +1371,10 @@ main() {
         _PARALLEL_DISPATCH_STATUS=""
         _PARALLEL_DISPATCH_REASON=""
         local _pd_plugin_dir _pd_rc=0
-        _pd_plugin_dir="$(_find_plugin_for_stage "$_pd_stage" "$plugins_root" 2>/dev/null || true)"
+        # ADR-042: resolve role-then-id (uniform with leaf + cycle paths) so a
+        # role-bound parallel member whose plugin id ≠ stage name resolves (e.g.
+        # every lens-* member binds role review_lens → plugins/agent/review-lens).
+        _pd_plugin_dir="$(resolve_stage_plugin "$_pd_stage" "$plugins_root" 2>/dev/null || true)"
         if [[ -z "$_pd_plugin_dir" ]]; then
             _PARALLEL_DISPATCH_VERDICT="error"
             _PARALLEL_DISPATCH_VERDICT_RAW="error"

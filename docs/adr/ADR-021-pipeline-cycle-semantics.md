@@ -3,6 +3,7 @@
 **Status:** Proposed (F1) → Accepted (after F2 / #511)
 **Date:** 2026-05-30
 **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
+**Amended by:** ADR-042 — cycle members now resolve their plugin role-then-id via the shared `resolve_stage_plugin` helper, not id-only.
 
 ## Context
 
