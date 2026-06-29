@@ -76,13 +76,16 @@ fi
 
 unset -f git
 
-# ─── Test 2b: blocked when review.json is missing (fail-closed, #358) ───────
-print_test_section "2b. Blocked when review.json is missing (fail-closed per ADR-001)"
+# ─── Test 2b: fail-closed when NO review signal (#358, #1142) ───────────────
+# #1142: pr-open now fails closed only when NEITHER review.json (blocking review,
+# standard.yaml) NOR review-report.json (advisory review-aggregator, simple.yaml)
+# is present. 2c covers the advisory path.
+print_test_section "2b. Blocked when NO review signal (neither review.json nor review-report.json)"
 
-rm -f "$PR_RESULT_JSON"
-rm -f "$REVIEW_JSON"
+REVIEW_REPORT_JSON="$ARTIFACTS_DIR/review-report.json"
+rm -f "$PR_RESULT_JSON" "$REVIEW_JSON" "$REVIEW_REPORT_JSON"
 
-# Mock git to return a safe non-main branch so we reach the review.json check
+# Mock git to return a safe non-main branch so we reach the review-signal check
 git() {
     if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
         echo "zbuild/issue-999"
@@ -97,18 +100,51 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
 rc=$?
 set -e
 
-assert_exit_code "missing review.json returns rc=2" "2" "$rc"
-assert_file_exists "pr-result.json written when review.json missing" "$PR_RESULT_JSON"
+assert_exit_code "no review signal returns rc=2" "2" "$rc"
+assert_file_exists "pr-result.json written when no review signal" "$PR_RESULT_JSON"
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
     pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    assert_eq "pr-result.json status=blocked when review.json missing" "blocked" "$pr_status"
+    assert_eq "pr-result.json status=blocked when no review signal" "blocked" "$pr_status"
     pr_reason="$(jq -r '.reason' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    if [[ "$pr_reason" == *"missing"* ]]; then
-        assert_pass "pr-result.json reason contains 'missing'"
+    if [[ "$pr_reason" == *"no review signal"* ]]; then
+        assert_pass "pr-result.json reason names the missing review signal"
     else
-        assert_fail "pr-result.json reason contains 'missing'" "reason was: $pr_reason"
+        assert_fail "pr-result.json reason names the missing review signal" "reason was: $pr_reason"
     fi
+fi
+
+# ─── Test 2c: advisory-review mode — review.json absent, review-report.json
+# present → opens the PR (#1142, ADR-040: advisory lenses never block) ─────────
+print_test_section "2c. Advisory-review mode: review-report.json present (no review.json) → opens PR"
+
+rm -f "$PR_RESULT_JSON" "$REVIEW_JSON"
+cat > "$REVIEW_REPORT_JSON" <<'JSON'
+{"schema_version":1,"merge_readiness":"advisory","findings":[]}
+JSON
+# Happy-path mocks (like Test 4): git accepts push/checkout; gh returns a PR URL.
+git() {
+    if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
+        echo "zbuild/issue-999"
+    else
+        return 0
+    fi
+}
+export -f git
+gh() { echo "https://github.com/ezigus/zBuild/pull/999"; return 0; }
+export -f gh
+
+set +e
+_pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
+rc=$?
+set -e
+unset -f git gh
+rm -f "$REVIEW_REPORT_JSON"
+
+assert_exit_code "advisory mode (review-report.json present) opens PR rc=0" "0" "$rc"
+if [[ -f "$PR_RESULT_JSON" ]]; then
+    assert_eq "advisory mode: status=opened (not blocked on advisory review)" \
+        "opened" "$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
 fi
 
 unset -f git

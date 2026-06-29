@@ -41,6 +41,10 @@ provides:
 config:
   tier_default: T0
 
+# Zero-input gate: scans the git diff directly, consumes no upstream stage
+# artifact. Explicit empty block per ADR-020 (silences the preflight warning).
+inputs: []
+
 outputs:
   - id: secret_scan_result
     path: "${artifact_dir}/secret-scan-result.json"
