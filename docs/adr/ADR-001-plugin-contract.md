@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-24
+**Amended by:** ADR-042 — a stage's flow-name need not equal its manifest `id`; stage→plugin resolution is role-then-id everywhere (leaf, cycle, parallel).
 
 ## Context
 

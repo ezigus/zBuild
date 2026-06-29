@@ -8,6 +8,7 @@
 - amend-planned: ADR-015 (stage-io capture under concurrent member dispatch — per-member sequence, flock-append `events.jsonl`)
 - peer: ADR-040 (composable gate/lens taxonomy) — the first heavy consumer of parallel groups; EPIC #1129
 **Issue:** #1143 (EPIC #1129, D1)
+**Amended by:** ADR-042 — parallel-group members now resolve their plugin role-then-id via the shared `resolve_stage_plugin` helper, not id-only.
 
 ## Context
 
