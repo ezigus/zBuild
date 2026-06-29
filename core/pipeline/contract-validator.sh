@@ -54,31 +54,44 @@ if ! declare -F yaml_get >/dev/null 2>&1; then
     source "$_ZBUILD_CV_ROOT/core/plugin-registry/manifest-validation.sh"
 fi
 
+# Memo cache for _cv_stage_convergence, keyed "plugins_root|stage_id|role". A
+# manifest's marker is immutable within a process, so caching avoids the
+# repeated full `find` scans the typed-aggregator preflight would otherwise do
+# inside its per-cycle / per-stage loops (Copilot #1178: O(stages × manifests)).
+declare -gA _CV_CONVERGENCE_CACHE=()
+
 # ─── _cv_stage_convergence <plugins_root> <stage_id> → gate|advisory|"" ─────────
 # Resolve a template stage id to its plugin manifest's `convergence:` marker,
 # mirroring gate-aggregator's _ga_member_manifest + the lint's _cv_convergence:
 # an id-matching manifest is authoritative; otherwise bind by the stage's first
 # declared role (_TPL_STAGE_ROLES_<safe>) to the manifest whose provides.role
-# matches. Empty when the stage carries no marker (legacy / untyped).
+# matches. Empty when the stage carries no marker (legacy / untyped). The cache
+# key includes the role so a stage id reused with a different role across
+# templates in one process never returns a stale marker.
 _cv_stage_convergence() {
-    local proot="$1" sid="$2" m safe roles role cand r
-    m="$(manifest_graph_collect "$proot" "$sid" 2>/dev/null || true)"
-    if [[ -n "$m" && -f "$m" ]]; then
-        yaml_get "$m" convergence 2>/dev/null
+    local proot="$1" sid="$2" m val="" cand r
+    local safe="${sid//-/_}"
+    local roles_var="_TPL_STAGE_ROLES_${safe}"
+    local role="${!roles_var:-}"; role="${role%%,*}"
+    local key="$proot|$sid|$role"
+    if [[ -n "${_CV_CONVERGENCE_CACHE[$key]+x}" ]]; then
+        printf '%s' "${_CV_CONVERGENCE_CACHE[$key]}"
         return 0
     fi
-    safe="${sid//-/_}"
-    local roles_var="_TPL_STAGE_ROLES_${safe}"
-    roles="${!roles_var:-}"
-    role="${roles%%,*}"
-    [[ -z "$role" ]] && return 0
-    while IFS= read -r -d '' cand; do
-        r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
-        if [[ "$r" == "$role" ]]; then
-            yaml_get "$cand" convergence 2>/dev/null
-            return 0
-        fi
-    done < <(find "$proot" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    m="$(manifest_graph_collect "$proot" "$sid" 2>/dev/null || true)"
+    if [[ -n "$m" && -f "$m" ]]; then
+        val="$(yaml_get "$m" convergence 2>/dev/null)"
+    elif [[ -n "$role" ]]; then
+        while IFS= read -r -d '' cand; do
+            r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
+            if [[ "$r" == "$role" ]]; then
+                val="$(yaml_get "$cand" convergence 2>/dev/null)"
+                break
+            fi
+        done < <(find "$proot" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    fi
+    _CV_CONVERGENCE_CACHE[$key]="$val"
+    printf '%s' "$val"
     return 0
 }
 

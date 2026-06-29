@@ -362,8 +362,8 @@ and the loader exports `_TPL_PARALLEL_AGGREGATE_<id>`. The grammar is unchanged 
 `aggregate:` (the field is empty). The preflight contract validator reads this side-channel to enforce
 the typed-aggregator binding (ADR-040 §Phase 1 / ADR-039 §Phase 1).
 
-This ADR ships in **Proposed** status. No code, no test, no event-schema
-changes in this PR. The status flips to **Accepted** when Wave 17-B
+This ADR originally shipped in **Proposed** status; its first PR made no code/test/event-schema changes
+(the Phase 1 section above, issue #1177, is later implementation work). The status flips to **Accepted** when Wave 17-B
 (#703) lands the template loader + validator + back-compat shim.
 
 The impl sequence:

@@ -184,8 +184,9 @@ explicit `convergence: advisory` aggregator stage (e.g. `review-aggregator`); se
 loader and lint parsers stay in sync (guarded by `tests/unit/core-pipeline-template-parallel-test.sh`
 and the convergence lint/preflight tests).
 
-This PR (issue #1143, D1) authors the ADR text only. **No code, no template, no test changes here**
-beyond the two new ADR files. The construct lands in later EPIC #1129 issues, in this order:
+The original ADR PR (issue #1143, D1) authored the ADR text only — no code/template/test changes beyond
+the two new ADR files. The construct landed in later EPIC #1129 issues (the Phase 1 section above, issue
+#1177, wired `aggregate:` through the runtime), in this order:
 
 - **Grammar + loader/validator** — `scripts/lib/template-loader.sh` discriminates `type: parallel`
   (ADR-027 rule 4), parses `max_parallel` / `aggregate`, and the validator rejects a `feedback:` edge

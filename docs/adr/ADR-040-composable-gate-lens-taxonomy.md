@@ -182,8 +182,9 @@ wiring is present and type-correct.
   gate-aggregator uses. Tests: `tests/integration/preflight-contract-templates-test.sh`,
   `tests/unit/lint-contract-convergence-test.sh`, `tests/unit/core-pipeline-template-parallel-test.sh`.
 
-This PR (issue #1143, D1) authors the ADR text only. **No code, no template, no test changes here**
-beyond the two new ADR files. The taxonomy + invariant land in later EPIC #1129 issues, in this order:
+The original ADR PR (issue #1143, D1) authored the ADR text only — no code/template/test changes beyond
+the two new ADR files. The taxonomy + invariant landed in later EPIC #1129 issues (the Phase 1 section
+above, issue #1177, is the typed-aggregator preflight), in this order:
 
 - **Gate decomposition** — split ADR-037's objective-gate layer into first-class `kind: tool` T0 gate
   stages and package them as an ADR-039 `aggregate: all_pass` parallel group with the gate-aggregator
