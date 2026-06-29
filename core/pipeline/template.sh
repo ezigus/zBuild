@@ -407,20 +407,24 @@ load_template() {
                 ;;
             IP)
                 # ADR-039 (#1130): inline parallel group entry. Format:
-                # <gid>|<members_csv>|<max_parallel>|<on_member_error>
+                # <gid>|<members_csv>|<max_parallel>|<on_member_error>|<aggregate>
                 # Mirrors IC| (cycle). Members are leaf stages expanded into the
                 # flat _TPL_STAGES[] with per-stage attr vars (from the defs map),
-                # exactly like cycle members.
-                local pid pmembers pmax ponerr
-                IFS='|' read -r pid pmembers pmax ponerr <<< "$payload"
+                # exactly like cycle members. Phase 1 (ADR-040 §3): the 5th field is
+                # the `aggregate:` declaration — exported as _TPL_PARALLEL_AGGREGATE_<id>
+                # so the preflight contract validator can bind the group to its typed
+                # aggregator (empty when the group declares no aggregate).
+                local pid pmembers pmax ponerr pagg
+                IFS='|' read -r pid pmembers pmax ponerr pagg <<< "$payload"
                 [[ -z "$pid" ]] && continue
                 _TPL_PARALLEL_GROUPS+=("$pid")
                 local psafe="${pid//-/_}"
                 printf -v "_TPL_PARALLEL_FLOW_${psafe}"   '%s' "$pmembers"
                 printf -v "_TPL_PARALLEL_MAX_${psafe}"    '%s' "$pmax"
                 printf -v "_TPL_PARALLEL_ON_ERR_${psafe}" '%s' "${ponerr:-continue}"
+                printf -v "_TPL_PARALLEL_AGGREGATE_${psafe}" '%s' "$pagg"
                 export "_TPL_PARALLEL_FLOW_${psafe}" "_TPL_PARALLEL_MAX_${psafe}" \
-                       "_TPL_PARALLEL_ON_ERR_${psafe}"
+                       "_TPL_PARALLEL_ON_ERR_${psafe}" "_TPL_PARALLEL_AGGREGATE_${psafe}"
                 # Expand parallel members in declaration order into the flat
                 # stage list (per-stage attrs come from stage_def_row, like
                 # cycle members).
@@ -1460,7 +1464,7 @@ _tpl_translate_new_shape() {
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
         # ADR-039 (#1130): parallel-group accumulators.
-        par_flow = ""; par_max = ""; par_onerr = "continue"; in_pflow = 0
+        par_flow = ""; par_max = ""; par_onerr = "continue"; par_agg = ""; in_pflow = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
@@ -1478,7 +1482,7 @@ _tpl_translate_new_shape() {
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
         # ADR-039 (#1130): parallel-group accumulators.
-        par_flow = ""; par_max = ""; par_onerr = "continue"; in_pflow = 0
+        par_flow = ""; par_max = ""; par_onerr = "continue"; par_agg = ""; in_pflow = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0
@@ -1528,8 +1532,11 @@ _tpl_translate_new_shape() {
             }
         }
         # ADR-039 (#1130): stash parallel-group data for IP| emission.
+        # Phase 1 (ADR-040 §3): par_agg carries the `aggregate:` declaration so the
+        # loader can export _TPL_PARALLEL_AGGREGATE_<id> (preflight reads it to bind
+        # the group to its typed aggregator). Always 4 fields; empty when omitted.
         if (sec_type == "parallel") {
-            par_data[cur_key] = par_flow "|" par_max "|" par_onerr
+            par_data[cur_key] = par_flow "|" par_max "|" par_onerr "|" par_agg
         }
     }
 
@@ -1815,6 +1822,10 @@ _tpl_translate_new_shape() {
             }
             if ($0 ~ /^[[:space:]]+on_member_error:/) {
                 v = $0; sub(/^[[:space:]]+on_member_error:[[:space:]]*/, "", v); par_onerr = trim(v); next
+            }
+            # Phase 1 (ADR-040 §3 / ADR-039): the group typed-aggregator binding.
+            if ($0 ~ /^[[:space:]]+aggregate:/) {
+                v = $0; sub(/^[[:space:]]+aggregate:[[:space:]]*/, "", v); par_agg = trim(v); next
             }
         }
         next

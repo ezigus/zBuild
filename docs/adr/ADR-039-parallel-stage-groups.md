@@ -174,8 +174,19 @@ slot — mirroring `run-mutation.sh`'s `(no result)` fallback so the aggregate i
 
 ## Implementation Notes (EPIC #1129, planned)
 
-This PR (issue #1143, D1) authors the ADR text only. **No code, no template, no test changes here**
-beyond the two new ADR files. The construct lands in later EPIC #1129 issues, in this order:
+### Phase 1 — `aggregate:` wired through the runtime (issue #1177)
+
+A parallel group's `aggregate:` declaration is now parsed by `core/pipeline/template.sh` — BOTH the awk
+translator `_tpl_translate_new_shape` (it carries `aggregate:` as a 5th field on the `IP|` row) AND the
+`IP|` loader arm (which exports `_TPL_PARALLEL_AGGREGATE_<id>`). Previously only the CI lint
+(`scripts/lib/lint-contract.sh`) read it. The preflight binds an `aggregate: advisory` group to its
+explicit `convergence: advisory` aggregator stage (e.g. `review-aggregator`); see ADR-040 §Phase 1. The
+loader and lint parsers stay in sync (guarded by `tests/unit/core-pipeline-template-parallel-test.sh`
+and the convergence lint/preflight tests).
+
+The original ADR PR (issue #1143, D1) authored the ADR text only — no code/template/test changes beyond
+the two new ADR files. The construct landed in later EPIC #1129 issues (the Phase 1 section above, issue
+#1177, wired `aggregate:` through the runtime), in this order:
 
 - **Grammar + loader/validator** — `scripts/lib/template-loader.sh` discriminates `type: parallel`
   (ADR-027 rule 4), parses `max_parallel` / `aggregate`, and the validator rejects a `feedback:` edge

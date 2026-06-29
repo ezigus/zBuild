@@ -57,6 +57,70 @@ for _tpl in simple standard; do
     fi
 done
 
+# ─── Phase 1 (ADR-040 §3/§5): typed-aggregator preflight — fail-loud cases ─────
+# The validator reads the template parser side-channels (_TPL_CYCLES / _TPL_PARALLEL_*)
+# directly, so we inject them here against a minimal fixture plugins root that
+# carries the `convergence:` markers — no need to author a fully-loadable template.
+print_test_section "typed-aggregator preflight (ADR-040 §3/§5)"
+
+FX_ROOT="$TEST_TEMP_DIR/fxplugins"
+mkdir -p "$FX_ROOT/tool/g_gate" "$FX_ROOT/agent/l_adv" "$FX_ROOT/agent/l_agg"
+# write_fx <dir> <id> <kind> <convergence|""> <role> <out_id>
+write_fx() {
+    {
+        printf 'id: %s\n' "$2"; printf 'name: %s\n' "$2"; printf 'kind: %s\n' "$3"
+        [[ -n "$4" ]] && printf 'convergence: %s\n' "$4"
+        printf 'version: 0.1.0\nhooks:\n  run: r\n'
+        printf 'provides:\n  role: %s\n' "$5"
+        printf 'inputs: []\n'
+        printf 'outputs:\n  - id: %s\n    type: file\n    path: ${artifact_dir}/%s.json\n    required: true\n    primary: true\n' "$6" "$6"
+    } > "$1/manifest.yaml"
+}
+write_fx "$FX_ROOT/tool/g_gate" g_gate tool  gate     g_gate g_gate_result
+write_fx "$FX_ROOT/agent/l_adv" l_adv  agent advisory l_adv  l_adv_result
+write_fx "$FX_ROOT/agent/l_agg" l_agg  agent advisory l_agg  l_agg_result
+
+_reset_tpl_state() { _TPL_CYCLES=(); _TPL_PARALLEL_GROUPS=(); }
+_run_fx_validator() {
+    local stages="$1" sf="$TEST_TEMP_DIR/fx-state/state.json"
+    mkdir -p "$(dirname "$sf")"; rm -f "$sf"
+    set +e
+    FX_OUT="$(ZBUILD_CONTRACT_VALIDATOR=enforce \
+        _contract_validate_pipeline "$stages" "$FX_ROOT" "$sf" 2>&1)"
+    FX_RC=$?
+    set -e
+}
+
+# FAIL-A: cycle whose exit_when targets a convergence:advisory member → rc=2.
+_reset_tpl_state
+_TPL_CYCLES=(c1)
+export _TPL_CYCLE_UNTIL_STAGE_c1="l_adv"
+export _TPL_CYCLE_STAGES_c1="g_gate,l_adv"
+_run_fx_validator "$(printf 'g_gate\nl_adv\n')"
+assert_eq "FAIL-A: cycle exit_when on advisory → preflight fails (rc=2)" "2" "$FX_RC"
+assert_contains "FAIL-A: message names the cycle + advisory verdict" "$FX_OUT" "convergence:advisory but a cycle requires a convergence:gate"
+unset _TPL_CYCLE_UNTIL_STAGE_c1 _TPL_CYCLE_STAGES_c1
+
+# FAIL-B: parallel aggregate:advisory group with NO aggregator stage → rc=2.
+_reset_tpl_state
+_TPL_PARALLEL_GROUPS=(p1)
+export _TPL_PARALLEL_AGGREGATE_p1="advisory"
+export _TPL_PARALLEL_FLOW_p1="l_adv"
+_run_fx_validator "$(printf 'l_adv\n')"
+assert_eq "FAIL-B: advisory group with no aggregator → preflight fails (rc=2)" "2" "$FX_RC"
+assert_contains "FAIL-B: message names the group + ADR-040" "$FX_OUT" "no explicit convergence:advisory aggregator"
+unset _TPL_PARALLEL_AGGREGATE_p1 _TPL_PARALLEL_FLOW_p1
+
+# PASS: same group WITH an explicit non-member advisory aggregator (l_agg) → rc=0.
+_reset_tpl_state
+_TPL_PARALLEL_GROUPS=(p1)
+export _TPL_PARALLEL_AGGREGATE_p1="advisory"
+export _TPL_PARALLEL_FLOW_p1="l_adv"
+_run_fx_validator "$(printf 'l_adv\nl_agg\n')"
+assert_eq "PASS: advisory group + explicit aggregator → preflight passes (rc=0)" "0" "$FX_RC"
+unset _TPL_PARALLEL_AGGREGATE_p1 _TPL_PARALLEL_FLOW_p1
+_reset_tpl_state
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

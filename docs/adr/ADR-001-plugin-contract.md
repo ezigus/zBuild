@@ -166,6 +166,12 @@ A plugin's `requires.plugins` list is enforced at discovery time: the engine ref
 
 ## Implementation Notes (Phase 0.5 — issue #291)
 
+- **Aggregator role/type binding (Phase 1, issue #1177).** A stage's top-level `convergence:` marker
+  declares its aggregator/gate TYPE and binds to a convergence role: `gate-aggregator` (role
+  `gate_aggregator`) declares `convergence: gate`; `review-aggregator` (role `review_aggregator`)
+  declares `convergence: advisory`. The typed-aggregator preflight (ADR-040 §Phase 1) resolves a
+  template stage's marker id-first, then by `provides.role` — the same resolution the roster-driven
+  gate-aggregator uses — so role-bound members (e.g. `lens-*` → role `review_lens`) resolve correctly.
 - **Manifest validation** is partially implemented at `core/plugin-registry/registry.sh:117–142`. As of 2026-05-26 it enforces only the 4 required identity fields (`id/name/kind/version`) plus a grep-based check that agent-plugins declare `requires.core: [redaction]`. Full YAML-structural validation of `hooks`-per-kind, `requires.core` as a structured list, `provides.artifact_type`, and `state.persisted/reconstructed` is tracked by **#287** + **#294**.
 - **Lockfile** at `registry.sh:204–238` currently hashes `manifest.yaml` only. Hashing `plugin.sh` and any auxiliary files (and reverifying before `source`) is tracked by **#290**. Until that lands, a tampered `plugin.sh` with unchanged manifest will pass verification.
 - **Fail-closed artifact-presence scanner** referenced in this ADR is not yet implemented; tracked by **#288**. Plugins declaring `provides.artifact_type` whose `outputs[].path` is missing after a 0-exit run currently emit no synthetic blocking finding.

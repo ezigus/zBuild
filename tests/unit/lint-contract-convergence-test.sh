@@ -22,7 +22,8 @@ setup_test_env "lint-contract-convergence"
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 TPL_ROOT="$TEST_TEMP_DIR/templates"
 mkdir -p "$PLUGINS_ROOT/tool/gate_suite" "$PLUGINS_ROOT/tool/gate_lint" \
-    "$PLUGINS_ROOT/tool/gate_unmarked" "$PLUGINS_ROOT/agent/lens_security" "$TPL_ROOT"
+    "$PLUGINS_ROOT/tool/gate_unmarked" "$PLUGINS_ROOT/agent/lens_security" \
+    "$PLUGINS_ROOT/agent/review_agg" "$PLUGINS_ROOT/agent/legacy_judge" "$TPL_ROOT"
 
 # Minimal lint-clean manifest: id + kind + convergence marker + provides.role +
 # one primary output. Fixture ids are NOT on lint-contract's ADR-020 stage-scope
@@ -60,6 +61,12 @@ write_manifest "$PLUGINS_ROOT/agent/lens_security" lens_security agent lens_secu
 # kind:tool stage with NO convergence marker — fail-closed: must still be illegal
 # on a must-pass path (a forgotten marker must not silently de-scope a gate).
 write_manifest "$PLUGINS_ROOT/tool/gate_unmarked" gate_unmarked tool  gate_unmarked
+# Advisory aggregator (Phase 1, ADR-040 §3): the explicit convergence:advisory
+# aggregator stage that an aggregate:advisory parallel group must bind to.
+write_manifest "$PLUGINS_ROOT/agent/review_agg"   review_agg    agent review_agg    advisory
+# Untyped (no-marker) agent — a pre-ADR-040 legacy judge: its exit_when is NOT
+# retro-checked by the typed-aggregator preflight (marker absent ⇒ legacy cycle).
+write_manifest "$PLUGINS_ROOT/agent/legacy_judge" legacy_judge  agent legacy_judge
 
 run_lint() {
     local rc=0
@@ -75,6 +82,7 @@ id: clean
 flow:
   - gates
   - lenses
+  - review_agg
 gates:
   type: parallel
   flow:
@@ -91,6 +99,8 @@ lenses:
   flow:
     - lens_security
   aggregate: advisory
+review_agg:
+  roles: [review_agg]
 gate_suite:
   roles: [gate_suite]
 gate_lint:
@@ -160,10 +170,12 @@ assert_contains "TC-3: diagnostic mentions exit_when" "$LINT_OUT" "exit_when"
 assert_contains "TC-3: diagnostic names the LLM stage" "$LINT_OUT" "lens_security"
 rm -f "$TPL_ROOT/dirty_exitwhen.yaml"
 
-# ── TC-4: legacy template (NO parallel group) is NOT retro-checked → PASSES ───
-# An exit_when on an agent leaf in a plain cycle is the pre-ADR-040 model
-# (standard.yaml's review/impact cycles). Without a blocking parallel group the
-# guard stays inert, so the production template is never broken.
+# ── TC-4: legacy template (UNTYPED exit_when target) is NOT retro-checked ─────
+# A plain cycle whose exit_when target carries NO convergence marker is the
+# pre-ADR-040 model (standard.yaml's review/impact/test_assessment cycles). The
+# §5 guard stays inert (no blocking parallel group) AND the typed-aggregator
+# preflight skips it (the target is untyped ⇒ legacy), so the production template
+# is never broken.
 cat > "$TPL_ROOT/legacy.yaml" <<'EOF'
 id: legacy
 flow:
@@ -172,19 +184,19 @@ review_cycle:
   type: cycle
   flow:
     - gate_lint
-    - lens_security
+    - legacy_judge
   exit_when:
-    stage: lens_security
+    stage: legacy_judge
     field: verdict
     op: eq
     value: approve
 gate_lint:
   roles: [gate_lint]
-lens_security:
-  roles: [lens_security]
+legacy_judge:
+  roles: [legacy_judge]
 EOF
 rc=0; run_lint || rc=$?
-assert_eq "TC-4: legacy (no parallel group) not retro-checked (rc=0)" "0" "$rc"
+assert_eq "TC-4: legacy (untyped exit_when target) not retro-checked (rc=0)" "0" "$rc"
 rm -f "$TPL_ROOT/legacy.yaml"
 
 # ── TC-6: unmarked kind:tool member on a must-pass set → FAILS (fail-closed) ──
@@ -211,6 +223,58 @@ assert_eq "TC-6: unmarked tool in must-pass set detected (rc=1)" "1" "$rc"
 assert_contains "TC-6: diagnostic names the unmarked member" "$LINT_OUT" "gate_unmarked"
 assert_contains "TC-6: diagnostic cites ADR-040" "$LINT_OUT" "ADR-040"
 rm -f "$TPL_ROOT/dirty_unmarked.yaml"
+
+# ── TC-7: aggregate:advisory parallel group with NO aggregator → FAILS ────────
+# Phase 1 (ADR-040 §3): an advisory lens group must bind to an EXPLICIT
+# convergence:advisory aggregator; without one the group is declared but never
+# aggregated. Aggregators are never auto-injected — the missing wiring is loud.
+cat > "$TPL_ROOT/dirty_no_agg.yaml" <<'EOF'
+id: dirty_no_agg
+flow:
+  - lenses
+lenses:
+  type: parallel
+  flow:
+    - lens_security
+  aggregate: advisory
+lens_security:
+  roles: [lens_security]
+EOF
+rc=0; run_lint || rc=$?
+assert_eq "TC-7: advisory group with no aggregator detected (rc=1)" "1" "$rc"
+assert_contains "TC-7: diagnostic names the group" "$LINT_OUT" "lenses"
+assert_contains "TC-7: diagnostic mentions aggregate:advisory" "$LINT_OUT" "aggregate:advisory"
+assert_contains "TC-7: diagnostic cites ADR-040" "$LINT_OUT" "ADR-040"
+rm -f "$TPL_ROOT/dirty_no_agg.yaml"
+
+# ── TC-8: cycle whose exit_when targets a convergence:advisory stage → FAILS ──
+# Phase 1 (ADR-040 §5): a cycle converges on a convergence:gate aggregator. An
+# advisory stage at exit_when never blocks and must not drive convergence.
+cat > "$TPL_ROOT/dirty_cycle_advisory.yaml" <<'EOF'
+id: dirty_cycle_advisory
+flow:
+  - conv_cycle
+  - review_agg
+conv_cycle:
+  type: cycle
+  flow:
+    - gate_lint
+    - review_agg
+  exit_when:
+    stage: review_agg
+    field: verdict
+    op: eq
+    value: pass
+gate_lint:
+  roles: [gate_lint]
+review_agg:
+  roles: [review_agg]
+EOF
+rc=0; run_lint || rc=$?
+assert_eq "TC-8: cycle exit_when on advisory detected (rc=1)" "1" "$rc"
+assert_contains "TC-8: diagnostic mentions exit_when" "$LINT_OUT" "exit_when"
+assert_contains "TC-8: diagnostic flags convergence:advisory" "$LINT_OUT" "convergence:advisory"
+rm -f "$TPL_ROOT/dirty_cycle_advisory.yaml"
 
 # ── TC-5: real-repo templates still pass the guard (no false positives) ──────
 rc=0
