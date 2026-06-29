@@ -1,6 +1,9 @@
 id: lint-gate
 name: Lint Read-out Gate
 kind: tool
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate (dormant in
+# simple.yaml's roster today; marker keeps it correct if/when reused).
+convergence: gate
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 read-out gate (ADR-040, issue #1135, EPIC #1129).

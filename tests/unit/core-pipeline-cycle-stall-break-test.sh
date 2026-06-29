@@ -6,8 +6,8 @@
 #
 # SPEC-1: the feedback edge delivers failure detail — _cycle_apply_feedback writes
 #         a non-empty <to_field>.txt in the next-iter feedback dir referencing the
-#         failure (reuses build's existing prior_test_assessment input).
-# SPEC-2: the simple.yaml edge parses + the producer (test:test_failures_summary)
+#         failure (B2/ADR-040: build's prior_gate_feedback input).
+# SPEC-2: the simple.yaml edge parses + the producer (gate-aggregator:gate_feedback)
 #         resolves to a path that EXISTS in simple.yaml's flow (no required-edge
 #         cycle.feedback.missing surprise — it is required:false regardless).
 # SPEC-3: the stall-break fires — build verdict=empty_diff + gate-aggregator
@@ -47,45 +47,43 @@ source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 # EXISTS in simple.yaml's flow — the test stage is a cycle member).
 print_test_section "SPEC-2: feedback edge parses + producer resolves to a real artifact"
 
-# B6 (#1138): two feedback edges now — the #1117 test→build edge plus the new
-# acceptance-gate→build edge (ADR-040). They parse as newline-joined FB records
-# in declaration order.
-_expected_fb="test:test_failures_summary|build:prior_test_assessment:false
-acceptance-gate:gate_result|build:prior_acceptance_feedback:false"
-assert_eq "[SPEC-2] simple.yaml build_test_cycle feedback edges parsed" \
+# B2 (ADR-040): ONE consolidated feedback edge — the gate-aggregator→build edge
+# replaces the prior per-gate test→build / acceptance-gate→build edges. It parses
+# as a single FB record.
+_expected_fb="gate-aggregator:gate_feedback|build:prior_gate_feedback:false"
+assert_eq "[SPEC-2] simple.yaml build_test_cycle feedback edge parsed" \
     "$_expected_fb" \
     "${_TPL_CYCLE_FEEDBACK_build_test_cycle:-}"
 
 _RESOLVE_DIR="$TEST_TEMP_DIR/resolve"
 mkdir -p "$_RESOLVE_DIR"
 set +e
-_resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "test" "test_failures_summary")"
+_resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "gate-aggregator" "gate_feedback")"
 set -e
 case "$_resolved_src" in
-    */test-failures-summary.md)
-        assert_pass "[SPEC-2] test:test_failures_summary resolves to test-failures-summary.md" ;;
+    */gate-feedback.md)
+        assert_pass "[SPEC-2] gate-aggregator:gate_feedback resolves to gate-feedback.md" ;;
     *)
-        assert_fail "[SPEC-2] test:test_failures_summary resolves to test-failures-summary.md" \
+        assert_fail "[SPEC-2] gate-aggregator:gate_feedback resolves to gate-feedback.md" \
             "got: $_resolved_src" ;;
 esac
 
 # ─── SPEC-1 (feedback delivery) ──────────────────────────────────────────────
-print_test_section "SPEC-1: feedback edge writes non-empty prior_test_assessment.txt"
+print_test_section "SPEC-1: feedback edge writes non-empty prior_gate_feedback.txt"
 
 _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
 FB_STATE="$TEST_TEMP_DIR/fb-state"
 mkdir -p "$FB_STATE/artifacts"
-# The test stage's failure summary (the producer present in simple.yaml's flow).
-cat > "$FB_STATE/artifacts/test-failures-summary.md" <<'TFS'
-# Test failures (iter 1)
-- tests/unit/example-test.sh: assert_eq "[SPEC-3] foo" expected=3 actual=2 FAILED
+# The gate-aggregator's consolidated feedback (the producer present in simple.yaml's flow).
+cat > "$FB_STATE/artifacts/gate-feedback.md" <<'TFS'
+# Gate Aggregator Feedback
+## suite
+- failures:
+    - tests/unit/example-test.sh: assert_eq "[SPEC-3] foo" expected=3 actual=2 FAILED
 TFS
 
-# Load the parsed edges into the orchestrator's feedback array (mirrors what
+# Load the parsed edge into the orchestrator's feedback array (mirrors what
 # _cycle_load_template does at cycle entry: split the newline-joined FB records).
-# B6 (#1138): simple.yaml now declares two edges; the acceptance-gate→build edge
-# is required:false and its producer is absent here, so it is skipped without
-# error while the test→build edge still delivers prior_test_assessment.txt.
 _fb_IFS_save="$IFS"; IFS=$'\n'
 # shellcheck disable=SC2206
 _CYCLE_FEEDBACK=(${_TPL_CYCLE_FEEDBACK_build_test_cycle})
@@ -95,11 +93,11 @@ _cycle_apply_feedback 2 "$FB_STATE"; _fb_rc=$?
 set -e
 assert_eq "[SPEC-1] _cycle_apply_feedback rc=0 (optional producer present)" "0" "$_fb_rc"
 
-_FB_FILE="$FB_STATE/cycle-build_test_cycle/iter-2/feedback/prior_test_assessment.txt"
-assert_file_exists "[SPEC-1] prior_test_assessment.txt written to next-iter feedback dir" "$_FB_FILE"
+_FB_FILE="$FB_STATE/cycle-build_test_cycle/iter-2/feedback/prior_gate_feedback.txt"
+assert_file_exists "[SPEC-1] prior_gate_feedback.txt written to next-iter feedback dir" "$_FB_FILE"
 [[ -s "$_FB_FILE" ]] \
-    && assert_pass "[SPEC-1] prior_test_assessment.txt is non-empty" \
-    || assert_fail "[SPEC-1] prior_test_assessment.txt is non-empty" "file empty"
+    && assert_pass "[SPEC-1] prior_gate_feedback.txt is non-empty" \
+    || assert_fail "[SPEC-1] prior_gate_feedback.txt is non-empty" "file empty"
 assert_contains "[SPEC-1] feedback references the failure detail" \
     "$(cat "$_FB_FILE")" "[SPEC-3] foo"
 

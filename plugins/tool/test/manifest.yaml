@@ -1,6 +1,10 @@
 id: test
 name: Test Stage
 kind: tool
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate (in the
+# roster-driven gate-aggregator must-pass set). The test-suite verdict is the
+# primary mechanical gate.
+convergence: gate
 version: 0.1.0
 description: |
   Rsyncs the repo HEAD (which post-#608 contains the committed iter work)
