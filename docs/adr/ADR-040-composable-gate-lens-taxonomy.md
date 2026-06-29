@@ -159,6 +159,29 @@ iteration sees the full failure set in one place and the `build_test_cycle` self
 
 ## Implementation Notes (EPIC #1129, planned)
 
+### Phase 1 — typed, preflight-enforced aggregators (issue #1177)
+
+The `convergence:` manifest marker is canonical and IS the aggregator/gate TYPE: `gate` = blocking
+convergence (drives a cycle's `exit_when`), `advisory` = non-blocking review. Aggregators stay
+EXPLICITLY named in the template — nothing is auto-injected; the preflight only asserts the named
+wiring is present and type-correct.
+
+- `gate-aggregator` now declares `convergence: gate` (symmetric with `review-aggregator`'s
+  `convergence: advisory`), making it the named gate-typed convergence aggregator. It is still excluded
+  from its own roster by id (`_ga_build_roster` never aggregates self), so the marker changes nothing
+  about must-pass discovery.
+- The `aggregate:` group declaration is wired through the runtime parser (see ADR-039 §Phase 1):
+  `core/pipeline/template.sh` exports `_TPL_PARALLEL_AGGREGATE_<id>`.
+- `core/pipeline/contract-validator.sh` (`_contract_validate_pipeline`), MIRRORED in
+  `scripts/lib/lint-contract.sh` for CI parity, FAILS LOUD when: **(A)** a cycle's `exit_when.stage`
+  resolves to a convergence-marked stage that is `advisory` or not a cycle member (untyped targets are
+  legacy and NOT retro-checked); **(B)** a parallel group declaring `aggregate: advisory` has no
+  explicit, non-member `convergence: advisory` aggregator stage. Blocking parallel groups converge via
+  their own `exit_when` predicate (the §5 path guard / check (A)) and need no separate aggregator stage.
+  Marker resolution is id-first then by `provides.role` — the same resolution the roster-driven
+  gate-aggregator uses. Tests: `tests/integration/preflight-contract-templates-test.sh`,
+  `tests/unit/lint-contract-convergence-test.sh`, `tests/unit/core-pipeline-template-parallel-test.sh`.
+
 This PR (issue #1143, D1) authors the ADR text only. **No code, no template, no test changes here**
 beyond the two new ADR files. The taxonomy + invariant land in later EPIC #1129 issues, in this order:
 

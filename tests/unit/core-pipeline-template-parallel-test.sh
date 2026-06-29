@@ -267,4 +267,42 @@ set +e; err="$(load_template "$GRP_OVERLAP_TPL" 2>&1)"; rc=$?; set -e
 assert_eq "grp-overlap: load_template rc != 0" "1" "$rc"
 assert_contains "grp-overlap: error mentions another parallel group" "$err" "another parallel group"
 
+# ── T12: `aggregate:` declaration parses into _TPL_PARALLEL_AGGREGATE_<id> ─────
+# Phase 1 (ADR-040 §3): the runtime parser must surface the group's typed-
+# aggregator binding (previously read only by the CI lint). Absent ⇒ empty.
+AGG_TPL="$TEST_TEMP_DIR/par-aggregate.yaml"
+cat > "$AGG_TPL" <<'EOF'
+id: par-aggregate
+defaults:
+  strategy: fanout
+flow:
+  - intake
+  - lenses
+  - plain
+intake:
+  roles: [intake]
+lenses:
+  type: parallel
+  flow:
+    - design
+    - build
+  aggregate: advisory
+plain:
+  type: parallel
+  flow:
+    - test
+    - review
+design:
+  roles: [designer]
+build:
+  roles: [builder]
+test:
+  roles: [tester]
+review:
+  roles: [reviewer]
+EOF
+load_template "$AGG_TPL"
+assert_eq "aggregate: declared value exported for 'lenses'" "advisory" "${_TPL_PARALLEL_AGGREGATE_lenses:-UNSET}"
+assert_eq "aggregate: empty when omitted (group 'plain')" "" "${_TPL_PARALLEL_AGGREGATE_plain:-}"
+
 print_test_results

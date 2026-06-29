@@ -215,6 +215,16 @@ typo in a termination reason cannot silently bypass the exit banner.
 
 ## Implementation Notes
 
+### Phase 1 — cycle convergence aggregator is preflight-enforced (issue #1177)
+
+A cycle whose `exit_when.stage` resolves to a convergence-marked stage must bind to a cycle MEMBER
+declaring `convergence: gate` (the gate aggregator, e.g. `gate-aggregator`). An advisory target, or a
+target that is not a member of the cycle, fails preflight LOUDLY in
+`core/pipeline/contract-validator.sh` (mirrored in `scripts/lib/lint-contract.sh`). Cycles whose
+`exit_when` target carries NO convergence marker are legacy/untyped (standard.yaml's
+`test_assessment`/`impact`/`review` convergence) and are intentionally NOT retro-checked — preserving
+existing semantics while making the new typed contract fail-closed. See ADR-040 §Phase 1.
+
 - HARDCODED `_CYCLE_ABSOLUTE_MAX=10` checked BEFORE template's value.
 - Refuse `max_iterations <= 0` and `> 10` → `cycle.config.invalid`, fail-closed.
 - Plateau detection requires `iter ≥ 2 AND history_lines ≥ N` (skip with

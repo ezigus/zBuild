@@ -46,6 +46,41 @@ if ! declare -F atomic_write >/dev/null 2>&1; then
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$_ZBUILD_CV_ROOT/scripts/lib/helpers.sh"
 fi
+# yaml_get: minimal manifest scalar reader, used by the typed-aggregator preflight
+# (ADR-040 §3/§5) to resolve a stage's `convergence:` marker — the same reader the
+# roster-driven gate-aggregator uses, keeping the two views identical.
+if ! declare -F yaml_get >/dev/null 2>&1; then
+    # shellcheck source=../plugin-registry/manifest-validation.sh
+    source "$_ZBUILD_CV_ROOT/core/plugin-registry/manifest-validation.sh"
+fi
+
+# ─── _cv_stage_convergence <plugins_root> <stage_id> → gate|advisory|"" ─────────
+# Resolve a template stage id to its plugin manifest's `convergence:` marker,
+# mirroring gate-aggregator's _ga_member_manifest + the lint's _cv_convergence:
+# an id-matching manifest is authoritative; otherwise bind by the stage's first
+# declared role (_TPL_STAGE_ROLES_<safe>) to the manifest whose provides.role
+# matches. Empty when the stage carries no marker (legacy / untyped).
+_cv_stage_convergence() {
+    local proot="$1" sid="$2" m safe roles role cand r
+    m="$(manifest_graph_collect "$proot" "$sid" 2>/dev/null || true)"
+    if [[ -n "$m" && -f "$m" ]]; then
+        yaml_get "$m" convergence 2>/dev/null
+        return 0
+    fi
+    safe="${sid//-/_}"
+    local roles_var="_TPL_STAGE_ROLES_${safe}"
+    roles="${!roles_var:-}"
+    role="${roles%%,*}"
+    [[ -z "$role" ]] && return 0
+    while IFS= read -r -d '' cand; do
+        r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
+        if [[ "$r" == "$role" ]]; then
+            yaml_get "$cand" convergence 2>/dev/null
+            return 0
+        fi
+    done < <(find "$proot" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    return 0
+}
 
 # ─── _cv_var_in_canonical_set <var_name> ───────────────────────────────────────
 # Returns 0 if the variable is in the closed templating-var set (decision #5).
@@ -420,6 +455,91 @@ _contract_validate_pipeline() {
         done
     fi
 
+    # ── ADR-040 §3/§5/§7 (Phase 1): typed-aggregator preflight ─────────────
+    # Make "aggregator" an explicit, PREFLIGHT-ENFORCED concept. The `convergence:`
+    # manifest marker is the aggregator/gate TYPE (gate = blocking convergence,
+    # advisory = non-blocking review). Aggregators stay EXPLICITLY named in the
+    # template — nothing is auto-injected; we only assert the named wiring is
+    # present and type-correct, and fail LOUD when it is not.
+    #
+    # (A) Every cycle whose exit_when target resolves to a convergence marker must
+    #     bind to a cycle MEMBER declaring `convergence: gate` (the gate aggregator,
+    #     e.g. gate-aggregator). A convergence:advisory target, or a target that is
+    #     not a member, is a hard violation. Cycles whose exit_when target carries
+    #     NO marker are legacy/untyped (standard.yaml's test_assessment/impact/
+    #     review convergence) and are intentionally NOT retro-checked.
+    local _cyc_n3=0
+    if declare -p _TPL_CYCLES >/dev/null 2>&1; then _cyc_n3="${#_TPL_CYCLES[@]}"; fi
+    if [[ $_cyc_n3 -gt 0 ]]; then
+        local _c _csafe _ew _ew_conv _mem_csv
+        for _c in "${_TPL_CYCLES[@]}"; do
+            _csafe="${_c//-/_}"
+            local _ews_var="_TPL_CYCLE_UNTIL_STAGE_${_csafe}"
+            _ew="${!_ews_var:-}"
+            [[ -z "$_ew" ]] && continue
+            _ew_conv="$(_cv_stage_convergence "$plugins_root" "$_ew")"
+            # Discriminator: only typed (marker-bearing) exit_when targets are
+            # checked — an untyped target is a legacy cycle, left alone.
+            [[ -z "$_ew_conv" ]] && continue
+            local _mems_var="_TPL_CYCLE_STAGES_${_csafe}"
+            _mem_csv="${!_mems_var:-}"
+            local _is_mem=0 _mm
+            local _IFS_s="$IFS"; IFS=','
+            # shellcheck disable=SC2206
+            local -a _mems=($_mem_csv)
+            IFS="$_IFS_s"
+            for _mm in "${_mems[@]}"; do [[ "$_mm" == "$_ew" ]] && { _is_mem=1; break; }; done
+            if [[ $_is_mem -eq 0 ]]; then
+                violations+=("$_c|CYCLE_AGG_NOT_MEMBER|$_ew|cycle '$_c': exit_when.stage '$_ew' is not a member of the cycle — the convergence aggregator must be a cycle member [ADR-040 §5]")
+                fail_count=$((fail_count + 1))
+            elif [[ "$_ew_conv" != "gate" ]]; then
+                violations+=("$_c|CYCLE_AGG_TYPE|$_ew|cycle '$_c': exit_when.stage '$_ew' is convergence:$_ew_conv but a cycle requires a convergence:gate aggregator [ADR-040 §5]")
+                fail_count=$((fail_count + 1))
+            fi
+        done
+    fi
+
+    # (B) Every parallel group declaring `aggregate: advisory` must have an
+    #     EXPLICIT advisory aggregator present — a stage declaring
+    #     `convergence: advisory` that is NOT a member of the group (e.g.
+    #     simple.yaml's review_lenses → review-aggregator). Missing → hard
+    #     violation. Blocking groups (aggregate: all_pass / gate) converge via
+    #     their own exit_when predicate (checked in (A) / the ADR-040 §5 lint
+    #     guard) and need no separate aggregator stage.
+    local _pg_n3=0
+    if declare -p _TPL_PARALLEL_GROUPS >/dev/null 2>&1; then _pg_n3="${#_TPL_PARALLEL_GROUPS[@]}"; fi
+    if [[ $_pg_n3 -gt 0 ]]; then
+        local _g _gsafe _gagg _gflow
+        for _g in "${_TPL_PARALLEL_GROUPS[@]}"; do
+            _gsafe="${_g//-/_}"
+            local _gagg_var="_TPL_PARALLEL_AGGREGATE_${_gsafe}"
+            _gagg="${!_gagg_var:-}"
+            [[ "$_gagg" == "advisory" ]] || continue
+            local _gflow_var="_TPL_PARALLEL_FLOW_${_gsafe}"
+            _gflow="${!_gflow_var:-}"
+            local -A _gmember=()
+            local _IFS_s2="$IFS"; IFS=','
+            # shellcheck disable=SC2206
+            local -a _gms=($_gflow)
+            IFS="$_IFS_s2"
+            local _gm; for _gm in "${_gms[@]}"; do [[ -n "$_gm" ]] && _gmember["$_gm"]=1; done
+            # Search the resolved stage set for a non-member convergence:advisory
+            # aggregator. The group members themselves are convergence:advisory
+            # lenses — they are excluded so the bind resolves to the dedicated
+            # aggregator, not a sibling lens.
+            local _found_agg="" _st _st_conv
+            for _st in "${stages[@]}"; do
+                [[ -n "${_gmember[$_st]:-}" ]] && continue
+                _st_conv="$(_cv_stage_convergence "$plugins_root" "$_st")"
+                if [[ "$_st_conv" == "advisory" ]]; then _found_agg="$_st"; break; fi
+            done
+            if [[ -z "$_found_agg" ]]; then
+                violations+=("$_g|PARALLEL_NO_AGG|$_g|parallel group '$_g' declares aggregate:advisory but no explicit convergence:advisory aggregator stage is present — add the aggregator (e.g. review-aggregator) to the template [ADR-040 §3]")
+                fail_count=$((fail_count + 1))
+            fi
+        done
+    fi
+
     # No violations → success
     if [[ $fail_count -eq 0 ]]; then
         return 0
@@ -445,7 +565,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED|OUTPUT_DUP)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

@@ -466,7 +466,7 @@ _lc_parse_convergence() {
     ' "$1" 2>/dev/null
 }
 
-declare -A _cv_type=() _cv_agg=() _cv_role=() _cv_members=()
+declare -A _cv_type=() _cv_agg=() _cv_role=() _cv_members=() _cv_stage_set=()
 
 # _cv_convergence <stage_id> — resolve a template stage to its `convergence:`
 # marker (gate|advisory|""). Prefers the section's role binding, falls back to a
@@ -515,14 +515,16 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
     [[ -d "$_tpl_root" ]] || continue
     while IFS= read -r -d '' tfile; do
         trel="${tfile#"$_LINT_CONTRACT_REPO"/}"
-        _cv_type=(); _cv_agg=(); _cv_role=(); _cv_members=()
+        _cv_type=(); _cv_agg=(); _cv_role=(); _cv_members=(); _cv_stage_set=()
         _cv_ew_pairs=()
         while IFS= read -r _row; do
             case "$_row" in
+                ST\|*)     _cv_stage_set["${_row#ST|}"]=1 ;;
                 TYPE\|*)   _r="${_row#TYPE|}";   _cv_type["${_r%%|*}"]="${_r#*|}" ;;
                 AG\|*)     _r="${_row#AG|}";     _cv_agg["${_r%%|*}"]="${_r#*|}" ;;
                 ROLE\|*)   _r="${_row#ROLE|}";   _cv_role["${_r%%|*}"]="${_r#*|}" ;;
-                MEMBER\|*) _r="${_row#MEMBER|}"; _cv_members["${_r%%|*}"]+="${_r#*|}"$'\n' ;;
+                MEMBER\|*) _r="${_row#MEMBER|}"; _cv_members["${_r%%|*}"]+="${_r#*|}"$'\n'
+                           _cv_stage_set["${_r#*|}"]=1 ;;
                 EW\|*)     _cv_ew_pairs+=("${_row#EW|}") ;;
             esac
         done < <(_lc_parse_convergence "$tfile")
@@ -563,6 +565,53 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
                 done < <(_cv_expand "$_tgt")
             done
         fi
+
+        # ── ADR-040 §3/§5/§7 (Phase 1): typed-aggregator presence (CI mirror) ──
+        # Mirrors core/pipeline/contract-validator.sh's typed-aggregator preflight
+        # so a misconfigured template fails in CI lint as well as at runtime. NOT
+        # gated by _cv_strict — these checks key on the per-stage `convergence:`
+        # marker / per-group `aggregate:` declaration, independent of whether the
+        # template adopts a blocking parallel group.
+        #
+        # (A) Cycle exit_when must bind to a MEMBER declaring convergence: gate.
+        #     A marked target that is advisory or not-a-member fails; an UNMARKED
+        #     target is a legacy/untyped cycle (not retro-checked).
+        for _pair in "${_cv_ew_pairs[@]}"; do
+            _ows="${_pair%%|*}"; _tgt="${_pair#*|}"
+            [[ "${_cv_type[$_ows]:-}" == "cycle" ]] || continue
+            _ew_conv="$(_cv_convergence "$_tgt")"
+            [[ -z "$_ew_conv" ]] && continue
+            _is_mem=0
+            while IFS= read -r _m; do
+                [[ -z "$_m" ]] && continue
+                [[ "$_m" == "$_tgt" ]] && { _is_mem=1; break; }
+            done <<< "${_cv_members[$_ows]:-}"
+            if [[ $_is_mem -eq 0 ]]; then
+                _complain "$trel: cycle '$_ows': exit_when.stage '$_tgt' is not a member of the cycle — the convergence aggregator must be a cycle member [ADR-040 §5]"
+            elif [[ "$_ew_conv" != "gate" ]]; then
+                _complain "$trel: cycle '$_ows': exit_when.stage '$_tgt' is convergence:$_ew_conv but a cycle requires a convergence:gate aggregator [ADR-040 §5]"
+            fi
+        done
+
+        # (B) Parallel group with aggregate:advisory needs an explicit
+        #     convergence:advisory aggregator stage that is NOT a group member.
+        for _s in "${!_cv_type[@]}"; do
+            [[ "${_cv_type[$_s]}" == "parallel" ]] || continue
+            [[ "${_cv_agg[$_s]:-}" == "advisory" ]] || continue
+            declare -A _gmem=()
+            while IFS= read -r _m; do
+                [[ -n "$_m" ]] && _gmem["$_m"]=1
+            done <<< "${_cv_members[$_s]:-}"
+            _found_agg=""
+            for _cand in "${!_cv_stage_set[@]}"; do
+                [[ -n "${_gmem[$_cand]:-}" ]] && continue
+                if [[ "$(_cv_convergence "$_cand")" == "advisory" ]]; then _found_agg="$_cand"; break; fi
+            done
+            unset _gmem
+            if [[ -z "$_found_agg" ]]; then
+                _complain "$trel: parallel group '$_s' declares aggregate:advisory but no explicit convergence:advisory aggregator stage is present — add the aggregator (e.g. review-aggregator) to the template [ADR-040 §3]"
+            fi
+        done
     done < <(find "$_tpl_root" -maxdepth 2 -name '*.yaml' -type f -print0 2>/dev/null)
 done
 

@@ -1,6 +1,13 @@
 id: gate-aggregator
 name: Gate Aggregator
 kind: tool
+# ADR-040 §5/§7, ADR-001: the convergence marker declares this stage as the
+# GATE-typed convergence aggregator (symmetric with review-aggregator's
+# `convergence: advisory`). A cycle's exit_when binds to a convergence:gate
+# member (the typed-aggregator preflight enforces this). The marker does NOT
+# put the aggregator into its own roster — _ga_build_roster excludes the
+# aggregator by id (never aggregates self).
+convergence: gate
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 convergence aggregator (ADR-040 §2, EPIC #1129 B5,
