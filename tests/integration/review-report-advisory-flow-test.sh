@@ -30,21 +30,42 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 # shellcheck source=../../core/pipeline/resolver.sh
 source "$REPO_ROOT/core/pipeline/resolver.sh"
 
-# ─── SPEC-5: simple.yaml binds review → role review_report ───────────────────
+# ─── SPEC-5: C3 (#1142) cutover — simple.yaml no longer has a single `review`
+#            stage; the advisory lens flow is review_lenses (role review_lens) +
+#            review-aggregator (role review_aggregator). ────────────────────────
 set +e
 load_template "$REPO_ROOT/config/templates/simple.yaml"
 _load_rc=$?
 set -e
 assert_eq "[SPEC-5] simple.yaml loads" "0" "$_load_rc"
-assert_eq "[SPEC-5] review stage role is review_report" "review_report" "${_TPL_STAGE_ROLES_review:-}"
+assert_eq "[SPEC-5] legacy single `review` stage removed (role var unset)" \
+    "" "${_TPL_STAGE_ROLES_review:-}"
+assert_eq "[SPEC-5] lens members bind role review_lens" \
+    "review_lens" "${_TPL_STAGE_ROLES_lens_security:-}"
+assert_eq "[SPEC-5] review-aggregator binds role review_aggregator" \
+    "review_aggregator" "${_TPL_STAGE_ROLES_review_aggregator:-}"
 
-# ─── SPEC-5: the role resolves to the NEW plugin, not the legacy one ─────────
+# ─── SPEC-5: the new advisory roles resolve to the NEW lens + aggregator plugins ─
 set +e
+_lens_dir="$(resolve_plugin_for_role "review_lens" "" "$ZBUILD_PLUGINS_ROOT" 2>/dev/null)"
+_lens_rc=$?
+_agg_dir="$(resolve_plugin_for_role "review_aggregator" "" "$ZBUILD_PLUGINS_ROOT" 2>/dev/null)"
+_agg_rc=$?
+# The retired-from-templates fan-out plugin is still resolvable by its role until
+# its physical deletion (B7-style follow-up) — proves the cutover unbound it from
+# the live flow without breaking the plugin's own regression below.
 _plugin_dir="$(resolve_plugin_for_role "review_report" "" "$ZBUILD_PLUGINS_ROOT" 2>/dev/null)"
-_res_rc=$?
+_plugin_rc=$?
 set -e
-assert_eq "[SPEC-5] review_report role resolves (rc=0)" "0" "$_res_rc"
-assert_eq "[SPEC-5] resolves to the review-report plugin" "review-report" "$(basename "${_plugin_dir:-none}")"
+assert_eq "[SPEC-5] review_lens role resolves (rc=0)" "0" "$_lens_rc"
+assert_eq "[SPEC-5] resolves to the review-lens plugin" "review-lens" "$(basename "${_lens_dir:-none}")"
+assert_eq "[SPEC-5] review_aggregator role resolves (rc=0)" "0" "$_agg_rc"
+assert_eq "[SPEC-5] resolves to the review-aggregator plugin" "review-aggregator" "$(basename "${_agg_dir:-none}")"
+# review-report is unbound from the live flow but still resolvable by role until
+# its physical deletion — assert it explicitly (rc + identity) so the regression
+# below can't silently pass on an empty/failed resolution (PR #1164 review).
+assert_eq "[SPEC-5] review_report still resolves (rc=0) until physical deletion" "0" "$_plugin_rc"
+assert_eq "[SPEC-5] review_report resolves to the review-report plugin" "review-report" "$(basename "${_plugin_dir:-none}")"
 
 # Standard.yaml's `reviewer` role must NOT resolve to this plugin — the legacy
 # `review` plugin declares no provides.role, so reviewer falls through to the

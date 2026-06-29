@@ -26,14 +26,26 @@ fi
 # Issue #922: acceptance-gate inserted after test_assessment (ADR-036 / ADR-013 amendment).
 # Issue #1138 [B6] (ADR-040, EPIC #1129): the decomposed mechanical gate stages
 #   are canonicalized so simple.yaml's build_test_cycle can converge via the
-#   composable gates + gate-aggregator. shape-floor lands after test;
-#   lint/coverage/mutation/secret-scan/gate-aggregator after acceptance-gate.
-# Issue #1139 [B7] (ADR-037 §6, EPIC #1129): the retired monolithic gate stage is
-#   removed from the canonical list; convergence is owned by the gate-aggregator.
-# Exactly these 23 ids, in this order:
-#   intake plan design impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+#   composable gates + gate-aggregator instead of the monolithic objective-gate.
+#   shape-floor lands after test; lint/coverage/mutation/secret-scan/gate-aggregator
+#   after acceptance-gate.
+# Issue #1139 [B7] (ADR-037 §6, EPIC #1129): the retired monolithic objective-gate
+#   stage is removed from the canonical list; convergence is owned by gate-aggregator.
+# Issue #1142 [C3] (ADR-040 §3, EPIC #1129): the decomposed advisory lens stages
+#   (lens-security/-performance/-red-team/-correctness/-scope) + the review-aggregator
+#   are canonicalized so simple.yaml's `review` stage can be replaced by the
+#   `review_lenses` advisory parallel group + review-aggregator. The lens stages are
+#   parallel-group members (order-exempt — only membership is enforced); the
+#   review-aggregator is a leaf placed after `review` and before `pr`. No single
+#   template uses both the legacy `review` stage AND the decomposed lenses, so their
+#   relative order here is unconstrained. Per template, membership is always
+#   enforced; canonical monotonic order is enforced for ordinary stages but NOT for
+#   parallel-group members (order-exempt — _tpl_validate_stages skips the order
+#   check for them; only membership is verified).
+# Exactly these 29 ids, in this order:
+#   intake plan design impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan design impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor
+    intake plan design impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template

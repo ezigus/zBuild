@@ -37,17 +37,22 @@ set -e
 
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
-# ─── SPEC-2: _TPL_STAGES has exactly 14 entries in canonical order ────────────
+# ─── SPEC-2: _TPL_STAGES has exactly 19 entries in canonical order ────────────
 # CHANGE (B6 #1138, ADR-040): build_test_cycle is recomposed from the retired
-# monolithic gate to the decomposed mechanical gates + gate-aggregator. The flat
-# sequence is now:
+# monolithic objective-gate to the decomposed mechanical gates + gate-aggregator
+# (the objective-gate plugin was then removed in B7 #1139).
+# CHANGE (C3 #1142, ADR-040 §3 / ADR-039): the single `review` stage is replaced
+# by the `review_lenses` advisory parallel group (5 lens member stages) followed
+# by the `review-aggregator` leaf. The group id itself is NOT a flat stage (like a
+# cycle id); its members expand in flow order. The flat sequence is now:
 #   intake→plan→design→build→test→shape-floor→acceptance-gate→lint→coverage→
-#   mutation→secret-scan→gate-aggregator→review→pr
-# The monolithic gate is gone (deleted in B7 #1139); test_assessment stays omitted.
+#   mutation→secret-scan→gate-aggregator→lens-security→lens-performance→
+#   lens-red-team→lens-correctness→lens-scope→review-aggregator→pr
+# objective-gate AND review-report are UNREFERENCED here; test_assessment omitted.
 
-assert_eq "[SPEC-2] _TPL_STAGES count is 14" "14" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-2] _TPL_STAGES count is 19" "19" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(intake plan design build test shape-floor acceptance-gate lint coverage mutation secret-scan gate-aggregator review pr)
+_expected_stages=(intake plan design build test shape-floor acceptance-gate lint coverage mutation secret-scan gate-aggregator lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -101,11 +106,30 @@ assert_eq "[SPEC-3] build router max_turns" "0"           "$_TPL_STAGE_ROUTER_MA
 assert_eq "[SPEC-3] test roles"    "tester"       "$_TPL_STAGE_ROLES_test"
 assert_eq "[SPEC-3] test io_dests" "file,stdout"  "$_TPL_STAGE_IO_DESTS_test"
 
-# review
-assert_eq "[SPEC-3] review roles"            "review_report" "$_TPL_STAGE_ROLES_review"
-assert_eq "[SPEC-3] review io_dests"         "file,stdout" "$_TPL_STAGE_IO_DESTS_review"
-assert_eq "[SPEC-3] review router timeout"   "300"         "$_TPL_STAGE_ROUTER_TIMEOUT_review"
-assert_eq "[SPEC-3] review router max_turns" "25"          "$_TPL_STAGE_ROUTER_MAX_TURNS_review"
+# review_lenses members (C3 #1142): all five lens stages bind by role review_lens
+# to the SAME review-lens plugin; they differ only by the lens id derived from the
+# stage name. The legacy single `review` stage (role review_report) is removed.
+assert_eq "[SPEC-3] review stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_review:-}"
+assert_eq "[SPEC-3] lens-security roles"    "review_lens" "$_TPL_STAGE_ROLES_lens_security"
+assert_eq "[SPEC-3] lens-performance roles" "review_lens" "$_TPL_STAGE_ROLES_lens_performance"
+assert_eq "[SPEC-3] lens-red-team roles"    "review_lens" "$_TPL_STAGE_ROLES_lens_red_team"
+assert_eq "[SPEC-3] lens-correctness roles" "review_lens" "$_TPL_STAGE_ROLES_lens_correctness"
+assert_eq "[SPEC-3] lens-scope roles"       "review_lens" "$_TPL_STAGE_ROLES_lens_scope"
+assert_eq "[SPEC-3] lens-security io_dests" "file,stdout" "$_TPL_STAGE_IO_DESTS_lens_security"
+assert_eq "[SPEC-3] lens-security router timeout"   "300" "$_TPL_STAGE_ROUTER_TIMEOUT_lens_security"
+assert_eq "[SPEC-3] lens-security router max_turns" "25"  "$_TPL_STAGE_ROUTER_MAX_TURNS_lens_security"
+
+# review-aggregator (C2 #1141): advisory merge of the lens results; no LLM call,
+# so no router section. Bound by role review_aggregator.
+assert_eq "[SPEC-3] review-aggregator roles"    "review_aggregator" "$_TPL_STAGE_ROLES_review_aggregator"
+assert_eq "[SPEC-3] review-aggregator io_dests" "file,stdout"       "$_TPL_STAGE_IO_DESTS_review_aggregator"
+
+# review_lenses parallel group registered (member-of mapping + group type).
+assert_eq "[SPEC-3] review_lenses is a parallel group" "parallel" "${_TPL_STAGE_TYPE_review_lenses:-}"
+assert_eq "[SPEC-3] lens-security member_of review_lenses" "review_lenses" "${_TPL_PARALLEL_MEMBER_OF_lens_security:-}"
+assert_eq "[SPEC-3] review_lenses members csv" \
+    "lens-security,lens-performance,lens-red-team,lens-correctness,lens-scope" \
+    "${_TPL_PARALLEL_FLOW_review_lenses:-}"
 
 # pr (T0 tool stage — no router section)
 assert_eq "[SPEC-3] pr roles"    "pr"           "$_TPL_STAGE_ROLES_pr"
@@ -127,19 +151,21 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── SPEC-11: dispatch units are 6 (all build_test_cycle members grouped) ─────
-# B6 (#1138): the cycle now has 9 members (build, test, shape-floor,
-# acceptance-gate, lint, coverage, mutation, secret-scan, gate-aggregator) but
-# they still collapse into ONE cycle dispatch unit. Count stays 6: intake, plan,
-# design, cycle:build_test_cycle, review, pr.
+# ─── SPEC-11: dispatch units are 7 (cycle + parallel groups each fold to one) ─
+# B6 (#1138): the build_test_cycle's 9 members collapse into ONE cycle dispatch
+# unit. C3 (#1142): the review_lenses parallel group's 5 lens members collapse
+# into ONE parallel dispatch unit, and review-aggregator is its own stage unit.
+# Count is now 7: intake, plan, design, cycle:build_test_cycle,
+# parallel:review_lenses, stage:review-aggregator, pr.
 
-assert_eq "[SPEC-11] dispatch units count is 6" "6" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "[SPEC-11] dispatch units count is 7" "7" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[0]}"
 assert_eq "[SPEC-11] dispatch[1] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[1]}"
 assert_eq "[SPEC-11] dispatch[2] stage:design"         "stage:design"         "${_TPL_DISPATCH_UNITS[2]}"
 assert_eq "[SPEC-11] dispatch[3] cycle:build_test_cycle" "cycle:build_test_cycle" "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "[SPEC-11] dispatch[4] stage:review"         "stage:review"         "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "[SPEC-11] dispatch[4] parallel:review_lenses" "parallel:review_lenses" "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "[SPEC-11] dispatch[5] stage:review-aggregator" "stage:review-aggregator" "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "[SPEC-11] dispatch[6] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[6]}"
 
 # ─── SPEC-14 / SPEC-5: build_test_cycle registered with correct stages and max ─
 # CHANGE (B6 #1138, ADR-040): _TPL_CYCLES must contain build_test_cycle with its
