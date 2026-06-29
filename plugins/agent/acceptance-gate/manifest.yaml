@@ -1,6 +1,11 @@
 id: acceptance-gate
 name: Acceptance Contract Gate
 kind: agent
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate. NB: this
+# stage is kind:agent but its verdict is MECHANICAL (it shells negctl +
+# reachability, no model.route call), so it IS a convergence gate — the marker,
+# not `kind:`, is the authoritative mechanical-vs-advisory discriminator.
+convergence: gate
 version: 0.2.0
 description: |
   Mechanical (non-LLM) acceptance-contract gate (ADR-036, issue #922).

@@ -1,6 +1,9 @@
 id: review-lens
 name: Review Lens (single, advisory)
 kind: agent
+# ADR-040 §5: convergence marker. `advisory` = NEVER blocks convergence; must
+# NOT appear on a must-pass / exit_when path.
+convergence: advisory
 version: 0.1.0
 description: |
   A single advisory review lens as its OWN isolated LLM stage (ADR-040 §3,

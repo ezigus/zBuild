@@ -24,15 +24,21 @@ TPL_ROOT="$TEST_TEMP_DIR/templates"
 mkdir -p "$PLUGINS_ROOT/tool/gate_suite" "$PLUGINS_ROOT/tool/gate_lint" \
     "$PLUGINS_ROOT/agent/lens_security" "$TPL_ROOT"
 
-# Minimal lint-clean manifest: id + kind + provides.role + one primary output.
-# Fixture ids are NOT on lint-contract's ADR-020 stage-scope allowlist, so the
-# inter-stage input contract is not enforced on them — only kind/role indexing.
+# Minimal lint-clean manifest: id + kind + convergence marker + provides.role +
+# one primary output. Fixture ids are NOT on lint-contract's ADR-020 stage-scope
+# allowlist, so the inter-stage input contract is not enforced on them — only
+# kind/role/convergence indexing. ADR-040 §5: the convergence-path guard keys on
+# the `convergence:` MARKER, not `kind:` (so a kind:agent gate is legal when
+# declared convergence:gate, and a convergence:advisory stage is flagged on the
+# must-pass path).
 write_manifest() {
-    local dir="$1" id="$2" kind="$3" role="$4"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: $id
-kind: $kind
+    local dir="$1" id="$2" kind="$3" role="$4" convergence="${5:-}"
+    {
+        printf 'id: %s\n' "$id"
+        printf 'name: %s\n' "$id"
+        printf 'kind: %s\n' "$kind"
+        [[ -n "$convergence" ]] && printf 'convergence: %s\n' "$convergence"
+        cat <<EOF
 version: 0.1.0
 hooks:
   run: r
@@ -46,10 +52,11 @@ outputs:
     required: true
     primary: true
 EOF
+    } > "$dir/manifest.yaml"
 }
-write_manifest "$PLUGINS_ROOT/tool/gate_suite"    gate_suite    tool  gate_suite
-write_manifest "$PLUGINS_ROOT/tool/gate_lint"     gate_lint     tool  gate_lint
-write_manifest "$PLUGINS_ROOT/agent/lens_security" lens_security agent lens_security
+write_manifest "$PLUGINS_ROOT/tool/gate_suite"    gate_suite    tool  gate_suite    gate
+write_manifest "$PLUGINS_ROOT/tool/gate_lint"     gate_lint     tool  gate_lint     gate
+write_manifest "$PLUGINS_ROOT/agent/lens_security" lens_security agent lens_security advisory
 
 run_lint() {
     local rc=0

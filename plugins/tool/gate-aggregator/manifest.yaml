@@ -7,9 +7,15 @@ description: |
   issue #1137). Collapses the mechanical gate stages into ONE convergence verdict
   — the single merge-blocking construct in the decomposed pipeline (ADR-040 §5).
 
-  Must-pass set (each read from its recorded result artifact in the shared
-  artifacts dir): suite (the `test` stage / test-results.json), shape-floor,
-  acceptance-gate, lint, coverage, mutation, secret-scan.
+  Must-pass set is ROSTER-DRIVEN (ADR-040 §2): discovered at runtime from the
+  cycle members whose manifest declares `convergence: gate` (excluding the
+  aggregator itself and any advisory/absent member) — no hardcoded gate list, so
+  adding/removing a gate from the cycle changes the must-pass set with NO edit to
+  this plugin. Each gate's recorded result artifact is read by filename from the
+  shared artifacts dir. When invoked with no cycle in scope (ZBUILD_CYCLE_ID /
+  _TPL_CYCLE_STAGES_* absent), it falls back to the legacy fixed set: suite (the
+  `test` stage / test-results.json), shape-floor, acceptance-gate, lint,
+  coverage, mutation, secret-scan.
 
   Verdict: pass IFF every must-pass gate's artifact is PRESENT, well-formed, and
   carries a verdict in {pass, skip}. A gate that ran and self-skipped (verdict
@@ -84,6 +90,14 @@ outputs:
     type: gate-aggregator-result.json
     required: true
     primary: true
+  # B2 (ADR-040): consolidated gate→build feedback. Written ONLY on verdict=fail
+  # (merges every failing gate's actionable detail). required:false — absent on a
+  # passing aggregate. Wired by simple.yaml's build_test_cycle as the
+  # gate-aggregator → build (prior_gate_feedback) cycle-feedback edge.
+  - id: gate_feedback
+    path: "${artifact_dir}/gate-feedback.md"
+    type: markdown
+    required: false
 
 state:
   persisted: [last_verdict]

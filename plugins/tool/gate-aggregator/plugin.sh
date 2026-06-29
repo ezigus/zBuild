@@ -25,12 +25,26 @@ _GA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_GA_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 
+# Manifest libs for ROSTER-DRIVEN discovery (ADR-040 §2): the must-pass set is
+# derived at runtime from the cycle members' own `convergence:` markers — no
+# hardcoded gate list — so adding/removing a gate needs NO edit to this plugin.
+# shellcheck source=../../../scripts/lib/manifest-graph.sh
+source "$_GA_ROOT/scripts/lib/manifest-graph.sh" 2>/dev/null || true
+# yaml_get (top-level + single-level-nested scalar reader): convergence / role /
+# provides.artifact_type. manifest-validation.sh is a leaf (sources nothing).
+# shellcheck source=../../../core/plugin-registry/manifest-validation.sh
+source "$_GA_ROOT/core/plugin-registry/manifest-validation.sh" 2>/dev/null || true
+
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _ga_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
-# Must-pass set (ADR-040 §1/§2): "<gate_name>:<result_filename>". The order is
-# the stable, deterministic aggregation/reporting order.
-_GA_MUST_PASS=(
+# Legacy fallback must-pass set (ADR-040 §2, REGRESSION SAFETY). Used ONLY when
+# no cycle roster is in scope — i.e. ZBUILD_CYCLE_ID / _TPL_CYCLE_STAGES_<id> are
+# ABSENT (the aggregator invoked standalone with result files in a dir but no
+# cycle env, as the unit tests do). The cycle path (see _ga_build_roster) learns
+# the must-pass set from the present `convergence: gate` members instead.
+# Format: "<gate_name>:<result_filename>", stable aggregation/reporting order.
+_GA_LEGACY_MUST_PASS=(
     "suite:test-results.json"
     "shape-floor:shape-floor-result.json"
     "acceptance-gate:acceptance-gate-result.json"
@@ -39,6 +53,126 @@ _GA_MUST_PASS=(
     "mutation:mutation-result.json"
     "secret-scan:secret-scan-result.json"
 )
+
+# Populated by _ga_build_roster: "<name>:<result_filename>" entries (the order
+# is the deterministic aggregation/reporting order). _GA_ROSTER_MODE records
+# whether the roster came from the live cycle or the legacy fallback.
+_GA_ROSTER=()
+_GA_ROSTER_MODE=""
+
+# ─── _ga_member_manifest <plugins_root> <member> ─────────────────────────────
+# Resolve a cycle member stage id to its plugin manifest path. Two strategies:
+#   1) id-match (manifest_graph_collect) — test / shape-floor / acceptance-gate /
+#      secret-scan all have id-matching manifests.
+#   2) role binding — simple.yaml names some members by a stage id (lint /
+#      coverage / mutation) that binds BY ROLE to lint-gate / coverage-gate /
+#      mutation-gate. Read the member's role from _TPL_STAGE_ROLES_<safe>
+#      (exported by template.sh) and find the manifest whose provides.role matches.
+# Echoes the manifest path; rc 1 if unresolved.
+_ga_member_manifest() {
+    local plugins_root="$1" member="$2" m
+    m="$(manifest_graph_collect "$plugins_root" "$member" 2>/dev/null)"
+    if [[ -n "$m" && -f "$m" ]]; then printf '%s\n' "$m"; return 0; fi
+    local safe="${member//-/_}" roles_var roles role cand r
+    roles_var="_TPL_STAGE_ROLES_${safe}"
+    roles="${!roles_var:-}"
+    role="${roles%%,*}"            # first declared role
+    [[ -z "$role" ]] && return 1
+    while IFS= read -r -d '' cand; do
+        r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
+        if [[ "$r" == "$role" ]]; then printf '%s\n' "$cand"; return 0; fi
+    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    return 1
+}
+
+# ─── _ga_manifest_result_file <manifest> ─────────────────────────────────────
+# The gate's recorded result artifact FILENAME: provides.artifact_type, else the
+# basename of the primary output's declared path.
+_ga_manifest_result_file() {
+    local manifest="$1" at row path
+    at="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null)"
+    if [[ -n "$at" ]]; then printf '%s\n' "$at"; return 0; fi
+    row="$(manifest_graph_primary_output "$manifest" 2>/dev/null)" || return 1
+    path="${row##*|}"
+    [[ -z "$path" ]] && return 1
+    printf '%s\n' "${path##*/}"
+}
+
+# ─── _ga_build_roster <plugins_root> ─────────────────────────────────────────
+# ADR-040 §2 roster-driven must-pass discovery. When a cycle is in scope
+# (ZBUILD_CYCLE_ID set by cycle-orchestrator + _TPL_CYCLE_STAGES_<id> exported by
+# template.sh), the must-pass set is every cycle member whose manifest declares
+# `convergence: gate` — EXCLUDING the aggregator itself and any advisory/absent
+# member. Otherwise FALL BACK to the legacy hardcoded set (cycle-less invocation,
+# e.g. unit tests). Populates _GA_ROSTER + _GA_ROSTER_MODE.
+_ga_build_roster() {
+    local plugins_root="$1"
+    _GA_ROSTER=()
+    local cyc="${ZBUILD_CYCLE_ID:-}" stages=""
+    if [[ -n "$cyc" ]]; then
+        local stages_var="_TPL_CYCLE_STAGES_${cyc//-/_}"
+        stages="${!stages_var:-}"
+    fi
+    if [[ -z "$stages" ]]; then
+        _GA_ROSTER=("${_GA_LEGACY_MUST_PASS[@]}")
+        _GA_ROSTER_MODE="fallback"
+        return 0
+    fi
+    local IFS_save="$IFS"; IFS=','
+    # shellcheck disable=SC2206
+    local -a members=($stages)
+    IFS="$IFS_save"
+    local member manifest conv file
+    for member in "${members[@]}"; do
+        [[ -z "$member" ]] && continue
+        [[ "$member" == "gate-aggregator" ]] && continue   # never aggregate self
+        manifest="$(_ga_member_manifest "$plugins_root" "$member")" || continue
+        conv="$(yaml_get "$manifest" "convergence" 2>/dev/null)"
+        [[ "$conv" == "gate" ]] || continue                # advisory/absent excluded
+        file="$(_ga_manifest_result_file "$manifest")" || continue
+        [[ -z "$file" ]] && continue
+        _GA_ROSTER+=("$member:$file")
+    done
+    # Safety net: a cycle that resolved to zero gates must NOT vacuously pass —
+    # fall back to the legacy set so a misconfiguration fails closed, not open.
+    if [[ ${#_GA_ROSTER[@]} -eq 0 ]]; then
+        _GA_ROSTER=("${_GA_LEGACY_MUST_PASS[@]}")
+        _GA_ROSTER_MODE="fallback"
+    else
+        _GA_ROSTER_MODE="cycle"
+    fi
+    return 0
+}
+
+# ─── _ga_gate_detail <name> <result_path> ────────────────────────────────────
+# B2 (ADR-040): render one failing gate's actionable detail for the consolidated
+# gate→build feedback. Best-effort jq extraction of the common result fields
+# (summary / reason / failures[] / findings[]); a missing artifact is a
+# fail-closed "did not run" note.
+_ga_gate_detail() {
+    local name="$1" path="$2" reason summary fails finds f
+    printf '## %s\n\n' "$name"
+    if [[ ! -f "$path" ]]; then
+        printf -- '- artifact missing: the gate did not run (fail-closed).\n\n'
+        return 0
+    fi
+    summary="$(jq -r '.summary // empty' "$path" 2>/dev/null)"
+    reason="$(jq -r '.reason // empty' "$path" 2>/dev/null)"
+    [[ -n "$summary" ]] && printf -- '- summary: %s\n' "$summary"
+    [[ -n "$reason" ]] && printf -- '- reason: %s\n' "$reason"
+    fails="$(jq -r '(.failures // [])[]? | tostring' "$path" 2>/dev/null)"
+    if [[ -n "$fails" ]]; then
+        printf -- '- failures:\n'
+        while IFS= read -r f; do [[ -n "$f" ]] && printf '    - %s\n' "$f"; done <<< "$fails"
+    fi
+    finds="$(jq -rc '(.findings // [])[]?' "$path" 2>/dev/null)"
+    if [[ -n "$finds" ]]; then
+        printf -- '- findings:\n'
+        while IFS= read -r f; do [[ -n "$f" ]] && printf '    - %s\n' "$f"; done <<< "$finds"
+    fi
+    [[ -z "$summary$reason$fails$finds" ]] && printf -- '- verdict=fail (no structured detail in artifact).\n'
+    printf '\n'
+}
 
 # ─── gate_aggregator_init ─────────────────────────────────────────────────────
 gate_aggregator_init() {
@@ -88,22 +222,28 @@ gate_aggregator_run() {
     mkdir -p "$artifacts_dir"
 
     local result_path="$artifacts_dir/gate-aggregator-result.json"
+    local feedback_path="$artifacts_dir/gate-feedback.md"
 
     _ga_emit "plugin.run.start" "plugin=gate-aggregator"
 
+    # ADR-040 §2: discover the must-pass roster (cycle-driven or legacy fallback).
+    local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_GA_ROOT/plugins}"
+    _ga_build_roster "$plugins_root"
+
     local verdict="pass"
-    local failed=()        # gate names that blocked convergence
+    local failed=()         # gate names that blocked convergence
+    local failed_files=()   # parallel to failed[]: the result filename
     local gate_pairs=()     # "name=status" for the artifact's gates map
     local entry name file status
 
-    for entry in "${_GA_MUST_PASS[@]}"; do
+    for entry in "${_GA_ROSTER[@]}"; do
         name="${entry%%:*}"
         file="${entry#*:}"
         status="$(_ga_read_gate_verdict "$artifacts_dir/$file")"
         gate_pairs+=("$name=$status")
         case "$status" in
             pass | skip) : ;;                     # satisfied
-            *) verdict="fail"; failed+=("$name") ;; # fail | missing | malformed
+            *) verdict="fail"; failed+=("$name"); failed_files+=("$file") ;; # fail|missing|malformed
         esac
     done
 
@@ -121,6 +261,24 @@ gate_aggregator_run() {
 
     jq -n --arg v "$verdict" --argjson g "$gates_json" --argjson f "$failed_json" \
         '{"verdict":$v,"gates":$g,"failed":$f}' | atomic_write "$result_path"
+
+    # ─── B2 (ADR-040): consolidated gate→build feedback (cycle self-heal) ──────
+    # On fail, write ONE actionable payload merging every failing gate's detail.
+    # The build_test_cycle wires this (gate-aggregator → build, prior_gate_feedback)
+    # so the next iter's build prompt sees the full failure set in one place.
+    if [[ "$verdict" == "fail" ]]; then
+        local _i
+        {
+            printf '# Gate Aggregator Feedback\n\n'
+            printf 'The build_test_cycle did not converge: %d mechanical gate(s) failed. ' "${#failed[@]}"
+            printf 'Address every finding below, then re-run.\n\n'
+            for _i in "${!failed[@]}"; do
+                _ga_gate_detail "${failed[$_i]}" "$artifacts_dir/${failed_files[$_i]}"
+            done
+        } | atomic_write "$feedback_path"
+    else
+        rm -f "$feedback_path" 2>/dev/null || true
+    fi
 
     if [[ "$verdict" == "pass" ]]; then
         _ga_emit "gate_aggregator.pass"

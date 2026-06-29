@@ -58,6 +58,8 @@ declare -A _LC_STAGE_OUTPUTS=()
 declare -A _LC_STAGE_INPUT_SOURCE=()
 declare -A _LC_STAGE_KIND=()   # manifest id → kind (tool|agent|…) — ADR-040 §5 guard
 declare -A _LC_ROLE_KIND=()    # provides.role → kind — for role-bound template stages
+declare -A _LC_STAGE_CONVERGENCE=()  # manifest id → convergence marker (gate|advisory|"") — ADR-040 §5
+declare -A _LC_ROLE_CONVERGENCE=()   # provides.role → convergence marker — for role-bound template stages
 declare -A _LC_EXTERNAL_OK=()
 for a in $(manifest_graph_external_allowlist); do
     _LC_EXTERNAL_OK["$a"]=1
@@ -93,8 +95,14 @@ while IFS= read -r -d '' m; do
     _LC_STAGE_MANIFEST["$id"]="$m"
     _kind="$(_lc_manifest_field "$m" kind)"
     [[ -n "$_kind" ]] && _LC_STAGE_KIND["$id"]="$_kind"
+    # ADR-040 §5: convergence marker is the AUTHORITATIVE mechanical-vs-advisory
+    # discriminator (supersedes kind:-inference; e.g. acceptance-gate is kind:agent
+    # but convergence:gate).
+    _conv="$(_lc_manifest_field "$m" convergence)"
+    [[ -n "$_conv" ]] && _LC_STAGE_CONVERGENCE["$id"]="$_conv"
     _role="$(_lc_manifest_role "$m")"
     [[ -n "$_role" && -n "$_kind" ]] && _LC_ROLE_KIND["$_role"]="$_kind"
+    [[ -n "$_role" && -n "$_conv" ]] && _LC_ROLE_CONVERGENCE["$_role"]="$_conv"
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         out_id="${rec%%|*}"
@@ -398,10 +406,15 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
 done
 
 # ─── ADR-040 §5: convergence-path invariant guard ───────────────────────────
-# "No kind:agent / LLM stage may appear in the must-pass set or in any exit_when
-# predicate." Promotes ADR-037 §3's prose spot-check to a STRUCTURAL property of
-# the resolved template: every stage on a merge-blocking convergence path must be
-# kind:tool, T0, no-LLM.
+# "No advisory stage may appear in the must-pass set or in any exit_when
+# predicate." Keys on the `convergence:` MARKER (ADR-040 §5), not `kind:`: a
+# `convergence: gate` stage is the mechanical one (even when it is kind:agent,
+# e.g. acceptance-gate, whose verdict is mechanical / no model.route); a
+# `convergence: advisory` stage NEVER blocks and must not sit on the path. An
+# undeclared-marker stage that is kind:agent is treated as illegal too (an LLM
+# stage that was not explicitly declared a gate must not gate convergence —
+# fail-closed). Promotes ADR-037 §3's prose spot-check to a STRUCTURAL property
+# of the resolved template.
 #
 # Scope (the discriminator): the invariant applies only to templates that adopt
 # the decomposed gate taxonomy — those declaring at least one `type: parallel`
@@ -472,6 +485,32 @@ _cv_kind() {
     printf '%s\n' "${_LC_STAGE_KIND[$s]:-}"
 }
 
+# _cv_convergence <stage_id> — resolve a template stage to its `convergence:`
+# marker (gate|advisory|""). Prefers the section's role binding, falls back to a
+# manifest whose id == stage id. Empty when unresolvable or absent.
+_cv_convergence() {
+    local s="$1" role="${_cv_role[$1]:-}"
+    if [[ -n "$role" && -n "${_LC_ROLE_CONVERGENCE[$role]:-}" ]]; then
+        printf '%s\n' "${_LC_ROLE_CONVERGENCE[$role]}"; return 0
+    fi
+    printf '%s\n' "${_LC_STAGE_CONVERGENCE[$s]:-}"
+}
+
+# _cv_illegal_on_path <stage_id> — returns 0 if this leaf must NOT sit on a
+# merge-blocking convergence path (ADR-040 §5). Illegal IFF it is explicitly
+# `convergence: advisory`, OR it carries no marker but is kind:agent (an
+# undeclared LLM stage — fail-closed). A `convergence: gate` stage is always OK
+# (even kind:agent, e.g. acceptance-gate).
+_cv_illegal_on_path() {
+    local s="$1" conv kind
+    conv="$(_cv_convergence "$s")"
+    [[ "$conv" == "advisory" ]] && return 0
+    [[ "$conv" == "gate" ]] && return 1
+    kind="$(_cv_kind "$s")"
+    [[ "$kind" == "agent" ]] && return 0
+    return 1
+}
+
 # _cv_expand <stage_id> [visited] — echo the effective LEAF stage ids of a target:
 # a parallel/cycle group expands to its members (transitively); a leaf is itself.
 _cv_expand() {
@@ -513,19 +552,22 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
             [[ "${_cv_agg[$_s]:-all_pass}" != "advisory" ]] && _cv_strict=1
         done
         if [[ $_cv_strict -eq 1 ]]; then
-            # RULE A — must-pass set: members of a blocking parallel group must be tool.
+            # RULE A — must-pass set: members of a blocking parallel group must be
+            # convergence:gate (mechanical). An advisory (or undeclared-LLM) member
+            # on the must-pass path is illegal.
             for _s in "${!_cv_type[@]}"; do
                 [[ "${_cv_type[$_s]}" == "parallel" ]] || continue
                 _agg="${_cv_agg[$_s]:-all_pass}"
                 [[ "$_agg" == "advisory" ]] && continue
                 while IFS= read -r _leaf; do
                     [[ -z "$_leaf" ]] && continue
-                    if [[ "$(_cv_kind "$_leaf")" == "agent" ]]; then
-                        _complain "$trel: parallel group '$_s' (aggregate: $_agg) is on the must-pass/convergence path but member '$_leaf' is kind:agent (LLM); convergence-feeding stages must be kind:tool T0 [ADR-040 §5]"
+                    if _cv_illegal_on_path "$_leaf"; then
+                        _complain "$trel: parallel group '$_s' (aggregate: $_agg) is on the must-pass/convergence path but member '$_leaf' is not convergence:gate (advisory/undeclared LLM); convergence-feeding stages must be declared convergence:gate [ADR-040 §5]"
                     fi
                 done < <(_cv_expand "$_s")
             done
-            # RULE B — exit_when/abort_when: target must not be (or contain) an LLM stage.
+            # RULE B — exit_when/abort_when: target must not be (or contain) an
+            # advisory/undeclared-LLM stage.
             for _pair in "${_cv_ew_pairs[@]}"; do
                 _ows="${_pair%%|*}"; _tgt="${_pair#*|}"
                 if [[ "${_cv_type[$_tgt]:-}" == "parallel" && "${_cv_agg[$_tgt]:-all_pass}" == "advisory" ]]; then
@@ -533,8 +575,8 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
                 fi
                 while IFS= read -r _leaf; do
                     [[ -z "$_leaf" ]] && continue
-                    if [[ "$(_cv_kind "$_leaf")" == "agent" ]]; then
-                        _complain "$trel: exit_when/abort_when in '$_ows' references '$_tgt' which resolves to kind:agent (LLM) leaf '$_leaf'; no LLM stage may sit on a merge-blocking convergence path [ADR-040 §5]"
+                    if _cv_illegal_on_path "$_leaf"; then
+                        _complain "$trel: exit_when/abort_when in '$_ows' references '$_tgt' which resolves to leaf '$_leaf' that is not convergence:gate (advisory/undeclared LLM); no advisory stage may sit on a merge-blocking convergence path [ADR-040 §5]"
                     fi
                 done < <(_cv_expand "$_tgt")
             done

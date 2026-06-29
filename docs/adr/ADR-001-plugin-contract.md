@@ -24,6 +24,7 @@ Every plugin lives in `plugins/<kind>/<name>/` and provides a `manifest.yaml` pl
 id: <kebab-case-globally-unique>
 name: <human-readable>
 kind: agent | tool | recovery | orchestrator | claim-coordinator | daemon
+convergence: gate | advisory   # OPTIONAL — ADR-040 §5/§7 convergence marker
 version: <semver>
 description: |
   <one paragraph>
@@ -71,6 +72,19 @@ state:
 | `daemon` | `tick` | poll interval | events to bus |
 
 All kinds may implement `init`, `finalize`, `cleanup`.
+
+### The `convergence:` marker (optional — ADR-040)
+
+A gate/lens plugin MAY declare a top-level `convergence:` field — the authoritative mechanical-vs-advisory
+discriminator for the convergence-path invariant (ADR-040 §5/§7), independent of `kind:`:
+
+- `convergence: gate` — mechanical, **blocks** convergence (included in the gate-aggregator's
+  roster-driven must-pass set). Allowed for `kind: tool` OR `kind: agent` (e.g. `acceptance-gate` is
+  `kind: agent` yet mechanical — it makes no `model.route` call).
+- `convergence: advisory` — **never** blocks; must not appear on a must-pass / `exit_when` path
+  (lenses, review-aggregator).
+- *absent* — not a convergence gate; excluded from the must-pass set (work stages, the
+  gate-aggregator itself).
 
 ### Hook function signature
 

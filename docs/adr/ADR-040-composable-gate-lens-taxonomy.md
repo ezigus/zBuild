@@ -78,19 +78,25 @@ top-severity findings — the report is the *input* to that policy, not a gate.
 
 ### 5. The convergence-path invariant (machine-enforced)
 
-> **No `kind: agent` / LLM stage may appear in the must-pass set or in any `exit_when` predicate.**
-> Equivalently: every stage on a merge-blocking convergence path is `kind: tool`, T0, no-LLM; every
-> `kind: agent` stage aggregates `advisory` and is reachable only from a non-blocking group.
+> **No `advisory` stage may appear in the must-pass set or in any `exit_when` predicate.**
+> Equivalently: every stage on a merge-blocking convergence path is declared `convergence: gate`
+> (mechanical, no model.route); every `convergence: advisory` stage aggregates `advisory` and is
+> reachable only from a non-blocking group.
 
 This is ADR-037 §3's prose invariant promoted to a **structural, checkable** property of the resolved
-template. A validator walks the resolved flow and fails the template if:
+template. **The discriminator is the `convergence:` marker (see §7), not `kind:`** — the original
+`kind:`-based phrasing mis-classified `acceptance-gate`, which is `kind: agent` (it is dispatched like an
+agent stage) yet wholly mechanical (it shells negctl + reachability, no model.route call) and is a
+legitimate must-pass gate. A validator walks the resolved flow and fails the template if:
 
 - any `exit_when` / `abort_when` predicate references a stage (or a parallel group) that transitively
-  contains a `kind: agent` member; or
-- any `aggregate: all_pass` (potentially-blocking) parallel group contains a `kind: agent` member; or
-- any stage with a router/LLM call is reachable on a path that can block merge.
+  contains a member that is **not** `convergence: gate` (i.e. `convergence: advisory`, or an
+  undeclared-marker stage that is `kind: agent` — fail-closed: an undeclared LLM stage may not gate); or
+- any `aggregate: all_pass` (potentially-blocking) parallel group contains such a member; or
+- any stage with a router/LLM call (that is not a declared `convergence: gate`) is reachable on a path
+  that can block merge.
 
-Because the invariant is checked against template *structure* (kind + aggregate-policy + predicate
+Because the invariant is checked against template *structure* (marker + aggregate-policy + predicate
 targets), it is un-gameable by prompt wording — it does not read what a stage *does*, it reads where a
 stage *sits* in the convergence graph. This closes the "future author quietly re-merges the layers" gap
 that the per-stage spot-check (ADR-037 §3) could not.
@@ -105,6 +111,36 @@ that the per-stage spot-check (ADR-037 §3) could not.
   gate-aggregator's green to decide auto-merge / escalate / manual.
 - ADR-020 inter-stage data contract is unchanged: gates and lenses declare their evidence inputs via
   manifests; lenses do not feed each other (they parallelize per ADR-039 §5).
+
+### 7. The `convergence:` marker, roster-driven aggregation, and consolidated feedback (B1/B2, #1129)
+
+**Canonical marker.** Every gate/lens manifest declares a top-level `convergence:` field (ADR-001):
+
+- `convergence: gate` — mechanical, **blocks** convergence (in the must-pass set). May be `kind: tool`
+  OR `kind: agent` (e.g. `acceptance-gate`): the marker, not `kind:`, is the authoritative
+  mechanical-vs-advisory discriminator (it supersedes the §5 `kind:`-inference).
+- `convergence: advisory` — **never** blocks; must not sit on a must-pass / `exit_when` path (lenses,
+  review-aggregator).
+- *absent* — not a convergence gate; excluded from the must-pass set (work stages, e.g. `build`).
+
+The gate-aggregator itself omits the marker (it is the collector, not a member of its own set).
+
+**Roster-driven aggregation.** The gate-aggregator's must-pass set is **discovered at runtime** from the
+cycle members whose manifest declares `convergence: gate` (excluding itself and any advisory/absent
+member) — there is **no hardcoded gate list**. It learns the cycle from `ZBUILD_CYCLE_ID` +
+`_TPL_CYCLE_STAGES_<id>`, resolves each member's manifest (by id, else by role binding), and reads its
+`convergence:` marker + result-artifact filename (`provides.artifact_type`). Adding/removing a gate from
+a cycle's `flow:` changes the must-pass set with **no edit to the aggregator**. When no cycle is in scope
+(e.g. the aggregator invoked standalone with result files but no cycle env), it falls back to a fixed
+legacy set — regression safety, fail-closed (a roster that resolves to zero gates also falls back rather
+than vacuously passing).
+
+**Consolidated gate→build feedback.** The aggregator is the **single collector** of failure detail: on
+`verdict=fail` it merges every failing gate's actionable detail (failing tests, acceptance-coverage gaps,
+secret-scan hits, …) into one `gate-feedback.md` (a `required: false` manifest output). A cycle wires ONE
+`gate-aggregator → build` feedback edge (build input `prior_gate_feedback`, `source: cycle_feedback`),
+replacing the prior per-gate `test → build` / `acceptance-gate → build` edges, so the next build
+iteration sees the full failure set in one place and the `build_test_cycle` self-heals.
 
 ## Consequences
 

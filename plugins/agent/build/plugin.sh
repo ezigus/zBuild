@@ -241,6 +241,15 @@ _build_stage_run_inner() {
     local _acceptance_gap_ids
     _acceptance_gap_ids="$(_build_read_prior_acceptance 2>/dev/null || true)"
 
+    # B2 (ADR-040): consolidated gate-aggregator feedback from the prior cycle
+    # iter (simple.yaml's build_test_cycle wires gate-aggregator → build via
+    # prior_gate_feedback). Empty when not in a cycle / dir unset / file
+    # missing-or-empty. Sanitized — it is captured pipeline output (banner noise).
+    local _gate_feedback_body
+    _gate_feedback_body="$(_build_read_prior_gate 2>/dev/null || true)"
+    [[ -n "$_gate_feedback_body" ]] && \
+        _gate_feedback_body="$(printf '%s' "$_gate_feedback_body" | _zbuild_sanitize_for_llm)"
+
     {
         printf '%s\n' "$_task_header"
         printf '## ORIGINAL TASK (immutable across iterations)\n'
@@ -293,6 +302,15 @@ _build_stage_run_inner() {
                 "$_prev_iter"
             printf '%s\n' "$_feedback_body"
             printf 'Fix the issues above before emitting LOOP_COMPLETE.\n'
+        fi
+        # B2 (ADR-040): consolidated mechanical-gate feedback from the prior cycle
+        # iter's gate-aggregator (the single collector — failing tests, acceptance
+        # gaps, secret-scan hits, …). AUTHORITATIVE on convergence: the cycle does
+        # not exit until the gate-aggregator passes, so resolve every item below.
+        if [[ -n "$_gate_feedback_body" ]]; then
+            printf '\n## PRIOR GATE FEEDBACK (consolidated, from the gate-aggregator)\n'
+            printf '%s\n' "$_gate_feedback_body"
+            printf 'These mechanical gates BLOCK convergence — resolve every finding above before emitting LOOP_COMPLETE.\n'
         fi
     } > "$prompt_input_file"
 
@@ -1018,6 +1036,32 @@ _build_read_prior_review() {
     local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
     [[ -z "$iter" || -z "$fb_dir" ]] && return 0
     local f="$fb_dir/prior_review_feedback.txt"
+    [[ ! -s "$f" ]] && return 0
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "$body" ]] && return 0
+    printf '%s' "$body"
+}
+
+# ─── _build_read_prior_gate (B2 / ADR-040) ───────────────────────────────────
+# Read the prior cycle iter's CONSOLIDATED gate-aggregator feedback wired by
+# _cycle_apply_feedback as $ZBUILD_CYCLE_FEEDBACK_DIR/prior_gate_feedback.txt
+# (sourced from the gate-aggregator's gate_feedback output / gate-feedback.md).
+# This is the single collector after the ADR-040 roster cutover: it merges every
+# failing mechanical gate's actionable detail (failing tests, acceptance reasons,
+# secret-scan hits, …) into one payload, replacing the per-gate test→build and
+# acceptance-gate→build edges in simple.yaml's build_test_cycle. Returns the raw
+# body on stdout OR empty stdout when:
+#   - not running in a cycle (ZBUILD_CYCLE_ITER unset)
+#   - cycle feedback dir not exported
+#   - file missing OR empty (silent-failure guard: `[[ -s file ]]`)
+# Empty stdout → caller omits the section entirely (NEVER silent emit — mirrors
+# _build_read_prior_review shape).
+_build_read_prior_gate() {
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
+    local f="$fb_dir/prior_gate_feedback.txt"
     [[ ! -s "$f" ]] && return 0
     local body
     body="$(cat "$f" 2>/dev/null)" || return 0

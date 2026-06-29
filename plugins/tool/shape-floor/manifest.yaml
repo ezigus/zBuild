@@ -1,6 +1,8 @@
 id: shape-floor
 name: Shape Floor Stage
 kind: tool
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate.
+convergence: gate
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 tool stage (ADR-040, ADR-037 §1, issue #1134, EPIC #1129).
