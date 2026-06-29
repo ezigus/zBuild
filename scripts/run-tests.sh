@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Per-tier test runner. Usage: scripts/run-tests.sh --tier {unit,integration,e2e,golden,mutation,all}
+# Per-tier test runner. Usage: scripts/run-tests.sh --tier {unit,integration,e2e,golden,mutation,lint,all}
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -495,12 +495,41 @@ run_tier() {
   [[ $failed -eq 0 ]]
 }
 
+# run_lint_tier — fold `npm run lint` into the suite as a first-class tier (#1129
+# Change C / ADR-012). simple.yaml's `lint` read-out gate is removed as a cycle
+# member, so the suite now owns lint enforcement: a lint failure fails `--tier all`
+# (what `npm test` runs), the same way the mutation tier already does. Reuses the
+# shared framework-result helper (ADR-040, #1133) so the ZBUILD_LINT_CMD override
+# (ADR-032/033) keeps working. Emits the same `name: P/T passed` summary line so
+# the --tier all aggregator and external parsers treat it like any other tier.
+run_lint_tier() {
+  local _t0="$EPOCHREALTIME"
+  local block status
+  # Run from REPO_ROOT in a subshell so sourcing the helper and `npm run lint`
+  # never pollute the caller and always resolve repo-relative paths.
+  block="$(cd "$REPO_ROOT" && source "$SCRIPT_DIR/lib/framework-result.sh" && framework_run_lint)"
+  status="$(printf '%s' "$block" | jq -r '.status' 2>/dev/null)"
+  if [[ "$status" == "pass" || "$status" == "skipped" ]]; then
+    echo "lint: 1/1 passed"
+    _rt_emit_tier_time "lint" "$_t0"
+    return 0
+  fi
+  echo "lint: FAIL (npm run lint)" >&2
+  printf '%s\n' "$block" | jq -r '.summary // empty' >&2 2>/dev/null || true
+  echo "lint: 0/1 passed"
+  _rt_emit_tier_time "lint" "$_t0"
+  return 1
+}
+
 case "$tier" in
   unit|integration|e2e|golden)
     run_tier "$tier"
     ;;
   mutation)
     bash "$SCRIPT_DIR/run-mutation.sh"
+    ;;
+  lint)
+    run_lint_tier
     ;;
   all)
     overall_rc=0
@@ -569,6 +598,13 @@ case "$tier" in
         if bash "$SCRIPT_DIR/run-mutation.sh"; then rc=0; else rc=$?; fi
         echo "mutation $rc" >> "$rc_file"
       ) > "$buf_dir/mutation.out" 2> "$buf_dir/mutation.err" &
+      # #1129 Change C: lint as a concurrent suite tier (ADR-012). Cheap (shellcheck)
+      # so no job-budget split — runs alongside the file tiers and mutation.
+      (
+        export TMPDIR="$buf_dir/tmp-lint"; mkdir -p "$TMPDIR"
+        if run_lint_tier; then rc=0; else rc=$?; fi
+        echo "lint $rc" >> "$rc_file"
+      ) > "$buf_dir/lint.out" 2> "$buf_dir/lint.err" &
       wait
     fi
     while IFS= read -r line; do
@@ -583,7 +619,7 @@ case "$tier" in
         # Replay captured STDOUT in canonical tier order so summary lines + the
         # accumulator sums are byte-identical to the serial path.
         cat "$buf_dir/unit.out" "$buf_dir/integration.out" "$buf_dir/e2e.out" \
-            "$buf_dir/golden.out" "$buf_dir/mutation.out"
+            "$buf_dir/golden.out" "$buf_dir/mutation.out" "$buf_dir/lint.out"
       else
         for t in unit integration e2e golden; do
           if run_tier "$t"; then rc=0; else rc=$?; fi
@@ -591,12 +627,15 @@ case "$tier" in
         done
         if bash "$SCRIPT_DIR/run-mutation.sh"; then rc=0; else rc=$?; fi
         echo "mutation $rc" >> "$rc_file"
+        # #1129 Change C: lint tier (ADR-012), last in canonical order.
+        if run_lint_tier; then rc=0; else rc=$?; fi
+        echo "lint $rc" >> "$rc_file"
       fi
     )
     if [[ $_tier_conc -eq 1 ]]; then
       # Replay captured STDERR (FAIL lines + child output) to fd 2 in canonical
       # order — these streamed live in the serial path and were never buffered.
-      for t in unit integration e2e golden mutation; do
+      for t in unit integration e2e golden mutation lint; do
         cat "$buf_dir/$t.err" >&2 2>/dev/null || true
       done
       # Concatenate per-tier coverage traces in canonical order (mutation has no
@@ -619,7 +658,7 @@ case "$tier" in
     exit $overall_rc
     ;;
   *)
-    echo "Usage: $0 --tier {unit,integration,e2e,golden,mutation,all}" >&2
+    echo "Usage: $0 --tier {unit,integration,e2e,golden,mutation,lint,all}" >&2
     exit 1
     ;;
 esac

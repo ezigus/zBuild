@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Tests: scripts/run-tests.sh --tier all runs the 5 tiers CONCURRENTLY (#997).
+# Tests: scripts/run-tests.sh --tier all runs the tiers CONCURRENTLY (#997).
+# (#1129 Change C added a `lint` tier; this test stubs it via ZBUILD_LINT_CMD=true
+# so the fake-tier hermeticity holds — see the _all helper.)
 #
 # Before #997 the `all` branch ran unit→integration→e2e→golden→mutation serially
 # inside one process-substitution, so the ~8min mutation tier (2nd-longest, last)
-# never overlapped the others. #997 fans the 5 tiers out as background subshells
+# never overlapped the others. #997 fans the tiers out as background subshells
 # while keeping the output BYTE-IDENTICAL to the serial path: each tier's stdout
 # and stderr are captured SEPARATELY and replayed to their ORIGINAL fds in
 # canonical order (a 2>&1 merge would move run_tier's `name: FAIL <f>` stderr
@@ -77,12 +79,17 @@ chmod +x "$FAILF/golden/f-test.sh"
 _all() {
   local td="$1"; shift
   local out_f="$TEST_TEMP_DIR/o.txt" err_f="$TEST_TEMP_DIR/e.txt" rc=0
+  # #1129 Change C: lint is now a `--tier all` tier. Stub it to an instant pass
+  # (ZBUILD_LINT_CMD=true) to keep this concurrency test hermetic — without this
+  # the lint tier would shell out to the real `npm run lint` (shellcheck over the
+  # whole tree) on every _all invocation, defeating the fake-tier design.
   env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
       -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u UPDATE_GOLDEN \
       ZBUILD_TESTS_DIR="$td" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
       ZBUILD_CORE_DIR="$EMPTY_DIR" \
       ZBUILD_MUTATION_DIR="$EMPTY_MUT" \
+      ZBUILD_LINT_CMD=true \
       ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \
       "$@" \
       bash "$RUN_TESTS" --tier all \
@@ -115,9 +122,10 @@ if [[ "$_ser_out" == "$_conc_out" ]]; then
 else
   assert_fail "[SPEC-2] stdout must be byte-identical" "$(diff <(printf '%s' "$_ser_out") <(printf '%s' "$_conc_out") | head)"
 fi
-# Canonical order + total line: summaries unit→integration→e2e→golden→mutation,
-# blank line, then `total: N/N passed` LAST.
-_expected_stdout="$(printf 'unit: 1/1 passed\nintegration: 1/1 passed\ne2e: 1/1 passed\ngolden: 1/1 passed\nmutation: 0/0 passed\n\ntotal: 4/4 passed')"
+# Canonical order + total line: summaries unit→integration→e2e→golden→mutation→
+# lint (#1129 Change C added lint as the last tier), blank line, then
+# `total: N/N passed` LAST. The stubbed lint (ZBUILD_LINT_CMD=true) passes 1/1.
+_expected_stdout="$(printf 'unit: 1/1 passed\nintegration: 1/1 passed\ne2e: 1/1 passed\ngolden: 1/1 passed\nmutation: 0/0 passed\nlint: 1/1 passed\n\ntotal: 5/5 passed')"
 assert_eq "[SPEC-2b] concurrent stdout matches canonical order + total" "$_expected_stdout" "$_conc_out"
 
 # FAIL lines land on STDERR (not stdout), in canonical tier order.
@@ -186,6 +194,7 @@ env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
     ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
     ZBUILD_CORE_DIR="$EMPTY_DIR" \
     ZBUILD_MUTATION_DIR="$EMPTY_MUT" \
+    ZBUILD_LINT_CMD=true \
     ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \
     bash "$RUN_TESTS" --tier all --coverage-trace "$COV" >/dev/null 2>&1 || true
 if [[ -s "$COV" ]]; then

@@ -32,9 +32,20 @@ Additional tiers: `tests/golden/` (snapshot diffs), `tests/mutation/` (doc-drive
 
 ### Per-tier runner
 
-`bash scripts/run-tests.sh --tier {unit,integration,e2e,golden,mutation,all}`
+`bash scripts/run-tests.sh --tier {unit,integration,e2e,golden,mutation,lint,all}`
 
 Output format: `<tier>: N/M passed` — parseable by CI summary step.
+
+> **Amendment (#1129 Change C, 2026-06-29):** `lint` is now a first-class suite
+> tier. `--tier all` (what `npm test` runs) runs `unit`, `integration`, `e2e`,
+> `golden`, `mutation`, **and `lint`**, and the overall suite exit code reflects
+> all of them — a lint failure fails the suite. The lint tier reuses
+> `scripts/lib/framework-result.sh::framework_run_lint` (which runs `npm run lint`
+> by default; overridable via `ZBUILD_LINT_CMD`, ADR-032/033) and emits the same
+> `lint: N/M passed` summary line. This lets the simple.yaml pipeline drop its
+> dedicated `lint` read-out gate (the `test` cycle member, which runs the suite,
+> now also enforces lint) without losing lint enforcement — see ADR-013 note and
+> ADR-040. See the **Coverage gating** note below for why coverage was NOT folded.
 
 ### Golden convention
 
@@ -59,6 +70,18 @@ Output format: `<tier>: N/M passed` — parseable by CI summary step.
 > `core/` + `scripts/lib/` (enforced via `scripts/check-coverage.sh` and
 > CI per issue #372). Target: 70%. The floor is ratcheted upward as test
 > depth improves.
+
+> **Coverage gating (#1129 Change C):** Unlike lint, coverage is **NOT** folded
+> into `--tier all`. `scripts/check-coverage.sh` works by re-invoking
+> `run-tests.sh --tier unit --coverage-trace` to gather an xtrace; running that
+> inside `--tier all` would (a) trip the #983 re-entrancy guard (a nested
+> real-tier `run-tests.sh` with no `ZBUILD_TESTS_DIR` is refused), and (b) re-run
+> the entire unit tier a second time (heavy duplicate runtime). Coverage therefore
+> stays enforced by its dedicated CI `coverage` job (and `bash scripts/check-coverage.sh`
+> locally), not by the suite. Accordingly, simple.yaml drops its `coverage`
+> read-out gate as well (the CI job remains the enforcement point). Re-folding
+> coverage cleanly is a future follow-up (decouple the trace mechanism from a
+> nested suite run).
 
 ### CI job graph
 
