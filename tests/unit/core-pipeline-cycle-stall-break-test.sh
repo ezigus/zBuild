@@ -133,8 +133,9 @@ cycle_dispatch_stage() {
             _CYCLE_DISPATCH_VERDICT_RAW="$_GA_VERDICT"
             ;;
         *)
-            # shape-floor, acceptance-gate, lint, coverage, mutation, secret-scan:
-            # all pass (verdict defaults set above) so only the aggregator gates.
+            # shape-floor, acceptance-gate, secret-scan: all pass (verdict
+            # defaults set above) so only the aggregator gates. (#1129 Change C
+            # dropped lint/coverage/mutation as cycle members.)
             :
             ;;
     esac

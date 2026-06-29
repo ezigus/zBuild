@@ -41,11 +41,19 @@ flow:
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
-# mechanical gates (shape-floor, acceptance-gate, lint, coverage, mutation,
-# secret-scan) and finally the gate-aggregator, which collapses every must-pass
-# gate into ONE convergence verdict. exit_when fires on gate-aggregator.verdict
-# == pass — the ADR-019 fail-closed contract re-expressed as a single composable
-# construct (ADR-040 §5). The individual gates are NON-blocking (no blocking:true):
+# mechanical gates (shape-floor, acceptance-gate, secret-scan) and finally the
+# gate-aggregator, which collapses every must-pass gate into ONE convergence
+# verdict. exit_when fires on gate-aggregator.verdict == pass — the ADR-019
+# fail-closed contract re-expressed as a single composable construct (ADR-040 §5).
+# (#1129 Change C, ADR-012: the lint/coverage/mutation read-out gates were
+# DROPPED as cycle members — they were redundant. mutation and lint both run in
+# the test suite (run-tests.sh --tier all / npm test, which the `test` cycle
+# member runs), so a lint or mutation regression fails the `test` gate directly.
+# coverage is NOT folded into the suite — it stays enforced by the dedicated CI
+# `coverage` job (re-running it inside --tier all would trip the #983 re-entrancy
+# guard; see ADR-012 "Coverage gating"). The lint-gate/coverage-gate/mutation-gate
+# plugins remain canonical (ADR-013) but dormant for future reuse.)
+# The individual gates are NON-blocking (no blocking:true):
 # they emit verdict-in-artifact (ADR-004) and the cycle iterates-to-fix; the loop
 # converges via exit_when, never via per-gate hard-blocks. max_iterations: 5 with
 # on_max: continue (ADR-019 fall-through to operator — the unconverged verdict
@@ -58,9 +66,6 @@ build_test_cycle:
     - test
     - shape-floor
     - acceptance-gate
-    - lint
-    - coverage
-    - mutation
     - secret-scan
     - gate-aggregator
   exit_when:
@@ -165,36 +170,6 @@ acceptance-gate:
   router:
     timeout_s: 600
     max_turns: 10
-
-# ─── lint (leaf, cycle member) ───────────────────────────────────────────────
-# T0 read-out gate (ADR-040, #1135): maps the shared test-results.json lint block
-# to a verdict; never re-runs the linter. verdict-in-artifact.
-lint:
-  gate: auto
-  roles: [lint_gate]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
-# ─── coverage (leaf, cycle member) ───────────────────────────────────────────
-# T0 read-out gate (ADR-040, #1135): maps the shared test-results.json coverage
-# block to a verdict; never re-runs coverage. verdict-in-artifact.
-coverage:
-  gate: auto
-  roles: [coverage_gate]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
-# ─── mutation (leaf, cycle member) ───────────────────────────────────────────
-# T0 read-out gate (ADR-040, #1135): maps the shared test-results.json mutation
-# block to a verdict; never re-runs the mutation harness. verdict-in-artifact.
-mutation:
-  gate: auto
-  roles: [mutation_gate]
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
 
 # ─── secret-scan (leaf, cycle member) ────────────────────────────────────────
 # T0 tool gate (ADR-040, #1136): blocks hardcoded secrets/.env in the diff.

@@ -8,9 +8,14 @@
 #
 # Baseline (pre-change) this FAILS: cycle_dispatch_stage / parallel_dispatch_stage
 # used _find_plugin_for_stage (id-only), which returns EMPTY for role-bound stages
-# whose plugin id ≠ stage name (lint→lint-gate, coverage→coverage-gate,
-# mutation→mutation-gate, every lens-*→review-lens) — they were stamped
+# whose plugin id ≠ stage name (every lens-*→review-lens) — they were stamped
 # verdict=error and aborted the cycle/group.
+#
+# (#1129 Change C, ADR-012/013: simple.yaml dropped the lint/coverage/mutation
+# read-out gates as cycle members — they were redundant with the test suite. They
+# were once the canonical id≠name examples here; the surviving role-bound stages
+# whose plugin id ≠ stage name are now the lens-* parallel group, which exercises
+# the SAME resolve_stage_plugin code path cycle dispatch uses.)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,19 +59,15 @@ _resolve() { local _p; _p="$(resolve_stage_plugin "$1" "$PLUGINS_ROOT" 2>/dev/nu
 _resolve_raw() { resolve_stage_plugin "$1" "$PLUGINS_ROOT" 2>/dev/null || true; }
 _idmatch() { _find_plugin_for_stage "$1" "$PLUGINS_ROOT" 2>/dev/null || true; }
 
-# ─── SPEC-1: baseline symptom — id-only resolution returns EMPTY for the 8 ───
-# previously-broken stages. This is the exact failure cycle/parallel hit.
-assert_eq "[SPEC-1] id-only (_find_plugin_for_stage) returns EMPTY for lint" "" "$(_idmatch lint)"
-assert_eq "[SPEC-1] id-only returns EMPTY for coverage" "" "$(_idmatch coverage)"
-assert_eq "[SPEC-1] id-only returns EMPTY for mutation" "" "$(_idmatch mutation)"
-assert_eq "[SPEC-1] id-only returns EMPTY for lens-security" "" "$(_idmatch lens-security)"
+# ─── SPEC-1: baseline symptom — id-only resolution returns EMPTY for the ─────
+# role-bound stages whose plugin id ≠ stage name. This is the exact failure
+# cycle/parallel hit (lens-*→review-lens; id-match finds no plugin id "lens-*").
+assert_eq "[SPEC-1] id-only (_find_plugin_for_stage) returns EMPTY for lens-security" "" "$(_idmatch lens-security)"
+assert_eq "[SPEC-1] id-only returns EMPTY for lens-correctness" "" "$(_idmatch lens-correctness)"
 
-# ─── SPEC-2: the fix — resolve_stage_plugin (role-then-id) resolves all 8 ────
+# ─── SPEC-2: the fix — resolve_stage_plugin (role-then-id) resolves the ──────
 # role-bound stages whose plugin id ≠ stage name. cycle_dispatch_stage and
 # parallel_dispatch_stage BOTH call this helper, so this proves both paths.
-assert_eq "[SPEC-2] cycle member lint → lint-gate"        "lint-gate"     "$(_resolve lint)"
-assert_eq "[SPEC-2] cycle member coverage → coverage-gate" "coverage-gate" "$(_resolve coverage)"
-assert_eq "[SPEC-2] cycle member mutation → mutation-gate" "mutation-gate" "$(_resolve mutation)"
 assert_eq "[SPEC-2] parallel member lens-security → review-lens"    "review-lens" "$(_resolve lens-security)"
 assert_eq "[SPEC-2] parallel member lens-performance → review-lens" "review-lens" "$(_resolve lens-performance)"
 assert_eq "[SPEC-2] parallel member lens-red-team → review-lens"    "review-lens" "$(_resolve lens-red-team)"
@@ -74,7 +75,7 @@ assert_eq "[SPEC-2] parallel member lens-correctness → review-lens" "review-le
 assert_eq "[SPEC-2] parallel member lens-scope → review-lens"       "review-lens" "$(_resolve lens-scope)"
 
 # Returned path is a real plugin directory with a manifest.
-assert_file_exists "[SPEC-2] resolved lint plugin dir has a manifest" "$(_resolve_raw lint)/manifest.yaml"
+assert_file_exists "[SPEC-2] resolved lens plugin dir has a manifest" "$(_resolve_raw lens-security)/manifest.yaml"
 
 # ─── SPEC-3: regression invariant — current cycle members resolve to the SAME ─
 # plugin as before (id-match and role-match are identical for them). build has

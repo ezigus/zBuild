@@ -61,8 +61,9 @@ assert_eq "[SPEC-1] exit_when value is pass" \
 # ─── SPEC-2: decomposed gate roster ──────────────────────────────────────────
 print_test_section "SPEC-2: cycle roster is the decomposed mechanical gate set"
 
+# #1129 Change C (ADR-012): lint/coverage/mutation dropped as cycle members.
 assert_eq "[SPEC-2] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "build,test,shape-floor,acceptance-gate,lint,coverage,mutation,secret-scan,gate-aggregator" \
+    "build,test,shape-floor,acceptance-gate,secret-scan,gate-aggregator" \
     "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
 
 # ─── SPEC-3: fail→pass convergence at iter 2 ─────────────────────────────────
@@ -105,8 +106,8 @@ cycle_dispatch_stage() {
             fi
             ;;
         *)
-            # shape-floor, acceptance-gate, lint, coverage, mutation, secret-scan
-            # all pass (defaults above); only the aggregator drives convergence.
+            # shape-floor, acceptance-gate, secret-scan all pass (defaults above);
+            # only the aggregator drives convergence.
             _CYCLE_DISPATCH_VERDICT_RAW="pass"
             ;;
     esac

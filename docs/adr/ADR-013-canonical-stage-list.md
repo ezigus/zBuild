@@ -466,3 +466,28 @@ canonical leaf membership and contiguous-subsequence order are enforced on every
 template-defined and are not members of the canonical leaf set.
 
 Implementation: issue #1139 (EPIC #1129 B7). See ADR-037 §6 and ADR-040.
+
+## NOTE 2026-06-29 (#1129 Change C / ADR-012) — simple.yaml drops lint/coverage/mutation cycle members
+
+`simple.yaml` removes `lint`, `coverage`, and `mutation` from `build_test_cycle`
+(9 cycle members → 6: `build`, `test`, `shape-floor`, `acceptance-gate`,
+`secret-scan`, `gate-aggregator`). The three read-out gates were redundant:
+`mutation` already runs in the test suite, and `lint`+`coverage` enforcement is
+folded into the suite — `lint` becomes a `--tier all` / `npm test` suite tier
+(ADR-012 amendment), and `coverage` stays enforced by its dedicated CI job (see
+the ADR-012 "Coverage gating" note for why coverage was not folded into the
+suite). The `test` cycle member, which runs the suite, therefore now also
+enforces lint, so dropping the dedicated gates loses no enforcement.
+
+**Taxonomy unchanged.** `lint`, `coverage`, and `mutation` remain canonical leaf
+ids in the §"Canonical stage definitions" lineage and in the
+`_ZBUILD_CANONICAL_STAGES` runtime array (`core/pipeline/template.sh`); the
+`plugins/tool/{lint-gate,coverage-gate,mutation-gate}` plugins (incl. their
+`convergence: gate` markers) are KEPT dormant for future reuse. This is a
+template composition change (subtractive composition, §"Stage sequence"), not a
+taxonomy revision. The `gate-aggregator` is roster-driven over the `convergence:
+gate` members PRESENT in the cycle (EPIC #1129 Change B), so with these three
+dropped it aggregates exactly the 4 present must-pass gates (`test`,
+`shape-floor`, `acceptance-gate`, `secret-scan`); convergence is unaffected.
+
+Implementation: EPIC #1129 Change C. See ADR-012 (lint as a suite tier) and ADR-040.

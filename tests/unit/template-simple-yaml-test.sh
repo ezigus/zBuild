@@ -37,22 +37,26 @@ set -e
 
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
-# ─── SPEC-2: _TPL_STAGES has exactly 19 entries in canonical order ────────────
+# ─── SPEC-2: _TPL_STAGES has exactly 16 entries in canonical order ────────────
 # CHANGE (B6 #1138, ADR-040): build_test_cycle is recomposed from the retired
 # monolithic objective-gate to the decomposed mechanical gates + gate-aggregator
 # (the objective-gate plugin was then removed in B7 #1139).
 # CHANGE (C3 #1142, ADR-040 §3 / ADR-039): the single `review` stage is replaced
 # by the `review_lenses` advisory parallel group (5 lens member stages) followed
 # by the `review-aggregator` leaf. The group id itself is NOT a flat stage (like a
-# cycle id); its members expand in flow order. The flat sequence is now:
-#   intake→plan→design→build→test→shape-floor→acceptance-gate→lint→coverage→
-#   mutation→secret-scan→gate-aggregator→lens-security→lens-performance→
-#   lens-red-team→lens-correctness→lens-scope→review-aggregator→pr
+# cycle id); its members expand in flow order.
+# CHANGE (#1129 Change C, ADR-012): the lint/coverage/mutation read-out gates are
+# DROPPED as cycle members (redundant — mutation runs in the suite; lint+coverage
+# are folded into `--tier all`/`npm test`, run by the `test` member). Their
+# plugins stay canonical (ADR-013) but dormant. The flat sequence is now:
+#   intake→plan→design→build→test→shape-floor→acceptance-gate→secret-scan→
+#   gate-aggregator→lens-security→lens-performance→lens-red-team→lens-correctness→
+#   lens-scope→review-aggregator→pr
 # objective-gate AND review-report are UNREFERENCED here; test_assessment omitted.
 
-assert_eq "[SPEC-2] _TPL_STAGES count is 19" "19" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-2] _TPL_STAGES count is 16" "16" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(intake plan design build test shape-floor acceptance-gate lint coverage mutation secret-scan gate-aggregator lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr)
+_expected_stages=(intake plan design build test shape-floor acceptance-gate secret-scan gate-aggregator lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -79,13 +83,15 @@ assert_eq "[SPEC-3] plan router timeout"    "300"         "$_TPL_STAGE_ROUTER_TI
 assert_eq "[SPEC-3] plan router max_turns"  "25"          "$_TPL_STAGE_ROUTER_MAX_TURNS_plan"
 
 # decomposed mechanical gates (B6 #1138, ADR-040) — bound by role, not stage id.
-# shape-floor / lint / coverage / mutation / secret-scan / gate-aggregator are T0
-# tools (no router section); acceptance-gate is the mechanical T1 contract gate.
+# shape-floor / secret-scan / gate-aggregator are T0 tools (no router section);
+# acceptance-gate is the mechanical T1 contract gate.
+# (#1129 Change C: lint/coverage/mutation dropped as cycle members — their roles
+# are no longer present in simple.yaml; the plugins stay canonical but dormant.)
 assert_eq "[SPEC-3] shape-floor roles"      "shape_floor"     "$_TPL_STAGE_ROLES_shape_floor"
 assert_eq "[SPEC-3] acceptance-gate roles"  "acceptance_gate" "$_TPL_STAGE_ROLES_acceptance_gate"
-assert_eq "[SPEC-3] lint roles"             "lint_gate"       "$_TPL_STAGE_ROLES_lint"
-assert_eq "[SPEC-3] coverage roles"         "coverage_gate"   "$_TPL_STAGE_ROLES_coverage"
-assert_eq "[SPEC-3] mutation roles"         "mutation_gate"   "$_TPL_STAGE_ROLES_mutation"
+assert_eq "[SPEC-3] lint stage removed (role var unset)"     "" "${_TPL_STAGE_ROLES_lint:-}"
+assert_eq "[SPEC-3] coverage stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_coverage:-}"
+assert_eq "[SPEC-3] mutation stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_mutation:-}"
 assert_eq "[SPEC-3] secret-scan roles"      "secret_scan"     "$_TPL_STAGE_ROLES_secret_scan"
 assert_eq "[SPEC-3] gate-aggregator roles"  "gate_aggregator" "$_TPL_STAGE_ROLES_gate_aggregator"
 assert_eq "[SPEC-3] gate-aggregator io_dests" "file,stdout"   "$_TPL_STAGE_IO_DESTS_gate_aggregator"
@@ -152,8 +158,9 @@ assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
 # ─── SPEC-11: dispatch units are 7 (cycle + parallel groups each fold to one) ─
-# B6 (#1138): the build_test_cycle's 9 members collapse into ONE cycle dispatch
-# unit. C3 (#1142): the review_lenses parallel group's 5 lens members collapse
+# B6 (#1138): the build_test_cycle's members collapse into ONE cycle dispatch
+# unit (6 members after #1129 Change C dropped lint/coverage/mutation). C3
+# (#1142): the review_lenses parallel group's 5 lens members collapse
 # into ONE parallel dispatch unit, and review-aggregator is its own stage unit.
 # Count is now 7: intake, plan, design, cycle:build_test_cycle,
 # parallel:review_lenses, stage:review-aggregator, pr.
@@ -169,7 +176,8 @@ assert_eq "[SPEC-11] dispatch[6] stage:pr"             "stage:pr"             "$
 
 # ─── SPEC-14 / SPEC-5: build_test_cycle registered with correct stages and max ─
 # CHANGE (B6 #1138, ADR-040): _TPL_CYCLES must contain build_test_cycle with its
-# 9 decomposed members (build/test + the mechanical gates + gate-aggregator).
+# decomposed members (build/test + the mechanical gates + gate-aggregator).
+# CHANGE (#1129 Change C, ADR-012): lint/coverage/mutation dropped → 6 members.
 # max_iterations stays 5 (I10-B #1089) — the exit_when predicate (now on
 # gate-aggregator) drives looping.
 
@@ -177,7 +185,7 @@ _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
 assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "build,test,shape-floor,acceptance-gate,lint,coverage,mutation,secret-scan,gate-aggregator" \
+    "build,test,shape-floor,acceptance-gate,secret-scan,gate-aggregator" \
     "$_TPL_CYCLE_STAGES_build_test_cycle"
 assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 5 (I10-B)" \
     "5" "$_TPL_CYCLE_MAX_build_test_cycle"
@@ -200,8 +208,11 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
 # right after the test stage.
 
 assert_eq "[SPEC-12] _TPL_STAGES[5] == shape-floor" "shape-floor" "${_TPL_STAGES[5]}"
-assert_eq "[SPEC-12] _TPL_STAGES[11] == gate-aggregator (cycle exit_when source)" \
-    "gate-aggregator" "${_TPL_STAGES[11]}"
+# CHANGE (#1129 Change C): lint/coverage/mutation removed → gate-aggregator shifts
+# from flat index 11 to index 8 (build=3,test=4,shape-floor=5,acceptance-gate=6,
+# secret-scan=7,gate-aggregator=8).
+assert_eq "[SPEC-12] _TPL_STAGES[8] == gate-aggregator (cycle exit_when source)" \
+    "gate-aggregator" "${_TPL_STAGES[8]}"
 
 # ─── SPEC-13: design is at index 2 (shifted from prior index 3) ──────────────
 # CHANGE: design sits at index 2 in the flat sequence (after intake, plan).
