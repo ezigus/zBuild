@@ -36,8 +36,13 @@ that depends on the surrounding flow construct.
 ## Decision
 
 A single shared resolver, **`resolve_stage_plugin <stage> [plugins_root]`** in
-`core/pipeline/dispatch.sh`, is used by **all** dispatch paths (leaf, cycle,
-parallel). It applies the **role-then-id** rule uniformly:
+`core/pipeline/dispatch.sh`, codifies the **role-then-id** rule and is adopted by
+the cycle and parallel dispatch paths, bringing them to parity with the leaf
+(serial) path — which already applied role-then-id via its own inline resolution
+(`runner.sh`, the main-loop leaf branch: `resolve_plugin_for_role` first, then
+`_find_plugin_for_stage`). Resolution is now uniform across all three constructs;
+the leaf path keeps its existing inline logic (a candidate for later
+consolidation onto this helper, out of scope here). The rule:
 
 1. **Role first.** If template role data and the role resolver are present, the
    stage's declared roles (ADR-001) are resolved to a plugin — platform-specific

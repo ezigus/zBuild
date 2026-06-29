@@ -48,8 +48,9 @@ _load_rc=$?
 set -e
 assert_eq "[SETUP] simple.yaml loads without error" "0" "$_load_rc"
 
-# Helper: basename of resolve_stage_plugin output (empty on miss).
-_resolve() { basename "$(resolve_stage_plugin "$1" "$PLUGINS_ROOT" 2>/dev/null || true)" 2>/dev/null || true; }
+# Helper: basename of resolve_stage_plugin output (empty on miss). Guard the
+# empty case explicitly — `basename ""` prints "." on some implementations.
+_resolve() { local _p; _p="$(resolve_stage_plugin "$1" "$PLUGINS_ROOT" 2>/dev/null || true)"; [[ -n "$_p" ]] && basename "$_p" || true; }
 _resolve_raw() { resolve_stage_plugin "$1" "$PLUGINS_ROOT" 2>/dev/null || true; }
 _idmatch() { _find_plugin_for_stage "$1" "$PLUGINS_ROOT" 2>/dev/null || true; }
 
@@ -87,7 +88,14 @@ assert_eq "[SPEC-3] gate-aggregator → gate-aggregator"       "gate-aggregator"
 assert_eq "[SPEC-3] build → build (role-miss falls to id-match)" "build"       "$(_resolve build)"
 
 # ─── SPEC-4: unknown stage with no role and no id resolves to nothing ────────
-assert_eq "[SPEC-4] unknown stage resolves to EMPTY (return 1)" "" "$(_resolve nonexistent-stage-xyz)"
+# Assert BOTH the empty stdout and the non-zero return code (rc=1 on a miss),
+# so a regression that returns rc=0 with empty output is caught.
+assert_eq "[SPEC-4] unknown stage resolves to EMPTY stdout" "" "$(_resolve nonexistent-stage-xyz)"
+set +e
+resolve_stage_plugin nonexistent-stage-xyz "$PLUGINS_ROOT" >/dev/null 2>&1
+_miss_rc=$?
+set -e
+assert_eq "[SPEC-4] unknown stage returns rc=1 (miss)" "1" "$_miss_rc"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 print_test_results

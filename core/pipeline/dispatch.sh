@@ -29,12 +29,13 @@ _find_plugin_for_stage() {
 }
 
 # resolve_stage_plugin <stage> [plugins_root]
-# ADR-042: uniform stage→plugin resolution shared by ALL dispatch paths (leaf,
-# cycle, parallel). A stage's flow-name need not equal its plugin `id` — role
-# binding (ADR-001) is resolved FIRST, with id-match as the backward-compat
-# fallback. This is the same role-then-id rule the leaf path already used; cycle
-# and parallel members used id-only and so silently failed to resolve role-bound
-# stages whose plugin id ≠ stage name (e.g. lint→lint-gate, lens-*→review-lens).
+# ADR-042: uniform stage→plugin resolution. Adopted by the cycle and parallel
+# dispatch paths (runner.sh) to match the leaf path's pre-existing role-then-id
+# rule (the leaf path keeps its own inline logic). A stage's flow-name need not
+# equal its plugin `id` — role binding (ADR-001) is resolved FIRST, with id-match
+# as the backward-compat fallback. Cycle and parallel members previously used
+# id-only and so silently failed to resolve role-bound stages whose plugin id ≠
+# stage name (e.g. lint→lint-gate, lens-*→review-lens).
 # Single-plugin resolution (cycle/parallel members do NOT fan out): first match
 # wins. Side-effect-free: echoes the plugin dir and returns 0 on hit, returns 1
 # if nothing resolves. (The resolver's best-effort registry.role-unresolved
