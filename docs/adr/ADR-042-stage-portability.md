@@ -79,6 +79,26 @@ parallel group. Resolution and convergence are orthogonal concerns.
 - The resolver is side-effect-free (echoes the plugin dir, returns 0/1); its
   role-unresolved diagnostic matches every other strategy path.
 
+## Implementation Notes (issue #1171, Change A)
+
+Landed in this PR — code, test, and ADRs together (not a text-only ADR):
+
+- `core/pipeline/dispatch.sh` — new `resolve_stage_plugin <stage> [plugins_root]`:
+  role-then-id, single first-match, side-effect-free (echoes the plugin dir,
+  returns 0 on hit / 1 on miss). Mirrors the leaf path's platform-specific →
+  generic role lookup, then falls back to `_find_plugin_for_stage` (id-match).
+- `core/pipeline/runner.sh` — `cycle_dispatch_stage` and `parallel_dispatch_stage`
+  now call `resolve_stage_plugin` instead of `_find_plugin_for_stage` (id-only).
+- `tests/unit/stage-resolution-parity-test.sh` — pins the baseline symptom
+  (SPEC-1: id-only returns empty for role-bound stages), the fix (SPEC-2: the 8
+  role-bound gate/lens stages resolve), the zero-regression invariant (SPEC-3:
+  previously-resolving stages unchanged), and the miss contract (SPEC-4: empty
+  stdout + rc=1).
+
+The leaf (serial) path keeps its existing inline role-then-id resolution; folding
+it onto this shared helper is a candidate follow-up, deliberately out of scope to
+keep this change zero-regression on the most-traveled path.
+
 ## References
 
 - [ADR-001](ADR-001-plugin-contract.md) — plugin contract; role binding is the
