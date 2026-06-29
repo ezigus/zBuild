@@ -509,8 +509,16 @@ run_lint_tier() {
   # never pollute the caller and always resolve repo-relative paths.
   block="$(cd "$REPO_ROOT" && source "$SCRIPT_DIR/lib/framework-result.sh" && framework_run_lint)"
   status="$(printf '%s' "$block" | jq -r '.status' 2>/dev/null)"
-  if [[ "$status" == "pass" || "$status" == "skipped" ]]; then
+  if [[ "$status" == "pass" ]]; then
     echo "lint: 1/1 passed"
+    _rt_emit_tier_time "lint" "$_t0"
+    return 0
+  fi
+  # An explicit skip (ZBUILD_LINT_CMD="" — a target with no linter, ADR-032/033)
+  # ran zero checks: report 0/0 so the --tier all totals don't credit a phantom
+  # pass. Still rc=0 — a skip never fails the suite.
+  if [[ "$status" == "skipped" ]]; then
+    echo "lint: 0/0 passed"
     _rt_emit_tier_time "lint" "$_t0"
     return 0
   fi
