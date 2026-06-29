@@ -32,11 +32,21 @@ config:
   always_draft: true
 
 inputs:
+  # #1142: required:false — standard.yaml's `review` stage provides review.json
+  # (blocking verdict, guarded in plugin.sh). simple.yaml replaced `review` with
+  # the advisory review-aggregator (review-report.json); pr-open opens the PR in
+  # advisory mode when review.json is absent but the report is present. Hard-
+  # requiring `review` broke simple.yaml preflight after the C3 lens cutover.
   - id: review
     type: file
     path: "${artifact_dir}/review.json"
     source: stage:review
-    required: true
+    required: false
+  - id: review_report
+    type: file
+    path: "${artifact_dir}/review-report.json"
+    source: stage:review-aggregator
+    required: false
 
 outputs:
   - id: pr_url

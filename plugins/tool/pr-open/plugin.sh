@@ -85,26 +85,34 @@ _pr_open_run_inner() {
         return 2
     fi
 
-    # ── Safety check 2: fail-closed if review.json missing (ADR-001, #358) ───
-    if [[ ! -f "$review_json_path" ]]; then
-        error "pr_open: refusing to open PR — review.json missing (fail-closed per ADR-001)"
+    # ── Safety check 2/3: review verdict source (#1142, ADR-040) ─────────────
+    # review.json = the BLOCKING-review model (standard.yaml): apply the verdict
+    # guard below (refuse on block). If it is absent, fall back to the advisory
+    # review-report.json (simple.yaml's review-aggregator — advisory lenses NEVER
+    # block; convergence was already gated by the gate-aggregator's exit_when):
+    # open the PR with no verdict guard. Fail-closed (ADR-001/#358) only when
+    # NEITHER review signal exists.
+    local advisory_report="$artifacts_dir/review-report.json"
+    if [[ -f "$review_json_path" ]]; then
+        local verdict
+        verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
+        if [[ "$verdict" == "block" ]]; then
+            error "pr_open: refusing to open PR — review verdict is 'block'"
+            emit_event "plugin.run.error" "plugin=pr-open" \
+                "reason=review_verdict_block" "verdict=${verdict}"
+            jq -n \
+                '{"schema_version":1,"status":"blocked","reason":"review verdict is block","draft":true}' \
+                > "$output_pr_result_json"
+            return 2
+        fi
+    elif [[ -f "$advisory_report" ]]; then
+        warn "pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)"
+    else
+        error "pr_open: refusing to open PR — no review signal (neither review.json nor review-report.json; fail-closed per ADR-001)"
         emit_event "plugin.run.error" "plugin=pr-open" \
-            "reason=review_json_missing" "path=${review_json_path}"
+            "reason=review_signal_missing" "path=${review_json_path}"
         jq -n \
-            '{"schema_version":1,"status":"blocked","reason":"review.json missing — fail-closed per ADR-001","draft":true}' \
-            > "$output_pr_result_json"
-        return 2
-    fi
-
-    # ── Safety check 3: refuse if review verdict == "block" ──────────────────
-    local verdict
-    verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
-    if [[ "$verdict" == "block" ]]; then
-        error "pr_open: refusing to open PR — review verdict is 'block'"
-        emit_event "plugin.run.error" "plugin=pr-open" \
-            "reason=review_verdict_block" "verdict=${verdict}"
-        jq -n \
-            '{"schema_version":1,"status":"blocked","reason":"review verdict is block","draft":true}' \
+            '{"schema_version":1,"status":"blocked","reason":"no review signal — fail-closed per ADR-001","draft":true}' \
             > "$output_pr_result_json"
         return 2
     fi
