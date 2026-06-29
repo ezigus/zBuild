@@ -68,6 +68,7 @@ _cases=(
     "3|divergence|failed|1"
     "4|config_invalid|interrupted|0"
     "5|blocked|interrupted|0"
+    "8|blocking_member_failure|failed|0"
     "130|aborted|interrupted|0"
 )
 
@@ -104,5 +105,13 @@ for _row in "${_cases[@]}"; do
         *)     assert_eq "rc=$_rc → cycle.unconverged NOT emitted" "0" "$_count" ;;
     esac
 done
+
+# [SPEC-3]: rc=8 (blocking_member_failure) → state-file status=failed, not interrupted.
+# ADR-013 specifies blocking_member_failure → HALT; status=failed. This assertion
+# fails at baseline where the rc=8 catch-all writes status=interrupted.
+_dir8="$(_drive 8 "blocking_member_failure")"
+_state8="$_dir8/state/pipeline-state.json"
+_got8="$(jq -r '.status' "$_state8" 2>/dev/null)"
+assert_eq "[SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed" "failed" "$_got8"
 
 print_test_results

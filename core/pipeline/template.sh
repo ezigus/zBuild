@@ -152,6 +152,14 @@ load_template() {
     fi
     export _TPL_MERGE_POLICY
 
+    # Unset stale _TPL_STAGE_BLOCKING_<id> vars from a prior load_template call.
+    # BL| rows are only emitted for blocking:true stages, so without this unset a
+    # stage that was blocking in template A stays exported after template B loads.
+    local _prev_bl_id
+    for _prev_bl_id in "${_TPL_STAGES[@]}"; do
+        unset "_TPL_STAGE_BLOCKING_${_prev_bl_id//-/_}"
+    done
+
     _TPL_STAGES=()
     _TPL_CYCLES=()
     _TPL_PARALLEL_GROUPS=()
