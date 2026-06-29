@@ -22,7 +22,7 @@ setup_test_env "lint-contract-convergence"
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 TPL_ROOT="$TEST_TEMP_DIR/templates"
 mkdir -p "$PLUGINS_ROOT/tool/gate_suite" "$PLUGINS_ROOT/tool/gate_lint" \
-    "$PLUGINS_ROOT/agent/lens_security" "$TPL_ROOT"
+    "$PLUGINS_ROOT/tool/gate_unmarked" "$PLUGINS_ROOT/agent/lens_security" "$TPL_ROOT"
 
 # Minimal lint-clean manifest: id + kind + convergence marker + provides.role +
 # one primary output. Fixture ids are NOT on lint-contract's ADR-020 stage-scope
@@ -57,6 +57,9 @@ EOF
 write_manifest "$PLUGINS_ROOT/tool/gate_suite"    gate_suite    tool  gate_suite    gate
 write_manifest "$PLUGINS_ROOT/tool/gate_lint"     gate_lint     tool  gate_lint     gate
 write_manifest "$PLUGINS_ROOT/agent/lens_security" lens_security agent lens_security advisory
+# kind:tool stage with NO convergence marker — fail-closed: must still be illegal
+# on a must-pass path (a forgotten marker must not silently de-scope a gate).
+write_manifest "$PLUGINS_ROOT/tool/gate_unmarked" gate_unmarked tool  gate_unmarked
 
 run_lint() {
     local rc=0
@@ -183,6 +186,31 @@ EOF
 rc=0; run_lint || rc=$?
 assert_eq "TC-4: legacy (no parallel group) not retro-checked (rc=0)" "0" "$rc"
 rm -f "$TPL_ROOT/legacy.yaml"
+
+# ── TC-6: unmarked kind:tool member on a must-pass set → FAILS (fail-closed) ──
+# A mechanical-looking tool stage that FORGOT its `convergence: gate` marker must
+# not slip onto the must-pass path: the roster-driven gate-aggregator keys on the
+# marker, so an unmarked member would be silently de-scoped from convergence.
+cat > "$TPL_ROOT/dirty_unmarked.yaml" <<'EOF'
+id: dirty_unmarked
+flow:
+  - gates
+gates:
+  type: parallel
+  flow:
+    - gate_suite
+    - gate_unmarked
+  aggregate: all_pass
+gate_suite:
+  roles: [gate_suite]
+gate_unmarked:
+  roles: [gate_unmarked]
+EOF
+rc=0; run_lint || rc=$?
+assert_eq "TC-6: unmarked tool in must-pass set detected (rc=1)" "1" "$rc"
+assert_contains "TC-6: diagnostic names the unmarked member" "$LINT_OUT" "gate_unmarked"
+assert_contains "TC-6: diagnostic cites ADR-040" "$LINT_OUT" "ADR-040"
+rm -f "$TPL_ROOT/dirty_unmarked.yaml"
 
 # ── TC-5: real-repo templates still pass the guard (no false positives) ──────
 rc=0
