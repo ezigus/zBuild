@@ -69,11 +69,16 @@ assert_eq "[SPEC-0] parameterized \${...} expands to member-derived lens id" "le
 
 # ─── Enter parallel-group scope (mirrors template.sh exports) ─────────────────
 # Canonical stage order: members first, then the non-member advisory aggregator.
-_TPL_STAGES=(adv-foo adv-bar rev-agg)
+# Members: two id-matched members (adv-foo/adv-bar) + ONE role-bound member
+# (lens-gamma) whose manifest is resolved BY ROLE (_TPL_STAGE_ROLES_lens_gamma →
+# provides.role=shared_lens) and whose output path is PER-MEMBER parameterized
+# (lens-${ZBUILD_REVIEW_LENS_ID}.json) — exactly simple.yaml's lens mechanism.
+_TPL_STAGES=(adv-foo adv-bar lens-gamma rev-agg)
 _TPL_PARALLEL_GROUPS=(rev_group)
 _TPL_PARALLEL_AGGREGATE_rev_group="advisory"
-_TPL_PARALLEL_FLOW_rev_group="adv-foo,adv-bar"
-export _TPL_PARALLEL_AGGREGATE_rev_group _TPL_PARALLEL_FLOW_rev_group
+_TPL_PARALLEL_FLOW_rev_group="adv-foo,adv-bar,lens-gamma"
+_TPL_STAGE_ROLES_lens_gamma="shared_lens"
+export _TPL_PARALLEL_AGGREGATE_rev_group _TPL_PARALLEL_FLOW_rev_group _TPL_STAGE_ROLES_lens_gamma
 
 # ─── SPEC-1: self-resolution binds to the advisory group ──────────────────────
 print_test_section "SPEC-1: aggregator self-resolves its bound advisory group"
@@ -93,6 +98,8 @@ mkdir -p "$ARTI"
 # glob would miss them entirely (baseline-fail proof).
 printf '%s\n' '{"name":"foo","score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"high","line":7,"message":"foo issue"}]}' > "$ARTI/audit-foo.json"
 printf '%s\n' '{"name":"bar","score":9,"findings":[{"file":"core/b.sh","category":"style","severity":"low","line":3,"message":"bar nit"}]}' > "$ARTI/findings-bar.json"
+# Role-bound member's per-member parameterized output (lens-${ID}.json → lens-gamma.json).
+printf '%s\n' '{"name":"gamma","score":5,"findings":[{"file":"core/c.sh","category":"arch","severity":"medium","line":9,"message":"gamma concern"}]}' > "$ARTI/lens-gamma.json"
 # A decoy lens-*.json that is NOT a roster member — must be IGNORED by roster.
 printf '%s\n' '{"name":"decoy","score":1,"findings":[{"file":"core/z.sh","category":"x","severity":"critical","line":1,"message":"decoy"}]}' > "$ARTI/lens-decoy.json"
 
@@ -104,10 +111,11 @@ _review_aggregator_run_inner "$ARTI" "$OUT_JSON" "$OUT_MD"
 _rc=$?
 set -e 2>/dev/null || true
 assert_eq "[SPEC-2] run returns 0 (advisory)" "0" "$_rc"
-assert_eq "[SPEC-2] roster collected exactly the 2 declared members" "2" \
+assert_eq "[SPEC-2] roster collected exactly the 3 declared members (2 id + 1 role-bound)" "3" \
     "$(jq '.lenses | length' "$OUT_JSON")"
 assert_contains "[SPEC-2] foo member (audit-foo.json) aggregated" "$(cat "$OUT_JSON")" "foo issue"
 assert_contains "[SPEC-2] bar member (findings-bar.json) aggregated" "$(cat "$OUT_JSON")" "bar nit"
+assert_contains "[SPEC-2] role-bound lens-gamma (parameterized output) aggregated" "$(cat "$OUT_JSON")" "gamma concern"
 # The decoy lens-*.json is NOT a roster member → its critical finding must be absent.
 if jq -e '.findings[] | select(.message=="decoy")' "$OUT_JSON" >/dev/null 2>&1; then
     assert_fail "[SPEC-2] non-member lens-decoy.json must be IGNORED (proves no glob)" "decoy present"
