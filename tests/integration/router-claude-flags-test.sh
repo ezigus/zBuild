@@ -61,11 +61,15 @@ EOF
 # Pre-seed events.jsonl with a redaction.applied event so that the child
 # subprocess can satisfy the C6 precondition WITHOUT --skip-precondition.
 # This exercises the realistic path where redaction.applied gates the call.
+# The event carries the envelope `stage` field that eb_emit_event stamps from
+# ZBUILD_CURRENT_STAGE (ADR-039 §3): the child runs the `build` stage below, and
+# C6 is now scoped per-stage, so the seeded redaction must be tagged `build` —
+# exactly as a real in-stage redaction.applied would be.
 export ZBUILD_RUN_ID="cf-e2e-run-id"
 : > "$ZBUILD_EVENTS_JSONL"
 jq -cn --arg rid "$ZBUILD_RUN_ID" \
     '{ts:"2026-01-01T00:00:00Z", run_id:$rid, issue:0, type:"redaction.applied",
-      plugin:"", kind:"", data:{}, schema_version:1}' \
+      plugin:"", kind:"", stage:"build", data:{}, schema_version:1}' \
     >> "$ZBUILD_EVENTS_JSONL"
 
 # Fork a real subprocess. Inside: source libs from scratch, load template,
