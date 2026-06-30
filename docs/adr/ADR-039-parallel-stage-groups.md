@@ -210,6 +210,35 @@ Ordering guard: the loader/validator and the isolation contract MUST land before
 `type: parallel`, or a group dispatches with the old (unset-`ZBUILD_CURRENT_STAGE`) workaround and
 re-opens the global-state hazard the construct exists to fix.
 
+### Phase 2 — the advisory aggregator is ROSTER-DRIVEN (naming-agnostic)
+
+`review-aggregator` no longer globs `lens-*.json` from the shared artifacts dir. It is now
+**roster-driven**, exactly like `gate-aggregator` (ADR-040 §2): it discovers WHICH files to merge from
+the parallel group's declared membership, not from a filename pattern.
+
+Because the advisory aggregator runs as a **separate, non-member stage**, it **self-resolves** which
+group it serves via the Phase 1 binding (above): it scans `_TPL_PARALLEL_GROUPS` for the
+`aggregate: advisory` group whose bound aggregator — the *first non-member `convergence: advisory` stage*
+in canonical (`_TPL_STAGES`) order, the same rule `core/pipeline/contract-validator.sh` /
+`scripts/lib/lint-contract.sh` enforce — is THIS stage (`ZBUILD_CURRENT_STAGE`). With a single advisory
+group this resolves to `simple.yaml`'s `review_lenses`. It then reads that group's members from
+`_TPL_PARALLEL_FLOW_<group>` and, for each member, resolves the member's manifest (id-first, then
+`provides.role`) and its **declared result artifact** (`provides.artifact_type`, else the basename of the
+primary output's declared path) — mirroring `gate-aggregator`'s `_ga_member_manifest` /
+`_ga_manifest_result_file`. A member output path that is per-member parameterized (review-lens's
+`lens-${ZBUILD_REVIEW_LENS_ID}.json`) has its `${…}` placeholder expanded to the member's derived lens id
+(the member stage id minus the `review-lens-`/`lens-`/`lens_` prefix), so the real `review_lenses` group
+still resolves to each member's `lens-<id>.json`.
+
+Consequence: adding/removing/renaming a lens member changes what the aggregator merges with **no edit to
+the plugin**, and members are no longer required to be named `lens-*` — the aggregator follows the
+roster, not the filename. A **legacy `lens-*.json` glob fallback** is retained for cycle-less / standalone
+invocation (unit tests, or any context with no group binding in scope), mirroring `gate-aggregator`'s
+fallback. The discovery mode (`roster` | `glob`) is recorded on the `plugin.run.complete` /
+`review_aggregator.no_lenses` events. Guarded by `tests/unit/review-aggregator-roster-test.sh` (roster
+discovery + self-resolution + fallback) alongside the existing `tests/unit/review-aggregator-test.sh`
+(glob fallback) and `tests/integration/review-report-advisory-flow-test.sh`.
+
 ## References
 
 - [ADR-027](ADR-027-recursive-flow-template-format.md) — recursive-flow template format; `type: parallel`
