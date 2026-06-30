@@ -22,9 +22,11 @@ source "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
 #
-# C6 precondition: most-recent event for the current run_id must be
-# `redaction.applied`. See ARCHITECTURE.md §3 / ADR-004. `--skip-precondition`
-# requires operator override (ZBUILD_SCOPE_OVERRIDE=1 + token file). ADR-001.
+# C6 precondition: most-recent event for the current (run_id, stage) must be
+# `redaction.applied` — scoped per-stage so concurrent parallel-group members
+# each enforce their own redaction (ADR-039 §3). See ARCHITECTURE.md §3 /
+# ADR-004. `--skip-precondition` requires operator override
+# (ZBUILD_SCOPE_OVERRIDE=1 + token file). ADR-001.
 route_to_model() {
     if [[ $# -lt 2 ]]; then
         error "route_to_model requires <tier> <prompt>"
@@ -147,7 +149,9 @@ fi
 _ROUTE_TOOL_USES_JSON="[]"
 
 # ─── _route_check_precondition <tier> <skip:bool> ────────────────────────────
-# Validates C6: most-recent event for current run_id must be redaction.applied.
+# Validates C6: most-recent event for the current (run_id, ZBUILD_CURRENT_STAGE)
+# must be redaction.applied (per-stage scoping for parallel-group safety, ADR-039
+# §3); falls back to run-level scoping when no stage is set.
 # `--skip-precondition` requires the operator override (ZBUILD_SCOPE_OVERRIDE=1
 # + ~/.zbuild/scope-override-token matching run_id or 'bootstrap').
 _route_check_precondition() {
@@ -175,6 +179,17 @@ _route_check_precondition() {
     fi
 
     local run_id="${ZBUILD_RUN_ID:-}" events_log="${ZBUILD_EVENTS_JSONL:-}"
+    # ADR-039 §3: scope C6 to the active stage when one is set. Parallel-group
+    # members run concurrently and emit interleaved events to the SHARED
+    # run-level log, so the global "most-recent event for run_id" can be a
+    # SIBLING member's `plugin.run.start` rather than THIS member's
+    # `redaction.applied`. eb_emit_event stamps `.stage` from
+    # ZBUILD_CURRENT_STAGE, so we check the most-recent event for THIS
+    # (run_id, stage). Serial stages set ZBUILD_CURRENT_STAGE too, so this is
+    # equivalent to the old run-level check there (one stage active at a time).
+    # When no stage is set (bootstrap, direct route_to_model calls, stage-less
+    # emits), fall back to the run-level last-event check — unchanged behaviour.
+    local stage="${ZBUILD_CURRENT_STAGE:-}"
 
     if [[ -z "$run_id" ]]; then
         error "router C6 precondition refused: ZBUILD_RUN_ID is unset; cannot verify redaction.applied"
@@ -187,19 +202,27 @@ _route_check_precondition() {
         return 2
     fi
 
-    local last_event_type
-    last_event_type="$(jq -r --arg rid "$run_id" \
-        'select(.run_id == $rid) | .type' "$events_log" 2>/dev/null | tail -1 || true)"
+    local last_event_type scope_desc
+    if [[ -n "$stage" ]]; then
+        scope_desc="run_id=$run_id stage=$stage"
+        last_event_type="$(jq -r --arg rid "$run_id" --arg st "$stage" \
+            'select(.run_id == $rid and (.stage // "") == $st) | .type' "$events_log" 2>/dev/null | tail -1 || true)"
+    else
+        scope_desc="run_id=$run_id"
+        last_event_type="$(jq -r --arg rid "$run_id" \
+            'select(.run_id == $rid) | .type' "$events_log" 2>/dev/null | tail -1 || true)"
+    fi
 
     if [[ -z "$last_event_type" ]]; then
-        error "router C6 precondition refused: no events for run_id=$run_id"
-        eb_emit_event "router.precondition.refused" "tier=$tier" "reason=no_events_for_run" 2>/dev/null || true
+        error "router C6 precondition refused: no events for $scope_desc"
+        eb_emit_event "router.precondition.refused" "tier=$tier" "reason=no_events_for_run" \
+            "stage=$stage" 2>/dev/null || true
         return 2
     fi
     if [[ "$last_event_type" != "redaction.applied" ]]; then
-        error "router C6 precondition violated: last event for run_id=$run_id was '$last_event_type', expected 'redaction.applied'"
+        error "router C6 precondition violated: last event for $scope_desc was '$last_event_type', expected 'redaction.applied'"
         eb_emit_event "router.precondition.violated" "tier=$tier" \
-            "last_event=$last_event_type" "required=redaction.applied"
+            "last_event=$last_event_type" "required=redaction.applied" "stage=$stage"
         return 2
     fi
     return 0
