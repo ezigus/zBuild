@@ -101,6 +101,36 @@ emission frequency, which is now per-iter rather than per-stage. See
 ADR-018 §Pattern 2 for the loop semantics and ADR-015 §v6 for the
 per-iter banner ordering.
 
+## Amendment — C6 scoped per-stage for parallel-group safety (ADR-039)
+
+The C6 precondition originally validated that the most-recent event **for the
+`run_id`** was `redaction.applied`. That assumed serial stage execution. When
+ADR-039 parallel stage-groups first ran (dogfood run
+`20260629214235-33569`), all five `review_lenses` members failed C6: members
+run concurrently and emit interleaved events to the SHARED run-level event log,
+so a sibling member's `plugin.run.start` became the most-recent GLOBAL event
+for the run before any one member emitted its own `redaction.applied`.
+
+The fix scopes C6 **per-stage** without weakening the chokepoint invariant:
+
+- `eb_emit_event` (`core/event-bus/event-bus.sh`) stamps a top-level `stage`
+  field onto every event emitted while `ZBUILD_CURRENT_STAGE` is set. Each
+  parallel member exports its own `ZBUILD_CURRENT_STAGE` inside its subshell
+  (ADR-039 §3), so every event carries the stage/member that produced it.
+  Stage-less emits (e.g. `pipeline.start`, template load) keep the canonical
+  8-key envelope.
+- `_route_check_precondition` (`core/router/route.sh`) now validates the
+  most-recent event **for `(run_id, ZBUILD_CURRENT_STAGE)`** is
+  `redaction.applied`. When no stage is set it falls back to the run-level
+  check (unchanged behaviour for direct/bootstrap calls).
+
+This is provably equivalent to the old check for serial stages (only one stage
+is active at a time, so the most-recent for-stage event is the most-recent run
+event) and makes each concurrent LLM member enforce ITS OWN redaction
+independently. A member can NOT ride a sibling's `redaction.applied` — its own
+stage's most-recent event must be the redaction. Covered by
+`tests/integration/router-precondition-parallel-test.sh`.
+
 ## References
 
 - [KEEPERS.md §C](../KEEPERS.md#section-c--reliability--safety-expanded) — redaction has 9 prompt seams; no wrapper today.

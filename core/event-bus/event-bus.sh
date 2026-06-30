@@ -128,6 +128,15 @@ eb_emit_event() {
     local issue="${ZBUILD_ISSUE:-0}"
     local plugin; plugin="$(_eb_strip_ansi "${ZBUILD_PLUGIN:-}")"
     local kind; kind="$(_eb_strip_ansi "${ZBUILD_PLUGIN_KIND:-}")"
+    # ADR-004 / ADR-039 §3: stamp the active stage onto the envelope so the
+    # router's C6 precondition can be scoped PER-STAGE. Parallel-group members
+    # (parallel-orchestrator.sh) each export ZBUILD_CURRENT_STAGE inside their
+    # own subshell, so a sibling member's `plugin.run.start` can no longer
+    # become the most-recent event that satisfies/clobbers THIS member's
+    # `redaction.applied` check. Present ONLY when a stage is active — stage-less
+    # emits (pipeline.start, template load, bootstrap) keep the canonical 8-key
+    # envelope, so C6 falls back to the run-level last-event check for them.
+    local stage; stage="$(_eb_strip_ansi "${ZBUILD_CURRENT_STAGE:-}")"
 
     # Validate-or-cast $issue to a non-negative integer. Coming from env, an
     # unsanitized string here would break the SQL INSERT below ($issue is
@@ -144,8 +153,10 @@ eb_emit_event() {
         --arg type "$type" \
         --arg plugin "$plugin" \
         --arg kind "$kind" \
+        --arg stage "$stage" \
         --argjson data "$payload" \
-        '{ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}')"
+        '{ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
+         + (if $stage != "" then {stage: $stage} else {} end)')"
 
     # Single-writer JSONL via flock
     if zbuild_has_flock; then

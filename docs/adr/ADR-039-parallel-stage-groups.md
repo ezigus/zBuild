@@ -109,7 +109,13 @@ ADR-038's fan-out workaround — is:
 - **`ZBUILD_CURRENT_STAGE` is set per member inside its subshell**, never inherited across members. This
   is the explicit cure for the `route_to_model` global-state corruption that forced ADR-038's fan-out to
   *unset* the variable defensively: with `type: parallel`, each subshell sets its own member stage id, so
-  router/redaction stage-scoping is correct per member instead of being blanked.
+  router/redaction stage-scoping is correct per member instead of being blanked. The router's **C6
+  precondition is scoped to this per-member stage** (ADR-004 amendment): `eb_emit_event` stamps a top-level
+  `stage` field on every in-stage event, and `_route_check_precondition` validates that the most-recent
+  event for `(run_id, ZBUILD_CURRENT_STAGE)` — not the run-global most-recent — is `redaction.applied`.
+  Without this, a sibling member's interleaved `plugin.run.start` becomes the run-global most-recent event
+  and fails C6 for every concurrent LLM member (observed in the first `review_lenses` dogfood run,
+  `20260629214235-33569`). Each member now provably enforces its own redaction independently.
 - **`events.jsonl` is append-only via `flock`.** Concurrent members emit events; the append is
   serialized by an advisory lock so the event log stays a valid JSONL stream (no interleaved partial
   lines). Event ordering across members is by append time and is not asserted to follow member-`flow:`
