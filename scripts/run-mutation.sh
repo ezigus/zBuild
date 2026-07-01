@@ -226,13 +226,33 @@ _assert_clean_targets() {
     fi
 }
 
+# _mut_verify_checkout <wt> <file_path> — confirm the mutated `## File`
+# materialized COMPLETELY in the worktree (#1184). A bare `-s` non-empty check is
+# too coarse: under concurrency a checkout can be observed with the file present
+# but not byte-complete, so the patch's target string isn't found and its
+# `assert`/replace spuriously fails. Compare the worktree copy against the HEAD
+# blob byte-for-byte. Empty $file_path (or a path not tracked at HEAD) ⇒ fall
+# back to the non-empty check. Returns 0 when complete, non-zero otherwise.
+_mut_verify_checkout() {
+    local wt="$1" file_path="$2"
+    [[ -z "$file_path" ]] && return 0
+    [[ -s "$wt/$file_path" ]] || return 1
+    # Byte-exact match against the HEAD blob when the path is tracked at HEAD;
+    # otherwise the non-empty check above stands.
+    if git -C "$REPO_ROOT" cat-file -e "HEAD:$file_path" 2>/dev/null; then
+        git -C "$REPO_ROOT" show "HEAD:$file_path" 2>/dev/null \
+            | cmp -s - "$wt/$file_path" || return 1
+    fi
+    return 0
+}
+
 # _mut_add_worktree_verified <wt> <file_path> — add a detached-HEAD worktree at
 # $wt with bounded retries + checkout verification (#1184). Under N-way
 # concurrent `git worktree add`, a checkout can be observed mid-materialization,
 # so the mutated file's target string isn't present yet and the patch spuriously
 # fails. Retry the add with jittered backoff, and after each successful add
-# verify the mutated `## File` ($file_path, relative to repo root) exists and is
-# non-empty before handing off to the patch; re-add if incomplete. An empty
+# verify (via _mut_verify_checkout) that the mutated `## File` materialized
+# completely before handing off to the patch; re-add if incomplete. An empty
 # $file_path skips the file check (still retries the bare add). Returns 0 on a
 # verified worktree, non-zero after exhausting retries.
 _mut_add_worktree_verified() {
@@ -241,7 +261,7 @@ _mut_add_worktree_verified() {
     while (( attempt < _MUT_WT_ADD_RETRIES )); do
         attempt=$((attempt + 1))
         if git -C "$REPO_ROOT" worktree add --detach "$wt" HEAD >/dev/null 2>&1 \
-           && { [[ -z "$file_path" ]] || [[ -s "$wt/$file_path" ]]; }; then
+           && _mut_verify_checkout "$wt" "$file_path"; then
             return 0
         fi
         # Failed add OR incomplete checkout: tear down this attempt, prune the
