@@ -25,9 +25,14 @@ source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh"
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh"
 
-# _reachability_run <testfile_abs> <cwd>  → returns the test's rc.
+# A timeout leaves the run's true pass/fail unknown → INFRASTRUCTURE, never a
+# flip (ADR-036 #1188): `timeout` exits 124 (TERM sent), 143 (child died of it).
+_reachability_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 143 ]]; }
+
+# _reachability_run <testfile_abs> <cwd> [logfile]  → returns the test's rc.
+# When <logfile> is given the combined output is appended for diagnosability.
 _reachability_run() {
-    local testfile="$1" cwd="$2"
+    local testfile="$1" cwd="$2" logfile="${3:-}"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
     local -a runner=(bash "$testfile")
     if command -v timeout >/dev/null 2>&1; then
@@ -36,8 +41,22 @@ _reachability_run() {
     (
         cd "$cwd" || exit 2
         unset ZBUILD_TEST_QUIET
-        "${runner[@]}" >/dev/null 2>&1
+        if [[ -n "$logfile" ]]; then
+            "${runner[@]}" >>"$logfile" 2>&1
+        else
+            "${runner[@]}" >/dev/null 2>&1
+        fi
     )
+}
+
+# _reachability_bound_log <file> [max_bytes] — keep only the last max_bytes.
+_reachability_bound_log() {
+    local f="$1" cap="${2:-65536}"
+    [[ -n "$f" && -f "$f" ]] || return 0
+    local sz; sz="$(wc -c < "$f" 2>/dev/null || echo 0)"
+    if [[ "$sz" =~ ^[0-9]+$ && "$sz" -gt "$cap" ]]; then
+        tail -c "$cap" "$f" > "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" 2>/dev/null || true
+    fi
 }
 
 # acceptance_reachability_check <design_md> <repo_root>
@@ -45,7 +64,8 @@ _reachability_run() {
 #   REACHABILITY EXEMPT none          — WIRING: none declared; no revert runs
 #   REACHABILITY PASS <target>        — ≥1 testfile flips pass→fail; wiring load-bearing
 #   REACHABILITY FAIL inert_wiring <target>  — no testfile flips; wiring is inert
-#   REACHABILITY ERROR <detail>       — infrastructure failure
+#   REACHABILITY ERROR <detail>       — infrastructure failure (worktree_failed,
+#                                       empty_wiring_targets, timeout:<target>)
 #   REACHABILITY SKIP no_impl_delta   — HEAD == merge-base; nothing to check
 # Returns 0 when every target passes (or exempt/skip), 1 otherwise.
 acceptance_reachability_check() {
@@ -143,18 +163,34 @@ acceptance_reachability_check() {
         done
 
         # Check if any testfile flips pass→fail when WIRING is at merge-base.
-        local found_flip=0
+        local found_flip=0 saw_timeout=0
+        local logfile=""
+        if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
+            mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
+            # sanitize the target path into a flat log filename
+            local _safe_target="${target//\//_}"
+            logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/reachability-${_safe_target}.log"
+            : > "$logfile" 2>/dev/null || logfile=""
+        fi
         for tf in "${testfiles[@]:-}"; do
             [[ -z "$tf" ]] && continue
             [[ ! -f "$wt_dir/$tf" ]] && continue
             local rc_reverted=0 rc_head=0
-            _reachability_run "$wt_dir/$tf" "$wt_dir" || rc_reverted=$?
-            _reachability_run "$repo_root/$tf" "$repo_root" || rc_head=$?
+            [[ -n "$logfile" ]] && printf '### %s reverted %s\n' "$target" "$tf" >> "$logfile"
+            _reachability_run "$wt_dir/$tf" "$wt_dir" "$logfile" || rc_reverted=$?
+            [[ -n "$logfile" ]] && printf '### %s head %s\n' "$target" "$tf" >> "$logfile"
+            _reachability_run "$repo_root/$tf" "$repo_root" "$logfile" || rc_head=$?
+            # A timeout on EITHER run leaves the flip verdict unknown → INFRA;
+            # do not treat it as a flip or as inert wiring.
+            if _reachability_is_timeout_rc "$rc_reverted" || _reachability_is_timeout_rc "$rc_head"; then
+                saw_timeout=1; continue
+            fi
             if [[ "$rc_reverted" -ne 0 && "$rc_head" -eq 0 ]]; then
                 found_flip=1
                 break
             fi
         done
+        _reachability_bound_log "$logfile"
 
         # Remove worktree now (trap handles it but be explicit).
         git -C "$repo_root" worktree remove --force "$wt_dir" >/dev/null 2>&1 || true
@@ -162,6 +198,10 @@ acceptance_reachability_check() {
 
         if [[ "$found_flip" -eq 1 ]]; then
             printf 'REACHABILITY PASS %s\n' "$target"
+        elif [[ "$saw_timeout" -eq 1 ]]; then
+            # No flip observed, but a run timed out → cannot conclude inert; infra.
+            printf 'REACHABILITY ERROR timeout:%s\n' "$target"
+            rc=1
         else
             printf 'REACHABILITY FAIL inert_wiring %s\n' "$target"
             rc=1

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Tests: cycle-orchestrator _cycle_acceptance_terminal_failure (#1044)
+# Tests: cycle-orchestrator _cycle_acceptance_terminal_failure (#1044, #1188)
 #
 # The acceptance-gate writes artifacts/acceptance-gate-result.json with
 # {"verdict":"fail","failures":[...]} and returns rc=1 for EVERY fail class.
-# untagged_spec is RECOVERABLE (fed back to build via the #951 edge) so it must
-# NOT hard-abort; tautology/inert_wiring/negctl_error/reachability_error ARE
-# terminal and make the verdict load-bearing at completion. This helper draws
-# that line. Membership guard: only fires when acceptance-gate is a cycle member
-# so inner cycles (build_test_cycle) are never affected.
+# TWO kinds of failure are NON-terminal (must NOT hard-abort):
+#   - untagged_spec:*  RECOVERABLE (fed back to build via the #951 edge).
+#   - negctl_error:* / reachability_error:*  INFRASTRUCTURE (ADR-036 #1188):
+#     resolve/worktree failures and negctl/reachability TIMEOUTS.
+# GENUINE violations stay terminal and make the verdict load-bearing at
+# completion: tautology / inert_wiring / not_passing_at_head / no_testfile /
+# malformed_acceptance_block. This helper draws that line. Membership guard:
+# only fires when acceptance-gate is a cycle member so inner cycles
+# (build_test_cycle) are never affected.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,6 +57,31 @@ assert_eq "[SPEC-2] untagged_spec-only → NOT terminal (rc=1)" "1" "$rc"
 _write_result '{"verdict":"fail","failures":["untagged_spec:SPEC-1","untagged_spec:SPEC-3"]}'
 set +e; _cycle_acceptance_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[SPEC-2] untagged_spec list → NOT terminal (rc=1)" "1" "$rc"
+
+# ── [SPEC-5] infra classes negctl_error/reachability_error → NOT terminal (#1188) ──
+# Infra failures (resolve/worktree/timeout) must never hard-fail the pipeline as
+# if the acceptance contract were violated.
+_write_result '{"verdict":"fail","failures":["negctl_error:baseline_resolve_failed"]}'
+set +e; _cycle_acceptance_terminal_failure "$STATE_DIR"; rc=$?; set -e
+assert_eq "[SPEC-5] negctl_error resolve → NOT terminal (rc=1)" "1" "$rc"
+
+_write_result '{"verdict":"fail","failures":["negctl_error:timeout:SPEC-1"]}'
+set +e; _cycle_acceptance_terminal_failure "$STATE_DIR"; rc=$?; set -e
+assert_eq "[SPEC-5] negctl_error timeout → NOT terminal (rc=1)" "1" "$rc"
+
+_write_result '{"verdict":"fail","failures":["reachability_error:timeout:core/x.sh"]}'
+set +e; _cycle_acceptance_terminal_failure "$STATE_DIR"; rc=$?; set -e
+assert_eq "[SPEC-5] reachability_error timeout → NOT terminal (rc=1)" "1" "$rc"
+
+# Mixed infra-only list stays non-terminal.
+_write_result '{"verdict":"fail","failures":["untagged_spec:SPEC-1","negctl_error:timeout:SPEC-2","reachability_error:worktree_failed"]}'
+set +e; _cycle_acceptance_terminal_failure "$STATE_DIR"; rc=$?; set -e
+assert_eq "[SPEC-5] infra+untagged mix → NOT terminal (rc=1)" "1" "$rc"
+
+# But a GENUINE violation alongside infra still makes the verdict terminal.
+_write_result '{"verdict":"fail","failures":["negctl_error:timeout:SPEC-1","tautology:SPEC-2"]}'
+set +e; _cycle_acceptance_terminal_failure "$STATE_DIR"; rc=$?; set -e
+assert_eq "[SPEC-5] infra + real violation → terminal (rc=0)" "0" "$rc"
 
 # verdict=pass is never terminal regardless of membership.
 _write_result '{"verdict":"pass","failures":[]}'

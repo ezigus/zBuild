@@ -179,3 +179,34 @@ reads from `design.md`, a dogfood that *uses* the new grammar cannot be validate
 install (ADR-023) while the test runner uses the working tree. Such grammar-extending
 changes are hand-landed, then installed; thereafter grammar-dependent features dogfood
 normally. Build-side consumption of `inert_wiring` (so build self-corrects) is #957.
+
+## Amendment (#1188, 2026-07-01) — timeout classification + infra failures are non-terminal
+
+The gate is mechanical, so a false hard-fail halts the whole pipeline (rc=8) with no
+recovery. Two robustness gaps caused exactly that:
+
+1. **Timeout misclassification.** Each SPEC test runs under `timeout ${ZBUILD_NEGCTL_TIMEOUT}`
+   (rc 124, or 143 when the child dies from the SIGTERM). A timeout leaves the test's true
+   pass/fail *unknown*, yet the old rc-based logic folded a HEAD-run timeout into the genuine
+   `not_passing_at_head` class, and a BASELINE-run timeout spuriously satisfied the valid
+   control (`rc_base != 0 && rc_head == 0`) → a **false PASS**. Fix: `_negctl_run` /
+   `_reachability_run` detect rc 124/143; a timeout on EITHER run is an INFRA signal that is
+   never a control, a violation, or a wiring flip. It emits a distinct class
+   `negctl_error:timeout:<sid>` (reachability: `reachability_error:timeout:<target>`) with a
+   dedicated `acceptance.gate.negctl_timeout` / `acceptance.gate.reachability_timeout` event.
+
+2. **Infra failures were terminal.** `_cycle_acceptance_terminal_failure` (cycle-orchestrator)
+   treated every failure class except `untagged_spec:` as terminal. Now the INFRA classes
+   `negctl_error:*` and `reachability_error:*` (resolve/worktree failures AND the new timeout
+   class) are ALSO non-terminal — a flaky/slow sandbox must not hard-fail the pipeline as if
+   the contract were violated. GENUINE violations stay terminal: `tautology`,
+   `not_passing_at_head`, `inert_wiring`, `no_testfile`, `malformed_acceptance_block`.
+
+**Configurable timeout + captured output.** `ZBUILD_NEGCTL_TIMEOUT` is an overridable per-stage
+knob: templates declare `negctl_timeout_s:` on the `acceptance-gate` stage (read lazily via
+`template_stage_negctl_timeout` from the loaded template source — no row-shape change); the
+plugin resolves precedence **env `ZBUILD_NEGCTL_TIMEOUT` > per-stage template > 60s default**
+(env wins so CI/operators can force a value) and exports it plus `ZBUILD_NEGCTL_ARTIFACT_DIR`
+to the libs. Each SPEC / WIRING run now appends its combined output to a size-bounded
+(`64 KiB`) `artifacts/negctl-<sid>.log` / `artifacts/reachability-<target>.log` so a failed
+control is diagnosable instead of silently `>/dev/null`.

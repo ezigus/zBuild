@@ -32,8 +32,23 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh"
 # shellcheck source=../../../scripts/lib/acceptance-reachability.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh"
 
+# _ag_resolve_negctl_timeout <stage_id> — per-test negctl/reachability timeout (s).
+# Precedence (ADR-036 #1188): explicit ZBUILD_NEGCTL_TIMEOUT env > per-stage
+# template `negctl_timeout_s:` > 60s default. Env wins so CI/operators (and the
+# timeout test) can force a value regardless of the template default.
+_ag_resolve_negctl_timeout() {
+    local stage_id="${1:-acceptance-gate}"
+    if [[ "${ZBUILD_NEGCTL_TIMEOUT:-}" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$ZBUILD_NEGCTL_TIMEOUT"; return 0
+    fi
+    if declare -F template_stage_negctl_timeout >/dev/null 2>&1; then
+        local v; v="$(template_stage_negctl_timeout "$stage_id" 2>/dev/null || true)"
+        if [[ "$v" =~ ^[0-9]+$ && "$v" -ge 1 ]]; then printf '%s' "$v"; return 0; fi
+    fi
+    printf '60'
+}
+
 acceptance_gate_run() {
-    # shellcheck disable=SC2034  # hook-signature positional; unused here
     local _stage_id="$1"
     local state_file="$2"
     if [[ -z "$state_file" ]]; then
@@ -44,6 +59,11 @@ acceptance_gate_run() {
     local artifact_dir="$state_dir/artifacts"
     local result_file="$artifact_dir/acceptance-gate-result.json"
     local design_md="$artifact_dir/design.md"
+
+    # ADR-036 #1188: plumb the per-test timeout knob and a diagnostic-log dir to
+    # the negctl/reachability libs (they read these two env vars).
+    export ZBUILD_NEGCTL_TIMEOUT; ZBUILD_NEGCTL_TIMEOUT="$(_ag_resolve_negctl_timeout "${_stage_id:-acceptance-gate}")"
+    export ZBUILD_NEGCTL_ARTIFACT_DIR="$artifact_dir"
 
     # repo_root = git toplevel of the working tree (where build's commits live);
     # fall back to PWD when not in a git tree (degraded; negctl will report).
@@ -108,6 +128,10 @@ acceptance_gate_run() {
                             eb_emit_event "acceptance.gate.baseline_resolve_failed" "stage=acceptance-gate" ;;
                         worktree_failed*)
                             eb_emit_event "acceptance.gate.worktree_failed" "stage=acceptance-gate" "detail=$detail" ;;
+                        timeout:*)
+                            # INFRA (ADR-036 #1188): non-terminal, distinct from a violation.
+                            eb_emit_event "acceptance.gate.negctl_timeout" "stage=acceptance-gate" \
+                                "spec_id=${detail#timeout:}" "timeout_s=${ZBUILD_NEGCTL_TIMEOUT:-60}" ;;
                     esac
                     ;;
             esac
@@ -138,6 +162,12 @@ acceptance_gate_run() {
                         local detail="${line#REACHABILITY ERROR }"
                         failures+=("reachability_error:$detail")
                         verdict="fail"
+                        case "$detail" in
+                            timeout:*)
+                                # INFRA (ADR-036 #1188): non-terminal.
+                                eb_emit_event "acceptance.gate.reachability_timeout" "stage=acceptance-gate" \
+                                    "target=${detail#timeout:}" "timeout_s=${ZBUILD_NEGCTL_TIMEOUT:-60}" ;;
+                        esac
                         ;;
                 esac
             done < <(acceptance_reachability_check "$design_md" "$repo_root" || true)

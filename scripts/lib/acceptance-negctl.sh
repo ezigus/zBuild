@@ -30,11 +30,18 @@ source "$_ACCEPTANCE_NEGCTL_DIR/acceptance-coverage.sh"
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_NEGCTL_DIR/merge-base.sh"
 
-# _negctl_run <testfile_abs> <cwd>  → echoes nothing, returns the test's rc.
+# A timeout leaves the run's true pass/fail unknown, so it is an INFRASTRUCTURE
+# signal, never a control/violation (ADR-036 #1188): `timeout` exits 124 when it
+# TERMs the child, 143 when the child dies from that SIGTERM.
+_negctl_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 143 ]]; }
+
+# _negctl_run <testfile_abs> <cwd> [logfile]  → echoes nothing, returns the rc.
 # Runs with ZBUILD_TEST_QUIET unset (so labeled output is produced) under an
-# optional timeout. A timeout (rc 124) counts as a non-zero/failed run.
+# optional timeout (ZBUILD_NEGCTL_TIMEOUT, default 60s). When <logfile> is given
+# the combined stdout+stderr is appended there (size-bounded by the caller) so a
+# failed control is diagnosable; otherwise output is discarded.
 _negctl_run() {
-    local testfile="$1" cwd="$2"
+    local testfile="$1" cwd="$2" logfile="${3:-}"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
     local -a runner=(bash "$testfile")
     if command -v timeout >/dev/null 2>&1; then
@@ -50,15 +57,31 @@ _negctl_run() {
         # via _zbuild_make_fresh_shell (plugins/tool/test/plugin.sh); _negctl_run
         # does not, so scrub the parallelism knobs explicitly here.
         unset ZBUILD_TEST_PARALLEL_JOBS ZBUILD_PARALLEL_SAFE_TIERS
-        "${runner[@]}" >/dev/null 2>&1
+        if [[ -n "$logfile" ]]; then
+            "${runner[@]}" >>"$logfile" 2>&1
+        else
+            "${runner[@]}" >/dev/null 2>&1
+        fi
     )
+}
+
+# _negctl_bound_log <file> [max_bytes] — keep only the last max_bytes of a log so
+# a runaway test cannot blow up the state dir. Default cap 64 KiB.
+_negctl_bound_log() {
+    local f="$1" cap="${2:-65536}"
+    [[ -n "$f" && -f "$f" ]] || return 0
+    local sz; sz="$(wc -c < "$f" 2>/dev/null || echo 0)"
+    if [[ "$sz" =~ ^[0-9]+$ && "$sz" -gt "$cap" ]]; then
+        tail -c "$cap" "$f" > "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" 2>/dev/null || true
+    fi
 }
 
 # acceptance_negctl_check <design_md> <repo_root>
 # Prints one verdict line per SPEC-n:
 #   NEGCTL PASS <spec_id>      — ≥1 tagged testfile fails at baseline, passes at HEAD
 #   NEGCTL FAIL <spec_id> <reason>   reason ∈ {tautology, not_passing_at_head, no_testfile}
-#   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed, worktree_failed)
+#   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
+#                                worktree_failed, timeout:<spec_id>)
 #   NEGCTL SKIP <detail>       — no negative control possible (no_impl_delta)
 # Returns 0 when every SPEC-n passes (or is legitimately skipped), 1 otherwise.
 acceptance_negctl_check() {
@@ -110,7 +133,15 @@ acceptance_negctl_check() {
             printf 'NEGCTL SKIP guard_spec %s\n' "$spec_id"
             continue
         fi
-        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0
+        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0
+        # Per-SPEC diagnostic log (opt-in via ZBUILD_NEGCTL_ARTIFACT_DIR, set by
+        # the plugin from the pipeline state dir). Empty → output discarded.
+        local logfile=""
+        if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
+            mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
+            logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-${spec_id}.log"
+            : > "$logfile" 2>/dev/null || logfile=""
+        fi
         for tf in "${testfiles[@]:-}"; do
             [[ -z "$tf" ]] && continue
             grep -qF "[$spec_id]" "$repo_root/$tf" 2>/dev/null || continue
@@ -118,8 +149,15 @@ acceptance_negctl_check() {
             # The baseline run is EXPECTED to fail; capture rc via `|| rc=$?`
             # so a non-zero exit never aborts the caller under `set -e`.
             local rc_base=0 rc_head=0
-            _negctl_run "$wt_dir/$tf" "$wt_dir" || rc_base=$?
-            _negctl_run "$repo_root/$tf" "$repo_root" || rc_head=$?
+            [[ -n "$logfile" ]] && printf '### %s baseline %s\n' "$spec_id" "$tf" >> "$logfile"
+            _negctl_run "$wt_dir/$tf" "$wt_dir" "$logfile" || rc_base=$?
+            [[ -n "$logfile" ]] && printf '### %s head %s\n' "$spec_id" "$tf" >> "$logfile"
+            _negctl_run "$repo_root/$tf" "$repo_root" "$logfile" || rc_head=$?
+            # A timeout on EITHER run leaves pass/fail unknown → INFRA, not a
+            # control or a not_passing_at_head violation. Skip this testfile.
+            if _negctl_is_timeout_rc "$rc_base" || _negctl_is_timeout_rc "$rc_head"; then
+                saw_timeout=1; continue
+            fi
             if [[ "$rc_base" -ne 0 && "$rc_head" -eq 0 ]]; then
                 found_control=1; break
             elif [[ "$rc_base" -eq 0 ]]; then
@@ -128,6 +166,7 @@ acceptance_negctl_check() {
                 only_head_fail=1
             fi
         done
+        _negctl_bound_log "$logfile"
         if [[ "$found_control" -eq 1 ]]; then
             printf 'NEGCTL PASS %s\n' "$spec_id"
         elif [[ "$saw_tagged" -eq 0 ]]; then
@@ -136,6 +175,9 @@ acceptance_negctl_check() {
             printf 'NEGCTL FAIL %s tautology\n' "$spec_id"; rc=1
         elif [[ "$only_head_fail" -eq 1 ]]; then
             printf 'NEGCTL FAIL %s not_passing_at_head\n' "$spec_id"; rc=1
+        elif [[ "$saw_timeout" -eq 1 ]]; then
+            # Only-signal was a timeout: infra, not a genuine violation.
+            printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1
         else
             printf 'NEGCTL FAIL %s tautology\n' "$spec_id"; rc=1
         fi

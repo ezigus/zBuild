@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Integration: #1044 — acceptance-gate verdict=fail must block cycle completion.
-# When the acceptance-gate writes verdict=fail with a TERMINAL failure class
-# (inert_wiring / tautology / negctl_error / reachability_error), the cycle must
-# NOT converge to complete even though review.verdict=approve — the pipeline
-# halts with pipeline.end status=failed (rc=8 propagated outward).
-# Complementary: an untagged_spec-only failure is RECOVERABLE (#951 feedback) and
-# must NOT hard-abort — the pipeline still reaches status=success when review
-# approves. This locks SPEC-2 end-to-end.
+# Integration: #1044 / #1188 — acceptance-gate verdict=fail behavior at cycle end.
+# When the acceptance-gate writes verdict=fail with a TERMINAL (genuine-violation)
+# class (inert_wiring / tautology / not_passing_at_head), the cycle must NOT
+# converge even though review.verdict=approve — the pipeline halts with
+# pipeline.end status=failed (rc=8 propagated outward).
+# Complementary NON-terminal classes still reach status=success when review
+# approves: untagged_spec (RECOVERABLE, #951 feedback) and the ADR-036 #1188
+# INFRA classes negctl_error:* / reachability_error:* (resolve/worktree/timeout).
+# This locks SPEC-2 and the #1188 infra-non-terminal contract end-to-end.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -297,6 +298,23 @@ assert_eq "T2 [SPEC-2]: pipeline.end status=success on untagged_spec-only (feedb
 term_evt="$(jq -c 'select(.type=="cycle.acceptance.terminal_failure")' \
     "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T2 [SPEC-2]: cycle.acceptance.terminal_failure NOT emitted for untagged_spec" "0" "$term_evt"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [SPEC-5] infra failure (negctl_error:timeout) is NON-terminal (ADR-036 #1188).
+#          A flaky/slow sandbox must NOT hard-fail the pipeline — review approves
+#          → status=success, and NO terminal-failure event fires.
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "T3 [SPEC-5]: infra negctl_error:timeout does NOT halt (status=success)"
+
+export ZBUILD_TEST_GATE_FAILURE="negctl_error:timeout:SPEC-1"
+_run_pipeline
+
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)" "success" "$end_status"
+
+term_evt="$(jq -c 'select(.type=="cycle.acceptance.terminal_failure")' \
+    "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "T3 [SPEC-5]: cycle.acceptance.terminal_failure NOT emitted for infra timeout" "0" "$term_evt"
 
 cleanup_test_env
 print_test_results

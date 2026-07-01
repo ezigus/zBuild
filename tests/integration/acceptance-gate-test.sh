@@ -157,5 +157,35 @@ set +e; _run_gate "$REPO7"; set -e
 assert_eq "S7: [change] SPEC with tautological test → rc=1" "1" "$RC"
 assert_eq "S7: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 
+# ── S8: a test that outlives the timeout → INFRA class, not a violation (#1188) ─
+# The plugin resolves ZBUILD_NEGCTL_TIMEOUT (env wins) and exports the artifact
+# dir; a timeout records negctl_error:timeout:SPEC-1, emits the negctl_timeout
+# event, and captures a per-SPEC diagnostic log.
+if command -v timeout >/dev/null 2>&1; then
+    REPO8="$(_build_repo gate-timeout '#!/usr/bin/env bash
+# [SPEC-1] slow feature
+sleep 30')"
+    cat > "$REPO8/design.md" <<'EOF'
+```acceptance
+SPEC-1: slow feature
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+    export ZBUILD_NEGCTL_TIMEOUT=1
+    set +e; _run_gate "$REPO8"; set -e
+    unset ZBUILD_NEGCTL_TIMEOUT
+    assert_eq "S8: timeout → rc=1 (gate records infra failure)" "1" "$RC"
+    assert_eq "S8: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+    assert_eq "S8: failure class is negctl_error:timeout:SPEC-1 (not a violation)" \
+        "negctl_error:timeout:SPEC-1" "$(jq -r '.failures[0]' <<<"$RESULT")"
+    assert_event_emitted "S8: negctl_timeout event" "$EVENTS" "acceptance.gate.negctl_timeout"
+    [[ -f "$REPO8/.zbuild-state/artifacts/negctl-SPEC-1.log" ]] \
+        && assert_pass "S8: negctl-SPEC-1.log diagnostic artifact captured" \
+        || assert_fail "S8: expected negctl-SPEC-1.log artifact" "missing"
+else
+    assert_pass "S8: skipped (no 'timeout' binary available)"
+fi
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
