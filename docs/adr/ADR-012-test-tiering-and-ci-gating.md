@@ -59,6 +59,23 @@ Output format: `<tier>: N/M passed` — parseable by CI summary step.
 - Each doc: file, mutation description, expected failing test(s), result
 - `scripts/run-tests.sh --tier mutation` validates doc structure (not behavior)
 - CODEOWNERS or `mutation-review` label enforces re-run on changes to listed files
+- **Worktree-contention robustness (#1184):** the parallel harness
+  (`scripts/run-mutation.sh`) runs each mutant in a throwaway `git worktree add
+  --detach HEAD`. Under N-way concurrency a checkout can be observed
+  mid-materialization, so the patch's target string isn't present yet and the
+  patch spuriously fails. The harness prunes stale worktrees before dispatch,
+  bounded-retries the add with jittered backoff, and VERIFIES the mutated
+  `## File` is present + non-empty before applying the patch.
+- **Outcome classification (#1184):** three buckets, not two.
+  - `pass` — mutation CAUGHT.
+  - `fail` — genuine coverage signal (SURVIVED mutation) or a malformed spec
+    (structural / relevance / empty / no-op). Counts toward the `mutation: P/T
+    passed` score and the harness exit code.
+  - `infra` — NON-FATAL maintenance signal: a worktree-add / patch failure that
+    survives the retries+verify above. EXCLUDED from the score and the exit
+    code, surfaced on a distinct `mutation-infra:` line. It therefore never
+    rolls up into test verdict=fail (via `framework_parse_mutation` →
+    `test-results.json`) and is NEVER routed into any build-feedback loop.
 
 ### Coverage policy
 
