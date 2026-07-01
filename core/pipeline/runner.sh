@@ -620,6 +620,27 @@ _runner_snapshot_contract_libs() {
     return 0
 }
 
+# Remove a run's own event log + lock siblings so --no-resume starts from a
+# clean, un-interleaved log (run_id reuse can leave a stale events.jsonl here).
+_runner_reset_event_artifacts() {
+    local dir="$1"
+    [[ -z "$dir" ]] && return 0
+    rm -f "$dir/events.jsonl" "$dir/events.jsonl.lock" \
+          "$dir/events.db" "$dir/events.db.lock" 2>/dev/null || true
+}
+
+# Clear the shared global-default event log + stale lock files. Only ad-hoc /
+# killed invocations write here (isolated engine runs use runs/<run_id>/), so a
+# leftover events.jsonl.lock is never held by a live engine run — but a deferred
+# TERM-trap can leave one behind, and a stale lock would make a later run's
+# `flock -w` block. --no-resume clears it proactively at startup rather than
+# relying on any exit-time trap (#run-hygiene, #887).
+_runner_clear_stale_global_event_artifacts() {
+    local g="$HOME/.zbuild/state"
+    rm -f "$g/events.jsonl" "$g/events.jsonl.lock" \
+          "$g/events.db" "$g/events.db.lock" 2>/dev/null || true
+}
+
 main() {
     local issue="" goal="" dry_run=false template="standard"
     local resume_mode=false from_stage="" no_resume=false force=false
@@ -924,6 +945,18 @@ main() {
             state_file="$state_dir/pipeline-state.json"
             _runner_state_file="$state_file"
         fi
+        # --no-resume = explicit clean-slate. Rotate THIS run's own artifacts
+        # (event log + locks in its state dir; may pre-exist when run_id is
+        # reused) AND clear the stale shared global-default event log + lock
+        # files. Ad-hoc/killed invocations leave those behind — a TERM-trap
+        # deferred behind a foreground `wait` never removes the lock, so a
+        # stale events.jsonl.lock could otherwise hang a later run's `flock -w`.
+        # Clearing at STARTUP is the guarantee: it never depends on an
+        # exit-time trap firing (#run-hygiene, #887).
+        if $no_resume; then
+            _runner_reset_event_artifacts "$state_dir"
+            _runner_clear_stale_global_event_artifacts
+        fi
         # Fresh start: clear any existing state at the (now per-run) path
         if [[ -f "$state_file" ]]; then
             rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
@@ -1049,6 +1082,16 @@ main() {
         # `_runner_ended=true` path is the common case (every successful
         # run hits it) and that path also needs the cleanup.
         _zbuild_disarm_abort_sentinel
+        # Best-effort: drop THIS run's own lock siblings so a killed run does
+        # not leave a stale .lock behind. flock releases on fd close at process
+        # death regardless, but the on-disk lock FILE would otherwise linger;
+        # this is belt-and-suspenders to the authoritative --no-resume startup
+        # clear (the trap may be deferred behind a foreground `wait`, #run-hygiene).
+        if [[ -n "${_runner_state_file:-}" ]]; then
+            local _rd; _rd="$(dirname "$_runner_state_file")"
+            rm -f "$_runner_state_file.lock" "$_rd/events.jsonl.lock" \
+                  "$_rd/events.db.lock" 2>/dev/null || true
+        fi
         [[ "$_runner_ended" == "true" ]] && return 0
         # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere.
         # Fail-closed: if we cannot mark the pipeline interrupted, emit an error event so the

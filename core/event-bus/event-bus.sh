@@ -18,6 +18,23 @@ _ZBUILD_ROOT_FOR_EVENTS="$(cd "$_ZBUILD_EVENT_BUS_DIR/../.." && pwd)"
 source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/compat.sh"
 
 # ─── Locations ──────────────────────────────────────────────────────────────
+# An engine run (core/pipeline/runner.sh) ALWAYS pins these to its per-run dir
+# (runs/<run_id>/, #887). An UNPINNED caller — an ad-hoc/test invocation that
+# sources the event-bus directly — must NOT accumulate into the shared
+# ${HOME}/.zbuild/state/events.{jsonl,db}: that store grows unbounded across
+# ad-hoc invocations and a stale events.jsonl.lock left by a killed run can
+# hang a later run's `flock -w` (#run-hygiene). Resolve the defaults coherently:
+#   1. Nothing pinned  → ephemeral, process-scoped dir under $TMPDIR (reaped by
+#      the OS / `zbuild cleanup`), never the durable shared global default.
+#   2. Only JSONL pinned → derive the dir (hence the SQLite mirror + lock) from
+#      it, so a pinned jsonl never leaks a mirror/lock back to the global
+#      default (the test harness pins only ZBUILD_EVENTS_JSONL).
+# Explicit ZBUILD_EVENTS_DIR / _DB always win.
+if [[ -z "${ZBUILD_EVENTS_DIR:-}${ZBUILD_EVENTS_JSONL:-}${ZBUILD_EVENTS_DB:-}" ]]; then
+    ZBUILD_EVENTS_DIR="${TMPDIR:-/tmp}/zbuild-ephemeral-events.$$"
+elif [[ -z "${ZBUILD_EVENTS_DIR:-}" && -n "${ZBUILD_EVENTS_JSONL:-}" ]]; then
+    ZBUILD_EVENTS_DIR="$(dirname "$ZBUILD_EVENTS_JSONL")"
+fi
 ZBUILD_EVENTS_DIR="${ZBUILD_EVENTS_DIR:-${HOME}/.zbuild/state}"
 ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-${ZBUILD_EVENTS_DIR}/events.jsonl}"
 ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-${ZBUILD_EVENTS_DIR}/events.db}"
