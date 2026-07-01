@@ -18,6 +18,25 @@
 #   - Accounting is byte-for-byte identical to the prior serial runner: the
 #     result lines and final `mutation: P/T passed` are emitted in glob order.
 #
+# Worktree-contention robustness (#1184):
+#   - `git worktree prune` sweeps stale entries before dispatch.
+#   - `git worktree add` is bounded-retried with jittered backoff, and each
+#     successful add is VERIFIED (the mutated `## File` is present + non-empty)
+#     before the patch runs — a checkout observed mid-materialization under
+#     N-way concurrency otherwise yields a spurious "(patch failed)".
+#
+# Outcome classification (#1184): three status buckets, not two.
+#   - pass  : mutation CAUGHT (test failed as expected).
+#   - fail  : genuine coverage signal — a SURVIVED mutation (slipped past the
+#             test), or a malformed spec (structural / relevance / empty /
+#             no-op). Fail-worthy: counts toward the score AND the exit code.
+#   - infra : NON-FATAL maintenance signal — a worktree-add / patch failure
+#             that survives the retries+verify above. Excluded from the
+#             `mutation: P/T passed` score AND from the exit code, so a
+#             transient worktree race never sets test verdict=fail or blocks
+#             the pipeline cycle. Surfaced on a separate `mutation-infra:` line
+#             and NEVER routed into any build-feedback loop.
+#
 # Parallelism (#992):
 #   - ZBUILD_MUTATION_PARALLEL_JOBS — UNSET ⇒ CPU-count default (cap 8);
 #     0 or 1 ⇒ serial.
@@ -34,7 +53,13 @@ MUTATE_DIRS=(core plugins scripts tests)
 
 passed=0
 failed=0
+infra=0
 results=()
+
+# Bounded retries for `git worktree add` + checkout-verify (#1184). Overridable
+# for tests that want to exercise exhaustion quickly.
+_MUT_WT_ADD_RETRIES="${ZBUILD_MUTATION_WT_ADD_RETRIES:-5}"
+[[ "$_MUT_WT_ADD_RETRIES" =~ ^[1-9][0-9]*$ ]] || _MUT_WT_ADD_RETRIES=5
 
 # Per-run scratch dir for staged patch/test blocks + per-slot result files.
 job_dir=""
@@ -201,31 +226,66 @@ _assert_clean_targets() {
     fi
 }
 
+# _mut_add_worktree_verified <wt> <file_path> — add a detached-HEAD worktree at
+# $wt with bounded retries + checkout verification (#1184). Under N-way
+# concurrent `git worktree add`, a checkout can be observed mid-materialization,
+# so the mutated file's target string isn't present yet and the patch spuriously
+# fails. Retry the add with jittered backoff, and after each successful add
+# verify the mutated `## File` ($file_path, relative to repo root) exists and is
+# non-empty before handing off to the patch; re-add if incomplete. An empty
+# $file_path skips the file check (still retries the bare add). Returns 0 on a
+# verified worktree, non-zero after exhausting retries.
+_mut_add_worktree_verified() {
+    local wt="$1" file_path="$2"
+    local attempt=0
+    while (( attempt < _MUT_WT_ADD_RETRIES )); do
+        attempt=$((attempt + 1))
+        if git -C "$REPO_ROOT" worktree add --detach "$wt" HEAD >/dev/null 2>&1 \
+           && { [[ -z "$file_path" ]] || [[ -s "$wt/$file_path" ]]; }; then
+            return 0
+        fi
+        # Failed add OR incomplete checkout: tear down this attempt, prune the
+        # stale admin entry, back off (jittered) and retry.
+        git -C "$REPO_ROOT" worktree remove --force "$wt" >/dev/null 2>&1 || true
+        rm -rf "$wt" 2>/dev/null || true
+        git -C "$REPO_ROOT" worktree prune >/dev/null 2>&1 || true
+        (( attempt < _MUT_WT_ADD_RETRIES )) && sleep "0.$(( (RANDOM % 3) + 1 ))"
+        mkdir -p "$wt" 2>/dev/null || true
+    done
+    return 1
+}
+
 # _run_one_mutant_in_worktree <doc> <slot_base> — run one already-gated mutant
 # in a throwaway git worktree at HEAD, never the live tree. Reads the staged
-# ${slot_base}.patch / ${slot_base}.test (NOT inherited arrays) so it is safe to
-# run in a `( … ) &` subshell. Writes the result line to ${slot_base}.line and
-# pass|fail to ${slot_base}.status. The RETURN trap removes the worktree.
+# ${slot_base}.patch / ${slot_base}.test / ${slot_base}.file (NOT inherited
+# arrays) so it is safe to run in a `( … ) &` subshell. Writes the result line
+# to ${slot_base}.line and pass|fail|infra to ${slot_base}.status. The RETURN
+# trap removes the worktree.
 _run_one_mutant_in_worktree() {
     local doc="$1" slot_base="$2"
     local name; name="$(basename "$doc")"
-    local patch_code test_code
+    local patch_code test_code file_path
     patch_code="$(cat "${slot_base}.patch")"
     test_code="$(cat "${slot_base}.test")"
+    file_path="$(cat "${slot_base}.file" 2>/dev/null || true)"
 
     local wt; wt=$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.XXXXXX")
     # shellcheck disable=SC2064
     trap "git -C '$REPO_ROOT' worktree remove --force '$wt' >/dev/null 2>&1 || true; rm -rf '$wt' 2>/dev/null || true" RETURN
 
-    if ! git -C "$REPO_ROOT" worktree add --detach "$wt" HEAD >/dev/null 2>&1; then
-        printf 'FAIL  %s  (worktree add failed)' "$name" > "${slot_base}.line"
-        printf 'fail' > "${slot_base}.status"
+    # INFRA (non-fatal): worktree could not be materialized after retries+verify.
+    if ! _mut_add_worktree_verified "$wt" "$file_path"; then
+        printf 'INFRA %s  (worktree add failed after retries)' "$name" > "${slot_base}.line"
+        printf 'infra' > "${slot_base}.status"
         return
     fi
 
+    # INFRA (non-fatal): the patch failed against a verified-complete checkout.
+    # Post-verify this is treated as a transient/maintenance signal, not a
+    # coverage gap — it MUST NOT block the cycle or feed build-feedback (#1184).
     if ! ( cd "$wt" && bash -c "set -euo pipefail; $patch_code" ) >/dev/null 2>&1; then
-        printf 'FAIL  %s  (patch failed)' "$name" > "${slot_base}.line"
-        printf 'fail' > "${slot_base}.status"
+        printf 'INFRA %s  (patch failed after retries)' "$name" > "${slot_base}.line"
+        printf 'infra' > "${slot_base}.status"
         return
     fi
 
@@ -357,6 +417,10 @@ for doc in "$MUTATION_DIR"/*.md; do
 
     printf '%s' "$patch_code" > "$job_dir/$idx.patch"
     printf '%s' "$test_code"  > "$job_dir/$idx.test"
+    # Stage the mutated `## File` path so the worktree runner can verify the
+    # checkout materialized it before applying the patch (#1184). Empty is fine
+    # (the relevance gate already passed) — verification degrades to a bare add.
+    _extract_backticked_path "$doc" "## File" > "$job_dir/$idx.file" 2>/dev/null || true
     dispatch+=("$idx")
     idx=$((idx + 1))
 done
@@ -364,6 +428,9 @@ n_specs=$idx
 
 # ── Phase B: bounded-parallel worktree execution over the dispatch worklist.
 #    FIFO pool capped at $_par_jobs (bash-3.2-safe; no `wait -n`). ──
+# Sweep stale worktree admin entries before dispatch so a leftover zb-mut.* from
+# an interrupted run doesn't aggravate the materialization race (#1184).
+git -C "$REPO_ROOT" worktree prune >/dev/null 2>&1 || true
 _mut_pids=()
 for d_idx in "${dispatch[@]:-}"; do
     [[ -z "$d_idx" ]] && continue
@@ -389,24 +456,30 @@ for ((i = 0; i < n_specs; i++)); do
         line="$(cat "$job_dir/$i.line" 2>/dev/null || printf 'FAIL  %s  (no result)' "$(basename "${doc_for_idx[i]}")")"
         status="$(cat "$job_dir/$i.status" 2>/dev/null || printf 'fail')"
     fi
-    if [[ "$status" == "pass" ]]; then
-        passed=$((passed + 1))
-    else
-        failed=$((failed + 1))
-    fi
+    case "$status" in
+        pass)  passed=$((passed + 1)) ;;
+        infra) infra=$((infra + 1))   ;;   # non-fatal: excluded from score + rc
+        *)     failed=$((failed + 1)) ;;
+    esac
     results+=("$line")
 done
 
 # Match the other tiers' output shape: emit just the count line on full pass.
-# On failure, surface the per-spec results table so the failing entries are
-# visible without re-running.
-if [[ $failed -ne 0 ]]; then
+# On any fail OR infra outcome, surface the per-spec results table so the
+# non-passing entries are visible without re-running.
+if [[ $failed -ne 0 || $infra -ne 0 ]]; then
     echo
     echo "─── Mutation test results ──────────────────────────────"
     for line in "${results[@]}"; do
         echo "  $line"
     done
     echo "──────────────────────────────────────────────────────"
+fi
+# Infra outcomes are a distinct NON-FATAL signal (#1184): reported on their own
+# line, kept OUT of the `mutation: P/T passed` score and the exit code so a
+# transient worktree race never sets test verdict=fail or blocks the cycle.
+if [[ $infra -ne 0 ]]; then
+    echo "mutation-infra: $infra non-fatal (worktree/patch contention; excluded from score — #1184)"
 fi
 echo "mutation: $passed/$((passed + failed)) passed"
 
