@@ -90,24 +90,31 @@ _offences=0
 while IFS= read -r -d '' m; do
     id="$(manifest_graph_get_stage_id "$m")"
     [[ -z "$id" ]] && continue
-    _LC_STAGE_MANIFEST["$id"]="$m"
+    _role="$(_lc_manifest_role "$m")"
+    # Index the manifest maps by BOTH the plugin id AND a `role:<role>` key, so a
+    # template reference (feedback.from.stage / input source:stage:X) whose stage
+    # id ≠ plugin id can still resolve via role-then-id — mirroring dispatch's
+    # resolve_stage_plugin (ADR-042). E.g. the `acceptance-gate` stage binds role
+    # `acceptance_gate`, served by the method-named `spec-acceptance` plugin.
+    _keys=("$id")
+    [[ -n "$_role" ]] && _keys+=("role:$_role")
+    for _k in "${_keys[@]}"; do _LC_STAGE_MANIFEST["$_k"]="$m"; done
     # ADR-040 §5: convergence marker is the AUTHORITATIVE mechanical-vs-advisory
     # discriminator (supersedes kind:-inference; e.g. acceptance-gate is kind:agent
     # but convergence:gate).
     _conv="$(_lc_manifest_field "$m" convergence)"
     [[ -n "$_conv" ]] && _LC_STAGE_CONVERGENCE["$id"]="$_conv"
-    _role="$(_lc_manifest_role "$m")"
     [[ -n "$_role" && -n "$_conv" ]] && _LC_ROLE_CONVERGENCE["$_role"]="$_conv"
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         out_id="${rec%%|*}"
-        [[ -n "$out_id" ]] && _LC_STAGE_OUTPUTS["$id:$out_id"]=1
+        [[ -n "$out_id" ]] && for _k in "${_keys[@]}"; do _LC_STAGE_OUTPUTS["$_k:$out_id"]=1; done
     done < <(manifest_graph_get_outputs "$m")
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         IFS='|' read -r _in_id _in_type _in_source _in_required _in_path <<< "$rec"
         [[ -z "$_in_id" ]] && continue
-        _LC_STAGE_INPUT_SOURCE["$id:$_in_id"]="$_in_source"
+        for _k in "${_keys[@]}"; do _LC_STAGE_INPUT_SOURCE["$_k:$_in_id"]="$_in_source"; done
     done < <(manifest_graph_get_inputs "$m")
 done < <(find "$_PLUGINS_ROOT" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
 
@@ -276,6 +283,17 @@ _lc_parse_template() {
         section_is_cycle=1
         next
     }
+    # Stage role binding: `  roles: [role, ...]`. Capture the FIRST role so a
+    # feedback wire can resolve a stage whose plugin id != stage id via role
+    # (mirrors the role-then-id rule in resolve_stage_plugin, ADR-042).
+    in_section && /^[[:space:]]+roles:[[:space:]]*\[/ {
+        r=$0
+        sub(/^[[:space:]]+roles:[[:space:]]*\[/, "", r)
+        sub(/[,\]].*$/, "", r)
+        gsub(/[[:space:]"'"'"']/, "", r)
+        if (r != "") printf "SR|%s|%s\n", section_id, r
+        next
+    }
     # Cycle flow block opener: `  flow:` (col >0).
     in_section && section_is_cycle && /^[[:space:]]+flow:[[:space:]]*$/ {
         in_cflow=1; in_feedback=0; flush_fb()
@@ -345,10 +363,15 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
         # any sibling stage section in the template.
         declare -A _tpl_stages=()
         declare -A _tpl_cycle_members=()  # "cycle_id:member_id" -> 1
+        declare -A _tpl_stage_role=()     # stage_id -> bound role (first `roles:` entry)
         feedback_rows=()
         while IFS= read -r row; do
             case "$row" in
                 ST\|*) _tpl_stages["${row#ST|}"]=1 ;;
+                SR\|*)
+                    rest="${row#SR|}"
+                    _tpl_stage_role["${rest%%|*}"]="${rest#*|}"
+                    ;;
                 CM\|*)
                     rest="${row#CM|}"
                     cid="${rest%%|*}"; mid="${rest#*|}"
@@ -360,6 +383,19 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
             esac
         done < <(_lc_parse_template "$tfile")
 
+        # _lc_stage_key <stage_id> — echo the _LC_STAGE_MANIFEST key that resolves
+        # this template stage: the stage id when a plugin id matches, else
+        # `role:<bound-role>` (role-then-id, mirroring dispatch). Empty = no plugin.
+        _lc_stage_key() {
+            local sid="$1" role
+            if [[ -n "${_LC_STAGE_MANIFEST[$sid]:-}" ]]; then printf '%s' "$sid"; return; fi
+            role="${_tpl_stage_role[$sid]:-}"
+            if [[ -n "$role" && -n "${_LC_STAGE_MANIFEST[role:$role]:-}" ]]; then
+                printf 'role:%s' "$role"; return
+            fi
+            printf '%s' "$sid"  # unresolved: return id so the existing complaint fires
+        }
+
         for fbrow in "${feedback_rows[@]}"; do
             IFS='|' read -r fb_cid fb_fs fb_fo fb_ts fb_ti fb_line <<< "$fbrow"
             loc="$trel:$fb_line (cycle '$fb_cid')"
@@ -369,10 +405,12 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
                 _complain "$loc: feedback.from.stage '$fb_fs' is not declared as a stage section in this template"
                 continue
             fi
-            # 2. from.stage manifest must declare from.output.
-            if [[ -z "${_LC_STAGE_MANIFEST[$fb_fs]:-}" ]]; then
+            # 2. from.stage manifest must declare from.output. Resolve the stage
+            #    to its manifest key via role-then-id (plugin id may ≠ stage id).
+            _fb_fkey="$(_lc_stage_key "$fb_fs")"
+            if [[ -z "${_LC_STAGE_MANIFEST[$_fb_fkey]:-}" ]]; then
                 _complain "$loc: feedback.from.stage '$fb_fs' has no plugin manifest (cannot verify output '$fb_fo')"
-            elif [[ -z "${_LC_STAGE_OUTPUTS[$fb_fs:$fb_fo]:-}" ]]; then
+            elif [[ -z "${_LC_STAGE_OUTPUTS[$_fb_fkey:$fb_fo]:-}" ]]; then
                 _complain "$loc: feedback.from references stage '$fb_fs' output '$fb_fo' but '$fb_fs' manifest does NOT declare that output id"
             fi
             # 3. to.stage must be in template's stage set.
@@ -381,11 +419,12 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
                 continue
             fi
             # 4. to.stage manifest must declare to.input with source: cycle_feedback.
-            if [[ -z "${_LC_STAGE_MANIFEST[$fb_ts]:-}" ]]; then
+            _fb_tkey="$(_lc_stage_key "$fb_ts")"
+            if [[ -z "${_LC_STAGE_MANIFEST[$_fb_tkey]:-}" ]]; then
                 _complain "$loc: feedback.to.stage '$fb_ts' has no plugin manifest (cannot verify input '$fb_ti')"
                 continue
             fi
-            _src_key="$fb_ts:$fb_ti"
+            _src_key="$_fb_tkey:$fb_ti"
             if [[ -z "${_LC_STAGE_INPUT_SOURCE[$_src_key]+x}" ]]; then
                 _complain "$loc: feedback.to references stage '$fb_ts' input '$fb_ti' but '$fb_ts' manifest does NOT declare that input id"
                 continue

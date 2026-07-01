@@ -34,7 +34,7 @@ _run_gate() {
           _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
           _ACCEPTANCE_COVERAGE_LOADED
     # shellcheck disable=SC1090
-    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/acceptance-gate/plugin.sh" \
+    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
         && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
     RC=$?
     RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
