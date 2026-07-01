@@ -10,6 +10,9 @@
 #   T3: the `latest` symlink points at the most recent run.
 #   T4: an explicit ZBUILD_STATE_DIR still wins (no runs/ re-root) — back-compat.
 #   T5: the runner exports ZBUILD_EVENTS_DIR per-run (events don't interleave).
+#   T7: --no-resume clears stale shared global-default event log + lock files.
+#   T8: an engine run never writes to the shared global-default event log.
+#   T9: an UNPINNED ad-hoc emit defaults to an ephemeral $TMPDIR dir, not global.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -155,6 +158,55 @@ case "$ev2" in
         fi
         ;;
 esac
+
+# ─── T7: --no-resume clears stale shared global-default event log + locks ────
+# A killed/ad-hoc run can leave $HOME/.zbuild/state/events.jsonl(.lock) behind
+# (a deferred TERM-trap never removes it); a stale lock would hang a later run's
+# flock -w. --no-resume must clear them at startup (#run-hygiene).
+GLOBAL_STATE="$HOME_DIR/.zbuild/state"
+: > "$GLOBAL_STATE/events.jsonl"
+: > "$GLOBAL_STATE/events.jsonl.lock"
+: > "$GLOBAL_STATE/events.db.lock"
+run_pipeline "run-hyg"; assert_eq "T7: run-hyg exits 0" "0" "$?"
+if [[ -e "$GLOBAL_STATE/events.jsonl" || -e "$GLOBAL_STATE/events.jsonl.lock" \
+      || -e "$GLOBAL_STATE/events.db.lock" ]]; then
+    assert_fail "T7: --no-resume must clear stale global-default event log + locks" \
+        "still present under $GLOBAL_STATE"
+else
+    assert_pass "T7: --no-resume cleared stale global-default event log + locks"
+fi
+
+# ─── T8: an engine run never writes to the shared global default event log ───
+assert_file_exists "T8: run-hyg events under its per-run dir" \
+    "$GLOBAL_STATE/runs/run-hyg/events.jsonl"
+if [[ -e "$GLOBAL_STATE/events.jsonl" ]]; then
+    assert_fail "T8: engine run must NOT recreate the shared global events.jsonl"
+else
+    assert_pass "T8: engine run kept events out of the shared global default"
+fi
+
+# ─── T9: an UNPINNED ad-hoc emit defaults to an ephemeral $TMPDIR dir ─────────
+# Sourcing the event-bus directly (no ZBUILD_EVENTS_* pinned) must NOT append to
+# the durable shared global default; it writes to $TMPDIR/zbuild-ephemeral-events.*.
+EPHEMERAL_TMP="$TEST_TEMP_DIR/ephemeral-tmp"; mkdir -p "$EPHEMERAL_TMP"
+rm -f "$GLOBAL_STATE/events.jsonl" 2>/dev/null || true
+set +e
+env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_DIR \
+    HOME="$HOME_DIR" TMPDIR="$EPHEMERAL_TMP" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" PATH="$PATH" \
+    bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event "pipeline.start" k=v' >/dev/null 2>&1
+set -e
+if compgen -G "$EPHEMERAL_TMP/zbuild-ephemeral-events.*/events.jsonl" >/dev/null; then
+    assert_pass "T9: unpinned ad-hoc emit → ephemeral \$TMPDIR events dir"
+else
+    assert_fail "T9: unpinned ad-hoc emit should write to an ephemeral \$TMPDIR dir" \
+        "no zbuild-ephemeral-events.* under $EPHEMERAL_TMP"
+fi
+if [[ -e "$GLOBAL_STATE/events.jsonl" ]]; then
+    assert_fail "T9: unpinned ad-hoc emit must NOT touch the shared global default"
+else
+    assert_pass "T9: unpinned ad-hoc emit left the shared global default untouched"
+fi
 
 cleanup_test_env
 print_test_results

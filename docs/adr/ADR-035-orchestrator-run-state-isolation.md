@@ -81,3 +81,47 @@ a runner-managed pipeline.
 - Tests — `tests/unit/core-orch-run-id-isolation-test.sh` (new); the unit and
   integration `core-orch-parallel-test.sh` derive the pool path via
   `_orch_par_pool_dir` instead of hardcoding the flat `${TMPDIR}/zbuild-pool-*`.
+
+## Amendment — run-artifact hygiene for the event log (#run-hygiene)
+
+**Status:** Accepted (2026-07-01) · Extends #887/#889 (the runner-side isolation
+this ADR is the orchestrator analog of) and ADR-041 (flock chokepoint).
+
+#887/#889 isolated a *runner-managed* run's state under `runs/<run_id>/`, and the
+runner exports `ZBUILD_EVENTS_*` to follow that dir. Two gaps remained:
+
+1. **Ad-hoc/unpinned emitters still defaulted to the shared global default.**
+   `core/event-bus/event-bus.sh` defaulted `ZBUILD_EVENTS_DIR` to
+   `${HOME}/.zbuild/state` at source time, so any invocation that sourced the
+   event-bus *without* going through the runner (ad-hoc scripts, direct plugin
+   tests) appended to the durable shared `events.jsonl`/`events.db`, which grows
+   unbounded, and its `.lock` siblings were never reaped.
+2. **A killed run left a stale `events.jsonl.lock`.** `flock` releases on fd
+   close at process death, but the on-disk lock *file* lingers, and bash defers
+   a `TERM` trap behind a foreground `wait`, so an exit-time cleanup is not a
+   guarantee. A stale lock could make a later run's `flock -w` wait out its
+   bounded window.
+
+**Decision (additive, default-only — an explicit pin always wins):**
+
+- **Unpinned event location → ephemeral, not global.** When *no* `ZBUILD_EVENTS_*`
+  is pinned, the event-bus defaults to a process-scoped
+  `${TMPDIR}/zbuild-ephemeral-events.<pid>` dir instead of the durable
+  `${HOME}/.zbuild/state`. When only `ZBUILD_EVENTS_JSONL` is pinned, the dir
+  (hence the SQLite mirror + lock) is *derived* from it, so a pinned jsonl never
+  leaks a mirror/lock back to the global default. Engine runs are unaffected
+  (the runner still pins `ZBUILD_EVENTS_*` to `runs/<run_id>/`).
+- **`--no-resume` clears stale artifacts at startup.** The runner rotates the
+  run's own event log + locks and clears the shared global-default
+  `events.{jsonl,db}` + `.lock` files at startup. Startup-time clearing — not an
+  exit-time trap — is the guarantee against a stale lock hanging a later run.
+- **Best-effort trap teardown** removes the run's own `.lock` siblings on exit
+  (belt-and-suspenders to the authoritative `--no-resume` clear).
+- The ephemeral dir joins `cleanup.sh`'s `ZBUILD_TMPDIR_PATTERNS`
+  (`zbuild-ephemeral-events.*`) so `zbuild cleanup` reaps it.
+
+**Implementation:** `core/event-bus/event-bus.sh` (default resolution),
+`core/pipeline/runner.sh` (`_runner_reset_event_artifacts`,
+`_runner_clear_stale_global_event_artifacts`, `--no-resume` startup clear,
+`_runner_abort_trap` lock teardown), `scripts/lib/cleanup.sh` (pattern).
+Verified by `tests/integration/per-run-state-isolation-test.sh` T7–T9.

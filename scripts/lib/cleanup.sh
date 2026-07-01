@@ -311,7 +311,9 @@ _cleanup_scan_stashes() {
 # zbuild-test-stage.* (plugins/tool/test), zb-loop-iters.* (Pattern-2 loop
 # per-iter dirs, reaped here if something bypasses the RETURN trap),
 # zb-test-auto.* (test-helpers.sh auto-init), zb-test.* (setup_test_env
-# default name). #628 dropped pipeline-runner.* — nothing ever creates it.
+# default name), zbuild-ephemeral-events.* (event-bus per-process default for
+# UNPINNED ad-hoc invocations — #run-hygiene). #628 dropped pipeline-runner.*
+# — nothing ever creates it.
 # (#898: orch pool dirs now live under ${TMPDIR}/zbuild-runs/<run_id>/ and are
 # reaped by orch_shutdown — same as the pre-#898 flat zbuild-pool-* dirs, they
 # are intentionally NOT in this single-level scanner's pattern list.)
@@ -321,6 +323,7 @@ ZBUILD_TMPDIR_PATTERNS=(
     "zb-loop-iters.*"
     "zb-test-auto.*"
     "zb-test.*"
+    "zbuild-ephemeral-events.*"
 )
 
 # ─── Tmpdir scanner (#594) ──────────────────────────────────────────────────
