@@ -87,7 +87,7 @@ _run_gate() {  # _run_gate <repo> <override_lib_or_empty> → sets RC, RESULT
         ZBUILD_CONTRACT_LIB_DIR="$override" \
         bash -c '
             cd "$1" || exit 99
-            source "$2/plugins/agent/acceptance-gate/plugin.sh"
+            source "$2/plugins/agent/spec-acceptance/plugin.sh"
             acceptance_gate_run "acceptance-gate" "$3/pipeline-state.json"
         ' _ "$repo" "$REPO_ROOT" "$state_dir" || RC=$?
     RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"

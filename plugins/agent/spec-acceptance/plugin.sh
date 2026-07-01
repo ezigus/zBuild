@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# plugins/agent/acceptance-gate — mechanical acceptance-contract gate (ADR-036, #922/#956)
+# plugins/agent/spec-acceptance — SPEC acceptance-contract gate (ADR-036, #922/#956)
+#
+# Method-named plugin (id: spec-acceptance) bound to the GENERIC `acceptance_gate`
+# role: it implements ONE strategy — SPEC-block negative-control + wiring
+# reachability — for verifying a design's acceptance contract. A different repo
+# may bind a different plugin to the same role without adopting SPEC.
 #
 # Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
 #          [SPEC-n]-tagged assertion across the declared TESTFILES.
@@ -10,7 +15,9 @@
 #          to merge-base (keeping all other changes at HEAD) and require ≥1
 #          TESTFILE to flip pass→fail — proving the wiring is load-bearing.
 #          WIRING: none exempts the check. (ADR-036 Level-3, #956)
-# No-op pass when the acceptance block is absent (composability). No model call.
+# Preconditions (manifest `preconditions`): when any is unmet the gate NO-OPS
+# (verdict=pass, reason=precondition_unmet) so it is safe to compose into repos
+# that do not use the SPEC methodology. No model call.
 
 [[ -n "${_ZBUILD_ACCEPTANCE_GATE_LOADED:-}" ]] && return 0
 _ZBUILD_ACCEPTANCE_GATE_LOADED=1
@@ -31,6 +38,10 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-coverage.sh"
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh"
 # shellcheck source=../../../scripts/lib/acceptance-reachability.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh"
+# merge-base.sh (zbuild_resolve_merge_base) — needed by the precondition check;
+# also sourced transitively by negctl/reachability. Load-once sentinel = no-op.
+# shellcheck source=../../../scripts/lib/merge-base.sh
+source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh"
 
 # _ag_resolve_negctl_timeout <stage_id> — per-test negctl/reachability timeout (s).
 # Precedence (ADR-036 #1188): explicit ZBUILD_NEGCTL_TIMEOUT env > per-stage
@@ -74,6 +85,20 @@ _ag_classify_disposition() {
     printf 'none'
 }
 
+# _ag_noop_precondition_unmet <result_file> <precondition_id> — write the no-op
+# pass artifact + emit the skip/complete events. reason=precondition_unmet
+# generalizes the historical no-acceptance-block skip: when a declared
+# `preconditions` (manifest) is unmet, the SPEC methodology does not apply, so
+# the gate no-ops instead of hard-failing — this is what makes it safe to
+# compose into repos that do not use SPEC.
+_ag_noop_precondition_unmet() {
+    local result_file="$1" pc="$2"
+    printf '{"verdict":"pass","reason":"precondition_unmet","precondition":"%s","disposition":"none","failures":[]}\n' \
+        "$pc" | atomic_write "$result_file"
+    eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=precondition_unmet" "precondition=$pc"
+    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
+}
+
 acceptance_gate_run() {
     local _stage_id="$1"
     local state_file="$2"
@@ -97,22 +122,42 @@ acceptance_gate_run() {
 
     eb_emit_event "acceptance.gate.start" "stage=acceptance-gate"
 
-    # Distinguish ABSENT from MALFORMED: extract_acceptance_block returns
-    # non-zero for both, so check for the fence first. No fence → no-op pass
-    # (composability). Fence present but unparseable → fail closed (a malformed
-    # contract must NOT bypass the gate).
+    # ── Precondition 1: design acceptance block present ──────────────────────
+    # The methodology-adoption discriminator (generalizes the historical no-block
+    # skip). Distinguish ABSENT from MALFORMED: extract_acceptance_block returns
+    # non-zero for both, so check for the fence first. No fence → no-op.
     if [[ ! -f "$design_md" ]] || ! grep -q '^```acceptance' "$design_md" 2>/dev/null; then
-        printf '{"verdict":"pass","reason":"skipped","failures":[]}\n' | atomic_write "$result_file"
-        eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=no_acceptance_block"
-        eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
+        _ag_noop_precondition_unmet "$result_file" "design_acceptance_block"
         return 0
     fi
+    # Fence present but unparseable → fail closed (a malformed contract must NOT
+    # bypass the gate; this is a genuine violation, NOT an applicability no-op).
     if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
         printf '{"verdict":"fail","reason":"malformed_acceptance_block","disposition":"terminal","failures":["malformed_acceptance_block"]}\n' \
             | atomic_write "$result_file"
         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
         eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
         return 1
+    fi
+
+    # ── Precondition 2: git merge-base resolvable ────────────────────────────
+    # The negative control and reachability revert need a baseline (origin/main |
+    # main | HEAD~1). A shallow/non-git checkout cannot support them; no-op rather
+    # than hard-fail (a baseline-resolve miss is already an advisory disposition).
+    if [[ -z "$(zbuild_resolve_merge_base "$repo_root" 2>/dev/null)" ]]; then
+        _ag_noop_precondition_unmet "$result_file" "merge_base_resolvable"
+        return 0
+    fi
+
+    # ── Precondition 3: block declares a contract to check ───────────────────
+    # An empty/placeholder block (no SPEC ids AND no TESTFILES) is not adopted
+    # methodology → no-op. A block that declares SPEC ids but omits TESTFILES is
+    # a genuine misuse and falls through to Level 1 (untagged_spec fail) — teeth
+    # preserved, NOT a no-op.
+    if [[ -z "$(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)" \
+        && -z "$(acceptance_list_testfiles "$design_md" 2>/dev/null || true)" ]]; then
+        _ag_noop_precondition_unmet "$result_file" "tagged_testfiles"
+        return 0
     fi
 
     local verdict="pass"

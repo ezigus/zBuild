@@ -83,7 +83,9 @@ assert_file_exists "[SPEC-2] resolved lens plugin dir has a manifest" "$(_resolv
 # id-match, exactly as the old id-only path did.
 assert_eq "[SPEC-3] test → test (role tester)"               "test"            "$(_resolve test)"
 assert_eq "[SPEC-3] shape-floor → shape-floor"               "shape-floor"     "$(_resolve shape-floor)"
-assert_eq "[SPEC-3] acceptance-gate → acceptance-gate"       "acceptance-gate" "$(_resolve acceptance-gate)"
+# acceptance-gate stage binds role acceptance_gate → served by the method-named
+# spec-acceptance plugin (id ≠ stage name); role-then-id resolves it correctly.
+assert_eq "[SPEC-3] acceptance-gate → spec-acceptance (role acceptance_gate)" "spec-acceptance" "$(_resolve acceptance-gate)"
 assert_eq "[SPEC-3] secret-scan → secret-scan"               "secret-scan"     "$(_resolve secret-scan)"
 assert_eq "[SPEC-3] gate-aggregator → gate-aggregator"       "gate-aggregator" "$(_resolve gate-aggregator)"
 assert_eq "[SPEC-3] build → build (role-miss falls to id-match)" "build"       "$(_resolve build)"

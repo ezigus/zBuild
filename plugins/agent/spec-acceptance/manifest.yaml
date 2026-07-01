@@ -1,0 +1,97 @@
+id: spec-acceptance
+name: SPEC Acceptance Contract Gate
+kind: agent
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate. NB: this
+# stage is kind:agent but its verdict is MECHANICAL (it shells negctl +
+# reachability, no model.route call), so it IS a convergence gate — the marker,
+# not `kind:`, is the authoritative mechanical-vs-advisory discriminator.
+convergence: gate
+version: 0.2.0
+description: |
+  Mechanical (non-LLM) acceptance-contract gate (ADR-036, issue #922).
+  Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
+  [SPEC-n]-tagged assertion across the declared TESTFILES.
+  Level 2 (negative control): each SPEC-n's tagged test must FAIL at the
+  merge-base baseline and PASS at HEAD — a test that passes without the
+  implementation is tautological and is rejected.
+  No-op pass (verdict=pass, reason=precondition_unmet) when a precondition is
+  unmet (see `preconditions`), so the gate is freely composable into any
+  template — including repos that do not use the SPEC methodology. Never
+  invokes a model.
+
+# methodology — human-readable statement of the STRATEGY this plugin implements
+# for the generic `acceptance_gate` role. The role is a generic slot (any gate
+# that verifies a design's acceptance contract); THIS plugin's method is the
+# SPEC/negctl/wiring strategy: a ```acceptance block enumerates SPEC-n ids, each
+# tagged in declared TESTFILES, each proven load-bearing via a merge-base
+# negative control (fails at baseline, passes at HEAD) and — when a WIRING:
+# section is declared — a reachability revert. A different repo could bind a
+# different plugin to `acceptance_gate` without adopting SPEC (see ADR-036).
+methodology: >-
+  SPEC-block negative-control + wiring-reachability. Enumerate SPEC-n ids from
+  the design ```acceptance block, require a [SPEC-n]-tagged assertion in the
+  declared TESTFILES, and prove each is load-bearing against the git merge-base
+  baseline (negctl) and, if WIRING: is declared, via a reachability revert.
+
+# preconditions — machine-readable applicability contract. The gate NO-OPS
+# (verdict=pass, reason=precondition_unmet) when any is unmet, so it is safe on
+# foreign repos. Checked in order; the FIRST unmet id is recorded on the result
+# artifact and the acceptance.gate.skipped event. NB: these gate *applicability*,
+# not correctness — a declared-but-missing TESTFILE or malformed block is a
+# genuine violation handled by the levels below, NOT a precondition no-op.
+preconditions:
+  - id: design_acceptance_block
+    description: design.md exists and contains a ```acceptance fenced block.
+  - id: merge_base_resolvable
+    description: >-
+      a git merge-base (origin/main | main | HEAD~1) resolves, so the negative
+      control and reachability revert have a baseline to run against.
+  - id: tagged_testfiles
+    description: >-
+      the acceptance block declares a contract to check (≥1 SPEC id or ≥1
+      TESTFILES entry). An empty/placeholder block no-ops; a block that declares
+      SPEC ids but omits TESTFILES is a genuine misuse caught by Level 1, NOT a
+      no-op (teeth preserved).
+
+hooks:
+  run: acceptance_gate_run
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: acceptance_gate
+  artifact_type: acceptance-gate-result.json
+  schema_version: 1
+
+config:
+  tier_default: T1
+
+inputs:
+  # The acceptance block lives in design.md. Declared required:false (ADR-020
+  # optional-input convention, #511) so the gate composes into templates that
+  # do not run design — absent block → no-op pass.
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: false
+
+outputs:
+  # gate_result JSON carries {verdict, disposition, failures[]} (+ reason on a
+  # no-op). `disposition` is the GENERIC member-disposition contract the cycle
+  # engine reads (ADR-021, Phase 2): terminal|recoverable|advisory|none — the
+  # engine halts only on disposition==terminal and knows NO SPEC vocabulary.
+  - id: gate_result
+    path: ${artifact_dir}/acceptance-gate-result.json
+    type: json
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []

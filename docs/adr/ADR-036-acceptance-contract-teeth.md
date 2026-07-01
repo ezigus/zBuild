@@ -1,10 +1,33 @@
 # ADR-036 — Acceptance-contract teeth (mechanical SPEC↔assertion gate)
 
-**Status:** Accepted (2026-06-17)
+**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions)
 **Related:** ADR-031 (behavioral acceptance contract), ADR-013 (canonical stage list),
 ADR-020 (inter-stage data contract / optional inputs), ADR-022 (test-assessment),
-ADR-030 (scope governance)
+ADR-030 (scope governance), ADR-042 (plug-and-play stage resolution)
 **Issue:** #922 (843-F). Surfaced by the dogfood of #844.
+
+## Amendment (2026-07-01) — generic role, method-named plugin, declarative preconditions
+
+The gate is split into a **generic slot** and a **named strategy**:
+
+- **Role `acceptance_gate`** — the generic slot: "verify a design's acceptance
+  contract." Template stage id stays `acceptance-gate` (an ADR-013 canonical
+  leaf, unchanged); it binds `roles: [acceptance_gate]`.
+- **Plugin `spec-acceptance`** — the method: the SPEC-block negative-control +
+  wiring-reachability strategy described below. The plugin dir/manifest id was
+  renamed `acceptance-gate → spec-acceptance` (method-named). Role-then-id
+  resolution (ADR-042) dispatches the stage to it, so a different repo may bind
+  a *different* plugin to `acceptance_gate` without adopting SPEC. The result
+  artifact keeps its slot-scoped name `acceptance-gate-result.json` (readers
+  resolve it via `provides.artifact_type`, not a literal).
+- **Declarative `preconditions`** (manifest, machine-readable) generalize the
+  old "no-op when the acceptance block is absent" (§4). When any precondition is
+  unmet the gate no-ops (`verdict=pass`, `reason=precondition_unmet`,
+  `precondition=<id>`): (1) `design_acceptance_block` present, (2)
+  `merge_base_resolvable`, (3) `tagged_testfiles` — the block declares a
+  contract to check. These gate **applicability**, not correctness: a
+  declared-but-missing TESTFILE or a malformed block is still a genuine
+  violation (teeth preserved), not a no-op.
 
 ## Context
 
@@ -61,12 +84,16 @@ author one SPEC per assertion for precise attribution.
 When the merge-base equals HEAD (no implementation delta) the control is
 skipped, not failed (`NEGCTL SKIP no_impl_delta`).
 
-### 4. Composability — optional input, no-op when absent
+### 4. Composability — declarative preconditions, no-op when unmet
 
 The gate declares the design/acceptance artifact as an **optional input**
-(`required: false`, ADR-020 convention). With no acceptance block present it is a
-**no-op pass** (`acceptance.gate.skipped`), so it drops cleanly into any
-template and is omittable from any other — honoring stage independence.
+(`required: false`, ADR-020 convention) and a machine-readable `preconditions`
+block (see the 2026-07-01 amendment). When any precondition is unmet — no
+acceptance block, unresolvable merge-base, or a placeholder block with nothing
+to check — it is a **no-op pass** (`acceptance.gate.skipped`,
+`reason=precondition_unmet`), so it drops cleanly into any template (including
+repos that do not use SPEC) and is omittable from any other — honoring stage
+independence.
 
 ### 5. Placement
 
@@ -100,7 +127,8 @@ changes (#867).
   with `ZBUILD_TEST_QUIET` unset and a hard timeout (`ZBUILD_NEGCTL_TIMEOUT`,
   default 60s). The validity test is rc-based at the file level: `rc_baseline != 0
   && rc_head == 0`. The worktree is removed via a `RETURN` trap.
-- **Stage** (`plugins/agent/acceptance-gate/`): `kind: agent`, modeled on
+- **Plugin** (`plugins/agent/spec-acceptance/`, role `acceptance_gate`; renamed
+  from `acceptance-gate` per the 2026-07-01 amendment): `kind: agent`, modeled on
   `cq-preflight`; writes `acceptance-gate-result.json` (`{"verdict","failures"}`),
   returns rc=1 on fail (picked up mechanically by `runner_read_stage_verdict`'s
   `*` branch — no `verdict.sh` change). `design` is declared `required: false`.

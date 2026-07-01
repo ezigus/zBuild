@@ -43,7 +43,7 @@ _run_gate() {  # _run_gate <repo> → sets RC, RESULT, EVENTS
     # fresh plugin load per call (guard var would block re-source)
     unset _ZBUILD_ACCEPTANCE_GATE_LOADED
     # shellcheck disable=SC1090
-    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/acceptance-gate/plugin.sh" \
+    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
         && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
     RC=$?
     RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
@@ -100,7 +100,9 @@ set +e; _run_gate "$REPO3"; set -e
 assert_eq "S3: untagged → rc=1" "1" "$RC"
 assert_event_emitted "S3: untagged_spec event" "$EVENTS" "acceptance.gate.untagged_spec"
 
-# ── S4: no acceptance block → no-op pass (skipped) ────────────────────────────
+# ── S4: no acceptance block → no-op pass (precondition_unmet) ─────────────────
+# Precondition `design_acceptance_block` unmet: the SPEC methodology is not in
+# use, so the gate no-ops (this is what makes it safe on foreign repos).
 REPO4="$(_build_repo gate-noblock '#!/usr/bin/env bash
 # [SPEC-1] x
 exit 0')"
@@ -108,7 +110,8 @@ printf '# Design\nNo acceptance block here.\n' > "$REPO4/design.md"
 set +e; _run_gate "$REPO4"; set -e
 assert_eq "S4: no block → rc=0" "0" "$RC"
 assert_eq "S4: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
-assert_eq "S4: reason=skipped" "skipped" "$(jq -r .reason <<<"$RESULT")"
+assert_eq "S4: reason=precondition_unmet" "precondition_unmet" "$(jq -r .reason <<<"$RESULT")"
+assert_eq "S4: precondition=design_acceptance_block" "design_acceptance_block" "$(jq -r .precondition <<<"$RESULT")"
 assert_event_emitted "S4: skipped event" "$EVENTS" "acceptance.gate.skipped"
 
 # ── S5: malformed acceptance block (fence but no TESTFILES) → fail closed ─────
@@ -186,6 +189,23 @@ EOF
 else
     assert_pass "S8: skipped (no 'timeout' binary available)"
 fi
+
+# ── S9: placeholder block (empty TESTFILES, no SPECs) → no-op precondition ────
+# A well-formed block that declares NO SPEC ids and an empty TESTFILES section
+# is a placeholder, not adopted methodology → no-op pass
+# (reason=precondition_unmet, precondition=tagged_testfiles). Distinct from S5
+# malformed (no TESTFILES section at all → fail closed). Teeth check: a block
+# WITH SPEC ids but empty TESTFILES still falls through to a Level-1 fail
+# (verified by the existing coverage tests), NOT a no-op.
+REPO9="$(_build_repo gate-placeholder '#!/usr/bin/env bash
+# [SPEC-1] x
+exit 0')"
+printf '```acceptance\nTESTFILES:\n```\n' > "$REPO9/design.md"
+set +e; _run_gate "$REPO9"; set -e
+assert_eq "S9: placeholder block → rc=0" "0" "$RC"
+assert_eq "S9: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S9: reason=precondition_unmet" "precondition_unmet" "$(jq -r .reason <<<"$RESULT")"
+assert_eq "S9: precondition=tagged_testfiles" "tagged_testfiles" "$(jq -r .precondition <<<"$RESULT")"
 
 cleanup_test_env
 print_test_results  # exits with $FAIL
