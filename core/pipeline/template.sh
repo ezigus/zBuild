@@ -125,6 +125,10 @@ load_template() {
         error "load_template: file not found: $template_file"
         return 1
     fi
+    # ADR-036 #1188: remember the source path so lightweight per-stage getters
+    # (e.g. template_stage_negctl_timeout) can read additive scalar knobs without
+    # threading them through the pipe-delimited row shape.
+    _TPL_SOURCE_FILE="$template_file"; export _TPL_SOURCE_FILE
 
     # ADR-021 v2 (#585): legacy top-level `cycles:` block is a hard-break.
     # Detect and refuse with a pointer to the migration helper.
@@ -2048,4 +2052,23 @@ template_stage_blocking() {
 # Returns one of: auto_unless_flagged | auto | manual
 template_merge_policy() {
     echo "${_TPL_MERGE_POLICY:-auto_unless_flagged}"
+}
+
+# ADR-036 #1188: per-stage `negctl_timeout_s:` knob (mechanical acceptance-gate).
+# Read lazily from the loaded template source so it needs no row-shape change.
+# Empty when unset → the acceptance-gate plugin applies its 60s default. Matches
+# a scalar `negctl_timeout_s:` line directly under the `<stage_id>:` section of a
+# new-shape template (top-level per-stage sections).
+template_stage_negctl_timeout() {
+    local stage_id="$1"
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk -v stage="$stage_id" '
+        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; next }
+        in_block && /^[a-zA-Z_]/ { in_block = 0 }
+        in_block && $0 ~ "^[[:space:]]+negctl_timeout_s:" {
+            sub(/^[[:space:]]+negctl_timeout_s:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
 }

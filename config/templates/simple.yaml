@@ -161,9 +161,13 @@ shape-floor:
 # the design acceptance block is absent (its design input is required:false in the
 # manifest — design already emits the SPEC/WIRING block). Its gate_result feeds
 # the acceptance→build feedback edge above.
+# ADR-036 #1188: negctl_timeout_s bounds each SPEC negative-control / reachability
+# test run (seconds). A timeout is classified INFRA (non-terminal), never a
+# violation. Override per-run with ZBUILD_NEGCTL_TIMEOUT (env wins).
 acceptance-gate:
   gate: auto
   roles: [acceptance_gate]
+  negctl_timeout_s: 60
   io:
     destinations: [file, stdout]
     tail_lines: 200

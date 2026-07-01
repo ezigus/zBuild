@@ -1567,15 +1567,19 @@ _cycle_iter_dispatch() {
     return 0
 }
 
-# ─── _cycle_acceptance_terminal_failure <state_dir> (#1044) ──────────────────
+# ─── _cycle_acceptance_terminal_failure <state_dir> (#1044, #1188) ───────────
 # Returns 0 (terminal) iff the acceptance-gate is a member of this cycle AND it
-# wrote verdict==fail with >=1 failure that is NOT an untagged_spec: class.
-# untagged_spec is RECOVERABLE (fed back to build via the #951 edge), so it must
-# NOT hard-abort — only tautology/inert_wiring/negctl_error/reachability_error
-# (terminal classes) make the verdict load-bearing at completion. The membership
-# guard ensures inner cycles (build_test_cycle) that don't run acceptance-gate
-# are never affected. Missing file / jq absence / parse failure → return 1
-# (never falsely block).
+# wrote verdict==fail with >=1 failure in a GENUINE-VIOLATION class. Two kinds of
+# failure are NON-terminal:
+#   - untagged_spec:*  — RECOVERABLE, fed back to build via the #951 edge.
+#   - negctl_error:* / reachability_error:*  — INFRASTRUCTURE (ADR-036 #1188):
+#       baseline/worktree resolve failures, and negctl/reachability TIMEOUTS.
+#       A flaky sandbox must never hard-fail the pipeline as if the contract
+#       were violated.
+# Genuine violations stay terminal: tautology, not_passing_at_head, inert_wiring,
+# no_testfile, malformed_acceptance_block. The membership guard ensures inner
+# cycles (build_test_cycle) that don't run acceptance-gate are never affected.
+# Missing file / jq absence / parse failure → return 1 (never falsely block).
 _cycle_acceptance_terminal_failure() {
     local state_dir="$1"
     command -v jq >/dev/null 2>&1 || return 1
@@ -1587,8 +1591,11 @@ _cycle_acceptance_terminal_failure() {
     local result="$state_dir/artifacts/acceptance-gate-result.json"
     [[ -s "$result" ]] || return 1
     jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || return 1
-    # At least one failure entry that is NOT untagged_spec: → terminal class.
-    jq -e '[.failures[]? | select((. | startswith("untagged_spec:")) | not)] | length > 0' \
+    # ≥1 failure entry that is a genuine violation (not recoverable, not infra).
+    jq -e '[.failures[]?
+            | select((startswith("untagged_spec:") or startswith("negctl_error:")
+                      or startswith("reachability_error:")) | not)]
+           | length > 0' \
         "$result" >/dev/null 2>&1
 }
 

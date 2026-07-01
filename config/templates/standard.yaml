@@ -289,9 +289,13 @@ test_assessment:
 # rejects tautological "green but inert" tests). No-op pass when the design
 # acceptance block is absent (composability). Placed right after the build/test
 # cycle so a broken acceptance contract fails fast, before the CQ stages.
+# ADR-036 #1188: negctl_timeout_s bounds each SPEC negative-control / reachability
+# test run (seconds). A timeout is classified INFRA (non-terminal), never a
+# violation. Override per-run with ZBUILD_NEGCTL_TIMEOUT (env wins).
 acceptance-gate:
   gate: auto
   roles: [acceptance_gate]
+  negctl_timeout_s: 60
   io:
     destinations: [file, stdout]
     tail_lines: 200

@@ -145,5 +145,50 @@ assert_eq "NC-F: guard SPEC → NEGCTL SKIP guard_spec" \
     "NEGCTL SKIP guard_spec SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3")"
 assert_eq "NC-F: guard skip yields overall rc=0" "0" "$RC3"
 
+# ── NC-G: a test that outlives ZBUILD_NEGCTL_TIMEOUT → INFRA, not a violation ──
+# (ADR-036 #1188) A timeout on either run must classify as negctl_error:timeout,
+# NEVER as not_passing_at_head — and it must not spuriously satisfy the control.
+if command -v timeout >/dev/null 2>&1; then
+    REPO4="$(setup_git_temp_repo negctl-repo4)"
+    (
+        cd "$REPO4"
+        "$GIT" checkout -q -b feature
+        mkdir -p tests
+        printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+        # A tagged test that sleeps well past a tiny timeout.
+        printf '#!/usr/bin/env bash\n# [SPEC-1] slow feature\nsleep 30\n' > tests/slow-test.sh
+        chmod +x tests/slow-test.sh impl.sh
+        "$GIT" add -A; "$GIT" commit -q -m "feat: slow tagged test"
+    )
+    DM4="$REPO4/design.md"
+    cat > "$DM4" <<'EOF'
+```acceptance
+SPEC-1: slow feature
+TESTFILES:
+tests/slow-test.sh
+```
+EOF
+    set +e
+    OUT4="$(ZBUILD_NEGCTL_TIMEOUT=1 acceptance_negctl_check "$DM4" "$REPO4")"; RC4=$?
+    set -e
+    assert_eq "NC-G: timeout → NEGCTL ERROR timeout:SPEC-1 (infra, not not_passing_at_head)" \
+        "NEGCTL ERROR timeout:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT4")"
+    assert_eq "NC-G: timeout is not classified not_passing_at_head" \
+        "" "$(grep 'not_passing_at_head' <<<"$OUT4")"
+    assert_eq "NC-G: timeout yields overall rc=1 (gate records it)" "1" "$RC4"
+
+    # ── NC-H: with ZBUILD_NEGCTL_ARTIFACT_DIR set, a diagnostic log is captured ──
+    LOGDIR="$TEST_TEMP_DIR/negctl-logs"
+    set +e
+    ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_ARTIFACT_DIR="$LOGDIR" \
+        acceptance_negctl_check "$DM4" "$REPO4" >/dev/null 2>&1
+    set -e
+    [[ -f "$LOGDIR/negctl-SPEC-1.log" ]] \
+        && assert_pass "NC-H: negctl-SPEC-1.log artifact written for diagnosis" \
+        || assert_fail "NC-H: expected negctl-SPEC-1.log artifact" "missing"
+else
+    assert_pass "NC-G: skipped (no 'timeout' binary available)"
+fi
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
