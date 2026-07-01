@@ -110,6 +110,28 @@ write_all "$AD" "pass"
 OUT="$(run_agg "$SF")"
 assert_eq "TC-7: gates map has seven entries" "7" "$(jq '.gates | length' <<< "$OUT")"
 
+# ── TC-8: a member with verdict=fail BUT disposition=advisory is NON-blocking ─
+# (generic member-disposition contract, ADR-021): an advisory failure (e.g. an
+# infra flake) must NOT block convergence — status=advisory, NOT in failed[].
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","disposition":"advisory","failures":["negctl_error:timeout:SPEC-1"]}\n' \
+    > "$AD/acceptance-gate-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-8: advisory fail → verdict=pass (non-blocking)" "$OUT" '.verdict' "pass"
+assert_json_key "TC-8: advisory member status=advisory" "$OUT" '.gates."acceptance-gate"' "advisory"
+assert_eq "TC-8: advisory member NOT in failed[]" "0" "$(jq '.failed | length' <<< "$OUT")"
+
+# ── TC-9: verdict=fail with disposition=recoverable STAYS blocking ────────────
+# recoverable drives another build iteration — it must NOT satisfy convergence.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","disposition":"recoverable","failures":["untagged_spec:SPEC-1"]}\n' \
+    > "$AD/acceptance-gate-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-9: recoverable fail → verdict=fail (still blocking)" "$OUT" '.verdict' "fail"
+assert_contains "TC-9: failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -782,3 +782,38 @@ its boundary is just drawn at non-recoverable failures. The synthetic best-effor
 envelope short-circuits before the schema gate, so it never reaches the #936
 over-scope backstop and never writes its plateau sidecar (a timeout iter is not a
 verdict-producing iter).
+
+## Amendment (Phase 2, 2026-07-01) — generic member-disposition contract
+
+The cycle engine previously HARDCODED one member's failure semantics: a helper
+`_cycle_acceptance_terminal_failure` knew the literal stage name `acceptance-gate`,
+the artifact filename `acceptance-gate-result.json`, and the acceptance-gate
+failure-class vocabulary (which classes are terminal vs recoverable vs infra).
+That coupling is removed. The engine now speaks a GENERIC member-result-envelope
+contract:
+
+> A cycle member MAY declare `disposition: terminal | recoverable | advisory` in
+> its primary-output result artifact. When a member's artifact records
+> `verdict: fail`, the cycle reads its `disposition`:
+> - `terminal`  → HALT: the cycle does not converge (rc=8, pipeline.end=failed),
+>   even if a downstream advisory stage (e.g. review) approved. The engine emits
+>   `cycle.member.terminal_failure` carrying the failing `member` id.
+> - `recoverable` → NON-terminal: the pipeline does not hard-fail; the cycle
+>   re-iterates so the feedback edge can self-heal (the #951 acceptance→build
+>   loop is now expressed this way).
+> - `advisory` → NON-terminal and, in the gate-aggregator, non-blocking for
+>   convergence (an infra flake must never block or halt).
+> - ABSENT → NON-terminal (fail-safe): only an EXPLICIT `terminal` halts, so a
+>   disposition-unaware plugin preserves the pre-Phase-2 behavior.
+
+The generic helper `_cycle_member_terminal_failure` iterates THIS cycle's member
+roster (`_CYCLE_STAGES` == `_TPL_CYCLE_STAGES_<id>`) and resolves each member's
+result artifact via the SHARED roster mechanism (`manifest_graph_resolve_member`
+/ `manifest_graph_result_filename` — the same primitives the gate-aggregator uses
+under ADR-040 §2: id-match then role binding; `provides.artifact_type` then
+primary-output basename). No plugin id, artifact filename, or failure-class string
+survives in the engine. A plugin owns its own class→disposition mapping (for the
+acceptance-gate, see ADR-036 Phase-2 amendment). This is orthogonal to the ADR-013
+`blocking:true` mechanism, which stays an immediate, rc-only halt during member
+dispatch (both surface as rc=8 → reason `blocking_member_failure` for blocking:true,
+`member_terminal_failure` for the disposition path).

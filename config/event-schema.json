@@ -81,7 +81,7 @@
     "parallel.member.dispatch.start",
     "parallel.member.dispatch.complete",
     "cycle.context.compressed",
-    "cycle.acceptance.terminal_failure",
+    "cycle.member.terminal_failure",
     "design.stray.recovered",
     "design.stray.conflict",
     "design.acceptance_tests.written",

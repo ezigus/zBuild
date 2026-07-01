@@ -60,43 +60,14 @@ _GA_LEGACY_MUST_PASS=(
 _GA_ROSTER=()
 _GA_ROSTER_MODE=""
 
-# ─── _ga_member_manifest <plugins_root> <member> ─────────────────────────────
-# Resolve a cycle member stage id to its plugin manifest path. Two strategies:
-#   1) id-match (manifest_graph_collect) — test / shape-floor / acceptance-gate /
-#      secret-scan all have id-matching manifests.
-#   2) role binding — simple.yaml names some members by a stage id (lint /
-#      coverage / mutation) that binds BY ROLE to lint-gate / coverage-gate /
-#      mutation-gate. Read the member's role from _TPL_STAGE_ROLES_<safe>
-#      (exported by template.sh) and find the manifest whose provides.role matches.
-# Echoes the manifest path; rc 1 if unresolved.
-_ga_member_manifest() {
-    local plugins_root="$1" member="$2" m
-    m="$(manifest_graph_collect "$plugins_root" "$member" 2>/dev/null)"
-    if [[ -n "$m" && -f "$m" ]]; then printf '%s\n' "$m"; return 0; fi
-    local safe="${member//-/_}" roles_var roles role cand r
-    roles_var="_TPL_STAGE_ROLES_${safe}"
-    roles="${!roles_var:-}"
-    role="${roles%%,*}"            # first declared role
-    [[ -z "$role" ]] && return 1
-    while IFS= read -r -d '' cand; do
-        r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
-        if [[ "$r" == "$role" ]]; then printf '%s\n' "$cand"; return 0; fi
-    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
-    return 1
-}
-
-# ─── _ga_manifest_result_file <manifest> ─────────────────────────────────────
-# The gate's recorded result artifact FILENAME: provides.artifact_type, else the
-# basename of the primary output's declared path.
-_ga_manifest_result_file() {
-    local manifest="$1" at row path
-    at="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null)"
-    if [[ -n "$at" ]]; then printf '%s\n' "$at"; return 0; fi
-    row="$(manifest_graph_primary_output "$manifest" 2>/dev/null)" || return 1
-    path="${row##*|}"
-    [[ -z "$path" ]] && return 1
-    printf '%s\n' "${path##*/}"
-}
+# ─── _ga_member_manifest / _ga_manifest_result_file ──────────────────────────
+# Thin wrappers over the SHARED roster-resolution primitives in manifest-graph.sh
+# (manifest_graph_resolve_member / manifest_graph_result_filename), so the
+# gate-aggregator and the cycle engine's generic member-disposition contract
+# resolve members identically (id-match then role binding; artifact_type then
+# primary-output basename). Kept as named locals for readability at call sites.
+_ga_member_manifest()      { manifest_graph_resolve_member "$1" "$2"; }
+_ga_manifest_result_file() { manifest_graph_result_filename "$1"; }
 
 # ─── _ga_build_roster <plugins_root> ─────────────────────────────────────────
 # ADR-040 §2 roster-driven must-pass discovery. When a cycle is in scope
@@ -187,7 +158,12 @@ gate_aggregator_init() {
 # Reads one gate's recorded verdict from its result artifact. Echoes a status
 # token for the aggregate:
 #   pass|skip      → the gate is satisfied (skip = ran, nothing to check)
-#   fail           → the gate blocked
+#   advisory       → verdict=fail BUT the gate declared disposition=advisory
+#                    (generic member-disposition contract, ADR-021): a non-
+#                    blocking failure (e.g. an infra flake) that must NOT block
+#                    convergence. Satisfied for aggregation.
+#   fail           → the gate blocked (verdict=fail, disposition terminal /
+#                    recoverable / absent — the latter fail-closed)
 #   missing        → artifact absent (fail-closed: the gate did not run)
 #   malformed      → artifact present but unparseable / no usable verdict
 # The test stage's "error" verdict (interrupted / unparseable suite) maps to
@@ -199,9 +175,16 @@ _ga_read_gate_verdict() {
     local v
     v="$(jq -r '.verdict // empty' "$result_path" 2>/dev/null)" || { echo "malformed"; return 0; }
     case "$v" in
-        pass | skip | fail) echo "$v" ;;
-        error)              echo "fail" ;;
-        *)                  echo "malformed" ;;
+        pass | skip) echo "$v" ;;
+        fail | error)
+            # disposition=advisory demotes a fail to a non-blocking status so an
+            # infra-flake never blocks convergence (recoverable/terminal/absent
+            # stay blocking — recoverable drives another build iteration).
+            local disp
+            disp="$(jq -r '.disposition // ""' "$result_path" 2>/dev/null || echo "")"
+            if [[ "$disp" == "advisory" ]]; then echo "advisory"; else echo "fail"; fi
+            ;;
+        *)           echo "malformed" ;;
     esac
 }
 
@@ -242,7 +225,7 @@ gate_aggregator_run() {
         status="$(_ga_read_gate_verdict "$artifacts_dir/$file")"
         gate_pairs+=("$name=$status")
         case "$status" in
-            pass | skip) : ;;                     # satisfied
+            pass | skip | advisory) : ;;          # satisfied (advisory = non-blocking fail)
             *) verdict="fail"; failed+=("$name"); failed_files+=("$file") ;; # fail|missing|malformed
         esac
     done

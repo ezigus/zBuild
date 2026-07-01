@@ -188,11 +188,19 @@ acceptance_gate_run() {
     mkdir -p "$state_dir/artifacts"
     local f="${ZBUILD_TEST_GATE_FAILURE:-}"
     if [[ -z "$f" ]]; then
-        printf '{"verdict":"pass","failures":[]}' \
+        printf '{"verdict":"pass","disposition":"none","failures":[]}' \
             > "$state_dir/artifacts/acceptance-gate-result.json"
         return 0
     fi
-    printf '{"verdict":"fail","failures":["%s"]}' "$f" \
+    # Mirror the real gate's class→disposition mapping (ADR-021 / ADR-036): the
+    # engine reads ONLY this generic disposition field, not the failure class.
+    local disp
+    case "$f" in
+        untagged_spec:*)                        disp="recoverable" ;;
+        negctl_error:* | reachability_error:*)  disp="advisory" ;;
+        *)                                      disp="terminal" ;;
+    esac
+    printf '{"verdict":"fail","disposition":"%s","failures":["%s"]}' "$disp" "$f" \
         > "$state_dir/artifacts/acceptance-gate-result.json"
     return 1
 }
@@ -269,12 +277,19 @@ end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSON
 # [SPEC-4]
 assert_eq "T1 [SPEC-4]: pipeline.end status=failed on terminal acceptance failure" "failed" "$end_status"
 
-# Diagnostic event must fire when the new branch makes the verdict load-bearing.
-term_evt="$(jq -c 'select(.type=="cycle.acceptance.terminal_failure")' \
+# Diagnostic event must fire when a member's disposition=terminal makes the
+# verdict load-bearing. GENERIC event carrying the failing member id.
+term_evt="$(jq -c 'select(.type=="cycle.member.terminal_failure")' \
     "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$term_evt" -ge 1 ]] \
-    && assert_pass "T1 [SPEC-4]: cycle.acceptance.terminal_failure emitted" \
-    || assert_fail "T1 [SPEC-4]: cycle.acceptance.terminal_failure should be emitted" "count=$term_evt"
+    && assert_pass "T1 [SPEC-4]: cycle.member.terminal_failure emitted" \
+    || assert_fail "T1 [SPEC-4]: cycle.member.terminal_failure should be emitted" "count=$term_evt"
+
+# The event must name the acceptance-gate member (plugin-agnostic engine, but the
+# member id is carried in data).
+term_member="$(jq -r 'select(.type=="cycle.member.terminal_failure") | .data.member' \
+    "$EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "T1 [SPEC-4]: terminal_failure event names the failing member" "acceptance-gate" "$term_member"
 
 # The cycle status written to durable state must NOT be complete.
 cyc_complete="$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle" and .data.reason=="converged")' \
@@ -295,9 +310,9 @@ end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSON
 assert_eq "T2 [SPEC-2]: pipeline.end status=success on untagged_spec-only (feedback preserved)" "success" "$end_status"
 
 # No terminal-failure event for the recoverable class.
-term_evt="$(jq -c 'select(.type=="cycle.acceptance.terminal_failure")' \
+term_evt="$(jq -c 'select(.type=="cycle.member.terminal_failure")' \
     "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "T2 [SPEC-2]: cycle.acceptance.terminal_failure NOT emitted for untagged_spec" "0" "$term_evt"
+assert_eq "T2 [SPEC-2]: cycle.member.terminal_failure NOT emitted for untagged_spec" "0" "$term_evt"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-5] infra failure (negctl_error:timeout) is NON-terminal (ADR-036 #1188).
@@ -312,9 +327,9 @@ _run_pipeline
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)" "success" "$end_status"
 
-term_evt="$(jq -c 'select(.type=="cycle.acceptance.terminal_failure")' \
+term_evt="$(jq -c 'select(.type=="cycle.member.terminal_failure")' \
     "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "T3 [SPEC-5]: cycle.acceptance.terminal_failure NOT emitted for infra timeout" "0" "$term_evt"
+assert_eq "T3 [SPEC-5]: cycle.member.terminal_failure NOT emitted for infra timeout" "0" "$term_evt"
 
 cleanup_test_env
 print_test_results

@@ -48,6 +48,32 @@ _ag_resolve_negctl_timeout() {
     printf '60'
 }
 
+# _ag_classify_disposition <failure...> — map this gate's failure classes to the
+# GENERIC member-disposition contract (ADR-021 / ADR-036 §-Disposition) the cycle
+# engine reads. The engine knows NO acceptance-gate failure vocabulary; it only
+# reads the disposition field this function computes. Precedence (highest wins):
+#   terminal    — ≥1 GENUINE violation: tautology, not_passing_at_head,
+#                 inert_wiring, no_testfile, malformed_acceptance_block.
+#   recoverable — only untagged_spec:* (fed back to build via the #951 edge).
+#   advisory    — only infra classes: negctl_error:* / reachability_error:*
+#                 (baseline/worktree resolve failures + negctl/reachability
+#                 TIMEOUTS — a flaky sandbox must never hard-fail the pipeline).
+# Empty failure set → "none". Echoes exactly one token.
+_ag_classify_disposition() {
+    local f had_recoverable=0 had_advisory=0
+    for f in "$@"; do
+        case "$f" in
+            untagged_spec:*)                         had_recoverable=1 ;;
+            negctl_error:* | reachability_error:*)   had_advisory=1 ;;
+            "")                                      : ;;
+            *)                                       printf 'terminal'; return 0 ;;  # genuine violation
+        esac
+    done
+    if [[ $had_recoverable -eq 1 ]]; then printf 'recoverable'; return 0; fi
+    if [[ $had_advisory   -eq 1 ]]; then printf 'advisory';    return 0; fi
+    printf 'none'
+}
+
 acceptance_gate_run() {
     local _stage_id="$1"
     local state_file="$2"
@@ -82,7 +108,7 @@ acceptance_gate_run() {
         return 0
     fi
     if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
-        printf '{"verdict":"fail","reason":"malformed_acceptance_block","failures":["malformed_acceptance_block"]}\n' \
+        printf '{"verdict":"fail","reason":"malformed_acceptance_block","disposition":"terminal","failures":["malformed_acceptance_block"]}\n' \
             | atomic_write "$result_file"
         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
         eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
@@ -175,11 +201,18 @@ acceptance_gate_run() {
     fi
 
     # ── Write result artifact ────────────────────────────────────────────────
-    local failures_json="[]"
+    # `disposition` is the GENERIC contract the cycle engine reads (ADR-021): the
+    # engine no longer knows this gate's failure vocabulary — it only halts on an
+    # explicit disposition==terminal. Computed from the failure classes here.
+    local failures_json="[]" disposition
     if [[ ${#failures[@]} -gt 0 ]]; then
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
+        disposition="$(_ag_classify_disposition "${failures[@]}")"
+    else
+        disposition="none"
     fi
-    printf '{"verdict":"%s","failures":%s}\n' "$verdict" "$failures_json" | atomic_write "$result_file"
+    printf '{"verdict":"%s","disposition":"%s","failures":%s}\n' \
+        "$verdict" "$disposition" "$failures_json" | atomic_write "$result_file"
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"
 

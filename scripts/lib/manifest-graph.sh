@@ -278,3 +278,56 @@ manifest_graph_collect() {
     done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
     return 1
 }
+
+# yaml_get lives in core/plugin-registry/manifest-validation.sh (a leaf lib that
+# sources nothing). The two roster helpers below need it to read provides.role /
+# provides.artifact_type. Source lazily + guarded so existing manifest-graph
+# consumers (lint-contract, contract-validator) keep their current load shape.
+_manifest_graph_ensure_yaml_get() {
+    declare -F yaml_get >/dev/null 2>&1 && return 0
+    # shellcheck source=../../core/plugin-registry/manifest-validation.sh
+    source "$_ZBUILD_MGRAPH_ROOT/core/plugin-registry/manifest-validation.sh" 2>/dev/null || true
+    declare -F yaml_get >/dev/null 2>&1
+}
+
+# ─── manifest_graph_resolve_member <plugins_root> <member> ─────────────────────
+# Resolve a cycle/parallel member stage id to its plugin manifest path — the
+# SHARED roster-resolution primitive used by both the gate-aggregator (ADR-040
+# §2) and the cycle engine's generic member-disposition contract (ADR-021). Two
+# strategies, in order:
+#   1) id-match (manifest_graph_collect) — most members' ids match their manifest.
+#   2) role binding — a template may name a member by an id that binds BY ROLE
+#      to a differently-named plugin. Read the member's first declared role from
+#      _TPL_STAGE_ROLES_<safe> (exported by template.sh) and find the manifest
+#      whose provides.role matches.
+# Echoes the manifest path; rc 1 if unresolved.
+manifest_graph_resolve_member() {
+    local plugins_root="$1" member="$2" m
+    m="$(manifest_graph_collect "$plugins_root" "$member" 2>/dev/null)"
+    if [[ -n "$m" && -f "$m" ]]; then printf '%s\n' "$m"; return 0; fi
+    _manifest_graph_ensure_yaml_get || return 1
+    local safe="${member//-/_}" roles_var roles role cand r
+    roles_var="_TPL_STAGE_ROLES_${safe}"
+    roles="${!roles_var:-}"
+    role="${roles%%,*}"            # first declared role
+    [[ -z "$role" ]] && return 1
+    while IFS= read -r -d '' cand; do
+        r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
+        if [[ "$r" == "$role" ]]; then printf '%s\n' "$cand"; return 0; fi
+    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    return 1
+}
+
+# ─── manifest_graph_result_filename <manifest> ─────────────────────────────────
+# The member's recorded result artifact FILENAME: provides.artifact_type, else
+# the basename of the primary output's declared path. rc 1 if neither resolves.
+manifest_graph_result_filename() {
+    local manifest="$1" at row path
+    _manifest_graph_ensure_yaml_get
+    at="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null)"
+    if [[ -n "$at" ]]; then printf '%s\n' "$at"; return 0; fi
+    row="$(manifest_graph_primary_output "$manifest" 2>/dev/null)" || return 1
+    path="${row##*|}"
+    [[ -z "$path" ]] && return 1
+    printf '%s\n' "${path##*/}"
+}

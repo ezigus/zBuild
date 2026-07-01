@@ -1567,36 +1567,44 @@ _cycle_iter_dispatch() {
     return 0
 }
 
-# ─── _cycle_acceptance_terminal_failure <state_dir> (#1044, #1188) ───────────
-# Returns 0 (terminal) iff the acceptance-gate is a member of this cycle AND it
-# wrote verdict==fail with >=1 failure in a GENUINE-VIOLATION class. Two kinds of
-# failure are NON-terminal:
-#   - untagged_spec:*  — RECOVERABLE, fed back to build via the #951 edge.
-#   - negctl_error:* / reachability_error:*  — INFRASTRUCTURE (ADR-036 #1188):
-#       baseline/worktree resolve failures, and negctl/reachability TIMEOUTS.
-#       A flaky sandbox must never hard-fail the pipeline as if the contract
-#       were violated.
-# Genuine violations stay terminal: tautology, not_passing_at_head, inert_wiring,
-# no_testfile, malformed_acceptance_block. The membership guard ensures inner
-# cycles (build_test_cycle) that don't run acceptance-gate are never affected.
-# Missing file / jq absence / parse failure → return 1 (never falsely block).
-_cycle_acceptance_terminal_failure() {
+# ─── _cycle_member_terminal_failure <state_dir> (#1044, #1188, Phase 2) ───────
+# GENERIC member-disposition contract (ADR-021). Replaces the acceptance-gate-
+# specific check: the engine no longer knows ANY plugin id, artifact filename, or
+# failure-class vocabulary. It iterates THIS cycle's member roster (_CYCLE_STAGES,
+# == _TPL_CYCLE_STAGES_<id>) and, for each member whose recorded result artifact
+# declares verdict==fail, reads the generic `disposition` field:
+#   terminal    → HALT (this function returns 0, echoing the member id so the
+#                 caller carries it in event data).
+#   recoverable → NON-terminal (fed back to build via the #951 edge — the cycle
+#                 loops but the pipeline does not hard-fail).
+#   advisory    → NON-terminal (infra flake / non-blocking).
+#   absent      → NON-terminal (fail-safe: only an EXPLICIT terminal halts, so a
+#                 disposition-unaware plugin never hard-fails the pipeline).
+# Member→manifest→artifact resolution reuses the SHARED roster mechanism
+# (manifest_graph_resolve_member / manifest_graph_result_filename) — identical to
+# the gate-aggregator. jq absence / missing artifact / parse failure on a member
+# is skipped (never falsely blocks). rc 1 when no member is terminal.
+_cycle_member_terminal_failure() {
     local state_dir="$1"
     command -v jq >/dev/null 2>&1 || return 1
-    local _is_member=0 _s
-    for _s in "${_CYCLE_STAGES[@]}"; do
-        [[ "$_s" == "acceptance-gate" ]] && _is_member=1 && break
+    local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
+    local artifacts_dir="$state_dir/artifacts"
+    local member manifest file result disp
+    for member in "${_CYCLE_STAGES[@]}"; do
+        [[ -z "$member" ]] && continue
+        manifest="$(manifest_graph_resolve_member "$plugins_root" "$member" 2>/dev/null)" || continue
+        file="$(manifest_graph_result_filename "$manifest" 2>/dev/null)" || continue
+        [[ -z "$file" ]] && continue
+        result="$artifacts_dir/$file"
+        [[ -s "$result" ]] || continue
+        jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || continue
+        disp="$(jq -r '.disposition // ""' "$result" 2>/dev/null || echo "")"
+        if [[ "$disp" == "terminal" ]]; then
+            printf '%s' "$member"
+            return 0
+        fi
     done
-    [[ $_is_member -eq 1 ]] || return 1
-    local result="$state_dir/artifacts/acceptance-gate-result.json"
-    [[ -s "$result" ]] || return 1
-    jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || return 1
-    # ≥1 failure entry that is a genuine violation (not recoverable, not infra).
-    jq -e '[.failures[]?
-            | select((startswith("untagged_spec:") or startswith("negctl_error:")
-                      or startswith("reachability_error:")) | not)]
-           | length > 0' \
-        "$result" >/dev/null 2>&1
+    return 1
 }
 
 # ─── _cycle_read_test_run_mode (ADR-034 / #846) ─────────────────────────────
@@ -1646,7 +1654,10 @@ _cycle_handle_terminal_rc() {
         5)   reason="blocked" ;;
         6)   reason="cycle_abort" ;;
         7)   reason="blocked_on_scope" ;;
-        8)   reason="blocking_member_failure" ;;
+        # rc=8 covers two paths, both of which set _CYCLE_LAST_TERMINATED_REASON:
+        # ADR-013 blocking:true → "blocking_member_failure" (immediate, rc-only);
+        # the ADR-021 disposition=terminal path → "member_terminal_failure".
+        8)   reason="${_CYCLE_LAST_TERMINATED_REASON:-blocking_member_failure}" ;;
         130) reason="aborted" ;;
         *)   reason="error" ;;
     esac
@@ -1941,16 +1952,19 @@ cycle_orchestrator_run() {
         # split state writes within an iter boundary).
         local overall_status="in_progress"
         local term_rc=-1
-        if _cycle_acceptance_terminal_failure "$state_dir"; then
-            # #1044: acceptance-gate verdict=fail with a terminal (non-feedback)
-            # failure class outranks review.verdict==approve — make the gate's
-            # contract load-bearing so the pipeline halts (failed) instead of
-            # converging to complete. untagged_spec is excluded by the helper so
-            # the #951 feedback loop is preserved.
-            _CYCLE_LAST_TERMINATED_REASON="acceptance_contract_failed"
-            overall_status="acceptance_failed"; term_rc=8
-            eb_emit_event "cycle.acceptance.terminal_failure" \
-                "cycle_id=$cycle_id" "reason=acceptance_contract_failed" \
+        local _term_member
+        if _term_member="$(_cycle_member_terminal_failure "$state_dir")"; then
+            # Phase 2 (ADR-021): a cycle member declared disposition=terminal in
+            # its result artifact — outranks review.verdict==approve so the
+            # member's contract is load-bearing and the pipeline halts (failed)
+            # instead of converging to complete. recoverable (e.g. untagged_spec,
+            # the #951 feedback loop) and advisory (infra flake) are NON-terminal.
+            # GENERIC: the engine carries the member id, not any plugin identity.
+            _CYCLE_LAST_TERMINATED_REASON="member_terminal_failure"
+            overall_status="member_terminal_failure"; term_rc=8
+            eb_emit_event "cycle.member.terminal_failure" \
+                "cycle_id=$cycle_id" "member=$_term_member" \
+                "reason=member_terminal_failure" \
                 2>/dev/null || true
         elif [[ "$converged" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"
