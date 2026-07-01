@@ -101,6 +101,16 @@ targets), it is un-gameable by prompt wording — it does not read what a stage 
 stage *sits* in the convergence graph. This closes the "future author quietly re-merges the layers" gap
 that the per-stage spot-check (ADR-037 §3) could not.
 
+**Note (Phase 2, 2026-07-01) — per-member `disposition` refines gate blocking.** A `convergence: gate`
+member's `verdict: fail` no longer unconditionally blocks convergence: the gate-aggregator reads the
+generic `disposition` field (ADR-021 member-disposition contract) the member wrote alongside its verdict.
+`disposition: advisory` (e.g. an infra flake such as a negctl/reachability timeout) is EXCLUDED from the
+aggregator's fail set — it is a non-blocking failure, so a flaky sandbox never blocks merge. `recoverable`
+and `terminal` (and an ABSENT disposition — fail-closed) stay blocking; `recoverable` additionally drives
+another build iteration via the gate→build feedback edge. This does NOT weaken §5: `disposition` demotes a
+gate's *failure* to non-blocking on a per-run basis; it never places an `advisory`-marked STAGE on a
+convergence path. The structural invariant (marker + predicate targets) is unchanged.
+
 ### 6. Composability (boundary)
 
 - Gates and lenses are ordinary ADR-039 parallel-group members and ordinary ADR-001 plugins; adding a

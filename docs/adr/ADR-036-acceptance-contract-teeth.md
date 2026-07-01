@@ -210,3 +210,23 @@ plugin resolves precedence **env `ZBUILD_NEGCTL_TIMEOUT` > per-stage template > 
 to the libs. Each SPEC / WIRING run now appends its combined output to a size-bounded
 (`64 KiB`) `artifacts/negctl-<sid>.log` / `artifacts/reachability-<target>.log` so a failed
 control is diagnosable instead of silently `>/dev/null`.
+
+## Amendment (Phase 2, 2026-07-01) — class→disposition mapping (the engine is now generic)
+
+The #1188 amendment above still described the **engine** classifying the gate's failure
+vocabulary (`_cycle_acceptance_terminal_failure` knew the literal class strings). That coupling
+is now removed: the plugin OWNS the class→disposition mapping and writes a generic
+`disposition` field into `acceptance-gate-result.json`; the cycle engine reads only that field
+(see ADR-021, generic member-disposition contract). Mapping (`_ag_classify_disposition`,
+precedence highest-first):
+
+| disposition   | failure classes                                                            | engine effect                                             |
+| ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `terminal`    | tautology, not_passing_at_head, inert_wiring, no_testfile, malformed_acceptance_block | HALT — cycle does not converge (rc=8), pipeline.end=failed |
+| `recoverable` | untagged_spec:* (only)                                                     | NON-terminal; #951 build feedback loop (cycle re-iterates) |
+| `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
+| `none`        | (verdict=pass)                                                             | n/a                                                        |
+
+`terminal` outranks any lower class, so a genuine violation alongside an infra failure is still
+terminal. The gate-aggregator (ADR-040 §2) reads the SAME field: `advisory` is excluded from
+its fail set (non-blocking), while `recoverable`/`terminal`/absent stay blocking (fail-closed).
