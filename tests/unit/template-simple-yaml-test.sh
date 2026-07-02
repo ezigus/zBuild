@@ -121,7 +121,15 @@ assert_eq "[SPEC-3] lens-performance roles" "review_lens" "$_TPL_STAGE_ROLES_len
 assert_eq "[SPEC-3] lens-red-team roles"    "review_lens" "$_TPL_STAGE_ROLES_lens_red_team"
 assert_eq "[SPEC-3] lens-correctness roles" "review_lens" "$_TPL_STAGE_ROLES_lens_correctness"
 assert_eq "[SPEC-3] lens-scope roles"       "review_lens" "$_TPL_STAGE_ROLES_lens_scope"
-assert_eq "[SPEC-3] lens-security io_dests" "file,stdout" "$_TPL_STAGE_IO_DESTS_lens_security"
+# Issue OUT (ADR-015/039): lens-* members are FILE-ONLY — dropping the stdout
+# destination suppresses both the streamed prompt banner AND the raw-JSON output
+# banner; the operator instead sees ONE human-readable line per lens (rendered by
+# the runner's parallel_member_complete_hook). Artifacts (lens-<id>.json) intact.
+assert_eq "[SPEC-3] lens-security io_dests"    "file" "$_TPL_STAGE_IO_DESTS_lens_security"
+assert_eq "[SPEC-3] lens-performance io_dests" "file" "$_TPL_STAGE_IO_DESTS_lens_performance"
+assert_eq "[SPEC-3] lens-red-team io_dests"    "file" "$_TPL_STAGE_IO_DESTS_lens_red_team"
+assert_eq "[SPEC-3] lens-correctness io_dests" "file" "$_TPL_STAGE_IO_DESTS_lens_correctness"
+assert_eq "[SPEC-3] lens-scope io_dests"       "file" "$_TPL_STAGE_IO_DESTS_lens_scope"
 assert_eq "[SPEC-3] lens-security router timeout"   "300" "$_TPL_STAGE_ROUTER_TIMEOUT_lens_security"
 assert_eq "[SPEC-3] lens-security router max_turns" "25"  "$_TPL_STAGE_ROUTER_MAX_TURNS_lens_security"
 

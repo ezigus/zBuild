@@ -297,5 +297,39 @@ assert_eq "T4: no orphaned member processes after SIGINT" "0" "$orphans"
 assert_event_emitted "T4: parallel.group.complete (status=aborted) emitted" \
     "$ZBUILD_EVENTS_JSONL" "parallel.group.complete"
 
+# ── T5: parallel_member_complete_hook invoked once per member, in declaration
+#       order (Issue OUT, ADR-039). Mirrors the cycle iter-complete hook: the
+#       orchestrator calls it (when declared) in the parent post-join loop. ────
+print_test_section "T5: member-complete hook fires once per member in declaration order"
+
+load_template "$TPL"   # 3-member continue fixture (design, build, impact)
+_seed_state
+HOOK_LOG="$TEST_TEMP_DIR/hooklog"; : > "$HOOK_LOG"
+
+parallel_dispatch_stage() {
+    _PARALLEL_DISPATCH_VERDICT="pass"; _PARALLEL_DISPATCH_STATUS="complete"
+    return 0
+}
+# Mock hook: record member + slot for order/count assertions.
+parallel_member_complete_hook() {
+    printf '%s %s\n' "$2" "$3" >> "$HOOK_LOG"
+}
+
+export ZBUILD_SEQ_PREFIX="5"
+set +e
+parallel_group_run "gates" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+unset ZBUILD_SEQ_PREFIX
+unset -f parallel_member_complete_hook
+
+assert_eq "T5: group rc=0" "0" "$rc"
+hook_lines="$(grep -c . "$HOOK_LOG" || true)"
+assert_eq "T5: hook fired exactly 3 times (one per member)" "3" "$hook_lines"
+assert_eq "T5: members recorded in declaration order" \
+    "design 1
+build 2
+impact 3" "$(cat "$HOOK_LOG")"
+
 cleanup_test_env
 print_test_results

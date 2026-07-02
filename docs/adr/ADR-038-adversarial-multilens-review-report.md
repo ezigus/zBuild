@@ -104,3 +104,17 @@ review-remediation cycle lands with #976 / #979 per ADR-037 §6.
   `merge_policy: auto`, the report is purely informational — acceptable, but it then catches nothing on
   its own (by design, the objective gates are the floor).
 - Per-lens model/tier selection and cost bounds are out of scope here (router config, ADR-017).
+
+## Amendment (Issue OUT — merge-readiness report surfaced to the operator)
+
+The aggregated merge-readiness report is now surfaced to the operator as
+human-readable PROSE, not just written to disk. After `review-aggregator` writes
+`review-report.json` + `review-report.md` (rendered by `render_review_report_md`),
+it prints the already-rendered `.md` to `fd ${ZBUILD_STAGE_IO_FD:-2}`, gated on
+the stage's own `io:` destinations (`template_stage_io_dests`): a file-only
+install stays silent; a stdout install shows the full readiness header, summary,
+and per-lens / de-duped findings. Because the lens members are file-only
+(ADR-015 / ADR-039), this aggregator prose — together with the per-member
+one-liners — is the operator's human-readable review surface; the raw lens and
+report JSON remain in artifacts. Guarded by `tests/unit/review-aggregator-test.sh`
+(io-gated print, both directions) and `tests/integration/review-lenses-output-test.sh`.

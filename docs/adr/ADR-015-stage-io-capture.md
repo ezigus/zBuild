@@ -1120,3 +1120,27 @@ MUST emit its input banner before the action and its output banner after" from
 an ordering rule into a presence rule: *discarding* a command's output is the
 same defect as emitting the banners out of order — both deny the operator the
 record the chokepoint exists to provide.
+
+## Amendment (Issue OUT — human-readable review output)
+
+Two additions keep the terminal free of raw artifact JSON:
+
+1. **Renderer registration closes the passthrough.** `render_artifact` (ADR-018)
+   falls back to raw passthrough for any `ZBUILD_ROUTER_ARTIFACT_ID` with no
+   registered renderer. `review-lens` (the `review_lenses` group members) and
+   `security-lens` (compound_quality) previously had none, so their lens JSON
+   streamed verbatim. Both now register `render_lens_md`, which tolerates the
+   `{name,score,findings[]}` and the `{plugin_id,findings[]}` (no `score`) shapes
+   — the renderer is jq-guarded and score-optional so it never returns non-zero
+   (a renderer error would re-trigger the raw passthrough it exists to prevent).
+
+2. **Parallel-group members render a per-member ONE-LINE summary, not full I/O.**
+   Lens members are declared `io: { destinations: [file] }` (file-only), which
+   suppresses BOTH the input-prompt banner and the raw-output banner (the stdout
+   branch of the destinations loop) while still writing the `lens-<id>.json`
+   artifact record. In their place the runner registers a
+   `parallel_member_complete_hook` (the parallel sibling of the §524
+   `cycle_iter_complete_hook`) that emits one human-readable line per member via
+   `render_parallel_member_line` / `render_lens_one_line`. This extends the
+   presence rule: a lens that streams its raw JSON denies the operator a readable
+   record just as surely as a discarded command does.

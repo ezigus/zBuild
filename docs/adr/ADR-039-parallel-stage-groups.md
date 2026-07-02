@@ -269,3 +269,29 @@ discovery + self-resolution + fallback) alongside the existing `tests/unit/revie
   concurrent dispatch primitive (EPIC #982 worktree-per-mutant precedent).
 - ADR-037/ADR-038 — the decomposition that motivates declared concurrency.
 - Issue #1143 (EPIC #1129, D1) — this ADR text.
+
+## Amendment (Issue OUT — terminal rendering contract for parallel groups)
+
+The terminal rendering contract for a parallel group is now explicit and mirrors
+the cycle rendering contract (§524):
+
+- **Entry banner** (existing) — `_render_parallel_entry`, emitted by the runner
+  before `parallel_group_run`.
+- **Per-member one-line completion summary** — emitted by
+  `parallel_member_complete_hook` (runner-registered) via
+  `render_parallel_member_line`. Called by the orchestrator in the PARENT
+  post-join aggregation loop, in member-DECLARATION order, parent-serial — so
+  the lines never interleave (rendering inside the member subshells would
+  interleave out of completion order). Members are file-only (ADR-015), so this
+  one-liner REPLACES the streamed full I/O; the full lens JSON stays in the
+  `lens-<id>.json` artifact.
+- **Optional group-completion trailer** — `parallel_group_complete_hook` /
+  `_render_parallel_group_complete`, mirroring `_render_cycle_exit`
+  (`▸ <group> complete — N members, M blocking`).
+
+As with the cycle hooks, `parallel-orchestrator.sh` stays render-free: it calls
+the runner-registered hooks (guarded by `declare -F`) and never formats terminal
+output itself. Guarded by `tests/integration/parallel-orchestrator-test.sh`
+(hook invoked once per member in declaration order) and
+`tests/integration/review-lenses-output-test.sh` (one human-readable line per
+lens; no raw JSON on the terminal).
