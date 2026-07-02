@@ -18,6 +18,11 @@ source "$_ZBUILD_ROOT/core/output/stage-io.sh"
 # ADR-024 / #671 (Wave 13-B): fresh-user-shell helper for the claude spawn
 # subshells below (the 4 spawn sites in _route_call_claude + the loop).
 source "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
+# ADR-043 (redaction by construction): the router owns the redaction step, so
+# apply_scope_redaction must be available BY CONSTRUCTION in the model-call
+# path (single-shot + loop). Idempotent source; plugins that also source it
+# hit the load guard. See _route_redact_prompt / _route_ensure_redaction.
+source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -47,7 +52,13 @@ route_to_model() {
         error "T0 (WASM) not implemented in Phase 0.5"; return 2
     fi
 
-    _route_check_precondition "$tier" "$skip_precondition" || return $?
+    # ADR-043 (redaction by construction): ensure the prompt is redacted BEFORE
+    # the model call. If a plugin already redacted (its redaction.applied is the
+    # most-recent event for this run/stage) we proceed unchanged; otherwise the
+    # router redacts now and hands _route_call_claude the redacted text. On a
+    # fail-closed refusal (missing/empty manifest, no override) this returns 2.
+    _route_ensure_redaction "$tier" "$skip_precondition" "$prompt" || return $?
+    prompt="$_ROUTE_REDACTED_PROMPT"
     _route_lookup_model "$tier" "$model_override"          || return $?
 
     # ADR-017 (#455): precedence-aware timeout resolution.
@@ -148,15 +159,68 @@ fi
 # valid only within the parent shell that sourced route.sh.
 _ROUTE_TOOL_USES_JSON="[]"
 
-# ─── _route_check_precondition <tier> <skip:bool> ────────────────────────────
-# Validates C6: most-recent event for the current (run_id, ZBUILD_CURRENT_STAGE)
-# must be redaction.applied (per-stage scoping for parallel-group safety, ADR-039
-# §3); falls back to run-level scoping when no stage is set.
-# `--skip-precondition` requires the operator override (ZBUILD_SCOPE_OVERRIDE=1
-# + ~/.zbuild/scope-override-token matching run_id or 'bootstrap').
-_route_check_precondition() {
-    local tier="$1" skip_precondition="$2"
+# ─── _route_redact_prompt <input_file> <output_file> [cycle_id] [allowlist] ──
+# Shared redaction step for BOTH single-shot route_to_model and route_to_model_loop
+# (ADR-043). When ZBUILD_SCOPE_MANIFEST names a readable manifest, delegate to
+# apply_scope_redaction (which emits the canonical redaction.applied on success,
+# or redaction.refused fail-closed on a missing/empty manifest). When no manifest
+# is configured (unit-test / bootstrap mode) fall back to a passthrough copy plus
+# a redaction.applied stub, so the by-construction invariant still holds. The
+# allowlist defaults to ZBUILD_SCOPE_ALLOWLIST (runner-exported from plan.files[])
+# and is ADDITIVE to the manifest's own `+ path` allowlist.
+# Returns apply_scope_redaction's rc (0 ok / 1 fail-closed refusal / 2 io) in the
+# manifest path, or 0 in the passthrough-stub path.
+_route_redact_prompt() {
+    local input="$1" output="$2" cycle_id="${3:-0}"
+    local allowlist="${4:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
+    local manifest="${ZBUILD_SCOPE_MANIFEST:-}"
 
+    if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
+        # A configured manifest is authoritative: apply_scope_redaction handles a
+        # missing/empty file itself by emitting redaction.refused (rc1, fail-closed)
+        # — we do NOT downgrade that to a passthrough here.
+        local _rc=0
+        apply_scope_redaction "$input" "$output" "$manifest" "$allowlist" "$cycle_id" \
+            >/dev/null 2>&1 || _rc=$?
+        return "$_rc"
+    fi
+
+    # No manifest configured (var unset) → unit-test/bootstrap passthrough. Emit a
+    # redaction.applied stub so the by-construction invariant (redaction.applied
+    # immediately precedes model.route) holds even without a manifest.
+    cp "$input" "$output" 2>/dev/null || true
+    eb_emit_event "redaction.applied" \
+        "input=$input" "output=$output" \
+        "size_before=0" "size_after=0" "redactions=0" \
+        "scope_hash=router-passthrough" "cycle=$cycle_id" 2>/dev/null || true
+    return 0
+}
+
+# ─── _route_ensure_redaction <tier> <skip:bool> <prompt> ─────────────────────
+# ADR-043 (redaction by construction). Supersedes the former C6 precondition
+# (_route_check_precondition): instead of REFUSING when the prompt was not
+# already redacted, the router REDACTS it now. Backward-compatible with the ~8
+# plugins that still self-redact — when the most-recent event for this
+# (run_id, stage) is already redaction.applied we proceed unchanged (no double
+# redaction / double emit). Sets _ROUTE_REDACTED_PROMPT to the text the router
+# should send. Returns 0 to proceed, 2 to refuse (fail-closed).
+#
+# Fail-closed is preserved: a configured-but-missing/empty manifest makes
+# apply_scope_redaction emit redaction.refused (rc1) and we refuse the call —
+# exactly as C6 did. Degenerate environments (no run_id / no events log) also
+# stay fail-closed, since we cannot scope or emit reliably there.
+#
+# ADR-039 §3: the "already redacted" check is scoped per-stage so concurrent
+# parallel-group members each dedup on THEIR OWN redaction.applied rather than a
+# sibling's interleaved event. The static lint (scripts/lib/lint-stage-io.sh) +
+# the fact that route_to_model[_loop] is the ONLY model path remain the real
+# anti-bypass guarantee (ADR-004 §Enforcement).
+_ROUTE_REDACTED_PROMPT=""
+_route_ensure_redaction() {
+    local tier="$1" skip_precondition="$2" prompt="$3"
+    _ROUTE_REDACTED_PROMPT="$prompt"
+
+    # Operator override (--skip-precondition): audited bypass, no redaction.
     if $skip_precondition; then
         local override_token="${HOME}/.zbuild/scope-override-token"
         local override_ok=false
@@ -166,7 +230,7 @@ _route_check_precondition() {
             [[ "$token_run_id" == "$rid" ]] && override_ok=true
         fi
         if ! $override_ok; then
-            error "router C6 precondition refused: --skip-precondition requires ZBUILD_SCOPE_OVERRIDE=1 + ~/.zbuild/scope-override-token containing run_id (or 'bootstrap' if RUN_ID unset)"
+            error "router redaction refused: --skip-precondition requires ZBUILD_SCOPE_OVERRIDE=1 + ~/.zbuild/scope-override-token containing run_id (or 'bootstrap' if RUN_ID unset)"
             eb_emit_event "router.precondition.refused" \
                 "tier=$tier" "reason=skip_without_override" \
                 "run_id_state=${ZBUILD_RUN_ID:+set}${ZBUILD_RUN_ID:-unset}" 2>/dev/null || true
@@ -179,53 +243,60 @@ _route_check_precondition() {
     fi
 
     local run_id="${ZBUILD_RUN_ID:-}" events_log="${ZBUILD_EVENTS_JSONL:-}"
-    # ADR-039 §3: scope C6 to the active stage when one is set. Parallel-group
-    # members run concurrently and emit interleaved events to the SHARED
-    # run-level log, so the global "most-recent event for run_id" can be a
-    # SIBLING member's `plugin.run.start` rather than THIS member's
-    # `redaction.applied`. eb_emit_event stamps `.stage` from
-    # ZBUILD_CURRENT_STAGE, so we check the most-recent event for THIS
-    # (run_id, stage). Serial stages set ZBUILD_CURRENT_STAGE too, so this is
-    # equivalent to the old run-level check there (one stage active at a time).
-    # When no stage is set (bootstrap, direct route_to_model calls, stage-less
-    # emits), fall back to the run-level last-event check — unchanged behaviour.
     local stage="${ZBUILD_CURRENT_STAGE:-}"
 
+    # Degenerate environments: cannot scope/emit reliably → fail-closed
+    # (unchanged from C6). In production the runner always sets both.
     if [[ -z "$run_id" ]]; then
-        error "router C6 precondition refused: ZBUILD_RUN_ID is unset; cannot verify redaction.applied"
+        error "router redaction refused: ZBUILD_RUN_ID is unset; cannot scope/emit redaction"
         eb_emit_event "router.precondition.refused" "tier=$tier" "reason=no_run_id" 2>/dev/null || true
         return 2
     fi
     if [[ -z "$events_log" || ! -f "$events_log" ]]; then
-        error "router C6 precondition refused: ZBUILD_EVENTS_JSONL='${events_log}' missing; cannot verify redaction.applied for run_id=$run_id"
+        error "router redaction refused: ZBUILD_EVENTS_JSONL='${events_log}' missing; cannot emit redaction for run_id=$run_id"
         eb_emit_event "router.precondition.refused" "tier=$tier" "reason=no_events_log" 2>/dev/null || true
         return 2
     fi
 
-    local last_event_type scope_desc
+    # Already redacted by the caller? (per-stage dedup — see ADR-039 §3 note above.)
+    local last_event_type
     if [[ -n "$stage" ]]; then
-        scope_desc="run_id=$run_id stage=$stage"
         last_event_type="$(jq -r --arg rid "$run_id" --arg st "$stage" \
             'select(.run_id == $rid and (.stage // "") == $st) | .type' "$events_log" 2>/dev/null | tail -1 || true)"
     else
-        scope_desc="run_id=$run_id"
         last_event_type="$(jq -r --arg rid "$run_id" \
             'select(.run_id == $rid) | .type' "$events_log" 2>/dev/null | tail -1 || true)"
     fi
+    if [[ "$last_event_type" == "redaction.applied" ]]; then
+        # Caller already redacted — proceed with the caller's (redacted) prompt.
+        return 0
+    fi
 
-    if [[ -z "$last_event_type" ]]; then
-        error "router C6 precondition refused: no events for $scope_desc"
-        eb_emit_event "router.precondition.refused" "tier=$tier" "reason=no_events_for_run" \
-            "stage=$stage" 2>/dev/null || true
+    # ── Router redacts by construction now. ──
+    local _tmp_in _tmp_out _rc=0
+    if ! _tmp_in="$(mktemp "${TMPDIR:-/tmp}/zb-route-redact-in.XXXXXX" 2>/dev/null)"; then
+        error "router redaction refused: mktemp failed"
+        eb_emit_event "router.precondition.refused" "tier=$tier" "reason=mktemp_failed" 2>/dev/null || true
         return 2
     fi
-    if [[ "$last_event_type" != "redaction.applied" ]]; then
-        error "router C6 precondition violated: last event for $scope_desc was '$last_event_type', expected 'redaction.applied'"
-        eb_emit_event "router.precondition.violated" "tier=$tier" \
-            "last_event=$last_event_type" "required=redaction.applied" "stage=$stage"
+    if ! _tmp_out="$(mktemp "${TMPDIR:-/tmp}/zb-route-redact-out.XXXXXX" 2>/dev/null)"; then
+        rm -f "$_tmp_in"
+        error "router redaction refused: mktemp failed"
+        eb_emit_event "router.precondition.refused" "tier=$tier" "reason=mktemp_failed" 2>/dev/null || true
         return 2
     fi
-    return 0
+    printf '%s' "$prompt" > "$_tmp_in"
+    _route_redact_prompt "$_tmp_in" "$_tmp_out" 0 "${ZBUILD_SCOPE_ALLOWLIST:-}" || _rc=$?
+    if [[ "$_rc" -eq 0 ]]; then
+        _ROUTE_REDACTED_PROMPT="$(cat "$_tmp_out" 2>/dev/null || printf '%s' "$prompt")"
+        rm -f "$_tmp_in" "$_tmp_out"
+        return 0
+    fi
+    # Fail-closed: apply_scope_redaction refused (missing/empty manifest, no
+    # override) or hit an I/O error. redaction.refused was already emitted there.
+    rm -f "$_tmp_in" "$_tmp_out"
+    error "router redaction refused (fail-closed) — scope manifest missing/empty for run_id=$run_id stage=${stage:-<none>}"
+    return 2
 }
 
 # ─── _route_lookup_model <tier> <model_override> ─────────────────────────────
@@ -906,26 +977,17 @@ Diff vs intake baseline:
 ${_stat:-  (no changes)}"
         fi
 
-        # Per-iteration redaction: satisfy C6 precondition before each claude call.
+        # Per-iteration redaction by construction (ADR-043). Shared with
+        # single-shot route_to_model via _route_redact_prompt: emits the
+        # canonical redaction.applied (or fail-closed refused). The loop stays
+        # fail-OPEN on a redaction error (|| cp) — it does not gate on C6 and a
+        # per-iteration refusal must not silently drop the turn.
         local iter_prompt_file="${_loop_tmp}/iter-${iter}.txt"
         local iter_redacted_file="${_loop_tmp}/iter-${iter}.redacted.txt"
         printf '%s\n' "$iter_prompt" > "$iter_prompt_file"
 
-        local _scope_manifest="${ZBUILD_SCOPE_MANIFEST:-}"
-        if [[ -n "$_scope_manifest" && -f "$_scope_manifest" ]] && \
-           declare -F apply_scope_redaction >/dev/null 2>&1; then
-            apply_scope_redaction "$iter_prompt_file" "$iter_redacted_file" \
-                "$_scope_manifest" "$scope_allowlist" "$iter" \
-                >/dev/null 2>&1 || cp "$iter_prompt_file" "$iter_redacted_file"
-        else
-            # Emit a redaction.applied stub so the per-iteration C6 precondition
-            # is satisfied even when a manifest is not configured (test mode).
-            cp "$iter_prompt_file" "$iter_redacted_file"
-            eb_emit_event "redaction.applied" \
-                "input=$iter_prompt_file" "output=$iter_redacted_file" \
-                "size_before=0" "size_after=0" "redactions=0" \
-                "scope_hash=loop-passthrough" "cycle=$iter" 2>/dev/null || true
-        fi
+        _route_redact_prompt "$iter_prompt_file" "$iter_redacted_file" "$iter" "$scope_allowlist" \
+            || cp "$iter_prompt_file" "$iter_redacted_file"
 
         local final_prompt; final_prompt="$(cat "$iter_redacted_file")"
 
