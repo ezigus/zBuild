@@ -410,7 +410,7 @@ _review_aggregator_run_inner() {
     if [[ -s "$out_md" ]] && declare -F template_stage_io_dests >/dev/null 2>&1; then
         local _dests
         _dests="$(template_stage_io_dests "${ZBUILD_CURRENT_STAGE:-review-aggregator}" 2>/dev/null || true)"
-        if printf '%s\n' "$_dests" | grep -qx stdout; then
+        if grep -qx stdout <<< "$_dests"; then
             local _io_fd="${ZBUILD_STAGE_IO_FD:-2}"
             # shellcheck disable=SC2261
             { printf '\n'; cat "$out_md"; printf '\n'; } >&"$_io_fd" 2>/dev/null || true

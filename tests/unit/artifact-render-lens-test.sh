@@ -39,7 +39,7 @@ EOF
 out="$(render_lens_one_line security "$adir" 2>&1 | _strip_ansi)"
 lines="$(printf '%s\n' "$out" | grep -c .)"
 assert_eq "T1 exactly one line" "1" "$lines"
-if printf '%s' "$out" | grep -qE '^✓ security — 7/10, 3 findings \(top: '; then
+if grep -qE '^✓ security — 7/10, 3 findings \(top: ' <<< "$out"; then
     assert_pass "T1 one-liner shape matches (✓ security — 7/10, 3 findings (top: …))"
 else
     assert_fail "T1 one-liner shape" "got: $out"
@@ -84,7 +84,7 @@ assert_eq "T5 security-lens → render_lens_md" "render_lens_md" "$(artifact_ren
 print_test_section "T6: render_artifact never leaks raw JSON"
 _blob='{"score":7,"name":"security","findings":[{"file":"core/b.sh","severity":"high","line":42,"message":"bad"}]}'
 out="$(render_artifact review-lens "$_blob")"
-if printf '%s' "$out" | grep -q '{"score"'; then
+if grep -q '{"score"' <<< "$out"; then
     assert_fail "T6 no raw JSON in rendered review-lens" "raw JSON leaked: $out"
 else
     assert_pass "T6 render_artifact review-lens does not echo raw JSON"
@@ -99,7 +99,7 @@ out="$(render_artifact security-lens "$_sec")"
 rc=$?
 set -e
 assert_eq "T7 render_artifact rc=0" "0" "$rc"
-if printf '%s' "$out" | grep -q '{"plugin_id"'; then
+if grep -q '{"plugin_id"' <<< "$out"; then
     assert_fail "T7 no raw JSON for security-lens" "raw JSON leaked: $out"
 else
     assert_pass "T7 security-lens (no score) rendered to prose, no raw JSON"
