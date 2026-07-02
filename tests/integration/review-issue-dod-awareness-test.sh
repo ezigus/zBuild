@@ -86,7 +86,7 @@ _zbuild_diff_stat() { printf '## Changed files (0 total)\n'; }
 # _review_run_inner splices the actual repo diff into the prompt, so any branch
 # with many changed files (e.g. the #939 rename) floods the prompt and breaks
 # these prompt-content assertions. Hermeticity fix exposed by #939.
-_review_resolve_merge_base() { printf ''; }
+zbuild_resolve_merge_base() { printf ''; }
 
 print_test_section "1. intake.md present → prompt contains issue body section"
 

@@ -29,6 +29,10 @@ source "$_RL_ROOT/core/redaction/scope-redaction.sh"
 source "$_RL_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_RL_ROOT/core/router/route.sh"
+# #896/#952: shared merge-base change-bundle resolver — the lens judges the same
+# full-branch diff as `review`, not the (often empty) incremental build diff.patch.
+# shellcheck source=../../../scripts/lib/merge-base.sh
+source "$_RL_ROOT/scripts/lib/merge-base.sh"
 # #721: strip stage-io banners and ANSI from input before the LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_RL_ROOT/scripts/lib/test-output-sanitize.sh"
@@ -45,12 +49,17 @@ _review_lens_id() {
     printf '%s' "$lens"
 }
 
-# ─── _review_lens_evidence_path <lens> <artifact_dir> ───────────────────────
+# ─── _review_lens_evidence_path <lens> <artifact_dir> [<bundle_fallback>] ────
 # Pick the lens's preferred mechanical evidence artifact (ADR-038 §2: a lens
-# reads a *different artifact*), falling back to the shared diff bundle. Returns
-# a path that may not exist; the caller checks readability + redacts it.
+# reads a *different artifact*), falling back to the shared change bundle. The
+# fallback defaults to the full-branch merge-base bundle (resolved by the caller
+# via zbuild_change_bundle, #896/#952) so a lens without a per-lens artifact
+# judges the same basis as `review`; an empty <bundle_fallback> degrades to the
+# incremental diff.patch. Returns a path that may not exist; the caller checks
+# readability + redacts it.
 _review_lens_evidence_path() {
-    local lens="$1" artifact_dir="$2" candidate
+    local lens="$1" artifact_dir="$2" bundle_fallback="${3:-}" candidate
+    [[ -n "$bundle_fallback" ]] || bundle_fallback="$artifact_dir/diff.patch"
     case "$lens" in
         design-conformance) candidate="$artifact_dir/reachability-ablation.json" ;;
         test-coverage)      candidate="$artifact_dir/coverage-map.json" ;;
@@ -60,7 +69,7 @@ _review_lens_evidence_path() {
     if [[ -n "$candidate" && -s "$candidate" ]]; then
         printf '%s' "$candidate"
     else
-        printf '%s' "$artifact_dir/diff.patch"
+        printf '%s' "$bundle_fallback"
     fi
 }
 
@@ -98,7 +107,11 @@ review_lens_run() {
     fi
     [[ -n "$lens" ]] || lens="correctness"
 
-    local evidence; evidence="$(_review_lens_evidence_path "$lens" "$artifact_dir")"
+    # #896/#952: resolve the full-branch merge-base change bundle (falls back to
+    # the incremental diff.patch when no base resolves) so a lens without a
+    # per-lens artifact judges the same basis as `review`.
+    local bundle; bundle="$(zbuild_change_bundle "$artifact_dir")"
+    local evidence; evidence="$(_review_lens_evidence_path "$lens" "$artifact_dir" "$bundle")"
     _review_lens_run_inner \
         "$lens" \
         "$state_dir/scope-manifest.md" \

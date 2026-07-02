@@ -37,7 +37,7 @@ source "$REPO_ROOT/plugins/agent/review/plugin.sh"
 # a branch with many changed files (e.g. the #939 rename) splices the actual repo
 # diff into the prompt and the redaction-count assertion sees unexpected content.
 # See the matching note in tests/integration/review-issue-dod-awareness-test.sh.
-_review_resolve_merge_base() { printf ''; }
+zbuild_resolve_merge_base() { printf ''; }
 
 # ─── Real redaction chokepoint (issue #360) ───────────────────────────────────
 # Previously this file stubbed apply_scope_redaction with `cp` passthrough,
