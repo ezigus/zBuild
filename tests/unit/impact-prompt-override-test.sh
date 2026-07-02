@@ -88,9 +88,7 @@ run_impact "$art_with"
 RC_WITH="$RC"
 
 prompt_with="$art_with/impact-prompt.txt"
-redacted_with="$art_with/impact-prompt.redacted.txt"
 prompt_with_body="$(cat "$prompt_with" 2>/dev/null || echo '')"
-redacted_with_body="$(cat "$redacted_with" 2>/dev/null || echo '')"
 
 assert_eq "I0 impact inner rc=0 with override" "0" "$RC_WITH"
 
@@ -112,9 +110,11 @@ else
         "contract_line=$contract_line delim_line=$delim_line"
 fi
 
-# ─── I3: marker survives redaction passthrough ───────────────────────────────
-assert_contains "I3 marker in redacted prompt" "$redacted_with_body" "IMPACT_OV_MARKER"
-assert_contains "I3 delimiter in redacted prompt" "$redacted_with_body" "$DELIMITER"
+# ─── I3: override rides the router's redaction pass (ADR-043) ────────────────
+# route_to_model receives the assembled impact-prompt.txt and redacts it by
+# construction — the override being in that prompt proves it is redaction-covered.
+assert_contains "I3 marker in router-bound prompt" "$prompt_with_body" "IMPACT_OV_MARKER"
+assert_contains "I3 delimiter in router-bound prompt" "$prompt_with_body" "$DELIMITER"
 
 # ─── Case B: no override file ────────────────────────────────────────────────
 FIXTURE_REPO_NONE="$TEST_TEMP_DIR/fixture-repo-none"

@@ -115,9 +115,7 @@ rc_ov=$?
 set -e 2>/dev/null || true
 
 prompt_ov="$TEST_TEMP_DIR/state-ov/artifacts/test-assessment-prompt.txt"
-redacted_ov="$TEST_TEMP_DIR/state-ov/artifacts/test-assessment-prompt.redacted.txt"
 prompt_ov_content="$(cat "$prompt_ov" 2>/dev/null || echo '')"
-redacted_ov_content="$(cat "$redacted_ov" 2>/dev/null || echo '')"
 
 assert_eq "inner rc=0 with override" "0" "$rc_ov"
 
@@ -135,8 +133,10 @@ else
         "delim_line=$delim_line anchor_line=$anchor_line"
 fi
 
-# ─── T3: marker survives into the redacted prompt ───────────────────────────
-assert_contains "T3 marker survives redaction" "$redacted_ov_content" "TA_OV_MARKER"
+# ─── T3: override rides the router's redaction pass (ADR-043) ────────────────
+# route_to_model receives the assembled test-assessment-prompt.txt and redacts
+# it by construction — the override in that prompt proves it is redaction-covered.
+assert_contains "T3 marker in router-bound prompt" "$prompt_ov_content" "TA_OV_MARKER"
 
 # ─── Without override → no delimiter, contract intact ───────────────────────
 set +e

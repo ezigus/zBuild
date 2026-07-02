@@ -18,8 +18,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _IMPACT_DIR="$_ZBUILD_PLUGIN_DIR"
 _IMPACT_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_IMPACT_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_IMPACT_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -244,20 +242,14 @@ $_impact_instructions"
     local prompt_file="$artifact_dir/impact-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"
 
-    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
-    # redaction (so it is redaction-covered and cannot weaken the charter).
+    # ADR-032 (#855): per-repo override appended AFTER the contract (so the
+    # operator overlay can never precede or weaken the shipped charter). ADR-043:
+    # redaction is owned by the router — it covers this override too.
     append_prompt_override "$prompt_file" "impact"
 
-    # ─── Redaction chokepoint (REQUIRED — ADR-004) ──────────────────────────
-    local redacted_prompt_file="$artifact_dir/impact-prompt.redacted.txt"
-    if ! apply_scope_redaction "$prompt_file" "$redacted_prompt_file" "$scope_manifest" "" "0"; then
-        error "_impact_run_inner: redaction failed; refusing to emit"
-        emit_event "plugin.run.error" "plugin=impact" "reason=redaction_failed"
-        return 1
-    fi
-
+    # ─── Assemble the raw prompt (ADR-043: route_to_model redacts it). ──────
     local redacted_prompt
-    redacted_prompt="$(cat "$redacted_prompt_file")"
+    redacted_prompt="$(cat "$prompt_file")"
 
     # ─── Route to LLM (T1 default per manifest) ─────────────────────────────
     local tier="${ZBUILD_IMPACT_TIER:-T1}"

@@ -44,6 +44,12 @@ cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/
 + plugins/
 SCOPE
+# ADR-043: redaction is owned by route_to_model, which reads ZBUILD_SCOPE_MANIFEST
+# (runner-exported per-stage) and fail-closes if the events log does not yet
+# exist (the runner emits stage events first). Mirror the runner here so the
+# first plan_run below routes instead of refusing.
+export ZBUILD_SCOPE_MANIFEST="$STATE_DIR/scope-manifest.md"
+: > "$ZBUILD_EVENTS_JSONL"
 
 # ─── Plan banner test ───────────────────────────────────────────────────────
 print_test_section "plan stage OUTPUT banner renders via render_plan_md (#483)"

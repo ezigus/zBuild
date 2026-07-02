@@ -22,18 +22,21 @@ export _MOCK_ROUTE_CAPTURE="$TEST_TEMP_DIR/route-prompt.txt"
 # shellcheck source=../../plugins/agent/review/plugin.sh
 source "$REPO_ROOT/plugins/agent/review/plugin.sh"
 
-# Override after source so we shadow the real route_to_model.
+# Override after source so we shadow the real route_to_model. ADR-043: the
+# plugin no longer calls apply_scope_redaction (the router owns redaction), so no
+# redaction stub is needed — the mocked route_to_model stands in for the router.
 route_to_model() {
     printf '%s' "$2" > "$_MOCK_ROUTE_CAPTURE"
     # Return an approve verdict so review_run finishes cleanly.
     printf '%s' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}'
     return 0
 }
-apply_scope_redaction() {
-    local in="$1" out="$2"
-    cp "$in" "$out"
-    return 0
-}
+# #939 hermeticity: stub the merge-base diff source so the review prompt uses the
+# fixture diff, not the real working-dir branch-vs-main diff. Without this a
+# working tree carrying the override delimiter string (e.g. sibling test edits)
+# splices it into the prompt and the R4 "no delimiter without override" check
+# sees a false positive. Mirrors review-test.sh.
+zbuild_resolve_merge_base() { printf ''; }
 
 # ─── Shared review-inner inputs (cribbed from plugin-review-prompt-render-test) ─
 _make_review_inputs() {
@@ -94,7 +97,6 @@ rc=$?
 set -e
 
 prompt_file="$artifact_dir/review-prompt.txt"
-redacted_file="$artifact_dir/review-prompt.redacted.txt"
 DELIM='## Project-specific guidance (operator override)'
 ANCHOR='You are a code review agent'
 
@@ -113,9 +115,10 @@ else
         "anchor=$anchor_line delim=$delim_line (expected delim>anchor, both non-empty)"
 fi
 
-# ─── R3: marker survives the redaction chokepoint into redacted prompt ──────
-redacted_body="$(cat "$redacted_file" 2>/dev/null || echo '')"
-assert_contains "R3 marker survives into redacted prompt" "$redacted_body" "REVIEW_OV_MARKER"
+# ─── R3: override rides the router's redaction pass (ADR-043) — it is present
+# in the prompt handed to route_to_model, which redacts by construction. ──────
+route_captured="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
+assert_contains "R3 override reaches route_to_model (redaction-covered)" "$route_captured" "REVIEW_OV_MARKER"
 
 # Sanity: inner ran cleanly with the mocked router.
 assert_eq "R1b review inner rc=0 (override present)" "0" "$rc"

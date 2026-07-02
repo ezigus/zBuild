@@ -20,8 +20,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _REVIEW_DIR="$_ZBUILD_PLUGIN_DIR"
 _REVIEW_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_REVIEW_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_REVIEW_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -485,24 +483,19 @@ $_review_instructions"
     local prompt_file="$artifact_dir/review-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"
 
-    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
-    # redaction (so it is redaction-covered and cannot weaken the charter).
+    # ADR-032 (#855): per-repo override appended AFTER the contract (so the
+    # operator overlay can never precede or weaken the shipped charter). ADR-043:
+    # redaction is owned by the router — it covers this override too.
     append_prompt_override "$prompt_file" "review"
 
-    # ─── Redaction chokepoint (REQUIRED — refuse to call LLM without it) ────
-    local redacted_prompt_file="$artifact_dir/review-prompt.redacted.txt"
-    if ! apply_scope_redaction "$prompt_file" "$redacted_prompt_file" "$scope_manifest" "" "0"; then
-        error "review_run: redaction failed; refusing to emit"
-        emit_event "plugin.run.error" "plugin=review" "reason=redaction_failed"
-        return 1
-    fi
-
+    # ─── Assemble the raw prompt (ADR-043: route_to_model redacts it). ──────
     local redacted_prompt
-    redacted_prompt="$(cat "$redacted_prompt_file")"
+    redacted_prompt="$(cat "$prompt_file")"
 
-    # Wave 19-G (#739): substitute the placeholder with the unredacted
-    # diff-stat block. File paths are public signal (they appear in
-    # commits); only diff CONTENT needs scope redaction.
+    # Wave 19-G (#739): substitute the diff-stat placeholder with the real
+    # diff-stat block (file paths + line counts). ADR-043: the assembled prompt
+    # — diff-stat included — is redacted by the router; out-of-scope paths are
+    # wrapped (content preserved) rather than passed through as before.
     redacted_prompt="${redacted_prompt//"$_DIFF_STAT_PLACEHOLDER"/$diff_stat_block}"
 
     # ─── Route to LLM (T2 per manifest config.tier_default) ─────────────────

@@ -102,6 +102,11 @@ export ZBUILD_STAGE_IO_FD=3
 # shellcheck source=../../plugins/agent/review/plugin.sh
 source "$REPO_ROOT/plugins/agent/review/plugin.sh"
 
+# ADR-043: redaction is owned by route_to_model, whose fail-closed guard requires
+# the events log to already exist (in production the runner emits stage events
+# before any LLM stage). Emit one event here to create it, mirroring the runner.
+eb_emit_event "stage.start" "stage=review" >/dev/null 2>&1 || true
+
 # Run from inside the test repo so `git diff` resolves against the fixtures.
 (
     cd "$REPO"

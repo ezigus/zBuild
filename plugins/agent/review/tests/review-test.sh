@@ -82,6 +82,11 @@ EOF
 
 # Use the shared fixture manifest: allows only tests/, so src/auth.sh redacts.
 SCOPE_MANIFEST="$REPO_ROOT/tests/fixtures/redaction/scope-tests-only.md"
+# ADR-043: redaction is now owned by route_to_model, which reads the manifest
+# from ZBUILD_SCOPE_MANIFEST (the runner exports it per-stage). Export it here so
+# the router performs REAL redaction (redactions>0) on the review prompt — the
+# plugin no longer calls apply_scope_redaction itself.
+export ZBUILD_SCOPE_MANIFEST="$SCOPE_MANIFEST"
 
 ARTIFACT_DIR="$TEST_TEMP_DIR/artifacts"
 mkdir -p "$ARTIFACT_DIR"

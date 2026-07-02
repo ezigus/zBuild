@@ -67,21 +67,15 @@ init_state "$STATE_FILE" "$ZBUILD_RUN_ID" 999
 
 # ─── Mock definitions ────────────────────────────────────────────────────────
 
-# apply_scope_redaction: pass-through mock (avoids needing a full manifest parse)
-apply_scope_redaction() {
-    local input="$1"
-    local output="$2"
-    # Pass through content unchanged; emit the event route.sh checks for.
-    cp "$input" "$output"
+# ADR-043: redaction is owned by route_to_model[_loop]. These mocks stand in for
+# the router, so they emit the canonical redaction.applied by construction (the
+# real router does this via _route_redact_prompt before the model call). The
+# plugins no longer call apply_scope_redaction themselves.
+_mock_emit_redaction_applied() {
     emit_event "redaction.applied" \
-        "input=$input" \
-        "output=$output" \
-        "size_before=0" \
-        "size_after=0" \
-        "redactions=0" \
-        "scope_hash=mock" \
-        "cycle=0"
-    return 0
+        "input=mock" "output=mock" \
+        "size_before=0" "size_after=0" "redactions=0" \
+        "scope_hash=mock" "cycle=0"
 }
 
 # Canned plan JSON
@@ -102,6 +96,7 @@ _REVIEW_JSON='{"verdict":"approve","confidence":0.95,"issues":[],"summary":"Diff
 # Tests set _MOCK_STAGE before each stage's run call to select the response.
 route_to_model() {
     local _tier="$1"  # unused in mock
+    _mock_emit_redaction_applied
     case "${_MOCK_STAGE:-}" in
         plan)    printf '%s\n' "$_PLAN_JSON" ;;
         build)   printf '%s\n' "$_BUILD_DIFF" ;;
@@ -117,6 +112,7 @@ route_to_model() {
 # fire (which would make the event golden environment-dependent on whether the
 # CI default claude shim returns rc!=0).
 route_to_model_loop() {
+    _mock_emit_redaction_applied
     _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
     _ROUTE_LOOP_INPUT_TOKENS=0

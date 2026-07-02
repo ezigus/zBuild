@@ -21,8 +21,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _SEC_LENS_DIR="$_ZBUILD_PLUGIN_DIR"
 _SEC_LENS_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_SEC_LENS_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_SEC_LENS_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -70,36 +68,27 @@ security_lens_run() {
 #   $4 = (optional) artifact dir for intermediate redacted prompt
 _security_lens_run_inner() {
     local input="$1"
-    local scope_manifest="$2"
+    # $2 (scope_manifest) is accepted for call-compat but no longer read: ADR-043
+    # makes the router redact the assembled prompt by construction.
     local output="$3"
     local artifact_dir="${4:-$(dirname "$output")}"
 
-    # Note: we deliberately do NOT validate $scope_manifest here. The redaction
-    # chokepoint (ADR-004) refuses to emit when it's absent and returns 1.
-    # Putting a separate check here would mask that signal and return code.
     if [[ -z "$input" || -z "$output" ]]; then
         error "security_lens_run: requires <input> <scope_manifest> <output>"
         return 2
     fi
 
     mkdir -p "$artifact_dir"
-    local redacted="$artifact_dir/security-lens-prompt.redacted.txt"
 
-    # ─── Redaction chokepoint (REQUIRED — refuse to call LLM without it) ────
-    if ! apply_scope_redaction "$input" "$redacted" "$scope_manifest" "" "0"; then
-        error "security_lens_run: redaction failed; refusing to emit"
-        emit_event "plugin.run.error" "plugin=security-lens" "reason=redaction_failed"
-        return 1
-    fi
-
-    # ─── Build prompt: system prompt + redacted input ─────────────────────
-    local sys_prompt redacted_content prompt
+    # ─── Build prompt: system prompt + input. ADR-043: redaction is owned by
+    # the router (route_to_model) — this stage passes the RAW assembled text. ─
+    local sys_prompt input_content prompt
     sys_prompt="$(cat "$_SEC_LENS_DIR/prompts/security.md")"
-    redacted_content="$(cat "$redacted")"
+    input_content="$(cat "$input")"
     # #721: strip OOS-marker tags and ANSI codes — input may carry
     # <out-of-scope-context> wrappers and ANSI fragments from terminal capture.
-    redacted_content="$(printf '%s' "$redacted_content" | _zbuild_sanitize_for_llm)"
-    prompt="${sys_prompt}"$'\n\n'"${redacted_content}"
+    input_content="$(printf '%s' "$input_content" | _zbuild_sanitize_for_llm)"
+    prompt="${sys_prompt}"$'\n\n'"${input_content}"
 
     # ─── Route to LLM (hardcoded T3, matching manifest config.tier_default) ──
     # ZBUILD_SECURITY_LENS_TIER overrides for testing. Manifest-driven tier

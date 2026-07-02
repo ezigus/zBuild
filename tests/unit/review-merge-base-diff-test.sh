@@ -42,6 +42,11 @@ printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"ok"}
 # shellcheck source=../../plugins/agent/review/plugin.sh
 source "$REPO_ROOT/plugins/agent/review/plugin.sh"
 
+# ADR-043: redaction is owned by route_to_model, whose fail-closed guard requires
+# the events log to already exist (in production the runner emits stage events
+# before any LLM stage). Emit one event here to create it, mirroring the runner.
+eb_emit_event "stage.start" "stage=review" >/dev/null 2>&1 || true
+
 # ─── MB1: empty diff.patch, branch has commits vs main → LLM sees branch diff ─
 print_test_section "MB1: empty diff.patch + branch commits → LLM judges merge-base diff"
 REPO1="$TEST_TEMP_DIR/repo1"

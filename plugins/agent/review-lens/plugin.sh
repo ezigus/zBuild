@@ -23,8 +23,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _RL_DIR="$_ZBUILD_PLUGIN_DIR"
 _RL_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_RL_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_RL_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -124,7 +122,9 @@ review_lens_run() {
 # Args: $1=lens  $2=scope_manifest  $3=evidence(file)  $4=out lens-<name>.json
 #       $5=(optional) artifact dir for the intermediate redacted prompt
 _review_lens_run_inner() {
-    local lens="$1" scope_manifest="$2" evidence="$3" out="$4"
+    # $2 (scope_manifest) is accepted for call-compat but no longer read: ADR-043
+    # makes the router redact the assembled prompt by construction.
+    local lens="$1" evidence="$3" out="$4"
     local artifact_dir="${5:-$(dirname "$out")}"
 
     if [[ -z "$lens" || -z "$out" ]]; then
@@ -133,21 +133,14 @@ _review_lens_run_inner() {
     fi
     mkdir -p "$artifact_dir"
 
-    # Resolve evidence; an absent/empty bundle yields a clean empty result.
+    # Resolve evidence. ADR-043: the router redacts the assembled prompt by
+    # construction, so we pass RAW evidence and ALWAYS route (the former
+    # empty-evidence guard that skipped redaction — and thus tripped the router
+    # C6 precondition on an empty change bundle, #952 — is gone).
     local evidence_content="(no change bundle available)"
     if [[ -s "$evidence" ]]; then
-        # ─── Redaction chokepoint (ADR-004 — refuse to send raw text) ──────
-        local redacted="$artifact_dir/lens-$lens-evidence.redacted.txt"
-        if apply_scope_redaction "$evidence" "$redacted" "$scope_manifest" "" "0"; then
-            evidence_content="$(cat "$redacted")"
-            # #721: strip OOS-marker tags + ANSI fragments from terminal capture.
-            evidence_content="$(printf '%s' "$evidence_content" | _zbuild_sanitize_for_llm)"
-        else
-            emit_event "review_lens.redaction_failed" "lens=$lens"
-            _review_lens_empty "$lens" "$out"
-            emit_event "plugin.run.complete" "plugin=review-lens" "lens=$lens" "score=0"
-            return 0
-        fi
+        # #721: strip OOS-marker tags + ANSI fragments from terminal capture.
+        evidence_content="$(printf '%s' "$(cat "$evidence")" | _zbuild_sanitize_for_llm)"
     fi
 
     # ─── Build the single-lens prompt ──────────────────────────────────────

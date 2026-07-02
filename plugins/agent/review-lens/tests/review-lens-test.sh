@@ -56,9 +56,8 @@ route_to_model() {
     fi
     return 0
 }
-# Redaction chokepoint stub (copy-through). Overridden per-test below.
-# shellcheck disable=SC2329  # invoked indirectly by the sourced plugin
-apply_scope_redaction() { cp "$1" "$2"; return 0; }
+# ADR-043: redaction is owned by route_to_model (fully mocked above), so the
+# plugin never calls apply_scope_redaction — no redaction stub is needed here.
 
 artifact_dir="$TEST_TEMP_DIR/artifacts"
 mkdir -p "$artifact_dir"
@@ -102,27 +101,23 @@ assert_eq "[SPEC-3] performance score" "8" "$(jq -r '.score' "$out_perf")"
 _pp="$(cat "$_RL_PROMPT")"
 assert_contains "[SPEC-3] performance charter swapped in" "$_pp" "O(n^2)"
 
-# ─── SPEC-4: redaction refusal degrades to empty + event + rc 0 (ADR-004) ────
-# shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
-apply_scope_redaction() { return 1; }   # force chokepoint to refuse
-out_refuse="$artifact_dir/lens-correctness.json"
+# ─── SPEC-4: empty evidence STILL routes (ADR-043 / #952) ────────────────────
+# The former empty-evidence guard skipped redaction on an empty change bundle,
+# which left redaction.applied off the event stream and tripped the router C6
+# precondition — refusing every lens (the observed #952 failure). ADR-043 moves
+# redaction into route_to_model (owned by the router, not the plugin), so the
+# guard is gone: an empty bundle must STILL route and produce a lens result.
+out_empty="$artifact_dir/lens-correctness.json"
+empty_evidence="$artifact_dir/empty-diff.patch"
+: > "$empty_evidence"
 : > "$_RL_CALLS"
 set +e
-_review_lens_run_inner "correctness" "$scope_manifest" "$evidence" "$out_refuse" "$artifact_dir"
-_rc_refuse=$?
+_review_lens_run_inner "correctness" "$scope_manifest" "$empty_evidence" "$out_empty" "$artifact_dir"
+_rc_empty=$?
 set -e
-assert_eq "[SPEC-4] redaction refusal still returns 0" "0" "$_rc_refuse"
-assert_eq "[SPEC-4] NO LLM call when redaction refuses" "0" "$(wc -l < "$_RL_CALLS" | tr -d ' ')"
-assert_file_exists "[SPEC-4] empty lens result still written" "$out_refuse"
-assert_eq "[SPEC-4] empty result has score 0" "0" "$(jq -r '.score' "$out_refuse")"
-assert_eq "[SPEC-4] empty result has empty findings" "0" "$(jq '.findings | length' "$out_refuse")"
-if grep -q '"review_lens.redaction_failed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-4] review_lens.redaction_failed event emitted"
-else
-    assert_fail "[SPEC-4] review_lens.redaction_failed event should be emitted" "absent"
-fi
-# shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
-apply_scope_redaction() { cp "$1" "$2"; return 0; }   # restore
+assert_eq "[SPEC-4] empty evidence still returns 0" "0" "$_rc_empty"
+assert_eq "[SPEC-4] empty evidence STILL routes — one LLM call (#952)" "1" "$(wc -l < "$_RL_CALLS" | tr -d ' ')"
+assert_file_exists "[SPEC-4] lens result written for empty evidence" "$out_empty"
 
 # ─── SPEC-5: unparseable model output degrades to empty + event + rc 0 ───────
 # shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin

@@ -131,11 +131,14 @@ else
     assert_fail "T5 ZBUILD_ROUTER_JSON_OUTPUT unset after run" "still set: $ZBUILD_ROUTER_JSON_OUTPUT"
 fi
 
-# ─── Test 6: redaction was called ────────────────────────────────────────────
-if [[ -s "$_REDACT_CALLED_FILE" ]]; then
-    assert_pass "T6 apply_scope_redaction invoked"
+# ─── Test 6: routes through route_to_model (the redaction chokepoint) ────────
+# ADR-043: redaction is owned by route_to_model, so the plugin no longer calls
+# apply_scope_redaction directly. Redaction-coverage is proven by the assembled
+# prompt being handed to route_to_model, which redacts it by construction.
+if [[ -s "$_CAPTURED_PROMPT" ]]; then
+    assert_pass "T6 prompt routed through route_to_model (redaction chokepoint)"
 else
-    assert_fail "T6 apply_scope_redaction invoked" "no record"
+    assert_fail "T6 prompt routed through route_to_model (redaction chokepoint)" "no prompt captured"
 fi
 
 # ─── Test 7: prompt mentions key sections ────────────────────────────────────

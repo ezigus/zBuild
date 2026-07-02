@@ -29,8 +29,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _TEST_ASSESSMENT_DIR="$_ZBUILD_PLUGIN_DIR"
 _TEST_ASSESSMENT_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_TEST_ASSESSMENT_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_TEST_ASSESSMENT_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -118,7 +116,8 @@ test_assessment_run() {
 #   $8 = state_dir   (for cycle-iter artifact mirror)
 #   $9 = design.md path (optional; acceptance-block consumed when present, ADR-031)
 _test_assessment_run_inner() {
-    local scope_manifest="$1"
+    # $1 (scope_manifest) is accepted for call-compat but no longer read: ADR-043
+    # makes the router redact the assembled prompt by construction.
     local test_results_path="$2"
     local plan_path="$3"
     local build_summary_path="$4"
@@ -398,21 +397,15 @@ $_ta_instructions"
         "$test_output"
     [[ -n "$_ab_prompt" ]] && prompt+="$_ab_prompt"
 
-    # ─── Redaction chokepoint (ADR-004, required) ────────────────────────────
+    # ─── Assemble the raw prompt (ADR-043: route_to_model redacts it). ───────
     local prompt_file="$artifact_dir/test-assessment-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"
-    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
-    # redaction (so it is redaction-covered and cannot weaken the charter).
+    # ADR-032 (#855): per-repo override appended AFTER the contract (so the
+    # operator overlay can never precede or weaken the shipped charter). ADR-043:
+    # redaction is owned by the router — it covers this override too.
     append_prompt_override "$prompt_file" "test_assessment"
-    local redacted_file="$artifact_dir/test-assessment-prompt.redacted.txt"
-    if ! apply_scope_redaction "$prompt_file" "$redacted_file" \
-        "$scope_manifest" "" "${ZBUILD_CYCLE_ID:-0}"; then
-        error "test_assessment_run: redaction failed; refusing to emit"
-        emit_event "plugin.run.error" "plugin=test_assessment" "reason=redaction_failed"
-        return 1
-    fi
     local redacted_prompt
-    redacted_prompt="$(cat "$redacted_file")"
+    redacted_prompt="$(cat "$prompt_file")"
 
     # ─── Route to LLM (T2) with env save/restore ─────────────────────────────
     local tier="${ZBUILD_TEST_ASSESSMENT_TIER:-T2}"
