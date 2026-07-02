@@ -17,6 +17,8 @@ _PR_OPEN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PR_OPEN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_PR_OPEN_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../scripts/lib/git-remote.sh
+source "$_PR_OPEN_ROOT/scripts/lib/git-remote.sh"
 
 # ─── pr_open_init ────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
@@ -149,12 +151,16 @@ _pr_open_run_inner() {
     fi
 
     # ── Push branch so gh pr create can find it ───────────────────────────────
-    if ! git push -u origin "$target_branch" 2>/dev/null; then
-        error "pr_open: failed to push branch '${target_branch}' to origin"
+    # zbuild_push_reconcile tolerates an already-pushed / diverged remote branch
+    # (push / fast-forward / safe force-with-lease) and surfaces git's real
+    # stderr in ZBUILD_PUSH_RECONCILE_ERR (Issue PR). It never force-pushes the
+    # default branch — that plus the main/master refusal above is defense-in-depth.
+    if ! zbuild_push_reconcile "$target_branch"; then
+        error "pr_open: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
         emit_event "plugin.run.error" "plugin=pr-open" \
             "reason=branch_push_failed" "branch=${target_branch}"
-        jq -n --arg branch "$target_branch" \
-            '{"schema_version":1,"status":"error","reason":("failed to push branch: "+$branch),"draft":true}' \
+        jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
+            '{"schema_version":1,"status":"error","reason":("failed to push branch: "+$branch+": "+$detail),"draft":true}' \
             > "$output_pr_result_json"
         return 2
     fi

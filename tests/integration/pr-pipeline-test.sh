@@ -125,6 +125,51 @@ if [[ -f "$_art5/pr-url.txt" ]]; then
         "$(cat "$_art5/pr-url.txt")" "github.com/mock/repo/pull/756"
 fi
 
+# ─── SPEC-6: pr-open surfaces the real push stderr in pr-result.json .reason ──
+# Issue PR: the push now goes through zbuild_push_reconcile, which captures git's
+# stderr instead of discarding it (was `git push -u origin B 2>/dev/null`). When
+# the reconciled (force-with-lease) push genuinely fails, the distinctive git
+# stderr must reach pr-result.json .reason so a human can see WHY it failed.
+print_test_section "SPEC-6: pr-open surfaces push stderr in pr-result.json"
+# shellcheck source=../../plugins/tool/pr-open/plugin.sh
+source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
+_sf6="$TEST_TEMP_DIR/run-s6/pipeline-state.json"
+mkdir -p "$TEST_TEMP_DIR/run-s6/artifacts"
+printf '{"schema_version":1,"verdict":"approve","issues":[],"summary":"t"}\n' \
+    > "$TEST_TEMP_DIR/run-s6/artifacts/review.json"
+printf '{"issue":756,"branch":"zbuild/issue-756"}\n' > "$_sf6"
+_art6="$TEST_TEMP_DIR/run-s6/artifacts"
+_mockbin6="$TEST_TEMP_DIR/bin-s6"; mkdir -p "$_mockbin6"
+cat > "$_mockbin6/git" <<'MOCK'
+#!/usr/bin/env bash
+case "${1:-}" in
+    rev-parse)
+        if [[ "${2:-}" == "--abbrev-ref" ]]; then echo "zbuild/issue-756"
+        else echo "newsha"; fi ;;
+    ls-remote)    echo "divsha refs/heads/zbuild/issue-756" ;;   # present + divergent
+    merge-base)   exit 1 ;;                                       # not ancestor ⇒ diverged
+    cat-file)     exit 0 ;;
+    symbolic-ref) echo "origin/main" ;;                          # default != target
+    fetch|config) exit 0 ;;
+    push)         echo "non-fast-forward-XYZ rejected" >&2; exit 1 ;;
+    *)            echo ""; exit 0 ;;
+esac
+exit 0
+MOCK
+cat > "$_mockbin6/gh" <<'MOCK'
+#!/usr/bin/env bash
+echo "https://github.com/mock/repo/pull/756"; exit 0
+MOCK
+chmod +x "$_mockbin6/git" "$_mockbin6/gh"
+( PATH="$_mockbin6:$PATH" pr_open_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
+assert_eq "[SPEC-6] pr_open_run returns 2 on genuine push failure" "2" "$_rc6"
+if [[ -f "$_art6/pr-result.json" ]]; then
+    assert_contains "[SPEC-6] pr-result.json .reason surfaces the real push stderr" \
+        "$(jq -r '.reason // ""' "$_art6/pr-result.json" 2>/dev/null)" "non-fast-forward-XYZ"
+else
+    assert_fail "[SPEC-6] pr-result.json written on push failure" "file missing"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

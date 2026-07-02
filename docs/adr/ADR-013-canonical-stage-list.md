@@ -279,6 +279,12 @@ following rules apply:
   `pr-result.json` is enforced for existence by `scan_plugin_outputs` on
   the success path because it is declared in `outputs[]`, but downstream
   stages MUST NOT wire inputs from it.
+- Push mechanics (Issue PR): the `pr`/merge stages reconcile `origin/<branch>`
+  with local HEAD via `scripts/lib/git-remote.sh` (`zbuild_push_reconcile`) —
+  push / fast-forward / safe `--force-with-lease`, never the default branch —
+  and surface git's real stderr into `pr-result.json`/`merge-result.json`
+  `.reason`. This is plumbing only: no model call (T0 preserved), no new events,
+  and the `pr-url.txt`-first atomic artifact contract is unchanged.
 
 This convention generalizes: any future stage that benefits from a structured
 side-channel (e.g., `test` writing both a human summary and JUnit XML) follows

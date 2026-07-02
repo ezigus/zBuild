@@ -18,6 +18,8 @@ _MERGE_DIR="$_ZBUILD_PLUGIN_DIR"
 _MERGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_MERGE_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../scripts/lib/git-remote.sh
+source "$_MERGE_ROOT/scripts/lib/git-remote.sh"
 
 # ─── merge_init ──────────────────────────────────────────────────────────────
 merge_init() {
@@ -136,10 +138,13 @@ _merge_run_inner() {
         }
     fi
 
-    if ! git push -u origin "$target_branch" 2>/dev/null; then
-        error "merge_run: failed to push branch '${target_branch}'"
-        jq -n --arg branch "$target_branch" \
-            '{"schema_version":1,"status":"error","reason":("failed to push: "+$branch)}' \
+    # Reconcile origin/<branch> then push (Issue PR): tolerate already-pushed /
+    # diverged remote and surface git's real stderr. The helper's guard also
+    # covers the default branch (merge has no main/master guard of its own here).
+    if ! zbuild_push_reconcile "$target_branch"; then
+        error "merge_run: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
+        jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
+            '{"schema_version":1,"status":"error","reason":("failed to push: "+$branch+": "+$detail)}' \
             > "$merge_result_out"
         return 2
     fi
