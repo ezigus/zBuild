@@ -100,6 +100,15 @@ zbuild_push_reconcile() {
         return 3
     fi
 
+    # ── REMOTE STRICTLY AHEAD: HEAD is an ancestor of the remote tip ─────────
+    # Remote has commits we don't (this is NOT divergence). A force-with-lease
+    # here would rewind origin and DELETE those remote-only commits — the lease
+    # is pinned to the tip we just read, so it would NOT refuse. No-op skip so
+    # only true divergence (neither sha an ancestor of the other) can force.
+    if git merge-base --is-ancestor HEAD "$remote_sha" 2>/dev/null; then
+        return 0
+    fi
+
     # ── DIVERGED: safe force, but NEVER the default branch ───────────────────
     local def; def="$(zbuild_default_branch)"
     if [[ "$branch" == "$def" || "$branch" == "main" || "$branch" == "master" ]]; then

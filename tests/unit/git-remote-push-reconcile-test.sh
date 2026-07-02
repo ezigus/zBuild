@@ -39,7 +39,12 @@ case "${1:-}" in
     rev-parse)    [[ "${2:-}" == "HEAD" ]] && printf '%s\n' "${MOCK_HEAD_SHA:-localsha}"; exit 0 ;;
     fetch)        exit 0 ;;
     cat-file)     exit "${MOCK_CATFILE_RC:-0}" ;;
-    merge-base)   exit "${MOCK_ANCESTOR_RC:-0}" ;;
+    merge-base)
+        # `merge-base --is-ancestor A B` — args: $2=--is-ancestor $3=A $4=B.
+        # ff check is `<remote_sha> HEAD` ($4==HEAD); the strictly-behind check
+        # is `HEAD <remote_sha>` ($3==HEAD). Answer each independently.
+        if [[ "${3:-}" == "HEAD" ]]; then exit "${MOCK_HEAD_ANCESTOR_RC:-1}"
+        else exit "${MOCK_ANCESTOR_RC:-0}"; fi ;;
     push)         [[ -n "${MOCK_PUSH_STDERR:-}" ]] && printf '%s\n' "$MOCK_PUSH_STDERR" >&2; exit "${MOCK_PUSH_RC:-0}" ;;
     branch)       exit 0 ;;
     symbolic-ref) printf '%s\n' "${MOCK_ORIGIN_HEAD:-origin/main}"; exit "${MOCK_SYMREF_RC:-0}" ;;
@@ -51,8 +56,8 @@ chmod +x "$_mockbin/git"
 export PATH="$_mockbin:$PATH"
 # Mark all knobs for export so the mock git subprocess sees per-case values.
 export MOCK_LS_REMOTE MOCK_LS_REMOTE_RC MOCK_HEAD_SHA MOCK_CATFILE_RC \
-       MOCK_ANCESTOR_RC MOCK_PUSH_RC MOCK_PUSH_STDERR MOCK_ORIGIN_HEAD \
-       MOCK_SYMREF_RC MOCK_CONFIG_DEFAULT
+       MOCK_ANCESTOR_RC MOCK_HEAD_ANCESTOR_RC MOCK_PUSH_RC MOCK_PUSH_STDERR \
+       MOCK_ORIGIN_HEAD MOCK_SYMREF_RC MOCK_CONFIG_DEFAULT
 
 # shellcheck source=../../scripts/lib/git-remote.sh
 source "$REPO_ROOT/scripts/lib/git-remote.sh"
@@ -61,8 +66,8 @@ source "$REPO_ROOT/scripts/lib/git-remote.sh"
 _reset() {
     : > "$GIT_MOCK_LOG"
     MOCK_LS_REMOTE="" MOCK_LS_REMOTE_RC="" MOCK_HEAD_SHA="" MOCK_CATFILE_RC="" \
-        MOCK_ANCESTOR_RC="" MOCK_PUSH_RC="" MOCK_PUSH_STDERR="" MOCK_ORIGIN_HEAD="" \
-        MOCK_SYMREF_RC="" MOCK_CONFIG_DEFAULT=""
+        MOCK_ANCESTOR_RC="" MOCK_HEAD_ANCESTOR_RC="" MOCK_PUSH_RC="" MOCK_PUSH_STDERR="" \
+        MOCK_ORIGIN_HEAD="" MOCK_SYMREF_RC="" MOCK_CONFIG_DEFAULT=""
     ZBUILD_PUSH_RECONCILE_ERR=""
 }
 
@@ -113,6 +118,33 @@ zbuild_push_reconcile "featB"; _rc=$?
 assert_eq "[T4] rc == 0" "0" "$_rc"
 assert_contains "[T4] recorded force-with-lease with expected remote sha" \
     "$(cat "$GIT_MOCK_LOG")" "push --force-with-lease=featB:divsha origin featB"
+
+# ─── T4b: remote STRICTLY AHEAD → no-op skip (never rewind origin) ───────────
+# HEAD is an ancestor of the remote tip (remote has extra commits we don't).
+# This is NOT divergence: a force-with-lease here would rewind origin and delete
+# the remote-only commits (the lease is pinned to the tip we read, so it would
+# NOT refuse). Must be a no-op skip.
+print_test_section "T4b: remote strictly ahead → skip, never force"
+_reset
+MOCK_LS_REMOTE="aheadsha refs/heads/featB"
+MOCK_HEAD_SHA="oldsha"
+MOCK_ANCESTOR_RC=1           # remote tip is NOT an ancestor of HEAD (ff fails)
+MOCK_HEAD_ANCESTOR_RC=0      # HEAD IS an ancestor of remote tip ⇒ strictly behind
+MOCK_ORIGIN_HEAD="origin/main"
+zbuild_push_reconcile "featB"; _rc=$?
+assert_eq "[T4b] rc == 0 (no-op skip when remote is ahead)" "0" "$_rc"
+if grep -qE '^push' "$GIT_MOCK_LOG"; then
+    assert_fail "[T4b] no push when remote strictly ahead (preserves remote commits)" \
+        "$(grep '^push' "$GIT_MOCK_LOG")"
+else
+    assert_pass "[T4b] no push when remote strictly ahead (preserves remote commits)"
+fi
+if grep -q -- '--force' "$GIT_MOCK_LOG"; then
+    assert_fail "[T4b] no force-with-lease when remote strictly ahead" \
+        "$(grep '^push' "$GIT_MOCK_LOG")"
+else
+    assert_pass "[T4b] no force-with-lease when remote strictly ahead"
+fi
 
 # ─── T5: genuine push failure → rc 3, stderr surfaced ────────────────────────
 print_test_section "T5: push fails → rc 3 with real stderr"
