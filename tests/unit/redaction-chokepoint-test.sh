@@ -123,8 +123,11 @@ GHA_LIB="$REPO_ROOT/scripts/lib/gh-automation.sh"
 # 1) The broadened Pattern-1 regex MUST detect gh-automation's real call shape.
 #    (If this stops matching, the scanner has regressed to the #995-class
 #    arg-ordering blind spot and the allowlist would be hiding nothing.)
-if grep -En "$P1_PATTERN" "$GHA_LIB" 2>/dev/null \
-    | grep -vqE '^[0-9]+:[[:space:]]*#'; then
+#    Use a var + here-string (NOT `… | grep -q`) to avoid the SIGPIPE
+#    antipattern the unit tier forbids (#1015).
+_gha_scan="$(grep -En "$P1_PATTERN" "$GHA_LIB" 2>/dev/null || true)"
+_gha_hits="$(grep -vE '^[0-9]+:[[:space:]]*#' <<< "$_gha_scan" || true)"
+if [[ -n "$_gha_hits" ]]; then
     assert_pass "chokepoint: scanner detects gh-automation raw-claude shape (exempt via explicit allowlist, not arg-ordering)"
 else
     assert_fail "chokepoint: scanner no longer detects gh-automation raw-claude shape — arg-ordering evasion regressed"
