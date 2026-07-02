@@ -17,7 +17,9 @@ setup_test_env "redaction-chokepoint"
 
 # ─── Scan patterns ────────────────────────────────────────────────────────────
 # Patterns that indicate a raw LLM invocation:
-#   1. `claude -p` or `claude --print` (direct claude CLI call)
+#   1. a `claude` command line carrying `-p`/`--print` (direct claude CLI call).
+#      The regex tolerates intervening args (e.g. `claude "${args[@]}" --print`)
+#      so arg-ordering can't evade the scanner — #995-class accidental bypass.
 #   2. `curl.*anthropic` or `curl.*anthropic.com` (raw HTTP to Anthropic API)
 #   3. `anthropic.com` in non-comment, non-doc context
 #
@@ -29,25 +31,48 @@ setup_test_env "redaction-chokepoint"
 #   - .git/             (version control internals)
 #   - docs/             (documentation only)
 #   - *.md              (markdown docs)
+#
+# Audited exception (issue A3, redaction-by-construction plan):
+#   - scripts/lib/gh-automation.sh :: gha_compute_similarity_llm sends only
+#     PUBLIC GitHub issue/PR text for dedup scoring (never scope-sensitive
+#     working-tree content), and runs as standalone GH-Actions automation with
+#     no RUN_ID/events.jsonl/scope-manifest, so route_to_model's C6 precondition
+#     is unsatisfiable. It is allowlisted BELOW by exact path — an intentional,
+#     documented exemption, not an arg-ordering accident. See ADR-004 / ADR-020
+#     v2 and the AUDITED-EXCEPTION marker in that file.
+
+# Pattern 1 regex (ERE): a `claude` token followed (possibly after other args)
+# by `--print` or a standalone `-p`. Shared by the main scan, the sentinel, and
+# the gh-automation detection assertion so all three stay in lockstep.
+P1_PATTERN='claude.*(--print|[[:space:]]-p([[:space:]]|$))'
 
 VIOLATIONS=()
 
-# ─── Pattern 1: `claude -p` (direct LLM invocation) ─────────────────────────
+# ─── Pattern 1: `claude … -p/--print` (direct LLM invocation) ────────────────
 # Exclude: tests/, legacy/, docs/, *.md, core/redaction/, core/router/
 while IFS=: read -r file line content; do
     # Skip empty lines
     [[ -z "$file" ]] && continue
+    # Skip full-comment lines — a documentation/comment mention is not a real
+    # invocation (e.g. scripts/lib/test-helpers.sh mock-installer docs).
+    _trimmed="${content#"${content%%[![:space:]]*}"}"
+    [[ "$_trimmed" == \#* ]] && continue
     # Skip allowed locations
     case "$file" in
         */tests/*|*/legacy/*|*/docs/*|*.md|*/core/redaction/*|*/core/router/*)
             continue ;;
         */.git/*)
             continue ;;
+        */scripts/lib/gh-automation.sh)
+            # AUDITED EXCEPTION (A3 / ADR-004 / ADR-020 v2): the only sanctioned
+            # raw `claude` call — public GitHub text only, no scope-manifest
+            # context, C6 unsatisfiable. Documented in-file + asserted below.
+            continue ;;
     esac
-    VIOLATIONS+=("$file:$line: raw 'claude -p' invocation (must go through core/router)")
+    VIOLATIONS+=("$file:$line: raw 'claude -p/--print' invocation (must go through core/router)")
 done < <({
     # Named extensions
-    grep -rn 'claude -p\|claude --print' \
+    grep -rEn "$P1_PATTERN" \
         --include="*.sh" --include="*.bash" \
         --exclude-dir=".git" \
         --exclude-dir="legacy" \
@@ -56,7 +81,7 @@ done < <({
         "$REPO_ROOT" 2>/dev/null || true
     # Extensionless entry-point scripts (e.g. scripts/zbuild)
     find "$REPO_ROOT/scripts" -maxdepth 1 -type f ! -name "*.*" -perm -u+x 2>/dev/null | \
-        xargs -I{} grep -n 'claude -p\|claude --print' {} /dev/null 2>/dev/null || true
+        xargs -I{} grep -En "$P1_PATTERN" {} /dev/null 2>/dev/null || true
 } | grep -v '/core/redaction/' | grep -v '/core/router/' || true)
 
 # ─── Pattern 2: curl to anthropic API ────────────────────────────────────────
@@ -90,6 +115,32 @@ else
     done
 fi
 
+# ─── Audited exception: gh-automation.sh raw-claude call (A3) ────────────────
+# The exemption must be BOTH detectable by the scanner (so it can't silently
+# regrow via arg-ordering) AND documented in-file (so it stays intentional).
+GHA_LIB="$REPO_ROOT/scripts/lib/gh-automation.sh"
+
+# 1) The broadened Pattern-1 regex MUST detect gh-automation's real call shape.
+#    (If this stops matching, the scanner has regressed to the #995-class
+#    arg-ordering blind spot and the allowlist would be hiding nothing.)
+#    Use a var + here-string (NOT `… | grep -q`) to avoid the SIGPIPE
+#    antipattern the unit tier forbids (#1015).
+_gha_scan="$(grep -En "$P1_PATTERN" "$GHA_LIB" 2>/dev/null || true)"
+_gha_hits="$(grep -vE '^[0-9]+:[[:space:]]*#' <<< "$_gha_scan" || true)"
+if [[ -n "$_gha_hits" ]]; then
+    assert_pass "chokepoint: scanner detects gh-automation raw-claude shape (exempt via explicit allowlist, not arg-ordering)"
+else
+    assert_fail "chokepoint: scanner no longer detects gh-automation raw-claude shape — arg-ordering evasion regressed"
+fi
+
+# 2) The exempt call MUST carry its AUDITED-EXCEPTION marker so the allowlist
+#    can never shelter an undocumented raw claude call.
+if grep -q 'AUDITED-EXCEPTION' "$GHA_LIB" 2>/dev/null; then
+    assert_pass "chokepoint: gh-automation.sh raw-claude exception carries AUDITED-EXCEPTION marker"
+else
+    assert_fail "chokepoint: gh-automation.sh is allowlisted but missing its AUDITED-EXCEPTION marker — undocumented raw claude call"
+fi
+
 # ─── Sentinel test: verify scanner CATCHES violations ────────────────────────
 # Temporarily inject a fake claude invocation into a test scratch file,
 # verify the scanner detects it, then remove it.
@@ -105,7 +156,7 @@ scanner_violations=()
 while IFS=: read -r file line content; do
     [[ -z "$file" ]] && continue
     scanner_violations+=("$file:$line")
-done < <(grep -n 'claude -p\|claude --print' "$SCRATCH" 2>/dev/null || true)
+done < <(grep -En "$P1_PATTERN" "$SCRATCH" 2>/dev/null || true)
 
 if [[ ${#scanner_violations[@]} -gt 0 ]]; then
     assert_pass "chokepoint sentinel: scanner detects injected violation in $SCRATCH"
@@ -121,7 +172,7 @@ post_cleanup_violations=()
 while IFS=: read -r file line content; do
     [[ -z "$file" ]] && continue
     post_cleanup_violations+=("$file:$line")
-done < <(grep -rn 'claude -p\|claude --print' "$TEST_TEMP_DIR" 2>/dev/null || true)
+done < <(grep -rEn "$P1_PATTERN" "$TEST_TEMP_DIR" 2>/dev/null || true)
 
 if [[ ${#post_cleanup_violations[@]} -eq 0 ]]; then
     assert_pass "chokepoint sentinel: no violations after scratch file removed"
