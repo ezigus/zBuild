@@ -59,14 +59,16 @@ route_to_model 2>/dev/null; _rc=$?
 set -e
 assert_eq "no args → rc=2" "2" "$_rc"
 
-# ── Precondition: no run_id (not bootstrap, no --skip-precondition) → rc=2 ──
+# ── Redaction by construction (ADR-043): run_id set, no prior redaction, no
+#    manifest configured → the router redacts (passthrough stub) and proceeds. ─
 : > "$ZBUILD_EVENTS_JSONL"
 export ZBUILD_RUN_ID="some-run"
 unset ZBUILD_SCOPE_OVERRIDE 2>/dev/null || true
 set +e
 route_to_model "T2" "prompt" 2>/dev/null; _rc=$?
 set -e
-assert_eq "precondition refused: no events log → rc=2" "2" "$_rc"
+assert_eq "no prior redaction → router redacts by construction → rc=0" "0" "$_rc"
+assert_event_emitted "redaction.applied emitted by construction" "$ZBUILD_EVENTS_JSONL" "redaction.applied"
 export ZBUILD_SCOPE_OVERRIDE=1
 unset ZBUILD_RUN_ID 2>/dev/null || true
 

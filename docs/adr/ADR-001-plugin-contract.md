@@ -38,6 +38,12 @@ hooks:
 requires:
   core: [redaction, event-bus, state, locks, github, ...]
   plugins: [<plugin-id>, ...]
+  # NOTE (ADR-043): a `kind: agent` plugin still declares `requires.core:
+  # [redaction]` — redaction is still REQUIRED — but it no longer needs to CALL
+  # `apply_scope_redaction` itself. As of ADR-043 the router redacts by
+  # construction in `route_to_model` / `route_to_model_loop`. The declaration
+  # now asserts "this plugin's prompts are redaction-governed", enforced
+  # centrally by the router rather than per-plugin.
 
 provides:
   artifact_type: <type>

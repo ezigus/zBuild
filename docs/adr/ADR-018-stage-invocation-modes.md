@@ -122,6 +122,13 @@ The loop itself is deterministic bash; the LLM is a subprocess called inside it.
 Loop control logic (iteration count, termination condition, diff capture) is pure
 bash.
 
+> **Amended by [ADR-043](ADR-043-redaction-by-construction.md):** the loop's
+> per-iteration redaction and single-shot `route_to_model`'s redaction are now the
+> **same code path** — both call the shared `_route_redact_prompt` helper, which
+> emits the canonical `redaction.applied` (or fail-closed `redaction.refused`).
+> Single-shot `route_to_model` now redacts by construction just as this loop
+> always has; the former C6 refusal precondition is retired.
+
 Scope declaration: the prompt states which files the stage may touch (e.g.
 `plan.files[]` for build). Pipeline post-validates the resulting diff:
 - Parse all `diff --git a/<path>` entries.

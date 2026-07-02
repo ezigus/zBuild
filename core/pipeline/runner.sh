@@ -168,6 +168,24 @@ _runner_duration_token() {
     fi
 }
 
+# ─── _runner_export_scope_allowlist <state_dir> (ADR-043) ────────────────────
+# Redaction by construction: derive the per-run scope allowlist from plan.files[]
+# and export it as ZBUILD_SCOPE_ALLOWLIST so route_to_model can redact without a
+# plugin passing it. Called per-stage because plan.json only exists after the
+# plan stage runs (empty before then — harmless, the scope manifest is the base
+# allowlist and this value is purely ADDITIVE). Matches the extraction used by
+# the design/build plugins.
+_runner_export_scope_allowlist() {
+    local state_dir="$1"
+    local plan_json="$state_dir/artifacts/plan.json"
+    local csv=""
+    if [[ -f "$plan_json" ]]; then
+        csv="$(jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
+            "$plan_json" 2>/dev/null || echo "")"
+    fi
+    export ZBUILD_SCOPE_ALLOWLIST="$csv"
+}
+
 # ─── _runner_pipeline_duration_token (#525) ──────────────────────────────────
 # Parallel to _runner_duration_token but for the pipeline-wide window. No stage
 # argument — reads _RUNNER_PIPELINE_START_MS directly. Returns "?s" on cache
@@ -984,6 +1002,13 @@ main() {
     # the resolved state_dir. Without this export the var is unset in plugin
     # subshells and the #617 BRANCH STATE block is silently skipped.
     export ZBUILD_STATE_DIR="$state_dir"
+    # ADR-043 (redaction by construction): the router self-redacts when a stage
+    # did not redact itself. Expose the fixed scope-manifest path to EVERY stage
+    # (one place) so route_to_model can resolve the manifest without any plugin
+    # passing it. The companion per-run allowlist (ZBUILD_SCOPE_ALLOWLIST, from
+    # plan.files[]) is derived per-stage below via _runner_export_scope_allowlist,
+    # because plan.json only exists after the plan stage runs.
+    export ZBUILD_SCOPE_MANIFEST="$state_dir/scope-manifest.md"
     # #887: events must follow the (possibly per-run) state dir, else two runs'
     # events interleave in one events.jsonl. event-bus.sh defaults all three
     # vars to $HOME/.zbuild/state at SOURCE time, so for the per-run default we
@@ -1713,6 +1738,8 @@ main() {
                     export ZBUILD_CURRENT_STAGE="$_ust"
                     # #682: linear stage in cycle-aware dispatch — cardinal label.
                     export ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_cardinal"
+                    # ADR-043: refresh the per-run scope allowlist for this stage.
+                    _runner_export_scope_allowlist "$state_dir"
                     set +e; cycle_dispatch_stage "$_ust" 0 "$state_file"; _rc=$?; set -e
                     unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_SEQ_LABEL
                     if [[ $_rc -ne 0 ]]; then
@@ -1918,6 +1945,9 @@ main() {
         # instead of the per-stage retry counter. Banner reads this via
         # ZBUILD_STAGE_IO_SEQ_LABEL fallback inside stage_io_begin.
         export ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_linear_cardinal"
+        # ADR-043: refresh the per-run scope allowlist for this stage so the
+        # router can self-redact (empty until plan.json exists — additive only).
+        _runner_export_scope_allowlist "$state_dir"
 
         # Intentional fail-open: missing/empty template roles = no-template path (handled below)
         local roles_out; roles_out="$(template_stage_roles "$stage" 2>/dev/null || true)"

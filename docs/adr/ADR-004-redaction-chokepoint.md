@@ -18,6 +18,8 @@ Examples of what could leak without redaction:
 
 zBuild has **one** function that emits LLM-bound text. All 9 (or however many in the future) prompt sites pass through it.
 
+> **Superseded in part by [ADR-043](ADR-043-redaction-by-construction.md):** the redaction *call* is now owned by the router's model-call path (`route_to_model` / `route_to_model_loop`), not by each plugin. `apply_scope_redaction` remains the single chokepoint; ADR-043 only inverts *who invokes it* (router by construction, unless a plugin already redacted). The fail-closed contract below is unchanged.
+
 ### The chokepoint
 
 ```bash
@@ -41,7 +43,7 @@ Behavior:
 - **Test:** `tests/unit/redaction-chokepoint-test.sh` greps the repo for `<claude\|<curl.*anthropic` invocations outside `core/redaction/` and `core/router/`; any match fails the test. (Per ADR-012, this lives in `tests/unit/` because it's a static repo scan, not an end-to-end integration.)
 - **Code review:** PR checklist includes "Does this PR introduce a new LLM call?" → if yes, "Does it go through `core/redaction/apply_scope_redaction`?"
 - **Manifest:** plugins MUST declare `requires.core: [redaction]`; the registry refuses to load a `kind: agent` plugin without it.
-- **Event-bus assertion:** every `model.route` event MUST be preceded by a `redaction.applied` event within the same `run_id` + `stage`. The engine refuses to call the router if the precondition is unmet.
+- **Redaction by construction (ADR-043):** every `model.route` event MUST be preceded by a `redaction.applied` event within the same `run_id` + `stage`. As of ADR-043 this is guaranteed *by construction*: `route_to_model` redacts the prompt itself unless a plugin already did (the former C6 "refuse if not redacted" precondition became "redact if not already redacted"). The real anti-bypass guarantee is the static lint (`scripts/lib/lint-stage-io.sh`) plus the fact that `route_to_model[_loop]` is the ONLY model-call path.
 - **Stage-level enforcement:** ADR-013's tier assignment additionally reinforces this invariant — stages assigned T0 (`test`, `pr`, `deploy`, `validate`) MUST never emit LLM-bound text. The T0 designation is a semantic constraint enforced by code review and the manifest redaction requirement; any plugin wired into a T0 stage that calls the router is a bug surfaced by the redaction chokepoint and manifest validation. See [ADR-013](ADR-013-canonical-stage-list.md) §Tier assignment rationale.
 
 ### Scope manifest contract
@@ -83,7 +85,7 @@ The token file must be written by the operator manually each run (one-shot). The
 ## Implementation Notes (Phase 0.5 — issue #291)
 
 - **Chokepoint** lives at `core/redaction/scope-redaction.sh:34–158` (`apply_scope_redaction`). It refuses to emit when the scope manifest is missing/empty unless an explicit operator override (`ZBUILD_SCOPE_OVERRIDE=1` + token file matching `ZBUILD_RUN_ID`) is set, in which case it emits a `redaction.refused.overridden` audit event.
-- **Router C6 precondition** (`core/router/route.sh:23–66`) gates LLM dispatch on the most recent event being `redaction.applied`. The outer `--skip-precondition` path is fail-closed; the inner `[[ -n "$run_id" && -f ${ZBUILD_EVENTS_JSONL:-} ]]` no-ops when `ZBUILD_RUN_ID` is unset — that narrow edge case is tracked by **#289** (rescoped 2026-05-26).
+- **Router redaction by construction** (`core/router/route.sh`, `_route_ensure_redaction` / `_route_redact_prompt`) — as of ADR-043 the router redacts the prompt itself when a plugin has not already done so (detected via the per-stage most-recent-`redaction.applied` check), then routes. The former C6 precondition (`_route_check_precondition`) that *refused* dispatch is retired in favour of this. The `--skip-precondition` operator-override path is unchanged (fail-closed without a matching token); degenerate environments (no `run_id` / no events log) also stay fail-closed. Historic edge case **#289** (rescoped 2026-05-26) is subsumed: a run with no prior redaction is now redacted, not refused.
 - **KEEPERS §C note correction:** legacy had 9 redaction seams; zBuild unifies all LLM-bound emission through this one chokepoint. The 9-seam framing in KEEPERS describes the *legacy* state.
 - **Intake note:** `plugins/agent/intake/manifest.yaml` declares `requires.core: [redaction, event-bus, state]` but does not yet call `apply_scope_redaction` because intake doesn't emit LLM-bound text in Phase 0.5. Phase 1 intake-LLM wiring MUST invoke the chokepoint before any model call.
 - **Test coverage:** `tests/unit/core-redaction-test.sh` exercises fail-closed behavior; `tests/mutation/scope-redaction-mutations.md` inverts the guard and confirms tests catch it.

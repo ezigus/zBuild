@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Tests: core/router/route.sh — C6 precondition is PARALLEL-SAFE (ADR-039 §3).
+# Tests: core/router/route.sh — redaction by construction is PARALLEL-SAFE
+# (ADR-043 + ADR-039 §3).
 #
 # Parallel-group members (core/pipeline/parallel-orchestrator.sh) run
 # concurrently and emit interleaved events to the SHARED run-level event log.
-# A sibling member's `plugin.run.start` can therefore become the most-recent
-# GLOBAL event for the run before any one member emits its own
-# `redaction.applied`. The old run-level C6 check failed all members in that
-# case (dogfood run 20260629214235-33569). The fix scopes C6 to the active
-# stage (ZBUILD_CURRENT_STAGE, stamped onto every event's envelope) so each
-# member enforces ITS OWN redaction independently — without weakening ADR-004.
+# Under ADR-043 the router redacts each member's prompt by construction: the
+# per-stage "already redacted?" check (scoped to ZBUILD_CURRENT_STAGE, stamped
+# onto every event) is now a DEDUP guard, not a refusal gate. A member that
+# already redacted (its own redaction.applied is most-recent FOR ITS STAGE)
+# proceeds without re-redacting; a member that has NOT redacted gets its OWN
+# router redaction — it never rides a sibling's redaction (ADR-004 preserved),
+# and it is never blocked by a sibling's interleaved event (the dogfood failure
+# run 20260629214235-33569, now dissolved by redaction-by-construction).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,38 +64,30 @@ _emit "plugin.run.start" "review-lens-a"
 _emit "redaction.applied" "review-lens-a"
 _emit "plugin.run.start" "review-lens-b"   # GLOBAL most-recent (a sibling's)
 
-# ─── Test 1: member A's OWN redaction is most-recent FOR-ITS-STAGE → C6 passes
+# ─── Test 1: member A already redacted (own redaction.applied is most-recent
+# FOR-ITS-STAGE) → DEDUP: the router proceeds WITHOUT re-redacting (no double
+# emit) and routes.
 export ZBUILD_CURRENT_STAGE="review-lens-a"
+applied_before_a="$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "member A: own redaction.applied is most-recent for its stage → C6 passes (rc=0)" "0" "$rc"
+assert_eq "member A: own redaction is most-recent for its stage → proceeds (rc=0)" "0" "$rc"
 assert_eq "member A: response passthrough" "OK-RESPONSE" "$out"
 
 route_a_fired="$(jq -r --arg rid "$ZBUILD_RUN_ID" \
     'select(.run_id==$rid and .type=="model.route") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
     | grep -c "model.route" || true)"
-assert_gt "member A: model.route emitted once C6 satisfied per-stage" "$route_a_fired" "0"
+assert_gt "member A: model.route emitted after dedup" "$route_a_fired" "0"
 
-# ─── Test 2: baseline proof — WITHOUT per-stage scoping (no ZBUILD_CURRENT_STAGE)
-# the same shared log fails C6, because the global most-recent event is the
-# sibling's plugin.run.start. This is the bug the fix cures.
-: > "$ZBUILD_EVENTS_JSONL"
-_emit "plugin.run.start" "review-lens-a"
-_emit "redaction.applied" "review-lens-a"
-_emit "plugin.run.start" "review-lens-b"
+applied_after_a="$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "member A: NO second redaction.applied (dedup — no double redaction)" \
+    "$applied_before_a" "$applied_after_a"
 
-unset ZBUILD_CURRENT_STAGE
-set +e
-out="$(route_to_model "T2" "ping" 2>/dev/null)"
-rc=$?
-set -e
-assert_eq "no stage scope: global most-recent is sibling's plugin.run.start → C6 violates (rc=2)" "2" "$rc"
-
-# ─── Test 3: ADR-004 NOT weakened — a member CANNOT ride a sibling's redaction.
-# Member B's most-recent for-its-stage event is its own plugin.run.start (B has
-# not redacted yet); only sibling A has redaction.applied. C6 must FAIL for B.
+# ─── Test 2: member B has NOT redacted (own most-recent is plugin.run.start).
+# The router redacts for B BY CONSTRUCTION — B gets its OWN redaction.applied
+# (stamped stage=review-lens-b), it does NOT ride sibling A's (ADR-004 intact).
 : > "$ZBUILD_EVENTS_JSONL"
 _emit "plugin.run.start" "review-lens-a"
 _emit "redaction.applied" "review-lens-a"
@@ -103,14 +98,18 @@ set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "member B: own last event is plugin.run.start (no redaction for B) → C6 violates (rc=2)" "2" "$rc"
+assert_eq "member B: no own redaction → router redacts by construction (rc=0)" "0" "$rc"
 
-violated_b="$(jq -r --arg rid "$ZBUILD_RUN_ID" \
-    'select(.run_id==$rid and .type=="router.precondition.violated") | .data.stage // empty' \
+# The freshly-emitted redaction.applied must be stamped with B's stage, proving
+# B got its OWN redaction rather than riding A's.
+applied_b_stage="$(jq -r --arg rid "$ZBUILD_RUN_ID" \
+    'select(.run_id==$rid and .type=="redaction.applied") | .stage // empty' \
     "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || true)"
-assert_eq "member B: violation event tagged with offending stage" "review-lens-b" "$violated_b"
+assert_eq "member B: router-emitted redaction.applied is stamped stage=review-lens-b" \
+    "review-lens-b" "$applied_b_stage"
 
-# ─── Test 4: a member whose stage has NO events yet → fail-closed (#289) ──────
+# ─── Test 3: member C whose stage has NO events yet → still redacted by
+# construction (never blocked by absence of a sibling's redaction).
 : > "$ZBUILD_EVENTS_JSONL"
 _emit "plugin.run.start" "review-lens-a"
 _emit "redaction.applied" "review-lens-a"
@@ -120,7 +119,12 @@ set +e
 out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
-assert_eq "member C: no events for its stage → C6 refuses fail-closed (rc=2)" "2" "$rc"
+assert_eq "member C: no events for its stage → router redacts by construction (rc=0)" "0" "$rc"
+applied_c_stage="$(jq -r --arg rid "$ZBUILD_RUN_ID" \
+    'select(.run_id==$rid and .type=="redaction.applied") | .stage // empty' \
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || true)"
+assert_eq "member C: router-emitted redaction.applied is stamped stage=review-lens-c" \
+    "review-lens-c" "$applied_c_stage"
 
 cleanup_test_env
 print_test_results

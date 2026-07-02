@@ -268,7 +268,11 @@ a4c_err_evt=$(grep '"router.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="router.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
 assert_eq "A4c: router.error event reason=empty_response" "empty_response" "$a4c_err_evt"
 
-# ─── Test A4d: model.route emitted without preceding redaction.applied ─────────
+# ─── Test A4d: no prior redaction → router redacts BY CONSTRUCTION (ADR-043) ──
+# Formerly C6 refused here (rc=2). Redaction is now owned by route_to_model: with
+# no manifest configured in this test the router falls back to the passthrough
+# stub, emits the canonical redaction.applied, and proceeds. A new stage author
+# thus writes zero redaction code.
 # Restore working claude mock
 cat > "$TEST_TEMP_DIR/bin/claude" <<'GOOD_MOCK'
 #!/usr/bin/env bash
@@ -277,7 +281,7 @@ exit 0
 GOOD_MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
-# Set ZBUILD_RUN_ID so the C6 check sees run events.
+# Set ZBUILD_RUN_ID so the router can scope/emit the redaction.
 export ZBUILD_RUN_ID="c6-test-run-id-$$"
 : > "$ZBUILD_EVENTS_JSONL"
 
@@ -292,11 +296,15 @@ out="$(route_to_model "T2" "ping" 2>/dev/null)"
 rc=$?
 set -e
 
-assert_eq "A4d: model.route without redaction.applied → rc=2 (fatal)" "2" "$rc"
+assert_eq "A4d: no prior redaction → router redacts by construction → rc=0" "0" "$rc"
+assert_eq "A4d: response passthrough after router-owned redaction" "OK-RESPONSE" "$out"
 
-a4d_evt=$(grep '"router.precondition.violated"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r '.type // empty' 2>/dev/null | tail -1 || true)
-assert_eq "A4d: router.precondition.violated event emitted" "router.precondition.violated" "$a4d_evt"
+a4d_redact=$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
+assert_gt "A4d: router emitted redaction.applied by construction" "$a4d_redact" "0"
+
+a4d_route=$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r --arg rid "$ZBUILD_RUN_ID" 'select(.run_id==$rid) | .type' 2>/dev/null | grep -c "model.route" || true)
+assert_gt "A4d: model.route emitted after router-owned redaction" "$a4d_route" "0"
 
 # ─── Test A4e: model.route WITH preceding redaction.applied → succeeds ─────────
 : > "$ZBUILD_EVENTS_JSONL"

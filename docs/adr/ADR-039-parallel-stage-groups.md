@@ -116,6 +116,12 @@ ADR-038's fan-out workaround — is:
   Without this, a sibling member's interleaved `plugin.run.start` becomes the run-global most-recent event
   and fails C6 for every concurrent LLM member (observed in the first `review_lenses` dogfood run,
   `20260629214235-33569`). Each member now provably enforces its own redaction independently.
+  **Amended by [ADR-043](ADR-043-redaction-by-construction.md):** the per-`(run_id, stage)`
+  most-recent-`redaction.applied` check is no longer a *refusal gate* (`_route_check_precondition`
+  is retired) — it is now a per-stage **dedup** in `_route_ensure_redaction`. A member that already
+  redacted proceeds unchanged; a member that has not is redacted by the router by construction and
+  emits its OWN `redaction.applied` stamped with its stage (it still never rides a sibling's
+  redaction). The per-stage scoping remains essential — it is what makes the dedup member-correct.
 - **`events.jsonl` is append-only via `flock`.** Concurrent members emit events; the append is
   serialized by an advisory lock so the event log stays a valid JSONL stream (no interleaved partial
   lines). Event ordering across members is by append time and is not asserted to follow member-`flow:`
