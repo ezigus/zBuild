@@ -494,6 +494,18 @@ _render_parallel_entry() {
     } >&2 2>/dev/null || true
 }
 
+# ─── _render_parallel_group_complete <group_id> <member_count> <failure_count> ─
+# Issue OUT (ADR-039): DIM trailer after a parallel group's per-member lines,
+# mirroring _render_cycle_exit's role for cycles. e.g.
+# `▸ review_lenses complete — 5 members, 0 blocking`.
+_render_parallel_group_complete() {
+    local group_id="$1" count="${2:-0}" fail="${3:-0}"
+    {
+        printf '%b▸ %s complete — %s members, %s blocking%b\n' \
+            "${DIM:-}" "$group_id" "$count" "$fail" "${RESET:-}"
+    } >&2 2>/dev/null || true
+}
+
 # ─── _render_cycle_iter_divider <cycle_id> <iter> <max> ───────────────────────
 # Light `─` CYAN sub-divider for each iter boundary, e.g.
 # `─── build_test_cycle iter 2/5 ─────`. When this cycle is nested inside
@@ -1495,6 +1507,24 @@ main() {
     cycle_exit_hook() {
         local _h_cycle_id="$1" _h_reason="$2" _h_iter="$3" _h_max="$4"
         _render_cycle_exit "$_h_cycle_id" "$_h_reason" "$_h_iter" "$_h_max"
+    }
+
+    # Issue OUT (ADR-039): per-member completion render hook — the parallel
+    # sibling of cycle_iter_complete_hook. parallel-orchestrator.sh calls it (when
+    # declared) once per member in the parent post-join loop (declaration order,
+    # parent-serial → no subshell stdout interleave). Members are file-only (io:
+    # [file]), so instead of streaming raw JSON each lens prints ONE
+    # human-readable line. Resolves the shared artifact dir from main()'s
+    # state_dir (dynamic scope at the orchestrator call site).
+    parallel_member_complete_hook() {
+        local _h_group="$1" _h_member="$2" _h_slot="$3" \
+              _h_rc="$4" _h_verdict="$5" _h_status="$6"
+        render_parallel_member_line "$_h_member" "${state_dir}/artifacts" \
+            "$_h_rc" "$_h_verdict" "$_h_status"
+    }
+    parallel_group_complete_hook() {
+        local _h_group="$1" _h_count="$2" _h_fail="$3"
+        _render_parallel_group_complete "$_h_group" "$_h_count" "$_h_fail"
     }
 
     if [[ $_run_dispatch_units -eq 1 ]]; then

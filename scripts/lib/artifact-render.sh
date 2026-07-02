@@ -720,6 +720,142 @@ render_review_report_md() {
     fi
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Built-in renderer: render_lens_md (Issue OUT / ADR-015)
+# Input: a single lens result JSON. Tolerates BOTH shapes:
+#   - review-lens normalized: {name, score, findings[]}
+#   - security-lens (compound_quality): {plugin_id, findings[]}  (NO score)
+# Renders `#### <name> (score: <score>/10)` (score omitted when absent) + one
+# bullet per finding. jq-guarded + score-optional so it NEVER returns non-zero
+# (a renderer error would re-trigger raw-JSON passthrough in render_artifact).
+# ═══════════════════════════════════════════════════════════════════════════
+render_lens_md() {
+    local input="$1"
+    if [[ -z "$input" ]]; then
+        printf '_empty lens result_'
+        return 0
+    fi
+    if ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+        local fence; fence="$(_artifact_pick_fence "$input")"
+        printf '%s\n%s\n%s' "$fence" "$input" "$fence"
+        return 0
+    fi
+
+    local name score
+    name="$(printf '%s' "$input" | jq -r '.name // .plugin_id // "lens"' 2>/dev/null)"
+    score="$(printf '%s' "$input" | jq -r 'if .score == null then "" else (.score|tostring) end' 2>/dev/null)"
+
+    if [[ -n "$score" ]]; then
+        printf '#### %s (score: %s/10)\n' \
+            "$(_artifact_md_escape_inline "$name")" "$(_artifact_md_escape_inline "$score")"
+    else
+        printf '#### %s\n' "$(_artifact_md_escape_inline "$name")"
+    fi
+
+    local _jq_esc='def esc: tostring
+        | gsub("\u001b\\[[0-9;?]*[A-Za-z~]"; "")
+        | gsub("\u001b."; "")
+        | gsub("[\r\n]"; " ")
+        | gsub("`"; "\\`");'
+    local fc
+    fc="$(printf '%s' "$input" | jq -r '(.findings // []) | length' 2>/dev/null || printf '0')"
+    if [[ "$fc" =~ ^[0-9]+$ && "$fc" -gt 0 ]]; then
+        printf '%s' "$input" | jq -r "$_jq_esc"'
+            (.findings // [])[] |
+            "- [\(.severity|esc)] \(.file|esc)" +
+            (if .line then ":\(.line)" else "" end) +
+            " — \(.message|esc)"' 2>/dev/null || true
+    else
+        printf 'No findings.\n'
+    fi
+}
+
+# ─── render_lens_one_line <lens_id> <artifact_dir> [<rc>] [<status>] ──────────
+# ONE terminal line summarizing a lens result (Issue OUT / ADR-039). Reads
+# <artifact_dir>/lens-<lens_id>.json. Shape:
+#   ✓ <name> — <score>/10, <n> findings (top: <sev> — <file>[:<line>]: <msg80>)
+#   ✓ <name> — <score>/10, no findings          (findings == [])
+#   ⚠ <name> — no result                         (missing/unparseable artifact)
+# ✗ replaces ✓ when rc≠0 or status=failed. Top finding = highest severity
+# (critical>high>medium>low; jq sort_by is stable → tie keeps declaration order).
+# Prints to fd ${ZBUILD_STAGE_IO_FD:-2}; always returns 0 (best-effort render).
+render_lens_one_line() {
+    local lens_id="$1" artifact_dir="$2" rc="${3:-0}" status="${4:-}"
+    local fd="${ZBUILD_STAGE_IO_FD:-2}"
+    local glyph="✓"
+    { [[ "$rc" != "0" ]] || [[ "$status" == "failed" ]]; } && glyph="✗"
+
+    local file="$artifact_dir/lens-$lens_id.json"
+    if [[ ! -s "$file" ]] || ! jq empty "$file" >/dev/null 2>&1; then
+        # SC2261: `>&"$fd" 2>/dev/null` is intentional — dup stdout to fd (its
+        # current target) then silence printf's own stderr; not a real conflict.
+        # shellcheck disable=SC2261
+        printf '%b⚠ %s — no result%b\n' "${DIM:-}" \
+            "$(_artifact_md_escape_inline "$lens_id")" "${RESET:-}" >&"$fd" 2>/dev/null || true
+        return 0
+    fi
+
+    local name score fc
+    name="$(jq -r '.name // .plugin_id // empty' "$file" 2>/dev/null)"
+    [[ -z "$name" ]] && name="$lens_id"
+    score="$(jq -r 'if .score == null then "" else (.score|tostring) end' "$file" 2>/dev/null)"
+    fc="$(jq -r '(.findings // []) | length' "$file" 2>/dev/null || printf '0')"
+    [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
+    name="$(_artifact_md_escape_inline "$name")"
+    local score_seg=""
+    [[ -n "$score" ]] && score_seg=" — $(_artifact_md_escape_inline "$score")/10"
+
+    if [[ "$fc" -eq 0 ]]; then
+        # shellcheck disable=SC2261
+        printf '%b%s %s%s, no findings%b\n' \
+            "${DIM:-}" "$glyph" "$name" "$score_seg" "${RESET:-}" >&"$fd" 2>/dev/null || true
+        return 0
+    fi
+
+    local top sev tfile tline tmsg loc
+    top="$(jq -r '
+        def esc: tostring | gsub("[\r\n]"; " ") | gsub("\u0001"; " ");
+        def rank: (. // "" | ascii_downcase) as $s
+            | {"critical":0,"high":1,"medium":2,"low":3}[$s] // 4;
+        ( [ .findings[] ] | sort_by(.severity | rank) | .[0] )
+        | "\(.severity|esc)\u0001\(.file|esc)\u0001\((.line // "")|tostring)\u0001\(.message|esc)"
+    ' "$file" 2>/dev/null)"
+    IFS=$'\001' read -r sev tfile tline tmsg <<< "$top"
+    tmsg="${tmsg:0:80}"
+    loc="$tfile"
+    [[ -n "$tline" && "$tline" != "null" ]] && loc="$tfile:$tline"
+
+    # shellcheck disable=SC2261
+    printf '%b%s %s%s, %s findings (top: %s — %s: %s)%b\n' \
+        "${DIM:-}" "$glyph" "$name" "$score_seg" "$fc" \
+        "$(_artifact_md_escape_inline "$sev")" \
+        "$(_artifact_md_escape_inline "$loc")" \
+        "$(_artifact_md_escape_inline "$tmsg")" "${RESET:-}" >&"$fd" 2>/dev/null || true
+    return 0
+}
+
+# ─── render_parallel_member_line <member> <artifact_dir> <rc> <verdict> <status>
+# Generic per-member completion line for a parallel group (Issue OUT / ADR-039).
+# Delegates to render_lens_one_line when a lens-<id>.json artifact exists (lens
+# members); otherwise a generic `✓/✗ <member> — <status> (<verdict>)` fallback.
+render_parallel_member_line() {
+    local member="$1" artifact_dir="$2" rc="${3:-0}" verdict="${4:-}" status="${5:-}"
+    local lens_id="${member#lens-}"
+    if [[ -s "$artifact_dir/lens-$lens_id.json" ]]; then
+        render_lens_one_line "$lens_id" "$artifact_dir" "$rc" "$status"
+        return 0
+    fi
+    local fd="${ZBUILD_STAGE_IO_FD:-2}"
+    local glyph="✓"
+    { [[ "$rc" != "0" ]] || [[ "$status" == "failed" ]]; } && glyph="✗"
+    # shellcheck disable=SC2261
+    printf '%b%s %s — %s (%s)%b\n' "${DIM:-}" "$glyph" \
+        "$(_artifact_md_escape_inline "$member")" \
+        "$(_artifact_md_escape_inline "${status:-unknown}")" \
+        "$(_artifact_md_escape_inline "${verdict:-unknown}")" "${RESET:-}" >&"$fd" 2>/dev/null || true
+    return 0
+}
+
 # ─── Register built-ins (idempotent) ────────────────────────────────────────
 register_artifact_renderer "plan"            "render_plan_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "diff"            "render_diff_md"            >/dev/null 2>&1 || true
@@ -727,3 +863,9 @@ register_artifact_renderer "review"          "render_review_md"          >/dev/n
 register_artifact_renderer "test_assessment" "render_test_assessment_md" >/dev/null 2>&1 || true
 register_artifact_renderer "impact"          "render_impact_md"          >/dev/null 2>&1 || true
 register_artifact_renderer "review_report"   "render_review_report_md"   >/dev/null 2>&1 || true
+# Issue OUT: lens artifact ids render to prose (never raw-JSON passthrough).
+# review-lens (review_lenses group) + security-lens (compound_quality) share
+# render_lens_md, which tolerates both the {name,score,findings[]} and the
+# {plugin_id,findings[]} (no score) shapes.
+register_artifact_renderer "review-lens"     "render_lens_md"            >/dev/null 2>&1 || true
+register_artifact_renderer "security-lens"   "render_lens_md"            >/dev/null 2>&1 || true

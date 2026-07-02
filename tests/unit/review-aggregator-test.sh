@@ -166,6 +166,44 @@ assert_eq "[SPEC-8] review_aggregator_run(stage, state_file) returns 0" "0" "$_r
 assert_file_exists "[SPEC-8] hook writes review-report.json into artifacts dir" \
     "$STATE_DIR/artifacts/review-report.json"
 
+# ─── SPEC-9 (Issue OUT): aggregator prints the prose report to fd-2, io-gated ─
+# When the stage's io destinations include stdout, the operator sees the rendered
+# review-report.md prose on the terminal. When stdout is NOT a destination, the
+# aggregator stays silent (artifacts still written).
+print_test_section "SPEC-9: io-gated prose print"
+source "$REPO_ROOT/core/pipeline/template.sh"
+
+STATE_DIR9="$TEST_TEMP_DIR/state9"
+mkdir -p "$STATE_DIR9/artifacts"
+STATE_FILE9="$STATE_DIR9/pipeline-state.json"
+echo '{"schema_version":1,"run_id":"ra-io-001","issue":"0","stage_statuses":{}}' > "$STATE_FILE9"
+write_lens "$STATE_DIR9/artifacts" "security" \
+    '{"schema_version":1,"name":"security","score":5,"findings":[{"file":"q.sh","category":"logic","severity":"high","line":2,"message":"boom"}]}'
+
+# (a) stdout destination present → prose printed to fd-2.
+export _TPL_STAGE_IO_DESTS_review_aggregator="file,stdout"
+export ZBUILD_CURRENT_STAGE="review-aggregator"
+PRINT_OUT="$TEST_TEMP_DIR/agg-print.out"
+set +e
+review_aggregator_run "review-aggregator" "$STATE_FILE9" 2>"$PRINT_OUT" >/dev/null
+set -e
+_printed="$(cat "$PRINT_OUT")"
+assert_contains "[SPEC-9a] prose report printed to fd-2 (stdout dest)" "$_printed" "## Review Report"
+assert_contains "[SPEC-9a] merge-readiness line printed" "$_printed" "**Merge Readiness:**"
+
+# (b) stdout NOT a destination → nothing printed (still writes artifacts).
+export _TPL_STAGE_IO_DESTS_review_aggregator="file"
+PRINT_OUT2="$TEST_TEMP_DIR/agg-noprint.out"
+set +e
+review_aggregator_run "review-aggregator" "$STATE_FILE9" 2>"$PRINT_OUT2" >/dev/null
+set -e
+if grep -q '## Review Report' "$PRINT_OUT2"; then
+    assert_fail "[SPEC-9b] file-only dest → aggregator silent on fd-2" "prose leaked"
+else
+    assert_pass "[SPEC-9b] file-only dest → aggregator prints nothing"
+fi
+unset ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review_aggregator
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -229,7 +229,7 @@ lens-security:
   gate: auto
   roles: [review_lens]
   io:
-    destinations: [file, stdout]
+    destinations: [file]
     tail_lines: 200
   router:
     timeout_s: 300
@@ -239,7 +239,7 @@ lens-performance:
   gate: auto
   roles: [review_lens]
   io:
-    destinations: [file, stdout]
+    destinations: [file]
     tail_lines: 200
   router:
     timeout_s: 300
@@ -249,7 +249,7 @@ lens-red-team:
   gate: auto
   roles: [review_lens]
   io:
-    destinations: [file, stdout]
+    destinations: [file]
     tail_lines: 200
   router:
     timeout_s: 300
@@ -259,7 +259,7 @@ lens-correctness:
   gate: auto
   roles: [review_lens]
   io:
-    destinations: [file, stdout]
+    destinations: [file]
     tail_lines: 200
   router:
     timeout_s: 300
@@ -272,7 +272,7 @@ lens-scope:
   gate: auto
   roles: [review_lens]
   io:
-    destinations: [file, stdout]
+    destinations: [file]
     tail_lines: 200
   router:
     timeout_s: 300

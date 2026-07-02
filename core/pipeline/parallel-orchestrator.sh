@@ -289,10 +289,21 @@ parallel_group_run() {
         blob="$(jq -c --arg s "$m" --arg v "$verdict" --arg st "$status" \
             '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
         [[ "$rc" -ne 0 ]] && fail=$(( fail + 1 ))
+        # Issue OUT (ADR-039): per-member terminal render — the runner registers
+        # this hook so the orchestrator stays render-free. Called in declaration
+        # order (this loop is parent-serial), so lines never interleave.
+        if declare -F parallel_member_complete_hook >/dev/null 2>&1; then
+            parallel_member_complete_hook "$group_id" "$m" "$slot" "$rc" "$verdict" "$status" || true
+        fi
     done
 
     _PARALLEL_LAST_VERDICTS_BLOB="$blob"
     _PARALLEL_LAST_FAILURE_COUNT="$fail"
+
+    # Issue OUT (ADR-039): optional group-completion trailer (mirror cycle exit).
+    if declare -F parallel_group_complete_hook >/dev/null 2>&1; then
+        parallel_group_complete_hook "$group_id" "${#members[@]}" "$fail" || true
+    fi
 
     local group_status="complete"
     [[ $fail -gt 0 ]] && group_status="failed"
