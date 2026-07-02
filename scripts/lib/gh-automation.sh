@@ -101,13 +101,31 @@ gha_score_meets_threshold() {
 # Returns "<score>|<marker>" where marker is _LLM_OK or a failure code.
 # NEVER exits non-zero; NEVER returns empty score. Fail-open by contract.
 #
-# This helper calls `claude` CLI directly rather than route_to_model because:
-# 1. Inputs are public GitHub issue text, not codebase content
-# 2. This is automation tooling, not a pipeline stage
-# 3. route_to_model requires RUN_ID / events.jsonl / redaction.applied
-#    precondition that doesn't fit the workflow-script use case
-# ADR-004's chokepoint applies to pipeline-stage LLM calls; ADR-020 v2
-# documents this deviation.
+# ── AUDITED-EXCEPTION: raw `claude` call outside the router (ADR-004 / ADR-020 v2) ──
+# This is the ONLY sanctioned direct `claude` invocation outside core/router +
+# core/redaction. It is EXEMPT from the redaction chokepoint — deliberately, not
+# accidentally — and is explicitly allowlisted in
+# tests/unit/redaction-chokepoint-test.sh. If you add another raw model call
+# anywhere, that test fails; do not extend this exemption without an ADR update.
+#
+# WHY it is exempt (both conditions hold):
+# 1. NOT scope-sensitive. The only text sent to the model is PUBLIC GitHub
+#    metadata used for issue-dedup scoring — never working-tree file contents,
+#    source diffs, or credential-bearing out-of-scope paths (the leakage class
+#    ADR-004 redaction guards). Concretely, `text_a`/`text_b` are:
+#      • deferred-tracker: an excerpt of a *merged PR body* vs an *open issue*
+#        title+body (deferred-tracker.sh / deferred-backfill.sh), and
+#      • manifest-sync: a deferred-log title vs a keepers-manifest title.
+#    All of it is already public or tracked-in-repo metadata; the scope-manifest
+#    allowlist concept (repo paths in/out of the change) is meaningless here.
+# 2. route_to_model is INFEASIBLE here. This is standalone GitHub-Actions
+#    automation, not a pipeline stage — there is no RUN_ID / events.jsonl /
+#    ZBUILD_CURRENT_STAGE / scope-manifest, so route_to_model's C6 precondition
+#    hard-refuses every call (and the router's in-line redaction path likewise
+#    needs a scope manifest that does not exist in this context).
+# Fail-open contract (below) already degrades safely to the Jaccard score on any
+# claude failure, so the exemption never affects correctness — only the optional
+# tiebreaker refinement. ADR-004's chokepoint governs pipeline-stage LLM calls.
 gha_compute_similarity_llm() {
     local text_a="${1:-}"
     local text_b="${2:-}"
