@@ -48,6 +48,10 @@ source "$_REVIEW_ROOT/scripts/lib/prompt-overrides.sh"
 # is not touched in the diff under review).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_REVIEW_ROOT/scripts/lib/acceptance-block.sh"
+# #896/#952: shared merge-base resolver so review, review-lens and review-report
+# judge the SAME full-branch change basis (dedupes the former local twin).
+# shellcheck source=../../../scripts/lib/merge-base.sh
+source "$_REVIEW_ROOT/scripts/lib/merge-base.sh"
 
 # Valid verdict values per manifest config.valid_verdicts
 _REVIEW_VALID_VERDICTS="approve request_changes block"
@@ -228,7 +232,7 @@ _review_run_inner() {
     # <out-of-scope-context> exactly as the diff.patch path was. Fallback chain
     # (never crashes): merge-base diff → diff.patch artifact → sentinel.
     local _mb_base _mb_diff=""
-    _mb_base="$(_review_resolve_merge_base)"
+    _mb_base="$(zbuild_resolve_merge_base)"
     if [[ -n "$_mb_base" ]]; then
         _mb_diff="$(git diff "$_mb_base" HEAD 2>/dev/null || true)"
     fi
@@ -803,23 +807,6 @@ $_review_instructions"
     return 0
 }
 
-# ─── _review_resolve_merge_base (#896) ──────────────────────────────────────
-# Resolve the merge-base of HEAD against the default branch — origin/main, then
-# main, then HEAD~1. Echoes the base SHA, or empty string if none resolves.
-# Fail-soft: never propagates git errors. Shared by the banner numstat and the
-# review LLM's diff source so operator and model judge the SAME basis (the full
-# branch-vs-default-branch change set, not the per-run intake-baseline diff).
-_review_resolve_merge_base() {
-    local _base="" _candidate
-    for _candidate in "origin/main" "main" "HEAD~1"; do
-        if git rev-parse --verify "$_candidate" >/dev/null 2>&1; then
-            _base="$(git merge-base "$_candidate" HEAD 2>/dev/null || true)"
-            [[ -n "$_base" ]] && break
-        fi
-    done
-    printf '%s' "$_base"
-}
-
 # ─── _review_set_banner_override ────────────────────────────────────────────
 # #506: Compute a numstat-style file-change summary for the operator-visible
 # stage_io banner and export it via ZBUILD_ROUTER_BANNER_INPUT_OVERRIDE. The
@@ -856,7 +843,7 @@ _review_set_banner_override() {
     fi
 
     # Resolve a merge-base ref (shared with the LLM diff source, #896).
-    local _base; _base="$(_review_resolve_merge_base)"
+    local _base; _base="$(zbuild_resolve_merge_base)"
 
     local _raw=""
     if [[ -n "$_base" ]]; then

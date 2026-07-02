@@ -32,6 +32,10 @@ source "$_RR_ROOT/scripts/lib/artifact-render.sh"
 source "$_RR_DIR/lib/lenses.sh"
 # shellcheck source=../../../scripts/lib/call-graph.sh
 source "$_RR_ROOT/scripts/lib/call-graph.sh"
+# #896/#952: shared merge-base change-bundle resolver — the report judges the same
+# full-branch diff as `review`, not the (often empty) incremental build diff.patch.
+# shellcheck source=../../../scripts/lib/merge-base.sh
+source "$_RR_ROOT/scripts/lib/merge-base.sh"
 
 # ─── review_report_init ─────────────────────────────────────────────────────
 review_report_init() {
@@ -54,9 +58,13 @@ review_report_run() {
     local artifact_dir="$state_dir/artifacts"
     mkdir -p "$artifact_dir"
 
+    # #896/#952: judge the full-branch merge-base change bundle (falls back to the
+    # incremental diff.patch when no base resolves) so review-report and `review`
+    # share ONE change basis. The empty per-run diff.patch was the #952 lens miss.
+    local bundle; bundle="$(zbuild_change_bundle "$artifact_dir")"
     _rr_run_inner \
         "$state_dir/scope-manifest.md" \
-        "$artifact_dir/diff.patch" \
+        "$bundle" \
         "$artifact_dir/review-report.json" \
         "$artifact_dir/review-report.md"
 }

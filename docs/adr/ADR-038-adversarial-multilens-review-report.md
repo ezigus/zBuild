@@ -45,6 +45,17 @@ different prompt over the same diff:
 
 A lens whose evidence is unavailable says so in the report rather than guessing.
 
+**Change-bundle basis (#896/#952).** When a lens has no distinct per-lens artifact it falls back to the
+shared "change bundle". That bundle is the **full-branch merge-base diff** — `git diff <merge-base> HEAD`
+resolved via the shared `zbuild_resolve_merge_base` (`scripts/lib/merge-base.sh`, candidates
+`origin/main → main → HEAD~1`) — NOT the per-run incremental build `diff.patch`. The incremental diff is
+EMPTY on a resumed/green run or when the work was committed before intake, which silently starved every
+lens of evidence (the observed #952 failure where all lenses hit the C6 redaction precondition on empty
+input). `review`, `review-lens` and `review-report` all resolve this ONE basis through
+`zbuild_change_bundle`, so the operator banner, the `review` verdict, and the advisory lenses judge the
+same change set. Fallback chain (fail-soft, never crashes): merge-base diff → build `diff.patch` →
+"(no change bundle available)" sentinel.
+
 ### 3. Output is a report, never a gate
 
 The stage emits a structured **merge-readiness report** (findings + severities + rationale), aggregated
