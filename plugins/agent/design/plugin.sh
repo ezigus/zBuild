@@ -25,8 +25,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _DESIGN_DIR="$_ZBUILD_PLUGIN_DIR"
 _DESIGN_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_DESIGN_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DESIGN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -282,26 +280,18 @@ DESIGN_PROMPT
     fi
 
     # ADR-032: append the per-repo prompt override AFTER the core contract (so
-    # the operator overlay can never precede or weaken the shipped charter) and
-    # BEFORE redaction below (so the override text is redaction-covered,
-    # ADR-004). Fail-open: a repo with no .zbuild/prompts/design-overrides.md
-    # appends nothing and behaves byte-identically.
+    # the operator overlay can never precede or weaken the shipped charter).
+    # Fail-open: a repo with no .zbuild/prompts/design-overrides.md appends
+    # nothing and behaves byte-identically. ADR-043: redaction is owned by the
+    # router — route_to_model_loop redacts each iteration's prompt (this override
+    # included) by construction, using the runner-exported ZBUILD_SCOPE_MANIFEST
+    # + the --scope-allowlist passed below.
     append_prompt_override "$prompt_input_file" "design"
-
-    local redacted_file="$artifact_dir/design-prompt.redacted.txt"
-
-    if ! apply_scope_redaction "$prompt_input_file" "$redacted_file" "$scope_manifest" "$plan_files_csv" "0"; then
-        error "_design_stage_run_inner: redaction failed; refusing to emit"
-        emit_event "plugin.run.error" "plugin=design" "reason=redaction_failed"
-        return 1
-    fi
 
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
     local tier="${ZBUILD_DESIGN_TIER:-T2}"
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || echo 5)"
     [[ "$max_iter" =~ ^[0-9]+$ ]] || max_iter=5
-
-    export ZBUILD_SCOPE_MANIFEST="$scope_manifest"
 
     # #825: opt into --defer-final-banner-close so the OUTPUT banner stays
     # open until we override _ROUTE_LOOP_FINAL_OUTPUT below with the actual
@@ -310,7 +300,7 @@ DESIGN_PROMPT
     # the operator. The single-file-artifact's value is the file content.
     # Mirrors build's deferred-close pattern (plugins/agent/build/plugin.sh).
     local router_rc=0
-    route_to_model_loop "$tier" "$redacted_file" "$repo_root" "$max_iter" \
+    route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
 

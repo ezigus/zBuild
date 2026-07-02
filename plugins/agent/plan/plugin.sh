@@ -21,8 +21,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _PLAN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PLAN_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_PLAN_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_PLAN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -276,26 +274,15 @@ _plan_run_inner() {
 
     mkdir -p "$artifact_dir"
 
-    # Write goal text to a temp input file for the redaction chokepoint.
-    local goal_input_file="$artifact_dir/plan-goal.txt"
-    printf '%s\n' "$goal_text" > "$goal_input_file"
+    # ADR-043: redaction is owned by the router (route_to_model) — it redacts the
+    # assembled prompt below by construction. This stage assembles RAW text and
+    # each spliced piece (goal, resumed context, operator override) rides that
+    # single redaction pass.
+    local goal_content
+    # #721: strip ANSI codes / stray OOS-marker wrappers from the goal text.
+    goal_content="$(printf '%s' "$goal_text" | _zbuild_sanitize_for_llm)"
 
-    local redacted_file="$artifact_dir/plan-prompt.redacted.txt"
-
-    # ─── Redaction chokepoint (REQUIRED — ADR-004) ──────────────────────────
-    if ! apply_scope_redaction "$goal_input_file" "$redacted_file" "$scope_manifest" "" "0"; then
-        error "_plan_run_inner: redaction failed; refusing to emit"
-        emit_event "plugin.run.error" "plugin=plan" "reason=redaction_failed"
-        return 1
-    fi
-
-    local redacted_content
-    redacted_content="$(cat "$redacted_file")"
-    # #721: strip OOS-marker wrappers and ANSI codes — goal text may carry
-    # <out-of-scope-context> tags inserted by the redaction step.
-    redacted_content="$(printf '%s' "$redacted_content" | _zbuild_sanitize_for_llm)"
-
-    # Build prompt from redacted goal. The instruction block declares the
+    # Build prompt from the goal. The instruction block declares the
     # plan.json schema inline because the validator below (jq -e at the
     # response-parse step) enforces `schema_version=1` and a non-empty
     # `steps[]`, and an underspecified prompt makes the LLM return prose
@@ -406,7 +393,7 @@ $_plan_instructions"
     fi
     local prompt=""
     prompt+="$_plan_instructions"$'\n'
-    prompt+="$redacted_content"$'\n\n'
+    prompt+="$goal_content"$'\n\n'
     prompt+=$'Scope manifest (allowed path prefixes):\n'
     prompt+="$manifest_body"$'\n'
 
@@ -442,64 +429,33 @@ $_plan_instructions"
             emit_event "plan.context.resume_skipped" "plugin=plan" \
                 "goal_hash=$_resume_goal_hash" \
                 "reason=rejected_or_corrupt"
-            # Re-run the goal redaction so the LAST pre-router event stays
-            # redaction.applied (C6 precondition); the resume_skipped emit above
-            # would otherwise be last in the no-operator-override case.
-            apply_scope_redaction "$goal_input_file" "$redacted_file" "$scope_manifest" "" "0" \
-                >/dev/null 2>&1 || true
         fi
     fi
     if [[ -n "$_resume_text" ]]; then
-        local _resume_in="$artifact_dir/plan-resume.txt"
-        local _resume_red="$artifact_dir/plan-resume.redacted.txt"
-        printf '%s\n' "$_resume_text" > "$_resume_in"
-        if apply_scope_redaction "$_resume_in" "$_resume_red" "$scope_manifest" "" "0"; then
-            # Splice the REDACTED body verbatim (mirror the operator-override
-            # splice below). Do NOT run _zbuild_sanitize_for_llm here: redaction
-            # marks out-of-scope paths by WRAPPING them in <out-of-scope-context>
-            # markers, and sanitize's transform 1 strips those markers while
-            # keeping the inner text — so the resumed context would lose the very
-            # markers that flag it as out-of-scope. The markers ARE the protection.
-            prompt+=$'\n## PRIOR EXPLORATION CONTEXT (resumed)\n\n'
-            prompt+="$(cat "$_resume_red")"$'\n'
+        # Splice the resumed prior-exploration context verbatim. ADR-043: the
+        # router redacts the whole assembled prompt by construction, so the
+        # out-of-scope paths in this cached reasoning are wrapped in that single
+        # pass — no per-splice redaction / C6 bookkeeping is needed anymore.
+        prompt+=$'\n## PRIOR EXPLORATION CONTEXT (resumed)\n\n'
+        prompt+="$_resume_text"$'\n'
 
-            # Emit plan.context.resumed ONLY AFTER a SUCCESSFUL resume redaction
-            # + splice. A fail-closed redaction must never leave
-            # plan.context.resumed as the last pre-router event (the original bug):
-            # the router's C6 precondition refuses to spawn claude unless the
-            # immediately-preceding event is redaction.applied.
-            local _resume_json_path _prior_status _prior_turns
-            _resume_json_path="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
-            _prior_status="$(jq -r '.status // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
-            _prior_turns="$(jq -r '.num_turns // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
-            emit_event "plan.context.resumed" "plugin=plan" \
-                "goal_hash=$_resume_goal_hash" \
-                "prior_status=$_prior_status" \
-                "prior_num_turns=$_prior_turns"
-
-            # Re-run the resume redaction so the LAST event before the router is
-            # redaction.applied (C6 precondition). Emitting plan.context.resumed
-            # above would otherwise be the last pre-router event in the common
-            # no-operator-override case; this idempotent re-redaction restores
-            # the invariant without faking an event.
-            apply_scope_redaction "$_resume_in" "$_resume_red" "$scope_manifest" "" "0" \
-                >/dev/null 2>&1 || true
-        fi
+        local _resume_json_path _prior_status _prior_turns
+        _resume_json_path="$(plan_context_path "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash")"
+        _prior_status="$(jq -r '.status // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
+        _prior_turns="$(jq -r '.num_turns // "unknown"' "$_resume_json_path" 2>/dev/null || echo unknown)"
+        emit_event "plan.context.resumed" "plugin=plan" \
+            "goal_hash=$_resume_goal_hash" \
+            "prior_status=$_prior_status" \
+            "prior_num_turns=$_prior_turns"
     fi
 
-    # ADR-032 (#855): plan assembles its prompt in $prompt AFTER the goal is
-    # redacted, so the override is redacted in its OWN pass and spliced in AFTER
-    # the contract (_plan_instructions) — preserving both invariants: the
-    # override is redaction-covered and follows the shipped charter.
+    # ADR-032 (#855): the operator override is spliced in AFTER the contract
+    # (_plan_instructions) so it follows the shipped charter. ADR-043: it rides
+    # the router's single redaction pass over the assembled prompt.
     local _plan_ov; _plan_ov="$(load_prompt_override "plan")"
     if [[ -n "$_plan_ov" ]]; then
-        local _ov_in="$artifact_dir/plan-override.txt"
-        local _ov_red="$artifact_dir/plan-override.redacted.txt"
-        printf '%s\n' "$_plan_ov" > "$_ov_in"
-        if apply_scope_redaction "$_ov_in" "$_ov_red" "$scope_manifest" "" "0"; then
-            prompt+=$'\n\n'"$ZBUILD_PROMPT_OVERRIDE_DELIMITER"$'\n\n'
-            prompt+="$(cat "$_ov_red")"$'\n'
-        fi
+        prompt+=$'\n\n'"$ZBUILD_PROMPT_OVERRIDE_DELIMITER"$'\n\n'
+        prompt+="$_plan_ov"$'\n'
     fi
 
     # ─── Route to LLM (T2, matching manifest config.tier_default) ───────────
@@ -731,7 +687,7 @@ $_plan_instructions"
     # so the plan.json reaches review for verdict; the diagnostic event
     # gives review explicit signal to request_changes.
     local dod_discipline_pass=1
-    if ! _plan_validate_dod_discipline "$plan_json" "$redacted_content"; then
+    if ! _plan_validate_dod_discipline "$plan_json" "$goal_content"; then
         dod_discipline_pass=0
     fi
 

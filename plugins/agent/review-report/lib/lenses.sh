@@ -202,55 +202,31 @@ _rr_lens_evidence() {
 }
 
 # ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> ─
-# Bounded-parallel: redact the shared evidence bundle once (the ADR-004
-# chokepoint; #973 moves this per-lens when evidence diverges), then run each
-# lens as an isolated subshell LLM call, batched by ZBUILD_RR_MAX_PARALLEL.
+# Bounded-parallel: run each lens as an isolated subshell LLM call, batched by
+# ZBUILD_RR_MAX_PARALLEL. ADR-043: redaction is owned by the router — each lens
+# prompt is redacted by route_to_model by construction, so this builds prompts
+# from RAW evidence. $1 (scope_manifest) is accepted for call-compat, unused.
 # Writes per-lens result JSON and echoes the path to the combined lenses array.
 _rr_fanout_lenses() {
-    local scope_manifest="$1" evidence_file="$2" artifact_dir="$3" tier="${4:-T2}"
+    local evidence_file="$2" artifact_dir="$3" tier="${4:-T2}"
     local max="${ZBUILD_RR_MAX_PARALLEL:-4}"
     [[ "$max" -ge 1 ]] 2>/dev/null || max=1
     mkdir -p "$artifact_dir"
 
-    # Resolve evidence; an absent/empty bundle yields a clean empty report.
+    # Resolve the shared evidence; an absent/empty bundle yields a clean report.
     local evidence_content="(no change bundle available)"
     if [[ -s "$evidence_file" ]]; then
-        # Redaction chokepoint (ADR-004): refuse to send raw text to any lens.
-        local redacted="$artifact_dir/review-report-evidence.redacted.txt"
-        if apply_scope_redaction "$evidence_file" "$redacted" "$scope_manifest" "" "0"; then
-            evidence_content="$(cat "$redacted")"
-        else
-            emit_event "review_report.evidence.redaction_failed" "evidence=$(basename "$evidence_file")" 2>/dev/null || true
-            # All lenses degrade to empty; still emit a report and return 0.
-            local lens
-            : > "$artifact_dir/review-report-lenses.json.tmp"
-            for lens in "${_RR_LENSES[@]}"; do
-                jq -nc --arg n "$lens" '{name:$n, score:0, findings:[]}' \
-                    >> "$artifact_dir/review-report-lenses.json.tmp"
-            done
-            jq -sc '.' "$artifact_dir/review-report-lenses.json.tmp" \
-                > "$artifact_dir/review-report-lenses.json"
-            rm -f "$artifact_dir/review-report-lenses.json.tmp"
-            printf '%s' "$artifact_dir/review-report-lenses.json"
-            return 0
-        fi
+        evidence_content="$(cat "$evidence_file")"
     fi
 
     # Build all prompts up front (sequential, local), then launch in batches.
-    # Per-lens evidence: if a lens has a registered artifact, redact it
-    # independently (ADR-004 chokepoint per artifact); otherwise use the
-    # pre-redacted shared bundle.
-    local lens _lens_specific_path _lens_ev_content _lens_redacted
+    # Per-lens evidence: if a lens has a registered artifact, use it (raw);
+    # otherwise use the shared bundle. The router redacts every prompt.
+    local lens _lens_specific_path _lens_ev_content
     for lens in "${_RR_LENSES[@]}"; do
         _lens_specific_path="$(_rr_lens_evidence "$lens" "$artifact_dir")"
-        if [[ -n "$_lens_specific_path" ]]; then
-            _lens_redacted="$artifact_dir/lens-$lens-evidence.redacted.txt"
-            if apply_scope_redaction "$_lens_specific_path" "$_lens_redacted" "$scope_manifest" "" "0"; then
-                _lens_ev_content="$(cat "$_lens_redacted")"
-            else
-                emit_event "review_report.lens.evidence.redaction_failed" "lens=$lens" 2>/dev/null || true
-                _lens_ev_content="$evidence_content"
-            fi
+        if [[ -n "$_lens_specific_path" && -s "$_lens_specific_path" ]]; then
+            _lens_ev_content="$(cat "$_lens_specific_path")"
         else
             _lens_ev_content="$evidence_content"
         fi

@@ -317,38 +317,26 @@ assert_contains "#478 / ADR-028: prompt forbids prose before/after JSON" \
 # Restore the original canned plan for any tests below
 CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
-# ─── Test 4: plan_run fails with missing scope_manifest (rc=1 — redaction fail-closed) ─
-# Temporarily replace apply_scope_redaction with a scope-aware mock that
-# matches the real ADR-004 fail-closed behavior (returns 1 when manifest absent).
-apply_scope_redaction() {
-    local _input="$1" _output="$2" _manifest="$3"
-    if [[ -z "$_manifest" || ! -f "$_manifest" ]]; then
-        return 1
-    fi
-    cat "$_input" > "$_output"
-    return 0
-}
-
+# ─── Test 4: redaction fail-closed moved to the router (ADR-043) ─────────────
+# Redaction is now owned by route_to_model, so plan_run no longer fail-closes on
+# a missing scope-manifest at the plugin level — that guarantee is enforced by
+# the router (fail-closed on a configured-but-missing manifest → redaction.refused
+# → call blocked) and covered by tests/integration/router-precondition-test.sh +
+# the security-lens router fail-closed test + plan-integration-test's real-router
+# [SPEC-2] guard. With route_to_model mocked here, plan_run completes normally.
 NO_SCOPE_STATE_DIR="$TEST_TEMP_DIR/state-noscope"
 NO_SCOPE_STATE_FILE="$NO_SCOPE_STATE_DIR/pipeline-state.json"
 mkdir -p "$NO_SCOPE_STATE_DIR/artifacts"
 echo '{"schema_version":1,"run_id":"test","issue":"0","stage_statuses":{}}' > "$NO_SCOPE_STATE_FILE"
 printf 'test goal\n' > "$NO_SCOPE_STATE_DIR/intake.md"
-# No scope-manifest.md written here — redaction chokepoint will refuse
+# No scope-manifest.md written — the router (not the plugin) owns fail-closed.
 
 set +e
 plan_run "plan" "$NO_SCOPE_STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 
-assert_eq "plan_run with missing scope_manifest returns rc=1 (redaction fail-closed)" "1" "$rc"
-
-# Restore passthrough mock for remaining tests
-apply_scope_redaction() {
-    local _input="$1" _output="$2"
-    cat "$_input" > "$_output"
-    return 0
-}
+assert_eq "plan_run no longer fail-closes on missing manifest (router-owned, ADR-043)" "0" "$rc"
 
 # ─── #842: plan is a leaf — no cycle feedback inputs ─────────────────────────
 # plan was moved out of plan_impact_cycle (#842): it is now a top-level leaf

@@ -20,8 +20,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _RR_DIR="$_ZBUILD_PLUGIN_DIR"
 _RR_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_RR_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_RR_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh

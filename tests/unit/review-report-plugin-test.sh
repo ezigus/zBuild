@@ -124,8 +124,11 @@ assert_contains "[SPEC-4] correctness section names its score" "$_md" "#### corr
 assert_contains "[SPEC-4] lens bullet renders the finding message (not blank)" "$_md" "off-by-one in loop"
 assert_contains "[SPEC-4] de-duped section renders contributing lenses" "$_md" "lenses: correctness, security"
 
-# ─── SPEC-6: redaction refusal degrades gracefully, still advisory (rc 0) ────
-apply_scope_redaction() { return 1; }   # force the chokepoint to refuse
+# ─── SPEC-6: report is advisory and always routes (ADR-043) ──────────────────
+# Redaction is now owned by route_to_model (mocked here), so review-report no
+# longer has a per-plugin redaction-refusal degrade path — the report always
+# routes its lenses and is written. Fail-closed on a missing/empty manifest is
+# the router's job (covered by the router precondition tests).
 : > "$_RR_CALLS"
 out2_json="$artifact_dir/review-report-2.json"
 out2_md="$artifact_dir/review-report-2.md"
@@ -133,17 +136,12 @@ set +e
 _rr_run_inner "$scope_manifest" "$evidence" "$out2_json" "$out2_md"
 _rc2=$?
 set -e
-assert_eq "[SPEC-6] redaction refusal still returns 0" "0" "$_rc2"
-assert_eq "[SPEC-6] no LLM call when redaction refuses" "0" "$(wc -l < "$_RR_CALLS" | tr -d ' ')"
-if [[ -s "$out2_json" ]]; then
-    assert_pass "[SPEC-6] a report is still written on redaction refusal"
+assert_eq "[SPEC-6] report run returns 0 (advisory)" "0" "$_rc2"
+assert_file_exists "[SPEC-6] a report is written" "$out2_json"
+if [[ "$(wc -l < "$_RR_CALLS" | tr -d ' ')" -ge 1 ]]; then
+    assert_pass "[SPEC-6] lenses route through route_to_model (redaction chokepoint)"
 else
-    assert_fail "[SPEC-6] a report must still be written" "missing"
-fi
-if grep -q "review_report.evidence.redaction_failed" "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-6] redaction_failed event emitted"
-else
-    assert_fail "[SPEC-6] redaction_failed event should be emitted" "absent"
+    assert_fail "[SPEC-6] lenses must route through route_to_model" "no LLM call"
 fi
 
 # ─── SPEC-7: markdown-injection hardening + proximity clamp (Copilot #1028) ──

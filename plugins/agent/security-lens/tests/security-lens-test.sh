@@ -87,12 +87,17 @@ source "$REPO_ROOT/core/router/route.sh"
 
 security_lens_init >/dev/null
 
-# Run without scope manifest — should fail (chokepoint refuses)
+# ADR-043: redaction is owned by route_to_model, which reads the manifest from
+# ZBUILD_SCOPE_MANIFEST (runner-exported per-stage). Fail-closed is preserved AT
+# THE ROUTER: a configured-but-missing manifest → redaction.refused (rc1) →
+# route_to_model returns 2 → the security-lens plugin propagates rc=1. (The
+# plugin no longer refuses on its own; the $2 arg is inert.)
+export ZBUILD_SCOPE_MANIFEST="$TEST_TEMP_DIR/nonexistent-manifest.md"
 set +e
 _security_lens_run_inner "$INPUT" "" "$OUTPUT" 2>/dev/null
 rc=$?
 set -e
-assert_eq "security_lens_run refuses without scope manifest (chokepoint enforcement)" "1" "$rc"
+assert_eq "security_lens_run refuses when scope manifest missing (router fail-closed)" "1" "$rc"
 
 # ─── Run: with scope manifest, emits typed findings.json ────────────────────
 MANIFEST="$TEST_TEMP_DIR/scope.md"
@@ -100,6 +105,8 @@ cat > "$MANIFEST" <<EOF
 + src/
 + tests/
 EOF
+# Point the router at the real manifest so it redacts (not refuses) from here on.
+export ZBUILD_SCOPE_MANIFEST="$MANIFEST"
 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
 assert_file_exists "findings.json created" "$OUTPUT"
 

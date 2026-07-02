@@ -25,8 +25,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugi
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _BUILD_DIR="$_ZBUILD_PLUGIN_DIR"
 _BUILD_ROOT="$_ZBUILD_PLUGIN_ROOT"
-# shellcheck source=../../../core/redaction/scope-redaction.sh
-source "$_BUILD_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_BUILD_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
@@ -314,20 +312,13 @@ _build_stage_run_inner() {
         fi
     } > "$prompt_input_file"
 
-    # ADR-032 (#855): per-repo override appended AFTER the contract, BEFORE
-    # redaction (so it is redaction-covered and cannot weaken the charter).
+    # ADR-032 (#855): per-repo override appended AFTER the contract (so the
+    # operator overlay can never precede or weaken the shipped charter). ADR-043:
+    # redaction is owned by the router — route_to_model_loop redacts each
+    # iteration's prompt (this override included) by construction, using the
+    # runner-exported ZBUILD_SCOPE_MANIFEST + the --scope-allowlist passed below
+    # (#606: plan.files[] keeps in-scope paths out of the OOS wrap).
     append_prompt_override "$prompt_input_file" "build"
-
-    local redacted_file="$artifact_dir/build-prompt.redacted.txt"
-
-    # #606 Bug A1: pass the plan files CSV as the allowlist on the initial
-    # redaction pass. Previously this was empty, so in-scope plan paths got
-    # wrapped in <out-of-scope-context> before the agent loop ever saw them.
-    if ! apply_scope_redaction "$prompt_input_file" "$redacted_file" "$scope_manifest" "$plan_files_csv" "0"; then
-        error "_build_stage_run_inner: redaction failed; refusing to emit"
-        emit_event "plugin.run.error" "plugin=build" "reason=redaction_failed"
-        return 1
-    fi
 
     # ─── Route through agent loop (ADR-018 Pattern 2) ────────────────────────
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
@@ -347,10 +338,6 @@ _build_stage_run_inner() {
             >/dev/null 2>&1 || true
     fi
 
-    # Expose the scope manifest path so per-iteration redaction inside the loop
-    # can satisfy C6 without inlining the manifest at every consumer.
-    export ZBUILD_SCOPE_MANIFEST="$scope_manifest"
-
     local router_rc=0
     # #491: do NOT redirect route_to_model_loop's stderr — the per-iteration
     # stage-io input banner writes to fd 2 (ZBUILD_STAGE_IO_FD default) and
@@ -362,7 +349,7 @@ _build_stage_run_inner() {
     # of leaking into the inter-stage gap. We flush the deferred close via
     # _route_loop_close_final_banner after _build_emit_changed_files_summary
     # below (or unconditionally on the early-exit paths).
-    route_to_model_loop "$tier" "$redacted_file" "$repo_root" "$max_iter" \
+    route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
 

@@ -58,7 +58,6 @@ mkdir -p "$FIX_A/.zbuild/prompts"
 printf '# repo overlay\nRULE_MARKER_D2 enumerate the roster\n' > "$FIX_A/.zbuild/prompts/design-overrides.md"
 ART_A="$(_run_design "$FIX_A")"
 PROMPT_A="$ART_A/design-prompt.txt"
-REDACTED_A="$ART_A/design-prompt.redacted.txt"
 assert_file_exists "design prompt written (present case)" "$PROMPT_A"
 
 # D1: generic enumerated-set / absence principle present (target-agnostic).
@@ -100,10 +99,12 @@ else
     assert_fail "D3b: override must follow LOOP_COMPLETE" "hdr=$hdr_line loop=$loop_line"
 fi
 
-# D4: override survives into the redacted prompt (proves append happened BEFORE
-# redaction on prompt_input_file, not after on redacted_file).
-assert_file_exists "D4: redacted prompt written" "$REDACTED_A"
-assert_contains "D4: override is redaction-covered" "$(cat "$REDACTED_A")" "RULE_MARKER_D2"
+# D4: the override rides the router's redaction pass (ADR-043). The plugin hands
+# the assembled prompt file (design-prompt.txt) to route_to_model_loop, which
+# redacts each iteration by construction — so the override being IN that file
+# proves it is redaction-covered (no separate plugin-written redacted artifact).
+assert_file_exists "D4: prompt handed to the router written" "$PROMPT_A"
+assert_contains "D4: override is redaction-covered" "$(cat "$PROMPT_A")" "RULE_MARKER_D2"
 
 # ── Case group B: override ABSENT ───────────────────────────────────────────
 FIX_B="$TEST_TEMP_DIR/fix_absent"

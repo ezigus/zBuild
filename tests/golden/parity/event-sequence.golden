@@ -20,8 +20,6 @@ stage.start
 plugin.run.start
 redaction.counter_skipped
 redaction.applied
-redaction.counter_skipped
-redaction.applied
 loop.iteration
 loop.complete
 loop.git_diff_failed

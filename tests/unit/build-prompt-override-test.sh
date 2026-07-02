@@ -116,19 +116,21 @@ else
         "delim=$delim_line loop=$loop_line"
 fi
 
-# ─── B3: override survives into the redacted prompt (append-before-redaction) ─
-redacted_txt="$artifact_dir/build-prompt.redacted.txt"
-redacted_body="$(cat "$redacted_txt" 2>/dev/null || echo '')"
-assert_contains "B3 redacted prompt has override marker" "$redacted_body" "BUILD_OV_MARKER"
-assert_contains "B3 redacted prompt has override delimiter" \
-    "$redacted_body" "## Project-specific guidance (operator override)"
+# ─── B3: override rides the router's redaction pass (ADR-043) ────────────────
+# The plugin hands the assembled prompt file (build-prompt.txt) to
+# route_to_model_loop, which redacts each iteration by construction — so the
+# override being IN that file proves it is redaction-covered (the plugin no
+# longer writes a separate redacted artifact).
+assert_contains "B3 router-bound prompt has override marker" "$prompt_body" "BUILD_OV_MARKER"
+assert_contains "B3 router-bound prompt has override delimiter" \
+    "$prompt_body" "## Project-specific guidance (operator override)"
 
 # ════════════════════════════════════════════════════════════════════════════
 # WITHOUT override file — no empty-section noise, contract intact
 # ════════════════════════════════════════════════════════════════════════════
 rm -f "$OVERRIDE_FILE"
 # Clean the prior run's artifacts so we re-render fresh.
-rm -f "$prompt_txt" "$redacted_txt"
+rm -f "$prompt_txt"
 
 run_build_inner
 rc=$?

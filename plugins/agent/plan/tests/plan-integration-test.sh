@@ -35,6 +35,11 @@ cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/
 + plugins/
 SCOPE
+# ADR-043: redaction is owned by route_to_model, which reads the manifest from
+# ZBUILD_SCOPE_MANIFEST (the runner exports it per-stage). Export it so the
+# router performs REAL redaction — this is what wraps out-of-scope paths in the
+# resumed-context splice (the [SPEC-2][guard] assertion below).
+export ZBUILD_SCOPE_MANIFEST="$STATE_DIR/scope-manifest.md"
 
 export ZBUILD_GOAL="integration test goal"
 export ZBUILD_RUN_ID="integ-test"
@@ -54,6 +59,11 @@ install_envelope_mock_claude --file "$CANNED_RESPONSE_FILE"
 # Source plugin
 # shellcheck source=../../../../plugins/agent/plan/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
+
+# ADR-043: route_to_model fail-closes if the events log does not yet exist (in
+# production the runner emits stage events before any LLM stage). Create it so
+# variant 1's router redaction can emit, mirroring the runner.
+: > "$ZBUILD_EVENTS_JSONL"
 
 # ─── Variant 1: in-scope plan → plan.json written, no violations ─────────────
 printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"

@@ -14,13 +14,28 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "integration: design per-repo override survives real redaction (#854)"
 setup_test_env "design-prompt-override-pipeline-854"
 
+# Event bus so the router's redaction (below) can emit redaction.applied.
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+export ZBUILD_RUN_ID="design-ov-pipeline-$$"
+mkdir -p "$ZBUILD_EVENTS_DIR"
+: > "$ZBUILD_EVENTS_JSONL"
+
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
-# Mock ONLY the model call — the prompt build, override injection, and the real
-# apply_scope_redaction all run unmocked. The mock writes a contract-valid
-# design.md so the stage's post-conditions hold.
+# ADR-043: redaction is owned by route_to_model_loop (via the router's shared
+# _route_redact_prompt, reading ZBUILD_SCOPE_MANIFEST). We mock ONLY the model
+# call, but the mock still runs that REAL redaction on the assembled prompt and
+# writes design-prompt.redacted.txt — so this test keeps proving the override
+# survives real redaction into the ROUTED prompt (the plugin no longer redacts).
 route_to_model_loop() {
+    local _prompt_file="$2"
+    local _redacted; _redacted="$(dirname "$_prompt_file")/design-prompt.redacted.txt"
+    _route_redact_prompt "$_prompt_file" "$_redacted" 0 "" >/dev/null 2>&1 \
+        || cp "$_prompt_file" "$_redacted"
     [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]] && {
         mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
         printf '# Design\n\n## Decision\nd\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC: placeholder test\nTESTFILES:\ntests/unit/placeholder-test.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
@@ -47,6 +62,9 @@ _run_design() {
     local fix="$1"
     local artifact_dir="$fix/state/artifacts"; mkdir -p "$artifact_dir"
     local scope_manifest="$fix/state/scope-manifest.md"; printf 'scope: all\n' > "$scope_manifest"
+    # ADR-043: the runner exports this per-stage; the mocked loop's redaction
+    # (via _route_redact_prompt) reads it. Export here to mirror the runner.
+    export ZBUILD_SCOPE_MANIFEST="$scope_manifest"
     local plan_json="$artifact_dir/plan.json"
     cat > "$plan_json" <<'EOF'
 {"schema_version":1,"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
