@@ -111,6 +111,13 @@ done
 # fails at baseline where the rc=8 catch-all writes status=interrupted.
 _dir8="$(_drive 8 "blocking_member_failure")"
 _state8="$_dir8/state/pipeline-state.json"
+# Diagnostic: a missing state file would make the status check silently compare
+# an empty/'null' value against 'failed'. Surface the real cause instead.
+if [[ ! -f "$_state8" ]]; then
+    echo "  DIAGNOSTIC: expected state file not found: $_state8" >&2
+    echo "  DIAGNOSTIC: _drive 8 dir contents:" >&2
+    ls -R "$_dir8" >&2 2>/dev/null || true
+fi
 _got8="$(jq -r '.status' "$_state8" 2>/dev/null)"
 assert_eq "[SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed" "failed" "$_got8"
 

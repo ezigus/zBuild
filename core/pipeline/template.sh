@@ -156,12 +156,20 @@ load_template() {
     fi
     export _TPL_MERGE_POLICY
 
-    # Unset stale _TPL_STAGE_BLOCKING_<id> vars from a prior load_template call.
-    # BL| rows are only emitted for blocking:true stages, so without this unset a
-    # stage that was blocking in template A stays exported after template B loads.
-    local _prev_bl_id
-    for _prev_bl_id in "${_TPL_STAGES[@]}"; do
-        unset "_TPL_STAGE_BLOCKING_${_prev_bl_id//-/_}"
+    # Scrub ALL _TPL_STAGE_BLOCKING_<id> exports at load-entry, unconditionally.
+    # BL| rows are emitted only for blocking:true stages, so any stale export —
+    # left by a prior load_template call, by a stage that is absent from this
+    # template's flow entirely, OR inherited from the process environment on a
+    # cold-start first load — would otherwise survive and mis-mark a non-blocking
+    # stage as blocking (ADR-013, issue #952 follow-up to #863). Iterating over
+    # the prior _TPL_STAGES was a no-op on the first load; prefix expansion over
+    # the live environment closes that cold-start gap.
+    local _stale_bl
+    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}"; do
+        # Defensive: only unset well-formed identifier names ([A-Za-z0-9_]+),
+        # never a name assembled from unvalidated input.
+        [[ "$_stale_bl" =~ ^_TPL_STAGE_BLOCKING_[A-Za-z0-9_]+$ ]] || continue
+        unset "$_stale_bl"
     done
 
     _TPL_STAGES=()
