@@ -185,6 +185,69 @@ print_test_section "SPEC-5b/9: exhausted, tests pass but build mid-flight every 
 _run "$FIXT/cycle-converges-iter2.yaml" "build:dnf;test:pass"
 assert_eq "[SPEC-5b] exhausted + passing tests (unclean) → rc=2 (unconverged→review)" "2" "$RUN_RC"
 
+# ─── SPEC-5(c): non-test gate fails + tests pass + test-results absent → rc=2 ─
+# Residual false-fatal guard: at exhaustion the hard-fail (rc=8) must key ONLY on
+# the authoritative test signal (test.verdict==fail OR test-results .failed>0),
+# NEVER on the GENERIC failure_count. A failing NON-test gate (which inflates the
+# generic failure_count) with PASSING tests and NO test-results artifact (the
+# #511 Pin-10 override did not apply) must resolve to rc=2 (unconverged→review),
+# NOT rc=8. Red-first: on the pre-hardening code (has_test && failure_count>0)
+# this returned rc=8.
+print_test_section "SPEC-5c: failing non-test gate + passing tests + no test-results → rc=2 (not rc=8)"
+_5C_TPL="$TEST_TEMP_DIR/spec5c-gate-cycle.yaml"
+cat > "$_5C_TPL" <<'YAML'
+id: spec5c
+name: SPEC-5c non-test gate exhaustion
+defaults:
+  strategy: fanout
+stages:
+  - id: build-test
+    type: cycle
+    stages: [build, test, shape-floor]
+    until:
+      stage: shape-floor
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 2
+    on_max: continue
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]
+  shape-floor:
+    roles: [shape_floor]
+YAML
+_5C_SD="$TEST_TEMP_DIR/spec5c-state"
+rm -rf "$_5C_SD"; mkdir -p "$_5C_SD/artifacts"
+printf '{"schema_version":1,"status":"in_progress","stage_statuses":{}}' > "$_5C_SD/pipeline-state.json"
+: > "$ZBUILD_EVENTS_JSONL"
+# Dedicated mock: build passes; test PASSES but writes NO test-results.json (so the
+# Pin-10 override does NOT apply); a non-test gate member (shape-floor) FAILS
+# (verdict=fail, rc!=0) so exit_when(shape-floor==pass) never converges AND the
+# generic failure_count is inflated. NB: verdict=fail (not error/corrupt/block) so
+# _cycle_detect_blocked does not fire.
+cycle_dispatch_stage() {
+    local stage="$1"
+    case "$stage" in
+        shape-floor)
+            _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_VERDICT_RAW="fail"
+            _CYCLE_DISPATCH_STATUS="failed"; _CYCLE_DISPATCH_REASON=""
+            return 1 ;;
+        *)
+            _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_VERDICT_RAW="pass"
+            _CYCLE_DISPATCH_STATUS="complete"; _CYCLE_DISPATCH_REASON=""
+            return 0 ;;
+    esac
+}
+load_template "$_5C_TPL"
+set +e
+cycle_orchestrator_run "build-test" "$_5C_SD" "$_5C_SD/pipeline-state.json"
+_5C_RC=$?
+set -e
+assert_eq "[SPEC-5c] non-test gate fail + tests pass + no test-results → rc=2 (not rc=8)" "2" "$_5C_RC"
+
 # ─── SPEC-8: repo-agnostic — no zbuild plugin id / path / test-format in path ─
 print_test_section "SPEC-8: exercised convergence path is repo-neutral (generic member ids only)"
 _grep_leak() { grep -nE "$1" "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh" 2>/dev/null; }

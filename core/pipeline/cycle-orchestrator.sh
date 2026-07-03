@@ -1844,12 +1844,10 @@ cycle_orchestrator_run() {
             return 130
         fi
         if [[ $_iter_rc -ne 0 ]]; then
-            # ADR-029 G2: preserve timeout_abandoned reason if the iter
-            # dispatcher already set it (the abandon path is a documented
-            # rc=4 with a more specific reason than generic "error").
-            if [[ "${_CYCLE_LAST_TERMINATED_REASON:-}" != "timeout_abandoned" ]]; then
-                _CYCLE_LAST_TERMINATED_REASON="error"
-            fi
+            # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was
+            # removed, so this generic non-zero-dispatch path is the only writer
+            # of the reason here — set it unconditionally.
+            _CYCLE_LAST_TERMINATED_REASON="error"
             _cycle_clear_traps
             _CYCLE_TRAP_CYCLE_ID=''
             return 4
@@ -2012,23 +2010,29 @@ cycle_orchestrator_run() {
             # its tries. Each attempt is cheap — the build self-yields on an empty
             # diff — and plateau signal now only classifies THIS exhaustion
             # outcome, it never stops the cycle early.)
-            # "Tests failing" is the AUTHORITATIVE verifier verdict of the `test`
-            # member: test.verdict==fail, OR (a `test` member ran AND its
-            # test-driven failure_count>0 — #511 Pin 10 overrides failure_count to
-            # test-results.json .failed when a `test` member is present). It does
-            # NOT key on the GENERAL failure_count: a non-test gate flagging a
-            # NON-terminal condition (acceptance untagged_spec / negctl-timeout
-            # infra, a non-blocking cq member) must NOT hard-halt — those stay
-            # unconverged->review. A cycle with no `test` member cannot assert test
-            # failure -> rc=2.
-            local _exh_test_verdict _exh_fc _exh_has_test=0 _exh_m
+            # "Tests failing" is the AUTHORITATIVE verifier signal of the `test`
+            # member — and ONLY that member: (a) test.verdict==fail, OR (b) the
+            # roster's test-results artifact reports a positive failed count. We
+            # read `.failed` DIRECTLY from test-results.json (not the generic
+            # failure_count), so a non-test gate flagging a NON-terminal condition
+            # (acceptance untagged_spec / negctl-timeout infra, a non-blocking cq
+            # member) can NEVER inflate a hard-fail. This closes a residual
+            # false-fatal: the generic failure_count is contaminated by non-test
+            # gate failures whenever the #511 Pin-10 test-results override did NOT
+            # apply (results absent/malformed) — keying on the artifact avoids that
+            # entirely. Results absent/malformed while tests pass → NOT a hard-fail
+            # → rc=2 (unconverged->review). A cycle with no test-results cannot
+            # assert test failure via clause (b). GENERIC: test-results.json is the
+            # roster's test artifact (ADR-044 count contract feeds it) — no plugin
+            # id / language / path assumption beyond the canonical `test` member.
+            local _exh_test_verdict _exh_test_failed="" _exh_trj
             _exh_test_verdict="$(jq -r '.test.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
-            _exh_fc="${failure_count:-0}"; [[ "$_exh_fc" =~ ^[0-9]+$ ]] || _exh_fc=0
-            for _exh_m in "${_CYCLE_STAGES[@]}"; do
-                [[ "$_exh_m" == "test" ]] && { _exh_has_test=1; break; }
-            done
+            _exh_trj="$state_dir/artifacts/test-results.json"
+            if [[ -s "$_exh_trj" ]]; then
+                _exh_test_failed="$(jq -r '.failed // empty' "$_exh_trj" 2>/dev/null || true)"
+            fi
             if [[ "$_exh_test_verdict" == "fail" ]] \
-               || { [[ $_exh_has_test -eq 1 ]] && [[ "$_exh_fc" -gt 0 ]]; }; then
+               || { [[ "$_exh_test_failed" =~ ^[0-9]+$ ]] && [[ "$_exh_test_failed" -gt 0 ]]; }; then
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations_tests_failing"
                 overall_status="max_iterations"; term_rc=8
             else
