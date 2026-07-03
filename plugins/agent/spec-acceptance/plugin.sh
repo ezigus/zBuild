@@ -99,6 +99,30 @@ _ag_noop_precondition_unmet() {
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
 }
 
+# _ag_emit_operator_summary <stage_id> <verdict_line>... — surface the concise
+# per-check verdict lines (NEGCTL/REACHABILITY PASS/FAIL/…, one per SPEC and per
+# WIRING target) to the operator via this stage's own stage-io stdout channel
+# (ADR-039 file-only-child + summary; ADR-036 §Operator-summary, #1211). The
+# nested TESTFILE replay is captured to the negctl/reachability diagnostic logs
+# (off the terminal, #1211); the operator sees ONLY this one-line-per-check
+# readout. io-gated on this stage's destinations so a file-only install stays
+# quiet, and routed to ZBUILD_STAGE_IO_FD (default fd 2) — never fd 1 (would
+# collide with the action's $() capture).
+_ag_emit_operator_summary() {
+    local stage_id="$1"; shift
+    [[ $# -eq 0 ]] && return 0
+    declare -F template_stage_io_dests >/dev/null 2>&1 || return 0
+    local dests; dests="$(template_stage_io_dests "$stage_id" 2>/dev/null || true)"
+    grep -qx stdout <<< "$dests" || return 0
+    local io_fd="${ZBUILD_STAGE_IO_FD:-2}"
+    # shellcheck disable=SC2261
+    {
+        printf 'acceptance-gate — contract summary:\n'
+        printf '  %s\n' "$@"
+    } >&"$io_fd" 2>/dev/null || true
+    return 0
+}
+
 acceptance_gate_run() {
     local _stage_id="$1"
     local state_file="$2"
@@ -162,6 +186,9 @@ acceptance_gate_run() {
 
     local verdict="pass"
     local -a failures=()
+    # #1211: one concise verdict line per SPEC (negctl) / per WIRING target
+    # (reachability), surfaced to the operator after the checks run.
+    local -a summary_lines=()
     local line
 
     # ── Level 1: SPEC-n tag-presence ─────────────────────────────────────────
@@ -178,6 +205,7 @@ acceptance_gate_run() {
     if [[ "$verdict" == "pass" ]]; then
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
+            summary_lines+=("$line")  # #1211: one operator line per SPEC
             case "$line" in
                 "NEGCTL PASS "*) : ;;  # control confirmed
                 "NEGCTL SKIP "*) : ;;  # no_impl_delta — legitimate skip
@@ -217,6 +245,7 @@ acceptance_gate_run() {
         if [[ "$wiring_present" -eq 1 ]]; then
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
+                summary_lines+=("$line")  # #1211: one operator line per WIRING target
                 case "$line" in
                     "REACHABILITY PASS "*) : ;;  # wiring is load-bearing
                     "REACHABILITY EXEMPT none")
@@ -243,6 +272,13 @@ acceptance_gate_run() {
                 esac
             done < <(acceptance_reachability_check "$design_md" "$repo_root" || true)
         fi
+    fi
+
+    # ── Operator summary (#1211) ─────────────────────────────────────────────
+    # Surface the concise per-check verdict lines the operator actually needs;
+    # the raw nested-test replay stays in the negctl/reachability diagnostic logs.
+    if [[ ${#summary_lines[@]} -gt 0 ]]; then
+        _ag_emit_operator_summary "${_stage_id:-acceptance-gate}" "${summary_lines[@]}"
     fi
 
     # ── Write result artifact ────────────────────────────────────────────────
