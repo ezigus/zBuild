@@ -2012,10 +2012,23 @@ cycle_orchestrator_run() {
             # its tries. Each attempt is cheap — the build self-yields on an empty
             # diff — and plateau signal now only classifies THIS exhaustion
             # outcome, it never stops the cycle early.)
-            local _exh_test_verdict _exh_fc
+            # "Tests failing" is the AUTHORITATIVE verifier verdict of the `test`
+            # member: test.verdict==fail, OR (a `test` member ran AND its
+            # test-driven failure_count>0 — #511 Pin 10 overrides failure_count to
+            # test-results.json .failed when a `test` member is present). It does
+            # NOT key on the GENERAL failure_count: a non-test gate flagging a
+            # NON-terminal condition (acceptance untagged_spec / negctl-timeout
+            # infra, a non-blocking cq member) must NOT hard-halt — those stay
+            # unconverged->review. A cycle with no `test` member cannot assert test
+            # failure -> rc=2.
+            local _exh_test_verdict _exh_fc _exh_has_test=0 _exh_m
             _exh_test_verdict="$(jq -r '.test.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
             _exh_fc="${failure_count:-0}"; [[ "$_exh_fc" =~ ^[0-9]+$ ]] || _exh_fc=0
-            if [[ "$_exh_test_verdict" == "fail" ]] || [[ "$_exh_fc" -gt 0 ]]; then
+            for _exh_m in "${_CYCLE_STAGES[@]}"; do
+                [[ "$_exh_m" == "test" ]] && { _exh_has_test=1; break; }
+            done
+            if [[ "$_exh_test_verdict" == "fail" ]] \
+               || { [[ $_exh_has_test -eq 1 ]] && [[ "$_exh_fc" -gt 0 ]]; }; then
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations_tests_failing"
                 overall_status="max_iterations"; term_rc=8
             else
