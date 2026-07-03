@@ -53,6 +53,20 @@ never a false converge).
 - **Non-goals:** this does not change the recognizer bank's behavior for recognized
   runners, nor the `summary_unavailable` fail-safe.
 
+## Implementation Notes (issue #1208)
+
+- `plugins/tool/test/lib/parse.sh`: new `_test_parse_declared_count <rc>` helper, called
+  FIRST in `_test_parse_summary` (before the recognizer-bank loop). Emits the same
+  pipe-delimited line as the bank (`verdict|passed|failed|summary`) with `recognized=1`;
+  returns non-zero (→ fall through to the bank) on absence, non-JSON, or non-numeric
+  `passed`/`failed`.
+- `plugins/tool/test/plugin.sh`: the results-path is captured into a non-`ZBUILD_` local
+  (`_zbt_results_json`) BEFORE `_zbuild_make_fresh_shell` scrubs the `ZBUILD_*` namespace,
+  then re-exported as `ZBUILD_TEST_RESULTS_JSON` inside the test subshell (mirrors the
+  `ZBUILD_TEST_TIMING_FILE` precedent) so a repo wrapper can write to it. `_COUNT_CMD` is
+  evaluated at parse time in the plugin's main process, which still holds the env var.
+- Fail-safe ordering is preserved: declared contract → recognizer bank → `summary_unavailable`.
+
 ## Verification
 
 `tests/unit/test-declared-count-contract-1208-test.sh` covers: declared JSON file →
