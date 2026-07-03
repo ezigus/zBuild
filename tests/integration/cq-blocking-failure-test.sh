@@ -229,6 +229,11 @@ end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSON
 # [SPEC-1]
 assert_eq "T1 [SPEC-1]: pipeline.end status=failed when cq-preflight fails" "failed" "$end_status"
 
+# [SPEC-4]: state-file status must also be 'failed' (rc=8 → status=failed per ADR-013).
+# Fails at baseline where rc=8 falls through to _set_pipeline_status "interrupted".
+state_status="$(jq -r '.status' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
+assert_eq "T1 [SPEC-4]: state-file status=failed when blocking halts (rc=8)" "failed" "$state_status"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-2] After cq-preflight fails, cq-audit-plan, cq-cycle, cq-backtrack
 #          must NOT run (plugin.run.start count = 0 for each)
