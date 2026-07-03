@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Integration test: velocity_plateau early-exit in cycle_orchestrator_run (#845)
+# Integration test: velocity_plateau NO-LONGER early-exits (#845 → #1208)
 #
-# Stubs cycle_dispatch_stage to always return failure_count=11 (flat velocity).
-# Configures max_iterations=5 and velocity_plateau.window=2 via fixture.
-# Asserts the cycle exits after 2 iterations with reason=plateau and rc=2,
-# verifying it did NOT run to max_iterations=5.
+# #1208 removed velocity_plateau/plateau/divergence as EARLY terminators ("run
+# all tries" — the only fatal condition is exhausting max_iterations without a
+# clean, passing convergence). This test now asserts the REVERSED contract: a
+# flat-failing cycle runs ALL its iterations (does NOT bail at the velocity
+# window) and terminates BY-SEVERITY at exhaustion — failing tests → rc=8. No
+# cycle.plateau early-terminator event fires (the detector function still exists
+# for potential reuse but is no longer wired into the cascade).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,23 +48,23 @@ cycle_dispatch_stage() {
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
 
-# T1: velocity_plateau early exit — flat failure_count=11, window=2, max=5
-# Cycle must exit after iteration 2 (plateau) NOT iteration 5 (max_iterations).
+# T1: flat-failing velocity does NOT early-exit — runs to max_iterations=5 and
+# terminates by-severity (failing tests → rc=8). NOT reason=plateau at iter 2.
 _seed_state
 load_template "$FIXT/cycle-velocity-plateau.yaml"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T1: orchestrator rc=2 (plateau)" "2" "$rc"
-assert_eq "T1: reason=plateau" "plateau" "$_CYCLE_LAST_TERMINATED_REASON"
-assert_eq "T1: iterations=2 (not max_iterations=5)" "2" "$_CYCLE_LAST_ITERATIONS"
-assert_event_emitted "T1: cycle.plateau emitted" "$ZBUILD_EVENTS_JSONL" "cycle.plateau"
-
-# Verify cycle.plateau carries evidence=velocity_flat
-plateau_event="$(grep '"cycle.plateau"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
-assert_contains "T1: evidence=velocity_flat in plateau event" "$plateau_event" "velocity_flat"
-# Pin the streak too: it MUST report the velocity window (2), not the tuple
-# window — guards the bug where the emit hardcoded _CYCLE_PLATEAU_WINDOW
-# regardless of which detector fired (Copilot review on PR #914).
-assert_contains "T1: streak=2 (velocity window, not tuple window) in plateau event" \
-    "$plateau_event" '"streak":"2"'
+assert_eq "T1: no early exit — exhausted with failing tests → rc=8 (by-severity)" "8" "$rc"
+assert_eq "T1: ran ALL 5 iterations (velocity plateau no longer bails at window=2)" \
+    "5" "$_CYCLE_LAST_ITERATIONS"
+if [[ "$_CYCLE_LAST_TERMINATED_REASON" == "plateau" ]]; then
+    assert_fail "T1: reason is NOT plateau (early terminator removed)" "$_CYCLE_LAST_TERMINATED_REASON"
+else
+    assert_pass "T1: reason is not plateau (got $_CYCLE_LAST_TERMINATED_REASON)"
+fi
+if grep -q '"cycle.plateau"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_fail "T1: no cycle.plateau early-terminator event" "cycle.plateau emitted"
+else
+    assert_pass "T1: no cycle.plateau early-terminator event (detector unwired)"
+fi
 
 print_test_results

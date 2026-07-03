@@ -81,13 +81,14 @@ assert_eq "state.cycle_iterations.status=complete" "complete" "$ci_status"
 iter_len="$(jq -r '.cycle_iterations["build-test"].iter | length' "$STATE_FILE")"
 assert_eq "1 iter recorded in state" "1" "$iter_len"
 
-# T4: max_iterations exhausted → rc=1 + history file populated
+# T4: max_iterations exhausted with FAILING tests → rc=8 (#1208 by-severity) +
+# history populated. (#1208: exhaustion is the single fatal condition; failing
+# tests → hard-fail rc=8. Early plateau/divergence terminators were removed.)
 _seed
 load_template "$FIXT/cycle-max-iter.yaml"
 MOCK_VERDICTS="build:pass,pass,pass;test:fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-# rc=1 (max_iter wins over plateau per ADR-021 priority order)
-assert_eq "exhausted → rc=1" "1" "$rc"
+assert_eq "exhausted with failing tests → rc=8 (by-severity halt)" "8" "$rc"
 hist="$ZBUILD_STATE_DIR/cycle-build-test-history.jsonl"
 assert_file_exists "history file written" "$hist"
 hl="$(wc -l < "$hist" | tr -d ' ')"

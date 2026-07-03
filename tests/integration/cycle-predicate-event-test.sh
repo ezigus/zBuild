@@ -201,10 +201,12 @@ cycle_dispatch_stage() {
 _TPL_STAGES=(); _TPL_CYCLES=()
 load_template "$TPL1" || assert_fail "template load"
 
-# max_iterations=2, dispatch returns "request_changes" every time, no abort_when
-# → cycle runs both iters and terminates max_iterations
+# max_iterations=2, dispatch returns "request_changes" (rc=0, no failing test)
+# every time, no abort_when → cycle runs both iters and terminates at exhaustion.
+# #1208 by-severity: no test verdict==fail and failure_count==0 → rc=2
+# (unconverged→review), not the old max_iterations rc=1.
 set +e; cycle_orchestrator_run "the_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "cycle reaches max_iterations rc=1" "1" "$rc"
+assert_eq "cycle reaches exhaustion, tests not failing → rc=2 (unconverged→review, #1208)" "2" "$rc"
 
 # Two iters → two exit_when evaluations, both match=false
 nomatch_count=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when" and .data.match=="false")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')

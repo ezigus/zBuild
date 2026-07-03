@@ -105,3 +105,17 @@ The output grammar the verdict parser keys on (`unit: N/M passed`,
 `unit: FAIL <path>`) is unchanged. Verified by `tests/unit/run-tests-files-guard-test.sh`
 (non-test skipped; stdin-reading test returns; infinite-loop test killed by the
 per-file timeout, not the outer bound) + the updated `tests/unit/scripts-run-tests-fd3-test.sh`.
+
+## Amendment (2026-07-03, issue #1208) — second convergence-suppression instance
+
+This ADR introduced the FIRST one-shot convergence-suppression in the cycle orchestrator
+(the targeted-pass full-suite gate: `converged=0` + `run_mode=targeted` → suppress once,
+arm the full-suite re-run). Issue #1208 adds a SECOND, sibling suppression using the same
+pattern and placement (right after `_cycle_check_until`): a **mid-flight build** (verdict
+`did_not_finish` from a router timeout / dispatch error) also flips `converged=0`→`1` and
+emits `cycle.build_unfinished.suppressed_convergence`, so a timed-out build can never
+ratify a false `complete` on a stale/partial tree. Unlike the full-suite gate, the
+mid-flight suppression has NO max_iterations fail-safe guard (it must suppress even on the
+last iter — a timed-out build is never a clean resting point); at exhaustion the by-severity
+cascade (ADR-021 Amendment #1208) then routes the outcome. A clean empty-diff stall is a
+resting point and is NOT suppressed. See ADR-021 Amendment #1208.

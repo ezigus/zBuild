@@ -81,28 +81,28 @@ assert_event_emitted "T1: cycle.start emitted" "$ZBUILD_EVENTS_JSONL" "cycle.sta
 assert_event_emitted "T1: cycle.iteration.complete emitted" "$ZBUILD_EVENTS_JSONL" "cycle.iteration.complete"
 assert_event_emitted "T1: cycle.complete emitted" "$ZBUILD_EVENTS_JSONL" "cycle.complete"
 
-# T2: max_iterations termination — never converges
+# T2: max_iterations termination — never converges, failing tests every iter.
+# #1208: early plateau/divergence terminators were removed; the cycle runs ALL
+# iterations and terminates by-severity. Failing tests at exhaustion → rc=8.
 _seed_state
 load_template "$FIXT/cycle-max-iter.yaml"
 MOCK_VERDICTS="build:pass,pass,pass;test:fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-# Either max_iterations OR plateau may fire depending on tuple equality — both
-# are valid terminal states. The fixture has no plateau window override (default
-# 3), so 3 identical fails will trigger plateau on iter 3, BEFORE max_iter check.
-# Accept rc=1 (max_iter) or rc=2 (plateau).
-if [[ $rc -eq 1 || $rc -eq 2 ]]; then
-    assert_pass "T2: terminated rc=$rc (max_iter or plateau acceptable)"
-else
-    assert_fail "T2: terminated rc=$rc" "expected 1 or 2"
-fi
+assert_eq "T2: exhausted with failing tests → rc=8 (#1208 by-severity)" "8" "$rc"
 
-# T3: plateau termination — identical verdict tuples across window=3
+# T3: #1208 — plateau is NO LONGER an early terminator. A flat-failing run over
+# the cycle-plateau fixture (max_iterations=6) runs to exhaustion and terminates
+# by-severity (failing tests → rc=8); NO cycle.plateau early-terminator event.
 _seed_state
 load_template "$FIXT/cycle-plateau.yaml"
 MOCK_VERDICTS="build:pass,pass,pass,pass,pass,pass;test:fail,fail,fail,fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T3: orchestrator rc=2 (plateau)" "2" "$rc"
-assert_event_emitted "T3: cycle.plateau emitted" "$ZBUILD_EVENTS_JSONL" "cycle.plateau"
+assert_eq "T3: no early plateau exit — exhausted with failing tests → rc=8" "8" "$rc"
+if grep -q '"cycle.plateau"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_fail "T3: no cycle.plateau early-terminator event (#1208)" "cycle.plateau emitted"
+else
+    assert_pass "T3: no cycle.plateau early-terminator event (#1208)"
+fi
 
 # T4: divergence termination — failure_count grows monotonically
 # Build stage always passes, test stage fails progressively (failure_count==1 every

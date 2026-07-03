@@ -187,6 +187,12 @@ _test_run_inner() {
     _zbt_timing_log="$(dirname "$output_json")/test-timing.log"
     rm -f "$_zbt_timing_log" 2>/dev/null || true
 
+    # #1208: capture the repo-declared count-contract results path (if any) into
+    # a non-ZBUILD_ local BEFORE the fresh-shell scrub clears the ZBUILD_*
+    # namespace, so we can re-export it INSIDE the test subshell for a repo
+    # wrapper to write to. Empty when the repo declares no contract.
+    local _zbt_results_json="${ZBUILD_TEST_RESULTS_JSON:-}"
+
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
     # #628: function-scoped RETURN trap self-cleans the staging dir on every
@@ -324,6 +330,14 @@ _test_run_inner() {
         # command prefix) so it reaches the suite regardless of how
         # actual_test_cmd is shaped (npm test → run-tests.sh, or a direct call).
         export ZBUILD_TEST_TIMING_FILE="$_zbt_timing_log"
+        # #1208: re-supply the repo-declarable count-contract vars AFTER the
+        # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
+        # xcresulttool shim) can honor them — write its {passed,failed,total}
+        # JSON to $ZBUILD_TEST_RESULTS_JSON (use an absolute path so it resolves
+        # both inside the rsync'd staging dir and at parse time). _COUNT_CMD is
+        # evaluated later at parse time (outside this fresh shell) and needs no
+        # re-export here. Absent when the repo declares no contract.
+        [[ -n "$_zbt_results_json" ]] && export ZBUILD_TEST_RESULTS_JSON="$_zbt_results_json"
         eval "$actual_test_cmd" 2>&1
     )" || test_rc=$?
 

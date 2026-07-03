@@ -170,12 +170,14 @@ assert_contains "maxiter: rc is 0 or 1" "0 1" "$RC"
 assert_eq "maxiter: no zb-loop-iters.* leaked" "0" "$(_count_leaked)"
 
 # ───────────────────────────────────────────────────────────────────────────
-print_test_section "3. 3-consecutive-timeouts fatal return path (rc=2)"
+print_test_section "3. 3-consecutive-timeouts NON-FATAL yield path (rc=0, #1208)"
 # ───────────────────────────────────────────────────────────────────────────
-# This is the path that LEAKED pre-#628 — three rc=124 iters in a row,
-# fatal error, manual cleanup was missing, RETURN trap now reclaims.
+# This is the path that LEAKED pre-#628 — three rc=124 iters in a row.
+# #1208: a repeated timeout is NEVER fatal — the loop now YIELDS to the cycle
+# (return 0, _ROUTE_LOOP_TERMINATED_REASON=router_timeout) instead of returning
+# 2. The RETURN trap still reclaims the per-iter tmpdir on this path.
 RC="$(_drive_loop timeout3 5)"
-assert_eq "timeout3: route_to_model_loop returned 2 (fatal)" "2" "$RC"
+assert_eq "timeout3: route_to_model_loop yields non-fatally (rc=0, #1208)" "0" "$RC"
 assert_eq "timeout3: no zb-loop-iters.* leaked" "0" "$(_count_leaked)"
 
 cleanup_test_env

@@ -817,3 +817,55 @@ acceptance-gate, see ADR-036 Phase-2 amendment). This is orthogonal to the ADR-0
 `blocking:true` mechanism, which stays an immediate, rc-only halt during member
 dispatch (both surface as rc=8 → reason `blocking_member_failure` for blocking:true,
 `member_terminal_failure` for the disposition path).
+
+## Amendment — Timeouts never fatal; single fatal = exhaustion-without-convergence (issue #1208, 2026-07-03)
+
+Lineage: a `--template simple` dogfood (#944) shipped `status=complete` while its
+`build` stage had actually timed out — three per-turn timeouts made the router return
+"fatal", the build stage swallowed it as `verdict=pass`, and the cycle converged on
+iteration 1 on an incomplete tree. #1208 re-states the cycle's stop/converge model so a
+timeout can never produce a false `complete`, and so the pipeline halts on exactly ONE
+condition.
+
+**Core model (engine-level, repo-agnostic — keys only on repo-neutral signals:
+LOOP_COMPLETE-vs-timeout, roster-driven gate/test verdict, `failure_count`,
+`max_iterations`; no runner/language/path/plugin hardcode):**
+
+1. **A build-stage timeout is NEVER fatal — anywhere.** The router loop, on repeated
+   per-turn timeout, ends the attempt and YIELDS to the cycle (`route.sh` returns 0,
+   `_ROUTE_LOOP_TERMINATED_REASON=router_timeout`); no path kills the pipeline.
+2. **The test stage is the verifier — the build never short-circuits the cycle.** After
+   ANY build outcome (clean finish / stall / empty diff / timeout) the build falls out
+   to the cycle, which ALWAYS runs the test stage to verify the real state.
+3. **Convergence (ALL must hold, evaluated first each iter):** (a) gates green
+   (gate-aggregator `verdict==pass`); (b) the build reached a **clean resting point** —
+   `LOOP_COMPLETE`, or a legitimate empty-diff "nothing-to-do" stall — **not mid-flight**
+   (a timeout/error = interrupted, verdict `did_not_finish`); (c) well-formed (no
+   `scope_violation`/`corrupt_diff`). A mid-flight build cannot ratify convergence even
+   if a stale/partial tree passes the gate — the orchestrator suppresses it and emits
+   `cycle.build_unfinished.suppressed_convergence` (a second convergence-suppression
+   instance alongside ADR-034's full-suite gate).
+4. **Progress is NOT required to converge.** A re-run of a done issue (empty diff via
+   `LOOP_COMPLETE` + gates green) converges on iteration 1. An empty diff counts against
+   the run only when gates are red.
+5. **The single fatal condition** is the cycle reaching `max_iterations` without ever
+   converging. At exhaustion the outcome splits **by severity** using the generic test
+   verdict + `failure_count`: tests failing (`test.verdict==fail` OR `failure_count>0`)
+   → `term_rc=8` (runner `status=failed`, HALT — a nested inner cycle's rc=8 propagates
+   as `blocking_member_failure`, so a failing build/test cycle is **never** rescued by an
+   advisory review); tests passing-but-unconverged → `term_rc=2` (unconverged→review;
+   `on_max` honored at the runner).
+
+**Removed early terminators.** The velocity_plateau / plateau / divergence early
+terminators and the #1117 empty-diff stall-break are REMOVED as *terminators* — the
+cycle runs ALL its tries (each cheap: the build self-yields on an empty diff), and a
+plateau signal only classifies the exhaustion outcome. The detector functions remain
+defined (dormant, for potential reuse) but are no longer wired into the cascade.
+`_cycle_detect_blocked` is retained for genuine structural failures (raw verdict
+`error`/`corrupt_diff`/`block` — NOT a timeout, which iterates → rc=5 halt).
+
+Supersedes the ADR-021 termination priority order (§Decision points) for the
+build/test cycle: `converged → abort_when → scope-deny → max_iterations(by-severity) →
+blocked`. See also ADR-029 (G2 abandon removed / G3 kept), ADR-013 (router-loop timeout
+non-fatal), ADR-034 (second convergence-suppression instance), and ADR-044 (repo-
+declarable test-count contract).

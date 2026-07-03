@@ -497,3 +497,19 @@ dropped it aggregates exactly the 4 present must-pass gates (`test`,
 `shape-floor`, `acceptance-gate`, `secret-scan`); convergence is unaffected.
 
 Implementation: EPIC #1129 Change C. See ADR-012 (lint as a suite tier) and ADR-040.
+
+## Amendment (2026-07-03, issue #1208) — router-loop timeout is non-fatal
+
+The multi-turn router loop (`core/router/route.sh::route_to_model_loop`, used by the
+`build` and `design` agent stages) previously treated **3 consecutive per-turn timeouts**
+(rc=124) as fatal — it logged an `error` and returned rc=2, which the build stage swallowed
+as `verdict=pass`, letting a timed-out build converge on iteration 1 (the #944
+false-`complete`). #1208 makes this **non-fatal**: on repeated timeout the loop downgrades
+the log to `warn`, sets `_ROUTE_LOOP_TERMINATED_REASON=router_timeout`, emits
+`loop.timeout_yield`, and **returns 0 to yield control back to the cycle** — no path in the
+router loop kills the pipeline. The build stage maps `router_timeout` (and dispatch `error`)
+to a new `verdict=did_not_finish` while still `return 0` (preserving committed partial work,
+#602). The cycle's convergence/by-severity logic (ADR-021 Amendment #1208) then decides the
+outcome; only exhausting `max_iterations` without a clean, passing convergence is fatal.
+This is orthogonal to the `blocking:true` rc-only halt above (a timeout is never a blocking
+member failure).

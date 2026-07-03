@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# Tests: ADR-029 G2 — repeated-timeout fast abandon (#810)
+# Tests: ADR-029 G2 abandon REMOVED (#1208) — a repeated router timeout is NEVER
+# fatal and NEVER abandons the cycle.
 #
-# When a cycle member returns verdict=error reason=router_timeout (the value
-# _router_rc_classify sets when claude rc=124 reaches the agent plugin —
-# courtesy of ADR-021 R2 / PR #809), the orchestrator counts consecutive
-# timeouts per-member. On the 2nd consecutive, it emits
-# `cycle.member.timeout_abandoned` and terminates the cycle with
-# _CYCLE_LAST_TERMINATED_REASON=timeout_abandoned (rc=4).
-#
-# The point is to STOP burning 900s budget on 3rd+ retries that the dogfood
-# evidence shows are wasted. The reset on any non-timeout dispatch ensures
-# transient hiccups don't trip the abandon.
+# History: ADR-029 G2 used to abandon the cycle (rc=4, reason=timeout_abandoned)
+# on the 2nd consecutive router_timeout member dispatch. Issue #1208 reverses
+# that: the ONLY fatal condition is the cycle exhausting max_iterations without a
+# clean, passing convergence. A timed-out attempt simply consumes an iteration
+# and the cycle retries; the by-severity cascade routes the EXHAUSTION outcome
+# (tests failing → rc=8 halt; tests passing → rc=2 unconverged→review). The
+# per-member timeout counter + G3 max_turns escalation are retained (see
+# cycle-g3-maxturns-escalation-test.sh); only the abandon is gone.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,7 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-print_test_header "cycle G2 — repeated-timeout fast abandon (ADR-029)"
+print_test_header "cycle G2 abandon removed — timeouts never abandon (#1208)"
 setup_test_env "cycle-g2-timeout-abandon"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -40,16 +39,14 @@ _seed() {
     jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 }
 
-# Mock dispatch hook driven by a per-stage csv plan. Verdict values can be:
-#   pass | fail | timeout (= sets verdict=error reason=router_timeout)
-# A stage missing from the plan defaults to pass.
+# Mock dispatch driven by a per-stage csv plan. Verdicts:
+#   pass | fail | timeout (verdict=error reason=router_timeout, rc=124)
 cycle_dispatch_stage() {
     local stage="$1" iter="$2"
     local IFS_save="$IFS"; IFS=';'
     # shellcheck disable=SC2206
     local -a parts=($MOCK_PLAN); IFS="$IFS_save"
-    local p sname vlist v
-    v="pass"
+    local p sname vlist v="pass"
     for p in "${parts[@]}"; do
         sname="${p%%:*}"; vlist="${p#*:}"
         if [[ "$sname" == "$stage" ]]; then
@@ -63,67 +60,53 @@ cycle_dispatch_stage() {
     done
     case "$v" in
         timeout)
-            _CYCLE_DISPATCH_VERDICT="error"
-            _CYCLE_DISPATCH_VERDICT_RAW="error"
-            _CYCLE_DISPATCH_STATUS="failed"
-            _CYCLE_DISPATCH_REASON="router_timeout"
+            _CYCLE_DISPATCH_VERDICT="error"; _CYCLE_DISPATCH_VERDICT_RAW="error"
+            _CYCLE_DISPATCH_STATUS="failed"; _CYCLE_DISPATCH_REASON="router_timeout"
             return 124 ;;
         fail)
-            _CYCLE_DISPATCH_VERDICT="fail"
-            _CYCLE_DISPATCH_VERDICT_RAW="fail"
-            _CYCLE_DISPATCH_STATUS="failed"
-            _CYCLE_DISPATCH_REASON=""
+            _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_VERDICT_RAW="fail"
+            _CYCLE_DISPATCH_STATUS="failed"; _CYCLE_DISPATCH_REASON=""
             return 1 ;;
         *)
-            _CYCLE_DISPATCH_VERDICT="pass"
-            _CYCLE_DISPATCH_VERDICT_RAW="pass"
-            _CYCLE_DISPATCH_STATUS="complete"
-            _CYCLE_DISPATCH_REASON=""
+            _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_VERDICT_RAW="pass"
+            _CYCLE_DISPATCH_STATUS="complete"; _CYCLE_DISPATCH_REASON=""
             return 0 ;;
     esac
 }
 
-# ─── T1: 2 consecutive router_timeouts → fast abandon (rc=4) ─────────────────
+# ─── T1: repeated timeouts do NOT abandon — run to exhaustion, by-severity ───
 _seed
 load_template "$FIXT/cycle-max-iter.yaml"
 MOCK_PLAN="build:timeout,timeout,timeout;test:fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T1: 2nd consecutive timeout → rc=4 (terminate)" "4" "$rc"
-assert_eq "T1: terminated_reason=timeout_abandoned" \
-    "timeout_abandoned" "$_CYCLE_LAST_TERMINATED_REASON"
-
-# Event audit: at least one cycle.member.timeout AND one cycle.member.timeout_abandoned.
-ev_to="$(grep -c '"type":"cycle.member.timeout"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; true)"
-if [[ "$ev_to" -ge 1 ]]; then
-    assert_pass "T1: cycle.member.timeout emitted (count=$ev_to)"
+assert_eq "T1: NO abandon; exhausted with failing tests → rc=8 (by-severity)" "8" "$rc"
+if [[ "$_CYCLE_LAST_TERMINATED_REASON" == "timeout_abandoned" ]]; then
+    assert_fail "T1: reason is NOT timeout_abandoned (G2 removed)" "$_CYCLE_LAST_TERMINATED_REASON"
 else
-    assert_fail "T1: no cycle.member.timeout event"
+    assert_pass "T1: reason is not timeout_abandoned (got $_CYCLE_LAST_TERMINATED_REASON)"
 fi
 ev_ab="$(grep -c '"type":"cycle.member.timeout_abandoned"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; true)"
-if [[ "$ev_ab" -ge 1 ]]; then
-    assert_pass "T1: cycle.member.timeout_abandoned emitted (count=$ev_ab)"
-else
-    assert_fail "T1: no cycle.member.timeout_abandoned event"
-fi
-# Iter 3 must NOT have run (we abandoned at iter 2).
+assert_eq "T1: no cycle.member.timeout_abandoned event (G2 abandon removed)" "0" "$ev_ab"
+# All iterations ran — the cycle did NOT bail early at iter 2.
 n_iter="$(jq -r '.cycle_iterations["build-test"].iter | length' "$STATE_FILE")"
-if [[ "$n_iter" -le 2 ]]; then
-    assert_pass "T1: cycle terminated at iter ≤2 (no 3rd burn) — iter_count=$n_iter"
-else
-    assert_fail "T1: cycle ran $n_iter iters — did not fast-abandon"
-fi
+assert_eq "T1: ran all max_iterations=3 (no early abandon)" "3" "$n_iter"
+# The per-member timeout counter still increments (feeds G3) — event still emits.
+ev_to="$(grep -c '"type":"cycle.member.timeout"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; true)"
+[[ "$ev_to" -ge 1 ]] \
+    && assert_pass "T1: cycle.member.timeout still emitted (counter retained for G3), count=$ev_to" \
+    || assert_fail "T1: expected cycle.member.timeout for G3 accounting"
 
-# ─── T2: single timeout then non-timeout → counter resets, full max_iter run ──
+# ─── T2: timeouts but tests pass at exhaustion → soft-continue, never a halt ──
 _seed
 load_template "$FIXT/cycle-max-iter.yaml"
-MOCK_PLAN="build:timeout,fail,fail;test:fail,fail,fail"
+MOCK_PLAN="build:timeout,timeout,timeout;test:pass,pass,pass"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-# `fail` resets the timeout counter; cycle exhausts max_iterations naturally.
-assert_eq "T2: timeout + non-timeout → counter resets, rc=1 (max_iter)" "1" "$rc"
+assert_contains "T2: timeouts never fatal — rc is a soft-continue (0 or 2), not abandon(4)/halt(8)" \
+    "0 2" "$rc"
 ev_ab="$(grep -c '"type":"cycle.member.timeout_abandoned"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; true)"
-assert_eq "T2: no abandon when timeouts non-consecutive" "0" "$ev_ab"
+assert_eq "T2: still no timeout_abandoned" "0" "$ev_ab"
 
-# ─── T3: no timeouts at all → no event, normal cycle path ────────────────────
+# ─── T3: no timeouts at all → clean converge ─────────────────────────────────
 _seed
 load_template "$FIXT/cycle-converges-iter2.yaml"
 MOCK_PLAN="build:pass;test:pass"
