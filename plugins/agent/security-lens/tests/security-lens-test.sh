@@ -391,6 +391,30 @@ _r11_prompt="$(cat "$_CAPTURED_SECLENS_PROMPT_R11")"
 assert_contains "[SPEC-6] security-lens redacted_content genuine content survives sanitize" \
     "$_r11_prompt" "Genuine security content: check for SQL injection"
 
+# ─── R12: [SPEC-10] postamble recovery via _security_lens_envelope_schema_ok ──
+# CHANGE: before #944 a brace-bearing postamble caused LAST-wins to select junk
+# → .findings defaulted to []. After #944 recovery fires and the real findings
+# envelope is used.
+route_to_model() {
+    # Real findings envelope first, brace-bearing postamble appended.
+    printf '%s\n' '{"findings":[{"severity":"high","title":"SQL injection","file":"auth.sh","line":10,"description":"Unsanitized input"}]} Based on this: {"note":"postamble-junk"}'
+    return 0
+}
+
+SEC_INPUT_R12="$TEST_TEMP_DIR/sec-input-r12.txt"
+printf '%s\n' "Check for SQL injection in auth.sh" > "$SEC_INPUT_R12"
+OUTPUT_R12="$TEST_TEMP_DIR/findings_r12.json"
+set +e
+_security_lens_run_inner "$SEC_INPUT_R12" "$MANIFEST" "$OUTPUT_R12" "$TEST_TEMP_DIR" \
+    >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-10] postamble recovery → rc=0" "0" "$rc"
+assert_file_exists "[SPEC-10] postamble recovery → findings.json written" "$OUTPUT_R12"
+_spec10_count="$(jq '.findings | length' "$OUTPUT_R12" 2>/dev/null || echo 0)"
+assert_eq "[SPEC-10] postamble recovery → recovered findings (1 finding, not empty)" \
+    "1" "$_spec10_count"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

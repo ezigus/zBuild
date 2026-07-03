@@ -72,6 +72,21 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
 
 _TEST_ASSESSMENT_VALID_VERDICTS="pass fail error inconclusive"
 
+# ─── _test_assessment_envelope_schema_ok (#944, ADR-028 v1.2) ────────────────
+# Gate for _llm_envelope_parse --schema-gate. Validates $1 is a structurally
+# correct test_assessment envelope (base fields; acceptance_verified is
+# optional and checked per-call in _test_assessment_run_inner).
+_test_assessment_envelope_schema_ok() {
+    printf '%s' "${1:-}" | jq -e '
+        type == "object"
+        and (.schema_version == 1)
+        and (.verdict | IN("pass","fail","error","inconclusive"))
+        and (.summary | type == "string")
+        and (.required_changes | type == "array")
+        and (.agrees_with_build_complete | type == "boolean")
+    ' >/dev/null 2>&1
+}
+
 # ─── init ───────────────────────────────────────────────────────────────────
 test_assessment_init() {
     export ZBUILD_PLUGIN="test_assessment"
@@ -466,8 +481,11 @@ $_ta_instructions"
     _zbuild_reset_cli_fail
 
     # ─── Parse + schema-validate ─────────────────────────────────────────────
-    local stripped
-    stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"
+    # ADR-028 v1.2 (#944): use _llm_envelope_parse --schema-gate so recovery
+    # fires when LAST-wins selects a postamble instead of the real envelope.
+    local stripped _ta_prose
+    _llm_envelope_parse --schema-gate _test_assessment_envelope_schema_ok \
+        "$raw_response" stripped _ta_prose
     local schema_expr='type=="object"
         and (.schema_version == 1)
         and (.verdict | IN("pass","fail","error","inconclusive"))

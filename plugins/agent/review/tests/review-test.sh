@@ -927,6 +927,39 @@ assert_file_not_exists "[SPEC-6] no review.json written on rc=9 abort" "$OUTPUT_
 unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD ZBUILD_RUN_ID
 rm -rf "$_SPEC6_STATE_DIR"
 
+# ─── Test 21: [SPEC-8] postamble recovery via _review_envelope_schema_ok ─────
+# CHANGE: before #944 a brace-bearing postamble caused LAST-wins to select junk
+# → verdict defaulted to request_changes (no recovery). After #944 the schema-gate
+# triggers _llm_recover_envelope_json and the real envelope is used.
+print_test_section "21. [SPEC-8] postamble recovery — review plugin selects real envelope"
+_install_passing_test_results
+
+_SPEC8_STATE_DIR="$(mktemp -d)"
+export ZBUILD_STATE_DIR="$_SPEC8_STATE_DIR"
+export ZBUILD_LLM_FAIL_THRESHOLD=99
+
+# Real envelope first, brace-bearing postamble last.
+route_to_model() {
+    printf '%s' '{"schema_version":1,"verdict":"approve","confidence":0.9,"issues":[],"summary":"LGTM"} Analysis: {"note":"postamble-junk"}'
+    return 0
+}
+
+OUTPUT_SPEC8="$ARTIFACT_DIR/review-spec8.json"
+rm -f "$OUTPUT_SPEC8"
+set +e
+_review_run_inner \
+    "$SCOPE_MANIFEST" "$FIXTURE_DIR/plan.json" "$FIXTURE_DIR/diff.patch" \
+    "$FIXTURE_DIR/test-results.json" "$OUTPUT_SPEC8" "$ARTIFACT_DIR" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-8] postamble recovery → _review_run_inner returns rc=0" "0" "$rc"
+assert_file_exists "[SPEC-8] postamble recovery → review.json written" "$OUTPUT_SPEC8"
+_spec8_verdict="$(jq -r '.verdict // empty' "$OUTPUT_SPEC8" 2>/dev/null || true)"
+assert_eq "[SPEC-8] postamble recovery → recovered envelope verdict=approve (not defaulted)" \
+    "approve" "$_spec8_verdict"
+unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD
+rm -rf "$_SPEC8_STATE_DIR"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
