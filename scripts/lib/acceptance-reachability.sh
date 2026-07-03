@@ -41,10 +41,16 @@ _reachability_run() {
     (
         cd "$cwd" || exit 2
         unset ZBUILD_TEST_QUIET
+        # #1211: same fd-3 escape as negctl (see _negctl_run) — the runner's
+        # ZBUILD_STAGE_IO_FD=3 + duped-terminal fd 3 are inherited untouched, so
+        # nested plugin banners leak to the operator terminal, repeated per WIRING
+        # target × baseline/HEAD. Neutralize the channel and capture nested output
+        # to the already-2>&1 diagnostic log instead. Sibling #1127 = general fix.
+        unset ZBUILD_STAGE_IO_FD
         if [[ -n "$logfile" ]]; then
-            "${runner[@]}" >>"$logfile" 2>&1
+            "${runner[@]}" >>"$logfile" 2>&1 3>>"$logfile"
         else
-            "${runner[@]}" >/dev/null 2>&1
+            "${runner[@]}" >/dev/null 2>&1 3>&-
         fi
     )
 }

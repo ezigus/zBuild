@@ -258,3 +258,33 @@ precedence highest-first):
 `terminal` outranks any lower class, so a genuine violation alongside an infra failure is still
 terminal. The gate-aggregator (ADR-040 §2) reads the SAME field: `advisory` is excluded from
 its fail set (non-blocking), while `recoverable`/`terminal`/absent stay blocking (fail-closed).
+
+## Amendment (#1211, 2026-07-03) — nested-test stage-io isolated + concise operator summary
+
+The Level-2 negctl and Level-3 reachability checks shell out `bash <TESTFILE>` (`_negctl_run`,
+`_reachability_run`). The runner dups fd 3 to the operator terminal and exports
+`ZBUILD_STAGE_IO_FD=3` so stage-io banners survive `2>/dev/null` (`core/pipeline/runner.sh`, the
+fd-3 contract). Those two sandbox runners redirected only fd 1+2 into the diagnostic logfile,
+leaving **fd 3 and `ZBUILD_STAGE_IO_FD=3` inherited untouched** — so a nested TESTFILE that drives
+real plugins (review / security-lens / test_assessment mocks) had their stage-io banners escape
+straight to the operator terminal, bypassing the sandbox capture and repeating once per
+baseline/HEAD run × SPEC/WIRING target. Observed in the #944 dogfood (run 20260703154556): dozens
+of raw `# Review … Verdict:` fixtures, full security-lens prompts, and `_empty lens result_` lines
+flooding the terminal.
+
+Fix (two parts, both repo-agnostic — fd handling + verdict strings carry no plugin/language/path
+assumptions):
+
+1. **Close the fd-3 escape.** Both sandbox runners now `unset ZBUILD_STAGE_IO_FD` (nested banners
+   fall back to fd 2, already captured by `2>&1`) and redirect/close fd 3 (`3>>"$logfile"` when a
+   diagnostic log is configured, else `3>&-`). Nested output is captured into the diagnostic log,
+   never the terminal.
+2. **Concise operator summary.** The plugin surfaces the already-computed structured verdict lines
+   (`NEGCTL PASS/FAIL <spec>`, `REACHABILITY PASS/FAIL <target>`) as ONE line per SPEC and per
+   WIRING target via the acceptance-gate stage's own `[file,stdout]` stage-io (`_ag_emit_operator_summary`,
+   io-gated on the stage's destinations, routed to `ZBUILD_STAGE_IO_FD`). Reuses the ADR-039
+   file-only-child + prose-summary pattern (the review lenses do the same).
+
+This is the stage-io instance of the general nested-isolation gap tracked in **#1127** (ANY nested
+pipeline/test execution isolating its stage-io fd from the parent). The durable, engine-wide fix is
+deferred there; #1211 closes only the two acceptance-gate sandbox runners.

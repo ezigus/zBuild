@@ -57,10 +57,18 @@ _negctl_run() {
         # via _zbuild_make_fresh_shell (plugins/tool/test/plugin.sh); _negctl_run
         # does not, so scrub the parallelism knobs explicitly here.
         unset ZBUILD_TEST_PARALLEL_JOBS ZBUILD_PARALLEL_SAFE_TIERS
+        # #1211: the runner dups fd 3 to the operator terminal and exports
+        # ZBUILD_STAGE_IO_FD=3 so stage-io banners survive `2>/dev/null`. A nested
+        # TESTFILE drives real plugins whose banners would then escape to the
+        # terminal via the inherited fd 3, bypassing this sandbox's stdout/stderr
+        # capture. Neutralize the channel: unset ZBUILD_STAGE_IO_FD so nested
+        # banners fall back to fd 2 (captured below), and redirect/close fd 3 so
+        # nothing reaches the terminal. Sibling #1127 = the general isolation.
+        unset ZBUILD_STAGE_IO_FD
         if [[ -n "$logfile" ]]; then
-            "${runner[@]}" >>"$logfile" 2>&1
+            "${runner[@]}" >>"$logfile" 2>&1 3>>"$logfile"
         else
-            "${runner[@]}" >/dev/null 2>&1
+            "${runner[@]}" >/dev/null 2>&1 3>&-
         fi
     )
 }
