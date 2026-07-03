@@ -138,7 +138,7 @@ if [[ "${1:-}" == "--resume" ]]; then
 fi
 
 if [[ "${1:-}" == "--resume-latest" ]]; then
-    _state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    _state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     # #887: most-recent run lives under runs/<id>/ via the `latest` pointer;
     # fall back to the legacy flat state file.
     if [[ -L "$_state_dir/latest" && -f "$_state_dir/latest/pipeline-state.json" ]]; then
@@ -162,7 +162,7 @@ fi
 if [[ "${1:-}" == "--attach" ]]; then
     [[ -z "${2:-}" ]] && { error "--attach requires a run_id"; usage; exit 2; }
     _attach_run_id="$2"
-    _state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    _state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     # #887: per-run runs write events to runs/<run_id>/events.jsonl. Find the
     # run's own state file by run_id (per-run dirs + legacy flat) WITHOUT the
     # exit-on-miss of _find_state_file, then take its sibling events.jsonl. An
@@ -400,7 +400,7 @@ UPHELP
                     esac
                 done
 
-                state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+                state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
                 state_file="$(_find_state_file "$state_dir" "$run_id")"
                 # Always export ZBUILD_STATE_FILE so runner.sh knows which file to use
                 export ZBUILD_STATE_FILE="$state_file"
@@ -453,7 +453,7 @@ UPHELP
                     esac
                 done
 
-                state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+                state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
                 state_file="$(_find_state_file "$state_dir" "$run_id")"
 
                 if [[ ! -f "$state_file" ]]; then
@@ -568,7 +568,7 @@ UPHELP
         }
 
         if $cl_state_dirs; then
-            cl_state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+            cl_state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
             cl_state_candidates="$(_cleanup_scan_state_files "$cl_state_dir" "$cl_age_days" "$cl_force" || true)"
             _cleanup_render_plan "state files" "$cl_state_candidates" "$cl_dry_run" "$cl_quiet"
             _cleanup_apply_plan "$cl_state_candidates" "$cl_dry_run"

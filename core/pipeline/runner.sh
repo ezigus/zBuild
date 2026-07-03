@@ -666,7 +666,9 @@ _runner_reset_event_artifacts() {
 # `flock -w` block. --no-resume clears it proactively at startup rather than
 # relying on any exit-time trap (#run-hygiene, #887).
 _runner_clear_stale_global_event_artifacts() {
-    local g="$HOME/.zbuild/state"
+    # #1127: honor the ZBUILD_STATE_ROOT indirection so a fenced nested run
+    # (test stage) clears ITS root, never the parent's shared global default.
+    local g="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
     rm -f "$g/events.jsonl" "$g/events.jsonl.lock" \
           "$g/events.db" "$g/events.db.lock" 2>/dev/null || true
 }
@@ -719,7 +721,7 @@ main() {
     fi
 
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     # #887: when neither ZBUILD_STATE_DIR nor ZBUILD_STATE_FILE is set, a fresh
     # run roots its state under runs/<run_id>/ so concurrent runs never share a
     # state dir / artifacts. Explicit overrides (tests, CLI resume) win and skip
@@ -785,7 +787,7 @@ main() {
     # will later use; on enforce-failure the validator writes a minimal
     # state stub with status: preflight_failed (ADR-006 amendment).
     {
-        local _cv_state_file_pf="${ZBUILD_STATE_FILE:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/pipeline-state.json}"
+        local _cv_state_file_pf="${ZBUILD_STATE_FILE:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/pipeline-state.json}"
         local _cv_stages_nl=""
         printf -v _cv_stages_nl '%s\n' "${active_stages[@]}"
         if ! _contract_validate_pipeline "$_cv_stages_nl" "$plugins_root" "$_cv_state_file_pf"; then
@@ -970,7 +972,7 @@ main() {
         # never share artifacts. run_id is path-sanitized above. Done before
         # init_state so the per-run state file is the one created.
         if $_state_is_default; then
-            state_dir="$HOME/.zbuild/state/runs/$_runner_run_id"
+            state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/$_runner_run_id"
             mkdir -p "$state_dir"
             state_file="$state_dir/pipeline-state.json"
             _runner_state_file="$state_file"
@@ -1041,8 +1043,8 @@ main() {
     # #887: latest-run pointer so `zbuild resume --latest` / `--attach` resolve
     # the most recent per-run dir without a scan. Only for the per-run default
     # (never pollute an explicit/test state dir). Atomic swap via ln -sfn.
-    if [[ "$state_dir" == "$HOME/.zbuild/state/runs/"* ]]; then
-        ln -sfn "$state_dir" "$HOME/.zbuild/state/latest" 2>/dev/null || true
+    if [[ "$state_dir" == "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/"* ]]; then
+        ln -sfn "$state_dir" "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/latest" 2>/dev/null || true
     fi
 
     # #963: self-host — redirect the read-only acceptance-grammar libs that the

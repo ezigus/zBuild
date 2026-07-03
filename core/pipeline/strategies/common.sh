@@ -47,7 +47,7 @@ _strategy_orch_scratch_dir() {
     if [[ -n "${ZBUILD_ORCH_SCRATCH:-}" ]]; then
         printf '%s' "$ZBUILD_ORCH_SCRATCH"
     else
-        printf '%s' "${HOME}/.zbuild/state/runs/${ZBUILD_RUN_ID:-default}/orch"
+        printf '%s' "${ZBUILD_STATE_ROOT:-${HOME}/.zbuild/state}/runs/${ZBUILD_RUN_ID:-default}/orch"
     fi
 }
 
