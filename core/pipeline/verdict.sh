@@ -55,7 +55,12 @@ verdict_classify() {
         # (analogous to review's `request_changes`) — iterating, not done.
         # Maps to warn, not fail. Without this, every impact-incomplete fired
         # a `pipeline.indicator.unknown_verdict` event 1× per iter.
-        request_changes|incomplete)
+        # #1208: `did_not_finish` is build's mid-flight verdict (router_timeout /
+        # error). Non-terminal (iterating, not done, not a structural fail) → warn.
+        # It is deliberately NOT in the structural-failure pass-through set
+        # (error/corrupt_diff/block) so _cycle_detect_blocked never halts on it —
+        # a timeout iterates, it does not block the cycle.
+        request_changes|incomplete|did_not_finish)
             echo "warn" ;;
         fail|error|block|scope_violation|corrupt_diff|empty_diff|scope_too_large)
             echo "fail" ;;

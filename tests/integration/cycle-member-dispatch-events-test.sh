@@ -215,15 +215,21 @@ assert_eq "inner_cycle dispatch.complete rc=0 (converged)" "0" "$inner_dispatch_
 inner_dispatch_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
 assert_eq "inner_cycle dispatch.complete verdict=pass" "pass" "$inner_dispatch_complete_verdict"
 
-# ── Section 3: inner hits max_iterations → outer must STILL dispatch review ─
-print_test_section "3. inner max_iterations → outer continues to next sibling (the dogfood bug)"
+# ── Section 3: inner exhausts with FAILING tests → outer HALTS (#1208) ──────
+print_test_section "3. inner exhausts with failing tests → outer halts (never advisory-rescued, #1208)"
 
 : > "$ZBUILD_EVENTS_JSONL"
 rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 
-# Inner ALWAYS returns test=fail → inner hits max_iterations=3 → returns rc=1.
-# Outer must still dispatch review (and review then says approve so outer converges on iter 1).
+# Inner ALWAYS returns test=fail → inner hits max_iterations=3 with FAILING tests.
+# #1208 by-severity: exhaustion with failing tests → rc=8 (the single fatal
+# condition — never ship failing/incomplete work). A nested rc=8 propagates to
+# the outer as a blocking_member_failure (cycle-orchestrator.sh:1278), so the
+# outer HALTS (rc=8) and does NOT dispatch the downstream review — a failing
+# build/test cycle is NOT rescued by an advisory review gate. (Pre-#1208 the
+# inner exhaustion returned rc=1 and the outer's review could approve a still-
+# failing tree — exactly the #944 false-`complete` class this fixes.)
 cycle_dispatch_stage() {
     local stage="$1"
     case "$stage" in
@@ -249,21 +255,23 @@ load_template "$TPL2" || assert_fail "2-level template load (section 3)"
 
 set +e; cycle_orchestrator_run "outer_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
 
-# The KEY ASSERTION: outer must dispatch review even when inner returned rc=1.
-review_dispatched=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle" and .data.member=="review")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "review dispatched on outer iter 1 even after inner rc=1 (the dogfood bug)" "1" "$review_dispatched"
+# Instrumentation intact: the inner-cycle member's start+complete pair still fires.
+inner_start=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle" and .data.member=="inner_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "inner_cycle dispatch.start emitted (instrumentation intact)" "1" "$inner_start"
 
 inner_member_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
-assert_eq "inner_cycle dispatch.complete rc=1 (max_iterations)" "1" "$inner_member_complete_rc"
+assert_eq "inner_cycle dispatch.complete rc=8 (#1208: exhausted with failing tests)" "8" "$inner_member_complete_rc"
 
 inner_member_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
-assert_eq "inner_cycle dispatch.complete verdict=fail (Wave 19-C-2 mapping)" "fail" "$inner_member_complete_verdict"
+assert_eq "inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)" \
+    "blocking_member_failure" "$inner_member_complete_verdict"
 
-# After review approves, outer should converge.
-assert_eq "outer cycle converges rc=0 (review.verdict=approve)" "0" "$rc"
+# The KEY #1208 ASSERTION: a failing inner cycle HALTS the outer — review is NOT
+# reached (no advisory rescue of failing tests).
+review_dispatched=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle" and .data.member=="review")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)" "0" "$review_dispatched"
 
-outer_complete_count=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="outer_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "outer cycle.complete emitted" "1" "$outer_complete_count"
+assert_eq "outer cycle halts rc=8 (blocking_member_failure propagated)" "8" "$rc"
 
 print_test_results
 cleanup_test_env

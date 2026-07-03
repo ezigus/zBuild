@@ -134,6 +134,8 @@ _seed_state
 load_template "$FIXT/cycle-plateau.yaml"
 MOCK_VERDICTS="build:pass,pass,pass,pass,pass;test:fail,fail,fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "I7b: cycle-plateau still terminates plateau rc=2" "2" "$rc"
+# #1208: plateau early-exit removed — the cycle runs to max_iterations and
+# terminates by-severity (failing tests → rc=8), not the old plateau rc=2.
+assert_eq "I7b: cycle-plateau runs to exhaustion, failing tests → rc=8 (#1208)" "8" "$rc"
 
 print_test_results

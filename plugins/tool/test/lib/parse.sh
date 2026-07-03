@@ -189,12 +189,51 @@ _test_extract_failing_files() {
         || true
 }
 
+# ─── _test_parse_declared_count (#1208, repo-declarable count contract) ──────
+# FIRST-PRIORITY, repo-agnostic count source so the granular pass/fail signal
+# works for ANY target (iOS/Swift via xcodebuild/xcresulttool, etc.) without a
+# per-ecosystem recognizer. Two forms, checked in order:
+#   ZBUILD_TEST_RESULTS_JSON — path to a {passed,failed,total,skipped?} JSON file
+#                              the test command wrote.
+#   ZBUILD_TEST_COUNT_CMD    — a command whose stdout is that JSON.
+# The JSON MUST carry numeric `passed` and `failed`. On success echoes the same
+# pipe line the pattern bank emits (verdict|passed|failed|summary) and returns 0;
+# on absence / malformed / non-numeric counts returns 1 so the caller falls back
+# to the recognizer bank (never fabricate counts — fail SAFE).
+_test_parse_declared_count() {
+    local rc="$1" src="" json=""
+    if [[ -n "${ZBUILD_TEST_RESULTS_JSON:-}" && -s "${ZBUILD_TEST_RESULTS_JSON}" ]]; then
+        json="$(cat "$ZBUILD_TEST_RESULTS_JSON" 2>/dev/null || true)"; src="results_json"
+    elif [[ -n "${ZBUILD_TEST_COUNT_CMD:-}" ]]; then
+        json="$(eval "$ZBUILD_TEST_COUNT_CMD" 2>/dev/null || true)"; src="count_cmd"
+    else
+        return 1
+    fi
+    [[ -n "$json" ]] || return 1
+    jq -e . >/dev/null 2>&1 <<<"$json" || return 1
+    local passed failed
+    passed="$(jq -r '.passed // empty' <<<"$json" 2>/dev/null || true)"
+    failed="$(jq -r '.failed // empty' <<<"$json" 2>/dev/null || true)"
+    [[ "$passed" =~ ^[0-9]+$ && "$failed" =~ ^[0-9]+$ ]] || return 1
+    local verdict="pass"
+    [[ "$rc" -ne 0 || "$failed" -gt 0 ]] && verdict="fail"
+    printf '%s|%d|%d|declared(%s): %d passed, %d failed (exit %d)\n' \
+        "$verdict" "$passed" "$failed" "$src" "$passed" "$failed" "$rc"
+}
+
 # ─── _test_parse_summary (orchestrator) ───────────────────────────────────────
-# Dispatch to pattern functions in fixed order; first non-empty match wins.
-# Anchors enforce mutual exclusivity by construction.
+# #1208: a repo-declarable count source (ZBUILD_TEST_RESULTS_JSON / _COUNT_CMD)
+# is consulted FIRST; the built-in recognizer bank stays as the out-of-box
+# fallback for common runners; else fail-safe. All three keep counts HONEST.
 # Fail-safe: emit `error|null|null|<banner>|0` — NEVER fabricate counts.
 _test_parse_summary() {
     local raw="$1" rc="$2" line fn
+    # First-priority repo-declared contract (portability, #1208).
+    line="$(_test_parse_declared_count "$rc")" || line=""
+    if [[ -n "$line" ]]; then
+        printf '%s|1\n' "$line"
+        return 0
+    fi
     for fn in _test_pattern_runall _test_pattern_jest _test_pattern_mocha \
               _test_pattern_pytest _test_pattern_gotest _test_pattern_cargo; do
         line="$("$fn" "$raw" "$rc")" || continue

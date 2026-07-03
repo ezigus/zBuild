@@ -154,15 +154,24 @@ _run_cycle() {
     set -e
 }
 
-print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ stall within <=2 iters (not 5)"
+# #1208: the #1117 empty-diff STALL-BREAK was REMOVED. "Run all tries": an
+# empty_diff that never converges no longer terminates early — the cycle uses ALL
+# its iterations (each cheap: build self-yields on an empty diff) and then
+# terminates by-severity. Here the mock's `test` stage passes (gate-aggregator
+# fails), so exhaustion routes to rc=2 (unconverged→review, reason
+# max_iterations), NOT the old reason=stalled / ≤2-iter early break.
+print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=2 (no early stall-break, #1208)"
 _GA_VERDICT="fail"
 _run_cycle "stall"
-assert_eq "[SPEC-3] cycle rc=2 (plateau-class soft-continue)" "2" "$_RUN_RC"
-assert_eq "[SPEC-3] terminated reason is stalled" "stalled" "${_CYCLE_LAST_TERMINATED_REASON:-}"
-[[ "${_CYCLE_LAST_ITERATIONS:-0}" -le 2 ]] \
-    && assert_pass "[SPEC-3] terminates within <=2 iterations (got ${_CYCLE_LAST_ITERATIONS:-?}, NOT 5)" \
-    || assert_fail "[SPEC-3] terminates within <=2 iterations" "ran ${_CYCLE_LAST_ITERATIONS:-?}"
-assert_contains "[SPEC-3] cycle.stalled event emitted" "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.stalled"
+assert_eq "[SPEC-3] cycle rc=2 (unconverged→review)" "2" "$_RUN_RC"
+assert_eq "[SPEC-3] terminated reason is max_iterations (not stalled — early break removed)" \
+    "max_iterations" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+assert_eq "[SPEC-3] ran ALL 5 iterations (no early terminator)" "5" "${_CYCLE_LAST_ITERATIONS:-}"
+if grep -q 'cycle.stalled' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_fail "[SPEC-3] no cycle.stalled event (stall-break removed)" "cycle.stalled emitted"
+else
+    assert_pass "[SPEC-3] no cycle.stalled event (stall-break removed)"
+fi
 
 print_test_section "SPEC-4: empty_diff + gate=pass ⇒ converged (no false stall)"
 _GA_VERDICT="pass"

@@ -636,11 +636,31 @@ _build_stage_run_inner() {
     # consumed an iter on no progress. Setting verdict=empty_diff classifies
     # to fail via verdict_classify so the cycle's plateau/divergence detector
     # sees real signal and the outer cycle's predicate sees an honest result.
+    # Issue #1208: the verdict distinguishes the build's LOOP-TERMINATION RESTING
+    # POINT (a repo-neutral, language-independent signal) so the cycle can decide
+    # convergence honestly:
+    #   scope_violation  → out-of-scope write (unchanged)
+    #   did_not_finish   → mid-flight: the attempt was INTERRUPTED (router_timeout
+    #                      or dispatch error), NOT a clean resting point. Non-fatal
+    #                      (this function still returns 0 → committed partial work
+    #                      is preserved, #602), but the cycle MUST NOT ratify
+    #                      convergence on it even if a stale/partial tree passes
+    #                      the gate-aggregator (mid-flight suppression in the
+    #                      orchestrator). A timeout is thus never fatal, yet never
+    #                      a false `complete`.
+    #   empty_diff       → LOOP_COMPLETE with zero changes = "nothing to do": a
+    #                      CLEAN resting point. Converges iff gates are also green
+    #                      (a done re-run passes on iter 1). Only counts against
+    #                      the run when gates are red (changed nothing, still red).
+    #   pass             → LOOP_COMPLETE with changes (or the empty_iter self-yield
+    #                      plateau) = a clean resting point.
     local build_verdict="pass"
-    [[ "$scope_violation" == "true" ]] && build_verdict="scope_violation"
-    if [[ "$terminated_reason" == "done_sentinel" \
-          && "${files_changed_count:-0}" -eq 0 \
-          && "$scope_violation" != "true" ]]; then
+    if [[ "$scope_violation" == "true" ]]; then
+        build_verdict="scope_violation"
+    elif [[ "$terminated_reason" == "router_timeout" || "$terminated_reason" == "error" ]]; then
+        build_verdict="did_not_finish"
+    elif [[ "$terminated_reason" == "done_sentinel" \
+          && "${files_changed_count:-0}" -eq 0 ]]; then
         build_verdict="empty_diff"
     fi
 

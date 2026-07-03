@@ -89,12 +89,13 @@ cycle_orchestrator_run "build_review_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_F
 RC=$?
 set -e
 
-# ─── T1: cap fires → rc=1 (max_iterations class, NOT rc=6 cycle_abort) ───────
-# The orchestrator returns the cycle-internal max_iterations rc class (1).
-# The runner reads _CYCLE_ON_MAX=continue to decide fall-through vs. halt
-# (ADR-021 v2 #527/#528). What matters here is that rc != 6 — block aborts
-# would propagate rc=6 outward; max_iter does NOT.
-assert_eq "T1: build_review_cycle rc=1 (max_iterations class)" "1" "$RC"
+# ─── T1: cap fires → rc=2 (max_iterations, tests PASSING) NOT rc=6 cycle_abort ─
+# #1208 by-severity: at exhaustion the tests are passing (review just wants
+# changes), so the outcome is unconverged→review rc=2 (not the old max_iterations
+# rc=1; both are the same soft-continue class at the runner). The runner reads
+# _CYCLE_ON_MAX=continue to decide fall-through vs. halt (ADR-021 v2 #527/#528).
+# What matters here is rc != 6 — block aborts propagate rc=6; max_iter does NOT.
+assert_eq "T1: build_review_cycle rc=2 (exhausted, tests passing → unconverged→review)" "2" "$RC"
 if [[ "$RC" -ne 6 ]]; then
     assert_pass "T1: rc != 6 — max_iter is distinct from cycle_abort"
 else

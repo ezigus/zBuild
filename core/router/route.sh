@@ -1294,11 +1294,24 @@ ${_diff_pointer}"
             if [[ $rc -eq 124 ]]; then
                 timeout_recur=$(( timeout_recur + 1 ))
                 if [[ $timeout_recur -ge 3 ]]; then
-                    error "route_to_model_loop: 3 consecutive timeouts — fatal"
-                    _ROUTE_LOOP_TERMINATED_REASON="error"
+                    # Issue #1208 / ADR-013 (router-loop): a per-turn timeout is
+                    # NEVER fatal. Repeated timeouts end THIS build attempt and
+                    # YIELD control back to the cycle (non-fatal return 0), which
+                    # always runs the test stage to verify the actual state and
+                    # iterates. The caller (build plugin) reads
+                    # _ROUTE_LOOP_TERMINATED_REASON=router_timeout to mark the
+                    # attempt did-not-finish (mid-flight, not a clean resting
+                    # point) so the iteration cannot ratify convergence — but the
+                    # committed partial work is preserved (#602). warn, not error.
+                    warn "route_to_model_loop: 3 consecutive timeouts — yielding to cycle (non-fatal)"
+                    _ROUTE_LOOP_TERMINATED_REASON="router_timeout"
+                    eb_emit_event "loop.timeout_yield" \
+                        "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
+                        "consecutive=$timeout_recur" \
+                        "reason=router_timeout" 2>/dev/null || true
                     rm -f "$stderr_file" "$json_file"
                     _route_loop_clear_traps
-                    return 2
+                    return 0
                 fi
             fi
             rm -f "$stderr_file" "$json_file"

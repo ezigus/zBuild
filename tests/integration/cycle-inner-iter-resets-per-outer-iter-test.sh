@@ -89,7 +89,7 @@ build_test_cycle:
     stage: test
     field: verdict
     op: eq
-    value: pass
+    value: approve
   max_iterations: 2
   on_max: continue
 
@@ -103,15 +103,22 @@ review:
   roles: [reviewer]
 EOF
 
-# Inner always fails. Outer's review flips: outer iter 1 → request_changes
-# (forces outer iter 2). Outer iter 2 → approve (forces convergence).
+# Inner never converges but its TESTS PASS: build/test emit verdict=pass while the
+# inner exit_when requires test.verdict==approve (a value `test` never emits), so
+# the inner exhausts max_iterations UNCONVERGED-BUT-PASSING → #1208 rc=2 (soft,
+# non-halting) — NOT rc=8 (a failing-test inner would hard-halt the outer, #1208).
+# This keeps the inner non-fatal so the outer re-dispatches it across outer iters,
+# exercising the iter+history reset (the actual regression under test) without the
+# #944 anti-pattern of advisory-review-rescuing failing tests.
+# Outer's review flips: outer iter 1 → request_changes (forces outer iter 2),
+# outer iter 2 → approve (forces convergence).
 _OUTER_ITER_OBSERVED=0
 cycle_dispatch_stage() {
     local stage="$1"
     case "$stage" in
         build|test)
-            _CYCLE_DISPATCH_VERDICT="fail"
-            _CYCLE_DISPATCH_VERDICT_RAW="fail"
+            _CYCLE_DISPATCH_VERDICT="pass"
+            _CYCLE_DISPATCH_VERDICT_RAW="pass"
             ;;
         review)
             _OUTER_ITER_OBSERVED=$(( _OUTER_ITER_OBSERVED + 1 ))

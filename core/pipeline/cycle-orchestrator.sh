@@ -1468,15 +1468,20 @@ _cycle_iter_dispatch() {
             return 8
         fi
 
-        # ─── ADR-029 G2: repeated-timeout fast abandon (#810) ────────────
-        # When a member returns verdict=error AND reason ∈ {router_timeout,
-        # router_oom_kill}, increment that member's consecutive-timeout
-        # counter (scoped to this cycle's run). Reset on any non-timeout
-        # dispatch. On 2nd consecutive timeout, emit
-        # `cycle.member.timeout_abandoned` and terminate the cycle now —
-        # a third 900s retry would burn budget on what is almost certainly
-        # an over-budget context (per ADR-029, the dogfood pattern that
-        # motivated this rule was 3× 900s = 45min wasted before failing).
+        # ─── ADR-029 G2 abandon REMOVED (#1208); G3 escalation retained ──
+        # ADR-029 G2 used to ABANDON the cycle (return 4) on the 2nd consecutive
+        # router_timeout/oom member dispatch. Issue #1208 reverses that: a timeout
+        # is NEVER fatal — the ONLY fatal condition is the cycle exhausting
+        # max_iterations without a clean, passing convergence. So the fast-abandon
+        # is gone; a timed-out attempt simply consumes an iteration and the cycle
+        # retries (each attempt is cheap — the build self-yields on an empty diff).
+        # We KEEP the per-member timeout counter + G3 max_turns base capture (a
+        # "needs more turns" escalation is still helpful and non-fatal) and the
+        # cycle.member.timeout event for forensics. NB: with #1208 Changes 1-2 a
+        # build timeout now surfaces as verdict=did_not_finish (not verdict=error
+        # reason=router_timeout), so for the build/test cycle this branch is
+        # largely dormant; it stays intact for any member that still reports an
+        # error-class router_timeout/oom so G3 escalation continues to work.
         local _g2_reason="${_CYCLE_DISPATCH_REASON:-}"
         if [[ "$verdict" == "error" ]] && \
            [[ "$_g2_reason" == "router_timeout" || "$_g2_reason" == "router_oom_kill" ]]; then
@@ -1509,19 +1514,9 @@ _cycle_iter_dispatch() {
                 "iter=$iter" "stage=$s" \
                 "reason=$_g2_reason" \
                 "consecutive=${_CYCLE_TIMEOUT_RUN[$s]}" 2>/dev/null || true
-            if [[ "${_CYCLE_TIMEOUT_RUN[$s]}" -ge 2 ]]; then
-                eb_emit_event "cycle.member.timeout_abandoned" \
-                    "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
-                    "iter=$iter" "stage=$s" \
-                    "reason=$_g2_reason" \
-                    "consecutive=${_CYCLE_TIMEOUT_RUN[$s]}" 2>/dev/null || true
-                warn "cycle: $s repeated router timeout (${_CYCLE_TIMEOUT_RUN[$s]}× $_g2_reason) — abandoning iter $iter and terminating cycle (ADR-029 G2)"
-                _CYCLE_LAST_TERMINATED_REASON="timeout_abandoned"
-                _CYCLE_LAST_VERDICTS_BLOB="$blob"
-                _CYCLE_LAST_FAILURE_COUNT="$fail"
-                [[ $_had_e -eq 1 ]] && set -e
-                return 4
-            fi
+            # #1208: NO abandon here — the timeout is non-fatal; the cycle
+            # iterates (or, at exhaustion, the by-severity cascade routes the
+            # outcome). Only max_iterations-without-convergence is fatal.
         else
             # Reset the per-member counter on any successful (or non-timeout)
             # dispatch — only CONSECUTIVE timeouts trigger fast-abandon.
@@ -1849,12 +1844,10 @@ cycle_orchestrator_run() {
             return 130
         fi
         if [[ $_iter_rc -ne 0 ]]; then
-            # ADR-029 G2: preserve timeout_abandoned reason if the iter
-            # dispatcher already set it (the abandon path is a documented
-            # rc=4 with a more specific reason than generic "error").
-            if [[ "${_CYCLE_LAST_TERMINATED_REASON:-}" != "timeout_abandoned" ]]; then
-                _CYCLE_LAST_TERMINATED_REASON="error"
-            fi
+            # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was
+            # removed, so this generic non-zero-dispatch path is the only writer
+            # of the reason here — set it unconditionally.
+            _CYCLE_LAST_TERMINATED_REASON="error"
             _cycle_clear_traps
             _CYCLE_TRAP_CYCLE_ID=''
             return 4
@@ -1878,16 +1871,37 @@ cycle_orchestrator_run() {
         local _build_verdict
         _build_verdict="$(jq -r '.build.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
 
-        # Termination evaluation (priority order — see ADR-021):
-        #   1) until satisfied (converged)
-        #   1.5) velocity_plateau (iter ≥ 2, fires before max_iterations)
-        #   2) max_iterations
-        #   3) plateau (iter ≥ 2)
-        #   4) divergence (iter ≥ K+1)
+        # Termination evaluation (priority order — see ADR-021, #1208):
+        #   1) until satisfied (converged) — UNLESS the build is mid-flight
+        #   2) max_iterations (the SINGLE fatal condition) → by-severity
+        #   3) blocked (genuine structural error/corrupt/block)
+        # (#1208 removed the early velocity_plateau/plateau/divergence terminators
+        # and the empty-diff stall-break: the cycle runs ALL its tries; plateau
+        # signals only classify the exhaustion outcome, they never stop early.)
         local converged=1
         local _ce=0; case $- in *e*) _ce=1 ;; esac
         set +e; _cycle_check_until "$verdicts_blob"; converged=$?
         [[ $_ce -eq 1 ]] && set -e
+
+        # #1208 — mid-flight build convergence suppression. The test stage ALWAYS
+        # runs to verify (the build never short-circuits the cycle), but an
+        # iteration may declare `complete` ONLY when the build reached a CLEAN
+        # RESTING POINT (LOOP_COMPLETE, or a legitimate empty-diff stall). A build
+        # that did NOT finish (router_timeout / dispatch error → verdict
+        # did_not_finish) is mid-flight: even if a stale/partial tree spuriously
+        # satisfies the gate-aggregator, the iteration must NOT converge. This is
+        # NON-FATAL — the cycle iterates (or, at exhaustion, the by-severity
+        # cascade routes passing→review / failing→failed). A clean empty_diff
+        # stall (nothing-to-do via LOOP_COMPLETE) is a resting point and is NOT
+        # suppressed → it converges when the gate verification is green (a done
+        # re-run passes on iter 1). GENERIC: keys only on the build member's
+        # repo-neutral did_not_finish verdict — no runner/language/path/plugin.
+        if [[ "$converged" -eq 0 && "$_build_verdict" == "did_not_finish" ]]; then
+            converged=1  # suppress: mid-flight build is not a clean resting point
+            _cycle_emit "cycle.build_unfinished.suppressed_convergence" \
+                "iter=$iter" "build_verdict=$_build_verdict" \
+                "reason=build_mid_flight_not_a_resting_point"
+        fi
 
         # ADR-034 / #846: full-suite gate intercept. If convergence predicate
         # fired (converged=0) but the test stage ran in targeted mode, the
@@ -1977,37 +1991,59 @@ cycle_orchestrator_run() {
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
             overall_status="blocked_on_scope"; term_rc=7
-        elif [[ "$_build_verdict" == "empty_diff" && "$iter" -ge 2 ]]; then
-            # #1117: no-progress stall-break. The build member produced no diff
-            # (empty_diff) while exit_when is still UNsatisfied (converged != 0 —
-            # guaranteed by this chain's head). Re-running build will reproduce
-            # the same empty diff, so the remaining iterations cannot converge —
-            # terminate now instead of spinning to max_iterations. iter>=2 gives
-            # iter 1's legitimate pre-committed empty_diff exactly one feedback-
-            # informed retry before declaring the stall (an empty_diff that
-            # coincides with exit_when==pass exits via the `converged` head above,
-            # never here). Plateau-class (term_rc=2 → runner continues to review,
-            # marks the cycle unconverged) with a DISTINCT reason + cycle.stalled
-            # event so forensics tell a stall from a generic flat-velocity plateau.
-            _CYCLE_LAST_TERMINATED_REASON="stalled"
-            _CYCLE_LAST_PLATEAU_EVIDENCE="empty_diff_no_progress"
-            overall_status="stalled"; term_rc=2
-        elif _cycle_detect_velocity_plateau "$history_file" "$_CYCLE_VELOCITY_PLATEAU_WINDOW"; then
-            _CYCLE_LAST_TERMINATED_REASON="plateau"
-            overall_status="plateau"; term_rc=2
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
-            _CYCLE_LAST_TERMINATED_REASON="max_iterations"
-            overall_status="max_iterations"; term_rc=1
-        elif _cycle_detect_plateau "$history_file" "$_CYCLE_PLATEAU_WINDOW"; then
-            _CYCLE_LAST_TERMINATED_REASON="plateau"
-            overall_status="plateau"; term_rc=2
-        elif _cycle_detect_divergence "$history_file" "$_CYCLE_DIVERGENCE_WINDOW"; then
-            _CYCLE_LAST_TERMINATED_REASON="divergence"
-            overall_status="divergence"; term_rc=3
+            # #1208 — THE single fatal condition: the cycle exhausted its
+            # iteration budget WITHOUT a clean, passing convergence. Split
+            # BY-SEVERITY using only GENERIC, repo-neutral signals (roster-driven
+            # test verdict + failure_count — no plugin id / language / path /
+            # test-format), so this works identically for an iOS/Swift, Go, or
+            # Python target:
+            #   tests FAILING (test.verdict==fail OR failure_count>0) → hard-fail
+            #     term_rc=8 → runner status=failed, HALT (never ship an
+            #     incomplete/failing tree — the #944 false-`complete` cure).
+            #   tests PASSING but not cleanly converged → term_rc=2
+            #     (unconverged→review; on_max is honored at the runner). Never a
+            #     silent `complete` on an unfinished build (mid-flight suppression
+            #     above already blocked that this iter).
+            # (#1208 removed the early velocity_plateau / plateau / divergence
+            # terminators and the #1117 empty-diff stall-break: the cycle runs ALL
+            # its tries. Each attempt is cheap — the build self-yields on an empty
+            # diff — and plateau signal now only classifies THIS exhaustion
+            # outcome, it never stops the cycle early.)
+            # "Tests failing" is the AUTHORITATIVE verifier signal of the `test`
+            # member — and ONLY that member: (a) test.verdict==fail, OR (b) the
+            # roster's test-results artifact reports a positive failed count. We
+            # read `.failed` DIRECTLY from test-results.json (not the generic
+            # failure_count), so a non-test gate flagging a NON-terminal condition
+            # (acceptance untagged_spec / negctl-timeout infra, a non-blocking cq
+            # member) can NEVER inflate a hard-fail. This closes a residual
+            # false-fatal: the generic failure_count is contaminated by non-test
+            # gate failures whenever the #511 Pin-10 test-results override did NOT
+            # apply (results absent/malformed) — keying on the artifact avoids that
+            # entirely. Results absent/malformed while tests pass → NOT a hard-fail
+            # → rc=2 (unconverged->review). A cycle with no test-results cannot
+            # assert test failure via clause (b). GENERIC: test-results.json is the
+            # roster's test artifact (ADR-044 count contract feeds it) — no plugin
+            # id / language / path assumption beyond the canonical `test` member.
+            local _exh_test_verdict _exh_test_failed="" _exh_trj
+            _exh_test_verdict="$(jq -r '.test.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
+            _exh_trj="$state_dir/artifacts/test-results.json"
+            if [[ -s "$_exh_trj" ]]; then
+                _exh_test_failed="$(jq -r '.failed // empty' "$_exh_trj" 2>/dev/null || true)"
+            fi
+            if [[ "$_exh_test_verdict" == "fail" ]] \
+               || { [[ "$_exh_test_failed" =~ ^[0-9]+$ ]] && [[ "$_exh_test_failed" -gt 0 ]]; }; then
+                _CYCLE_LAST_TERMINATED_REASON="max_iterations_tests_failing"
+                overall_status="max_iterations"; term_rc=8
+            else
+                _CYCLE_LAST_TERMINATED_REASON="max_iterations"
+                overall_status="max_iterations"; term_rc=2
+            fi
         elif _cycle_detect_blocked "$verdicts_blob" "$iter"; then
-            # #528: structural cannot-progress class — fires LAST (after
-            # divergence) so legitimate "make progress" predicates take
-            # priority. rc=5 halts the pipeline (runner.sh:618).
+            # #528: structural cannot-progress class (raw verdict error/corrupt_diff/
+            # block — NOT a timeout, which iterates). rc=5 halts the pipeline.
+            # #1208: retained as the ONLY early terminator besides converge/abort/
+            # scope-deny — genuine structural failures still halt fast.
             _CYCLE_LAST_TERMINATED_REASON="blocked"
             overall_status="blocked"; term_rc=5
         fi
@@ -2047,26 +2083,16 @@ cycle_orchestrator_run() {
         if [[ $term_rc -ge 0 ]]; then
             # #524 Pin 8: route ALL terminal-rc paths through
             # _cycle_handle_terminal_rc — single fan-in for cycle.complete
-            # event + operator exit banner. Diagnostic events (cycle.plateau /
-            # cycle.divergence) stay inline since they carry termination-
-            # specific evidence the central helper doesn't know about.
+            # event + operator exit banner. The blocked diagnostic (cycle.blocked)
+            # stays inline since it carries termination-specific evidence the
+            # central helper doesn't know about.
+            # #1208: the term_rc=2 (stalled/plateau) and term_rc=3 (divergence)
+            # early terminators were removed — term_rc=2 now means only
+            # "exhausted, tests passing → unconverged→review" (reason
+            # max_iterations), which needs no extra diagnostic event beyond
+            # cycle.complete. The plateau/velocity/divergence DETECTOR functions
+            # remain defined (dormant, for reuse) but are no longer invoked.
             case "$term_rc" in
-                2) if [[ "$_CYCLE_LAST_TERMINATED_REASON" == "stalled" ]]; then
-                       # #1117: no-progress stall (empty_diff build + unsatisfied
-                       # exit_when). Distinct event, mirrors the plateau/divergence
-                       # emit shape (diagnostic evidence the central fan-in helper
-                       # doesn't carry).
-                       eb_emit_event "cycle.stalled" "cycle_id=$cycle_id" "iter=$iter" \
-                           "stage=build" "verdict=empty_diff" \
-                           "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" 2>/dev/null || true
-                   else
-                       # #845: report the window of whichever plateau detector fired
-                       # (evidence tells which) — not always the tuple window.
-                       local _plateau_streak="$_CYCLE_PLATEAU_WINDOW"
-                       [[ "$_CYCLE_LAST_PLATEAU_EVIDENCE" == "velocity_flat" ]] && _plateau_streak="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
-                       eb_emit_event "cycle.plateau" "cycle_id=$cycle_id" "iter=$iter" "evidence=$_CYCLE_LAST_PLATEAU_EVIDENCE" "streak=$_plateau_streak" 2>/dev/null || true
-                   fi ;;
-                3) eb_emit_event "cycle.divergence" "cycle_id=$cycle_id" "iter=$iter" "velocity_history=$failure_count" 2>/dev/null || true ;;
                 5) # #528: emit cycle.blocked between cycle.iteration.complete
                    # (already emitted above) and cycle.complete reason=blocked
                    # — strict event ordering per MED #9. cycle.complete itself

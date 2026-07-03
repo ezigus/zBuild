@@ -40,15 +40,24 @@ Before invoking a cycle member, the orchestrator measures the assembled prompt. 
 
 The orchestrator emits `cycle.context.compressed` event with `original_chars`, `final_chars`, `strategy` so postmortem can see what was dropped.
 
-### G2. Repeated-timeout fast abandon
+### G2. Repeated-timeout fast abandon — **REVERSED / REMOVED (issue #1208)**
 
-When a cycle member returns `verdict=error reason=router_timeout` from `_router_rc_classify` (after ADR-021 R2 lands so rc=124 actually propagates), the orchestrator tracks consecutive timeouts per member.
+> **Amendment (2026-07-03, issue #1208): G2's fast-abandon is REMOVED.** A build-stage
+> timeout is now **NEVER fatal**. The single fatal condition is the build/test cycle
+> exhausting `max_iterations` without a clean, passing convergence (see ADR-021
+> Amendment #1208). A repeated router timeout no longer abandons the cycle
+> (`cycle.member.timeout_abandoned` / `return 4` deleted); the timed-out attempt simply
+> consumes an iteration and the cycle retries — each attempt is cheap because the build
+> self-yields on an empty diff. At exhaustion the outcome is split **by severity** (tests
+> failing → `rc=8` halt; tests passing-but-unclean → `rc=2` unconverged→review). The
+> per-member timeout **counter** and the `cycle.member.timeout` event are RETAINED to
+> feed **G3** (below), which is KEPT. NB: with #1208 Changes 1–2 a build timeout now
+> surfaces as `verdict=did_not_finish` (not `verdict=error reason=router_timeout`), so
+> for the build/test cycle the G2 counter branch is largely dormant; it remains intact
+> for any member that still reports an error-class `router_timeout`/`router_oom_kill` so
+> G3 escalation keeps working.
 
-- First timeout in an iter: log + emit warn + retry once (the previous iter may have been transient)
-- Second consecutive timeout: **abort the cycle iter immediately** with `cycle.member.timeout_abandoned`. Do NOT retry a third time.
-- Cycle records `failure_count++` and proceeds to next iter or `cycle.unconverged` per existing semantics.
-
-Saves 900s per avoided third retry — at the observed rate that's 15 minutes per impacted iter.
+The original (now-removed) G2 behavior, for history: when a cycle member returned `verdict=error reason=router_timeout`, the orchestrator tracked consecutive timeouts per member and, on the 2nd consecutive, aborted the cycle iter with `cycle.member.timeout_abandoned`. Rationale at the time: save 900s per avoided third retry. #1208 supersedes this — "run all tries; only exhaustion-without-convergence is fatal."
 
 ### G3. Per-stage `max_turns` budget tracking
 
