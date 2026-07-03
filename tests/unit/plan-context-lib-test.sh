@@ -93,7 +93,11 @@ ZBUILD_PLAN_RESUME=0 plan_context_read_for_resume "$REPO_ID" "$SCOPE_KEY" "$GH" 
 set -e
 assert_eq "[SPEC-2] refuse when ZBUILD_PLAN_RESUME=0" "1" "$rc"
 
-# ─── [SPEC-4] _plan_recover_envelope_json ───────────────────────────────────
+# ─── [SPEC-4] _plan_recover_envelope_json (framework-delegated, #944) ────────
+# Since #944 (ADR-028 v1.2) this helper delegates to the shared framework
+# _llm_recover_envelope_json with _plan_envelope_schema_ok as the gate; these
+# assertions exercise that delegated path end-to-end (plan-context.sh sources
+# llm-agent.sh so the framework helper resolves standalone here).
 # Single schema-bearer amid prose → recovered.
 single_raw='Here is my plan:
 {"schema_version":1,"steps":["a","b"]}

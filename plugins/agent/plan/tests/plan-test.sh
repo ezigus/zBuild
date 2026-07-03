@@ -291,9 +291,9 @@ assert_eq "empty .result emits reason=empty_result_envelope (#476)" "empty_resul
 # ─── Test 13c (#478): prose-prefixed JSON survives via parser-side helper ───
 # Envelope mode (#476) separates reasoning *turns* from the final turn but the
 # model can still emit prose INSIDE the final assistant message before its
-# JSON. extract_first_json_object slices the LAST top-level balanced object
-# out of the prose preface. Without the helper this exact shape was the
-# triggering dogfood failure on #294.
+# JSON. _llm_envelope_parse (--schema-gate, #944) slices the LAST top-level
+# balanced object out of the prose preface. Without the helper this exact shape
+# was the triggering dogfood failure on #294.
 : > "$EVENTS_FILE"
 CANNED_PLAN='Now I have a complete picture.
 
@@ -608,7 +608,9 @@ export ZBUILD_GOAL="test goal"
 # ─── [SPEC-4][change] envelope recovery from prose-wrapped/last-turn result ───
 # _plan_recover_envelope_json must salvage exactly one schema-valid plan object
 # out of a prose-wrapped / multi-turn response and the plugin must emit
-# plan.envelope.recovered when it does.
+# plan.envelope.recovered when it does. Since #944 this helper delegates to the
+# shared framework _llm_recover_envelope_json (_plan_envelope_schema_ok gate);
+# the assertions below hold identically across the delegation.
 print_test_section "[SPEC-4][change] envelope recovery of a single schema-bearer"
 _VALID_PLAN='{"schema_version":1,"title":"recovered","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":3}],"estimated_total_lines":3,"notes":""}'
 _PROSE_WRAPPED="I explored the repo across several turns. Here is the final plan:
@@ -645,6 +647,28 @@ _plan_envelope_schema_ok '{"schema_version":1,"title":"t","steps":[]}' >/dev/nul
 _nosteps_rc=$?
 set -e
 assert_eq "[SPEC-4][guard] object missing non-empty steps[] rejected" "1" "$_nosteps_rc"
+
+# ─── [SPEC-5][change] happy-path recovery via the shared framework (#944) ─────
+# ADR-028 v1.2: plan's rc=0 parse now routes through _llm_envelope_parse
+# --schema-gate _plan_envelope_schema_ok. When the model emits the real plan
+# followed by a brace-bearing postamble, LAST-wins selects the postamble; the
+# schema-gate must trigger _llm_recover_envelope_json and restore the real plan.
+# CHANGE: RED before #944 — extract_first_json_object (LAST-wins) picks the
+# junk object → schema_violation → rc=1.
+: > "$EVENTS_FILE"
+_SAVED_CANNED_PLAN="$CANNED_PLAN"
+CANNED_PLAN='{"schema_version":1,"title":"recovered-via-framework","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":3}],"estimated_total_lines":3,"notes":""}
+
+Trailing prose describing the plan. {"note":"brace-bearing postamble junk"}'
+set +e
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-5] postamble-wrapped plan → framework recovery → rc=0" "0" "$rc"
+_recovered_title="$(jq -r '.title // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "[SPEC-5] plan.json holds the real envelope, not the postamble" \
+    "recovered-via-framework" "$_recovered_title"
+CANNED_PLAN="$_SAVED_CANNED_PLAN"
 
 # ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
 set +e

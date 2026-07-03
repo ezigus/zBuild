@@ -28,6 +28,21 @@ source "$_SEC_LENS_ROOT/core/router/route.sh"
 # #721: strip stage-io banners and ANSI from input before LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_SEC_LENS_ROOT/scripts/lib/test-output-sanitize.sh"
+# ADR-028 v1.2 (#944): shared LLM-agent framework for envelope recovery.
+# shellcheck source=../../../scripts/lib/llm-agent.sh
+source "$_SEC_LENS_ROOT/scripts/lib/llm-agent.sh"
+
+# ─── _security_lens_envelope_schema_ok (#944, ADR-028 v1.2) ─────────────────
+# Gate for _llm_envelope_parse --schema-gate. Security-lens has no schema_version
+# in the LLM response, so the gate checks type==object and findings:array only.
+# This is sufficient to distinguish the real envelope from a brace-bearing
+# postamble (which is unlikely to carry a findings array).
+_security_lens_envelope_schema_ok() {
+    printf '%s' "${1:-}" | jq -e '
+        type == "object"
+        and (.findings | type == "array")
+    ' >/dev/null 2>&1
+}
 
 # ─── init ───────────────────────────────────────────────────────────────────
 security_lens_init() {
@@ -125,13 +140,14 @@ _security_lens_run_inner() {
     # Ported from legacy/scripts/lib/compound-audit.sh:160-182
     local findings_json="[]"
     if [[ $router_rc -eq 0 && -n "$raw_response" ]]; then
-        # #478: slice the LAST top-level balanced JSON object out of any
-        # prose preface the model may emit inside the final assistant turn
-        # (envelope mode separates turns but not in-turn prose). Helper
-        # passes input through verbatim on no-match so the existing
-        # empty-findings fallback below still fires.
-        local stripped extracted
-        stripped="$(printf '%s' "$raw_response" | extract_first_json_object)"
+        # ADR-028 v1.2 (#944): use _llm_envelope_parse --schema-gate so
+        # _llm_recover_envelope_json fires when LAST-wins selects a postamble
+        # instead of the real findings envelope.
+        # shellcheck disable=SC2034  # _sl_prose is a required output-param of
+        # _llm_envelope_parse; security-lens emits no prose sidecar (only impact does).
+        local stripped _sl_prose extracted
+        _llm_envelope_parse --schema-gate _security_lens_envelope_schema_ok \
+            "$raw_response" stripped _sl_prose
         extracted="$(printf '%s' "$stripped" \
             | jq -r '.findings // [] | tojson' 2>/dev/null || true)"
         if printf '%s' "$extracted" | jq -e 'type == "array"' >/dev/null 2>&1; then

@@ -24,6 +24,14 @@ if [[ "${_ZBUILD_PLAN_CONTEXT_LOADED:-}" == "1" ]]; then
 fi
 _ZBUILD_PLAN_CONTEXT_LOADED=1
 
+# #944 (ADR-028 v1.2): _plan_recover_envelope_json delegates to the shared
+# framework recovery helper (_llm_recover_envelope_json). Source it here so the
+# lib resolves standalone — e.g. tests/unit/plan-context-lib-test.sh sources
+# this file without going through plugin.sh. Idempotent (llm-agent.sh guards).
+_PLAN_CONTEXT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./llm-agent.sh
+source "$_PLAN_CONTEXT_LIB_DIR/llm-agent.sh"
+
 # ─── plan_context_repo_id ────────────────────────────────────────────────────
 # Stable hash identifying THIS repo so a cache uploaded from repo A never
 # resolves for repo B (Pillar E). Normalizes the canonical remote: strip a
@@ -293,79 +301,17 @@ _plan_envelope_schema_ok() {
     ' >/dev/null 2>&1
 }
 
-# ─── _plan_recover_envelope_json <raw> (#1052, mirrors #908) ─────────────────
+# ─── _plan_recover_envelope_json <raw> (#1052; framework-delegated #944) ─────
 # Schema-aware recovery from a max_turns envelope whose .result may still carry
-# a valid final plan amid prose/examples. Mirrors _impact_recover_envelope_json
-# (impact-prefilter.sh): enumerate EVERY top-level balanced object in document
-# order (RS \x1e) and recover ONLY when exactly one bears a schema_version AND
-# passes the plan schema gate. Fail closed on ambiguity (two schema-bearers) —
-# an honest schema_violation is safer than shipping an example as the plan.
-# rc=0 + object on stdout when recovered; rc=1 + empty otherwise.
+# a valid final plan amid prose/examples. #944 (ADR-028 v1.2) retires the
+# duplicated awk brace-grammar this function used to carry: it now delegates to
+# the shared framework helper _llm_recover_envelope_json with the plan schema
+# gate. Recovers ONLY when exactly one top-level balanced object passes
+# _plan_envelope_schema_ok; fails closed on ambiguity (≥2 passers) and on zero
+# passers — an honest schema_violation is safer than shipping an example as the
+# plan (#908 lesson). rc=0 + object on stdout when recovered; rc=1 otherwise.
 _plan_recover_envelope_json() {
-    local _raw="${1:-}"
-    [[ -z "$_raw" ]] && return 1
-
-    local _candidates
-    _candidates="$(printf '%s' "$_raw" | awk '
-        BEGIN { buf = "" }
-        { buf = buf $0 "\n" }
-        END {
-            sub(/^\xef\xbb\xbf/, "", buf)
-            gsub(/\r/, "", buf)
-            sub(/^[[:space:]]*```json[[:space:]]*\n?/, "", buf)
-            sub(/^[[:space:]]*```[[:space:]]*\n?/, "", buf)
-            sub(/\n?[[:space:]]*```[[:space:]]*$/, "", buf)
-            sub(/\n$/, "", buf)
-
-            n = length(buf); depth = 0; arr_depth = 0
-            in_string = 0; escape = 0; start = -1
-            for (i = 1; i <= n; i++) {
-                c = substr(buf, i, 1)
-                if (escape) { escape = 0; continue }
-                if (in_string) {
-                    if (c == "\\") { escape = 1; continue }
-                    if (c == "\"") { in_string = 0 }
-                    continue
-                }
-                if (c == "\"") { in_string = 1; continue }
-                if (c == "[") { if (depth == 0) arr_depth++; continue }
-                if (c == "]") { if (depth == 0 && arr_depth > 0) arr_depth--; continue }
-                if (c == "{") {
-                    if (depth == 0 && arr_depth > 0) continue
-                    if (depth == 0) start = i
-                    depth++; continue
-                }
-                if (c == "}") {
-                    if (depth > 0) {
-                        depth--
-                        if (depth == 0 && start > 0) {
-                            printf "%s\x1e", substr(buf, start, i - start + 1)
-                            start = -1
-                        }
-                    }
-                }
-            }
-        }
-    ')"
-    [[ -z "$_candidates" ]] && return 1
-
-    # Recover ONLY when exactly one top-level object bears schema_version; more
-    # than one is AMBIGUOUS (a preamble example plus the real answer) — fail
-    # closed (#908 lesson). Zero bearers → nothing to recover.
-    local _obj _envelope="" _count=0
-    while IFS= read -r -d $'\x1e' _obj || [[ -n "$_obj" ]]; do
-        [[ -z "$_obj" ]] && continue
-        if printf '%s' "$_obj" | jq -e 'has("schema_version")' >/dev/null 2>&1; then
-            _count=$((_count + 1))
-            _envelope="$_obj"
-        fi
-    done < <(printf '%s' "$_candidates")
-    [[ "$_count" -eq 1 ]] || return 1
-    if _plan_envelope_schema_ok "$_envelope"; then
-        printf '%s' "$_envelope"
-        return 0
-    fi
-    return 1
+    _llm_recover_envelope_json "${1:-}" _plan_envelope_schema_ok
 }
 
 # ─── plan_context_gc ─────────────────────────────────────────────────────────
