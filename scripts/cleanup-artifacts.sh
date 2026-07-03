@@ -18,7 +18,7 @@ PLAN_CONTEXT_DIR="${ZBUILD_PLAN_CONTEXT_DIR:-$HOME/.zbuild/plan-context}"
 # Honor the same state-base override the `zbuild` CLI uses so an operator (or a
 # hermetic test) can repoint pruning away from the real ~/.zbuild/state — a bare
 # `--older-than 0d --force` against the real root would otherwise prune live runs.
-STATE_ROOT="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+STATE_ROOT="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
 
 # Source plan-context.sh if a sibling agent has written it (for plan_context_gc
 # parity), but DEGRADE GRACEFULLY — this CLI implements its own pruning so the

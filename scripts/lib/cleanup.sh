@@ -232,7 +232,7 @@ _cleanup_apply_branch_plan() {
 _cleanup_is_active_run() {
     local rid="$1"
     [[ -z "$rid" ]] && return 1
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     [[ -d "$state_dir" ]] || return 1
     local f
     # #887: include per-run dirs (runs/<id>/) alongside the legacy flat path.

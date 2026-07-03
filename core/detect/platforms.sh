@@ -246,7 +246,7 @@ _resolve_alias() {
 # ─── detect_platforms ────────────────────────────────────────────────────────
 detect_platforms() {
     local repo_root="${1:-$PWD}"
-    local state_dir="${2:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}}"
+    local state_dir="${2:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}}"
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
     local platforms_file="$state_dir/platforms.json"
 

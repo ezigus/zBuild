@@ -14,7 +14,7 @@
 _ZBUILD_REGISTRY_DISCOVERY_LOADED=1
 
 # Lockfile location
-ZBUILD_LOCKFILE="${ZBUILD_LOCKFILE:-${HOME}/.zbuild/state/plugins.lock}"
+ZBUILD_LOCKFILE="${ZBUILD_LOCKFILE:-${ZBUILD_STATE_ROOT:-${HOME}/.zbuild/state}/plugins.lock}"
 ZBUILD_DISABLED_FILE="${ZBUILD_DISABLED_FILE:-${_ZBUILD_ROOT}/config/plugins.disabled}"
 
 # ─── discover_plugins ───────────────────────────────────────────────────────

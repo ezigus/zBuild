@@ -330,6 +330,15 @@ _test_run_inner() {
         # command prefix) so it reaches the suite regardless of how
         # actual_test_cmd is shaped (npm test → run-tests.sh, or a direct call).
         export ZBUILD_TEST_TIMING_FILE="$_zbt_timing_log"
+        # #1127: fence the whole zBuild state tree for the suite. The suite is a
+        # fresh-user shell (scrub above clears ZBUILD_* / preserves HOME per
+        # ADR-024), so any nested `runner.sh` it spawns would otherwise re-root
+        # to the REAL $HOME/.zbuild/state and clobber the parent run's shared
+        # artifacts (latest symlink + --no-resume global event clear). Rooting
+        # the nested tree under the RETURN-trap-cleaned $tmp fences state,
+        # events, runs/<id>/, latest and the global-clear inside a throwaway
+        # dir. A recursively-nested test stage re-scrubs + re-exports its own.
+        export ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state"
         # #1208: re-supply the repo-declarable count-contract vars AFTER the
         # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
         # xcresulttool shim) can honor them — write its {passed,failed,total}

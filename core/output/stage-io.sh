@@ -153,7 +153,7 @@ _stage_io_orphan_finalizer() {
             continue
         fi
         # Best-effort partial record so the operator can still inspect the input.
-        local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+        local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
         local io_dir="$state_dir/artifacts/stage-io"
         mkdir -p "$io_dir" 2>/dev/null || continue
         local path="$io_dir/${stage}-${seq}.partial.json"
@@ -262,7 +262,7 @@ stage_io_begin() {
 
     # Reserve seq even when no destinations (callers may still pair end);
     # but skip filesystem ls when no io_dir exists.
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     local io_dir="$state_dir/artifacts/stage-io"
     local existing_count=0
     if [[ -d "$io_dir" ]]; then
@@ -611,7 +611,7 @@ capture_stage_io() {
 # in the stage.io.captured event payload.
 _stage_io_to_file() {
     local stage="$1" seq="$2" record="$3"
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     local io_dir="$state_dir/artifacts/stage-io"
     mkdir -p "$io_dir" || { error "_stage_io_to_file: cannot create $io_dir"; return 1; }
     local path="$io_dir/${stage}-${seq}.json"
@@ -808,7 +808,7 @@ _stage_io_truncation_hint() {
     local total="$1" shown="$2" stage="${3:-}" seq="${4:-}"
     [[ "$total" -le "$shown" ]] && return 0
     local remaining=$(( total - shown ))
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     if [[ -n "$stage" && -n "$seq" ]]; then
         local path="$state_dir/artifacts/stage-io/${stage}-${seq}.json"
         printf '↪ [%d more lines · full at %s]\n' "$remaining" "$path"
@@ -1269,7 +1269,7 @@ _stage_io_byte_len() {
 # Pass-through when no scope manifest is present (e.g. intake before scope bound).
 _stage_io_redact_outbound() {
     local content="$1"
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     local manifest="$state_dir/scope-manifest.md"
     if [[ ! -s "$manifest" ]]; then
         printf '%s' "$content"
@@ -1369,7 +1369,7 @@ _stage_io_to_gh_comment() {
     local summary_status=""
     [[ -n "$status" ]] && summary_status="${status} "
     local artifact_path
-    artifact_path="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts/stage-io/${stage}-${seq}.json"
+    artifact_path="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts/stage-io/${stage}-${seq}.json"
 
     # Compose initial body
     local body

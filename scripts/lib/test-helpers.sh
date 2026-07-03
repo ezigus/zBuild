@@ -850,7 +850,7 @@ ${fn}() {
     local idx=\$(( iter - 1 ))
     [[ \$idx -ge \${#vs[@]} ]] && idx=\$(( \${#vs[@]} - 1 ))
     local v="\${vs[\$idx]:-pass}"
-    local sdir="\${ZBUILD_STATE_DIR:-\$HOME/.zbuild/state}"
+    local sdir="\${ZBUILD_STATE_DIR:-\${ZBUILD_STATE_ROOT:-\$HOME/.zbuild/state}}"
     mkdir -p "\$sdir/artifacts/$stage_id"
     printf 'iter=%s verdict=%s\n' "\$iter" "\$v" > "\$sdir/artifacts/$stage_id/primary.txt"
     # Persist verdict where runner_read_stage_verdict can find it. The simplest

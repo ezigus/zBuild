@@ -93,7 +93,7 @@ _check_zbuild_path() {
 # ─── State ───────────────────────────────────────────────────────────────────
 
 _check_state_dir() {
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     mkdir -p "$state_dir" 2>/dev/null || true
     if [[ -d "$state_dir" && -w "$state_dir" ]]; then
         _doc_pass "state dir: $state_dir"
@@ -103,7 +103,7 @@ _check_state_dir() {
 }
 
 _check_state_health() {
-    local state_dir="${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}"
+    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     local in_progress=0
     local _sh_failed=0
     local f

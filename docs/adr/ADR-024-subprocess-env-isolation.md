@@ -392,3 +392,42 @@ to its own run and cannot see or delete a sibling run's temp. Prior art:
 NOTE: this is a test-isolation contract. The real engine's orchestrator scratch
 (`ZBUILD_ORCH_SCRATCH`) and pool dirs are not yet run-namespaced — that is
 tracked separately (#898), the orchestrator analog of #887/#889.
+
+## Amendment 2026-07-03 (#1127) — `ZBUILD_STATE_ROOT` fences the nested state tree
+
+Layer 1 deliberately **preserves `HOME`** (a fresh user shell must look like the
+real user). That preservation has a filesystem consequence the scrub cannot fix:
+a nested `runner.sh` spawned by the in-pipeline `test` stage — with the entire
+`ZBUILD_*` namespace scrubbed — re-derives the DEFAULT state root
+`$HOME/.zbuild/state` under the REAL home and mutates the PARENT run's shared
+artifacts: the `latest` symlink repoint (`runner.sh` per-run pointer, #887) and
+the `--no-resume` global event-artifact clear. A per-run id (#887) is not enough
+because those two artifacts are shared across the whole root, not per-run.
+
+**Indirection.** The single hardcoded state root is now
+`${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}`, threaded through every live
+state/event root site (`core/pipeline/runner.sh` global-clear + default
+state_dir + preflight + per-run dir + `latest` guard/target;
+`core/event-bus/event-bus.sh`; `core/pipeline/strategies/common.sh` orch
+scratch; `core/plugin-registry/discovery.sh` lockfile; `core/output/stage-io.sh`;
+`core/detect/platforms.sh`; `core/router/route.sh`; and **`scripts/zbuild`**'s
+resume/attach/`--resume-latest`/cleanup resolution — so a nested
+`zbuild --resume-latest` reads the fenced root, not the real one). Unset ⇒ the
+production default is byte-for-byte unchanged.
+
+**Fence.** The `test` stage exports `ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state"`
+INSIDE the fresh-user-shell subshell, AFTER `_zbuild_make_fresh_shell`, beside
+the existing `ZBUILD_TEST_TIMING_FILE` re-export (`plugins/tool/test/plugin.sh`).
+`$tmp` is a non-`ZBUILD_*` local already cleaned by the function's RETURN trap,
+so every nested run — harness-adopted or not, `HOME`-overridden or not — roots
+its ENTIRE tree (state, events, `runs/<id>/`, `latest`, global-clear) inside a
+throwaway dir that vanishes after the suite. A recursively-nested test stage
+re-scrubs (`ZBUILD_STATE_ROOT` is a `ZBUILD_*` var) and re-exports its own fence
+⇒ recursion-safe.
+
+Why not a nesting sentinel: the scrub strips the whole `ZBUILD_*` namespace, so
+no env flag survives to signal "you are nested"; a non-`ZBUILD_*` sentinel would
+undermine the fresh-user contract. Why not a full `HOME` override for the suite:
+too broad — tests legitimately read git identity / ssh / npm cache from the real
+`HOME` (this ADR preserves `HOME` on purpose). `ZBUILD_STATE_ROOT` is surgical:
+it fences ONLY zBuild's own state tree.

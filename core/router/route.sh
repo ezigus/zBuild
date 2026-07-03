@@ -546,7 +546,7 @@ _route_call_claude() {
         # Persist diagnostic artifacts BEFORE the terse error log so the
         # human-readable message can cite the diagnostic path and include
         # parsed fields (#762: surface error_max_turns subtype to terminal).
-        local _sync_diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts}/stage-io"
+        local _sync_diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}/stage-io"
         mkdir -p "$_sync_diag_dir" 2>/dev/null || true
         local _sync_diag_base="${ZBUILD_CURRENT_STAGE:-router}-sync-error"
         local _sync_json_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-output.json"
@@ -1229,7 +1229,7 @@ ${_diff_pointer}"
             # Wave 19-I Fix B (#743) + #762: preserve diagnostic artifacts
             # BEFORE the warn/error log so the human-readable message can
             # cite the path and parsed fields (including subtype for #762).
-            local _diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-$HOME/.zbuild/state}/artifacts}/stage-io"
+            local _diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}/stage-io"
             mkdir -p "$_diag_dir" 2>/dev/null || true
             local _diag_base="${_iter_stage_id:-loop}-iter${iter}-error"
             local _diag_json_path=""
