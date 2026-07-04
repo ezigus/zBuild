@@ -240,3 +240,23 @@ structurally.
 - [ADR-017](ADR-017-per-stage-router-config.md) — per-stage router config; per-lens model/tier + cost
   bounds live here, out of scope for the taxonomy.
 - Issue #1143 (EPIC #1129, D1) — this ADR text.
+
+## Amendment (#1219, 2026-07-04) — the gate-aggregator gains a ROUTE verdict
+
+The gate-aggregator remains the **single convergence authority** (§5) — it still collapses the
+must-pass roster into ONE verdict and is the only merge-blocking construct. #1219 adds a third
+verdict class alongside `pass` / `fail`: **`route_<target>`** (concretely `route_design`).
+
+Roster-driven, no plugin vocabulary: after computing the failed gates, the aggregator reads each
+**failed** gate's generic `route_target` scalar (first non-empty wins) and, when present, emits
+`verdict = route_<target>` and mirrors `route_target` into `gate-aggregator-result.json`. Because
+`route_<target> != pass`, the cycle `exit_when` never falsely converges and `merge` (verdict != pass
+→ PR path) never auto-merges — the bounded rewind is owned by the runner (ADR-045), not by merge.
+On a route verdict the aggregator also writes a FOCUSED `design-feedback.md` (the design-rooted
+gates' detail) instead of the build-facing `gate-feedback.md`, keeping it the single consolidator of
+failure detail (§2). The B5 no-LLM-on-convergence-path invariant is untouched (the aggregator is T0).
+
+This is additive: a roster with no `route_target` on any failed gate behaves exactly as before
+(`pass`/`fail`), so `standard.yaml` and every existing gate-aggregator test are unchanged. See
+ADR-045 (the route_back edge that consumes `route_design`) and ADR-036 (the acceptance-gate that
+produces `route_target: design` on a tautology).

@@ -132,6 +132,43 @@ OUT="$(run_agg "$SF")"
 assert_json_key "TC-9: recoverable fail → verdict=fail (still blocking)" "$OUT" '.verdict' "fail"
 assert_contains "TC-9: failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
 
+# ── TC-10 (#1219): a FAILED gate carrying route_target → verdict=route_<target> ─
+# ADR-045/ADR-040: a design-rooted failure (acceptance-gate tautology) adds a
+# generic `route_target` scalar to its result. The aggregator reads it from the
+# FAILED gate, emits verdict=route_design (≠pass so exit_when never converges and
+# merge stays on the PR path), mirrors route_target, and writes design-feedback.md
+# (the focused re-author payload the design_verify_cycle route_back carries back).
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","disposition":"terminal","route_target":"design","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
+    > "$AD/acceptance-gate-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-10: design-rooted fail → verdict=route_design" "$OUT" '.verdict' "route_design"
+assert_json_key "TC-10: route_target mirrored into the aggregate" "$OUT" '.route_target' "design"
+assert_contains "TC-10: failed[] still names the acceptance-gate" "$OUT" "acceptance-gate"
+assert_file_exists "TC-10: design-feedback.md written on route_design" "$AD/design-feedback.md"
+assert_contains "TC-10: design-feedback names the tautological SPEC" "$(cat "$AD/design-feedback.md")" "SPEC-1"
+
+# ── TC-11 (#1219): a FAILED gate WITHOUT route_target → plain verdict=fail ─────
+# The existing verdict=fail path is UNCHANGED when no failing gate is design-
+# rooted: no route_design, no mirrored route_target, and NO design-feedback.md.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+write_verdict "$AD" "coverage-result.json" "fail"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-11: no route_target → verdict=fail (not route_design)" "$OUT" '.verdict' "fail"
+assert_eq "TC-11: no route_target mirrored" "" "$(jq -r '.route_target // ""' <<< "$OUT")"
+assert_file_not_exists "TC-11: no design-feedback.md when not design-rooted" "$AD/design-feedback.md"
+
+# ── TC-12 (#1219): route_target on a PASSING gate is ignored (must FAIL to route) ─
+# The scalar is read ONLY from gates that BLOCKED convergence. A stray
+# route_target on a gate whose verdict=pass must not trigger route_design.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"pass","route_target":"design"}\n' > "$AD/acceptance-gate-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-12: route_target on a passing gate ignored → verdict=pass" "$OUT" '.verdict' "pass"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

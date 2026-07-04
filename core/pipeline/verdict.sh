@@ -64,6 +64,13 @@ verdict_classify() {
             echo "warn" ;;
         fail|error|block|scope_violation|corrupt_diff|empty_diff|scope_too_large)
             echo "fail" ;;
+        # #1219 (ADR-045): a gate-aggregator route verdict (route_design, or any
+        # future route_<target>) is a NON-pass, non-convergent outcome — classify
+        # it as fail so the indicator/glyph is ✗ (not an unknown_verdict warn).
+        # The cycle predicates read the RAW channel, so this is purely cosmetic;
+        # route_<target> stays distinct from plain `fail` in the raw verdict.
+        route_*)
+            echo "fail" ;;
         ""|null)
             echo "unknown" ;;
         *)

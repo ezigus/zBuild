@@ -160,6 +160,31 @@ _gh_merge3=0
 [[ "$_merge_calls3" == *"merged"* ]] && _gh_merge3=1
 assert_eq "[SPEC-3] gh pr merge NOT called when gate artifact absent" "0" "$_gh_merge3"
 
+# ─── SPEC-8 (#1219): auto + gate verdict==route_design → PR fallback ──────────
+# ADR-045: a design-rooted acceptance failure surfaces as gate-aggregator
+# verdict==route_design (≠pass). The merge guard (verdict != pass → PR path) must
+# treat it exactly like any non-pass verdict: NEVER auto-merge, fall back to a PR.
+# This guards the invariant that a route_design in-flight (the bounded rewind is
+# handled by the runner, not merge) can never ship to main.
+print_test_section "SPEC-8: merge_policy==auto + gate verdict==route_design → PR fallback"
+
+_sf8="$(_setup_run s8 route_design)"
+_art8="$(dirname "$_sf8")/artifacts"
+> "$_MERGE_RECORD"
+
+export _TPL_MERGE_POLICY="auto"
+( pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
+
+assert_eq "[SPEC-8] pr_stage_run exits 0 on route_design PR fallback" "0" "$_rc8"
+assert_file_exists "[SPEC-8] pr-url.txt written on route_design fallback" "$_art8/pr-url.txt"
+_merge_status8="$(jq -r '.status // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-8] merge-result.json status==pr_fallback on route_design" \
+    "pr_fallback" "$_merge_status8"
+_merge_calls8="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+_gh_merge8=0
+[[ "$_merge_calls8" == *"merged"* ]] && _gh_merge8=1
+assert_eq "[SPEC-8] gh pr merge NOT called under route_design" "0" "$_gh_merge8"
+
 # ─── SPEC-4: auto_unless_flagged + review-report absent → PR (fail-closed) ────
 print_test_section "SPEC-4: merge_policy==auto_unless_flagged + review-report absent → opens draft PR (fail-closed)"
 

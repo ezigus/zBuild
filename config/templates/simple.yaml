@@ -146,6 +146,30 @@ build_test_cycle:
   # `to:`, not the inline `to: { ... }` form). from.output MUST be the manifest
   # output id `gate_feedback` (NOT a filename) — _cycle_resolve_from_path looks it
   # up in gate-aggregator's outputs[].
+  # ─── route_back (#1219, ADR-045/ADR-046 — final EPIC #1216 wiring) ──────────
+  # A DESIGN-ROOTED acceptance failure (a tautological [change] SPEC that cannot
+  # be made to fail-at-baseline) CANNOT be fixed by build — ADR-036 forbids build
+  # from touching acceptance assertions. The acceptance-gate marks it with a
+  # generic route_target scalar; the gate-aggregator rolls that up into
+  # verdict==route_design (≠pass, so exit_when never converges and merge stays on
+  # the PR path). This route_back edge matches that verdict and REWINDS to the
+  # EARLIER design_verify_cycle so design re-authors the SPEC (reading the focused
+  # design-feedback.md the aggregator wrote). Bounded: max:1 (one re-author pass);
+  # the global route_back budget (default 2 = one jump) also caps it. Still
+  # tautological after the rewind → budget exhausted → the by-severity terminal
+  # (rc=8) hard-fails cleanly, naming the SPEC. NO ping-pong. The target is an
+  # EARLIER top-level dispatch unit (design_verify_cycle precedes build_test_cycle
+  # in flow), satisfying _tpl_validate_route_back (#1217). Declared ABOVE feedback:
+  # (both orders are valid) so the sibling `when: stage:` never confuses the
+  # line-based feedback-edge parsers (template.sh / lint-contract.sh).
+  route_back:
+    to: design_verify_cycle
+    when:
+      stage: gate-aggregator
+      field: verdict
+      op: eq
+      value: route_design
+    max: 1
   feedback:
     - from:
         stage: gate-aggregator
