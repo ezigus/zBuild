@@ -1756,6 +1756,11 @@ cycle_orchestrator_run() {
     # target/fallback from a prior cycle can never leak into this one.
     _CYCLE_ROUTE_BACK_TO=""
     _CYCLE_ROUTE_BACK_FALLBACK_RC=""
+    # #1225 (ADR-045): reset the edge-owner id per run so a stale owner from a
+    # prior cycle can never key the runner's per-edge counter/max onto the wrong
+    # cycle. A NESTED cycle sets this to its own id in the by-severity reroute so
+    # the runner honors the INNER edge's declared `max`, not the outer unit's.
+    _CYCLE_ROUTE_BACK_EDGE_ID=""
     _CYCLE_LAST_ITERATIONS=0
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
@@ -1907,6 +1912,20 @@ cycle_orchestrator_run() {
             _cycle_clear_traps
             _CYCLE_TRAP_CYCLE_ID=''
             return 130
+        fi
+        # #1225 (ADR-045): rc=11 from a NESTED member cycle is route_back — it must
+        # bubble outward through EVERY enclosing cycle to the runner (only the
+        # runner owns dispatch-unit rewind), exactly like rc=8/130 above. Without
+        # this branch the generic `-ne 0` catch-all below collapses it to rc=4
+        # (config_invalid, silent HALT) and the runner's bounded rewind is never
+        # reached. The inner cycle already stashed the hand-off globals
+        # (_CYCLE_ROUTE_BACK_{TO,FALLBACK_RC,EDGE_ID}); they survive the
+        # nested-dispatch restore block, so just propagate.
+        if [[ $_iter_rc -eq 11 ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="route_back"
+            _cycle_clear_traps
+            _CYCLE_TRAP_CYCLE_ID=''
+            return 11
         fi
         if [[ $_iter_rc -ne 0 ]]; then
             # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was
@@ -2140,6 +2159,13 @@ cycle_orchestrator_run() {
                 if [[ $_rb_matched -eq 0 ]]; then
                     _CYCLE_ROUTE_BACK_FALLBACK_RC=$term_rc
                     _CYCLE_ROUTE_BACK_TO="${!_rb_to_var}"
+                    # #1225 (ADR-045): stash the id of the cycle that OWNS this
+                    # edge so the runner keys the per-edge counter + declared max
+                    # on the real edge. For a top-level cycle this equals the
+                    # dispatch-unit id (byte-identical behavior); for a NESTED
+                    # cycle it is the inner id, so the operator's inner `max` is
+                    # honored instead of the outer unit's default.
+                    _CYCLE_ROUTE_BACK_EDGE_ID="$cycle_id"
                     _CYCLE_LAST_TERMINATED_REASON="route_back"
                     overall_status="route_back"; term_rc=11
                 fi

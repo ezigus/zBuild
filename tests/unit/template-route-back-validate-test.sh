@@ -140,12 +140,11 @@ _reset_flow_state; _TPL_STAGES=()
 set +e; load_template "$FWD_TPL" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "S5: load_template with forward route_back → rc=1" "1" "$rc"
 
-# ── #1217 review fix (BLOCKING): route_back on a NESTED cycle rejected at load ─
-# `inner` is a cycle-as-member of `outer` (ADR-027 recursive symmetry), so it is
-# NOT a top-level dispatch unit. An inner cycle returning rc=11 has no rewind
-# handler in the enclosing cycle's loop → silent HALT. Reject at load. The
-# route_back here is otherwise valid (to=plan is earlier, max=2, op=eq) so ONLY
-# the nested rule can trip it.
+# ── N5 (#1225): route_back on a NESTED cycle is now ACCEPTED at load ──────────
+# `inner` is a cycle-as-member of `outer` (ADR-027 recursive symmetry). #1225
+# teaches the outer main loop to bubble the inner's rc=11 out to the runner, so
+# the #1217 top-level-only rejection is LIFTED. The route_back here is valid
+# (to=plan is a strictly-earlier TOP-LEVEL unit, max=2, op=eq) → LOADS rc=0.
 NESTED_TPL="$TEST_TEMP_DIR/nested.yaml"
 cat > "$NESTED_TPL" <<'EOF'
 id: nested-rb
@@ -191,10 +190,8 @@ test:
   roles: [tester]
 EOF
 _reset_flow_state; _TPL_STAGES=()
-set +e; nested_err="$(load_template "$NESTED_TPL" 2>&1)"; rc=$?; set -e
-assert_eq "S5: load_template with route_back on a NESTED cycle → rc=1" "1" "$rc"
-assert_contains "S5: nested-route_back error names the constraint (NESTED/top-level)" \
-    "$nested_err" "top-level"
+set +e; load_template "$NESTED_TPL" >/dev/null 2>&1; rc=$?; set -e
+assert_eq "N5: load_template with route_back on a NESTED cycle (to=earlier top-level) → rc=0 (#1225 lifts rejection)" "0" "$rc"
 
 # ── #1217 review fix (NIT): unsupported route_back.when.op rejected at load ────
 BADOP_TPL="$TEST_TEMP_DIR/badop.yaml"
@@ -236,16 +233,33 @@ set +e; badop_err="$(load_template "$BADOP_TPL" 2>&1)"; rc=$?; set -e
 assert_eq "S5: load_template with unsupported route_back op (gt) → rc=1" "1" "$rc"
 assert_contains "S5: bad-op error mentions eq/ne" "$badop_err" "eq"
 
-# Direct-call check: _tpl_validate_route_back also rejects a nested cycle when
-# cycle:<cid> is absent from the dispatch units (defensive unit-level assertion).
+# N5 (#1225): _tpl_validate_route_back ACCEPTS a nested cycle whose target is a
+# strictly-earlier TOP-LEVEL unit. `inner` is NOT a top-level dispatch unit — it
+# resolves by MEMBERSHIP to its enclosing cycle:outer index (1); to=plan resolves
+# to 0 → strictly earlier → accepted.
 _reset_flow_state
 _TPL_CYCLES=(inner)
-_TPL_DISPATCH_UNITS=(stage:plan cycle:outer)   # inner is NOT a top-level unit
+_TPL_DISPATCH_UNITS=(stage:plan cycle:outer)   # inner is nested inside outer
 _TPL_CYCLE_STAGES_outer="inner"
 _TPL_CYCLE_ROUTE_BACK_TO_inner="plan"
 _TPL_CYCLE_ROUTE_BACK_OP_inner="eq"
 _TPL_CYCLE_ROUTE_BACK_MAX_inner="2"
 set +e; _tpl_validate_route_back >/dev/null 2>&1; rc=$?; set -e
-assert_eq "S5: _tpl_validate_route_back rejects nested cycle (no cycle:<cid> unit)" "1" "$rc"
+assert_eq "N5: nested cycle route_back to strictly-earlier top-level unit ACCEPTED" "0" "$rc"
+
+# N5 (#1225): _tpl_validate_route_back REJECTS a nested cycle that targets a
+# SIBLING MEMBER of the same enclosing cycle. `inner` and `sib` are both members
+# of `outer`, so BOTH resolve (by membership) to cycle:outer's index (1) →
+# to_idx == cyc_idx → not strictly-earlier → rejected (the runner can only rewind
+# to a TOP-LEVEL unit, never mid-cycle to a sibling member).
+_reset_flow_state
+_TPL_CYCLES=(inner)
+_TPL_DISPATCH_UNITS=(stage:plan cycle:outer)
+_TPL_CYCLE_STAGES_outer="sib,inner"
+_TPL_CYCLE_ROUTE_BACK_TO_inner="sib"
+_TPL_CYCLE_ROUTE_BACK_OP_inner="eq"
+_TPL_CYCLE_ROUTE_BACK_MAX_inner="2"
+set +e; _tpl_validate_route_back >/dev/null 2>&1; rc=$?; set -e
+assert_eq "N5: nested cycle route_back to SIBLING MEMBER (not strictly-earlier) REJECTED" "1" "$rc"
 
 print_test_results
