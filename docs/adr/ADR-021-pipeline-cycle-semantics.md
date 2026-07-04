@@ -4,6 +4,7 @@
 **Date:** 2026-05-30
 **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
 **Amended by:** ADR-042 — cycle members now resolve their plugin role-then-id via the shared `resolve_stage_plugin` helper, not id-only.
+**Amended by:** ADR-045 (#1217) — the terminal-rc table gains `11 = route_back`, a NON-halt **CONTINUE-with-bounded-REWIND** class (deliberately absent from the runner halt-case). The orchestrator reclassifies only a *correctable* terminal (`term_rc ∈ {2, 8}`) into rc=11 when a `route_back` predicate matches, stashing the by-severity fallback rc + target; the runner then rewinds the dispatch index to a strictly-earlier unit (bounded by a global budget, default 2 total passes) or, on budget exhaustion, restores the fallback rc and falls through to the normal by-severity handling.
 
 ## Context
 

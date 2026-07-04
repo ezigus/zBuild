@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# [S2] Integration (#1217, ADR-045): once the global route_back budget is spent
+# the runner does NOT rewind — it restores the stashed fallback rc and falls
+# through to the normal by-severity terminal handling. Here build_review_cycle
+# ALWAYS returns rc=11 with fallback rc=8; with the default budget (2 total
+# passes = exactly one jump back) exactly ONE rewind fires, then the second
+# rc=11 falls through to the rc=8 halt (status=failed). `plan` therefore
+# dispatches TWICE and cycle.route_back fires exactly once.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+print_test_header "route_back budget exhausted → by-severity terminal (#1217)"
+setup_test_env "route-back-budget-exhausted"
+
+_tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
+(
+    set +e
+    export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+    export ZBUILD_EVENTS_DIR="$_tmp/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+    export ZBUILD_STATE_DIR="$_tmp/state"; mkdir -p "$ZBUILD_STATE_DIR"
+    export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
+    export ZBUILD_CYCLES_ENABLED=1
+    export ZBUILD_CONTRACT_VALIDATOR=warn
+    export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+
+    cycle_orchestrator_run() {
+        _CYCLE_LAST_ITERATIONS=1
+        if [[ "$1" == "design_impact_cycle" ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="converged"; return 0
+        fi
+        # ALWAYS request a route_back with fallback rc=8 (member_terminal_failure).
+        _CYCLE_LAST_TERMINATED_REASON="route_back"
+        _CYCLE_ROUTE_BACK_TO="plan"
+        _CYCLE_ROUTE_BACK_FALLBACK_RC=8
+        return 11
+    }
+    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+    runner_read_stage_verdict() { echo "request_changes"; }
+    plugin_hook_call() { return 0; }
+
+    main --issue 999 --template standard >/dev/null 2>&1
+)
+
+_state="$_tmp/state/pipeline-state.json"
+_ev="$_tmp/events/events.jsonl"
+
+_rb_count="$(grep -c '"type":"cycle.route_back"' "$_ev" 2>/dev/null || true)"
+[[ -z "$_rb_count" ]] && _rb_count=0
+assert_eq "S2: cycle.route_back emitted exactly once (budget=2 → one jump)" "1" "$_rb_count"
+
+_plan_count="$(grep '"type":"stage.start"' "$_ev" 2>/dev/null | grep -c '"stage":"plan"')"
+[[ -z "$_plan_count" ]] && _plan_count=0
+assert_eq "S2: plan dispatched TWICE then budget spent (no third)" "2" "$_plan_count"
+
+_status="$(jq -r '.status' "$_state" 2>/dev/null)"
+assert_eq "S2: budget spent → fallback rc=8 → status=failed" "failed" "$_status"
+
+print_test_results
