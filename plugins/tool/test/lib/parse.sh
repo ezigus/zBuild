@@ -18,25 +18,32 @@
 #   are emitted as the literal token `null` so the JSON writer can translate
 #   them to JSON null via `--argjson`.
 #
+#   INVARIANT — EXIT CODE IS AUTHORITATIVE (#1229): rc≠0 ⇒ verdict ∈ {fail,error},
+#   ALWAYS, independent of parsed counts. A summary must never contradict rc
+#   (never report "all green" / "0 file failures" on a nonzero exit). Suite lines
+#   are counted by SHAPE, not by a hardcoded suite-name list, so the parser is
+#   repo-agnostic (any `<name>: N/M passed` / `<name>: FAIL` counts).
+#
 # Sourced library: no `set -euo pipefail`. POSIX-bash grep -E only (no PCRE).
 
 [[ -n "${_ZBUILD_TEST_PARSE_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_PARSE_LOADED=1
 
 # ─── _test_pattern_runall ─────────────────────────────────────────────────────
-# Matches zbuild's scripts/run-tests.sh aggregated output:
-#   unit: N/M passed
-#   integration: N/M passed
-#   e2e: N/M passed
-#   golden: N/M passed
-#   mutation: N/M passed
-# Plus per-tier file-fail markers: `unit: FAIL <path>`.
-# Anchor: at least one `^(unit|integration|e2e|golden|mutation): N/M passed` line.
+# Matches zbuild's scripts/run-tests.sh aggregated output, counted by SHAPE so
+# ANY suite name is recognized (repo-agnostic, #1229 — new tiers like `lint`
+# must not be silently dropped):
+#   <name>: N/M passed          e.g. unit / integration / lint / smoke …
+# Plus per-suite file-fail markers: `<name>: FAIL <path>`.
+# Anchor: at least one `^<name>: N/M passed` line. The `N/M passed` slash shape
+# is unique to run-tests.sh — jest(`108 passed`), pytest(`3 failed, 42 passed`),
+# cargo(`test result: ok. 42 passed`) never emit `word: N/M passed`, and a name
+# token cannot precede ` :` — so a generic name class cannot cross-capture.
 _test_pattern_runall() {
     local raw="$1" rc="$2"
-    printf '%s' "$raw" | grep -qE '^(unit|integration|e2e|golden|mutation): [0-9]+/[0-9]+ passed' || return 1
+    printf '%s' "$raw" | grep -qE '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed' || return 1
 
-    local total_passed=0 total_count=0 fail_files=0 parts=""
+    local total_passed=0 total_count=0 fail_files=0 parts="" failing=""
     local line suite n m
     while IFS= read -r line; do
         # Tokens: suite, N, M  (awk split on ":", " ", "/" )
@@ -47,9 +54,18 @@ _test_pattern_runall() {
         total_passed=$((total_passed + n))
         total_count=$((total_count + m))
         parts="${parts}${suite} ${n}/${m} · "
-    done < <(printf '%s\n' "$raw" | grep -E '^(unit|integration|e2e|golden|mutation): [0-9]+/[0-9]+ passed')
+        [[ "$n" -lt "$m" ]] && failing="${failing}${suite} "
+    done < <(printf '%s\n' "$raw" | grep -E '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed')
 
-    fail_files="$(printf '%s\n' "$raw" | grep -cE '^(unit|integration|e2e|golden|mutation): FAIL ')"
+    # Fold in suite names carried by explicit FAIL markers (dedup against above).
+    local fline fsuite
+    while IFS= read -r fline; do
+        [[ -n "$fline" ]] || continue
+        fsuite="$(printf '%s' "$fline" | awk -F'[: ]+' '{print $1}')"
+        case " $failing " in *" $fsuite "*) : ;; *) failing="${failing}${fsuite} " ;; esac
+    done < <(printf '%s\n' "$raw" | grep -E '^[A-Za-z][A-Za-z0-9_-]*: FAIL ')
+
+    fail_files="$(printf '%s\n' "$raw" | grep -cE '^[A-Za-z][A-Za-z0-9_-]*: FAIL ')"
     [[ "$fail_files" =~ ^[0-9]+$ ]] || fail_files=0
 
     local failed=$((total_count - total_passed))
@@ -59,7 +75,16 @@ _test_pattern_runall() {
     local verdict="pass"
     [[ "$rc" -ne 0 || "$failed" -gt 0 ]] && verdict="fail"
 
-    local summary="${parts}${fail_files} file failures (exit ${rc})"
+    # Honest summary — never contradict rc (#1229). Name the failing suite(s)
+    # when any; else if rc≠0 with nothing counted, say so; else all-green.
+    local summary
+    if [[ -n "$failing" ]]; then
+        summary="${parts}FAIL: ${failing% } (exit ${rc})"
+    elif [[ "$rc" -ne 0 ]]; then
+        summary="${parts}exited ${rc} — not attributable to a parsed suite; see log"
+    else
+        summary="${parts}all suites passed (exit ${rc})"
+    fi
     printf '%s|%d|%d|%s\n' "$verdict" "$total_passed" "$failed" "$summary"
 }
 
@@ -174,17 +199,20 @@ _test_pattern_cargo() {
 # ─── _test_extract_failing_files ─────────────────────────────────────────────
 # Parses raw test output for zbuild runall FAIL markers and echoes the unique
 # sorted list of test file paths that failed (ADR-034 / issue #846).
-# Pattern matched: ^(unit|integration|e2e|golden|mutation): FAIL <path>
+# Pattern matched by SHAPE (repo-agnostic, #1229): ^<name>: FAIL <path>
 # Outputs one absolute path per line, sorted, deduplicated.
 # Outputs nothing when no FAIL lines are present (empty → no red set to grow).
+# $NF is filtered to path-like tokens (must contain `/`) so a non-file suffix
+# such as `lint: FAIL (npm run lint)` → `lint)` is never injected into the
+# build-cycle red set (a failing suite with no file has no path to grow).
 # Usage: _test_extract_failing_files <raw_output>
 _test_extract_failing_files() {
     local raw="$1"
     # `grep ... || true`: when no FAIL lines exist grep exits 1; the `|| true`
     # keeps the pipeline exit code at 0 so callers with `set -e` do not abort.
     printf '%s\n' "$raw" \
-        | grep -E '^(unit|integration|e2e|golden|mutation): FAIL ' \
-        | awk '{print $NF}' \
+        | grep -E '^[A-Za-z][A-Za-z0-9_-]*: FAIL ' \
+        | awk '{ if ($NF ~ /\//) print $NF }' \
         | sort -u \
         || true
 }

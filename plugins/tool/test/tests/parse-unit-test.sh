@@ -280,4 +280,110 @@ assert_eq "runall+mutation: passed=232 (126+80+7+1+18)" "232" "$p"
 assert_eq "runall+mutation: failed=1 (mutation FAIL file)" "1" "$f"
 assert_contains "runall+mutation: summary mentions mutation 18/20" "$s" "mutation 18/20"
 
+# ═════════════════════════════════════════════════════════════════════════════
+# #1229 — exit-code-authoritative + repo-agnostic (shape not name)
+# ═════════════════════════════════════════════════════════════════════════════
+print_test_section "S1. runall — lint tier failure is attributed (not '0 file failures')"
+
+# The #944 dogfood shape: every canonical tier green, but the `lint` tier (added
+# to --tier all per ADR-012 amendment / #1129 Change C) failed and exited 1.
+# The old parser hardcoded unit|integration|e2e|golden|mutation and dropped lint
+# → "…mutation 22/22 · 0 file failures (exit 1)" (a lie). Must count by shape.
+LINT_FAIL_FIXTURE="$(cat <<'EOF'
+unit: 126/126 passed
+integration: 80/80 passed
+e2e: 7/7 passed
+golden: 1/1 passed
+mutation: 20/20 passed
+lint: 0/1 passed
+lint: FAIL (npm run lint)
+EOF
+)"
+
+OUT="$(_split "$LINT_FAIL_FIXTURE" 1)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "S1: recognized=1" "1" "$r"
+assert_eq "S1: verdict=fail" "fail" "$v"
+assert_gt  "S1: failed>=1" "$f" "0"
+assert_contains "S1: summary names the failing lint suite" "$s" "lint"
+if grep -qF -- "0 file failures" <<< "$s"; then
+    assert_fail "S1: summary must NOT contradict rc with '0 file failures'" "got: $s"
+else
+    assert_pass "S1: summary does not print '0 file failures'"
+fi
+
+print_test_section "S2. runall — unknown suite name counted by shape"
+
+# A suite name outside the old hardcoded list still counts (pass-line shape).
+SMOKE_FIXTURE="$(cat <<'EOF'
+smoke: 3/4 passed
+EOF
+)"
+OUT="$(_split "$SMOKE_FIXTURE" 1)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "S2: recognized=1" "1" "$r"
+assert_eq "S2: verdict=fail" "fail" "$v"
+assert_contains "S2: summary names smoke" "$s" "smoke"
+
+# FAIL-marker variant with an arbitrary suite name + path.
+WEIRD_FIXTURE="$(cat <<'EOF'
+widget: 5/5 passed
+weird-name: FAIL /repo/tests/x-test.sh
+EOF
+)"
+OUT="$(_split "$WEIRD_FIXTURE" 1)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "S2b: recognized=1" "1" "$r"
+assert_eq "S2b: verdict=fail" "fail" "$v"
+assert_contains "S2b: summary names weird-name" "$s" "weird-name"
+
+print_test_section "S3. runall — rc=0 all green with generic names → pass"
+
+GENERIC_PASS="$(cat <<'EOF'
+smoke: 5/5 passed
+lint: 1/1 passed
+EOF
+)"
+OUT="$(_split "$GENERIC_PASS" 0)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "S3: recognized=1" "1" "$r"
+assert_eq "S3: verdict=pass" "pass" "$v"
+assert_eq "S3: failed=0" "0" "$f"
+
+print_test_section "S4. runall — rc≠0 but zero counted → honest, not '0 file failures'"
+
+# Aborted tier: all parsed lines green, no FAIL marker, yet the process exited 1.
+# Verdict must follow the exit code; the summary must say so honestly.
+ABORTED_FIXTURE="$(cat <<'EOF'
+unit: 126/126 passed
+integration: 80/80 passed
+EOF
+)"
+OUT="$(_split "$ABORTED_FIXTURE" 1)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "S4: recognized=1" "1" "$r"
+assert_eq "S4: verdict=fail (exit authoritative)" "fail" "$v"
+assert_contains "S4: summary says not attributable" "$s" "not attributable"
+assert_contains "S4: summary points to the log" "$s" "see log"
+if grep -qF -- "0 file failures" <<< "$s"; then
+    assert_fail "S4: summary must NOT print '0 file failures'" "got: $s"
+else
+    assert_pass "S4: summary does not print '0 file failures'"
+fi
+
+print_test_section "S5. runall shape anchor does not cross-capture other runners"
+
+# The `<name>: N/M passed` slash shape is unique to run-tests.sh; jest and cargo
+# bodies must NOT be captured by the generic runall anchor.
+if _test_pattern_runall "$JEST_FIXTURE" 1 >/dev/null 2>&1; then
+    assert_fail "S5: runall anchor must reject a jest body"
+else
+    assert_pass "S5: runall anchor rejects a jest body"
+fi
+if _test_pattern_runall "$CARGO_FIXTURE" 101 >/dev/null 2>&1; then
+    assert_fail "S5: runall anchor must reject a cargo body"
+else
+    assert_pass "S5: runall anchor rejects a cargo body"
+fi
+
 print_test_results
