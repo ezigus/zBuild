@@ -1579,6 +1579,9 @@ main() {
         # edge's own `max` is a subordinate local cap enforced below.
         local _RUNNER_ROUTE_BACK_BUDGET="${ZBUILD_ROUTE_BACK_BUDGET:-2}"
         [[ "$_RUNNER_ROUTE_BACK_BUDGET" =~ ^[0-9]+$ ]] || _RUNNER_ROUTE_BACK_BUDGET=2
+        # #1227: clamp to >=1. A budget of 0 gives a confusing "pass 1/0" and
+        # silently disables route_back; the initial forward pass always counts as 1.
+        if (( _RUNNER_ROUTE_BACK_BUDGET < 1 )); then _RUNNER_ROUTE_BACK_BUDGET=1; fi
         local _RUNNER_ROUTE_BACK_PASSES=1
         # #682 (Wave 15-D): cardinal counter for the cycle-aware dispatch loop.
         # Each unit (stage OR cycle) occupies ONE cardinal slot — cycles render
@@ -1690,6 +1693,12 @@ main() {
                         # Budget/edge-cap exhausted OR unresolved/forward target →
                         # restore the fallback rc and fall through (NO rewind).
                         _rc="${_CYCLE_ROUTE_BACK_FALLBACK_RC:-2}"
+                        # #1227: also restore the ORIGINAL terminal reason the
+                        # orchestrator stashed, so cycle.complete/pipeline.end
+                        # name the real cause instead of "route_back".
+                        if [[ -n "${_CYCLE_ROUTE_BACK_FALLBACK_REASON:-}" ]]; then
+                            _CYCLE_LAST_TERMINATED_REASON="$_CYCLE_ROUTE_BACK_FALLBACK_REASON"
+                        fi
                         warn "Cycle $_cyc_id route_back budget/cap exhausted (pass $_RUNNER_ROUTE_BACK_PASSES/$_RUNNER_ROUTE_BACK_BUDGET) → fallback rc=$_rc"
                     fi
                     _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file" || true

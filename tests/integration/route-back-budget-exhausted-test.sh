@@ -38,9 +38,13 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
             _CYCLE_LAST_TERMINATED_REASON="converged"; return 0
         fi
         # ALWAYS request a route_back with fallback rc=8 (member_terminal_failure).
+        # The orchestrator stashes the ORIGINAL reason so the runner can restore
+        # it on the exhausted path (#1227); mimic that here with a distinctive
+        # tautology cause that must survive to the terminal event.
         _CYCLE_LAST_TERMINATED_REASON="route_back"
         _CYCLE_ROUTE_BACK_TO="plan"
         _CYCLE_ROUTE_BACK_FALLBACK_RC=8
+        _CYCLE_ROUTE_BACK_FALLBACK_REASON="member_terminal_failure"
         return 11
     }
     _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
@@ -63,5 +67,14 @@ assert_eq "S2: plan dispatched TWICE then budget spent (no third)" "2" "$_plan_c
 
 _status="$(jq -r '.status' "$_state" 2>/dev/null)"
 assert_eq "S2: budget spent → fallback rc=8 → status=failed" "failed" "$_status"
+
+# #1227 fix 3: on budget exhaustion the terminal reason must be the ORIGINAL
+# cause (stashed by the orchestrator + restored by the runner), NOT "route_back".
+_complete_reason="$(grep '"type":"cycle.complete"' "$_ev" 2>/dev/null | tail -1 | jq -r '.data.reason // empty' 2>/dev/null)"
+assert_eq "S2: cycle.complete restates the ORIGINAL cause, not route_back" \
+    "member_terminal_failure" "$_complete_reason"
+_end_reason="$(grep '"type":"pipeline.end"' "$_ev" 2>/dev/null | tail -1 | jq -r '.data.reason // empty' 2>/dev/null)"
+assert_eq "S2: pipeline.end reason is the ORIGINAL cause, not route_back" \
+    "member_terminal_failure" "$_end_reason"
 
 print_test_results

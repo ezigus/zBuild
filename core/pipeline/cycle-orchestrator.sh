@@ -1756,6 +1756,9 @@ cycle_orchestrator_run() {
     # target/fallback from a prior cycle can never leak into this one.
     _CYCLE_ROUTE_BACK_TO=""
     _CYCLE_ROUTE_BACK_FALLBACK_RC=""
+    # #1227: reset the stashed original reason per run so a stale cause from a
+    # prior cycle can never leak into this one's exhausted-path terminal event.
+    _CYCLE_ROUTE_BACK_FALLBACK_REASON=""
     # #1225 (ADR-045): reset the edge-owner id per run so a stale owner from a
     # prior cycle can never key the runner's per-edge counter/max onto the wrong
     # cycle. A NESTED cycle sets this to its own id in the by-severity reroute so
@@ -2158,6 +2161,12 @@ cycle_orchestrator_run() {
                 set +e; _cycle_check_route_back "$verdicts_blob"; _rb_matched=$?; [[ $_rce -eq 1 ]] && set -e
                 if [[ $_rb_matched -eq 0 ]]; then
                     _CYCLE_ROUTE_BACK_FALLBACK_RC=$term_rc
+                    # #1227: stash the ORIGINAL terminal reason alongside the
+                    # fallback rc so the runner can restore it on the
+                    # budget/cap-exhausted no-rewind path — otherwise the final
+                    # cycle.complete/pipeline.end would misreport "route_back"
+                    # instead of the real cause (e.g. the tautology message).
+                    _CYCLE_ROUTE_BACK_FALLBACK_REASON="$_CYCLE_LAST_TERMINATED_REASON"
                     _CYCLE_ROUTE_BACK_TO="${!_rb_to_var}"
                     # #1225 (ADR-045): stash the id of the cycle that OWNS this
                     # edge so the runner keys the per-edge counter + declared max

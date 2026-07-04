@@ -236,4 +236,31 @@ set -e
 assert_eq "[SPEC-10] acceptance_spec_is_change SPEC-1 → 0" "0" "$_isc1"
 assert_eq "[SPEC-10] acceptance_spec_is_change SPEC-2 → 1 (guard)" "1" "$_isc2"
 
+# ─── SPEC-11 (#1227 fix 1): C1 fence tolerates trailing whitespace ───────────
+# The design stage asserts the scope block with `grep -q '^```scope'`, which
+# accepts a fence line carrying trailing whitespace. C1's fence check must
+# mirror that tolerance so a trailing-space fence does NOT falsely trip
+# SCOPE_MISSING. Build a clean design whose scope fence has a trailing space.
+_ws_md="$(printf '# Design\n\n```scope \nscripts/wire.sh\n```\n\n```acceptance\nSPEC-1[change]: the thing works\nTESTFILES:\ntests/a-test.sh\nWIRING: scripts/wire.sh\n```\n')"
+_run_gate_with_md "$_ws_md"
+_ws_viol="$(jq -r '.violations|join(" ")' "$RESULT_JSON")"
+assert_eq "[SPEC-11] trailing-ws scope fence → no false SCOPE_MISSING" "absent" \
+    "$([[ "$_ws_viol" == *SCOPE_MISSING* ]] && echo present || echo absent)"
+assert_eq "[SPEC-11] trailing-ws scope fence → verdict=pass" "pass" "$VERDICT"
+
+# ─── SPEC-12 (#1227 fix 2): C6 fails CLOSED when its lib is unavailable ───────
+# A gate must never return verdict=pass while silently skipping a check. When
+# acceptance_coverage_check is not loaded, C6 must record a violation
+# (verdict=fail), not pass. Temporarily unset the fn, then restore it.
+_saved_acc="$(declare -f acceptance_coverage_check)"
+unset -f acceptance_coverage_check
+_run_gate_with_md "$_clean_md"
+assert_eq "[SPEC-12] C6 lib unavailable → verdict=fail (fail-closed)" "fail" "$VERDICT"
+assert_contains "[SPEC-12] fail-closed violation names the missing C6 check" \
+    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "COVERAGE_CHECK_UNAVAILABLE"
+# Restore so later runs (and re-source guards) see the real fn.
+eval "$_saved_acc"
+_run_gate_with_md "$_clean_md"
+assert_eq "[SPEC-12] C6 lib restored → clean design passes again" "pass" "$VERDICT"
+
 print_test_results
