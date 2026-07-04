@@ -1,7 +1,7 @@
 # ADR-045: Bounded Typed Backward-Route Primitive (rc=11 route_back)
 
-**Status:** Accepted (#1217, keystone of the pipeline-correctness EPIC #1216)
-**Date:** 2026-07-03
+**Status:** Accepted (#1217, keystone of the pipeline-correctness EPIC #1216; amended #1225 — nested-cycle propagation)
+**Date:** 2026-07-03 (amended 2026-07-04, #1225)
 **Depends on:** ADR-021 (pipeline cycle semantics / rc table), ADR-027 (recursive flow template format / acyclicity), ADR-040 (composable gate/lens taxonomy — advisory stages never drive loops)
 **Amends:** ADR-021 (adds rc=11 route_back to the terminal-rc table as a NON-halt class), ADR-027 (adds a carve-out to the membership-acyclicity contract for the bounded backward edge)
 
@@ -81,6 +81,35 @@ terminal handling (**no rewind**).
 - Seq labels re-increment monotonically on replay (a replayed stage is a new
   time-ordered event); the `cycle.route_back` event provides legibility.
 
+### Nested-cycle propagation (#1225)
+
+`route_back` may be declared on a **nested** cycle (a `type: cycle` member of an
+enclosing cycle), not just a top-level dispatch unit. An inner cycle that
+reclassifies to rc=11 returns it to the enclosing cycle's member-dispatch, which
+propagates it outward through **every** enclosing cycle's main loop — exactly
+like the rc=8 (`blocking_member_failure`) and rc=130 (abort) branches — until it
+reaches the runner, the only layer that owns dispatch-unit rewind. Without this
+each enclosing loop's generic `_iter_rc -ne 0` catch-all would collapse rc=11 to
+rc=4 (`config_invalid`, silent HALT) and the rewind would never run.
+
+- **General, not depth-capped.** Propagation chains through arbitrary nesting
+  depth; the global budget + the load-time acyclicity/strictly-earlier checks are
+  the safety, so no engine depth cap is imposed.
+- **Edge-owner identity.** The orchestrator stashes `_CYCLE_ROUTE_BACK_EDGE_ID`
+  = the id of the cycle that *owns* the edge (the inner cycle for a nested edge;
+  the dispatch-unit id for a top-level edge). The runner keys the per-edge
+  counter (`_RUNNER_ROUTE_BACK_EDGE_<owner>`) and the declared `max`
+  (`_TPL_CYCLE_ROUTE_BACK_MAX_<owner>`) on this owner. For a top-level edge the
+  owner equals the dispatch-unit id, so behavior is **byte-identical**; for a
+  nested edge it makes the operator's *inner* `max` apply instead of the outer
+  unit's default. The run-wide global budget remains the hard ceiling above it.
+- **Target semantics for a cross-boundary rewind.** `route_back.to` must resolve
+  (by id, or by membership → enclosing top-level index) to a **top-level**
+  dispatch unit **strictly earlier** than the enclosing top-level unit — the only
+  thing the runner can rewind to. A sibling-member / self / enclosing target
+  resolves to the *same* enclosing top-level index → not strictly-earlier →
+  rejected at load (see below).
+
 ### Acyclicity carve-out (ADR-027)
 
 The `route_back` edge lives in a **separate** var, not in membership flow, so
@@ -89,7 +118,12 @@ The `route_back` edge lives in a **separate** var, not in membership flow, so
 `_tpl_validate_route_back` permits the backward edge **iff** `to` resolves to a
 strictly-earlier dispatch unit AND `max` is a finite positive int; it rejects
 forward/self targets and empty/zero/non-numeric `max` (an unbounded backward
-route). The edge is permitted precisely *because* it is budget-bounded.
+route). The edge is permitted precisely *because* it is budget-bounded. #1225
+lifts the earlier (#1217) top-level-only rejection: because `_tpl_resolve_unit_index`
+resolves both a nested cid and its `to` target by membership to their enclosing
+top-level index, the single strictly-earlier check auto-constrains a nested
+edge's target to a top-level unit before the enclosing cycle and auto-rejects a
+sibling-member / self target — so nested `route_back` needs no special-case rule.
 
 ## Consequences
 

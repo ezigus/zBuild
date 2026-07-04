@@ -181,4 +181,71 @@ assert_eq "T12c first call rc=0" "0" "$rc_t12c_1"
 assert_eq "T12c second call config_invalid rc=4" "4" "$rc_t12c_2"
 assert_eq "[SPEC-3] second sequential top-level call clears stale persist (not restores)" "" "${_CYCLE_TIMEOUT_RUN[s1]:-}"
 
+# ── N2 (#1225): NESTED cycle route_back propagates rc=11 outward, NOT rc=4 ─────
+# An inner cycle that route_backs returns rc=11 to the enclosing outer cycle's
+# member dispatch (the `11)` case). BEFORE #1225 the outer main loop had no rc=11
+# branch → the `_iter_rc -ne 0` catch-all collapsed it to rc=4 (config_invalid,
+# silent HALT), never reaching the runner's rewind. This asserts the outer
+# cycle_orchestrator_run now BUBBLES 11 (mirroring rc=8/130) and preserves the
+# hand-off globals (route_back target + edge-owner id) for the runner.
+NESTED_RB_TPL="$TEST_TEMP_DIR/nested-rb.yaml"
+cat > "$NESTED_RB_TPL" <<'EOF'
+id: nested-rb-run
+defaults:
+  strategy: fanout
+flow:
+  - plan
+  - outer
+plan:
+  roles: [planner]
+outer:
+  type: cycle
+  flow:
+    - inner
+  exit_when:
+    stage: inner
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 2
+  on_max: continue
+inner:
+  type: cycle
+  flow:
+    - build
+    - test
+  exit_when:
+    stage: test
+    field: verdict
+    op: eq
+    value: pass
+  route_back:
+    to: plan
+    when:
+      stage: test
+      field: verdict
+      op: eq
+      value: retry
+    max: 2
+  max_iterations: 2
+  on_max: continue
+build:
+  roles: [builder]
+test:
+  roles: [tester]
+EOF
+_seed
+_TPL_STAGES=(); _TPL_CYCLES=()
+set +e; load_template "$NESTED_RB_TPL"; rc=$?; set -e
+assert_eq "N2: nested route_back template LOADS rc=0 (#1225 lifts nested rejection)" "0" "$rc"
+# inner test always emits verdict=retry (status complete, rc 0) → inner exhausts
+# unconverged (rc=2) → route_back predicate (retry) matches → inner returns 11.
+MOCK_VERDICTS="build:pass;test:retry"
+_CYCLE_ROUTE_BACK_TO=""; _CYCLE_ROUTE_BACK_FALLBACK_RC=""; _CYCLE_ROUTE_BACK_EDGE_ID=""
+set +e; cycle_orchestrator_run "outer" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_n2=$?; set -e
+assert_eq "N2: outer cycle_orchestrator_run BUBBLES rc=11 (NOT rc=4 collapse)" "11" "$rc_n2"
+assert_eq "N2: reason=route_back" "route_back" "$_CYCLE_LAST_TERMINATED_REASON"
+assert_eq "N2: route_back target=plan preserved through the outer loop" "plan" "$_CYCLE_ROUTE_BACK_TO"
+assert_eq "N2: edge-owner id = INNER cycle (so runner keys the inner's max)" "inner" "$_CYCLE_ROUTE_BACK_EDGE_ID"
+
 print_test_results

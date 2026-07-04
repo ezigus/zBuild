@@ -1640,7 +1640,15 @@ main() {
                     if [[ $_rc -eq 11 ]]; then
                         local _rb_tgt _rb_edge_safe _rb_edge_var _rb_edge_count _rb_edge_max_var _rb_edge_max
                         _rb_tgt="$(_runner_resolve_unit_index "${_CYCLE_ROUTE_BACK_TO:-}")"
-                        _rb_edge_safe="${_cyc_id//-/_}"
+                        # #1225 (ADR-045): key the per-edge counter + declared max
+                        # on the cycle that OWNS the edge, not the top-level
+                        # dispatch unit. For a top-level route_back the owner IS
+                        # the dispatch unit (_CYCLE_ROUTE_BACK_EDGE_ID==_cyc_id) →
+                        # byte-identical. For a NESTED cycle the inner id keys the
+                        # inner's declared `max`; without it the outer unit's empty
+                        # var defaulted to 2, silently ignoring the operator.
+                        _rb_edge_safe="${_CYCLE_ROUTE_BACK_EDGE_ID:-$_cyc_id}"
+                        _rb_edge_safe="${_rb_edge_safe//-/_}"
                         _rb_edge_var="_RUNNER_ROUTE_BACK_EDGE_${_rb_edge_safe}"
                         _rb_edge_count="${!_rb_edge_var:-0}"
                         _rb_edge_max_var="_TPL_CYCLE_ROUTE_BACK_MAX_${_rb_edge_safe}"

@@ -628,22 +628,23 @@ load_template() {
     # ADR-027 contract validator (Wave 17-B #703): reference-graph acyclicity.
     # If any cycle's flow transitively includes itself, refuse to load.
     _tpl_validate_flow_acyclic || return 1
-    # #1219 (ADR-045): scrub STALE route_back exports on any cycle that is NOT a
-    # top-level dispatch unit of THIS template. route_back is only ever valid on a
-    # top-level cycle (enforced by _tpl_validate_route_back below), so a route_back
-    # var on a nested/absent cycle can only be a leftover from a PRIOR load_template
-    # in the same process (route_back vars are exported and never reset per-cycle).
-    # Without this, loading a template WHOSE cycle declares route_back (simple.yaml's
-    # top-level build_test_cycle → design_verify_cycle) and THEN one that reuses the
-    # id for a NESTED cycle (standard.yaml nests build_test_cycle) leaves the stale
-    # route_back on the nested cycle, tripping the top-level-only guard and failing
-    # the load. Top-level cycles keep their route_back vars (a test may inject an
-    # edge `max` for one, #1217), so this is surgical — it clears only stale nested
-    # inheritance, never a live top-level edge.
+    # #1219 (ADR-045): scrub STALE route_back exports left over from a PRIOR
+    # load_template in the same process (route_back vars are exported and never
+    # reset per-cycle). A route_back var on a cycle that is NOT a dispatch unit of
+    # THIS template AND was NOT declared by THIS parse can only be such a leftover.
+    # #1225 (ADR-045): route_back is now valid on a NESTED cycle too (its rc=11
+    # propagates to the runner), so the scrub does NOT key on top-level-ness — it
+    # keeps every route_back DECLARED by this parse (top-level OR nested) and only
+    # clears UNDECLARED inheritance. Without this, loading a template WHOSE cycle
+    # declares route_back (simple.yaml's top-level build_test_cycle) and THEN one
+    # that reuses the id for a NESTED cycle (standard.yaml nests build_test_cycle)
+    # would leave the stale route_back on the nested cycle. This stays surgical —
+    # it clears only stale inheritance, never a live edge declared this parse.
     local _rb_cid _rb_safe _rb_u _rb_top _rb_declared
     for _rb_cid in ${_TPL_CYCLES[@]+"${_TPL_CYCLES[@]}"}; do
-        # Keep a route_back DECLARED by this parse (even on a nested cycle — the
-        # validator below will reject it, which is the intended error path).
+        # Keep a route_back DECLARED by this parse (top-level OR nested — #1225
+        # supports nested route_back; the validator below enforces strictly-earlier
+        # target regardless of nesting).
         _rb_declared=0
         for _rb_u in ${_TPL_ROUTE_BACK_DECLARED[@]+"${_TPL_ROUTE_BACK_DECLARED[@]}"}; do
             [[ "$_rb_u" == "$_rb_cid" ]] && { _rb_declared=1; break; }
@@ -2132,21 +2133,17 @@ _tpl_validate_route_back() {
         local to_var="_TPL_CYCLE_ROUTE_BACK_TO_${safe}"
         to="${!to_var:-}"
         [[ -z "$to" ]] && continue
-        # #1217 review fix (BLOCKING): route_back is only supported on a
-        # TOP-LEVEL cycle (one that appears as `cycle:<cid>` in the dispatch
-        # units). A NESTED cycle that returned rc=11 would propagate outward to
-        # the enclosing cycle's main loop, which has NO rc=11 handler → the
-        # `_iter_rc -ne 0` path turns it into rc=4 (config_invalid, silent HALT)
-        # and the runner's rewind is never reached. Reject at load; full
-        # nested-cycle propagation is a deferred follow-up.
-        local _is_top=0 _u
-        for _u in "${_TPL_DISPATCH_UNITS[@]}"; do
-            [[ "$_u" == "cycle:$cid" ]] && { _is_top=1; break; }
-        done
-        if [[ $_is_top -eq 0 ]]; then
-            error "load_template: cycle '$cid' declares route_back but is NESTED (not a top-level cycle); route_back is only supported on a top-level cycle for now (ADR-045) — nested-cycle propagation is a deferred follow-up"
-            return 1
-        fi
+        # #1225 (ADR-045): route_back is supported on a NESTED cycle too — its
+        # rc=11 now bubbles outward through every enclosing cycle's main loop to
+        # the runner (#1225 cycle-orchestrator fix), so the load-time
+        # top-level-only rejection from #1217 is lifted. The strictly-earlier
+        # check below is the sole guard: _tpl_resolve_unit_index resolves BOTH a
+        # nested cid and its `to` target by MEMBERSHIP to their enclosing
+        # TOP-LEVEL dispatch-unit index, so `to_idx < cyc_idx` constrains a nested
+        # route_back's target to a top-level unit strictly BEFORE the enclosing
+        # top-level cycle (the only thing the runner can rewind) and auto-rejects
+        # a sibling-member / self target (both resolve to the SAME enclosing
+        # top-level index → not strictly-earlier).
         # #1217 review fix (NIT): reject an unsupported predicate op at load —
         # the orchestrator's route_back evaluator only implements eq/ne (mirrors
         # exit_when/abort_when); any other op would silently never match.
