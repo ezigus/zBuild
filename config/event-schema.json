@@ -42,6 +42,7 @@
     "router.retries.override_ignored",
     "router.error",
     "router.error.diagnostic",
+    "router.rate_limited",
     "stage.io.captured",
     "stage.io.error",
     "stage.io.render.fallback",
