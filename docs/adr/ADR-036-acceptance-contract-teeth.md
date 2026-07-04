@@ -1,9 +1,13 @@
 # ADR-036 — Acceptance-contract teeth (mechanical SPEC↔assertion gate)
 
-**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions)
+**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions);
+amended 2026-07-03 (#1218, ADR-046 — Level-1 SPEC-tag-presence shifts LEFT to a PRE-build
+`design-gate`; this post-build acceptance-gate retains Level-2 negative-control/tautology +
+Level-3 reachability, which cannot shift left — they need a built assertion + baseline-vs-HEAD)
 **Related:** ADR-031 (behavioral acceptance contract), ADR-013 (canonical stage list),
 ADR-020 (inter-stage data contract / optional inputs), ADR-022 (test-assessment),
-ADR-030 (scope governance), ADR-042 (plug-and-play stage resolution)
+ADR-030 (scope governance), ADR-042 (plug-and-play stage resolution),
+ADR-046 (design-verify shift-left)
 **Issue:** #922 (843-F). Surfaced by the dogfood of #844.
 
 ## Amendment (2026-07-01) — generic role, method-named plugin, declarative preconditions

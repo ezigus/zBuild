@@ -33,11 +33,68 @@ defaults:
 flow:
   - intake
   - plan
-  - design
+  - design_verify_cycle
+  - impact
   - build_test_cycle
   - review_lenses
   - review-aggregator
   - pr
+
+# ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
+# ADR-046 (#1218, EPIC #1216): give the design stage an independent verifier that
+# loops back TO it BEFORE the build cycle — so design/contract defects are caught
+# where they are authored, not deep in the build cycle. Modelled on standard.yaml's
+# design_impact_cycle (standard.yaml:40-67), which simple.yaml historically lacked.
+#
+# Members: design → design-gate. design-gate is a T0 tool (ADR-037 §3): a pure-grep
+# PRE-build structural gate over design.md + the red-first stubs design writes. It
+# is BOTH a cycle member AND convergence:gate, so the typed-aggregator preflight
+# rule (A) is satisfied by binding exit_when directly to it — a single gate, no
+# separate aggregator needed (contrast build_test_cycle's gate-aggregator, which
+# rolls up MANY gates). exit_when fires on design-gate.verdict == pass.
+# max_iterations: 3, on_max: continue (ADR-019 fall-through — an unconverged
+# design still proceeds to build; the operator sees the recorded verdict).
+#
+# Feedback (block-form `to:` per the Wave 18-B translator):
+#  (a) design-gate.design_gate_feedback → design.prior_impact_feedback — REUSE
+#      design's existing prior_impact_feedback input (same "here's what's wrong,
+#      refine" category; zero design-manifest churn). required:false — the
+#      feedback file is absent on a passing gate.
+#  (b) design.design → design.prior_design (self-edge) — mirrors design_impact_cycle
+#      so iter N+1 refines rather than re-creates (#773 lesson).
+#
+# The SEMANTIC sibling (LLM judge: are the SPECs genuinely new + separable?) is the
+# `impact` stage placed as a lone top-level stage AFTER this cycle (advisory by
+# placement, ADR-040) — NOT a cycle member, so the LLM never re-runs per design
+# iteration and never drives convergence.
+design_verify_cycle:
+  type: cycle
+  description: Verify the design contract is build-ready until design-gate passes
+  flow:
+    - design
+    - design-gate
+  exit_when:
+    stage: design-gate
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+  feedback:
+    - from:
+        stage: design-gate
+        output: design_gate_feedback
+      to:
+        stage: design
+        input: prior_impact_feedback
+        required: false
+    - from:
+        stage: design
+        output: design
+      to:
+        stage: design
+        input: prior_design
+        required: false
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
@@ -117,7 +174,7 @@ plan:
     timeout_s: 300
     max_turns: 25
 
-# ─── design (leaf) ───────────────────────────────────────────────────────────
+# ─── design (leaf, design_verify_cycle member) ───────────────────────────────
 design:
   gate: auto
   roles: [designer]
@@ -127,6 +184,41 @@ design:
   router:
     timeout_s: 600
     max_turns: 0
+
+# ─── design-gate (leaf, design_verify_cycle member) ──────────────────────────
+# T0 tool gate (ADR-046, #1218): PRE-build mechanical structural gate. Pure grep
+# over design.md + the red-first stubs (NO LLM, NO baseline — ADR-037 §3). Runs
+# the 6 structural checks (scope non-empty; every SPEC [change|guard]-classified;
+# every [change] SPEC has an existing TESTFILE; WIRING present/none + paths exist;
+# Level-1 SPEC-tag-presence; acceptance block well-formed) and reports ALL
+# violations in ONE pass. verdict-in-artifact; the design_verify_cycle exit_when
+# reads design-gate.verdict == pass. Bound by role design_gate.
+design-gate:
+  gate: auto
+  roles: [design_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── impact (leaf, top-level advisory-by-placement) ──────────────────────────
+# ADR-046 (#1218): the SEMANTIC sibling of the design verifier. Reused `impact`
+# T2 agent (adversarial post-design consequence-finder) placed as a LONE top-level
+# stage AFTER design_verify_cycle and BEFORE build_test_cycle. Advisory BY PLACEMENT
+# (ADR-040): it has no exit_when, drives no convergence, and never blocks — so the
+# LLM runs ONCE (not per design iteration). Its manifest is deliberately MARKER-LESS
+# (no `convergence:`) — standard.yaml's design_impact_cycle binds impact via
+# exit_when and the typed-aggregator preflight only checks MARKER-BEARING targets;
+# adding a marker here would break standard.yaml. Router knobs copied from
+# standard.yaml (T2, timeout 180s, max_turns 45, #960).
+impact:
+  gate: auto
+  roles: [impact_analyzer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 180
+    max_turns: 45
 
 # ─── build (leaf, cycle member) ──────────────────────────────────────────────
 build:

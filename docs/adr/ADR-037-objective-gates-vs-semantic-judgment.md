@@ -7,6 +7,9 @@
 - amend-planned: ADR-036, ADR-019, ADR-031, ADR-013, ADR-021, ADR-030, ADR-020, ADR-015
 - promote-planned: ADR-033
 - kept (unaffected): ADR-029, ADR-017, ADR-003, ADR-027, ADR-034
+- extended-by: ADR-046 (#1218) — `design-gate` is a new T0 `kind: tool` mechanical gate
+  that runs PRE-build; the §3 two-layer invariant (mechanical may block, semantic is
+  advisory) holds: design-gate is mechanical/blocking, its `impact` sibling stays advisory.
 **Issue:** #967 (EPIC #966, I1)
 
 ## Context

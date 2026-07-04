@@ -218,6 +218,8 @@
     "strategy.composite.unimplemented",
     "template.deprecated_shape",
     "cycle.test.full_suite_gate",
+    "design_gate.pass",
+    "design_gate.fail",
     "shape_floor.pass",
     "shape_floor.fail",
     "shape_floor.skip",

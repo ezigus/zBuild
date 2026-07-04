@@ -2,6 +2,9 @@
 
 **Status:** Accepted
 **Date:** 2026-05-27
+**Amended:** 2026-07-03 (#1218, ADR-046) — `design-gate` added to the canonical stage list
+between `design` and `impact` (a T0 `kind: tool`, `convergence: gate` PRE-build structural
+verifier; see ADR-046).
 
 ## Context
 
