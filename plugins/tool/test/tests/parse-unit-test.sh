@@ -386,4 +386,35 @@ else
     assert_pass "S5: runall anchor rejects a cargo body"
 fi
 
+print_test_section "S6. runall — 'total:' aggregate line is not double-counted (#1234)"
+
+# run-tests.sh emits an AGGREGATE `total: P/T passed[ (N skipped)]` line after
+# the per-suite lines (scripts/run-tests.sh:665). The shape-based genericization
+# (#1229) matched it too → the parser summed the aggregate PLUS every per-suite
+# line (double-count) and listed `total` as a suite. Only real per-suite lines
+# must be summed; `total` is run-tests.sh's aggregate keyword, never a suite.
+TOTAL_AGG_FIXTURE="$(cat <<'EOF'
+unit: FAIL /repo/tests/unit/foo-test.sh
+unit: 108/126 passed
+integration: 77/77 passed
+e2e: 7/7 passed
+golden: 1/1 passed
+total: 193/211 passed (5 skipped)
+EOF
+)"
+OUT="$(_split "$TOTAL_AGG_FIXTURE" 1)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "S6: recognized=1" "1" "$r"
+assert_eq "S6: verdict=fail" "fail" "$v"
+# Sum of per-suite pass counts only: 108+77+7+1 = 193 (NOT 193+193=386).
+assert_eq "S6: passed=193 (per-suite sum, not double-counted)" "193" "$p"
+assert_contains "S6: summary names the failing unit suite" "$s" "unit"
+# The aggregate must not appear as a suite in the summary parts nor as a failing
+# suite (baseline listed `total 193/211` because 193<211 in the aggregate line).
+if grep -qE 'total [0-9]+/[0-9]+' <<< "$s"; then
+    assert_fail "S6: 'total' must NOT be shown as a suite" "got: $s"
+else
+    assert_pass "S6: 'total' aggregate is not shown as a suite"
+fi
+
 print_test_results
