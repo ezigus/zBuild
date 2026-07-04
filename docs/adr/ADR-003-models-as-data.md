@@ -137,3 +137,16 @@ No code change. No plugin change.
 - [KEEPERS.md §B1.9–11](../KEEPERS.md#b1--verified-wired-carry-forward-as-core) — cost ledger, UCB1, Thompson router.
 - `legacy/scripts/sw-pipeline.sh:~2563` (router block), `:837` (cost table).
 - `legacy/scripts/sw-self-optimize.sh:851-893` (Thompson), `:907-955` (UCB1).
+
+## Note — plugin tier fallback must equal manifest `config.tier_default` (#960/#1230)
+
+Agent plugins select their tier via a `${ZBUILD_<NAME>_TIER:-T?}` fallback in
+`plugin.sh` and *also* declare `config.tier_default` in `manifest.yaml`. Nothing
+wires the manifest into the resolved tier yet (generic manifest→tier wiring is a
+tracked follow-up), so the `plugin.sh` fallback is authoritative — and it MUST
+match the manifest, or the declared tier is silently inert. #960 declared
+`impact.tier_default: T2` but `plugin.sh` kept a stale `:-T1}` fallback, so
+impact ran on T1 (haiku) and timed out (rc=124, #1230). Fixed by flipping the
+fallback to T2; `tests/unit/impact-tier-test.sh` adds a drift-guard asserting
+every agent plugin's `:-T?}` fallback equals its manifest `config.tier_default`,
+so no plugin can silently drift again.

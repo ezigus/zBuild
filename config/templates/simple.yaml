@@ -243,6 +243,10 @@ impact:
   router:
     timeout_s: 180
     max_turns: 45
+    # #1230: impact was the lone stage that timed out (rc=124) in the #944
+    # dogfood. One retry-on-timeout (escalated budget) before the empty
+    # verdict=incomplete fallback. Default is 0 (opt-in) everywhere else.
+    retries: 1
 
 # ─── build (leaf, cycle member) ──────────────────────────────────────────────
 build:

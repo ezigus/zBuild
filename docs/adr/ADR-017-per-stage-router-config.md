@@ -300,3 +300,36 @@ The sentinel is honored at all three resolution points: per-stage template
 field (`router.max_turns: 0`), env-var (`ZBUILD_ROUTER_MAX_TURNS=0`), and
 the compile-time default (still `25`; `0` would only apply if the default
 itself ever changed — see the ADR-018 amendment's forward-compat note).
+
+## Amendment — `router.retries` retry-on-timeout knob (#1230)
+
+Adds a fourth per-stage `router:` knob, `retries` (sibling of `timeout_s` /
+`max_turns` / `max_iterations`), parsed/validated/exposed via the same pattern:
+
+- Parser: `router.retries` collected at every stage/defs/recursive-flow site;
+  name-mangled export `_TPL_STAGE_ROUTER_RETRIES_${safe_id}` appended to the
+  `export` statement (#448 lesson).
+- Validator: integer in `0..10`; `0` is the explicit opt-out (unlike the
+  other knobs' positive lower bound, `0` is *valid* — it means "no retry").
+- Accessor: `template_stage_router_retries`.
+- Resolver: `_route_resolve_retries` via `_route_resolve_knob`
+  (per-stage > `ZBUILD_ROUTER_RETRIES` > **default 0**). When per-stage and env
+  differ, `router.retries.override_ignored` is emitted for audit.
+
+Precedence table (unchanged shape; `retries` row added):
+
+| knob             | per-stage field         | env var                      | default |
+| ---------------- | ----------------------- | ---------------------------- | ------- |
+| timeout_s        | `router.timeout_s`      | `ZBUILD_ROUTER_TIMEOUT`      | 300     |
+| max_turns        | `router.max_turns`      | `ZBUILD_ROUTER_MAX_TURNS`    | 25      |
+| max_iterations   | `router.max_iterations` | `ZBUILD_ROUTER_MAX_ITERATIONS` | 10    |
+| retries          | `router.retries`        | `ZBUILD_ROUTER_RETRIES`      | 0       |
+
+Unlike the other knobs, `retries` is honored by **both** leaf model-call paths
+so every leaf node respects it wherever it sits: the single-shot
+`_route_call_claude` (an internal retry loop) AND the agentic-loop
+`route_to_model_loop` (an intra-iteration retry layered before the #1208
+cross-iteration `timeout_recur` breaker). The retry-on-timeout escalation
+semantics are specified in ADR-029. New events
+`router.timeout.retry` + `router.retries.override_ignored` added to
+`config/event-schema.json::known_types`.

@@ -245,6 +245,7 @@ load_template() {
     local -a collected_router_timeout=()
     local -a collected_router_max_turns=()
     local -a collected_router_max_iterations=()
+    local -a collected_router_retries=()
     local -a stage_data_rows=()
 
     while IFS= read -r row; do
@@ -254,13 +255,13 @@ load_template() {
         case "$tag" in
             S)
                 # Inline regular stage row from `stages:` — full attr payload.
-                # Format: <id>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>
-                local s_id s_roles s_strat s_iod s_iot s_ior s_rt s_rmt s_rmi
-                IFS='|' read -r s_id s_roles s_strat s_iod s_iot s_ior s_rt s_rmt s_rmi <<< "$payload"
+                # Format: <id>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>|<rretries>
+                local s_id s_roles s_strat s_iod s_iot s_ior s_rt s_rmt s_rmi s_rre
+                IFS='|' read -r s_id s_roles s_strat s_iod s_iot s_ior s_rt s_rmt s_rmi s_rre <<< "$payload"
                 [[ -z "$s_id" ]] && continue
                 # Also drop into defs map so cycle members can declare attrs
                 # inline if templates choose to (forward-compat).
-                stage_def_row["$s_id"]="$s_roles|$s_strat|$s_iod|$s_iot|$s_ior|$s_rt|$s_rmt|$s_rmi"
+                stage_def_row["$s_id"]="$s_roles|$s_strat|$s_iod|$s_iot|$s_ior|$s_rt|$s_rmt|$s_rmi|$s_rre"
                 collected_ids+=("$s_id")
                 collected_io_dests+=("$s_iod")
                 collected_io_tail+=("$s_iot")
@@ -268,7 +269,8 @@ load_template() {
                 collected_router_timeout+=("$s_rt")
                 collected_router_max_turns+=("$s_rmt")
                 collected_router_max_iterations+=("$s_rmi")
-                stage_data_rows+=("$s_id|$s_roles|$s_strat|$s_iod|$s_iot|$s_ior|$s_rt|$s_rmt|$s_rmi")
+                collected_router_retries+=("$s_rre")
+                stage_data_rows+=("$s_id|$s_roles|$s_strat|$s_iod|$s_iot|$s_ior|$s_rt|$s_rmt|$s_rmi|$s_rre")
                 ;;
             IC)
                 # Inline cycle entry. Format:
@@ -313,7 +315,7 @@ load_template() {
                 # shellcheck disable=SC2206
                 local -a members=($cstages)
                 IFS="$IFS_save"
-                local m m_row m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi
+                local m m_row m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi m_rre
                 # Dedupe set: stage ids already added to _TPL_STAGES via a
                 # prior IC| row in the same template (nested-cycle case).
                 # Without this a parent cycle re-adds its descendant cycle's
@@ -350,7 +352,7 @@ load_template() {
                                 error "load_template: nested cycle '$m' references stage '$_im' but no top-level section exists"
                                 return 1
                             fi
-                            IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi <<< "$m_row"
+                            IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi m_rre <<< "$m_row"
                             collected_ids+=("$_im")
                             collected_io_dests+=("$m_iod")
                             collected_io_tail+=("$m_iot")
@@ -358,7 +360,8 @@ load_template() {
                             collected_router_timeout+=("$m_rt")
                             collected_router_max_turns+=("$m_rmt")
                             collected_router_max_iterations+=("$m_rmi")
-                            stage_data_rows+=("$_im|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
+                            collected_router_retries+=("$m_rre")
+                            stage_data_rows+=("$_im|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi|$m_rre")
                         done
                         continue
                     fi
@@ -394,7 +397,7 @@ load_template() {
                                 error "load_template: parallel group '$m' references stage '$_pm' but no top-level section exists"
                                 return 1
                             fi
-                            IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi <<< "$m_row"
+                            IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi m_rre <<< "$m_row"
                             collected_ids+=("$_pm")
                             collected_io_dests+=("$m_iod")
                             collected_io_tail+=("$m_iot")
@@ -402,7 +405,8 @@ load_template() {
                             collected_router_timeout+=("$m_rt")
                             collected_router_max_turns+=("$m_rmt")
                             collected_router_max_iterations+=("$m_rmi")
-                            stage_data_rows+=("$_pm|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
+                            collected_router_retries+=("$m_rre")
+                            stage_data_rows+=("$_pm|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi|$m_rre")
                             local _pm_safe="${_pm//-/_}"
                             printf -v "_TPL_PARALLEL_MEMBER_OF_${_pm_safe}" '%s' "$m"
                             export "_TPL_PARALLEL_MEMBER_OF_${_pm_safe}"
@@ -423,7 +427,7 @@ load_template() {
                         error "load_template: cycle '$cid' references stage '$m' but no 'stage_definitions.$m' entry exists"
                         return 1
                     fi
-                    IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi <<< "$m_row"
+                    IFS='|' read -r m_roles m_strat m_iod m_iot m_ior m_rt m_rmt m_rmi m_rre <<< "$m_row"
                     collected_ids+=("$m")
                     collected_io_dests+=("$m_iod")
                     collected_io_tail+=("$m_iot")
@@ -431,7 +435,8 @@ load_template() {
                     collected_router_timeout+=("$m_rt")
                     collected_router_max_turns+=("$m_rmt")
                     collected_router_max_iterations+=("$m_rmi")
-                    stage_data_rows+=("$m|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi")
+                    collected_router_retries+=("$m_rre")
+                    stage_data_rows+=("$m|$m_roles|$m_strat|$m_iod|$m_iot|$m_ior|$m_rt|$m_rmt|$m_rmi|$m_rre")
                 done
                 ;;
             IP)
@@ -461,7 +466,7 @@ load_template() {
                 # shellcheck disable=SC2206
                 local -a pmembers_arr=($pmembers)
                 IFS="$p_IFS_save"
-                local pm pm_row pm_roles pm_strat pm_iod pm_iot pm_ior pm_rt pm_rmt pm_rmi
+                local pm pm_row pm_roles pm_strat pm_iod pm_iot pm_ior pm_rt pm_rmt pm_rmi pm_rre
                 for pm in "${pmembers_arr[@]}"; do
                     [[ -z "$pm" ]] && continue
                     # Dedupe — a member already added (defensive; validator
@@ -476,7 +481,7 @@ load_template() {
                         error "load_template: parallel group '$pid' references stage '$pm' but no top-level section / 'stage_definitions.$pm' entry exists"
                         return 1
                     fi
-                    IFS='|' read -r pm_roles pm_strat pm_iod pm_iot pm_ior pm_rt pm_rmt pm_rmi <<< "$pm_row"
+                    IFS='|' read -r pm_roles pm_strat pm_iod pm_iot pm_ior pm_rt pm_rmt pm_rmi pm_rre <<< "$pm_row"
                     collected_ids+=("$pm")
                     collected_io_dests+=("$pm_iod")
                     collected_io_tail+=("$pm_iot")
@@ -484,7 +489,8 @@ load_template() {
                     collected_router_timeout+=("$pm_rt")
                     collected_router_max_turns+=("$pm_rmt")
                     collected_router_max_iterations+=("$pm_rmi")
-                    stage_data_rows+=("$pm|$pm_roles|$pm_strat|$pm_iod|$pm_iot|$pm_ior|$pm_rt|$pm_rmt|$pm_rmi")
+                    collected_router_retries+=("$pm_rre")
+                    stage_data_rows+=("$pm|$pm_roles|$pm_strat|$pm_iod|$pm_iot|$pm_ior|$pm_rt|$pm_rmt|$pm_rmi|$pm_rre")
                     local pm_safe="${pm//-/_}"
                     printf -v "_TPL_PARALLEL_MEMBER_OF_${pm_safe}" '%s' "$pid"
                     export "_TPL_PARALLEL_MEMBER_OF_${pm_safe}"
@@ -565,12 +571,12 @@ load_template() {
     _tpl_validate_io_dests collected_ids collected_io_dests || return 1
     _tpl_validate_io_knobs collected_ids collected_io_tail collected_io_redact \
         collected_router_timeout collected_router_max_turns \
-        collected_router_max_iterations || return 1
+        collected_router_max_iterations collected_router_retries || return 1
 
     # Populate per-stage state (flat _TPL_STAGES[] + per-id env vars).
-    local stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations
+    local stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations router_retries
     for row in "${stage_data_rows[@]}"; do
-        IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations <<< "$row"
+        IFS='|' read -r stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations router_retries <<< "$row"
         [[ -z "$stage_id" ]] && continue
         _TPL_STAGES+=("$stage_id")
         local safe_id="${stage_id//-/_}"
@@ -582,6 +588,7 @@ load_template() {
         printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" '%s' "$router_timeout"
         printf -v "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" '%s' "$router_max_turns"
         printf -v "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}" '%s' "$router_max_iterations"
+        printf -v "_TPL_STAGE_ROUTER_RETRIES_${safe_id}" '%s' "$router_retries"
         export "_TPL_STAGE_ROLES_${safe_id}" \
                "_TPL_STAGE_STRATEGY_${safe_id}" \
                "_TPL_STAGE_IO_DESTS_${safe_id}" \
@@ -589,7 +596,8 @@ load_template() {
                "_TPL_STAGE_IO_REDACT_${safe_id}" \
                "_TPL_STAGE_ROUTER_TIMEOUT_${safe_id}" \
                "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" \
-               "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
+               "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}" \
+               "_TPL_STAGE_ROUTER_RETRIES_${safe_id}"
     done
 
     _tpl_validate_cycles || return 1
@@ -705,14 +713,14 @@ _tpl_parse_stages_v2() {
             }
             for (k = 1; k <= nfb; k++) print "FB|" current_id "|" fb[k]
         } else {
-            print "S|" current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations
+            print "S|" current_id "|" current_roles "|" current_strategy "|" current_io_dests "|" current_io_tail "|" current_io_redact "|" current_router_timeout "|" current_router_max_turns "|" current_router_max_iterations "|" current_router_retries
         }
     }
     function reset_entry() {
         current_id = ""; entry_kind = "stage"
         current_roles = ""; current_strategy = ""; current_io_dests = ""
         current_io_tail = ""; current_io_redact = ""; current_router_timeout = ""
-        current_router_max_turns = ""; current_router_max_iterations = ""
+        current_router_max_turns = ""; current_router_max_iterations = ""; current_router_retries = ""
         cstages = ""; cmax = ""; conmax = ""; custage = ""; cufield = ""
         cuop = ""; cuvalue = ""; cplateau = ""; cdiverg = ""; cvelopl = ""; cdesc = ""
         cexpand = ""; cautogrant = ""; cescalate = ""; condeny = ""
@@ -916,6 +924,9 @@ _tpl_parse_stages_v2() {
     in_stages && entry_kind == "stage" && in_router_block && /^[[:space:]]+max_iterations:/ {
         rmi = $0; gsub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", rmi); gsub(/[[:space:]]*$/, "", rmi); current_router_max_iterations = rmi; next
     }
+    in_stages && entry_kind == "stage" && in_router_block && /^[[:space:]]+retries:/ {
+        rre = $0; gsub(/^[[:space:]]+retries:[[:space:]]*/, "", rre); gsub(/[[:space:]]*$/, "", rre); current_router_retries = rre; next
+    }
     in_stages && entry_kind == "stage" && in_router_block && /^[[:space:]]+[a-z_]+:/ { next }
     in_stages && entry_kind == "stage" && in_io_block && /^[[:space:]]+destinations:/ {
         dest_line = $0
@@ -949,12 +960,12 @@ _tpl_parse_stage_definitions() {
     function flush_def() {
         if (cur_id == "")
             return
-        print cur_id "|" cur_roles "|" cur_strategy "|" cur_io_dests "|" cur_io_tail "|" cur_io_redact "|" cur_rt "|" cur_rmt "|" cur_rmi
+        print cur_id "|" cur_roles "|" cur_strategy "|" cur_io_dests "|" cur_io_tail "|" cur_io_redact "|" cur_rt "|" cur_rmt "|" cur_rmi "|" cur_rre
     }
     function reset_def() {
         cur_id = ""; cur_roles = ""; cur_strategy = ""
         cur_io_dests = ""; cur_io_tail = ""; cur_io_redact = ""
-        cur_rt = ""; cur_rmt = ""; cur_rmi = ""
+        cur_rt = ""; cur_rmt = ""; cur_rmi = ""; cur_rre = ""
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
     }
     BEGIN { reset_def() }
@@ -1014,6 +1025,9 @@ _tpl_parse_stage_definitions() {
     }
     in_defs && in_router_block && /^[[:space:]]+max_iterations:/ {
         v = $0; gsub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); gsub(/[[:space:]]*$/, "", v); cur_rmi = v; next
+    }
+    in_defs && in_router_block && /^[[:space:]]+retries:/ {
+        v = $0; gsub(/^[[:space:]]+retries:[[:space:]]*/, "", v); gsub(/[[:space:]]*$/, "", v); cur_rre = v; next
     }
     in_defs && in_router_block && /^[[:space:]]+[a-z_]+:/ { next }
     in_defs && in_io_block && /^[[:space:]]+destinations:/ {
@@ -1401,6 +1415,7 @@ _tpl_build_dispatch_units() {
 # ADR-017 (#455): also validate router.timeout_s (integer 1..3600)
 # ADR-018 (#466): also validate router.max_turns (integer 1..200)
 # ADR-018 (#467): also validate router.max_iterations (integer 1..50)
+# ADR-029 (#1230): also validate router.retries (integer 0..10; 0 = opt-out).
 # Uses Bash 5+ namerefs for safer array-by-name passing (no eval indirection).
 _tpl_validate_io_knobs() {
     local -n ids_ref="$1"
@@ -1409,6 +1424,7 @@ _tpl_validate_io_knobs() {
     local -n rtimeouts_ref="$4"
     local -n rmaxturns_ref="$5"
     local -n rmaxiters_ref="$6"
+    local -n rretries_ref="$7"
     local i n=${#ids_ref[@]}
     for (( i=0; i<n; i++ )); do
         local stage="${ids_ref[$i]}"
@@ -1417,6 +1433,7 @@ _tpl_validate_io_knobs() {
         local rt="${rtimeouts_ref[$i]}"
         local rmt="${rmaxturns_ref[$i]}"
         local rmi="${rmaxiters_ref[$i]}"
+        local rre="${rretries_ref[$i]}"
         if [[ -n "$tail" ]]; then
             if ! [[ "$tail" =~ ^[0-9]+$ ]] || [[ "$tail" -lt 1 ]] || [[ "$tail" -gt 10000 ]]; then
                 error "template: io.tail_lines for stage '$stage' must be integer in 1..10000, got: $tail"
@@ -1447,6 +1464,13 @@ _tpl_validate_io_knobs() {
         if [[ -n "$rmi" ]]; then
             if ! [[ "$rmi" =~ ^[0-9]+$ ]] || [[ "$rmi" -lt 1 ]] || [[ "$rmi" -gt 50 ]]; then
                 error "template: router.max_iterations for stage '$stage' must be integer in 1..50, got: $rmi"
+                return 1
+            fi
+        fi
+        if [[ -n "$rre" ]]; then
+            # ADR-029 (#1230): retries=0 is the explicit opt-out and valid.
+            if ! [[ "$rre" =~ ^[0-9]+$ ]] || [[ "$rre" -gt 10 ]]; then
+                error "template: router.retries for stage '$stage' must be integer in 0..10, got: $rre"
                 return 1
             fi
         fi
@@ -1552,7 +1576,7 @@ _tpl_translate_new_shape() {
         # per-section accumulators
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_blocking = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""
         # cycle accumulators
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
@@ -1573,7 +1597,7 @@ _tpl_translate_new_shape() {
     function reset_section() {
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_blocking = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
@@ -1614,11 +1638,11 @@ _tpl_translate_new_shape() {
         # code already merges this into stage_def_row[].
         defs_out = defs_out cur_key "|" sec_roles "|" sec_strategy "|" \
                    sec_io_dests "|" sec_io_tail "|" sec_io_redact "|" \
-                   sec_rt "|" sec_rmt "|" sec_rmi "\n"
+                   sec_rt "|" sec_rmt "|" sec_rmi "|" sec_rre "\n"
         # Stash per-key so we can also emit per-stage rows in flow order.
         sec_kind[cur_key] = sec_type
         sec_payload[cur_key] = sec_roles "|" sec_strategy "|" sec_io_dests "|" \
-                               sec_io_tail "|" sec_io_redact "|" sec_rt "|" sec_rmt "|" sec_rmi
+                               sec_io_tail "|" sec_io_redact "|" sec_rt "|" sec_rmt "|" sec_rmi "|" sec_rre
         # ADR-013 (CQ-3 / issue #863): stash blocking attribute for BL| row emission.
         sec_blocking_val[cur_key] = sec_blocking
         if (sec_type == "cycle") {
@@ -1749,6 +1773,9 @@ _tpl_translate_new_shape() {
                 v = $0; sub(/^[[:space:]]+max_iterations:[[:space:]]*/, "", v); sec_rmi = trim(v)
             }
             next
+        }
+        if (in_router_block && $0 ~ /^[[:space:]]+retries:/) {
+            v = $0; sub(/^[[:space:]]+retries:[[:space:]]*/, "", v); sec_rre = trim(v); next
         }
         # blocking: (ADR-013 / CQ-3 #863) — leaf stage attribute; ignored for cycles.
         if ($0 ~ /^[[:space:]]+blocking:/) {
@@ -2251,6 +2278,18 @@ template_stage_router_max_iterations() {
     local stage_id="$1"
     local safe_id="${stage_id//-/_}"
     local var="_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}"
+    echo "${!var:-}"
+}
+
+# ADR-029 (#1230): per-stage router.retries (empty when unset → caller default 0).
+# Consumer chokepoint: _route_resolve_retries in core/router/route.sh applies the
+# precedence rule (per-stage > env > compile-time default 0). Honored by BOTH the
+# single-shot (_route_call_claude) and the agentic-loop (route_to_model_loop) leaf
+# paths, so every leaf node respects it wherever it sits.
+template_stage_router_retries() {
+    local stage_id="$1"
+    local safe_id="${stage_id//-/_}"
+    local var="_TPL_STAGE_ROUTER_RETRIES_${safe_id}"
     echo "${!var:-}"
 }
 

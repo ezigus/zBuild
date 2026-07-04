@@ -416,6 +416,36 @@ _route_resolve_max_iterations() {
         router.max_iterations.override_ignored
 }
 
+# ADR-029 (#1230): per-stage router.retries > $ZBUILD_ROUTER_RETRIES > 0 default.
+# The count of retry-on-timeout (rc=124) attempts BEFORE the verbatim-124
+# fallback. Default 0 (opt-in). Honored by BOTH leaf paths — single-shot
+# (_route_call_claude) and agentic-loop (route_to_model_loop) — so every leaf
+# node respects the knob wherever it sits. Out-of-range values (validator
+# already bounds template 0..10; env is unbounded) clamp to 0 fail-safe.
+_route_resolve_retries() {
+    local v; v="$(_route_resolve_knob template_stage_router_retries ZBUILD_ROUTER_RETRIES 0 \
+        router.retries.override_ignored)"
+    if [[ "$v" =~ ^[0-9]+$ ]] && [[ "$v" -ge 0 ]] && [[ "$v" -le 10 ]]; then
+        printf '%s' "$v"
+    else
+        printf '0'
+    fi
+}
+
+# ADR-029 (#1230): escalate a base timeout for retry attempt k (1-based).
+# secs = min(base * 1.5^k, 2*base) — ties the +50%/cap-2× rule ADR-029 already
+# uses for max_turns escalation. Guarantees strictly-increasing budgets that
+# plateau at 2× so a retried timeout gets more headroom without unbounded waits.
+_route_escalate_timeout() {
+    local base="$1" k="$2"
+    awk -v b="$base" -v k="$k" 'BEGIN{
+        v = b * (1.5 ^ k); cap = 2 * b;
+        if (v > cap) v = cap;
+        if (v < 1) v = 1;
+        printf "%d", int(v + 0.5);
+    }'
+}
+
 # ─── _route_emit_model_route <tier> <timeout_s> ──────────────────────────────
 _route_emit_model_route() {
     local tier="$1" secs="${2:-}"
@@ -469,11 +499,6 @@ _route_call_claude() {
         return 1
     fi
 
-    local -a _tout_cmd=()
-    if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$secs")
-    elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$secs")
-    fi
-
     # ADR-018 (#466): adopt shipwright's flag set so Pattern 1 (one-shot with tools)
     # works. Tools are available to claude --print unless disallowed; we forbid
     # only EnterPlanMode/ExitPlanMode and skip the permission prompt (headless).
@@ -500,7 +525,21 @@ _route_call_claude() {
     _claude_args+=(--dangerously-skip-permissions)
     [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
 
-    local stderr_file rc=0
+    # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
+    # attempts remain, re-spawn with an escalated LOCAL timeout before falling
+    # through to the verbatim-124 path (impact's #937 verdict=incomplete fallback
+    # is unchanged). Default 0 → single attempt (legacy behavior). The retry loop
+    # is the lowest shared layer for the SINGLE-SHOT leaf path; the agentic loop
+    # (route_to_model_loop) implements its own intra-iteration retry.
+    local _retries; _retries="$(_route_resolve_retries)"
+    local _attempt=0 _local_secs="$secs"
+    local stderr_file rc response
+    while :; do
+    rc=0
+    local -a _tout_cmd=()
+    if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_local_secs")
+    elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_local_secs")
+    fi
     if ! stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
         error "router: mktemp failed"
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=mktemp_failed"
@@ -528,7 +567,6 @@ _route_call_claude() {
     # eventually fires. The loop sites get setsid because the loop's
     # trap manually re-delivers the signal to the captured PGID.
     # (Copilot review #696 caught this; see PR description.)
-    local response
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
             _zbuild_make_fresh_shell
@@ -539,6 +577,23 @@ _route_call_claude() {
             _zbuild_make_fresh_shell
             claude "${_claude_args[@]}" 2>"$stderr_file"
         )" || rc=$?
+    fi
+
+    # ADR-029 (#1230): retry a bare router timeout (rc=124) with an escalated
+    # local budget BEFORE the verbatim-124 fallback + diagnostic path. Only
+    # rc=124 retries; every other rc falls through unchanged.
+    if [[ $rc -eq 124 && $_attempt -lt $_retries ]]; then
+        _attempt=$(( _attempt + 1 ))
+        local _next_secs; _next_secs="$(_route_escalate_timeout "$secs" "$_attempt")"
+        eb_emit_event "router.timeout.retry" \
+            "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+            "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
+            "path=single_shot" \
+            "attempt=$_attempt" "retries=$_retries" \
+            "from_secs=$_local_secs" "to_secs=$_next_secs" 2>/dev/null || true
+        _local_secs="$_next_secs"
+        rm -f "$stderr_file"
+        continue
     fi
 
     if [[ $rc -ne 0 ]]; then
@@ -643,6 +698,9 @@ _route_call_claude() {
 
     _ROUTE_RESPONSE="$response"
     return 0
+    # ADR-029 (#1230): closes the retry-on-timeout `while`. Every path above
+    # either returns or `continue`s, so this is reached only structurally.
+    done
 }
 
 # ─── _route_emit_outcome <tier> <timeout_s> ──────────────────────────────────
@@ -888,11 +946,9 @@ route_to_model_loop() {
         mt="$max_turns_per_call"
     fi
 
+    # ADR-029 (#1230): $secs is the base timeout; the per-iteration `_tout_cmd`
+    # is (re)built inside the spawn loop from the escalated `_iter_local_secs`.
     local secs; secs="$(_route_resolve_timeout)"
-    local -a _tout_cmd=()
-    if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$secs")
-    elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$secs")
-    fi
 
     _ROUTE_LOOP_ITERATIONS=0
     _ROUTE_LOOP_TERMINATED_REASON=""
@@ -1080,6 +1136,23 @@ ${_diff_pointer}"
         _claude_args+=(--dangerously-skip-permissions)
         _claude_args+=(--output-format json)
 
+        # ADR-029 (#1230): intra-iteration retry-on-timeout. router.retries is the
+        # count of per-iteration CALL retries with an escalated LOCAL timeout,
+        # layered BEFORE the cross-iteration timeout_recur breaker (#1208). An
+        # iteration bumps timeout_recur only AFTER exhausting the N inner retries
+        # (router.retries = intra-iteration call retries; timeout_recur =
+        # cross-iteration breaker — no double-count). #1208 "timeouts never fatal"
+        # is preserved: once inner retries are spent, control falls through to the
+        # unchanged rc=124 path (sentinel-honor + timeout_recur + non-fatal yield).
+        local _iter_retries; _iter_retries="$(_route_resolve_retries)"
+        local _iter_attempt=0 _iter_local_secs="$secs"
+        while :; do
+        rc=0
+        local -a _tout_cmd=()
+        if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_iter_local_secs")
+        elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_iter_local_secs")
+        fi
+
         # Run claude in $cwd as background child so signal trap can kill it.
         # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class
         # subprocess. _zbuild_make_fresh_shell scrubs ZBUILD_* + closes fd 3.
@@ -1183,6 +1256,35 @@ ${_diff_pointer}"
             # #628: $_loop_tmp cleanup handled by RETURN trap above.
             return 130
         fi
+
+        # ADR-029 (#1230): intra-iteration retry on a bare timeout (rc=124) while
+        # attempts remain. Honor LOOP_COMPLETE-on-timeout first — if the work is
+        # already done we do NOT retry (let the sentinel path below terminate the
+        # loop cleanly). Otherwise emit router.timeout.retry, escalate the LOCAL
+        # timeout, and re-spawn within THIS iteration (timeout_recur unchanged).
+        if [[ $rc -eq 124 && $_iter_attempt -lt $_iter_retries ]]; then
+            local _rr_done="false"
+            if [[ -s "$json_file" ]]; then
+                local _rr_res; _rr_res="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
+                if printf '%s\n' "$_rr_res" | \
+                   grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+                    _rr_done="true"
+                fi
+            fi
+            if [[ "$_rr_done" != "true" ]]; then
+                _iter_attempt=$(( _iter_attempt + 1 ))
+                local _rr_next; _rr_next="$(_route_escalate_timeout "$secs" "$_iter_attempt")"
+                eb_emit_event "router.timeout.retry" \
+                    "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+                    "stage=${_iter_stage_id:-unknown}" "path=loop" \
+                    "iteration=$iter" "attempt=$_iter_attempt" "retries=$_iter_retries" \
+                    "from_secs=$_iter_local_secs" "to_secs=$_rr_next" 2>/dev/null || true
+                _iter_local_secs="$_rr_next"
+                continue
+            fi
+        fi
+        break
+        done
 
         if [[ $rc -ne 0 ]]; then
             # Wave 19-I Fix A (#743): if rc=124 (gtimeout SIGTERM) AND the

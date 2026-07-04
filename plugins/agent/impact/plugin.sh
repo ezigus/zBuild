@@ -251,8 +251,11 @@ $_impact_instructions"
     local redacted_prompt
     redacted_prompt="$(cat "$prompt_file")"
 
-    # ─── Route to LLM (T1 default per manifest) ─────────────────────────────
-    local tier="${ZBUILD_IMPACT_TIER:-T1}"
+    # ─── Route to LLM (T2 default per manifest config.tier_default, #960/#1230) ─
+    # The fallback MUST match manifest tier_default (T2). On T1 (haiku) impact's
+    # ~45 tool-turns overrun the 180s router timeout (rc=124). The tier-drift
+    # guard (impact-tier-test.sh S2) pins fallback == manifest tier_default.
+    local tier="${ZBUILD_IMPACT_TIER:-T2}"
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
