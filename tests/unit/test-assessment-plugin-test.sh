@@ -616,6 +616,54 @@ v="$(printf '%s' "$content" | jq -r '.verdict' 2>/dev/null)"
 assert_eq "[SPEC-2] T-ADV-2 advisory mode: scope_violation build does not block LLM pass (convergeable allowlist bypassed)" "pass" "$v"
 unset ZBUILD_TEST_ASSESSMENT_ADVISORY
 
+# ─── Test 23: [SPEC-9] postamble recovery via _test_assessment_envelope_schema_ok
+# CHANGE: before #944 a brace-bearing postamble caused LAST-wins to select junk
+# → schema validation failed → rc=1. After #944 recovery fires and the real
+# envelope is used → rc=0 and test-assessment.json has correct verdict.
+print_test_section "23. [SPEC-9] postamble recovery — test_assessment selects real envelope"
+_SPEC9_DIR="$TEST_TEMP_DIR/spec9"
+mkdir -p "$_SPEC9_DIR/artifacts"
+export ZBUILD_STATE_DIR="$_SPEC9_DIR"
+export ZBUILD_LLM_FAIL_THRESHOLD=99
+
+# Set up fixtures that satisfy pass-invariant: failed=0 + build verdict=pass.
+cat > "$_SPEC9_DIR/scope-manifest.md" <<'SCOPE9'
++ core/
+SCOPE9
+cat > "$_SPEC9_DIR/artifacts/test-results.json" <<'TRSPEC9'
+{"schema_version":1,"verdict":"pass","exit_code":0,"passed":10,"failed":0,"test_output":"10/10 passed","diff_applied":true,"test_cmd":"npm test"}
+TRSPEC9
+cat > "$_SPEC9_DIR/artifacts/plan.json" <<'PSPEC9'
+{"goal":"test postamble recovery","steps":[],"schema_version":1}
+PSPEC9
+cat > "$_SPEC9_DIR/artifacts/build-summary.json" <<'BSSPEC9'
+{"schema_version":1,"verdict":"pass","iterations":1,"terminated_reason":"pass"}
+BSSPEC9
+printf '%s\n' "$_BASELINE_SHA" > "$_SPEC9_DIR/intake-baseline-ref.txt"
+
+# Real envelope first, brace-bearing postamble appended.
+CANNED_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"all green","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"unknown","failure_summary_md":"All good.","iter":1} Based on analysis: {"note":"postamble-junk"}'
+
+OUTPUT_TA_SPEC9="$_SPEC9_DIR/artifacts/ta-spec9.json"
+rm -f "$OUTPUT_TA_SPEC9"
+set +e
+_test_assessment_run_inner \
+    "$_SPEC9_DIR/scope-manifest.md" \
+    "$_SPEC9_DIR/artifacts/test-results.json" \
+    "$_SPEC9_DIR/artifacts/plan.json" \
+    "$_SPEC9_DIR/artifacts/build-summary.json" \
+    "$OUTPUT_TA_SPEC9" \
+    "$_SPEC9_DIR/artifacts" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[SPEC-9] postamble recovery → _test_assessment_run_inner returns rc=0" "0" "$rc"
+assert_file_exists "[SPEC-9] postamble recovery → test-assessment.json written" "$OUTPUT_TA_SPEC9"
+_spec9_verdict="$(jq -r '.verdict // empty' "$OUTPUT_TA_SPEC9" 2>/dev/null || true)"
+assert_eq "[SPEC-9] postamble recovery → recovered envelope verdict=pass" \
+    "pass" "$_spec9_verdict"
+unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD
+rm -rf "$_SPEC9_DIR"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

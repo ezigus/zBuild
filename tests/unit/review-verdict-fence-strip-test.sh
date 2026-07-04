@@ -64,7 +64,7 @@ run_and_get_verdict() {
 # the trailing example and the verdict defaults to request_changes.
 route_to_model() {
     printf '%s\n' '```json'
-    printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"lgtm"}'
+    printf '%s\n' '{"schema_version":1,"verdict":"approve","confidence":0.9,"issues":[],"summary":"lgtm"}'
     printf '%s\n' '```'
     printf '%s\n' '{"verdict":"request_changes","confidence":0.3,"issues":["trailing example"],"summary":"example"}'
     return 0
@@ -82,7 +82,7 @@ assert_eq "[SPEC-1] json-fenced approve + trailing example → approve" "approve
 route_to_model() {
     printf '%s\n' 'My analysis of the diff:'
     printf '%s\n' '```'
-    printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"lgtm"}'
+    printf '%s\n' '{"schema_version":1,"verdict":"approve","confidence":0.9,"issues":[],"summary":"lgtm"}'
     printf '%s\n' '```'
     printf '%s\n' '{"verdict":"request_changes","confidence":0.3,"issues":["bad code"],"summary":"bad"}'
     return 0
@@ -111,7 +111,7 @@ assert_eq "[SPEC-4] T3: unfenced approve (control) → approve" "approve" "$verd
 # silently promoted.
 route_to_model() {
     printf '%s\n' '```json'
-    printf '%s\n' '{"verdict":"request_changes","confidence":0.8,"issues":["needs work"],"summary":"fix needed"}'
+    printf '%s\n' '{"schema_version":1,"verdict":"request_changes","confidence":0.8,"issues":["needs work"],"summary":"fix needed"}'
     printf '%s\n' '```'
     printf '%s\n' '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"looks good"}'
     return 0

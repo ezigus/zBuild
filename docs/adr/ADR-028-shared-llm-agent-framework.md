@@ -159,3 +159,28 @@ After multi-agent design synthesis for PR #798 (the framework foundation PR), th
 **Per-stage OUTPUT CONTRACT goldens.** Each migration PR (2-5) adds a `tests/golden/llm-contract/<stage>-output-contract.golden` byte-pinning the rendered block. Catches accidental contract drift during future patches.
 
 **Renderer interop integration test required as foundation gate.** `_llm_envelope_parse` MUST produce byte-identical splits with `_artifact_split_prose_json` (artifact-render.sh) — guards #510 llm-comment rendering against parser drift.
+
+---
+
+## Amendment v1.2 (2026-07-03) — generalized schema-aware envelope recovery (#944)
+
+**Context.** `extract_json_and_surrounding_prose` (and its sibling `extract_first_json_object`) is LAST-wins: it returns the LAST top-level balanced object in the raw response. This defends against brace-bearing *preamble* examples but fails when the model emits its real envelope FIRST and appends a brace-bearing *postamble*. `impact` (#908) and `plan` (#1052) already have stage-local recovery helpers (`_impact_recover_envelope_json`, `_plan_recover_envelope_json`). `review`, `test_assessment`, and `security-lens` carried no equivalent protection.
+
+**Decision.** Add `_llm_recover_envelope_json` to `scripts/lib/llm-agent.sh` as the framework-level generalization of the impact-local and plan-local patterns. The generalization is that the per-stage schema gate is a passed function name (`$2`) rather than a hardcoded per-stage check, so future stages inherit recovery at zero cost.
+
+Add `--schema-gate <func>` to `_llm_envelope_parse`. When provided and the LAST-wins result fails the gate, `_llm_recover_envelope_json` scans every top-level balanced object (same awk brace-grammar) and recovers only when exactly one passes the gate. Ambiguous cases (≥2 passers or 0 passers) return the LAST-wins result unchanged so the caller's existing schema-violation path fires — **fail-closed-on-ambiguity is preserved**.
+
+**Per-stage gates added:**
+- `_review_envelope_schema_ok` — type==object, schema_version==1, verdict in {approve,request_changes,block}, confidence number, issues array
+- `_test_assessment_envelope_schema_ok` — type==object, schema_version==1, verdict in {pass,fail,error,inconclusive}, summary string, required_changes array, agrees_with_build_complete boolean
+- `_security_lens_envelope_schema_ok` — type==object, findings array (no schema_version in LLM response for this stage)
+- `_plan_envelope_schema_ok` — type==object, schema_version==1, non-empty steps[] array (pre-existing gate from #1052, now the framework schema-gate for the plan stage)
+
+**Migration.** All four Pattern-1 stages — `plan`, `review`, `test_assessment`, and `security-lens` — are migrated to call `_llm_envelope_parse --schema-gate` in place of their prior `extract_first_json_object` calls.
+
+- `review`, `test_assessment`, `security-lens`: their rc=0 parse now routes through `_llm_envelope_parse --schema-gate <stage>_envelope_schema_ok`.
+- `plan`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate _plan_envelope_schema_ok`, and its stage-local `_plan_recover_envelope_json` (scripts/lib/plan-context.sh) now delegates to `_llm_recover_envelope_json` — the duplicated awk brace-grammar is retired. plan's STRICT happy-path validator (which additionally requires `files[]` be strings) stays authoritative for rc=0 acceptance, so a recovered-but-invalid envelope remains a `schema_violation`. plan's `router_rc != 0` sidecar-recovery path (max_turns budget exhaustion) is unchanged and continues to call `_plan_recover_envelope_json` (now framework-backed).
+
+`impact` retains its stage-local `_impact_recover_envelope_json` helper by design — it is not part of this migration.
+
+**Invariant.** The exactly-one-gate-bearer rule (≥2 passers → fail closed) applies to all stages regardless of whether they use `schema_version` in their gate. Stage-specific gate logic encodes what uniquely identifies a valid envelope for that stage.

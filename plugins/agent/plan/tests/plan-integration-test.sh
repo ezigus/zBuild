@@ -94,8 +94,8 @@ assert_eq "variant 2: violation path is offender" "legacy/oops.sh" "$v2_path"
 
 # ─── Variant 3 (#478): prose-prefixed JSON survives the subprocess boundary ─
 # The mock claude returns prose preface + JSON inside the envelope .result.
-# The parser-side helper (extract_first_json_object) must slice the JSON out
-# before jq -e validation; otherwise the dogfood failure path reproduces here.
+# The framework parser (_llm_envelope_parse --schema-gate, #944) must slice the
+# JSON out before jq -e validation; otherwise the dogfood failure reproduces.
 : > "$ZBUILD_EVENTS_JSONL"
 printf 'Now I have a complete picture.\n\n%s\n' \
     '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' \

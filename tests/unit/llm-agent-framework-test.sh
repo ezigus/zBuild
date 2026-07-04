@@ -222,5 +222,45 @@ assert_eq "FF5: reset clears counter — no abort after reset" "0" "$rc"
 rm -rf "$_FF_STATE_DIR"
 unset ZBUILD_STATE_DIR ZBUILD_LLM_FAIL_THRESHOLD
 
+# ─── _llm_recover_envelope_json (#944, ADR-028 v1.2) ────────────────────────
+# R1 [SPEC-1]: single gate-passer → exactly-one bearer recovered.
+# CHANGE: new recovery function; fails at baseline (function absent before #944).
+print_test_section "R1. [SPEC-1] _llm_recover_envelope_json — single gate-passer recovered"
+_r1_gate() { printf '%s' "${1:-}" | jq -e '.sv == 1 and .ok == true' >/dev/null 2>&1; }
+_r1_raw='Preamble text. {"noise":"yes"} Real answer: {"sv":1,"ok":true} Postamble {"extra":"junk"}'
+_r1_out=""
+set +e; _r1_out="$(_llm_recover_envelope_json "$_r1_raw" _r1_gate)"; rc=$?; set -e
+assert_eq "[SPEC-1] R1: exactly-one gate-passer → rc=0" "0" "$rc"
+assert_contains "[SPEC-1] R1: recovered envelope matches gate-passer" "$_r1_out" '"ok":true'
+
+# R2: two gate-passers → fail-closed (rc=1, empty stdout).
+_r2_gate() { printf '%s' "${1:-}" | jq -e '.valid == true' >/dev/null 2>&1; }
+_r2_raw='{"valid":true,"id":1} prose {"valid":true,"id":2}'
+set +e; _r2_out="$(_llm_recover_envelope_json "$_r2_raw" _r2_gate 2>&1)"; rc=$?; set -e
+assert_eq "R2: two gate-passers → fail-closed rc=1" "1" "$rc"
+assert_eq "R2: two gate-passers → empty stdout" "" "$_r2_out"
+
+# R3: zero gate-passers → fail-closed (rc=1).
+_r3_gate() { printf '%s' "${1:-}" | jq -e '.required_field == true' >/dev/null 2>&1; }
+_r3_raw='{"required_field":false} {"other":"value"}'
+set +e; _r3_out="$(_llm_recover_envelope_json "$_r3_raw" _r3_gate 2>&1)"; rc=$?; set -e
+assert_eq "R3: zero gate-passers → fail-closed rc=1" "1" "$rc"
+
+# R4: single object enumerated but fails gate → fail-closed (count=0, rc=1).
+_r4_gate() { printf '%s' "${1:-}" | jq -e '.schema_version == 99' >/dev/null 2>&1; }
+_r4_raw='{"schema_version":1,"verdict":"ok"}'
+set +e; _r4_out="$(_llm_recover_envelope_json "$_r4_raw" _r4_gate 2>&1)"; rc=$?; set -e
+assert_eq "R4: gate-rejecter → fail-closed rc=1" "1" "$rc"
+
+# R5: _llm_envelope_parse --schema-gate end-to-end — prose-wrapped+postamble.
+# Real envelope first, brace-bearing postamble last → LAST-wins picks junk,
+# --schema-gate triggers recovery, envelope is restored.
+_r5_gate() { printf '%s' "${1:-}" | jq -e '.schema_version == 1 and (.verdict | strings)' >/dev/null 2>&1; }
+_r5_raw='{"schema_version":1,"verdict":"complete","data":"real"} prose wrap {"note":"postamble-junk"}'
+_r5_json="" _r5_prose=""
+_llm_envelope_parse --schema-gate _r5_gate "$_r5_raw" _r5_json _r5_prose
+assert_contains "R5: _llm_envelope_parse --schema-gate recovers from postamble" \
+    "$_r5_json" '"verdict":"complete"'
+
 print_test_results
 exit $((FAIL > 0))

@@ -129,17 +129,115 @@ REMINDER: your response begins with `{`. No prose, no fences. Ends at `}`.
 CONTRACT_TAIL
 }
 
+# ─── _llm_recover_envelope_json ─────────────────────────────────────────────
+# Generalized schema-aware LAST-wins recovery (#944, ADR-028 v1.2).
+# Mirrors _impact_recover_envelope_json and _plan_recover_envelope_json but
+# parameterizes the schema gate as a function name rather than a hardcoded
+# per-stage check. The gate function accepts JSON text as $1 and returns rc=0
+# when the envelope is structurally valid for that stage.
+#
+# Recovery fires ONLY when exactly one top-level balanced object passes the
+# gate. Ambiguous cases (≥2 passers) and empty cases (0 passers) fail closed —
+# rc=1 + empty stdout — so the caller's existing schema-violation path fires.
+#
+# Why gate-passer counting (not schema_version counting): stages without
+# schema_version in their LLM response (e.g. security-lens .findings) need
+# recovery too; the gate itself encodes what uniquely identifies a valid
+# envelope. Stages that DO require schema_version embed that check in their
+# gate, so ambiguity detection is equivalent.
+#
+# Args:
+#   $1 = raw_response_text
+#   $2 = gate_func_name  (shell function; "$gate_func" "$json_text" → rc=0/1)
+# Output: rc=0 + recovered JSON on stdout; rc=1 + empty on any failure.
+_llm_recover_envelope_json() {
+    local _raw="${1:-}" _gate_func="${2:-}"
+    [[ -z "$_raw" || -z "$_gate_func" ]] && return 1
+
+    # Enumerate every top-level balanced object, RS-delimited with \x1e.
+    # Same awk brace-grammar as _impact_recover_envelope_json (impact-prefilter.sh)
+    # and _plan_recover_envelope_json (plan-context.sh).
+    local _candidates
+    _candidates="$(printf '%s' "$_raw" | awk '
+        BEGIN { buf = "" }
+        { buf = buf $0 "\n" }
+        END {
+            sub(/^\xef\xbb\xbf/, "", buf)
+            gsub(/\r/, "", buf)
+            sub(/^[[:space:]]*```json[[:space:]]*\n?/, "", buf)
+            sub(/^[[:space:]]*```[[:space:]]*\n?/, "", buf)
+            sub(/\n?[[:space:]]*```[[:space:]]*$/, "", buf)
+            sub(/\n$/, "", buf)
+
+            n = length(buf); depth = 0; arr_depth = 0
+            in_string = 0; escape = 0; start = -1
+            for (i = 1; i <= n; i++) {
+                c = substr(buf, i, 1)
+                if (escape) { escape = 0; continue }
+                if (in_string) {
+                    if (c == "\\") { escape = 1; continue }
+                    if (c == "\"") { in_string = 0 }
+                    continue
+                }
+                if (c == "\"") { in_string = 1; continue }
+                if (c == "[") { if (depth == 0) arr_depth++; continue }
+                if (c == "]") { if (depth == 0 && arr_depth > 0) arr_depth--; continue }
+                if (c == "{") {
+                    if (depth == 0 && arr_depth > 0) continue
+                    if (depth == 0) start = i
+                    depth++; continue
+                }
+                if (c == "}") {
+                    if (depth > 0) {
+                        depth--
+                        if (depth == 0 && start > 0) {
+                            printf "%s\x1e", substr(buf, start, i - start + 1)
+                            start = -1
+                        }
+                    }
+                }
+            }
+        }
+    ')"
+    [[ -z "$_candidates" ]] && return 1
+
+    # Count objects that pass the gate. Exactly 1 → recover; 0 or ≥2 → fail closed.
+    local _obj _envelope="" _count=0
+    while IFS= read -r -d $'\x1e' _obj || [[ -n "$_obj" ]]; do
+        [[ -z "$_obj" ]] && continue
+        if "$_gate_func" "$_obj" 2>/dev/null; then
+            _count=$((_count + 1))
+            _envelope="$_obj"
+        fi
+    done < <(printf '%s' "$_candidates")
+    [[ "$_count" -eq 1 ]] || return 1
+    printf '%s' "$_envelope"
+    return 0
+}
+
 # ─── _llm_envelope_parse ────────────────────────────────────────────────────
 # Thin wrapper over extract_json_and_surrounding_prose (helpers.sh).
 # Preserves __PROSE__/__JSON__ sentinel semantics for renderer interop
 # (artifact-render.sh _artifact_split_prose_json). v1 does NO mutation or
 # repair — fail-soft via empty JSON if parser bails.
 #
-# Args (positional):
+# Args:
+#   [--schema-gate <func>]   — optional; when provided and the LAST-wins result
+#                              fails the gate, _llm_recover_envelope_json is
+#                              attempted. On recovery the json_var is replaced
+#                              with the recovered object. Fail-closed on
+#                              ambiguity: if recovery also fails, the LAST-wins
+#                              result is returned unchanged (ADR-028 v1.2, #944).
 #   $1 = raw_response_text
 #   $2 = json_var_name   (nameref output)
 #   $3 = prose_var_name  (nameref output)
 _llm_envelope_parse() {
+    local _schema_gate_func=""
+    if [[ "${1:-}" == "--schema-gate" ]]; then
+        _schema_gate_func="${2:-}"
+        shift 2
+    fi
+
     local raw="${1:-}"
     local _json_var="${2:-}"
     local _prose_var="${3:-}"
@@ -170,6 +268,16 @@ _llm_envelope_parse() {
         { if (mode == "json")  { if (out=="") out=$0; else out=out "\n" $0 } }
         END { printf "%s", out }
     ')"
+
+    # --schema-gate: when the LAST-wins result fails the gate, attempt recovery.
+    # On recovery success, replace _json with the recovered object; on failure
+    # leave _json unchanged so the caller's schema-violation path fires normally.
+    if [[ -n "$_schema_gate_func" ]] && ! "$_schema_gate_func" "$_json" 2>/dev/null; then
+        local _recovered=""
+        if _recovered="$(_llm_recover_envelope_json "$raw" "$_schema_gate_func")"; then
+            _json="$_recovered"
+        fi
+    fi
 
     printf -v "$_json_var" '%s' "$_json"
     printf -v "$_prose_var" '%s' "$_prose"

@@ -195,6 +195,21 @@ review_run() {
 #   $5 = output review.json path
 #   $6 = artifact_dir (for intermediate files)
 #   $7 = intake.md path (Wave 19-G, #739 — optional; issue body for DoD verify)
+
+# ─── _review_envelope_schema_ok (#944, ADR-028 v1.2) ─────────────────────────
+# Gate function for _llm_envelope_parse --schema-gate. Validates that $1 is a
+# structurally correct review envelope. Used by recovery to select the right
+# object when LAST-wins picks a brace-bearing postamble instead.
+_review_envelope_schema_ok() {
+    printf '%s' "${1:-}" | jq -e '
+        type == "object"
+        and (.schema_version == 1)
+        and (.verdict | IN("approve","request_changes","block"))
+        and (.confidence | type == "number")
+        and (.issues | type == "array")
+    ' >/dev/null 2>&1
+}
+
 _review_run_inner() {
     local scope_manifest="$1"
     local plan_json_path="$2"
@@ -269,6 +284,7 @@ _review_run_inner() {
     local _review_schema
     _review_schema="$(cat <<'REVIEW_SCHEMA'
   {
+    "schema_version": 1,
     "verdict": "approve" | "request_changes" | "block",
     "confidence": <float 0.0-1.0>,
     "issues": ["<string>", ...],
@@ -298,7 +314,8 @@ Files outside the declared scope appear in the diff as `<out-of-scope-context>`
 markers — do NOT attempt to Read those paths.
 
 Rules:
-- `schema_version` is implicit (1).
+- `schema_version` MUST be present and set to the integer 1 (#944: the
+  recovery gate requires it to disambiguate the envelope from any postamble).
 - `verdict` MUST be exactly one of: approve, request_changes, block.
 - `issues` is an array of strings; empty array [] if no issues found.
 - `confidence` is a float between 0.0 and 1.0.
@@ -598,32 +615,16 @@ $_review_instructions"
         # CLI-failure counter so the abort threshold tracks *consecutive* failures,
         # not cumulative blips across the run (Copilot review on #1024).
         _zbuild_reset_cli_fail
-        # #478: slice the LAST top-level balanced JSON object out of the
-        # response. Envelope mode (#476) separates reasoning turns from the
-        # final turn; the model can still preface its JSON with prose
-        # *inside* the final turn. Helper passes input through verbatim on
-        # no-match so downstream parsing falls back to the existing defaults.
-        #
-        # #933: If raw_response contains a fenced JSON block (```json…``` or
-        # ```…```), extract the block body as the sole input so "LAST wins"
-        # in extract_first_json_object cannot select a trailing example that
-        # appears outside the fence (prose-before-fence also defeats the
-        # ^-anchored pre-pass inside the helper).
-        # Use a here-string (not `printf | grep`): under `set -o pipefail`,
-        # `grep -q` closes the pipe on first match and SIGPIPEs printf, so the
-        # pipeline would report non-zero and the probe could read as "no fence"
-        # on a large response. The awk extracts ONLY the first fenced block
-        # (exits at its closing fence) so multiple fenced blocks can't concat.
-        local _unfenced_input="$raw_response"
-        if grep -qE '^[[:space:]]*```(json)?[[:space:]]*$' <<< "$raw_response"; then
-            local _fence_body
-            _fence_body="$(awk '/^[[:space:]]*```(json)?[[:space:]]*$/{ if (p) exit; p=1; next } p { print }' <<< "$raw_response")"
-            if [[ -n "$_fence_body" ]]; then
-                _unfenced_input="$_fence_body"
-            fi
-        fi
-        local stripped
-        stripped="$(printf '%s' "$_unfenced_input" | extract_first_json_object)"
+        # ADR-028 v1.2 (#944): use _llm_envelope_parse --schema-gate so
+        # _llm_recover_envelope_json fires when LAST-wins selects a
+        # brace-bearing postamble instead of the real review envelope.
+        # This supersedes the #933 fence-detection + extract_first_json_object
+        # pattern; recovery is more robust than fence-only disambiguation.
+        # shellcheck disable=SC2034  # _review_prose is a required output-param
+        # of _llm_envelope_parse; review emits no prose sidecar (only impact does).
+        local stripped _review_prose
+        _llm_envelope_parse --schema-gate _review_envelope_schema_ok \
+            "$raw_response" stripped _review_prose
 
         verdict="$(printf '%s' "$stripped" \
             | jq -r '.verdict // empty' 2>/dev/null || true)"
