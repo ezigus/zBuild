@@ -70,6 +70,7 @@
     "cycle.auto_enabled",
     "cycle.disabled",
     "cycle.unconverged",
+    "cycle.route_back",
     "cycle.predicate.evaluated",
     "cycle.member.dispatch.start",
     "cycle.member.dispatch.complete",

@@ -550,6 +550,44 @@ _cycle_check_abort_when() {
     return $_rc
 }
 
+# ─── _cycle_check_route_back <verdicts_blob> ─────────────────────────────────
+# #1217 (ADR-045). Mirrors _cycle_check_abort_when against the per-cycle
+# _TPL_CYCLE_ROUTE_BACK_{STAGE,FIELD,OP,VALUE}_<cid> predicate. Returns 0 if the
+# predicate fired (route back requested), else 1. Missing field → 1 (NEVER
+# spuriously reroute). Emits the predicate event (kind=route_back); the caller
+# converts a matched terminal into rc=11 and stashes the target for the runner.
+_cycle_check_route_back() {
+    local blob="$1"
+    local safe="${_CYCLE_TRAP_CYCLE_ID//-/_}"
+    local stage_var="_TPL_CYCLE_ROUTE_BACK_STAGE_${safe}"
+    local stage="${!stage_var:-}"
+    local field_var="_TPL_CYCLE_ROUTE_BACK_FIELD_${safe}"
+    local field="${!field_var:-}"
+    local op_var="_TPL_CYCLE_ROUTE_BACK_OP_${safe}"
+    local op="${!op_var:-}"
+    local val_var="_TPL_CYCLE_ROUTE_BACK_VALUE_${safe}"
+    local expected="${!val_var:-}"
+    [[ -z "$stage" || -z "$field" || -z "$op" || -z "$expected" ]] && return 1
+    local actual
+    actual="$(jq -r --arg s "$stage" --arg f "$field" \
+        '.[$s][$f] // empty' <<< "$blob" 2>/dev/null || true)"
+    if [[ -z "$actual" || "$actual" == "null" ]]; then
+        _cycle_emit_predicate "route_back" "$stage" "$field" "$op" "$expected" "" "false"
+        return 1
+    fi
+    local _match="false"
+    local _rc=1
+    case "$op" in
+        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+    esac
+    _cycle_emit_predicate "route_back" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    if [[ "$_match" == "true" ]]; then
+        _cycle_stash_predicate "route_back" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    fi
+    return $_rc
+}
+
 # ─── _cycle_check_max_iterations <iter> <max> ────────────────────────────────
 # Strict `iter >= max` → terminate. NO auto-extend.
 _cycle_check_max_iterations() {
@@ -1280,6 +1318,13 @@ _cycle_iter_dispatch() {
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "blocking_member_failure" "failed"
                    _cycle_clear_traps
                    return 8 ;;
+                11) # #1217 (ADR-045): route_back propagates outward to the
+                    # runner — only the runner owns dispatch-unit rewind; an
+                    # inner cycle cannot rewind the outer loop.
+                   _CYCLE_LAST_TERMINATED_REASON="route_back"
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "route_back" "failed"
+                   _cycle_clear_traps
+                   return 11 ;;
                 130|143)
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
                    _cycle_clear_traps
@@ -1665,6 +1710,10 @@ _cycle_handle_terminal_rc() {
         # ADR-013 blocking:true → "blocking_member_failure" (immediate, rc-only);
         # the ADR-021 disposition=terminal path → "member_terminal_failure".
         8)   reason="${_CYCLE_LAST_TERMINATED_REASON:-blocking_member_failure}" ;;
+        # #1217 (ADR-045): rc=11 is a CONTINUE-with-bounded-rewind class, not a
+        # halt. The runner translates it into a rewind; this restates the reason
+        # on the cycle.complete event for legibility.
+        11)  reason="route_back" ;;
         130) reason="aborted" ;;
         *)   reason="error" ;;
     esac
@@ -1703,6 +1752,10 @@ cycle_orchestrator_run() {
     _CYCLE_TRAP_CYCLE_ID="$cycle_id"
     _CYCLE_TRAP_ITER=0
     _CYCLE_LAST_TERMINATED_REASON=""
+    # #1217 (ADR-045): reset the route_back hand-off globals per run so a stale
+    # target/fallback from a prior cycle can never leak into this one.
+    _CYCLE_ROUTE_BACK_TO=""
+    _CYCLE_ROUTE_BACK_FALLBACK_RC=""
     _CYCLE_LAST_ITERATIONS=0
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
@@ -2066,6 +2119,31 @@ cycle_orchestrator_run() {
             # scope-deny — genuine structural failures still halt fast.
             _CYCLE_LAST_TERMINATED_REASON="blocked"
             overall_status="blocked"; term_rc=5
+        fi
+
+        # #1217 (ADR-045): bounded typed backward-route. ONLY a CORRECTABLE
+        # non-clean terminal (rc=2 unconverged / rc=8 member_terminal_failure)
+        # may reroute — a clean converge (0), abort (6), blocked (5), scope-deny
+        # (7), config (4) and signals (130/143) NEVER reroute. When the
+        # route_back predicate matches, convert the terminal into rc=11
+        # (route_back) and STASH the by-severity fallback rc + target as GLOBALS
+        # (no `local`) so the runner can (a) rewind the dispatch index to the
+        # target if budget remains, or (b) restore the fallback rc for the
+        # normal by-severity terminal handling if budget is exhausted. Only the
+        # runner owns dispatch-unit rewind; the orchestrator merely reclassifies.
+        if [[ $term_rc -eq 2 || $term_rc -eq 8 ]]; then
+            local _rb_to_var="_TPL_CYCLE_ROUTE_BACK_TO_${cycle_id//-/_}"
+            if [[ -n "${!_rb_to_var:-}" ]]; then
+                local _rce=0; case $- in *e*) _rce=1 ;; esac
+                local _rb_matched=1
+                set +e; _cycle_check_route_back "$verdicts_blob"; _rb_matched=$?; [[ $_rce -eq 1 ]] && set -e
+                if [[ $_rb_matched -eq 0 ]]; then
+                    _CYCLE_ROUTE_BACK_FALLBACK_RC=$term_rc
+                    _CYCLE_ROUTE_BACK_TO="${!_rb_to_var}"
+                    _CYCLE_LAST_TERMINATED_REASON="route_back"
+                    overall_status="route_back"; term_rc=11
+                fi
+            fi
         fi
 
         # Single atomic state write per iter boundary.
