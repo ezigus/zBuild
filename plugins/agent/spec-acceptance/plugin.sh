@@ -85,6 +85,50 @@ _ag_classify_disposition() {
     printf 'none'
 }
 
+# _ag_join_ids <ids...> — compact "/"-join of a whitespace-separated id list,
+# e.g. " SPEC-1 SPEC-8 " → "SPEC-1/SPEC-8" (word-splitting collapses spacing).
+_ag_join_ids() {
+    local out="" id
+    for id in $1; do
+        [[ -z "$id" ]] && continue
+        if [[ -z "$out" ]]; then out="$id"; else out="$out/$id"; fi
+    done
+    printf '%s' "$out"
+}
+
+# _ag_build_reason <failure...> — compose the human-readable operator reason
+# (#1220) that NAMES the offending SPEC ids grouped by violation class, so the
+# operator sees the FULL scope in one message instead of the opaque
+# member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
+# acceptance block. Genuine violations lead; infra classes trail.
+_ag_build_reason() {
+    local f untagged="" taut="" nohead="" notf="" inert="" infra="" malformed=0
+    for f in "$@"; do
+        case "$f" in
+            tautology:*)            taut="$taut ${f#tautology:}" ;;
+            not_passing_at_head:*)  nohead="$nohead ${f#not_passing_at_head:}" ;;
+            untagged_spec:*)        untagged="$untagged ${f#untagged_spec:}" ;;
+            no_testfile:*)          notf="$notf ${f#no_testfile:}" ;;
+            inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
+            malformed_acceptance_block) malformed=1 ;;
+            negctl_error:* | reachability_error:*) infra="$infra $f" ;;
+        esac
+    done
+    local -a clauses=()
+    [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut") tautological (pass at baseline) — re-author the assertions")
+    [[ -n "$nohead"   ]] && clauses+=("$(_ag_join_ids "$nohead") not passing at HEAD — fix the implementation or the assertion")
+    [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged") untagged — add a matching [SPEC-n] assertion in TESTFILES")
+    [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf") missing a tagged TESTFILE")
+    [[ -n "$inert"    ]] && clauses+=("WIRING $(_ag_join_ids "$inert") inert — reverting it breaks no TESTFILE")
+    [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
+    [[ -n "$infra"    ]] && clauses+=("infra: $(_ag_join_ids "$infra")")
+    local out="" c
+    for c in ${clauses[@]+"${clauses[@]}"}; do
+        if [[ -z "$out" ]]; then out="$c"; else out="$out; $c"; fi
+    done
+    printf 'acceptance SPEC violations — %s' "$out"
+}
+
 # _ag_noop_precondition_unmet <result_file> <precondition_id> — write the no-op
 # pass artifact + emit the skip/complete events. reason=precondition_unmet
 # generalizes the historical no-acceptance-block skip: when a declared
@@ -190,6 +234,10 @@ acceptance_gate_run() {
     # (reachability), surfaced to the operator after the checks run.
     local -a summary_lines=()
     local line
+    # #1220: SPEC ids flagged untagged at Level 1, so Level 2 can suppress the
+    # redundant no_testfile it would emit for the SAME id (one root cause, one
+    # report). Space-delimited set (bash-3.2 safe): " SPEC-1 SPEC-2 ".
+    local untagged_ids=" "
 
     # ── Level 1: SPEC-n tag-presence ─────────────────────────────────────────
     while IFS= read -r line; do
@@ -197,12 +245,15 @@ acceptance_gate_run() {
         # line: "UNTAGGED SPEC-n"
         local sid="${line#UNTAGGED }"
         failures+=("untagged_spec:$sid")
+        untagged_ids="$untagged_ids$sid "
         verdict="fail"
         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "spec_id=$sid"
     done < <(acceptance_coverage_check "$design_md" "$repo_root" || true)
 
-    # ── Level 2: baseline negative-control (only if Level 1 clean) ───────────
-    if [[ "$verdict" == "pass" ]]; then
+    # ── Level 2: baseline negative-control ───────────────────────────────────
+    # #1220: runs REGARDLESS of Level 1's outcome so every violation class (e.g.
+    # a tautological [change] SPEC) is reported in the SAME pass — no whack-a-mole.
+    {
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
             summary_lines+=("$line")  # #1211: one operator line per SPEC
@@ -213,6 +264,12 @@ acceptance_gate_run() {
                     # "NEGCTL FAIL <spec_id> <reason>"
                     local rest="${line#NEGCTL FAIL }"
                     local sid="${rest%% *}" reason="${rest#* }"
+                    # #1220: an untagged SPEC necessarily has no tagged testfile;
+                    # negctl reports no_testfile for it, but Level 1 already flagged
+                    # it as untagged_spec — suppress the duplicate.
+                    if [[ "$reason" == "no_testfile" && "$untagged_ids" == *" $sid "* ]]; then
+                        continue
+                    fi
                     failures+=("$reason:$sid")
                     verdict="fail"
                     eb_emit_event "acceptance.gate.tautology" "stage=acceptance-gate" \
@@ -235,14 +292,16 @@ acceptance_gate_run() {
                     ;;
             esac
         done < <(acceptance_negctl_check "$design_md" "$repo_root" || true)
-    fi
+    }
 
-    # ── Level 3: reachability (only if Level 1 and Level 2 clean) ────────────
-    if [[ "$verdict" == "pass" ]]; then
-        # Only run Level-3 when a WIRING: section is present.
-        local wiring_present=0
-        acceptance_list_wiring "$design_md" >/dev/null 2>&1 && wiring_present=1
-        if [[ "$wiring_present" -eq 1 ]]; then
+    # ── Level 3: reachability (WIRING load-bearing check) ────────────────────
+    # #1220: runs REGARDLESS of Level 1/2 outcome (still gated on a WIRING:
+    # section being present) so an inert-wiring violation surfaces in the SAME
+    # pass as any Level-1/2 violation.
+    local wiring_present=0
+    acceptance_list_wiring "$design_md" >/dev/null 2>&1 && wiring_present=1
+    if [[ "$wiring_present" -eq 1 ]]; then
+        {
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
                 summary_lines+=("$line")  # #1211: one operator line per WIRING target
@@ -271,29 +330,48 @@ acceptance_gate_run() {
                         ;;
                 esac
             done < <(acceptance_reachability_check "$design_md" "$repo_root" || true)
-        fi
+        }
+    fi
+
+    # ── Classify + compose operator reason ───────────────────────────────────
+    # `disposition` is the GENERIC contract the cycle engine reads (ADR-021): the
+    # engine no longer knows this gate's failure vocabulary — it only halts on an
+    # explicit disposition==terminal. `reason` (#1220) is the human-readable
+    # message that NAMES the offending SPEC ids + class, replacing the opaque
+    # member_terminal_failure the cycle otherwise surfaces.
+    local failures_json="[]" disposition reason_msg=""
+    if [[ ${#failures[@]} -gt 0 ]]; then
+        failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
+        disposition="$(_ag_classify_disposition "${failures[@]}")"
+        reason_msg="$(_ag_build_reason "${failures[@]}")"
+    else
+        disposition="none"
     fi
 
     # ── Operator summary (#1211) ─────────────────────────────────────────────
     # Surface the concise per-check verdict lines the operator actually needs;
     # the raw nested-test replay stays in the negctl/reachability diagnostic logs.
+    # #1220: lead with the human reason so the full violation scope is visible.
+    if [[ -n "$reason_msg" ]]; then
+        if [[ ${#summary_lines[@]} -gt 0 ]]; then
+            summary_lines=("$reason_msg" "${summary_lines[@]}")
+        else
+            summary_lines=("$reason_msg")
+        fi
+    fi
     if [[ ${#summary_lines[@]} -gt 0 ]]; then
         _ag_emit_operator_summary "${_stage_id:-acceptance-gate}" "${summary_lines[@]}"
     fi
 
     # ── Write result artifact ────────────────────────────────────────────────
-    # `disposition` is the GENERIC contract the cycle engine reads (ADR-021): the
-    # engine no longer knows this gate's failure vocabulary — it only halts on an
-    # explicit disposition==terminal. Computed from the failure classes here.
-    local failures_json="[]" disposition
-    if [[ ${#failures[@]} -gt 0 ]]; then
-        failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
-        disposition="$(_ag_classify_disposition "${failures[@]}")"
+    if [[ -n "$reason_msg" ]]; then
+        jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason_msg" \
+            --argjson f "$failures_json" \
+            '{verdict:$v,disposition:$d,reason:$r,failures:$f}' | atomic_write "$result_file"
     else
-        disposition="none"
+        jq -cn --arg v "$verdict" --arg d "$disposition" --argjson f "$failures_json" \
+            '{verdict:$v,disposition:$d,failures:$f}' | atomic_write "$result_file"
     fi
-    printf '{"verdict":"%s","disposition":"%s","failures":%s}\n' \
-        "$verdict" "$disposition" "$failures_json" | atomic_write "$result_file"
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"
 

@@ -1579,8 +1579,18 @@ _cycle_iter_dispatch() {
 # (manifest_graph_resolve_member / manifest_graph_result_filename) — identical to
 # the gate-aggregator. jq absence / missing artifact / parse failure on a member
 # is skipped (never falsely blocks). rc 1 when no member is terminal.
+# #1220: on a terminal member, exposes its id and its GENERIC human `reason`
+# string via globals so the caller can surface a specific operator message
+# instead of the opaque "member_terminal_failure". The reason field is read
+# verbatim (still no plugin vocabulary in the engine — any plugin may provide it).
+# Globals are set even under command substitution's stdout-capture; the caller
+# reads them directly (no subshell) so they survive.
+_CYCLE_TERMINAL_MEMBER_ID=""
+_CYCLE_TERMINAL_MEMBER_REASON=""
 _cycle_member_terminal_failure() {
     local state_dir="$1"
+    _CYCLE_TERMINAL_MEMBER_ID=""
+    _CYCLE_TERMINAL_MEMBER_REASON=""
     command -v jq >/dev/null 2>&1 || return 1
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
     local artifacts_dir="$state_dir/artifacts"
@@ -1595,6 +1605,8 @@ _cycle_member_terminal_failure() {
         jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || continue
         disp="$(jq -r '.disposition // ""' "$result" 2>/dev/null || echo "")"
         if [[ "$disp" == "terminal" ]]; then
+            _CYCLE_TERMINAL_MEMBER_ID="$member"
+            _CYCLE_TERMINAL_MEMBER_REASON="$(jq -r '.reason // ""' "$result" 2>/dev/null || echo "")"
             printf '%s' "$member"
             return 0
         fi
@@ -1966,19 +1978,27 @@ cycle_orchestrator_run() {
         # split state writes within an iter boundary).
         local overall_status="in_progress"
         local term_rc=-1
-        local _term_member
-        if _term_member="$(_cycle_member_terminal_failure "$state_dir")"; then
+        local _term_member _term_reason
+        # Call directly (not via $()) so the member id + reason globals survive
+        # (a command-substitution subshell would drop them, #1220); stdout is
+        # suppressed since the id is now read from the global.
+        if _cycle_member_terminal_failure "$state_dir" >/dev/null; then
             # Phase 2 (ADR-021): a cycle member declared disposition=terminal in
             # its result artifact — outranks review.verdict==approve so the
             # member's contract is load-bearing and the pipeline halts (failed)
             # instead of converging to complete. recoverable (e.g. untagged_spec,
             # the #951 feedback loop) and advisory (infra flake) are NON-terminal.
             # GENERIC: the engine carries the member id, not any plugin identity.
-            _CYCLE_LAST_TERMINATED_REASON="member_terminal_failure"
+            _term_member="$_CYCLE_TERMINAL_MEMBER_ID"
+            # #1220: prefer the member's specific human reason (names SPEC ids +
+            # violation class) over the opaque token; fall back when absent.
+            _term_reason="${_CYCLE_TERMINAL_MEMBER_REASON:-}"
+            _CYCLE_LAST_TERMINATED_REASON="${_term_reason:-member_terminal_failure}"
             overall_status="member_terminal_failure"; term_rc=8
             eb_emit_event "cycle.member.terminal_failure" \
                 "cycle_id=$cycle_id" "member=$_term_member" \
                 "reason=member_terminal_failure" \
+                "detail=${_term_reason}" \
                 2>/dev/null || true
         elif [[ "$converged" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"

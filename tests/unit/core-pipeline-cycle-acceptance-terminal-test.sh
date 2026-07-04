@@ -83,6 +83,27 @@ set +e; out="$(_cycle_member_terminal_failure "$STATE_DIR")"; rc=$?; set -e
 assert_eq "[SPEC-1] terminal disposition → terminal (rc=0)" "0" "$rc"
 assert_eq "[SPEC-1] echoes the failing member id" "acceptance-gate" "$out"
 
+# ── [#1220] terminal member's human reason is surfaced (non-opaque) ────────────
+# When a terminal member's artifact carries a generic `reason` string, the engine
+# exposes it via _CYCLE_TERMINAL_MEMBER_REASON so the operator sees SPEC ids +
+# class instead of the opaque "member_terminal_failure". Called WITHOUT command
+# substitution so the global set inside the function is visible in this shell.
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","reason":"acceptance-gate: SPEC-1/SPEC-8 tautological (pass at baseline) — re-author the assertions","failures":["tautology:SPEC-1","tautology:SPEC-8"]}'
+_CYCLE_TERMINAL_MEMBER_REASON="__stale__"
+set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
+assert_eq "[#1220] terminal with reason → terminal (rc=0)" "0" "$rc"
+assert_contains "[#1220] surfaces member reason (names SPEC ids)" "$_CYCLE_TERMINAL_MEMBER_REASON" "SPEC-1"
+assert_contains "[#1220] surfaces member reason (names the class)" "$_CYCLE_TERMINAL_MEMBER_REASON" "tautological"
+
+# ── [#1220] no reason field on a terminal member → global cleared ──────────────
+# Fail-safe: absent reason must not leak a stale value; downstream falls back to
+# the opaque token only when the plugin provides nothing.
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["inert_wiring:config/x.yaml"]}'
+_CYCLE_TERMINAL_MEMBER_REASON="__stale__"
+set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
+assert_eq "[#1220] terminal without reason → rc=0" "0" "$rc"
+assert_eq "[#1220] no reason field → global cleared" "" "$_CYCLE_TERMINAL_MEMBER_REASON"
+
 # ── [SPEC-2] disposition=recoverable → NOT terminal (rc 1) — #951 preserved ────
 _reset; _write_acc '{"verdict":"fail","disposition":"recoverable","failures":["untagged_spec:SPEC-1"]}'
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
