@@ -105,6 +105,15 @@ outputs:
     path: "${artifact_dir}/gate-feedback.md"
     type: markdown
     required: false
+  # #1219 (ADR-045/ADR-046): FOCUSED design-rooted feedback. Written ONLY on a
+  # route_<target> verdict (a design-rooted acceptance failure, e.g. tautology).
+  # required:false — absent on pass / plain-fail. Read by the design stage's
+  # prior_gate_feedback input after the build_test_cycle route_back rewinds to
+  # design_verify_cycle; persists across the rewind (shared per-run artifacts dir).
+  - id: design_feedback
+    path: "${artifact_dir}/design-feedback.md"
+    type: markdown
+    required: false
 
 state:
   persisted: [last_verdict]

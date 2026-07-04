@@ -206,6 +206,11 @@ gate_aggregator_run() {
 
     local result_path="$artifacts_dir/gate-aggregator-result.json"
     local feedback_path="$artifacts_dir/gate-feedback.md"
+    # #1219 (ADR-045/ADR-046): the FOCUSED design-rooted feedback the
+    # build_test_cycle route_back carries to the design_verify_cycle on a
+    # route_<target> verdict. Persists across the rewind (per-run artifacts dir is
+    # shared and durable) → design reads it on replay.
+    local design_feedback_path="$artifacts_dir/design-feedback.md"
 
     _ga_emit "plugin.run.start" "plugin=gate-aggregator"
 
@@ -230,6 +235,23 @@ gate_aggregator_run() {
         esac
     done
 
+    # ─── #1219 (ADR-045): DESIGN-ROOTED route verdict ─────────────────────────
+    # Roster-driven (NO plugin vocabulary): read each FAILED gate's generic
+    # `route_target` scalar; the FIRST non-empty wins. When set, the aggregate
+    # verdict becomes `route_<target>` (e.g. route_design). route_<target> != pass
+    # so the cycle exit_when never falsely converges and merge (verdict != pass →
+    # PR path) never auto-merges — the runner owns the bounded rewind. The
+    # aggregator stays the single convergence authority (ADR-040 §5): it merely
+    # gains a route verdict alongside pass/fail.
+    local _ga_route_target="" _rt_i _rt
+    if [[ "$verdict" == "fail" ]]; then
+        for _rt_i in "${!failed[@]}"; do
+            _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_rt_i]}" 2>/dev/null || true)"
+            if [[ -n "$_rt" && "$_rt" != "null" ]]; then _ga_route_target="$_rt"; break; fi
+        done
+        [[ -n "$_ga_route_target" ]] && verdict="route_${_ga_route_target}"
+    fi
+
     # Build the gates {name: status} object and the failed[] array via jq so the
     # JSON is well-formed regardless of gate-name content.
     local gates_json failed_json
@@ -242,15 +264,36 @@ gate_aggregator_run() {
         failed_json="[]"
     fi
 
+    # Mirror route_target into the artifact ONLY when set (byte-shape-identical to
+    # today on the pass/plain-fail paths).
     jq -n --arg v "$verdict" --argjson g "$gates_json" --argjson f "$failed_json" \
-        '{"verdict":$v,"gates":$g,"failed":$f}' | atomic_write "$result_path"
+        --arg rt "$_ga_route_target" \
+        '{"verdict":$v,"gates":$g,"failed":$f}
+         + (if $rt=="" then {} else {"route_target":$rt} end)' | atomic_write "$result_path"
 
-    # ─── B2 (ADR-040): consolidated gate→build feedback (cycle self-heal) ──────
-    # On fail, write ONE actionable payload merging every failing gate's detail.
-    # The build_test_cycle wires this (gate-aggregator → build, prior_gate_feedback)
-    # so the next iter's build prompt sees the full failure set in one place.
-    if [[ "$verdict" == "fail" ]]; then
-        local _i
+    # ─── Feedback payloads ────────────────────────────────────────────────────
+    #  pass          → no feedback (drop any stale payloads).
+    #  route_<tgt>   → #1219: write the FOCUSED design-feedback.md (the design-
+    #                  rooted gates' detail) for the route_back rewind target; drop
+    #                  the build-facing gate-feedback.md (build is not the fix path).
+    #  plain fail    → B2 (ADR-040): the consolidated gate→build feedback so the
+    #                  next build iter sees every finding in one place.
+    local _i
+    if [[ "$verdict" == "pass" ]]; then
+        rm -f "$feedback_path" "$design_feedback_path" 2>/dev/null || true
+    elif [[ -n "$_ga_route_target" ]]; then
+        {
+            printf '# Design-rooted gate feedback\n\n'
+            printf 'The build_test_cycle cannot fix these — they route back to design.\n'
+            printf 'Re-author the named acceptance assertions, then the pipeline re-verifies.\n\n'
+            for _i in "${!failed[@]}"; do
+                _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_i]}" 2>/dev/null || true)"
+                [[ "$_rt" == "$_ga_route_target" ]] || continue
+                _ga_gate_detail "${failed[$_i]}" "$artifacts_dir/${failed_files[$_i]}"
+            done
+        } | atomic_write "$design_feedback_path"
+        rm -f "$feedback_path" 2>/dev/null || true
+    else
         {
             printf '# Gate Aggregator Feedback\n\n'
             printf 'The build_test_cycle did not converge: %d mechanical gate(s) failed. ' "${#failed[@]}"
@@ -259,14 +302,13 @@ gate_aggregator_run() {
                 _ga_gate_detail "${failed[$_i]}" "$artifacts_dir/${failed_files[$_i]}"
             done
         } | atomic_write "$feedback_path"
-    else
-        rm -f "$feedback_path" 2>/dev/null || true
+        rm -f "$design_feedback_path" 2>/dev/null || true
     fi
 
     if [[ "$verdict" == "pass" ]]; then
         _ga_emit "gate_aggregator.pass"
     else
-        _ga_emit "gate_aggregator.fail" "failed=${failed[*]}"
+        _ga_emit "gate_aggregator.fail" "failed=${failed[*]}" "verdict=$verdict"
     fi
 
     _ga_emit "plugin.run.complete" "plugin=gate-aggregator" "verdict=$verdict"

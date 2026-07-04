@@ -340,10 +340,23 @@ acceptance_gate_run() {
     # message that NAMES the offending SPEC ids + class, replacing the opaque
     # member_terminal_failure the cycle otherwise surfaces.
     local failures_json="[]" disposition reason_msg=""
+    # #1219 (ADR-045/ADR-036): a DESIGN-ROOTED failure carries a generic
+    # `route_target` scalar so the gate-aggregator + build_test_cycle route_back
+    # can rewind to design (which authored the assertion). ONLY tautology is
+    # design-rooted — build is forbidden to touch acceptance assertions (ADR-036),
+    # so a tautological [change] SPEC can only be fixed by RE-AUTHORING it. The
+    # other terminal classes (not_passing_at_head / no_testfile / inert_wiring /
+    # malformed) stay build-fixable/terminal and set NO route_target. The plugin's
+    # SPEC vocabulary → generic-field mapping stays HERE (ADR-021: the engine and
+    # aggregator know no plugin vocabulary). verdict / disposition / rc UNCHANGED.
+    local route_target="" _f
     if [[ ${#failures[@]} -gt 0 ]]; then
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
         disposition="$(_ag_classify_disposition "${failures[@]}")"
         reason_msg="$(_ag_build_reason "${failures[@]}")"
+        for _f in "${failures[@]}"; do
+            [[ "$_f" == tautology:* ]] && { route_target="design"; break; }
+        done
     else
         disposition="none"
     fi
@@ -364,13 +377,19 @@ acceptance_gate_run() {
     fi
 
     # ── Write result artifact ────────────────────────────────────────────────
+    # #1219: add the generic route_target scalar ONLY when set (design-rooted).
+    # `--arg rt ""` + a `(if $rt=="" ...)` conditional keeps it absent otherwise,
+    # so a build-fixable failure's artifact is byte-shape-identical to today.
     if [[ -n "$reason_msg" ]]; then
         jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason_msg" \
-            --argjson f "$failures_json" \
-            '{verdict:$v,disposition:$d,reason:$r,failures:$f}' | atomic_write "$result_file"
+            --arg rt "$route_target" --argjson f "$failures_json" \
+            '{verdict:$v,disposition:$d,reason:$r,failures:$f}
+             + (if $rt=="" then {} else {route_target:$rt} end)' | atomic_write "$result_file"
     else
-        jq -cn --arg v "$verdict" --arg d "$disposition" --argjson f "$failures_json" \
-            '{verdict:$v,disposition:$d,failures:$f}' | atomic_write "$result_file"
+        jq -cn --arg v "$verdict" --arg d "$disposition" \
+            --arg rt "$route_target" --argjson f "$failures_json" \
+            '{verdict:$v,disposition:$d,failures:$f}
+             + (if $rt=="" then {} else {route_target:$rt} end)' | atomic_write "$result_file"
     fi
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"

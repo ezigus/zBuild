@@ -292,3 +292,25 @@ assumptions):
 This is the stage-io instance of the general nested-isolation gap tracked in **#1127** (ANY nested
 pipeline/test execution isolating its stage-io fd from the parent). The durable, engine-wide fix is
 deferred there; #1211 closes only the two acceptance-gate sandbox runners.
+
+## Amendment (#1219, 2026-07-04) — tautology is DESIGN-ROOTED → routes back to design
+
+The Level-2 negative control classifies a `[change]` SPEC whose tagged assertion PASSES at the
+merge-base baseline as **tautological** (`tautology:<spec>`): the test asserts nothing, the classic
+"green but inert" defect. The build stage is **forbidden** to fix this — ADR-036's whole point is
+that build must not touch acceptance assertions (else it games the gate). The only correct fix is to
+**re-author the SPEC**, which is the province of the stage that authored it: **design**.
+
+Therefore, on a tautology failure, the acceptance-gate adds a generic scalar `route_target: "design"`
+to `acceptance-gate-result.json` (verdict / disposition / rc UNCHANGED — still `fail` / `terminal` /
+rc=1, which yields the `member_terminal_failure` rc=8 the route_back guard needs). The
+gate-aggregator rolls a failed gate's `route_target` up into `verdict == route_design`, and
+`simple.yaml`'s `build_test_cycle` route_back (ADR-045) rewinds to `design_verify_cycle` (ADR-046)
+so design re-authors the assertion, reading the focused `design-feedback.md` the aggregator wrote.
+
+**Design-rooted vs build-fixable.** ONLY `tautology` is design-rooted. The other terminal classes
+stay build-fixable / terminal and set NO `route_target`: `not_passing_at_head` (fix the impl or the
+assertion), `no_testfile` / `untagged_spec` (add the tagged assertion — recoverable, fed to build via
+the #951 edge), `inert_wiring` (make the WIRING load-bearing), `malformed_acceptance_block`. The
+plugin-vocabulary → generic-field (`route_target`) mapping lives ENTIRELY in the acceptance-gate
+plugin (ADR-021: the engine and the aggregator know no acceptance-gate failure vocabulary).

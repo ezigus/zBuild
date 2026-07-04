@@ -82,6 +82,23 @@ _design_read_prior_impact_feedback() {
     printf '%s' "$body"
 }
 
+# #1219 (ADR-045/ADR-046): design-rooted gate feedback carried back by the
+# build_test_cycle route_back rewind. Unlike prior_impact_feedback (intra-cycle,
+# gated on ZBUILD_CYCLE_ITER≥2), this arrives from the OTHER cycle via the shared
+# artifacts dir (design-feedback.md), so it is keyed on FILE PRESENCE, not the
+# design_verify_cycle iteration counter: on the FIRST design pass the file is
+# absent (no-op); after a route_back it is present and design re-authors the SPEC.
+_design_read_prior_gate_feedback() {
+    local artifact_dir="${1:-}"
+    [[ -z "$artifact_dir" ]] && return 0
+    local f="$artifact_dir/design-feedback.md"
+    [[ ! -s "$f" ]] && return 0
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "${body//[[:space:]]/}" ]] && return 0
+    printf '%s' "$body"
+}
+
 # design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
 # design.md body for iter N+1 to refine rather than re-create.
 _design_read_prior_design() {
@@ -277,6 +294,19 @@ DESIGN_PROMPT
             printf '\nRefine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
                 >> "$prompt_input_file"
         fi
+    fi
+
+    # #1219 (ADR-045/ADR-046): on a route_back REPLAY, splice the design-rooted
+    # gate feedback so design RE-AUTHORS the named tautological [change] SPEC(s)
+    # (build is forbidden to touch acceptance assertions, ADR-036). Keyed on file
+    # presence (see reader) — absent on the first pass → no-op, byte-identical prompt.
+    local _gate_fb_body
+    _gate_fb_body="$(_design_read_prior_gate_feedback "$artifact_dir" 2>/dev/null || true)"
+    if [[ -n "$_gate_fb_body" ]]; then
+        printf '\n## PRIOR GATE FEEDBACK (design-rooted — from the acceptance gate, via route_back)\n%s\n' \
+            "$_gate_fb_body" >> "$prompt_input_file"
+        printf '\nThe acceptance gate found the named SPEC(s) tautological (they pass at the merge-base baseline, so they assert nothing). RE-AUTHOR each named [change] SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Preserve all other scope and acceptance entries.\n' \
+            >> "$prompt_input_file"
     fi
 
     # ADR-032: append the per-repo prompt override AFTER the core contract (so

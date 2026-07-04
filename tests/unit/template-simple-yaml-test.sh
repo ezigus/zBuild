@@ -248,6 +248,27 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle" \
 assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
     "pass" "$_TPL_CYCLE_UNTIL_VALUE_build_test_cycle"
 
+# ─── SPEC-17 (#1219, ADR-045/ADR-046): build_test_cycle route_back → design ───
+# The final EPIC #1216 wiring: a design-rooted acceptance failure (tautology)
+# surfaces as gate-aggregator.verdict==route_design, which the build_test_cycle's
+# route_back edge matches to REWIND to the earlier design_verify_cycle (re-author
+# the SPEC), bounded to one pass (max: 1). This parses into the sibling
+# _TPL_CYCLE_ROUTE_BACK_* vars (a sibling of exit_when, #1217). Adding route_back
+# is NOT a new stage/dispatch unit → the 18-entry _TPL_STAGES count (SPEC-2) and
+# the 8-unit dispatch list (SPEC-11) are UNCHANGED.
+assert_eq "[SPEC-17] route_back.to == design_verify_cycle (earlier top-level unit)" \
+    "design_verify_cycle" "${_TPL_CYCLE_ROUTE_BACK_TO_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.stage == gate-aggregator" \
+    "gate-aggregator" "${_TPL_CYCLE_ROUTE_BACK_STAGE_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.field == verdict" \
+    "verdict" "${_TPL_CYCLE_ROUTE_BACK_FIELD_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.op == eq" \
+    "eq" "${_TPL_CYCLE_ROUTE_BACK_OP_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.value == route_design" \
+    "route_design" "${_TPL_CYCLE_ROUTE_BACK_VALUE_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
+    "1" "${_TPL_CYCLE_ROUTE_BACK_MAX_build_test_cycle:-}"
+
 # ─── SPEC-12: shape-floor is at index 7 in _TPL_STAGES (after build/test) ─────
 # CHANGE (#1218, ADR-046): design-gate + impact inserted at indices 3,4 shift the
 # whole build_test_cycle roster by +2 — shape-floor moves from index 5 to 7,

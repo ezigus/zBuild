@@ -61,6 +61,8 @@ _TPL_STAGES=()
 _TPL_DISPATCH_UNITS=()
 # ADR-021: list of cycle ids declared in template (in declaration order).
 _TPL_CYCLES=()
+# #1219 (ADR-045): cycle ids whose route_back was DECLARED by the current parse.
+_TPL_ROUTE_BACK_DECLARED=()
 # ADR-039 (#1130): list of parallel group ids declared in template (in
 # declaration order). Sibling of _TPL_CYCLES — a `type: parallel` group folds
 # to one "parallel:<gid>" dispatch unit. Template-layer parse/validate only;
@@ -178,6 +180,10 @@ load_template() {
     _TPL_STAGES=()
     _TPL_CYCLES=()
     _TPL_PARALLEL_GROUPS=()
+    # #1219 (ADR-045): cycles whose route_back is DECLARED by THIS parse (an RB|
+    # row). Distinguishes a live declaration from a route_back var left over by a
+    # prior in-process load_template, so the stale-scrub below is surgical.
+    _TPL_ROUTE_BACK_DECLARED=()
 
     # ADR-027 (Wave 17-B #703): shape detector. The new shape uses `flow:` at
     # top level + per-stage top-level sections discriminated by `type:`. The
@@ -517,6 +523,12 @@ load_template() {
                        "_TPL_CYCLE_ROUTE_BACK_OP_${rb_safe}" \
                        "_TPL_CYCLE_ROUTE_BACK_VALUE_${rb_safe}" \
                        "_TPL_CYCLE_ROUTE_BACK_MAX_${rb_safe}"
+                # #1219: record that THIS parse declared route_back on this cycle,
+                # so the stale-scrub below (which clears route_back inherited from a
+                # prior in-process load_template) never clears a live declaration —
+                # and _tpl_validate_route_back still REJECTS a route_back genuinely
+                # declared on a nested cycle.
+                _TPL_ROUTE_BACK_DECLARED+=("$rb_cid")
                 ;;
             FB)
                 # Feedback row for the most-recent cycle. Format:
@@ -616,6 +628,43 @@ load_template() {
     # ADR-027 contract validator (Wave 17-B #703): reference-graph acyclicity.
     # If any cycle's flow transitively includes itself, refuse to load.
     _tpl_validate_flow_acyclic || return 1
+    # #1219 (ADR-045): scrub STALE route_back exports on any cycle that is NOT a
+    # top-level dispatch unit of THIS template. route_back is only ever valid on a
+    # top-level cycle (enforced by _tpl_validate_route_back below), so a route_back
+    # var on a nested/absent cycle can only be a leftover from a PRIOR load_template
+    # in the same process (route_back vars are exported and never reset per-cycle).
+    # Without this, loading a template WHOSE cycle declares route_back (simple.yaml's
+    # top-level build_test_cycle → design_verify_cycle) and THEN one that reuses the
+    # id for a NESTED cycle (standard.yaml nests build_test_cycle) leaves the stale
+    # route_back on the nested cycle, tripping the top-level-only guard and failing
+    # the load. Top-level cycles keep their route_back vars (a test may inject an
+    # edge `max` for one, #1217), so this is surgical — it clears only stale nested
+    # inheritance, never a live top-level edge.
+    local _rb_cid _rb_safe _rb_u _rb_top _rb_declared
+    for _rb_cid in ${_TPL_CYCLES[@]+"${_TPL_CYCLES[@]}"}; do
+        # Keep a route_back DECLARED by this parse (even on a nested cycle — the
+        # validator below will reject it, which is the intended error path).
+        _rb_declared=0
+        for _rb_u in ${_TPL_ROUTE_BACK_DECLARED[@]+"${_TPL_ROUTE_BACK_DECLARED[@]}"}; do
+            [[ "$_rb_u" == "$_rb_cid" ]] && { _rb_declared=1; break; }
+        done
+        [[ $_rb_declared -eq 1 ]] && continue
+        # Keep a top-level cycle's route_back var (a test may inject an edge `max`
+        # for one, #1217); only a NON-top-level cycle's UNDECLARED route_back is
+        # stale inheritance from a prior in-process load.
+        _rb_top=0
+        for _rb_u in ${_TPL_DISPATCH_UNITS[@]+"${_TPL_DISPATCH_UNITS[@]}"}; do
+            [[ "$_rb_u" == "cycle:$_rb_cid" ]] && { _rb_top=1; break; }
+        done
+        [[ $_rb_top -eq 1 ]] && continue
+        _rb_safe="${_rb_cid//-/_}"
+        unset "_TPL_CYCLE_ROUTE_BACK_TO_${_rb_safe}" \
+              "_TPL_CYCLE_ROUTE_BACK_STAGE_${_rb_safe}" \
+              "_TPL_CYCLE_ROUTE_BACK_FIELD_${_rb_safe}" \
+              "_TPL_CYCLE_ROUTE_BACK_OP_${_rb_safe}" \
+              "_TPL_CYCLE_ROUTE_BACK_VALUE_${_rb_safe}" \
+              "_TPL_CYCLE_ROUTE_BACK_MAX_${_rb_safe}" 2>/dev/null || true
+    done
     # #1217 (ADR-045): the bounded route_back edge carve-out. Permitted iff the
     # target is a strictly-earlier dispatch unit and `max` is a finite positive
     # int (rejects forward/self/unbounded). Runs AFTER _tpl_build_dispatch_units

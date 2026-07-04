@@ -108,3 +108,23 @@ review_lenses → review-aggregator → pr`.
 - Events: `design_gate.pass` / `design_gate.fail` registered in `config/event-schema.json`.
 - Tests: `tests/unit/design-gate-test.sh` (C1–C6 red-first + report-all + rc=0 + classifier);
   `tests/unit/template-simple-yaml-test.sh` re-pinned to the 18-stage / 8-dispatch-unit shape.
+
+## Amendment (#1219, 2026-07-04) — design_verify_cycle is the route_back target for design-rooted acceptance failures
+
+ADR-046 gave design an independent PRE-build verifier that loops back TO it. #1219 (the final piece of
+EPIC #1216) makes `design_verify_cycle` the **rewind target** for a design-rooted defect discovered
+DEEPER in the pipeline: a tautological `[change]` SPEC that the post-build acceptance-gate (Level-2
+negctl) catches — which, unlike the structural checks, CANNOT shift left (it needs a built assertion +
+a baseline-vs-HEAD run). `simple.yaml`'s `build_test_cycle` declares
+`route_back: {to: design_verify_cycle, when: {stage: gate-aggregator, field: verdict, op: eq,
+value: route_design}, max: 1}` (ADR-045). On `route_design` the runner rewinds the dispatch index to
+`design_verify_cycle` and replays forward (design_verify_cycle → impact → build_test_cycle), so design
+re-authors the SPEC then the design-gate re-verifies it — closing the loop where the contract was
+authored, not where the defect surfaced.
+
+Feedback path: the gate-aggregator writes a focused `design-feedback.md`; the design manifest gains a
+new input `prior_gate_feedback` (`source: artifacts`, `path: ${artifact_dir}/design-feedback.md`,
+`required: false` — NOT `cycle_feedback`, which is intra-`design_verify_cycle`; this arrives from the
+OTHER cycle across the rewind). `design/plugin.sh` splices it into the prompt keyed on file PRESENCE
+(absent on the first pass → no-op). Bounded by ADR-045's per-edge `max: 1` + the global budget, so a
+still-tautological SPEC hard-fails cleanly after one re-author pass — no ping-pong.

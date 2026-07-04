@@ -142,3 +142,28 @@ route). The edge is permitted precisely *because* it is budget-bounded.
 - ADR-021 — cycle semantics / terminal-rc table (amended: rc=11 added).
 - ADR-027 — recursive flow format / acyclicity (amended: route_back carve-out).
 - ADR-040 — advisory stages never drive loops.
+
+## Amendment (#1219, 2026-07-04) — first production adopter (design-rooted acceptance route)
+
+The primitive's first live use (final piece of EPIC #1216): `config/templates/simple.yaml`'s
+`build_test_cycle` declares `route_back: {to: design_verify_cycle, when: {stage: gate-aggregator,
+field: verdict, op: eq, value: route_design}, max: 1}`. A **design-rooted** acceptance failure —
+a tautological `[change]` SPEC that cannot be made to fail-at-baseline, which ADR-036 forbids the
+build stage from fixing — is surfaced by the acceptance-gate as a generic `route_target: design`
+scalar, rolled up by the gate-aggregator into `verdict == route_design`, and matched by this edge
+to REWIND to the earlier `design_verify_cycle` so design re-authors the SPEC.
+
+Worked example (validates the design constraints in this ADR):
+- **Blob-visibility constraint honored.** `route_back.when` reads ONLY the verdicts blob
+  (per-member `{verdict,status}`), and `verdict.sh` forces `verdict=fail` for any rc≠0 gate. The
+  acceptance-gate returns rc=1, so its blob verdict is always `fail` — it CANNOT surface a distinct
+  blob value itself. The gate-aggregator always returns rc=0 (verdict-in-artifact), so its blob
+  verdict equals its artifact `.verdict` — the ONLY blob-visible lever. The signal therefore rides
+  the **gate-aggregator verdict**, not an arbitrary artifact field.
+- **Guard class honored.** A tautology yields disposition=terminal → `member_terminal_failure`
+  rc=8, which is exactly one of the two correctable terminals (rc∈{2,8}) the reroute guard admits.
+- **Bounded, no ping-pong.** `max: 1` (per-edge) and the global budget (default 2 = one jump)
+  both cap it at one re-author pass; a still-tautological SPEC after the rewind exhausts the budget
+  and falls through to the by-severity rc=8 terminal, which hard-fails cleanly naming the SPEC.
+
+See ADR-036 (§design-rooted vs build-fixable), ADR-040 (§route verdict), ADR-046 (§route_back target).
