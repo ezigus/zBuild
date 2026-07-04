@@ -42,10 +42,13 @@ fi
 #   enforced; canonical monotonic order is enforced for ordinary stages but NOT for
 #   parallel-group members (order-exempt — _tpl_validate_stages skips the order
 #   check for them; only membership is verified).
-# Exactly these 29 ids, in this order:
-#   intake plan design impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
+# Exactly these 30 ids, in this order (#1218, ADR-046: `design-gate` — the
+# PRE-build structural verifier — sits between `design` and `impact` so the
+# design_verify_cycle members [design, design-gate] and the following advisory
+# `impact` stage appear in monotonic canonical order):
+#   intake plan design design-gate impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
 readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan design impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
+    intake plan design design-gate impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
 )
 
 # Module-level state — populated by load_template

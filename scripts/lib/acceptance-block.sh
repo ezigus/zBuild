@@ -110,6 +110,33 @@ acceptance_spec_is_guard() {
     grep -qF "${spec_id}[guard]:" <<< "$block_output"
 }
 
+# acceptance_spec_classifier <design_md> <spec_id>  (ADR-046 / #1218)
+# Echoes the SPEC's classifier — "change", "guard", or "" (unclassified) — by
+# reading the [classifier] token on its SPEC line. Reuses the [guard] parse
+# pattern; the empty string means the SPEC carries no classifier at all.
+# Returns 0 always (the caller inspects the echoed value).
+acceptance_spec_classifier() {
+    local design_md="${1:-}" spec_id="${2:-}"
+    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && { printf '\n'; return 0; }
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || { printf '\n'; return 0; }
+    if grep -qF "${spec_id}[change]:" <<< "$block_output"; then
+        printf 'change\n'
+    elif grep -qF "${spec_id}[guard]:" <<< "$block_output"; then
+        printf 'guard\n'
+    else
+        printf '\n'
+    fi
+}
+
+# acceptance_spec_is_change <design_md> <spec_id>  (ADR-046 / #1218)
+# Returns 0 when the SPEC line for spec_id carries a [change] classifier,
+# 1 otherwise (unclassified or [guard] = not a change).
+acceptance_spec_is_change() {
+    local design_md="${1:-}" spec_id="${2:-}"
+    [[ "$(acceptance_spec_classifier "$design_md" "$spec_id")" == "change" ]]
+}
+
 # acceptance_list_wiring <design_md>  (ADR-036 Level-3 / #956)
 # Prints the WIRING targets declared in the ```acceptance block, one per line.
 # The special token "none" is printed as-is when WIRING: none is declared

@@ -8,6 +8,10 @@
 - amend-planned: ADR-019 (fail-closed re-expressed as "a failing mechanical gate fails the gate-aggregator")
 - depends: ADR-039 (parallel stage groups) — gates and lenses are packaged as `type: parallel` groups
 - peer: ADR-039; EPIC #1129
+- applied-by: ADR-046 (#1218) — `design-gate` is a new `convergence: gate` T0 member of
+  `simple.yaml`'s `design_verify_cycle`; its sibling `impact` is advisory BY PLACEMENT
+  (a lone top-level stage, no marker, off the convergence path). The typed-aggregator
+  preflight rule (A) is satisfied by binding `exit_when` directly to the single gate member.
 **Issue:** #1143 (EPIC #1129, D1)
 
 ## Context

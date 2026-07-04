@@ -377,6 +377,21 @@ DESIGN_PROMPT
     # Parse TESTFILES from the acceptance block and write failing stubs for
     # any that do not already exist. Existing files (e.g. from a prior cycle)
     # are left untouched so a passing test is never regressed to red.
+    # ADR-046 (#1218): collect the [SPEC-n] tags for the CHANGE-classified SPECs
+    # so each new red-first stub carries them. The PRE-build design-gate's
+    # Level-1 tag-presence check (C6) is satisfied by the stubs themselves —
+    # otherwise the design_verify_cycle would loop forever on UNTAGGED. The
+    # block lists TESTFILES globally (no per-SPEC map), so every change-SPEC tag
+    # goes into every new stub (any-declared-testfile-contains-tag semantics).
+    # Guard SPECs are expected to reference pre-existing tagged tests.
+    local _spec_tags="" _sid
+    while IFS= read -r _sid; do
+        [[ -z "$_sid" ]] && continue
+        if acceptance_spec_is_change "$output_design_md" "$_sid"; then
+            _spec_tags="${_spec_tags:+$_spec_tags }[$_sid]"
+        fi
+    done < <(acceptance_list_spec_ids "$output_design_md" 2>/dev/null || true)
+
     local _testfiles_section=0
     local _stubs_written=0
     while IFS= read -r _tf_line; do
@@ -399,7 +414,7 @@ DESIGN_PROMPT
         _tf_abs="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/$_tf_line"
         if [[ ! -f "$_tf_abs" ]]; then
             mkdir -p "$(dirname "$_tf_abs")"
-            printf '#!/usr/bin/env bash\nset -euo pipefail\n# Stub: failing until implemented (acceptance contract)\nexit 1\n' > "$_tf_abs"
+            printf '#!/usr/bin/env bash\nset -euo pipefail\n# acceptance stubs (red-first): %s — failing until implemented (acceptance contract)\nexit 1\n' "$_spec_tags" > "$_tf_abs"
             chmod +x "$_tf_abs"
             _stubs_written=$(( _stubs_written + 1 ))
         fi
