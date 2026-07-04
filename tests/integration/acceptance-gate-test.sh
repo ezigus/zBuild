@@ -207,5 +207,45 @@ assert_eq "S9: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 assert_eq "S9: reason=precondition_unmet" "precondition_unmet" "$(jq -r .reason <<<"$RESULT")"
 assert_eq "S9: precondition=tagged_testfiles" "tagged_testfiles" "$(jq -r .precondition <<<"$RESULT")"
 
+# ── S10: BOTH untagged AND tautological SPECs surface in ONE pass (#1220) ─────
+# The whack-a-mole fix: a design with an untagged SPEC AND a tautological
+# [change] SPEC must report BOTH classes in a single gate run (not one class per
+# cycle iteration). SPEC-1 is tagged but tautological; SPEC-2 has no tagged
+# assertion. Both must appear in failures[], both events must fire, and the
+# untagged SPEC-2 must NOT be double-reported as no_testfile.
+REPO10="$(_build_repo gate-both '#!/usr/bin/env bash
+# [SPEC-1] change: always true (tautological)
+exit 0')"
+cat > "$REPO10/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: new behavior introduced
+SPEC-2: second requirement (no tagged assertion)
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate "$REPO10"; set -e
+FAILURES="$(jq -rc .failures <<<"$RESULT")"
+assert_eq "S10: both violations → rc=1" "1" "$RC"
+assert_eq "S10: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "S10: disposition=terminal (tautology outranks untagged)" "terminal" "$(jq -r .disposition <<<"$RESULT")"
+assert_contains "S10: untagged_spec:SPEC-2 present in one pass" "$FAILURES" "untagged_spec:SPEC-2"
+assert_contains "S10: tautology:SPEC-1 present in the SAME pass" "$FAILURES" "tautology:SPEC-1"
+assert_event_emitted "S10: untagged_spec event" "$EVENTS" "acceptance.gate.untagged_spec"
+assert_event_emitted "S10: tautology event" "$EVENTS" "acceptance.gate.tautology"
+if grep -qF "no_testfile:SPEC-2" <<<"$FAILURES"; then
+    assert_fail "S10: SPEC-2 double-reported (untagged AND no_testfile)" "$FAILURES"
+else
+    assert_pass "S10: untagged SPEC-2 reported once (not also no_testfile)"
+fi
+
+# ── S11: terminal reason NAMES the SPEC ids + violation class (#1220) ─────────
+# Replaces the opaque member_terminal_failure: the result artifact carries a
+# human-readable `reason` naming the offending SPEC ids and their class.
+REASON="$(jq -r '.reason // ""' <<<"$RESULT")"
+assert_contains "S11: reason names SPEC-1" "$REASON" "SPEC-1"
+assert_contains "S11: reason names SPEC-2" "$REASON" "SPEC-2"
+assert_contains_regex "S11: reason names the tautology class" "$REASON" "[Tt]autolog"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
