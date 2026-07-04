@@ -47,7 +47,10 @@ _dg_scope_nonempty() {
     local in_scope=0 entries=0 line
     while IFS= read -r line; do
         line="${line%$'\r'}"
-        if [[ "$line" == '```scope' ]]; then in_scope=1; continue; fi
+        # #1227: tolerate a trailing-whitespace fence (mirrors the design
+        # stage's grep -q prefix match) so a fence line with a trailing space
+        # does not falsely trip SCOPE_MISSING.
+        if [[ "$line" == '```scope' || "$line" == '```scope'[[:space:]]* ]]; then in_scope=1; continue; fi
         if [[ $in_scope -eq 1 && "$line" == '```'* ]]; then break; fi
         if [[ $in_scope -eq 1 && -n "${line//[[:space:]]/}" ]]; then entries=$((entries + 1)); fi
     done < "$design_md"
@@ -133,13 +136,19 @@ design_gate_run() {
     fi
 
     # ── C6 LEVEL-1 TAG-PRESENCE (shifted left, ADR-036 → ADR-046) ────────────
-    if [[ $_accept_ok -eq 1 ]] && declare -f acceptance_coverage_check >/dev/null 2>&1; then
-        local _cov
-        while IFS= read -r _cov; do
-            [[ -z "$_cov" ]] && continue
-            # line: "UNTAGGED SPEC-n"
-            violations+=("$_cov (no [${_cov#UNTAGGED }] tag in any declared testfile)")
-        done < <(acceptance_coverage_check "$design_md" "$repo_root" 2>/dev/null || true)
+    # #1227: fail CLOSED — if the coverage lib is unavailable we cannot run C6,
+    # and a gate must never return verdict=pass while silently skipping a check.
+    if [[ $_accept_ok -eq 1 ]]; then
+        if declare -f acceptance_coverage_check >/dev/null 2>&1; then
+            local _cov
+            while IFS= read -r _cov; do
+                [[ -z "$_cov" ]] && continue
+                # line: "UNTAGGED SPEC-n"
+                violations+=("$_cov (no [${_cov#UNTAGGED }] tag in any declared testfile)")
+            done < <(acceptance_coverage_check "$design_md" "$repo_root" 2>/dev/null || true)
+        else
+            violations+=("COVERAGE_CHECK_UNAVAILABLE (C6 tag-presence lib not loaded; gate fails closed)")
+        fi
     fi
 
     # ── Verdict + artifact ───────────────────────────────────────────────────
