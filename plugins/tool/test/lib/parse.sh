@@ -48,6 +48,10 @@ _test_pattern_runall() {
     while IFS= read -r line; do
         # Tokens: suite, N, M  (awk split on ":", " ", "/" )
         suite="$(printf '%s' "$line" | awk -F'[: /]+' '{print $1}')"
+        # Skip run-tests.sh's `total: P/T passed` AGGREGATE line (#1234) — summing
+        # it would double-count (aggregate + every per-suite line). `total` is the
+        # aggregate keyword of this format; every OTHER suite name still counts.
+        [[ "$suite" == "total" ]] && continue
         n="$(printf '%s' "$line"     | awk -F'[: /]+' '{print $2}')"
         m="$(printf '%s' "$line"     | awk -F'[: /]+' '{print $3}')"
         [[ "$n" =~ ^[0-9]+$ && "$m" =~ ^[0-9]+$ ]] || continue
