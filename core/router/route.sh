@@ -23,6 +23,12 @@ source "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
 # path (single-shot + loop). Idempotent source; plugins that also source it
 # hit the load guard. See _route_redact_prompt / _route_ensure_redaction.
 source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
+# #1237: rate-limit detection + honest reporting. The claude CLI reports a
+# rate/session limit as rc=1 with a misleading subtype:"success" envelope
+# (is_error:true + api_error_status ∈ {429,529}). _router_is_rate_limit /
+# _router_rate_limit_message let the router surface an honest disposition
+# instead of the opaque "claude CLI failed (rc=1)". Idempotent source.
+source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -613,7 +619,7 @@ _route_call_claude() {
             : > "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
         fi
         # Parse JSON envelope fields once; #762 adds subtype/output_tokens/cost.
-        local _sync_is_error="" _sync_err_text="" _sync_num_turns="" _sync_subtype="" _sync_out_tokens="" _sync_cost=""
+        local _sync_is_error="" _sync_err_text="" _sync_num_turns="" _sync_subtype="" _sync_out_tokens="" _sync_cost="" _sync_api_status=""
         if [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
             _sync_is_error="$(jq -r '.is_error // empty' "$_sync_json_path" 2>/dev/null || true)"
             _sync_err_text="$(jq -r '.error // empty' "$_sync_json_path" 2>/dev/null | head -c 200 || true)"
@@ -621,16 +627,39 @@ _route_call_claude() {
             _sync_subtype="$(jq -r '.subtype // empty' "$_sync_json_path" 2>/dev/null || true)"
             _sync_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_sync_json_path" 2>/dev/null || true)"
             _sync_cost="$(jq -r '.total_cost_usd // empty' "$_sync_json_path" 2>/dev/null || true)"
+            _sync_api_status="$(jq -r '.api_error_status // empty' "$_sync_json_path" 2>/dev/null || true)"
+        fi
+        # #1237: a rate/session limit is reported as rc=1 with a misleading
+        # subtype:"success" envelope (is_error:true + api_error_status ∈
+        # {429,529}). Detect it BEFORE the generic "claude CLI failed" line so
+        # the operator sees an honest "rate-limited — resets X" message and the
+        # event stream carries a distinct reason. Still returns rc=1 (below), so
+        # advisory stages that treat rc=1 as recoverable stay non-blocking, and
+        # it is NOT auto-retried (the retry loop above is rc=124-only).
+        local _sync_rate_limited=0 _sync_rl_msg=""
+        if _router_is_rate_limit "$response"; then
+            _sync_rate_limited=1
+            _sync_rl_msg="$(_router_rate_limit_message "$response")"
         fi
         # #762: surface error_max_turns to the terminal with a human-readable
         # one-liner. Falls back to the legacy stderr-snip message otherwise.
         local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
-        if [[ "$_sync_subtype" == "error_max_turns" ]]; then
+        if [[ "$_sync_rate_limited" == "1" ]]; then
+            error "$_sync_rl_msg (model=$_ROUTE_MODEL_ID tier=$tier) — diagnostic: ${_sync_json_path:-absent}"
+        elif [[ "$_sync_subtype" == "error_max_turns" ]]; then
             error "claude max_turns reached (turns=${_sync_num_turns:-?}, output_tokens=${_sync_out_tokens:-?}, cost=\$${_sync_cost:-?}) — diagnostic: ${_sync_json_path:-absent}"
         else
             error "claude CLI failed (rc=$rc) model=$_ROUTE_MODEL_ID tier=$tier${snip:+: $snip}"
         fi
-        eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" "reason=claude_cli_failed"
+        if [[ "$_sync_rate_limited" == "1" ]]; then
+            eb_emit_event "router.rate_limited" \
+                "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
+                "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
+                "api_error_status=${_sync_api_status:-absent}" \
+                "message=$_sync_rl_msg" 2>/dev/null || true
+        fi
+        eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
+            "reason=$([[ "$_sync_rate_limited" == "1" ]] && printf 'router_rate_limited' || printf 'claude_cli_failed')"
         eb_emit_event "router.error.diagnostic" \
             "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
             "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \

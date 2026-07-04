@@ -603,6 +603,8 @@ The #754 dogfood (`run_id 20260611072619-15296`) surfaced three contract gaps:
 - Each agent plugin runs `_router_rc_classify` on the returned rc; the classify helper maps to (verdict, reason).
 - Generic rc>0 (claude-emitted error) still maps to verdict=fail; rc=124/137 are reserved for infra failures.
 
+**R2 amendment (#1237): rate/session-limit disposition.** The claude CLI reports a rate/session limit as **rc=1** with a MISLEADING `subtype:"success"` envelope carrying `is_error:true` + `api_error_status ∈ {429,529}` (or a `result`/`error` naming a session/rate/usage/quota limit or "overloaded"). Because the rc is 1, this stays `rc=1` on the wire — deliberately NOT a new rc — so the ~4 stages that treat `rc=1` as recoverable (impact, review lenses, security-lens, plan) remain NON-blocking, and it is NOT auto-retried (the router's timeout retry loop is `rc=124`-only; a rate-limit resets at a future time, so an immediate retry re-hits it). The router (`_route_call_claude`) detects the signal via `_router_is_rate_limit`, prints an honest `LLM rate-limited — resets X` line (replacing the opaque `claude CLI failed (rc=1)`), and emits a distinct `router.rate_limited` event plus `router.error reason=router_rate_limited`. `_router_rc_classify <rc> <v> <r> 1` maps the rate-limited flag → `verdict=fail reason=router_rate_limited` (verdict stays `fail`/recoverable, NOT the infra `error` class that halts a cycle).
+
 **R3. Pre-LLM gates in cycle members are forbidden.**
 
 - "Pre-LLM gate" = any code path inside a cycle member's `_*_run_inner` that short-circuits before `route_to_model` returns, AND skips the LLM call because of cycle-feedback state.
