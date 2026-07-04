@@ -100,3 +100,33 @@ Implementation order:
 4. **G1: Per-iter prompt size budget with compression** — biggest scope; schema addition + compression strategy implementation. Defer to a follow-up after G2/G3 prove the principle.
 
 Each step is a separate PR with TDD coverage at unit + integration.
+
+## Amendment — leaf-level retry-on-timeout escalation (`router.retries`, #1230)
+
+G3 (per-stage `max_turns` escalation) is an ITER-level, cycle-orchestrator
+mechanism. #1230 adds a complementary CALL-level mechanism at the router leaf:
+the per-stage `router.retries` knob (ADR-017 amendment). On a bare router
+timeout (rc=124) and while retry attempts remain, the leaf re-spawns claude with
+an escalated LOCAL timeout before falling through to the verbatim-124 fallback,
+emitting `router.timeout.retry` per attempt.
+
+Escalation formula (ties G3's +50%/cap-2× rule):
+
+    secs = min(base * 1.5^k, 2*base)   # k = 1-based retry attempt
+
+So attempt 1 = 1.5× base, attempt ≥ 2 = 2× base (capped). Strictly increasing,
+plateaus at 2× — more headroom for a slow call without unbounded waits.
+
+**Composition with the #1208 breaker (the make-or-break detail).** In the
+agentic loop (`route_to_model_loop`), `router.retries` is an INTRA-iteration
+call-retry count, layered BEFORE the cross-iteration `timeout_recur` circuit
+breaker. An iteration bumps `timeout_recur` only AFTER exhausting the N inner
+retries — `router.retries` and `timeout_recur` never double-count. #1208
+("per-turn timeouts are never fatal → yield to the cycle non-fatally after 3
+consecutive iteration timeouts") is preserved unchanged: once inner retries are
+spent, control falls through to the existing rc=124 path (LOOP_COMPLETE-sentinel
+honor + `timeout_recur` + non-fatal yield). Default 0 → legacy behavior.
+
+The single-shot leaf (`_route_call_claude`, used by impact/plan/review/…) gets
+the same retry loop internally, so every leaf node honors the knob wherever it
+sits (top-level OR cycle/parallel member; containers never call models).

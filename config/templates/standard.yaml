@@ -95,6 +95,9 @@ impact:
     # 25 default starved it (max_turns reached on a trivial issue in run
     # 20260615092055-4885). 45 gives headroom for the larger wave issues.
     max_turns: 45
+    # #1230: one retry-on-timeout (escalated budget) before the empty
+    # verdict=incomplete fallback. Default is 0 (opt-in) elsewhere.
+    retries: 1
 
 # ─── design (leaf, cycle member of design_impact_cycle) ─────────────────
 # Exhaustive scope enumerator (ADR-841). Reads plan.json and actively
