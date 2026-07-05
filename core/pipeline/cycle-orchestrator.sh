@@ -2281,6 +2281,17 @@ cycle_orchestrator_run() {
             # multi-axis health score (artifacts/build-summary.json) and name
             # the failing gate(s) (artifacts/gate-aggregator-result.json).
             _cycle_out_body="$(_cycle_render_predicate_result "$iter" "$state_dir")"
+            # #1253: when the full-suite gate suppressed convergence THIS iter
+            # (a targeted pass held for full-suite confirmation, :2061-2071), the
+            # banner above renders `MATCHED (got=pass)` from the RAW predicate yet
+            # the cycle deliberately continues. Append a plain operator line so
+            # the continue is explained, not a silent/confusing no-op. Pure
+            # observability — control flow / convergence is unchanged; the pending
+            # flag (set at :2066, consumed at the next iter's loop top) is 1 here
+            # iff the gate fired this iter.
+            if [[ "$_full_suite_gate_pending" -eq 1 ]]; then
+                _cycle_out_body+=$'\ntargeted pass — running full suite to confirm before converging'
+            fi
             # Suppress stdout only (stage_io_end prints nothing useful on fd 1);
             # do NOT redirect fd 2 — a `2>&1` here would swallow the OUTPUT
             # banner into /dev/null in production (#833 / PR #1039).
