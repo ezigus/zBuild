@@ -166,7 +166,12 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$PROMPT_CAPTURE"
 set +e
 # #887: pinned HOME + run_id so the per-run state dir is the one STATE_DIR points at.
-env ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --issue 618 >/dev/null 2>&1
+# #1240: scrub ZBUILD_STATE_DIR / ZBUILD_STATE_ROOT so the runner recomputes the
+# HOME-anchored default ($HOME/.zbuild/state/runs/<id>/) rather than re-rooting to
+# an ambient fence — the #1127 sandbox sets ZBUILD_STATE_ROOT when this runs nested
+# inside the pipeline test stage.
+env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
+    ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --issue 618 >/dev/null 2>&1
 rc=$?
 set -e
 

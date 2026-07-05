@@ -22,6 +22,12 @@ source "$REPO_ROOT/core/pipeline/strategies/common.sh"
 source "$REPO_ROOT/plugins/tool/orch-bash-parallel/plugin.sh"
 
 # ─── Scratch dir ─────────────────────────────────────────────────────────────
+# #1240: scrub ambient ZBUILD_STATE_ROOT so the default-path assertions below
+# ("/.zbuild/state/runs/...") resolve against $HOME/.zbuild/state. Nested inside
+# the pipeline test stage the #1127 sandbox exports ZBUILD_STATE_ROOT=<tmp>/
+# .zbuild-nested-state, which _strategy_orch_scratch_dir honors — diverting the
+# scratch path away from the asserted default and breaking S1/S2.
+unset ZBUILD_STATE_ROOT
 unset ZBUILD_ORCH_SCRATCH
 export ZBUILD_RUN_ID="run-AAA"
 s_a="$(_strategy_orch_scratch_dir)"
