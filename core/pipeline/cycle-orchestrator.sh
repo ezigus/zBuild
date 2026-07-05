@@ -479,15 +479,44 @@ _cycle_render_feedback_digest() {
     return 0
 }
 
-# ─── _cycle_render_predicate_result <iter> [state_dir] (#833, #1241) ──────────
+# ─── _cycle_read_progress <state_dir> (#1243) ────────────────────────────────
+# Code-change PROGRESS axis for the cycle health score. Reads this iteration's
+# build-summary.json (files_changed[]/lines_added/lines_removed — the diff the
+# build actually applied) and echoes three space-separated ints:
+#   "<files_changed> <lines_added> <lines_removed>"
+# Absent/malformed summary, no state_dir, or a cycle with no build member all
+# read as "0 0 0" (→ "no progress"). Repo-agnostic; pure/read-only; the jq
+# fallbacks keep it errexit-safe even on a truncated artifact.
+_cycle_read_progress() {
+    local state_dir="$1"
+    local files=0 add=0 del=0
+    local bsj="$state_dir/artifacts/build-summary.json"
+    if [[ -n "$state_dir" && -f "$bsj" ]]; then
+        files="$(jq -r '(.files_changed // []) | length' "$bsj" 2>/dev/null || echo 0)"
+        add="$(jq -r '.lines_added // 0' "$bsj" 2>/dev/null || echo 0)"
+        del="$(jq -r '.lines_removed // 0' "$bsj" 2>/dev/null || echo 0)"
+    fi
+    [[ "$files" =~ ^[0-9]+$ ]] || files=0
+    [[ "$add"   =~ ^[0-9]+$ ]] || add=0
+    [[ "$del"   =~ ^[0-9]+$ ]] || del=0
+    printf '%s %s %s' "$files" "$add" "$del"
+    return 0
+}
+
+# ─── _cycle_render_predicate_result <iter> [state_dir] (#833, #1241, #1243) ───
 # Builds the cycle OUTPUT-banner body from the last-stashed predicate eval:
 #   line1: <kind> stage=<s> field=<f> op=<op> value=<v> → MATCHED|NOT MATCHED (got=<actual>)
-#   line2: velocity=<0-fc> failure_count=<fc>
+#   line2 (#1243): multi-axis health score, human-readable, calculation shown.
 #   line3 (#1241, NOT MATCHED only): failed gates: <list>[ — <reason>]
-# velocity = 0 - _CYCLE_LAST_FAILURE_COUNT (mirrors cycle.iteration.complete).
-# The optional <state_dir> plumbs the gate-aggregator rollup so the banner names
-# WHICH gate blocked (not just "NOT MATCHED (got=fail)"); omitted → back-compat
-# two-line body. Pure/read-only; no errexit hazard.
+# #1243: the old single-axis `velocity=0-fc` was misleading — an iteration that
+# applied ZERO code read only as "more defects". The health line now combines
+# two axes into one total with the arithmetic visible:
+#   code-change PROGRESS (lines_added+lines_removed this iter) − DEFECTS (fc)
+#     → SCORE. A zero-diff iter explicitly reads "no progress" (distinct from a
+#   regression).
+# #1241: the optional <state_dir> also plumbs the gate-aggregator rollup so the
+# banner names WHICH gate blocked (not just "NOT MATCHED (got=fail)"); omitted →
+# no failed-gates line. Pure/read-only; no errexit hazard.
 _cycle_render_predicate_result() {
     local iter="$1"
     local state_dir="${2:-}"
@@ -502,9 +531,22 @@ _cycle_render_predicate_result() {
     [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
     local matched_str="NOT MATCHED (got=${actual})"
     [[ "$match" == "true" ]] && matched_str="MATCHED (got=${actual})"
-    printf '%s stage=%s field=%s op=%s value=%s → %s\nvelocity=%s failure_count=%s' \
+
+    local files add del
+    read -r files add del <<< "$(_cycle_read_progress "$state_dir")"
+    local progress=$(( add + del ))
+    local score=$(( progress - fc ))
+    local health_line
+    if [[ "$progress" -eq 0 ]]; then
+        # Zero forward code change — surface it as a distinct signal from defects.
+        health_line="$(printf 'health: progress=0 (no progress) - defects=%s → score=%s' "$fc" "$score")"
+    else
+        health_line="$(printf 'health: progress=%s (%s files, +%s/-%s) - defects=%s → score=%s' \
+            "$progress" "$files" "$add" "$del" "$fc" "$score")"
+    fi
+    printf '%s stage=%s field=%s op=%s value=%s → %s\n%s' \
         "$kind" "$stage" "$field" "$op" "$expected" "$matched_str" \
-        "$(( 0 - fc ))" "$fc"
+        "$health_line"
     # #1241: on a NOT-MATCHED terminating iter, name the failing gate(s) + reason
     # from the gate-aggregator rollup so the operator sees the cause. A pass
     # (MATCHED) is never annotated with failures. Best-effort/read-only.
@@ -2204,10 +2246,20 @@ cycle_orchestrator_run() {
         _cycle_state_write_iter_atomic "$state_file" "$cycle_id" "$iter" \
             "$h_verdict" "$h_status" "$failure_count" "$overall_status" || true
 
+        # #1243: multi-axis health — code-change PROGRESS (this iter's applied
+        # diff) combined with the DEFECT count into a single durable score.
+        # `velocity` retained for backward-compat consumers; `progress`/`score`
+        # are the multi-axis fields (and the human-readable OUTPUT banner below
+        # shows the calculation).
+        local _ci_files _ci_add _ci_del
+        read -r _ci_files _ci_add _ci_del <<< "$(_cycle_read_progress "$state_dir")"
+        local _ci_progress=$(( _ci_add + _ci_del ))
         eb_emit_event "cycle.iteration.complete" \
             "cycle_id=$cycle_id" "iter=$iter" "verdict=$h_verdict" \
             "velocity=$(( 0 - failure_count ))" \
-            "failure_count=$failure_count" 2>/dev/null || true
+            "failure_count=$failure_count" \
+            "progress=$_ci_progress" \
+            "score=$(( _ci_progress - failure_count ))" 2>/dev/null || true
 
         # #524 iter-complete hook — operator-visible iter trailer. Event emit
         # is durable above; the hook is best-effort (silent-failure mitigation
@@ -2224,9 +2276,10 @@ cycle_orchestrator_run() {
         # kind=cycle keeps it fd-2 / stdout-only.
         if [[ -n "${_CYCLE_IO_SEQ[$iter]:-}" ]] && declare -F stage_io_end >/dev/null 2>&1; then
             local _cycle_out_body
-            # #1241: plumb state_dir so the banner can name the failing gate(s)
-            # from artifacts/gate-aggregator-result.json.
-            _cycle_out_body="$(_cycle_render_predicate_result "$iter" "$(dirname "$state_file")")"
+            # #1243/#1241: plumb state_dir so the banner can compute the
+            # multi-axis health score (artifacts/build-summary.json) and name
+            # the failing gate(s) (artifacts/gate-aggregator-result.json).
+            _cycle_out_body="$(_cycle_render_predicate_result "$iter" "$state_dir")"
             # Suppress stdout only (stage_io_end prints nothing useful on fd 1);
             # do NOT redirect fd 2 — a `2>&1` here would swallow the OUTPUT
             # banner into /dev/null in production (#833 / PR #1039).
