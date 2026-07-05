@@ -55,7 +55,7 @@ seq1="$_STAGE_IO_LAST_SEQ"
 set +e
 ZBUILD_STAGE_IO_FD=2 stage_io_end --stage build_test_cycle --kind cycle --seq "$seq1" \
     --output "exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
-velocity=-3 failure_count=3" 2>/dev/null
+health: progress=0 (no progress) - defects=3 → score=-3" 2>/dev/null
 rc=$?
 set -e
 assert_eq "[SPEC-2] kind=cycle record passes stage_io_end validator" "0" "$rc"
@@ -74,7 +74,7 @@ in_iterN="$(ZBUILD_STAGE_IO_FD=2 stage_io_begin --kind cycle --stage build_test_
 assert_contains "[SPEC-3] iterN INPUT shows consumed feedback to_field" \
     "$in_iterN" "prior_test_assessment"
 
-# ─── [SPEC-4] OUTPUT banner contains predicate restatement + NOT MATCHED + velocity
+# ─── [SPEC-4] OUTPUT banner contains predicate restatement + NOT MATCHED + score
 # Pair a begin directly (persist pending state) so end has a matching record;
 # capture the end banner from fd 2 (stderr).
 ZBUILD_STAGE_IO_FD=2 stage_io_begin --kind cycle --stage build_test_cycle \
@@ -82,10 +82,10 @@ ZBUILD_STAGE_IO_FD=2 stage_io_begin --kind cycle --stage build_test_cycle \
 seq4="$_STAGE_IO_LAST_SEQ"
 out4="$(ZBUILD_STAGE_IO_FD=2 stage_io_end --stage build_test_cycle --kind cycle --seq "$seq4" \
     --output "exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
-velocity=-3 failure_count=3" 2>&1 1>/dev/null)"
+health: progress=0 (no progress) - defects=3 → score=-3" 2>&1 1>/dev/null)"
 assert_contains "[SPEC-4] OUTPUT restates exit_when predicate" "$out4" "exit_when stage=test_assessment field=verdict op=eq value=pass"
 assert_contains "[SPEC-4] OUTPUT shows NOT MATCHED (got=...)" "$out4" "NOT MATCHED (got=fail)"
-assert_contains "[SPEC-4] OUTPUT shows velocity=" "$out4" "velocity="
+assert_contains "[SPEC-4] OUTPUT shows score= (#1254: was velocity=)" "$out4" "score="
 
 # ─── [SPEC-5] kind=cycle → fd2 only; NO file artifact; NO gh_comment ─────────
 rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
@@ -108,7 +108,7 @@ ZBUILD_STAGE_IO_FD=2 stage_io_begin --kind cycle --stage build_test_cycle \
 seq5="$_STAGE_IO_LAST_SEQ"
 ZBUILD_STAGE_IO_FD=2 stage_io_end --stage build_test_cycle --kind cycle --seq "$seq5" \
     --output "exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
-velocity=-3 failure_count=3" \
+health: progress=0 (no progress) - defects=3 → score=-3" \
     >"$spec5_stdout_file" 2>"$spec5_stderr_file"
 rc=$?
 set -e
@@ -161,7 +161,7 @@ mkdir -p "$ZBUILD_STATE_DIR/cycle-build_test_cycle/iter-3/feedback"
 dig3="$(_cycle_render_feedback_digest 3 "$ZBUILD_STATE_DIR" 2>/dev/null)"
 assert_contains "[SPEC-3b] digest required+missing → MISSING" "$dig3" "MISSING"
 
-# ─── [SPEC-4b] _cycle_render_predicate_result formats predicate + velocity ───
+# ─── [SPEC-4b] _cycle_render_predicate_result formats predicate + health score ───
 _CYCLE_LAST_PREDICATE_KIND="exit_when"
 _CYCLE_LAST_PREDICATE_STAGE="test_assessment"
 _CYCLE_LAST_PREDICATE_FIELD="verdict"
@@ -367,7 +367,7 @@ spec10_out_stdout="$TEST_TEMP_DIR/spec10.out.stdout"
 spec10_out_stderr="$TEST_TEMP_DIR/spec10.out.stderr"
 stage_io_end --stage build_test_cycle --kind cycle --seq "$spec10_seq" \
     --output "exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
-velocity=-3 failure_count=3" \
+health: progress=0 (no progress) - defects=3 → score=-3" \
     >"$spec10_out_stdout" 2>"$spec10_out_stderr" || true
 spec10_out_stdout_content="$(cat "$spec10_out_stdout")"
 spec10_out_stderr_content="$(cat "$spec10_out_stderr")"

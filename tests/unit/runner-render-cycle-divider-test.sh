@@ -6,8 +6,8 @@
 #     heavy ═ LIGHT_BLUE divider + ▸ Entering line + DIM trailer
 #   - _render_cycle_iter_divider <cycle_id> <iter> <max>
 #     light ─ CYAN sub-divider `─── iter N/M ───────`
-#   - _render_cycle_iter_complete <iter> <verdict> <velocity> <failure_count> <elapsed_s>
-#     DIM `↳ iter N complete: verdict=X ...`
+#   - _render_cycle_iter_complete <iter> <verdict> <score> <failure_count> <elapsed_s>
+#     DIM `↳ iter N complete: verdict=X score=Y ...` (#1254: was `velocity=`)
 #   - _render_cycle_exit <cycle_id> <reason> <iter> <max>
 #     heavy ═ divider + verdict glyph line (✓ converged | ✗ max_iterations/plateau/
 #     divergence/blocked | ⚠ aborted/verdict_missing)
