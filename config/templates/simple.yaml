@@ -233,7 +233,7 @@ design-gate:
 # (no `convergence:`) — standard.yaml's design_impact_cycle binds impact via
 # exit_when and the typed-aggregator preflight only checks MARKER-BEARING targets;
 # adding a marker here would break standard.yaml. Router knobs copied from
-# standard.yaml (T2, timeout 180s, max_turns 45, #960).
+# standard.yaml (T2, timeout 600s, max_turns 45, #960/#1242).
 impact:
   gate: auto
   roles: [impact_analyzer]
@@ -241,7 +241,12 @@ impact:
     destinations: [file, stdout]
     tail_lines: 200
   router:
-    timeout_s: 180
+    # #1242: right-sized 180→600 to match the comparable tool-heavy T2 sibling
+    # `design`. The 180s ceiling was inherited from the T1 era; the #960 T2
+    # (sonnet) tier bump raised per-turn latency, so a 45-turn job overran both
+    # 180s AND the #1230 escalated 270s retry (rc=124, ~7.5min silent hang, run
+    # 20260704195255). retries below stays a safety net, not the primary budget.
+    timeout_s: 600
     max_turns: 45
     # #1230: impact was the lone stage that timed out (rc=124) in the #944
     # dogfood. One retry-on-timeout (escalated budget) before the empty

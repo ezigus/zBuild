@@ -89,7 +89,11 @@ impact:
     destinations: [file, stdout]
     tail_lines: 200
   router:
-    timeout_s: 180
+    # #1242: right-sized 180→600 to match the comparable tool-heavy T2 sibling
+    # `design`. The 180s ceiling predated the #960 T2 (sonnet) tier bump, whose
+    # higher per-turn latency made a 45-turn job overrun both 180s AND the #1230
+    # escalated 270s retry (rc=124, ~7.5min silent hang, run 20260704195255).
+    timeout_s: 600
     # #891: impact is the most tool-heavy stage (Reads every design-scope file
     # + repo-wide greps for symbols/enumerations/order assertions). The generic
     # 25 default starved it (max_turns reached on a trivial issue in run
