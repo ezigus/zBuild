@@ -479,14 +479,18 @@ _cycle_render_feedback_digest() {
     return 0
 }
 
-# ─── _cycle_render_predicate_result <iter> (#833) ────────────────────────────
+# ─── _cycle_render_predicate_result <iter> [state_dir] (#833, #1241) ──────────
 # Builds the cycle OUTPUT-banner body from the last-stashed predicate eval:
 #   line1: <kind> stage=<s> field=<f> op=<op> value=<v> → MATCHED|NOT MATCHED (got=<actual>)
 #   line2: velocity=<0-fc> failure_count=<fc>
+#   line3 (#1241, NOT MATCHED only): failed gates: <list>[ — <reason>]
 # velocity = 0 - _CYCLE_LAST_FAILURE_COUNT (mirrors cycle.iteration.complete).
-# Pure/read-only; no errexit hazard.
+# The optional <state_dir> plumbs the gate-aggregator rollup so the banner names
+# WHICH gate blocked (not just "NOT MATCHED (got=fail)"); omitted → back-compat
+# two-line body. Pure/read-only; no errexit hazard.
 _cycle_render_predicate_result() {
     local iter="$1"
+    local state_dir="${2:-}"
     local kind="${_CYCLE_LAST_PREDICATE_KIND:-exit_when}"
     local stage="${_CYCLE_LAST_PREDICATE_STAGE:-}"
     local field="${_CYCLE_LAST_PREDICATE_FIELD:-}"
@@ -501,6 +505,21 @@ _cycle_render_predicate_result() {
     printf '%s stage=%s field=%s op=%s value=%s → %s\nvelocity=%s failure_count=%s' \
         "$kind" "$stage" "$field" "$op" "$expected" "$matched_str" \
         "$(( 0 - fc ))" "$fc"
+    # #1241: on a NOT-MATCHED terminating iter, name the failing gate(s) + reason
+    # from the gate-aggregator rollup so the operator sees the cause. A pass
+    # (MATCHED) is never annotated with failures. Best-effort/read-only.
+    if [[ "$match" != "true" && -n "$state_dir" ]]; then
+        local _agg="$state_dir/artifacts/gate-aggregator-result.json"
+        if [[ -f "$_agg" ]]; then
+            local _failed _reason
+            _failed="$(jq -r '(.failed // []) | join(", ")' "$_agg" 2>/dev/null || true)"
+            _reason="$(jq -r '.reason // empty' "$_agg" 2>/dev/null || true)"
+            if [[ -n "$_failed" ]]; then
+                printf '\nfailed gates: %s' "$_failed"
+                [[ -n "$_reason" ]] && printf ' — %s' "$_reason"
+            fi
+        fi
+    fi
     return 0
 }
 
@@ -2205,7 +2224,9 @@ cycle_orchestrator_run() {
         # kind=cycle keeps it fd-2 / stdout-only.
         if [[ -n "${_CYCLE_IO_SEQ[$iter]:-}" ]] && declare -F stage_io_end >/dev/null 2>&1; then
             local _cycle_out_body
-            _cycle_out_body="$(_cycle_render_predicate_result "$iter")"
+            # #1241: plumb state_dir so the banner can name the failing gate(s)
+            # from artifacts/gate-aggregator-result.json.
+            _cycle_out_body="$(_cycle_render_predicate_result "$iter" "$(dirname "$state_file")")"
             # Suppress stdout only (stage_io_end prints nothing useful on fd 1);
             # do NOT redirect fd 2 — a `2>&1` here would swallow the OUTPUT
             # banner into /dev/null in production (#833 / PR #1039).

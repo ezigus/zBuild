@@ -28,6 +28,12 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _AG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_AG_ROOT/core/event-bus/event-bus.sh"
+# #1241: mechanical gates open no router/command span, so this plugin sources the
+# stage-io chokepoint directly (router plugins get it via route.sh) to frame its
+# operator summary. Load-once sentinel makes this a no-op when the runner already
+# sourced it; a standalone/subprocess dispatch still gets stage_io_begin/end.
+# shellcheck source=../../../core/output/stage-io.sh
+source "$_AG_ROOT/core/output/stage-io.sh"
 # #963: source the read-only grammar libs from _ZBUILD_CONTRACT_LIB_DIR (set by
 # zbuild_plugin_bootstrap above) so a self-host run reads the working-tree grammar.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
@@ -159,11 +165,29 @@ _ag_emit_operator_summary() {
     local dests; dests="$(template_stage_io_dests "$stage_id" 2>/dev/null || true)"
     grep -qx stdout <<< "$dests" || return 0
     local io_fd="${ZBUILD_STAGE_IO_FD:-2}"
+    # #1241: mechanical-gate stages open no router/command stage-io span, so this
+    # summary otherwise dangled after the preceding stage's ── end stage-io ──.
+    # Wrap it in a real stage-io span (kind=computed) so it renders inside its own
+    # ── stage-io: <stage> ── / ── end stage-io: <stage> ── frame. begin/end are
+    # called DIRECTLY (not via $()) so the pending-state mutation persists in this
+    # shell — `>/dev/null` suppresses only the seq on fd 1 (which would collide
+    # with the action's $() capture); the banner stays on ZBUILD_STAGE_IO_FD.
+    local _framed=0 _seq=""
+    if declare -F stage_io_begin >/dev/null 2>&1 && declare -F stage_io_end >/dev/null 2>&1; then
+        stage_io_begin --stage "$stage_id" --kind computed \
+            --input "contract summary ($# checks)" >/dev/null || true
+        _seq="${_STAGE_IO_LAST_SEQ:-}"
+        [[ -n "$_seq" ]] && _framed=1
+    fi
     # shellcheck disable=SC2261
     {
         printf 'acceptance-gate — contract summary:\n'
         printf '  %s\n' "$@"
     } >&"$io_fd" 2>/dev/null || true
+    if [[ "$_framed" == "1" ]]; then
+        stage_io_end --stage "$stage_id" --kind computed --seq "$_seq" \
+            --output "contract summary: $# checks" --exit-code 0 >/dev/null || true
+    fi
     return 0
 }
 

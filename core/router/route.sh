@@ -591,6 +591,10 @@ _route_call_claude() {
     if [[ $rc -eq 124 && $_attempt -lt $_retries ]]; then
         _attempt=$(( _attempt + 1 ))
         local _next_secs; _next_secs="$(_route_escalate_timeout "$secs" "$_attempt")"
+        # #1241: a bare event made a multi-minute retry look like a silent hang.
+        # Surface it on the operator terminal (warn → fd 2) so the retry is
+        # visible mid-run. Output-only; the retry control-flow is unchanged.
+        warn "router: ${ZBUILD_CURRENT_STAGE:-stage} timed out (rc=124) — retry ${_attempt}/${_retries}, escalating timeout ${_local_secs}s → ${_next_secs}s"
         eb_emit_event "router.timeout.retry" \
             "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
             "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
@@ -1303,6 +1307,9 @@ ${_diff_pointer}"
             if [[ "$_rr_done" != "true" ]]; then
                 _iter_attempt=$(( _iter_attempt + 1 ))
                 local _rr_next; _rr_next="$(_route_escalate_timeout "$secs" "$_iter_attempt")"
+                # #1241: surface the loop-path retry on the operator terminal too
+                # (mirror the single-shot branch) so it is not a silent hang.
+                warn "router: ${_iter_stage_id:-stage} timed out (rc=124) — iter=$iter retry ${_iter_attempt}/${_iter_retries}, escalating timeout ${_iter_local_secs}s → ${_rr_next}s"
                 eb_emit_event "router.timeout.retry" \
                     "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
                     "stage=${_iter_stage_id:-unknown}" "path=loop" \

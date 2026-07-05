@@ -174,6 +174,52 @@ assert_contains "[SPEC-4b] predicate result restates exit_when" "$pr_out" "exit_
 assert_contains "[SPEC-4b] predicate result shows NOT MATCHED (got=fail)" "$pr_out" "NOT MATCHED (got=fail)"
 assert_contains "[SPEC-4b] predicate result shows velocity + failure_count" "$pr_out" "velocity=-3 failure_count=3"
 
+# ─── [SPEC-11 #1241] banner names the failing gate + reason from aggregator ──
+# When state_dir is plumbed and a gate-aggregator-result.json records failed
+# gates, a NOT MATCHED cycle OUTPUT banner appends "failed gates: <list>" so the
+# operator sees WHICH gate blocked, not just "NOT MATCHED (got=fail)".
+_CYCLE_LAST_PREDICATE_KIND="exit_when"
+_CYCLE_LAST_PREDICATE_STAGE="gate-aggregator"
+_CYCLE_LAST_PREDICATE_FIELD="verdict"
+_CYCLE_LAST_PREDICATE_OP="eq"
+_CYCLE_LAST_PREDICATE_EXPECTED="pass"
+_CYCLE_LAST_PREDICATE_ACTUAL="fail"
+_CYCLE_LAST_PREDICATE_MATCH="false"
+_CYCLE_LAST_FAILURE_COUNT=10
+_sd11="$ZBUILD_STATE_DIR/s11"
+mkdir -p "$_sd11/artifacts"
+printf '%s\n' '{"verdict":"fail","gates":{"test":"fail","acceptance-gate":"pass"},"failed":["test"]}' \
+    > "$_sd11/artifacts/gate-aggregator-result.json"
+pr11="$(_cycle_render_predicate_result 2 "$_sd11" 2>/dev/null)"
+assert_contains "[SPEC-11] banner names the failing gate (failed gates: test)" "$pr11" "failed gates: test"
+assert_contains "[SPEC-11] banner still restates exit_when predicate" "$pr11" "exit_when stage=gate-aggregator"
+
+# [SPEC-11b] no state_dir arg → no failed-gates line (back-compat; renderer with
+# only <iter> behaves exactly as before).
+pr11b="$(_cycle_render_predicate_result 2 2>/dev/null)"
+if grep -q "failed gates" <<< "$pr11b"; then
+    assert_fail "[SPEC-11b] no state_dir → must NOT append failed-gates line" "got: $pr11b"
+else
+    assert_pass "[SPEC-11b] no state_dir → no failed-gates line"
+fi
+
+# [SPEC-11c] MATCHED (converged) → no failed-gates line even if a stale artifact
+# lingers (a pass must never be annotated with failures).
+_CYCLE_LAST_PREDICATE_MATCH="true"
+_CYCLE_LAST_PREDICATE_ACTUAL="pass"
+pr11c="$(_cycle_render_predicate_result 2 "$_sd11" 2>/dev/null)"
+if grep -q "failed gates" <<< "$pr11c"; then
+    assert_fail "[SPEC-11c] MATCHED must NOT append failed-gates line" "got: $pr11c"
+else
+    assert_pass "[SPEC-11c] MATCHED → no failed-gates line"
+fi
+# Restore the NOT-MATCHED stash for the specs that follow.
+_CYCLE_LAST_PREDICATE_KIND="exit_when"
+_CYCLE_LAST_PREDICATE_STAGE="test_assessment"
+_CYCLE_LAST_PREDICATE_ACTUAL="fail"
+_CYCLE_LAST_PREDICATE_MATCH="false"
+_CYCLE_LAST_FAILURE_COUNT=3
+
 # ─── [SPEC-8] orphaned kind=cycle begin → finalizer writes NO .partial.json ──
 # Sourcing stage-io into the runner's MAIN process arms _stage_io_orphan_finalizer
 # for ALL kinds. A cycle that aborts BETWEEN the INPUT begin and the OUTPUT end

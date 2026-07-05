@@ -91,6 +91,37 @@ EOF
 _calls() { wc -l < "$CALL_LOG" | tr -d ' '; }
 _retry_events() { local c; c="$(grep -c '"router.timeout.retry"' "$1" 2>/dev/null || true)"; echo "${c:-0}"; }
 
+# Like _run_case but captures route_to_model's stderr (the operator terminal
+# channel) to <err_out> so a mid-run retry line can be asserted (#1241).
+_run_case_stderr() {
+    local tpl_retries="$1" fail_n="$2" events_out="$3" err_out="$4"
+    : > "$CALL_LOG"; : > "$events_out"; : > "$err_out"
+    local fixture="$TEST_TEMP_DIR/fx.yaml"
+    _write_fixture "$tpl_retries" "$fixture"
+    local driver="$TEST_TEMP_DIR/driver-err.sh"
+    cat > "$driver" <<EOF
+set -uo pipefail
+export PATH="$TEST_TEMP_DIR/bin:\$PATH"
+export HOME="$HOME"
+export ZBUILD_SCOPE_OVERRIDE=1
+export ZBUILD_MODELS_FILE="$ZBUILD_MODELS_FILE"
+export ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/ev"
+export ZBUILD_EVENTS_JSONL="$events_out"
+export ZB_CALL_LOG="$CALL_LOG"
+export ZB_FAIL_N="$fail_n"
+mkdir -p "$TEST_TEMP_DIR/ev"
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+source "$REPO_ROOT/core/pipeline/template.sh"
+source "$REPO_ROOT/core/router/route.sh"
+load_template "$fixture"
+export ZBUILD_CURRENT_STAGE=impact
+route_to_model T2 'ping' --skip-precondition >/dev/null 2>"$err_out"
+EOF
+    bash "$driver" >/dev/null 2>&1 || true
+    return 0
+}
+
 # ── S3: retries=1, times out once then succeeds → 1 retry, 2 calls, success ──
 EV="$TEST_TEMP_DIR/ev-s3.jsonl"
 _run_case 1 1 "$EV" >/dev/null
@@ -131,6 +162,19 @@ assert_contains "[S9] router.retries.override_ignored emitted when env differs" 
     "$(cat "$EV")" "router.retries.override_ignored"
 applied="$(grep '"router.retries.override_ignored"' "$EV" | jq -r '.data.applied' 2>/dev/null | head -1)"
 assert_eq "[S9] override_ignored records applied=1 (per-stage)" "1" "$applied"
+
+# ── S11 (#1241): a mid-run retry surfaces a human-readable line on the terminal ─
+# The retry previously emitted an event ONLY, so a multi-minute retry looked like
+# a silent hang. Assert a warn() line reaches stderr (the operator channel).
+EV="$TEST_TEMP_DIR/ev-s11.jsonl"
+ERR="$TEST_TEMP_DIR/err-s11.txt"
+_run_case_stderr 1 1 "$EV" "$ERR"
+assert_eq "[S11] retries=1, 1 timeout then success → exactly 2 claude calls" "2" "$(_calls)"
+assert_eq "[S11] retries=1 → exactly 1 router.timeout.retry event" "1" "$(_retry_events "$EV")"
+assert_contains "[S11] retry prints a terminal (stderr) line naming the retry" \
+    "$(cat "$ERR")" "retry"
+assert_contains "[S11] retry line surfaces the timeout cause" \
+    "$(cat "$ERR")" "timed out"
 
 # ── S10: new events registered in event-schema.json known_types ──────────────
 SCHEMA="$REPO_ROOT/config/event-schema.json"

@@ -157,7 +157,16 @@ _run_gate_capture() {  # _run_gate_capture <repo> <fd3_capture_file>
         cd "$repo"
         exec 3>"$cap"
         export ZBUILD_STAGE_IO_FD=3
+        export ZBUILD_STATE_DIR="$state_dir"
         source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh"
+        # #1241: plugin.sh now sources stage-io.sh → template.sh, which defines a
+        # real (template-less → empty) template_stage_io_dests that clobbers the
+        # exported stub. Re-assert the stub AFTER the source so the io-gate still
+        # opens (in production the runner has a real template loaded here).
+        template_stage_io_dests() {
+            [[ "${1:-}" == "acceptance-gate" ]] && printf 'file\nstdout\n'
+            return 0
+        }
         acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json"
     ) || true  # verdict=fail (rc=1) is expected in C1; capture is what we assert
 }
@@ -197,6 +206,12 @@ assert_contains "[SPEC-2] summary: SPEC-2 tautology → NEGCTL FAIL on terminal"
     "$(cat "$CAP_C")" "NEGCTL FAIL SPEC-2 tautology"
 assert_eq "[SPEC-1] summary run: no raw nested banner leaked to the terminal" \
     "0" "$(grep -c 'NESTED-STAGE-IO-MARKER' "$CAP_C")"
+# #1241: the summary must render inside its own stage-io frame (not orphaned
+# after the preceding stage's ── end stage-io ──).
+assert_contains "[#1241] summary is opened by a stage-io span for acceptance-gate" \
+    "$(cat "$CAP_C")" "stage-io: acceptance-gate"
+assert_contains "[#1241] summary frame is closed (── end stage-io: acceptance-gate ──)" \
+    "$(cat "$CAP_C")" "end stage-io: acceptance-gate"
 
 # C2: reachability summary — one line per WIRING target.
 REPO_D="$(setup_git_temp_repo "quiet-summary-reach")"
