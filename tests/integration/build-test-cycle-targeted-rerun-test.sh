@@ -107,11 +107,16 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_VERDICT="$v"; _CYCLE_DISPATCH_STATUS="complete"; return 0
 }
 
+# #1253: capture the operator-facing cycle banners (fd 2) so we can assert the
+# targeted-pass-held-for-full-suite line is surfaced (pure observability).
+BANNER_LOG="$TEST_TEMP_DIR/banner.log"
 set +e
-cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
+cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE" \
+    >"$BANNER_LOG" 2>&1
 RC=$?
 set -e
 
+echo "--- banner ---"; cat "$BANNER_LOG"
 echo "--- run_modes ---"; cat "$RUN_MODES"
 iter2_mode="$(awk -F'run_mode=' '/iter=2 /{print $2}' "$RUN_MODES" | head -1)"
 iter3_mode="$(awk -F'run_mode=' '/iter=3 /{print $2}' "$RUN_MODES" | head -1)"
@@ -122,6 +127,11 @@ assert_event_emitted "T2: cycle.test.full_suite_gate emitted on targeted converg
 assert_eq "T3: iter-3 (gate) runs full suite" "full" "$iter3_mode"
 assert_eq "T4: cycle converged (rc=0)" "0" "$RC"
 assert_eq "T5: reason=converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+# #1253: pure-observability — when the full-suite gate holds a targeted pass, the
+# banner shows `MATCHED (got=pass)` yet the cycle continues; an operator line MUST
+# explain why (no silent continue). Behavior (T1-T5) is unchanged.
+assert_contains "T6: operator line explains the held targeted pass (full-suite confirm)" \
+    "$(cat "$BANNER_LOG")" "running full suite to confirm before converging"
 
 cleanup_test_env
 print_test_results
