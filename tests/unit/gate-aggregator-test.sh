@@ -169,6 +169,30 @@ printf '{"verdict":"pass","route_target":"design"}\n' > "$AD/acceptance-gate-res
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-12: route_target on a passing gate ignored → verdict=pass" "$OUT" '.verdict' "pass"
 
+# ── TC-13 (#1244): the suite gate's .test_output is surfaced in gate-feedback ─
+# The test stage writes failing-test detail into test-results.json's .test_output
+# (NOT .summary/.reason/.failures[]/.findings[]). The gate→build feedback MUST
+# list WHICH tests failed so the next build iter has an actionable path — not just
+# "verdict=fail (no structured detail)".
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+# jq -n so the multi-line .test_output is a VALID JSON string (escaped \n), exactly
+# as the test plugin writes it — a raw newline inside the JSON literal is invalid.
+jq -n '{verdict:"fail",exit_code:1,passed:482,failed:2,
+        test_output:"FAIL tests/unit/foo-test.sh: expected 3 got 4\nFAIL tests/unit/bar-test.sh: assertion baz failed"}' \
+    > "$AD/test-results.json"
+run_agg "$SF" >/dev/null
+FB="$(cat "$AD/gate-feedback.md")"
+assert_file_exists "TC-13: gate-feedback.md written on suite fail" "$AD/gate-feedback.md"
+assert_contains "TC-13: feedback lists the first failing test" "$FB" "tests/unit/foo-test.sh"
+assert_contains "TC-13: feedback lists the second failing test" "$FB" "tests/unit/bar-test.sh"
+if grep -qF -- "no structured detail" <<< "$FB"; then
+    assert_fail "TC-13: feedback is NOT the empty 'no structured detail' fallback" \
+        "fallback text still present despite test_output detail"
+else
+    assert_pass "TC-13: feedback is NOT the empty 'no structured detail' fallback"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

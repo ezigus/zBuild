@@ -253,8 +253,10 @@ $_impact_instructions"
 
     # ─── Route to LLM (T2 default per manifest config.tier_default, #960/#1230) ─
     # The fallback MUST match manifest tier_default (T2). On T1 (haiku) impact's
-    # ~45 tool-turns overrun the 180s router timeout (rc=124). The tier-drift
-    # guard (impact-tier-test.sh S2) pins fallback == manifest tier_default.
+    # ~45 tool-turns overran the then-180s router timeout (rc=124); #1242 later
+    # right-sized that wall-clock budget to 600s (see the templates). The
+    # tier-drift guard (impact-tier-test.sh S2) pins fallback == manifest
+    # tier_default.
     local tier="${ZBUILD_IMPACT_TIER:-T2}"
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
