@@ -89,6 +89,27 @@ else
     assert_pass "G3: skipped — no real gtimeout/timeout on host (run-tests.sh degrades to no-timeout)"
 fi
 
+# ─── G4: a MISSING *-test.sh path is SKIPPED, never a phantom failure (#1239) ─
+# The targeted re-run list is an advisory hint. A path that does not resolve
+# (e.g. a stale absolute path into a destroyed per-iter temp dir) must be
+# skipped — running `bash <missing>` would surface a bogus "No such file" FAIL
+# and inflate the failure count (the #945 dogfood 5->10 phantom-failure bug).
+out="$("${_OUTER[@]}" bash "$RUN_TESTS" --files "$FX/good-test.sh" "$FX/gone-test.sh" 2>&1)"
+rc=$?
+assert_eq "G4: run returns 0 — a missing test path is not a failure" "0" "$rc"
+case "$out" in
+    *"skip missing: $FX/gone-test.sh"*) assert_pass "G4: missing test path skipped, not executed" ;;
+    *) assert_fail "G4: missing test path should be skipped" "out: $out" ;;
+esac
+case "$out" in
+    *"unit: 1/1 passed"*) assert_pass "G4: denominator counts only the resolvable test (1/1)" ;;
+    *) assert_fail "G4: summary must exclude the missing path (expected 1/1)" "out: $out" ;;
+esac
+case "$out" in
+    *"FAIL $FX/gone-test.sh"*) assert_fail "G4: missing path must NOT surface as FAIL" "out: $out" ;;
+    *) assert_pass "G4: missing path produced no phantom FAIL line" ;;
+esac
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

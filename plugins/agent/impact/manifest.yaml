@@ -32,9 +32,11 @@ provides:
 config:
   # T2 (sonnet), not T1 (haiku): impact is the most tool-heavy agentic stage
   # (Reads every design-scope file + repo-wide greps; max_turns 45). On T1 its
-  # per-turn latency × tool-turns blew past the 180s router timeout once the
+  # per-turn latency × tool-turns blew past the then-180s router timeout once the
   # design scope grew (rc=124, run 20260619082915-41231). Aligns impact with its
   # T2 reasoning siblings (design/plan/review/build/test_assessment). (#960)
+  # #1242: the T2 tier's higher per-turn latency also drove the wall-clock budget
+  # up — router.timeout_s is now 600 (matching `design`), not the old 180.
   tier_default: T2
   valid_verdicts:
     - complete

@@ -55,11 +55,17 @@ _test_compute_target_files() {
 
     local -a all_files=()
 
-    # Add files from red-set JSON (array of repo-relative paths)
+    # Add files from red-set JSON (array of repo-relative paths).
+    # #1239: the red-set is an ADVISORY hint, not a contract. Resolve each path
+    # against the CURRENT tree ($repo_root) and DROP any that does not exist —
+    # a stale/absolute/deleted path is never turned into a target (and thus never
+    # a phantom "No such file" failure). When every hint is dead the list stays
+    # empty and the caller falls back to a full regression run.
     if [[ -n "$red_set_json" && -f "$red_set_json" ]]; then
         local _rf
         while IFS= read -r _rf; do
-            [[ -n "$_rf" ]] && all_files+=("$_rf")
+            [[ -n "$_rf" ]] || continue
+            [[ -f "$repo_root/$_rf" ]] && all_files+=("$_rf")
         done < <(jq -r '.[]? // empty' "$red_set_json" 2>/dev/null || true)
     fi
 
@@ -414,12 +420,27 @@ _test_run_inner() {
     # ("missing == empty": absent red-set means clean run or no prior run).
     local _red_set_path
     _red_set_path="$(dirname "$output_json")/test-red-set.json"
+    # #1239: store DURABLE repo-relative paths so a valid hint survives across
+    # iterations (each iter runs in a fresh temp dir). A full run's FAIL lines
+    # may carry either the logical staging path ($tmp) or its PHYSICAL form —
+    # on macOS $TMPDIR is reached through a /var -> /private/var symlink, so a
+    # runner that globs off a resolved cwd emits `pwd -P` paths that differ from
+    # $tmp. Strip BOTH prefixes; a bare-relative path (targeted run) is left
+    # untouched. Missing this strip stored absolute temp paths (the T5 bug).
+    local _tmp_phys
+    _tmp_phys="$(cd "$tmp" 2>/dev/null && pwd -P)"
+    # Build the strip expressions; only add the physical-prefix strip when it is
+    # non-empty AND differs from $tmp (an empty value would collapse to `s|^/||`
+    # and wrongly relativize unrelated absolute paths).
+    local -a _strip_sed=(-e "s|^${tmp}/||")
+    [[ -n "$_tmp_phys" && "$_tmp_phys" != "$tmp" ]] && _strip_sed+=(-e "s|^${_tmp_phys}/||")
     {
         local _raw_fail_paths _rel_paths
         _raw_fail_paths="$(_test_extract_failing_files "$raw_output")"
         if [[ -n "$_raw_fail_paths" ]]; then
             _rel_paths="$(printf '%s\n' "$_raw_fail_paths" \
-                | sed "s|^${tmp}/||" | sort -u | grep -v '^[[:space:]]*$')"
+                | sed "${_strip_sed[@]}" \
+                | sort -u | grep -v '^[[:space:]]*$')"
         else
             _rel_paths=""
         fi

@@ -524,6 +524,10 @@ printf '#!/bin/bash\n# references: source_module.sh\necho hello\n' \
 printf '#!/bin/bash\necho world\n' \
     > "$REPO_T14/tests/integration/unrelated-test.sh"
 
+# #1239: the red-set is an advisory hint resolved against the CURRENT tree, so
+# a hint path is only unioned in when the file actually exists — create it.
+printf '#!/bin/bash\nexit 1\n' > "$REPO_T14/tests/unit/prev-fail-test.sh"
+
 RED_SET_T14="$TEST_TEMP_DIR/red-set-t14.json"
 printf '["tests/unit/prev-fail-test.sh"]\n' > "$RED_SET_T14"
 
@@ -535,6 +539,16 @@ assert_contains "T14: grep-matched path included" "$_target_t14" "references-sou
 # Deduplication: grep match + red-set overlap would still appear once
 _t14_unrelated="$(printf '%s\n' "$_target_t14" | grep -c "unrelated" || true)"
 assert_eq "T14: unrelated test not included" "0" "$_t14_unrelated"
+
+# #1239: a red-set path that does NOT resolve against the current tree is
+# dropped (advisory hint) — never turned into a target that would phantom-fail.
+RED_SET_T14B="$TEST_TEMP_DIR/red-set-t14b.json"
+printf '["tests/unit/gone-fail-test.sh"]\n' > "$RED_SET_T14B"
+_target_t14b="$(ZBUILD_TEST_RED_SET="$RED_SET_T14B" \
+                ZBUILD_TEST_CHANGED_FILES="" \
+                _test_compute_target_files "$REPO_T14")"
+assert_eq "T14b: unresolvable red-set hint dropped (advisory, not a target)" \
+    "" "$_target_t14b"
 
 # ─── T15: _test_build_targeted_cmd — renders the configurable {files} template ─
 print_test_section "T15. _test_build_targeted_cmd renders the {files} template"

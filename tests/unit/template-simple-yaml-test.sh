@@ -112,10 +112,12 @@ assert_eq "[SPEC-3] design-gate roles"    "design_gate" "$_TPL_STAGE_ROLES_desig
 assert_eq "[SPEC-3] design-gate io_dests" "file,stdout" "$_TPL_STAGE_IO_DESTS_design_gate"
 
 # impact (#1218, ADR-046): reused T2 agent as a lone advisory-by-placement stage
-# (role impact_analyzer, timeout 180 / max_turns 45 copied from standard.yaml).
+# (role impact_analyzer, timeout 600 / max_turns 45 copied from standard.yaml).
+# #1242: timeout right-sized 180→600 to match its tool-heavy T2 sibling `design`
+# (the 180s T1-era budget was too low for a 45-turn sonnet job — rc=124 hang).
 assert_eq "[SPEC-3] impact roles"            "impact_analyzer" "$_TPL_STAGE_ROLES_impact"
 assert_eq "[SPEC-3] impact io_dests"         "file,stdout"     "$_TPL_STAGE_IO_DESTS_impact"
-assert_eq "[SPEC-3] impact router timeout"   "180"             "$_TPL_STAGE_ROUTER_TIMEOUT_impact"
+assert_eq "[SPEC-3] impact router timeout"   "600"             "$_TPL_STAGE_ROUTER_TIMEOUT_impact"
 assert_eq "[SPEC-3] impact router max_turns" "45"              "$_TPL_STAGE_ROUTER_MAX_TURNS_impact"
 
 # build

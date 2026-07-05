@@ -111,6 +111,16 @@ if [[ "${1:-}" == "--files" ]]; then
       echo "skip non-test: $_tf" >&2
       continue
     fi
+    # #1239: the targeted-rerun list is an ADVISORY hint. A path that does not
+    # resolve against the current tree (e.g. a stale absolute path into a
+    # destroyed per-iter temp dir) must be SKIPPED — executing `bash <missing>`
+    # would surface a bogus "No such file" FAIL and inflate the failure count
+    # (the #945 dogfood 5->10 phantom-failure bug). Skip before the count so the
+    # denominator reflects only resolvable tests.
+    if [[ ! -f "$_tf" ]]; then
+      echo "skip missing: $_tf" >&2
+      continue
+    fi
     _tf_total=$((_tf_total + 1))
     _tf_out="$(mktemp -t zbuild-test-targeted.XXXXXX)"
     if _rt_run "$_tf" "$_tf_out"; then
