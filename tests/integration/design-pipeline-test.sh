@@ -158,7 +158,10 @@ _make_plugin "pr"              "agent" 0 >/dev/null
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
 set +e
-env -u ZBUILD_STATE_DIR \
+# #1240: also scrub ZBUILD_STATE_ROOT so the default-state baseline (HOME-anchored
+# $HOME/.zbuild/state/runs/<id>/) is deterministic when this runs nested inside the
+# pipeline test stage, whose #1127 sandbox fences an ambient ZBUILD_STATE_ROOT.
+env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
     ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \

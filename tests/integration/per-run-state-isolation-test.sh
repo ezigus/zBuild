@@ -61,7 +61,11 @@ HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
 run_pipeline() {
     local run_id="$1"; shift
     set +e
-    env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_STATE_FILE \
+    # #1240: also scrub ZBUILD_STATE_ROOT — a default-state run must root under
+    # $HOME/.zbuild/state/runs/<id>/. Nested inside the pipeline test stage the
+    # #1127 sandbox exports ZBUILD_STATE_ROOT=<tmp>/.zbuild-nested-state; leaking
+    # it in re-roots the runner off HOME and breaks the isolation assertions.
+    env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_STATE_FILE \
         ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
@@ -94,7 +98,9 @@ fi
 # ─── T4: explicit ZBUILD_STATE_DIR still wins (no runs/ re-root) ─────────────
 EXPLICIT="$TEST_TEMP_DIR/explicit-state"; mkdir -p "$EXPLICIT"
 set +e
-env ZBUILD_STATE_DIR="$EXPLICIT" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+# #1240: scrub ambient ZBUILD_STATE_ROOT so the explicit-STATE_DIR-wins contract
+# is asserted without an interfering fence (the #1127 sandbox sets it when nested).
+env -u ZBUILD_STATE_ROOT ZBUILD_STATE_DIR="$EXPLICIT" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ccc" HOME="$HOME_DIR" PATH="$PATH" \
@@ -130,7 +136,9 @@ cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
 build_run() { env | grep '^ZBUILD_EVENTS_DIR=' > "$ENVCAP2" 2>/dev/null || true; return 0; }
 EOF
 set +e
-env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB \
+# #1240: scrub ambient ZBUILD_STATE_ROOT (the #1127 nested-sandbox fence) so
+# STATE_FILE-driven resolution isn't shadowed by an interfering state root.
+env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB \
     ZBUILD_STATE_FILE="$RESUME_DIR/pipeline-state.json" \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
@@ -191,7 +199,10 @@ fi
 EPHEMERAL_TMP="$TEST_TEMP_DIR/ephemeral-tmp"; mkdir -p "$EPHEMERAL_TMP"
 rm -f "$GLOBAL_STATE/events.jsonl" 2>/dev/null || true
 set +e
-env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_DIR \
+# #1240: scrub ZBUILD_STATE_ROOT too — event-bus.sh derives its default events dir
+# from ${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}, so a leaked fence (from the #1127
+# nested sandbox) would divert this unpinned emit away from the ephemeral $TMPDIR.
+env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     HOME="$HOME_DIR" TMPDIR="$EPHEMERAL_TMP" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" PATH="$PATH" \
     bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event "pipeline.start" k=v' >/dev/null 2>&1
