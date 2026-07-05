@@ -118,10 +118,15 @@ _ga_build_roster() {
 # ─── _ga_gate_detail <name> <result_path> ────────────────────────────────────
 # B2 (ADR-040): render one failing gate's actionable detail for the consolidated
 # gate→build feedback. Best-effort jq extraction of the common result fields
-# (summary / reason / failures[] / findings[]); a missing artifact is a
-# fail-closed "did not run" note.
+# (summary / reason / failures[] / findings[] / test_output); a missing artifact
+# is a fail-closed "did not run" note.
+# #1244: the suite gate (test-results.json) records failing-test detail in
+# `.test_output` (already sanitized + ≤10KB by the test plugin), NOT in any of
+# the list fields — harvest it too so the gate→build feedback lists WHICH tests
+# failed instead of the empty "no structured detail" fallback. Repo-agnostic: any
+# gate that writes `.test_output` benefits; gates that don't are unaffected.
 _ga_gate_detail() {
-    local name="$1" path="$2" reason summary fails finds f
+    local name="$1" path="$2" reason summary fails finds test_output f
     printf '## %s\n\n' "$name"
     if [[ ! -f "$path" ]]; then
         printf -- '- artifact missing: the gate did not run (fail-closed).\n\n'
@@ -141,7 +146,12 @@ _ga_gate_detail() {
         printf -- '- findings:\n'
         while IFS= read -r f; do [[ -n "$f" ]] && printf '    - %s\n' "$f"; done <<< "$finds"
     fi
-    [[ -z "$summary$reason$fails$finds" ]] && printf -- '- verdict=fail (no structured detail in artifact).\n'
+    test_output="$(jq -r '.test_output // empty' "$path" 2>/dev/null)"
+    if [[ -n "$test_output" ]]; then
+        printf -- '- test output:\n'
+        printf '```\n%s\n```\n' "$test_output"
+    fi
+    [[ -z "$summary$reason$fails$finds$test_output" ]] && printf -- '- verdict=fail (no structured detail in artifact).\n'
     printf '\n'
 }
 
