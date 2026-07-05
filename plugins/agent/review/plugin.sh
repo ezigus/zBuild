@@ -525,7 +525,7 @@ $_review_instructions"
     # additionally exports ZBUILD_ROUTER_TOOL_USES_FILE so the router writes
     # tool_uses[] to a side-channel file we can parse back here ($() discards
     # subshell state otherwise).
-    local tier="${ZBUILD_REVIEW_TIER:-T2}"
+    local tier; tier="$(resolve_tier review "$_REVIEW_DIR")" || return 1
     local raw_response="" router_rc=0
     local _audit_enabled=0 _audit_tool_uses_file=""
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"

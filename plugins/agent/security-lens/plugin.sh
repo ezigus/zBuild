@@ -112,7 +112,7 @@ _security_lens_run_inner() {
     # Without the JSON envelope + .result extraction, reasoning turns leak
     # as a prose preamble that breaks the strict-JSON parser below.
     # Save/restore so an outer caller's env intent is preserved.
-    local tier="${ZBUILD_SECURITY_LENS_TIER:-T3}"
+    local tier; tier="$(resolve_tier security-lens "$_SEC_LENS_DIR")" || return 1
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1

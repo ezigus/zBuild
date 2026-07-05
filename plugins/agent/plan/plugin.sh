@@ -466,7 +466,7 @@ $_plan_instructions"
     # preamble and break the strict-JSON parser below.
     #
     # Save/restore so a caller that set the flag externally is not clobbered.
-    local tier="${ZBUILD_PLAN_TIER:-T2}"
+    local tier; tier="$(resolve_tier plan "$_PLAN_DIR")" || return 1
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1

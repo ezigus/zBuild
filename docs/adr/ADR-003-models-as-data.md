@@ -138,15 +138,33 @@ No code change. No plugin change.
 - `legacy/scripts/sw-pipeline.sh:~2563` (router block), `:837` (cost table).
 - `legacy/scripts/sw-self-optimize.sh:851-893` (Thompson), `:907-955` (UCB1).
 
-## Note — plugin tier fallback must equal manifest `config.tier_default` (#960/#1230)
+## Manifest `config.tier_default` is the single source of truth for a plugin's tier (#960/#1230/#1231)
 
-Agent plugins select their tier via a `${ZBUILD_<NAME>_TIER:-T?}` fallback in
-`plugin.sh` and *also* declare `config.tier_default` in `manifest.yaml`. Nothing
-wires the manifest into the resolved tier yet (generic manifest→tier wiring is a
-tracked follow-up), so the `plugin.sh` fallback is authoritative — and it MUST
-match the manifest, or the declared tier is silently inert. #960 declared
+A plugin's tier lives in **exactly one place**: `config.tier_default` in its own
+`manifest.yaml`. Plugin code never hardcodes a tier literal.
+
+**Resolution (`scripts/lib/tier-resolve.sh`):** routing plugins obtain their tier
+via `resolve_tier <plugin_id> <plugin_dir>`, sourced by construction through
+`core/router/route.sh` (every routing plugin sources the router). Order:
+
+1. **Operator override wins** — `ZBUILD_<ID>_TIER` (ID uppercased, `-`→`_`;
+   e.g. `review-lens` → `ZBUILD_REVIEW_LENS_TIER`). This is the documented,
+   supported way to retier a plugin without touching its manifest.
+2. Else the manifest's `config.tier_default`.
+3. Else **fail loud** (non-zero) — a routing plugin with no declared tier is a
+   bug, not a silent default. The result must match `^T[0-4]$`.
+
+**Plug-and-play:** there is no central stage→tier map in the engine. A new
+routing plugin plugs in by declaring `config.tier_default` in its own manifest —
+zero engine edits.
+
+**History / why this rule exists:** plugins used to select their tier via a
+`${ZBUILD_<ID>_TIER:-T?}` literal in `plugin.sh` that *duplicated* the manifest
+value, and nothing read the manifest. That literal drifted: #960 declared
 `impact.tier_default: T2` but `plugin.sh` kept a stale `:-T1}` fallback, so
-impact ran on T1 (haiku) and timed out (rc=124, #1230). Fixed by flipping the
-fallback to T2; `tests/unit/impact-tier-test.sh` adds a drift-guard asserting
-every agent plugin's `:-T?}` fallback equals its manifest `config.tier_default`,
-so no plugin can silently drift again.
+impact ran on T1 (haiku) and timed out (rc=124, #1230). #1231 retired all nine
+literals in favor of `resolve_tier`. Behavior was byte-identical at the cutover
+(every literal already equalled its manifest); the value is removing the drift
+class. `tests/unit/impact-tier-test.sh` now enforces the invariant: **no
+`plugin.sh` may contain a `${ZBUILD_*_TIER:-T[0-4]}` literal**, and `resolve_tier`
+must return each plugin's manifest `config.tier_default`.

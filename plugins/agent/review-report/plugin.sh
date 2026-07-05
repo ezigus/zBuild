@@ -90,7 +90,7 @@ _rr_run_inner() {
         fi
     fi
 
-    local tier="${ZBUILD_REVIEW_REPORT_TIER:-T2}"
+    local tier; tier="$(resolve_tier review-report "$_RR_DIR")" || return 1
 
     # Register per-lens artifacts before fan-out so each lens gets distinct evidence.
     _rr_populate_artifact_registry "$artifact_dir"

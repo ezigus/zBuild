@@ -29,6 +29,11 @@ source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
 # _router_rate_limit_message let the router surface an honest disposition
 # instead of the opaque "claude CLI failed (rc=1)". Idempotent source.
 source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
+# #1231 (ADR-003): resolve_tier — manifest config.tier_default is the single
+# source of truth for a plugin's tier (operator override ZBUILD_<ID>_TIER wins).
+# Sourced here so every routing plugin (all source route.sh) gets it by
+# construction, replacing the per-plugin hardcoded `${ZBUILD_<ID>_TIER:-Tn}`.
+source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal

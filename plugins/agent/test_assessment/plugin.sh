@@ -423,7 +423,7 @@ $_ta_instructions"
     redacted_prompt="$(cat "$prompt_file")"
 
     # ─── Route to LLM (T2) with env save/restore ─────────────────────────────
-    local tier="${ZBUILD_TEST_ASSESSMENT_TIER:-T2}"
+    local tier; tier="$(resolve_tier test_assessment "$_TEST_ASSESSMENT_DIR")" || return 1
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1
