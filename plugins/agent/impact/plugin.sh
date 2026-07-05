@@ -255,9 +255,10 @@ $_impact_instructions"
     # The fallback MUST match manifest tier_default (T2). On T1 (haiku) impact's
     # ~45 tool-turns overran the then-180s router timeout (rc=124); #1242 later
     # right-sized that wall-clock budget to 600s (see the templates). The
-    # tier-drift guard (impact-tier-test.sh S2) pins fallback == manifest
-    # tier_default.
-    local tier="${ZBUILD_IMPACT_TIER:-T2}"
+    # Tier from the single source of truth: impact's own manifest
+    # config.tier_default (T2), via resolve_tier (#1231). ZBUILD_IMPACT_TIER
+    # still overrides. No hardcoded literal — that is what drifted in #960/#1230.
+    local tier; tier="$(resolve_tier impact "$_IMPACT_DIR")" || return 1
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"

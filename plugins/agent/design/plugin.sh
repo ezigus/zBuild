@@ -319,7 +319,7 @@ DESIGN_PROMPT
     append_prompt_override "$prompt_input_file" "design"
 
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-    local tier="${ZBUILD_DESIGN_TIER:-T2}"
+    local tier; tier="$(resolve_tier design "$_DESIGN_DIR")" || return 1
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || echo 5)"
     [[ "$max_iter" =~ ^[0-9]+$ ]] || max_iter=5
 

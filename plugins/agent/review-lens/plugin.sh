@@ -150,7 +150,7 @@ _review_lens_run_inner() {
     # ADR-018 Pattern 1: JSON envelope mode so reasoning turns don't leak as a
     # prose preamble that breaks the strict-JSON parse. Save/restore the env so
     # an outer caller's intent is preserved.
-    local tier="${ZBUILD_REVIEW_LENS_TIER:-T2}"
+    local tier; tier="$(resolve_tier review-lens "$_RL_DIR")" || return 1
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"

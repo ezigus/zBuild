@@ -322,7 +322,7 @@ _build_stage_run_inner() {
 
     # ─── Route through agent loop (ADR-018 Pattern 2) ────────────────────────
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-    local tier="${ZBUILD_BUILD_TIER:-T2}"
+    local tier; tier="$(resolve_tier build "$_BUILD_DIR")" || return 1
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || echo 10)"
     [[ "$max_iter" =~ ^[0-9]+$ ]] || max_iter=10
     # ─── #511 F2: cycle-budget clamp ─────────────────────────────────────────
