@@ -4,7 +4,7 @@
 # Pairs cover layout (NO_COLOR=1, exact bytes, no ANSI) + colored
 # (FORCE_COLOR=1 + ZBUILD_STAGE_IO_FORCE_COLOR=1, exact bytes incl ANSI):
 #   - cycle-io-input   (INPUT-phase banner: feedback-edge digest)
-#   - cycle-io-output  (OUTPUT-phase banner: predicate eval + velocity)
+#   - cycle-io-output  (OUTPUT-phase banner: predicate eval + multi-axis health)
 # Determinism env (per ADR-015 §v5/§G):
 #   ZBUILD_TERM_WIDTH_OVERRIDE=100, ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000
 # Goldens regenerate by running this file with ZBUILD_REGEN_GOLDENS=1.
@@ -67,7 +67,7 @@ emit_cycle_banner() {
 
     local in_body="prior_test_assessment(fail, 3 changes)"
     local out_body="exit_when stage=test_assessment field=verdict op=eq value=pass → NOT MATCHED (got=fail)
-velocity=-3 failure_count=3"
+health: progress=186 (3 files, +184/-2) - defects=3 → score=183"
 
     NO_COLOR="$nocolor" ZBUILD_STAGE_IO_FORCE_COLOR="$force" ZBUILD_STAGE_IO_FD=3 \
     ZBUILD_TERM_WIDTH_OVERRIDE=100 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \

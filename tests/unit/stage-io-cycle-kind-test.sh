@@ -2,7 +2,8 @@
 # Tests: core/output/stage-io.sh — kind=cycle per-iter cycle boundary banners
 # (issue #833, ADR-015 §G). Cycles have NO template io: block, so the kind=cycle
 # arm forces dests=stdout (fd-2 only; never file, never gh_comment). INPUT is a
-# feedback-edge digest, OUTPUT is the termination-predicate eval + velocity.
+# feedback-edge digest, OUTPUT is the termination-predicate eval + multi-axis
+# health score (#1243: code-change progress − defects → score, calc shown).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -169,10 +170,55 @@ _CYCLE_LAST_PREDICATE_EXPECTED="pass"
 _CYCLE_LAST_PREDICATE_ACTUAL="fail"
 _CYCLE_LAST_PREDICATE_MATCH="false"
 _CYCLE_LAST_FAILURE_COUNT=3
+# No state_dir → no build-summary → progress axis reads zero ("no progress").
 pr_out="$(_cycle_render_predicate_result 3 2>/dev/null)"
 assert_contains "[SPEC-4b] predicate result restates exit_when" "$pr_out" "exit_when stage=test_assessment field=verdict op=eq value=pass"
 assert_contains "[SPEC-4b] predicate result shows NOT MATCHED (got=fail)" "$pr_out" "NOT MATCHED (got=fail)"
-assert_contains "[SPEC-4b] predicate result shows velocity + failure_count" "$pr_out" "velocity=-3 failure_count=3"
+# #1243: multi-axis human-readable health, calculation shown (progress − defects → score).
+assert_contains "[SPEC-4b] health line shows defects (accurate count)" "$pr_out" "defects=3"
+assert_contains "[SPEC-4b] health line shows combined score" "$pr_out" "score=-3"
+assert_contains "[SPEC-4b] zero code change reads 'no progress'" "$pr_out" "no progress"
+
+# ─── [SPEC-4c] #1243 multi-axis health — code-change PROGRESS axis ────────────
+# With an applied build diff this iter, the health line surfaces forward progress
+# (files + lines) combined with the defect count into one score, calculation shown.
+_1243_sd="$TEST_TEMP_DIR/state-1243-progress"
+mkdir -p "$_1243_sd/artifacts"
+cat > "$_1243_sd/artifacts/build-summary.json" <<'JSON'
+{"files_changed":["a.sh","b.sh","c.sh"],"lines_added":184,"lines_removed":2,"verdict":"pass"}
+JSON
+_CYCLE_LAST_FAILURE_COUNT=5
+pr_prog="$(_cycle_render_predicate_result 2 "$_1243_sd" 2>/dev/null)"
+assert_contains "[SPEC-4c] progress axis totals lines changed" "$pr_prog" "progress=186"
+assert_contains "[SPEC-4c] progress axis shows files + numstat" "$pr_prog" "3 files"
+assert_contains "[SPEC-4c] progress axis shows +added/-removed" "$pr_prog" "+184/-2"
+assert_contains "[SPEC-4c] defect axis shown" "$pr_prog" "defects=5"
+assert_contains "[SPEC-4c] combined score = progress − defects" "$pr_prog" "score=181"
+if grep -q "no progress" <<< "$pr_prog"; then
+    assert_fail "[SPEC-4c] non-zero diff must NOT read 'no progress'" "got: $pr_prog"
+else
+    assert_pass "[SPEC-4c] non-zero diff does not read 'no progress'"
+fi
+
+# ─── [SPEC-4d] #1243 zero-diff iteration reads as "no progress" ───────────────
+_1243_sd0="$TEST_TEMP_DIR/state-1243-zero"
+mkdir -p "$_1243_sd0/artifacts"
+cat > "$_1243_sd0/artifacts/build-summary.json" <<'JSON'
+{"files_changed":[],"lines_added":0,"lines_removed":0,"verdict":"scope_violation"}
+JSON
+_CYCLE_LAST_FAILURE_COUNT=5
+pr_zero="$(_cycle_render_predicate_result 2 "$_1243_sd0" 2>/dev/null)"
+assert_contains "[SPEC-4d] zero-diff reads 'no progress'" "$pr_zero" "no progress"
+assert_contains "[SPEC-4d] zero-diff still shows defects" "$pr_zero" "defects=5"
+assert_contains "[SPEC-4d] zero-diff score = 0 − defects" "$pr_zero" "score=-5"
+
+# ─── [SPEC-4e] #1243 absent build-summary → progress axis reads zero ─────────
+_1243_sde="$TEST_TEMP_DIR/state-1243-absent"
+mkdir -p "$_1243_sde/artifacts"
+_CYCLE_LAST_FAILURE_COUNT=2
+pr_absent="$(_cycle_render_predicate_result 2 "$_1243_sde" 2>/dev/null)"
+assert_contains "[SPEC-4e] missing build-summary reads 'no progress'" "$pr_absent" "no progress"
+assert_contains "[SPEC-4e] missing build-summary score = 0 − defects" "$pr_absent" "score=-2"
 
 # ─── [SPEC-11 #1241] banner names the failing gate + reason from aggregator ──
 # When state_dir is plumbed and a gate-aggregator-result.json records failed
