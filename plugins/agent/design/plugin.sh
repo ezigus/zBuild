@@ -33,6 +33,8 @@ source "$_DESIGN_ROOT/core/router/route.sh"
 source "$_DESIGN_ROOT/core/output/stage-io.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_DESIGN_ROOT/scripts/lib/prompt-overrides.sh"
+# shellcheck source=../../../scripts/lib/router-rc-classify.sh
+source "$_DESIGN_ROOT/scripts/lib/router-rc-classify.sh"
 # #963: read-only grammar lib from _ZBUILD_CONTRACT_LIB_DIR (self-host redirect).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
@@ -340,8 +342,32 @@ DESIGN_PROMPT
     fi
 
     if [[ $router_rc -ge 2 ]]; then
-        warn "_design_stage_run_inner: route_to_model_loop rc=$router_rc — design stage failed"
-        emit_event "plugin.run.error" "plugin=design" "reason=router_error" "rc=$router_rc"
+        local _rc_verdict _rc_reason
+        _router_rc_classify "$router_rc" _rc_verdict _rc_reason
+        error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
+        emit_event "plugin.run.error" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
+        if [[ "$_rc_reason" == "router_timeout" ]]; then
+            # rc=124 is recoverable: write a best-effort stub design.md and return 0
+            # so design_impact_cycle re-iterates rather than treating this as terminal.
+            # Mirrors impact's #937 path (ADR-021 Amendment #945).
+            mkdir -p "$artifact_dir"
+            local _bt='```'
+            {
+                printf '# Design (timeout stub — router rc=%s)\n\n' "$router_rc"
+                printf '## Goal\n\nDesign did not complete (reason=%s). Re-iteration pending.\n\n' "$_rc_reason"
+                if [[ -n "$scope_list" ]]; then
+                    printf '%sscope\n' "$_bt"
+                    printf '%s\n' "$scope_list" | sed 's/^- //'
+                    printf '%s\n\n' "$_bt"
+                else
+                    printf '%sscope\n%s\n\n' "$_bt" "$_bt"
+                fi
+                printf '%sacceptance\nSPEC-1[guard]: timeout stub written on rc=124\nWIRING: none\nTESTFILES:\n%s\n' "$_bt" "$_bt"
+            } > "$output_design_md"
+            emit_event "design.timeout.stub_written" "plugin=design" "rc=$router_rc" "reason=$_rc_reason"
+            return 0
+        fi
+        # rc=137 (OOM-kill) or other non-zero rc: terminal
         return 1
     fi
 

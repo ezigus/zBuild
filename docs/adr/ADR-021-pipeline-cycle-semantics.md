@@ -872,3 +872,40 @@ build/test cycle: `converged → abort_when → scope-deny → max_iterations(by
 blocked`. See also ADR-029 (G2 abandon removed / G3 kept), ADR-013 (router-loop timeout
 non-fatal), ADR-034 (second convergence-suppression instance), and ADR-044 (repo-
 declarable test-count contract).
+
+## Amendment (#945, 2026-07-05) — design stage router timeout is recoverable
+
+`design_impact_cycle` ran with the same infra-timeout exposure as impact: when
+`route_to_model_loop` returns rc=124 (gtimeout SIGTERM) inside
+`_design_stage_run_inner`, the pre-#945 code emitted `plugin.run.error
+reason=router_error` (a generic label) and returned rc=1 (terminal) — wasting the
+entire iteration and leaving `design.md` absent, which caused impact to abort on
+the missing artifact.
+
+**Decision (mirrors #937 for impact).** rc=124 is now a recoverable disposition in
+the design plugin:
+
+1. `_router_rc_classify` (scripts/lib/router-rc-classify.sh) maps rc=124 →
+   reason=router_timeout.
+2. `plugin.run.error reason=router_timeout` is emitted for forensics (same as
+   before, but with the correct classified reason instead of the generic
+   `router_error`).
+3. A best-effort stub `design.md` is written to the declared output path,
+   containing the seed scope from `plan.json files[]` and a minimal acceptance
+   block, so downstream artifact checks do not abort the cycle.
+4. `design.timeout.stub_written` is emitted (registered in event-schema.json).
+5. `_design_stage_run_inner` returns rc=0 so the `design_impact_cycle` loop
+   records the iteration and re-dispatches design on the next turn.
+
+**rc=137 (OOM-kill) and all other non-zero rcs remain terminal** (return rc=1)
+with `plugin.run.error reason=<classified reason>`. The `error` verdict class
+from #782 is unchanged; only the rc=124 boundary is re-drawn as recoverable.
+
+**Router-retry exhaustion.** The design plugin exhausts `router.retries`
+(configured in `config/models.json`) BEFORE rc=124 propagates to the plugin.
+A timeout reaching `_design_stage_run_inner` is post-retry; the re-iterate path
+fires at the cycle level, not at the router level.
+
+**No new classification predicate.** `_router_rc_classify` from
+`scripts/lib/router-rc-classify.sh` is the sole classifier — no parallel
+predicate is introduced.
