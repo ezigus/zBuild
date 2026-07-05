@@ -98,7 +98,13 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$ENV_CAPTURE"
 mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
 ZBUILD_RUN_ID="run-618-$$"
 set +e
-env -u ZBUILD_STATE_DIR \
+# #1240: also scrub ZBUILD_STATE_ROOT. This is a DEFAULT-STATE test — it pins
+# HOME and expects state under $HOME/.zbuild/state/runs/<id>/. When run nested
+# inside the pipeline test stage, the #1127 sandbox fences state via an ambient
+# ZBUILD_STATE_ROOT=<tmp>/.zbuild-nested-state; if it leaks in, the runner
+# (correctly) re-roots there instead of HOME and the assertion breaks. Unset it
+# so the default-state baseline is deterministic regardless of caller env.
+env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
     ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
