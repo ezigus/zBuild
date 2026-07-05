@@ -174,6 +174,48 @@ assert_eq "[SPEC-6] clean design → verdict=pass" "pass" "$VERDICT"
 assert_eq "[SPEC-6] clean design → zero violations" \
     "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
 
+# ─── SPEC-6b (#1255): a GUARD-ONLY design with NO tagged test → verdict=pass ──
+# Guards are invariants (the acceptance-gate skips negctl for them), so the
+# design-gate's C6 tag-coverage must exempt [guard] SPECs. Was verdict=fail
+# before #1255 (UNTAGGED SPEC-1). No testfile is required for a guard-only
+# design (C4 already exempts it); WIRING: none keeps C5 satisfied.
+_run_gate_with_md '# Design
+
+```scope
+scripts/wire.sh
+```
+
+```acceptance
+SPEC-1[guard]: an invariant that must not break
+TESTFILES:
+WIRING: none
+```
+'
+assert_eq "[SPEC-6b] guard-only design, no tagged test → verdict=pass" "pass" "$VERDICT"
+assert_eq "[SPEC-6b] guard-only design → zero violations" \
+    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
+
+# ─── SPEC-6c (#1255 regression guard): a [change] SPEC still needs a tag ──────
+# The guard exemption must NOT leak to change specs. A [change] SPEC whose
+# testfile exists but carries no [SPEC-1] tag must still fail C6.
+printf 'assert "unrelated" 1 1\n' > "$ROOT/tests/untagged-change-test.sh"
+_run_gate_with_md '# Design
+
+```scope
+scripts/wire.sh
+```
+
+```acceptance
+SPEC-1[change]: new behavior needing a tagged test
+TESTFILES:
+tests/untagged-change-test.sh
+WIRING: scripts/wire.sh
+```
+'
+assert_eq "[SPEC-6c] [change] SPEC untagged → verdict=fail (no regression)" "fail" "$VERDICT"
+assert_contains "[SPEC-6c] violation still names UNTAGGED SPEC-1" \
+    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "UNTAGGED SPEC-1"
+
 # ─── SPEC-7 (report-all): MANY violations reported in ONE pass ───────────────
 # scope empty (C1) + a [change] SPEC whose testfile is missing (C4) +
 # an unclassified SPEC (C3) + no WIRING (C5) all at once → all four classes
