@@ -80,5 +80,35 @@ tests/a-test.sh")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C6: bare SPEC: (no id) → rc=0 (not gated)" "0" "$rc"
 
+# ── C7 (#1255): a [guard] SPEC is EXEMPT from the tag-coverage requirement ────
+# Mirrors the acceptance-gate's negctl guard exemption: guards are invariants,
+# not new behavior, so they need not have a [SPEC-n]-tagged test.
+printf 'assert_eq "unrelated label" 1 1\n' > "$ROOT/tests/g-test.sh"
+dm="$(_design "SPEC-1[guard]: an invariant that must not break
+TESTFILES:
+tests/g-test.sh")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C7: guard-only, no tagged test → rc=0 (exempt)" "0" "$rc"
+assert_eq "C7: no UNTAGGED lines for a guard SPEC" "" "$out"
+
+# ── C8 (#1255 regression guard): a [change] SPEC still REQUIRES a tagged test ─
+dm="$(_design "SPEC-1[change]: new behavior
+TESTFILES:
+tests/g-test.sh")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C8: [change] with no tagged test → rc=1 (no regression)" "1" "$rc"
+assert_eq "C8: names the untagged change spec" "UNTAGGED SPEC-1" "$out"
+
+# ── C9 (#1255): mixed design — guard exempt, change still gated ───────────────
+printf 'assert_eq "[SPEC-2] tagged" 1 1\n' > "$ROOT/tests/c-test.sh"
+dm="$(_design "SPEC-1[guard]: an invariant
+SPEC-2[change]: new behavior with a tagged test
+SPEC-3[change]: new behavior WITHOUT a tagged test
+TESTFILES:
+tests/c-test.sh")"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C9: mixed → rc=1 (only the untagged change flagged)" "1" "$rc"
+assert_eq "C9: flags only SPEC-3, not the guard SPEC-1" "UNTAGGED SPEC-3" "$out"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
