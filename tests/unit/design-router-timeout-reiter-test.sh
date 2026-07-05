@@ -95,7 +95,7 @@ set -e
 assert_eq "[SPEC-1] rc=124 → _design_stage_run_inner returns rc=0 (recoverable)" "0" "$_rc"
 
 _ev124="$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-if echo "$_ev124" | grep -q '"reason":"router_timeout"'; then
+if grep -q '"reason":"router_timeout"' <<< "$_ev124"; then
     assert_pass "[SPEC-2] rc=124 → plugin.run.error emitted with reason=router_timeout"
 else
     assert_fail "[SPEC-2] rc=124 → plugin.run.error reason=router_timeout missing" \
@@ -138,7 +138,7 @@ set -e
 assert_eq "[SPEC-6] rc=137 → _design_stage_run_inner returns rc=1 (terminal)" "1" "$_rc"
 
 _ev137="$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-if echo "$_ev137" | grep -q '"reason":"router_oom_kill"'; then
+if grep -q '"reason":"router_oom_kill"' <<< "$_ev137"; then
     assert_pass "[SPEC-7] rc=137 → plugin.run.error emitted with reason=router_oom_kill"
 else
     assert_fail "[SPEC-7] rc=137 → plugin.run.error reason=router_oom_kill missing" \
