@@ -81,10 +81,47 @@ locked_state_update() {
         cp "$sf" "$dest"
     }
 
+    # _zbuild_lsu_collision_guard <current_tmp>
+    # Guards against overwriting a live (in_progress, < 24h) state file owned by
+    # a different ZBUILD_RUN_ID. Mirrors the 24h staleness gate in resume.sh.
+    # Returns 0 if safe to proceed, 3 on collision (SPEC-G).
+    _zbuild_lsu_collision_guard() {
+        local current_file="$1"
+        # No pre-existing state — fresh start, no collision possible.
+        [[ -s "$current_file" ]] || return 0
+        # Ad-hoc / test callers without ZBUILD_RUN_ID are exempt.
+        [[ -n "${ZBUILD_RUN_ID:-}" ]] || return 0
+        local existing_run_id existing_status existing_updated_at
+        existing_run_id="$(jq -r '.run_id // empty' "$current_file" 2>/dev/null || true)"
+        existing_status="$(jq -r '.status // empty' "$current_file" 2>/dev/null || true)"
+        existing_updated_at="$(jq -r '.updated_at // empty' "$current_file" 2>/dev/null || true)"
+        # No run_id in file (not a managed pipeline state) → skip.
+        [[ -n "$existing_run_id" ]] || return 0
+        # Same run_id → safe.
+        [[ "$existing_run_id" != "$ZBUILD_RUN_ID" ]] || return 0
+        # Not in_progress → safe (completed, aborted, etc.).
+        [[ "$existing_status" == "in_progress" ]] || return 0
+        # In_progress but stale (>=24h) → safe; mirrors get_resume_recommendation.
+        if [[ -n "$existing_updated_at" ]]; then
+            local updated_epoch now_epoch age_seconds
+            if date -u -d "$existing_updated_at" +%s >/dev/null 2>&1; then
+                updated_epoch="$(date -u -d "$existing_updated_at" +%s 2>/dev/null || echo 0)"
+            else
+                updated_epoch="$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$existing_updated_at" +%s 2>/dev/null || echo 0)"
+            fi
+            now_epoch="$(date -u +%s)"
+            age_seconds=$(( now_epoch - updated_epoch ))
+            [[ $age_seconds -lt 86400 ]] || return 0
+        fi
+        error "SPEC-G: live-run collision — refusing to overwrite run '$existing_run_id' (in_progress) with '$ZBUILD_RUN_ID'"
+        return 3
+    }
+
     if zbuild_has_flock; then
         (
             flock -w 30 9 || { error "locked_state_update: failed to acquire lock on $lock_file"; exit 1; }
             _zbuild_lsu_validate_and_copy "$state_file" "$current" || exit 2
+            _zbuild_lsu_collision_guard "$current" || exit $?
             "$update_fn" < "$current" > "$next"
             atomic_write "$state_file" < "$next"
         ) 9>"$lock_file"
@@ -92,6 +129,7 @@ locked_state_update() {
         # Fallback for systems without flock (macOS without brew flock).
         warn "locked_state_update: flock unavailable; using best-effort (race risk)"
         _zbuild_lsu_validate_and_copy "$state_file" "$current" || return 2
+        _zbuild_lsu_collision_guard "$current" || return $?
         "$update_fn" < "$current" > "$next"
         atomic_write "$state_file" < "$next"
     fi
