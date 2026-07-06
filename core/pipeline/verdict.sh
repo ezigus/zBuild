@@ -178,6 +178,21 @@ _verdict_extract_from_build_summary() {
     fi
 }
 
+# ─── _verdict_read_design_sidecar <state_dir> ─────────────────────────────────
+# #1261: design's PRIMARY output is design.md (non-JSON → presence==pass), so a
+# router-timeout mid-flight verdict cannot travel on the primary artifact. The
+# design plugin instead writes a `design-verdict.json` sidecar (mirroring build's
+# #1208 build-summary verdict) carrying {verdict:did_not_finish}. Returns the
+# sidecar's .verdict (empty when absent/malformed). Cleared by design at the
+# start of every run, so a present sidecar always reflects THIS run's timeout.
+_verdict_read_design_sidecar() {
+    local state_dir="$1"
+    local sc; sc="$(_verdict_resolve_path '${artifact_dir}/design-verdict.json' "$state_dir")"
+    [[ -s "$sc" ]] || return 0
+    jq empty "$sc" >/dev/null 2>&1 || return 0
+    jq -r '.verdict // empty' "$sc" 2>/dev/null || true
+}
+
 # ─── runner_read_stage_verdict <state_dir> <manifest> <stage> <rc> ───────────
 # Returns the verdict class. Side-effect: emits stage.verdict.missing when a
 # manifest declares a primary output but the artifact is missing/malformed.
@@ -187,6 +202,16 @@ runner_read_stage_verdict() {
     # rc always wins.
     if [[ "$rc" -ne 0 ]]; then
         echo "fail"; return 0
+    fi
+
+    # #1261: design's router-timeout did_not_finish verdict rides a JSON sidecar
+    # (its primary design.md is non-JSON → presence==pass and cannot carry it).
+    # Honor it before the primary-artifact read so the indicator + cycle see the
+    # timeout honestly. did_not_finish → warn (non-terminal; the cycle keys on
+    # the RAW channel below for its exhaustion halt).
+    if [[ "$stage" == "design" ]]; then
+        local _dv; _dv="$(_verdict_read_design_sidecar "$state_dir")"
+        if [[ -n "$_dv" ]]; then verdict_classify "$_dv"; return 0; fi
     fi
 
     # No manifest at all → contract-bypass path; caller decides indicator.
@@ -317,6 +342,16 @@ runner_read_stage_verdict_raw() {
     # so cycle predicates evaluating `verdict == fail` still match.
     if [[ "$rc" -ne 0 ]]; then
         echo "fail"; return 0
+    fi
+
+    # #1261: design's router-timeout did_not_finish RAW verdict rides a JSON
+    # sidecar (design.md is non-JSON → would read "pass"). The cycle orchestrator
+    # reads THIS raw channel for its reason-aware exhaustion halt, so surfacing
+    # did_not_finish here is what makes a persistent design timeout HALT the
+    # pipeline instead of falling through to build with an empty design.
+    if [[ "$stage" == "design" ]]; then
+        local _dv; _dv="$(_verdict_read_design_sidecar "$state_dir")"
+        if [[ -n "$_dv" ]]; then printf '%s' "$_dv"; return 0; fi
     fi
 
     if [[ -z "$manifest" || ! -f "$manifest" ]]; then

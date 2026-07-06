@@ -268,3 +268,32 @@ review would approve, runner would write `pipeline_status=complete`, and the
 ADR-019 contract was violated. The propagated `stage_statuses[test]=failed`
 combined with `_RUNNER_CYCLE_UNCONVERGED=1` (which controls the final
 `pipeline_status=failed` write) closes that hole.
+
+### Amendment (#1261): on_max=continue fall-through — timeout-exhaustion exception
+
+`on_max: continue` (this ADR's fall-through) is a deliberate CONTENT policy: an
+imperfect-but-usable artifact from an unconverged cycle should flow to the
+operator/downstream, not hard-fail. It was NOT meant to cover an INFRA failure.
+
+`design_verify_cycle` is `max_iterations: 3, on_max: continue`. A SINGLE design
+router-timeout is recoverable (#945: design writes a gate-FAILING marker so the
+cycle re-iterates). But when EVERY iteration times out (a persistent infra
+problem), the cycle exhausts and — under `on_max: continue` — would fall through
+carrying the empty `# Design incomplete — router timeout` marker to build, which
+then implements from nothing.
+
+**Exception:** when the TERMINATING iteration was interrupted by a router
+timeout — a member surfaced the repo-neutral `did_not_finish` verdict (build's
+#1208 verdict; design's #1261 verdict, carried on a `design-verdict.json`
+sidecar) — AND the cycle has NO authoritative verifier signal (no `test` member
+verdict and no `test-results.json`), the cycle HALTS with terminal reason
+`design_timeout_exhausted` (rc=8 → pipeline `status=failed`) even though
+`on_max: continue`. This is NOT `on_max: halt` (too blunt — it would also
+hard-fail a genuine CONTENT non-convergence): a content non-convergence has no
+`did_not_finish` tail and keeps the fall-through above.
+
+**Repo-neutral.** The exception keys ONLY on the `did_not_finish` tail plus the
+absence of a test signal — never on a stage id. `build_test_cycle` ALWAYS runs
+`test` (so it has a signal) and is therefore unaffected (scope: design-only for
+now); a future verifier-less cycle inherits the same fail-fast. See ADR-021
+Amendment (#1261) for the terminal-reason registration.

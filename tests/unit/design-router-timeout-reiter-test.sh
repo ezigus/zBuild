@@ -156,6 +156,30 @@ else
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
 
+# SPEC-10 (#1261): timeout yield ALSO writes a did_not_finish verdict sidecar so
+# the design_verify_cycle sees the timeout uniformly (mirroring build/#1208) and,
+# at exhaustion, HALTS instead of falling through to build with an empty design.
+_sidecar="$_F_ARTIFACTS/design-verdict.json"
+if [[ -s "$_sidecar" ]] \
+    && [[ "$(jq -r '.verdict' "$_sidecar" 2>/dev/null)" == "did_not_finish" ]]; then
+    assert_pass "[SPEC-10] timeout yield → design-verdict.json sidecar verdict=did_not_finish"
+else
+    assert_fail "[SPEC-10] timeout yield → did_not_finish sidecar missing/wrong" \
+        "sidecar=$(cat "$_sidecar" 2>/dev/null || echo ABSENT)"
+fi
+
+# SPEC-11 (#1261): the REAL verdict readers surface did_not_finish for the design
+# stage from the sidecar (design.md is non-JSON → would otherwise read "pass").
+# shellcheck source=../../core/pipeline/verdict.sh
+source "$REPO_ROOT/core/pipeline/verdict.sh"
+_dm="$REPO_ROOT/plugins/agent/design/manifest.yaml"
+_raw="$(runner_read_stage_verdict_raw "$_F_STATE" "$_dm" "design" 0)"
+assert_eq "[SPEC-11] runner_read_stage_verdict_raw(design) reads did_not_finish from sidecar" \
+    "did_not_finish" "$_raw"
+_cls="$(runner_read_stage_verdict "$_F_STATE" "$_dm" "design" 0)"
+assert_eq "[SPEC-11b] runner_read_stage_verdict(design) classifies did_not_finish → warn" \
+    "warn" "$_cls"
+
 _MOCK_ROUTER_RC=0
 _MOCK_TERMINATED_REASON="done_sentinel"
 _MOCK_DESIGN_WRITE_PATH=""
@@ -208,6 +232,14 @@ if ! grep -q '"design.timeout.stub_written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null;
 else
     assert_fail "[SPEC-8-guard] spurious design.timeout.stub_written on happy path"
 fi
+
+# SPEC-10-guard (#1261): a converging design writes NO did_not_finish sidecar
+# (run-start clear + no timeout write) → the cycle reads design=pass, never trips
+# the exhaustion halt on a healthy run.
+[[ ! -e "$_F_ARTIFACTS/design-verdict.json" ]] \
+    && assert_pass "[SPEC-10-guard] no design-verdict.json sidecar on happy path" \
+    || assert_fail "[SPEC-10-guard] spurious did_not_finish sidecar on happy path" \
+        "sidecar=$(cat "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null)"
 
 _MOCK_DESIGN_WRITE_PATH=""
 

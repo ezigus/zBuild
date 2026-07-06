@@ -136,6 +136,15 @@ _design_stage_run_inner() {
 
     mkdir -p "$artifact_dir"
 
+    # #1261: the did_not_finish verdict sidecar (mirrors build's #1208 mid-flight
+    # verdict). Cleared at the START of every run so a stale timeout verdict from
+    # a PRIOR iteration can never leak into a later iteration that produced a real
+    # design.md — the cycle would otherwise wrongly read did_not_finish and
+    # halt-exhaust on a content-converging run. Written ONLY on a router timeout
+    # below. verdict.sh reads it as design's raw verdict for the cycle.
+    local design_verdict_sidecar="$artifact_dir/design-verdict.json"
+    rm -f "$design_verdict_sidecar"
+
     if [[ ! -f "$plan_json_path" ]]; then
         error "_design_stage_run_inner: plan.json not found at $plan_json_path"
         emit_event "plugin.run.error" "plugin=design" "reason=missing_plan_json"
@@ -364,6 +373,15 @@ DESIGN_PROMPT
         if printf '# Design incomplete — router timeout, re-iterating\n\nDesign did not complete (reason=router_timeout). No acceptance block is emitted, so the design-gate rejects this artifact and the design cycle re-iterates.\n' \
                 > "$output_design_md"; then
             emit_event "design.timeout.stub_written" "plugin=design" "rc=$router_rc" "reason=router_timeout"
+            # #1261: surface a did_not_finish verdict (mirroring build/#1208) so
+            # the cycle sees the timeout uniformly. This is IN ADDITION to the
+            # gate-failing marker above (which still drives #945 re-iteration on
+            # non-final iters). At exhaustion, a did_not_finish TAIL lets the
+            # cycle HALT (design_timeout_exhausted) instead of falling through to
+            # build with an empty design. Best-effort: the durable re-iterate
+            # signal is the marker; the sidecar is the exhaustion-halt signal.
+            printf '{"schema_version":1,"verdict":"did_not_finish","reason":"router_timeout"}\n' \
+                > "$design_verdict_sidecar" 2>/dev/null || true
             return 0
         fi
         error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
