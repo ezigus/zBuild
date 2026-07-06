@@ -347,24 +347,24 @@ DESIGN_PROMPT
         error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
         emit_event "plugin.run.error" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
         if [[ "$_rc_reason" == "router_timeout" ]]; then
-            # rc=124 is recoverable: write a best-effort stub design.md and return 0
-            # so design_impact_cycle re-iterates rather than treating this as terminal.
-            # Mirrors impact's #937 path (ADR-021 Amendment #945).
+            # rc=124 is recoverable (#1208: timeouts are non-fatal), but design
+            # must NOT converge on a stub. Overwrite design.md with a MINIMAL
+            # marker that carries NO ```acceptance block, so design-gate C2
+            # (ACCEPTANCE_MISSING) fails and design_verify_cycle RE-ITERATES
+            # rather than accepting an incomplete design (#945; ADR-021
+            # Amendment #945). Overwriting also clears any stale design.md from
+            # a prior iteration. The marker is a fixed, safe string — no
+            # scope_list interpolation (avoids a ``` fence-injection) and no
+            # possibly-unset var under set -u. Guard the write: only emit
+            # design.timeout.stub_written when the marker actually lands, so a
+            # failed redirect never claims a file that does not exist.
             mkdir -p "$artifact_dir"
-            local _bt='```'
-            {
-                printf '# Design (timeout stub — router rc=%s)\n\n' "$router_rc"
-                printf '## Goal\n\nDesign did not complete (reason=%s). Re-iteration pending.\n\n' "$_rc_reason"
-                if [[ -n "$scope_list" ]]; then
-                    printf '%sscope\n' "$_bt"
-                    printf '%s\n' "$scope_list" | sed 's/^- //'
-                    printf '%s\n\n' "$_bt"
-                else
-                    printf '%sscope\n%s\n\n' "$_bt" "$_bt"
-                fi
-                printf '%sacceptance\nSPEC-1[guard]: timeout stub written on rc=124\nWIRING: none\nTESTFILES:\n%s\n' "$_bt" "$_bt"
-            } > "$output_design_md"
-            emit_event "design.timeout.stub_written" "plugin=design" "rc=$router_rc" "reason=$_rc_reason"
+            if printf '# Design incomplete — router timeout (rc=%s), re-iterating\n\nDesign did not complete (reason=%s). No acceptance block is emitted, so the design-gate rejects this artifact and the design cycle re-iterates.\n' \
+                    "$router_rc" "$_rc_reason" > "$output_design_md"; then
+                emit_event "design.timeout.stub_written" "plugin=design" "rc=$router_rc" "reason=$_rc_reason"
+            else
+                error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
+            fi
             return 0
         fi
         # rc=137 (OOM-kill) or other non-zero rc: terminal

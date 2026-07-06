@@ -890,12 +890,27 @@ the design plugin:
 2. `plugin.run.error reason=router_timeout` is emitted for forensics (same as
    before, but with the correct classified reason instead of the generic
    `router_error`).
-3. A best-effort stub `design.md` is written to the declared output path,
-   containing the seed scope from `plan.json files[]` and a minimal acceptance
-   block, so downstream artifact checks do not abort the cycle.
-4. `design.timeout.stub_written` is emitted (registered in event-schema.json).
-5. `_design_stage_run_inner` returns rc=0 so the `design_impact_cycle` loop
-   records the iteration and re-dispatches design on the next turn.
+3. `design.md` is OVERWRITTEN with a MINIMAL, gate-FAILING marker — a fixed
+   safe string that carries **no `\`\`\`acceptance` block** (and no scope
+   block). It must NOT satisfy the design-gate: the marker deliberately trips
+   C2 `ACCEPTANCE_MISSING`, so `design_gate_run` returns `verdict=fail` and
+   `design_verify_cycle` RE-ITERATES rather than converging on an incomplete
+   design. Overwriting also clears any stale `design.md` from a prior
+   iteration so the gate cannot accidentally pass an old artifact. The marker
+   interpolates no plan-derived data into a fenced block (avoids a `\`\`\``
+   fence-injection) and references no possibly-unset var under `set -u`.
+   (An earlier prototype wrote a stub with a scope block + a `[guard]`
+   acceptance line; that stub PASSED the design-gate — especially after #1255
+   exempted `[guard]` specs from tag-coverage — so the cycle CONVERGED on the
+   stub instead of re-iterating. That defeated the purpose and is corrected
+   here: the timeout artifact must FAIL the design-gate.)
+4. `design.timeout.stub_written` is emitted (registered in event-schema.json),
+   but only when the marker write actually succeeds — a failed redirect never
+   claims a file that does not exist.
+5. `_design_stage_run_inner` returns rc=0 (non-terminal, per #1208) so the
+   `design_verify_cycle` loop records the iteration and re-dispatches design on
+   the next turn (bounded by its `max_iterations`; on exhaustion `on_max:
+   continue` carries the last gate-failing marker forward).
 
 **rc=137 (OOM-kill) and all other non-zero rcs remain terminal** (return rc=1)
 with `plugin.run.error reason=<classified reason>`. The `error` verdict class
