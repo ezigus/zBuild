@@ -49,6 +49,24 @@ source "$_BUILD_ROOT/scripts/lib/acceptance-block.sh"
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_BUILD_ROOT/scripts/lib/test-output-sanitize.sh"
 
+# #1265: materialize the intake pre-existing-untracked snapshot to a sorted temp
+# file for portable `grep -Fxq` membership lookup (no assoc-array dependency). The
+# scope-census excludes these paths — a stray untracked file present at intake
+# (created by a PRIOR run, not this build) is not this-run OOS collateral.
+# Echoes the temp-file path on success (caller rm's it); returns 1 (no output)
+# when the baseline file is absent (resumed / non-intake run → legacy behavior).
+_build_load_preexisting_untracked() {
+    local state_dir="$1"
+    local baseline="$state_dir/intake-untracked-baseline.txt"
+    [[ -f "$baseline" ]] || return 1
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/zbuild-preexist.XXXXXX")" || return 1
+    # NUL-delimited snapshot → newline-per-path, sorted-unique, for grep -Fxq.
+    tr '\0' '\n' < "$baseline" | sort -u > "$tmp"
+    printf '%s' "$tmp"
+    return 0
+}
+
 # ─── init ───────────────────────────────────────────────────────────────────
 build_stage_init() {
     export ZBUILD_PLUGIN="build"
@@ -388,7 +406,31 @@ _build_stage_run_inner() {
     # `git add -N` (intent-to-add) makes untracked files appear in `git diff HEAD`
     # without staging their content. Without it, new files created by the agent
     # would be silently dropped from the canonical diff.
-    git -C "$repo_root" add -N . 2>/dev/null || true
+    #
+    # #1265: SELECTIVE intent-add. A pre-existing untracked stray (present at
+    # intake, left by a PRIOR run) must NOT enter the canonical diff or the
+    # scope-census as build-created collateral. Load the intake snapshot and
+    # intent-add ONLY untracked paths absent from it. Tracked modifications still
+    # surface in `git diff HEAD` without `add -N` — equivalent. Fallback: no
+    # baseline file (resumed / non-intake run) → legacy blanket `git add -N .`.
+    local _preexist_untracked="" _pu_state_dir
+    _pu_state_dir="$(dirname "$artifact_dir")"
+    _preexist_untracked="$(_build_load_preexisting_untracked "$_pu_state_dir" 2>/dev/null || true)"
+    if [[ -n "$_preexist_untracked" && -f "$_preexist_untracked" ]]; then
+        local -a _add_paths=()
+        local _u
+        while IFS= read -r -d '' _u; do
+            [[ -z "$_u" ]] && continue
+            # Pre-existing stray → leave out of the index AND the census.
+            grep -Fxq -- "$_u" "$_preexist_untracked" && continue
+            _add_paths+=("$_u")
+        done < <(git -C "$repo_root" ls-files --others --exclude-standard -z 2>/dev/null)
+        if [[ ${#_add_paths[@]} -gt 0 ]]; then
+            git -C "$repo_root" add -N -- "${_add_paths[@]}" 2>/dev/null || true
+        fi
+    else
+        git -C "$repo_root" add -N . 2>/dev/null || true
+    fi
 
     # #530: stream `git diff HEAD` DIRECTLY to the artifact file. Capturing via
     # `$()` strips the trailing newline (and `printf '%s'` doesn't restore it),
@@ -503,6 +545,16 @@ _build_stage_run_inner() {
             local p
             for p in "${paths_to_check[@]}"; do
                 [[ -z "$p" ]] && continue
+                # #1265 (defense-in-depth): a status-A path that was ALREADY
+                # untracked at intake (a pre-existing stray this run did NOT
+                # create) is out of judgment — never a scope violation. The
+                # selective `git add -N` above already keeps it out of the diff;
+                # this skip guards the case where it slips in another way.
+                if [[ "$status" =~ ^A ]] \
+                   && [[ -n "$_preexist_untracked" && -f "$_preexist_untracked" ]] \
+                   && grep -Fxq -- "$p" "$_preexist_untracked"; then
+                    continue
+                fi
                 if ! _build_path_in_scope "$p" allowed_files; then
                     scope_violation="true"
                     scope_violations+=("$p")
@@ -516,6 +568,9 @@ _build_stage_run_inner() {
             done
         done
     fi
+
+    # #1265: drop the pre-existing-untracked scratch file now the census is done.
+    [[ -n "$_preexist_untracked" ]] && rm -f "$_preexist_untracked" 2>/dev/null || true
 
     # #498: capture numstat BEFORE the scope-violation zero-out so the operator
     # banner (emitted after the summary) can surface what the LLM attempted

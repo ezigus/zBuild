@@ -973,3 +973,12 @@ test signal — no stage id / language / path. `build_test_cycle` always runs
 `test` (has a signal) and is unaffected; a future verifier-less cycle inherits
 the same fail-fast. `build_test_cycle` timeout-exhaustion behavior is a noted
 follow-up, deliberately out of scope for #1261.
+
+## Amendment — `no_committed_changes` convergence-suppression + terminal (#1265)
+
+A parallel, additive guard alongside the `did_not_finish` (#1208/#1261) mid-flight suppression. A convergence that would fire with **zero commits ahead of the run's intake baseline** is a FALSE convergence: the branch has nothing to ship, so review passes on an uncommitted tree and `pr` aborts later with "No commits between main and branch" (#1214 dogfood). Root trigger: a `scope_violation` zeroed `diff.patch` + skipped the commit, discarding the legit in-scope work too.
+
+- **Suppression (mirrors `did_not_finish`).** After the until-predicate fires (`converged==0`), if `_cycle_no_commits_ahead` (HEAD == `intake-baseline-ref.txt` SHA, 0 commits) AND the build member's verdict `!= empty_diff`, set `converged=1` and emit `cycle.no_committed_changes.suppressed_convergence`. EXEMPT `empty_diff` — the legit nothing-to-do resting point (#1208/#895) converges and has nothing to commit by design.
+- **Terminal (rc=5, blocked-class).** In the by-severity ladder, AFTER `_scope_action` resolution and the `max_iterations` check, if `_no_committed_changes` AND `_scope_action != grant`: `overall_status=no_committed_changes`, `term_rc=5`, emit `cycle.no_committed_changes`. rc=5 halts the pipeline immediately (never reaches review/`pr`) and, like `blocked`, NEVER route_backs (only rc=2/rc=8 reroute). When `_scope_action == grant` the #870/#840 expansion lets the next iter commit, so the cycle does NOT terminate (falls through to iterate).
+- **Reason enum extension.** `cycle.complete reason` rc=5 now restates `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}`.
+- **Repo-neutral / fail-soft.** Keys only on commit-count + build verdict — no stage id / language / path. Absent/empty `intake-baseline-ref.txt` (resumed / non-intake run) → the predicate returns false, so the guard never false-fires.

@@ -377,6 +377,20 @@ _intake_create_workspace_branch() {
             "plugin=intake" "sha=$_baseline_sha"
     fi
 
+    # #1265: snapshot the PRE-EXISTING untracked set at run-start. The build's
+    # scope-census baselines against this so a stray file left in the working
+    # tree by a PRIOR run (present at intake, NOT created by THIS run) is never
+    # false-flagged as build-created out-of-scope collateral (ADR-030). NUL-
+    # delimited so paths with spaces/newlines survive. Unconditional — captured
+    # even under ZBUILD_INTAKE_ALLOW_DIRTY (the dogfood path where strays enter).
+    local _untracked_baseline="$state_dir/intake-untracked-baseline.txt"
+    if git ls-files --others --exclude-standard -z > "$_untracked_baseline" 2>/dev/null; then
+        local _untracked_count
+        _untracked_count="$(tr -cd '\0' < "$_untracked_baseline" | wc -c | tr -d ' ')"
+        emit_event "intake.untracked_baseline.captured" \
+            "plugin=intake" "count=${_untracked_count:-0}"
+    fi
+
     local pipeline_state="$state_dir/pipeline-state.json"
     if [[ -f "$pipeline_state" ]] && declare -F _set_pipeline_branch >/dev/null 2>&1; then
         _set_pipeline_branch "$pipeline_state" "$target" 2>/dev/null || \
