@@ -872,3 +872,71 @@ build/test cycle: `converged → abort_when → scope-deny → max_iterations(by
 blocked`. See also ADR-029 (G2 abandon removed / G3 kept), ADR-013 (router-loop timeout
 non-fatal), ADR-034 (second convergence-suppression instance), and ADR-044 (repo-
 declarable test-count contract).
+
+## Amendment (#945, 2026-07-05) — design stage router timeout is recoverable
+
+`design_verify_cycle` ran with the same infra-timeout exposure as impact: a
+persistent design-stage router timeout wasted the entire iteration and left
+`design.md` absent, which caused downstream stages to abort on the missing
+artifact.
+
+**Detection signal (corrected).** A persistent router timeout does NOT surface
+to the plugin as rc=124. `route_to_model_loop` (core/router/route.sh) absorbs
+repeated per-turn timeouts and, per the #1208 non-fatal-timeout contract,
+YIELDS control back to the cycle as `return 0` with
+`_ROUTE_LOOP_TERMINATED_REASON=router_timeout`. So the design plugin detects the
+recoverable timeout via that **terminated-reason signal** (the same signal the
+build plugin reads), regardless of `router_rc` — NOT by classifying rc=124.
+(A first #945 cut keyed off `router_rc==124` inside an `rc >= 2` branch; because
+the loop yields a timeout as `return 0`, that branch was unreachable in
+production — green-but-inert — and is corrected here.)
+
+**Decision (mirrors #937 for impact).** A router-timeout yield is now a
+recoverable disposition in the design plugin:
+
+1. After `route_to_model_loop`, `_design_stage_run_inner` checks
+   `_ROUTE_LOOP_TERMINATED_REASON == "router_timeout"`. `route.sh` resets this
+   var to empty at loop start, so a normal finish (`done_sentinel` /
+   `max_iterations`) never trips the branch — the happy path is unaffected.
+2. `plugin.run.error reason=router_timeout` is emitted for forensics.
+3. `design.md` is OVERWRITTEN with a MINIMAL, gate-FAILING marker — a fixed
+   safe string that carries **no `\`\`\`acceptance` block** (and no scope
+   block). It must NOT satisfy the design-gate: the marker deliberately trips
+   C2 `ACCEPTANCE_MISSING`, so `design_gate_run` returns `verdict=fail` and
+   `design_verify_cycle` RE-ITERATES rather than converging on an incomplete
+   design. Overwriting also clears any stale `design.md` from a prior
+   iteration so the gate cannot accidentally pass an old artifact. The marker
+   interpolates no plan-derived data into a fenced block (avoids a `\`\`\``
+   fence-injection) and references no possibly-unset var under `set -u`.
+   (An earlier prototype wrote a stub with a scope block + a `[guard]`
+   acceptance line; that stub PASSED the design-gate — especially after #1255
+   exempted `[guard]` specs from tag-coverage — so the cycle CONVERGED on the
+   stub instead of re-iterating. That defeated the purpose and is corrected
+   here: the timeout artifact must FAIL the design-gate.)
+4. `design.timeout.stub_written` is emitted (registered in event-schema.json),
+   but only when the marker write actually succeeds. A FAILED marker write is a
+   genuine filesystem/infra error, not a recoverable timeout: it emits
+   `plugin.run.error reason=marker_write_failed` and returns rc=1 (terminal)
+   rather than masking the failure with rc=0 and leaving the cycle with no
+   artifact.
+5. `_design_stage_run_inner` returns rc=0 (non-terminal, per #1208) so the
+   `design_verify_cycle` loop records the iteration and re-dispatches design on
+   the next turn (bounded by its `max_iterations`; on exhaustion `on_max:
+   continue` carries the last gate-failing marker forward).
+
+**A non-zero `router_rc` (rc=137 OOM-kill, rc=2 loop error, etc.) with a reason
+other than `router_timeout` remains terminal** (return rc=1) with
+`plugin.run.error reason=<classified reason>` via `_router_rc_classify`. The
+`error` verdict class from #782 is unchanged; only the timeout-yield disposition
+is re-drawn as recoverable. (The `rc=124` sub-case of `_router_rc_classify` is
+retained defensively but is not the production trigger, since the loop yields a
+timeout as `return 0` + reason=router_timeout.)
+
+**Router-retry exhaustion.** The design plugin exhausts `router.retries`
+(configured in `config/models.json`) BEFORE the loop yields a timeout. A
+timeout reaching `_design_stage_run_inner` is post-retry; the re-iterate path
+fires at the cycle level, not at the router level.
+
+**No new classification predicate.** `_router_rc_classify` from
+`scripts/lib/router-rc-classify.sh` is the sole classifier — no parallel
+predicate is introduced.
