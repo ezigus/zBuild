@@ -87,7 +87,7 @@ memory_search() {
         val="\$(cat "\$f" 2>/dev/null || true)"
         # Escape embedded newlines in value
         val="\${val//$'\n'/\\\\n}"
-        if printf '%s' "\$key\$val" | grep -qF "\$query" 2>/dev/null; then
+        if grep -qF "\$query" <<< "\$key\$val" 2>/dev/null; then
             printf '%s\t%s\n' "\$key" "\$val"
             count=\$((count + 1))
             if [[ -n "\$limit" && "\$count" -ge "\$limit" ]]; then
@@ -240,7 +240,7 @@ assert_contains "search returns matching entry (banana fruit)" "$search_out" "ba
 # ─── Test 11: search does not return non-matching entries ────────────────────
 print_test_section "11. search does not return non-matching entries"
 
-if ! printf '%s' "$search_out" | grep -qF "apple"; then
+if ! grep -qF "apple" <<< "$search_out"; then
     assert_pass "search omits non-matching entry (apple)"
 else
     assert_fail "search omits non-matching entry (apple)" "apple appeared in: $search_out"
@@ -340,7 +340,7 @@ memory_put "ns-fmt" "fmt-key" "fmt-value"
 fmt_out="$(memory_search "ns-fmt" "fmt")"
 
 # Should contain a tab between key and value
-if printf '%s' "$fmt_out" | grep -q $'fmt-key\tfmt-value'; then
+if grep -q $'fmt-key\tfmt-value' <<< "$fmt_out"; then
     assert_pass "search output is tab-separated key<TAB>value"
 else
     assert_fail "search output is tab-separated key<TAB>value" \

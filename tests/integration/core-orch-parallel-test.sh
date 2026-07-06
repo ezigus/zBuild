@@ -144,7 +144,7 @@ assert_contains \
     "orch_collect stdout contains the stdout line" \
     "$stdout_out" "to-stdout"
 
-if echo "$stdout_out" | grep -qF "to-stderr" 2>/dev/null; then
+if grep -qF "to-stderr" 2>/dev/null <<< "$stdout_out"; then
     assert_fail "stderr output does NOT appear in orch_collect stdout" \
         "to-stderr was found in stdout"
 else
@@ -297,7 +297,7 @@ set -e
 assert_exit_code "round 2: orch_collect returns 0" "0" "$rc_r2"
 assert_contains "round 2: output contains round-2" "$out_r2" "round-2"
 
-if echo "$out_r2" | grep -qF "round-1" 2>/dev/null; then
+if grep -qF "round-1" 2>/dev/null <<< "$out_r2"; then
     assert_fail "round 2 output does not contain round-1 leftovers" \
         "round-1 found in round-2 output"
 else

@@ -142,7 +142,7 @@ unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_plan
 
 assert_eq "variant 4 (#483): plan_run still rc=0 with banner capture on" "0" "$rc"
 banner_content="$(cat "$BANNER_OUT" 2>/dev/null || true)"
-if printf '%s' "$banner_content" | grep -qF "# Plan: Banner Title"; then
+if grep -qF "# Plan: Banner Title" <<< "$banner_content"; then
     assert_pass "variant 4 (#483): OUTPUT banner contains rendered markdown heading"
 else
     assert_fail "variant 4 (#483): OUTPUT banner missing markdown heading" \
@@ -150,7 +150,7 @@ else
 fi
 # The output banner section must not contain the raw JSON title key.
 banner_output_section="$(printf '%s' "$banner_content" | sed -n '/── output ──/,/── end stage-io/p')"
-if printf '%s' "$banner_output_section" | grep -qF '"title":"Banner Title"'; then
+if grep -qF '"title":"Banner Title"' <<< "$banner_output_section"; then
     assert_fail "variant 4 (#483): raw JSON leaked into output section" \
         "got: $(printf '%s' "$banner_output_section" | head -20)"
 else
@@ -408,7 +408,7 @@ if grep -qF "OUT_OF_SCOPE_SECRET" <<<"$_guard_prompt_body"; then
         | sed -E 's#<out-of-scope-context>[^<]*</out-of-scope-context>##g')"
     if grep -qF "OUT_OF_SCOPE_SECRET" <<<"$_bare"; then
         assert_fail "[SPEC-2][guard] out-of-scope token leaked UNWRAPPED — resumed splice bypassed redaction" \
-            "bare context: $(printf '%s' "$_bare" | grep -F OUT_OF_SCOPE_SECRET | head -1)"
+            "bare context: $(grep -F OUT_OF_SCOPE_SECRET | head -1)" <<< "$_bare"
     else
         assert_pass "[SPEC-2][guard] out-of-scope token present ONLY inside redaction wrapper (resumed splice was redacted)"
     fi

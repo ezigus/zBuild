@@ -95,12 +95,12 @@ assert_eq "validate_manifest rejects agent without redaction in requires.core (A
 # Discovery returns the two valid plugins, skips the invalid one
 discovered="$(discover_plugins "$FIXTURE_ROOT" | sort)"
 expected_count=2
-actual_count=$(echo "$discovered" | grep -c .)
+actual_count=$(grep -c .) <<< "$discovered"
 assert_eq "discover_plugins returns only valid manifests" "$expected_count" "$actual_count"
 
 assert_contains "discovery includes test-lens" "$discovered" "agent/test-lens"
 assert_contains "discovery includes test-tool" "$discovered" "tool/test-tool"
-if echo "$discovered" | grep -q "bad-no-redaction"; then
+if grep -q "bad-no-redaction" <<< "$discovered"; then
     assert_fail "discovery should have skipped bad-no-redaction"
 else
     assert_pass "discovery skipped bad-no-redaction"
@@ -152,7 +152,7 @@ output="$(ZBUILD_STRICT_PLUGIN_LOCK=1 plugin_hook_call "$FIXTURE_ROOT/agent/test
 rc=$?
 set -e
 assert_eq "strict mode refuses tampered plugin.sh (rc != 0)" "1" "$rc"
-if echo "$output" | grep -q "TAMPERED-RUN"; then
+if grep -q "TAMPERED-RUN" <<< "$output"; then
     assert_fail "strict mode must NOT execute tampered code" "got: $output"
 else
     assert_pass "strict mode blocks tampered code execution"
@@ -167,13 +167,13 @@ set -e
 # rc=0: hook still ran. A regression that started refusing in non-strict
 # would surface here, not get hidden behind the warning-text check.
 assert_eq "non-strict mode still returns rc=0 (hook ran)" "0" "$rc"
-if echo "$output" | grep -q "tamper\|hash mismatch"; then
+if grep -q "tamper\|hash mismatch" <<< "$output"; then
     assert_pass "non-strict mode emits tamper warning"
 else
     assert_fail "non-strict mode emits tamper warning" "got: $output"
 fi
 # And the tampered code actually executed (TAMPERED-RUN output present).
-if echo "$output" | grep -q "TAMPERED-RUN"; then
+if grep -q "TAMPERED-RUN" <<< "$output"; then
     assert_pass "non-strict mode sourced the tampered file (warn-only path)"
 else
     assert_fail "non-strict mode sourced the tampered file" "got: $output"
@@ -209,7 +209,7 @@ assert_contains "plugin_hook_call dispatches run hook with args" "$output" "run 
 ZBUILD_DISABLED_FILE="$TEST_TEMP_DIR/plugins.disabled"
 echo "test-tool" > "$ZBUILD_DISABLED_FILE"
 discovered="$(ZBUILD_DISABLED_FILE="$ZBUILD_DISABLED_FILE" discover_plugins "$FIXTURE_ROOT" | sort)"
-if echo "$discovered" | grep -q "test-tool"; then
+if grep -q "test-tool" <<< "$discovered"; then
     assert_fail "disabled plugin should not be discovered"
 else
     assert_pass "disabled plugin (test-tool) excluded from discovery"

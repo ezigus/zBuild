@@ -241,8 +241,8 @@ assert_eq "T4: cycle.iteration.complete fires 2× across 2 iters" "2" "$t3_iter_
 t3_start="$(grep -c '"type":"cycle.start"' "$T3_DIR/events/events.jsonl" 2>/dev/null || echo 0)"
 assert_eq "T4: cycle.start fires once" "1" "$t3_start"
 # cycle.complete once with reason=converged
-if grep '"type":"cycle.complete"' "$T3_DIR/events/events.jsonl" 2>/dev/null \
-   | grep -q '"reason":"converged"'; then
+_cc_lines="$(grep '"type":"cycle.complete"' "$T3_DIR/events/events.jsonl" 2>/dev/null || true)"
+if grep -q '"reason":"converged"' <<< "$_cc_lines"; then
     assert_pass "T4: cycle.complete reason=converged"
 else
     assert_fail "T4: cycle.complete reason=converged" "missing"

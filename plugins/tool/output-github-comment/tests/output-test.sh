@@ -110,9 +110,9 @@ rm -f "$ARTIFACTS_DIR/security-findings.json" "$ARTIFACTS_DIR/lint-findings.json
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 report="$(cat "$STATE_DIR/report-test-run-001.md")"
 
-critical_pos=$(echo "$report" | grep -n "Critical Finding" | cut -d: -f1 || echo 9999)
-medium_pos=$(echo "$report" | grep -n "Medium Finding" | cut -d: -f1 || echo 9999)
-low_pos=$(echo "$report" | grep -n "Low Finding" | cut -d: -f1 || echo 9999)
+critical_pos=$(grep -n "Critical Finding" | cut -d: -f1 || echo 9999) <<< "$report"
+medium_pos=$(grep -n "Medium Finding" | cut -d: -f1 || echo 9999) <<< "$report"
+low_pos=$(grep -n "Low Finding" | cut -d: -f1 || echo 9999) <<< "$report"
 if [[ "$critical_pos" -lt "$medium_pos" && "$medium_pos" -lt "$low_pos" ]]; then
     assert_pass "severity ordering: critical < medium < low in report"
 else
@@ -246,13 +246,13 @@ unset ZBUILD_ISSUE 2>/dev/null || true
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 report="$(cat "$STATE_DIR/report-test-run-001.md")"
 
-if echo "$report" | grep -qF 'A \| B title'; then
+if grep -qF 'A \| B title' <<< "$report"; then
     assert_pass "pipe in title escaped with backslash in table cell"
 else
     assert_fail "pipe in title should be escaped as \\| in table cell"
 fi
 # Both substrings must appear on the same line — only possible if the newline was collapsed.
-if echo "$report" | grep -q "do this.*or that"; then
+if grep -q "do this.*or that" <<< "$report"; then
     assert_pass "newline in suggestion collapsed to space in table cell"
 else
     assert_fail "newline in suggestion should be collapsed in table cell"

@@ -103,7 +103,7 @@ unset ZBUILD_MEMORY_BACKEND 2>/dev/null || true
 
 warn_output2="$(zbuild_config_validate_backends 2>&1 || true)"
 # Should NOT warn since ruflo plugin now exists
-if echo "$warn_output2" | grep -q "backend.missing"; then
+if grep -q "backend.missing" <<< "$warn_output2"; then
     assert_fail "no backend.missing warn when plugin is present" \
         "unexpected warn output: $warn_output2"
 else

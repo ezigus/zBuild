@@ -159,7 +159,8 @@ assert_eq "T5: diagnostic event num_turns=25" "25" "$diag_turns"
 RAW_JSON_PATH="$ZBUILD_ARTIFACT_DIR/stage-io/build-iter1-error.raw-claude-output.json"
 if [[ -s "$RAW_JSON_PATH" ]]; then
     assert_pass "T6: raw-claude-output.json preserved at predictable path"
-    if jq -r '.error // empty' "$RAW_JSON_PATH" 2>/dev/null | grep -q "max_turns_reached"; then
+    _err_json="$(jq -r '.error // empty' "$RAW_JSON_PATH" 2>/dev/null || true)"
+    if grep -q "max_turns_reached" <<< "$_err_json"; then
         assert_pass "T7: preserved JSON contains the .error field intact"
     else
         assert_fail "T7: preserved JSON should contain .error=max_turns_reached" "missing"

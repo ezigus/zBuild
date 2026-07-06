@@ -133,7 +133,7 @@ fi
 # kills the test on Linux (macOS is forgiving). Read full log; grep -q
 # scans for the marker.
 iter1_log="$(git -C "$REPO" log --oneline 2>/dev/null || true)"
-if printf '%s\n' "$iter1_log" | grep -q 'iter1 A'; then
+if grep -q 'iter1 A' <<< "$iter1_log"; then
     assert_pass "iter1: commit landed at HEAD"
 else
     assert_fail "iter1: commit landed at HEAD" "log=$iter1_log"

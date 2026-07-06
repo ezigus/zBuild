@@ -83,7 +83,7 @@ unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_plan
 assert_eq "plan_run rc=0 with banner capture on" "0" "$rc"
 
 plan_banner_content="$(cat "$PLAN_BANNER" 2>/dev/null || true)"
-if printf '%s' "$plan_banner_content" | grep -qF "# Plan: Boundary Plan"; then
+if grep -qF "# Plan: Boundary Plan" <<< "$plan_banner_content"; then
     assert_pass "plan banner contains rendered markdown heading across subprocess"
 else
     assert_fail "plan banner missing markdown heading across subprocess" \
@@ -91,7 +91,7 @@ else
 fi
 
 plan_output_section="$(printf '%s' "$plan_banner_content" | sed -n '/seq=[0-9]* output /,/── end stage-io/p')"
-if printf '%s' "$plan_output_section" | grep -qF '"title":"Boundary Plan"'; then
+if grep -qF '"title":"Boundary Plan"' <<< "$plan_output_section"; then
     assert_fail "plan banner raw JSON leaked into output section" \
         "got: $(printf '%s' "$plan_output_section" | head -20)"
 else
@@ -154,13 +154,13 @@ unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review
 assert_eq "_review_run_inner rc=0 with banner capture on" "0" "$rc"
 
 review_banner_content="$(cat "$REVIEW_BANNER" 2>/dev/null || true)"
-if printf '%s' "$review_banner_content" | grep -qF "# Review"; then
+if grep -qF "# Review" <<< "$review_banner_content"; then
     assert_pass "review banner contains rendered markdown heading across subprocess"
 else
     assert_fail "review banner missing markdown heading across subprocess" \
         "got: $(printf '%s' "$review_banner_content" | head -40)"
 fi
-if printf '%s' "$review_banner_content" | grep -qF "**Verdict:** approve"; then
+if grep -qF "**Verdict:** approve" <<< "$review_banner_content"; then
     assert_pass "review banner contains Verdict field"
 else
     assert_fail "review banner missing Verdict field" \
@@ -168,7 +168,7 @@ else
 fi
 
 review_output_section="$(printf '%s' "$review_banner_content" | sed -n '/seq=[0-9]* output /,/── end stage-io/p')"
-if printf '%s' "$review_output_section" | grep -qF '"verdict":"approve"'; then
+if grep -qF '"verdict":"approve"' <<< "$review_output_section"; then
     assert_fail "review banner raw JSON leaked into output section" \
         "got: $(printf '%s' "$review_output_section" | head -20)"
 else
@@ -209,25 +209,25 @@ assert_eq "plan_run rc=0 on prose+JSON envelope" "0" "$rc"
 plan_mix_content="$(cat "$PLAN_BANNER_MIX" 2>/dev/null || true)"
 plan_mix_output="$(printf '%s' "$plan_mix_content" | sed -n '/seq=[0-9]* output /,/── end stage-io/p')"
 
-if printf '%s' "$plan_mix_output" | grep -qF "# Plan: Mixed Plan"; then
+if grep -qF "# Plan: Mixed Plan" <<< "$plan_mix_output"; then
     assert_pass "prose+JSON banner: rendered plan heading present"
 else
     assert_fail "prose+JSON banner: rendered plan heading present" \
         "got: $(printf '%s' "$plan_mix_output" | head -40)"
 fi
-if printf '%s' "$plan_mix_output" | grep -qF "## Steps"; then
+if grep -qF "## Steps" <<< "$plan_mix_output"; then
     assert_pass "prose+JSON banner: ## Steps section present"
 else
     assert_fail "prose+JSON banner: ## Steps section present" \
         "got: $(printf '%s' "$plan_mix_output" | head -40)"
 fi
-if printf '%s' "$plan_mix_output" | grep -qF "── llm comment ──"; then
+if grep -qF "── llm comment ──" <<< "$plan_mix_output"; then
     assert_pass "prose+JSON banner: llm comment block emitted"
 else
     assert_fail "prose+JSON banner: llm comment block emitted" \
         "got: $(printf '%s' "$plan_mix_output" | head -40)"
 fi
-if printf '%s' "$plan_mix_output" | grep -qF "Let me know if you want changes"; then
+if grep -qF "Let me know if you want changes" <<< "$plan_mix_output"; then
     assert_pass "prose+JSON banner: suffix prose preserved in comment"
 else
     assert_fail "prose+JSON banner: suffix prose preserved in comment" \
@@ -271,7 +271,7 @@ exec 3>&-
 unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_plan
 
 plan_jo_output="$(sed -n '/seq=[0-9]* output /,/── end stage-io/p' "$PLAN_BANNER_JO" 2>/dev/null || true)"
-if printf '%s' "$plan_jo_output" | grep -qF "── llm comment ──"; then
+if grep -qF "── llm comment ──" <<< "$plan_jo_output"; then
     assert_fail "JSON-only banner has NO llm comment marker (regression lock)" \
         "got: $(printf '%s' "$plan_jo_output" | head -40)"
 else
@@ -313,19 +313,19 @@ unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review
 assert_eq "_review_run_inner rc=0 on prose+JSON envelope" "0" "$rc"
 
 review_mix_output="$(sed -n '/seq=[0-9]* output /,/── end stage-io/p' "$REVIEW_BANNER_MIX" 2>/dev/null || true)"
-if printf '%s' "$review_mix_output" | grep -qF "# Review"; then
+if grep -qF "# Review" <<< "$review_mix_output"; then
     assert_pass "prose+JSON review banner: rendered Review heading present"
 else
     assert_fail "prose+JSON review banner: rendered Review heading present" \
         "got: $(printf '%s' "$review_mix_output" | head -40)"
 fi
-if printf '%s' "$review_mix_output" | grep -qF "── llm comment ──"; then
+if grep -qF "── llm comment ──" <<< "$review_mix_output"; then
     assert_pass "prose+JSON review banner: llm comment block emitted"
 else
     assert_fail "prose+JSON review banner: llm comment block emitted" \
         "got: $(printf '%s' "$review_mix_output" | head -40)"
 fi
-if printf '%s' "$review_mix_output" | grep -qF "Reviewer note: looks fine"; then
+if grep -qF "Reviewer note: looks fine" <<< "$review_mix_output"; then
     assert_pass "prose+JSON review banner: prefix prose preserved"
 else
     assert_fail "prose+JSON review banner: prefix prose preserved" \

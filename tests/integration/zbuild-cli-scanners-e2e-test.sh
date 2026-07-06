@@ -60,7 +60,7 @@ assert_contains "Z3: lists tracker" "$out" "tracker"
 # ─── Z4: passthrough — `zbuild deferred backfill --help` shows 7 sections ──
 out="$("$ZBUILD" deferred backfill --help 2>&1)"; rc=$?
 assert_eq "Z4: backfill --help passthrough exits 0" "0" "$rc"
-n="$(printf '%s\n' "$out" | grep -cE "$SECTIONS_PATTERN")"
+n="$(grep -cE "$SECTIONS_PATTERN")" <<< "$out"
 if (( n >= 6 )); then
     assert_pass "Z4: passthrough shows $n structured sections"
 else
@@ -70,7 +70,7 @@ fi
 # ─── Z5 REGRESSION LOCK: direct script help has same structure (canonical) ─
 out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --help 2>&1)"; rc=$?
 assert_eq "Z5: direct backfill --help exits 0" "0" "$rc"
-n="$(printf '%s\n' "$out" | grep -cE "$SECTIONS_PATTERN")"
+n="$(grep -cE "$SECTIONS_PATTERN")" <<< "$out"
 if (( n >= 6 )); then
     assert_pass "Z5 REGRESSION LOCK: script-level help has $n sections"
 else
@@ -86,7 +86,7 @@ assert_contains "Z6: state machine — comments/boxes" "$out" "comments/boxes"
 
 # ─── Z7 REGRESSION LOCK: tracker direct help no longer leaks internals ─────
 out="$(bash "$REPO_ROOT/scripts/deferred-tracker.sh" --help 2>&1)"
-if printf '%s' "$out" | grep -qE "ReDoS|shellcheck source="; then
+if grep -qE "ReDoS|shellcheck source=" <<< "$out"; then
     assert_fail "Z7 LOCK: deferred-tracker --help still leaks internal comments"
 else
     assert_pass "Z7 REGRESSION LOCK: no internal comments in deferred-tracker --help"
@@ -101,7 +101,7 @@ assert_contains "Z8: mentions drift" "$out" "drift"
 # ─── Z9: `zbuild manifest sync --help` shows structured sections ───────────
 out="$("$ZBUILD" manifest sync --help 2>&1)"; rc=$?
 assert_eq "Z9: manifest sync --help exits 0" "0" "$rc"
-n="$(printf '%s\n' "$out" | grep -cE "$SECTIONS_PATTERN")"
+n="$(grep -cE "$SECTIONS_PATTERN")" <<< "$out"
 if (( n >= 6 )); then
     assert_pass "Z9: sync passthrough shows $n sections"
 else
@@ -111,7 +111,7 @@ fi
 # ─── Z9b REGRESSION LOCK: direct manifest-sync help is structured ──────────
 out="$(bash "$REPO_ROOT/scripts/manifest-sync.sh" --help 2>&1)"
 assert_contains "Z9b LOCK: manifest-sync has 'What it does' section" "$out" "What it does"
-if printf '%s' "$out" | grep -qE "ReDoS|shellcheck source="; then
+if grep -qE "ReDoS|shellcheck source=" <<< "$out"; then
     assert_fail "Z9b LOCK: manifest-sync --help leaks internals"
 else
     assert_pass "Z9b REGRESSION LOCK: no internal-comment leak in manifest-sync --help"
@@ -178,7 +178,7 @@ assert_eq "Z15 REGRESSION: plugin list still works" "0" "$rc"
 # ─── Z16 REGRESSION: `zbuild --version` still works ────────────────────────
 out="$("$ZBUILD" --version 2>&1)"; rc=$?
 assert_eq "Z16 REGRESSION: --version exits 0" "0" "$rc"
-if printf '%s' "$out" | grep -qE "zbuild [0-9]+\.[0-9]+\.[0-9]+"; then
+if grep -qE "zbuild [0-9]+\.[0-9]+\.[0-9]+" <<< "$out"; then
     assert_pass "Z16: version format matches zbuild X.Y.Z"
 else
     assert_fail "Z16: unexpected version format: $out"

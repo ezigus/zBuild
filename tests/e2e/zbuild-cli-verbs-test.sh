@@ -30,7 +30,7 @@ _test_cleanup_hook() { cleanup_test_env; }
 # ─── Test 1: zbuild --help exits 0 and output contains "Usage" or "zbuild" ────
 set +e; out="$(bash "$ZBUILD_CLI" --help 2>&1)"; rc=$?; set -e
 assert_eq "zbuild --help exits 0" "0" "$rc"
-if echo "$out" | grep -qiE 'Usage|zbuild'; then
+if grep -qiE 'Usage|zbuild' <<< "$out"; then
     assert_pass "zbuild --help output contains 'Usage' or 'zbuild'"
 else
     assert_fail "zbuild --help output contains 'Usage' or 'zbuild'" "got: $out"

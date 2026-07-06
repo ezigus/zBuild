@@ -37,7 +37,7 @@ yq_get() {
 print_test_section "1. Trigger: on.issues with labeled activity type"
 
 issues_types="$(yq_get '.on.issues.types[]' 2>/dev/null || echo "")"
-if echo "$issues_types" | grep -q "labeled"; then
+if grep -q "labeled" <<< "$issues_types"; then
     assert_pass "trigger: on.issues.types contains 'labeled'"
 else
     assert_fail "trigger: on.issues.types contains 'labeled'" \
@@ -95,7 +95,7 @@ fi
 print_test_section "5. Label filter condition on trigger job"
 
 trigger_if="$(yq_get '.jobs.trigger.if' 2>/dev/null || echo "")"
-if echo "$trigger_if" | grep -q "zbuild-run\|ZBUILD_TRIGGER_LABEL"; then
+if grep -q "zbuild-run\|ZBUILD_TRIGGER_LABEL" <<< "$trigger_if"; then
     assert_pass "jobs.trigger.if references zbuild-run label"
 else
     assert_fail "jobs.trigger.if references zbuild-run label" \
@@ -106,7 +106,7 @@ fi
 print_test_section "6. Job: pipeline via workflow_call"
 
 pipeline_uses="$(yq_get '.jobs.pipeline.uses' 2>/dev/null || echo "")"
-if echo "$pipeline_uses" | grep -q "zbuild-pipeline.yml"; then
+if grep -q "zbuild-pipeline.yml" <<< "$pipeline_uses"; then
     assert_pass "jobs.pipeline.uses references zbuild-pipeline.yml"
 else
     assert_fail "jobs.pipeline.uses references zbuild-pipeline.yml" \
@@ -117,7 +117,7 @@ fi
 print_test_section "7. pipeline job passes issue_number"
 
 pipeline_issue="$(yq_get '.jobs.pipeline.with.issue_number' 2>/dev/null || echo "")"
-if echo "$pipeline_issue" | grep -q "issue.number\|issue_number"; then
+if grep -q "issue.number\|issue_number" <<< "$pipeline_issue"; then
     assert_pass "jobs.pipeline.with.issue_number is set"
 else
     assert_fail "jobs.pipeline.with.issue_number is set" \
@@ -150,7 +150,7 @@ print_test_section "10. post-run job depends on pipeline job"
 
 # needs may be a scalar string or a sequence; check both forms
 post_needs_raw="$(yq_get '.jobs.post-run.needs' 2>/dev/null || echo "")"
-if echo "$post_needs_raw" | grep -q "pipeline"; then
+if grep -q "pipeline" <<< "$post_needs_raw"; then
     assert_pass "jobs.post-run.needs includes 'pipeline'"
 else
     assert_fail "jobs.post-run.needs includes 'pipeline'" \
@@ -161,7 +161,7 @@ fi
 print_test_section "11. post-run job has if: always()"
 
 post_if="$(yq_get '.jobs.post-run.if' 2>/dev/null || echo "")"
-if echo "$post_if" | grep -q "always"; then
+if grep -q "always" <<< "$post_if"; then
     assert_pass "jobs.post-run.if uses always() condition"
 else
     assert_fail "jobs.post-run.if uses always() condition" \
@@ -172,7 +172,7 @@ fi
 print_test_section "12. post-run has a remove-label step"
 
 step_names="$(yq_get '.jobs.post-run.steps[].name' 2>/dev/null || echo "")"
-if echo "$step_names" | grep -qi "label\|remove"; then
+if grep -qi "label\|remove" <<< "$step_names"; then
     assert_pass "post-run steps include a label-removal step"
 else
     assert_fail "post-run steps include a label-removal step" \
@@ -182,7 +182,7 @@ fi
 # ─── Test 13: post-run job has a step that adds a comment ────────────────────
 print_test_section "13. post-run has a comment step"
 
-if echo "$step_names" | grep -qi "comment"; then
+if grep -qi "comment" <<< "$step_names"; then
     assert_pass "post-run steps include a comment step"
 else
     assert_fail "post-run steps include a comment step" \

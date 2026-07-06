@@ -102,7 +102,7 @@ assert_contains "gh body keeps ── divider (non-ASCII survives ANSI strip)" "
 # we forced colors on. That confirms color-asymmetry: banners colored,
 # gh body plain.
 banner="$(cat "$fd3")"
-if printf '%s' "$banner" | grep -q $'\x1b\\['; then
+if grep -q $'\x1b\\[' <<< "$banner"; then
     assert_pass "fd-3 banner DOES carry ANSI (color asymmetry confirmed)"
 else
     assert_fail "fd-3 banner DOES carry ANSI" "no ESC in banner — colors may be globally disabled"

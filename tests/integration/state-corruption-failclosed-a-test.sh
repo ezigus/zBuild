@@ -88,7 +88,7 @@ assert_event_emitted() {
         fi
         # Fallback: the field name appears anywhere in the raw event line
         # (handles pre-fix malformed single-JSON-blob call site)
-        if echo "$matched_line" | grep -qF "\"$payload_field\"" 2>/dev/null; then
+        if grep -qF "\"$payload_field\"" 2>/dev/null <<< "$matched_line"; then
             assert_pass "$desc (payload.$payload_field referenced in event)"
             return
         fi
@@ -216,7 +216,7 @@ assert_eq \
 if [[ -f "$CAPTURED_INPUT_FILE" ]]; then
     captured="$(cat "$CAPTURED_INPUT_FILE")"
     # Must not contain the corrupt garbage
-    if echo "$captured" | grep -qF 'NOT_JSON_AT_ALL' 2>/dev/null; then
+    if grep -qF 'NOT_JSON_AT_ALL' 2>/dev/null <<< "$captured"; then
         assert_fail \
             "recovery sequence: update_fn must NOT receive corrupt bytes" \
             "captured input contained corrupt data: $captured"
@@ -278,7 +278,7 @@ if [[ -f "${STATE_FILE}.bak" ]]; then
 
         # Critical: .bak must not be the old corrupt content
         bak_raw="$(cat "${STATE_FILE}.bak")"
-        if echo "$bak_raw" | grep -qF 'corrupt' 2>/dev/null; then
+        if grep -qF 'corrupt' 2>/dev/null <<< "$bak_raw"; then
             assert_fail \
                 "post-recovery .bak: .bak must not be the corrupt primary" \
                 "bak content: $bak_raw"

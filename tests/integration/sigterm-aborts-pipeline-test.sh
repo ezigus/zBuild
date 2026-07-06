@@ -212,7 +212,8 @@ fi
 
 # (5) pipeline.aborted event with reason=sigterm emitted.
 if [[ -f "$EVENTS_JSONL" ]]; then
-    if grep '"type":"pipeline.aborted"' "$EVENTS_JSONL" | grep -q 'sigterm'; then
+    _aborted_lines="$(grep '"type":"pipeline.aborted"' "$EVENTS_JSONL" || true)"
+    if grep -q 'sigterm' <<< "$_aborted_lines"; then
         assert_pass "pipeline.aborted event emitted with reason=sigterm"
     else
         assert_fail "pipeline.aborted event emitted with reason=sigterm" \

@@ -92,12 +92,12 @@ assert_file_exists "IT1: build-prompt.txt artifact persisted" "$PROMPT_ARTIFACT"
 
 prompt="$(cat "$PROMPT_ARTIFACT" 2>/dev/null || echo '')"
 
-if printf '%s' "$prompt" | grep -qF "## DESIGN DECISIONS"; then
+if grep -qF "## DESIGN DECISIONS" <<< "$prompt"; then
     assert_pass "IT2: persisted build prompt carries ## DESIGN DECISIONS"
 else
     assert_fail "IT2: build-prompt.txt must contain ## DESIGN DECISIONS" "not found"
 fi
-if printf '%s' "$prompt" | grep -qF "UNIQUE_FLOW_MARKER"; then
+if grep -qF "UNIQUE_FLOW_MARKER" <<< "$prompt"; then
     assert_pass "IT3: decision prose marker reached the persisted prompt"
 else
     assert_fail "IT3: decision prose must reach build-prompt.txt" "marker not found"
@@ -123,7 +123,7 @@ if [[ -n "$dd_line" && -n "$at_line" && "$dd_line" -lt "$at_line" ]]; then
 else
     dd_section="$(printf '%s\n' "$prompt" | awk '/## DESIGN DECISIONS/{f=1;next} f{print}')"
 fi
-if printf '%s' "$dd_section" | grep -qF '```'; then
+if grep -qF '```' <<< "$dd_section"; then
     assert_fail "IT5: decisions section must not contain a fenced block" "fence leaked: $dd_section"
 else
     assert_pass "IT5: decisions section (DESIGN DECISIONS..ACCEPTANCE TESTS) excludes fences"

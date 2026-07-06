@@ -81,9 +81,9 @@ assert_eq "valid extends: load_template exit 0" "0" "$lrc"
 stages_joined="${_TPL_STAGES[*]:-}"
 assert_contains "overlay stages present (build)" "$stages_joined" "build"
 assert_contains "overlay stages present (test)" "$stages_joined" "test"
-set +e; echo "$stages_joined" | grep -q "intake"; base_present=$?; set -e
+set +e; grep -q "intake" <<< "$stages_joined"; base_present=$?; set -e
 assert_eq "base-only stage 'intake' absent (full-replace)" "1" "$base_present"
-set +e; echo "$stages_joined" | grep -q "plan"; plan_present=$?; set -e
+set +e; grep -q "plan" <<< "$stages_joined"; plan_present=$?; set -e
 assert_eq "base-only stage 'plan' absent (full-replace)" "1" "$plan_present"
 
 # ─── Test (b): per-repo file missing extends: → load refuses with rc≠0 ─────

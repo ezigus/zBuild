@@ -60,12 +60,12 @@ for line in \
     "Authentication/authorization bypass paths" \
     "OWASP top 10 vulnerability patterns" \
     "Do NOT report non-security issues."; do
-    if echo "$legacy_block" | grep -qF "$line"; then
+    if grep -qF "$line" <<< "$legacy_block"; then
         legacy_has=1
     else
         legacy_has=0
     fi
-    if echo "$prompt_block" | grep -qF "$line"; then
+    if grep -qF "$line" <<< "$prompt_block"; then
         prompt_has=1
     else
         prompt_has=0

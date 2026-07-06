@@ -257,7 +257,8 @@ else
 fi
 # #1254: the cycle.iteration.complete EVENT no longer carries a velocity attr
 # (progress/score are the durable multi-axis fields).
-if grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | grep -q '"velocity"'; then
+_cic_lines="$(grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" || true)"
+if grep -q '"velocity"' <<< "$_cic_lines"; then
     assert_fail "T7 (#1254): cycle.iteration.complete event has no velocity attr" \
         "$(grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | head -1)"
 else
