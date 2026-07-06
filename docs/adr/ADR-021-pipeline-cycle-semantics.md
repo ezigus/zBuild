@@ -875,21 +875,30 @@ declarable test-count contract).
 
 ## Amendment (#945, 2026-07-05) — design stage router timeout is recoverable
 
-`design_impact_cycle` ran with the same infra-timeout exposure as impact: when
-`route_to_model_loop` returns rc=124 (gtimeout SIGTERM) inside
-`_design_stage_run_inner`, the pre-#945 code emitted `plugin.run.error
-reason=router_error` (a generic label) and returned rc=1 (terminal) — wasting the
-entire iteration and leaving `design.md` absent, which caused impact to abort on
-the missing artifact.
+`design_verify_cycle` ran with the same infra-timeout exposure as impact: a
+persistent design-stage router timeout wasted the entire iteration and left
+`design.md` absent, which caused downstream stages to abort on the missing
+artifact.
 
-**Decision (mirrors #937 for impact).** rc=124 is now a recoverable disposition in
-the design plugin:
+**Detection signal (corrected).** A persistent router timeout does NOT surface
+to the plugin as rc=124. `route_to_model_loop` (core/router/route.sh) absorbs
+repeated per-turn timeouts and, per the #1208 non-fatal-timeout contract,
+YIELDS control back to the cycle as `return 0` with
+`_ROUTE_LOOP_TERMINATED_REASON=router_timeout`. So the design plugin detects the
+recoverable timeout via that **terminated-reason signal** (the same signal the
+build plugin reads), regardless of `router_rc` — NOT by classifying rc=124.
+(A first #945 cut keyed off `router_rc==124` inside an `rc >= 2` branch; because
+the loop yields a timeout as `return 0`, that branch was unreachable in
+production — green-but-inert — and is corrected here.)
 
-1. `_router_rc_classify` (scripts/lib/router-rc-classify.sh) maps rc=124 →
-   reason=router_timeout.
-2. `plugin.run.error reason=router_timeout` is emitted for forensics (same as
-   before, but with the correct classified reason instead of the generic
-   `router_error`).
+**Decision (mirrors #937 for impact).** A router-timeout yield is now a
+recoverable disposition in the design plugin:
+
+1. After `route_to_model_loop`, `_design_stage_run_inner` checks
+   `_ROUTE_LOOP_TERMINATED_REASON == "router_timeout"`. `route.sh` resets this
+   var to empty at loop start, so a normal finish (`done_sentinel` /
+   `max_iterations`) never trips the branch — the happy path is unaffected.
+2. `plugin.run.error reason=router_timeout` is emitted for forensics.
 3. `design.md` is OVERWRITTEN with a MINIMAL, gate-FAILING marker — a fixed
    safe string that carries **no `\`\`\`acceptance` block** (and no scope
    block). It must NOT satisfy the design-gate: the marker deliberately trips
@@ -915,13 +924,17 @@ the design plugin:
    the next turn (bounded by its `max_iterations`; on exhaustion `on_max:
    continue` carries the last gate-failing marker forward).
 
-**rc=137 (OOM-kill) and all other non-zero rcs remain terminal** (return rc=1)
-with `plugin.run.error reason=<classified reason>`. The `error` verdict class
-from #782 is unchanged; only the rc=124 boundary is re-drawn as recoverable.
+**A non-zero `router_rc` (rc=137 OOM-kill, rc=2 loop error, etc.) with a reason
+other than `router_timeout` remains terminal** (return rc=1) with
+`plugin.run.error reason=<classified reason>` via `_router_rc_classify`. The
+`error` verdict class from #782 is unchanged; only the timeout-yield disposition
+is re-drawn as recoverable. (The `rc=124` sub-case of `_router_rc_classify` is
+retained defensively but is not the production trigger, since the loop yields a
+timeout as `return 0` + reason=router_timeout.)
 
 **Router-retry exhaustion.** The design plugin exhausts `router.retries`
-(configured in `config/models.json`) BEFORE rc=124 propagates to the plugin.
-A timeout reaching `_design_stage_run_inner` is post-retry; the re-iterate path
+(configured in `config/models.json`) BEFORE the loop yields a timeout. A
+timeout reaching `_design_stage_run_inner` is post-retry; the re-iterate path
 fires at the cycle level, not at the router level.
 
 **No new classification predicate.** `_router_rc_classify` from
