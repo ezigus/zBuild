@@ -31,7 +31,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-print_test_header "design: router timeout rc=124 → recoverable re-iterate path (#945)"
+print_test_header "design: router-loop persistent timeout (return 0 + reason=router_timeout) → recoverable re-iterate path (#945)"
 setup_test_env "design-router-timeout-reiter"
 
 # ─── Mock setup ──────────────────────────────────────────────────────────────
