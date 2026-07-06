@@ -1764,7 +1764,9 @@ _cycle_handle_terminal_rc() {
         2)   reason="${_CYCLE_LAST_TERMINATED_REASON:-plateau}" ;;
         3)   reason="divergence" ;;
         4)   reason="${_CYCLE_LAST_TERMINATED_REASON:-config_invalid}" ;;
-        5)   reason="blocked" ;;
+        # rc=5 covers structural `blocked` AND #1265 `no_committed_changes`; both
+        # set _CYCLE_LAST_TERMINATED_REASON, so restate it (default: blocked).
+        5)   reason="${_CYCLE_LAST_TERMINATED_REASON:-blocked}" ;;
         6)   reason="cycle_abort" ;;
         7)   reason="blocked_on_scope" ;;
         # rc=8 covers two paths, both of which set _CYCLE_LAST_TERMINATED_REASON:
@@ -1792,6 +1794,23 @@ _cycle_handle_terminal_rc() {
         fi
         _CYCLE_EXIT_BANNER_EMITTED=1
     fi
+}
+
+# ─── _cycle_no_commits_ahead <state_dir> (#1265) ────────────────────────────
+# True (rc=0) when the branch HEAD is EQUAL to (0 commits ahead of) the run's
+# intake baseline SHA — i.e. this run committed nothing. Reads the bare SHA from
+# ${state_dir}/intake-baseline-ref.txt (written by intake). Fail-soft: absent /
+# empty baseline, or any git failure → rc=1 (cannot assert → do NOT fire the
+# guard, so a resumed/non-intake run never gets a false no_committed_changes).
+_cycle_no_commits_ahead() {
+    local state_dir="$1"
+    local ref_file="$state_dir/intake-baseline-ref.txt"
+    [[ -f "$ref_file" ]] || return 1
+    local baseline; baseline="$(cat "$ref_file" 2>/dev/null || true)"
+    [[ -n "$baseline" ]] || return 1
+    local ahead
+    ahead="$(git rev-list --count "${baseline}..HEAD" 2>/dev/null || echo -1)"
+    [[ "$ahead" == "0" ]]
 }
 
 # ─── cycle_orchestrator_run <cycle_id> <state_dir> <state_file> ──────────────
@@ -2064,6 +2083,41 @@ cycle_orchestrator_run() {
                 "reason=build_mid_flight_not_a_resting_point"
         fi
 
+        # #1265 — no-committed-changes fail-fast. A convergence that would fire
+        # with ZERO commits ahead of the intake baseline (e.g. a scope_violation
+        # discarded the entire diff, or the tree was never committed) is a FALSE
+        # convergence: the branch has nothing to ship, so review passes on an
+        # uncommitted tree and `pr` aborts ~38 min later with "No commits between
+        # main and branch" (#1214 dogfood). Suppress it here (mirror the
+        # did_not_finish pattern) and, unless a governed scope grant lets the next
+        # iter commit, terminate no_committed_changes below (rc=5, blocked-class).
+        # EXEMPT the legit empty_diff resting point (#1208/#895): "nothing to do"
+        # with green gates genuinely converges and has nothing to commit by design.
+        #
+        # ONLY commit-PRODUCING cycles are subject to this guard: it fires solely
+        # when THIS cycle has a `build` member in its roster (_CYCLE_STAGES). A
+        # build-LESS cycle (design_verify_cycle, or any review/verify cycle) makes
+        # no code commits by design — a legitimately-converged such cycle sits at
+        # 0 commits ahead of intake and MUST converge normally, never be flagged
+        # no_committed_changes. GENERIC: keys on the roster + repo-neutral
+        # commit-count + build verdict (the `.build` member is already this file's
+        # convention — see _build_verdict above and the #1208 suppression).
+        local _has_build_member=0
+        local _cm
+        for _cm in "${_CYCLE_STAGES[@]}"; do
+            [[ "$_cm" == "build" ]] && { _has_build_member=1; break; }
+        done
+        local _no_committed_changes=0
+        if [[ "$converged" -eq 0 && "$_has_build_member" -eq 1 \
+              && "$_build_verdict" != "empty_diff" ]] \
+           && _cycle_no_commits_ahead "$state_dir"; then
+            _no_committed_changes=1
+            converged=1  # suppress: an empty branch is not a clean resting point
+            _cycle_emit "cycle.no_committed_changes.suppressed_convergence" \
+                "iter=$iter" "build_verdict=$_build_verdict" \
+                "reason=would_converge_with_zero_commits_ahead_of_baseline"
+        fi
+
         # ADR-034 / #846: full-suite gate intercept. If convergence predicate
         # fired (converged=0) but the test stage ran in targeted mode, the
         # targeted result is insufficient: we need a full-suite confirmation.
@@ -2231,6 +2285,20 @@ cycle_orchestrator_run() {
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations"
                 overall_status="max_iterations"; term_rc=2
             fi
+        elif [[ "$_no_committed_changes" -eq 1 && "$_scope_action" != "grant" ]]; then
+            # #1265: the iteration would have converged on ZERO committed changes
+            # (a scope_violation discarded the diff, or nothing was ever committed)
+            # and no governed scope grant is pending to let the next iter commit.
+            # Halt terminally (rc=5 blocked-class → the pipeline stops before
+            # review/pr; blocked never route_backs, see below) instead of shipping
+            # an empty branch to a confusing `pr` abort. When _scope_action==grant
+            # the #870/#840 expansion lets the next iter commit, so we do NOT
+            # terminate (fall through to in_progress and iterate).
+            _CYCLE_LAST_TERMINATED_REASON="no_committed_changes"
+            overall_status="no_committed_changes"; term_rc=5
+            _cycle_emit "cycle.no_committed_changes" \
+                "iter=$iter" "build_verdict=$_build_verdict" \
+                "reason=zero_commits_ahead_of_intake_baseline"
         elif _cycle_detect_blocked "$verdicts_blob" "$iter"; then
             # #528: structural cannot-progress class (raw verdict error/corrupt_diff/
             # block — NOT a timeout, which iterates). rc=5 halts the pipeline.

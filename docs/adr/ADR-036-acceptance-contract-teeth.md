@@ -314,3 +314,11 @@ assertion), `no_testfile` / `untagged_spec` (add the tagged assertion — recove
 the #951 edge), `inert_wiring` (make the WIRING load-bearing), `malformed_acceptance_block`. The
 plugin-vocabulary → generic-field (`route_target`) mapping lives ENTIRELY in the acceptance-gate
 plugin (ADR-021: the engine and the aggregator know no acceptance-gate failure vocabulary).
+
+## Amendment (#1265, 2026-07-06) — `no_impl_delta` SKIP is legit ONLY as a clean `empty_diff` resting point
+
+The acceptance-gate negative-control + reachability checks `SKIP` with `no_impl_delta` when there is no committed diff to judge (`base_sha == head_sha`, 0 commits ahead). That SKIP is correct for a genuine **nothing-to-do** convergence — a build that reached `LOOP_COMPLETE` with an empty diff and green gates (`verdict=empty_diff`, `#1208`/`#895`). It is a **false pass** when the branch is empty for the WRONG reason: a `scope_violation` discarded the whole diff (`#1214` dogfood), so `npm test` passed on the *uncommitted* tree, the gate SKIPped, the gate-aggregator passed, and the cycle **converged on nothing** — sailing to a confusing `pr`-stage abort (`No commits between main and branch`) ~38 min later.
+
+- **0-commit + build verdict ≠ `empty_diff` is NOT a resting point.** The cycle orchestrator adds a `no_committed_changes` guard (see ADR-021 amendment): a convergence that would fire with 0 commits ahead of the intake baseline AND `build.verdict != empty_diff` is suppressed and terminated (`no_committed_changes`, rc=5, blocked-class → halts before review/`pr`), unless a governed scope grant is pending (`#870`/`#840` — the next iter commits).
+- **The `empty_diff` resting point is EXEMPT.** A true clean `empty_diff` converge with 0 real commits genuinely has nothing to ship; the `no_impl_delta` SKIP and convergence both remain correct. No `#1208`/`#895` regression.
+- **`pr`-stage backstop.** `pr-open` resolves the merge-base and refuses (`plugin.run.error reason=no_committed_changes`, rc=2) BEFORE push + `gh pr create` when 0 commits ahead — belt-and-suspenders for non-cycle paths and the confusing `gh` error.

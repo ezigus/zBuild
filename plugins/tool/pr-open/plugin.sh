@@ -19,6 +19,9 @@ _PR_OPEN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_PR_OPEN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../scripts/lib/git-remote.sh
 source "$_PR_OPEN_ROOT/scripts/lib/git-remote.sh"
+# #1265: merge-base resolver for the 0-commit preflight (halt before push/gh).
+# shellcheck source=../../../scripts/lib/merge-base.sh
+source "$_PR_OPEN_ROOT/scripts/lib/merge-base.sh"
 
 # ─── pr_open_init ────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
@@ -148,6 +151,28 @@ _pr_open_run_inner() {
                 > "$output_pr_result_json"
             return 2
         }
+    fi
+
+    # ── #1265: 0-commit preflight (BEFORE push + gh pr create) ────────────────
+    # If the branch has no commits ahead of the merge-base, there is nothing to
+    # PR: pushing then `gh pr create` fails with "No commits between main and
+    # branch" only AFTER a wasted push (the #1214 dogfood, ~38 min in). Halt
+    # terminally here instead. Belt-and-suspenders for non-cycle paths + a clear
+    # reason. Consistent with #1208: a legit empty_diff converge with 0 real
+    # commits genuinely has nothing to ship, so halting is correct (not a regress).
+    local _merge_base _ahead_count
+    _merge_base="$(zbuild_resolve_merge_base 2>/dev/null || true)"
+    if [[ -n "$_merge_base" ]]; then
+        _ahead_count="$(git rev-list --count "${_merge_base}..HEAD" 2>/dev/null || echo -1)"
+        if [[ "$_ahead_count" == "0" ]]; then
+            error "pr_open: refusing to open PR — no commits between merge-base and '${current_branch}' (nothing to ship)"
+            emit_event "plugin.run.error" "plugin=pr-open" \
+                "reason=no_committed_changes" "branch=${current_branch}"
+            jq -n \
+                '{"schema_version":1,"status":"error","reason":"no committed changes on branch","draft":true}' \
+                > "$output_pr_result_json"
+            return 2
+        fi
     fi
 
     # ── Push branch so gh pr create can find it ───────────────────────────────
