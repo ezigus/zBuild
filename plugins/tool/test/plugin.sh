@@ -345,6 +345,8 @@ _test_run_inner() {
         # events, runs/<id>/, latest and the global-clear inside a throwaway
         # dir. A recursively-nested test stage re-scrubs + re-exports its own.
         export ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state"
+        export ZBUILD_COST_LEDGER="$tmp/.zbuild-nested-state/cost-ledger.jsonl"
+        export ZBUILD_CACHE_DIR="$tmp/.zbuild-nested-state/cache"
         # #1208: re-supply the repo-declarable count-contract vars AFTER the
         # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
         # xcresulttool shim) can honor them — write its {passed,failed,total}

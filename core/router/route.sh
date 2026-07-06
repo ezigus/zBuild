@@ -481,7 +481,7 @@ _route_check_budget() {
     local _budget_usd="${ZBUILD_BUDGET_USD:-}"
     [[ -z "$_budget_usd" ]] && return 0
 
-    local _ledger_file="${HOME}/.zbuild/cost-ledger.jsonl"
+    local _ledger_file="${ZBUILD_COST_LEDGER:-${HOME}/.zbuild/cost-ledger.jsonl}"
     local _total_cost=0
     [[ -f "$_ledger_file" ]] && \
         _total_cost="$(awk '{s+=$1} END{printf "%.6f", s+0}' "$_ledger_file" 2>/dev/null || echo 0)"
@@ -768,7 +768,8 @@ _route_update_ledger() {
 
     [[ "$_call_cost_usd" == "0" || "$_call_cost_usd" == "0.000000" ]] && return 0
 
-    local _ledger_dir="${HOME}/.zbuild" _ledger_file="${HOME}/.zbuild/cost-ledger.jsonl"
+    local _ledger_file="${ZBUILD_COST_LEDGER:-${HOME}/.zbuild/cost-ledger.jsonl}"
+    local _ledger_dir; _ledger_dir="$(dirname "$_ledger_file")"
     mkdir -p "$_ledger_dir" 2>/dev/null || true
     if zbuild_has_flock; then
         (
