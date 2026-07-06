@@ -2246,31 +2246,32 @@ cycle_orchestrator_run() {
         _cycle_state_write_iter_atomic "$state_file" "$cycle_id" "$iter" \
             "$h_verdict" "$h_status" "$failure_count" "$overall_status" || true
 
-        # #1243: multi-axis health — code-change PROGRESS (this iter's applied
-        # diff) combined with the DEFECT count into a single durable score.
-        # `velocity` retained for backward-compat consumers; `progress`/`score`
-        # are the multi-axis fields (and the human-readable OUTPUT banner below
-        # shows the calculation).
+        # #1243/#1254: multi-axis health — code-change PROGRESS (this iter's
+        # applied diff) combined with the DEFECT count into a single durable
+        # SCORE. #1254 finished the rename: the misleading single-axis `velocity`
+        # attribute is gone (no consumer read it); `progress`/`score` are the
+        # multi-axis fields and the human-readable OUTPUT banner below shows the
+        # calculation.
         local _ci_files _ci_add _ci_del
         read -r _ci_files _ci_add _ci_del <<< "$(_cycle_read_progress "$state_dir")"
         local _ci_progress=$(( _ci_add + _ci_del ))
+        local _ci_score=$(( _ci_progress - failure_count ))
         eb_emit_event "cycle.iteration.complete" \
             "cycle_id=$cycle_id" "iter=$iter" "verdict=$h_verdict" \
-            "velocity=$(( 0 - failure_count ))" \
             "failure_count=$failure_count" \
             "progress=$_ci_progress" \
-            "score=$(( _ci_progress - failure_count ))" 2>/dev/null || true
+            "score=$_ci_score" 2>/dev/null || true
 
         # #524 iter-complete hook — operator-visible iter trailer. Event emit
         # is durable above; the hook is best-effort (silent-failure mitigation
         # #1: event FIRST, banner SECOND). Runner registers this to call
-        # _render_cycle_iter_complete with verdict / velocity / fc / elapsed.
+        # _render_cycle_iter_complete with verdict / score / fc / elapsed.
         if declare -F cycle_iter_complete_hook >/dev/null 2>&1; then
             cycle_iter_complete_hook "$cycle_id" "$iter" "$h_verdict" \
-                "$(( 0 - failure_count ))" "$failure_count" || true
+                "$_ci_score" "$failure_count" || true
         fi
 
-        # #833: cycle OUTPUT banner — termination-predicate eval + velocity.
+        # #833: cycle OUTPUT banner — termination-predicate eval + health score.
         # Event-FIRST (cycle.iteration.complete above), banner-SECOND ordering
         # is preserved. Pairs with the INPUT banner via _CYCLE_IO_SEQ[$iter].
         # kind=cycle keeps it fd-2 / stdout-only.

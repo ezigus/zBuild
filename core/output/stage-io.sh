@@ -1136,7 +1136,7 @@ _stage_io_stdout_end() {
                 ;;
             cycle)
                 # #833: cycle OUTPUT is the termination-predicate eval +
-                # velocity (pre-formatted plain text). Reuse the llm
+                # health score (pre-formatted plain text). Reuse the llm
                 # no-artifact body; NO `── exit: ──` line (cycles have no
                 # command-style exit code).
                 local _pretty_cyc_out

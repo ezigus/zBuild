@@ -178,8 +178,8 @@ cycle_iter_begin_hook() {
     _render_cycle_iter_divider "$_h_cycle_id" "$_h_iter" "$_h_max"
 }
 cycle_iter_complete_hook() {
-    local _h_cycle_id="$1" _h_iter="$2" _h_verdict="$3" _h_velocity="$4" _h_fc="$5"
-    _render_cycle_iter_complete "$_h_iter" "$_h_verdict" "$_h_velocity" "$_h_fc" 0
+    local _h_cycle_id="$1" _h_iter="$2" _h_verdict="$3" _h_score="$4" _h_fc="$5"
+    _render_cycle_iter_complete "$_h_iter" "$_h_verdict" "$_h_score" "$_h_fc" 0
 }
 cycle_exit_hook() {
     local _h_cycle_id="$1" _h_reason="$2" _h_iter="$3" _h_max="$4"
@@ -239,6 +239,29 @@ if [[ ! -s "$T7_STDOUT" ]]; then
     assert_pass "T7: stdout empty — banners fd-2 only"
 else
     assert_fail "T7: stdout leakage" "stdout:\n$(cat "$T7_STDOUT")"
+fi
+
+# #1254: the per-iteration completion line uses the new health SCORE, not the
+# retired `velocity=` label. No leftover `velocity=` anywhere in cycle output.
+if grep -q '↳ iter [0-9]* complete:.*score=' "$T7_STDERR"; then
+    assert_pass "T7 (#1254): per-iter complete line shows score="
+else
+    assert_fail "T7 (#1254): per-iter complete line shows score=" \
+        "stderr:\n$(cat "$T7_STDERR")"
+fi
+if grep -q 'velocity=' "$T7_STDERR"; then
+    assert_fail "T7 (#1254): NO leftover velocity= in cycle output" \
+        "stderr:\n$(cat "$T7_STDERR")"
+else
+    assert_pass "T7 (#1254): NO leftover velocity= in cycle output"
+fi
+# #1254: the cycle.iteration.complete EVENT no longer carries a velocity attr
+# (progress/score are the durable multi-axis fields).
+if grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | grep -q '"velocity"'; then
+    assert_fail "T7 (#1254): cycle.iteration.complete event has no velocity attr" \
+        "$(grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | head -1)"
+else
+    assert_pass "T7 (#1254): cycle.iteration.complete event has no velocity attr"
 fi
 
 print_test_results

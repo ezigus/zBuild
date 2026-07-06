@@ -567,15 +567,17 @@ _render_cycle_iter_divider() {
     } >&2 2>/dev/null || true
 }
 
-# ─── _render_cycle_iter_complete <iter> <verdict> <velocity> <fc> <elapsed_s> ──
-# Per-iter DIM trailer line e.g. `↳ iter 2 complete: verdict=pass velocity=-1
+# ─── _render_cycle_iter_complete <iter> <verdict> <score> <fc> <elapsed_s> ──
+# Per-iter DIM trailer line e.g. `↳ iter 2 complete: verdict=pass score=-1
 # failure_count=1 elapsed=4s`. Emitted by the orchestrator's iter-complete
-# hook AFTER the `cycle.iteration.complete` event is durable.
+# hook AFTER the `cycle.iteration.complete` event is durable. #1254: the
+# `score` axis (progress − defects) replaced the retired `velocity` label so
+# the per-iter line matches the OUTPUT banner's health score.
 _render_cycle_iter_complete() {
-    local iter="$1" verdict="$2" velocity="$3" failure_count="$4" elapsed_s="$5"
+    local iter="$1" verdict="$2" score="$3" failure_count="$4" elapsed_s="$5"
     {
-        printf '%b↳ iter %s complete: verdict=%s velocity=%s failure_count=%s elapsed=%ss%b\n' \
-            "${DIM:-}" "$iter" "$verdict" "$velocity" "$failure_count" "$elapsed_s" "${RESET:-}"
+        printf '%b↳ iter %s complete: verdict=%s score=%s failure_count=%s elapsed=%ss%b\n' \
+            "${DIM:-}" "$iter" "$verdict" "$score" "$failure_count" "$elapsed_s" "${RESET:-}"
     } >&2 2>/dev/null || true
 }
 
@@ -1521,7 +1523,7 @@ main() {
     }
     cycle_iter_complete_hook() {
         local _h_cycle_id="$1" _h_iter="$2" _h_verdict="$3" \
-              _h_velocity="$4" _h_fc="$5"
+              _h_score="$4" _h_fc="$5"
         local _h_start="${_CYCLE_ITER_START_MS[$_h_iter]:-}"
         local _h_elapsed=0
         if [[ -n "$_h_start" && "$_h_start" =~ ^[0-9]+$ ]]; then
@@ -1532,7 +1534,7 @@ main() {
             fi
         fi
         _render_cycle_iter_complete "$_h_iter" "$_h_verdict" \
-            "$_h_velocity" "$_h_fc" "$_h_elapsed"
+            "$_h_score" "$_h_fc" "$_h_elapsed"
     }
     cycle_exit_hook() {
         local _h_cycle_id="$1" _h_reason="$2" _h_iter="$3" _h_max="$4"
