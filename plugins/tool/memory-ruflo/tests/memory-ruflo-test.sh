@@ -372,7 +372,7 @@ assert_eq "concurrent puts: writer-b value intact" "payload-b" "$conc_b"
 # Verify no leftover tmp files from the atomic writes.
 # The scoped namespace in the store is prefixed, so we glob for .put.* anywhere
 scoped_store_dir="$(find "$MOCK_STORE_DIR" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | grep -F "$CONC_NS" || true)"
-_leftover_tmp="$(find "$scoped_store_dir" -maxdepth 1 -name '.put.*' 2>/dev/null)"
+_leftover_tmp="$(find "$scoped_store_dir" -maxdepth 1 -name '.put.*' 2>/dev/null)" || true
 if [[ -n "$scoped_store_dir" ]] && grep -q . <<< "$_leftover_tmp"; then
     assert_fail "concurrent puts: no leftover .put.* tmp files" \
         "orphaned tmp file(s) found under $scoped_store_dir"

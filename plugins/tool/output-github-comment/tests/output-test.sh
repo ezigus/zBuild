@@ -110,9 +110,9 @@ rm -f "$ARTIFACTS_DIR/security-findings.json" "$ARTIFACTS_DIR/lint-findings.json
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 report="$(cat "$STATE_DIR/report-test-run-001.md")"
 
-critical_pos=$(grep -n "Critical Finding" | cut -d: -f1 || echo 9999) <<< "$report"
-medium_pos=$(grep -n "Medium Finding" | cut -d: -f1 || echo 9999) <<< "$report"
-low_pos=$(grep -n "Low Finding" | cut -d: -f1 || echo 9999) <<< "$report"
+critical_pos=$(echo "$report" | grep -n "Critical Finding" | cut -d: -f1 || echo 9999)
+medium_pos=$(echo "$report" | grep -n "Medium Finding" | cut -d: -f1 || echo 9999)
+low_pos=$(echo "$report" | grep -n "Low Finding" | cut -d: -f1 || echo 9999)
 if [[ "$critical_pos" -lt "$medium_pos" && "$medium_pos" -lt "$low_pos" ]]; then
     assert_pass "severity ordering: critical < medium < low in report"
 else

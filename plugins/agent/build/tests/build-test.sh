@@ -454,7 +454,7 @@ big_input="${big_input%$'\n'}"
 out_big="$(_build_format_numstat "$big_input" _allowed_empty)"
 assert_contains "truncation hint emitted (#506 unified format)" "$out_big" "↪ [10 more files · full at build-summary.json]"
 assert_contains "truncated footer: 60 files, +60 -0" "$out_big" "total: 60 files, +60 -0"
-shown_count="$(grep -c '^+1 -0  f' || true)" <<< "$out_big"
+shown_count="$(printf '%s\n' "$out_big" | grep -c '^+1 -0  f' || true)"
 assert_eq "exactly 50 numstat lines shown when total=60" "50" "$shown_count"
 assert_event_emitted "build.numstat.truncated event fired" \
     "$ZBUILD_EVENTS_JSONL" "build.numstat.truncated"

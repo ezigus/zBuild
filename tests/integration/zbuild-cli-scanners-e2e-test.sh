@@ -60,7 +60,7 @@ assert_contains "Z3: lists tracker" "$out" "tracker"
 # ─── Z4: passthrough — `zbuild deferred backfill --help` shows 7 sections ──
 out="$("$ZBUILD" deferred backfill --help 2>&1)"; rc=$?
 assert_eq "Z4: backfill --help passthrough exits 0" "0" "$rc"
-n="$(grep -cE "$SECTIONS_PATTERN")" <<< "$out"
+n="$(printf '%s\n' "$out" | grep -cE "$SECTIONS_PATTERN")"
 if (( n >= 6 )); then
     assert_pass "Z4: passthrough shows $n structured sections"
 else
@@ -70,7 +70,7 @@ fi
 # ─── Z5 REGRESSION LOCK: direct script help has same structure (canonical) ─
 out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --help 2>&1)"; rc=$?
 assert_eq "Z5: direct backfill --help exits 0" "0" "$rc"
-n="$(grep -cE "$SECTIONS_PATTERN")" <<< "$out"
+n="$(printf '%s\n' "$out" | grep -cE "$SECTIONS_PATTERN")"
 if (( n >= 6 )); then
     assert_pass "Z5 REGRESSION LOCK: script-level help has $n sections"
 else
@@ -101,7 +101,7 @@ assert_contains "Z8: mentions drift" "$out" "drift"
 # ─── Z9: `zbuild manifest sync --help` shows structured sections ───────────
 out="$("$ZBUILD" manifest sync --help 2>&1)"; rc=$?
 assert_eq "Z9: manifest sync --help exits 0" "0" "$rc"
-n="$(grep -cE "$SECTIONS_PATTERN")" <<< "$out"
+n="$(printf '%s\n' "$out" | grep -cE "$SECTIONS_PATTERN")"
 if (( n >= 6 )); then
     assert_pass "Z9: sync passthrough shows $n sections"
 else

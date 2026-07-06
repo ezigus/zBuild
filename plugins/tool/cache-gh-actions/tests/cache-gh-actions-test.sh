@@ -164,7 +164,7 @@ fi
 
 # Test 5: no partial/tmp files left exposed under RUNNER_TEMP with the key's name
 #         (tmp files should be cleaned up on failure)
-_temp_leftover="$(find "$RUNNER_TEMP" \( -name "*.tmp" -o -name "*.partial" -o -name "*.tmp.*" \) 2>/dev/null)"
+_temp_leftover="$(find "$RUNNER_TEMP" \( -name "*.tmp" -o -name "*.partial" -o -name "*.tmp.*" \) 2>/dev/null)" || true
 if grep -q . <<< "$_temp_leftover"; then
     assert_fail "interrupted push: no .tmp/.partial files left in RUNNER_TEMP" \
         "leftover temp files found; plugin did not clean up after kill"

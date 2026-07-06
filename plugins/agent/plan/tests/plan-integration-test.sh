@@ -408,7 +408,7 @@ if grep -qF "OUT_OF_SCOPE_SECRET" <<<"$_guard_prompt_body"; then
         | sed -E 's#<out-of-scope-context>[^<]*</out-of-scope-context>##g')"
     if grep -qF "OUT_OF_SCOPE_SECRET" <<<"$_bare"; then
         assert_fail "[SPEC-2][guard] out-of-scope token leaked UNWRAPPED — resumed splice bypassed redaction" \
-            "bare context: $(grep -F OUT_OF_SCOPE_SECRET | head -1)" <<< "$_bare"
+            "bare context: $(printf '%s' "$_bare" | grep -F OUT_OF_SCOPE_SECRET | head -1)"
     else
         assert_pass "[SPEC-2][guard] out-of-scope token present ONLY inside redaction wrapper (resumed splice was redacted)"
     fi

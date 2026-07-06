@@ -125,7 +125,7 @@ fi
 A_END_COUNT="$(grep -c '"type":"pipeline.end"' "$A_EVENTS" 2>/dev/null)"
 [[ -z "$A_END_COUNT" ]] && A_END_COUNT=0
 assert_eq "A: pipeline.end event fires exactly once" "1" "$A_END_COUNT"
-_end_lines="$(grep '"type":"pipeline.end"' "$A_EVENTS" 2>/dev/null)"
+_end_lines="$(grep '"type":"pipeline.end"' "$A_EVENTS" 2>/dev/null)" || true
 if grep -q '"status":"failed"' <<< "$_end_lines"; then
     assert_pass "A: pipeline.end status=failed"
 else

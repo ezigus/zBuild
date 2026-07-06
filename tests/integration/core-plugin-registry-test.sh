@@ -95,7 +95,7 @@ assert_eq "validate_manifest rejects agent without redaction in requires.core (A
 # Discovery returns the two valid plugins, skips the invalid one
 discovered="$(discover_plugins "$FIXTURE_ROOT" | sort)"
 expected_count=2
-actual_count=$(grep -c .) <<< "$discovered"
+actual_count=$(echo "$discovered" | grep -c .)
 assert_eq "discover_plugins returns only valid manifests" "$expected_count" "$actual_count"
 
 assert_contains "discovery includes test-lens" "$discovered" "agent/test-lens"

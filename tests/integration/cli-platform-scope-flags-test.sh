@@ -38,7 +38,7 @@ if grep -qF "generic" <<< "$result"; then
 else
     assert_pass "override set: generic does not appear"
 fi
-line_count="$(grep -c . || true)" <<< "$result"
+line_count="$(echo "$result" | grep -c . || true)"
 assert_eq "override produces exactly one platform line" "1" "$line_count"
 unset ZBUILD_PLATFORM_OVERRIDE
 rm -f "$STATE_DIR/platforms.json"
@@ -58,7 +58,7 @@ rm -f "$STATE_DIR/platforms.json"
 export ZBUILD_PLATFORM_OVERRIDE="android"
 result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
 assert_contains "ZBUILD_PLATFORM_OVERRIDE=android → output contains android" "$result" "android"
-line_count="$(grep -c . || true)" <<< "$result"
+line_count="$(echo "$result" | grep -c . || true)"
 assert_eq "android override produces exactly one platform line" "1" "$line_count"
 unset ZBUILD_PLATFORM_OVERRIDE
 rm -f "$STATE_DIR/platforms.json"
