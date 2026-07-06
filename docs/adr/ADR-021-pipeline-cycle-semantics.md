@@ -905,8 +905,11 @@ the design plugin:
    stub instead of re-iterating. That defeated the purpose and is corrected
    here: the timeout artifact must FAIL the design-gate.)
 4. `design.timeout.stub_written` is emitted (registered in event-schema.json),
-   but only when the marker write actually succeeds — a failed redirect never
-   claims a file that does not exist.
+   but only when the marker write actually succeeds. A FAILED marker write is a
+   genuine filesystem/infra error, not a recoverable timeout: it emits
+   `plugin.run.error reason=marker_write_failed` and returns rc=1 (terminal)
+   rather than masking the failure with rc=0 and leaving the cycle with no
+   artifact.
 5. `_design_stage_run_inner` returns rc=0 (non-terminal, per #1208) so the
    `design_verify_cycle` loop records the iteration and re-dispatches design on
    the next turn (bounded by its `max_iterations`; on exhaustion `on_max:

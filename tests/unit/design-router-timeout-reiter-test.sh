@@ -18,12 +18,16 @@
 #   SPEC-6[guard]:  rc=137 → plugin.run.error emitted with reason=router_oom_kill
 #   SPEC-7[guard]:  rc=137 → no design.md written (terminal, unchanged)
 #   SPEC-8[guard]:  rc=0 with valid design.md → returns rc=0 (happy path unchanged)
+#   SPEC-9[change]: rc=124 but the marker write FAILS → returns rc=1 (terminal),
+#                   reason=marker_write_failed, no design.timeout.stub_written
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "design: router timeout rc=124 → recoverable re-iterate path (#945)"
 setup_test_env "design-router-timeout-reiter"
@@ -32,11 +36,11 @@ setup_test_env "design-router-timeout-reiter"
 
 # Source design plugin first so real route.sh/redaction get loaded, then
 # override with mocks (same ordering as design-stray-file-recovery-test.sh).
-# shellcheck disable=SC1091
+# shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 # Source the REAL design-gate so SPEC-1 asserts against its actual verdict
 # (verdict-in-artifact convention, ADR-040) rather than the marker's shape.
-# shellcheck disable=SC1091
+# shellcheck source=../../plugins/tool/design-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh"
 
 # _MOCK_ROUTER_RC controls what route_to_model_loop returns.
@@ -185,6 +189,36 @@ else
 fi
 
 _MOCK_DESIGN_WRITE_PATH=""
+
+# ─── SPEC-9: rc=124 but the marker write FAILS → terminal (return 1) ──────────
+# A failed filesystem write on the recovery path is a genuine infra error, not a
+# recoverable timeout: it must NOT mask as rc=0 with no artifact. Force the
+# redirect to fail by making the output path a directory (`printf > dir` → rc=1).
+_setup_fixture t4
+mkdir -p "$_F_DESIGN"        # design.md is a directory → the marker redirect fails
+_MOCK_ROUTER_RC=124
+_MOCK_DESIGN_WRITE_PATH=""
+set +e
+_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_rc=$?
+set -e
+
+assert_eq "[SPEC-9] rc=124 + failed marker write → returns rc=1 (terminal)" "1" "$_rc"
+
+if grep -q '"reason":"marker_write_failed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[SPEC-9b] failed marker write → plugin.run.error reason=marker_write_failed"
+else
+    assert_fail "[SPEC-9b] failed marker write → reason=marker_write_failed missing" \
+        "events: $(cat "$ZBUILD_EVENTS_JSONL")"
+fi
+
+if ! grep -q '"design.timeout.stub_written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[SPEC-9c] failed marker write → no design.timeout.stub_written (write never landed)"
+else
+    assert_fail "[SPEC-9c] failed marker write → spurious design.timeout.stub_written"
+fi
+
+_MOCK_ROUTER_RC=0
 
 # ─── Schema registration check ────────────────────────────────────────────────
 SCHEMA="$REPO_ROOT/config/event-schema.json"

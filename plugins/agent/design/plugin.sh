@@ -356,16 +356,19 @@ DESIGN_PROMPT
             # a prior iteration. The marker is a fixed, safe string — no
             # scope_list interpolation (avoids a ``` fence-injection) and no
             # possibly-unset var under set -u. Guard the write: only emit
-            # design.timeout.stub_written when the marker actually lands, so a
-            # failed redirect never claims a file that does not exist.
+            # design.timeout.stub_written when the marker actually lands, and a
+            # FAILED write is a genuine filesystem/infra error (not a recoverable
+            # timeout) → return 1 (terminal) rather than masking it with rc=0 and
+            # leaving the cycle with no artifact.
             mkdir -p "$artifact_dir"
             if printf '# Design incomplete — router timeout (rc=%s), re-iterating\n\nDesign did not complete (reason=%s). No acceptance block is emitted, so the design-gate rejects this artifact and the design cycle re-iterates.\n' \
                     "$router_rc" "$_rc_reason" > "$output_design_md"; then
                 emit_event "design.timeout.stub_written" "plugin=design" "rc=$router_rc" "reason=$_rc_reason"
-            else
-                error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
+                return 0
             fi
-            return 0
+            error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
+            emit_event "plugin.run.error" "plugin=design" "reason=marker_write_failed" "rc=$router_rc"
+            return 1
         fi
         # rc=137 (OOM-kill) or other non-zero rc: terminal
         return 1
