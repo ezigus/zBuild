@@ -378,10 +378,14 @@ DESIGN_PROMPT
             # gate-failing marker above (which still drives #945 re-iteration on
             # non-final iters). At exhaustion, a did_not_finish TAIL lets the
             # cycle HALT (design_timeout_exhausted) instead of falling through to
-            # build with an empty design. Best-effort: the durable re-iterate
-            # signal is the marker; the sidecar is the exhaustion-halt signal.
+            # build with an empty design. Non-fatal (the marker above still drives
+            # #945 re-iteration), but a FAILED write must be VISIBLE — this sidecar
+            # is the load-bearing exhaustion-halt signal; silently dropping it
+            # would degrade to the pre-#1261 empty-design fall-through with no
+            # trace. Mirror the #945 marker-write's fail-loud handling via warn.
             printf '{"schema_version":1,"verdict":"did_not_finish","reason":"router_timeout"}\n' \
-                > "$design_verdict_sidecar" 2>/dev/null || true
+                > "$design_verdict_sidecar" 2>/dev/null \
+                || warn "_design_stage_run_inner: failed to write did_not_finish sidecar $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
             return 0
         fi
         error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"

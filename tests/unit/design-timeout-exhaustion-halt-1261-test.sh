@@ -54,6 +54,13 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 source "$REPO_ROOT/core/pipeline/template.sh"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+# verdict_classify() lives in verdict.sh — cycle-orchestrator.sh does NOT pull it
+# in. The mock cycle_dispatch_stage below calls it to classify member verdicts;
+# without this source the calls would error and silently fall back to a hardcoded
+# value (masking the real classifier). Source it so the mock exercises the REAL
+# classification (mirrors runner.sh, which sources verdict.sh before dispatch).
+# shellcheck source=../../core/pipeline/verdict.sh
+source "$REPO_ROOT/core/pipeline/verdict.sh"
 
 # ─── design-verify-cycle fixture (design → design-gate; NO test member) ───────
 DESIGN_TPL="$TEST_TEMP_DIR/design-verify-cycle.yaml"
