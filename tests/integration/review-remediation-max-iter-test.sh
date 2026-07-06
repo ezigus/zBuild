@@ -113,8 +113,8 @@ assert_eq "T2: exactly 3 review dispatches (= max_iterations: 3)" \
     "3" "$review_dispatch_n"
 
 # ─── T3: cycle.complete with reason=max_iterations ───────────────────────────
-if grep '"type":"cycle.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
-   | grep -q '"reason":"max_iterations"'; then
+_cc_lines="$(grep '"type":"cycle.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+if grep -q '"reason":"max_iterations"' <<< "$_cc_lines"; then
     assert_pass "T3: cycle.complete reason=max_iterations emitted"
 else
     assert_fail "T3: cycle.complete reason=max_iterations" \

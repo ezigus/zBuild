@@ -82,7 +82,7 @@ assert_event_emitted() {
         fi
         # Fallback: the field name appears anywhere in the raw event line
         # (handles pre-fix malformed single-JSON-blob call site)
-        if echo "$matched_line" | grep -qF "\"$payload_field\"" 2>/dev/null; then
+        if grep -qF "\"$payload_field\"" 2>/dev/null <<< "$matched_line"; then
             assert_pass "$desc (payload.$payload_field referenced in event)"
             return
         fi
@@ -127,7 +127,7 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
               ("$emitted_state_file" == "$STATE_FILE" || \
                "$(basename "$emitted_state_file")" == "$(basename "$STATE_FILE")") ]]; then
             assert_pass "event payload: state_file references the correct path"
-        elif echo "$matched_line" | grep -qF '"state_file"' 2>/dev/null; then
+        elif grep -qF '"state_file"' 2>/dev/null <<< "$matched_line"; then
             # state_file key is present (pre-fix encoding embeds full JSON as key)
             assert_pass "event payload: state_file key present in event"
         else
@@ -140,7 +140,7 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
         emitted_reason="$(echo "$matched_line" | jq -r '.data.reason // empty' 2>/dev/null || true)"
         if [[ -n "$emitted_reason" ]]; then
             assert_pass "event payload: reason field is non-empty ('$emitted_reason')"
-        elif echo "$matched_line" | grep -qF '"reason"' 2>/dev/null; then
+        elif grep -qF '"reason"' 2>/dev/null <<< "$matched_line"; then
             assert_pass "event payload: reason key present in event"
         else
             assert_fail \

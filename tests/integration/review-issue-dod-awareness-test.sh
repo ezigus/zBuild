@@ -112,31 +112,31 @@ assert_file_exists "T3: prompt was captured" "$CAPTURED_PROMPT_FILE"
 
 prompt_content="$(cat "$CAPTURED_PROMPT_FILE")"
 
-if printf '%s' "$prompt_content" | grep -q "Issue body (authoritative"; then
+if grep -q "Issue body (authoritative" <<< "$prompt_content"; then
     assert_pass "T4: prompt contains 'Issue body (authoritative...)' header"
 else
     assert_fail "T4: prompt MUST contain Issue body header" "missing"
 fi
 
-if printf '%s' "$prompt_content" | grep -q "Definition of done"; then
+if grep -q "Definition of done" <<< "$prompt_content"; then
     assert_pass "T5: prompt contains the issue's 'Definition of done' text"
 else
     assert_fail "T5: prompt MUST contain DoD checkboxes from intake.md" "missing"
 fi
 
-if printf '%s' "$prompt_content" | grep -q "5-test trial"; then
+if grep -q "5-test trial" <<< "$prompt_content"; then
     assert_pass "T6: prompt contains the issue's '5-test trial' header"
 else
     assert_fail "T6: prompt MUST contain 5-test trial section from intake.md" "missing"
 fi
 
-if printf '%s' "$prompt_content" | grep -q "Wave 19-G verification discipline"; then
+if grep -q "Wave 19-G verification discipline" <<< "$prompt_content"; then
     assert_pass "T7: prompt instruction block carries Wave 19-G discipline"
 else
     assert_fail "T7: prompt MUST include the 19-G verification discipline text" "missing"
 fi
 
-if printf '%s' "$prompt_content" | grep -q "Plan (plan agent interpretation)"; then
+if grep -q "Plan (plan agent interpretation)" <<< "$prompt_content"; then
     assert_pass "T8: prompt labels Plan as 'plan agent interpretation' (not authoritative)"
 else
     assert_fail "T8: Plan section label MUST clarify it is the plan agent's interpretation" "missing"
@@ -155,13 +155,13 @@ set -e
 assert_eq "T9: _review_run_inner returns rc=0 (graceful intake-missing fallback)" "0" "$rc"
 fallback_prompt="$(cat "$CAPTURED_PROMPT_FILE")"
 
-if printf '%s' "$fallback_prompt" | grep -q "Issue body (authoritative"; then
+if grep -q "Issue body (authoritative" <<< "$fallback_prompt"; then
     assert_fail "T10: fallback prompt MUST NOT contain Issue body header (intake.md absent)" "present"
 else
     assert_pass "T10: fallback prompt omits Issue body header when intake.md absent"
 fi
 
-if printf '%s' "$fallback_prompt" | grep -q "^Plan:"; then
+if grep -q "^Plan:" <<< "$fallback_prompt"; then
     assert_pass "T11: fallback prompt uses legacy 'Plan:' label (no behavioral regression)"
 else
     assert_fail "T11: fallback prompt MUST use legacy 'Plan:' label" "missing"
@@ -219,13 +219,13 @@ assert_eq "T_DS1: review runs successfully with out-of-scope diff" "0" "$rc"
 
 diff_stat_prompt="$(cat "$CAPTURED_PROMPT_FILE")"
 
-if printf '%s' "$diff_stat_prompt" | grep -q "plugins/agent/example/plugin.sh"; then
+if grep -q "plugins/agent/example/plugin.sh" <<< "$diff_stat_prompt"; then
     assert_pass "T_DS2: diff-stat file paths survive redaction (NOT wrapped in <out-of-scope-context>)"
 else
     assert_fail "T_DS2: diff-stat MUST surface file paths verbatim — dogfood gap" "out-of-scope wrapper present"
 fi
 
-if printf '%s' "$diff_stat_prompt" | grep -q "## Changed files"; then
+if grep -q "## Changed files" <<< "$diff_stat_prompt"; then
     assert_pass "T_DS3: diff-stat header survives ('## Changed files' present)"
 else
     assert_fail "T_DS3: diff-stat header MUST be present" "missing"
@@ -250,7 +250,7 @@ set -e
 assert_eq "T12: _review_run_inner returns rc=0 for empty intake.md" "0" "$rc"
 empty_prompt="$(cat "$CAPTURED_PROMPT_FILE")"
 
-if printf '%s' "$empty_prompt" | grep -q "Issue body (authoritative"; then
+if grep -q "Issue body (authoritative" <<< "$empty_prompt"; then
     assert_fail "T13: empty intake.md MUST trigger fallback (no Issue body header)" "present"
 else
     assert_pass "T13: empty intake.md triggers legacy prompt fallback"

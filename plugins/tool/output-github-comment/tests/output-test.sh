@@ -246,13 +246,13 @@ unset ZBUILD_ISSUE 2>/dev/null || true
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 report="$(cat "$STATE_DIR/report-test-run-001.md")"
 
-if echo "$report" | grep -qF 'A \| B title'; then
+if grep -qF 'A \| B title' <<< "$report"; then
     assert_pass "pipe in title escaped with backslash in table cell"
 else
     assert_fail "pipe in title should be escaped as \\| in table cell"
 fi
 # Both substrings must appear on the same line — only possible if the newline was collapsed.
-if echo "$report" | grep -q "do this.*or that"; then
+if grep -q "do this.*or that" <<< "$report"; then
     assert_pass "newline in suggestion collapsed to space in table cell"
 else
     assert_fail "newline in suggestion should be collapsed in table cell"

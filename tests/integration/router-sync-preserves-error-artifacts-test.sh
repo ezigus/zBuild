@@ -127,7 +127,8 @@ assert_eq "T6: diagnostic event stage=test_assessment" "test_assessment" "$diag_
 diag_json_path="$(jq -r 'select(.type=="router.error.diagnostic") | .data.raw_json_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
 if [[ -n "$diag_json_path" && "$diag_json_path" != "absent" && -f "$diag_json_path" ]]; then
     assert_pass "T7: raw-claude-output.json preserved at cited path"
-    if jq -r '.error // empty' "$diag_json_path" 2>/dev/null | grep -q "max_turns_reached"; then
+    _err_json="$(jq -r '.error // empty' "$diag_json_path" 2>/dev/null || true)"
+    if grep -q "max_turns_reached" <<< "$_err_json"; then
         assert_pass "T8: preserved JSON contains the .error field intact"
     else
         assert_fail "T8: preserved JSON should contain .error=max_turns_reached" "missing"

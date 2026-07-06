@@ -110,7 +110,7 @@ else
 fi
 
 # Test 6: error output contains a diagnostic keyword
-if echo "$bad_push_err" | grep -qiE "(not found|does not exist|no such|missing|error)"; then
+if grep -qiE "(not found|does not exist|no such|missing|error)" <<< "$bad_push_err"; then
     assert_pass "cache_push missing src: error output contains diagnostic keyword"
 else
     assert_fail "cache_push missing src: error output contains diagnostic keyword" \

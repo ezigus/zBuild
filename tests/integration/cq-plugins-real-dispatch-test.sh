@@ -80,7 +80,7 @@ fi
 assert_file_exists "T1: cq-preflight-result.json written under artifacts/" \
     "$ARTIFACTS_DIR/cq-preflight-result.json"
 
-if echo "$stderr_t1" | grep -qE "unbound variable|Not a directory"; then
+if grep -qE "unbound variable|Not a directory" <<< "$stderr_t1"; then
     assert_fail "T1: no 'unbound variable' or 'Not a directory' error" \
         "$stderr_t1"
 else
@@ -97,7 +97,7 @@ assert_eq "T2: cq_audit_plan_run exits 0" "0" "$rc_t2"
 assert_file_exists "T2: audit-plan.json written under artifacts/" \
     "$ARTIFACTS_DIR/audit-plan.json"
 
-if echo "$stderr_t2" | grep -qE "unbound variable|Not a directory"; then
+if grep -qE "unbound variable|Not a directory" <<< "$stderr_t2"; then
     assert_fail "T2: no 'unbound variable' or 'Not a directory' error" \
         "$stderr_t2"
 else
@@ -116,7 +116,7 @@ assert_file_exists "T3: review.findings.json written under artifacts/" \
 assert_file_exists "T3: quality-feedback.md written under artifacts/" \
     "$ARTIFACTS_DIR/quality-feedback.md"
 
-if echo "$stderr_t3" | grep -qE "unbound variable|Not a directory"; then
+if grep -qE "unbound variable|Not a directory" <<< "$stderr_t3"; then
     assert_fail "T3: no 'unbound variable' or 'Not a directory' error" \
         "$stderr_t3"
 else
@@ -130,7 +130,7 @@ rc_t4=$?
 set -e
 
 assert_eq "T4: cq_cycle_cleanup exits 0" "0" "$rc_t4"
-if echo "$stderr_t4" | grep -qE "unbound variable|Not a directory"; then
+if grep -qE "unbound variable|Not a directory" <<< "$stderr_t4"; then
     assert_fail "T4: no 'unbound variable' or 'Not a directory' error" "$stderr_t4"
 else
     assert_pass "T4: no fatal env errors in cq_cycle_cleanup"
@@ -146,7 +146,7 @@ assert_eq "T5: cq_backtrack_run exits 0" "0" "$rc_t5"
 assert_file_exists "T5: cq-backtrack-result.json written under artifacts/" \
     "$ARTIFACTS_DIR/cq-backtrack-result.json"
 
-if echo "$stderr_t5" | grep -qE "unbound variable|Not a directory"; then
+if grep -qE "unbound variable|Not a directory" <<< "$stderr_t5"; then
     assert_fail "T5: no 'unbound variable' or 'Not a directory' error" \
         "$stderr_t5"
 else

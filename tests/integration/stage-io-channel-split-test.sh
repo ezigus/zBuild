@@ -134,7 +134,7 @@ assert_eq "Case 1 subprocess rc=0" "0" "$SUBPROC_RC"
 # stage-io banner — if it leaks here — would corrupt every caller using $().
 assert_contains "Case 1 stdout contains the LLM response" "$case1_stdout" "LLM_RESPONSE_PAYLOAD"
 
-if echo "$case1_stdout" | grep -q "stage-io: plan"; then
+if grep -q "stage-io: plan" <<< "$case1_stdout"; then
     assert_fail "Case 1 stdout must NOT contain the stage-io banner" "got banner on fd 1 — \$() callers would see it as part of raw_response"
 else
     assert_pass "Case 1 stdout must NOT contain the stage-io banner"
@@ -190,7 +190,7 @@ assert_contains "Case 2 captured response contains the LLM payload" "$case2_stdo
 # raw_response must NOT contain banner fragments. If `── stage-io:` leaks
 # into the captured string, every downstream JSON parser (plan validator,
 # build diff extractor) breaks.
-if echo "$case2_stdout" | grep -q "stage-io: plan"; then
+if grep -q "stage-io: plan" <<< "$case2_stdout"; then
     assert_fail "Case 2 captured response must NOT contain banner" "got banner inside \$() — would corrupt every JSON-parsing caller"
 else
     assert_pass "Case 2 captured response must NOT contain banner"

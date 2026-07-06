@@ -101,7 +101,7 @@ set -e
 assert_eq "sentinel-strip run returns rc=0" "0" "$rc"
 intake_content="$(cat "$STATE_DIR/intake.md")"
 assert_contains "intake.md has original prefix" "$intake_content" "fix the login flow"
-if echo "$intake_content" | grep -q "Plan Summary"; then
+if grep -q "Plan Summary" <<< "$intake_content"; then
     assert_fail "sentinel ## Plan Summary should be stripped from intake.md"
 else
     assert_pass "sentinel ## Plan Summary stripped from intake.md"
@@ -144,7 +144,7 @@ set -e
 assert_eq "injection guard run returns rc=0" "0" "$rc"
 scope="$(cat "$STATE_DIR/scope-manifest.md")"
 assert_contains "valid platform ok-platform written" "$scope" "+ ok-platform/"
-if echo "$scope" | grep -q '\.\.'; then
+if grep -q '\.\.' <<< "$scope"; then
     assert_fail "path traversal should be filtered from scope-manifest"
 else
     assert_pass "path traversal filtered from scope-manifest"
@@ -389,12 +389,12 @@ set -e
 
 assert_eq "T_456_d: CLOSED/empty-reason returns rc=2" "2" "$rc"
 assert_contains "T_456_d: stderr says <not specified>" "$t456d_err" "<not specified>"
-if echo "$t456d_err" | grep -q 'reason: null'; then
+if grep -q 'reason: null' <<< "$t456d_err"; then
     assert_fail "T_456_d: stderr must not literal-contain 'reason: null'"
 else
     assert_pass "T_456_d: stderr does not contain literal 'reason: null'"
 fi
-if echo "$t456d_err" | grep -q '(null)'; then
+if grep -q '(null)' <<< "$t456d_err"; then
     assert_fail "T_456_d: stderr must not contain '(null)'"
 else
     assert_pass "T_456_d: stderr does not contain '(null)'"
@@ -491,7 +491,7 @@ set -e
 unset MOCK_GH_REPO_RC
 assert_eq "T_456_j: repo view fail + CLOSED returns rc=2" "2" "$rc"
 assert_contains "T_456_j: stderr still mentions CLOSED" "$t456j_err" "CLOSED"
-if echo "$t456j_err" | grep -q '//issues/'; then
+if grep -q '//issues/' <<< "$t456j_err"; then
     assert_fail "T_456_j: stderr must not contain malformed //issues/ token"
 else
     assert_pass "T_456_j: stderr has no malformed //issues/ token"

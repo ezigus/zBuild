@@ -179,8 +179,9 @@ ACTUAL_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state"
 assert_eq "runner exits 0" "0" "$rc"
 
 # ─── Assertion 1: plugin.run.start plugin=design appears in events.jsonl ─────
+_prs_lines="$(grep '"plugin.run.start"' "$EVENTS_JSONL" 2>/dev/null || true)"
 if [[ -f "$EVENTS_JSONL" ]] && grep -q '"plugin.run.start"' "$EVENTS_JSONL" 2>/dev/null && \
-   grep '"plugin.run.start"' "$EVENTS_JSONL" | grep -q '"plugin":"design"' 2>/dev/null; then
+   grep -q '"plugin":"design"' <<< "$_prs_lines" 2>/dev/null; then
     assert_pass "events.jsonl contains plugin.run.start plugin=design"
 else
     assert_fail "events.jsonl contains plugin.run.start plugin=design" \

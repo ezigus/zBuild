@@ -105,12 +105,13 @@ assert_eq "flag-off probe run rc=0" "0" "$rc_off"
 assert_eq "flag-on  probe run rc=0" "0" "$rc_on"
 
 # Flag-off: $- must NOT contain 'm'; set -o monitor must be off.
-if echo "$opts_off" | grep -qE 'dash=[^m]*$|dash=[^m]*[^m]*$' && \
-   echo "$opts_off" | grep -qE '^monitor[[:space:]]+off$'; then
+if grep -qE 'dash=[^m]*$|dash=[^m]*[^m]*$' <<< "$opts_off" && \
+   grep -qE '^monitor[[:space:]]+off$' <<< "$opts_off"; then
     assert_pass "flag-off: monitor mode OFF in runner shell"
 else
     # Looser check: dash line should not have 'm'.
-    if echo "$opts_off" | head -1 | grep -qv 'm'; then
+    _opts_off_1="$(head -1 <<< "$opts_off")"
+    if grep -qv 'm' <<< "$_opts_off_1"; then
         assert_pass "flag-off: monitor mode OFF in runner shell (dash check)"
     else
         assert_fail "flag-off: monitor mode OFF in runner shell" \
@@ -119,8 +120,9 @@ else
 fi
 
 # Flag-on: $- must contain 'm' OR set -o monitor must be on.
-if echo "$opts_on" | head -1 | grep -q 'm' || \
-   echo "$opts_on" | grep -qE '^monitor[[:space:]]+on$'; then
+_opts_on_1="$(head -1 <<< "$opts_on")"
+if grep -q 'm' <<< "$_opts_on_1" || \
+   grep -qE '^monitor[[:space:]]+on$' <<< "$opts_on"; then
     assert_pass "flag-on: monitor mode ON in runner shell"
 else
     assert_fail "flag-on: monitor mode ON in runner shell" \

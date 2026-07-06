@@ -33,7 +33,7 @@ source "$REPO_ROOT/core/detect/platforms.sh"
 export ZBUILD_PLATFORM_OVERRIDE="ios"
 result="$(detect_platforms "$REPO_DIR" "$STATE_DIR" 2>/dev/null)"
 assert_contains "ZBUILD_PLATFORM_OVERRIDE=ios → output contains ios" "$result" "ios"
-if echo "$result" | grep -qF "generic"; then
+if grep -qF "generic" <<< "$result"; then
     assert_fail "override set: generic should NOT appear"
 else
     assert_pass "override set: generic does not appear"

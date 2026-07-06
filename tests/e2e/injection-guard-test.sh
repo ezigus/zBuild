@@ -73,7 +73,7 @@ _run_with_goal() {
 
 # ─── Test 1: goal='$(id)' — id command must NOT execute (no uid= in output) ───
 out="$(_run_with_goal '$(id)' 2>&1 || true)"
-if echo "$out" | grep -q 'uid='; then
+if grep -q 'uid=' <<< "$out"; then
     assert_fail "goal=\$(id): id command did not execute (no uid= in output)" \
         "INJECTION DETECTED: output contained uid=; goal value was expanded"
 else
@@ -82,7 +82,7 @@ fi
 
 # ─── Test 2: goal='`id`' (backtick) — id command must NOT execute ─────────────
 out="$(_run_with_goal '`id`' 2>&1 || true)"
-if echo "$out" | grep -q 'uid='; then
+if grep -q 'uid=' <<< "$out"; then
     assert_fail "goal=\`id\`: backtick id command did not execute (no uid= in output)" \
         "INJECTION DETECTED: output contained uid=; backtick expansion occurred"
 else
@@ -95,7 +95,7 @@ fi
 # What we must NOT see is "INJECTED" appearing on its own line (the output of
 # an actual `echo INJECTED` command execution).
 out="$(_run_with_goal 'hello; echo INJECTED' 2>&1 || true)"
-if echo "$out" | grep -qxF 'INJECTED'; then
+if grep -qxF 'INJECTED' <<< "$out"; then
     assert_fail "goal='hello; echo INJECTED': semicolon injection not executed (echo INJECTED ran)" \
         "INJECTION DETECTED: 'INJECTED' appeared as a standalone output line"
 else

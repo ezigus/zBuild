@@ -31,7 +31,7 @@ source "$PLUGIN_DIR/plugin.sh"
 print_test_section "1. capabilities: declares sequential / no-parallelism"
 caps="$(orch_capabilities)"
 # Spec doesn't pin exact capability names; just confirm valid JSON array with content.
-if echo "$caps" | grep -q '\['; then
+if grep -q '\[' <<< "$caps"; then
     assert_pass "orch_capabilities returns a JSON-like list"
 else
     assert_fail "orch_capabilities returns a JSON-like list" "got: $caps"
