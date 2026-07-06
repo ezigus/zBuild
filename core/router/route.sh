@@ -756,7 +756,9 @@ _route_emit_outcome() {
 }
 
 # ─── _route_update_ledger ─────────────────────────────────────────────────────
-# Appends call cost to ~/.zbuild/cost-ledger.jsonl. Non-fatal on failure.
+# Appends call cost to the cost ledger. The ledger path resolves via
+# ZBUILD_COST_LEDGER (default ~/.zbuild/cost-ledger.jsonl) so a nested run can be
+# fenced to its own ledger (#1214). Non-fatal on failure.
 _route_update_ledger() {
     [[ -z "${_ROUTE_COST_IN:-}" || -z "${_ROUTE_COST_OUT:-}" ]] && return 0
 

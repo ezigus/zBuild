@@ -100,10 +100,8 @@ printf '0.001000\n' > "$FENCE_LEDGER4"
 printf '10.000000\n' > "$PARENT_LEDGER"
 export ZBUILD_COST_LEDGER="$FENCE_LEDGER4"
 export ZBUILD_BUDGET_USD="0.50"
-set +e
 _route_check_budget "T2" 2>/dev/null
 spec4_rc=$?
-set -e
 unset ZBUILD_BUDGET_USD
 unset ZBUILD_COST_LEDGER
 if [[ $spec4_rc -eq 0 ]]; then
