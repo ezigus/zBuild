@@ -76,8 +76,9 @@ _art3="$(dirname "$_sf3")/artifacts"
 assert_eq "[SPEC-3] dry-run pr_stage_run exits 0" "0" "$_rc3"
 assert_file_exists "[SPEC-3] pr-url.txt written" "$_art3/pr-url.txt"
 assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
+_init_lines="$(grep '"plugin.init.start"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || true
 if grep -q '"plugin.init.start"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null \
-   && grep '"plugin.init.start"' "$ZBUILD_EVENTS_JSONL" | grep -q '"plugin":"pr-delivery"'; then
+   && grep -q '"plugin":"pr-delivery"' <<< "$_init_lines"; then
     assert_pass "[SPEC-3] plugin.init.start plugin=pr-delivery emitted"
 else
     assert_fail "[SPEC-3] plugin.init.start plugin=pr-delivery emitted" \

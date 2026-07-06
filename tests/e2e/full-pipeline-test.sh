@@ -355,12 +355,12 @@ pr_open_finalize
 # Assert gh pr create was called with --draft and Closes #999 in args
 if [[ -f "$GH_CALLS_LOG" ]]; then
     _gh_call="$(cat "$GH_CALLS_LOG")"
-    if printf '%s' "$_gh_call" | grep -q -- "--draft"; then
+    if grep -q -- "--draft" <<< "$_gh_call"; then
         assert_pass "gh pr create called with --draft flag"
     else
         assert_fail "gh pr create called with --draft flag" "log: $_gh_call"
     fi
-    if printf '%s' "$_gh_call" | grep -q "Closes #999"; then
+    if grep -q "Closes #999" <<< "$_gh_call"; then
         assert_pass "gh pr create body contains Closes #999"
     else
         assert_fail "gh pr create body contains Closes #999" "log: $_gh_call"

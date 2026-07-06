@@ -126,7 +126,7 @@ else
 fi
 
 # ANSI CSI sequence detection — ESC followed by [
-if printf '%s' "$prompt" | grep -qE $'\x1b\\['; then
+if grep -qE $'\x1b\\[' <<< "$prompt"; then
     assert_fail "no ANSI CSI sequences" "still present"
 else
     assert_pass "no ANSI CSI sequences"

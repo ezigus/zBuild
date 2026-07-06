@@ -123,8 +123,8 @@ assert_contains "infra outcome surfaced on its own non-fatal line" \
     "$raw" "mutation-infra: 1 non-fatal"
 assert_contains "patch-fail fixture classified INFRA (not FAIL)" \
     "$raw" "INFRA 01-patchfail.md  (patch failed after retries)"
-if printf '%s\n' "$raw" | grep -q '^mutation: [0-9]*/[0-9]* passed$' \
-   && ! printf '%s\n' "$raw" | grep -qE 'FAIL  01-patchfail'; then
+if grep -q '^mutation: [0-9]*/[0-9]* passed$' <<< "$raw" \
+   && ! grep -qE 'FAIL  01-patchfail' <<< "$raw"; then
     assert_pass "infra outcome does not emit a FAIL score row"
 else
     assert_fail "infra outcome does not emit a FAIL score row" "$raw"

@@ -164,7 +164,8 @@ fi
 
 # Test 5: no partial/tmp files left exposed under RUNNER_TEMP with the key's name
 #         (tmp files should be cleaned up on failure)
-if find "$RUNNER_TEMP" \( -name "*.tmp" -o -name "*.partial" -o -name "*.tmp.*" \) 2>/dev/null | grep -q .; then
+_temp_leftover="$(find "$RUNNER_TEMP" \( -name "*.tmp" -o -name "*.partial" -o -name "*.tmp.*" \) 2>/dev/null)" || true
+if grep -q . <<< "$_temp_leftover"; then
     assert_fail "interrupted push: no .tmp/.partial files left in RUNNER_TEMP" \
         "leftover temp files found; plugin did not clean up after kill"
 else
@@ -195,7 +196,7 @@ else
 
     assert_exit_code "unreadable src_dir: cache_push exits 1" "1" "$unreadable_rc"
 
-    if echo "$unreadable_out" | grep -qiE "(permission|denied|cannot|unreadable|error|failed)"; then
+    if grep -qiE "(permission|denied|cannot|unreadable|error|failed)" <<< "$unreadable_out"; then
         assert_pass "unreadable src_dir: stderr contains diagnostic keyword"
     else
         assert_fail "unreadable src_dir: stderr contains diagnostic keyword" \
@@ -241,7 +242,7 @@ else
 
     assert_exit_code "unwritable dest_dir: cache_pull exits 1" "1" "$locked_rc"
 
-    if echo "$locked_out" | grep -qiE "(permission|denied|cannot|write|error|failed)"; then
+    if grep -qiE "(permission|denied|cannot|write|error|failed)" <<< "$locked_out"; then
         assert_pass "unwritable dest_dir: stderr contains diagnostic keyword"
     else
         assert_fail "unwritable dest_dir: stderr contains diagnostic keyword" \

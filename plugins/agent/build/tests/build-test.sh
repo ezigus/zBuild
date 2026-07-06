@@ -436,7 +436,7 @@ _allowed_in=(core/ tests/)
 out_redact="$(_build_format_numstat $'3\t1\tdangerous/secrets.txt\n5\t0\tcore/safe.sh' _allowed_in)"
 assert_contains "out-of-scope path replaced with marker" "$out_redact" "<out-of-scope-context>"
 assert_contains "in-scope path rendered verbatim" "$out_redact" "core/safe.sh"
-if printf '%s' "$out_redact" | grep -q "dangerous/secrets.txt"; then
+if grep -q "dangerous/secrets.txt" <<< "$out_redact"; then
     assert_fail "out-of-scope path leaked to banner" "found dangerous/secrets.txt in $out_redact"
 else
     assert_pass "out-of-scope literal path NOT in banner"
@@ -522,7 +522,7 @@ banner_t13="$(cat "$BANNER_T13" 2>/dev/null || true)"
 # #587: [computed] banner pair removed from _build_emit_changed_files_summary.
 # Operator signal lives in events (build.discrepancy.detected /
 # build.diff.empty_after_done_sentinel) + stderr warn; no banner.
-if printf '%s\n' "$banner_t13" | grep -q "build \[computed\]"; then
+if grep -q "build \[computed\]" <<< "$banner_t13"; then
     assert_fail "no [computed] banner (#587)" "found build [computed] in T13 banner"
 else
     assert_pass "no [computed] banner emitted by build stage (#587)"
@@ -572,7 +572,7 @@ stderr_t14="$(cat "$STDERR_T14" 2>/dev/null || true)"
 # #587: WARN line moved from [computed] banner output → stderr `warn` call.
 assert_contains "T14 stderr WARN line emitted (#587)" "$stderr_t14" "LLM signaled success but numstat shows 0 files changed"
 # #587: no [computed] banner pair anymore.
-if printf '%s\n' "$banner_t14" | grep -q "build \[computed\]"; then
+if grep -q "build \[computed\]" <<< "$banner_t14"; then
     assert_fail "no [computed] banner in T14 (#587)" "found build [computed] in T14 banner"
 else
     assert_pass "T14 emits no [computed] banner (#587)"

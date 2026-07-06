@@ -108,7 +108,7 @@ assert_eq "T8 exactly 5 lens one-liners" "5" "$one_liners"
 
 # ─── T9: full lens I/O (prompt + raw JSON body) does NOT reach the terminal ──
 print_test_section "T9: raw lens JSON body absent from terminal"
-if printf '%s' "$term" | grep -q '"schema_version"'; then
+if grep -q '"schema_version"' <<< "$term"; then
     assert_fail "T9 no raw lens JSON body streamed" "found schema_version in terminal"
 else
     assert_pass "T9 raw lens JSON body not streamed to terminal"
@@ -116,7 +116,7 @@ fi
 
 # ─── T10 (CRITICAL): no raw JSON reaches the terminal ────────────────────────
 print_test_section "T10: NO raw JSON on the terminal"
-if printf '%s' "$term" | grep -qE '\{"score"|"findings":\['; then
+if grep -qE '\{"score"|"findings":\[' <<< "$term"; then
     assert_fail "T10 no raw JSON on terminal" "raw JSON detected"
 else
     assert_pass "T10 no {\"score\" / \"findings\":[ on terminal"

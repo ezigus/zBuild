@@ -106,7 +106,7 @@ rm -f "$PLOG"
 out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
 # Pre-sub-3: would have missed this entirely (title contained no signal words).
 # Post-sub-3: similarity on body+title produces a hit.
-if printf '%s' "$out" | grep -q "possible dup: #777"; then
+if grep -q "possible dup: #777" <<< "$out"; then
     assert_pass "T6 REGRESSION LOCK: body-similarity annotation surfaces (title-divergent case)"
 else
     # Acceptable if similarity below threshold; just verify the new helper ran without erroring
@@ -130,7 +130,7 @@ cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
 EOF
 rm -f "$PLOG"
 out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
-if printf '%s' "$out" | grep -q "possible dup: #5"; then
+if grep -q "possible dup: #5" <<< "$out"; then
     assert_pass "T7 REGRESSION LOCK: highest-score match (#5) included even when found last"
 else
     # Acceptable fallback: if scores are too low to clear threshold at all
@@ -171,7 +171,7 @@ out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "
 assert_contains "T9 LOCK: 'no match' annotation when below threshold" "$out" "no match"
 # Tolerate either the with-best ("no match (best: 0.XX vs #N)") or the
 # no-issues path depending on whether similarity returns >0 on this input.
-if printf '%s' "$out" | grep -qE "no match \(best: 0\.[0-9]+ vs #[0-9]+\)"; then
+if grep -qE "no match \(best: 0\.[0-9]+ vs #[0-9]+\)" <<< "$out"; then
     assert_pass "T9: 'no match (best: ...)' format present"
 else
     assert_pass "T9: 'no match' annotation present (best-score path may have been 0.00)"
@@ -202,7 +202,7 @@ cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
 EOF
 rm -f "$PLOG"
 out="$(bash "$REPO_ROOT/scripts/deferred-backfill.sh" --report --presented-log "$PLOG" 2>&1)"
-if printf '%s' "$out" | grep -q "no match (no open issues)"; then
+if grep -q "no match (no open issues)" <<< "$out"; then
     assert_fail "T11 REGRESSION LOCK: 0.00 scores wrongly reported as 'no open issues'"
 else
     assert_contains "T11 LOCK: 0.00 scores produce 'no match (best:' annotation" "$out" "no match (best:"

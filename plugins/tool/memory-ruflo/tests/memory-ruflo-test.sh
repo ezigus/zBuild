@@ -107,7 +107,7 @@ case "$verb" in
             [[ -z "$f" ]] && continue
             k="$(basename "$f")"
             v="$(cat "$f" 2>/dev/null || true)"
-            if printf '%s' "$k$v" | grep -qF "$query" 2>/dev/null; then
+            if grep -qF "$query" <<< "$k$v" 2>/dev/null; then
                 [[ $first -eq 0 ]] && results+=','
                 preview="${v:0:50}"
                 preview="${preview//\\/\\\\}"
@@ -214,7 +214,7 @@ assert_contains "put→search: key present in results" "$search_rt_out" "search-
 assert_contains "put→search: value present in results" "$search_rt_out" "searchable-content"
 
 # Verify tab-separated format is preserved end-to-end.
-if printf '%s' "$search_rt_out" | grep -q $'search-key-001\tsearchable-content'; then
+if grep -q $'search-key-001\tsearchable-content' <<< "$search_rt_out"; then
     assert_pass "put→search: output is tab-separated key<TAB>value"
 else
     assert_fail "put→search: output is tab-separated key<TAB>value" \
@@ -253,7 +253,7 @@ assert_eq "ns-B: correct value returned" "value-from-b" "$result_b"
 
 # Confirm search in ns-A does not bleed into ns-B.
 search_a="$(memory_search "iso-ns-a" "value-from")"
-if ! printf '%s\n' "$search_a" | grep -qF "value-from-b"; then
+if ! grep -qF "value-from-b" <<< "$search_a"; then
     assert_pass "namespace isolation: ns-A search does not return ns-B values"
 else
     assert_fail "namespace isolation: ns-A search does not return ns-B values" \
@@ -372,7 +372,8 @@ assert_eq "concurrent puts: writer-b value intact" "payload-b" "$conc_b"
 # Verify no leftover tmp files from the atomic writes.
 # The scoped namespace in the store is prefixed, so we glob for .put.* anywhere
 scoped_store_dir="$(find "$MOCK_STORE_DIR" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | grep -F "$CONC_NS" || true)"
-if [[ -n "$scoped_store_dir" ]] && find "$scoped_store_dir" -maxdepth 1 -name '.put.*' 2>/dev/null | grep -q .; then
+_leftover_tmp="$(find "$scoped_store_dir" -maxdepth 1 -name '.put.*' 2>/dev/null)" || true
+if [[ -n "$scoped_store_dir" ]] && grep -q . <<< "$_leftover_tmp"; then
     assert_fail "concurrent puts: no leftover .put.* tmp files" \
         "orphaned tmp file(s) found under $scoped_store_dir"
 else

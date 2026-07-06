@@ -123,7 +123,7 @@ case "$_action" in
             [[ -z "$_f" ]] && continue
             _k="$(basename "$_f")"
             _v="$(cat "$_f" 2>/dev/null || true)"
-            if printf '%s%s' "$_k" "$_v" | grep -qF "$_query" 2>/dev/null; then
+            if grep -qF "$_query" <<< "$_k$_v" 2>/dev/null; then
                 [[ $_first -eq 0 ]] && _results+=','
                 _preview="${_v:0:50}"
                 _preview="${_preview//\\/\\\\}"
@@ -310,7 +310,7 @@ assert_eq "newline value: memory_search output contains exactly 1 line for the k
     "1" "$nl_line_count"
 
 # The literal \n escape sequence must appear in the output value.
-if printf '%s' "$nl_search_out" | grep -qF '\n'; then
+if grep -qF '\n' <<< "$nl_search_out"; then
     assert_pass "newline value: memory_search output contains literal '\\n' escape"
 else
     assert_fail "newline value: memory_search output contains literal '\\n' escape" \

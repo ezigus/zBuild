@@ -373,13 +373,13 @@ assert_eq "review exports ZBUILD_ROUTER_ARTIFACT_ID=review around route_to_model
 captured_prompt="$(cat "$_CAPTURED_REVIEW_PROMPT")"
 
 # Kept hygiene tokens (ADR-028 canonical phrasing).
-if echo "$captured_prompt" | grep -q "NO markdown code fences"; then
+if grep -q "NO markdown code fences" <<< "$captured_prompt"; then
     assert_pass "prompt contains 'NO markdown code fences'"
 else
     assert_fail "prompt missing 'NO markdown code fences'" "got: $(echo "$captured_prompt" | head -5)"
 fi
 
-if echo "$captured_prompt" | grep -q "EXACTLY ONE JSON object"; then
+if grep -q "EXACTLY ONE JSON object" <<< "$captured_prompt"; then
     assert_pass "prompt contains 'EXACTLY ONE JSON object'"
 else
     assert_fail "prompt missing 'EXACTLY ONE JSON object'" "got: $(echo "$captured_prompt" | head -5)"
@@ -389,66 +389,66 @@ fi
 # gate (_review_envelope_schema_ok requires .schema_version==1) can disambiguate
 # the real envelope from a brace-bearing postamble. The prior "implicit (1)"
 # wording told the model to omit it, which made recovery inert for review.
-if echo "$captured_prompt" | grep -q "schema_version.*MUST be present"; then
+if grep -q "schema_version.*MUST be present" <<< "$captured_prompt"; then
     assert_pass "#944: review prompt requires schema_version:1 (aligns with recovery gate)"
 else
     assert_fail "#944: review prompt must require schema_version:1" "got: $(echo "$captured_prompt" | grep -i schema_version | head -3)"
 fi
-if echo "$captured_prompt" | grep -qi "schema_version.*implicit"; then
+if grep -qi "schema_version.*implicit" <<< "$captured_prompt"; then
     assert_fail "#944: review prompt still says schema_version is 'implicit' (contradicts the gate)"
 else
     assert_pass "#944: review prompt no longer calls schema_version 'implicit'"
 fi
 
 # #478: prompt hardening — explicit "first character MUST be {" rule (canonical phrasing).
-if echo "$captured_prompt" | grep -qF 'first output character MUST be `{`'; then
+if grep -qF 'first output character MUST be `{`' <<< "$captured_prompt"; then
     assert_pass "#478: review prompt demands first output character '{'"
 else
     assert_fail "#478: review prompt missing 'first character MUST be {' rule"
 fi
-if echo "$captured_prompt" | grep -qF "NO prose before, after, or around the JSON envelope"; then
+if grep -qF "NO prose before, after, or around the JSON envelope" <<< "$captured_prompt"; then
     assert_pass "#478: review prompt forbids prose around envelope"
 else
     assert_fail "#478: review prompt missing prose prohibition"
 fi
 
 # NEGATIVE: the #462 "no tool calls" prohibition is lifted under ADR-018.
-if echo "$captured_prompt" | grep -q "no tool calls"; then
+if grep -q "no tool calls" <<< "$captured_prompt"; then
     assert_fail "prompt still contains 'no tool calls' — should be lifted under ADR-018"
 else
     assert_pass "prompt no longer forbids tool calls outright"
 fi
 
-if echo "$captured_prompt" | grep -qi "no tool-use"; then
+if grep -qi "no tool-use" <<< "$captured_prompt"; then
     assert_fail "prompt still says 'no tool-use' — should be lifted under ADR-018"
 else
     assert_pass "prompt does not say 'no tool-use'"
 fi
 
 # POSITIVE: invitation + the Read tool named
-if echo "$captured_prompt" | grep -qi "MAY use the Read tool"; then
+if grep -qi "MAY use the Read tool" <<< "$captured_prompt"; then
     assert_pass "prompt invites Read tool ('MAY use the Read tool')"
 else
     assert_fail "prompt missing 'MAY use the Read tool' invitation"
 fi
 
-if echo "$captured_prompt" | grep -q "Read"; then
+if grep -q "Read" <<< "$captured_prompt"; then
     assert_pass "prompt names the Read tool"
 else
     assert_fail "prompt does not name Read"
 fi
 
 # POSITIVE: forbid Edit/Write/Bash explicitly
-if echo "$captured_prompt" | grep -q "Edit" && \
-   echo "$captured_prompt" | grep -q "Write" && \
-   echo "$captured_prompt" | grep -q "Bash"; then
+if grep -q "Edit" <<< "$captured_prompt" && \
+   grep -q "Write" <<< "$captured_prompt" && \
+   grep -q "Bash" <<< "$captured_prompt"; then
     assert_pass "prompt forbids Edit/Write/Bash"
 else
     assert_fail "prompt does not explicitly forbid Edit/Write/Bash"
 fi
 
 # POSITIVE: <out-of-scope-context> marker awareness
-if echo "$captured_prompt" | grep -q "out-of-scope-context"; then
+if grep -q "out-of-scope-context" <<< "$captured_prompt"; then
     assert_pass "prompt mentions <out-of-scope-context> marker"
 else
     assert_fail "prompt does not mention <out-of-scope-context> markers"
@@ -457,14 +457,14 @@ fi
 # ─── Test 9: prompt declares read scope discipline (#469) ────────────────────
 print_test_section "9. prompt declares scope-bounded reads (#469)"
 
-if echo "$captured_prompt" | grep -qi "scope manifest"; then
+if grep -qi "scope manifest" <<< "$captured_prompt"; then
     assert_pass "prompt mentions scope manifest"
 else
     assert_fail "prompt does not mention scope manifest"
 fi
 
 # Read scope is explicitly limited to paths in the diff or scope manifest
-if echo "$captured_prompt" | grep -qi "paths in the diff"; then
+if grep -qi "paths in the diff" <<< "$captured_prompt"; then
     assert_pass "prompt limits reads to paths in the diff or manifest"
 else
     assert_fail "prompt does not constrain read paths"
@@ -840,7 +840,7 @@ _review_run_inner \
     "$ARTIFACT_DIR" >/dev/null 2>&1
 set -e
 captured_485="$(cat "$_CAPTURED_REVIEW_PROMPT_485")"
-if echo "$captured_485" | grep -qi "approve verdict requires"; then
+if grep -qi "approve verdict requires" <<< "$captured_485"; then
     assert_pass "#485 t17: prompt contains 'approve verdict requires' rule"
 else
     assert_fail "#485 t17: prompt missing 'approve verdict requires' rule"
