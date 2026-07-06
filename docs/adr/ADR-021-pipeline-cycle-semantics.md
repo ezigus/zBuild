@@ -940,3 +940,36 @@ fires at the cycle level, not at the router level.
 **No new classification predicate.** `_router_rc_classify` from
 `scripts/lib/router-rc-classify.sh` is the sole classifier — no parallel
 predicate is introduced.
+
+## Amendment — Reason-aware exhaustion: `design_timeout_exhausted` (#1261)
+
+The exhaustion path (`max_iterations` reached without a clean convergence) gains
+a THIRD by-severity outcome ahead of the existing split, keyed on a generic,
+repo-neutral timeout signal:
+
+- **`design_timeout_exhausted` (rc=8, HALT, `status=failed`)** — the TERMINATING
+  iteration was interrupted by a router timeout (a member surfaced the
+  repo-neutral `did_not_finish` verdict — build's #1208 verdict, design's #1261
+  verdict on a `design-verdict.json` sidecar) AND the cycle has NO authoritative
+  verifier signal (no `test` member verdict AND no `test-results.json`). The
+  final artifact is the empty #945 timeout marker; there is nothing to certify
+  and nothing downstream can consume, so the cycle fails fast INSTEAD of honoring
+  `on_max: continue` (ADR-019 Amendment #1261). A new diagnostic event
+  `cycle.timeout_exhausted` (cycle_id, iter, reason) is emitted at the halt.
+- Otherwise the pre-existing split stands: tests failing →
+  `max_iterations_tests_failing` (rc=8); tests passing-but-unclean →
+  `max_iterations` (rc=2, unconverged→review, `on_max` honored).
+
+**Never reroutes.** A `design_timeout_exhausted` terminal is an INFRA failure,
+never a correctable content terminal, so it is EXCLUDED from the ADR-045
+`route_back` reclassification (`route_back` exists to let build re-drive design
+on a CONTENT tautology).
+
+**Reason enum extension.** `cycle.complete reason ∈ {..., design_timeout_exhausted,
+max_iterations_tests_failing, member_terminal_failure}`.
+
+**Repo-neutral / scope.** Keys ONLY on the `did_not_finish` tail + absence of a
+test signal — no stage id / language / path. `build_test_cycle` always runs
+`test` (has a signal) and is unaffected; a future verifier-less cycle inherits
+the same fail-fast. `build_test_cycle` timeout-exhaustion behavior is a noted
+follow-up, deliberately out of scope for #1261.

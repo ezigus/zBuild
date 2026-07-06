@@ -2018,6 +2018,19 @@ cycle_orchestrator_run() {
         # the stall-break there).
         local _build_verdict
         _build_verdict="$(jq -r '.build.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
+        # #1261: generic timeout-tail signal — did ANY member of THIS iteration
+        # surface the repo-neutral `did_not_finish` verdict (a router-timeout /
+        # dispatch-interrupt mid-flight resting point: build's #1208 verdict,
+        # design's #1261 verdict)? Read from the RAW verdict blob — no plugin id /
+        # language / path. Consumed ONLY by the reason-aware exhaustion halt below;
+        # keying on the TERMINATING iteration is correct because #945 overwrites
+        # design.md with the empty timeout marker on each timeout, so a timeout
+        # TAIL means the final artifact is empty regardless of earlier content.
+        local _iter_did_not_finish=0
+        if jq -e 'to_entries | any(.value.verdict == "did_not_finish")' \
+                <<< "$verdicts_blob" >/dev/null 2>&1; then
+            _iter_did_not_finish=1
+        fi
 
         # Termination evaluation (priority order — see ADR-021, #1208):
         #   1) until satisfied (converged) — UNLESS the build is mid-flight
@@ -2187,7 +2200,30 @@ cycle_orchestrator_run() {
             if [[ -s "$_exh_trj" ]]; then
                 _exh_test_failed="$(jq -r '.failed // empty' "$_exh_trj" 2>/dev/null || true)"
             fi
-            if [[ "$_exh_test_verdict" == "fail" ]] \
+            # #1261: reason-aware exhaustion (timeout-exhaustion exception to the
+            # ADR-019 on_max=continue fall-through). When the TERMINATING iteration
+            # was interrupted by a router timeout (a member surfaced the repo-neutral
+            # did_not_finish verdict) AND the cycle has NO authoritative verifier
+            # signal (no `test` member verdict AND no test-results.json), the final
+            # artifact is the empty #945 timeout marker — there is nothing to
+            # certify and nothing for a downstream stage to consume. Continuing
+            # under on_max=continue would carry that empty artifact forward (design
+            # → build implements from nothing, the #1261 bug). HALT with a distinct
+            # terminal reason instead (rc=8 → runner status=failed). This is NOT
+            # on_max:halt (too blunt — it would also hard-fail a genuine CONTENT
+            # non-convergence): a content non-convergence has no did_not_finish tail
+            # and keeps the ADR-019 continue below. GENERIC/repo-neutral: keys only
+            # on the did_not_finish tail + absence of a test signal (NOT the stage
+            # id) — build_test_cycle ALWAYS runs `test`, so it has a signal and is
+            # unaffected (scope: design-only for now, #1261); a future verifier-less
+            # cycle inherits the same fail-fast.
+            if [[ "$_iter_did_not_finish" -eq 1 && -z "$_exh_test_verdict" && ! -s "$_exh_trj" ]]; then
+                eb_emit_event "cycle.timeout_exhausted" \
+                    "cycle_id=$cycle_id" "iter=$iter" \
+                    "reason=design_timeout_exhausted" 2>/dev/null || true
+                _CYCLE_LAST_TERMINATED_REASON="design_timeout_exhausted"
+                overall_status="max_iterations"; term_rc=8
+            elif [[ "$_exh_test_verdict" == "fail" ]] \
                || { [[ "$_exh_test_failed" =~ ^[0-9]+$ ]] && [[ "$_exh_test_failed" -gt 0 ]]; }; then
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations_tests_failing"
                 overall_status="max_iterations"; term_rc=8
@@ -2214,7 +2250,11 @@ cycle_orchestrator_run() {
         # target if budget remains, or (b) restore the fallback rc for the
         # normal by-severity terminal handling if budget is exhausted. Only the
         # runner owns dispatch-unit rewind; the orchestrator merely reclassifies.
-        if [[ $term_rc -eq 2 || $term_rc -eq 8 ]]; then
+        # #1261: a timeout-exhaustion (design_timeout_exhausted) is an INFRA
+        # failure, never a correctable content terminal — it must NEVER reroute
+        # (route_back exists to let build re-drive design on a CONTENT tautology).
+        if [[ ( $term_rc -eq 2 || $term_rc -eq 8 ) \
+              && "$_CYCLE_LAST_TERMINATED_REASON" != "design_timeout_exhausted" ]]; then
             local _rb_to_var="_TPL_CYCLE_ROUTE_BACK_TO_${cycle_id//-/_}"
             if [[ -n "${!_rb_to_var:-}" ]]; then
                 local _rce=0; case $- in *e*) _rce=1 ;; esac

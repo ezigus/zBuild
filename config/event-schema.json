@@ -87,6 +87,7 @@
     "cycle.context.compressed",
     "cycle.member.terminal_failure",
     "cycle.build_unfinished.suppressed_convergence",
+    "cycle.timeout_exhausted",
     "design.stray.recovered",
     "design.stray.conflict",
     "design.acceptance_tests.written",
