@@ -90,18 +90,20 @@ _run_pipeline() {
 # #1095 (PC2): scenarios 2–4 each assert one verdict→glyph mapping on a single
 # stage. Booting the full ~14-stage standard roster (~13s each) just to read one
 # glyph is wasteful. Instead drive the runner with a minimal single-stage fixture
-# (~1.3s each). #1268: stage each fixture under TEST_TEMP_DIR via
-# ZBUILD_TEMPLATES_DIR (install_template_fixture accretes into one dir across
-# calls); the exported var reaches the `bash "$RUNNER" --template …` subprocess
-# and the master trap reaps it, so nothing lands in the tracked config/templates/.
+# (~1.3s each). #1270: install each fixture as a per-repo `.zbuild/templates/`
+# overlay in a temp repo (they accrete into the same repo across calls) and run
+# the runner with CWD = that repo (resolver reads from $PWD); nothing lands in the
+# tracked config/templates/, and the temp repo is reaped by the master trap.
+VERDICT_OVERLAY_REPO="$(setup_git_temp_repo verdict-overlay-repo)"
 _install_verdict_fixture() {
-    install_template_fixture "$1"
+    install_template_overlay "$VERDICT_OVERLAY_REPO" "$1"
 }
 
 # _run_pipeline_template <template-id> — single-stage fixture run.
 _run_pipeline_template() {
     rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-    bash "$RUNNER" --issue 83 --template "$1" 2>"$TEST_TEMP_DIR/runner.err" >/dev/null
+    ( cd "$VERDICT_OVERLAY_REPO" && bash "$RUNNER" --issue 83 --template "$1" ) \
+        2>"$TEST_TEMP_DIR/runner.err" >/dev/null
 }
 
 # ─── Scenario 1: all-pass → every line ends with ✓ ───────────────────────────

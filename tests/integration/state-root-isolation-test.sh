@@ -51,12 +51,14 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 
 # Minimal two-leaf roster (intake → build); the isolation contract is not
 # stage-count dependent, so drive the cheap fixture (same pattern as
-# per-run-state-isolation-test.sh). #1268: stage the fixture under
-# TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR (install_template_fixture) — reaped by
-# the master trap, never written into the tracked config/templates/. Section F
-# below relies on the test-plugin propagating ZBUILD_TEMPLATES_DIR through its
-# fresh-shell scrub so the nested runner still resolves this fixture (SPEC-7).
-install_template_fixture runner-state-dir-minimal
+# per-run-state-isolation-test.sh). #1270: install the fixture as a per-repo
+# `.zbuild/templates/` overlay in a temp repo and run the runner with CWD = that
+# repo (resolver reads from $PWD); nothing lands in the tracked config/templates/.
+# SPEC-A..E use this uncommitted overlay repo. Section F needs a SEPARATE fixture
+# whose overlay is COMMITTED (its nested-runner staging dir is rsynced from git
+# HEAD then `git clean`-ed, which would wipe an untracked overlay) — see below.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
 mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
 mock_plugin_factory "build"  "agent" 0 "" "" >/dev/null
 
@@ -84,14 +86,15 @@ parent_latest_target="$(readlink "$PARENT_ROOT/latest")"
 run_nested() {
     local run_id="$1"; shift
     set +e
-    env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
+    # #1270: CWD = overlay repo so the resolver finds the fixture.
+    ( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
         -u ZBUILD_STATE_FILE -u ZBUILD_EVENTS_DB \
         ZBUILD_STATE_ROOT="$FENCE" \
         ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue 1127 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
+        bash "$RUNNER" --issue 1127 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
     local rc=$?; return $rc
 }
 
@@ -151,13 +154,14 @@ fi
 # ─── SPEC-E: production default preserved (ZBUILD_STATE_ROOT unset) ──────────
 HOME_DIR2="$TEST_TEMP_DIR/home2"; mkdir -p "$HOME_DIR2/.zbuild"
 set +e
-env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
+# #1270: CWD = overlay repo so the resolver finds the fixture.
+( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL \
     -u ZBUILD_STATE_FILE -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_ROOT \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="def-1" HOME="$HOME_DIR2" PATH="$PATH" \
-    bash "$RUNNER" --issue 1127 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
+    bash "$RUNNER" --issue 1127 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 e_rc=$?
 assert_eq "E: default-root run exits 0" "0" "$e_rc"
 assert_file_exists "E: unset root → state under \$HOME/.zbuild/state/runs/" \
@@ -202,9 +206,17 @@ F_FIXTURE="$TEST_TEMP_DIR/f-repo"; mkdir -p "$F_FIXTURE"
 git -C "$F_FIXTURE" init -q
 git -C "$F_FIXTURE" config user.name t
 git -C "$F_FIXTURE" config user.email t@t
+git -C "$F_FIXTURE" config commit.gpgsign false
 printf 'hi\n' > "$F_FIXTURE/tracked.txt"
 git -C "$F_FIXTURE" add tracked.txt
 git -C "$F_FIXTURE" commit -q -m init
+# #1270: COMMIT the per-repo overlay into F_FIXTURE's git HEAD. _test_run_inner
+# rsyncs this repo into a staging dir then runs `git checkout HEAD -- . && git
+# clean -fdq`, which WIPES untracked files — so an untracked overlay would be
+# gone before the nested runner (CWD = staging dir) resolves --template. A
+# committed overlay is carried by the rsync AND survives the clean, so the nested
+# runner resolves the fixture from its CWD (SPEC-7).
+install_template_overlay_committed "$F_FIXTURE" runner-state-dir-minimal
 F_PATCH="$STAGE_ARTIFACTS/diff.patch"; : > "$F_PATCH"
 F_OUT="$STAGE_ARTIFACTS/test-results.json"
 
@@ -212,13 +224,13 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 # (preserved by the scrub) — WITHOUT the fence it would re-root under
 # $HOME_DIR/.zbuild/state and clobber the parent latest.
 #
-# #1268 SPEC-7: capture the nested runner's output to an inspectable absolute
+# #1270 SPEC-7: capture the nested runner's output to an inspectable absolute
 # log, and (deferred-expansion) copy its resolved pipeline-state.json out of the
 # plugin's throwaway fence ($ZBUILD_STATE_ROOT, set INSIDE the fresh shell)
 # before the RETURN trap reaps it — so we can prove the nested runner actually
-# resolved the temp-staged fixture and reached state-init, rather than the
-# built-in fallback (which would make the parent-untouched assertions pass
-# hollowly, #913).
+# resolved the committed overlay (carried into the staging dir by the rsync) and
+# reached state-init, rather than the built-in fallback (which would make the
+# parent-untouched assertions pass hollowly, #913).
 NESTED_LOG="$TEST_TEMP_DIR/f-nested-runner.log"
 NESTED_STATE_COPY="$TEST_TEMP_DIR/f-nested-state.json"
 F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; cp \"\$ZBUILD_STATE_ROOT/runs/nested-suite/pipeline-state.json\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
@@ -255,11 +267,11 @@ else
     assert_pass "F: test-stage nested run stayed out of the parent root"
 fi
 
-# ─── SPEC-7 (#1268): the section-F fence is NOT hollow ───────────────────────
-# The nested runner must have RESOLVED the temp-staged fixture (via the test
-# plugin re-exporting ZBUILD_TEMPLATES_DIR after its scrub) and reached
-# state-init — proving the parent-untouched assertions above exercised a real
-# nested run, not a template-resolution fallback/abort.
+# ─── SPEC-7 (#1270): the section-F fence is NOT hollow ───────────────────────
+# The nested runner must have RESOLVED the fixture (the committed overlay carried
+# into the staging dir by the rsync, resolved from the nested runner's CWD) and
+# reached state-init — proving the parent-untouched assertions above exercised a
+# real nested run, not a template-resolution fallback/abort.
 if [[ -f "$NESTED_STATE_COPY" ]]; then
     assert_pass "[SPEC-7] nested runner reached state-init (persisted pipeline-state.json under the fence)"
     ns_stages="$(jq -r '.stage_statuses | keys | join(",")' "$NESTED_STATE_COPY" 2>/dev/null || echo)"

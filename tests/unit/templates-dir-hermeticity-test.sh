@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # tests/unit/templates-dir-hermeticity-test.sh
-# #1268: static guard — NO test may WRITE into the tracked
-# $REPO_ROOT/config/templates/. Copying a fixture there and removing it via a
-# bare _test_cleanup_hook (NOT a trap EXIT) leaks the fixture into the source
-# tree on any interrupted / early-exit run (the perf-fixture stray that derailed
-# the #1214/#1215/#945-run-1 dogfoods). Tests must instead call
-# install_template_fixture, which stages fixtures under TEST_TEMP_DIR and points
-# the resolver there via ZBUILD_TEMPLATES_DIR (reaped by the master trap).
+# #1268/#1270: static guard — NO test may WRITE into the tracked template dirs of
+# the REAL repo: $REPO_ROOT/config/templates/ (the shipped templates) OR
+# $REPO_ROOT/.zbuild/templates/ (the per-repo overlay dir). Copying a fixture
+# into either and removing it via a bare _test_cleanup_hook (NOT a trap EXIT)
+# leaks the fixture into the source tree on any interrupted / early-exit run (the
+# perf-fixture stray that derailed the #1214/#1215/#945-run-1 dogfoods). Tests
+# must instead call install_template_overlay <repo> <id> (#1270), which stages
+# the overlay inside a TEMP repo's .zbuild/templates/ and runs the engine with
+# CWD = that temp repo (reaped by the master trap; the real tree is never
+# touched).
 #
 # READS are fine: `load_template "$REPO_ROOT/config/templates/…"` and a
 # STANDARD_TPL="…/config/templates/…" that is only ever passed to load_template.
@@ -14,8 +17,9 @@
 # $TEST_TEMP_DIR/…) is a temp tree, not the real repo dir, so it is excluded by
 # matching the REPO_ROOT var only.
 #
-# SPEC-6 [guard]: bidirectional — RED on the pre-migration tree (9 writers),
-# GREEN once every writer moves to install_template_fixture.
+# SPEC-6 [guard]: bidirectional — RED if any test writes a fixture into the real
+# repo's config/templates/ or .zbuild/templates/, GREEN once every writer uses
+# the temp-repo overlay pattern.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +30,7 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 # system grep for deterministic matching in a guard scan.
 GREP=/usr/bin/grep
 
-print_test_header "templates-dir hermeticity — no test writes into config/templates/ (#1268)"
+print_test_header "templates-dir hermeticity — no test writes into the real config/templates/ or .zbuild/templates/ (#1268/#1270)"
 
 # A safety guard must NEVER pass vacuously. If /usr/bin/grep is missing or not
 # executable every scan grep would fail, the offender list would come back empty,
@@ -38,22 +42,25 @@ if [[ ! -x "$GREP" ]]; then
     print_test_results
 fi
 
-# Repo-rooted config/templates path fragment. Matches only the REAL repo dir
-# ($REPO_ROOT / ${REPO_ROOT}); sandbox roots ($REPO, $FAKE_ROOT, $TEST_TEMP_DIR)
-# never carry the REPO_ROOT name and so are excluded.
+# Repo-rooted template-dir path fragment. Matches only the REAL repo dir
+# ($REPO_ROOT / ${REPO_ROOT}) under either config/templates/ or .zbuild/templates/;
+# sandbox roots ($REPO, $FAKE_ROOT, $TEST_TEMP_DIR) never carry the REPO_ROOT name
+# and so are excluded.
 #
 # KNOWN COVERAGE TRADEOFF (#1268): detection keys on the literal var name
-# REPO_ROOT. A future writer that reaches the REAL config/templates/ through a
+# REPO_ROOT. A future writer that reaches a REAL template dir through a
 # DIFFERENTLY-named var (e.g. `MYROOT="$(git rev-parse --show-toplevel)"; cp …
 # "$MYROOT/config/templates/…"`) would be missed. This is deliberate: widening
 # the path regex to any `…/config/templates` would false-positive on the many
 # legitimate sandbox writes ($REPO/$FAKE_ROOT/$FIX/$TEST_TEMP_DIR — see the
 # survey in #1268). REPO_ROOT is the one convention every real test uses for the
 # repo root, so anchoring on it is the high-precision choice; broadening is left
-# as an explicit non-goal.
-_rp='\$\{?REPO_ROOT\}?/config/templates'
+# as an explicit non-goal. #1270: the alternation now also covers the per-repo
+# overlay dir .zbuild/templates/ so the temp-repo overlay pattern can't regress
+# into writing the real repo's overlay dir.
+_rp='\$\{?REPO_ROOT\}?/(config|\.zbuild)/templates'
 
-# _is_write_target <file> — 0 if the file WRITES into $REPO_ROOT/config/templates
+# _is_write_target <file> — 0 if the file WRITES into a REAL-repo template dir
 _is_write_target() {
     local f="$1"
     # A) direct literal write: `cp … $REPO_ROOT/config/templates` or a
@@ -95,10 +102,10 @@ while IFS= read -r f; do
 done < <(find "$REPO_ROOT/tests" -name '*.sh' -type f | sort)
 
 if [[ ${#offenders[@]} -eq 0 ]]; then
-    assert_pass "[SPEC-6] zero tests write into \$REPO_ROOT/config/templates/"
+    assert_pass "[SPEC-6] zero tests write into the real \$REPO_ROOT/{config,.zbuild}/templates/"
 else
     printf '  offender: %s\n' "${offenders[@]}" >&2
-    assert_fail "[SPEC-6] zero tests write into \$REPO_ROOT/config/templates/" \
+    assert_fail "[SPEC-6] zero tests write into the real \$REPO_ROOT/{config,.zbuild}/templates/" \
         "${#offenders[@]} writer(s): ${offenders[*]}"
 fi
 

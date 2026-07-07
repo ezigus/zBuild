@@ -199,16 +199,6 @@ _test_run_inner() {
     # wrapper to write to. Empty when the repo declares no contract.
     local _zbt_results_json="${ZBUILD_TEST_RESULTS_JSON:-}"
 
-    # #1268: capture the shipped-template search dir (if a test set it) into a
-    # non-ZBUILD_ local BEFORE the fresh-shell scrub clears the ZBUILD_*
-    # namespace. Re-exported below (after the scrub) so a nested runner spawned
-    # by the suite can resolve the SAME fixture the parent run used
-    # (state-root-isolation section F, SPEC-7). Unlike the state/ledger/cache
-    # fences, this DEFAULTS TO THE REAL SHIPPED DIR — templates are read-only,
-    # so an unset value must fall back to the real config/templates/, never a
-    # throwaway temp (a throwaway would break production nested runs).
-    local _zbt_templates_dir="${ZBUILD_TEMPLATES_DIR:-}"
-
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
     # #628: function-scoped RETURN trap self-cleans the staging dir on every
@@ -357,11 +347,6 @@ _test_run_inner() {
         export ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state"
         export ZBUILD_COST_LEDGER="$tmp/.zbuild-nested-state/cost-ledger.jsonl"
         export ZBUILD_CACHE_DIR="$tmp/.zbuild-nested-state/cache"
-        # #1268: re-supply the shipped-template search dir AFTER the scrub so a
-        # nested runner resolves the same fixture the parent used (section F,
-        # SPEC-7). DEFAULTS to the REAL shipped dir (templates are read-only) —
-        # never a throwaway — so production nested runs keep resolving normally.
-        export ZBUILD_TEMPLATES_DIR="${_zbt_templates_dir:-$_ZBUILD_TEST_STAGE_ROOT/config/templates}"
         # #1208: re-supply the repo-declarable count-contract vars AFTER the
         # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
         # xcresulttool shim) can honor them — write its {passed,failed,total}

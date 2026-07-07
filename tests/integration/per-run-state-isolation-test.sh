@@ -41,10 +41,12 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 # to a few seconds, restoring a wide margin. Same fixture+mechanism as
 # runner-exports-state-dir-test.sh (#1097 PC4) and resume-after-sigint-test.sh
 # (#1098 PC5). Assertions are unchanged — only the per-invocation cost shrinks.
-# #1268: stage the fixture under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR rather
-# than the tracked config/templates/ (reaped by the master trap; no source-tree
-# leak on interrupt).
-install_template_fixture runner-state-dir-minimal
+# #1270: install the fixture as a per-repo `.zbuild/templates/` overlay in a temp
+# repo and run the runner with CWD = that repo (resolver reads from $PWD) rather
+# than writing into the tracked config/templates/ (reaped by the master trap; no
+# source-tree leak on interrupt).
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
 # Two-leaf roster matching the minimal template: intake (first stage) + build
 # (the env-capture stage T5/T6 overwrite below). build is overwritten per-test,
 # so register it as a plain stub here only to satisfy registry resolution.
@@ -61,12 +63,13 @@ run_pipeline() {
     # $HOME/.zbuild/state/runs/<id>/. Nested inside the pipeline test stage the
     # #1127 sandbox exports ZBUILD_STATE_ROOT=<tmp>/.zbuild-nested-state; leaking
     # it in re-roots the runner off HOME and breaks the isolation assertions.
-    env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_STATE_FILE \
+    # #1270: CWD = overlay repo so the resolver finds the fixture.
+    ( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_STATE_FILE \
         ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
+        bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
     local rc=$?; set -e; return $rc
 }
 
@@ -96,11 +99,11 @@ EXPLICIT="$TEST_TEMP_DIR/explicit-state"; mkdir -p "$EXPLICIT"
 set +e
 # #1240: scrub ambient ZBUILD_STATE_ROOT so the explicit-STATE_DIR-wins contract
 # is asserted without an interfering fence (the #1127 sandbox sets it when nested).
-env -u ZBUILD_STATE_ROOT ZBUILD_STATE_DIR="$EXPLICIT" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_ROOT ZBUILD_STATE_DIR="$EXPLICIT" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ccc" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
+    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 rc=$?; set -e
 assert_eq "T4: explicit-state run exits 0" "0" "$rc"
 assert_file_exists "T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)" "$EXPLICIT/pipeline-state.json"
@@ -134,12 +137,12 @@ EOF
 set +e
 # #1240: scrub ambient ZBUILD_STATE_ROOT (the #1127 nested-sandbox fence) so
 # STATE_FILE-driven resolution isn't shadowed by an interfering state root.
-env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB \
+( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB \
     ZBUILD_STATE_FILE="$RESUME_DIR/pipeline-state.json" \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-eee" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1
+    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 t6_rc=$?; set -e
 # macOS $TMPDIR is /var/folders (/var -> /private/var symlink), so a literal
 # substring match on the captured ZBUILD_EVENTS_DIR can disagree with the

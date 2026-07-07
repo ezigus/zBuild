@@ -72,11 +72,13 @@ EOF
 # dependent, so we drive the runner with a MINIMAL two-leaf template
 # (intake → build) instead of the full ~14-stage standard roster — the prior
 # register_standard_pipeline_stubs path ran every standard stage just to reach
-# the build env-capture, dominating the ~21s runtime. #1268: stage the fixture
-# under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR (install_template_fixture) instead
-# of copying it into the tracked config/templates/ — the master trap reaps it,
-# so an interrupt can't leak the perf fixture into the source tree.
-install_template_fixture runner-state-dir-minimal
+# the build env-capture, dominating the ~21s runtime. #1270: install the fixture
+# as a per-repo `.zbuild/templates/` overlay in a temp repo and run the runner
+# with CWD = that repo (the resolver reads the overlay from $PWD). Nothing is
+# written into the tracked config/templates/, and the temp repo is reaped by the
+# master trap — an interrupt can't leak the perf fixture into the source tree.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
 
 # intake is the only non-capture stage in the minimal roster; build is then
 # overridden with the env-capture plugin (the test's assertion mechanism).
@@ -97,7 +99,8 @@ set +e
 # ZBUILD_STATE_ROOT=<tmp>/.zbuild-nested-state; if it leaks in, the runner
 # (correctly) re-roots there instead of HOME and the assertion breaks. Unset it
 # so the default-state baseline is deterministic regardless of caller env.
-env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
+# #1270: run with CWD = the overlay repo so the resolver finds the fixture.
+( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
     ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
@@ -107,7 +110,7 @@ env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_RUN_ID="$ZBUILD_RUN_ID" \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
-    bash "$RUNNER" --issue 618 --template runner-state-dir-minimal >/dev/null 2>&1
+    bash "$RUNNER" --issue 618 --template runner-state-dir-minimal ) >/dev/null 2>&1
 rc=$?
 set -e
 # #887: with ZBUILD_STATE_DIR unset, a fresh run roots state under

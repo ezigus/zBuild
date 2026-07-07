@@ -15,6 +15,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "config/templates/simple.yaml — skeleton load and stage assertions (#968)"
 setup_test_env "template-simple-yaml"
 
+# #1270: this test pins the resolver's returned shipped path. Defensively scrub
+# any ambient ZBUILD_TEMPLATES_DIR so a leaked value can never redirect the
+# resolver read-root and break the path assertions. (The #1268 engine seam that
+# honored this var was reverted in #1270; this unset guards against reintroduction.)
+unset ZBUILD_TEMPLATES_DIR
+
 _test_cleanup_hook() { cleanup_test_env; }
 
 # ─── Source under test ───────────────────────────────────────────────────────

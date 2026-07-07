@@ -12,6 +12,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "template-resolver + load_template — extends wiring (ADR-016)"
 setup_test_env "template-resolver-extends"
 
+# #1270: this test pins the resolver's returned paths. Defensively scrub any
+# ambient ZBUILD_TEMPLATES_DIR so a leaked value can never redirect the resolver
+# read-root and break the path assertions. (The #1268 engine seam that honored
+# this var was reverted in #1270; this unset guards against reintroduction.)
+unset ZBUILD_TEMPLATES_DIR
+
 # Source both libraries; resolver root points at our fake repo tree.
 source "$REPO_ROOT/core/pipeline/template.sh"
 source "$REPO_ROOT/core/pipeline/template-resolver.sh"
