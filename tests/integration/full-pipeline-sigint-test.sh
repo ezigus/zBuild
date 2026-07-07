@@ -100,7 +100,7 @@ PLUG
 
 start_ts=$(date +%s)
 set +e
-bash "$RUNNER" --goal "w15b sentinel + rc chain" \
+bash "$RUNNER" --template standard --goal "w15b sentinel + rc chain" \
     >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr"
 runner_rc=$?
 set -e

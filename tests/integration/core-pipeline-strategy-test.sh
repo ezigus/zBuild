@@ -213,7 +213,7 @@ _run_pipeline() {
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_ORCHESTRATOR_BACKEND="bash-parallel" \
     ORCH_SPY_LOG="$ORCH_SPY_LOG" \
-        bash "$RUNNER" --goal "test strategy dispatch" "$@" 2>/dev/null
+        bash "$RUNNER" --template standard --goal "test strategy dispatch" "$@" 2>/dev/null
     _last_rc=$?
     set -e
 }
@@ -310,7 +310,7 @@ ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
 ZBUILD_ORCHESTRATOR_BACKEND="bash-parallel" \
 ORCH_SPY_LOG="$ORCH_SPY_LOG" \
 _ZBUILD_STRATEGY_OVERRIDE="sequential" \
-    bash "$RUNNER" --goal "test sequential halt" 2>/dev/null
+    bash "$RUNNER" --template standard --goal "test sequential halt" 2>/dev/null
 seq_rc=$?
 set -e
 
@@ -335,7 +335,7 @@ composite_out="$(
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_ORCHESTRATOR_BACKEND="bash-parallel" \
     _ZBUILD_STRATEGY_OVERRIDE="composite" \
-        bash "$RUNNER" --goal "test composite" 2>&1
+        bash "$RUNNER" --template standard --goal "test composite" 2>&1
 )"
 composite_rc=$?
 set -e

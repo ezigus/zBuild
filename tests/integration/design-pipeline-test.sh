@@ -170,7 +170,7 @@ env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_CYCLES_ENABLED=0 \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
-    bash "$RUNNER" --issue 754 >/dev/null 2>&1
+    bash "$RUNNER" --template standard --issue 754 >/dev/null 2>&1
 rc=$?
 set -e
 

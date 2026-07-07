@@ -15,9 +15,10 @@ print_test_header "artifact contract — A3: missing artifact triggers plugin.co
 setup_test_env "artifact-contract"
 
 EVENTS_DIR="$TEST_TEMP_DIR/events"
-# #511 F2: this test invokes runner with the default standard template; the
-# F2 cycle wiring is irrelevant to artifact-contract assertions and would
-# otherwise interact with the missing-artifact path. Force linear dispatch.
+# #511 F2: this test pins the standard template explicitly (#978 flipped the
+# default to simple); the F2 cycle wiring is irrelevant to artifact-contract
+# assertions and would otherwise interact with the missing-artifact path. Force
+# linear dispatch.
 export ZBUILD_CYCLES_ENABLED=0
 export ZBUILD_EVENTS_DIR="$EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$EVENTS_DIR/events.jsonl"
@@ -97,7 +98,7 @@ ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
-bash "$RUNNER" --issue 83 2>/dev/null || true
+bash "$RUNNER" --template standard --issue 83 2>/dev/null || true
 
 # ─── Assert plugin.contract.violated event emitted ───────────────────────────
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
@@ -175,7 +176,7 @@ ZBUILD_STATE_DIR="$B_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$B_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$B_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$B_DIR/events.db" \
-bash "$RUNNER" --issue 83 2>/dev/null || true
+bash "$RUNNER" --template standard --issue 83 2>/dev/null || true
 
 if [[ -f "$B_EVENTS_JSONL" ]]; then
     b_violated="$(grep -c '"plugin.contract.violated"' "$B_EVENTS_JSONL" 2>/dev/null || true)"

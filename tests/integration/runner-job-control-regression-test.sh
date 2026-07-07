@@ -57,7 +57,7 @@ printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 register_standard_pipeline_stubs
 
 set +e
-bash "$RUNNER" --goal "w15h job-control happy path" \
+bash "$RUNNER" --template standard --goal "w15h job-control happy path" \
     >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr"
 runner_rc=$?
 set -e

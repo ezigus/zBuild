@@ -83,7 +83,7 @@ PROBE
 unset ZBUILD_RUNNER_JOB_CONTROL
 rm -f "$PROBE_STATE_DIR/pipeline-state.json"
 set +e
-bash "$RUNNER" --goal "w15h probe flag-off" \
+bash "$RUNNER" --template standard --goal "w15h probe flag-off" \
     >"$TEST_TEMP_DIR/runner-off.stdout" 2>"$TEST_TEMP_DIR/runner-off.stderr"
 rc_off=$?
 set -e
@@ -94,7 +94,7 @@ opts_off="$(cat "$PROBE_OPTS_FILE" 2>/dev/null || echo "")"
 export ZBUILD_RUNNER_JOB_CONTROL=1
 rm -f "$PROBE_STATE_DIR/pipeline-state.json"
 set +e
-bash "$RUNNER" --goal "w15h probe flag-on" \
+bash "$RUNNER" --template standard --goal "w15h probe flag-on" \
     >"$TEST_TEMP_DIR/runner-on.stdout" 2>"$TEST_TEMP_DIR/runner-on.stderr"
 rc_on=$?
 set -e
@@ -170,13 +170,13 @@ test_run() { : > "${E2E_TEST_RAN}"; return 0; }
 PLUG
 
 if command -v setsid >/dev/null 2>&1; then
-    setsid bash "$RUNNER" --goal "w15h e2e" \
+    setsid bash "$RUNNER" --template standard --goal "w15h e2e" \
         >"$TEST_TEMP_DIR/runner-e2e.stdout" 2>"$TEST_TEMP_DIR/runner-e2e.stderr" &
     RUNNER_PID=$!
     RUNNER_PGID="$RUNNER_PID"
 else
     set -m
-    bash "$RUNNER" --goal "w15h e2e" \
+    bash "$RUNNER" --template standard --goal "w15h e2e" \
         >"$TEST_TEMP_DIR/runner-e2e.stdout" 2>"$TEST_TEMP_DIR/runner-e2e.stderr" &
     RUNNER_PID=$!
     RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"

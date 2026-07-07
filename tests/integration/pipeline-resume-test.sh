@@ -304,7 +304,7 @@ ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
 ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
 ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-  bash "$RUNNER" --resume --issue 225 2>/dev/null
+  bash "$RUNNER" --template standard --resume --issue 225 2>/dev/null
 _int_rc=$?
 set -e
 
@@ -335,7 +335,7 @@ ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
 ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
 ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-  bash "$RUNNER" --resume --issue 225 --from-stage "nonexistent-stage" 2>/dev/null
+  bash "$RUNNER" --template standard --resume --issue 225 --from-stage "nonexistent-stage" 2>/dev/null
 _fs_rc=$?
 set -e
 
@@ -360,7 +360,7 @@ ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events2.jsonl" \
 ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
 ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-  bash "$RUNNER" --issue 225 --from-stage "intake" 2>/dev/null
+  bash "$RUNNER" --template standard --issue 225 --from-stage "intake" 2>/dev/null
 _noresume_rc=$?
 set -e
 

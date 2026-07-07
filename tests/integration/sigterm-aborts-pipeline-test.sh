@@ -118,7 +118,7 @@ start_ts=$(date +%s)
 # TERM; the build plugin's synchronous `sleep` blocks the trap from firing
 # until it returns.
 if command -v setsid >/dev/null 2>&1; then
-    setsid bash "$RUNNER" --goal "test-sigterm-halt" \
+    setsid bash "$RUNNER" --template standard --goal "test-sigterm-halt" \
         >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr" &
     RUNNER_PID=$!
     # setsid makes the child a session+pgrp leader → pgid == pid.
@@ -128,7 +128,7 @@ else
     # its own pgrp. (`set -m` in this scope only; the harness wraps reset on
     # cleanup.)
     set -m
-    bash "$RUNNER" --goal "test-sigterm-halt" \
+    bash "$RUNNER" --template standard --goal "test-sigterm-halt" \
         >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr" &
     RUNNER_PID=$!
     RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"

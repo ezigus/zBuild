@@ -171,7 +171,7 @@ set +e
 # an ambient fence — the #1127 sandbox sets ZBUILD_STATE_ROOT when this runs nested
 # inside the pipeline test stage.
 env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
-    ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --issue 618 >/dev/null 2>&1
+    ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --template standard --issue 618 >/dev/null 2>&1
 rc=$?
 set -e
 

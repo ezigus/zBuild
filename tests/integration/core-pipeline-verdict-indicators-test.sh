@@ -84,7 +84,7 @@ EOF
 
 _run_pipeline() {
     rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-    bash "$RUNNER" --issue 83 2>"$TEST_TEMP_DIR/runner.err" >/dev/null
+    bash "$RUNNER" --template standard --issue 83 2>"$TEST_TEMP_DIR/runner.err" >/dev/null
 }
 
 # #1095 (PC2): scenarios 2–4 each assert one verdict→glyph mapping on a single

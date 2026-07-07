@@ -73,7 +73,7 @@ EOF
 
 # ─── Test 1: ZBUILD_STATE_FILE points at issue 100 + --issue 200 → exits 2 ─
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --issue 200 --resume 2>"$TEST_TEMP_DIR/stderr1"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template standard --issue 200 --resume 2>"$TEST_TEMP_DIR/stderr1"
 rc=$?
 set -e
 assert_eq "mismatch (state=100, --issue=200) exits non-zero" "2" "$rc"
@@ -87,7 +87,7 @@ fi
 # Use --dry-run because the cross-check now fires BEFORE dry-run early-return.
 # Matching values should result in rc=0 (dry-run success) and no "mismatch".
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --issue 100 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template standard --issue 100 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
 rc=$?
 set -e
 assert_eq "matching (state=100, --issue=100) exits 0 via dry-run" "0" "$rc"
@@ -100,7 +100,7 @@ fi
 
 # ─── Test 3: ZBUILD_STATE_FILE set + --goal (no --issue) → cross-check skipped ─
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --goal "test goal" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr3"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template standard --goal "test goal" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr3"
 rc=$?
 set -e
 assert_eq "goal-mode + state file exits 0 via dry-run" "0" "$rc"
@@ -113,7 +113,7 @@ fi
 
 # ─── Test 4: ZBUILD_STATE_FILE unset → no cross-check at all ───────────────
 set +e
-bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr4"
+bash "$RUNNER" --template standard --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr4"
 rc=$?
 set -e
 assert_eq "no env var, --issue only, exits 0 via dry-run" "0" "$rc"
@@ -129,7 +129,7 @@ fi
 # downstream by the resume logic.)
 set +e
 ZBUILD_STATE_FILE="$TEST_TEMP_DIR/nonexistent-state.json" \
-    bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr5"
+    bash "$RUNNER" --template standard --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr5"
 rc=$?
 set -e
 assert_eq "missing state file exits 0 via dry-run" "0" "$rc"
@@ -148,7 +148,7 @@ CORRUPT_STATE_FILE="$TEST_TEMP_DIR/corrupt-state.json"
 echo "this is not json {" > "$CORRUPT_STATE_FILE"
 set +e
 ZBUILD_STATE_FILE="$CORRUPT_STATE_FILE" \
-    bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
+    bash "$RUNNER" --template standard --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
 rc=$?
 set -e
 assert_eq "corrupt state file + --issue → exits 2 (fail-closed)" "2" "$rc"

@@ -107,14 +107,14 @@ print_test_section "Section 10: --resume with no state file → exit 1"
 
 unset ZBUILD_STATE_FILE
 rm -f "$ZBUILD_STATE_DIR/pipeline-state.json"
-rc="$(_run_runner_rc --issue 42 --resume)"
+rc="$(_run_runner_rc --template standard --issue 42 --resume)"
 assert_eq "--resume + no state file → exit 1" "1" "$rc"
 
 # ─── Section 11: --dry-run prints plan, exits 0 ──────────────────────────────
 print_test_section "Section 11: --dry-run exits 0 with plan output"
 
-out="$(_run_runner --issue 99 --dry-run 2>&1)" || true
-rc="$(_run_runner_rc --issue 99 --dry-run)"
+out="$(_run_runner --template standard --issue 99 --dry-run 2>&1)" || true
+rc="$(_run_runner_rc --template standard --issue 99 --dry-run)"
 assert_eq "--dry-run → exit 0" "0" "$rc"
 assert_contains "--dry-run output mentions 'dry-run'" "$out" "dry-run"
 

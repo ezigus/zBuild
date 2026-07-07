@@ -69,7 +69,7 @@ for s in intake plan impact design build test test_assessment acceptance-gate cq
 done
 
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --issue 83 >/dev/null 2>&1; rc=$?; set -e
+set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e
 assert_eq "pipeline exits 0" "0" "$rc"
 
 expect_label() {
