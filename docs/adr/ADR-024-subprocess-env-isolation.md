@@ -463,3 +463,18 @@ into the fixture repo's HEAD (`install_template_overlay_committed`) — it is th
 carried into the staging dir by the rsync AND survives the clean, and the nested
 runner (CWD = staging dir) resolves it. This needs no `ZBUILD_*` propagation
 through the scrub: the overlay travels with the repo bytes, not the environment.
+
+## Test contract — honor the fence vars, never hardcode `$HOME/.zbuild/*` (#1272)
+
+Tests MUST resolve zBuild's per-user state, ledger, and cache paths through the
+same fence indirection the engine uses —
+`${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}`,
+`${ZBUILD_COST_LEDGER:-$HOME/.zbuild/cost-ledger.jsonl}`, and
+`${ZBUILD_CACHE_DIR:-$HOME/.zbuild/cache}` — or set those vars themselves. A test
+MUST NOT hardcode a bare `$HOME/.zbuild/*` read/write path: doing so bypasses the
+test-stage fence, so the engine (which honors the var) and the test (which does
+not) diverge onto different paths. That divergence is invisible in bare CI (the
+fence is never set) and only surfaces INSIDE the pipeline test-stage — the #1270 /
+#1272 regression class. `router-budget-test.sh` was the last such hardcoder
+(#1272); `suite-under-teststage-env-test.sh` now runs it under the simulated
+fence to keep the class from recurring.
