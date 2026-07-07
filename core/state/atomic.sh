@@ -101,18 +101,21 @@ locked_state_update() {
         [[ "$existing_run_id" != "$ZBUILD_RUN_ID" ]] || return 0
         # Not in_progress → safe (completed, aborted, etc.).
         [[ "$existing_status" == "in_progress" ]] || return 0
-        # In_progress but stale (>=24h) → safe; mirrors get_resume_recommendation.
-        if [[ -n "$existing_updated_at" ]]; then
-            local updated_epoch now_epoch age_seconds
-            if date -u -d "$existing_updated_at" +%s >/dev/null 2>&1; then
-                updated_epoch="$(date -u -d "$existing_updated_at" +%s 2>/dev/null || echo 0)"
-            else
-                updated_epoch="$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$existing_updated_at" +%s 2>/dev/null || echo 0)"
-            fi
-            now_epoch="$(date -u +%s)"
-            age_seconds=$(( now_epoch - updated_epoch ))
-            [[ $age_seconds -lt 86400 ]] || return 0
+        # A collision requires a PROVABLY-live run: in_progress AND a fresh
+        # updated_at (<24h). If updated_at is absent we cannot establish
+        # liveness, so we do NOT block — blocking requires positive evidence
+        # of a live run (mirrors the 24h staleness gate in resume.sh).
+        [[ -n "$existing_updated_at" ]] || return 0
+        local updated_epoch now_epoch age_seconds
+        if date -u -d "$existing_updated_at" +%s >/dev/null 2>&1; then
+            updated_epoch="$(date -u -d "$existing_updated_at" +%s 2>/dev/null || echo 0)"
+        else
+            updated_epoch="$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$existing_updated_at" +%s 2>/dev/null || echo 0)"
         fi
+        now_epoch="$(date -u +%s)"
+        age_seconds=$(( now_epoch - updated_epoch ))
+        # Stale (>=24h) → safe; unparseable timestamp → age huge → also exempt.
+        [[ $age_seconds -lt 86400 ]] || return 0
         error "SPEC-G: live-run collision — refusing to overwrite run '$existing_run_id' (in_progress) with '$ZBUILD_RUN_ID'"
         return 3
     }

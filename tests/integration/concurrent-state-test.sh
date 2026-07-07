@@ -106,11 +106,6 @@ for round in $(seq 1 50); do
 done
 assert_eq "50x stability: zero torn .bak across 50 rounds of 10 concurrent writers" "0" "$torn_rounds"
 
-# ─── SPEC-6 guard: concurrent writers without ZBUILD_RUN_ID are exempt ───────
-# All 60 writers above ran without ZBUILD_RUN_ID exported; the collision guard
-# must not fire for ad-hoc callers. Verify guard is transparent to this test.
-assert_eq "[SPEC-6] concurrent writers (ZBUILD_RUN_ID unset) exempt from collision guard" "0" "$torn_rounds"
-
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

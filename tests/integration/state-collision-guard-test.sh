@@ -79,7 +79,7 @@ set +e
 locked_state_update "$STATE_FILE" "_guard_noop" >/dev/null 2>/dev/null
 stale_rc=$?
 set -e
-assert_eq "[SPEC-5] different run_id + in_progress + stale → rc=0 (dead process)" "0" "$stale_rc"
+assert_eq "[SPEC-5] different run_id + in_progress + stale → rc=0 (updated_at >=24h old)" "0" "$stale_rc"
 
 # ── SPEC-6: ZBUILD_RUN_ID unset → proceeds (ad-hoc callers exempt) ───────────
 _write_state "live-run-eee" "in_progress" "$NOW_ISO"
