@@ -41,14 +41,10 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 # to a few seconds, restoring a wide margin. Same fixture+mechanism as
 # runner-exports-state-dir-test.sh (#1097 PC4) and resume-after-sigint-test.sh
 # (#1098 PC5). Assertions are unchanged — only the per-invocation cost shrinks.
-MINIMAL_TEMPLATE_SRC="$REPO_ROOT/tests/fixtures/templates/runner-state-dir-minimal.yaml"
-MINIMAL_TEMPLATE_INSTALLED="$REPO_ROOT/config/templates/runner-state-dir-minimal.yaml"
-cp "$MINIMAL_TEMPLATE_SRC" "$MINIMAL_TEMPLATE_INSTALLED"
-# Remove the installed fixture even on Ctrl-C / signal exit (temp-dir teardown is
-# handled by cleanup_test_env + the harness master trap; this is fixture-only).
-_test_cleanup_hook() {
-    rm -f "$MINIMAL_TEMPLATE_INSTALLED" 2>/dev/null || true
-}
+# #1268: stage the fixture under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR rather
+# than the tracked config/templates/ (reaped by the master trap; no source-tree
+# leak on interrupt).
+install_template_fixture runner-state-dir-minimal
 # Two-leaf roster matching the minimal template: intake (first stage) + build
 # (the env-capture stage T5/T6 overwrite below). build is overwritten per-test,
 # so register it as a plain stub here only to satisfy registry resolution.

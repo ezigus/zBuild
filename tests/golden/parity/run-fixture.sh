@@ -133,10 +133,18 @@ chmod +x "$FIXTURE_BIN_DIR/rsync"
 
 # ── Write fixture template (Wave B full pipeline) ────────────────────────────
 # The runner loads templates from $REPO_ROOT/config/templates/<id>.yaml — the
-# path is hardcoded. Write a fixture-specific template there and remove it
-# on exit so the repo stays clean. (No roles → runner resolves by stage id
-# via _find_plugin_for_stage, matching the plugin manifest id field.)
-FIXTURE_TEMPLATE="$REPO_ROOT/config/templates/wave-b-parity-fixture.yaml"
+# path was hardcoded. #1268: the resolver now honors ZBUILD_TEMPLATES_DIR, so
+# stage this fixture-specific template in a private throwaway temp dir and point
+# the runner there — instead of writing into the tracked config/templates/
+# (which leaked the fixture into the repo on an interrupted parity run). The dir
+# is OUTSIDE FIXTURE_STATE_DIR so it never enters the artifact-path golden
+# snapshot; an EXIT trap reaps it (the repo is never touched regardless).
+# (No roles → runner resolves by stage id via _find_plugin_for_stage, matching
+# the plugin manifest id field.)
+_FIXTURE_TPL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-parity-tpl.XXXXXX")"
+trap 'rm -rf "$_FIXTURE_TPL_DIR"' EXIT
+export ZBUILD_TEMPLATES_DIR="$_FIXTURE_TPL_DIR"
+FIXTURE_TEMPLATE="$ZBUILD_TEMPLATES_DIR/wave-b-parity-fixture.yaml"
 cat > "$FIXTURE_TEMPLATE" <<'TPL'
 id: wave-b-parity-fixture
 name: Wave B Parity Fixture Pipeline
@@ -162,7 +170,6 @@ stages:
     # production standard.yaml. Other stages still resolve by stage id.
     roles: [pr_delivery]
 TPL
-trap 'rm -f "$FIXTURE_TEMPLATE"' EXIT
 
 # ── Mock repo for the test stage to copy and apply diffs against ─────────────
 # #467: build now needs a real git repo so `git diff HEAD` works (not just a

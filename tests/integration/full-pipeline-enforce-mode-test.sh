@@ -26,11 +26,11 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "pipeline enforce-by-default — Wave 12-E (#664)"
 setup_test_env "preflight-enforce-default"
 
-# Install the missing-test fixture for scenario B
-FIXTURE_SRC="$REPO_ROOT/tests/fixtures/templates/standard-missing-test.yaml"
-INSTALLED_TEMPLATE="$REPO_ROOT/config/templates/standard-missing-test.yaml"
-cp "$FIXTURE_SRC" "$INSTALLED_TEMPLATE"
-_test_cleanup_hook() { rm -f "$INSTALLED_TEMPLATE" 2>/dev/null || true; }
+# Install the missing-test fixture for scenario B. #1268: stage it under
+# TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR (install_template_fixture) — the
+# exported var reaches the runner-sourcing DRIVER subprocess, and the master
+# trap reaps it, so it never lands in the tracked config/templates/.
+install_template_fixture standard-missing-test
 
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"

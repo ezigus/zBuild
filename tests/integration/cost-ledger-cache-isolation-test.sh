@@ -117,12 +117,10 @@ cp "$PARENT_LEDGER_GOLD" "$PARENT_LEDGER"
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 
-MINIMAL_TEMPLATE_SRC="$REPO_ROOT/tests/fixtures/templates/runner-state-dir-minimal.yaml"
-MINIMAL_TEMPLATE_INSTALLED="$REPO_ROOT/config/templates/runner-state-dir-minimal.yaml"
-cp "$MINIMAL_TEMPLATE_SRC" "$MINIMAL_TEMPLATE_INSTALLED" 2>/dev/null || true
-_test_cleanup_hook() {
-    rm -f "$MINIMAL_TEMPLATE_INSTALLED" 2>/dev/null || true
-}
+# #1268: no template install here. The SUITE_CMD below is a bare `echo` dispatched
+# through _test_run_inner — it never invokes the runner with `--template`, so the
+# prior `cp` of runner-state-dir-minimal into config/templates/ was DEAD (nothing
+# resolved it) yet still leaked the fixture into the tracked tree. Block removed.
 mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
 mock_plugin_factory "build"  "agent" 0 "" "" >/dev/null
 
