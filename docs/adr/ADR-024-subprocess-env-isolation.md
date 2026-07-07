@@ -431,3 +431,47 @@ undermine the fresh-user contract. Why not a full `HOME` override for the suite:
 too broad — tests legitimately read git identity / ssh / npm cache from the real
 `HOME` (this ADR preserves `HOME` on purpose). `ZBUILD_STATE_ROOT` is surgical:
 it fences ONLY zBuild's own state tree.
+
+## Amendment 2026-07-06 (#1268) — `ZBUILD_TEMPLATES_DIR` redirects the shipped-template read root
+
+Same shape as the `#1127` fence, one deliberate inversion of the default.
+
+**Problem.** Six integration tests (plus two more found by scope-census) copied a
+perf/fixture template into the **tracked** `config/templates/` and removed it via
+a bare `_test_cleanup_hook` (NOT a `trap EXIT`). An interrupted / early-exit run
+skipped the `rm`, leaking the fixture into the source tree; a later build's
+scope-census then flagged a false `scope_violation` → `blocked_on_scope`
+(derailed the #1214/#1215/#945-run-1 dogfoods). The engine template resolver read
+shipped templates only from a hardcoded `config/templates/` path, and the
+internal `_TEMPLATE_RESOLVER_ROOT` override cannot cross the `bash "$RUNNER"`
+subprocess boundary — so subprocess-invoking tests had no hermetic seam.
+
+**Indirection.** The shipped-template read root in `resolve_template_file`
+(`core/pipeline/template-resolver.sh`) is now
+`${ZBUILD_TEMPLATES_DIR:-$_TEMPLATE_RESOLVER_ROOT/config/templates}`, applied to
+both the shipped path and the `extends:` base. Unset ⇒ byte-for-byte unchanged;
+per-repo `.zbuild/templates/<id>.yaml` overrides still win. Tests use the shared
+helper `install_template_fixture` (`scripts/lib/test-helpers.sh`), which stages
+fixtures under `TEST_TEMP_DIR` and exports the var — reaped by the master
+EXIT/INT/TERM trap, never touching the real tree.
+
+**Propagating fence — with the REAL dir as the default (the inversion).** The
+`test` stage re-exports `ZBUILD_TEMPLATES_DIR` INSIDE the fresh-user-shell,
+AFTER `_zbuild_make_fresh_shell`, beside the `#1127`/`#1214`
+`ZBUILD_STATE_ROOT`/`ZBUILD_COST_LEDGER`/`ZBUILD_CACHE_DIR` re-exports. Unlike
+those state/ledger/cache fences — which default to a **throwaway** `$tmp` — this
+one is a **read-redirect** and MUST default to the **REAL shipped dir**:
+`export ZBUILD_TEMPLATES_DIR="${_zbt_templates_dir:-$_ZBUILD_TEST_STAGE_ROOT/config/templates}"`.
+Templates are read-only; a throwaway default would break a production nested
+`runner.sh` (it would resolve no templates and degrade to the built-in stage
+list — hollow green, #913). Load-bearing consumer: `state-root-isolation`
+section F's nested runner, whose SPEC-7 assertion proves it resolves the
+temp-staged fixture and reaches state-init (not a fallback).
+
+This is why `ZBUILD_TEMPLATES_DIR` joins the fence set as an EXPLICIT
+post-scrub re-export rather than being left scrubbed: a plain scrub would strip
+the redirect and force the real dir anyway — correct for production, but it
+would also strip a test's temp-staged fixture, reintroducing the leak pressure
+that motivated the seam. Re-exporting with the real-dir default satisfies both:
+production nested runs resolve the shipped dir; test nested runs resolve the
+temp fixture.

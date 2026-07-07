@@ -51,13 +51,12 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 
 # Minimal two-leaf roster (intake → build); the isolation contract is not
 # stage-count dependent, so drive the cheap fixture (same pattern as
-# per-run-state-isolation-test.sh).
-MINIMAL_TEMPLATE_SRC="$REPO_ROOT/tests/fixtures/templates/runner-state-dir-minimal.yaml"
-MINIMAL_TEMPLATE_INSTALLED="$REPO_ROOT/config/templates/runner-state-dir-minimal.yaml"
-cp "$MINIMAL_TEMPLATE_SRC" "$MINIMAL_TEMPLATE_INSTALLED"
-_test_cleanup_hook() {
-    rm -f "$MINIMAL_TEMPLATE_INSTALLED" 2>/dev/null || true
-}
+# per-run-state-isolation-test.sh). #1268: stage the fixture under
+# TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR (install_template_fixture) — reaped by
+# the master trap, never written into the tracked config/templates/. Section F
+# below relies on the test-plugin propagating ZBUILD_TEMPLATES_DIR through its
+# fresh-shell scrub so the nested runner still resolves this fixture (SPEC-7).
+install_template_fixture runner-state-dir-minimal
 mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
 mock_plugin_factory "build"  "agent" 0 "" "" >/dev/null
 
@@ -212,12 +211,29 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 # The suite command: spawn a bare default-state runner. It relies on HOME
 # (preserved by the scrub) — WITHOUT the fence it would re-root under
 # $HOME_DIR/.zbuild/state and clobber the parent latest.
-F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal >/dev/null 2>&1 || true; echo suite-ok"
+#
+# #1268 SPEC-7: capture the nested runner's output to an inspectable absolute
+# log, and (deferred-expansion) copy its resolved pipeline-state.json out of the
+# plugin's throwaway fence ($ZBUILD_STATE_ROOT, set INSIDE the fresh shell)
+# before the RETURN trap reaps it — so we can prove the nested runner actually
+# resolved the temp-staged fixture and reached state-init, rather than the
+# built-in fallback (which would make the parent-untouched assertions pass
+# hollowly, #913).
+NESTED_LOG="$TEST_TEMP_DIR/f-nested-runner.log"
+NESTED_STATE_COPY="$TEST_TEMP_DIR/f-nested-state.json"
+F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; cp \"\$ZBUILD_STATE_ROOT/runs/nested-suite/pipeline-state.json\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
 
 set +e
-env HOME="$HOME_DIR" PATH="$PATH" \
-    _test_run_inner "$F_PATCH" "$F_FIXTURE" "$F_OUT" "$F_CMD" \
-    >/dev/null 2>&1
+# #1268: _test_run_inner is a shell FUNCTION — invoke it in a subshell with
+# HOME/PATH exported. The prior `env HOME=… PATH=… _test_run_inner …` could
+# never run it: `env` execs a PROGRAM named _test_run_inner, failed with
+# "No such file or directory", and the whole section-F fence passed HOLLOWLY
+# (parent untouched only because nothing ran, #913). The SPEC-7 assertions
+# below now prove the nested run actually executes and reaches state-init.
+(
+    export HOME="$HOME_DIR" PATH="$PATH"
+    _test_run_inner "$F_PATCH" "$F_FIXTURE" "$F_OUT" "$F_CMD"
+) >/dev/null 2>&1
 set -e
 
 now_latest_f="$(readlink "$PARENT_ROOT/latest" 2>/dev/null || echo MISSING)"
@@ -237,6 +253,26 @@ if [[ -e "$PARENT_ROOT/runs/nested-suite" ]]; then
     assert_fail "F: test-stage nested run leaked into the parent root"
 else
     assert_pass "F: test-stage nested run stayed out of the parent root"
+fi
+
+# ─── SPEC-7 (#1268): the section-F fence is NOT hollow ───────────────────────
+# The nested runner must have RESOLVED the temp-staged fixture (via the test
+# plugin re-exporting ZBUILD_TEMPLATES_DIR after its scrub) and reached
+# state-init — proving the parent-untouched assertions above exercised a real
+# nested run, not a template-resolution fallback/abort.
+if [[ -f "$NESTED_STATE_COPY" ]]; then
+    assert_pass "[SPEC-7] nested runner reached state-init (persisted pipeline-state.json under the fence)"
+    ns_stages="$(jq -r '.stage_statuses | keys | join(",")' "$NESTED_STATE_COPY" 2>/dev/null || echo)"
+    case ",$ns_stages," in
+        *",build,"*)
+            assert_pass "[SPEC-7] nested run used the fixture roster (build ran; no built-in fallback)" ;;
+        *)
+            assert_fail "[SPEC-7] nested run used the fixture roster" \
+                "stage_statuses keys=$ns_stages (expected the intake→build fixture, not the built-in fallback)" ;;
+    esac
+else
+    assert_fail "[SPEC-7] nested runner reached state-init" \
+        "no nested pipeline-state.json copied out — template-resolution abort/fallback? log head: $(head -c 300 "$NESTED_LOG" 2>/dev/null | tr '\n' '|')"
 fi
 
 cleanup_test_env

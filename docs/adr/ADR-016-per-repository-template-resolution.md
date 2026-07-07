@@ -468,3 +468,22 @@ ADR-027 §"Migration story" ships a one-release back-compat shim that accepts pr
 After the shim window closes (one tagged release after Wave 17-C lands), per-repo overrides MUST be in the ADR-027 shape; the pre-ADR-027 shape is a load-time error.
 
 References: ADR-027 §"Decision" and §"Loader contract" (Wave 17-A), Wave 17-B (#703, template loader + validator + back-compat shim), Wave 17-C (#704, `config/templates/standard.yaml` migration + golden updates), ADR-021 v2 (cycle execution model — unchanged; only the declaration shape moves to ADR-027), ADR-013 amendment of the same date (recursive taxonomy validation at every leaf occurrence).
+
+## Amendment 2026-07-06 (#1268) — `ZBUILD_TEMPLATES_DIR` is a read-root redirect, NOT the env selector Q3 rejected
+
+`#1268` adds `ZBUILD_TEMPLATES_DIR` to `resolve_template_file`: the SHIPPED-template
+read root becomes `${ZBUILD_TEMPLATES_DIR:-$_TEMPLATE_RESOLVER_ROOT/config/templates}`
+(applied to both the shipped path and the `extends:` base). This is a
+test-hermeticity seam (ADR-024 fence idiom) so subprocess-invoking tests resolve
+fixtures from a temp dir instead of writing into the tracked `config/templates/`.
+
+This does **not** reopen (Q3). The Q3 rejection was of an env-var **template
+SELECTOR** — a second way to *choose which template id runs* (rivalling
+`--template`). `ZBUILD_TEMPLATES_DIR` selects nothing: `--template <id>` remains
+the sole entrypoint that names the template. The var only relocates the
+**directory the shipped id is read from**, exactly as `_TEMPLATE_RESOLVER_ROOT`
+already did internally — it just crosses the `bash "$RUNNER"` subprocess boundary
+(an env var) where the internal shell var could not. Precedence is unchanged:
+per-repo `.zbuild/templates/<id>.yaml` still wins over the (now-redirectable)
+shipped dir. Unset ⇒ byte-for-byte the pre-#1268 behavior. See ADR-024
+Amendment 2026-07-06 for the fence/propagation contract.

@@ -20,8 +20,15 @@ resolve_template_file() {
     local id="$1"
     local repo_root="${2:-$_TEMPLATE_RESOLVER_ROOT}"
 
+    # #1268: ZBUILD_TEMPLATES_DIR redirects the SHIPPED-template read root so a
+    # test can point the resolver at a temp fixtures dir instead of writing into
+    # the tracked config/templates/ (test-hermeticity; ADR-024 read-redirect
+    # idiom). Unset ⇒ the real shipped dir, byte-identical. Per-repo overrides
+    # (.zbuild/templates/<id>.yaml) still win — this only moves the shipped base.
+    local templates_dir="${ZBUILD_TEMPLATES_DIR:-$_TEMPLATE_RESOLVER_ROOT/config/templates}"
+
     local per_repo_file="$repo_root/.zbuild/templates/${id}.yaml"
-    local shipped_file="$_TEMPLATE_RESOLVER_ROOT/config/templates/${id}.yaml"
+    local shipped_file="$templates_dir/${id}.yaml"
 
     if [[ ! -f "$per_repo_file" ]]; then
         echo "$shipped_file"
@@ -36,9 +43,9 @@ resolve_template_file() {
         return 1
     fi
 
-    local base_file="$_TEMPLATE_RESOLVER_ROOT/config/templates/${extends_id}.yaml"
+    local base_file="$templates_dir/${extends_id}.yaml"
     if [[ ! -f "$base_file" ]]; then
-        echo "template-resolver: per-repo template '${id}' extends '${extends_id}' but config/templates/${extends_id}.yaml does not exist" >&2
+        echo "template-resolver: per-repo template '${id}' extends '${extends_id}' but ${base_file} does not exist" >&2
         return 1
     fi
 

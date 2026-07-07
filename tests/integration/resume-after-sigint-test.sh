@@ -51,11 +51,12 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 # resume continues). Far fewer dispatch units across the two real subprocess
 # runs. Install the fixture into the canonical templates dir for this test's
 # duration; the cleanup hook removes it even on Ctrl-C / signal exit.
-FIXTURE_SRC="$REPO_ROOT/tests/fixtures/templates/resume-minimal.yaml"
-INSTALLED_TEMPLATE="$REPO_ROOT/config/templates/resume-minimal.yaml"
-cp "$FIXTURE_SRC" "$INSTALLED_TEMPLATE"
+# #1268: stage the fixture under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR
+# (install_template_fixture); the exported var reaches the `bash "$RUNNER"
+# --template resume-minimal` subprocess and the master trap reaps it, so no
+# copy into the tracked config/templates/ (and no rm-on-interrupt to leak).
+install_template_fixture resume-minimal
 _test_cleanup_hook() {
-    rm -f "$INSTALLED_TEMPLATE" 2>/dev/null || true
     if [[ "${KEEP_TMP:-0}" == "1" ]]; then
         echo "KEEPTEMP=$TEST_TEMP_DIR" >&2
     else

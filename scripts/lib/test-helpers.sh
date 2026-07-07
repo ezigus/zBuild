@@ -808,6 +808,45 @@ setup_git_temp_repo() {
     printf '%s\n' "$repo"
 }
 
+# ── install_template_fixture (#1268) ─────────────────────────────────────────
+# Copy one or more shipped-template fixtures into a hermetic temp dir and point
+# the engine's template resolver at it via ZBUILD_TEMPLATES_DIR, so a test that
+# invokes `runner.sh --template <id>` (across the `bash "$RUNNER"` subprocess
+# boundary, where the internal _TEMPLATE_RESOLVER_ROOT override cannot reach)
+# resolves the fixture WITHOUT writing into the tracked config/templates/. The
+# prior pattern (cp into config/templates + a bare _test_cleanup_hook rm) leaked
+# the fixture into the source tree on any early/interrupted exit (#1268 root
+# cause). Cleanup is handled by the master EXIT/INT/TERM trap
+# (_test_harness_cleanup removes TEST_TEMP_DIR) — this helper installs NO hook
+# and never touches the real tree.
+#
+# Usage: install_template_fixture <id> [<base_id> ...]
+#   Each id maps to tests/fixtures/templates/<id>.yaml. Pass a per-repo
+#   fixture's `extends:` base id(s) too so the resolver's merge finds them.
+install_template_fixture() {
+    # Default UNCONDITIONALLY to a dir under TEST_TEMP_DIR — never honor an
+    # ambient/inherited ZBUILD_TEMPLATES_DIR (a leaked value could point the
+    # copy at a non-hermetic or real path, defeating the whole seam). No caller
+    # legitimately pre-sets it (verified in #1268); TEST_TEMP_DIR is constant per
+    # test, so multiple calls accrete fixtures into the same hermetic dir.
+    export ZBUILD_TEMPLATES_DIR="$TEST_TEMP_DIR/templates"
+    mkdir -p "$ZBUILD_TEMPLATES_DIR"
+    # Repo root derived from THIS helper's location (…/scripts/lib → repo root),
+    # not the caller's cwd, so it resolves regardless of where the test runs.
+    local _hdir _repo
+    _hdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _repo="$(cd "$_hdir/../.." && pwd)"
+    local _id _src
+    for _id in "$@"; do
+        _src="$_repo/tests/fixtures/templates/${_id}.yaml"
+        if [[ ! -f "$_src" ]]; then
+            echo "install_template_fixture: fixture not found: $_src" >&2
+            return 1
+        fi
+        cp "$_src" "$ZBUILD_TEMPLATES_DIR/${_id}.yaml"
+    done
+}
+
 # ── install_cycle_mock_stages (ADR-021, #512) ─────────────────────────────────
 # Generate plugins for a cycle whose per-stage verdict depends on ZBUILD_CYCLE_ITER.
 #

@@ -72,18 +72,11 @@ EOF
 # dependent, so we drive the runner with a MINIMAL two-leaf template
 # (intake → build) instead of the full ~14-stage standard roster — the prior
 # register_standard_pipeline_stubs path ran every standard stage just to reach
-# the build env-capture, dominating the ~21s runtime. We install the fixture
-# into config/templates/ for the duration of the test (same mechanism as
-# pipeline-preflight-missing-stage-test.sh) and invoke with --template below.
-MINIMAL_TEMPLATE_SRC="$REPO_ROOT/tests/fixtures/templates/runner-state-dir-minimal.yaml"
-MINIMAL_TEMPLATE_INSTALLED="$REPO_ROOT/config/templates/runner-state-dir-minimal.yaml"
-cp "$MINIMAL_TEMPLATE_SRC" "$MINIMAL_TEMPLATE_INSTALLED"
-# Removes the installed fixture even on Ctrl-C / signal exit. Temp-dir cleanup
-# is handled by the explicit cleanup_test_env at the end + the harness master
-# trap, so this hook is scoped to the fixture file only.
-_test_cleanup_hook() {
-    rm -f "$MINIMAL_TEMPLATE_INSTALLED" 2>/dev/null || true
-}
+# the build env-capture, dominating the ~21s runtime. #1268: stage the fixture
+# under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR (install_template_fixture) instead
+# of copying it into the tracked config/templates/ — the master trap reaps it,
+# so an interrupt can't leak the perf fixture into the source tree.
+install_template_fixture runner-state-dir-minimal
 
 # intake is the only non-capture stage in the minimal roster; build is then
 # overridden with the env-capture plugin (the test's assertion mechanism).

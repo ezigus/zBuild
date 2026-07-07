@@ -89,23 +89,13 @@ _run_pipeline() {
 
 # #1095 (PC2): scenarios 2–4 each assert one verdict→glyph mapping on a single
 # stage. Booting the full ~14-stage standard roster (~13s each) just to read one
-# glyph is wasteful. Instead install a minimal single-stage fixture template into
-# the canonical templates dir for the run's duration and drive the runner with it
-# (~1.3s each). Fixtures removed via _test_cleanup_hook (survives Ctrl-C).
-_VERDICT_FIXTURE_SRC_DIR="$REPO_ROOT/tests/fixtures/templates"
-_VERDICT_INSTALLED_TEMPLATES=()
+# glyph is wasteful. Instead drive the runner with a minimal single-stage fixture
+# (~1.3s each). #1268: stage each fixture under TEST_TEMP_DIR via
+# ZBUILD_TEMPLATES_DIR (install_template_fixture accretes into one dir across
+# calls); the exported var reaches the `bash "$RUNNER" --template …` subprocess
+# and the master trap reaps it, so nothing lands in the tracked config/templates/.
 _install_verdict_fixture() {
-    local id="$1"
-    local src="$_VERDICT_FIXTURE_SRC_DIR/${id}.yaml"
-    local dst="$REPO_ROOT/config/templates/${id}.yaml"
-    cp "$src" "$dst"
-    _VERDICT_INSTALLED_TEMPLATES+=("$dst")
-}
-_test_cleanup_hook() {
-    local f
-    for f in "${_VERDICT_INSTALLED_TEMPLATES[@]:-}"; do
-        [[ -n "$f" ]] && rm -f "$f" 2>/dev/null || true
-    done
+    install_template_fixture "$1"
 }
 
 # _run_pipeline_template <template-id> — single-stage fixture run.

@@ -32,14 +32,11 @@ print_test_header "pipeline pre-flight keystone — missing test stage (#496, AD
 setup_test_env "preflight-keystone"
 
 # ── Pre-conditions: a fixture template that omits `test` ────────────────────
-FIXTURE_SRC="$REPO_ROOT/tests/fixtures/templates/standard-missing-test.yaml"
-INSTALLED_TEMPLATE="$REPO_ROOT/config/templates/standard-missing-test.yaml"
-
-# Install the fixture into the canonical templates dir for the duration of
-# this test. Registered with the test harness's cleanup hook so it is removed
-# even on Ctrl-C / signal exit.
-cp "$FIXTURE_SRC" "$INSTALLED_TEMPLATE"
-_test_cleanup_hook() { rm -f "$INSTALLED_TEMPLATE" 2>/dev/null || true; }
+# #1268: stage the fixture under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR
+# (install_template_fixture) rather than the tracked config/templates/. The
+# exported var reaches the runner subprocess so `--template standard-missing-test`
+# resolves it; the master trap reaps it (no source-tree leak on early exit).
+install_template_fixture standard-missing-test
 
 # Shared environment: route state into the temp dir so the run is hermetic.
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
