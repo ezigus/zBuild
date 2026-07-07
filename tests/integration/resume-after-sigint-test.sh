@@ -51,11 +51,12 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 # resume continues). Far fewer dispatch units across the two real subprocess
 # runs. Install the fixture into the canonical templates dir for this test's
 # duration; the cleanup hook removes it even on Ctrl-C / signal exit.
-# #1268: stage the fixture under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR
-# (install_template_fixture); the exported var reaches the `bash "$RUNNER"
-# --template resume-minimal` subprocess and the master trap reaps it, so no
-# copy into the tracked config/templates/ (and no rm-on-interrupt to leak).
-install_template_fixture resume-minimal
+# #1270: install the fixture as a per-repo `.zbuild/templates/` overlay in a temp
+# repo and run the runner with CWD = that repo (the resolver reads the overlay
+# from $PWD). No copy into the tracked config/templates/, so no rm-on-interrupt
+# to leak; the temp repo is reaped by the master trap.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" resume-minimal
 _test_cleanup_hook() {
     if [[ "${KEEP_TMP:-0}" == "1" ]]; then
         echo "KEEPTEMP=$TEST_TEMP_DIR" >&2
@@ -125,7 +126,8 @@ test_run() {
 PLUG
 
 set +e
-bash "$RUNNER" --template resume-minimal --goal "w15e resume after sigint" \
+# #1270: CWD = overlay repo so the resolver finds the fixture.
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "w15e resume after sigint" ) \
     >"$TEST_TEMP_DIR/phase1.stdout" 2>"$TEST_TEMP_DIR/phase1.stderr"
 phase1_rc=$?
 set -e
@@ -202,7 +204,8 @@ PLUG
 rm -f "$TEST_MARKER"
 
 set +e
-bash "$RUNNER" --resume --template resume-minimal --goal "w15e resume after sigint" \
+# #1270: CWD = overlay repo so the resolver finds the fixture.
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --resume --template resume-minimal --goal "w15e resume after sigint" ) \
     >"$TEST_TEMP_DIR/phase2.stdout" 2>"$TEST_TEMP_DIR/phase2.stderr"
 phase2_rc=$?
 set -e

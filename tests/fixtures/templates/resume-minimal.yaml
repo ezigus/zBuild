@@ -1,6 +1,6 @@
 id: resume-minimal
 name: Resume Minimal Pipeline
-extends: null
+extends: simple
 defaults:
   strategy: fanout
 
@@ -13,6 +13,11 @@ defaults:
 # the two real subprocess runs (SIGINT + --resume) drive far fewer dispatch
 # units. Linear flow, no cycles (resume logic is the same either way).
 #
+# #1270: this is a per-repo `.zbuild/templates/` overlay (extends: simple).
+# When merged over the base, the resulting file carries BOTH the base `flow:`
+# and this `stages:` list, so the loader treats it as OLD-shape and honors ONLY
+# the stages below (the base roster is discarded — it just has to exist).
+#
 # Stages declare NO `roles:` block on purpose. With roles, the runner routes
 # the stage through the fanout strategy (orch pool), which collapses a child
 # rc=130 into a generic rc=1 — that would break the SIGINT-propagation
@@ -20,31 +25,22 @@ defaults:
 # runner resolves the plugin by stage ID and calls plugin_hook_call directly,
 # preserving the leaf's exact rc (the same effective dispatch the standard
 # template gets via cycle_dispatch_stage for its cycle-member build).
-flow:
-  - intake
-  - build
-  - test
-
-# ─── intake (leaf) ───────────────────────────────────────────────────────────
-intake:
-  gate: auto
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-
-# ─── build (leaf) ────────────────────────────────────────────────────────────
-build:
-  gate: auto
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
-  router:
-    timeout_s: 900
-    max_turns: 0
-
-# ─── test (leaf) ─────────────────────────────────────────────────────────────
-test:
-  gate: auto
-  io:
-    destinations: [file, stdout]
-    tail_lines: 200
+stages:
+  - id: intake
+    gate: auto
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
+  - id: build
+    gate: auto
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200
+    router:
+      timeout_s: 900
+      max_turns: 0
+  - id: test
+    gate: auto
+    io:
+      destinations: [file, stdout]
+      tail_lines: 200

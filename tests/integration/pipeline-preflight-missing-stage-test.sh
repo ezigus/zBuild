@@ -32,11 +32,12 @@ print_test_header "pipeline pre-flight keystone — missing test stage (#496, AD
 setup_test_env "preflight-keystone"
 
 # ── Pre-conditions: a fixture template that omits `test` ────────────────────
-# #1268: stage the fixture under TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR
-# (install_template_fixture) rather than the tracked config/templates/. The
-# exported var reaches the runner subprocess so `--template standard-missing-test`
-# resolves it; the master trap reaps it (no source-tree leak on early exit).
-install_template_fixture standard-missing-test
+# #1270: install the fixture as a per-repo `.zbuild/templates/` overlay in a temp
+# repo. The DRIVER runs with CWD = that repo (below) so the resolver reads the
+# overlay from $PWD; nothing lands in the tracked config/templates/, and the temp
+# repo is reaped by the master trap (no source-tree leak on early exit).
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" standard-missing-test
 
 # Shared environment: route state into the temp dir so the run is hermetic.
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
@@ -72,7 +73,7 @@ chmod +x "$DRIVER"
 # ── Run 1: enforce mode ────────────────────────────────────────────────────
 err1="$TEST_TEMP_DIR/run1.err"
 out1="$TEST_TEMP_DIR/run1.out"
-ZBUILD_CONTRACT_VALIDATOR=enforce bash "$DRIVER" >"$out1" 2>"$err1" || true
+( cd "$OVERLAY_REPO" && ZBUILD_CONTRACT_VALIDATOR=enforce bash "$DRIVER" ) >"$out1" 2>"$err1" || true
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 
 if [[ "$exit_code1" == "2" ]]; then
@@ -135,7 +136,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 err2="$TEST_TEMP_DIR/run2.err"
 out2="$TEST_TEMP_DIR/run2.out"
-ZBUILD_CONTRACT_VALIDATOR=warn bash "$DRIVER" >"$out2" 2>"$err2" || true
+( cd "$OVERLAY_REPO" && ZBUILD_CONTRACT_VALIDATOR=warn bash "$DRIVER" ) >"$out2" 2>"$err2" || true
 
 if grep -q "Pipeline cannot start" "$err2" 2>/dev/null; then
     assert_pass "warn: structured error printed on stderr"

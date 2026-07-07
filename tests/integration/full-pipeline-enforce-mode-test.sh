@@ -26,11 +26,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "pipeline enforce-by-default — Wave 12-E (#664)"
 setup_test_env "preflight-enforce-default"
 
-# Install the missing-test fixture for scenario B. #1268: stage it under
-# TEST_TEMP_DIR via ZBUILD_TEMPLATES_DIR (install_template_fixture) — the
-# exported var reaches the runner-sourcing DRIVER subprocess, and the master
-# trap reaps it, so it never lands in the tracked config/templates/.
-install_template_fixture standard-missing-test
+# Install the missing-test fixture for scenario B as a per-repo `.zbuild/templates/`
+# overlay in a temp repo. #1270: the DRIVER runs with CWD = that repo (below), so
+# the resolver reads the overlay from $PWD; nothing lands in the tracked
+# config/templates/, and the temp repo is reaped by the master trap. Scenario A's
+# `--template standard` has no per-repo override here, so it resolves the shipped
+# standard from the engine tree.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" standard-missing-test
 
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
@@ -60,7 +63,7 @@ chmod +x "$DRIVER"
 # ── Scenario B: broken template → default mode refuses with rc=2 ────────────
 err1="$TEST_TEMP_DIR/run1.err"
 out1="$TEST_TEMP_DIR/run1.out"
-bash "$DRIVER" --goal "should be rejected" --template standard-missing-test \
+( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template standard-missing-test ) \
     >"$out1" 2>"$err1" || true
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 
@@ -111,7 +114,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 err2="$TEST_TEMP_DIR/run2.err"
 out2="$TEST_TEMP_DIR/run2.out"
 # --dry-run avoids actually running stages while still exercising pre-flight
-bash "$DRIVER" --goal "valid template smoke" --template standard --dry-run \
+( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "valid template smoke" --template standard --dry-run ) \
     >"$out2" 2>"$err2" || true
 
 if grep -q "Pipeline cannot start" "$err2" 2>/dev/null; then

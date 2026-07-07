@@ -17,10 +17,6 @@ setup_test_env "template-resolver-search-path"
 source "$RESOLVER_SH"
 # Override resolver root to point at our fake shipped templates
 _TEMPLATE_RESOLVER_ROOT="$TEST_TEMP_DIR/repo"
-# #1268: keep the shipped-dir redirect var out of the (a)-(d) baseline cases so
-# they exercise the unset (byte-identical) path; the (e)/(f) sub-tests set it
-# explicitly via a command prefix.
-unset ZBUILD_TEMPLATES_DIR
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -58,9 +54,7 @@ rc=$?
 set -e
 
 assert_eq "no per-repo dir: exit 0" "0" "$rc"
-# [SPEC-3] ZBUILD_TEMPLATES_DIR unset ⇒ shipped path is the resolver-root default
-# (byte-identical to pre-#1268 behavior).
-assert_eq "[SPEC-3] unset ZBUILD_TEMPLATES_DIR: returns resolver-root shipped path" \
+assert_eq "no per-repo dir: returns shipped path" \
     "$TEST_TEMP_DIR/repo/config/templates/standard.yaml" "$result"
 
 # Restore .zbuild/templates dir for subsequent tests
@@ -134,67 +128,5 @@ set -e
 
 assert_pass "bad extends id: is non-zero" "[[ $rc -ne 0 ]]"
 assert_contains "bad extends id: error mentions bad id" "$err_out" "nonexistent-base"
-
-# ─── Test (e) #1268: ZBUILD_TEMPLATES_DIR redirects the SHIPPED read root ─────
-# A test seam so subprocess-invoking tests resolve fixtures from a temp dir
-# instead of writing into the tracked config/templates/. Set ⇒ the resolver
-# returns $ZBUILD_TEMPLATES_DIR/<id>.yaml for a shipped (no per-repo override)
-# id. RED at merge-base (resolver ignored the var → returned the resolver-root
-# path).
-ALT_DIR="$TEST_TEMP_DIR/alt-templates"; mkdir -p "$ALT_DIR"
-cat > "$ALT_DIR/shipped-only.yaml" <<'EOF'
-id: shipped-only
-stages:
-  - id: intake
-    roles: [intake]
-EOF
-
-set +e
-result="$(ZBUILD_TEMPLATES_DIR="$ALT_DIR" resolve_template_file "shipped-only" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
-rc=$?
-set -e
-assert_eq "[SPEC-1] ZBUILD_TEMPLATES_DIR set (shipped): exit 0" "0" "$rc"
-assert_eq "[SPEC-1] ZBUILD_TEMPLATES_DIR set: resolver returns \$ZBUILD_TEMPLATES_DIR/<id>.yaml" \
-    "$ALT_DIR/shipped-only.yaml" "$result"
-
-# ─── Test (f) #1268: ZBUILD_TEMPLATES_DIR also supplies the extends: base ─────
-# A per-repo overlay whose base lives ONLY in $ZBUILD_TEMPLATES_DIR must merge
-# cleanly. RED at merge-base (base sought under the hardcoded resolver-root
-# config/templates → "base does not exist" → rc≠0).
-cat > "$ALT_DIR/base-in-alt.yaml" <<'EOF'
-id: base-in-alt
-defaults:
-  strategy: fanout
-
-stages:
-  - id: intake
-    roles: [intake]
-
-stage_definitions:
-  intake:
-    roles: [intake]
-EOF
-mkdir -p "$TEST_TEMP_DIR/repo/.zbuild/templates"
-cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/ext-alt.yaml" <<'EOF'
-extends: base-in-alt
-
-stages:
-  - id: build
-    roles: [builder]
-
-stage_definitions:
-  build:
-    roles: [builder]
-EOF
-
-set +e
-result="$(ZBUILD_TEMPLATES_DIR="$ALT_DIR" resolve_template_file "ext-alt" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
-rc=$?
-set -e
-assert_eq "[SPEC-2] ZBUILD_TEMPLATES_DIR set (extends base): exit 0" "0" "$rc"
-assert_contains "[SPEC-2] merged file has base 'defaults:' from ZBUILD_TEMPLATES_DIR" \
-    "$(cat "$result" 2>/dev/null)" "defaults:"
-assert_contains "[SPEC-2] merged file has overlay stage 'build'" \
-    "$(cat "$result" 2>/dev/null)" "build"
 
 print_test_results

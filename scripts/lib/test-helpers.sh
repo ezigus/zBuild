@@ -808,43 +808,63 @@ setup_git_temp_repo() {
     printf '%s\n' "$repo"
 }
 
-# ── install_template_fixture (#1268) ─────────────────────────────────────────
-# Copy one or more shipped-template fixtures into a hermetic temp dir and point
-# the engine's template resolver at it via ZBUILD_TEMPLATES_DIR, so a test that
-# invokes `runner.sh --template <id>` (across the `bash "$RUNNER"` subprocess
-# boundary, where the internal _TEMPLATE_RESOLVER_ROOT override cannot reach)
-# resolves the fixture WITHOUT writing into the tracked config/templates/. The
-# prior pattern (cp into config/templates + a bare _test_cleanup_hook rm) leaked
-# the fixture into the source tree on any early/interrupted exit (#1268 root
-# cause). Cleanup is handled by the master EXIT/INT/TERM trap
-# (_test_harness_cleanup removes TEST_TEMP_DIR) — this helper installs NO hook
-# and never touches the real tree.
+# ── install_template_overlay (#1270) ─────────────────────────────────────────
+# Copy one or more template fixtures into a repo's per-repo override dir
+# (<repo>/.zbuild/templates/<id>.yaml), the generic ADR-016 overlay seam. A test
+# that then runs the engine with CWD = <repo> resolves the fixture WITHOUT any
+# env var and WITHOUT writing into the tracked config/templates/ — the overlay
+# lives entirely inside the test's temp repo (reaped by the master EXIT/INT/TERM
+# trap). This replaces the #1268 ZBUILD_TEMPLATES_DIR seam (reverted in #1270):
+# no ambient env, no global state; hermeticity comes from CWD isolation.
 #
-# Usage: install_template_fixture <id> [<base_id> ...]
-#   Each id maps to tests/fixtures/templates/<id>.yaml. Pass a per-repo
-#   fixture's `extends:` base id(s) too so the resolver's merge finds them.
-install_template_fixture() {
-    # Default UNCONDITIONALLY to a dir under TEST_TEMP_DIR — never honor an
-    # ambient/inherited ZBUILD_TEMPLATES_DIR (a leaked value could point the
-    # copy at a non-hermetic or real path, defeating the whole seam). No caller
-    # legitimately pre-sets it (verified in #1268); TEST_TEMP_DIR is constant per
-    # test, so multiple calls accrete fixtures into the same hermetic dir.
-    export ZBUILD_TEMPLATES_DIR="$TEST_TEMP_DIR/templates"
-    mkdir -p "$ZBUILD_TEMPLATES_DIR"
+# Each fixture is a `.zbuild/templates/` overlay, so it MUST carry `extends: <id>`
+# (ADR-016). The shipped base it extends (usually `simple`) is read from the
+# engine tree unchanged — only the overlay id needs a fixture.
+#
+# Usage: install_template_overlay <repo> <id> [<id> ...]
+install_template_overlay() {
+    local _repo="$1"; shift
+    # Fail fast on an empty repo arg (e.g. an unset OVERLAY_REPO): otherwise we'd
+    # mkdir/cp into /.zbuild/templates and fail later with a confusing error.
+    if [[ -z "$_repo" ]]; then
+        echo "install_template_overlay: <repo> argument required (got empty)" >&2
+        return 1
+    fi
+    mkdir -p "$_repo/.zbuild/templates"
     # Repo root derived from THIS helper's location (…/scripts/lib → repo root),
     # not the caller's cwd, so it resolves regardless of where the test runs.
-    local _hdir _repo
+    local _hdir _src_root
     _hdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    _repo="$(cd "$_hdir/../.." && pwd)"
+    _src_root="$(cd "$_hdir/../.." && pwd)"
     local _id _src
     for _id in "$@"; do
-        _src="$_repo/tests/fixtures/templates/${_id}.yaml"
+        _src="$_src_root/tests/fixtures/templates/${_id}.yaml"
         if [[ ! -f "$_src" ]]; then
-            echo "install_template_fixture: fixture not found: $_src" >&2
+            echo "install_template_overlay: fixture not found: $_src" >&2
             return 1
         fi
-        cp "$_src" "$ZBUILD_TEMPLATES_DIR/${_id}.yaml"
+        cp "$_src" "$_repo/.zbuild/templates/${_id}.yaml"
     done
+}
+
+# install_template_overlay_committed <repo> <id> [<id> ...]
+# Like install_template_overlay, but COMMITS the overlay into the repo's git
+# HEAD. Needed when the runner (or a nested runner) rsyncs the repo and runs
+# `git checkout HEAD -- . && git clean -fdq`, which would wipe an untracked
+# overlay (state-root-isolation section F, SPEC-7).
+install_template_overlay_committed() {
+    local _repo="$1"
+    install_template_overlay "$@" || return 1
+    local real_git
+    real_git="$(command -v git 2>/dev/null || true)"
+    if [[ -z "$real_git" ]]; then
+        for c in /usr/bin/git /usr/local/bin/git /opt/homebrew/bin/git; do
+            [[ -x "$c" ]] && real_git="$c" && break
+        done
+    fi
+    [[ -z "$real_git" ]] && { echo "install_template_overlay_committed: git not found" >&2; return 1; }
+    "$real_git" -C "$_repo" add .zbuild/templates >/dev/null 2>&1 || return 1
+    "$real_git" -C "$_repo" commit -q -m "add test template overlay" >/dev/null 2>&1 || return 1
 }
 
 # ── install_cycle_mock_stages (ADR-021, #512) ─────────────────────────────────

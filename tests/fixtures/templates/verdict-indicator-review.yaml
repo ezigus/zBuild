@@ -1,6 +1,6 @@
 id: verdict-indicator-review
 name: Verdict Indicator — single review stage (#1095 PC2 fixture)
-extends: null
+extends: simple
 defaults:
   strategy: fanout
 

@@ -469,21 +469,31 @@ After the shim window closes (one tagged release after Wave 17-C lands), per-rep
 
 References: ADR-027 §"Decision" and §"Loader contract" (Wave 17-A), Wave 17-B (#703, template loader + validator + back-compat shim), Wave 17-C (#704, `config/templates/standard.yaml` migration + golden updates), ADR-021 v2 (cycle execution model — unchanged; only the declaration shape moves to ADR-027), ADR-013 amendment of the same date (recursive taxonomy validation at every leaf occurrence).
 
-## Amendment 2026-07-06 (#1268) — `ZBUILD_TEMPLATES_DIR` is a read-root redirect, NOT the env selector Q3 rejected
+## Amendment 2026-07-07 (#1270) — hermetic test pattern: per-repo overlay in a TEMP repo (the #1268 `ZBUILD_TEMPLATES_DIR` seam reverted)
 
-`#1268` adds `ZBUILD_TEMPLATES_DIR` to `resolve_template_file`: the SHIPPED-template
-read root becomes `${ZBUILD_TEMPLATES_DIR:-$_TEMPLATE_RESOLVER_ROOT/config/templates}`
-(applied to both the shipped path and the `extends:` base). This is a
-test-hermeticity seam (ADR-024 fence idiom) so subprocess-invoking tests resolve
-fixtures from a temp dir instead of writing into the tracked `config/templates/`.
+`#1268` had added a global `ZBUILD_TEMPLATES_DIR` env var to `resolve_template_file`
+that redirected the SHIPPED-template read root. `#1270` **reverts** it: the resolver
+is byte-for-byte the pre-#1268 version — the shipped read root is once again the
+hardcoded `$_TEMPLATE_RESOLVER_ROOT/config/templates/` (for both the shipped path
+and the `extends:` base), with no env override. `--template <id>` remains the sole
+template selector; per-repo `.zbuild/templates/<id>.yaml` still wins over the
+shipped dir.
 
-This does **not** reopen (Q3). The Q3 rejection was of an env-var **template
-SELECTOR** — a second way to *choose which template id runs* (rivalling
-`--template`). `ZBUILD_TEMPLATES_DIR` selects nothing: `--template <id>` remains
-the sole entrypoint that names the template. The var only relocates the
-**directory the shipped id is read from**, exactly as `_TEMPLATE_RESOLVER_ROOT`
-already did internally — it just crosses the `bash "$RUNNER"` subprocess boundary
-(an env var) where the internal shell var could not. Precedence is unchanged:
-per-repo `.zbuild/templates/<id>.yaml` still wins over the (now-redirectable)
-shipped dir. Unset ⇒ byte-for-byte the pre-#1268 behavior. See ADR-024
-Amendment 2026-07-06 for the fence/propagation contract.
+The seam existed only for test-hermeticity, and that need is met by the EXISTING
+generic per-repo overlay mechanism this ADR defines — no engine change required.
+The hermetic test pattern (now the standard for subprocess-invoking tests):
+
+- Create a throwaway temp repo (`setup_git_temp_repo`, or any temp dir).
+- Install the fixture as a per-repo overlay: `install_template_overlay <repo> <id>`
+  copies `tests/fixtures/templates/<id>.yaml` → `<repo>/.zbuild/templates/<id>.yaml`
+  (the fixture carries `extends: <shipped-base>`, usually `simple`).
+- Run the engine with **CWD = that repo** — `runner.sh` passes `$PWD` as the
+  resolver's `repo_root`, so the overlay resolves from the temp repo and the
+  tracked `config/templates/` is never touched (reaped by the master trap).
+- When the runner (or a nested runner) rsyncs the repo then `git checkout HEAD --
+  . && git clean -fdq` (e.g. the test stage's staging copy), the overlay must be
+  COMMITTED into the repo's HEAD so it survives the clean — use
+  `install_template_overlay_committed`.
+
+A static guard (`tests/unit/templates-dir-hermeticity-test.sh`) enforces that no
+test writes a fixture into the REAL repo's `config/templates/` OR `.zbuild/templates/`.

@@ -1,6 +1,6 @@
 id: standard-missing-test
 name: Standard Missing Test (ADR-020 keystone fixture)
-extends: null
+extends: simple
 defaults:
   strategy: fanout
 

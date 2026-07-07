@@ -1,6 +1,6 @@
 id: runner-state-dir-minimal
 name: Runner State-Dir Minimal (#1097 PC4 perf fixture)
-extends: null
+extends: simple
 defaults:
   strategy: fanout
 

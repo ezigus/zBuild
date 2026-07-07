@@ -132,23 +132,24 @@ MOCK
 chmod +x "$FIXTURE_BIN_DIR/rsync"
 
 # ── Write fixture template (Wave B full pipeline) ────────────────────────────
-# The runner loads templates from $REPO_ROOT/config/templates/<id>.yaml — the
-# path was hardcoded. #1268: the resolver now honors ZBUILD_TEMPLATES_DIR, so
-# stage this fixture-specific template in a private throwaway temp dir and point
-# the runner there — instead of writing into the tracked config/templates/
-# (which leaked the fixture into the repo on an interrupted parity run). The dir
-# is OUTSIDE FIXTURE_STATE_DIR so it never enters the artifact-path golden
-# snapshot; an EXIT trap reaps it (the repo is never touched regardless).
-# (No roles → runner resolves by stage id via _find_plugin_for_stage, matching
-# the plugin manifest id field.)
-_FIXTURE_TPL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-parity-tpl.XXXXXX")"
-trap 'rm -rf "$_FIXTURE_TPL_DIR"' EXIT
-export ZBUILD_TEMPLATES_DIR="$_FIXTURE_TPL_DIR"
-FIXTURE_TEMPLATE="$ZBUILD_TEMPLATES_DIR/wave-b-parity-fixture.yaml"
+# The runner resolves per-repo template overrides from $PWD/.zbuild/templates/<id>.yaml
+# (ADR-016; runner.sh passes $PWD). #1270: stage this fixture-specific template as
+# a per-repo overlay in a private throwaway temp repo and run the runner with CWD
+# there — instead of writing into the tracked config/templates/ (which leaked the
+# fixture into the repo on an interrupted parity run). The repo is OUTSIDE
+# FIXTURE_STATE_DIR so it never enters the artifact-path golden snapshot; an EXIT
+# trap reaps it (the repo is never touched regardless). extends: simple → merged
+# over the shipped base, the loader treats it as old-shape and honors only these
+# stages. (No roles → runner resolves by stage id via _find_plugin_for_stage,
+# matching the plugin manifest id field.)
+_FIXTURE_TPL_REPO="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-parity-tpl.XXXXXX")"
+trap 'rm -rf "$_FIXTURE_TPL_REPO"' EXIT
+mkdir -p "$_FIXTURE_TPL_REPO/.zbuild/templates"
+FIXTURE_TEMPLATE="$_FIXTURE_TPL_REPO/.zbuild/templates/wave-b-parity-fixture.yaml"
 cat > "$FIXTURE_TEMPLATE" <<'TPL'
 id: wave-b-parity-fixture
 name: Wave B Parity Fixture Pipeline
-extends: null
+extends: simple
 defaults:
   strategy: fanout
 
@@ -212,6 +213,7 @@ export ZBUILD_INTAKE_SKIP_BRANCH=1
 
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
-bash "$REPO_ROOT/core/pipeline/runner.sh" \
+# #1270: CWD = the overlay repo so the resolver finds the fixture template.
+( cd "$_FIXTURE_TPL_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
     --issue 359 \
-    --template wave-b-parity-fixture
+    --template wave-b-parity-fixture )
