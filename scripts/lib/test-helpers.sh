@@ -824,6 +824,12 @@ setup_git_temp_repo() {
 # Usage: install_template_overlay <repo> <id> [<id> ...]
 install_template_overlay() {
     local _repo="$1"; shift
+    # Fail fast on an empty repo arg (e.g. an unset OVERLAY_REPO): otherwise we'd
+    # mkdir/cp into /.zbuild/templates and fail later with a confusing error.
+    if [[ -z "$_repo" ]]; then
+        echo "install_template_overlay: <repo> argument required (got empty)" >&2
+        return 1
+    fi
     mkdir -p "$_repo/.zbuild/templates"
     # Repo root derived from THIS helper's location (…/scripts/lib → repo root),
     # not the caller's cwd, so it resolves regardless of where the test runs.
