@@ -128,6 +128,19 @@ for t in tests/unit/template-simple-yaml-test.sh tests/integration/template-reso
     assert_eq "[SPEC-3] $t passes under test-stage fence env" "0" "$t_rc"
 done
 
+# ─── SPEC-4: cost-ledger fence class (#1272) ─────────────────────────────────
+# router-budget-test.sh read/wrote the cost ledger at a hardcoded
+# $HOME/.zbuild/cost-ledger.jsonl while the test-stage fence exports
+# ZBUILD_COST_LEDGER to a throwaway — so the router wrote the fenced path and the
+# test checked $HOME → TC-2/TC-3 failed only INSIDE the pipeline test-stage, never
+# in bare CI. The fix makes the test resolve the ledger via ${ZBUILD_COST_LEDGER:-…}.
+# This asserts it exits 0 under the full fence (RED if the fix were reverted).
+set +e
+_run_under_fence "$REPO_ROOT/tests/integration/router-budget-test.sh"
+t_rc=$?
+set -e
+assert_eq "[SPEC-4] router-budget-test.sh passes under test-stage fence env (cost-ledger honored)" "0" "$t_rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
