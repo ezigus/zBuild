@@ -427,7 +427,8 @@ _cycle_stash_predicate() {
 # _cycle_apply_feedback), inspect $state_dir/cycle-<id>/iter-<iter>/feedback/
 # <to_field>.txt:
 #   present       → "<to_field>(<digest>)"  (verdict from JSON, else ~40-char
-#                    head; test_assessment also appends ", N changes")
+#                    head; a source stage that declares
+#                    capabilities.feedback_count_field also appends ", N changes")
 #   required+miss → "<to_field>(MISSING)"
 #   optional+miss → skipped
 # iter==1 (or no edges) → "(no feedback — first iteration)".
@@ -1670,6 +1671,10 @@ _cycle_iter_dispatch() {
         _dfc_field="$(manifest_graph_capability_field "$_dfc_manifest" \
             "detailed_failure_count" "field" 2>/dev/null)" || continue
         [[ -n "$_dfc_artifact" && -n "$_dfc_field" ]] || continue
+        # Defense-in-depth: the manifest-declared artifact name is interpolated
+        # into a filesystem path. Reject anything but a plain filename so a
+        # manifest value with '/' or '..' can never read outside artifacts/.
+        [[ "$_dfc_artifact" =~ ^[A-Za-z0-9._-]+$ ]] || continue
         local _tr="$_state_dir/artifacts/$_dfc_artifact"
         if [[ -s "$_tr" ]]; then
             local _failed_n
