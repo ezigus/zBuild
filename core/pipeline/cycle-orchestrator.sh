@@ -441,8 +441,12 @@ _cycle_render_feedback_digest() {
     local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter}/feedback"
     local -a parts=()
     local rec
+    local _fbd_plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
+    _manifest_graph_ensure_yaml_get 2>/dev/null || true
     for rec in "${_CYCLE_FEEDBACK[@]}"; do
         # "from_stage:from_output|to_stage:to_field:required"
+        local from_part="${rec%%|*}"
+        local from_stage="${from_part%%:*}"
         local to_part="${rec#*|}"
         local rest="${to_part#*:}"
         local to_field="${rest%%:*}"
@@ -456,10 +460,16 @@ _cycle_render_feedback_digest() {
             if [[ -z "$digest" ]]; then
                 digest="$(printf '%s' "$content" | tr '\n' ' ' | cut -c1-40)"
             fi
-            # test_assessment edges carry required_changes — append its count.
-            if [[ "$to_field" == *test_assessment* ]]; then
+            # ADR-047 §4: if the source stage declares capabilities.feedback_count_field,
+            # append the length of that JSON array field (no stage name literal).
+            local _fb_manifest _fb_count_field=""
+            _fb_manifest="$(manifest_graph_resolve_member "$_fbd_plugins_root" "$from_stage" 2>/dev/null)" || true
+            if [[ -n "$_fb_manifest" ]]; then
+                _fb_count_field="$(yaml_get "$_fb_manifest" "capabilities.feedback_count_field" 2>/dev/null || true)"
+            fi
+            if [[ -n "$_fb_count_field" ]]; then
                 local n_changes
-                n_changes="$(jq -r '(.required_changes // []) | length' <<< "$content" 2>/dev/null || true)"
+                n_changes="$(jq -r --arg f "$_fb_count_field" '(.[$f] // []) | length' <<< "$content" 2>/dev/null || true)"
                 if [[ "$n_changes" =~ ^[0-9]+$ ]]; then
                     digest="${digest}, ${n_changes} changes"
                 fi
@@ -1644,27 +1654,32 @@ _cycle_iter_dispatch() {
     fi
     _CYCLE_LAST_VERDICTS_BLOB="$blob"
     _CYCLE_LAST_FAILURE_COUNT="$fail"
-    # #511 Pin 10: failure_count fidelity. The orchestrator's default is the
-    # count of stages with rc!=0 (always 0..|stages|). For the build/test
-    # cycle that under-reports actual progress — a test run that drops from
-    # 17 failing tests to 3 looks identical (fc=1 either way), masking
-    # convergence and starving the divergence detector. If a `test` stage
-    # ran in this iter AND test-results.json declares `.failed`, prefer that
-    # integer (silent-failure finding #11).
-    local _has_test=0 _ts
-    for _ts in "${_CYCLE_STAGES[@]}"; do
-        [[ "$_ts" == "test" ]] && _has_test=1 && break
-    done
-    if [[ $_has_test -eq 1 ]]; then
-        local _tr="$_state_dir/artifacts/test-results.json"
+    # #511 Pin 10 / ADR-047 §4: failure_count fidelity. The orchestrator's
+    # default is the count of stages with rc!=0 (always 0..|stages|). For a
+    # build/test cycle that under-reports actual progress — a test run that
+    # drops from 17 failing tests to 3 looks identical (fc=1 either way),
+    # masking convergence and starving the divergence detector. Scan members
+    # for one declaring capabilities.detailed_failure_count; read the artifact
+    # + field it specifies (no literal stage name or filename).
+    local _dfc_plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
+    local _dfc_ts _dfc_manifest _dfc_artifact _dfc_field
+    for _dfc_ts in "${_CYCLE_STAGES[@]}"; do
+        _dfc_manifest="$(manifest_graph_resolve_member "$_dfc_plugins_root" "$_dfc_ts" 2>/dev/null)" || continue
+        _dfc_artifact="$(manifest_graph_capability_field "$_dfc_manifest" \
+            "detailed_failure_count" "artifact" 2>/dev/null)" || continue
+        _dfc_field="$(manifest_graph_capability_field "$_dfc_manifest" \
+            "detailed_failure_count" "field" 2>/dev/null)" || continue
+        [[ -n "$_dfc_artifact" && -n "$_dfc_field" ]] || continue
+        local _tr="$_state_dir/artifacts/$_dfc_artifact"
         if [[ -s "$_tr" ]]; then
             local _failed_n
-            _failed_n="$(jq -r '.failed // 0' "$_tr" 2>/dev/null || echo 0)"
+            _failed_n="$(jq -r --arg f "$_dfc_field" '.[$f] // 0' "$_tr" 2>/dev/null || echo 0)"
             if [[ "$_failed_n" =~ ^[0-9]+$ ]]; then
                 _CYCLE_LAST_FAILURE_COUNT="$_failed_n"
             fi
         fi
-    fi
+        break
+    done
     return 0
 }
 
@@ -2095,17 +2110,23 @@ cycle_orchestrator_run() {
         # with green gates genuinely converges and has nothing to commit by design.
         #
         # ONLY commit-PRODUCING cycles are subject to this guard: it fires solely
-        # when THIS cycle has a `build` member in its roster (_CYCLE_STAGES). A
-        # build-LESS cycle (design_verify_cycle, or any review/verify cycle) makes
-        # no code commits by design — a legitimately-converged such cycle sits at
-        # 0 commits ahead of intake and MUST converge normally, never be flagged
-        # no_committed_changes. GENERIC: keys on the roster + repo-neutral
-        # commit-count + build verdict (the `.build` member is already this file's
-        # convention — see _build_verdict above and the #1208 suppression).
+        # when THIS cycle has a commit-producing member in its roster. A build-LESS
+        # cycle (design_verify_cycle, or any review/verify cycle) makes no code
+        # commits by design — a legitimately-converged such cycle sits at 0 commits
+        # ahead of intake and MUST converge normally, never be flagged
+        # no_committed_changes. ADR-047 §4: detect commit-producing member via
+        # capabilities.produces_commits (manifest-declared, no stage name literal).
         local _has_build_member=0
-        local _cm
+        local _cm _cm_manifest _pc_val
+        local _pcap_plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
+        _manifest_graph_ensure_yaml_get 2>/dev/null || true
         for _cm in "${_CYCLE_STAGES[@]}"; do
-            [[ "$_cm" == "build" ]] && { _has_build_member=1; break; }
+            _cm_manifest="$(manifest_graph_resolve_member "$_pcap_plugins_root" "$_cm" 2>/dev/null)" || continue
+            _pc_val="$(yaml_get "$_cm_manifest" "capabilities.produces_commits" 2>/dev/null || true)"
+            if [[ "$_pc_val" == "true" ]]; then
+                _has_build_member=1
+                break
+            fi
         done
         local _no_committed_changes=0
         if [[ "$converged" -eq 0 && "$_has_build_member" -eq 1 \
