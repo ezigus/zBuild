@@ -138,7 +138,7 @@ assert_contains "SPEC-2: violation is the missing producer output" "$_out" "none
 
 # SPEC-3: the backend service (no stage io) is NOT in scope — its missing inputs:
 # block is NOT flagged (would-be complaint absent).
-if printf '%s' "$_out" | grep -q "backend-svc"; then
+if [[ "$_out" == *"backend-svc"* ]]; then
     assert_fail "SPEC-3: backend-svc (no stage io) stays OUT of scope" "lint flagged backend-svc: $_out"
 else
     assert_pass "SPEC-3: backend-svc (no stage io) stays OUT of scope"
