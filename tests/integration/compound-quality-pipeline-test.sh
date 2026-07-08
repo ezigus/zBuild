@@ -81,7 +81,7 @@ _make_stub "test" "tool"
 
 # ─── T1: all 4 cq-* plugin.run.start events appear in events.jsonl ──────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --issue 755 >/dev/null 2>&1; rc=$?; set -e
+set +e; bash "$RUNNER" --template standard --issue 755 >/dev/null 2>&1; rc=$?; set -e
 
 for cq_stage in cq-preflight cq-audit-plan cq-cycle cq-backtrack; do
     cq_start=$(grep -c "\"plugin.run.start\"" "$EVENTS_JSONL" 2>/dev/null | \
@@ -107,14 +107,14 @@ fi
 # ─── T3: removing cq-preflight/plugin.sh causes pipeline to fail ─────────────
 rm -f "$PLUGINS_ROOT/agent/cq-preflight/plugin.sh"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --issue 755 >/dev/null 2>&1; rc_t3=$?; set -e
+set +e; bash "$RUNNER" --template standard --issue 755 >/dev/null 2>&1; rc_t3=$?; set -e
 assert_eq "T3: missing cq-preflight plugin causes pipeline failure (rc!=0)" "1" "$rc_t3"
 # Restore for subsequent tests
 _make_stub "cq-preflight"
 
 # ─── T4: cq-audit-plan runs before cq-cycle ──────────────────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --issue 755 >/dev/null 2>&1; set -e
+set +e; bash "$RUNNER" --template standard --issue 755 >/dev/null 2>&1; set -e
 auditplan_line=$(grep -n '"stage.start"' "$EVENTS_JSONL" 2>/dev/null | \
     grep '"cq-audit-plan"' | head -1 | cut -d: -f1 || echo 0)
 cycle_line=$(grep -n '"stage.start"' "$EVENTS_JSONL" 2>/dev/null | \
