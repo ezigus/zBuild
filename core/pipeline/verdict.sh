@@ -170,6 +170,11 @@ _verdict_resolve_path() {
 # sidecar always reflects THIS run.
 _verdict_read_stage_sidecar() {
     local state_dir="$1" stage="$2"
+    # Defense-in-depth: the stage id is interpolated into a filesystem path.
+    # Stage ids are template-controlled, but a value with '/' or '..' must never
+    # traverse out of the artifacts dir — reject anything but a plain stage id
+    # (mirrors the stage-shape guard in runner.sh / prompt-overrides.sh).
+    [[ "$stage" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 0
     local sc; sc="$(_verdict_resolve_path "\${artifact_dir}/${stage}-verdict.json" "$state_dir")"
     [[ -s "$sc" ]] || return 0
     jq empty "$sc" >/dev/null 2>&1 || return 0
