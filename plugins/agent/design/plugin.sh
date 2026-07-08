@@ -168,8 +168,8 @@ _design_stage_run_inner() {
     local prompt_input_file="$artifact_dir/design-prompt.txt"
 
     cat > "$prompt_input_file" <<DESIGN_PROMPT
-You are a software architect for zBuild. Your job is to produce an ADR-style
-design.md for the task described in the plan below.
+You are a software architect for the target project. Your job is to produce an
+ADR-style design.md for the task described in the plan below.
 
 ## Plan
 $(printf '%s' "$plan_json" | jq -r '.title // "Untitled"' 2>/dev/null)

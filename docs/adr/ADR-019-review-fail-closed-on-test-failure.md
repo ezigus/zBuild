@@ -5,6 +5,9 @@
 **Issue:** #485
 **Related:** ADR-013 (canonical stage list), ADR-018 (stage invocation modes),
 keeper #17 (gate semantics)
+**Amended:** 2026-07-08 (#1277, ADR-047) — fail-closed is re-expressed generically at the
+mechanics layer: an unresolved leaf or an unsatisfied `inputs[].source: stage:X` **errors at
+load** for any repo's stages, independent of any stage name. See ADR-047 §5.
 
 ## Context
 
