@@ -140,7 +140,9 @@ out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-con
 assert_eq "TC-4: self-reference detected (rc=1)" "1" "$rc"
 assert_contains_regex "TC-4: diagnostic mentions self" "$out" "self-referential|self"
 
-# TC-5: source: external for non-allowlisted id
+# TC-5: source: external for non-allowlisted id. #1279 (ADR-047 §5): scope is
+# graph-derived, so `plan` must be a genuine data-graph node to be linted — it
+# consumes stage:intake AND carries the bogus external input under test.
 cat > "$PLUGINS_ROOT/agent/plan/manifest.yaml" <<EOF
 id: plan
 name: Plan
@@ -151,6 +153,10 @@ hooks:
 requires:
   core: [redaction]
 inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
   - id: bogus_external
     type: string
     source: external
@@ -160,13 +166,18 @@ outputs:
     type: file
     path: \${artifact_dir}/plan.json
     required: true
+    primary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
 assert_eq "TC-5: bogus external id detected (rc=1)" "1" "$rc"
 assert_contains "TC-5: diagnostic mentions allowlist" "$out" "allowlist"
 
-# TC-6: missing inputs block
+# TC-6: missing inputs block. #1279 (ADR-047 §5): to be linted, the offending
+# manifest must be a data-graph node — here `plan` is a PRODUCER (a new `consumer`
+# stage reads stage:plan) that omits its inputs: block. `consumer` is otherwise
+# clean, so the only violation is plan's missing inputs: block.
+mkdir -p "$PLUGINS_ROOT/agent/consumer"
 cat > "$PLUGINS_ROOT/agent/plan/manifest.yaml" <<EOF
 id: plan
 name: Plan
@@ -181,11 +192,35 @@ outputs:
     type: file
     path: \${artifact_dir}/plan.json
     required: true
+    primary: true
+EOF
+cat > "$PLUGINS_ROOT/agent/consumer/manifest.yaml" <<EOF
+id: consumer
+name: Consumer
+kind: agent
+version: 0.1.0
+hooks:
+  run: r
+requires:
+  core: [redaction]
+inputs:
+  - id: plan
+    type: file
+    source: stage:plan
+    required: true
+outputs:
+  - id: cout
+    type: file
+    path: \${artifact_dir}/cout.json
+    required: true
+    primary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
 assert_eq "TC-6: missing inputs block detected (rc=1)" "1" "$rc"
 assert_contains "TC-6: diagnostic mentions inputs:" "$out" "inputs:"
+# Remove the consumer so it doesn't perturb TC-7/TC-8 topology.
+rm -rf "$PLUGINS_ROOT/agent/consumer"
 
 # TC-7: malformed required value
 cat > "$PLUGINS_ROOT/agent/plan/manifest.yaml" <<EOF

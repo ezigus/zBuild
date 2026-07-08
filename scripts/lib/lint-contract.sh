@@ -30,21 +30,24 @@ source "$_LINT_CONTRACT_DIR/manifest-graph.sh"
 
 _PLUGINS_ROOT="${ZBUILD_PLUGINS_ROOT:-$_LINT_CONTRACT_REPO/plugins}"
 
-# ADR-020 lint scope: only stage-bound plugins participate in the inter-stage
-# data contract. Backend services (cache/memory/orchestrator/claim-coordinator)
-# don't read/produce stage artifacts and are intentionally excluded. The
-# explicit allowlist below is a CURATED SUBSET of ADR-013's canonical stages —
-# the LLM/agent stages that exchange the inter-stage data contract. The T0
-# read-out gate plugins (shape-floor, lint/coverage/mutation, secret-scan,
-# gate-aggregator) are deliberately NOT listed here; their manifests are
-# validated by plugin-manifest-contract-audit instead (PR #1163 review).
+# ADR-047 §5: lint scope is DERIVED from the manifest graph, not a hardcoded roster.
+# A manifest is in scope iff it is a node in the inter-stage data-dependency graph
+# (`_lc_id_in_scope` below, keyed on `_LC_HAS_STAGE_INPUT` / `_LC_PRODUCER_REF` built
+# during indexing). Backend services fall out for free (no stage inputs, not referenced
+# as producers) — no stage naming required.
+#
+# The old CURATED SUBSET is retained ONLY as the strangler baseline: the parity test
+# (tests/unit/preflight-lint-parity-test.sh) asserts the DERIVED set is a
+# superset-or-equal of this list, so scope can never silently NARROW below what the
+# hand-maintained list validated. Removed once the strangler window closes.
+# shellcheck disable=SC2034  # strangler baseline: read by the scope-derivation test, not here
 _LC_STAGE_IDS_TO_CHECK=(intake plan design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor security-lens)
 
+# _lc_id_in_scope <manifest-key> — in scope iff a data-dependency-graph node (ADR-047 §5).
 _lc_id_in_scope() {
-    local id="$1" s
-    for s in "${_LC_STAGE_IDS_TO_CHECK[@]}"; do
-        [[ "$s" == "$id" ]] && return 0
-    done
+    local id="$1"
+    [[ -n "${_LC_HAS_STAGE_INPUT[$id]:-}" ]] && return 0
+    [[ -n "${_LC_PRODUCER_REF[$id]:-}" ]] && return 0
     return 1
 }
 
@@ -58,6 +61,14 @@ declare -A _LC_STAGE_OUTPUTS=()
 declare -A _LC_STAGE_INPUT_SOURCE=()
 declare -A _LC_STAGE_CONVERGENCE=()  # manifest id → convergence marker (gate|advisory|"") — ADR-040 §5
 declare -A _LC_ROLE_CONVERGENCE=()   # provides.role → convergence marker — for role-bound template stages
+# ADR-047 §5: contract-participation is DERIVED, not a hardcoded roster. A manifest
+# participates in the inter-stage data contract iff it is a NODE in the data-dependency
+# graph — it either declares an `inputs[].source: stage:X` (a consumer) OR is referenced
+# as `stage:<self>` by some other manifest's input (a producer). Backend services
+# (cache/memory/orchestrator/claim-coordinator/output) are neither and fall out with no
+# stage naming. Keyed by the SAME resolution keys as _LC_STAGE_MANIFEST (id and role:<role>).
+declare -A _LC_HAS_STAGE_INPUT=()    # manifest key → 1 if it consumes a stage:X input
+declare -A _LC_PRODUCER_REF=()       # stage name → 1 if referenced as stage:<name> by some input
 declare -A _LC_EXTERNAL_OK=()
 for a in $(manifest_graph_external_allowlist); do
     _LC_EXTERNAL_OK["$a"]=1
@@ -115,6 +126,12 @@ while IFS= read -r -d '' m; do
         IFS='|' read -r _in_id _in_type _in_source _in_required _in_path <<< "$rec"
         [[ -z "$_in_id" ]] && continue
         for _k in "${_keys[@]}"; do _LC_STAGE_INPUT_SOURCE["$_k:$_in_id"]="$_in_source"; done
+        # ADR-047 §5 data-graph participation: record this manifest as a consumer and
+        # the referenced stage as a producer.
+        if [[ "$_in_source" == stage:* ]]; then
+            for _k in "${_keys[@]}"; do _LC_HAS_STAGE_INPUT["$_k"]=1; done
+            _LC_PRODUCER_REF["${_in_source#stage:}"]=1
+        fi
     done < <(manifest_graph_get_inputs "$m")
 done < <(find "$_PLUGINS_ROOT" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
 
@@ -124,6 +141,12 @@ _complain() {
 }
 
 for id in "${!_LC_STAGE_MANIFEST[@]}"; do
+    # Each manifest is indexed under BOTH its plugin id and a `role:<role>` alias
+    # (for reference resolution). Enforce ONCE, via the id key — skip the role:
+    # alias so a role-bound manifest isn't linted twice (duplicate diagnostics /
+    # double-counted offences). _LC_HAS_STAGE_INPUT is set on every key, so the id
+    # key carries the same in-scope decision.
+    [[ "$id" == role:* ]] && continue
     m="${_LC_STAGE_MANIFEST[$id]}"
     rel="${m#"$_LINT_CONTRACT_REPO"/}"
 
@@ -199,7 +222,13 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
                     _complain "$rel: input '$in_id' references unknown stage '$producer' (no plugin manifest with id: $producer)"
                     continue
                 fi
-                if [[ -z "${_LC_STAGE_OUTPUTS[$producer:$in_id]:-}" ]]; then
+                # Output-id existence is enforced only for REQUIRED inputs, mirroring
+                # the runtime validator (contract-validator.sh:317 treats required:false
+                # as informational). An OPTIONAL input may be a glob fan-in over a
+                # producer group (e.g. review-aggregator's lens_results globs
+                # lens-*.json across the review-lens parallel members) — it names the
+                # producer for ordering, not a single output id. #1279 (ADR-047 §5).
+                if [[ "$eff_required" == "true" && -z "${_LC_STAGE_OUTPUTS[$producer:$in_id]:-}" ]]; then
                     _complain "$rel: input '$in_id' references stage:$producer but $producer does NOT declare output id '$in_id'"
                 fi
                 ;;
