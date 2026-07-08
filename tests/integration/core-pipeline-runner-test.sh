@@ -159,19 +159,19 @@ assert_eq "stage.fail event emitted" "1" "$stage_fail_event"
 build_fail_status="$(jq -r '.stage_statuses.build // empty' "$STATE_FILE" 2>/dev/null)"
 assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 
-# ─── Test 9: missing plugin for required stage → fails pipeline ───────────────
+# ─── Test 9: missing plugin for required stage → fail-closed at LOAD ──────────
+# ADR-047 §5 (#1282): with a template loaded, the runner's resolvability preflight
+# catches a leaf that resolves to no plugin at LOAD time and aborts fail-closed
+# (rc=2), BEFORE the stage loop — replacing the old mid-run rc=1 dispatch failure.
+# This is strictly stronger: the missing plugin still fails the pipeline, but now
+# it is caught up front with an actionable message naming the unresolved id.
 rm -rf "$PLUGINS_ROOT/agent/intake"
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
-assert_eq "missing required plugin exits 1" "1" "$rc"
-
-if [[ -f "$EVENTS_JSONL" ]]; then
-    fail_from_no_plugin=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"failed"' || true)
-    assert_eq "missing plugin causes pipeline.end status=failed" "1" "$fail_from_no_plugin"
-else
-    assert_fail "events.jsonl not created for missing-plugin failure"
-fi
+set +e; _no_plugin_out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>&1)"; rc=$?; set -e
+assert_eq "missing required plugin fails fail-closed at load (rc=2)" "2" "$rc"
+assert_contains "missing-plugin error names the unresolved stage 'intake'" "$_no_plugin_out" "intake"
+assert_contains "missing-plugin error is the ADR-047 §5 resolvability message" "$_no_plugin_out" "resolves to no plugin"
 
 # ─── Test 10: EXIT trap emits pipeline.abort (not pipeline.end) ──────────────
 _make_plugin "intake" "agent" 0
@@ -638,6 +638,28 @@ requires:
 EOF
 cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
 intake_run() { sleep 5; return 0; }
+EOF
+
+# ADR-047 §5 (#1282): the runner's resolvability preflight now rejects at LOAD any
+# template leaf that resolves to no plugin. The runner-state-dir-minimal template
+# is intake → build, so `build` MUST resolve or the run aborts before the stage
+# loop (never reaching the SIGTERM-mid-intake path this test exercises). Register a
+# trivial build plugin — intake blocks in sleep and is killed long before build
+# would run, so its body is never invoked.
+mkdir -p "$I6_PLUGINS/agent/build"
+cat > "$I6_PLUGINS/agent/build/manifest.yaml" <<'EOF'
+id: build
+name: Build I6
+kind: agent
+version: 0.0.1
+hooks:
+  run: build_run
+requires:
+  core:
+    - redaction
+EOF
+cat > "$I6_PLUGINS/agent/build/plugin.sh" <<'EOF'
+build_run() { return 0; }
 EOF
 
 # Flaky-kill mitigation (per #494/#908): retry on the rare signal-delivery quirk.

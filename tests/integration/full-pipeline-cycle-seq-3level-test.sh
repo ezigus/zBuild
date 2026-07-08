@@ -121,7 +121,11 @@ impact_run() {
 PLUG
 }
 
-for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
+# ADR-047 §5 (#1282): the runner's resolvability preflight rejects at LOAD any
+# standard.yaml leaf with no plugin. `pr` is the terminal leaf — register it too,
+# or the run aborts before any stage logs its seq label (this used to fail only
+# at pr's dispatch, AFTER every asserted stage had run).
+for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr; do
     _make_plugin "$s"
 done
 # Override design: logs seq label AND writes design.md so impact's input contract holds.
