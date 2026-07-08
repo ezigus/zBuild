@@ -160,10 +160,13 @@ fi
 # ─── Scenario 3: build scope_violation=true → ✗ on build line ────────────────
 # #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects
 # the `build` stage glyph.
+# #1280 (ADR-047 §3): build PUSHES its verdict — a scope_violation rides
+# .verdict:"scope_violation" (build-summary schema v4), not a bare .scope_violation
+# flag the reader derives by name.
 print_test_section "build scope_violation=true produces ✗"
 rm -rf "$PLUGINS_ROOT"
 _install_verdict_fixture verdict-indicator-build
-_make_verdict_plugin build agent build-summary.json '{"scope_violation":true}' builder
+_make_verdict_plugin build agent build-summary.json '{"verdict":"scope_violation","scope_violation":true}' builder
 set +e; _run_pipeline_template verdict-indicator-build; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
 if grep -E "✗.*Stage.*build.*complete" <<<"$err" >/dev/null; then
