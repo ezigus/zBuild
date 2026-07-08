@@ -1,0 +1,56 @@
+id: all-constructs
+name: All-constructs integration fixture
+# Template-agnostic construct probe (#978): ONE template that combines all three
+# construct types the engine must orchestrate — a leaf stage, a cycle (with
+# exit_when + members), and a parallel group (with members) — in a single
+# top-level flow. Proves a mixed-construct template loads and every construct is
+# structured + dispatchable, independent of any shipped roster (simple/standard).
+# Stage ids are canonical; the flat member order (intake < build < test) honors
+# the canonical-order check, while the parallel members are order-exempt.
+defaults:
+  strategy: fanout
+
+flow:
+  - intake
+  - refine_cycle
+  - lens_group
+
+# leaf
+intake:
+  roles: [intake]
+
+# cycle: converges on test.verdict == pass
+refine_cycle:
+  type: cycle
+  flow:
+    - build
+    - test
+  exit_when:
+    stage: test
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+
+build:
+  roles: [builder]
+
+test:
+  roles: [tester]
+
+# parallel: advisory group of leaf members
+lens_group:
+  type: parallel
+  flow:
+    - lens-security
+    - lens-performance
+  max_parallel: 2
+  on_member_error: continue
+  aggregate: advisory
+
+lens-security:
+  roles: [review_lens]
+
+lens-performance:
+  roles: [review_lens]

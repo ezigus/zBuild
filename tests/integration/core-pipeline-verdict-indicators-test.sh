@@ -82,11 +82,6 @@ ${fn}() {
 EOF
 }
 
-_run_pipeline() {
-    rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-    bash "$RUNNER" --issue 83 2>"$TEST_TEMP_DIR/runner.err" >/dev/null
-}
-
 # #1095 (PC2): scenarios 2–4 each assert one verdict→glyph mapping on a single
 # stage. Booting the full ~14-stage standard roster (~13s each) just to read one
 # glyph is wasteful. Instead drive the runner with a minimal single-stage fixture
@@ -107,28 +102,20 @@ _run_pipeline_template() {
 }
 
 # ─── Scenario 1: all-pass → every line ends with ✓ ───────────────────────────
+# #978 (EPIC #966): template-agnostic. Was pinned to `--template standard` with a
+# hand-registered 14-stage standard roster; standard.yaml retires in #979. The
+# behavior under test — all-pass stages each get a ✓, stage.complete carries
+# verdict=pass, and stage_verdicts persists — is NOT roster-specific, so drive a
+# small multi-leaf fixture the test owns (intake/build/test) via the same
+# overlay+fixture pattern scenarios 2–4 already use.
 print_test_section "all-pass: every stage line ends with ✓"
 rm -rf "$PLUGINS_ROOT"
+_install_verdict_fixture verdict-indicator-allpass
+ALLPASS_STAGES=(intake build test)
 _make_verdict_plugin intake agent intake.json '{"verdict":"pass"}' intake
-_make_verdict_plugin plan   agent plan.json   '{"steps":[]}' planner
-# #842: standard template now includes impact inside design_impact_cycle.
-_make_verdict_plugin impact agent impact.json '{"verdict":"pass"}' impact_analyzer
-_make_verdict_plugin design agent design.md '{"verdict":"pass"}' designer
 _make_verdict_plugin build  agent build-summary.json '{"verdict":"pass","scope_violation":false}' builder
 _make_verdict_plugin test   tool  test-results.json  '{"verdict":"pass"}' tester
-# #568: standard template now requires a test_assessment stage between test and review.
-_make_verdict_plugin test_assessment agent test-assessment.json '{"verdict":"pass"}' test_assessment
-# #922: acceptance-gate leaf stage after test_assessment (ADR-036).
-_make_verdict_plugin acceptance-gate agent acceptance-gate-result.json '{"verdict":"pass"}' acceptance_gate
-# #755: 4 CQ stages replace compound_quality between test_assessment and review.
-_make_verdict_plugin cq-preflight agent cq-preflight-result.json '{"verdict":"pass"}' cq_preflight
-_make_verdict_plugin cq-audit-plan agent audit-plan.json '{"verdict":"pass"}' cq_audit_plan
-_make_verdict_plugin cq-cycle agent quality-feedback.json '{"verdict":"pass"}' cq_cycle
-_make_verdict_plugin cq-backtrack agent cq-backtrack-result.json '{"verdict":"pass"}' cq_backtrack
-_make_verdict_plugin review agent review.json '{"verdict":"approve"}' reviewer
-# #756: pr leaf stage after build_review_cycle (preflight requires it registered).
-_make_verdict_plugin pr agent pr-url.txt '{"url":"https://example.com/pr/1"}' pr_delivery
-set +e; _run_pipeline; rc=$?; set -e
+set +e; _run_pipeline_template verdict-indicator-allpass; rc=$?; set -e
 if [[ $rc -ne 0 ]]; then
     echo "--- runner.err on failure ---" >&2
     cat "$TEST_TEMP_DIR/runner.err" >&2 || true
@@ -137,7 +124,7 @@ fi
 assert_eq "all-pass: runner exits 0" "0" "$rc"
 
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-for stage in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr; do
+for stage in "${ALLPASS_STAGES[@]}"; do
     if grep -E "✓.*Stage.*${stage}.*complete" <<<"$err" >/dev/null; then
         assert_pass "all-pass: ✓ on $stage line"
     else
@@ -145,9 +132,9 @@ for stage in intake plan impact design build test test_assessment acceptance-gat
     fi
 done
 
-# Verdict attribute on stage.complete events (#755: now 12 stages)
+# Verdict attribute on stage.complete events — one verdict=pass per fixture stage.
 all_pass_with_verdict=$(grep '"stage.complete"' "$EVENTS_JSONL" | grep -c '"pass"' || true)
-[[ "$all_pass_with_verdict" -ge 12 ]] \
+[[ "$all_pass_with_verdict" -ge "${#ALLPASS_STAGES[@]}" ]] \
     && assert_pass "stage.complete carries verdict=pass for each stage" \
     || assert_fail "stage.complete carries verdict=pass for each stage" "got $all_pass_with_verdict"
 

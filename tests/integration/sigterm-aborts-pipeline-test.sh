@@ -58,20 +58,21 @@ BUILD_STARTED="$TEST_TEMP_DIR/build-started"
 TEST_RAN="$TEST_TEMP_DIR/test-ran"
 export BUILD_STARTED TEST_RAN
 
-# #921: intentional 8-stage subset (ZBUILD_CYCLES_ENABLED=0 → cq-* never load;
-# SIGTERM fires while build sleeps). Do NOT replace with
-# register_standard_pipeline_stubs — the partial roster is deliberate.
-# Fast stub for intake + plan (instant 0).
+# #978: SIGTERM/SIGINT parity is roster-agnostic — it needs only a stage BEFORE
+# build (intake), the build stage that sleeps until SIGTERM fires, and a stage
+# AFTER build (test) to prove the abort halts the pipeline before test runs.
+# Drive a MINIMAL 3-leaf fixture (intake → build → test) instead of pinning to
+# the standard roster (retired in #979). resume-minimal declares NO roles[], so
+# the runner resolves each stage by ID via plugin_hook_call, preserving the
+# leaf's exact rc. #1270: install the fixture as a per-repo `.zbuild/templates/`
+# overlay in a temp repo and run with CWD = that repo (resolver reads $PWD);
+# nothing touches the tracked config/templates/ (reaped by the master trap).
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" resume-minimal
 mock_plugin_factory "intake" "agent" 0 >/dev/null
-mock_plugin_factory "plan"   "agent" 0 >/dev/null
-# #842: standard template wraps design+impact in design_impact_cycle (plan is a leaf).
-mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
-mock_plugin_factory "impact" "agent" 0 >/dev/null
 # Build stage will be overridden below to sleep — create the manifest now.
 mock_plugin_factory "build"  "agent" 0 >/dev/null
 mock_plugin_factory "test"   "tool"  0 >/dev/null
-mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
-mock_plugin_factory "review" "agent" 0 >/dev/null
 
 # Build plugin: touches BUILD_STARTED, then loops short sleeps. Bash defers
 # trap delivery until the foreground child (sleep) returns; a tight 0.1s
@@ -117,8 +118,11 @@ start_ts=$(date +%s)
 # Ctrl-C to a foreground pgrp. Without this, only the runner bash gets
 # TERM; the build plugin's synchronous `sleep` blocks the trap from firing
 # until it returns.
+# #1270: the runner resolves the fixture from $PWD, so cd into the overlay repo
+# before exec-ing it. `exec` replaces the wrapper shell so $! is the runner PID.
 if command -v setsid >/dev/null 2>&1; then
-    setsid bash "$RUNNER" --goal "test-sigterm-halt" \
+    setsid bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "test-sigterm-halt" \
         >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr" &
     RUNNER_PID=$!
     # setsid makes the child a session+pgrp leader → pgid == pid.
@@ -128,7 +132,8 @@ else
     # its own pgrp. (`set -m` in this scope only; the harness wraps reset on
     # cleanup.)
     set -m
-    bash "$RUNNER" --goal "test-sigterm-halt" \
+    bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "test-sigterm-halt" \
         >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr" &
     RUNNER_PID=$!
     RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"

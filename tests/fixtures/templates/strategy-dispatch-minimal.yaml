@@ -1,0 +1,19 @@
+id: strategy-dispatch-minimal
+name: Strategy Dispatch Minimal (#978 fixture)
+extends: simple
+defaults:
+  strategy: fanout
+
+# Template-agnostic strategy-dispatch probe (EPIC #966 / #978): a SINGLE leaf
+# stage that exercises the engine's strategy dispatch path (fanout →
+# orch_spawn/dispatch/collect/shutdown) without pinning to any shipped roster.
+# core-pipeline-strategy-test.sh drives this with a spy orch backend and asserts
+# every orch-contract function is called and that spawn count == shutdown count.
+# The strategy override env (_ZBUILD_STRATEGY_OVERRIDE) lets the same one-stage
+# fixture cover the sequential-halt and composite-deferral paths too — the
+# behavior under test is engine strategy selection, not stage count.
+stages:
+  - id: intake
+    gate: auto
+    strategy: fanout
+    roles: [intake]

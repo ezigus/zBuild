@@ -50,9 +50,21 @@ EOF
 ${fn}() { return 0; }
 EOF
 }
-_make_plugin "intake"        "agent"
-_make_plugin "security-lens" "agent"
-_make_plugin "output"        "tool"
+# TEMPLATE-AGNOSTIC (#966): the state-file/issue cross-check is a generic runner
+# behavior, independent of any shipped roster. Register the minimal fixture's two
+# leaf stages (intake, build) rather than standard's stages. Most sub-tests below
+# use --dry-run / early-exit so plugins are not executed; they exist only so the
+# runner can boot and resolve the template.
+_make_plugin "intake" "agent"
+_make_plugin "build"  "agent"
+
+# #1270: install the minimal fixture as a per-repo `.zbuild/templates/` overlay in
+# a temp repo and run the runner with CWD = that repo (resolver reads from $PWD),
+# replacing the retired `--template standard` (#979). Nothing touches the tracked
+# config/templates/; the temp repo is reaped by the master trap.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
+cd "$OVERLAY_REPO"
 
 # ─── Setup: a fabricated state file claiming issue 100 ─────────────────────
 STATE_FILE="$TEST_TEMP_DIR/external-state.json"
@@ -73,7 +85,7 @@ EOF
 
 # ─── Test 1: ZBUILD_STATE_FILE points at issue 100 + --issue 200 → exits 2 ─
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --issue 200 --resume 2>"$TEST_TEMP_DIR/stderr1"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue 200 --resume 2>"$TEST_TEMP_DIR/stderr1"
 rc=$?
 set -e
 assert_eq "mismatch (state=100, --issue=200) exits non-zero" "2" "$rc"
@@ -87,7 +99,7 @@ fi
 # Use --dry-run because the cross-check now fires BEFORE dry-run early-return.
 # Matching values should result in rc=0 (dry-run success) and no "mismatch".
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --issue 100 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue 100 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
 rc=$?
 set -e
 assert_eq "matching (state=100, --issue=100) exits 0 via dry-run" "0" "$rc"
@@ -100,7 +112,7 @@ fi
 
 # ─── Test 3: ZBUILD_STATE_FILE set + --goal (no --issue) → cross-check skipped ─
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --goal "test goal" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr3"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --goal "test goal" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr3"
 rc=$?
 set -e
 assert_eq "goal-mode + state file exits 0 via dry-run" "0" "$rc"
@@ -113,7 +125,7 @@ fi
 
 # ─── Test 4: ZBUILD_STATE_FILE unset → no cross-check at all ───────────────
 set +e
-bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr4"
+bash "$RUNNER" --template runner-state-dir-minimal --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr4"
 rc=$?
 set -e
 assert_eq "no env var, --issue only, exits 0 via dry-run" "0" "$rc"
@@ -129,7 +141,7 @@ fi
 # downstream by the resume logic.)
 set +e
 ZBUILD_STATE_FILE="$TEST_TEMP_DIR/nonexistent-state.json" \
-    bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr5"
+    bash "$RUNNER" --template runner-state-dir-minimal --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr5"
 rc=$?
 set -e
 assert_eq "missing state file exits 0 via dry-run" "0" "$rc"
@@ -148,7 +160,7 @@ CORRUPT_STATE_FILE="$TEST_TEMP_DIR/corrupt-state.json"
 echo "this is not json {" > "$CORRUPT_STATE_FILE"
 set +e
 ZBUILD_STATE_FILE="$CORRUPT_STATE_FILE" \
-    bash "$RUNNER" --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
+    bash "$RUNNER" --template runner-state-dir-minimal --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
 rc=$?
 set -e
 assert_eq "corrupt state file + --issue → exits 2 (fail-closed)" "2" "$rc"
@@ -159,6 +171,7 @@ else
         "stderr: $(cat "$TEST_TEMP_DIR/stderr6")"
 fi
 
+cd "$REPO_ROOT"   # leave the overlay repo before it is reaped
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

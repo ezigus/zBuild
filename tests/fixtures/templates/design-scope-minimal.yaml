@@ -1,0 +1,22 @@
+id: design-scope-minimal
+name: Design Scope Minimal (#978 fixture)
+extends: simple
+defaults:
+  strategy: fanout
+
+# Template-agnostic design-stage probe (EPIC #966 / #978): the minimal flow that
+# lets design-pipeline-test.sh assert the design stage runs (emits
+# plugin.run.start), writes design.md, and that its ```scope block is a superset
+# of plan.json's steps[].files[]. intake → plan (seeds plan.json) → design is
+# enough; the design stage exists in both simple and standard, so this drives the
+# ENGINE's design-stage handling without pinning to a shipped roster.
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]
+  - id: plan
+    gate: auto
+    roles: [planner]
+  - id: design
+    gate: auto
+    roles: [designer]

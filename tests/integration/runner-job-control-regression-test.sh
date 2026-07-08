@@ -53,11 +53,21 @@ mkdir -p "$HOME/.zbuild"
 printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 
 # All stages succeed instantly — pure happy path.
-# #921: standard roster single-sourced (was a 12-line mock_plugin_factory block).
-register_standard_pipeline_stubs
+# #978: the job-control happy-path regression is roster-agnostic — it needs only
+# a pipeline that runs end-to-end cleanly under ZBUILD_RUNNER_JOB_CONTROL=1.
+# Drive a MINIMAL 3-leaf fixture (intake → build → test) instead of pinning to
+# the standard roster (retired in #979). #1270: install the fixture as a per-repo
+# `.zbuild/templates/` overlay in a temp repo and run with CWD = that repo (the
+# resolver reads the overlay from $PWD).
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" resume-minimal
+mock_plugin_factory "intake" "agent" 0 >/dev/null
+mock_plugin_factory "build"  "agent" 0 >/dev/null
+mock_plugin_factory "test"   "tool"  0 >/dev/null
 
 set +e
-bash "$RUNNER" --goal "w15h job-control happy path" \
+# #1270: CWD = overlay repo so the resolver finds the resume-minimal fixture.
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "w15h job-control happy path" ) \
     >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr"
 runner_rc=$?
 set -e

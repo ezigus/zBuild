@@ -30,9 +30,26 @@ export NO_GITHUB=true
 export GIT_TERMINAL_PROMPT=0
 mkdir -p "$ZBUILD_STATE_DIR" "$ZBUILD_PLUGINS_ROOT" "$TEST_TEMP_DIR/events"
 
-# Helper: run runner.sh in subprocess and capture stdout+stderr
-_run_runner() {
-    bash "$REPO_ROOT/core/pipeline/runner.sh" "$@" 2>&1 || true
+# #978: sections 10-11 drive a real template. They used to pin --template
+# standard (retired in #979); convert them to a MINIMAL fixture the test owns.
+# The runner resolves a template by id from $PWD/.zbuild/templates (the #1270
+# overlay seam), so the overlay-aware helpers below run with CWD = a temp repo
+# carrying the fixture. The template-agnostic flag-parsing sections (1-9, 12-14)
+# keep the plain helpers — they exit before template resolution.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
+
+# Helper: run runner.sh with CWD = the overlay repo (so a fixture template id
+# resolves) and capture stdout+stderr.
+_run_runner_in_overlay() {
+    ( cd "$OVERLAY_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" "$@" ) 2>&1 || true
+}
+
+# Helper: run runner.sh with CWD = the overlay repo and capture only exit code.
+_run_runner_rc_in_overlay() {
+    local rc=0
+    ( cd "$OVERLAY_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" "$@" ) >/dev/null 2>&1 || rc=$?
+    echo "$rc"
 }
 
 # Helper: run runner.sh in subprocess and capture only exit code
@@ -107,14 +124,14 @@ print_test_section "Section 10: --resume with no state file → exit 1"
 
 unset ZBUILD_STATE_FILE
 rm -f "$ZBUILD_STATE_DIR/pipeline-state.json"
-rc="$(_run_runner_rc --issue 42 --resume)"
+rc="$(_run_runner_rc_in_overlay --template runner-state-dir-minimal --issue 42 --resume)"
 assert_eq "--resume + no state file → exit 1" "1" "$rc"
 
 # ─── Section 11: --dry-run prints plan, exits 0 ──────────────────────────────
 print_test_section "Section 11: --dry-run exits 0 with plan output"
 
-out="$(_run_runner --issue 99 --dry-run 2>&1)" || true
-rc="$(_run_runner_rc --issue 99 --dry-run)"
+out="$(_run_runner_in_overlay --template runner-state-dir-minimal --issue 99 --dry-run 2>&1)" || true
+rc="$(_run_runner_rc_in_overlay --template runner-state-dir-minimal --issue 99 --dry-run)"
 assert_eq "--dry-run → exit 0" "0" "$rc"
 assert_contains "--dry-run output mentions 'dry-run'" "$out" "dry-run"
 

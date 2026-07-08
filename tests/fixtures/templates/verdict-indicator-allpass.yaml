@@ -1,0 +1,22 @@
+id: verdict-indicator-allpass
+name: Verdict Indicator — all-pass multi-leaf (#978 fixture)
+extends: simple
+defaults:
+  strategy: fanout
+
+# Template-agnostic all-pass probe (EPIC #966 / #978): a small multi-leaf roster
+# the test OWNS, used by core-pipeline-verdict-indicators-test.sh Scenario 1 to
+# assert that when every stage passes, every stage line ends with ✓, each
+# stage.complete event carries verdict=pass, and stage_verdicts is persisted in
+# state. Three leaves (intake/build/test) are enough to prove the per-stage
+# verdict indicator + persistence behavior without booting a shipped roster.
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]
+  - id: build
+    gate: auto
+    roles: [builder]
+  - id: test
+    gate: auto
+    roles: [tester]

@@ -62,7 +62,7 @@ Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
   --issue <N>       GitHub issue number to work
   --goal "<text>"   Pipeline goal description (alternative to --issue)
   --dry-run         Print the stage plan without executing anything
-  --template <id>   Pipeline template to use (default: standard)
+  --template <id>   Pipeline template to use (default: simple)
   --resume          Resume an existing run (skip completed stages)
   --from-stage <s>  Skip ahead to stage <s> when resuming (emits warning)
   --no-resume       Force fresh start even if an in_progress state exists
@@ -704,7 +704,7 @@ _runner_clear_stale_global_event_artifacts() {
 }
 
 main() {
-    local issue="" goal="" dry_run=false template="standard"
+    local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
     # #963: self-host mode — redirect read-only contract-grammar libs to a
     # working-tree snapshot. Honors ZBUILD_SELF_HOST=1 (resolved after parse).

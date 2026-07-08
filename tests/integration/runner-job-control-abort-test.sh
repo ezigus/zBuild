@@ -65,8 +65,18 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_CYCLES_ENABLED=0
 
-# #921: standard roster single-sourced; intake/build/test get custom bodies below.
-register_standard_pipeline_stubs
+# #978: job-control PG forwarding is roster-agnostic — T1 probes the runner
+# shell's monitor-mode via intake, and T2 signals mid-build and asserts test
+# never runs. Drive a MINIMAL 3-leaf fixture (intake → build → test) instead of
+# pinning to the standard roster (retired in #979). #1270: install the fixture as
+# a per-repo `.zbuild/templates/` overlay in a temp repo and run with CWD = that
+# repo (the resolver reads the overlay from $PWD). intake/build/test get custom
+# bodies below.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" resume-minimal
+mock_plugin_factory "intake" "agent" 0 >/dev/null
+mock_plugin_factory "build"  "agent" 0 >/dev/null
+mock_plugin_factory "test"   "tool"  0 >/dev/null
 
 # Probe intake records $- (set of shell option flags) to a marker so we
 # can introspect whether the runner shell has 'm' (monitor mode) set.
@@ -83,7 +93,8 @@ PROBE
 unset ZBUILD_RUNNER_JOB_CONTROL
 rm -f "$PROBE_STATE_DIR/pipeline-state.json"
 set +e
-bash "$RUNNER" --goal "w15h probe flag-off" \
+# #1270: CWD = overlay repo so the resolver finds the resume-minimal fixture.
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "w15h probe flag-off" ) \
     >"$TEST_TEMP_DIR/runner-off.stdout" 2>"$TEST_TEMP_DIR/runner-off.stderr"
 rc_off=$?
 set -e
@@ -94,7 +105,7 @@ opts_off="$(cat "$PROBE_OPTS_FILE" 2>/dev/null || echo "")"
 export ZBUILD_RUNNER_JOB_CONTROL=1
 rm -f "$PROBE_STATE_DIR/pipeline-state.json"
 set +e
-bash "$RUNNER" --goal "w15h probe flag-on" \
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "w15h probe flag-on" ) \
     >"$TEST_TEMP_DIR/runner-on.stdout" 2>"$TEST_TEMP_DIR/runner-on.stderr"
 rc_on=$?
 set -e
@@ -169,14 +180,18 @@ cat > "$PROBE_PLUGINS/tool/test/plugin.sh" <<PLUG
 test_run() { : > "${E2E_TEST_RAN}"; return 0; }
 PLUG
 
+# #1270: the runner resolves the fixture from $PWD, so cd into the overlay repo
+# before exec-ing it. `exec` replaces the wrapper shell so $! is the runner PID.
 if command -v setsid >/dev/null 2>&1; then
-    setsid bash "$RUNNER" --goal "w15h e2e" \
+    setsid bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "w15h e2e" \
         >"$TEST_TEMP_DIR/runner-e2e.stdout" 2>"$TEST_TEMP_DIR/runner-e2e.stderr" &
     RUNNER_PID=$!
     RUNNER_PGID="$RUNNER_PID"
 else
     set -m
-    bash "$RUNNER" --goal "w15h e2e" \
+    bash -c 'cd "$1" && exec bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "w15h e2e" \
         >"$TEST_TEMP_DIR/runner-e2e.stdout" 2>"$TEST_TEMP_DIR/runner-e2e.stderr" &
     RUNNER_PID=$!
     RUNNER_PGID="$(ps -o pgid= "$RUNNER_PID" 2>/dev/null | tr -d ' ' || echo "$RUNNER_PID")"
