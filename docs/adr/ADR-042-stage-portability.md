@@ -6,6 +6,9 @@
 - ADR-021 (pipeline cycle semantics — cycle members resolve role-then-id via the shared helper, not id-only)
 - ADR-039 (parallel stage groups — parallel members resolve role-then-id via the shared helper, not id-only)
 **Related:** ADR-027 (recursive-flow template format), ADR-040 (composable gate/lens taxonomy)
+**Completed-by:** ADR-047 (#1277) — role-then-id resolution is stage-agnostic; ADR-047 extends
+the same principle to the remaining mechanics (verdict-read, cycle capability decisions,
+membership/order validation, post-stage hooks) so nothing under `core/pipeline/` names a stage.
 
 ## Context
 

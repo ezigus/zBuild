@@ -5,6 +5,11 @@
 **Amended:** 2026-07-03 (#1218, ADR-046) — `design-gate` added to the canonical stage list
 between `design` and `impact` (a T0 `kind: tool`, `convergence: gate` PRE-build structural
 verifier; see ADR-046).
+**Amended:** 2026-07-08 (#1277, ADR-047) — the canonical list is **demoted** from an
+engine-owned closed enumeration to a manifest-derived registry/lint artifact. Its membership
+and order enforcement roles are re-expressed as fail-closed, manifest-derived load-time
+preflights (resolvability + upstream-input satisfaction). The mechanics no longer enumerate a
+closed stage vocabulary; see ADR-047.
 
 ## Context
 

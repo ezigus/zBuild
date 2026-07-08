@@ -12,6 +12,9 @@
   `simple.yaml`'s `design_verify_cycle`; its sibling `impact` is advisory BY PLACEMENT
   (a lone top-level stage, no marker, off the convergence path). The typed-aggregator
   preflight rule (A) is satisfied by binding `exit_when` directly to the single gate member.
+- extended-by: ADR-047 (#1277) — §7's "discovered, not hardcoded" marker principle is
+  extended from must-pass-set discovery to the verdict-channel (§3) and capability-flag (§4)
+  metadata, and to fail-closed membership/order preflights (§5), so no mechanic names a stage.
 **Issue:** #1143 (EPIC #1129, D1)
 
 ## Context

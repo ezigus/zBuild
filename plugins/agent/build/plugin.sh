@@ -1346,9 +1346,9 @@ _build_compose_instructions() {
         scope_section="  (no plan.files[] declared — refuse to edit if scope is unclear)"
     fi
     cat <<BUILD_PROMPT
-You are an autonomous build agent for zBuild. You have Read, Edit, Write, and
-Bash tools available. Your job is to edit the working tree to implement the
-ORIGINAL TASK above.
+You are an autonomous build agent for the target project. You have Read, Edit,
+Write, and Bash tools available. Your job is to edit the working tree to
+implement the ORIGINAL TASK above.
 
 ### Scope (plan.files[])
 You may ONLY touch files listed here. Refuse any out-of-scope edit.
