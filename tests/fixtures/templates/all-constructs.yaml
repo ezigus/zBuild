@@ -1,4 +1,4 @@
-id: all_constructs
+id: all-constructs
 name: All-constructs integration fixture
 # Template-agnostic construct probe (#978): ONE template that combines all three
 # construct types the engine must orchestrate — a leaf stage, a cycle (with

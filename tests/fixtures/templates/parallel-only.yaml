@@ -1,4 +1,4 @@
-id: parallel_only
+id: parallel-only
 name: Parallel-only construct fixture
 # Template-agnostic construct probe (#978): a single `type: parallel` group of
 # leaf members. Loads via a direct file path (no `extends:`); the engine parses

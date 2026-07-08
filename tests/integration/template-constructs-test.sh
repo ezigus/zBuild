@@ -54,9 +54,18 @@ _seed() {
     jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 }
 
-# Reset the template module arrays before each load so a prior fixture's
-# structure never leaks into the next assertion.
+# Reset ALL per-template module state before each load so a prior fixture's
+# structure never leaks into the next assertion. Not just the arrays — also the
+# per-stage/cycle/group scalar exports template.sh sets (_TPL_STAGE_TYPE_*,
+# _TPL_CYCLE_*_<id>, _TPL_PARALLEL_MEMBER_OF_*, …); this test loads multiple
+# fixtures in one process, so stale scalars would otherwise leak (Copilot #1276).
+# ${!_TPL_@} expands to every set var named _TPL_*; the arrays are re-created below.
 _reset_tpl() {
+    unset "${!_TPL_@}" 2>/dev/null || true
+    # Re-establish the ONE associative array the blanket unset stripped of its
+    # `declare -A` attribute (template.sh:2075) — otherwise its string-key use in
+    # _tpl_flow_reaches degrades to arithmetic indexing ("build: unbound variable").
+    declare -gA _TPL_FLOW_VISITED=()
     _TPL_STAGES=()
     _TPL_CYCLES=()
     _TPL_PARALLEL_GROUPS=()

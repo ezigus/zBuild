@@ -85,15 +85,21 @@ export ZBUILD_SCOPE_OVERRIDE=1
 mkdir -p "$HOME/.zbuild"
 printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 
-# #921: intentional 6-stage subset (ZBUILD_CYCLES_ENABLED=0 → design/impact/cq-*
-# never load; pipeline aborts at intake). Do NOT replace with
-# register_standard_pipeline_stubs — the partial roster is deliberate.
+# #978: this SIGINT-propagation contract is roster-agnostic — the pipeline aborts
+# at INTAKE (intake_run invokes route_to_model_loop → mock claude rc=130), so the
+# later stages are never reached. Drive a MINIMAL 3-leaf fixture (intake → build
+# → test) instead of pinning to the default/standard roster (standard retired in
+# #979). resume-minimal declares NO roles[], so the runner resolves intake by ID
+# and dispatches via plugin_hook_call, preserving intake's exact rc=130 (routing
+# through the role/fanout path would collapse 130→1 — see the fixture header).
+# #1270: install the fixture as a per-repo `.zbuild/templates/` overlay in a temp
+# repo and run with CWD = that repo (the resolver reads the overlay from $PWD);
+# nothing touches the tracked config/templates/ (reaped by the master trap).
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" resume-minimal
 mock_plugin_factory "intake" "agent" 0 >/dev/null
-mock_plugin_factory "plan"   "agent" 0 >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
 mock_plugin_factory "test"   "tool"  0 >/dev/null
-mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
-mock_plugin_factory "review" "agent" 0 >/dev/null
 
 # Stage with route_to_model_loop: replace intake's run hook to invoke the loop
 # directly (avoids dragging in the full build plugin's preconditions, while
@@ -117,7 +123,9 @@ ELAPSED_FILE="$TEST_TEMP_DIR/elapsed"
 
 start_ts=$(date +%s)
 set +e
-bash "$RUNNER" --goal "test-sigint-halt" \
+# #1270: CWD = overlay repo so the resolver finds the resume-minimal fixture.
+# route_to_model_loop still targets ${REPO} (work-repo) via its explicit arg.
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "test-sigint-halt" ) \
     >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr"
 runner_rc=$?
 set -e
