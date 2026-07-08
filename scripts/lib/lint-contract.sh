@@ -141,6 +141,12 @@ _complain() {
 }
 
 for id in "${!_LC_STAGE_MANIFEST[@]}"; do
+    # Each manifest is indexed under BOTH its plugin id and a `role:<role>` alias
+    # (for reference resolution). Enforce ONCE, via the id key — skip the role:
+    # alias so a role-bound manifest isn't linted twice (duplicate diagnostics /
+    # double-counted offences). _LC_HAS_STAGE_INPUT is set on every key, so the id
+    # key carries the same in-scope decision.
+    [[ "$id" == role:* ]] && continue
     m="${_LC_STAGE_MANIFEST[$id]}"
     rel="${m#"$_LINT_CONTRACT_REPO"/}"
 

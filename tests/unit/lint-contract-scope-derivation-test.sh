@@ -126,6 +126,10 @@ outputs:
     primary: true
 EOF
 
+# SPEC-4a baseline: snapshot the mechanic BEFORE any lint run, so a mutation
+# during the run below would be caught.
+_sha_before="$(shasum "$LINT" | awk '{print $1}')"
+
 set +e
 _out="$(ZBUILD_PLUGINS_ROOT="$FIXROOT" bash "$LINT" 2>&1)"; _rc=$?
 set -e
@@ -146,10 +150,9 @@ fi
 
 # SPEC-4: onboarding the fictitious stage required ZERO stage-specific code in the
 # mechanic. Proven two ways: (a) the mechanic is byte-identical before/after the lint
-# run (it never self-modifies / hardcodes the new stage), and (b) the mechanic source
-# contains no fixture stage-name literal — the scope is derived, not enumerated.
-_sha_before="$(shasum "$LINT" | awk '{print $1}')"
-ZBUILD_PLUGINS_ROOT="$FIXROOT" bash "$LINT" >/dev/null 2>&1 || true
+# runs (it never self-modifies / hardcodes the new stage; _sha_before snapshotted
+# above the first run), and (b) the mechanic source contains no fixture stage-name
+# literal — the scope is derived, not enumerated.
 _sha_after="$(shasum "$LINT" | awk '{print $1}')"
 assert_eq "SPEC-4a: lint-contract.sh is byte-identical after onboarding a new stage" "$_sha_before" "$_sha_after"
 if grep -q "frobnicate" "$LINT"; then
