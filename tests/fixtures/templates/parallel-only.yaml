@@ -1,0 +1,32 @@
+id: parallel_only
+name: Parallel-only construct fixture
+# Template-agnostic construct probe (#978): a single `type: parallel` group of
+# leaf members. Loads via a direct file path (no `extends:`); the engine parses
+# it into a parallel:<gid> dispatch unit + _TPL_PARALLEL_* vars, and
+# parallel_group_run dispatches the members via a stubbed hook. Member ids are
+# drawn from the canonical stage list (the loader enforces membership); their
+# relative order is exempt from the canonical-order check (parallel members).
+defaults:
+  strategy: fanout
+
+flow:
+  - lens_group
+
+lens_group:
+  type: parallel
+  flow:
+    - lens-security
+    - lens-performance
+    - lens-red-team
+  max_parallel: 3
+  on_member_error: continue
+  aggregate: advisory
+
+lens-security:
+  roles: [review_lens]
+
+lens-performance:
+  roles: [review_lens]
+
+lens-red-team:
+  roles: [review_lens]
