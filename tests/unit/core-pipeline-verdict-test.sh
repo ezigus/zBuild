@@ -107,18 +107,23 @@ got="$(runner_read_stage_verdict "$STATE_DIR" "$r_dir/manifest.yaml" "review" 0)
 # #550: block is a structural-failure class — passes through unclassified.
 assert_eq "review verdict=block -> block (pass-through #550)" "block" "$got"
 
-# ─── Test: build verdict via .scope_violation (legacy) and .verdict ──────────
+# ─── Test: build verdict via the pushed .verdict channel (ADR-047 §3) ─────────
+# #1280: the verdict reader is stage-agnostic — it reads the .verdict the build
+# plugin PUSHES into build-summary.json (schema v4 always writes it). A JSON
+# artifact with no .verdict is a clean pass; a scope_violation is reported as
+# .verdict:"scope_violation" (the legacy .scope_violation-derivation that the
+# mechanic used to do by name is gone).
 print_test_section "build plugin verdict derivation"
 b_dir="$TEST_TEMP_DIR/plugins/build"
 _make_manifest "$b_dir" "build" "${ART_DIR}/build-summary.json" "build_summary"
 
-printf '%s' '{"scope_violation":false}' > "$ART_DIR/build-summary.json"
+printf '%s' '{"verdict":"pass","scope_violation":false}' > "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
-assert_eq "build scope_violation=false -> pass" "pass" "$got"
+assert_eq "build verdict=pass -> pass" "pass" "$got"
 
-printf '%s' '{"scope_violation":true}' > "$ART_DIR/build-summary.json"
+printf '%s' '{"verdict":"scope_violation","scope_violation":true}' > "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
-assert_eq "build scope_violation=true -> fail" "fail" "$got"
+assert_eq "build verdict=scope_violation -> fail" "fail" "$got"
 
 printf '%s' '{"verdict":"pass","scope_violation":false}' > "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"

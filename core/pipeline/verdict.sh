@@ -157,37 +157,20 @@ _verdict_resolve_path() {
     printf '%s' "$p"
 }
 
-# ─── _verdict_extract_from_build_summary ──────────────────────────────────────
-# Build plugin emits .verdict (added in #507) but legacy artifacts may carry
-# only .scope_violation. Derive the verdict string for the indicator:
-#   .verdict present  → use as-is
-#   .scope_violation==true → "scope_violation"
-#   else → "pass"
-_verdict_extract_from_build_summary() {
-    local path="$1"
-    local v sv
-    v="$(jq -r '.verdict // empty' "$path" 2>/dev/null || true)"
-    if [[ -n "$v" && "$v" != "null" ]]; then
-        printf '%s' "$v"; return 0
-    fi
-    sv="$(jq -r '.scope_violation // empty' "$path" 2>/dev/null || true)"
-    if [[ "$sv" == "true" ]]; then
-        printf 'scope_violation'
-    else
-        printf 'pass'
-    fi
-}
-
-# ─── _verdict_read_design_sidecar <state_dir> ─────────────────────────────────
-# #1261: design's PRIMARY output is design.md (non-JSON → presence==pass), so a
-# router-timeout mid-flight verdict cannot travel on the primary artifact. The
-# design plugin instead writes a `design-verdict.json` sidecar (mirroring build's
-# #1208 build-summary verdict) carrying {verdict:did_not_finish}. Returns the
-# sidecar's .verdict (empty when absent/malformed). Cleared by design at the
-# start of every run, so a present sidecar always reflects THIS run's timeout.
-_verdict_read_design_sidecar() {
-    local state_dir="$1"
-    local sc; sc="$(_verdict_resolve_path '${artifact_dir}/design-verdict.json' "$state_dir")"
+# ─── _verdict_read_stage_sidecar <state_dir> <stage> ─────────────────────────
+# ADR-047 §3: the canonical verdict-channel for a stage whose PRIMARY output is
+# non-JSON (e.g. design.md → presence==pass) is a sidecar
+# `${artifact_dir}/<stage>-verdict.json` — the stage PUSHES its normalized verdict
+# there because it cannot ride the primary artifact. Generic over the runtime
+# stage id (NOT any stage name): it reproduces the former design-only
+# `design-verdict.json` read (#1261 router-timeout did_not_finish) for design, and
+# is a no-op for non-JSON stages that write no sidecar (intake.md, pr-url.txt,
+# scope-manifest.md → presence==pass). Returns the sidecar's .verdict (empty when
+# absent/malformed). The producing plugin clears it at run start, so a present
+# sidecar always reflects THIS run.
+_verdict_read_stage_sidecar() {
+    local state_dir="$1" stage="$2"
+    local sc; sc="$(_verdict_resolve_path "\${artifact_dir}/${stage}-verdict.json" "$state_dir")"
     [[ -s "$sc" ]] || return 0
     jq empty "$sc" >/dev/null 2>&1 || return 0
     jq -r '.verdict // empty' "$sc" 2>/dev/null || true
@@ -202,16 +185,6 @@ runner_read_stage_verdict() {
     # rc always wins.
     if [[ "$rc" -ne 0 ]]; then
         echo "fail"; return 0
-    fi
-
-    # #1261: design's router-timeout did_not_finish verdict rides a JSON sidecar
-    # (its primary design.md is non-JSON → presence==pass and cannot carry it).
-    # Honor it before the primary-artifact read so the indicator + cycle see the
-    # timeout honestly. did_not_finish → warn (non-terminal; the cycle keys on
-    # the RAW channel below for its exhaustion halt).
-    if [[ "$stage" == "design" ]]; then
-        local _dv; _dv="$(_verdict_read_design_sidecar "$state_dir")"
-        if [[ -n "$_dv" ]]; then verdict_classify "$_dv"; return 0; fi
     fi
 
     # No manifest at all → contract-bypass path; caller decides indicator.
@@ -229,20 +202,34 @@ runner_read_stage_verdict() {
     local resolved
     resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
 
+    # ADR-047 §3: the mechanic names no stage. A stage PUSHES its verdict to the
+    # canonical channel — the primary artifact's `.verdict` when the primary is
+    # JSON, else the `<stage>-verdict.json` sidecar for a non-JSON primary. The
+    # normalizer overlays only what a stage cannot self-report: rc≠0→fail (above)
+    # and channel missing/malformed→warn (below). No per-name branches.
+    case "$resolved" in
+        *.json)
+            ;;
+        *)
+            # Non-JSON primary: verdict rides the sidecar channel (#1261 design
+            # did_not_finish). Absent sidecar → presence == pass; missing primary
+            # → warn (rc-fallback semantics preserved).
+            local _dv; _dv="$(_verdict_read_stage_sidecar "$state_dir" "$stage")"
+            if [[ -n "$_dv" ]]; then verdict_classify "$_dv"; return 0; fi
+            if [[ ! -s "$resolved" ]]; then
+                eb_emit_event "stage.verdict.missing" \
+                    "stage=$stage" "reason=artifact_absent" "path=$resolved" 2>/dev/null || true
+                echo "warn"; return 0
+            fi
+            echo "pass"; return 0 ;;
+    esac
+
+    # JSON primary — its .verdict IS the canonical channel.
     if [[ ! -s "$resolved" ]]; then
         eb_emit_event "stage.verdict.missing" \
             "stage=$stage" "reason=artifact_absent" "path=$resolved" 2>/dev/null || true
         echo "warn"; return 0
     fi
-
-    # Non-JSON primary (intake.md, pr-url.txt, scope-manifest.md, diff.patch):
-    # presence == pass (rc-fallback semantics).
-    case "$resolved" in
-        *.json)
-            ;;
-        *)
-            echo "pass"; return 0 ;;
-    esac
 
     # Parse JSON; malformed → warn + event.
     if ! jq empty "$resolved" >/dev/null 2>&1; then
@@ -251,19 +238,11 @@ runner_read_stage_verdict() {
         echo "warn"; return 0
     fi
 
-    local raw_verdict=""
-    case "$stage" in
-        build)
-            raw_verdict="$(_verdict_extract_from_build_summary "$resolved")" ;;
-        security-lens)
-            # ADR-019 informational role: findings.json present == pass.
-            raw_verdict="pass" ;;
-        *)
-            raw_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
-            # plan.json carries no .verdict — pass when artifact is well-formed.
-            [[ -z "$raw_verdict" || "$raw_verdict" == "null" ]] && raw_verdict="pass"
-            ;;
-    esac
+    # Read the pushed verdict; a JSON artifact with no .verdict (e.g. plan.json)
+    # is a clean pass when well-formed.
+    local raw_verdict
+    raw_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
+    [[ -z "$raw_verdict" || "$raw_verdict" == "null" ]] && raw_verdict="pass"
 
     local cls
     cls="$(verdict_classify "$raw_verdict")"
@@ -344,16 +323,6 @@ runner_read_stage_verdict_raw() {
         echo "fail"; return 0
     fi
 
-    # #1261: design's router-timeout did_not_finish RAW verdict rides a JSON
-    # sidecar (design.md is non-JSON → would read "pass"). The cycle orchestrator
-    # reads THIS raw channel for its reason-aware exhaustion halt, so surfacing
-    # did_not_finish here is what makes a persistent design timeout HALT the
-    # pipeline instead of falling through to build with an empty design.
-    if [[ "$stage" == "design" ]]; then
-        local _dv; _dv="$(_verdict_read_design_sidecar "$state_dir")"
-        if [[ -n "$_dv" ]]; then printf '%s' "$_dv"; return 0; fi
-    fi
-
     if [[ -z "$manifest" || ! -f "$manifest" ]]; then
         echo ""; return 0
     fi
@@ -368,30 +337,30 @@ runner_read_stage_verdict_raw() {
     local resolved
     resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
 
+    # ADR-047 §3: canonical verdict channel (same as the classified reader). The
+    # cycle orchestrator reads THIS raw channel for its reason-aware exhaustion
+    # halt, so a non-JSON primary's sidecar verdict (design did_not_finish, #1261)
+    # must surface here rather than collapsing to "pass".
+    case "$resolved" in
+        *.json)
+            ;;
+        *)
+            local _dv; _dv="$(_verdict_read_stage_sidecar "$state_dir" "$stage")"
+            if [[ -n "$_dv" ]]; then printf '%s' "$_dv"; return 0; fi
+            if [[ ! -s "$resolved" ]]; then echo ""; return 0; fi
+            echo "pass"; return 0 ;;
+    esac
+
     if [[ ! -s "$resolved" ]]; then
         echo ""; return 0
     fi
-
-    # Non-JSON primary: presence == pass (rc-fallback semantics).
-    case "$resolved" in
-        *.json) ;;
-        *) echo "pass"; return 0 ;;
-    esac
 
     if ! jq empty "$resolved" >/dev/null 2>&1; then
         echo ""; return 0
     fi
 
-    local raw_verdict=""
-    case "$stage" in
-        build)
-            raw_verdict="$(_verdict_extract_from_build_summary "$resolved")" ;;
-        security-lens)
-            raw_verdict="pass" ;;
-        *)
-            raw_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
-            [[ -z "$raw_verdict" || "$raw_verdict" == "null" ]] && raw_verdict="pass"
-            ;;
-    esac
+    local raw_verdict
+    raw_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
+    [[ -z "$raw_verdict" || "$raw_verdict" == "null" ]] && raw_verdict="pass"
     printf '%s' "$raw_verdict"
 }
