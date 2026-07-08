@@ -30,8 +30,6 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-_make_plugin() { mock_plugin_factory "$@"; }
-
 # ─── Intake stub: writes scope-manifest.md ───────────────────────────────────
 _intake_dir="$PLUGINS_ROOT/agent/intake"
 mkdir -p "$_intake_dir"
@@ -88,9 +86,6 @@ JSONEOF
 }
 PLUGEOF
 
-# ─── Impact stub ─────────────────────────────────────────────────────────────
-_make_plugin "impact" "agent" 0 >/dev/null
-
 # ─── Design stub: emits plugin.run.start and writes design.md ────────────────
 _design_dir="$PLUGINS_ROOT/agent/design"
 mkdir -p "$_design_dir"
@@ -139,29 +134,26 @@ MDEOF
 }
 PLUGEOF
 
-# ─── Build/test/test_assessment/review stubs ─────────────────────────────────
-_make_plugin "build"           "agent" 0 >/dev/null
-_make_plugin "test"            "tool"  0 >/dev/null
-_make_plugin "test_assessment" "agent" 0 >/dev/null
-# #922: acceptance-gate leaf stage (ADR-036).
-_make_plugin "acceptance-gate" "agent" 0 >/dev/null
-# #755: build_review_cycle.flow now includes the 4 compound_quality stages.
-_make_plugin "cq-preflight"    "agent" 0 >/dev/null
-_make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
-_make_plugin "cq-cycle"        "agent" 0 >/dev/null
-_make_plugin "cq-backtrack"    "agent" 0 >/dev/null
-_make_plugin "review"          "agent" 0 >/dev/null
-# #756: pr leaf stage after build_review_cycle.
-_make_plugin "pr"              "agent" 0 >/dev/null
-
 # ─── Run the pipeline end-to-end ─────────────────────────────────────────────
+# #978 (EPIC #966): template-agnostic. Was pinned to `--template standard` with a
+# full standard roster of stubs (build/test/cq-*/review/pr); standard.yaml retires
+# in #979. The behavior under test — the design stage runs, emits plugin.run.start,
+# and writes design.md with a ```scope block that is a superset of plan.json's
+# files[] — is a design-STAGE property (design exists in both simple and standard).
+# Drive a minimal intake→plan→design fixture the test owns, via the #1270 per-repo
+# `.zbuild/templates/` overlay: install the fixture into a temp repo and run the
+# runner with CWD = that repo (the resolver reads the overlay from $PWD).
+OVERLAY_REPO="$(setup_git_temp_repo design-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" design-scope-minimal
+
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
 set +e
 # #1240: also scrub ZBUILD_STATE_ROOT so the default-state baseline (HOME-anchored
 # $HOME/.zbuild/state/runs/<id>/) is deterministic when this runs nested inside the
 # pipeline test stage, whose #1127 sandbox fences an ambient ZBUILD_STATE_ROOT.
-env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
+# #1270: run with CWD = the overlay repo so the resolver finds the fixture.
+( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
     ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
@@ -170,7 +162,7 @@ env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_CYCLES_ENABLED=0 \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
-    bash "$RUNNER" --template standard --issue 754 >/dev/null 2>&1
+    bash "$RUNNER" --template design-scope-minimal --issue 754 ) >/dev/null 2>&1
 rc=$?
 set -e
 

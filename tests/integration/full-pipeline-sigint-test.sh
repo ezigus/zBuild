@@ -61,18 +61,22 @@ export ZBUILD_SCOPE_OVERRIDE=1
 mkdir -p "$HOME/.zbuild"
 printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 
-# #921: intentional 8-stage subset (ZBUILD_CYCLES_ENABLED=0 → cq-* never load;
-# build returns 130 before later stages). Do NOT replace with
-# register_standard_pipeline_stubs — the partial roster is deliberate.
+# #978: this SIGINT-propagation contract is roster-agnostic — it only needs a
+# stage BEFORE build (intake), the build stage that returns rc=130, and a stage
+# AFTER build (test) to prove the abort halts the linear loop before test runs.
+# Drive a MINIMAL 3-leaf fixture (intake → build → test) instead of pinning to
+# the standard roster (retired in #979). resume-minimal declares NO roles[], so
+# the runner resolves each stage by ID and dispatches via plugin_hook_call,
+# preserving the build stub's exact rc=130 (routing through the role/fanout path
+# would collapse 130→1 — see the fixture header). #1270: install the fixture as a
+# per-repo `.zbuild/templates/` overlay in a temp repo and run with CWD = that
+# repo (the resolver reads the overlay from $PWD); nothing touches the tracked
+# config/templates/ and the temp repo is reaped by the master trap.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" resume-minimal
 mock_plugin_factory "intake" "agent" 0 >/dev/null
-mock_plugin_factory "plan"   "agent" 0 >/dev/null
-# #842: standard template now includes impact inside design_impact_cycle.
-mock_plugin_factory "impact" "agent" 0 >/dev/null
-mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
 mock_plugin_factory "test"   "tool"  0 >/dev/null
-mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
-mock_plugin_factory "review" "agent" 0 >/dev/null
 
 # Override the build plugin to (a) arm the sentinel directly (simulating
 # the runner's INT trap that fired in a sibling subshell), (b) return
@@ -100,7 +104,8 @@ PLUG
 
 start_ts=$(date +%s)
 set +e
-bash "$RUNNER" --template standard --goal "w15b sentinel + rc chain" \
+# #1270: CWD = overlay repo so the resolver finds the resume-minimal fixture.
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "w15b sentinel + rc chain" ) \
     >"$TEST_TEMP_DIR/runner.stdout" 2>"$TEST_TEMP_DIR/runner.stderr"
 runner_rc=$?
 set -e

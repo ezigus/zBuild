@@ -64,26 +64,24 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_CYCLES_ENABLED=0
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-_make_plugin "intake"          "agent" 0
-_make_plugin "plan"            "agent" 0
-# #842: standard template now wraps design+impact in design_impact_cycle (plan is a leaf).
-_make_plugin "design"          "agent" 0
-_make_plugin "impact"          "agent" 0
-_make_plugin "build"           "agent" 0
-# #485: standard template now includes the test stage between build and review.
-_make_plugin "test"            "tool"  0
-# #568: standard template inserts test_assessment between test and review.
-_make_plugin "test_assessment" "agent" 0
-# #922: acceptance-gate leaf stage after test_assessment (ADR-036).
-_make_plugin "acceptance-gate" "agent" 0
-# #755: compound_quality split into 4 CQ leaf stages before review.
-_make_plugin "cq-preflight"    "agent" 0
-_make_plugin "cq-audit-plan"   "agent" 0
-_make_plugin "cq-cycle"        "agent" 0
-_make_plugin "cq-backtrack"    "agent" 0
-_make_plugin "review"          "agent" 0
-# #756: standard template now includes pr leaf stage after build_review_cycle.
-_make_plugin "pr"              "agent" 0
+# TEMPLATE-AGNOSTIC (#966): these are generic runner-orchestrator behaviors, not
+# properties of any shipped roster. Drive a MINIMAL test-owned fixture
+# (runner-state-dir-minimal.yaml: two leaf stages intake → build) via a per-repo
+# `.zbuild/templates/` overlay (#1270) and run the runner with CWD = that repo,
+# replacing the retired `--template standard` (#979). Every count/label/stage-name
+# assertion below is re-pointed from standard's 14-stage roster to the fixture's
+# two leaf stages — the orchestrator behavior (dispatch, lifecycle events, resume,
+# fanout, abort trap, banners) is stage-count-independent.
+_make_plugin "intake" "agent" 0
+_make_plugin "build"  "agent" 0
+
+# #1270: install the fixture overlay and run every runner invocation below with
+# CWD = the overlay repo (the resolver reads the overlay from $PWD). The plugin
+# roster / state / events all use absolute paths under $TEST_TEMP_DIR, so a single
+# `cd` here is sufficient and does not affect them.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
+cd "$OVERLAY_REPO"
 
 # ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
 set +e; bash "$RUNNER" 2>/dev/null; rc=$?; set -e
@@ -100,17 +98,17 @@ assert_eq "--issue with no value exits 2" "2" "$rc"
 set +e; bash "$RUNNER" --goal 2>/dev/null; rc=$?; set -e
 assert_eq "--goal with no value exits 2" "2" "$rc"
 
-# ─── Test 4: dry-run prints 4-stage plan without executing ──────────────────
+# ─── Test 4: dry-run prints the plan without executing ──────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-out="$(bash "$RUNNER" --template standard --issue 83 --dry-run 2>&1)"
+out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue 83 --dry-run 2>&1)"
+# Fixture stages: intake → build (re-pointed from standard's intake/build/review).
 assert_contains "dry-run shows intake stage" "$out" "intake"
 assert_contains "dry-run shows build stage"  "$out" "build"
-assert_contains "dry-run shows review stage" "$out" "review"
 assert_file_not_exists "dry-run leaves state file untouched" "$STATE_DIR/pipeline-state.json"
 
 # ─── Test 5: happy path → exits 0, emits pipeline.start + pipeline.end ──────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "happy path exits 0" "0" "$rc"
 assert_file_exists "events.jsonl created" "$EVENTS_JSONL"
 
@@ -126,31 +124,26 @@ assert_eq "pipeline.end carries status=success" "1" "$success_in_end"
 # ─── Test 6: stage lifecycle events emitted ─────────────────────────────────
 for stage_event in stage.start stage.complete; do
     count=$(grep -c "\"$stage_event\"" "$EVENTS_JSONL" || true)
-    # #755: 12 stages + #922: acceptance-gate + #756: pr = 14.
-    assert_eq "[SPEC-1] $stage_event emitted for each MVP stage (14x)" "14" "$count"
+    # Re-pointed from standard's 14 to the fixture's 2 leaf stages (intake, build).
+    assert_eq "[SPEC-1] $stage_event emitted for each fixture stage (2x)" "2" "$count"
 done
 
 # ─── Test 7: ADR-006 stage status enum — "complete" not "success" ───────────
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 assert_file_exists "state file created" "$STATE_FILE"
 
+# Re-pointed from standard's intake/plan/build/review to the fixture's intake/build.
 intake_status="$(jq -r '.stage_statuses.intake // empty' "$STATE_FILE" 2>/dev/null)"
 assert_eq "intake stage_status=complete (ADR-006 enum)" "complete" "$intake_status"
 
-plan_status="$(jq -r '.stage_statuses.plan // empty' "$STATE_FILE" 2>/dev/null)"
-assert_eq "plan stage_status=complete (ADR-006 enum)" "complete" "$plan_status"
-
 build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_FILE" 2>/dev/null)"
 assert_eq "build stage_status=complete (ADR-006 enum)" "complete" "$build_status"
-
-review_status="$(jq -r '.stage_statuses.review // empty' "$STATE_FILE" 2>/dev/null)"
-assert_eq "review stage_status=complete (ADR-006 enum)" "complete" "$review_status"
 
 # ─── Test 8: mid-stage failure → exits 1, pipeline.end + stage.fail ──────────
 _make_plugin "build" "agent" 1
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "mid-stage failure exits 1" "1" "$rc"
 assert_file_exists "events.jsonl present on failure" "$EVENTS_JSONL"
 
@@ -170,7 +163,7 @@ assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 rm -rf "$PLUGINS_ROOT/agent/intake"
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "missing required plugin exits 1" "1" "$rc"
 
 if [[ -f "$EVENTS_JSONL" ]]; then
@@ -201,7 +194,7 @@ cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<'EOF'
 intake_run() { sleep 5; return 0; }
 EOF
 
-bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1 &
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1 &
 runner_pid=$!
 # #1149: wait for the SLOW intake stage's plugin.run.start, not merely
 # pipeline.start. plugin.run.start is emitted strictly AFTER pipeline.start
@@ -226,17 +219,13 @@ _kill_assert "$t10_abort_ok" "kill mid-run emits pipeline.abort"
 
 # ─── Test 11: --template flag parsed; missing template falls back gracefully ──
 _make_plugin "intake"  "agent" 0
-_make_plugin "plan"    "agent" 0
 _make_plugin "build"   "agent" 0
-_make_plugin "test"    "tool"  0
-_make_plugin "review"  "agent" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
-out="$(bash "$RUNNER" --issue 83 --dry-run --template standard 2>&1)"
-assert_contains "--template standard dry-run shows intake"  "$out" "intake"
-assert_contains "--template standard dry-run shows plan"    "$out" "plan"
-assert_contains "--template standard dry-run shows build"   "$out" "build"
-assert_contains "--template standard dry-run shows review"  "$out" "review"
+# Re-pointed: the fixture's dry-run lists intake/build (was standard's intake/plan/build/review).
+out="$(bash "$RUNNER" --issue 83 --dry-run --template runner-state-dir-minimal 2>&1)"
+assert_contains "--template runner-state-dir-minimal dry-run shows intake"  "$out" "intake"
+assert_contains "--template runner-state-dir-minimal dry-run shows build"   "$out" "build"
 
 out="$(bash "$RUNNER" --issue 83 --dry-run --template nonexistent 2>&1)"
 assert_contains "missing template falls back to built-in stages"  "$out" "intake"
@@ -265,53 +254,40 @@ EOF
 }
 
 rm -rf "$PLUGINS_ROOT/agent/" "$PLUGINS_ROOT/tool/"
-_make_role_plugin "intake-agent"          "intake"          0
-_make_role_plugin "plan-agent"            "planner"         0
-# #746: impact_analyzer role added for the impact stage
-_make_role_plugin "impact-agent"          "impact_analyzer" 0
-# #754: standard template adds `design` between impact and build.
-_make_role_plugin "design-agent"          "designer"        0
-_make_role_plugin "build-agent"           "builder"         0
-# #485: tester role added for the test stage
-_make_role_plugin "test-agent"            "tester"          0
-# #568: test_assessment role added for the new assessment stage
-_make_role_plugin "test-assessment-agent" "test_assessment" 0
-# #922: acceptance-gate role for the new gate stage
-_make_role_plugin "acceptance-gate-agent" "acceptance_gate"  0
-# #755: 4 CQ leaf stages replacing compound_quality
-_make_role_plugin "cq-preflight-agent"   "cq_preflight"    0
-_make_role_plugin "cq-audit-plan-agent"  "cq_audit_plan"   0
-_make_role_plugin "cq-cycle-agent"       "cq_cycle"        0
-_make_role_plugin "cq-backtrack-agent"   "cq_backtrack"    0
-_make_role_plugin "review-agent"          "reviewer"        0
-# #756: pr leaf stage after build_review_cycle uses pr_delivery role.
-_make_role_plugin "pr-agent"             "pr_delivery"     0
+# Re-pointed to the fixture's two roles: intake stage → role `intake`, build stage
+# → role `builder` (runner-state-dir-minimal.yaml). Role-then-id resolution is the
+# behavior under test; it is exercised identically by two roles as by fourteen.
+_make_role_plugin "intake-agent" "intake"  0
+_make_role_plugin "build-agent"  "builder" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
-set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
-# #755: 12 stages + #922: acceptance-gate + #756: pr = 14.
-assert_eq "role-based dispatch: 14 stage.complete events" "14" "$role_complete"
+# Re-pointed from standard's 14 to the fixture's 2 leaf stages.
+assert_eq "role-based dispatch: 2 stage.complete events" "2" "$role_complete"
 
 role_build_status="$(jq -r '.stage_statuses.build // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null)"
 assert_eq "role-based: build stage_status=complete" "complete" "$role_build_status"
 
 # ─── Test 13: fanout with 2 detected platforms — plugin invoked once per platform
 # Pre-populate platforms.json cache so detect_platforms returns 2 platforms.
-current_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
+# The cache is keyed by the HEAD sha of the SCANNED repo — which is now the
+# overlay repo (CWD), not $REPO_ROOT — so key it to OVERLAY_REPO's HEAD or the
+# cache misses and detect_platforms re-detects (empty temp repo → "generic", 1).
+current_sha="$(git -C "$OVERLAY_REPO" rev-parse HEAD 2>/dev/null || echo "")"
 mkdir -p "$STATE_DIR"
 printf '{"schema_version":1,"repo_head_sha":"%s","detected":["node","ios"],"overrides":[],"updated_at":"2026-01-01T00:00:00Z"}\n' \
     "$current_sha" > "$STATE_DIR/platforms.json"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 
-set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
-# #756: 14 stages × 2 platforms = 28 plugin.run.start events via fanout
+# Re-pointed: fixture's 2 stages × 2 platforms = 4 plugin.run.start events via fanout.
 plugin_run_count=$(grep -c '"plugin.run.start"' "$EVENTS_JSONL" || true)
-assert_eq "fanout 2 platforms: 28 plugin.run.start events (14 stages × 2)" "28" "$plugin_run_count"
+assert_eq "fanout 2 platforms: 4 plugin.run.start events (2 stages × 2)" "4" "$plugin_run_count"
 
 # ─── Test 14: partial fanout failure — stage.fail + pipeline.end status=failed ─
 # Platform-specific success (node) + generic failure (ios fallback) → partial.
@@ -348,7 +324,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 # ios:  resolve finds build-agent (generic)             → exit 1
 # → success_count=1, fail_count=1 → partial (rc=2)
 
-set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "partial fanout failure exits 1" "1" "$rc"
 
 partial_stage_fail=$(grep '"stage.fail"' "$EVENTS_JSONL" | grep -c '"partial"' || true)
@@ -420,7 +396,7 @@ ZBUILD_STATE_DIR="$A2_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A2_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="/dev/null" \
-bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1 &   # #619: suppress info banner
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1 &   # #619: suppress info banner
 a2_pid=$!
 # #1149: anchor the kill on the slow stage's plugin.run.start (not just
 # pipeline.start). It is emitted after the abort trap installs AND after intake
@@ -526,7 +502,7 @@ ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="/dev/null" \
-bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1 || true   # #619: suppress info banner
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1 || true   # #619: suppress info banner
 
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
     a3_violated=$(grep -c '"plugin.contract.violated"' "$A3_EVENTS_JSONL" || true)
@@ -544,54 +520,33 @@ else
     assert_fail "A3 artifact contract: synthetic findings.json not created"
 fi
 
-# ─── Test I1 (#508): 6-stage happy path emits divider+running+complete with UTC ─
+# ─── Test I1 (#508): happy path emits divider+running+complete with UTC ──────
 # Reset to a clean plugin set in the shared PLUGINS_ROOT (mock_plugin_factory
 # writes under $TEST_TEMP_DIR/plugins regardless of ZBUILD_PLUGINS_ROOT —
-# match that convention rather than fight it).
+# match that convention rather than fight it). Re-pointed from standard's 14-stage
+# roster to the fixture's two leaf stages (intake, build).
 rm -rf "$PLUGINS_ROOT/agent" "$PLUGINS_ROOT/tool"
-_make_plugin "intake"          "agent" 0 >/dev/null
-_make_plugin "plan"            "agent" 0 >/dev/null
-# #842: standard template now includes impact inside design_impact_cycle.
-_make_plugin "impact"          "agent" 0 >/dev/null
-# #842: design is a cycle member of design_impact_cycle.
-_make_plugin "design"          "agent" 0 >/dev/null
-_make_plugin "build"           "agent" 0 >/dev/null
-_make_plugin "test"            "tool"  0 >/dev/null
-# #623: standard template's build_test_cycle (#582) requires test_assessment.
-# Without it the cycle fails with verdict=error, cycle blocked, rc=5 —
-# `set -e` kills the test before I1's assertions run.
-_make_plugin "test_assessment" "agent" 0 >/dev/null
-# #922: acceptance-gate leaf stage after test_assessment (ADR-036).
-_make_plugin "acceptance-gate" "agent" 0 >/dev/null
-# #755: build_review_cycle.flow now includes the 4 compound_quality stages; without
-# stubs the cycle hits cq-preflight (no plugin), fails rc=5, and `set -e` kills
-# I1 before its assertions run.
-_make_plugin "cq-preflight"    "agent" 0 >/dev/null
-_make_plugin "cq-audit-plan"   "agent" 0 >/dev/null
-_make_plugin "cq-cycle"        "agent" 0 >/dev/null
-_make_plugin "cq-backtrack"    "agent" 0 >/dev/null
-_make_plugin "review"          "agent" 0 >/dev/null
-# #756: pr leaf stage after build_review_cycle.
-_make_plugin "pr"              "agent" 0 >/dev/null
+_make_plugin "intake" "agent" 0 >/dev/null
+_make_plugin "build"  "agent" 0 >/dev/null
 
 I1_STDERR="$TEST_TEMP_DIR/i1.runner.stderr"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template standard --issue 83 2>"$I1_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I1_STDERR" >/dev/null
 
 I1_OUT="$(cat "$I1_STDERR")"
 assert_contains "I1 #508: stderr carries UTC timestamps" "$I1_OUT" "UTC"
 assert_contains "I1 #508: running line uses 'started'"   "$I1_OUT" "started 03:25:45 UTC"
 assert_contains "I1 #508: complete line uses 'finished'" "$I1_OUT" "finished 03:25:45 UTC"
 
-# I1b: exactly 14 'started ' and 14 'finished ' suffixes (one per stage).
-# Standard template has 14 stages (#756: pr added).
+# I1b: exactly one 'started ' and one 'finished ' suffix per stage.
+# Re-pointed from standard's 14 to the fixture's 2 leaf stages (intake, build).
 started_count=$(grep -c 'started 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 14 'started ' suffixes" "14" "$started_count"
+assert_eq "I1b #508: exactly 2 'started ' suffixes" "2" "$started_count"
 finished_count=$(grep -c 'finished 03:25:45 UTC' "$I1_STDERR" || true)
-assert_eq "I1b #508: exactly 14 'finished ' suffixes" "14" "$finished_count"
+assert_eq "I1b #508: exactly 2 'finished ' suffixes" "2" "$finished_count"
 
 # ─── Test I2 (#508): failure path emits ✗ with rc + finished + duration ─────
 _make_plugin "build" "agent" 1 >/dev/null
@@ -601,7 +556,7 @@ set +e
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template standard --issue 83 2>"$I2_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I2_STDERR" >/dev/null
 set -e
 
 I2_OUT="$(cat "$I2_STDERR")"
@@ -615,7 +570,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template standard --issue 83 2>"$I3_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I3_STDERR" >/dev/null
 I3_OUT="$(cat "$I3_STDERR")"
 
 assert_contains "I3 #525: terminal banner frame uses ═"            "$I3_OUT" "═"
@@ -637,7 +592,7 @@ set +e
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template standard --issue 83 2>"$I4_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I4_STDERR" >/dev/null
 set -e
 I4_OUT="$(cat "$I4_STDERR")"
 
@@ -717,7 +672,7 @@ ZBUILD_EVENTS_DIR="$I6_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$I6_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="/dev/null" \
 NO_COLOR=1 \
-bash "$RUNNER" --template standard --issue 83 2>"$I6_STDERR" >/dev/null &
+bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I6_STDERR" >/dev/null &
 i6_pid=$!
 # Anchor the kill on plugin.run.start (trap armed + live child). Fail-fast (~15s):
 # locally it is near-instant; a box that can't get there in 15s is too sick to
@@ -767,6 +722,7 @@ else
     assert_fail "R2 #619: _make_plugin wrapper must suppress stdout" "leaked: $r2_stdout"
 fi
 
+cd "$REPO_ROOT"   # leave the overlay repo before it is reaped
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

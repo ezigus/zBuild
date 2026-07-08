@@ -94,12 +94,6 @@ intake_run() {
 }
 EOF
 
-# ─── Plan stub: pass-through ────────────────────────────────────────────────
-mock_plugin_factory "plan" "agent" 0 >/dev/null
-# #842: standard template now includes impact inside design_impact_cycle.
-mock_plugin_factory "impact" "agent" 0 >/dev/null
-mock_plugin_factory "design" "agent" 0 "" "designer" >/dev/null
-
 # ─── Build stub: sources route.sh and invokes route_to_model_loop ───────────
 # This mirrors what the real build plugin does at runner.sh dispatch time —
 # it reads ZBUILD_STATE_DIR (which the runner must have exported) and runs
@@ -129,19 +123,14 @@ build_run() {
 }
 EOF
 
-# ─── Pass-through stubs for downstream stages ───────────────────────────────
-mock_plugin_factory "test"            "tool"  0 >/dev/null
-mock_plugin_factory "test_assessment" "agent" 0 >/dev/null
-# #922: acceptance-gate leaf stage (ADR-036).
-mock_plugin_factory "acceptance-gate" "agent" 0 >/dev/null
-# #755: build_review_cycle.flow now includes the 4 compound_quality stages.
-mock_plugin_factory "cq-preflight"    "agent" 0 >/dev/null
-mock_plugin_factory "cq-audit-plan"   "agent" 0 >/dev/null
-mock_plugin_factory "cq-cycle"        "agent" 0 >/dev/null
-mock_plugin_factory "cq-backtrack"    "agent" 0 >/dev/null
-mock_plugin_factory "review"          "agent" 0 >/dev/null
-# #756: standard template now ends with a pr delivery stage (role pr_delivery).
-mock_plugin_factory "pr"              "agent" 0 "" "pr_delivery" >/dev/null
+# TEMPLATE-AGNOSTIC (#966): the behavior under test — the runner exporting
+# ZBUILD_STATE_DIR so build's route_to_model_loop can read intake-baseline-ref.txt
+# and inject the BRANCH STATE block (#618) — needs only intake → build. Drive the
+# minimal test-owned fixture (runner-state-dir-minimal.yaml) via a per-repo
+# `.zbuild/templates/` overlay (#1270), replacing the retired 14-stage standard
+# roster (#979). No downstream stub roster is required.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
 
 # ─── Mock claude shim: capture the iter-1 prompt to PROMPT_CAPTURE ──────────
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
@@ -170,8 +159,9 @@ set +e
 # HOME-anchored default ($HOME/.zbuild/state/runs/<id>/) rather than re-rooting to
 # an ambient fence — the #1127 sandbox sets ZBUILD_STATE_ROOT when this runs nested
 # inside the pipeline test stage.
-env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
-    ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --template standard --issue 618 >/dev/null 2>&1
+# #1270: CWD = overlay repo so the resolver finds the minimal fixture.
+( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
+    ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --template runner-state-dir-minimal --issue 618 ) >/dev/null 2>&1
 rc=$?
 set -e
 

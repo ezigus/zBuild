@@ -163,27 +163,24 @@ assert_eq "aborted still returns manual_resume_only (force is caller's responsib
 # ─── Integration: runner.sh --resume skips completed stages end-to-end ────────
 print_test_section "integration: runner --resume skips stages with status=complete"
 
-# Build minimal plugins for all 4 stages in the standard template (intake/plan/build/review)
+# TEMPLATE-AGNOSTIC (#966): resume-skips-completed-stages is a generic runner
+# behavior, not a property of any shipped roster. Drive a MINIMAL test-owned
+# fixture (runner-state-dir-minimal.yaml: two leaf stages intake → build)
+# installed as a per-repo `.zbuild/templates/` overlay (#1270) and run the runner
+# with CWD = that repo, replacing the retired `--template standard` (#979). The
+# prior version registered the full 14-stage standard roster and marked 13 stages
+# complete + one (review) pending; the behavior is stage-count-independent, so we
+# mark intake=complete + build=pending and re-point the "remaining stage" assertion
+# from `review` to `build`.
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 INT_PLUGINS_ROOT="$TEST_TEMP_DIR/int_plugins"
 INT_STATE_DIR="$TEST_TEMP_DIR/int_state"
 INT_EVENTS_DIR="$TEST_TEMP_DIR/int_events"
-mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/plan" \
-         "$INT_PLUGINS_ROOT/agent/impact" \
-         "$INT_PLUGINS_ROOT/agent/design" \
-         "$INT_PLUGINS_ROOT/agent/build" "$INT_PLUGINS_ROOT/tool/test" \
-         "$INT_PLUGINS_ROOT/agent/test_assessment" \
-         "$INT_PLUGINS_ROOT/agent/acceptance-gate" \
-         "$INT_PLUGINS_ROOT/agent/cq-preflight" \
-         "$INT_PLUGINS_ROOT/agent/cq-audit-plan" \
-         "$INT_PLUGINS_ROOT/agent/cq-cycle" \
-         "$INT_PLUGINS_ROOT/agent/cq-backtrack" \
-         "$INT_PLUGINS_ROOT/agent/review" \
-         "$INT_PLUGINS_ROOT/agent/pr" \
+mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/build" \
          "$INT_STATE_DIR" "$INT_EVENTS_DIR"
 
-# Plugins: all 7 standard-template stages succeed (#746 added impact, #754 added design)
-for _plugin in intake plan impact design build; do
+# The fixture's two leaf stages both succeed.
+for _plugin in intake build; do
     _fn="${_plugin//-/_}_run"
     cat > "$INT_PLUGINS_ROOT/agent/$_plugin/manifest.yaml" <<EOF
 id: $_plugin
@@ -198,83 +195,12 @@ requires:
 EOF
     printf '%s() { return 0; }\n' "$_fn" > "$INT_PLUGINS_ROOT/agent/$_plugin/plugin.sh"
 done
-cat > "$INT_PLUGINS_ROOT/agent/review/manifest.yaml" <<EOF
-id: review
-name: Test review
-kind: agent
-version: 0.0.1
-hooks:
-  run: review_run
-requires:
-  core:
-    - redaction
-EOF
-printf 'review_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/review/plugin.sh"
 
-# #756: standard template now ends with a pr delivery stage (role pr_delivery).
-cat > "$INT_PLUGINS_ROOT/agent/pr/manifest.yaml" <<EOF
-id: pr
-name: Test pr
-kind: agent
-version: 0.0.1
-hooks:
-  run: pr_run
-provides:
-  role: pr_delivery
-requires:
-  core: []
-EOF
-printf 'pr_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/pr/plugin.sh"
+# #1270: per-repo overlay repo; the runner resolves the fixture from CWD=$PWD.
+INT_OVERLAY_REPO="$(setup_git_temp_repo int-tpl-overlay-repo)"
+install_template_overlay "$INT_OVERLAY_REPO" runner-state-dir-minimal
 
-# #485: minimal test-stage plugin (tool kind) so the resume can reach review.
-cat > "$INT_PLUGINS_ROOT/tool/test/manifest.yaml" <<EOF
-id: test
-name: Test test-stage
-kind: tool
-version: 0.0.1
-hooks:
-  run: test_run
-provides:
-  role: tester
-requires:
-  core: []
-EOF
-printf 'test_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/tool/test/plugin.sh"
-
-# #568: standard template now requires a test_assessment stage between test and review.
-cat > "$INT_PLUGINS_ROOT/agent/test_assessment/manifest.yaml" <<EOF
-id: test_assessment
-name: Test test_assessment-stage
-kind: agent
-version: 0.0.1
-hooks:
-  run: test_assessment_run
-requires:
-  core:
-    - redaction
-EOF
-printf 'test_assessment_run() { return 0; }\n' > "$INT_PLUGINS_ROOT/agent/test_assessment/plugin.sh"
-
-# #755: 4 CQ leaf stages replacing compound_quality (all run before review).
-# #922: acceptance-gate runs before the CQ stages — register it with the same loop.
-for _cq_stage in acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack; do
-    _cq_fn="${_cq_stage//-/_}_run"
-    cat > "$INT_PLUGINS_ROOT/agent/$_cq_stage/manifest.yaml" <<EOF
-id: $_cq_stage
-name: Test $_cq_stage
-kind: agent
-version: 0.0.1
-hooks:
-  run: ${_cq_fn}
-requires:
-  core:
-    - redaction
-EOF
-    printf '%s() { return 0; }\n' "$_cq_fn" > "$INT_PLUGINS_ROOT/agent/$_cq_stage/plugin.sh"
-done
-
-# Write state: all pre-review stages complete, review pending.
-# #485: added test=complete. #568: added test_assessment=complete.
+# Write state: intake complete, build pending (the remaining stage to run).
 INT_STATE_FILE="$INT_STATE_DIR/pipeline-state.json"
 jq -n \
     --arg run_id "integ-test-resume-225" \
@@ -283,7 +209,7 @@ jq -n \
         schema_version: 1,
         run_id: $run_id,
         issue: 225,
-        stage_statuses: {intake: "complete", plan: "complete", impact: "complete", design: "complete", build: "complete", test: "complete", test_assessment: "complete", "acceptance-gate": "complete", "cq-preflight": "complete", "cq-audit-plan": "complete", "cq-cycle": "complete", "cq-backtrack": "complete", review: "pending", pr: "complete"},
+        stage_statuses: {intake: "complete", build: "pending"},
         current_iteration: 0,
         self_heal_count: {},
         scope_manifest_hash: "",
@@ -294,31 +220,33 @@ jq -n \
         updated_at: $now
     }' > "$INT_STATE_FILE"
 
-# Run runner --resume against this state file
+# Run runner --resume against this state file (CWD = overlay repo).
 set +e
-ZBUILD_CYCLES_ENABLED=0 \
-ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
-ZBUILD_STATE_DIR="$INT_STATE_DIR" \
-ZBUILD_STATE_FILE="$INT_STATE_FILE" \
-ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
-ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
-ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
-ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-  bash "$RUNNER" --template standard --resume --issue 225 2>/dev/null
+( cd "$INT_OVERLAY_REPO" && env \
+    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$INT_STATE_DIR" \
+    ZBUILD_STATE_FILE="$INT_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
+    ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue 225 ) 2>/dev/null
 _int_rc=$?
 set -e
 
 assert_eq "integration: --resume exits 0 when remaining stage succeeds" "0" "$_int_rc"
 assert_file_exists "integration: state file still present after resume" "$INT_STATE_FILE"
 
-# Verify review stage status is now complete in state
-_review_status="$(jq -r '.stage_statuses.review // empty' "$INT_STATE_FILE" 2>/dev/null)"
-assert_eq "integration: review stage_status=complete after resume" "complete" "$_review_status"
+# Verify the remaining (build) stage status is now complete in state.
+_build_status="$(jq -r '.stage_statuses.build // empty' "$INT_STATE_FILE" 2>/dev/null)"
+assert_eq "integration: build stage_status=complete after resume" "complete" "$_build_status"
 
-# Verify intake/plan/build were skipped (events.jsonl should show only 1 stage.start for review)
+# Verify intake was skipped (events.jsonl should show only 1 stage.start for build).
 if [[ -f "$INT_EVENTS_DIR/events.jsonl" ]]; then
     _stage_starts="$(grep -c '"stage.start"' "$INT_EVENTS_DIR/events.jsonl" || true)"
-    assert_eq "integration: only 1 stage.start (skipped 5 complete stages)" "1" "$_stage_starts"
+    assert_eq "integration: only 1 stage.start (skipped 1 complete stage)" "1" "$_stage_starts"
     _resume_event="$(grep -c '"pipeline.resume"' "$INT_EVENTS_DIR/events.jsonl" || true)"
     assert_eq "integration: pipeline.resume event emitted" "1" "$_resume_event"
 fi
@@ -327,15 +255,17 @@ fi
 print_test_section "integration: --from-stage with unknown stage exits 2"
 
 set +e
-ZBUILD_CYCLES_ENABLED=0 \
-ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
-ZBUILD_STATE_DIR="$INT_STATE_DIR" \
-ZBUILD_STATE_FILE="$INT_STATE_FILE" \
-ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
-ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
-ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
-ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-  bash "$RUNNER" --template standard --resume --issue 225 --from-stage "nonexistent-stage" 2>/dev/null
+( cd "$INT_OVERLAY_REPO" && env \
+    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$INT_STATE_DIR" \
+    ZBUILD_STATE_FILE="$INT_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events.jsonl" \
+    ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue 225 --from-stage "nonexistent-stage" ) 2>/dev/null
 _fs_rc=$?
 set -e
 
@@ -352,15 +282,17 @@ jq -n \
       plugin_state:{},status:"in_progress",updated_at:$now}' > "$INT_STATE_FILE"
 
 set +e
-ZBUILD_CYCLES_ENABLED=0 \
-ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
-ZBUILD_STATE_DIR="$INT_STATE_DIR" \
-ZBUILD_STATE_FILE="$INT_STATE_FILE" \
-ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
-ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events2.jsonl" \
-ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
-ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-  bash "$RUNNER" --template standard --issue 225 --from-stage "intake" 2>/dev/null
+( cd "$INT_OVERLAY_REPO" && env \
+    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_PLUGINS_ROOT="$INT_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$INT_STATE_DIR" \
+    ZBUILD_STATE_FILE="$INT_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$INT_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$INT_EVENTS_DIR/events2.jsonl" \
+    ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template runner-state-dir-minimal --issue 225 --from-stage "intake" ) 2>/dev/null
 _noresume_rc=$?
 set -e
 

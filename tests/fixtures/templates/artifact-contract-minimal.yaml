@@ -1,0 +1,16 @@
+id: artifact-contract-minimal
+name: Artifact Contract Minimal (#978 fixture)
+extends: simple
+defaults:
+  strategy: fanout
+
+# Template-agnostic artifact-contract probe (EPIC #966 / #978): a SINGLE leaf
+# stage. artifact-contract-test.sh binds a plugin (by id → intake) that declares
+# provides.artifact_type but writes no artifact, and asserts the engine emits
+# plugin.contract.violated + a synthetic blocking findings.json. The contract
+# check is ENGINE behavior keyed off the plugin manifest, not roster-specific, so
+# one intake leaf isolates it — no downstream stages to satisfy or interfere.
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]

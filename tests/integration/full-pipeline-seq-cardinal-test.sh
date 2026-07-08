@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
-# Integration test: end-to-end pipeline (intake → plan → build → test →
-# test_assessment → review) populates ZBUILD_STAGE_IO_SEQ_LABEL with the
-# correct CARDINAL position per linear stage (#682, Wave 15-D).
+# Integration test: end-to-end pipeline populates ZBUILD_STAGE_IO_SEQ_LABEL with
+# the correct CARDINAL position per linear stage (#682, Wave 15-D).
+#
+# TEMPLATE-AGNOSTIC (#966): this pins the ENGINE's legacy-linear cardinal counter,
+# NOT any shipped roster. It drives a MINIMAL test-owned fixture
+# (runner-state-dir-minimal.yaml — two leaf stages intake → build) installed as a
+# per-repo `.zbuild/templates/` overlay (#1270), so flipping the default template
+# or retiring standard.yaml (#979) cannot shatter it. The prior version pinned the
+# 14-stage standard roster (intake=1 … pr=14) purely as a vehicle for the counter.
+# The cardinal-per-linear-stage behavior is stage-count-independent: two leaf
+# stages exercise the same code path (runner.sh _runner_linear_cardinal) as
+# fourteen. Cycle/parallel constructs would render hierarchical labels via the
+# orchestrators (ZBUILD_SEQ_PREFIX) — a DIFFERENT path this test does not cover;
+# it explicitly pins the legacy LINEAR path (ZBUILD_CYCLES_ENABLED=0), as before.
 #
 # Mock plugins log the value of $ZBUILD_STAGE_IO_SEQ_LABEL they observe.
 # Expected linear cardinal numbering (legacy path, cycles disabled):
-#   intake=1, plan=2, build=3, test=4, test_assessment=5, review=6
-# When cycles are enabled and the build/test cycle occupies ONE cardinal slot,
-# linear stages after the cycle continue from cycle_cardinal+1 — covered by
-# the cycle-aware tests; this test pins the legacy linear path.
+#   intake=1, build=2
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,12 +72,33 @@ ${fn}() {
 EOF
 }
 
-for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr; do
+# The fixture's two leaf stages (declaration/flow order: intake → build).
+for s in intake build; do
     _make_logging_plugin "$s"
 done
 
+# #1270: install the minimal fixture as a per-repo `.zbuild/templates/` overlay in
+# a temp repo and run the runner with CWD = that repo (the resolver reads the
+# overlay from $PWD). Nothing is written into the tracked config/templates/.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
+
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --template standard --issue 83 >/dev/null 2>&1; rc=$?; set -e
+set +e
+( cd "$OVERLAY_REPO" && env \
+    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$STATE_DIR" \
+    ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
+    ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
+    ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CYCLES_ENABLED=0 \
+    ZBUILD_SEQ_LABEL_LOG="$LABEL_LOG" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template runner-state-dir-minimal --issue 83 ) >/dev/null 2>&1
+rc=$?
+set -e
 assert_eq "pipeline exits 0" "0" "$rc"
 
 expect_label() {
@@ -79,27 +108,17 @@ expect_label() {
     assert_eq "stage=$stage label=$expected" "$expected" "$actual"
 }
 
-# Cardinal numbering — one per linear stage in order.
-# #842: plan is now a leaf; design_impact_cycle wraps design+impact at positions 3-4.
-# #755: 4 CQ stages replace compound_quality between test_assessment and review.
-expect_label intake          "1"
-expect_label plan            "2"
-expect_label design          "3"
-expect_label impact          "4"
-expect_label build           "5"
-expect_label test            "6"
-expect_label test_assessment "7"
-# #922: acceptance-gate after test_assessment (ADR-036).
-expect_label acceptance-gate "8"
-expect_label cq-preflight    "9"
-expect_label cq-audit-plan   "10"
-expect_label cq-cycle        "11"
-expect_label cq-backtrack    "12"
-expect_label review          "13"
-# #756: pr leaf stage added after build_review_cycle at cardinal position 14.
-expect_label pr              "14"
-assert_eq "[SPEC-1] pr stage runs at cardinal position 14" "14" \
-    "$(grep "^stage=pr " "$LABEL_LOG" | head -1 | sed -n 's/.*label=\(.*\)$/\1/p')"
+# Cardinal numbering — one per linear stage in FLOW order (fixture: intake, build).
+expect_label intake "1"
+expect_label build  "2"
+
+# [SPEC-1] cardinality: exactly the fixture's leaf stages ran, one cardinal each.
+label_lines="$(grep -c '^stage=' "$LABEL_LOG" || true)"
+assert_eq "[SPEC-1] exactly 2 linear stages recorded a cardinal label" "2" "$label_lines"
+
+# [SPEC-2] sequence: intake's cardinal precedes build's (monotonic, no collision).
+first_stage="$(head -1 "$LABEL_LOG" | sed -n 's/^stage=\([^ ]*\).*/\1/p')"
+assert_eq "[SPEC-2] first dispatched stage is intake (cardinal 1)" "intake" "$first_stage"
 
 print_test_results
 cleanup_test_env

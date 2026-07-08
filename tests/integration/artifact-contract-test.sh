@@ -90,15 +90,25 @@ EOF
 # ─── Run the runner with the no-artifact plugin ───────────────────────────────
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
+# #978 (EPIC #966): template-agnostic. Was pinned to `--template standard`;
+# standard.yaml retires in #979. The plugin.contract.violated mechanism is ENGINE
+# behavior keyed off the bound plugin's manifest (declares provides.artifact_type,
+# writes nothing) — not roster-specific. Drive a minimal single-intake fixture the
+# test owns, via the #1270 per-repo `.zbuild/templates/` overlay: install the
+# fixture into a temp repo and run the runner with CWD = that repo. A single intake
+# leaf isolates the contract check — no downstream stages to satisfy or interfere.
+OVERLAY_REPO="$(setup_git_temp_repo artifact-contract-overlay-repo)"
+install_template_overlay "$OVERLAY_REPO" artifact-contract-minimal
+
 # Runner is expected to fail (non-zero) on contract violation, but the
 # behaviour under test is event emission, not the exit code itself. Tolerate
 # non-zero with `|| true` rather than capturing an unused rc.
-ZBUILD_PLUGINS_ROOT="$A3_PLUGINS" \
-ZBUILD_STATE_DIR="$A3_STATE_DIR" \
-ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
-ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
-ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
-bash "$RUNNER" --template standard --issue 83 2>/dev/null || true
+( cd "$OVERLAY_REPO" && ZBUILD_PLUGINS_ROOT="$A3_PLUGINS" \
+    ZBUILD_STATE_DIR="$A3_STATE_DIR" \
+    ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
+    ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
+    bash "$RUNNER" --template artifact-contract-minimal --issue 83 2>/dev/null ) || true
 
 # ─── Assert plugin.contract.violated event emitted ───────────────────────────
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
@@ -171,12 +181,12 @@ cp "$A3_PLUGINS/tool/output/manifest.yaml"        "$B_PLUGINS/tool/output/"
 cp "$A3_PLUGINS/tool/output/plugin.sh"            "$B_PLUGINS/tool/output/"
 
 # Same as A3 above: assertion is event-based, exit code is not under test.
-ZBUILD_PLUGINS_ROOT="$B_PLUGINS" \
-ZBUILD_STATE_DIR="$B_STATE_DIR" \
-ZBUILD_EVENTS_DIR="$B_EVENTS_DIR" \
-ZBUILD_EVENTS_JSONL="$B_EVENTS_JSONL" \
-ZBUILD_EVENTS_DB="$B_DIR/events.db" \
-bash "$RUNNER" --template standard --issue 83 2>/dev/null || true
+( cd "$OVERLAY_REPO" && ZBUILD_PLUGINS_ROOT="$B_PLUGINS" \
+    ZBUILD_STATE_DIR="$B_STATE_DIR" \
+    ZBUILD_EVENTS_DIR="$B_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$B_EVENTS_JSONL" \
+    ZBUILD_EVENTS_DB="$B_DIR/events.db" \
+    bash "$RUNNER" --template artifact-contract-minimal --issue 83 2>/dev/null ) || true
 
 if [[ -f "$B_EVENTS_JSONL" ]]; then
     b_violated="$(grep -c '"plugin.contract.violated"' "$B_EVENTS_JSONL" 2>/dev/null || true)"

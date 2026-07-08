@@ -174,20 +174,16 @@ _make_role_plugin "intake-agent"   "intake"           0
 _make_role_plugin "sl-agent"       "security-auditor" 0
 _make_role_plugin "output-agent"   "output"           0
 
-# Minimal pipeline template with strategy: fanout
-_make_template() {
-    local strategy="${1:-fanout}"
-    local dir="$TEST_TEMP_DIR/templates"
-    mkdir -p "$dir"
-    cat > "$dir/standard.yaml" <<EOF
-stages:
-  - id: intake
-    strategy: ${strategy}
-    roles:
-      - intake
-EOF
-    echo "$dir/standard.yaml"
-}
+# #978 (EPIC #966): template-agnostic. Was pinned to `--template standard`;
+# standard.yaml retires in #979. Strategy dispatch (fanout / sequential /
+# composite) is ENGINE behavior, not roster-specific, so drive a minimal
+# single-leaf fixture the test owns via the #1270 per-repo `.zbuild/templates/`
+# overlay: install the fixture into a temp repo and run the runner with CWD =
+# that repo (the resolver reads the overlay from $PWD). The `intake` leaf carries
+# strategy: fanout; _ZBUILD_STRATEGY_OVERRIDE covers the sequential/composite
+# paths over the same fixture.
+STRAT_OVERLAY_REPO="$(setup_git_temp_repo strat-overlay-repo)"
+install_template_overlay "$STRAT_OVERLAY_REPO" strategy-dispatch-minimal
 
 _spy_count() {
     local count=0; count=$(grep -c "^${1}" "${ORCH_SPY_LOG:-/dev/null}" 2>/dev/null); true
@@ -206,14 +202,14 @@ _run_pipeline() {
     : > "$ORCH_SPY_LOG"
     rm -f "$STATE_DIR/"*.json
     set +e
-    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+    ( cd "$STRAT_OVERLAY_REPO" && ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$STATE_DIR" \
     ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_ORCHESTRATOR_BACKEND="bash-parallel" \
     ORCH_SPY_LOG="$ORCH_SPY_LOG" \
-        bash "$RUNNER" --template standard --goal "test strategy dispatch" "$@" 2>/dev/null
+        bash "$RUNNER" --template strategy-dispatch-minimal --goal "test strategy dispatch" "$@" 2>/dev/null )
     _last_rc=$?
     set -e
 }
@@ -302,7 +298,7 @@ PLUGIN
 : > "$ORCH_SPY_LOG"
 
 set +e
-ZBUILD_PLUGINS_ROOT="$SEQ_PLUGINS_ROOT" \
+( cd "$STRAT_OVERLAY_REPO" && ZBUILD_PLUGINS_ROOT="$SEQ_PLUGINS_ROOT" \
 ZBUILD_STATE_DIR="$STATE_DIR" \
 ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
@@ -310,7 +306,7 @@ ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
 ZBUILD_ORCHESTRATOR_BACKEND="bash-parallel" \
 ORCH_SPY_LOG="$ORCH_SPY_LOG" \
 _ZBUILD_STRATEGY_OVERRIDE="sequential" \
-    bash "$RUNNER" --template standard --goal "test sequential halt" 2>/dev/null
+    bash "$RUNNER" --template strategy-dispatch-minimal --goal "test sequential halt" 2>/dev/null )
 seq_rc=$?
 set -e
 
@@ -328,14 +324,14 @@ print_test_section "4. composite strategy: emits deferral error (Phase 1 deferre
 
 set +e
 composite_out="$(
-    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+    cd "$STRAT_OVERLAY_REPO" && ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$STATE_DIR" \
     ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_ORCHESTRATOR_BACKEND="bash-parallel" \
     _ZBUILD_STRATEGY_OVERRIDE="composite" \
-        bash "$RUNNER" --template standard --goal "test composite" 2>&1
+        bash "$RUNNER" --template strategy-dispatch-minimal --goal "test composite" 2>&1
 )"
 composite_rc=$?
 set -e
