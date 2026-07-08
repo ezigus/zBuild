@@ -68,3 +68,10 @@ outputs:
 state:
   persisted: [last_verdict, last_exit_code]
   reconstructed: []
+
+# ADR-047 §4: capability flag — the orchestrator reads this to prefer the
+# declared artifact's integer field over the generic rc-based failure count.
+capabilities:
+  detailed_failure_count:
+    artifact: test-results.json
+    field: failed

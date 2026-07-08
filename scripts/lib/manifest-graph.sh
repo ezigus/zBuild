@@ -331,3 +331,30 @@ manifest_graph_result_filename() {
     [[ -z "$path" ]] && return 1
     printf '%s\n' "${path##*/}"
 }
+
+# ─── manifest_graph_capability_field <manifest> <cap_name> <field_name> ────────
+# Read a scalar from capabilities.<cap_name>.<field_name> in a manifest. Echoes
+# the value; rc 1 if absent or file unreadable. Handles 3-level YAML nesting:
+#   capabilities:
+#     <cap_name>:
+#       <field_name>: <value>
+manifest_graph_capability_field() {
+    local manifest="$1" cap="$2" field="$3"
+    [[ -f "$manifest" ]] || return 1
+    local val
+    val="$(awk -v cap="$cap" -v field="$field" '
+        /^capabilities:[[:space:]]*$/ { in_caps=1; next }
+        in_caps && /^[a-zA-Z_]/ { in_caps=0; in_cap=0 }
+        in_caps && $0 ~ "^[[:space:]]+"cap":[[:space:]]*$" { in_cap=1; next }
+        in_cap && /^[[:space:]]{2,}[a-zA-Z_]/ && !($0 ~ "^[[:space:]]{4,}") { in_cap=0 }
+        in_cap && $0 ~ "^[[:space:]]+"field":[[:space:]]*" {
+            sub(/^[^:]+:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, "")
+            gsub(/^["'"'"']|["'"'"']$/, "")
+            gsub(/[[:space:]]*$/, "")
+            print; exit
+        }
+    ' "$manifest" 2>/dev/null)"
+    [[ -n "$val" ]] || return 1
+    printf '%s\n' "$val"
+}

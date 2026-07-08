@@ -127,3 +127,9 @@ outputs:
 state:
   persisted: [last_files_changed, last_lines_added]
   reconstructed: [plan_json]
+
+# ADR-047 §4: capability flags — the orchestrator reads these to replace the
+# hardcoded `[[ "$_cm" == "build" ]]` guard with a manifest-driven check.
+capabilities:
+  produces_commits: true
+  empty_diff_legitimate: true

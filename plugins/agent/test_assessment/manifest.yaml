@@ -85,3 +85,8 @@ state:
   persisted:
     - last_verdict
   reconstructed: []
+
+# ADR-047 §4: capability flag — the orchestrator reads this to append a
+# structured count when formatting the feedback digest for this stage's edges.
+capabilities:
+  feedback_count_field: required_changes
