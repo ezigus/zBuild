@@ -247,6 +247,9 @@
     "validate.health_check.dry_run",
     "validate.health_check.pass",
     "validate.health_check.fail",
-    "validate.health_check.rejected"
+    "validate.health_check.rejected",
+    "monitor.started",
+    "monitor.check",
+    "monitor.alert"
   ]
 }

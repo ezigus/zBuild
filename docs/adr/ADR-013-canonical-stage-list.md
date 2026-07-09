@@ -87,7 +87,7 @@ Each stage is defined by:
 | pr | tool | T0 | init, run, finalize | pr-url.txt | true |
 | deploy | tool | T0 | init, run, finalize | deploy.log | true |
 | validate | tool | T0 | init, run, finalize | validate-result.json | true |
-| monitor | daemon | T1 | init, tick, finalize, cleanup | monitor-report.md | false |
+| monitor | agent | T1 | init, run, finalize | monitor-report.json | false |
 
 † `intake`'s `scope-manifest.md` is written to `state/scope-manifest.md` directly, not under `state/artifacts/`, because every downstream redaction call must find it at this stable path.
 
@@ -99,9 +99,11 @@ Each stage is defined by:
   processes with no LLM reasoning, so they never declare
   `requires.core: [redaction]`.  This keeps the redaction chokepoint (ADR-004)
   honest.
-- `monitor` is `daemon`: it runs a poll loop that outlives the pipeline run;
-  the one-shot `run` contract of `tool`/`agent` does not fit.  Per ADR-001,
-  `daemon` plugins use `tick` (not `run`) as their periodic entry point.
+- `monitor` is `agent`: it makes a one-shot LLM health assessment (ADR-018
+  Pattern 1, `route_to_model`, T1) over deploy artifacts already present in
+  `state/artifacts/` and writes `monitor-report.json`.  Side-effecting probes
+  (live HTTP polling, log tailing) are deferred to a future `kind: tool` plugin.
+  Re-classified from `daemon` in issue #758 (ADR-047 compliance).
 - `cq-preflight`, `cq-audit-plan`, `cq-cycle`, and `cq-backtrack` replace the
   former `compound_quality` orchestrator.  Each is an independent `agent` leaf
   stage with its own manifest, plugin, and artifact contract.  The four stages

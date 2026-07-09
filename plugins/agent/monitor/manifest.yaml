@@ -1,0 +1,62 @@
+id: monitor
+name: Monitor Stage
+kind: agent
+version: 0.1.0
+description: |
+  Monitor agent (kind:agent, T1). One-shot LLM health assessment (ADR-018 Pattern 1)
+  over deploy artifacts already in state/artifacts/. Reads deploy-result.json (optional)
+  and pr-url.txt (optional), calls route_to_model T1, and writes monitor-report.json
+  (primary) and monitor-verdict.json (secondary). ZBUILD_DRY_RUN=1 writes mock artifacts
+  without calling route_to_model. Side-effecting probes (live HTTP polling, log tailing)
+  are deferred to a future kind:tool plugin.
+  # legacy-citation: pipeline-stages-monitor.sh:150 (stage_monitor)
+  ADR-018 Pattern 1 (one-shot): assess → write reports — no iteration loop.
+
+hooks:
+  init: monitor_stage_init
+  run: monitor_stage_run
+  finalize: monitor_stage_finalize
+  cleanup: monitor_stage_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: monitor-report.json
+  role: monitor
+  schema_version: 1
+
+config:
+  tier_default: T1
+
+inputs:
+  - id: deploy_result
+    type: file
+    path: "${artifact_dir}/deploy-result.json"
+    source: stage:deploy
+    required: false
+  - id: pr_url
+    type: file
+    path: "${artifact_dir}/pr-url.txt"
+    source: stage:pr
+    required: false
+
+outputs:
+  - id: monitor_report
+    path: "${artifact_dir}/monitor-report.json"
+    type: monitor-report.json
+    required: true
+    primary: true
+  - id: monitor_verdict
+    path: "${artifact_dir}/monitor-verdict.json"
+    type: monitor-verdict.json
+    required: true
+
+state:
+  persisted: []
+  reconstructed: []
