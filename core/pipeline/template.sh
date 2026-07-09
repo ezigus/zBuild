@@ -553,6 +553,63 @@ load_template() {
                 # declared on a nested cycle.
                 _TPL_ROUTE_BACK_DECLARED+=("$rb_cid")
                 ;;
+            EW)
+                # #1284 (ADR-047): multi-condition exit_when for cycles.
+                # Format: <cid>|<combinator>|<n>|s1|f1|o1|v1|...|sN|fN|oN|vN
+                # combinator = all|any; n = number of conditions.
+                # Single-condition form is unchanged (no EW row emitted).
+                local ew_cid ew_comb ew_n ew_rest
+                ew_cid="${payload%%|*}"; ew_rest="${payload#*|}"
+                ew_comb="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
+                ew_n="${ew_rest%%|*}";   ew_rest="${ew_rest#*|}"
+                if ! [[ "$ew_n" =~ ^[0-9]+$ ]] || [[ "$ew_n" -lt 1 ]]; then
+                    error "load_template: EW row for cycle '${ew_cid}': invalid condition count '${ew_n}'"
+                    return 1
+                fi
+                local ew_safe="${ew_cid//-/_}"
+                printf -v "_TPL_CYCLE_EXIT_COMBINATOR_${ew_safe}" '%s' "$ew_comb"
+                printf -v "_TPL_CYCLE_EXIT_COUNT_${ew_safe}"       '%s' "$ew_n"
+                export "_TPL_CYCLE_EXIT_COMBINATOR_${ew_safe}" "_TPL_CYCLE_EXIT_COUNT_${ew_safe}"
+                # Consume exactly n conditions of 4 pipe-delimited fields each.
+                # Values never contain '|' in this grammar, so the final field is
+                # read with the same %%|* semantics and any leftover payload (a
+                # stray trailing '|' or a value containing '|') is a malformed row
+                # — fail loudly rather than silently absorb it into the last value.
+                local ew_i ew_more
+                for (( ew_i=1; ew_i<=ew_n; ew_i++ )); do
+                    local ew_s ew_f ew_o ew_v
+                    if [[ "$ew_rest" != *"|"* ]] && [[ "$ew_i" -lt "$ew_n" ]]; then
+                        error "load_template: EW row for cycle '${ew_cid}': truncated at condition ${ew_i} of ${ew_n}"
+                        return 1
+                    fi
+                    ew_s="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
+                    ew_f="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
+                    ew_o="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
+                    if [[ "$ew_i" -eq "$ew_n" ]]; then
+                        # Final field: no more separators expected after the value.
+                        ew_v="${ew_rest%%|*}"
+                        ew_more="${ew_rest#"$ew_v"}"
+                        if [[ -n "$ew_more" ]]; then
+                            error "load_template: EW row for cycle '${ew_cid}': trailing data after ${ew_n} condition(s) — malformed row (extra '|' or value contains '|')"
+                            return 1
+                        fi
+                    else
+                        ew_v="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
+                    fi
+                    if [[ -z "$ew_s" || -z "$ew_f" || -z "$ew_o" || -z "$ew_v" ]]; then
+                        error "load_template: EW row for cycle '${ew_cid}': condition ${ew_i} has an empty field (stage/field/op/value all required)"
+                        return 1
+                    fi
+                    printf -v "_TPL_CYCLE_EXIT_${ew_i}_STAGE_${ew_safe}" '%s' "$ew_s"
+                    printf -v "_TPL_CYCLE_EXIT_${ew_i}_FIELD_${ew_safe}" '%s' "$ew_f"
+                    printf -v "_TPL_CYCLE_EXIT_${ew_i}_OP_${ew_safe}"    '%s' "$ew_o"
+                    printf -v "_TPL_CYCLE_EXIT_${ew_i}_VALUE_${ew_safe}" '%s' "$ew_v"
+                    export "_TPL_CYCLE_EXIT_${ew_i}_STAGE_${ew_safe}" \
+                           "_TPL_CYCLE_EXIT_${ew_i}_FIELD_${ew_safe}" \
+                           "_TPL_CYCLE_EXIT_${ew_i}_OP_${ew_safe}"    \
+                           "_TPL_CYCLE_EXIT_${ew_i}_VALUE_${ew_safe}"
+                done
+                ;;
             FB)
                 # Feedback row for the most-recent cycle. Format:
                 # <cid>|<fbrec>  (fbrec = from_stage:from_output|to_stage:to_field:required)
@@ -1194,20 +1251,67 @@ _tpl_validate_cycles() {
         local sod_var="_TPL_CYCLE_SCOPE_ON_DENY_${safe}"; local sod="${!sod_var:-abandon}"
         case "$sod" in abandon) : ;; *) error "cycle '$cid': scope_policy.on_deny must be abandon, got: $sod"; return 1 ;; esac
 
-        # until.stage must be in cs[]
-        local us_var="_TPL_CYCLE_UNTIL_STAGE_${safe}"
-        local us="${!us_var:-}"
-        if [[ -z "$us" ]]; then
-            error "cycle '$cid': until.stage required"
-            return 1
-        fi
-        local found=0
-        for s in "${cs[@]}"; do
-            [[ "$s" == "$us" ]] && found=1 && break
-        done
-        if [[ $found -ne 1 ]]; then
-            error "cycle '$cid': until.stage '$us' is not in cycle stages (${cs[*]})"
-            return 1
+        # #1284 (ADR-047): multi-condition exit_when replaces the single-condition
+        # UNTIL vars. When a combinator is present, validate the N conditions at
+        # this preflight layer (mirroring the runtime check in cycle-orchestrator.sh
+        # _cycle_load_template); otherwise validate the single-condition until.stage.
+        local ew_comb_check_var="_TPL_CYCLE_EXIT_COMBINATOR_${safe}"
+        local ew_comb="${!ew_comb_check_var:-}"
+        if [[ -n "$ew_comb" ]]; then
+            case "$ew_comb" in
+                all|any) : ;;
+                *) error "cycle '$cid': exit_when combinator must be all|any, got: $ew_comb"; return 1 ;;
+            esac
+            local ew_count_var="_TPL_CYCLE_EXIT_COUNT_${safe}"
+            local ew_count="${!ew_count_var:-}"
+            if [[ -z "$ew_count" ]] || ! [[ "$ew_count" =~ ^[0-9]+$ ]] || [[ "$ew_count" -lt 1 ]]; then
+                error "cycle '$cid': exit_when multi-condition count must be integer >=1, got: ${ew_count:-<unset>}"
+                return 1
+            fi
+            local ew_i
+            for (( ew_i=1; ew_i<=ew_count; ew_i++ )); do
+                local _sv="_TPL_CYCLE_EXIT_${ew_i}_STAGE_${safe}"
+                local _fv="_TPL_CYCLE_EXIT_${ew_i}_FIELD_${safe}"
+                local _ov="_TPL_CYCLE_EXIT_${ew_i}_OP_${safe}"
+                local _vv="_TPL_CYCLE_EXIT_${ew_i}_VALUE_${safe}"
+                local ew_s="${!_sv:-}" ew_f="${!_fv:-}" ew_o="${!_ov:-}" ew_v="${!_vv:-}"
+                if [[ -z "$ew_s" || -z "$ew_f" || -z "$ew_o" || -z "$ew_v" ]]; then
+                    error "cycle '$cid': exit_when condition $ew_i: {stage,field,op,value} all required"
+                    return 1
+                fi
+                case "$ew_f" in
+                    verdict|status) : ;;
+                    *) error "cycle '$cid': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"; return 1 ;;
+                esac
+                case "$ew_o" in
+                    eq|ne) : ;;
+                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"; return 1 ;;
+                esac
+                local found=0
+                for s in "${cs[@]}"; do
+                    [[ "$s" == "$ew_s" ]] && found=1 && break
+                done
+                if [[ $found -ne 1 ]]; then
+                    error "cycle '$cid': exit_when condition $ew_i: stage '$ew_s' is not in cycle stages (${cs[*]})"
+                    return 1
+                fi
+            done
+        else
+            # Single-condition: until.stage must be set and in cs[].
+            local us_var="_TPL_CYCLE_UNTIL_STAGE_${safe}"
+            local us="${!us_var:-}"
+            if [[ -z "$us" ]]; then
+                error "cycle '$cid': until.stage required"
+                return 1
+            fi
+            local found=0
+            for s in "${cs[@]}"; do
+                [[ "$s" == "$us" ]] && found=1 && break
+            done
+            if [[ $found -ne 1 ]]; then
+                error "cycle '$cid': until.stage '$us' is not in cycle stages (${cs[*]})"
+                return 1
+            fi
         fi
     done
     return 0
@@ -1603,6 +1707,10 @@ _tpl_translate_new_shape() {
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
+        # #1284 (ADR-047): multi-condition exit_when accumulators.
+        cyc_ew_comb = ""; cyc_ew_n = 0; cyc_ew_cur_s = ""; cyc_ew_cur_f = ""; cyc_ew_cur_o = ""; cyc_ew_cur_v = ""
+        delete cyc_ew_cond_s; delete cyc_ew_cond_f; delete cyc_ew_cond_o; delete cyc_ew_cond_v
+        in_ew_cond = 0
         # ADR-039 (#1130): parallel-group accumulators.
         par_flow = ""; par_max = ""; par_onerr = "continue"; par_agg = ""; in_pflow = 0
         nfb = 0
@@ -1611,7 +1719,7 @@ _tpl_translate_new_shape() {
         in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
     }
-    function reset_section() {
+    function reset_section(    i) {
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
         sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""
@@ -1623,6 +1731,10 @@ _tpl_translate_new_shape() {
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
+        # #1284 (ADR-047): multi-condition exit_when accumulators.
+        cyc_ew_comb = ""; cyc_ew_n = 0; cyc_ew_cur_s = ""; cyc_ew_cur_f = ""; cyc_ew_cur_o = ""; cyc_ew_cur_v = ""
+        delete cyc_ew_cond_s; delete cyc_ew_cond_f; delete cyc_ew_cond_o; delete cyc_ew_cond_v
+        in_ew_cond = 0
         # ADR-039 (#1130): parallel-group accumulators.
         par_flow = ""; par_max = ""; par_onerr = "continue"; par_agg = ""; in_pflow = 0
         nfb = 0
@@ -1647,10 +1759,24 @@ _tpl_translate_new_shape() {
             fb_kind = ""
         }
     }
+    # #1284 (ADR-047): flush in-flight multi-condition exit_when item.
+    function flush_ew_cond() {
+        if (in_ew_cond && cyc_ew_cur_s != "") {
+            cyc_ew_n++
+            cyc_ew_cond_s[cyc_ew_n] = cyc_ew_cur_s
+            cyc_ew_cond_f[cyc_ew_n] = cyc_ew_cur_f
+            cyc_ew_cond_o[cyc_ew_n] = cyc_ew_cur_o
+            cyc_ew_cond_v[cyc_ew_n] = cyc_ew_cur_v
+            cyc_ew_cur_s = ""; cyc_ew_cur_f = ""; cyc_ew_cur_o = ""; cyc_ew_cur_v = ""
+            in_ew_cond = 0
+        }
+    }
     function flush_section(   k) {
         if (cur_key == "" || is_reserved(cur_key)) return
         # Finalize any in-flight feedback item now (Copilot P1).
         finalize_pending_fb()
+        # #1284 (ADR-047): finalize in-flight multi-condition exit_when item.
+        flush_ew_cond()
         # Always emit a defs-style row carrying the attr payload — downstream
         # code already merges this into stage_def_row[].
         defs_out = defs_out cur_key "|" sec_roles "|" sec_strategy "|" \
@@ -1676,6 +1802,17 @@ _tpl_translate_new_shape() {
             cyc_fb_count[cur_key] = nfb
             for (k = 1; k <= nfb; k++) {
                 cyc_fb[cur_key, k] = fb[k]
+            }
+            # #1284 (ADR-047): stash multi-condition exit_when data.
+            if (cyc_ew_comb != "" && cyc_ew_n > 0) {
+                cyc_ew_combinator[cur_key] = cyc_ew_comb
+                cyc_ew_count[cur_key] = cyc_ew_n
+                for (k = 1; k <= cyc_ew_n; k++) {
+                    cyc_ew_s[cur_key, k] = cyc_ew_cond_s[k]
+                    cyc_ew_f[cur_key, k] = cyc_ew_cond_f[k]
+                    cyc_ew_o[cur_key, k] = cyc_ew_cond_o[k]
+                    cyc_ew_v[cur_key, k] = cyc_ew_cond_v[k]
+                }
             }
         }
         # ADR-039 (#1130): stash parallel-group data for IP| emission.
@@ -1899,17 +2036,59 @@ _tpl_translate_new_shape() {
             if (in_rb_when && $0 ~ /^[[:space:]]+value:/) {
                 v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_rb_value = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+stage:/) {
+            # #1284 (ADR-047): single-condition handlers must NOT fire once an
+            # all:/any: combinator has been seen (cyc_ew_comb != ""), otherwise a
+            # a block-form condition field:/op:/value: continuation line would be
+            # consumed here — corrupting cyc_uf/cyc_uo/cyc_uv and losing the row.
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+stage:/) {
                 v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_us = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+field:/) {
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+field:/) {
                 v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cyc_uf = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+op:/) {
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+op:/) {
                 v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cyc_uo = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+value:/) {
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+value:/) {
                 v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_uv = trim(v); next
+            }
+            # #1284 (ADR-047): multi-condition exit_when — combinator line.
+            if (in_exit_when && $0 ~ /^[[:space:]]+(all|any):[[:space:]]*$/) {
+                v = $0; sub(/^[[:space:]]+/, "", v); sub(/:[[:space:]]*$/, "", v)
+                cyc_ew_comb = v; in_ew_cond = 0; next
+            }
+            # Inline list item: - { stage: X, field: Y, op: Z, value: W }
+            if (in_exit_when && cyc_ew_comb != "" && $0 ~ /^[[:space:]]+-[[:space:]]*\{/) {
+                flush_ew_cond()
+                line = $0; sub(/^[[:space:]]+-[[:space:]]*\{?/, "", line); sub(/\}.*$/, "", line)
+                n = split(line, kv, /,[[:space:]]*/)
+                for (i = 1; i <= n; i++) {
+                    split(kv[i], pair, /:[[:space:]]*/); key = trim(pair[1]); val = trim(pair[2])
+                    if (key == "stage") cyc_ew_cur_s = val
+                    if (key == "field") cyc_ew_cur_f = val
+                    if (key == "op")    cyc_ew_cur_o = val
+                    if (key == "value") cyc_ew_cur_v = val
+                }
+                in_ew_cond = 1; next
+            }
+            # Block-form list item: `- stage: X` (next line after `- `)
+            if (in_exit_when && cyc_ew_comb != "" && $0 ~ /^[[:space:]]+-[[:space:]]+stage:/) {
+                flush_ew_cond()
+                v = $0; sub(/^[[:space:]]+-[[:space:]]+stage:[[:space:]]*/, "", v); cyc_ew_cur_s = trim(v)
+                in_ew_cond = 1; next
+            }
+            # Continuation fields within a block-form condition item.
+            if (in_exit_when && in_ew_cond && $0 ~ /^[[:space:]]+stage:/) {
+                v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_ew_cur_s = trim(v); next
+            }
+            if (in_exit_when && in_ew_cond && $0 ~ /^[[:space:]]+field:/) {
+                v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cyc_ew_cur_f = trim(v); next
+            }
+            if (in_exit_when && in_ew_cond && $0 ~ /^[[:space:]]+op:/) {
+                v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cyc_ew_cur_o = trim(v); next
+            }
+            if (in_exit_when && in_ew_cond && $0 ~ /^[[:space:]]+value:/) {
+                v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_ew_cur_v = trim(v); next
             }
             if (in_abort_when && $0 ~ /^[[:space:]]+stage:/) {
                 v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_as = trim(v); next
@@ -2073,6 +2252,14 @@ _tpl_translate_new_shape() {
         # #1217 (ADR-045): route_back row (guarded on target presence).
         rb = cyc_route_back[k]
         if (rb != "") print "RB|" k "|" rb
+        # #1284 (ADR-047): multi-condition exit_when row.
+        if (cyc_ew_combinator[k] != "" && cyc_ew_count[k] + 0 > 0) {
+            ew_row = k "|" cyc_ew_combinator[k] "|" cyc_ew_count[k]
+            for (j = 1; j <= cyc_ew_count[k]; j++) {
+                ew_row = ew_row "|" cyc_ew_s[k, j] "|" cyc_ew_f[k, j] "|" cyc_ew_o[k, j] "|" cyc_ew_v[k, j]
+            }
+            print "EW|" ew_row
+        }
     }
     function extract_cyc_flow(k,    d) {
         # cyc_data[k] = cyc_flow|cmax|conmax|cus|cuf|cuo|cuv|cplateau|cdiverg|cyc_velopl
