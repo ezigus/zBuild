@@ -214,6 +214,61 @@ _runner_export_scope_allowlist() {
     export ZBUILD_SCOPE_ALLOWLIST="$csv"
 }
 
+# ─── _runner_validate_leaf_resolvability <stages_arr_name> <plugins_root> ─────
+# ADR-047 §5: the manifest-derived replacement for the retired
+# _ZBUILD_CANONICAL_STAGES membership fence. Every leaf in the resolved template
+# flow must resolve to a plugin via resolve_stage_plugin (role-then-id, ADR-042);
+# an unresolved leaf names the id.
+#
+# It is a CONTRACT check, so it is gated by the SAME ZBUILD_CONTRACT_VALIDATOR mode
+# the inter-stage contract-validator uses (they must agree). Load-time membership
+# enforcement is the ENFORCE-mode job; the opt-out modes (warn/off) skip it — so
+# this preflight is a TRUE NO-OP whenever enforcement is off and never perturbs the
+# mock-roster suites that drive runner.sh under warn (they resolve their leaves at
+# dispatch via mocked plugin_hook_call, not through a real registry):
+#   - enforce (default, real runs) / unset → ERROR fail-closed (rc=2). This is the
+#     load-time guarantee that replaces the old canonical membership gate.
+#   - warn / off (or any unknown mode)     → skip. Dispatch-time resolution
+#     (resolve_stage_plugin in the stage loop) still fails a genuinely-missing
+#     plugin mid-run — the backstop for opt-out runs.
+# Takes the stage array BY NAME (bash 3.2: no namerefs).
+_runner_validate_leaf_resolvability() {
+    local _arr_name="$1" plugins_root="$2"
+    # Only enforce gates at load; warn/off/unknown are opt-outs → no-op. (The
+    # default is enforce, matching contract-validator's default; unknown modes
+    # degrade to non-enforce, exactly as contract-validator degrades them to warn.)
+    [[ "${ZBUILD_CONTRACT_VALIDATOR:-enforce}" == "enforce" ]] || return 0
+    # Validate the array name is a plain identifier BEFORE the eval below — never
+    # eval a name assembled from unvalidated input (Copilot #1290: injection
+    # footgun). Callers pass a literal ("active_stages"), so a non-identifier is a
+    # programming error, not runtime data.
+    if [[ ! "$_arr_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        error "_runner_validate_leaf_resolvability: invalid array name '${_arr_name}'"
+        return 2
+    fi
+    # Bash 3.2-safe indirect array expansion (no namerefs on bash 3.2). The
+    # `[@]+` guard keeps an empty source array safe under `set -u`.
+    # shellcheck disable=SC2034,SC2154  # _stages assigned via eval, read below
+    eval "local -a _stages=( \"\${${_arr_name}[@]+\"\${${_arr_name}[@]}\"}\" )"
+    local _leaf _ok=1
+    # shellcheck disable=SC2154  # _stages populated by the eval above
+    for _leaf in "${_stages[@]+"${_stages[@]}"}"; do
+        [[ -z "$_leaf" ]] && continue
+        # A cycle/parallel GROUP id is a composition operator, not a leaf, and is
+        # not itself a plugin — its members are already flattened into the stage
+        # list. Skip group ids (their _TPL_STAGE_TYPE_<id> is cycle|parallel).
+        local _t_var="_TPL_STAGE_TYPE_${_leaf//-/_}"
+        case "${!_t_var:-leaf}" in
+            cycle|parallel) continue ;;
+        esac
+        if ! resolve_stage_plugin "$_leaf" "$plugins_root" >/dev/null 2>&1; then
+            error "load_template: stage '${_leaf}' resolves to no plugin (ADR-047 §5: every leaf must resolve via role or id; add a plugin whose provides.role matches, or whose id is '${_leaf}')"
+            _ok=0
+        fi
+    done
+    [[ $_ok -eq 1 ]]
+}
+
 # ─── _runner_pipeline_duration_token (#525) ──────────────────────────────────
 # Parallel to _runner_duration_token but for the pipeline-wide window. No stage
 # argument — reads _RUNNER_PIPELINE_START_MS directly. Returns "?s" on cache
@@ -802,6 +857,27 @@ main() {
     elif [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
         active_stages=("${_TPL_STAGES[@]}")
         info "merge_policy: ${_TPL_MERGE_POLICY:-auto_unless_flagged}"
+        # ADR-047 §5: resolvability preflight (replaces the retired
+        # _ZBUILD_CANONICAL_STAGES membership fence). Every leaf in the resolved
+        # template flow MUST resolve to a plugin via resolve_stage_plugin
+        # (role-then-id, ADR-042). An unresolved leaf ERRORS at load — fail-closed,
+        # matching the strictness of the membership check it replaces. Runs HERE
+        # (not in template.sh) because template.sh has no plugin resolver when
+        # sourced standalone; dispatch.sh (resolve_stage_plugin) + ZBUILD_PLUGINS_ROOT
+        # are both available in the runner.
+        # NOT in --dry-run: dry-run is a plan PREVIEW that deliberately tolerates
+        # unregistered plugins and reports each as "(no plugin registered)" — it
+        # must not fail-closed on the very condition it exists to surface.
+        # NOT in --resume: resume has its own preconditions (state-file existence,
+        # aborted/complete status) that must decide first; the remaining stages it
+        # re-dispatches each resolve fail-closed at dispatch time (the guarantee
+        # holds, just at dispatch rather than load). The fresh-run path — where a
+        # membership mistake is most likely and cheapest to catch — is enforced here.
+        if ! $dry_run && ! $resume_mode \
+            && ! _runner_validate_leaf_resolvability active_stages "$plugins_root"; then
+            error "Failed to load template '$template' — a stage resolves to no plugin (see above); aborting"
+            return 2
+        fi
     else
         warn "Template '$template' defines no stages; using built-in stage list"
         active_stages=(intake security-lens output)

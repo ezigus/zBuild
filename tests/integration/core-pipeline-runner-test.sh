@@ -160,11 +160,18 @@ build_fail_status="$(jq -r '.stage_statuses.build // empty' "$STATE_FILE" 2>/dev
 assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 
 # ─── Test 9: missing plugin for required stage → fails pipeline ───────────────
+# This suite runs under ZBUILD_CONTRACT_VALIDATOR=warn (top of file), so the
+# ADR-047 §5 resolvability preflight (#1282) is a NO-OP at load (enforce-only) —
+# the missing plugin is caught fail-closed at DISPATCH (rc=1, pipeline.end
+# status=failed), the original behavior. The dispatch error names the unresolved
+# id. (The fail-closed-AT-LOAD path is proven under the default enforce mode in
+# tests/unit/template-resolvability-preflight-test.sh.)
 rm -rf "$PLUGINS_ROOT/agent/intake"
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
-assert_eq "missing required plugin exits 1" "1" "$rc"
+set +e; _no_plugin_out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>&1)"; rc=$?; set -e
+assert_eq "missing required plugin exits 1 (warn: caught at dispatch)" "1" "$rc"
+assert_contains "dispatch-time missing-plugin error names the unresolved stage 'intake'" "$_no_plugin_out" "intake"
 
 if [[ -f "$EVENTS_JSONL" ]]; then
     fail_from_no_plugin=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"failed"' || true)

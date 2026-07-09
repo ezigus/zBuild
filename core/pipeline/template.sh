@@ -74,12 +74,29 @@ _TPL_PARALLEL_GROUPS=()
 readonly _ZBUILD_IO_DESTINATIONS_VALID=(file stdout gh_comment)
 
 # _tpl_validate_stages <stage_ids...>
-# Validates that every stage id is in the canonical list and that the ids
-# appear in the same relative order as the canonical sequence.
-# Prints a structured error and returns 1 on the first violation.
+# ADR-047 §5: the engine-owned closed-vocabulary fence (membership + canonical
+# order) is DEMOTED. Its two roles are re-expressed as fail-closed, manifest-
+# derived load-time preflights: resolvability (every leaf resolves to a plugin —
+# runner.sh, after dispatch.sh is sourced) replaces membership; the upstream-input
+# data-dependency DAG (contract-validator.sh) replaces canonical order. So by
+# default (kill-switch unset) this function is inert — the mechanics name no stage.
+#
+# STRANGLER kill-switch: `ZBUILD_LEGACY_STAGE_VALIDATION=1` re-enables the old
+# canonical fence for one release as an escape hatch. Demote-not-delete:
+# _ZBUILD_CANONICAL_STAGES survives (a manifest-derived registry/lint artifact),
+# and the old membership+order logic below stays reachable behind the switch.
+#
+# RESIDUAL (ADR-047 §5, accepted): the old order-check flagged two INDEPENDENT
+# stages swapped; the data-dependency DAG does not (no declared dependency = no
+# constraint). Never a correctness failure — an order-independent swap is, by
+# definition, order-independent.
 _tpl_validate_stages() {
     local -a ids=("$@")
     [[ ${#ids[@]} -eq 0 ]] && return 0
+
+    # Default (unset): fail-closed preflights own membership + order; skip the
+    # legacy fence. Opt in with ZBUILD_LEGACY_STAGE_VALIDATION=1.
+    [[ "${ZBUILD_LEGACY_STAGE_VALIDATION:-}" == "1" ]] || return 0
 
     # Build a lookup: canonical stage → its ordinal position
     local -a canonical=("${_ZBUILD_CANONICAL_STAGES[@]}")

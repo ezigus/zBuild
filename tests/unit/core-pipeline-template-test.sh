@@ -211,18 +211,35 @@ reload_count="${#_TPL_STAGES[@]}"
 assert_eq "reloaded standard template still has 14 stages" "14" "$reload_count"
 assert_eq "reloaded _TPL_DEFAULT_STRATEGY=fanout" "fanout" "$_TPL_DEFAULT_STRATEGY"
 
-# ─── Test 15: unknown stage id → load_template returns non-zero ───────────────
+# ─── ADR-047 §5: the canonical fence is DEMOTED behind ZBUILD_LEGACY_STAGE_VALIDATION.
+# Default (unset): _tpl_validate_stages is inert — membership is enforced by the
+# runner's resolvability preflight, order by the contract-validator DAG (both
+# fail-closed at load; see tests/unit/template-resolvability-preflight-test.sh and
+# the contract-validator suite). These tests exercise the KILL-SWITCH path, proving
+# the old fence stays reachable for one release (strangler escape hatch), plus the
+# default-off behavior at the template layer.
+
+# ─── Test 15: [kill-switch] unknown stage id → load_template returns non-zero ─
 set +e
-load_template "$UNKNOWN_STAGE_TPL" 2>/dev/null
+ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$UNKNOWN_STAGE_TPL" 2>/dev/null
 rc_unknown=$?
 set -e
-assert_eq "unknown stage id → load_template returns non-zero" "1" "$rc_unknown"
+assert_eq "[legacy fence] unknown stage id → load_template returns non-zero" "1" "$rc_unknown"
 
-# ─── Test 16: unknown stage id → error message contains bad id ────────────────
+# ─── Test 15b: [default] unknown stage id → template layer NO LONGER fences ───
+# The leaf-membership check moved to the runner's resolvability preflight
+# (ADR-047 §5); template.sh alone accepts a fictitiously-named leaf.
 set +e
-err_unknown="$(load_template "$UNKNOWN_STAGE_TPL" 2>&1)"
+ZBUILD_LEGACY_STAGE_VALIDATION='' load_template "$UNKNOWN_STAGE_TPL" 2>/dev/null
+rc_unknown_default=$?
 set -e
-assert_contains "unknown stage id error references bad id 'frobulate'" "$err_unknown" "frobulate"
+assert_eq "[default/no fence] unknown stage id loads at template layer (rc=0)" "0" "$rc_unknown_default"
+
+# ─── Test 16: [kill-switch] unknown stage id → error message contains bad id ──
+set +e
+err_unknown="$(ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$UNKNOWN_STAGE_TPL" 2>&1)"
+set -e
+assert_contains "[legacy fence] unknown stage id error references bad id 'frobulate'" "$err_unknown" "frobulate"
 
 # ─── Test 17: valid canonical subset → load_template succeeds ─────────────────
 set +e
@@ -234,18 +251,18 @@ assert_eq "valid canonical subset passes validation" "0" "$rc_subset"
 # ─── Test 18: valid canonical subset → _TPL_STAGES has correct count ──────────
 assert_eq "valid subset template has 3 stages" "3" "${#_TPL_STAGES[@]}"
 
-# ─── Test 19: stages in wrong order → load_template returns non-zero ──────────
+# ─── Test 19: [kill-switch] stages in wrong order → load_template returns non-zero
 set +e
-load_template "$WRONG_ORDER_TPL" 2>/dev/null
+ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$WRONG_ORDER_TPL" 2>/dev/null
 rc_order=$?
 set -e
-assert_eq "wrong stage order → load_template returns non-zero" "1" "$rc_order"
+assert_eq "[legacy fence] wrong stage order → load_template returns non-zero" "1" "$rc_order"
 
-# ─── Test 20: stages in wrong order → error message mentions order ────────────
+# ─── Test 20: [kill-switch] stages in wrong order → error message mentions order
 set +e
-err_order="$(load_template "$WRONG_ORDER_TPL" 2>&1)"
+err_order="$(ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$WRONG_ORDER_TPL" 2>&1)"
 set -e
-assert_contains "wrong order error mentions 'order'" "$err_order" "order"
+assert_contains "[legacy fence] wrong order error mentions 'order'" "$err_order" "order"
 
 # ─── Test 21: empty stages list → load_template succeeds ──────────────────────
 set +e

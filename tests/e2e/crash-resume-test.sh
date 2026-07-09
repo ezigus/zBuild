@@ -75,18 +75,30 @@ EOF
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
 
+# ADR-047 §5 (#1282): the runner's resolvability preflight rejects at LOAD any
+# template leaf with no plugin. This harness registers exactly intake +
+# security-lens + output, so it must drive a template whose flow is those three
+# leaves — the shipped `simple` template needs ~14 plugins and would abort at load
+# (previously it "worked" only because the old canonical fence never checked plugin
+# presence; the run crashed mid-flight at the first missing leaf, after intake had
+# already written state). Install the matching minimal fixture as a per-repo
+# overlay and run the CLI from that repo so `--template` resolves it.
+OVERLAY_REPO="$(setup_git_temp_repo crash-resume-overlay)"
+install_template_overlay "$OVERLAY_REPO" crash-resume-minimal
+
 # ─── Test 1: Start pipeline and SIGKILL after state-file appears ──────────────
 # Originally a fixed `sleep 1` then SIGKILL. Post-Wave-19 (template-resolver,
 # two-channel verdict, recursive seq-prefix) the runner startup occasionally
 # crosses 1s on GHA's slower runners, so SIGKILL arrives BEFORE the state
 # file is written → flake on #727 CI. Poll for the state file's appearance
 # (cap at 5s) so the test races against state-write, not absolute wall clock.
-ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
-ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR" \
-ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
-ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl" \
-ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
-    bash "$ZBUILD_CLI" pipeline start --goal "test crash resume" 2>/dev/null &
+( cd "$OVERLAY_REPO" && \
+  ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+  ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR" \
+  ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" \
+  ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl" \
+  ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
+      bash "$ZBUILD_CLI" pipeline start --goal "test crash resume" --template crash-resume-minimal 2>/dev/null ) &
 pipeline_pid=$!
 # Wait up to 5s for state file to appear AND contain a status field
 # (intake writes status BEFORE entering the long sleep). Without the status
