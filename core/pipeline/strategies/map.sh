@@ -30,14 +30,13 @@ _strategy_map_resolve_dimension() {
         warn "map: invalid dimension name: ${dim}" || true
         return 2
     fi
-    local arr_name="_MAP_DIM_${dim}"
-    # Read the caller's array variable by name — bash 3.2-safe indirect expansion.
-    # The array lives in the caller's scope (same sourced shell).
-    # shellcheck disable=SC2086
-    local -a _dim_arr=()
-    eval "_dim_arr=(\"\${${arr_name}[@]}\")" 2>/dev/null || true
+    # Read the caller's _MAP_DIM_<name> array by reference (Bash 5+ floor — see
+    # scripts/lib/compat.sh). The name was validated above, guarding the target.
+    # The array lives in the caller's scope (same sourced shell). Guarded
+    # expansion tolerates an unset target under the caller's `set -u`.
+    local -n _ref="_MAP_DIM_${dim}"
     local elem
-    for elem in "${_dim_arr[@]+"${_dim_arr[@]}"}"; do
+    for elem in "${_ref[@]+"${_ref[@]}"}"; do
         [[ -n "$elem" ]] && printf '%s\n' "$elem"
     done
 }
@@ -58,8 +57,9 @@ _strategy_map_resolve_dimension() {
 #   0 — all succeeded
 #   1 — all failed
 #   2 — partial (at least one success, at least one fail)
-#   3 — empty dimension (no elements to iterate; caller treats as no-op)
+#   3 — empty dimension (no elements to iterate; caller/runner maps to no-op 0)
 #   4 — no plugin found for any role
+#   5 — invalid/unknown dimension name (fail-closed; runner surfaces as failure)
 _strategy_run_map() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local dimension="${6:-platforms}"
@@ -67,12 +67,23 @@ _strategy_run_map() {
     local -a work_units=() dispatched_plugins=()
     local state_dir; state_dir="$(dirname "$state_file")"
 
-    # Resolve the iteration list for this dimension.
+    # Resolve the iteration list. Capture output AND rc explicitly — a process
+    # substitution would discard the resolver's status, collapsing an invalid
+    # dimension (rc=2) into the empty path (rc=3) and masking a fail-closed error.
+    local _resolved _res_rc
+    _resolved="$(_strategy_map_resolve_dimension "$dimension")"; _res_rc=$?
+    if [[ $_res_rc -ne 0 ]]; then
+        # Invalid/unknown dimension name — fail closed. Distinct from empty (rc=3);
+        # the runner does NOT map rc=5 to 0, so this surfaces as a real failure.
+        orch_shutdown "$pool_id" 2>/dev/null || true
+        return 5
+    fi
+
     local -a elements=()
     local _elem
     while IFS= read -r _elem; do
         [[ -n "$_elem" ]] && elements+=("$_elem")
-    done < <(_strategy_map_resolve_dimension "$dimension" 2>/dev/null || true)
+    done <<< "$_resolved"
 
     if [[ ${#elements[@]} -eq 0 ]]; then
         orch_shutdown "$pool_id" 2>/dev/null || true
@@ -90,7 +101,18 @@ _strategy_run_map() {
             [[ -z "$plugin_dir" ]] && continue
             any_plugin_found=true
 
-            wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element")" || {
+            # Only the platforms dimension populates ZBUILD_PLATFORM (ADR-009 §6
+            # env contract) — pass the element as the 4th arg so the platforms
+            # path stays byte-identical to fanout. For non-platform dimensions
+            # (lenses/mutants), do NOT overload ZBUILD_PLATFORM: omit the 4th arg
+            # so it defaults to "generic". Carrying the element in a generic
+            # work-unit env var is deferred (mechanic-only; no template wires a
+            # non-platform map yet — would extend common.sh's work-unit contract).
+            if [[ "$dimension" == "platforms" ]]; then
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element")"
+            else
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file")"
+            fi || {
                 warn "map: failed to create work unit for role=$role element=$element" || true
                 fail_count=$((fail_count + 1))
                 continue
