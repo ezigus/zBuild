@@ -2056,22 +2056,45 @@ main() {
         # Determine downstream success. Two paths:
         #  - No unconverged: treat as success (preserves pre-#796 behavior
         #    where a converged pipeline is always pipeline=complete).
-        #  - Unconverged with on_max=continue: check review.json verdict.
-        #    If review approved/passed, downstream rescued; else not.
+        #  - Unconverged with on_max=continue: read the downstream verdict
+        #    via the ADR-047 §3 manifest verdict channel — stage-agnostic
+        #    (no stage name hardcoded). Primary channel: .stage_verdicts in
+        #    the state file (populated by runner_read_stage_verdict, the
+        #    canonical verdict normalizer). A single "pass" from any
+        #    downstream stage rescues the unconverged run. Fallback: scan
+        #    the artifacts directory for any JSON with .verdict == approve|pass
+        #    (covers stages whose verdict artifact is the definitive push channel
+        #    and whose state write may lag the dispatch-loop completion).
         local _downstream_success=1
         if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
-            local _review_json
-            _review_json="$(dirname "$state_file")/artifacts/review.json"
-            if [[ -f "$_review_json" ]]; then
-                local _review_verdict
-                _review_verdict="$(jq -r '.verdict // empty' "$_review_json" 2>/dev/null || echo)"
-                case "$_review_verdict" in
-                    approve|pass) _downstream_success=1 ;;
-                    *) _downstream_success=0 ;;
-                esac
+            # Primary channel: .stage_verdicts in the state file (ADR-047 §3).
+            # runner_read_stage_verdict populates this for every dispatched stage.
+            local _sv_pass=0
+            if [[ -s "$state_file" ]]; then
+                _sv_pass="$(jq -r '
+                    [ (.stage_verdicts // {}) | to_entries[]
+                      | select(.value == "pass") ] | length' \
+                    "$state_file" 2>/dev/null || echo 0)"
+                [[ "$_sv_pass" =~ ^[0-9]+$ ]] || _sv_pass=0
+            fi
+            if [[ "$_sv_pass" -gt 0 ]]; then
+                _downstream_success=1
             else
-                # No review.json on an unconverged run → nothing rescued; failed.
+                # Fallback: scan artifacts for any JSON whose .verdict is
+                # "approve" or "pass" — covers the advisory aggregator and any
+                # stage-agnostic verdict-push artifact (ADR-047 §3 push channel).
                 _downstream_success=0
+                local _art_dir="$state_dir/artifacts"
+                if [[ -d "$_art_dir" ]]; then
+                    local _f _fv
+                    while IFS= read -r -d '' _f; do
+                        _fv="$(jq -r '.verdict // empty' "$_f" 2>/dev/null || true)"
+                        case "$_fv" in
+                            approve|pass) _downstream_success=1; break ;;
+                        esac
+                    done < <(find "$_art_dir" -maxdepth 1 -name '*.json' \
+                                 -not -name 'events.jsonl' -print0 2>/dev/null)
+                fi
             fi
         fi
 
