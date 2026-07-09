@@ -102,6 +102,8 @@ _strategy_map_resolve_max() {
 #   3 — empty dimension (no elements to iterate; caller/runner maps to no-op 0)
 #   4 — no plugin found for any role
 #   5 — invalid/unknown dimension name (fail-closed; runner surfaces as failure)
+#   6 — infrastructure failure (orch_spawn failed for a batch sub-pool). Fail-closed:
+#       NOT subject to on_member_error — an infra failure is never a member outcome.
 _strategy_run_map() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local dimension="${6:-platforms}" env_target="${7:-}"
@@ -186,6 +188,7 @@ _strategy_run_map() {
     # on_member_error=continue: all batches run regardless of prior batch failures.
     local total_wu="${#wu_list[@]}"
     local batch_start=0 batch_seq=0
+    local infra_failed=false   # #1312: orch_spawn failure = infra error → fail-closed
     local -a batch_plugins=()
     # #1312 (Copilot): backends validate pool_id against ^[a-zA-Z0-9_-]{1,64}$.
     # The per-batch "-b<N>" suffix must not push the id past 64 chars, or orch_spawn
@@ -200,15 +203,23 @@ _strategy_run_map() {
         batch_seq=$(( batch_seq + 1 ))
         local sub_pool_id="${_sub_pool_base}-b${batch_seq}"
 
-        # Spawn a sub-pool for this batch.
-        orch_spawn "$sub_pool_id" 2>/dev/null || {
-            warn "map: orch_spawn failed for sub-pool ${sub_pool_id}" || true
-            fail_count=$(( fail_count + 1 ))
-            batch_start=$(( batch_start + max_parallel ))
-            continue
-        }
+        # #1312 (Copilot): orch_spawn failure is an INFRASTRUCTURE failure, NOT a
+        # member failure — silently skipping a batch's work units (and possibly
+        # still returning 0 under on_member_error=continue) hides real breakage.
+        # Fail closed: stop dispatching and propagate a non-zero rc regardless of
+        # on_member_error.
+        if ! orch_spawn "$sub_pool_id" 2>/dev/null; then
+            warn "map: orch_spawn failed for sub-pool ${sub_pool_id} (infra failure — aborting)" || true
+            infra_failed=true
+            break
+        fi
 
         batch_plugins=()
+        # #1312 (Copilot): advance batch_start to the next UNPROCESSED index (i),
+        # NOT by a fixed max_parallel stride. When orch_dispatch fails, batch_dispatched
+        # does not increment, so the inner loop consumes more than max_parallel indices;
+        # a fixed stride would then re-process or skip units. `batch_start=i` after the
+        # loop guarantees every unit is dispatched exactly once.
         local batch_dispatched=0 i
         for (( i = batch_start; i < total_wu && batch_dispatched < max_parallel; i++ )); do
             wu="${wu_list[$i]}"
@@ -220,7 +231,7 @@ _strategy_run_map() {
             batch_dispatched=$(( batch_dispatched + 1 ))
             batch_plugins+=("${plugin_list[$i]}")
         done
-        batch_start=$(( batch_start + max_parallel ))
+        batch_start=$i
 
         if [[ $batch_dispatched -gt 0 ]]; then
             local collect_rc=0
@@ -254,9 +265,17 @@ _strategy_run_map() {
     # but the caller's pool must still be closed via orch_shutdown for contract compliance).
     orch_shutdown "$pool_id" 2>/dev/null || true
 
-    # #1312: on_member_error=continue (default) — mirrors parallel_group_run:
-    # all elements run regardless of failures; group returns 0 even on partial/all-fail.
-    # on_member_error=collect — propagate failure outward (group fails if any element failed).
+    # #1312 (Copilot): infra failure (orch_spawn) fails closed — non-zero rc, NOT
+    # subject to on_member_error. rc=6 is distinct from member outcomes (0/1/2) so
+    # the runner surfaces it as a real failure even under on_member_error=continue.
+    if $infra_failed; then
+        return 6
+    fi
+
+    # #1312: on_member_error=collect (default) — propagate failure outward (group
+    # fails if any element failed). runner.sh's strategy: map/map:* call sites rely
+    # on this default. on_member_error=continue mirrors parallel_group_run: all
+    # elements run regardless of failures; group returns 0 even on partial/all-fail.
     if [[ "$on_member_error" == "continue" ]]; then
         return 0
     fi

@@ -570,6 +570,138 @@ fi
 
 unset _MAP_DIM_batch11
 
+# ─── SPEC-12: orch_spawn failure → fail-closed (infra error, not silent skip) ─
+# #1312 (Copilot): an orch_spawn failure for a batch sub-pool is an INFRASTRUCTURE
+# failure — it must fail-closed (non-zero rc) and NOT silently skip the batch's
+# work units, even under on_member_error=continue. Verify rc≠0 AND that no work
+# units after the failed spawn are dispatched (fail-closed = stop, not skip-ahead).
+print_test_section "SPEC-12: orch_spawn failure fails closed — no silent skip (issue #1312)"
+
+declare -a _MAP_DIM_batch12=("a" "b" "c" "d" "e")
+export _MAP_DIM_batch12
+
+SPEC12_LOG="$TEST_TEMP_DIR/spec12-spy.log"
+: > "$SPEC12_LOG"
+# Spawn fails on the SECOND batch (simulating an infra outage mid-run).
+_spec12_spawn_calls=0
+_spec12_orch_spawn() {
+    _spec12_spawn_calls=$(( _spec12_spawn_calls + 1 ))
+    if [[ $_spec12_spawn_calls -ge 2 ]]; then
+        printf 'orch_spawn FAIL %s\n' "$1" >> "$SPEC12_LOG"
+        return 1
+    fi
+    printf 'orch_spawn OK %s\n' "$1" >> "$SPEC12_LOG"
+    return 0
+}
+_spec12_orch_dispatch() { printf 'orch_dispatch %s\n' "$1" >> "$SPEC12_LOG"; return 0; }
+_spec12_orch_collect()  { printf 'orch_collect %s\n'  "$1" >> "$SPEC12_LOG"; return 0; }
+_spec12_orch_shutdown() { return 0; }
+
+orch_spawn()    { _spec12_orch_spawn "$@"; }
+orch_dispatch() { _spec12_orch_dispatch "$@"; }
+orch_collect()  { _spec12_orch_collect "$@"; }
+orch_shutdown() { _spec12_orch_shutdown "$@"; }
+
+# on_member_error=continue: even so, an infra failure MUST fail-closed (non-zero).
+set +e
+_strategy_run_map "spec12-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch12" "" "2" "continue"
+spec12_rc=$?
+set -e
+
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+if [[ "$spec12_rc" -ne 0 ]]; then
+    assert_pass "SPEC-12: orch_spawn failure fails closed even under on_member_error=continue (rc=$spec12_rc)"
+else
+    assert_fail "SPEC-12: orch_spawn failure MUST fail-closed (non-zero)" "got rc=0"
+fi
+
+# Only the first batch (2 units) dispatched; batches 3-5 are NOT silently skipped-
+# ahead — the loop aborts on infra failure, so exactly 2 dispatches occurred.
+spec12_dispatch_count=0
+spec12_dispatch_count=$(/usr/bin/grep -c "^orch_dispatch" "$SPEC12_LOG" 2>/dev/null) || spec12_dispatch_count=0
+if [[ "$spec12_dispatch_count" -eq 2 ]]; then
+    assert_pass "SPEC-12: only the pre-failure batch dispatched (2 units); no silent skip-ahead"
+else
+    assert_fail "SPEC-12: infra failure must abort dispatch, not skip-ahead" \
+        "got $spec12_dispatch_count dispatches (log: $(cat "$SPEC12_LOG"))"
+fi
+
+unset _MAP_DIM_batch12
+
+# ─── SPEC-13: mid-batch orch_dispatch failure → every unit dispatched once ────
+# #1312 (Copilot): batch_start must advance to the next UNPROCESSED index, not by
+# a fixed max_parallel stride. When orch_dispatch fails, batch_dispatched does not
+# increment, so the inner loop consumes >max_parallel indices; a fixed stride would
+# re-process or skip units. Verify every unit is attempted EXACTLY once (5 attempts
+# for 5 units), with no duplicate index and no skipped index.
+print_test_section "SPEC-13: mid-batch dispatch failure → each unit attempted exactly once (issue #1312)"
+
+declare -a _MAP_DIM_batch13=("u0" "u1" "u2" "u3" "u4")
+export _MAP_DIM_batch13
+
+SPEC13_LOG="$TEST_TEMP_DIR/spec13-spy.log"
+: > "$SPEC13_LOG"
+# Record which work-unit index each dispatch targets by baking a marker; simplest
+# is to fail the dispatch at the FIRST call of each batch, forcing the inner loop
+# to consume an extra index — exposing the fixed-stride bug if present.
+# We track dispatch attempts by logging the work-unit path (unique per unit).
+_spec13_dispatch_calls=0
+_spec13_orch_spawn()    { return 0; }
+_spec13_orch_dispatch() {
+    _spec13_dispatch_calls=$(( _spec13_dispatch_calls + 1 ))
+    printf 'orch_dispatch %s\n' "$2" >> "$SPEC13_LOG"
+    # Fail every 2nd dispatch attempt (indices where call is even) to force the
+    # inner loop to consume extra indices within a batch.
+    if (( _spec13_dispatch_calls % 2 == 0 )); then
+        return 1
+    fi
+    return 0
+}
+_spec13_orch_collect()  { return 0; }
+_spec13_orch_shutdown() { return 0; }
+
+orch_spawn()    { _spec13_orch_spawn "$@"; }
+orch_dispatch() { _spec13_orch_dispatch "$@"; }
+orch_collect()  { _spec13_orch_collect "$@"; }
+orch_shutdown() { _spec13_orch_shutdown "$@"; }
+
+set +e
+_strategy_run_map "spec13-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch13" "" "2" "continue"
+set -e
+
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+# Exactly 5 dispatch attempts (one per unit) — no duplicates, no skips.
+spec13_attempt_count=0
+spec13_attempt_count=$(/usr/bin/grep -c "^orch_dispatch" "$SPEC13_LOG" 2>/dev/null) || spec13_attempt_count=0
+if [[ "$spec13_attempt_count" -eq 5 ]]; then
+    assert_pass "SPEC-13: 5 units → exactly 5 dispatch attempts (no duplicate, no skip)"
+else
+    assert_fail "SPEC-13: each unit must be dispatched exactly once" \
+        "got $spec13_attempt_count attempts (log: $(cat "$SPEC13_LOG"))"
+fi
+
+# Each distinct work-unit path appears exactly once (no re-processed index).
+spec13_unique_count=0
+spec13_unique_count=$(/usr/bin/grep "^orch_dispatch" "$SPEC13_LOG" | sort -u | /usr/bin/grep -c . 2>/dev/null) || spec13_unique_count=0
+if [[ "$spec13_unique_count" -eq "$spec13_attempt_count" ]]; then
+    assert_pass "SPEC-13: every dispatched work-unit path is unique (no index re-processed)"
+else
+    assert_fail "SPEC-13: a work-unit index was dispatched more than once" \
+        "unique=$spec13_unique_count attempts=$spec13_attempt_count (log: $(cat "$SPEC13_LOG"))"
+fi
+
+unset _MAP_DIM_batch13
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results
