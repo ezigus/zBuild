@@ -38,12 +38,10 @@ inputs:
   - id: deploy_result
     type: file
     path: "${artifact_dir}/deploy-result.json"
-    source: stage:deploy
     required: false
   - id: pr_url
     type: file
     path: "${artifact_dir}/pr-url.txt"
-    source: stage:pr
     required: false
 
 outputs:
