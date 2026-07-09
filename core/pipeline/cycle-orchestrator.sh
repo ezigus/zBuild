@@ -78,6 +78,11 @@ _CYCLE_LAST_HISTORY_FILE=""
 _CYCLE_VELOCITY_PLATEAU_WINDOW=0  # 0 = disabled until template sets velocity_plateau.window
 _CYCLE_LAST_PLATEAU_EVIDENCE=""
 
+# #1284 (ADR-047): multi-condition exit_when state — populated by _cycle_load_template.
+# Empty combinator means single-condition mode (byte-identical behavior).
+_CYCLE_EXIT_COMBINATOR=""
+_CYCLE_EXIT_CONDITIONS=()
+
 # #833: last-evaluated termination predicate, stashed by _cycle_check_until /
 # _cycle_check_abort_when, read by _cycle_render_predicate_result for the
 # cycle OUTPUT banner. kind = exit_when | abort_when.
@@ -236,6 +241,9 @@ _cycle_load_template() {
     _CYCLE_UNTIL_FIELD=""
     _CYCLE_UNTIL_OP=""
     _CYCLE_UNTIL_VALUE=""
+    # #1284 (ADR-047): multi-condition exit_when state.
+    _CYCLE_EXIT_COMBINATOR=""
+    _CYCLE_EXIT_CONDITIONS=()
     _CYCLE_PLATEAU_WINDOW="$_CYCLE_DEFAULT_PLATEAU_WINDOW"
     _CYCLE_DIVERGENCE_WINDOW="$_CYCLE_DEFAULT_DIVERGENCE_WINDOW"
     _CYCLE_VELOCITY_PLATEAU_WINDOW=0  # 0 = disabled; only set when template has velocity_plateau.window
@@ -285,46 +293,108 @@ _cycle_load_template() {
         return 4
     fi
 
-    _CYCLE_UNTIL_STAGE="${!us_var:-}"
-    _CYCLE_UNTIL_FIELD="${!uf_var:-}"
-    _CYCLE_UNTIL_OP="${!uo_var:-}"
-    _CYCLE_UNTIL_VALUE="${!uv_var:-}"
+    # #1284 (ADR-047): check for multi-condition exit_when first. When present,
+    # the single-condition _TPL_CYCLE_UNTIL_* vars are empty — skip their validation.
+    local ew_comb_var="_TPL_CYCLE_EXIT_COMBINATOR_${safe}"
+    local ew_count_var="_TPL_CYCLE_EXIT_COUNT_${safe}"
+    _CYCLE_EXIT_COMBINATOR="${!ew_comb_var:-}"
+    if [[ -n "$_CYCLE_EXIT_COMBINATOR" ]]; then
+        case "$_CYCLE_EXIT_COMBINATOR" in
+            all|any) ;;
+            *)
+                error "cycle '$cycle_id': exit_when combinator must be all|any, got: $_CYCLE_EXIT_COMBINATOR"
+                _cycle_emit "cycle.config.invalid" "reason=exit_when_combinator_invalid" \
+                    "value=$_CYCLE_EXIT_COMBINATOR"
+                return 4
+                ;;
+        esac
+        local ew_count="${!ew_count_var:-0}"
+        if ! [[ "$ew_count" =~ ^[0-9]+$ ]] || [[ "$ew_count" -lt 1 ]]; then
+            error "cycle '$cycle_id': exit_when multi-condition count must be >=1, got: $ew_count"
+            _cycle_emit "cycle.config.invalid" "reason=exit_when_count_invalid"
+            return 4
+        fi
+        local ew_i ew_s ew_f ew_o ew_v
+        for (( ew_i=1; ew_i<=ew_count; ew_i++ )); do
+            local _sv="_TPL_CYCLE_EXIT_${ew_i}_STAGE_${safe}"
+            local _fv="_TPL_CYCLE_EXIT_${ew_i}_FIELD_${safe}"
+            local _ov="_TPL_CYCLE_EXIT_${ew_i}_OP_${safe}"
+            local _vv="_TPL_CYCLE_EXIT_${ew_i}_VALUE_${safe}"
+            ew_s="${!_sv:-}"; ew_f="${!_fv:-}"; ew_o="${!_ov:-}"; ew_v="${!_vv:-}"
+            if [[ -z "$ew_s" || -z "$ew_f" || -z "$ew_o" || -z "$ew_v" ]]; then
+                error "cycle '$cycle_id': exit_when condition $ew_i: {stage,field,op,value} all required"
+                _cycle_emit "cycle.config.invalid" "reason=exit_when_condition_incomplete" "index=$ew_i"
+                return 4
+            fi
+            case "$ew_f" in
+                verdict|status) ;;
+                *)
+                    error "cycle '$cycle_id': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"
+                    _cycle_emit "cycle.config.invalid" "reason=exit_when_field_invalid" "value=$ew_f"
+                    return 4
+                    ;;
+            esac
+            case "$ew_o" in
+                eq|ne) ;;
+                *)
+                    error "cycle '$cycle_id': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"
+                    _cycle_emit "cycle.config.invalid" "reason=exit_when_op_invalid" "value=$ew_o"
+                    return 4
+                    ;;
+            esac
+            local _cs_ok=0 _cs
+            for _cs in "${_CYCLE_STAGES[@]}"; do
+                [[ "$_cs" == "$ew_s" ]] && _cs_ok=1 && break
+            done
+            if [[ $_cs_ok -ne 1 ]]; then
+                error "cycle '$cycle_id': exit_when condition $ew_i: stage '$ew_s' is not in cycle stages (${_CYCLE_STAGES[*]})"
+                _cycle_emit "cycle.config.invalid" "reason=exit_when_stage_outside_cycle" "value=$ew_s"
+                return 4
+            fi
+            _CYCLE_EXIT_CONDITIONS+=("${ew_s}|${ew_f}|${ew_o}|${ew_v}")
+        done
+    else
+        _CYCLE_UNTIL_STAGE="${!us_var:-}"
+        _CYCLE_UNTIL_FIELD="${!uf_var:-}"
+        _CYCLE_UNTIL_OP="${!uo_var:-}"
+        _CYCLE_UNTIL_VALUE="${!uv_var:-}"
 
-    if [[ -z "$_CYCLE_UNTIL_STAGE" || -z "$_CYCLE_UNTIL_FIELD" \
-          || -z "$_CYCLE_UNTIL_OP" || -z "$_CYCLE_UNTIL_VALUE" ]]; then
-        error "cycle '$cycle_id': until.{stage,field,op,value} all required"
-        _cycle_emit "cycle.config.invalid" "reason=until_incomplete"
-        return 4
-    fi
-    # v1 whitelist
-    case "$_CYCLE_UNTIL_FIELD" in
-        verdict|status) ;;
-        *)
-            error "cycle '$cycle_id': until.field must be verdict|status, got: $_CYCLE_UNTIL_FIELD"
-            _cycle_emit "cycle.config.invalid" "reason=until_field_invalid" \
-                "value=$_CYCLE_UNTIL_FIELD"
+        if [[ -z "$_CYCLE_UNTIL_STAGE" || -z "$_CYCLE_UNTIL_FIELD" \
+              || -z "$_CYCLE_UNTIL_OP" || -z "$_CYCLE_UNTIL_VALUE" ]]; then
+            error "cycle '$cycle_id': until.{stage,field,op,value} all required"
+            _cycle_emit "cycle.config.invalid" "reason=until_incomplete"
             return 4
-            ;;
-    esac
-    case "$_CYCLE_UNTIL_OP" in
-        eq|ne) ;;
-        *)
-            error "cycle '$cycle_id': until.op must be eq|ne, got: $_CYCLE_UNTIL_OP"
-            _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
-                "value=$_CYCLE_UNTIL_OP"
+        fi
+        # v1 whitelist
+        case "$_CYCLE_UNTIL_FIELD" in
+            verdict|status) ;;
+            *)
+                error "cycle '$cycle_id': until.field must be verdict|status, got: $_CYCLE_UNTIL_FIELD"
+                _cycle_emit "cycle.config.invalid" "reason=until_field_invalid" \
+                    "value=$_CYCLE_UNTIL_FIELD"
+                return 4
+                ;;
+        esac
+        case "$_CYCLE_UNTIL_OP" in
+            eq|ne) ;;
+            *)
+                error "cycle '$cycle_id': until.op must be eq|ne, got: $_CYCLE_UNTIL_OP"
+                _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
+                    "value=$_CYCLE_UNTIL_OP"
+                return 4
+                ;;
+        esac
+        # until.stage must be in cycle.stages
+        local _us_ok=0 s
+        for s in "${_CYCLE_STAGES[@]}"; do
+            [[ "$s" == "$_CYCLE_UNTIL_STAGE" ]] && _us_ok=1 && break
+        done
+        if [[ $_us_ok -ne 1 ]]; then
+            error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
+            _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
+                "value=$_CYCLE_UNTIL_STAGE"
             return 4
-            ;;
-    esac
-    # until.stage must be in cycle.stages
-    local _us_ok=0 s
-    for s in "${_CYCLE_STAGES[@]}"; do
-        [[ "$s" == "$_CYCLE_UNTIL_STAGE" ]] && _us_ok=1 && break
-    done
-    if [[ $_us_ok -ne 1 ]]; then
-        error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
-        _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
-            "value=$_CYCLE_UNTIL_STAGE"
-        return 4
+        fi
     fi
 
     local pw="${!pw_var:-}"; [[ -n "$pw" && "$pw" =~ ^[0-9]+$ ]] && _CYCLE_PLATEAU_WINDOW="$pw"
@@ -372,12 +442,74 @@ _cycle_record_iter_outcome() {
     return 0
 }
 
+# ─── _cycle_eval_one_condition <blob> <stage> <field> <op> <expected> ─────────
+# Evaluate a single predicate against the blob. Returns 0 (match) or 1 (no match).
+# Emits cycle.iteration.verdict_missing when the field is absent.
+# Does NOT stash the predicate (caller decides which one to stash for the banner).
+_cycle_eval_one_condition() {
+    local blob="$1" stage="$2" field="$3" op="$4" expected="$5"
+    local actual
+    actual="$(jq -r --arg s "$stage" --arg f "$field" \
+        '.[$s][$f] // empty' <<< "$blob" 2>/dev/null || true)"
+    if [[ -z "$actual" || "$actual" == "null" ]]; then
+        _cycle_emit "cycle.iteration.verdict_missing" \
+            "iter=$_CYCLE_TRAP_ITER" "stage=$stage" "field=$field"
+        _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "" "false"
+        return 1
+    fi
+    local _match="false"
+    local _rc=1
+    case "$op" in
+        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
+        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+    esac
+    _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
+    return $_rc
+}
+
 # ─── _cycle_check_until <stage_verdicts_jsonblob> ────────────────────────────
 # Returns 0 if predicate satisfied (converged), 1 otherwise.
 # Stage-verdicts blob is JSON: {"<stage>":{"verdict":"pass","status":"complete"}}.
 # Field-missing → 1 (NEVER falsely converge). Emits verdict_missing once.
+# #1284 (ADR-047): when _CYCLE_EXIT_COMBINATOR is set, evaluates N conditions
+# with all/any logic. Single-condition path is BYTE-IDENTICAL to prior behavior.
 _cycle_check_until() {
     local blob="$1"
+
+    # #1284: multi-condition path.
+    if [[ -n "${_CYCLE_EXIT_COMBINATOR:-}" && ${#_CYCLE_EXIT_CONDITIONS[@]} -gt 0 ]]; then
+        # all: start converged, fail on first miss. any: start diverged, pass on first hit.
+        local _ew_overall_rc _ew_cond _ew_s _ew_f _ew_o _ew_v _ew_rc _ew_rest
+        local _ew_last_stage="" _ew_last_field="" _ew_last_op="" _ew_last_expected="" _ew_last_match="false"
+        [[ "$_CYCLE_EXIT_COMBINATOR" == "all" ]] && _ew_overall_rc=0 || _ew_overall_rc=1
+        # Save errexit state before loop — toggling set -e/+e per-iteration leaks the
+        # restored set -e to our caller when we return rc=1, triggering their errexit.
+        local _ew_had_e=0; [[ "$-" == *e* ]] && _ew_had_e=1; set +e
+        for _ew_cond in "${_CYCLE_EXIT_CONDITIONS[@]}"; do
+            _ew_s="${_ew_cond%%|*}"; _ew_rest="${_ew_cond#*|}"
+            _ew_f="${_ew_rest%%|*}"; _ew_rest="${_ew_rest#*|}"
+            _ew_o="${_ew_rest%%|*}"; _ew_v="${_ew_rest#*|}"
+            _cycle_eval_one_condition "$blob" "$_ew_s" "$_ew_f" "$_ew_o" "$_ew_v"; _ew_rc=$?
+            _ew_last_stage="$_ew_s"; _ew_last_field="$_ew_f"
+            _ew_last_op="$_ew_o"; _ew_last_expected="$_ew_v"
+            if [[ "$_ew_rc" -eq 0 ]]; then
+                _ew_last_match="true"
+                [[ "$_CYCLE_EXIT_COMBINATOR" == "any" ]] && { _ew_overall_rc=0; break; }
+            else
+                _ew_last_match="false"
+                [[ "$_CYCLE_EXIT_COMBINATOR" == "all" ]] && { _ew_overall_rc=1; break; }
+            fi
+        done
+        [[ $_ew_had_e -eq 1 ]] && set -e
+        local _ew_actual
+        _ew_actual="$(jq -r --arg s "$_ew_last_stage" --arg f "$_ew_last_field" \
+            '.[$s][$f] // empty' <<< "$blob" 2>/dev/null || true)"
+        _cycle_stash_predicate "exit_when" "$_ew_last_stage" "$_ew_last_field" \
+            "$_ew_last_op" "$_ew_last_expected" "$_ew_actual" "$_ew_last_match"
+        return $_ew_overall_rc
+    fi
+
+    # Single-condition path — byte-identical to pre-#1284 behavior.
     local stage="$_CYCLE_UNTIL_STAGE"
     local field="$_CYCLE_UNTIL_FIELD"
     local op="$_CYCLE_UNTIL_OP"
@@ -771,8 +903,15 @@ _cycle_detect_blocked() {
     local blob="$1" iter="$2"
     # Operator-bypass: if until-value is explicitly "error", the template is
     # converging ON error — let until fire, don't shadow it.
+    # #1284: for multi-condition, bypass if ANY condition targets "error".
     if [[ "${_CYCLE_UNTIL_VALUE:-}" == "error" ]]; then
         return 1
+    fi
+    if [[ -n "${_CYCLE_EXIT_COMBINATOR:-}" ]]; then
+        local _ew_c
+        for _ew_c in "${_CYCLE_EXIT_CONDITIONS[@]}"; do
+            [[ "${_ew_c##*|}" == "error" ]] && return 1
+        done
     fi
     # Fail-CLOSED: empty / unset blob.
     if [[ -z "$blob" || "$blob" == "{}" ]]; then

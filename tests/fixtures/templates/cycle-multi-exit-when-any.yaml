@@ -1,0 +1,26 @@
+id: cycle-multi-exit-when-any
+name: Cycle with multi-condition exit_when (any combinator)
+defaults:
+  strategy: fanout
+
+build-test-cycle:
+  type: cycle
+  description: "Multi-condition any: either gate passing converges"
+  flow:
+    - gate-a
+    - gate-b
+  exit_when:
+    any:
+      - { stage: gate-a, field: verdict, op: eq, value: pass }
+      - { stage: gate-b, field: verdict, op: eq, value: pass }
+  max_iterations: 5
+  on_max: continue
+
+gate-a:
+  roles: [checker]
+
+gate-b:
+  roles: [checker]
+
+flow:
+  - build-test-cycle
