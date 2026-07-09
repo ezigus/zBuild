@@ -2007,6 +2007,17 @@ main() {
                         error "map group '$_mg_id': missing 'over:' dimension"
                         return 1
                     fi
+                    # #1295 Copilot: the dimension names a bash array (_MAP_DIM_<over>)
+                    # and is passed to _strategy_run_map — an invalid token (e.g. with
+                    # '-') otherwise surfaces as an unactionable "rc=5". Fail closed with
+                    # a clear error naming the bad dimension BEFORE dispatch.
+                    if [[ ! "$_mg_over" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
+                        _set_pipeline_status "$state_file" "failed"
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        error "map group '$_mg_id': invalid 'over:' dimension: ${_mg_over} (expected ^[A-Za-z0-9_]{1,64}$)"
+                        return 1
+                    fi
                     # Populate _MAP_DIM_<over> from the elements CSV so _strategy_run_map
                     # can resolve it via the _MAP_DIM_<name> nameref convention (Bash 5+
                     # nameref requires the target array to exist in the SAME shell; declare

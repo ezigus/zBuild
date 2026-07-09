@@ -1900,8 +1900,10 @@ _tpl_translate_new_shape() {
             par_data[cur_key] = par_flow "|" par_max "|" par_onerr "|" par_agg
         }
         # issue #1295 (ADR-047 §2): stash map-group data for IM| emission.
-        # IM| carries: over|elements_csv|max|onerr|agg — the loader wires these
-        # into _TPL_MAP_* vars and the runner dispatches via _strategy_run_map.
+        # map_data carries: over|elements_csv|max|onerr|agg|as — the loader wires
+        # these into _TPL_MAP_* vars and the runner dispatches via _strategy_run_map.
+        # (The full IM| row prepends <gid> and appends the shared sec_payload —
+        # roles|io_dests|io_tail|router…; see the IM| print site for the schema.)
         if (sec_type == "map") {
             map_data[cur_key] = map_over "|" map_elements "|" map_max "|" map_onerr "|" map_agg "|" map_as
         }

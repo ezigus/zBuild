@@ -237,6 +237,62 @@ unset -f _strategy_make_work_unit
 eval "$_orig_make_wu"
 unset _MAP_DIM_lenses5
 
+# ─── SPEC-6: element/dimension identity is validated → no shell injection ──────
+# #1295 Copilot: map_element/map_dimension are baked as single-quoted literals
+# into the generated work-unit script. A value with ', whitespace, or a newline
+# must fail closed (rc=2), never produce a work unit that breaks out of quotes.
+print_test_section "SPEC-6: map_element/map_dimension validated fail-closed (no injection)"
+
+# A legal element/dimension still produces a work unit (baseline).
+set +e
+_wu_ok="$(_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "lenses" "ZBUILD_REVIEW_LENS_ID" 2>/dev/null)"
+_ok_rc=$?
+set -e
+if [[ "$_ok_rc" -eq 0 && -f "$_wu_ok" ]]; then
+    assert_pass "SPEC-6: legal element/dimension produces a work unit (rc=0)"
+    # It must be syntactically valid bash (no injection even in the happy path).
+    if bash -n "$_wu_ok" 2>/dev/null; then
+        assert_pass "SPEC-6: generated work unit is syntactically valid bash"
+    else
+        assert_fail "SPEC-6: generated work unit parses" "bash -n rejected $_wu_ok"
+    fi
+    rm -f "$_wu_ok"
+else
+    assert_fail "SPEC-6: legal element/dimension produces a work unit" "rc=$_ok_rc path=$_wu_ok"
+fi
+
+# Illegal element: single quote injection attempt → fail closed, no work unit.
+_inject="x'; touch $TEST_TEMP_DIR/PWNED; :'"
+rm -f "$TEST_TEMP_DIR/PWNED"
+set +e
+_wu_bad="$(_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "$_inject" "lenses" 2>/dev/null)"
+_bad_rc=$?
+set -e
+if [[ "$_bad_rc" -eq 2 && -z "$_wu_bad" ]]; then
+    assert_pass "SPEC-6: element with ' fails closed (rc=2), no work unit emitted"
+else
+    assert_fail "SPEC-6: element with ' must fail closed" "rc=$_bad_rc path=$_wu_bad"
+fi
+if [[ ! -e "$TEST_TEMP_DIR/PWNED" ]]; then
+    assert_pass "SPEC-6: injection payload did NOT execute (no PWNED file)"
+else
+    assert_fail "SPEC-6: injection payload must not execute" "PWNED file was created"
+fi
+
+# Illegal element: whitespace/newline → fail closed.
+set +e
+_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" $'a\nb' "lenses" >/dev/null 2>&1
+_nl_rc=$?
+set -e
+assert_exit_code "SPEC-6: element with newline fails closed (rc=2)" "2" "$_nl_rc"
+
+# Illegal dimension: '-' is not a shell-array-safe token → fail closed.
+set +e
+_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "bad-dim" >/dev/null 2>&1
+_dim_rc=$?
+set -e
+assert_exit_code "SPEC-6: dimension with '-' fails closed (rc=2)" "2" "$_dim_rc"
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

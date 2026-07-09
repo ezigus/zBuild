@@ -76,6 +76,19 @@ _strategy_make_work_unit() {
     _strategy_validate_stage "$stage"   || return 2
     _strategy_validate_platform "$platform" || return 2
     [[ -z "$plugin_dir" ]] && { warn "strategy: _strategy_make_work_unit: empty plugin_dir" || true; return 2; }
+    # #1295 Copilot: map_element/map_dimension are baked as single-quoted literals
+    # into the work-unit script — a value with ', whitespace, or a newline would
+    # break out of the quotes (shell-injection). Fail closed with an actionable
+    # error. Element allows '-' (matches stage/platform); dimension is a shell-safe
+    # token used to name a bash array (_MAP_DIM_<dim>), so no '-'.
+    if [[ -n "$map_element" && ! "$map_element" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
+        warn "strategy: invalid map element: ${map_element} (expected ^[A-Za-z0-9_-]{1,64}$)" || true
+        return 2
+    fi
+    if [[ -n "$map_dimension" && ! "$map_dimension" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
+        warn "strategy: invalid map dimension: ${map_dimension} (expected ^[A-Za-z0-9_]{1,64}$)" || true
+        return 2
+    fi
     if [[ -n "$env_target" && ! "$env_target" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,63}$ ]]; then
         warn "strategy: invalid env_target var name: ${env_target}" || true
         return 2
