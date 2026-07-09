@@ -203,12 +203,23 @@ _strategy_run_map() {
     local -a batch_plugins=()
     # #1312 (Copilot): backends validate pool_id against ^[a-zA-Z0-9_-]{1,64}$.
     # The per-batch "-b<N>" suffix must not push the id past 64 chars, or orch_spawn
-    # fails and the whole batch is silently skipped. Truncate the base so
-    # "<base>-b<N>" always fits: reserve 10 chars for the largest realistic suffix
-    # (e.g. "-b99999999"), keeping the base at ≤54 chars.
+    # fails and the whole batch is silently skipped. Keep the base ≤54 chars so
+    # "<base>-b<N>" always fits (reserve 10 for the largest realistic suffix, e.g.
+    # "-b99999999").
+    #
+    # #1312 (Copilot): collision-safe truncation. Real pool_ids put their UNIQUE
+    # tail last ("map-<gid>-$$", "zbuild-<stage>-$$-<ns>"), so a plain prefix
+    # truncation would drop exactly the disambiguating suffix — two distinct bases
+    # sharing a 54-char prefix would collide into the same sub-pool dir. Instead,
+    # when over-long, keep a readable 45-char prefix + an 8-char hash of the FULL
+    # pool_id (45 + 1 + 8 = 54), so distinct bases yield distinct sub-pool bases.
     local _sub_pool_base="$pool_id"
     if [[ ${#_sub_pool_base} -gt 54 ]]; then
-        _sub_pool_base="${_sub_pool_base:0:54}"
+        local _pid_hash
+        _pid_hash="$(printf '%s' "$pool_id" | shasum -a 256 2>/dev/null | cut -c1-8)"
+        # Fallback if shasum is unavailable: cksum (POSIX) → hex-ish digits.
+        [[ -n "$_pid_hash" ]] || _pid_hash="$(printf '%s' "$pool_id" | cksum | cut -c1-8)"
+        _sub_pool_base="${pool_id:0:45}-${_pid_hash}"
     fi
     while [[ $batch_start -lt $total_wu ]]; do
         batch_seq=$(( batch_seq + 1 ))

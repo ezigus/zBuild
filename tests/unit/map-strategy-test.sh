@@ -614,8 +614,13 @@ orch_dispatch() { orch_dispatch_orig "$@"; }
 orch_collect()  { orch_collect_orig "$@"; }
 orch_shutdown() { orch_shutdown_orig "$@"; }
 
+# rc MUST be the infra-fail code (6), not a member outcome — proves the infra path
+# fired and fails closed even under on_member_error=continue (which would otherwise
+# force rc=0). A bare non-zero check would pass vacuously if a member rc leaked; pin
+# the exact infra code.
+assert_exit_code "SPEC-12: orch_spawn failure → rc=6 (infra fail-closed) despite on_member_error=continue" "6" "$spec12_rc"
 if [[ "$spec12_rc" -ne 0 ]]; then
-    assert_pass "SPEC-12: orch_spawn failure fails closed even under on_member_error=continue (rc=$spec12_rc)"
+    assert_pass "SPEC-12: orch_spawn failure fails closed (non-zero) even under on_member_error=continue (rc=$spec12_rc)"
 else
     assert_fail "SPEC-12: orch_spawn failure MUST fail-closed (non-zero)" "got rc=0"
 fi
@@ -673,12 +678,19 @@ orch_shutdown() { _spec13_orch_shutdown "$@"; }
 set +e
 _strategy_run_map "spec13-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
     "batch13" "" "2" "continue"
+spec13_rc=$?
 set -e
 
 orch_spawn()    { orch_spawn_orig "$@"; }
 orch_dispatch() { orch_dispatch_orig "$@"; }
 orch_collect()  { orch_collect_orig "$@"; }
 orch_shutdown() { orch_shutdown_orig "$@"; }
+
+# rc reflects the intended member outcome: on_member_error=continue → rc=0 (member
+# dispatch failures do NOT abort the group). NOT rc=6 (that is infra-only). Asserting
+# rc here guards against a regression that turns a member failure into an infra abort
+# or leaks a non-zero member rc under continue.
+assert_exit_code "SPEC-13: on_member_error=continue → rc=0 despite member dispatch failures" "0" "$spec13_rc"
 
 # Exactly 5 dispatch attempts (one per unit) — no duplicates, no skips.
 spec13_attempt_count=0
@@ -829,6 +841,74 @@ else
 fi
 
 unset _MAP_DIM_batch15
+
+# ─── SPEC-16: collision-safe truncation of long base pool_id ──────────────────
+# #1312 (Copilot): two distinct base pool_ids that share a long common prefix (real
+# ids put their UNIQUE tail last: "map-<gid>-<pid>") must NOT collapse to the same
+# sub-pool base. Plain prefix-truncation would drop the disambiguating tail. Verify
+# distinct-but-prefix-sharing bases yield DISTINCT spawned sub-pool ids (a hash of
+# the full id disambiguates), while still staying ≤64 chars.
+print_test_section "SPEC-16: collision-safe truncation — distinct long bases → distinct sub-pools (issue #1312)"
+
+declare -a _MAP_DIM_batch16=("only")
+export _MAP_DIM_batch16
+
+SPEC16_LOG_A="$TEST_TEMP_DIR/spec16-a.log"
+SPEC16_LOG_B="$TEST_TEMP_DIR/spec16-b.log"
+
+# Spy captures the sub-pool id passed to orch_spawn. One log per run.
+_spec16_target=""
+_spec16_orch_spawn()    { printf '%s\n' "$1" >> "$_spec16_target"; return 0; }
+_spec16_orch_dispatch() { return 0; }
+_spec16_orch_collect()  { return 0; }
+_spec16_orch_shutdown() { return 0; }
+
+orch_spawn()    { _spec16_orch_spawn "$@"; }
+orch_dispatch() { _spec16_orch_dispatch "$@"; }
+orch_collect()  { _spec16_orch_collect "$@"; }
+orch_shutdown() { _spec16_orch_shutdown "$@"; }
+
+# Two bases sharing a 60-char prefix, differing only in the last chars (the "PID"):
+_spec16_prefix="map-$(printf 'x%.0s' {1..56})"   # 4 + 56 = 60-char shared prefix
+_spec16_base_a="${_spec16_prefix}-1001"          # 65 chars
+_spec16_base_b="${_spec16_prefix}-2002"          # 65 chars
+
+: > "$SPEC16_LOG_A"; _spec16_target="$SPEC16_LOG_A"
+set +e
+_strategy_run_map "$_spec16_base_a" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch16" "" "1" "continue"
+set -e
+
+: > "$SPEC16_LOG_B"; _spec16_target="$SPEC16_LOG_B"
+set +e
+_strategy_run_map "$_spec16_base_b" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch16" "" "1" "continue"
+set -e
+
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+_spec16_id_a="$(head -1 "$SPEC16_LOG_A")"
+_spec16_id_b="$(head -1 "$SPEC16_LOG_B")"
+
+if [[ -n "$_spec16_id_a" && -n "$_spec16_id_b" && "$_spec16_id_a" != "$_spec16_id_b" ]]; then
+    assert_pass "SPEC-16: distinct long bases → distinct sub-pool ids ('$_spec16_id_a' vs '$_spec16_id_b')"
+else
+    assert_fail "SPEC-16: distinct long bases collided into the same sub-pool id" \
+        "a='$_spec16_id_a' b='$_spec16_id_b'"
+fi
+
+# Both must still fit the 64-char backend limit.
+if [[ ${#_spec16_id_a} -le 64 && ${#_spec16_id_b} -le 64 ]]; then
+    assert_pass "SPEC-16: both collision-safe sub-pool ids are ≤64 chars (len a=${#_spec16_id_a} b=${#_spec16_id_b})"
+else
+    assert_fail "SPEC-16: collision-safe sub-pool id exceeded 64 chars" \
+        "len a=${#_spec16_id_a} b=${#_spec16_id_b}"
+fi
+
+unset _MAP_DIM_batch16
 
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
