@@ -36,10 +36,11 @@ source "$_ZBUILD_ROOT/core/pipeline/template-resolver.sh"
 source "$_ZBUILD_ROOT/core/pipeline/resolver.sh"
 # shellcheck source=../orch/contract.sh
 source "$_ZBUILD_ROOT/core/orch/contract.sh"
-# Strategy modules (ADR-009 §fanout/sequential/composite, issue #222)
+# Strategy modules (ADR-009 §fanout/sequential/composite, issue #222; map ADR-047)
 source "$_ZBUILD_ROOT/core/pipeline/strategies/fanout.sh"
 source "$_ZBUILD_ROOT/core/pipeline/strategies/sequential.sh"
 source "$_ZBUILD_ROOT/core/pipeline/strategies/composite.sh"
+source "$_ZBUILD_ROOT/core/pipeline/strategies/map.sh"
 # Runner helpers extracted from this file in #279 to keep it under the
 # CLAUDE.md 500-line cap.
 source "$_ZBUILD_ROOT/core/pipeline/dispatch.sh"
@@ -2252,6 +2253,17 @@ main() {
                     ;;
                 sequential)
                     set +e; _strategy_run_sequential "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root"; rc=$?; set -e
+                    ;;
+                map:*)
+                    # map over a declared dimension (ADR-047): "map:lenses", "map:mutants", etc.
+                    local _map_dim="${_effective_strategy#map:}"
+                    set +e; _strategy_run_map "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root" "$_map_dim"; rc=$?; set -e
+                    [[ $rc -eq 3 ]] && rc=0  # empty dimension = no dispatch = success
+                    ;;
+                map)
+                    # map with default dimension (platforms) — equivalent to fanout
+                    set +e; _strategy_run_map "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root" "platforms"; rc=$?; set -e
+                    [[ $rc -eq 3 ]] && rc=0
                     ;;
                 *)
                     # fanout (default) — parallel dispatch
