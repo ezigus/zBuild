@@ -702,6 +702,86 @@ fi
 
 unset _MAP_DIM_batch13
 
+# ─── SPEC-14: invalid max_parallel clamps to 1 (fail-safe, matches parallel) ──
+# #1312 (Copilot): _strategy_map_resolve_max must mirror _parallel_resolve_max's
+# fail-safe — an invalid/typo value ("bogus", "0", negative) must clamp to 1, NOT
+# silently fall through to CPU-count concurrency (which would REMOVE the cap).
+print_test_section "SPEC-14: invalid max_parallel clamps to 1 (fail-safe) (issue #1312)"
+
+# Neutralise the env override so it can't mask the clamp (CPU-default branch only
+# fires for auto/empty, never for an invalid explicit value — but be defensive).
+_spec14_jobs_save="${ZBUILD_PARALLEL_JOBS:-__UNSET__}"
+unset ZBUILD_PARALLEL_JOBS
+
+set +e
+_spec14_bogus="$(_strategy_map_resolve_max "bogus")"
+_spec14_zero="$(_strategy_map_resolve_max "0")"
+_spec14_neg="$(_strategy_map_resolve_max "-3")"
+_spec14_explicit="$(_strategy_map_resolve_max "4")"
+_spec14_over="$(_strategy_map_resolve_max "9999")"
+_spec14_auto="$(_strategy_map_resolve_max "auto")"
+set -e
+
+assert_eq "SPEC-14: 'bogus' clamps to 1 (not unbounded CPU-count)" "1" "$_spec14_bogus"
+assert_eq "SPEC-14: '0' clamps to 1 (not unbounded)"               "1" "$_spec14_zero"
+assert_eq "SPEC-14: '-3' clamps to 1 (not unbounded)"              "1" "$_spec14_neg"
+assert_eq "SPEC-14: explicit '4' honored as-is"                    "4" "$_spec14_explicit"
+assert_eq "SPEC-14: '9999' capped at 8"                            "8" "$_spec14_over"
+
+# 'auto' resolves to the CPU-based default (a positive integer 1..8, NOT 1-clamped
+# unless the host genuinely has 1 CPU). Assert it's a valid capped integer.
+if [[ "$_spec14_auto" =~ ^[1-8]$ ]]; then
+    assert_pass "SPEC-14: 'auto' resolves to CPU-based default in 1..8 (got $_spec14_auto)"
+else
+    assert_fail "SPEC-14: 'auto' must resolve to a capped positive integer" "got $_spec14_auto"
+fi
+
+# End-to-end proof: an invalid max_parallel must actually cap dispatch. With 5
+# elements and max_parallel="bogus" (→1), each element is its own batch → 5 collects.
+declare -a _MAP_DIM_batch14=("a" "b" "c" "d" "e")
+export _MAP_DIM_batch14
+
+SPEC14_LOG="$TEST_TEMP_DIR/spec14-spy.log"
+: > "$SPEC14_LOG"
+_spec14_orch_spawn()    { return 0; }
+_spec14_orch_dispatch() { printf 'orch_dispatch %s\n' "$1" >> "$SPEC14_LOG"; return 0; }
+_spec14_orch_collect()  { printf 'orch_collect %s\n'  "$1" >> "$SPEC14_LOG"; return 0; }
+_spec14_orch_shutdown() { return 0; }
+
+orch_spawn()    { _spec14_orch_spawn "$@"; }
+orch_dispatch() { _spec14_orch_dispatch "$@"; }
+orch_collect()  { _spec14_orch_collect "$@"; }
+orch_shutdown() { _spec14_orch_shutdown "$@"; }
+
+set +e
+_strategy_run_map "spec14-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch14" "" "bogus" "continue"
+set -e
+
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+spec14_collect_count=0
+spec14_collect_count=$(/usr/bin/grep -c "^orch_collect" "$SPEC14_LOG" 2>/dev/null) || spec14_collect_count=0
+# max=1 → one element per batch → 5 batches → 5 collects (cap enforced, not removed).
+if [[ "$spec14_collect_count" -eq 5 ]]; then
+    assert_pass "SPEC-14: invalid max_parallel caps concurrency to 1 (5 elements → 5 batches)"
+else
+    assert_fail "SPEC-14: invalid max_parallel must cap to 1, not run unbounded" \
+        "got $spec14_collect_count collects (expected 5; log: $(cat "$SPEC14_LOG"))"
+fi
+
+unset _MAP_DIM_batch14
+# Restore env override.
+if [[ "$_spec14_jobs_save" == "__UNSET__" ]]; then
+    unset ZBUILD_PARALLEL_JOBS
+else
+    export ZBUILD_PARALLEL_JOBS="$_spec14_jobs_save"
+fi
+unset _spec14_jobs_save
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

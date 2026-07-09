@@ -44,27 +44,32 @@ _strategy_map_resolve_dimension() {
 # ─── _strategy_map_resolve_max ───────────────────────────────────────────────
 # Resolves the max_parallel concurrency cap for a map group.
 # Input: raw max value from template (_TPL_MAP_MAX_<gid>), e.g. "4", "auto", "".
-# "auto" / empty: use ZBUILD_PARALLEL_JOBS env override, else CPU count capped at 8.
-# Returns the resolved integer via stdout.
+# Mirrors _parallel_resolve_max (parallel-orchestrator.sh) EXACTLY so map and
+# parallel groups agree on the cap and its fail-safe:
+#   - explicit positive integer  → used as-is (then capped at 8)
+#   - "auto" / empty             → ZBUILD_PARALLEL_JOBS env override, else CPU count
+#   - ANYTHING else (non-numeric typo, "0", negative) → CLAMPED TO 1 (fail-safe).
+# #1312 (Copilot): an invalid template value must NOT silently remove the cap by
+# falling through to CPU-count concurrency — that is the opposite of safe. Clamp to 1.
 _strategy_map_resolve_max() {
     local raw="${1:-}"
     local cap=8
-    if [[ "$raw" =~ ^[1-9][0-9]*$ ]]; then
-        local n="$raw"
-        (( n > cap )) && n=$cap
-        printf '%s' "$n"
-        return 0
+    local max="$raw"
+    # "auto" is an explicit request for the CPU-based default (map-specific alias);
+    # normalise it to empty so the empty-branch resolves the default.
+    [[ "$max" == "auto" ]] && max=""
+    if [[ -z "$max" ]]; then
+        if [[ "${ZBUILD_PARALLEL_JOBS:-}" =~ ^[1-9][0-9]*$ ]]; then
+            max="$ZBUILD_PARALLEL_JOBS"
+        else
+            max="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
+            [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
+        fi
     fi
-    # "auto" or empty: mirror _parallel_resolve_max from parallel-orchestrator.sh.
-    local n
-    if [[ "${ZBUILD_PARALLEL_JOBS:-}" =~ ^[1-9][0-9]*$ ]]; then
-        n="$ZBUILD_PARALLEL_JOBS"
-    else
-        n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
-        [[ "$n" =~ ^[1-9][0-9]*$ ]] || n=4
-    fi
-    (( n > cap )) && n=$cap
-    printf '%s' "$n"
+    # Fail-safe clamp: any non-positive-integer (typo, "0", negative) → 1.
+    [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=1
+    (( max > cap )) && max=$cap
+    printf '%s' "$max"
 }
 
 # ─── _strategy_run_map ───────────────────────────────────────────────────────
