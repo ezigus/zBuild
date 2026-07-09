@@ -1,0 +1,32 @@
+id: cycle-multi-exit-when-block
+name: Cycle with multi-condition exit_when (all combinator, block-form conditions)
+defaults:
+  strategy: fanout
+
+build-test-cycle:
+  type: cycle
+  description: "Multi-condition all: block-form conditions (#1284 Fix 1 regression)"
+  flow:
+    - gate-a
+    - gate-b
+  exit_when:
+    all:
+      - stage: gate-a
+        field: verdict
+        op: eq
+        value: pass
+      - stage: gate-b
+        field: verdict
+        op: eq
+        value: pass
+  max_iterations: 5
+  on_max: continue
+
+gate-a:
+  roles: [checker]
+
+gate-b:
+  roles: [checker]
+
+flow:
+  - build-test-cycle

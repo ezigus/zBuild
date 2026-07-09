@@ -159,4 +159,51 @@ blob='{}'
 set +e; _cycle_check_until "$blob"; rc=$?; set -e
 assert_eq "SPEC-4: all — both stages missing → rc=1 (no convergence)" "1" "$rc"
 
+# ── SPEC-5: BLOCK-form conditions parse == inline-form (#1284 Fix 1 regression) ─
+# The single-condition field:/op:/value: awk handlers must NOT consume a block-form
+# condition's continuation lines (which would corrupt cyc_uf/uo/uv and drop rows).
+load_template "$FIXT/cycle-multi-exit-when-block.yaml"
+assert_eq "SPEC-5: block template: EXIT_COMBINATOR=all" \
+    "all" "${_TPL_CYCLE_EXIT_COMBINATOR_build_test_cycle:-}"
+assert_eq "SPEC-5: block template: EXIT_COUNT=2" \
+    "2" "${_TPL_CYCLE_EXIT_COUNT_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 1 stage=gate-a" \
+    "gate-a" "${_TPL_CYCLE_EXIT_1_STAGE_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 1 field=verdict" \
+    "verdict" "${_TPL_CYCLE_EXIT_1_FIELD_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 1 op=eq" \
+    "eq" "${_TPL_CYCLE_EXIT_1_OP_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 1 value=pass" \
+    "pass" "${_TPL_CYCLE_EXIT_1_VALUE_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 2 stage=gate-b" \
+    "gate-b" "${_TPL_CYCLE_EXIT_2_STAGE_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 2 field=verdict" \
+    "verdict" "${_TPL_CYCLE_EXIT_2_FIELD_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 2 op=eq" \
+    "eq" "${_TPL_CYCLE_EXIT_2_OP_build_test_cycle:-}"
+assert_eq "SPEC-5: block cond 2 value=pass" \
+    "pass" "${_TPL_CYCLE_EXIT_2_VALUE_build_test_cycle:-}"
+# Single-condition UNTIL vars MUST stay uncorrupted (empty) for multi-condition.
+assert_eq "SPEC-5: block form leaves UNTIL_FIELD empty (not corrupted)" \
+    "" "${_TPL_CYCLE_UNTIL_FIELD_build_test_cycle:-}"
+assert_eq "SPEC-5: block form leaves UNTIL_OP empty (not corrupted)" \
+    "" "${_TPL_CYCLE_UNTIL_OP_build_test_cycle:-}"
+assert_eq "SPEC-5: block form leaves UNTIL_VALUE empty (not corrupted)" \
+    "" "${_TPL_CYCLE_UNTIL_VALUE_build_test_cycle:-}"
+
+# Runtime semantics match inline all: — both pass → converge, one fail → iterate.
+_CYCLE_TRAP_CYCLE_ID="build-test-cycle"
+_CYCLE_TRAP_ITER=1
+_cycle_load_template "build-test-cycle"
+assert_eq "SPEC-5: block _cycle_load_template EXIT_COMBINATOR=all" \
+    "all" "${_CYCLE_EXIT_COMBINATOR:-}"
+assert_eq "SPEC-5: block _CYCLE_EXIT_CONDITIONS has 2 entries" \
+    "2" "${#_CYCLE_EXIT_CONDITIONS[@]}"
+blob='{"gate-a":{"verdict":"pass","status":"complete"},"gate-b":{"verdict":"pass","status":"complete"}}'
+set +e; _cycle_check_until "$blob"; rc=$?; set -e
+assert_eq "SPEC-5: block all — both pass → rc=0 (converged)" "0" "$rc"
+blob='{"gate-a":{"verdict":"pass","status":"complete"},"gate-b":{"verdict":"fail","status":"complete"}}'
+set +e; _cycle_check_until "$blob"; rc=$?; set -e
+assert_eq "SPEC-5: block all — one fail → rc=1 (keep iterating)" "1" "$rc"
+
 print_test_results

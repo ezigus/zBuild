@@ -570,17 +570,35 @@ load_template() {
                 printf -v "_TPL_CYCLE_EXIT_COMBINATOR_${ew_safe}" '%s' "$ew_comb"
                 printf -v "_TPL_CYCLE_EXIT_COUNT_${ew_safe}"       '%s' "$ew_n"
                 export "_TPL_CYCLE_EXIT_COMBINATOR_${ew_safe}" "_TPL_CYCLE_EXIT_COUNT_${ew_safe}"
-                local ew_i
+                # Consume exactly n conditions of 4 pipe-delimited fields each.
+                # Values never contain '|' in this grammar, so the final field is
+                # read with the same %%|* semantics and any leftover payload (a
+                # stray trailing '|' or a value containing '|') is a malformed row
+                # — fail loudly rather than silently absorb it into the last value.
+                local ew_i ew_more
                 for (( ew_i=1; ew_i<=ew_n; ew_i++ )); do
                     local ew_s ew_f ew_o ew_v
+                    if [[ "$ew_rest" != *"|"* ]] && [[ "$ew_i" -lt "$ew_n" ]]; then
+                        error "load_template: EW row for cycle '${ew_cid}': truncated at condition ${ew_i} of ${ew_n}"
+                        return 1
+                    fi
                     ew_s="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
                     ew_f="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
                     ew_o="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
-                    # Last field: value may itself contain no pipe; be safe.
                     if [[ "$ew_i" -eq "$ew_n" ]]; then
-                        ew_v="$ew_rest"
+                        # Final field: no more separators expected after the value.
+                        ew_v="${ew_rest%%|*}"
+                        ew_more="${ew_rest#"$ew_v"}"
+                        if [[ -n "$ew_more" ]]; then
+                            error "load_template: EW row for cycle '${ew_cid}': trailing data after ${ew_n} condition(s) — malformed row (extra '|' or value contains '|')"
+                            return 1
+                        fi
                     else
                         ew_v="${ew_rest%%|*}"; ew_rest="${ew_rest#*|}"
+                    fi
+                    if [[ -z "$ew_s" || -z "$ew_f" || -z "$ew_o" || -z "$ew_v" ]]; then
+                        error "load_template: EW row for cycle '${ew_cid}': condition ${ew_i} has an empty field (stage/field/op/value all required)"
+                        return 1
                     fi
                     printf -v "_TPL_CYCLE_EXIT_${ew_i}_STAGE_${ew_safe}" '%s' "$ew_s"
                     printf -v "_TPL_CYCLE_EXIT_${ew_i}_FIELD_${ew_safe}" '%s' "$ew_f"
@@ -1233,10 +1251,52 @@ _tpl_validate_cycles() {
         local sod_var="_TPL_CYCLE_SCOPE_ON_DENY_${safe}"; local sod="${!sod_var:-abandon}"
         case "$sod" in abandon) : ;; *) error "cycle '$cid': scope_policy.on_deny must be abandon, got: $sod"; return 1 ;; esac
 
-        # #1284 (ADR-047): skip single-condition validation when multi-condition
-        # exit_when is declared — EW vars replace UNTIL vars in that case.
+        # #1284 (ADR-047): multi-condition exit_when replaces the single-condition
+        # UNTIL vars. When a combinator is present, validate the N conditions at
+        # this preflight layer (mirroring the runtime check in cycle-orchestrator.sh
+        # _cycle_load_template); otherwise validate the single-condition until.stage.
         local ew_comb_check_var="_TPL_CYCLE_EXIT_COMBINATOR_${safe}"
-        if [[ -z "${!ew_comb_check_var:-}" ]]; then
+        local ew_comb="${!ew_comb_check_var:-}"
+        if [[ -n "$ew_comb" ]]; then
+            case "$ew_comb" in
+                all|any) : ;;
+                *) error "cycle '$cid': exit_when combinator must be all|any, got: $ew_comb"; return 1 ;;
+            esac
+            local ew_count_var="_TPL_CYCLE_EXIT_COUNT_${safe}"
+            local ew_count="${!ew_count_var:-}"
+            if [[ -z "$ew_count" ]] || ! [[ "$ew_count" =~ ^[0-9]+$ ]] || [[ "$ew_count" -lt 1 ]]; then
+                error "cycle '$cid': exit_when multi-condition count must be integer >=1, got: ${ew_count:-<unset>}"
+                return 1
+            fi
+            local ew_i
+            for (( ew_i=1; ew_i<=ew_count; ew_i++ )); do
+                local _sv="_TPL_CYCLE_EXIT_${ew_i}_STAGE_${safe}"
+                local _fv="_TPL_CYCLE_EXIT_${ew_i}_FIELD_${safe}"
+                local _ov="_TPL_CYCLE_EXIT_${ew_i}_OP_${safe}"
+                local _vv="_TPL_CYCLE_EXIT_${ew_i}_VALUE_${safe}"
+                local ew_s="${!_sv:-}" ew_f="${!_fv:-}" ew_o="${!_ov:-}" ew_v="${!_vv:-}"
+                if [[ -z "$ew_s" || -z "$ew_f" || -z "$ew_o" || -z "$ew_v" ]]; then
+                    error "cycle '$cid': exit_when condition $ew_i: {stage,field,op,value} all required"
+                    return 1
+                fi
+                case "$ew_f" in
+                    verdict|status) : ;;
+                    *) error "cycle '$cid': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"; return 1 ;;
+                esac
+                case "$ew_o" in
+                    eq|ne) : ;;
+                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"; return 1 ;;
+                esac
+                local found=0
+                for s in "${cs[@]}"; do
+                    [[ "$s" == "$ew_s" ]] && found=1 && break
+                done
+                if [[ $found -ne 1 ]]; then
+                    error "cycle '$cid': exit_when condition $ew_i: stage '$ew_s' is not in cycle stages (${cs[*]})"
+                    return 1
+                fi
+            done
+        else
             # Single-condition: until.stage must be set and in cs[].
             local us_var="_TPL_CYCLE_UNTIL_STAGE_${safe}"
             local us="${!us_var:-}"
@@ -1976,16 +2036,20 @@ _tpl_translate_new_shape() {
             if (in_rb_when && $0 ~ /^[[:space:]]+value:/) {
                 v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_rb_value = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+stage:/) {
+            # #1284 (ADR-047): single-condition handlers must NOT fire once an
+            # all:/any: combinator has been seen (cyc_ew_comb != ""), otherwise a
+            # a block-form condition field:/op:/value: continuation line would be
+            # consumed here — corrupting cyc_uf/cyc_uo/cyc_uv and losing the row.
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+stage:/) {
                 v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_us = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+field:/) {
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+field:/) {
                 v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cyc_uf = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+op:/) {
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+op:/) {
                 v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cyc_uo = trim(v); next
             }
-            if (in_exit_when && $0 ~ /^[[:space:]]+value:/) {
+            if (in_exit_when && cyc_ew_comb == "" && $0 ~ /^[[:space:]]+value:/) {
                 v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_uv = trim(v); next
             }
             # #1284 (ADR-047): multi-condition exit_when — combinator line.
