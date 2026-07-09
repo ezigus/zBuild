@@ -61,21 +61,23 @@ _idmatch() { _find_plugin_for_stage "$1" "$PLUGINS_ROOT" 2>/dev/null || true; }
 
 # ─── SPEC-1: baseline symptom — id-only resolution returns EMPTY for the ─────
 # role-bound stages whose plugin id ≠ stage name. This is the exact failure
-# cycle/parallel hit (lens-*→review-lens; id-match finds no plugin id "lens-*").
-assert_eq "[SPEC-1] id-only (_find_plugin_for_stage) returns EMPTY for lens-security" "" "$(_idmatch lens-security)"
-assert_eq "[SPEC-1] id-only returns EMPTY for lens-correctness" "" "$(_idmatch lens-correctness)"
+# cycle/parallel hit (acceptance-gate→spec-acceptance; id-match finds nothing).
+# #1295: lens-* stages converted to map group "review_lenses" (role review_lens,
+# no plugin named review_lenses) — the surviving role-bound examples are
+# acceptance-gate (→spec-acceptance) and review_lenses (→review-lens).
+assert_eq "[SPEC-1] id-only (_find_plugin_for_stage) returns EMPTY for acceptance-gate" "" "$(_idmatch acceptance-gate)"
+assert_eq "[SPEC-1] id-only returns EMPTY for review_lenses (no id-match plugin, only role-match)" "" "$(_idmatch review_lenses)"
 
 # ─── SPEC-2: the fix — resolve_stage_plugin (role-then-id) resolves the ──────
 # role-bound stages whose plugin id ≠ stage name. cycle_dispatch_stage and
-# parallel_dispatch_stage BOTH call this helper, so this proves both paths.
-assert_eq "[SPEC-2] parallel member lens-security → review-lens"    "review-lens" "$(_resolve lens-security)"
-assert_eq "[SPEC-2] parallel member lens-performance → review-lens" "review-lens" "$(_resolve lens-performance)"
-assert_eq "[SPEC-2] parallel member lens-red-team → review-lens"    "review-lens" "$(_resolve lens-red-team)"
-assert_eq "[SPEC-2] parallel member lens-correctness → review-lens" "review-lens" "$(_resolve lens-correctness)"
-assert_eq "[SPEC-2] parallel member lens-scope → review-lens"       "review-lens" "$(_resolve lens-scope)"
+# map dispatch BOTH call this helper, so this proves both paths.
+# #1295: review_lenses is now a map group (role review_lens → review-lens plugin).
+assert_eq "[SPEC-2] map group review_lenses → review-lens" "review-lens" "$(_resolve review_lenses)"
+assert_eq "[SPEC-2] review-aggregator → review-aggregator (role review_aggregator)" \
+    "review-aggregator" "$(_resolve review-aggregator)"
 
 # Returned path is a real plugin directory with a manifest.
-assert_file_exists "[SPEC-2] resolved lens plugin dir has a manifest" "$(_resolve_raw lens-security)/manifest.yaml"
+assert_file_exists "[SPEC-2] resolved review-lens plugin dir has a manifest" "$(_resolve_raw review_lenses)/manifest.yaml"
 
 # ─── SPEC-3: regression invariant — current cycle members resolve to the SAME ─
 # plugin as before (id-match and role-match are identical for them). build has

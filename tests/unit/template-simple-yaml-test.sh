@@ -43,14 +43,12 @@ set -e
 
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
-# ─── SPEC-2: _TPL_STAGES has exactly 18 entries in canonical order ────────────
+# ─── SPEC-2: _TPL_STAGES has exactly 14 entries in canonical order ────────────
 # CHANGE (B6 #1138, ADR-040): build_test_cycle is recomposed from the retired
 # monolithic objective-gate to the decomposed mechanical gates + gate-aggregator
 # (the objective-gate plugin was then removed in B7 #1139).
 # CHANGE (C3 #1142, ADR-040 §3 / ADR-039): the single `review` stage is replaced
-# by the `review_lenses` advisory parallel group (5 lens member stages) followed
-# by the `review-aggregator` leaf. The group id itself is NOT a flat stage (like a
-# cycle id); its members expand in flow order.
+# by the `review_lenses` advisory group followed by the `review-aggregator` leaf.
 # CHANGE (#1129 Change C, ADR-012): the lint/coverage/mutation read-out gates are
 # DROPPED as cycle members (redundant — mutation runs in the suite; lint+coverage
 # are folded into `--tier all`/`npm test`, run by the `test` member). Their
@@ -58,15 +56,19 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # CHANGE (#1218, ADR-046): `design` is now wrapped in a `design_verify_cycle`
 # (design → design-gate) that loops back to design PRE-build, and the reused
 # `impact` agent is added as a lone advisory-by-placement stage after the cycle.
-# design-gate + impact expand in flow order. The flat sequence is now:
+# design-gate + impact expand in flow order.
+# CHANGE (#1295, ADR-047 §2): review_lenses converted from `type: parallel` to
+# `type: map over: lenses`. The 5 lens-* member stages are replaced by DATA
+# elements dispatched by _strategy_run_map; the group id itself is now the single
+# flat stage entry (not its member stages). The flat sequence is now:
 #   intake→plan→design→design-gate→impact→build→test→shape-floor→acceptance-gate→
-#   secret-scan→gate-aggregator→lens-security→lens-performance→lens-red-team→
-#   lens-correctness→lens-scope→review-aggregator→pr
+#   secret-scan→gate-aggregator→review_lenses→review-aggregator→pr
+# (review_lenses occupies ONE slot, not five — elements are work-unit env vars.)
 # objective-gate AND review-report are UNREFERENCED here; test_assessment omitted.
 
-assert_eq "[SPEC-2] _TPL_STAGES count is 18" "18" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-2] _TPL_STAGES count is 14" "14" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(intake plan design design-gate impact build test shape-floor acceptance-gate secret-scan gate-aggregator lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr)
+_expected_stages=(intake plan design design-gate impact build test shape-floor acceptance-gate secret-scan gate-aggregator review_lenses review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -136,38 +138,27 @@ assert_eq "[SPEC-3] build router max_turns" "0"           "$_TPL_STAGE_ROUTER_MA
 assert_eq "[SPEC-3] test roles"    "tester"       "$_TPL_STAGE_ROLES_test"
 assert_eq "[SPEC-3] test io_dests" "file,stdout"  "$_TPL_STAGE_IO_DESTS_test"
 
-# review_lenses members (C3 #1142): all five lens stages bind by role review_lens
-# to the SAME review-lens plugin; they differ only by the lens id derived from the
-# stage name. The legacy single `review` stage (role review_report) is removed.
-assert_eq "[SPEC-3] review stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_review:-}"
-assert_eq "[SPEC-3] lens-security roles"    "review_lens" "$_TPL_STAGE_ROLES_lens_security"
-assert_eq "[SPEC-3] lens-performance roles" "review_lens" "$_TPL_STAGE_ROLES_lens_performance"
-assert_eq "[SPEC-3] lens-red-team roles"    "review_lens" "$_TPL_STAGE_ROLES_lens_red_team"
-assert_eq "[SPEC-3] lens-correctness roles" "review_lens" "$_TPL_STAGE_ROLES_lens_correctness"
-assert_eq "[SPEC-3] lens-scope roles"       "review_lens" "$_TPL_STAGE_ROLES_lens_scope"
-# Issue OUT (ADR-015/039): lens-* members are FILE-ONLY — dropping the stdout
-# destination suppresses both the streamed prompt banner AND the raw-JSON output
-# banner; the operator instead sees ONE human-readable line per lens (rendered by
-# the runner's parallel_member_complete_hook). Artifacts (lens-<id>.json) intact.
-assert_eq "[SPEC-3] lens-security io_dests"    "file" "$_TPL_STAGE_IO_DESTS_lens_security"
-assert_eq "[SPEC-3] lens-performance io_dests" "file" "$_TPL_STAGE_IO_DESTS_lens_performance"
-assert_eq "[SPEC-3] lens-red-team io_dests"    "file" "$_TPL_STAGE_IO_DESTS_lens_red_team"
-assert_eq "[SPEC-3] lens-correctness io_dests" "file" "$_TPL_STAGE_IO_DESTS_lens_correctness"
-assert_eq "[SPEC-3] lens-scope io_dests"       "file" "$_TPL_STAGE_IO_DESTS_lens_scope"
-assert_eq "[SPEC-3] lens-security router timeout"   "300" "$_TPL_STAGE_ROUTER_TIMEOUT_lens_security"
-assert_eq "[SPEC-3] lens-security router max_turns" "25"  "$_TPL_STAGE_ROUTER_MAX_TURNS_lens_security"
+# review_lenses map group (#1295, ADR-047 §2): converted from type:parallel to
+# type:map. The legacy single `review` stage (role review_report) is removed.
+# lens-* individual stage vars are GONE (no stage_def_row for them any more).
+assert_eq "[SPEC-3] review stage removed (role var unset)"        "" "${_TPL_STAGE_ROLES_review:-}"
+assert_eq "[SPEC-3] lens-security stage removed (role var unset)" "" "${_TPL_STAGE_ROLES_lens_security:-}"
+assert_eq "[SPEC-3] lens-scope stage removed (role var unset)"    "" "${_TPL_STAGE_ROLES_lens_scope:-}"
+# review_lenses map group: roles/io/router come from the GROUP stage itself.
+assert_eq "[SPEC-3] review_lenses is a map group" "map" "${_TPL_STAGE_TYPE_review_lenses:-}"
+assert_eq "[SPEC-3] review_lenses roles"     "review_lens" "${_TPL_MAP_ROLES_review_lenses:-}"
+assert_eq "[SPEC-3] review_lenses over dim"  "lenses"      "${_TPL_MAP_OVER_review_lenses:-}"
+assert_eq "[SPEC-3] review_lenses elements csv" \
+    "security,performance,red-team,correctness,scope" \
+    "${_TPL_MAP_ELEMENTS_review_lenses:-}"
+assert_eq "[SPEC-3] review_lenses io_dests"     "file" "${_TPL_STAGE_IO_DESTS_review_lenses:-}"
+assert_eq "[SPEC-3] review_lenses router timeout"   "300" "${_TPL_STAGE_ROUTER_TIMEOUT_review_lenses:-}"
+assert_eq "[SPEC-3] review_lenses router max_turns" "25"  "${_TPL_STAGE_ROUTER_MAX_TURNS_review_lenses:-}"
 
 # review-aggregator (C2 #1141): advisory merge of the lens results; no LLM call,
 # so no router section. Bound by role review_aggregator.
 assert_eq "[SPEC-3] review-aggregator roles"    "review_aggregator" "$_TPL_STAGE_ROLES_review_aggregator"
 assert_eq "[SPEC-3] review-aggregator io_dests" "file,stdout"       "$_TPL_STAGE_IO_DESTS_review_aggregator"
-
-# review_lenses parallel group registered (member-of mapping + group type).
-assert_eq "[SPEC-3] review_lenses is a parallel group" "parallel" "${_TPL_STAGE_TYPE_review_lenses:-}"
-assert_eq "[SPEC-3] lens-security member_of review_lenses" "review_lenses" "${_TPL_PARALLEL_MEMBER_OF_lens_security:-}"
-assert_eq "[SPEC-3] review_lenses members csv" \
-    "lens-security,lens-performance,lens-red-team,lens-correctness,lens-scope" \
-    "${_TPL_PARALLEL_FLOW_review_lenses:-}"
 
 # pr (T0 tool stage — no router section)
 assert_eq "[SPEC-3] pr roles"    "pr"           "$_TPL_STAGE_ROLES_pr"
@@ -189,15 +180,16 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── SPEC-11: dispatch units are 8 (cycles + parallel groups each fold to one) ─
+# ─── SPEC-11: dispatch units are 8 (cycles + map groups each fold to one) ─────
 # B6 (#1138): the build_test_cycle's members collapse into ONE cycle dispatch
 # unit (6 members after #1129 Change C dropped lint/coverage/mutation). C3
-# (#1142): the review_lenses parallel group's 5 lens members collapse
-# into ONE parallel dispatch unit, and review-aggregator is its own stage unit.
+# (#1142): the review_lenses group collapses into ONE dispatch unit, and
+# review-aggregator is its own stage unit.
 # #1218 (ADR-046): design + design-gate collapse into ONE design_verify_cycle
 # dispatch unit, and impact is its own stage unit right after it.
+# #1295 (ADR-047 §2): review_lenses converted from parallel:→map:review_lenses.
 # Count is now 8: intake, plan, cycle:design_verify_cycle, stage:impact,
-# cycle:build_test_cycle, parallel:review_lenses, stage:review-aggregator, pr.
+# cycle:build_test_cycle, map:review_lenses, stage:review-aggregator, pr.
 
 assert_eq "[SPEC-11] dispatch units count is 8" "8" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[0]}"
@@ -205,7 +197,7 @@ assert_eq "[SPEC-11] dispatch[1] stage:plan"           "stage:plan"           "$
 assert_eq "[SPEC-11] dispatch[2] cycle:design_verify_cycle" "cycle:design_verify_cycle" "${_TPL_DISPATCH_UNITS[2]}"
 assert_eq "[SPEC-11] dispatch[3] stage:impact"         "stage:impact"         "${_TPL_DISPATCH_UNITS[3]}"
 assert_eq "[SPEC-11] dispatch[4] cycle:build_test_cycle" "cycle:build_test_cycle" "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] parallel:review_lenses" "parallel:review_lenses" "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "[SPEC-11] dispatch[5] map:review_lenses"    "map:review_lenses"    "${_TPL_DISPATCH_UNITS[5]}"
 assert_eq "[SPEC-11] dispatch[6] stage:review-aggregator" "stage:review-aggregator" "${_TPL_DISPATCH_UNITS[6]}"
 assert_eq "[SPEC-11] dispatch[7] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[7]}"
 

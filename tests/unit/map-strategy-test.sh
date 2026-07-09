@@ -204,15 +204,16 @@ else
     assert_fail "SPEC-5: platforms dim passes element as platform arg" "log: $(cat "$MWU_ARGS_LOG")"
 fi
 
-# lenses: NO platform arg (nargs=3), so ZBUILD_PLATFORM defaults to generic
+# lenses (#1295): element+dimension are passed as args 5+6; platform stays "generic"
+# so ZBUILD_PLATFORM is NOT hijacked by the element name.
 declare -a _MAP_DIM_lenses5=("security")
 export _MAP_DIM_lenses5
 : > "$MWU_ARGS_LOG"
 set +e
 _strategy_run_map "map-pool-007" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "lenses5" >/dev/null 2>&1
 set -e
-if /usr/bin/grep -q "^nargs=3 " "$MWU_ARGS_LOG" && ! /usr/bin/grep -q "platform=\[security\]" "$MWU_ARGS_LOG"; then
-    assert_pass "SPEC-5: non-platform dim omits platform arg — element 'security' does NOT become ZBUILD_PLATFORM"
+if /usr/bin/grep -q "^nargs=6 platform=\[generic\]" "$MWU_ARGS_LOG" && ! /usr/bin/grep -q "platform=\[security\]" "$MWU_ARGS_LOG"; then
+    assert_pass "SPEC-5: non-platform dim passes generic platform — element 'security' does NOT become ZBUILD_PLATFORM"
 else
     assert_fail "SPEC-5: non-platform dim must not pass element as platform" "log: $(cat "$MWU_ARGS_LOG")"
 fi

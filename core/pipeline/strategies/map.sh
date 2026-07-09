@@ -104,14 +104,13 @@ _strategy_run_map() {
             # Only the platforms dimension populates ZBUILD_PLATFORM (ADR-009 §6
             # env contract) — pass the element as the 4th arg so the platforms
             # path stays byte-identical to fanout. For non-platform dimensions
-            # (lenses/mutants), do NOT overload ZBUILD_PLATFORM: omit the 4th arg
-            # so it defaults to "generic". Carrying the element in a generic
-            # work-unit env var is deferred (mechanic-only; no template wires a
-            # non-platform map yet — would extend common.sh's work-unit contract).
+            # (lenses/mutants), pass the generic element identity via args 5+6
+            # (ZBUILD_MAP_ELEMENT / ZBUILD_MAP_DIMENSION, issue #1295, ADR-047 §2)
+            # so each work unit is distinguishable without hijacking ZBUILD_PLATFORM.
             if [[ "$dimension" == "platforms" ]]; then
                 wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element")"
             else
-                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file")"
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "generic" "$element" "$dimension")"
             fi || {
                 warn "map: failed to create work unit for role=$role element=$element" || true
                 fail_count=$((fail_count + 1))

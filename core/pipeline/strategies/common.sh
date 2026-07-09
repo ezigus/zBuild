@@ -51,13 +51,21 @@ _strategy_orch_scratch_dir() {
     fi
 }
 
-# ─── _strategy_make_work_unit <plugin_dir> <stage> <state_file> <platform> ───
+# ─── _strategy_make_work_unit <plugin_dir> <stage> <state_file> [<platform>] [<map_element>] [<map_dimension>] ───
 # Creates a self-contained executable shell script that calls plugin_hook_call.
 # Validates stage and platform before baking into the script body.
 # Prints the path of the temp file; caller is responsible for cleanup (rm -f).
 # exit 0: success; exit 2: validation failure; exit 1: temp file creation failure.
+#
+# map_element / map_dimension (issue #1295, ADR-047 §2): generic element identity
+# for non-platform map dimensions. When set, exports to the work unit:
+#   ZBUILD_MAP_ELEMENT=<element>    — the current element (e.g. "security")
+#   ZBUILD_MAP_DIMENSION=<dim>      — the dimension name (e.g. "lenses")
+# Plugins read ZBUILD_MAP_ELEMENT to derive per-element identity when
+# ZBUILD_CURRENT_STAGE is the group id, not an element-specific stage id.
 _strategy_make_work_unit() {
     local plugin_dir="$1" stage="$2" state_file="$3" platform="${4:-generic}"
+    local map_element="${5:-}" map_dimension="${6:-}"
 
     _strategy_validate_stage "$stage"   || return 2
     _strategy_validate_platform "$platform" || return 2
@@ -86,6 +94,12 @@ _strategy_make_work_unit() {
     # ADR-001's hook-context table lists the older name ZBUILD_TARGET_PLATFORM
     # for the same value. We export both so plugins can rely on either; the
     # canonical name going forward is ZBUILD_PLATFORM (ADR-009 §6).
+    local _map_env_lines=""
+    if [[ -n "$map_element" ]]; then
+        _map_env_lines="export ZBUILD_MAP_ELEMENT='${map_element}'
+export ZBUILD_MAP_DIMENSION='${map_dimension}'"
+    fi
+
     cat > "$wu" <<WORKUNIT
 #!/usr/bin/env bash
 set -euo pipefail
@@ -95,6 +109,7 @@ source '${_ZBUILD_ROOT}/core/plugin-registry/registry.sh'
 export ZBUILD_PLATFORM='${platform}'
 export ZBUILD_TARGET_PLATFORM='${platform}'
 export ZBUILD_ROOT='${_ZBUILD_ROOT}'
+${_map_env_lines}
 plugin_hook_call '${plugin_dir}' run '${stage}' '${state_file}'
 WORKUNIT
 

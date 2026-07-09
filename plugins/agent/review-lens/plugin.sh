@@ -41,8 +41,11 @@ source "$_RL_DIR/lib/charters.sh"
 # Resolve the lens identity: explicit override, else the running stage id, else
 # the manifest default. A leading "lens-"/"lens_"/"review-lens-" prefix on a
 # stage id is stripped so a stage `lens_security` maps to the `security` charter.
+# Issue #1295: when dispatched via `map over: lenses`, ZBUILD_MAP_ELEMENT carries
+# the bare element name (e.g. "security") — use it when ZBUILD_CURRENT_STAGE is
+# the group id (no strippable prefix) and ZBUILD_REVIEW_LENS_ID is unset.
 _review_lens_id() {
-    local lens="${ZBUILD_REVIEW_LENS_ID:-${ZBUILD_CURRENT_STAGE:-}}"
+    local lens="${ZBUILD_REVIEW_LENS_ID:-${ZBUILD_MAP_ELEMENT:-${ZBUILD_CURRENT_STAGE:-}}}"
     lens="${lens#review-lens-}"; lens="${lens#lens-}"; lens="${lens#lens_}"
     printf '%s' "$lens"
 }
