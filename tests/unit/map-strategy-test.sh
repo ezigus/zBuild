@@ -782,6 +782,54 @@ else
 fi
 unset _spec14_jobs_save
 
+# ─── SPEC-15: unknown on_member_error → conservative collect default ──────────
+# #1312 (Copilot): map does NOT validate on_member_error (matching parallel_group_run,
+# which also silently defaults unknown values). An unknown/typo value must fall through
+# to the CONSERVATIVE default (collect: failures propagate), NOT to continue — a typo
+# must never accidentally make a group non-blocking. Verify: with a failing element,
+# on_member_error="bogus" propagates the failure (non-zero rc), exactly like "collect".
+print_test_section "SPEC-15: unknown on_member_error → collect (conservative default) (issue #1312)"
+
+declare -a _MAP_DIM_batch15=("ok" "fail")
+export _MAP_DIM_batch15
+
+SPEC15_LOG="$TEST_TEMP_DIR/spec15-spy.log"
+: > "$SPEC15_LOG"
+_spec15_orch_spawn()    { return 0; }
+_spec15_orch_dispatch() { return 0; }
+_spec15_orch_collect()  { printf 'orch_collect %s\n' "$1" >> "$SPEC15_LOG"
+                           # Second batch (element 2, max=1) fails.
+                           local _cnt; _cnt=$(/usr/bin/grep -c "orch_collect" "$SPEC15_LOG")
+                           [[ "$_cnt" -eq 2 ]] && return 1
+                           return 0; }
+_spec15_orch_shutdown() { return 0; }
+
+orch_spawn()    { _spec15_orch_spawn "$@"; }
+orch_dispatch() { _spec15_orch_dispatch "$@"; }
+orch_collect()  { _spec15_orch_collect "$@"; }
+orch_shutdown() { _spec15_orch_shutdown "$@"; }
+
+# Unknown value "bogus" — must behave like collect (propagate the failure).
+set +e
+_strategy_run_map "spec15-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch15" "" "1" "bogus"
+spec15_unknown_rc=$?
+set -e
+
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+if [[ "$spec15_unknown_rc" -ne 0 ]]; then
+    assert_pass "SPEC-15: unknown on_member_error='bogus' propagates failure like collect (rc=$spec15_unknown_rc)"
+else
+    assert_fail "SPEC-15: unknown on_member_error must fall through to collect (propagate failure)" \
+        "got rc=0 — a typo silently made the group non-blocking (unsafe)"
+fi
+
+unset _MAP_DIM_batch15
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

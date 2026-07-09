@@ -46,14 +46,17 @@ _strategy_map_resolve_dimension() {
 # Input: raw max value from template (_TPL_MAP_MAX_<gid>), e.g. "4", "auto", "".
 # Mirrors _parallel_resolve_max (parallel-orchestrator.sh) EXACTLY so map and
 # parallel groups agree on the cap and its fail-safe:
-#   - explicit positive integer  → used as-is (then capped at 8)
+#   - explicit positive integer  → used as-is (then capped at _PARALLEL_MAX_JOBS_CAP)
 #   - "auto" / empty             → ZBUILD_PARALLEL_JOBS env override, else CPU count
 #   - ANYTHING else (non-numeric typo, "0", negative) → CLAMPED TO 1 (fail-safe).
 # #1312 (Copilot): an invalid template value must NOT silently remove the cap by
 # falling through to CPU-count concurrency — that is the opposite of safe. Clamp to 1.
 _strategy_map_resolve_max() {
     local raw="${1:-}"
-    local cap=8
+    # #1312 (Copilot): reuse the parallel path's readonly cap so map and parallel
+    # stay in sync if it ever changes — don't duplicate the literal. Falls back to 8
+    # only when map.sh is sourced standalone (unit tests) without the parallel module.
+    local cap="${_PARALLEL_MAX_JOBS_CAP:-8}"
     local max="$raw"
     # "auto" is an explicit request for the CPU-based default (map-specific alias);
     # normalise it to empty so the empty-branch resolves the default.
@@ -95,6 +98,9 @@ _strategy_map_resolve_max() {
 #   on_member_error  — "collect" (default) or "continue" (issue #1312).
 #                      continue: a failing element does NOT abort the group (return 0);
 #                      collect:  any failure is propagated (return 1/2).
+#                      Unknown values are NOT validated — they fall through to collect
+#                      (the conservative default), matching parallel_group_run which
+#                      also silently defaults unknown values to its safe branch.
 #                      Mirrors parallel_group_run on_member_error semantics (ADR-039).
 #
 # Dispatches one work unit per role×element pair.
@@ -281,6 +287,16 @@ _strategy_run_map() {
     # fails if any element failed). runner.sh's strategy: map/map:* call sites rely
     # on this default. on_member_error=continue mirrors parallel_group_run: all
     # elements run regardless of failures; group returns 0 even on partial/all-fail.
+    #
+    # #1312 (Copilot): unknown on_member_error values are NOT validated — they fall
+    # through to the collect branch below (the more CONSERVATIVE default). This
+    # matches parallel_group_run, which also does not validate: it only special-cases
+    # its recognised enum (`== "collect"`) and treats anything else as its own safe
+    # default (parallel-orchestrator.sh:317). Neither path fails loud on a typo. Map
+    # deliberately picks collect (not continue) as the fall-through so a typo cannot
+    # accidentally make a group non-blocking — safer to over-report than to swallow
+    # a failure. (parallel defaults empty→continue; map defaults empty→collect per
+    # its strategy: call-site contract, but both fall through to their safe default.)
     if [[ "$on_member_error" == "continue" ]]; then
         return 0
     fi
