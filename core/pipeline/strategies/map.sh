@@ -70,7 +70,11 @@ _strategy_map_resolve_max() {
 # ─── _strategy_run_map ───────────────────────────────────────────────────────
 # Usage: _strategy_run_map <pool_id> <stage> <roles_out> <state_file> <plugins_root> \
 #                          [dimension] [env_target] [max_parallel] [on_member_error]
-#   pool_id          — caller-supplied, already validated (no orch_spawn called here)
+#   pool_id          — caller-supplied, already validated. Used as the base for
+#                      per-batch sub-pool ids ("<base>-b<N>", truncated to fit the
+#                      64-char backend limit). The FIFO-batch loop below spawns and
+#                      shuts down one sub-pool per batch via orch_spawn/orch_shutdown;
+#                      the caller's own pool_id is also orch_shutdown at the end.
 #   stage            — stage name (e.g. "intake")
 #   roles_out        — newline-delimited list of role names
 #   state_file       — path to pipeline state file
@@ -183,9 +187,18 @@ _strategy_run_map() {
     local total_wu="${#wu_list[@]}"
     local batch_start=0 batch_seq=0
     local -a batch_plugins=()
+    # #1312 (Copilot): backends validate pool_id against ^[a-zA-Z0-9_-]{1,64}$.
+    # The per-batch "-b<N>" suffix must not push the id past 64 chars, or orch_spawn
+    # fails and the whole batch is silently skipped. Truncate the base so
+    # "<base>-b<N>" always fits: reserve 10 chars for the largest realistic suffix
+    # (e.g. "-b99999999"), keeping the base at ≤54 chars.
+    local _sub_pool_base="$pool_id"
+    if [[ ${#_sub_pool_base} -gt 54 ]]; then
+        _sub_pool_base="${_sub_pool_base:0:54}"
+    fi
     while [[ $batch_start -lt $total_wu ]]; do
         batch_seq=$(( batch_seq + 1 ))
-        local sub_pool_id="${pool_id}-b${batch_seq}"
+        local sub_pool_id="${_sub_pool_base}-b${batch_seq}"
 
         # Spawn a sub-pool for this batch.
         orch_spawn "$sub_pool_id" 2>/dev/null || {

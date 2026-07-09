@@ -487,6 +487,89 @@ fi
 
 unset -v _MAP_DIM_spec10
 
+# ─── SPEC-11: long pool_id — sub-pool ids stay within the 64-char limit ───────
+# #1312 (Copilot): backends validate pool_id against ^[a-zA-Z0-9_-]{1,64}$.
+# A near-64-char base pool_id + the per-batch "-b<N>" suffix must NOT exceed 64,
+# or orch_spawn rejects it and the batch is silently skipped. The truncation in
+# _strategy_run_map must keep every sub-pool id valid so ALL batches dispatch.
+print_test_section "SPEC-11: long pool_id — every batch dispatches (no over-64 skip) (issue #1312)"
+
+declare -a _MAP_DIM_batch11=("a" "b" "c" "d" "e")
+export _MAP_DIM_batch11
+
+SPEC11_LOG="$TEST_TEMP_DIR/spec11-spy.log"
+: > "$SPEC11_LOG"
+# Spy enforces the REAL backend validation: reject any pool_id > 64 chars or with
+# invalid chars, exactly like orch-bash-parallel/orch-sequential. A rejected spawn
+# returns 1 → the batch would be skipped, so a passing test proves truncation works.
+_spec11_orch_spawn() {
+    local pid="$1"
+    if [[ ! "$pid" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
+        printf 'orch_spawn REJECT %s (len=%s)\n' "$pid" "${#pid}" >> "$SPEC11_LOG"
+        return 1
+    fi
+    printf 'orch_spawn OK %s (len=%s)\n' "$pid" "${#pid}" >> "$SPEC11_LOG"
+    return 0
+}
+_spec11_orch_dispatch() { printf 'orch_dispatch %s\n' "$1" >> "$SPEC11_LOG"; return 0; }
+_spec11_orch_collect()  { printf 'orch_collect %s\n'  "$1" >> "$SPEC11_LOG"; return 0; }
+_spec11_orch_shutdown() { return 0; }
+
+orch_spawn()    { _spec11_orch_spawn "$@"; }
+orch_dispatch() { _spec11_orch_dispatch "$@"; }
+orch_collect()  { _spec11_orch_collect "$@"; }
+orch_shutdown() { _spec11_orch_shutdown "$@"; }
+
+# A base pool_id at the 64-char boundary (max valid). Any "-b<N>" suffix without
+# truncation would push it to 67+ chars → rejected. 60 'x' chars + "map-" prefix.
+_spec11_long_pool="map-$(printf 'x%.0s' {1..60})"  # 4 + 60 = 64 chars
+
+set +e
+_strategy_run_map "$_spec11_long_pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch11" "" "2" "continue"
+spec11_rc=$?
+set -e
+
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+assert_exit_code "SPEC-11: long pool_id run returns 0 (on_member_error=continue)" "0" "$spec11_rc"
+
+spec11_reject_count=0
+spec11_reject_count=$(/usr/bin/grep -c "REJECT" "$SPEC11_LOG" 2>/dev/null) || spec11_reject_count=0
+if [[ "$spec11_reject_count" -eq 0 ]]; then
+    assert_pass "SPEC-11: no sub-pool id rejected — every batch spawned (truncation keeps ids ≤64)"
+else
+    assert_fail "SPEC-11: sub-pool id exceeded 64 chars and was rejected" \
+        "$(/usr/bin/grep REJECT "$SPEC11_LOG")"
+fi
+
+spec11_dispatch_count=0
+spec11_dispatch_count=$(/usr/bin/grep -c "^orch_dispatch" "$SPEC11_LOG" 2>/dev/null) || spec11_dispatch_count=0
+if [[ "$spec11_dispatch_count" -eq 5 ]]; then
+    assert_pass "SPEC-11: all 5 work units dispatched despite long base pool_id (no silently-skipped batch)"
+else
+    assert_fail "SPEC-11: all 5 work units must dispatch despite long pool_id" \
+        "got $spec11_dispatch_count (log: $(cat "$SPEC11_LOG"))"
+fi
+
+# Assert the constructed sub-pool ids never exceeded 64 chars (positive proof).
+spec11_maxlen_ok=1
+while IFS= read -r _sp_line; do
+    _sp_id="${_sp_line#orch_spawn OK }"
+    _sp_id="${_sp_id% (len=*}"
+    [[ ${#_sp_id} -gt 64 ]] && spec11_maxlen_ok=0
+done < <(/usr/bin/grep "^orch_spawn OK" "$SPEC11_LOG")
+if [[ "$spec11_maxlen_ok" -eq 1 ]]; then
+    assert_pass "SPEC-11: all spawned sub-pool ids are ≤64 chars"
+else
+    assert_fail "SPEC-11: a spawned sub-pool id exceeded 64 chars" "$(cat "$SPEC11_LOG")"
+fi
+
+unset _MAP_DIM_batch11
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results
