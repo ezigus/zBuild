@@ -234,8 +234,12 @@ out="$(bash "$RUNNER" --issue 83 --dry-run --template runner-state-dir-minimal 2
 assert_contains "--template runner-state-dir-minimal dry-run shows intake"  "$out" "intake"
 assert_contains "--template runner-state-dir-minimal dry-run shows build"   "$out" "build"
 
-out="$(bash "$RUNNER" --issue 83 --dry-run --template nonexistent 2>&1)"
-assert_contains "missing template falls back to built-in stages"  "$out" "intake"
+# #1283 (ADR-047 §6): a named template whose file is absent now FAILS CLOSED
+# (was a hardcoded built-in `intake security-lens output` roster — `output` was
+# never a real stage). A run/preview needs a valid template.
+set +e; out="$(bash "$RUNNER" --issue 83 --dry-run --template nonexistent 2>&1)"; _rc_nt=$?; set -e
+assert_eq "missing template fails closed (rc=2) [#1283]" "2" "$_rc_nt"
+assert_contains "missing template error names the template" "$out" "not found"
 
 # ─── Test 12: role-based dispatch — resolver path executes correctly ───────────
 # Helpers for role-based plugins (provides.role field)

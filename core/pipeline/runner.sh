@@ -840,17 +840,24 @@ main() {
         fi
     fi
 
-    # Load template, distinguishing "not found" from "found but invalid":
+    # Load template. All three failure modes fail closed (#1283, ADR-047 §6 — the
+    # mechanic no longer carries a hardcoded built-in stage roster):
     #   - template FILE missing (resolve_template_file returns a non-existent
-    #     path) → fall back to the built-in stage list (Test 11).
+    #     path) → error, abort (rc=2).
     #   - file EXISTS but load_template fails → a genuine config error, e.g. an
     #     invalid merge_policy enum (#1057 review): surface its stderr (no
-    #     2>/dev/null) and abort, rather than masking it as "not found".
-    #   - loads cleanly but defines no stages → built-in fallback.
+    #     2>/dev/null) and abort.
+    #   - loads cleanly but defines no stages → malformed template, abort.
     local active_stages=()
     if [[ ! -f "$template_file" ]]; then
-        warn "Template '$template' not found; using built-in stage list"
-        active_stages=(intake security-lens output)
+        # ADR-047 §6: fail-closed. The old built-in fallback list hardcoded stage
+        # names (intake security-lens output — `output` was never a real stage) in
+        # the mechanic. A run/preview needs a valid template; a missing one is a
+        # config error, not a silent bogus roster. (No --template defaults to the
+        # shipped `simple` template, which resolves; this branch fires only on an
+        # explicitly-named template whose file is absent.)
+        error "Template '$template' not found (no file at '$template_file'); cannot run without a valid template — check the --template name or install the template"
+        return 2
     elif ! load_template "$template_file"; then
         error "Failed to load template '$template' (see error above); aborting"
         return 2
@@ -879,8 +886,10 @@ main() {
             return 2
         fi
     else
-        warn "Template '$template' defines no stages; using built-in stage list"
-        active_stages=(intake security-lens output)
+        # ADR-047 §6: fail-closed (was a hardcoded built-in roster). A template that
+        # loads but declares zero stages is malformed — an empty pipeline can't run.
+        error "Template '$template' defines no stages; cannot run an empty pipeline (the template is malformed)"
+        return 2
     fi
 
     # ADR-020 (#496) pre-flight inter-stage data contract validator.
@@ -2298,10 +2307,21 @@ main() {
             _cc_ts="$(_runner_now_short)"
             _cc_dur="$(_runner_duration_token "$stage")"
             echo -e "${_vc}${BOLD}${_vg}${RESET} Stage ${_sc2}${BOLD}${stage}${RESET} complete  ${DIM}(finished ${_cc_ts} · ${_cc_dur})${RESET}" >&2
-            # After intake completes, append user-provided scope overrides to
-            # scope-manifest.md so intake's detection output is preserved alongside
-            # the operator's --scope paths.
-            if [[ "$stage" == "intake" && -f "$state_dir/scope-override.md" ]]; then
+            # ADR-047 §6: the runner names no stage. A stage that declares
+            # `capabilities.merges_scope_override: true` merges the operator's
+            # --scope paths (scope-override.md) into its scope-manifest.md output
+            # after it completes, so the operator's paths ride alongside the
+            # stage's own detection output. `intake` declares this capability; the
+            # runner keys on the flag, not the stage name.
+            # Resolve the completed stage's manifest by role-then-id (ADR-042) — NOT
+            # the id-only $_verdict_manifest — so a role-bound stage (flow name ≠
+            # plugin id) that declares the capability is honored too.
+            _manifest_graph_ensure_yaml_get 2>/dev/null || true
+            local _msov_dir _msov_manifest=""
+            _msov_dir="$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)"
+            [[ -n "$_msov_dir" ]] && _msov_manifest="$_msov_dir/manifest.yaml"
+            if [[ -f "$state_dir/scope-override.md" && -n "$_msov_manifest" ]] \
+               && [[ "$(yaml_get "$_msov_manifest" "capabilities.merges_scope_override" 2>/dev/null)" == "true" ]]; then
                 local scope_manifest="$state_dir/scope-manifest.md"
                 # Extract only '+ <path>' lines from the override file and append.
                 # Intentional fail-open: scope-override.md may not exist (no --scope flag used)
