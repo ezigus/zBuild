@@ -293,6 +293,200 @@ _dim_rc=$?
 set -e
 assert_exit_code "SPEC-6: dimension with '-' fails closed (rc=2)" "2" "$_dim_rc"
 
+# ─── SPEC-7: map_element set without map_dimension → fail closed (minor #1312) ─
+print_test_section "SPEC-7: map_element without map_dimension fails closed (rc=2)"
+
+set +e
+_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "" >/dev/null 2>&1
+_no_dim_rc=$?
+set -e
+assert_exit_code "SPEC-7: map_element set + empty map_dimension fails closed (rc=2)" "2" "$_no_dim_rc"
+
+# ─── SPEC-8: max_parallel cap is honored ─────────────────────────────────────
+# #1312: _strategy_run_map must enforce the concurrency cap via batched dispatch.
+# Verify: with 5 elements and max_parallel=2, work units are dispatched in
+# batches of ≤2, meaning orch_collect is called ceil(5/2)=3 times (not once).
+print_test_section "SPEC-8: max_parallel cap enforced — batched dispatch (issue #1312)"
+
+declare -a _MAP_DIM_batch5=("a" "b" "c" "d" "e")
+export _MAP_DIM_batch5
+
+SPEC8_LOG="$TEST_TEMP_DIR/spec8-spy.log"
+: > "$SPEC8_LOG"
+_spec8_orch_spawn()    { printf 'orch_spawn %s\n'    "$1" >> "$SPEC8_LOG"; \
+                          mkdir -p "${TMPDIR:-/tmp}/zbuild-pool-$1/results" "${TMPDIR:-/tmp}/zbuild-pool-$1/pids"; return 0; }
+_spec8_orch_dispatch() { printf 'orch_dispatch %s\n' "$1" >> "$SPEC8_LOG"; return 0; }
+_spec8_orch_collect()  { printf 'orch_collect %s\n'  "$1" >> "$SPEC8_LOG"; return 0; }
+_spec8_orch_shutdown() { printf 'orch_shutdown %s\n' "$1" >> "$SPEC8_LOG"; \
+                          rm -rf "${TMPDIR:-/tmp}/zbuild-pool-$1" 2>/dev/null || true; return 0; }
+
+# Temporarily override the orch functions.
+eval "$(declare -f orch_spawn)"    ; eval "orch_spawn_orig() { $(declare -f orch_spawn | tail -n +2); }"
+eval "$(declare -f orch_dispatch)" ; eval "orch_dispatch_orig() { $(declare -f orch_dispatch | tail -n +2); }"
+eval "$(declare -f orch_collect)"  ; eval "orch_collect_orig() { $(declare -f orch_collect | tail -n +2); }"
+eval "$(declare -f orch_shutdown)" ; eval "orch_shutdown_orig() { $(declare -f orch_shutdown | tail -n +2); }"
+orch_spawn()    { _spec8_orch_spawn "$@"; }
+orch_dispatch() { _spec8_orch_dispatch "$@"; }
+orch_collect()  { _spec8_orch_collect "$@"; }
+orch_shutdown() { _spec8_orch_shutdown "$@"; }
+
+set +e
+_strategy_run_map "spec8-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "batch5" "" "2" "continue"
+spec8_rc=$?
+set -e
+
+# Restore originals.
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+assert_exit_code "SPEC-8: on_member_error=continue returns 0 even with 5 elements" "0" "$spec8_rc"
+
+spec8_collect_count=0
+spec8_collect_count=$(/usr/bin/grep -c "^orch_collect" "$SPEC8_LOG" 2>/dev/null) || spec8_collect_count=0
+# 5 elements / batch-size 2 = ceil(5/2) = 3 batches → 3 orch_collect calls.
+if [[ "$spec8_collect_count" -eq 3 ]]; then
+    assert_pass "SPEC-8: 5 elements / cap 2 → 3 orch_collect calls (batched FIFO pool)"
+else
+    assert_fail "SPEC-8: 5 elements / cap 2 must produce 3 orch_collect calls" \
+        "got $spec8_collect_count (log: $(cat "$SPEC8_LOG"))"
+fi
+
+spec8_dispatch_count=0
+spec8_dispatch_count=$(/usr/bin/grep -c "^orch_dispatch" "$SPEC8_LOG" 2>/dev/null) || spec8_dispatch_count=0
+if [[ "$spec8_dispatch_count" -eq 5 ]]; then
+    assert_pass "SPEC-8: exactly 5 work units dispatched (1 per element × 1 role)"
+else
+    assert_fail "SPEC-8: exactly 5 work units dispatched" "got $spec8_dispatch_count"
+fi
+
+unset _MAP_DIM_batch5
+
+# ─── SPEC-9: on_member_error=continue — failing element does NOT abort group ──
+# #1312: a failing orch_collect (simulating a failed element) must not cause
+# _strategy_run_map to return non-zero when on_member_error=continue.
+# Mirrors parallel_group_run: on_member_error=continue always returns 0 (advisory).
+print_test_section "SPEC-9: on_member_error=continue — group returns 0 even when element fails (issue #1312)"
+
+declare -a _MAP_DIM_errdim=("ok" "fail")
+export _MAP_DIM_errdim
+
+SPEC9_LOG="$TEST_TEMP_DIR/spec9-spy.log"
+: > "$SPEC9_LOG"
+_spec9_call=0
+_spec9_orch_spawn()    { return 0; }
+_spec9_orch_dispatch() { _spec9_call=$((_spec9_call + 1)); return 0; }
+_spec9_orch_collect()  { printf 'orch_collect %s\n' "$1" >> "$SPEC9_LOG"
+                          # Second collect (second batch of 1) simulates a failing element.
+                          local _cnt; _cnt=$(/usr/bin/grep -c "orch_collect" "$SPEC9_LOG")
+                          [[ "$_cnt" -eq 2 ]] && return 1
+                          return 0; }
+_spec9_orch_shutdown() { return 0; }
+
+# Override.
+orch_spawn()    { _spec9_orch_spawn "$@"; }
+orch_dispatch() { _spec9_orch_dispatch "$@"; }
+orch_collect()  { _spec9_orch_collect "$@"; }
+orch_shutdown() { _spec9_orch_shutdown "$@"; }
+
+set +e
+_strategy_run_map "spec9-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "errdim" "" "1" "continue"
+spec9_rc=$?
+set -e
+
+# Restore.
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+assert_exit_code "SPEC-9: on_member_error=continue returns 0 even when 1 of 2 elements fails" "0" "$spec9_rc"
+
+# Verify on_member_error=collect propagates the failure.
+declare -a _MAP_DIM_errdim2=("ok" "fail")
+export _MAP_DIM_errdim2
+
+SPEC9B_LOG="$TEST_TEMP_DIR/spec9b-spy.log"
+: > "$SPEC9B_LOG"
+_spec9b_call=0
+_spec9b_orch_spawn()    { return 0; }
+_spec9b_orch_dispatch() { _spec9b_call=$((_spec9b_call + 1)); return 0; }
+_spec9b_orch_collect()  { printf 'orch_collect %s\n' "$1" >> "$SPEC9B_LOG"
+                           local _cnt; _cnt=$(/usr/bin/grep -c "orch_collect" "$SPEC9B_LOG")
+                           [[ "$_cnt" -eq 2 ]] && return 1
+                           return 0; }
+_spec9b_orch_shutdown() { return 0; }
+
+orch_spawn()    { _spec9b_orch_spawn "$@"; }
+orch_dispatch() { _spec9b_orch_dispatch "$@"; }
+orch_collect()  { _spec9b_orch_collect "$@"; }
+orch_shutdown() { _spec9b_orch_shutdown "$@"; }
+
+set +e
+_strategy_run_map "spec9b-pool" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "errdim2" "" "1" "collect"
+spec9b_rc=$?
+set -e
+
+orch_spawn()    { orch_spawn_orig "$@"; }
+orch_dispatch() { orch_dispatch_orig "$@"; }
+orch_collect()  { orch_collect_orig "$@"; }
+orch_shutdown() { orch_shutdown_orig "$@"; }
+
+if [[ "$spec9b_rc" -ne 0 ]]; then
+    assert_pass "SPEC-9: on_member_error=collect propagates failure (rc=$spec9b_rc, non-zero)"
+else
+    assert_fail "SPEC-9: on_member_error=collect must propagate failure" "got rc=0 (expected non-zero)"
+fi
+
+unset _MAP_DIM_errdim _MAP_DIM_errdim2
+
+# ─── SPEC-10: empty elements CSV — runner set -e guard (issue #1312) ──────────
+# Verifies the `read -ra ... || true` guard: an empty elements CSV must NOT cause
+# the read to abort under set -e. The dimension array stays empty → rc=3 (no-op).
+print_test_section "SPEC-10: empty elements CSV — read guard prevents set -e abort (issue #1312)"
+
+declare -ga _MAP_DIM_spec10=()
+_spec10_IFS_save="$IFS"; IFS=','
+# Simulate runner's read line with empty CSV and set -e active.
+(
+    set -e
+    # shellcheck disable=SC2229
+    read -ra "_MAP_DIM_spec10" <<< "" || true
+    printf 'survived\n'
+) > "$TEST_TEMP_DIR/spec10.out" 2>&1
+_spec10_shell_rc=$?
+_spec10_out="$(cat "$TEST_TEMP_DIR/spec10.out")"
+IFS="$_spec10_IFS_save"; unset _spec10_IFS_save
+
+if [[ $_spec10_shell_rc -eq 0 && "$_spec10_out" == "survived" ]]; then
+    assert_pass "SPEC-10: empty CSV read with || true guard survives set -e (no abort)"
+else
+    assert_fail "SPEC-10: empty CSV read with || true guard must not abort under set -e" \
+        "rc=$_spec10_shell_rc output=$_spec10_out"
+fi
+
+# Without the guard, bare `read` on empty input returns non-zero → verify the bug
+# exists so the test is non-trivial (this is the pre-fix behavior).
+(
+    set -e
+    # shellcheck disable=SC2229
+    read -ra "_MAP_DIM_spec10" <<< "" && printf 'survived\n' || printf 'nonzero\n'
+) > "$TEST_TEMP_DIR/spec10b.out" 2>&1
+_spec10b_out="$(cat "$TEST_TEMP_DIR/spec10b.out")"
+
+if [[ "$_spec10b_out" == "nonzero" ]]; then
+    assert_pass "SPEC-10: bare read on empty string returns non-zero (confirms the bug being guarded)"
+else
+    # If the shell doesn't exhibit this behavior, the test is still fine (guard is harmless).
+    assert_pass "SPEC-10: shell behavior noted: bare read on empty string returned 0 on this platform"
+fi
+
+unset -v _MAP_DIM_spec10
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

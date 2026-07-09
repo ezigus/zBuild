@@ -85,6 +85,12 @@ _strategy_make_work_unit() {
         warn "strategy: invalid map element: ${map_element} (expected ^[A-Za-z0-9_-]{1,64}$)" || true
         return 2
     fi
+    # #1312 (minor): map_element set but map_dimension empty → ambiguous work-unit
+    # identity (ZBUILD_MAP_DIMENSION would be '' in the baked script). Fail closed.
+    if [[ -n "$map_element" && -z "$map_dimension" ]]; then
+        warn "strategy: map_element set but map_dimension is empty — dimension required" || true
+        return 2
+    fi
     if [[ -n "$map_dimension" && ! "$map_dimension" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
         warn "strategy: invalid map dimension: ${map_dimension} (expected ^[A-Za-z0-9_]{1,64}$)" || true
         return 2
