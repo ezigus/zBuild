@@ -840,13 +840,14 @@ main() {
         fi
     fi
 
-    # Load template, distinguishing "not found" from "found but invalid":
+    # Load template. All three failure modes fail closed (#1283, ADR-047 §6 — the
+    # mechanic no longer carries a hardcoded built-in stage roster):
     #   - template FILE missing (resolve_template_file returns a non-existent
-    #     path) → fall back to the built-in stage list (Test 11).
+    #     path) → error, abort (rc=2).
     #   - file EXISTS but load_template fails → a genuine config error, e.g. an
     #     invalid merge_policy enum (#1057 review): surface its stderr (no
-    #     2>/dev/null) and abort, rather than masking it as "not found".
-    #   - loads cleanly but defines no stages → built-in fallback.
+    #     2>/dev/null) and abort.
+    #   - loads cleanly but defines no stages → malformed template, abort.
     local active_stages=()
     if [[ ! -f "$template_file" ]]; then
         # ADR-047 §6: fail-closed. The old built-in fallback list hardcoded stage
@@ -2312,9 +2313,15 @@ main() {
             # after it completes, so the operator's paths ride alongside the
             # stage's own detection output. `intake` declares this capability; the
             # runner keys on the flag, not the stage name.
+            # Resolve the completed stage's manifest by role-then-id (ADR-042) — NOT
+            # the id-only $_verdict_manifest — so a role-bound stage (flow name ≠
+            # plugin id) that declares the capability is honored too.
             _manifest_graph_ensure_yaml_get 2>/dev/null || true
-            if [[ -f "$state_dir/scope-override.md" && -n "$_verdict_manifest" ]] \
-               && [[ "$(yaml_get "$_verdict_manifest" "capabilities.merges_scope_override" 2>/dev/null)" == "true" ]]; then
+            local _msov_dir _msov_manifest=""
+            _msov_dir="$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)"
+            [[ -n "$_msov_dir" ]] && _msov_manifest="$_msov_dir/manifest.yaml"
+            if [[ -f "$state_dir/scope-override.md" && -n "$_msov_manifest" ]] \
+               && [[ "$(yaml_get "$_msov_manifest" "capabilities.merges_scope_override" 2>/dev/null)" == "true" ]]; then
                 local scope_manifest="$state_dir/scope-manifest.md"
                 # Extract only '+ <path>' lines from the override file and append.
                 # Intentional fail-open: scope-override.md may not exist (no --scope flag used)
