@@ -24,8 +24,9 @@ defaults:
 # C3 (#1142, ADR-040 §3 — supersedes ADR-038's single-stage fan-out; ADR-039
 # parallel group; follows ADR-030 scope governance) CUTS OVER the lens side: the
 # monolithic `review` stage (ADR-038's hand-rolled review-report fan-out, now
-# UNREFERENCED here) is replaced by `review_lenses` — a `type: parallel`
-# `aggregate: advisory` group of first-class lens stages — followed by
+# UNREFERENCED here) is replaced by `review_lenses` — a `type: map over: lenses`
+# `aggregate: advisory` group (issue #1295, ADR-047 §2; was `type: parallel`) —
+# one work unit per lens element — followed by
 # `review-aggregator`, which merges the per-lens results into ONE advisory
 # merge-readiness report. The lens group is ADVISORY: it NEVER feeds the cycle's
 # exit_when/convergence (that remains the gate-aggregator, ADR-040 §5) and never
@@ -321,81 +322,33 @@ gate-aggregator:
     destinations: [file, stdout]
     tail_lines: 200
 
-# ─── review_lenses (parallel group, ADVISORY) ────────────────────────────────
-# C3 (#1142, ADR-040 §3 / ADR-039): advisory multi-lens merge-readiness review.
-# Each lens is a first-class `kind: agent` stage (plugins/agent/review-lens, bound
-# by role review_lens) running ONE isolated, redacted LLM call over evidence it is
-# fed (ADR-038 §2 isolated-call discipline, preserved). The lens id derives from
-# the member stage name (the review-lens plugin strips the `lens-` prefix:
-# lens-security→security, lens-red-team→red-team, lens-scope→scope, …).
+# ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
+# issue #1295 (ADR-047 §2): converted from `type: parallel` to `type: map`.
+# Each element (security, performance, red-team, correctness, scope) becomes one
+# work unit dispatched to the review-lens plugin (provides.role: review_lens).
+# `as: ZBUILD_REVIEW_LENS_ID` maps each element into the env var the review-lens
+# plugin already reads to derive the lens identity — so the plugin is unchanged
+# from its per-stage form. This eliminates the five separate lens-* stage
+# definitions while preserving the same five isolated LLM calls and the same
+# lens-<element>.json artifact names (ADR-038 §2 isolated-call discipline).
 #
-# aggregate: advisory — this group is NEVER on a merge-blocking path: it has no
-# exit_when, drives no convergence, and never hard-blocks (a failed/unparseable
-# lens degrades to an empty result and the member still returns 0, ADR-040 §4).
+# aggregate: advisory — this group is NEVER on a merge-blocking path (ADR-040 §4).
 # Convergence is owned by the build_test_cycle's gate-aggregator exit_when above;
 # the B5 (#1137) no-LLM-on-convergence-path invariant therefore holds.
 review_lenses:
-  type: parallel
-  flow:
-    - lens-security
-    - lens-performance
-    - lens-red-team
-    - lens-correctness
-    - lens-scope
+  type: map
+  over: lenses
+  elements:
+    - security
+    - performance
+    - red-team
+    - correctness
+    - scope
+  roles: [review_lens]
+  as: ZBUILD_REVIEW_LENS_ID
   max_parallel: 4
   on_member_error: continue
   aggregate: advisory
-
-# ─── lens-* (leaf, review_lenses members) ────────────────────────────────────
-# All five bind by role to the SAME review-lens plugin (provides.role: review_lens);
-# they differ only by the lens id derived from the stage name (its charter +
-# preferred evidence artifact). Advisory T2 agent stages — no blocking contract.
-lens-security:
-  gate: auto
-  roles: [review_lens]
-  io:
-    destinations: [file]
-    tail_lines: 200
-  router:
-    timeout_s: 300
-    max_turns: 25
-
-lens-performance:
-  gate: auto
-  roles: [review_lens]
-  io:
-    destinations: [file]
-    tail_lines: 200
-  router:
-    timeout_s: 300
-    max_turns: 25
-
-lens-red-team:
-  gate: auto
-  roles: [review_lens]
-  io:
-    destinations: [file]
-    tail_lines: 200
-  router:
-    timeout_s: 300
-    max_turns: 25
-
-lens-correctness:
-  gate: auto
-  roles: [review_lens]
-  io:
-    destinations: [file]
-    tail_lines: 200
-  router:
-    timeout_s: 300
-    max_turns: 25
-
-# lens-scope (ADR-030): WARN-ONLY scope-advisory lens — compares the declared
-# scope manifest against the diff and flags out-of-scope edits or in-scope files
-# left untouched. Never blocks (advisory member of the advisory group).
-lens-scope:
-  gate: auto
-  roles: [review_lens]
   io:
     destinations: [file]
     tail_lines: 200

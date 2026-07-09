@@ -179,15 +179,17 @@ fi
 # ─── SPEC-5: non-platform dimension does NOT hijack ZBUILD_PLATFORM ───────────
 print_test_section "SPEC-5: platforms dim passes element as platform; non-platform dim does not"
 
-# Spy on _strategy_make_work_unit to record the platform arg (4th positional).
+# Spy on _strategy_make_work_unit to record the platform arg (4th positional)
+# plus the generic map identity (args 5/6) and optional env-target (arg 7).
 # platforms → element IS the platform (byte-identical to fanout).
-# lenses    → NO 4th arg (defaults to "generic"); ZBUILD_PLATFORM not hijacked.
+# lenses    → platform stays "generic"; element/dimension ride args 5+6 so
+#             ZBUILD_PLATFORM is not hijacked; arg 7 is the optional `as:` target.
 MWU_ARGS_LOG="$TEST_TEMP_DIR/mwu-args.log"
 : > "$MWU_ARGS_LOG"
 _orig_make_wu=$(declare -f _strategy_make_work_unit)
 _strategy_make_work_unit() {
-    # Record whether a 4th (platform) arg was supplied and its value.
-    printf 'nargs=%s platform=[%s]\n' "$#" "${4:-<none>}" >> "$MWU_ARGS_LOG"
+    printf 'platform=[%s] element=[%s] dim=[%s] astarget=[%s]\n' \
+        "${4:-<none>}" "${5:-}" "${6:-}" "${7:-}" >> "$MWU_ARGS_LOG"
     printf '%s\n' "$TEST_TEMP_DIR/wu-stub-$RANDOM"  # return a dummy work-unit path
     return 0
 }
@@ -204,23 +206,92 @@ else
     assert_fail "SPEC-5: platforms dim passes element as platform arg" "log: $(cat "$MWU_ARGS_LOG")"
 fi
 
-# lenses: NO platform arg (nargs=3), so ZBUILD_PLATFORM defaults to generic
+# lenses (#1295): element+dimension are passed as args 5+6; platform stays "generic"
+# so ZBUILD_PLATFORM is NOT hijacked by the element name.
 declare -a _MAP_DIM_lenses5=("security")
 export _MAP_DIM_lenses5
 : > "$MWU_ARGS_LOG"
 set +e
 _strategy_run_map "map-pool-007" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "lenses5" >/dev/null 2>&1
 set -e
-if /usr/bin/grep -q "^nargs=3 " "$MWU_ARGS_LOG" && ! /usr/bin/grep -q "platform=\[security\]" "$MWU_ARGS_LOG"; then
-    assert_pass "SPEC-5: non-platform dim omits platform arg — element 'security' does NOT become ZBUILD_PLATFORM"
+if /usr/bin/grep -q "platform=\[generic\] element=\[security\] dim=\[lenses5\]" "$MWU_ARGS_LOG" && ! /usr/bin/grep -q "platform=\[security\]" "$MWU_ARGS_LOG"; then
+    assert_pass "SPEC-5: non-platform dim passes generic platform — element 'security' does NOT become ZBUILD_PLATFORM"
 else
     assert_fail "SPEC-5: non-platform dim must not pass element as platform" "log: $(cat "$MWU_ARGS_LOG")"
+fi
+
+# lenses + `as:` env-target (#1295): arg 7 carries the template-named var so the
+# work unit sets it to the element. Strategy stays element-name-agnostic.
+: > "$MWU_ARGS_LOG"
+set +e
+_strategy_run_map "map-pool-008" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "lenses5" "ZBUILD_REVIEW_LENS_ID" >/dev/null 2>&1
+set -e
+if /usr/bin/grep -q "element=\[security\] dim=\[lenses5\] astarget=\[ZBUILD_REVIEW_LENS_ID\]" "$MWU_ARGS_LOG"; then
+    assert_pass "SPEC-5: as: env-target is forwarded to _strategy_make_work_unit (generic dimension→env mapping)"
+else
+    assert_fail "SPEC-5: as: env-target forwarded to work-unit factory" "log: $(cat "$MWU_ARGS_LOG")"
 fi
 
 # Restore the real work-unit factory.
 unset -f _strategy_make_work_unit
 eval "$_orig_make_wu"
 unset _MAP_DIM_lenses5
+
+# ─── SPEC-6: element/dimension identity is validated → no shell injection ──────
+# #1295 Copilot: map_element/map_dimension are baked as single-quoted literals
+# into the generated work-unit script. A value with ', whitespace, or a newline
+# must fail closed (rc=2), never produce a work unit that breaks out of quotes.
+print_test_section "SPEC-6: map_element/map_dimension validated fail-closed (no injection)"
+
+# A legal element/dimension still produces a work unit (baseline).
+set +e
+_wu_ok="$(_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "lenses" "ZBUILD_REVIEW_LENS_ID" 2>/dev/null)"
+_ok_rc=$?
+set -e
+if [[ "$_ok_rc" -eq 0 && -f "$_wu_ok" ]]; then
+    assert_pass "SPEC-6: legal element/dimension produces a work unit (rc=0)"
+    # It must be syntactically valid bash (no injection even in the happy path).
+    if bash -n "$_wu_ok" 2>/dev/null; then
+        assert_pass "SPEC-6: generated work unit is syntactically valid bash"
+    else
+        assert_fail "SPEC-6: generated work unit parses" "bash -n rejected $_wu_ok"
+    fi
+    rm -f "$_wu_ok"
+else
+    assert_fail "SPEC-6: legal element/dimension produces a work unit" "rc=$_ok_rc path=$_wu_ok"
+fi
+
+# Illegal element: single quote injection attempt → fail closed, no work unit.
+_inject="x'; touch $TEST_TEMP_DIR/PWNED; :'"
+rm -f "$TEST_TEMP_DIR/PWNED"
+set +e
+_wu_bad="$(_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "$_inject" "lenses" 2>/dev/null)"
+_bad_rc=$?
+set -e
+if [[ "$_bad_rc" -eq 2 && -z "$_wu_bad" ]]; then
+    assert_pass "SPEC-6: element with ' fails closed (rc=2), no work unit emitted"
+else
+    assert_fail "SPEC-6: element with ' must fail closed" "rc=$_bad_rc path=$_wu_bad"
+fi
+if [[ ! -e "$TEST_TEMP_DIR/PWNED" ]]; then
+    assert_pass "SPEC-6: injection payload did NOT execute (no PWNED file)"
+else
+    assert_fail "SPEC-6: injection payload must not execute" "PWNED file was created"
+fi
+
+# Illegal element: whitespace/newline → fail closed.
+set +e
+_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" $'a\nb' "lenses" >/dev/null 2>&1
+_nl_rc=$?
+set -e
+assert_exit_code "SPEC-6: element with newline fails closed (rc=2)" "2" "$_nl_rc"
+
+# Illegal dimension: '-' is not a shell-array-safe token → fail closed.
+set +e
+_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "bad-dim" >/dev/null 2>&1
+_dim_rc=$?
+set -e
+assert_exit_code "SPEC-6: dimension with '-' fails closed (rc=2)" "2" "$_dim_rc"
 
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 cleanup_test_env

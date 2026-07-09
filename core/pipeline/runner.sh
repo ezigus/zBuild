@@ -1488,6 +1488,13 @@ main() {
             [[ "$_pu" == parallel:* ]] && _template_has_parallel=1 && break
         done
     fi
+    # issue #1295 (ADR-047 §2): likewise detect map:<gid> units.
+    local _template_has_map=0
+    if [[ ${#_TPL_DISPATCH_UNITS[@]} -gt 0 ]]; then
+        for _pu in "${_TPL_DISPATCH_UNITS[@]}"; do
+            [[ "$_pu" == map:* ]] && _template_has_map=1 && break
+        done
+    fi
     # Enter the dispatch-unit loop when cycles are active OR the template has a
     # parallel group with no cycles. When cycles exist but are env-disabled, the
     # legacy linear path stays authoritative (parallel members then degrade to
@@ -1496,6 +1503,8 @@ main() {
     if [[ $_has_cycle_unit -eq 1 ]]; then
         _run_dispatch_units=1
     elif [[ $_template_has_parallel -eq 1 && $_template_has_cycle -eq 0 ]]; then
+        _run_dispatch_units=1
+    elif [[ $_template_has_map -eq 1 && $_template_has_cycle -eq 0 ]]; then
         _run_dispatch_units=1
     fi
 
@@ -1970,6 +1979,86 @@ main() {
                         _render_pipeline_end "failed"
                         _runner_ended=true
                         error "Parallel group $_pg_id failed (rc=$_rc)"
+                        return 1
+                    fi
+                    ;;
+                map:*)
+                    # issue #1295 (ADR-047 §2): a map group occupies ONE cardinal
+                    # slot. Populate _MAP_DIM_<over> from _TPL_MAP_ELEMENTS_<gid>,
+                    # then dispatch via _strategy_run_map with the declared dimension.
+                    local _mg_id="${_unit#map:}"
+                    local _mg_safe="${_mg_id//-/_}"
+                    local _mg_over_var="_TPL_MAP_OVER_${_mg_safe}"
+                    local _mg_over="${!_mg_over_var:-}"
+                    local _mg_elems_var="_TPL_MAP_ELEMENTS_${_mg_safe}"
+                    local _mg_elems_csv="${!_mg_elems_var:-}"
+                    local _mg_roles_var="_TPL_MAP_ROLES_${_mg_safe}"
+                    local _mg_roles="${!_mg_roles_var:-}"
+                    # issue #1295 (ADR-047 §2): optional `as:` env-target — the
+                    # template names the env var each work unit gets set to its
+                    # element (generic dimension→env mapping; empty when omitted).
+                    local _mg_as_var="_TPL_MAP_AS_${_mg_safe}"
+                    local _mg_as="${!_mg_as_var:-}"
+                    # Validate the over dimension is set.
+                    if [[ -z "$_mg_over" ]]; then
+                        _set_pipeline_status "$state_file" "failed"
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        error "map group '$_mg_id': missing 'over:' dimension"
+                        return 1
+                    fi
+                    # #1295 Copilot: the dimension names a bash array (_MAP_DIM_<over>)
+                    # and is passed to _strategy_run_map — an invalid token (e.g. with
+                    # '-') otherwise surfaces as an unactionable "rc=5". Fail closed with
+                    # a clear error naming the bad dimension BEFORE dispatch.
+                    if [[ ! "$_mg_over" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
+                        _set_pipeline_status "$state_file" "failed"
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        error "map group '$_mg_id': invalid 'over:' dimension: ${_mg_over} (expected ^[A-Za-z0-9_]{1,64}$)"
+                        return 1
+                    fi
+                    # Populate _MAP_DIM_<over> from the elements CSV so _strategy_run_map
+                    # can resolve it via the _MAP_DIM_<name> nameref convention (Bash 5+
+                    # nameref requires the target array to exist in the SAME shell; declare
+                    # -ga makes it global so the sourced map.sh nameref can reach it).
+                    local _mg_dim_safe; _mg_dim_safe="${_mg_over//-/_}"
+                    # declare -ga with a computed name: declare first, then read-split CSV.
+                    # Bash rejects `declare -ga "name"=(...)` when name is quoted;
+                    # read -ra with IFS=',' is the portable equivalent.
+                    local _mg_dim_arr_name="_MAP_DIM_${_mg_dim_safe}"
+                    declare -ga "$_mg_dim_arr_name"
+                    local _mg_IFS_save="$IFS"; IFS=','
+                    # shellcheck disable=SC2229
+                    read -ra "$_mg_dim_arr_name" <<< "$_mg_elems_csv"
+                    IFS="$_mg_IFS_save"
+                    # roles_out: one role per line for _strategy_run_map.
+                    local _mg_roles_out; _mg_roles_out="$(printf '%s\n' "${_mg_roles//,/$'\n'}")"
+                    local pool_id; pool_id="map-${_mg_id}-$$"
+                    set +e; orch_spawn "$pool_id"; _rc=$?; set -e
+                    if [[ $_rc -ne 0 ]]; then
+                        _set_pipeline_status "$state_file" "failed"
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        error "map group '$_mg_id': orch_spawn failed"
+                        return 1
+                    fi
+                    local _mg_max_var="_TPL_MAP_MAX_${_mg_safe}"
+                    local _mg_max="${!_mg_max_var:-auto}"
+                    _render_parallel_entry "$_mg_id" "$_mg_max" "$_mg_elems_csv"
+                    set +e
+                    _strategy_run_map "$pool_id" "$_mg_id" "$_mg_roles_out" \
+                        "$state_file" "$plugins_root" "$_mg_over" "$_mg_as"
+                    _rc=$?
+                    set -e
+                    [[ $_rc -eq 3 ]] && _rc=0  # empty dimension = no dispatch = ok
+                    if [[ $_rc -ne 0 ]]; then
+                        _set_pipeline_status "$state_file" "failed"
+                        eb_emit_event "pipeline.end" "status=failed" "map=$_mg_id" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue"
+                        _render_pipeline_end "failed"
+                        _runner_ended=true
+                        error "map group '$_mg_id' failed (rc=$_rc)"
                         return 1
                     fi
                     ;;

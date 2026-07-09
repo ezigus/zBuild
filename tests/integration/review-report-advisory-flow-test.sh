@@ -40,8 +40,13 @@ set -e
 assert_eq "[SPEC-5] simple.yaml loads" "0" "$_load_rc"
 assert_eq "[SPEC-5] legacy single `review` stage removed (role var unset)" \
     "" "${_TPL_STAGE_ROLES_review:-}"
-assert_eq "[SPEC-5] lens members bind role review_lens" \
-    "review_lens" "${_TPL_STAGE_ROLES_lens_security:-}"
+# #1295 (ADR-047 §2): review_lenses is now a `type: map over: lenses` group, so
+# the review_lens role lives on the GROUP (not on per-element lens-* stages, which
+# no longer exist). The five isolated review_lens calls are preserved.
+assert_eq "[SPEC-5] review_lenses map group binds role review_lens" \
+    "review_lens" "${_TPL_MAP_ROLES_review_lenses:-}"
+assert_eq "[SPEC-5] legacy per-element lens-security stage removed (map replaced it)" \
+    "" "${_TPL_STAGE_ROLES_lens_security:-}"
 assert_eq "[SPEC-5] review-aggregator binds role review_aggregator" \
     "review_aggregator" "${_TPL_STAGE_ROLES_review_aggregator:-}"
 

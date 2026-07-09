@@ -303,11 +303,9 @@ _make_plugin "shape-floor"     "shape_floor"
 _make_acceptance_gate_plugin
 _make_plugin "secret-scan"     "secret_scan"
 _make_gate_aggregator_plugin   # verdict mirrors acceptance disposition
-_make_plugin "lens-security"    "review_lens"
-_make_plugin "lens-performance" "review_lens"
-_make_plugin "lens-red-team"    "review_lens"
-_make_plugin "lens-correctness" "review_lens"
-_make_plugin "lens-scope"       "review_lens"
+# review_lenses is now a map group (#1295): one plugin for role review_lens
+# handles all elements (security, performance, red-team, correctness, scope).
+_make_plugin "review-lens"      "review_lens"
 _make_plugin "review-aggregator" "review_aggregator"
 _make_plugin "pr"              "pr"
 

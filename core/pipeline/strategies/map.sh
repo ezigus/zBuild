@@ -42,13 +42,17 @@ _strategy_map_resolve_dimension() {
 }
 
 # ─── _strategy_run_map ───────────────────────────────────────────────────────
-# Usage: _strategy_run_map <pool_id> <stage> <roles_out> <state_file> <plugins_root> [dimension]
+# Usage: _strategy_run_map <pool_id> <stage> <roles_out> <state_file> <plugins_root> [dimension] [env_target]
 #   pool_id    — caller-supplied, already validated (no orch_spawn called here)
 #   stage      — stage name (e.g. "intake")
 #   roles_out  — newline-delimited list of role names
 #   state_file — path to pipeline state file
 #   plugins_root — path to plugins directory
 #   dimension  — list name to iterate (default: "platforms")
+#   env_target — optional env var name to set to each element per work unit
+#                (issue #1295, ADR-047 §2: generic dimension→env mapping declared
+#                by the template's `as:` field; empty = no extra env). The
+#                strategy is element-name-agnostic — it never hardcodes a var name.
 #
 # Dispatches one work unit per role×element pair in parallel via orch_dispatch.
 # When dimension=platforms, behavior is byte-identical to _strategy_run_fanout.
@@ -62,7 +66,7 @@ _strategy_map_resolve_dimension() {
 #   5 — invalid/unknown dimension name (fail-closed; runner surfaces as failure)
 _strategy_run_map() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
-    local dimension="${6:-platforms}"
+    local dimension="${6:-platforms}" env_target="${7:-}"
     local success_count=0 fail_count=0 any_plugin_found=false dispatch_count=0
     local -a work_units=() dispatched_plugins=()
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -104,14 +108,16 @@ _strategy_run_map() {
             # Only the platforms dimension populates ZBUILD_PLATFORM (ADR-009 §6
             # env contract) — pass the element as the 4th arg so the platforms
             # path stays byte-identical to fanout. For non-platform dimensions
-            # (lenses/mutants), do NOT overload ZBUILD_PLATFORM: omit the 4th arg
-            # so it defaults to "generic". Carrying the element in a generic
-            # work-unit env var is deferred (mechanic-only; no template wires a
-            # non-platform map yet — would extend common.sh's work-unit contract).
+            # (lenses/mutants), pass the generic element identity via args 5+6
+            # (ZBUILD_MAP_ELEMENT / ZBUILD_MAP_DIMENSION, issue #1295, ADR-047 §2)
+            # so each work unit is distinguishable without hijacking ZBUILD_PLATFORM.
+            # An optional env_target (arg 7, from the template's `as:`) additionally
+            # sets a named env var to the element — a generic mapping the strategy
+            # applies without knowing which dimension or var it is.
             if [[ "$dimension" == "platforms" ]]; then
                 wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element")"
             else
-                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file")"
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "generic" "$element" "$dimension" "$env_target")"
             fi || {
                 warn "map: failed to create work unit for role=$role element=$element" || true
                 fail_count=$((fail_count + 1))

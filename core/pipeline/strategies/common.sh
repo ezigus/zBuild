@@ -51,17 +51,48 @@ _strategy_orch_scratch_dir() {
     fi
 }
 
-# ─── _strategy_make_work_unit <plugin_dir> <stage> <state_file> <platform> ───
+# ─── _strategy_make_work_unit <plugin_dir> <stage> <state_file> [<platform>] [<map_element>] [<map_dimension>] [<env_target>] ───
 # Creates a self-contained executable shell script that calls plugin_hook_call.
 # Validates stage and platform before baking into the script body.
 # Prints the path of the temp file; caller is responsible for cleanup (rm -f).
 # exit 0: success; exit 2: validation failure; exit 1: temp file creation failure.
+#
+# map_element / map_dimension (issue #1295, ADR-047 §2): generic element identity
+# for non-platform map dimensions. When set, exports to the work unit:
+#   ZBUILD_MAP_ELEMENT=<element>    — the current element (e.g. "security")
+#   ZBUILD_MAP_DIMENSION=<dim>      — the dimension name (e.g. "lenses")
+# Plugins read ZBUILD_MAP_ELEMENT to derive per-element identity when
+# ZBUILD_CURRENT_STAGE is the group id, not an element-specific stage id.
+#
+# env_target (issue #1295, ADR-047 §2): an optional caller-named env var, set to
+# the map element in the work unit — a generic dimension→env mapping declared by
+# the template's `as:` field (e.g. lenses → ZBUILD_REVIEW_LENS_ID). Keeps existing
+# plugins that read their own env var working unchanged; the var name lives in the
+# template, never hardcoded here. Validated as a shell identifier before baking.
 _strategy_make_work_unit() {
     local plugin_dir="$1" stage="$2" state_file="$3" platform="${4:-generic}"
+    local map_element="${5:-}" map_dimension="${6:-}" env_target="${7:-}"
 
     _strategy_validate_stage "$stage"   || return 2
     _strategy_validate_platform "$platform" || return 2
     [[ -z "$plugin_dir" ]] && { warn "strategy: _strategy_make_work_unit: empty plugin_dir" || true; return 2; }
+    # #1295 Copilot: map_element/map_dimension are baked as single-quoted literals
+    # into the work-unit script — a value with ', whitespace, or a newline would
+    # break out of the quotes (shell-injection). Fail closed with an actionable
+    # error. Element allows '-' (matches stage/platform); dimension is a shell-safe
+    # token used to name a bash array (_MAP_DIM_<dim>), so no '-'.
+    if [[ -n "$map_element" && ! "$map_element" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
+        warn "strategy: invalid map element: ${map_element} (expected ^[A-Za-z0-9_-]{1,64}$)" || true
+        return 2
+    fi
+    if [[ -n "$map_dimension" && ! "$map_dimension" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
+        warn "strategy: invalid map dimension: ${map_dimension} (expected ^[A-Za-z0-9_]{1,64}$)" || true
+        return 2
+    fi
+    if [[ -n "$env_target" && ! "$env_target" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,63}$ ]]; then
+        warn "strategy: invalid env_target var name: ${env_target}" || true
+        return 2
+    fi
 
     local scratch_dir; scratch_dir="$(_strategy_orch_scratch_dir)"
     mkdir -p "$scratch_dir" 2>/dev/null && chmod 700 "$scratch_dir" 2>/dev/null || {
@@ -86,6 +117,19 @@ _strategy_make_work_unit() {
     # ADR-001's hook-context table lists the older name ZBUILD_TARGET_PLATFORM
     # for the same value. We export both so plugins can rely on either; the
     # canonical name going forward is ZBUILD_PLATFORM (ADR-009 §6).
+    local _map_env_lines=""
+    if [[ -n "$map_element" ]]; then
+        _map_env_lines="export ZBUILD_MAP_ELEMENT='${map_element}'
+export ZBUILD_MAP_DIMENSION='${map_dimension}'"
+        # env_target: template-named var also carrying the element (generic
+        # dimension→env mapping). var name validated above; element is a bare
+        # dimension token, single-quoted like the others.
+        if [[ -n "$env_target" ]]; then
+            _map_env_lines="${_map_env_lines}
+export ${env_target}='${map_element}'"
+        fi
+    fi
+
     cat > "$wu" <<WORKUNIT
 #!/usr/bin/env bash
 set -euo pipefail
@@ -95,6 +139,7 @@ source '${_ZBUILD_ROOT}/core/plugin-registry/registry.sh'
 export ZBUILD_PLATFORM='${platform}'
 export ZBUILD_TARGET_PLATFORM='${platform}'
 export ZBUILD_ROOT='${_ZBUILD_ROOT}'
+${_map_env_lines}
 plugin_hook_call '${plugin_dir}' run '${stage}' '${state_file}'
 WORKUNIT
 
