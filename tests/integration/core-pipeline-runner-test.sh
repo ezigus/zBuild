@@ -159,19 +159,26 @@ assert_eq "stage.fail event emitted" "1" "$stage_fail_event"
 build_fail_status="$(jq -r '.stage_statuses.build // empty' "$STATE_FILE" 2>/dev/null)"
 assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 
-# ─── Test 9: missing plugin for required stage → fail-closed at LOAD ──────────
-# ADR-047 §5 (#1282): with a template loaded, the runner's resolvability preflight
-# catches a leaf that resolves to no plugin at LOAD time and aborts fail-closed
-# (rc=2), BEFORE the stage loop — replacing the old mid-run rc=1 dispatch failure.
-# This is strictly stronger: the missing plugin still fails the pipeline, but now
-# it is caught up front with an actionable message naming the unresolved id.
+# ─── Test 9: missing plugin for required stage → fails pipeline ───────────────
+# This suite runs under ZBUILD_CONTRACT_VALIDATOR=warn (top of file), so the
+# ADR-047 §5 resolvability preflight (#1282) WARNS but does not abort at load —
+# the missing plugin is then caught fail-closed at DISPATCH (rc=1, pipeline.end
+# status=failed), the original behavior. The warn diagnostic still names the
+# unresolved id. (The fail-closed-AT-LOAD path is proven under the default enforce
+# mode in tests/unit/template-resolvability-preflight-test.sh.)
 rm -rf "$PLUGINS_ROOT/agent/intake"
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
 set +e; _no_plugin_out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>&1)"; rc=$?; set -e
-assert_eq "missing required plugin fails fail-closed at load (rc=2)" "2" "$rc"
-assert_contains "missing-plugin error names the unresolved stage 'intake'" "$_no_plugin_out" "intake"
-assert_contains "missing-plugin error is the ADR-047 §5 resolvability message" "$_no_plugin_out" "resolves to no plugin"
+assert_eq "missing required plugin exits 1 (warn: caught at dispatch)" "1" "$rc"
+assert_contains "warn-mode resolvability diagnostic names the unresolved stage 'intake'" "$_no_plugin_out" "intake"
+
+if [[ -f "$EVENTS_JSONL" ]]; then
+    fail_from_no_plugin=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"failed"' || true)
+    assert_eq "missing plugin causes pipeline.end status=failed" "1" "$fail_from_no_plugin"
+else
+    assert_fail "events.jsonl not created for missing-plugin failure"
+fi
 
 # ─── Test 10: EXIT trap emits pipeline.abort (not pipeline.end) ──────────────
 _make_plugin "intake" "agent" 0
