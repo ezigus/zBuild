@@ -2056,22 +2056,39 @@ main() {
         # Determine downstream success. Two paths:
         #  - No unconverged: treat as success (preserves pre-#796 behavior
         #    where a converged pipeline is always pipeline=complete).
-        #  - Unconverged with on_max=continue: check review.json verdict.
-        #    If review approved/passed, downstream rescued; else not.
+        #  - Unconverged with on_max=continue: the run is rescued to success
+        #    ONLY when the unconverged cycle's own convergence-decision stage
+        #    (its `exit_when` target — the stage-agnostic analog of the old
+        #    single `review` stage this rescue was written for) emitted an
+        #    explicit merge-APPROVAL verdict. #1298 (EPIC #1277): the target is
+        #    derived from the cycle's declared exit_when (_TPL_CYCLE_UNTIL_STAGE),
+        #    naming no stage; its verdict is read via the ADR-047 §3 manifest
+        #    verdict channel (runner_read_stage_verdict_raw over the target's
+        #    resolved manifest). Only `approve` rescues — a merge-readiness
+        #    approval that arrived without formal convergence (#796's intent).
+        #    A mechanical `pass` does NOT rescue: an unconverged cycle by
+        #    definition never satisfied its exit_when at check time, so a bare
+        #    gate `pass` is not a late merge-approval. Absent/other verdict →
+        #    not rescued (safe default; mirrors the pre-#979 absent-artifact case).
         local _downstream_success=1
         if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
-            local _review_json
-            _review_json="$(dirname "$state_file")/artifacts/review.json"
-            if [[ -f "$_review_json" ]]; then
-                local _review_verdict
-                _review_verdict="$(jq -r '.verdict // empty' "$_review_json" 2>/dev/null || echo)"
-                case "$_review_verdict" in
-                    approve|pass) _downstream_success=1 ;;
-                    *) _downstream_success=0 ;;
-                esac
-            else
-                # No review.json on an unconverged run → nothing rescued; failed.
-                _downstream_success=0
+            _downstream_success=0
+            local _uc_id="$_RUNNER_CYCLE_UNCONVERGED_ID"
+            local _uc_until_var="_TPL_CYCLE_UNTIL_STAGE_${_uc_id//-/_}"
+            local _uc_until="${!_uc_until_var:-}"
+            if [[ -n "$_uc_until" ]]; then
+                local _uc_plugin_dir _uc_manifest _uc_verdict
+                _uc_plugin_dir="$(resolve_stage_plugin "$_uc_until" "$plugins_root" 2>/dev/null || true)"
+                # Guard the empty-resolution case: an unresolved target would make
+                # _uc_manifest a bare "/manifest.yaml" (filesystem root) and mask
+                # the failure. Only read the verdict when the target resolved to a
+                # real manifest file; otherwise no-rescue (→ failed), the safe default.
+                if [[ -n "$_uc_plugin_dir" && -f "$_uc_plugin_dir/manifest.yaml" ]]; then
+                    _uc_manifest="$_uc_plugin_dir/manifest.yaml"
+                    _uc_verdict="$(runner_read_stage_verdict_raw "$state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
+                    # Only an explicit merge-approval rescues (not a mechanical pass).
+                    [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
+                fi
             fi
         fi
 

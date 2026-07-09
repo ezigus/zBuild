@@ -40,15 +40,16 @@ _runner_compute_final_status() {
 # #938: the mid-run warning when a cycle exhausts its budget and the runner
 # continues to the next dispatch unit. It MUST match the status that
 # _runner_compute_final_status will compute: with on_max=continue the status is
-# NOT necessarily 'failed' (it depends on the downstream review gate), so the
-# old unconditional "pipeline_status will be 'failed'" was stale and misleading.
+# NOT necessarily 'failed' (it depends on the downstream verdict channel), so
+# the old unconditional "pipeline_status will be 'failed'" was stale and
+# misleading. #1298: updated to name no stage (ADR-047 stage-agnostic invariant).
 _runner_unconverged_msg() {
     local _cyc="${1:-}" _rc="${2:-}" _reason="${3:-}" _on_max="${4:-}"
     if [[ "$_on_max" == "continue" ]]; then
-        printf "Cycle %s terminated rc=%s reason=%s — continuing to next dispatch unit (on_max=continue); final pipeline_status depends on the downstream review gate" \
+        printf "Cycle %s terminated rc=%s reason=%s — continuing to next dispatch unit (on_max=continue); final pipeline_status depends on the downstream verdict channel" \
             "$_cyc" "$_rc" "$_reason"
     else
-        printf "Cycle %s terminated rc=%s reason=%s — continuing to next dispatch unit so the review fail-closed gate runs (pipeline_status will be 'failed')" \
+        printf "Cycle %s terminated rc=%s reason=%s — continuing to next dispatch unit so the downstream fail-closed gate runs (pipeline_status will be 'failed')" \
             "$_cyc" "$_rc" "$_reason"
     fi
 }

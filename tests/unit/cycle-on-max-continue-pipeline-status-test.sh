@@ -85,14 +85,15 @@ assert_eq "T6: empty on_max defaults to abort behavior → failed" "failed" "$st
 # runner.sh previously hardcoded "(pipeline_status will be 'failed')" on any
 # cycle rc in {1,2,3}, contradicting an on_max=continue + downstream-approve run
 # that actually computes "complete". The message is now gated on on_max.
-# T7: on_max=continue → message must NOT predict 'failed'; it defers to review.
+# T7: on_max=continue → message must NOT predict 'failed'; it defers to the
+# downstream verdict channel (ADR-047 stage-agnostic; #1298 names no stage).
 msg="$(_runner_unconverged_msg "design_impact_cycle" 1 "max_iterations" "continue")"
 case "$msg" in
     *"will be 'failed'"*) assert_fail "T7: on_max=continue msg wrongly predicts failed" "$msg" ;;
     *) assert_pass "T7: on_max=continue msg does not predict failed" ;;
 esac
-assert_contains "T7: on_max=continue msg defers to the downstream review gate" \
-    "$msg" "depends on the downstream review gate"
+assert_contains "T7: on_max=continue msg defers to the downstream verdict channel" \
+    "$msg" "depends on the downstream verdict channel"
 # T8: on_max=abort → message retains the terminal-failure prediction.
 msg="$(_runner_unconverged_msg "x" 1 "max_iterations" "abort")"
 assert_contains "T8: on_max=abort msg predicts failed (terminal)" \
