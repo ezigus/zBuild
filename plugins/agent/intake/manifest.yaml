@@ -66,5 +66,11 @@ provides:
   artifact_type: [scope-manifest.md, intake.md]
   role: intake
 
+# ADR-047 §6: after this stage completes, the runner merges the operator's
+# --scope override (scope-override.md) into this stage's scope-manifest.md. The
+# runner keys on this capability flag, not the stage name (mechanics name no stage).
+capabilities:
+  merges_scope_override: true
+
 config:
   tier_default: T1
