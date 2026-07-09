@@ -2079,10 +2079,16 @@ main() {
             if [[ -n "$_uc_until" ]]; then
                 local _uc_plugin_dir _uc_manifest _uc_verdict
                 _uc_plugin_dir="$(resolve_stage_plugin "$_uc_until" "$plugins_root" 2>/dev/null || true)"
-                _uc_manifest="$_uc_plugin_dir/manifest.yaml"
-                _uc_verdict="$(runner_read_stage_verdict_raw "$state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
-                # Only an explicit merge-approval rescues (not a mechanical pass).
-                [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
+                # Guard the empty-resolution case: an unresolved target would make
+                # _uc_manifest a bare "/manifest.yaml" (filesystem root) and mask
+                # the failure. Only read the verdict when the target resolved to a
+                # real manifest file; otherwise no-rescue (→ failed), the safe default.
+                if [[ -n "$_uc_plugin_dir" && -f "$_uc_plugin_dir/manifest.yaml" ]]; then
+                    _uc_manifest="$_uc_plugin_dir/manifest.yaml"
+                    _uc_verdict="$(runner_read_stage_verdict_raw "$state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
+                    # Only an explicit merge-approval rescues (not a mechanical pass).
+                    [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
+                fi
             fi
         fi
 

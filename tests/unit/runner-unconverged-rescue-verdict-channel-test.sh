@@ -27,6 +27,8 @@
 #   T6: a DIFFERENT stage's approve artifact is present but the TARGET is pass →
 #       NOT rescued (proves the rescue reads only the cycle's exit_when target,
 #       not "any approve in the artifacts dir" — the any-pass/any-approve bug guard)
+#   T7: exit_when target declared but does NOT resolve to a manifest → NOT rescued
+#       (empty-resolution guard — never read a root-anchored "/manifest.yaml")
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,11 +48,13 @@ setup_test_env "runner-unconverged-rescue-verdict-channel"
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 mkdir -p "$PLUGINS_ROOT"
 
-# Stub resolver: map a stage id to its plugin dir under $PLUGINS_ROOT (id-first).
-# Mirrors resolve_stage_plugin's id-match path without the full dispatch.sh.
+# Stub resolver: map a stage id to its plugin dir under the given plugins_root
+# (id-first). Mirrors resolve_stage_plugin's id-match path without the full
+# dispatch.sh. Honors the plugins_root ARGUMENT (not a hardcoded global) so a
+# caller passing a different root is actually exercised.
 resolve_stage_plugin() {
-    local _id="$1"
-    local _dir="$PLUGINS_ROOT/$_id"
+    local _id="$1" _root="${2:-$PLUGINS_ROOT}"
+    local _dir="$_root/$_id"
     [[ -d "$_dir" ]] && { printf '%s' "$_dir"; return 0; }
     return 1
 }
@@ -68,9 +72,13 @@ _rescue_success() {
     if [[ -n "$_uc_until" ]]; then
         local _uc_plugin_dir _uc_manifest _uc_verdict
         _uc_plugin_dir="$(resolve_stage_plugin "$_uc_until" "$_plugins_root" 2>/dev/null || true)"
-        _uc_manifest="$_uc_plugin_dir/manifest.yaml"
-        _uc_verdict="$(runner_read_stage_verdict_raw "$_state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
-        [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
+        # Guard the empty-resolution case (mirrors runner.sh): only read the
+        # verdict when the target resolved to a real manifest file, else no-rescue.
+        if [[ -n "$_uc_plugin_dir" && -f "$_uc_plugin_dir/manifest.yaml" ]]; then
+            _uc_manifest="$_uc_plugin_dir/manifest.yaml"
+            _uc_verdict="$(runner_read_stage_verdict_raw "$_state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
+            [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
+        fi
     fi
     [[ "$_downstream_success" == "1" ]]
 }
@@ -168,10 +176,26 @@ else
     assert_pass "T6: stray approve artifact + target=pass → NOT rescued (any-approve bug guard)"
 fi
 
+# ─── T7: exit_when target declared but does NOT resolve → NOT rescued ────────
+# Copilot guard: an unresolvable target would make the manifest path a bare
+# "/manifest.yaml" (filesystem root). The empty-resolution guard must treat this
+# as no-rescue (→ failed), the safe default — never read a root-anchored path.
+t7="$TEST_TEMP_DIR/t7"; mkdir -p "$t7/artifacts"
+export _TPL_CYCLE_UNTIL_STAGE_ghost_cycle="no-such-stage"   # not installed → unresolvable
+# Even a stray approving artifact must not rescue when the target can't resolve.
+printf '{"verdict":"approve"}' > "$t7/artifacts/review.json"
+if _rescue_success "ghost_cycle" "$t7" "$PLUGINS_ROOT"; then
+    assert_fail "T7: unresolvable exit_when target → NOT rescued (empty-resolution guard)" \
+        "incorrectly rescued when the target did not resolve"
+else
+    assert_pass "T7: unresolvable exit_when target → NOT rescued (empty-resolution guard)"
+fi
+
 # Clean up the exported template vars so they don't leak.
 unset _TPL_CYCLE_UNTIL_STAGE_build_review_cycle \
       _TPL_CYCLE_UNTIL_STAGE_build_test_cycle \
-      _TPL_CYCLE_UNTIL_STAGE_design_verify_cycle 2>/dev/null || true
+      _TPL_CYCLE_UNTIL_STAGE_design_verify_cycle \
+      _TPL_CYCLE_UNTIL_STAGE_ghost_cycle 2>/dev/null || true
 
 # ─── Shape guard: runner.sh rescue block names no stage + reads exit_when ────
 # ADR-047 stage-agnostic invariant: the rescue path names no stage and derives
