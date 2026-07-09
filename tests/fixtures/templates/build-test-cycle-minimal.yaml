@@ -1,0 +1,30 @@
+id: build-test-cycle-minimal
+name: Build/Test Cycle Minimal (#979 standard.yaml retirement)
+# Minimal template declaring a `build_test_cycle` dispatch unit whose members are
+# [build, test] converging on test.verdict==pass. Replaces the retired
+# standard.yaml (#979) for integration tests that drive cycle_orchestrator_run
+# "build_test_cycle" directly with their OWN cycle_dispatch_stage stub — they need
+# only the cycle SHAPE (id + members + exit condition), not the full 14-stage
+# roster. simple.yaml's own build_test_cycle converges on gate-aggregator (a
+# different, LLM-free composable-gate shape); these orchestrator-mechanic tests
+# predate that and pin the classic build→test→verdict loop, so they own this
+# focused fixture instead.
+defaults:
+  strategy: fanout
+stages:
+  - id: build_test_cycle
+    type: cycle
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 5
+    on_max: continue
+
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]

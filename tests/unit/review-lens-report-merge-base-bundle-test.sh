@@ -13,8 +13,9 @@
 # MB3: with the empty diff.patch, the lens actually RUNS (reaches route_to_model
 #      with non-empty evidence) instead of degrading on empty evidence.
 # MB4: no resolvable base → falls back to the diff.patch artifact (no crash).
-# MB5: source-level dedupe — review/lens/report share zbuild_change_bundle /
-#      zbuild_resolve_merge_base and no local _review_resolve_merge_base survives.
+# MB5: source-level dedupe — lens/report share zbuild_change_bundle /
+#      zbuild_resolve_merge_base via the shared merge-base.sh lib. (The retired
+#      review agent plugin, #979, is no longer part of this dedupe assertion.)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,9 +138,9 @@ else
     assert_fail "MB4 branch-diff.patch should not exist without a base" "present"
 fi
 
-# ─── MB5: source-level dedupe — one shared resolver across all three ──────────
-print_test_section "MB5: review/lens/report share the resolver; local twin retired"
-for _p in review review-lens review-report; do
+# ─── MB5: source-level dedupe — one shared resolver across lens + report ──────
+print_test_section "MB5: lens/report share the resolver via merge-base.sh"
+for _p in review-lens review-report; do
     _src="$REPO_ROOT/plugins/agent/$_p/plugin.sh"
     if grep -q 'scripts/lib/merge-base.sh' "$_src"; then
         assert_pass "MB5 $_p sources shared merge-base.sh"
@@ -147,11 +148,6 @@ for _p in review review-lens review-report; do
         assert_fail "MB5 $_p must source shared merge-base.sh" "absent"
     fi
 done
-if grep -q '_review_resolve_merge_base' "$REPO_ROOT/plugins/agent/review/plugin.sh"; then
-    assert_fail "MB5 local _review_resolve_merge_base must be retired" "still present"
-else
-    assert_pass "MB5 local _review_resolve_merge_base retired (uses shared resolver)"
-fi
 for _p in review-lens review-report; do
     if grep -q 'zbuild_change_bundle' "$REPO_ROOT/plugins/agent/$_p/plugin.sh"; then
         assert_pass "MB5 $_p resolves the change bundle via zbuild_change_bundle"

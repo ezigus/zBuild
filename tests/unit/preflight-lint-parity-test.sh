@@ -33,9 +33,11 @@ else
 fi
 
 # TC-2: both produce the same inputs[] view on a fixture manifest.
-FIXTURE="$REPO_ROOT/plugins/agent/review/manifest.yaml"
+# (#979 retired the review agent manifest; the build manifest is an equivalent
+# KEEP fixture with non-empty inputs and outputs.)
+FIXTURE="$REPO_ROOT/plugins/agent/build/manifest.yaml"
 if [[ ! -f "$FIXTURE" ]]; then
-    assert_fail "TC-2: review manifest exists" "missing $FIXTURE"
+    assert_fail "TC-2: build manifest exists" "missing $FIXTURE"
 else
     inputs_from_parser="$(manifest_graph_get_inputs "$FIXTURE" | LC_ALL=C sort)"
     outputs_from_parser="$(manifest_graph_get_outputs "$FIXTURE" | LC_ALL=C sort)"
@@ -43,15 +45,15 @@ else
     # We assert non-empty data here so a parser regression is caught even when
     # both callers regress simultaneously.
     if [[ -n "$inputs_from_parser" ]]; then
-        assert_pass "TC-2: shared parser yields non-empty inputs for review.yaml"
+        assert_pass "TC-2: shared parser yields non-empty inputs for build.yaml"
     else
-        assert_fail "TC-2: shared parser yields non-empty inputs for review.yaml" \
+        assert_fail "TC-2: shared parser yields non-empty inputs for build.yaml" \
             "got empty result"
     fi
     if [[ -n "$outputs_from_parser" ]]; then
-        assert_pass "TC-2: shared parser yields non-empty outputs for review.yaml"
+        assert_pass "TC-2: shared parser yields non-empty outputs for build.yaml"
     else
-        assert_fail "TC-2: shared parser yields non-empty outputs for review.yaml" \
+        assert_fail "TC-2: shared parser yields non-empty outputs for build.yaml" \
             "got empty result"
     fi
 fi

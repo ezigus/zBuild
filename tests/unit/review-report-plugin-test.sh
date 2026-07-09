@@ -109,12 +109,8 @@ if grep -qiE '\b(approve|request_changes)\b|"block"|verdict' \
 else
     assert_pass "[SPEC-3] no coercion vocabulary in plugin source"
 fi
-# Regression-lock: the legacy verdict plugin is UNTOUCHED (still coerces).
-if grep -q "request_changes" "$REPO_ROOT/plugins/agent/review/plugin.sh"; then
-    assert_pass "[SPEC-3] legacy review plugin still emits verdicts (not neutered)"
-else
-    assert_fail "[SPEC-3] legacy review plugin should be untouched" "request_changes missing"
-fi
+# (The former regression-lock against the legacy verdict-coercing `review`
+# plugin was dropped with #979 — that plugin is retired.)
 
 # ─── SPEC-4: rendered CONTENT, not just non-empty (PR #1004 jq-bug lock) ─────
 # The per-lens bullet list must NOT be silently blanked. Assert a known message

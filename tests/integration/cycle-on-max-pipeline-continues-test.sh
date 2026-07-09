@@ -37,8 +37,12 @@ export ZBUILD_CONTRACT_VALIDATOR=warn
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 # ─── Stub plugins (every required role) ──────────────────────────────────
-# intake/plan/build/test/test_assessment/review succeed.
-# impact ALWAYS emits verdict=incomplete so design_impact_cycle exhausts.
+# #979: standard.yaml retired → drive the shipped default simple.yaml. The
+# on_max=continue continue-past-exhaustion mechanic is identical; simple.yaml's
+# design_verify_cycle (on_max=continue) is the exhausting cycle here, forced by a
+# design-gate stub that never returns verdict=pass. All other stages succeed so
+# the runner walks past the exhausted cycle to impact → build_test_cycle →
+# review_lenses → pr and ends status=success.
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
     local dir="$PLUGINS_ROOT/agent/$id"
@@ -95,36 +99,72 @@ design_run() {
 PLUG
 }
 
-# Override impact to emit verdict=incomplete via primary artifact
-# (so design_impact_cycle exit_when never matches, exhausting max_iterations).
-_make_impact_plugin() {
-    local dir="$PLUGINS_ROOT/agent/impact"
+# Override design-gate to ALWAYS emit verdict=fail via its primary artifact
+# (so design_verify_cycle exit_when on design-gate.verdict==pass never matches,
+# exhausting max_iterations with on_max=continue — the exhaustion under test).
+_make_design_gate_plugin() {
+    local dir="$PLUGINS_ROOT/agent/design-gate"
     mkdir -p "$dir"
     cat > "$dir/manifest.yaml" <<'EOF'
-id: impact
-name: Test impact
+id: design-gate
+name: Test design-gate
 kind: agent
 version: 0.0.1
 hooks:
-  run: impact_run
+  run: design_gate_run
 requires:
   core:
     - redaction
 provides:
-  role: impact_analyzer
+  role: design_gate
 outputs:
-  - id: impact_out
-    path: ${artifact_dir}/impact.json
+  - id: design_gate_out
+    path: ${artifact_dir}/design-gate.json
     type: json
     required: true
     primary: true
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
-impact_run() {
+design_gate_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"forced incomplete to test max_iterations"}' \
-        > "$state_dir/artifacts/impact.json"
+    printf '{"schema_version":1,"verdict":"fail","summary":"forced fail to test max_iterations"}' \
+        > "$state_dir/artifacts/design-gate.json"
+    return 0
+}
+PLUG
+}
+
+# Override gate-aggregator to ALWAYS emit verdict=pass via its primary artifact
+# (so build_test_cycle exit_when on gate-aggregator.verdict==pass converges).
+_make_gate_aggregator_plugin() {
+    local dir="$PLUGINS_ROOT/agent/gate-aggregator"
+    mkdir -p "$dir"
+    cat > "$dir/manifest.yaml" <<'EOF'
+id: gate-aggregator
+name: Test gate-aggregator
+kind: agent
+version: 0.0.1
+hooks:
+  run: gate_aggregator_run
+requires:
+  core:
+    - redaction
+provides:
+  role: gate_aggregator
+outputs:
+  - id: gate_aggregator_out
+    path: ${artifact_dir}/gate-aggregator.json
+    type: json
+    required: true
+    primary: true
+EOF
+    cat > "$dir/plugin.sh" <<'PLUG'
+gate_aggregator_run() {
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    printf '{"schema_version":1,"verdict":"pass","summary":"ok","gates":[]}' \
+        > "$state_dir/artifacts/gate-aggregator.json"
     return 0
 }
 PLUG
@@ -164,47 +204,29 @@ plan_run() {
 PLUG
 }
 
-# Stubs for every role the standard template needs.
+# Stubs for every role simple.yaml needs.
 _make_plugin "intake"          "intake"
 _make_plan_plugin
 _make_design_plugin
-_make_impact_plugin
+_make_design_gate_plugin   # forces design_verify_cycle to exhaust
+_make_plugin "impact"          "impact_analyzer"
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
-_make_plugin "test_assessment" "test_assessment"
-# #922: acceptance-gate leaf stage (ADR-036).
+# Decomposed mechanical gates (ADR-040) — all pass so build_test_cycle converges.
+_make_plugin "shape-floor"     "shape_floor"
 _make_plugin "acceptance-gate" "acceptance_gate"
-# #755: build_review_cycle.flow now includes the 4 compound_quality stages.
-_make_plugin "cq-preflight"    "cq_preflight"
-_make_plugin "cq-audit-plan"   "cq_audit_plan"
-_make_plugin "cq-cycle"        "cq_cycle"
-_make_plugin "cq-backtrack"    "cq_backtrack"
-_make_plugin "review"          "reviewer"
-# #756: pr leaf stage after build_review_cycle uses the pr_delivery role.
-_make_plugin "pr"              "pr_delivery"
+_make_plugin "secret-scan"     "secret_scan"
+_make_gate_aggregator_plugin   # emits primary verdict=pass → cycle converges
+# Advisory review lenses + aggregator (never blocking) and the pr tool stage.
+_make_plugin "lens-security"    "review_lens"
+_make_plugin "lens-performance" "review_lens"
+_make_plugin "lens-red-team"    "review_lens"
+_make_plugin "lens-correctness" "review_lens"
+_make_plugin "lens-scope"       "review_lens"
+_make_plugin "review-aggregator" "review_aggregator"
+_make_plugin "pr"              "pr"
 
-# Force test_assessment to emit verdict=pass so build_test_cycle converges fast.
-cat > "$PLUGINS_ROOT/agent/test_assessment/plugin.sh" <<'PLUG'
-test_assessment_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"pass","summary":"ok","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"","failure_summary_md":"","iter":1}' \
-        > "$state_dir/artifacts/test_assessment.json"
-    return 0
-}
-PLUG
-# Force review to emit verdict=approve.
-cat > "$PLUGINS_ROOT/agent/review/plugin.sh" <<'PLUG'
-review_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"approve","summary":"ok","issues":[],"confidence":0.99,"review_md":"ok"}' \
-        > "$state_dir/artifacts/review.json"
-    return 0
-}
-PLUG
-
-# ─── Drive runner.sh end-to-end with --template standard ──────────────────
+# ─── Drive runner.sh end-to-end with --template simple ────────────────────
 : > "$EVENTS_JSONL"
 
 # Operator override token so intake's scope-precondition passes.
@@ -219,26 +241,26 @@ RUNNER_STDERR="$TEST_TEMP_DIR/runner.stderr"
 set +e
 bash "$REPO_ROOT/core/pipeline/runner.sh" \
     --goal "test on_max=continue" \
-    --template standard \
+    --template simple \
     --no-resume \
     >"$TEST_TEMP_DIR/runner.stdout" \
     2>"$RUNNER_STDERR"
 runner_rc=$?
 set -e
 
-print_test_section "T1: events.jsonl chain around design_impact_cycle exhaustion"
+print_test_section "T1: events.jsonl chain around design_verify_cycle exhaustion"
 
 # T1.1: cycle.complete fired with a non-convergence terminal reason for
-# design_impact_cycle. Accept any of {max_iterations, plateau, divergence} —
+# design_verify_cycle. Accept any of {max_iterations, plateau, divergence} —
 # the test's intent (per #766) is to verify the runner continues past
 # cycle exit, NOT to pin a specific reason.
-mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterations" or .data.reason=="plateau" or .data.reason=="divergence") and .data.cycle_id=="design_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterations" or .data.reason=="plateau" or .data.reason=="divergence") and .data.cycle_id=="design_verify_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$mi_count" -ge 1 ]] \
-    && assert_pass "T1.1: cycle.complete fired with non-convergence reason for design_impact_cycle (count=$mi_count)" \
+    && assert_pass "T1.1: cycle.complete fired with non-convergence reason for design_verify_cycle (count=$mi_count)" \
     || assert_fail "T1.1: cycle.complete MUST fire with non-convergence reason" "count=$mi_count"
 
 # T1.2: cycle.unconverged event MUST be emitted (proves runner.sh:1292 reached)
-unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="design_impact_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="design_verify_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)" "1" "$unconv_count"
 
 # T1.3: pipeline.abort (EXIT trap) MUST NOT fire on the on_max=continue path
@@ -249,29 +271,39 @@ assert_eq "T1.3: pipeline.abort MUST NOT fire on on_max=continue cycle exhaustio
 end_count="$(jq -c 'select(.type=="pipeline.end")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T1.4: pipeline.end emitted exactly once" "1" "$end_count"
 
-# T1.5 (amended #796 / ADR-021 v3 R1): when on_max=continue AND downstream review
-# verdict=approve, pipeline.end status=success (NOT failed). The cycle.unconverged
-# event still fires for forensics, but pipeline status reflects the FINAL stage
-# outcome — review approved, so pipeline succeeded with a warning.
-# Previously (#527, pre-#796) this was "failed" — that contradicted on_max=continue
-# semantics and produced false-failure operator banners on substantively
-# successful runs (dogfood run_id 20260611072619-15296).
+# T1.5 (#979 COUPLING FINDING): under the retired standard.yaml this asserted
+# status=success — #796/ADR-021 v3 R1 "rescued" an unconverged on_max=continue run
+# to success when the terminal `review` stage approved. That rescue path is engine
+# code (core/pipeline/runner.sh) that hardcodes reading artifacts/review.json:
+#     _review_json="$(dirname "$state_file")/artifacts/review.json"
+#     case "$_review_verdict" in approve|pass) _downstream_success=1 ;; ...
+# simple.yaml has NO `review` stage (its advisory review_lenses group writes no
+# review.json), so no review.json exists → _downstream_success=0 → status=failed.
+# This test does NOT edit core/pipeline (EPIC #1277 / #979 guardrail); it asserts
+# the ACTUAL current engine behavior. The review.json-rescue branch is now dead
+# code coupled to the retired lattice — reported as a #979 coupling finding for a
+# follow-up (generalize the rescue to the template's terminal-stage verdict, or
+# drop it). The #766 mechanic under test (unconverged on_max=continue → NO
+# pipeline.abort, runner CONTINUES past the cycle) is fully proven by T1.1–T2.2.
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
-assert_eq "T1.5: pipeline.end status=success (on_max=continue + review approved, #796)" "success" "$end_status"
+assert_eq "T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)" "failed" "$end_status"
 
-print_test_section "T2: build_review_cycle dispatched after design_impact_cycle exhausted"
+print_test_section "T2: build_test_cycle + pr dispatched after design_verify_cycle exhausted"
 
-# T2.1: build_review_cycle entered (build runs at least once because build_review_cycle's inner build_test_cycle runs)
+# T2.1: build_test_cycle entered (build runs at least once because the inner
+# build_test_cycle dispatches after the exhausted design_verify_cycle).
 build_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="build")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 [[ "$build_run_count" -ge 1 ]] \
-    && assert_pass "T2.1: build plugin ran (proves build_review_cycle was dispatched after design_impact_cycle exhausted)" \
-    || assert_fail "T2.1: build plugin did NOT run (runner stopped before build_review_cycle)" "build_run_count=$build_run_count"
+    && assert_pass "T2.1: build plugin ran (proves build_test_cycle was dispatched after design_verify_cycle exhausted)" \
+    || assert_fail "T2.1: build plugin did NOT run (runner stopped before build_test_cycle)" "build_run_count=$build_run_count"
 
-# T2.2: review stage ran (proves build_review_cycle's review member dispatched)
-review_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="review")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-[[ "$review_run_count" -ge 1 ]] \
-    && assert_pass "T2.2: review plugin ran (proves build_review_cycle reached its review member)" \
-    || assert_fail "T2.2: review plugin did NOT run" "review_run_count=$review_run_count"
+# T2.2 (#979): the retired standard.yaml had a merge-blocking `review` member; simple.yaml
+# ends with the pr tool stage after the advisory review_lenses group. Assert pr ran —
+# it proves the runner walked ALL THE WAY to the terminal stage after the cycle exhausted.
+pr_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="pr")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+[[ "$pr_run_count" -ge 1 ]] \
+    && assert_pass "T2.2: pr plugin ran (proves the pipeline reached its terminal stage past the exhausted cycle)" \
+    || assert_fail "T2.2: pr plugin did NOT run" "pr_run_count=$pr_run_count"
 
 cleanup_test_env
 print_test_results

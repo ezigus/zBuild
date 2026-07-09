@@ -1,6 +1,7 @@
 # ADR-026: Review Remediation Cycle
 
-**Status:** Accepted (flipped from Proposed in Wave 18-B / #707)
+**Status:** Retired (#979, EPIC #1277) — `build_review_cycle` and the single `review` stage it wrapped lived only in `standard.yaml`, which was deleted with the compound-quality lattice. `simple.yaml` uses the advisory `review_lenses` group + `review-aggregator` (ADR-040 §3) instead. Kept for history.
+**Status (original):** Accepted (flipped from Proposed in Wave 18-B / #707)
 **Date:** 2026-06-05
 **Depends on:** ADR-019 (review fail-CLOSED on test failure), ADR-020 (inter-stage data contract), ADR-021 v2 (pipeline cycle semantics), ADR-027 (recursive flow template format)
 **Implemented by:** #707 (Wave 18-B `build_review_cycle` wiring in `config/templates/standard.yaml` + build manifest `prior_review_feedback` input), #708 (Wave 18-C contract lint).

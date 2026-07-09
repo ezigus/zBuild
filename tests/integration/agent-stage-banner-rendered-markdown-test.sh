@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Integration test (#483): producer-side banner rendering across the
-# subprocess boundary. Plan and review must opt into the renderer registry
+# subprocess boundary. The plan stage must opt into the renderer registry
 # such that the stage-io OUTPUT banner shows rendered markdown instead of
 # raw JSON when the real claude stub is on PATH.
 #
@@ -10,6 +10,9 @@
 #   - real install_envelope_mock_claude binary on PATH
 #   - real render_artifact dispatch through the registry
 # and captures fd 3 (ZBUILD_STAGE_IO_FD) to assert the banner content.
+# (The former review-stage banner sections were removed with #979 — the
+# review agent plugin is retired; the plan stage covers the same generic
+# producer-side banner-render feature.)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,83 +99,6 @@ if grep -qF '"title":"Boundary Plan"' <<< "$plan_output_section"; then
         "got: $(printf '%s' "$plan_output_section" | head -20)"
 else
     assert_pass "plan banner output section free of raw JSON"
-fi
-
-# ─── Review banner test ─────────────────────────────────────────────────────
-print_test_section "review stage OUTPUT banner renders via render_review_md (#483)"
-
-# Reset events log for clean review run
-: > "$ZBUILD_EVENTS_JSONL"
-
-REVIEW_CANNED="$TEST_TEMP_DIR/review-canned.json"
-printf '%s\n' '{"verdict":"approve","confidence":0.92,"issues":[],"summary":"banner integration ok"}' > "$REVIEW_CANNED"
-install_envelope_mock_claude --file "$REVIEW_CANNED"
-
-# Fixture inputs for review
-REV_FIX="$TEST_TEMP_DIR/review-fixtures"
-mkdir -p "$REV_FIX"
-cat > "$REV_FIX/plan.json" <<'EOF'
-{"schema_version":1,"goal":"banner","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":1}]}
-EOF
-cat > "$REV_FIX/diff.patch" <<'EOF'
-diff --git a/core/foo.sh b/core/foo.sh
-new file mode 100644
---- /dev/null
-+++ b/core/foo.sh
-@@ -0,0 +1,1 @@
-+echo hi
-EOF
-cat > "$REV_FIX/test-results.json" <<'EOF'
-{"passed":1,"failed":0}
-EOF
-
-export ZBUILD_CURRENT_STAGE=review
-export _TPL_STAGE_IO_DESTS_review="stdout"
-REVIEW_BANNER="$TEST_TEMP_DIR/review-banner.txt"
-: > "$REVIEW_BANNER"
-exec 3>"$REVIEW_BANNER"
-export ZBUILD_STAGE_IO_FD=3
-
-# shellcheck source=../../plugins/agent/review/plugin.sh
-source "$REPO_ROOT/plugins/agent/review/plugin.sh"
-
-REV_OUT="$REV_FIX/review.json"
-set +e
-_review_run_inner \
-    "$STATE_DIR/scope-manifest.md" \
-    "$REV_FIX/plan.json" \
-    "$REV_FIX/diff.patch" \
-    "$REV_FIX/test-results.json" \
-    "$REV_OUT" \
-    "$REV_FIX" >/dev/null 2>&1
-rc=$?
-set -e
-
-exec 3>&-
-unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review
-
-assert_eq "_review_run_inner rc=0 with banner capture on" "0" "$rc"
-
-review_banner_content="$(cat "$REVIEW_BANNER" 2>/dev/null || true)"
-if grep -qF "# Review" <<< "$review_banner_content"; then
-    assert_pass "review banner contains rendered markdown heading across subprocess"
-else
-    assert_fail "review banner missing markdown heading across subprocess" \
-        "got: $(printf '%s' "$review_banner_content" | head -40)"
-fi
-if grep -qF "**Verdict:** approve" <<< "$review_banner_content"; then
-    assert_pass "review banner contains Verdict field"
-else
-    assert_fail "review banner missing Verdict field" \
-        "got: $(printf '%s' "$review_banner_content" | head -40)"
-fi
-
-review_output_section="$(printf '%s' "$review_banner_content" | sed -n '/seq=[0-9]* output /,/── end stage-io/p')"
-if grep -qF '"verdict":"approve"' <<< "$review_output_section"; then
-    assert_fail "review banner raw JSON leaked into output section" \
-        "got: $(printf '%s' "$review_output_section" | head -20)"
-else
-    assert_pass "review banner output section free of raw JSON"
 fi
 
 # ─── Plan banner: prose+JSON envelope splits into plan + llm comment (#510) ─
@@ -276,60 +202,6 @@ if grep -qF "── llm comment ──" <<< "$plan_jo_output"; then
         "got: $(printf '%s' "$plan_jo_output" | head -40)"
 else
     assert_pass "JSON-only banner has NO llm comment marker (regression lock)"
-fi
-
-# ─── Review banner: prose+JSON envelope splits into review + llm comment ───
-print_test_section "review stage OUTPUT banner splits prose+JSON envelope (#510)"
-
-: > "$ZBUILD_EVENTS_JSONL"
-REVIEW_MIX="$TEST_TEMP_DIR/review-canned-mixed.json"
-printf '%s' 'Reviewer note: looks fine.
-{"verdict":"approve","confidence":0.92,"issues":[],"summary":"mixed envelope ok"}
-Let me know if you want changes.' > "$REVIEW_MIX"
-install_envelope_mock_claude --file "$REVIEW_MIX"
-
-export ZBUILD_CURRENT_STAGE=review
-export _TPL_STAGE_IO_DESTS_review="stdout"
-REVIEW_BANNER_MIX="$TEST_TEMP_DIR/review-banner-mix.txt"
-: > "$REVIEW_BANNER_MIX"
-exec 3>"$REVIEW_BANNER_MIX"
-export ZBUILD_STAGE_IO_FD=3
-
-REV_OUT_MIX="$REV_FIX/review-mix.json"
-set +e
-_review_run_inner \
-    "$STATE_DIR/scope-manifest.md" \
-    "$REV_FIX/plan.json" \
-    "$REV_FIX/diff.patch" \
-    "$REV_FIX/test-results.json" \
-    "$REV_OUT_MIX" \
-    "$REV_FIX" >/dev/null 2>&1
-rc=$?
-set -e
-
-exec 3>&-
-unset ZBUILD_STAGE_IO_FD ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review
-
-assert_eq "_review_run_inner rc=0 on prose+JSON envelope" "0" "$rc"
-
-review_mix_output="$(sed -n '/seq=[0-9]* output /,/── end stage-io/p' "$REVIEW_BANNER_MIX" 2>/dev/null || true)"
-if grep -qF "# Review" <<< "$review_mix_output"; then
-    assert_pass "prose+JSON review banner: rendered Review heading present"
-else
-    assert_fail "prose+JSON review banner: rendered Review heading present" \
-        "got: $(printf '%s' "$review_mix_output" | head -40)"
-fi
-if grep -qF "── llm comment ──" <<< "$review_mix_output"; then
-    assert_pass "prose+JSON review banner: llm comment block emitted"
-else
-    assert_fail "prose+JSON review banner: llm comment block emitted" \
-        "got: $(printf '%s' "$review_mix_output" | head -40)"
-fi
-if grep -qF "Reviewer note: looks fine" <<< "$review_mix_output"; then
-    assert_pass "prose+JSON review banner: prefix prose preserved"
-else
-    assert_fail "prose+JSON review banner: prefix prose preserved" \
-        "got: $(printf '%s' "$review_mix_output" | head -40)"
 fi
 
 cleanup_test_env

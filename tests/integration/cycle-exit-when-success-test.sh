@@ -37,8 +37,11 @@ STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
 rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 
-# Template mirrors config/templates/standard.yaml build_review_cycle shape:
-# outer cycle [inner_cycle, review_leaf]; inner cycle is [build, test].
+# Self-contained template mirroring the classic outer-remediation-cycle shape:
+# outer cycle [inner_cycle, review_leaf]; inner cycle is [build, test]. (#979:
+# the standard.yaml build_review_cycle this once mirrored is retired; the
+# orchestrator bug under regression-lock — outer exit_when on a leaf-after-inner-
+# cycle — is a GENERIC cycle mechanic, exercised here with a local fixture.)
 TPL="$TEST_TEMP_DIR/exit-when.yaml"
 cat > "$TPL" <<'EOF'
 id: exit_when_test
@@ -159,7 +162,27 @@ cat > "$REVIEW_FIXTURE" <<'EOF'
   "summary": "test fixture"
 }
 EOF
-REVIEW_MANIFEST="$REPO_ROOT/plugins/agent/review/manifest.yaml"
+# #979: the `review` agent plugin is retired. runner_read_stage_verdict[_raw]
+# only needs a manifest declaring the primary output that carries `.verdict`, so
+# use a minimal local fixture manifest (review.json primary) rather than the
+# deleted plugin's — the two-channel raw/classified read is the generic mechanic
+# under test, independent of any specific plugin.
+REVIEW_MANIFEST="$TEST_TEMP_DIR/review-manifest.yaml"
+cat > "$REVIEW_MANIFEST" <<'EOF'
+id: review-verdict-fixture
+name: Review Verdict Fixture (#979)
+kind: agent
+version: 0.0.1
+provides:
+  artifact_type: review.json
+  schema_version: 1
+outputs:
+  - id: review
+    path: "${artifact_dir}/review.json"
+    type: review.json
+    required: true
+    primary: true
+EOF
 RAW=$(runner_read_stage_verdict_raw "$ZBUILD_STATE_DIR" "$REVIEW_MANIFEST" "review" 0)
 assert_eq "T7: runner_read_stage_verdict_raw returns raw 'approve' (not classified 'pass')" "approve" "$RAW"
 

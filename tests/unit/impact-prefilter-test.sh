@@ -53,7 +53,7 @@ config/event-schema.json
 PATHS
 
 # Synthetic standard.yaml with flow:7 entries.
-cat > "$FAKE_ROOT/config/templates/standard.yaml" <<'YAML'
+cat > "$FAKE_ROOT/config/templates/simple.yaml" <<'YAML'
 flow:
   - intake
   - plan
@@ -92,7 +92,7 @@ echo "intake.start" > "$FAKE_ROOT/tests/golden/full-pipeline/event-sequence.gold
 echo "intake.start" > "$FAKE_ROOT/tests/golden/parity/event-sequence.golden"
 
 # ─── S: detect_shape_change ──────────────────────────────────────────────────
-PLAN_SHAPE='{"steps":[{"id":"s1","files":["config/templates/standard.yaml"]}]}'
+PLAN_SHAPE='{"steps":[{"id":"s1","files":["config/templates/simple.yaml"]}]}'
 PLAN_NONSHAPE='{"steps":[{"id":"s1","files":["plugins/agent/foo/plugin.sh"]}]}'
 PLAN_EMPTY='{"steps":[]}'
 
@@ -109,13 +109,13 @@ _impact_detect_shape_change "$PLAN_EMPTY" "$FAKE_ROOT"; rc=$?; set -e
 assert_eq "S3: empty plan → rc=1" "1" "$rc"
 
 # S4: plan with fictional plan.files[] (not real schema) must not match.
-PLAN_FICTIONAL='{"files":["config/templates/standard.yaml"]}'
+PLAN_FICTIONAL='{"files":["config/templates/simple.yaml"]}'
 set +e
 _impact_detect_shape_change "$PLAN_FICTIONAL" "$FAKE_ROOT"; rc=$?; set -e
 assert_eq "S4: fictional plan.files[] → rc=1 (uses steps[].files[] only)" "1" "$rc"
 
 # ─── P: parse_shape_counts ───────────────────────────────────────────────────
-out="$(_impact_parse_shape_counts "$FAKE_ROOT/config/templates/standard.yaml")"
+out="$(_impact_parse_shape_counts "$FAKE_ROOT/config/templates/simple.yaml")"
 assert_eq "P1: flow:7 entries → '7'" "7" "$out"
 
 # Dual-shape: both flow and stages declared.
@@ -185,7 +185,7 @@ esac
 out="$(_impact_scope_prefilter "$PLAN_NONSHAPE" "$FAKE_ROOT")"
 assert_eq "X1: non-shape plan → empty JSON array" "[]" "$out"
 
-PLAN_754='{"steps":[{"id":"step-1","files":["config/templates/standard.yaml","plugins/agent/design/plugin.sh"]}]}'
+PLAN_754='{"steps":[{"id":"step-1","files":["config/templates/simple.yaml","plugins/agent/design/plugin.sh"]}]}'
 out="$(_impact_scope_prefilter "$PLAN_754" "$FAKE_ROOT")"
 # Should be valid JSON array.
 echo "$out" | jq -e 'type == "array" and length > 0' >/dev/null 2>&1

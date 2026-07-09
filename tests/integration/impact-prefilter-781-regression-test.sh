@@ -53,7 +53,7 @@ cat > "$ARTIFACTS_DIR/design.md" <<'DESIGN'
 # Design
 
 ```scope
-config/templates/standard.yaml
+config/templates/simple.yaml
 plugins/agent/foo/plugin.sh
 ```
 DESIGN
@@ -79,14 +79,14 @@ route_to_model() {
 }
 
 # Use the REAL repo root so the prefilter scans the real
-# config/templates/standard.yaml + tests/golden/**.
+# config/templates/simple.yaml + tests/golden/**.
 export ZBUILD_REPO_ROOT="$REPO_ROOT"
 
 # ─── I1+I2: shape-change plan with empty LLM missing[] ──────────────────────
-# Plan touches standard.yaml → prefilter detects shape change → forces
+# Plan touches simple.yaml → prefilter detects shape change → forces
 # event-sequence goldens into missing[] even though LLM returned empty.
 cat > "$ARTIFACTS_DIR/plan.json" <<'PLAN'
-{"schema_version":1,"title":"shape change","goal":"g","steps":[{"id":"step-1","description":"touch flow","files":["config/templates/standard.yaml"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
+{"schema_version":1,"title":"shape change","goal":"g","steps":[{"id":"step-1","description":"touch flow","files":["config/templates/simple.yaml"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
 PLAN
 
 : > "$_CAPTURED_IMPACT_PROMPT_FILE"
@@ -200,7 +200,7 @@ esac
 # Verifies jq native set-difference adds only the missing other golden, no
 # duplicates, and preserves the LLM-provided entry.
 cat > "$ARTIFACTS_DIR/plan.json" <<'PLAN'
-{"schema_version":1,"title":"shape","goal":"g","steps":[{"id":"step-1","description":"touch flow","files":["config/templates/standard.yaml"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
+{"schema_version":1,"title":"shape","goal":"g","steps":[{"id":"step-1","description":"touch flow","files":["config/templates/simple.yaml"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
 PLAN
 rm -f "$ARTIFACTS_DIR/impact.json"
 CANNED_IMPACT_RESPONSE='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"llm-step","files_to_add":["tests/golden/full-pipeline/event-sequence.golden"],"reason":"LLM caught one golden"}],"impact_feedback_md":"partial"}'

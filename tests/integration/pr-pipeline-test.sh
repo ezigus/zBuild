@@ -6,7 +6,9 @@
 # file must be threaded through (the bug that made the pr stage fail at runtime).
 #
 # SPEC coverage (A3-pr migration, ADR-013 amendment pr kind:tool→agent):
-#   [SPEC-1] standard.yaml has 14 leaf stages including pr (stage id "pr")
+#   [SPEC-1] simple.yaml resolves to its leaf roster with pr as the LAST leaf
+#            (#979: repointed from the retired standard.yaml — the assertion is
+#            "pr is the terminal leaf of the shipped roster", template-agnostic)
 #   [SPEC-2] plugins/agent/pr-delivery/{plugin.sh,manifest.yaml} exist; id=pr-delivery
 #   [SPEC-3] dry-run: real plugin writes pr-url.txt + pr-result.json, exits 0,
 #            emits plugin.init.start plugin=pr-delivery
@@ -34,13 +36,18 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_RUN_ID="pr-pipeline-test-$$"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
-# ─── SPEC-1: standard.yaml resolves to 14 leaf stages, last is pr ────────────
+# ─── SPEC-1: simple.yaml resolves its leaf roster, last leaf is pr ───────────
+# #979: standard.yaml retired; the shipped default is simple.yaml. The assertion
+# under test is "pr is the terminal leaf of the shipped roster" — pin the last
+# leaf by index rather than a brittle absolute count.
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/standard.yaml"
-assert_eq "[SPEC-1] standard.yaml resolves to 14 leaf stages including pr" \
-    "14" "${#_TPL_STAGES[@]}"
-assert_eq "[SPEC-1] _TPL_STAGES[13] stage id is pr" "pr" "${_TPL_STAGES[13]:-}"
+load_template "$REPO_ROOT/config/templates/simple.yaml"
+_leaf_count="${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-1] simple.yaml resolves a non-empty leaf roster" \
+    "1" "$(( _leaf_count > 0 ? 1 : 0 ))"
+assert_eq "[SPEC-1] simple.yaml last leaf stage id is pr" \
+    "pr" "${_TPL_STAGES[$(( _leaf_count - 1 ))]:-}"
 
 # ─── SPEC-2: the real plugin files exist under the pr-delivery id ────────────
 assert_file_exists "[SPEC-2] plugins/agent/pr-delivery/plugin.sh exists" \

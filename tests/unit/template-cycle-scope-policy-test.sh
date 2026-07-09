@@ -131,12 +131,37 @@ assert_eq "T3: withp escalate none" "none" "${_TPL_CYCLE_SCOPE_ESCALATE_withp:-}
 assert_eq "T3: nop expandable default false (no leak)" "false" "${_TPL_CYCLE_SCOPE_EXPANDABLE_nop:-false}"
 assert_eq "T3: nop auto_grant empty (no leak)" "" "${_TPL_CYCLE_SCOPE_AUTO_GRANT_nop:-}"
 
-# ─── T4: standard.yaml — build_test_cycle opted in ───────────────────────
-set +e
-load_template "$REPO_ROOT/config/templates/standard.yaml" >/dev/null 2>&1
-rc=$?
-set -e
-assert_eq "T4: standard.yaml loads rc=0" "0" "$rc"
+# ─── T4: a `build_test_cycle`-named cycle can opt into scope expansion ────
+# #979: standard.yaml (which once carried an expandable build_test_cycle) is
+# retired; this pins the same contract against an owned fixture whose cycle is
+# named build_test_cycle, exercising the exact safe-id export path.
+T4="$TEST_TEMP_DIR/t4.yaml"
+cat > "$T4" <<'YAML'
+id: t4
+name: t4
+flow:
+  - build_test_cycle
+build_test_cycle:
+  type: cycle
+  flow: [build, test]
+  exit_when:
+    stage: test
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 5
+  on_max: continue
+  scope_policy:
+    expandable: true
+    auto_grant: [collateral_tests, collateral_config]
+    escalate: structural
+    on_deny: abandon
+build:
+  roles: [builder]
+test:
+  roles: [tester]
+YAML
+_load_quiet "$T4"
 if [[ "${_TPL_CYCLE_SCOPE_EXPANDABLE_build_test_cycle:-false}" == "true" ]]; then
     assert_pass "T4: build_test_cycle scope_policy expandable=true"
 else

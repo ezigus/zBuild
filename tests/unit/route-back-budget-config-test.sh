@@ -31,11 +31,16 @@ _drive() {
         export ZBUILD_CONTRACT_VALIDATOR=warn
         export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
         [[ -n "$_budget" ]] && export ZBUILD_ROUTE_BACK_BUDGET="$_budget"
-        # Per-edge cap for build_review_cycle (standard.yaml declares none, so
+        # Per-edge cap for build_review_cycle (route-back-cycles.yaml declares none, so
         # this export survives load_template and exercises the subordinate cap).
         [[ -n "$_edgemax" ]] && export _TPL_CYCLE_ROUTE_BACK_MAX_build_review_cycle="$_edgemax"
         # shellcheck disable=SC1091
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+        # #979: resolve the owned route-back-cycles fixture in place of the retired
+        # standard.yaml (--template resolves ids to config/templates/; the fixture
+        # lives under tests/fixtures/). The template body is inert here (the
+        # orchestrator is fully stubbed) -- only the 2 cycle dispatch-unit names matter.
+        resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/route-back-cycles.yaml"; }
         cycle_dispatch_stage() { _CYCLE_DISPATCH_VERDICT="pass"; return 0; }
         cycle_orchestrator_run() {
             _CYCLE_LAST_ITERATIONS=1
@@ -47,10 +52,10 @@ _drive() {
             _CYCLE_ROUTE_BACK_FALLBACK_RC=8
             return 11
         }
-        _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+        _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
         runner_read_stage_verdict() { echo "request_changes"; }
         plugin_hook_call() { return 0; }
-        main --issue 999 --template standard >/dev/null 2>&1
+        main --issue 999 --template route-back-cycles >/dev/null 2>&1
     )
     local _n; _n="$(grep -c '"type":"cycle.route_back"' "$_tmp/events/events.jsonl" 2>/dev/null || true)"
     [[ -z "$_n" ]] && _n=0
@@ -89,6 +94,11 @@ _denom() {
         export ZBUILD_ROUTE_BACK_BUDGET="$_budget"
         # shellcheck disable=SC1091
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+        # #979: resolve the owned route-back-cycles fixture in place of the retired
+        # standard.yaml (--template resolves ids to config/templates/; the fixture
+        # lives under tests/fixtures/). The template body is inert here (the
+        # orchestrator is fully stubbed) -- only the 2 cycle dispatch-unit names matter.
+        resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/route-back-cycles.yaml"; }
         cycle_dispatch_stage() { _CYCLE_DISPATCH_VERDICT="pass"; return 0; }
         cycle_orchestrator_run() {
             _CYCLE_LAST_ITERATIONS=1
@@ -100,10 +110,10 @@ _denom() {
             _CYCLE_ROUTE_BACK_FALLBACK_RC=8
             return 11
         }
-        _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+        _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
         runner_read_stage_verdict() { echo "request_changes"; }
         plugin_hook_call() { return 0; }
-        main --issue 999 --template standard
+        main --issue 999 --template route-back-cycles
     ) >"$_tmp/out.log" 2>&1
     # Extract the "/<budget>" denominator from the exhausted-path warn line.
     grep -oE 'pass [0-9]+/[0-9]+' "$_tmp/out.log" 2>/dev/null | head -1 | sed 's:.*/::'

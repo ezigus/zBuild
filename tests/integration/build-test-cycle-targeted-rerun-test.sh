@@ -72,11 +72,15 @@ printf '{"schema_version":1,"status":"in_progress"}' > "$ZBUILD_STATE_FILE"
 source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/standard.yaml"
+# #979: standard.yaml retired. This test drives cycle_orchestrator_run
+# "build_test_cycle" with its OWN dispatch stub and needs only the cycle shape
+# ([build, test] converging on test.verdict==pass), so it loads the focused
+# build-test-cycle-minimal fixture instead of the retired 14-stage roster.
+load_template "$REPO_ROOT/tests/fixtures/templates/build-test-cycle-minimal.yaml"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 
-# ─── Stub dispatch: real test stage; synthetic build + assessment ────────────
+# ─── Stub dispatch: real test stage; synthetic build ─────────────────────────
 RUN_MODES="$TEST_TEMP_DIR/run-modes.log"  # one run_mode per test dispatch
 : > "$RUN_MODES"
 cycle_dispatch_stage() {
@@ -98,11 +102,6 @@ cycle_dispatch_stage() {
             local rm; rm="$(jq -r '.run_mode // "?"' "$ad/test-results.json" 2>/dev/null || echo "?")"
             printf 'iter=%s run_mode=%s\n' "$iter" "$rm" >> "$RUN_MODES"
             v="$(jq -r '.verdict // "fail"' "$ad/test-results.json" 2>/dev/null || echo fail)" ;;
-        test_assessment)
-            # Focused stub: mirror the test verdict (assessment is covered by #895).
-            v="$(jq -r '.verdict // "fail"' "$ad/test-results.json" 2>/dev/null || echo fail)"
-            printf '{"verdict":"%s"}' "$v" > "$ad/test-assessment.json"
-            printf '## assess iter %s\nverdict: %s\n' "$iter" "$v" > "$ad/test-assessment.md" ;;
     esac
     _CYCLE_DISPATCH_VERDICT="$v"; _CYCLE_DISPATCH_STATUS="complete"; return 0
 }

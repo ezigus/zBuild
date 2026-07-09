@@ -338,11 +338,10 @@ _dfc_fld="$(manifest_graph_capability_field \
 assert_eq "[SPEC-5] test plugin: detailed_failure_count.field=failed" \
     "failed" "$_dfc_fld"
 
-# test_assessment plugin: feedback_count_field = required_changes
-_fcf="$(yaml_get "$REPO_ROOT/plugins/agent/test_assessment/manifest.yaml" \
-    "capabilities.feedback_count_field" 2>/dev/null || true)"
-assert_eq "[SPEC-5] test_assessment: feedback_count_field=required_changes" \
-    "required_changes" "$_fcf"
+# #979: the test_assessment real-manifest characterization (feedback_count_field)
+# was dropped — the plugin was retired with the compound-quality lattice. The
+# generic feedback_count_field mechanic is still covered by the synthetic
+# tester-stage fixture manifest above (SPEC-3).
 
 cleanup_test_env
 print_test_results

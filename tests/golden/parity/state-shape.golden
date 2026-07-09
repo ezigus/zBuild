@@ -13,7 +13,7 @@
     "intake": "complete",
     "plan": "complete",
     "pr": "complete",
-    "review": "complete",
+    "review-aggregator": "complete",
     "test": "complete"
   },
   "stage_verdicts": {
@@ -21,7 +21,7 @@
     "intake": "pass",
     "plan": "pass",
     "pr": "pass",
-    "review": "warn",
+    "review-aggregator": "pass",
     "test": "error"
   },
   "status": "complete"

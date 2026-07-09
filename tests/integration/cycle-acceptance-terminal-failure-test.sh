@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Integration: #1044 / #1188 — acceptance-gate verdict=fail behavior at cycle end.
 # When the acceptance-gate writes verdict=fail with a TERMINAL (genuine-violation)
-# class (inert_wiring / tautology / not_passing_at_head), the cycle must NOT
-# converge even though review.verdict=approve — the pipeline halts with
-# pipeline.end status=failed (rc=8 propagated outward).
-# Complementary NON-terminal classes still reach status=success when review
-# approves: untagged_spec (RECOVERABLE, #951 feedback) and the ADR-036 #1188
-# INFRA classes negctl_error:* / reachability_error:* (resolve/worktree/timeout).
+# class (inert_wiring / tautology / not_passing_at_head), the build_test_cycle
+# must NOT converge — the pipeline halts with pipeline.end status=failed (rc=8
+# propagated outward).
+# Complementary NON-terminal classes let the cycle converge → status=success:
+# untagged_spec (RECOVERABLE, #951 feedback) and the ADR-036 #1188 INFRA classes
+# negctl_error:* / reachability_error:* (resolve/worktree/timeout).
 # This locks SPEC-2 and the #1188 infra-non-terminal contract end-to-end.
+# (#979: re-pointed from the retired standard.yaml to the shipped default
+# simple.yaml — the acceptance-gate is a build_test_cycle member in both; the
+# disposition→terminal/non-terminal mechanic is engine code, template-agnostic.)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -207,43 +210,106 @@ acceptance_gate_run() {
 PLUG
 }
 
+# design-gate stub: always passes so design_verify_cycle converges on iter 1
+# (this test's subject is the build_test_cycle acceptance-gate, not design).
+_make_design_gate_plugin() {
+    local dir="$PLUGINS_ROOT/agent/design-gate"
+    mkdir -p "$dir"
+    cat > "$dir/manifest.yaml" <<'EOF'
+id: design-gate
+name: Test design-gate
+kind: agent
+version: 0.0.1
+hooks:
+  run: design_gate_run
+requires:
+  core:
+    - redaction
+provides:
+  role: design_gate
+outputs:
+  - id: design_gate_out
+    path: ${artifact_dir}/design-gate.json
+    type: json
+    required: true
+    primary: true
+EOF
+    cat > "$dir/plugin.sh" <<'PLUG'
+design_gate_run() {
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    printf '{"schema_version":1,"verdict":"pass","summary":"ok"}' \
+        > "$state_dir/artifacts/design-gate.json"
+    return 0
+}
+PLUG
+}
+
+# gate-aggregator stub: rolls the acceptance-gate result into the cycle's
+# convergence verdict. A TERMINAL acceptance disposition is hard-halted by the
+# orchestrator BEFORE the aggregator (rc=8), so this only governs the
+# non-terminal cases: for pass / recoverable / advisory it emits verdict=pass so
+# build_test_cycle converges (and status=success WITHOUT the retired review
+# rescue). This mirrors the real gate-aggregator, which never blocks on an
+# advisory/recoverable member.
+_make_gate_aggregator_plugin() {
+    local dir="$PLUGINS_ROOT/agent/gate-aggregator"
+    mkdir -p "$dir"
+    cat > "$dir/manifest.yaml" <<'EOF'
+id: gate-aggregator
+name: Test gate-aggregator
+kind: agent
+version: 0.0.1
+hooks:
+  run: gate_aggregator_run
+requires:
+  core:
+    - redaction
+provides:
+  role: gate_aggregator
+outputs:
+  - id: gate_aggregator_out
+    path: ${artifact_dir}/gate-aggregator.json
+    type: json
+    required: true
+    primary: true
+EOF
+    cat > "$dir/plugin.sh" <<'PLUG'
+gate_aggregator_run() {
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    printf '{"schema_version":1,"verdict":"pass","summary":"ok","gates":[]}' \
+        > "$state_dir/artifacts/gate-aggregator.json"
+    return 0
+}
+PLUG
+}
+
 # ─── Build common plugin stubs (rc=0 unless overridden below) ─────────────────
+# #979: standard.yaml retired → drive the shipped default simple.yaml. The
+# acceptance-gate is a member of simple.yaml's build_test_cycle; its
+# disposition→terminal/recoverable/advisory mechanic (the subject) is unchanged.
+# For a non-terminal disposition the gate-aggregator passes → the cycle converges
+# normally → status=success WITHOUT relying on the retired review-stage rescue
+# path (see the T2/T3 #979 notes below). A terminal disposition hard-halts (rc=8).
 _make_plugin "intake"          "intake"
 _make_plan_plugin
 _make_design_plugin
-_make_impact_plugin
+_make_design_gate_plugin       # passes so design_verify_cycle converges quickly
+_make_plugin "impact"          "impact_analyzer"
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
-_make_plugin "test_assessment" "test_assessment"
+_make_plugin "shape-floor"     "shape_floor"
 _make_acceptance_gate_plugin
-_make_plugin "cq-preflight"    "cq_preflight"
-_make_plugin "cq-audit-plan"   "cq_audit_plan"
-_make_plugin "cq-cycle"        "cq_cycle"
-_make_plugin "cq-backtrack"    "cq_backtrack"
-_make_plugin "review"          "reviewer"
-_make_plugin "pr"              "pr_delivery"
-
-# test_assessment: always emit verdict=pass so build_test_cycle converges.
-cat > "$PLUGINS_ROOT/agent/test_assessment/plugin.sh" <<'PLUG'
-test_assessment_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"pass","summary":"ok","diagnosis":"","required_changes":[],"agrees_with_build_complete":true,"branch_numstat":"","failure_summary_md":"","iter":1}' \
-        > "$state_dir/artifacts/test_assessment.json"
-    return 0
-}
-PLUG
-
-# review: always emit verdict=approve.
-cat > "$PLUGINS_ROOT/agent/review/plugin.sh" <<'PLUG'
-review_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"approve","summary":"ok","issues":[],"confidence":0.99,"review_md":"ok"}' \
-        > "$state_dir/artifacts/review.json"
-    return 0
-}
-PLUG
+_make_plugin "secret-scan"     "secret_scan"
+_make_gate_aggregator_plugin   # verdict mirrors acceptance disposition
+_make_plugin "lens-security"    "review_lens"
+_make_plugin "lens-performance" "review_lens"
+_make_plugin "lens-red-team"    "review_lens"
+_make_plugin "lens-correctness" "review_lens"
+_make_plugin "lens-scope"       "review_lens"
+_make_plugin "review-aggregator" "review_aggregator"
+_make_plugin "pr"              "pr"
 
 # ─── Operator override token ──────────────────────────────────────────────────
 export HOME="$TEST_TEMP_DIR/home"
@@ -257,7 +323,7 @@ _run_pipeline() {
     set +e
     bash "$REPO_ROOT/core/pipeline/runner.sh" \
         --goal "test acceptance-terminal" \
-        --template standard \
+        --template simple \
         --no-resume \
         >"$TEST_TEMP_DIR/runner.stdout" \
         2>"$TEST_TEMP_DIR/runner.stderr"
@@ -292,13 +358,16 @@ term_member="$(jq -r 'select(.type=="cycle.member.terminal_failure") | .data.mem
 assert_eq "T1 [SPEC-4]: terminal_failure event names the failing member" "acceptance-gate" "$term_member"
 
 # The cycle status written to durable state must NOT be complete.
-cyc_complete="$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle" and .data.reason=="converged")' \
+cyc_complete="$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="build_test_cycle" and .data.reason=="converged")' \
     "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "T1 [SPEC-4]: build_review_cycle did NOT converge (no reason=converged)" "0" "$cyc_complete"
+assert_eq "T1 [SPEC-4]: build_test_cycle did NOT converge (no reason=converged)" "0" "$cyc_complete"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-2] untagged_spec-only failure is RECOVERABLE — must NOT hard-abort.
-#          Review approves → pipeline still reaches status=success.
+#          The cycle CONVERGES (gate-aggregator passes on a non-terminal member)
+#          → pipeline reaches status=success. (#979: no review-rescue needed —
+#          convergence means no unconverged cycle, so the terminal status is
+#          success by the normal converged path.)
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "T2 [SPEC-2]: untagged_spec-only acceptance failure does NOT halt (status=success)"
 
@@ -316,8 +385,8 @@ assert_eq "T2 [SPEC-2]: cycle.member.terminal_failure NOT emitted for untagged_s
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [SPEC-5] infra failure (negctl_error:timeout) is NON-terminal (ADR-036 #1188).
-#          A flaky/slow sandbox must NOT hard-fail the pipeline — review approves
-#          → status=success, and NO terminal-failure event fires.
+#          A flaky/slow sandbox must NOT hard-fail the pipeline — the cycle
+#          converges → status=success, and NO terminal-failure event fires.
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "T3 [SPEC-5]: infra negctl_error:timeout does NOT halt (status=success)"
 

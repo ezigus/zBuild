@@ -43,7 +43,7 @@ source "$REPO_ROOT/plugins/agent/build/plugin.sh"
 fb='## Failures
 Update tests/integration/runner-test.sh (line 42)
 Also fix tests/golden/foo/event.golden — missing event'
-plan_csv="plugins/agent/foo.sh,config/templates/standard.yaml"
+plan_csv="plugins/agent/foo.sh,config/templates/simple.yaml"
 out="$(_build_detect_out_of_scope_files "$fb" "$plan_csv" | sort | tr '\n' ',')"
 case "$out" in
     *"tests/integration/runner-test.sh"*)

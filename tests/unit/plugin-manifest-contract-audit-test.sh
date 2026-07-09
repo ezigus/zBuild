@@ -18,12 +18,12 @@ source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 
 print_test_header "plugin manifest contract audit — ADR-020 (#496)"
 
-# The 7 stage-bound plugin manifests migrated in #496.
+# The stage-bound plugin manifests migrated in #496. (The review agent
+# manifest was removed with #979 when the review stage was retired.)
 STAGE_MANIFESTS=(
     "plugins/agent/intake/manifest.yaml"
     "plugins/agent/plan/manifest.yaml"
     "plugins/agent/build/manifest.yaml"
-    "plugins/agent/review/manifest.yaml"
     "plugins/agent/security-lens/manifest.yaml"
     "plugins/tool/test/manifest.yaml"
     "plugins/tool/pr-open/manifest.yaml"

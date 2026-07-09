@@ -49,8 +49,10 @@ set +e
 
 # ─── Shared test fixture: drive runner.sh end-to-end with mocked cycle + review ─
 # Each case runs in a SUBSHELL so sourced runner state doesn't leak between
-# cases. The runner's main() is invoked with --template standard so the cycle
-# dispatch path is exercised.
+# cases. The runner's main() is invoked with --template simple (#979: standard
+# retired) so the cycle dispatch path is exercised — the cycle_orchestrator_run
+# stub short-circuits actual member dispatch, so any template carrying a cycle
+# works.
 _run_case() {
     local _case_rc="$1" _case_reason="$2" _review_verdict="$3"
     local _case_tmp; _case_tmp="$(mktemp -d "$TEST_TEMP_DIR/case-XXXXXX")"
@@ -69,9 +71,12 @@ _run_case() {
             _CYCLE_LAST_ITERATIONS=3
             return $_case_rc
         }"
-        # Stub plugin resolution: every stage (intake/plan/review) maps to review dir
-        # for the test — we override plugin_hook_call to produce stage-appropriate artifacts.
-        _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+        # Stub plugin resolution: every stage maps to a valid plugin dir (the dir
+        # is never dereferenced — plugin_hook_call is stubbed below). #979: the
+        # retired `review` plugin dir is replaced by a KEEP-set dir; the synthetic
+        # "review" stage name below is just the exemplar the rc→status contract is
+        # driven with (cycle_orchestrator_run itself is stubbed, template-agnostic).
+        _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
         # Stub manifest verdict reader.
         eval "runner_read_stage_verdict() {
             local stage=\"\$3\"
@@ -93,7 +98,7 @@ _run_case() {
             return 0
         }"
 
-        main --issue 999 --template standard >/dev/null 2>&1
+        main --issue 999 --template simple >/dev/null 2>&1
         printf '%s' "$?" > "$_case_tmp/runner.rc"
     )
     printf '%s' "$_case_tmp"
@@ -106,16 +111,11 @@ A_EVENTS="$A_DIR/events/events.jsonl"
 
 assert_eq "A: pipeline_status=failed (NOT complete — the actual bug fix)" \
     "failed" "$(jq -r '.status' "$A_STATE" 2>/dev/null)"
-# Wave 18-B (#707): standard.yaml now wraps `review` inside the outer
-# build_review_cycle (ADR-026), and cycle_orchestrator_run is stubbed in this
-# test. Review no longer dispatches as a standalone post-cycle stage; the
-# outer cycle IS review's dispatch container. The original assertions
-# below (review RAN, ADR-019 coercion fired post-cycle, test_assessment
-# stage_status=failed propagated) targeted the OLD shape where review was
-# a sibling AFTER build_test_cycle. With the stub, no member stage state
-# leaks out. The pipeline_status assertion above (failed) is the core
-# rc→status contract; the cycle.unconverged event assertion below is the
-# rc→event contract. Both survive the new shape.
+# cycle_orchestrator_run is stubbed in this test, so no member stage state leaks
+# out regardless of template shape. The pipeline_status assertion above (failed)
+# is the core rc→status contract; the cycle.unconverged event assertion below is
+# the rc→event contract. Both are engine-level (template-agnostic) and survive
+# the #979 retirement of standard.yaml's outer build_review_cycle.
 if grep -q '"type":"cycle.unconverged"' "$A_EVENTS" 2>/dev/null && \
    grep -q '"reason":"max_iterations"' "$A_EVENTS" 2>/dev/null; then
     assert_pass "A: cycle.unconverged event emitted with reason=max_iterations"

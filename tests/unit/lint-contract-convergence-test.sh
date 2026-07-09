@@ -172,7 +172,7 @@ rm -f "$TPL_ROOT/dirty_exitwhen.yaml"
 
 # ── TC-4: legacy template (UNTYPED exit_when target) is NOT retro-checked ─────
 # A plain cycle whose exit_when target carries NO convergence marker is the
-# pre-ADR-040 model (standard.yaml's review/impact/test_assessment cycles). The
+# pre-ADR-040 model (a plain untyped cycle, as the retired standard.yaml used). The
 # §5 guard stays inert (no blocking parallel group) AND the typed-aggregator
 # preflight skips it (the target is untyped ⇒ legacy), so the production template
 # is never broken.

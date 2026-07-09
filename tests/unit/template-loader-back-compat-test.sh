@@ -81,15 +81,18 @@ else
         "events.jsonl missing template.deprecated_shape"
 fi
 
-# T5: standard.yaml (still in old shape pre Wave 17-C) loads via shim.
+# T5 (#979): standard.yaml (the last shipped old-shape template) is retired.
+# The shim's "a real old-shape template reloads cleanly with stages populated"
+# contract is now exercised against the owned OLD_TPL fixture (a second load,
+# proving the shim is re-entrant and leaves _TPL_STAGES populated).
 _TPL_STAGES=()
 _TPL_CYCLES=()
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
-load_template "$REPO_ROOT/config/templates/standard.yaml"; rc=$?
+load_template "$OLD_TPL"; rc=$?
 set -e
-assert_eq "T5: standard.yaml loads via shim rc=0" "0" "$rc"
-assert_eq "T5: standard.yaml has _TPL_STAGES populated" "1" \
+assert_eq "T5: old-shape template reloads via shim rc=0" "0" "$rc"
+assert_eq "T5: reload leaves _TPL_STAGES populated" "1" \
     "$([[ ${#_TPL_STAGES[@]} -gt 0 ]] && echo 1 || echo 0)"
 
 print_test_results

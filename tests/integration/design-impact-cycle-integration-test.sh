@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Integration test (#842): design_impact_cycle end-to-end feedback wiring.
+# Integration test (#842): design↔impact feedback wiring, end to end.
+#
+# #979: the design↔impact feedback edges this exercises now live in simple.yaml's
+# design_verify_cycle + top-level impact stage (standard.yaml's design_impact_cycle
+# was retired). The SUBJECT here is the design/impact PLUGIN helpers (both KEEP-set),
+# not any template — the wiring is template-agnostic, so the coverage is unchanged.
 #
 # Verifies without invoking a real LLM:
 #   T1: _impact_extract_scope_from_design parses ```scope block from design.md
@@ -50,7 +55,7 @@ Replace plan_impact_cycle with design_impact_cycle.
 core/pipeline/template.sh
 plugins/agent/design/plugin.sh
 plugins/agent/impact/plugin.sh
-tests/integration/standard-template-3stage-cycle-test.sh
+tests/integration/design-pipeline-test.sh
 ```
 
 ## Notes
@@ -88,7 +93,7 @@ cat > "$T2_ARTS/design.md" <<'MD'
 # Design: test
 
 ```scope
-config/templates/standard.yaml
+config/templates/simple.yaml
 plugins/agent/design/plugin.sh
 ```
 
@@ -101,11 +106,11 @@ printf '{"schema_version":1,"steps":[]}' > "$T2_ARTS/plan.json"
 # #911: hallucination filter checks existence in ZBUILD_REPO_ROOT. Create the
 # stub file so filter keeps it and verdict stays incomplete as T2 expects.
 mkdir -p "$FAKE_REPO_ROOT/tests/integration"
-printf '# stub\n' > "$FAKE_REPO_ROOT/tests/integration/standard-template-3stage-cycle-test.sh"
+printf '# stub\n' > "$FAKE_REPO_ROOT/tests/integration/design-pipeline-test.sh"
 
 # Stub route_to_model to return a synthetic incomplete response.
 route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/integration/standard-template-3stage-cycle-test.sh"],"reason":"test pins cycle count"}],"impact_feedback_md":"## Gap report\\n- Missing: tests/integration/standard-template-3stage-cycle-test.sh (pins cycle count)"}'
+    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/integration/design-pipeline-test.sh"],"reason":"test pins cycle count"}],"impact_feedback_md":"## Gap report\\n- Missing: tests/integration/design-pipeline-test.sh (pins cycle count)"}'
 }
 # Stub apply_scope_redaction to just copy (redaction tested separately).
 apply_scope_redaction() {
@@ -167,7 +172,7 @@ unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 # ─── T3: design iter 2 prompt contains PRIOR IMPACT FEEDBACK ──────────────────
 T3_FB_DIR="$TEST_TEMP_DIR/t3-feedback-iter2"
 mkdir -p "$T3_FB_DIR"
-printf '## Gap report\n- Missing: tests/integration/standard-template-3stage-cycle-test.sh\n' \
+printf '## Gap report\n- Missing: tests/integration/design-pipeline-test.sh\n' \
     > "$T3_FB_DIR/prior_impact_feedback.txt"
 
 export ZBUILD_CYCLE_ITER=2

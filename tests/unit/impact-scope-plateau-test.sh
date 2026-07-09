@@ -41,14 +41,14 @@ mkdir -p "$FAKE_ROOT/tests/unit" "$FAKE_ROOT/config" "$FAKE_ROOT/scripts/lib" \
 : > "$FAKE_ROOT/config/c.json"
 : > "$FAKE_ROOT/scripts/lib/d.sh"
 mkdir -p "$FAKE_ROOT/config/templates"
-: > "$FAKE_ROOT/config/templates/standard.yaml"
+: > "$FAKE_ROOT/config/templates/simple.yaml"
 # Shape-change glob list so _impact_detect_shape_change fires for SHAPE_PLAN.
 printf 'config/templates/*.yaml\n' > "$FAKE_ROOT/config/shape-change-paths.txt"
 
 ARTDIR="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ARTDIR"
 SIDE="$ARTDIR/impact-prior-missing.txt"
 NONSHAPE_PLAN='{"schema_version":1,"steps":[{"id":"s","files":["plugins/agent/foo/plugin.sh"],"estimated_lines":1}]}'
-SHAPE_PLAN='{"schema_version":1,"steps":[{"id":"s","files":["config/templates/standard.yaml"],"estimated_lines":1}]}'
+SHAPE_PLAN='{"schema_version":1,"steps":[{"id":"s","files":["config/templates/simple.yaml"],"estimated_lines":1}]}'
 
 _set_prior() { printf '%s\n' "$1" > "$SIDE"; }   # newline list of prior non-floor paths
 
@@ -125,7 +125,7 @@ assert_eq "[SPEC-7] shape-change plan → stays incomplete (run full iteration b
 # the backstop must also inspect the design scope (4th arg).
 impact_json='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/unit/a-test.sh"],"reason":"adj"}],"impact_feedback_md":""}'
 _set_prior $'tests/unit/a-test.sh'
-ZBUILD_CYCLE_ITER=2 _impact_converge_on_overscope "$FAKE_ROOT" "$ARTDIR" "$NONSHAPE_PLAN" "config/templates/standard.yaml"
+ZBUILD_CYCLE_ITER=2 _impact_converge_on_overscope "$FAKE_ROOT" "$ARTDIR" "$NONSHAPE_PLAN" "config/templates/simple.yaml"
 assert_eq "[SPEC-8] shape file in design scope → stays incomplete (plan was non-shape)" \
     "incomplete" "$(printf '%s' "$impact_json" | jq -r .verdict)"
 

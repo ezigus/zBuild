@@ -137,23 +137,18 @@ assert_eq "T5: orchestrator converges iter 1" "0" "$rc"
 ci_present="$(jq -r '.cycle_iterations["build-test"].status // "missing"' "$STATE_FILE" 2>/dev/null)"
 assert_contains "T5: cycle_iterations[build-test].status present" "$ci_present" "complete"
 
-# T6: standard.yaml — #511 F2 wires the build/test cycle. The dispatch unit
-# list MUST contain a `cycle:build_test_cycle` entry between stage:plan and
-# stage:review. The pre-F2 invariant ("all stage:*") is intentionally
-# obsoleted by this PR; the F1 regression intent (no cycle leaks into linear
-# templates) is preserved by tests using cycle-less fixtures.
-load_template "$REPO_ROOT/config/templates/standard.yaml"
-# Wave 18-B (#707): standard.yaml now wraps build_test_cycle in the outer
-# build_review_cycle (ADR-026). The runner dispatches the OUTERMOST cycle, and
-# the orchestrator recurses into the inner cycle via _TPL_STAGE_TYPE_<id>
-# (Wave 17-B). Either top-level cycle unit satisfies the #511 contract
-# that the cycle framework is wired through dispatch.
+# T6: simple.yaml — #511 F2 wires the build/test cycle. The dispatch unit list
+# MUST contain a `cycle:build_test_cycle` entry. The pre-F2 invariant ("all
+# stage:*") is intentionally obsoleted; the F1 regression intent (no cycle leaks
+# into linear templates) is preserved by tests using cycle-less fixtures.
+# (#979: re-pointed from the retired standard.yaml to the shipped default
+# simple.yaml, which carries the same build_test_cycle dispatch unit.)
+load_template "$REPO_ROOT/config/templates/simple.yaml"
 has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_test_cycle" || "$u" == "cycle:build_review_cycle" ]] \
-        && has_cycle_unit=1
+    [[ "$u" == "cycle:build_test_cycle" ]] && has_cycle_unit=1
 done
-assert_eq "T6: standard.yaml declares a cycle dispatch unit (#511 + #707)" \
+assert_eq "T6: simple.yaml declares a cycle dispatch unit (#511)" \
     "1" "$has_cycle_unit"
 
 # ─── T7 (#524): operator-visible cycle banners on fd 2 ────────────────────────

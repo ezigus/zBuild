@@ -24,9 +24,9 @@ mkdir -p "$TEST_TEMP_DIR/repo/config/templates"
 mkdir -p "$TEST_TEMP_DIR/repo/.zbuild/templates"
 
 # Minimal shipped base template (old-shape: stages: + stage_definitions:)
-cat > "$TEST_TEMP_DIR/repo/config/templates/standard.yaml" <<'EOF'
-id: standard
-name: Standard Pipeline
+cat > "$TEST_TEMP_DIR/repo/config/templates/demo.yaml" <<'EOF'
+id: demo
+name: Demo Pipeline
 defaults:
   strategy: fanout
 
@@ -49,21 +49,21 @@ rmdir "$TEST_TEMP_DIR/repo/.zbuild/templates" 2>/dev/null || true
 rmdir "$TEST_TEMP_DIR/repo/.zbuild" 2>/dev/null || true
 
 set +e
-result="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
+result="$(resolve_template_file "demo" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
 rc=$?
 set -e
 
 assert_eq "no per-repo dir: exit 0" "0" "$rc"
 assert_eq "no per-repo dir: returns shipped path" \
-    "$TEST_TEMP_DIR/repo/config/templates/standard.yaml" "$result"
+    "$TEST_TEMP_DIR/repo/config/templates/demo.yaml" "$result"
 
 # Restore .zbuild/templates dir for subsequent tests
 mkdir -p "$TEST_TEMP_DIR/repo/.zbuild/templates"
 
 # ─── Test (b): per-repo file with valid extends: → temp-merged path with both content ──
 
-cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/standard.yaml" <<'EOF'
-extends: standard
+cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/demo.yaml" <<'EOF'
+extends: demo
 
 stages:
   - id: build
@@ -79,7 +79,7 @@ stage_definitions:
 EOF
 
 set +e
-result="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
+result="$(resolve_template_file "demo" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
 rc=$?
 set -e
 
@@ -97,14 +97,14 @@ assert_eq "merged file does not contain base-only stage 'plan'" "1" "$base_prese
 
 # ─── Test (c): per-repo file missing extends: key → rc≠0, message contains 'extends' ──
 
-cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/standard.yaml" <<'EOF'
+cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/demo.yaml" <<'EOF'
 stages:
   - id: build
     roles: [builder]
 EOF
 
 set +e
-err_out="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>&1)"
+err_out="$(resolve_template_file "demo" "$TEST_TEMP_DIR/repo" 2>&1)"
 rc=$?
 set -e
 
@@ -113,7 +113,7 @@ assert_contains "missing extends: error mentions 'extends'" "$err_out" "extends"
 
 # ─── Test (d): per-repo file extends: pointing to non-existent shipped template → rc≠0 ──
 
-cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/standard.yaml" <<'EOF'
+cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/demo.yaml" <<'EOF'
 extends: nonexistent-base
 
 stages:
@@ -122,7 +122,7 @@ stages:
 EOF
 
 set +e
-err_out="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>&1)"
+err_out="$(resolve_template_file "demo" "$TEST_TEMP_DIR/repo" 2>&1)"
 rc=$?
 set -e
 

@@ -32,16 +32,13 @@ config:
   always_draft: true
 
 inputs:
-  # #1142: required:false — standard.yaml's `review` stage provides review.json
-  # (blocking verdict, guarded in plugin.sh). simple.yaml replaced `review` with
-  # the advisory review-aggregator (review-report.json); pr-open opens the PR in
-  # advisory mode when review.json is absent but the report is present. Hard-
-  # requiring `review` broke simple.yaml preflight after the C3 lens cutover.
-  - id: review
-    type: file
-    path: "${artifact_dir}/review.json"
-    source: stage:review
-    required: false
+  # #979 (EPIC #1277): the standard.yaml `review` stage (which produced the
+  # blocking review.json) was retired, so its stage:review input is dropped —
+  # it dangled (no producing manifest) and tripped the lint-contract graph check.
+  # The advisory review-aggregator (review-report.json, below) is now the only
+  # review data source. plugin.sh still reads review.json BY PATH if present (a
+  # per-repo overlay could still emit one) and falls back to advisory mode when
+  # it is absent — behavior unchanged; only the dead stage edge is removed.
   - id: review_report
     type: file
     path: "${artifact_dir}/review-report.json"

@@ -35,11 +35,12 @@ inputs:
     path: "${artifact_dir}/gate-aggregator-result.json"
     source: stage:gate-aggregator
     required: false
-  - id: review
-    type: file
-    path: "${artifact_dir}/review.json"
-    source: stage:review
-    required: true
+  # #979 (EPIC #1277): the standard.yaml `review` stage was retired. Its
+  # stage:review input dangled (no producing manifest) and tripped the
+  # lint-contract data-dependency graph check. merge_run's ADR-001/#358
+  # fail-closed guard still reads review.json BY PATH at runtime (absent →
+  # route to the PR fallback path, which itself fail-closes) — behavior
+  # unchanged; only the dead producer edge is removed from the contract graph.
 
 outputs:
   - id: merge_result

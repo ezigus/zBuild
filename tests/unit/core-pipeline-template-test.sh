@@ -17,7 +17,9 @@ setup_test_env "pipeline-template"
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
-STANDARD_TPL="$REPO_ROOT/config/templates/standard.yaml"
+# #979: the retired standard.yaml is replaced by the owned multi-cycle fixture
+# as the multi-stage / nested-cycle probe for load_template + stage resolution.
+STANDARD_TPL="$REPO_ROOT/tests/fixtures/templates/multi-cycle.yaml"
 
 # A minimal custom template for per-stage strategy override testing
 CUSTOM_TPL="$TEST_TEMP_DIR/custom.yaml"
@@ -129,12 +131,11 @@ rc=$?
 set -e
 assert_eq "load_template missing file returns non-zero" "1" "$rc"
 
-# ─── Test 2: load_template populates _TPL_STAGES correctly (standard) ────────
-# #485: standard.yaml now includes a test stage between build and review.
-# #568: standard.yaml now also includes test_assessment between test and review.
+# ─── Test 2: load_template populates _TPL_STAGES correctly (multi-cycle) ─────
+# #979: the multi-cycle fixture flattens its nested cycles to 8 leaf stages.
 load_template "$STANDARD_TPL"
 stage_count="${#_TPL_STAGES[@]}"
-assert_eq "standard template has 14 stages" "14" "$stage_count"
+assert_eq "multi-cycle template has 8 flat stages" "8" "$stage_count"
 
 # ─── Test 3: stage order is preserved in _TPL_STAGES ─────────────────────────
 assert_eq "_TPL_STAGES[0] is intake"           "intake"           "${_TPL_STAGES[0]}"
@@ -143,14 +144,8 @@ assert_eq "_TPL_STAGES[2] is design"           "design"           "${_TPL_STAGES
 assert_eq "_TPL_STAGES[3] is impact"           "impact"           "${_TPL_STAGES[3]}"
 assert_eq "_TPL_STAGES[4] is build"            "build"            "${_TPL_STAGES[4]}"
 assert_eq "_TPL_STAGES[5] is test"             "test"             "${_TPL_STAGES[5]}"
-assert_eq "_TPL_STAGES[6] is test_assessment"  "test_assessment"  "${_TPL_STAGES[6]}"
-assert_eq "_TPL_STAGES[7] is acceptance-gate"  "acceptance-gate"  "${_TPL_STAGES[7]}"
-assert_eq "_TPL_STAGES[8] is cq-preflight"     "cq-preflight"     "${_TPL_STAGES[8]}"
-assert_eq "_TPL_STAGES[9] is cq-audit-plan"    "cq-audit-plan"    "${_TPL_STAGES[9]}"
-assert_eq "_TPL_STAGES[10] is cq-cycle"        "cq-cycle"         "${_TPL_STAGES[10]}"
-assert_eq "_TPL_STAGES[11] is cq-backtrack"    "cq-backtrack"     "${_TPL_STAGES[11]}"
-assert_eq "_TPL_STAGES[12] is review"          "review"           "${_TPL_STAGES[12]}"
-assert_eq "_TPL_STAGES[13] is pr"              "pr"               "${_TPL_STAGES[13]}"
+assert_eq "_TPL_STAGES[6] is acceptance-gate"  "acceptance-gate"  "${_TPL_STAGES[6]}"
+assert_eq "_TPL_STAGES[7] is pr"               "pr"               "${_TPL_STAGES[7]}"
 
 # ─── Test 3b: #485 — test stage roles include tester ──────────────────────────
 roles_test="$(template_stage_roles "test")"
@@ -171,9 +166,9 @@ assert_eq "template_stage_roles plan returns planner" "planner" "$roles_plan"
 roles_build="$(template_stage_roles "build")"
 assert_eq "template_stage_roles build returns builder" "builder" "$roles_build"
 
-# ─── Test 7: template_stage_roles returns correct role for review ─────────────
-roles_review_std="$(template_stage_roles "review")"
-assert_eq "template_stage_roles review returns reviewer" "reviewer" "$roles_review_std"
+# ─── Test 7: template_stage_roles returns correct role for design ─────────────
+roles_design_std="$(template_stage_roles "design")"
+assert_eq "template_stage_roles design returns designer" "designer" "$roles_design_std"
 
 # ─── Test 8: template_stage_strategy returns default when no per-stage override
 strat_intake="$(template_stage_strategy "intake")"
@@ -208,7 +203,7 @@ assert_contains "review roles contains auditor"  "$roles_review" "auditor"
 # ─── Test 14: reload standard template — state is fully reset ─────────────────
 load_template "$STANDARD_TPL"
 reload_count="${#_TPL_STAGES[@]}"
-assert_eq "reloaded standard template still has 14 stages" "14" "$reload_count"
+assert_eq "reloaded multi-cycle template still has 8 stages" "8" "$reload_count"
 assert_eq "reloaded _TPL_DEFAULT_STRATEGY=fanout" "fanout" "$_TPL_DEFAULT_STRATEGY"
 
 # ─── ADR-047 §5: the canonical fence is DEMOTED behind ZBUILD_LEGACY_STAGE_VALIDATION.
@@ -343,8 +338,8 @@ assert_contains "Tnew3 error mentions bad token 'pigeon'" "$err_io_bad" "pigeon"
 assert_contains "Tnew3 error mentions 'unknown'" "$err_io_bad" "unknown"
 
 # Tnew4: stage without io: → template_stage_io_dests returns empty
-# Use VALID_SUBSET_TPL (no io: block on any stage) since standard.yaml now ships
-# with io.destinations populated (ADR-015 v3, #440).
+# Use VALID_SUBSET_TPL (no io: block on any stage) since the shipped simple.yaml
+# ships with io.destinations populated (ADR-015 v3, #440).
 load_template "$VALID_SUBSET_TPL"
 io_dests_none="$(template_stage_io_dests "plan")"
 assert_eq "Tnew4 stage without io: returns empty" "" "$io_dests_none"

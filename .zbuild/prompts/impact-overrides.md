@@ -11,18 +11,15 @@ ids. Each template (`config/templates/*.yaml`) uses a SUBSET of them in canonica
 order. A stage present in the canonical list but absent from a given template is
 CORRECT BY DESIGN, not a missing-enumeration gap.
 
-Do NOT return `verdict=incomplete` demanding that:
-- `config/templates/standard.yaml` add a stage it does not currently list, or
-- `scripts/lib/test-helpers.sh` `_ZBUILD_STANDARD_ROSTER` grow to include a stage
-  that `standard.yaml` does not use,
-
-merely because that stage exists in `_ZBUILD_CANONICAL_STAGES` or in another
-template (e.g. `simple.yaml`). EPIC #966's A/B strategy puts new objective/review
-stages in `simple.yaml` ONLY; `standard.yaml` stays untouched until the explicit
-hand-cutover (#978/#979). Demanding the stage be wired into `standard.yaml` is a
-FALSE gap that creates an unbounded out-of-scope edit — the build will add it,
-test_assessment will (correctly) fail it as out-of-scope, and the cycle
-livelocks (see #970 run 20260620113520).
+Do NOT return `verdict=incomplete` demanding that a template grow to include a
+stage merely because that stage exists in `_ZBUILD_CANONICAL_STAGES`. As of #979
+the old `standard.yaml` "compound-quality lattice" is RETIRED (EPIC #1277 payoff);
+`config/templates/simple.yaml` is the single shipped template. A stage in the
+canonical registry but absent from `simple.yaml`'s flow is CORRECT BY DESIGN — the
+canonical list is now a demoted registry/lint artifact (ADR-047), not a
+per-template requirement. Demanding an unused stage be wired in is a FALSE gap that
+creates an unbounded out-of-scope edit and can livelock the cycle (see #970 run
+20260620113520).
 
 ## Rule IMP-2 — reordering only invalidates templates that contain the stage
 

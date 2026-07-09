@@ -29,9 +29,9 @@ mkdir -p "$TEST_TEMP_DIR/repo/config/templates"
 mkdir -p "$TEST_TEMP_DIR/repo/.zbuild/templates"
 
 # Shipped base template with intake + plan
-cat > "$TEST_TEMP_DIR/repo/config/templates/standard.yaml" <<'EOF'
-id: standard
-name: Standard Pipeline
+cat > "$TEST_TEMP_DIR/repo/config/templates/basepipe.yaml" <<'EOF'
+id: basepipe
+name: Base Pipeline (self-contained resolver fixture)
 defaults:
   strategy: fanout
 
@@ -56,11 +56,11 @@ _reset_tpl() {
     _TPL_DEFAULT_STRATEGY="fanout"
 }
 
-# ─── Test (a): per-repo standard.yaml with valid extends: and custom stages: ──
+# ─── Test (a): per-repo basepipe.yaml with valid extends: and custom stages: ──
 # _TPL_STAGES must reflect overlay (build,test), NOT base (intake,plan).
 
-cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/standard.yaml" <<'EOF'
-extends: standard
+cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/basepipe.yaml" <<'EOF'
+extends: basepipe
 
 stages:
   - id: build
@@ -77,7 +77,7 @@ EOF
 
 _reset_tpl
 set +e
-merged="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
+merged="$(resolve_template_file "basepipe" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
 rc=$?; set -e
 assert_eq "valid extends: resolver exit 0" "0" "$rc"
 
@@ -94,7 +94,7 @@ assert_eq "base-only stage 'plan' absent (full-replace)" "1" "$plan_present"
 
 # ─── Test (b): per-repo file missing extends: → load refuses with rc≠0 ─────
 
-cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/standard.yaml" <<'EOF'
+cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/basepipe.yaml" <<'EOF'
 stages:
   - id: build
     roles: [builder]
@@ -102,13 +102,13 @@ EOF
 
 _reset_tpl
 set +e
-merged="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>&1)"
+merged="$(resolve_template_file "basepipe" "$TEST_TEMP_DIR/repo" 2>&1)"
 rc=$?; set -e
 assert_pass "missing extends: resolver rc≠0" "[[ $rc -ne 0 ]]"
 
 # ─── Test (c): per-repo file extends: nonexistent → refuses with rc≠0 ───────
 
-cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/standard.yaml" <<'EOF'
+cat > "$TEST_TEMP_DIR/repo/.zbuild/templates/basepipe.yaml" <<'EOF'
 extends: does-not-exist
 
 stages:
@@ -118,7 +118,7 @@ EOF
 
 _reset_tpl
 set +e
-out="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>&1)"
+out="$(resolve_template_file "basepipe" "$TEST_TEMP_DIR/repo" 2>&1)"
 rc=$?; set -e
 assert_pass "bad extends: resolver rc≠0" "[[ $rc -ne 0 ]]"
 assert_contains "bad extends: error names missing id" "$out" "does-not-exist"
@@ -130,11 +130,11 @@ rm -rf "$TEST_TEMP_DIR/repo/.zbuild"
 
 _reset_tpl
 set +e
-shipped="$(resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
+shipped="$(resolve_template_file "basepipe" "$TEST_TEMP_DIR/repo" 2>/dev/null)"
 rc=$?; set -e
 assert_eq "no per-repo dir: resolver exit 0" "0" "$rc"
 assert_eq "no per-repo dir: returns shipped path" \
-    "$TEST_TEMP_DIR/repo/config/templates/standard.yaml" "$shipped"
+    "$TEST_TEMP_DIR/repo/config/templates/basepipe.yaml" "$shipped"
 
 set +e; load_template "$shipped" >/dev/null 2>&1; lrc=$?; set -e
 assert_eq "shipped path: load_template exit 0" "0" "$lrc"
