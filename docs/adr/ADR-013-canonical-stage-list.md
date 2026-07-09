@@ -30,6 +30,9 @@ the taxonomy so the Wave B plugins (plan, build, test, review, pr) can write
 conformant manifests before implementation begins.  Unimplemented stages are
 skipped by omission from the active template; their presence in this ADR does
 not require them to be implemented.
+**Amended:** 2026-07-09 (#757) — `deploy` and `validate` are implemented as
+`kind: agent` stage plugins, deviating from the `kind: tool` taxonomy entry.
+See the amendment at the end of this document.
 
 ## Decision
 
@@ -521,3 +524,35 @@ to a new `verdict=did_not_finish` while still `return 0` (preserving committed p
 outcome; only exhausting `max_iterations` without a clean, passing convergence is fatal.
 This is orthogonal to the `blocking:true` rc-only halt above (a timeout is never a blocking
 member failure).
+
+## Amendment (2026-07-09, issue #757) — deploy and validate implemented as kind:agent
+
+The canonical taxonomy table lists `deploy` and `validate` as `kind: tool`. The concrete
+implementation (issue #757) deviates from that assignment: both stage plugins are implemented
+as `kind: agent`, following the `pr-delivery` (kind:agent) → `pr-open` (kind:tool) delegation
+pattern rather than the direct `kind: tool` shape.
+
+**Rationale.** The agent layer owns guard and orchestration logic (input validation,
+ZBUILD_DRY_RUN short-circuit, gate-verdict inspection) and delegates the concrete T0
+side-effect to a companion `kind: tool` sub-plugin:
+
+- `plugins/agent/deploy/plugin.sh` (deploy_agent) — guard + orchestrate; delegates to
+  `plugins/tool/deploy-release/plugin.sh` (deploy_release_run) for git-tag + gh release.
+- `plugins/agent/validate/plugin.sh` (validate_agent) — guard + orchestrate; delegates to
+  `plugins/tool/health-check/plugin.sh` (health_check_run) for the HTTP/smoke probe.
+
+**No-LLM invariant preserved.** Neither agent plugin calls `route_to_model`. The T0
+no-LLM invariant (ADR-004 §C6) is enforced by construction — `kind: agent` here means
+"delegation coordinator", not "LLM-calling stage". ADR-018 Pattern 1 (one-shot) applies
+to both: deploy is a deterministic side-effect (no iteration needed) and validate is a
+single read query (health probe, no iteration needed).
+
+**Taxonomy table unchanged.** The `kind: tool` entries in the Decision table above
+remain as the formal taxonomy record. This amendment documents the implementation
+deviation and its rationale. A future ADR-013 revision may update the table to reflect
+`kind: agent` for these two stages.
+
+Implementation: issue #757. New event types registered in `config/event-schema.json`:
+`deploy.input.missing`, `deploy.skipped`, `deploy.tool.failed`, `deploy.release.dry_run`,
+`deploy.release.complete`, `validate.input.missing`, `validate.probe.failed`,
+`validate.health_check.dry_run`, `validate.health_check.pass`, `validate.health_check.fail`.

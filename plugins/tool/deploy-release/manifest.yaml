@@ -1,0 +1,48 @@
+id: deploy-release
+name: Deploy Release Executor
+kind: tool
+version: 0.1.0
+description: |
+  Deploy-release tool executor (kind:tool, T0). Executes the actual git-tag +
+  gh release create side-effect on behalf of the deploy agent. No LLM calls.
+  ZBUILD_DRY_RUN=1 writes a sentinel deploy-result.json without running git/gh.
+  Invoked by plugins/agent/deploy/plugin.sh (deploy_release_run).
+  Issue #757.
+
+hooks:
+  init: deploy_release_init
+  run: deploy_release_run
+  finalize: deploy_release_finalize
+  cleanup: deploy_release_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  artifact_type: deploy-result.json
+  role: deploy_release_executor
+  schema_version: 1
+
+config:
+  tier_default: T0
+
+inputs:
+  - id: pr_url
+    type: file
+    path: "${artifact_dir}/pr-url.txt"
+    source: stage:pr-delivery
+    required: false
+
+outputs:
+  - id: deploy_result
+    path: ${artifact_dir}/deploy-result.json
+    type: deploy-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []

@@ -1,0 +1,53 @@
+id: validate
+name: Validate Agent
+kind: agent
+version: 0.1.0
+description: |
+  Validate agent (kind:agent, T2). Reads deploy-result.json; refuses if absent.
+  Delegates to the health-check tool plugin for the actual HTTP/smoke probe.
+  ZBUILD_DRY_RUN=1 writes mock validate-result.json with verdict=healthy instead.
+  ADR-018 Pattern 1 (one-shot): read deploy-result → health-check probe → done.
+  Health check is a single read query; no iteration loop needed (P1 rationale).
+  No LLM calls (no route_to_model). kind:agent for guard/orchestration parity
+  with the pr-delivery → pr-open delegation pattern (ADR-013 amendment, issue #757).
+  # legacy-citation: pipeline-stages-monitor.sh:6 (stage_validate)
+
+hooks:
+  init: validate_agent_init
+  run: validate_agent_run
+  finalize: validate_agent_finalize
+  cleanup: validate_agent_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: validate-result.json
+  role: validate_agent
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: deploy_result
+    type: file
+    path: "${artifact_dir}/deploy-result.json"
+    source: stage:deploy
+    required: true
+
+outputs:
+  - id: validate_result
+    path: ${artifact_dir}/validate-result.json
+    type: validate-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []
