@@ -220,24 +220,24 @@ _runner_export_scope_allowlist() {
 # flow must resolve to a plugin via resolve_stage_plugin (role-then-id, ADR-042);
 # an unresolved leaf names the id.
 #
-# It is a CONTRACT check, so it honors the SAME ZBUILD_CONTRACT_VALIDATOR mode the
-# inter-stage contract-validator does (they must agree):
+# It is a CONTRACT check, so it is gated by the SAME ZBUILD_CONTRACT_VALIDATOR mode
+# the inter-stage contract-validator uses (they must agree). Load-time membership
+# enforcement is the ENFORCE-mode job; the opt-out modes (warn/off) skip it — so
+# this preflight is a TRUE NO-OP whenever enforcement is off and never perturbs the
+# mock-roster suites that drive runner.sh under warn (they resolve their leaves at
+# dispatch via mocked plugin_hook_call, not through a real registry):
 #   - enforce (default, real runs) / unset → ERROR fail-closed (rc=2). This is the
 #     load-time guarantee that replaces the old canonical membership gate.
-#   - warn                                  → emit the diagnostic to stderr and
-#     CONTINUE (rc=0). Mock/test rosters and operator opt-out drive runner.sh this
-#     way; dispatch-time resolution (resolve_stage_plugin in the stage loop) is the
-#     backstop that still fails a genuinely-missing plugin mid-run.
-#   - off                                   → skip entirely (ops escape hatch).
+#   - warn / off (or any unknown mode)     → skip. Dispatch-time resolution
+#     (resolve_stage_plugin in the stage loop) still fails a genuinely-missing
+#     plugin mid-run — the backstop for opt-out runs.
 # Takes the stage array BY NAME (bash 3.2: no namerefs).
 _runner_validate_leaf_resolvability() {
     local _arr_name="$1" plugins_root="$2"
-    local _mode="${ZBUILD_CONTRACT_VALIDATOR:-enforce}"
-    case "$_mode" in
-        warn|enforce|off) ;;
-        *) _mode="warn" ;;   # unknown mode degrades to warn (mirrors contract-validator)
-    esac
-    [[ "$_mode" == "off" ]] && return 0
+    # Only enforce gates at load; warn/off/unknown are opt-outs → no-op. (The
+    # default is enforce, matching contract-validator's default; unknown modes
+    # degrade to non-enforce, exactly as contract-validator degrades them to warn.)
+    [[ "${ZBUILD_CONTRACT_VALIDATOR:-enforce}" == "enforce" ]] || return 0
     # Validate the array name is a plain identifier BEFORE the eval below — never
     # eval a name assembled from unvalidated input (Copilot #1290: injection
     # footgun). Callers pass a literal ("active_stages"), so a non-identifier is a
@@ -262,12 +262,8 @@ _runner_validate_leaf_resolvability() {
             cycle|parallel) continue ;;
         esac
         if ! resolve_stage_plugin "$_leaf" "$plugins_root" >/dev/null 2>&1; then
-            if [[ "$_mode" == "warn" ]]; then
-                warn "load_template: stage '${_leaf}' resolves to no plugin (ADR-047 §5) — ZBUILD_CONTRACT_VALIDATOR=warn, continuing; dispatch will fail-close if it runs"
-            else
-                error "load_template: stage '${_leaf}' resolves to no plugin (ADR-047 §5: every leaf must resolve via role or id; add a plugin whose provides.role matches, or whose id is '${_leaf}')"
-                _ok=0
-            fi
+            error "load_template: stage '${_leaf}' resolves to no plugin (ADR-047 §5: every leaf must resolve via role or id; add a plugin whose provides.role matches, or whose id is '${_leaf}')"
+            _ok=0
         fi
     done
     [[ $_ok -eq 1 ]]

@@ -161,17 +161,17 @@ assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 
 # ─── Test 9: missing plugin for required stage → fails pipeline ───────────────
 # This suite runs under ZBUILD_CONTRACT_VALIDATOR=warn (top of file), so the
-# ADR-047 §5 resolvability preflight (#1282) WARNS but does not abort at load —
-# the missing plugin is then caught fail-closed at DISPATCH (rc=1, pipeline.end
-# status=failed), the original behavior. The warn diagnostic still names the
-# unresolved id. (The fail-closed-AT-LOAD path is proven under the default enforce
-# mode in tests/unit/template-resolvability-preflight-test.sh.)
+# ADR-047 §5 resolvability preflight (#1282) is a NO-OP at load (enforce-only) —
+# the missing plugin is caught fail-closed at DISPATCH (rc=1, pipeline.end
+# status=failed), the original behavior. The dispatch error names the unresolved
+# id. (The fail-closed-AT-LOAD path is proven under the default enforce mode in
+# tests/unit/template-resolvability-preflight-test.sh.)
 rm -rf "$PLUGINS_ROOT/agent/intake"
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
 set +e; _no_plugin_out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>&1)"; rc=$?; set -e
 assert_eq "missing required plugin exits 1 (warn: caught at dispatch)" "1" "$rc"
-assert_contains "warn-mode resolvability diagnostic names the unresolved stage 'intake'" "$_no_plugin_out" "intake"
+assert_contains "dispatch-time missing-plugin error names the unresolved stage 'intake'" "$_no_plugin_out" "intake"
 
 if [[ -f "$EVENTS_JSONL" ]]; then
     fail_from_no_plugin=$(grep '"pipeline.end"' "$EVENTS_JSONL" | grep -c '"failed"' || true)
@@ -645,28 +645,6 @@ requires:
 EOF
 cat > "$I6_PLUGINS/agent/intake/plugin.sh" <<'EOF'
 intake_run() { sleep 5; return 0; }
-EOF
-
-# ADR-047 §5 (#1282): the runner's resolvability preflight now rejects at LOAD any
-# template leaf that resolves to no plugin. The runner-state-dir-minimal template
-# is intake → build, so `build` MUST resolve or the run aborts before the stage
-# loop (never reaching the SIGTERM-mid-intake path this test exercises). Register a
-# trivial build plugin — intake blocks in sleep and is killed long before build
-# would run, so its body is never invoked.
-mkdir -p "$I6_PLUGINS/agent/build"
-cat > "$I6_PLUGINS/agent/build/manifest.yaml" <<'EOF'
-id: build
-name: Build I6
-kind: agent
-version: 0.0.1
-hooks:
-  run: build_run
-requires:
-  core:
-    - redaction
-EOF
-cat > "$I6_PLUGINS/agent/build/plugin.sh" <<'EOF'
-build_run() { return 0; }
 EOF
 
 # Flaky-kill mitigation (per #494/#908): retry on the rare signal-delivery quirk.
