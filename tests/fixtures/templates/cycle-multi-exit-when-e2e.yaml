@@ -1,0 +1,41 @@
+id: cycle-multi-exit-when-e2e
+name: Multi-condition exit_when end-to-end (all over a gate set)
+# The live-caller shape for #1284's multi-condition exit_when (#1297): a
+# build_test_cycle-like cycle whose convergence is `all:` over a set of gate
+# verdicts, dispatched through the real orchestrator. Mirrors the gate set the
+# issue identified for simple.yaml (shape-floor, acceptance-gate, secret-scan,
+# test) WITHOUT touching the production template.
+defaults:
+  strategy: fanout
+
+build-test-cycle:
+  type: cycle
+  description: "Multi-condition all: every gate verdict must be pass to converge"
+  flow:
+    - shape-floor
+    - acceptance-gate
+    - secret-scan
+    - test
+  exit_when:
+    all:
+      - { stage: shape-floor, field: verdict, op: eq, value: pass }
+      - { stage: acceptance-gate, field: verdict, op: eq, value: pass }
+      - { stage: secret-scan, field: verdict, op: eq, value: pass }
+      - { stage: test, field: verdict, op: eq, value: pass }
+  max_iterations: 5
+  on_max: continue
+
+shape-floor:
+  roles: [checker]
+
+acceptance-gate:
+  roles: [checker]
+
+secret-scan:
+  roles: [checker]
+
+test:
+  roles: [tester]
+
+flow:
+  - build-test-cycle
