@@ -6,7 +6,7 @@ extends: null
 merge_policy: auto_unless_flagged
 
 defaults:
-  strategy: fanout
+  strategy: map
 
 # ─── Flow ────────────────────────────────────────────────────────────────────
 # Simplified pipeline (ADR-037 EPIC #966 / ADR-040 EPIC #1129): 7 top-level flow
