@@ -1,26 +1,32 @@
 #!/usr/bin/env bash
-# Tests: runner.sh unconverged-rescue reads the ADR-047 manifest verdict channel,
-# not a hardcoded artifact path (#1298 / EPIC #1277).
+# Tests: runner.sh unconverged-rescue reads the ADR-047 manifest verdict channel
+# of the unconverged cycle's exit_when TARGET stage, not a hardcoded artifact
+# path (#1298 / EPIC #1277).
 #
-# Contract: when a cycle terminates unconverged with on_max=continue, the runner's
-# rescue path MUST determine _downstream_success via the ADR-047 §3 verdict
-# channel — either .stage_verdicts in the state file (primary) or any JSON
-# artifact with .verdict == approve|pass (fallback) — naming no stage.
+# #796 intent: when a cycle exhausts max_iterations with on_max=continue, the run
+# is rescued to success ONLY if the cycle's own convergence-decision stage (its
+# `exit_when` target — the stage-agnostic analog of the retired single `review`
+# stage) emitted an explicit merge-APPROVAL verdict (`approve`) via the ADR-047 §3
+# verdict channel. A mechanical `pass` does NOT rescue (an unconverged cycle never
+# satisfied its exit_when at check time, so a bare gate pass is not a late
+# merge-approval). Absent/other verdict → not rescued (safe default).
 #
-# Pinned assertions (drive _zbuild_unconverged_downstream_success directly with
-# synthetic state; the helper is extracted below from runner.sh scope):
+# The rescue names NO stage: the target is derived from the cycle's declared
+# exit_when (_TPL_CYCLE_UNTIL_STAGE_<id>), and its verdict is read via
+# runner_read_stage_verdict_raw over the target's resolved manifest.
 #
-#   T1: state_verdicts has a "pass" entry → rescued (downstream_success=1)
-#   T2: state_verdicts has only "fail" entries → NOT rescued (downstream_success=0)
-#   T3: no state_verdicts but artifacts/review-report.json has .verdict=pass →
-#       rescued via fallback (stage-agnostic; review-report.json, not review.json)
-#   T4: no state_verdicts but artifacts/gate-aggregator-result.json has .verdict=pass →
-#       rescued via fallback (different stage name; proves stage-agnostic)
-#   T5: no state_verdicts and artifacts/review.json absent → NOT rescued
-#       (review.json is NOT the rescue trigger any more; #1298 regression guard)
-#   T6: state_verdicts has "pass" but artifacts/review.json is absent → rescued
-#       (primary channel wins; no dependency on review.json)
-#   T7: state_verdicts empty, artifacts dir absent → NOT rescued (safe default)
+# Pinned assertions (drive the extracted rescue helper _rescue_success directly
+# with a synthetic exit_when target + verdict, mirroring runner.sh exactly):
+#
+#   T1: exit_when target verdict == approve → rescued (downstream_success=1)
+#   T2: exit_when target verdict == pass    → NOT rescued (mechanical gate, #979)
+#   T3: exit_when target verdict == fail    → NOT rescued
+#   T4: exit_when target verdict absent/""  → NOT rescued (safe default; #1298
+#       regression guard — a passing NON-target artifact never rescues)
+#   T5: no exit_when target declared for the cycle → NOT rescued (safe default)
+#   T6: a DIFFERENT stage's approve artifact is present but the TARGET is pass →
+#       NOT rescued (proves the rescue reads only the cycle's exit_when target,
+#       not "any approve in the artifacts dir" — the any-pass/any-approve bug guard)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,148 +36,148 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# verdict.sh provides runner_read_stage_verdict_raw (the ADR-047 §3 channel read).
+# shellcheck source=../../core/pipeline/verdict.sh
+source "$REPO_ROOT/core/pipeline/verdict.sh"
 
-print_test_header "runner unconverged-rescue: ADR-047 verdict channel, no stage name (#1298)"
+print_test_header "runner unconverged-rescue: exit_when-target verdict channel, no stage name (#1298)"
 setup_test_env "runner-unconverged-rescue-verdict-channel"
 
-# ─── Helper: _run_rescue_check <state_file> → exit 0 if downstream_success=1 ──
-# Extracts the rescue logic from runner.sh into a standalone subprocess so we
-# can drive it with synthetic state files and artifact dirs without sourcing the
-# full runner (heavy bootstrap). This mirrors the exact jq + find logic in
-# runner.sh, proving the contract without depending on runner internals.
-#
-# Returns 0 if downstream_success would be 1 (rescued), 1 otherwise.
-_run_rescue_check() {
-    local state_file="$1"
-    local _state_dir; _state_dir="$(dirname "$state_file")"
+PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+mkdir -p "$PLUGINS_ROOT"
 
-    # Primary channel: .stage_verdicts in the state file (ADR-047 §3).
-    local _sv_pass=0
-    if [[ -s "$state_file" ]]; then
-        _sv_pass="$(jq -r '
-            [ (.stage_verdicts // {}) | to_entries[]
-              | select(.value == "pass") ] | length' \
-            "$state_file" 2>/dev/null || echo 0)"
-        [[ "$_sv_pass" =~ ^[0-9]+$ ]] || _sv_pass=0
-    fi
-    if [[ "$_sv_pass" -gt 0 ]]; then
-        return 0  # rescued
-    fi
-
-    # Fallback: scan artifacts for any JSON whose .verdict is "approve" or "pass".
-    local _art_dir="$_state_dir/artifacts"
-    if [[ -d "$_art_dir" ]]; then
-        local _f _fv
-        while IFS= read -r -d '' _f; do
-            _fv="$(jq -r '.verdict // empty' "$_f" 2>/dev/null || true)"
-            case "$_fv" in
-                approve|pass) return 0 ;;  # rescued
-            esac
-        done < <(find "$_art_dir" -maxdepth 1 -name '*.json' \
-                     -not -name 'events.jsonl' -print0 2>/dev/null)
-    fi
-    return 1  # not rescued
+# Stub resolver: map a stage id to its plugin dir under $PLUGINS_ROOT (id-first).
+# Mirrors resolve_stage_plugin's id-match path without the full dispatch.sh.
+resolve_stage_plugin() {
+    local _id="$1"
+    local _dir="$PLUGINS_ROOT/$_id"
+    [[ -d "$_dir" ]] && { printf '%s' "$_dir"; return 0; }
+    return 1
 }
 
-# ─── T1: state_verdicts has "pass" → rescued ────────────────────────────────
-t1_dir="$TEST_TEMP_DIR/t1"
-mkdir -p "$t1_dir/artifacts"
-printf '{"stage_verdicts":{"gate-aggregator":"pass","test":"fail"}}' \
-    > "$t1_dir/pipeline-state.json"
-if _run_rescue_check "$t1_dir/pipeline-state.json"; then
-    assert_pass "T1: stage_verdicts pass → downstream_success=1 (rescued)"
+# ─── Helper: _rescue_success <cycle_id> <state_dir> <plugins_root> → 0 rescued ─
+# Extracts the exact rescue logic from runner.sh (the unconverged on_max=continue
+# branch). Derives the exit_when target from _TPL_CYCLE_UNTIL_STAGE_<id> (names no
+# stage), resolves its manifest, reads its raw verdict via the ADR-047 §3 channel,
+# and rescues ONLY on `approve`. Returns 0 when downstream_success would be 1.
+_rescue_success() {
+    local _uc_id="$1" _state_dir="$2" _plugins_root="$3"
+    local _downstream_success=0
+    local _uc_until_var="_TPL_CYCLE_UNTIL_STAGE_${_uc_id//-/_}"
+    local _uc_until="${!_uc_until_var:-}"
+    if [[ -n "$_uc_until" ]]; then
+        local _uc_plugin_dir _uc_manifest _uc_verdict
+        _uc_plugin_dir="$(resolve_stage_plugin "$_uc_until" "$_plugins_root" 2>/dev/null || true)"
+        _uc_manifest="$_uc_plugin_dir/manifest.yaml"
+        _uc_verdict="$(runner_read_stage_verdict_raw "$_state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
+        [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
+    fi
+    [[ "$_downstream_success" == "1" ]]
+}
+
+# _install_target <id> <primary_artifact_basename>
+# Writes a manifest declaring a JSON primary output so runner_read_stage_verdict_raw
+# reads .verdict from ${artifact_dir}/<basename>.
+_install_target() {
+    local _id="$1" _base="$2"
+    local _dir="$PLUGINS_ROOT/$_id"
+    mkdir -p "$_dir"
+    cat > "$_dir/manifest.yaml" <<EOF
+id: $_id
+name: Test $_id
+kind: agent
+version: 0.0.1
+hooks:
+  run: ${_id//-/_}_run
+requires:
+  core:
+    - redaction
+outputs:
+  - id: out
+    path: \${artifact_dir}/$_base
+    type: json
+    required: true
+    primary: true
+EOF
+}
+
+# ─── T1: exit_when target verdict == approve → rescued ──────────────────────
+t1="$TEST_TEMP_DIR/t1"; mkdir -p "$t1/artifacts"
+export _TPL_CYCLE_UNTIL_STAGE_build_review_cycle="review"
+_install_target "review" "review.json"
+printf '{"verdict":"approve"}' > "$t1/artifacts/review.json"
+if _rescue_success "build_review_cycle" "$t1" "$PLUGINS_ROOT"; then
+    assert_pass "T1: exit_when target verdict=approve → rescued"
 else
-    assert_fail "T1: stage_verdicts pass → downstream_success=1 (rescued)" \
-        "rescue check returned 1 (not rescued)"
+    assert_fail "T1: exit_when target verdict=approve → rescued" "not rescued"
 fi
 
-# ─── T2: state_verdicts only "fail" → not rescued ───────────────────────────
-t2_dir="$TEST_TEMP_DIR/t2"
-mkdir -p "$t2_dir/artifacts"
-printf '{"stage_verdicts":{"test":"fail","build":"fail"}}' \
-    > "$t2_dir/pipeline-state.json"
-if _run_rescue_check "$t2_dir/pipeline-state.json"; then
-    assert_fail "T2: stage_verdicts only fail → downstream_success=0 (not rescued)" \
-        "rescue check returned 0 (incorrectly rescued)"
+# ─── T2: exit_when target verdict == pass → NOT rescued (#979) ──────────────
+t2="$TEST_TEMP_DIR/t2"; mkdir -p "$t2/artifacts"
+export _TPL_CYCLE_UNTIL_STAGE_build_test_cycle="gate-aggregator"
+_install_target "gate-aggregator" "gate-aggregator-result.json"
+printf '{"verdict":"pass"}' > "$t2/artifacts/gate-aggregator-result.json"
+if _rescue_success "build_test_cycle" "$t2" "$PLUGINS_ROOT"; then
+    assert_fail "T2: exit_when target verdict=pass → NOT rescued (mechanical gate)" \
+        "incorrectly rescued on mechanical pass"
 else
-    assert_pass "T2: stage_verdicts only fail → downstream_success=0 (not rescued)"
+    assert_pass "T2: exit_when target verdict=pass → NOT rescued (mechanical gate)"
 fi
 
-# ─── T3: fallback — review-report.json with .verdict=pass → rescued ─────────
-# review-report.json is the review-aggregator's primary output (simple.yaml).
-# The rescue must work without ANY entry in stage_verdicts.
-t3_dir="$TEST_TEMP_DIR/t3"
-mkdir -p "$t3_dir/artifacts"
-printf '{}' > "$t3_dir/pipeline-state.json"
-printf '{"schema_version":1,"merge_readiness":"ready","verdict":"pass"}' \
-    > "$t3_dir/artifacts/review-report.json"
-if _run_rescue_check "$t3_dir/pipeline-state.json"; then
-    assert_pass "T3: fallback review-report.json verdict=pass → rescued (stage-agnostic)"
+# ─── T3: exit_when target verdict == fail → NOT rescued ─────────────────────
+t3="$TEST_TEMP_DIR/t3"; mkdir -p "$t3/artifacts"
+export _TPL_CYCLE_UNTIL_STAGE_design_verify_cycle="design-gate"
+_install_target "design-gate" "design-gate.json"
+printf '{"verdict":"fail"}' > "$t3/artifacts/design-gate.json"
+if _rescue_success "design_verify_cycle" "$t3" "$PLUGINS_ROOT"; then
+    assert_fail "T3: exit_when target verdict=fail → NOT rescued" "incorrectly rescued"
 else
-    assert_fail "T3: fallback review-report.json verdict=pass → rescued (stage-agnostic)" \
-        "rescue check returned 1 (not rescued)"
+    assert_pass "T3: exit_when target verdict=fail → NOT rescued"
 fi
 
-# ─── T4: fallback — gate-aggregator-result.json with .verdict=pass → rescued ─
-# A different stage's artifact; proves the fallback is truly stage-agnostic.
-t4_dir="$TEST_TEMP_DIR/t4"
-mkdir -p "$t4_dir/artifacts"
-printf '{}' > "$t4_dir/pipeline-state.json"
-printf '{"verdict":"pass","gates":[]}' \
-    > "$t4_dir/artifacts/gate-aggregator-result.json"
-if _run_rescue_check "$t4_dir/pipeline-state.json"; then
-    assert_pass "T4: fallback gate-aggregator-result.json verdict=pass → rescued"
+# ─── T4: exit_when target artifact absent → NOT rescued (#1298 guard) ───────
+t4="$TEST_TEMP_DIR/t4"; mkdir -p "$t4/artifacts"
+# design-gate target installed (from T3), but no artifact written for this run.
+if _rescue_success "design_verify_cycle" "$t4" "$PLUGINS_ROOT"; then
+    assert_fail "T4: exit_when target artifact absent → NOT rescued (safe default)" \
+        "incorrectly rescued with absent target verdict"
 else
-    assert_fail "T4: fallback gate-aggregator-result.json verdict=pass → rescued" \
-        "rescue check returned 1 (not rescued)"
+    assert_pass "T4: exit_when target artifact absent → NOT rescued (safe default)"
 fi
 
-# ─── T5: #1298 regression guard — review.json absent, no stage_verdicts → NOT rescued
-# The old code rescued on review.json presence; the new code must NOT special-case
-# review.json. Without review.json and without any passing stage_verdict, the run
-# must NOT be rescued.
-t5_dir="$TEST_TEMP_DIR/t5"
-mkdir -p "$t5_dir/artifacts"
-printf '{"stage_verdicts":{}}' > "$t5_dir/pipeline-state.json"
-# review.json deliberately absent — this is the regression guard for #1298.
-if _run_rescue_check "$t5_dir/pipeline-state.json"; then
-    assert_fail "T5: no review.json + no passing stage_verdicts → NOT rescued (#1298 guard)" \
-        "rescue check returned 0 (incorrectly rescued without review.json)"
+# ─── T5: no exit_when target declared for the cycle → NOT rescued ───────────
+t5="$TEST_TEMP_DIR/t5"; mkdir -p "$t5/artifacts"
+# _TPL_CYCLE_UNTIL_STAGE_nameless_cycle is unset.
+if _rescue_success "nameless_cycle" "$t5" "$PLUGINS_ROOT"; then
+    assert_fail "T5: no exit_when target → NOT rescued (safe default)" "incorrectly rescued"
 else
-    assert_pass "T5: no review.json + no passing stage_verdicts → NOT rescued (#1298 guard)"
+    assert_pass "T5: no exit_when target → NOT rescued (safe default)"
 fi
 
-# ─── T6: stage_verdicts has "pass", review.json absent → rescued via primary ─
-# Primary channel (stage_verdicts) must win even when review.json is absent.
-t6_dir="$TEST_TEMP_DIR/t6"
-mkdir -p "$t6_dir/artifacts"
-printf '{"stage_verdicts":{"review-aggregator":"pass"}}' \
-    > "$t6_dir/pipeline-state.json"
-# review.json deliberately absent — primary channel must not require it.
-if _run_rescue_check "$t6_dir/pipeline-state.json"; then
-    assert_pass "T6: stage_verdicts pass, no review.json → rescued via primary channel"
+# ─── T6: a DIFFERENT stage approves but the TARGET is pass → NOT rescued ─────
+# any-approve bug guard: the rescue reads ONLY the cycle's exit_when target, not
+# any approving artifact in the dir. Here gate-aggregator (the target) is pass,
+# and a stray review.json says approve — the run must NOT be rescued.
+t6="$TEST_TEMP_DIR/t6"; mkdir -p "$t6/artifacts"
+printf '{"verdict":"pass"}' > "$t6/artifacts/gate-aggregator-result.json"
+printf '{"verdict":"approve"}' > "$t6/artifacts/review.json"
+if _rescue_success "build_test_cycle" "$t6" "$PLUGINS_ROOT"; then
+    assert_fail "T6: stray approve artifact + target=pass → NOT rescued (any-approve bug guard)" \
+        "incorrectly rescued off a non-target artifact"
 else
-    assert_fail "T6: stage_verdicts pass, no review.json → rescued via primary channel" \
-        "rescue check returned 1 (primary channel ignored)"
+    assert_pass "T6: stray approve artifact + target=pass → NOT rescued (any-approve bug guard)"
 fi
 
-# ─── T7: no state_verdicts, artifacts dir absent → NOT rescued (safe default) ─
-t7_dir="$TEST_TEMP_DIR/t7"
-mkdir -p "$t7_dir"
-printf '{}' > "$t7_dir/pipeline-state.json"
-# No artifacts dir at all.
-if _run_rescue_check "$t7_dir/pipeline-state.json"; then
-    assert_fail "T7: no stage_verdicts + no artifacts dir → NOT rescued (safe default)" \
-        "rescue check returned 0 (incorrect)"
-else
-    assert_pass "T7: no stage_verdicts + no artifacts dir → NOT rescued (safe default)"
-fi
+# Clean up the exported template vars so they don't leak.
+unset _TPL_CYCLE_UNTIL_STAGE_build_review_cycle \
+      _TPL_CYCLE_UNTIL_STAGE_build_test_cycle \
+      _TPL_CYCLE_UNTIL_STAGE_design_verify_cycle 2>/dev/null || true
 
-# ─── Shape guard: runner.sh must NOT reference artifacts/review.json by name ──
-# ADR-047 stage-agnostic invariant: the rescue path names no stage. The literal
-# string "review.json" must not appear in the rescue block of runner.sh.
-# We scan the rescue block (lines bounded by the upstream_success computation
-# comment and the _runner_compute_final_status call) for the forbidden literal.
+# ─── Shape guard: runner.sh rescue block names no stage + reads exit_when ────
+# ADR-047 stage-agnostic invariant: the rescue path names no stage and derives
+# its target from the cycle's declared exit_when. Assert the rescue block (1)
+# does NOT contain the literal "review.json" and (2) DOES derive the target via
+# _TPL_CYCLE_UNTIL_STAGE (proves it reads the exit_when target, not a hardcode).
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 rescue_block="$(awk '
     /Determine downstream success\. Two paths:/ { in_block=1 }
@@ -184,6 +190,13 @@ if [[ "$rescue_block" == *"review.json"* ]]; then
         "Forbidden literal found in rescue block"
 else
     assert_pass "Shape: runner.sh rescue block names no stage (ADR-047 invariant)"
+fi
+
+if [[ "$rescue_block" == *"_TPL_CYCLE_UNTIL_STAGE_"* ]]; then
+    assert_pass "Shape: runner.sh rescue derives target from the cycle's exit_when"
+else
+    assert_fail "Shape: runner.sh rescue derives target from the cycle's exit_when" \
+        "rescue block does not reference _TPL_CYCLE_UNTIL_STAGE_"
 fi
 
 cleanup_test_env

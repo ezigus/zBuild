@@ -2056,45 +2056,33 @@ main() {
         # Determine downstream success. Two paths:
         #  - No unconverged: treat as success (preserves pre-#796 behavior
         #    where a converged pipeline is always pipeline=complete).
-        #  - Unconverged with on_max=continue: read the downstream verdict
-        #    via the ADR-047 §3 manifest verdict channel — stage-agnostic
-        #    (no stage name hardcoded). Primary channel: .stage_verdicts in
-        #    the state file (populated by runner_read_stage_verdict, the
-        #    canonical verdict normalizer). A single "pass" from any
-        #    downstream stage rescues the unconverged run. Fallback: scan
-        #    the artifacts directory for any JSON with .verdict == approve|pass
-        #    (covers stages whose verdict artifact is the definitive push channel
-        #    and whose state write may lag the dispatch-loop completion).
+        #  - Unconverged with on_max=continue: the run is rescued to success
+        #    ONLY when the unconverged cycle's own convergence-decision stage
+        #    (its `exit_when` target — the stage-agnostic analog of the old
+        #    single `review` stage this rescue was written for) emitted an
+        #    explicit merge-APPROVAL verdict. #1298 (EPIC #1277): the target is
+        #    derived from the cycle's declared exit_when (_TPL_CYCLE_UNTIL_STAGE),
+        #    naming no stage; its verdict is read via the ADR-047 §3 manifest
+        #    verdict channel (runner_read_stage_verdict_raw over the target's
+        #    resolved manifest). Only `approve` rescues — a merge-readiness
+        #    approval that arrived without formal convergence (#796's intent).
+        #    A mechanical `pass` does NOT rescue: an unconverged cycle by
+        #    definition never satisfied its exit_when at check time, so a bare
+        #    gate `pass` is not a late merge-approval. Absent/other verdict →
+        #    not rescued (safe default; mirrors the pre-#979 absent-artifact case).
         local _downstream_success=1
         if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
-            # Primary channel: .stage_verdicts in the state file (ADR-047 §3).
-            # runner_read_stage_verdict populates this for every dispatched stage.
-            local _sv_pass=0
-            if [[ -s "$state_file" ]]; then
-                _sv_pass="$(jq -r '
-                    [ (.stage_verdicts // {}) | to_entries[]
-                      | select(.value == "pass") ] | length' \
-                    "$state_file" 2>/dev/null || echo 0)"
-                [[ "$_sv_pass" =~ ^[0-9]+$ ]] || _sv_pass=0
-            fi
-            if [[ "$_sv_pass" -gt 0 ]]; then
-                _downstream_success=1
-            else
-                # Fallback: scan artifacts for any JSON whose .verdict is
-                # "approve" or "pass" — covers the advisory aggregator and any
-                # stage-agnostic verdict-push artifact (ADR-047 §3 push channel).
-                _downstream_success=0
-                local _art_dir="$state_dir/artifacts"
-                if [[ -d "$_art_dir" ]]; then
-                    local _f _fv
-                    while IFS= read -r -d '' _f; do
-                        _fv="$(jq -r '.verdict // empty' "$_f" 2>/dev/null || true)"
-                        case "$_fv" in
-                            approve|pass) _downstream_success=1; break ;;
-                        esac
-                    done < <(find "$_art_dir" -maxdepth 1 -name '*.json' \
-                                 -not -name 'events.jsonl' -print0 2>/dev/null)
-                fi
+            _downstream_success=0
+            local _uc_id="$_RUNNER_CYCLE_UNCONVERGED_ID"
+            local _uc_until_var="_TPL_CYCLE_UNTIL_STAGE_${_uc_id//-/_}"
+            local _uc_until="${!_uc_until_var:-}"
+            if [[ -n "$_uc_until" ]]; then
+                local _uc_plugin_dir _uc_manifest _uc_verdict
+                _uc_plugin_dir="$(resolve_stage_plugin "$_uc_until" "$plugins_root" 2>/dev/null || true)"
+                _uc_manifest="$_uc_plugin_dir/manifest.yaml"
+                _uc_verdict="$(runner_read_stage_verdict_raw "$state_dir" "$_uc_manifest" "$_uc_until" 0 2>/dev/null || true)"
+                # Only an explicit merge-approval rescues (not a mechanical pass).
+                [[ "$_uc_verdict" == "approve" ]] && _downstream_success=1
             fi
         fi
 
