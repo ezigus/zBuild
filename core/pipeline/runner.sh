@@ -225,6 +225,14 @@ _runner_export_scope_allowlist() {
 # no spaces but keep the call site uniform.
 _runner_validate_leaf_resolvability() {
     local _arr_name="$1" plugins_root="$2"
+    # Validate the array name is a plain identifier BEFORE the eval below — never
+    # eval a name assembled from unvalidated input (Copilot #1290: injection
+    # footgun). Callers pass a literal ("active_stages"), so a non-identifier is a
+    # programming error, not runtime data.
+    if [[ ! "$_arr_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        error "_runner_validate_leaf_resolvability: invalid array name '${_arr_name}'"
+        return 2
+    fi
     # Bash 3.2-safe indirect array expansion (no namerefs on bash 3.2). The
     # `[@]+` guard keeps an empty source array safe under `set -u`.
     # shellcheck disable=SC2034,SC2154  # _stages assigned via eval, read below

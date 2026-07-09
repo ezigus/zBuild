@@ -139,19 +139,24 @@ set -e
 assert_eq "SPEC-5: empty leaf set → preflight passes (rc=0)" "0" "$_rc_empty"
 
 # ─── SPEC-6: STRANGLER AGREEMENT — new preflight rejects ⊇ old fence (MEMBERSHIP)
-# The strangler claim: every template the OLD canonical fence rejects for a
-# MEMBERSHIP reason (an unknown/unregistered stage id) is ALSO rejected in the new
-# world (template loads leniently → runner resolvability preflight rejects the leaf
-# that has no plugin). Two corpora feed this:
-#   (a) the shipped corpus (fixture templates + config/templates) — all use
-#       resolvable canonical stages, so the old fence accepts them (no membership
-#       rejection to assert); walking them proves the mechanism is exercised on the
-#       real set and never regresses.
-#   (b) synthetic MEMBERSHIP-violation templates — an unknown leaf. Here the old
-#       fence rejects (unknown stage id) AND the new preflight rejects (no plugin
-#       resolves). This is where superset-or-equal has teeth.
-# The order residual is EXCLUDED from this claim by construction (see SPEC-7) — it
-# is the ADR-047 §5 accepted residual, not a strangler violation.
+# The strangler claim, stated precisely: every template the OLD canonical fence
+# rejects for a MEMBERSHIP reason where the offending leaf is GENUINELY UNRESOLVABLE
+# (no plugin resolves) is ALSO rejected in the new world. This is the property that
+# must hold before the old fence is removed — the new preflight must not silently
+# accept a leaf that truly has no plugin.
+#
+# TWO cases the claim deliberately does NOT cover:
+#   - Order-only rejections (SPEC-7): the accepted ADR-047 §5 residual.
+#   - STALE-VOCABULARY rejections: the old canonical list was an arbitrary closed
+#     set that OMITTED real, resolvable stages (e.g. `security-lens`, `output` — the
+#     runner's own built-in fallback roster is NOT in _ZBUILD_CANONICAL_STAGES). A
+#     template using such a stage is rejected by the old fence (unknown id) yet its
+#     leaf DOES resolve to a real plugin. The new world CORRECTLY accepts it — the
+#     old fence was over-strict on a stale vocabulary. This divergence is the WHOLE
+#     POINT of ADR-047 (retire the arbitrary closed set), not a strangler failure,
+#     so it is logged (not failed) below.
+# Two corpora feed the claim: the shipped corpus (walked for regression) + synthetic
+# MEMBERSHIP-violation templates with a genuinely-unresolvable leaf (teeth).
 REAL_PLUGINS="$REPO_ROOT/plugins"
 _corpus=()
 for _t in "$REPO_ROOT/tests/fixtures/templates"/*.yaml "$REPO_ROOT/config/templates"/*.yaml; do
@@ -204,7 +209,6 @@ for _t in "${_corpus[@]}"; do
     set -e
     [[ "$_old_err" == *"unknown stage id"* ]] || continue   # order-only → residual, skip
 
-    _checked=$((_checked + 1))
     # NEW verdict: template load (fence off) THEN resolvability preflight over the
     # resolved leaves against the real plugins tree. A rejection in EITHER phase
     # counts as a new-world rejection.
@@ -213,6 +217,7 @@ for _t in "${_corpus[@]}"; do
     _new_load_rc=$?
     set -e
     _new_reject=0
+    _has_unresolvable_leaf=0
     if [[ $_new_load_rc -ne 0 ]]; then
         _new_reject=1
     else
@@ -223,20 +228,42 @@ for _t in "${_corpus[@]}"; do
         _new_pf_rc=$?
         set -e
         [[ $_new_pf_rc -ne 0 ]] && _new_reject=1
+        # Does ANY leaf genuinely fail to resolve against the real plugins tree?
+        # (distinguishes a truly-unregistered leaf from a stale-vocabulary one).
+        for _lf in "${local_leaves[@]+"${local_leaves[@]}"}"; do
+            [[ -z "$_lf" ]] && continue
+            if ! resolve_stage_plugin "$_lf" "$REAL_PLUGINS" >/dev/null 2>&1; then
+                _has_unresolvable_leaf=1; break
+            fi
+        done
     fi
     if [[ $_new_reject -eq 0 ]]; then
-        _strangler_ok=0
-        printf '  strangler: OLD fence REJECTED %s (membership) but NEW world ACCEPTED it\n' "$(basename "$_t")" >&2
+        if [[ $_has_unresolvable_leaf -eq 1 ]]; then
+            # New world ACCEPTED a template with a genuinely-unresolvable leaf → the
+            # strangler invariant is VIOLATED (a load-time guarantee was lost).
+            _strangler_ok=0
+            printf '  strangler VIOLATION: OLD rejected %s AND a leaf is unresolvable, but NEW ACCEPTED it\n' "$(basename "$_t")" >&2
+        else
+            # Stale-vocabulary divergence (all leaves resolve): the old fence was
+            # over-strict on an arbitrary closed set; the new world is correctly
+            # more permissive. This is desirable per ADR-047, not a violation.
+            printf '  strangler (expected divergence): OLD rejected %s on a stale vocabulary but every leaf resolves — new world correctly accepts\n' "$(basename "$_t")" >&2
+        fi
+    else
+        # New world rejects. Count only the genuinely-unresolvable rejections as
+        # "with teeth" (a stale-vocabulary template that also happens to fail load
+        # would not exercise the resolvability path).
+        [[ $_has_unresolvable_leaf -eq 1 ]] && _checked=$((_checked + 1))
     fi
 done
-assert_eq "SPEC-6: new preflight rejects ⊇ old fence for membership (strangler)" "1" "$_strangler_ok"
+assert_eq "SPEC-6: new preflight rejects ⊇ old fence for genuinely-unresolvable leaves (strangler)" "1" "$_strangler_ok"
 # Guard against a vacuous green: the synthetic templates MUST have exercised at
-# least the 2 membership rejections we injected. If _checked is 0, the old fence
-# stopped rejecting unknown ids (a real regression to catch).
+# least the 2 unresolvable-leaf rejections we injected. If 0, the resolvability
+# path stopped catching truly-missing plugins (a real regression to catch).
 if [[ $_checked -ge 2 ]]; then
-    assert_pass "SPEC-6b: strangler agreement exercised on real membership rejections ($_checked, corpus=${#_corpus[@]})"
+    assert_pass "SPEC-6b: strangler agreement exercised on genuinely-unresolvable leaves ($_checked, corpus=${#_corpus[@]})"
 else
-    assert_fail "SPEC-6b: strangler agreement was vacuous" "expected ≥2 membership rejections, got $_checked"
+    assert_fail "SPEC-6b: strangler agreement was vacuous" "expected ≥2 unresolvable-leaf rejections, got $_checked"
 fi
 
 # ─── SPEC-7: ACCEPTED RESIDUAL — order-only swap that violates no data dependency.
