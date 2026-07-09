@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# Integration test (#842): design_impact_cycle's feedback wiring in
-# config/templates/standard.yaml wires impact.impact_feedback_md → design's
+# Integration test (#842): the design-verify cycle's feedback wiring in
+# config/templates/simple.yaml wires design-gate.design_gate_feedback → design's
 # prior_impact_feedback AND design's own prior output → design's prior_design
 # (self-feedback edge, mirrors #773 lesson from plan_impact_cycle).
+#
+# #979: repointed from standard.yaml's retired design_impact_cycle to simple.yaml's
+# design_verify_cycle — the same two-edge feedback shape (a gate→design edge plus a
+# design→design self-edge). T2–T5 exercise the generic _cycle_apply_feedback
+# mechanic and are template-independent.
 #
 # Scope: orchestrator boundary (load real template + drive _cycle_apply_feedback
 # directly). No real LLM, no real plugin invocation — verifies the wiring
 # round-trips end-to-end with zero orchestrator code change.
 #
 # Pinned assertions:
-#   T1: standard.yaml load → _TPL_CYCLE_FEEDBACK_design_impact_cycle contains
-#       TWO newline-separated records: impact→design AND design→design.
+#   T1: simple.yaml load → _TPL_CYCLE_FEEDBACK_design_verify_cycle contains
+#       TWO newline-separated records: design-gate→design AND design→design.
 #   T2: _cycle_apply_feedback copies design iter-1's design.md to
-#       cycle-design_impact_cycle/iter-2/feedback/prior_design.txt verbatim.
+#       cycle-design_verify_cycle/iter-2/feedback/prior_design.txt verbatim.
 #   T3: Co-fires with impact_feedback_md edge — both prior_design.txt AND
 #       prior_impact_feedback.txt land in the same iter-2/feedback dir.
 #   T4: Empty (zero-byte) prior design.md + required=false → rc=0, no feedback
@@ -28,8 +33,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "design_impact_cycle self-feedback wiring (#842)"
-setup_test_env "design-impact-self-feedback"
+print_test_header "design_verify_cycle self-feedback wiring (#842)"
+setup_test_env "design-verify-self-feedback"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
@@ -38,17 +43,17 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 # ─── T1: template loads with both feedback edges ────────────────────────────
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/standard.yaml"
+load_template "$REPO_ROOT/config/templates/simple.yaml"
 
-fb="${_TPL_CYCLE_FEEDBACK_design_impact_cycle:-}"
-assert_contains "T1: feedback contains impact→design edge" \
-    "$fb" "impact:impact_feedback_md|design:prior_impact_feedback"
+fb="${_TPL_CYCLE_FEEDBACK_design_verify_cycle:-}"
+assert_contains "T1: feedback contains design-gate→design edge" \
+    "$fb" "design-gate:design_gate_feedback|design:prior_impact_feedback"
 assert_contains "T1: feedback contains design→design self-edge (#842)" \
     "$fb" "design:design|design:prior_design"
 
 # Both edges present means two records separated by newline.
 edge_count="$(printf '%s\n' "$fb" | grep -c '|' || true)"
-assert_eq "T1: exactly 2 feedback edges in design_impact_cycle" "2" "$edge_count"
+assert_eq "T1: exactly 2 feedback edges in design_verify_cycle" "2" "$edge_count"
 
 # ─── T2 + T3: _cycle_apply_feedback round-trips both edges ──────────────────
 # shellcheck disable=SC1090
@@ -63,7 +68,7 @@ _IMPACT_FEEDBACK_SENTINEL='## Gap report — missing config/bar.yaml'
 printf '%s' "$_DESIGN_MD_SENTINEL" > "$STATE_DIR/artifacts/design/design.md"
 printf '%s' "$_IMPACT_FEEDBACK_SENTINEL" > "$STATE_DIR/artifacts/impact/impact_feedback_md.md"
 
-_CYCLE_TRAP_CYCLE_ID="design_impact_cycle"
+_CYCLE_TRAP_CYCLE_ID="design_verify_cycle"
 # Wire BOTH edges as the orchestrator would (uses _TPL_CYCLE_FEEDBACK shape).
 _CYCLE_FEEDBACK=(
     "impact:impact_feedback_md.md|design:prior_impact_feedback:false"
@@ -73,7 +78,7 @@ set +e; _cycle_apply_feedback 2 "$STATE_DIR"; rc=$?; set -e
 assert_eq "T2: both feedback edges apply → rc=0" "0" "$rc"
 
 # T2: prior_design.txt landed in iter-2 feedback dir.
-PRIOR_DESIGN_DST="$STATE_DIR/cycle-design_impact_cycle/iter-2/feedback/prior_design.txt"
+PRIOR_DESIGN_DST="$STATE_DIR/cycle-design_verify_cycle/iter-2/feedback/prior_design.txt"
 assert_file_exists "T2: prior_design.txt copied to iter-2 feedback dir" "$PRIOR_DESIGN_DST"
 
 # T2: body is byte-identical (raw-copy convention).
@@ -81,7 +86,7 @@ assert_eq "T2: prior_design.txt body matches iter-1 design.md verbatim" \
     "$_DESIGN_MD_SENTINEL" "$(cat "$PRIOR_DESIGN_DST")"
 
 # T3: impact_feedback_md side-edge co-fired.
-PRIOR_IMPACT_DST="$STATE_DIR/cycle-design_impact_cycle/iter-2/feedback/prior_impact_feedback.txt"
+PRIOR_IMPACT_DST="$STATE_DIR/cycle-design_verify_cycle/iter-2/feedback/prior_impact_feedback.txt"
 assert_file_exists "T3: prior_impact_feedback.txt also copied (co-fire)" "$PRIOR_IMPACT_DST"
 assert_eq "T3: prior_impact_feedback.txt body matches iter-1 impact verbatim" \
     "$_IMPACT_FEEDBACK_SENTINEL" "$(cat "$PRIOR_IMPACT_DST")"
@@ -99,7 +104,7 @@ _CYCLE_FEEDBACK=(
 set +e; _cycle_apply_feedback 2 "$STATE_DIR2"; rc=$?; set -e
 assert_eq "T4: missing optional self-edge from-artifact → rc=0 (fail-soft)" "0" "$rc"
 
-if [[ -f "$STATE_DIR2/cycle-design_impact_cycle/iter-2/feedback/prior_design.txt" ]]; then
+if [[ -f "$STATE_DIR2/cycle-design_verify_cycle/iter-2/feedback/prior_design.txt" ]]; then
     assert_fail "T4: no prior_design.txt written when source missing"
 else
     assert_pass "T4: no prior_design.txt written when source missing"

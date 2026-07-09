@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Integration: #744/#842 — impact agent + design_impact_cycle.
+# Integration: #744/#842 — impact agent (the design-verify cycle's semantic sibling).
+# #979: design_impact_cycle was retired with standard.yaml; the impact plugin under
+# test is KEEP-set and template-agnostic (simple.yaml runs impact as a top-level stage).
 #
 # Drives _impact_run_inner directly with a stubbed route_to_model that
 # returns a synthetic verdict. Asserts:
@@ -58,8 +60,8 @@ cat > "$PLAN_JSON" <<'EOF'
   "steps": [
     {
       "id": "step-1",
-      "description": "modify standard.yaml flow",
-      "files": ["config/templates/standard.yaml"],
+      "description": "modify simple.yaml flow",
+      "files": ["config/templates/simple.yaml"],
       "estimated_lines": 20
     }
   ],
@@ -76,7 +78,7 @@ cat > "$DESIGN_MD" <<'EOF'
 # Design
 
 ```scope
-config/templates/standard.yaml
+config/templates/simple.yaml
 tests/integration/new-test.sh
 ```
 EOF
@@ -100,7 +102,7 @@ print_test_section "1. impact returns verdict=incomplete with missing[] when pla
 
 # Stub route_to_model to return a synthetic impact verdict.
 route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-1","files_to_add":["tests/unit/template-test.sh","tests/integration/runner-test.sh"],"reason":"standard.yaml flow shape change requires test updates"}],"impact_feedback_md":"## Impact gap on step-1\nThe standard.yaml flow change at step-1 will break assumptions in: tests/unit/template-test.sh, tests/integration/runner-test.sh. Add these to files[].\n"}'
+    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-1","files_to_add":["tests/unit/template-test.sh","tests/integration/runner-test.sh"],"reason":"simple.yaml flow shape change requires test updates"}],"impact_feedback_md":"## Impact gap on step-1\nThe simple.yaml flow change at step-1 will break assumptions in: tests/unit/template-test.sh, tests/integration/runner-test.sh. Add these to files[].\n"}'
     return 0
 }
 
@@ -169,7 +171,7 @@ cat > "$UNIFIED_PLAN" <<'EOF'
     {
       "id": "step-1",
       "description": "from coder_plan: add config",
-      "files": ["config/templates/standard.yaml"],
+      "files": ["config/templates/simple.yaml"],
       "estimated_lines": 20
     },
     {

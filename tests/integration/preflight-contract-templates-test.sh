@@ -6,9 +6,10 @@
 # stage with `review-aggregator`, but pr-delivery still hard-required `review`
 # (review.json from stage:review) → preflight_failed at `pipeline start`. The
 # roster tests passed; nothing exercised the RUNTIME contract. This test runs the
-# validator in enforce mode against simple.yaml + standard.yaml and asserts every
-# required input has a producer in the template (so a future cutover that strands
-# a required input fails HERE, not in a user's dogfood). ADR-020.
+# validator in enforce mode against every SHIPPED template (simple.yaml — the sole
+# shipped template after #979 retired standard.yaml) and asserts every required
+# input has a producer in the template (so a future cutover that strands a required
+# input fails HERE, not in a user's dogfood). ADR-020.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,7 +38,7 @@ source "$REPO_ROOT/core/pipeline/template-resolver.sh"
 # shellcheck source=../../core/pipeline/contract-validator.sh
 source "$REPO_ROOT/core/pipeline/contract-validator.sh"
 
-for _tpl in simple standard; do
+for _tpl in simple; do
     load_template "$REPO_ROOT/config/templates/$_tpl.yaml" >/dev/null 2>&1
     _stages_nl="$(printf '%s\n' "${_TPL_STAGES[@]}")"
     _sf="$TEST_TEMP_DIR/$_tpl-state/pipeline-state.json"

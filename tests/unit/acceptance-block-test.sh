@@ -320,7 +320,7 @@ tests/unit/foo-test.sh
 WIRING:
 ../../etc/passwd
 /etc/hosts
-config/templates/standard.yaml
+config/templates/simple.yaml
 EOF
 printf '%s\n' '```' >> "$tc13_file"
 
@@ -332,7 +332,7 @@ assert_eq "TC-13: traversal '..' path dropped" "0" \
 assert_eq "TC-13: absolute path dropped" "0" \
     "$(printf '%s\n' "$tc13_out" | grep -c '/etc/hosts' || true)"
 assert_eq "TC-13: safe wiring path retained" "1" \
-    "$(printf '%s\n' "$tc13_out" | grep -c '^config/templates/standard.yaml$' || true)"
+    "$(printf '%s\n' "$tc13_out" | grep -c '^config/templates/simple.yaml$' || true)"
 
 cleanup_test_env
 print_test_results

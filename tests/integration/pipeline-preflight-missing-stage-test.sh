@@ -2,14 +2,17 @@
 # tests/integration/pipeline-preflight-missing-stage-test.sh
 # ADR-020 (#496) keystone test.
 #
-# Invokes a real subprocess against a template that omits the `test` stage.
-# review's manifest declares `source: stage:test` for its `test_results`
-# input, so the pre-flight validator MUST detect the missing producer.
+# Invokes a real subprocess against a template that omits the `plan` stage.
+# build's manifest declares `source: stage:plan` for its `plan` input, so the
+# pre-flight validator MUST detect the missing producer. (#979: the fixture was
+# reworked from the retired `review→stage:test` coupling to `build→stage:plan`
+# after the standard lattice — and the `review` plugin — was deleted; same
+# validator path, KEEP-set plugin.)
 #
 # Assertions (enforce mode):
 #   - rc=2 from the runner (validator returns 2, runner propagates it)
 #   - intake's `plugin.run.start` event is NOT emitted (halts BEFORE any stage)
-#   - structured error on stderr names 'test' and 'test_results'
+#   - structured error on stderr names 'build' and 'plan'
 #   - `pipeline.preflight.fail` event in events.jsonl
 #
 # Assertions (warn mode, default):
@@ -28,16 +31,16 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "pipeline pre-flight keystone — missing test stage (#496, ADR-020)"
+print_test_header "pipeline pre-flight keystone — missing plan producer (#496, ADR-020)"
 setup_test_env "preflight-keystone"
 
-# ── Pre-conditions: a fixture template that omits `test` ────────────────────
+# ── Pre-conditions: a fixture template that omits `plan` ────────────────────
 # #1270: install the fixture as a per-repo `.zbuild/templates/` overlay in a temp
 # repo. The DRIVER runs with CWD = that repo (below) so the resolver reads the
 # overlay from $PWD; nothing lands in the tracked config/templates/, and the temp
 # repo is reaped by the master trap (no source-tree leak on early exit).
 OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
-install_template_overlay "$OVERLAY_REPO" standard-missing-test
+install_template_overlay "$OVERLAY_REPO" broken-contract-missing-producer
 
 # Shared environment: route state into the temp dir so the run is hermetic.
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
@@ -62,7 +65,7 @@ set +e
 source "$REPO_ROOT/core/pipeline/runner.sh"
 set +e
 ZBUILD_CONTRACT_VALIDATOR="\${ZBUILD_CONTRACT_VALIDATOR:-enforce}" \
-    main --goal "test goal — pre-flight should reject this" --template standard-missing-test
+    main --goal "test goal — pre-flight should reject this" --template broken-contract-missing-producer
 _rc=\$?
 set -e
 echo "EXIT_CODE=\$_rc"
@@ -90,11 +93,11 @@ else
         "no 'Pipeline cannot start' in stderr; err-tail: $(tail -5 "$err1" 2>/dev/null)"
 fi
 
-if grep -qE "(test_results|stage 'test')" "$err1" 2>/dev/null; then
+if grep -qE "(id=plan|stage 'plan')" "$err1" 2>/dev/null; then
     assert_pass "enforce: stderr names the missing producer/input"
 else
     assert_fail "enforce: stderr names the missing producer/input" \
-        "no test_results or 'test' reference in stderr"
+        "no 'plan' producer/input reference in stderr"
 fi
 
 # Pre-flight halts BEFORE intake runs — no plugin.run.start event for intake.

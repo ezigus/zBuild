@@ -1,0 +1,68 @@
+id: route-back-cycles
+name: Route-back cycles fixture
+extends: null
+# Owned fixture (#979): replaces the retired standard.yaml for the route_back
+# budget tests. Those tests fully stub cycle_orchestrator_run/cycle_dispatch_stage
+# and key the mock on the dispatch-unit name `design_impact_cycle` (converges)
+# vs. a second cycle (route_backs). The template therefore only needs to declare
+# these two cycle dispatch units in order; the per-edge cap is injected via the
+# _TPL_CYCLE_ROUTE_BACK_MAX_build_review_cycle env export at test time (standard.yaml
+# declared no route_back either — the export survived load_template).
+defaults:
+  strategy: fanout
+
+flow:
+  - intake
+  - plan
+  - design_impact_cycle
+  - build_review_cycle
+  - pr
+
+intake:
+  roles: [intake]
+
+plan:
+  roles: [planner]
+
+design_impact_cycle:
+  type: cycle
+  description: Discover post-design consequences until impact is complete
+  flow:
+    - design
+    - impact
+  exit_when:
+    stage: impact
+    field: verdict
+    op: eq
+    value: complete
+  max_iterations: 3
+  on_max: continue
+
+build_review_cycle:
+  type: cycle
+  description: Build and review until approved
+  flow:
+    - build
+    - review-aggregator
+  exit_when:
+    stage: review-aggregator
+    field: verdict
+    op: eq
+    value: approve
+  max_iterations: 3
+  on_max: continue
+
+design:
+  roles: [designer]
+
+impact:
+  roles: [impact_analyzer]
+
+build:
+  roles: [builder]
+
+review-aggregator:
+  roles: [review_aggregator]
+
+pr:
+  roles: [pr]

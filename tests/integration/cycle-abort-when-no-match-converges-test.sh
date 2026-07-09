@@ -14,8 +14,9 @@
 #
 # 5-line copy-paste oversight from Wave 17-B (ADR-027, #703) adding
 # abort_when. Synthetic tests didn't repro because none defined abort_when
-# in their templates; only standard.yaml's build_review_cycle has BOTH
-# exit_when AND abort_when.
+# in their templates; the trigger was a cycle with BOTH exit_when AND
+# abort_when (the retired standard.yaml's build_review_cycle; #979). This test
+# locks the fix with a self-contained fixture carrying both predicates.
 #
 # This is the failing-test-first TDD regression lock.
 set -euo pipefail
@@ -144,7 +145,8 @@ print_test_section "nested-cycle production scenario (mirror dogfood 20260607140
 rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 
-# This shape mirrors standard.yaml: outer build_review_cycle = [build_test_cycle, review]
+# Classic outer-remediation shape: outer build_review_cycle = [build_test_cycle, review]
+# (the retired standard.yaml once shipped this; #979 — fixture is self-contained)
 # with BOTH exit_when AND abort_when. Inner build_test_cycle converges, then
 # review approves. Outer should converge via exit_when on review.verdict=approve.
 TPL_NESTED="$TEST_TEMP_DIR/nested-prod.yaml"

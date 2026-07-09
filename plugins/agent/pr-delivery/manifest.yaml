@@ -33,17 +33,12 @@ config:
   tier_default: T2
 
 inputs:
-  # #1142 follow-up: required:false — standard.yaml provides the `review` stage
-  # (review.json), but simple.yaml replaced it with the advisory review-aggregator
-  # (review-report.json, consumed below). pr-delivery's verdict guard already
-  # no-ops when review.json is absent (plugin.sh `[[ -f "$review_json" ]]`), and
-  # the auto_unless_flagged path reads review-report.json. Hard-requiring `review`
-  # broke simple.yaml preflight after the C3 lens cutover.
-  - id: review
-    type: file
-    path: "${artifact_dir}/review.json"
-    source: stage:review
-    required: false
+  # #979 (EPIC #1277): the standard.yaml `review` stage (review.json) was retired,
+  # so its stage:review input is dropped — it dangled and tripped the lint-contract
+  # data-dependency graph check. The advisory review-aggregator (review-report.json,
+  # below) is the only remaining review source. pr-delivery's verdict guard still
+  # no-ops when review.json is absent (plugin.sh `[[ -f "$review_json" ]]`) and the
+  # auto_unless_flagged path reads review-report.json — behavior unchanged.
   - id: review_report
     type: file
     path: "${artifact_dir}/review-report.json"

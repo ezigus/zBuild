@@ -10,7 +10,7 @@
 # "optional", "gated by config", "future follow-up", "may be disabled".
 #
 # Migration keepers (5-test trial in body): plan MUST touch
-# config/templates/standard.yaml in at least one step's files[].
+# config/templates/simple.yaml in at least one step's files[].
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,29 +49,29 @@ GOAL_WITH_DOD="Implement feature X
 - [ ] Stage X is invoked
 - [ ] Tests verify the live path"
 
-PLAN_CLEAN_TOUCHES_TEMPLATE='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"wire stage X","files":["config/templates/standard.yaml","plugins/agent/x/plugin.sh"],"estimated_lines":50}],"estimated_total_lines":50,"notes":""}'
+PLAN_CLEAN_TOUCHES_TEMPLATE='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"wire stage X","files":["config/templates/simple.yaml","plugins/agent/x/plugin.sh"],"estimated_lines":50}],"estimated_total_lines":50,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_CLEAN_TOUCHES_TEMPLATE" "$GOAL_WITH_DOD"; rc3=$?; set -e
 assert_eq "T3: DoD + clean plan + touches template = rc=0" "0" "$rc3"
 
 print_test_section "3. DoD header present + forbidden phrase in plan → validation fails"
 
-PLAN_HAS_FORBIDDEN='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add stage but may be toggled off","files":["config/templates/standard.yaml"],"estimated_lines":50}],"estimated_total_lines":50,"notes":""}'
+PLAN_HAS_FORBIDDEN='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add stage but may be toggled off","files":["config/templates/simple.yaml"],"estimated_lines":50}],"estimated_total_lines":50,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_HAS_FORBIDDEN" "$GOAL_WITH_DOD"; rc4=$?; set -e
 assert_eq "T4: DoD + plan contains 'may be toggled off' = rc=1" "1" "$rc4"
 
-PLAN_HAS_FUTURE_FOLLOWUP='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"wire it","files":["config/templates/standard.yaml"],"estimated_lines":50}],"estimated_total_lines":50,"notes":"future follow-up will handle the rest"}'
+PLAN_HAS_FUTURE_FOLLOWUP='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"wire it","files":["config/templates/simple.yaml"],"estimated_lines":50}],"estimated_total_lines":50,"notes":"future follow-up will handle the rest"}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_HAS_FUTURE_FOLLOWUP" "$GOAL_WITH_DOD"; rc5=$?; set -e
 assert_eq "T5: DoD + plan notes mention 'future follow-up' = rc=1" "1" "$rc5"
 
-PLAN_HAS_OPTIONAL_GATED='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add as optional gated by config","files":["config/templates/standard.yaml"],"estimated_lines":50}],"estimated_total_lines":50,"notes":""}'
+PLAN_HAS_OPTIONAL_GATED='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add as optional gated by config","files":["config/templates/simple.yaml"],"estimated_lines":50}],"estimated_total_lines":50,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_HAS_OPTIONAL_GATED" "$GOAL_WITH_DOD"; rc6=$?; set -e
 assert_eq "T6: DoD + 'optional gated by config' = rc=1" "1" "$rc6"
 
-print_test_section "4. 5-test trial keeper + plan missing standard.yaml flow change → validation fails"
+print_test_section "4. 5-test trial keeper + plan missing simple.yaml flow change → validation fails"
 
 GOAL_KEEPER="Migrate stage X
 ## 5-test trial
@@ -81,12 +81,12 @@ GOAL_KEEPER="Migrate stage X
 PLAN_MISSES_TEMPLATE='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add plugin","files":["plugins/agent/x/manifest.yaml","plugins/agent/x/plugin.sh"],"estimated_lines":100}],"estimated_total_lines":100,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_MISSES_TEMPLATE" "$GOAL_KEEPER"; rc7=$?; set -e
-assert_eq "T7: 5-test trial keeper + plan does NOT touch standard.yaml = rc=1" "1" "$rc7"
+assert_eq "T7: 5-test trial keeper + plan does NOT touch simple.yaml = rc=1" "1" "$rc7"
 
-PLAN_TOUCHES_TEMPLATE='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add plugin","files":["plugins/agent/x/plugin.sh"],"estimated_lines":100},{"id":"step-2","description":"wire into flow","files":["config/templates/standard.yaml"],"estimated_lines":10}],"estimated_total_lines":110,"notes":""}'
+PLAN_TOUCHES_TEMPLATE='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add plugin","files":["plugins/agent/x/plugin.sh"],"estimated_lines":100},{"id":"step-2","description":"wire into flow","files":["config/templates/simple.yaml"],"estimated_lines":10}],"estimated_total_lines":110,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_TOUCHES_TEMPLATE" "$GOAL_KEEPER"; rc8=$?; set -e
-assert_eq "T8: 5-test trial keeper + plan touches standard.yaml = rc=0" "0" "$rc8"
+assert_eq "T8: 5-test trial keeper + plan touches simple.yaml = rc=0" "0" "$rc8"
 
 print_test_section "5. Anti-patterns header present + per-issue pattern match → validation fails"
 
@@ -101,14 +101,14 @@ GOAL_WITH_ANTI="Migrate X
 ## Notes
 Other section follows."
 
-PLAN_MATCHES_ANTI='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add side-channel via env var fallback","files":["config/templates/standard.yaml"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+PLAN_MATCHES_ANTI='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add side-channel via env var fallback","files":["config/templates/simple.yaml"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_MATCHES_ANTI" "$GOAL_WITH_ANTI"; rc9=$?; set -e
 assert_eq "T9: Anti-patterns + plan matches per-issue 'side-channel via env var' = rc=1" "1" "$rc9"
 
 # Sanity: a clean plan against the SAME anti-patterns goal passes (proves
 # T9's failure was due to the per-issue match, not some other rule).
-PLAN_CLEAN_AGAINST_ANTI='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add proper feature","files":["config/templates/standard.yaml"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+PLAN_CLEAN_AGAINST_ANTI='{"schema_version":1,"title":"x","goal":"x","steps":[{"id":"step-1","description":"add proper feature","files":["config/templates/simple.yaml"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
 set +e; _plan_validate_dod_discipline "$PLAN_CLEAN_AGAINST_ANTI" "$GOAL_WITH_ANTI"; rc9b=$?; set -e
 assert_eq "T9b: Anti-patterns + clean plan = rc=0 (proves per-issue extraction is bounded)" "0" "$rc9b"

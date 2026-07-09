@@ -66,8 +66,10 @@ print_test_section "missing args fail loud"
 _rc=0; resolve_tier >/dev/null 2>&1 || _rc=$?
 assert_exit_code "no args → non-zero" 1 "$_rc"
 
-# ─── behavior-identical: the 9 retired plugins resolve their prior tier ──────
-print_test_section "the 9 retired plugins resolve their historical tier"
+# ─── behavior-identical: the shipped agent plugins resolve their manifest tier ──
+# (#979: test_assessment + the old `review` stage were retired with the
+# compound-quality lattice, so they drop out of this list.)
+print_test_section "the shipped agent plugins resolve their manifest tier"
 _expect_tier() {  # <plugin> <expected>
     local p="$1" want="$2" dir="$REPO_ROOT/plugins/agent/$1"
     assert_eq "$p resolves $want (== its manifest, unchanged behavior)" \
@@ -75,10 +77,8 @@ _expect_tier() {  # <plugin> <expected>
 }
 _expect_tier design T2
 _expect_tier plan T2
-_expect_tier test_assessment T2
 _expect_tier security-lens T3
 _expect_tier review-report T2
-_expect_tier review T2
 _expect_tier review-lens T2
 _expect_tier impact T2
 _expect_tier build T2

@@ -7,9 +7,9 @@
 ./artifacts/plan.json
 ./artifacts/pr-result.json
 ./artifacts/pr-url.txt
-./artifacts/review-prompt.txt
-./artifacts/review.json
-./artifacts/review.md
+./artifacts/review-aggregator-lenses.json
+./artifacts/review-report.json
+./artifacts/review-report.md
 ./artifacts/test-results.json
 ./intake.md
 ./mock-repo/seed.txt

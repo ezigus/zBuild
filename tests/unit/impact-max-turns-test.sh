@@ -17,7 +17,9 @@ setup_test_env "impact-max-turns-891"
 
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/standard.yaml" >/dev/null 2>&1
+# #979: standard.yaml retired; simple.yaml's `impact` stage carries the same
+# router.max_turns:45 / timeout_s:600 headroom (both were right-sized together).
+load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1
 
 assert_eq "impact router.max_turns is 45 (raised from the 25 default)" \
     "45" "$(template_stage_router_max_turns impact 2>/dev/null)"

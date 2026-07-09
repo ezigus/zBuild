@@ -1,0 +1,89 @@
+id: nested-cycle-seq
+name: Nested-cycle seq-label fixture
+# #979: minimal owned fixture reproducing the 2-level nested-cycle topology the
+# N-level recursive seq-label mechanic (ZBUILD_SEQ_PREFIX accumulation, #698/#718)
+# needs to exercise. It replaces the retired standard.yaml, whose build_review_cycle
+# wrapped an inner build_test_cycle. Topology:
+#
+#   intake                 (leaf, cardinal 1)
+#   plan                   (leaf, cardinal 2)
+#   design_cycle           (cycle, cardinal 3) → design, gate  → labels 3.1.1, 3.1.2
+#   outer_cycle            (cycle, cardinal 4)
+#     inner_cycle          (cycle, pos 1)  → build, test       → labels 4.1.1.1.1, 4.1.1.1.2
+#     probe                (leaf,  pos 2)                       → label  4.1.2
+#
+# The inner_cycle-inside-outer_cycle nesting is the whole point: it produces the
+# 4-level "4.1.1.1.<n>" labels + the ZBUILD_SEQ_PREFIX="4.1.1" seen by inner leaves
+# and "4" seen by direct outer members. Stage roles are KEEP-set; the test mocks
+# the plugins in its own ZBUILD_PLUGINS_ROOT, so only the TOPOLOGY matters here.
+defaults:
+  strategy: fanout
+
+flow:
+  - intake
+  - plan
+  - design_cycle
+  - outer_cycle
+
+intake:
+  roles: [intake]
+
+plan:
+  roles: [planner]
+
+design_cycle:
+  type: cycle
+  description: Design + verify
+  flow:
+    - design
+    - gate
+  exit_when:
+    stage: design
+    field: verdict
+    op: eq
+    value: complete
+  max_iterations: 3
+  on_max: continue
+
+design:
+  roles: [designer]
+
+gate:
+  roles: [shape_floor]
+
+outer_cycle:
+  type: cycle
+  description: Outer remediation cycle wrapping an inner cycle + a leaf
+  flow:
+    - inner_cycle
+    - probe
+  exit_when:
+    stage: probe
+    field: verdict
+    op: eq
+    value: approve
+  max_iterations: 3
+  on_max: continue
+
+inner_cycle:
+  type: cycle
+  description: Inner build/test cycle
+  flow:
+    - build
+    - test
+  exit_when:
+    stage: test
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+
+build:
+  roles: [builder]
+
+test:
+  roles: [tester]
+
+probe:
+  roles: [reviewer]

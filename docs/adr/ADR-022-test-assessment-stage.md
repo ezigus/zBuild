@@ -1,6 +1,7 @@
 # ADR-022: Test Assessment Stage — LLM-Interpreted Test Verdict
 
-**Status:** Accepted
+**Status:** Retired (#979, EPIC #1277) — the `test_assessment` stage plugin and the only template that used it (`standard.yaml`) were deleted when the compound-quality lattice was retired. `simple.yaml` converges its `build_test_cycle` on the mechanical `gate-aggregator` verdict (ADR-040 §5) instead. Kept for history.
+**Status (original):** Accepted
 **Date:** 2026-05-31
 **Issue:** #572 (this ADR), #567 (implementation plan)
 **Amends:** ADR-018 (Pattern 1 stages list), ADR-019 (verdict source precedence), ADR-020 (data flow table + LLM-interpreted verdict stages), ADR-021 (cycle `until:` predicate + feedback wiring)

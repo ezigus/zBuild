@@ -18,43 +18,39 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 
 FIXT="$REPO_ROOT/tests/fixtures/templates"
 
-# T1: standard.yaml — #511 F2 wires the build/test cycle. Dispatch units now
-# contain cycle:design_impact_cycle (plan leaf, design+impact cycle) and the
-# outer build_review_cycle. Pre-F2 expectation (zero cycles) is obsoleted by #511.
-load_template "$REPO_ROOT/config/templates/standard.yaml"
-# #842: standard.yaml now declares 3 cycles — design_impact_cycle (#842),
-# the inner build_test_cycle (#511 F2), and the outer build_review_cycle (ADR-026).
-assert_eq "standard.yaml: 3 cycles declared (#842 design_impact + #511 F2 + #707 ADR-026)" \
+# T1: multi-cycle fixture (#979 — replaces the retired standard.yaml as the
+# nested-multi-cycle parser probe). Declares 3 cycles (verify_cycle, outer_cycle,
+# inner_cycle); outer_cycle's flow lists inner_cycle → the parser FOLDS the inner
+# cycle into the outer's single dispatch unit. Dispatch units:
+#   stage:intake, stage:plan, cycle:verify_cycle, cycle:outer_cycle, stage:pr (5).
+load_template "$FIXT/multi-cycle.yaml"
+assert_eq "multi-cycle: 3 cycles declared (verify + outer + inner-folded)" \
     "3" "${#_TPL_CYCLES[@]}"
-# Dispatch units: stage:intake, stage:plan, cycle:design_impact_cycle,
-# cycle:build_review_cycle, stage:pr (5 total). #756 added the pr delivery leaf.
-# plan is now a leaf; design_impact_cycle wraps design+impact.
-assert_eq "standard.yaml: 5 dispatch units" "5" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "multi-cycle: 5 dispatch units" "5" "${#_TPL_DISPATCH_UNITS[@]}"
 has_cycle_unit=0
-has_design_impact_cycle=0
+has_verify_cycle=0
 has_plan_stage=0
 has_pr_stage=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_review_cycle" ]] && has_cycle_unit=1
-    [[ "$u" == "cycle:design_impact_cycle" ]] && has_design_impact_cycle=1
+    [[ "$u" == "cycle:outer_cycle" ]] && has_cycle_unit=1
+    [[ "$u" == "cycle:verify_cycle" ]] && has_verify_cycle=1
     [[ "$u" == "stage:plan" ]] && has_plan_stage=1
     [[ "$u" == "stage:pr" ]] && has_pr_stage=1
 done
-assert_eq "standard.yaml: declares cycle:build_review_cycle dispatch unit (#707 outermost)" \
+assert_eq "multi-cycle: declares cycle:outer_cycle dispatch unit (outermost)" \
     "1" "$has_cycle_unit"
-assert_eq "standard.yaml: declares cycle:design_impact_cycle dispatch unit (#842)" \
-    "1" "$has_design_impact_cycle"
-assert_eq "standard.yaml: declares stage:plan dispatch unit (leaf, #842)" \
+assert_eq "multi-cycle: declares cycle:verify_cycle dispatch unit" \
+    "1" "$has_verify_cycle"
+assert_eq "multi-cycle: declares stage:plan dispatch unit (leaf)" \
     "1" "$has_plan_stage"
-assert_eq "standard.yaml: declares stage:pr dispatch unit (leaf, #756)" \
+assert_eq "multi-cycle: declares stage:pr dispatch unit (leaf)" \
     "1" "$has_pr_stage"
-# #845: the velocity-plateau early-exit must be WIRED INTO THE LIVE build_test_cycle,
-# not just exist behind an opt-in default. This pins the production wiring so the
-# feature can't silently regress to inert (window unset = disabled). window=2 (<
-# max_iterations=3) is what makes a stuck cycle abandon early instead of relabelling
-# the ceiling exit. See ADR-021 "Flat-velocity plateau termination" amendment.
-assert_eq "standard.yaml: build_test_cycle wires velocity_plateau.window=2 (#845 live flow)" \
-    "2" "${_TPL_CYCLE_VELOCITY_PLATEAU_W_build_test_cycle:-}"
+# #845: the velocity-plateau early-exit wiring must survive the parse. This pins
+# the inner_cycle's window=2 wiring so the feature can't silently regress to inert
+# (window unset = disabled). window=2 (< max_iterations=3) makes a stuck cycle
+# abandon early. See ADR-021 "Flat-velocity plateau termination" amendment.
+assert_eq "multi-cycle: inner_cycle wires velocity_plateau.window=2 (#845)" \
+    "2" "${_TPL_CYCLE_VELOCITY_PLATEAU_W_inner_cycle:-}"
 
 # T2: cycle-converges-iter2 — one cycle declared, dispatch unit emitted once
 load_template "$FIXT/cycle-converges-iter2.yaml"
@@ -192,13 +188,11 @@ EOF
 set +e; err="$(load_template "$OVERLAP_TPL" 2>&1)"; rc=$?; set -e
 assert_eq "overlap: load_template rc != 0" "1" "$rc"
 
-# T9: regression — load_template still succeeds and _TPL_STAGES intact when
-# cycles: absent.
-load_template "$REPO_ROOT/config/templates/standard.yaml"
-assert_eq "regression: standard.yaml still has 14 stages (#922, +pr #756)" "14" "${#_TPL_STAGES[@]}"
-# #842: standard.yaml now declares 3 cycles after wiring
-# design_impact_cycle (design_impact_cycle + inner build_test_cycle + outer build_review_cycle).
-assert_eq "regression: standard.yaml has 3 cycles (design_impact + build_test_cycle + build_review_cycle)" \
+# T9: regression — load_template still succeeds and _TPL_STAGES intact for the
+# nested multi-cycle fixture (flat expansion = 8 canonical leaf stages).
+load_template "$FIXT/multi-cycle.yaml"
+assert_eq "regression: multi-cycle has 8 flat stages" "8" "${#_TPL_STAGES[@]}"
+assert_eq "regression: multi-cycle has 3 cycles (verify + outer + inner)" \
     "3" "${#_TPL_CYCLES[@]}"
 
 # ───────────────────────── #585: v2 inline cycle syntax ──────────────────────
@@ -225,38 +219,38 @@ assert_contains "v2/legacy: error mentions legacy cycles block" "$err" "legacy '
 assert_contains "v2/legacy: error points to migrate-template-v2.sh" "$err" "migrate-template-v2.sh"
 
 # T11: canonical-stages contract accepts cycle ids (separate namespace).
-# build_test_cycle is NOT a canonical stage but appears in _TPL_CYCLES[]; the
-# flat _TPL_STAGES[] still contains only canonical members.
-load_template "$REPO_ROOT/config/templates/standard.yaml"
+# inner_cycle is NOT a canonical stage but appears in _TPL_CYCLES[]; the
+# flat _TPL_STAGES[] still contains only leaf members.
+load_template "$FIXT/multi-cycle.yaml"
 has_cycle_id=0
 for cid in "${_TPL_CYCLES[@]}"; do
-    [[ "$cid" == "build_test_cycle" ]] && has_cycle_id=1
+    [[ "$cid" == "inner_cycle" ]] && has_cycle_id=1
 done
-assert_eq "v2/namespace: build_test_cycle present in _TPL_CYCLES" "1" "$has_cycle_id"
+assert_eq "v2/namespace: inner_cycle present in _TPL_CYCLES" "1" "$has_cycle_id"
 flat_has_cycle_name=0
 for s in "${_TPL_STAGES[@]}"; do
-    [[ "$s" == "build_test_cycle" ]] && flat_has_cycle_name=1
+    [[ "$s" == "inner_cycle" ]] && flat_has_cycle_name=1
 done
-assert_eq "v2/namespace: build_test_cycle absent from flat _TPL_STAGES" "0" "$flat_has_cycle_name"
+assert_eq "v2/namespace: inner_cycle absent from flat _TPL_STAGES" "0" "$flat_has_cycle_name"
 
-# T12: _TPL_STAGES[] flat list includes cycle members in order.
-load_template "$REPO_ROOT/config/templates/standard.yaml"
-expected_flat="intake plan design impact build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr"
+# T12: _TPL_STAGES[] flat list includes nested cycle members in declaration order.
+load_template "$FIXT/multi-cycle.yaml"
+expected_flat="intake plan design impact build test acceptance-gate pr"
 actual_flat="${_TPL_STAGES[*]}"
-assert_eq "v2/flat: _TPL_STAGES expansion preserves canonical order" "$expected_flat" "$actual_flat"
+assert_eq "v2/flat: _TPL_STAGES expansion preserves declaration order" "$expected_flat" "$actual_flat"
 
-# T13: Wave 18-B (#707) — build_review_cycle is now the OUTERMOST cycle and
-# absorbs build_test_cycle + review under one dispatch unit.
-expected_units="stage:intake stage:plan cycle:design_impact_cycle cycle:build_review_cycle stage:pr"
+# T13: nested folding — outer_cycle is the OUTERMOST cycle and absorbs inner_cycle
+# (+ acceptance-gate) under one dispatch unit.
+expected_units="stage:intake stage:plan cycle:verify_cycle cycle:outer_cycle stage:pr"
 actual_units="${_TPL_DISPATCH_UNITS[*]}"
-assert_eq "v2/dispatch: units match expected (#842 design_impact + #707 outermost-cycle folding)" \
+assert_eq "v2/dispatch: units match expected (nested outer-cycle folding)" \
     "$expected_units" "$actual_units"
 
 # T14: stage_definitions attr propagation — build's router.timeout_s=900
-# comes from standard.yaml's stage_definitions.build.router.timeout_s.
-assert_eq "v2/attrs: stage_definitions.build.router.timeout_s reaches _TPL_STAGE_ROUTER_TIMEOUT_build" "900" "${_TPL_STAGE_ROUTER_TIMEOUT_build:-}"
-# test_assessment roles = [test_assessment]
-assert_eq "v2/attrs: stage_definitions.test_assessment.roles propagated" "test_assessment" "${_TPL_STAGE_ROLES_test_assessment:-}"
+# comes from the fixture's build.router.timeout_s.
+assert_eq "v2/attrs: build.router.timeout_s reaches _TPL_STAGE_ROUTER_TIMEOUT_build" "900" "${_TPL_STAGE_ROUTER_TIMEOUT_build:-}"
+# design roles = [designer]
+assert_eq "v2/attrs: design.roles propagated" "designer" "${_TPL_STAGE_ROLES_design:-}"
 
 # T15: missing stage_definitions entry for a cycle member → rc=1
 MISSING_DEF_TPL="$TEST_TEMP_DIR/missing-def.yaml"

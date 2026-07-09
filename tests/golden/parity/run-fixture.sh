@@ -2,9 +2,9 @@
 # Fixture helper for parity-local-vs-ci-test.sh
 # NOT a test itself — runs runner.sh with mocked binaries and fixed env vars.
 #
-# Issue #359: extended to drive the full Wave B pipeline
-#   (intake → plan → build → test → review → pr)
-# so the parity check exercises the same stages that run in production CI.
+# Issue #359: drives a multi-stage pipeline (intake -> plan -> build -> test -> pr)
+# so the parity check exercises the same engine paths that run in production CI.
+# (#979: the old `review` stage was retired with the compound-quality lattice.)
 #
 # Required env vars (set by parity-local-vs-ci-test.sh before invoking):
 #   FIXTURE_STATE_DIR  — directory for state/events output
@@ -48,10 +48,6 @@ if printf '%s' "$prompt" | grep -q "LOOP_COMPLETE"; then
     printf 'parity-fixture\n' > "$PWD/tests/fixtures/parity-fixture.txt"
     jq -n --arg r $'Created fixture file.\nLOOP_COMPLETE' \
        '{result:$r, usage:{input_tokens:5, output_tokens:3}}'
-elif printf '%s' "$prompt" | grep -q "Review whether this diff"; then
-    # review stage — approve verdict, no issues (wrapped per #476)
-    jq -n --arg r '{"verdict":"approve","confidence":0.9,"issues":[],"summary":"parity fixture review"}' \
-       '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 else
     # plan stage (default — wrapped per #476)
     jq -n --arg r '{"schema_version":1,"issue":359,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"add parity fixture file","files":["tests/fixtures/parity-fixture.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
@@ -162,13 +158,20 @@ stages:
     gate: auto
   - id: test
     gate: auto
-  - id: review
+  # #979: the retired `review` stage is replaced by `review-aggregator` (a KEEP
+  # stage). The old single `review` stage resolved to no plugin and aborted the
+  # run at LOAD under the resolvability preflight. review-aggregator is the live
+  # advisory review-family stage in production simple.yaml (review_lenses ->
+  # review-aggregator -> pr); with no lens group it degrades to an empty advisory
+  # review-report.json (no LLM call) and returns 0 — which also gives the pr
+  # stage the review signal its ADR-001 fail-closed guard requires.
+  - id: review-aggregator
     gate: auto
   - id: pr
     gate: auto
     # #756: dispatch the pr stage by role so it resolves to the pr-delivery
     # agent (id: pr-delivery) and not the pr-open tool (id: pr), mirroring
-    # production standard.yaml. Other stages still resolve by stage id.
+    # the production shipped template. Other stages still resolve by stage id.
     roles: [pr_delivery]
 TPL
 

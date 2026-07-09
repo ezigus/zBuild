@@ -2,8 +2,10 @@
 # Integration test: #511 F2 — concrete build/test cycle wiring.
 #
 # Verifies (without invoking the real build agent / LLM):
-#   1) standard.yaml declares cycle:build_test_cycle and the runner enters
+#   1) simple.yaml declares cycle:build_test_cycle and the runner enters
 #      cycle-aware dispatch when ZBUILD_CYCLES_ENABLED is unset (auto-enable).
+#      (#979: re-pointed from the retired standard.yaml to the shipped default
+#      simple.yaml, which carries the same inner build_test_cycle.)
 #   2) The test plugin emits test-failures-summary.md WHEN failures present,
 #      and the file is ABSENT when verdict=pass (missing == empty semantics).
 #   3) _cycle_apply_feedback resolves the from-path through the test plugin's
@@ -11,7 +13,7 @@
 #   4) The build plugin reads $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_failures.txt
 #      and prepends a preamble at BYTE 0 of build-prompt.txt when present.
 #   5) Empty/missing feedback file → NO preamble emitted (silent-failure guard).
-#   6) `--from-stage build` is refused when standard.yaml declares a cycle
+#   6) `--from-stage build` is refused when simple.yaml declares a cycle
 #      that contains `build` (Pin 14).
 set -euo pipefail
 
@@ -28,42 +30,40 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 
-# ─── T1: standard.yaml template parsed; cycle declared + auto-detected ──────
+# ─── T1: simple.yaml template parsed; cycle declared + auto-detected ────────
+# #979: standard.yaml retired. simple.yaml (the shipped default) declares 2
+# cycles — design_verify_cycle (ADR-046) and the inner build_test_cycle (this
+# test's focus). Its build_test_cycle converges on gate-aggregator and wires the
+# consolidated gate feedback (gate-aggregator:gate_feedback → build) — the
+# composable-gate successor to standard's test_assessment feedback edge.
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/standard.yaml"
-# #842: standard.yaml now declares 3 cycles — design_impact_cycle
-# (#842), the inner build_test_cycle (this test's focus), and the outer
-# build_review_cycle (ADR-026).
-assert_eq "T1: standard.yaml declares 3 cycles (design_impact + inner + outer ADR-026)" \
-    "3" "${#_TPL_CYCLES[@]}"
+load_template "$REPO_ROOT/config/templates/simple.yaml"
+assert_eq "T1: simple.yaml declares 2 cycles (design_verify + inner build_test)" \
+    "2" "${#_TPL_CYCLES[@]}"
 has_inner=0
 for c in "${_TPL_CYCLES[@]}"; do
     [[ "$c" == "build_test_cycle" ]] && has_inner=1
 done
 assert_eq "T1: inner build_test_cycle is registered" "1" "$has_inner"
-# Wave 18-B (#707): the outer build_review_cycle absorbs build_test_cycle under
-# dispatch (cycle-as-member, Wave 17-B). The runner dispatches the
-# OUTERMOST cycle; build_test_cycle is recursed into via _TPL_STAGE_TYPE.
-# #842: design_impact_cycle is now the second dispatch unit (after plan leaf).
+# build_test_cycle is a top-level dispatch unit; design_verify_cycle precedes it.
 has_cyc=0
-has_design_impact=0
+has_design_verify=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_review_cycle" ]] && has_cyc=1
-    [[ "$u" == "cycle:design_impact_cycle" ]] && has_design_impact=1
+    [[ "$u" == "cycle:build_test_cycle" ]] && has_cyc=1
+    [[ "$u" == "cycle:design_verify_cycle" ]] && has_design_verify=1
 done
-assert_eq "T1: dispatch units include cycle:build_review_cycle (outermost, #707)" \
+assert_eq "T1: dispatch units include cycle:build_test_cycle" \
     "1" "$has_cyc"
-assert_eq "T1: dispatch units include cycle:design_impact_cycle (#842)" \
-    "1" "$has_design_impact"
-# #568: feedback wiring is now (test_assessment/test_assessment_md →
-# build/prior_test_assessment) — the LLM-issued assessment markdown, not the
-# raw test-failures dump. The 3-stage cycle's full feedback semantics are
-# covered by tests/integration/standard-template-3stage-cycle-test.sh.
+assert_eq "T1: dispatch units include cycle:design_verify_cycle (ADR-046)" \
+    "1" "$has_design_verify"
+# ADR-040 (#1138): the inner cycle's feedback edge is now the consolidated
+# gate-aggregator payload (gate-aggregator:gate_feedback → build:prior_gate_feedback)
+# — the composable-gate successor to standard's test_assessment feedback.
 fb_var="_TPL_CYCLE_FEEDBACK_build_test_cycle"
 fb_value="${!fb_var:-}"
-assert_contains "T1: feedback wires test_assessment:test_assessment_md" "$fb_value" "test_assessment:test_assessment_md"
-assert_contains "T1: feedback wires build:prior_test_assessment" "$fb_value" "build:prior_test_assessment"
+assert_contains "T1: feedback wires gate-aggregator:gate_feedback" "$fb_value" "gate-aggregator:gate_feedback"
+assert_contains "T1: feedback wires build:prior_gate_feedback" "$fb_value" "build:prior_gate_feedback"
 
 # ─── T2: test plugin emits failures summary on fail, absent on pass ─────────
 # shellcheck disable=SC1090
@@ -167,7 +167,9 @@ assert_contains "T4: .complete sentinel written (Pin 9)" \
 
 # ─── T5: --from-stage build is refused (Pin 14) ─────────────────────────────
 # Verify runner refuses --from-stage that lands inside a cycle. Easiest test:
-# parse standard.yaml + walk our refusal logic. Drive via runner.sh subprocess.
+# parse simple.yaml + walk our refusal logic. Drive via runner.sh subprocess.
+# (#979: re-pointed from standard → simple; build lives inside simple.yaml's
+# build_test_cycle, so the same Pin-14 refusal applies.)
 : > "$ZBUILD_EVENTS_JSONL"
 T5_STATE="$TEST_TEMP_DIR/t5-state.json"
 jq -n '{schema_version:1,status:"in_progress",stage_statuses:{intake:"complete",plan:"complete"}}' > "$T5_STATE"
@@ -175,7 +177,7 @@ set +e
 ZBUILD_STATE_FILE="$T5_STATE" \
 ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" \
     bash "$REPO_ROOT/core/pipeline/runner.sh" \
-    --issue 0 --resume --from-stage build --template standard \
+    --issue 0 --resume --from-stage build --template simple \
     > "$TEST_TEMP_DIR/t5.out" 2> "$TEST_TEMP_DIR/t5.err"
 t5_rc=$?
 set -e
@@ -190,53 +192,11 @@ else
     assert_fail "T5: rejection message" "missing expected diagnostic"
 fi
 
-# ─── T6 (#527): positive assertion — review dispatches when cycle unconverged ─
-# Drives runner.sh in-process so we can stub cycle_orchestrator_run with rc=1
-# (max_iterations) and verify stage_statuses.review is NOT absent. Without #527
-# the runner falls through silently to pipeline_status=complete; the assertion
-# below pins that review actually ran AND the cycle's unconverged signal was
-# propagated as stage_statuses[test]=failed for ADR-019 coercion.
-T6_TMP="$TEST_TEMP_DIR/t6-runner"
-mkdir -p "$T6_TMP/state" "$T6_TMP/events"
-(
-    set +e
-    export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
-    export ZBUILD_EVENTS_DIR="$T6_TMP/events"
-    export ZBUILD_EVENTS_JSONL="$T6_TMP/events/events.jsonl"
-    export ZBUILD_STATE_DIR="$T6_TMP/state"
-    export ZBUILD_STATE_FILE="$T6_TMP/state/pipeline-state.json"
-    export ZBUILD_CYCLES_ENABLED=1
-    export ZBUILD_CONTRACT_VALIDATOR=warn
-    export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-    # shellcheck disable=SC1091
-    source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
-    cycle_orchestrator_run() {
-        _CYCLE_LAST_TERMINATED_REASON="max_iterations"
-        _CYCLE_LAST_ITERATIONS=3
-        return 1
-    }
-    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
-    runner_read_stage_verdict() { echo "request_changes"; }
-    plugin_hook_call() {
-        local state="$4"; local artdir; artdir="$(dirname "$state")/artifacts"; mkdir -p "$artdir"
-        printf '{"verdict":"request_changes"}' > "$artdir/review.json"
-        return 0
-    }
-    main --issue 999 --template standard >/dev/null 2>&1
-) || true
-# Wave 18-B (#707): standard.yaml now wraps `review` AND the inner
-# build_test_cycle (with its test_assessment member) inside the outer
-# build_review_cycle (ADR-026). cycle_orchestrator_run is stubbed so no member
-# state surfaces — the runner only sees the cycle's terminal rc. The
-# original assertions targeted the OLD shape where test_assessment+review
-# were standalone stages reachable post-cycle. The pipeline_status check
-# below (failed on unconverged) remains the canonical rc→status contract.
-t6_review="$(jq -r '.stage_statuses.review // "absent"' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
-# Under #707 the absent case is now expected (cycle stub doesn't surface
-# member stage state); accept either as a smoke that the field is queryable.
-assert_pass "T6 (#527/#707): stage_statuses.review=${t6_review} (cycle is now review's container)"
-t6_status="$(jq -r '.status' "$T6_TMP/state/pipeline-state.json" 2>/dev/null)"
-assert_eq "T6 (#527): pipeline_status=failed (NOT complete) on unconverged" \
-    "failed" "$t6_status"
+# NB (#979): the former T6 asserted that the retired standard.yaml's outer
+# build_review_cycle dispatched its `review` member on an unconverged inner
+# cycle (ADR-026 / Wave 18-B #707). simple.yaml has no build_review_cycle and no
+# `review` stage (its post-cycle review is the ADVISORY review_lenses group +
+# review-aggregator, never a merge-blocking container). That review-on-unconverged
+# container semantic no longer exists, so T6 was removed with the lattice.
 
 print_test_results

@@ -652,71 +652,15 @@ EOF
     printf '%s\n' "$dir"
 }
 
-# ── Standard-pipeline roster (single source of truth, issue #921) ─────────────
-# Leaf stages in standard.yaml's resolved execution order. Format per element:
-#   "<stage_id>:<kind>:<role>"
-#     kind — agent|tool (plugin-directory convention; `test` is the only tool)
-#     role — provides.role passed as mock_plugin_factory arg 5; empty = none
-# This array is the ONE place the standard roster is declared for tests. The
-# guard test tests/unit/standard-roster-single-source-test.sh fails loudly if
-# this drifts from load_template(standard.yaml)'s _TPL_STAGES — so adding a
-# stage to the template is a one-line change here, not an N-file edit.
-_ZBUILD_STANDARD_ROSTER=(
-    "intake:agent:"
-    "plan:agent:"
-    "design:agent:designer"
-    "impact:agent:"
-    "build:agent:"
-    "test:tool:"
-    "test_assessment:agent:"
-    "acceptance-gate:agent:acceptance_gate"
-    "cq-preflight:agent:"
-    "cq-audit-plan:agent:"
-    "cq-cycle:agent:"
-    "cq-backtrack:agent:"
-    "review:agent:"
-    "pr:agent:pr_delivery"
-)
-
-# ── standard_stage_ids ────────────────────────────────────────────────────────
-# Prints all standard leaf stage IDs, one per line, in execution order.
-standard_stage_ids() {
-    local entry
-    for entry in "${_ZBUILD_STANDARD_ROSTER[@]}"; do
-        printf '%s\n' "${entry%%:*}"
-    done
-}
-
-# ── standard_stage_count ──────────────────────────────────────────────────────
-# Prints the integer count of standard leaf stages.
-standard_stage_count() {
-    printf '%d\n' "${#_ZBUILD_STANDARD_ROSTER[@]}"
-}
-
-# ── register_standard_pipeline_stubs ─────────────────────────────────────────
-# Registers a mock plugin dir for every standard leaf stage (via
-# mock_plugin_factory), suppressing the factory's path echo. Replaces the
-# hand-written vertical roster blocks scattered across integration tests.
-#
-# Per-stage exit-code override (optional): export ZBUILD_STUB_RC_<safe_id>=<N>
-# before calling (safe_id = stage id with '-' → '_'), e.g.
-#   export ZBUILD_STUB_RC_build=1
-# For custom stage BODIES (hang loops, sentinels, env capture), call this
-# helper first, then overwrite that one stage's plugin.sh afterward — the
-# helper does not re-run, so post-call overwrites win.
-register_standard_pipeline_stubs() {
-    local entry stage_id rest kind role safe_id rc_var rc
-    for entry in "${_ZBUILD_STANDARD_ROSTER[@]}"; do
-        stage_id="${entry%%:*}"
-        rest="${entry#*:}"
-        kind="${rest%%:*}"
-        role="${rest#*:}"
-        safe_id="${stage_id//-/_}"
-        rc_var="ZBUILD_STUB_RC_${safe_id}"
-        rc="${!rc_var:-0}"
-        mock_plugin_factory "$stage_id" "$kind" "$rc" "" "$role" >/dev/null
-    done
-}
+# ── Standard-pipeline roster: REMOVED (#979, EPIC #1277) ──────────────────────
+# The _ZBUILD_STANDARD_ROSTER array + standard_stage_ids / standard_stage_count /
+# register_standard_pipeline_stubs helpers were deleted when standard.yaml (the
+# compound-quality lattice) was retired. They enumerated the now-deleted roster
+# (test_assessment, cq-preflight/-audit-plan/-cycle/-backtrack, the old `review`
+# stage) and had no remaining callers — the last one (runner-exports-state-dir-test)
+# migrated to a minimal owned fixture in #1097. Tests that need a multi-stage stub
+# set now build their own stubs inline or install a tests/fixtures/templates/*.yaml
+# overlay (the #978/#1270 pattern).
 
 # ── wait_for_event ────────────────────────────────────────────────────────────
 # Bounded poll for a grep pattern to appear in an events/state file (#619's

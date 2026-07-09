@@ -2,13 +2,14 @@
 # tests/integration/full-pipeline-enforce-mode-test.sh
 # Wave 12-E (#664) — end-to-end: default mode is enforce.
 #
-# Scenario A: valid template (standard) with honest contracts (post 12-D)
+# Scenario A: valid template (simple) with honest contracts (post 12-D)
 #   - default mode (no env override) → contract validator passes
 #     (the pipeline may still terminate downstream for other reasons; we
 #      only assert that pre-flight does NOT refuse)
 #
-# Scenario B: broken template (standard-missing-test fixture) — review
-# expects stage:test but the template omits it.
+# Scenario B: broken template (broken-contract-missing-producer fixture) —
+# build expects stage:plan but the template omits it (#979: reworked from the
+# retired standard-missing-test/review→stage:test coupling).
 #   - default mode (no env override) → runner rc=2 BEFORE any stage runs
 #   - structured error printed on stderr
 #   - pipeline.preflight.fail event emitted
@@ -26,14 +27,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "pipeline enforce-by-default — Wave 12-E (#664)"
 setup_test_env "preflight-enforce-default"
 
-# Install the missing-test fixture for scenario B as a per-repo `.zbuild/templates/`
+# Install the broken-contract fixture for scenario B as a per-repo `.zbuild/templates/`
 # overlay in a temp repo. #1270: the DRIVER runs with CWD = that repo (below), so
 # the resolver reads the overlay from $PWD; nothing lands in the tracked
 # config/templates/, and the temp repo is reaped by the master trap. Scenario A's
-# `--template standard` has no per-repo override here, so it resolves the shipped
-# standard from the engine tree.
+# `--template simple` has no per-repo override here, so it resolves the shipped
+# simple template from the engine tree.
 OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
-install_template_overlay "$OVERLAY_REPO" standard-missing-test
+install_template_overlay "$OVERLAY_REPO" broken-contract-missing-producer
 
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
@@ -63,7 +64,7 @@ chmod +x "$DRIVER"
 # ── Scenario B: broken template → default mode refuses with rc=2 ────────────
 err1="$TEST_TEMP_DIR/run1.err"
 out1="$TEST_TEMP_DIR/run1.out"
-( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template standard-missing-test ) \
+( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template broken-contract-missing-producer ) \
     >"$out1" 2>"$err1" || true
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 
@@ -104,8 +105,8 @@ if [[ -f "$ZBUILD_STATE_FILE" ]]; then
         "preflight_failed" "$status_val"
 fi
 
-# ── Scenario A: valid (honest) standard template → pre-flight passes ───────
-# Reset state, then drive the real standard template. The pipeline will
+# ── Scenario A: valid (honest) simple template → pre-flight passes ─────────
+# Reset state, then drive the real simple template. The pipeline will
 # likely terminate for unrelated reasons (no LLM mocks, network, etc.),
 # but the contract validator must NOT print "Pipeline cannot start".
 rm -f "$ZBUILD_STATE_FILE" "$ZBUILD_EVENTS_JSONL"
@@ -114,14 +115,14 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 err2="$TEST_TEMP_DIR/run2.err"
 out2="$TEST_TEMP_DIR/run2.out"
 # --dry-run avoids actually running stages while still exercising pre-flight
-( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "valid template smoke" --template standard --dry-run ) \
+( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "valid template smoke" --template simple --dry-run ) \
     >"$out2" 2>"$err2" || true
 
 if grep -q "Pipeline cannot start" "$err2" 2>/dev/null; then
-    assert_fail "default-mode: standard template passes pre-flight" \
-        "pre-flight refused standard template; stderr-tail: $(tail -15 "$err2" 2>/dev/null)"
+    assert_fail "default-mode: simple template passes pre-flight" \
+        "pre-flight refused simple template; stderr-tail: $(tail -15 "$err2" 2>/dev/null)"
 else
-    assert_pass "default-mode: standard template passes pre-flight (honest contracts)"
+    assert_pass "default-mode: simple template passes pre-flight (honest contracts)"
 fi
 
 cleanup_test_env

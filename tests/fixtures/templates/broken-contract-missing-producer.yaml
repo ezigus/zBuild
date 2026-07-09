@@ -1,0 +1,23 @@
+id: broken-contract-missing-producer
+name: Broken Contract — Missing Producer (ADR-020 keystone fixture)
+extends: simple
+defaults:
+  strategy: fanout
+
+# ADR-020 keystone fixture (#496; reworked for #979). Intentionally omits the
+# `plan` stage between `intake` and `build`. build's manifest declares
+# `source: stage:plan` (required:true) for its `plan` input, so the contract
+# validator MUST reject this template at pre-flight with a MISSING_STAGE
+# violation naming producer `plan` and input `plan`.
+#
+# #979: the prior version keyed off the retired `review` stage (which declared
+# `source: stage:test`). review was deleted with the standard lattice, so the
+# fixture now exercises the SAME contract-validator path via a KEEP-set plugin
+# (build → stage:plan), preserving the keystone assertion.
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]
+  - id: build
+    gate: auto
+    roles: [builder]

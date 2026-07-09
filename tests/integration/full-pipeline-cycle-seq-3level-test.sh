@@ -3,25 +3,30 @@
 # cycles enabled exports N-level recursive seq labels for cycle members via
 # ZBUILD_SEQ_PREFIX prefix accumulation.
 #
-# Drives runner.sh end-to-end with the standard template (#842 topology):
-#   stage:intake, stage:plan (leaf), cycle:design_impact_cycle (design→impact),
-#   cycle:build_review_cycle (build_test_cycle + cq-* + review).
+# #979: repointed from the retired standard.yaml (whose build_review_cycle wrapped
+# an inner build_test_cycle) to the owned minimal fixture
+# tests/fixtures/templates/nested-cycle-seq.yaml, which reproduces the SAME 2-level
+# nested-cycle topology the seq-label mechanic needs. The SUBJECT is the recursive
+# ZBUILD_SEQ_PREFIX/label accumulation — template-agnostic; the fixture only has to
+# nest a cycle inside a cycle.
+#
+# Drives runner.sh end-to-end with the fixture template:
+#   stage:intake, stage:plan (leaf), cycle:design_cycle (design→gate),
+#   cycle:outer_cycle (inner_cycle + probe), cycle:inner_cycle (build→test).
 # Mocks plugins to log the observed ZBUILD_STAGE_IO_SEQ_LABEL and the
 # visibility of ZBUILD_SEQ_PREFIX.
 #
-# Pinned assertions (#842: plan is leaf at cardinal 2, design_impact_cycle
-# is cardinal 3, build_review_cycle is cardinal 4):
+# Pinned assertions (plan is leaf at cardinal 2, design_cycle is cardinal 3,
+# outer_cycle is cardinal 4):
 #   intake          = "1"               (linear cardinal, no cycle env)
 #   plan            = "2"               (linear leaf, no cycle env)
-#   design_impact_cycle (cardinal 3) → leaves:
+#   design_cycle (cardinal 3) → leaves:
 #     design        = "3.1.1"
-#     impact        = "3.1.2"
-#   build_review_cycle (cardinal 4) → build_test_cycle (pos 1) → leaves at
-#     prefix "4.1.1":
+#     gate          = "3.1.2"
+#   outer_cycle (cardinal 4) → inner_cycle (pos 1) → leaves at prefix "4.1.1":
 #       build           = "4.1.1.1.1"
 #       test            = "4.1.1.1.2"
-#       test_assessment = "4.1.1.1.3"
-#   build_review_cycle (cardinal 4) → cq-* at positions 2-5, review at pos 6.
+#   outer_cycle (cardinal 4) → probe at pos 2 → "4.1.2".
 #
 # Wave 19-B also requires ZBUILD_SEQ_PREFIX visibility inside cycle members
 # (the prefix the orchestrator passes down) AND no leak to pre-cycle stages.
@@ -54,6 +59,21 @@ export ZBUILD_SEQ_LABEL_LOG="$LABEL_LOG"
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 : > "$LABEL_LOG"
 
+# #979: the nested-cycle fixture is a NEW-shape (flow:) standalone template. The
+# `.zbuild/templates/` overlay path is old-shape/full-replace-only (extends: + a
+# flat stages: list) and cannot express nested cycles, and the runner's shipped-
+# template resolver reads ONLY the engine tree's config/templates/ (not CWD). So a
+# `bash runner.sh --template <id>` SUBPROCESS could only reach a NEW-shape template
+# living in the real engine tree — which would require a guard-violating `cp` into
+# $REPO_ROOT/config/templates/ (see templates-dir-hermeticity SPEC-6).
+#
+# Instead — mirroring runner-cycle-rc-action-mapping-test.sh and
+# route-back-budget-config-test.sh — we SOURCE the runner in-process in a subshell
+# and override resolve_template_file() to read the fixture directly from its git-
+# tracked home under tests/fixtures/templates/. Nothing is ever written into the
+# real repo, so the fixture stays hermetic and the SPEC-6 guard stays green.
+_FIXTURE_TPL="$REPO_ROOT/tests/fixtures/templates/nested-cycle-seq.yaml"
+
 # Mock plugin factory: every plugin logs the seq label + the visibility of
 # ZBUILD_SEQ_PREFIX (so the assertions can pin both the recursive prefix shape
 # AND the no-leak-into-pre/post-cycle-stages contract).
@@ -85,68 +105,65 @@ ${fn}() {
 PLUGIN
 }
 
-# Override for impact: declares a primary output so exit_when can read the
-# verdict, and writes {"verdict":"complete"} so design_impact_cycle converges
-# after iter 1 instead of running to max_iterations.
-_make_impact_plugin() {
-    local dir="$PLUGINS_ROOT/agent/impact"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: impact
-name: Test impact
+# Override for test: declares a primary output so exit_when can read the verdict,
+# and writes {"verdict":"pass"} so inner_cycle converges after iter 1.
+_make_verdict_plugin() {
+    local id="$1" verdict="$2"
+    local dir="$PLUGINS_ROOT/agent/$id"
+    local fn="${id//-/_}_run"
+    cat > "$dir/manifest.yaml" <<EOF
+id: $id
+name: Test $id
 kind: agent
 version: 0.0.1
 hooks:
-  run: impact_run
+  run: $fn
 requires:
   core:
     - redaction
 outputs:
-  - id: impact_out
-    path: ${artifact_dir}/impact.json
+  - id: ${id}_out
+    path: \${artifact_dir}/${id}.json
     type: json
     required: true
     primary: true
 EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-impact_run() {
-    printf 'stage=impact label=%s prefix_env=%s\n' \
-        "${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \
-        "${ZBUILD_SEQ_PREFIX:-UNSET}" \
-        >> "${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"verdict":"complete"}' > "$state_dir/artifacts/impact.json"
+    cat > "$dir/plugin.sh" <<PLUG
+${fn}() {
+    printf 'stage=%s label=%s prefix_env=%s\n' \\
+        "$id" \\
+        "\${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \\
+        "\${ZBUILD_SEQ_PREFIX:-UNSET}" \\
+        >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
+    local state_dir; state_dir="\$(dirname "\$2")"
+    mkdir -p "\$state_dir/artifacts"
+    printf '{"verdict":"$verdict"}' > "\$state_dir/artifacts/${id}.json"
     return 0
 }
 PLUG
 }
 
-for s in intake plan impact design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review; do
+for s in intake plan design gate build test probe; do
     _make_plugin "$s"
 done
-# Override design: logs seq label AND writes design.md so impact's input contract holds.
-_make_design_plugin() {
-    local dir="$PLUGINS_ROOT/agent/design"
-    cat > "$dir/plugin.sh" <<'PLUG'
-design_run() {
-    printf 'stage=design label=%s prefix_env=%s\n' \
-        "${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \
-        "${ZBUILD_SEQ_PREFIX:-UNSET}" \
-        >> "${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '# Design\n```scope\nf.txt\n```\n' > "$state_dir/artifacts/design.md"
-    return 0
-}
-PLUG
-}
-_make_design_plugin
-_make_impact_plugin
+# design converges design_cycle (verdict=complete); test converges inner_cycle
+# (verdict=pass); probe converges outer_cycle (verdict=approve).
+_make_verdict_plugin design complete
+_make_verdict_plugin test pass
+_make_verdict_plugin probe approve
 
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
+export ZBUILD_STATE_FILE="$STATE_DIR/pipeline-state.json"
 set +e
-bash "$REPO_ROOT/core/pipeline/runner.sh" --issue 698 --template standard \
-    >"$TEST_TEMP_DIR/runner.out" 2>&1
+# #979: run the pipeline in-process (sourced runner) instead of a subprocess, so
+# resolve_template_file can be overridden to read the fixture from tests/fixtures/
+# without copying it into the real engine tree (SPEC-6 hermeticity).
+(
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
+    resolve_template_file() { echo "$_FIXTURE_TPL"; }
+    main --issue 698 --template nested-cycle-seq
+) >"$TEST_TEMP_DIR/runner.out" 2>&1
 rc=$?
 set -e
 
@@ -168,49 +185,35 @@ _prefix_env_for() {
 }
 
 assert_eq "intake observed cardinal label 1"     "1"       "$(_label_for intake 1)"
-# #842: plan is now a leaf at cardinal 2 (no cycle env).
+# plan is a leaf at cardinal 2 (no cycle env).
 assert_eq "plan observed label 2"                "2"       "$(_label_for plan 1)"
-# #842: design_impact_cycle is cardinal 3; design=3.1.1, impact=3.1.2.
+# design_cycle is cardinal 3; design=3.1.1, gate=3.1.2.
 assert_eq "design observed label 3.1.1"          "3.1.1"   "$(_label_for design 1)"
-assert_eq "impact observed label 3.1.2"          "3.1.2"   "$(_label_for impact 1)"
+assert_eq "gate observed label 3.1.2"            "3.1.2"   "$(_label_for gate 1)"
 
-# Wave 19-B (#718): build/test/test_assessment live inside build_review_cycle (card 4)
-# → build_test_cycle (pos 1, iter 1) → leaves at "4.1.1.<inner_iter>.<inner_pos>".
-# build_review_cycle is now cardinal 4 (design_impact_cycle occupies cardinal 3).
+# build/test live inside inner_cycle (pos 1) inside outer_cycle (card 4)
+# → leaves at "4.1.1.<inner_iter>.<inner_pos>".
 assert_eq "build iter 1 label = 4.1.1.1.1"           "4.1.1.1.1" "$(_label_for build 1)"
 assert_eq "test iter 1 label = 4.1.1.1.2"            "4.1.1.1.2" "$(_label_for test 1)"
-assert_eq "test_assessment iter 1 label = 4.1.1.1.3" "4.1.1.1.3" "$(_label_for test_assessment 1)"
 
-# acceptance-gate is build_review_cycle pos 2 (after build_test_cycle).
-assert_eq "acceptance-gate iter 1 label = 4.1.2"     "4.1.2"     "$(_label_for acceptance-gate 1)"
-assert_eq "cq-preflight iter 1 label = 4.1.3"        "4.1.3"     "$(_label_for cq-preflight 1)"
-assert_eq "cq-audit-plan iter 1 label = 4.1.4"       "4.1.4"     "$(_label_for cq-audit-plan 1)"
-assert_eq "cq-cycle iter 1 label = 4.1.5"            "4.1.5"     "$(_label_for cq-cycle 1)"
-assert_eq "cq-backtrack iter 1 label = 4.1.6"        "4.1.6"     "$(_label_for cq-backtrack 1)"
-assert_eq "review iter 1 label = 4.1.7"              "4.1.7"     "$(_label_for review 1)"
+# probe is outer_cycle pos 2 (after inner_cycle).
+assert_eq "probe iter 1 label = 4.1.2"               "4.1.2"     "$(_label_for probe 1)"
 
-# Inside the nested build_test_cycle, members must see ZBUILD_SEQ_PREFIX="4.1.1"
-# (build_review_cycle's prefix 4 → its iter 1, pos 1 = build_test_cycle).
-assert_eq "build saw ZBUILD_SEQ_PREFIX=4.1.1"           "4.1.1" "$(_prefix_env_for build)"
-assert_eq "test saw ZBUILD_SEQ_PREFIX=4.1.1"            "4.1.1" "$(_prefix_env_for test)"
-assert_eq "test_assessment saw ZBUILD_SEQ_PREFIX=4.1.1" "4.1.1" "$(_prefix_env_for test_assessment)"
+# Inside the nested inner_cycle, members must see ZBUILD_SEQ_PREFIX="4.1.1"
+# (outer_cycle's prefix 4 → its iter 1, pos 1 = inner_cycle).
+assert_eq "build saw ZBUILD_SEQ_PREFIX=4.1.1"        "4.1.1" "$(_prefix_env_for build)"
+assert_eq "test saw ZBUILD_SEQ_PREFIX=4.1.1"         "4.1.1" "$(_prefix_env_for test)"
 
-# #755: cq-* stages are direct leaf members of build_review_cycle; they see prefix "4".
-assert_eq "cq-preflight saw ZBUILD_SEQ_PREFIX=4"  "4" "$(_prefix_env_for cq-preflight)"
-assert_eq "cq-audit-plan saw ZBUILD_SEQ_PREFIX=4" "4" "$(_prefix_env_for cq-audit-plan)"
-assert_eq "cq-cycle saw ZBUILD_SEQ_PREFIX=4"      "4" "$(_prefix_env_for cq-cycle)"
-assert_eq "cq-backtrack saw ZBUILD_SEQ_PREFIX=4"  "4" "$(_prefix_env_for cq-backtrack)"
+# probe is a direct leaf member of outer_cycle; it sees prefix "4".
+assert_eq "probe saw ZBUILD_SEQ_PREFIX=4"            "4" "$(_prefix_env_for probe)"
 
 # Leak check: ZBUILD_SEQ_PREFIX must NOT leak into pre-cycle stages.
 assert_eq "intake saw ZBUILD_SEQ_PREFIX UNSET" "UNSET" "$(_prefix_env_for intake)"
-# #842: plan is a linear leaf (no cycle); it sees ZBUILD_SEQ_PREFIX UNSET.
+# plan is a linear leaf (no cycle); it sees ZBUILD_SEQ_PREFIX UNSET.
 assert_eq "plan saw ZBUILD_SEQ_PREFIX UNSET (linear leaf, no cycle)" "UNSET" "$(_prefix_env_for plan)"
-# #842: design + impact are inside design_impact_cycle (cardinal 3); they see prefix "3".
+# design + gate are inside design_cycle (cardinal 3); they see prefix "3".
 assert_eq "design saw ZBUILD_SEQ_PREFIX=3" "3" "$(_prefix_env_for design)"
-assert_eq "impact saw ZBUILD_SEQ_PREFIX=3" "3" "$(_prefix_env_for impact)"
-# review is a direct leaf member of build_review_cycle so it sees the outer prefix "4".
-assert_eq "review saw ZBUILD_SEQ_PREFIX=4 (direct member of build_review_cycle)" \
-    "4" "$(_prefix_env_for review)"
+assert_eq "gate saw ZBUILD_SEQ_PREFIX=3" "3" "$(_prefix_env_for gate)"
 
 # ─── #833: cycle INPUT/OUTPUT banners appear (kind=cycle) ────────────────────
 # The orchestrator emits a `[cycle]` banner per iter for each cycle. The runner
@@ -228,7 +231,7 @@ else
 fi
 # The cycle banner's stage token is the cycle id, distinct from the leaf ids —
 # proving the cycle seq counter uses the cycle stage-id namespace.
-if grep -qE 'design_impact_cycle \[cycle\]|build_review_cycle \[cycle\]|build_test_cycle \[cycle\]' <<< "$runner_out"; then
+if grep -qE 'design_cycle \[cycle\]|outer_cycle \[cycle\]|inner_cycle \[cycle\]' <<< "$runner_out"; then
     assert_pass "#833 cycle banner stage token is a cycle id (distinct namespace)"
 else
     assert_fail "#833 cycle banner stage token is a cycle id" "no cycle-id [cycle] banner found"
@@ -240,7 +243,7 @@ fi
 # as the explicit no-regression contract the #833 change must preserve).
 assert_eq "#833 design leaf label still 3.1.1"          "3.1.1"     "$(_label_for design 1)"
 assert_eq "#833 build leaf label still 4.1.1.1.1"       "4.1.1.1.1" "$(_label_for build 1)"
-assert_eq "#833 test_assessment leaf label still 4.1.1.1.3" "4.1.1.1.3" "$(_label_for test_assessment 1)"
+assert_eq "#833 test leaf label still 4.1.1.1.2"        "4.1.1.1.2" "$(_label_for test 1)"
 
 print_test_results
 cleanup_test_env

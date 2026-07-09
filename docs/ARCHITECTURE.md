@@ -37,12 +37,12 @@ System view, plugin contract, data flow, state model, glossary. Complements [KEE
 │                                                                     │
 │   kind: agent         kind: tool         kind: recovery             │
 │   (LLM-driven:        (non-LLM:          (error → action:           │
-│    7 audit lenses,    git, gh, CLI       retry policies,            │
-│    stage handlers,    integrations)      self-heal strategies)      │
-│    cq-preflight,                                                    │
-│    cq-audit-plan,                                                   │
-│    cq-cycle,                                                        │
-│    cq-backtrack)                                                    │
+│    5 review lenses,   git, gh, CLI       retry policies,            │
+│    stage handlers:    integrations)      self-heal strategies)      │
+│    plan, design,                                                    │
+│    impact, build,                                                   │
+│    review-lens,                                                     │
+│    review-aggregator)                                               │
 │                                                                     │
 │   kind: orchestrator  kind: claim-       kind: daemon               │
 │   (patrol)            coordinator        (poll, triage, patrol,     │
@@ -184,7 +184,7 @@ zbuild pipeline start --issue 42
    ├─▶ [state.update(stage_status, CURRENT_ITERATION) → atomic_write + .bak]
    │
    ▼
-[cq-preflight → cq-audit-plan → cq-cycle → cq-backtrack run as independent leaf stages — see ADR-013]
+[build_test_cycle mechanical gates → gate-aggregator convergence; review_lenses (lens-*) → review-aggregator advisory — see simple.yaml / ADR-040]
    │
    ▼
 [github.update_live_comment(pipeline-progress-marker, new_status)]

@@ -35,7 +35,7 @@ for p in /etc/passwd ../outside/file.sh /Users/x/secret; do
     fi
 done
 # Normal repo paths pass the floor.
-for p in tests/unit/foo-test.sh config/templates/standard.yaml docs/KEEPERS.md \
+for p in tests/unit/foo-test.sh config/templates/simple.yaml docs/KEEPERS.md \
          core/pipeline/runner.sh scripts/lib/helpers.sh; do
     if scope_floor_denied "$p"; then
         assert_fail "floor should ALLOW '$p'" "got: denied"

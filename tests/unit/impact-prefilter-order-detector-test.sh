@@ -22,7 +22,7 @@ FIX="$TEST_TEMP_DIR/repo"
 mkdir -p "$FIX/config/templates" "$FIX/tests/unit" "$FIX/tests/golden"
 # Shape-change path list so _impact_detect_shape_change fires on template.sh.
 printf 'core/pipeline/template.sh\nconfig/templates/*.yaml\n' > "$FIX/config/shape-change-paths.txt"
-printf 'flow:\n  - intake\nstages:\n  intake: {}\n' > "$FIX/config/templates/standard.yaml"
+printf 'flow:\n  - intake\nstages:\n  intake: {}\n' > "$FIX/config/templates/simple.yaml"
 # Order-pinning test (indexed) — MUST be detected.
 printf 'assert_eq "[2] is design" "design" "${_TPL_STAGES[2]}"\n' > "$FIX/tests/unit/order-fixture-test.sh"
 # Bare names without an index — MUST NOT be detected (over-match guard).

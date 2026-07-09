@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # [S1] Integration (#1217, ADR-045): a matched route_back (rc=11 from a cycle)
 # rewinds the runner's dispatch-unit index to the named EARLIER unit and
-# replays forward. Drives the real runner over standard.yaml with a stubbed
-# cycle_orchestrator_run; the outer build_review_cycle routes back to the
-# earlier `plan` leaf once, then converges. `plan` must therefore dispatch
-# TWICE (initial + one replay), a cycle.route_back event fires once, and the
+# replays forward. Drives the real runner over simple.yaml with a stubbed
+# cycle_orchestrator_run; the build_test_cycle routes back to the earlier
+# `plan` leaf once, then converges. `plan` must therefore dispatch TWICE
+# (initial + one replay), a cycle.route_back event fires once, and the
 # pipeline completes.
+# #979: repointed from the retired standard.yaml (design_impact_cycle /
+# build_review_cycle) to simple.yaml (design_verify_cycle / build_test_cycle);
+# the route_back mechanic under test is template-agnostic.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,11 +38,11 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
 
     # Leaf dispatches are observed via stage.start events (main defines its own
     # cycle_dispatch_stage at runtime, so we stub the plugin hook it calls).
-    # design_impact_cycle always converges. build_review_cycle routes back to
+    # design_verify_cycle always converges. build_test_cycle routes back to
     # `plan` on its FIRST invocation (rc=11), then converges on the second.
     cycle_orchestrator_run() {
         _CYCLE_LAST_ITERATIONS=1
-        if [[ "$1" == "design_impact_cycle" ]]; then
+        if [[ "$1" == "design_verify_cycle" ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"; return 0
         fi
         local n=0; [[ -f "$_RB_CALLS_FILE" ]] && n="$(cat "$_RB_CALLS_FILE")"
@@ -52,11 +55,11 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
         fi
         _CYCLE_LAST_TERMINATED_REASON="converged"; return 0
     }
-    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
     runner_read_stage_verdict() { echo "approve"; }
     plugin_hook_call() { return 0; }
 
-    main --issue 999 --template standard >/dev/null 2>&1
+    main --issue 999 --template simple >/dev/null 2>&1
 )
 
 _state="$_tmp/state/pipeline-state.json"

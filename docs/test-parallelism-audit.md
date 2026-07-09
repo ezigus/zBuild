@@ -80,9 +80,10 @@ the `run-618-$$` fix, but the residual risk is asymmetric — the latter is the 
   exports `_TPL_STAGE_*`. These are *values*, not shared *paths* — safe under the per-subprocess runner
   (each file gets its own process env) and would only matter under a hypothetical in-process runner. The
   co-located `SLOW_MOCK_CLAUDE_MARK` correctly resolves under `TEST_TEMP_DIR`. No action for A3d.
-- **`GOLDEN_DIR` export (review M5)** — `cq-plugins-real-dispatch-test.sh:160` exports
+- **`GOLDEN_DIR` export (review M5)** — some golden-consuming tests export
   `GOLDEN_DIR="$REPO_ROOT/tests/golden"`. Read-only in all current callers (golden *diff*, not write);
   benign. Flagged only so a future writer to `GOLDEN_DIR` re-opens this audit.
+  (The original example test was retired with the compound-quality lattice in #979.)
 
 ### Separate correctness bug (not hermeticity)
 - `build-test-cycle-multi-iter-test.sh:99,146` — `ZBUILD_CYCLE_ITER=1 \` `cd "$REPO" && _build_stage_run_inner …`
@@ -121,7 +122,6 @@ the bounded FIFO pool. Two pool/stability changes accompanied the flip:
   | Test | Reason |
   |------|--------|
   | `core-pipeline-runner-test.sh` | sleep-stub + kill-mid-run timing; ~193 s long-pole |
-  | `compound-quality-pipeline-test.sh` | heavy full-pipeline timing under load |
   | `full-pipeline-sigint-test.sh` | asserts pipeline halts within 6–8 s (already bumped for slow runners) |
   | `sigint-aborts-pipeline-test.sh` | asserts total wall-clock < 4 s |
   | `sigterm-aborts-pipeline-test.sh` | asserts wall-clock ≤ 5 s |

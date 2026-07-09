@@ -41,7 +41,7 @@ _PLUGINS_ROOT="${ZBUILD_PLUGINS_ROOT:-$_LINT_CONTRACT_REPO/plugins}"
 # superset-or-equal of this list, so scope can never silently NARROW below what the
 # hand-maintained list validated. Removed once the strangler window closes.
 # shellcheck disable=SC2034  # strangler baseline: read by the scope-derivation test, not here
-_LC_STAGE_IDS_TO_CHECK=(intake plan design build test test_assessment acceptance-gate cq-preflight cq-audit-plan cq-cycle cq-backtrack review pr deploy validate monitor security-lens)
+_LC_STAGE_IDS_TO_CHECK=(intake plan design build test acceptance-gate pr deploy validate monitor security-lens)
 
 # _lc_id_in_scope <manifest-key> — in scope iff a data-dependency-graph node (ADR-047 §5).
 _lc_id_in_scope() {

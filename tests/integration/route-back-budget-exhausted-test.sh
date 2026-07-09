@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # [S2] Integration (#1217, ADR-045): once the global route_back budget is spent
 # the runner does NOT rewind — it restores the stashed fallback rc and falls
-# through to the normal by-severity terminal handling. Here build_review_cycle
+# through to the normal by-severity terminal handling. Here build_test_cycle
 # ALWAYS returns rc=11 with fallback rc=8; with the default budget (2 total
 # passes = exactly one jump back) exactly ONE rewind fires, then the second
 # rc=11 falls through to the rc=8 halt (status=failed). `plan` therefore
 # dispatches TWICE and cycle.route_back fires exactly once.
+# #979: repointed from the retired standard.yaml to simple.yaml
+# (design_verify_cycle / build_test_cycle); the mechanic is template-agnostic.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,7 +36,7 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
 
     cycle_orchestrator_run() {
         _CYCLE_LAST_ITERATIONS=1
-        if [[ "$1" == "design_impact_cycle" ]]; then
+        if [[ "$1" == "design_verify_cycle" ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"; return 0
         fi
         # ALWAYS request a route_back with fallback rc=8 (member_terminal_failure).
@@ -47,11 +49,11 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
         _CYCLE_ROUTE_BACK_FALLBACK_REASON="member_terminal_failure"
         return 11
     }
-    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/review"; }
+    _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
     runner_read_stage_verdict() { echo "request_changes"; }
     plugin_hook_call() { return 0; }
 
-    main --issue 999 --template standard >/dev/null 2>&1
+    main --issue 999 --template simple >/dev/null 2>&1
 )
 
 _state="$_tmp/state/pipeline-state.json"

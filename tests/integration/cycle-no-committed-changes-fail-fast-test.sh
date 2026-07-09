@@ -6,7 +6,7 @@
 #
 # Reproduces the #1214 dogfood: a scope_violation discarded the entire diff +
 # skipped the commit (HEAD == baseline), the suite passed on the uncommitted
-# tree, test_assessment passed → the cycle "converged" on nothing.
+# tree, the final cycle member passed → the cycle "converged" on nothing.
 #
 # RED at baseline: today the cycle converges rc=0. GREEN after: rc=5,
 # reason=no_committed_changes.
@@ -58,11 +58,14 @@ PJ
 
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/standard.yaml"
+# #979: standard.yaml retired. no_committed_changes fail-fast is an orchestrator
+# mechanic keyed on the build/test verdicts; the test supplies its own dispatch
+# stub and needs only the build_test_cycle shape → focused minimal fixture.
+load_template "$REPO_ROOT/tests/fixtures/templates/build-test-cycle-minimal.yaml"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 
-# ─── Stub dispatch: build scope_violation (no commit), test+assessment pass ──
+# ─── Stub dispatch: build scope_violation (no commit), test pass ─────────────
 cycle_dispatch_stage() {
     local stage="$1" state_file="$3"
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -80,11 +83,6 @@ cycle_dispatch_stage() {
             # The suite passes on the UNCOMMITTED tree (misleading green).
             printf '{"schema_version":1,"verdict":"pass","exit_code":0,"passed":10,"failed":0,"test_output":"total: 10/10 passed","diff_applied":true,"test_cmd":"npm test"}' \
                 > "$artdir/test-results.json"
-            v="pass"
-            ;;
-        test_assessment)
-            printf '{"schema_version":1,"verdict":"pass","summary":"green","required_changes":[]}' \
-                > "$artdir/test-assessment.json"
             v="pass"
             ;;
     esac

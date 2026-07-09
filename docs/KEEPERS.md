@@ -18,6 +18,8 @@ The spec is organized as the original was, with deltas called out.
 - Stage handlers already live in modular files: `legacy/scripts/lib/pipeline-stages-{intake,build,review,delivery,monitor}.sh`. Plugin migration wraps these; do not rewrite.
 - Gate semantics (auto / approve / budget / score / scope / smoke) and template subtractive composition (hotfix disables stages, doesn't fork code) — confirmed and carry forward.
 
+**RETIRED (issue #979, EPIC #1277, 2026-07-09):** The four `cq-*` plugins and the `test_assessment` plugin below were deleted along with `standard.yaml` (the only template that used them). The default `simple.yaml` pipeline replaces the compound-quality lattice with the composable mechanical gates + `gate-aggregator` convergence (ADR-040) and the advisory `review_lenses` group. The history below is preserved for provenance; the plugins no longer exist on disk.
+
 **Re-cleave DONE (issue #755, 2026-06-13):**
 
 `stage_compound_quality` has been split into four independent leaf-stage agent plugins:

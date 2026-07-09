@@ -125,7 +125,7 @@ fi
 # `./` entry as universal allow.
 print_test_section "V7 #818: ./ universal allow"
 allowed=( "./" )
-if _numstat_path_in_scope "plugins/agent/cq-preflight/manifest.yaml" allowed; then
+if _numstat_path_in_scope "plugins/agent/build/manifest.yaml" allowed; then
     assert_pass "V7 ./ universal: plugins/... path in scope"
 else
     assert_fail "V7 ./ universal: plugins/... should be in scope"

@@ -40,7 +40,8 @@ STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
 rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 
-# Mirrors standard.yaml build_review_cycle shape: outer cycle [inner_cycle, leaf]
+# Classic outer-remediation-cycle shape: outer cycle [inner_cycle, leaf] (the
+# retired standard.yaml's build_review_cycle once had this shape; #979)
 # where the outer's exit_when matches on the leaf's raw verdict AFTER the
 # inner cycle has run and converged. Reproduces the exact production scenario
 # from dogfood 20260605080106-63324.

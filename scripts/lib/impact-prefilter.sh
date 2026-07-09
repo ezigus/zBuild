@@ -10,7 +10,7 @@
 #
 # Public functions:
 #   _impact_detect_shape_change <plan_json_text> → rc 0 if shape change, 1 else
-#   _impact_parse_shape_counts <standard_yaml_path> → dedup'd integers, one per line
+#   _impact_parse_shape_counts <template_yaml_path> → dedup'd integers, one per line
 #   _impact_grep_numeric_candidates <N> <tests_root> <step_files_csv> → matching files
 #   _impact_list_event_goldens <tests_root> → all event-sequence.golden paths
 #   _impact_scope_prefilter <plan_json_text> <repo_root> → JSON array of forced gaps
@@ -63,7 +63,7 @@ _impact_detect_shape_change() {
     return 1
 }
 
-# ─── _impact_parse_shape_counts <standard_yaml_path> ────────────────────────
+# ─── _impact_parse_shape_counts <template_yaml_path> ────────────────────────
 # Counts entries under top-level `flow:` AND legacy `stages:` keys. Prints
 # unique non-zero counts, one per line. Handles ADR-027 dual-shape templates.
 _impact_parse_shape_counts() {
@@ -225,7 +225,7 @@ _impact_scope_prefilter() {
                 source: "shape-change-numeric"
             }]
         ' 2>/dev/null || printf '%s' "$results")"
-    done < <(_impact_parse_shape_counts "$repo_root/config/templates/standard.yaml")
+    done < <(_impact_parse_shape_counts "$repo_root/config/templates/simple.yaml")
 
     # Golden snapshots — always candidates when shape change detected.
     local goldens

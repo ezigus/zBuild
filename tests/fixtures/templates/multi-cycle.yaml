@@ -1,0 +1,103 @@
+id: multi-cycle
+name: Multi-cycle parser fixture
+extends: null
+# Owned fixture (#979): replaces the retired standard.yaml as the multi-cycle,
+# nested-folding probe for the `cycles:` overlay parser (ADR-021, #512). It
+# reproduces exactly the parser shapes the tests need to pin, independent of any
+# shipped roster:
+#   • THREE declared cycles (verify_cycle, outer_cycle, inner_cycle)
+#   • an OUTER cycle whose flow lists an INNER cycle → dispatch-unit folding
+#     (the inner cycle collapses into the outer's single dispatch unit)
+#   • velocity_plateau wiring on the inner cycle
+#   • stage_definitions attr propagation (build.router.timeout_s = 900)
+#   • flat _TPL_STAGES[] expansion in declaration order
+# Stage ids are canonical + still-live (no retired cq-*/test_assessment/review).
+defaults:
+  strategy: fanout
+
+flow:
+  - intake
+  - plan
+  - verify_cycle
+  - outer_cycle
+  - pr
+
+intake:
+  roles: [intake]
+
+plan:
+  roles: [planner]
+  # io block present so the _TPL_STAGE_IO_* export coverage has a populated stage.
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# cycle 1: design/impact verify loop (converges on impact.verdict == complete)
+verify_cycle:
+  type: cycle
+  description: Verify design consequences until impact is complete
+  flow:
+    - design
+    - impact
+  exit_when:
+    stage: impact
+    field: verdict
+    op: eq
+    value: complete
+  max_iterations: 3
+  on_max: continue
+
+# cycle 2 (OUTER): wraps the inner build/test cycle + acceptance-gate, converges
+# on acceptance-gate.verdict == pass. Its flow lists inner_cycle → the parser
+# folds inner_cycle into this outer dispatch unit (nesting/folding coverage).
+outer_cycle:
+  type: cycle
+  description: Build, test, and gate until acceptance passes
+  flow:
+    - inner_cycle
+    - acceptance-gate
+  exit_when:
+    stage: acceptance-gate
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+
+# cycle 3 (INNER): build/test loop with velocity_plateau early-exit wiring.
+inner_cycle:
+  type: cycle
+  description: Implement plus test loop until test passes
+  flow:
+    - build
+    - test
+  exit_when:
+    stage: test
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+  velocity_plateau:
+    window: 2
+
+design:
+  roles: [designer]
+
+impact:
+  roles: [impact_analyzer]
+
+build:
+  roles: [builder]
+  router:
+    timeout_s: 900
+    max_turns: 0
+
+test:
+  roles: [tester]
+
+acceptance-gate:
+  roles: [acceptance_gate]
+
+pr:
+  roles: [pr]

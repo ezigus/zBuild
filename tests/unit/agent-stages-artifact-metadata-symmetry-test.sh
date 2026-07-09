@@ -27,9 +27,9 @@ print_test_header "agent-stages: artifact metadata symmetry (#483)"
 # reading the captured env via a stubbed route_to_model.
 
 # Row format: <plugin_id> <expected_artifact_id> <plugin_file>
+# (#979 retired the review agent stage; its row was removed.)
 _rows=(
     "plan|plan|$REPO_ROOT/plugins/agent/plan/plugin.sh"
-    "review|review|$REPO_ROOT/plugins/agent/review/plugin.sh"
     "security-lens|security-lens|$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
     "impact|impact|$REPO_ROOT/plugins/agent/impact/plugin.sh"
 )

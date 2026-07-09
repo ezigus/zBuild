@@ -89,8 +89,8 @@ else
     assert_fail "T5: prompt must forbid Edit/Write/Bash (design is read-only enumeration)"
 fi
 
-# T6: standard.yaml design timeout raised to 600 (repo-wide grep headroom).
-tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/standard.yaml" | grep -oE 'timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
+# T6: simple.yaml design timeout raised to 600 (repo-wide grep headroom).
+tmo="$(grep -A14 '^design:' "$REPO_ROOT/config/templates/simple.yaml" | grep -oE 'timeout_s:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
 assert_eq "T6: design timeout_s raised to 600" "600" "${tmo:-unset}"
 
 cleanup_test_env
