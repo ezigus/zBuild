@@ -34,7 +34,6 @@ export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_ISSUE="757"
 
 PLUGIN_FILE="$REPO_ROOT/plugins/agent/deploy/plugin.sh"
-TOOL_PLUGIN_FILE="$REPO_ROOT/plugins/tool/deploy-release/plugin.sh"
 
 # Source the deploy agent plugin
 # shellcheck source=../../../../plugins/agent/deploy/plugin.sh
@@ -133,7 +132,7 @@ fi
 # Strip comment lines before checking — the plugin may mention route_to_model
 # in documentation comments; we only reject actual function calls in code.
 _code_lines6="$(grep -v '^[[:space:]]*#' "$PLUGIN_FILE" || true)"
-if printf '%s\n' "$_code_lines6" | grep -q "route_to_model"; then
+if grep -q "route_to_model" <<< "$_code_lines6"; then
     assert_fail "[SPEC-6] deploy plugin must not call route_to_model (T0 no-LLM invariant)" \
         "route_to_model call found in non-comment code in $PLUGIN_FILE"
 else
