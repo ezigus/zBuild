@@ -519,14 +519,16 @@ load_template() {
                 ;;
             IM)
                 # issue #1295 (ADR-047 §2): inline map group entry.
-                # Row: <gid>|<over>|<elements_csv>|<max>|<onerr>|<agg>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>|<rre>
+                # Row: <gid>|<over>|<elements_csv>|<max>|<onerr>|<agg>|<as>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>|<rre>
                 # sec_payload contributes roles|strategy|io_dests|io_tail|io_redact|rt|rmt|rmi|rre
                 # (strategy is unused for map groups but must be consumed to keep field offsets correct).
+                # <as> names an env var to populate with each element (generic
+                # dimension→env mapping; empty when omitted).
                 # Unlike parallel groups, map groups add the GROUP ID itself (not
                 # individual elements) to _TPL_STAGES so _tpl_build_dispatch_units
                 # can detect it and emit a "map:<gid>" dispatch unit.
-                local im_gid im_over im_elements im_max im_onerr im_agg im_roles im_strat im_iod im_iot im_ior im_rt im_rmt im_rmi im_rre
-                IFS='|' read -r im_gid im_over im_elements im_max im_onerr im_agg im_roles im_strat im_iod im_iot im_ior im_rt im_rmt im_rmi im_rre <<< "$payload"
+                local im_gid im_over im_elements im_max im_onerr im_agg im_as im_roles im_strat im_iod im_iot im_ior im_rt im_rmt im_rmi im_rre
+                IFS='|' read -r im_gid im_over im_elements im_max im_onerr im_agg im_as im_roles im_strat im_iod im_iot im_ior im_rt im_rmt im_rmi im_rre <<< "$payload"
                 [[ -z "$im_gid" ]] && continue
                 _TPL_MAP_GROUPS+=("$im_gid")
                 local im_safe="${im_gid//-/_}"
@@ -535,11 +537,13 @@ load_template() {
                 printf -v "_TPL_MAP_MAX_${im_safe}"        '%s' "$im_max"
                 printf -v "_TPL_MAP_ON_ERR_${im_safe}"    '%s' "${im_onerr:-continue}"
                 printf -v "_TPL_MAP_AGGREGATE_${im_safe}" '%s' "$im_agg"
+                printf -v "_TPL_MAP_AS_${im_safe}"        '%s' "$im_as"
                 printf -v "_TPL_MAP_ROLES_${im_safe}"     '%s' "$im_roles"
                 printf -v "_TPL_STAGE_TYPE_${im_safe}"    '%s' "map"
                 export "_TPL_MAP_OVER_${im_safe}" "_TPL_MAP_ELEMENTS_${im_safe}" \
                        "_TPL_MAP_MAX_${im_safe}" "_TPL_MAP_ON_ERR_${im_safe}" \
-                       "_TPL_MAP_AGGREGATE_${im_safe}" "_TPL_MAP_ROLES_${im_safe}" \
+                       "_TPL_MAP_AGGREGATE_${im_safe}" "_TPL_MAP_AS_${im_safe}" \
+                       "_TPL_MAP_ROLES_${im_safe}" \
                        "_TPL_STAGE_TYPE_${im_safe}"
                 # The map group registers per-group io/router vars so the runner
                 # can resolve them via _TPL_STAGE_IO_DESTS_<safe> (same path as
@@ -1783,7 +1787,7 @@ _tpl_translate_new_shape() {
         # ADR-039 (#1130): parallel-group accumulators.
         par_flow = ""; par_max = ""; par_onerr = "continue"; par_agg = ""; in_pflow = 0
         # issue #1295 (ADR-047 §2): map-group accumulators.
-        map_over = ""; map_elements = ""; map_max = ""; map_onerr = "continue"; map_agg = ""; in_map_elems = 0
+        map_over = ""; map_elements = ""; map_max = ""; map_onerr = "continue"; map_agg = ""; map_as = ""; in_map_elems = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0; in_route_back = 0; in_rb_when = 0
@@ -1809,7 +1813,7 @@ _tpl_translate_new_shape() {
         # ADR-039 (#1130): parallel-group accumulators.
         par_flow = ""; par_max = ""; par_onerr = "continue"; par_agg = ""; in_pflow = 0
         # issue #1295 (ADR-047 §2): map-group accumulators.
-        map_over = ""; map_elements = ""; map_max = ""; map_onerr = "continue"; map_agg = ""; in_map_elems = 0
+        map_over = ""; map_elements = ""; map_max = ""; map_onerr = "continue"; map_agg = ""; map_as = ""; in_map_elems = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
         in_cflow = 0; in_exit_when = 0; in_abort_when = 0; in_route_back = 0; in_rb_when = 0
@@ -1899,7 +1903,7 @@ _tpl_translate_new_shape() {
         # IM| carries: over|elements_csv|max|onerr|agg — the loader wires these
         # into _TPL_MAP_* vars and the runner dispatches via _strategy_run_map.
         if (sec_type == "map") {
-            map_data[cur_key] = map_over "|" map_elements "|" map_max "|" map_onerr "|" map_agg
+            map_data[cur_key] = map_over "|" map_elements "|" map_max "|" map_onerr "|" map_agg "|" map_as
         }
     }
 
@@ -2299,6 +2303,12 @@ _tpl_translate_new_shape() {
             if ($0 ~ /^[[:space:]]+aggregate:/) {
                 v = $0; sub(/^[[:space:]]+aggregate:[[:space:]]*/, "", v); map_agg = trim(v); next
             }
+            # issue #1295 (ADR-047 §2): `as:` names an env var to receive the
+            # current element per work unit — a generic dimension→env mapping.
+            # The strategy stays element-name-agnostic; the template names the var.
+            if ($0 ~ /^[[:space:]]+as:/) {
+                v = $0; sub(/^[[:space:]]+as:[[:space:]]*/, "", v); map_as = trim(v); next
+            }
         }
         next
     }
@@ -2325,7 +2335,7 @@ _tpl_translate_new_shape() {
                 print "IP|" k "|" par_data[k]
             } else if (kind == "map") {
                 # issue #1295 (ADR-047 §2): one IM| row at the group flow position.
-                # Format: <gid>|<over>|<elements_csv>|<max>|<onerr>|<agg>|<roles>|<io_dests>|<io_tail>|<rt>|<rmt>
+                # Format: <gid>|<over>|<elements_csv>|<max>|<onerr>|<agg>|<as>|<roles>|<io_dests>|<io_tail>|<rt>|<rmt>
                 # roles/io/router come from sec_payload (shared across all elements).
                 print "IM|" k "|" map_data[k] "|" sec_payload[k]
             } else {

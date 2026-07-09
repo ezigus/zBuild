@@ -1994,6 +1994,11 @@ main() {
                     local _mg_elems_csv="${!_mg_elems_var:-}"
                     local _mg_roles_var="_TPL_MAP_ROLES_${_mg_safe}"
                     local _mg_roles="${!_mg_roles_var:-}"
+                    # issue #1295 (ADR-047 §2): optional `as:` env-target — the
+                    # template names the env var each work unit gets set to its
+                    # element (generic dimension→env mapping; empty when omitted).
+                    local _mg_as_var="_TPL_MAP_AS_${_mg_safe}"
+                    local _mg_as="${!_mg_as_var:-}"
                     # Validate the over dimension is set.
                     if [[ -z "$_mg_over" ]]; then
                         _set_pipeline_status "$state_file" "failed"
@@ -2032,7 +2037,7 @@ main() {
                     _render_parallel_entry "$_mg_id" "$_mg_max" "$_mg_elems_csv"
                     set +e
                     _strategy_run_map "$pool_id" "$_mg_id" "$_mg_roles_out" \
-                        "$state_file" "$plugins_root" "$_mg_over"
+                        "$state_file" "$plugins_root" "$_mg_over" "$_mg_as"
                     _rc=$?
                     set -e
                     [[ $_rc -eq 3 ]] && _rc=0  # empty dimension = no dispatch = ok

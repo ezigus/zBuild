@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Integration (#1295): map operator wired to review_lenses in simple.yaml.
 #
-# SPEC-1: template loads and review_lenses emits a "map:review_lenses" dispatch unit.
+# SPEC-1: template loads and review_lenses emits a "map:review_lenses" dispatch unit;
+#         the `as:` env-target resolves to ZBUILD_REVIEW_LENS_ID.
 # SPEC-2: _strategy_run_map dispatches exactly 5 work units (one per element).
-# SPEC-3: each work unit bakes a DISTINCT ZBUILD_MAP_ELEMENT value —
-#         the five elements are security/performance/red-team/correctness/scope.
-# SPEC-4: ZBUILD_MAP_ELEMENT is readable inside the work unit (env contract).
+# SPEC-3: each work unit bakes a DISTINCT ZBUILD_MAP_ELEMENT value AND the
+#         template-named ZBUILD_REVIEW_LENS_ID (via `as:`) — five elements
+#         security/performance/red-team/correctness/scope.
+# SPEC-4: ZBUILD_MAP_ELEMENT + the `as:` env-target are readable in the work unit.
 # SPEC-5: ZBUILD_PLATFORM stays "generic" for all elements (platform not hijacked).
-# SPEC-6: the review-lens plugin's _review_lens_id() resolves to the element name
-#         (golden-parity: same artifact filename as the old per-stage approach).
+# SPEC-6: the (UNCHANGED) review-lens plugin's _review_lens_id() resolves to the
+#         element name via ZBUILD_REVIEW_LENS_ID — golden-parity: same artifact
+#         filename (lens-<element>.json) as the old per-stage approach.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,6 +63,8 @@ assert_eq "[SPEC-1] _TPL_MAP_ELEMENTS_review_lenses has 5 elements" \
     "security,performance,red-team,correctness,scope" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-MISSING}"
 assert_eq "[SPEC-1] _TPL_MAP_ROLES_review_lenses == review_lens" "review_lens" "${_TPL_MAP_ROLES_review_lenses:-MISSING}"
+assert_eq "[SPEC-1] _TPL_MAP_AS_review_lenses == ZBUILD_REVIEW_LENS_ID (as: env-target)" \
+    "ZBUILD_REVIEW_LENS_ID" "${_TPL_MAP_AS_review_lenses:-MISSING}"
 
 # ─── SPEC-2 / SPEC-3 / SPEC-4 / SPEC-5: work-unit dispatch ──────────────────
 print_test_section "SPEC-2/3/4/5: 5 distinguishable work units with correct env"
@@ -74,12 +79,15 @@ orch_spawn()    { mkdir -p "${TMPDIR:-/tmp}/zbuild-map-pool-$1/results" "${TMPDI
 orch_dispatch() {
     local _pool="$1" _wu="${2:-}"
     # Extract the env vars baked into the work unit script.
-    local _elem _plat
+    local _elem _plat _lens
     _elem="$(/usr/bin/grep -m1 "^export ZBUILD_MAP_ELEMENT=" "$_wu" 2>/dev/null \
               | sed "s/^export ZBUILD_MAP_ELEMENT='//;s/'$//" || true)"
     _plat="$(/usr/bin/grep -m1 "^export ZBUILD_PLATFORM=" "$_wu" 2>/dev/null \
               | sed "s/^export ZBUILD_PLATFORM='//;s/'$//" || true)"
-    printf 'elem=[%s] plat=[%s]\n' "$_elem" "${_plat:-generic}" >> "$WU_ENV_LOG"
+    # The `as:` env-target — the template-named var the review-lens plugin reads.
+    _lens="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$_wu" 2>/dev/null \
+              | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//" || true)"
+    printf 'elem=[%s] plat=[%s] lens=[%s]\n' "$_elem" "${_plat:-generic}" "$_lens" >> "$WU_ENV_LOG"
     printf 'slot-001\n'
     return 0
 }
@@ -98,7 +106,8 @@ export "_MAP_DIM_lenses"
 ROLES_OUT="${_TPL_MAP_ROLES_review_lenses:-review_lens}"
 
 set +e
-_strategy_run_map "map-pool-spec2" "review_lenses" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "lenses"
+_strategy_run_map "map-pool-spec2" "review_lenses" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" \
+    "lenses" "${_TPL_MAP_AS_review_lenses}"
 _map_rc=$?
 set -e
 # rc=3 (empty dim) is treated as 0 by the runner — allow it here too.
@@ -118,6 +127,10 @@ _expected_elements=("security" "performance" "red-team" "correctness" "scope")
 for _el in "${_expected_elements[@]}"; do
     _found=$(/usr/bin/grep -c "elem=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null || echo 0)
     assert_eq "[SPEC-3] element '$_el' dispatched exactly once" "1" "$_found"
+    # The `as:` env-target (ZBUILD_REVIEW_LENS_ID) must carry the same element —
+    # this is what the UNCHANGED review-lens plugin reads for its identity.
+    _lens_found=$(/usr/bin/grep -c "elem=\[${_el}\] plat=\[generic\] lens=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null || echo 0)
+    assert_eq "[SPEC-3] ZBUILD_REVIEW_LENS_ID=='$_el' for element '$_el'" "1" "$_lens_found"
 done
 
 # All work units must have platform=generic (not hijacked by element name).
@@ -127,14 +140,15 @@ assert_eq "[SPEC-5] all 5 work units have platform=generic" "5" "$_generic_count
 # ─── SPEC-4: ZBUILD_MAP_ELEMENT readable inside the work unit ────────────────
 print_test_section "SPEC-4: ZBUILD_MAP_ELEMENT is baked and readable in the work unit"
 
-# Build a single work unit for element "security" and verify the env var is set.
+# Build a single work unit for element "security" and verify the env vars are set.
 _wu_path="$(_strategy_make_work_unit \
     "$PLUGINS_ROOT/agent/review-lens" "review_lenses" "$STATE_FILE" \
-    "generic" "security" "lenses" 2>/dev/null)" || true
+    "generic" "security" "lenses" "ZBUILD_REVIEW_LENS_ID" 2>/dev/null)" || true
 
 if [[ -n "$_wu_path" ]] && [[ -f "$_wu_path" ]]; then
     _elem_line="$(/usr/bin/grep "ZBUILD_MAP_ELEMENT" "$_wu_path" || true)"
     _dim_line="$(/usr/bin/grep "ZBUILD_MAP_DIMENSION" "$_wu_path" || true)"
+    _lens_line="$(/usr/bin/grep "^export ZBUILD_REVIEW_LENS_ID=" "$_wu_path" || true)"
     if [[ "$_elem_line" == *"'security'"* ]]; then
         assert_pass "[SPEC-4] ZBUILD_MAP_ELEMENT='security' baked into work unit"
     else
@@ -145,8 +159,25 @@ if [[ -n "$_wu_path" ]] && [[ -f "$_wu_path" ]]; then
     else
         assert_fail "[SPEC-4] ZBUILD_MAP_DIMENSION='lenses' baked into work unit" "line: $_dim_line"
     fi
+    if [[ "$_lens_line" == *"'security'"* ]]; then
+        assert_pass "[SPEC-4] as: env-target ZBUILD_REVIEW_LENS_ID='security' baked into work unit"
+    else
+        assert_fail "[SPEC-4] as: env-target ZBUILD_REVIEW_LENS_ID='security' baked" "line: $_lens_line"
+    fi
 else
     assert_fail "[SPEC-4] work unit file created" "path=$_wu_path"
+fi
+
+# The `as:` env-target must be OMITTED when not requested (no stray export).
+_wu_noas="$(_strategy_make_work_unit \
+    "$PLUGINS_ROOT/agent/review-lens" "review_lenses" "$STATE_FILE" \
+    "generic" "security" "lenses" 2>/dev/null)" || true
+if [[ -n "$_wu_noas" ]] && [[ -f "$_wu_noas" ]]; then
+    if /usr/bin/grep -q "ZBUILD_REVIEW_LENS_ID" "$_wu_noas"; then
+        assert_fail "[SPEC-4] no env-target export when as: omitted" "unexpected ZBUILD_REVIEW_LENS_ID"
+    else
+        assert_pass "[SPEC-4] no env-target export when as: omitted"
+    fi
 fi
 
 # ─── SPEC-6: _review_lens_id() resolves to element name (golden-parity) ─────
@@ -155,21 +186,22 @@ print_test_section "SPEC-6: _review_lens_id() resolves element name (golden arti
 # shellcheck source=../../plugins/agent/review-lens/plugin.sh
 source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
 
-# Simulate map dispatch env: ZBUILD_MAP_ELEMENT is set, ZBUILD_CURRENT_STAGE is the group id.
+# The plugin is UNCHANGED from origin/main: _review_lens_id() reads
+# ZBUILD_REVIEW_LENS_ID. The map `as:` mapping populates exactly that var, so the
+# same lens-<element>.json artifact names are produced (golden parity).
 export ZBUILD_CURRENT_STAGE="review_lenses"
-unset ZBUILD_REVIEW_LENS_ID 2>/dev/null || true
 
 for _el in "security" "performance" "red-team" "correctness" "scope"; do
-    export ZBUILD_MAP_ELEMENT="$_el"
+    export ZBUILD_REVIEW_LENS_ID="$_el"
     _resolved="$(_review_lens_id)"
-    assert_eq "[SPEC-6] _review_lens_id() with element='$_el'" "$_el" "$_resolved"
+    assert_eq "[SPEC-6] _review_lens_id() with ZBUILD_REVIEW_LENS_ID='$_el'" "$_el" "$_resolved"
 done
 
-# Without ZBUILD_MAP_ELEMENT set (old path): falls back to ZBUILD_CURRENT_STAGE.
+# Without ZBUILD_REVIEW_LENS_ID set (old path): falls back to ZBUILD_CURRENT_STAGE.
 # The group id "review_lenses" has no strippable prefix → id = "review_lenses".
-unset ZBUILD_MAP_ELEMENT 2>/dev/null || true
+unset ZBUILD_REVIEW_LENS_ID 2>/dev/null || true
 _resolved_fallback="$(_review_lens_id)"
-assert_eq "[SPEC-6] fallback to ZBUILD_CURRENT_STAGE when ZBUILD_MAP_ELEMENT unset" \
+assert_eq "[SPEC-6] fallback to ZBUILD_CURRENT_STAGE when ZBUILD_REVIEW_LENS_ID unset" \
     "review_lenses" "$_resolved_fallback"
 
 cleanup_test_env

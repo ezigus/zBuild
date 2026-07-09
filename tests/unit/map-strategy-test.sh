@@ -179,15 +179,17 @@ fi
 # ─── SPEC-5: non-platform dimension does NOT hijack ZBUILD_PLATFORM ───────────
 print_test_section "SPEC-5: platforms dim passes element as platform; non-platform dim does not"
 
-# Spy on _strategy_make_work_unit to record the platform arg (4th positional).
+# Spy on _strategy_make_work_unit to record the platform arg (4th positional)
+# plus the generic map identity (args 5/6) and optional env-target (arg 7).
 # platforms → element IS the platform (byte-identical to fanout).
-# lenses    → NO 4th arg (defaults to "generic"); ZBUILD_PLATFORM not hijacked.
+# lenses    → platform stays "generic"; element/dimension ride args 5+6 so
+#             ZBUILD_PLATFORM is not hijacked; arg 7 is the optional `as:` target.
 MWU_ARGS_LOG="$TEST_TEMP_DIR/mwu-args.log"
 : > "$MWU_ARGS_LOG"
 _orig_make_wu=$(declare -f _strategy_make_work_unit)
 _strategy_make_work_unit() {
-    # Record whether a 4th (platform) arg was supplied and its value.
-    printf 'nargs=%s platform=[%s]\n' "$#" "${4:-<none>}" >> "$MWU_ARGS_LOG"
+    printf 'platform=[%s] element=[%s] dim=[%s] astarget=[%s]\n' \
+        "${4:-<none>}" "${5:-}" "${6:-}" "${7:-}" >> "$MWU_ARGS_LOG"
     printf '%s\n' "$TEST_TEMP_DIR/wu-stub-$RANDOM"  # return a dummy work-unit path
     return 0
 }
@@ -212,10 +214,22 @@ export _MAP_DIM_lenses5
 set +e
 _strategy_run_map "map-pool-007" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "lenses5" >/dev/null 2>&1
 set -e
-if /usr/bin/grep -q "^nargs=6 platform=\[generic\]" "$MWU_ARGS_LOG" && ! /usr/bin/grep -q "platform=\[security\]" "$MWU_ARGS_LOG"; then
+if /usr/bin/grep -q "platform=\[generic\] element=\[security\] dim=\[lenses5\]" "$MWU_ARGS_LOG" && ! /usr/bin/grep -q "platform=\[security\]" "$MWU_ARGS_LOG"; then
     assert_pass "SPEC-5: non-platform dim passes generic platform — element 'security' does NOT become ZBUILD_PLATFORM"
 else
     assert_fail "SPEC-5: non-platform dim must not pass element as platform" "log: $(cat "$MWU_ARGS_LOG")"
+fi
+
+# lenses + `as:` env-target (#1295): arg 7 carries the template-named var so the
+# work unit sets it to the element. Strategy stays element-name-agnostic.
+: > "$MWU_ARGS_LOG"
+set +e
+_strategy_run_map "map-pool-008" "review" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "lenses5" "ZBUILD_REVIEW_LENS_ID" >/dev/null 2>&1
+set -e
+if /usr/bin/grep -q "element=\[security\] dim=\[lenses5\] astarget=\[ZBUILD_REVIEW_LENS_ID\]" "$MWU_ARGS_LOG"; then
+    assert_pass "SPEC-5: as: env-target is forwarded to _strategy_make_work_unit (generic dimension→env mapping)"
+else
+    assert_fail "SPEC-5: as: env-target forwarded to work-unit factory" "log: $(cat "$MWU_ARGS_LOG")"
 fi
 
 # Restore the real work-unit factory.
