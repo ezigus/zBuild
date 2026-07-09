@@ -2337,8 +2337,9 @@ _tpl_translate_new_shape() {
                 print "IP|" k "|" par_data[k]
             } else if (kind == "map") {
                 # issue #1295 (ADR-047 §2): one IM| row at the group flow position.
-                # Format: <gid>|<over>|<elements_csv>|<max>|<onerr>|<agg>|<as>|<roles>|<io_dests>|<io_tail>|<rt>|<rmt>
-                # roles/io/router come from sec_payload (shared across all elements).
+                # Format: <gid>|<over>|<elements_csv>|<max>|<onerr>|<agg>|<as>|<roles>|<strategy>|<io_dests>|<io_tail>|<io_redact>|<rt>|<rmt>|<rmi>|<rre>
+                # roles/strategy/io/router come from sec_payload (shared across all elements).
+                # #1312: added strategy, io_redact, router_max_iterations (rmi), router_retries (rre).
                 print "IM|" k "|" map_data[k] "|" sec_payload[k]
             } else {
                 p = sec_payload[k]

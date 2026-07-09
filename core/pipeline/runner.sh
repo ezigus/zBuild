@@ -2030,7 +2030,10 @@ main() {
                     declare -ga "$_mg_dim_arr_name"
                     local _mg_IFS_save="$IFS"; IFS=','
                     # shellcheck disable=SC2229
-                    read -ra "$_mg_dim_arr_name" <<< "$_mg_elems_csv"
+                    # #1312: `read` returns non-zero on empty input under set -e;
+                    # guard with || true so an empty elements: degrades cleanly to the
+                    # rc=3 (empty dimension) no-op path instead of aborting.
+                    read -ra "$_mg_dim_arr_name" <<< "$_mg_elems_csv" || true
                     IFS="$_mg_IFS_save"
                     # roles_out: one role per line for _strategy_run_map.
                     local _mg_roles_out; _mg_roles_out="$(printf '%s\n' "${_mg_roles//,/$'\n'}")"
@@ -2045,10 +2048,16 @@ main() {
                     fi
                     local _mg_max_var="_TPL_MAP_MAX_${_mg_safe}"
                     local _mg_max="${!_mg_max_var:-auto}"
+                    local _mg_on_err_var="_TPL_MAP_ON_ERR_${_mg_safe}"
+                    local _mg_on_err="${!_mg_on_err_var:-continue}"
                     _render_parallel_entry "$_mg_id" "$_mg_max" "$_mg_elems_csv"
                     set +e
+                    # #1312: pass max_parallel and on_member_error so _strategy_run_map
+                    # can enforce the FIFO concurrency cap and error-continue policy
+                    # (mirrors parallel_group_run — ADR-039 FIFO pool semantics).
                     _strategy_run_map "$pool_id" "$_mg_id" "$_mg_roles_out" \
-                        "$state_file" "$plugins_root" "$_mg_over" "$_mg_as"
+                        "$state_file" "$plugins_root" "$_mg_over" "$_mg_as" \
+                        "$_mg_max" "$_mg_on_err"
                     _rc=$?
                     set -e
                     [[ $_rc -eq 3 ]] && _rc=0  # empty dimension = no dispatch = ok

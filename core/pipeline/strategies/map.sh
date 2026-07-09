@@ -41,34 +41,85 @@ _strategy_map_resolve_dimension() {
     done
 }
 
+# ─── _strategy_map_resolve_max ───────────────────────────────────────────────
+# Resolves the max_parallel concurrency cap for a map group.
+# Input: raw max value from template (_TPL_MAP_MAX_<gid>), e.g. "4", "auto", "".
+# Mirrors _parallel_resolve_max (parallel-orchestrator.sh) EXACTLY so map and
+# parallel groups agree on the cap and its fail-safe:
+#   - explicit positive integer  → used as-is (then capped at _PARALLEL_MAX_JOBS_CAP)
+#   - "auto" / empty             → ZBUILD_PARALLEL_JOBS env override, else CPU count
+#   - ANYTHING else (non-numeric typo, "0", negative) → CLAMPED TO 1 (fail-safe).
+# #1312 (Copilot): an invalid template value must NOT silently remove the cap by
+# falling through to CPU-count concurrency — that is the opposite of safe. Clamp to 1.
+_strategy_map_resolve_max() {
+    local raw="${1:-}"
+    # #1312 (Copilot): reuse the parallel path's readonly cap so map and parallel
+    # stay in sync if it ever changes — don't duplicate the literal. Falls back to 8
+    # only when map.sh is sourced standalone (unit tests) without the parallel module.
+    local cap="${_PARALLEL_MAX_JOBS_CAP:-8}"
+    local max="$raw"
+    # "auto" is an explicit request for the CPU-based default (map-specific alias);
+    # normalise it to empty so the empty-branch resolves the default.
+    [[ "$max" == "auto" ]] && max=""
+    if [[ -z "$max" ]]; then
+        if [[ "${ZBUILD_PARALLEL_JOBS:-}" =~ ^[1-9][0-9]*$ ]]; then
+            max="$ZBUILD_PARALLEL_JOBS"
+        else
+            max="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
+            [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
+        fi
+    fi
+    # Fail-safe clamp: any non-positive-integer (typo, "0", negative) → 1.
+    [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=1
+    (( max > cap )) && max=$cap
+    printf '%s' "$max"
+}
+
 # ─── _strategy_run_map ───────────────────────────────────────────────────────
-# Usage: _strategy_run_map <pool_id> <stage> <roles_out> <state_file> <plugins_root> [dimension] [env_target]
-#   pool_id    — caller-supplied, already validated (no orch_spawn called here)
-#   stage      — stage name (e.g. "intake")
-#   roles_out  — newline-delimited list of role names
-#   state_file — path to pipeline state file
-#   plugins_root — path to plugins directory
-#   dimension  — list name to iterate (default: "platforms")
-#   env_target — optional env var name to set to each element per work unit
-#                (issue #1295, ADR-047 §2: generic dimension→env mapping declared
-#                by the template's `as:` field; empty = no extra env). The
-#                strategy is element-name-agnostic — it never hardcodes a var name.
+# Usage: _strategy_run_map <pool_id> <stage> <roles_out> <state_file> <plugins_root> \
+#                          [dimension] [env_target] [max_parallel] [on_member_error]
+#   pool_id          — caller-supplied, already validated. Used as the base for
+#                      per-batch sub-pool ids ("<base>-b<N>", truncated to fit the
+#                      64-char backend limit). The FIFO-batch loop below spawns and
+#                      shuts down one sub-pool per batch via orch_spawn/orch_shutdown;
+#                      the caller's own pool_id is also orch_shutdown at the end.
+#   stage            — stage name (e.g. "intake")
+#   roles_out        — newline-delimited list of role names
+#   state_file       — path to pipeline state file
+#   plugins_root     — path to plugins directory
+#   dimension        — list name to iterate (default: "platforms")
+#   env_target       — optional env var name to set to each element per work unit
+#                      (issue #1295, ADR-047 §2: generic dimension→env mapping declared
+#                      by the template's `as:` field; empty = no extra env). The
+#                      strategy is element-name-agnostic — it never hardcodes a var name.
+#   max_parallel     — concurrency cap (issue #1312): "auto"/empty = CPU-based cap;
+#                      integer = explicit cap. Enforced via a FIFO-pool batch loop
+#                      (mirrors ADR-039 parallel_group_run FIFO pool semantics).
+#   on_member_error  — "collect" (default) or "continue" (issue #1312).
+#                      continue: a failing element does NOT abort the group (return 0);
+#                      collect:  any failure is propagated (return 1/2).
+#                      Unknown values are NOT validated — they fall through to collect
+#                      (the conservative default), matching parallel_group_run which
+#                      also silently defaults unknown values to its safe branch.
+#                      Mirrors parallel_group_run on_member_error semantics (ADR-039).
 #
-# Dispatches one work unit per role×element pair in parallel via orch_dispatch.
+# Dispatches one work unit per role×element pair.
 # When dimension=platforms, behavior is byte-identical to _strategy_run_fanout.
 #
 # Returns:
-#   0 — all succeeded
-#   1 — all failed
-#   2 — partial (at least one success, at least one fail)
+#   0 — all succeeded, OR on_member_error=continue (even with failures)
+#   1 — all failed (only when on_member_error=collect)
+#   2 — partial (at least one success, at least one fail; only when on_member_error=collect)
 #   3 — empty dimension (no elements to iterate; caller/runner maps to no-op 0)
 #   4 — no plugin found for any role
 #   5 — invalid/unknown dimension name (fail-closed; runner surfaces as failure)
+#   6 — infrastructure failure (orch_spawn failed for a batch sub-pool). Fail-closed:
+#       NOT subject to on_member_error — an infra failure is never a member outcome.
 _strategy_run_map() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local dimension="${6:-platforms}" env_target="${7:-}"
-    local success_count=0 fail_count=0 any_plugin_found=false dispatch_count=0
-    local -a work_units=() dispatched_plugins=()
+    local max_raw="${8:-}" on_member_error="${9:-collect}"
+    local success_count=0 fail_count=0 any_plugin_found=false
     local state_dir; state_dir="$(dirname "$state_file")"
 
     # Resolve the iteration list. Capture output AND rc explicitly — a process
@@ -94,6 +145,13 @@ _strategy_run_map() {
         return 3
     fi
 
+    # #1312: resolve the concurrency cap (mirrors ADR-039 FIFO pool).
+    local max_parallel
+    max_parallel="$(_strategy_map_resolve_max "$max_raw")"
+
+    # Build the ordered list of (plugin_dir, element) work items by iterating
+    # roles × elements — same order as before, just collected before dispatch.
+    local -a wu_list=() plugin_list=()
     local role element plugin_dir wu
     while IFS= read -r role; do
         [[ -z "$role" ]] && continue
@@ -123,50 +181,136 @@ _strategy_run_map() {
                 fail_count=$((fail_count + 1))
                 continue
             }
-            work_units+=("$wu")
-
-            orch_dispatch "$pool_id" "$wu" >/dev/null || {
-                warn "map: orch_dispatch failed for role=$role element=$element" || true
-                fail_count=$((fail_count + 1))
-                continue
-            }
-            dispatch_count=$((dispatch_count + 1))
-            dispatched_plugins+=("$plugin_dir")
+            wu_list+=("$wu")
+            plugin_list+=("$plugin_dir")
         done
     done <<< "$roles_out"
 
     if ! $any_plugin_found; then
-        _strategy_cleanup_work_units "${work_units[@]+"${work_units[@]}"}"
+        _strategy_cleanup_work_units "${wu_list[@]+"${wu_list[@]}"}"
         orch_shutdown "$pool_id" 2>/dev/null || true
         return 4
     fi
 
-    if [[ "$dispatch_count" -gt 0 ]]; then
-        local collect_rc=0
-        orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+    # #1312: FIFO-pool batch dispatch — respects max_parallel cap (ADR-039 model).
+    # Dispatch up to max_parallel work units per batch; collect before advancing.
+    # This enforces the concurrency cap via the orch backend's own pool machinery.
+    # Each batch uses a sub-pool so collect drains only the in-flight batch.
+    # on_member_error=continue: all batches run regardless of prior batch failures.
+    local total_wu="${#wu_list[@]}"
+    local batch_start=0 batch_seq=0
+    local infra_failed=false   # #1312: orch_spawn failure = infra error → fail-closed
+    local -a batch_plugins=()
+    # #1312 (Copilot): backends validate pool_id against ^[a-zA-Z0-9_-]{1,64}$.
+    # The per-batch "-b<N>" suffix must not push the id past 64 chars, or orch_spawn
+    # fails and the whole batch is silently skipped. Keep the base ≤54 chars so
+    # "<base>-b<N>" always fits (reserve 10 for the largest realistic suffix, e.g.
+    # "-b99999999").
+    #
+    # #1312 (Copilot): collision-safe truncation. Real pool_ids put their UNIQUE
+    # tail last ("map-<gid>-$$", "zbuild-<stage>-$$-<ns>"), so a plain prefix
+    # truncation would drop exactly the disambiguating suffix — two distinct bases
+    # sharing a 54-char prefix would collide into the same sub-pool dir. Instead,
+    # when over-long, keep a readable 45-char prefix + an 8-char hash of the FULL
+    # pool_id (45 + 1 + 8 = 54), so distinct bases yield distinct sub-pool bases.
+    local _sub_pool_base="$pool_id"
+    if [[ ${#_sub_pool_base} -gt 54 ]]; then
+        local _pid_hash
+        _pid_hash="$(printf '%s' "$pool_id" | shasum -a 256 2>/dev/null | cut -c1-8)"
+        # Fallback if shasum is unavailable: cksum (POSIX) → hex-ish digits.
+        [[ -n "$_pid_hash" ]] || _pid_hash="$(printf '%s' "$pool_id" | cksum | cut -c1-8)"
+        _sub_pool_base="${pool_id:0:45}-${_pid_hash}"
+    fi
+    while [[ $batch_start -lt $total_wu ]]; do
+        batch_seq=$(( batch_seq + 1 ))
+        local sub_pool_id="${_sub_pool_base}-b${batch_seq}"
 
-        if [[ $collect_rc -eq 0 ]]; then
-            success_count=$((success_count + 1))
-            if declare -F _check_artifact_contract >/dev/null 2>&1; then
-                local dp seen_dp
-                declare -A seen_dp=()
-                for dp in "${dispatched_plugins[@]+"${dispatched_plugins[@]}"}"; do
-                    [[ -n "${seen_dp[$dp]:-}" ]] && continue
-                    seen_dp[$dp]=1
-                    _check_artifact_contract "$dp" "$state_dir" "$stage"
-                done
-                unset seen_dp
-            fi
-        elif [[ $collect_rc -eq 2 ]]; then
-            success_count=$((success_count + 1))
-            fail_count=$((fail_count + 1))
-        else
-            fail_count=$((fail_count + 1))
+        # #1312 (Copilot): orch_spawn failure is an INFRASTRUCTURE failure, NOT a
+        # member failure — silently skipping a batch's work units (and possibly
+        # still returning 0 under on_member_error=continue) hides real breakage.
+        # Fail closed: stop dispatching and propagate a non-zero rc regardless of
+        # on_member_error.
+        if ! orch_spawn "$sub_pool_id" 2>/dev/null; then
+            warn "map: orch_spawn failed for sub-pool ${sub_pool_id} (infra failure — aborting)" || true
+            infra_failed=true
+            break
         fi
+
+        batch_plugins=()
+        # #1312 (Copilot): advance batch_start to the next UNPROCESSED index (i),
+        # NOT by a fixed max_parallel stride. When orch_dispatch fails, batch_dispatched
+        # does not increment, so the inner loop consumes more than max_parallel indices;
+        # a fixed stride would then re-process or skip units. `batch_start=i` after the
+        # loop guarantees every unit is dispatched exactly once.
+        local batch_dispatched=0 i
+        for (( i = batch_start; i < total_wu && batch_dispatched < max_parallel; i++ )); do
+            wu="${wu_list[$i]}"
+            orch_dispatch "$sub_pool_id" "$wu" >/dev/null || {
+                warn "map: orch_dispatch failed for work unit at index $i" || true
+                fail_count=$(( fail_count + 1 ))
+                continue
+            }
+            batch_dispatched=$(( batch_dispatched + 1 ))
+            batch_plugins+=("${plugin_list[$i]}")
+        done
+        batch_start=$i
+
+        if [[ $batch_dispatched -gt 0 ]]; then
+            local collect_rc=0
+            orch_collect "$sub_pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
+
+            if [[ $collect_rc -eq 0 ]]; then
+                success_count=$(( success_count + 1 ))
+                if declare -F _check_artifact_contract >/dev/null 2>&1; then
+                    local dp
+                    declare -A _seen_dp=()
+                    for dp in "${batch_plugins[@]+"${batch_plugins[@]}"}"; do
+                        [[ -n "${_seen_dp[$dp]:-}" ]] && continue
+                        _seen_dp[$dp]=1
+                        _check_artifact_contract "$dp" "$state_dir" "$stage"
+                    done
+                    unset _seen_dp
+                fi
+            elif [[ $collect_rc -eq 2 ]]; then
+                success_count=$(( success_count + 1 ))
+                fail_count=$(( fail_count + 1 ))
+            else
+                fail_count=$(( fail_count + 1 ))
+            fi
+        fi
+
+        orch_shutdown "$sub_pool_id" 2>/dev/null || true
+    done
+
+    _strategy_cleanup_work_units "${wu_list[@]+"${wu_list[@]}"}"
+    # Shut down the original pool_id (caller spawned it; we use sub-pools per batch
+    # but the caller's pool must still be closed via orch_shutdown for contract compliance).
+    orch_shutdown "$pool_id" 2>/dev/null || true
+
+    # #1312 (Copilot): infra failure (orch_spawn) fails closed — non-zero rc, NOT
+    # subject to on_member_error. rc=6 is distinct from member outcomes (0/1/2) so
+    # the runner surfaces it as a real failure even under on_member_error=continue.
+    if $infra_failed; then
+        return 6
     fi
 
-    _strategy_cleanup_work_units "${work_units[@]+"${work_units[@]}"}"
-    orch_shutdown "$pool_id" 2>/dev/null || true
+    # #1312: on_member_error=collect (default) — propagate failure outward (group
+    # fails if any element failed). runner.sh's strategy: map/map:* call sites rely
+    # on this default. on_member_error=continue mirrors parallel_group_run: all
+    # elements run regardless of failures; group returns 0 even on partial/all-fail.
+    #
+    # #1312 (Copilot): unknown on_member_error values are NOT validated — they fall
+    # through to the collect branch below (the more CONSERVATIVE default). This
+    # matches parallel_group_run, which also does not validate: it only special-cases
+    # its recognised enum (`== "collect"`) and treats anything else as its own safe
+    # default (parallel-orchestrator.sh:317). Neither path fails loud on a typo. Map
+    # deliberately picks collect (not continue) as the fall-through so a typo cannot
+    # accidentally make a group non-blocking — safer to over-report than to swallow
+    # a failure. (parallel defaults empty→continue; map defaults empty→collect per
+    # its strategy: call-site contract, but both fall through to their safe default.)
+    if [[ "$on_member_error" == "continue" ]]; then
+        return 0
+    fi
 
     if   [[ $fail_count -eq 0 ]];    then return 0
     elif [[ $success_count -gt 0 ]]; then return 2
