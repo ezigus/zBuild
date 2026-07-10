@@ -1489,9 +1489,16 @@ _build_parse_commit_summary() {
 #   $2 = plan_files_csv (scope allowlist; what we `git add`)
 #   $3 = scope_violation ("true"/"false")
 #   $4 = build_verdict (currently "pass" or "scope_violation")
-#   $5 = response_text  (last LLM iteration's text, for COMMIT_SUMMARY)
-#   $6 = plan_title     (fallback commit message)
+#   $5 = response_text  (last LLM iteration's text) — LEGACY / single-iteration
+#                       COMMIT_SUMMARY FALLBACK only (#1329); the cumulative path
+#                       uses $8 below.
+#   $6 = plan_title     (fallback commit message; also the multi-iteration subject)
 #   $7 = iter           (the cycle iter, for event metadata; 1 outside cycle)
+#   $8 = iter_summaries (#1329: newline-separated per-iteration COMMIT_SUMMARY values
+#                       from _ROUTE_LOOP_ITER_SUMMARIES — the PRIMARY, cumulative
+#                       commit-message source)
+#   $9 = iter_count     (#1329: inner-loop iteration count; >1 with >=2 distinct
+#                       summaries triggers the cumulative subject+body composition)
 #
 # Side effects:
 #   - On scope_violation: emit build.commit.skipped reason=scope_violation

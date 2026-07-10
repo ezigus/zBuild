@@ -801,9 +801,11 @@ _route_update_ledger() {
 #                                    hook_failed | error
 #   _ROUTE_LOOP_INPUT_TOKENS       — cumulative .usage.input_tokens
 #   _ROUTE_LOOP_OUTPUT_TOKENS      — cumulative .usage.output_tokens
-#   _ROUTE_LOOP_LAST_RESPONSE      — (#608) result_text of the FINAL iteration,
-#                                    consumed by build plugin's COMMIT_SUMMARY
-#                                    parser. Empty when no iteration ran.
+#   _ROUTE_LOOP_LAST_RESPONSE      — (#608) result_text of the FINAL iteration.
+#                                    Since #1329 this is the LEGACY / single-iteration
+#                                    FALLBACK for the build commit parser; the PRIMARY
+#                                    path is _ROUTE_LOOP_ITER_SUMMARIES (below). Empty
+#                                    when no iteration ran.
 #   _ROUTE_LOOP_ITER_SUMMARIES     — (#1329) newline-separated accumulation of the
 #                                    per-iteration COMMIT_SUMMARY value, parsed +
 #                                    sanitized AT THE SOURCE (one line per iteration
