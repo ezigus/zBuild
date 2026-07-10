@@ -817,6 +817,36 @@ Implementation: `plugins/agent/build/plugin.sh::_build_parse_commit_summary`
 and `::_build_commit_iteration`. The instruction is rendered into every
 build prompt's INSTRUCTIONS section via `_build_compose_instructions`.
 
+## Amendment — cumulative `COMMIT_SUMMARY` across inner iterations (issue #1329, 2026-07-10)
+
+The #608 contract above scanned only the FINAL iteration's response, so a Pattern-2
+build spanning multiple inner iterations recorded a commit message describing only
+the last iteration's incremental change — not the cumulative changeset the commit
+actually contains (surfaced dogfooding #758). The parse is now CUMULATIVE:
+
+- The router (`route_to_model_loop`) parses each iteration's `COMMIT_SUMMARY` **at
+  the source** and accumulates the sanitized one-line values in
+  `_ROUTE_LOOP_ITER_SUMMARIES` (newline-separated). It stores only the parsed
+  summaries — never the raw response — so the accumulator stays bounded and no
+  control byte in the LLM output can be read as a record boundary.
+- The build plugin composes the message from that list + the iteration count:
+  - **>1 inner iteration with ≥2 distinct summaries** → subject = `plan.title`
+    (the whole-build descriptor), body = `Build spanned N inner iterations:` then one
+    `- <summary>` bullet per distinct iteration (deduped, order-preserving).
+  - **single iteration** (or one distinct summary) → unchanged: subject = that
+    summary, no body.
+- The fallback chain (marker absent → `plan.title` → `zbuild: build iter <N>`) is
+  unchanged. Every emitted line is control-char stripped and truncated to 72 chars,
+  so the LLM cannot inject control bytes, ANSI escapes, or bare git trailer lines
+  (an injected `Signed-off-by:` becomes a plain body bullet, not a real trailer).
+
+This supersedes the "LAST match wins → the final iteration only" wording above for
+multi-iteration builds; the single-iteration path is byte-compatible with #608.
+
+Implementation: `_route_parse_commit_summary_line` (`core/router/route.sh`),
+`_build_parse_commit_summary` / `_build_clean_msg_line` / `_build_commit_iteration`
+(`plugins/agent/build/plugin.sh`).
+
 ## Amendment — `max_turns: 0` sentinel for unbounded turns (Wave 19-M, #762/#763)
 
 The original contract bounded `router.max_turns` to integer `1..200`. The build

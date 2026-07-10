@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Integration test (#1329): build commit message reflects ALL inner route_to_model_loop
-# iterations via _ROUTE_LOOP_ALL_RESPONSES (RS-delimited).
+# Integration test (#1329): the per-build commit message reflects ALL inner
+# route_to_model_loop iterations, composed from the router's summaries-only
+# accumulator (_ROUTE_LOOP_ITER_SUMMARIES, newline-separated) + iteration count.
 #
 # Scenario: 3 inner iterations, each emitting a distinct COMMIT_SUMMARY.
-# Expected: exactly one git commit whose subject = first iteration's COMMIT_SUMMARY
-# and whose body bullets all three summaries.
+# Expected: exactly one commit whose subject = plan title (the whole-build
+# descriptor) and whose body bullets all three per-iteration summaries.
 #
-# SPEC-1 (CHANGE): commit subject = first unique inner-iter COMMIT_SUMMARY
-# SPEC-2 (CHANGE): commit body contains "- <summary>" bullet for each iter
-# SPEC-3 (GUARD):  exactly one commit created (existing behavior preserved)
-# SPEC-4 (CHANGE): commit body contains all 3 iteration summary bullets
+# SPEC-1 (CHANGE): commit subject = plan title (cumulative descriptor), not the
+#                  last inner iteration's incremental summary.
+# SPEC-2 (CHANGE): commit body contains a "- <summary>" bullet per iteration.
+# SPEC-3 (GUARD):  exactly one commit created (existing behavior preserved).
+# SPEC-4 (CHANGE): commit body contains all 3 iteration summary bullets.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,13 +89,11 @@ DIFF_PATCH="$ART/diff.patch"
 SUMMARY_JSON="$ART/build-summary.json"
 
 # ─── Stub route_to_model_loop: simulate 3 inner iterations ──────────────────
-# Each iteration produces a distinct COMMIT_SUMMARY. The stub sets
-# _ROUTE_LOOP_ALL_RESPONSES to the RS-delimited accumulation.
-ITER1_RESP=$'did iter1 work\nCOMMIT_SUMMARY: add first feature\nmore prose'
-ITER2_RESP=$'did iter2 work\nCOMMIT_SUMMARY: fix second bug\nmore prose'
+# Each iteration emits a distinct COMMIT_SUMMARY. Mirroring the real router
+# (#1329), the stub sets _ROUTE_LOOP_ITER_SUMMARIES to the newline-separated
+# parsed per-iteration summaries plus the iteration count.
 ITER3_RESP=$'did iter3 work\nCOMMIT_SUMMARY: polish third item\nLOOP_COMPLETE'
-RS=$'\x1e'
-ALL_RESP="${ITER1_RESP}${RS}${ITER2_RESP}${RS}${ITER3_RESP}"
+ITER_SUMMARIES=$'add first feature\nfix second bug\npolish third item'
 
 # shellcheck disable=SC2317
 route_to_model_loop() {
@@ -105,7 +105,7 @@ route_to_model_loop() {
     _ROUTE_LOOP_INPUT_TOKENS=15
     _ROUTE_LOOP_OUTPUT_TOKENS=9
     _ROUTE_LOOP_LAST_RESPONSE="$ITER3_RESP"
-    _ROUTE_LOOP_ALL_RESPONSES="$ALL_RESP"
+    _ROUTE_LOOP_ITER_SUMMARIES="$ITER_SUMMARIES"
     return 0
 }
 
@@ -119,15 +119,13 @@ route_to_model_loop() {
 
 # ─── Assertions ──────────────────────────────────────────────────────────────
 
-# [SPEC-3] GUARD: exactly one commit created beyond baseline (existing behavior).
+# [SPEC-3] GUARD: exactly one commit created beyond baseline.
 POST_HEAD="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo 'no-head')"
 if [[ "$POST_HEAD" != "$PRE_HEAD" ]]; then
-    assert_pass "[SPEC-3] exactly one commit created (HEAD advanced beyond baseline)"
+    assert_pass "[SPEC-3] commit created (HEAD advanced beyond baseline)"
 else
-    assert_fail "[SPEC-3] exactly one commit created" "HEAD unchanged: $PRE_HEAD"
+    assert_fail "[SPEC-3] commit created" "HEAD unchanged: $PRE_HEAD"
 fi
-
-# Verify only one new commit beyond baseline.
 new_commit_count="$(git -C "$REPO" rev-list "${PRE_HEAD}..HEAD" --count 2>/dev/null || echo 0)"
 if [[ "$new_commit_count" -eq 1 ]]; then
     assert_pass "[SPEC-3] exactly one new commit (count=$new_commit_count)"
@@ -135,17 +133,14 @@ else
     assert_fail "[SPEC-3] exactly one new commit" "got $new_commit_count commits"
 fi
 
-# Full commit message.
 COMMIT_SUBJECT="$(git -C "$REPO" log -1 --format='%s' 2>/dev/null || echo '')"
 COMMIT_BODY="$(git -C "$REPO" log -1 --format='%b' 2>/dev/null || echo '')"
 
-# [SPEC-1] CHANGE: commit subject = first unique inner-iteration COMMIT_SUMMARY.
-# Fails at baseline (old code uses LAST_RESPONSE → "polish third item").
-assert_eq "[SPEC-1] commit subject = first unique inner-iter COMMIT_SUMMARY" \
-    "add first feature" "$COMMIT_SUBJECT"
+# [SPEC-1] CHANGE: commit subject = plan title (cumulative), not "polish third item".
+assert_eq "[SPEC-1] commit subject = plan title (cumulative descriptor)" \
+    "cumulative inner-loop commit message test" "$COMMIT_SUBJECT"
 
-# [SPEC-2] CHANGE: commit body contains "- <summary>" bullet for iter 2.
-# Fails at baseline (old code produces no body at all).
+# [SPEC-2] CHANGE: commit body contains a bullet for iter 2's summary.
 if grep -q -- '- fix second bug' <<< "$COMMIT_BODY"; then
     assert_pass "[SPEC-2] commit body contains bullet for iter 2 summary"
 else
@@ -154,7 +149,6 @@ else
 fi
 
 # [SPEC-4] CHANGE: commit body contains bullets for all 3 iteration summaries.
-# Fails at baseline (old code produces no body).
 bullet_count="$(grep -c '^- ' <<< "$COMMIT_BODY" 2>/dev/null || true)"
 if [[ "$bullet_count" -eq 3 ]]; then
     assert_pass "[SPEC-4] commit body has 3 bullet lines (one per inner iter)"
@@ -163,7 +157,6 @@ else
         "got $bullet_count; body: $COMMIT_BODY"
 fi
 
-# Sanity: subject author
 AUTHOR="$(git -C "$REPO" log -1 --format='%an <%ae>' 2>/dev/null || echo '')"
 assert_eq "commit author is zbuild-pipeline" "zbuild-pipeline <pipeline@local>" "$AUTHOR"
 

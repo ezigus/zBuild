@@ -869,17 +869,20 @@ _build_stage_run_inner() {
     # see _build_commit_iteration above.
     local _plan_title
     _plan_title="$(printf '%s' "$plan_json" | jq -r '.title // ""' 2>/dev/null || echo "")"
-    # #1329: prefer ALL_RESPONSES (RS-delimited per-iter accumulation) for
-    # cumulative COMMIT_SUMMARY; fall back to LAST_RESPONSE for callers that
-    # only set the legacy global (e.g., older route_to_model_loop stubs).
+    # #1329: compose the commit message cumulatively from the per-iteration
+    # COMMIT_SUMMARY values the router accumulated (_ROUTE_LOOP_ITER_SUMMARIES,
+    # newline-separated) plus the inner-loop iteration count. LAST_RESPONSE is
+    # still passed for the single-iteration / legacy-stub fallback path.
     _build_commit_iteration \
         "$repo_root" \
         "$plan_files_csv" \
         "$scope_violation" \
         "$build_verdict" \
-        "${_ROUTE_LOOP_ALL_RESPONSES:-${_ROUTE_LOOP_LAST_RESPONSE:-}}" \
+        "${_ROUTE_LOOP_LAST_RESPONSE:-}" \
         "$_plan_title" \
-        "$_iter_n" || true
+        "$_iter_n" \
+        "${_ROUTE_LOOP_ITER_SUMMARIES:-}" \
+        "${_ROUTE_LOOP_ITERATIONS:-1}" || true
 
     # ─── #661 / ADR-020 amendment: cumulative baseline→HEAD rewrite ──────────
     # After per-iter commit (#608) lands the work, rewrite diff.patch as the
@@ -1389,72 +1392,87 @@ omit this line the pipeline falls back to the plan title.
 BUILD_PROMPT
 }
 
-# ─── _build_parse_commit_summary <all_responses> <plan_title> ────────────────
-# Parse per-iteration COMMIT_SUMMARY markers from all_responses, which is
-# either a plain single-iteration result text OR an RS-delimited (\x1e ASCII
-# RS) accumulation of ALL inner-loop iterations' result texts (set by the
-# router's _ROUTE_LOOP_ALL_RESPONSES). (#1329)
+# ─── _build_clean_msg_line <line> ────────────────────────────────────────────
+# #1329: sanitize one commit-message line — strip control chars (NUL, RS \x1e,
+# ANSI ESC, …), trim surrounding whitespace, truncate to 72 chars. This is what
+# prevents LLM output from injecting control bytes, escape sequences, or spurious
+# multi-line git trailers into the commit subject/body.
+_build_clean_msg_line() {
+    printf '%s' "${1:-}" \
+        | LC_ALL=C tr -d '\000-\037\177' \
+        | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+        | cut -c1-72
+}
+
+# ─── _build_parse_commit_summary <response> <plan_title> [iter_summaries] [iter_count] ──
+# Compose the per-build git commit message. (#1329)
 #
-# For each RS-delimited chunk the LAST ^COMMIT_SUMMARY: line is extracted
-# (LLM may correct itself within a single iteration). Duplicates across
-# iterations are dropped (dedup-preserving-order). Then:
-#   - 0 unique summaries: falls back to plan_title, then synthetic default.
-#   - 1 unique summary:   subject = that summary (≤72 chars). No body added
-#                         (single-iteration backward-compatible behavior).
-#   - ≥2 unique summaries: subject = first unique summary (≤72 chars);
-#                           body = "Build spanned N inner iterations:\n- s1\n…"
+#   iter_summaries — newline-separated per-iteration COMMIT_SUMMARY values already
+#                    parsed + sanitized by the router (_ROUTE_LOOP_ITER_SUMMARIES).
+#   iter_count     — inner-loop iteration count (_ROUTE_LOOP_ITERATIONS).
 #
-# Echoes the commit message (subject only, or subject + blank line + body).
+# When the build spanned >1 inner iteration AND ≥2 DISTINCT summaries exist, the
+# message represents the CUMULATIVE change: subject = plan_title (the whole-build
+# descriptor; falls back to the first summary when plan_title is empty), body =
+# "Build spanned N inner iterations:\n- s1\n- s2 …" — one bullet per distinct
+# summary, deduped, each sanitized + ≤72 chars. Otherwise (single iteration, or no
+# summaries list) legacy single-line behavior is preserved: the LAST COMMIT_SUMMARY
+# from response, then plan_title, then a synthetic default. Every emitted line is
+# control-char stripped (see _build_clean_msg_line), so LLM output cannot inject
+# control bytes, ANSI escapes, or extra git trailer lines into the message.
 _build_parse_commit_summary() {
     local response="${1:-}"
     local plan_title="${2:-}"
-    local -a summaries=()
+    local iter_summaries="${3:-}"
+    local iter_count="${4:-1}"
+    [[ "$iter_count" =~ ^[0-9]+$ ]] || iter_count=1
 
-    # Split on \x1e (ASCII RS); single-response input has no RS → one chunk.
-    local chunk msg
-    while IFS= read -r -d $'\x1e' chunk; do
-        [[ -z "${chunk//[$' \t\n']/}" ]] && continue
-        msg="$(printf '%s\n' "$chunk" \
+    # Collect distinct, order-preserving summaries.
+    local -a summaries=()
+    local line s is_dup
+    if [[ -n "$iter_summaries" ]]; then
+        # Router already parsed one COMMIT_SUMMARY value per line.
+        while IFS= read -r line; do
+            line="$(_build_clean_msg_line "$line")"
+            [[ -z "$line" ]] && continue
+            is_dup=0
+            if [[ ${#summaries[@]} -gt 0 ]]; then
+                for s in "${summaries[@]}"; do
+                    [[ "$s" == "$line" ]] && { is_dup=1; break; }
+                done
+            fi
+            [[ "$is_dup" -eq 0 ]] && summaries+=("$line")
+        done <<< "$iter_summaries"
+    else
+        # Fallback: LAST COMMIT_SUMMARY from the raw response (single-iter / legacy
+        # callers that set only _ROUTE_LOOP_LAST_RESPONSE).
+        line="$(printf '%s\n' "$response" \
             | tail -n 50 \
             | grep -E '^COMMIT_SUMMARY:[[:space:]]*(.+)$' \
             | tail -n 1 \
             | sed -E 's/^COMMIT_SUMMARY:[[:space:]]*//' \
-            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
             || true)"
-        [[ -z "$msg" ]] && continue
-        # Deduplicate while preserving insertion order.
-        local is_dup=0
-        if [[ ${#summaries[@]} -gt 0 ]]; then
-            local s
-            for s in "${summaries[@]}"; do
-                [[ "$s" == "$msg" ]] && is_dup=1 && break
-            done
-        fi
-        [[ "$is_dup" -eq 0 ]] && summaries+=("$msg")
-    done < <(printf '%s\x1e' "$response")
+        line="$(_build_clean_msg_line "$line")"
+        [[ -n "$line" ]] && summaries+=("$line")
+    fi
 
+    # Subject.
     local subject=""
-    if [[ ${#summaries[@]} -gt 0 ]]; then
-        subject="$(printf '%s' "${summaries[0]}" | cut -c1-72)"
+    if [[ ${#summaries[@]} -gt 1 && "$iter_count" -gt 1 ]]; then
+        subject="$(_build_clean_msg_line "$plan_title")"   # whole-build descriptor
+        [[ -z "$subject" ]] && subject="${summaries[0]}"
+    elif [[ ${#summaries[@]} -gt 0 ]]; then
+        subject="${summaries[0]}"
     fi
+    [[ -z "$subject" ]] && subject="$(_build_clean_msg_line "$plan_title")"
+    [[ -z "$subject" ]] && subject="zbuild: build iter ${ZBUILD_CYCLE_ITER:-1}"
 
-    if [[ -z "$subject" ]]; then
-        subject="$(printf '%s' "$plan_title" \
-            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-            | cut -c1-72)"
-    fi
-
-    if [[ -z "$subject" ]]; then
-        subject="zbuild: build iter ${ZBUILD_CYCLE_ITER:-1}"
-    fi
-
-    # Multi-iteration body: emit subject + blank line + bullet list.
-    if [[ ${#summaries[@]} -gt 1 ]]; then
-        local body n=${#summaries[@]}
-        body="$(printf 'Build spanned %d inner iterations:' "$n")"
-        local s
+    # Body: only for a genuine multi-iteration cumulative build.
+    if [[ ${#summaries[@]} -gt 1 && "$iter_count" -gt 1 ]]; then
+        local body
+        body="$(printf 'Build spanned %d inner iterations:' "$iter_count")"
         for s in "${summaries[@]}"; do
-            body+="$(printf '\n- %s' "$s")"
+            body+=$'\n'"- $s"
         done
         printf '%s\n\n%s\n' "$subject" "$body"
     else
@@ -1487,6 +1505,10 @@ _build_commit_iteration() {
     local response_text="$5"
     local plan_title="$6"
     local iter="${7:-1}"
+    # #1329: newline-separated per-iteration COMMIT_SUMMARY values + the inner-loop
+    # iteration count, used to compose a cumulative commit message.
+    local iter_summaries="${8:-}"
+    local iter_count="${9:-1}"
 
     if [[ "$scope_violation" == "true" || "$build_verdict" == "scope_violation" ]]; then
         emit_event "build.commit.skipped" "plugin=build" \
@@ -1539,7 +1561,7 @@ _build_commit_iteration() {
     fi
 
     local commit_msg
-    commit_msg="$(_build_parse_commit_summary "$response_text" "$plan_title")"
+    commit_msg="$(_build_parse_commit_summary "$response_text" "$plan_title" "$iter_summaries" "$iter_count")"
 
     if ! git -C "$repo_root" commit \
         --author "zbuild-pipeline <pipeline@local>" \
