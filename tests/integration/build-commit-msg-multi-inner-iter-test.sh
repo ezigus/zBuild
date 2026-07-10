@@ -146,21 +146,21 @@ assert_eq "[SPEC-1] commit subject = first unique inner-iter COMMIT_SUMMARY" \
 
 # [SPEC-2] CHANGE: commit body contains "- <summary>" bullet for iter 2.
 # Fails at baseline (old code produces no body at all).
-if printf '%s' "$COMMIT_BODY" | grep -q -- '- fix second bug'; then
+if grep -q -- '- fix second bug' <<< "$COMMIT_BODY"; then
     assert_pass "[SPEC-2] commit body contains bullet for iter 2 summary"
 else
     assert_fail "[SPEC-2] commit body contains bullet for iter 2 summary" \
-        "body: $(printf '%s' "$COMMIT_BODY" | head -10)"
+        "body: $(head -10 <<< "$COMMIT_BODY")"
 fi
 
 # [SPEC-4] CHANGE: commit body contains bullets for all 3 iteration summaries.
 # Fails at baseline (old code produces no body).
-bullet_count="$(printf '%s' "$COMMIT_BODY" | grep -c '^- ' 2>/dev/null || true)"
+bullet_count="$(grep -c '^- ' <<< "$COMMIT_BODY" 2>/dev/null || true)"
 if [[ "$bullet_count" -eq 3 ]]; then
     assert_pass "[SPEC-4] commit body has 3 bullet lines (one per inner iter)"
 else
     assert_fail "[SPEC-4] commit body has 3 bullet lines" \
-        "got $bullet_count; body: $(printf '%s' "$COMMIT_BODY")"
+        "got $bullet_count; body: $COMMIT_BODY"
 fi
 
 # Sanity: subject author
