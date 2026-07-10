@@ -116,6 +116,16 @@ _deploy_agent_run_inner "$_sf4"
 _v4="$(jq -r '.verdict' "$_run4/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-4] gate verdict=fail → deploy-result verdict=skipped" "skipped" "$_v4"
 
+# gate verdict=route_design (non-pass, non-fail) must also skip — fail-closed
+# allowlist proceeds ONLY on an explicit pass (Copilot review).
+_run4b="$TEST_TEMP_DIR/run4b"
+_sf4b="$(_make_state "$_run4b")"
+printf 'https://github.com/test/repo/pull/42\n' > "$_run4b/artifacts/pr-url.txt"
+printf '{"verdict":"route_design"}\n' > "$_run4b/artifacts/gate-aggregator-result.json"
+_deploy_agent_run_inner "$_sf4b"
+_v4b="$(jq -r '.verdict' "$_run4b/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-4] gate verdict=route_design (non-pass) → skipped (allowlist)" "skipped" "$_v4b"
+
 # ---------------------------------------------------------------------------
 # SPEC-5: deploy plugin has "Role: deploy_agent" preamble comment
 # ---------------------------------------------------------------------------

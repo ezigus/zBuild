@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # plugins/tool/deploy-release — deploy-release executor (kind:tool, T0, issue #757)
-# Executes git-tag + gh release create. No LLM calls. Invoked by deploy agent.
-# ZBUILD_DRY_RUN=1 writes sentinel deploy-result.json without executing.
+# Creates + pushes a git tag at HEAD (tag-based release). No `gh` call, no LLM.
+# Invoked by the deploy agent. ZBUILD_DRY_RUN=1 writes a sentinel
+# deploy-result.json without executing git.
 
 [[ -n "${_ZBUILD_DEPLOY_RELEASE_LOADED:-}" ]] && return 0
 _ZBUILD_DEPLOY_RELEASE_LOADED=1

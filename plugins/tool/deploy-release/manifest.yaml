@@ -3,9 +3,10 @@ name: Deploy Release Executor
 kind: tool
 version: 0.1.0
 description: |
-  Deploy-release tool executor (kind:tool, T0). Executes the actual git-tag +
-  gh release create side-effect on behalf of the deploy agent. No LLM calls.
-  ZBUILD_DRY_RUN=1 writes a sentinel deploy-result.json without running git/gh.
+  Deploy-release tool executor (kind:tool, T0). Creates and pushes a git tag at
+  HEAD (tag-based release) on behalf of the deploy agent — it does NOT call `gh`.
+  No LLM calls. ZBUILD_DRY_RUN=1 writes a sentinel deploy-result.json without
+  running git.
   Invoked by plugins/agent/deploy/plugin.sh (deploy_release_run).
   Issue #757.
 

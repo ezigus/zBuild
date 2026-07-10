@@ -39,6 +39,12 @@ inputs:
     path: "${artifact_dir}/pr-url.txt"
     source: stage:pr-delivery
     required: true
+  # required: false until wired (#1328). deploy is fail-closed at RUNTIME on a
+  # missing gate result (outside dry-run) — see deploy plugin.sh. Flipping this to
+  # required:true is deferred to #1328: lint-contract enforces the producer's
+  # output-id contract only for REQUIRED inputs, and reconciling this input id with
+  # gate-aggregator's declared output id + ordering it earlier in the flow is
+  # wiring work (there is no template containing deploy yet).
   - id: gate_result
     type: file
     path: "${artifact_dir}/gate-aggregator-result.json"

@@ -93,11 +93,15 @@ _deploy_agent_run_inner() {
     fi
     local gate_verdict
     gate_verdict="$(jq -r '.verdict // empty' "$gate_result_in" 2>/dev/null || true)"
-    if [[ "$gate_verdict" == "fail" ]]; then
-        warn "deploy: gate-aggregator verdict=fail — skipping deploy"
-        emit_event "deploy.skipped" "plugin=deploy" "reason=gate_fail"
-        jq -n --arg pr_url "$pr_url" \
-            '{schema_version:1,verdict:"skipped",reason:"gate-aggregator verdict=fail",pr_url:$pr_url}' \
+    # Fail-closed ALLOWLIST: proceed ONLY on an explicit pass. Any other verdict —
+    # fail, route_<target>, an empty verdict, or a jq parse error (→ empty) — skips
+    # the deploy side-effect rather than proceeding (#757 review / Copilot: a
+    # skip-only-on-fail denylist would let route_design or a malformed gate proceed).
+    if [[ "$gate_verdict" != "pass" ]]; then
+        warn "deploy: gate-aggregator verdict='${gate_verdict:-<none>}' is not pass — skipping deploy"
+        emit_event "deploy.skipped" "plugin=deploy" "reason=gate_not_pass"
+        jq -n --arg pr_url "$pr_url" --arg v "${gate_verdict:-<none>}" \
+            '{schema_version:1,verdict:"skipped",reason:("gate-aggregator verdict not pass: "+$v),pr_url:$pr_url}' \
             > "$deploy_result_out"
         return 0
     fi

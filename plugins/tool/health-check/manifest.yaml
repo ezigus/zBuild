@@ -22,7 +22,6 @@ requires:
   plugins: []
 
 provides:
-  artifact_type: validate-result.json
   role: health_check_executor
   schema_version: 1
 
@@ -31,12 +30,12 @@ config:
 
 inputs: []
 
-outputs:
-  - id: validate_result
-    path: ${artifact_dir}/validate-result.json
-    type: validate-result.json
-    required: false
-    primary: false
+# health-check returns its probe result via stdout + exit code (consumed in-process
+# by the validate agent); it writes NO file artifact. It therefore declares no
+# provides.artifact_type and no file outputs — like the orch-*/cache-*/memory-*
+# pure-function tool plugins. (validate-result.json is written by the validate
+# AGENT, not by this tool.)
+outputs: []
 
 state:
   persisted: []
