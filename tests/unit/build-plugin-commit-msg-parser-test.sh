@@ -78,6 +78,49 @@ else
     assert_fail "plan_title fallback truncated to <=72 chars" "got ${#out}"
 fi
 
+# ── SPEC tests for multi-iteration RS-delimited cumulative behavior (#1329) ───
+# [SPEC-3] GUARD: single-iter behavior unchanged — subject = COMMIT_SUMMARY,
+# no body added. Passes at baseline (existing behavior) and after.
+out="$(_build_parse_commit_summary $'wrote file\nCOMMIT_SUMMARY: add frobber\nLOOP_COMPLETE' "fallback")"
+assert_eq "[SPEC-3] single-iter: subject = COMMIT_SUMMARY, no body added" \
+    "add frobber" "$out"
+
+# Build RS-delimited 2-iteration input for SPEC-1, SPEC-2.
+RS=$'\x1e'
+ITER1=$'did iter1\nCOMMIT_SUMMARY: add first feature\nmore text'
+ITER2=$'did iter2\nCOMMIT_SUMMARY: fix second bug\nLOOP_COMPLETE'
+TWO_ITERS="${ITER1}${RS}${ITER2}"
+
+# [SPEC-1] CHANGE: multi-iter RS input → subject = first unique COMMIT_SUMMARY.
+# Fails at baseline (old parser returns LAST match "fix second bug", not first).
+out="$(_build_parse_commit_summary "$TWO_ITERS" "plan title")"
+subject="$(printf '%s' "$out" | head -1)"
+assert_eq "[SPEC-1] multi-iter: subject = first unique COMMIT_SUMMARY" \
+    "add first feature" "$subject"
+
+# [SPEC-2] CHANGE: multi-iter RS input → body contains bullet for each summary.
+# Fails at baseline (old parser produces no body).
+if printf '%s' "$out" | grep -q -- '- add first feature' \
+   && printf '%s' "$out" | grep -q -- '- fix second bug'; then
+    assert_pass "[SPEC-2] multi-iter: body contains bullets for each distinct summary"
+else
+    assert_fail "[SPEC-2] multi-iter: body contains bullets for each distinct summary" \
+        "output: $(printf '%s' "$out" | head -10)"
+fi
+
+# [SPEC-4] CHANGE: 3-iter RS input → body has 3 bullet lines.
+# Fails at baseline (old parser produces no body).
+ITER3=$'did iter3\nCOMMIT_SUMMARY: polish third item\nLOOP_COMPLETE'
+THREE_ITERS="${ITER1}${RS}${ITER2}${RS}${ITER3}"
+out3="$(_build_parse_commit_summary "$THREE_ITERS" "")"
+bullet_count="$(printf '%s' "$out3" | grep -c '^- ' || true)"
+if [[ "$bullet_count" -eq 3 ]]; then
+    assert_pass "[SPEC-4] 3-iter input: body has exactly 3 bullet lines (got $bullet_count)"
+else
+    assert_fail "[SPEC-4] 3-iter input: body has exactly 3 bullet lines" \
+        "got $bullet_count bullets; output: $(printf '%s' "$out3")"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

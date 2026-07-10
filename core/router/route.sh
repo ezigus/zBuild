@@ -804,6 +804,10 @@ _route_update_ledger() {
 #   _ROUTE_LOOP_LAST_RESPONSE      — (#608) result_text of the FINAL iteration,
 #                                    consumed by build plugin's COMMIT_SUMMARY
 #                                    parser. Empty when no iteration ran.
+#   _ROUTE_LOOP_ALL_RESPONSES      — (#1329) RS-delimited (\x1e ASCII RS)
+#                                    accumulation of result_text from ALL
+#                                    iterations; consumed by the build plugin for
+#                                    cumulative COMMIT_SUMMARY composition.
 #
 # Returns: 0 on DONE-sentinel, 1 on max-iter no-DONE, 2 on fatal.
 _ROUTE_LOOP_ITERATIONS=0
@@ -811,6 +815,7 @@ _ROUTE_LOOP_TERMINATED_REASON=""
 _ROUTE_LOOP_INPUT_TOKENS=0
 _ROUTE_LOOP_OUTPUT_TOKENS=0
 _ROUTE_LOOP_LAST_RESPONSE=""
+_ROUTE_LOOP_ALL_RESPONSES=""
 _ROUTE_LOOP_CHILD_PID=""
 # Wave 15-G (#687): PGID of the in-flight claude spawn (when known).
 # Set alongside _ROUTE_LOOP_CHILD_PID at the spawn site, cleared after wait.
@@ -996,6 +1001,7 @@ route_to_model_loop() {
     _ROUTE_LOOP_INPUT_TOKENS=0
     _ROUTE_LOOP_OUTPUT_TOKENS=0
     _ROUTE_LOOP_LAST_RESPONSE=""
+    _ROUTE_LOOP_ALL_RESPONSES=""
     # #646: clear deferred-final-banner-close handshake state from any prior call.
     _ROUTE_LOOP_FINAL_STAGE_ID=""
     _ROUTE_LOOP_FINAL_KIND=""
@@ -1482,6 +1488,13 @@ ${_diff_pointer}"
         # #608: expose the most recent iteration's LLM text so the build plugin
         # can parse the COMMIT_SUMMARY marker after the loop returns.
         _ROUTE_LOOP_LAST_RESPONSE="$result_text"
+        # #1329: accumulate ALL iterations' result texts (RS-delimited \x1e) for
+        # cumulative COMMIT_SUMMARY composition across inner-loop iterations.
+        if [[ -z "$_ROUTE_LOOP_ALL_RESPONSES" ]]; then
+            _ROUTE_LOOP_ALL_RESPONSES="$result_text"
+        else
+            _ROUTE_LOOP_ALL_RESPONSES="${_ROUTE_LOOP_ALL_RESPONSES}"$'\x1e'"${result_text}"
+        fi
 
         # Inter-turn hook (best-effort; failure does not abort the loop).
         # #646: moved AHEAD of the per-iter stage_io_end so any operator

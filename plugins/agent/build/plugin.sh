@@ -869,12 +869,15 @@ _build_stage_run_inner() {
     # see _build_commit_iteration above.
     local _plan_title
     _plan_title="$(printf '%s' "$plan_json" | jq -r '.title // ""' 2>/dev/null || echo "")"
+    # #1329: prefer ALL_RESPONSES (RS-delimited per-iter accumulation) for
+    # cumulative COMMIT_SUMMARY; fall back to LAST_RESPONSE for callers that
+    # only set the legacy global (e.g., older route_to_model_loop stubs).
     _build_commit_iteration \
         "$repo_root" \
         "$plan_files_csv" \
         "$scope_violation" \
         "$build_verdict" \
-        "${_ROUTE_LOOP_LAST_RESPONSE:-}" \
+        "${_ROUTE_LOOP_ALL_RESPONSES:-${_ROUTE_LOOP_LAST_RESPONSE:-}}" \
         "$_plan_title" \
         "$_iter_n" || true
 
@@ -1386,39 +1389,77 @@ omit this line the pipeline falls back to the plan title.
 BUILD_PROMPT
 }
 
-# ─── _build_parse_commit_summary <response_text> <plan_title> ────────────────
-# Scan response_text (last 50 lines) for `^COMMIT_SUMMARY:[[:space:]]*(.+)$`.
-# Takes the LAST match (LLM may correct itself across the response), trims
-# whitespace, truncates to 72 chars. Falls back to plan_title (also truncated)
-# when no marker is found. If plan_title is also empty, synthesizes a default
-# from ZBUILD_CYCLE_ITER. Echoes the message on stdout.
+# ─── _build_parse_commit_summary <all_responses> <plan_title> ────────────────
+# Parse per-iteration COMMIT_SUMMARY markers from all_responses, which is
+# either a plain single-iteration result text OR an RS-delimited (\x1e ASCII
+# RS) accumulation of ALL inner-loop iterations' result texts (set by the
+# router's _ROUTE_LOOP_ALL_RESPONSES). (#1329)
+#
+# For each RS-delimited chunk the LAST ^COMMIT_SUMMARY: line is extracted
+# (LLM may correct itself within a single iteration). Duplicates across
+# iterations are dropped (dedup-preserving-order). Then:
+#   - 0 unique summaries: falls back to plan_title, then synthetic default.
+#   - 1 unique summary:   subject = that summary (≤72 chars). No body added
+#                         (single-iteration backward-compatible behavior).
+#   - ≥2 unique summaries: subject = first unique summary (≤72 chars);
+#                           body = "Build spanned N inner iterations:\n- s1\n…"
+#
+# Echoes the commit message (subject only, or subject + blank line + body).
 _build_parse_commit_summary() {
     local response="${1:-}"
     local plan_title="${2:-}"
-    local msg=""
+    local -a summaries=()
 
-    if [[ -n "$response" ]]; then
-        # Bounded scan: last 50 lines. Captures the LAST COMMIT_SUMMARY line.
-        msg="$(printf '%s\n' "$response" \
+    # Split on \x1e (ASCII RS); single-response input has no RS → one chunk.
+    local chunk msg
+    while IFS= read -r -d $'\x1e' chunk; do
+        [[ -z "${chunk//[$' \t\n']/}" ]] && continue
+        msg="$(printf '%s\n' "$chunk" \
             | tail -n 50 \
             | grep -E '^COMMIT_SUMMARY:[[:space:]]*(.+)$' \
             | tail -n 1 \
             | sed -E 's/^COMMIT_SUMMARY:[[:space:]]*//' \
             | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
             || true)"
+        [[ -z "$msg" ]] && continue
+        # Deduplicate while preserving insertion order.
+        local is_dup=0
+        if [[ ${#summaries[@]} -gt 0 ]]; then
+            local s
+            for s in "${summaries[@]}"; do
+                [[ "$s" == "$msg" ]] && is_dup=1 && break
+            done
+        fi
+        [[ "$is_dup" -eq 0 ]] && summaries+=("$msg")
+    done < <(printf '%s\x1e' "$response")
+
+    local subject=""
+    if [[ ${#summaries[@]} -gt 0 ]]; then
+        subject="$(printf '%s' "${summaries[0]}" | cut -c1-72)"
     fi
 
-    if [[ -z "$msg" ]]; then
-        msg="$(printf '%s' "$plan_title" \
-            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    if [[ -z "$subject" ]]; then
+        subject="$(printf '%s' "$plan_title" \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+            | cut -c1-72)"
     fi
 
-    if [[ -z "$msg" ]]; then
-        msg="zbuild: build iter ${ZBUILD_CYCLE_ITER:-1}"
+    if [[ -z "$subject" ]]; then
+        subject="zbuild: build iter ${ZBUILD_CYCLE_ITER:-1}"
     fi
 
-    # Truncate to 72 chars (git short-message convention).
-    printf '%s' "$msg" | cut -c1-72
+    # Multi-iteration body: emit subject + blank line + bullet list.
+    if [[ ${#summaries[@]} -gt 1 ]]; then
+        local body n=${#summaries[@]}
+        body="$(printf 'Build spanned %d inner iterations:' "$n")"
+        local s
+        for s in "${summaries[@]}"; do
+            body+="$(printf '\n- %s' "$s")"
+        done
+        printf '%s\n\n%s\n' "$subject" "$body"
+    else
+        printf '%s' "$subject"
+    fi
 }
 
 # ─── _build_commit_iteration ────────────────────────────────────────────────
