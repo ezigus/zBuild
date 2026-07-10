@@ -97,7 +97,6 @@ printf '{"schema_version":1,"verdict":"deployed","mode":"dry_run"}\n' \
 ZBUILD_DRY_RUN=1 _validate_agent_run_inner "$_sf9"
 _v9="$(jq -r '.verdict' "$_run9/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-9] dry-run writes verdict=healthy" "healthy" "$_v9"
-ZBUILD_DRY_RUN=0
 
 # ---------------------------------------------------------------------------
 # SPEC-10: missing deploy-result.json → validate_agent_run rc!=0

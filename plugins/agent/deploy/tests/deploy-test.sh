@@ -87,7 +87,6 @@ printf 'https://github.com/test/repo/pull/42\n' > "$_run2/artifacts/pr-url.txt"
 ZBUILD_DRY_RUN=1 _deploy_agent_run_inner "$_sf2"
 _dry_verdict2="$(jq -r '.verdict' "$_run2/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-2] dry-run writes verdict=deployed" "deployed" "$_dry_verdict2"
-ZBUILD_DRY_RUN=0
 
 # ---------------------------------------------------------------------------
 # SPEC-3: missing pr-url.txt → deploy_agent_run rc!=0
@@ -149,7 +148,6 @@ printf 'https://github.com/test/repo/pull/42\n' > "$_run7/artifacts/pr-url.txt"
 ZBUILD_DRY_RUN=1 _deploy_agent_run_inner "$_sf7"
 _sv7="$(jq -r '.schema_version' "$_run7/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-7] deploy-result.json has schema_version=1" "1" "$_sv7"
-ZBUILD_DRY_RUN=0
 
 # ─── Delegation mock test ────────────────────────────────────────────────────
 # Verify that when ZBUILD_DRY_RUN=0 and pr-url.txt is present, the agent

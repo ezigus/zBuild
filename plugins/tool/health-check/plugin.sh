@@ -28,7 +28,7 @@ health_check_init() {
 # Exit code: 0 = healthy, non-zero = unhealthy.
 health_check_run() {
     local stage_id="${1:-validate}"; : "$stage_id"
-    local state_file="${2:-}"
+    local state_file="${2:-}"; : "$state_file"
 
     # Dry-run: emit mock success response without executing curl
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then

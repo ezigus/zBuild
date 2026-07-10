@@ -81,8 +81,8 @@ _validate_agent_run_inner() {
         # shellcheck source=../../tool/health-check/plugin.sh
         source "$hc_plugin"
         if type health_check_run >/dev/null 2>&1; then
-            local hc_output hc_rc=0
-            hc_output="$(health_check_run "validate" "$state_file" 2>&1)" || hc_rc=$?
+            local hc_rc=0
+            health_check_run "validate" "$state_file" >/dev/null 2>&1 || hc_rc=$?
             if [[ $hc_rc -eq 0 ]]; then
                 printf '{"schema_version":1,"verdict":"healthy"}\n' \
                     | atomic_write "$validate_result_out"
