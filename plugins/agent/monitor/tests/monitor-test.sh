@@ -42,19 +42,9 @@ SCOPE
 # shellcheck source=../../../../plugins/agent/monitor/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
-# ─── Mock: apply_scope_redaction — passthrough ────────────────────────────────
-apply_scope_redaction() {
-    local _input="$1"
-    local _output="$2"
-    cp "$_input" "$_output"
-    emit_event "redaction.applied" \
-        "input=$_input" "output=$_output" \
-        "size_before=0" "size_after=0" "redactions=0" \
-        "scope_hash=mock" "cycle=0"
-    return 0
-}
-
 # ─── Mock: route_to_model — file-based capture + configurable rc/response ─────
+# (No apply_scope_redaction mock: the plugin no longer pre-redacts — route_to_model
+#  owns redaction by construction, ADR-043, and it is mocked here.)
 _CAPTURED_PROMPT_FILE="$TEST_TEMP_DIR/captured-monitor-prompt.txt"
 : > "$_CAPTURED_PROMPT_FILE"
 MOCK_ROUTE_RC=0
@@ -83,7 +73,7 @@ assert_eq "[SPEC-1] monitor_stage_init sets ZBUILD_PLUGIN_KIND=agent" \
     "agent" "${ZBUILD_PLUGIN_KIND:-}"
 
 # ─── [SPEC-2] ZBUILD_DRY_RUN=1 writes mock artifacts without route_to_model ──
-print_test_section "[SPEC-2] dry-run writes mock monitor-report.json + monitor-verdict.json"
+print_test_section "[SPEC-2] dry-run writes mock monitor-report.json (verdict embedded) without route_to_model"
 
 _ROUTE_TO_MODEL_CALLED=0
 export ZBUILD_DRY_RUN=1
@@ -97,20 +87,15 @@ unset ZBUILD_DRY_RUN
 assert_eq "[SPEC-2] dry-run run returns rc=0" "0" "$rc_dry"
 assert_file_exists "[SPEC-2] monitor-report.json created in dry-run" \
     "$ARTIFACTS_DIR/monitor-report.json"
-assert_file_exists "[SPEC-2] monitor-verdict.json created in dry-run" \
-    "$ARTIFACTS_DIR/monitor-verdict.json"
 
-_dry_report_verdict="$(python3 -c "import json,sys; d=json.load(open('$ARTIFACTS_DIR/monitor-report.json')); print(d.get('verdict','missing'))" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-2] dry-run monitor-report.json has .verdict field" \
+_dry_report_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[SPEC-2] dry-run monitor-report.json has .verdict=pass (embedded)" \
     "pass" "$_dry_report_verdict"
-_dry_verdict_verdict="$(python3 -c "import json,sys; d=json.load(open('$ARTIFACTS_DIR/monitor-verdict.json')); print(d.get('verdict','missing'))" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-2] dry-run monitor-verdict.json has .verdict=pass" \
-    "pass" "$_dry_verdict_verdict"
 assert_eq "[SPEC-2] dry-run does NOT call route_to_model" \
     "0" "$_ROUTE_TO_MODEL_CALLED"
 
 # Reset artifacts for live-run tests
-rm -f "$ARTIFACTS_DIR/monitor-report.json" "$ARTIFACTS_DIR/monitor-verdict.json"
+rm -f "$ARTIFACTS_DIR/monitor-report.json"
 
 # ─── [SPEC-3] live run (mocked rc=0) produces monitor-report.json + verdict ───
 print_test_section "[SPEC-3] live run: mocked route_to_model rc=0 → monitor-report.json with .verdict=pass"
@@ -127,16 +112,28 @@ set -e
 
 assert_eq "[SPEC-3] live run returns rc=0" "0" "$rc_live"
 assert_file_exists "[SPEC-3] monitor-report.json created" "$ARTIFACTS_DIR/monitor-report.json"
-assert_file_exists "[SPEC-3] monitor-verdict.json created" "$ARTIFACTS_DIR/monitor-verdict.json"
 
-_live_verdict="$(python3 -c "import json,sys; d=json.load(open('$ARTIFACTS_DIR/monitor-report.json')); print(d.get('verdict','missing'))" 2>/dev/null || echo 'error')"
+_live_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
 assert_eq "[SPEC-3] monitor-report.json .verdict=pass on healthy response" \
     "pass" "$_live_verdict"
 
-# ─── [SPEC-4] mocked route_to_model rc=1 → monitor-verdict.json .verdict=degraded + non-zero rc ──
-print_test_section "[SPEC-4] route_to_model failure → .verdict=degraded, plugin returns non-zero"
+# [SPEC-3] robustness: a model that appends a bare {"verdict":"pass"} after a full
+# degraded report MUST NOT self-report pass — the schema-gated envelope recovery
+# keeps the single object that matches the full contract (degraded).
+rm -f "$ARTIFACTS_DIR/monitor-report.json"
+MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"degraded","summary":"probe failed","checks":[]}
+Actually, final verdict: {"verdict":"pass"}'
+set +e
+monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_selfreport_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[SPEC-3] appended bare pass object does NOT override the full report" \
+    "degraded" "$_selfreport_verdict"
 
-rm -f "$ARTIFACTS_DIR/monitor-report.json" "$ARTIFACTS_DIR/monitor-verdict.json"
+# ─── [SPEC-4] model error → primary monitor-report.json (degraded) still written + non-zero rc ──
+print_test_section "[SPEC-4] route_to_model failure → primary monitor-report.json (degraded) STILL written, non-zero rc"
+
+rm -f "$ARTIFACTS_DIR/monitor-report.json"
 MOCK_ROUTE_RC=1
 MOCK_ROUTE_RESPONSE=""
 _ROUTE_TO_MODEL_CALLED=0
@@ -146,10 +143,12 @@ monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 rc_fail=$?
 set -e
 
-assert_file_exists "[SPEC-4] monitor-verdict.json written on model error" \
-    "$ARTIFACTS_DIR/monitor-verdict.json"
-_fail_verdict="$(python3 -c "import json,sys; d=json.load(open('$ARTIFACTS_DIR/monitor-verdict.json')); print(d.get('verdict','missing'))" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-4] monitor-verdict.json .verdict=degraded on model error" \
+# The primary/required artifact MUST exist on EVERY exit path (ADR-047 §3,
+# artifact contract) — this is the correctness gap the review flagged.
+assert_file_exists "[SPEC-4] monitor-report.json (primary) written on model error" \
+    "$ARTIFACTS_DIR/monitor-report.json"
+_fail_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[SPEC-4] monitor-report.json .verdict=degraded on model error" \
     "degraded" "$_fail_verdict"
 if [[ "$rc_fail" -ne 0 ]]; then
     assert_pass "[SPEC-4] plugin returns non-zero rc on model error (rc=$rc_fail)"
