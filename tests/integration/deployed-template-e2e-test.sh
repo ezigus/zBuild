@@ -3,7 +3,10 @@
 #
 # Verifies the post-PR delivery flow in deployed.yaml:
 # SPEC-1: deployed.yaml loads via load_template without error
-# SPEC-2: deployed.yaml _TPL_STAGES includes deploy, validate, monitor after pr in order
+# SPEC-2: deployed.yaml orders deploy→validate→monitor after pr, AND each stage id
+#         resolves to its plugin via the registry (resolve_stage_plugin — the runner's
+#         dispatch path). Per-plugin event assertions (.data.plugin) prevent one stage's
+#         events from satisfying another's.
 # SPEC-3: deploy plugin emits plugin.init.start event (ZBUILD_DRY_RUN=1 dispatch)
 # SPEC-4: deploy plugin emits plugin.finalize.complete event
 # SPEC-5: validate plugin emits plugin.init.start event
@@ -56,6 +59,30 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
 source "$REPO_ROOT/core/pipeline/template.sh"
 # shellcheck source=../../core/pipeline/template-resolver.sh
 source "$REPO_ROOT/core/pipeline/template-resolver.sh"
+# Registry dispatch layer — the exact path core/pipeline/runner.sh uses to turn a
+# template stage id into a plugin.
+# shellcheck source=../../core/plugin-registry/discovery.sh
+source "$REPO_ROOT/core/plugin-registry/discovery.sh"
+# shellcheck source=../../core/pipeline/resolver.sh
+source "$REPO_ROOT/core/pipeline/resolver.sh"
+# shellcheck source=../../core/pipeline/dispatch.sh
+source "$REPO_ROOT/core/pipeline/dispatch.sh"
+PLUGINS_ROOT="$REPO_ROOT/plugins"
+
+# Per-plugin event assertion: the event must carry BOTH the type AND the emitting
+# plugin's self-identification (.data.plugin), so a LATER stage's event cannot
+# satisfy an EARLIER stage's check (fixes the cumulative-log false-positive that
+# both Copilot and the correctness lens flagged).
+assert_event_by_plugin() {
+    local desc="$1" events_file="$2" event_type="$3" plugin="$4" found
+    found="$(jq -r --arg t "$event_type" --arg p "$plugin" \
+        'select(.type==$t and .data.plugin==$p) | .type' "$events_file" 2>/dev/null | head -1 || true)"
+    if [[ "$found" == "$event_type" ]]; then
+        assert_pass "$desc"
+    else
+        assert_fail "$desc" "event '$event_type' from plugin='$plugin' not found"
+    fi
+}
 
 DEPLOYED_TPL="$REPO_ROOT/config/templates/deployed.yaml"
 
@@ -93,6 +120,19 @@ else
         "pr=$_pr_idx deploy=$_deploy_idx validate=$_validate_idx monitor=$_monitor_idx"
 fi
 
+# Each deployed.yaml stage id must RESOLVE to its plugin via the registry — this is
+# the exact path the runner uses to dispatch a stage, so it proves the template
+# WIRES deploy/validate/monitor to real plugins (not just that the dirs exist).
+for _stg in deploy validate monitor; do
+    set +e; _rdir="$(resolve_stage_plugin "$_stg" "$PLUGINS_ROOT" 2>/dev/null)"; _rrc=$?; set -e
+    assert_eq "[SPEC-2] stage '$_stg' resolves to a plugin via the registry (rc=0)" "0" "$_rrc"
+    case "$_rdir" in
+        */plugins/agent/"$_stg"|*/plugins/agent/"$_stg"/)
+            assert_pass "[SPEC-2] '$_stg' resolves under plugins/agent/$_stg" ;;
+        *)  assert_fail "[SPEC-2] '$_stg' resolves under plugins/agent/$_stg" "got: '$_rdir'" ;;
+    esac
+done
+
 # ─── Initialize state file ────────────────────────────────────────────────────
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 jq -n \
@@ -124,7 +164,7 @@ deploy_agent_init
 _init_rc=$?
 set -e
 assert_eq "[SPEC-3] deploy_agent_init exits 0" "0" "$_init_rc"
-assert_event_emitted "[SPEC-3] deploy emits plugin.init.start" "$EVENTS_JSONL" "plugin.init.start"
+assert_event_by_plugin "[SPEC-3] deploy emits plugin.init.start" "$EVENTS_JSONL" "plugin.init.start" "deploy"
 
 set +e
 deploy_agent_run "deploy" "$STATE_FILE"
@@ -137,7 +177,7 @@ deploy_agent_finalize
 _fin_rc=$?
 set -e
 assert_eq "[SPEC-4] deploy_agent_finalize exits 0" "0" "$_fin_rc"
-assert_event_emitted "[SPEC-4] deploy emits plugin.finalize.complete" "$EVENTS_JSONL" "plugin.finalize.complete"
+assert_event_by_plugin "[SPEC-4] deploy emits plugin.finalize.complete" "$EVENTS_JSONL" "plugin.finalize.complete" "deploy"
 
 # Behavior-preservation: deploy-result.json exists and carries verdict=deployed
 assert_file_exists "[SPEC-9] deploy-result.json written" "$ARTIFACTS_DIR/deploy-result.json"
@@ -151,15 +191,12 @@ assert_eq "[SPEC-9] deploy-result.json verdict=deployed" "deployed" "$_deploy_ve
 # shellcheck source=../../plugins/agent/validate/plugin.sh
 source "$REPO_ROOT/plugins/agent/validate/plugin.sh"
 
-# Clear event counters between stages by noting prior event count; use grep-count approach
-_events_before_validate="$(wc -l < "$EVENTS_JSONL" 2>/dev/null || echo 0)"
-
 set +e
 validate_agent_init
 _init_rc=$?
 set -e
 assert_eq "[SPEC-5] validate_agent_init exits 0" "0" "$_init_rc"
-assert_event_emitted "[SPEC-5] validate emits plugin.init.start" "$EVENTS_JSONL" "plugin.init.start"
+assert_event_by_plugin "[SPEC-5] validate emits plugin.init.start" "$EVENTS_JSONL" "plugin.init.start" "validate"
 
 set +e
 validate_agent_run "validate" "$STATE_FILE"
@@ -172,7 +209,7 @@ validate_agent_finalize
 _fin_rc=$?
 set -e
 assert_eq "[SPEC-6] validate_agent_finalize exits 0" "0" "$_fin_rc"
-assert_event_emitted "[SPEC-6] validate emits plugin.finalize.complete" "$EVENTS_JSONL" "plugin.finalize.complete"
+assert_event_by_plugin "[SPEC-6] validate emits plugin.finalize.complete" "$EVENTS_JSONL" "plugin.finalize.complete" "validate"
 
 # Behavior-preservation: validate-result.json exists and carries verdict=healthy
 assert_file_exists "[SPEC-9] validate-result.json written" "$ARTIFACTS_DIR/validate-result.json"
@@ -191,7 +228,7 @@ monitor_stage_init
 _init_rc=$?
 set -e
 assert_eq "[SPEC-7] monitor_stage_init exits 0" "0" "$_init_rc"
-assert_event_emitted "[SPEC-7] monitor emits plugin.init.start" "$EVENTS_JSONL" "plugin.init.start"
+assert_event_by_plugin "[SPEC-7] monitor emits plugin.init.start" "$EVENTS_JSONL" "plugin.init.start" "monitor"
 
 set +e
 monitor_stage_run "monitor" "$STATE_FILE"
@@ -204,7 +241,7 @@ monitor_stage_finalize
 _fin_rc=$?
 set -e
 assert_eq "[SPEC-8] monitor_stage_finalize exits 0" "0" "$_fin_rc"
-assert_event_emitted "[SPEC-8] monitor emits plugin.finalize.complete" "$EVENTS_JSONL" "plugin.finalize.complete"
+assert_event_by_plugin "[SPEC-8] monitor emits plugin.finalize.complete" "$EVENTS_JSONL" "plugin.finalize.complete" "monitor"
 
 # Behavior-preservation: monitor-report.json exists
 assert_file_exists "[SPEC-9] monitor-report.json written" "$ARTIFACTS_DIR/monitor-report.json"
