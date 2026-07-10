@@ -43,7 +43,7 @@ inputs:
     required: false
   - id: pr_url
     type: file
-    source: stage:pr-delivery
+    source: stage:pr
     path: "${artifact_dir}/pr-url.txt"
     required: false
 

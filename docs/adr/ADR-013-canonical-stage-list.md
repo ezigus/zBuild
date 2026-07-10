@@ -87,7 +87,7 @@ Each stage is defined by:
 | pr | tool | T0 | init, run, finalize | pr-url.txt | true |
 | deploy | tool | T0 | init, run, finalize | deploy.log | true |
 | validate | tool | T0 | init, run, finalize | validate-result.json | true |
-| monitor | agent | T1 | init, run, finalize | monitor-report.json | false |
+| monitor | agent | T1 | init, run, finalize, cleanup | monitor-report.json | false |
 
 † `intake`'s `scope-manifest.md` is written to `state/scope-manifest.md` directly, not under `state/artifacts/`, because every downstream redaction call must find it at this stable path.
 

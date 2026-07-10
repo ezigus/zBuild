@@ -172,15 +172,15 @@ print_test_section "[SPEC-6] event-schema.json registers monitor.started, monito
 _schema_file="$REPO_ROOT/config/event-schema.json"
 assert_file_exists "[SPEC-6] event-schema.json exists" "$_schema_file"
 
-_schema_has_started="$(python3 -c "import json,sys; d=json.load(open('$_schema_file')); print('yes' if 'monitor.started' in d['known_types'] else 'no')" 2>/dev/null || echo 'error')"
+_schema_has_started="$(jq -r 'if (.known_types | index("monitor.started")) then "yes" else "no" end' "$_schema_file" 2>/dev/null || echo 'error')"
 assert_eq "[SPEC-6] event-schema.json registers monitor.started" \
     "yes" "$_schema_has_started"
 
-_schema_has_check="$(python3 -c "import json,sys; d=json.load(open('$_schema_file')); print('yes' if 'monitor.check' in d['known_types'] else 'no')" 2>/dev/null || echo 'error')"
+_schema_has_check="$(jq -r 'if (.known_types | index("monitor.check")) then "yes" else "no" end' "$_schema_file" 2>/dev/null || echo 'error')"
 assert_eq "[SPEC-6] event-schema.json registers monitor.check" \
     "yes" "$_schema_has_check"
 
-_schema_has_alert="$(python3 -c "import json,sys; d=json.load(open('$_schema_file')); print('yes' if 'monitor.alert' in d['known_types'] else 'no')" 2>/dev/null || echo 'error')"
+_schema_has_alert="$(jq -r 'if (.known_types | index("monitor.alert")) then "yes" else "no" end' "$_schema_file" 2>/dev/null || echo 'error')"
 assert_eq "[SPEC-6] event-schema.json registers monitor.alert" \
     "yes" "$_schema_has_alert"
 
