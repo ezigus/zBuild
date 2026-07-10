@@ -71,23 +71,34 @@ _deploy_agent_run_inner() {
 
     local pr_url; pr_url="$(tr -d '[:space:]' < "$pr_url_in")"
 
-    # Guard: gate-aggregator verdict — skip deploy if gate failed
-    if [[ -f "$gate_result_in" ]]; then
-        local gate_verdict
-        gate_verdict="$(jq -r '.verdict // empty' "$gate_result_in" 2>/dev/null || true)"
-        if [[ "$gate_verdict" == "fail" ]]; then
-            warn "deploy: gate-aggregator verdict=fail — skipping deploy"
-            emit_event "deploy.skipped" "plugin=deploy" "reason=gate_fail"
-            printf '{"schema_version":1,"verdict":"skipped","reason":"gate-aggregator verdict=fail","pr_url":"%s"}\n' \
-                "$pr_url" > "$deploy_result_out"
-            return 0
-        fi
+    # Dry-run mode: write sentinel artifact without executing the release side-effect
+    # (checked BEFORE the gate guard so isolation/dry-run needs no gate result).
+    if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
+        jq -n --arg pr_url "$pr_url" \
+            '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
+            | atomic_write "$deploy_result_out"
+        return 0
     fi
 
-    # Dry-run mode: write sentinel artifact without executing the release side-effect
-    if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        printf '{"schema_version":1,"verdict":"deployed","mode":"dry_run","pr_url":"%s"}\n' \
-            "$pr_url" | atomic_write "$deploy_result_out"
+    # Guard: gate-aggregator verdict — FAIL-CLOSED. The deploy side-effect must not
+    # run without a gate decision: a MISSING gate result is refused, not silently
+    # skipped (#757 review finding — gate bypass). (When wired in #1328 the gate is a
+    # required upstream input; here we enforce its presence at runtime, outside dry-run.)
+    if [[ ! -f "$gate_result_in" ]]; then
+        error "deploy: gate-aggregator result missing — refusing deploy (fail-closed)"
+        emit_event "deploy.gate.missing" "plugin=deploy"
+        jq -n '{schema_version:1,verdict:"error",reason:"gate-aggregator-result.json missing"}' \
+            > "$deploy_result_out"
+        return 2
+    fi
+    local gate_verdict
+    gate_verdict="$(jq -r '.verdict // empty' "$gate_result_in" 2>/dev/null || true)"
+    if [[ "$gate_verdict" == "fail" ]]; then
+        warn "deploy: gate-aggregator verdict=fail — skipping deploy"
+        emit_event "deploy.skipped" "plugin=deploy" "reason=gate_fail"
+        jq -n --arg pr_url "$pr_url" \
+            '{schema_version:1,verdict:"skipped",reason:"gate-aggregator verdict=fail",pr_url:$pr_url}' \
+            > "$deploy_result_out"
         return 0
     fi
 
@@ -100,8 +111,9 @@ _deploy_agent_run_inner() {
             deploy_release_run "deploy" "$state_file" || {
                 local _rc=$?
                 emit_event "deploy.tool.failed" "plugin=deploy" "rc=$_rc"
-                printf '{"schema_version":1,"verdict":"error","reason":"deploy-release failed","rc":%d}\n' \
-                    "$_rc" > "$deploy_result_out"
+                jq -n --argjson rc "$_rc" \
+                    '{schema_version:1,verdict:"error",reason:"deploy-release failed",rc:$rc}' \
+                    > "$deploy_result_out"
                 return "$_rc"
             }
             return 0

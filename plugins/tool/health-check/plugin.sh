@@ -42,6 +42,15 @@ health_check_run() {
         error "health-check: ZBUILD_HEALTH_CHECK_URL not set — no probe target"
         return 1
     fi
+    # SSRF guard: only http/https schemes. Rejects file://, dict://, gopher://,
+    # and other curl-honored schemes used to exfiltrate files or reach internal
+    # services (#757 review finding). Host-level policy is the operator's (the
+    # probe target is deliberately configured).
+    if [[ ! "$probe_url" =~ ^https?:// ]]; then
+        error "health-check: refusing non-http(s) probe URL: $probe_url"
+        emit_event "validate.health_check.rejected" "plugin=health-check" "reason=scheme"
+        return 1
+    fi
 
     local probe_output probe_rc=0
     probe_output="$(curl -sf --max-time 30 "$probe_url" 2>&1)" || probe_rc=$?

@@ -9,6 +9,7 @@
 # SPEC-5: deploy plugin has "Role: deploy_agent" preamble comment
 # SPEC-6: deploy plugin does NOT contain a route_to_model call (no LLM)
 # SPEC-7: dry-run deploy-result.json carries schema_version=1 field
+# SPEC-8: gate result MISSING (non-dry-run) → fail-closed rc=2 + verdict=error
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -149,6 +150,21 @@ ZBUILD_DRY_RUN=1 _deploy_agent_run_inner "$_sf7"
 _sv7="$(jq -r '.schema_version' "$_run7/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-7] deploy-result.json has schema_version=1" "1" "$_sv7"
 
+# ---------------------------------------------------------------------------
+# SPEC-8: gate result MISSING (non-dry-run) → fail-closed rc=2 + verdict=error
+# (#757 review fix — a missing gate must be refused, not silently skipped)
+# ---------------------------------------------------------------------------
+_run8="$TEST_TEMP_DIR/run8"
+_sf8="$(_make_state "$_run8")"
+printf 'https://github.com/test/repo/pull/42\n' > "$_run8/artifacts/pr-url.txt"
+# Do NOT create gate-aggregator-result.json
+
+_rc8=0
+ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf8" || _rc8=$?
+assert_eq "[SPEC-8] missing gate (non-dry-run) → fail-closed rc=2" "2" "$_rc8"
+_v8="$(jq -r '.verdict' "$_run8/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-8] missing gate → verdict=error" "error" "$_v8"
+
 # ─── Delegation mock test ────────────────────────────────────────────────────
 # Verify that when ZBUILD_DRY_RUN=0 and pr-url.txt is present, the agent
 # delegates to deploy_release_run. We mock the function via the load guard.
@@ -167,9 +183,11 @@ deploy_release_run() {
 _run_d="$TEST_TEMP_DIR/run_delegate"
 _sf_d="$(_make_state "$_run_d")"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_d/artifacts/pr-url.txt"
+# gate present + passing → deploy proceeds to delegation (fail-closed needs a gate)
+printf '{"verdict":"pass"}\n' > "$_run_d/artifacts/gate-aggregator-result.json"
 
 ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf_d"
-assert_eq "[SPEC-2] non-dry-run without gate delegates to deploy_release_run" "1" "$_MOCK_DR_CALLED"
+assert_eq "[SPEC-2] non-dry-run with passing gate delegates to deploy_release_run" "1" "$_MOCK_DR_CALLED"
 
 # ─── Cleanup ─────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }

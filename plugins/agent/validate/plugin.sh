@@ -81,17 +81,21 @@ _validate_agent_run_inner() {
         # shellcheck source=../../tool/health-check/plugin.sh
         source "$hc_plugin"
         if type health_check_run >/dev/null 2>&1; then
-            local hc_rc=0
-            health_check_run "validate" "$state_file" >/dev/null 2>&1 || hc_rc=$?
+            # Preserve probe diagnostics (do NOT swallow to /dev/null) and PROPAGATE
+            # the probe rc — a failed probe must not return success (#757 review).
+            local hc_out hc_rc=0
+            hc_out="$(health_check_run "validate" "$state_file" 2>&1)" || hc_rc=$?
             if [[ $hc_rc -eq 0 ]]; then
                 printf '{"schema_version":1,"verdict":"healthy"}\n' \
                     | atomic_write "$validate_result_out"
-            else
-                emit_event "validate.probe.failed" "plugin=validate" "rc=$hc_rc"
-                printf '{"schema_version":1,"verdict":"error","rc":%d}\n' \
-                    "$hc_rc" | atomic_write "$validate_result_out"
+                return 0
             fi
-            return 0
+            local hc_snippet; hc_snippet="$(printf '%s' "$hc_out" | head -c 500)"
+            emit_event "validate.probe.failed" "plugin=validate" "rc=$hc_rc"
+            jq -n --argjson rc "$hc_rc" --arg detail "$hc_snippet" \
+                '{schema_version:1,verdict:"error",rc:$rc,detail:$detail}' \
+                | atomic_write "$validate_result_out"
+            return "$hc_rc"
         fi
     fi
 

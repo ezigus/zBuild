@@ -553,6 +553,14 @@ deviation and its rationale. A future ADR-013 revision may update the table to r
 `kind: agent` for these two stages.
 
 Implementation: issue #757. New event types registered in `config/event-schema.json`:
-`deploy.input.missing`, `deploy.skipped`, `deploy.tool.failed`, `deploy.release.dry_run`,
-`deploy.release.complete`, `validate.input.missing`, `validate.probe.failed`,
-`validate.health_check.dry_run`, `validate.health_check.pass`, `validate.health_check.fail`.
+`deploy.input.missing`, `deploy.skipped`, `deploy.gate.missing`, `deploy.tool.failed`,
+`deploy.release.dry_run`, `deploy.release.complete`, `validate.input.missing`,
+`validate.probe.failed`, `validate.health_check.dry_run`, `validate.health_check.pass`,
+`validate.health_check.fail`, `validate.health_check.rejected`.
+
+Review-hardening (issue #757 finish): `validate` now propagates the probe rc (a failed
+probe returns non-zero, not 0); `deploy` fail-closes when the gate-aggregator result is
+absent (non-dry-run); `health-check` enforces an http(s) scheme allowlist (SSRF guard);
+`deploy-release` sanitizes the run id into the git tag, rolls back the local tag on push
+failure, and builds all result JSON via `jq -n` (injection-safe). The unused `router`
+`requires.core` entry was dropped from both agent manifests (no `route_to_model` call).

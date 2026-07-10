@@ -134,9 +134,12 @@ printf '{"schema_version":1,"verdict":"deployed"}\n' \
     > "$_run12/artifacts/deploy-result.json"
 
 _MOCK_HC_RC=1  # probe fails
-ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_sf12"
+_rc12=0
+ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_sf12" || _rc12=$?
 _v12="$(jq -r '.verdict' "$_run12/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-12] failed probe → verdict=error" "error" "$_v12"
+# #757 review fix: a failed probe must PROPAGATE a non-zero rc (was unconditional 0).
+assert_gt "[SPEC-12] failed probe → rc propagated (rc != 0)" "$_rc12" "0"
 _MOCK_HC_RC=0  # reset
 
 # ---------------------------------------------------------------------------

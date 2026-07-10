@@ -238,6 +238,7 @@
     "pipeline.llm_unavailable",
     "deploy.input.missing",
     "deploy.skipped",
+    "deploy.gate.missing",
     "deploy.tool.failed",
     "deploy.release.dry_run",
     "deploy.release.complete",
@@ -245,6 +246,7 @@
     "validate.probe.failed",
     "validate.health_check.dry_run",
     "validate.health_check.pass",
-    "validate.health_check.fail"
+    "validate.health_check.fail",
+    "validate.health_check.rejected"
   ]
 }

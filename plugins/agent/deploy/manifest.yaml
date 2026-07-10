@@ -23,7 +23,6 @@ requires:
     - redaction
     - event-bus
     - state
-    - router
   plugins: []
 
 provides:

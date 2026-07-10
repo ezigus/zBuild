@@ -42,31 +42,41 @@ deploy_release_run() {
 
     # Dry-run: write sentinel without executing git/gh
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        printf '{"schema_version":1,"verdict":"deployed","mode":"dry_run","pr_url":"%s"}\n' \
-            "$pr_url" | atomic_write "$deploy_result_out"
+        jq -n --arg pr_url "$pr_url" \
+            '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
+            | atomic_write "$deploy_result_out"
         emit_event "deploy.release.dry_run" "plugin=deploy-release"
         return 0
     fi
 
-    # Real deploy: create a tag at HEAD and push it
-    local tag_name="zbuild-run-${ZBUILD_RUN_ID:-$(date +%Y%m%d%H%M%S)}"
+    # Real deploy: create a tag at HEAD and push it. Sanitize the run id to a safe
+    # git ref (strip anything outside [A-Za-z0-9_-]) so ZBUILD_RUN_ID cannot inject
+    # git ref syntax such as '@{...}' or ':' (#757 review finding).
+    local _run_id="${ZBUILD_RUN_ID:-$(date +%Y%m%d%H%M%S)}"
+    _run_id="${_run_id//[^A-Za-z0-9_-]/_}"
+    local tag_name="zbuild-run-${_run_id}"
 
     if ! git tag "$tag_name" 2>/dev/null; then
         error "deploy-release: git tag failed for $tag_name"
-        printf '{"schema_version":1,"verdict":"error","reason":"git tag failed","tag":"%s"}\n' \
-            "$tag_name" > "$deploy_result_out"
+        jq -n --arg tag "$tag_name" \
+            '{schema_version:1,verdict:"error",reason:"git tag failed",tag:$tag}' \
+            > "$deploy_result_out"
         return 1
     fi
 
     if ! git push origin "$tag_name" 2>/dev/null; then
         error "deploy-release: git push tag failed for $tag_name"
-        printf '{"schema_version":1,"verdict":"error","reason":"git push tag failed","tag":"%s"}\n' \
-            "$tag_name" > "$deploy_result_out"
+        # Roll back the local tag so a retry is not blocked by a stale tag (#757 review).
+        git tag -d "$tag_name" 2>/dev/null || true
+        jq -n --arg tag "$tag_name" \
+            '{schema_version:1,verdict:"error",reason:"git push tag failed",tag:$tag}' \
+            > "$deploy_result_out"
         return 1
     fi
 
-    printf '{"schema_version":1,"verdict":"deployed","tag":"%s","pr_url":"%s"}\n' \
-        "$tag_name" "$pr_url" | atomic_write "$deploy_result_out"
+    jq -n --arg tag "$tag_name" --arg pr_url "$pr_url" \
+        '{schema_version:1,verdict:"deployed",tag:$tag,pr_url:$pr_url}' \
+        | atomic_write "$deploy_result_out"
     emit_event "deploy.release.complete" "plugin=deploy-release" "tag=$tag_name"
     return 0
 }
