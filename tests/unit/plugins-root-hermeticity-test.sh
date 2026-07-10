@@ -53,4 +53,16 @@ else
     assert_pass "[SPEC-2] ZBUILD_PLUGINS_ROOT does not appear in plugins/tool/test/plugin.sh"
 fi
 
+# SPEC-3 [change]: ADR-024 must contain the "Amendment 2026-07-10 (#1274)"
+# section that documents why ZBUILD_PLUGINS_ROOT is intentionally absent from
+# the fence set. This assertion fails at merge-base (the section is new) and
+# passes at HEAD after the amendment is added.
+_adr="$REPO_ROOT/docs/adr/ADR-024-subprocess-env-isolation.md"
+if "$GREP" -qF 'Amendment 2026-07-10 (#1274)' "$_adr" 2>/dev/null; then
+    assert_pass "[SPEC-3] ADR-024 contains 'Amendment 2026-07-10 (#1274)' section"
+else
+    assert_fail "[SPEC-3] ADR-024 contains 'Amendment 2026-07-10 (#1274)' section" \
+        "amendment section not found in ${_adr#"$REPO_ROOT/"} — add it per #1274"
+fi
+
 print_test_results
