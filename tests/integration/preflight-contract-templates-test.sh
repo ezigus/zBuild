@@ -38,7 +38,7 @@ source "$REPO_ROOT/core/pipeline/template-resolver.sh"
 # shellcheck source=../../core/pipeline/contract-validator.sh
 source "$REPO_ROOT/core/pipeline/contract-validator.sh"
 
-for _tpl in simple; do
+for _tpl in simple deployed; do
     load_template "$REPO_ROOT/config/templates/$_tpl.yaml" >/dev/null 2>&1
     _stages_nl="$(printf '%s\n' "${_TPL_STAGES[@]}")"
     _sf="$TEST_TEMP_DIR/$_tpl-state/pipeline-state.json"
