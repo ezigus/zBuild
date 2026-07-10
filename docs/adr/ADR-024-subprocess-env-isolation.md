@@ -464,6 +464,28 @@ carried into the staging dir by the rsync AND survives the clean, and the nested
 runner (CWD = staging dir) resolves it. This needs no `ZBUILD_*` propagation
 through the scrub: the overlay travels with the repo bytes, not the environment.
 
+## Amendment 2026-07-10 (#1274) — `ZBUILD_PLUGINS_ROOT` is intentionally absent from the fence set
+
+After `_zbuild_make_fresh_shell` strips the full `ZBUILD_*` namespace,
+`_test_run_inner` deliberately re-exports a small fence set —
+`ZBUILD_STATE_ROOT`, `ZBUILD_COST_LEDGER`, `ZBUILD_CACHE_DIR`,
+`ZBUILD_TEST_TIMING_FILE`, and conditionally `ZBUILD_TEST_RESULTS_JSON`.
+`ZBUILD_PLUGINS_ROOT` is NOT in this set and must never be added to it:
+
+- In tests, `ZBUILD_PLUGINS_ROOT` commonly points at a mock/fixture plugins
+  directory (`$TEST_TEMP_DIR/plugins`). Leaking that into a nested runner
+  causes it to resolve plugins from the mock tree, not the real installed tree.
+- At production call sites the default fallback
+  `${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}` already locates the real
+  plugin directory without any env propagation.
+- Re-exporting `ZBUILD_PLUGINS_ROOT` through the fresh-user-shell boundary
+  would be the same class of env-leak bug the #645/#647/Wave-13 fixes eliminated.
+
+Each test that needs a custom plugins root sets `ZBUILD_PLUGINS_ROOT` locally
+in its own subshell. The static guard at
+`tests/unit/plugins-root-hermeticity-test.sh` enforces this invariant: it fails
+if `ZBUILD_PLUGINS_ROOT` appears anywhere in `plugins/tool/test/plugin.sh`.
+
 ## Test contract — honor the fence vars, never hardcode `$HOME/.zbuild/*` (#1272)
 
 Tests MUST resolve zBuild's per-user state, ledger, and cache paths through the
