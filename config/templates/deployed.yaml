@@ -1,0 +1,272 @@
+id: deployed
+name: Deployed Pipeline
+extends: simple
+
+# ─── Inheritance note ────────────────────────────────────────────────────────
+# This template is the simple pipeline extended with post-PR delivery stages.
+# The engine does not auto-merge shipped templates, so all stages from simple.yaml
+# are reproduced here plus deploy → validate → monitor appended after pr.
+# merge_policy inherited from simple (auto_unless_flagged).
+
+# ADR-037 §4: per-template merge policy.
+merge_policy: auto_unless_flagged
+
+defaults:
+  strategy: map
+
+# ─── Flow ────────────────────────────────────────────────────────────────────
+# Full simple pipeline + post-PR delivery: deploy → validate → monitor.
+# All three post-PR stages are ADR-018 Pattern 1 (one-shot) leaf stages.
+flow:
+  - intake
+  - plan
+  - design_verify_cycle
+  - impact
+  - build_test_cycle
+  - review_lenses
+  - review-aggregator
+  - pr
+  - deploy
+  - validate
+  - monitor
+
+# ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
+design_verify_cycle:
+  type: cycle
+  description: Verify the design contract is build-ready until design-gate passes
+  flow:
+    - design
+    - design-gate
+  exit_when:
+    stage: design-gate
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+  feedback:
+    - from:
+        stage: design-gate
+        output: design_gate_feedback
+      to:
+        stage: design
+        input: prior_impact_feedback
+        required: false
+    - from:
+        stage: design
+        output: design
+      to:
+        stage: design
+        input: prior_design
+        required: false
+
+# ─── build_test_cycle (cycle) ────────────────────────────────────────────────
+build_test_cycle:
+  type: cycle
+  description: Build, test, and run the mechanical gates until gate-aggregator passes
+  flow:
+    - build
+    - test
+    - shape-floor
+    - acceptance-gate
+    - secret-scan
+    - gate-aggregator
+  exit_when:
+    stage: gate-aggregator
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 5
+  on_max: continue
+  route_back:
+    to: design_verify_cycle
+    when:
+      stage: gate-aggregator
+      field: verdict
+      op: eq
+      value: route_design
+    max: 1
+  feedback:
+    - from:
+        stage: gate-aggregator
+        output: gate_feedback
+      to:
+        stage: build
+        input: prior_gate_feedback
+        required: false
+
+# ─── intake (leaf) ───────────────────────────────────────────────────────────
+intake:
+  gate: auto
+  roles: [intake]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── plan (leaf) ─────────────────────────────────────────────────────────────
+plan:
+  gate: auto
+  roles: [planner]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── design (leaf, design_verify_cycle member) ───────────────────────────────
+design:
+  gate: auto
+  roles: [designer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 0
+
+# ─── design-gate (leaf, design_verify_cycle member) ──────────────────────────
+design-gate:
+  gate: auto
+  roles: [design_gate]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── impact (leaf, top-level advisory-by-placement) ──────────────────────────
+impact:
+  gate: auto
+  roles: [impact_analyzer]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 45
+    retries: 1
+
+# ─── build (leaf, cycle member) ──────────────────────────────────────────────
+build:
+  gate: auto
+  roles: [builder]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 900
+    max_turns: 0
+
+# ─── test (leaf, cycle member) ───────────────────────────────────────────────
+test:
+  gate: auto
+  roles: [tester]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── shape-floor (leaf, cycle member) ────────────────────────────────────────
+shape-floor:
+  gate: auto
+  roles: [shape_floor]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── acceptance-gate (leaf, cycle member) ────────────────────────────────────
+acceptance-gate:
+  gate: auto
+  roles: [acceptance_gate]
+  negctl_timeout_s: 60
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 10
+
+# ─── secret-scan (leaf, cycle member) ────────────────────────────────────────
+secret-scan:
+  gate: auto
+  roles: [secret_scan]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── gate-aggregator (leaf, cycle member) ────────────────────────────────────
+gate-aggregator:
+  gate: auto
+  roles: [gate_aggregator]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── review_lenses (map group, ADVISORY) ─────────────────────────────────────
+review_lenses:
+  type: map
+  over: lenses
+  elements:
+    - security
+    - performance
+    - red-team
+    - correctness
+    - scope
+  roles: [review_lens]
+  as: ZBUILD_REVIEW_LENS_ID
+  max_parallel: 4
+  on_member_error: continue
+  aggregate: advisory
+  io:
+    destinations: [file]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 25
+
+# ─── review-aggregator (leaf, ADVISORY) ──────────────────────────────────────
+review-aggregator:
+  gate: auto
+  roles: [review_aggregator]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── pr (leaf) ───────────────────────────────────────────────────────────────
+pr:
+  gate: auto
+  roles: [pr]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── deploy (leaf) ───────────────────────────────────────────────────────────
+# ADR-018 Pattern 1 (one-shot): guard gate verdict → delegate to deploy-release tool.
+# T2 agent (kind:agent); no LLM call. Fail-closed on gate-aggregator verdict.
+deploy:
+  gate: auto
+  roles: [deploy_agent]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── validate (leaf) ─────────────────────────────────────────────────────────
+# ADR-018 Pattern 1 (one-shot): read deploy-result → health-check probe → done.
+# T2 agent (kind:agent); no LLM call.
+validate:
+  gate: auto
+  roles: [validate_agent]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+
+# ─── monitor (leaf) ──────────────────────────────────────────────────────────
+# ADR-018 Pattern 1 (one-shot): one-shot LLM health assessment (T1). Reads
+# deploy-result.json and pr-url.txt (both optional). Advisory by placement.
+monitor:
+  gate: auto
+  roles: [monitor]
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 300
+    max_turns: 10
