@@ -20,13 +20,18 @@ legacy 3-part value (the current `1.0.0`) still validates through the transition
 
 ## Pluggable versioning
 
-The scheme above is the **default**, not the law. Versioning is an [ADR-011](https://github.com/ezigus/zBuild/blob/main/docs/adr/ADR-011-pluggable-backends.md)
+**The `A.B.C.D` scheme above is just ONE example — versioning is plug-and-play.** It is the
+**default**, not the law. Anyone can author a different versioning scheme and drop it in with
+**zero engine changes**; the initiative-count scheme is simply the one zBuild ships with.
+
+Versioning is an [ADR-011](https://github.com/ezigus/zBuild/blob/main/docs/adr/ADR-011-pluggable-backends.md)
 backend capability — selectable exactly like `memory` / `orchestrator` / `cache`:
 
-- **Default:** `initiative-count` (the `A.B.C.D` scheme above).
-- **Override:** set `ZBUILD_VERSIONING_BACKEND`, or `backends.versioning` in
-  `.zbuild/config.yaml`, or ship a `versioning-backend` plugin (plain SemVer, date-based,
-  calendar, …). Precedence: env > config file > compiled-in default.
+- **Default:** `initiative-count` (the `A.B.C.D` scheme above) — one instance, not a mandate.
+- **Roll your own:** ship a `versioning-backend` plugin (plain SemVer, date/calendar, build-number,
+  git-describe, …) and select it via `ZBUILD_VERSIONING_BACKEND` or `backends.versioning` in
+  `.zbuild/config.yaml`. Precedence: env > config file > compiled-in default. The engine
+  (`resolve_repo_version`) calls whichever strategy you select — no scheme is hardcoded in core.
 
 The engine (`resolve_repo_version`) calls the **selected** strategy — no scheme is
 hardcoded in the CLI/engine beyond the default strategy's own file. See
