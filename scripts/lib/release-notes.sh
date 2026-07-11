@@ -67,26 +67,33 @@ _rn_classify() {
 
 # ─── _rn_fetch_issues <milestone> <since_iso> ───────────────────────────────
 # Emit TSV rows "number<TAB>title<TAB>labels_csv" for CLOSED issues. When a
-# milestone is given, scope to it; else scope by closed-since date. Fully
-# stubbable: the caller mocks `gh`. Never aborts pipefail on gh miss.
+# milestone is given, scope to it. When <since_iso> is non-empty, ALSO drop
+# issues closed before it (the closed-since-tag window) — the jq `select` keeps
+# only .closedAt >= since. An empty <since_iso> (genesis) includes everything.
+# Fully stubbable: the caller mocks `gh`. Never aborts pipefail on gh miss.
 _rn_fetch_issues() {
     local milestone="$1" since="$2"
     command -v gh >/dev/null 2>&1 || return 0
     local json_fields="number,title,labels,closedAt"
-    local jq_row='.[] | [(.number|tostring), .title, ([.labels[].name] | join(","))] | @tsv'
+    # gh's `--jq` runs jq internally and has no `--arg`, but exposes the process
+    # env via jq's `$ENV`. Read the since-cutoff from ZBUILD_RELNOTES_SINCE so the
+    # date is injection-safe. Empty cutoff (genesis) keeps every row.
+    local jq_row='($ENV.ZBUILD_RELNOTES_SINCE // "") as $since | .[] | select($since == "" or (.closedAt != null and .closedAt >= $since)) | [(.number|tostring), .title, ([.labels[].name] | join(","))] | @tsv'
     local args=(issue list --state closed --limit 500 --json "$json_fields" --jq "$jq_row")
     [[ -n "$milestone" ]] && args+=(--milestone "$milestone")
-    gh "${args[@]}" 2>/dev/null || true
+    ZBUILD_RELNOTES_SINCE="$since" gh "${args[@]}" 2>/dev/null || true
 }
 
 # ─── _rn_fetch_prs <since_iso> ──────────────────────────────────────────────
-# Emit TSV rows "number<TAB>title<TAB>labels_csv" for MERGED PRs since <since>.
+# Emit TSV rows "number<TAB>title<TAB>labels_csv" for MERGED PRs. When
+# <since_iso> is non-empty, drop PRs merged before it; empty includes all.
 _rn_fetch_prs() {
     local since="$1"
     command -v gh >/dev/null 2>&1 || return 0
-    gh pr list --state merged --limit 500 \
-        --json number,title,labels,mergedAt \
-        --jq '.[] | [(.number|tostring), .title, ([.labels[].name] | join(","))] | @tsv' \
+    local json_fields="number,title,labels,mergedAt"
+    local jq_row='($ENV.ZBUILD_RELNOTES_SINCE // "") as $since | .[] | select($since == "" or (.mergedAt != null and .mergedAt >= $since)) | [(.number|tostring), .title, ([.labels[].name] | join(","))] | @tsv'
+    ZBUILD_RELNOTES_SINCE="$since" gh pr list --state merged --limit 500 \
+        --json "$json_fields" --jq "$jq_row" \
         2>/dev/null || true
 }
 

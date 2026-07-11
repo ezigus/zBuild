@@ -49,10 +49,17 @@ export ZBUILD_RELEASE_REPO="ezigus/zBuild"
 export ZBUILD_VERSION_ANCHOR="1.0"
 export ZBUILD_VERSION_RELEASE_COUNT="1"
 
-# Closed issues in the milestone: one per group (feat/fix/docs/adr/safety).
+# Pin the closed-since cutoff so the since_iso filter is deterministic and does
+# NOT depend on the real v1.0.0 tag date in this worktree. Anything closed/merged
+# BEFORE this is excluded from notes + the D count; anything at/after is included.
+export ZBUILD_RELEASE_SINCE="2026-07-04T00:00:00Z"
+
+# Closed issues: 5 in-window (one per group feat/fix/docs/adr/safety) + one OLD
+# issue (#100, closed BEFORE the cutoff) that MUST be excluded by since_iso.
 export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/issues.json"
 cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
 [
+  {"number":100,"title":"pre-window enhancement (must be excluded)","labels":[{"name":"enhancement"}],"closedAt":"2026-07-01T10:00:00Z"},
   {"number":101,"title":"add release notes generator","labels":[{"name":"enhancement"}],"closedAt":"2026-07-05T10:00:00Z"},
   {"number":102,"title":"fix torn-write in changelog prepend","labels":[{"name":"bug"}],"closedAt":"2026-07-06T10:00:00Z"},
   {"number":103,"title":"update wiki release model","labels":[{"name":"documentation"}],"closedAt":"2026-07-07T10:00:00Z"},
@@ -60,9 +67,12 @@ cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
   {"number":105,"title":"redaction chokepoint audit","labels":[{"name":"security"}],"closedAt":"2026-07-09T10:00:00Z"}
 ]
 EOF
+# Merged PRs: one in-window (#201) + one OLD (#200, merged BEFORE cutoff) that
+# MUST be excluded by since_iso.
 export MOCK_PR_LIST_JSON="$TEST_TEMP_DIR/prs.json"
 cat > "$MOCK_PR_LIST_JSON" <<'EOF'
 [
+  {"number":200,"title":"pre-window merged PR (must be excluded)","labels":[{"name":"enhancement"}],"mergedAt":"2026-07-01T11:00:00Z"},
   {"number":201,"title":"feat: wire release subcommand","labels":[{"name":"enhancement"}],"mergedAt":"2026-07-06T11:00:00Z"}
 ]
 EOF
@@ -87,6 +97,19 @@ done
 assert_contains "T1: PR #201 present" "$out" "#201"
 assert_contains "T1: PR #201 linked to /pull/" "$out" "/pull/201)"
 
+# since_iso filter: the pre-window issue/PR (closed/merged before the cutoff)
+# MUST be excluded from the notes.
+if [[ "$out" == *"/issues/100)"* ]]; then
+    assert_fail "T1: pre-window issue #100 leaked past since_iso filter"
+else
+    assert_pass "T1: pre-window issue #100 excluded by since_iso"
+fi
+if [[ "$out" == *"/pull/200)"* ]]; then
+    assert_fail "T1: pre-window PR #200 leaked past since_iso filter"
+else
+    assert_pass "T1: pre-window PR #200 excluded by since_iso"
+fi
+
 # Grouping headings.
 assert_contains "T1: Features group" "$out" "### Features"
 assert_contains "T1: Fixes group"    "$out" "### Fixes"
@@ -99,13 +122,24 @@ assert_contains "T1: plug-and-play note present" "$out" "plug-and-play"
 assert_contains "T1: note cites ADR-011/048" "$out" "ADR-011"
 assert_contains "T1: note frames scheme as one example" "$out" "one example"
 
-# ─── T2: --dry-run mutates nothing (CHANGELOG byte-identical) ────────────────
+# ─── T2: --dry-run mutates nothing; non-dry-run DOES prepend (bidirectional) ──
 sandbox_changelog="$TEST_TEMP_DIR/CHANGELOG.md"
 cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog"
 before="$(shasum -a 256 "$sandbox_changelog" | awk '{print $1}')"
-bash "$REPO_ROOT/scripts/release.sh" --dry-run --milestone "Initiative 1.1" >/dev/null 2>&1
+# Point the dry-run at the sandbox changelog so the assertion is real, not vacuous.
+ZBUILD_RELEASE_CHANGELOG="$sandbox_changelog" \
+    bash "$REPO_ROOT/scripts/release.sh" --dry-run --milestone "Initiative 1.1" >/dev/null 2>&1
 after="$(shasum -a 256 "$sandbox_changelog" | awk '{print $1}')"
-assert_eq "T2: --dry-run does not mutate CHANGELOG" "$before" "$after"
+assert_eq "T2: --dry-run does not mutate the configured CHANGELOG" "$before" "$after"
+# Bidirectional: a NON-dry-run against the SAME sandbox path DOES mutate it.
+ZBUILD_RELEASE_CHANGELOG="$sandbox_changelog" \
+    bash "$REPO_ROOT/scripts/release.sh" --milestone "Initiative 1.1" >/dev/null 2>&1
+mutated="$(shasum -a 256 "$sandbox_changelog" | awk '{print $1}')"
+if [[ "$before" != "$mutated" ]]; then
+    assert_pass "T2: non-dry-run DOES prepend to the configured CHANGELOG"
+else
+    assert_fail "T2: non-dry-run did not mutate the configured CHANGELOG"
+fi
 # Also confirm the real repo CHANGELOG untouched by dry-run.
 real_before="$(shasum -a 256 "$REPO_ROOT/CHANGELOG.md" | awk '{print $1}')"
 bash "$REPO_ROOT/scripts/release.sh" --dry-run >/dev/null 2>&1
@@ -117,12 +151,19 @@ out_a="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --milestone "Initiative 
 out_b="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --milestone "Initiative 1.1" 2>&1)"
 assert_eq "T3: dry-run is idempotent" "$out_a" "$out_b"
 
-# ─── T4: genesis fallback — no prior tag ─────────────────────────────────────
+# ─── T4: genesis fallback — no prior tag, empty since_iso includes ALL ───────
+# Genesis = no tag AND no cutoff → every closed issue/PR is included (D counts
+# the pre-window #100/#200 too). Unset the pinned cutoff to exercise this.
 export ZBUILD_RELEASE_LAST_TAG=""   # simulate a repo with no tags at all
+saved_since="$ZBUILD_RELEASE_SINCE"
+unset ZBUILD_RELEASE_SINCE
 out_gen="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --milestone "Initiative 1.1" 2>&1)" \
     || { echo "$out_gen"; assert_fail "genesis dry-run exits 0"; exit 1; }
 assert_contains "T4: genesis path notes no prior tag" "$out_gen" "genesis"
-assert_contains "T4: genesis still computes a version" "$out_gen" "planned version: 1.0.1.5"
+# 6 closed issues (incl. pre-window #100) → D=6 → 1.0.1.6.
+assert_contains "T4: genesis includes all closed issues (D=6 → 1.0.1.6)" "$out_gen" "planned version: 1.0.1.6"
+assert_contains "T4: genesis includes the pre-window issue #100" "$out_gen" "/issues/100)"
+export ZBUILD_RELEASE_SINCE="$saved_since"
 export ZBUILD_RELEASE_LAST_TAG="v1.0.0"
 
 # ─── T5: --major overrides A component ───────────────────────────────────────

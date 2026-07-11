@@ -69,10 +69,13 @@ main() {
     # ── Anchor: the tag we generate notes "since". v1.0.0 exists → first release
     #    anchors on it; genesis fallback when the repo has no tags at all. ──────
     local last_tag; last_tag="$(release_notes_last_tag)"
+    # The closed-since cutoff (ISO-8601): the anchor tag's commit date. This is a
+    # real filter — issues/PRs closed/merged before it are excluded from the notes
+    # AND the D count. Overridable for tests via ZBUILD_RELEASE_SINCE.
     local since=""
-    if [[ -n "$last_tag" ]]; then
-        # Best-effort tag date for the closed-since window (informational; the
-        # milestone scope is the primary filter for per-issue notes).
+    if [[ -n "${ZBUILD_RELEASE_SINCE+x}" ]]; then
+        since="$ZBUILD_RELEASE_SINCE"
+    elif [[ -n "$last_tag" ]]; then
         since="$(git log -1 --format=%cI "$last_tag" 2>/dev/null || true)"
     fi
 
@@ -139,7 +142,11 @@ _release_prepend_changelog() {
         error "release: CHANGELOG.md not found at $path"
         exit 1
     fi
-    local tmp; tmp="$(mktemp "${TMPDIR:-/tmp}/zb-changelog.XXXXXX")"
+    # Create the temp file in the SAME directory as the target so the final `mv`
+    # is a rename within one filesystem (atomic). A temp under $TMPDIR could be a
+    # different mount → mv degrades to copy+unlink, which is not atomic.
+    local dir; dir="$(cd "$(dirname "$path")" && pwd)"
+    local tmp; tmp="$(mktemp "${dir}/.changelog.XXXXXX")"
     local inserted=false line
     while IFS= read -r line || [[ -n "$line" ]]; do
         if ! $inserted && [[ "$line" == '## ['* ]]; then
