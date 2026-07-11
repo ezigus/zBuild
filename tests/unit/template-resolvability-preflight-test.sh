@@ -16,10 +16,12 @@
 #   FAIL-CLOSED PREFLIGHT (SPEC-4/5): an unresolvable leaf ERRORS (not warns) at load
 #     with the pinned ADR-047 §5 message naming the id.
 #
-#   SOLE-ENFORCEMENT (SPEC-6/6b): the preflight ACCEPTS the shipped template corpus
-#     (fixtures + config/templates — every leaf resolves) and REJECTS templates with a
-#     genuinely-unresolvable leaf. The preflight stands on its own — the old canonical
-#     fence + ZBUILD_LEGACY_STAGE_VALIDATION baseline are deleted (#1299).
+#   SOLE-ENFORCEMENT (SPEC-6/6b): the preflight ACCEPTS the shipped production template
+#     corpus (config/templates — every leaf resolves; test fixtures under
+#     tests/fixtures/templates are EXCLUDED, they deliberately carry synthetic stages
+#     with no backing plugin) and REJECTS templates with a genuinely-unresolvable leaf.
+#     The preflight stands on its own — the old canonical fence +
+#     ZBUILD_LEGACY_STAGE_VALIDATION baseline are deleted (#1299).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -214,9 +216,20 @@ stages:
 EOF
 _rejected=0
 for _t in "$_MEMBER_BAD_1" "$_MEMBER_BAD_2"; do
+    # Reset before each load so a load failure can never leave stale _TPL_STAGES
+    # from the prior iteration masquerading as this template's leaves (Copilot #1352).
+    _TPL_STAGES=()
     set +e
     load_template "$_t" >/dev/null 2>&1   # template layer no longer fences on id
+    _bad_load_rc=$?
     set -e
+    # A synthetic template must at least LOAD — its unresolvability is a role/plugin
+    # concern caught by the preflight below, not a load-time fence. A load failure here
+    # means the fixture is malformed; surface it rather than reading stale/empty stages.
+    if [[ $_bad_load_rc -ne 0 ]]; then
+        assert_fail "SPEC-6b: synthetic template loads before preflight ($_t)" "load_template rc=$_bad_load_rc"
+        continue
+    fi
     # shellcheck disable=SC2034  # passed BY NAME to the resolvability helper
     bad_leaves=("${_TPL_STAGES[@]+"${_TPL_STAGES[@]}"}")
     set +e
