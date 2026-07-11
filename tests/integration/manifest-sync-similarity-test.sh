@@ -120,10 +120,20 @@ if [[ -f "$PR_BODY_PATH" ]]; then
 fi
 
 # ─── MS5 REGRESSION LOCK: report mode does NOT mutate manifest YAML ────────
-manifest_mtime_before=$(stat -f '%m' "$TEST_MANIFEST" 2>/dev/null || stat -c '%Y' "$TEST_MANIFEST")
-rc=0
-bash "$REPO_ROOT/scripts/manifest-sync.sh" --report --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || rc=$?
-manifest_mtime_after=$(stat -f '%m' "$TEST_MANIFEST" 2>/dev/null || stat -c '%Y' "$TEST_MANIFEST")
-assert_eq "MS5 LOCK: report mode preserves manifest mtime" "$manifest_mtime_before" "$manifest_mtime_after"
+# Compare CONTENT (cmp), not mtime. The old mtime check was flaky on CI: mtime
+# has whole-second resolution, and `stat -f '%m'` is BSD-only (on GNU/Linux `-f`
+# means --file-system, so it emitted a filesystem blob and the `|| stat -c '%Y'`
+# fallback could pollute the captured value). `cmp -s` is POSIX-portable and
+# deterministically proves report mode wrote nothing to the manifest.
+_ms5_ref="${TEST_MANIFEST}.ms5ref"
+cp "$TEST_MANIFEST" "$_ms5_ref"
+bash "$REPO_ROOT/scripts/manifest-sync.sh" --report --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || true
+if cmp -s "$_ms5_ref" "$TEST_MANIFEST"; then
+    assert_pass "MS5 LOCK: report mode does not mutate manifest (content unchanged)"
+else
+    assert_fail "MS5 LOCK: report mode does not mutate manifest (content unchanged)" \
+        "manifest content changed after --report (report mode must be read-only)"
+fi
+rm -f "$_ms5_ref"
 
 print_test_results
