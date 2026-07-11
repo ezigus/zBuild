@@ -1,0 +1,89 @@
+# impact
+
+**Impact Analyzer Stage**
+
+- **Kind:** `agent`
+- **Manifest:** `plugins/agent/impact/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: impact
+name: Impact Analyzer Stage
+kind: agent
+version: 0.1.0
+description: |
+  Post-design adversarial consequence-finder (#842). Reads design.md's
+  ```scope block (the exhaustive enumeration produced by the design stage)
+  and finds files that the change touches, invalidates, or requires updating
+  but that are MISSING from that scope block. Emits impact.json with a
+  structured verdict (complete | incomplete) plus impact_feedback.md
+  rendered for cycle feedback wiring back into the design stage. plan.json
+  retained as secondary input for the deterministic shape-change prefilter.
+
+hooks:
+  init: impact_init
+  run: impact_run
+  finalize: impact_finalize
+  cleanup: impact_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: impact.json
+  schema_version: 1
+
+config:
+  # T2 (sonnet), not T1 (haiku): impact is the most tool-heavy agentic stage
+  # (Reads every design-scope file + repo-wide greps; max_turns 45). On T1 its
+  # per-turn latency × tool-turns blew past the then-180s router timeout once the
+  # design scope grew (rc=124, run 20260619082915-41231). Aligns impact with its
+  # T2 reasoning siblings (design/plan/review/build/test_assessment). (#960)
+  # #1242: the T2 tier's higher per-turn latency also drove the wall-clock budget
+  # up — router.timeout_s is now 600 (matching `design`), not the old 180.
+  tier_default: T2
+  valid_verdicts:
+    - complete
+    - incomplete
+
+inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: true
+  # Secondary: plan.json retained for the deterministic shape-change prefilter.
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: false
+
+outputs:
+  - id: impact
+    path: "${artifact_dir}/impact.json"
+    type: impact.json
+    required: true
+    primary: true
+  - id: impact_feedback_md
+    path: "${artifact_dir}/impact_feedback.md"
+    type: markdown
+    required: false
+
+state:
+  persisted:
+    - last_verdict
+  reconstructed: []
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

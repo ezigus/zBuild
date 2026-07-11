@@ -1,0 +1,91 @@
+# design
+
+**Design Stage**
+
+- **Kind:** `agent`
+- **Manifest:** `plugins/agent/design/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: design
+name: Design Stage
+kind: agent
+version: 0.1.0
+description: |
+  Design stage agent. Reads plan.json produced by the plan stage and invokes
+  the LLM (T2) to produce an ADR-style design.md containing a fenced ```scope
+  block whose entries are a superset of plan.json's files[]. The scope block
+  becomes the authoritative scope source consumed by the build stage.
+  # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design)
+  # legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design)
+
+hooks:
+  init: design_stage_init
+  run: design_stage_run
+  finalize: design_stage_finalize
+  cleanup: design_stage_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: design.md
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
+  # design_impact_cycle feedback (iter ≥ 2): impact's gap report wired back
+  # so design can expand its scope block to cover missed consequences.
+  - id: prior_impact_feedback
+    type: file
+    source: cycle_feedback
+    required: false
+  # Self-feedback edge (mirrors #773 lesson from plan_impact_cycle): design's
+  # own prior design.md becomes the next iter's prior_design input so design
+  # iter N+1 refines rather than re-creates.
+  - id: prior_design
+    type: file
+    source: cycle_feedback
+    required: false
+  # #1219 (ADR-045/ADR-046): design-rooted gate feedback carried BACK from the
+  # build_test_cycle by the route_back rewind. Written by the gate-aggregator to
+  # the shared artifacts dir on a route_design verdict (a tautological [change]
+  # SPEC that build cannot fix). source: artifacts (NOT cycle_feedback — that
+  # channel is intra-design_verify_cycle; this arrives from the OTHER cycle across
+  # the rewind). required:false — absent on the FIRST design pass (no-op).
+  - id: prior_gate_feedback
+    type: file
+    source: artifacts
+    path: "${artifact_dir}/design-feedback.md"
+    required: false
+
+outputs:
+  - id: design
+    path: "${artifact_dir}/design.md"
+    type: text/markdown
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

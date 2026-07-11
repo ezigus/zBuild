@@ -1,0 +1,91 @@
+# test
+
+**Test Stage**
+
+- **Kind:** `tool`
+- **Role:** `tester`
+- **Manifest:** `plugins/tool/test/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: test
+name: Test Stage
+kind: tool
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate (in the
+# roster-driven gate-aggregator must-pass set). The test-suite verdict is the
+# primary mechanical gate.
+convergence: gate
+version: 0.1.0
+description: |
+  Rsyncs the repo HEAD (which post-#608 contains the committed iter work)
+  into a temporary directory and runs the project test suite. Captures exit
+  code and output; always exits 0 so the pipeline engine reads the verdict
+  from the artifact rather than the plugin exit code. Never invokes
+  route_to_model (T0 tool — no LLM dependency).
+
+  Wave 12-C (#662) removed the historic `git apply diff.patch` step — see
+  ADR-020 amendment §A. diff.patch is now consumed only by the review stage
+  (LLM context) and operators (audit).
+
+hooks:
+  init: test_init
+  run: test_run
+  finalize: test_finalize
+  cleanup: test_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: tester
+  artifact_type: test-results.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+  test_cmd_default: "npm test"
+  # #846/ADR-034: targeted re-run command template ({files} placeholder, set via
+  # ZBUILD_TEST_CMD_TARGETED). Empty default → the stage auto-uses
+  # `scripts/run-tests.sh --files {files}` when the repo has it, else runs full.
+  test_cmd_targeted_default: ""
+
+# Wave 12-C (#662): no declared inputs.
+# Post-#608 + Wave 12-B (#667), the test stage rsyncs the repo HEAD (which
+# already contains the committed iter work) and runs the test suite directly.
+# diff.patch is consumed by the review stage (LLM context) and operators
+# (audit) — not by test. See ADR-020 amendment §A.
+inputs: []
+
+outputs:
+  - id: test_results
+    path: "${artifact_dir}/test-results.json"
+    type: test-results.json
+    required: true
+    # ADR-020 amendment (#507): primary output drives the runner's
+    # stage-complete indicator via the .verdict field.
+    primary: true
+  # ADR-021 amendment (#511 F2): derived markdown summary consumed by the
+  # build stage as cycle feedback. ABSENT when no failures present
+  # (missing == empty semantics); never an empty-but-present file.
+  - id: test_failures_summary
+    path: "${artifact_dir}/test-failures-summary.md"
+    type: markdown
+    required: false
+
+state:
+  persisted: [last_verdict, last_exit_code]
+  reconstructed: []
+
+# ADR-047 §4: capability flag — the orchestrator reads this to prefer the
+# declared artifact's integer field over the generic rc-based failure count.
+capabilities:
+  detailed_failure_count:
+    artifact: test-results.json
+    field: failed
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

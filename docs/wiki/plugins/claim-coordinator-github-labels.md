@@ -1,0 +1,52 @@
+# claim-coordinator-github-labels
+
+**GitHub Labels Claim Coordinator (default)**
+
+- **Kind:** `claim-coordinator`
+- **Role:** `claim-coordinator`
+- **Manifest:** `plugins/claim-coordinator/github-labels/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: claim-coordinator-github-labels
+name: GitHub Labels Claim Coordinator (default)
+kind: claim-coordinator
+version: 0.1.0
+description: |
+  Default claim-coordinator plugin (ADR-005). Uses GitHub issue labels
+  (`claimed:<machine>`) as the cross-machine claim mechanism, ported from
+  legacy/scripts/lib/daemon-state.sh:602-720.
+
+  Has a documented TOCTOU window between add-label and re-verify. Mitigated
+  by random backoff (300–1100 ms) and a re-read step that drops the claim
+  if multiple `claimed:*` labels are observed.
+
+  For test/CI use, set ZBUILD_CLAIM_BACKEND=local-fs and
+  ZBUILD_CLAIM_STORE=<dir> to use a flock-serialised filesystem store
+  instead of `gh`.
+
+hooks:
+  init: claim_coordinator_init
+  claim: claim_coordinator_claim
+  release: claim_coordinator_release
+  heartbeat: claim_coordinator_heartbeat
+  list_claims: claim_coordinator_list_claims
+
+requires:
+  core:
+    - event-bus
+    - state
+
+provides:
+  role: claim-coordinator
+  alias: github-labels
+  schema_version: 1
+
+config:
+  backoff_min_ms: 300
+  backoff_max_ms: 1100
+  machine_id: ""    # empty = use $(hostname)
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

@@ -1,0 +1,71 @@
+# deploy
+
+**Deploy Agent**
+
+- **Kind:** `agent`
+- **Role:** `deploy_agent`
+- **Manifest:** `plugins/agent/deploy/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: deploy
+name: Deploy Agent
+kind: agent
+version: 0.1.0
+description: |
+  Deploy agent (kind:agent, T2). Reads pr-url.txt and gate-aggregator verdict;
+  refuses deploy if gate verdict=fail. Delegates to the deploy-release tool plugin
+  for the actual git-tag + gh release create side-effect. ZBUILD_DRY_RUN=1 writes
+  mock deploy-result.json instead.
+  ADR-018 Pattern 1 (one-shot): verdict guard → deploy-release, done — no iteration.
+  No LLM calls (no route_to_model). kind:agent for guard/orchestration parity with
+  the pr-delivery → pr-open delegation pattern (ADR-013 amendment, issue #757).
+  # legacy-citation: pipeline-stages-delivery.sh:950 (stage_deploy)
+
+hooks:
+  init: deploy_agent_init
+  run: deploy_agent_run
+  finalize: deploy_agent_finalize
+  cleanup: deploy_agent_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  artifact_type: deploy-result.json
+  role: deploy_agent
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: pr_url
+    type: file
+    path: "${artifact_dir}/pr-url.txt"
+    source: stage:pr
+    required: true
+  - id: gate_aggregator_result
+    type: file
+    path: "${artifact_dir}/gate-aggregator-result.json"
+    source: stage:gate-aggregator
+    required: true
+
+outputs:
+  - id: deploy_result
+    path: ${artifact_dir}/deploy-result.json
+    type: deploy-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

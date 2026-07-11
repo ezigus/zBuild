@@ -1,0 +1,148 @@
+# build
+
+**Build Stage**
+
+- **Kind:** `agent`
+- **Manifest:** `plugins/agent/build/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: build
+name: Build Stage
+kind: agent
+version: 0.1.0
+description: |
+  Build stage agent. Reads the plan.json artifact produced by the plan stage
+  and invokes the LLM (T2) to produce a diff.patch and build-summary.json.
+  The diff.patch is NEVER applied inside this plugin — it is written as an
+  artifact for the downstream test stage to validate and apply.
+
+hooks:
+  init: build_stage_init
+  run: build_stage_run
+  finalize: build_stage_finalize
+  cleanup: build_stage_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []
+
+provides:
+  artifact_type: build-summary.json
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  - id: scope_manifest
+    type: file
+    source: stage:intake
+    required: true
+  # ADR-020 / #663: build reads the baseline ref captured by intake to
+  # constrain diff generation when present. Optional because branch
+  # capture is opt-out (ZBUILD_INTAKE_SKIP_BRANCH) and not all templates
+  # wire intake → build directly.
+  - id: intake_baseline_ref
+    type: text
+    path: "${state_dir}/intake-baseline-ref.txt"
+    source: stage:intake
+    required: false
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: true
+  # ADR-020 / ADR-021 / ADR-022 (#571): cross-iter feedback from the prior
+  # test_assessment stage when this stage executes inside a cycle. ALWAYS
+  # optional (required:false); absent/empty file → CURRENT ITERATION
+  # FEEDBACK section omitted entirely (see _build_read_prior_assessment).
+  # Path resolves via ${cycle_feedback_dir} → $ZBUILD_CYCLE_FEEDBACK_DIR
+  # exported by cycle-orchestrator::_cycle_apply_feedback. The feedback
+  # wiring (test_assessment → build) is declared in standard.yaml by #568.
+  # #1117: simple.yaml (which omits test_assessment) reuses this same input —
+  # its build_test_cycle feedback edge wires the test stage's
+  # test_failures_summary into this file, so the failure detail still reaches
+  # the build prompt without a second, dead input field.
+  - id: prior_test_assessment
+    type: text/markdown
+    path: "${cycle_feedback_dir}/prior_test_assessment.txt"
+    source: cycle_feedback
+    required: false
+  # ADR-026 / Wave 18-B (#707): cross-iter feedback from the prior review
+  # stage when build executes inside the review_remediation cycle (build_review_cycle
+  # in standard.yaml). ALWAYS optional (required:false); absent/empty file →
+  # PRIOR REVIEW FEEDBACK section omitted entirely (see
+  # _build_read_prior_review). Mirrors prior_test_assessment shape — path
+  # resolves via ${cycle_feedback_dir} → $ZBUILD_CYCLE_FEEDBACK_DIR exported
+  # by cycle-orchestrator::_cycle_apply_feedback. The feedback wiring (review
+  # → build) is declared in standard.yaml's build_review_cycle section by Wave 18-B.
+  - id: prior_review_feedback
+    type: text/markdown
+    path: "${cycle_feedback_dir}/prior_review_feedback.txt"
+    source: cycle_feedback
+    required: false
+  # #951 Layer 2 (ADR-036): structured acceptance-coverage gaps from the prior
+  # outer-cycle iter's acceptance-gate (gate_result → acceptance-gate-result.json).
+  # ALWAYS optional (required:false); absent/empty → ACCEPTANCE COVERAGE GAPS
+  # section omitted (see _build_read_prior_acceptance, which surfaces ONLY
+  # untagged_spec:<id> failures). Feedback wiring (acceptance-gate → build) is
+  # declared in standard.yaml's build_review_cycle by #951, and — after the
+  # ADR-040 cutover (#1138) — in simple.yaml's build_test_cycle as well.
+  - id: prior_acceptance_feedback
+    type: text/json
+    path: "${cycle_feedback_dir}/prior_acceptance_feedback.txt"
+    source: cycle_feedback
+    required: false
+  # B2 (ADR-040): CONSOLIDATED gate→build feedback from the prior cycle iter's
+  # gate-aggregator (gate_feedback → gate-feedback.md). After the ADR-040 roster
+  # cutover, simple.yaml's build_test_cycle replaces the per-gate test→build /
+  # acceptance-gate→build edges with ONE gate-aggregator → build edge feeding this
+  # input — the aggregator is the single collector of failure detail. ALWAYS
+  # optional (required:false); absent/empty → PRIOR GATE FEEDBACK section omitted
+  # (see _build_read_prior_gate). Path resolves via ${cycle_feedback_dir}.
+  - id: prior_gate_feedback
+    type: text/markdown
+    path: "${cycle_feedback_dir}/prior_gate_feedback.txt"
+    source: cycle_feedback
+    required: false
+  # #754: design stage produces design.md with a ```scope block that overrides
+  # plan.json's files[] as the authoritative scope for the build agent.
+  # Optional (required:false) — absent when design stage was skipped or not
+  # wired in the template.
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: false
+
+outputs:
+  - id: diff_patch
+    path: "${artifact_dir}/diff.patch"
+    type: patch
+    required: true
+  - id: build_summary
+    path: "${artifact_dir}/build-summary.json"
+    type: build-summary.json
+    required: true
+    # ADR-020 amendment (#507): primary output; .verdict (pass|scope_violation)
+    # drives indicator. Added in build-summary schema_version=3.
+    primary: true
+
+state:
+  persisted: [last_files_changed, last_lines_added]
+  reconstructed: [plan_json]
+
+# ADR-047 §4: capability flags — the orchestrator reads these to replace the
+# hardcoded `[[ "$_cm" == "build" ]]` guard with a manifest-driven check.
+capabilities:
+  produces_commits: true
+  empty_diff_legitimate: true
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

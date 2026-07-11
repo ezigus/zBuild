@@ -1,0 +1,134 @@
+# gate-aggregator
+
+**Gate Aggregator**
+
+- **Kind:** `tool`
+- **Role:** `gate_aggregator`
+- **Manifest:** `plugins/tool/gate-aggregator/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: gate-aggregator
+name: Gate Aggregator
+kind: tool
+# ADR-040 §5/§7, ADR-001: the convergence marker declares this stage as the
+# GATE-typed convergence aggregator (symmetric with review-aggregator's
+# `convergence: advisory`). A cycle's exit_when binds to a convergence:gate
+# member (the typed-aggregator preflight enforces this). The marker does NOT
+# put the aggregator into its own roster — _ga_build_roster excludes the
+# aggregator by id (never aggregates self).
+convergence: gate
+version: 0.1.0
+description: |
+  Deterministic, LLM-free T0 convergence aggregator (ADR-040 §2, EPIC #1129 B5,
+  issue #1137). Collapses the mechanical gate stages into ONE convergence verdict
+  — the single merge-blocking construct in the decomposed pipeline (ADR-040 §5).
+
+  Must-pass set is ROSTER-DRIVEN (ADR-040 §2): discovered at runtime from the
+  cycle members whose manifest declares `convergence: gate` (excluding the
+  aggregator itself and any advisory/absent member) — no hardcoded gate list, so
+  adding/removing a gate from the cycle changes the must-pass set with NO edit to
+  this plugin. Each gate's recorded result artifact is read by filename from the
+  shared artifacts dir. When invoked with no cycle in scope (ZBUILD_CYCLE_ID /
+  _TPL_CYCLE_STAGES_* absent), it falls back to the legacy fixed set: suite (the
+  `test` stage / test-results.json), shape-floor, acceptance-gate, lint,
+  coverage, mutation, secret-scan.
+
+  Verdict: pass IFF every must-pass gate's artifact is PRESENT, well-formed, and
+  carries a verdict in {pass, skip}. A gate that ran and self-skipped (verdict
+  "skip" — e.g. shape-floor with no shape change, secret-scan on an empty diff)
+  is treated as pass-equivalent. FAIL-CLOSED (ADR-019, re-expressed by ADR-040):
+    - any gate verdict == fail (or test's "error") → verdict=fail
+    - any REQUIRED gate artifact missing or malformed → verdict=fail (NOT skip);
+      a gate that did not run cannot be trusted to have passed.
+  Always returns rc=0; the verdict lives in gate-aggregator-result.json
+  (ADR-040 verdict-in-artifact convention, mirrors shape-floor).
+  ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
+
+hooks:
+  init: gate_aggregator_init
+  run: gate_aggregator_run
+  finalize: gate_aggregator_finalize
+  cleanup: gate_aggregator_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: gate_aggregator
+  primary: true
+  artifact_type: gate-aggregator-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+
+# The gate results are read by filename from the shared artifacts dir (the same
+# dir each gate writes into), via `source: artifacts` reads.
+# required:false at the wiring level keeps the aggregator composable
+# (a template need not wire every gate); the runtime fail-closes on a missing
+# REQUIRED gate independently of this static-wiring flag.
+inputs:
+  - id: test_results
+    source: artifacts
+    path: test-results.json
+    required: false
+  - id: shape_floor_result
+    source: artifacts
+    path: shape-floor-result.json
+    required: false
+  - id: gate_result
+    source: artifacts
+    path: acceptance-gate-result.json
+    required: false
+  - id: lint_result
+    source: artifacts
+    path: lint-result.json
+    required: false
+  - id: coverage_result
+    source: artifacts
+    path: coverage-result.json
+    required: false
+  - id: mutation_result
+    source: artifacts
+    path: mutation-result.json
+    required: false
+  - id: secret_scan_result
+    source: artifacts
+    path: secret-scan-result.json
+    required: false
+
+outputs:
+  - id: gate_aggregator_result
+    path: "${artifact_dir}/gate-aggregator-result.json"
+    type: gate-aggregator-result.json
+    required: true
+    primary: true
+  # B2 (ADR-040): consolidated gate→build feedback. Written ONLY on verdict=fail
+  # (merges every failing gate's actionable detail). required:false — absent on a
+  # passing aggregate. Wired by simple.yaml's build_test_cycle as the
+  # gate-aggregator → build (prior_gate_feedback) cycle-feedback edge.
+  - id: gate_feedback
+    path: "${artifact_dir}/gate-feedback.md"
+    type: markdown
+    required: false
+  # #1219 (ADR-045/ADR-046): FOCUSED design-rooted feedback. Written ONLY on a
+  # route_<target> verdict (a design-rooted acceptance failure, e.g. tautology).
+  # required:false — absent on pass / plain-fail. Read by the design stage's
+  # prior_gate_feedback input after the build_test_cycle route_back rewinds to
+  # design_verify_cycle; persists across the rewind (shared per-run artifacts dir).
+  - id: design_feedback
+    path: "${artifact_dir}/design-feedback.md"
+    type: markdown
+    required: false
+
+state:
+  persisted: [last_verdict]
+  reconstructed: []
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

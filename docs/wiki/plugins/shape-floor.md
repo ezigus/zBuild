@@ -1,0 +1,71 @@
+# shape-floor
+
+**Shape Floor Stage**
+
+- **Kind:** `tool`
+- **Role:** `shape_floor`
+- **Manifest:** `plugins/tool/shape-floor/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: shape-floor
+name: Shape Floor Stage
+kind: tool
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate.
+convergence: gate
+version: 0.1.0
+description: |
+  Deterministic, LLM-free T0 tool stage (ADR-040, ADR-037 §1, issue #1134, EPIC #1129).
+  The un-gameable shape-floor check (extracted from the retired ablation logic, #971).
+
+  Shape floor: if any merge-base→HEAD diff file matches a glob in
+  config/shape-change-paths.txt, a "shape change" is in flight. The pipeline's
+  event-sequence golden snapshots AND the _TPL_STAGES[N]-indexed order-assertion
+  tests MUST also appear in the diff, otherwise the change silently drifts the
+  pipeline shape past its pinned tests.
+    - No shape-change file in diff → verdict=skip.
+    - Shape change present, all floor files in diff → verdict=pass.
+    - Shape change present, a floor file missing → verdict=fail (blocks).
+
+  Merge-base is resolved via zbuild_resolve_merge_base (origin/main → main →
+  HEAD~1), NOT HEAD~1, so the floor sees the full branch change set.
+
+  Always returns rc=0; the verdict lives in the artifact (ADR-040 verdict-in-artifact).
+  ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
+
+hooks:
+  init: shape_floor_init
+  run: shape_floor_run
+  finalize: shape_floor_finalize
+  cleanup: shape_floor_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: shape_floor
+  artifact_type: shape-floor-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+
+inputs: []
+
+outputs:
+  - id: shape_floor_result
+    path: "${artifact_dir}/shape-floor-result.json"
+    type: shape-floor-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: [last_verdict]
+  reconstructed: []
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

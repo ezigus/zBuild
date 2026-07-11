@@ -1,0 +1,85 @@
+# pr-delivery
+
+**PR Stage**
+
+- **Kind:** `agent`
+- **Role:** `pr_delivery`
+- **Manifest:** `plugins/agent/pr-delivery/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: pr-delivery
+name: PR Stage
+kind: agent
+version: 0.1.0
+description: |
+  PR delivery agent (kind:agent, T2). Reads review.json and refuses if verdict==block.
+  Delegates to the pr-open tool plugin (T0) for the actual gh pr create call, passing
+  the run's state file through. ZBUILD_DRY_RUN=1 writes mock artifacts instead.
+  ADR-018 Pattern 1 (one-shot): verdict guard → pr-open, done — no iteration loop.
+  plan.json/design.md are accepted as optional inputs (reserved for future PR-body
+  composition; not yet consumed by the one-shot implementation).
+  # legacy-citation: pipeline-stages-delivery.sh:81 (stage_pr)
+
+hooks:
+  init: pr_stage_init
+  run: pr_stage_run
+  finalize: pr_stage_finalize
+  cleanup: pr_stage_cleanup
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  artifact_type: pr-url.txt
+  role: pr_delivery
+  schema_version: 1
+
+config:
+  tier_default: T2
+
+inputs:
+  # #979 (EPIC #1277): the standard.yaml `review` stage (review.json) was retired,
+  # so its stage:review input is dropped — it dangled and tripped the lint-contract
+  # data-dependency graph check. The advisory review-aggregator (review-report.json,
+  # below) is the only remaining review source. pr-delivery's verdict guard still
+  # no-ops when review.json is absent (plugin.sh `[[ -f "$review_json" ]]`) and the
+  # auto_unless_flagged path reads review-report.json — behavior unchanged.
+  - id: review_report
+    type: file
+    path: "${artifact_dir}/review-report.json"
+    source: stage:review-aggregator
+    required: false
+  - id: plan
+    type: file
+    path: "${artifact_dir}/plan.json"
+    source: stage:plan
+    required: false
+  - id: design
+    type: file
+    path: "${artifact_dir}/design.md"
+    source: stage:design
+    required: false
+
+outputs:
+  - id: pr_url
+    path: ${artifact_dir}/pr-url.txt
+    type: pr-url.txt
+    required: true
+    primary: true
+  - id: pr_result
+    path: ${artifact_dir}/pr-result.json
+    type: pr-result.json
+    required: true
+
+state:
+  persisted: []
+  reconstructed: []
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
