@@ -66,6 +66,60 @@ print_test_section "missing args fail loud"
 _rc=0; resolve_tier >/dev/null 2>&1 || _rc=$?
 assert_exit_code "no args → non-zero" 1 "$_rc"
 
+# ─── template router.tier source (#1252) ─────────────────────────────────────
+# resolve_tier gained a THIRD source between the env override and the manifest:
+# the loaded template's per-stage `router.tier`, keyed by ZBUILD_CURRENT_STAGE.
+# Precedence: env ZBUILD_<ID>_TIER > template router.tier > manifest tier_default.
+# tier-resolve.sh best-effort sources core/pipeline/template.sh, but this unit test
+# stubs template_stage_router_tier directly (so the cases are hermetic and shape-
+# independent) and sets ZBUILD_CURRENT_STAGE, mirroring how the dispatch paths export
+# the stage id. The stub takes precedence over any sourced definition.
+print_test_section "template router.tier feeds resolve_tier (env > template > manifest)"
+
+# Stub the accessor: returns $__STUB_TIER for the stage we pin, empty otherwise.
+template_stage_router_tier() {
+    local stage="$1"
+    if [[ -n "${__STUB_TIER:-}" && "$stage" == "${__STUB_STAGE:-}" ]]; then
+        # Mirror the real accessor's read-time ^T[0-4]$ fail-loud validation so a
+        # bad template value surfaces here just as it would in production.
+        if [[ ! "$__STUB_TIER" =~ ^T[0-4]$ ]]; then
+            error "template_stage_router_tier: invalid tier '$__STUB_TIER'"
+            return 1
+        fi
+        printf '%s\n' "$__STUB_TIER"
+    fi
+    return 0
+}
+
+# template-only (env unset) → template tier wins over the manifest default.
+__STUB_STAGE=simple __STUB_TIER=T1 \
+assert_eq "template router.tier used when env unset (T1 beats manifest T3)" \
+    "T1" "$(ZBUILD_CURRENT_STAGE=simple __STUB_STAGE=simple __STUB_TIER=T1 resolve_tier simple "$TMP/simple")"
+
+# env beats template.
+assert_eq "env ZBUILD_<ID>_TIER beats template router.tier" \
+    "T4" "$(ZBUILD_SIMPLE_TIER=T4 ZBUILD_CURRENT_STAGE=simple __STUB_STAGE=simple __STUB_TIER=T1 resolve_tier simple "$TMP/simple")"
+
+# template beats manifest (explicit restatement with review-lens manifest T2).
+assert_eq "template router.tier beats manifest tier_default" \
+    "T0" "$(ZBUILD_CURRENT_STAGE=review-lens __STUB_STAGE=review-lens __STUB_TIER=T0 resolve_tier review-lens "$TMP/review-lens")"
+
+# no ZBUILD_CURRENT_STAGE → template source is skipped → falls back to manifest.
+assert_eq "no ZBUILD_CURRENT_STAGE → template source skipped, manifest wins" \
+    "T3" "$(__STUB_STAGE=simple __STUB_TIER=T1 resolve_tier simple "$TMP/simple")"
+
+# invalid template tier (T9) → fail loud (the read-time validator rejects it).
+_rc=0; ZBUILD_CURRENT_STAGE=simple __STUB_STAGE=simple __STUB_TIER=T9 \
+    resolve_tier simple "$TMP/simple" >/dev/null 2>&1 || _rc=$?
+assert_exit_code "invalid template router.tier T9 → non-zero (fail loud)" 1 "$_rc"
+
+# CRITICAL INVARIANT (#1231): with NO template tier set the manifest default must
+# resolve exactly as today — behavior unchanged when the new source is silent.
+assert_eq "empty template tier + stage set → manifest default unchanged (#1231 invariant)" \
+    "T3" "$(ZBUILD_CURRENT_STAGE=simple __STUB_STAGE=other __STUB_TIER=T1 resolve_tier simple "$TMP/simple")"
+
+unset -f template_stage_router_tier
+
 # ─── behavior-identical: the shipped agent plugins resolve their manifest tier ──
 # (#979: test_assessment + the old `review` stage were retired with the
 # compound-quality lattice, so they drop out of this list.)

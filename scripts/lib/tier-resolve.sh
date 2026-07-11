@@ -15,8 +15,12 @@
 #   resolve_tier <plugin_id> <plugin_dir>
 #     1. If ZBUILD_<ID>_TIER is set (ID = plugin_id uppercased, '-'→'_';
 #        e.g. review-lens → ZBUILD_REVIEW_LENS_TIER), that value wins.
-#     2. Else read config.tier_default from <plugin_dir>/manifest.yaml.
-#     3. Else fail loud (a routing plugin with no declared tier is a bug).
+#     2. Else, if a template is loaded and ZBUILD_CURRENT_STAGE is set, the
+#        template's per-stage router.tier OVERRIDE for that stage (#1252,
+#        ADR-017 §8) — a per-repo tier ordinal pinned in the template.
+#     3. Else read config.tier_default from <plugin_dir>/manifest.yaml.
+#     4. Else fail loud (a routing plugin with no declared tier is a bug).
+#     Precedence: env ZBUILD_<ID>_TIER > template router.tier > manifest default.
 #     The result must match ^T[0-4]$ or resolve_tier fails loud.
 #     Prints the resolved tier to stdout; returns 0 on success, non-zero on error.
 #
@@ -37,6 +41,16 @@ fi
 if ! declare -F error >/dev/null 2>&1; then
     source "$_TIER_RESOLVE_ROOT/scripts/lib/helpers.sh"
 fi
+# #1252: the template router.tier source needs template_stage_router_tier. Plugin
+# subprocesses source route.sh (→ this lib) but NOT template.sh, and a shell
+# function does not cross the `bash <plugin>` process boundary — so without this
+# the template override would be silently inert (green-but-inert). Source
+# template.sh defensively (best-effort; the load guard makes a repeat a no-op).
+# resolve_tier ALSO guards the call with `command -v`, so if this source is
+# unavailable the resolver still degrades to the manifest default, never errors.
+if ! declare -F template_stage_router_tier >/dev/null 2>&1; then
+    source "$_TIER_RESOLVE_ROOT/core/pipeline/template.sh" 2>/dev/null || true
+fi
 
 resolve_tier() {
     local plugin_id="${1:-}" plugin_dir="${2:-}"
@@ -50,7 +64,26 @@ resolve_tier() {
     env_name="ZBUILD_$(printf '%s' "$plugin_id" | tr '[:lower:]-' '[:upper:]_')_TIER"
     local tier="${!env_name:-}"
 
-    # 2. Else the manifest's config.tier_default (single source of truth).
+    # 2. Else the TEMPLATE's per-stage router.tier override (#1252, ADR-017 §8).
+    #    A per-repo template can pin a tier ORDINAL for one stage, keyed by
+    #    ZBUILD_CURRENT_STAGE (exported on every dispatch path). This sits BETWEEN
+    #    the env override and the manifest default so the manifest stays the
+    #    fail-loud default while a template can raise/lower a specific stage.
+    #    Guarded: if template.sh's accessor isn't loaded, degrade to the manifest
+    #    (never error) — the resolver must stay usable when a test sources only
+    #    tier-resolve.sh. The accessor validates ^T[0-4]$ at read time and fails
+    #    loud on a bad template value; propagate that failure.
+    if [[ -z "$tier" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] \
+       && command -v template_stage_router_tier >/dev/null 2>&1; then
+        local tpl_tier
+        if ! tpl_tier="$(template_stage_router_tier "$ZBUILD_CURRENT_STAGE")"; then
+            error "resolve_tier: invalid template router.tier for stage '$ZBUILD_CURRENT_STAGE'"
+            return 1
+        fi
+        [[ -n "$tpl_tier" ]] && tier="$tpl_tier"
+    fi
+
+    # 3. Else the manifest's config.tier_default (single source of truth).
     if [[ -z "$tier" ]]; then
         local manifest="$plugin_dir/manifest.yaml"
         if [[ ! -f "$manifest" ]]; then
@@ -60,7 +93,7 @@ resolve_tier() {
         tier="$(yaml_get "$manifest" "config.tier_default" 2>/dev/null || true)"
     fi
 
-    # 3. Fail loud: a routing plugin with no declared tier is a bug, not a
+    # 4. Fail loud: a routing plugin with no declared tier is a bug, not a
     #    silent default (matches the project's fail-loud-preflight convention).
     if [[ -z "$tier" ]]; then
         error "resolve_tier: no tier for '$plugin_id' — declare config.tier_default in $plugin_dir/manifest.yaml (or set $env_name)"

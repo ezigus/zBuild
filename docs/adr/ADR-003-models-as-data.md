@@ -150,9 +150,21 @@ via `resolve_tier <plugin_id> <plugin_dir>`, sourced by construction through
 1. **Operator override wins** — `ZBUILD_<ID>_TIER` (ID uppercased, `-`→`_`;
    e.g. `review-lens` → `ZBUILD_REVIEW_LENS_TIER`). This is the documented,
    supported way to retier a plugin without touching its manifest.
-2. Else the manifest's `config.tier_default`.
-3. Else **fail loud** (non-zero) — a routing plugin with no declared tier is a
+2. Else the **template's per-stage `router.tier` override** (#1252, ADR-017 §8),
+   keyed by `ZBUILD_CURRENT_STAGE`. A per-repo template can pin a tier ORDINAL
+   for one stage. This is a tier ordinal (`T0`–`T4`), **not** a model name — so
+   it is models-as-data compliant: the template strings stages together and may
+   set a stage's tier, but the tier→model mapping still lives only in
+   `config/models.json`. Read lazily via `template_stage_router_tier`; skipped
+   when no template is loaded or no stage is set.
+3. Else the manifest's `config.tier_default`.
+4. Else **fail loud** (non-zero) — a routing plugin with no declared tier is a
    bug, not a silent default. The result must match `^T[0-4]$`.
+
+**Precedence:** `env ZBUILD_<ID>_TIER > template router.tier > manifest
+config.tier_default > fail-loud`. The #1252 template source added a rung
+between the env override and the manifest default without weakening the
+fail-loud contract or the ordinal-only (never a model name) rule.
 
 **Plug-and-play:** there is no central stage→tier map in the engine. A new
 routing plugin plugs in by declaring `config.tier_default` in its own manifest —

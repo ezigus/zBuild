@@ -2573,3 +2573,52 @@ template_stage_negctl_timeout() {
         }
     ' "${_TPL_SOURCE_FILE}" 2>/dev/null
 }
+
+# ADR-017 §8 (#1252): per-stage `router.tier` OVERRIDE — pins a tier ORDINAL
+# (T0-T4, ADR-003; never a model name) for one stage. Read LAZILY from the loaded
+# template source (like template_stage_negctl_timeout), so it needs NO row-shape /
+# parser-array change. Feeds resolve_tier BETWEEN the env override and the
+# manifest config.tier_default:
+#   env ZBUILD_<ID>_TIER  >  template router.tier  >  manifest config.tier_default.
+# Matches the stage in BOTH template shapes — a top-level `<stage>:` section and
+# an inline `- id: <stage>` list item — then descends into that stage's `router:`
+# sub-block to read `tier:`. Validates ^T[0-4]$ at READ time (fail-loud on a bad
+# value, e.g. T9 or a model name); prints nothing when unset.
+template_stage_router_tier() {
+    local stage_id="$1"
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    local tier
+    tier="$(awk -v stage="$stage_id" '
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        # Enter the stage block on either shape.
+        $0 ~ "^"stage":[[:space:]]*$" { in_stage = 1; stage_ind = 0; in_router = 0; next }
+        $0 ~ "^[[:space:]]*-[[:space:]]+id:[[:space:]]*"stage"[[:space:]]*$" {
+            in_stage = 1; stage_ind = indent($0); in_router = 0; next
+        }
+        in_stage {
+            ind = indent($0)
+            # A line at or below the stage-key indent (that is not blank) ends the block.
+            if ($0 ~ /[^[:space:]]/ && ind <= stage_ind && $0 !~ "^"stage":") {
+                # For the list-item shape the next `- id:` or a shallower key closes it.
+                if (ind <= stage_ind) { in_stage = 0; in_router = 0 }
+            }
+        }
+        in_stage && $0 ~ "^[[:space:]]+router:[[:space:]]*$" { in_router = 1; router_ind = indent($0); next }
+        in_router {
+            ind = indent($0)
+            if ($0 ~ /[^[:space:]]/ && ind <= router_ind) { in_router = 0 }
+        }
+        in_router && $0 ~ "^[[:space:]]+tier:" {
+            sub(/^[[:space:]]+tier:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null)"
+    [[ -z "$tier" ]] && return 0
+    if [[ ! "$tier" =~ ^T[0-4]$ ]]; then
+        error "template_stage_router_tier: invalid router.tier '$tier' for stage '$stage_id' — must be a tier ordinal T0-T4 (ADR-003: not a model name)"
+        return 1
+    fi
+    printf '%s\n' "$tier"
+    return 0
+}
