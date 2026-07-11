@@ -91,6 +91,50 @@ set -e
 assert_gt "rc!=0 when both --from and --tag given" "$both_rc" "0"
 assert_contains "explains exactly one of --from/--tag" "$out_both" "exactly one"
 
+# ─── Test 4: a path-traversal tag is REJECTED before any download ────────────
+# (Copilot: fetch_verified_release built paths from an arbitrary tag.)
+print_test_section "4. path-traversal tag rejected before download"
+canary="$TEST_TEMP_DIR/canary"; mkdir -p "$canary"
+for bad_tag in "../evil" "v1/../2" "..%2f" "v1.2.3.4/../../x"; do
+    dl="$TEST_TEMP_DIR/dl-$RANDOM"
+    set +e
+    # Point the fetch seam at a command that MUST NOT run for a rejected tag.
+    out_bt="$(ZBUILD_RELEASE_FETCH_CMD="touch $canary/fetched-ran &&" \
+        fetch_verified_release "$bad_tag" "$dl" 2>&1)"; bt_rc=$?
+    set -e
+    assert_gt "reject bad tag '$bad_tag' (rc!=0)" "$bt_rc" "0"
+    assert_contains "bad tag '$bad_tag' names invalid/refusing" "$out_bt" "invalid tag"
+done
+assert_file_not_exists "no fetch ran for any rejected tag" "$canary/fetched-ran"
+
+# ─── Test 5: a valid tag is accepted by the validator ────────────────────────
+print_test_section "5. valid tags accepted by the tag validator"
+for good_tag in "v1.2.3" "v1.2.3.4" "1.0.0.0"; do
+    set +e
+    _release_valid_tag "$good_tag"; grc=$?
+    set -e
+    assert_eq "valid tag accepted: $good_tag" "0" "$grc"
+done
+
+# ─── Test 6: _release_repo resolves owner/repo (env > origin > default) ───────
+print_test_section "6. release repo resolution for gh --repo"
+env_repo="$(ZBUILD_RELEASE_REPO="acme/widget" _release_repo)"
+assert_eq "ZBUILD_RELEASE_REPO override wins" "acme/widget" "$env_repo"
+# Outside a git checkout, with no override, falls back to the default owner/repo.
+def_repo="$(cd "$TEST_TEMP_DIR" && unset ZBUILD_RELEASE_REPO; _release_repo)"
+assert_eq "default repo is ezigus/zBuild" "ezigus/zBuild" "$def_repo"
+
+# ─── Test 7: upgrade --tag cleans its temp dir (no leak on success) ──────────
+# (Copilot: exec skipped the EXIT trap -> mktemp workdir leaked. We isolate
+# TMPDIR to an empty dir and assert it is empty again after a successful run.)
+print_test_section "7. upgrade --tag leaves no temp dir behind"
+LEAK_TMP="$TEST_TEMP_DIR/leaktmp"; mkdir -p "$LEAK_TMP"
+out_leak="$(TMPDIR="$LEAK_TMP" ZBUILD_RELEASE_LOCAL_DIR="$RELEASE_DIR" \
+    bash "$ZBUILD_HOME/scripts/zbuild" upgrade --tag "$TAG" 2>&1)" \
+    || { echo "$out_leak"; assert_fail "upgrade --tag (leak probe) exits 0"; cleanup_test_env; print_test_results; exit 1; }
+leftovers="$(find "$LEAK_TMP" -maxdepth 1 -name 'zbuild-upgrade.*' 2>/dev/null | wc -l | tr -d '[:space:]')"
+assert_eq "no zbuild-upgrade.* temp dir leaked after success" "0" "$leftovers"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

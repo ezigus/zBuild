@@ -307,7 +307,13 @@ UPHELP
                 exit 1
             fi
             info "applying verified release $up_tag"
-            exec bash "$up_extract/install.sh"
+            # Run install.sh as a SUBPROCESS (not exec): install.sh installs FROM
+            # $up_extract, so the workdir must live for the duration of the call.
+            # `exec` would replace this process and skip the EXIT trap, leaking the
+            # mktemp workdir. A normal call lets the EXIT trap clean it afterwards.
+            up_rc=0
+            bash "$up_extract/install.sh" || up_rc=$?
+            exit "$up_rc"
         fi
 
         # ─── Source-clone path (unchanged, ADR-023) ──────────────────────────
