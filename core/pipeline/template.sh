@@ -20,36 +20,13 @@ if ! declare -F eb_emit_event >/dev/null 2>&1; then
     source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 fi
 
-# ADR-013 canonical stage sequence — stability contract, not user-configurable.
-# Issue #842: swapped impact after design (design_impact_cycle; ADR-013 amendment).
-# Issue #755: compound_quality split into cq-preflight cq-audit-plan cq-cycle cq-backtrack.
-# Issue #922: acceptance-gate inserted after test_assessment (ADR-036 / ADR-013 amendment).
-# Issue #1138 [B6] (ADR-040, EPIC #1129): the decomposed mechanical gate stages
-#   are canonicalized so simple.yaml's build_test_cycle can converge via the
-#   composable gates + gate-aggregator instead of the monolithic objective-gate.
-#   shape-floor lands after test; lint/coverage/mutation/secret-scan/gate-aggregator
-#   after acceptance-gate.
-# Issue #1139 [B7] (ADR-037 §6, EPIC #1129): the retired monolithic objective-gate
-#   stage is removed from the canonical list; convergence is owned by gate-aggregator.
-# Issue #1142 [C3] (ADR-040 §3, EPIC #1129): the decomposed advisory lens stages
-#   (lens-security/-performance/-red-team/-correctness/-scope) + the review-aggregator
-#   are canonicalized so simple.yaml's `review` stage can be replaced by the
-#   `review_lenses` advisory parallel group + review-aggregator. The lens stages are
-#   parallel-group members (order-exempt — only membership is enforced); the
-#   review-aggregator is a leaf placed after `review` and before `pr`. No single
-#   template uses both the legacy `review` stage AND the decomposed lenses, so their
-#   relative order here is unconstrained. Per template, membership is always
-#   enforced; canonical monotonic order is enforced for ordinary stages but NOT for
-#   parallel-group members (order-exempt — _tpl_validate_stages skips the order
-#   check for them; only membership is verified).
-# Exactly these 30 ids, in this order (#1218, ADR-046: `design-gate` — the
-# PRE-build structural verifier — sits between `design` and `impact` so the
-# design_verify_cycle members [design, design-gate] and the following advisory
-# `impact` stage appear in monotonic canonical order):
-#   intake plan design design-gate impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
-readonly _ZBUILD_CANONICAL_STAGES=(
-    intake plan design design-gate impact build test shape-floor test_assessment acceptance-gate lint coverage mutation secret-scan gate-aggregator cq-preflight cq-audit-plan cq-cycle cq-backtrack review lens-security lens-performance lens-red-team lens-correctness lens-scope review-aggregator pr deploy validate monitor
-)
+# ADR-047 §5 (#1299): stage membership + order are NOT an engine-owned hardcoded
+# roster. Membership is enforced by the manifest-derived resolvability preflight
+# (_runner_validate_leaf_resolvability, runner.sh — every leaf must resolve to a
+# plugin) and order by the upstream-input data-dependency DAG (contract-validator.sh).
+# The retired _ZBUILD_CANONICAL_STAGES array + ZBUILD_LEGACY_STAGE_VALIDATION
+# kill-switch (the strangler escape hatch) are deleted; the preflight + DAG are the
+# sole enforcement.
 
 # Module-level state — populated by load_template
 _TPL_DEFAULT_STRATEGY="fanout"
@@ -75,74 +52,6 @@ _TPL_MAP_GROUPS=()
 # ADR-015 v1 (#438): recognized io.destination tokens. Unknown tokens fail at
 # template load time with an actionable error listing the valid set.
 readonly _ZBUILD_IO_DESTINATIONS_VALID=(file stdout gh_comment)
-
-# _tpl_validate_stages <stage_ids...>
-# ADR-047 §5: the engine-owned closed-vocabulary fence (membership + canonical
-# order) is DEMOTED. Its two roles are re-expressed as fail-closed, manifest-
-# derived load-time preflights: resolvability (every leaf resolves to a plugin —
-# runner.sh, after dispatch.sh is sourced) replaces membership; the upstream-input
-# data-dependency DAG (contract-validator.sh) replaces canonical order. So by
-# default (kill-switch unset) this function is inert — the mechanics name no stage.
-#
-# STRANGLER kill-switch: `ZBUILD_LEGACY_STAGE_VALIDATION=1` re-enables the old
-# canonical fence for one release as an escape hatch. Demote-not-delete:
-# _ZBUILD_CANONICAL_STAGES survives (a manifest-derived registry/lint artifact),
-# and the old membership+order logic below stays reachable behind the switch.
-#
-# RESIDUAL (ADR-047 §5, accepted): the old order-check flagged two INDEPENDENT
-# stages swapped; the data-dependency DAG does not (no declared dependency = no
-# constraint). Never a correctness failure — an order-independent swap is, by
-# definition, order-independent.
-_tpl_validate_stages() {
-    local -a ids=("$@")
-    [[ ${#ids[@]} -eq 0 ]] && return 0
-
-    # Default (unset): fail-closed preflights own membership + order; skip the
-    # legacy fence. Opt in with ZBUILD_LEGACY_STAGE_VALIDATION=1.
-    [[ "${ZBUILD_LEGACY_STAGE_VALIDATION:-}" == "1" ]] || return 0
-
-    # Build a lookup: canonical stage → its ordinal position
-    local -a canonical=("${_ZBUILD_CANONICAL_STAGES[@]}")
-    local canonical_list="${canonical[*]}"
-
-    local prev_pos=-1
-    local stage_id
-    for stage_id in "${ids[@]}"; do
-        # Check membership
-        local pos=-1
-        local i
-        for i in "${!canonical[@]}"; do
-            if [[ "${canonical[$i]}" == "$stage_id" ]]; then
-                pos=$i
-                break
-            fi
-        done
-
-        if [[ $pos -eq -1 ]]; then
-            error "load_template: unknown stage id '${stage_id}' (valid: ${canonical_list})"
-            return 1
-        fi
-
-        # ADR-039 (#1130): parallel-group members run concurrently — their
-        # relative declaration order carries no meaning, so exempt them from the
-        # canonical-order check (membership is still enforced above). Mirrors the
-        # cycle-member skip in _tpl_validate_cycles.
-        local _pmof_var="_TPL_PARALLEL_MEMBER_OF_${stage_id//-/_}"
-        if [[ -n "${!_pmof_var:-}" ]]; then
-            continue
-        fi
-
-        # Check order preservation
-        if [[ $pos -le $prev_pos ]]; then
-            error "load_template: stage '${stage_id}' violates canonical order (valid order: ${canonical_list})"
-            return 1
-        fi
-
-        prev_pos=$pos
-    done
-
-    return 0
-}
 
 load_template() {
     local template_file="$1"
@@ -696,8 +605,9 @@ load_template() {
         esac
     done <<< "$stage_rows"
 
-    # Validate ids/order/io/router before mutating per-stage state.
-    _tpl_validate_stages "${collected_ids[@]}" || return 1
+    # Validate io/router before mutating per-stage state. Stage membership + order
+    # are enforced downstream: the manifest-derived resolvability preflight
+    # (runner.sh) + the data-dependency DAG (contract-validator.sh) — not here.
     _tpl_validate_io_dests collected_ids collected_io_dests || return 1
     _tpl_validate_io_knobs collected_ids collected_io_tail collected_io_redact \
         collected_router_timeout collected_router_max_turns \
