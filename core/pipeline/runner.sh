@@ -216,10 +216,10 @@ _runner_export_scope_allowlist() {
 }
 
 # ─── _runner_validate_leaf_resolvability <stages_arr_name> <plugins_root> ─────
-# ADR-047 §5: the manifest-derived replacement for the retired
-# _ZBUILD_CANONICAL_STAGES membership fence. Every leaf in the resolved template
-# flow must resolve to a plugin via resolve_stage_plugin (role-then-id, ADR-042);
-# an unresolved leaf names the id.
+# ADR-047 §5: the manifest-derived membership fence — the sole membership
+# enforcement (the old hardcoded-roster fence is deleted, #1299). Every leaf in the
+# resolved template flow must resolve to a plugin via resolve_stage_plugin
+# (role-then-id, ADR-042); an unresolved leaf names the id.
 #
 # It is a CONTRACT check, so it is gated by the SAME ZBUILD_CONTRACT_VALIDATOR mode
 # the inter-stage contract-validator uses (they must agree). Load-time membership
@@ -865,8 +865,8 @@ main() {
     elif [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
         active_stages=("${_TPL_STAGES[@]}")
         info "merge_policy: ${_TPL_MERGE_POLICY:-auto_unless_flagged}"
-        # ADR-047 §5: resolvability preflight (replaces the retired
-        # _ZBUILD_CANONICAL_STAGES membership fence). Every leaf in the resolved
+        # ADR-047 §5: resolvability preflight — the sole membership fence (the old
+        # hardcoded-roster fence is deleted, #1299). Every leaf in the resolved
         # template flow MUST resolve to a plugin via resolve_stage_plugin
         # (role-then-id, ADR-042). An unresolved leaf ERRORS at load — fail-closed,
         # matching the strictness of the membership check it replaces. Runs HERE

@@ -54,7 +54,8 @@ stages:
     roles: [builder]
 EOF
 
-# A template with an unknown (non-canonical) stage id
+# A template with a fictitiously-named stage id (the template layer no longer
+# fences on membership — that moved to the runner's resolvability preflight).
 UNKNOWN_STAGE_TPL="$TEST_TEMP_DIR/unknown-stage.yaml"
 cat > "$UNKNOWN_STAGE_TPL" <<'EOF'
 id: bad
@@ -69,23 +70,6 @@ stages:
   - id: frobulate
     gate: auto
     roles: [frobulator]
-EOF
-
-# A template with stages in wrong (non-canonical) order
-WRONG_ORDER_TPL="$TEST_TEMP_DIR/wrong-order.yaml"
-cat > "$WRONG_ORDER_TPL" <<'EOF'
-id: wrong-order
-name: Wrong Order Pipeline
-defaults:
-  strategy: fanout
-
-stages:
-  - id: review
-    gate: auto
-    roles: [reviewer]
-  - id: intake
-    gate: auto
-    roles: [intake]
 EOF
 
 # A template with an empty stages list (valid — subtractive composition)
@@ -206,35 +190,21 @@ reload_count="${#_TPL_STAGES[@]}"
 assert_eq "reloaded multi-cycle template still has 8 stages" "8" "$reload_count"
 assert_eq "reloaded _TPL_DEFAULT_STRATEGY=fanout" "fanout" "$_TPL_DEFAULT_STRATEGY"
 
-# ─── ADR-047 §5: the canonical fence is DEMOTED behind ZBUILD_LEGACY_STAGE_VALIDATION.
-# Default (unset): _tpl_validate_stages is inert — membership is enforced by the
-# runner's resolvability preflight, order by the contract-validator DAG (both
-# fail-closed at load; see tests/unit/template-resolvability-preflight-test.sh and
-# the contract-validator suite). These tests exercise the KILL-SWITCH path, proving
-# the old fence stays reachable for one release (strangler escape hatch), plus the
-# default-off behavior at the template layer.
+# ─── ADR-047 §5 (#1299): stage membership + order are NOT enforced at the template
+# layer. The old _ZBUILD_CANONICAL_STAGES fence + ZBUILD_LEGACY_STAGE_VALIDATION
+# kill-switch are deleted. Membership is enforced by the runner's resolvability
+# preflight and order by the contract-validator DAG (both fail-closed at load; see
+# tests/unit/template-resolvability-preflight-test.sh and the contract-validator
+# suite). These tests prove the template layer no longer fences on id/order.
 
-# ─── Test 15: [kill-switch] unknown stage id → load_template returns non-zero ─
-set +e
-ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$UNKNOWN_STAGE_TPL" 2>/dev/null
-rc_unknown=$?
-set -e
-assert_eq "[legacy fence] unknown stage id → load_template returns non-zero" "1" "$rc_unknown"
-
-# ─── Test 15b: [default] unknown stage id → template layer NO LONGER fences ───
-# The leaf-membership check moved to the runner's resolvability preflight
+# ─── Test 15b: unknown stage id → template layer does NOT fence ───────────────
+# The leaf-membership check lives in the runner's resolvability preflight
 # (ADR-047 §5); template.sh alone accepts a fictitiously-named leaf.
 set +e
-ZBUILD_LEGACY_STAGE_VALIDATION='' load_template "$UNKNOWN_STAGE_TPL" 2>/dev/null
+load_template "$UNKNOWN_STAGE_TPL" 2>/dev/null
 rc_unknown_default=$?
 set -e
-assert_eq "[default/no fence] unknown stage id loads at template layer (rc=0)" "0" "$rc_unknown_default"
-
-# ─── Test 16: [kill-switch] unknown stage id → error message contains bad id ──
-set +e
-err_unknown="$(ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$UNKNOWN_STAGE_TPL" 2>&1)"
-set -e
-assert_contains "[legacy fence] unknown stage id error references bad id 'frobulate'" "$err_unknown" "frobulate"
+assert_eq "[no fence] unknown stage id loads at template layer (rc=0)" "0" "$rc_unknown_default"
 
 # ─── Test 17: valid canonical subset → load_template succeeds ─────────────────
 set +e
@@ -245,19 +215,6 @@ assert_eq "valid canonical subset passes validation" "0" "$rc_subset"
 
 # ─── Test 18: valid canonical subset → _TPL_STAGES has correct count ──────────
 assert_eq "valid subset template has 3 stages" "3" "${#_TPL_STAGES[@]}"
-
-# ─── Test 19: [kill-switch] stages in wrong order → load_template returns non-zero
-set +e
-ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$WRONG_ORDER_TPL" 2>/dev/null
-rc_order=$?
-set -e
-assert_eq "[legacy fence] wrong stage order → load_template returns non-zero" "1" "$rc_order"
-
-# ─── Test 20: [kill-switch] stages in wrong order → error message mentions order
-set +e
-err_order="$(ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$WRONG_ORDER_TPL" 2>&1)"
-set -e
-assert_contains "[legacy fence] wrong order error mentions 'order'" "$err_order" "order"
 
 # ─── Test 21: empty stages list → load_template succeeds ──────────────────────
 set +e

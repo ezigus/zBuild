@@ -2,9 +2,9 @@
 # tests/unit/template-resolvability-preflight-test.sh — EPIC #1277 / issue #1282.
 #
 # ADR-047 §5: the engine-owned _ZBUILD_CANONICAL_STAGES closed-vocabulary fence is
-# retired; its membership role is re-expressed as a FAIL-CLOSED, manifest-derived
-# resolvability preflight (_runner_validate_leaf_resolvability, core/pipeline/runner.sh),
-# and its canonical-order role by the upstream-input data-dependency DAG
+# retired (fully deleted in #1299); its membership role is the FAIL-CLOSED, manifest-
+# derived resolvability preflight (_runner_validate_leaf_resolvability, core/pipeline/
+# runner.sh), and its canonical-order role the upstream-input data-dependency DAG
 # (core/pipeline/contract-validator.sh). This test guards:
 #
 #   FICTITIOUS-STAGE HARNESS (SPEC-1/2/3): a brand-new, fictitiously-named stage
@@ -16,10 +16,12 @@
 #   FAIL-CLOSED PREFLIGHT (SPEC-4/5): an unresolvable leaf ERRORS (not warns) at load
 #     with the pinned ADR-047 §5 message naming the id.
 #
-#   STRANGLER AGREEMENT (SPEC-6): across the fixture-template corpus + config/templates,
-#     the NEW resolvability preflight rejects a SUPERSET-OR-EQUAL set of what the OLD
-#     canonical fence (ZBUILD_LEGACY_STAGE_VALIDATION=1) rejected — proving the
-#     replacement is at least as strict before the old code is removed (a later PR).
+#   SOLE-ENFORCEMENT (SPEC-6/6b): the preflight ACCEPTS the shipped production template
+#     corpus (config/templates — every leaf resolves; test fixtures under
+#     tests/fixtures/templates are EXCLUDED, they deliberately carry synthetic stages
+#     with no backing plugin) and REJECTS templates with a genuinely-unresolvable leaf.
+#     The preflight stands on its own — the old canonical fence +
+#     ZBUILD_LEGACY_STAGE_VALIDATION baseline are deleted (#1299).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -138,32 +140,55 @@ _rc_empty=$?
 set -e
 assert_eq "SPEC-5: empty leaf set → preflight passes (rc=0)" "0" "$_rc_empty"
 
-# ─── SPEC-6: STRANGLER AGREEMENT — new preflight rejects ⊇ old fence (MEMBERSHIP)
-# The strangler claim, stated precisely: every template the OLD canonical fence
-# rejects for a MEMBERSHIP reason where the offending leaf is GENUINELY UNRESOLVABLE
-# (no plugin resolves) is ALSO rejected in the new world. This is the property that
-# must hold before the old fence is removed — the new preflight must not silently
-# accept a leaf that truly has no plugin.
+# ─── SPEC-6: the preflight stands on its own (#1299 — the old canonical fence +
+# ZBUILD_LEGACY_STAGE_VALIDATION baseline are deleted; the strangler-agreement
+# framing retires with them). The property that must hold: the manifest-derived
+# preflight ACCEPTS the SHIPPED templates (config/templates — every leaf resolves to
+# a real plugin) and REJECTS a template with a genuinely-unresolvable leaf. No
+# comparison to a legacy verdict — the preflight is now the sole membership
+# enforcement.
 #
-# TWO cases the claim deliberately does NOT cover:
-#   - Order-only rejections (SPEC-7): the accepted ADR-047 §5 residual.
-#   - STALE-VOCABULARY rejections: the old canonical list was an arbitrary closed
-#     set that OMITTED real, resolvable stages (e.g. `security-lens`, `output` — the
-#     runner's own built-in fallback roster is NOT in _ZBUILD_CANONICAL_STAGES). A
-#     template using such a stage is rejected by the old fence (unknown id) yet its
-#     leaf DOES resolve to a real plugin. The new world CORRECTLY accepts it — the
-#     old fence was over-strict on a stale vocabulary. This divergence is the WHOLE
-#     POINT of ADR-047 (retire the arbitrary closed set), not a strangler failure,
-#     so it is logged (not failed) below.
-# Two corpora feed the claim: the shipped corpus (walked for regression) + synthetic
-# MEMBERSHIP-violation templates with a genuinely-unresolvable leaf (teeth).
+# Scope note: only config/templates (the shipped, production templates) are asserted
+# to fully resolve. tests/fixtures/templates deliberately contains synthetic stages
+# with no backing plugin (harness fixtures), so they are NOT a resolvability corpus.
+#
+# NOTE: the template layer no longer fences on membership (load succeeds for any
+# id); the resolvability preflight over the resolved leaves is what has teeth.
 REAL_PLUGINS="$REPO_ROOT/plugins"
+
+# The shipped corpus: every production template must LOAD and every resolved leaf
+# must resolve to a real plugin (regression guard — no shipped template names a
+# missing plugin).
 _corpus=()
-for _t in "$REPO_ROOT/tests/fixtures/templates"/*.yaml "$REPO_ROOT/config/templates"/*.yaml; do
+for _t in "$REPO_ROOT/config/templates"/*.yaml; do
     [[ -f "$_t" ]] && _corpus+=("$_t")
 done
+_corpus_ok=1
+for _t in "${_corpus[@]}"; do
+    set +e
+    load_template "$_t" >/dev/null 2>&1
+    _load_rc=$?
+    set -e
+    if [[ $_load_rc -ne 0 ]]; then
+        _corpus_ok=0
+        printf '  corpus REGRESSION: %s failed to load\n' "$(basename "$_t")" >&2
+        continue
+    fi
+    # shellcheck disable=SC2034  # passed BY NAME to the resolvability helper
+    local_leaves=("${_TPL_STAGES[@]+"${_TPL_STAGES[@]}"}")
+    set +e
+    _runner_validate_leaf_resolvability local_leaves "$REAL_PLUGINS" >/dev/null 2>&1
+    _pf_rc=$?
+    set -e
+    if [[ $_pf_rc -ne 0 ]]; then
+        _corpus_ok=0
+        printf '  corpus REGRESSION: %s has an unresolvable leaf\n' "$(basename "$_t")" >&2
+    fi
+done
+assert_eq "SPEC-6: shipped corpus loads and every leaf resolves (preflight accepts, corpus=${#_corpus[@]})" "1" "$_corpus_ok"
 
-# Synthetic membership-violation templates appended to the corpus.
+# Synthetic membership-violation templates: a genuinely-unresolvable leaf MUST be
+# rejected by the preflight (the teeth of the sole membership enforcement).
 _MEMBER_BAD_1="$TEST_TEMP_DIR/member-bad-1.yaml"
 cat > "$_MEMBER_BAD_1" <<'EOF'
 id: member-bad-1
@@ -189,89 +214,40 @@ stages:
     gate: auto
     roles: [qqq_not_a_role]
 EOF
-_corpus+=("$_MEMBER_BAD_1" "$_MEMBER_BAD_2")
-
-_strangler_ok=1
-_checked=0
-for _t in "${_corpus[@]}"; do
-    # OLD verdict: does the canonical fence reject this template at load?
+_rejected=0
+for _t in "$_MEMBER_BAD_1" "$_MEMBER_BAD_2"; do
+    # Reset before each load so a load failure can never leave stale _TPL_STAGES
+    # from the prior iteration masquerading as this template's leaves (Copilot #1352).
+    _TPL_STAGES=()
     set +e
-    ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$_t" >/dev/null 2>&1
-    _old_rc=$?
+    load_template "$_t" >/dev/null 2>&1   # template layer no longer fences on id
+    _bad_load_rc=$?
     set -e
-    [[ $_old_rc -eq 0 ]] && continue   # old fence accepted → nothing to assert
-
-    # Distinguish MEMBERSHIP rejection from ORDER rejection: reload under the
-    # fence and inspect the message. Only membership rejections are in the
-    # strangler claim (order is the accepted residual, SPEC-7).
-    set +e
-    _old_err="$(ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$_t" 2>&1)"
-    set -e
-    [[ "$_old_err" == *"unknown stage id"* ]] || continue   # order-only → residual, skip
-
-    # NEW verdict: template load (fence off) THEN resolvability preflight over the
-    # resolved leaves against the real plugins tree. A rejection in EITHER phase
-    # counts as a new-world rejection.
-    set +e
-    ZBUILD_LEGACY_STAGE_VALIDATION='' load_template "$_t" >/dev/null 2>&1
-    _new_load_rc=$?
-    set -e
-    _new_reject=0
-    _has_unresolvable_leaf=0
-    if [[ $_new_load_rc -ne 0 ]]; then
-        _new_reject=1
-    else
-        # shellcheck disable=SC2034  # passed BY NAME to the resolvability helper
-        local_leaves=("${_TPL_STAGES[@]+"${_TPL_STAGES[@]}"}")
-        set +e
-        _runner_validate_leaf_resolvability local_leaves "$REAL_PLUGINS" >/dev/null 2>&1
-        _new_pf_rc=$?
-        set -e
-        [[ $_new_pf_rc -ne 0 ]] && _new_reject=1
-        # Does ANY leaf genuinely fail to resolve against the real plugins tree?
-        # (distinguishes a truly-unregistered leaf from a stale-vocabulary one).
-        for _lf in "${local_leaves[@]+"${local_leaves[@]}"}"; do
-            [[ -z "$_lf" ]] && continue
-            if ! resolve_stage_plugin "$_lf" "$REAL_PLUGINS" >/dev/null 2>&1; then
-                _has_unresolvable_leaf=1; break
-            fi
-        done
+    # A synthetic template must at least LOAD — its unresolvability is a role/plugin
+    # concern caught by the preflight below, not a load-time fence. A load failure here
+    # means the fixture is malformed; surface it rather than reading stale/empty stages.
+    if [[ $_bad_load_rc -ne 0 ]]; then
+        assert_fail "SPEC-6b: synthetic template loads before preflight ($_t)" "load_template rc=$_bad_load_rc"
+        continue
     fi
-    if [[ $_new_reject -eq 0 ]]; then
-        if [[ $_has_unresolvable_leaf -eq 1 ]]; then
-            # New world ACCEPTED a template with a genuinely-unresolvable leaf → the
-            # strangler invariant is VIOLATED (a load-time guarantee was lost).
-            _strangler_ok=0
-            printf '  strangler VIOLATION: OLD rejected %s AND a leaf is unresolvable, but NEW ACCEPTED it\n' "$(basename "$_t")" >&2
-        else
-            # Stale-vocabulary divergence (all leaves resolve): the old fence was
-            # over-strict on an arbitrary closed set; the new world is correctly
-            # more permissive. This is desirable per ADR-047, not a violation.
-            printf '  strangler (expected divergence): OLD rejected %s on a stale vocabulary but every leaf resolves — new world correctly accepts\n' "$(basename "$_t")" >&2
-        fi
-    else
-        # New world rejects. Count only the genuinely-unresolvable rejections as
-        # "with teeth" (a stale-vocabulary template that also happens to fail load
-        # would not exercise the resolvability path).
-        [[ $_has_unresolvable_leaf -eq 1 ]] && _checked=$((_checked + 1))
-    fi
+    # shellcheck disable=SC2034  # passed BY NAME to the resolvability helper
+    bad_leaves=("${_TPL_STAGES[@]+"${_TPL_STAGES[@]}"}")
+    set +e
+    _runner_validate_leaf_resolvability bad_leaves "$REAL_PLUGINS" >/dev/null 2>&1
+    _bad_pf_rc=$?
+    set -e
+    [[ $_bad_pf_rc -ne 0 ]] && _rejected=$((_rejected + 1))
 done
-assert_eq "SPEC-6: new preflight rejects ⊇ old fence for genuinely-unresolvable leaves (strangler)" "1" "$_strangler_ok"
-# Guard against a vacuous green: the synthetic templates MUST have exercised at
-# least the 2 unresolvable-leaf rejections we injected. If 0, the resolvability
-# path stopped catching truly-missing plugins (a real regression to catch).
-if [[ $_checked -ge 2 ]]; then
-    assert_pass "SPEC-6b: strangler agreement exercised on genuinely-unresolvable leaves ($_checked, corpus=${#_corpus[@]})"
-else
-    assert_fail "SPEC-6b: strangler agreement was vacuous" "expected ≥2 unresolvable-leaf rejections, got $_checked"
-fi
+# Guard against a vacuous green: BOTH synthetic unresolvable-leaf templates must be
+# rejected. If not, the resolvability path stopped catching truly-missing plugins.
+assert_eq "SPEC-6b: preflight rejects both genuinely-unresolvable-leaf templates" "2" "$_rejected"
 
-# ─── SPEC-7: ACCEPTED RESIDUAL — order-only swap that violates no data dependency.
-# The old fence rejected two independent stages in swapped canonical order. The
-# new world (data-dependency DAG) does NOT — no declared dependency = no constraint.
-# This is the documented, accepted residual (ADR-047 §5), NOT a strangler failure.
-# We prove the direction: an order-only swap of two resolvable, dependency-free
-# stages is rejected by the OLD fence but the leaves still RESOLVE in the new world.
+# ─── SPEC-7: ACCEPTED RESIDUAL — an order-only swap of two resolvable, dependency-
+# free stages is NOT a resolvability failure. The new world's order enforcement is
+# the data-dependency DAG (contract-validator, tested separately): no declared
+# dependency = no constraint. This is the documented, accepted ADR-047 §5 residual.
+# We prove the direction directly (no legacy-fence baseline): swapped resolvable
+# leaves still resolve.
 _ORDER_RESIDUAL="$TEST_TEMP_DIR/order-residual.yaml"
 cat > "$_ORDER_RESIDUAL" <<'EOF'
 id: order-residual
@@ -287,23 +263,14 @@ stages:
     roles: [intake]
 EOF
 set +e
-_old_order_err="$(ZBUILD_LEGACY_STAGE_VALIDATION=1 load_template "$_ORDER_RESIDUAL" 2>&1)"
-_old_order_rc=$?
-set -e
-assert_eq "SPEC-7a: old fence rejects the order swap (rc=1)" "1" "$_old_order_rc"
-assert_contains "SPEC-7b: old rejection is an ORDER violation (not membership)" "$_old_order_err" "order"
-# New world: both leaves resolve against the real plugins tree; the swap violates
-# no declared data dependency, so it is NOT a resolvability failure. (Any genuine
-# data dependency would be caught by the contract-validator DAG, tested separately.)
-set +e
-ZBUILD_LEGACY_STAGE_VALIDATION='' load_template "$_ORDER_RESIDUAL" >/dev/null 2>&1
+load_template "$_ORDER_RESIDUAL" >/dev/null 2>&1
 set -e
 _residual_leaves=("${_TPL_STAGES[@]+"${_TPL_STAGES[@]}"}")
 set +e
 _runner_validate_leaf_resolvability _residual_leaves "$REAL_PLUGINS" >/dev/null 2>&1
 _residual_pf_rc=$?
 set -e
-assert_eq "SPEC-7c: residual — swapped resolvable leaves still resolve (accepted, rc=0)" "0" "$_residual_pf_rc"
+assert_eq "SPEC-7: residual — swapped resolvable leaves still resolve (accepted, rc=0)" "0" "$_residual_pf_rc"
 
 cleanup_test_env
 print_test_results
