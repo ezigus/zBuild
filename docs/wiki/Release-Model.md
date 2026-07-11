@@ -35,7 +35,7 @@ Release automation is tracked under [#1362](https://github.com/ezigus/zBuild/iss
 - **Versioning foundation / `compute_version`** (#873) — the model described on this page
 - **`zbuild release` command** (#1355) and the release generator (#874 REL-B)
 - **Signed tarball** (#875 REL-C), CI release workflow (#877 REL-D), docs-as-release (#876 REL-E)
-- **Release cadence** (#1357 REL-F) — default **daily at 03:00** (configurable), skipped if no issues have been closed since the last release
+- **Release cadence** (#1357 REL-F) — default **weekly**, and **configurable** (including which day(s) of the week the release runs, via the scheduled workflow); skipped if no issues have been closed since the last release
 - **Docs automation** (#1356), **vision-document standard** (#1358)
 
 ---
