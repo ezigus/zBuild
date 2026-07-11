@@ -18,7 +18,7 @@ Software gets messy when every change is made a little differently. zBuild remov
 
 ## Try it (about 5 minutes)
 
-You'll need a few common command-line tools first: a recent `bash`, plus `git`, `jq`, and the GitHub CLI (`gh`). (The [Installation](https://github.com/ezigus/zBuild/wiki/Installation) page lists the exact commands for macOS and Linux.)
+You'll need a few common command-line tools first: **Bash 5 or newer**, `git`, `jq`, the GitHub CLI (`gh`), plus `rsync`, `flock`, and (on macOS) `coreutils`. The [Installation](https://github.com/ezigus/zBuild/wiki/Installation) page has the exact one-line install command for macOS and Linux — run it before `./install.sh`.
 
 ```bash
 # 1. Get the code
@@ -52,7 +52,7 @@ Here is the shape of the shipped `simple` recipe — just the default example; t
 flowchart LR
     A[understand<br/>the request] --> B[make a plan]
     B --> C[check the<br/>plan]
-    C --> D[write &amp; test<br/>the code]
+    C --> D[write and test<br/>the code]
     D --> E[review it from<br/>several angles]
     E --> F[open a<br/>pull request]
 ```
@@ -68,8 +68,9 @@ The [Configuration](https://github.com/ezigus/zBuild/wiki/Configuration) page wa
 ## Common commands
 
 ```
-zbuild pipeline start --issue <N> | --goal "<text>"   # start a run
-zbuild pipeline resume                                # continue an interrupted run
+zbuild pipeline start --issue 42               # start a run from a GitHub issue
+zbuild pipeline start --goal "add a login test" # ...or from a plain-language goal
+zbuild pipeline resume                         # continue an interrupted run
 zbuild status                                         # see what's happening
 zbuild doctor                                         # check your setup
 zbuild --help                                         # the full list
