@@ -73,6 +73,11 @@ Commands:
                                                           to working tree, then drop)
                          [--quiet]
                          Default: dry-run, all categories.
+  release                Cut a release: compute version, generate per-issue
+                         release notes, and update CHANGELOG.md.
+                         [--dry-run] [--major N] [--force] [--milestone <name>]
+                         (Fuller \`zbuild release\` UX is #1355; this dispatch is
+                         minimal + forward-compatible.)
   deferred <sub>         Deferred-work scanners (backfill | tracker)
                          Run \`zbuild deferred --help\` for sub-commands.
   manifest <sub>         Manifest YAML drift management (sync)
@@ -620,6 +625,13 @@ UPHELP
                 git worktree prune >/dev/null 2>&1 || true
             fi
         fi
+        ;;
+    release)
+        # #1355 (REL-B1) owns the fuller `zbuild release` story; keep this
+        # dispatch minimal + forward-compatible: pass through all flags verbatim
+        # (--dry-run / --major / --force / --milestone / --help).
+        shift
+        exec bash "$SCRIPT_DIR/release.sh" "$@"
         ;;
     deferred)
         case "${2:-}" in
