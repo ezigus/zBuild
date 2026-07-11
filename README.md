@@ -84,11 +84,14 @@ Full reference (every subcommand, flag, exit code, and environment variable) liv
 
 ## Release model
 
-zBuild follows SemVer with a cadence policy:
+zBuild uses a **4-part `A.B.C.D`** version (not strict SemVer), and the scheme is a
+**pluggable, repo-owner-configurable** strategy ([ADR-011](docs/adr/ADR-011-pluggable-backends.md) backend, default `initiative-count`):
 
-- **major** = a manual milestone release (this is **1.0.0**),
-- **minor** = a weekly, automated cut,
-- **patch** = a hotfix.
+- **`A.B`** = the last completed **initiative** (anchored by the latest `vA.B.0.0` tag; currently **`1.0`**),
+- **`C`** = release count since that initiative release,
+- **`D`** = issues closed since that initiative release.
+
+Example: `1.0.0.0` → `1.0.1.12` → `1.0.2.13` → … → `1.1.0.0`. `compute_version` derives this dynamically; override the scheme via `ZBUILD_VERSIONING_BACKEND` / `backends.versioning`. See the [Release Model](docs/wiki/Release-Model.md) wiki and [ADR-048](docs/adr/ADR-048-release-versioning-signing.md).
 
 See [`CHANGELOG.md`](CHANGELOG.md) and [Releases](https://github.com/ezigus/zBuild/releases). Progress is tracked across GitHub [milestones](https://github.com/ezigus/zBuild/milestones) and the [zBuild Roadmap project](https://github.com/users/ezigus/projects/2).
 

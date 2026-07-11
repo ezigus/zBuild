@@ -10,6 +10,7 @@ declare -A _ZBUILD_BACKEND_DEFAULTS=(
     [memory]="sqlite"
     [orchestrator]="bash-parallel"
     [cache]="local"
+    [versioning]="initiative-count"
 )
 
 # Allowed backend values per capability
@@ -17,6 +18,7 @@ declare -A _ZBUILD_BACKEND_ALLOWED=(
     [memory]="sqlite ruflo"
     [orchestrator]="bash-parallel ruflo-hive"
     [cache]="local gh-actions-cache s3"
+    [versioning]="initiative-count"
 )
 
 # _zbuild_config_file: Find the config file. Prints path or empty. Exit 0 if found, 1 if not.
