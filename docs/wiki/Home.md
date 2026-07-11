@@ -20,3 +20,6 @@
 - **[[Writing-Plugins]]** — the manifest contract and hook lifecycle.
 - **[[Troubleshooting]]** — exit codes, event logs, resuming runs.
 - **[[Release-Model]]** — versioning and the release cadence.
+
+## Roadmap
+Work is organized into **initiatives** (GitHub [milestones](https://github.com/ezigus/zBuild/milestones)) and tracked on the **[zBuild Roadmap project](https://github.com/users/ezigus/projects/2)**, grouped by initiative and epic. See [[Release-Model]] for the versioning and release cadence.
