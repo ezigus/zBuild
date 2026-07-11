@@ -19,7 +19,7 @@
     "test:e2e": "bash scripts/run-tests.sh --tier e2e",
     "test:golden": "bash scripts/run-tests.sh --tier golden",
     "test:mutation": "bash scripts/run-tests.sh --tier mutation",
-    "lint": "shellcheck -x --severity=warning scripts/zbuild && find scripts/lib core plugins -name '*.sh' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh"
+    "lint": "shellcheck -x --severity=warning scripts/zbuild && find scripts/lib core plugins -name '*.sh' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh"
   },
   "engines": {
     "bash": ">=5.0.0",
