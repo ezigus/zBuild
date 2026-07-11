@@ -801,9 +801,20 @@ _route_update_ledger() {
 #                                    hook_failed | error
 #   _ROUTE_LOOP_INPUT_TOKENS       — cumulative .usage.input_tokens
 #   _ROUTE_LOOP_OUTPUT_TOKENS      — cumulative .usage.output_tokens
-#   _ROUTE_LOOP_LAST_RESPONSE      — (#608) result_text of the FINAL iteration,
-#                                    consumed by build plugin's COMMIT_SUMMARY
-#                                    parser. Empty when no iteration ran.
+#   _ROUTE_LOOP_LAST_RESPONSE      — (#608) result_text of the FINAL iteration.
+#                                    Since #1329 this is the LEGACY / single-iteration
+#                                    FALLBACK for the build commit parser; the PRIMARY
+#                                    path is _ROUTE_LOOP_ITER_SUMMARIES (below). Empty
+#                                    when no iteration ran.
+#   _ROUTE_LOOP_ITER_SUMMARIES     — (#1329) newline-separated accumulation of the
+#                                    per-iteration COMMIT_SUMMARY value, parsed +
+#                                    sanitized AT THE SOURCE (one line per iteration
+#                                    that emitted a marker). Consumed by the build
+#                                    plugin for cumulative commit-message composition.
+#                                    Storing only the parsed one-line summaries (not
+#                                    raw result_text) keeps this bounded and prevents
+#                                    adversarial control bytes in the LLM output from
+#                                    being read as record boundaries (#1329 review).
 #
 # Returns: 0 on DONE-sentinel, 1 on max-iter no-DONE, 2 on fatal.
 _ROUTE_LOOP_ITERATIONS=0
@@ -811,6 +822,7 @@ _ROUTE_LOOP_TERMINATED_REASON=""
 _ROUTE_LOOP_INPUT_TOKENS=0
 _ROUTE_LOOP_OUTPUT_TOKENS=0
 _ROUTE_LOOP_LAST_RESPONSE=""
+_ROUTE_LOOP_ITER_SUMMARIES=""
 _ROUTE_LOOP_CHILD_PID=""
 # Wave 15-G (#687): PGID of the in-flight claude spawn (when known).
 # Set alongside _ROUTE_LOOP_CHILD_PID at the spawn site, cleared after wait.
@@ -906,6 +918,25 @@ _route_loop_on_signal() {
     return 130
 }
 
+# #1329: extract + sanitize the LAST COMMIT_SUMMARY marker from ONE iteration's
+# result text. Returns a single control-char-free line (≤72 chars), or empty when
+# the iteration emitted no marker. Parsing at the source (not accumulating raw
+# result_text) is what makes _ROUTE_LOOP_ITER_SUMMARIES bounded and injection-safe.
+_route_parse_commit_summary_line() {
+    local text="${1:-}" out
+    [[ -z "$text" ]] && { printf ''; return 0; }
+    out="$(printf '%s\n' "$text" \
+        | tail -n 50 \
+        | grep -E '^COMMIT_SUMMARY:[[:space:]]*(.+)$' \
+        | tail -n 1 \
+        | sed -E 's/^COMMIT_SUMMARY:[[:space:]]*//' \
+        | LC_ALL=C tr -d '\000-\037\177' \
+        | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+        | cut -c1-72 || true)"
+    printf '%s' "$out"
+    return 0
+}
+
 route_to_model_loop() {
     if [[ $# -lt 4 ]]; then
         error "route_to_model_loop requires <tier> <prompt_file> <cwd> <max_iterations>"
@@ -996,6 +1027,7 @@ route_to_model_loop() {
     _ROUTE_LOOP_INPUT_TOKENS=0
     _ROUTE_LOOP_OUTPUT_TOKENS=0
     _ROUTE_LOOP_LAST_RESPONSE=""
+    _ROUTE_LOOP_ITER_SUMMARIES=""
     # #646: clear deferred-final-banner-close handshake state from any prior call.
     _ROUTE_LOOP_FINAL_STAGE_ID=""
     _ROUTE_LOOP_FINAL_KIND=""
@@ -1482,6 +1514,20 @@ ${_diff_pointer}"
         # #608: expose the most recent iteration's LLM text so the build plugin
         # can parse the COMMIT_SUMMARY marker after the loop returns.
         _ROUTE_LOOP_LAST_RESPONSE="$result_text"
+        # #1329: parse THIS iteration's COMMIT_SUMMARY at the source and keep only
+        # the sanitized one-line value (newline-separated). Storing the parsed
+        # summary — not the raw result_text — keeps the accumulator bounded and
+        # means no adversarial control byte in the LLM output can be read as a
+        # record boundary (summaries-only; the build plugin composes the message).
+        local _iter_summary
+        _iter_summary="$(_route_parse_commit_summary_line "$result_text")"
+        if [[ -n "$_iter_summary" ]]; then
+            if [[ -z "$_ROUTE_LOOP_ITER_SUMMARIES" ]]; then
+                _ROUTE_LOOP_ITER_SUMMARIES="$_iter_summary"
+            else
+                _ROUTE_LOOP_ITER_SUMMARIES="${_ROUTE_LOOP_ITER_SUMMARIES}"$'\n'"${_iter_summary}"
+            fi
+        fi
 
         # Inter-turn hook (best-effort; failure does not abort the loop).
         # #646: moved AHEAD of the per-iter stage_io_end so any operator
