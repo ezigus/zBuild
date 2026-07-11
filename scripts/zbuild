@@ -48,6 +48,8 @@ Commands:
   --version, version     Print version (semver from the VERSION file; sha/branch
                          from \$ZBUILD_HOME/version install metadata when set)
   upgrade --from <dir>   Re-run install.sh from a source clone (pulls main first)
+  upgrade --tag <vX>     Fetch a release tarball by tag, verify checksum/signature
+                         BEFORE applying, then install (refuses on tamper)
   --help, help, -h       Show this help
   status                 Show pipeline status (Phase 0 stub — JSON only)
   plugin list            List discovered plugins
@@ -241,33 +243,78 @@ case "$cmd" in
     upgrade)
         shift
         up_from=""
+        up_tag=""
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 --from)
                     [[ -z "${2:-}" ]] && { error "--from requires a directory"; exit 2; }
                     up_from="$2"; shift 2 ;;
+                --tag)
+                    [[ -z "${2:-}" ]] && { error "--tag requires a version tag (e.g. v1.0.0.0)"; exit 2; }
+                    up_tag="$2"; shift 2 ;;
                 -h|--help)
                     cat <<'UPHELP'
-zbuild upgrade — re-run install.sh from a source clone.
+zbuild upgrade — refresh $ZBUILD_HOME from a source clone or a signed release.
 
 Usage:
   zbuild upgrade --from <path-to-zbuild-source-clone>
+  zbuild upgrade --tag  <vA.B.C.D>
 
-Behavior:
+--from (source clone):
   1. cd <dir>; git pull (best-effort; non-fatal if not a git checkout)
   2. exec <dir>/install.sh — copies the refreshed tree into $ZBUILD_HOME.
+  The --from flag needs your source clone because $ZBUILD_HOME has no .git.
 
-The --from flag is required. zbuild needs to know where your source clone
-lives because $ZBUILD_HOME contains only the runtime tree (no .git).
+--tag (signed release artifact, ADR-023 — cuts+verifies an artifact, no registry):
+  1. Fetch zbuild-<tag>.tar.gz + SHA256SUMS from the GitHub Release for <tag>.
+  2. VERIFY the tarball (checksum, and signature if the signing backend
+     provides one) BEFORE applying. Tamper/mismatch -> REFUSE, nothing applied.
+  3. Extract the verified tarball and exec its install.sh into $ZBUILD_HOME.
 UPHELP
                     exit 0 ;;
                 *)
                     error "Unknown upgrade flag: $1"; exit 2 ;;
             esac
         done
+
+        if [[ -n "$up_from" && -n "$up_tag" ]]; then
+            error "zbuild upgrade: use exactly one of --from or --tag, not both"
+            exit 2
+        fi
+
+        # ─── Signed-release path: fetch by tag, verify BEFORE applying ────────
+        if [[ -n "$up_tag" ]]; then
+            REPO_ROOT_UP="$(cd "$SCRIPT_DIR/.." && pwd)"
+            # shellcheck source=../core/plugin-registry/registry.sh
+            source "$REPO_ROOT_UP/core/plugin-registry/registry.sh"
+            # shellcheck source=../core/config/config.sh
+            source "$REPO_ROOT_UP/core/config/config.sh"
+            # shellcheck source=lib/release-tarball.sh
+            source "$SCRIPT_DIR/lib/release-tarball.sh"
+
+            up_work="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-upgrade.XXXXXX")"
+            trap 'rm -rf "$up_work"' EXIT
+            info "fetching release $up_tag and verifying before applying"
+            up_tarball="$(fetch_verified_release "$up_tag" "$up_work/dl")" || {
+                error "upgrade --tag: fetch or verification failed for $up_tag — NOT applied"
+                exit 1
+            }
+            success "verified $up_tag (checksum/signature OK)"
+            up_extract="$up_work/extract"; mkdir -p "$up_extract"
+            tar -xzf "$up_tarball" -C "$up_extract" || { error "upgrade --tag: extract failed"; exit 1; }
+            if [[ ! -f "$up_extract/install.sh" ]]; then
+                error "upgrade --tag: verified tarball has no install.sh"
+                exit 1
+            fi
+            info "applying verified release $up_tag"
+            exec bash "$up_extract/install.sh"
+        fi
+
+        # ─── Source-clone path (unchanged, ADR-023) ──────────────────────────
         if [[ -z "$up_from" ]]; then
-            error "zbuild upgrade requires --from <source-dir>"
+            error "zbuild upgrade requires --from <source-dir> or --tag <version>"
             echo "  Example: zbuild upgrade --from ~/code/zBuild" >&2
+            echo "  Example: zbuild upgrade --tag v1.0.0.0" >&2
             echo "  Run \`zbuild upgrade --help\` for details." >&2
             exit 2
         fi
