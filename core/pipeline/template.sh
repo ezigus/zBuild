@@ -2597,7 +2597,7 @@ template_stage_router_tier() {
         }
         in_stage {
             ind = indent($0)
-            # A line at or below the stkey indent (that is not blank) ends the block.
+            # A line at or below the stage-key indent (that is not blank) ends the block.
             if ($0 ~ /[^[:space:]]/ && ind <= stage_ind && $0 !~ "^"stage":") {
                 # For the list-item shape the next `- id:` or a shallower key closes it.
                 if (ind <= stage_ind) { in_stage = 0; in_router = 0 }

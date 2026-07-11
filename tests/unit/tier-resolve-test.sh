@@ -70,8 +70,10 @@ assert_exit_code "no args → non-zero" 1 "$_rc"
 # resolve_tier gained a THIRD source between the env override and the manifest:
 # the loaded template's per-stage `router.tier`, keyed by ZBUILD_CURRENT_STAGE.
 # Precedence: env ZBUILD_<ID>_TIER > template router.tier > manifest tier_default.
-# In this unit test template.sh is NOT sourced, so we stub the accessor and set
-# ZBUILD_CURRENT_STAGE, mirroring how the dispatch paths export the stage id.
+# tier-resolve.sh best-effort sources core/pipeline/template.sh, but this unit test
+# stubs template_stage_router_tier directly (so the cases are hermetic and shape-
+# independent) and sets ZBUILD_CURRENT_STAGE, mirroring how the dispatch paths export
+# the stage id. The stub takes precedence over any sourced definition.
 print_test_section "template router.tier feeds resolve_tier (env > template > manifest)"
 
 # Stub the accessor: returns $__STUB_TIER for the stage we pin, empty otherwise.
