@@ -162,3 +162,4 @@ fi
 echo
 info "Installation complete. Try: zbuild --help"
 info "Upgrade later with: zbuild upgrade --from <path-to-source-clone>"
+info "  or from a signed release: zbuild upgrade --tag <vA.B.C.D> (verifies before applying)"
