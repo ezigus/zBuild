@@ -72,6 +72,19 @@ assert_eq "resolve_repo_version rc=1 on unknown backend" "1" "$rc"
 assert_contains "message names backend.missing" "$out" "backend.missing"
 unset ZBUILD_VERSIONING_BACKEND
 
+# ─── Test 6: release_count robust outside a git worktree (Copilot, PR #1387) ─
+print_test_section "6. _versioning_release_count never aborts outside a git tree"
+# shellcheck source=../../scripts/lib/versioning/initiative-count.sh
+source "$REPO_ROOT/scripts/lib/versioning/initiative-count.sh"
+_ng="$TEST_TEMP_DIR/not-a-git-tree"; mkdir -p "$_ng"
+# Run in a non-git dir under strict mode: a git-tag pipeline failure (no .git /
+# grep no-match under pipefail) must NOT abort — it degrades to 0 prior releases.
+set +e
+_rc_out="$( set -euo pipefail; cd "$_ng" && _versioning_release_count "1.0" )"; _rc=$?
+set -e
+assert_eq "release_count rc=0 in strict mode outside a git worktree" "0" "$_rc"
+assert_eq "release_count prints 0 outside a git worktree" "0" "$_rc_out"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

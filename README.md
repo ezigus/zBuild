@@ -91,7 +91,7 @@ zBuild uses a **4-part `A.B.C.D`** version (not strict SemVer), and the scheme i
 - **`C`** = release count since that initiative release,
 - **`D`** = issues closed since that initiative release.
 
-Example: `1.0.0.0` → `1.0.1.12` → `1.0.2.13` → … → `1.1.0.0`. `compute_version` derives this dynamically; override the scheme via `ZBUILD_VERSIONING_BACKEND` / `backends.versioning`. See the [Release Model](docs/wiki/Release-Model.md) wiki and [ADR-048](docs/adr/ADR-048-release-versioning-signing.md).
+Example: `1.0.0.0` → `1.0.1.12` → `1.0.2.13` → … → `1.1.0.0`. The selected versioning backend derives this dynamically (the pure `compute_version` helper only assembles/validates the parts); override the scheme via `ZBUILD_VERSIONING_BACKEND` / `backends.versioning`. See the [Release Model](docs/wiki/Release-Model.md) wiki and [ADR-048](docs/adr/ADR-048-release-versioning-signing.md).
 
 See [`CHANGELOG.md`](CHANGELOG.md) and [Releases](https://github.com/ezigus/zBuild/releases). Progress is tracked across GitHub [milestones](https://github.com/ezigus/zBuild/milestones) and the [zBuild Roadmap project](https://github.com/users/ezigus/projects/2).
 

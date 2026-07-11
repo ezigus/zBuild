@@ -12,7 +12,9 @@ scheme is a **pluggable, repo-owner-configurable strategy** (see [[#Pluggable ve
 Worked example: `1.0.0.0` → `1.0.1.12` → `1.0.2.13` → … → `1.1.0.0` (when Initiative 1.1
 completes). The `VERSION` file carries **no** leading `v` (`v` is tag-only).
 
-`compute_version` derives this dynamically — the version is never hand-set. The `VERSION`
+The selected versioning backend derives this dynamically — the version is never hand-set
+(the pure `compute_version` helper only assembles + validates the 4 parts; the git/issue
+gathering lives in the backend strategy, reached via `resolve_repo_version`). The `VERSION`
 file and `zbuild --version` guard accept **3-or-4-part** (`^[0-9]+(\.[0-9]+){2,3}$`), so a
 legacy 3-part value (the current `1.0.0`) still validates through the transition.
 

@@ -86,13 +86,19 @@ _versioning_latest_anchor() {
 # Gathering helper (NOT pure): count prior release tags under this A.B, i.e.
 # tags vA.B.C.D with C>0 (or legacy vA.B.Z, Z>0). Prints an integer.
 _versioning_release_count() {
-    local anchor_xy="$1" a b
+    local anchor_xy="$1" a b count
     a="${anchor_xy%%.*}"; b="${anchor_xy##*.}"
-    local count
-    count="$(git tag 2>/dev/null \
-        | grep -E "^v${a}\.${b}\.[0-9]+(\.[0-9]+)?$" 2>/dev/null \
-        | grep -vE "^v${a}\.${b}\.0(\.0)?$" 2>/dev/null \
-        | wc -l | tr -d '[:space:]')"
+    # Robust outside a git worktree / when git is absent (e.g. an installed tree
+    # without .git): a missing tag history just means zero prior releases. Never
+    # abort the caller's errexit/pipefail — guard git, and shield the pipeline
+    # (grep no-match returns 1 under pipefail) behind `|| true`.
+    if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
+        printf '0'; return 0
+    fi
+    count="$( { git tag 2>/dev/null \
+        | grep -E "^v${a}\.${b}\.[0-9]+(\.[0-9]+)?$" \
+        | grep -vE "^v${a}\.${b}\.0(\.0)?$" \
+        | wc -l | tr -d '[:space:]'; } 2>/dev/null || true )"
     printf '%s' "${count:-0}"
 }
 

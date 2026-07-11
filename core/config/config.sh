@@ -88,7 +88,7 @@ zbuild_config_get() {
 # zbuild_config_validate_backends: warn on configured-but-missing backend plugins
 zbuild_config_validate_backends() {
     local cap backend default role
-    for cap in memory orchestrator cache; do
+    for cap in memory orchestrator cache versioning; do
         backend="$(zbuild_config_get_backend "$cap")"
         default="${_ZBUILD_BACKEND_DEFAULTS[$cap]}"
         # Skip validation for default backends — no plugin needed (built-in)
