@@ -127,7 +127,9 @@ fi
 # deterministically proves report mode wrote nothing to the manifest.
 _ms5_ref="${TEST_MANIFEST}.ms5ref"
 cp "$TEST_MANIFEST" "$_ms5_ref"
-bash "$REPO_ROOT/scripts/manifest-sync.sh" --report --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || true
+_ms5_rc=0
+bash "$REPO_ROOT/scripts/manifest-sync.sh" --report --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || _ms5_rc=$?
+assert_eq "MS5 LOCK: report mode exits 0" "0" "$_ms5_rc"
 if cmp -s "$_ms5_ref" "$TEST_MANIFEST"; then
     assert_pass "MS5 LOCK: report mode does not mutate manifest (content unchanged)"
 else
