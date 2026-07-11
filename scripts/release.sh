@@ -27,6 +27,8 @@ source "$RELEASE_SCRIPT_DIR/lib/helpers.sh"
 source "$RELEASE_SCRIPT_DIR/lib/version.sh"
 # shellcheck source=lib/release-notes.sh
 source "$RELEASE_SCRIPT_DIR/lib/release-notes.sh"
+# shellcheck source=lib/release-notes-coverage.sh
+source "$RELEASE_SCRIPT_DIR/lib/release-notes-coverage.sh"
 
 release_usage() {
     cat <<'EOF'
@@ -99,6 +101,27 @@ main() {
     # ── Generate the per-issue release notes for this version. ────────────────
     local notes; notes="$(release_notes_generate "$version" "$milestone" "$since")"
 
+    # ── DOC-REGEN + GATE STEP (REL-E #876) ────────────────────────────────────
+    # Before a release is cut, docs must ship atomically and conform, and the
+    # notes must cover every closed issue. This runs the doc-style gate (#1406's
+    # lint-doc-style.sh — a regenerated page without a newcomer opening fails the
+    # release) AND the per-issue coverage gate (an issue closed in this window
+    # but absent from the notes fails the release). Both are objective, no-LLM,
+    # and MUTATE NOTHING — so they run under --dry-run too (gate, don't cut).
+    #
+    # The actual per-leaf / per-mechanic user-doc GENERATION is delegated to
+    # #1356 (docs-automation, Wishlist); REL-E provides the GATE + the wiring so
+    # REL-D (#877) can regenerate + gate + land docs in the release PR. --force
+    # bypasses the gate for testing / manual cuts.
+    if ! $force; then
+        if ! release_docs_and_coverage_gate "$milestone" "$since" "$notes"; then
+            error "release: doc/coverage gate FAILED — refusing to cut the release (use --force to bypass for testing)."
+            exit 1
+        fi
+    else
+        info "release: --force set — skipping doc-style + coverage gate."
+    fi
+
     if $dry_run; then
         info "release (dry-run) — nothing will be mutated"
         printf 'planned version: %s\n' "$version"
@@ -114,11 +137,12 @@ main() {
         return 0
     fi
 
-    # ── GATE HOOK (REL-C/REL-D): the per-phase/cadence release gate lands here.
-    #    Until then --force is the only bypass and no gate blocks a manual cut.
+    # ── GATE HOOK (REL-C/REL-D): the doc-style + notes-coverage gate (REL-E
+    #    #876) already ran above and fails closed. The per-phase/cadence release
+    #    gate still lands here for REL-D.
     #    TODO(REL-D #877/#1357): consult the cadence/phase gate before mutating.
     if ! $force; then
-        : # no gate yet — REL-B intentionally leaves this a clean hook point.
+        : # cadence/phase gate is REL-D's — REL-B/E leave this a clean hook point.
     fi
 
     # ── Prepend notes to CHANGELOG.md, preserving the Keep-a-Changelog header
