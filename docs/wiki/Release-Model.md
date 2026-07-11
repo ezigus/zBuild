@@ -20,4 +20,4 @@ Release automation is tracked under initiative [#1362](https://github.com/ezigus
 - **Vision-document standard** (#1358) — a required, prompt-injected repo vision.
 
 ## Versioning notes
-The version is surfaced by `zbuild --version` (and recorded per-install at `$ZBUILD_HOME/version`). Model tiers T0–T4 are stable ordinals independent of the release version (see [[mechanics/router-models-as-data]]).
+The semver lives in the `VERSION` file (copied to `$ZBUILD_HOME/config/VERSION` on install) and is surfaced by `zbuild --version`; the separate `$ZBUILD_HOME/version` file records per-install metadata (sha/branch/timestamp), not the semver. Model tiers T0–T4 are stable ordinals independent of the release version (see [[mechanics/router-models-as-data]]).

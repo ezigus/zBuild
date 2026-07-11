@@ -38,7 +38,8 @@ Usage:
   zbuild --attach <run_id>    Attach to (tail) the event log for a running pipeline
 
 Commands:
-  --version, version     Print version (reads \$ZBUILD_HOME/version when set)
+  --version, version     Print version (semver from the VERSION file; sha/branch
+                         from \$ZBUILD_HOME/version install metadata when set)
   upgrade --from <dir>   Re-run install.sh from a source clone (pulls main first)
   --help, help, -h       Show this help
   status                 Show pipeline status (Phase 0 stub — JSON only)

@@ -59,7 +59,7 @@ Prune stale `zbuild/issue-*` branches, old state files, `zb-applycheck-*` stashe
 | `zbuild deferred <sub>` | Deferred-work scanners (`backfill` \| `tracker`). Run `zbuild deferred --help`. |
 | `zbuild manifest <sub>` | Manifest YAML drift management (`sync`). Run `zbuild manifest --help`. |
 | `zbuild upgrade --from <dir>` | Re-run `install.sh` from a source clone (pulls `main` first). |
-| `zbuild --version`, `version` | Print version (reads `$ZBUILD_HOME/version` when set). |
+| `zbuild --version`, `version` | Print version — semver from the `VERSION` file (`config/VERSION` post-install); sha/branch from `$ZBUILD_HOME/version` install metadata when set. |
 | `zbuild --help`, `help`, `-h` | Show help. |
 
 ## Exit codes
