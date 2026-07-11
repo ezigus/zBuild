@@ -45,6 +45,25 @@ out2="$(bash "$ZBUILD_HOME/scripts/zbuild" version 2>&1 || true)"
 assert_contains "missing version file → notice about re-running install" \
     "$out2" "install"
 
+# ─── Test 3: a 4-part VERSION (ADR-048) surfaces via config/VERSION (#873) ────
+# install.sh copies the repo VERSION to $ZBUILD_HOME/config/VERSION; simulate a
+# 4-part A.B.C.D value and assert `zbuild version` prints it verbatim.
+printf '1.0.3.42\n' > "$ZBUILD_HOME/config/VERSION"
+out3="$(bash "$ZBUILD_HOME/scripts/zbuild" version 2>&1 || true)"
+assert_contains "4-part VERSION surfaces in version output" "$out3" "zbuild 1.0.3.42"
+
+# ─── Test 4: case-insensitive-FS metadata collision does NOT leak as semver ──
+# Re-create the lowercase `version` metadata file (sha=...). On a case-insensitive
+# FS $ZBUILD_HOME/VERSION and $ZBUILD_HOME/version are the same inode; the shape
+# guard + config/VERSION-first probe must still print the real semver, never sha=.
+cat > "$ZBUILD_HOME/version" <<VEOF2
+sha=$FAKE_SHA
+branch=$FAKE_BRANCH
+installed_at=$FAKE_DATE
+VEOF2
+out4="$(bash "$ZBUILD_HOME/scripts/zbuild" version 2>&1 || true)"
+assert_contains "semver line still 4-part (not sha=)" "$out4" "zbuild 1.0.3.42"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

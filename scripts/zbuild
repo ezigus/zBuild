@@ -16,13 +16,20 @@ while [[ -L "$SOURCE" ]]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
 
-# Canonical version lives in the VERSION file. In a source checkout it sits at the
-# repo root ($SCRIPT_DIR/../VERSION); install.sh copies it to config/VERSION (an
-# uppercase VERSION under $ZBUILD_HOME would collide with the lowercase `version`
-# metadata file on case-insensitive filesystems). Fall back to the constant above.
-for _vf in "$SCRIPT_DIR/../VERSION" "$SCRIPT_DIR/../config/VERSION"; do
-    if [[ -f "$_vf" ]]; then VERSION="$(<"$_vf")"; break; fi
+# Canonical version lives in the VERSION file. install.sh copies it to
+# config/VERSION; in a source checkout it also sits at the repo root ($SCRIPT_DIR/../VERSION).
+# Probe config/VERSION FIRST: post-install $SCRIPT_DIR/../VERSION == $ZBUILD_HOME/VERSION,
+# which on a case-insensitive filesystem (macOS default) is the SAME inode as the lowercase
+# `version` install-metadata file (sha=/branch=...) — reading it would print "sha=..." as the
+# semver. The shape guard below rejects that collision and any other non-semver content.
+# The version may be 3-part (legacy SemVer) or 4-part A.B.C.D (ADR-048).
+for _vf in "$SCRIPT_DIR/../config/VERSION" "$SCRIPT_DIR/../VERSION"; do
+    if [[ -f "$_vf" ]]; then
+        _cand="$(<"$_vf")"
+        if [[ "$_cand" =~ ^[0-9]+(\.[0-9]+){2,3}$ ]]; then VERSION="$_cand"; break; fi
+    fi
 done
+unset _vf _cand
 
 # shellcheck source=lib/helpers.sh
 source "$SCRIPT_DIR/lib/helpers.sh"
