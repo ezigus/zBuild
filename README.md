@@ -86,15 +86,15 @@ Full reference (every subcommand, flag, exit code, and environment variable) liv
 
 zBuild follows SemVer with a cadence policy:
 
-- **major** = a manual milestone release (this is **1.0.0** — phases 0, 0.5, and 1),
+- **major** = a manual milestone release (this is **1.0.0**),
 - **minor** = a weekly, automated cut,
 - **patch** = a hotfix.
 
-See [`CHANGELOG.md`](CHANGELOG.md) and [Releases](https://github.com/ezigus/zBuild/releases). Progress is tracked across GitHub [milestones](https://github.com/ezigus/zBuild/milestones) and the [zBuild Roadmap board](https://github.com/users/ezigus/projects/2).
+See [`CHANGELOG.md`](CHANGELOG.md) and [Releases](https://github.com/ezigus/zBuild/releases). Progress is tracked across GitHub [milestones](https://github.com/ezigus/zBuild/milestones) and the [zBuild Roadmap project](https://github.com/users/ezigus/projects/2).
 
 ## Roadmap
 
-Work is organized by **phase** (GitHub [milestones](https://github.com/ezigus/zBuild/milestones)) and tracked on the **[zBuild Roadmap project board](https://github.com/users/ezigus/projects/2)**, grouped by initiative and epic:
+Work is organized into **initiatives** (GitHub [milestones](https://github.com/ezigus/zBuild/milestones)) and tracked on the **[zBuild Roadmap project](https://github.com/users/ezigus/projects/2)**, grouped by initiative and epic:
 
 - **1.0** — core engine, MVP pipeline, pipeline & intelligence *(shipped)*
 - **1.1 — Release & Distribution** — release automation, versioning, docs automation, vision standard (initiative [#1362](https://github.com/ezigus/zBuild/issues/1362))
@@ -111,7 +111,7 @@ Full documentation is in the **[wiki](https://github.com/ezigus/zBuild/wiki)** (
 
 ## Contributing & architecture
 
-zBuild's design lives in [`docs/`](docs/): [VISION](docs/VISION.md) (North Star), [ARCHITECTURE](docs/ARCHITECTURE.md) (system view, plugin contract, data flow), [KEEPERS](docs/KEEPERS.md) (behaviors preserved from the upstream system, frozen in `legacy/`), and the [ADRs](docs/adr/) (formal decisions). Work is organized by phase as GitHub milestones. Run `npm test` for the full bash suite before opening a PR.
+zBuild's design lives in [`docs/`](docs/): [VISION](docs/VISION.md) (North Star), [ARCHITECTURE](docs/ARCHITECTURE.md) (system view, plugin contract, data flow), [KEEPERS](docs/KEEPERS.md) (behaviors preserved from the upstream system, frozen in `legacy/`), and the [ADRs](docs/adr/) (formal decisions). Work is organized into initiatives as GitHub milestones. Run `npm test` for the full bash suite before opening a PR.
 
 ## License
 
