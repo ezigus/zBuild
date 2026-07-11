@@ -1,5 +1,7 @@
 # redaction chokepoint
 
+In plain terms: before zBuild sends any text to an AI model, it passes through **one mandatory filter** that strips out sensitive content (like secrets or private data). There is no other path — every plugin uses the same filter, so nothing slips through.
+
 **The single path all model-bound text passes through before leaving the machine.** (ADR-004)
 
 - **Invariant:** every prompt sent to a model goes through `core/redaction/apply_scope_redaction`. A plugin that calls a model directly, bypassing this, is a bug.

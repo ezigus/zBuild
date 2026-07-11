@@ -1,5 +1,7 @@
 # gates
 
+In plain terms: a gate is a **checkpoint**. After a step runs, the gate looks at the result and decides "pass" or "fail". If it fails, the pipeline stops (or retries, depending on the surrounding structure) rather than silently continuing with bad output.
+
 A **gate** turns a stage's output into a pass/fail **verdict** that controls whether the pipeline proceeds.
 
 - **`gate: auto`** — the engine reads the stage's structured verdict automatically (the common case).

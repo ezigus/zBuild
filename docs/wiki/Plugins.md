@@ -1,5 +1,7 @@
 # Plugins reference
 
+In plain terms: a **plugin** is a small, replaceable piece that performs exactly one step — things like "run the tests", "post a review comment", or "scan for secrets". Each plugin has a declared contract (what it reads in, what it writes out), and the engine wires them together. You'd look here to understand what a specific step does, what inputs it needs, and what it produces.
+
 One page per **leaf node** (plugin). Each is generated from its `manifest.yaml` — the embedded manifest on each page is the source of truth. See [[Writing-Plugins]] for the contract (ADR-001).
 
 | Plugin | Kind | Role |

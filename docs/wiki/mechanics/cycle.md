@@ -1,5 +1,7 @@
 # cycle
 
+In plain terms: a cycle **repeats a set of steps until they pass**, then moves on. It's how zBuild automatically retries work — for example, building and running tests over and over until all tests are green. Cycles always have a maximum repeat count so they can't run forever.
+
 Repeat members **until an exit condition is met** — a bounded loop. This is how zBuild converges work (e.g. build → test → fix → re-test until gates pass).
 
 - **Shape:** a list of members plus a convergence spec (see [[mechanics/convergence]]): `exit_when` conditions (all/any), a max-iteration bound, and an `on_max` behavior.

@@ -1,62 +1,64 @@
 # Release Model
 
-zBuild uses a **4-part `A.B.C.D`** version. It is **NOT** strict 3-part SemVer, and the
-scheme is a **pluggable, repo-owner-configurable strategy** (see [[#Pluggable versioning]]).
+This page explains how zBuild versions its releases — what the version numbers mean, how they're generated automatically, and how you can plug in a different versioning scheme if the default doesn't fit your workflow.
 
-| Part | Meaning | How it's derived |
+---
+
+## What the version number means
+
+zBuild versions look like `1.0.2.13` — four numbers separated by dots. Here's what each part means in plain terms:
+
+| Part | Plain meaning | Technical detail |
 |---|---|---|
-| **`A.B`** | The last **completed initiative**, anchored by the latest `vA.B.0.0` tag. Rolls when the next initiative completes; `C`,`D` reset. | The `A.B` of the latest `vA.B.0.0` release tag. Currently **`1.0`** (`v1.0.0` exists). |
-| **`C`** | **Release count** — the Nth release cut since the `A.B.0.0` initiative release (cadence-independent). | Count of prior release tags under this `A.B`. |
-| **`D`** | Number of **issues closed since** the `A.B.0.0` initiative release — a progress counter toward the next initiative. | Issues closed since the anchor tag. |
+| **`A.B`** (first two) | Which major milestone ("initiative") the release belongs to. Increments when a new initiative ships; resets C and D. | Anchored by the latest `vA.B.0.0` tag. Currently **`1.0`**. |
+| **`C`** (third) | How many releases have been cut since the current milestone started. | Count of release tags under this `A.B`. |
+| **`D`** (fourth) | How many GitHub issues have been closed since the current milestone started — a progress indicator. | Issues closed since the anchor tag. |
 
-Worked example: `1.0.0.0` → `1.0.1.12` → `1.0.2.13` → … → `1.1.0.0` (when Initiative 1.1
-completes). The `VERSION` file carries **no** leading `v` (`v` is tag-only).
+**Worked example:** `1.0.0.0` → `1.0.1.12` → `1.0.2.13` → … → `1.1.0.0` (when the next initiative, 1.1, ships).
 
-The selected versioning backend derives this dynamically — the version is never hand-set
-(the pure `compute_version` helper only assembles + validates the 4 parts; the git/issue
-gathering lives in the backend strategy, reached via `resolve_repo_version`). The `VERSION`
-file and `zbuild --version` guard accept **3-or-4-part** (`^[0-9]+(\.[0-9]+){2,3}$`), so a
-legacy 3-part value (the current `1.0.0`) still validates through the transition.
+The version is **never set by hand**. It's computed automatically from git tags and closed issues each time. The `VERSION` file holds no leading `v` — that prefix appears only on tags.
 
-## Pluggable versioning
+---
 
-**The `A.B.C.D` scheme above is just ONE example — versioning is plug-and-play.** It is the
-**default**, not the law. Anyone can author a different versioning scheme and drop it in with
-**zero engine changes**; the initiative-count scheme is simply the one zBuild ships with.
+## The current stable release: 1.0.0
 
-Versioning is an [ADR-011](https://github.com/ezigus/zBuild/blob/main/docs/adr/ADR-011-pluggable-backends.md)
-backend capability — selectable exactly like `memory` / `orchestrator` / `cache`:
+The `1.0.0` release covers phases 0, 0.5, and 1 — the core engine, safety primitives, the plugin system, stage-agnostic pipeline mechanics, models-as-data routing, the single install path, and the review/gate model.
 
-- **Default:** `initiative-count` (the `A.B.C.D` scheme above) — one instance, not a mandate.
-- **Roll your own:** ship a `versioning-backend` plugin (plain SemVer, date/calendar, build-number,
-  git-describe, …) and select it via `ZBUILD_VERSIONING_BACKEND` or `backends.versioning` in
-  `.zbuild/config.yaml`. Precedence: env > config file > compiled-in default. The engine
-  (`resolve_repo_version`) calls whichever strategy you select — no scheme is hardcoded in core.
+See [`CHANGELOG.md`](https://github.com/ezigus/zBuild/blob/main/CHANGELOG.md) and [Releases](https://github.com/ezigus/zBuild/releases) for the full history.
 
-The engine (`resolve_repo_version`) calls the **selected** strategy — no scheme is
-hardcoded in the CLI/engine beyond the default strategy's own file. See
-[ADR-048](https://github.com/ezigus/zBuild/blob/main/docs/adr/ADR-048-release-versioning-signing.md).
+---
 
-## 1.0.0 (baseline)
-The first stable release: phases 0, 0.5, and 1 — the core engine, safety primitives, the
-plugin system, the stage-agnostic pipeline mechanics, models-as-data routing, the single
-install path, and the review/gate model. See [`CHANGELOG.md`](https://github.com/ezigus/zBuild/blob/main/CHANGELOG.md)
-and [Releases](https://github.com/ezigus/zBuild/releases).
+## What's coming in Initiative 1.1
 
-## What's coming (Initiative 1.1)
-Release automation is tracked under initiative [#1362](https://github.com/ezigus/zBuild/issues/1362):
-- **Versioning foundation / `compute_version`** (#873) — *this model*.
-- **`zbuild release`** (#1355) and the release generator (#874 REL-B).
-- **Signed tarball** (#875 REL-C), CI release workflow (#877 REL-D), docs-as-release (#876 REL-E).
-- **Cadence** (#1357 REL-F) — default **daily @ 03:00** (configurable), **skip if no issues
-  closed** since the last release.
-- **Docs automation** (#1356), **vision-document standard** (#1358).
+Release automation is tracked under [#1362](https://github.com/ezigus/zBuild/issues/1362):
 
-## Versioning notes
-The version lives in the `VERSION` file (copied to `$ZBUILD_HOME/config/VERSION` on install)
-and is surfaced by `zbuild --version`; the separate `$ZBUILD_HOME/version` file records
-per-install metadata (sha/branch/timestamp), not the version. `zbuild --version` probes
-`config/VERSION` **before** the repo-root `VERSION` and shape-guards the value — on a
-case-insensitive filesystem the uppercase `VERSION` and lowercase `version` metadata file
-collide, so the guard rejects the metadata and reads the true version. Model tiers T0–T4
-are stable ordinals independent of the release version (see [[mechanics/router-models-as-data]]).
+- **Versioning foundation / `compute_version`** (#873) — the model described on this page
+- **`zbuild release` command** (#1355) and the release generator (#874 REL-B)
+- **Signed tarball** (#875 REL-C), CI release workflow (#877 REL-D), docs-as-release (#876 REL-E)
+- **Release cadence** (#1357 REL-F) — default **daily at 03:00** (configurable), skipped if no issues have been closed since the last release
+- **Docs automation** (#1356), **vision-document standard** (#1358)
+
+---
+
+## Advanced: pluggable versioning (newcomers can skip)
+
+The `A.B.C.D` scheme above is the **default**, not the only option. zBuild's versioning is fully pluggable — you can replace it with any scheme (plain SemVer, calendar versioning, build numbers, `git describe`, etc.) without touching engine code.
+
+Versioning is an [ADR-011](https://github.com/ezigus/zBuild/blob/main/docs/adr/ADR-011-pluggable-backends.md) backend capability, selectable the same way as the `memory`, `orchestrator`, and `cache` backends:
+
+- **Default backend:** `initiative-count` (the `A.B.C.D` scheme above)
+- **Custom backend:** ship a `versioning-backend` plugin and select it via:
+  - `ZBUILD_VERSIONING_BACKEND` environment variable, or
+  - `backends.versioning` in `.zbuild/config.yaml`
+  - Precedence: env > config file > compiled-in default
+
+The engine calls `resolve_repo_version`, which dispatches to whichever strategy is selected. No scheme is hardcoded in core. See [ADR-048](https://github.com/ezigus/zBuild/blob/main/docs/adr/ADR-048-release-versioning-signing.md) for the full specification.
+
+## Advanced: version file details (newcomers can skip)
+
+- The version lives in `VERSION` at the repo root, copied to `$ZBUILD_HOME/config/VERSION` on install.
+- `zbuild --version` reads `config/VERSION` first (before the repo-root `VERSION`) and validates the shape.
+- A separate `$ZBUILD_HOME/version` file records per-install metadata (sha, branch, timestamp) — this is not the version.
+- On case-insensitive filesystems (macOS), `VERSION` and `version` collide; the shape-guard rejects the metadata file and reads the true version correctly.
+- Both 3-part (`1.0.0`) and 4-part (`1.0.0.0`) values are accepted during the transition period (`^[0-9]+(\.[0-9]+){2,3}$`).
+- Model tiers T0–T4 are stable ordinals independent of the release version (see [[mechanics/router-models-as-data]]).

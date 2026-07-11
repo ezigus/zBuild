@@ -1,5 +1,7 @@
 # state & resume
 
+In plain terms: zBuild **saves its progress as it goes**. If a run is interrupted — by a crash, a timeout, or a manual stop — you can pick up exactly where it left off instead of starting over from scratch.
+
 Runs are **atomic and crash-safe**: state is persisted as it advances, so an interrupted run resumes where it stopped. (ADR-006)
 
 - **Layout:** per-run state lives under `~/.zbuild/state/runs/<run_id>/` (with a `latest` pointer); events in `events.jsonl`.

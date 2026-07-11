@@ -1,5 +1,7 @@
 # scope governance
 
+In plain terms: scope governance is a **fence around the filesystem**. You tell zBuild which files and folders a run is allowed to touch, and it enforces that boundary — so an autonomous pipeline can't accidentally (or maliciously) modify files outside its lane.
+
 Controls **which files a run may read and write**, so autonomous work can't wander outside its lane. (ADR-030)
 
 - **Read/write split:** scope is declared (e.g. `--scope <path>`, repeatable); writes are constrained more tightly than reads.

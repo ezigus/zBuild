@@ -1,20 +1,78 @@
 # Writing Plugins
 
-All behavior in zBuild is plugin-delivered. A plugin is a directory `plugins/<kind>/<name>/` with a `manifest.yaml` and a `plugin.sh` implementing its hooks. The contract is ADR-001.
+In zBuild, a **plugin** is the unit of behavior — every stage in a pipeline (planning, building, reviewing, and so on) is delivered by a plugin. If you want to add a new stage, change how an existing one works, or integrate an external tool, you write a plugin.
 
-## Kinds
-| Kind | Required hook(s) | Purpose |
-|---|---|---|
-| `agent` | `run` | LLM-driven, redaction-governed work. |
-| `tool` | `run` | Non-LLM integration (git, gh, gates, caches). |
-| `recovery` | `classify`, `act` | Error handling (retry/backtrack/escalate/abort). |
-| `orchestrator` | `run` | Runs sub-plugins and aggregates. |
-| `claim-coordinator` | `claim`, `release`, `heartbeat`, `list_claims` | Cross-machine claim mechanism. |
-| `daemon` | `tick` | Long-running background process. |
+A plugin is a directory under `plugins/<kind>/<name>/` containing two files: a `manifest.yaml` that describes what the plugin does, and a `plugin.sh` that implements it.
 
-All kinds may implement optional `init` / `finalize` / `cleanup`.
+## Before you write one
 
-## Manifest (shape)
+Check what already exists:
+
+```bash
+zbuild plugin list
+```
+
+You may find a plugin that already does what you need, or one close enough to copy as a starting point. The full per-plugin reference is under [[Plugins]].
+
+## The six kinds of plugin
+
+Choose the kind that matches what your plugin does:
+
+| Kind | What it does |
+|---|---|
+| `agent` | LLM-driven work (writing code, drafting a plan). |
+| `tool` | Non-LLM integration — git, GitHub, gates, caches. |
+| `recovery` | Handles errors: retry, backtrack, escalate, or abort. |
+| `orchestrator` | Runs other plugins and aggregates their results. |
+| `claim-coordinator` | Coordinates work across machines (lock / release / list). |
+| `daemon` | Long-running background process. |
+
+All kinds may also implement optional `init`, `finalize`, and `cleanup` hooks.
+
+## A minimal manifest
+
+```yaml
+id: my-linter          # globally unique kebab-case id
+name: My Linter
+kind: tool
+version: 0.1.0
+description: |
+  Runs the project linter and emits a pass/fail verdict.
+hooks:
+  run: run_my_linter   # name of the bash function in plugin.sh
+requires:
+  core: [event-bus, state]
+provides:
+  role: lint           # templates bind to role names, not ids
+outputs:
+  - id: lint-report
+    path: ${artifact_dir}/lint-report.json
+    type: json
+    required: true
+    primary: true
+```
+
+Save this as `plugins/tool/my-linter/manifest.yaml`. Then implement `run_my_linter` in `plugins/tool/my-linter/plugin.sh`.
+
+## Two worked examples
+
+- **[[plugins/security-lens]]** — an `agent` kind plugin: shows the full manifest, how to write the `run` hook, and how to validate LLM output using the envelope mechanism.
+- **[[plugins/claim-coordinator-github-labels]]** — a `claim-coordinator` kind plugin: shows all four required hooks (`claim`, `release`, `heartbeat`, `list_claims`).
+
+## Three rules every plugin must follow
+
+1. **Agent plugins never call a model directly.** All text sent to a model must go through the [[mechanics/redaction-chokepoint]]. A plugin that bypasses this is a bug.
+2. **New event names must be registered.** If your plugin emits a new event, add it to `config/event-schema.json` first. See [[mechanics/event-bus]].
+3. **The `id` must be globally unique.** Templates bind to the plugin's `role`, not its `id`, but duplicate ids will cause a startup error.
+
+---
+
+## Advanced — full manifest schema and contract (newcomers can skip)
+
+This section documents every manifest field and the complete plugin contract. You need it only when building a plugin for production use or reviewing ADR compliance.
+
+### Complete manifest shape
+
 ```yaml
 id: <kebab-case-unique>
 name: <human-readable>
@@ -30,11 +88,18 @@ outputs:    [ { id, path: ${artifact_dir}/<file>, type, required, primary } ]
 state:      { persisted: [...], reconstructed: [...] }
 ```
 
-## Key rules
-- **`id` is globally unique**; `role` is what templates bind to (role-then-id, ADR-042/047).
-- **Agents never call a model directly** — all model-bound text goes through the [[mechanics/redaction-chokepoint]] (ADR-004).
-- New emitted events must be added to `config/event-schema.json` (see [[mechanics/event-bus]]).
-- Discovery: manifests are globbed at startup; `zbuild plugin list` shows what's registered.
+### Role-then-id resolution
 
-## Worked example
-See **[[plugins/security-lens]]** (an `agent` lens: manifest + hooks + envelope-validated LLM output) and **[[plugins/claim-coordinator-github-labels]]** (a `claim-coordinator`). The full per-plugin reference is under [[Plugins]].
+Templates bind to `role`, not `id`. At stage resolution time the engine finds the plugin whose `provides.role` matches the stage name; if no role matches it falls back to the `id`. This is the role-then-id protocol from ADR-042/047.
+
+### `required: true` on inputs
+
+An input marked `required: true` with `source: stage:<s>` means the named stage must have run and produced that output before this plugin starts. The lint-contract enforces this at pipeline preflight — if the producer stage is not wired in the template, the run will refuse to start. This is intentional: wire the producer or mark the input `required: false`.
+
+### Discovery
+
+Manifests are globbed at startup from `plugins/`. `zbuild plugin list` shows everything registered and whether it passed manifest validation.
+
+### Authoritative contract
+
+The full plugin contract is ADR-001. The redaction requirement is ADR-004.
