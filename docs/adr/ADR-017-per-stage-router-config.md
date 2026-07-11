@@ -174,11 +174,41 @@ stage-aware via the already-exported `ZBUILD_CURRENT_STAGE` (PR #438).
    Schema entry added to `config/event-schema.json`. Operators can
    answer "did my override take effect?" from `events.jsonl`.
 
-8. **Out-of-scope-for-v1 but reserved as siblings in the `router:` block.**
-   The ADR enumerates these so future PRs that add them don't need a
-   new ADR — they implement the named knob using the same plumbing:
+8. **Sibling knobs in the `router:` block.**
 
-   - `router.tier_default` (override `ZBUILD_PLAN_TIER` etc.)
+   **`router.tier` — LIVE as of #1252.** A per-stage tier OVERRIDE. It pins a
+   tier ORDINAL (`T0`–`T4`, ADR-003 — never a model name) for one stage, so a
+   per-repo template can raise or lower a single stage's tier without touching
+   the plugin manifest or an env var.
+
+   - **Naming reconciliation.** §8 originally reserved this as
+     `router.tier_default`. The shipped key is **`router.tier`**, deliberately
+     *not* `tier_default`: at the template layer it is an *override*, and the
+     word "default" stays with the manifest's `config.tier_default` (the
+     fail-loud source of truth, #1231). Template layer = `router.tier`
+     override; manifest layer = `config.tier_default` default.
+   - **Precedence** (highest first), resolved in `resolve_tier`
+     (`scripts/lib/tier-resolve.sh`), which is called BY THE PLUGIN with the
+     current stage id (`ZBUILD_CURRENT_STAGE`, exported on every dispatch path):
+
+         env ZBUILD_<ID>_TIER  >  template router.tier  >  manifest config.tier_default  >  fail-loud
+
+     The template source sits BETWEEN the env override and the manifest default.
+   - **Implementation differs from the other router knobs on purpose.** Unlike
+     `timeout_s`/`max_turns`/`max_iterations`/`retries` (parser-array + name-
+     mangled var + `_route_resolve_*` chokepoint in `core/router/route.sh`),
+     `router.tier` is read LAZILY from the loaded template source via the
+     accessor `template_stage_router_tier` (modelled on
+     `template_stage_negctl_timeout`). It threads through NO parser array and
+     changes no row shape. The accessor validates `^T[0-4]$` at read time and
+     fails loud on a bad value (e.g. `T9` or a model name); it prints nothing
+     when unset, so absence preserves the #1231 manifest-default behavior
+     exactly. The tier is consumed by `resolve_tier` (which the plugin already
+     calls), NOT by a `_route_resolve_*` router helper, because the tier is
+     resolved before `route_to_model` is invoked.
+
+   Still reserved as future siblings (same plumbing as `timeout_s`):
+
    - `router.budget_usd` (per-stage cost cap)
    - `router.model_override` (pin a specific model for one stage)
 
@@ -199,7 +229,7 @@ stage-aware via the already-exported `ZBUILD_CURRENT_STAGE` (PR #438).
   long?" can answer it from the events log without re-reading config.
 - The pattern (parser + name-mangled env var + accessor + validator)
   is already proven by ADR-015 v3; this is a deliberate small step.
-- Reserved sibling knobs (`tier_default`, `budget_usd`,
+- Reserved sibling knobs (`tier` [live, #1252], `budget_usd`,
   `model_override`) get implemented without further ADR overhead,
   reducing the future paperwork cost.
 
@@ -220,9 +250,10 @@ stage-aware via the already-exported `ZBUILD_CURRENT_STAGE` (PR #438).
 
 **Open follow-ups (file separately if/when needed):**
 
-- Per-stage `router.tier_default`, `router.budget_usd`,
-  `router.model_override` (covered by §8; implementation follows the
-  same plumbing).
+- Per-stage `router.tier` shipped in #1252 (renamed from the reserved
+  `router.tier_default`; see §8). `router.budget_usd` and
+  `router.model_override` remain reserved (covered by §8; implementation
+  follows the same plumbing).
 - Per-stage `router.retry_strategy` (would change the router's
   retry-on-rc=1 behavior; bigger semantic change, separate ADR).
 - A CLI subcommand `zbuild template show <id>` that prints the
@@ -278,7 +309,7 @@ Implemented in **PR for #455** on branch `feat/455-per-stage-router-timeout`:
 - `config/templates/standard.yaml` ships defaults: plan=300, build=900,
   review=300; intake stays without a router block (no router call).
 
-Out-of-scope-for-v1 siblings reserved in §8 (`tier_default`, `budget_usd`,
+Out-of-scope-for-v1 siblings reserved in §8 (`budget_usd`,
 `model_override`) are deliberately *not* implemented here — they will
 reuse the `_route_resolve_knob` chokepoint and the same parser/validator/
 accessor pattern when they land.
