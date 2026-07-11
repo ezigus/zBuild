@@ -1,5 +1,7 @@
 # convergence
 
+In plain terms: convergence is the set of **rules that tell a cycle when it's done** — what condition counts as "good enough to move on", and what to do if the cycle runs out of attempts before reaching that condition.
+
 How a [[mechanics/cycle]] decides to stop. Every cycle is **bounded** and converges on an explicit condition.
 
 - **`exit_when`** — the condition(s) that end the cycle, evaluated after each iteration. Conditions reference a member's verdict (e.g. `gate-aggregator.verdict == pass`).

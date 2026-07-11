@@ -1,5 +1,7 @@
 # aggregators
 
+In plain terms: when several steps run in parallel (or as a map), you need something to **collect all their results into one answer**. That's an aggregator. Some aggregators make a binding decision (pass or fail the build); others just gather findings into a report without blocking anything.
+
 An **aggregator** merges the outputs of several stages (typically a [[mechanics/map]] or [[mechanics/parallel]] group) into a single result. Aggregators are **explicit** in the template (never auto-injected) and resolve their group by roster, not by hardcoded names.
 
 Two kinds:

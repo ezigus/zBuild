@@ -1,5 +1,7 @@
 # admission gate
 
+In plain terms: the admission gate is a **checklist that runs before the pipeline starts**. If anything required is missing or misconfigured, zBuild refuses to begin rather than failing partway through with a confusing error.
+
 **Fail-closed preconditions checked before a run starts.** If the environment or inputs aren't valid, zBuild refuses to run rather than proceeding into a bad state.
 
 - **What it checks:** required tooling/config and run inputs are present and well-formed.

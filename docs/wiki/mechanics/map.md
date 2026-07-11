@@ -1,5 +1,7 @@
 # map
 
+In plain terms: map runs **the same step once for each item in a list**. Instead of writing out five separate review stages, you declare one reviewer role and a list of five topics — the engine does the rest.
+
 Fan a single **role** out over a **data-driven list**, running one instance per item. This is how zBuild expresses "do the same thing across N things" without naming each one in the template.
 
 - **Shape:** a `map` group with a role and an `over:` list; the engine instantiates the role once per list item.

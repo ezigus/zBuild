@@ -1,25 +1,32 @@
 # zBuild
 
-**A flexible, plugin-based engine for composing AI delivery pipelines.** You encode your process once as a template, then run every repository and every change through that same template the same way each time — and the implementation grows steadily more consistent. Flexibility serves consistency. (See [`docs/VISION.md`](https://github.com/ezigus/zBuild/blob/main/docs/VISION.md).)
+**zBuild is a command-line tool that runs a software task — like fixing a bug or building a feature — through the same repeatable series of steps every time, using AI to do the work at each step.**
+
+You describe what you want (or point zBuild at a GitHub issue), and it plans, writes code, runs tests, reviews the result, and opens a pull request — following a consistent process called a *pipeline*. Because every task goes through the same pipeline, your results stay predictable even as your codebase grows.
 
 ## Start here
-- **[[Installation]]** — prerequisites and `./install.sh`.
-- **[[Getting-Started]]** — your first dry run, then a real run.
-- **[[Configuration]]** — models, templates, per-repo overrides.
 
-## Understand it
-- **[[Pipeline-and-Stages]]** — how a template runs: operators, cycles, gates, state.
+- **[[Installation]]** — get zBuild onto your machine in a few minutes.
+- **[[Getting-Started]]** — run your first pipeline, step by step.
+- **[[Configuration]]** — choose AI models, pick a template, set per-repo options.
+
+## Learn how it works
+
+- **[[Pipeline-and-Stages]]** — what happens at each step: planning, building, testing, reviewing.
 - **[[CLI-Reference]]** — every command, flag, exit code, and environment variable.
-- **[[Architecture]]** — system view and the plugin contract.
+- **[[Architecture]]** — how the engine, plugins, and events fit together.
 
 ## Reference
-- **[[Plugins]]** — a page for every leaf node (plugin), generated from its manifest.
-- **[[Mechanics]]** — a page for every operator and cross-cutting mechanic.
 
-## Extend & operate
-- **[[Writing-Plugins]]** — the manifest contract and hook lifecycle.
-- **[[Troubleshooting]]** — exit codes, event logs, resuming runs.
+- **[[Plugins]]** — one page per plugin (a plugin handles one step of the pipeline).
+- **[[Mechanics]]** — one page per operator and cross-cutting behaviour.
+
+## Extend and operate
+
+- **[[Writing-Plugins]]** — how to add your own step to the pipeline.
+- **[[Troubleshooting]]** — exit codes, event logs, resuming interrupted runs.
 - **[[Release-Model]]** — versioning and the release cadence.
 
 ## Roadmap
-Work is organized into **initiatives** (GitHub [milestones](https://github.com/ezigus/zBuild/milestones)) and tracked on the **[zBuild Roadmap project](https://github.com/users/ezigus/projects/2)**, grouped by initiative and epic. See [[Release-Model]] for the versioning and release cadence.
+
+Work is organized into **initiatives** (GitHub [milestones](https://github.com/ezigus/zBuild/milestones)) and tracked on the **[zBuild Roadmap project](https://github.com/users/ezigus/projects/2)**. See [[Release-Model]] for the versioning and release cadence.

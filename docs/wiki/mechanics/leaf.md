@@ -1,5 +1,7 @@
 # leaf
 
+In plain terms: a leaf is the simplest building block — it runs **one plugin as one stage**. Think of it as a single task card: do this one thing, produce this one result.
+
 The simplest operator: **run one plugin as one stage.** Most stages in a template are leaves (`intake`, `plan`, `pr`, …).
 
 - **Shape:** a single stage entry that resolves to a plugin by role-then-id (ADR-042/047).

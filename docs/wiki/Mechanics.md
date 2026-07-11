@@ -1,5 +1,7 @@
 # Mechanics reference
 
+In plain terms: a **mechanic** (or **operator**) is a rule the engine follows to run your pipeline — things like "run these steps in order", "retry until the tests pass", or "block if secrets are found". You'd look here when you want to understand *why* the pipeline behaves a certain way, or when you're writing a template and need to pick the right building block.
+
 zBuild's engine is a small, **closed set of operators** plus cross-cutting mechanics that every run relies on. Each is described on its own page so it can be documented — and, later, auto-regenerated (#1356) — individually.
 
 ## Operators (ADR-047)

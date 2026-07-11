@@ -1,5 +1,7 @@
 # event bus
 
+In plain terms: as a pipeline runs, zBuild **records every significant action as a structured event** — stage started, model called, gate passed, cycle iterated. You can query this log after a run, or tail it live to watch what's happening right now.
+
 Every meaningful thing a run does is emitted as a **structured event**, giving you a complete, replayable trace.
 
 - **Dual sink:** events are written to SQLite (queryable) and `events.jsonl` (streamable/tailable).

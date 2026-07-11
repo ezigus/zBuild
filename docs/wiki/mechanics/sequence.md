@@ -1,5 +1,7 @@
 # sequence
 
+In plain terms: a sequence runs steps **one after another**, in order. Each step can see what the previous step produced — like an assembly line where each station hands work to the next.
+
 Run members **in order**, one after another. Each member sees the state produced by the previous one.
 
 - **Shape:** an ordered list of members (leaves or nested operators).
