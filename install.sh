@@ -94,6 +94,13 @@ else
     success "copied scripts/ core/ plugins/ config/ (no .github/issues to copy)"
 fi
 
+# Canonical semver: copy the root VERSION file into config/ so `zbuild --version`
+# reports it post-install. NOT copied to $ZBUILD_HOME/VERSION — that would collide
+# with the lowercase `version` metadata file on case-insensitive filesystems.
+if [[ -f "$SCRIPT_DIR/VERSION" ]]; then
+    cp "$SCRIPT_DIR/VERSION" "$ZBUILD_HOME/config/VERSION"
+fi
+
 # ─── Capture version metadata ───────────────────────────────────────────────
 # Best-effort: if the source is not a git checkout, record "unknown".
 sha="unknown"; branch="unknown"

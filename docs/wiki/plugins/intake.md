@@ -1,0 +1,90 @@
+# intake
+
+**Intake Stage**
+
+- **Kind:** `agent`
+- **Role:** `intake`
+- **Manifest:** `plugins/agent/intake/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: intake
+name: Intake Stage
+kind: agent
+version: 0.1.0
+description: |
+  First stage of every pipeline run. Captures the goal, strips synthesized
+  pipeline context (sentinel-based sanitization), reads state/platforms.json
+  for platform-aware scope defaults, and writes state/scope-manifest.md +
+  state/intake.md. Phase 0.5 stub: no LLM call. Real planning prompt deferred.
+
+  Note on `requires.core: [redaction]`: declared because intake is a
+  `kind: agent` plugin and the deferred planning prompt will emit through
+  the chokepoint. Registry enforces this declaration on every `kind: agent`
+  plugin per ADR-004; do not remove it without also reclassifying the
+  plugin. Today intake produces the scope manifest that drives redaction
+  downstream but does not call `apply_scope_redaction` itself.
+
+hooks:
+  init: intake_init
+  run: intake_run
+  finalize: intake_finalize
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+
+# ADR-020 inter-stage data contract: intake has no upstream stage; its only
+# input is the GitHub issue body fetched at runtime. The `gh_issue_body`
+# source id is on the external-sources allowlist (see ADR-020).
+inputs: []
+
+outputs:
+  - id: scope_manifest
+    path: ${state_dir}/scope-manifest.md
+    type: scope-manifest.md
+    required: true
+    # ADR-020 amendment (#507): primary output (non-JSON). Indicator falls
+    # back to rc-only — present == pass; absent (rc=0 anyway) == warn.
+    primary: true
+  - id: intake_goal
+    path: ${state_dir}/intake.md
+    type: intake.md
+    required: true
+  # ADR-020 / #663: side-channel outputs previously documented as
+  # "intentional side-effects". intake-baseline-ref.txt is written when
+  # the intake-baseline capture succeeds; intake-branch.txt is written
+  # when branch creation succeeds (opt-out via ZBUILD_INTAKE_SKIP_BRANCH;
+  # tests that aren't git repos disable it). Both are required:false
+  # so downstream consumers must fall back gracefully when absent
+  # (pr-open does this; see #484). primary:false — scope_manifest is the
+  # canonical primary artifact per #507.
+  - id: intake_baseline_ref
+    path: ${state_dir}/intake-baseline-ref.txt
+    type: text
+    primary: false
+    required: false
+  - id: intake_branch
+    path: ${state_dir}/intake-branch.txt
+    type: text
+    primary: false
+    required: false
+
+provides:
+  artifact_type: [scope-manifest.md, intake.md]
+  role: intake
+
+# ADR-047 §6: after this stage completes, the runner merges the operator's
+# --scope override (scope-override.md) into this stage's scope-manifest.md. The
+# runner keys on this capability flag, not the stage name (mechanics name no stage).
+capabilities:
+  merges_scope_override: true
+
+config:
+  tier_default: T1
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._

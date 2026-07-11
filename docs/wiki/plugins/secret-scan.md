@@ -1,0 +1,73 @@
+# secret-scan
+
+**Secret Scan Gate**
+
+- **Kind:** `tool`
+- **Role:** `secret_scan`
+- **Manifest:** `plugins/tool/secret-scan/manifest.yaml`
+
+## Manifest
+
+```yaml
+id: secret-scan
+name: Secret Scan Gate
+kind: tool
+# ADR-040 §5: convergence marker. `gate` = mechanical must-pass gate.
+convergence: gate
+version: 0.1.0
+description: |
+  Deterministic, LLM-free T0 gate (ADR-040, issue #1136, EPIC #1129).
+  Blocks when hardcoded secrets/credentials or .env files are introduced in the
+  diff (CLAUDE.md security rules: "NEVER commit secrets, credentials, or .env
+  files"). Scans the merge-base..HEAD diff (added lines + new file paths) for a
+  conservative pattern set:
+    - AWS access-key ids (AKIA + 16).
+    - PEM private-key headers (-----BEGIN ... PRIVATE KEY-----).
+    - Quoted high-entropy credential assignments
+      (api_key/secret/token/password = "...").
+    - .env file paths (.env, .env.local, ...; .env.example/.sample/.template excluded).
+  Allowlist knobs (opt-in, to clear obvious test fixtures / example creds):
+    - ZBUILD_SECRET_SCAN_ALLOWLIST_FILE: file of glob patterns, one per line
+      (matched against the diff path; '#' comments + blanks ignored).
+    - Inline pragma on the offending line: 'allowlist secret' or 'secret-scan:allow'.
+  Verdict: secret found -> fail (file:line listed); clean diff -> pass; empty
+  diff (or no merge-base) -> skip. ALWAYS rc=0 (ADR-040 verdict-in-artifact);
+  the verdict lives in secret-scan-result.json, never an exit code.
+
+hooks:
+  init: secret_scan_init
+  run: secret_scan_run
+  finalize: secret_scan_finalize
+  cleanup: secret_scan_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: secret_scan
+  artifact_type: secret-scan-result.json
+  schema_version: 1
+
+config:
+  tier_default: T0
+
+# Zero-input gate: scans the git diff directly, consumes no upstream stage
+# artifact. Explicit empty block per ADR-020 (silences the preflight warning).
+inputs: []
+
+outputs:
+  - id: secret_scan_result
+    path: "${artifact_dir}/secret-scan-result.json"
+    type: secret-scan-result.json
+    required: true
+    primary: true
+
+state:
+  persisted: []
+  reconstructed: []
+```
+
+_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
