@@ -36,10 +36,13 @@ _emit() {
     if [[ -n "$jq_filter" && -s "$src" ]]; then jq -r "$jq_filter" < "$src"; else cat "$src"; fi
 }
 case "${1:-} ${2:-}" in
-    "repo view")  echo "ezigus/zBuild"; exit 0 ;;
-    "issue list") _emit "${MOCK_ISSUE_LIST_JSON:-/dev/null}"; exit 0 ;;
-    "pr list")    _emit "${MOCK_PR_LIST_JSON:-/dev/null}"; exit 0 ;;
-    *) echo "[mock-gh] unhandled: $*" >&2; exit 1 ;;
+    "repo view")      echo "ezigus/zBuild"; exit 0 ;;
+    "issue list")     _emit "${MOCK_ISSUE_LIST_JSON:-/dev/null}"; exit 0 ;;
+    "pr list")        _emit "${MOCK_PR_LIST_JSON:-/dev/null}"; exit 0 ;;
+    "release view")   exit 1 ;;
+    "release create") exit 0 ;;
+    "release delete") exit 0 ;;
+    *) echo "[mock-gh] unhandled: $*" >&2; exit 0 ;;
 esac
 '
 
@@ -48,6 +51,16 @@ esac
 export ZBUILD_RELEASE_REPO="ezigus/zBuild"
 export ZBUILD_VERSION_ANCHOR="1.0"
 export ZBUILD_VERSION_RELEASE_COUNT="1"
+
+# REL-D seams: mock git tag creation and redirect tarball output so non-dry-run
+# paths in T2/T6 don't touch the real git repo or require gh CLI.
+mock_binary "mock-git-tag" '
+if [[ "${1:-}" == "tag" && "${2:-}" == "-l" ]]; then exit 0; fi
+exit 0
+'
+export ZBUILD_GIT_TAG_CMD="$TEST_TEMP_DIR/bin/mock-git-tag"
+export ZBUILD_RELEASE_OUTDIR="$TEST_TEMP_DIR/release-out-rsh"
+mkdir -p "$ZBUILD_RELEASE_OUTDIR"
 
 # Pin the closed-since cutoff so the since_iso filter is deterministic and does
 # NOT depend on the real v1.0.0 tag date in this worktree. Anything closed/merged
