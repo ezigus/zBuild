@@ -164,7 +164,7 @@ assert_eq "T5: refused release did not mutate the CHANGELOG" "$before" "$after"
 # ─── T6: --force bypasses both gates (release proceeds despite bad lint) ─────
 force_rc=0
 ZBUILD_DOC_STYLE_LINT="$bad_lint" ZBUILD_RELEASE_CHANGELOG="$sandbox_cl" \
-    ZBUILD_RELEASE_NO_PUSH=1 \
+    ZBUILD_RELEASE_VERSION_FILE="$TEST_TEMP_DIR/VERSION-cov-t6" \
     bash "$REPO_ROOT/scripts/release.sh" --force --milestone "$MILESTONE" >/dev/null 2>&1 || force_rc=$?
 if [[ "$force_rc" -eq 0 ]]; then
     assert_pass "T6: --force bypasses the doc/coverage gate (release proceeds)"

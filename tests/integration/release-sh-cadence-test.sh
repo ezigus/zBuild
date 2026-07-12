@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# tests/integration/release-sh-cadence-test.sh — SPEC-1 through SPEC-9
-# Behavioral coverage for the cadence flags + PR workflow added by #1355 (REL-B1).
+# tests/integration/release-sh-cadence-test.sh
+# Behavioral coverage for the cadence flags + VERSION stamp added by #1355 (REL-B1).
+# The direct-apply publish path (tarball/tag/publish) is #1412's — covered by
+# release-sh-test.sh; #1355's original PR-branch flow was superseded by #1412 and
+# dropped, so no PR-workflow assertions live here.
 #
-# SPEC-1:  --patch dry-run prints "cadence: patch"
+# SPEC-1:  --patch dry-run prints "cadence: patch" + version 1.0.1.5
 # SPEC-2:  --minor dry-run prints "cadence: minor" + version 1.1.0.5
 # SPEC-3:  --major dry-run prints "cadence: major" + version 2.0.0.5
 # SPEC-4:  combining two cadence flags exits rc=2
 # SPEC-5:  non-dry-run writes the VERSION file (ZBUILD_RELEASE_VERSION_FILE seam)
-# SPEC-6:  non-dry-run calls gh pr create (mocked git + gh, no ZBUILD_RELEASE_NO_PUSH)
-# SPEC-7:  PR title in gh pr create call contains "Release v..."
-# SPEC-8:  dry-run prints "planned pr title: Release v..."
+# SPEC-6:  dry-run announces the planned VERSION stamp but MUTATES NOTHING
 # SPEC-9:  _release_on_merge_hook function is defined in release.sh
 set -euo pipefail
 
@@ -49,7 +50,7 @@ cat > "$MOCK_PR_LIST_JSON" <<'EOF'
 ]
 EOF
 
-# ─── Base gh mock: handles issue list / pr list / repo view / pr create ───────
+# ─── Base gh mock: serves the issue/PR data the notes generator reads ─────────
 mock_binary "gh" '
 GH_CALLS_LOG="'"$TEST_TEMP_DIR"'/gh-calls.log"
 echo "gh $*" >> "$GH_CALLS_LOG"
@@ -66,12 +67,12 @@ case "${1:-} ${2:-}" in
     "repo view")   echo "ezigus/zBuild"; exit 0 ;;
     "issue list")  _emit "${MOCK_ISSUE_LIST_JSON:-/dev/null}"; exit 0 ;;
     "pr list")     _emit "${MOCK_PR_LIST_JSON:-/dev/null}"; exit 0 ;;
-    "pr create")   echo "https://github.com/ezigus/zBuild/pull/999"; exit 0 ;;
     *) echo "[mock-gh] unhandled: $*" >&2; exit 1 ;;
 esac
 '
 
-# ─── Git mock: log all calls and succeed (used for PR workflow SPECs) ─────────
+# ─── Git mock: log calls and succeed. build_release_tarball probes `git config`
+#     for the repo slug; the non-dry-run tag+publish self-skips under NO_GITHUB. ─
 mock_binary "git" '
 GIT_CALLS_LOG="'"$TEST_TEMP_DIR"'/git-calls.log"
 echo "git $*" >> "$GIT_CALLS_LOG"
@@ -106,14 +107,13 @@ bash "$REPO_ROOT/scripts/release.sh" --minor --major --dry-run 2>/dev/null || rc
 assert_eq "[SPEC-4] --minor --major exits rc=2" "2" "$rc_two_flags2"
 
 # ─── SPEC-5: non-dry-run writes VERSION file ─────────────────────────────────
-# Use ZBUILD_RELEASE_NO_PUSH to skip git push + gh pr create.
-# Use ZBUILD_RELEASE_VERSION_FILE to sandbox the VERSION write.
-# Use ZBUILD_RELEASE_CHANGELOG to sandbox the CHANGELOG write.
+# ZBUILD_RELEASE_VERSION_FILE sandboxes the VERSION stamp; ZBUILD_RELEASE_CHANGELOG
+# sandboxes the CHANGELOG prepend. --force skips the doc/coverage gate; the
+# tag+publish step self-skips under NO_GITHUB=true (setup_test_env).
 sandbox_version_file="$TEST_TEMP_DIR/sandbox-VERSION"
 sandbox_changelog="$TEST_TEMP_DIR/sandbox-CHANGELOG.md"
 cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog"
 
-ZBUILD_RELEASE_NO_PUSH=1 \
 ZBUILD_RELEASE_VERSION_FILE="$sandbox_version_file" \
 ZBUILD_RELEASE_CHANGELOG="$sandbox_changelog" \
     bash "$REPO_ROOT/scripts/release.sh" --patch --force --milestone "Initiative 1.1" >/dev/null 2>&1
@@ -121,34 +121,19 @@ assert_file_exists "[SPEC-5] VERSION file written by non-dry-run" "$sandbox_vers
 written_version="$(<"$sandbox_version_file")"
 assert_eq "[SPEC-5] VERSION file contains computed version 1.0.1.5" "1.0.1.5" "${written_version%$'\n'}"
 
-# ─── SPEC-6/7: non-dry-run calls gh pr create with expected title ─────────────
-# Mock git + gh already installed. Run without ZBUILD_RELEASE_NO_PUSH.
-sandbox_version_file2="$TEST_TEMP_DIR/sandbox-VERSION-2"
-sandbox_changelog2="$TEST_TEMP_DIR/sandbox-CHANGELOG-2.md"
-cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog2"
-rm -f "$TEST_TEMP_DIR/gh-calls.log"
-
-ZBUILD_RELEASE_VERSION_FILE="$sandbox_version_file2" \
-ZBUILD_RELEASE_CHANGELOG="$sandbox_changelog2" \
-    bash "$REPO_ROOT/scripts/release.sh" --patch --force --milestone "Initiative 1.1" >/dev/null 2>&1
-
-gh_log="$TEST_TEMP_DIR/gh-calls.log"
-if [[ -f "$gh_log" ]] && /usr/bin/grep -q "pr create" "$gh_log"; then
-    assert_pass "[SPEC-6] non-dry-run calls gh pr create"
+# ─── SPEC-6: dry-run announces the planned VERSION stamp but MUTATES NOTHING ──
+# The dry-run must report the version it WOULD stamp, and must NOT create the
+# VERSION file (point the seam at a non-existent path and assert it stays absent).
+dryrun_version_file="$TEST_TEMP_DIR/should-not-be-written-VERSION"
+out_dry="$(ZBUILD_RELEASE_VERSION_FILE="$dryrun_version_file" \
+    bash "$REPO_ROOT/scripts/release.sh" --dry-run --patch --milestone "Initiative 1.1" 2>&1)"
+assert_contains "[SPEC-6] dry-run announces planned VERSION stamp ← 1.0.1.5" \
+    "$out_dry" "planned version-stamp: VERSION ← 1.0.1.5"
+if [[ -e "$dryrun_version_file" ]]; then
+    assert_fail "[SPEC-6] dry-run must NOT write the VERSION file"
 else
-    assert_fail "[SPEC-6] non-dry-run did not call gh pr create" "log: $(cat "$gh_log" 2>/dev/null || echo '(empty)')"
+    assert_pass "[SPEC-6] dry-run leaves the VERSION file unwritten"
 fi
-
-if [[ -f "$gh_log" ]] && /usr/bin/grep -q "Release v1.0.1.5" "$gh_log"; then
-    assert_pass "[SPEC-7] PR title contains Release v1.0.1.5"
-else
-    assert_fail "[SPEC-7] PR title missing 'Release v1.0.1.5'" "log: $(cat "$gh_log" 2>/dev/null || echo '(empty)')"
-fi
-
-# ─── SPEC-8: dry-run prints planned pr title ─────────────────────────────────
-out_dry="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --patch --milestone "Initiative 1.1" 2>&1)"
-assert_contains "[SPEC-8] dry-run prints 'planned pr title: Release v1.0.1.5'" \
-    "$out_dry" "planned pr title: Release v1.0.1.5"
 
 # ─── SPEC-9: _release_on_merge_hook function defined in release.sh ────────────
 if /usr/bin/grep -q '_release_on_merge_hook()' "$REPO_ROOT/scripts/release.sh"; then

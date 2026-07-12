@@ -125,17 +125,20 @@ initiative-count_version() {
     # deterministic 0 when not provided so the pure assembly stays testable.
     [[ -z "$issues" ]] && issues="0"
 
-    # Apply cadence: --minor bumps B, resets C; --major bumps A, resets B and C.
-    if [[ "$cadence" == "minor" ]]; then
-        local _a="${anchor%%.*}" _b="${anchor#*.}"
-        _b=$((_b + 1))
-        anchor="${_a}.${_b}"
-        rcount="0"
-    elif [[ "$cadence" == "major" ]]; then
-        local _a="${anchor%%.*}"
-        _a=$((_a + 1))
-        anchor="${_a}.0"
-        rcount="0"
+    # Apply cadence: --minor bumps B (resets C); --major bumps A (resets B and C).
+    # Guard on a well-formed 2-part anchor via BASH_REMATCH — a malformed override
+    # (e.g. ZBUILD_VERSION_ANCHOR="1.2.3") is passed through UNTOUCHED so the pure
+    # compute_version fails loud below, rather than tripping non-integer arithmetic
+    # here (${anchor#*.} on "1.2.3" is "2.3", which breaks $((...))).
+    if [[ "$anchor" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+        local _a="${BASH_REMATCH[1]}" _b="${BASH_REMATCH[2]}"
+        if [[ "$cadence" == "minor" ]]; then
+            anchor="${_a}.$((_b + 1))"
+            rcount="0"
+        elif [[ "$cadence" == "major" ]]; then
+            anchor="$((_a + 1)).0"
+            rcount="0"
+        fi
     fi
 
     compute_version "$anchor" "$rcount" "$issues"

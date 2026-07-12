@@ -3,7 +3,8 @@
 #
 # Computes the next version via the pluggable versioning backend
 # (resolve_repo_version, ADR-011 / ADR-048), generates per-issue release notes,
-# prepends them to CHANGELOG.md, stamps VERSION, and opens a release PR.
+# prepends them to CHANGELOG.md, stamps VERSION, builds the release tarball,
+# creates the annotated git tag, and publishes the GitHub release.
 # REL-D's weekly workflow and `zbuild release` (#1355) CALL this script —
 # logic lives here once, never duplicated (DRY).
 #
@@ -12,14 +13,15 @@
 #   --minor           Cadence: minor release. Bumps B component, resets C to 0.
 #   --major           Cadence: major release. Bumps A component, resets B.C to 0.
 #                     Exactly one cadence flag allowed; combining two exits rc=2.
-#   --dry-run         Print the planned version/tag/notes/PR title; mutate NOTHING.
+#   --dry-run         Print the planned version/tag/notes/version-stamp; mutate NOTHING.
 #   --force           Bypass release gates (for testing / manual cuts).
 #   --milestone <m>   Scope notes to a GitHub milestone (else closed-since-tag).
 #   -h, --help        Usage.
 #
-# NOTE: the per-phase/cadence GATE and the actual tag/tarball/publish are REL-C
-# (#875) and REL-D (#877/#1357). This script leaves clean hook points (see the
-# _release_on_merge_hook stub below); REL-B's job is notes + changelog + PR.
+# NOTE: tarball build, git tag, and GitHub publish run INLINE here (REL-C #875 /
+# REL-D #877 seams: ZBUILD_GIT_TAG_CMD, ZBUILD_GH_RELEASE_CMD, signing files).
+# The per-phase/cadence GATE stays a REL-D hook point, and `_release_on_merge_hook`
+# is a forward stub for REL-D's on-merge automation (#877/#1357).
 set -euo pipefail
 
 RELEASE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,13 +40,14 @@ source "$RELEASE_SCRIPT_DIR/lib/release-tarball.sh"
 
 release_usage() {
     cat <<'EOF'
-zbuild release — cut a release: compute version, generate notes, update CHANGELOG, open release PR.
+zbuild release — cut a release: compute version, generate notes, update CHANGELOG,
+stamp VERSION, build the tarball, tag, and publish the GitHub release.
 
 Usage:
   release.sh [--dry-run] [--patch|--minor|--major] [--force] [--milestone <name>]
 
 Flags:
-  --dry-run          Print the planned version, tag, notes, and PR title. Mutates nothing.
+  --dry-run          Print the planned version, tag, notes, and version-stamp. Mutates nothing.
   --patch            Cadence: patch release (default). Bumps D (issues-since count).
   --minor            Cadence: minor release. Bumps B component, resets C to 0.
   --major            Cadence: major release. Bumps A component, resets B.C to 0.
@@ -58,12 +61,13 @@ example — swap in a versioning-backend plugin to version this repo any way you
 EOF
 }
 
-# _release_on_merge_hook <tag> — stub called after the release PR is opened.
-# REL-C/REL-D wire in here: signing, tarball, tag creation, and publish.
+# _release_on_merge_hook <tag> — forward stub for REL-D's on-merge automation
+# (#877/#1357). Tarball build, git tag, and publish now run inline in main();
+# this remains a clean hook point for post-release steps (announce, close
+# milestone, bump next cadence) that a future PR-merge workflow will wire in.
 _release_on_merge_hook() {
     local tag="$1"
-    # TODO(REL-C #875): sign + build the release tarball for ${tag}.
-    # TODO(REL-D #877): create the git tag ${tag} and publish the GitHub release.
+    # TODO(REL-D #877/#1357): post-release automation for ${tag}.
     :
 }
 

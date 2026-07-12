@@ -76,7 +76,8 @@ Commands:
                          [--quiet]
                          Default: dry-run, all categories.
   release                Cut a release: compute version, generate per-issue
-                         release notes, update CHANGELOG.md, and open a release PR.
+                         release notes, update CHANGELOG.md, stamp VERSION, tag,
+                         and publish the GitHub release.
                          [--dry-run] [--major|--minor|--patch] [--force] [--milestone <name>]
   deferred <sub>         Deferred-work scanners (backfill | tracker)
                          Run \`zbuild deferred --help\` for sub-commands.

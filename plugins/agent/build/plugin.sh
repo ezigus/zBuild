@@ -1378,6 +1378,13 @@ when there is nothing left to do.
 ### Rules
 - Touch only files in the scope list above.
 - Do not run \`git commit\` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no \`git checkout -b\`/\`switch\`/\`commit\`/\`push\`/\`tag\`/\`reset\`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in \`--dry-run\` mode.
+  Do everything you can to verify behavior without side effects.
 - Keep changes minimal and aligned with the plan.
 
 ### Commit message (#608)
