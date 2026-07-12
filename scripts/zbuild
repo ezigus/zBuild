@@ -76,10 +76,8 @@ Commands:
                          [--quiet]
                          Default: dry-run, all categories.
   release                Cut a release: compute version, generate per-issue
-                         release notes, and update CHANGELOG.md.
-                         [--dry-run] [--major N] [--force] [--milestone <name>]
-                         (Fuller \`zbuild release\` UX is #1355; this dispatch is
-                         minimal + forward-compatible.)
+                         release notes, update CHANGELOG.md, and open a release PR.
+                         [--dry-run] [--major|--minor|--patch] [--force] [--milestone <name>]
   deferred <sub>         Deferred-work scanners (backfill | tracker)
                          Run \`zbuild deferred --help\` for sub-commands.
   manifest <sub>         Manifest YAML drift management (sync)

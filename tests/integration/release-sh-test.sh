@@ -137,15 +137,20 @@ assert_contains "T1: note frames scheme as one example" "$out" "one example"
 
 # ─── T2: --dry-run mutates nothing; non-dry-run DOES prepend (bidirectional) ──
 sandbox_changelog="$TEST_TEMP_DIR/CHANGELOG.md"
+sandbox_vf_t2="$TEST_TEMP_DIR/VERSION-t2"
 cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog"
 before="$(shasum -a 256 "$sandbox_changelog" | awk '{print $1}')"
 # Point the dry-run at the sandbox changelog so the assertion is real, not vacuous.
 ZBUILD_RELEASE_CHANGELOG="$sandbox_changelog" \
     bash "$REPO_ROOT/scripts/release.sh" --dry-run --milestone "Initiative 1.1" >/dev/null 2>&1
 after="$(shasum -a 256 "$sandbox_changelog" | awk '{print $1}')"
-assert_eq "T2: --dry-run does not mutate the configured CHANGELOG" "$before" "$after"
+assert_eq "[SPEC-10] T2: --dry-run does not mutate the configured CHANGELOG" "$before" "$after"
 # Bidirectional: a NON-dry-run against the SAME sandbox path DOES mutate it.
+# ZBUILD_RELEASE_NO_PUSH skips the git/gh PR workflow; ZBUILD_RELEASE_VERSION_FILE
+# sandboxes the VERSION write so the real repo VERSION is not touched.
 ZBUILD_RELEASE_CHANGELOG="$sandbox_changelog" \
+ZBUILD_RELEASE_VERSION_FILE="$sandbox_vf_t2" \
+ZBUILD_RELEASE_NO_PUSH=1 \
     bash "$REPO_ROOT/scripts/release.sh" --milestone "Initiative 1.1" >/dev/null 2>&1
 mutated="$(shasum -a 256 "$sandbox_changelog" | awk '{print $1}')"
 if [[ "$before" != "$mutated" ]]; then
@@ -179,16 +184,19 @@ assert_contains "T4: genesis includes the pre-window issue #100" "$out_gen" "/is
 export ZBUILD_RELEASE_SINCE="$saved_since"
 export ZBUILD_RELEASE_LAST_TAG="v1.0.0"
 
-# ─── T5: --major overrides A component ───────────────────────────────────────
-out_major="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --major 2 --milestone "Initiative 1.1" 2>&1)"
-assert_contains "T5: --major 2 overrides A → 2.0.1.5" "$out_major" "planned version: 2.0.1.5"
+# ─── T5: --major cadence flag bumps A, resets B.C ────────────────────────────
+out_major="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --major --milestone "Initiative 1.1" 2>&1)"
+assert_contains "T5: --major cadence bumps A → 2.0.0.5" "$out_major" "planned version: 2.0.0.5"
 
 # ─── T6: CHANGELOG prepend (non-dry-run) preserves [1.0.0] section ──────────
 # Point release.sh at a sandbox CHANGELOG via the ZBUILD_RELEASE_CHANGELOG seam
-# so the real repo CHANGELOG is never touched.
+# so the real repo CHANGELOG is never touched. Sandbox VERSION too.
 sandbox_cl="$TEST_TEMP_DIR/CHANGELOG-t6.md"
+sandbox_vf_t6="$TEST_TEMP_DIR/VERSION-t6"
 cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_cl"
 ZBUILD_RELEASE_CHANGELOG="$sandbox_cl" \
+ZBUILD_RELEASE_VERSION_FILE="$sandbox_vf_t6" \
+ZBUILD_RELEASE_NO_PUSH=1 \
     bash "$REPO_ROOT/scripts/release.sh" --milestone "Initiative 1.1" >/dev/null 2>&1
 new_changelog="$(cat "$sandbox_cl")"
 assert_contains "T6: prepend keeps [1.0.0] section" "$new_changelog" "## [1.0.0]"
@@ -206,11 +214,11 @@ fi
 # ─── T7: `zbuild release --dry-run` dispatch forwards to release.sh ──────────
 out_cli="$(bash "$REPO_ROOT/scripts/zbuild" release --dry-run --milestone "Initiative 1.1" 2>&1)" \
     || { echo "$out_cli"; assert_fail "zbuild release --dry-run exits 0"; exit 1; }
-assert_contains "T7: zbuild release dispatch works" "$out_cli" "planned version: 1.0.1.5"
+assert_contains "[SPEC-11] T7: zbuild release dispatch works" "$out_cli" "planned version: 1.0.1.5"
 
 # ─── T8: usage lists the release subcommand ─────────────────────────────────
 help_out="$(bash "$REPO_ROOT/scripts/zbuild" --help 2>&1)"
-assert_contains "T8: --help documents release" "$help_out" "release"
+assert_contains "[SPEC-12] T8: --help documents release" "$help_out" "release"
 
 cleanup_test_env
 print_test_results
