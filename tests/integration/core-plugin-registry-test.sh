@@ -490,6 +490,23 @@ rc=$?
 set -e
 assert_eq "validate_manifest rejects manifest with declared-but-empty summary (#1414)" "1" "$rc"
 
+# (d) manifest with an empty-string usage is rejected (symmetry with (c)).
+mkdir -p "$FIXTURE_ROOT/tool/doc-fields-empty-usage"
+cat > "$FIXTURE_ROOT/tool/doc-fields-empty-usage/manifest.yaml" <<'EOF'
+id: doc-fields-empty-usage
+name: Doc Fields Empty Usage
+kind: tool
+version: 0.0.1
+hooks:
+  run: dfeu_run
+usage:
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/tool/doc-fields-empty-usage/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects manifest with declared-but-empty usage (#1414)" "1" "$rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

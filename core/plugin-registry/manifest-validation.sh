@@ -251,14 +251,27 @@ validate_manifest() {
     # ─── Optional doc fields: summary + usage ────────────────────────────────
     # If declared, each must be a non-empty string. Absent = fine; present-but-
     # empty = misconfiguration (declared doc field with no content).
-    local doc_field
+    #
+    # Presence + value are resolved in ONE awk pass with a LITERAL, TOP-LEVEL
+    # match: `index($0, key":")==1` is true only when the line begins with the
+    # exact key at column 0 — so it never matches an indented/nested key or a
+    # line inside a block scalar, and (being index(), not a regex) the field
+    # name is never interpreted as a pattern. Emits OK / EMPTY / (nothing).
+    local doc_field doc_state
     for doc_field in summary usage; do
-        if grep -qE "^${doc_field}:" "$manifest" 2>/dev/null; then
-            local doc_val; doc_val="$(yaml_get "$manifest" "$doc_field")"
-            if [[ -z "$doc_val" ]]; then
-                error "validate_manifest($manifest): '$doc_field' is declared but empty (must be a non-empty string)"
-                errors=$((errors + 1))
-            fi
+        doc_state="$(awk -v k="$doc_field" '
+            index($0, k":") == 1 {
+                v = $0
+                sub(/^[^:]*:[[:space:]]*/, "", v)   # strip "key:" + leading ws
+                sub(/[[:space:]]*#.*/, "", v)        # strip trailing comment
+                gsub(/^["'"'"']|["'"'"']$/, "", v)   # strip surrounding quotes
+                print (v == "" ? "EMPTY" : "OK")
+                exit
+            }
+        ' "$manifest" 2>/dev/null)"
+        if [[ "$doc_state" == "EMPTY" ]]; then
+            error "validate_manifest($manifest): '$doc_field' is declared but empty (must be a non-empty string)"
+            errors=$((errors + 1))
         fi
     done
 
