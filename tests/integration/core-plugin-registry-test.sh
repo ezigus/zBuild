@@ -430,6 +430,66 @@ rc=$?
 set -e
 assert_eq "scanner no-op for plugins without provides.artifact_type" "0" "$rc"
 
+# ─── Optional doc fields: summary + usage (issue #1414) ─────────────────────
+# (a) manifest with both fields present and non-empty passes.
+mkdir -p "$FIXTURE_ROOT/tool/doc-fields-valid"
+cat > "$FIXTURE_ROOT/tool/doc-fields-valid/manifest.yaml" <<'EOF'
+id: doc-fields-valid
+name: Doc Fields Valid
+kind: tool
+version: 0.0.1
+summary: Short one-line synopsis
+usage: |
+  Run with stage_id and state_file.
+hooks:
+  run: dfv_run
+EOF
+cat > "$FIXTURE_ROOT/tool/doc-fields-valid/plugin.sh" <<'EOF'
+dfv_run() { :; }
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/tool/doc-fields-valid/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest accepts manifest with non-empty summary and usage (#1414)" "0" "$rc"
+
+# (b) manifest without either field passes (existing tool/test-tool already covers this,
+#     but an explicit fixture makes the intent clear).
+mkdir -p "$FIXTURE_ROOT/tool/doc-fields-absent"
+cat > "$FIXTURE_ROOT/tool/doc-fields-absent/manifest.yaml" <<'EOF'
+id: doc-fields-absent
+name: Doc Fields Absent
+kind: tool
+version: 0.0.1
+hooks:
+  run: dfa_run
+EOF
+cat > "$FIXTURE_ROOT/tool/doc-fields-absent/plugin.sh" <<'EOF'
+dfa_run() { :; }
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/tool/doc-fields-absent/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest accepts manifest without summary or usage (#1414)" "0" "$rc"
+
+# (c) manifest with an empty-string summary is rejected.
+mkdir -p "$FIXTURE_ROOT/tool/doc-fields-empty-summary"
+cat > "$FIXTURE_ROOT/tool/doc-fields-empty-summary/manifest.yaml" <<'EOF'
+id: doc-fields-empty-summary
+name: Doc Fields Empty Summary
+kind: tool
+version: 0.0.1
+hooks:
+  run: dfes_run
+summary:
+EOF
+set +e
+validate_manifest "$FIXTURE_ROOT/tool/doc-fields-empty-summary/manifest.yaml" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "validate_manifest rejects manifest with declared-but-empty summary (#1414)" "1" "$rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

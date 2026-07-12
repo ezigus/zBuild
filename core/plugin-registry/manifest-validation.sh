@@ -248,5 +248,19 @@ validate_manifest() {
         fi
     fi
 
+    # ─── Optional doc fields: summary + usage ────────────────────────────────
+    # If declared, each must be a non-empty string. Absent = fine; present-but-
+    # empty = misconfiguration (declared doc field with no content).
+    local doc_field
+    for doc_field in summary usage; do
+        if grep -qE "^${doc_field}:" "$manifest" 2>/dev/null; then
+            local doc_val; doc_val="$(yaml_get "$manifest" "$doc_field")"
+            if [[ -z "$doc_val" ]]; then
+                error "validate_manifest($manifest): '$doc_field' is declared but empty (must be a non-empty string)"
+                errors=$((errors + 1))
+            fi
+        fi
+    done
+
     return $((errors > 0))
 }
