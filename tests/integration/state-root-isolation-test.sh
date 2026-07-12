@@ -233,7 +233,7 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 # parent-untouched assertions pass hollowly, #913).
 NESTED_LOG="$TEST_TEMP_DIR/f-nested-runner.log"
 NESTED_STATE_COPY="$TEST_TEMP_DIR/f-nested-state.json"
-F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; cp \"\$ZBUILD_STATE_ROOT/runs/nested-suite/pipeline-state.json\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
+F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; cp \"\$ZBUILD_STATE_ROOT/runs/nested-suite/pipeline-state.json\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
 
 set +e
 # #1268: _test_run_inner is a shell FUNCTION — invoke it in a subshell with

@@ -69,6 +69,20 @@ When the vision document is present and valid, it is injected into stage prompts
 The injection mechanism itself is Phase 1.1 scope; this ADR specifies the contract the injected
 content must satisfy.
 
+### 5. Admission-gate mode & bypass (Phase 1.1 — issue #1360)
+
+The runner enforces this standard at pre-flight via `vision_gate_mode` (`scripts/lib/vision.sh`),
+which resolves the mode with precedence:
+
+1. `ZBUILD_VISION_GATE` environment variable (per-invocation override)
+2. `.zbuild/config.yaml` key `vision.gate` (persistent per-repo setting)
+3. built-in default: `enforce`
+
+Modes: `enforce` (missing / malformed / over-length vision → `preflight_failed`, fail-closed),
+`warn` (advise but proceed), `off` (skip the gate entirely — "just run" without a vision
+document). An unrecognized value resolves to `enforce` (fail-closed on misconfiguration). This
+lets a repo persistently opt out via config without setting an env var on every run.
+
 ## Consequences
 
 - `docs/VISION.md` becomes the **first conformant instance** of this standard.

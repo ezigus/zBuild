@@ -79,6 +79,11 @@ Commands:
                          release notes, update CHANGELOG.md, stamp VERSION, tag,
                          and publish the GitHub release.
                          [--dry-run] [--major|--minor|--patch] [--force] [--milestone <name>]
+  vision init            Create or update the project vision document (ADR-049).
+                         Default output: .zbuild/vision.md
+                         [--blank]              Write a minimal conforming skeleton (no LLM)
+                         [--condense]           Condense the existing vision to ≤300 words
+                         [--output <path>]      Override the output file path
   deferred <sub>         Deferred-work scanners (backfill | tracker)
                          Run \`zbuild deferred --help\` for sub-commands.
   manifest <sub>         Manifest YAML drift management (sync)
@@ -740,6 +745,79 @@ HELP
                 error "Unknown manifest subcommand: $2"
                 echo "Available: sync" >&2
                 echo "Run: zbuild manifest --help" >&2
+                exit 2
+                ;;
+        esac
+        ;;
+    vision)
+        case "${2:-}" in
+            init)
+                shift 2
+                # shellcheck source=lib/vision-init.sh
+                source "$SCRIPT_DIR/lib/vision-init.sh"
+                _vi_blank=false
+                _vi_condense=false
+                _vi_output=".zbuild/vision.md"
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --blank)    _vi_blank=true; shift ;;
+                        --condense) _vi_condense=true; shift ;;
+                        --output)
+                            [[ -z "${2:-}" ]] && { error "--output requires a path"; exit 2; }
+                            _vi_output="$2"; shift 2 ;;
+                        -h|--help)
+                            cat <<'VIHELP'
+zbuild vision init — create or update the project vision document.
+
+Usage:
+  zbuild vision init [--blank] [--condense] [--output <path>]
+
+  (no flags)       Auto-draft a vision document from repo context (requires LLM)
+  --blank          Write a minimal conforming skeleton (no LLM needed)
+  --condense       Condense the existing vision document to ≤300 words (requires LLM)
+  --output <path>  Override the default output path (.zbuild/vision.md)
+
+The vision gate (ADR-049) requires a conforming vision document before any
+pipeline run. If the gate blocks you, run one of the above to create one.
+VIHELP
+                            exit 0 ;;
+                        *)
+                            error "Unknown vision init flag: $1"; exit 2 ;;
+                    esac
+                done
+                if $_vi_blank && $_vi_condense; then
+                    error "vision init: --blank and --condense are mutually exclusive"
+                    exit 2
+                fi
+                if $_vi_blank; then
+                    vision_init_blank "$_vi_output" && success "wrote blank vision document: $_vi_output"
+                elif $_vi_condense; then
+                    # Locate the existing vision doc to condense
+                    _vi_existing="$(load_vision_doc "$PWD" 2>/dev/null)" || true
+                    if [[ -z "$_vi_existing" ]]; then
+                        error "vision init --condense: no existing vision document found"
+                        echo "Run: zbuild vision init (to auto-draft) or zbuild vision init --blank" >&2
+                        exit 1
+                    fi
+                    vision_condense "$_vi_existing" "$_vi_output" && success "condensed vision document: $_vi_output"
+                else
+                    vision_init_draft "$PWD" "$_vi_output" && success "drafted vision document: $_vi_output"
+                fi
+                ;;
+            ""|-h|--help)
+                cat <<'VHELP'
+zbuild vision — vision document management (ADR-049).
+
+Sub-commands:
+  init   Create or update the project vision document.
+
+Run: zbuild vision init --help for full details.
+VHELP
+                ;;
+            *)
+                error "Unknown vision subcommand: ${2:-}"
+                echo "Available: init" >&2
+                echo "Run: zbuild vision --help" >&2
                 exit 2
                 ;;
         esac

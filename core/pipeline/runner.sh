@@ -8,6 +8,8 @@ _RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "$_RUNNER_DIR/../.." && pwd)"
 
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/vision.sh
+source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 # ADR-025 (Wave 15-B #684) abort-propagation helpers — sourced before any
 # dispatch site can call them; idempotent source guard inside.
 source "$_ZBUILD_ROOT/scripts/lib/abort-propagation.sh"
@@ -921,6 +923,51 @@ main() {
                 "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
             _render_pipeline_end "preflight_failed"
             return 2
+        fi
+    }
+
+    # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
+    # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
+    # Mode resolves via vision_gate_mode: ZBUILD_VISION_GATE env > .zbuild/config.yaml
+    # vision.gate > built-in default (enforce). Set either to `off` to skip the gate
+    # entirely ("just run" without a vision document).
+    {
+        local _vg_mode; _vg_mode="$(vision_gate_mode)"
+        if [[ "$_vg_mode" != "off" ]]; then
+            local _vg_path=""
+            _vg_path="$(load_vision_doc "$PWD" 2>/dev/null)" || true
+            if [[ -z "$_vg_path" ]]; then
+                local _vg_search_hint=".zbuild/vision.md, docs/VISION.md, VISION.md"
+                if [[ "$_vg_mode" == "enforce" ]]; then
+                    error "Vision document not found (searched: $_vg_search_hint). Run: zbuild vision init"
+                    _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+                    _runner_issue="${_runner_issue:-${issue:-0}}"
+                    : "${_RUNNER_PIPELINE_START_MS:=$(_runner_now_ms)}"
+                    eb_emit_event "pipeline.end" "status=preflight_failed" \
+                        "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+                    _render_pipeline_end "preflight_failed"
+                    return 2
+                else
+                    warn "Vision document not found (searched: $_vg_search_hint). Run: zbuild vision init"
+                fi
+            else
+                local _vg_diag=""
+                if ! _vg_diag="$(validate_vision_doc "$_vg_path" 2>&1)"; then
+                    [[ -n "$_vg_diag" ]] && printf '%s\n' "$_vg_diag" >&2
+                    if [[ "$_vg_mode" == "enforce" ]]; then
+                        error "Vision document validation failed. Fix the issues above or run: zbuild vision init --condense"
+                        _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+                        _runner_issue="${_runner_issue:-${issue:-0}}"
+                        : "${_RUNNER_PIPELINE_START_MS:=$(_runner_now_ms)}"
+                        eb_emit_event "pipeline.end" "status=preflight_failed" \
+                            "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+                        _render_pipeline_end "preflight_failed"
+                        return 2
+                    else
+                        warn "Vision document validation failed. Fix the issues above or run: zbuild vision init --condense"
+                    fi
+                fi
+            fi
         fi
     }
 
