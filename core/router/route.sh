@@ -34,6 +34,10 @@ source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # Sourced here so every routing plugin (all source route.sh) gets it by
 # construction, replacing the per-plugin hardcoded `${ZBUILD_<ID>_TIER:-Tn}`.
 source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
+# VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
+# Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
+# can inject the advisory Intent preamble into every stage prompt.
+source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -170,6 +174,41 @@ fi
 # valid only within the parent shell that sourced route.sh.
 _ROUTE_TOOL_USES_JSON="[]"
 
+# ─── _route_vision_preamble ──────────────────────────────────────────────────
+# VIS-C (ADR-049): resolve the advisory Intent preamble ONCE per repo root and
+# cache it in _ROUTE_VISION_PREAMBLE (empty = no/invalid vision doc). Memoized
+# because _route_redact_prompt runs on every stage prompt (single-shot + each
+# loop iteration) and must not fork git/load/validate/awk per call. Keyed on the
+# resolved root so distinct repos (and per-scenario tests) recompute correctly.
+_ROUTE_VISION_PREAMBLE=""
+_ROUTE_VISION_CACHE_ROOT=$'\x00'   # sentinel: "not yet resolved for any root"
+_route_vision_preamble() {
+    declare -F load_vision_doc >/dev/null 2>&1 || { _ROUTE_VISION_PREAMBLE=""; return 0; }
+    local _root="${ZBUILD_REPO_ROOT:-}"
+    if [[ -z "$_root" ]]; then
+        _root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+        [[ -z "$_root" ]] && _root="$(pwd)"
+    fi
+    # Cache hit: same root already resolved → keep the memoized preamble.
+    [[ "$_root" == "$_ROUTE_VISION_CACHE_ROOT" ]] && return 0
+    _ROUTE_VISION_CACHE_ROOT="$_root"
+    _ROUTE_VISION_PREAMBLE=""
+    local _path=""
+    _path="$(load_vision_doc "$_root" 2>/dev/null)" || return 0
+    { [[ -n "$_path" ]] && validate_vision_doc "$_path" >/dev/null 2>&1; } || return 0
+    # Read via stdin redirect so a path beginning with '-' can't be read as an
+    # awk option; extract the ## Intent section up to the next ## heading.
+    local _body
+    _body="$(awk '/^## Intent/{p=1;next} p&&/^## /{exit} p{print}' < "$_path" 2>/dev/null || true)"
+    [[ -n "$_body" ]] || return 0
+    # Size cap (defense-in-depth): validate_vision_doc enforces the ~300-word
+    # vision cap, but hard-cap the injected bytes so a malformed/oversized Intent
+    # section can't silently bloat every LLM call.
+    local _cap="${ZBUILD_VISION_PREAMBLE_MAX_BYTES:-4096}"
+    if (( ${#_body} > _cap )); then _body="${_body:0:_cap}"; fi
+    printf -v _ROUTE_VISION_PREAMBLE '# Intent (advisory)\n%s\n\n' "$_body"
+}
+
 # ─── _route_redact_prompt <input_file> <output_file> [cycle_id] [allowlist] ──
 # Shared redaction step for BOTH single-shot route_to_model and route_to_model_loop
 # (ADR-043). When ZBUILD_SCOPE_MANIFEST names a readable manifest, delegate to
@@ -185,6 +224,23 @@ _route_redact_prompt() {
     local input="$1" output="$2" cycle_id="${3:-0}"
     local allowlist="${4:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
     local manifest="${ZBUILD_SCOPE_MANIFEST:-}"
+
+    # VIS-C (ADR-049): prepend the advisory Intent preamble when a valid vision
+    # doc is present. Resolved+cached once per repo root (_route_vision_preamble).
+    # Fail-open: absent/invalid doc leaves the prompt unchanged. Idempotent: skip
+    # if the input already carries the marker (guards re-entrancy / retries). The
+    # preamble is injected HERE, before apply_scope_redaction, so it passes
+    # through the redaction chokepoint by construction (ADR-004).
+    _route_vision_preamble
+    if [[ -n "${_ROUTE_VISION_PREAMBLE:-}" ]] \
+        && [[ "$(head -n1 "$input" 2>/dev/null)" != '# Intent (advisory)' ]]; then
+        local _pre_tmp
+        _pre_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-vis-pre.XXXXXX" 2>/dev/null)" || true
+        if [[ -n "$_pre_tmp" ]]; then
+            { printf '%s' "$_ROUTE_VISION_PREAMBLE"; cat "$input"; } > "$_pre_tmp" \
+                && mv "$_pre_tmp" "$input" 2>/dev/null || rm -f "$_pre_tmp" 2>/dev/null || true
+        fi
+    fi
 
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
         # A configured manifest is authoritative: apply_scope_redaction handles a
