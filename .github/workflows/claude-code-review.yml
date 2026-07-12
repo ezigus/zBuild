@@ -73,6 +73,18 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }} — Post your findings as PR review comments only. Do NOT modify, commit, or push code; leave every change for a human to review and apply as appropriate.'
+          # --comment makes /code-review POST its findings as inline PR comments +
+          # a summary (without it the review runs but posts nothing — the cause of
+          # the 0-comment runs). We deliberately do NOT pass --fix: this reviewer
+          # comments only, never edits/commits (also enforced by contents: read).
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }} --comment'
+          # Grant exactly the tools the code-review plugin needs to post: the
+          # inline-comment MCP tool + the gh read/comment commands. Without this
+          # allowlist Claude cannot attach line comments (permission_denials).
+          # No Edit/Write/git — comment-only by construction. --max-turns lifts the
+          # budget so a real multi-file review can complete + post.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Read,Grep,Glob"
+            --max-turns 30
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
