@@ -1,3 +1,8 @@
+---
+version: '1.0'
+updated: '2026-07-12'
+---
+
 # zBuild — Vision
 
 > The North Star for zBuild. The README distills it; the wiki references it; every pipeline run is steered by it.
