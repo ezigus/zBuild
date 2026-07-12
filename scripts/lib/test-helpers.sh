@@ -37,6 +37,14 @@ if [[ -n "${ZBUILD_TEST_EXEC_ACTIVE:-}" && -z "${ZBUILD_TESTS_DIR:-}" && "${0##*
 fi
 export ZBUILD_TEST_EXEC_ACTIVE=1
 
+# The vision admission gate (ADR-049 / #1360) enforces a conforming vision doc by
+# default. Fixture-based tests spin up temp repos with no vision doc and are not
+# testing vision, so they must opt out — same hermeticity precedent as
+# ZBUILD_CONTRACT_VALIDATOR. Tests that DO exercise the gate set the mode inline
+# per-case, which overrides this default. Real (non-test) runs never source this
+# file, so dogfood-on-zbuild still enforces against the real docs/VISION.md.
+export ZBUILD_VISION_GATE="${ZBUILD_VISION_GATE:-off}"
+
 # ─── Colors ──────────────────────────────────────────────────────────────────
 CYAN='\033[38;2;0;212;255m'
 GREEN='\033[38;2;74;222;128m'
