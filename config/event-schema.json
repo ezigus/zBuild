@@ -242,6 +242,8 @@
     "deploy.tool.failed",
     "deploy.release.dry_run",
     "deploy.release.complete",
+    "release.tagged",
+    "release.published",
     "validate.input.missing",
     "validate.probe.failed",
     "validate.health_check.dry_run",
