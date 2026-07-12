@@ -1,22 +1,31 @@
 name: Claude Code Review
 
 on:
+  # Automatic: review every PR as it opens / updates / reopens.
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+  # On-demand from the Actions tab: review a specific PR by number.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: string
+  # On-demand from the PR itself: comment "/claude-review" on the pull request.
+  issue_comment:
+    types: [created]
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Fire on any PR event, a manual dispatch, or a "/claude-review" comment on a
+    # PR. (issue_comment fires for issues AND PRs — gate on .pull_request so plain
+    # issue comments are ignored.)
+    if: >
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '/claude-review'))
 
     runs-on: ubuntu-latest
     # Review-only policy: this action MUST leave review comments for a human to
@@ -30,6 +39,28 @@ jobs:
       id-token: write
 
     steps:
+      - name: Resolve PR number
+        id: pr
+        env:
+          # Pass event fields through the environment — never inline ${{ }} into
+          # the run: body. Validate the resolved value is numeric before use.
+          EVENT_NAME: ${{ github.event_name }}
+          PR_FROM_PULL: ${{ github.event.pull_request.number }}
+          PR_FROM_COMMENT: ${{ github.event.issue.number }}
+          PR_FROM_DISPATCH: ${{ github.event.inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)      pr="$PR_FROM_PULL" ;;
+            issue_comment)     pr="$PR_FROM_COMMENT" ;;
+            workflow_dispatch) pr="$PR_FROM_DISPATCH" ;;
+            *) echo "::error::unsupported event '$EVENT_NAME'"; exit 1 ;;
+          esac
+          if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+            echo "::error::could not resolve a numeric PR number (got '$pr')"; exit 1
+          fi
+          echo "number=$pr" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -42,7 +73,6 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} — Post your findings as PR review comments only. Do NOT modify, commit, or push code; leave every change for a human to review and apply as appropriate.'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }} — Post your findings as PR review comments only. Do NOT modify, commit, or push code; leave every change for a human to review and apply as appropriate.'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-
