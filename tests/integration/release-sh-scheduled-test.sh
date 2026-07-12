@@ -112,7 +112,7 @@ out_dry_skip="$(MOCK_ISSUE_LIST_JSON="$EMPTY_ISSUES_JSON" \
 assert_eq "[SPEC-4] dry-run + --skip-if-no-issues D=0: exits rc=0 (skip wins)" "0" "$rc_dry_skip"
 assert_contains "[SPEC-4] dry-run + --skip-if-no-issues D=0: prints skip notice" \
     "$out_dry_skip" "no issues closed since last release"
-if echo "$out_dry_skip" | grep -q "planned version:"; then
+if grep -q "planned version:" <<< "$out_dry_skip"; then
     assert_fail "[SPEC-4] dry-run + --skip-if-no-issues D=0: must NOT print 'planned version'"
 else
     assert_pass "[SPEC-4] dry-run + --skip-if-no-issues D=0: 'planned version' absent (skip gate fired first)"
@@ -130,7 +130,7 @@ assert_contains "[SPEC-5] dry-run + --skip-if-no-issues D>0: prints planned vers
 # ─── SPEC-6: --skip-if-no-issues with D>0 does NOT print the skip notice ──────
 # Match the exact skip-notice phrase; avoid false-positive on "--skip-if-no-issues"
 # appearing in issue titles inside the release notes.
-if echo "$out_dry_run" | grep -qi "skip — no issues\|no issues closed since last release"; then
+if grep -qi "skip — no issues\|no issues closed since last release" <<< "$out_dry_run"; then
     assert_fail "[SPEC-6] D>0: must NOT print the skip-if-no-issues notice"
 else
     assert_pass "[SPEC-6] D>0: skip notice absent (only fires when D=0)"
