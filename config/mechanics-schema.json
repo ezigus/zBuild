@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ezigus/zBuild/config/mechanics-schema.json",
+  "title": "zBuild Mechanics Registry",
+  "description": "Schema for config/mechanics.yaml — the machine-readable registry of engine mechanics. A→B fallback: if a mechanic is absent from the registry, the doc generator derives documentation from its defined_in source file directly.",
+  "type": "object",
+  "required": ["mechanics"],
+  "additionalProperties": false,
+  "properties": {
+    "mechanics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "defined_in"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique mechanic identifier matching the docs/wiki/mechanics/<name>.md filename."
+          },
+          "defined_in": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repo-relative path to the primary source file implementing this mechanic."
+          },
+          "summary": {
+            "type": "string",
+            "description": "One-line description of what this mechanic does."
+          },
+          "usage": {
+            "type": "string",
+            "description": "Brief usage note for template authors."
+          },
+          "adr": {
+            "type": "string",
+            "description": "ADR reference (e.g. ADR-003) governing this mechanic."
+          }
+        }
+      }
+    }
+  }
+}
