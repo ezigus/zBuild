@@ -102,6 +102,21 @@ out="$(validate_vision_doc "$OVER_LIMIT" 2>&1)" || rc=$?
 assert_eq "[SPEC-4] doc exceeding 300 words fails (rc non-zero)" "1" "$rc"
 assert_contains "[SPEC-4] diagnostic mentions word count or cap" "$out" "300"
 
+# ── SPEC-4 regression: a mid-body '---' horizontal rule (no frontmatter) must
+#    NOT be mistaken for a frontmatter fence and suppress body word counting.
+#    (The prior fence-counter treated any '---' as frontmatter and dropped every
+#    following line — a >300-word doc could pass by hiding words after a rule.)
+HRULE_DOC="$TEST_TEMP_DIR/hrule/vision.md"
+mkdir -p "$(dirname "$HRULE_DOC")"
+{
+    printf '## Intent\n\nShort intro.\n\n---\n\n## Principles\n\n'
+    python3 -c "print(' '.join(['word'] * 310))" 2>/dev/null \
+        || printf 'word word word word word word word word word word\n%.0s' {1..31}
+} > "$HRULE_DOC"
+rc=0
+out="$(validate_vision_doc "$HRULE_DOC" 2>&1)" || rc=$?
+assert_eq "[SPEC-4] mid-body '---' rule does not suppress word count (rc=1)" "1" "$rc"
+
 # ── SPEC-5: load_vision_doc walks three-path search order ───────────────────
 # Test 5a: .zbuild/vision.md wins when present (highest precedence)
 SEARCH_REPO="$TEST_TEMP_DIR/search-repo"

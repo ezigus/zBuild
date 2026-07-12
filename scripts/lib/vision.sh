@@ -56,32 +56,36 @@ validate_vision_doc() {
         errors=$((errors + 1))
     fi
 
-    # Word-cap check: count words in body text only (skip YAML frontmatter block
-    # and heading lines themselves; count prose + list content).
+    # Word-cap check: count words in body text only. YAML frontmatter is a
+    # single optional block delimited by '---' fences, recognized ONLY when the
+    # very first line of the file is '---' — a bare '---' anywhere else is a
+    # horizontal rule, not frontmatter, and must not suppress body counting.
     local in_frontmatter=0
-    local frontmatter_done=0
-    local fence_count=0
+    local line_num=0
     local word_count=0
 
     while IFS= read -r line; do
-        # Track YAML frontmatter (--- ... ---)
-        if [[ $frontmatter_done -eq 0 && $fence_count -eq 0 && "$line" == "---" ]]; then
-            in_frontmatter=$((in_frontmatter + 1))
-            if [[ $in_frontmatter -eq 2 ]]; then
-                frontmatter_done=1
-            fi
+        line_num=$((line_num + 1))
+
+        # Open frontmatter only on a first-line fence; the next fence closes it.
+        if [[ $line_num -eq 1 && "$line" == "---" ]]; then
+            in_frontmatter=1
             continue
         fi
-        [[ $in_frontmatter -eq 1 ]] && continue  # inside frontmatter
+        if [[ $in_frontmatter -eq 1 ]]; then
+            [[ "$line" == "---" ]] && in_frontmatter=0
+            continue
+        fi
 
         # Skip blank lines and heading lines
         [[ -z "${line// /}" ]] && continue
         [[ "$line" =~ ^# ]] && continue
 
-        # Count words in this line
-        local lw
-        lw=$(printf '%s\n' "$line" | wc -w | tr -d '[:space:]')
-        word_count=$((word_count + lw))
+        # Count words without a subshell (avoids a per-line fork and any printf
+        # format-specifier misinterpretation of file content).
+        local -a words
+        read -ra words <<< "$line"
+        word_count=$((word_count + ${#words[@]}))
     done < "$path"
 
     if [[ $word_count -gt 300 ]]; then
@@ -89,5 +93,9 @@ validate_vision_doc() {
         errors=$((errors + 1))
     fi
 
-    return $errors
+    # Stable contract (ADR-049): any violation returns rc=1 (stderr already
+    # enumerated each one). A raw count could exceed the 0-255 return range and
+    # would break callers that test for rc=1 specifically.
+    [[ $errors -gt 0 ]] && return 1
+    return 0
 }
