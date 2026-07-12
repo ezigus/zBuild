@@ -3,19 +3,25 @@
 #
 # Computes the next version via the pluggable versioning backend
 # (resolve_repo_version, ADR-011 / ADR-048), generates per-issue release notes,
-# and prepends them to CHANGELOG.md. REL-D's weekly workflow and `zbuild release`
-# (#1355) CALL this script — logic lives here once, never duplicated (DRY).
+# prepends them to CHANGELOG.md, stamps VERSION, builds the release tarball,
+# creates the annotated git tag, and publishes the GitHub release.
+# REL-D's weekly workflow and `zbuild release` (#1355) CALL this script —
+# logic lives here once, never duplicated (DRY).
 #
 # Flags:
-#   --major, -x <n>   Override the major (A) component of the version.
-#   --dry-run         Print the planned version/tag + notes; mutate NOTHING (idempotent).
+#   --patch           Cadence: patch release (default). Bumps D (issues-since count).
+#   --minor           Cadence: minor release. Bumps B component, resets C to 0.
+#   --major           Cadence: major release. Bumps A component, resets B.C to 0.
+#                     Exactly one cadence flag allowed; combining two exits rc=2.
+#   --dry-run         Print the planned version/tag/notes/version-stamp; mutate NOTHING.
 #   --force           Bypass release gates (for testing / manual cuts).
 #   --milestone <m>   Scope notes to a GitHub milestone (else closed-since-tag).
 #   -h, --help        Usage.
 #
-# NOTE: the per-phase/cadence GATE and the actual tag/tarball/publish are REL-C
-# (#875) and REL-D (#877/#1357). This script leaves clean hook points (see the
-# TODO markers below); REL-B's job is notes + changelog + dry-run.
+# NOTE: tarball build, git tag, and GitHub publish run INLINE here (REL-C #875 /
+# REL-D #877 seams: ZBUILD_GIT_TAG_CMD, ZBUILD_GH_RELEASE_CMD, signing files).
+# The per-phase/cadence GATE stays a REL-D hook point, and `_release_on_merge_hook`
+# is a forward stub for REL-D's on-merge automation (#877/#1357).
 set -euo pipefail
 
 RELEASE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,14 +40,17 @@ source "$RELEASE_SCRIPT_DIR/lib/release-tarball.sh"
 
 release_usage() {
     cat <<'EOF'
-zbuild release — cut a release: compute version, generate notes, update CHANGELOG.
+zbuild release — cut a release: compute version, generate notes, update CHANGELOG,
+stamp VERSION, build the tarball, tag, and publish the GitHub release.
 
 Usage:
-  release.sh [--dry-run] [--major N] [--force] [--milestone <name>]
+  release.sh [--dry-run] [--patch|--minor|--major] [--force] [--milestone <name>]
 
 Flags:
-  --dry-run          Print the planned version, tag, and notes. Mutates nothing.
-  --major, -x N      Override the major (A) component of the computed version.
+  --dry-run          Print the planned version, tag, notes, and version-stamp. Mutates nothing.
+  --patch            Cadence: patch release (default). Bumps D (issues-since count).
+  --minor            Cadence: minor release. Bumps B component, resets C to 0.
+  --major            Cadence: major release. Bumps A component, resets B.C to 0.
   --force            Bypass release gates (testing / manual cuts).
   --milestone <name> Scope the notes to a GitHub milestone (default: closed-since-tag).
   -h, --help         Show this help.
@@ -52,23 +61,40 @@ example — swap in a versioning-backend plugin to version this repo any way you
 EOF
 }
 
+# _release_on_merge_hook <tag> — forward stub for REL-D's on-merge automation
+# (#877/#1357). Tarball build, git tag, and publish now run inline in main();
+# this remains a clean hook point for post-release steps (announce, close
+# milestone, bump next cadence) that a future PR-merge workflow will wire in.
+_release_on_merge_hook() {
+    local tag="$1"
+    # TODO(REL-D #877/#1357): post-release automation for ${tag}.
+    :
+}
+
 main() {
-    local dry_run=false force=false major_override="" milestone=""
+    local dry_run=false force=false cadence="" milestone=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --dry-run)       dry_run=true; shift ;;
-            --force)         force=true; shift ;;
-            --major|-x)
-                [[ -z "${2:-}" ]] && { error "--major requires a value"; release_usage; exit 2; }
-                case "$2" in ''|*[!0-9]*) error "--major must be a non-negative integer, got: $2"; exit 2 ;; esac
-                major_override="$2"; shift 2 ;;
+            --dry-run)  dry_run=true; shift ;;
+            --force)    force=true; shift ;;
+            --patch)
+                [[ -n "$cadence" ]] && { error "Only one cadence flag allowed (--patch, --minor, --major)"; exit 2; }
+                cadence="patch"; shift ;;
+            --minor)
+                [[ -n "$cadence" ]] && { error "Only one cadence flag allowed (--patch, --minor, --major)"; exit 2; }
+                cadence="minor"; shift ;;
+            --major)
+                [[ -n "$cadence" ]] && { error "Only one cadence flag allowed (--patch, --minor, --major)"; exit 2; }
+                cadence="major"; shift ;;
             --milestone)
                 [[ -z "${2:-}" ]] && { error "--milestone requires a value"; release_usage; exit 2; }
                 milestone="$2"; shift 2 ;;
-            -h|--help)       release_usage; exit 0 ;;
-            *)               error "Unknown release flag: $1"; release_usage; exit 2 ;;
+            -h|--help)  release_usage; exit 0 ;;
+            *)          error "Unknown release flag: $1"; release_usage; exit 2 ;;
         esac
     done
+    cadence="${cadence:-patch}"
+    export ZBUILD_VERSION_CADENCE="$cadence"
 
     # ── Anchor: the tag we generate notes "since". v1.0.0 exists → first release
     #    anchors on it; genesis fallback when the repo has no tags at all. ──────
@@ -87,17 +113,13 @@ main() {
     local issues_since; issues_since="$(release_notes_issue_count "$milestone" "$since")"
 
     # ── Compute the next version via the pluggable backend (ADR-011/048). We
-    #    supply D through the backend's documented env seam; the backend gathers
-    #    A.B + C itself. --major overrides A post-hoc. ─────────────────────────
+    #    supply D through the backend's documented env seam and the cadence via
+    #    ZBUILD_VERSION_CADENCE; the backend handles the bump logic. ───────────
     local version
     version="$(ZBUILD_VERSION_ISSUES_SINCE="$issues_since" resolve_repo_version)" || {
         error "release: could not resolve version via versioning backend"
         exit 1
     }
-    if [[ -n "$major_override" ]]; then
-        # Replace the A component only; keep B.C.D from the backend.
-        version="${major_override}.${version#*.}"
-    fi
     local tag="v${version}"
 
     # ── Generate the per-issue release notes for this version. ────────────────
@@ -128,6 +150,7 @@ main() {
         info "release (dry-run) — nothing will be mutated"
         printf 'planned version: %s\n' "$version"
         printf 'planned tag:     %s\n' "$tag"
+        printf 'cadence:         %s\n' "$cadence"
         if [[ -n "$last_tag" ]]; then
             printf 'since tag:       %s\n' "$last_tag"
         else
@@ -135,6 +158,7 @@ main() {
         fi
         printf 'milestone:       %s\n' "${milestone:-<closed-since-tag>}"
         local _dry_outdir="${ZBUILD_RELEASE_OUTDIR:-<tmpdir>}"
+        printf 'planned version-stamp: VERSION ← %s\n' "$version"
         printf 'planned tarball: %s/zbuild-%s.tar.gz\n' "$_dry_outdir" "$version"
         printf 'planned tag:     git tag -a %s -m "Release %s"\n' "$tag" "$version"
         printf 'planned publish: gh release create %s <tarball> <SHA256SUMS> --title "zbuild %s" --notes <notes>\n' "$tag" "$tag"
@@ -157,6 +181,12 @@ main() {
     local changelog="${ZBUILD_RELEASE_CHANGELOG:-$REPO_ROOT/CHANGELOG.md}"
     _release_prepend_changelog "$changelog" "$notes"
     success "CHANGELOG.md updated for ${version}"
+
+    # ── Stamp VERSION file (overridable for tests via ZBUILD_RELEASE_VERSION_FILE) ──
+    #    Stamp BEFORE building the tarball so the packaged VERSION matches the cut.
+    local version_file="${ZBUILD_RELEASE_VERSION_FILE:-$REPO_ROOT/VERSION}"
+    printf '%s\n' "$version" > "$version_file"
+    success "VERSION updated to ${version}"
 
     # ── BUILD THE RELEASE TARBALL (REL-C #875) ────────────────────────────────
     local outdir

@@ -107,10 +107,12 @@ _versioning_release_count() {
 # to the pure compute_version. Prints the resolved 4-part version.
 # Inputs may be overridden for testing via env: ZBUILD_VERSION_ANCHOR,
 # ZBUILD_VERSION_RELEASE_COUNT, ZBUILD_VERSION_ISSUES_SINCE.
+# Cadence is read from ZBUILD_VERSION_CADENCE (patch/minor/major; default: patch).
 initiative-count_version() {
     local anchor="${ZBUILD_VERSION_ANCHOR:-}"
     local rcount="${ZBUILD_VERSION_RELEASE_COUNT:-}"
     local issues="${ZBUILD_VERSION_ISSUES_SINCE:-}"
+    local cadence="${ZBUILD_VERSION_CADENCE:-patch}"
 
     [[ -z "$anchor" ]] && anchor="$(_versioning_latest_anchor)"
     [[ -z "$anchor" ]] && anchor="1.0"   # no tags yet: inaugural initiative
@@ -122,6 +124,22 @@ initiative-count_version() {
     # release cutter (it needs gh + the anchor tag date). REL-A supplies a
     # deterministic 0 when not provided so the pure assembly stays testable.
     [[ -z "$issues" ]] && issues="0"
+
+    # Apply cadence: --minor bumps B (resets C); --major bumps A (resets B and C).
+    # Guard on a well-formed 2-part anchor via BASH_REMATCH — a malformed override
+    # (e.g. ZBUILD_VERSION_ANCHOR="1.2.3") is passed through UNTOUCHED so the pure
+    # compute_version fails loud below, rather than tripping non-integer arithmetic
+    # here (${anchor#*.} on "1.2.3" is "2.3", which breaks $((...))).
+    if [[ "$anchor" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+        local _a="${BASH_REMATCH[1]}" _b="${BASH_REMATCH[2]}"
+        if [[ "$cadence" == "minor" ]]; then
+            anchor="${_a}.$((_b + 1))"
+            rcount="0"
+        elif [[ "$cadence" == "major" ]]; then
+            anchor="$((_a + 1)).0"
+            rcount="0"
+        fi
+    fi
 
     compute_version "$anchor" "$rcount" "$issues"
 }
