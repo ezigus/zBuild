@@ -119,10 +119,20 @@ main() {
 
     # ── Skip gate: --skip-if-no-issues exits 0 when D=0 (no closed issues). ──
     # The scheduled workflow always passes this flag so empty weeks produce no
-    # release instead of a zero-D version stamp.
-    if $skip_if_no_issues && [[ "$issues_since" -eq 0 ]]; then
-        info "release: skip — no issues closed since last release (--skip-if-no-issues)"
-        exit 0
+    # release instead of a zero-D version stamp. Guard NUMERICALLY: an empty or
+    # non-numeric count is INDETERMINATE (e.g. a gh/network failure), NOT zero —
+    # treating it as zero would false-skip a real release, and a bare `-eq` on a
+    # non-integer would crash. Only a clean integer 0 triggers the skip; anything
+    # unparseable fails loud so the scheduled run surfaces the problem.
+    if $skip_if_no_issues; then
+        if [[ ! "$issues_since" =~ ^[0-9]+$ ]]; then
+            error "release: --skip-if-no-issues — indeterminate issue count ('${issues_since}'); refusing to skip or cut (check gh/network)"
+            exit 1
+        fi
+        if (( issues_since == 0 )); then
+            info "release: skip — no issues closed since last release (--skip-if-no-issues)"
+            exit 0
+        fi
     fi
 
     # ── Compute the next version via the pluggable backend (ADR-011/048). We

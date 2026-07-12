@@ -30,19 +30,24 @@ on:
           - major
         default: patch
 
-# Fork guard: prevent accidental runs in forks.
-# Remove or adjust this line if you intentionally fork and want scheduled releases.
-# yamllint disable-line rule:line-length
-if: github.repository == 'ezigus/zBuild'
-
 permissions:
   contents: write
   issues: write
   pull-requests: write
 
+# Serialize releases: a manual dispatch must never race a scheduled run on
+# version computation, git tagging, or publish. Do NOT cancel in progress — a
+# half-finished release (tag created, publish pending) must run to completion.
+concurrency:
+  group: zbuild-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Fork guard: only the canonical repo cuts releases. `if:` is a JOB-level key
+    # (it is silently ignored at workflow top level), so it lives here.
+    if: github.repository == 'ezigus/zBuild'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,12 +62,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass workflow_dispatch inputs through the environment — NEVER inline
+          # ${{ github.event.inputs.* }} into the run: script (that is a shell
+          # injection vector; type:choice is not enforced on API dispatch).
+          INPUT_CADENCE: ${{ github.event.inputs.cadence || 'patch' }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: |
-          cadence="${{ github.event.inputs.cadence || 'patch' }}"
-          extra_flags=""
-          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
-            extra_flags="--dry-run"
+          set -euo pipefail
+          # Validate cadence against the known enum before use — a scheduled run
+          # has an empty input (defaulted to patch above); a dispatched run could
+          # carry anything. Reject anything unexpected rather than trust it.
+          case "$INPUT_CADENCE" in
+            patch|minor|major) cadence="$INPUT_CADENCE" ;;
+            *) echo "::error::invalid cadence '$INPUT_CADENCE' (want patch|minor|major)"; exit 1 ;;
+          esac
+
+          release_args=("--${cadence}" "--skip-if-no-issues")
+          if [[ "$INPUT_DRY_RUN" == "true" ]]; then
+            release_args+=("--dry-run")
           fi
+
           # --skip-if-no-issues: exit 0 cleanly when no issues have closed since
           # the last release — avoids cutting an empty/zero-D release.
-          bash scripts/release.sh "--${cadence}" --skip-if-no-issues ${extra_flags}
+          bash scripts/release.sh "${release_args[@]}"
