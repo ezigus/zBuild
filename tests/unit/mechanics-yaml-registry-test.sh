@@ -10,6 +10,7 @@
 #   SPEC-6  registry has a top-level mechanics array (not empty)
 #   SPEC-7  every docs/wiki/mechanics/<name>.md has a registry entry
 #   SPEC-8  A→B fallback: pure-bash path validates the real registry (no python3/yq needed)
+#   SPEC-9  the validator is WIRED into the package.json lint chain (load-bearing)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -151,5 +152,15 @@ chmod +x "$STUB_BIN/python3"
 bash_fallback_rc=0
 PATH="$STUB_BIN:$PATH" bash "$VALIDATOR" >/dev/null 2>&1 || bash_fallback_rc=$?
 assert_eq "[SPEC-8] pure-bash fallback path validates real registry (exits 0)" "0" "$bash_fallback_rc"
+
+# ── SPEC-9: the validator is WIRED into the lint chain (load-bearing) ─────────
+# The registry is only enforced if package.json's `lint` script actually invokes
+# validate-mechanics-yaml.sh. This asserts the wiring is present — reverting
+# package.json (dropping the validator from lint) flips this to fail, proving the
+# wiring is load-bearing, not inert (ADR-036 reachability).
+PKG_JSON="$REPO_ROOT/package.json"
+lint_wired=0
+grep -q "validate-mechanics-yaml.sh" "$PKG_JSON" 2>/dev/null && lint_wired=1
+assert_eq "[SPEC-9] validate-mechanics-yaml.sh is wired into the package.json lint chain" "1" "$lint_wired"
 
 print_test_results
