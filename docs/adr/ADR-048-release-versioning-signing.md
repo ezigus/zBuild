@@ -78,7 +78,7 @@ repo-root `VERSION` and rejects any non-semver content (see Implementation Notes
 
 Distribution stays on the single install path (ADR-023); #88 (npm-publish) is obsolete
 and not revived. **Signing** (signed release tarball) is deferred to **REL-C (#875)**;
-**release cadence** (default daily @ 03:00, configurable, skip-if-no-issues-closed) and
+**release cadence** (default **weekly**, configurable — including day-of-week; skip-if-no-issues-closed) and
 the CI workflow are deferred to **REL-D (#877)** / **REL-F (#1357)**. REL-A (this ADR)
 lands only the versioning *foundation*: the scheme, the pluggable backend, the pure
 `compute_version`, and the docs.
