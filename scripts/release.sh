@@ -9,14 +9,17 @@
 # logic lives here once, never duplicated (DRY).
 #
 # Flags:
-#   --patch           Cadence: patch release (default). Bumps D (issues-since count).
-#   --minor           Cadence: minor release. Bumps B component, resets C to 0.
-#   --major           Cadence: major release. Bumps A component, resets B.C to 0.
-#                     Exactly one cadence flag allowed; combining two exits rc=2.
-#   --dry-run         Print the planned version/tag/notes/version-stamp; mutate NOTHING.
-#   --force           Bypass release gates (for testing / manual cuts).
-#   --milestone <m>   Scope notes to a GitHub milestone (else closed-since-tag).
-#   -h, --help        Usage.
+#   --patch              Cadence: patch release (default). Bumps D (issues-since count).
+#   --minor              Cadence: minor release. Bumps B component, resets C to 0.
+#   --major              Cadence: major release. Bumps A component, resets B.C to 0.
+#                        Exactly one cadence flag allowed; combining two exits rc=2.
+#   --dry-run            Print the planned version/tag/notes/version-stamp; mutate NOTHING.
+#   --force              Bypass release gates (for testing / manual cuts).
+#   --milestone <m>      Scope notes to a GitHub milestone (else closed-since-tag).
+#   --skip-if-no-issues  Exit 0 with a skip notice when no issues have closed since the
+#                        last release tag (D=0). Used by the scheduled workflow to avoid
+#                        cutting empty releases.
+#   -h, --help           Usage.
 #
 # NOTE: tarball build, git tag, and GitHub publish run INLINE here (REL-C #875 /
 # REL-D #877 seams: ZBUILD_GIT_TAG_CMD, ZBUILD_GH_RELEASE_CMD, signing files).
@@ -47,13 +50,14 @@ Usage:
   release.sh [--dry-run] [--patch|--minor|--major] [--force] [--milestone <name>]
 
 Flags:
-  --dry-run          Print the planned version, tag, notes, and version-stamp. Mutates nothing.
-  --patch            Cadence: patch release (default). Bumps D (issues-since count).
-  --minor            Cadence: minor release. Bumps B component, resets C to 0.
-  --major            Cadence: major release. Bumps A component, resets B.C to 0.
-  --force            Bypass release gates (testing / manual cuts).
-  --milestone <name> Scope the notes to a GitHub milestone (default: closed-since-tag).
-  -h, --help         Show this help.
+  --dry-run              Print the planned version, tag, notes, and version-stamp. Mutates nothing.
+  --patch                Cadence: patch release (default). Bumps D (issues-since count).
+  --minor                Cadence: minor release. Bumps B component, resets C to 0.
+  --major                Cadence: major release. Bumps A component, resets B.C to 0.
+  --force                Bypass release gates (testing / manual cuts).
+  --milestone <name>     Scope the notes to a GitHub milestone (default: closed-since-tag).
+  --skip-if-no-issues    Exit 0 (skip) when no issues closed since last release (D=0).
+  -h, --help             Show this help.
 
 Versioning is plug-and-play: the shipped A.B.C.D (initiative-count) scheme is one
 example — swap in a versioning-backend plugin to version this repo any way you like
@@ -72,11 +76,12 @@ _release_on_merge_hook() {
 }
 
 main() {
-    local dry_run=false force=false cadence="" milestone=""
+    local dry_run=false force=false cadence="" milestone="" skip_if_no_issues=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dry-run)  dry_run=true; shift ;;
             --force)    force=true; shift ;;
+            --skip-if-no-issues) skip_if_no_issues=true; shift ;;
             --patch)
                 [[ -n "$cadence" ]] && { error "Only one cadence flag allowed (--patch, --minor, --major)"; exit 2; }
                 cadence="patch"; shift ;;
@@ -111,6 +116,14 @@ main() {
 
     # ── D (issues closed since anchor) feeds the versioning backend. ──────────
     local issues_since; issues_since="$(release_notes_issue_count "$milestone" "$since")"
+
+    # ── Skip gate: --skip-if-no-issues exits 0 when D=0 (no closed issues). ──
+    # The scheduled workflow always passes this flag so empty weeks produce no
+    # release instead of a zero-D version stamp.
+    if $skip_if_no_issues && [[ "$issues_since" -eq 0 ]]; then
+        info "release: skip — no issues closed since last release (--skip-if-no-issues)"
+        exit 0
+    fi
 
     # ── Compute the next version via the pluggable backend (ADR-011/048). We
     #    supply D through the backend's documented env seam and the cadence via

@@ -1,0 +1,68 @@
+name: zbuild scheduled release
+
+# Weekly release workflow (REL-F #1357).
+# DRY: all release logic lives in scripts/release.sh; this workflow is a thin caller.
+#
+# Day-of-week configurability seam: edit the 5th field of the cron expression below.
+# Current default: Mondays at 09:00 UTC ('1' = Monday in cron DOW field, 0/7 = Sunday).
+#
+#   ┌──────────── minute  (0)
+#   │  ┌─────────── hour    (9)
+#   │  │  ┌────────── day-of-month (*)
+#   │  │  │  ┌─────── month       (*)
+#   │  │  │  │  ┌──── day-of-week (1 = Monday)
+#   0  9  *  *  1
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — print planned release, mutate nothing'
+        type: boolean
+        default: false
+      cadence:
+        description: 'Release cadence'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+# Fork guard: prevent accidental runs in forks.
+# Remove or adjust this line if you intentionally fork and want scheduled releases.
+# yamllint disable-line rule:line-length
+if: github.repository == 'ezigus/zBuild'
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install zbuild
+        run: bash install.sh
+
+      - name: Cut weekly release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cadence="${{ github.event.inputs.cadence || 'patch' }}"
+          extra_flags=""
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            extra_flags="--dry-run"
+          fi
+          # --skip-if-no-issues: exit 0 cleanly when no issues have closed since
+          # the last release — avoids cutting an empty/zero-D release.
+          bash scripts/release.sh "--${cadence}" --skip-if-no-issues ${extra_flags}

@@ -74,14 +74,18 @@ user's local tags. `resolve_repo_version` is the seam a *release cutter* (REL-B 
 uses to compute the next version to stamp. `--version` probes `config/VERSION` **before**
 repo-root `VERSION` and rejects any non-semver content (see Implementation Notes).
 
-### 5. Single install path; signing & cadence deferred
+### 5. Single install path; signing deferred; cadence implemented (REL-F #1357)
 
 Distribution stays on the single install path (ADR-023); #88 (npm-publish) is obsolete
-and not revived. **Signing** (signed release tarball) is deferred to **REL-C (#875)**;
-**release cadence** (default **weekly**, configurable — including day-of-week; skip-if-no-issues-closed) and
-the CI workflow are deferred to **REL-D (#877)** / **REL-F (#1357)**. REL-A (this ADR)
-lands only the versioning *foundation*: the scheme, the pluggable backend, the pure
-`compute_version`, and the docs.
+and not revived. **Signing** (signed release tarball) is deferred to **REL-C (#875)**.
+
+**Release cadence — done (REL-F #1357):** `.github/workflows/zbuild-release-scheduled.yml`
+fires every Monday at 09:00 UTC (cron `0 9 * * 1`). Day-of-week is configurable by editing
+the 5th cron field. The workflow calls `scripts/release.sh --patch --skip-if-no-issues`:
+when no issues have closed since the last release (D=0), the script exits 0 with a skip
+notice — no empty release is cut. A `workflow_dispatch` with a `dry_run` boolean input
+enables on-demand dry runs without mutating state. A fork guard
+(`if: github.repository == 'ezigus/zBuild'`) prevents accidental runs in forks.
 
 ## Consequences
 
