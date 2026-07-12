@@ -34,6 +34,10 @@ source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # Sourced here so every routing plugin (all source route.sh) gets it by
 # construction, replacing the per-plugin hardcoded `${ZBUILD_<ID>_TIER:-Tn}`.
 source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
+# VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
+# Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
+# can inject the advisory Intent preamble into every stage prompt.
+source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -185,6 +189,29 @@ _route_redact_prompt() {
     local input="$1" output="$2" cycle_id="${3:-0}"
     local allowlist="${4:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
     local manifest="${ZBUILD_SCOPE_MANIFEST:-}"
+
+    # VIS-C (ADR-049): prepend advisory Intent preamble when a valid vision doc
+    # is present. Fail-open: absent or invalid doc leaves the prompt unchanged.
+    if declare -F load_vision_doc >/dev/null 2>&1; then
+        local _vis_root="${ZBUILD_REPO_ROOT:-}"
+        if [[ -z "$_vis_root" ]]; then
+            _vis_root="$(git rev-parse --show-toplevel 2>/dev/null)" || _vis_root="$(pwd)"
+        fi
+        local _vis_path=""
+        _vis_path="$(load_vision_doc "$_vis_root" 2>/dev/null)" || true
+        if [[ -n "$_vis_path" ]] && validate_vision_doc "$_vis_path" >/dev/null 2>&1; then
+            local _intent_body
+            _intent_body="$(awk '/^## Intent/{p=1;next} p && /^## /{exit} p{print}' "$_vis_path" 2>/dev/null || true)"
+            if [[ -n "$_intent_body" ]]; then
+                local _pre_tmp
+                _pre_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-vis-pre.XXXXXX" 2>/dev/null)" || true
+                if [[ -n "$_pre_tmp" ]]; then
+                    { printf '# Intent (advisory)\n%s\n\n' "$_intent_body"; cat "$input"; } > "$_pre_tmp" \
+                        && mv "$_pre_tmp" "$input" 2>/dev/null || rm -f "$_pre_tmp" || true
+                fi
+            fi
+        fi
+    fi
 
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
         # A configured manifest is authoritative: apply_scope_redaction handles a
