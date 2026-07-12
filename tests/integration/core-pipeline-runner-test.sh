@@ -17,6 +17,9 @@ setup_test_env "pipeline-runner"
 # Wave 12-E (#664): default is enforce. Stub plugins below lack honest
 # inputs/outputs blocks; opt out — this suite tests runner mechanics.
 export ZBUILD_CONTRACT_VALIDATOR=warn
+# ADR-049 §Phase-1.1: vision gate defaults to enforce; this suite tests runner
+# orchestration mechanics, not vision gate behavior — disable the gate here.
+export ZBUILD_VISION_GATE=off
 
 # #1157: this suite runs on ALL platforms (no skip). It was previously gated off
 # macOS (#996/#1059) on an unproven hypothesis that the shared macOS runner can't

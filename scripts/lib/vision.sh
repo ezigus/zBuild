@@ -89,7 +89,10 @@ validate_vision_doc() {
     done < "$path"
 
     if [[ $word_count -gt 300 ]]; then
-        printf 'vision-doc: body word count %d exceeds 300-word cap in %s\n' "$word_count" "$path" >&2
+        local _overage=$(( word_count - 300 ))
+        printf 'vision-doc: body word count %d exceeds 300-word cap by %d words in %s\n' \
+            "$word_count" "$_overage" "$path" >&2
+        printf 'Run: zbuild vision init --condense to reduce it\n' >&2
         errors=$((errors + 1))
     fi
 
