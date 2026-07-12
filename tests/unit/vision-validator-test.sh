@@ -182,10 +182,13 @@ out="$(validate_vision_doc "$TEST_TEMP_DIR/nonexistent/vision.md" 2>&1)" || rc=$
 assert_eq "[SPEC-8] validate_vision_doc rc non-zero for missing file" "1" "$rc"
 assert_contains "[SPEC-8] diagnostic names the bad path" "$out" "not found"
 
-# ── SPEC-9: real docs/VISION.md passes validate_vision_doc (live-repo guard) ──
+# ── SPEC-9: a committed example/placeholder vision fixture validates (rc=0).
+#    Decoupled from the live docs/VISION.md (guarded in the lint tier via
+#    scripts/lib/lint-vision.sh) so editing the project's own vision content
+#    never turns the unit suite red.
 rc=0
-out="$(validate_vision_doc "$REPO_ROOT/docs/VISION.md" 2>&1)" || rc=$?
-assert_eq "[SPEC-9] real docs/VISION.md passes validate_vision_doc (rc=0)" "0" "$rc"
+out="$(validate_vision_doc "$REPO_ROOT/tests/fixtures/vision/example-vision.md" 2>&1)" || rc=$?
+assert_eq "[SPEC-9] committed example vision fixture passes validate_vision_doc (rc=0)" "0" "$rc"
 
 cleanup_test_env
 print_test_results

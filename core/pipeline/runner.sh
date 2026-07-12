@@ -928,9 +928,11 @@ main() {
 
     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
     # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
-    # ZBUILD_VISION_GATE: enforce (default) | warn | off
+    # Mode resolves via vision_gate_mode: ZBUILD_VISION_GATE env > .zbuild/config.yaml
+    # vision.gate > built-in default (enforce). Set either to `off` to skip the gate
+    # entirely ("just run" without a vision document).
     {
-        local _vg_mode="${ZBUILD_VISION_GATE:-enforce}"
+        local _vg_mode; _vg_mode="$(vision_gate_mode)"
         if [[ "$_vg_mode" != "off" ]]; then
             local _vg_path=""
             _vg_path="$(load_vision_doc "$PWD" 2>/dev/null)" || true

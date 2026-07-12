@@ -5,6 +5,7 @@
 # Public API:
 #   load_vision_doc [repo_root]          — resolves path, prints it, rc=0; rc=1 if absent
 #   validate_vision_doc <path>           — validates structure + word cap; rc=0 if valid
+#   vision_gate_mode                     — admission-gate mode: env > config > enforce
 
 [[ -n "${_VISION_LOADED:-}" ]] && return 0
 _VISION_LOADED=1
@@ -27,6 +28,23 @@ load_vision_doc() {
         fi
     done
     return 1
+}
+
+# vision_gate_mode — resolve the admission-gate mode with clear precedence:
+#   1. ZBUILD_VISION_GATE env var (if set)  — per-invocation override
+#   2. .zbuild/config.yaml  vision.gate     — persistent per-repo setting
+#   3. built-in default: enforce            — fail-closed
+# `off` (env or config) means "do not require a vision document — just run".
+# An unrecognized value resolves to enforce (fail-closed on misconfiguration).
+vision_gate_mode() {
+    local mode="${ZBUILD_VISION_GATE:-}"
+    if [[ -z "$mode" ]] && declare -F zbuild_config_get >/dev/null 2>&1; then
+        mode="$(zbuild_config_get vision gate 2>/dev/null || true)"
+    fi
+    case "${mode:-enforce}" in
+        off|warn|enforce) printf '%s\n' "${mode:-enforce}" ;;
+        *) printf 'enforce\n' ;;
+    esac
 }
 
 # validate_vision_doc <path>
