@@ -19,10 +19,14 @@ jobs:
     #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
 
     runs-on: ubuntu-latest
+    # Review-only policy: this action MUST leave review comments for a human to
+    # address — it MUST NOT commit or push code. `contents: read` is the hard
+    # guarantee (the workflow token cannot push); `pull-requests`/`issues: write`
+    # let it post the review + comments. Do NOT raise contents to write.
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
 
     steps:
@@ -38,7 +42,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} — Post your findings as PR review comments only. Do NOT modify, commit, or push code; leave every change for a human to review and apply as appropriate.'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
