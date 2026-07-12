@@ -1,0 +1,75 @@
+# config/mechanics.yaml — machine-readable registry of zBuild engine mechanics.
+# Authoritative roster: docs/wiki/Mechanics.md (ADR-047).
+# A→B fallback: if a mechanic is absent from this file, the doc generator
+# derives documentation from its source code (defined_in) directly.
+mechanics:
+  - name: admission-gate
+    summary: Fail-closed preconditions checked before a run starts.
+    defined_in: core/pipeline/runner.sh
+    adr: ADR-049
+
+  - name: aggregators
+    summary: Mechanical (gate-aggregator) and advisory (review-aggregator) verdict merges.
+    defined_in: core/pipeline/verdict.sh
+
+  - name: convergence
+    summary: exit_when, all/any conditions, and on_max behavior for cycles.
+    defined_in: core/pipeline/cycle-orchestrator.sh
+
+  - name: cycle
+    summary: Repeat a group of members until an exit condition (bounded).
+    defined_in: core/pipeline/cycle-orchestrator.sh
+
+  - name: event-bus
+    summary: Schema-validated event emission and storage (SQLite + JSONL).
+    defined_in: core/event-bus/event-bus.sh
+
+  - name: gates
+    summary: auto vs blocking gates; verdicts that pass or fail a stage.
+    defined_in: core/pipeline/contracts.sh
+
+  - name: leaf
+    summary: Run a single plugin (one stage).
+    defined_in: core/pipeline/strategies/sequential.sh
+
+  - name: map
+    summary: Fan a role out over a data-driven list (e.g. review lenses).
+    defined_in: core/pipeline/strategies/map.sh
+
+  - name: parallel
+    summary: Run members concurrently; join before continuing.
+    defined_in: core/pipeline/parallel-orchestrator.sh
+
+  - name: redaction-chokepoint
+    summary: The single path all model-bound text passes through (ADR-004).
+    defined_in: core/redaction/scope-redaction.sh
+    adr: ADR-004
+
+  - name: route_back
+    summary: Send work to an earlier stage on failure (ADR-045).
+    defined_in: core/pipeline/runner.sh
+    adr: ADR-045
+
+  - name: router-models-as-data
+    summary: Tiered model routing from config; no model names in code (ADR-003).
+    defined_in: core/router/route.sh
+    adr: ADR-003
+
+  - name: scope-governance
+    summary: Read/write scope, security floor, and governed expansion (ADR-030).
+    defined_in: core/pipeline/contract-validator.sh
+    adr: ADR-030
+
+  - name: sequence
+    summary: Run members in order, each seeing the previous output.
+    defined_in: core/pipeline/strategies/sequential.sh
+
+  - name: state-and-resume
+    summary: Atomic crash-safe state; resume where a run stopped (ADR-006).
+    defined_in: core/state/resume.sh
+    adr: ADR-006
+
+  - name: vision-document
+    summary: Required repo vision document; location, format, word cap, and validator (ADR-049).
+    defined_in: scripts/lib/vision.sh
+    adr: ADR-049
