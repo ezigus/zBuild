@@ -29,6 +29,12 @@ version: <semver>
 description: |
   <one paragraph>
 
+# Optional doc fields — consumed by the doc-generator (e.g., `zbuild plugin list`).
+# If declared, each must be a non-empty string; an empty value fails manifest validation.
+summary: <one-line synopsis>        # OPTIONAL
+usage: |
+  <invocation notes>                # OPTIONAL
+
 hooks:
   init: <function-name>           # called once per pipeline run, before any run
   run: <function-name>            # called by orchestrator (or kind-specific)
