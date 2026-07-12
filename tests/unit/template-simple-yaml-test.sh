@@ -92,7 +92,7 @@ assert_eq "[SPEC-3] intake io_dests" "file,stdout"  "$_TPL_STAGE_IO_DESTS_intake
 assert_eq "[SPEC-3] plan roles"             "planner"     "$_TPL_STAGE_ROLES_plan"
 assert_eq "[SPEC-3] plan io_dests"          "file,stdout" "$_TPL_STAGE_IO_DESTS_plan"
 assert_eq "[SPEC-3] plan router timeout"    "300"         "$_TPL_STAGE_ROUTER_TIMEOUT_plan"
-assert_eq "[SPEC-3] plan router max_turns"  "25"          "$_TPL_STAGE_ROUTER_MAX_TURNS_plan"
+assert_eq "[SPEC-3] plan router max_turns"  "45"          "$_TPL_STAGE_ROUTER_MAX_TURNS_plan"
 
 # decomposed mechanical gates (B6 #1138, ADR-040) — bound by role, not stage id.
 # shape-floor / secret-scan / gate-aggregator are T0 tools (no router section);

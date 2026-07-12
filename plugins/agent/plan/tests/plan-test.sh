@@ -162,13 +162,27 @@ if grep -q "no tool-use" <<< "$captured_prompt"; then
 else
     assert_pass "plan prompt no longer says no tool-use"
 fi
-if grep -qi "Read tool" <<< "$captured_prompt"; then
-    assert_pass "plan prompt invites the Read tool"
+if grep -qi "READ-ONLY tools" <<< "$captured_prompt"; then
+    assert_pass "plan prompt invites read-only exploration (Read/Grep/Glob)"
 else
-    assert_fail "plan prompt invites the Read tool" "captured: $(head -c 200 <<<"$captured_prompt")"
+    assert_fail "plan prompt invites read-only exploration" "captured: $(head -c 200 <<<"$captured_prompt")"
 fi
-assert_contains "plan prompt forbids Edit/Write/Bash" \
+assert_contains "plan prompt forbids mutating tools (Edit/Write)" \
     "$captured_prompt" "Do NOT call Edit"
+
+# ─── Test 3d: #1442 — turn-budget guardrail (inject budget + bias to converge) ─
+# The captured prompt should carry the budget block (the plugin resolves the
+# router's max_turns; the in-test fallback is a finite default, so the block
+# is present).
+assert_contains "plan prompt states its turn budget" \
+    "$captured_prompt" "TURN BUDGET"
+# _plan_budget_guidance unit behavior: finite budget -> guidance; 0/empty -> none.
+assert_contains "[budget] guidance names the budget number" \
+    "$(_plan_budget_guidance 45)" "45"
+assert_contains "[budget] guidance biases toward a best-effort plan" \
+    "$(_plan_budget_guidance 45)" "best-effort plan"
+assert_eq "[budget] empty for the 0 (unlimited) sentinel" "" "$(_plan_budget_guidance 0)"
+assert_eq "[budget] empty for a non-numeric budget"       "" "$(_plan_budget_guidance abc)"
 if grep -qi "Scope manifest" <<< "$captured_prompt"; then
     assert_pass "plan prompt inlines the scope manifest"
 else

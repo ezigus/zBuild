@@ -40,6 +40,29 @@ source "$_PLAN_ROOT/scripts/lib/plan-context.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_PLAN_ROOT/scripts/lib/router-rc-classify.sh"
 
+# _plan_budget_guidance <max_turns> — the turn-budget guardrail injected into the
+# planner prompt (#1442). Empty for the 0 (unlimited) sentinel or a non-numeric
+# value, so an uncapped plan stage reads exactly as before. With a finite budget
+# the planner is told its budget and biased to CONVERGE: emit a best-effort plan
+# before it runs out rather than exhausting the budget mid-exploration (which
+# yielded NO plan at all and left the cross-run cache nothing to carry forward).
+_plan_budget_guidance() {
+    local budget="${1:-}"
+    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
+    cat <<EOF
+TURN BUDGET (read this — you have a BOUNDED tool-call budget):
+- You have about ${budget} tool-call turns for BOTH exploration AND emitting the plan.
+- Producing a usable plan is the objective; exhaustive exploration is not. A plan
+  built from partial understanding, with the gaps noted in \`notes\`, BEATS running
+  out of turns and producing no plan at all.
+- Explore with TARGETED reads/greps of specific files. Avoid whole-repo
+  \`find | xargs grep\` sweeps — they flood your context and burn turns fast.
+- STOP exploring and EMIT the plan JSON well before you run out. If you are running
+  low, emit your best-effort plan NOW with assumptions in \`notes\` — never spend the
+  whole budget exploring and finish with nothing.
+EOF
+}
+
 # ─── init ───────────────────────────────────────────────────────────────────
 plan_init() {
     export ZBUILD_PLUGIN="plan"
@@ -331,10 +354,11 @@ You are a software planning agent. Decompose the goal into concrete
 implementation steps.
 
 Tool use:
-- You may use the Read tool to inspect files within the scope-manifest
-  before producing the plan. Read only paths under the scope-manifest
-  prefixes listed at the end of this prompt.
-- Do NOT call Edit, Write, or Bash. This stage is read-only.
+- Explore with READ-ONLY tools (Read, Grep, Glob, and read-only Bash such as
+  find/grep/cat/git-log) to inspect files within the scope-manifest before
+  producing the plan. Keep exploration TARGETED and bounded (see TURN BUDGET).
+- Do NOT call Edit or Write, and do NOT run any command that modifies the tree.
+  This stage is read-only.
 
 Rules:
 - `schema_version` MUST be the integer 1.
@@ -380,9 +404,19 @@ checklists), you MUST honor the following:
 Goal:
 PLAN_PROMPT
 )"
-    # Prepend the framework-rendered OUTPUT CONTRACT block (ADR-028).
+    # #1442: resolve the turn budget the router will enforce and tell the planner,
+    # so it converges (emits a plan) before exhausting the budget mid-exploration.
+    local _plan_budget="" _plan_budget_block=""
+    if declare -F _route_resolve_max_turns >/dev/null 2>&1; then
+        _plan_budget="$(ZBUILD_CURRENT_STAGE="${ZBUILD_CURRENT_STAGE:-plan}" _route_resolve_max_turns 2>/dev/null || true)"
+    fi
+    _plan_budget_block="$(_plan_budget_guidance "$_plan_budget")"
+    # Prepend the framework-rendered OUTPUT CONTRACT block (ADR-028), then the
+    # budget guardrail (when a finite budget applies), then the instructions.
     _plan_instructions="$_output_contract_block
-
+${_plan_budget_block:+
+$_plan_budget_block
+}
 $_plan_instructions"
     # Inline the scope-manifest verbatim (ground truth). Falls back to a
     # placeholder if the manifest file is unreadable so the prompt remains
