@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      major:
+        description: "Override major (A) version component"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Dry run — compute version/notes, open no PR"
+        required: false
+        default: false
+        type: boolean
+      auto_merge:
+        description: "Enable auto-merge on the Release PR when CI is green"
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open-release-pr:
+    name: Open Release PR
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install zbuild
+        run: ./install.sh
+
+      # Validate untrusted inputs ONCE, up front. `major` must be empty or
+      # digits-only — anything else is refused before it can reach a shell.
+      # We never interpolate ${{ inputs.* }} into a run: string; inputs flow
+      # in through env: and are referenced as quoted shell vars.
+      - name: Validate inputs
+        env:
+          MAJOR: ${{ inputs.major }}
+        run: |
+          if [[ -n "$MAJOR" && ! "$MAJOR" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid 'major' input: must be empty or digits only (got: $MAJOR)"
+            exit 1
+          fi
+
+      - name: Validate — dry-run pass
+        id: validate
+        env:
+          MAJOR: ${{ inputs.major }}
+        run: |
+          # Build args as an array — never an unquoted string — so a value can
+          # neither word-split nor glob-expand into extra release.sh flags.
+          args=(--dry-run)
+          if [[ -n "$MAJOR" ]]; then
+            args+=(--major "$MAJOR")
+          fi
+          bash scripts/release.sh "${args[@]}" 2>&1 | tee /tmp/dry-run-out.txt
+          # Capture the planned tag (vN.N…) so we can name the PR. Two lines
+          # begin 'planned tag:'; only the first is a bare tag — the second
+          # embeds a git command. Anchoring on a 'v' immediately after the
+          # padding matches the tag line and skips the 'git tag …' line.
+          # Validate its shape before it ever reaches git/gh.
+          version="$(grep -oP '^planned tag:\s+\Kv[\d.]+' /tmp/dry-run-out.txt | head -1 || true)"
+          if [[ -n "$version" && ! "$version" =~ ^v[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "::error::Refusing malformed version parsed from release.sh: $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Apply changelog (mutate CHANGELOG.md)
+        id: apply
+        if: inputs.dry_run != true
+        env:
+          MAJOR: ${{ inputs.major }}
+          FALLBACK_VERSION: ${{ steps.validate.outputs.version }}
+        run: |
+          # Real (mutating) pass — no --dry-run. Same array-quoting discipline.
+          args=()
+          if [[ -n "$MAJOR" ]]; then
+            args+=(--major "$MAJOR")
+          fi
+          # If release.sh exits nonzero (gate refused) we skip PR creation.
+          # `skip` is ALWAYS written so the create-PR step can gate explicitly.
+          set +e
+          out="$(bash scripts/release.sh "${args[@]}" 2>&1)"
+          rc=$?
+          set -e
+          echo "$out"
+          if [[ $rc -ne 0 ]]; then
+            echo "release.sh exited $rc — gate refused. Skipping PR creation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version="$(printf '%s' "$out" | grep -oP '(?<=Release )(v[\d.]+)' | head -1 || true)"
+          [[ -z "$version" ]] && version="$FALLBACK_VERSION"
+          if [[ -z "$version" || ! "$version" =~ ^v[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "::error::Refusing malformed version for PR: '$version'"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create release branch and PR
+        if: inputs.dry_run != true && steps.apply.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.apply.outputs.version }}
+          AUTO_MERGE: ${{ inputs.auto_merge }}
+        run: |
+          # VERSION already validated (^v[0-9]+(\.[0-9]+)+$) in the apply step;
+          # it flows in via env: and is only ever referenced as a quoted var.
+          branch="release/auto-$(date +%Y%m%d)"
+          git checkout -b "$branch"
+          git add CHANGELOG.md
+          git commit -m "chore: changelog for ${VERSION}" || true
+          git push origin "$branch"
+          pr_url="$(gh pr create \
+            --title "Release ${VERSION}" \
+            --body "Automated Release PR for ${VERSION}. Merge to trigger publish." \
+            --base main \
+            --head "$branch")"
+          echo "PR: $pr_url"
+          if [[ "$AUTO_MERGE" == "true" ]]; then
+            gh pr merge --auto --squash "$pr_url"
+          fi
+
+  publish:
+    name: Publish Release
+    # SECURITY: publish ONLY on the workflow's OWN release branches. The
+    # open-release-pr job is the sole creator of `release/auto-*` branches, so
+    # gating on the merged PR's HEAD ref prevents any contributor from
+    # publishing a release by merging a hand-titled "Release v…" PR.
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      startsWith(github.event.pull_request.head.ref, 'release/auto-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install zbuild
+        run: ./install.sh
+
+      - name: Publish release (tag + tarball + gh release create)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Intentional post-merge --force: the PR already passed gates + review;
+        # the security control is the trigger restriction above, not the flag.
+        run: bash scripts/release.sh --force
