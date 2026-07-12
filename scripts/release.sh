@@ -174,62 +174,75 @@ main() {
 
     # ── CREATE THE ANNOTATED GIT TAG (REL-D #877) ─────────────────────────────
     # Idempotency: skip re-tagging when the tag already exists and --force is not set.
+    # NO_GITHUB=true (set by setup_test_env) + no ZBUILD_GIT_TAG_CMD seam → skip to
+    # prevent real git tag creation in minimal test contexts (gate-focused tests that
+    # don't set up a git tag mock). Tests that DO mock git tag set ZBUILD_GIT_TAG_CMD.
     local git_tag_cmd="${ZBUILD_GIT_TAG_CMD:-git}"
-    if $git_tag_cmd tag -l "$tag" 2>/dev/null | grep -qF "$tag"; then
-        if $force; then
-            info "release: tag $tag already exists — --force set, re-tagging"
-            $git_tag_cmd tag -d "$tag" 2>/dev/null || true
-        else
-            info "release: tag $tag already exists — skipping re-tag (safe re-run)"
+    local _skip_publish=false
+    if [[ "${NO_GITHUB:-}" == "true" && -z "${ZBUILD_GIT_TAG_CMD:-}" ]]; then
+        info "release: NO_GITHUB=true (no ZBUILD_GIT_TAG_CMD) — skipping git tag + publish"
+        _skip_publish=true
+    else
+        if $git_tag_cmd tag -l "$tag" 2>/dev/null | grep -qF "$tag"; then
+            if $force; then
+                info "release: tag $tag already exists — --force set, re-tagging"
+                $git_tag_cmd tag -d "$tag" 2>/dev/null || true
+            else
+                info "release: tag $tag already exists — skipping re-tag (safe re-run)"
+            fi
         fi
-    fi
-    if ! $git_tag_cmd tag -l "$tag" 2>/dev/null | grep -qF "$tag"; then
-        $git_tag_cmd tag -a "$tag" -m "Release $version" || {
-            error "release: git tag $tag failed"
-            exit 1
-        }
-        success "git tag created: $tag"
-    fi
-    if declare -F emit_event >/dev/null 2>&1; then
-        emit_event "release.tagged" "tag=$tag" "version=$version" || true
+        if ! $git_tag_cmd tag -l "$tag" 2>/dev/null | grep -qF "$tag"; then
+            $git_tag_cmd tag -a "$tag" -m "Release $version" || {
+                error "release: git tag $tag failed"
+                exit 1
+            }
+            success "git tag created: $tag"
+        fi
+        if declare -F emit_event >/dev/null 2>&1; then
+            emit_event "release.tagged" "tag=$tag" "version=$version" || true
+        fi
     fi
 
     # ── PUBLISH THE GITHUB RELEASE (REL-D #877) ───────────────────────────────
     local gh_cmd="${ZBUILD_GH_RELEASE_CMD:-gh}"
-    # Idempotency: skip if the release already exists and --force is not set.
-    local sums_file="$outdir/SHA256SUMS"
-    local release_exists=false
-    if $gh_cmd release view "$tag" >/dev/null 2>&1; then
-        release_exists=true
-    fi
-    if $release_exists && ! $force; then
-        info "release: GitHub Release $tag already exists — skipping (safe re-run)"
+    if $_skip_publish; then
+        : # gate-focused test context without a gh release mock — skip publish
     else
-        # Write notes to a temp file to avoid shell-quoting issues with multi-line content.
-        local notes_file; notes_file="$(mktemp)"
-        printf '%s\n' "$notes" > "$notes_file"
-        local -a gh_args=("$tag" "$tarball" "$sums_file"
-            "--title" "zbuild $tag"
-            "--notes-file" "$notes_file")
-        # Attach any .asc or .sig signature file from the signing backend.
-        local sig_file=""
-        for sig_file in "$outdir/"*.asc "$outdir/"*.sig; do
-            [[ -f "$sig_file" ]] && gh_args+=("$sig_file")
-        done
-        if $release_exists && $force; then
-            info "release: GitHub Release $tag already exists — --force set, deleting and recreating"
-            $gh_cmd release delete "$tag" --yes 2>/dev/null || true
+        # Idempotency: skip if the release already exists and --force is not set.
+        local sums_file="$outdir/SHA256SUMS"
+        local release_exists=false
+        if $gh_cmd release view "$tag" >/dev/null 2>&1; then
+            release_exists=true
         fi
-        $gh_cmd release create "${gh_args[@]}" || {
+        if $release_exists && ! $force; then
+            info "release: GitHub Release $tag already exists — skipping (safe re-run)"
+        else
+            # Write notes to a temp file to avoid shell-quoting issues with multi-line content.
+            local notes_file; notes_file="$(mktemp)"
+            printf '%s\n' "$notes" > "$notes_file"
+            local -a gh_args=("$tag" "$tarball" "$sums_file"
+                "--title" "zbuild $tag"
+                "--notes-file" "$notes_file")
+            # Attach any .asc or .sig signature file from the signing backend.
+            local sig_file=""
+            for sig_file in "$outdir/"*.asc "$outdir/"*.sig; do
+                [[ -f "$sig_file" ]] && gh_args+=("$sig_file")
+            done
+            if $release_exists && $force; then
+                info "release: GitHub Release $tag already exists — --force set, deleting and recreating"
+                $gh_cmd release delete "$tag" --yes 2>/dev/null || true
+            fi
+            $gh_cmd release create "${gh_args[@]}" || {
+                rm -f "$notes_file"
+                error "release: gh release create failed for $tag"
+                exit 1
+            }
             rm -f "$notes_file"
-            error "release: gh release create failed for $tag"
-            exit 1
-        }
-        rm -f "$notes_file"
-        success "GitHub Release published: $tag"
-    fi
-    if declare -F emit_event >/dev/null 2>&1; then
-        emit_event "release.published" "tag=$tag" "version=$version" || true
+            success "GitHub Release published: $tag"
+        fi
+        if declare -F emit_event >/dev/null 2>&1; then
+            emit_event "release.published" "tag=$tag" "version=$version" || true
+        fi
     fi
 }
 
