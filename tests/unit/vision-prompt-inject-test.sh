@@ -110,6 +110,11 @@ assert_eq "[SPEC-2] route_to_model_loop with valid vision rc=0" "0" "$_rc"
 _loop_captured="$(cat "$_PROMPT_DUMP" 2>/dev/null || true)"
 assert_contains "[SPEC-2] loop iter prompt contains Intent preamble" \
     "$_loop_captured" "# Intent (advisory)"
+# Idempotency: a loop iteration's prompt carries EXACTLY ONE preamble — the
+# per-iteration prompt file is fresh, so the injection must not accumulate copies.
+_loop_preamble_count="$(grep -c '# Intent (advisory)' <<< "$_loop_captured" || true)"
+assert_eq "[SPEC-2] loop iter prompt has EXACTLY ONE preamble (no accumulation)" \
+    "1" "$_loop_preamble_count"
 unset ZBUILD_RUN_ID
 
 # ─── SPEC-3: no vision doc → route_to_model proceeds without error (GUARD) ────
