@@ -37,8 +37,7 @@ _dp_wiki_remote() {
     printf '%s\n' "${origin%.git}.wiki.git"
 }
 
-# Idempotently (re)write the generated-docs pointer block in README.md. Replaces the
-# block in place when the markers exist, else appends it once at the end.
+# Idempotently (re)write the README generated-docs block: replace-in-place, else append.
 doc_publish_update_readme() {
     local repo_root="${1:-$PWD}"
     local readme="$repo_root/README.md"
@@ -92,8 +91,7 @@ doc_publish_regen() {
     return 0
 }
 
-# Clone the wiki repo, sync docs/wiki/ into it (excluding hash sidecars), commit, push.
-# dry_run=true prints the planned push and mutates nothing.
+# Clone the wiki repo, sync docs/wiki/ (minus hash sidecars), commit, push; dry_run=true = plan only.
 doc_publish_wiki() {
     local repo_root="${1:-$PWD}" version="${2:-}" dry_run="${3:-false}"
     [[ -d "$repo_root/docs/wiki" ]] || { error "doc-publish: docs/wiki not found under $repo_root"; return 1; }
