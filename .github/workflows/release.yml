@@ -119,6 +119,16 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      # DOC-F (#1420): regenerate the wiki pages + refresh the README docs block
+      # so the regenerated docs ride THIS release PR. Regen short-circuits (no
+      # model call) when every page is already current; a stale source without a
+      # token fails closed, blocking the release — the correct outcome.
+      - name: Regenerate wiki docs + refresh README (DOC-F)
+        if: inputs.dry_run != true && steps.apply.outputs.skip == 'false'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: bash scripts/zbuild docs publish --regen-only
+
       - name: Create release branch and PR
         if: inputs.dry_run != true && steps.apply.outputs.skip == 'false'
         env:
@@ -130,8 +140,8 @@ jobs:
           # it flows in via env: and is only ever referenced as a quoted var.
           branch="release/auto-$(date +%Y%m%d)"
           git checkout -b "$branch"
-          git add CHANGELOG.md
-          git commit -m "chore: changelog for ${VERSION}" || true
+          git add CHANGELOG.md docs/wiki README.md
+          git commit -m "chore: changelog + regenerated docs for ${VERSION}" || true
           git push origin "$branch"
           pr_url="$(gh pr create \
             --title "Release ${VERSION}" \
@@ -175,3 +185,11 @@ jobs:
         # Intentional post-merge --force: the PR already passed gates + review;
         # the security control is the trigger restriction above, not the flag.
         run: bash scripts/release.sh --force
+
+      # DOC-F (#1420): the by-hand-equivalent publish step — push the (already
+      # merged, already regenerated) docs/wiki/ to the project .wiki.git repo.
+      # Runs over HTTPS with the Actions token; `contents: write` covers the wiki.
+      - name: Publish generated docs to the wiki (DOC-F)
+        env:
+          ZBUILD_WIKI_REMOTE: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git
+        run: bash scripts/zbuild docs publish --wiki-only --version "v$(cat VERSION 2>/dev/null || echo 0.0.0)"

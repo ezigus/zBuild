@@ -87,6 +87,8 @@ Commands:
   docs generate <spec>   Generate a wiki page for a plugin or mechanic (DOC-D2).
                          <spec> is 'plugin:<id>' or 'mechanic:<name>'.
   docs generate --all    Generate wiki pages for every plugin and mechanic (DOC-D3).
+  docs publish           Regen pages, refresh README, push docs/wiki to .wiki.git (DOC-F).
+                         Flags: --dry-run | --regen-only | --wiki-only | --version <v>.
   deferred <sub>         Deferred-work scanners (backfill | tracker)
                          Run \`zbuild deferred --help\` for sub-commands.
   manifest <sub>         Manifest YAML drift management (sync)
@@ -841,25 +843,36 @@ VHELP
                     doc_generate_page "$1"
                 fi
                 ;;
+            publish)
+                shift 2
+                # shellcheck source=lib/doc-publish.sh
+                source "$SCRIPT_DIR/lib/doc-publish.sh"
+                doc_publish_run "$@"
+                ;;
             ""|-h|--help)
                 cat <<'DOCSHELP'
-zbuild docs — wiki page generation (DOC-D2/D3).
+zbuild docs — generate + publish wiki pages (DOC-D/DOC-F).
 
 Sub-commands:
   generate <spec>   Generate a wiki page for a plugin or mechanic.
                     <spec> is 'plugin:<id>' or 'mechanic:<name>'.
   generate --all    Generate wiki pages for every plugin and every mechanic.
                     Processes all sources; reports failures without aborting early.
+  publish           Regenerate all pages, refresh the README docs block, and push
+                    docs/wiki/ to the project .wiki.git repo (release step, DOC-F).
+                    Flags: --dry-run, --regen-only, --wiki-only, --version <v>.
 
 Examples:
   zbuild docs generate plugin:plan
   zbuild docs generate mechanic:gather
   zbuild docs generate --all
+  zbuild docs publish --dry-run
+  zbuild docs publish --wiki-only --version v1.0.0.1
 DOCSHELP
                 ;;
             *)
                 error "Unknown docs subcommand: ${2:-}"
-                echo "Available: generate" >&2
+                echo "Available: generate, publish" >&2
                 echo "Run: zbuild docs --help" >&2
                 exit 2
                 ;;

@@ -91,3 +91,9 @@ zBuild is a deliberately small engine plus interchangeable plugins. Templates co
 ## Contributing & license
 
 Design and contributor docs live in [`docs/`](docs/); how we write these docs is described in [`docs/DOC-STYLE.md`](docs/DOC-STYLE.md). Run `npm test` for the full suite before opening a PR. Licensed under MIT — see [LICENSE](LICENSE).
+
+<!-- BEGIN:generated-docs -->
+## Documentation
+
+Full reference documentation is published to the [project wiki](../../wiki): a page for each of the 36 plugins and 16 mechanics, plus the Installation, Getting Started, Configuration, and CLI Reference guides. These pages are generated from the plugin manifests and the mechanics registry, then republished on each release.
+<!-- END:generated-docs -->
