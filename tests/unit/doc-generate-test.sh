@@ -158,7 +158,7 @@ hash_val="$(<"$WIKI_ROOT/plugins/doc-gather-full.md.hash")"
 hash_val="${hash_val%%[[:space:]]*}"   # trim trailing whitespace/newline
 
 hex_ok=0
-if [[ "${#hash_val}" -eq 64 ]] && printf '%s' "$hash_val" | grep -qE '^[0-9a-f]{64}$'; then
+if [[ "${#hash_val}" -eq 64 ]] && grep -qE '^[0-9a-f]{64}$' <<< "$hash_val"; then
     hex_ok=1
 fi
 assert_eq "[SPEC-5] hash sidecar is a valid 64-char hex SHA-256" "1" "$hex_ok"
