@@ -354,23 +354,46 @@ doc_generate_all() {
 
     _doc_generate_ensure_gather
 
-    local _all_rc=0 _id _name
+    # Capture enumerations up front. A process substitution discards the
+    # enumerator's exit code, so a failed/missing source root would silently
+    # yield zero sources and a success return (#1441 review). Capturing lets us
+    # detect it, and here-strings below keep it SIGPIPE-safe.
+    local _plugin_ids _mech_names _enum_rc=0
+    _plugin_ids="$(doc_gather_plugin_ids "$plugins_root")" || _enum_rc=1
+    _mech_names="$(doc_gather_mechanic_ids "$mechanics_yaml")" || _enum_rc=1
+    if [[ "$_enum_rc" -ne 0 ]]; then
+        printf 'doc_generate_all: source enumeration failed (plugins_root=%s mechanics_yaml=%s)\n' \
+            "$plugins_root" "$mechanics_yaml" >&2
+        return 1
+    fi
+
+    local _all_rc=0 _processed=0 _id _name
 
     while IFS= read -r _id; do
         [[ -z "$_id" ]] && continue
+        _processed=$((_processed + 1))
         doc_generate_plugin "$_id" "$plugins_root" "$wiki_root" "$template" || {
             printf 'doc_generate_all: plugin "%s" failed\n' "$_id" >&2
             _all_rc=1
         }
-    done < <(doc_gather_plugin_ids "$plugins_root")
+    done <<< "$_plugin_ids"
 
     while IFS= read -r _name; do
         [[ -z "$_name" ]] && continue
+        _processed=$((_processed + 1))
         doc_generate_mechanic "$_name" "$mechanics_yaml" "$wiki_root" "$template" || {
             printf 'doc_generate_all: mechanic "%s" failed\n' "$_name" >&2
             _all_rc=1
         }
-    done < <(doc_gather_mechanic_ids "$mechanics_yaml")
+    done <<< "$_mech_names"
+
+    # A batch that discovered nothing almost always means a wrong root, not
+    # "success" — fail closed rather than silently reporting all-done (#1441).
+    if [[ "$_processed" -eq 0 ]]; then
+        printf 'doc_generate_all: no plugins or mechanics found (plugins_root=%s mechanics_yaml=%s)\n' \
+            "$plugins_root" "$mechanics_yaml" >&2
+        return 1
+    fi
 
     return "$_all_rc"
 }

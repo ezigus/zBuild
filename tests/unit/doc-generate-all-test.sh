@@ -213,6 +213,16 @@ assert_eq "[SPEC-21] generator called for multiple sources (>=2) under --all" \
 
 unset ZBUILD_WIKI_ROOT _CLI_CALL_COUNT_FILE
 
+# ─── SPEC-22: doc_generate_all fails closed when no sources are discovered ────
+# A wrong/empty root must not silently return success (#1441 review) — the old
+# process-substitution discarded the enumerator rc and returned 0 for 0 sources.
+EMPTY_ROOT="$TEST_TEMP_DIR/empty-plugins"; mkdir -p "$EMPTY_ROOT"
+EMPTY_MECH="$TEST_TEMP_DIR/empty-mechanics.yaml"; printf 'mechanics:\n' > "$EMPTY_MECH"
+_empty_rc=0
+doc_generate_all "$EMPTY_ROOT" "$EMPTY_MECH" "$WIKI_ROOT" "$TEMPLATE" 2>/dev/null || _empty_rc=$?
+_empty_bad=0; [[ "$_empty_rc" -ne 0 ]] && _empty_bad=1
+assert_eq "[SPEC-22] doc_generate_all fails closed when 0 sources discovered" "1" "$_empty_bad"
+
 # ─── Cleanup ──────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 
