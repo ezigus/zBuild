@@ -106,7 +106,7 @@ assert_contains "[SPEC-5] git push invoked"   "$_gitlog" "push"
 print_test_section "SPEC-6: *.md.hash sidecars excluded from publish"
 _tree="$(cat "$TREE_LOG")"
 assert_contains "[SPEC-6] real plugin page published" "$_tree" "plugins/build.md"
-if printf '%s\n' "$_tree" | grep -q '\.md\.hash$'; then
+if grep -q '\.md\.hash$' <<< "$_tree"; then
     assert_fail "[SPEC-6] no *.md.hash in published tree" "$_tree"
 else
     assert_pass "[SPEC-6] no *.md.hash in published tree"
