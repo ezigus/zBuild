@@ -25,9 +25,7 @@ setup_test_env "lint-doc-freshness"
 
 CHECKER="$REPO_ROOT/scripts/lib/lint-doc-freshness.sh"
 
-# Build a minimal self-contained fixture repo.
-# The checker derives _REPO_ROOT as two dirs above its own location, so we
-# copy it into $root/scripts/lib/ and lay down the required tree around it.
+# Copy the checker into $root/scripts/lib/ — it derives _REPO_ROOT two dirs up.
 build_fixture_repo() {
     local root="$1"
     mkdir -p \

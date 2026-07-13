@@ -43,8 +43,7 @@ _sha256() {
     fi
 }
 
-# Inline of _is_prose_opening from lint-doc-style.sh (not sourced — avoids side effects).
-# Returns 0 if the line qualifies as a plain prose newcomer opening sentence.
+# Inlined from lint-doc-style.sh (not sourced) to avoid its load-time side effects.
 _is_prose_opening() {
     local line="$1"
 
@@ -84,8 +83,7 @@ _is_prose_opening() {
     return 0
 }
 
-# Check one wiki page for conformance and (if footer present) freshness.
-# $1 = path to wiki page; $2 = path to backing source file
+# Conformance + (opt-in, footer-gated) freshness check for one wiki page.
 _check_page() {
     local page="$1" source="$2"
 
