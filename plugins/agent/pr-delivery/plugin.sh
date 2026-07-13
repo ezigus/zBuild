@@ -73,9 +73,12 @@ _pr_stage_run_inner() {
 
     # Dry-run mode: write sentinel artifacts without calling gh
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
+        local _dry_draft="${_TPL_PR_DRAFT:-false}"
+        [[ "$_dry_draft" == "true" ]] || _dry_draft="false"
         printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out"
-        printf '{"status":"dry_run","branch":"%s","pr_number":0,"draft":true}\n' \
-            "${ZBUILD_BRANCH:-unknown}" | atomic_write "$pr_result_out"
+        jq -nc --arg branch "${ZBUILD_BRANCH:-unknown}" --argjson draft "$_dry_draft" \
+            '{status:"dry_run",branch:$branch,pr_number:0,draft:$draft}' \
+            | atomic_write "$pr_result_out"
         return 0
     fi
 
@@ -140,13 +143,21 @@ _pr_stage_run_inner() {
     # Fallback: direct gh pr create
     local branch="${ZBUILD_BRANCH:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')}"
     local title="${ZBUILD_ISSUE_TITLE:-"[#${ZBUILD_ISSUE:-0}] Automated PR"}"
+    local _fb_draft="${_TPL_PR_DRAFT:-false}"
+    [[ "$_fb_draft" == "true" ]] || _fb_draft="false"
+    local -a _fb_gh_args=()
+    [[ "${_fb_draft}" == "true" ]] && _fb_gh_args+=("--draft")
+    _fb_gh_args+=(--title "$title" --body "")
     local pr_url
-    if pr_url="$(gh pr create --draft --title "$title" --body "" 2>/dev/null)"; then
+    if pr_url="$(gh pr create "${_fb_gh_args[@]}" 2>/dev/null)"; then
         printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
-        printf '{"status":"opened","branch":"%s","pr_url":"%s","draft":true}\n' \
-            "${branch}" "$pr_url" | atomic_write "$pr_result_out"
+        # jq-safe: pr_url/branch may contain characters that would corrupt a
+        # printf-built JSON string.
+        jq -nc --arg branch "$branch" --arg pr_url "$pr_url" --argjson draft "$_fb_draft" \
+            '{status:"opened",branch:$branch,pr_url:$pr_url,draft:$draft}' \
+            | atomic_write "$pr_result_out"
     else
-        printf '{"status":"error","branch":"%s"}\n' "${branch}" | atomic_write "$pr_result_out"
+        jq -nc --arg branch "$branch" '{status:"error",branch:$branch}' | atomic_write "$pr_result_out"
         return 1
     fi
 }

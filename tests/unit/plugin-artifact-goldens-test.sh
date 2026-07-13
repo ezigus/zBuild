@@ -179,7 +179,7 @@ fi
 
 # ─── G4: pr-result-artifact ───────────────────────────────────────────────────
 # plugins/tool/pr-open produces state/artifacts/pr-result.json
-# Required fields: schema_version=1, status, pr_url, draft=true, branch, issue
+# Required fields: schema_version=1, status, pr_url, draft=false (non-draft default), branch, issue
 print_test_section "G4: pr-result-artifact.golden"
 assert_golden_exists "pr-result-artifact"
 assert_golden_is_valid_json "pr-result-artifact"
@@ -198,10 +198,10 @@ else
 fi
 
 g4_draft="$(printf '%s' "$g4_content" | jq -r '.draft' 2>/dev/null || echo '')"
-if [[ "$g4_draft" == "true" ]]; then
-    assert_pass "G4: pr-result-artifact draft == true (safety constraint)"
+if [[ "$g4_draft" == "false" ]]; then
+    assert_pass "[SPEC-7] G4: pr-result-artifact draft == false (non-draft default)"
 else
-    assert_fail "G4: pr-result-artifact draft == true (safety constraint)" "got: $g4_draft"
+    assert_fail "[SPEC-7] G4: pr-result-artifact draft == false (non-draft default)" "got: $g4_draft"
 fi
 
 set +e
