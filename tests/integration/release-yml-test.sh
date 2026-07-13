@@ -9,6 +9,7 @@
 # SPEC-5: publish job trigger is restricted to the workflow's own release/auto-* branches
 # SPEC-6: workflow uses --force on the publish path (idempotent re-entry)
 # SPEC-7: open-release-pr job passes --dry-run flag when dry_run input is true
+# SPEC-8: DOC-F wiring — regen step rides the release PR + wiki-publish step on merge
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -92,6 +93,20 @@ if grep -q "\-\-dry-run" "$WORKFLOW_FILE" 2>/dev/null; then
 else
     assert_fail "[SPEC-7] workflow passes --dry-run to release.sh when dry_run input is true" \
         "Expected '--dry-run' flag reference in release.yml"
+fi
+
+# ── SPEC-8: DOC-F wiring (static grep on the YAML) ───────────────────────────
+# The regen step must ride the release PR (open-release-pr, --regen-only) and the
+# wiki push must run on merge (publish job, --wiki-only). Both invoke the CLI.
+_spec8_regen=false
+_spec8_wiki=false
+grep -q "docs publish --regen-only" "$WORKFLOW_FILE" 2>/dev/null && _spec8_regen=true
+grep -q "docs publish --wiki-only"  "$WORKFLOW_FILE" 2>/dev/null && _spec8_wiki=true
+if $_spec8_regen && $_spec8_wiki; then
+    assert_pass "[SPEC-8] DOC-F wired: regen rides the PR + wiki push on merge"
+else
+    assert_fail "[SPEC-8] DOC-F wired: regen rides the PR + wiki push on merge" \
+        "regen=$_spec8_regen wiki=$_spec8_wiki"
 fi
 
 # ── Shared fixtures for T2/T3/T4 ─────────────────────────────────────────────
