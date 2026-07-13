@@ -1,0 +1,19 @@
+---
+# mechanics-fixture.yaml — local mechanics registry for doc-gather unit tests.
+# Mirrors the schema of config/mechanics.yaml but uses fixture-local paths.
+
+mechanics:
+  - name: fixture-mechanic
+    summary: |
+      A fixture mechanic used by doc-gather unit tests to exercise mechanic
+      bundle extraction and wiki-page retrieval.
+    usage: |
+      Not a real mechanic. Used only by tests/unit/doc-gather-test.sh to verify
+      that doc_gather_mechanic_bundle correctly reads name, summary, usage, and
+      defined_in from a mechanics YAML and loads the defined_in file as source.
+    defined_in: tests/unit/fixtures/doc-gather/mechanic-source.sh
+
+  - name: fixture-mechanic-nodocs
+    summary: ""
+    usage: ""
+    defined_in: tests/unit/fixtures/doc-gather/mechanic-source.sh

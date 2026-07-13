@@ -1,0 +1,39 @@
+id: doc-gather-full
+name: Doc Gather Full Fixture
+kind: agent
+version: 1.2.3
+summary: |
+  A complete fixture plugin used by doc-gather unit tests to exercise all
+  manifest fields and wiki-page retrieval.
+usage: |
+  This fixture is not a real plugin; it is used only by tests/unit/doc-gather-test.sh.
+  To use doc_gather_plugin_bundle in production, source scripts/lib/doc-gather.sh and
+  call doc_gather_plugin_bundle <plugin-id> [plugins_root] [wiki_root].
+
+hooks:
+  init: fixture_init
+  run: fixture_run
+  finalize: fixture_finalize
+  cleanup: fixture_cleanup
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+config:
+  tier_default: T1
+
+inputs:
+  - id: goal_string
+    type: string
+    source: external
+    required: true
+
+outputs:
+  - id: result
+    path: ${artifact_dir}/result.json
+    type: result.json
+    required: true
+    primary: true

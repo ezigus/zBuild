@@ -1,0 +1,15 @@
+id: doc-gather-nodocs
+name: Doc Gather No-Docs Fixture
+kind: tool
+version: 0.0.1
+
+hooks:
+  run: nodocs_run
+
+requires:
+  core: []
+  plugins: []
+
+inputs: []
+
+outputs: []
