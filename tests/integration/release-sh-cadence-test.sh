@@ -31,6 +31,9 @@ export ZBUILD_VERSION_ANCHOR="1.0"
 export ZBUILD_VERSION_RELEASE_COUNT="1"
 export ZBUILD_RELEASE_SINCE="2026-07-04T00:00:00Z"
 export ZBUILD_RELEASE_LAST_TAG="v1.0.0"
+# Suppress noisy stderr from the DOC-F dry-run preview (doc_publish_run --dry-run
+# prints an error when it cannot resolve the wiki remote; supply a dummy URL).
+export ZBUILD_WIKI_REMOTE="https://example.com/fake.wiki.git"
 
 # 5 closed issues in-window → D=5 → patch=1.0.1.5, minor=1.1.0.5, major=2.0.0.5
 export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/issues.json"

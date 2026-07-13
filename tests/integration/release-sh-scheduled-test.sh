@@ -30,6 +30,8 @@ export ZBUILD_VERSION_ANCHOR="1.0"
 export ZBUILD_VERSION_RELEASE_COUNT="1"
 export ZBUILD_RELEASE_SINCE="2026-07-04T00:00:00Z"
 export ZBUILD_RELEASE_LAST_TAG="v1.0.0"
+# Suppress noisy stderr from the DOC-F dry-run preview added by #1466.
+export ZBUILD_WIKI_REMOTE="https://example.com/fake.wiki.git"
 
 # ─── Mock fixtures ────────────────────────────────────────────────────────────
 EMPTY_ISSUES_JSON="$TEST_TEMP_DIR/empty-issues.json"
