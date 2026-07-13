@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# scripts/lib/doc-generate.sh — LLM-driven wiki page generator (DOC-D2).
+# scripts/lib/doc-generate.sh — LLM-driven wiki page generator (DOC-D2/D3).
 #
 # Source-only library (guard-loaded, no side-effects on source).
 # Public API:
 #   doc_generate_plugin  <id>   [plugins_root] [wiki_root] [template]
 #   doc_generate_mechanic <name> [mechanics_yaml] [wiki_root] [template]
 #   doc_generate_page    <source_spec>  — CLI entrypoint: 'plugin:<id>' or 'mechanic:<name>'
+#   doc_generate_all     [plugins_root] [mechanics_yaml] [wiki_root] [template]
+#                        — batch: every plugin + every mechanic; collects errors
 #
 # Behaviour:
 #   1. Calls doc_gather_plugin_bundle / doc_gather_mechanic_bundle to get a key=value bundle.
@@ -337,6 +339,40 @@ doc_generate_mechanic() {
 
     local out_path="$wiki_root/mechanics/${mech_name}.md"
     _doc_generate_page "$bundle" "mechanic" "$out_path" "$template"
+}
+
+# doc_generate_all [plugins_root] [mechanics_yaml] [wiki_root] [template]
+# Batch: enumerate every plugin id via doc_gather_plugin_ids and every mechanic
+# name via doc_gather_mechanic_ids, then run doc_generate_plugin /
+# doc_generate_mechanic over each. Collects per-source failures without aborting
+# early; returns non-zero if any individual source failed (DOC-D3 #1441).
+doc_generate_all() {
+    local plugins_root="${1:-$_DOC_GENERATE_ROOT/plugins}"
+    local mechanics_yaml="${2:-$_DOC_GENERATE_ROOT/config/mechanics.yaml}"
+    local wiki_root="${3:-${ZBUILD_WIKI_ROOT:-$_DOC_GENERATE_ROOT/docs/wiki}}"
+    local template="${4:-$_DOC_GENERATE_ROOT/docs/templates/doc-page.md}"
+
+    _doc_generate_ensure_gather
+
+    local _all_rc=0 _id _name
+
+    while IFS= read -r _id; do
+        [[ -z "$_id" ]] && continue
+        doc_generate_plugin "$_id" "$plugins_root" "$wiki_root" "$template" || {
+            printf 'doc_generate_all: plugin "%s" failed\n' "$_id" >&2
+            _all_rc=1
+        }
+    done < <(doc_gather_plugin_ids "$plugins_root")
+
+    while IFS= read -r _name; do
+        [[ -z "$_name" ]] && continue
+        doc_generate_mechanic "$_name" "$mechanics_yaml" "$wiki_root" "$template" || {
+            printf 'doc_generate_all: mechanic "%s" failed\n' "$_name" >&2
+            _all_rc=1
+        }
+    done < <(doc_gather_mechanic_ids "$mechanics_yaml")
+
+    return "$_all_rc"
 }
 
 # doc_generate_page <source_spec> — CLI-level dispatcher.
