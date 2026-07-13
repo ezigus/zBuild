@@ -689,11 +689,22 @@ UPHELP
         fi
         ;;
     release)
-        # #1355 (REL-B1) owns the fuller `zbuild release` story; keep this
-        # dispatch minimal + forward-compatible: pass through all flags verbatim
-        # (--dry-run / --major / --force / --milestone / --help).
+        # #1466: default cadence is --minor when no explicit cadence flag is given.
+        # Scan forwarded args; inject --minor only when no --patch/--minor/--major found.
+        # release.sh's internal --patch default is NOT changed (direct callers unaffected).
         shift
-        exec bash "$SCRIPT_DIR/release.sh" "$@"
+        _rel_cadence=""
+        for _rel_arg in "$@"; do
+            case "$_rel_arg" in
+                --patch|--minor|--major) _rel_cadence="$_rel_arg"; break ;;
+            esac
+        done
+        unset _rel_arg
+        if [[ -z "$_rel_cadence" ]]; then
+            exec bash "$SCRIPT_DIR/release.sh" --minor "$@"
+        else
+            exec bash "$SCRIPT_DIR/release.sh" "$@"
+        fi
         ;;
     deferred)
         case "${2:-}" in

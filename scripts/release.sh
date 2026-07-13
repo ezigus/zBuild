@@ -40,6 +40,8 @@ source "$RELEASE_SCRIPT_DIR/lib/release-notes.sh"
 source "$RELEASE_SCRIPT_DIR/lib/release-notes-coverage.sh"
 # shellcheck source=lib/release-tarball.sh
 source "$RELEASE_SCRIPT_DIR/lib/release-tarball.sh"
+# shellcheck source=lib/doc-publish.sh
+source "$RELEASE_SCRIPT_DIR/lib/doc-publish.sh"
 
 release_usage() {
     cat <<'EOF'
@@ -187,6 +189,11 @@ main() {
         printf 'planned publish: gh release create %s <tarball> <SHA256SUMS> --title "zbuild %s" --notes <notes>\n' "$tag" "$tag"
         printf '\n----- release notes -----\n\n'
         printf '%s\n' "$notes"
+        # DOC-F preview: print planned doc-regen + wiki-push without mutating anything.
+        # || true: a missing ZBUILD_WIKI_REMOTE / origin is surfaced to stderr but does
+        # not abort the dry-run; tests set ZBUILD_WIKI_REMOTE for hermeticity.
+        printf '\n'
+        doc_publish_run --dry-run --repo-root "$REPO_ROOT" || true
         return 0
     fi
 

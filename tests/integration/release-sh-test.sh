@@ -214,7 +214,7 @@ fi
 # ─── T7: `zbuild release --dry-run` dispatch forwards to release.sh ──────────
 out_cli="$(bash "$REPO_ROOT/scripts/zbuild" release --dry-run --milestone "Initiative 1.1" 2>&1)" \
     || { echo "$out_cli"; assert_fail "zbuild release --dry-run exits 0"; exit 1; }
-assert_contains "[SPEC-11] T7: zbuild release dispatch works" "$out_cli" "planned version: 1.0.1.5"
+assert_contains "[SPEC-11] T7: zbuild release dispatch works" "$out_cli" "planned version: 1.1.0.0"
 
 # ─── T8: usage lists the release subcommand ─────────────────────────────────
 help_out="$(bash "$REPO_ROOT/scripts/zbuild" --help 2>&1)"
