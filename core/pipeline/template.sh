@@ -90,6 +90,18 @@ load_template() {
     fi
     export _TPL_MERGE_POLICY
 
+    local _raw_pr_draft
+    _raw_pr_draft="$(yaml_get "$template_file" "pr_draft")"
+    if [[ -z "$_raw_pr_draft" ]]; then
+        _TPL_PR_DRAFT="false"
+    elif [[ "$_raw_pr_draft" == "true" || "$_raw_pr_draft" == "false" ]]; then
+        _TPL_PR_DRAFT="$_raw_pr_draft"
+    else
+        error "load_template: invalid pr_draft '${_raw_pr_draft}' (valid: true | false)"
+        return 1
+    fi
+    export _TPL_PR_DRAFT
+
     # Scrub ALL _TPL_STAGE_BLOCKING_<id> exports at load-entry, unconditionally.
     # BL| rows are emitted only for blocking:true stages, so any stale export —
     # left by a prior load_template call, by a stage that is absent from this

@@ -228,7 +228,8 @@ if [[ -f "$PR_RESULT_JSON" ]]; then
     else
         assert_fail "pr-result.json pr_url is non-empty" "pr_url was empty or null"
     fi
-    assert_json_key "pr-result.json draft=true" "$pr_result_json" '.draft' "true"
+    assert_json_key "[SPEC-5] pr-result.json draft=false (non-draft default, _TPL_PR_DRAFT unset)" \
+        "$pr_result_json" '.draft' "false"
     assert_json_key "pr-result.json branch=zbuild/issue-999" "$pr_result_json" '.branch' "zbuild/issue-999"
 fi
 
@@ -317,6 +318,61 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
 else
     assert_fail "redaction chokepoint guard: events.jsonl not found"
 fi
+
+# ─── Test 8: _TPL_PR_DRAFT=true → gh called with --draft, draft=true in output ─
+print_test_section "8. _TPL_PR_DRAFT=true: --draft passed to gh; pr-result.json draft=true"
+
+rm -f "$PR_RESULT_JSON"
+cat > "$REVIEW_JSON" <<'JSON'
+{"schema_version":1,"verdict":"approve","summary":"looks good"}
+JSON
+
+# Mock git: returns safe branch name
+git() {
+    if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
+        echo "zbuild/issue-999"
+    else
+        return 0
+    fi
+}
+export -f git
+
+# Mock gh: capture args to detect --draft flag
+GH_ARGS_FILE="$TEST_TEMP_DIR/gh-args.txt"
+rm -f "$GH_ARGS_FILE"
+gh() {
+    printf '%s\n' "$@" >> "$GH_ARGS_FILE"
+    echo "https://github.com/ezigus/zBuild/pull/999"
+    return 0
+}
+export -f gh
+
+set +e
+_TPL_PR_DRAFT=true _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
+rc=$?
+set -e
+
+assert_exit_code "[SPEC-6] _TPL_PR_DRAFT=true: open returns rc=0" "0" "$rc"
+
+if [[ -f "$GH_ARGS_FILE" ]]; then
+    if grep -q -- '--draft' "$GH_ARGS_FILE"; then
+        assert_pass "[SPEC-6] _TPL_PR_DRAFT=true: --draft passed to gh pr create"
+    else
+        assert_fail "[SPEC-6] _TPL_PR_DRAFT=true: --draft passed to gh pr create" \
+            "gh args: $(cat "$GH_ARGS_FILE")"
+    fi
+else
+    assert_fail "[SPEC-6] _TPL_PR_DRAFT=true: gh was called" "gh args file missing"
+fi
+
+if [[ -f "$PR_RESULT_JSON" ]]; then
+    pr_result_json8="$(cat "$PR_RESULT_JSON")"
+    assert_json_key "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json draft=true" \
+        "$pr_result_json8" '.draft' "true"
+fi
+
+unset -f git
+unset -f gh
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env

@@ -81,6 +81,7 @@ pr_stage_init >/dev/null 2>&1
 ( ZBUILD_DRY_RUN=1 pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
 _art3="$(dirname "$_sf3")/artifacts"
 assert_eq "[SPEC-3] dry-run pr_stage_run exits 0" "0" "$_rc3"
+assert_eq "[SPEC-9] dry-run pr_stage_run exits 0 (non-draft default guard)" "0" "$_rc3"
 assert_file_exists "[SPEC-3] pr-url.txt written" "$_art3/pr-url.txt"
 assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
 _init_lines="$(grep '"plugin.init.start"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || true

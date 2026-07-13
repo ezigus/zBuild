@@ -68,12 +68,12 @@ source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
 ( PATH="$MOCKBIN:$PATH" pr_open_run "pr" "$STATE_FILE" ) >/dev/null 2>&1; RC=$?
 
 # ── (1) returns 2 (terminal halt) ──────────────────────────────────────────
-assert_eq "pr_open_run returns 2 on 0-commit branch" "2" "$RC"
+assert_eq "[SPEC-8] pr_open_run returns 2 on 0-commit branch" "2" "$RC"
 
 # ── (2) reason=no_committed_changes (not a push/gh error) ──────────────────
 if [[ -f "$ART/pr-result.json" ]]; then
     reason="$(jq -r '.reason // ""' "$ART/pr-result.json" 2>/dev/null || echo "")"
-    assert_contains "pr-result.json .reason cites no committed changes" \
+    assert_contains "[SPEC-8] pr-result.json .reason cites no committed changes" \
         "$reason" "no committed changes"
 else
     assert_fail "pr-result.json written on halt" "file missing"
