@@ -86,6 +86,7 @@ Commands:
                          [--output <path>]      Override the output file path
   docs generate <spec>   Generate a wiki page for a plugin or mechanic (DOC-D2).
                          <spec> is 'plugin:<id>' or 'mechanic:<name>'.
+  docs generate --all    Generate wiki pages for every plugin and mechanic (DOC-D3).
   deferred <sub>         Deferred-work scanners (backfill | tracker)
                          Run \`zbuild deferred --help\` for sub-commands.
   manifest <sub>         Manifest YAML drift management (sync)
@@ -828,22 +829,32 @@ VHELP
         case "${2:-}" in
             generate)
                 shift 2
-                [[ $# -eq 0 ]] && { error "zbuild docs generate: source spec required (plugin:<id> or mechanic:<name>)"; exit 2; }
-                # shellcheck source=lib/doc-generate.sh
-                source "$SCRIPT_DIR/lib/doc-generate.sh"
-                doc_generate_page "$1"
+                if [[ "${1:-}" == "--all" ]]; then
+                    [[ $# -gt 1 ]] && { error "zbuild docs generate: --all cannot be combined with a source spec"; exit 2; }
+                    # shellcheck source=lib/doc-generate.sh
+                    source "$SCRIPT_DIR/lib/doc-generate.sh"
+                    doc_generate_all
+                else
+                    [[ $# -eq 0 ]] && { error "zbuild docs generate: source spec required (plugin:<id> or mechanic:<name>)"; exit 2; }
+                    # shellcheck source=lib/doc-generate.sh
+                    source "$SCRIPT_DIR/lib/doc-generate.sh"
+                    doc_generate_page "$1"
+                fi
                 ;;
             ""|-h|--help)
                 cat <<'DOCSHELP'
-zbuild docs — wiki page generation (DOC-D2).
+zbuild docs — wiki page generation (DOC-D2/D3).
 
 Sub-commands:
   generate <spec>   Generate a wiki page for a plugin or mechanic.
                     <spec> is 'plugin:<id>' or 'mechanic:<name>'.
+  generate --all    Generate wiki pages for every plugin and every mechanic.
+                    Processes all sources; reports failures without aborting early.
 
 Examples:
   zbuild docs generate plugin:plan
   zbuild docs generate mechanic:gather
+  zbuild docs generate --all
 DOCSHELP
                 ;;
             *)

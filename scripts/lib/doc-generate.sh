@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# scripts/lib/doc-generate.sh — LLM-driven wiki page generator (DOC-D2).
+# scripts/lib/doc-generate.sh — LLM-driven wiki page generator (DOC-D2/D3).
 #
 # Source-only library (guard-loaded, no side-effects on source).
 # Public API:
 #   doc_generate_plugin  <id>   [plugins_root] [wiki_root] [template]
 #   doc_generate_mechanic <name> [mechanics_yaml] [wiki_root] [template]
 #   doc_generate_page    <source_spec>  — CLI entrypoint: 'plugin:<id>' or 'mechanic:<name>'
+#   doc_generate_all     [plugins_root] [mechanics_yaml] [wiki_root] [template]
+#                        — batch: every plugin + every mechanic; collects errors
 #
 # Behaviour:
 #   1. Calls doc_gather_plugin_bundle / doc_gather_mechanic_bundle to get a key=value bundle.
@@ -337,6 +339,63 @@ doc_generate_mechanic() {
 
     local out_path="$wiki_root/mechanics/${mech_name}.md"
     _doc_generate_page "$bundle" "mechanic" "$out_path" "$template"
+}
+
+# doc_generate_all [plugins_root] [mechanics_yaml] [wiki_root] [template]
+# Batch: enumerate every plugin id via doc_gather_plugin_ids and every mechanic
+# name via doc_gather_mechanic_ids, then run doc_generate_plugin /
+# doc_generate_mechanic over each. Collects per-source failures without aborting
+# early; returns non-zero if any individual source failed (DOC-D3 #1441).
+doc_generate_all() {
+    local plugins_root="${1:-$_DOC_GENERATE_ROOT/plugins}"
+    local mechanics_yaml="${2:-$_DOC_GENERATE_ROOT/config/mechanics.yaml}"
+    local wiki_root="${3:-${ZBUILD_WIKI_ROOT:-$_DOC_GENERATE_ROOT/docs/wiki}}"
+    local template="${4:-$_DOC_GENERATE_ROOT/docs/templates/doc-page.md}"
+
+    _doc_generate_ensure_gather
+
+    # Capture enumerations up front. A process substitution discards the
+    # enumerator's exit code, so a failed/missing source root would silently
+    # yield zero sources and a success return (#1441 review). Capturing lets us
+    # detect it, and here-strings below keep it SIGPIPE-safe.
+    local _plugin_ids _mech_names _enum_rc=0
+    _plugin_ids="$(doc_gather_plugin_ids "$plugins_root")" || _enum_rc=1
+    _mech_names="$(doc_gather_mechanic_ids "$mechanics_yaml")" || _enum_rc=1
+    if [[ "$_enum_rc" -ne 0 ]]; then
+        printf 'doc_generate_all: source enumeration failed (plugins_root=%s mechanics_yaml=%s)\n' \
+            "$plugins_root" "$mechanics_yaml" >&2
+        return 1
+    fi
+
+    local _all_rc=0 _processed=0 _id _name
+
+    while IFS= read -r _id; do
+        [[ -z "$_id" ]] && continue
+        _processed=$((_processed + 1))
+        doc_generate_plugin "$_id" "$plugins_root" "$wiki_root" "$template" || {
+            printf 'doc_generate_all: plugin "%s" failed\n' "$_id" >&2
+            _all_rc=1
+        }
+    done <<< "$_plugin_ids"
+
+    while IFS= read -r _name; do
+        [[ -z "$_name" ]] && continue
+        _processed=$((_processed + 1))
+        doc_generate_mechanic "$_name" "$mechanics_yaml" "$wiki_root" "$template" || {
+            printf 'doc_generate_all: mechanic "%s" failed\n' "$_name" >&2
+            _all_rc=1
+        }
+    done <<< "$_mech_names"
+
+    # A batch that discovered nothing almost always means a wrong root, not
+    # "success" — fail closed rather than silently reporting all-done (#1441).
+    if [[ "$_processed" -eq 0 ]]; then
+        printf 'doc_generate_all: no plugins or mechanics found (plugins_root=%s mechanics_yaml=%s)\n' \
+            "$plugins_root" "$mechanics_yaml" >&2
+        return 1
+    fi
+
+    return "$_all_rc"
 }
 
 # doc_generate_page <source_spec> — CLI-level dispatcher.
