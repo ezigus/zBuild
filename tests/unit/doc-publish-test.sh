@@ -10,6 +10,7 @@
 #   SPEC-6: doc_publish_wiki excludes *.md.hash sidecars from the published tree
 #   SPEC-7: doc_publish_run --dry-run prints planned regen + planned wiki, no push
 #   SPEC-8: CLI `zbuild docs publish --dry-run` exits 0 and prints the planned lines
+#   SPEC-9: doc_publish_run defaults repo_root to the CWD (not the install dir)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -133,6 +134,15 @@ set -e
 assert_eq "[SPEC-8] CLI exits 0" "0" "$_cli_rc"
 assert_contains "[SPEC-8] CLI prints planned regen" "$_cli_out" "planned docs regen:"
 assert_contains "[SPEC-8] CLI prints planned wiki"  "$_cli_out" "planned wiki:"
+
+# ── SPEC-9: repo_root defaults to CWD, not the install/source dir ─────────────
+# The fixture repo has exactly 5 wiki .md pages; the real source tree has many
+# more. Running from $FIX with NO --repo-root must operate on $FIX (5 pages) —
+# proving the default is $PWD, not $_DP_DIR/../.. (which would find the source).
+print_test_section "SPEC-9: doc_publish_run defaults repo_root to CWD"
+_n_fix="$(find "$FIX/docs/wiki" -name '*.md' | wc -l | tr -d ' ')"
+_out="$(cd "$FIX" && ZBUILD_WIKI_REMOTE="https://x/y.wiki.git" doc_publish_run --wiki-only --dry-run 2>&1)"
+assert_contains "[SPEC-9] operates on the CWD repo ($_n_fix fixture pages)" "$_out" "push $_n_fix page(s)"
 
 cleanup_test_env
 print_test_results

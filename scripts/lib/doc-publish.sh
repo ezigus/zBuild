@@ -147,7 +147,9 @@ doc_publish_run() {
             *) error "doc_publish_run: unknown argument: $1"; return 2 ;;
         esac
     done
-    [[ -n "$repo_root" ]] || repo_root="$_DP_DIR/../.."
+    # Default to the CWD (the repo the operator runs in) — matching doc_generate_*'s
+    # CWD-relative roots. NOT the install dir ($_DP_DIR/../..), which lacks docs/.
+    [[ -n "$repo_root" ]] || repo_root="$PWD"
     repo_root="$(cd "$repo_root" && pwd)"
 
     if [[ "$mode" == "all" || "$mode" == "regen" ]]; then
