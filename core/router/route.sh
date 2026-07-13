@@ -145,6 +145,44 @@ route_to_model() {
     return 0
 }
 
+# route_to_model_cli <tier> <prompt> [extra route_to_model args...]
+# Invoke the router from a STANDALONE CLI command (outside a pipeline run) with
+# redaction-BY-CONSTRUCTION — never --skip-precondition, never a scope-override
+# token. When already inside a run, pass through unchanged. Otherwise provision an
+# EPHEMERAL run context (temp events log + a concrete-dirs scope manifest) so
+# route_to_model's normal _route_ensure_redaction/_route_redact_prompt path does
+# REAL redaction instead of the no-manifest passthrough, then tear it down.
+route_to_model_cli() {
+    if [[ $# -lt 2 ]]; then
+        error "route_to_model_cli requires <tier> <prompt>"
+        return 2
+    fi
+    local tier="$1" prompt="$2"
+    shift 2
+
+    # Already in a run → the runner has set the manifest/events; do not disturb.
+    if [[ -n "${ZBUILD_RUN_ID:-}" && -n "${ZBUILD_EVENTS_JSONL:-}" ]]; then
+        route_to_model "$tier" "$prompt" "$@"
+        return $?
+    fi
+
+    # Standalone: build an ephemeral context. The concrete top-level dirs (NOT the
+    # universal-allow `+ ./`) make apply_scope_redaction wrap out-of-scope paths
+    # (e.g. /etc/passwd, absolute $HOME paths) while in-repo paths pass through.
+    local _ev _man _rc=0
+    _ev="$(mktemp "${TMPDIR:-/tmp}/zb-cli-events.XXXXXX")" || { error "route_to_model_cli: mktemp events failed"; return 2; }
+    _man="$(mktemp "${TMPDIR:-/tmp}/zb-cli-scope.XXXXXX")" || { rm -f "$_ev"; error "route_to_model_cli: mktemp manifest failed"; return 2; }
+    printf '+ core/\n+ scripts/\n+ plugins/\n+ tests/\n+ docs/\n+ config/\n' > "$_man"
+
+    ZBUILD_RUN_ID="cli-$$" \
+    ZBUILD_EVENTS_JSONL="$_ev" \
+    ZBUILD_SCOPE_MANIFEST="$_man" \
+        route_to_model "$tier" "$prompt" "$@" || _rc=$?
+
+    rm -f "$_ev" "$_man"
+    return "$_rc"
+}
+
 # ── Shared state set by helpers ──────────────────────────────────────────────
 _ROUTE_MODEL_ID="" _ROUTE_PROVIDER="" _ROUTE_COST_IN="" _ROUTE_COST_OUT=""
 _ROUTE_CACHE_ELIGIBLE="false" _ROUTE_OVERRIDE_SOURCE="" _ROUTE_RESPONSE=""
