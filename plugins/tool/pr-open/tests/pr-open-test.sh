@@ -369,6 +369,8 @@ if [[ -f "$PR_RESULT_JSON" ]]; then
     pr_result_json8="$(cat "$PR_RESULT_JSON")"
     assert_json_key "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json draft=true" \
         "$pr_result_json8" '.draft' "true"
+else
+    assert_fail "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json written" "artifact absent"
 fi
 
 unset -f git

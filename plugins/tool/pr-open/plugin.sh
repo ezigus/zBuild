@@ -76,7 +76,12 @@ _pr_open_run_inner() {
     local artifacts_dir; artifacts_dir="$(dirname "$output_pr_result_json")"
     mkdir -p "$artifacts_dir"
 
+    # Normalize to a strict JSON boolean literal: only "true" stays true; any
+    # other value (unset, empty, or a bogus env-injected string that bypassed
+    # the template validator) collapses to "false". Guarantees `--argjson draft`
+    # and printf %s never receive non-boolean input.
     local _draft_bool="${_TPL_PR_DRAFT:-false}"
+    [[ "$_draft_bool" == "true" ]] || _draft_bool="false"
 
     # ── Safety check 1: refuse if on main or master ──────────────────────────
     local current_branch
