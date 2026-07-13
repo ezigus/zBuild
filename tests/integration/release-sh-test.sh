@@ -186,7 +186,7 @@ export ZBUILD_RELEASE_LAST_TAG="v1.0.0"
 
 # ─── T5: --major cadence flag bumps A, resets B.C ────────────────────────────
 out_major="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --major --milestone "Initiative 1.1" 2>&1)"
-assert_contains "T5: --major cadence bumps A → 2.0.0.5" "$out_major" "planned version: 2.0.0.5"
+assert_contains "T5: --major cadence bumps A, resets z → 2.0.0.0" "$out_major" "planned version: 2.0.0.0"
 
 # ─── T6: CHANGELOG prepend (non-dry-run) preserves [1.0.0] section ──────────
 # Point release.sh at a sandbox CHANGELOG via the ZBUILD_RELEASE_CHANGELOG seam

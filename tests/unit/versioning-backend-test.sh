@@ -85,6 +85,33 @@ set -e
 assert_eq "release_count rc=0 in strict mode outside a git worktree" "0" "$_rc"
 assert_eq "release_count prints 0 outside a git worktree" "0" "$_rc_out"
 
+# ─── Test 7: cadence reset semantics — patch preserves z ─────────────────────
+print_test_section "7. [SPEC-1] patch cadence: z (issues) preserved, not reset"
+export ZBUILD_CONFIG_FILE="/dev/null"
+unset ZBUILD_VERSIONING_BACKEND 2>/dev/null || true
+# Patch with 5 issues_since: w.x.y.z should remain intact (no reset).
+out_patch="$(ZBUILD_VERSION_ANCHOR="1.0" ZBUILD_VERSION_RELEASE_COUNT="2" \
+    ZBUILD_VERSION_ISSUES_SINCE="5" ZBUILD_VERSION_CADENCE="patch" \
+    resolve_repo_version)"
+assert_eq "[SPEC-1] patch cadence: issues_since preserved → 1.0.2.5" "1.0.2.5" "$out_patch"
+
+# ─── Test 8: cadence reset semantics — minor resets z ────────────────────────
+print_test_section "8. [SPEC-2] minor cadence: z forced to 0 on initiative cut"
+# Minor with 5 issues_since: z must be reset to 0, producing w.(x+1).0.0.
+out_minor="$(ZBUILD_VERSION_ANCHOR="1.0" ZBUILD_VERSION_RELEASE_COUNT="2" \
+    ZBUILD_VERSION_ISSUES_SINCE="5" ZBUILD_VERSION_CADENCE="minor" \
+    resolve_repo_version)"
+assert_eq "[SPEC-2] minor cadence: z reset → 1.1.0.0" "1.1.0.0" "$out_minor"
+
+# ─── Test 9: cadence reset semantics — major resets z ────────────────────────
+print_test_section "9. [SPEC-3] major cadence: z forced to 0 on initiative cut"
+# Major with 5 issues_since: z must be reset to 0, producing (w+1).0.0.0.
+out_major="$(ZBUILD_VERSION_ANCHOR="1.0" ZBUILD_VERSION_RELEASE_COUNT="2" \
+    ZBUILD_VERSION_ISSUES_SINCE="5" ZBUILD_VERSION_CADENCE="major" \
+    resolve_repo_version)"
+assert_eq "[SPEC-3] major cadence: z reset → 2.0.0.0" "2.0.0.0" "$out_major"
+unset ZBUILD_VERSION_CADENCE
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

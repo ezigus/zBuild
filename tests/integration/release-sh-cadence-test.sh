@@ -6,8 +6,8 @@
 # dropped, so no PR-workflow assertions live here.
 #
 # SPEC-1:  --patch dry-run prints "cadence: patch" + version 1.0.1.5
-# SPEC-2:  --minor dry-run prints "cadence: minor" + version 1.1.0.5
-# SPEC-3:  --major dry-run prints "cadence: major" + version 2.0.0.5
+# SPEC-2:  --minor dry-run prints "cadence: minor" + version 1.1.0.0 (z reset to 0)
+# SPEC-3:  --major dry-run prints "cadence: major" + version 2.0.0.0 (z reset to 0)
 # SPEC-4:  combining two cadence flags exits rc=2
 # SPEC-5:  non-dry-run writes the VERSION file (ZBUILD_RELEASE_VERSION_FILE seam)
 # SPEC-6:  dry-run announces the planned VERSION stamp but MUTATES NOTHING
@@ -89,13 +89,13 @@ assert_contains "[SPEC-1] --patch version is 1.0.1.5 (D=5)" "$out_patch" "planne
 out_minor="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --minor --milestone "Initiative 1.1" 2>&1)" \
     || { echo "$out_minor"; assert_fail "[SPEC-2] --minor dry-run exits 0"; exit 1; }
 assert_contains "[SPEC-2] --minor dry-run prints cadence: minor" "$out_minor" "cadence:         minor"
-assert_contains "[SPEC-2] --minor version bumps B → 1.1.0.5" "$out_minor" "planned version: 1.1.0.5"
+assert_contains "[SPEC-2] --minor version bumps B, resets z → 1.1.0.0" "$out_minor" "planned version: 1.1.0.0"
 
 # ─── SPEC-3: --major dry-run prints cadence label + bumped version ────────────
 out_major="$(bash "$REPO_ROOT/scripts/release.sh" --dry-run --major --milestone "Initiative 1.1" 2>&1)" \
     || { echo "$out_major"; assert_fail "[SPEC-3] --major dry-run exits 0"; exit 1; }
 assert_contains "[SPEC-3] --major dry-run prints cadence: major" "$out_major" "cadence:         major"
-assert_contains "[SPEC-3] --major version bumps A → 2.0.0.5" "$out_major" "planned version: 2.0.0.5"
+assert_contains "[SPEC-3] --major version bumps A, resets z → 2.0.0.0" "$out_major" "planned version: 2.0.0.0"
 
 # ─── SPEC-4: combining two cadence flags exits rc=2 ──────────────────────────
 rc_two_flags=0

@@ -2,11 +2,12 @@
 # scripts/lib/versioning/initiative-count.sh
 # Default built-in versioning strategy (ADR-011 `versioning` backend, ADR-048).
 #
-# Produces the 4-part A.B.C.D scheme:
-#   A.B = the last COMPLETED initiative, anchored by the latest vA.B.0.0 tag.
-#   C   = release count — the Nth release cut since the vA.B.0.0 initiative release.
-#   D   = number of issues closed since the vA.B.0.0 initiative release.
+# Produces the 4-part w.x.y.z scheme:
+#   w.x = the last COMPLETED initiative, anchored by the latest vw.x.0.0 tag.
+#   y   = release count — the Nth release cut since the vw.x.0.0 initiative release.
+#   z   = number of issues closed since the vw.x.0.0 initiative release.
 # Example: 1.0.0.0 -> 1.0.1.12 -> 1.0.2.13 -> ... -> 1.1.0.0
+# On a minor/major cut both y and z reset to 0, producing w.(x+1).0.0 / (w+1).0.0.0.
 #
 # Sourced library: inherits caller's pipefail; no set -euo pipefail here.
 
@@ -125,7 +126,7 @@ initiative-count_version() {
     # deterministic 0 when not provided so the pure assembly stays testable.
     [[ -z "$issues" ]] && issues="0"
 
-    # Apply cadence: --minor bumps B (resets C); --major bumps A (resets B and C).
+    # Apply cadence: --minor bumps x (resets y and z); --major bumps w (resets x, y and z).
     # Guard on a well-formed 2-part anchor via BASH_REMATCH — a malformed override
     # (e.g. ZBUILD_VERSION_ANCHOR="1.2.3") is passed through UNTOUCHED so the pure
     # compute_version fails loud below, rather than tripping non-integer arithmetic
@@ -135,9 +136,11 @@ initiative-count_version() {
         if [[ "$cadence" == "minor" ]]; then
             anchor="${_a}.$((_b + 1))"
             rcount="0"
+            issues="0"
         elif [[ "$cadence" == "major" ]]; then
             anchor="$((_a + 1)).0"
             rcount="0"
+            issues="0"
         fi
     fi
 
