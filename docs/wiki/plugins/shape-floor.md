@@ -1,5 +1,7 @@
 # shape-floor
 
+The shape-floor plugin is a deterministic, LLM-free gate that enforces a minimum structural shape on a diff, refusing changes that are trivially empty or malformed.
+
 **Shape Floor Stage**
 
 - **Kind:** `tool`

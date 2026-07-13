@@ -1,5 +1,7 @@
 # health-check
 
+The health-check plugin performs the actual HTTP or smoke probe on behalf of the validate agent, returning raw output without making any model calls.
+
 **Health Check Executor**
 
 - **Kind:** `tool`

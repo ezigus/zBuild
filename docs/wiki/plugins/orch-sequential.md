@@ -1,5 +1,7 @@
 # orch-sequential
 
+The orch-sequential plugin is a synchronous orchestrator backend that runs work units one at a time in the calling shell without spawning background jobs.
+
 **Orchestrator Backend — Sequential**
 
 - **Kind:** `tool`

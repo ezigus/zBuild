@@ -1,5 +1,7 @@
 # test
 
+The test plugin rsyncs the committed work into a temporary directory and runs the project's full test suite, capturing the exit code and output as pipeline artifacts.
+
 **Test Stage**
 
 - **Kind:** `tool`

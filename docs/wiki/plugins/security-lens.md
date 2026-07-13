@@ -1,5 +1,7 @@
 # security-lens
 
+The security-lens plugin is an advisory security-audit lens that checks for command injection, credential exposure, authentication bypass paths, and OWASP vulnerabilities.
+
 **Security Audit Lens**
 
 - **Kind:** `agent`

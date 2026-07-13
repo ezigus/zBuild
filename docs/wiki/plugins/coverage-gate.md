@@ -1,5 +1,7 @@
 # coverage-gate
 
+The coverage-gate plugin is a deterministic, LLM-free gate that reads test-coverage results and fails the stage when coverage falls below the configured floor.
+
 **Coverage Read-out Gate**
 
 - **Kind:** `tool`

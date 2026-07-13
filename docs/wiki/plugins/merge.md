@@ -1,5 +1,7 @@
 # merge
 
+The merge plugin automatically merges a pull request when the gate-aggregator verdict is pass and the template's merge policy is configured to auto.
+
 **Auto-Merge Stage**
 
 - **Kind:** `tool`

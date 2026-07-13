@@ -1,5 +1,7 @@
 # pr
 
+The pr plugin opens a pull request via the GitHub CLI, reading the review verdict and refusing to create the PR when the verdict is block.
+
 **PR Open Stage**
 
 - **Kind:** `tool`

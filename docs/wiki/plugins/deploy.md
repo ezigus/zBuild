@@ -1,5 +1,7 @@
 # deploy
 
+The deploy plugin is the pipeline's deployment agent, reading the gate-aggregator verdict and refusing to proceed if any mechanical gate has failed.
+
 **Deploy Agent**
 
 - **Kind:** `agent`

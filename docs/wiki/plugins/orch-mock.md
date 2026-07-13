@@ -1,5 +1,7 @@
 # orch-mock
 
+The orch-mock plugin is a deterministic, synchronous orchestrator backend used exclusively in tests to verify the orchestrator contract without spawning any processes.
+
 **Orchestrator — Mock (test-only synchronous backend)**
 
 - **Kind:** `tool`

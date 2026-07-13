@@ -1,5 +1,7 @@
 # mutation-gate
 
+The mutation-gate plugin is a deterministic, LLM-free gate that reads mutation-test results and fails the stage when the mutation score falls below the configured floor.
+
 **Mutation Read-out Gate**
 
 - **Kind:** `tool`

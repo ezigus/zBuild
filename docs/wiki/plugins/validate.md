@@ -1,5 +1,7 @@
 # validate
 
+The validate plugin is the pipeline's validation agent, reading the deploy result and delegating the actual health check to the health-check tool plugin.
+
 **Validate Agent**
 
 - **Kind:** `agent`

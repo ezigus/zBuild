@@ -1,5 +1,7 @@
 # review-aggregator
 
+The review-aggregator plugin collapses the outputs of parallel advisory review lenses into a single merge-readiness report without blocking the pipeline.
+
 **Review Aggregator (advisory merge-readiness)**
 
 - **Kind:** `agent`

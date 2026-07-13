@@ -1,5 +1,7 @@
 # review-lens
 
+The review-lens plugin is a single advisory review stage that runs one focused lens as an isolated LLM call and returns its findings.
+
 **Review Lens (single, advisory)**
 
 - **Kind:** `agent`
