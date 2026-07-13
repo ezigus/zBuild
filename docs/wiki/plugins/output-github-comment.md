@@ -1,5 +1,7 @@
 # output-github-comment
 
+The output-github-comment plugin is the final pipeline stage, aggregating findings from all prior analysis stages and posting a formatted report as a GitHub issue comment.
+
 **Output — GitHub Issue Comment**
 
 - **Kind:** `tool`

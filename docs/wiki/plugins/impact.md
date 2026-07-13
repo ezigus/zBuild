@@ -1,5 +1,7 @@
 # impact
 
+The impact plugin is an adversarial consequence-finder that reads the design scope block and flags files that will be affected but were not declared in scope.
+
 **Impact Analyzer Stage**
 
 - **Kind:** `agent`

@@ -1,5 +1,7 @@
 # design-gate
 
+The design-gate plugin is a deterministic, LLM-free structural gate that validates the design output before the build stage begins.
+
 **Design Gate Stage**
 
 - **Kind:** `tool`

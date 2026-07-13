@@ -1,5 +1,7 @@
 # review-report
 
+The review-report plugin fans multiple review lenses out as independent LLM calls and assembles their outputs into a combined merge-readiness report.
+
 **Review Report (multi-lens, advisory)**
 
 - **Kind:** `agent`

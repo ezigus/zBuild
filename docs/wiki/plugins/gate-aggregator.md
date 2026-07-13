@@ -1,5 +1,7 @@
 # gate-aggregator
 
+The gate-aggregator plugin collapses all mechanical gate verdicts into one authoritative pass/fail result that determines whether work advances.
+
 **Gate Aggregator**
 
 - **Kind:** `tool`

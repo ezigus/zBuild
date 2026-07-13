@@ -1,5 +1,7 @@
 # memory-ruflo
 
+The memory-ruflo plugin provides a vector memory backend using ruflo's HNSW index, enabling semantic search over stored pipeline context across runs.
+
 **ruflo HNSW Vector Memory Backend**
 
 - **Kind:** `tool`

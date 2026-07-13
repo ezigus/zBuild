@@ -1,5 +1,7 @@
 # memory-sqlite
 
+The memory-sqlite plugin provides the default memory backend, persisting key-value pairs in a local SQLite database without requiring any external services.
+
 **SQLite Memory Backend**
 
 - **Kind:** `tool`

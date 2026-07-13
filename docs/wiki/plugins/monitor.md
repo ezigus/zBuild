@@ -1,5 +1,7 @@
 # monitor
 
+The monitor plugin is a one-shot LLM health-assessment agent that reviews deployment artifacts and reports whether the deployed service is running as expected.
+
 **Monitor Stage**
 
 - **Kind:** `agent`

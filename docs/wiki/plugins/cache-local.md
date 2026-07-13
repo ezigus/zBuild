@@ -1,5 +1,7 @@
 # cache-local
 
+The cache-local plugin is the default cache backend, storing run state archives in a local directory without requiring any external services.
+
 **Cache Backend — Local Filesystem**
 
 - **Kind:** `tool`

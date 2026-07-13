@@ -1,5 +1,7 @@
 # lint-gate
 
+The lint-gate plugin is a deterministic, LLM-free gate that reads lint results from the shared test framework and fails the stage when lint errors are present.
+
 **Lint Read-out Gate**
 
 - **Kind:** `tool`

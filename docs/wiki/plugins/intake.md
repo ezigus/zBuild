@@ -1,5 +1,7 @@
 # intake
 
+The intake plugin is the first stage of every pipeline run, capturing the goal, stripping synthesized context, and recording the starting pipeline state.
+
 **Intake Stage**
 
 - **Kind:** `agent`

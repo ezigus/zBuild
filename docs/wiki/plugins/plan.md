@@ -1,5 +1,7 @@
 # plan
 
+The plan plugin is the pipeline's planning agent, reading a scope manifest and goal to produce a structured plan.json artifact that drives the build stage.
+
 **Plan Stage**
 
 - **Kind:** `agent`

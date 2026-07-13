@@ -1,5 +1,7 @@
 # build
 
+The build plugin runs the implementation LLM to turn a plan into a diff.patch artifact, which the test stage validates before applying.
+
 **Build Stage**
 
 - **Kind:** `agent`

@@ -1,5 +1,7 @@
 # pr-delivery
 
+The pr-delivery plugin is the pipeline's PR delivery agent, reading the review verdict and delegating the actual pull-request creation to the pr-open tool plugin.
+
 **PR Stage**
 
 - **Kind:** `agent`

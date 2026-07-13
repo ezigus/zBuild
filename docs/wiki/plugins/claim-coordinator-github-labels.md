@@ -1,5 +1,7 @@
 # claim-coordinator-github-labels
 
+The claim-coordinator-github-labels plugin implements the default cross-machine claim mechanism using GitHub issue labels so concurrent pipeline runs on different machines don't conflict.
+
 **GitHub Labels Claim Coordinator (default)**
 
 - **Kind:** `claim-coordinator`

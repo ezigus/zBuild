@@ -1,5 +1,7 @@
 # orch-bash-parallel
 
+The orch-bash-parallel plugin is a parallel orchestrator backend that dispatches work units as background bash processes and collects their results.
+
 **Orchestrator Backend — Bash Parallel**
 
 - **Kind:** `tool`

@@ -1,5 +1,7 @@
 # design
 
+The design plugin is the pipeline's design-stage agent, turning a plan into an ADR-style design document that includes a fenced scope block.
+
 **Design Stage**
 
 - **Kind:** `agent`

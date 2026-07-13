@@ -1,5 +1,7 @@
 # cache-gh-actions
 
+The cache-gh-actions plugin provides a cache backend for GitHub Actions environments, using the runner's temporary directory for within-run artifact storage.
+
 **Cache Backend — GitHub Actions (RUNNER_TEMP)**
 
 - **Kind:** `tool`

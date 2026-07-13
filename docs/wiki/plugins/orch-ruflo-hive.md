@@ -1,5 +1,7 @@
 # orch-ruflo-hive
 
+The orch-ruflo-hive plugin is an orchestrator backend that coordinates work units through a ruflo hive-mind while executing them in local bash subshells.
+
 **Orchestrator Backend — Ruflo Hive-Mind**
 
 - **Kind:** `tool`

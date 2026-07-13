@@ -1,5 +1,7 @@
 # secret-scan
 
+The secret-scan plugin is a deterministic, LLM-free gate that blocks the pipeline when hardcoded secrets, credentials, or .env files appear in the proposed change.
+
 **Secret Scan Gate**
 
 - **Kind:** `tool`

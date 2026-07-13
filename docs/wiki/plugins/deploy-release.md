@@ -1,5 +1,7 @@
 # deploy-release
 
+The deploy-release plugin creates and pushes a git tag at HEAD on behalf of the deploy agent, executing the release step without any model calls.
+
 **Deploy Release Executor**
 
 - **Kind:** `tool`

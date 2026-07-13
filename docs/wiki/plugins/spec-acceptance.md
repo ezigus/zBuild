@@ -1,5 +1,7 @@
 # spec-acceptance
 
+The spec-acceptance plugin is a mechanical acceptance-contract gate that verifies every SPEC-n identifier in the design block has a matching tagged assertion in the test file.
+
 **SPEC Acceptance Contract Gate**
 
 - **Kind:** `agent`
