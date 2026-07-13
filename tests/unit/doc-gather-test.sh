@@ -111,6 +111,22 @@ mech_defined_in="$(_bundle_get "$mech_bundle" "defined_in")"
 assert_contains "[SPEC-4] mechanic defined_in non-empty" \
     "$mech_defined_in" "mechanic-source.sh"
 
+# Regression (#1444): a block-scalar field must NOT over-capture the sibling keys
+# that follow it (summary swallowing usage/defined_in). Test the extractor directly
+# — _bundle_get's head -1 hides the over-captured trailing lines.
+raw_summary4="$(_dgather_mechanic_stanza "$MECHANICS_YAML" "fixture-mechanic" "summary")"
+if grep -qE '(^|[^a-z])(usage|defined_in):' <<< "$raw_summary4"; then
+    assert_fail "[SPEC-4] summary must not over-capture sibling keys" "got: $raw_summary4"
+else
+    assert_pass "[SPEC-4] summary does not over-capture usage/defined_in"
+fi
+raw_usage4="$(_dgather_mechanic_stanza "$MECHANICS_YAML" "fixture-mechanic" "usage")"
+if grep -qE '(^|[^a-z])defined_in:' <<< "$raw_usage4"; then
+    assert_fail "[SPEC-4] usage must not over-capture defined_in" "got: $raw_usage4"
+else
+    assert_pass "[SPEC-4] usage does not over-capture defined_in"
+fi
+
 mech_source_b64="$(_bundle_get "$mech_bundle" "source")"
 mech_source_decoded="$(printf '%s' "$mech_source_b64" | base64 -d 2>/dev/null)"
 assert_contains "[SPEC-4] mechanic source contains known content" \

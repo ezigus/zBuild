@@ -29,10 +29,7 @@ _DOC_GATHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Resolve repo root: scripts/lib is two levels below repo root.
 _DOC_GATHER_ROOT="$(cd "$_DOC_GATHER_DIR/../.." && pwd)"
 
-# ─── _dgather_yaml_scalar ──────────────────────────────────────────────────────
-# Extract a simple top-level scalar from a YAML file.
-# Usage: _dgather_yaml_scalar <file> <key>
-# Prints the trimmed value; empty if not found.
+# _dgather_yaml_scalar <file> <key> — top-level YAML scalar, trimmed (empty if absent).
 _dgather_yaml_scalar() {
     local file="$1" key="$2"
     awk -v key="$key" '
@@ -48,10 +45,7 @@ _dgather_yaml_scalar() {
     ' "$file" 2>/dev/null
 }
 
-# ─── _dgather_yaml_multiline ───────────────────────────────────────────────────
-# Extract a block-scalar value (| style) from a top-level YAML key.
-# Reads indented lines after the key until a non-indented line is seen.
-# Usage: _dgather_yaml_multiline <file> <key>
+# _dgather_yaml_multiline <file> <key> — top-level block-scalar (| style) value.
 _dgather_yaml_multiline() {
     local file="$1" key="$2"
     awk -v key="$key" '
@@ -68,8 +62,7 @@ _dgather_yaml_multiline() {
     ' "$file" 2>/dev/null
 }
 
-# ─── _dgather_manifest_field ──────────────────────────────────────────────────
-# Try scalar first, then multiline. Returns first non-empty result.
+# _dgather_manifest_field <file> <key> — scalar value, falling back to block-scalar.
 _dgather_manifest_field() {
     local file="$1" key="$2"
     local val
@@ -80,10 +73,7 @@ _dgather_manifest_field() {
     printf '%s' "$val"
 }
 
-# ─── _dgather_find_manifest ───────────────────────────────────────────────────
-# Find the manifest.yaml for a plugin id under plugins_root.
-# Usage: _dgather_find_manifest <id> <plugins_root>
-# Prints absolute path; returns 1 if not found.
+# _dgather_find_manifest <id> <plugins_root> — path to the manifest whose id matches (rc=1 if none).
 _dgather_find_manifest() {
     local id="$1" plugins_root="$2"
     local manifest
@@ -99,9 +89,7 @@ _dgather_find_manifest() {
     return 1
 }
 
-# ─── doc_gather_plugin_ids ────────────────────────────────────────────────────
-# Emit a newline-delimited list of all plugin ids found under plugins_root.
-# Usage: doc_gather_plugin_ids [plugins_root]
+# doc_gather_plugin_ids [plugins_root] — newline list of every plugin id.
 doc_gather_plugin_ids() {
     local plugins_root="${1:-$_DOC_GATHER_ROOT/plugins}"
     local manifest
@@ -112,10 +100,7 @@ doc_gather_plugin_ids() {
     done < <(find "$plugins_root" -name "manifest.yaml" 2>/dev/null | sort)
 }
 
-# ─── doc_gather_plugin_bundle ─────────────────────────────────────────────────
-# Emit key=value bundle for a plugin id.
-# Usage: doc_gather_plugin_bundle <id> [plugins_root] [wiki_root]
-# Returns 1 (with message to stderr) if the id is not found.
+# doc_gather_plugin_bundle <id> [plugins_root] [wiki_root] — key=value bundle (rc=1 if id absent).
 doc_gather_plugin_bundle() {
     local id="$1"
     local plugins_root="${2:-$_DOC_GATHER_ROOT/plugins}"
@@ -172,9 +157,7 @@ doc_gather_plugin_bundle() {
     printf 'wiki_page=%s\n'    "$wiki_page_b64"
 }
 
-# ─── _dgather_mechanic_stanza ─────────────────────────────────────────────────
-# Extract a named field from a specific mechanic entry in a mechanics YAML.
-# Usage: _dgather_mechanic_stanza <mechanics_yaml> <mechanic_name> <field>
+# _dgather_mechanic_stanza <mechanics_yaml> <name> <field> — one field from one mechanic entry.
 _dgather_mechanic_stanza() {
     local file="$1" mech_name="$2" field="$3"
     # shellcheck disable=SC1078,SC1079
@@ -190,39 +173,41 @@ _dgather_mechanic_stanza() {
             else { in_mech = 0; in_field = 0 }
             next
         }
-        # within the right mechanic block, look for our field
         in_mech && $0 ~ "^[[:space:]]+"field":[[:space:]]*" {
+            # capture the field key indent so block content (deeper) can be told
+            # apart from sibling keys at the SAME indent (#1444 over-capture fix).
+            match($0, /^[[:space:]]+/); field_indent = RLENGTH
             val = $0
             sub(/^[[:space:]]+/, "", val)
             sub("^"field":[[:space:]]*", "", val)
             sub(/[[:space:]]*#.*$/, "", val)
             raw = val
             gsub(/^["'"'"']|["'"'"']$/, "", val)
-            # block scalar marker — read following indented continuation lines
             if (raw ~ /^[|>]/) {
                 in_field = 1
                 found = 1
                 next
             }
-            # inline value (including empty "" / '') — print and exit
             print val
             exit
         }
-        in_mech && in_field && /^[[:space:]][[:space:]][[:space:]][[:space:]]/ {
-            line = $0
-            sub(/^    /, "", line)   # strip 4 leading spaces
-            print line
-            next
+        # block-scalar continuation: only lines indented STRICTLY DEEPER than the
+        # field key are content; a sibling key at the same indent ends the block.
+        in_mech && in_field {
+            if ($0 ~ /^[[:space:]]*$/) { print ""; next }
+            match($0, /^[[:space:]]*/); this_indent = RLENGTH
+            if (this_indent > field_indent) {
+                print substr($0, field_indent + 3)
+                next
+            }
+            exit
         }
-        in_mech && in_field { exit }
         # new top-level mechanic or end of mechanics block ends stanza
         /^[a-zA-Z]/ { in_mech = 0; in_field = 0 }
     ' "$file" 2>/dev/null
 }
 
-# ─── doc_gather_mechanic_ids ──────────────────────────────────────────────────
-# Emit a newline-delimited list of all mechanic names in mechanics_yaml.
-# Usage: doc_gather_mechanic_ids [mechanics_yaml]
+# doc_gather_mechanic_ids [mechanics_yaml] — newline list of every mechanic name.
 doc_gather_mechanic_ids() {
     local mechanics_yaml="${1:-$_DOC_GATHER_ROOT/config/mechanics.yaml}"
     [[ ! -f "$mechanics_yaml" ]] && return 0
@@ -237,10 +222,7 @@ doc_gather_mechanic_ids() {
     ' "$mechanics_yaml" 2>/dev/null
 }
 
-# ─── doc_gather_mechanic_bundle ───────────────────────────────────────────────
-# Emit key=value bundle for a mechanic name.
-# Usage: doc_gather_mechanic_bundle <name> [mechanics_yaml] [wiki_root]
-# Returns 1 (with message to stderr) if the name is not found.
+# doc_gather_mechanic_bundle <name> [mechanics_yaml] [wiki_root] — key=value bundle (rc=1 if absent).
 doc_gather_mechanic_bundle() {
     local mech_name="$1"
     local mechanics_yaml="${2:-$_DOC_GATHER_ROOT/config/mechanics.yaml}"
