@@ -42,6 +42,7 @@ case "${1:-} ${2:-}" in
     "release view")   exit 1 ;;
     "release create") exit 0 ;;
     "release delete") exit 0 ;;
+    "api "*)          printf "[{\"title\":\"Initiative 2.0\",\"open_issues\":0}]\n"; exit 0 ;;
     *) echo "[mock-gh] unhandled: $*" >&2; exit 0 ;;
 esac
 '

@@ -74,6 +74,16 @@ user's local tags. `resolve_repo_version` is the seam a *release cutter* (REL-B 
 uses to compute the next version to stamp. `--version` probes `config/VERSION` **before**
 repo-root `VERSION` and rejects any non-semver content (see Implementation Notes).
 
+### 6. Major cadence requires a fully closed GitHub milestone (REL-G #1464)
+
+Cutting a major release (`--major`) advances the initiative anchor from `A.B` to `(A+1).0`. This is a high-stakes action: it declares an initiative complete. To guard against accidental or premature major cuts, `scripts/release.sh` runs a pre-flight check before any mutation (and also under `--dry-run`):
+
+1. The bumped version's first two components (`A+1` and `0`) form the expected milestone title `"Initiative (A+1).0"`.
+2. `gh api "repos/$REPO/milestones?state=all"` is queried (via the `ZBUILD_GH_CMD` seam, defaulting to `gh`) to find a milestone with that title. If none is found, the release fails closed with rc=1.
+3. The matching milestone's `open_issues` count is checked. If any issues remain open, the release fails closed with rc=1.
+
+`--force` bypasses this check for testing and emergency cuts. `--minor` and `--patch` skip the check unconditionally. The `ZBUILD_GH_CMD` env seam allows tests to mock the API call without touching the real GitHub API.
+
 ### 5. Single install path; signing deferred; cadence implemented (REL-F #1357)
 
 Distribution stays on the single install path (ADR-023); #88 (npm-publish) is obsolete
