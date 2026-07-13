@@ -78,15 +78,19 @@ jobs:
           # the 0-comment runs). We deliberately do NOT pass --fix: this reviewer
           # comments only, never edits/commits (also enforced by contents: read).
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }} --comment'
-          # No --allowedTools pin: the review-only guarantee is the *token*
-          # (contents: read → the workflow token cannot push or commit; the prompt
-          # passes no --fix), NOT a tool allowlist. A tight allowlist starved the
-          # code-review plugin — it hit a permission_denial on a path it needed and
-          # then posted nothing ("No buffered inline comments"), producing silent
-          # 0-comment runs. Letting the plugin use its default toolset restores
-          # reliable posting; the outcome-comment step below makes every run legible.
+          # allowedTools MUST name the inline-comment MCP tool: in the action's
+          # headless mode MCP tools are NOT granted by default (docs: configuration),
+          # so omitting it makes the post a permission_denial → "No buffered inline
+          # comments" (the silent 0-comment runs — this is why removing the allowlist
+          # entirely did NOT fix it). Bash(gh pr comment:*) is the summary fallback
+          # for anthropics/claude-code-action#1087 (the plugin can end on a tool call
+          # with an empty result). The read-only exploration set is a deliberate SAFE
+          # SUPERSET — the review-only guarantee is the *token* (contents: read →
+          # cannot push/commit) + no --fix, not the narrowness of this list; a
+          # too-narrow list previously starved big PRs into max-turns.
           claude_args: |
-            --max-turns 30
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
+            --max-turns 40
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
