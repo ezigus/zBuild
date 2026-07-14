@@ -18,14 +18,20 @@ on:
         required: false
         default: false
         type: boolean
+      skip_if_no_issues:
+        description: "Skip (open no PR) when no issues have closed since the last release — used by the weekly cron"
+        required: false
+        default: false
+        type: boolean
       cadence:
-        description: "Release cadence: minor (default) or major"
+        description: "Release cadence: minor (default), major, or patch"
         required: false
         default: "minor"
         type: choice
         options:
           - minor
           - major
+          - patch
   pull_request:
     types: [closed]
     branches:
@@ -68,8 +74,8 @@ jobs:
             exit 1
           fi
           case "$CADENCE" in
-            minor|major) ;;
-            *) echo "::error::Invalid 'cadence' input: must be 'minor' or 'major' (got: $CADENCE)"; exit 1 ;;
+            minor|major|patch) ;;
+            *) echo "::error::Invalid 'cadence' input: must be 'minor', 'major', or 'patch' (got: $CADENCE)"; exit 1 ;;
           esac
 
       - name: Validate — dry-run pass
@@ -77,6 +83,7 @@ jobs:
         env:
           MAJOR: ${{ inputs.major }}
           CADENCE: ${{ inputs.cadence }}
+          SKIP_IF_NO_ISSUES: ${{ inputs.skip_if_no_issues }}
         run: |
           # Build args as an array — never an unquoted string — so a value can
           # neither word-split nor glob-expand into extra release.sh flags.
@@ -85,6 +92,12 @@ jobs:
             args+=(--major "$MAJOR")
           fi
           args+=("--${CADENCE}")
+          # #1491: the weekly cron dispatches this flow with skip_if_no_issues=true
+          # so empty weeks no-op. Thread it into the dry-run pass too, so validate
+          # does not compute a bogus version for a week that will be skipped.
+          if [[ "$SKIP_IF_NO_ISSUES" == "true" ]]; then
+            args+=(--skip-if-no-issues)
+          fi
           bash scripts/release.sh "${args[@]}" 2>&1 | tee /tmp/dry-run-out.txt
           # Capture the planned tag (vN.N…) so we can name the PR. Two lines
           # begin 'planned tag:'; only the first is a bare tag — the second
@@ -117,6 +130,7 @@ jobs:
           MAJOR: ${{ inputs.major }}
           CADENCE: ${{ inputs.cadence }}
           FALLBACK_VERSION: ${{ steps.validate.outputs.version }}
+          SKIP_IF_NO_ISSUES: ${{ inputs.skip_if_no_issues }}
         run: |
           # #1490: the PREPARE pass — NO --force. release.sh bumps VERSION+CHANGELOG,
           # regenerates docs (idempotent no-op after the step above), then creates
@@ -129,6 +143,10 @@ jobs:
             args+=(--major "$MAJOR")
           fi
           args+=("--${CADENCE}")
+          # #1491: pass skip-if-no-issues through when the (cron) caller set it.
+          if [[ "$SKIP_IF_NO_ISSUES" == "true" ]]; then
+            args+=(--skip-if-no-issues)
+          fi
           # If release.sh exits nonzero (gate refused) we skip PR creation.
           # `skip` is ALWAYS written so the create-PR step can gate explicitly.
           # ZBUILD_RELEASE_BRANCH pins the branch release.sh creates + commits on.
@@ -137,6 +155,16 @@ jobs:
           rc=$?
           set -e
           echo "$out"
+          # #1491: --skip-if-no-issues no-op — release.sh exits 0 WITHOUT cutting when
+          # no issues have closed since the last release. This is the empty-week path
+          # for the weekly cron: treat it as a clean skip (open NO PR), NOT an error.
+          # Detected by release.sh's skip marker rather than rc, since rc is 0 here.
+          if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'no issues closed since last release'; then
+            echo "No issues closed since last release — skipping PR (empty-week no-op)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ $rc -ne 0 ]]; then
             echo "release.sh exited $rc — gate refused. Skipping PR creation."
             echo "skip=true" >> "$GITHUB_OUTPUT"
