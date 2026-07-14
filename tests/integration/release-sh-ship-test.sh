@@ -111,7 +111,15 @@ GIT_CMD_LOG="${GIT_CMD_LOG:-/tmp/git-cmd-calls.log}"
 ORDER_LOG="${ORDER_LOG:-/dev/null}"
 printf "git %s\n" "$*" >> "$GIT_CMD_LOG"
 case "${1:-}" in
-    diff)      exit 0 ;;
+    diff)
+        # Regression hook: when toggled, report a DIRTY tree the moment the
+        # sandboxed VERSION file has been stamped. The clean-tree preflight must
+        # therefore run BEFORE main() stamps VERSION, or --ship falsely aborts.
+        if [[ "${MOCK_GIT_DIFF_DIRTY_IF_VERSION_STAMPED:-0}" == "1" \
+              && -s "${ZBUILD_RELEASE_VERSION_FILE:-/dev/null}" ]]; then
+            exit 1
+        fi
+        exit 0 ;;
     rev-parse)
         if [[ "${2:-}" == "--abbrev-ref" ]]; then echo "main"; fi
         exit 0 ;;
@@ -300,6 +308,27 @@ if grep -qF "checkout -b release/2.0.0.0" "$GIT_CMD_LOG" 2>/dev/null; then
 else
     assert_fail "[SPEC-12] --ship --major must produce branch release/2.0.0.0" \
         "git-cmd log: $(cat "$GIT_CMD_LOG" 2>/dev/null || echo '<empty>')"
+fi
+
+# ── T7: preflight clean-tree check runs BEFORE the VERSION/CHANGELOG stamp ────
+# Regression for the dirty-tree ordering bug (#1498 review, HIGH): main() stamps
+# VERSION before invoking _release_ship, so if the clean-tree preflight ran AFTER
+# the stamp it would always observe a dirty tree and --ship could never proceed in
+# a real repo (where VERSION is tracked). The diff mock reports "dirty" the instant
+# the sandboxed VERSION file is stamped; ship must still succeed — proving the
+# preflight runs before the stamp.
+_reset_logs
+unset MOCK_PR_CHECKS_FAIL 2>/dev/null || true
+export MOCK_GIT_DIFF_DIRTY_IF_VERSION_STAMPED=1
+order_rc=0
+order_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)" \
+    || order_rc=$?
+unset MOCK_GIT_DIFF_DIRTY_IF_VERSION_STAMPED
+if [[ "$order_rc" -eq 0 ]]; then
+    assert_pass "[ship-preflight-order] clean-tree preflight runs before the VERSION stamp (ship not falsely aborted as dirty)"
+else
+    assert_fail "[ship-preflight-order] preflight must run before the VERSION stamp" \
+        "got rc=${order_rc} (falsely 'dirty'): ${order_out}"
 fi
 
 cleanup_test_env

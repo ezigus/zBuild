@@ -139,6 +139,14 @@ main() {
     # released, not wherever the installed script lives (#1487).
     cd "$REPO_ROOT" || { error "release: cannot cd to target repo: $REPO_ROOT"; exit 1; }
 
+    # ── SHIP preflight (--ship): validate a clean starting state BEFORE any
+    #    working-tree mutation. The VERSION/CHANGELOG stamping below dirties the
+    #    tree by design, so a clean-tree check must run FIRST or --ship could
+    #    never proceed in a real repo (the stamped bump would trip it).
+    if $ship; then
+        _release_ship_preflight
+    fi
+
     # ── Anchor: the tag we generate notes "since". v1.0.0 exists → first release
     #    anchors on it; genesis fallback when the repo has no tags at all. ──────
     local last_tag; last_tag="$(release_notes_last_tag)"
@@ -446,20 +454,15 @@ _release_publish() {
     fi
 }
 
-# _release_ship <version> <tag> <notes> <changelog> <version_file>
-# The SHIP path (--ship): one-shot prepare→push→PR→checks-wait→merge→publish.
-# All locals are pinned from main() — never recomputed here. Always gated (--force
-# is disallowed at arg-parse). Seams: ZBUILD_GH_PR_CMD (default: gh) for all gh pr
-# subcommands; ZBUILD_GIT_CMD (default: git) for branch push + checkout/pull;
-# ZBUILD_SHIP_CHECKS_TIMEOUT (default: 1800) bounds the checks-wait step.
-_release_ship() {
-    local version="$1" tag="$2" notes="$3" changelog="$4" version_file="$5"
-    local gh_pr_cmd="${ZBUILD_GH_PR_CMD:-gh}"
+# _release_ship_preflight — validate the starting state for --ship BEFORE any
+# working-tree mutation: gh is authed, the tree is clean, and HEAD is on main.
+# Runs from main() prior to the VERSION/CHANGELOG stamp (which dirties the tree by
+# design). Uses ZBUILD_GH_CMD (the general gh seam) for auth — NOT ZBUILD_GH_PR_CMD,
+# which is scoped to `gh pr` subcommands — and ZBUILD_GIT_CMD for the git checks.
+_release_ship_preflight() {
+    local gh_cmd="${ZBUILD_GH_CMD:-gh}"
     local git_cmd="${ZBUILD_GIT_CMD:-git}"
-    local checks_timeout="${ZBUILD_SHIP_CHECKS_TIMEOUT:-1800}"
-
-    # ── Preflight ─────────────────────────────────────────────────────────────
-    if ! $gh_pr_cmd auth status >/dev/null 2>&1; then
+    if ! $gh_cmd auth status >/dev/null 2>&1; then
         error "release --ship: gh auth check failed — run 'gh auth login' first"
         exit 1
     fi
@@ -473,6 +476,21 @@ _release_ship() {
         error "release --ship: HEAD is on '${current_branch}', not 'main' — switch to main first"
         exit 1
     fi
+}
+
+# _release_ship <version> <tag> <notes> <changelog> <version_file>
+# The SHIP path (--ship): one-shot prepare→push→PR→checks-wait→merge→publish.
+# All locals are pinned from main() — never recomputed here. Always gated (--force
+# is disallowed at arg-parse). Preflight (auth/clean-tree/on-main) already ran in
+# main() BEFORE the tree was mutated. Seams: ZBUILD_GH_PR_CMD (default: gh) for all
+# gh pr subcommands; ZBUILD_GIT_CMD (default: git) for branch push + checkout/pull;
+# ZBUILD_SHIP_CHECKS_TIMEOUT (default: 1800) bounds the checks-wait step.
+_release_ship() {
+    local version="$1" tag="$2" notes="$3" changelog="$4" version_file="$5"
+    local gh_pr_cmd="${ZBUILD_GH_PR_CMD:-gh}"
+    local git_cmd="${ZBUILD_GIT_CMD:-git}"
+    local checks_timeout="${ZBUILD_SHIP_CHECKS_TIMEOUT:-1800}"
+    [[ "$checks_timeout" =~ ^[0-9]+$ ]] || checks_timeout=1800
 
     # ── Step 1: prepare (branch + commit) ─────────────────────────────────────
     _release_prepare "$version" "$changelog" "$version_file"
@@ -485,40 +503,49 @@ _release_ship() {
     }
     success "release --ship: branch $branch pushed to origin"
 
-    # ── Step 3: gh pr create ──────────────────────────────────────────────────
-    $gh_pr_cmd pr create \
+    # ── Step 3: gh pr create — capture the PR ref so the checks-wait and merge
+    #    steps target THIS PR explicitly, not gh's current-branch autodetection
+    #    (and never pass the branch name where a PR id is expected). ────────────
+    local pr_url pr_ref
+    pr_url="$($gh_pr_cmd pr create \
         --title "chore: release ${tag}" \
         --body "$notes" \
         --base main \
-        --head "$branch" || {
+        --head "$branch")" || {
         error "release --ship: gh pr create failed"
         exit 1
     }
-    success "release --ship: PR created for ${tag}"
+    pr_ref="${pr_url##*/}"
+    if [[ ! "$pr_ref" =~ ^[0-9]+$ ]]; then
+        error "release --ship: could not determine PR number from 'gh pr create' output: ${pr_url}"
+        exit 1
+    fi
+    success "release --ship: PR #${pr_ref} created for ${tag}"
 
     # ── Step 4: checks-wait (bounded by ZBUILD_SHIP_CHECKS_TIMEOUT) ──────────
     # timeout strips the bound in the test mock; in production it kills the
     # gh process if checks don't complete within the deadline.
-    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks --watch --fail-fast; then
-        error "release --ship: PR checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
+    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast; then
+        error "release --ship: PR #${pr_ref} checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
         exit 1
     fi
-    success "release --ship: PR checks passed"
+    success "release --ship: PR #${pr_ref} checks passed"
 
-    # ── Step 5: gh pr merge --squash ─────────────────────────────────────────
-    $gh_pr_cmd pr merge "$branch" --squash || {
+    # ── Step 5: gh pr merge --squash (by PR number, not branch name) ─────────
+    $gh_pr_cmd pr merge "$pr_ref" --squash || {
         error "release --ship: gh pr merge --squash failed"
         exit 1
     }
-    success "release --ship: PR merged"
+    success "release --ship: PR #${pr_ref} merged"
 
-    # ── Step 6: sync to merged HEAD ──────────────────────────────────────────
+    # ── Step 6: sync to merged HEAD (fast-forward only — never fabricate a
+    #    merge commit on main, which would make the release tag point at it) ──
     $git_cmd checkout main || {
         error "release --ship: could not switch to main after merge"
         exit 1
     }
-    $git_cmd pull || {
-        error "release --ship: could not pull main after merge"
+    $git_cmd pull --ff-only || {
+        error "release --ship: could not fast-forward main after merge"
         exit 1
     }
     success "release --ship: main updated to merged HEAD"
