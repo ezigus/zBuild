@@ -157,7 +157,7 @@ jobs:
           # it flows in via env: and is only ever referenced as a quoted var.
           branch="release/auto-$(date +%Y%m%d)"
           git checkout -b "$branch"
-          git add CHANGELOG.md docs/wiki README.md
+          git add CHANGELOG.md VERSION docs/wiki README.md
           git commit -m "chore: changelog + regenerated docs for ${VERSION}" || true
           git push origin "$branch"
           pr_url="$(gh pr create \
