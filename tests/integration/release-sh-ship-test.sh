@@ -162,6 +162,12 @@ exit 0
 '
 export ZBUILD_DOC_STYLE_LINT="$TEST_TEMP_DIR/bin/mock-lint-doc-style"
 
+# Auto-answer 'y' for happy-path ship tests via the ZBUILD_SHIP_CONFIRM_ANSWER
+# string seam (confirm gate added in SHIP-2 requires a non-TTY seam in CI). The
+# failing-checks test (SPEC-10) aborts before the confirm gate, so this is
+# irrelevant there. The confirm-'n' decline path is covered in the wrapper test.
+export ZBUILD_SHIP_CONFIRM_ANSWER="y"
+
 # Outdir for tarball build (publish step).
 SHIP_OUTDIR="$TEST_TEMP_DIR/release-out"
 mkdir -p "$SHIP_OUTDIR"

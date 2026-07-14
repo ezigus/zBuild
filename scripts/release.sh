@@ -72,17 +72,20 @@ zbuild release — cut a release: compute version, generate notes, update CHANGE
 stamp VERSION, build the tarball, tag, and publish the GitHub release.
 
 Usage:
-  release.sh [--dry-run] [--patch|--minor|--major] [--force] [--ship] [--milestone <name>]
+  release.sh [--dry-run] [--patch|--minor|--major] [--force] [--ship] [--yes] [--milestone <name>]
 
 Flags:
   --dry-run              Print the planned version, tag, notes, and version-stamp. Mutates nothing.
+                         With --ship: print the 7-step ship plan and exit 0 (no PR, no tag).
   --patch                Cadence: patch release (default). Bumps D (issues-since count).
   --minor                Cadence: minor release. Bumps B component, resets C to 0.
   --major                Cadence: major release. Bumps A component, resets B.C to 0.
   --force                Bypass release gates (testing / manual cuts).
-  --ship                 Full one-shot: prepare → push → PR → checks-wait → merge → publish.
+  --ship                 Full one-shot: prepare → push → PR → checks-wait → confirm → merge → publish.
                          Always gated (incompatible with --force). Requires gh auth + clean tree
                          on main. ZBUILD_SHIP_CHECKS_TIMEOUT controls the checks-wait bound (default 1800s).
+  --yes                  Skip the merge+publish confirm gate in --ship mode (for automation/CI).
+                         Equivalent to setting ZBUILD_SHIP_YES=1.
   --milestone <name>     Scope the notes to a GitHub milestone (default: closed-since-tag).
   --skip-if-no-issues    Exit 0 (skip) when no issues closed since last release (D=0).
   -h, --help             Show this help.
@@ -104,12 +107,13 @@ _release_on_merge_hook() {
 }
 
 main() {
-    local dry_run=false force=false ship=false cadence="" milestone="" skip_if_no_issues=false
+    local dry_run=false force=false ship=false yes=false cadence="" milestone="" skip_if_no_issues=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dry-run)  dry_run=true; shift ;;
             --force)    force=true; shift ;;
             --ship)     ship=true; shift ;;
+            --yes)      yes=true; shift ;;
             --skip-if-no-issues) skip_if_no_issues=true; shift ;;
             --patch)
                 [[ -n "$cadence" ]] && { error "Only one cadence flag allowed (--patch, --minor, --major)"; exit 2; }
@@ -131,6 +135,7 @@ main() {
         error "release: --ship and --force are mutually exclusive (--ship is always gated)"
         release_usage; exit 2
     fi
+    [[ "${ZBUILD_SHIP_YES:-}" == "1" ]] && yes=true
     cadence="${cadence:-patch}"
     export ZBUILD_VERSION_CADENCE="$cadence"
 
@@ -143,7 +148,8 @@ main() {
     #    working-tree mutation. The VERSION/CHANGELOG stamping below dirties the
     #    tree by design, so a clean-tree check must run FIRST or --ship could
     #    never proceed in a real repo (the stamped bump would trip it).
-    if $ship; then
+    # --dry-run skips the preflight (auth+clean-tree not required for a plan preview).
+    if $ship && ! $dry_run; then
         _release_ship_preflight
     fi
 
@@ -224,6 +230,21 @@ main() {
     fi
 
     if $dry_run; then
+        if $ship; then
+            info "release --ship (dry-run) — nothing will be mutated"
+            printf 'planned version:  %s\n' "$version"
+            printf 'planned tag:      %s\n' "$tag"
+            printf 'planned branch:   release/%s\n' "$version"
+            printf 'planned ship steps:\n'
+            printf '  [1/7] prepare: bump VERSION+CHANGELOG, branch release/%s, commit\n' "$version"
+            printf '  [2/7] push: release/%s → origin\n' "$version"
+            printf '  [3/7] PR create: "chore: release %s" → main\n' "$tag"
+            printf '  [4/7] checks-wait: all PR checks pass (timeout: %ss)\n' "${ZBUILD_SHIP_CHECKS_TIMEOUT:-1800}"
+            printf '  [5/7] confirm: "Proceed with merge+publish? [y/N]"\n'
+            printf '  [6/7] merge: squash-merge PR → main, fast-forward main\n'
+            printf '  [7/7] publish: git tag %s → push → gh release create → wiki\n' "$tag"
+            return 0
+        fi
         info "release (dry-run) — nothing will be mutated"
         printf 'planned version: %s\n' "$version"
         printf 'planned tag:     %s\n' "$tag"
@@ -275,7 +296,7 @@ main() {
     # gated command. Version/tag/notes are already computed above — _release_ship
     # never recomputes them (ZBUILD_GH_PR_CMD seam covers all gh pr subcommands).
     if $ship; then
-        _release_ship "$version" "$tag" "$notes" "$changelog" "$version_file"
+        _release_ship "$version" "$tag" "$notes" "$changelog" "$version_file" "$yes"
         return 0
     fi
 
@@ -478,34 +499,41 @@ _release_ship_preflight() {
     fi
 }
 
-# _release_ship <version> <tag> <notes> <changelog> <version_file>
-# The SHIP path (--ship): one-shot prepare→push→PR→checks-wait→merge→publish.
+# _release_ship <version> <tag> <notes> <changelog> <version_file> [yes]
+# The SHIP path (--ship): one-shot prepare→push→PR→checks-wait→confirm→merge→publish.
 # All locals are pinned from main() — never recomputed here. Always gated (--force
 # is disallowed at arg-parse). Preflight (auth/clean-tree/on-main) already ran in
 # main() BEFORE the tree was mutated. Seams: ZBUILD_GH_PR_CMD (default: gh) for all
 # gh pr subcommands; ZBUILD_GIT_CMD (default: git) for branch push + checkout/pull;
-# ZBUILD_SHIP_CHECKS_TIMEOUT (default: 1800) bounds the checks-wait step.
+# ZBUILD_SHIP_CHECKS_TIMEOUT (default: 1800) bounds the checks-wait step;
+# ZBUILD_SHIP_CONFIRM_ANSWER (when set) is used verbatim as the y/N answer instead
+# of prompting /dev/tty (a plain string seam for non-interactive environments — it
+# is NEVER executed, so it carries no command-exec surface).
 _release_ship() {
-    local version="$1" tag="$2" notes="$3" changelog="$4" version_file="$5"
+    local version="$1" tag="$2" notes="$3" changelog="$4" version_file="$5" yes="${6:-false}"
     local gh_pr_cmd="${ZBUILD_GH_PR_CMD:-gh}"
     local git_cmd="${ZBUILD_GIT_CMD:-git}"
     local checks_timeout="${ZBUILD_SHIP_CHECKS_TIMEOUT:-1800}"
     [[ "$checks_timeout" =~ ^[0-9]+$ ]] || checks_timeout=1800
 
-    # ── Step 1: prepare (branch + commit) ─────────────────────────────────────
+    # ── Step 1/7: prepare (branch + commit) ───────────────────────────────────
+    info "release --ship: [1/7] prepare: bump VERSION+CHANGELOG, create branch release/${version}"
     _release_prepare "$version" "$changelog" "$version_file"
+    success "release --ship: [1/7] prepare done — branch release/${version} committed"
 
-    # ── Step 2: push release branch to origin ─────────────────────────────────
+    # ── Step 2/7: push release branch to origin ───────────────────────────────
+    info "release --ship: [2/7] push: release/${version} → origin"
     local branch="${ZBUILD_RELEASE_BRANCH:-release/${version}}"
     $git_cmd push origin "$branch" || {
         error "release --ship: could not push branch $branch to origin"
         exit 1
     }
-    success "release --ship: branch $branch pushed to origin"
+    success "release --ship: [2/7] branch $branch pushed to origin"
 
-    # ── Step 3: gh pr create — capture the PR ref so the checks-wait and merge
-    #    steps target THIS PR explicitly, not gh's current-branch autodetection
-    #    (and never pass the branch name where a PR id is expected). ────────────
+    # ── Step 3/7: gh pr create — capture the PR ref so the checks-wait and
+    #    merge steps target THIS PR explicitly, not gh's current-branch
+    #    autodetection (never pass the branch name where a PR id is expected).
+    info "release --ship: [3/7] PR create: chore: release ${tag}"
     local pr_url pr_ref
     pr_url="$($gh_pr_cmd pr create \
         --title "chore: release ${tag}" \
@@ -520,26 +548,46 @@ _release_ship() {
         error "release --ship: could not determine PR number from 'gh pr create' output: ${pr_url}"
         exit 1
     fi
-    success "release --ship: PR #${pr_ref} created for ${tag}"
+    success "release --ship: [3/7] PR #${pr_ref} created for ${tag}"
 
-    # ── Step 4: checks-wait (bounded by ZBUILD_SHIP_CHECKS_TIMEOUT) ──────────
+    # ── Step 4/7: checks-wait (bounded by ZBUILD_SHIP_CHECKS_TIMEOUT) ─────────
     # timeout strips the bound in the test mock; in production it kills the
     # gh process if checks don't complete within the deadline.
+    info "release --ship: [4/7] checks-wait: PR #${pr_ref} (timeout ${checks_timeout}s)"
     if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast; then
         error "release --ship: PR #${pr_ref} checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
         exit 1
     fi
-    success "release --ship: PR #${pr_ref} checks passed"
+    success "release --ship: [4/7] PR #${pr_ref} checks passed"
 
-    # ── Step 5: gh pr merge --squash (by PR number, not branch name) ─────────
+    # ── Step 5/7: confirm gate (skipped when --yes / ZBUILD_SHIP_YES=1) ───────
+    # Prompt goes to stderr so it appears even when stdout is piped.
+    # ZBUILD_SHIP_CONFIRM_ANSWER seam: when set, its value IS the answer (a plain
+    # string, never executed) — allows non-interactive tests without a real TTY.
+    info "release --ship: [5/7] confirm: version ${version}, tag ${tag}, PR #${pr_ref}"
+    if ! $yes; then
+        printf 'Proceed with merge+publish? [y/N] ' >&2
+        local _answer
+        if [[ -n "${ZBUILD_SHIP_CONFIRM_ANSWER:-}" ]]; then
+            _answer="${ZBUILD_SHIP_CONFIRM_ANSWER}"
+        else
+            read -r _answer < /dev/tty
+        fi
+        if [[ "$_answer" != "y" && "$_answer" != "Y" ]]; then
+            error "release --ship: merge+publish aborted (confirm gate)"
+            exit 1
+        fi
+    fi
+    success "release --ship: [5/7] confirmed — proceeding with merge+publish"
+
+    # ── Step 6/7: merge (squash + sync to merged HEAD) ────────────────────────
+    # fast-forward only — never fabricate a merge commit on main, which would
+    # make the release tag point at it.
+    info "release --ship: [6/7] merge: PR #${pr_ref} --squash → main"
     $gh_pr_cmd pr merge "$pr_ref" --squash || {
         error "release --ship: gh pr merge --squash failed"
         exit 1
     }
-    success "release --ship: PR #${pr_ref} merged"
-
-    # ── Step 6: sync to merged HEAD (fast-forward only — never fabricate a
-    #    merge commit on main, which would make the release tag point at it) ──
     $git_cmd checkout main || {
         error "release --ship: could not switch to main after merge"
         exit 1
@@ -548,10 +596,12 @@ _release_ship() {
         error "release --ship: could not fast-forward main after merge"
         exit 1
     }
-    success "release --ship: main updated to merged HEAD"
+    success "release --ship: [6/7] PR #${pr_ref} merged, main updated to merged HEAD"
 
-    # ── Step 7: publish (tag + push tag + gh release + wiki) ─────────────────
+    # ── Step 7/7: publish (tag + push tag + gh release + wiki) ───────────────
+    info "release --ship: [7/7] publish: git tag ${tag} → push → gh release create → wiki"
     _release_publish "$version" "$tag" "$notes"
+    success "release --ship: [7/7] published ${tag}"
 }
 
 # _release_major_preflight <version> — pre-flight checks for a major release.
