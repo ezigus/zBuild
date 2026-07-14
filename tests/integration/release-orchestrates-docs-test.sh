@@ -129,11 +129,31 @@ _reset_logs() {
     cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog"
 }
 
-# ── T1: non-dry-run invokes regen (SPEC-1) + wiki (SPEC-2) in order (SPEC-3) ──
-print_test_section "SPEC-1+2+3: non-dry-run release invokes regen then wiki"
+# ── T0: PREPARE (default apply, #1490) regenerates docs but does NOT push wiki ─
+# The wiki push is a PUBLISH-only op (--force); the default apply is the prepare
+# path (branch + commit + regen) that opens the release PR — no wiki push yet.
+print_test_section "SPEC-0: prepare (default apply) regens docs but does NOT push wiki"
 _reset_logs
-out="$(bash "$REPO_ROOT/scripts/release.sh" --milestone "Initiative 1.1" 2>&1)" \
-    || { printf '%s\n' "$out"; assert_fail "[SPEC-1] non-dry-run release.sh exits 0"; exit 1; }
+prep_out="$(bash "$REPO_ROOT/scripts/release.sh" --milestone "Initiative 1.1" 2>&1)" \
+    || { printf '%s\n' "$prep_out"; assert_fail "[SPEC-0] prepare release.sh exits 0"; exit 1; }
+if [[ -f "$REGEN_SENTINEL" ]]; then
+    assert_pass "[SPEC-0] prepare invokes doc_publish_regen (sentinel present)"
+else
+    assert_fail "[SPEC-0] prepare invokes doc_publish_regen (sentinel present)" \
+        "CMD_LOG: $(cat "$CMD_LOG" 2>/dev/null || echo '<empty>')"
+fi
+if grep -qF "push" "$GIT_LOG" 2>/dev/null; then
+    assert_fail "[SPEC-0] prepare must NOT push the wiki (publish-only op)" \
+        "GIT_LOG: $(cat "$GIT_LOG" 2>/dev/null || echo '<empty>')"
+else
+    assert_pass "[SPEC-0] prepare does not push the wiki"
+fi
+
+# ── T1: PUBLISH (--force) invokes regen (SPEC-1) + wiki (SPEC-2) in order (SPEC-3)
+print_test_section "SPEC-1+2+3: publish (--force) release invokes regen then wiki"
+_reset_logs
+out="$(bash "$REPO_ROOT/scripts/release.sh" --force --milestone "Initiative 1.1" 2>&1)" \
+    || { printf '%s\n' "$out"; assert_fail "[SPEC-1] publish (--force) release.sh exits 0"; exit 1; }
 
 # SPEC-1: regen sentinel was written
 if [[ -f "$REGEN_SENTINEL" ]]; then

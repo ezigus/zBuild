@@ -3,10 +3,18 @@
 #
 # Computes the next version via the pluggable versioning backend
 # (resolve_repo_version, ADR-011 / ADR-048), generates per-issue release notes,
-# prepends them to CHANGELOG.md, stamps VERSION, builds the release tarball,
-# creates the annotated git tag, and publishes the GitHub release.
+# prepends them to CHANGELOG.md, and stamps VERSION.
 # REL-D's weekly workflow and `zbuild release` (#1355) CALL this script —
 # logic lives here once, never duplicated (DRY).
+#
+# #1490 — the ONE release flow is branch → commit → PR → publish, split into:
+#   PREPARE (default apply, no --force): bump VERSION+CHANGELOG, regenerate docs,
+#     then create a release/<version> branch and COMMIT the bump on it. Never
+#     mutates the caller's current branch in place; never tags or publishes.
+#     release.yml's open-release-pr job opens the PR from that branch.
+#   PUBLISH (--force, release.yml's post-merge publish job): build the tarball,
+#     tag the merged commit, PUSH the tag to origin BEFORE `gh release create`
+#     (fixes "tag exists locally but not pushed"), publish the Release, push wiki.
 #
 # Flags:
 #   --patch              Cadence: patch release (default). Bumps D (issues-since count).
@@ -242,6 +250,84 @@ main() {
     printf '%s\n' "$version" > "$version_file"
     success "VERSION updated to ${version}"
 
+    # ── SPLIT: prepare (default apply) vs publish (--force). ──────────────────
+    # #1490: the ONE release flow is branch → commit → PR → publish. The bump we
+    # just wrote must NOT tag or publish on the default path — it lands on a
+    # release branch for a PR. Only --force (release.yml's post-merge publish job,
+    # running on the already-merged tree) tags the merged commit, PUSHES the tag,
+    # then publishes the GitHub Release.
+    if ! $force; then
+        _release_prepare "$version" "$changelog" "$version_file"
+    else
+        _release_publish "$version" "$tag" "$notes"
+    fi
+}
+
+# _release_prepare <version> <changelog_path> <version_file> — the PREPARE path
+# (#1490). Regenerate docs, then create a release/<version> branch and commit the
+# bump (VERSION + CHANGELOG + regenerated docs) ON THAT BRANCH — never mutating
+# the caller's current branch in place, never tagging or publishing. Leaves the
+# branch ready for `gh pr create` (release.yml opens the PR; the publish job runs
+# on merge). Git operations go through ZBUILD_GIT_CMD (default git) so tests mock
+# them; ZBUILD_RELEASE_NO_PUSH=1 skips the branch/commit for changelog-only tests.
+_release_prepare() {
+    local version="$1" changelog="$2" version_file="$3"
+    local tag="v${version}"
+
+    # ── DOC REGEN: regenerate wiki pages so they ride the release PR. ─────────
+    # Runs on the prepare path so the regenerated docs are committed on the
+    # release branch alongside VERSION+CHANGELOG.
+    if [[ -n "${ZBUILD_DOC_PUBLISH_CMD:-}" ]]; then
+        "$ZBUILD_DOC_PUBLISH_CMD" regen "$REPO_ROOT" || { error "release: doc_publish_regen failed"; exit 1; }
+    else
+        doc_publish_regen "$REPO_ROOT" || { error "release: doc_publish_regen failed"; exit 1; }
+    fi
+
+    # ZBUILD_RELEASE_NO_PUSH: changelog/version-only tests bump the files but do
+    # not want the branch/commit machinery. NO_GITHUB without a ZBUILD_GIT_CMD
+    # seam likewise skips real git in minimal test contexts.
+    if [[ "${ZBUILD_RELEASE_NO_PUSH:-}" == "1" ]]; then
+        info "release: ZBUILD_RELEASE_NO_PUSH=1 — bump written, skipping release-branch commit"
+        return 0
+    fi
+    if [[ "${NO_GITHUB:-}" == "true" && -z "${ZBUILD_GIT_CMD:-}" ]]; then
+        info "release: NO_GITHUB=true (no ZBUILD_GIT_CMD) — bump written, skipping release-branch commit"
+        return 0
+    fi
+
+    local git_cmd="${ZBUILD_GIT_CMD:-git}"
+    # Branch name: release/<version> by default; overridable for a date-stamped
+    # release/auto-YYYYMMDD name via ZBUILD_RELEASE_BRANCH.
+    local branch="${ZBUILD_RELEASE_BRANCH:-release/${version}}"
+
+    $git_cmd checkout -b "$branch" || {
+        error "release: could not create release branch $branch"
+        exit 1
+    }
+    # Stage ONLY the release artifacts (VERSION + CHANGELOG + regenerated docs) —
+    # never a blanket `git add -A`, which could sweep in unrelated worktree state.
+    $git_cmd add "$version_file" "$changelog" || true
+    # Regenerated docs (may not exist in minimal test contexts — best-effort add).
+    $git_cmd add "$REPO_ROOT/docs/wiki" "$REPO_ROOT/README.md" 2>/dev/null || true
+    $git_cmd commit -m "chore: release ${tag} — bump VERSION + CHANGELOG + regenerated docs" || {
+        error "release: could not commit release bump on $branch"
+        exit 1
+    }
+    success "release: bump committed on branch $branch (ready for PR)"
+    if declare -F emit_event >/dev/null 2>&1; then
+        emit_event "release.prepared" "tag=$tag" "version=$version" "branch=$branch" || true
+    fi
+}
+
+# _release_publish <version> <tag> <notes> — the PUBLISH path (--force, #1490).
+# Runs post-merge on the already-merged tree (release.yml publish job). Builds the
+# tarball, creates the annotated tag on the CURRENT (merged) commit, PUSHES the
+# tag to origin BEFORE `gh release create` (fixes the "tag exists locally but not
+# pushed" failure), publishes the GitHub Release, then pushes the wiki. NO_GITHUB
+# without a ZBUILD_GIT_TAG_CMD seam skips tag+publish in minimal test contexts.
+_release_publish() {
+    local version="$1" tag="$2" notes="$3"
+
     # ── BUILD THE RELEASE TARBALL (REL-C #875) ────────────────────────────────
     local outdir
     if [[ -n "${ZBUILD_RELEASE_OUTDIR:-}" ]]; then
@@ -256,32 +342,34 @@ main() {
     }
     success "tarball built: $tarball"
 
-    # ── CREATE THE ANNOTATED GIT TAG (REL-D #877) ─────────────────────────────
-    # Idempotency: skip re-tagging when the tag already exists and --force is not set.
-    # NO_GITHUB=true (set by setup_test_env) + no ZBUILD_GIT_TAG_CMD seam → skip to
-    # prevent real git tag creation in minimal test contexts (gate-focused tests that
-    # don't set up a git tag mock). Tests that DO mock git tag set ZBUILD_GIT_TAG_CMD.
+    # ── CREATE + PUSH THE ANNOTATED GIT TAG (REL-D #877 / #1490) ──────────────
+    # NO_GITHUB=true (set by setup_test_env) + no ZBUILD_GIT_TAG_CMD seam → skip
+    # to prevent real git tag creation in minimal test contexts. Tests that DO
+    # mock git tag set ZBUILD_GIT_TAG_CMD.
     local git_tag_cmd="${ZBUILD_GIT_TAG_CMD:-git}"
     local _skip_publish=false
     if [[ "${NO_GITHUB:-}" == "true" && -z "${ZBUILD_GIT_TAG_CMD:-}" ]]; then
         info "release: NO_GITHUB=true (no ZBUILD_GIT_TAG_CMD) — skipping git tag + publish"
         _skip_publish=true
     else
+        # --force always re-tags: the merged commit is the release commit.
         if $git_tag_cmd tag -l "$tag" 2>/dev/null | grep -qF "$tag"; then
-            if $force; then
-                info "release: tag $tag already exists — --force set, re-tagging"
-                $git_tag_cmd tag -d "$tag" 2>/dev/null || true
-            else
-                info "release: tag $tag already exists — skipping re-tag (safe re-run)"
-            fi
+            info "release: tag $tag already exists — --force set, re-tagging"
+            $git_tag_cmd tag -d "$tag" 2>/dev/null || true
         fi
-        if ! $git_tag_cmd tag -l "$tag" 2>/dev/null | grep -qF "$tag"; then
-            $git_tag_cmd tag -a "$tag" -m "Release $version" || {
-                error "release: git tag $tag failed"
-                exit 1
-            }
-            success "git tag created: $tag"
-        fi
+        $git_tag_cmd tag -a "$tag" -m "Release $version" || {
+            error "release: git tag $tag failed"
+            exit 1
+        }
+        success "git tag created: $tag"
+        # #1490: PUSH THE TAG TO ORIGIN *BEFORE* `gh release create`. gh refuses
+        # to create a release for a tag that exists only locally — the root-cause
+        # failure this issue fixes. --force overwrites a stale remote tag.
+        $git_tag_cmd push --force origin "$tag" || {
+            error "release: could not push tag $tag to origin"
+            exit 1
+        }
+        success "git tag pushed to origin: $tag"
         if declare -F emit_event >/dev/null 2>&1; then
             emit_event "release.tagged" "tag=$tag" "version=$version" || true
         fi
@@ -298,43 +386,38 @@ main() {
     if $_skip_publish; then
         : # gate-focused test context without a gh release mock — skip publish
     else
-        # Idempotency: skip if the release already exists and --force is not set.
         local sums_file="$outdir/SHA256SUMS"
         local release_exists=false
         if $gh_cmd release view "$tag" >/dev/null 2>&1; then
             release_exists=true
         fi
-        if $release_exists && ! $force; then
-            info "release: GitHub Release $tag already exists — skipping (safe re-run)"
-        else
-            # Write notes to a temp file to avoid shell-quoting issues with multi-line content.
-            local notes_file; notes_file="$(mktemp)"
-            printf '%s\n' "$notes" > "$notes_file"
-            local -a gh_args=("$tag" "$tarball" "$sums_file"
-                "--title" "zbuild $tag"
-                "--notes-file" "$notes_file")
-            # Attach any .asc or .sig signature file from the signing backend.
-            local sig_file=""
-            for sig_file in "$outdir/"*.asc "$outdir/"*.sig; do
-                [[ -f "$sig_file" ]] && gh_args+=("$sig_file")
-            done
-            if $release_exists && $force; then
-                info "release: GitHub Release $tag already exists — --force set, deleting and recreating"
-                $gh_cmd release delete "$tag" --yes 2>/dev/null || true
-            fi
-            $gh_cmd release create "${gh_args[@]}" || {
-                rm -f "$notes_file"
-                error "release: gh release create failed for $tag"
-                exit 1
-            }
+        # Write notes to a temp file to avoid shell-quoting issues with multi-line content.
+        local notes_file; notes_file="$(mktemp)"
+        printf '%s\n' "$notes" > "$notes_file"
+        local -a gh_args=("$tag" "$tarball" "$sums_file"
+            "--title" "zbuild $tag"
+            "--notes-file" "$notes_file")
+        # Attach any .asc or .sig signature file from the signing backend.
+        local sig_file=""
+        for sig_file in "$outdir/"*.asc "$outdir/"*.sig; do
+            [[ -f "$sig_file" ]] && gh_args+=("$sig_file")
+        done
+        if $release_exists; then
+            info "release: GitHub Release $tag already exists — --force set, deleting and recreating"
+            $gh_cmd release delete "$tag" --yes 2>/dev/null || true
+        fi
+        $gh_cmd release create "${gh_args[@]}" || {
             rm -f "$notes_file"
-            success "GitHub Release published: $tag"
-            # ── DOC WIKI (publish phase): push generated wiki pages to .wiki.git ──────
-            if [[ -n "${ZBUILD_DOC_PUBLISH_CMD:-}" ]]; then
-                "$ZBUILD_DOC_PUBLISH_CMD" wiki "$REPO_ROOT" "$version" || { error "release: doc_publish_wiki failed"; exit 1; }
-            else
-                doc_publish_wiki "$REPO_ROOT" "$version" "false" || { error "release: doc_publish_wiki failed"; exit 1; }
-            fi
+            error "release: gh release create failed for $tag"
+            exit 1
+        }
+        rm -f "$notes_file"
+        success "GitHub Release published: $tag"
+        # ── DOC WIKI (publish phase): push generated wiki pages to .wiki.git ──────
+        if [[ -n "${ZBUILD_DOC_PUBLISH_CMD:-}" ]]; then
+            "$ZBUILD_DOC_PUBLISH_CMD" wiki "$REPO_ROOT" "$version" || { error "release: doc_publish_wiki failed"; exit 1; }
+        else
+            doc_publish_wiki "$REPO_ROOT" "$version" "false" || { error "release: doc_publish_wiki failed"; exit 1; }
         fi
         if declare -F emit_event >/dev/null 2>&1; then
             emit_event "release.published" "tag=$tag" "version=$version" || true
