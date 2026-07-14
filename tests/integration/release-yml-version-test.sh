@@ -21,10 +21,12 @@ setup_test_env "release-yml-version"
 WORKFLOW_FILE="$REPO_ROOT/.github/workflows/release.yml"
 
 # ── SPEC-10: git add in open-release-pr includes VERSION ─────────────────────
-# Extract the git add line from the open-release-pr job and confirm VERSION is
-# present. This is a CHANGE-behavior spec: fails at baseline (VERSION missing).
+# Confirm VERSION is staged on the SAME git add command that stages CHANGELOG.md
+# (unambiguously the open-release-pr staging line — not merely "VERSION appears
+# somewhere after a git add token"). CHANGE-behavior spec: fails at baseline
+# (VERSION missing from that line).
 _spec10_version=false
-if grep -q "git add.*VERSION" "$WORKFLOW_FILE" 2>/dev/null; then
+if grep -qE "git add [^#]*\bCHANGELOG\.md\b[^#]*\bVERSION\b" "$WORKFLOW_FILE" 2>/dev/null; then
     _spec10_version=true
 fi
 
