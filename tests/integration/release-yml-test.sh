@@ -131,16 +131,66 @@ else
         "branch_env=$_spec10_branch_env push=$_spec10_push no_inline_commit=$_spec10_no_inline_commit"
 fi
 
-# ── SPEC-11 (#1490): the open-release-pr apply pass must NOT pass --force (that
-# is the PUBLISH path). Confirm --force appears ONLY on the publish job's step.
-# There must be exactly one `release.sh --force` (publish), and the prepare pass
-# builds args from cadence/major only (no literal --force).
+# ── SPEC-11 (#1502 SHIP-5): --force now appears TWICE in the workflow — once in
+# the auto_merge same-job publish step (open-release-pr) and once in the
+# pull_request:closed publish job. The prepare/apply step still uses "${args[@]}"
+# (no --force). Also assert the merge-polling step keyword is present.
 _spec11_force_count="$(grep -c 'release.sh --force' "$WORKFLOW_FILE" 2>/dev/null || echo 0)"
-if [[ "$_spec11_force_count" == "1" ]]; then
-    assert_pass "[SPEC-11] --force appears only on the publish path (prepare pass is force-free)"
+_spec11_poll=false
+grep -qE 'gh pr view.*state|until.*MERGED' "$WORKFLOW_FILE" 2>/dev/null && _spec11_poll=true
+if [[ "$_spec11_force_count" == "2" ]] && $_spec11_poll; then
+    assert_pass "[SPEC-11] --force appears on both auto_merge same-job path + publish job; polling step present"
 else
-    assert_fail "[SPEC-11] --force must appear only on the publish path" \
-        "release.sh --force count: $_spec11_force_count (expected 1)"
+    assert_fail "[SPEC-11] --force must appear twice (auto_merge path + publish job) with merge-polling step" \
+        "release.sh --force count: $_spec11_force_count (expected 2); poll_step=$_spec11_poll"
+fi
+
+# ── SPEC-14 (#1502): push_pr step emits pr_url output; poll step references it ─
+_spec14_output=false
+_spec14_ref=false
+grep -q '"pr_url=' "$WORKFLOW_FILE" 2>/dev/null && _spec14_output=true
+grep -q 'push_pr.outputs.pr_url' "$WORKFLOW_FILE" 2>/dev/null && _spec14_ref=true
+if $_spec14_output && $_spec14_ref; then
+    assert_pass "[SPEC-14] push_pr step emits pr_url output and poll step references steps.push_pr.outputs.pr_url"
+else
+    assert_fail "[SPEC-14] push_pr must emit pr_url output and poll step must reference it" \
+        "output=$_spec14_output ref=$_spec14_ref"
+fi
+
+# ── SPEC-15 (#1502 guard): the prepare (apply) step invokes release.sh without
+# --force. The ZBUILD_RELEASE_BRANCH= prefix identifies the prepare call; it
+# must never appear on the same line as --force.
+_spec15_no_force_in_prepare=true
+if grep -E 'ZBUILD_RELEASE_BRANCH.*release\.sh.*--force' "$WORKFLOW_FILE" 2>/dev/null | grep -q .; then
+    _spec15_no_force_in_prepare=false
+fi
+if $_spec15_no_force_in_prepare; then
+    assert_pass "[SPEC-15] prepare pass (ZBUILD_RELEASE_BRANCH=…) invokes release.sh without --force"
+else
+    assert_fail "[SPEC-15] prepare pass must NOT pass --force" \
+        "ZBUILD_RELEASE_BRANCH+--force found in $WORKFLOW_FILE (expected none)"
+fi
+
+# ── SPEC-16 (#1502): auto_merge poll loop uses gh pr view + .state to detect merge ─
+_spec16_view=false
+_spec16_state=false
+grep -q 'gh pr view' "$WORKFLOW_FILE" 2>/dev/null && _spec16_view=true
+grep -q '\.state\|jq .state\|--jq .state' "$WORKFLOW_FILE" 2>/dev/null && _spec16_state=true
+if $_spec16_view && $_spec16_state; then
+    assert_pass "[SPEC-16] poll loop uses 'gh pr view … --jq .state' to detect PR merge"
+else
+    assert_fail "[SPEC-16] workflow must have gh pr view + .state for merge-polling" \
+        "view=$_spec16_view state=$_spec16_state"
+fi
+
+# ── SPEC-17 (#1502): docs publish --wiki-only appears in BOTH the auto_merge
+# same-job step AND the pull_request:closed publish job (DOC-F parity).
+_spec17_wiki_count="$(grep -c 'docs publish --wiki-only' "$WORKFLOW_FILE" 2>/dev/null || echo 0)"
+if [[ "$_spec17_wiki_count" -ge 2 ]]; then
+    assert_pass "[SPEC-17] docs publish --wiki-only appears in both auto_merge path and publish job"
+else
+    assert_fail "[SPEC-17] docs publish --wiki-only must appear in auto_merge path AND publish job" \
+        "count: $_spec17_wiki_count (expected >= 2)"
 fi
 
 # ── SPEC-9: cadence input wired into validate + apply steps ──────────────────

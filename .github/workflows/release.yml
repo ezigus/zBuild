@@ -188,6 +188,7 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Push release branch and open PR
+        id: push_pr
         if: inputs.dry_run != true && steps.apply.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -205,9 +206,33 @@ jobs:
             --base main \
             --head "$BRANCH")"
           echo "PR: $pr_url"
+          echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
           if [[ "$AUTO_MERGE" == "true" ]]; then
             gh pr merge --auto --squash "$pr_url"
           fi
+
+      # SHIP-5 (#1502): when auto_merge=true, GitHub's auto-merge machinery merges
+      # the PR using GITHUB_TOKEN — which suppresses the pull_request:closed trigger.
+      # We publish here, in the same job, to bypass that suppression. The publish
+      # job (below) is retained for human-merged PRs where the event fires normally.
+      - name: Wait for PR merge and publish (auto_merge same-job path)
+        if: inputs.dry_run != true && steps.apply.outputs.skip == 'false' && inputs.auto_merge == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ steps.push_pr.outputs.pr_url }}
+          VERSION: ${{ steps.apply.outputs.version }}
+        run: |
+          # Poll until the PR is merged. Cap at 60 × 30 s = 30 min before failing.
+          n=0
+          until [[ "$(gh pr view "$PR_URL" --json state --jq .state)" == "MERGED" ]]; do
+            sleep 30
+            (( ++n > 60 )) && { echo "::error::Timed out waiting for PR to merge after 30 min"; exit 1; }
+          done
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          bash scripts/release.sh --force
+          bash scripts/zbuild docs publish --wiki-only --version "v$(cat VERSION 2>/dev/null || echo 0.0.0)"
 
   publish:
     name: Publish Release
