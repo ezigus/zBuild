@@ -95,22 +95,32 @@ build_release_tarball() {
     fi
     mkdir -p "$outdir" || return 1
 
-    # Collect the payload members that actually exist. .github/issues/ and VERSION
-    # are optional (install.sh treats .github/issues as best-effort); scripts/
-    # core/ plugins/ config/ are mandatory.
+    # Payload = the release members. Repo-agnostic (#1487): honor an explicit
+    # ZBUILD_RELEASE_PAYLOAD (space-separated) the repo declares, else zBuild's own
+    # default set, else — for ANY other repo — every git-tracked top-level entry.
+    # Include only members that exist; fail only when NOTHING is collectable.
     local m members=()
-    for m in "${_ZBUILD_RELEASE_PAYLOAD[@]}"; do
-        if [[ -e "$repo_root/$m" ]]; then
-            members+=("$m")
-        else
-            case "$m" in
-                scripts|core|plugins|config)
-                    _rt_err "build_release_tarball: required payload member missing: $m"
-                    return 1 ;;
-                *) : ;;  # optional member absent — skip
-            esac
-        fi
+    local -a _payload
+    if [[ -n "${ZBUILD_RELEASE_PAYLOAD:-}" ]]; then
+        # shellcheck disable=SC2206
+        _payload=(${ZBUILD_RELEASE_PAYLOAD})
+    else
+        _payload=("${_ZBUILD_RELEASE_PAYLOAD[@]}")
+    fi
+    for m in "${_payload[@]}"; do
+        [[ -e "$repo_root/$m" ]] && members+=("$m")
     done
+    if [[ ${#members[@]} -eq 0 ]]; then
+        # Not a zBuild tree and no explicit payload → fall back to the target repo's
+        # git-tracked top-level entries so an arbitrary repo still produces a tarball.
+        while IFS= read -r m; do
+            [[ -n "$m" ]] && members+=("$m")
+        done < <(git -C "$repo_root" ls-files 2>/dev/null | cut -d/ -f1 | LC_ALL=C sort -u)
+    fi
+    if [[ ${#members[@]} -eq 0 ]]; then
+        _rt_err "build_release_tarball: no payload members in $repo_root — set ZBUILD_RELEASE_PAYLOAD or run in a git repo with tracked files"
+        return 1
+    fi
 
     local tarball="$outdir/zbuild-v${version}.tar.gz"
 

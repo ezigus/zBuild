@@ -134,7 +134,7 @@ for _file in "${_targets[@]}"; do
     # Find the line number of the first H1 (`# ...`) via system grep (ugrep-safe).
     _h1_ln="$($SYSGREP -n -m1 -E '^# ' "$_file" | cut -d: -f1 || true)"
     if [[ -z "$_h1_ln" ]]; then
-        printf '%s — no H1 title (`# ...`) found\n' "$_file" >&2
+        printf '%s — no H1 title found (expected a line starting with a # and a space)\n' "$_file" >&2
         _failures=$((_failures + 1))
         continue
     fi

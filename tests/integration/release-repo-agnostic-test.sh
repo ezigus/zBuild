@@ -72,13 +72,11 @@ set +e
   bash "$REPO_ROOT/scripts/release.sh" --minor --force >/dev/null 2>&1 )
 _rc3=$?
 set -e
-# The version-stamp step runs on the target BEFORE the tarball. We assert the
-# stamp landed in the FIXTURE (proving repo-root resolution reached the target),
-# not rc=0 — build_release_tarball still assumes zBuild's own payload layout
-# (scripts/core/plugins/config), a separate target-agnostic gap tracked in #1487.
 _stamped="$(cat "$FIX/VERSION" 2>/dev/null || echo MISSING)"
-: "$_rc3"  # (rc not asserted — see note above)
+assert_eq "[SPEC-3] release.sh exits 0 releasing the fixture repo" "0" "$_rc3"
 assert_eq "[SPEC-3] VERSION stamped in the FIXTURE to the --minor version (1.1.0.0)" "1.1.0.0" "$_stamped"
+# The tarball was built from the fixture's own git-tracked files (repo-agnostic).
+assert_file_exists "[SPEC-3] tarball built for the fixture repo" "$TEST_TEMP_DIR/out/zbuild-v1.1.0.0.tar.gz"
 # And the source tree's own VERSION was NOT touched.
 assert_eq "[SPEC-3] the source tree's VERSION was not modified" "1.0.0" "$(cat "$REPO_ROOT/VERSION")"
 
