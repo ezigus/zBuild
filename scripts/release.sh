@@ -261,6 +261,12 @@ main() {
         if declare -F emit_event >/dev/null 2>&1; then
             emit_event "release.tagged" "tag=$tag" "version=$version" || true
         fi
+        # ── DOC REGEN (build-content phase): regenerate wiki pages after VERSION stamp ──
+        if [[ -n "${ZBUILD_DOC_PUBLISH_CMD:-}" ]]; then
+            "$ZBUILD_DOC_PUBLISH_CMD" regen "$REPO_ROOT" || { error "release: doc_publish_regen failed"; exit 1; }
+        else
+            doc_publish_regen "$REPO_ROOT" || { error "release: doc_publish_regen failed"; exit 1; }
+        fi
     fi
 
     # ── PUBLISH THE GITHUB RELEASE (REL-D #877) ───────────────────────────────
@@ -299,6 +305,12 @@ main() {
             }
             rm -f "$notes_file"
             success "GitHub Release published: $tag"
+            # ── DOC WIKI (publish phase): push generated wiki pages to .wiki.git ──────
+            if [[ -n "${ZBUILD_DOC_PUBLISH_CMD:-}" ]]; then
+                "$ZBUILD_DOC_PUBLISH_CMD" wiki "$REPO_ROOT" "$version" || { error "release: doc_publish_wiki failed"; exit 1; }
+            else
+                doc_publish_wiki "$REPO_ROOT" "$version" "false" || { error "release: doc_publish_wiki failed"; exit 1; }
+            fi
         fi
         if declare -F emit_event >/dev/null 2>&1; then
             emit_event "release.published" "tag=$tag" "version=$version" || true

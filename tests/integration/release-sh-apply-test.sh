@@ -87,6 +87,16 @@ exit 0
 '
 export ZBUILD_GIT_TAG_CMD="$TEST_TEMP_DIR/bin/mock-git-tag"
 
+# ── Doc-publish seam: log-only stub to keep apply tests hermetic ─────────────
+DOC_PUBLISH_LOG="$TEST_TEMP_DIR/doc-publish-calls.log"
+export DOC_PUBLISH_LOG
+mock_binary "mock-doc-publish" '
+DOC_PUBLISH_LOG="${DOC_PUBLISH_LOG:-/tmp/doc-publish-calls.log}"
+printf "doc-publish %s\n" "$*" >> "$DOC_PUBLISH_LOG"
+exit 0
+'
+export ZBUILD_DOC_PUBLISH_CMD="$TEST_TEMP_DIR/bin/mock-doc-publish"
+
 # ── Outdir seam ───────────────────────────────────────────────────────────────
 APPLY_OUTDIR="$TEST_TEMP_DIR/release-out"
 mkdir -p "$APPLY_OUTDIR"
@@ -95,6 +105,7 @@ export ZBUILD_RELEASE_OUTDIR="$APPLY_OUTDIR"
 _reset_logs() {
     > "$GH_CALLS_LOG"
     > "$GIT_TAG_LOG"
+    > "$DOC_PUBLISH_LOG"
     cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog"
 }
 
