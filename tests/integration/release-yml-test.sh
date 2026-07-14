@@ -10,6 +10,7 @@
 # SPEC-6: workflow uses --force on the publish path (idempotent re-entry)
 # SPEC-7: open-release-pr job passes --dry-run flag when dry_run input is true
 # SPEC-8: DOC-F wiring — regen step rides the release PR + wiki-publish step on merge
+# SPEC-9: cadence input exists (minor|major, default minor) and is wired into validate + apply steps
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -107,6 +108,45 @@ if $_spec8_regen && $_spec8_wiki; then
 else
     assert_fail "[SPEC-8] DOC-F wired: regen rides the PR + wiki push on merge" \
         "regen=$_spec8_regen wiki=$_spec8_wiki"
+fi
+
+# ── SPEC-9: cadence input wired into validate + apply steps ──────────────────
+# (a) cadence choice input exists with default 'minor' in the workflow_dispatch block
+_spec9_input=false
+_spec9_default=false
+_spec9_validate=false
+_spec9_apply=false
+grep -q "cadence:" "$WORKFLOW_FILE" 2>/dev/null && _spec9_input=true
+grep -q "default: \"minor\"" "$WORKFLOW_FILE" 2>/dev/null && _spec9_default=true
+# (b) validate step wires CADENCE env and appends --${CADENCE} to args
+grep -q 'CADENCE: ${{ inputs.cadence }}' "$WORKFLOW_FILE" 2>/dev/null && _spec9_validate=true
+# (c) apply step also includes --${CADENCE} in its args
+grep -q '"--${CADENCE}"' "$WORKFLOW_FILE" 2>/dev/null && _spec9_apply=true
+
+if $_spec9_input && $_spec9_default; then
+    assert_pass "[SPEC-9] cadence choice input exists with default 'minor'"
+else
+    assert_fail "[SPEC-9] cadence choice input exists with default 'minor'" \
+        "input=$_spec9_input default=$_spec9_default"
+fi
+
+if $_spec9_validate && $_spec9_apply; then
+    assert_pass "[SPEC-9] cadence CADENCE env wired into validate and apply steps"
+else
+    assert_fail "[SPEC-9] cadence CADENCE env wired into validate and apply steps" \
+        "validate=$_spec9_validate apply=$_spec9_apply"
+fi
+
+# (d) invalid cadence is rejected — the Validate-inputs case guard exits 1 on a
+# value that is neither 'minor' nor 'major' (untested by the wiring checks above).
+_spec9_guard=false
+grep -q "Invalid 'cadence' input" "$WORKFLOW_FILE" 2>/dev/null && _spec9_guard=true
+
+if $_spec9_guard; then
+    assert_pass "[SPEC-9] invalid cadence value is rejected by the validate-inputs guard"
+else
+    assert_fail "[SPEC-9] invalid cadence value is rejected by the validate-inputs guard" \
+        "guard=$_spec9_guard"
 fi
 
 # ── Shared fixtures for T2/T3/T4 ─────────────────────────────────────────────
