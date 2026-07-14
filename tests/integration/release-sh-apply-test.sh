@@ -114,6 +114,8 @@ _reset_logs() {
 
 # ── T1: non-dry-run calls build_release_tarball + git tag + gh release create ──
 _reset_logs
+# Capture before release.sh runs so the before/after comparison is non-tautological.
+real_version_before="$(cat "$REPO_ROOT/VERSION")"
 out="$(bash "$REPO_ROOT/scripts/release.sh" --milestone "Initiative 1.1" 2>&1)" \
     || { echo "$out"; assert_fail "[SPEC-1] non-dry-run release.sh exits 0"; exit 1; }
 assert_pass "[SPEC-1] non-dry-run release.sh exits 0"
@@ -128,7 +130,6 @@ else
 fi
 
 # SPEC-1: non-dry-run must NOT write the tracked repo VERSION file (git clean)
-real_version_before="$(cat "$REPO_ROOT/VERSION")"
 real_version_after="$(cat "$REPO_ROOT/VERSION")"
 if [[ "$real_version_after" == "$real_version_before" ]] && git -C "$REPO_ROOT" diff --quiet -- VERSION 2>/dev/null; then
     assert_pass "[SPEC-1] non-dry-run did not dirty the tracked VERSION file"
