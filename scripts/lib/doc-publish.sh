@@ -70,7 +70,10 @@ EOF
             !skip { print }
         ' "$blockfile" "$readme")"
         rm -f "$blockfile"
-        printf '%s\n' "$rewritten" | atomic_write "$readme"
+        # _dgen_atomic_write (from doc-generate.sh, sourced at top) writes
+        # atomically but leaves NO README.md.bak behind — the README block is
+        # regenerable, so a rotated .bak is just untracked cruft (#1492).
+        printf '%s\n' "$rewritten" | _dgen_atomic_write "$readme"
     else
         printf '\n%s\n' "$block" >> "$readme"
     fi

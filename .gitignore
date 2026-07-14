@@ -25,3 +25,6 @@ pipeline-state.json
 /state/
 *.db-wal
 *.db-shm
+
+# doc-generate short-circuit hash sidecars — local regen cache, not committed (#1492)
+*.md.hash

@@ -443,6 +443,58 @@ assert_contains "[SPEC-16] prompt marks fenced blocks as data-not-instructions" 
 # is covered by tests/unit/route-cli-redaction-test.sh (not here — this suite
 # stubs the model call).
 
+# ─── SPEC-17: regen leaves no .bak cruft in the wiki tree (#1492) ────────────
+# atomic_write rotates an existing target to <target>.bak (state-file corruption
+# recovery). Wiki pages/hash sidecars are regenerable, so a REGEN over an already
+# written page must NOT leave README.md.bak / *.md.bak / *.md.hash.bak behind.
+# Two passes with DIFFERENT source hashes so the second pass actually rewrites
+# (a matching hash would short-circuit and never re-enter the write path).
+_reset_wiki
+_MOCK_ROUTE_RESPONSE="# doc-gather-full
+
+First pass content.
+
+## How to use
+
+.
+
+## Reference
+
+.
+
+## Advanced
+
+_Newcomers can skip this section._
+"
+doc_generate_plugin "doc-gather-full" "$PLUGIN_FIXTURES" "$WIKI_ROOT" "$TEMPLATE"
+# Corrupt the hash sidecar so the second call's hash compare mismatches and the
+# page is rewritten (exercising atomic_write's .bak rotation of the existing page).
+printf 'deadbeef\n' > "$WIKI_ROOT/plugins/doc-gather-full.md.hash"
+_MOCK_ROUTE_RESPONSE="# doc-gather-full
+
+Second pass content — forces a rewrite over the existing page.
+
+## How to use
+
+.
+
+## Reference
+
+.
+
+## Advanced
+
+_Newcomers can skip this section._
+"
+doc_generate_plugin "doc-gather-full" "$PLUGIN_FIXTURES" "$WIKI_ROOT" "$TEMPLATE"
+
+bak_count="$(find "$WIKI_ROOT" -name '*.bak' | wc -l | tr -d ' ')"
+assert_eq "[SPEC-17] no *.bak cruft left in wiki tree after regen" "0" "$bak_count"
+assert_file_not_exists "[SPEC-17] no page .bak left behind" \
+    "$WIKI_ROOT/plugins/doc-gather-full.md.bak"
+assert_file_not_exists "[SPEC-17] no hash-sidecar .bak left behind" \
+    "$WIKI_ROOT/plugins/doc-gather-full.md.hash.bak"
+
 # ─── Cleanup ─────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 
