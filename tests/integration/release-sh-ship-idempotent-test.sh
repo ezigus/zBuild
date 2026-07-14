@@ -270,7 +270,7 @@ printf '[{"number":888,"url":"https://github.com/ezigus/zBuild/pull/888"}]\n' \
     > "$MOCK_PR_LIST_JSON"
 
 spec16_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)"
-if printf '%s' "$spec16_out" | grep -q "resuming from step"; then
+if grep -q "resuming from step" <<< "$spec16_out"; then
     assert_pass "[SPEC-16] 'resuming from step' info log emitted when steps are skipped"
 else
     assert_fail "[SPEC-16] 'resuming from step' must appear in output when steps are skipped" \
