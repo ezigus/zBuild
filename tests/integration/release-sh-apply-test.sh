@@ -33,6 +33,9 @@ sandbox_changelog="$TEST_TEMP_DIR/CHANGELOG.md"
 cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog"
 export ZBUILD_RELEASE_CHANGELOG="$sandbox_changelog"
 
+# Sandbox VERSION so the apply path never writes the tracked repo VERSION file.
+export ZBUILD_RELEASE_VERSION_FILE="$TEST_TEMP_DIR/VERSION"
+
 # Issue list: 5 in-window issues → D=5 → version 1.0.1.5, tag v1.0.1.5.
 export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/issues.json"
 cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
@@ -124,15 +127,32 @@ else
         "expected: $tarball_path"
 fi
 
-# SPEC-2: git tag -a was called
+# SPEC-1: non-dry-run must NOT write the tracked repo VERSION file (git clean)
+real_version_before="$(cat "$REPO_ROOT/VERSION")"
+real_version_after="$(cat "$REPO_ROOT/VERSION")"
+if [[ "$real_version_after" == "$real_version_before" ]] && git -C "$REPO_ROOT" diff --quiet -- VERSION 2>/dev/null; then
+    assert_pass "[SPEC-1] non-dry-run did not dirty the tracked VERSION file"
+else
+    assert_fail "[SPEC-1] non-dry-run must not write the tracked VERSION file" \
+        "VERSION changed to: $(cat "$REPO_ROOT/VERSION")"
+fi
+
+# SPEC-2: git tag -a was called; VERSION stamp went to sandbox, not real repo
 if grep -qF "tag -a v1.0.1.5" "$GIT_TAG_LOG" 2>/dev/null; then
     assert_pass "[SPEC-2] annotated git tag v1.0.1.5 was created"
 else
     assert_fail "[SPEC-2] annotated git tag v1.0.1.5 was created" \
         "git-tag log: $(cat "$GIT_TAG_LOG" 2>/dev/null || echo '<empty>')"
 fi
+sandbox_version="$(cat "$TEST_TEMP_DIR/VERSION" 2>/dev/null || echo '<missing>')"
+if [[ "$sandbox_version" == "1.0.1.5" ]]; then
+    assert_pass "[SPEC-2] VERSION stamp written to sandbox path (ZBUILD_RELEASE_VERSION_FILE)"
+else
+    assert_fail "[SPEC-2] VERSION stamp written to sandbox path (ZBUILD_RELEASE_VERSION_FILE)" \
+        "sandbox VERSION: $sandbox_version"
+fi
 
-# SPEC-3: gh release create was called
+# SPEC-3: gh release create was called; real repo VERSION untouched
 if grep -qF "release create" "$GH_CALLS_LOG" 2>/dev/null; then
     assert_pass "[SPEC-3] gh release create was invoked"
 else
