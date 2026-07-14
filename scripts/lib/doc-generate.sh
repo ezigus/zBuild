@@ -56,6 +56,18 @@ _doc_generate_ensure_helpers() {
     fi
 }
 
+# _dgen_atomic_write <target> < content — atomic_write, then delete the .bak it
+# rotates in. atomic_write keeps a ${target}.bak for corruption-recovery of STATE
+# files (see helpers.sh + validate_json), but wiki pages/hash sidecars are
+# regenerable, so a leftover .bak is just untracked cruft in the working tree
+# (#1492). Removing it here (not in atomic_write) preserves the state-file .bak
+# recovery path for every other caller.
+_dgen_atomic_write() {
+    local target="$1"
+    atomic_write "$target" || return 1
+    rm -f "${target}.bak"
+}
+
 # Known bundle keys (from doc-gather.sh). Used for EXACT string-compare parsing so
 # a multiline block-scalar value (summary/usage span several lines) is captured
 # whole instead of truncated at line 1, and so the key is never treated as a regex.
@@ -268,14 +280,14 @@ _doc_generate_page() {
     shopt -u extglob
 
     if [[ "$trimmed" != "NO_CHANGE" ]]; then
-        # Write the page atomically.
+        # Write the page atomically (no leftover .bak — #1492).
         mkdir -p "$(dirname "$out_path")"
-        printf '%s\n' "$response" | atomic_write "$out_path"
+        printf '%s\n' "$response" | _dgen_atomic_write "$out_path"
     fi
 
     # Always write/update the hash sidecar.
     mkdir -p "$(dirname "$hash_path")"
-    printf '%s\n' "$src_hash" | atomic_write "$hash_path"
+    printf '%s\n' "$src_hash" | _dgen_atomic_write "$hash_path"
 }
 
 # ─── Public entrypoints ──────────────────────────────────────────────────────
