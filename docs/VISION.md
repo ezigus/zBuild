@@ -11,6 +11,7 @@ updated: '2026-07-12'
 zBuild turns a delivery process into data — templates and plugins — so software is built the same disciplined way every time. We build zBuild the way zBuild builds: a minimal core, with all behavior plugin-delivered and template-composed. A good change is small, aligned to the spec, proven by a test, and wired into the live path — never scaffolding that looks finished but does nothing.
 
 ## Principles
+- **Target-agnostic by contract** — zBuild builds *any* repository, not itself; the engine and plugins never assume the target's language, layout, or that zBuild is the target. Target knowledge lives in data — templates, config, per-repo overrides — never in code.
 - **Spec wins over drift** — KEEPERS, ARCHITECTURE, and the ADRs are the source of truth; when code disagrees, the code changes, not the spec.
 - **Small engine, behavior at the edges** — keep the core tiny; add capability as plugins composed in templates, never by growing the engine.
 - **Safety is structural** — all model-bound text passes one redaction chokepoint; state is atomic and resumable; scope is governed at every boundary.

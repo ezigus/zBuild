@@ -52,7 +52,9 @@ set -euo pipefail
 SYSGREP=/usr/bin/grep
 
 _DOC_STYLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_REPO_ROOT="$(cd "$_DOC_STYLE_DIR/../.." && pwd)"
+# Target repo = the repo being linted (honor ZBUILD_REPO_ROOT, set by the release
+# path); fall back to the script-relative root for direct/source invocation (#1487).
+_REPO_ROOT="${ZBUILD_REPO_ROOT:-$(cd "$_DOC_STYLE_DIR/../.." && pwd)}"
 _WIKI_DIR="$_REPO_ROOT/docs/wiki"
 
 # Fail loud if the wiki dir vanished — a silent empty scan would let CI pass
@@ -132,7 +134,7 @@ for _file in "${_targets[@]}"; do
     # Find the line number of the first H1 (`# ...`) via system grep (ugrep-safe).
     _h1_ln="$($SYSGREP -n -m1 -E '^# ' "$_file" | cut -d: -f1 || true)"
     if [[ -z "$_h1_ln" ]]; then
-        printf '%s — no H1 title (`# ...`) found\n' "$_file" >&2
+        printf '%s — no H1 title found (expected a line starting with a # and a space)\n' "$_file" >&2
         _failures=$((_failures + 1))
         continue
     fi
