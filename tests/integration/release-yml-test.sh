@@ -110,6 +110,39 @@ else
         "regen=$_spec8_regen wiki=$_spec8_wiki"
 fi
 
+# ── SPEC-10 (#1490): open-release-pr uses the PREPARE path (branch+commit lands
+# in release.sh), and the workflow pushes that branch + opens the PR separately.
+# (a) release.sh's prepare pass is pinned to the workflow branch via
+#     ZBUILD_RELEASE_BRANCH — this is what makes the bump commit land ON the branch.
+# (b) the PR step pushes that branch (git push origin "$BRANCH") + opens the PR.
+# (c) the old inline bump commit (git commit -m "chore: changelog …") is GONE —
+#     the commit now lands via release.sh's prepare path, not the workflow YAML.
+_spec10_branch_env=false
+_spec10_push=false
+_spec10_no_inline_commit=false
+grep -q 'ZBUILD_RELEASE_BRANCH="\$branch" bash scripts/release.sh' "$WORKFLOW_FILE" 2>/dev/null && _spec10_branch_env=true
+grep -q 'git push origin "\$BRANCH"' "$WORKFLOW_FILE" 2>/dev/null && _spec10_push=true
+# The old inline changelog/docs bump commit must be gone from the open-release-pr job.
+grep -q 'git commit -m "chore: changelog' "$WORKFLOW_FILE" 2>/dev/null || _spec10_no_inline_commit=true
+if $_spec10_branch_env && $_spec10_push && $_spec10_no_inline_commit; then
+    assert_pass "[SPEC-10] open-release-pr uses prepare path (branch+commit in release.sh) + pushes branch"
+else
+    assert_fail "[SPEC-10] open-release-pr uses prepare path + pushes branch" \
+        "branch_env=$_spec10_branch_env push=$_spec10_push no_inline_commit=$_spec10_no_inline_commit"
+fi
+
+# ── SPEC-11 (#1490): the open-release-pr apply pass must NOT pass --force (that
+# is the PUBLISH path). Confirm --force appears ONLY on the publish job's step.
+# There must be exactly one `release.sh --force` (publish), and the prepare pass
+# builds args from cadence/major only (no literal --force).
+_spec11_force_count="$(grep -c 'release.sh --force' "$WORKFLOW_FILE" 2>/dev/null || echo 0)"
+if [[ "$_spec11_force_count" == "1" ]]; then
+    assert_pass "[SPEC-11] --force appears only on the publish path (prepare pass is force-free)"
+else
+    assert_fail "[SPEC-11] --force must appear only on the publish path" \
+        "release.sh --force count: $_spec11_force_count (expected 1)"
+fi
+
 # ── SPEC-9: cadence input wired into validate + apply steps ──────────────────
 # (a) cadence choice input exists with default 'minor' in the workflow_dispatch block
 _spec9_input=false

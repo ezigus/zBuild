@@ -98,7 +98,19 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Apply changelog (mutate CHANGELOG.md)
+      # DOC-F (#1420): regenerate the wiki pages + refresh the README docs block
+      # so the regenerated docs ride THIS release PR. Regen short-circuits (no
+      # model call) when every page is already current; a stale source without a
+      # token fails closed, blocking the release — the correct outcome. Runs
+      # BEFORE the prepare step so the (still on main, uncommitted) regenerated
+      # files are swept onto the release branch by release.sh's prepare commit.
+      - name: Regenerate wiki docs + refresh README (DOC-F)
+        if: inputs.dry_run != true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: bash scripts/zbuild docs publish --regen-only
+
+      - name: Prepare release branch (bump + commit on branch)
         id: apply
         if: inputs.dry_run != true
         env:
@@ -106,7 +118,12 @@ jobs:
           CADENCE: ${{ inputs.cadence }}
           FALLBACK_VERSION: ${{ steps.validate.outputs.version }}
         run: |
-          # Real (mutating) pass — no --dry-run. Same array-quoting discipline.
+          # #1490: the PREPARE pass — NO --force. release.sh bumps VERSION+CHANGELOG,
+          # regenerates docs (idempotent no-op after the step above), then creates
+          # release/auto-YYYYMMDD and COMMITS the bump on that branch — never
+          # mutating main in place, never tagging/publishing. Same array-quoting.
+          branch="release/auto-$(date +%Y%m%d)"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
           args=()
           if [[ -n "$MAJOR" ]]; then
             args+=(--major "$MAJOR")
@@ -114,8 +131,9 @@ jobs:
           args+=("--${CADENCE}")
           # If release.sh exits nonzero (gate refused) we skip PR creation.
           # `skip` is ALWAYS written so the create-PR step can gate explicitly.
+          # ZBUILD_RELEASE_BRANCH pins the branch release.sh creates + commits on.
           set +e
-          out="$(bash scripts/release.sh "${args[@]}" 2>&1)"
+          out="$(ZBUILD_RELEASE_BRANCH="$branch" bash scripts/release.sh "${args[@]}" 2>&1)"
           rc=$?
           set -e
           echo "$out"
@@ -125,8 +143,13 @@ jobs:
             echo "version=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          version="$(printf '%s' "$out" | grep -oP '(?<=Release )(v[\d.]+)' | head -1 || true)"
-          [[ -z "$version" ]] && version="$FALLBACK_VERSION"
+          # Prefer the validated version from the dry-run validate step; fall back
+          # to parsing the release/<version> branch line release.sh emits.
+          version="$FALLBACK_VERSION"
+          if [[ -z "$version" ]]; then
+            ver="$(printf '%s' "$out" | grep -oP 'branch release/\K[0-9][0-9.]*' | head -1 || true)"
+            [[ -n "$ver" ]] && version="v${ver}"
+          fi
           if [[ -z "$version" || ! "$version" =~ ^v[0-9]+(\.[0-9]+)+$ ]]; then
             echo "::error::Refusing malformed version for PR: '$version'"
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -136,35 +159,23 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
-      # DOC-F (#1420): regenerate the wiki pages + refresh the README docs block
-      # so the regenerated docs ride THIS release PR. Regen short-circuits (no
-      # model call) when every page is already current; a stale source without a
-      # token fails closed, blocking the release — the correct outcome.
-      - name: Regenerate wiki docs + refresh README (DOC-F)
-        if: inputs.dry_run != true && steps.apply.outputs.skip == 'false'
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: bash scripts/zbuild docs publish --regen-only
-
-      - name: Create release branch and PR
+      - name: Push release branch and open PR
         if: inputs.dry_run != true && steps.apply.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.apply.outputs.version }}
+          BRANCH: ${{ steps.apply.outputs.branch }}
           AUTO_MERGE: ${{ inputs.auto_merge }}
         run: |
-          # VERSION already validated (^v[0-9]+(\.[0-9]+)+$) in the apply step;
-          # it flows in via env: and is only ever referenced as a quoted var.
-          branch="release/auto-$(date +%Y%m%d)"
-          git checkout -b "$branch"
-          git add CHANGELOG.md VERSION docs/wiki README.md
-          git commit -m "chore: changelog + regenerated docs for ${VERSION}" || true
-          git push origin "$branch"
+          # #1490: release.sh (prepare) already created BRANCH and committed the
+          # bump on it. Push that branch + open the PR here. VERSION + BRANCH both
+          # flow in via env: and are only ever referenced as quoted vars.
+          git push origin "$BRANCH"
           pr_url="$(gh pr create \
             --title "Release ${VERSION}" \
             --body "Automated Release PR for ${VERSION}. Merge to trigger publish." \
             --base main \
-            --head "$branch")"
+            --head "$BRANCH")"
           echo "PR: $pr_url"
           if [[ "$AUTO_MERGE" == "true" ]]; then
             gh pr merge --auto --squash "$pr_url"
