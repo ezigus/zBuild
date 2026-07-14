@@ -161,7 +161,8 @@ fi
 # --force. The ZBUILD_RELEASE_BRANCH= prefix identifies the prepare call; it
 # must never appear on the same line as --force.
 _spec15_no_force_in_prepare=true
-if grep -E 'ZBUILD_RELEASE_BRANCH.*release\.sh.*--force' "$WORKFLOW_FILE" 2>/dev/null | grep -q .; then
+_spec15_match=$(grep -E 'ZBUILD_RELEASE_BRANCH.*release\.sh.*--force' "$WORKFLOW_FILE" 2>/dev/null)
+if [[ -n "$_spec15_match" ]]; then
     _spec15_no_force_in_prepare=false
 fi
 if $_spec15_no_force_in_prepare; then
