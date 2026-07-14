@@ -493,8 +493,8 @@ _release_ship_preflight() {
     fi
     local current_branch
     current_branch="$($git_cmd rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
-    if [[ "$current_branch" != "main" ]]; then
-        error "release --ship: HEAD is on '${current_branch}', not 'main' — switch to main first"
+    if [[ "$current_branch" != "main" && "$current_branch" != release/* ]]; then
+        error "release --ship: HEAD is on '${current_branch}', not 'main' (or a release/* branch) — switch to main first"
         exit 1
     fi
 }
@@ -516,39 +516,69 @@ _release_ship() {
     local checks_timeout="${ZBUILD_SHIP_CHECKS_TIMEOUT:-1800}"
     [[ "$checks_timeout" =~ ^[0-9]+$ ]] || checks_timeout=1800
 
+    local branch="${ZBUILD_RELEASE_BRANCH:-release/${version}}"
+    local pr_ref=""
+
+    # ── Resume detection: probe remote branch + open PR before step 1 ─────────
+    # Three states: (a) open PR exists → resume from step 4; (b) branch at
+    # origin but no PR → resume from step 3; (c) neither → normal flow (step 1).
+    local _resume_from=1
+    local _remote_ref
+    _remote_ref="$($git_cmd ls-remote origin "refs/heads/${branch}" 2>/dev/null || true)"
+    if [[ -n "$_remote_ref" ]]; then
+        local _pr_list_out _pr_number
+        _pr_list_out="$($gh_pr_cmd pr list --head "$branch" --base main --state open \
+            --json number,url 2>/dev/null || echo "[]")"
+        _pr_number="$(printf '%s' "$_pr_list_out" \
+            | jq -r '.[0].number // empty' 2>/dev/null || true)"
+        if [[ -n "$_pr_number" && "$_pr_number" =~ ^[0-9]+$ ]]; then
+            pr_ref="$_pr_number"
+            _resume_from=4
+            info "release --ship: resuming from step 4/7 (PR #${pr_ref} already open for ${branch})"
+        else
+            _resume_from=3
+            info "release --ship: resuming from step 3/7 (branch ${branch} at origin, no open PR)"
+        fi
+    fi
+
     # ── Step 1/7: prepare (branch + commit) ───────────────────────────────────
-    info "release --ship: [1/7] prepare: bump VERSION+CHANGELOG, create branch release/${version}"
-    _release_prepare "$version" "$changelog" "$version_file"
-    success "release --ship: [1/7] prepare done — branch release/${version} committed"
+    if (( _resume_from <= 1 )); then
+        info "release --ship: [1/7] prepare: bump VERSION+CHANGELOG, create branch release/${version}"
+        _release_prepare "$version" "$changelog" "$version_file"
+        success "release --ship: [1/7] prepare done — branch release/${version} committed"
+    fi
 
     # ── Step 2/7: push release branch to origin ───────────────────────────────
-    info "release --ship: [2/7] push: release/${version} → origin"
-    local branch="${ZBUILD_RELEASE_BRANCH:-release/${version}}"
-    $git_cmd push origin "$branch" || {
-        error "release --ship: could not push branch $branch to origin"
-        exit 1
-    }
-    success "release --ship: [2/7] branch $branch pushed to origin"
+    if (( _resume_from <= 2 )); then
+        info "release --ship: [2/7] push: release/${version} → origin"
+        $git_cmd push origin "$branch" || {
+            error "release --ship: could not push branch $branch to origin"
+            exit 1
+        }
+        success "release --ship: [2/7] branch $branch pushed to origin"
+    fi
 
     # ── Step 3/7: gh pr create — capture the PR ref so the checks-wait and
     #    merge steps target THIS PR explicitly, not gh's current-branch
     #    autodetection (never pass the branch name where a PR id is expected).
-    info "release --ship: [3/7] PR create: chore: release ${tag}"
-    local pr_url pr_ref
-    pr_url="$($gh_pr_cmd pr create \
-        --title "chore: release ${tag}" \
-        --body "$notes" \
-        --base main \
-        --head "$branch")" || {
-        error "release --ship: gh pr create failed"
-        exit 1
-    }
-    pr_ref="${pr_url##*/}"
-    if [[ ! "$pr_ref" =~ ^[0-9]+$ ]]; then
-        error "release --ship: could not determine PR number from 'gh pr create' output: ${pr_url}"
-        exit 1
+    if (( _resume_from <= 3 )); then
+        info "release --ship: [3/7] PR create: chore: release ${tag}"
+        local pr_url
+        pr_url="$($gh_pr_cmd pr create \
+            --title "chore: release ${tag}" \
+            --body "$notes" \
+            --base main \
+            --head "$branch")" || {
+            error "release --ship: gh pr create failed"
+            exit 1
+        }
+        pr_ref="${pr_url##*/}"
+        if [[ ! "$pr_ref" =~ ^[0-9]+$ ]]; then
+            error "release --ship: could not determine PR number from 'gh pr create' output: ${pr_url}"
+            exit 1
+        fi
+        success "release --ship: [3/7] PR #${pr_ref} created for ${tag}"
     fi
-    success "release --ship: [3/7] PR #${pr_ref} created for ${tag}"
 
     # ── Step 4/7: checks-wait (bounded by ZBUILD_SHIP_CHECKS_TIMEOUT) ─────────
     # timeout strips the bound in the test mock; in production it kills the
