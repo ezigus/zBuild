@@ -18,6 +18,14 @@ on:
         required: false
         default: false
         type: boolean
+      cadence:
+        description: "Release cadence: minor (default) or major"
+        required: false
+        default: "minor"
+        type: choice
+        options:
+          - minor
+          - major
   pull_request:
     types: [closed]
     branches:
@@ -53,16 +61,22 @@ jobs:
       - name: Validate inputs
         env:
           MAJOR: ${{ inputs.major }}
+          CADENCE: ${{ inputs.cadence }}
         run: |
           if [[ -n "$MAJOR" && ! "$MAJOR" =~ ^[0-9]+$ ]]; then
             echo "::error::Invalid 'major' input: must be empty or digits only (got: $MAJOR)"
             exit 1
           fi
+          case "$CADENCE" in
+            minor|major) ;;
+            *) echo "::error::Invalid 'cadence' input: must be 'minor' or 'major' (got: $CADENCE)"; exit 1 ;;
+          esac
 
       - name: Validate — dry-run pass
         id: validate
         env:
           MAJOR: ${{ inputs.major }}
+          CADENCE: ${{ inputs.cadence }}
         run: |
           # Build args as an array — never an unquoted string — so a value can
           # neither word-split nor glob-expand into extra release.sh flags.
@@ -70,6 +84,7 @@ jobs:
           if [[ -n "$MAJOR" ]]; then
             args+=(--major "$MAJOR")
           fi
+          args+=("--${CADENCE}")
           bash scripts/release.sh "${args[@]}" 2>&1 | tee /tmp/dry-run-out.txt
           # Capture the planned tag (vN.N…) so we can name the PR. Two lines
           # begin 'planned tag:'; only the first is a bare tag — the second
@@ -88,6 +103,7 @@ jobs:
         if: inputs.dry_run != true
         env:
           MAJOR: ${{ inputs.major }}
+          CADENCE: ${{ inputs.cadence }}
           FALLBACK_VERSION: ${{ steps.validate.outputs.version }}
         run: |
           # Real (mutating) pass — no --dry-run. Same array-quoting discipline.
@@ -95,6 +111,7 @@ jobs:
           if [[ -n "$MAJOR" ]]; then
             args+=(--major "$MAJOR")
           fi
+          args+=("--${CADENCE}")
           # If release.sh exits nonzero (gate refused) we skip PR creation.
           # `skip` is ALWAYS written so the create-PR step can gate explicitly.
           set +e
