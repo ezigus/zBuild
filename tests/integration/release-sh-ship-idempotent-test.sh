@@ -237,6 +237,13 @@ else
         "ORDER_LOG: $(cat "$ORDER_LOG" 2>/dev/null || echo '<empty>')"
 fi
 
+if ! grep -q "branch-push" "$ORDER_LOG" 2>/dev/null; then
+    assert_pass "[SPEC-14] branch-push NOT in ORDER_LOG (step 2 also skipped when branch already at origin)"
+else
+    assert_fail "[SPEC-14] branch-push must NOT appear when branch already at origin" \
+        "ORDER_LOG: $(cat "$ORDER_LOG" 2>/dev/null || echo '<empty>')"
+fi
+
 if grep -q "pr-create" "$ORDER_LOG" 2>/dev/null; then
     assert_pass "[SPEC-14] pr-create APPEARS in ORDER_LOG (PR creation runs in branch-resume path)"
 else

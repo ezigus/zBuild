@@ -524,13 +524,22 @@ _release_ship() {
     # origin but no PR → resume from step 3; (c) neither → normal flow (step 1).
     local _resume_from=1
     local _remote_ref
-    _remote_ref="$($git_cmd ls-remote origin "refs/heads/${branch}" 2>/dev/null || true)"
+    _remote_ref="$($git_cmd ls-remote origin "refs/heads/${branch}")" || {
+        error "release --ship: could not query remote branch state — check network and git auth"
+        exit 1
+    }
     if [[ -n "$_remote_ref" ]]; then
         local _pr_list_out _pr_number
         _pr_list_out="$($gh_pr_cmd pr list --head "$branch" --base main --state open \
-            --json number,url 2>/dev/null || echo "[]")"
-        _pr_number="$(printf '%s' "$_pr_list_out" \
-            | jq -r '.[0].number // empty' 2>/dev/null || true)"
+            --json number,url)" || {
+            error "release --ship: could not list open PRs — check gh auth and network"
+            exit 1
+        }
+        if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$_pr_list_out"; then
+            error "release --ship: unexpected gh pr list response (not an array): ${_pr_list_out}"
+            exit 1
+        fi
+        _pr_number="$(jq -r '.[0].number // empty' 2>/dev/null <<< "$_pr_list_out" || true)"
         if [[ -n "$_pr_number" && "$_pr_number" =~ ^[0-9]+$ ]]; then
             pr_ref="$_pr_number"
             _resume_from=4
