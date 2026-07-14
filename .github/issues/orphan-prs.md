@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-06-05T12:07:31Z_
+_Last updated: 2026-07-14T19:28:28Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -97,3 +97,10 @@ _Last updated: 2026-06-05T12:07:31Z_
 | #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
 | #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-05 |
 | #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
+| #1474 | [#1467] release.sh orchestrates doc regen + wiki publish (ops stay separate) | 2026-07-14 |
+| #1470 | Restore inline-comment MCP tool grant — fix silent 0-comment Claude reviews | 2026-07-14 |
+| #1458 | [#1420 follow-up] doc publish: default repo_root to CWD (installed-shim fix) | 2026-07-14 |
+| #1451 | Fix silent Claude-review runs + always post a commit-stamped outcome comment | 2026-07-14 |
+| #1445 | chore(ci): Bump actions/checkout from 4 to 7 | 2026-07-14 |
+| #1430 | chore: make Claude PR reviewer actually post comments (--comment + allowedTools) | 2026-07-14 |
+| #1428 | chore: Claude PR code-review — comment-only, auto on PR + on-demand | 2026-07-14 |
