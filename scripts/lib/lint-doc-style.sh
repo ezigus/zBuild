@@ -52,7 +52,9 @@ set -euo pipefail
 SYSGREP=/usr/bin/grep
 
 _DOC_STYLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_REPO_ROOT="$(cd "$_DOC_STYLE_DIR/../.." && pwd)"
+# Target repo = the repo being linted (honor ZBUILD_REPO_ROOT, set by the release
+# path); fall back to the script-relative root for direct/source invocation (#1487).
+_REPO_ROOT="${ZBUILD_REPO_ROOT:-$(cd "$_DOC_STYLE_DIR/../.." && pwd)}"
 _WIKI_DIR="$_REPO_ROOT/docs/wiki"
 
 # Fail loud if the wiki dir vanished — a silent empty scan would let CI pass

@@ -28,7 +28,18 @@
 set -euo pipefail
 
 RELEASE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$RELEASE_SCRIPT_DIR/.." && pwd)"
+# RELEASE_SCRIPT_DIR is used ONLY to source the libs below. The TARGET repo — the
+# repository being released — is the CWD/worktree, NOT the install dir. zBuild is
+# target-agnostic: `zbuild release` releases whatever repo you run it in, not its
+# own source tree (#1487). Honor an explicit ZBUILD_REPO_ROOT, else the enclosing
+# git worktree, else $PWD; export it so sourced libs + the doc-style gate agree.
+REPO_ROOT="${ZBUILD_REPO_ROOT:-}"
+if [[ -z "$REPO_ROOT" ]]; then
+    # git may be mocked/absent (empty output, exit 0) — guard on empty, not just rc.
+    REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+fi
+[[ -n "$REPO_ROOT" ]] || REPO_ROOT="$PWD"
+export ZBUILD_REPO_ROOT="$REPO_ROOT"
 
 # shellcheck source=lib/helpers.sh
 source "$RELEASE_SCRIPT_DIR/lib/helpers.sh"
@@ -102,6 +113,11 @@ main() {
     done
     cadence="${cadence:-patch}"
     export ZBUILD_VERSION_CADENCE="$cadence"
+
+    # Operate on the target repo: the git/gh + CWD-relative ops below (tag lookup,
+    # notes, the version backend's `git tag` scan) must act on the repo being
+    # released, not wherever the installed script lives (#1487).
+    cd "$REPO_ROOT" || { error "release: cannot cd to target repo: $REPO_ROOT"; exit 1; }
 
     # ── Anchor: the tag we generate notes "since". v1.0.0 exists → first release
     #    anchors on it; genesis fallback when the repo has no tags at all. ──────
