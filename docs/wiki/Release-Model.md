@@ -40,6 +40,19 @@ Release automation is tracked under [#1362](https://github.com/ezigus/zBuild/iss
 
 ---
 
+## Major release guardrail
+
+Cutting a major release (`zbuild release --major`) advances the initiative from `A.B` to `(A+1).0`. Because this declares an initiative complete, zBuild enforces a pre-flight check before the release proceeds (even under `--dry-run`):
+
+1. **Milestone must exist.** A GitHub milestone titled `"Initiative (A+1).0"` must be present. If none is found, the release fails with a clear error.
+2. **No open issues.** The milestone's open issue count must be zero. If any issues remain open, the release fails and lists the count.
+
+Both checks run before any file is mutated (CHANGELOG, VERSION, tarball). `--force` bypasses the check for testing or emergency cuts. `--minor` and `--patch` are unaffected.
+
+**To cut a major release:** create a GitHub milestone titled `"Initiative <next>.0"`, close all issues under it, then run `zbuild release --major`.
+
+---
+
 ## Advanced: pluggable versioning (newcomers can skip)
 
 The `A.B.C.D` scheme above is the **default**, not the only option. zBuild's versioning is fully pluggable — you can replace it with any scheme (plain SemVer, calendar versioning, build numbers, `git describe`, etc.) without touching engine code.

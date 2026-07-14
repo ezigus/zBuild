@@ -70,6 +70,7 @@ case "${1:-} ${2:-}" in
     "repo view")   echo "ezigus/zBuild"; exit 0 ;;
     "issue list")  _emit "${MOCK_ISSUE_LIST_JSON:-/dev/null}"; exit 0 ;;
     "pr list")     _emit "${MOCK_PR_LIST_JSON:-/dev/null}"; exit 0 ;;
+    "api "*)       printf "[{\"title\":\"Initiative 2.0\",\"open_issues\":0}]\n"; exit 0 ;;
     *) echo "[mock-gh] unhandled: $*" >&2; exit 1 ;;
 esac
 '

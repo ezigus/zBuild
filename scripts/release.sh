@@ -147,6 +147,14 @@ main() {
     }
     local tag="v${version}"
 
+    # ── Major release preflight: milestone must exist and be fully closed. ────
+    # Runs under --dry-run (it is a gate, not a mutation). --force bypasses it.
+    if [[ "$cadence" == "major" ]] && ! $force; then
+        _release_major_preflight "$version"
+    elif [[ "$cadence" == "major" ]] && $force; then
+        warn "release: major preflight BYPASSED via --force — milestone/open-issue gate not enforced for ${tag}"
+    fi
+
     # ── Generate the per-issue release notes for this version. ────────────────
     local notes; notes="$(release_notes_generate "$version" "$milestone" "$since")"
 
@@ -316,6 +324,65 @@ main() {
             emit_event "release.published" "tag=$tag" "version=$version" || true
         fi
     fi
+}
+
+# _release_major_preflight <version> — pre-flight checks for a major release.
+# Extracts the initiative (A.B) from the post-bump version, prints the label,
+# then verifies via ZBUILD_GH_CMD (default: gh) that the GitHub milestone titled
+# "Initiative A.B" exists and has zero open issues. Fails rc=1 on either check.
+# Runs under --dry-run (it is a gate, not a mutation). --force bypasses it.
+_release_major_preflight() {
+    local version="$1"
+    local initiative; initiative="$(printf '%s' "$version" | cut -d. -f1,2)"
+    local label="Initiative ${initiative}"
+    local gh_cmd="${ZBUILD_GH_CMD:-gh}"
+
+    info "release: major — releasing ${label}"
+
+    local repo="${ZBUILD_RELEASE_REPO:-}"
+    if [[ -z "$repo" ]]; then
+        repo="$($gh_cmd repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
+    fi
+    if [[ -z "$repo" ]]; then
+        error "release: major preflight — cannot determine repo slug; set ZBUILD_RELEASE_REPO"
+        exit 1
+    fi
+    # Validate the slug before it reaches the API path — a value with '../' segments
+    # could redirect the milestone query to an unintended endpoint.
+    if [[ ! "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+        error "release: major preflight — refusing malformed repo slug '${repo}' (expected owner/name)"
+        exit 1
+    fi
+
+    local api_out
+    api_out="$($gh_cmd api "repos/${repo}/milestones?state=all" 2>/dev/null || true)"
+
+    local milestone_json
+    # Pass the title via --arg (never interpolate into the jq program — a title with a
+    # quote/backslash would break the filter or inject jq); take the FIRST match so
+    # duplicate milestones don't concatenate into an unparseable multi-object blob.
+    milestone_json="$(printf '%s' "$api_out" \
+        | jq -c --arg title "$label" '[.[] | select(.title == $title)][0] // empty' 2>/dev/null || true)"
+
+    if [[ -z "$milestone_json" ]]; then
+        error "release: major preflight FAILED — no GitHub milestone titled '${label}' found. Create and fully close the milestone before cutting a major release."
+        exit 1
+    fi
+
+    local open_issues
+    open_issues="$(printf '%s' "$milestone_json" | jq -r '.open_issues' 2>/dev/null || echo "")"
+
+    if [[ -z "$open_issues" || ! "$open_issues" =~ ^[0-9]+$ ]]; then
+        error "release: major preflight — could not read open_issues from milestone '${label}'"
+        exit 1
+    fi
+
+    if (( open_issues > 0 )); then
+        error "release: major preflight FAILED — milestone '${label}' has ${open_issues} open issue(s). Close all issues before cutting a major release."
+        exit 1
+    fi
+
+    info "release: major preflight passed — '${label}' exists with all issues closed"
 }
 
 # _release_prepend_changelog <changelog_path> <notes> — insert <notes> above the
