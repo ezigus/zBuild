@@ -78,7 +78,7 @@ Commands:
   release                Cut a release: compute version, generate per-issue
                          release notes, update CHANGELOG.md, stamp VERSION, tag,
                          and publish the GitHub release.
-                         [--dry-run] [--major|--minor|--patch] [--force] [--milestone <name>]
+                         [--dry-run] [--major|--minor|--patch] [--force] [--ship] [--yes] [--milestone <name>]
   vision init            Create or update the project vision document (ADR-049).
                          Default output: .zbuild/vision.md
                          [--blank]              Write a minimal conforming skeleton (no LLM)
