@@ -59,6 +59,13 @@ if [[ "${1:-}" == "tag" && "${2:-}" == "-l" ]]; then exit 0; fi
 exit 0
 '
 export ZBUILD_GIT_TAG_CMD="$TEST_TEMP_DIR/bin/mock-git-tag"
+# Doc-publish seam: T2/T6 run the non-dry-run path (_skip_publish=false, since
+# ZBUILD_GIT_TAG_CMD is set), which invokes doc_publish_regen/doc_publish_wiki
+# (#1467). A log-only stub keeps these hermetic — no real LLM regen / wiki push.
+mock_binary "mock-doc-publish" '
+exit 0
+'
+export ZBUILD_DOC_PUBLISH_CMD="$TEST_TEMP_DIR/bin/mock-doc-publish"
 export ZBUILD_RELEASE_OUTDIR="$TEST_TEMP_DIR/release-out-rsh"
 mkdir -p "$ZBUILD_RELEASE_OUTDIR"
 
