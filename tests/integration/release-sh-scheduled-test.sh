@@ -11,6 +11,10 @@
 # SPEC-6: --skip-if-no-issues with D>0 does NOT print the skip notice
 # SPEC-7: scheduled workflow yml exists with a schedule cron trigger (Monday default)
 # SPEC-8: scheduled workflow yml contains the fork guard for ezigus/zBuild
+# SPEC-9:  cron converges on the shared flow — dispatches release.yml (#1491)
+# SPEC-10: cron no longer cuts a release directly (no release.sh call) (#1491)
+# SPEC-11: dispatch passes skip_if_no_issues=true + auto_merge=true (#1491)
+# SPEC-12: release.yml accepts 'patch' cadence + a skip_if_no_issues input (#1491)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -164,6 +168,54 @@ if /usr/bin/grep -q "ezigus/zBuild" "$WORKFLOW_YML"; then
     assert_pass "[SPEC-8] workflow yml contains fork guard referencing ezigus/zBuild"
 else
     assert_fail "[SPEC-8] workflow yml missing fork guard (github.repository == 'ezigus/zBuild')"
+fi
+
+# ─── SPEC-9: cron CONVERGES on the shared flow — dispatches release.yml (#1491) ─
+# The weekly cron must trigger the ONE shared branch→PR→publish flow, not a
+# separate direct cut. Assert it dispatches release.yml via `gh workflow run`.
+if /usr/bin/grep -Eq "gh workflow run[[:space:]]+release\.yml" "$WORKFLOW_YML"; then
+    assert_pass "[SPEC-9] scheduled workflow dispatches the shared release.yml flow"
+else
+    assert_fail "[SPEC-9] scheduled workflow does not dispatch release.yml (gh workflow run release.yml)"
+fi
+
+# ─── SPEC-10: cron NO LONGER cuts a release directly (#1491) ──────────────────
+# The old divergence was `bash scripts/release.sh --patch …` in the job itself
+# (tags+publishes with no PR, drops the VERSION commit). That direct call must be
+# gone — the flow is owned by release.yml now.
+if /usr/bin/grep -Eq "release\.sh" "$WORKFLOW_YML"; then
+    assert_fail "[SPEC-10] scheduled workflow still calls release.sh directly (must dispatch release.yml instead)"
+else
+    assert_pass "[SPEC-10] scheduled workflow no longer cuts a release directly (no release.sh call)"
+fi
+
+# ─── SPEC-11: cron dispatch preserves the empty-week no-op + auto-merge (#1491) ─
+# skip_if_no_issues=true keeps empty weeks a no-op through the shared flow;
+# auto_merge=true lets the Release PR merge on green so publish runs on merge.
+if /usr/bin/grep -q "skip_if_no_issues=true" "$WORKFLOW_YML"; then
+    assert_pass "[SPEC-11a] dispatch passes skip_if_no_issues=true (empty weeks no-op)"
+else
+    assert_fail "[SPEC-11a] dispatch missing skip_if_no_issues=true (empty weeks would cut a PR)"
+fi
+if /usr/bin/grep -q "auto_merge=true" "$WORKFLOW_YML"; then
+    assert_pass "[SPEC-11b] dispatch passes auto_merge=true (PR merges on green → publish)"
+else
+    assert_fail "[SPEC-11b] dispatch missing auto_merge=true (Release PR would stall unmerged)"
+fi
+
+# ─── SPEC-12: release.yml accepts 'patch' cadence + a skip_if_no_issues input ──
+# The cron cuts patch releases and needs the skip passthrough, so the shared flow
+# must accept both — otherwise the dispatch above is rejected at the enum.
+RELEASE_YML="$REPO_ROOT/.github/workflows/release.yml"
+if /usr/bin/grep -Eq "^[[:space:]]*-[[:space:]]*patch[[:space:]]*$" "$RELEASE_YML"; then
+    assert_pass "[SPEC-12a] release.yml cadence enum includes 'patch'"
+else
+    assert_fail "[SPEC-12a] release.yml cadence enum missing 'patch' (cron dispatch would be rejected)"
+fi
+if /usr/bin/grep -q "skip_if_no_issues:" "$RELEASE_YML"; then
+    assert_pass "[SPEC-12b] release.yml declares the skip_if_no_issues input"
+else
+    assert_fail "[SPEC-12b] release.yml missing skip_if_no_issues input"
 fi
 
 cleanup_test_env

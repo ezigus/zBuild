@@ -1,7 +1,8 @@
 name: zbuild scheduled release
 
-# Weekly release workflow (REL-F #1357).
-# DRY: all release logic lives in scripts/release.sh; this workflow is a thin caller.
+# Weekly release workflow (REL-F #1357; converged onto the shared flow in #1491).
+# DRY: this cron does not cut a release itself — it dispatches the shared Release
+# workflow (branch → PR → publish), the ONE flow behind local/manual/cron triggers.
 #
 # Day-of-week configurability seam: edit the 5th field of the cron expression below.
 # Current default: Mondays at 09:00 UTC ('1' = Monday in cron DOW field, 0/7 = Sunday).
@@ -30,10 +31,12 @@ on:
           - major
         default: patch
 
+# actions:write lets this cron dispatch the shared Release workflow. The
+# dispatched release.yml carries its own contents/pull-requests permissions; this
+# thin trigger needs only actions:write (to dispatch) + contents:read (checkout).
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  actions: write
+  contents: read
 
 # Serialize releases: a manual dispatch must never race a scheduled run on
 # version computation, git tagging, or publish. Do NOT cancel in progress — a
@@ -43,7 +46,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  trigger-release:
     runs-on: ubuntu-latest
     # Fork guard: only the canonical repo cuts releases. `if:` is a JOB-level key
     # (it is silently ignored at workflow top level), so it lives here.
@@ -51,16 +54,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install zbuild
-        run: bash install.sh
-
-      - name: Cut weekly release
+      # #1491 — DRY: the weekly cron does NOT cut a release itself. It dispatches
+      # the ONE shared Release flow (release.yml): open a Release PR → auto-merge
+      # on green → publish on merge. skip_if_no_issues=true makes empty weeks
+      # no-op (release.yml opens no PR). One flow, three triggers: local, manual
+      # dispatch, and this cron. No direct release-script cut happens here anymore.
+      - name: Dispatch the shared Release flow (branch → PR → publish)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Pass workflow_dispatch inputs through the environment — NEVER inline
           # ${{ github.event.inputs.* }} into the run: script (that is a shell
@@ -76,12 +77,15 @@ jobs:
             patch|minor|major) cadence="$INPUT_CADENCE" ;;
             *) echo "::error::invalid cadence '$INPUT_CADENCE' (want patch|minor|major)"; exit 1 ;;
           esac
+          dry_run="false"
+          [[ "$INPUT_DRY_RUN" == "true" ]] && dry_run="true"
 
-          release_args=("--${cadence}" "--skip-if-no-issues")
-          if [[ "$INPUT_DRY_RUN" == "true" ]]; then
-            release_args+=("--dry-run")
-          fi
-
-          # --skip-if-no-issues: exit 0 cleanly when no issues have closed since
-          # the last release — avoids cutting an empty/zero-D release.
-          bash scripts/release.sh "${release_args[@]}"
+          # Trigger release.yml on the default branch. skip_if_no_issues=true → the
+          # flow opens no PR on an empty week; auto_merge=true → the Release PR
+          # merges itself on green, and the publish job tags + publishes on merge.
+          gh workflow run release.yml \
+            --ref main \
+            -f cadence="$cadence" \
+            -f skip_if_no_issues=true \
+            -f auto_merge=true \
+            -f dry_run="$dry_run"
