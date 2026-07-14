@@ -202,9 +202,8 @@ mock_binary "mock-doc-style-ship" '
 exit 0
 '
 
-# mock-confirm-y / mock-confirm-n: ZBUILD_SHIP_CONFIRM_CMD seam helpers.
-mock_binary "mock-confirm-y" 'printf "y\n"'
-mock_binary "mock-confirm-n" 'printf "n\n"'
+# The confirm answer is injected via the ZBUILD_SHIP_CONFIRM_ANSWER string seam
+# (a plain value, never executed) — no mock binary needed.
 
 _reset_ship_logs() {
     > "$SHIP_ORDER_LOG"
@@ -251,13 +250,14 @@ fi
 # ─── SPEC-9 + SPEC-11: --ship --yes drives through to publish; banners present ──
 # SPEC-9 [change]: fails at baseline — --yes was an unknown flag before SHIP-2.
 # SPEC-11 [change]: fails at baseline — per-phase banners did not exist before SHIP-2.
-# Use ZBUILD_SHIP_CONFIRM_CMD=mock-confirm-n to verify --yes bypasses the gate.
+# Set ZBUILD_SHIP_CONFIRM_ANSWER=n to prove --yes bypasses the gate even when the
+# answer would otherwise decline.
 _reset_ship_logs
-export ZBUILD_SHIP_CONFIRM_CMD="$TEST_TEMP_DIR/bin/mock-confirm-n"
+export ZBUILD_SHIP_CONFIRM_ANSWER="n"
 yes_out="$(bash "$REPO_ROOT/scripts/zbuild" release --ship --yes \
     --milestone "Initiative 1.1" 2>&1)" \
     || { echo "$yes_out"; assert_fail "[SPEC-9] --ship --yes exits 0"; }
-unset ZBUILD_SHIP_CONFIRM_CMD
+unset ZBUILD_SHIP_CONFIRM_ANSWER
 assert_pass "[SPEC-9] --ship --yes exits 0 (confirm gate bypassed)"
 if grep -q "tag-a" "$SHIP_ORDER_LOG" 2>/dev/null; then
     assert_pass "[SPEC-9] --ship --yes drives through to publish (tag-a in ORDER_LOG)"
@@ -273,15 +273,23 @@ assert_contains "[SPEC-11] --ship output has [7/7] banner" "$yes_out" "[7/7]"
 # [change]: fails at baseline — no confirm gate existed before SHIP-2; ship always
 # proceeded to merge+publish regardless of any input.
 _reset_ship_logs
-export ZBUILD_SHIP_CONFIRM_CMD="$TEST_TEMP_DIR/bin/mock-confirm-n"
+export ZBUILD_SHIP_CONFIRM_ANSWER="n"
 confirm_rc=0
 bash "$REPO_ROOT/scripts/zbuild" release --ship \
     --milestone "Initiative 1.1" >/dev/null 2>&1 || confirm_rc=$?
-unset ZBUILD_SHIP_CONFIRM_CMD
+unset ZBUILD_SHIP_CONFIRM_ANSWER
 if [[ "$confirm_rc" -ne 0 ]]; then
     assert_pass "[SPEC-10] --ship with confirm 'n' exits non-zero (aborted at confirm gate)"
 else
     assert_fail "[SPEC-10] --ship with confirm 'n' must exit non-zero" "got rc=0"
+fi
+# The confirm gate aborts BEFORE merge — so pr-merge itself must not have run
+# (not just the later tag/publish). This closes the abort-window gap (#1499 review).
+if ! grep -q "pr-merge" "$SHIP_ORDER_LOG" 2>/dev/null; then
+    assert_pass "[SPEC-10] no pr-merge in ORDER_LOG when confirm returns n (aborted before merge)"
+else
+    assert_fail "[SPEC-10] pr-merge must NOT appear when confirm returns n" \
+        "SHIP_ORDER_LOG: $(cat "$SHIP_ORDER_LOG" 2>/dev/null || echo '<empty>')"
 fi
 if ! grep -q "tag-a" "$SHIP_ORDER_LOG" 2>/dev/null; then
     assert_pass "[SPEC-10] no tag-a in ORDER_LOG when confirm returns n"
@@ -294,6 +302,22 @@ if ! grep -q "release-create" "$SHIP_ORDER_LOG" 2>/dev/null; then
 else
     assert_fail "[SPEC-10] release-create must NOT appear when confirm returns n" \
         "SHIP_ORDER_LOG: $(cat "$SHIP_ORDER_LOG" 2>/dev/null || echo '<empty>')"
+fi
+
+# ─── SPEC-10b: positive confirm ('y', no --yes) drives THROUGH to publish ─────
+# The declined path above proves the gate blocks; this proves an affirmative
+# answer without --yes still merges+publishes (the confirm gate isn't a dead end).
+_reset_ship_logs
+export ZBUILD_SHIP_CONFIRM_ANSWER="y"
+confirm_y_rc=0
+bash "$REPO_ROOT/scripts/zbuild" release --ship \
+    --milestone "Initiative 1.1" >/dev/null 2>&1 || confirm_y_rc=$?
+unset ZBUILD_SHIP_CONFIRM_ANSWER
+if [[ "$confirm_y_rc" -eq 0 ]] && grep -q "tag-a" "$SHIP_ORDER_LOG" 2>/dev/null; then
+    assert_pass "[SPEC-10] confirm 'y' without --yes proceeds to publish (tag-a in ORDER_LOG)"
+else
+    assert_fail "[SPEC-10] confirm 'y' without --yes must proceed to publish" \
+        "rc=${confirm_y_rc} SHIP_ORDER_LOG: $(cat "$SHIP_ORDER_LOG" 2>/dev/null || echo '<empty>')"
 fi
 
 cleanup_test_env

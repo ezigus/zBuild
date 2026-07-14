@@ -506,8 +506,9 @@ _release_ship_preflight() {
 # main() BEFORE the tree was mutated. Seams: ZBUILD_GH_PR_CMD (default: gh) for all
 # gh pr subcommands; ZBUILD_GIT_CMD (default: git) for branch push + checkout/pull;
 # ZBUILD_SHIP_CHECKS_TIMEOUT (default: 1800) bounds the checks-wait step;
-# ZBUILD_SHIP_CONFIRM_CMD (when set) is run and its stdout is read as the y/N answer
-# instead of prompting /dev/tty (test seam for non-interactive environments).
+# ZBUILD_SHIP_CONFIRM_ANSWER (when set) is used verbatim as the y/N answer instead
+# of prompting /dev/tty (a plain string seam for non-interactive environments — it
+# is NEVER executed, so it carries no command-exec surface).
 _release_ship() {
     local version="$1" tag="$2" notes="$3" changelog="$4" version_file="$5" yes="${6:-false}"
     local gh_pr_cmd="${ZBUILD_GH_PR_CMD:-gh}"
@@ -561,14 +562,14 @@ _release_ship() {
 
     # ── Step 5/7: confirm gate (skipped when --yes / ZBUILD_SHIP_YES=1) ───────
     # Prompt goes to stderr so it appears even when stdout is piped.
-    # ZBUILD_SHIP_CONFIRM_CMD seam: when set, run that binary and read its stdout
-    # as the answer — allows non-interactive tests without a real TTY.
+    # ZBUILD_SHIP_CONFIRM_ANSWER seam: when set, its value IS the answer (a plain
+    # string, never executed) — allows non-interactive tests without a real TTY.
     info "release --ship: [5/7] confirm: version ${version}, tag ${tag}, PR #${pr_ref}"
     if ! $yes; then
         printf 'Proceed with merge+publish? [y/N] ' >&2
         local _answer
-        if [[ -n "${ZBUILD_SHIP_CONFIRM_CMD:-}" ]]; then
-            _answer="$("${ZBUILD_SHIP_CONFIRM_CMD}")"
+        if [[ -n "${ZBUILD_SHIP_CONFIRM_ANSWER:-}" ]]; then
+            _answer="${ZBUILD_SHIP_CONFIRM_ANSWER}"
         else
             read -r _answer < /dev/tty
         fi
