@@ -160,9 +160,11 @@ fi
 # ── SPEC-15 (#1502 guard): the prepare (apply) step invokes release.sh without
 # --force. The ZBUILD_RELEASE_BRANCH= prefix identifies the prepare call; it
 # must never appear on the same line as --force.
+# Direct grep in the if-condition: set -e exempts the condition, so a no-match
+# (exit 1 — the PASSING case) does not kill the script; and it is not the
+# `printf|grep -q` SIGPIPE antipattern (no pipe).
 _spec15_no_force_in_prepare=true
-_spec15_match=$(grep -E 'ZBUILD_RELEASE_BRANCH.*release\.sh.*--force' "$WORKFLOW_FILE" 2>/dev/null)
-if [[ -n "$_spec15_match" ]]; then
+if grep -qE 'ZBUILD_RELEASE_BRANCH.*release\.sh.*--force' "$WORKFLOW_FILE"; then
     _spec15_no_force_in_prepare=false
 fi
 if $_spec15_no_force_in_prepare; then
