@@ -14,6 +14,7 @@
 # SPEC-10: failing checks causes abort before tag-a/release-create in ORDER_LOG
 # SPEC-11: --ship --minor produces a minor version bump
 # SPEC-12: --ship --major with milestone mock produces a major version bump
+# SPEC-13: checks-register grace tolerates GH not yet reporting checks right after PR create
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +65,8 @@ GIT_CMD_LOG="$TEST_TEMP_DIR/git-cmd-calls.log"
 GIT_TAG_LOG="$TEST_TEMP_DIR/git-tag-calls.log"
 DOC_PUBLISH_LOG="$TEST_TEMP_DIR/doc-publish-calls.log"
 DOC_STYLE_LOG="$TEST_TEMP_DIR/doc-style-calls.log"
-export GH_CALLS_LOG GIT_CMD_LOG GIT_TAG_LOG DOC_PUBLISH_LOG DOC_STYLE_LOG
+PR_CHECKS_PROBE_COUNT_FILE="$TEST_TEMP_DIR/pr-checks-probe-count"
+export GH_CALLS_LOG GIT_CMD_LOG GIT_TAG_LOG DOC_PUBLISH_LOG DOC_STYLE_LOG PR_CHECKS_PROBE_COUNT_FILE
 
 # ── mock-gh: covers ZBUILD_GH_PR_CMD + ZBUILD_GH_RELEASE_CMD + ZBUILD_GH_CMD ─
 # Also placed on PATH as "gh" so the doc+coverage gate's unscoped `gh` calls hit it.
@@ -88,6 +90,20 @@ case "${1:-} ${2:-}" in
     "pr list")        _emit "${MOCK_PR_LIST_JSON:-/dev/null}"; exit 0 ;;
     "pr create")      printf "pr-create\n" >> "$ORDER_LOG"; echo "https://github.com/ezigus/zBuild/pull/999"; exit 0 ;;
     "pr checks")
+        # SPEC-13: simulate GH not yet having registered any check runs for the
+        # first N calls (both the grace-poll probe and, if it never clears, the
+        # final --watch call hit this same branch) — matches real gh behavior.
+        if [[ "${MOCK_PR_CHECKS_NO_CHECKS_FOR_N:-0}" -gt 0 ]]; then
+            _pc_count_file="${PR_CHECKS_PROBE_COUNT_FILE:-/tmp/pr-checks-probe-count}"
+            _pc_n=0
+            [[ -f "$_pc_count_file" ]] && _pc_n="$(cat "$_pc_count_file")"
+            _pc_n=$((_pc_n + 1))
+            echo "$_pc_n" > "$_pc_count_file"
+            if [[ "$_pc_n" -le "${MOCK_PR_CHECKS_NO_CHECKS_FOR_N}" ]]; then
+                echo "no checks reported on the release/x branch"
+                exit 1
+            fi
+        fi
         printf "pr-checks\n" >> "$ORDER_LOG"
         [[ "${MOCK_PR_CHECKS_FAIL:-0}" == "1" ]] && exit 1
         exit 0 ;;
@@ -180,6 +196,7 @@ _reset_logs() {
     > "$DOC_PUBLISH_LOG"
     > "$DOC_STYLE_LOG"
     > "$ORDER_LOG"
+    rm -f "$PR_CHECKS_PROBE_COUNT_FILE"
     cp "$REPO_ROOT/CHANGELOG.md" "$sandbox_changelog"
     > "$ZBUILD_RELEASE_VERSION_FILE"
 }
@@ -335,6 +352,35 @@ if [[ "$order_rc" -eq 0 ]]; then
 else
     assert_fail "[ship-preflight-order] preflight must run before the VERSION stamp" \
         "got rc=${order_rc} (falsely 'dirty'): ${order_out}"
+fi
+
+# ── T8: checks-register grace tolerates GH not-yet-registered checks (SPEC-13) ─
+# Live bug found during #1501 (SHIP-4): `gh pr checks --watch --fail-fast`
+# treats ZERO checks reported (GitHub Actions hasn't registered check runs
+# yet, an instant-after-PR-create race) as an immediate hard failure. The
+# grace-poll before the --watch call must tolerate this and let ship proceed
+# once checks actually appear — proven here by 2 "no checks reported" probes
+# before the mock starts reporting real checks. Interval kept tiny so the test
+# is fast.
+_reset_logs
+export MOCK_PR_CHECKS_NO_CHECKS_FOR_N=2
+export ZBUILD_SHIP_CHECKS_REGISTER_GRACE=30
+export ZBUILD_SHIP_CHECKS_REGISTER_INTERVAL=0
+grace_rc=0
+grace_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)" \
+    || grace_rc=$?
+unset MOCK_PR_CHECKS_NO_CHECKS_FOR_N ZBUILD_SHIP_CHECKS_REGISTER_GRACE ZBUILD_SHIP_CHECKS_REGISTER_INTERVAL
+if [[ "$grace_rc" -eq 0 ]]; then
+    assert_pass "[SPEC-13] ship tolerates GH not-yet-registered checks (2 no-checks probes) and still completes"
+else
+    assert_fail "[SPEC-13] ship must survive the checks-registration race" \
+        "rc=${grace_rc}: ${grace_out}"
+fi
+if grep -q "pr-merge" "$ORDER_LOG" 2>/dev/null; then
+    assert_pass "[SPEC-13] ship reaches merge after the checks-register grace period clears"
+else
+    assert_fail "[SPEC-13] ship must reach merge once checks register" \
+        "ORDER_LOG: $(cat "$ORDER_LOG" 2>/dev/null || echo '<empty>')"
 fi
 
 cleanup_test_env
