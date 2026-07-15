@@ -15,6 +15,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Capture the source tree's ACTUAL VERSION up front, not a hardcoded literal.
+# On a release-prep branch (e.g. release/<version>, created by `zbuild release`
+# or `--ship`), VERSION legitimately differs from "1.0.0" — the whole point of
+# that branch is to carry the bump. SPEC-3 below proves the FIXTURE run doesn't
+# touch the source tree, so it must compare against whatever VERSION already
+# was, not assume the pre-release value.
+_SOURCE_VERSION_BEFORE="$(cat "$REPO_ROOT/VERSION")"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
@@ -78,7 +85,7 @@ assert_eq "[SPEC-3] VERSION stamped in the FIXTURE to the --minor version (1.1.0
 # The tarball was built from the fixture's own git-tracked files (repo-agnostic).
 assert_file_exists "[SPEC-3] tarball built for the fixture repo" "$TEST_TEMP_DIR/out/zbuild-v1.1.0.0.tar.gz"
 # And the source tree's own VERSION was NOT touched.
-assert_eq "[SPEC-3] the source tree's VERSION was not modified" "1.0.0" "$(cat "$REPO_ROOT/VERSION")"
+assert_eq "[SPEC-3] the source tree's VERSION was not modified" "$_SOURCE_VERSION_BEFORE" "$(cat "$REPO_ROOT/VERSION")"
 
 cleanup_test_env
 print_test_results
