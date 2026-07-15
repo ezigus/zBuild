@@ -84,6 +84,8 @@ Flags:
   --ship                 Full one-shot: prepare → push → PR → checks-wait → confirm → merge → publish.
                          Always gated (incompatible with --force). Requires gh auth + clean tree
                          on main. ZBUILD_SHIP_CHECKS_TIMEOUT controls the checks-wait bound (default 1800s).
+                         ZBUILD_SHIP_CHECKS_REGISTER_GRACE tolerates GitHub Actions not yet having
+                         registered any check runs right after PR creation (default 60s).
   --yes                  Skip the merge+publish confirm gate in --ship mode (for automation/CI).
                          Equivalent to setting ZBUILD_SHIP_YES=1.
   --milestone <name>     Scope the notes to a GitHub milestone (default: closed-since-tag).
@@ -593,6 +595,24 @@ _release_ship() {
     # timeout strips the bound in the test mock; in production it kills the
     # gh process if checks don't complete within the deadline.
     info "release --ship: [4/7] checks-wait: PR #${pr_ref} (timeout ${checks_timeout}s)"
+    # `gh pr checks --watch --fail-fast` treats ZERO checks reported as an
+    # immediate hard failure — but GitHub Actions has not always registered the
+    # PR's check runs yet at the instant the PR is created (a real race, found
+    # live during #1501). Grace-poll (no --watch) until at least one check is
+    # reported, THEN hand off to --watch --fail-fast for the real wait. Bounded
+    # by ZBUILD_SHIP_CHECKS_REGISTER_GRACE (default 60s); after it elapses with
+    # still no checks, fall through to --watch --fail-fast, which fails exactly
+    # as before (no behavior change if checks genuinely never register).
+    local _register_grace="${ZBUILD_SHIP_CHECKS_REGISTER_GRACE:-60}"
+    local _register_interval="${ZBUILD_SHIP_CHECKS_REGISTER_INTERVAL:-5}"
+    local _waited=0 _probe
+    while :; do
+        _probe="$("$gh_pr_cmd" pr checks "$pr_ref" 2>&1 || true)"
+        grep -q 'no checks reported' <<< "$_probe" || break
+        (( _waited >= _register_grace )) && break
+        sleep "$_register_interval"
+        _waited=$(( _waited + _register_interval ))
+    done
     if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast; then
         error "release --ship: PR #${pr_ref} checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
         exit 1
