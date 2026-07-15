@@ -15,6 +15,7 @@
 # SPEC-11: --ship --minor produces a minor version bump
 # SPEC-12: --ship --major with milestone mock produces a major version bump
 # SPEC-13: checks-register grace tolerates GH not yet reporting checks right after PR create
+# SPEC-14: checks-wait scopes to REQUIRED checks only (--required), ignoring advisory-only failures
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -283,6 +284,24 @@ if [[ -n "$_branch_ver" && -n "$_tag_ver" && "$_branch_ver" == "$_tag_ver" ]]; t
     assert_pass "[SPEC-9] version pinned: prepare branch version (${_branch_ver}) equals publish tag version (${_tag_ver})"
 else
     assert_fail "[SPEC-9] version pinned: branch version '${_branch_ver}' must equal tag version '${_tag_ver}'"
+fi
+
+# SPEC-14: checks-wait scopes to REQUIRED checks only. Found live during #1501
+# (PR #1510): an advisory-only check (claude-review, not in branch protection's
+# required list) failed and aborted ship even though every REQUIRED check was
+# still passing/pending — a human merging the same PR by hand would proceed.
+# `gh pr checks --required` scopes the wait to what actually blocks a merge.
+if grep -qE '^gh pr checks [0-9]+ --required$' "$GH_CALLS_LOG" 2>/dev/null; then
+    assert_pass "[SPEC-14] checks-register probe passes --required"
+else
+    assert_fail "[SPEC-14] checks-register probe must pass --required" \
+        "gh calls: $(cat "$GH_CALLS_LOG" 2>/dev/null || echo '<empty>')"
+fi
+if grep -qE '^gh pr checks [0-9]+ --watch --fail-fast --required$' "$GH_CALLS_LOG" 2>/dev/null; then
+    assert_pass "[SPEC-14] checks-wait --watch call passes --required"
+else
+    assert_fail "[SPEC-14] checks-wait --watch call must pass --required" \
+        "gh calls: $(cat "$GH_CALLS_LOG" 2>/dev/null || echo '<empty>')"
 fi
 
 # ── T4: failing checks abort before publish (SPEC-10) ────────────────────────
