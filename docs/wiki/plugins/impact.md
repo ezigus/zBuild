@@ -1,91 +1,97 @@
 # impact
 
-The impact plugin is an adversarial consequence-finder that reads the design scope block and flags files that will be affected but were not declared in scope.
+The impact plugin is an adversarial consequence-finder that sits inside the `design_impact_cycle`: it reads the exhaustive scope block that the design stage produced and flags any files the change touches, invalidates, or requires updating that design missed. Teams use it to catch scope gaps before build begins, preventing test failures caused by undeclared file dependencies.
 
-**Impact Analyzer Stage**
+## How to use
 
-- **Kind:** `agent`
-- **Manifest:** `plugins/agent/impact/manifest.yaml`
-
-## Manifest
+Add `impact` as a stage in your pipeline template's `flow:` after the `design` stage and before `build`. The plugin wires automatically to the `design` and `plan` stages through their declared outputs.
 
 ```yaml
-id: impact
-name: Impact Analyzer Stage
-kind: agent
-version: 0.1.0
-description: |
-  Post-design adversarial consequence-finder (#842). Reads design.md's
-  ```scope block (the exhaustive enumeration produced by the design stage)
-  and finds files that the change touches, invalidates, or requires updating
-  but that are MISSING from that scope block. Emits impact.json with a
-  structured verdict (complete | incomplete) plus impact_feedback.md
-  rendered for cycle feedback wiring back into the design stage. plan.json
-  retained as secondary input for the deterministic shape-change prefilter.
-
-hooks:
-  init: impact_init
-  run: impact_run
-  finalize: impact_finalize
-  cleanup: impact_cleanup
-
-requires:
-  core:
-    - redaction
-    - event-bus
-    - state
-    - router
-  plugins: []
-
-provides:
-  artifact_type: impact.json
-  schema_version: 1
-
-config:
-  # T2 (sonnet), not T1 (haiku): impact is the most tool-heavy agentic stage
-  # (Reads every design-scope file + repo-wide greps; max_turns 45). On T1 its
-  # per-turn latency × tool-turns blew past the then-180s router timeout once the
-  # design scope grew (rc=124, run 20260619082915-41231). Aligns impact with its
-  # T2 reasoning siblings (design/plan/review/build/test_assessment). (#960)
-  # #1242: the T2 tier's higher per-turn latency also drove the wall-clock budget
-  # up — router.timeout_s is now 600 (matching `design`), not the old 180.
-  tier_default: T2
-  valid_verdicts:
-    - complete
-    - incomplete
-
-inputs:
-  - id: scope_manifest
-    type: file
-    source: stage:intake
-    required: true
-  - id: design
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
-    required: true
-  # Secondary: plan.json retained for the deterministic shape-change prefilter.
-  - id: plan
-    type: file
-    path: "${artifact_dir}/plan.json"
-    source: stage:plan
-    required: false
-
-outputs:
-  - id: impact
-    path: "${artifact_dir}/impact.json"
-    type: impact.json
-    required: true
-    primary: true
-  - id: impact_feedback_md
-    path: "${artifact_dir}/impact_feedback.md"
-    type: markdown
-    required: false
-
-state:
-  persisted:
-    - last_verdict
-  reconstructed: []
+flow:
+  - stage: design
+  - stage: impact
+  - stage: build
 ```
 
-_See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
+`impact` is a member of `design_impact_cycle`. When its verdict is `incomplete`, `impact_feedback.md` is fed back to `design.prior_impact_feedback` and the cycle repeats. No manual wiring is needed if the cycle is declared in your template.
+
+## Reference
+
+**Kind:** `agent`
+**Manifest:** `plugins/agent/impact/manifest.yaml`
+**Version:** 0.1.0
+**Tier default:** T2 (Sonnet)
+
+### Hooks
+
+| Hook       | Function         |
+|------------|-----------------|
+| `init`     | `impact_init`    |
+| `run`      | `impact_run`     |
+| `finalize` | `impact_finalize`|
+| `cleanup`  | `impact_cleanup` |
+
+### Requires
+
+| Scope   | Dependencies                          |
+|---------|---------------------------------------|
+| `core`  | `redaction`, `event-bus`, `state`, `router` |
+| plugins | _(none)_                              |
+
+### Inputs
+
+| ID              | Type   | Source          | Required |
+|-----------------|--------|-----------------|----------|
+| `scope_manifest`| file   | `stage:intake`  | yes      |
+| `design`        | file   | `stage:design`  | yes      |
+| `plan`          | file   | `stage:plan`    | no       |
+
+`design` is the primary source — the plugin reads its ` ```scope ` block. `plan` is secondary and used only by the deterministic shape-change prefilter.
+
+### Outputs
+
+| ID                 | Path                              | Type         | Required |
+|--------------------|-----------------------------------|--------------|----------|
+| `impact`           | `${artifact_dir}/impact.json`     | `impact.json`| yes (primary) |
+| `impact_feedback_md` | `${artifact_dir}/impact_feedback.md` | markdown | no       |
+
+### Output schema (`impact.json`)
+
+```json
+{
+  "schema_version": 1,
+  "verdict": "complete" | "incomplete",
+  "missing": [
+    {
+      "step_id": "<plan step id>",
+      "files_to_add": ["<repo-relative path>"],
+      "reason": "<why these files need to be in scope>"
+    }
+  ],
+  "impact_feedback_md": "<markdown report fed back to design on next cycle iter>"
+}
+```
+
+### State
+
+| Key           | Lifecycle   |
+|---------------|-------------|
+| `last_verdict`| persisted   |
+
+## Advanced
+
+_Newcomers can skip this section._
+
+**Tier rationale (ADR-003, #960, #1242).** Impact is the most tool-heavy agentic stage — up to 45 tool turns of `Read` and `Grep` across the design scope and repo. T1 (Haiku) blew past the then-180 s router timeout when design scopes grew (rc=124, run 20260619082915-41231). T2 is mandated in `manifest.yaml`; the router wall-clock budget is 600 s (matching `design`).
+
+**Deterministic prefilter (#781).** Before the LLM runs, `scripts/lib/impact-prefilter.sh` applies the CLAUDE.md "Test scope discovery" rule: it greps `tests/` for numeric shape values derived from `plan.json` and scans `tests/golden/**`. Results are injected into the prompt as `CANDIDATE GAPS`. Entries with `source=shape-change-golden` are mandatory — the post-LLM bash merge enforces them. Entries with `source=shape-change-numeric` are advisory — the LLM may drop them with a one-line reason.
+
+**Prompt overrides (ADR-032, #855).** Per-repo operator overlays are appended to the prompt file after the shipped charter via `append_prompt_override`. The overlay can never precede or weaken the output contract. ADR-043 delegates redaction to the router, which covers the overlay.
+
+**Hallucination guard (#911).** The LLM must verify file existence with `Read` or `Grep` before listing any path in `missing[].files_to_add`. Non-existent paths are stripped by a post-LLM bash merge step to prevent the design stage from chasing phantom gaps.
+
+**Budget discipline.** The agent prompt enforces a hard stop: emit a verdict before the tool-call budget runs out. A partial `incomplete` verdict with known gaps is preferable to running out of turns and returning nothing.
+
+**Cycle wiring.** `impact_feedback_md` is consumed by the design stage as `prior_impact_feedback` on the next iteration. The cycle is bounded; a stuck-detector (A→B→A pattern) and a kill-switch prevent infinite loops. See ADR-040 §5 and [[design_impact_cycle]] for the convergence contract.
+
+_See docs/DOC-STYLE.md for the full prose standard._
