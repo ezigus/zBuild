@@ -80,7 +80,7 @@ The full command reference lives in the [Wiki](https://github.com/ezigus/zBuild/
 
 ## Where it's going
 
-zBuild is at **version 1.0** today. Planned work is organized into *initiatives* on the [Roadmap board](https://github.com/users/ezigus/projects/2) and the [milestones list](https://github.com/ezigus/zBuild/milestones). See [`CHANGELOG.md`](CHANGELOG.md) for what shipped.
+zBuild is at **version 1.1.0.0** today. Planned work is organized into *initiatives* on the [Roadmap board](https://github.com/users/ezigus/projects/2) and the [milestones list](https://github.com/ezigus/zBuild/milestones). See [`CHANGELOG.md`](CHANGELOG.md) for what shipped.
 
 ## Advanced
 
