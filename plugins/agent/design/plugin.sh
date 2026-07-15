@@ -454,8 +454,7 @@ DESIGN_PROMPT
     fi
 
     # Assert the acceptance block is present in design.md.
-    local _ab_out
-    if ! _ab_out="$(extract_acceptance_block "$output_design_md" 2>/dev/null)"; then
+    if ! extract_acceptance_block "$output_design_md" >/dev/null 2>&1; then
         warn "_design_stage_run_inner: design.md missing acceptance block — design output incomplete"
         emit_event "plugin.run.error" "plugin=design" "reason=missing_acceptance_block"
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
@@ -463,53 +462,6 @@ DESIGN_PROMPT
         fi
         return 1
     fi
-
-    # Parse TESTFILES from the acceptance block and write failing stubs for
-    # any that do not already exist. Existing files (e.g. from a prior cycle)
-    # are left untouched so a passing test is never regressed to red.
-    # ADR-046 (#1218): collect the [SPEC-n] tags for the CHANGE-classified SPECs
-    # so each new red-first stub carries them. The PRE-build design-gate's
-    # Level-1 tag-presence check (C6) is satisfied by the stubs themselves —
-    # otherwise the design_verify_cycle would loop forever on UNTAGGED. The
-    # block lists TESTFILES globally (no per-SPEC map), so every change-SPEC tag
-    # goes into every new stub (any-declared-testfile-contains-tag semantics).
-    # Guard SPECs are expected to reference pre-existing tagged tests.
-    local _spec_tags="" _sid
-    while IFS= read -r _sid; do
-        [[ -z "$_sid" ]] && continue
-        if acceptance_spec_is_change "$output_design_md" "$_sid"; then
-            _spec_tags="${_spec_tags:+$_spec_tags }[$_sid]"
-        fi
-    done < <(acceptance_list_spec_ids "$output_design_md" 2>/dev/null || true)
-
-    local _testfiles_section=0
-    local _stubs_written=0
-    while IFS= read -r _tf_line; do
-        if [[ "$_tf_line" == 'TESTFILES:' ]]; then
-            _testfiles_section=1
-            continue
-        fi
-        [[ $_testfiles_section -eq 0 ]] && continue
-        _tf_line="${_tf_line%$'\r'}"   # tolerate a CRLF design.md
-        [[ -z "$_tf_line" ]] && continue
-        # ADR-031: TESTFILES paths are repo-relative and grant NO write-scope.
-        # This list comes from an LLM-produced artifact, so reject absolute
-        # paths and any ".." component — otherwise a stub could be written
-        # outside ZBUILD_REPO_ROOT (directory traversal).
-        if [[ "$_tf_line" == /* || "/$_tf_line/" == *"/../"* ]]; then
-            warn "_design_stage_run_inner: rejecting out-of-tree TESTFILES path: $_tf_line"
-            continue
-        fi
-        local _tf_abs
-        _tf_abs="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/$_tf_line"
-        if [[ ! -f "$_tf_abs" ]]; then
-            mkdir -p "$(dirname "$_tf_abs")"
-            printf '#!/usr/bin/env bash\nset -euo pipefail\n# acceptance stubs (red-first): %s — failing until implemented (acceptance contract)\nexit 1\n' "$_spec_tags" > "$_tf_abs"
-            chmod +x "$_tf_abs"
-            _stubs_written=$(( _stubs_written + 1 ))
-        fi
-    done <<< "$_ab_out"
-    emit_event "design.acceptance_tests.written" "plugin=design" "count=$_stubs_written"
 
     # #825: override the OUTPUT banner payload with the actual design.md
     # content BEFORE flushing the deferred-close banner. Without this,

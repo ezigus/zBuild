@@ -3,12 +3,9 @@
 #
 # Verifies that _design_stage_run_inner:
 #   (a) accepts a design.md with both a ```scope and ```acceptance block (rc=0)
-#   (b) writes named test-file stubs to disk when TESTFILES are listed
-#   (c) each created stub exits non-zero when executed (red-first)
-#   (d) rejects a design.md that has a scope block but no acceptance block (rc=1)
-#   (e) leaves existing test files untouched (does not regress a passing test)
-#   (f) emits design.acceptance_tests.written with the correct count
-#   (g) rejects unsafe (absolute / "..") TESTFILES paths — no write-scope escape
+#   (b) rejects a design.md that has a scope block but no acceptance block (rc=1)
+#   (c) leaves existing test files untouched (stub-writer removed; issue #1477)
+#   (d) acceptance-block grammar helpers work correctly
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,7 +76,9 @@ _make_design_body_with_acceptance() {
         "$_bt" "$_bt" "$_bt" "$tf1" "$tf2" "$_bt"
 }
 
-# ─── T1: design.md with scope + acceptance → rc=0, stubs written ─────────────
+# ─── T1: design.md with scope + acceptance → rc=0, design.md written ─────────
+# The stub-writer was removed (issue #1477); only rc=0 and artifact presence
+# are asserted here. No stubs are created and no event is emitted.
 _setup_fixture t1
 MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 MOCK_DESIGN_BODY="$(_make_design_body_with_acceptance 'tests/unit/stub-a-test.sh' 'tests/unit/stub-b-test.sh')"
@@ -91,39 +90,15 @@ assert_eq "T1: design with acceptance block returns rc=0" "0" "$rc"
 [[ -f "$OUTPUT_MD" ]] \
     && assert_pass "T1: design.md written at declared path" \
     || assert_fail "T1: design.md missing"
-
-stub_a="$FIXTURE_DIR/tests/unit/stub-a-test.sh"
-stub_b="$FIXTURE_DIR/tests/unit/stub-b-test.sh"
-[[ -f "$stub_a" ]] \
-    && assert_pass "T1: stub-a-test.sh created" \
-    || assert_fail "T1: stub-a-test.sh not created"
-[[ -f "$stub_b" ]] \
-    && assert_pass "T1: stub-b-test.sh created" \
-    || assert_fail "T1: stub-b-test.sh not created"
-
-# Each stub must exit non-zero (red-first contract).
-set +e
-bash "$stub_a" >/dev/null 2>&1; stub_a_rc=$?
-bash "$stub_b" >/dev/null 2>&1; stub_b_rc=$?
-set -e
-[[ $stub_a_rc -ne 0 ]] \
-    && assert_pass "T1: stub-a exits non-zero (red-first)" \
-    || assert_fail "T1: stub-a should exit non-zero but exited 0"
-[[ $stub_b_rc -ne 0 ]] \
-    && assert_pass "T1: stub-b exits non-zero (red-first)" \
-    || assert_fail "T1: stub-b should exit non-zero but exited 0"
-
-# design.acceptance_tests.written event with count=2
-if grep -q '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    if grep -q '"count":"2"' <<< "$(grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL")"; then
-        assert_pass "T1: design.acceptance_tests.written count=2"
-    else
-        assert_fail "T1: design.acceptance_tests.written has wrong count" \
-            "events: $(cat "$ZBUILD_EVENTS_JSONL")"
-    fi
+# Stub-writer removed (#1477): no executable test file may be created in the
+# target tree. This assertion is load-bearing for WIRING reachability —
+# reverting plugins/agent/design/plugin.sh to baseline (stub-writer present)
+# would create stub-a-test.sh, flipping this from pass to fail.
+if [[ ! -f "$FIXTURE_DIR/tests/unit/stub-a-test.sh" ]]; then
+    assert_pass "[SPEC-3] design plugin wrote no stub file into target tree"
 else
-    assert_fail "T1: design.acceptance_tests.written event not emitted" \
-        "events: $(cat "$ZBUILD_EVENTS_JSONL")"
+    assert_fail "[SPEC-3] design plugin must not write stub files into target tree" \
+        "found unexpected stub: $FIXTURE_DIR/tests/unit/stub-a-test.sh"
 fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 
@@ -146,7 +121,10 @@ else
 fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 
-# ─── T3: existing test file is NOT overwritten ───────────────────────────────
+# ─── T3: existing test file is NOT overwritten (trivially true, no stub-writer)
+# The stub-writer is removed (issue #1477). The plugin no longer writes any
+# testfile. Pre-existing testfiles must remain untouched: verify rc=0 and
+# content preserved.
 _setup_fixture t3
 MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 MOCK_DESIGN_BODY="$(_make_design_body_with_acceptance 'tests/unit/existing-test.sh' 'tests/unit/new-test.sh')"
@@ -165,52 +143,6 @@ else
     assert_fail "T3: existing test file was overwritten" \
         "content: $existing_content"
 fi
-[[ -f "$FIXTURE_DIR/tests/unit/new-test.sh" ]] \
-    && assert_pass "T3: new-test.sh stub created alongside preserved existing" \
-    || assert_fail "T3: new-test.sh stub not created"
-
-# count=1 (only the new stub was written, not the pre-existing one)
-if grep -q '"count":"1"' <<< "$(grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"; then
-    assert_pass "T3: acceptance_tests.written count=1 (skipped pre-existing)"
-else
-    assert_fail "T3: wrong count for acceptance_tests.written" \
-        "events: $(cat "$ZBUILD_EVENTS_JSONL")"
-fi
-unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
-
-# ─── T5 (#865 review): unsafe TESTFILES paths are rejected, never written ────
-# The acceptance block is an LLM-produced artifact; absolute paths and ".."
-# components must not let a stub escape ZBUILD_REPO_ROOT (ADR-031: TESTFILES
-# grants no write-scope). Only the safe sibling path may be written.
-_setup_fixture t5
-MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
-_t5_bt='```'
-_t5_abs="$TEST_TEMP_DIR/zbuild-t5-escape-test.sh"
-rm -f "$_t5_abs"
-MOCK_DESIGN_BODY="$(printf '# Design\n\n## Decision\nd.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: safe\nTESTFILES:\n../zbuild-t5-escape-test.sh\n%s\ntests/unit/safe-stub-test.sh\n%s\n' \
-    "$_t5_bt" "$_t5_bt" "$_t5_bt" "$_t5_abs" "$_t5_bt")"
-set +e
-_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
-rc=$?
-set -e
-assert_eq "T5: mixed safe/unsafe TESTFILES returns rc=0" "0" "$rc"
-[[ -f "$FIXTURE_DIR/tests/unit/safe-stub-test.sh" ]] \
-    && assert_pass "T5: safe TESTFILES path written" \
-    || assert_fail "T5: safe path should have been written"
-[[ ! -e "$FIXTURE_DIR/../zbuild-t5-escape-test.sh" ]] \
-    && assert_pass "T5: parent-escape (..) path not written outside repo root" \
-    || assert_fail "T5: parent-escape path escaped repo root"
-[[ ! -e "$_t5_abs" ]] \
-    && assert_pass "T5: absolute path not written" \
-    || assert_fail "T5: absolute path was written outside repo root"
-# Only the safe stub counts toward the written total.
-if grep -q '"count":"1"' <<< "$(grep '"design.acceptance_tests.written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"; then
-    assert_pass "T5: acceptance_tests.written count=1 (unsafe paths excluded)"
-else
-    assert_fail "T5: wrong count after rejecting unsafe paths" \
-        "events: $(cat "$ZBUILD_EVENTS_JSONL")"
-fi
-rm -f "$_t5_abs" "$FIXTURE_DIR/../zbuild-t5-escape-test.sh"
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 
 # ─── T4: extract_acceptance_block returns 0 on a well-formed design.md ───────

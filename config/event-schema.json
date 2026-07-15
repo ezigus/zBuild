@@ -92,7 +92,6 @@
     "cycle.timeout_exhausted",
     "design.stray.recovered",
     "design.stray.conflict",
-    "design.acceptance_tests.written",
     "design.timeout.stub_written",
     "selfhost.contract_lib.snapshot",
     "review.test_status.missing",
