@@ -595,26 +595,33 @@ _release_ship() {
     # timeout strips the bound in the test mock; in production it kills the
     # gh process if checks don't complete within the deadline.
     info "release --ship: [4/7] checks-wait: PR #${pr_ref} (timeout ${checks_timeout}s)"
-    # `gh pr checks --watch --fail-fast` treats ZERO checks reported as an
+    # `--required` scopes the wait to the repo's REQUIRED status checks only
+    # (branch protection), matching what actually blocks a merge. Without it,
+    # an advisory-only check (e.g. an AI code-review job with no bearing on
+    # mergeability) can abort ship on a flake even though a human merging the
+    # same PR by hand would proceed — found live during #1501, PR #1510.
+    #
+    # `gh pr checks --watch --fail-fast` also treats ZERO checks reported as an
     # immediate hard failure — but GitHub Actions has not always registered the
-    # PR's check runs yet at the instant the PR is created (a real race, found
-    # live during #1501). Grace-poll (no --watch) until at least one check is
-    # reported, THEN hand off to --watch --fail-fast for the real wait. Bounded
-    # by ZBUILD_SHIP_CHECKS_REGISTER_GRACE (default 60s); after it elapses with
-    # still no checks, fall through to --watch --fail-fast, which fails exactly
-    # as before (no behavior change if checks genuinely never register).
+    # PR's check runs yet at the instant the PR is created (a real race, also
+    # found live during #1501). Grace-poll (no --watch) until at least one
+    # required check is reported, THEN hand off to --watch --fail-fast for the
+    # real wait. Bounded by ZBUILD_SHIP_CHECKS_REGISTER_GRACE (default 60s);
+    # after it elapses with still no checks, fall through to --watch
+    # --fail-fast, which fails exactly as before (no behavior change if checks
+    # genuinely never register).
     local _register_grace="${ZBUILD_SHIP_CHECKS_REGISTER_GRACE:-60}"
     local _register_interval="${ZBUILD_SHIP_CHECKS_REGISTER_INTERVAL:-5}"
     local _waited=0 _probe
     while :; do
-        _probe="$("$gh_pr_cmd" pr checks "$pr_ref" 2>&1 || true)"
+        _probe="$("$gh_pr_cmd" pr checks "$pr_ref" --required 2>&1 || true)"
         grep -q 'no checks reported' <<< "$_probe" || break
         (( _waited >= _register_grace )) && break
         sleep "$_register_interval"
         _waited=$(( _waited + _register_interval ))
     done
-    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast; then
-        error "release --ship: PR #${pr_ref} checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
+    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast --required; then
+        error "release --ship: PR #${pr_ref} required checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
         exit 1
     fi
     success "release --ship: [4/7] PR #${pr_ref} checks passed"
