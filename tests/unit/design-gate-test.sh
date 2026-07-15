@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests: plugins/tool/design-gate — the PRE-build mechanical structural gate
 # (ADR-046, EPIC #1216 issue #1218). T0, no-LLM, no-baseline; pure grep over
-# design.md + the red-first stubs. Runs 6 structural checks (C1..C6), reports
-# ALL violations in ONE pass, verdict-in-artifact, ALWAYS exits rc=0.
+# design.md. Runs 5 structural checks (C1..C5), reports ALL violations in ONE
+# pass, verdict-in-artifact, ALWAYS exits rc=0.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,8 +75,9 @@ WIRING: scripts/wire.sh
 ```
 '
 
-# ─── SPEC-1 (C6 tag-presence): an UNTAGGED design → verdict=fail ──────────────
-# The declared TESTFILE exists but carries no [SPEC-1] tag.
+# ─── SPEC-1 (C6 removed): an UNTAGGED TESTFILE no longer fails the gate ───────
+# C6 tag-presence check is deleted (ADR-046 demotion, issue #1477). A [change]
+# SPEC whose existing TESTFILE carries no [SPEC-1] tag now passes C1..C5.
 printf 'assert "unrelated" 1 1\n' > "$ROOT/tests/untagged-test.sh"
 _run_gate_with_md '# Design
 
@@ -91,9 +92,9 @@ tests/untagged-test.sh
 WIRING: scripts/wire.sh
 ```
 '
-assert_eq "[SPEC-1] untagged design → verdict=fail" "fail" "$VERDICT"
-assert_contains "[SPEC-1] violation names UNTAGGED SPEC-1" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "UNTAGGED SPEC-1"
+assert_eq "[SPEC-1] untagged TESTFILE → verdict=pass (C6 removed)" "pass" "$VERDICT"
+assert_eq "[SPEC-1] untagged TESTFILE → zero violations" \
+    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-2 (C3 classified): an UNCLASSIFIED SPEC → verdict=fail ──────────────
 _run_gate_with_md '# Design
@@ -174,48 +175,6 @@ assert_eq "[SPEC-6] clean design → verdict=pass" "pass" "$VERDICT"
 assert_eq "[SPEC-6] clean design → zero violations" \
     "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
 
-# ─── SPEC-6b (#1255): a GUARD-ONLY design with NO tagged test → verdict=pass ──
-# Guards are invariants (the acceptance-gate skips negctl for them), so the
-# design-gate's C6 tag-coverage must exempt [guard] SPECs. Was verdict=fail
-# before #1255 (UNTAGGED SPEC-1). No testfile is required for a guard-only
-# design (C4 already exempts it); WIRING: none keeps C5 satisfied.
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-SPEC-1[guard]: an invariant that must not break
-TESTFILES:
-WIRING: none
-```
-'
-assert_eq "[SPEC-6b] guard-only design, no tagged test → verdict=pass" "pass" "$VERDICT"
-assert_eq "[SPEC-6b] guard-only design → zero violations" \
-    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
-
-# ─── SPEC-6c (#1255 regression guard): a [change] SPEC still needs a tag ──────
-# The guard exemption must NOT leak to change specs. A [change] SPEC whose
-# testfile exists but carries no [SPEC-1] tag must still fail C6.
-printf 'assert "unrelated" 1 1\n' > "$ROOT/tests/untagged-change-test.sh"
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-SPEC-1[change]: new behavior needing a tagged test
-TESTFILES:
-tests/untagged-change-test.sh
-WIRING: scripts/wire.sh
-```
-'
-assert_eq "[SPEC-6c] [change] SPEC untagged → verdict=fail (no regression)" "fail" "$VERDICT"
-assert_contains "[SPEC-6c] violation still names UNTAGGED SPEC-1" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "UNTAGGED SPEC-1"
-
 # ─── SPEC-7 (report-all): MANY violations reported in ONE pass ───────────────
 # scope empty (C1) + a [change] SPEC whose testfile is missing (C4) +
 # an unclassified SPEC (C3) + no WIRING (C5) all at once → all four classes
@@ -289,20 +248,5 @@ _ws_viol="$(jq -r '.violations|join(" ")' "$RESULT_JSON")"
 assert_eq "[SPEC-11] trailing-ws scope fence → no false SCOPE_MISSING" "absent" \
     "$([[ "$_ws_viol" == *SCOPE_MISSING* ]] && echo present || echo absent)"
 assert_eq "[SPEC-11] trailing-ws scope fence → verdict=pass" "pass" "$VERDICT"
-
-# ─── SPEC-12 (#1227 fix 2): C6 fails CLOSED when its lib is unavailable ───────
-# A gate must never return verdict=pass while silently skipping a check. When
-# acceptance_coverage_check is not loaded, C6 must record a violation
-# (verdict=fail), not pass. Temporarily unset the fn, then restore it.
-_saved_acc="$(declare -f acceptance_coverage_check)"
-unset -f acceptance_coverage_check
-_run_gate_with_md "$_clean_md"
-assert_eq "[SPEC-12] C6 lib unavailable → verdict=fail (fail-closed)" "fail" "$VERDICT"
-assert_contains "[SPEC-12] fail-closed violation names the missing C6 check" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "COVERAGE_CHECK_UNAVAILABLE"
-# Restore so later runs (and re-source guards) see the real fn.
-eval "$_saved_acc"
-_run_gate_with_md "$_clean_md"
-assert_eq "[SPEC-12] C6 lib restored → clean design passes again" "pass" "$VERDICT"
 
 print_test_results

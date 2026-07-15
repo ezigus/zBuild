@@ -3,11 +3,10 @@
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
 # The PRE-build mechanical structural gate for the design stage. Pure grep over
-# design.md + the red-first stubs design already writes; runs six structural
-# checks (C1..C6), reports ALL violations in one pass, and writes
-# verdict=pass|fail to design-gate-result.json. Always returns rc=0 — the
-# verdict lives in the artifact (ADR-040 verdict-in-artifact convention); the
-# design_verify_cycle's exit_when reads .verdict.
+# design.md; runs five structural checks (C1..C5), reports ALL violations in
+# one pass, and writes verdict=pass|fail to design-gate-result.json. Always
+# returns rc=0 — the verdict lives in the artifact (ADR-040 verdict-in-artifact
+# convention); the design_verify_cycle's exit_when reads .verdict.
 #
 # Hook prefix: design_gate_
 # Sourced library: no set -euo pipefail.
@@ -24,8 +23,6 @@ _DG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_DG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_DG_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
-# shellcheck source=../../../scripts/lib/acceptance-coverage.sh
-source "$_DG_ROOT/scripts/lib/acceptance-coverage.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when the event-bus is unavailable (unit-test isolation).
 _dg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
@@ -58,7 +55,7 @@ _dg_scope_nonempty() {
 }
 
 # ─── design_gate_run ──────────────────────────────────────────────────────────
-# Runs C1..C6, collects ALL violations, writes verdict-in-artifact, emits
+# Runs C1..C5, collects ALL violations, writes verdict-in-artifact, emits
 # design_gate.{pass,fail}. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 design_gate_run() {
@@ -132,22 +129,6 @@ design_gate_run() {
                 [[ -z "$_w" || "$_w" == "none" ]] && continue
                 [[ -e "$repo_root/$_w" ]] || violations+=("WIRING_MISSING $_w (declared wiring path absent on disk)")
             done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)
-        fi
-    fi
-
-    # ── C6 LEVEL-1 TAG-PRESENCE (shifted left, ADR-036 → ADR-046) ────────────
-    # #1227: fail CLOSED — if the coverage lib is unavailable we cannot run C6,
-    # and a gate must never return verdict=pass while silently skipping a check.
-    if [[ $_accept_ok -eq 1 ]]; then
-        if declare -f acceptance_coverage_check >/dev/null 2>&1; then
-            local _cov
-            while IFS= read -r _cov; do
-                [[ -z "$_cov" ]] && continue
-                # line: "UNTAGGED SPEC-n"
-                violations+=("$_cov (no [${_cov#UNTAGGED }] tag in any declared testfile)")
-            done < <(acceptance_coverage_check "$design_md" "$repo_root" 2>/dev/null || true)
-        else
-            violations+=("COVERAGE_CHECK_UNAVAILABLE (C6 tag-presence lib not loaded; gate fails closed)")
         fi
     fi
 
