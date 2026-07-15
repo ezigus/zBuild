@@ -90,6 +90,16 @@ assert_eq "T1: design with acceptance block returns rc=0" "0" "$rc"
 [[ -f "$OUTPUT_MD" ]] \
     && assert_pass "T1: design.md written at declared path" \
     || assert_fail "T1: design.md missing"
+# Stub-writer removed (#1477): no executable test file may be created in the
+# target tree. This assertion is load-bearing for WIRING reachability —
+# reverting plugins/agent/design/plugin.sh to baseline (stub-writer present)
+# would create stub-a-test.sh, flipping this from pass to fail.
+if [[ ! -f "$FIXTURE_DIR/tests/unit/stub-a-test.sh" ]]; then
+    assert_pass "[SPEC-3] design plugin wrote no stub file into target tree"
+else
+    assert_fail "[SPEC-3] design plugin must not write stub files into target tree" \
+        "found unexpected stub: $FIXTURE_DIR/tests/unit/stub-a-test.sh"
+fi
 unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 
 # ─── T2: design.md with scope but NO acceptance block → rc=1 ─────────────────
