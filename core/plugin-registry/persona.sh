@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  plugin-registry — kind:persona resolver + stage/lens composition seam     ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+#
+# A persona (kind:persona, #1304) is DATA: a professional identity (`role`) plus
+# the mindset it brings (`perspective`). Stages and review lenses resolve a
+# persona by id and compose it into their prompt framing. When no persona
+# manifest is found, the resolver signals absence (returns 1, prints nothing) so
+# the caller keeps its own existing hardcoded framing — a byte-identical
+# fallback. Personas name a profession, never a technology (target-agnostic;
+# repo-specific specialization is a separate seam).
+#
+# Depends on discover_plugins / yaml_get from the sibling registry modules, so
+# it is sourced after discovery.sh in the registry.sh facade.
+# Sourced library: inherits caller's pipefail settings; do not add set -euo pipefail.
+
+[[ -n "${_ZBUILD_REGISTRY_PERSONA_LOADED:-}" ]] && return 0
+_ZBUILD_REGISTRY_PERSONA_LOADED=1
+
+# ─── find_persona <id> [plugins_root] ───────────────────────────────────────
+# Prints the manifest path of the kind:persona plugin with the given id.
+# Returns 1 if no such persona is discoverable (unknown id, or no plugins root).
+find_persona() {
+    local want_id="$1"
+    local plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}}"
+    [[ -z "$want_id" ]] && return 1
+    local plugin_dir manifest kind pid
+    while IFS= read -r plugin_dir; do
+        manifest="$plugin_dir/manifest.yaml"
+        [[ -f "$manifest" ]] || continue
+        kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+        [[ "$kind" == "persona" ]] || continue
+        pid="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+        if [[ "$pid" == "$want_id" ]]; then
+            echo "$manifest"
+            return 0
+        fi
+    done < <(discover_plugins "$plugins_root" 2>/dev/null || true)
+    return 1
+}
+
+# ─── resolve_persona_role <id> [plugins_root] ───────────────────────────────
+# Prints the persona's role. Returns 1 if the persona is absent.
+resolve_persona_role() {
+    local manifest; manifest="$(find_persona "$1" "${2:-}")" || return 1
+    yaml_get "$manifest" "persona.role"
+}
+
+# ─── resolve_persona_perspective <id> [plugins_root] ────────────────────────
+# Prints the persona's perspective (may be empty — RECOMMENDED, not required).
+# Returns 1 only when the persona itself is absent.
+resolve_persona_perspective() {
+    local manifest; manifest="$(find_persona "$1" "${2:-}")" || return 1
+    yaml_get "$manifest" "persona.perspective"
+}
+
+# ─── persona_stage_framing <id> <task> [plugins_root] ───────────────────────
+# Stage seam: "You are {role} for the target project. {perspective}\n\n{task}".
+# Returns 1 (prints nothing) when the persona is absent, so the caller keeps its
+# own existing framing (byte-identical fallback). Perspective is omitted cleanly
+# when empty (no dangling separator).
+persona_stage_framing() {
+    local id="$1" task="$2" root="${3:-}"
+    local manifest; manifest="$(find_persona "$id" "$root")" || return 1
+    local role; role="$(yaml_get "$manifest" "persona.role")"
+    [[ -n "$role" ]] || return 1
+    local perspective; perspective="$(yaml_get "$manifest" "persona.perspective")"
+    local lead="You are ${role} for the target project."
+    if [[ -n "$perspective" ]]; then
+        printf '%s %s\n\n%s' "$lead" "$perspective" "$task"
+    else
+        printf '%s\n\n%s' "$lead" "$task"
+    fi
+}
+
+# ─── persona_lens_framing <id> <charter> [plugins_root] ─────────────────────
+# Lens seam: "You are {role} reviewing a change for the target project.
+# {perspective} {charter}". Returns 1 (prints nothing) when the persona is
+# absent, so the caller keeps its own existing framing (byte-identical fallback).
+persona_lens_framing() {
+    local id="$1" charter="$2" root="${3:-}"
+    local manifest; manifest="$(find_persona "$id" "$root")" || return 1
+    local role; role="$(yaml_get "$manifest" "persona.role")"
+    [[ -n "$role" ]] || return 1
+    local perspective; perspective="$(yaml_get "$manifest" "persona.perspective")"
+    local lead="You are ${role} reviewing a change for the target project."
+    if [[ -n "$perspective" ]]; then
+        printf '%s %s %s' "$lead" "$perspective" "$charter"
+    else
+        printf '%s %s' "$lead" "$charter"
+    fi
+}
