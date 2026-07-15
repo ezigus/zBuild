@@ -70,7 +70,12 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # API-key auth (pay-per-review, immune to subscription usage caps).
+          # Switched off claude_code_oauth_token, whose subscription/token was
+          # being rejected at the model call from ~2026-07-14 (every run failed
+          # with is_error:true on turn 1). The OAuth secret is still stored if we
+          # want to switch back after refreshing it.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           # --comment makes /code-review POST its findings as inline PR comments +
