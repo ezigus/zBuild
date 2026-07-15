@@ -12,7 +12,10 @@
 _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
-ZBUILD_PLUGIN_KINDS=(agent tool recovery orchestrator claim-coordinator daemon)
+# `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
+# no plugin.sh and no hooks. See _required_hooks_for_kind (returns "" for it) and
+# the persona.role requirement in validate_manifest.
+ZBUILD_PLUGIN_KINDS=(agent tool recovery orchestrator claim-coordinator daemon persona)
 
 # ─── yaml_get — minimal YAML reader (we control the schema; no full parser) ─
 # Usage: yaml_get <yaml_file> <dotted_key>
@@ -195,6 +198,20 @@ validate_manifest() {
         local core_items; core_items="$(_yaml_get_requires_core_list "$manifest")"
         if ! grep -Fxq "redaction" <<< "$core_items"; then
             error "validate_manifest($manifest): kind: agent plugins MUST declare 'redaction' inside requires.core (got: $(echo "$core_items" | tr '\n' ',' | sed 's/,$//'))"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    # kind: persona plugins (#1304) are DATA — a professional identity, no
+    # plugin.sh and no hooks. They MUST declare a non-empty persona.role: the
+    # noun phrase that slots into the stage/lens framing ("You are {role} …").
+    # kind:persona is intentionally exempt from the kind:agent redaction check
+    # above — persona text is redaction-covered at injection by the router
+    # (ADR-043), not by the plugin declaring requires.core.redaction.
+    if [[ "$kind" == "persona" ]]; then
+        local persona_role; persona_role="$(yaml_get "$manifest" "persona.role")"
+        if [[ -z "$persona_role" ]]; then
+            error "validate_manifest($manifest): kind: persona requires a non-empty 'persona.role' (the noun phrase for 'You are {role} for the target project.')"
             errors=$((errors + 1))
         fi
     fi

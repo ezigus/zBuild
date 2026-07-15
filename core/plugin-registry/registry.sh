@@ -18,6 +18,8 @@
 #                                verify_plugin_for_source, find_plugin_for_role,
 #                                ZBUILD_LOCKFILE / ZBUILD_DISABLED_FILE
 #   - lifecycle.sh            → scan_plugin_outputs, plugin_hook_call
+#   - persona.sh              → find_persona, resolve_persona_role/perspective,
+#                                persona_stage_framing / persona_lens_framing (#1304)
 #
 # Every previous public entry point (and the ZBUILD_* env vars + the
 # _ZBUILD_REGISTRY_LOADED guard) is preserved, so existing callers see no
@@ -41,3 +43,6 @@ source "$_ZBUILD_REGISTRY_DIR/manifest-validation.sh"
 source "$_ZBUILD_REGISTRY_DIR/discovery.sh"
 # shellcheck source=lifecycle.sh
 source "$_ZBUILD_REGISTRY_DIR/lifecycle.sh"
+# persona.sh calls discover_plugins / yaml_get from the modules above.
+# shellcheck source=persona.sh
+source "$_ZBUILD_REGISTRY_DIR/persona.sh"
