@@ -34,6 +34,8 @@ source "$_IMPACT_ROOT/scripts/lib/impact-prefilter.sh"
 source "$_IMPACT_ROOT/scripts/lib/router-rc-classify.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_IMPACT_ROOT/scripts/lib/prompt-overrides.sh"
+# shellcheck source=../../../core/plugin-registry/registry.sh
+source "$_IMPACT_ROOT/core/plugin-registry/registry.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 impact_init() {
@@ -152,13 +154,19 @@ IMPACT_SCHEMA
         _scope_list="$(printf '%s' "$scope_csv" | tr ',' '\n' | sed 's/^/- /')"
     fi
 
-    local _impact_instructions
-    _impact_instructions="$(cat <<'IMPACT_PROMPT'
-You are an Impact Analyzer agent. The design stage has already produced an
+    # Persona seam (#1393 pattern): open the prompt with the architect persona's
+    # framing when its manifest is present; falls back byte-identically when absent.
+    local _task_intro="The design stage has already produced an EXHAUSTIVE scope block enumerating every file the change touches. Your job is adversarial consequence-finding: identify files that are MISSING from the design scope block — files the change invalidates, references, validates, documents, or assumes something about — that the design agent overlooked."
+    local _framing
+    _framing="$(persona_stage_framing architect "$_task_intro" "$_IMPACT_ROOT/plugins" 2>/dev/null)" \
+        || _framing="You are an Impact Analyzer agent. The design stage has already produced an
 EXHAUSTIVE scope block enumerating every file the change touches. Your job
 is adversarial consequence-finding: identify files that are MISSING from
 the design scope block — files the change invalidates, references, validates,
-documents, or assumes something about — that the design agent overlooked.
+documents, or assumes something about — that the design agent overlooked."
+
+    local _impact_body
+    _impact_body="$(cat <<'IMPACT_PROMPT'
 
 Tool use:
 - You MAY use the Read tool to inspect files in the design scope.
@@ -209,6 +217,8 @@ BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
 
 IMPACT_PROMPT
 )"
+    local _impact_instructions="${_framing}
+${_impact_body}"
     _impact_instructions="$_output_contract_block
 
 $_impact_instructions"

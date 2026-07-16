@@ -36,8 +36,10 @@ apply_scope_redaction() {
     return 0
 }
 
-# Stable anchor from _impact_instructions (core contract) for ordering (I2).
-IMPACT_CONTRACT_ANCHOR="You are an Impact Analyzer agent."
+# Stable anchor from the output contract block for ordering (I2/I4).
+# Persona framing replaces the role sentence, so use the output-contract header
+# which always appears first regardless of which framing path is active.
+IMPACT_CONTRACT_ANCHOR="OUTPUT CONTRACT (read first, obey absolutely):"
 
 # ─── Minimal valid inputs ────────────────────────────────────────────────────
 make_plan() {
@@ -139,6 +141,41 @@ else
 fi
 assert_contains "I4 core contract intact without override" \
     "$prompt_none_body" "$IMPACT_CONTRACT_ANCHOR"
+
+# ─── SPEC-1[change]: architect manifest present → perspective text in prompt ──
+# _IMPACT_ROOT must point to a plugins/ dir that contains the architect persona.
+# The real repo has it at plugins/persona/architect/manifest.yaml.
+_ORIG_IMPACT_ROOT="$_IMPACT_ROOT"
+
+art_spec1="$TEST_TEMP_DIR/state/artifacts-spec1"
+_IMPACT_ROOT="$REPO_ROOT"
+export ZBUILD_REPO_ROOT="$FIXTURE_REPO"
+run_impact "$art_spec1"
+_IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
+
+prompt_spec1="$art_spec1/impact-prompt.txt"
+assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
+    "$(cat "$prompt_spec1" 2>/dev/null || echo '')" "You judge a change by its structure"
+
+# ─── SPEC-2[guard]: architect manifest absent → fallback text in prompt ───────
+IROOT_NONE="$(mktemp -d "$TEST_TEMP_DIR/iroot_none.XXXXXX")"
+mkdir -p "$IROOT_NONE/plugins"
+
+art_spec2="$TEST_TEMP_DIR/state/artifacts-spec2"
+_IMPACT_ROOT="$IROOT_NONE"
+export ZBUILD_REPO_ROOT="$FIXTURE_REPO_NONE"
+run_impact "$art_spec2"
+_IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
+
+prompt_spec2="$art_spec2/impact-prompt.txt"
+assert_contains "[SPEC-2] fallback text present when architect manifest absent" \
+    "$(cat "$prompt_spec2" 2>/dev/null || echo '')" "You are an Impact Analyzer agent."
+
+# ─── SPEC-3[guard]: DESIGN SCOPE BLOCK present regardless of framing path ────
+assert_contains "[SPEC-3] DESIGN SCOPE BLOCK in prompt with architect manifest" \
+    "$(cat "$prompt_spec1" 2>/dev/null || echo '')" "DESIGN SCOPE BLOCK:"
+assert_contains "[SPEC-3] DESIGN SCOPE BLOCK in prompt without architect manifest" \
+    "$(cat "$prompt_spec2" 2>/dev/null || echo '')" "DESIGN SCOPE BLOCK:"
 
 cleanup_test_env
 print_test_results
