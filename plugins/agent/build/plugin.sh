@@ -1351,10 +1351,19 @@ _build_compose_instructions() {
     else
         scope_section="  (no plan.files[] declared — refuse to edit if scope is unclear)"
     fi
-    cat <<BUILD_PROMPT
-You are an autonomous build agent for the target project. You have Read, Edit, Write, and
+    # Persona seam (#1391): open with the developer persona's framing when its
+    # manifest is present; byte-identical fallback to the original opening when
+    # absent (persona_stage_framing returns 1). Mirrors design/plugin.sh (#1324).
+    local _task_intro="You have Read, Edit, Write, and
 Bash tools available. Your job is to edit the working tree to implement the
-ORIGINAL TASK above.
+ORIGINAL TASK above."
+    local _framing
+    _framing="$(persona_stage_framing developer "$_task_intro" "$_BUILD_ROOT/plugins" 2>/dev/null)" \
+        || _framing="You are an autonomous build agent for the target project. You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above."
+    cat <<BUILD_PROMPT
+${_framing}
 
 ### Scope (plan.files[])
 You may ONLY touch files listed here. Refuse any out-of-scope edit.
