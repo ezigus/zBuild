@@ -114,6 +114,53 @@ else
     assert_fail "build plugin should set build_verdict=empty_diff on done_sentinel + 0 files" "expected: at least 1 match"
 fi
 
+print_test_section "4. inert_build verdict — #1532 false-completion guard"
+
+# [SPEC-2] runner_read_stage_verdict returns fail for verdict=inert_build
+# (CHANGE — was "warn" via unknown_verdict path before inert_build was registered)
+INERT_FIXTURE="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
+cat > "$INERT_FIXTURE" <<'EOF'
+{
+  "schema_version": 4,
+  "issue": 12,
+  "files_changed": [],
+  "lines_added": 0,
+  "lines_removed": 0,
+  "diff_patch_path": "/tmp/empty.patch",
+  "iterations": 1,
+  "terminated_reason": "done_sentinel",
+  "verdict": "inert_build",
+  "failing_acceptance_testfile": "tests/unit/some-test.sh",
+  "scope_violation": false,
+  "scope_violations": [],
+  "loop_input_tokens": 100,
+  "loop_output_tokens": 50,
+  "notes": "Build stage completed."
+}
+EOF
+
+if [[ -f "$BUILD_MANIFEST" ]]; then
+    classified_inert=$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo "missing")
+    assert_eq "[SPEC-2] runner_read_stage_verdict returns fail for verdict=inert_build" "fail" "$classified_inert"
+
+    # [SPEC-3] runner_read_stage_verdict_raw returns raw "inert_build" (GUARD)
+    raw_inert=$(runner_read_stage_verdict_raw "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo "missing")
+    assert_eq "[SPEC-3] runner_read_stage_verdict_raw returns raw inert_build" "inert_build" "$raw_inert"
+else
+    assert_fail "[SPEC-2] build manifest not found at $BUILD_MANIFEST"
+    assert_fail "[SPEC-3] build manifest not found at $BUILD_MANIFEST"
+fi
+
+# [SPEC-4] failing_acceptance_testfile field is present and readable (GUARD)
+failing_field=$(jq -r '.failing_acceptance_testfile // empty' "$INERT_FIXTURE")
+assert_eq "[SPEC-4] failing_acceptance_testfile field is readable from inert_build summary" \
+    "tests/unit/some-test.sh" "$failing_field"
+
+# [SPEC-5] verdict_classify("empty_diff") still returns fail — regression guard
+# (ensures adding inert_build to verdict.sh did not disturb the empty_diff arm)
+assert_eq "[SPEC-5] verdict_classify(empty_diff) still = fail after adding inert_build" \
+    "fail" "$(verdict_classify "empty_diff")"
+
 print_test_results
 cleanup_test_env
 exit $((FAIL > 0))
