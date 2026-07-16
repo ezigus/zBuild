@@ -111,6 +111,57 @@ fi
 assert_contains "P3b: plan core contract intact when no override" \
     "$(cat "$CAP_B")" "Decompose the goal into concrete"
 
+# ── SPEC-1[change]: product-owner manifest present → perspective in prompt ────
+print_test_section "3. product-owner manifest present → perspective in routed prompt [SPEC-1]"
+
+_ORIG_PLAN_ROOT="$_PLAN_ROOT"
+
+_PROOT_WITH="$TEST_TEMP_DIR/proot_with"
+mkdir -p "$_PROOT_WITH/plugins/persona/product-owner"
+cat > "$_PROOT_WITH/plugins/persona/product-owner/manifest.yaml" <<'EOF'
+id: product-owner
+name: Product Owner
+kind: persona
+version: 0.1.0
+persona:
+  role: a product owner
+  perspective: PLAN_PO_PERSPECTIVE_SENTINEL user value definition-of-done.
+EOF
+_PLAN_ROOT="$_PROOT_WITH"
+FIX_C="$TEST_TEMP_DIR/fix_po_present"
+CAP_C="$(_run_plan "$FIX_C")"
+_PLAN_ROOT="$_ORIG_PLAN_ROOT"
+
+assert_file_exists "[SPEC-1] prompt captured with product-owner manifest present" "$CAP_C"
+assert_contains "[SPEC-1] product-owner perspective text in routed prompt when manifest present" \
+    "$(cat "$CAP_C")" "PLAN_PO_PERSPECTIVE_SENTINEL"
+
+# ── SPEC-2[guard]: product-owner manifest absent → fallback text in prompt ────
+print_test_section "4. product-owner manifest absent → fallback text in routed prompt [SPEC-2]"
+
+_PROOT_WITHOUT="$TEST_TEMP_DIR/proot_without"
+mkdir -p "$_PROOT_WITHOUT/plugins"
+_PLAN_ROOT="$_PROOT_WITHOUT"
+FIX_D="$TEST_TEMP_DIR/fix_po_absent"
+CAP_D="$(_run_plan "$FIX_D")"
+_PLAN_ROOT="$_ORIG_PLAN_ROOT"
+
+assert_file_exists "[SPEC-2] prompt captured with product-owner manifest absent" "$CAP_D"
+assert_contains "[SPEC-2] fallback opening present when product-owner manifest absent" \
+    "$(cat "$CAP_D")" "You are a software planning agent."
+
+# ── SPEC-3[guard]: schema_version and steps present regardless of framing ─────
+print_test_section "5. schema_version and steps present regardless of framing path [SPEC-3]"
+
+assert_contains "[SPEC-3] schema_version in prompt with product-owner manifest" \
+    "$(cat "$CAP_C")" "schema_version"
+assert_contains "[SPEC-3] steps in prompt with product-owner manifest" \
+    "$(cat "$CAP_C")" '"steps"'
+assert_contains "[SPEC-3] schema_version in prompt without product-owner manifest" \
+    "$(cat "$CAP_D")" "schema_version"
+assert_contains "[SPEC-3] steps in prompt without product-owner manifest" \
+    "$(cat "$CAP_D")" '"steps"'
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
