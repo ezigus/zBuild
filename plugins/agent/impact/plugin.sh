@@ -34,6 +34,9 @@ source "$_IMPACT_ROOT/scripts/lib/impact-prefilter.sh"
 source "$_IMPACT_ROOT/scripts/lib/router-rc-classify.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_IMPACT_ROOT/scripts/lib/prompt-overrides.sh"
+# Persona resolver + stage/lens composition seam (#1304, #1394).
+# shellcheck source=../../../core/plugin-registry/registry.sh
+source "$_IMPACT_ROOT/core/plugin-registry/registry.sh"
 
 # ─── init ───────────────────────────────────────────────────────────────────
 impact_init() {
@@ -152,9 +155,18 @@ IMPACT_SCHEMA
         _scope_list="$(printf '%s' "$scope_csv" | tr ',' '\n' | sed 's/^/- /')"
     fi
 
+    # Persona seam (#1394): open the prompt with the architect persona's framing
+    # when its manifest is present; when absent, persona_stage_framing returns 1
+    # and we fall back to the exact pre-#1394 opening — BYTE-IDENTICAL.
+    local _task_intro="Your role is to assess blast-radius and risk for a proposed change."
+    local _framing
+    _framing="$(persona_stage_framing architect "$_task_intro" "$_IMPACT_ROOT/plugins" 2>/dev/null)" \
+        || _framing="You are an Impact Analyzer agent."
+
     local _impact_instructions
-    _impact_instructions="$(cat <<'IMPACT_PROMPT'
-You are an Impact Analyzer agent. The design stage has already produced an
+    _impact_instructions="$(cat <<IMPACT_PROMPT
+${_framing}
+The design stage has already produced an
 EXHAUSTIVE scope block enumerating every file the change touches. Your job
 is adversarial consequence-finding: identify files that are MISSING from
 the design scope block — files the change invalidates, references, validates,

@@ -37,7 +37,9 @@ apply_scope_redaction() {
 }
 
 # Stable anchor from _impact_instructions (core contract) for ordering (I2).
-IMPACT_CONTRACT_ANCHOR="You are an Impact Analyzer agent."
+# Must be present in ALL framing paths (architect persona OR fallback), so we
+# use a phrase from the static body rather than the persona-dependent opening.
+IMPACT_CONTRACT_ANCHOR="EXISTENCE VERIFICATION"
 
 # ─── Minimal valid inputs ────────────────────────────────────────────────────
 make_plan() {
@@ -116,15 +118,35 @@ fi
 assert_contains "I3 marker in router-bound prompt" "$prompt_with_body" "IMPACT_OV_MARKER"
 assert_contains "I3 delimiter in router-bound prompt" "$prompt_with_body" "$DELIMITER"
 
-# ─── Case B: no override file ────────────────────────────────────────────────
+# ─── SPEC-1[change]: architect persona perspective present when manifest exists ─
+# _IMPACT_ROOT points to the real repo, which contains the architect manifest.
+# After #1394, persona_stage_framing produces the architect perspective text.
+# This assertion FAILS at the merge-base baseline (no persona_stage_framing call).
+assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
+    "$prompt_with_body" "You judge a change by its structure"
+
+# ─── SPEC-3[guard]: EXISTENCE VERIFICATION present regardless of framing path ─
+assert_contains "[SPEC-3] EXISTENCE VERIFICATION present with architect framing" \
+    "$prompt_with_body" "EXISTENCE VERIFICATION"
+
+# ─── Case B: no override file, _IMPACT_ROOT without architect persona ─────────
+# Use a separate _IMPACT_ROOT fixture that has no persona directory so that the
+# fallback framing ('You are an Impact Analyzer agent.') is exercised.
 FIXTURE_REPO_NONE="$TEST_TEMP_DIR/fixture-repo-none"
 mkdir -p "$FIXTURE_REPO_NONE/.zbuild/prompts"
 git -C "$FIXTURE_REPO_NONE" init -q
 export ZBUILD_REPO_ROOT="$FIXTURE_REPO_NONE"
 
+FIXTURE_IMPACT_ROOT_NO_ARCH="$TEST_TEMP_DIR/impact-root-no-arch"
+mkdir -p "$FIXTURE_IMPACT_ROOT_NO_ARCH/plugins"
+_ORIG_IMPACT_ROOT="$_IMPACT_ROOT"
+_IMPACT_ROOT="$FIXTURE_IMPACT_ROOT_NO_ARCH"
+
 art_none="$TEST_TEMP_DIR/state/artifacts-none"
 run_impact "$art_none"
 RC_NONE="$RC"
+
+_IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 
 prompt_none="$art_none/impact-prompt.txt"
 prompt_none_body="$(cat "$prompt_none" 2>/dev/null || echo '')"
@@ -139,6 +161,16 @@ else
 fi
 assert_contains "I4 core contract intact without override" \
     "$prompt_none_body" "$IMPACT_CONTRACT_ANCHOR"
+
+# ─── SPEC-2[guard]: fallback text byte-identical to pre-#1394 opening ─────────
+# When the architect manifest is absent, persona_stage_framing returns 1 and the
+# fallback 'You are an Impact Analyzer agent.' is used as the prompt opening.
+assert_contains "[SPEC-2] fallback text present when architect manifest absent" \
+    "$prompt_none_body" "You are an Impact Analyzer agent."
+
+# ─── SPEC-3[guard]: EXISTENCE VERIFICATION present with fallback framing ───────
+assert_contains "[SPEC-3] EXISTENCE VERIFICATION present with fallback framing" \
+    "$prompt_none_body" "EXISTENCE VERIFICATION"
 
 cleanup_test_env
 print_test_results
