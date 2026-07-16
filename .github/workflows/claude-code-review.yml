@@ -57,6 +57,27 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Verify API key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          echo "Testing ANTHROPIC_API_KEY against api.anthropic.com..."
+          http_code=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
+            --max-time 15 \
+            -X POST https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d '{"model":"claude-haiku-4-5-20251001","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}')
+          echo "HTTP status: $http_code"
+          cat /tmp/api_response.json
+          if [[ "$http_code" != "200" ]]; then
+            echo "::error::API key check failed with HTTP $http_code — see response above"
+            exit 1
+          fi
+          echo "API key verified OK"
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
