@@ -398,6 +398,24 @@ out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
 assert_eq "[SPEC-7] personas.md without prose opening → rc=1" "1" "$rc"
 assert_contains "[SPEC-7] error mentions newcomer prose" "$out" "prose"
 
+# ─── SPEC-3 (persona): substring is not a false-positive listing ──────────────
+# A persona id that appears ONLY as a substring of another listed id must still
+# fail the strict listing check (review #1530: -qF "arch" wrongly matched
+# "architect"). 'arch' is unlisted; 'architect' is listed → 'arch' must fail.
+print_test_section "SPEC-3 (persona): substring id is not a false positive"
+FX="$TEST_TEMP_DIR/spec-p3sub"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_persona_manifest "$FX" "architect"
+write_persona_manifest "$FX" "arch"
+write_personas_index "$FX" "architect"  # lists 'architect' only; 'arch' present solely as its substring
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-3] substring-only persona id → rc=1" "1" "$rc"
+assert_contains "[SPEC-3] error names the unlisted substring id 'arch'" "$out" "'arch'"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
