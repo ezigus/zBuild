@@ -76,11 +76,6 @@ jobs:
           # with is_error:true on turn 1). The OAuth secret is still stored if we
           # want to switch back after refreshing it.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Pin the review model. Left unset, the action auto-selects a default
-          # that drifted to claude-opus-4-8[1m] (1M-context Opus), which errors on
-          # this API account (is_error:true, ~3min, turn 1). Sonnet-5 is the right
-          # tier for review and is proven to run cleanly here (PR #1525).
-          model: 'claude-sonnet-5'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           # --comment makes /code-review POST its findings as inline PR comments +
@@ -98,7 +93,11 @@ jobs:
           # SUPERSET — the review-only guarantee is the *token* (contents: read →
           # cannot push/commit) + no --fix, not the narrowness of this list; a
           # too-narrow list previously starved big PRs into max-turns.
+          # --model pins to sonnet (the action ignores a top-level `model:` input —
+          # claude-code-action@v1 does not expose that parameter; omitting --model
+          # defaults to claude-opus-4-8[1m] which errors on this account).
           claude_args: |
+            --model claude-sonnet-5
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
             --max-turns 40
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
