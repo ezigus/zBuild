@@ -68,6 +68,8 @@ plugins/agent/security-lens/
 └── README.md
 ```
 
+**Every plugin — regardless of kind — requires a wiki page at `docs/wiki/plugins/<id>.md`.** The `lint-doc-freshness` gate (`scripts/lib/lint-doc-freshness.sh`) checks the real repo at test time and fails if the page is absent or lacks a prose opening paragraph. When adding a new plugin, include this file in the design scope.
+
 ### Manifest schema (`manifest.yaml`)
 
 ```yaml

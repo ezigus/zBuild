@@ -116,6 +116,24 @@ rc=$?
 set -e
 assert_eq "[SPEC-6] control: kind:agent without requires.core.redaction still fails" "1" "$rc"
 
+# ─── SPEC-15..SPEC-17: guard assertions for the live red-team manifest ────────
+REAL_MANIFEST="$REPO_ROOT/plugins/persona/red-team/manifest.yaml"
+
+# SPEC-15: live red-team manifest passes validate_manifest (guard — must not regress)
+set +e
+validate_manifest "$REAL_MANIFEST" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-15] live red-team manifest passes validate_manifest" "0" "$rc"
+
+# SPEC-16: red-team manifest declares kind:persona (guard)
+rt_kind="$(yaml_get "$REAL_MANIFEST" "kind" 2>/dev/null || true)"
+assert_eq "[SPEC-16] live red-team manifest declares kind:persona" "persona" "$rt_kind"
+
+# SPEC-17: red-team manifest has a non-empty persona.role (guard)
+rt_role="$(yaml_get "$REAL_MANIFEST" "persona.role" 2>/dev/null || true)"
+[[ -n "$rt_role" ]] && rt_role_present=1 || rt_role_present=0
+assert_eq "[SPEC-17] live red-team manifest has a non-empty persona.role" "1" "$rt_role_present"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
