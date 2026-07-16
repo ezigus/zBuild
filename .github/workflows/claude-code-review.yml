@@ -17,9 +17,6 @@ on:
 
 jobs:
   claude-review:
-    # Fire on any PR event, a manual dispatch, or a "/claude-review" comment on a
-    # PR. (issue_comment fires for issues AND PRs — gate on .pull_request so plain
-    # issue comments are ignored.)
     if: >
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
@@ -28,10 +25,6 @@ jobs:
        contains(github.event.comment.body, '/claude-review'))
 
     runs-on: ubuntu-latest
-    # Review-only policy: this action MUST leave review comments for a human to
-    # address — it MUST NOT commit or push code. `contents: read` is the hard
-    # guarantee (the workflow token cannot push); `pull-requests`/`issues: write`
-    # let it post the review + comments. Do NOT raise contents to write.
     permissions:
       contents: read
       pull-requests: write
@@ -42,8 +35,6 @@ jobs:
       - name: Resolve PR number
         id: pr
         env:
-          # Pass event fields through the environment — never inline ${{ }} into
-          # the run: body. Validate the resolved value is numeric before use.
           EVENT_NAME: ${{ github.event_name }}
           PR_FROM_PULL: ${{ github.event.pull_request.number }}
           PR_FROM_COMMENT: ${{ github.event.issue.number }}
@@ -70,43 +61,28 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
-          # API-key auth (pay-per-review, immune to subscription usage caps).
-          # Switched off claude_code_oauth_token, whose subscription/token was
-          # being rejected at the model call from ~2026-07-14 (every run failed
-          # with is_error:true on turn 1). The OAuth secret is still stored if we
-          # want to switch back after refreshing it.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          # --comment makes /code-review POST its findings as inline PR comments +
-          # a summary (without it the review runs but posts nothing — the cause of
-          # the 0-comment runs). We deliberately do NOT pass --fix: this reviewer
-          # comments only, never edits/commits (also enforced by contents: read).
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }} --comment'
-          # allowedTools MUST name the inline-comment MCP tool: in the action's
-          # headless mode MCP tools are NOT granted by default (docs: configuration),
-          # so omitting it makes the post a permission_denial → "No buffered inline
-          # comments" (the silent 0-comment runs — this is why removing the allowlist
-          # entirely did NOT fix it). Bash(gh pr comment:*) is the summary fallback
-          # for anthropics/claude-code-action#1087 (the plugin can end on a tool call
-          # with an empty result). The read-only exploration set is a deliberate SAFE
-          # SUPERSET — the review-only guarantee is the *token* (contents: read →
-          # cannot push/commit) + no --fix, not the narrowness of this list; a
-          # too-narrow list previously starved big PRs into max-turns.
-          # --model pins to sonnet (the action ignores a top-level `model:` input —
-          # claude-code-action@v1 does not expose that parameter; omitting --model
-          # defaults to claude-opus-4-8[1m] which errors on this account).
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
+
+            Review this pull request for the zBuild pipeline project. Focus on:
+
+            1. **Bugs** — logic errors, off-by-one, null/empty handling, rc/exit-code handling
+            2. **Shell correctness** — shellcheck violations, unquoted variables, pipefail hazards
+            3. **Security** — path traversal, command injection, unredacted secrets reaching LLM calls
+            4. **CLAUDE.md compliance** — files over 500 lines, docs committed to root, secrets hardcoded
+            5. **Test coverage** — new code paths without corresponding test assertions
+
+            Post specific issues as inline comments. Use a top-level comment only for a summary.
+            If no significant issues are found, say so clearly — do not invent findings.
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
             --max-turns 40
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
 
       - name: Post review outcome comment
-        # A fresh comment on EVERY run (each push triggers a run), stamped with the
-        # reviewed commit — so a clean run, a starved run, and a crashed run are
-        # never indistinguishable silence. Runs even when the review step failed.
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,7 +93,6 @@ jobs:
           set -uo pipefail
           sha="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid -q .headRefOid 2>/dev/null || echo '')"
           short="${sha:0:7}"
-          # Best-effort health signals from the action's execution log.
           exec_file="${RUNNER_TEMP}/claude-execution-output.json"
           denials=0; is_error=false
           if [[ -f "$exec_file" ]]; then
@@ -125,7 +100,6 @@ jobs:
             is_error="$(jq -rs '[.. | objects | select(has("is_error")) | .is_error] | last // false' "$exec_file" 2>/dev/null || echo false)"
           fi
           [[ "$denials" =~ ^[0-9]+$ ]] || denials=0
-          # Count inline review comments attached to THIS commit (this push's review).
           n_inline="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/comments" \
             --jq "[.[] | select(.commit_id==\"${sha}\")] | length" 2>/dev/null || echo '?')"
 
@@ -138,6 +112,6 @@ jobs:
           else
             status="🔎 **Claude review of \`${short}\`: ${n_inline} inline comment(s) posted above.**"
           fi
-          # shellcheck disable=SC2016  # backticks are literal markdown code spans, not command substitution
+          # shellcheck disable=SC2016
           printf '%s\n\n_Reviewed on push of `%s` · [run log](%s)_\n' \
             "$status" "$short" "$RUN_URL" | gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file -
