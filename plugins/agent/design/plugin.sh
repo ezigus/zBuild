@@ -35,6 +35,9 @@ source "$_DESIGN_ROOT/core/output/stage-io.sh"
 source "$_DESIGN_ROOT/scripts/lib/prompt-overrides.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_DESIGN_ROOT/scripts/lib/router-rc-classify.sh"
+# Persona resolver + stage/lens composition seam (#1304, #1324).
+# shellcheck source=../../../core/plugin-registry/registry.sh
+source "$_DESIGN_ROOT/core/plugin-registry/registry.sh"
 # #963: read-only grammar lib from _ZBUILD_CONTRACT_LIB_DIR (self-host redirect).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
@@ -167,9 +170,18 @@ _design_stage_run_inner() {
 
     local prompt_input_file="$artifact_dir/design-prompt.txt"
 
+    # Persona seam (#1324): open the prompt with the architect persona's framing
+    # when its manifest is present; when absent, persona_stage_framing returns 1
+    # and we fall back to the exact pre-#1324 opening — BYTE-IDENTICAL, including
+    # the original mid-sentence line wrap after "produce an".
+    local _task_intro="Your job is to produce an ADR-style design.md for the task described in the plan below."
+    local _framing
+    _framing="$(persona_stage_framing architect "$_task_intro" "$_DESIGN_ROOT/plugins" 2>/dev/null)" \
+        || _framing="You are a software architect for the target project. Your job is to produce an
+ADR-style design.md for the task described in the plan below."
+
     cat > "$prompt_input_file" <<DESIGN_PROMPT
-You are a software architect for the target project. Your job is to produce an
-ADR-style design.md for the task described in the plan below.
+${_framing}
 
 ## Plan
 $(printf '%s' "$plan_json" | jq -r '.title // "Untitled"' 2>/dev/null)
