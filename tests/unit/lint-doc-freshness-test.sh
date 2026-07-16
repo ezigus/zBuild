@@ -254,6 +254,150 @@ pkg="$(cat "$REPO_ROOT/package.json")"
 assert_contains "[SPEC-8] package.json lint chain includes lint-doc-freshness.sh" \
     "$pkg" "lint-doc-freshness.sh"
 
+# ─── Persona-feature helpers ──────────────────────────────────────────────────
+
+# Write a minimal kind:persona manifest.
+write_persona_manifest() {
+    local root="$1" id="$2"
+    mkdir -p "$root/plugins/persona/$id"
+    cat > "$root/plugins/persona/$id/manifest.yaml" <<EOF
+id: $id
+name: $id persona
+kind: persona
+version: 0.1.0
+summary: A test persona for automated fixtures.
+persona:
+  role: a test role
+  perspective: "A test perspective for automated testing purposes only."
+EOF
+}
+
+# Write a conforming personas.md index listing the given ids.
+# Call with no ids to produce a conforming page that lists nothing.
+write_personas_index() {
+    local root="$1"; shift
+    local ids=("$@")
+    {
+        printf '# Personas\n\n'
+        printf 'A persona is a data-only plugin that gives a pipeline stage a named identity and professional viewpoint.\n\n'
+        for id in "${ids[@]}"; do
+            printf '## %s\n\n' "$id"
+            printf 'The %s persona provides a test identity for use in automated test fixtures.\n\n' "$id"
+        done
+    } > "$root/docs/wiki/plugins/personas.md"
+}
+
+# ─── SPEC-1 (persona): kind:persona skips per-id coverage check ──────────────
+print_test_section "SPEC-1 (persona): kind:persona skips per-id coverage"
+FX="$TEST_TEMP_DIR/spec-p1"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_persona_manifest "$FX" "test-persona"
+write_personas_index "$FX" "test-persona"
+# No test-persona.md — kind:persona skips per-id coverage check
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-1] kind:persona skips per-id coverage → rc=0" "0" "$rc"
+
+# ─── SPEC-2 (persona): personas.md missing when personas exist → rc=1 ─────────
+print_test_section "SPEC-2 (persona): missing personas.md → rc=1"
+FX="$TEST_TEMP_DIR/spec-p2"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_persona_manifest "$FX" "test-persona"
+# intentionally do NOT create personas.md
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-2] missing personas.md → rc=1" "1" "$rc"
+assert_contains "[SPEC-2] error mentions personas.md" "$out" "personas.md"
+
+# ─── SPEC-3 (persona): persona id absent from personas.md → rc=1 ─────────────
+print_test_section "SPEC-3 (persona): id absent from personas.md → rc=1"
+FX="$TEST_TEMP_DIR/spec-p3"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_persona_manifest "$FX" "test-persona"
+write_personas_index "$FX"  # conforming prose but no ids listed
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-3] persona id absent from index → rc=1" "1" "$rc"
+assert_contains "[SPEC-3] error says id not in personas.md" "$out" "not listed in"
+
+# ─── SPEC-4 (persona): personas.md exempt from orphan check ──────────────────
+print_test_section "SPEC-4 (persona): personas.md is not an orphan"
+FX="$TEST_TEMP_DIR/spec-p4"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_persona_manifest "$FX" "test-persona"
+write_personas_index "$FX" "test-persona"
+# No manifest with id:personas — orphan check must exempt 'personas' slug
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-4] personas.md exempt from orphan → rc=0" "0" "$rc"
+
+# ─── SPEC-5 (persona): non-persona plugin still requires per-id page ──────────
+print_test_section "SPEC-5 (persona): non-persona still requires per-id page"
+FX="$TEST_TEMP_DIR/spec-p5"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_plugin_manifest "$FX" "myplugin" "tool"
+write_persona_manifest "$FX" "test-persona"
+write_personas_index "$FX" "test-persona"
+# myplugin.md intentionally absent
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-5] non-persona still needs per-id page → rc=1" "1" "$rc"
+assert_contains "[SPEC-5] error names the non-persona plugin" "$out" "myplugin"
+
+# ─── SPEC-6 (persona): all-green persona fixture → rc=0 ──────────────────────
+print_test_section "SPEC-6 (persona): all-green persona fixture → rc=0"
+FX="$TEST_TEMP_DIR/spec-p6"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_plugin_manifest "$FX" "myplugin"
+write_plugin_page "$FX" "myplugin"
+write_persona_manifest "$FX" "test-persona"
+write_personas_index "$FX" "test-persona"
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-6] all-green persona fixture → rc=0" "0" "$rc"
+
+# ─── SPEC-7 (persona): personas.md requires conforming prose opening ───────────
+print_test_section "SPEC-7 (persona): personas.md conformance check"
+FX="$TEST_TEMP_DIR/spec-p7"
+build_fixture_repo "$FX"
+write_mechanics_yaml "$FX"
+write_mechanic_page "$FX"
+write_persona_manifest "$FX" "test-persona"
+# personas.md opens with a bullet list and has no prose sentence — fails conformance;
+# does contain test-persona id so the id-listing check passes
+cat > "$FX/docs/wiki/plugins/personas.md" <<'EOF'
+# Personas
+
+- test-persona
+
+## test-persona
+
+- kind: persona
+EOF
+
+rc=0
+out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
+assert_eq "[SPEC-7] personas.md without prose opening → rc=1" "1" "$rc"
+assert_contains "[SPEC-7] error mentions newcomer prose" "$out" "prose"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
