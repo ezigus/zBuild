@@ -161,6 +161,54 @@ assert_eq "[SPEC-4] failing_acceptance_testfile field is readable from inert_bui
 assert_eq "[SPEC-5] verdict_classify(empty_diff) still = fail after adding inert_build" \
     "fail" "$(verdict_classify "empty_diff")"
 
+print_test_section "5. build plugin PRODUCES the inert_build signal from a red acceptance testfile"
+
+# Sections 2–4 exercise verdict.sh + the summary reader; they do NOT touch the
+# build-plugin code that DETECTS the false completion. This section drives that
+# code directly so reverting plugins/agent/build/plugin.sh to baseline breaks a
+# declared TESTFILE — proving the guard wiring is load-bearing, not inert
+# (ADR-036 reachability; the #1532 dogfood failed here on inert_wiring).
+#
+# Minimal mocks so build/plugin.sh sources without spawning claude.
+# shellcheck disable=SC2317
+route_to_model_loop() { _ROUTE_LOOP_ITERATIONS=1; _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"; _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0; _ROUTE_LOOP_LAST_RESPONSE="LOOP_COMPLETE"; return 0; }
+# shellcheck disable=SC2317
+_route_resolve_max_iterations() { echo 3; }
+# shellcheck disable=SC2317
+_route_loop_close_final_banner() { return 0; }
+# shellcheck disable=SC2317
+apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$out"; return 0; }
+
+# shellcheck source=../../plugins/agent/build/plugin.sh
+source "$REPO_ROOT/plugins/agent/build/plugin.sh"
+
+GUARD_REPO="$TEST_TEMP_DIR/guard-repo"
+mkdir -p "$GUARD_REPO/tests/unit"
+(
+    cd "$GUARD_REPO"
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    printf 'seed\n' > seed.txt
+    git add seed.txt
+    git commit -q -m seed
+) >/dev/null
+cat > "$GUARD_REPO/tests/unit/red-acceptance-test.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$GUARD_REPO/tests/unit/red-acceptance-test.sh"
+
+# [SPEC-1] the build guard names the still-red acceptance testfile (the input the
+# caller uses to override build_verdict → inert_build). At the merge-base baseline
+# _build_guard_false_completion does not exist, so guard_out is empty and this
+# assertion fails — the negative control / reachability lever for build/plugin.sh.
+# The helper prints the failing testfile path to stdout and exits non-zero; the
+# `|| true` keeps `set -e` happy and, at baseline (helper absent), yields "".
+guard_out="$(_build_guard_false_completion "tests/unit/red-acceptance-test.sh" "$GUARD_REPO" 2>/dev/null || true)"
+assert_eq "[SPEC-1] build guard names the red acceptance testfile (produces inert_build signal)" \
+    "tests/unit/red-acceptance-test.sh" "$guard_out"
+
 print_test_results
 cleanup_test_env
 exit $((FAIL > 0))
