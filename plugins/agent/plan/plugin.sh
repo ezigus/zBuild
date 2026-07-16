@@ -313,9 +313,13 @@ _plan_run_inner() {
     # identically to the pre-persona two-line opening so the plan prompt is
     # unchanged when the manifest is not installed.
     local _task_intro="Decompose the goal into concrete implementation steps."
-    local _framing
+    local _framing _persona_fallback
+    _persona_fallback='You are a software planning agent. Decompose the goal into concrete
+implementation steps.'
     _framing="$(persona_stage_framing product-owner "$_task_intro" "$_PLAN_ROOT/plugins" 2>/dev/null)" \
-        || _framing="$(printf 'You are a software planning agent. Decompose the goal into concrete\nimplementation steps.')"
+        || { warn "plan: persona_stage_framing failed — using fallback framing"; _framing="$_persona_fallback"; }
+    # Guard: rc=0 but empty output (e.g. perspective key absent in manifest).
+    [[ -n "$_framing" ]] || _framing="$_persona_fallback"
 
     # Build prompt from the goal. The instruction block declares the
     # plan.json schema inline because the validator below (jq -e at the
@@ -420,14 +424,14 @@ PLAN_PROMPT
         _plan_budget="$(ZBUILD_CURRENT_STAGE="${ZBUILD_CURRENT_STAGE:-plan}" _route_resolve_max_turns 2>/dev/null || true)"
     fi
     _plan_budget_block="$(_plan_budget_guidance "$_plan_budget")"
-    # Prepend the framework-rendered OUTPUT CONTRACT block (ADR-028), then the
-    # budget guardrail (when a finite budget applies), then the instructions.
+    # Prepend: OUTPUT CONTRACT (ADR-028), then persona framing (identity first),
+    # then budget guardrail (when a finite budget applies), then instructions.
     _plan_instructions="$_output_contract_block
+
+$_framing
 ${_plan_budget_block:+
 $_plan_budget_block
 }
-$_framing
-
 $_plan_instructions"
     # Inline the scope-manifest verbatim (ground truth). Falls back to a
     # placeholder if the manifest file is unreadable so the prompt remains
