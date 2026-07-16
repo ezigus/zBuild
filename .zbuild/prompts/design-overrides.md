@@ -56,3 +56,12 @@ Any change that creates `plugins/<kind>/<id>/manifest.yaml` MUST include
 real repo tree — it fails if the wiki page is absent or lacks a prose opening
 paragraph. This is an absence-by-omission gap: there is no old value to grep
 for, because the defect is the missing new file.
+
+**Exception — `kind: persona` plugins:** `kind: persona` manifests are
+data-only (no `plugin.sh`, no hooks) and share a single index page at
+`docs/wiki/plugins/personas.md`. Adding a new persona requires editing
+`docs/wiki/plugins/personas.md` to list the new id (one known, stable file)
+rather than creating a per-id page. The `lint-doc-freshness` gate enforces
+that `personas.md` exists and that every persona id appears as a literal
+string in it; per-id pages for personas are not required and will trigger
+orphan failures if present.

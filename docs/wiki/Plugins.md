@@ -20,6 +20,7 @@ One page per **leaf node** (plugin). Each is generated from its `manifest.yaml` 
 | [[plugins/security-lens]] | agent | security-auditor |
 | [[plugins/spec-acceptance]] | agent | acceptance_gate |
 | [[plugins/validate]] | agent | validate_agent |
+| [[plugins/personas]] | persona | — |
 | [[plugins/claim-coordinator-github-labels]] | claim-coordinator | claim-coordinator |
 | [[plugins/cache-gh-actions]] | tool | cache-backend |
 | [[plugins/cache-local]] | tool | cache-backend |

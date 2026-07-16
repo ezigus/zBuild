@@ -127,9 +127,14 @@ _check_page() {
 
 # ── Build plugin id → manifest path map ──────────────────────────────────────
 declare -A _plugin_manifests   # id → absolute manifest path
+declare -A _persona_ids        # id → 1 for kind:persona plugins
 while IFS= read -r _manifest; do
-    _id="$(grep '^id:' "$_manifest" | head -1 | sed 's/^id:[[:space:]]*//')"
+    # Strip trailing whitespace/CR too: a CRLF manifest would otherwise yield
+    # _kind="persona\r", silently mis-classifying the persona (review #1530).
+    _id="$(grep '^id:' "$_manifest" | head -1 | sed 's/^id:[[:space:]]*//; s/[[:space:]]*$//')"
+    _kind="$(grep '^kind:' "$_manifest" | head -1 | sed 's/^kind:[[:space:]]*//; s/[[:space:]]*$//')"
     [[ -n "$_id" ]] && _plugin_manifests["$_id"]="$_manifest"
+    [[ "$_kind" == "persona" ]] && [[ -n "$_id" ]] && _persona_ids["$_id"]=1
 done < <(find "$_REPO_ROOT/plugins" -name "manifest.yaml" | sort)
 
 # ── Build mechanic name → defined_in path map ─────────────────────────────────
@@ -149,12 +154,36 @@ while IFS= read -r _yaml_line; do
 done < "$_MECHANICS_YAML"
 
 # ── 1. Coverage: every plugin id must have a wiki page ───────────────────────
+# kind:persona plugins are exempt — their coverage is enforced via personas.md (section 1a).
 for _id in "${!_plugin_manifests[@]}"; do
+    [[ -n "${_persona_ids[$_id]+x}" ]] && continue
     _page="$_PLUGINS_WIKI/$_id.md"
     if [[ ! -f "$_page" ]]; then
         _fail "coverage: missing plugin wiki page for '$_id' (expected docs/wiki/plugins/$_id.md)"
     fi
 done
+
+# ── 1a. Persona index: personas.md must exist and list every persona id ───────
+# Use ${_persona_ids[*]+x} rather than ${#_persona_ids[@]} — bash 5.x set -u treats
+# an empty declared associative array as unbound for the # form.
+if [[ -n "${_persona_ids[*]+x}" ]]; then
+    _personas_page="$_PLUGINS_WIKI/personas.md"
+    if [[ ! -f "$_personas_page" ]]; then
+        _fail "coverage: docs/wiki/plugins/personas.md missing — required index for kind:persona plugins"
+    else
+        _check_page "$_personas_page" ""
+        for _id in "${!_persona_ids[@]}"; do
+            # Match the id as a whole token, not a substring: a plain -F "arch"
+            # would falsely satisfy the listing for 'architect' (review #1530).
+            # persona ids are validated [a-z0-9-]+, so they carry no ERE
+            # metacharacters; the delimiter class excludes '-' so hyphenated
+            # ids (product-owner, red-team) match as one token.
+            if ! $SYSGREP -qE "(^|[^[:alnum:]-])${_id}([^[:alnum:]-]|\$)" "$_personas_page"; then
+                _fail "coverage: persona id '$_id' not listed in docs/wiki/plugins/personas.md"
+            fi
+        done
+    fi
+fi
 
 # ── 2. Coverage: every mechanic must have a wiki page ────────────────────────
 for _name in "${!_mechanic_defined_in[@]}"; do
@@ -180,8 +209,10 @@ for _name in "${!_mechanic_defined_in[@]}"; do
 done
 
 # ── 5. Orphan check: every plugin wiki page must have a backing manifest ──────
+# 'personas' is the persona index page — no manifest with id:personas exists by design.
 while IFS= read -r -d '' _page; do
     _slug="$(basename "$_page" .md)"
+    [[ "$_slug" == "personas" ]] && continue
     if [[ -z "${_plugin_manifests[$_slug]+x}" ]]; then
         _fail "orphan: docs/wiki/plugins/$_slug.md has no backing plugin manifest with id '$_slug'"
     fi
