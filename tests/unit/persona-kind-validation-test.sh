@@ -116,6 +116,132 @@ rc=$?
 set -e
 assert_eq "[SPEC-6] control: kind:agent without requires.core.redaction still fails" "1" "$rc"
 
+# ─── SPEC-7: persona.role declared as '>' fails with message naming the field ──
+MANIFEST="$FIXTURE_DIR/role-block-gt.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-role-gt
+name: Bad Role GT
+kind: persona
+version: 0.1.0
+persona:
+  role: >
+    A software architect who thinks in systems.
+  perspective: Structure and boundaries.
+EOF
+
+set +e
+validate_manifest "$MANIFEST" >/dev/null 2>&1
+rc=$?
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+set -e
+assert_eq "[SPEC-7] persona.role declared as '>' fails validation" "1" "$rc"
+assert_contains "[SPEC-7] error names persona.role field" "$err_out" "persona.role"
+
+# ─── SPEC-8: persona.perspective declared as '>' fails with message naming field
+MANIFEST="$FIXTURE_DIR/perspective-block-gt.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-persp-gt
+name: Bad Perspective GT
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: >
+    Judge structure, boundaries, and coupling.
+EOF
+
+set +e
+validate_manifest "$MANIFEST" >/dev/null 2>&1
+rc=$?
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+set -e
+assert_eq "[SPEC-8] persona.perspective declared as '>' fails validation" "1" "$rc"
+assert_contains "[SPEC-8] error names persona.perspective field" "$err_out" "persona.perspective"
+
+# ─── SPEC-9: persona.role declared as '>-' fails ─────────────────────────────
+MANIFEST="$FIXTURE_DIR/role-block-gt-strip.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-role-gts
+name: Bad Role GT-Strip
+kind: persona
+version: 0.1.0
+persona:
+  role: >-
+    A software architect who thinks in systems.
+  perspective: Structure and boundaries.
+EOF
+
+set +e
+validate_manifest "$MANIFEST" >/dev/null 2>&1
+rc=$?
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+set -e
+assert_eq "[SPEC-9] persona.role declared as '>-' fails validation" "1" "$rc"
+assert_contains "[SPEC-9] error names persona.role field (>-)" "$err_out" "persona.role"
+
+# ─── SPEC-10: persona.perspective declared as '>-' fails ─────────────────────
+MANIFEST="$FIXTURE_DIR/perspective-block-gt-strip.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-persp-gts
+name: Bad Perspective GT-Strip
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: >-
+    Judge structure, boundaries, and coupling.
+EOF
+
+set +e
+validate_manifest "$MANIFEST" >/dev/null 2>&1
+rc=$?
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+set -e
+assert_eq "[SPEC-10] persona.perspective declared as '>-' fails validation" "1" "$rc"
+assert_contains "[SPEC-10] error names persona.perspective field (>-)" "$err_out" "persona.perspective"
+
+# ─── SPEC-11: persona.role declared as '|' fails ─────────────────────────────
+MANIFEST="$FIXTURE_DIR/role-block-pipe.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-role-pipe
+name: Bad Role Pipe
+kind: persona
+version: 0.1.0
+persona:
+  role: |
+    A software architect who thinks in systems.
+  perspective: Structure and boundaries.
+EOF
+
+set +e
+validate_manifest "$MANIFEST" >/dev/null 2>&1
+rc=$?
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+set -e
+assert_eq "[SPEC-11] persona.role declared as '|' fails validation" "1" "$rc"
+assert_contains "[SPEC-11] error names persona.role field (|)" "$err_out" "persona.role"
+
+# ─── SPEC-12: persona.perspective declared as '|-' fails ─────────────────────
+MANIFEST="$FIXTURE_DIR/perspective-block-pipe-strip.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-persp-pipes
+name: Bad Perspective Pipe-Strip
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: |-
+    Judge structure, boundaries, and coupling.
+EOF
+
+set +e
+validate_manifest "$MANIFEST" >/dev/null 2>&1
+rc=$?
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+set -e
+assert_eq "[SPEC-12] persona.perspective declared as '|-' fails validation" "1" "$rc"
+assert_contains "[SPEC-12] error names persona.perspective field (|-)" "$err_out" "persona.perspective"
+
 # ─── SPEC-15..SPEC-17: guard assertions for the live red-team manifest ────────
 REAL_MANIFEST="$REPO_ROOT/plugins/persona/red-team/manifest.yaml"
 
