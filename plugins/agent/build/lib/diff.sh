@@ -1,0 +1,498 @@
+#!/usr/bin/env bash
+# plugins/agent/build/lib/diff.sh — diff-harvest and scope-validation helpers.
+# Sourced by plugin.sh after shared libs (numstat-format.sh, event-bus.sh) are loaded.
+
+[[ -n "${_ZBUILD_BUILD_DIFF_LOADED:-}" ]] && return 0
+_ZBUILD_BUILD_DIFF_LOADED=1
+
+# _build_load_preexisting_untracked <state_dir> (#1265)
+# Materialize the intake pre-existing-untracked snapshot to a sorted temp file
+# for `grep -Fxq` membership lookup. Echoes the temp-file path on success
+# (caller rm's it); returns 1 when the baseline file is absent.
+_build_load_preexisting_untracked() {
+    local state_dir="$1"
+    local baseline="$state_dir/intake-untracked-baseline.txt"
+    [[ -f "$baseline" ]] || return 1
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/zbuild-preexist.XXXXXX")" || return 1
+    tr '\0' '\n' < "$baseline" | sort -u > "$tmp"
+    printf '%s' "$tmp"
+    return 0
+}
+
+# Global output vars for _build_harvest_diff:
+_BUILD_HARVEST_PREEXIST_UNTRACKED=""
+_BUILD_HARVEST_DIFF_CONTENT=""
+_BUILD_HARVEST_DIFF_FAILURE="false"
+
+# _build_harvest_diff <repo_root> <output_diff_patch> <artifact_dir>
+# Perform selective git add -N + git diff HEAD, enforce trailing-newline and
+# NUL-detection invariants. Sets globals:
+#   _BUILD_HARVEST_PREEXIST_UNTRACKED — temp file path (or empty)
+#   _BUILD_HARVEST_DIFF_CONTENT       — diff content string
+#   _BUILD_HARVEST_DIFF_FAILURE       — "true" if git diff failed
+_build_harvest_diff() {
+    local _repo_root="$1"
+    local _output_diff_patch="$2"
+    local _artifact_dir="$3"
+
+    _BUILD_HARVEST_PREEXIST_UNTRACKED=""
+    _BUILD_HARVEST_DIFF_CONTENT=""
+    _BUILD_HARVEST_DIFF_FAILURE="false"
+
+    # #1265: selective intent-add — skip pre-existing strays.
+    local _preexist_untracked=""
+    local _pu_state_dir; _pu_state_dir="$(dirname "$_artifact_dir")"
+    _preexist_untracked="$(_build_load_preexisting_untracked "$_pu_state_dir" 2>/dev/null || true)"
+    if [[ -n "$_preexist_untracked" && -f "$_preexist_untracked" ]]; then
+        local -a _add_paths=()
+        local _u
+        while IFS= read -r -d '' _u; do
+            [[ -z "$_u" ]] && continue
+            grep -Fxq -- "$_u" "$_preexist_untracked" && continue
+            _add_paths+=("$_u")
+        done < <(git -C "$_repo_root" ls-files --others --exclude-standard -z 2>/dev/null)
+        if [[ ${#_add_paths[@]} -gt 0 ]]; then
+            git -C "$_repo_root" add -N -- "${_add_paths[@]}" 2>/dev/null || true
+        fi
+    else
+        git -C "$_repo_root" add -N . 2>/dev/null || true
+    fi
+
+    # #530: stream directly to disk to preserve trailing newline.
+    local _diff_rc=0
+    git -C "$_repo_root" diff HEAD > "$_output_diff_patch" 2>/dev/null || _diff_rc=$?
+
+    local _diff_failure="false"
+    if [[ $_diff_rc -ne 0 ]]; then
+        warn "_build_harvest_diff: git diff HEAD failed in $_repo_root rc=$_diff_rc"
+        emit_event "loop.git_diff_failed" "plugin=build" \
+            "cwd=$_repo_root" "rc=$_diff_rc"
+        : > "$_output_diff_patch"
+        _diff_failure="true"
+    fi
+
+    # Lossless readback via printf-x trick.
+    local _diff_content=""
+    if [[ -s "$_output_diff_patch" ]]; then
+        _diff_content="$(cat "$_output_diff_patch"; printf x)"
+        _diff_content="${_diff_content%x}"
+    fi
+
+    # #530 trailing-newline invariant — defense in depth.
+    if [[ -s "$_output_diff_patch" ]]; then
+        local _last_byte
+        _last_byte="$(tail -c1 "$_output_diff_patch" | od -An -tx1 | tr -d ' \n')"
+        if [[ "$_last_byte" != "0a" ]]; then
+            printf '\n' >> "$_output_diff_patch"
+            _diff_content+=$'\n'
+            emit_event "build.diff.trailing_newline_restored" "plugin=build" \
+                "last_byte=0x${_last_byte}" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # #530 NUL detection via perl (#549: macOS BSD grep lacks -P).
+    if [[ -s "$_output_diff_patch" ]] && \
+       LC_ALL=C perl -0777 -ne 'exit(!/\x00/)' "$_output_diff_patch" 2>/dev/null; then
+        emit_event "build.diff.binary_truncation_observed" "plugin=build" \
+            "path=$_output_diff_patch" >/dev/null 2>&1 || true
+    fi
+
+    _BUILD_HARVEST_PREEXIST_UNTRACKED="$_preexist_untracked"
+    _BUILD_HARVEST_DIFF_CONTENT="$_diff_content"
+    _BUILD_HARVEST_DIFF_FAILURE="$_diff_failure"
+}
+
+# Global output vars for _build_validate_scope_violations:
+_BUILD_VSCP_VIOLATION="false"
+_BUILD_VSCP_VIOLATIONS_NL=""
+_BUILD_VSCP_VIOLATIONS_CREATED_NL=""
+_BUILD_VSCP_PRE_ZERO_NUMSTAT=""
+_BUILD_VSCP_DIFF_CONTENT=""
+
+# _build_validate_scope_violations <diff_content> <plan_files_csv> <repo_root>
+#   <artifact_dir> <output_diff_patch> <router_rc> <preexist_untracked>
+# Parse git diff --name-status -z, check per-path scope, handle OOS revert
+# (timeout #827) vs full empty-diff (clean run). Cleans up the preexist
+# temp file after use. Sets globals:
+#   _BUILD_VSCP_VIOLATION             — "true"/"false"
+#   _BUILD_VSCP_VIOLATIONS_NL         — newline-delimited OOS paths
+#   _BUILD_VSCP_VIOLATIONS_CREATED_NL — newline-delimited created OOS paths
+#   _BUILD_VSCP_PRE_ZERO_NUMSTAT      — numstat captured before zeroing
+#   _BUILD_VSCP_DIFF_CONTENT          — updated diff_content (may be zeroed)
+_build_validate_scope_violations() {
+    local _diff_content="$1"
+    local _plan_files_csv="$2"
+    local _repo_root="$3"
+    local _artifact_dir="$4"
+    local _output_diff_patch="$5"
+    local _router_rc="${6:-0}"
+    local _preexist_untracked="${7:-}"
+
+    _BUILD_VSCP_VIOLATION="false"
+    _BUILD_VSCP_VIOLATIONS_NL=""
+    _BUILD_VSCP_VIOLATIONS_CREATED_NL=""
+    _BUILD_VSCP_PRE_ZERO_NUMSTAT=""
+    _BUILD_VSCP_DIFF_CONTENT="$_diff_content"
+
+    local _scope_violation="false"
+    local -a _scope_violations=()
+    local -a _scope_violations_created=()
+
+    if [[ -n "$_diff_content" && -n "$_plan_files_csv" ]]; then
+        local -a _allowed_files=()
+        local _IFS_save="$IFS"
+        IFS=','
+        # shellcheck disable=SC2206
+        _allowed_files=( $_plan_files_csv )
+        IFS="$_IFS_save"
+
+        local _ns_file="$_artifact_dir/.build-name-status.bin"
+        git -C "$_repo_root" diff --name-status -z HEAD > "$_ns_file" 2>/dev/null || :
+
+        local -a _tokens=()
+        local _tok
+        while IFS= read -r -d '' _tok; do
+            _tokens+=("$_tok")
+        done < "$_ns_file"
+        rm -f "$_ns_file"
+
+        local _i _n=${#_tokens[@]}
+        _i=0
+        while (( _i < _n )); do
+            local _status="${_tokens[$_i]}"
+            _i=$((_i+1))
+            local _first_path="${_tokens[$_i]:-}"
+            _i=$((_i+1))
+            local -a _paths_to_check=("$_first_path")
+            if [[ "$_status" =~ ^[RC] ]]; then
+                _paths_to_check+=("${_tokens[$_i]:-}")
+                _i=$((_i+1))
+            fi
+            local _p
+            for _p in "${_paths_to_check[@]}"; do
+                [[ -z "$_p" ]] && continue
+                # #1265: skip paths already untracked at intake
+                if [[ "$_status" =~ ^A ]] \
+                   && [[ -n "$_preexist_untracked" && -f "$_preexist_untracked" ]] \
+                   && grep -Fxq -- "$_p" "$_preexist_untracked"; then
+                    continue
+                fi
+                if ! _build_path_in_scope "$_p" _allowed_files; then
+                    _scope_violation="true"
+                    _scope_violations+=("$_p")
+                    [[ "$_status" =~ ^A ]] && _scope_violations_created+=("$_p")
+                    emit_event "build.scope.violation" "plugin=build" \
+                        "path=$_p" "status=$_status"
+                fi
+            done
+        done
+    fi
+
+    # #1265: drop the pre-existing-untracked scratch file.
+    [[ -n "$_preexist_untracked" ]] && rm -f "$_preexist_untracked" 2>/dev/null || true
+
+    local _pre_zero_numstat=""
+    if [[ "$_scope_violation" == "true" ]]; then
+        _pre_zero_numstat="$(git -C "$_repo_root" diff HEAD --numstat 2>/dev/null || true)"
+
+        if [[ $_router_rc -ge 2 ]]; then
+            # #827: timeout — revert OOS, preserve in-scope diff.
+            warn "_build_validate_scope_violations: scope violation under router rc=$_router_rc — reverting OOS paths, preserving in-scope diff (#827)"
+            local _oos_path
+            for _oos_path in "${_scope_violations[@]}"; do
+                [[ -z "$_oos_path" ]] && continue
+                if git -C "$_repo_root" ls-files --error-unmatch -- "$_oos_path" >/dev/null 2>&1; then
+                    git -C "$_repo_root" checkout HEAD -- "$_oos_path" 2>/dev/null || true
+                else
+                    rm -f "$_repo_root/$_oos_path" 2>/dev/null || true
+                fi
+            done
+            git -C "$_repo_root" diff HEAD > "$_output_diff_patch" 2>/dev/null || true
+            if [[ -s "$_output_diff_patch" ]]; then
+                _diff_content="$(cat "$_output_diff_patch"; printf x)"
+                _diff_content="${_diff_content%x}"
+            else
+                _diff_content=""
+            fi
+            _scope_violation="false"
+            emit_event "build.timeout.partial_work_preserved" "plugin=build" \
+                "router_rc=$_router_rc" \
+                "oos_paths_reverted=${#_scope_violations[@]}" \
+                "in_scope_diff_bytes=${#_diff_content}"
+        else
+            # Clean run: revert edited OOS files, zero the diff.
+            warn "_build_validate_scope_violations: scope violation — writing empty diff.patch"
+            local _rev_path
+            for _rev_path in "${_scope_violations[@]}"; do
+                [[ -z "$_rev_path" ]] && continue
+                git -C "$_repo_root" checkout HEAD -- "$_rev_path" 2>/dev/null || true
+            done
+            _diff_content=""
+            : > "$_output_diff_patch"
+        fi
+    fi
+
+    _BUILD_VSCP_VIOLATION="$_scope_violation"
+    if [[ ${#_scope_violations[@]} -gt 0 ]]; then
+        _BUILD_VSCP_VIOLATIONS_NL="$(printf '%s\n' "${_scope_violations[@]}")"
+    fi
+    if [[ ${#_scope_violations_created[@]} -gt 0 ]]; then
+        _BUILD_VSCP_VIOLATIONS_CREATED_NL="$(printf '%s\n' "${_scope_violations_created[@]}")"
+    fi
+    _BUILD_VSCP_PRE_ZERO_NUMSTAT="$_pre_zero_numstat"
+    _BUILD_VSCP_DIFF_CONTENT="$_diff_content"
+}
+
+# _build_rewrite_cumulative_diff <scope_violation> <artifact_dir> <repo_root>
+#   <output_diff_patch> <diff_failure>
+# Rewrite diff.patch as the cumulative baseline→HEAD delta (#661 / ADR-020).
+# No-op on scope_violation. Re-enforces trailing-newline invariant.
+_build_rewrite_cumulative_diff() {
+    local _scope_violation="$1"
+    local _artifact_dir="$2"
+    local _repo_root="$3"
+    local _output_diff_patch="$4"
+    local _diff_failure="${5:-false}"
+
+    [[ "$_scope_violation" == "true" ]] && return 0
+
+    local _baseline_sha="" _state_dir_for_baseline=""
+    _state_dir_for_baseline="$(dirname "$_artifact_dir")"
+    if [[ -f "$_state_dir_for_baseline/intake-baseline-ref.txt" ]]; then
+        _baseline_sha="$(cat "$_state_dir_for_baseline/intake-baseline-ref.txt" \
+            2>/dev/null || true)"
+    elif [[ -n "${ZBUILD_STATE_DIR:-}" \
+          && -f "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" ]]; then
+        _baseline_sha="$(cat "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" \
+            2>/dev/null || true)"
+    fi
+
+    local _do_rewrite="false"
+    if [[ -n "$_baseline_sha" ]]; then
+        _do_rewrite="true"
+    elif [[ "$_diff_failure" != "true" ]]; then
+        _do_rewrite="true"
+    fi
+
+    if [[ "$_do_rewrite" == "true" ]]; then
+        local _cum_rc=0
+        if [[ -n "$_baseline_sha" ]]; then
+            git -C "$_repo_root" diff "$_baseline_sha..HEAD" \
+                > "$_output_diff_patch" 2>/dev/null || _cum_rc=$?
+        else
+            git -C "$_repo_root" diff HEAD \
+                > "$_output_diff_patch" 2>/dev/null || _cum_rc=$?
+        fi
+        if [[ $_cum_rc -ne 0 ]]; then
+            warn "_build_rewrite_cumulative_diff: cumulative diff failed in $_repo_root rc=$_cum_rc baseline=${_baseline_sha:-<none>}"
+            emit_event "loop.git_diff_failed" "plugin=build" \
+                "cwd=$_repo_root" "rc=$_cum_rc" "phase=cumulative"
+            : > "$_output_diff_patch"
+        fi
+    fi
+
+    # #530 trailing-newline invariant on the rewritten file.
+    if [[ -s "$_output_diff_patch" ]]; then
+        local _cum_last_byte
+        _cum_last_byte="$(tail -c1 "$_output_diff_patch" \
+            | od -An -tx1 | tr -d ' \n')"
+        if [[ "$_cum_last_byte" != "0a" ]]; then
+            printf '\n' >> "$_output_diff_patch"
+            emit_event "build.diff.trailing_newline_restored" "plugin=build" \
+                "last_byte=0x${_cum_last_byte}" "phase=cumulative" \
+                >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
+# _build_format_numstat — thin wrapper around format_numstat (#506).
+_BUILD_NUMSTAT_MAX_LINES=50
+_BUILD_NUMSTAT_FILES_COUNT=0
+_build_format_numstat() {
+    local raw="$1"
+    local allowed_name="$2"
+    format_numstat "$raw" "$allowed_name" \
+        --event-prefix "build" \
+        --full-at "build-summary.json"
+    _BUILD_NUMSTAT_FILES_COUNT="$_NUMSTAT_FILES_COUNT"
+    return 0
+}
+
+# _build_emit_changed_files_summary — post-loop numstat/discrepancy signal (#587).
+# Args: $1=repo_root $2=terminated_reason $3=scope_violation $4=pre_zero_numstat
+_build_emit_changed_files_summary() {
+    local repo_root="$1"
+    local terminated_reason="$2"
+    local scope_violation="$3"
+    local pre_zero_numstat="$4"
+
+    local _stage_id_unused="${ZBUILD_CURRENT_STAGE:-build}"
+    : "$_stage_id_unused"
+
+    if ! git -C "$repo_root" rev-parse --verify HEAD >/dev/null 2>&1; then
+        local reason="unknown"
+        if [[ -d "$repo_root/.git/rebase-merge" || -d "$repo_root/.git/rebase-apply" ]]; then
+            reason="rebase"
+        elif [[ -f "$repo_root/.git/BISECT_LOG" ]]; then
+            reason="bisect"
+        elif [[ -f "$repo_root/.git/MERGE_HEAD" ]]; then
+            reason="merge"
+        elif ! git -C "$repo_root" symbolic-ref -q HEAD >/dev/null 2>&1; then
+            reason="detached"
+        else
+            reason="unborn"
+        fi
+        emit_event "build.numstat.precondition_failed" "plugin=build" \
+            "reason=$reason" "repo_root=$repo_root" >/dev/null 2>&1 || true
+        warn "build: numstat skipped (git state $reason)" >&2 || true
+        return 0
+    fi
+
+    local numstat_out=""
+    local scope_violation_mode="false"
+    if [[ "$scope_violation" == "true" ]]; then
+        numstat_out="$pre_zero_numstat"
+        scope_violation_mode="true"
+    else
+        numstat_out="$(git -C "$repo_root" diff HEAD --numstat 2>/dev/null || true)"
+    fi
+
+    local -a allowed_files=()
+    local _csv="${_BUILD_PLAN_FILES_CSV:-}"
+    if [[ -n "$_csv" ]]; then
+        local IFS_save="$IFS"
+        IFS=','
+        # shellcheck disable=SC2206,SC2034
+        allowed_files=( $_csv )
+        IFS="$IFS_save"
+    fi
+
+    local _fmt_tmp; _fmt_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-numstat.XXXXXX")"
+    _build_format_numstat "$numstat_out" allowed_files > "$_fmt_tmp"
+    local formatted; formatted="$(cat "$_fmt_tmp")"
+    rm -f "$_fmt_tmp"
+    local files_count="$_BUILD_NUMSTAT_FILES_COUNT"
+
+    if [[ "$terminated_reason" == "done_sentinel" && "$files_count" -eq 0 \
+          && "$scope_violation_mode" != "true" ]]; then
+        emit_event "build.discrepancy.detected" "plugin=build" \
+            "reason=loop_complete_no_changes" \
+            "terminated_reason=$terminated_reason" \
+            "files_changed=0" >/dev/null 2>&1 || true
+        emit_event "build.diff.empty_after_done_sentinel" "plugin=build" \
+            "terminated_reason=$terminated_reason" \
+            "files_changed=0" >/dev/null 2>&1 || true
+        warn "build: LLM signaled success but numstat shows 0 files changed" >&2 || true
+    fi
+
+    : "${formatted:-}"
+    return 0
+}
+
+# _build_write_build_summary — assembles and writes build-summary.json (schema_version=4).
+# Uses dynamic scoping: reads issue, scope_violation, scope_violations[],
+# scope_violations_created[], files_changed_json, lines_added, lines_removed,
+# files_changed_count, output_diff_patch, output_summary_json, iterations,
+# terminated_reason, loop_input_tokens, loop_output_tokens, _feedback_body,
+# plan_files_csv, router_rc from caller's locals.
+# Writes build_verdict back to caller's scope (no `local` on it here).
+_build_write_build_summary() {
+    local _sum_violations_json="[]"
+    local _sum_build_reason=""
+    local _sum_out_of_scope_files_json="[]"
+    local _sum_scope_expansion_request_json=""
+    local _sum_oos_paths
+
+    build_verdict="pass"
+    if [[ "${scope_violation:-false}" == "true" ]]; then
+        build_verdict="scope_violation"
+    elif [[ "${terminated_reason:-error}" == "router_timeout" || "${terminated_reason:-error}" == "error" ]]; then
+        build_verdict="did_not_finish"
+    elif [[ "${terminated_reason:-}" == "done_sentinel" \
+          && "${files_changed_count:-0}" -eq 0 ]]; then
+        build_verdict="empty_diff"
+    fi
+
+    if [[ ${#scope_violations[@]} -gt 0 ]]; then
+        _sum_violations_json="$(printf '%s\n' "${scope_violations[@]}" \
+            | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
+    fi
+
+    if [[ "$build_verdict" == "empty_diff" && -n "${_feedback_body:-}" && -n "${plan_files_csv:-}" ]]; then
+        _sum_oos_paths="$(_build_detect_out_of_scope_files "$_feedback_body" "$plan_files_csv")"
+        if [[ -n "$_sum_oos_paths" ]]; then
+            _sum_build_reason="no_progress_scope_blocked"
+            _sum_out_of_scope_files_json="$(printf '%s\n' "$_sum_oos_paths" \
+                | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
+            _sum_scope_expansion_request_json="$(_build_scope_expansion_request "$_sum_oos_paths" "${_feedback_body:-}" 2>/dev/null || true)"
+        fi
+    fi
+
+    if [[ -z "$_sum_scope_expansion_request_json" && ${#scope_violations_created[@]} -gt 0 ]]; then
+        _sum_scope_expansion_request_json="$(_build_created_collateral_request "${scope_violations_created[@]}" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$_sum_scope_expansion_request_json" ]]; then
+        _sum_scope_expansion_request_json="$(_build_pending_collateral_request \
+            "$build_verdict" "${_feedback_body:-}" "${plan_files_csv:-}" 2>/dev/null || true)"
+        if [[ -n "$_sum_scope_expansion_request_json" ]]; then
+            _sum_build_reason="scope_request_pending"
+            _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
+                <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
+        fi
+    fi
+
+    if [[ -z "$_sum_scope_expansion_request_json" && ${#scope_violations[@]} -gt 0 ]]; then
+        _sum_scope_expansion_request_json="$(_build_edited_collateral_request \
+            "${_feedback_body:-}" \
+            "$(printf '%s\n' "${scope_violations_created[@]:-}")" \
+            "$(printf '%s\n' "${scope_violations[@]}")" 2>/dev/null || true)"
+        if [[ -n "$_sum_scope_expansion_request_json" ]]; then
+            _sum_build_reason="${_sum_build_reason:-scope_request_pending}"
+            _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
+                <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
+        fi
+    fi
+
+    local _sum_issue="${issue:-0}"
+    [[ "$_sum_issue" =~ ^[0-9]+$ ]] || _sum_issue=0
+
+    jq -n \
+        --argjson schema_version 4 \
+        --argjson issue "$_sum_issue" \
+        --argjson files_changed "${files_changed_json:-[]}" \
+        --argjson lines_added "${lines_added:-0}" \
+        --argjson lines_removed "${lines_removed:-0}" \
+        --arg diff_patch_path "${output_diff_patch:-}" \
+        --argjson iterations "${iterations:-0}" \
+        --arg terminated_reason "${terminated_reason:-error}" \
+        --arg verdict "$build_verdict" \
+        --argjson scope_violation "$([[ "${scope_violation:-false}" == "true" ]] && echo true || echo false)" \
+        --argjson scope_violations "$_sum_violations_json" \
+        --argjson loop_input_tokens "${loop_input_tokens:-0}" \
+        --argjson loop_output_tokens "${loop_output_tokens:-0}" \
+        --arg reason "$_sum_build_reason" \
+        --argjson out_of_scope_files "$_sum_out_of_scope_files_json" \
+        --argjson scope_expansion_request "${_sum_scope_expansion_request_json:-null}" \
+        --arg notes "Build stage completed. Diff written to artifact; not applied." \
+        '{
+            schema_version: $schema_version,
+            issue: $issue,
+            files_changed: $files_changed,
+            lines_added: $lines_added,
+            lines_removed: $lines_removed,
+            diff_patch_path: $diff_patch_path,
+            iterations: $iterations,
+            terminated_reason: $terminated_reason,
+            verdict: $verdict,
+            scope_violation: $scope_violation,
+            scope_violations: $scope_violations,
+            loop_input_tokens: $loop_input_tokens,
+            loop_output_tokens: $loop_output_tokens,
+            notes: $notes
+        }
+        + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
+        + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
+        ' | atomic_write "$output_summary_json"
+}
