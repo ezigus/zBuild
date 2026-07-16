@@ -196,6 +196,7 @@
     "backend.missing",
     "build.aborted",
     "build.diff.empty_after_done_sentinel",
+    "build.inert_build",
     "build.scope_grant_applied",
     "build.scope_injected",
     "cost.budget_exceeded",

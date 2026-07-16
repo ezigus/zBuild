@@ -62,7 +62,7 @@ verdict_classify() {
         # a timeout iterates, it does not block the cycle.
         request_changes|incomplete|did_not_finish)
             echo "warn" ;;
-        fail|error|block|scope_violation|corrupt_diff|empty_diff|scope_too_large)
+        fail|error|block|scope_violation|corrupt_diff|empty_diff|scope_too_large|inert_build)
             echo "fail" ;;
         # #1219 (ADR-045): a gate-aggregator route verdict (route_design, or any
         # future route_<target>) is a NON-pass, non-convergent outcome — classify
