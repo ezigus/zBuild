@@ -97,6 +97,58 @@ set -e
 assert_eq "[SPEC-8] persona_lens_framing returns 1 for an unknown persona" "1" "$rc"
 assert_eq "[SPEC-8] persona_lens_framing prints nothing for an unknown persona" "" "$out"
 
+# ─── SPEC-10..SPEC-15: live-tree red-team persona (plugins/persona/red-team) ──
+# These specs exercise the real manifest shipped in the repo (not a fixture).
+REAL_PROOT="$REPO_ROOT/plugins"
+
+# SPEC-10: red-team manifest is discoverable from the live plugins tree
+set +e
+rt_mf="$(find_persona red-team "$REAL_PROOT")"; rc=$?
+set -e
+assert_eq "[SPEC-10] find_persona returns 0 for the live red-team persona" "0" "$rc"
+assert_contains "[SPEC-10] find_persona points at plugins/persona/red-team/manifest.yaml" \
+    "$rt_mf" "plugins/persona/red-team/manifest.yaml"
+
+# SPEC-11: role is exactly 'a red-team operator'
+assert_eq "[SPEC-11] resolve_persona_role returns 'a red-team operator'" \
+    "a red-team operator" "$(resolve_persona_role red-team "$REAL_PROOT")"
+
+# SPEC-12: perspective contains the word 'attacker' or 'adversarial'
+rt_perspective="$(resolve_persona_perspective red-team "$REAL_PROOT")"
+case "$rt_perspective" in
+    *adversar*) rt_persp_ok=1 ;;
+    *attacker*)  rt_persp_ok=1 ;;
+    *)           rt_persp_ok=0 ;;
+esac
+assert_eq "[SPEC-12] red-team perspective references adversarial mindset" "1" "$rt_persp_ok"
+
+# SPEC-13: validate_manifest passes on the live red-team manifest
+set +e
+validate_manifest "$rt_mf" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-13] validate_manifest passes on the live red-team manifest" "0" "$rc"
+
+# SPEC-14: persona_lens_framing composes a framing containing role + supplied charter
+rt_framing="$(persona_lens_framing red-team "Look for exploitable flaws." "$REAL_PROOT")"
+case "$rt_framing" in
+    *"red-team operator"*) rt_role_ok=1 ;;
+    *) rt_role_ok=0 ;;
+esac
+assert_eq "[SPEC-14] lens framing contains 'red-team operator'" "1" "$rt_role_ok"
+case "$rt_framing" in
+    *"Look for exploitable flaws."*) rt_charter_ok=1 ;;
+    *) rt_charter_ok=0 ;;
+esac
+assert_eq "[SPEC-14] lens framing contains the supplied charter" "1" "$rt_charter_ok"
+
+# SPEC-15: persona_stage_framing composes a framing containing role for the live persona
+rt_stage="$(persona_stage_framing red-team "Assess the change." "$REAL_PROOT")"
+case "$rt_stage" in
+    *"red-team operator"*) rt_stage_ok=1 ;;
+    *) rt_stage_ok=0 ;;
+esac
+assert_eq "[SPEC-15] stage framing contains 'red-team operator' for live persona" "1" "$rt_stage_ok"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
