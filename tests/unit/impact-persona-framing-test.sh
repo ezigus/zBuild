@@ -142,6 +142,7 @@ PROMPT4="$AD4/impact-prompt.txt"
 assert_file_exists "SPEC-4: prompt file written when persona_stage_framing returns empty" "$PROMPT4"
 assert_contains "[SPEC-4] fallback text used when persona_stage_framing returns empty" \
     "$(cat "$PROMPT4")" "You are an Impact Analyzer agent."
+unset -f persona_stage_framing  # restore: remove mock so future SPECs use the real function
 
 cleanup_test_env
 print_test_results
