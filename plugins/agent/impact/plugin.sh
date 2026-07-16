@@ -163,6 +163,7 @@ IMPACT_SCHEMA
     _framing="$(persona_stage_framing architect "$_task_intro" "$_IMPACT_ROOT/plugins" 2>/dev/null)" \
         || _framing="You are an Impact Analyzer agent."
 
+    local _bt='`'
     local _impact_instructions
     _impact_instructions="$(cat <<IMPACT_PROMPT
 ${_framing}
@@ -216,8 +217,8 @@ BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
 - STOP exploring and EMIT your JSON verdict well before your budget runs out.
   If unsure but out of budget, return verdict="incomplete" with the gaps you
   DID find — never keep searching past the point of being able to answer.
-- After emitting the closing `}`, output NOTHING — no trailing commentary,
-  no ` ``` ` or ` ```json ` fence, no summary sentence.
+- After emitting the closing ${_bt}}${_bt}, output NOTHING — no trailing commentary,
+  no ${_bt} ${_bt}${_bt}${_bt} ${_bt} or ${_bt} ${_bt}${_bt}${_bt}json${_bt} fence, no summary sentence.
 
 IMPACT_PROMPT
 )"
