@@ -209,9 +209,18 @@ validate_manifest() {
     # above — persona text is redaction-covered at injection by the router
     # (ADR-043), not by the plugin declaring requires.core.redaction.
     if [[ "$kind" == "persona" ]]; then
+        local _block_scalar_re='^[>|][-+]?$'
         local persona_role; persona_role="$(yaml_get "$manifest" "persona.role")"
         if [[ -z "$persona_role" ]]; then
             error "validate_manifest($manifest): kind: persona requires a non-empty 'persona.role' (the noun phrase for 'You are {role} for the target project.')"
+            errors=$((errors + 1))
+        elif [[ "$persona_role" =~ $_block_scalar_re ]]; then
+            error "validate_manifest($manifest): 'persona.role' must be a single-line string, not a block scalar ('$persona_role'); use a plain value on the same line as the key"
+            errors=$((errors + 1))
+        fi
+        local persona_perspective; persona_perspective="$(yaml_get "$manifest" "persona.perspective")"
+        if [[ -n "$persona_perspective" ]] && [[ "$persona_perspective" =~ $_block_scalar_re ]]; then
+            error "validate_manifest($manifest): 'persona.perspective' must be a single-line string, not a block scalar ('$persona_perspective'); use a plain value on the same line as the key"
             errors=$((errors + 1))
         fi
     fi
