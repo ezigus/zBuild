@@ -130,9 +130,8 @@ persona:
 EOF
 
 set +e
-validate_manifest "$MANIFEST" >/dev/null 2>&1
-rc=$?
 err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
 set -e
 assert_eq "[SPEC-7] persona.role declared as '>' fails validation" "1" "$rc"
 assert_contains "[SPEC-7] error names persona.role field" "$err_out" "persona.role"
@@ -151,9 +150,8 @@ persona:
 EOF
 
 set +e
-validate_manifest "$MANIFEST" >/dev/null 2>&1
-rc=$?
 err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
 set -e
 assert_eq "[SPEC-8] persona.perspective declared as '>' fails validation" "1" "$rc"
 assert_contains "[SPEC-8] error names persona.perspective field" "$err_out" "persona.perspective"
@@ -172,9 +170,8 @@ persona:
 EOF
 
 set +e
-validate_manifest "$MANIFEST" >/dev/null 2>&1
-rc=$?
 err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
 set -e
 assert_eq "[SPEC-9] persona.role declared as '>-' fails validation" "1" "$rc"
 assert_contains "[SPEC-9] error names persona.role field (>-)" "$err_out" "persona.role"
@@ -193,9 +190,8 @@ persona:
 EOF
 
 set +e
-validate_manifest "$MANIFEST" >/dev/null 2>&1
-rc=$?
 err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
 set -e
 assert_eq "[SPEC-10] persona.perspective declared as '>-' fails validation" "1" "$rc"
 assert_contains "[SPEC-10] error names persona.perspective field (>-)" "$err_out" "persona.perspective"
@@ -214,9 +210,8 @@ persona:
 EOF
 
 set +e
-validate_manifest "$MANIFEST" >/dev/null 2>&1
-rc=$?
 err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
 set -e
 assert_eq "[SPEC-11] persona.role declared as '|' fails validation" "1" "$rc"
 assert_contains "[SPEC-11] error names persona.role field (|)" "$err_out" "persona.role"
@@ -235,12 +230,51 @@ persona:
 EOF
 
 set +e
-validate_manifest "$MANIFEST" >/dev/null 2>&1
-rc=$?
 err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
 set -e
 assert_eq "[SPEC-12] persona.perspective declared as '|-' fails validation" "1" "$rc"
 assert_contains "[SPEC-12] error names persona.perspective field (|-)" "$err_out" "persona.perspective"
+
+# ─── SPEC-13: persona.role declared as '>+' fails (keep-chomping variant) ────
+MANIFEST="$FIXTURE_DIR/role-block-gt-keep.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-role-gtk
+name: Bad Role GT-Keep
+kind: persona
+version: 0.1.0
+persona:
+  role: >+
+    A software architect who thinks in systems.
+  perspective: Structure and boundaries.
+EOF
+
+set +e
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
+set -e
+assert_eq "[SPEC-13] persona.role declared as '>+' fails validation" "1" "$rc"
+assert_contains "[SPEC-13] error names persona.role field (>+)" "$err_out" "persona.role"
+
+# ─── SPEC-14: persona.perspective declared as '|+' fails (keep-chomping) ─────
+MANIFEST="$FIXTURE_DIR/perspective-block-pipe-keep.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: bad-persp-pipek
+name: Bad Perspective Pipe-Keep
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: |+
+    Judge structure, boundaries, and coupling.
+EOF
+
+set +e
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+rc=$?
+set -e
+assert_eq "[SPEC-14] persona.perspective declared as '|+' fails validation" "1" "$rc"
+assert_contains "[SPEC-14] error names persona.perspective field (|+)" "$err_out" "persona.perspective"
 
 # ─── SPEC-15..SPEC-17: guard assertions for the live red-team manifest ────────
 REAL_MANIFEST="$REPO_ROOT/plugins/persona/red-team/manifest.yaml"

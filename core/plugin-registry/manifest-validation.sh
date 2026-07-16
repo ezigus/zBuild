@@ -209,7 +209,7 @@ validate_manifest() {
     # above — persona text is redaction-covered at injection by the router
     # (ADR-043), not by the plugin declaring requires.core.redaction.
     if [[ "$kind" == "persona" ]]; then
-        local _block_scalar_re='^[>|]-?$'
+        local _block_scalar_re='^[>|][-+]?$'
         local persona_role; persona_role="$(yaml_get "$manifest" "persona.role")"
         if [[ -z "$persona_role" ]]; then
             error "validate_manifest($manifest): kind: persona requires a non-empty 'persona.role' (the noun phrase for 'You are {role} for the target project.')"
