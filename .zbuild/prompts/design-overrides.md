@@ -47,3 +47,12 @@ grep -rln 'stage\.complete\|plugin\.run\.start\|started .*UTC\|finished .*UTC' t
 Every match that enumerates or counts a closed set you are changing belongs in
 the design scope block. Re-run the greps each time — new enumeration sites arrive
 with new tests, and the defect (a missing line) leaves no token to search for.
+
+## Rule ABS-W — new plugin directory requires a wiki page
+
+Any change that creates `plugins/<kind>/<id>/manifest.yaml` MUST include
+`docs/wiki/plugins/<id>.md` in scope. The `lint-doc-freshness` gate
+(`scripts/lib/lint-doc-freshness.sh`) enforces this at test time against the
+real repo tree — it fails if the wiki page is absent or lacks a prose opening
+paragraph. This is an absence-by-omission gap: there is no old value to grep
+for, because the defect is the missing new file.
