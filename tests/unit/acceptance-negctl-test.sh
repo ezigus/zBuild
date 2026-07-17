@@ -190,5 +190,83 @@ else
     assert_pass "NC-G: skipped (no 'timeout' binary available)"
 fi
 
+# ── NC-I: ZBUILD_ACCEPTANCE_RUN_CMD seam — non-bash runner (python3) ──────────
+# [SPEC-1] load-bearing python3 spec → NEGCTL PASS with python3 runner
+# [SPEC-2] tautological python3 spec → NEGCTL FAIL tautology (not not_passing_at_head)
+if command -v python3 >/dev/null 2>&1; then
+    REPO5="$(setup_git_temp_repo negctl-repo5)"
+    (
+        cd "$REPO5"
+        "$GIT" checkout -q -b feature
+        mkdir -p tests
+        # implementation present only at HEAD (python-flavor fixture)
+        printf '#!/usr/bin/env bash\nmy_py_feature() { return 0; }\n' > impl_py.sh
+
+        # SPEC-1 fixture — load-bearing: checks impl_py.sh exists; Python syntax
+        # fails under bash so the old hardcoded-bash runner can't execute it.
+        cat > tests/py-lb-test.py <<'PYEOF'
+#!/usr/bin/env python3
+# [SPEC-1] load-bearing python spec
+import os, sys
+root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.exit(0 if os.path.exists(os.path.join(root, 'impl_py.sh')) else 1)
+PYEOF
+
+        # SPEC-2 fixture — tautological: always exits 0; Python syntax fails under bash.
+        cat > tests/py-taut-test.py <<'PYEOF'
+#!/usr/bin/env python3
+# [SPEC-2] tautological python spec
+import sys
+sys.exit(0)
+PYEOF
+
+        chmod +x tests/py-lb-test.py tests/py-taut-test.py impl_py.sh
+        "$GIT" add -A
+        "$GIT" commit -q -m "feat: python testfile fixtures"
+    )
+
+    DM5="$REPO5/design.md"
+    cat > "$DM5" <<'EOF'
+```acceptance
+SPEC-1: load-bearing python spec
+SPEC-2: tautological python spec
+TESTFILES:
+tests/py-lb-test.py
+tests/py-taut-test.py
+```
+EOF
+
+    set +e
+    OUT5="$(ZBUILD_ACCEPTANCE_RUN_CMD='python3 {files}' acceptance_negctl_check "$DM5" "$REPO5")"
+    RC5=$?
+    set -e
+
+    assert_eq "[SPEC-1] non-bash runner: load-bearing py spec → NEGCTL PASS SPEC-1" \
+        "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT5")"
+    assert_eq "[SPEC-2] non-bash runner: tautological py spec → NEGCTL FAIL SPEC-2 tautology" \
+        "NEGCTL FAIL SPEC-2 tautology" "$(grep 'SPEC-2' <<<"$OUT5")"
+else
+    assert_pass "[SPEC-1] skipped — python3 not available in this environment"
+    assert_pass "[SPEC-2] skipped — python3 not available in this environment"
+fi
+
+# ── NC-J: _acceptance_build_run_cmd unit-level tests ──────────────────────────
+# [SPEC-3] no {files} token in template → returns 1 (misconfiguration guard)
+set +e
+_acceptance_build_run_cmd "bash" "/tmp/test.sh" >/dev/null 2>&1
+_rc_nofiles=$?
+set -e
+assert_eq "[SPEC-3] _acceptance_build_run_cmd with no {files} token → returns 1" \
+    "1" "$_rc_nofiles"
+
+# [SPEC-4] bash {files} template → produces correct NUL-separated runner tokens
+_cmd_out=()
+while IFS= read -r -d '' _tok; do _cmd_out+=("$_tok"); done \
+    < <(_acceptance_build_run_cmd "bash {files}" "/tmp/test.sh")
+assert_eq "[SPEC-4] _acceptance_build_run_cmd: first token is interpreter" \
+    "bash" "${_cmd_out[0]:-}"
+assert_eq "[SPEC-4] _acceptance_build_run_cmd: second token is testfile path" \
+    "/tmp/test.sh" "${_cmd_out[1]:-}"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

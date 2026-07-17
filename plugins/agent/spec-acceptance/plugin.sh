@@ -207,6 +207,7 @@ acceptance_gate_run() {
     # the negctl/reachability libs (they read these two env vars).
     export ZBUILD_NEGCTL_TIMEOUT; ZBUILD_NEGCTL_TIMEOUT="$(_ag_resolve_negctl_timeout "${_stage_id:-acceptance-gate}")"
     export ZBUILD_NEGCTL_ARTIFACT_DIR="$artifact_dir"
+    export ZBUILD_ACCEPTANCE_RUN_CMD
 
     # repo_root = git toplevel of the working tree (where build's commits live);
     # fall back to PWD when not in a git tree (degraded; negctl will report).
