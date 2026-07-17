@@ -34,9 +34,13 @@ _reachability_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 143 ]]; }
 _reachability_run() {
     local testfile="$1" cwd="$2" logfile="${3:-}"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
-    local -a runner=(bash "$testfile")
+    local template="${ZBUILD_ACCEPTANCE_RUN_CMD:-}"
+    [[ -z "$template" || "$template" != *'{files}'* ]] && template="bash {files}"
+    local -a runner=()
+    while IFS= read -r -d '' _tok; do runner+=("$_tok"); done \
+        < <(_acceptance_build_run_cmd "$template" "$testfile")
     if command -v timeout >/dev/null 2>&1; then
-        runner=(timeout "$timeout_s" bash "$testfile")
+        runner=(timeout "$timeout_s" "${runner[@]}")
     fi
     (
         cd "$cwd" || exit 2

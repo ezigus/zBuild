@@ -193,6 +193,26 @@ acceptance_list_wiring() {
     return 1
 }
 
+# _acceptance_build_run_cmd <template> <testfile>
+# Expands a {files}-template for a single acceptance testfile.
+# Prints each command token NUL-separated for safe array construction by callers.
+# Returns 1 when the template contains no {files} token (misconfiguration guard).
+_acceptance_build_run_cmd() {
+    local template="$1" testfile="$2"
+    [[ "$template" != *'{files}'* ]] && return 1
+    local -a parts
+    read -ra parts <<< "$template"
+    local part
+    for part in "${parts[@]}"; do
+        if [[ "$part" == '{files}' ]]; then
+            printf '%s\0' "$testfile"
+        else
+            printf '%s\0' "$part"
+        fi
+    done
+    return 0
+}
+
 # acceptance_list_testfiles <design_md>  (ADR-036 / #922)
 # Prints the repo-relative TESTFILES paths from the ```acceptance block, one
 # per line. Mirrors the path-traversal guard used by build (never surfaces an
