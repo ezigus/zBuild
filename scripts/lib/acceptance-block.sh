@@ -197,6 +197,16 @@ acceptance_list_wiring() {
 # Expands a {files}-template for a single acceptance testfile.
 # Prints each command token NUL-separated for safe array construction by callers.
 # Returns 1 when the template contains no {files} token (misconfiguration guard).
+#
+# The template is whitespace-tokenized (read -ra) and the resulting array is
+# exec'd DIRECTLY by callers — the testfile path never passes through a shell,
+# so a filename cannot inject shell metacharacters. This is deliberate and is
+# why templates are simple whitespace-separated tokens (bash {files},
+# pytest {files}, jest {files}, cargo test {files}); a template embedding a
+# quoted multi-word argument (e.g. python3 -c 'import sys') is NOT supported —
+# honoring shell quoting would require eval, reintroducing the injection risk
+# this array-exec design avoids. ZBUILD_ACCEPTANCE_RUN_CMD is operator-declared
+# config (same trust model as ZBUILD_TEST_CMD_TARGETED), not untrusted input.
 _acceptance_build_run_cmd() {
     local template="$1" testfile="$2"
     [[ "$template" != *'{files}'* ]] && return 1
