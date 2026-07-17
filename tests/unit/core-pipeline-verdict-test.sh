@@ -62,6 +62,10 @@ for pair in "pass:pass" "approve:pass" "request_changes:warn" \
     assert_eq "verdict_classify($raw) -> $want" "$want" "$got"
 done
 
+# [SPEC-1] inert_build classifies as fail (CHANGE — was "unknown" before #1532)
+got="$(verdict_classify "inert_build")"
+assert_eq "[SPEC-1] verdict_classify(inert_build) -> fail" "fail" "$got"
+
 # ─── Test: rc != 0 always wins ───────────────────────────────────────────────
 print_test_section "rc != 0 overrides verdict"
 m_dir="$TEST_TEMP_DIR/plugins/test"

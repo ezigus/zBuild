@@ -114,6 +114,21 @@ _build_write_build_summary() {
         build_verdict="empty_diff"
     fi
 
+    # #1532: when done_sentinel + 0-diff but a declared acceptance TESTFILE still
+    # fails at HEAD, the build falsely signals completion — override to inert_build.
+    # shellcheck disable=SC2154  # _acceptance_testfiles, repo_root from caller scope
+    local _inert_failing_testfile=""
+    if [[ "$build_verdict" == "empty_diff" && -n "${_acceptance_testfiles:-}" ]]; then
+        _inert_failing_testfile="$(_build_guard_false_completion \
+            "$_acceptance_testfiles" "${repo_root:-}" 2>/dev/null || true)"
+        if [[ -n "$_inert_failing_testfile" ]]; then
+            build_verdict="inert_build"
+            emit_event "build.inert_build" "plugin=build" \
+                "failing_testfile=$_inert_failing_testfile" >/dev/null 2>&1 || true
+            warn "build: inert_build — LOOP_COMPLETE 0-diff but acceptance testfile still red: $_inert_failing_testfile"
+        fi
+    fi
+
     # shellcheck disable=SC2154  # scope_violations[] injected via dynamic scope from caller
     if [[ ${#scope_violations[@]} -gt 0 ]]; then
         _sum_violations_json="$(printf '%s\n' "${scope_violations[@]}" \
@@ -182,6 +197,7 @@ _build_write_build_summary() {
         --arg reason "$_sum_build_reason" \
         --argjson out_of_scope_files "$_sum_out_of_scope_files_json" \
         --argjson scope_expansion_request "${_sum_scope_expansion_request_json:-null}" \
+        --arg failing_acceptance_testfile "${_inert_failing_testfile:-}" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
         '{
             schema_version: $schema_version,
@@ -201,5 +217,32 @@ _build_write_build_summary() {
         }
         + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
         + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
+        + (if $failing_acceptance_testfile != "" then {failing_acceptance_testfile: $failing_acceptance_testfile} else {} end)
         ' | atomic_write "$output_summary_json"
+}
+
+# _build_guard_false_completion <acceptance_testfiles_nl> <repo_root> (#1532)
+# Probes each declared acceptance TESTFILE at HEAD. Returns the first failing
+# path on stdout (repo-relative) and exits 1 if any testfile fails; exits 0
+# when all pass or the testfile list is empty. Called only when build_verdict
+# is empty_diff — never on pass or other paths. The timeout bound mirrors the
+# negctl gate so a slow testfile cannot stall the stage loop indefinitely.
+_build_guard_false_completion() {
+    local testfiles="$1" repo_root="$2"
+    local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
+    local failing=""
+    while IFS= read -r tf; do
+        [[ -z "$tf" ]] && continue
+        local abs="$repo_root/$tf"
+        [[ -f "$abs" ]] || continue
+        if ! timeout "$timeout_s" bash "$abs" >/dev/null 2>&1; then
+            failing="$tf"
+            break
+        fi
+    done <<< "$testfiles"
+    if [[ -n "$failing" ]]; then
+        printf '%s' "$failing"
+        return 1
+    fi
+    return 0
 }
