@@ -34,6 +34,10 @@ source "$_RL_ROOT/scripts/lib/merge-base.sh"
 # #721: strip stage-io banners and ANSI from input before the LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_RL_ROOT/scripts/lib/test-output-sanitize.sh"
+# registry.sh is idempotent (guard flag); makes resolve_persona_charter available
+# when _rl_lens_charter is called. Established precedent: plan/plugin.sh:44.
+# shellcheck source=../../../core/plugin-registry/registry.sh
+source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
 source "$_RL_DIR/lib/charters.sh"
 

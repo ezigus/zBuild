@@ -15,8 +15,17 @@ _ZBUILD_REVIEW_LENS_CHARTERS_LOADED=1
 
 # ─── _rl_lens_charter <lens> ────────────────────────────────────────────────
 # The distinct question each lens asks. ADR-038 §2: lenses differ by the
-# evidence/charter, not by sectioning one mega-prompt.
+# evidence/charter, not by sectioning one mega-prompt. Consults the persona
+# registry first (resolve_persona_charter); on rc=0 with non-empty output the
+# manifest text is used and the case statement is skipped. When no persona
+# manifest exists for the given id (the current situation for all named lenses),
+# the case statement runs unchanged — byte-identical fallback.
 _rl_lens_charter() {
+    local _charter
+    if _charter="$(resolve_persona_charter "$1" 2>/dev/null)" && [[ -n "$_charter" ]]; then
+        printf '%s' "$_charter"
+        return 0
+    fi
     case "$1" in
         correctness)
             printf '%s' "Examine the change for logic errors: off-by-one mistakes, unhandled null/undefined values, incorrect assumptions about data shapes, and control-flow bugs." ;;
