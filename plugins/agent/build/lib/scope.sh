@@ -211,3 +211,34 @@ _build_collect_scope_expansion_request() {
     _BUILD_SERQ_REASON="$_reason"
     _BUILD_SERQ_OOS_FILES_JSON="$_oos_json"
 }
+
+_extract_scope_from_design() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+
+    local in_block=0
+    local -a files=()
+    while IFS= read -r line; do
+        # Tolerate trailing whitespace on the fence lines — legacy used
+        # /^```scope[[:space:]]*$/, and build's guard (grep -q '^```scope')
+        # matches a whitespace-padded fence, so an exact match here would
+        # silently drop the scope and fall back to plan.json (#25 review).
+        if [[ "$line" =~ ^'```scope'[[:space:]]*$ ]]; then
+            in_block=1
+            continue
+        fi
+        if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then
+            break
+        fi
+        # Keep lines with any non-whitespace; drop whitespace-only lines
+        # (faithful to legacy `grep -v '^[[:space:]]*$'`).
+        if [[ $in_block -eq 1 && -n "${line//[[:space:]]/}" ]]; then
+            files+=("$line")
+        fi
+    done < "$design_md"
+
+    if [[ ${#files[@]} -gt 0 ]]; then
+        local IFS=','
+        printf '%s' "${files[*]}"
+    fi
+}

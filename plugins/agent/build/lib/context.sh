@@ -124,12 +124,14 @@ _build_read_prior_acceptance() {
 # plan_files_csv, _acceptance_testfiles, _acceptance_spec_ids, _design_decisions
 # back into caller's scope (no `local` on those names here — bash dynamic scope).
 _build_load_context() {
+    # shellcheck disable=SC2154  # artifact_dir and plan_json injected via dynamic scope from caller
     local _ctx_design_md_path="$artifact_dir/design.md"
     local _ctx_scope_source="plan"
     local _ctx_design_csv="" _ctx_scope_file_count=0 _ctx_granted="" _ctx_candidate=""
     local _ctx_state_dir_for_design
 
     # Extract plan.files[] — the canonical scope for this build.
+    # shellcheck disable=SC2154  # plan_json injected via dynamic scope from caller
     plan_files_csv="$(printf '%s' "$plan_json" | \
         jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
         2>/dev/null || echo "")"

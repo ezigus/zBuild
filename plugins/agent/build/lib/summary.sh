@@ -114,6 +114,7 @@ _build_write_build_summary() {
         build_verdict="empty_diff"
     fi
 
+    # shellcheck disable=SC2154  # scope_violations[] injected via dynamic scope from caller
     if [[ ${#scope_violations[@]} -gt 0 ]]; then
         _sum_violations_json="$(printf '%s\n' "${scope_violations[@]}" \
             | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
@@ -131,6 +132,7 @@ _build_write_build_summary() {
     fi
 
     # #870: created OOS collateral request.
+    # shellcheck disable=SC2154  # scope_violations_created[] injected via dynamic scope from caller
     if [[ -z "$_sum_scope_expansion_request_json" && ${#scope_violations_created[@]} -gt 0 ]]; then
         _sum_scope_expansion_request_json="$(_build_created_collateral_request "${scope_violations_created[@]}" 2>/dev/null || true)"
     fi
@@ -162,6 +164,7 @@ _build_write_build_summary() {
     local _sum_issue="${issue:-0}"
     [[ "$_sum_issue" =~ ^[0-9]+$ ]] || _sum_issue=0
 
+    # shellcheck disable=SC2154  # all remaining vars injected via dynamic scope from caller
     jq -n \
         --argjson schema_version 4 \
         --argjson issue "$_sum_issue" \
