@@ -205,6 +205,48 @@ case "$ts_stage" in
 esac
 assert_eq "[SPEC-5] stage framing contains the supplied task" "1" "$ts_task_ok"
 
+# ─── SPEC-1..SPEC-5: live-tree security persona ──────────────────────────────
+# These specs exercise the real manifest shipped in the repo (not a fixture).
+
+# SPEC-1: security manifest is discoverable from the live plugins tree
+set +e
+sec_mf="$(find_persona security "$REAL_PROOT")"; rc=$?
+set -e
+assert_eq "[SPEC-1] find_persona returns 0 for the live security persona" "0" "$rc"
+assert_contains "[SPEC-1] find_persona points at plugins/persona/security/manifest.yaml" \
+    "$sec_mf" "plugins/persona/security/manifest.yaml"
+
+# SPEC-2: role is exactly 'a security engineer'
+assert_eq "[SPEC-2] resolve_persona_role returns 'a security engineer'" \
+    "a security engineer" "$(resolve_persona_role security "$REAL_PROOT")"
+
+# SPEC-3: perspective contains the word 'hostile' (trust-boundary framing keyword)
+sec_perspective="$(resolve_persona_perspective security "$REAL_PROOT")"
+case "$sec_perspective" in
+    *hostile*) sec_persp_ok=1 ;;
+    *)         sec_persp_ok=0 ;;
+esac
+assert_eq "[SPEC-3] security perspective contains 'hostile'" "1" "$sec_persp_ok"
+
+# SPEC-4: validate_manifest passes on the live security manifest
+set +e
+validate_manifest "$sec_mf" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-4] validate_manifest passes on the live security manifest" "0" "$rc"
+
+# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
+sec_framing="$(persona_lens_framing security "Audit for injection vulnerabilities." "$REAL_PROOT")"
+case "$sec_framing" in
+    *"security engineer"*) sec_role_ok=1 ;;
+    *) sec_role_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains 'security engineer'" "1" "$sec_role_ok"
+case "$sec_framing" in
+    *"Audit for injection vulnerabilities."*) sec_charter_ok=1 ;;
+    *) sec_charter_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$sec_charter_ok"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
