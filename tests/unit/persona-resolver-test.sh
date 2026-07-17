@@ -149,6 +149,48 @@ case "$rt_stage" in
 esac
 assert_eq "[SPEC-15] stage framing contains 'red-team operator' for live persona" "1" "$rt_stage_ok"
 
+# ─── SPEC-1..SPEC-5: live-tree test-strategist persona ───────────────────────
+# These specs exercise the real manifest shipped in the repo (not a fixture).
+
+# SPEC-1: test-strategist manifest is discoverable from the live plugins tree
+set +e
+ts_mf="$(find_persona test-strategist "$REAL_PROOT")"; rc=$?
+set -e
+assert_eq "[SPEC-1] find_persona returns 0 for the live test-strategist persona" "0" "$rc"
+assert_contains "[SPEC-1] find_persona points at plugins/persona/test-strategist/manifest.yaml" \
+    "$ts_mf" "plugins/persona/test-strategist/manifest.yaml"
+
+# SPEC-2: role is exactly 'a test strategist'
+assert_eq "[SPEC-2] resolve_persona_role returns 'a test strategist'" \
+    "a test strategist" "$(resolve_persona_role test-strategist "$REAL_PROOT")"
+
+# SPEC-3: perspective contains the word 'fail'
+ts_perspective="$(resolve_persona_perspective test-strategist "$REAL_PROOT")"
+case "$ts_perspective" in
+    *fail*) ts_persp_ok=1 ;;
+    *)      ts_persp_ok=0 ;;
+esac
+assert_eq "[SPEC-3] test-strategist perspective contains 'fail'" "1" "$ts_persp_ok"
+
+# SPEC-4: validate_manifest passes on the live test-strategist manifest
+set +e
+validate_manifest "$ts_mf" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-4] validate_manifest passes on the live test-strategist manifest" "0" "$rc"
+
+# SPEC-5: persona_stage_framing composes a framing with role + perspective + task
+ts_stage="$(persona_stage_framing test-strategist "Write the tests." "$REAL_PROOT")"
+case "$ts_stage" in
+    *"test strategist"*) ts_role_ok=1 ;;
+    *) ts_role_ok=0 ;;
+esac
+assert_eq "[SPEC-5] stage framing contains 'test strategist' for live persona" "1" "$ts_role_ok"
+case "$ts_stage" in
+    *"Write the tests."*) ts_task_ok=1 ;;
+    *) ts_task_ok=0 ;;
+esac
+assert_eq "[SPEC-5] stage framing contains the supplied task" "1" "$ts_task_ok"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
