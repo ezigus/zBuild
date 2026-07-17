@@ -106,8 +106,8 @@ fi
 print_test_section "3. build plugin code produces empty_diff verdict on done_sentinel + 0 files"
 
 # Look for the marker in the build plugin source — the fix must set
-# build_verdict="empty_diff" in the empty-diff branch.
-fix_present=$(grep 'build_verdict="empty_diff"' "$REPO_ROOT/plugins/agent/build/plugin.sh" 2>/dev/null | wc -l | tr -d ' ')
+# build_verdict="empty_diff" in the empty-diff branch (may be in lib/summary.sh after #1533).
+fix_present=$(grep -r 'build_verdict="empty_diff"' "$REPO_ROOT/plugins/agent/build/" 2>/dev/null | wc -l | tr -d ' ')
 if [[ "${fix_present:-0}" -ge 1 ]]; then
     assert_pass "build plugin sets build_verdict=empty_diff on done_sentinel + 0 files"
 else

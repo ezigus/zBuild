@@ -46,15 +46,22 @@ for manifest in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
     #   (c) indirect-via-var + suffix: `atomic_write "$..."` AND the basename's
     #       trailing word (e.g. "findings.json") appears — covers manifests
     #       whose path interpolates a prefix (security${infix}-findings.json).
+    # Search plugin.sh AND lib/*.sh (decomposed plugins store logic in lib/).
     base_suffix="${base#*-}"  # strip leading "prefix-" if present
-    if grep -E "atomic_write[^|]*${base//./\\.}" "$plugin_sh" >/dev/null 2>&1; then
+    # shellcheck disable=SC2207
+    plugin_srcs=("$plugin_sh")
+    # shellcheck disable=SC2206
+    if compgen -G "$plugin_dir/lib/*.sh" >/dev/null 2>&1; then
+        plugin_srcs+=( "$plugin_dir"/lib/*.sh )
+    fi
+    if grep -E "atomic_write[^|]*${base//./\\.}" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base written via atomic_write"
-    elif grep -E 'atomic_write[[:space:]]+"\$' "$plugin_sh" >/dev/null 2>&1 \
-        && grep -F "$base" "$plugin_sh" >/dev/null 2>&1; then
+    elif grep -E 'atomic_write[[:space:]]+"\$' "${plugin_srcs[@]}" >/dev/null 2>&1 \
+        && grep -F "$base" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base (indirect atomic_write reference)"
-    elif grep -E 'atomic_write[[:space:]]+"\$' "$plugin_sh" >/dev/null 2>&1 \
+    elif grep -E 'atomic_write[[:space:]]+"\$' "${plugin_srcs[@]}" >/dev/null 2>&1 \
         && [[ -n "$base_suffix" && "$base_suffix" != "$base" ]] \
-        && grep -F "$base_suffix" "$plugin_sh" >/dev/null 2>&1; then
+        && grep -F "$base_suffix" "${plugin_srcs[@]}" >/dev/null 2>&1; then
         assert_pass "$plugin_dir: primary $base (indirect via *-${base_suffix})"
     else
         assert_fail "$plugin_dir: primary $base NOT written via atomic_write" \

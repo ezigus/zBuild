@@ -101,7 +101,8 @@ assert_eq "[SPEC-5] T5 simulation: scope_source stays plan when _extract_scope_f
 # above run the design copy, so prove the build copy is identical (covers both).
 _extract_fn() { awk '/^_extract_scope_from_design\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$1"; }
 _design_fn="$(_extract_fn "$REPO_ROOT/plugins/agent/design/plugin.sh")"
-_build_fn="$(_extract_fn "$REPO_ROOT/plugins/agent/build/plugin.sh")"
+# After #1533, _extract_scope_from_design moved from build/plugin.sh to build/lib/scope.sh.
+_build_fn="$(_extract_fn "$REPO_ROOT/plugins/agent/build/lib/scope.sh")"
 assert_eq "[SPEC-6] build copy of _extract_scope_from_design is byte-identical to design copy" \
     "$_design_fn" "$_build_fn"
 
