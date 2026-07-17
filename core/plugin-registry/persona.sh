@@ -55,6 +55,15 @@ resolve_persona_perspective() {
     yaml_get "$manifest" "persona.perspective"
 }
 
+# ─── resolve_persona_charter <id> [plugins_root] ─────────────────────────────
+# Prints the persona's charter text (the perspective field). Returns 1 (prints
+# nothing) when the persona is absent — same absence-signal contract as siblings.
+# Delegates to resolve_persona_perspective: persona.perspective is the lens-specific
+# examination directive, used as the charter text when driving _rl_lens_charter.
+resolve_persona_charter() {
+    resolve_persona_perspective "$@"
+}
+
 # ─── persona_stage_framing <id> <task> [plugins_root] ───────────────────────
 # Stage seam: "You are {role} for the target project. {perspective}\n\n{task}".
 # Returns 1 (prints nothing) when the persona is absent, so the caller keeps its

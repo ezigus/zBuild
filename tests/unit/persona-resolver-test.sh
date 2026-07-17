@@ -97,6 +97,20 @@ set -e
 assert_eq "[SPEC-8] persona_lens_framing returns 1 for an unknown persona" "1" "$rc"
 assert_eq "[SPEC-8] persona_lens_framing prints nothing for an unknown persona" "" "$out"
 
+# ─── SPEC-9: resolve_persona_charter delegates to resolve_persona_perspective ──
+# resolve_persona_charter is an alias for resolve_persona_perspective; it returns
+# the persona.perspective field and signals absence the same way.
+assert_eq "[SPEC-9] resolve_persona_charter returns the perspective field" \
+    "Judge structure and boundaries." "$(resolve_persona_charter architect "$PROOT")"
+set +e
+resolve_persona_charter ghost "$PROOT" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-9] resolve_persona_charter returns 1 for an unknown persona" "1" "$rc"
+set +e
+out="$(resolve_persona_charter ghost "$PROOT")"; rc=$?
+set -e
+assert_eq "[SPEC-9] resolve_persona_charter prints nothing for an unknown persona" "" "$out"
+
 # ─── SPEC-10..SPEC-15: live-tree red-team persona (plugins/persona/red-team) ──
 # These specs exercise the real manifest shipped in the repo (not a fixture).
 REAL_PROOT="$REPO_ROOT/plugins"

@@ -197,6 +197,40 @@ else
     assert_pass "[SPEC-9] no coercion vocabulary in review-lens source"
 fi
 
+# ─── SPEC-10: persona manifest charter takes precedence over case statement ───
+# When a kind:persona manifest exists for the lens id (with persona.perspective),
+# _rl_lens_charter must use its text instead of the case-statement fallback.
+_prev_plugins_root="${ZBUILD_PLUGINS_ROOT:-}"
+_spec10_plugins="$TEST_TEMP_DIR/spec10-plugins"
+mkdir -p "$_spec10_plugins/persona/test-lens"
+cat > "$_spec10_plugins/persona/test-lens/manifest.yaml" <<'SPEC10_EOF'
+id: test-lens
+name: Test Lens Persona
+kind: persona
+version: 0.1.0
+persona:
+  role: a test lens persona
+  perspective: SENTINEL_PERSONA_CHARTER_XYZ987
+SPEC10_EOF
+export ZBUILD_PLUGINS_ROOT="$_spec10_plugins"
+out_spec10="$artifact_dir/lens-test-lens.json"
+: > "$_RL_CALLS"
+set +e
+_review_lens_run_inner "test-lens" "$scope_manifest" "$evidence" "$out_spec10" "$artifact_dir"
+_rc_spec10=$?
+set -e
+_pp_spec10="$(cat "$_RL_PROMPT")"
+assert_eq "[SPEC-10] persona manifest lens returns 0 (advisory)" "0" "$_rc_spec10"
+assert_contains "[SPEC-10] persona charter text reaches the prompt" \
+    "$_pp_spec10" "SENTINEL_PERSONA_CHARTER_XYZ987"
+# Ensure the wildcard fallback text is NOT used when persona manifest exists
+if printf '%s' "$_pp_spec10" | grep -q "Examine the change for issues relevant to the test-lens concern"; then
+    assert_fail "[SPEC-10] wildcard fallback must NOT fire when persona manifest exists" "wildcard text found"
+else
+    assert_pass "[SPEC-10] wildcard fallback is suppressed by persona manifest"
+fi
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
