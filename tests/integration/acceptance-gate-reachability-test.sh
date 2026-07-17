@@ -208,5 +208,56 @@ assert_eq "[SPEC-6] R4: only-unsafe WIRING → verdict=fail" "fail" "$(jq -r .ve
 r4_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "[SPEC-6] R4: failures records empty_wiring_targets" "$r4_failures" "reachability_error:empty_wiring_targets"
 
+# ── R5: python3 runner via {files} seam → gate passes ────────────────────────
+# Exercises ZBUILD_ACCEPTANCE_RUN_CMD through _reachability_run.
+# Setup: wiring.py absent at merge-base, present at HEAD (feature branch).
+# Test: python3 script that exits 1 when wiring.py is missing.
+# Reachability: reverting wiring.py makes the python3 test fail → PASS.
+# [SPEC-7] ZBUILD_ACCEPTANCE_RUN_CMD {files} seam flows through Level-3 reachability
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "SKIP R5: python3 not available" >&2
+else
+    REPO_R5="$(setup_git_temp_repo "reach-r5")"
+    (
+        cd "$REPO_R5"
+        "$GIT" checkout -q -b feature
+        cat > wiring.py <<'PYEOF'
+# wiring: provides the feature
+def my_feature():
+    return True
+PYEOF
+        mkdir -p tests
+        cat > tests/feature_test.py <<'TESTEOF'
+#!/usr/bin/env python3
+# [SPEC-7] my_feature is provided by wiring.py
+import sys, os
+repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+wiring = os.path.join(repo_root, "wiring.py")
+if not os.path.isfile(wiring):
+    sys.exit(1)
+sys.path.insert(0, repo_root)
+from wiring import my_feature
+sys.exit(0 if my_feature() else 1)
+TESTEOF
+        chmod +x tests/feature_test.py
+        "$GIT" add -A
+        "$GIT" commit -q -m "feat: add wiring.py and python3 test"
+    ) >/dev/null 2>&1
+
+    cat > "$REPO_R5/design.md" <<'EOF'
+```acceptance
+SPEC-7[change]: ZBUILD_ACCEPTANCE_RUN_CMD {files} seam flows through Level-3 reachability
+WIRING:
+wiring.py
+TESTFILES:
+tests/feature_test.py
+```
+EOF
+
+    set +e; ZBUILD_ACCEPTANCE_RUN_CMD='python3 {files}' _run_gate "$REPO_R5"; set -e
+    assert_eq "[SPEC-7] R5: python3 {files} seam → gate rc=0" "0" "$RC"
+    assert_eq "[SPEC-7] R5: python3 {files} seam → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+fi
+
 cleanup_test_env
 print_test_results
