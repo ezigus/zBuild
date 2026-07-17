@@ -224,7 +224,7 @@ assert_eq "[SPEC-10] persona manifest lens returns 0 (advisory)" "0" "$_rc_spec1
 assert_contains "[SPEC-10] persona charter text reaches the prompt" \
     "$_pp_spec10" "SENTINEL_PERSONA_CHARTER_XYZ987"
 # Ensure the wildcard fallback text is NOT used when persona manifest exists
-if printf '%s' "$_pp_spec10" | grep -q "Examine the change for issues relevant to the test-lens concern"; then
+if grep -q "Examine the change for issues relevant to the test-lens concern" <<< "$_pp_spec10"; then
     assert_fail "[SPEC-10] wildcard fallback must NOT fire when persona manifest exists" "wildcard text found"
 else
     assert_pass "[SPEC-10] wildcard fallback is suppressed by persona manifest"
