@@ -3,10 +3,10 @@
 #
 # SPEC-1: template loads and review_lenses emits a "map:review_lenses" dispatch unit;
 #         the `as:` env-target resolves to ZBUILD_REVIEW_LENS_ID.
-# SPEC-2: _strategy_run_map dispatches exactly 5 work units (one per element).
+# SPEC-2: _strategy_run_map dispatches exactly 6 work units (one per element).
 # SPEC-3: each work unit bakes a DISTINCT ZBUILD_MAP_ELEMENT value AND the
-#         template-named ZBUILD_REVIEW_LENS_ID (via `as:`) — five elements
-#         security/performance/red-team/correctness/scope.
+#         template-named ZBUILD_REVIEW_LENS_ID (via `as:`) — six elements
+#         security/performance/red-team/correctness/scope/sre.
 # SPEC-4: ZBUILD_MAP_ELEMENT + the `as:` env-target are readable in the work unit.
 # SPEC-5: ZBUILD_PLATFORM stays "generic" for all elements (platform not hijacked).
 # SPEC-6: the (UNCHANGED) review-lens plugin's _review_lens_id() resolves to the
