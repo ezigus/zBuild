@@ -46,14 +46,14 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/simple.yaml"
 
 fb="${_TPL_CYCLE_FEEDBACK_design_verify_cycle:-}"
-assert_contains "T1: feedback contains design-gate→design edge" \
+assert_contains "[SPEC-6] T1: feedback contains design-gate→design edge" \
     "$fb" "design-gate:design_gate_feedback|design:prior_impact_feedback"
-assert_contains "T1: feedback contains design→design self-edge (#842)" \
+assert_contains "[SPEC-6] T1: feedback contains design→design self-edge (#842)" \
     "$fb" "design:design|design:prior_design"
 
 # Both edges present means two records separated by newline.
 edge_count="$(printf '%s\n' "$fb" | grep -c '|' || true)"
-assert_eq "T1: exactly 2 feedback edges in design_verify_cycle" "2" "$edge_count"
+assert_eq "[SPEC-6] T1: exactly 2 feedback edges in design_verify_cycle" "2" "$edge_count"
 
 # ─── T2 + T3: _cycle_apply_feedback round-trips both edges ──────────────────
 # shellcheck disable=SC1090
