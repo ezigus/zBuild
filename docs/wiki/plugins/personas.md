@@ -125,3 +125,23 @@ persona:
   role: a test strategist
   perspective: "Design test suites that verify every invariant — ensure tests fail when code is wrong and pass only when all specified behaviors are correct. Cover edge cases, boundary conditions, and regression scenarios. Flag any test that cannot fail as a gap in coverage."
 ```
+
+---
+
+## performance
+
+The performance persona encodes a performance-first mindset for review lenses, examining changes from the perspective of a performance engineer focused on latency, throughput, and bottleneck identification.
+
+- **Kind:** `persona`
+- **Manifest:** `plugins/persona/performance/manifest.yaml`
+
+```yaml
+id: performance
+name: Performance Engineer
+kind: persona
+version: 0.1.0
+summary: Performance-first mindset — identifies latency, throughput, and bottleneck issues before they reach production.
+persona:
+  role: a performance engineer
+  perspective: "Examine the change for performance regressions: O(n^2) or worse algorithmic complexity, hot-path inefficiencies, unnecessary allocations, blocking I/O, and throughput bottlenecks. Profile the critical path and flag any change that adds latency or degrades scalability under load."
+```
