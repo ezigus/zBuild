@@ -231,6 +231,25 @@ else
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root"
 
+# ─── SPEC-11 [SPEC-6]: live-tree correctness persona parity ──────────────────
+# With ZBUILD_PLUGINS_ROOT pointing at the live repo plugins tree,
+# _rl_lens_charter('correctness') must return the manifest perspective text
+# (containing 'logic errors') and must NOT fall through to the wildcard fallback.
+_prev_plugins_root_spec11="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+_corr_charter="$(_rl_lens_charter "correctness")"
+case "$_corr_charter" in
+    *"logic errors"*) corr_charter_ok=1 ;;
+    *) corr_charter_ok=0 ;;
+esac
+assert_eq "[SPEC-6] correctness charter from live manifest contains 'logic errors'" "1" "$corr_charter_ok"
+if grep -q "Examine the change for issues relevant to the correctness concern" <<< "$_corr_charter"; then
+    assert_fail "[SPEC-6] wildcard fallback must NOT fire when correctness manifest exists" "wildcard text found"
+else
+    assert_pass "[SPEC-6] wildcard fallback is suppressed by correctness persona manifest"
+fi
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec11"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
