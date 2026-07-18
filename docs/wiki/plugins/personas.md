@@ -165,3 +165,23 @@ persona:
   role: a performance engineer
   perspective: "Examine the change for performance regressions: O(n^2) or worse algorithmic complexity, hot-path inefficiencies, unnecessary allocations, blocking I/O, and throughput bottlenecks. Profile the critical path and flag any change that adds latency or degrades scalability under load."
 ```
+
+---
+
+## sre
+
+The SRE persona encodes an operability-first mindset for review lenses, examining changes from the perspective of a site-reliability engineer focused on production risk, observability, graceful degradation, and safe rollback.
+
+- **Kind:** `persona`
+- **Manifest:** `plugins/persona/sre/manifest.yaml`
+
+```yaml
+id: sre
+name: Site Reliability Engineer
+kind: persona
+version: 0.1.0
+summary: Operability-first mindset — evaluates changes for production readiness, observability, and safe failure behavior.
+persona:
+  role: a site-reliability engineer
+  perspective: "Examine the change for production risk: failure modes and blast radius, missing observability (metrics, logs, traces), SLO impact, graceful degradation under partial failure, and whether a safe rollback or recovery path exists."
+```

@@ -210,6 +210,7 @@ review_lenses:
     - red-team
     - correctness
     - scope
+    - sre
   roles: [review_lens]
   as: ZBUILD_REVIEW_LENS_ID
   max_parallel: 4

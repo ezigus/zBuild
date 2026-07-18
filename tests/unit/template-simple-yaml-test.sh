@@ -149,7 +149,7 @@ assert_eq "[SPEC-3] review_lenses is a map group" "map" "${_TPL_STAGE_TYPE_revie
 assert_eq "[SPEC-3] review_lenses roles"     "review_lens" "${_TPL_MAP_ROLES_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses over dim"  "lenses"      "${_TPL_MAP_OVER_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses elements csv" \
-    "security,performance,red-team,correctness,scope" \
+    "security,performance,red-team,correctness,scope,sre" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses io_dests"     "file" "${_TPL_STAGE_IO_DESTS_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses router timeout"   "300" "${_TPL_STAGE_ROUTER_TIMEOUT_review_lenses:-}"

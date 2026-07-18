@@ -331,6 +331,49 @@ case "$corr_framing" in
 esac
 assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$corr_charter_ok"
 
+# ─── SPEC-1..SPEC-5: live-tree SRE persona ───────────────────────────────────
+# These specs exercise the real manifest shipped in the repo (not a fixture).
+
+# SPEC-1: sre manifest is discoverable from the live plugins tree
+set +e
+sre_mf="$(find_persona sre "$REAL_PROOT")"; rc=$?
+set -e
+assert_eq "[SPEC-1] find_persona returns 0 for the live sre persona" "0" "$rc"
+assert_contains "[SPEC-1] find_persona points at plugins/persona/sre/manifest.yaml" \
+    "$sre_mf" "plugins/persona/sre/manifest.yaml"
+
+# SPEC-2: role is exactly 'a site-reliability engineer'
+assert_eq "[SPEC-2] resolve_persona_role returns 'a site-reliability engineer'" \
+    "a site-reliability engineer" "$(resolve_persona_role sre "$REAL_PROOT")"
+
+# SPEC-3: perspective contains a production-framing keyword ('production' or 'failure')
+sre_perspective="$(resolve_persona_perspective sre "$REAL_PROOT")"
+case "$sre_perspective" in
+    *production*) sre_persp_ok=1 ;;
+    *failure*)    sre_persp_ok=1 ;;
+    *)            sre_persp_ok=0 ;;
+esac
+assert_eq "[SPEC-3] sre perspective contains 'production' or 'failure'" "1" "$sre_persp_ok"
+
+# SPEC-4: validate_manifest passes on the live sre manifest
+set +e
+validate_manifest "$sre_mf" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-4] validate_manifest passes on the live sre manifest" "0" "$rc"
+
+# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
+sre_framing="$(persona_lens_framing sre "Assess production readiness." "$REAL_PROOT")"
+case "$sre_framing" in
+    *"site-reliability engineer"*) sre_role_ok=1 ;;
+    *) sre_role_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains 'site-reliability engineer'" "1" "$sre_role_ok"
+case "$sre_framing" in
+    *"Assess production readiness."*) sre_charter_ok=1 ;;
+    *) sre_charter_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$sre_charter_ok"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

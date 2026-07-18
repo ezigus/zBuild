@@ -52,7 +52,8 @@ review_lenses:
     - lens-red-team
     - lens-correctness
     - lens-scope
-  max_parallel: 5
+    - lens-sre
+  max_parallel: 6
   on_member_error: continue
 lens-security:
   roles: [review_lens]
@@ -63,6 +64,8 @@ lens-red-team:
 lens-correctness:
   roles: [review_lens]
 lens-scope:
+  roles: [review_lens]
+lens-sre:
   roles: [review_lens]
 EOF
 load_template "$TPL"
@@ -77,6 +80,7 @@ _seed_lens performance '{"schema_version":1,"name":"performance","score":9,"find
 _seed_lens red-team    '{"schema_version":1,"name":"red-team","score":8,"findings":[{"file":"b.sh","severity":"low","line":1,"message":"nit"}]}'
 _seed_lens correctness '{"schema_version":1,"name":"correctness","score":7,"findings":[{"file":"c.sh","severity":"medium","line":9,"message":"off by one"}]}'
 _seed_lens scope       '{"schema_version":1,"name":"scope","score":10,"findings":[]}'
+_seed_lens sre         '{"schema_version":1,"name":"sre","score":8,"findings":[]}'
 
 # Mock dispatch (no LLM): the artifacts are already on disk; just set verdict.
 parallel_dispatch_stage() {
@@ -101,10 +105,10 @@ unset ZBUILD_SEQ_PREFIX
 term="$(cat "$OUT_FILE")"
 term_plain="$(printf '%s' "$term" | _strip_ansi)"
 
-# ─── T8: exactly 5 human-readable one-liner lines, one per lens ──────────────
+# ─── T8: exactly 6 human-readable one-liner lines, one per lens ──────────────
 print_test_section "T8: one human-readable line per lens"
-one_liners="$(printf '%s\n' "$term_plain" | grep -cE '^[✓✗⚠] (security|performance|red-team|correctness|scope) ' || true)"
-assert_eq "T8 exactly 5 lens one-liners" "5" "$one_liners"
+one_liners="$(printf '%s\n' "$term_plain" | grep -cE '^[✓✗⚠] (security|performance|red-team|correctness|scope|sre) ' || true)"
+assert_eq "T8 exactly 6 lens one-liners" "6" "$one_liners"
 
 # ─── T9: full lens I/O (prompt + raw JSON body) does NOT reach the terminal ──
 print_test_section "T9: raw lens JSON body absent from terminal"
