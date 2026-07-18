@@ -125,6 +125,9 @@ REPO3="$(setup_git_temp_repo negctl-repo3)"
     cd "$REPO3"
     "$GIT" checkout -q -b feature
     mkdir -p tests
+    # Production file alongside the test — ensures no_prod_delta does not fire so
+    # the guard_spec classification is reached and exercised.
+    printf '# guard fixture\n' > guard_impl.sh
     printf '#!/usr/bin/env bash\n# [SPEC-1] guard: always passes\nexit 0\n' > tests/guard-test.sh
     chmod +x tests/guard-test.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec"
@@ -267,6 +270,71 @@ assert_eq "[SPEC-4] _acceptance_build_run_cmd: first token is interpreter" \
     "bash" "${_cmd_out[0]:-}"
 assert_eq "[SPEC-4] _acceptance_build_run_cmd: second token is testfile path" \
     "/tmp/test.sh" "${_cmd_out[1]:-}"
+
+# ── NC-K: [SPEC-1][SPEC-2] test-only diff → NEGCTL SKIP no_prod_delta ────────────
+# The feature branch adds only a file under tests/ (no production code). At
+# baseline (before the fix), negctl would spin up a worktree and emit
+# NEGCTL FAIL tautology; with the fix it emits NEGCTL SKIP no_prod_delta, rc=0.
+REPO_K="$(setup_git_temp_repo negctl-repo-k)"
+(
+    cd "$REPO_K"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    # Only a test file in the diff — no production code changed.
+    cat > tests/nc-k-test.sh <<'EOF'
+#!/usr/bin/env bash
+# [SPEC-1] test-only change
+exit 0
+EOF
+    chmod +x tests/nc-k-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: test-only change"
+)
+DM_K="$REPO_K/design.md"
+cat > "$DM_K" <<'EOF'
+```acceptance
+SPEC-1: test-only change
+TESTFILES:
+tests/nc-k-test.sh
+```
+EOF
+set +e; OUT_K="$(acceptance_negctl_check "$DM_K" "$REPO_K")"; RC_K=$?; set -e
+assert_eq "[SPEC-1] test-only diff → NEGCTL SKIP no_prod_delta" \
+    "NEGCTL SKIP no_prod_delta" "$OUT_K"
+assert_eq "[SPEC-2] test-only diff skip yields rc=0" "0" "$RC_K"
+
+# ── NC-L: [SPEC-3] mixed diff (test + prod file) → full negctl runs, no skip ─────
+# When at least one changed path is outside tests/, no_prod_delta must NOT fire.
+REPO_L="$(setup_git_temp_repo negctl-repo-l)"
+(
+    cd "$REPO_L"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    # production file present only at HEAD (load-bearing)
+    printf '#!/usr/bin/env bash\nmy_l_feature() { return 0; }\n' > impl_l.sh
+    cat > tests/nc-l-test.sh <<'EOF'
+#!/usr/bin/env bash
+# [SPEC-1] load-bearing: impl_l.sh must exist
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl_l.sh"
+[[ -f "$impl" ]] || exit 1
+# shellcheck disable=SC1090
+source "$impl"; my_l_feature
+EOF
+    chmod +x tests/nc-l-test.sh impl_l.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: impl + test (mixed diff)"
+)
+DM_L="$REPO_L/design.md"
+cat > "$DM_L" <<'EOF'
+```acceptance
+SPEC-1: load-bearing test for impl_l
+TESTFILES:
+tests/nc-l-test.sh
+```
+EOF
+set +e; OUT_L="$(acceptance_negctl_check "$DM_L" "$REPO_L")"; RC_L=$?; set -e
+assert_eq "[SPEC-3] mixed diff does NOT emit no_prod_delta skip" \
+    "" "$(grep 'no_prod_delta' <<<"$OUT_L")"
+assert_eq "[SPEC-3] mixed diff runs full negctl → NEGCTL PASS SPEC-1" \
+    "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_L")"
 
 cleanup_test_env
 print_test_results  # exits with $FAIL

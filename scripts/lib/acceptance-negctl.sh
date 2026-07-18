@@ -94,7 +94,8 @@ _negctl_bound_log() {
 #   NEGCTL FAIL <spec_id> <reason>   reason ∈ {tautology, not_passing_at_head, no_testfile}
 #   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
 #                                worktree_failed, timeout:<spec_id>)
-#   NEGCTL SKIP <detail>       — no negative control possible (no_impl_delta)
+#   NEGCTL SKIP <detail>       — no negative control possible (no_impl_delta,
+#                                no_prod_delta)
 # Returns 0 when every SPEC-n passes (or is legitimately skipped), 1 otherwise.
 acceptance_negctl_check() {
     local design_md="${1:-}" repo_root="${2:-}"
@@ -112,6 +113,27 @@ acceptance_negctl_check() {
         # control against. Skip (not a failure): cannot prove load-bearing.
         printf 'NEGCTL SKIP no_impl_delta\n'
         return 0
+    fi
+
+    # Test-only diff: every changed path is under tests/ → no production code to
+    # revert, so the baseline worktree would be byte-identical for all impl paths.
+    # Tautology-fail would be a false positive; skip instead.
+    local -a _nd_paths=()
+    local _nd_p
+    while IFS= read -r _nd_p; do
+        [[ -n "$_nd_p" ]] && _nd_paths+=("$_nd_p")
+    done < <(git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true)
+    if [[ "${#_nd_paths[@]}" -gt 0 ]]; then
+        local _nd_all_test=1
+        for _nd_p in "${_nd_paths[@]}"; do
+            if [[ "$_nd_p" != tests/* ]]; then
+                _nd_all_test=0; break
+            fi
+        done
+        if [[ "$_nd_all_test" -eq 1 ]]; then
+            printf 'NEGCTL SKIP no_prod_delta\n'
+            return 0
+        fi
     fi
 
     # Collect declared TESTFILES (existing on disk) once.
