@@ -51,20 +51,21 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 RUNNER_FINAL_STATUS_LIB="$REPO_ROOT/scripts/lib/runner-final-status.sh"
 [[ -f "$RUNNER_FINAL_STATUS_LIB" ]] && source "$RUNNER_FINAL_STATUS_LIB"
 
-# T1: on_max=continue + downstream pass → "complete"
+# T1: on_max=continue + downstream pass → "complete_unconverged" (#1479)
 status=""
 _runner_compute_final_status 1 "continue" 1 status
-assert_eq "T1: unconverged + on_max=continue + downstream pass → complete" "complete" "$status"
+assert_eq "[SPEC-2] T1: _runner_compute_final_status(1,continue,1) → complete_unconverged" "complete_unconverged" "$status"
+assert_eq "[SPEC-1] T1: runner stamps complete_unconverged when cycle exhausts on_max=continue + downstream pass" "complete_unconverged" "$status"
 
 # T2: on_max=abort → "failed" regardless
 status=""
 _runner_compute_final_status 1 "abort" 1 status
-assert_eq "T2: unconverged + on_max=abort → failed" "failed" "$status"
+assert_eq "[SPEC-4] T2: unconverged + on_max=abort → failed" "failed" "$status"
 
 # T3: on_max=continue + downstream fail → "failed"
 status=""
 _runner_compute_final_status 1 "continue" 0 status
-assert_eq "T3: unconverged + on_max=continue + downstream fail → failed" "failed" "$status"
+assert_eq "[SPEC-5] T3: unconverged + on_max=continue + downstream fail → failed" "failed" "$status"
 
 # T4: no unconverged + downstream pass → "complete" (baseline)
 status=""

@@ -77,5 +77,37 @@ else
     assert_pass "T2: first pass omits the gate-feedback section (no-op when file absent)"
 fi
 
+# ── T3 / [SPEC-3]: design-gate-feedback.md present → spliced as distinct section ─
+# #1479: design-gate-feedback.md in the shared artifacts dir must be read by
+# _design_read_design_gate_feedback and spliced with a "PRIOR DESIGN-GATE FEEDBACK"
+# heading so the design pass sees structural violations from the prior cycle.
+AD3="$(_setup_fixture)"
+cat > "$AD3/design-gate-feedback.md" <<'EOF'
+# Design-gate violations
+Scope block missing tests/unit/foo-test.sh for changed enum.
+EOF
+export MOCK_DESIGN_WRITE_PATH="$AD3/design.md"
+_design_stage_run_inner "$(dirname "$AD3")/scope-manifest.md" "$AD3/plan.json" "$AD3/design.md" "$AD3" >/dev/null 2>&1 || true
+PROMPT3="$AD3/design-prompt.txt"
+assert_file_exists "T3: design prompt written (design-gate-feedback)" "$PROMPT3"
+assert_contains "[SPEC-3] T3: prompt carries design-gate-feedback.md body" \
+    "$(cat "$PROMPT3")" "missing tests/unit/foo-test.sh"
+assert_contains_regex "[SPEC-3] T3: prompt has PRIOR DESIGN-GATE FEEDBACK heading" \
+    "$(cat "$PROMPT3")" "PRIOR DESIGN-GATE FEEDBACK"
+
+# ── T4: design-gate-feedback.md absent → no section in prompt (no-op) ─
+AD4="$(_setup_fixture)"
+export MOCK_DESIGN_WRITE_PATH="$AD4/design.md"
+_design_stage_run_inner "$(dirname "$AD4")/scope-manifest.md" "$AD4/plan.json" "$AD4/design.md" "$AD4" >/dev/null 2>&1 || true
+PROMPT4="$AD4/design-prompt.txt"
+assert_file_exists "T4: design prompt written (no design-gate-feedback)" "$PROMPT4"
+if grep -q 'PRIOR DESIGN-GATE FEEDBACK' "$PROMPT4"; then
+    assert_fail "T4: first pass (no design-gate-feedback.md) must NOT add the design-gate-feedback section" \
+        "$(grep 'PRIOR DESIGN-GATE FEEDBACK' "$PROMPT4")"
+else
+    assert_pass "T4: first pass omits design-gate-feedback section (no-op when file absent)"
+fi
+
 cleanup_test_env
 print_test_results
+exit $((FAIL > 0))
