@@ -83,8 +83,8 @@ WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
 - This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
 - You cannot read a real-time clock, but estimate elapsed time from your tool-call
   history (count of turns × typical latency per turn visible in your context window).
-- STOP exploring and EMIT your best-effort plan when you estimate ~${_stop_at}s have
-  elapsed (70% of budget). A partial plan with gaps in \`notes\` BEATS a hard
+- Target emitting your best-effort plan before ~${_stop_at}s of wall-clock time has elapsed
+  (70% of the ${budget_s}s budget). A partial plan with gaps in \`notes\` BEATS a hard
   SIGTERM that produces no output at all — never spend the full budget exploring.
 EOF
 }
