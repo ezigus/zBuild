@@ -59,15 +59,15 @@ else
 fi
 
 assert_eq "[SPEC-1] _TPL_MAP_OVER_review_lenses == lenses" "lenses" "${_TPL_MAP_OVER_review_lenses:-MISSING}"
-assert_eq "[SPEC-1] _TPL_MAP_ELEMENTS_review_lenses has 5 elements" \
-    "security,performance,red-team,correctness,scope" \
+assert_eq "[SPEC-1] _TPL_MAP_ELEMENTS_review_lenses has 6 elements" \
+    "security,performance,red-team,correctness,scope,sre" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-MISSING}"
 assert_eq "[SPEC-1] _TPL_MAP_ROLES_review_lenses == review_lens" "review_lens" "${_TPL_MAP_ROLES_review_lenses:-MISSING}"
 assert_eq "[SPEC-1] _TPL_MAP_AS_review_lenses == ZBUILD_REVIEW_LENS_ID (as: env-target)" \
     "ZBUILD_REVIEW_LENS_ID" "${_TPL_MAP_AS_review_lenses:-MISSING}"
 
 # ─── SPEC-2 / SPEC-3 / SPEC-4 / SPEC-5: work-unit dispatch ──────────────────
-print_test_section "SPEC-2/3/4/5: 5 distinguishable work units with correct env"
+print_test_section "SPEC-2/3/4/5: 6 distinguishable work units with correct env"
 
 PLUGINS_ROOT="$REPO_ROOT/plugins"
 WU_ENV_LOG="$TEST_TEMP_DIR/wu-env.log"
@@ -120,10 +120,10 @@ fi
 # Count dispatched work units.
 _dispatch_count=0
 _dispatch_count=$(/usr/bin/grep -c "^elem=" "$WU_ENV_LOG" 2>/dev/null) || _dispatch_count=0
-assert_eq "[SPEC-2] exactly 5 work units dispatched" "5" "$_dispatch_count"
+assert_eq "[SPEC-2] exactly 6 work units dispatched" "6" "$_dispatch_count"
 
 # Each element must appear exactly once.
-_expected_elements=("security" "performance" "red-team" "correctness" "scope")
+_expected_elements=("security" "performance" "red-team" "correctness" "scope" "sre")
 for _el in "${_expected_elements[@]}"; do
     _found=$(/usr/bin/grep -c "elem=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null || echo 0)
     assert_eq "[SPEC-3] element '$_el' dispatched exactly once" "1" "$_found"
@@ -135,7 +135,7 @@ done
 
 # All work units must have platform=generic (not hijacked by element name).
 _generic_count=$(/usr/bin/grep -c "plat=\[generic\]" "$WU_ENV_LOG" 2>/dev/null || echo 0)
-assert_eq "[SPEC-5] all 5 work units have platform=generic" "5" "$_generic_count"
+assert_eq "[SPEC-5] all 6 work units have platform=generic" "6" "$_generic_count"
 
 # ─── SPEC-4: ZBUILD_MAP_ELEMENT readable inside the work unit ────────────────
 print_test_section "SPEC-4: ZBUILD_MAP_ELEMENT is baked and readable in the work unit"
@@ -191,7 +191,7 @@ source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
 # same lens-<element>.json artifact names are produced (golden parity).
 export ZBUILD_CURRENT_STAGE="review_lenses"
 
-for _el in "security" "performance" "red-team" "correctness" "scope"; do
+for _el in "security" "performance" "red-team" "correctness" "scope" "sre"; do
     export ZBUILD_REVIEW_LENS_ID="$_el"
     _resolved="$(_review_lens_id)"
     assert_eq "[SPEC-6] _review_lens_id() with ZBUILD_REVIEW_LENS_ID='$_el'" "$_el" "$_resolved"
