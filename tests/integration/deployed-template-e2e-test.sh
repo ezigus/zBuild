@@ -15,6 +15,9 @@
 # SPEC-8: monitor plugin emits plugin.finalize.complete event
 # SPEC-9: behavior preservation — deploy-result.json verdict=deployed,
 #          validate-result.json verdict=healthy, monitor-report.json present
+# SPEC-10: deployed.yaml's review_lenses map group includes the 'sre' element
+#          (issue #1517) — proves the WIRING addition to this template is
+#          load-bearing, not inert (reverting it must flip this assertion).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -92,6 +95,13 @@ _load_rc=$?
 set -e
 
 assert_eq "[SPEC-1] deployed.yaml loads without error (exit 0)" "0" "$_load_rc"
+
+# ─── SPEC-10: review_lenses map group includes 'sre' (issue #1517) ───────────
+# CHANGE: at merge-base deployed.yaml's review_lenses elements list did not
+# include 'sre' — this assertion fails there and passes at HEAD.
+assert_eq "[SPEC-10] deployed.yaml review_lenses elements include 'sre'" \
+    "security,performance,red-team,correctness,scope,sre" \
+    "${_TPL_MAP_ELEMENTS_review_lenses:-}"
 
 # ─── SPEC-2: _TPL_STAGES includes deploy, validate, monitor after pr ──────────
 # CHANGE: deployed.yaml did not exist → these stages were absent.
