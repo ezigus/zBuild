@@ -59,11 +59,18 @@ case "$framing" in
 esac
 assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$charter_ok"
 
-# SPEC-6: manifest perspective is byte-identical to the charters.sh red-team charter
-EXPECTED_CHARTER="Examine the change as a hostile reviewer looking for exploitable flaws: race conditions, privilege escalation paths, logic errors that can be triggered by adversarial input, and security assumptions that break under adversarial conditions."
-actual_perspective="$(resolve_persona_perspective red-team "$REAL_PROOT")"
+# SPEC-6: manifest perspective is byte-identical to the charters.sh red-team
+# CASE-STATEMENT fallback — the invariant that removing the manifest would not
+# change the lens charter (data-driven parity, #1457). Derive the expected text
+# from charters.sh itself (not a hardcoded copy) so drift in EITHER file breaks
+# this test: force the persona-registry lookup to miss so _rl_lens_charter
+# returns its built-in fallback, then compare to the manifest-resolved value.
+# shellcheck source=../../plugins/agent/review-lens/lib/charters.sh
+source "$REPO_ROOT/plugins/agent/review-lens/lib/charters.sh"
+resolve_persona_charter() { return 1; }  # force the case-statement fallback path
+expected_charter="$(_rl_lens_charter red-team)"
 assert_eq "[SPEC-6] manifest perspective byte-identical to charters.sh red-team charter" \
-    "$EXPECTED_CHARTER" "$actual_perspective"
+    "$expected_charter" "$rt_perspective"
 
 cleanup_test_env
 print_test_results
