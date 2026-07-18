@@ -168,6 +168,26 @@ persona:
 
 ---
 
+## scope
+
+The scope persona wires the scope review lens to the architect identity, carrying the byte-identical charter text from the `scope` case arm in `charters.sh` as its perspective. This makes `resolve_persona_charter("scope")` return the charter text instead of falling through to the case statement.
+
+- **Kind:** `persona`
+- **Manifest:** `plugins/persona/scope/manifest.yaml`
+
+```yaml
+id: scope
+name: Scope Reviewer
+kind: persona
+version: 0.1.0
+summary: Scope-drift mindset — flags out-of-scope edits and in-scope-but-untouched files as advisory findings.
+persona:
+  role: a software architect
+  perspective: "WARN ONLY (advisory, never blocking): compare the change against the PLANNED scope (the plan's declared file list / scope manifest). Flag files edited in the diff that the planned scope did not list (out-of-scope edits), and files the planned scope listed but the diff did not touch (in-scope-but-untouched). Report each as a low/medium finding describing the scope drift; never recommend reverting or blocking."
+```
+
+---
+
 ## sre
 
 The SRE persona encodes an operability-first mindset for review lenses, examining changes from the perspective of a site-reliability engineer focused on production risk, observability, graceful degradation, and safe rollback.

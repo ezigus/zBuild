@@ -250,6 +250,25 @@ else
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec11"
 
+# ─── SPEC-12 [SPEC-6]: live-tree scope persona parity ────────────────────────
+# With ZBUILD_PLUGINS_ROOT pointing at the live repo plugins tree,
+# _rl_lens_charter('scope') must return the manifest perspective text
+# (containing 'WARN ONLY') and must NOT fall through to the wildcard fallback.
+_prev_plugins_root_spec12="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+_scope_charter="$(_rl_lens_charter "scope")"
+case "$_scope_charter" in
+    *"WARN ONLY"*) scope_charter_ok=1 ;;
+    *) scope_charter_ok=0 ;;
+esac
+assert_eq "[SPEC-6] scope charter from live manifest contains 'WARN ONLY'" "1" "$scope_charter_ok"
+if grep -q "Examine the change for issues relevant to the scope concern" <<< "$_scope_charter"; then
+    assert_fail "[SPEC-6] wildcard fallback must NOT fire when scope manifest exists" "wildcard text found"
+else
+    assert_pass "[SPEC-6] wildcard fallback is suppressed by scope persona manifest"
+fi
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec12"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -374,6 +374,48 @@ case "$sre_framing" in
 esac
 assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$sre_charter_ok"
 
+# ─── SPEC-1..SPEC-5: live-tree scope persona ─────────────────────────────────
+# These specs exercise the real manifest shipped in the repo (not a fixture).
+
+# SPEC-1: scope manifest is discoverable from the live plugins tree
+set +e
+scope_mf="$(find_persona scope "$REAL_PROOT")"; rc=$?
+set -e
+assert_eq "[SPEC-1] find_persona returns 0 for the live scope persona" "0" "$rc"
+assert_contains "[SPEC-1] find_persona points at plugins/persona/scope/manifest.yaml" \
+    "$scope_mf" "plugins/persona/scope/manifest.yaml"
+
+# SPEC-2: role is exactly 'a software architect'
+assert_eq "[SPEC-2] resolve_persona_role returns 'a software architect'" \
+    "a software architect" "$(resolve_persona_role scope "$REAL_PROOT")"
+
+# SPEC-3: perspective contains 'WARN ONLY' (scope-charter keyword)
+scope_perspective="$(resolve_persona_perspective scope "$REAL_PROOT")"
+case "$scope_perspective" in
+    *"WARN ONLY"*) scope_persp_ok=1 ;;
+    *)             scope_persp_ok=0 ;;
+esac
+assert_eq "[SPEC-3] scope perspective contains 'WARN ONLY'" "1" "$scope_persp_ok"
+
+# SPEC-4: validate_manifest passes on the live scope manifest
+set +e
+validate_manifest "$scope_mf" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-4] validate_manifest passes on the live scope manifest" "0" "$rc"
+
+# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
+scope_framing="$(persona_lens_framing scope "Audit for scope drift." "$REAL_PROOT")"
+case "$scope_framing" in
+    *"software architect"*) scope_role_ok=1 ;;
+    *) scope_role_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains 'software architect'" "1" "$scope_role_ok"
+case "$scope_framing" in
+    *"Audit for scope drift."*) scope_charter_ok=1 ;;
+    *) scope_charter_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$scope_charter_ok"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
