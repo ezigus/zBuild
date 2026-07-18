@@ -66,6 +66,29 @@ TURN BUDGET (read this — you have a BOUNDED tool-call budget):
 EOF
 }
 
+# _plan_wallclock_guidance <budget_s> <elapsed_s> — wall-clock budget signal
+# injected into the planner prompt (#1550). Empty when budget_s is not a
+# positive integer or when elapsed_s >= budget_s (degenerate guard). Otherwise
+# emits a "WALL CLOCK BUDGET" block telling the planner its total budget,
+# elapsed time, and instructing it to emit a best-effort plan before the hard
+# OS SIGTERM fires — orthogonal to the turn-budget guardrail from #1442.
+_plan_wallclock_guidance() {
+    local budget_s="${1:-}" elapsed_s="${2:-}"
+    [[ "$budget_s" =~ ^[0-9]+$ && "$budget_s" -gt 0 ]] || { printf ''; return 0; }
+    [[ "$elapsed_s" =~ ^[0-9]+$ ]] || elapsed_s=0
+    [[ "$elapsed_s" -lt "$budget_s" ]] || { printf ''; return 0; }
+    local _stop_at=$(( budget_s * 70 / 100 ))
+    cat <<EOF
+WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
+- This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
+- You cannot read a real-time clock, but estimate elapsed time from your tool-call
+  history (count of turns × typical latency per turn visible in your context window).
+- Target emitting your best-effort plan before ~${_stop_at}s of wall-clock time has elapsed
+  (70% of the ${budget_s}s budget). A partial plan with gaps in \`notes\` BEATS a hard
+  SIGTERM that produces no output at all — never spend the full budget exploring.
+EOF
+}
+
 # ─── init ───────────────────────────────────────────────────────────────────
 plan_init() {
     export ZBUILD_PLUGIN="plan"
@@ -299,6 +322,9 @@ _plan_run_inner() {
     fi
 
     mkdir -p "$artifact_dir"
+    # Capture entry time for the wall-clock budget signal (#1550). $SECONDS is a
+    # Bash builtin — no subshell, no subprocess latency, never drifts from real time.
+    local _plan_start_s=$SECONDS
 
     # ADR-043: redaction is owned by the router (route_to_model) — it redacts the
     # assembled prompt below by construction. This stage assembles RAW text and
@@ -424,6 +450,15 @@ PLAN_PROMPT
         _plan_budget="$(ZBUILD_CURRENT_STAGE="${ZBUILD_CURRENT_STAGE:-plan}" _route_resolve_max_turns 2>/dev/null || true)"
     fi
     _plan_budget_block="$(_plan_budget_guidance "$_plan_budget")"
+    # #1550: resolve the wall-clock timeout and inject a WALL CLOCK BUDGET signal
+    # so the planner self-arrests before the OS SIGTERM fires (orthogonal to the
+    # turn-budget guardrail: a slow T2 model can hit the wall-clock with turns left).
+    local _plan_wc_budget="" _plan_wc_elapsed=0 _plan_wc_block=""
+    if declare -F _route_resolve_timeout >/dev/null 2>&1; then
+        _plan_wc_budget="$(ZBUILD_CURRENT_STAGE="${ZBUILD_CURRENT_STAGE:-plan}" _route_resolve_timeout 2>/dev/null || true)"
+    fi
+    _plan_wc_elapsed=$(( SECONDS - _plan_start_s ))
+    _plan_wc_block="$(_plan_wallclock_guidance "$_plan_wc_budget" "$_plan_wc_elapsed")"
     # Prepend: OUTPUT CONTRACT (ADR-028), then persona framing (identity first),
     # then budget guardrail (when a finite budget applies), then instructions.
     _plan_instructions="$_output_contract_block
@@ -431,6 +466,8 @@ PLAN_PROMPT
 $_framing
 ${_plan_budget_block:+
 $_plan_budget_block
+}${_plan_wc_block:+
+$_plan_wc_block
 }
 $_plan_instructions"
     # Inline the scope-manifest verbatim (ground truth). Falls back to a

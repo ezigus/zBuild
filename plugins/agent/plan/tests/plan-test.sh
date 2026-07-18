@@ -183,6 +183,24 @@ assert_contains "[budget] guidance biases toward a best-effort plan" \
     "$(_plan_budget_guidance 45)" "best-effort plan"
 assert_eq "[budget] empty for the 0 (unlimited) sentinel" "" "$(_plan_budget_guidance 0)"
 assert_eq "[budget] empty for a non-numeric budget"       "" "$(_plan_budget_guidance abc)"
+
+# ─── Test 3e: #1550 — wall-clock budget block in captured prompt ─────────────
+# [SPEC-7] (CHANGE): plan prompt must carry the WALL CLOCK BUDGET block so the
+# planner can self-arrest before the OS SIGTERM fires. Fails at baseline because
+# the block is only emitted after _plan_wallclock_guidance is wired into
+# _plan_run_inner (plugins/agent/plan/plugin.sh is the acceptance-gate WIRING file).
+assert_contains "[SPEC-7] plan prompt states its wall-clock budget" \
+    "$captured_prompt" "WALL CLOCK BUDGET"
+# [SPEC-8] (CHANGE): _plan_wallclock_guidance function behavior — fails at baseline
+# because the function does not exist until plugin.sh is updated.
+assert_contains "[SPEC-8] wallclock guidance names the budget seconds" \
+    "$(_plan_wallclock_guidance 300 0)" "300"
+assert_contains "[SPEC-8] wallclock guidance mentions best-effort plan" \
+    "$(_plan_wallclock_guidance 300 0)" "best-effort plan"
+assert_eq "[SPEC-8] empty for zero budget" "" "$(_plan_wallclock_guidance 0 0)"
+assert_eq "[SPEC-8] empty for non-numeric budget" "" "$(_plan_wallclock_guidance abc 0)"
+assert_eq "[SPEC-8] empty when elapsed >= budget (degenerate)" "" "$(_plan_wallclock_guidance 100 100)"
+
 if grep -qi "Scope manifest" <<< "$captured_prompt"; then
     assert_pass "plan prompt inlines the scope manifest"
 else
