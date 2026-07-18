@@ -242,11 +242,11 @@ case "$_corr_charter" in
     *"logic errors"*) corr_charter_ok=1 ;;
     *) corr_charter_ok=0 ;;
 esac
-assert_eq "[SPEC-6] correctness charter from live manifest contains 'logic errors'" "1" "$corr_charter_ok"
+assert_eq "[SPEC-11] correctness charter from live manifest contains 'logic errors'" "1" "$corr_charter_ok"
 if grep -q "Examine the change for issues relevant to the correctness concern" <<< "$_corr_charter"; then
-    assert_fail "[SPEC-6] wildcard fallback must NOT fire when correctness manifest exists" "wildcard text found"
+    assert_fail "[SPEC-11] wildcard fallback must NOT fire when correctness manifest exists" "wildcard text found"
 else
-    assert_pass "[SPEC-6] wildcard fallback is suppressed by correctness persona manifest"
+    assert_pass "[SPEC-11] wildcard fallback is suppressed by correctness persona manifest"
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec11"
 

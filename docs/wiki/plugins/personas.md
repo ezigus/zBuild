@@ -130,7 +130,7 @@ persona:
 
 ## correctness
 
-The correctness persona wires the correctness review lens to the test-strategist identity (see [test-strategist](#test-strategist)), carrying the byte-identical charter text from the `correctness)` case arm in `charters.sh` as its perspective. This makes `resolve_persona_charter("correctness")` return the charter text instead of falling through to the case statement.
+The correctness persona wires the correctness review lens to the test-strategist identity (see [test-strategist](#test-strategist)), carrying the byte-identical charter text from the `correctness` case arm in `charters.sh` as its perspective. This makes `resolve_persona_charter("correctness")` return the charter text instead of falling through to the case statement.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/correctness/manifest.yaml`
