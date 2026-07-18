@@ -272,9 +272,18 @@ SPEC-1[change]: <one new behavior this change introduces>
 SPEC-2[guard]: <an invariant this change must not break>
 WIRING: <repo-relative-path-to-wiring-file>
 TESTFILES:
-tests/unit/some-test.sh
-tests/integration/other-test.sh
+SPEC-1: tests/unit/some-test.sh
+SPEC-2: tests/integration/other-test.sh
 \`\`\`
+
+Per-SPEC TESTFILES binding (preferred for new designs):
+- Prefix each testfile path with \`SPEC-n: \` to bind it exclusively to that SPEC.
+  Example: \`SPEC-1: tests/unit/foo-test.sh\`
+- Multiple paths for one SPEC: \`SPEC-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
+- Plain (unqualified) paths remain valid as a global fallback for backward
+  compatibility, but new designs SHOULD author one \`SPEC-n: path\` line per
+  \`[change]\` SPEC. This lets the gate prove each SPEC is tested by its own
+  dedicated file, not a sibling's passing control.
 
 WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
 - Declare the SEPARABLE wiring file that connects the new behavior to the

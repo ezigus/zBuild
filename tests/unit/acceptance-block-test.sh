@@ -334,6 +334,133 @@ assert_eq "TC-13: absolute path dropped" "0" \
 assert_eq "TC-13: safe wiring path retained" "1" \
     "$(printf '%s\n' "$tc13_out" | grep -c '^config/templates/simple.yaml$' || true)"
 
+# ── TC-14: [SPEC-1] acceptance_list_testfiles_for_spec — per-SPEC binding ────────
+# When SPEC-1: prefix lines exist, only those paths are returned for SPEC-1.
+tc14_file="$WORK_DIR/tc14_design.md"
+cat > "$tc14_file" <<'EOF'
+```acceptance
+SPEC-1[change]: per-SPEC feature
+SPEC-2[change]: other feature
+WIRING: none
+TESTFILES:
+SPEC-1: tests/unit/foo-test.sh
+SPEC-2: tests/integration/bar-test.sh
+```
+EOF
+
+set +e
+tc14_s1="$(acceptance_list_testfiles_for_spec "$tc14_file" "SPEC-1")"
+tc14_s2="$(acceptance_list_testfiles_for_spec "$tc14_file" "SPEC-2")"
+set -e
+assert_eq "[SPEC-1] TC-14: per-SPEC returns SPEC-1 bound path only" \
+    "tests/unit/foo-test.sh" "$tc14_s1"
+assert_eq "[SPEC-1] TC-14: SPEC-2 does not appear in SPEC-1 result" \
+    "0" "$(echo "$tc14_s1" | grep -c 'bar-test.sh' || true)"
+assert_eq "[SPEC-1] TC-14: per-SPEC returns SPEC-2 bound path only" \
+    "tests/integration/bar-test.sh" "$tc14_s2"
+
+# ── TC-15: [SPEC-2] acceptance_list_testfiles_for_spec — global fallback ──────────
+# When no per-SPEC prefix for the requested SPEC, return the global bare-path pool.
+tc15_file="$WORK_DIR/tc15_design.md"
+cat > "$tc15_file" <<'EOF'
+```acceptance
+SPEC-1[change]: feature
+WIRING: none
+TESTFILES:
+tests/unit/global-test.sh
+tests/integration/global2-test.sh
+```
+EOF
+
+set +e
+tc15_out="$(acceptance_list_testfiles_for_spec "$tc15_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-2] TC-15: fallback to global pool for SPEC-1" \
+    "1" "$(echo "$tc15_out" | grep -c 'global-test.sh')"
+assert_eq "[SPEC-2] TC-15: fallback includes second global path" \
+    "1" "$(echo "$tc15_out" | grep -c 'global2-test.sh')"
+
+# ── TC-16: [SPEC-3] acceptance_has_per_spec_binding — true/false detection ────────
+tc16_bound_file="$WORK_DIR/tc16_bound.md"
+cat > "$tc16_bound_file" <<'EOF'
+```acceptance
+SPEC-1[change]: feature
+WIRING: none
+TESTFILES:
+SPEC-1: tests/unit/a-test.sh
+```
+EOF
+
+tc16_global_file="$WORK_DIR/tc16_global.md"
+cat > "$tc16_global_file" <<'EOF'
+```acceptance
+SPEC-1[change]: feature
+WIRING: none
+TESTFILES:
+tests/unit/a-test.sh
+```
+EOF
+
+set +e
+acceptance_has_per_spec_binding "$tc16_bound_file"; tc16_bound_rc=$?
+acceptance_has_per_spec_binding "$tc16_global_file"; tc16_global_rc=$?
+set -e
+assert_eq "[SPEC-3] TC-16: has_per_spec_binding returns 0 when SPEC-n: present" \
+    "0" "$tc16_bound_rc"
+assert_eq "[SPEC-3] TC-16: has_per_spec_binding returns 1 when only bare paths" \
+    "1" "$tc16_global_rc"
+
+# ── TC-17: [SPEC-4] acceptance_list_testfiles strips SPEC-n: prefix (union) ──────
+# The union function must return bare paths even when per-SPEC prefixes are used.
+tc17_file="$WORK_DIR/tc17_design.md"
+cat > "$tc17_file" <<'EOF'
+```acceptance
+SPEC-1[change]: feature a
+SPEC-2[change]: feature b
+WIRING: none
+TESTFILES:
+SPEC-1: tests/unit/alpha-test.sh
+SPEC-2: tests/integration/beta-test.sh
+tests/unit/global-test.sh
+```
+EOF
+
+set +e
+tc17_out="$(acceptance_list_testfiles "$tc17_file")"
+set -e
+assert_eq "[SPEC-4] TC-17: union includes SPEC-1 bound path (stripped)" \
+    "1" "$(echo "$tc17_out" | grep -c '^tests/unit/alpha-test.sh$')"
+assert_eq "[SPEC-4] TC-17: union includes SPEC-2 bound path (stripped)" \
+    "1" "$(echo "$tc17_out" | grep -c '^tests/integration/beta-test.sh$')"
+assert_eq "[SPEC-4] TC-17: union includes global bare path" \
+    "1" "$(echo "$tc17_out" | grep -c '^tests/unit/global-test.sh$')"
+assert_eq "[SPEC-4] TC-17: no SPEC-n: prefix leaks into union output" \
+    "0" "$(echo "$tc17_out" | grep -c '^SPEC-' || true)"
+
+# ── TC-18: [SPEC-5] backward-compat — global bare-path form unaffected ────────────
+# Designs with no per-SPEC prefix must continue to work identically with the union.
+tc18_file="$WORK_DIR/tc18_design.md"
+cat > "$tc18_file" <<'EOF'
+```acceptance
+SPEC-1[change]: existing feature
+WIRING: none
+TESTFILES:
+tests/unit/classic-test.sh
+tests/integration/classic2-test.sh
+```
+EOF
+
+set +e
+tc18_out="$(acceptance_list_testfiles "$tc18_file")"
+tc18_spec="$(acceptance_list_testfiles_for_spec "$tc18_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-5] TC-18: global-only design: union lists first path" \
+    "1" "$(echo "$tc18_out" | grep -c 'classic-test.sh')"
+assert_eq "[SPEC-5] TC-18: global-only design: union lists second path" \
+    "1" "$(echo "$tc18_out" | grep -c 'classic2-test.sh')"
+assert_eq "[SPEC-5] TC-18: for_spec fallback equals global pool (first path)" \
+    "1" "$(echo "$tc18_spec" | grep -c 'classic-test.sh')"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

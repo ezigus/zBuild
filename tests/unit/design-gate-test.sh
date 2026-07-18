@@ -249,4 +249,45 @@ assert_eq "[SPEC-11] trailing-ws scope fence → no false SCOPE_MISSING" "absent
     "$([[ "$_ws_viol" == *SCOPE_MISSING* ]] && echo present || echo absent)"
 assert_eq "[SPEC-11] trailing-ws scope fence → verdict=pass" "pass" "$VERDICT"
 
+# ─── SPEC-12 (C4 per-SPEC binding upgrade): per-SPEC binding present → pass ───
+# Each [change] SPEC declares its own TESTFILE binding; both files exist.
+printf 'assert "[SPEC-1] b" 1 1\n' > "$ROOT/tests/b-test.sh"
+_run_gate_with_md '# Design
+
+```scope
+scripts/wire.sh
+```
+
+```acceptance
+SPEC-1[change]: first new behavior
+SPEC-2[change]: second new behavior
+WIRING: scripts/wire.sh
+TESTFILES:
+SPEC-1: tests/a-test.sh
+SPEC-2: tests/b-test.sh
+```
+'
+assert_eq "[SPEC-4] SPEC-12: per-SPEC binding, all files exist → verdict=pass" "pass" "$VERDICT"
+assert_eq "[SPEC-4] SPEC-12: per-SPEC binding → zero violations" \
+    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
+
+# ─── SPEC-13 (C4 per-SPEC binding upgrade): per-SPEC path missing → fail ─────
+# SPEC-1 has a per-SPEC binding but the declared file does not exist on disk.
+_run_gate_with_md '# Design
+
+```scope
+scripts/wire.sh
+```
+
+```acceptance
+SPEC-1[change]: new behavior
+WIRING: scripts/wire.sh
+TESTFILES:
+SPEC-1: tests/does-not-exist-per-spec-test.sh
+```
+'
+assert_eq "[SPEC-4] SPEC-13: per-SPEC binding missing file → verdict=fail" "fail" "$VERDICT"
+assert_contains "[SPEC-4] SPEC-13: violation names MISSING_TESTFILE" \
+    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE"
+
 print_test_results

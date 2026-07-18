@@ -85,12 +85,17 @@ extract_acceptance_block() {
 # block, one per line, in declaration order. Only `SPEC-<n>:` lines carry an
 # id; bare legacy `SPEC:` lines are intentionally ignored (they have no id to
 # map to a [SPEC-n]-tagged assertion). Returns 0 when ≥1 id is found, else 1.
+# Stops at the TESTFILES: sentinel so per-SPEC binding lines (SPEC-n: path)
+# in the TESTFILES section are not misidentified as spec-id declarations.
 acceptance_list_spec_ids() {
     local design_md="${1:-}"
     local block_output line ids_found=0
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
     [[ -z "$block_output" ]] && return 1
     while IFS= read -r line; do
+        # Stop scanning once we enter the TESTFILES section — per-SPEC binding
+        # lines (SPEC-n: path) share the SPEC id regex and must not be emitted.
+        [[ "$line" == "TESTFILES:" ]] && break
         if [[ "$line" =~ ^(SPEC-[0-9]+)(\[[a-z]+\])?: ]]; then
             printf '%s\n' "${BASH_REMATCH[1]}"
             ids_found=1
@@ -225,8 +230,10 @@ _acceptance_build_run_cmd() {
 
 # acceptance_list_testfiles <design_md>  (ADR-036 / #922)
 # Prints the repo-relative TESTFILES paths from the ```acceptance block, one
-# per line. Mirrors the path-traversal guard used by build (never surfaces an
-# absolute or ".."-containing path). Empty when the block/TESTFILES is absent.
+# per line. Includes both bare paths AND paths declared with a SPEC-n: prefix
+# (stripping the prefix to expose the bare path). Mirrors the path-traversal
+# guard used by build (never surfaces an absolute or ".."-containing path).
+# Empty when the block/TESTFILES is absent.
 acceptance_list_testfiles() {
     local design_md="${1:-}"
     [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
@@ -243,8 +250,100 @@ acceptance_list_testfiles() {
             [[ -z "$line" ]] && continue
             # Stop at WIRING: sentinel (defensive: may appear after TESTFILES: in output)
             [[ "$line" == 'WIRING:'* ]] && break
+            # Strip SPEC-n: prefix — emit the bare path(s) into the union
+            if [[ "$line" =~ ^SPEC-[0-9]+:[[:space:]]+(.*) ]]; then
+                local _bound_str="${BASH_REMATCH[1]}"
+                local -a _bound_parts
+                read -ra _bound_parts <<< "$_bound_str"
+                local _bp
+                for _bp in "${_bound_parts[@]}"; do
+                    [[ -z "$_bp" || "$_bp" == /* || "/$_bp/" == *"/../"* ]] && continue
+                    printf '%s\n' "$_bp"
+                done
+                continue
+            fi
             [[ "$line" == /* || "/$line/" == *"/../"* ]] && continue
             printf '%s\n' "$line"
         fi
     done <<< "$block_output"
+}
+
+# acceptance_has_per_spec_binding <design_md>  (#1480)
+# Returns 0 when the TESTFILES section contains ≥1 SPEC-n: prefixed binding line,
+# indicating that per-SPEC binding mode is active. Returns 1 otherwise.
+acceptance_has_per_spec_binding() {
+    local design_md="${1:-}"
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 1
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
+    local in_testfiles=0 line
+    while IFS= read -r line; do
+        if [[ "$line" == "TESTFILES:" ]]; then in_testfiles=1; continue; fi
+        if [[ $in_testfiles -eq 1 ]]; then
+            [[ "$line" == 'WIRING:'* ]] && break
+            [[ "$line" =~ ^SPEC-[0-9]+:[[:space:]] ]] && return 0
+        fi
+    done <<< "$block_output"
+    return 1
+}
+
+# acceptance_spec_has_binding <design_md> <spec_id>  (#1480)
+# Returns 0 when the TESTFILES section has ≥1 SPEC-<id>: prefixed line for the
+# given spec_id. Returns 1 otherwise (caller should use tag-scan fallback in negctl).
+acceptance_spec_has_binding() {
+    local design_md="${1:-}" spec_id="${2:-}"
+    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 1
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
+    local in_testfiles=0 line
+    while IFS= read -r line; do
+        if [[ "$line" == "TESTFILES:" ]]; then in_testfiles=1; continue; fi
+        if [[ $in_testfiles -eq 1 ]]; then
+            [[ "$line" == 'WIRING:'* ]] && break
+            # Match SPEC-<id>: <path> (no classifier bracket in TESTFILES prefix syntax)
+            if [[ "$line" =~ ^${spec_id}:[[:space:]] ]]; then return 0; fi
+        fi
+    done <<< "$block_output"
+    return 1
+}
+
+# acceptance_list_testfiles_for_spec <design_md> <spec_id>  (#1480)
+# Returns testfile paths for the given SPEC-id:
+#   - When SPEC-<id>: prefixed lines exist → returns those bound paths only.
+#   - When no SPEC-<id>: prefix → returns the unqualified global paths (backward-compat).
+# Multiple space-separated paths on a SPEC-n: line are emitted one per line.
+# Path-traversal guard applied (same as acceptance_list_testfiles).
+acceptance_list_testfiles_for_spec() {
+    local design_md="${1:-}" spec_id="${2:-}"
+    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 0
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    local in_testfiles=0 line
+    local -a per_spec=() global=()
+    while IFS= read -r line; do
+        if [[ "$line" == "TESTFILES:" ]]; then in_testfiles=1; continue; fi
+        if [[ $in_testfiles -eq 1 && -n "$line" ]]; then
+            line="${line%$'\r'}"
+            [[ -z "$line" ]] && continue
+            [[ "$line" == 'WIRING:'* ]] && break
+            if [[ "$line" =~ ^(SPEC-[0-9]+):[[:space:]]+(.*) ]]; then
+                local _bid="${BASH_REMATCH[1]}" _bpaths="${BASH_REMATCH[2]}"
+                if [[ "$_bid" == "$spec_id" ]]; then
+                    local -a _bparts; read -ra _bparts <<< "$_bpaths"
+                    local _bp
+                    for _bp in "${_bparts[@]}"; do
+                        [[ -z "$_bp" || "$_bp" == /* || "/$_bp/" == *"/../"* ]] || per_spec+=("$_bp")
+                    done
+                fi
+            else
+                [[ "$line" == /* || "/$line/" == *"/../"* ]] || global+=("$line")
+            fi
+        fi
+    done <<< "$block_output"
+    # Return per-SPEC paths when bound; else fall back to global unqualified pool.
+    if [[ ${#per_spec[@]} -gt 0 ]]; then
+        printf '%s\n' "${per_spec[@]}"
+    else
+        printf '%s\n' "${global[@]+"${global[@]}"}"
+    fi
 }
