@@ -112,7 +112,9 @@ plan:
     tail_lines: 200
   router:
     timeout_s: 300
-    max_turns: 25
+    # 45 (raised from the 25 default to match simple.yaml, #1550 / #1442):
+    # deployed.yaml fully overrides the plan section so it missed the #1442 bump.
+    max_turns: 45
 
 # ─── design (leaf, design_verify_cycle member) ───────────────────────────────
 design:

@@ -307,6 +307,20 @@ assert_eq "[SPEC-7] template_merge_policy() == auto_unless_flagged" \
 # gate roster (test_assessment absent) and SPEC-15 pins the exit_when source to
 # gate-aggregator. No separate assertion is added here to avoid duplicating those checks.
 
+# ─── SPEC-6: deployed.yaml plan max_turns raised to 45 (matched to simple.yaml) ─
+# CHANGE (#1550): deployed.yaml carried max_turns: 25 (the pre-#1442 default);
+# simple.yaml was raised to 45 in #1442 but deployed.yaml, which fully overrides
+# the plan section, missed that bump. This assertion FAILS at baseline
+# (deployed.yaml shows 25) and passes after the fix.
+DEPLOYED_TPL="$REPO_ROOT/config/templates/deployed.yaml"
+set +e
+load_template "$DEPLOYED_TPL"
+_dep_load_rc=$?
+set -e
+assert_eq "[SPEC-6] deployed.yaml loads without error" "0" "$_dep_load_rc"
+assert_eq "[SPEC-6] deployed.yaml plan max_turns matches simple.yaml (45 not 25)" \
+    "45" "${_TPL_STAGE_ROUTER_MAX_TURNS_plan:-}"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
