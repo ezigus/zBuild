@@ -31,13 +31,13 @@ assert_contains "[SPEC-1] find_persona points at the red-team manifest" \
 assert_eq "[SPEC-2] resolve_persona_role returns 'a red-team operator'" \
     "a red-team operator" "$(resolve_persona_role red-team "$REAL_PROOT")"
 
-# SPEC-3: perspective contains 'attacker' (adversarial framing)
+# SPEC-3: perspective contains 'reviewer' (matches charters.sh red-team charter)
 rt_perspective="$(resolve_persona_perspective red-team "$REAL_PROOT")"
 case "$rt_perspective" in
-    *attacker*) persp_ok=1 ;;
+    *reviewer*) persp_ok=1 ;;
     *) persp_ok=0 ;;
 esac
-assert_eq "[SPEC-3] perspective contains 'attacker'" "1" "$persp_ok"
+assert_eq "[SPEC-3] perspective contains 'reviewer'" "1" "$persp_ok"
 
 # SPEC-4: validate_manifest passes
 set +e
@@ -58,6 +58,12 @@ case "$framing" in
     *) charter_ok=0 ;;
 esac
 assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$charter_ok"
+
+# SPEC-6: manifest perspective is byte-identical to the charters.sh red-team charter
+EXPECTED_CHARTER="Examine the change as a hostile reviewer looking for exploitable flaws: race conditions, privilege escalation paths, logic errors that can be triggered by adversarial input, and security assumptions that break under adversarial conditions."
+actual_perspective="$(resolve_persona_perspective red-team "$REAL_PROOT")"
+assert_eq "[SPEC-6] manifest perspective byte-identical to charters.sh red-team charter" \
+    "$EXPECTED_CHARTER" "$actual_perspective"
 
 cleanup_test_env
 print_test_results
