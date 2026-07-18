@@ -128,6 +128,26 @@ persona:
 
 ---
 
+## correctness
+
+The correctness persona wires the correctness review lens to the test-strategist identity (see [test-strategist](#test-strategist)), carrying the byte-identical charter text from the `correctness` case arm in `charters.sh` as its perspective. This makes `resolve_persona_charter("correctness")` return the charter text instead of falling through to the case statement.
+
+- **Kind:** `persona`
+- **Manifest:** `plugins/persona/correctness/manifest.yaml`
+
+```yaml
+id: correctness
+name: Correctness Reviewer
+kind: persona
+version: 0.1.0
+summary: Logic-error focused mindset — identifies off-by-one mistakes, null handling gaps, and control-flow bugs before they reach production.
+persona:
+  role: a test strategist
+  perspective: "Examine the change for logic errors: off-by-one mistakes, unhandled null/undefined values, incorrect assumptions about data shapes, and control-flow bugs."
+```
+
+---
+
 ## performance
 
 The performance persona encodes a performance-first mindset for review lenses, examining changes from the perspective of a performance engineer focused on latency, throughput, and bottleneck identification.

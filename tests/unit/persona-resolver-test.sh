@@ -289,6 +289,48 @@ case "$perf_framing" in
 esac
 assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$perf_charter_ok"
 
+# ─── SPEC-1..SPEC-5: live-tree correctness persona ───────────────────────────
+# These specs exercise the real manifest shipped in the repo (not a fixture).
+
+# SPEC-1: correctness manifest is discoverable from the live plugins tree
+set +e
+corr_mf="$(find_persona correctness "$REAL_PROOT")"; rc=$?
+set -e
+assert_eq "[SPEC-1] find_persona returns 0 for the live correctness persona" "0" "$rc"
+assert_contains "[SPEC-1] find_persona points at plugins/persona/correctness/manifest.yaml" \
+    "$corr_mf" "plugins/persona/correctness/manifest.yaml"
+
+# SPEC-2: role is exactly 'a test strategist'
+assert_eq "[SPEC-2] resolve_persona_role returns 'a test strategist'" \
+    "a test strategist" "$(resolve_persona_role correctness "$REAL_PROOT")"
+
+# SPEC-3: perspective contains the word 'logic errors' (correctness-charter keyword)
+corr_perspective="$(resolve_persona_perspective correctness "$REAL_PROOT")"
+case "$corr_perspective" in
+    *"logic errors"*) corr_persp_ok=1 ;;
+    *)                corr_persp_ok=0 ;;
+esac
+assert_eq "[SPEC-3] correctness perspective contains 'logic errors'" "1" "$corr_persp_ok"
+
+# SPEC-4: validate_manifest passes on the live correctness manifest
+set +e
+validate_manifest "$corr_mf" >/dev/null 2>&1; rc=$?
+set -e
+assert_eq "[SPEC-4] validate_manifest passes on the live correctness manifest" "0" "$rc"
+
+# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
+corr_framing="$(persona_lens_framing correctness "Check for off-by-one errors." "$REAL_PROOT")"
+case "$corr_framing" in
+    *"test strategist"*) corr_role_ok=1 ;;
+    *) corr_role_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains 'test strategist'" "1" "$corr_role_ok"
+case "$corr_framing" in
+    *"Check for off-by-one errors."*) corr_charter_ok=1 ;;
+    *) corr_charter_ok=0 ;;
+esac
+assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$corr_charter_ok"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
