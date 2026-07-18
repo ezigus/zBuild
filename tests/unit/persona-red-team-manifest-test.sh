@@ -31,13 +31,13 @@ assert_contains "[SPEC-1] find_persona points at the red-team manifest" \
 assert_eq "[SPEC-2] resolve_persona_role returns 'a red-team operator'" \
     "a red-team operator" "$(resolve_persona_role red-team "$REAL_PROOT")"
 
-# SPEC-3: perspective contains 'attacker' (adversarial framing)
+# SPEC-3: perspective contains 'reviewer' (matches charters.sh red-team charter)
 rt_perspective="$(resolve_persona_perspective red-team "$REAL_PROOT")"
 case "$rt_perspective" in
-    *attacker*) persp_ok=1 ;;
+    *reviewer*) persp_ok=1 ;;
     *) persp_ok=0 ;;
 esac
-assert_eq "[SPEC-3] perspective contains 'attacker'" "1" "$persp_ok"
+assert_eq "[SPEC-3] perspective contains 'reviewer'" "1" "$persp_ok"
 
 # SPEC-4: validate_manifest passes
 set +e
@@ -58,6 +58,19 @@ case "$framing" in
     *) charter_ok=0 ;;
 esac
 assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$charter_ok"
+
+# SPEC-6: manifest perspective is byte-identical to the charters.sh red-team
+# CASE-STATEMENT fallback — the invariant that removing the manifest would not
+# change the lens charter (data-driven parity, #1457). Derive the expected text
+# from charters.sh itself (not a hardcoded copy) so drift in EITHER file breaks
+# this test: force the persona-registry lookup to miss so _rl_lens_charter
+# returns its built-in fallback, then compare to the manifest-resolved value.
+# shellcheck source=../../plugins/agent/review-lens/lib/charters.sh
+source "$REPO_ROOT/plugins/agent/review-lens/lib/charters.sh"
+resolve_persona_charter() { return 1; }  # force the case-statement fallback path
+expected_charter="$(_rl_lens_charter red-team)"
+assert_eq "[SPEC-6] manifest perspective byte-identical to charters.sh red-team charter" \
+    "$expected_charter" "$rt_perspective"
 
 cleanup_test_env
 print_test_results
