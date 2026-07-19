@@ -113,6 +113,118 @@ assert_eq "[S1e] stage with no router.tier → empty string" \
   assert_eq "[S1f] no loaded template → empty, no error" \
       "" "$(template_stage_router_tier plan)" )
 
+# ── SPEC-1/SPEC-2: stage_definitions shape — router.tier lazy accessor ────────
+FIX_SD="$TEST_TEMP_DIR/stagedefs-tier.yaml"
+cat > "$FIX_SD" <<'EOF'
+id: sd-tier
+name: SD tier
+defaults:
+  strategy: fanout
+stages:
+  - id: build_design_cycle
+    type: cycle
+    stages: [build, design]
+    max_iterations: 3
+    on_max: continue
+    until:
+      stage: design
+      field: verdict
+      op: eq
+      value: approved
+stage_definitions:
+  build:
+    roles: [builder]
+    router:
+      timeout_s: 300
+      max_turns: 10
+      retries: 1
+  design:
+    roles: [designer]
+    router:
+      timeout_s: 600
+      max_turns: 20
+      retries: 2
+      tier: T2
+EOF
+load_template "$FIX_SD"
+assert_eq "[SPEC-1] stage_definitions: design router.tier resolves to T2" \
+    "T2" "$(template_stage_router_tier design)"
+assert_eq "[SPEC-2] stage_definitions: build router.tier unset → empty" \
+    "" "$(template_stage_router_tier build)"
+
+# ── SPEC-3: negctl_timeout reads from new-shape top-level section (guard) ─────
+FIX_NEGCTL_NEW="$TEST_TEMP_DIR/negctl-new.yaml"
+cat > "$FIX_NEGCTL_NEW" <<'EOF'
+id: negctl-new
+name: negctl new shape
+defaults:
+  strategy: fanout
+stages:
+  - id: plan
+  - id: build
+plan:
+  gate: auto
+  roles: [planner]
+  negctl_timeout_s: 180
+build:
+  gate: auto
+  roles: [builder]
+EOF
+load_template "$FIX_NEGCTL_NEW"
+assert_eq "[SPEC-3] new-shape: negctl_timeout_s reads from top-level stage section" \
+    "180" "$(template_stage_negctl_timeout plan)"
+
+# ── SPEC-4/SPEC-5/SPEC-6: comprehensive stage_definitions fixture ─────────────
+# Verifies negctl_timeout_s lazy accessor + router.tier lazy accessor + row-based
+# knobs all resolve from stage_definitions in a single fixture.
+FIX_FULL="$TEST_TEMP_DIR/stagedefs-full.yaml"
+cat > "$FIX_FULL" <<'EOF'
+id: sd-full
+name: SD full knobs
+defaults:
+  strategy: fanout
+stages:
+  - id: build_review_cycle
+    type: cycle
+    stages: [build, review]
+    max_iterations: 3
+    on_max: continue
+    until:
+      stage: review
+      field: verdict
+      op: eq
+      value: approved
+stage_definitions:
+  build:
+    roles: [builder]
+    router:
+      timeout_s: 300
+      max_turns: 10
+      retries: 1
+  review:
+    roles: [reviewer]
+    negctl_timeout_s: 120
+    router:
+      timeout_s: 600
+      max_turns: 20
+      retries: 2
+      tier: T2
+EOF
+load_template "$FIX_FULL"
+assert_eq "[SPEC-4] stage_definitions: negctl_timeout_s resolves for review stage" \
+    "120" "$(template_stage_negctl_timeout review)"
+assert_eq "[SPEC-5] stage_definitions: negctl_timeout_s returns empty when absent" \
+    "" "$(template_stage_negctl_timeout build)"
+# SPEC-6: comprehensive — tier lazy accessor + row-based knobs from same fixture
+assert_eq "[SPEC-6] stage_definitions: review router.tier via lazy accessor" \
+    "T2" "$(template_stage_router_tier review)"
+assert_eq "[SPEC-6] stage_definitions: review router timeout_s via row-based accessor" \
+    "600" "${_TPL_STAGE_ROUTER_TIMEOUT_review:-}"
+assert_eq "[SPEC-6] stage_definitions: review router max_turns via row-based accessor" \
+    "20" "${_TPL_STAGE_ROUTER_MAX_TURNS_review:-}"
+assert_eq "[SPEC-6] stage_definitions: review router retries via row-based accessor" \
+    "2" "${_TPL_STAGE_ROUTER_RETRIES_review:-}"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
