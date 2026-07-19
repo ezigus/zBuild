@@ -98,10 +98,13 @@ lets a repo persistently opt out via config without setting an env var on every 
 
 - `scripts/lib/vision.sh` ships in Phase 1.0 as a standalone utility; it is NOT yet wired into
   the admission gate or stage dispatch. Phase 1.1 (#1358/#1360) adds the fail-closed gate.
-- `docs/VISION.md` already satisfies the required-headings contract and stays under 300 words;
-  the frontmatter block (`version: '1.0'`, `updated: '2026-07-12'`) is prepended in this issue.
-- `tests/unit/vision-validator-test.sh` covers five behavioral contracts: valid doc passes,
-  missing `## Intent` fails, missing `## Principles` fails, over-300-word doc fails, and
+- `docs/VISION.md` already stays under 300 words; the frontmatter block (`version: '1.0'`,
+  `updated: '2026-07-12'`) is prepended in this issue. It is not required to carry `## Intent` /
+  `## Principles` headings (see the VIS-C follow-up amendment in §3) but conforms anyway as
+  documentation guidance.
+- `tests/unit/vision-validator-test.sh` covers behavioral contracts: valid doc passes,
+  a doc missing `## Intent` or `## Principles` still passes (word-cap-only validation, VIS-C
+  follow-up), over-300-word doc fails, an unterminated frontmatter fence fails, and
   `load_vision_doc` resolves the first present path in search order.
 - ADR-016 `.zbuild/` precedence (the per-repo override seam) is the motivation for placing
   `.zbuild/vision.md` first in the search order.
