@@ -206,6 +206,7 @@ _ZBUILD_SERIAL_PIN=(
   'sigint-aborts-pipeline-test.sh'      # asserts total wall-clock < 4s
   'sigterm-aborts-pipeline-test.sh'     # asserts wall-clock <= 5s
   'manifest-sync-similarity-test.sh'    # MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (CI #1047)
+  'gh-automation-idempotency-log-test.sh' # #1425: unconditional sleep 1 in G8 mtime assertion — load-sensitive under a saturated unit pool
 )
 
 # _rt_is_serial_pinned <basename> — true if the basename matches any pin glob

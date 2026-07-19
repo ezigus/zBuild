@@ -20,6 +20,7 @@ print_test_header "test-parallelism audit integrity (#988)"
 
 AUDIT="$REPO_ROOT/docs/test-parallelism-audit.md"
 ITDIR="$REPO_ROOT/tests/integration"
+UTDIR="$REPO_ROOT/tests/unit"
 
 # ── 1: the audit doc exists ──────────────────────────────────────────────────
 assert_file_exists "audit doc exists" "$AUDIT"
@@ -31,9 +32,9 @@ _missing=0; _checked=0
 while IFS= read -r _name; do
     [[ -z "$_name" ]] && continue
     _checked=$((_checked + 1))
-    [[ -f "$ITDIR/$_name" ]] || { _missing=1; echo "  missing: $_name"; }
+    [[ -f "$ITDIR/$_name" ]] || [[ -f "$UTDIR/$_name" ]] || { _missing=1; echo "  missing: $_name"; }
 done < <(grep -oE '[a-z0-9][a-z0-9-]*-test\.sh' "$AUDIT" | sort -u)
-assert_eq "audit references only real integration tests (checked=$_checked)" "0" "$_missing"
+assert_eq "audit references only real integration or unit tests (checked=$_checked)" "0" "$_missing"
 
 # Non-empty floor (review #1005): the existence check above passes vacuously if
 # the doc names zero *-test.sh files (e.g. an edit strips/renames every mention).

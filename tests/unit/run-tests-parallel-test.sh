@@ -254,6 +254,31 @@ esac
 ) && assert_pass "[SPEC-14c] matcher: array glob + env glob match, non-pinned does not" \
   || assert_fail "[SPEC-14c] serial-pin matcher must match array+env globs and reject others" ""
 
+# ─── [SPEC-1] CHANGE: gh-automation-idempotency-log-test.sh in _ZBUILD_SERIAL_PIN ──────────────
+# Source-read grep: the literal basename must appear in the _ZBUILD_SERIAL_PIN block of
+# run-tests.sh. Fails at merge-base (entry absent) and passes once the pin is added (#1425).
+_pin_count="$(grep -c 'gh-automation-idempotency-log-test\.sh' "$RUN_TESTS" || true)"
+assert_eq "[SPEC-1] gh-automation-idempotency-log-test.sh is present in _ZBUILD_SERIAL_PIN" \
+  "1" "$_pin_count"
+
+# ─── [SPEC-2] GUARD: unit tier routes ZBUILD_SERIAL_TESTS-pinned file to serial bucket ─────────
+# Mirrors SPEC-14 for the integration tier: the serial-pin routing mechanism is tier-agnostic.
+# Pins one of the passing unit fixtures via the env override and verifies it appears in
+# _ZBUILD_SERIAL_ACTIVE_FILE (_LAST_SERIAL) while the pool still activates and accounting is
+# unchanged. Passes at baseline (routing mechanism already exists; proven for integration by
+# SPEC-14; same code path serves unit). This is a guard: does not fail at merge-base.
+_run_tier unit ZBUILD_TEST_PARALLEL_JOBS=2 ZBUILD_SERIAL_TESTS='pass-1-test.sh'
+assert_eq "[SPEC-2] unit tier still activates the pool when one file is serial-pinned" \
+  "unit" "$_LAST_ACTIVATED"
+case "$_LAST_SERIAL" in
+  *"pass-1-test.sh"*) assert_pass "[SPEC-2b] unit-tier pinned file routed to the SERIAL bucket (hook evidence)" ;;
+  *) assert_fail "[SPEC-2b] unit-tier pinned file must appear in the serial-bucket hook" "serial-active: '$_LAST_SERIAL'" ;;
+esac
+case "$_LAST_STDOUT" in
+  *"unit: 4/6 passed"*) assert_pass "[SPEC-2c] serial-pin is routing-only; unit accounting unchanged (4/6)" ;;
+  *) assert_fail "[SPEC-2c] unit-tier accounting must remain 4/6 with one file pinned" "stdout: $_LAST_STDOUT" ;;
+esac
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

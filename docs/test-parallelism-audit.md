@@ -126,6 +126,7 @@ the bounded FIFO pool. Two pool/stability changes accompanied the flip:
   | `sigint-aborts-pipeline-test.sh` | asserts total wall-clock < 4 s |
   | `sigterm-aborts-pipeline-test.sh` | asserts wall-clock ≤ 5 s |
   | `manifest-sync-similarity-test.sh` | MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (surfaced on CI #1047) |
+  | `gh-automation-idempotency-log-test.sh` *(unit tier)* | unconditional `sleep 1` in G8 mtime assertion — load-sensitive under a saturated unit pool (#1425) |
 
   These are **not** hermeticity bugs (each is isolated via `setup_test_env`); they are
   inherently load-sensitive. Follow-up: make their budgets load-tolerant (scale by a load factor
