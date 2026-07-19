@@ -2576,8 +2576,15 @@ template_stage_negctl_timeout() {
     local stage_id="$1"
     [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
     awk -v stage="$stage_id" '
-        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/ { in_block = 0 }
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
+        /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
+        in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
+        in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" { in_block = 1; block_ind = 2; next }
+        in_block {
+            ind = indent($0)
+            if ($0 ~ /[^[:space:]]/ && ind <= block_ind) { in_block = 0 }
+        }
         in_block && $0 ~ "^[[:space:]]+negctl_timeout_s:" {
             sub(/^[[:space:]]+negctl_timeout_s:[[:space:]]*/, "")
             sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
@@ -2602,10 +2609,17 @@ template_stage_router_tier() {
     local tier
     tier="$(awk -v stage="$stage_id" '
         function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
-        # Enter the stage block on either shape.
-        $0 ~ "^"stage":[[:space:]]*$" { in_stage = 1; stage_ind = 0; in_router = 0; next }
+        # Shape 1: top-level `<stage>:` section (new-shape).
+        $0 ~ "^"stage":[[:space:]]*$" { in_stage = 1; stage_ind = 0; in_router = 0; in_defs = 0; next }
+        # Shape 2: inline `- id: <stage>` list item.
         $0 ~ "^[[:space:]]*-[[:space:]]+id:[[:space:]]*"stage"[[:space:]]*$" {
-            in_stage = 1; stage_ind = indent($0); in_router = 0; next
+            in_stage = 1; stage_ind = indent($0); in_router = 0; in_defs = 0; next
+        }
+        # Shape 3: stage_definitions sub-entry (old-shape templates).
+        /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
+        in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
+        in_defs && !in_stage && $0 ~ "^  "stage":[[:space:]]*$" {
+            in_stage = 1; stage_ind = 2; in_router = 0; next
         }
         in_stage {
             ind = indent($0)
