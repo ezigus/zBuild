@@ -32,6 +32,13 @@ _runner_compute_final_status() {
         return 0
     fi
 
+    # Downstream succeeded. Distinguish converged vs unconverged:
+    # on_max=continue with an unconverged cycle stamps complete_unconverged (#1479).
+    if [[ "$unconverged" == "1" && "$on_max" == "continue" ]]; then
+        printf -v "$out_var" '%s' "complete_unconverged"
+        return 0
+    fi
+
     printf -v "$out_var" '%s' "complete"
     return 0
 }

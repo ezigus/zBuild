@@ -65,6 +65,11 @@ inputs:
     source: artifacts
     path: "${artifact_dir}/design-feedback.md"
     required: false
+  - id: design_gate_feedback
+    type: file
+    source: artifacts
+    path: "${artifact_dir}/design-gate-feedback.md"
+    required: false
 
 outputs:
   - id: design

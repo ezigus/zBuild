@@ -316,6 +316,7 @@ _pipeline_status_glyph() {
     local status="${1:-}"
     case "$status" in
         complete|success)              verdict_glyph "pass" ;;
+        complete_unconverged)          verdict_glyph "warn" ;;
         failed|interrupted|aborted)    verdict_glyph "fail" ;;
         preflight_failed)              verdict_glyph "warn" ;;
         *)                             printf '%s' "?" ;;
@@ -329,6 +330,7 @@ _pipeline_status_color() {
     local status="${1:-}"
     case "$status" in
         complete|success)              verdict_color "pass" ;;
+        complete_unconverged)          verdict_color "warn" ;;
         failed|interrupted|aborted)    verdict_color "fail" ;;
         preflight_failed)              verdict_color "warn" ;;
         *)                             printf '%s' "${YELLOW:-}" ;;
@@ -380,12 +382,13 @@ _render_pipeline_end() {
     # event payloads renders as "complete" — see ADR-015 §v5 amendment).
     local word
     case "$status" in
-        success|complete)    word="complete" ;;
-        failed)              word="failed" ;;
-        interrupted)         word="interrupted" ;;
-        aborted)             word="aborted" ;;
-        preflight_failed)    word="preflight_failed" ;;
-        *)                   word="$status" ;;
+        success|complete)        word="complete" ;;
+        complete_unconverged)    word="complete_unconverged" ;;
+        failed)                  word="failed" ;;
+        interrupted)             word="interrupted" ;;
+        aborted)                 word="aborted" ;;
+        preflight_failed)        word="preflight_failed" ;;
+        *)                       word="$status" ;;
     esac
 
     local label=" pipeline.end "
@@ -2255,14 +2258,24 @@ main() {
             return 1
         fi
 
+        # #1479: distinguish complete vs complete_unconverged for the final stamp.
+        if [[ "$_final_status" == "complete_unconverged" ]]; then
+            _set_pipeline_status "$state_file" "complete_unconverged"
+            eb_emit_event "pipeline.end" "status=complete_unconverged" \
+                "cycle=$_RUNNER_CYCLE_UNCONVERGED_ID" \
+                "reason=$_RUNNER_CYCLE_UNCONVERGED_REASON" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue"
+            _render_pipeline_end "complete_unconverged"
+            _runner_ended=true
+            warn "Pipeline complete_unconverged — cycle '$_RUNNER_CYCLE_UNCONVERGED_ID' did not converge (reason=$_RUNNER_CYCLE_UNCONVERGED_REASON), on_max=continue allowed fall-through"
+            success "Pipeline complete_unconverged — run_id=$_runner_run_id"
+            return 0
+        fi
+
         _set_pipeline_status "$state_file" "complete"
         eb_emit_event "pipeline.end" "status=success" "run_id=$_runner_run_id" "issue=$_runner_issue"
         _render_pipeline_end "complete"
         _runner_ended=true
-        if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 ]]; then
-            # #796: succeeded with warning — cycle didn't converge but on_max=continue
-            warn "Pipeline complete with warning — cycle '$_RUNNER_CYCLE_UNCONVERGED_ID' did not converge (reason=$_RUNNER_CYCLE_UNCONVERGED_REASON), on_max=continue allowed fall-through"
-        fi
         success "Pipeline complete — run_id=$_runner_run_id"
         return 0
     fi

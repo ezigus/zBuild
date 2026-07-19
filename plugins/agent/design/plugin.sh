@@ -104,6 +104,18 @@ _design_read_prior_gate_feedback() {
     printf '%s' "$body"
 }
 
+# #1479: design-gate structural violation feedback across cycle rewind.
+_design_read_design_gate_feedback() {
+    local artifact_dir="${1:-}"
+    [[ -z "$artifact_dir" ]] && return 0
+    local f="$artifact_dir/design-gate-feedback.md"
+    [[ ! -s "$f" ]] && return 0
+    local body
+    body="$(cat "$f" 2>/dev/null)" || return 0
+    [[ -z "${body//[[:space:]]/}" ]] && return 0
+    printf '%s' "$body"
+}
+
 # design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
 # design.md body for iter N+1 to refine rather than re-create.
 _design_read_prior_design() {
@@ -339,6 +351,14 @@ DESIGN_PROMPT
             "$_gate_fb_body" >> "$prompt_input_file"
         printf '\nThe acceptance gate found the named SPEC(s) tautological (they pass at the merge-base baseline, so they assert nothing). RE-AUTHOR each named [change] SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Preserve all other scope and acceptance entries.\n' \
             >> "$prompt_input_file"
+    fi
+
+    # #1479: design-gate structural violations.
+    local _design_gate_fb_body
+    _design_gate_fb_body="$(_design_read_design_gate_feedback "$artifact_dir" 2>/dev/null || true)"
+    if [[ -n "$_design_gate_fb_body" ]]; then
+        printf '\n## PRIOR DESIGN-GATE FEEDBACK (structural violations from the design-gate)\n%s\n' \
+            "$_design_gate_fb_body" >> "$prompt_input_file"
     fi
 
     # ADR-032: append the per-repo prompt override AFTER the core contract (so
