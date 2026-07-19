@@ -2,8 +2,8 @@
 # Tests: docs/test-parallelism-audit.md (issue #988) — keep the audit honest.
 #
 # An audit doc rots silently. This guard asserts (a) the doc exists, (b) every
-# tests/integration/*.sh file it names actually exists (no hallucinated/stale
-# references), (c) the "clean class" invariants the audit relied on still hold,
+# tests/integration/ or tests/unit/ file it names actually exists (no
+# hallucinated/stale references), (c) the "clean class" invariants the audit relied on still hold,
 # (d) exactly the 2 documented files skip setup_test_env (review M2), and (e) no
 # leaked $REPO_ROOT/.deferred-drift sentinel (canary for the C1 real-repo write)
 # — so a future change that reintroduces a hermeticity hazard trips here.
@@ -25,9 +25,9 @@ UTDIR="$REPO_ROOT/tests/unit"
 # ── 1: the audit doc exists ──────────────────────────────────────────────────
 assert_file_exists "audit doc exists" "$AUDIT"
 
-# ── 2: every integration test the audit names exists (no rot / no hallucination)
+# ── 2: every integration or unit test the audit names exists (no rot / no hallucination)
 # Extract bare `<name>-test.sh` tokens referenced in the doc and confirm each is
-# a real file under tests/integration/.
+# a real file under tests/integration/ or tests/unit/.
 _missing=0; _checked=0
 while IFS= read -r _name; do
     [[ -z "$_name" ]] && continue
