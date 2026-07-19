@@ -49,8 +49,6 @@ vision_gate_mode() {
 
 # validate_vision_doc <path>
 # Validates the vision document at <path>:
-#   - Must contain a "## Intent" heading
-#   - Must contain a "## Principles" heading
 #   - Body text (non-heading, non-frontmatter lines) must not exceed 300 words
 # Prints human-readable diagnostics on stderr for each violation.
 # Returns 0 if the document is valid, non-zero if any check fails.
@@ -62,17 +60,6 @@ validate_vision_doc() {
     fi
 
     local errors=0
-
-    # Check for required headings
-    if ! grep -q '^## Intent' "$path" 2>/dev/null; then
-        printf 'vision-doc: missing required section "## Intent" in %s\n' "$path" >&2
-        errors=$((errors + 1))
-    fi
-
-    if ! grep -q '^## Principles' "$path" 2>/dev/null; then
-        printf 'vision-doc: missing required section "## Principles" in %s\n' "$path" >&2
-        errors=$((errors + 1))
-    fi
 
     # Word-cap check: count words in body text only. YAML frontmatter is a
     # single optional block delimited by '---' fences, recognized ONLY when the

@@ -183,14 +183,16 @@ else
     assert_fail "[SPEC-8] vision_condense: expected rc non-zero for missing input" "got rc=0"
 fi
 
-# ── SPEC-9: vision_condense rejects invalid LLM output ────────────────────────
-# Install a stub that returns output missing ## Intent (fails validation).
+# ── SPEC-9: vision_condense rejects invalid LLM output (over word cap) ────────
+# Install a stub that returns output exceeding the 300-word cap (fails validation).
 BAD_STUB_BIN="$TEST_TEMP_DIR/bad-stub-bin"
 mkdir -p "$BAD_STUB_BIN"
 cat > "$BAD_STUB_BIN/claude" <<'BADSTUB'
 #!/usr/bin/env bash
-# Returns a document missing ## Intent — should fail validate_vision_doc
-printf '## Principles\n\n- only a principles section.\n'
+# Returns a document exceeding the 300-word cap — should fail validate_vision_doc
+printf '## Background\n\n'
+python3 -c "print(' '.join(['word'] * 310))" 2>/dev/null \
+    || printf 'word word word word word word word word word word\n%.0s' {1..31}
 exit 0
 BADSTUB
 chmod +x "$BAD_STUB_BIN/claude"

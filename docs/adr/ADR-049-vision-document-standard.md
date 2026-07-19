@@ -40,11 +40,11 @@ The vision document is a **Markdown file** with:
 
 - **Optional YAML frontmatter** (`---` block at top): `version` and `updated` keys are recognized
   but not required; unrecognized keys are silently ignored.
-- **Required sections** (H2 headings, exact spelling):
+- **Conventional sections** (H2 headings; encouraged but not enforced by the validator):
   - `## Intent` — one paragraph stating what the project does and for whom
   - `## Principles` — a list or paragraph of guiding values that constrain decisions
-- **Optional sections** (any H2 not listed above): `## Consistency anchors`,
-  `## Constraints / guardrails`, and any repo-specific additions are permitted.
+- **Optional sections**: `## Consistency anchors`, `## Constraints / guardrails`,
+  and any repo-specific H2 additions are permitted.
 - **Word cap:** body text (excluding frontmatter, headings, and blank lines) MUST NOT exceed 300 words.
   The cap keeps the document injectable as a stage prompt prefix without crowding the working context.
 
@@ -58,9 +58,11 @@ validate_vision_doc <path>    → rc=0 if valid; rc non-zero with stderr diagnos
 ```
 
 `validate_vision_doc` checks:
-1. `## Intent` heading present
-2. `## Principles` heading present
-3. Body word count ≤ 300
+1. Body word count ≤ 300
+
+**Amendment (VIS-C follow-up):** The `## Intent` and `## Principles` heading requirements
+were removed. Heading presence is now advisory content guidance, not a machine-enforced
+constraint. The word cap remains the only objective validator gate.
 
 ### 4. Injection point
 
