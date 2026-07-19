@@ -112,6 +112,38 @@ rc=0
 out="$(bash "$FX_SHA_CLEAN/scripts/lib/lint-action-versions.sh" 2>&1)" || rc=$?
 assert_eq "[SPEC-2] identical SHA pin of the same action in two files → rc=0" "0" "$rc"
 
+# --- Extra: missing .github/workflows/ dir → exit 1 (unexercised branch) ----
+FX_NODIR="$TEST_TEMP_DIR/nodir"
+mkdir -p "$FX_NODIR/scripts/lib"
+cp "$CHECKER" "$FX_NODIR/scripts/lib/lint-action-versions.sh"
+rc=0
+bash "$FX_NODIR/scripts/lib/lint-action-versions.sh" >/dev/null 2>&1 || rc=$?
+assert_eq "[SPEC-1] missing .github/workflows/ dir exits 1" "1" "$rc"
+
+# --- Extra: relative reusable-workflow ref is skipped (no false positive) ---
+FX_RELATIVE="$TEST_TEMP_DIR/relative"
+build_fixture_repo "$FX_RELATIVE"
+cat > "$FX_RELATIVE/.github/workflows/a.yml" <<'EOF'
+jobs:
+  call:
+    uses: ./.github/workflows/helper.yml
+EOF
+rc=0
+bash "$FX_RELATIVE/scripts/lib/lint-action-versions.sh" >/dev/null 2>&1 || rc=$?
+assert_eq "[SPEC-2] relative workflow ref (./...) is skipped, rc=0" "0" "$rc"
+
+# --- Extra: sub-path reusable-workflow ref is skipped (no false positive) ---
+FX_SUBPATH="$TEST_TEMP_DIR/subpath"
+build_fixture_repo "$FX_SUBPATH"
+cat > "$FX_SUBPATH/.github/workflows/a.yml" <<'EOF'
+jobs:
+  call:
+    uses: owner/repo/.github/workflows/foo.yml@main
+EOF
+rc=0
+bash "$FX_SUBPATH/scripts/lib/lint-action-versions.sh" >/dev/null 2>&1 || rc=$?
+assert_eq "[SPEC-2] sub-path reusable workflow ref (owner/repo/.../foo.yml) is skipped, rc=0" "0" "$rc"
+
 # --- SPEC-3: real repo has no current drift (guard) --------------------------
 rc=0
 out="$(bash "$CHECKER" 2>&1)" || rc=$?

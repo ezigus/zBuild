@@ -29,8 +29,8 @@ if [[ ! -d "$_WORKFLOWS_DIR" ]]; then
 fi
 
 # Collect all `uses:` values from workflow YAML files.
-# -h suppresses filenames; -r recurses; -o extracts only the matched text is
-# NOT what we want — we need the full value, so grep the whole line then strip.
+# -h suppresses filenames; -r recurses. We do NOT pass -o (--only-matching)
+# because we need the full line, not just the matched text, so strip it below.
 declare -A _versions  # action_name -> space-separated distinct major versions
 
 while IFS= read -r _line; do
@@ -74,7 +74,7 @@ while IFS= read -r _line; do
     else
         _versions[$_action]="$_major"
     fi
-done < <(/usr/bin/grep -rh 'uses:' "$_WORKFLOWS_DIR" --include='*.yml' 2>/dev/null || true)
+done < <(/usr/bin/grep -rh 'uses:' "$_WORKFLOWS_DIR" --include='*.yml' --include='*.yaml' 2>/dev/null || true)
 
 _failures=0
 
