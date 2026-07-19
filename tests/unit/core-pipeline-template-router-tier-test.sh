@@ -215,14 +215,18 @@ assert_eq "[SPEC-4] stage_definitions: negctl_timeout_s resolves for review stag
     "120" "$(template_stage_negctl_timeout review)"
 assert_eq "[SPEC-5] stage_definitions: negctl_timeout_s returns empty when absent" \
     "" "$(template_stage_negctl_timeout build)"
-# SPEC-6: comprehensive — tier lazy accessor + row-based knobs from same fixture
-assert_eq "[SPEC-6] stage_definitions: review router.tier via lazy accessor" \
+# SPEC-6: comprehensive — tier lazy accessor + row-based knobs from same fixture.
+# The last three assertions (timeout_s/max_turns/retries) exercise the
+# pre-existing _tpl_parse_stage_definitions + cycle-member row-based path in
+# load_template, not the new lazy readers — kept here as regression coverage
+# proving both paths agree on the same stage_definitions fixture.
+assert_eq "[SPEC-6a] stage_definitions: review router.tier via lazy accessor" \
     "T2" "$(template_stage_router_tier review)"
-assert_eq "[SPEC-6] stage_definitions: review router timeout_s via row-based accessor" \
+assert_eq "[SPEC-6b] stage_definitions: review router timeout_s via row-based accessor" \
     "600" "${_TPL_STAGE_ROUTER_TIMEOUT_review:-}"
-assert_eq "[SPEC-6] stage_definitions: review router max_turns via row-based accessor" \
+assert_eq "[SPEC-6c] stage_definitions: review router max_turns via row-based accessor" \
     "20" "${_TPL_STAGE_ROUTER_MAX_TURNS_review:-}"
-assert_eq "[SPEC-6] stage_definitions: review router retries via row-based accessor" \
+assert_eq "[SPEC-6d] stage_definitions: review router retries via row-based accessor" \
     "2" "${_TPL_STAGE_ROUTER_RETRIES_review:-}"
 
 cleanup_test_env
