@@ -107,15 +107,21 @@ design_gate_run() {
         done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
 
         # C4: only enforced when the change set is non-empty (a guard-only design
-        # need declare no testfile). Each declared testfile must exist on disk.
+        # need declare no testfile). Each [change] SPEC must have ≥1 testfile
+        # via its per-SPEC binding or the global pool, and each path must exist.
         if [[ $_has_change -eq 1 ]]; then
-            local _tf _tf_count=0
-            while IFS= read -r _tf; do
-                [[ -z "$_tf" ]] && continue
-                _tf_count=$((_tf_count + 1))
-                [[ -f "$repo_root/$_tf" ]] || violations+=("MISSING_TESTFILE $_tf (declared testfile absent on disk)")
-            done < <(acceptance_list_testfiles "$design_md" 2>/dev/null || true)
-            [[ $_tf_count -eq 0 ]] && violations+=("MISSING_TESTFILE (a [change] SPEC declares no TESTFILES)")
+            local _spec_c4
+            while IFS= read -r _spec_c4; do
+                [[ -z "$_spec_c4" ]] && continue
+                acceptance_spec_is_change "$design_md" "$_spec_c4" || continue
+                local _stf _stf_count=0
+                while IFS= read -r _stf; do
+                    [[ -z "$_stf" ]] && continue
+                    _stf_count=$((_stf_count + 1))
+                    [[ -f "$repo_root/$_stf" ]] || violations+=("MISSING_TESTFILE $_stf (declared testfile absent on disk)")
+                done < <(acceptance_list_testfiles_for_spec "$design_md" "$_spec_c4" 2>/dev/null || true)
+                [[ $_stf_count -eq 0 ]] && violations+=("MISSING_TESTFILE_FOR_SPEC $_spec_c4 (no testfile declared for [change] SPEC)")
+            done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
         fi
     fi
 

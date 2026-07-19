@@ -176,10 +176,26 @@ acceptance_negctl_check() {
             logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-${spec_id}.log"
             : > "$logfile" 2>/dev/null || logfile=""
         fi
-        for tf in "${testfiles[@]:-}"; do
+        # Build the candidate testfile set for this SPEC.
+        # When per-SPEC binding is declared for this SPEC, use only its bound files
+        # directly (no tag-scan), eliminating the sibling-riding defect (#1480).
+        # When no per-SPEC binding exists for this SPEC, fall back to scanning all
+        # declared testfiles for the [SPEC-n] tag (backward-compat).
+        local -a _cand_tfs=()
+        local _ctf
+        if acceptance_spec_has_binding "$design_md" "$spec_id"; then
+            while IFS= read -r _ctf; do
+                [[ -n "$_ctf" && -f "$repo_root/$_ctf" ]] && { _cand_tfs+=("$_ctf"); saw_tagged=1; }
+            done < <(acceptance_list_testfiles_for_spec "$design_md" "$spec_id")
+        else
+            for _ctf in "${testfiles[@]:-}"; do
+                [[ -z "$_ctf" ]] && continue
+                grep -qF "[$spec_id]" "$repo_root/$_ctf" 2>/dev/null || continue
+                saw_tagged=1; _cand_tfs+=("$_ctf")
+            done
+        fi
+        for tf in "${_cand_tfs[@]:-}"; do
             [[ -z "$tf" ]] && continue
-            grep -qF "[$spec_id]" "$repo_root/$tf" 2>/dev/null || continue
-            saw_tagged=1
             # The baseline run is EXPECTED to fail; capture rc via `|| rc=$?`
             # so a non-zero exit never aborts the caller under `set -e`.
             local rc_base=0 rc_head=0

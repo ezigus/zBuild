@@ -336,5 +336,63 @@ assert_eq "[SPEC-3] mixed diff does NOT emit no_prod_delta skip" \
 assert_eq "[SPEC-3] mixed diff runs full negctl → NEGCTL PASS SPEC-1" \
     "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_L")"
 
+# ── NC-M: [SPEC-1][SPEC-2] per-SPEC binding restricts candidate testfiles ─────────
+# When per-SPEC binding is declared, negctl uses only the SPEC's own bound files.
+# SPEC-1 is bound to a load-bearing file; SPEC-2 is bound to a tautological file.
+# SPEC-2 must NOT be able to "ride" SPEC-1's passing control.
+REPO_M="$(setup_git_temp_repo negctl-repo-m)"
+(
+    cd "$REPO_M"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\nmy_m_feature() { return 0; }\n' > impl_m.sh
+
+    # SPEC-1's bound file: load-bearing — fails at baseline (impl_m.sh absent),
+    # passes at HEAD. It deliberately ALSO carries a [SPEC-2] tag: that is the
+    # sibling-riding VECTOR this issue fixes. Under the OLD tag-scan negctl,
+    # SPEC-2 matches this file, sees it flip, and wrongly reports PASS SPEC-2.
+    # Per-SPEC binding restricts SPEC-2 to its own tautological file. Without
+    # the dual tag the fixture cannot discriminate old from new (both attribute
+    # correctly), leaving the negctl wiring inert.
+    cat > tests/nc-m-lb-test.sh <<'EOF'
+#!/usr/bin/env bash
+# [SPEC-1] per-SPEC load-bearing
+# [SPEC-2] sibling-riding vector: the old tag-scan would match this file for SPEC-2
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl_m.sh"
+[[ -f "$impl" ]] || exit 1
+# shellcheck disable=SC1090
+source "$impl"; my_m_feature
+EOF
+
+    # SPEC-2 file: tautological — always exits 0 regardless of impl_m.sh
+    cat > tests/nc-m-taut-test.sh <<'EOF'
+#!/usr/bin/env bash
+# [SPEC-2] per-SPEC tautological
+exit 0
+EOF
+
+    chmod +x tests/nc-m-lb-test.sh tests/nc-m-taut-test.sh impl_m.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: per-SPEC negctl fixture"
+)
+DM_M="$REPO_M/design.md"
+cat > "$DM_M" <<'EOF'
+```acceptance
+SPEC-1[change]: per-SPEC load-bearing
+SPEC-2[change]: per-SPEC tautological
+TESTFILES:
+SPEC-1: tests/nc-m-lb-test.sh
+SPEC-2: tests/nc-m-taut-test.sh
+```
+EOF
+
+set +e; OUT_M="$(acceptance_negctl_check "$DM_M" "$REPO_M")"; RC_M=$?; set -e
+assert_eq "[SPEC-1] NC-M: per-SPEC bound load-bearing file → NEGCTL PASS SPEC-1" \
+    "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_M")"
+assert_eq "[SPEC-2] NC-M: per-SPEC bound tautological file → NEGCTL FAIL SPEC-2 tautology" \
+    "NEGCTL FAIL SPEC-2 tautology" "$(grep 'SPEC-2' <<<"$OUT_M")"
+# SPEC-2 must NOT ride SPEC-1's passing control (sibling isolation)
+assert_eq "[SPEC-2] NC-M: SPEC-2 does not emit PASS via sibling's binding" \
+    "0" "$(grep -c 'NEGCTL PASS SPEC-2' <<<"$OUT_M" || true)"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
