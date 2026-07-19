@@ -74,6 +74,13 @@ while IFS= read -r _line; do
     else
         _versions[$_action]="$_major"
     fi
+# /usr/bin/grep (not plain `grep`) is DELIBERATE, matching lint-doc-freshness.sh
+# and lint-doc-style.sh: an interactive dev shell can alias/wrap `grep` (e.g. a
+# ugrep shim with different ERE semantics), and /usr/bin/grep is the stable,
+# guaranteed-present system binary on every platform this repo ships/tests on
+# (macOS: BSD grep, always at this path regardless of Homebrew; ubuntu-latest
+# and macos-latest CI runners: standard FHS layout). Do not change to plain
+# `grep` — verified empirically that this path exists on all supported targets.
 done < <(/usr/bin/grep -rh 'uses:' "$_WORKFLOWS_DIR" --include='*.yml' --include='*.yaml' 2>/dev/null || true)
 
 _failures=0
