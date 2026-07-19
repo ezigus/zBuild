@@ -290,4 +290,30 @@ assert_eq "[SPEC-4] SPEC-13: per-SPEC binding missing file → verdict=fail" "fa
 assert_contains "[SPEC-4] SPEC-13: violation names MISSING_TESTFILE" \
     "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE"
 
+# ─── SPEC-14 (C4 per-SPEC binding upgrade): a [change] SPEC with NO binding ───
+# and no global bare-path fallback must be caught. This is the case the OLD
+# pooled C4 structurally could NOT see: it counted the global pool (1 file,
+# present) and passed, letting SPEC-2 satisfy C4 via SPEC-1's file. Only the
+# per-SPEC loop attributes the gap to SPEC-2. SPEC-13 above does not
+# discriminate (old C4 emits MISSING_TESTFILE for a missing path too), so this
+# is the assertion that makes the design-gate C4 wiring load-bearing.
+_run_gate_with_md '# Design
+
+```scope
+scripts/wire.sh
+```
+
+```acceptance
+SPEC-1[change]: first new behavior
+SPEC-2[change]: second new behavior, deliberately given no testfile of its own
+WIRING: scripts/wire.sh
+TESTFILES:
+SPEC-1: tests/a-test.sh
+```
+'
+assert_eq "[SPEC-4] SPEC-14: [change] SPEC with no binding of its own → verdict=fail" \
+    "fail" "$VERDICT"
+assert_contains "[SPEC-4] SPEC-14: violation attributes the gap to SPEC-2" \
+    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC SPEC-2"
+
 print_test_results

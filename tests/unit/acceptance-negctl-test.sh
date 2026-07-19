@@ -347,10 +347,17 @@ REPO_M="$(setup_git_temp_repo negctl-repo-m)"
     mkdir -p tests
     printf '#!/usr/bin/env bash\nmy_m_feature() { return 0; }\n' > impl_m.sh
 
-    # SPEC-1 file: load-bearing — fails at baseline (impl_m.sh absent), passes at HEAD
+    # SPEC-1's bound file: load-bearing — fails at baseline (impl_m.sh absent),
+    # passes at HEAD. It deliberately ALSO carries a [SPEC-2] tag: that is the
+    # sibling-riding VECTOR this issue fixes. Under the OLD tag-scan negctl,
+    # SPEC-2 matches this file, sees it flip, and wrongly reports PASS SPEC-2.
+    # Per-SPEC binding restricts SPEC-2 to its own tautological file. Without
+    # the dual tag the fixture cannot discriminate old from new (both attribute
+    # correctly), leaving the negctl wiring inert.
     cat > tests/nc-m-lb-test.sh <<'EOF'
 #!/usr/bin/env bash
 # [SPEC-1] per-SPEC load-bearing
+# [SPEC-2] sibling-riding vector: the old tag-scan would match this file for SPEC-2
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl_m.sh"
 [[ -f "$impl" ]] || exit 1
 # shellcheck disable=SC1090
