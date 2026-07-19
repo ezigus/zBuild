@@ -11,6 +11,7 @@
 #   SPEC-7  validate_vision_doc accepts optional YAML frontmatter
 #   SPEC-8  validate_vision_doc rejects a non-existent file path
 #   SPEC-9  the real docs/VISION.md passes validate_vision_doc (live-repo guard)
+#   SPEC-10 an unterminated YAML frontmatter fence fails validation (rc=1 + diagnostic)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -173,6 +174,25 @@ EOF
 rc=0
 out="$(validate_vision_doc "$FRONTMATTER_DOC" 2>&1)" || rc=$?
 assert_eq "[SPEC-7] doc with YAML frontmatter passes validation (rc=0)" "0" "$rc"
+
+# ── SPEC-10: unterminated frontmatter fence is rejected, not silently emptied ──
+# A doc that opens with '---' but never closes it must fail loudly — the prior
+# behavior silently swallowed every remaining line (word_count undercounts to 0),
+# letting a truncated/malformed document pass validation with no diagnostic.
+UNCLOSED_FM_DOC="$TEST_TEMP_DIR/unclosed-fm/vision.md"
+mkdir -p "$(dirname "$UNCLOSED_FM_DOC")"
+cat > "$UNCLOSED_FM_DOC" <<'EOF'
+---
+version: '1.0'
+
+## Intent
+
+This body text is unreachable because the frontmatter fence never closes.
+EOF
+rc=0
+out="$(validate_vision_doc "$UNCLOSED_FM_DOC" 2>&1)" || rc=$?
+assert_eq "[SPEC-10] unterminated frontmatter fence fails validation (rc=1)" "1" "$rc"
+assert_contains "[SPEC-10] diagnostic names the unterminated fence" "$out" "unterminated"
 
 # ── SPEC-8: validate_vision_doc rejects non-existent file path ───────────────
 rc=0

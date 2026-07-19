@@ -93,6 +93,16 @@ validate_vision_doc() {
         word_count=$((word_count + ${#words[@]}))
     done < "$path"
 
+    # An opening fence with no matching close is malformed frontmatter, not a
+    # horizontal rule — every remaining line was silently swallowed by the
+    # in_frontmatter branch above (word_count undercounts to 0), which would
+    # otherwise let a truncated document pass validation with no diagnostic.
+    if [[ $in_frontmatter -eq 1 ]]; then
+        printf 'vision-doc: unterminated YAML frontmatter fence (opening --- has no matching close) in %s\n' \
+            "$path" >&2
+        errors=$((errors + 1))
+    fi
+
     if [[ $word_count -gt 300 ]]; then
         local _overage=$(( word_count - 300 ))
         printf 'vision-doc: body word count %d exceeds 300-word cap by %d words in %s\n' \

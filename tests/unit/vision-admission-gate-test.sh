@@ -183,14 +183,10 @@ assert_contains "[SPEC-7] runner includes zbuild vision init hint" "$gate_out" "
 # ── SPEC-8: runner exits rc=2 on malformed vision (enforce mode) ─────────────
 MALFORMED_REPO="$(setup_git_temp_repo malformed-vision-repo)"
 install_template_overlay "$MALFORMED_REPO" runner-state-dir-minimal
-# Place an over-word-count vision doc (fails new word-cap-only validator)
+# Place an over-word-count vision doc (fails new word-cap-only validator);
+# reuse the SPEC-4 fixture helper instead of a second python3 subprocess.
 mkdir -p "$MALFORMED_REPO/docs"
-{
-    printf '## Background\n\n'
-    python3 -c "print(' '.join(['word'] * 310))" 2>/dev/null \
-        || printf 'word word word word word word word word word word\n%.0s' {1..31}
-    printf '\n'
-} > "$MALFORMED_REPO/docs/VISION.md"
+make_over_limit_doc "$MALFORMED_REPO/docs/VISION.md"
 
 mkdir -p "$TEST_TEMP_DIR/malformed-events"
 rc=0
