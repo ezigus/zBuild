@@ -40,11 +40,11 @@ The vision document is a **Markdown file** with:
 
 - **Optional YAML frontmatter** (`---` block at top): `version` and `updated` keys are recognized
   but not required; unrecognized keys are silently ignored.
-- **Required sections** (H2 headings, exact spelling):
+- **Conventional sections** (H2 headings; encouraged but not enforced by the validator):
   - `## Intent` — one paragraph stating what the project does and for whom
   - `## Principles` — a list or paragraph of guiding values that constrain decisions
-- **Optional sections** (any H2 not listed above): `## Consistency anchors`,
-  `## Constraints / guardrails`, and any repo-specific additions are permitted.
+- **Optional sections**: `## Consistency anchors`, `## Constraints / guardrails`,
+  and any repo-specific H2 additions are permitted.
 - **Word cap:** body text (excluding frontmatter, headings, and blank lines) MUST NOT exceed 300 words.
   The cap keeps the document injectable as a stage prompt prefix without crowding the working context.
 
@@ -58,9 +58,11 @@ validate_vision_doc <path>    → rc=0 if valid; rc non-zero with stderr diagnos
 ```
 
 `validate_vision_doc` checks:
-1. `## Intent` heading present
-2. `## Principles` heading present
-3. Body word count ≤ 300
+1. Body word count ≤ 300
+
+**Amendment (VIS-C follow-up):** The `## Intent` and `## Principles` heading requirements
+were removed. Heading presence is now advisory content guidance, not a machine-enforced
+constraint. The word cap remains the only objective validator gate.
 
 ### 4. Injection point
 
@@ -96,10 +98,13 @@ lets a repo persistently opt out via config without setting an env var on every 
 
 - `scripts/lib/vision.sh` ships in Phase 1.0 as a standalone utility; it is NOT yet wired into
   the admission gate or stage dispatch. Phase 1.1 (#1358/#1360) adds the fail-closed gate.
-- `docs/VISION.md` already satisfies the required-headings contract and stays under 300 words;
-  the frontmatter block (`version: '1.0'`, `updated: '2026-07-12'`) is prepended in this issue.
-- `tests/unit/vision-validator-test.sh` covers five behavioral contracts: valid doc passes,
-  missing `## Intent` fails, missing `## Principles` fails, over-300-word doc fails, and
+- `docs/VISION.md` already stays under 300 words; the frontmatter block (`version: '1.0'`,
+  `updated: '2026-07-12'`) is prepended in this issue. It is not required to carry `## Intent` /
+  `## Principles` headings (see the VIS-C follow-up amendment in §3) but conforms anyway as
+  documentation guidance.
+- `tests/unit/vision-validator-test.sh` covers behavioral contracts: valid doc passes,
+  a doc missing `## Intent` or `## Principles` still passes (word-cap-only validation, VIS-C
+  follow-up), over-300-word doc fails, an unterminated frontmatter fence fails, and
   `load_vision_doc` resolves the first present path in search order.
 - ADR-016 `.zbuild/` precedence (the per-repo override seam) is the motivation for placing
   `.zbuild/vision.md` first in the search order.

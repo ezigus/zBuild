@@ -170,26 +170,45 @@ assert_eq "[SPEC-6] preamble first line is '# Intent (advisory)'" \
     "# Intent (advisory)" "$_first_line"
 unset ZBUILD_RUN_ID
 
-# ─── SPEC-7: vision doc failing validation → fail-open, no preamble (GUARD) ───
-#     (doc missing ## Intent = invalid; prompt unchanged, rc=0)
-mkdir -p "$TEST_TEMP_DIR/invalid_vision_repo/docs"
-cat > "$TEST_TEMP_DIR/invalid_vision_repo/docs/VISION.md" <<'BADVISION'
+# ─── SPEC-7: doc without ## Intent passes new validator → preamble IS injected (CHANGE) ──
+#     (the old "invalid" doc is now valid under word-cap-only validation)
+mkdir -p "$TEST_TEMP_DIR/no_intent_repo/docs"
+cat > "$TEST_TEMP_DIR/no_intent_repo/docs/VISION.md" <<'NOVISION'
 ## Background
 Some background text here with no Intent heading.
 
 ## Principles
 - Keep it simple.
-BADVISION
+NOVISION
 
 reset_events
 export ZBUILD_RUN_ID="vis-spec7-run"
-export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/invalid_vision_repo"
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/no_intent_repo"
 set +e
 route_to_model "T2" "SPEC7_ORIGINAL_TASK" 2>/dev/null; _rc=$?
 set -e
-assert_eq "[SPEC-7] invalid vision doc → route_to_model rc=0 (fail-open)" "0" "$_rc"
+assert_eq "[SPEC-7] doc without ## Intent → route_to_model rc=0" "0" "$_rc"
 _has_preamble="$(printf '%s' "$_ROUTE_REDACTED_PROMPT" | grep -c "# Intent (advisory)" 2>/dev/null || true)"
-assert_eq "[SPEC-7] invalid vision doc → no Intent preamble injected" "0" "$_has_preamble"
+assert_eq "[SPEC-7] doc without ## Intent passes new validator → preamble IS injected" "1" "$_has_preamble"
+unset ZBUILD_RUN_ID
+
+# ─── SPEC-7 (fail-open guard): over-word-count doc → fail-open, no preamble ──
+mkdir -p "$TEST_TEMP_DIR/over_limit_repo/docs"
+{
+    printf '## Background\n\n'
+    python3 -c "print(' '.join(['word'] * 310))" 2>/dev/null \
+        || printf 'word word word word word word word word word word\n%.0s' {1..31}
+    printf '\n'
+} > "$TEST_TEMP_DIR/over_limit_repo/docs/VISION.md"
+reset_events
+export ZBUILD_RUN_ID="vis-spec7b-run"
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/over_limit_repo"
+set +e
+route_to_model "T2" "SPEC7B_ORIGINAL_TASK" 2>/dev/null; _rc=$?
+set -e
+assert_eq "[SPEC-7] over-word-count vision doc → fail-open, rc=0" "0" "$_rc"
+_has_preamble_b="$(printf '%s' "$_ROUTE_REDACTED_PROMPT" | grep -c "# Intent (advisory)" 2>/dev/null || true)"
+assert_eq "[SPEC-7] over-word-count doc fails new validator → no preamble injected" "0" "$_has_preamble_b"
 unset ZBUILD_RUN_ID
 
 print_test_results

@@ -25,7 +25,7 @@ The pipeline checks these paths in order and uses the first one it finds:
 A vision document is a **Markdown file** with:
 
 - **Optional YAML frontmatter** (`---` block): `version` and `updated` are recognized; other keys are ignored.
-- **Required sections** (exact H2 headings):
+- **Conventional sections** (H2 headings; encouraged but not required by the validator):
   - `## Intent` — one paragraph: what the project does and for whom.
   - `## Principles` — a list or paragraph of guiding values.
 - **Optional sections**: `## Consistency anchors`, `## Constraints / guardrails`, or any repo-specific H2.

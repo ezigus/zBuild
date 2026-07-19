@@ -235,13 +235,17 @@ _route_vision_preamble() {
     _path="$(load_vision_doc "$_root" 2>/dev/null)" || return 0
     { [[ -n "$_path" ]] && validate_vision_doc "$_path" >/dev/null 2>&1; } || return 0
     # Read via stdin redirect so a path beginning with '-' can't be read as an
-    # awk option; extract the ## Intent section up to the next ## heading.
+    # awk option; strip YAML frontmatter (---…--- opening block) and emit the
+    # entire remaining body. Blank lines are stripped so the preamble is a
+    # single contiguous block (no internal \n\n), keeping the trailing \n\n
+    # as the sole separator between the preamble and the actual prompt.
     local _body
-    _body="$(awk '/^## Intent/{p=1;next} p&&/^## /{exit} p{print}' < "$_path" 2>/dev/null || true)"
+    _body="$(awk 'NR==1&&/^---/{fm=1;next} fm&&/^---/{fm=0;next} fm{next} NF{print}' \
+        < "$_path" 2>/dev/null || true)"
     [[ -n "$_body" ]] || return 0
     # Size cap (defense-in-depth): validate_vision_doc enforces the ~300-word
-    # vision cap, but hard-cap the injected bytes so a malformed/oversized Intent
-    # section can't silently bloat every LLM call.
+    # vision cap, but hard-cap the injected bytes so an oversized doc
+    # can't silently bloat every LLM call.
     local _cap="${ZBUILD_VISION_PREAMBLE_MAX_BYTES:-4096}"
     if (( ${#_body} > _cap )); then _body="${_body:0:_cap}"; fi
     printf -v _ROUTE_VISION_PREAMBLE '# Intent (advisory)\n%s\n\n' "$_body"

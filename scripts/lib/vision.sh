@@ -49,8 +49,6 @@ vision_gate_mode() {
 
 # validate_vision_doc <path>
 # Validates the vision document at <path>:
-#   - Must contain a "## Intent" heading
-#   - Must contain a "## Principles" heading
 #   - Body text (non-heading, non-frontmatter lines) must not exceed 300 words
 # Prints human-readable diagnostics on stderr for each violation.
 # Returns 0 if the document is valid, non-zero if any check fails.
@@ -62,17 +60,6 @@ validate_vision_doc() {
     fi
 
     local errors=0
-
-    # Check for required headings
-    if ! grep -q '^## Intent' "$path" 2>/dev/null; then
-        printf 'vision-doc: missing required section "## Intent" in %s\n' "$path" >&2
-        errors=$((errors + 1))
-    fi
-
-    if ! grep -q '^## Principles' "$path" 2>/dev/null; then
-        printf 'vision-doc: missing required section "## Principles" in %s\n' "$path" >&2
-        errors=$((errors + 1))
-    fi
 
     # Word-cap check: count words in body text only. YAML frontmatter is a
     # single optional block delimited by '---' fences, recognized ONLY when the
@@ -105,6 +92,16 @@ validate_vision_doc() {
         read -ra words <<< "$line"
         word_count=$((word_count + ${#words[@]}))
     done < "$path"
+
+    # An opening fence with no matching close is malformed frontmatter, not a
+    # horizontal rule — every remaining line was silently swallowed by the
+    # in_frontmatter branch above (word_count undercounts to 0), which would
+    # otherwise let a truncated document pass validation with no diagnostic.
+    if [[ $in_frontmatter -eq 1 ]]; then
+        printf 'vision-doc: unterminated YAML frontmatter fence (opening --- has no matching close) in %s\n' \
+            "$path" >&2
+        errors=$((errors + 1))
+    fi
 
     if [[ $word_count -gt 300 ]]; then
         local _overage=$(( word_count - 300 ))

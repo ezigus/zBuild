@@ -17,7 +17,7 @@ _VISION_INIT_LOADED=1
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vision.sh"
 
 # ─── vision_init_blank <out_path> ────────────────────────────────────────────
-# Writes a bare conforming skeleton containing the two required headings plus
+# Writes a bare conforming skeleton with conventional headings and
 # placeholder body text that keeps body word count under 300.
 vision_init_blank() {
     local out_path="${1:-}"
@@ -134,8 +134,8 @@ PROMPT
 
 # ─── vision_condense <in_path> <out_path> ────────────────────────────────────
 # Reads an existing vision document, condenses its body to ≤300 words while
-# preserving the required headings, writes to <out_path>, then verifies the
-# result passes validate_vision_doc before committing it.
+# preserving headings, writes to <out_path>, then verifies the result
+# passes validate_vision_doc before committing it.
 vision_condense() {
     local in_path="${1:-}" out_path="${2:-}"
     if [[ -z "$in_path" || -z "$out_path" ]]; then
@@ -155,9 +155,9 @@ vision_condense() {
     local prompt
     prompt="$(cat <<PROMPT
 Condense the following vision document. Requirements:
-1. Preserve the "## Intent" and "## Principles" headings exactly as-is.
+1. Preserve all headings exactly as they appear.
 2. Reduce body text (non-heading lines) to 250 words or fewer.
-3. Retain the essential meaning of each section — do not change the substance.
+3. Retain the essential meaning — do not change the substance.
 4. Output ONLY the condensed markdown — no preamble, no triple backticks.
 
 Document to condense:

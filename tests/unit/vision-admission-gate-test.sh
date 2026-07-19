@@ -107,14 +107,13 @@ assert_contains "[SPEC-2] search path 2: docs/VISION.md" \
 assert_contains "[SPEC-2] search path 3: VISION.md" \
     "${_VISION_SEARCH_PATHS[2]}" "VISION.md"
 
-# ── SPEC-3: malformed vision (missing ## Intent) → rc=1 + section name ───────
+# ── SPEC-3: doc missing ## Intent now passes validation (word-cap only) ───────
 NO_INTENT="$TEST_TEMP_DIR/no-intent/vision.md"
 make_no_intent_doc "$NO_INTENT"
 
 rc=0
 diag="$(validate_vision_doc "$NO_INTENT" 2>&1)" || rc=$?
-assert_eq "[SPEC-3] malformed vision (no Intent): rc=1" "1" "$rc"
-assert_contains "[SPEC-3] diagnostic names missing section 'Intent'" "$diag" "Intent"
+assert_eq "[SPEC-3] doc missing ## Intent now passes validation (rc=0)" "0" "$rc"
 
 # ── SPEC-4: over-length vision → rc=1 + overage count + --condense hint ──────
 OVER_LIMIT="$TEST_TEMP_DIR/over-limit/vision.md"
@@ -184,13 +183,10 @@ assert_contains "[SPEC-7] runner includes zbuild vision init hint" "$gate_out" "
 # ── SPEC-8: runner exits rc=2 on malformed vision (enforce mode) ─────────────
 MALFORMED_REPO="$(setup_git_temp_repo malformed-vision-repo)"
 install_template_overlay "$MALFORMED_REPO" runner-state-dir-minimal
-# Place a malformed vision doc (missing ## Intent)
+# Place an over-word-count vision doc (fails new word-cap-only validator);
+# reuse the SPEC-4 fixture helper instead of a second python3 subprocess.
 mkdir -p "$MALFORMED_REPO/docs"
-cat > "$MALFORMED_REPO/docs/VISION.md" <<'EOF'
-## Principles
-
-- Consistency through repetition.
-EOF
+make_over_limit_doc "$MALFORMED_REPO/docs/VISION.md"
 
 mkdir -p "$TEST_TEMP_DIR/malformed-events"
 rc=0
