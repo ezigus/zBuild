@@ -236,9 +236,11 @@ _route_vision_preamble() {
     { [[ -n "$_path" ]] && validate_vision_doc "$_path" >/dev/null 2>&1; } || return 0
     # Read via stdin redirect so a path beginning with '-' can't be read as an
     # awk option; strip YAML frontmatter (---…--- opening block) and emit the
-    # entire remaining body.
+    # entire remaining body. Blank lines are stripped so the preamble is a
+    # single contiguous block (no internal \n\n), keeping the trailing \n\n
+    # as the sole separator between the preamble and the actual prompt.
     local _body
-    _body="$(awk 'NR==1&&/^---/{fm=1;next} fm&&/^---/{fm=0;next} fm{next} {print}' \
+    _body="$(awk 'NR==1&&/^---/{fm=1;next} fm&&/^---/{fm=0;next} fm{next} NF{print}' \
         < "$_path" 2>/dev/null || true)"
     [[ -n "$_body" ]] || return 0
     # Size cap (defense-in-depth): validate_vision_doc enforces the ~300-word
