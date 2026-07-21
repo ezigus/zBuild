@@ -20,14 +20,14 @@ env:
   ZBUILD_TRIGGER_LABEL: zbuild-run
 
 permissions:
-  contents: write          # pr-open pushes the work branch (CI-3 #1002)
+  contents: write # pr-open pushes the work branch (CI-3 #1002)
   issues: write
   pull-requests: write
 
 # ─── Job 1: guard — only proceed when the correct label was applied ───────────
 jobs:
   trigger:
-    name: 'Trigger guard — check label'
+    name: "Trigger guard — check label"
     runs-on: ubuntu-latest
     if: github.event.label.name == 'zbuild-run'
     outputs:
@@ -37,26 +37,26 @@ jobs:
         run: |
           echo "Issue #${{ github.event.issue.number }} labeled '${{ github.event.label.name }}' — proceeding."
 
-# ─── Job 2: run the reusable zbuild pipeline ─────────────────────────────────
+  # ─── Job 2: run the reusable zbuild pipeline ─────────────────────────────────
   pipeline:
-    name: 'Pipeline — issue #${{ needs.trigger.outputs.issue_number }}'
+    name: "Pipeline — issue #${{ needs.trigger.outputs.issue_number }}"
     needs: trigger
     uses: ./.github/workflows/zbuild-pipeline.yml
     with:
       issue_number: ${{ fromJson(needs.trigger.outputs.issue_number) }}
       dry_run: false
-      # Label-triggered runs use the `standard` template: it wraps build+test in
+      # Label-triggered runs use the `simple` template: it wraps build+test in
       # build_test_cycle (max_iterations:3), so a test failure (e.g. the #1015
       # SIGPIPE guard catching a generated test) feeds back to build for a fix
-      # instead of aborting. `simple.yaml` is single-pass and cannot self-heal a
-      # caught test failure until #976 adds objective build↔test convergence.
-      # Flip back to `simple` once #976 lands to get #972's merge-readiness report.
-      template: standard
+      # instead of aborting, and emits #972's merge-readiness report. (The old
+      # `standard` template was retired; #976's objective build↔test convergence
+      # landed in `simple`, so it is now the self-healing default.)
+      template: simple
     secrets: inherit
 
-# ─── Job 3: post-run cleanup — remove label and post comment ─────────────────
+  # ─── Job 3: post-run cleanup — remove label and post comment ─────────────────
   post-run:
-    name: 'Post-run — remove label + comment'
+    name: "Post-run — remove label + comment"
     needs: pipeline
     runs-on: ubuntu-latest
     # Always run so the label is removed even if the pipeline fails.

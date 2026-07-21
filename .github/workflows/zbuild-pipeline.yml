@@ -11,24 +11,24 @@ on:
   workflow_call:
     inputs:
       issue_number:
-        description: 'GitHub issue number to run the pipeline for'
+        description: "GitHub issue number to run the pipeline for"
         required: true
         type: number
       goal:
-        description: 'Optional free-text goal (passed to --goal instead of --issue)'
+        description: "Optional free-text goal (passed to --goal instead of --issue)"
         required: false
         type: string
-        default: ''
+        default: ""
       dry_run:
-        description: 'Pass --dry-run to zbuild (no side effects)'
+        description: "Pass --dry-run to zbuild (no side effects)"
         required: false
         type: boolean
         default: false
       template:
-        description: 'Pipeline template id (e.g. simple, standard). Empty = zbuild default (standard).'
+        description: "Pipeline template id (e.g. simple, deployed). Empty = zbuild default (simple)."
         required: false
         type: string
-        default: ''
+        default: ""
     # NOTE: do not declare `secrets: GITHUB_TOKEN` here — GITHUB_TOKEN is a
     # reserved name auto-provided to every workflow. Declaring it makes the
     # workflow file invalid, which causes GitHub to emit a phantom "workflow
@@ -37,33 +37,33 @@ on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'GitHub issue number to run the pipeline for'
+        description: "GitHub issue number to run the pipeline for"
         required: true
         type: number
       goal:
-        description: 'Optional free-text goal'
+        description: "Optional free-text goal"
         required: false
         type: string
-        default: ''
+        default: ""
       dry_run:
-        description: 'Dry run (no side effects)'
+        description: "Dry run (no side effects)"
         required: false
         type: boolean
         default: false
       template:
-        description: 'Pipeline template id (e.g. simple, standard). Empty = zbuild default (standard).'
+        description: "Pipeline template id (e.g. simple, deployed). Empty = zbuild default (simple)."
         required: false
         type: string
-        default: ''
+        default: ""
 
 permissions:
-  contents: write          # pr-open pushes the work branch (CI-3 #1002)
+  contents: write # pr-open pushes the work branch (CI-3 #1002)
   issues: write
   pull-requests: write
 
 jobs:
   pipeline:
-    name: 'Pipeline — issue #${{ inputs.issue_number }}'
+    name: "Pipeline — issue #${{ inputs.issue_number }}"
     runs-on: ubuntu-latest
 
     env:
@@ -167,6 +167,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: 'pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}'
+          name: "pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}"
           path: state/
           if-no-files-found: ignore
