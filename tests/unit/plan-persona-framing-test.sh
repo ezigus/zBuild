@@ -27,9 +27,12 @@ source "$REPO_ROOT/plugins/agent/plan/plugin.sh"
 # Capture the final routed prompt: plan calls `route_to_model "$tier" "$prompt"`
 # and reads its stdout, so the mock writes the prompt ($2) to a side file and
 # echoes a valid plan.json envelope on stdout so the parser/validator passes.
+# _CAPTURED_PERSONA_FILE captures ZBUILD_STAGE_IO_PERSONA at the time of the call.
 _CAPTURED_PROMPT_FILE=""
+_CAPTURED_PERSONA_FILE=""
 route_to_model() {
     [[ -n "${_CAPTURED_PROMPT_FILE:-}" ]] && printf '%s' "$2" > "$_CAPTURED_PROMPT_FILE"
+    [[ -n "${_CAPTURED_PERSONA_FILE:-}" ]] && printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-__unset__}" > "$_CAPTURED_PERSONA_FILE"
     printf '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
     return 0
 }
@@ -122,6 +125,26 @@ assert_contains "[SPEC-3] schema_version in prompt without product-owner manifes
     "$(cat "$PROMPT2")" "schema_version"
 assert_contains "[SPEC-3] steps in prompt without product-owner manifest" \
     "$(cat "$PROMPT2")" '"steps"'
+
+# ── SPEC-3 [change]: plan exports ZBUILD_STAGE_IO_PERSONA=product-owner when manifest present
+AD3="$(_setup_fixture)"
+PROOT3="$(_root_with_product_owner)"
+_PLAN_ROOT="$PROOT3"
+_CAPTURED_PROMPT_FILE=""
+_CAPTURED_PERSONA_FILE="$TEST_TEMP_DIR/spec3-persona.txt"
+ZBUILD_REPO_ROOT="$AD3" \
+    _plan_run_inner \
+    "$(dirname "$AD3")/scope-manifest.md" \
+    "Fix a typo in README.md" \
+    "$AD3/plan.json" \
+    "$AD3" >/dev/null 2>&1 || true
+_PLAN_ROOT="$_ORIG_PLAN_ROOT"
+
+assert_file_exists "SPEC-3: persona export file captured" "$_CAPTURED_PERSONA_FILE"
+_PERSONA3="$(cat "$_CAPTURED_PERSONA_FILE" 2>/dev/null || true)"
+assert_eq "[SPEC-3] plan exports ZBUILD_STAGE_IO_PERSONA=product-owner when manifest present" \
+    "product-owner" "$_PERSONA3"
+_CAPTURED_PERSONA_FILE=""
 
 cleanup_test_env
 print_test_results

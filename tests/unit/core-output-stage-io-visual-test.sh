@@ -217,6 +217,64 @@ fi
 assert_contains "T11 NO_COLOR keeps ═ divider glyph" "$banner_t11" "═"
 assert_contains "T11 NO_COLOR keeps ── end-trailer glyph" "$banner_t11" "── end stage-io: plan"
 
+# ─── SPEC-1: ZBUILD_STAGE_IO_PERSONA=<id> → "persona: <id>" in INPUT banner ──
+_reset_pending
+rm -rf "$ZBUILD_STATE_DIR/artifacts"
+fd_s1="$TEST_TEMP_DIR/spec1.fd3"
+: > "$fd_s1"
+exec 3>"$fd_s1"
+ZBUILD_STAGE_IO_FD=3 ZBUILD_STAGE_IO_PERSONA=product-owner \
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_begin --stage plan --kind llm --input "PROMPT" >/dev/null
+ZBUILD_STAGE_IO_FD=3 ZBUILD_STAGE_IO_PERSONA=product-owner \
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_end --stage plan --kind llm --seq "$_STAGE_IO_LAST_SEQ" \
+        --output "RESP" --duration-ms 100 >/dev/null
+exec 3>&-
+banner_s1="$(cat "$fd_s1")"
+assert_contains "[SPEC-1] persona id rendered in INPUT banner" "$banner_s1" "persona: product-owner"
+
+# ─── SPEC-2: ZBUILD_STAGE_IO_PERSONA=<id>:fallback → "persona: none (fallback)" ─
+_reset_pending
+rm -rf "$ZBUILD_STATE_DIR/artifacts"
+fd_s2="$TEST_TEMP_DIR/spec2.fd3"
+: > "$fd_s2"
+exec 3>"$fd_s2"
+ZBUILD_STAGE_IO_FD=3 ZBUILD_STAGE_IO_PERSONA=product-owner:fallback \
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_begin --stage plan --kind llm --input "PROMPT" >/dev/null
+ZBUILD_STAGE_IO_FD=3 ZBUILD_STAGE_IO_PERSONA=product-owner:fallback \
+ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_end --stage plan --kind llm --seq "$_STAGE_IO_LAST_SEQ" \
+        --output "RESP" --duration-ms 100 >/dev/null
+exec 3>&-
+banner_s2="$(cat "$fd_s2")"
+assert_contains "[SPEC-2] fallback persona renders as none (fallback)" "$banner_s2" "persona: none (fallback)"
+
+# ─── SPEC-4: ZBUILD_STAGE_IO_PERSONA unset → no "persona:" line in banner ───
+_reset_pending
+rm -rf "$ZBUILD_STATE_DIR/artifacts"
+fd_s4="$TEST_TEMP_DIR/spec4.fd3"
+: > "$fd_s4"
+exec 3>"$fd_s4"
+unset ZBUILD_STAGE_IO_PERSONA
+ZBUILD_STAGE_IO_FD=3 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_begin --stage plan --kind llm --input "PROMPT" >/dev/null
+ZBUILD_STAGE_IO_FD=3 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
+    stage_io_end --stage plan --kind llm --seq "$_STAGE_IO_LAST_SEQ" \
+        --output "RESP" --duration-ms 100 >/dev/null
+exec 3>&-
+banner_s4="$(cat "$fd_s4")"
+if grep -q "^persona:" <<< "$banner_s4"; then
+    assert_fail "[SPEC-4] no persona: line when ZBUILD_STAGE_IO_PERSONA unset" "found in: $banner_s4"
+else
+    assert_pass "[SPEC-4] no persona: line when ZBUILD_STAGE_IO_PERSONA unset"
+fi
+
+# ─── SPEC-5: existing banner tokens preserved when persona is set (guard) ────
+assert_contains "[SPEC-5] seq=N input token still present with persona set" "$banner_s1" "seq=1 input"
+assert_contains "[SPEC-5] end-trailer still present with persona set" "$banner_s1" "end stage-io: plan"
+
 cleanup_test_env
 print_test_results
 exit "$FAIL"

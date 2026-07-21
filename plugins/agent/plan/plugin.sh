@@ -339,13 +339,21 @@ _plan_run_inner() {
     # identically to the pre-persona two-line opening so the plan prompt is
     # unchanged when the manifest is not installed.
     local _task_intro="Decompose the goal into concrete implementation steps."
-    local _framing _persona_fallback
+    local _framing _persona_fallback _persona_applied=0
     _persona_fallback='You are a software planning agent. Decompose the goal into concrete
 implementation steps.'
     _framing="$(persona_stage_framing product-owner "$_task_intro" "$_PLAN_ROOT/plugins" 2>/dev/null)" \
+        && _persona_applied=1 \
         || { warn "plan: persona_stage_framing failed — using fallback framing"; _framing="$_persona_fallback"; }
     # Guard: rc=0 but empty output (e.g. perspective key absent in manifest).
-    [[ -n "$_framing" ]] || _framing="$_persona_fallback"
+    [[ -n "$_framing" ]] || { _framing="$_persona_fallback"; _persona_applied=0; }
+    # Carrier var for INPUT banner persona line; consumed by _stage_io_stdout_begin.
+    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
+    if [[ "$_persona_applied" -eq 1 ]]; then
+        export ZBUILD_STAGE_IO_PERSONA=product-owner
+    else
+        export ZBUILD_STAGE_IO_PERSONA=product-owner:fallback
+    fi
 
     # Build prompt from the goal. The instruction block declares the
     # plan.json schema inline because the validator below (jq -e at the
@@ -573,6 +581,11 @@ $_plan_instructions"
         unset ZBUILD_ROUTER_ARTIFACT_ID
     else
         export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
+    fi
+    if [[ "$_prev_persona_env" == "__UNSET__" ]]; then
+        unset ZBUILD_STAGE_IO_PERSONA
+    else
+        export ZBUILD_STAGE_IO_PERSONA="$_prev_persona_env"
     fi
 
     # ─── Parse: strip fences, validate JSON with .steps array ───────────────

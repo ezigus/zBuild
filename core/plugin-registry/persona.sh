@@ -69,6 +69,8 @@ resolve_persona_charter() {
 # Returns 1 (prints nothing) when the persona is absent, so the caller keeps its
 # own existing framing (byte-identical fallback). Perspective is omitted cleanly
 # when empty (no dangling separator).
+# Callers must export ZBUILD_STAGE_IO_PERSONA=<id> (rc=0) or <id>:fallback (rc=1)
+# before calling stage_io_begin (or route_to_model, which calls it internally).
 persona_stage_framing() {
     local id="$1" task="$2" root="${3:-}"
     local manifest; manifest="$(find_persona "$id" "$root")" || return 1
