@@ -32,6 +32,13 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="visual-test"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR"
 
+# #1567: this test drives the banner renderer directly and asserts a fresh
+# `seq=1`. It must not inherit any ZBUILD_STAGE_IO_* render steering (e.g. a
+# hierarchical ZBUILD_STAGE_IO_SEQ_LABEL="5.1.1" or a ZBUILD_STAGE_IO_PERSONA)
+# from an outer pipeline env — that would rewrite the heading and break the
+# seq assertions. Each test sets the vars it needs inline, so scrub the family.
+for _sio_var in "${!ZBUILD_STAGE_IO_@}"; do unset "$_sio_var"; done
+
 # shellcheck source=../../core/output/stage-io.sh
 source "$REPO_ROOT/core/output/stage-io.sh"
 # Mock destinations: only stdout so the file dest doesn't try to write.

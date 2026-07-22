@@ -394,5 +394,25 @@ assert_eq "[SPEC-2] NC-M: per-SPEC bound tautological file → NEGCTL FAIL SPEC-
 assert_eq "[SPEC-2] NC-M: SPEC-2 does not emit PASS via sibling's binding" \
     "0" "$(grep -c 'NEGCTL PASS SPEC-2' <<<"$OUT_M" || true)"
 
+# ── NC-N: #1567 — _negctl_run scrubs inherited ZBUILD_STAGE_IO_* render steering ─
+# The pipeline sets ZBUILD_STAGE_IO_SEQ_LABEL ("5.1.1") / ZBUILD_STAGE_IO_PERSONA
+# on the acceptance-gate stage. If they leak into the sandbox, a bound TESTFILE
+# that asserts a fresh banner (seq=1) fails at HEAD for the wrong reason —
+# a false not_passing_at_head. The probe passes (rc 0) only when the sandbox
+# has scrubbed the whole family; if the scrub regressed, rc becomes 1 here.
+probe_n="$TEST_TEMP_DIR/sio-scrub-probe-test.sh"
+cat > "$probe_n" <<'PROBE'
+#!/usr/bin/env bash
+leaked=0
+for _v in "${!ZBUILD_STAGE_IO_@}"; do leaked=1; done
+[[ "$leaked" -eq 0 ]]
+PROBE
+chmod +x "$probe_n"
+export ZBUILD_STAGE_IO_SEQ_LABEL="5.1.1" ZBUILD_STAGE_IO_PERSONA="product-owner" ZBUILD_STAGE_IO_FD=3
+RC_N=0; _negctl_run "$probe_n" "$TEST_TEMP_DIR" || RC_N=$?
+unset ZBUILD_STAGE_IO_SEQ_LABEL ZBUILD_STAGE_IO_PERSONA ZBUILD_STAGE_IO_FD
+assert_eq "NC-N: _negctl_run scrubs inherited ZBUILD_STAGE_IO_* (probe sees none → rc 0)" \
+    "0" "$RC_N"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
