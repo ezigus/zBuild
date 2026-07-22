@@ -61,14 +61,21 @@ _negctl_run() {
         # via _zbuild_make_fresh_shell (plugins/tool/test/plugin.sh); _negctl_run
         # does not, so scrub the parallelism knobs explicitly here.
         unset ZBUILD_TEST_PARALLEL_JOBS ZBUILD_PARALLEL_SAFE_TIERS
-        # #1211: the runner dups fd 3 to the operator terminal and exports
-        # ZBUILD_STAGE_IO_FD=3 so stage-io banners survive `2>/dev/null`. A nested
-        # TESTFILE drives real plugins whose banners would then escape to the
-        # terminal via the inherited fd 3, bypassing this sandbox's stdout/stderr
-        # capture. Neutralize the channel: unset ZBUILD_STAGE_IO_FD so nested
-        # banners fall back to fd 2 (captured below), and redirect/close fd 3 so
-        # nothing reaches the terminal. Sibling #1127 = the general isolation.
-        unset ZBUILD_STAGE_IO_FD
+        # #1211/#1567: the sandbox must not inherit ANY ZBUILD_STAGE_IO_* banner
+        # control from the pipeline env. Two failure modes this scrub covers:
+        #  - fd channel (#1211): the runner exports ZBUILD_STAGE_IO_FD=3 (banners
+        #    survive `2>/dev/null`). A nested TESTFILE's banners would then escape
+        #    to the terminal via inherited fd 3, bypassing this sandbox's capture.
+        #  - render steering (#1567): the pipeline sets ZBUILD_STAGE_IO_SEQ_LABEL
+        #    (hierarchical seq like "5.1.1") and ZBUILD_STAGE_IO_PERSONA. A tagged
+        #    TESTFILE that asserts a fresh banner (e.g. seq=1) then fails at HEAD
+        #    purely from the leaked label — a false not_passing_at_head.
+        # Scrub the whole family by prefix so a new sibling var is covered without
+        # editing this list; the fd-3 redirect below closes the escaped channel.
+        # Sibling #1127 = the general isolation.
+        for _sio_var in "${!ZBUILD_STAGE_IO_@}"; do
+            unset "$_sio_var"
+        done
         if [[ -n "$logfile" ]]; then
             "${runner[@]}" >>"$logfile" 2>&1 3>>"$logfile"
         else

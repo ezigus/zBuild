@@ -1014,6 +1014,12 @@ _stage_io_stdout_begin() {
     {
         _stage_io_compose_banner "$_prefix_v" "$_prefix_a" "$_ts" "$_light_blue"
         printf '\n'
+        local _persona="${ZBUILD_STAGE_IO_PERSONA:-}"
+        if [[ "$_persona" == *:fallback ]]; then
+            printf 'persona: none (fallback)\n'
+        elif [[ -n "$_persona" ]]; then
+            printf 'persona: %s\n' "$_persona"
+        fi
         case "$kind" in
             llm)
                 # #785: artifact-id renderer dispatch is OUTPUT-side only.
