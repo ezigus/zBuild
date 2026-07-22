@@ -73,7 +73,6 @@ _negctl_run() {
         # Scrub the whole family by prefix so a new sibling var is covered without
         # editing this list; the fd-3 redirect below closes the escaped channel.
         # Sibling #1127 = the general isolation.
-        local _sio_var
         for _sio_var in "${!ZBUILD_STAGE_IO_@}"; do
             unset "$_sio_var"
         done

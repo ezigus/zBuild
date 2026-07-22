@@ -347,13 +347,10 @@ implementation steps.'
         || { warn "plan: persona_stage_framing failed — using fallback framing"; _framing="$_persona_fallback"; }
     # Guard: rc=0 but empty output (e.g. perspective key absent in manifest).
     [[ -n "$_framing" ]] || { _framing="$_persona_fallback"; _persona_applied=0; }
-    # Carrier var for INPUT banner persona line; consumed by _stage_io_stdout_begin.
-    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
-    if [[ "$_persona_applied" -eq 1 ]]; then
-        export ZBUILD_STAGE_IO_PERSONA=product-owner
-    else
-        export ZBUILD_STAGE_IO_PERSONA=product-owner:fallback
-    fi
+    # _persona_applied now records whether the manifest resolved; the carrier var
+    # ZBUILD_STAGE_IO_PERSONA is exported later (beside ZBUILD_ROUTER_ARTIFACT_ID,
+    # just before route_to_model) so it shares the same save/restore window and
+    # cannot leak past an early resolve_tier bail-out.
 
     # Build prompt from the goal. The instruction block declares the
     # plan.json schema inline because the validator below (jq -e at the
@@ -568,6 +565,16 @@ $_plan_instructions"
     # the plan.json output via render_plan_md (mirror #476 save/restore).
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
     export ZBUILD_ROUTER_ARTIFACT_ID=plan
+    # Carrier var for the INPUT banner persona line; consumed by
+    # _stage_io_stdout_begin inside route_to_model. Exported here (not at framing
+    # time) so it shares the artifact/json save/restore window and never leaks
+    # past the resolve_tier bail-out above.
+    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
+    if [[ "$_persona_applied" -eq 1 ]]; then
+        export ZBUILD_STAGE_IO_PERSONA=product-owner
+    else
+        export ZBUILD_STAGE_IO_PERSONA=product-owner:fallback
+    fi
     # #491: do NOT redirect route_to_model's stderr — the stage-io input banner
     # writes to fd 2 (ZBUILD_STAGE_IO_FD default) and 2>/dev/null would swallow
     # it, breaking the ADR-015 §v4 input-before-action ordering contract.
