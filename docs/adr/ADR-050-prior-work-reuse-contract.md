@@ -117,6 +117,25 @@ A plugin author, when creating or changing a stage, MUST observe:
 - A new operational branch namespace (`zbuild/state/*`) must be excluded from any
   label/PR automation and from branch-cleanup that assumes work branches.
 
+## Implementation Notes (#1581 / PR #1582)
+
+Foundation landed in PR #1582:
+
+- `scripts/lib/prior-output-reader.sh` — `_read_prior_output` (the unified seam, §5).
+- `core/state/artifact-persist.sh` — `_artifact_persist_snapshot` / `_artifact_persist_restore`
+  (git-plumbing snapshot to `zbuild/state/issue-<N>`, working-tree-safe; §2, §4).
+- `plugins/agent/intake/plugin.sh` — adopts an existing remote work branch
+  (`intake.branch.adopted`) instead of refusing.
+- `plugins/tool/pr-open/plugin.sh` — reuses an existing open PR (`status=updated`)
+  instead of aborting.
+
+Follow-up (makes the foundation live): consumer wiring in the LLM stages
+(design link + plan/impact/build/review-lens calling `_read_prior_output`), runner
+integration (snapshot at each stage boundary + restore at startup exporting
+`ZBUILD_RESTORED_ARTIFACTS_DIR`), and the CI workflow (fetch the work branch,
+restore + push the state branch). Deterministic gates are intentionally left to
+re-evaluate fresh (§3).
+
 ## References
 
 - [ADR-001](ADR-001-plugin-contract.md) — plugin contract (this adds the reuse obligation).
