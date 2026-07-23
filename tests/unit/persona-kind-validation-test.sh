@@ -91,6 +91,7 @@ kind: persona
 version: 0.1.0
 persona:
   role: a security engineer
+  perspective: Examine the change for security weaknesses at trust boundaries.
 EOF
 
 set +e
@@ -98,6 +99,28 @@ validate_manifest "$MANIFEST" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "[SPEC-5] kind:persona is exempt from the agent redaction-declaration check" "0" "$rc"
+
+# ─── SPEC-5b (#1569): kind:persona with a role but NO perspective fails loudly ─
+# perspective is the behavior injected into the stage prompt; a role-only persona
+# is indistinguishable from an absent persona at persona_stage_framing, so
+# validation must reject it (not silently accept it).
+MANIFEST="$FIXTURE_DIR/persona-no-perspective.yaml"
+cat > "$MANIFEST" <<'EOF'
+id: roleonly
+name: Role Only
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+EOF
+
+set +e
+validate_manifest "$MANIFEST" >/dev/null 2>&1
+rc=$?
+err_out="$(validate_manifest "$MANIFEST" 2>&1)"
+set -e
+assert_eq "[SPEC-5b] kind:persona missing persona.perspective fails validation" "1" "$rc"
+assert_contains "[SPEC-5b] error names persona.perspective" "$err_out" "persona.perspective"
 
 # ─── SPEC-6: control — the SAME shape as kind:agent still fails (guards SPEC-5) ─
 MANIFEST="$FIXTURE_DIR/agent-no-redaction.yaml"

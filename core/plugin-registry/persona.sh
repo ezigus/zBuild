@@ -65,16 +65,18 @@ resolve_persona_charter() {
 }
 
 # ─── persona_stage_framing <id> <task> [plugins_root] ───────────────────────
-# Stage seam: "{perspective}\n\n{task}" — perspective-first output.
-# Returns 1 (prints nothing) when the persona is absent or perspective is empty,
-# so the caller keeps its own existing framing (byte-identical fallback).
+# Stage seam: "{perspective}\n\n{task}" — perspective-first output (behavior, not
+# profession; #1569). persona.perspective is REQUIRED at manifest-validation time,
+# so for a valid persona this always emits behavior + task. Returns 1 (prints
+# nothing) when the persona is ABSENT; the empty-perspective guard below is a
+# defensive backstop, treated the same as absent so the caller keeps its own
+# framing rather than injecting an identity-less prompt. (role is manifest data —
+# resolvable via resolve_persona_role — but is deliberately NOT in this output.)
 # Callers must export ZBUILD_STAGE_IO_PERSONA=<id> (rc=0) or <id>:fallback (rc=1)
 # before calling stage_io_begin (or route_to_model, which calls it internally).
 persona_stage_framing() {
     local id="$1" task="$2" root="${3:-}"
     local manifest; manifest="$(find_persona "$id" "$root")" || return 1
-    local role; role="$(yaml_get "$manifest" "persona.role")"
-    [[ -n "$role" ]] || return 1
     local perspective; perspective="$(yaml_get "$manifest" "persona.perspective")"
     [[ -n "$perspective" ]] || return 1
     printf '%s\n\n%s' "$perspective" "$task"

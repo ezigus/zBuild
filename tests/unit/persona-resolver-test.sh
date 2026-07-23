@@ -20,7 +20,11 @@ print_test_header "kind:persona resolver + composition seam (issue #1304)"
 setup_test_env "persona-resolver"
 PROOT="$TEST_TEMP_DIR/plugins"
 
-# ─── Fixtures: two personas — one with a perspective, one without ────────────
+# ─── Fixtures: architect (valid) + developer (INVALID) ──────────────────────
+# developer declares a role but NO perspective. Since #1569 makes persona.perspective
+# validation-required, discover_plugins now SKIPS it as invalid — so the seams cannot
+# resolve it and treat it as absent (rc=1 / empty). It stands in for "a persona that
+# fails the perspective requirement."
 mkdir -p "$PROOT/persona/architect" "$PROOT/persona/developer"
 cat > "$PROOT/persona/architect/manifest.yaml" <<'EOF'
 id: architect
@@ -70,19 +74,23 @@ expected_stage=$'Judge structure and boundaries.\n\nProduce the design.'
 assert_eq "[SPEC-1][SPEC-5] persona_stage_framing leads with perspective (no role prefix)" \
     "$expected_stage" "$(persona_stage_framing architect "Produce the design." "$PROOT")"
 
-# ─── SPEC-6: stage framing returns 1 (prints nothing) when perspective absent ─
+# ─── SPEC-6: stage framing returns 1 (prints nothing) for the invalid persona ─
+# developer is excluded by discovery (#1569: perspective required), so the seam
+# resolves it as absent → rc=1, empty (the caller keeps its own framing).
 set +e
 out_np="$(persona_stage_framing developer "Write the code." "$PROOT")"; rc_np=$?
 set -e
-assert_eq "[SPEC-2][SPEC-6] stage framing returns 1 when perspective is absent" "1" "$rc_np"
-assert_eq "[SPEC-2][SPEC-6] stage framing prints nothing when perspective is absent" "" "$out_np"
+assert_eq "[SPEC-2][SPEC-6] stage framing returns 1 for a persona missing the required perspective" "1" "$rc_np"
+assert_eq "[SPEC-2][SPEC-6] stage framing prints nothing for a persona missing the required perspective" "" "$out_np"
 
 # ─── SPEC-7: persona_lens_framing composes the lens seam ─────────────────────
 assert_eq "[SPEC-7] persona_lens_framing composes the lens seam with perspective" \
     "You are a software architect reviewing a change for the target project. Judge structure and boundaries. Flag scope drift." \
     "$(persona_lens_framing architect "Flag scope drift." "$PROOT")"
-assert_eq "[SPEC-7] lens framing has no dangling separator when perspective is absent" \
-    "You are a software engineer reviewing a change for the target project. Check correctness." \
+# developer is invalid (no perspective) → discovery excludes it → lens framing
+# resolves it as absent and prints nothing (#1569).
+assert_eq "[SPEC-7] lens framing returns empty for a persona missing the required perspective" \
+    "" \
     "$(persona_lens_framing developer "Check correctness." "$PROOT")"
 
 # ─── SPEC-8: absent persona ⇒ framing returns 1 AND prints nothing ───────────
