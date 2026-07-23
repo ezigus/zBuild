@@ -131,7 +131,15 @@ git() {
     fi
 }
 export -f git
-gh() { echo "https://github.com/ezigus/zBuild/pull/999"; return 0; }
+# #1581: pr-open now checks `gh pr list --head` first — return empty so the
+# create path (not the update path) is exercised here.
+gh() {
+    case "${1:-} ${2:-}" in
+        "pr list") echo "" ;;
+        *) echo "https://github.com/ezigus/zBuild/pull/999" ;;
+    esac
+    return 0
+}
 export -f gh
 
 set +e
@@ -202,9 +210,12 @@ git() {
 }
 export -f git
 
-# Mock gh: returns a fake PR URL
+# Mock gh: no existing PR (pr list empty) → create path returns a fake PR URL
 gh() {
-    echo "https://github.com/ezigus/zBuild/pull/999"
+    case "${1:-} ${2:-}" in
+        "pr list") echo "" ;;
+        *) echo "https://github.com/ezigus/zBuild/pull/999" ;;
+    esac
     return 0
 }
 export -f gh
@@ -342,7 +353,10 @@ GH_ARGS_FILE="$TEST_TEMP_DIR/gh-args.txt"
 rm -f "$GH_ARGS_FILE"
 gh() {
     printf '%s\n' "$@" >> "$GH_ARGS_FILE"
-    echo "https://github.com/ezigus/zBuild/pull/999"
+    case "${1:-} ${2:-}" in
+        "pr list") echo "" ;;
+        *) echo "https://github.com/ezigus/zBuild/pull/999" ;;
+    esac
     return 0
 }
 export -f gh
@@ -371,6 +385,64 @@ if [[ -f "$PR_RESULT_JSON" ]]; then
         "$pr_result_json8" '.draft' "true"
 else
     assert_fail "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json written" "artifact absent"
+fi
+
+unset -f git
+unset -f gh
+
+# ─── Test 9: existing open PR is updated, not recreated (#1581) ───────────────
+print_test_section "9. Existing open PR is reused/updated instead of aborting (#1581)"
+
+rm -f "$PR_RESULT_JSON"
+cat > "$REVIEW_JSON" <<'JSON'
+{"schema_version":1,"verdict":"approve","summary":"looks good"}
+JSON
+
+git() {
+    if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
+        echo "zbuild/issue-999"
+    else
+        return 0
+    fi
+}
+export -f git
+
+# gh: an open PR (#42) already exists for the head branch. `pr create` must
+# NEVER be called; `pr edit` updates the existing PR.
+GH9_ARGS="$TEST_TEMP_DIR/gh9-args.txt"; rm -f "$GH9_ARGS"
+gh() {
+    printf '%s\n' "$*" >> "$GH9_ARGS"
+    case "${1:-} ${2:-}" in
+        "pr list")   echo "42" ;;
+        "pr view")   echo "https://github.com/ezigus/zBuild/pull/42" ;;
+        "pr edit")   return 0 ;;
+        "pr create") echo "SHOULD-NOT-BE-CALLED"; return 1 ;;
+        *)           return 0 ;;
+    esac
+    return 0
+}
+export -f gh
+
+set +e
+_pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
+rc=$?
+set -e
+
+assert_exit_code "existing PR: returns rc=0 (no abort)" "0" "$rc"
+if [[ -f "$PR_RESULT_JSON" ]]; then
+    pr_result_json9="$(cat "$PR_RESULT_JSON")"
+    assert_json_key "existing PR: status=updated" "$pr_result_json9" '.status' "updated"
+    assert_json_key "existing PR: pr_number=42" "$pr_result_json9" '.pr_number' "42"
+fi
+if grep -q "pr edit" "$GH9_ARGS"; then
+    assert_pass "existing PR: gh pr edit was called"
+else
+    assert_fail "existing PR: gh pr edit was called" "gh calls: $(cat "$GH9_ARGS" 2>/dev/null)"
+fi
+if grep -q "pr create" "$GH9_ARGS"; then
+    assert_fail "existing PR: gh pr create NOT called" "create was invoked"
+else
+    assert_pass "existing PR: gh pr create NOT called"
 fi
 
 unset -f git

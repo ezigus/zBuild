@@ -266,15 +266,23 @@ assert_eq "detached HEAD branch creation rc=0" "0" "$rc"
 det_count="$(_event_count "intake.branch.from_detached")"
 assert_gt "intake.branch.from_detached emitted" "$det_count" "0"
 
-# ── Test: branch exists on remote only → refuse ──
+# ── Test: branch exists on remote only → adopt it ──
 git checkout -q main
-# Simulate remote ref existence by writing packed-refs (loose refs in
-# subdirs are awkward to create reliably across git versions).
-remote_sha="$(git rev-parse HEAD)"
-{
-    printf '# pack-refs with: peeled fully-peeled sorted\n'
-    printf '%s refs/remotes/origin/zbuild/issue-484-remote-only\n' "$remote_sha"
-} > "$REPO/.git/packed-refs"
+# Create a proper bare origin repo for realistic testing.
+ORIGIN_REPO="$TEST_TEMP_DIR/origin.git"
+mkdir -p "$ORIGIN_REPO"
+git init --bare "$ORIGIN_REPO" >/dev/null 2>&1
+# Add origin remote to the repo.
+git remote add origin "$ORIGIN_REPO" 2>/dev/null || git remote set-url origin "$ORIGIN_REPO"
+# Create and push a test branch to origin.
+git checkout -q -b zbuild/issue-484-remote-only
+echo "test content" > test_remote.txt
+git add test_remote.txt
+git commit -q -m "remote branch commit"
+git push -q origin zbuild/issue-484-remote-only
+# Delete the local branch to simulate remote-only state.
+git checkout -q main
+git branch -D zbuild/issue-484-remote-only
 
 _reset_events
 ZBUILD_WORKSPACE_BRANCH="zbuild/issue-484-remote-only" \
@@ -282,9 +290,31 @@ ZBUILD_WORKSPACE_BRANCH="zbuild/issue-484-remote-only" \
     > /tmp/intake-branch-test-out.$$ 2>&1
 rc=$?
 unset ZBUILD_WORKSPACE_BRANCH
-assert_eq "branch on remote only → rc=2" "2" "$rc"
-rem_count="$(_event_count "intake.refused.branch_exists_remote_only")"
-assert_gt "intake.refused.branch_exists_remote_only emitted" "$rem_count" "0"
+assert_eq "remote-only branch adoption → rc=0" "0" "$rc"
+adopted_count="$(_event_count "intake.branch.adopted")"
+assert_gt "intake.branch.adopted emitted" "$adopted_count" "0"
+cur="$(git symbolic-ref --short HEAD)"
+assert_eq "HEAD on adopted branch" "zbuild/issue-484-remote-only" "$cur"
+
+# ── Test: fetch failure → refuse with error event ──
+git checkout -q main
+# Create a new test branch for fetch failure scenario.
+fetch_fail_branch="zbuild/issue-484-fetch-fail"
+# Create a remote tracking ref for this branch (so git show-ref will find it).
+git update-ref "refs/remotes/origin/$fetch_fail_branch" HEAD
+# Break the origin URL to force fetch failure.
+git remote set-url origin "file:///nonexistent/repo.git"
+_reset_events
+ZBUILD_WORKSPACE_BRANCH="$fetch_fail_branch" \
+    _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
+    > /tmp/intake-branch-test-out.$$ 2>&1
+rc=$?
+unset ZBUILD_WORKSPACE_BRANCH
+assert_eq "fetch failure → rc=2" "2" "$rc"
+fetch_err_count="$(_event_count "fetch_failed")"
+assert_gt "fetch_failed reason emitted on fetch error" "$fetch_err_count" "0"
+# Restore origin to clean state.
+git remote set-url origin "$ORIGIN_REPO"
 
 # ─── Cleanup ────────────────────────────────────────────────────────────────
 cd "$REPO_ROOT" || true

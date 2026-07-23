@@ -237,31 +237,89 @@ _pr_open_run_inner() {
     [[ "${_draft_bool}" == "true" ]] && _gh_args+=("--draft")
     _gh_args+=(--title "$pr_title" --body "$pr_body")
 
-    local gh_output
-    if ! gh_output="$(gh pr create "${_gh_args[@]}" 2>&1)"; then
-        error "pr_open: gh pr create failed: $gh_output"
-        emit_event "plugin.run.error" "plugin=pr-open" \
-            "reason=gh_pr_create_failed"
-        jq -n \
-            --arg reason "$gh_output" \
-            --argjson draft "${_draft_bool}" \
-            '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
-            > "$output_pr_result_json"
-        return 2
+    # ── Check for existing open PR on this branch ────────────────────────────────
+    local existing_pr_number
+    existing_pr_number="$(gh pr list --head "$target_branch" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")"
+
+    local gh_output pr_url pr_number
+    if [[ -n "$existing_pr_number" ]]; then
+        # PR already exists: update it instead of creating
+        if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
+            error "pr_open: gh pr edit failed: $gh_output"
+            emit_event "plugin.run.error" "plugin=pr-open" \
+                "reason=gh_pr_edit_failed"
+            jq -n \
+                --arg reason "$gh_output" \
+                --argjson draft "${_draft_bool}" \
+                '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                > "$output_pr_result_json"
+            return 2
+        fi
+        # Get PR URL from existing PR
+        pr_url="$(gh pr view "$existing_pr_number" --json url --jq .url 2>/dev/null || echo "")"
+        pr_number="$existing_pr_number"
+    else
+        # No existing PR: create a new one
+        if ! gh_output="$(gh pr create "${_gh_args[@]}" 2>&1)"; then
+            # Check if the failure was due to a race condition (PR created after list)
+            if echo "$gh_output" | grep -qi "pull request already exists"; then
+                # Retry detection in case PR was created between list and create
+                existing_pr_number="$(gh pr list --head "$target_branch" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")"
+                if [[ -n "$existing_pr_number" ]]; then
+                    # Re-update the PR and treat as updated
+                    if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
+                        error "pr_open: gh pr edit (race recovery) failed: $gh_output"
+                        emit_event "plugin.run.error" "plugin=pr-open" \
+                            "reason=gh_pr_edit_failed"
+                        jq -n \
+                            --arg reason "$gh_output" \
+                            --argjson draft "${_draft_bool}" \
+                            '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                            > "$output_pr_result_json"
+                        return 2
+                    fi
+                    pr_url="$(gh pr view "$existing_pr_number" --json url --jq .url 2>/dev/null || echo "")"
+                    pr_number="$existing_pr_number"
+                else
+                    error "pr_open: gh pr create failed and race recovery found no PR: $gh_output"
+                    emit_event "plugin.run.error" "plugin=pr-open" \
+                        "reason=gh_pr_create_failed"
+                    jq -n \
+                        --arg reason "$gh_output" \
+                        --argjson draft "${_draft_bool}" \
+                        '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                        > "$output_pr_result_json"
+                    return 2
+                fi
+            else
+                error "pr_open: gh pr create failed: $gh_output"
+                emit_event "plugin.run.error" "plugin=pr-open" \
+                    "reason=gh_pr_create_failed"
+                jq -n \
+                    --arg reason "$gh_output" \
+                    --argjson draft "${_draft_bool}" \
+                    '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                    > "$output_pr_result_json"
+                return 2
+            fi
+        else
+            # New PR created successfully
+            pr_url="$(printf '%s' "$gh_output" | grep -Eo 'https://github\.com/[^[:space:]]+' | tail -1 || echo "")"
+            if [[ -z "$pr_url" ]]; then
+                # gh sometimes outputs the URL as the entire stdout line
+                pr_url="$(printf '%s' "$gh_output" | tail -1 | tr -d '[:space:]')"
+            fi
+            pr_number="$(printf '%s' "$pr_url" | grep -Eo '[0-9]+$' || echo "0")"
+        fi
     fi
 
-    # ── Parse PR URL from gh output ───────────────────────────────────────────
-    local pr_url
-    pr_url="$(printf '%s' "$gh_output" | grep -Eo 'https://github\.com/[^[:space:]]+' | tail -1 || echo "")"
-
-    if [[ -z "$pr_url" ]]; then
-        # gh sometimes outputs the URL as the entire stdout line
-        pr_url="$(printf '%s' "$gh_output" | tail -1 | tr -d '[:space:]')"
+    # ── Determine PR status (opened vs updated) ───────────────────────────────
+    local pr_status
+    if [[ -n "$existing_pr_number" ]]; then
+        pr_status="updated"
+    else
+        pr_status="opened"
     fi
-
-    # Extract PR number from URL (last path segment)
-    local pr_number
-    pr_number="$(printf '%s' "$pr_url" | grep -Eo '[0-9]+$' || echo "0")"
 
     # ── Write pr-result.json ──────────────────────────────────────────────────
     # Write canonical pr-url.txt (ADR-013 artifact) and richer pr-result.json.
@@ -271,7 +329,7 @@ _pr_open_run_inner() {
 
     jq -n \
         --argjson schema_version 1 \
-        --arg status "opened" \
+        --arg status "$pr_status" \
         --arg pr_url "$pr_url" \
         --argjson pr_number "${pr_number:-0}" \
         --argjson draft "${_draft_bool}" \
@@ -282,7 +340,7 @@ _pr_open_run_inner() {
         > "$output_pr_result_json"
 
     emit_event "plugin.run.complete" "plugin=pr-open" \
-        "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}"
+        "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}" "action=${pr_status}"
     return 0
 }
 

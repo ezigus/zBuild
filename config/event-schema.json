@@ -169,6 +169,7 @@
     "build.commit.skipped",
     "intake.branch.created",
     "intake.branch.reused",
+    "intake.branch.adopted",
     "intake.branch.noop",
     "intake.branch.from_detached",
     "intake.refused.dirty_tree",

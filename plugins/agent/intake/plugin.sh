@@ -224,10 +224,10 @@ _intake_check_preflight() {
 # Idempotent checkout with error classification. Emits:
 #   - intake.branch.noop      (already on target)
 #   - intake.branch.reused    (local branch existed)
+#   - intake.branch.adopted   (remote branch fetched and checked out)
 #   - intake.branch.created   (new local branch)
-#   - intake.refused.branch_exists_remote_only
-#   - intake.error            (other checkout failures)
-# Sets _INTAKE_BRANCH_OUTCOME to one of: noop|reused|created
+#   - intake.error            (checkout/fetch failures)
+# Sets _INTAKE_BRANCH_OUTCOME to one of: noop|reused|adopted|created
 _intake_checkout_branch() {
     local target="$1"
     _INTAKE_BRANCH_OUTCOME=""
@@ -286,13 +286,39 @@ _intake_checkout_branch() {
         return 0
     fi
 
-    # Local branch absent — does it exist on remote? Don't auto-fetch.
+    # Local branch absent — does it exist on remote? Adopt it.
     # `git show-ref` won't list remote refs unless we look at remotes/.
     if git show-ref --verify --quiet "refs/remotes/origin/$target"; then
-        error "intake_branch: refusing — branch '$target' exists on remote but not locally; fetch/checkout manually"
-        emit_event "intake.refused.branch_exists_remote_only" \
-            "plugin=intake" "branch=$target" "reason=branch_exists_remote_only"
-        return 2
+        # Fetch the remote branch as a local tracking branch.
+        if ! git fetch origin "$target:$target" >/dev/null 2>&1; then
+            error "intake_branch: failed to fetch remote branch '$target'"
+            emit_event "intake.error" \
+                "plugin=intake" "branch=$target" "reason=fetch_failed"
+            return 2
+        fi
+        # Checkout the newly fetched branch.
+        if ! git checkout "$target" >/dev/null 2>&1; then
+            error "intake_branch: checkout of fetched branch '$target' failed"
+            emit_event "intake.error" \
+                "plugin=intake" "branch=$target" "reason=checkout_failed"
+            return 2
+        fi
+        # Verify post-checkout.
+        local after
+        after="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+        if [[ "$after" != "$target" ]]; then
+            error "intake_branch: post-checkout HEAD mismatch (expected '$target', got '$after')"
+            emit_event "intake.error" \
+                "plugin=intake" "branch=$target" "reason=post_checkout_mismatch"
+            return 2
+        fi
+        local ahead_count
+        ahead_count="$(git rev-list --count "main..$target" 2>/dev/null || echo 0)"
+        emit_event "intake.branch.adopted" \
+            "plugin=intake" "branch=$target" "base=$base_sha" \
+            "previous_head=$previous_head" "ahead_count=$ahead_count" "source=remote"
+        _INTAKE_BRANCH_OUTCOME="adopted"
+        return 0
     fi
 
     # Create new branch.
