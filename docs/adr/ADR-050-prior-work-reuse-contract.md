@@ -1,6 +1,6 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
-**Status:** Proposed (2026-07-23)
+**Status:** Accepted (2026-07-23)
 
 > **Memory type.** This ADR governs **prior-work memory** — the durable output of a
 > prior run of the _same issue_ (a design.md, a work branch, an open PR) that a
