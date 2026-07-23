@@ -183,6 +183,12 @@ _build_stage_run_inner() {
     local _acceptance_gap_ids
     _acceptance_gap_ids="$(_build_read_prior_acceptance 2>/dev/null || true)"
 
+    # #1583: tautological [change] SPECs (assertion passes at baseline) the gate
+    # flagged — build OWNS these assertion bodies (#1477) and must re-author them
+    # to fail-at-baseline. Explicitly re-authorable (the negative control polices it).
+    local _acceptance_tautology_ids
+    _acceptance_tautology_ids="$(_build_read_tautology_ids 2>/dev/null || true)"
+
     # B2 (ADR-040): consolidated gate-aggregator feedback from the prior cycle
     # iter (simple.yaml's build_test_cycle wires gate-aggregator → build via
     # prior_gate_feedback). Empty when not in a cycle / dir unset / file
@@ -195,7 +201,8 @@ _build_stage_run_inner() {
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
         "$_acceptance_spec_ids" "$_review_feedback_body" "$_acceptance_gap_ids" \
-        "$_feedback_body" "$_iter_n" "$_gate_feedback_body"
+        "$_feedback_body" "$_iter_n" "$_gate_feedback_body" \
+        "$_acceptance_tautology_ids"
 
     # ADR-032 (#855): per-repo override appended AFTER the contract (so the
     # operator overlay can never precede or weaken the shipped charter). ADR-043:
