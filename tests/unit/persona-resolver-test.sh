@@ -20,7 +20,11 @@ print_test_header "kind:persona resolver + composition seam (issue #1304)"
 setup_test_env "persona-resolver"
 PROOT="$TEST_TEMP_DIR/plugins"
 
-# ─── Fixtures: two personas — one with a perspective, one without ────────────
+# ─── Fixtures: architect (valid) + developer (INVALID) ──────────────────────
+# developer declares a role but NO perspective. Since #1569 makes persona.perspective
+# validation-required, discover_plugins now SKIPS it as invalid — so the seams cannot
+# resolve it and treat it as absent (rc=1 / empty). It stands in for "a persona that
+# fails the perspective requirement."
 mkdir -p "$PROOT/persona/architect" "$PROOT/persona/developer"
 cat > "$PROOT/persona/architect/manifest.yaml" <<'EOF'
 id: architect
@@ -66,21 +70,27 @@ set -e
 assert_eq "[SPEC-4] resolve_persona_role returns 1 for an unknown id" "1" "$rc"
 
 # ─── SPEC-5: persona_stage_framing composes the stage seam ───────────────────
-expected_stage=$'You are a software architect for the target project. Judge structure and boundaries.\n\nProduce the design.'
-assert_eq "[SPEC-5] persona_stage_framing composes 'You are {role} for the target project. {perspective}\\n\\n{task}'" \
+expected_stage=$'Judge structure and boundaries.\n\nProduce the design.'
+assert_eq "[SPEC-1][SPEC-5] persona_stage_framing leads with perspective (no role prefix)" \
     "$expected_stage" "$(persona_stage_framing architect "Produce the design." "$PROOT")"
 
-# ─── SPEC-6: stage framing omits the perspective cleanly when absent ─────────
-expected_stage_np=$'You are a software engineer for the target project.\n\nWrite the code.'
-assert_eq "[SPEC-6] stage framing has no dangling separator when perspective is absent" \
-    "$expected_stage_np" "$(persona_stage_framing developer "Write the code." "$PROOT")"
+# ─── SPEC-6: stage framing returns 1 (prints nothing) for the invalid persona ─
+# developer is excluded by discovery (#1569: perspective required), so the seam
+# resolves it as absent → rc=1, empty (the caller keeps its own framing).
+set +e
+out_np="$(persona_stage_framing developer "Write the code." "$PROOT")"; rc_np=$?
+set -e
+assert_eq "[SPEC-2][SPEC-6] stage framing returns 1 for a persona missing the required perspective" "1" "$rc_np"
+assert_eq "[SPEC-2][SPEC-6] stage framing prints nothing for a persona missing the required perspective" "" "$out_np"
 
 # ─── SPEC-7: persona_lens_framing composes the lens seam ─────────────────────
 assert_eq "[SPEC-7] persona_lens_framing composes the lens seam with perspective" \
     "You are a software architect reviewing a change for the target project. Judge structure and boundaries. Flag scope drift." \
     "$(persona_lens_framing architect "Flag scope drift." "$PROOT")"
-assert_eq "[SPEC-7] lens framing has no dangling separator when perspective is absent" \
-    "You are a software engineer reviewing a change for the target project. Check correctness." \
+# developer is invalid (no perspective) → discovery excludes it → lens framing
+# resolves it as absent and prints nothing (#1569).
+assert_eq "[SPEC-7] lens framing returns empty for a persona missing the required perspective" \
+    "" \
     "$(persona_lens_framing developer "Check correctness." "$PROOT")"
 
 # ─── SPEC-8: absent persona ⇒ framing returns 1 AND prints nothing ───────────
@@ -155,13 +165,14 @@ case "$rt_framing" in
 esac
 assert_eq "[SPEC-14] lens framing contains the supplied charter" "1" "$rt_charter_ok"
 
-# SPEC-15: persona_stage_framing composes a framing containing role for the live persona
+# SPEC-15: persona_stage_framing leads with perspective keyword (no role prefix)
 rt_stage="$(persona_stage_framing red-team "Assess the change." "$REAL_PROOT")"
 case "$rt_stage" in
-    *"red-team operator"*) rt_stage_ok=1 ;;
-    *) rt_stage_ok=0 ;;
+    *hostile*)     rt_stage_ok=1 ;;
+    *exploitable*) rt_stage_ok=1 ;;
+    *)             rt_stage_ok=0 ;;
 esac
-assert_eq "[SPEC-15] stage framing contains 'red-team operator' for live persona" "1" "$rt_stage_ok"
+assert_eq "[SPEC-3][SPEC-15] stage framing leads with perspective keyword (hostile/exploitable) for live persona" "1" "$rt_stage_ok"
 
 # ─── SPEC-1..SPEC-5: live-tree test-strategist persona ───────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).
@@ -192,13 +203,14 @@ validate_manifest "$ts_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live test-strategist manifest" "0" "$rc"
 
-# SPEC-5: persona_stage_framing composes a framing with role + perspective + task
+# SPEC-5: persona_stage_framing leads with perspective + task (no role prefix)
 ts_stage="$(persona_stage_framing test-strategist "Write the tests." "$REAL_PROOT")"
 case "$ts_stage" in
-    *"test strategist"*) ts_role_ok=1 ;;
-    *) ts_role_ok=0 ;;
+    *fail*)      ts_persp_ok=1 ;;
+    *invariant*) ts_persp_ok=1 ;;
+    *)           ts_persp_ok=0 ;;
 esac
-assert_eq "[SPEC-5] stage framing contains 'test strategist' for live persona" "1" "$ts_role_ok"
+assert_eq "[SPEC-5] stage framing leads with perspective keyword (fail/invariant) for live persona" "1" "$ts_persp_ok"
 case "$ts_stage" in
     *"Write the tests."*) ts_task_ok=1 ;;
     *) ts_task_ok=0 ;;

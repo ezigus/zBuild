@@ -219,7 +219,10 @@ validate_manifest() {
             errors=$((errors + 1))
         fi
         local persona_perspective; persona_perspective="$(yaml_get "$manifest" "persona.perspective")"
-        if [[ -n "$persona_perspective" ]] && [[ "$persona_perspective" =~ $_block_scalar_re ]]; then
+        if [[ -z "$persona_perspective" ]]; then
+            error "validate_manifest($manifest): kind: persona requires a non-empty 'persona.perspective' (#1569 — the behavior injected into the stage prompt). A persona with a role but no perspective is indistinguishable from an absent persona at the seam, so it is rejected loudly here."
+            errors=$((errors + 1))
+        elif [[ "$persona_perspective" =~ $_block_scalar_re ]]; then
             error "validate_manifest($manifest): 'persona.perspective' must be a single-line string, not a block scalar ('$persona_perspective'); use a plain value on the same line as the key"
             errors=$((errors + 1))
         fi
