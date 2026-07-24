@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# [S1/S2] Integration (#1219, ADR-045/ADR-046): the FINAL EPIC #1216 wiring —
-# simple.yaml's build_test_cycle route_back edge rewinds to the EARLIER
-# design_verify_cycle when the gate-aggregator surfaces a design-rooted failure
-# (verdict==route_design from a tautology). This drives the REAL runner over the
+# [S1/S2] Integration (#1219, ADR-045/ADR-046): the build_test_cycle route_back
+# edge rewinds to the EARLIER design_verify_cycle when the gate-aggregator surfaces
+# a design-rooted failure (verdict==route_design). NOTE (#1583): tautology is no
+# longer design-rooted (it is build-fixable), so this exercises the RETAINED, now
+# dormant route_back PLUMBING generically — the cycle is STUBBED to emit route_back
+# directly; no real tautology drives it. This drives the REAL runner over the
 # REAL simple.yaml (so the route_back target is resolved from the loaded template,
 # proving the wiring), with a stubbed cycle_orchestrator_run that emits rc=11 with
 # the template-declared target. `impact` is the top-level leaf BETWEEN
@@ -24,7 +26,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-print_test_header "route tautology → design_verify_cycle (#1219, ADR-045/046)"
+print_test_header "route_back plumbing → design_verify_cycle (retained/dormant; #1219, #1583)"
 setup_test_env "route-tautology-to-design"
 
 # _drive <mode> <events_dir> <state_file>  (mode: once|always)
