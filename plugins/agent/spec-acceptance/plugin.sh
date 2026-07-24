@@ -69,9 +69,13 @@ _ag_resolve_negctl_timeout() {
 # GENERIC member-disposition contract (ADR-021 / ADR-036 §-Disposition) the cycle
 # engine reads. The engine knows NO acceptance-gate failure vocabulary; it only
 # reads the disposition field this function computes. Precedence (highest wins):
-#   terminal    — ≥1 GENUINE violation: tautology, not_passing_at_head,
-#                 inert_wiring, no_testfile, malformed_acceptance_block.
-#   recoverable — only untagged_spec:* (fed back to build via the #951 edge).
+#   terminal    — ≥1 GENUINE, non-build-fixable violation: not_passing_at_head,
+#                 no_testfile, malformed_acceptance_block (design-authored / build
+#                 cannot fix). OUTRANKS recoverable.
+#   recoverable — build-fixable classes: untagged_spec:*, tautology:*,
+#                 inert_wiring:* (#1585 — build owns the assertions since #1477;
+#                 the cycle re-iterates and feeds these back to build via the
+#                 #951 edge, the negative control re-verifies each iteration).
 #   advisory    — only infra classes: negctl_error:* / reachability_error:*
 #                 (baseline/worktree resolve failures + negctl/reachability
 #                 TIMEOUTS — a flaky sandbox must never hard-fail the pipeline).
