@@ -21,7 +21,9 @@ setup_test_env "design-persona-framing-1324"
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
 # ── Mocks (mirrors design-prior-gate-feedback-test.sh pattern) ───────────────
+_CAPTURED_PERSONA_FILE=""
 route_to_model_loop() {
+    [[ -n "${_CAPTURED_PERSONA_FILE:-}" ]] && printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-__unset__}" > "$_CAPTURED_PERSONA_FILE"
     [[ -n "${MOCK_DESIGN_WRITE_PATH:-}" ]] && {
         mkdir -p "$(dirname "$MOCK_DESIGN_WRITE_PATH")"
         local _bt='```'
@@ -124,6 +126,44 @@ assert_contains "[SPEC-3] ## Plan present in prompt with architect manifest" \
     "$(cat "$PROMPT1")" "## Plan"
 assert_contains "[SPEC-3] ## Plan present in prompt without architect manifest" \
     "$(cat "$PROMPT2")" "## Plan"
+
+# ── SPEC-1[change]: design exports ZBUILD_STAGE_IO_PERSONA=architect when manifest present ──
+AD_S1="$(_setup_fixture)"
+DROOT_S1="$(_root_with_architect)"
+_DESIGN_ROOT="$DROOT_S1"
+_CAPTURED_PERSONA_FILE="$TEST_TEMP_DIR/spec1-persona.txt"
+export MOCK_DESIGN_WRITE_PATH="$AD_S1/design.md"
+_design_stage_run_inner \
+    "$(dirname "$AD_S1")/scope-manifest.md" \
+    "$AD_S1/plan.json" \
+    "$AD_S1/design.md" \
+    "$AD_S1" >/dev/null 2>&1 || true
+_DESIGN_ROOT="$_ORIG_DESIGN_ROOT"
+_CAPTURED_PERSONA_FILE=""
+
+assert_file_exists "SPEC-1: persona capture file written (architect present)" "$TEST_TEMP_DIR/spec1-persona.txt"
+_PERSONA1="$(cat "$TEST_TEMP_DIR/spec1-persona.txt" 2>/dev/null || true)"
+assert_eq "[SPEC-1] design exports ZBUILD_STAGE_IO_PERSONA=architect when manifest present" \
+    "architect" "$_PERSONA1"
+
+# ── SPEC-4[change]: design exports ZBUILD_STAGE_IO_PERSONA=architect:fallback when manifest absent
+AD_S4="$(_setup_fixture)"
+DROOT_S4="$(_root_without_architect)"
+_DESIGN_ROOT="$DROOT_S4"
+_CAPTURED_PERSONA_FILE="$TEST_TEMP_DIR/spec4-persona.txt"
+export MOCK_DESIGN_WRITE_PATH="$AD_S4/design.md"
+_design_stage_run_inner \
+    "$(dirname "$AD_S4")/scope-manifest.md" \
+    "$AD_S4/plan.json" \
+    "$AD_S4/design.md" \
+    "$AD_S4" >/dev/null 2>&1 || true
+_DESIGN_ROOT="$_ORIG_DESIGN_ROOT"
+_CAPTURED_PERSONA_FILE=""
+
+assert_file_exists "SPEC-4: persona capture file written (architect absent)" "$TEST_TEMP_DIR/spec4-persona.txt"
+_PERSONA4="$(cat "$TEST_TEMP_DIR/spec4-persona.txt" 2>/dev/null || true)"
+assert_eq "[SPEC-4] design exports ZBUILD_STAGE_IO_PERSONA=architect:fallback when manifest absent" \
+    "architect:fallback" "$_PERSONA4"
 
 cleanup_test_env
 print_test_results

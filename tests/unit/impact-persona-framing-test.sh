@@ -28,7 +28,9 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 source "$REPO_ROOT/plugins/agent/impact/plugin.sh"
 
 # ── Mocks ───────────────────────────────────────────────────────────────────
+_CAPTURED_PERSONA_FILE=""
 route_to_model() {
+    [[ -n "${_CAPTURED_PERSONA_FILE:-}" ]] && printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-__unset__}" > "$_CAPTURED_PERSONA_FILE"
     printf '%s' '{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}'
     return 0
 }

@@ -203,10 +203,14 @@ _design_stage_run_inner() {
     # and we fall back to the exact pre-#1324 opening — BYTE-IDENTICAL, including
     # the original mid-sentence line wrap after "produce an".
     local _task_intro="Your job is to produce an ADR-style design.md for the task described in the plan below."
+    local _persona_applied=0
     local _framing
-    _framing="$(persona_stage_framing architect "$_task_intro" "$_DESIGN_ROOT/plugins" 2>/dev/null)" \
-        || _framing="You are a software architect for the target project. Your job is to produce an
+    local _framing_fallback="You are a software architect for the target project. Your job is to produce an
 ADR-style design.md for the task described in the plan below."
+    _framing="$(persona_stage_framing architect "$_task_intro" "$_DESIGN_ROOT/plugins" 2>/dev/null)" \
+        && _persona_applied=1 \
+        || { warn "design: persona_stage_framing failed — using fallback framing"; _framing="$_framing_fallback"; }
+    [[ -n "$_framing" ]] || { _framing="$_framing_fallback"; _persona_applied=0; }
 
     cat > "$prompt_input_file" <<DESIGN_PROMPT
 ${_framing}
@@ -407,9 +411,20 @@ DESIGN_PROMPT
     # the operator. The single-file-artifact's value is the file content.
     # Mirrors build's deferred-close pattern (plugins/agent/build/plugin.sh).
     local router_rc=0
+    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
+    if [[ "$_persona_applied" -eq 1 ]]; then
+        export ZBUILD_STAGE_IO_PERSONA=architect
+    else
+        export ZBUILD_STAGE_IO_PERSONA=architect:fallback
+    fi
     route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
+    if [[ "$_prev_persona_env" == "__UNSET__" ]]; then
+        unset ZBUILD_STAGE_IO_PERSONA
+    else
+        export ZBUILD_STAGE_IO_PERSONA="$_prev_persona_env"
+    fi
 
     if [[ $router_rc -eq 130 ]]; then
         warn "_design_stage_run_inner: route_to_model_loop rc=130 (SIGINT) — propagating abort"
