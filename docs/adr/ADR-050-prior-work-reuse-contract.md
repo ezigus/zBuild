@@ -129,12 +129,26 @@ Foundation landed in PR #1582:
 - `plugins/tool/pr-open/plugin.sh` — reuses an existing open PR (`status=updated`)
   instead of aborting.
 
-Follow-up (makes the foundation live): consumer wiring in the LLM stages
-(design link + plan/impact/build/review-lens calling `_read_prior_output`), runner
-integration (snapshot at each stage boundary + restore at startup exporting
-`ZBUILD_RESTORED_ARTIFACTS_DIR`), and the CI workflow (fetch the work branch,
-restore + push the state branch). Deterministic gates are intentionally left to
-re-evaluate fresh (§3).
+Follow-up — LANDED (makes the foundation live):
+
+- Runner integration (`core/pipeline/runner.sh`): restore prior artifacts once at
+  startup, exporting `ZBUILD_RESTORED_ARTIFACTS_DIR` at the restored `artifacts/`
+  subdir; snapshot the artifact area to the state branch at each completed stage
+  boundary. Both best-effort and stage-agnostic (the engine names no stage).
+- Consumer wiring: design & build route their existing prior-work readers through
+  `_read_prior_output` (design also emits a state-branch blob link); plan, impact,
+  and review-lens read their own prior artifact and inject a `## PRIOR X` section —
+  gated on `ZBUILD_RESTORED_ARTIFACTS_DIR` (cross-run restore only) so a leaf stage
+  never picks up stale cycle env or its own same-run output.
+- CI workflow (`.github/workflows/zbuild-pipeline.yml`): fetch the work + state
+  branches into remote-tracking refs before the run (so intake can ADOPT the work
+  branch and the runner can RESTORE the state branch); push the state branch pass
+  OR fail.
+- pr-open: the 0-commit preflight is remote-aware — if `origin/<work-branch>` has
+  commits it proceeds to reuse/open the PR instead of aborting (fixes the #1570
+  cold-start "nothing to ship").
+
+Deterministic gates are intentionally left to re-evaluate fresh (§3).
 
 ## References
 
