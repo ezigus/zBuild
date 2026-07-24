@@ -137,7 +137,7 @@ assert_eq "[DECOUPLING] echoes the custom member id" "custom-check" "$out"
 
 # ── [SPEC-3] membership guard: artifact present but member NOT in the cycle. ───
 _CYCLE_STAGES=(build test)
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["inert_wiring:config/x.yaml"]}'
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["malformed_acceptance_block"]}'
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[SPEC-3] not a member → never blocks (rc=1)" "1" "$rc"
 
