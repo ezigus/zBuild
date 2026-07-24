@@ -56,6 +56,10 @@ source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
 source "$_ZBUILD_ROOT/core/pipeline/cycle-orchestrator.sh"
 # ADR-039 (#1131) parallel stage-group executor (sibling of the cycle orchestrator).
 source "$_ZBUILD_ROOT/core/pipeline/parallel-orchestrator.sh"
+# ADR-050 (#1581) prior-work reuse: generic, stage-agnostic artifact persistence
+# to the state branch (zbuild/state/issue-<N>). The runner restores prior artifacts
+# once at startup and snapshots at each stage boundary; it names no stage.
+source "$_ZBUILD_ROOT/core/state/artifact-persist.sh"
 
 _usage() {
     # Usage shown on error or --help. Unix convention: stderr (#619).
@@ -1211,6 +1215,25 @@ main() {
     # (never pollute an explicit/test state dir). Atomic swap via ln -sfn.
     if [[ "$state_dir" == "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/"* ]]; then
         ln -sfn "$state_dir" "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/latest" 2>/dev/null || true
+    fi
+
+    # ADR-050 (#1581): restore prior-run artifacts ONCE at startup so each stage's
+    # _read_prior_output seam can seed from a previous attempt (cross-run reuse).
+    # Stage-agnostic — the engine restores the whole artifact tree from the state
+    # branch (zbuild/state/issue-<N>); absent branch → dir not created → the seam
+    # falls through to fresh. Best-effort: a restore failure never blocks the run.
+    # The snapshot stores files under an `artifacts/` prefix (see artifact-persist
+    # T4), so the seam's ZBUILD_RESTORED_ARTIFACTS_DIR points at that subdir.
+    if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
+        local _restored_root="$state_dir/restored-artifacts"
+        if _artifact_persist_restore "$_runner_issue" "$_restored_root" 2>/dev/null \
+           && [[ -d "$_restored_root/artifacts" ]] \
+           && [[ -n "$(ls -A "$_restored_root/artifacts" 2>/dev/null)" ]]; then
+            export ZBUILD_RESTORED_ARTIFACTS_DIR="$_restored_root/artifacts"
+            eb_emit_event "artifact.restore.applied" \
+                "issue=$_runner_issue" "dir=$_restored_root/artifacts" 2>/dev/null || true
+            info "Restored prior-run artifacts for #$_runner_issue → $_restored_root/artifacts"
+        fi
     fi
 
     # #963: self-host — redirect the read-only acceptance-grammar libs that the
@@ -2514,6 +2537,16 @@ main() {
                 # Intentional fail-open: scope-override.md may not exist (no --scope flag used)
                 grep '^+ ' "$state_dir/scope-override.md" >> "$scope_manifest" 2>/dev/null || true
                 info "Appended scope override entries to $scope_manifest"
+            fi
+            # ADR-050 (#1581): snapshot the artifact area onto the state branch at
+            # this stage boundary so a completed stage's work survives a mid-run
+            # crash/rate-limit and is available to the next run. Stage-agnostic
+            # (snapshots whatever files exist) and best-effort — never blocks.
+            if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
+                if _artifact_persist_snapshot "$state_dir" "$_runner_issue" 2>/dev/null; then
+                    eb_emit_event "artifact.snapshot.saved" \
+                        "stage=$stage" "issue=$_runner_issue" 2>/dev/null || true
+                fi
             fi
         elif [[ $rc -eq 2 ]]; then
             # Partial fanout: at least one platform succeeded and at least one failed.
