@@ -69,9 +69,13 @@ _ag_resolve_negctl_timeout() {
 # GENERIC member-disposition contract (ADR-021 / ADR-036 §-Disposition) the cycle
 # engine reads. The engine knows NO acceptance-gate failure vocabulary; it only
 # reads the disposition field this function computes. Precedence (highest wins):
-#   terminal    — ≥1 GENUINE violation: tautology, not_passing_at_head,
-#                 inert_wiring, no_testfile, malformed_acceptance_block.
-#   recoverable — only untagged_spec:* (fed back to build via the #951 edge).
+#   terminal    — ≥1 GENUINE, non-build-fixable violation: not_passing_at_head,
+#                 no_testfile, malformed_acceptance_block (design-authored / build
+#                 cannot fix). OUTRANKS recoverable.
+#   recoverable — build-fixable classes: untagged_spec:*, tautology:*,
+#                 inert_wiring:* (#1585 — build owns the assertions since #1477;
+#                 the cycle re-iterates and feeds these back to build via the
+#                 #951 edge, the negative control re-verifies each iteration).
 #   advisory    — only infra classes: negctl_error:* / reachability_error:*
 #                 (baseline/worktree resolve failures + negctl/reachability
 #                 TIMEOUTS — a flaky sandbox must never hard-fail the pipeline).
@@ -80,10 +84,20 @@ _ag_classify_disposition() {
     local f had_recoverable=0 had_advisory=0
     for f in "$@"; do
         case "$f" in
-            untagged_spec:*)                         had_recoverable=1 ;;
-            negctl_error:* | reachability_error:*)   had_advisory=1 ;;
-            "")                                      : ;;
-            *)                                       printf 'terminal'; return 0 ;;  # genuine violation
+            # BUILD-FIXABLE classes → recoverable: the build_test_cycle re-iterates
+            # and feeds the failure to build (which owns the assertion bodies since
+            # #1477). #1585: tautology + inert_wiring join untagged_spec here — they
+            # are the same "weak test" symptom (a [change] assertion that passes at
+            # baseline / a WIRING file whose revert breaks no test) that BUILD fixes
+            # by re-authoring the assertion (#1583). The mechanical negative control
+            # re-verifies each iteration, and max_iterations bounds it — an
+            # un-fixable case exhausts the budget and terminates cleanly.
+            untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
+            negctl_error:* | reachability_error:*)           had_advisory=1 ;;
+            "")                                              : ;;
+            # Genuinely terminal (e.g. malformed_acceptance_block — design-authored,
+            # build cannot fix): halt the cycle. A terminal class OUTRANKS recoverable.
+            *)                                               printf 'terminal'; return 0 ;;
         esac
     done
     if [[ $had_recoverable -eq 1 ]]; then printf 'recoverable'; return 0; fi

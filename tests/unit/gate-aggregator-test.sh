@@ -156,7 +156,7 @@ assert_contains "TC-10: design-feedback names the SPEC" "$(cat "$AD/design-feedb
 # build via the build_test_cycle gate_feedback → build edge.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","disposition":"terminal","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
+printf '{"verdict":"fail","disposition":"recoverable","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-10b: tautology (no route_target) → verdict=fail (NOT route_design)" "$OUT" '.verdict' "fail"
