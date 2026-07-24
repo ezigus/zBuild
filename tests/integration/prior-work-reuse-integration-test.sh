@@ -27,6 +27,8 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 source "$REPO_ROOT/core/state/artifact-persist.sh"
 # shellcheck source=../../scripts/lib/prior-output-reader.sh
 source "$REPO_ROOT/scripts/lib/prior-output-reader.sh"
+# shellcheck source=../../scripts/lib/git-remote.sh
+source "$REPO_ROOT/scripts/lib/git-remote.sh"
 
 print_test_header "prior-work reuse — cross-run chain (ADR-050 / #1581)"
 setup_test_env "prior-work-reuse-integration"
@@ -148,6 +150,19 @@ if [[ "$remote_ahead" =~ ^[0-9]+$ && "$remote_ahead" -gt 0 ]]; then
 else
     assert_fail "T7 origin/<work> has commits" "remote_ahead=$remote_ahead"
 fi
+
+# ─── T8: zbuild_push_reconcile no-ops on a strictly-ahead remote (#1570 loop) ──
+# The exact scenario that broke #1570: this run's local branch is BEHIND origin's
+# (origin carries the real work). pr-open falls through to push_reconcile, which
+# MUST NOT overwrite the remote — it returns 0 (no-op) and leaves origin intact,
+# so the subsequent PR reuse/create ships origin's work. Exercise it directly.
+remote_work_before="$("$GIT" -C "$runner_ws" ls-remote --heads origin "$WORK" 2>/dev/null | awk '{print $1}')"
+set +e
+( cd "$runner_ws" && zbuild_push_reconcile "$WORK" >/dev/null 2>&1 ); pr_rc=$?
+set -e
+assert_eq "T8 push_reconcile returns 0 (no-op) when remote is strictly ahead" "0" "$pr_rc"
+remote_work_after="$("$GIT" -C "$runner_ws" ls-remote --heads origin "$WORK" 2>/dev/null | awk '{print $1}')"
+assert_eq "T8 origin/<work> tip is UNCHANGED (prior work never clobbered)" "$remote_work_before" "$remote_work_after"
 
 cleanup_test_env
 print_test_results

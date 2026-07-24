@@ -35,6 +35,9 @@ source "$_IMPACT_ROOT/scripts/lib/router-rc-classify.sh"
 # ADR-050 (#1581): unified prior-work seam — seed from a prior run's impact.json.
 # shellcheck source=../../../scripts/lib/prior-output-reader.sh
 source "$_IMPACT_ROOT/scripts/lib/prior-output-reader.sh"
+# #721 sanitizer — strip stage-io/ANSI from prior content before the LLM prompt.
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+source "$_IMPACT_ROOT/scripts/lib/test-output-sanitize.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_IMPACT_ROOT/scripts/lib/prompt-overrides.sh"
 # shellcheck source=../../../core/plugin-registry/registry.sh
@@ -263,6 +266,8 @@ $_impact_instructions"
     local _prior_impact=""
     if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
         _prior_impact="$(_read_prior_output "impact.json" 2>/dev/null || true)"
+        [[ -n "$_prior_impact" ]] && \
+            _prior_impact="$(printf '%s' "$_prior_impact" | _zbuild_sanitize_for_llm)"
     fi
     if [[ -n "${_prior_impact//[[:space:]]/}" ]]; then
         prompt+=$'\n## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)\n'

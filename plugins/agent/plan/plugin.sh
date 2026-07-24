@@ -553,6 +553,8 @@ $_plan_instructions"
     local _prior_plan_json=""
     if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
         _prior_plan_json="$(_read_prior_output "plan.json" 2>/dev/null || true)"
+        [[ -n "$_prior_plan_json" ]] && \
+            _prior_plan_json="$(printf '%s' "$_prior_plan_json" | _zbuild_sanitize_for_llm)"
     fi
     if [[ -n "${_prior_plan_json//[[:space:]]/}" ]]; then
         prompt+=$'\n## PRIOR PLAN (a previous attempt on this issue — reference & refine; verify against the CURRENT scope)\n\n'
