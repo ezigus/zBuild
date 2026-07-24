@@ -39,6 +39,9 @@ source "$_PLAN_ROOT/scripts/lib/plan-context.sh"
 # #1052: router rc → verdict/reason classifier (shared with impact).
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_PLAN_ROOT/scripts/lib/router-rc-classify.sh"
+# ADR-050 (#1581): unified prior-work seam — seed from a prior run's plan.json.
+# shellcheck source=../../../scripts/lib/prior-output-reader.sh
+source "$_PLAN_ROOT/scripts/lib/prior-output-reader.sh"
 # Persona resolver + stage/lens composition seam (#1304, #1393).
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_PLAN_ROOT/core/plugin-registry/registry.sh"
@@ -538,6 +541,17 @@ $_plan_instructions"
             "goal_hash=$_resume_goal_hash" \
             "prior_status=$_prior_status" \
             "prior_num_turns=$_prior_turns"
+    fi
+
+    # ADR-050 (#1581): seed from a prior RUN's plan.json (via the unified seam) —
+    # complements the exploration-cache resume above with the actual prior PLAN
+    # output. Advisory: reference and refine, don't blindly re-emit. Rides the
+    # router's single redaction pass with the rest of the assembled prompt.
+    local _prior_plan_json
+    _prior_plan_json="$(_read_prior_output "plan.json" 2>/dev/null || true)"
+    if [[ -n "${_prior_plan_json//[[:space:]]/}" ]]; then
+        prompt+=$'\n## PRIOR PLAN (a previous attempt on this issue — reference & refine; verify against the CURRENT scope)\n\n'
+        prompt+="$_prior_plan_json"$'\n'
     fi
 
     # ADR-032 (#855): the operator override is spliced in AFTER the contract

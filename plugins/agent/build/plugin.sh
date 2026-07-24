@@ -48,6 +48,9 @@ source "$_BUILD_ROOT/scripts/lib/acceptance-block.sh"
 # #721: strip stage-io banners and ANSI from feedback text before LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_BUILD_ROOT/scripts/lib/test-output-sanitize.sh"
+# ADR-050 (#1581): unified prior-work seam — read a prior run's build-summary.json.
+# shellcheck source=../../../scripts/lib/prior-output-reader.sh
+source "$_BUILD_ROOT/scripts/lib/prior-output-reader.sh"
 
 # ─── lib modules (decomposed from this file per #1533) ───────────────────────
 # shellcheck source=lib/context.sh
@@ -203,6 +206,19 @@ _build_stage_run_inner() {
         "$_acceptance_spec_ids" "$_review_feedback_body" "$_acceptance_gap_ids" \
         "$_feedback_body" "$_iter_n" "$_gate_feedback_body" \
         "$_acceptance_tautology_ids"
+
+    # ADR-050 (#1581): cross-run seed — when a prior RUN of this issue produced a
+    # build-summary (restored onto this runner), append a short advisory note so
+    # build continues the prior attempt rather than restarting. Appended AFTER the
+    # composed body (mirrors design's prior-work injection). Sanitized like the
+    # other feedback bodies before it reaches the prompt.
+    local _prior_build_note
+    _prior_build_note="$(_build_read_prior_build_summary 2>/dev/null || true)"
+    if [[ -n "$_prior_build_note" ]]; then
+        _prior_build_note="$(printf '%s' "$_prior_build_note" | _zbuild_sanitize_for_llm)"
+        printf '\n## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)\n%s\n' \
+            "$_prior_build_note" >> "$prompt_input_file"
+    fi
 
     # ADR-032 (#855): per-repo override appended AFTER the contract (so the
     # operator overlay can never precede or weaken the shipped charter). ADR-043:

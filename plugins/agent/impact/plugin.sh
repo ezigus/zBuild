@@ -32,6 +32,9 @@ source "$_IMPACT_ROOT/scripts/lib/impact-prefilter.sh"
 # #782: router rc → verdict/reason mapping (ADR-021 error class for timeouts).
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_IMPACT_ROOT/scripts/lib/router-rc-classify.sh"
+# ADR-050 (#1581): unified prior-work seam — seed from a prior run's impact.json.
+# shellcheck source=../../../scripts/lib/prior-output-reader.sh
+source "$_IMPACT_ROOT/scripts/lib/prior-output-reader.sh"
 # shellcheck source=../../../scripts/lib/prompt-overrides.sh
 source "$_IMPACT_ROOT/scripts/lib/prompt-overrides.sh"
 # shellcheck source=../../../core/plugin-registry/registry.sh
@@ -250,6 +253,16 @@ $_impact_instructions"
     else
         printf -v prompt '%s\n\nDESIGN SCOPE BLOCK:\n%s\n' \
             "$_impact_instructions" "$_scope_list"
+    fi
+
+    # ADR-050 (#1581): seed from a prior RUN's impact.json (via the unified seam).
+    # Advisory — reference the prior gap analysis, but re-derive against the CURRENT
+    # design/tests (the deterministic prefilter above stays authoritative for goldens).
+    local _prior_impact
+    _prior_impact="$(_read_prior_output "impact.json" 2>/dev/null || true)"
+    if [[ -n "${_prior_impact//[[:space:]]/}" ]]; then
+        prompt+=$'\n## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)\n'
+        prompt+="$_prior_impact"$'\n'
     fi
 
     local prompt_file="$artifact_dir/impact-prompt.txt"
