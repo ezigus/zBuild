@@ -52,6 +52,26 @@ _build_read_design_decisions() {
     printf '%s\n' "$body"
 }
 
+# _build_read_prior_build_summary (ADR-050 / #1581)
+# Read a prior RUN's build-summary.json (via the unified prior-work seam), and
+# emit a concise, human-readable advisory line for the build prompt. The seam's
+# cross-run/local tiers surface a prior attempt's summary; empty stdout when
+# absent (first run / no state branch). Intentionally NOT machine JSON in the
+# prompt — build already sees the actual committed code via the router's BRANCH
+# STATE injection; this just tells it a prior attempt exists so it continues
+# rather than restarts.
+_build_read_prior_build_summary() {
+    local raw; raw="$(_read_prior_output "build-summary.json" 2>/dev/null || true)"
+    [[ -z "${raw//[[:space:]]/}" ]] && return 0
+    local verdict n_files files
+    verdict="$(printf '%s' "$raw" | jq -r '.verdict // "unknown"' 2>/dev/null || echo unknown)"
+    n_files="$(printf '%s' "$raw" | jq -r '(.files_changed // []) | length' 2>/dev/null || echo 0)"
+    files="$(printf '%s' "$raw" | jq -r '(.files_changed // []) | join(", ")' 2>/dev/null || echo "")"
+    [[ "$n_files" =~ ^[0-9]+$ ]] || n_files=0
+    printf 'A previous attempt on this issue ended build with verdict=%s and touched %s file(s)%s. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.' \
+        "$verdict" "$n_files" "${files:+: $files}"
+}
+
 # _build_read_prior_assessment (#571)
 # Read the prior cycle iter's test_assessment markdown from
 # $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt. Empty stdout when

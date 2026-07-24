@@ -34,6 +34,9 @@ source "$_RL_ROOT/scripts/lib/merge-base.sh"
 # #721: strip stage-io banners and ANSI from input before the LLM prompt.
 # shellcheck source=../../../scripts/lib/test-output-sanitize.sh
 source "$_RL_ROOT/scripts/lib/test-output-sanitize.sh"
+# ADR-050 (#1581): unified prior-work seam — seed from this lens's prior finding.
+# shellcheck source=../../../scripts/lib/prior-output-reader.sh
+source "$_RL_ROOT/scripts/lib/prior-output-reader.sh"
 # registry.sh is idempotent (guard flag); makes resolve_persona_charter available
 # when _rl_lens_charter is called. Established precedent: plan/plugin.sh:44.
 # shellcheck source=../../../core/plugin-registry/registry.sh
@@ -149,6 +152,21 @@ _review_lens_run_inner() {
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
     local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content")"
+
+    # ADR-050 (#1581): seed from THIS lens's prior-run finding (keyed on
+    # lens-<id>.json) so a re-run's review references what the same lens flagged
+    # before instead of starting blind. Advisory — re-judge against the CURRENT
+    # diff; sanitized like the evidence. Gated on ZBUILD_RESTORED_ARTIFACTS_DIR so
+    # it fires ONLY on a genuine cross-run restore (never this run's own lens output).
+    local _prior_lens=""
+    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
+        _prior_lens="$(_read_prior_output "lens-${lens}.json" 2>/dev/null || true)"
+    fi
+    if [[ -n "${_prior_lens//[[:space:]]/}" ]]; then
+        _prior_lens="$(printf '%s' "$_prior_lens" | _zbuild_sanitize_for_llm)"
+        prompt+=$'\n\n## PRIOR REVIEW (this lens on a previous attempt — reference; RE-JUDGE against the current diff)\n'
+        prompt+="$_prior_lens"$'\n'
+    fi
 
     # ─── ONE route_to_model call (ADR-017 per-stage tier; ADR-003 by tier) ──
     # ADR-018 Pattern 1: JSON envelope mode so reasoning turns don't leak as a

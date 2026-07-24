@@ -35,6 +35,10 @@ source "$_DESIGN_ROOT/core/output/stage-io.sh"
 source "$_DESIGN_ROOT/scripts/lib/prompt-overrides.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_DESIGN_ROOT/scripts/lib/router-rc-classify.sh"
+# ADR-050 (#1581): unified prior-work seam — read prior design.md from an
+# intra-cycle iter OR a prior run's restored/local artifact via one call.
+# shellcheck source=../../../scripts/lib/prior-output-reader.sh
+source "$_DESIGN_ROOT/scripts/lib/prior-output-reader.sh"
 # Persona resolver + stage/lens composition seam (#1304, #1324).
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_DESIGN_ROOT/core/plugin-registry/registry.sh"
@@ -117,19 +121,31 @@ _design_read_design_gate_feedback() {
 }
 
 # design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
-# design.md body for iter N+1 to refine rather than re-create.
+# design.md body to refine rather than re-create.
+# ADR-050 (#1581): delegate to the unified seam so this covers BOTH an intra-cycle
+# iter (tier 1 = prior_design.txt, iter≥2 — the original behavior) AND a prior run
+# of the same issue (tier 2/3 = restored/local design.md). Cycle behavior unchanged.
 _design_read_prior_design() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    [[ "$iter" =~ ^[0-9]+$ ]] || return 0
-    (( iter < 2 )) && return 0
-    local f="$fb_dir/prior_design.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s' "$body"
+    _read_prior_output "design.md"
+}
+
+# ADR-050 (#1581): best-effort GitHub blob URL for the durable prior design on the
+# state branch (zbuild/state/issue-<N>/artifacts/design.md). Empty when the repo
+# slug or issue can't be resolved (local run / non-GitHub remote) — the prior
+# design CONTENT is injected regardless; this is just a browsable pointer.
+_design_state_blob_url() {
+    local issue="${ZBUILD_ISSUE:-0}"
+    [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]] || return 0
+    local url; url="$(git config --get remote.origin.url 2>/dev/null || true)"
+    local slug=""
+    case "$url" in
+        git@github.com:*)     slug="${url#git@github.com:}" ;;
+        https://github.com/*) slug="${url#https://github.com/}" ;;
+        *) return 0 ;;
+    esac
+    slug="${slug%.git}"
+    [[ -z "$slug" ]] && return 0
+    printf 'https://github.com/%s/blob/zbuild/state/issue-%s/artifacts/design.md' "$slug" "$issue"
 }
 
 # Inner implementation — unit-testable with explicit paths.
@@ -329,8 +345,17 @@ DESIGN_PROMPT
             "$_impact_fb_body" >> "$prompt_input_file"
     fi
     if [[ -n "$_prior_design_body" ]]; then
-        printf '\n## PRIOR DESIGN (your previous iteration — refine, do not recreate)\n%s\n' \
+        printf '\n## PRIOR DESIGN (a previous attempt on this issue — refine, do not recreate)\n%s\n' \
             "$_prior_design_body" >> "$prompt_input_file"
+        # ADR-050 (#1581): when the prior design came from a restored PRIOR RUN,
+        # add a browsable pointer to its durable copy on the state branch. Guarded
+        # on ZBUILD_RESTORED_ARTIFACTS_DIR so intra-cycle-only refinements (and
+        # first-ever runs with no state branch) never emit a dead link.
+        if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
+            local _prior_design_blob; _prior_design_blob="$(_design_state_blob_url 2>/dev/null || true)"
+            [[ -n "$_prior_design_blob" ]] && printf '\n(Durable copy: %s — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)\n' \
+                "$_prior_design_blob" >> "$prompt_input_file"
+        fi
         if [[ -n "$_impact_fb_body" ]]; then
             printf '\nExpand the PRIOR DESIGN scope block to cover the gaps named in PRIOR IMPACT FEEDBACK. Preserve all existing scope entries; only ADD the missing ones.\n' \
                 >> "$prompt_input_file"

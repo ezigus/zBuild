@@ -91,6 +91,30 @@ jobs:
       - name: Install zbuild
         run: bash install.sh
 
+      - name: Fetch prior work + state branches (ADR-050 #1581)
+        # Prior-work reuse: a fresh runner's shallow checkout has neither the
+        # issue's work branch (zbuild/issue-N-ci) nor its state branch
+        # (zbuild/state/issue-N). Fetch both into remote-tracking refs so intake
+        # can ADOPT the existing work branch (its gate checks refs/remotes/origin/…)
+        # and the runner can RESTORE prior artifacts from the state branch. Guarded
+        # so a first-ever run (no such branch on origin) is a clean no-op. Skipped
+        # for goal-only runs (no issue number → no deterministic branch name).
+        if: ${{ inputs.issue_number != '' }}
+        env:
+          # Pass the input through env (not inline ${{ }}) so a crafted value can
+          # never be substituted into the shell before parsing (expression injection).
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          n="$ISSUE_NUMBER"
+          work="zbuild/issue-${n}-ci"
+          state="zbuild/state/issue-${n}"
+          git fetch origin "refs/heads/${work}:refs/remotes/origin/${work}" 2>/dev/null \
+            && echo "::notice::fetched prior work branch '${work}'" \
+            || echo "::notice::no prior work branch '${work}' on origin (first run)"
+          git fetch origin "refs/heads/${state}:refs/remotes/origin/${state}" 2>/dev/null \
+            && echo "::notice::fetched prior state branch '${state}'" \
+            || echo "::notice::no prior state branch '${state}' on origin (first run)"
+
       - name: Run pipeline
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
@@ -137,27 +161,41 @@ jobs:
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Via env (not inline ${{ }}) so a crafted value can't inject shell.
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
         run: |
           branch="${ZBUILD_WORKSPACE_BRANCH}"
+          # Plain --force (not --force-with-lease): this is a disposable,
+          # pipeline-owned branch (zbuild/issue-N-ci) that each run regenerates.
+          # Last-writer-wins is the intended behavior here — the current run's
+          # work is always what we want on origin (#947 CI-7 fix).
           if ! git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null; then
             echo "::warning::work branch '$branch' not found — pipeline aborted before intake created it; nothing to push"
-            exit 0
+          else
+            new_commits="$(git rev-list --count "$branch" ^"${{ github.sha }}" 2>/dev/null || echo 0)"
+            if [[ "$new_commits" -eq 0 ]]; then
+              echo "::notice::'$branch' has no commits beyond base — build produced nothing to push"
+            else
+              git push --force origin "refs/heads/$branch:refs/heads/$branch" \
+                && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
+                || { echo "::error::failed to push '$branch'"; exit 1; }
+            fi
           fi
-          new_commits="$(git rev-list --count "$branch" ^"${{ github.sha }}" 2>/dev/null || echo 0)"
-          if [[ "$new_commits" -eq 0 ]]; then
-            echo "::notice::'$branch' has no commits beyond base — build produced nothing to push"
-            exit 0
+
+          # ADR-050 (#1581): also push the STATE branch (durable prior-run
+          # artifacts: design.md/plan.json/etc.) pass OR fail, so completed-stage
+          # work survives the torn-down runner and the next run restores it. This
+          # branch is never merged into the work branch or main (it's a sibling),
+          # so it can't pollute the PR diff. Pushed independently of the work
+          # branch above — artifacts can exist even when build produced no commit.
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            state_branch="zbuild/state/issue-${ISSUE_NUMBER}"
+            if git rev-parse --verify --quiet "refs/heads/$state_branch" >/dev/null; then
+              git push --force origin "refs/heads/$state_branch:refs/heads/$state_branch" \
+                && echo "::notice::pushed state branch '$state_branch' to origin" \
+                || echo "::warning::failed to push state branch '$state_branch'"
+            fi
           fi
-          # Plain --force (not --force-with-lease): this is a disposable,
-          # pipeline-owned branch (zbuild/issue-N-ci) that each run regenerates,
-          # and the runner's shallow checkout never fetches refs/remotes/origin/
-          # $branch, so a lease has no expected value to compare against and git
-          # rejects the push as "stale info" whenever a prior run already pushed
-          # the branch. Last-writer-wins is the intended behavior here — the
-          # current run's work is always what we want on origin (#947 CI-7 fix).
-          git push --force origin "refs/heads/$branch:refs/heads/$branch" \
-            && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
-            || { echo "::error::failed to push '$branch'"; exit 1; }
 
       - name: Upload pipeline artifacts
         # CI-5: upload on FAILURE too — a failed run is exactly when the router's
