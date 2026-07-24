@@ -182,7 +182,7 @@ grep -qF "[SPEC-3]" <<< "$(grep -A4 'TAUTOLOGICAL ASSERTIONS' <<< "$p")" \
     && assert_pass "L2d: tautology block names [SPEC-3]" \
     || assert_fail "L2d: tautology block must name [SPEC-3]" "(missing)"
 # charter now grants the re-author exception
-grep -qF "EXCEPT any listed as TAUTOLOGICAL" <<< "$p" \
+grep -qF "EXCEPT gate-flagged TAUTOLOGICAL assertions" <<< "$p" \
     && assert_pass "L2d: charter grants the tautology re-author exception" \
     || assert_fail "L2d: charter must note the tautology exception" "(missing)"
 # absent → block omitted

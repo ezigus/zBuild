@@ -259,9 +259,10 @@ assert_eq "S12: tautology verdict unchanged (still fail)" "fail" "$(jq -r .verdi
 assert_eq "S12: tautology disposition unchanged (still terminal)" "terminal" "$(jq -r .disposition <<<"$RESULT")"
 
 # ── S13 (#1219): a build-fixable failure does NOT set route_target ─────────────
-# ONLY tautology is design-rooted. An untagged_spec (recoverable, build-fixable)
-# stays in the build cycle — no route_target, so the gate-aggregator keeps
-# verdict=fail and the route_back never fires. REPO3 = untagged-only.
+# As of #1583 NO failure class is design-rooted (tautology became build-fixable
+# too — see S12). An untagged_spec (recoverable, build-fixable) stays in the build
+# cycle — no route_target, so the gate-aggregator keeps verdict=fail and the
+# route_back never fires. REPO3 = untagged-only.
 set +e; _run_gate "$REPO3"; set -e
 assert_eq "S13: untagged-only (build-fixable) → route_target absent" "" "$(jq -r '.route_target // ""' <<<"$RESULT")"
 

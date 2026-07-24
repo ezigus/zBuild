@@ -21,7 +21,7 @@ The gate is split into a **generic slot** and a **named strategy**:
   wiring-reachability strategy described below. The plugin dir/manifest id was
   renamed `acceptance-gate → spec-acceptance` (method-named). Role-then-id
   resolution (ADR-042) dispatches the stage to it, so a different repo may bind
-  a _different_ plugin to `acceptance_gate` without adopting SPEC. The result
+  a *different* plugin to `acceptance_gate` without adopting SPEC. The result
   artifact keeps its slot-scoped name `acceptance-gate-result.json` (readers
   resolve it via `provides.artifact_type`, not a literal).
 - **Declarative `preconditions`** (manifest, machine-readable) generalize the
@@ -36,11 +36,11 @@ The gate is split into a **generic slot** and a **named strategy**:
 ## Context
 
 ADR-031 introduced the behavioral acceptance contract: `design` emits an
-` ```acceptance ` block of `SPEC:` lines + `TESTFILES:`, writes failing
+```` ```acceptance ```` block of `SPEC:` lines + `TESTFILES:`, writes failing
 stubs, `build` makes them pass, and `test_assessment` judges whether each SPEC
 holds. But ADR-031 explicitly left the teeth as **convention, not tooling**
-("_Design writes failing tests … enforced by convention, not by tooling_";
-"_Don't-weaken charter … enforced by process, not automation_").
+("*Design writes failing tests … enforced by convention, not by tooling*";
+"*Don't-weaken charter … enforced by process, not automation*").
 
 The hole: nothing links an individual SPEC to an assertion that would **fail
 without the implementation**. A SPEC passes if its TESTFILES are merely green
@@ -130,7 +130,7 @@ changes (#867).
   with each declared TESTFILE overlaid via `git show HEAD:<path>`; the test runs
   with `ZBUILD_TEST_QUIET` unset and a hard timeout (`ZBUILD_NEGCTL_TIMEOUT`,
   default 60s). The validity test is rc-based at the file level: `rc_baseline != 0
-&& rc_head == 0`. The worktree is removed via a `RETURN` trap.
+  && rc_head == 0`. The worktree is removed via a `RETURN` trap.
 - **Plugin** (`plugins/agent/spec-acceptance/`, role `acceptance_gate`; renamed
   from `acceptance-gate` per the 2026-07-01 amendment): `kind: agent`, modeled on
   `cq-preflight`; writes `acceptance-gate-result.json` (`{"verdict","failures"}`),
@@ -164,7 +164,7 @@ the cycle budget on a missing `[SPEC-n]` tag (#863 dogfood run 20260618181546-49
 - The gate's `failures[]` — the `untagged_spec:<id>` entries ONLY — is fed back to
   build as a structured `prior_acceptance_feedback` input via a SECOND
   `build_review_cycle` feedback edge (`acceptance-gate.gate_result →
-build.prior_acceptance_feedback`). Build injects an `## ACCEPTANCE COVERAGE GAPS`
+  build.prior_acceptance_feedback`). Build injects an `## ACCEPTANCE COVERAGE GAPS`
   block enumerating the exact untagged ids, authoritative over review prose; adding a
   missing `[SPEC-n]` label is explicitly permitted (NOT "weakening").
 - Build's prompt ALSO proactively enumerates every design SPEC id
@@ -179,15 +179,15 @@ build.prior_acceptance_feedback`). Build injects an `## ACCEPTANCE COVERAGE GAPS
 
 ## Amendment (#956, 2026-06-19) — Level 3: reachability (the wiring negative control)
 
-Level 2 reverts the _implementation_ and requires a SPEC test to fail — proving the
-code does real work. It cannot prove the code is _reached by the production path_: a
+Level 2 reverts the *implementation* and requires a SPEC test to fail — proving the
+code does real work. It cannot prove the code is *reached by the production path*: a
 new library implemented but never wired into the live dispatch still passes, because
 the SPEC test exercises it directly. This is the "green but inert" class (#845 plateau
 detector never wired into `standard.yaml`; #913 live-flow post-condition gated on a
 token authors never emitted).
 
 Level 3 is the **dual of the Level-2 negative control** — an integration-level ablation
-that reverts the _wiring_ instead of the implementation:
+that reverts the *wiring* instead of the implementation:
 
 - **`WIRING:` declaration** in the ```acceptance block names the separable file(s) that
   activate the behavior in the live path (a `config/templates/*.yaml` flow entry, a
@@ -206,8 +206,8 @@ that reverts the _wiring_ instead of the implementation:
   target (region-level `path:anchor` revert is deferred).
 
 **Self-hosting note:** because Level 3 (and the `WIRING:` grammar) extends what the gate
-reads from `design.md`, a dogfood that _uses_ the new grammar cannot be validated by the
-_installed_ (pre-`WIRING`) engine in the same run — the contract reader is pinned to the
+reads from `design.md`, a dogfood that *uses* the new grammar cannot be validated by the
+*installed* (pre-`WIRING`) engine in the same run — the contract reader is pinned to the
 install (ADR-023) while the test runner uses the working tree. Such grammar-extending
 changes are hand-landed, then installed; thereafter grammar-dependent features dogfood
 normally. Build-side consumption of `inert_wiring` (so build self-corrects) is #957.
@@ -219,7 +219,7 @@ recovery. Two robustness gaps caused exactly that:
 
 1. **Timeout misclassification.** Each SPEC test runs under `timeout ${ZBUILD_NEGCTL_TIMEOUT}`
    (rc 124, or 143 when the child dies from the SIGTERM). A timeout leaves the test's true
-   pass/fail _unknown_, yet the old rc-based logic folded a HEAD-run timeout into the genuine
+   pass/fail *unknown*, yet the old rc-based logic folded a HEAD-run timeout into the genuine
    `not_passing_at_head` class, and a BASELINE-run timeout spuriously satisfied the valid
    control (`rc_base != 0 && rc_head == 0`) → a **false PASS**. Fix: `_negctl_run` /
    `_reachability_run` detect rc 124/143; a timeout on EITHER run is an INFRA signal that is
@@ -252,12 +252,12 @@ is now removed: the plugin OWNS the class→disposition mapping and writes a gen
 (see ADR-021, generic member-disposition contract). Mapping (`_ag_classify_disposition`,
 precedence highest-first):
 
-| disposition   | failure classes                                                                       | engine effect                                               |
-| ------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `terminal`    | tautology, not_passing_at_head, inert_wiring, no_testfile, malformed_acceptance_block | HALT — cycle does not converge (rc=8), pipeline.end=failed  |
-| `recoverable` | untagged_spec:* (only)                                                                | NON-terminal; #951 build feedback loop (cycle re-iterates)  |
-| `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)               | NON-terminal AND non-blocking for convergence (infra flake) |
-| `none`        | (verdict=pass)                                                                        | n/a                                                         |
+| disposition   | failure classes                                                            | engine effect                                             |
+| ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `terminal`    | tautology, not_passing_at_head, inert_wiring, no_testfile, malformed_acceptance_block | HALT — cycle does not converge (rc=8), pipeline.end=failed |
+| `recoverable` | untagged_spec:* (only)                                                     | NON-terminal; #951 build feedback loop (cycle re-iterates) |
+| `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
+| `none`        | (verdict=pass)                                                             | n/a                                                        |
 
 `terminal` outranks any lower class, so a genuine violation alongside an infra failure is still
 terminal. The gate-aggregator (ADR-040 §2) reads the SAME field: `advisory` is excluded from
@@ -323,11 +323,12 @@ plugin (ADR-021: the engine and the aggregator know no acceptance-gate failure v
 
 ## Amendment (#1265, 2026-07-06) — `no_impl_delta` SKIP is legit ONLY as a clean `empty_diff` resting point
 
-The acceptance-gate negative-control + reachability checks `SKIP` with `no_impl_delta` when there is no committed diff to judge (`base_sha == head_sha`, 0 commits ahead). That SKIP is correct for a genuine **nothing-to-do** convergence — a build that reached `LOOP_COMPLETE` with an empty diff and green gates (`verdict=empty_diff`, `#1208`/`#895`). It is a **false pass** when the branch is empty for the WRONG reason: a `scope_violation` discarded the whole diff (`#1214` dogfood), so `npm test` passed on the _uncommitted_ tree, the gate SKIPped, the gate-aggregator passed, and the cycle **converged on nothing** — sailing to a confusing `pr`-stage abort (`No commits between main and branch`) ~38 min later.
+The acceptance-gate negative-control + reachability checks `SKIP` with `no_impl_delta` when there is no committed diff to judge (`base_sha == head_sha`, 0 commits ahead). That SKIP is correct for a genuine **nothing-to-do** convergence — a build that reached `LOOP_COMPLETE` with an empty diff and green gates (`verdict=empty_diff`, `#1208`/`#895`). It is a **false pass** when the branch is empty for the WRONG reason: a `scope_violation` discarded the whole diff (`#1214` dogfood), so `npm test` passed on the *uncommitted* tree, the gate SKIPped, the gate-aggregator passed, and the cycle **converged on nothing** — sailing to a confusing `pr`-stage abort (`No commits between main and branch`) ~38 min later.
 
 - **0-commit + build verdict ≠ `empty_diff` is NOT a resting point.** The cycle orchestrator adds a `no_committed_changes` guard (see ADR-021 amendment): a convergence that would fire with 0 commits ahead of the intake baseline AND `build.verdict != empty_diff` is suppressed and terminated (`no_committed_changes`, rc=5, blocked-class → halts before review/`pr`), unless a governed scope grant is pending (`#870`/`#840` — the next iter commits).
 - **The `empty_diff` resting point is EXEMPT.** A true clean `empty_diff` converge with 0 real commits genuinely has nothing to ship; the `no_impl_delta` SKIP and convergence both remain correct. No `#1208`/`#895` regression.
 - **`pr`-stage backstop.** `pr-open` resolves the merge-base and refuses (`plugin.run.error reason=no_committed_changes`, rc=2) BEFORE push + `gh pr create` when 0 commits ahead — belt-and-suspenders for non-cycle paths and the confusing `gh` error.
+
 
 ## Amendment (#1583, 2026-07-23) — tautology is BUILD-FIXABLE → routes to build with enriched diagnosis
 
@@ -346,19 +347,15 @@ orthogonal to the don't-weaken charter (which forbids relaxing a *real* requirem
 
 - The acceptance-gate **no longer sets `route_target: "design"`** for a tautology
   (`plugins/agent/spec-acceptance/plugin.sh`). Tautology stays a terminal failure but flows through
-  the existing `gate_feedback → build` edge and re-iterates inside `build_test_cycle`.
+  the existing `gate_feedback -> build` edge and re-iterates inside `build_test_cycle`.
 - **Build is told, precisely, what to fix.** Build reads the flagged `tautology:<id>` ids
   (`_build_read_tautology_ids`) and its prompt gains a `## TAUTOLOGICAL ASSERTIONS` section
   instructing it to re-author each so the tagged assertion FAILS at the merge-base baseline
-  (reverting the change's WIRING file must break it), with the per-SPEC negctl diagnosis from
-  `gate_feedback.md`.
+  (reverting the change's WIRING file must break it), with the per-SPEC negctl diagnosis.
 - **Build's charter is relaxed for flagged tautologies only.** A gate-flagged tautological SPEC is
-  explicitly re-authorable; every other acceptance assertion remains protected by the don't-weaken
-  rule.
+  explicitly re-authorable; every other acceptance assertion remains protected by the don't-weaken rule.
 - **No gaming, by construction.** The mechanical negative-control (Level 2 above) re-runs on the next
-  iteration and rejects a still-tautological result. The gate polices the outcome, so build may fix
-  it freely; a build that weakens rather than strengthens is caught again and the cycle budget
-  applies (`max_iterations` → `rc=8`).
+  iteration and rejects a still-tautological result; the cycle budget applies (`max_iterations` -> `rc=8`).
 
 The generic `route_target` carrier + the `build_test_cycle` `route_back` edge are **retained but
 dormant** (no failure class currently sets `route_target`), ready for any genuinely design-rooted
