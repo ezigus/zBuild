@@ -90,8 +90,17 @@ install_template_overlay "$OVERLAY_REPO" crash-resume-minimal
 # Originally a fixed `sleep 1` then SIGKILL. Post-Wave-19 (template-resolver,
 # two-channel verdict, recursive seq-prefix) the runner startup occasionally
 # crosses 1s on GHA's slower runners, so SIGKILL arrives BEFORE the state
-# file is written → flake on #727 CI. Poll for the state file's appearance
-# (cap at 5s) so the test races against state-write, not absolute wall clock.
+# file is written → flake on #727 CI. Poll for the state file's appearance so
+# the test races against state-write, not absolute wall clock. The poll BREAKS
+# the instant `status` is written (~1.7s locally), then kills — the cap is only a
+# fail-safe upper bound. #1587: raised 5s → 12s because in the dogfood test stage
+# crash-resume runs inside the full parallel suite on a slower GHA runner, where
+# startup can exceed 5s under peak load (measured: NO code latency regression,
+# just a too-tight margin). 12s stays below intake's 15s sleep so the kill still
+# lands mid-run. NOTE: the status assertion below (Test 3) is a MID-RUN PROXY, not
+# a crash-safety invariant — an empty status just means the kill landed before the
+# run really started (nothing to resume); the real invariants are the valid-JSON /
+# .bak / resume checks, which do not depend on this timing.
 ( cd "$OVERLAY_REPO" && \
   ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
   ZBUILD_STATE_DIR="$ZBUILD_STATE_DIR" \
@@ -100,11 +109,12 @@ install_template_overlay "$OVERLAY_REPO" crash-resume-minimal
   ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db" \
       bash "$ZBUILD_CLI" pipeline start --goal "test crash resume" --template crash-resume-minimal 2>/dev/null ) &
 pipeline_pid=$!
-# Wait up to 5s for state file to appear AND contain a status field
-# (intake writes status BEFORE entering the long sleep). Without the status
+# Wait up to 12s (#1587) for state file to appear AND contain a status field
+# (intake writes status BEFORE entering the long 15s sleep). Without the status
 # check, the file can exist but be empty when SIGKILL arrives, causing the
-# Test 3 status assertion to fail with an empty value.
-for _i in 1 2 3 4 5 6 7 8 9 10; do
+# Test 3 status assertion to fail with an empty value. Breaks early the instant
+# status appears; the 12s cap is a fail-safe for slow/loaded CI runners.
+for _i in $(seq 1 24); do
     if [[ -f "$STATE_FILE" ]]; then
         _st="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || true)"
         [[ -n "$_st" ]] && break
