@@ -175,7 +175,7 @@ printf '%s' '{"verdict":"fail","failures":["tautology:SPEC-3"]}' \
     > "$FB/prior_acceptance_feedback.txt"
 export ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB"
 p="$(_drive_build)"
-grep -qF "TAUTOLOGICAL ASSERTIONS" <<< "$p" \
+grep -qF "## TAUTOLOGICAL ASSERTIONS" <<< "$p" \
     && assert_pass "L2d: prompt injects TAUTOLOGICAL ASSERTIONS block" \
     || assert_fail "L2d: tautology block must inject when tautology present" "(missing)"
 grep -qF "[SPEC-3]" <<< "$(grep -A4 'TAUTOLOGICAL ASSERTIONS' <<< "$p")" \
@@ -188,7 +188,7 @@ grep -qF "EXCEPT gate-flagged TAUTOLOGICAL assertions" <<< "$p" \
 # absent → block omitted
 rm -f "$FB/prior_acceptance_feedback.txt"
 p="$(_drive_build)"
-grep -qF "TAUTOLOGICAL ASSERTIONS" <<< "$p" \
+grep -qF "## TAUTOLOGICAL ASSERTIONS" <<< "$p" \
     && assert_fail "L2d: tautology block must omit when no feedback file" "(present)" \
     || assert_pass "L2d: tautology block omits when no feedback file"
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
