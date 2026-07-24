@@ -176,14 +176,33 @@ _pr_open_run_inner() {
     if [[ -n "$_merge_base" ]]; then
         _ahead_count="$(git rev-list --count "${_merge_base}..HEAD" 2>/dev/null || echo -1)"
         if [[ "$_ahead_count" == "0" ]]; then
-            error "pr_open: refusing to open PR — no commits between merge-base and '${current_branch}' (nothing to ship)"
-            emit_event "plugin.run.error" "plugin=pr-open" \
-                "reason=no_committed_changes" "branch=${current_branch}"
-            jq -n \
-                --argjson draft "${_draft_bool}" \
-                '{"schema_version":1,"status":"error","reason":"no committed changes on branch","draft":$draft}' \
-                > "$output_pr_result_json"
-            return 2
+            # ADR-050 (#1581): local HEAD has nothing ahead of the merge-base.
+            # Before refusing, check the REMOTE work branch — a prior run may have
+            # committed + pushed the work while this run cold-started (e.g. intake
+            # couldn't adopt the branch). If origin/<branch> carries commits, the
+            # work IS shippable: zbuild_push_reconcile below no-ops when the remote
+            # is strictly ahead (never clobbers), and the PR reuse/create still
+            # opens/updates the PR against origin's tip. Only refuse when there is
+            # genuinely nothing to ship anywhere (local AND remote both empty).
+            local _remote_ahead="-1"
+            if git rev-parse --verify --quiet "refs/remotes/origin/${target_branch}" >/dev/null 2>&1; then
+                _remote_ahead="$(git rev-list --count "${_merge_base}..refs/remotes/origin/${target_branch}" 2>/dev/null || echo -1)"
+            fi
+            if [[ "$_remote_ahead" =~ ^[0-9]+$ && "$_remote_ahead" -gt 0 ]]; then
+                warn "pr_open: local HEAD has no new commits, but origin/${target_branch} carries ${_remote_ahead} commit(s) — the work is already on origin; opening/updating the PR against it (not re-shipping, not overwriting)."
+                emit_event "plugin.pr_open.preflight_remote_has_work" "plugin=pr-open" \
+                    "branch=${target_branch}" "remote_ahead=${_remote_ahead}"
+                # fall through to push (no-op on strictly-ahead remote) + PR reuse
+            else
+                error "pr_open: refusing to open PR — no commits between merge-base and '${current_branch}', and origin/${target_branch} has no prior work either (nothing to ship anywhere)"
+                emit_event "plugin.run.error" "plugin=pr-open" \
+                    "reason=no_committed_changes" "branch=${current_branch}"
+                jq -n \
+                    --argjson draft "${_draft_bool}" \
+                    '{"schema_version":1,"status":"error","reason":"no committed changes on branch or origin","draft":$draft}' \
+                    > "$output_pr_result_json"
+                return 2
+            fi
         fi
     fi
 
