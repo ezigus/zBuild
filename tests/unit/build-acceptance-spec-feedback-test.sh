@@ -152,6 +152,47 @@ grep -qF "ACCEPTANCE COVERAGE GAPS" <<< "$p" \
     || assert_pass "L2b: gap block omits when no gap file present"
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 
+# ─── L2c (#1583): _build_read_tautology_ids returns ONLY tautology ids ────────
+printf '%s' '{"verdict":"fail","failures":["untagged_spec:SPEC-2","tautology:SPEC-3","tautology:SPEC-5","negctl_error:worktree_failed"]}' \
+    > "$FB/prior_acceptance_feedback.txt"
+got_t="$(ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _build_read_tautology_ids | tr '\n' ',' | sed 's/,$//')"
+assert_eq "L2c: reader returns ONLY tautology ids (untagged/infra filtered)" "SPEC-3,SPEC-5" "$got_t"
+printf '%s' '{"verdict":"pass","failures":[]}' > "$FB/prior_acceptance_feedback.txt"
+got_t2="$(ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _build_read_tautology_ids)"
+assert_eq "L2c: verdict=pass → no tautology ids" "" "$got_t2"
+
+# ─── L2d (#1583): tautology present → prompt injects TAUTOLOGICAL ASSERTIONS ──
+cat > "$DESIGN_MD" <<'DESIGN'
+# Design
+
+```acceptance
+SPEC-1: change behavior A
+TESTFILES:
+tests/unit/build-acceptance-spec-feedback-test.sh
+```
+DESIGN
+printf '%s' '{"verdict":"fail","failures":["tautology:SPEC-3"]}' \
+    > "$FB/prior_acceptance_feedback.txt"
+export ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB"
+p="$(_drive_build)"
+grep -qF "## TAUTOLOGICAL ASSERTIONS" <<< "$p" \
+    && assert_pass "L2d: prompt injects TAUTOLOGICAL ASSERTIONS block" \
+    || assert_fail "L2d: tautology block must inject when tautology present" "(missing)"
+grep -qF "[SPEC-3]" <<< "$(grep -A4 'TAUTOLOGICAL ASSERTIONS' <<< "$p")" \
+    && assert_pass "L2d: tautology block names [SPEC-3]" \
+    || assert_fail "L2d: tautology block must name [SPEC-3]" "(missing)"
+# charter now grants the re-author exception
+grep -qF "EXCEPT gate-flagged TAUTOLOGICAL assertions" <<< "$p" \
+    && assert_pass "L2d: charter grants the tautology re-author exception" \
+    || assert_fail "L2d: charter must note the tautology exception" "(missing)"
+# absent → block omitted
+rm -f "$FB/prior_acceptance_feedback.txt"
+p="$(_drive_build)"
+grep -qF "## TAUTOLOGICAL ASSERTIONS" <<< "$p" \
+    && assert_fail "L2d: tautology block must omit when no feedback file" "(present)" \
+    || assert_pass "L2d: tautology block omits when no feedback file"
+unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

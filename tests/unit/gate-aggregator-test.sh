@@ -132,22 +132,38 @@ OUT="$(run_agg "$SF")"
 assert_json_key "TC-9: recoverable fail → verdict=fail (still blocking)" "$OUT" '.verdict' "fail"
 assert_contains "TC-9: failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
 
-# ── TC-10 (#1219): a FAILED gate carrying route_target → verdict=route_<target> ─
-# ADR-045/ADR-040: a design-rooted failure (acceptance-gate tautology) adds a
-# generic `route_target` scalar to its result. The aggregator reads it from the
-# FAILED gate, emits verdict=route_design (≠pass so exit_when never converges and
-# merge stays on the PR path), mirrors route_target, and writes design-feedback.md
-# (the focused re-author payload the design_verify_cycle route_back carries back).
+# ── TC-10 (#1219, retained mechanism): a FAILED gate carrying route_target → verdict=route_<target> ─
+# ADR-045/ADR-040: the generic `route_target` rollup is RETAINED (dormant) for any
+# future genuinely design-rooted class. As of #1583 tautology NO LONGER sets
+# route_target (it is build-fixable — see TC-10b), so this case uses a SYNTHETIC
+# route_target=design result to exercise the aggregator's generic rollup path.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","disposition":"terminal","route_target":"design","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
+printf '{"verdict":"fail","disposition":"terminal","route_target":"design","reason":"a hypothetical design-rooted failure","failures":["some_design_rooted_class:SPEC-1"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-10: design-rooted fail → verdict=route_design" "$OUT" '.verdict' "route_design"
 assert_json_key "TC-10: route_target mirrored into the aggregate" "$OUT" '.route_target' "design"
 assert_contains "TC-10: failed[] still names the acceptance-gate" "$OUT" "acceptance-gate"
 assert_file_exists "TC-10: design-feedback.md written on route_design" "$AD/design-feedback.md"
-assert_contains "TC-10: design-feedback names the tautological SPEC" "$(cat "$AD/design-feedback.md")" "SPEC-1"
+assert_contains "TC-10: design-feedback names the SPEC" "$(cat "$AD/design-feedback.md")" "SPEC-1"
+
+# ── TC-10b (#1583): a TAUTOLOGY failure carries NO route_target → build-routed fail ─
+# Since #1477 removed design's stub-writer, BUILD authors assertion bodies, so a
+# tautology is build-fixable: the acceptance-gate sets NO route_target. The
+# aggregator must therefore emit a PLAIN verdict=fail (NOT route_design), write NO
+# design-feedback.md, and surface the tautology in gate-feedback.md so it routes to
+# build via the build_test_cycle gate_feedback → build edge.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","disposition":"terminal","reason":"SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
+    > "$AD/acceptance-gate-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-10b: tautology (no route_target) → verdict=fail (NOT route_design)" "$OUT" '.verdict' "fail"
+assert_eq "TC-10b: no route_target mirrored for tautology" "" "$(jq -r '.route_target // ""' <<< "$OUT")"
+assert_file_not_exists "TC-10b: NO design-feedback.md for a tautology (not design-rooted)" "$AD/design-feedback.md"
+assert_file_exists "TC-10b: gate-feedback.md written (routes to build)" "$AD/gate-feedback.md"
+assert_contains "TC-10b: gate-feedback surfaces the tautological SPEC for build" "$(cat "$AD/gate-feedback.md")" "SPEC-1"
 
 # ── TC-11 (#1219): a FAILED gate WITHOUT route_target → plain verdict=fail ─────
 # The existing verdict=fail path is UNCHANGED when no failing gate is design-

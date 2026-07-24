@@ -10,7 +10,7 @@ version: 0.1.0
 description: |
   Deterministic, LLM-free T0 tool stage (ADR-046, ADR-037 §1/§3, EPIC #1216
   issue #1218). The PRE-build mechanical structural gate for the design stage:
-  pure grep over design.md + the red-first stubs design already writes, with NO
+  pure grep over design.md (structural checks C1..C5), with NO
   baseline run and NO model call (ADR-037 §3 invariant).
 
   Runs six structural checks and reports ALL violations in ONE pass (no

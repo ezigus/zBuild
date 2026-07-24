@@ -295,6 +295,12 @@ deferred there; #1211 closes only the two acceptance-gate sandbox runners.
 
 ## Amendment (#1219, 2026-07-04) — tautology is DESIGN-ROOTED → routes back to design
 
+> **Superseded by Amendment #1583 (below).** #1219 routed a tautology back to design on the
+> premise that design authors the assertion. #1477 (commit 8f89dd1) removed design's stub-writer,
+> making **build** the author of all assertion bodies — so routing tautology to design became a
+> dead end (design can only edit `design.md` declarations, which are already correct). #1583 makes
+> tautology **build-fixable** instead. The text below is retained for history.
+
 The Level-2 negative control classifies a `[change]` SPEC whose tagged assertion PASSES at the
 merge-base baseline as **tautological** (`tautology:<spec>`): the test asserts nothing, the classic
 "green but inert" defect. The build stage is **forbidden** to fix this — ADR-036's whole point is
@@ -322,3 +328,35 @@ The acceptance-gate negative-control + reachability checks `SKIP` with `no_impl_
 - **0-commit + build verdict ≠ `empty_diff` is NOT a resting point.** The cycle orchestrator adds a `no_committed_changes` guard (see ADR-021 amendment): a convergence that would fire with 0 commits ahead of the intake baseline AND `build.verdict != empty_diff` is suppressed and terminated (`no_committed_changes`, rc=5, blocked-class → halts before review/`pr`), unless a governed scope grant is pending (`#870`/`#840` — the next iter commits).
 - **The `empty_diff` resting point is EXEMPT.** A true clean `empty_diff` converge with 0 real commits genuinely has nothing to ship; the `no_impl_delta` SKIP and convergence both remain correct. No `#1208`/`#895` regression.
 - **`pr`-stage backstop.** `pr-open` resolves the merge-base and refuses (`plugin.run.error reason=no_committed_changes`, rc=2) BEFORE push + `gh pr create` when 0 commits ahead — belt-and-suspenders for non-cycle paths and the confusing `gh` error.
+
+
+## Amendment (#1583, 2026-07-23) — tautology is BUILD-FIXABLE → routes to build with enriched diagnosis
+
+**Supersedes the routing decision of Amendment #1219.** #1219 routed a `tautology` failure back to
+**design** on the premise that design authored the assertion and build was forbidden to touch it.
+That premise no longer holds: **#1477 (commit 8f89dd1) removed design's stub-writer**, so the
+**build** stage now authors every test assertion body, and `design.md` carries only the acceptance
+*declarations* (SPEC ids + TESTFILES bindings). Routing a tautology to design became a **deadlock** —
+design can only re-emit its (already-correct) declarations, build is forbidden to touch the
+assertion, so neither stage can fix it and the `build_test_cycle` route-back budget exhausts to
+`rc=8`. Live evidence: issue #1576 failed this way three times (~8h) with a byte-identical
+re-authored acceptance block each pass.
+
+Decision: **a tautology is build-fixable.** Re-authoring a *false* assertion into a genuine one is
+orthogonal to the don't-weaken charter (which forbids relaxing a *real* requirement). Concretely:
+
+- The acceptance-gate **no longer sets `route_target: "design"`** for a tautology
+  (`plugins/agent/spec-acceptance/plugin.sh`). Tautology stays a terminal failure but flows through
+  the existing `gate_feedback -> build` edge and re-iterates inside `build_test_cycle`.
+- **Build is told, precisely, what to fix.** Build reads the flagged `tautology:<id>` ids
+  (`_build_read_tautology_ids`) and its prompt gains a `## TAUTOLOGICAL ASSERTIONS` section
+  instructing it to re-author each so the tagged assertion FAILS at the merge-base baseline
+  (reverting the change's WIRING file must break it), with the per-SPEC negctl diagnosis.
+- **Build's charter is relaxed for flagged tautologies only.** A gate-flagged tautological SPEC is
+  explicitly re-authorable; every other acceptance assertion remains protected by the don't-weaken rule.
+- **No gaming, by construction.** The mechanical negative-control (Level 2 above) re-runs on the next
+  iteration and rejects a still-tautological result; the cycle budget applies (`max_iterations` -> `rc=8`).
+
+The generic `route_target` carrier + the `build_test_cycle` `route_back` edge are **retained but
+dormant** (no failure class currently sets `route_target`), ready for any genuinely design-rooted
+class a future ADR might introduce.

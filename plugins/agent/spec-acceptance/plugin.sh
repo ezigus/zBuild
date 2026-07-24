@@ -365,23 +365,24 @@ acceptance_gate_run() {
     # message that NAMES the offending SPEC ids + class, replacing the opaque
     # member_terminal_failure the cycle otherwise surfaces.
     local failures_json="[]" disposition reason_msg=""
-    # #1219 (ADR-045/ADR-036): a DESIGN-ROOTED failure carries a generic
-    # `route_target` scalar so the gate-aggregator + build_test_cycle route_back
-    # can rewind to design (which authored the assertion). ONLY tautology is
-    # design-rooted — build is forbidden to touch acceptance assertions (ADR-036),
-    # so a tautological [change] SPEC can only be fixed by RE-AUTHORING it. The
-    # other terminal classes (not_passing_at_head / no_testfile / inert_wiring /
-    # malformed) stay build-fixable/terminal and set NO route_target. The plugin's
-    # SPEC vocabulary → generic-field mapping stays HERE (ADR-021: the engine and
-    # aggregator know no plugin vocabulary). verdict / disposition / rc UNCHANGED.
-    local route_target="" _f
+    # #1583 (supersedes #1219): tautology is now BUILD-FIXABLE, NOT design-rooted.
+    # Since #1477 removed design's stub-writer, BUILD authors every test assertion
+    # body — so a tautological [change] SPEC (assertion passes at the merge-base
+    # baseline) can only be fixed by build re-authoring its own assertion. The gate
+    # therefore sets NO route_target for tautology: it flows through the existing
+    # gate_feedback → build edge and stays in build_test_cycle, with the gate-
+    # aggregator surfacing the per-SPEC negctl diagnosis so build knows precisely
+    # what to fix. Re-authoring is safe by construction — the mechanical negative
+    # control re-runs next iteration and rejects a still-tautological result. NO
+    # terminal class currently sets route_target; the `route_target` carrier is
+    # retained (absent-when-empty) for any future genuinely design-rooted class.
+    # SPEC-vocabulary → generic-field mapping stays HERE (ADR-021). verdict /
+    # disposition / rc UNCHANGED.
+    local route_target=""
     if [[ ${#failures[@]} -gt 0 ]]; then
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
         disposition="$(_ag_classify_disposition "${failures[@]}")"
         reason_msg="$(_ag_build_reason "${failures[@]}")"
-        for _f in "${failures[@]}"; do
-            [[ "$_f" == tautology:* ]] && { route_target="design"; break; }
-        done
     else
         disposition="none"
     fi
