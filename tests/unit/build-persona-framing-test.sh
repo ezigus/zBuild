@@ -2,8 +2,8 @@
 # Unit (#1391): build stage uses persona_stage_framing to open its prompt.
 # SPEC-1[change] — with developer manifest present, the prompt includes the
 #   persona perspective text (new behavior; fails at merge-base baseline).
-# SPEC-2[guard]  — with developer manifest absent, the prompt falls back to
-#   'You are an autonomous build agent for the target project.' (existing behavior).
+# SPEC-2[change] — with developer manifest absent, the prompt falls back to
+#   behavior-first framing ($_task_intro) without the profession prefix.
 # SPEC-3[guard]  — the '## INSTRUCTIONS' section is present regardless of framing path.
 set -uo pipefail
 
@@ -91,7 +91,7 @@ assert_file_exists "SPEC-1: prompt file written when developer manifest present"
 assert_contains "[SPEC-1] developer perspective text in prompt when manifest present" \
     "$(cat "$PROMPT1")" "Focus on correctness and minimal implementation."
 
-# ── SPEC-2[guard]: developer manifest absent → fallback text in prompt ─────────
+# ── SPEC-2[change]: developer manifest absent → behavior-first fallback ──────
 AD2="$(_setup_fixture)"
 BROOT2="$(_root_without_developer)"
 _BUILD_ROOT="$BROOT2"
@@ -105,14 +105,12 @@ _BUILD_ROOT="$_ORIG_BUILD_ROOT"
 
 PROMPT2="$AD2/build-prompt.txt"
 assert_file_exists "SPEC-2: prompt file written when developer manifest absent" "$PROMPT2"
-assert_contains "[SPEC-2] fallback text present when manifest absent" \
-    "$(cat "$PROMPT2")" "You are an autonomous build agent for the target project."
-# Byte-identical fallback (DoD): the exact pre-#1391 opening, including line wraps.
-_expected_open='You are an autonomous build agent for the target project. You have Read, Edit, Write, and
-Bash tools available. Your job is to edit the working tree to implement the
-ORIGINAL TASK above.'
-assert_contains "[SPEC-2] fallback opening is byte-identical to the pre-persona framing" \
-    "$(cat "$PROMPT2")" "$_expected_open"
+_prompt2_content="$(cat "$PROMPT2")"
+_prof_in_prompt="no"
+grep -qF "You are an autonomous build agent" <<< "$_prompt2_content" && _prof_in_prompt="yes"
+assert_eq "[SPEC-2] profession prefix absent from fallback prompt" "no" "$_prof_in_prompt"
+assert_contains "[SPEC-2] behavior-first task intro present in fallback prompt" \
+    "$_prompt2_content" "You have Read, Edit, Write, and"
 
 # ── SPEC-3[guard]: ## INSTRUCTIONS section present regardless of framing path ──
 assert_contains "[SPEC-3] INSTRUCTIONS present in prompt with developer manifest" \
