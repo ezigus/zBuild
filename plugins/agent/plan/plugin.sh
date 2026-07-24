@@ -543,12 +543,17 @@ $_plan_instructions"
             "prior_num_turns=$_prior_turns"
     fi
 
-    # ADR-050 (#1581): seed from a prior RUN's plan.json (via the unified seam) —
-    # complements the exploration-cache resume above with the actual prior PLAN
-    # output. Advisory: reference and refine, don't blindly re-emit. Rides the
-    # router's single redaction pass with the rest of the assembled prompt.
-    local _prior_plan_json
-    _prior_plan_json="$(_read_prior_output "plan.json" 2>/dev/null || true)"
+    # ADR-050 (#1581): seed from a prior RUN's plan.json — complements the
+    # exploration-cache resume above with the actual prior PLAN output. Advisory:
+    # reference and refine, don't blindly re-emit. Rides the router's single
+    # redaction pass with the rest of the assembled prompt.
+    # Gated on ZBUILD_RESTORED_ARTIFACTS_DIR so this fires ONLY on a genuine
+    # cross-run restore — plan is a leaf, so it must never pick up stale/leaked
+    # cycle-feedback env or its OWN same-run local plan.json (#842 leaf contract).
+    local _prior_plan_json=""
+    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
+        _prior_plan_json="$(_read_prior_output "plan.json" 2>/dev/null || true)"
+    fi
     if [[ -n "${_prior_plan_json//[[:space:]]/}" ]]; then
         prompt+=$'\n## PRIOR PLAN (a previous attempt on this issue — reference & refine; verify against the CURRENT scope)\n\n'
         prompt+="$_prior_plan_json"$'\n'

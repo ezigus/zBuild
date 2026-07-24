@@ -153,12 +153,15 @@ _review_lens_run_inner() {
     # ─── Build the single-lens prompt ──────────────────────────────────────
     local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content")"
 
-    # ADR-050 (#1581): seed from THIS lens's prior-run finding (via the unified
-    # seam, keyed on lens-<id>.json) so a re-run's review references what the same
-    # lens flagged before instead of starting blind. Advisory — re-judge against
-    # the CURRENT diff; sanitized like the evidence before it reaches the prompt.
-    local _prior_lens
-    _prior_lens="$(_read_prior_output "lens-${lens}.json" 2>/dev/null || true)"
+    # ADR-050 (#1581): seed from THIS lens's prior-run finding (keyed on
+    # lens-<id>.json) so a re-run's review references what the same lens flagged
+    # before instead of starting blind. Advisory — re-judge against the CURRENT
+    # diff; sanitized like the evidence. Gated on ZBUILD_RESTORED_ARTIFACTS_DIR so
+    # it fires ONLY on a genuine cross-run restore (never this run's own lens output).
+    local _prior_lens=""
+    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
+        _prior_lens="$(_read_prior_output "lens-${lens}.json" 2>/dev/null || true)"
+    fi
     if [[ -n "${_prior_lens//[[:space:]]/}" ]]; then
         _prior_lens="$(printf '%s' "$_prior_lens" | _zbuild_sanitize_for_llm)"
         prompt+=$'\n\n## PRIOR REVIEW (this lens on a previous attempt — reference; RE-JUDGE against the current diff)\n'

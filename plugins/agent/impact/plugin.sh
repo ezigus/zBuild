@@ -255,11 +255,15 @@ $_impact_instructions"
             "$_impact_instructions" "$_scope_list"
     fi
 
-    # ADR-050 (#1581): seed from a prior RUN's impact.json (via the unified seam).
-    # Advisory — reference the prior gap analysis, but re-derive against the CURRENT
-    # design/tests (the deterministic prefilter above stays authoritative for goldens).
-    local _prior_impact
-    _prior_impact="$(_read_prior_output "impact.json" 2>/dev/null || true)"
+    # ADR-050 (#1581): seed from a prior RUN's impact.json. Advisory — reference the
+    # prior gap analysis, but re-derive against the CURRENT design/tests (the
+    # deterministic prefilter above stays authoritative for goldens). Gated on
+    # ZBUILD_RESTORED_ARTIFACTS_DIR so it fires ONLY on a genuine cross-run restore
+    # (never stale cycle env or impact's OWN same-run local impact.json).
+    local _prior_impact=""
+    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
+        _prior_impact="$(_read_prior_output "impact.json" 2>/dev/null || true)"
+    fi
     if [[ -n "${_prior_impact//[[:space:]]/}" ]]; then
         prompt+=$'\n## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)\n'
         prompt+="$_prior_impact"$'\n'
