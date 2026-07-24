@@ -228,7 +228,7 @@ set +e; _run_gate "$REPO10"; set -e
 FAILURES="$(jq -rc .failures <<<"$RESULT")"
 assert_eq "S10: both violations → rc=1" "1" "$RC"
 assert_eq "S10: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
-assert_eq "S10: disposition=terminal (tautology outranks untagged)" "terminal" "$(jq -r .disposition <<<"$RESULT")"
+assert_eq "S10: disposition=recoverable (#1585 — tautology+untagged both build-fixable → cycle re-iterates)" "recoverable" "$(jq -r .disposition <<<"$RESULT")"
 assert_contains "S10: untagged_spec:SPEC-2 present in one pass" "$FAILURES" "untagged_spec:SPEC-2"
 assert_contains "S10: tautology:SPEC-1 present in the SAME pass" "$FAILURES" "tautology:SPEC-1"
 assert_event_emitted "S10: untagged_spec event" "$EVENTS" "acceptance.gate.untagged_spec"
@@ -247,16 +247,17 @@ assert_contains "S11: reason names SPEC-1" "$REASON" "SPEC-1"
 assert_contains "S11: reason names SPEC-2" "$REASON" "SPEC-2"
 assert_contains_regex "S11: reason names the tautology class" "$REASON" "[Tt]autolog"
 
-# ── S12 (#1583, supersedes #1219): a tautology is BUILD-FIXABLE → NO route_target ─
+# ── S12 (#1583 + #1585): a tautology is BUILD-FIXABLE → NO route_target, RECOVERABLE ─
 # Since #1477 removed design's stub-writer, BUILD authors assertion bodies, so a
 # tautological [change] SPEC is fixed by build re-authoring it (the mechanical
-# negative-control re-verifies). The gate therefore sets NO route_target for a
-# tautology — it stays a terminal fail that routes to build via gate_feedback.
-# verdict / disposition / rc are UNCHANGED (still terminal fail).
+# negative-control re-verifies). The gate sets NO route_target (#1583) AND classifies
+# it as disposition=recoverable (#1585) so the build_test_cycle RE-ITERATES and feeds
+# the tautology to build — instead of halting terminally at iter 1. verdict / rc
+# unchanged (still a fail until build fixes it).
 # RESULT here still holds REPO10's run (tautology SPEC-1 + untagged SPEC-2).
 assert_eq "S12: tautology → route_target absent (build-fixable, #1583)" "" "$(jq -r '.route_target // ""' <<<"$RESULT")"
 assert_eq "S12: tautology verdict unchanged (still fail)" "fail" "$(jq -r .verdict <<<"$RESULT")"
-assert_eq "S12: tautology disposition unchanged (still terminal)" "terminal" "$(jq -r .disposition <<<"$RESULT")"
+assert_eq "S12: tautology disposition=recoverable (#1585 — cycle re-iterates, not terminal)" "recoverable" "$(jq -r .disposition <<<"$RESULT")"
 
 # ── S13 (#1219): a build-fixable failure does NOT set route_target ─────────────
 # As of #1583 NO failure class is design-rooted (tautology became build-fixable

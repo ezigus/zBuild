@@ -360,3 +360,22 @@ orthogonal to the don't-weaken charter (which forbids relaxing a *real* requirem
 The generic `route_target` carrier + the `build_test_cycle` `route_back` edge are **retained but
 dormant** (no failure class currently sets `route_target`), ready for any genuinely design-rooted
 class a future ADR might introduce.
+
+
+## Amendment (#1585, 2026-07-24) — tautology (and inert_wiring) disposition is RECOVERABLE, not terminal
+
+**Completes #1583.** #1583 stopped routing a tautology to design (removed `route_target: "design"`),
+but left its **disposition** as `terminal` — and a `terminal` disposition HALTS the `build_test_cycle`
+(`member_terminal_failure`, `rc=8`) at iteration 1, so build never re-iterates. Net effect of #1583
+alone: the failure mode changed from "deadlock via design" to "immediate terminal halt" — build still
+could not fix it. Live evidence: #1576 re-run (30088647752) — `acceptance-gate-result.json` had
+`route_target: null` (the #1583 fix working) but `disposition: terminal`, ending the cycle at iter 1/5.
+
+Fix: `_ag_classify_disposition` classifies `tautology:*` **and** `inert_wiring:*` as **`recoverable`**
+(joining `untagged_spec:*`). Both are the same "weak test" symptom — a `[change]` assertion that passes
+at the merge-base baseline / a WIRING file whose revert breaks no test — that BUILD fixes by
+re-authoring the assertion so it exercises the change (which resolves both at once). A `recoverable`
+disposition makes the `build_test_cycle` re-iterate, feeding build the flagged ids (#1583). The
+mechanical negative-control re-verifies each iteration and `max_iterations` bounds it, so an un-fixable
+case exhausts the budget and terminates cleanly. A genuinely terminal class (e.g.
+`malformed_acceptance_block` — design-authored, build cannot fix) still OUTRANKS recoverable and halts.

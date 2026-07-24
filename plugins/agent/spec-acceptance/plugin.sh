@@ -80,10 +80,20 @@ _ag_classify_disposition() {
     local f had_recoverable=0 had_advisory=0
     for f in "$@"; do
         case "$f" in
-            untagged_spec:*)                         had_recoverable=1 ;;
-            negctl_error:* | reachability_error:*)   had_advisory=1 ;;
-            "")                                      : ;;
-            *)                                       printf 'terminal'; return 0 ;;  # genuine violation
+            # BUILD-FIXABLE classes → recoverable: the build_test_cycle re-iterates
+            # and feeds the failure to build (which owns the assertion bodies since
+            # #1477). #1585: tautology + inert_wiring join untagged_spec here — they
+            # are the same "weak test" symptom (a [change] assertion that passes at
+            # baseline / a WIRING file whose revert breaks no test) that BUILD fixes
+            # by re-authoring the assertion (#1583). The mechanical negative control
+            # re-verifies each iteration, and max_iterations bounds it — an
+            # un-fixable case exhausts the budget and terminates cleanly.
+            untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
+            negctl_error:* | reachability_error:*)           had_advisory=1 ;;
+            "")                                              : ;;
+            # Genuinely terminal (e.g. malformed_acceptance_block — design-authored,
+            # build cannot fix): halt the cycle. A terminal class OUTRANKS recoverable.
+            *)                                               printf 'terminal'; return 0 ;;
         esac
     done
     if [[ $had_recoverable -eq 1 ]]; then printf 'recoverable'; return 0; fi
