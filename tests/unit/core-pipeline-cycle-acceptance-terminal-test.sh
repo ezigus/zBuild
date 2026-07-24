@@ -78,7 +78,7 @@ _reset()      { rm -f "$ACC" "$CUST"; }
 # ── [SPEC-1] disposition=terminal on a member → terminal (rc 0), echoes member ─
 _CYCLE_STAGES=(build acceptance-gate review)
 
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["inert_wiring:config/x.yaml"]}'
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["malformed_acceptance_block"]}'
 set +e; out="$(_cycle_member_terminal_failure "$STATE_DIR")"; rc=$?; set -e
 assert_eq "[SPEC-1] terminal disposition → terminal (rc=0)" "0" "$rc"
 assert_eq "[SPEC-1] echoes the failing member id" "acceptance-gate" "$out"
@@ -88,17 +88,20 @@ assert_eq "[SPEC-1] echoes the failing member id" "acceptance-gate" "$out"
 # exposes it via _CYCLE_TERMINAL_MEMBER_REASON so the operator sees SPEC ids +
 # class instead of the opaque "member_terminal_failure". Called WITHOUT command
 # substitution so the global set inside the function is visible in this shell.
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","reason":"acceptance-gate: SPEC-1/SPEC-8 tautological (pass at baseline) — re-author the assertions","failures":["tautology:SPEC-1","tautology:SPEC-8"]}'
+# NB (#1585): tautology is now a RECOVERABLE disposition (build re-iterates), so a
+# genuinely-terminal class is used here — not_passing_at_head stays terminal and
+# still carries SPEC ids, exercising the same reason-surfacing path.
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","reason":"acceptance-gate: SPEC-1/SPEC-8 not passing at HEAD — fix the implementation or the assertion","failures":["not_passing_at_head:SPEC-1","not_passing_at_head:SPEC-8"]}'
 _CYCLE_TERMINAL_MEMBER_REASON="__stale__"
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[#1220] terminal with reason → terminal (rc=0)" "0" "$rc"
 assert_contains "[#1220] surfaces member reason (names SPEC ids)" "$_CYCLE_TERMINAL_MEMBER_REASON" "SPEC-1"
-assert_contains "[#1220] surfaces member reason (names the class)" "$_CYCLE_TERMINAL_MEMBER_REASON" "tautological"
+assert_contains "[#1220] surfaces member reason (names the class)" "$_CYCLE_TERMINAL_MEMBER_REASON" "not passing at HEAD"
 
 # ── [#1220] no reason field on a terminal member → global cleared ──────────────
 # Fail-safe: absent reason must not leak a stale value; downstream falls back to
 # the opaque token only when the plugin provides nothing.
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["inert_wiring:config/x.yaml"]}'
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["malformed_acceptance_block"]}'
 _CYCLE_TERMINAL_MEMBER_REASON="__stale__"
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[#1220] terminal without reason → rc=0" "0" "$rc"
