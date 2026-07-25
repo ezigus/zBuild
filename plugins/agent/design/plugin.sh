@@ -131,15 +131,15 @@ _design_read_prior_design() {
 
     # Tier 1: intra-cycle self-feedback (iter >= 2)
     if [[ -n "$iter" && -n "$fb_dir" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
-        local f="$fb_dir/prior_design.txt"
-        [[ -s "$f" ]] && { cat "$f" 2>/dev/null; return 0; }
+        local cycle_f="$fb_dir/prior_design.txt"
+        [[ -s "$cycle_f" ]] && { cat "$cycle_f" 2>/dev/null; return 0; }
     fi
 
     # Tier 2: cross-run restored artifact
     local restored_dir="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
     if [[ -n "$restored_dir" ]]; then
-        local f="$restored_dir/design.md"
-        [[ -s "$f" ]] && { cat "$f" 2>/dev/null; return 0; }
+        local restored_f="$restored_dir/design.md"
+        [[ -s "$restored_f" ]] && { cat "$restored_f" 2>/dev/null; return 0; }
     fi
 
     return 0
