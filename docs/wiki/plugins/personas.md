@@ -2,7 +2,7 @@
 
 A persona is a data-only plugin (`kind: persona`) that gives a pipeline stage a named identity — a role and a perspective — so its LLM prompt opens from a specific professional viewpoint rather than a generic one.
 
-Personas have no `plugin.sh` and fire no hooks. Each manifest declares two fields under `persona:`: `role` (a short noun phrase) and `perspective` (a single-line string, because the minimal `yaml_get` reader in `core/plugin-registry/persona.sh` does not parse folded or block scalars). The stage resolves its configured persona id via `persona_stage_framing` and composes `role` + `perspective` into the prompt opening. When the manifest is absent the stage falls back to its original hardcoded framing, byte-identical.
+Personas have no `plugin.sh` and fire no hooks. Each manifest declares two fields under `persona:`: `role` (a short noun phrase) and `perspective` (a single-line string, because the minimal `yaml_get` reader in `core/plugin-registry/persona.sh` does not parse folded or block scalars). The stage resolves its configured persona id via `persona_stage_framing` and composes `role` + `perspective` into the prompt opening. When the manifest is absent the stage falls back to behavior-first task framing without a persona role declaration.
 
 _See [[Writing-Plugins]] for the plugin contract. To add a new persona, create `plugins/persona/<id>/manifest.yaml` and add the id to this page._
 
