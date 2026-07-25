@@ -122,11 +122,27 @@ _design_read_design_gate_feedback() {
 
 # design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
 # design.md body to refine rather than re-create.
-# ADR-050 (#1581): delegate to the unified seam so this covers BOTH an intra-cycle
-# iter (tier 1 = prior_design.txt, iter≥2 — the original behavior) AND a prior run
-# of the same issue (tier 2/3 = restored/local design.md). Cycle behavior unchanged.
+# ADR-050 (#1581): Tier 1 = intra-cycle (iter≥2 prior_design.txt); Tier 2 = restored
+# artifact from a prior run. No state-dir fallback: ./state may hold the CURRENT
+# run's design.md, not a prior, and returning it outside a cycle would be wrong.
 _design_read_prior_design() {
-    _read_prior_output "design.md"
+    local iter="${ZBUILD_CYCLE_ITER:-}"
+    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
+
+    # Tier 1: intra-cycle self-feedback (iter >= 2)
+    if [[ -n "$iter" && -n "$fb_dir" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
+        local cycle_f="$fb_dir/prior_design.txt"
+        [[ -s "$cycle_f" ]] && { cat "$cycle_f" 2>/dev/null; return 0; }
+    fi
+
+    # Tier 2: cross-run restored artifact
+    local restored_dir="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
+    if [[ -n "$restored_dir" ]]; then
+        local restored_f="$restored_dir/design.md"
+        [[ -s "$restored_f" ]] && { cat "$restored_f" 2>/dev/null; return 0; }
+    fi
+
+    return 0
 }
 
 # ADR-050 (#1581): best-effort GitHub blob URL for the durable prior design on the
@@ -200,13 +216,11 @@ _design_stage_run_inner() {
 
     # Persona seam (#1324): open the prompt with the architect persona's framing
     # when its manifest is present; when absent, persona_stage_framing returns 1
-    # and we fall back to the exact pre-#1324 opening — BYTE-IDENTICAL, including
-    # the original mid-sentence line wrap after "produce an".
+    # and we fall back to behavior/task framing without a persona role declaration.
     local _task_intro="Your job is to produce an ADR-style design.md for the task described in the plan below."
     local _persona_applied=0
     local _framing
-    local _framing_fallback="You are a software architect for the target project. Your job is to produce an
-ADR-style design.md for the task described in the plan below."
+    local _framing_fallback="Your job is to produce an ADR-style design.md for the task described in the plan below."
     _framing="$(persona_stage_framing architect "$_task_intro" "$_DESIGN_ROOT/plugins" 2>/dev/null)" \
         && _persona_applied=1 \
         || { warn "design: persona_stage_framing failed — using fallback framing"; _framing="$_framing_fallback"; }

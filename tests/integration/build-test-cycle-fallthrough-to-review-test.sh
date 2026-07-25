@@ -55,7 +55,18 @@ set +e
 # works.
 _run_case() {
     local _case_rc="$1" _case_reason="$2" _review_verdict="$3"
-    local _case_tmp; _case_tmp="$(mktemp -d "$TEST_TEMP_DIR/case-XXXXXX")"
+    # Hermeticity guard (#1571): the shared $TEST_TEMP_DIR is a /var/folders temp
+    # that can be reaped mid-run under a saturated macOS parallel pool. Recreate
+    # it right before use and fail LOUDLY if mktemp still fails, so a per-case
+    # temp can never resolve to an empty string — which silently became
+    # `mkdir /events` (read-only /) and aborted the pipeline as status=aborted
+    # instead of the asserted value, surfacing as a confusing false failure.
+    mkdir -p "$TEST_TEMP_DIR"
+    local _case_tmp
+    if ! _case_tmp="$(mktemp -d "$TEST_TEMP_DIR/case-XXXXXX")" || [[ -z "$_case_tmp" ]]; then
+        echo "FATAL(#527 test): mktemp -d under '$TEST_TEMP_DIR' failed" >&2
+        exit 1
+    fi
 
     (
         set +e
