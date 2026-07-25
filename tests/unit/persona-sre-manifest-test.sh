@@ -44,19 +44,6 @@ validate_manifest "$sre_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the sre manifest" "0" "$rc"
 
-# ─── SPEC-5: persona_lens_framing composes role and supplied charter ──────────
-sre_framing="$(persona_lens_framing sre "Check for missing SLO coverage." "$REAL_PROOT")"
-case "$sre_framing" in
-    *"site-reliability engineer"*) sre_role_ok=1 ;;
-    *) sre_role_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains 'site-reliability engineer'" "1" "$sre_role_ok"
-case "$sre_framing" in
-    *"Check for missing SLO coverage."*) sre_charter_ok=1 ;;
-    *) sre_charter_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$sre_charter_ok"
-
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

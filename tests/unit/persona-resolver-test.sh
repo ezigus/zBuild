@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # tests/unit/persona-resolver-test.sh
-# Unit tests for the kind:persona resolver + stage/lens composition seam (#1304).
+# Unit tests for the kind:persona resolver + stage composition seam (#1304).
 # find_persona / resolve_persona_role / resolve_persona_perspective and the
-# persona_stage_framing / persona_lens_framing composers, including the
-# absent-persona byte-identical fallback signal (return 1, print nothing).
+# persona_stage_framing composer, including the absent-persona byte-identical
+# fallback signal (return 1, print nothing).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +16,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
 print_test_header "kind:persona resolver + composition seam (issue #1304)"
+
+# ─── SPEC-1 (issue #1573): persona_lens_framing removed from persona.sh ─────
+set +e
+declare -F persona_lens_framing >/dev/null 2>&1; plf_defined_rc=$?
+set -e
+assert_eq "[SPEC-1] persona_lens_framing is not defined after sourcing the registry" "1" "$plf_defined_rc"
 
 setup_test_env "persona-resolver"
 PROOT="$TEST_TEMP_DIR/plugins"
@@ -83,16 +89,6 @@ set -e
 assert_eq "[SPEC-2][SPEC-6] stage framing returns 1 for a persona missing the required perspective" "1" "$rc_np"
 assert_eq "[SPEC-2][SPEC-6] stage framing prints nothing for a persona missing the required perspective" "" "$out_np"
 
-# ─── SPEC-7: persona_lens_framing composes the lens seam ─────────────────────
-assert_eq "[SPEC-7] persona_lens_framing composes the lens seam with perspective" \
-    "You are a software architect reviewing a change for the target project. Judge structure and boundaries. Flag scope drift." \
-    "$(persona_lens_framing architect "Flag scope drift." "$PROOT")"
-# developer is invalid (no perspective) → discovery excludes it → lens framing
-# resolves it as absent and prints nothing (#1569).
-assert_eq "[SPEC-7] lens framing returns empty for a persona missing the required perspective" \
-    "" \
-    "$(persona_lens_framing developer "Check correctness." "$PROOT")"
-
 # ─── SPEC-8: absent persona ⇒ framing returns 1 AND prints nothing ───────────
 # This is the byte-identical fallback contract: the caller keeps its own framing.
 set +e
@@ -100,12 +96,6 @@ out="$(persona_stage_framing ghost "task" "$PROOT")"; rc=$?
 set -e
 assert_eq "[SPEC-8] persona_stage_framing returns 1 for an unknown persona" "1" "$rc"
 assert_eq "[SPEC-8] persona_stage_framing prints nothing for an unknown persona" "" "$out"
-
-set +e
-out="$(persona_lens_framing ghost "charter" "$PROOT")"; rc=$?
-set -e
-assert_eq "[SPEC-8] persona_lens_framing returns 1 for an unknown persona" "1" "$rc"
-assert_eq "[SPEC-8] persona_lens_framing prints nothing for an unknown persona" "" "$out"
 
 # ─── SPEC-9: resolve_persona_charter delegates to resolve_persona_perspective ──
 # resolve_persona_charter is an alias for resolve_persona_perspective; it returns
@@ -152,18 +142,6 @@ validate_manifest "$rt_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-13] validate_manifest passes on the live red-team manifest" "0" "$rc"
 
-# SPEC-14: persona_lens_framing composes a framing containing role + supplied charter
-rt_framing="$(persona_lens_framing red-team "Look for exploitable flaws." "$REAL_PROOT")"
-case "$rt_framing" in
-    *"red-team operator"*) rt_role_ok=1 ;;
-    *) rt_role_ok=0 ;;
-esac
-assert_eq "[SPEC-14] lens framing contains 'red-team operator'" "1" "$rt_role_ok"
-case "$rt_framing" in
-    *"Look for exploitable flaws."*) rt_charter_ok=1 ;;
-    *) rt_charter_ok=0 ;;
-esac
-assert_eq "[SPEC-14] lens framing contains the supplied charter" "1" "$rt_charter_ok"
 
 # SPEC-15: persona_stage_framing leads with perspective keyword (no role prefix)
 rt_stage="$(persona_stage_framing red-team "Assess the change." "$REAL_PROOT")"
@@ -246,19 +224,6 @@ validate_manifest "$sec_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live security manifest" "0" "$rc"
 
-# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
-sec_framing="$(persona_lens_framing security "Audit for injection vulnerabilities." "$REAL_PROOT")"
-case "$sec_framing" in
-    *"security engineer"*) sec_role_ok=1 ;;
-    *) sec_role_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains 'security engineer'" "1" "$sec_role_ok"
-case "$sec_framing" in
-    *"Audit for injection vulnerabilities."*) sec_charter_ok=1 ;;
-    *) sec_charter_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$sec_charter_ok"
-
 # ─── SPEC-1..SPEC-5: live-tree performance persona ───────────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).
 
@@ -288,19 +253,6 @@ validate_manifest "$perf_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live performance manifest" "0" "$rc"
 
-# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
-perf_framing="$(persona_lens_framing performance "Profile the critical rendering path." "$REAL_PROOT")"
-case "$perf_framing" in
-    *"performance engineer"*) perf_role_ok=1 ;;
-    *) perf_role_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains 'performance engineer'" "1" "$perf_role_ok"
-case "$perf_framing" in
-    *"Profile the critical rendering path."*) perf_charter_ok=1 ;;
-    *) perf_charter_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$perf_charter_ok"
-
 # ─── SPEC-1..SPEC-5: live-tree correctness persona ───────────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).
 
@@ -329,19 +281,6 @@ set +e
 validate_manifest "$corr_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live correctness manifest" "0" "$rc"
-
-# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
-corr_framing="$(persona_lens_framing correctness "Check for off-by-one errors." "$REAL_PROOT")"
-case "$corr_framing" in
-    *"test strategist"*) corr_role_ok=1 ;;
-    *) corr_role_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains 'test strategist'" "1" "$corr_role_ok"
-case "$corr_framing" in
-    *"Check for off-by-one errors."*) corr_charter_ok=1 ;;
-    *) corr_charter_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$corr_charter_ok"
 
 # ─── SPEC-1..SPEC-5: live-tree SRE persona ───────────────────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).
@@ -373,19 +312,6 @@ validate_manifest "$sre_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live sre manifest" "0" "$rc"
 
-# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
-sre_framing="$(persona_lens_framing sre "Assess production readiness." "$REAL_PROOT")"
-case "$sre_framing" in
-    *"site-reliability engineer"*) sre_role_ok=1 ;;
-    *) sre_role_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains 'site-reliability engineer'" "1" "$sre_role_ok"
-case "$sre_framing" in
-    *"Assess production readiness."*) sre_charter_ok=1 ;;
-    *) sre_charter_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$sre_charter_ok"
-
 # ─── SPEC-1..SPEC-5: live-tree scope persona ─────────────────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).
 
@@ -414,19 +340,6 @@ set +e
 validate_manifest "$scope_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live scope manifest" "0" "$rc"
-
-# SPEC-5: persona_lens_framing composes a framing containing role + supplied charter
-scope_framing="$(persona_lens_framing scope "Audit for scope drift." "$REAL_PROOT")"
-case "$scope_framing" in
-    *"software architect"*) scope_role_ok=1 ;;
-    *) scope_role_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains 'software architect'" "1" "$scope_role_ok"
-case "$scope_framing" in
-    *"Audit for scope drift."*) scope_charter_ok=1 ;;
-    *) scope_charter_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$scope_charter_ok"
 
 cleanup_test_env
 print_test_results
