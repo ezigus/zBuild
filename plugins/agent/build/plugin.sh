@@ -157,10 +157,15 @@ _build_stage_run_inner() {
     local _build_instructions
     _build_instructions="$(_build_compose_instructions "$plan_files_csv")"
     # _BUILD_PERSONA_APPLIED is set inside _build_compose_instructions but runs in a
-    # subshell via $() — it cannot propagate here. Determine persona status directly.
-    local _build_persona_applied=0
-    persona_stage_framing developer "" "$_BUILD_ROOT/plugins" >/dev/null 2>&1 \
-        && _build_persona_applied=1 || true
+    # subshell via $() — it cannot propagate here. Re-probe persona status directly,
+    # mirroring the SAME empty-output guard the composer uses: persona counts as
+    # applied only when persona_stage_framing exits 0 AND yields non-empty perspective
+    # (rc=0-but-empty → the composer falls back, so telemetry must too).
+    local _build_persona_applied=0 _persona_probe
+    if _persona_probe="$(persona_stage_framing developer "" "$_BUILD_ROOT/plugins" 2>/dev/null)" \
+       && [[ -n "${_persona_probe//[[:space:]]/}" ]]; then
+        _build_persona_applied=1
+    fi
 
     # Iter 2+: pull prior test_assessment markdown. Empty when no cycle or
     # file missing/empty (silent-failure guard — see _build_read_prior_assessment).
