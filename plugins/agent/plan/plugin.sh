@@ -343,8 +343,7 @@ _plan_run_inner() {
     # unchanged when the manifest is not installed.
     local _task_intro="Decompose the goal into concrete implementation steps."
     local _framing _persona_fallback _persona_applied=0
-    _persona_fallback='You are a software planning agent. Decompose the goal into concrete
-implementation steps.'
+    _persona_fallback="$_task_intro"
     _framing="$(persona_stage_framing product-owner "$_task_intro" "$_PLAN_ROOT/plugins" 2>/dev/null)" \
         && _persona_applied=1 \
         || { warn "plan: persona_stage_framing failed — using fallback framing"; _framing="$_persona_fallback"; }

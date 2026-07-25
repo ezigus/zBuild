@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Unit (#1393): plan stage uses persona_stage_framing to open its prompt.
+# Unit (#1393/#1572): plan stage uses persona_stage_framing to open its prompt.
 # SPEC-1[change] — with product-owner manifest present, the prompt includes the
 #   persona perspective text (new behavior; fails at merge-base baseline).
 # SPEC-2[guard]  — with product-owner manifest absent, the prompt falls back to
-#   'You are a software planning agent.' (existing behavior).
+#   behavior-only framing with no profession-role prefix (updated by #1572).
 # SPEC-3[guard]  — the schema_version/steps section is present regardless of framing path.
 set -uo pipefail
 
@@ -108,13 +108,13 @@ _PLAN_ROOT="$_ORIG_PLAN_ROOT"
 
 PROMPT2="$AD2/routed-prompt.txt"
 assert_file_exists "SPEC-2: prompt captured when product-owner manifest absent" "$PROMPT2"
-assert_contains "[SPEC-2] fallback text present when manifest absent" \
-    "$(cat "$PROMPT2")" "You are a software planning agent."
-# Byte-identical fallback (DoD): the opening two lines must reproduce the exact
-# pre-#1393 framing, including the original mid-sentence wrap after "concrete".
-_expected_open=$'You are a software planning agent. Decompose the goal into concrete\nimplementation steps.'
-assert_contains "[SPEC-2] fallback opening is byte-identical to the pre-persona framing" \
-    "$(cat "$PROMPT2")" "$_expected_open"
+assert_contains "[SPEC-2] fallback behavior sentence present when manifest absent" \
+    "$(cat "$PROMPT2")" "Decompose the goal into concrete implementation steps."
+if grep -q "You are a software planning agent" <"$PROMPT2"; then
+    assert_fail "[SPEC-2] fallback must NOT contain profession-role prefix when manifest absent"
+else
+    assert_pass "[SPEC-2] fallback does not contain profession-role prefix when manifest absent"
+fi
 
 # ── SPEC-3[guard]: schema_version + steps present regardless of framing path ─
 assert_contains "[SPEC-3] schema_version in prompt with product-owner manifest" \

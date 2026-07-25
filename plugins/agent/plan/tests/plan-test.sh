@@ -702,6 +702,52 @@ assert_eq "[SPEC-5] plan.json holds the real envelope, not the postamble" \
     "recovered-via-framework" "$_recovered_title"
 CANNED_PLAN="$_SAVED_CANNED_PLAN"
 
+# ─── [SPEC-1/SPEC-2] Persona framing fallback — prefix dropped (#1572) ───────
+# SPEC-1 [change]: with product-owner manifest absent the prompt must NOT carry
+#   the profession-role prefix 'You are a software planning agent.'  Fails at
+#   merge-base baseline because the old fallback led with that sentence.
+# SPEC-2 [guard]: with manifest present the canned behavior string must appear
+#   in the prompt (persona-present path already worked; tagged, not contorted).
+
+print_test_section "[SPEC-1/SPEC-2] persona fallback is behavior-only (no role prefix)"
+
+# Save real persona_stage_framing so we can restore it after the section.
+_ORIG_PSF="$(declare -f persona_stage_framing || true)"
+
+# Simulate absent manifest: return rc=1 so the fallback path runs.
+persona_stage_framing() { return 1; }
+
+: > "$_CAPTURED_PROMPT_FILE"
+CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _spf_rc=$?; set -e
+assert_eq "[SPEC-1] plan_run rc=0 with persona absent" "0" "$_spf_rc"
+_spf_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+if grep -q "You are a software planning agent" <<<"$_spf_prompt"; then
+    assert_fail "[SPEC-1] persona fallback must NOT contain profession-prefix role declaration"
+else
+    assert_pass "[SPEC-1] persona fallback does not contain profession-prefix role declaration"
+fi
+assert_contains "[SPEC-1] persona fallback DOES contain behavior sentence" \
+    "$_spf_prompt" "Decompose the goal into concrete implementation steps."
+
+# Simulate present manifest: emit a canned sentinel string and return rc=0.
+_PERSONA_FRAMING_SENTINEL="PERSONA_BEHAVIOR_SENTINEL_XYZ_1572"
+persona_stage_framing() {
+    printf '%s' "$_PERSONA_FRAMING_SENTINEL"
+    return 0
+}
+
+: > "$_CAPTURED_PROMPT_FILE"
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _spf_rc2=$?; set -e
+assert_eq "[SPEC-2] plan_run rc=0 with persona present" "0" "$_spf_rc2"
+_spf_prompt2="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+assert_contains "[SPEC-2] persona-present framing sentinel appears in prompt" \
+    "$_spf_prompt2" "$_PERSONA_FRAMING_SENTINEL"
+
+# Restore persona_stage_framing to its original definition.
+unset -f persona_stage_framing
+if [[ -n "$_ORIG_PSF" ]]; then eval "$_ORIG_PSF"; fi
+
 # ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
 set +e
 plan_finalize >/dev/null 2>&1

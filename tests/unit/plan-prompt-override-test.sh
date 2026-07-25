@@ -147,8 +147,13 @@ CAP_D="$(_run_plan "$FIX_D")"
 _PLAN_ROOT="$_ORIG_PLAN_ROOT"
 
 assert_file_exists "[SPEC-2] prompt captured with product-owner manifest absent" "$CAP_D"
-assert_contains "[SPEC-2] fallback opening present when product-owner manifest absent" \
-    "$(cat "$CAP_D")" "You are a software planning agent."
+assert_contains "[SPEC-2] fallback behavior sentence present when product-owner manifest absent" \
+    "$(cat "$CAP_D")" "Decompose the goal into concrete implementation steps."
+if grep -q "You are a software planning agent" <"$CAP_D"; then
+    assert_fail "[SPEC-2] fallback must NOT contain profession-role prefix when manifest absent"
+else
+    assert_pass "[SPEC-2] fallback does not contain profession-role prefix when manifest absent"
+fi
 
 # ── SPEC-3[guard]: schema_version and steps present regardless of framing ─────
 print_test_section "5. schema_version and steps present regardless of framing path [SPEC-3]"
