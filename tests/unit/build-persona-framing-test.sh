@@ -22,6 +22,8 @@ source "$REPO_ROOT/plugins/agent/build/plugin.sh"
 
 # ── Mocks (mirrors design-persona-framing-test.sh pattern) ───────────────────
 route_to_model_loop() {
+    [[ -n "${_CAPTURED_PERSONA_FILE:-}" ]] && \
+        printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-__unset__}" > "$_CAPTURED_PERSONA_FILE"
     _ROUTE_LOOP_FINAL_OUTPUT="ok"
     _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
@@ -78,6 +80,7 @@ _ORIG_BUILD_ROOT="$_BUILD_ROOT"
 AD1="$(_setup_fixture)"
 BROOT1="$(_root_with_developer)"
 _BUILD_ROOT="$BROOT1"
+export _CAPTURED_PERSONA_FILE="$AD1/persona.cap"
 _build_stage_run_inner \
     "$(dirname "$AD1")/scope-manifest.md" \
     "$AD1/plan.json" \
@@ -90,11 +93,14 @@ PROMPT1="$AD1/build-prompt.txt"
 assert_file_exists "SPEC-1: prompt file written when developer manifest present" "$PROMPT1"
 assert_contains "[SPEC-1] developer perspective text in prompt when manifest present" \
     "$(cat "$PROMPT1")" "Focus on correctness and minimal implementation."
+assert_eq "[SPEC-4] ZBUILD_STAGE_IO_PERSONA=developer exported when manifest present" \
+    "developer" "$(cat "$AD1/persona.cap" 2>/dev/null)"
 
 # ── SPEC-2[change]: developer manifest absent → behavior-first fallback ──────
 AD2="$(_setup_fixture)"
 BROOT2="$(_root_without_developer)"
 _BUILD_ROOT="$BROOT2"
+export _CAPTURED_PERSONA_FILE="$AD2/persona.cap"
 _build_stage_run_inner \
     "$(dirname "$AD2")/scope-manifest.md" \
     "$AD2/plan.json" \
@@ -111,6 +117,9 @@ grep -qF "You are an autonomous build agent" <<< "$_prompt2_content" && _prof_in
 assert_eq "[SPEC-2] profession prefix absent from fallback prompt" "no" "$_prof_in_prompt"
 assert_contains "[SPEC-2] behavior-first task intro present in fallback prompt" \
     "$_prompt2_content" "You have Read, Edit, Write, and"
+assert_eq "[SPEC-4] ZBUILD_STAGE_IO_PERSONA=developer:fallback exported when manifest absent" \
+    "developer:fallback" "$(cat "$AD2/persona.cap" 2>/dev/null)"
+unset _CAPTURED_PERSONA_FILE
 
 # ── SPEC-3[guard]: ## INSTRUCTIONS section present regardless of framing path ──
 assert_contains "[SPEC-3] INSTRUCTIONS present in prompt with developer manifest" \

@@ -168,11 +168,13 @@ EXHAUSTIVE scope block enumerating every file the change touches. Your job
 is adversarial consequence-finding: identify files that are MISSING from
 the design scope block — files the change invalidates, references, validates,
 documents, or assumes something about — that the design agent overlooked."
+    local _persona_applied=0
     local _framing
     _framing="$(persona_stage_framing architect "$_task_intro" "$_IMPACT_ROOT/plugins" 2>/dev/null)" \
+        && _persona_applied=1 \
         || { warn "impact: persona_stage_framing failed — using fallback framing"; _framing="$_persona_fallback"; }
     # Guard: rc=0 but empty output (e.g. perspective key absent in manifest).
-    [[ -n "$_framing" ]] || _framing="$_persona_fallback"
+    [[ -n "$_framing" ]] || { _framing="$_persona_fallback"; _persona_applied=0; }
 
     local _impact_body
     _impact_body="$(cat <<'IMPACT_PROMPT'
@@ -302,6 +304,12 @@ $_impact_instructions"
     # render_impact_md (Impact: verdict=..., missing=...) instead of dumping
     # the raw JSON envelope. Mirrors the plan/review/test_assessment pattern.
     export ZBUILD_ROUTER_ARTIFACT_ID=impact
+    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
+    if [[ "$_persona_applied" -eq 1 ]]; then
+        export ZBUILD_STAGE_IO_PERSONA=architect
+    else
+        export ZBUILD_STAGE_IO_PERSONA=architect:fallback
+    fi
 
     set +e
     raw_response="$(route_to_model "$tier" "$redacted_prompt")"
@@ -317,6 +325,11 @@ $_impact_instructions"
         unset ZBUILD_ROUTER_ARTIFACT_ID
     else
         export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
+    fi
+    if [[ "$_prev_persona_env" == "__UNSET__" ]]; then
+        unset ZBUILD_STAGE_IO_PERSONA
+    else
+        export ZBUILD_STAGE_IO_PERSONA="$_prev_persona_env"
     fi
 
     if [[ $router_rc -ne 0 ]]; then

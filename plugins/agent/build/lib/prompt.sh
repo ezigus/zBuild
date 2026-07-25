@@ -32,8 +32,17 @@ _build_compose_instructions() {
 Bash tools available. Your job is to edit the working tree to implement the
 ORIGINAL TASK above."
     local _framing
-    _framing="$(persona_stage_framing developer "$_task_intro" "$_BUILD_ROOT/plugins" 2>/dev/null)" \
-        || _framing="$_task_intro"
+    # #1576: track whether the persona was applied (for the ZBUILD_STAGE_IO_PERSONA
+    # export at the call site). #1570: the fallback is behavior-first ($_task_intro),
+    # NOT the old "You are an autonomous build agent" profession sentence.
+    _BUILD_PERSONA_APPLIED=0
+    if _framing="$(persona_stage_framing developer "$_task_intro" "$_BUILD_ROOT/plugins" 2>/dev/null)"; then
+        _BUILD_PERSONA_APPLIED=1
+    else
+        _framing="$_task_intro"
+    fi
+    # Guard: rc=0 but empty output (e.g. perspective key absent in manifest).
+    [[ -n "$_framing" ]] || { _framing="$_task_intro"; _BUILD_PERSONA_APPLIED=0; }
     cat <<BUILD_PROMPT
 ${_framing}
 

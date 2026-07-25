@@ -28,7 +28,9 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 source "$REPO_ROOT/plugins/agent/impact/plugin.sh"
 
 # ── Mocks ───────────────────────────────────────────────────────────────────
+_CAPTURED_PERSONA_FILE=""
 route_to_model() {
+    [[ -n "${_CAPTURED_PERSONA_FILE:-}" ]] && printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-__unset__}" > "$_CAPTURED_PERSONA_FILE"
     printf '%s' '{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}'
     return 0
 }
@@ -86,6 +88,7 @@ _ORIG_IMPACT_ROOT="$_IMPACT_ROOT"
 AD1="$(_setup_fixture)"
 IROOT1="$(_root_with_architect)"
 _IMPACT_ROOT="$IROOT1"
+export _CAPTURED_PERSONA_FILE="$AD1/persona.cap"
 _impact_run_inner \
     "$(dirname "$AD1")/scope-manifest.md" \
     "$AD1/design.md" \
@@ -98,11 +101,14 @@ PROMPT1="$AD1/impact-prompt.txt"
 assert_file_exists "SPEC-1: prompt file written when architect manifest present" "$PROMPT1"
 assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
     "$(cat "$PROMPT1")" "Focus on boundaries and interfaces."
+assert_eq "[SPEC-6] ZBUILD_STAGE_IO_PERSONA=architect exported when manifest present" \
+    "architect" "$(cat "$AD1/persona.cap" 2>/dev/null)"
 
 # ── SPEC-2[guard]: architect manifest absent → fallback text in prompt ─────────
 AD2="$(_setup_fixture)"
 IROOT2="$(_root_without_architect)"
 _IMPACT_ROOT="$IROOT2"
+export _CAPTURED_PERSONA_FILE="$AD2/persona.cap"
 _impact_run_inner \
     "$(dirname "$AD2")/scope-manifest.md" \
     "$AD2/design.md" \
@@ -115,6 +121,9 @@ PROMPT2="$AD2/impact-prompt.txt"
 assert_file_exists "SPEC-2: prompt file written when architect manifest absent" "$PROMPT2"
 assert_contains "[SPEC-2] fallback text present when manifest absent" \
     "$(cat "$PROMPT2")" "You are an Impact Analyzer agent."
+assert_eq "[SPEC-6] ZBUILD_STAGE_IO_PERSONA=architect:fallback exported when manifest absent" \
+    "architect:fallback" "$(cat "$AD2/persona.cap" 2>/dev/null)"
+unset _CAPTURED_PERSONA_FILE
 
 # ── SPEC-3[guard]: EXISTENCE VERIFICATION heading present regardless of framing ─
 assert_contains "[SPEC-3] EXISTENCE VERIFICATION present in prompt with architect manifest" \

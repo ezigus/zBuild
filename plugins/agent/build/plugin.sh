@@ -156,6 +156,16 @@ _build_stage_run_inner() {
 
     local _build_instructions
     _build_instructions="$(_build_compose_instructions "$plan_files_csv")"
+    # _BUILD_PERSONA_APPLIED is set inside _build_compose_instructions but runs in a
+    # subshell via $() — it cannot propagate here. Re-probe persona status directly,
+    # mirroring the SAME empty-output guard the composer uses: persona counts as
+    # applied only when persona_stage_framing exits 0 AND yields non-empty perspective
+    # (rc=0-but-empty → the composer falls back, so telemetry must too).
+    local _build_persona_applied=0 _persona_probe
+    if _persona_probe="$(persona_stage_framing developer "" "$_BUILD_ROOT/plugins" 2>/dev/null)" \
+       && [[ -n "${_persona_probe//[[:space:]]/}" ]]; then
+        _build_persona_applied=1
+    fi
 
     # Iter 2+: pull prior test_assessment markdown. Empty when no cycle or
     # file missing/empty (silent-failure guard — see _build_read_prior_assessment).
@@ -247,6 +257,12 @@ _build_stage_run_inner() {
     fi
 
     local router_rc=0
+    local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
+    if [[ "$_build_persona_applied" -eq 1 ]]; then
+        export ZBUILD_STAGE_IO_PERSONA=developer
+    else
+        export ZBUILD_STAGE_IO_PERSONA=developer:fallback
+    fi
     # #491: do NOT redirect route_to_model_loop's stderr — the per-iteration
     # stage-io input banner writes to fd 2 (ZBUILD_STAGE_IO_FD default) and
     # 2>/dev/null would swallow every iteration's input banner, breaking the
@@ -260,6 +276,11 @@ _build_stage_run_inner() {
     route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
+    if [[ "$_prev_persona_env" == "__UNSET__" ]]; then
+        unset ZBUILD_STAGE_IO_PERSONA
+    else
+        export ZBUILD_STAGE_IO_PERSONA="$_prev_persona_env"
+    fi
 
     local iterations="${_ROUTE_LOOP_ITERATIONS:-0}"
     local terminated_reason="${_ROUTE_LOOP_TERMINATED_REASON:-error}"
