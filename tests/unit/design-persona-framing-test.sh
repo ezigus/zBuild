@@ -87,6 +87,7 @@ AD1="$(_setup_fixture)"
 DROOT1="$(_root_with_architect)"
 _DESIGN_ROOT="$DROOT1"
 export MOCK_DESIGN_WRITE_PATH="$AD1/design.md"
+export _CAPTURED_PERSONA_FILE="$AD1/persona.cap"
 _design_stage_run_inner \
     "$(dirname "$AD1")/scope-manifest.md" \
     "$AD1/plan.json" \
@@ -98,12 +99,15 @@ PROMPT1="$AD1/design-prompt.txt"
 assert_file_exists "SPEC-1: prompt file written when architect manifest present" "$PROMPT1"
 assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
     "$(cat "$PROMPT1")" "Focus on boundaries and interfaces."
+assert_eq "[SPEC-5] ZBUILD_STAGE_IO_PERSONA=architect exported when manifest present" \
+    "architect" "$(cat "$AD1/persona.cap" 2>/dev/null)"
 
 # ── SPEC-2[guard]: architect manifest absent → fallback text in prompt ─────────
 AD2="$(_setup_fixture)"
 DROOT2="$(_root_without_architect)"
 _DESIGN_ROOT="$DROOT2"
 export MOCK_DESIGN_WRITE_PATH="$AD2/design.md"
+export _CAPTURED_PERSONA_FILE="$AD2/persona.cap"
 _design_stage_run_inner \
     "$(dirname "$AD2")/scope-manifest.md" \
     "$AD2/plan.json" \
@@ -120,6 +124,9 @@ assert_contains "[SPEC-2] fallback text present when manifest absent" \
 _expected_open=$'You are a software architect for the target project. Your job is to produce an\nADR-style design.md for the task described in the plan below.'
 assert_eq "[SPEC-2] fallback opening is byte-identical to the pre-persona framing" \
     "$_expected_open" "$(head -2 "$PROMPT2")"
+assert_eq "[SPEC-5] ZBUILD_STAGE_IO_PERSONA=architect:fallback exported when manifest absent" \
+    "architect:fallback" "$(cat "$AD2/persona.cap" 2>/dev/null)"
+unset _CAPTURED_PERSONA_FILE
 
 # ── SPEC-3[guard]: ## Plan section present regardless of framing path ──────────
 assert_contains "[SPEC-3] ## Plan present in prompt with architect manifest" \
