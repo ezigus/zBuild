@@ -2,8 +2,8 @@
 # Unit (#1324): design stage uses persona_stage_framing to open its prompt.
 # SPEC-1[change] — with architect manifest present, the prompt includes the
 #   persona perspective text (new behavior; fails at merge-base baseline).
-# SPEC-2[guard]  — with architect manifest absent, the prompt falls back to
-#   'You are a software architect for the target project.' (existing behavior).
+# SPEC-2[change] — with architect manifest absent, the prompt falls back to
+#   behavior/task framing with no persona role declaration (new behavior).
 # SPEC-3[guard]  — the '## Plan' section is present regardless of framing path.
 set -uo pipefail
 
@@ -118,12 +118,10 @@ _DESIGN_ROOT="$_ORIG_DESIGN_ROOT"
 PROMPT2="$AD2/design-prompt.txt"
 assert_file_exists "SPEC-2: prompt file written when architect manifest absent" "$PROMPT2"
 assert_contains "[SPEC-2] fallback text present when manifest absent" \
-    "$(cat "$PROMPT2")" "You are a software architect for the target project."
-# Byte-identical fallback (DoD): the opening two lines must reproduce the exact
-# pre-#1324 framing, including the original mid-sentence wrap after "produce an".
-_expected_open=$'You are a software architect for the target project. Your job is to produce an\nADR-style design.md for the task described in the plan below.'
-assert_eq "[SPEC-2] fallback opening is byte-identical to the pre-persona framing" \
-    "$_expected_open" "$(head -2 "$PROMPT2")"
+    "$(cat "$PROMPT2")" "Your job is to produce an ADR-style design.md for the task described in the plan below."
+_expected_open='Your job is to produce an ADR-style design.md for the task described in the plan below.'
+assert_eq "[SPEC-2] fallback opening is behavior/task framing without persona role declaration" \
+    "$_expected_open" "$(head -1 "$PROMPT2")"
 assert_eq "[SPEC-5] ZBUILD_STAGE_IO_PERSONA=architect:fallback exported when manifest absent" \
     "architect:fallback" "$(cat "$AD2/persona.cap" 2>/dev/null)"
 unset _CAPTURED_PERSONA_FILE

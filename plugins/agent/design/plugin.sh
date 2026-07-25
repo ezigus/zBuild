@@ -200,13 +200,11 @@ _design_stage_run_inner() {
 
     # Persona seam (#1324): open the prompt with the architect persona's framing
     # when its manifest is present; when absent, persona_stage_framing returns 1
-    # and we fall back to the exact pre-#1324 opening — BYTE-IDENTICAL, including
-    # the original mid-sentence line wrap after "produce an".
+    # and we fall back to behavior/task framing without a persona role declaration.
     local _task_intro="Your job is to produce an ADR-style design.md for the task described in the plan below."
     local _persona_applied=0
     local _framing
-    local _framing_fallback="You are a software architect for the target project. Your job is to produce an
-ADR-style design.md for the task described in the plan below."
+    local _framing_fallback="Your job is to produce an ADR-style design.md for the task described in the plan below."
     _framing="$(persona_stage_framing architect "$_task_intro" "$_DESIGN_ROOT/plugins" 2>/dev/null)" \
         && _persona_applied=1 \
         || { warn "design: persona_stage_framing failed — using fallback framing"; _framing="$_framing_fallback"; }
