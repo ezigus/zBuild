@@ -269,6 +269,80 @@ else
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec12"
 
+# ─── SPEC-1/2/3: ZBUILD_STAGE_IO_PERSONA carrier wiring (#1577) ─────────────
+# _review_lens_run_inner must export ZBUILD_STAGE_IO_PERSONA=<lens> when a
+# persona manifest exists for the lens id, and <lens>:fallback when absent,
+# so the INPUT banner shows the resolved persona via the #1567 carrier.
+# The carrier must be unset/restored after the call so it does not leak to
+# outer callers. Uses the in-process route_to_model shadow to capture the
+# carrier value at the moment route_to_model is invoked.
+export _RL_PERSONA_AT_CALL="$TEST_TEMP_DIR/persona-at-call.txt"
+# shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
+route_to_model() {
+    printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-__unset__}" > "$_RL_PERSONA_AT_CALL"
+    printf 'call\n' >> "$_RL_CALLS"
+    printf '%s' '{"score":5,"findings":[]}'
+    return 0
+}
+
+# SPEC-1[change]: persona manifest present (security) → carrier = 'security'
+_prev_plugins_root_spec1="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+out_spec1="$artifact_dir/lens-spec1-security.json"
+: > "$_RL_PERSONA_AT_CALL"
+set +e
+_review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec1" "$artifact_dir"
+_rc_spec1=$?
+set -e
+assert_eq "[SPEC-1] persona-present lens returns 0" "0" "$_rc_spec1"
+_persona_spec1="$(cat "$_RL_PERSONA_AT_CALL" 2>/dev/null || true)"
+assert_eq "[SPEC-1] ZBUILD_STAGE_IO_PERSONA='security' when persona manifest present" \
+    "security" "$_persona_spec1"
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec1"
+
+# SPEC-2[change]: no persona manifest for lens id (edge-case) → carrier = 'edge-case:fallback'
+_prev_plugins_root_spec2="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+out_spec2="$artifact_dir/lens-spec2-edge-case.json"
+: > "$_RL_PERSONA_AT_CALL"
+set +e
+_review_lens_run_inner "edge-case" "$scope_manifest" "$evidence" "$out_spec2" "$artifact_dir"
+_rc_spec2=$?
+set -e
+assert_eq "[SPEC-2] fallback lens returns 0" "0" "$_rc_spec2"
+_persona_spec2="$(cat "$_RL_PERSONA_AT_CALL" 2>/dev/null || true)"
+assert_eq "[SPEC-2] ZBUILD_STAGE_IO_PERSONA='edge-case:fallback' when no persona manifest" \
+    "edge-case:fallback" "$_persona_spec2"
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec2"
+
+# SPEC-3[change]: carrier is unset/restored after _review_lens_run_inner returns
+# (must not leak to outer callers).
+_prev_plugins_root_spec3="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+unset ZBUILD_STAGE_IO_PERSONA
+out_spec3="$artifact_dir/lens-spec3-security.json"
+set +e
+_review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec3" "$artifact_dir"
+set -e
+assert_eq "[SPEC-3] ZBUILD_STAGE_IO_PERSONA unset after _review_lens_run_inner (no leak)" \
+    "" "${ZBUILD_STAGE_IO_PERSONA:-}"
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3"
+
+# SPEC-3b[change]: when ZBUILD_STAGE_IO_PERSONA held a value BEFORE the call, it
+# is restored to that exact value afterward — the restore-to-prior-value branch,
+# distinct from the unset→unset path above (#1577 review, red-team).
+_prev_plugins_root_spec3b="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+export ZBUILD_STAGE_IO_PERSONA="outer-sentinel-1577"
+out_spec3b="$artifact_dir/lens-spec3b-security.json"
+set +e
+_review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec3b" "$artifact_dir"
+set -e
+assert_eq "[SPEC-3b] ZBUILD_STAGE_IO_PERSONA restored to prior value after _review_lens_run_inner" \
+    "outer-sentinel-1577" "${ZBUILD_STAGE_IO_PERSONA:-}"
+unset ZBUILD_STAGE_IO_PERSONA
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3b"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
