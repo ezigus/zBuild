@@ -142,7 +142,6 @@ validate_manifest "$rt_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-13] validate_manifest passes on the live red-team manifest" "0" "$rc"
 
-
 # SPEC-15: persona_stage_framing leads with perspective keyword (no role prefix)
 rt_stage="$(persona_stage_framing red-team "Assess the change." "$REAL_PROOT")"
 case "$rt_stage" in
