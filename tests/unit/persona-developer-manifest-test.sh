@@ -39,6 +39,14 @@ case "$dev_perspective" in
 esac
 assert_eq "[SPEC-3] perspective contains 'correctness'" "1" "$persp_ok"
 
+# SPEC-2[change]: developer perspective opens with imperative (no 'You' prefix)
+dev_p="$(resolve_persona_perspective developer "$REAL_PROOT")"
+case "$dev_p" in
+    You\ *) dev_no_you=0 ;;
+    *)      dev_no_you=1 ;;
+esac
+assert_eq "[SPEC-2] developer perspective does not start with 'You '" "1" "$dev_no_you"
+
 # SPEC-4: validate_manifest passes
 set +e
 validate_manifest "$REAL_MANIFEST" >/dev/null 2>&1; rc=$?

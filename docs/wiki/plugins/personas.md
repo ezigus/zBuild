@@ -1,8 +1,8 @@
 # Personas
 
-A persona is a data-only plugin (`kind: persona`) that gives a pipeline stage a named identity — a role and a perspective — so its LLM prompt opens from a specific professional viewpoint rather than a generic one.
+A persona is a data-only plugin (`kind: persona`) that gives a pipeline stage a named behavioral lens. Each persona declares a `perspective` — the behavioral opening line emitted directly into the stage prompt — and a `role` (manifest-owned metadata, accessible as data but never injected into the prompt output).
 
-Personas have no `plugin.sh` and fire no hooks. Each manifest declares two fields under `persona:`: `role` (a short noun phrase) and `perspective` (a single-line string, because the minimal `yaml_get` reader in `core/plugin-registry/persona.sh` does not parse folded or block scalars). The stage resolves its configured persona id via `persona_stage_framing` and composes `role` + `perspective` into the prompt opening. When the manifest is absent the stage falls back to behavior-first task framing without a persona role declaration.
+Personas have no `plugin.sh` and fire no hooks. Each manifest declares two fields under `persona:`: `role` (a short noun phrase, manifest metadata only) and `perspective` (a single-line string, because the minimal `yaml_get` reader in `core/plugin-registry/persona.sh` does not parse folded or block scalars). The stage resolves its configured persona id via `persona_stage_framing` and emits `perspective + task` as the prompt opening — `role` is not included in the prompt output. When the manifest is absent the stage falls back to behavior-first task framing.
 
 _See [[Writing-Plugins]] for the plugin contract. To add a new persona, create `plugins/persona/<id>/manifest.yaml` and add the id to this page._
 
@@ -10,7 +10,7 @@ _See [[Writing-Plugins]] for the plugin contract. To add a new persona, create `
 
 ## architect
 
-The architect persona gives the design stage the identity of a software architect — reasoning about a change in terms of structure, boundaries, and long-term evolution rather than implementation detail.
+The architect persona opens stage prompts with a structural judgment directive — evaluating how a change fits the system's boundaries, keeps coupling low and cohesion high, and preserves conceptual integrity over long-term evolution.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/architect/manifest.yaml`
@@ -23,14 +23,14 @@ version: 0.1.0
 summary: Reasons about a change in terms of structure, boundaries, and long-term evolution.
 persona:
   role: a software architect
-  perspective: "You judge a change by its structure, not only its behavior: how it fits the system's existing boundaries, whether it keeps coupling low and cohesion high, and whether it preserves conceptual integrity. You weigh every decision by its effect on long-term evolution and maintainability, prefer the smallest design that satisfies the requirement over speculative generality, and are wary of one-off deviations from the patterns already established in the codebase."
+  perspective: "Judge a change by its structure, not only its behavior: how it fits the system's existing boundaries, whether it keeps coupling low and cohesion high, and whether it preserves conceptual integrity. Weigh every decision by its effect on long-term evolution and maintainability, prefer the smallest design that satisfies the requirement over speculative generality, and be wary of one-off deviations from the patterns already established in the codebase."
 ```
 
 ---
 
 ## developer
 
-The developer persona gives the build stage the identity of a software engineer focused on correctness, treating every failing test as an obligation to understand and preferring the simplest implementation that satisfies the acceptance contract.
+The developer persona opens stage prompts with a correctness-first implementation directive — treating every failing test as an obligation to understand and preferring the simplest implementation that satisfies the acceptance contract.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/developer/manifest.yaml`
@@ -43,14 +43,14 @@ version: 0.1.0
 summary: Reasons about a change from the perspective of a software engineer focused on correctness and minimal implementation.
 persona:
   role: a software engineer
-  perspective: "You reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. You prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves."
+  perspective: "Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves."
 ```
 
 ---
 
 ## product-owner
 
-The product-owner persona gives the plan stage the identity of a product owner — focusing on user value, acceptance criteria, and definition of done rather than implementation mechanics.
+The product-owner persona opens stage prompts with a value-delivery directive — requiring every step to contribute to a verifiable outcome and rejecting scaffolding that does not ship.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/product-owner/manifest.yaml`
@@ -63,14 +63,14 @@ version: 0.1.0
 summary: Focuses on user value, acceptance criteria, and definition of done to ensure the plan delivers working software.
 persona:
   role: a product owner
-  perspective: "You judge a plan by the user value it delivers: every step must contribute to a verifiable outcome, acceptance criteria must be covered, and the definition of done must be wired into the live path. You flag any step that defers testing, treats behavior as optional, or creates scaffolding that does not ship."
+  perspective: "Judge a plan by the user value it delivers: every step must contribute to a verifiable outcome, acceptance criteria must be covered, and the definition of done must be wired into the live path. Flag any step that defers testing, treats behavior as optional, or creates scaffolding that does not ship."
 ```
 
 ---
 
 ## red-team
 
-The red-team persona encodes an adversarial security mindset, promoting the red-team operator identity for use in review lenses and stage framing.
+The red-team persona opens stage prompts with an adversarial exploit-hunting directive — scanning for race conditions, privilege escalation paths, and security assumptions that break under adversarial conditions.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/red-team/manifest.yaml`
@@ -90,7 +90,7 @@ persona:
 
 ## security
 
-The security persona encodes a security-first mindset for review lenses, examining changes from the perspective of a hostile reviewer focused on trust boundaries, injection risks, and credential exposure.
+The security persona opens stage prompts with a security-first examination directive — scanning trust boundaries, injection risks, credential exposure, and path traversal under a hostile threat model.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/security/manifest.yaml`
@@ -103,14 +103,14 @@ version: 0.1.0
 summary: Security-first mindset — identifies weaknesses at trust boundaries before they reach production.
 persona:
   role: a security engineer
-  perspective: "Examine the change for security weaknesses as a hostile reviewer: injection risks, credential or secret exposure, path traversal, and missing input validation at system boundaries (CLI, parsers, plugin manifests). Scrutinize trust boundaries and assume adversarial input at every entry point."
+  perspective: "Examine the change for security weaknesses under a hostile threat model: injection risks, credential or secret exposure, path traversal, and missing input validation at system boundaries (CLI, parsers, plugin manifests). Scrutinize trust boundaries and assume adversarial input at every entry point."
 ```
 
 ---
 
 ## test-strategist
 
-The test-strategist persona encodes a quality-focused testing mindset, ensuring tests fail when code is wrong and pass only when all specified behaviors are correct.
+The test-strategist persona opens stage prompts with a quality-first test-design directive — building suites that fail when code is wrong and pass only when all specified behaviors are correct.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/test-strategist/manifest.yaml`
@@ -130,7 +130,7 @@ persona:
 
 ## correctness
 
-The correctness persona wires the correctness review lens to the test-strategist identity (see [test-strategist](#test-strategist)), carrying the byte-identical charter text from the `correctness` case arm in `charters.sh` as its perspective. This makes `resolve_persona_charter("correctness")` return the charter text instead of falling through to the case statement.
+The correctness persona wires the correctness review lens to the test-strategist role (see [test-strategist](#test-strategist)), opening stage prompts with a logic-error examination directive. Its perspective is the charter text returned by `resolve_persona_charter("correctness")`.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/correctness/manifest.yaml`
@@ -150,7 +150,7 @@ persona:
 
 ## performance
 
-The performance persona encodes a performance-first mindset for review lenses, examining changes from the perspective of a performance engineer focused on latency, throughput, and bottleneck identification.
+The performance persona opens stage prompts with a performance-regression examination directive — profiling the critical path and flagging algorithmic complexity, unnecessary allocations, blocking I/O, and throughput bottlenecks.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/performance/manifest.yaml`
@@ -170,7 +170,7 @@ persona:
 
 ## scope
 
-The scope persona wires the scope review lens to the architect identity, carrying the byte-identical charter text from the `scope` case arm in `charters.sh` as its perspective. This makes `resolve_persona_charter("scope")` return the charter text instead of falling through to the case statement.
+The scope persona wires the scope review lens to the architect role (see [architect](#architect)), opening stage prompts with an advisory scope-drift detection directive. Its perspective is the charter text returned by `resolve_persona_charter("scope")`.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/scope/manifest.yaml`
@@ -190,7 +190,7 @@ persona:
 
 ## sre
 
-The SRE persona encodes an operability-first mindset for review lenses, examining changes from the perspective of a site-reliability engineer focused on production risk, observability, graceful degradation, and safe rollback.
+The SRE persona opens stage prompts with an operability-first examination directive — evaluating production risk, observability gaps, SLO impact, and whether a safe rollback path exists.
 
 - **Kind:** `persona`
 - **Manifest:** `plugins/persona/sre/manifest.yaml`

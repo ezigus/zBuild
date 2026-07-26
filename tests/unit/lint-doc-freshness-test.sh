@@ -343,6 +343,14 @@ rc=0
 out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
 assert_eq "[SPEC-4] personas.md exempt from orphan → rc=0" "0" "$rc"
 
+# SPEC-4[change]: personas.md states role is never injected into the prompt (perspective-only seam)
+real_personas_content="$(cat "$REPO_ROOT/docs/wiki/plugins/personas.md")"
+case "$real_personas_content" in
+    *"never injected into the prompt"*) doc_persp_only=1 ;;
+    *)                                  doc_persp_only=0 ;;
+esac
+assert_eq "[SPEC-4] personas.md states role is never injected into the prompt" "1" "$doc_persp_only"
+
 # ─── SPEC-5 (persona): non-persona plugin still requires per-id page ──────────
 print_test_section "SPEC-5 (persona): non-persona still requires per-id page"
 FX="$TEST_TEMP_DIR/spec-p5"
