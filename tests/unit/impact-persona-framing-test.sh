@@ -3,7 +3,7 @@
 # SPEC-1[change] — with architect manifest present, the prompt includes the
 #   persona perspective text (new behavior; fails at merge-base baseline).
 # SPEC-2[guard]  — with architect manifest absent, the prompt falls back to
-#   'You are an Impact Analyzer agent.' (existing behavior).
+#   behavior-only _task_intro text (no human-profession declaration).
 # SPEC-3[guard]  — the 'EXISTENCE VERIFICATION' heading is present regardless
 #   of which framing path ran.
 # SPEC-4[guard]  — empty-output guard: if persona_stage_framing exits 0 but
@@ -84,7 +84,8 @@ _root_without_architect() {
 
 _ORIG_IMPACT_ROOT="$_IMPACT_ROOT"
 
-# ── SPEC-1[change]: architect manifest present → perspective in prompt ─────────
+# ── SPEC-1[change]: persona_stage_framing rc≠0 → fallback has no role declaration ─
+# PROMPT1 (persona-present path) is kept for SPEC-3's framing-agnostic check.
 AD1="$(_setup_fixture)"
 IROOT1="$(_root_with_architect)"
 _IMPACT_ROOT="$IROOT1"
@@ -99,10 +100,41 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 
 PROMPT1="$AD1/impact-prompt.txt"
 assert_file_exists "SPEC-1: prompt file written when architect manifest present" "$PROMPT1"
-assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
-    "$(cat "$PROMPT1")" "Focus on boundaries and interfaces."
+# Positive happy-path guard: the persona-present prompt actually carries the
+# fixture architect perspective text (restored — #1575 review flagged its removal
+# as leaving the persona-injection path unverified; correctness/sre).
+assert_contains "[SPEC-1 guard] architect perspective text present when manifest present" \
+    "$(cat "$PROMPT1" 2>/dev/null || echo '')" "Focus on boundaries and interfaces."
 assert_eq "[SPEC-6] ZBUILD_STAGE_IO_PERSONA=architect exported when manifest present" \
     "architect" "$(cat "$AD1/persona.cap" 2>/dev/null)"
+unset _CAPTURED_PERSONA_FILE
+
+# [SPEC-1] change assertion: when persona_stage_framing fails with rc≠0 (distinct
+# from SPEC-4's rc=0-but-empty), _persona_fallback is used and must NOT contain the
+# role declaration. Fails at baseline where _persona_fallback opened with
+# "You are an Impact Analyzer agent."
+persona_stage_framing() { return 1; }
+AD1b="$(_setup_fixture)"
+_IMPACT_ROOT="$IROOT1"
+_impact_run_inner \
+    "$(dirname "$AD1b")/scope-manifest.md" \
+    "$AD1b/design.md" \
+    "$AD1b/plan.json" \
+    "$AD1b/impact.json" \
+    "$AD1b" >/dev/null 2>&1 || true
+_IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
+unset -f persona_stage_framing
+PROMPT1b="$AD1b/impact-prompt.txt"
+# Guard against a vacuous pass: the fallback run must have WRITTEN the prompt file.
+# Without this, a crashed run (no file) makes the negative grep's else-branch fire
+# assert_pass — masking a broken run (#1575 review, correctness/red-team/sre).
+assert_file_exists "[SPEC-1] fallback run produced a prompt file" "$PROMPT1b"
+if grep -qF "You are an Impact Analyzer agent." "$PROMPT1b" 2>/dev/null; then
+    assert_fail "[SPEC-1] fallback must be behavior-only (no role declaration)" \
+        "role declaration found in fallback prompt"
+else
+    assert_pass "[SPEC-1] fallback must be behavior-only (no role declaration)"
+fi
 
 # ── SPEC-2[guard]: architect manifest absent → fallback text in prompt ─────────
 AD2="$(_setup_fixture)"
@@ -120,7 +152,7 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 PROMPT2="$AD2/impact-prompt.txt"
 assert_file_exists "SPEC-2: prompt file written when architect manifest absent" "$PROMPT2"
 assert_contains "[SPEC-2] fallback text present when manifest absent" \
-    "$(cat "$PROMPT2")" "You are an Impact Analyzer agent."
+    "$(cat "$PROMPT2")" "adversarial consequence-finding"
 assert_eq "[SPEC-6] ZBUILD_STAGE_IO_PERSONA=architect:fallback exported when manifest absent" \
     "architect:fallback" "$(cat "$AD2/persona.cap" 2>/dev/null)"
 unset _CAPTURED_PERSONA_FILE
@@ -150,7 +182,7 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 PROMPT4="$AD4/impact-prompt.txt"
 assert_file_exists "SPEC-4: prompt file written when persona_stage_framing returns empty" "$PROMPT4"
 assert_contains "[SPEC-4] fallback text used when persona_stage_framing returns empty" \
-    "$(cat "$PROMPT4")" "You are an Impact Analyzer agent."
+    "$(cat "$PROMPT4")" "adversarial consequence-finding"
 unset -f persona_stage_framing  # restore: remove mock so future SPECs use the real function
 
 cleanup_test_env
