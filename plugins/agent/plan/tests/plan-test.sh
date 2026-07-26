@@ -747,6 +747,9 @@ assert_contains "[SPEC-2] persona-present framing sentinel appears in prompt" \
 # Restore persona_stage_framing to its original definition.
 unset -f persona_stage_framing
 if [[ -n "$_ORIG_PSF" ]]; then eval "$_ORIG_PSF"; fi
+# Restore CANNED_PLAN so the following sections run against the canonical fixture
+# (this block overwrote it, mirroring the SPEC-5 restore above).
+CANNED_PLAN="$_SAVED_CANNED_PLAN"
 
 # ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
 set +e
