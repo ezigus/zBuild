@@ -6,6 +6,12 @@
 # SPEC-14: Branch-exists-no-PR resume: exit 0; no checkout-b; pr-create appears
 # SPEC-15: Preflight accepts HEAD on release/* branch (not only main)
 # SPEC-16: Resume info log emitted when steps are skipped
+# SPEC-17: Pre-stamped changelog: exactly one ## [<version>] section after a resume (#1601)
+# SPEC-18: Pre-stamped changelog: no additional ## [ lines inserted
+# SPEC-19: Pre-stamped-changelog resume exits 0
+# SPEC-20: Guard fires audibly — logs the skip, suppresses the false "updated" line
+# SPEC-21: Prose reference to a version does not suppress the prepend (anchored match)
+# SPEC-22: Resume from main discards redundant stamps before the post-merge checkout
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -115,6 +121,8 @@ case "${1:-}" in
         exit 0 ;;
     checkout)
         if [[ "${2:-}" == "-b" ]]; then printf "checkout-b\n" >> "$ORDER_LOG"; fi
+        if [[ "${2:-}" == "--" ]]; then printf "checkout-discard\n" >> "$ORDER_LOG"; fi
+        if [[ "${2:-}" == "main" ]]; then printf "checkout-main\n" >> "$ORDER_LOG"; fi
         exit 0 ;;
     push)       printf "branch-push\n" >> "$ORDER_LOG"; exit 0 ;;
     *)          exit 0 ;;
@@ -294,11 +302,15 @@ printf '[{"number":999,"url":"https://github.com/ezigus/zBuild/pull/999"}]\n' \
     > "$MOCK_PR_LIST_JSON"
 
 # Baseline ## [ count in the freshly-reset changelog (before pre-stamping).
-_pre_stamp_section_count="$(grep -c '^## \[' "$sandbox_changelog" 2>/dev/null || echo 0)"
+# NOTE: `grep -c` prints 0 AND exits 1 on no-match, so `|| echo 0` would emit "0\n0"
+# and break the arithmetic below. Assign the fallback instead of echoing it.
+_pre_stamp_section_count="$(grep -c '^## \[' "$sandbox_changelog" 2>/dev/null)" \
+    || _pre_stamp_section_count=0
 
 # Prepend the version header that _release_prepend_changelog would have written
 # on the first run, simulating a resume where the section is already present.
-{ printf '## [1.0.1.5] — pre-existing stamp\n\n'; cat "$sandbox_changelog"; } \
+# Mirrors the real header shape (version + em-dash date), not a synthetic suffix.
+{ printf '## [1.0.1.5] — 2026-07-04\n\n### Added\n\n- pre-existing stamp from the first ship run\n\n'; cat "$sandbox_changelog"; } \
     > "$TEST_TEMP_DIR/changelog_prestamped.md"
 cp "$TEST_TEMP_DIR/changelog_prestamped.md" "$sandbox_changelog"
 
@@ -306,7 +318,8 @@ spec1718_rc=0
 spec1718_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)" \
     || spec1718_rc=$?
 
-_version_count="$(grep -c '## \[1\.0\.1\.5\]' "$sandbox_changelog" 2>/dev/null || echo 0)"
+_version_count="$(grep -c '^## \[1\.0\.1\.5\]' "$sandbox_changelog" 2>/dev/null)" \
+    || _version_count=0
 if [[ "$_version_count" -eq 1 ]]; then
     assert_pass "[SPEC-17] changelog has exactly one ## [1.0.1.5] entry after --ship resume re-run (no duplicate)"
 else
@@ -314,12 +327,80 @@ else
         "changelog head: $(head -20 "$sandbox_changelog" 2>/dev/null)"
 fi
 
-_after_section_count="$(grep -c '^## \[' "$sandbox_changelog" 2>/dev/null || echo 0)"
+_after_section_count="$(grep -c '^## \[' "$sandbox_changelog" 2>/dev/null)" \
+    || _after_section_count=0
 if [[ "$_after_section_count" -eq $(( _pre_stamp_section_count + 1 )) ]]; then
-    assert_pass "[SPEC-18] no additional ## [ lines inserted; working-tree-clean invariant preserved (exit rc=${spec1718_rc})"
+    assert_pass "[SPEC-18] no additional ## [ lines inserted on idempotent resume"
 else
     assert_fail "[SPEC-18] ## [ count must be pre-stamp+1 after idempotent resume (pre-stamp=${_pre_stamp_section_count} after=${_after_section_count})" \
         "expected $(( _pre_stamp_section_count + 1 )) sections, got ${_after_section_count}"
+fi
+
+# rc was previously only interpolated into SPEC-18's message, never asserted — a
+# non-zero resume could ship a false green. Assert it.
+if [[ "$spec1718_rc" -eq 0 ]]; then
+    assert_pass "[SPEC-19] --ship resume with a pre-stamped changelog exits 0 (merge→tag→publish completed)"
+else
+    assert_fail "[SPEC-19] --ship resume with a pre-stamped changelog must exit 0 (rc=${spec1718_rc})" \
+        "output: ${spec1718_out}"
+fi
+
+# Guards against a vacuous SPEC-17: if the computed version ever drifted off
+# 1.0.1.5 the guard would never fire, yet SPEC-17's literal count would still hold.
+# Assert the skip actually happened, and that no false "updated" line was printed.
+if grep -q "prepend skipped (idempotent re-run)" <<< "$spec1718_out" \
+   && ! grep -q "CHANGELOG.md updated for" <<< "$spec1718_out"; then
+    assert_pass "[SPEC-20] guard fired: 'prepend skipped' logged and no false 'CHANGELOG.md updated' line"
+else
+    assert_fail "[SPEC-20] resume must log the idempotent skip and must NOT claim 'CHANGELOG.md updated'" \
+        "output: ${spec1718_out}"
+fi
+
+# ── T6: prose mention must NOT suppress a legitimate prepend (SPEC-21) ────────
+# An unanchored substring guard false-positives on body prose that references a
+# version, silently skipping the real section. The guard is anchored at line start.
+_reset_logs
+export MOCK_GIT_LSREMOTE_BRANCH_EXISTS=1
+printf '[{"number":999,"url":"https://github.com/ezigus/zBuild/pull/999"}]\n' \
+    > "$MOCK_PR_LIST_JSON"
+
+{ printf -- '- backport note: see ## [1.0.1.5] for details\n\n'; cat "$sandbox_changelog"; } \
+    > "$TEST_TEMP_DIR/changelog_prose.md"
+cp "$TEST_TEMP_DIR/changelog_prose.md" "$sandbox_changelog"
+
+spec21_rc=0
+spec21_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)" \
+    || spec21_rc=$?
+
+_prose_section_count="$(grep -c '^## \[1\.0\.1\.5\]' "$sandbox_changelog" 2>/dev/null)" \
+    || _prose_section_count=0
+if [[ "$spec21_rc" -eq 0 && "$_prose_section_count" -eq 1 ]]; then
+    assert_pass "[SPEC-21] prose reference to ## [1.0.1.5] does not suppress the prepend (anchored match)"
+else
+    assert_fail "[SPEC-21] a prose-only mention must not skip the prepend (rc=${spec21_rc} sections=${_prose_section_count})" \
+        "output: ${spec21_out}"
+fi
+
+# ── T7: resume from main discards redundant stamps before the merge sync (SPEC-22) ─
+# HEAD is main (mock default) with no pre-stamped section, so the idempotency guard
+# CANNOT fire and main()'s pre-split body dirties the tree. Step 6 must discard those
+# redundant stamps before switching/pulling, or the post-merge sync fails (#1601).
+_reset_logs
+export MOCK_GIT_LSREMOTE_BRANCH_EXISTS=1
+printf '[{"number":999,"url":"https://github.com/ezigus/zBuild/pull/999"}]\n' \
+    > "$MOCK_PR_LIST_JSON"
+
+spec22_rc=0
+spec22_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)" \
+    || spec22_rc=$?
+
+_cd_line="$(grep -n 'checkout-discard' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_cm_line="$(grep -n 'checkout-main' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+if [[ "$spec22_rc" -eq 0 && -n "$_cd_line" && -n "$_cm_line" && "$_cd_line" -lt "$_cm_line" ]]; then
+    assert_pass "[SPEC-22] resume-from-main discards redundant CHANGELOG/VERSION stamps before checkout main"
+else
+    assert_fail "[SPEC-22] checkout-discard must precede checkout-main on a resume (rc=${spec22_rc} discard=${_cd_line} main=${_cm_line})" \
+        "ORDER_LOG: $(cat "$ORDER_LOG" 2>/dev/null || echo '<empty>')"
 fi
 
 cleanup_test_env
