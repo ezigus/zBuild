@@ -47,9 +47,19 @@ _setup_fixture() {
     cat > "$ad/plan.json" <<'EOF'
 {"schema_version":1,"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
 EOF
-    export ZBUILD_REPO_ROOT="$fix"
+    # NB: do NOT export ZBUILD_REPO_ROOT here — this function is invoked via
+    # $(...) command substitution, so an export runs in a subshell and never
+    # reaches the parent. The caller MUST set it in the parent scope (below),
+    # or _build_stage_run_inner falls back to `git rev-parse --show-toplevel`
+    # = the REAL zBuild repo and its scope-revert reverts the developer's
+    # uncommitted out-of-scope files (silent working-tree clobber).
     printf '%s' "$ad"
 }
+
+# Set ZBUILD_REPO_ROOT in the PARENT for the fixture whose artifacts dir is $1
+# (= <repo>/state/artifacts, so the repo root is two levels up). Keeps the
+# build stage pinned to the sandbox, never the real repo.
+_pin_repo_root() { local _rr; _rr="$(cd "$1/../.." && pwd)"; export ZBUILD_REPO_ROOT="$_rr"; }
 
 # Build a temp _BUILD_ROOT whose plugins/ has the developer manifest.
 _root_with_developer() {
@@ -78,6 +88,7 @@ _ORIG_BUILD_ROOT="$_BUILD_ROOT"
 
 # ── SPEC-1[change]: developer manifest present → perspective in prompt ─────────
 AD1="$(_setup_fixture)"
+_pin_repo_root "$AD1"
 BROOT1="$(_root_with_developer)"
 _BUILD_ROOT="$BROOT1"
 export _CAPTURED_PERSONA_FILE="$AD1/persona.cap"
@@ -98,6 +109,7 @@ assert_eq "[SPEC-4] ZBUILD_STAGE_IO_PERSONA=developer exported when manifest pre
 
 # ── SPEC-2[change]: developer manifest absent → behavior-first fallback ──────
 AD2="$(_setup_fixture)"
+_pin_repo_root "$AD2"
 BROOT2="$(_root_without_developer)"
 _BUILD_ROOT="$BROOT2"
 export _CAPTURED_PERSONA_FILE="$AD2/persona.cap"
