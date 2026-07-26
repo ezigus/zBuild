@@ -100,6 +100,11 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 
 PROMPT1="$AD1/impact-prompt.txt"
 assert_file_exists "SPEC-1: prompt file written when architect manifest present" "$PROMPT1"
+# Positive happy-path guard: the persona-present prompt actually carries the
+# fixture architect perspective text (restored — #1575 review flagged its removal
+# as leaving the persona-injection path unverified; correctness/sre).
+assert_contains "[SPEC-1 guard] architect perspective text present when manifest present" \
+    "$(cat "$PROMPT1" 2>/dev/null || echo '')" "Focus on boundaries and interfaces."
 assert_eq "[SPEC-6] ZBUILD_STAGE_IO_PERSONA=architect exported when manifest present" \
     "architect" "$(cat "$AD1/persona.cap" 2>/dev/null)"
 unset _CAPTURED_PERSONA_FILE
@@ -120,6 +125,10 @@ _impact_run_inner \
 _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 unset -f persona_stage_framing
 PROMPT1b="$AD1b/impact-prompt.txt"
+# Guard against a vacuous pass: the fallback run must have WRITTEN the prompt file.
+# Without this, a crashed run (no file) makes the negative grep's else-branch fire
+# assert_pass — masking a broken run (#1575 review, correctness/red-team/sre).
+assert_file_exists "[SPEC-1] fallback run produced a prompt file" "$PROMPT1b"
 if grep -qF "You are an Impact Analyzer agent." "$PROMPT1b" 2>/dev/null; then
     assert_fail "[SPEC-1] fallback must be behavior-only (no role declaration)" \
         "role declaration found in fallback prompt"
