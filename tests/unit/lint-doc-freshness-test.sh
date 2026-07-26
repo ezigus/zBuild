@@ -343,6 +343,14 @@ rc=0
 out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
 assert_eq "[SPEC-4] personas.md exempt from orphan → rc=0" "0" "$rc"
 
+# SPEC-4[change]: personas.md red-team example contains 'hostile reviewer'
+real_personas_content="$(cat "$REPO_ROOT/docs/wiki/plugins/personas.md")"
+case "$real_personas_content" in
+    *"hostile reviewer"*) rt_doc_ok=1 ;;
+    *)                    rt_doc_ok=0 ;;
+esac
+assert_eq "[SPEC-4] personas.md red-team example contains 'hostile reviewer'" "1" "$rt_doc_ok"
+
 # ─── SPEC-5 (persona): non-persona plugin still requires per-id page ──────────
 print_test_section "SPEC-5 (persona): non-persona still requires per-id page"
 FX="$TEST_TEMP_DIR/spec-p5"

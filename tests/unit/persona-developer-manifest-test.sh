@@ -39,6 +39,14 @@ case "$dev_perspective" in
 esac
 assert_eq "[SPEC-3] perspective contains 'correctness'" "1" "$persp_ok"
 
+# SPEC-2[change]: red-team perspective contains 'reviewer'
+rt_p="$(resolve_persona_perspective red-team "$REAL_PROOT")"
+case "$rt_p" in
+    *reviewer*) rt_persp_ok=1 ;;
+    *)          rt_persp_ok=0 ;;
+esac
+assert_eq "[SPEC-2] red-team perspective contains 'reviewer'" "1" "$rt_persp_ok"
+
 # SPEC-4: validate_manifest passes
 set +e
 validate_manifest "$REAL_MANIFEST" >/dev/null 2>&1; rc=$?

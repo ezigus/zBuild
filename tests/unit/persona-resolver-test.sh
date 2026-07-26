@@ -340,6 +340,21 @@ validate_manifest "$scope_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live scope manifest" "0" "$rc"
 
+# ─── SPEC-1[change]: red-team perspective contains 'reviewer' ────────────────
+live_rt_p="$(resolve_persona_perspective red-team "$REAL_PROOT")"
+case "$live_rt_p" in
+    *reviewer*) rt_reviewer=1 ;;
+    *)          rt_reviewer=0 ;;
+esac
+assert_eq "[SPEC-1] live red-team perspective contains 'reviewer'" "1" "$rt_reviewer"
+
+# ─── SPEC-3[change]: red-team perspective contains 'hostile' ─────────────────
+case "$live_rt_p" in
+    *hostile*) rt_hostile=1 ;;
+    *)         rt_hostile=0 ;;
+esac
+assert_eq "[SPEC-3] live red-team perspective contains 'hostile'" "1" "$rt_hostile"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
