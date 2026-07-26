@@ -328,6 +328,21 @@ assert_eq "[SPEC-3] ZBUILD_STAGE_IO_PERSONA unset after _review_lens_run_inner (
     "" "${ZBUILD_STAGE_IO_PERSONA:-}"
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3"
 
+# SPEC-3b[change]: when ZBUILD_STAGE_IO_PERSONA held a value BEFORE the call, it
+# is restored to that exact value afterward — the restore-to-prior-value branch,
+# distinct from the unset→unset path above (#1577 review, red-team).
+_prev_plugins_root_spec3b="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+export ZBUILD_STAGE_IO_PERSONA="outer-sentinel-1577"
+out_spec3b="$artifact_dir/lens-spec3b-security.json"
+set +e
+_review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec3b" "$artifact_dir"
+set -e
+assert_eq "[SPEC-3b] ZBUILD_STAGE_IO_PERSONA restored to prior value after _review_lens_run_inner" \
+    "outer-sentinel-1577" "${ZBUILD_STAGE_IO_PERSONA:-}"
+unset ZBUILD_STAGE_IO_PERSONA
+export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3b"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
