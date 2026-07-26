@@ -154,8 +154,8 @@ run_impact "$art_spec1"
 _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 
 prompt_spec1="$art_spec1/impact-prompt.txt"
-assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
-    "$(cat "$prompt_spec1" 2>/dev/null || echo '')" "You judge a change by its structure"
+assert_contains "[SPEC-8] architect perspective text in prompt when manifest present" \
+    "$(cat "$prompt_spec1" 2>/dev/null || echo '')" "Judge a change by its structure"
 
 # ─── SPEC-2[guard]: architect manifest absent → fallback text in prompt ───────
 IROOT_NONE="$(mktemp -d "$TEST_TEMP_DIR/iroot_none.XXXXXX")"
