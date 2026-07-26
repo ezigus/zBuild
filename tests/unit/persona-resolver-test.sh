@@ -340,21 +340,25 @@ validate_manifest "$scope_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live scope manifest" "0" "$rc"
 
-# ─── SPEC-1[change]: architect perspective opens with imperative (no 'You' prefix) ──
+# ─── SPEC-1[change]: architect perspective opens as a standalone imperative ──
+# Not just "no 'You ' prefix" — also require a non-empty, capitalized opener so
+# a blank or malformed perspective cannot pass the check (#1574 review, red-team).
 live_arch_p="$(resolve_persona_perspective architect "$REAL_PROOT")"
 case "$live_arch_p" in
-    You\ *) arch_no_you=0 ;;
-    *)      arch_no_you=1 ;;
+    You\ *) arch_opener_ok=0 ;;   # dangles from an implied "You are {role}"
+    [A-Z]*) arch_opener_ok=1 ;;   # standalone imperative/observational opener
+    *)      arch_opener_ok=0 ;;   # blank, lowercase, or otherwise malformed
 esac
-assert_eq "[SPEC-1] architect perspective does not start with 'You '" "1" "$arch_no_you"
+assert_eq "[SPEC-1] architect perspective is a standalone imperative opener (no 'You ', non-empty capitalized)" "1" "$arch_opener_ok"
 
-# ─── SPEC-3[change]: developer perspective opens with imperative (no 'You' prefix) ─
+# ─── SPEC-3[change]: developer perspective opens as a standalone imperative ──
 live_dev_p="$(resolve_persona_perspective developer "$REAL_PROOT")"
 case "$live_dev_p" in
-    You\ *) dev_no_you=0 ;;
-    *)      dev_no_you=1 ;;
+    You\ *) dev_opener_ok=0 ;;
+    [A-Z]*) dev_opener_ok=1 ;;
+    *)      dev_opener_ok=0 ;;
 esac
-assert_eq "[SPEC-3] developer perspective does not start with 'You '" "1" "$dev_no_you"
+assert_eq "[SPEC-3] developer perspective is a standalone imperative opener (no 'You ', non-empty capitalized)" "1" "$dev_opener_ok"
 
 cleanup_test_env
 print_test_results
