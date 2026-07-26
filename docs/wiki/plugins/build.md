@@ -1,5 +1,3 @@
-Looking at the existing wiki page and comparing it to the template, it's missing a "How to use" section, lacks an "Advanced" section, and the opening is immediately followed by a bold structural label (`**Build Stage**`) which violates DOC-STYLE rule 1. I'll rewrite it to conform.
-
 # build
 
 The build plugin is the implementation stage of a zBuild pipeline: it reads the structured plan produced by the plan stage, invokes the LLM agent, and writes a `diff.patch` capturing all file changes. The patch is never applied inside this plugin — the downstream test stage applies and validates it, so a failed test cycle routes back to build with fresh feedback rather than leaving the working tree in a broken state.

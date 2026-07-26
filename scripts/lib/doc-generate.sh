@@ -280,9 +280,20 @@ _doc_generate_page() {
     shopt -u extglob
 
     if [[ "$trimmed" != "NO_CHANGE" ]]; then
+        # Preamble hygiene: the prompt asks for "no preamble", but the LLM
+        # occasionally leaks a planning monologue before the page's first heading
+        # (e.g. "Looking at the existing wiki page...I'll rewrite it to conform.").
+        # Every generated wiki page must open with a top-level `# ` heading, so
+        # deterministically drop anything before it rather than trusting the model
+        # to obey. Only strips when a `# ` heading is present (else write as-is so
+        # a genuinely heading-less response is not silently emptied).
+        local page="$trimmed"
+        if printf '%s\n' "$page" | grep -qE '^# '; then
+            page="$(printf '%s\n' "$page" | sed -n '/^# /,$p')"
+        fi
         # Write the page atomically (no leftover .bak — #1492).
         mkdir -p "$(dirname "$out_path")"
-        printf '%s\n' "$response" | _dgen_atomic_write "$out_path"
+        printf '%s\n' "$page" | _dgen_atomic_write "$out_path"
     fi
 
     # Always write/update the hash sidecar.
