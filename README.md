@@ -95,5 +95,5 @@ Design and contributor docs live in [`docs/`](docs/); how we write these docs is
 <!-- BEGIN:generated-docs -->
 ## Documentation
 
-Full reference documentation is published to the [project wiki](../../wiki): a page for each of the 36 plugins and 16 mechanics, plus the Installation, Getting Started, Configuration, and CLI Reference guides. These pages are generated from the plugin manifests and the mechanics registry, then republished on each release.
+Full reference documentation is published to the [project wiki](../../wiki): a page for each of the 37 plugins and 17 mechanics, plus the Installation, Getting Started, Configuration, and CLI Reference guides. These pages are generated from the plugin manifests and the mechanics registry, then republished on each release.
 <!-- END:generated-docs -->

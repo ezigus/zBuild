@@ -79,6 +79,33 @@ assert_file_exists "[SPEC-1] plugin wiki page written" "$plugin_page"
 page_content="$(<"$plugin_page")"
 assert_contains "[SPEC-1] plugin page contains expected H1" "$page_content" "# doc-gather-full"
 
+# ─── SPEC-7: leaked LLM planning preamble before the H1 is stripped ──────────
+# The generator prompt forbids a preamble, but the model sometimes leaks one
+# (e.g. "Looking at the existing wiki page...I'll rewrite it."). The written page
+# must start at the first `# ` heading with the preamble dropped — the generator
+# must not trust the model to obey.
+_reset_wiki
+_MOCK_ROUTE_RESPONSE="Looking at the existing wiki page and comparing it to the template, I'll rewrite it to conform.
+
+# doc-gather-full
+
+A complete plugin wiki page.
+
+## How to use
+
+Source and call.
+"
+doc_generate_plugin "doc-gather-full" "$PLUGIN_FIXTURES" "$WIKI_ROOT" "$TEMPLATE"
+preamble_page="$WIKI_ROOT/plugins/doc-gather-full.md"
+assert_file_exists "[SPEC-7] page written despite leaked preamble" "$preamble_page"
+assert_eq "[SPEC-7] page starts at the H1 (preamble stripped)" \
+    "# doc-gather-full" "$(head -1 "$preamble_page")"
+if grep -qF "Looking at the existing wiki page" "$preamble_page"; then
+    assert_fail "[SPEC-7] leaked planning preamble must NOT be in the written page"
+else
+    assert_pass "[SPEC-7] leaked planning preamble stripped from the written page"
+fi
+
 # ─── SPEC-2: mechanic page write — file written, contains expected H1 ────────
 _reset_wiki
 _MOCK_ROUTE_RESPONSE="# fixture-mechanic
