@@ -284,6 +284,44 @@ else
         "output: ${spec16_out}"
 fi
 
+# ── T5: Pre-stamped changelog idempotency — PR-exists resume (SPEC-17, SPEC-18) ─
+# Pre-stamp sandbox_changelog with the version section that --ship would insert.
+# Without the idempotency guard, a second run inserts a duplicate section — this
+# is the root cause of the post-merge `git checkout main` failure (#1601).
+_reset_logs
+export MOCK_GIT_LSREMOTE_BRANCH_EXISTS=1
+printf '[{"number":999,"url":"https://github.com/ezigus/zBuild/pull/999"}]\n' \
+    > "$MOCK_PR_LIST_JSON"
+
+# Baseline ## [ count in the freshly-reset changelog (before pre-stamping).
+_pre_stamp_section_count="$(grep -c '^## \[' "$sandbox_changelog" 2>/dev/null || echo 0)"
+
+# Prepend the version header that _release_prepend_changelog would have written
+# on the first run, simulating a resume where the section is already present.
+{ printf '## [1.0.1.5] — pre-existing stamp\n\n'; cat "$sandbox_changelog"; } \
+    > "$TEST_TEMP_DIR/changelog_prestamped.md"
+cp "$TEST_TEMP_DIR/changelog_prestamped.md" "$sandbox_changelog"
+
+spec1718_rc=0
+spec1718_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)" \
+    || spec1718_rc=$?
+
+_version_count="$(grep -c '## \[1\.0\.1\.5\]' "$sandbox_changelog" 2>/dev/null || echo 0)"
+if [[ "$_version_count" -eq 1 ]]; then
+    assert_pass "[SPEC-17] changelog has exactly one ## [1.0.1.5] entry after --ship resume re-run (no duplicate)"
+else
+    assert_fail "[SPEC-17] changelog must have exactly one ## [1.0.1.5] after resume re-run (found ${_version_count})" \
+        "changelog head: $(head -20 "$sandbox_changelog" 2>/dev/null)"
+fi
+
+_after_section_count="$(grep -c '^## \[' "$sandbox_changelog" 2>/dev/null || echo 0)"
+if [[ "$_after_section_count" -eq $(( _pre_stamp_section_count + 1 )) ]]; then
+    assert_pass "[SPEC-18] no additional ## [ lines inserted; working-tree-clean invariant preserved (exit rc=${spec1718_rc})"
+else
+    assert_fail "[SPEC-18] ## [ count must be pre-stamp+1 after idempotent resume (pre-stamp=${_pre_stamp_section_count} after=${_after_section_count})" \
+        "expected $(( _pre_stamp_section_count + 1 )) sections, got ${_after_section_count}"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

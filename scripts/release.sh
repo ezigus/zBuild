@@ -284,7 +284,7 @@ main() {
     #    and the existing [1.0.0] section (never clobbered). Path overridable
     #    for tests via ZBUILD_RELEASE_CHANGELOG. ─────────────────────────────────
     local changelog="${ZBUILD_RELEASE_CHANGELOG:-$REPO_ROOT/CHANGELOG.md}"
-    _release_prepend_changelog "$changelog" "$notes"
+    _release_prepend_changelog "$changelog" "$notes" "$version"
     success "CHANGELOG.md updated for ${version}"
 
     # ── Stamp VERSION file (overridable for tests via ZBUILD_RELEASE_VERSION_FILE) ──
@@ -729,13 +729,18 @@ _release_major_preflight() {
     info "release: major preflight passed — '${label}' exists with all issues closed"
 }
 
-# _release_prepend_changelog <changelog_path> <notes> — insert <notes> above the
-# first "## [" release section, keeping the file header intact. Atomic write.
+# _release_prepend_changelog <changelog_path> <notes> [version] — insert <notes>
+# above the first "## [" release section, keeping the file header intact. Atomic write.
+# When version is supplied and "## [<version>]" already exists in the file, returns 0 (no-op).
 _release_prepend_changelog() {
-    local path="$1" notes="$2"
+    local path="$1" notes="$2" version="${3:-}"
     if [[ ! -f "$path" ]]; then
         error "release: CHANGELOG.md not found at $path"
         exit 1
+    fi
+    # Idempotency guard: if this version's section header already exists, skip.
+    if [[ -n "$version" ]] && grep -qF "## [${version}]" "$path"; then
+        return 0
     fi
     # Create the temp file in the SAME directory as the target so the final `mv`
     # is a rename within one filesystem (atomic). A temp under $TMPDIR could be a
