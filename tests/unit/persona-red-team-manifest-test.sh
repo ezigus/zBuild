@@ -45,19 +45,11 @@ validate_manifest "$REAL_MANIFEST" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on red-team manifest" "0" "$rc"
 
-# SPEC-5: persona_lens_framing composes a framing containing role + charter
-charter="Find every exploitable flaw."
-framing="$(persona_lens_framing red-team "$charter" "$REAL_PROOT")"
-case "$framing" in
-    *"red-team operator"*) role_ok=1 ;;
-    *) role_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains 'red-team operator'" "1" "$role_ok"
-case "$framing" in
-    *"$charter"*) charter_ok=1 ;;
-    *) charter_ok=0 ;;
-esac
-assert_eq "[SPEC-5] lens framing contains the supplied charter" "1" "$charter_ok"
+# ─── SPEC-2 (issue #1573): persona_lens_framing removed from persona.sh ─────
+set +e
+declare -F persona_lens_framing >/dev/null 2>&1; plf_defined_rc=$?
+set -e
+assert_eq "[SPEC-2] persona_lens_framing is not defined after sourcing the registry" "1" "$plf_defined_rc"
 
 # SPEC-6: manifest perspective is byte-identical to the charters.sh red-team
 # CASE-STATEMENT fallback — the invariant that removing the manifest would not

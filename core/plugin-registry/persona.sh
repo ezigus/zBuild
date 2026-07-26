@@ -81,21 +81,3 @@ persona_stage_framing() {
     [[ -n "$perspective" ]] || return 1
     printf '%s\n\n%s' "$perspective" "$task"
 }
-
-# ─── persona_lens_framing <id> <charter> [plugins_root] ─────────────────────
-# Lens seam: "You are {role} reviewing a change for the target project.
-# {perspective} {charter}". Returns 1 (prints nothing) when the persona is
-# absent, so the caller keeps its own existing framing (byte-identical fallback).
-persona_lens_framing() {
-    local id="$1" charter="$2" root="${3:-}"
-    local manifest; manifest="$(find_persona "$id" "$root")" || return 1
-    local role; role="$(yaml_get "$manifest" "persona.role")"
-    [[ -n "$role" ]] || return 1
-    local perspective; perspective="$(yaml_get "$manifest" "persona.perspective")"
-    local lead="You are ${role} reviewing a change for the target project."
-    if [[ -n "$perspective" ]]; then
-        printf '%s %s %s' "$lead" "$perspective" "$charter"
-    else
-        printf '%s %s' "$lead" "$charter"
-    fi
-}
