@@ -64,6 +64,11 @@ mechanics:
     summary: Run members in order, each seeing the previous output.
     defined_in: core/pipeline/strategies/sequential.sh
 
+  - name: stage-io
+    summary: "Per-stage INPUT/OUTPUT banners; persona: field; ZBUILD_STAGE_IO_FD (ADR-015)."
+    defined_in: core/output/stage-io.sh
+    adr: ADR-015
+
   - name: state-and-resume
     summary: Atomic crash-safe state; resume where a run stopped (ADR-006).
     defined_in: core/state/resume.sh
