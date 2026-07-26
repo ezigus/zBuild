@@ -424,6 +424,20 @@ out="$(bash "$FX/scripts/lib/lint-doc-freshness.sh" 2>&1)" || rc=$?
 assert_eq "[SPEC-3] substring-only persona id → rc=1" "1" "$rc"
 assert_contains "[SPEC-3] error names the unlisted substring id 'arch'" "$out" "'arch'"
 
+# ─── SPEC-1 (stage-io): docs/wiki/mechanics/stage-io.md exists ───────────────
+# Change assertion — fails at baseline (before stage-io.md is created).
+print_test_section "SPEC-1 (stage-io): stage-io.md wiki page exists"
+assert_file_exists "[SPEC-1] docs/wiki/mechanics/stage-io.md exists" \
+    "$REPO_ROOT/docs/wiki/mechanics/stage-io.md"
+
+# ─── SPEC-3 (stage-io): Mechanics.md carries the stage-io row ────────────────
+# Change assertion — fails at baseline (before the row is added).
+print_test_section "SPEC-3 (stage-io): Mechanics.md has stage-io row"
+mechanics_index="$REPO_ROOT/docs/wiki/Mechanics.md"
+stage_io_row_present=0
+grep -qF "mechanics/stage-io" "$mechanics_index" 2>/dev/null && stage_io_row_present=1
+assert_eq "[SPEC-3] Mechanics.md carries the [[mechanics/stage-io]] row" "1" "$stage_io_row_present"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -55,7 +55,7 @@ ZBUILD_TERM_WIDTH_OVERRIDE=100 \
         --output "RESP" --duration-ms 100 >/dev/null
 exec 3>&-
 banner_p1="$(cat "$fd3_p1")"
-assert_contains "P1 persona id rendered in INPUT banner" "$banner_p1" "persona: plan-writer"
+assert_contains "P1 [SPEC-4] persona id rendered in INPUT banner" "$banner_p1" "persona: plan-writer"
 
 # ─── P2: ZBUILD_STAGE_IO_PERSONA=plan-writer:fallback → "persona: none (fallback)"
 _reset_pending
@@ -71,7 +71,7 @@ ZBUILD_TERM_WIDTH_OVERRIDE=100 \
         --output "RESP" --duration-ms 100 >/dev/null
 exec 3>&-
 banner_p2="$(cat "$fd3_p2")"
-assert_contains "P2 fallback persona renders as none (fallback)" "$banner_p2" "persona: none (fallback)"
+assert_contains "P2 [SPEC-5] fallback persona renders as none (fallback)" "$banner_p2" "persona: none (fallback)"
 
 # ─── P3: ZBUILD_STAGE_IO_PERSONA unset → no "persona:" line in banner ──────────
 _reset_pending
@@ -87,9 +87,9 @@ ZBUILD_STAGE_IO_FD=3 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 exec 3>&-
 banner_p3="$(cat "$fd3_p3")"
 if grep -q "^persona:" <<< "$banner_p3"; then
-    assert_fail "P3 no persona: line when ZBUILD_STAGE_IO_PERSONA unset" "found in: $banner_p3"
+    assert_fail "P3 [SPEC-6] no persona: line when ZBUILD_STAGE_IO_PERSONA unset" "found in: $banner_p3"
 else
-    assert_pass "P3 no persona: line when ZBUILD_STAGE_IO_PERSONA unset"
+    assert_pass "P3 [SPEC-6] no persona: line when ZBUILD_STAGE_IO_PERSONA unset"
 fi
 
 cleanup_test_env
