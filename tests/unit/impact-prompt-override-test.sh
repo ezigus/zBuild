@@ -142,9 +142,8 @@ fi
 assert_contains "I4 core contract intact without override" \
     "$prompt_none_body" "$IMPACT_CONTRACT_ANCHOR"
 
-# ─── SPEC-1[change]: architect manifest present → perspective text in prompt ──
-# _IMPACT_ROOT must point to a plugins/ dir that contains the architect persona.
-# The real repo has it at plugins/persona/architect/manifest.yaml.
+# ─── SPEC-1[change]: persona_stage_framing rc≠0 → fallback has no role declaration ──
+# prompt_spec1 (persona-present path) is kept for SPEC-3's framing-agnostic check.
 _ORIG_IMPACT_ROOT="$_IMPACT_ROOT"
 
 art_spec1="$TEST_TEMP_DIR/state/artifacts-spec1"
@@ -154,8 +153,33 @@ run_impact "$art_spec1"
 _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 
 prompt_spec1="$art_spec1/impact-prompt.txt"
-assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
+# Guard: the persona-PRESENT path still injects the architect perspective text.
+# Regression guard for the happy path — do NOT drop this positive check when
+# re-authoring SPEC-1 to also cover the fallback (#1575 review, correctness/sre).
+assert_contains "[SPEC-1 guard] architect perspective text in prompt when manifest present" \
     "$(cat "$prompt_spec1" 2>/dev/null || echo '')" "Judge a change by its structure"
+
+# [SPEC-1] change assertion: when persona_stage_framing fails with rc≠0, the fallback
+# must be behavior-only — no "You are an Impact Analyzer agent." role declaration.
+# Fails at baseline where _persona_fallback opened with the role declaration.
+persona_stage_framing() { return 1; }
+art_spec1b="$TEST_TEMP_DIR/state/artifacts-spec1b"
+_IMPACT_ROOT="$REPO_ROOT"
+export ZBUILD_REPO_ROOT="$FIXTURE_REPO"
+run_impact "$art_spec1b"
+_IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
+unset -f persona_stage_framing
+prompt_spec1b="$art_spec1b/impact-prompt.txt"
+# Guard against a vacuous pass: the fallback run must have WRITTEN the prompt file.
+# Without this, a crashed run (no file) makes the negative grep's else-branch fire
+# assert_pass — masking a broken run (#1575 review, correctness/red-team/sre).
+assert_file_exists "[SPEC-1] fallback run produced a prompt file" "$prompt_spec1b"
+if grep -qF "You are an Impact Analyzer agent." "$prompt_spec1b" 2>/dev/null; then
+    assert_fail "[SPEC-1] fallback must be behavior-only (no role declaration)" \
+        "role declaration found in fallback prompt"
+else
+    assert_pass "[SPEC-1] fallback must be behavior-only (no role declaration)"
+fi
 
 # ─── SPEC-2[guard]: architect manifest absent → fallback text in prompt ───────
 IROOT_NONE="$(mktemp -d "$TEST_TEMP_DIR/iroot_none.XXXXXX")"

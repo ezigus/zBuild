@@ -84,7 +84,8 @@ _root_without_architect() {
 
 _ORIG_IMPACT_ROOT="$_IMPACT_ROOT"
 
-# ── SPEC-1[change]: architect manifest present → perspective in prompt ─────────
+# ── SPEC-1[change]: persona_stage_framing rc≠0 → fallback has no role declaration ─
+# PROMPT1 (persona-present path) is kept for SPEC-3's framing-agnostic check.
 AD1="$(_setup_fixture)"
 IROOT1="$(_root_with_architect)"
 _IMPACT_ROOT="$IROOT1"
@@ -99,10 +100,32 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 
 PROMPT1="$AD1/impact-prompt.txt"
 assert_file_exists "SPEC-1: prompt file written when architect manifest present" "$PROMPT1"
-assert_contains "[SPEC-1] architect perspective text in prompt when manifest present" \
-    "$(cat "$PROMPT1")" "Focus on boundaries and interfaces."
 assert_eq "[SPEC-6] ZBUILD_STAGE_IO_PERSONA=architect exported when manifest present" \
     "architect" "$(cat "$AD1/persona.cap" 2>/dev/null)"
+unset _CAPTURED_PERSONA_FILE
+
+# [SPEC-1] change assertion: when persona_stage_framing fails with rc≠0 (distinct
+# from SPEC-4's rc=0-but-empty), _persona_fallback is used and must NOT contain the
+# role declaration. Fails at baseline where _persona_fallback opened with
+# "You are an Impact Analyzer agent."
+persona_stage_framing() { return 1; }
+AD1b="$(_setup_fixture)"
+_IMPACT_ROOT="$IROOT1"
+_impact_run_inner \
+    "$(dirname "$AD1b")/scope-manifest.md" \
+    "$AD1b/design.md" \
+    "$AD1b/plan.json" \
+    "$AD1b/impact.json" \
+    "$AD1b" >/dev/null 2>&1 || true
+_IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
+unset -f persona_stage_framing
+PROMPT1b="$AD1b/impact-prompt.txt"
+if grep -qF "You are an Impact Analyzer agent." "$PROMPT1b" 2>/dev/null; then
+    assert_fail "[SPEC-1] fallback must be behavior-only (no role declaration)" \
+        "role declaration found in fallback prompt"
+else
+    assert_pass "[SPEC-1] fallback must be behavior-only (no role declaration)"
+fi
 
 # ── SPEC-2[guard]: architect manifest absent → fallback text in prompt ─────────
 AD2="$(_setup_fixture)"
