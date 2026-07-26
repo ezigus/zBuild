@@ -337,14 +337,13 @@ _plan_run_inner() {
     # #721: strip ANSI codes / stray OOS-marker wrappers from the goal text.
     goal_content="$(printf '%s' "$goal_text" | _zbuild_sanitize_for_llm)"
 
-    # Persona seam (#1393): open the prompt with the product-owner persona's
-    # framing when its manifest is present; when absent, fall back byte-
-    # identically to the pre-persona two-line opening so the plan prompt is
-    # unchanged when the manifest is not installed.
+    # Persona seam (#1393/#1572): open the prompt with the product-owner
+    # persona's behavior framing when its manifest is present; when absent,
+    # fall back to the behavior-only sentence (no role prefix) so the fallback
+    # stays consistent with the persona-present path (#1568 behavior-first).
     local _task_intro="Decompose the goal into concrete implementation steps."
     local _framing _persona_fallback _persona_applied=0
-    _persona_fallback='You are a software planning agent. Decompose the goal into concrete
-implementation steps.'
+    _persona_fallback="$_task_intro"
     _framing="$(persona_stage_framing product-owner "$_task_intro" "$_PLAN_ROOT/plugins" 2>/dev/null)" \
         && _persona_applied=1 \
         || { warn "plan: persona_stage_framing failed — using fallback framing"; _framing="$_persona_fallback"; }
@@ -467,7 +466,7 @@ PLAN_PROMPT
     fi
     _plan_wc_elapsed=$(( SECONDS - _plan_start_s ))
     _plan_wc_block="$(_plan_wallclock_guidance "$_plan_wc_budget" "$_plan_wc_elapsed")"
-    # Prepend: OUTPUT CONTRACT (ADR-028), then persona framing (identity first),
+    # Prepend: OUTPUT CONTRACT (ADR-028), then persona framing (behavior first),
     # then budget guardrail (when a finite budget applies), then instructions.
     _plan_instructions="$_output_contract_block
 
