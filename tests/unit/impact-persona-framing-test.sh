@@ -3,7 +3,7 @@
 # SPEC-1[change] — with architect manifest present, the prompt includes the
 #   persona perspective text (new behavior; fails at merge-base baseline).
 # SPEC-2[guard]  — with architect manifest absent, the prompt falls back to
-#   'You are an Impact Analyzer agent.' (existing behavior).
+#   behavior-only _task_intro text (no human-profession declaration).
 # SPEC-3[guard]  — the 'EXISTENCE VERIFICATION' heading is present regardless
 #   of which framing path ran.
 # SPEC-4[guard]  — empty-output guard: if persona_stage_framing exits 0 but
@@ -120,7 +120,7 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 PROMPT2="$AD2/impact-prompt.txt"
 assert_file_exists "SPEC-2: prompt file written when architect manifest absent" "$PROMPT2"
 assert_contains "[SPEC-2] fallback text present when manifest absent" \
-    "$(cat "$PROMPT2")" "You are an Impact Analyzer agent."
+    "$(cat "$PROMPT2")" "adversarial consequence-finding"
 assert_eq "[SPEC-6] ZBUILD_STAGE_IO_PERSONA=architect:fallback exported when manifest absent" \
     "architect:fallback" "$(cat "$AD2/persona.cap" 2>/dev/null)"
 unset _CAPTURED_PERSONA_FILE
@@ -150,7 +150,7 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 PROMPT4="$AD4/impact-prompt.txt"
 assert_file_exists "SPEC-4: prompt file written when persona_stage_framing returns empty" "$PROMPT4"
 assert_contains "[SPEC-4] fallback text used when persona_stage_framing returns empty" \
-    "$(cat "$PROMPT4")" "You are an Impact Analyzer agent."
+    "$(cat "$PROMPT4")" "adversarial consequence-finding"
 unset -f persona_stage_framing  # restore: remove mock so future SPECs use the real function
 
 cleanup_test_env

@@ -169,7 +169,7 @@ _IMPACT_ROOT="$_ORIG_IMPACT_ROOT"
 
 prompt_spec2="$art_spec2/impact-prompt.txt"
 assert_contains "[SPEC-2] fallback text present when architect manifest absent" \
-    "$(cat "$prompt_spec2" 2>/dev/null || echo '')" "You are an Impact Analyzer agent."
+    "$(cat "$prompt_spec2" 2>/dev/null || echo '')" "adversarial consequence-finding"
 
 # ─── SPEC-3[guard]: DESIGN SCOPE BLOCK present regardless of framing path ────
 assert_contains "[SPEC-3] DESIGN SCOPE BLOCK in prompt with architect manifest" \

@@ -163,11 +163,7 @@ IMPACT_SCHEMA
     # Persona seam (#1393 pattern): open the prompt with the architect persona's
     # framing when its manifest is present; falls back byte-identically when absent.
     local _task_intro="The design stage has already produced an EXHAUSTIVE scope block enumerating every file the change touches. Your job is adversarial consequence-finding: identify files that are MISSING from the design scope block — files the change invalidates, references, validates, documents, or assumes something about — that the design agent overlooked."
-    local _persona_fallback="You are an Impact Analyzer agent. The design stage has already produced an
-EXHAUSTIVE scope block enumerating every file the change touches. Your job
-is adversarial consequence-finding: identify files that are MISSING from
-the design scope block — files the change invalidates, references, validates,
-documents, or assumes something about — that the design agent overlooked."
+    local _persona_fallback="$_task_intro"
     local _persona_applied=0
     local _framing
     _framing="$(persona_stage_framing architect "$_task_intro" "$_IMPACT_ROOT/plugins" 2>/dev/null)" \
