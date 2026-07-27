@@ -44,6 +44,41 @@ pr_open_run() {
         return 2
     fi
 
+    # #888: every other git-mutating stage resolves its tree from
+    # ZBUILD_REPO_ROOT; pr-open was the one that did not, running bare
+    # `git checkout` / push / `gh pr create` in $PWD. That is already wrong for
+    # anyone who sets ZBUILD_REPO_ROOT today, and it is the failure that would
+    # make per-run worktrees silently push the WRONG branch — the whole point of
+    # the isolation. Anchor the stage to the target tree once, here, rather than
+    # converting every call site to `git -C` and hoping none is missed later.
+    #
+    # Absolutise state_file BEFORE the cd: it may be passed relative, and every
+    # later read of it (and of state_dir/artifacts_dir derived from it) would
+    # otherwise resolve against the new working directory.
+    if [[ "$state_file" != /* ]]; then
+        # Check the subshell: this library has no `set -e`, so a failing `cd`
+        # (directory not yet created) would leave state_file as "/<basename>" —
+        # an accidental root-relative path, read and written silently in the
+        # wrong place.
+        local _abs_dir
+        if ! _abs_dir="$(cd "$(dirname "$state_file")" 2>/dev/null && pwd)"; then
+            error "pr_open_run: cannot resolve state_file directory: $(dirname "$state_file")"
+            return 2
+        fi
+        state_file="$_abs_dir/$(basename "$state_file")"
+    fi
+    if [[ -n "${ZBUILD_REPO_ROOT:-}" ]]; then
+        if [[ -d "$ZBUILD_REPO_ROOT" ]]; then
+            cd "$ZBUILD_REPO_ROOT" || {
+                error "pr_open_run: cannot cd to ZBUILD_REPO_ROOT=$ZBUILD_REPO_ROOT"
+                return 2
+            }
+        else
+            error "pr_open_run: ZBUILD_REPO_ROOT=$ZBUILD_REPO_ROOT is not a directory"
+            return 2
+        fi
+    fi
+
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
     local review_json_path="$artifacts_dir/review.json"

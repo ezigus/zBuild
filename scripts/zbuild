@@ -57,6 +57,11 @@ Commands:
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
                          [--platform-override <p>] [--scope <path>]...
                          [--no-resume]
+                         [--dev-engine]    Permit running the engine from inside
+                                           the target repo (ADR-023 / #1629).
+                                           Local debugging only: edits to core/,
+                                           scripts/lib/ or plugins/ mid-run will
+                                           affect this run's later stages.
                          [--mcp-server <url>]... [--mcp-transport stdio|sse]
                          [--mcp-timeout <seconds>]
   pipeline resume        Resume most recent interrupted/in_progress run
@@ -402,6 +407,7 @@ UPHELP
                 mcp_servers=()
                 mcp_transport=""
                 mcp_timeout=""
+                dev_engine=false
                 runner_args=()
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
@@ -427,10 +433,54 @@ UPHELP
                                 ''|*[!0-9]*|0) error "--mcp-timeout must be a positive integer, got: $2"; exit 2 ;;
                             esac
                             mcp_timeout="$2"; shift 2 ;;
+                        --dev-engine)
+                            dev_engine=true; shift ;;
                         *)
                             runner_args+=("$1"); shift ;;
                     esac
                 done
+                # ─── ADR-023 engine isolation (#1629) ────────────────────────
+                # The engine must be STABLE for the whole run: a pipeline that
+                # executes from the working tree it is editing changes the
+                # machinery evaluating its own next stage. #1305 is the case
+                # study — its build stage moved the same accessors four times
+                # across 5 iterations and never converged.
+                #
+                # ADR-023 gives stability via install.sh + the shim, but item 5
+                # carved out `bash scripts/zbuild` as "CI / dev mode" — and
+                # dogfooding runs in CI, so the guarantee was absent exactly
+                # where it mattered. This closes that carve-out for pipeline
+                # runs while leaving it available deliberately via --dev-engine.
+                #
+                # Path-based, not $ZBUILD_FROM_INSTALL-based: running
+                # `bash $ZBUILD_HOME/scripts/zbuild` directly is a legitimate
+                # installed engine even though the shim did not export the flag.
+                _engine_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+                _target_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+                if [[ "$_engine_root" == "$_target_root" || "$_engine_root" == "$_target_root"/* ]]; then
+                    if [[ "${dev_engine:-false}" == true || "${ZBUILD_DEV_ENGINE:-0}" == "1" ]]; then
+                        warn "dev-engine: running the engine from the target working tree ($_engine_root)."
+                        warn "dev-engine: edits to core/, scripts/lib/ or plugins/ during this run WILL affect later stages."
+                    else
+                        error "engine isolation (ADR-023 / #1629): refusing to run the pipeline from inside the target repository."
+                        error "  engine root: $_engine_root"
+                        error "  target root: $_target_root"
+                        error ""
+                        error "  The engine must be installed and stable for the whole run. Use the installed shim:"
+                        error "    ./install.sh && \"\$HOME/.local/bin/zbuild\" pipeline start ..."
+                        error "  or point ZBUILD_HOME at an installed tree outside this repository."
+                        error ""
+                        error "  To override deliberately (local debugging only): --dev-engine, or ZBUILD_DEV_ENGINE=1."
+                        exit 2
+                    fi
+                fi
+                # Record which engine is executing, so a run is reproducible.
+                _zver="${ZBUILD_HOME:-$HOME/.local/share/zbuild}/version"
+                if [[ -f "$_zver" ]]; then
+                    info "engine: $(tr '\n' ' ' < "$_zver")"
+                else
+                    info "engine: $_engine_root (no \$ZBUILD_HOME/version — uninstalled tree)"
+                fi
                 if [[ -n "$platform_override" ]]; then
                     export ZBUILD_PLATFORM_OVERRIDE="$platform_override"
                 fi
