@@ -2,7 +2,8 @@
 # tests/unit/worktree-location-test.sh
 # Acceptance tests for per-run worktree location + enablement (#888).
 #
-# SPEC-1: default root is $HOME/.zbuild/worktrees — NOT under $TMPDIR
+# SPEC-1: default is co-located under the run root ($HOME/.zbuild/runs/<run_id>/worktree),
+#         ZBUILD_RUN_ROOT overrides the base, and neither derives from $TMPDIR
 # SPEC-2: template config.worktree_root overrides the default
 # SPEC-3: ZBUILD_WORKTREE_ROOT overrides the template (env > template > default)
 # SPEC-4: the per-run path is keyed by run_id so concurrent runs cannot collide
@@ -49,6 +50,14 @@ if [[ "$_root_a" == "$_root_b" ]]; then
 else
     assert_fail "[SPEC-1] default root must not derive from \$TMPDIR" "a=$_root_a b=$_root_b"
 fi
+
+# ZBUILD_RUN_ROOT overrides the base for BOTH the run root and the co-located
+# worktree beneath it. Documented at worktree.sh:21 but previously unasserted —
+# a documented precedence with no test is a claim, not a contract.
+assert_eq "[SPEC-1] ZBUILD_RUN_ROOT overrides the base" \
+    "/custom/state/runs/r1" "$(ZBUILD_RUN_ROOT=/custom/state zbuild_run_root r1)"
+assert_eq "[SPEC-1] ZBUILD_RUN_ROOT flows through to the co-located worktree path" \
+    "/custom/state/runs/r1/worktree" "$(ZBUILD_RUN_ROOT=/custom/state zbuild_worktree_path r1)"
 
 # ── SPEC-2: template config.worktree_root ───────────────────────────────────
 _TPL="$TEST_TEMP_DIR/tpl.yaml"
