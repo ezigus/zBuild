@@ -88,8 +88,32 @@ jobs:
         # Pinned for reproducible CI (CI-2 #1001); the router shells out to `claude`.
         run: npm install -g @anthropic-ai/claude-code@2.1.183
 
-      - name: Install zbuild
-        run: bash install.sh
+      - name: Install zbuild engine from main (ADR-023 / #1629)
+        # The engine must be STABLE for the whole run and must NOT be the tree
+        # being edited. Previously this installed from the checkout and then ran
+        # `bash scripts/zbuild`, so the engine WAS the branch under test: a build
+        # stage editing core/ changed the machinery evaluating its own next stage
+        # (#1305 never converged — same accessors moved four times in 5 iters).
+        #
+        # Clone main into $RUNNER_TEMP (outside the workspace, so the pipeline
+        # cannot edit it) and install from there. The run step invokes the shim.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          engine_src="$RUNNER_TEMP/zbuild-engine"
+          rm -rf "$engine_src"
+          git clone --depth 1 --branch main \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "$engine_src"
+          engine_sha="$(git -C "$engine_src" rev-parse HEAD)"
+          echo "::notice::engine: main@${engine_sha} (installed from $engine_src)"
+          bash "$engine_src/install.sh"
+          # Fail fast rather than silently falling back to the checkout copy.
+          if [[ ! -x "$HOME/.local/bin/zbuild" ]]; then
+            echo "::error::engine install produced no shim at \$HOME/.local/bin/zbuild"
+            exit 1
+          fi
 
       - name: Fetch prior work + state branches (ADR-050 #1581)
         # Prior-work reuse: a fresh runner's shallow checkout has neither the
@@ -151,7 +175,11 @@ jobs:
           if [[ -n "${{ inputs.template }}" ]]; then
             args+=(--template "${{ inputs.template }}")
           fi
-          bash scripts/zbuild pipeline start "${args[@]}"
+          # ADR-023 / #1629: run the INSTALLED engine (from main), not the
+          # checkout. `bash scripts/zbuild` would resolve _ZBUILD_ROOT to the
+          # working tree this run is editing; the CLI now refuses that outright.
+          # The target repo remains this workspace checkout, which is correct.
+          "$HOME/.local/bin/zbuild" pipeline start "${args[@]}"
 
       - name: Push work branch (preserve work on pass OR fail)
         # CI-7 (#999): push the pipeline's work branch to origin no matter the
