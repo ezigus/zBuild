@@ -148,8 +148,17 @@ _run_case_resilient() {
     local _dir
     _dir="$(_run_case "$_rc" "$_reason" "$_verdict")"
     if [[ ! -s "$_dir/state/pipeline-state.json" && ! -d "$_dir" ]]; then
-        printf '  WARN(#1609): case rc=%s lost its temp dir mid-run (environment reap) — retrying once\n' \
-            "$_rc" >&2
+        local _msg
+        _msg="WARN(#1609): case rc=${_rc} lost its temp dir mid-run (environment reap) — retried once"
+        printf '  %s\n' "$_msg" >&2
+        # stderr alone is NOT enough to keep the flake rate measurable: run-tests.sh
+        # only cat's a test file's output when the file FAILS (run-tests.sh:129/249/473),
+        # so a retry that succeeds would be silent — the very "silent cap" this guard
+        # exists to avoid. $GITHUB_STEP_SUMMARY survives that buffering and renders on
+        # the run summary page; it is unset locally, where stderr is already visible.
+        if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            printf -- '- %s\n' "$_msg" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+        fi
         _dir="$(_run_case "$_rc" "$_reason" "$_verdict")"
     fi
     printf '%s' "$_dir"
