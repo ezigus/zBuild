@@ -2648,3 +2648,50 @@ template_stage_router_tier() {
     printf '%s\n' "$tier"
     return 0
 }
+
+# ADR-051 §4 (#1305): per-stage `persona:` binding — read LAZILY from
+# _TPL_SOURCE_FILE. Matches the stage in three template shapes (top-level
+# section, inline list item, stage_definitions sub-entry). Returns empty when
+# unset; no validation (persona id is an opaque string).
+template_stage_router_persona() {
+    local stage_id="$1"
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk -v stage="$stage_id" '
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
+        $0 ~ "^[[:space:]]*-[[:space:]]+id:[[:space:]]*"stage"[[:space:]]*$" {
+            in_block = 1; block_ind = indent($0); in_defs = 0; next
+        }
+        /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
+        in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
+        in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" {
+            in_block = 1; block_ind = 2; in_defs = 0; next
+        }
+        in_block {
+            ind = indent($0)
+            if ($0 ~ /[^[:space:]]/ && ind <= block_ind && $0 !~ "^"stage":") {
+                if (ind <= block_ind) { in_block = 0 }
+            }
+        }
+        in_block && $0 ~ "^[[:space:]]+persona:[[:space:]]" {
+            sub(/^[[:space:]]+persona:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
+
+# ADR-051 §4 (#1305): top-level `config.persona` — global template default
+# persona id. Read LAZILY from _TPL_SOURCE_FILE. Returns empty when unset.
+template_config_persona() {
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk '
+        /^config:[[:space:]]*$/ { in_config = 1; next }
+        in_config && /^[a-zA-Z_]/ { in_config = 0 }
+        in_config && /^[[:space:]]+persona:[[:space:]]/ {
+            sub(/^[[:space:]]+persona:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
