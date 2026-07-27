@@ -18,13 +18,11 @@
 [[ -n "${_ZBUILD_REGISTRY_PERSONA_LOADED:-}" ]] && return 0
 _ZBUILD_REGISTRY_PERSONA_LOADED=1
 
-# ─── find_persona <id> [plugins_root] ───────────────────────────────────────
-# Prints the manifest path of the kind:persona plugin with the given id.
-# Returns 1 if no such persona is discoverable (unknown id, or no plugins root).
-find_persona() {
-    local want_id="$1"
-    local plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}}"
-    [[ -z "$want_id" ]] && return 1
+# ─── _find_persona_in_root <id> <plugins_root> ──────────────────────────────
+# Single-root scan: prints the manifest path; returns 1 when absent or unreadable.
+_find_persona_in_root() {
+    local want_id="$1" plugins_root="$2"
+    [[ -d "$plugins_root" ]] || return 1
     local plugin_dir manifest kind pid
     while IFS= read -r plugin_dir; do
         manifest="$plugin_dir/manifest.yaml"
@@ -33,10 +31,30 @@ find_persona() {
         [[ "$kind" == "persona" ]] || continue
         pid="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
         if [[ "$pid" == "$want_id" ]]; then
-            echo "$manifest"
+            printf '%s\n' "$manifest"
             return 0
         fi
     done < <(discover_plugins "$plugins_root" 2>/dev/null || true)
+    return 1
+}
+
+# ─── find_persona <id> [plugins_root] [overlay_root] ────────────────────────
+# Prints the manifest path of the kind:persona plugin with the given id.
+# When overlay_root is provided, it is scanned after plugins_root; if the same
+# id is found in the overlay, the overlay manifest wins (ADR-051 §4, #1305).
+# Returns 1 if no such persona is discoverable in either root.
+find_persona() {
+    local want_id="$1"
+    local plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}}"
+    local overlay_root="${3:-}"
+    [[ -z "$want_id" ]] && return 1
+    local _inst_mf="" _ovr_mf=""
+    _inst_mf="$(_find_persona_in_root "$want_id" "$plugins_root" 2>/dev/null || true)"
+    if [[ -n "$overlay_root" ]]; then
+        _ovr_mf="$(_find_persona_in_root "$want_id" "$overlay_root" 2>/dev/null || true)"
+    fi
+    if [[ -n "$_ovr_mf" ]]; then printf '%s\n' "$_ovr_mf"; return 0; fi
+    if [[ -n "$_inst_mf" ]]; then printf '%s\n' "$_inst_mf"; return 0; fi
     return 1
 }
 

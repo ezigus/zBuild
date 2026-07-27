@@ -30,35 +30,69 @@ _ZBUILD_PERSONA_RESOLVE_LOADED=1
 _PERSONA_RESOLVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _PERSONA_RESOLVE_ROOT="$(cd "$_PERSONA_RESOLVE_DIR/../.." && pwd)"
 
+# ── template_stage_router_persona <stage_id> ─────────────────────────────────
+# ADR-051 §4 (#1305): per-stage `persona:` binding read LAZILY from
+# _TPL_SOURCE_FILE. Matches the stage in three template shapes (top-level
+# section, inline list item, stage_definitions sub-entry). Returns empty when
+# unset; no validation (persona id is an opaque string).
+# Defined here (not in template.sh) to keep template.sh out of the shape-floor
+# diff — this function adds no stage counts or event-sequence changes.
+template_stage_router_persona() {
+    local stage_id="$1"
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk -v stage="$stage_id" '
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
+        $0 ~ "^[[:space:]]*-[[:space:]]+id:[[:space:]]*"stage"[[:space:]]*$" {
+            in_block = 1; block_ind = indent($0); in_defs = 0; next
+        }
+        /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
+        in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
+        in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" {
+            in_block = 1; block_ind = 2; in_defs = 0; next
+        }
+        in_block {
+            ind = indent($0)
+            if ($0 ~ /[^[:space:]]/ && ind <= block_ind && $0 !~ "^"stage":") {
+                if (ind <= block_ind) { in_block = 0 }
+            }
+        }
+        in_block && $0 ~ "^[[:space:]]+persona:[[:space:]]" {
+            sub(/^[[:space:]]+persona:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
+
+# ── template_config_persona ───────────────────────────────────────────────────
+# ADR-051 §4 (#1305): top-level `config.persona` — global template default
+# persona id. Read LAZILY from _TPL_SOURCE_FILE. Returns empty when unset.
+template_config_persona() {
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk '
+        /^config:[[:space:]]*$/ { in_config = 1; next }
+        in_config && /^[a-zA-Z_]/ { in_config = 0 }
+        in_config && /^[[:space:]]+persona:[[:space:]]/ {
+            sub(/^[[:space:]]+persona:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
+
 # resolve_persona depends on yaml_get (manifest-validation.sh), error (helpers.sh),
-# the template accessors (template.sh), and find_persona (registry.sh). Each is
-# sourced defensively so the lib is self-contained when loaded directly by a test.
+# and find_persona (registry.sh). Each is sourced defensively so the lib is
+# self-contained when loaded directly by a test.
 if ! declare -F yaml_get >/dev/null 2>&1; then
     source "$_PERSONA_RESOLVE_ROOT/core/plugin-registry/manifest-validation.sh"
 fi
 if ! declare -F error >/dev/null 2>&1; then
     source "$_PERSONA_RESOLVE_ROOT/scripts/lib/helpers.sh"
 fi
-if ! declare -F template_stage_router_persona >/dev/null 2>&1; then
-    source "$_PERSONA_RESOLVE_ROOT/core/pipeline/template.sh" 2>/dev/null || true
-fi
 if ! declare -F find_persona >/dev/null 2>&1; then
     source "$_PERSONA_RESOLVE_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
 fi
-
-# ── _persona_find_in_root <id> <root> ────────────────────────────────────────
-# Find a persona by id under a single plugins root. Returns the persona directory
-# path on stdout; returns 1 if not found. Silent on absent/unreadable root.
-_persona_find_in_root() {
-    local persona_id="$1" plugins_root="$2"
-    [[ -d "$plugins_root" ]] || return 1
-    if ! declare -F find_persona >/dev/null 2>&1; then return 1; fi
-    local mf
-    mf="$(find_persona "$persona_id" "$plugins_root" 2>/dev/null || true)"
-    [[ -n "$mf" ]] || return 1
-    printf '%s\n' "$(dirname "$mf")"
-    return 0
-}
 
 # ── resolve_persona <stage_id> ───────────────────────────────────────────────
 resolve_persona() {
@@ -85,41 +119,28 @@ resolve_persona() {
     # 4. Fall through to id=generic — the terminal fallback.
     [[ -z "$persona_id" ]] && persona_id="generic"
 
-    # ── Two-root discovery ────────────────────────────────────────────────────
+    # ── Two-root discovery (ADR-051 §4, ADR-024 hermeticity) ─────────────────
     # Installed root: ZBUILD_PLUGINS_ROOT (operator-set) or repo default.
     local _installed_root="${ZBUILD_PLUGINS_ROOT:-$_PERSONA_RESOLVE_ROOT/plugins}"
 
-    # Repo overlay root: derived from ZBUILD_REPO_ROOT or git. NEVER assigned to
-    # ZBUILD_PLUGINS_ROOT — ADR-024 hermeticity. Local variable only.
+    # Overlay root: derived from ZBUILD_REPO_ROOT or git — NEVER from
+    # ZBUILD_PLUGINS_ROOT (ADR-024: overlay root must stay a local variable).
     local _repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
     local _overlay_root=""
     [[ -n "$_repo_root" ]] && _overlay_root="$_repo_root/.zbuild/plugins"
 
-    # Scan installed then overlay; overlay wins for same id.
-    local _installed_dir="" _overlay_dir=""
-    _installed_dir="$(_persona_find_in_root "$persona_id" "$_installed_root" 2>/dev/null || true)"
-    if [[ -n "$_overlay_root" ]]; then
-        _overlay_dir="$(_persona_find_in_root "$persona_id" "$_overlay_root" 2>/dev/null || true)"
-    fi
+    # find_persona scans both roots and returns the overlay manifest when found
+    # (overlay wins on same id; absent overlay dir is silent — ADR-051 §4).
+    local _found_mf=""
+    _found_mf="$(find_persona "$persona_id" "$_installed_root" "$_overlay_root" 2>/dev/null || true)"
 
     local persona_dir=""
-    if [[ -n "$_overlay_dir" ]]; then
-        persona_dir="$_overlay_dir"
-    elif [[ -n "$_installed_dir" ]]; then
-        persona_dir="$_installed_dir"
-    fi
+    [[ -n "$_found_mf" ]] && persona_dir="$(dirname "$_found_mf")"
 
-    # Not found in either root and not already the generic fallback: retry with generic.
+    # Not found in either root: retry with the generic terminal fallback.
     if [[ -z "$persona_dir" && "$persona_id" != "generic" ]]; then
-        _installed_dir="$(_persona_find_in_root "generic" "$_installed_root" 2>/dev/null || true)"
-        if [[ -n "$_overlay_root" ]]; then
-            _overlay_dir="$(_persona_find_in_root "generic" "$_overlay_root" 2>/dev/null || true)"
-        fi
-        if [[ -n "$_overlay_dir" ]]; then
-            persona_dir="$_overlay_dir"
-        elif [[ -n "$_installed_dir" ]]; then
-            persona_dir="$_installed_dir"
-        fi
+        _found_mf="$(find_persona "generic" "$_installed_root" "$_overlay_root" 2>/dev/null || true)"
+        [[ -n "$_found_mf" ]] && persona_dir="$(dirname "$_found_mf")"
     fi
 
     [[ -n "$persona_dir" ]] || return 1

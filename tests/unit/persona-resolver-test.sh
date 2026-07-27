@@ -584,6 +584,18 @@ assert_contains "[SPEC-6] resolver proceeds to generic when overlay dir is absen
 unset ZBUILD_REPO_ROOT 2>/dev/null || true
 ZBUILD_PLUGINS_ROOT="$_orig_proot"
 
+# ── SPEC-5 [wiring]: route.sh sources persona-resolve.sh by construction ─────
+# ADR-051 §5: every routing plugin must get resolve_persona/persona_text by
+# construction via route.sh. This static check ensures the source line is present;
+# reverting it breaks two-root discovery on the live model-call path.
+_route_sh="$REPO_ROOT/core/router/route.sh"
+if grep -qF 'persona-resolve.sh' "$_route_sh" 2>/dev/null; then
+    assert_pass "[SPEC-5] route.sh sources persona-resolve.sh (resolve_persona wired by construction)"
+else
+    assert_fail "[SPEC-5] route.sh sources persona-resolve.sh (resolve_persona wired by construction)" \
+        "persona-resolve.sh not found in route.sh — every routing plugin must get resolve_persona by construction (ADR-051)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
