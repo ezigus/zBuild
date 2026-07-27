@@ -2671,7 +2671,7 @@ template_stage_router_persona() {
         in_block {
             ind = indent($0)
             if ($0 ~ /[^[:space:]]/ && ind <= block_ind && $0 !~ "^"stage":") {
-                if (ind <= block_ind) { in_block = 0 }
+                in_block = 0
             }
         }
         in_block && $0 ~ "^[[:space:]]+persona:[[:space:]]" {

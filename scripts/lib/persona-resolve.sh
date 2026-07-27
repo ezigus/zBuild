@@ -50,16 +50,24 @@ fi
 resolve_persona() {
     local stage_id="${1:-}"
 
-    # 1. Env ZBUILD_<STAGE>_PERSONA wins (stage_id uppercased, '-'→'_').
+    # ONE stage identity for the whole chain. Previously step 1 keyed off the
+    # caller's stage_id while step 2 preferred ZBUILD_CURRENT_STAGE, so
+    # `resolve_persona build` under `ZBUILD_CURRENT_STAGE=design` read the env
+    # override for build but the template binding for design — two stages in one
+    # resolution. The orchestrator does export ZBUILD_CURRENT_STAGE per member
+    # (core/pipeline/parallel-orchestrator.sh:146), so it is a sound *fallback*
+    # when the caller passes no stage, but never an override of an explicit one.
+    local _stage="${stage_id:-${ZBUILD_CURRENT_STAGE:-}}"
+
+    # 1. Env ZBUILD_<STAGE>_PERSONA wins (stage uppercased, '-'→'_').
     local _env_name
-    _env_name="ZBUILD_$(printf '%s' "$stage_id" | tr '[:lower:]-' '[:upper:]_')_PERSONA"
+    _env_name="ZBUILD_$(printf '%s' "$_stage" | tr '[:lower:]-' '[:upper:]_')_PERSONA"
     local persona_id="${!_env_name:-}"
 
     # 2. Template per-stage binding (template_stage_router_persona, ADR-051 §5).
     if [[ -z "$persona_id" ]] && declare -F template_stage_router_persona >/dev/null 2>&1; then
-        local _tpl_stage="${ZBUILD_CURRENT_STAGE:-${stage_id}}"
-        if [[ -n "$_tpl_stage" ]]; then
-            persona_id="$(template_stage_router_persona "$_tpl_stage" 2>/dev/null || true)"
+        if [[ -n "$_stage" ]]; then
+            persona_id="$(template_stage_router_persona "$_stage" 2>/dev/null || true)"
         fi
     fi
 

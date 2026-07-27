@@ -106,7 +106,10 @@ fi
 
 if declare -F resolve_persona >/dev/null 2>&1; then
     _spec7_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/spec7-hermeticity.XXXXXX")"
-    trap 'rm -rf "$_spec7_tmpdir"' EXIT
+    # `trap … EXIT` REPLACES, it does not chain — the earlier handler for
+    # $_synthetic (line 75) would be discarded here, leaking that tempfile on
+    # every run. Re-register both in one handler.
+    trap 'rm -f "${_synthetic:-}"; rm -rf "${_spec7_tmpdir:-}"' EXIT
 
     # Installed root with the generic persona.
     _spec7_inst="$_spec7_tmpdir/installed"

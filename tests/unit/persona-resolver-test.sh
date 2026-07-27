@@ -596,6 +596,38 @@ else
         "persona-resolve.sh not found in route.sh — every routing plugin must get resolve_persona by construction (ADR-051)"
 fi
 
+# ── SPEC-16: one stage identity across the whole precedence chain (#1305 review) ─
+# Step 1 (env) keyed off the caller's stage_id while step 2 (template) preferred
+# ZBUILD_CURRENT_STAGE, so `resolve_persona build` under ZBUILD_CURRENT_STAGE=design
+# read the env override for build but the template binding for design — two stages
+# resolved in one call. The orchestrator does export ZBUILD_CURRENT_STAGE per member
+# (core/pipeline/parallel-orchestrator.sh:146), so it is a valid FALLBACK when the
+# caller passes no stage, but must never override an explicit one.
+_SPEC12_TPL="$TEST_TEMP_DIR/tpl-spec12.yaml"
+cat > "$_SPEC12_TPL" <<'TPLEOF'
+stage_definitions:
+  build:
+    persona: developer
+  design:
+    persona: architect
+TPLEOF
+_spec12_prev_tpl="${_TPL_SOURCE_FILE:-}"
+export _TPL_SOURCE_FILE="$_SPEC12_TPL"
+
+# Explicit stage_id must win over an ambient ZBUILD_CURRENT_STAGE.
+export ZBUILD_CURRENT_STAGE="design"
+_spec12_explicit="$(basename "$(resolve_persona build 2>/dev/null || true)")"
+assert_eq "[SPEC-16] explicit stage_id wins over ambient ZBUILD_CURRENT_STAGE (build->developer, not architect)" \
+    "developer" "$_spec12_explicit"
+
+# With NO stage_id, the ambient stage is still a legitimate fallback.
+_spec12_ambient="$(basename "$(resolve_persona "" 2>/dev/null || true)")"
+assert_eq "[SPEC-16] empty stage_id falls back to ZBUILD_CURRENT_STAGE (design->architect)" \
+    "architect" "$_spec12_ambient"
+
+unset ZBUILD_CURRENT_STAGE
+if [[ -n "$_spec12_prev_tpl" ]]; then export _TPL_SOURCE_FILE="$_spec12_prev_tpl"; else unset _TPL_SOURCE_FILE; fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
