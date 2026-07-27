@@ -2684,6 +2684,21 @@ template_stage_router_persona() {
 
 # ADR-051 §4 (#1305): top-level `config.persona` — global template default
 # persona id. Read LAZILY from _TPL_SOURCE_FILE. Returns empty when unset.
+# ADR-023 / #888: top-level `config.worktree_root` — where per-run worktrees live.
+# Same shape as template_config_persona; env ZBUILD_WORKTREE_ROOT overrides it.
+template_config_worktree_root() {
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk '
+        /^config:[[:space:]]*$/ { in_config = 1; next }
+        in_config && /^[a-zA-Z_]/ { in_config = 0 }
+        in_config && /^[[:space:]]+worktree_root:[[:space:]]/ {
+            sub(/^[[:space:]]+worktree_root:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/^["'"'"']|["'"'"']$/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
+
 template_config_persona() {
     [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
     awk '
