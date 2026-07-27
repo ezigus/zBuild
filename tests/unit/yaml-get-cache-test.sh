@@ -255,6 +255,6 @@ else
         "cache-off=[${_s11_off}] cache-on=[${_s11_on}]"
 fi
 
-cleanup_test_envcleanup_test_env
+cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
