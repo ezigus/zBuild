@@ -148,18 +148,25 @@ zbuild_worktree_enter() {
     fi
 
     mkdir -p "$(dirname "$wt")" || return 2
-    local rc=0
+    # Capture git's stderr rather than discarding it. The holder check above
+    # catches the common refusal, but everything else — a branch that does not
+    # exist locally, a bad start_point, unreadable refs — would otherwise report
+    # only "git worktree add failed" with no reason. That is the same swallowing
+    # this PR fixed one commit earlier in pr-open; no sense re-introducing it.
+    local rc=0 git_err=""
     case "$mode" in
-        create)       git worktree add -b "$branch" "$wt" >/dev/null 2>&1 || rc=$? ;;
-        adopt_local)  git worktree add "$wt" "$branch"    >/dev/null 2>&1 || rc=$? ;;
+        create)
+            git_err="$(git worktree add -b "$branch" "$wt" 2>&1 1>/dev/null)" || rc=$? ;;
+        adopt_local)
+            git_err="$(git worktree add "$wt" "$branch" 2>&1 1>/dev/null)" || rc=$? ;;
         adopt_remote)
             [[ -n "$start_point" ]] || { printf 'zbuild_worktree_enter: adopt_remote needs a start_point\n' >&2; return 2; }
-            git worktree add -b "$branch" "$wt" "$start_point" >/dev/null 2>&1 || rc=$? ;;
+            git_err="$(git worktree add -b "$branch" "$wt" "$start_point" 2>&1 1>/dev/null)" || rc=$? ;;
         *) printf 'zbuild_worktree_enter: unknown mode "%s"\n' "$mode" >&2; return 2 ;;
     esac
     if [[ "$rc" -ne 0 ]]; then
-        printf 'zbuild_worktree_enter: git worktree add failed (mode=%s branch=%s path=%s)\n' \
-            "$mode" "$branch" "$wt" >&2
+        printf 'zbuild_worktree_enter: git worktree add failed (mode=%s branch=%s path=%s): %s\n' \
+            "$mode" "$branch" "$wt" "${git_err:-<no git output>}" >&2
         return 5
     fi
     printf '%s\n' "$wt"

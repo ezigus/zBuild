@@ -152,6 +152,18 @@ fi
 assert_eq "[SPEC-13] adopt_remote without a start_point is an error" "2" "$_rc3"
 (cd "$_R" && zbuild_worktree_enter run4 feature/four bogus_mode) >/dev/null 2>&1; _rc4=$?
 assert_eq "[SPEC-13] an unknown mode is rejected" "2" "$_rc4"
+
+# SPEC-14: adopt_local on a branch that does not exist locally — the most likely
+# runtime failure once intake is wired (a stale or mistyped branch name). It
+# passes the holder check (nothing holds a non-existent branch) and must fail at
+# `git worktree add` with git's own reason surfaced, not a bare rc.
+_out5="$(cd "$_R" && zbuild_worktree_enter run5 no-such-branch adopt_local 2>&1)"; _rc5=$?
+assert_eq "[SPEC-14] adopt_local with a non-existent branch is an error (rc=5)" "5" "$_rc5"
+if grep -qiE "invalid reference|not a valid|no such|unknown revision|fatal" <<< "$_out5"; then
+    assert_pass "[SPEC-14] git's own reason is surfaced, not swallowed"
+else
+    assert_fail "[SPEC-14] the failure must include git's stderr" "output: $_out5"
+fi
 unset ZBUILD_WORKTREE_ROOT
 
 cleanup_test_env
