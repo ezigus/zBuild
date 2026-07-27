@@ -816,6 +816,14 @@ main() {
     fi
 
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
+    # #1614: fill the manifest cache HERE, in main()'s own shell. yaml_get was
+    # 6,338 awk spawns per run (~13s of 27s); most call sites read it inside $( ),
+    # and a cache written in a command substitution dies with that subshell — so
+    # the fill has to happen in a shell that every later subshell descends from.
+    # Cheap no-op when the cache is disabled or the root does not exist.
+    if declare -F yaml_cache_prewarm >/dev/null 2>&1; then
+        yaml_cache_prewarm "$plugins_root"
+    fi
     local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
     # #887: when neither ZBUILD_STATE_DIR nor ZBUILD_STATE_FILE is set, a fresh
     # run roots its state under runs/<run_id>/ so concurrent runs never share a

@@ -17,11 +17,112 @@ _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 # the persona.role requirement in validate_manifest.
 ZBUILD_PLUGIN_KINDS=(agent tool recovery orchestrator claim-coordinator daemon persona)
 
+# ─── yaml_get memoization (#1614) ───────────────────────────────────────────
+# yaml_get spawned one awk per lookup and was called 6,338 times per pipeline
+# run — 12.97s of a 27s run. The cache is process-scoped: manifests are static
+# repo files and never change during a run.
+#
+# TWO arrays, not one packed string: a YAML value may legitimately contain any
+# delimiter we might pick (a real manifest carries `a|b`), so there is nothing
+# safe to join on.
+#
+# Values are cached for the process lifetime with NO mtime check. That is
+# deliberate: a stamp read once and never re-compared is decorative invalidation
+# — worse than none, because the next reader trusts it. Callers that deliberately
+# rewrite a manifest mid-process must call yaml_cache_flush. ZBUILD_YAML_CACHE=0
+# disables the cache entirely.
+#
+# Keys are full paths, so two plugins roots in one process (a fixture root plus
+# the live tree — see tests/unit/persona-resolver-test.sh) can never collide.
+# `-g` is load-bearing, not decoration: this file is sourced from INSIDE a
+# function in at least one path (scripts/lib/manifest-graph.sh:289,
+# _manifest_graph_ensure_yaml_get), and a bare `declare -A` inside a function
+# creates a LOCAL that dies when that function returns. The arrays would then be
+# undeclared at assignment time, where bash evaluates a string subscript
+# ARITHMETICALLY to 0 — so every key would collide at index 0 and yaml_get would
+# hand back some other key's value. Caught by
+# tests/unit/runner-post-stage-capability-test.sh SPEC-2a/2b.
+declare -gA _ZBUILD_YAML_OUT=()
+declare -gA _ZBUILD_YAML_RC=()
+
+# yaml_cache_flush [file] — drop cached entries for <file>, or the whole cache.
+yaml_cache_flush() {
+    if [[ -n "${1:-}" ]]; then
+        local k
+        for k in "${!_ZBUILD_YAML_RC[@]}"; do
+            if [[ "$k" == "$1"$'\034'* ]]; then
+                unset "_ZBUILD_YAML_RC[$k]" "_ZBUILD_YAML_OUT[$k]"
+            fi
+        done
+    else
+        _ZBUILD_YAML_OUT=()
+        _ZBUILD_YAML_RC=()
+    fi
+}
+
+# The key vocabulary the engine actually asks for — what prewarm populates.
+# An unlisted key still works; it just takes the lazy path on first use.
+_ZBUILD_YAML_PREWARM_KEYS=(
+    id name kind version summary platform
+    persona.role persona.perspective
+    hooks.init hooks.run hooks.finalize hooks.cleanup
+    provides.role provides.artifact_type
+)
+
+# yaml_cache_prewarm [plugins_root] — fill the cache IN THE CALLING SHELL.
+# This must run in the parent: 56 of 82 yaml_get call sites sit inside $( ), and
+# an associative-array write inside a command substitution dies with the
+# subshell — so a lazily-filled cache is never inherited and would save nothing.
+# Prewarming calls the real reader rather than a bulk re-implementation, so
+# equivalence is by construction and there is no second parser to keep in sync
+# (yaml_get has quirks worth preserving: a block scalar returns the literal `|`).
+# Cost: ~46 manifests x ~14 keys of awk once, versus 6,338 lookups per run.
+# NOTE the process-substitution `< <(...)` — a pipe would put the loop body in a
+# subshell and silently discard every cache write.
+yaml_cache_prewarm() {
+    [[ "${ZBUILD_YAML_CACHE:-1}" == "1" ]] || return 0
+    local root="${1:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT:-.}/plugins}}"
+    [[ -d "$root" ]] || return 0
+    local manifest key
+    while IFS= read -r manifest; do
+        for key in "${_ZBUILD_YAML_PREWARM_KEYS[@]}"; do
+            yaml_get "$manifest" "$key" >/dev/null 2>&1
+        done
+    done < <(find "$root" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null)
+}
+
 # ─── yaml_get — minimal YAML reader (we control the schema; no full parser) ─
 # Usage: yaml_get <yaml_file> <dotted_key>
 # Supports: top-level scalars, single-level nested (e.g., hooks.init).
 # Lists / multi-line scalars handled by yaml_get_list.
+# Memoized (see above); _yaml_get_uncached holds the parsing itself.
 yaml_get() {
+    local file="$1" key="$2"
+    if [[ "${ZBUILD_YAML_CACHE:-1}" != "1" ]]; then
+        _yaml_get_uncached "$file" "$key"
+        return $?
+    fi
+    local ck="${file}"$'\034'"${key}"
+    if [[ -n "${_ZBUILD_YAML_RC[$ck]+set}" ]]; then
+        printf '%s' "${_ZBUILD_YAML_OUT[$ck]}"
+        return "${_ZBUILD_YAML_RC[$ck]}"
+    fi
+    # The \034 sentinel preserves BOTH the exact trailing bytes and the exit
+    # status in one capture, with no extra fork. Needed because the observable
+    # contract distinguishes three cases that `v="$(...)"` alone would flatten:
+    # missing file -> rc=2 + 0 bytes; missing key -> rc=0 + 0 bytes;
+    # a present-but-empty value (`key:`) -> rc=0 + exactly one newline.
+    local raw rc
+    raw="$(_yaml_get_uncached "$file" "$key"; printf '\034%s' "$?")"
+    rc="${raw##*$'\034'}"
+    raw="${raw%$'\034'*}"
+    _ZBUILD_YAML_OUT[$ck]="$raw"
+    _ZBUILD_YAML_RC[$ck]="$rc"
+    printf '%s' "$raw"
+    return "$rc"
+}
+
+_yaml_get_uncached() {
     local file="$1"
     local key="$2"
     if [[ "$key" == *.* ]]; then
