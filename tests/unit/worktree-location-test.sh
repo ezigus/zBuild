@@ -105,6 +105,55 @@ assert_eq "[SPEC-8] empty repo path is refused (rc=2), not silently approved" "2
 zbuild_worktree_assert_outside >/dev/null 2>&1; _e3=$?
 assert_eq "[SPEC-8] both args missing is refused (rc=2)" "2" "$_e3"
 
+# ── SPEC-9..13: zbuild_worktree_enter — one mechanism, all three modes ──────
+# A real git repo to add worktrees to. WT root is redirected into the sandbox so
+# nothing lands in the developer's $HOME.
+_R="$TEST_TEMP_DIR/repo"
+mkdir -p "$_R"
+git -C "$_R" init -q 2>/dev/null
+git -C "$_R" config user.email t@t; git -C "$_R" config user.name t
+: > "$_R/f"; git -C "$_R" add -A; git -C "$_R" commit -qm init 2>/dev/null
+export ZBUILD_WORKTREE_ROOT="$TEST_TEMP_DIR/wt"
+
+# SPEC-9: create mode makes a worktree on a NEW branch
+_p1="$(cd "$_R" && zbuild_worktree_enter run1 feature/one create 2>&1)"; _rc1=$?
+if [[ "$_rc1" -eq 0 && -d "$_p1" ]] && [[ "$(git -C "$_p1" rev-parse --abbrev-ref HEAD)" == "feature/one" ]]; then
+    assert_pass "[SPEC-9] create mode adds a worktree on the new branch"
+else
+    assert_fail "[SPEC-9] create mode must add a worktree on the new branch" "rc=$_rc1 out=$_p1"
+fi
+
+# SPEC-10: the worktree is OUTSIDE the repo
+if [[ "$_p1" != "$_R"* ]]; then
+    assert_pass "[SPEC-10] the worktree is created outside the target repo"
+else
+    assert_fail "[SPEC-10] worktree must not be inside the target repo" "wt=$_p1 repo=$_R"
+fi
+
+# SPEC-11: resume reuses the same worktree rather than failing on an existing path
+_p1b="$(cd "$_R" && zbuild_worktree_enter run1 feature/one create 2>&1)"; _rc1b=$?
+if [[ "$_rc1b" -eq 0 && "$_p1b" == "$_p1" ]]; then
+    assert_pass "[SPEC-11] a second call for the same run reuses the worktree (resume-safe)"
+else
+    assert_fail "[SPEC-11] resume must reuse the existing worktree" "rc=$_rc1b out=$_p1b want=$_p1"
+fi
+
+# SPEC-12: refuse rather than --force when the branch is checked out elsewhere.
+# feature/one is now held by run1's worktree; a different run asking for it must stop.
+_out2="$(cd "$_R" && zbuild_worktree_enter run2 feature/one adopt_local 2>&1)"; _rc2=$?
+if [[ "$_rc2" -eq 3 ]] && grep -q "already checked out" <<< "$_out2"; then
+    assert_pass "[SPEC-12] a branch held by another worktree is refused (rc=3), not forced"
+else
+    assert_fail "[SPEC-12] must refuse a branch already checked out elsewhere" "rc=$_rc2 out=$_out2"
+fi
+
+# SPEC-13: adopt_remote requires a start_point; unknown modes are rejected
+(cd "$_R" && zbuild_worktree_enter run3 feature/three adopt_remote) >/dev/null 2>&1; _rc3=$?
+assert_eq "[SPEC-13] adopt_remote without a start_point is an error" "2" "$_rc3"
+(cd "$_R" && zbuild_worktree_enter run4 feature/four bogus_mode) >/dev/null 2>&1; _rc4=$?
+assert_eq "[SPEC-13] an unknown mode is rejected" "2" "$_rc4"
+unset ZBUILD_WORKTREE_ROOT
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -93,3 +93,75 @@ zbuild_worktree_assert_outside() {
     fi
     return 0
 }
+
+# ─── zbuild_worktree_enter <run_id> <branch> <mode> [start_point] ────────────
+# Create (or reuse) the per-run worktree for <branch> and print its path.
+# mode: create | adopt_local | adopt_remote
+#
+# ONE mechanism for all three of intake's branch paths, rather than three
+# divergent worktree implementations. The differences are only in what git is
+# told to base the tree on:
+#   create        -> git worktree add -b <branch> <path>
+#   adopt_local   -> git worktree add    <path> <branch>
+#   adopt_remote  -> git worktree add -b <branch> <path> <start_point>
+#
+# Resume-safe: an existing path that is already a registered worktree for
+# <branch> is REUSED, because `git worktree add` fails on an existing path and a
+# resumed run must land in the tree its earlier stages were working in.
+#
+# Deliberately does NOT use `--force` when <branch> is checked out elsewhere.
+# git refuses that by default, and forcing it would leave two trees on one branch
+# with a silently stale HEAD in the other — a worse failure than stopping. The
+# caller gets rc=3 and a message naming the tree that holds it.
+zbuild_worktree_enter() {
+    local run_id="${1:-}" branch="${2:-}" mode="${3:-create}" start_point="${4:-}"
+    [[ -n "$run_id" ]] || { printf 'zbuild_worktree_enter: run_id required\n' >&2; return 2; }
+    [[ -n "$branch" ]] || { printf 'zbuild_worktree_enter: branch required\n' >&2; return 2; }
+
+    local repo_root wt
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    wt="$(zbuild_worktree_path "$run_id")" || return 2
+    zbuild_worktree_assert_outside "$wt" "$repo_root" || return 2
+
+    # Reuse on resume: same path, already a worktree, already on <branch>.
+    if [[ -d "$wt" ]]; then
+        local existing_branch
+        existing_branch="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+        if [[ "$existing_branch" == "$branch" ]]; then
+            printf '%s\n' "$wt"
+            return 0
+        fi
+        printf 'zbuild_worktree_enter: %s exists but is on "%s", not "%s"\n' \
+            "$wt" "${existing_branch:-<not a worktree>}" "$branch" >&2
+        return 4
+    fi
+
+    # Refuse rather than --force when the branch is live in another tree.
+    local holder
+    holder="$(git worktree list --porcelain 2>/dev/null \
+        | awk -v b="refs/heads/$branch" '/^worktree /{w=$2} /^branch /{if ($2==b) print w}' \
+        | head -1)"
+    if [[ -n "$holder" ]]; then
+        printf 'zbuild_worktree_enter: branch "%s" is already checked out at %s\n' "$branch" "$holder" >&2
+        printf '  refusing --force: two trees on one branch leaves a silently stale HEAD.\n' >&2
+        return 3
+    fi
+
+    mkdir -p "$(dirname "$wt")" || return 2
+    local rc=0
+    case "$mode" in
+        create)       git worktree add -b "$branch" "$wt" >/dev/null 2>&1 || rc=$? ;;
+        adopt_local)  git worktree add "$wt" "$branch"    >/dev/null 2>&1 || rc=$? ;;
+        adopt_remote)
+            [[ -n "$start_point" ]] || { printf 'zbuild_worktree_enter: adopt_remote needs a start_point\n' >&2; return 2; }
+            git worktree add -b "$branch" "$wt" "$start_point" >/dev/null 2>&1 || rc=$? ;;
+        *) printf 'zbuild_worktree_enter: unknown mode "%s"\n' "$mode" >&2; return 2 ;;
+    esac
+    if [[ "$rc" -ne 0 ]]; then
+        printf 'zbuild_worktree_enter: git worktree add failed (mode=%s branch=%s path=%s)\n' \
+            "$mode" "$branch" "$wt" >&2
+        return 5
+    fi
+    printf '%s\n' "$wt"
+    return 0
+}
