@@ -143,6 +143,56 @@ _yaml_get_requires_core_list() {
     ' "$file" 2>/dev/null
 }
 
+# ─── _yaml_get_requires_plugins_list — parse requires: → plugins: list ──────
+# Emits one plugin id per line. Structurally parses ONLY the `requires:` →
+# `plugins:` sub-block, mirroring _yaml_get_requires_core_list.
+# Handles both inline `plugins: [a, b]` and multi-line:
+#   requires:
+#     plugins:
+#       - a
+#       - b
+_yaml_get_requires_plugins_list() {
+    local file="$1"
+    awk '
+        /^requires:[[:space:]]*$/ { in_requires = 1; next }
+        in_requires && /^[a-zA-Z_]/ { in_requires = 0 }
+
+        in_requires && /^[[:space:]]+plugins:[[:space:]]*\[/ {
+            line = $0
+            sub(/^[^[]*\[/, "", line)
+            sub(/\].*$/, "", line)
+            n = split(line, items, /,[[:space:]]*/)
+            for (i = 1; i <= n; i++) {
+                gsub(/^[[:space:]"'"'"']+|[[:space:]"'"'"']+$/, "", items[i])
+                if (items[i] != "") print items[i]
+            }
+            in_requires = 0
+            exit
+        }
+        in_requires && /^[[:space:]]+plugins:[[:space:]]*$/ {
+            in_plugins = 1
+            match($0, /^[[:space:]]+/)
+            plugins_indent = RLENGTH
+            next
+        }
+        in_plugins {
+            if (match($0, /^[[:space:]]+-[[:space:]]+/)) {
+                indent_len = index($0, "-") - 1
+                if (indent_len > plugins_indent) {
+                    item = $0
+                    gsub(/^[[:space:]]*-[[:space:]]*/, "", item)
+                    gsub(/[[:space:]]*#.*/, "", item)
+                    gsub(/^["'"'"']|["'"'"']$/, "", item)
+                    gsub(/[[:space:]]*$/, "", item)
+                    if (item != "") print item
+                }
+                next
+            }
+            in_plugins = 0
+        }
+    ' "$file" 2>/dev/null
+}
+
 # ─── _required_hooks_for_kind — ADR-001 §"Required hooks per kind" ──────────
 # Returns space-separated required hook names for the given plugin kind.
 # Empty output = "no specifically required hooks" (still allow init/finalize/cleanup).
