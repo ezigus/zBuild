@@ -360,6 +360,230 @@ case "$live_dev_p" in
 esac
 assert_eq "[SPEC-3] developer perspective is a standalone imperative opener (no 'You ', non-empty capitalized)" "1" "$dev_opener_ok"
 
+# ─── SPEC-1..SPEC-6: resolve_persona + template accessors (issue #1305) ──────
+# These tests exercise scripts/lib/persona-resolve.sh and the two new template
+# accessors (template_stage_router_persona, template_config_persona). All tagged
+# assertions fail at merge-base baseline (functions/generic persona not yet present).
+
+if ! declare -F resolve_persona >/dev/null 2>&1; then
+    source "$REPO_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
+fi
+if ! declare -F template_stage_router_persona >/dev/null 2>&1; then
+    source "$REPO_ROOT/core/pipeline/template.sh" 2>/dev/null || true
+fi
+
+# ── SPEC-2: template_stage_router_persona per-stage accessor ──────────────────
+_TPL_FIXTURE="$TEST_TEMP_DIR/tpl-per-stage.yaml"
+cat > "$_TPL_FIXTURE" <<'TPLEOF'
+stage_definitions:
+  build:
+    persona: developer
+  design:
+    router:
+      tier: T2
+TPLEOF
+_orig_tpl="${_TPL_SOURCE_FILE:-}"
+export _TPL_SOURCE_FILE="$_TPL_FIXTURE"
+
+set +e
+_got_stage_persona="$(template_stage_router_persona "build" 2>/dev/null)"; _tsp_rc=$?
+set -e
+assert_eq "[SPEC-2] template_stage_router_persona returns the per-stage persona id" \
+    "developer" "$_got_stage_persona"
+
+set +e
+_no_persona="$(template_stage_router_persona "design" 2>/dev/null)"
+set -e
+assert_eq "[SPEC-2] template_stage_router_persona returns empty for a stage with no persona key" \
+    "" "$_no_persona"
+
+# ── SPEC-3: template_config_persona global template default ───────────────────
+_TPL_GLOBAL="$TEST_TEMP_DIR/tpl-global-persona.yaml"
+cat > "$_TPL_GLOBAL" <<'TPLEOF'
+config:
+  persona: architect
+stage_definitions:
+  build:
+    timeout: 300
+TPLEOF
+export _TPL_SOURCE_FILE="$_TPL_GLOBAL"
+
+set +e
+_got_global="$(template_config_persona 2>/dev/null)"
+set -e
+assert_eq "[SPEC-3] template_config_persona returns the global config.persona id" \
+    "architect" "$_got_global"
+
+export _TPL_SOURCE_FILE="$_orig_tpl"
+
+# ── SPEC-4: generic default fallback when no binding ─────────────────────────
+_SPEC4_PROOT="$TEST_TEMP_DIR/spec4-plugins"
+mkdir -p "$_SPEC4_PROOT/persona/generic"
+cat > "$_SPEC4_PROOT/persona/generic/manifest.yaml" <<'MEOF'
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+persona:
+  role: a baseline contributor
+  perspective: "Implement the task as specified."
+MEOF
+
+_orig_proot="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$_SPEC4_PROOT"
+unset ZBUILD_BUILD_PERSONA 2>/dev/null || true
+unset _TPL_SOURCE_FILE 2>/dev/null || true
+
+set +e
+_generic_dir="$(resolve_persona "build" 2>/dev/null)"; _rp4_rc=$?
+set -e
+assert_eq "[SPEC-4] resolve_persona returns 0 for generic fallback when no binding" "0" "$_rp4_rc"
+assert_contains "[SPEC-4] resolve_persona returns the generic persona dir when no binding" \
+    "$_generic_dir" "generic"
+
+ZBUILD_PLUGINS_ROOT="$_orig_proot"
+
+# ── SPEC-1: env ZBUILD_<STAGE>_PERSONA wins over template binding ──────────────
+export _TPL_SOURCE_FILE="$_TPL_FIXTURE"
+export ZBUILD_BUILD_PERSONA="architect"
+
+_SPEC1_PROOT="$TEST_TEMP_DIR/spec1-plugins"
+mkdir -p "$_SPEC1_PROOT/persona/architect" "$_SPEC1_PROOT/persona/developer" \
+         "$_SPEC1_PROOT/persona/generic"
+cat > "$_SPEC1_PROOT/persona/architect/manifest.yaml" <<'MEOF'
+id: architect
+name: Architect
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: "Judge structure and boundaries."
+MEOF
+cat > "$_SPEC1_PROOT/persona/developer/manifest.yaml" <<'MEOF'
+id: developer
+name: Developer
+kind: persona
+version: 0.1.0
+persona:
+  role: a software engineer
+  perspective: "Reason about correctness first."
+MEOF
+cat > "$_SPEC1_PROOT/persona/generic/manifest.yaml" <<'MEOF'
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+persona:
+  role: a baseline contributor
+  perspective: "Implement the task as specified."
+MEOF
+
+export ZBUILD_PLUGINS_ROOT="$_SPEC1_PROOT"
+
+set +e
+_env_dir="$(resolve_persona "build" 2>/dev/null)"; _rp1_rc=$?
+set -e
+assert_eq "[SPEC-1] resolve_persona returns 0 when env ZBUILD_BUILD_PERSONA is set" "0" "$_rp1_rc"
+assert_contains "[SPEC-1] env ZBUILD_BUILD_PERSONA=architect wins over template binding (developer)" \
+    "$_env_dir" "architect"
+
+unset ZBUILD_BUILD_PERSONA 2>/dev/null || true
+unset _TPL_SOURCE_FILE 2>/dev/null || true
+ZBUILD_PLUGINS_ROOT="$_orig_proot"
+
+# ── SPEC-5: two-root discovery — overlay overrides installed; absent → generic ─
+_INST_ROOT="$TEST_TEMP_DIR/spec5-installed"
+_OVER_PARENT="$TEST_TEMP_DIR/spec5-repo"
+_OVER_ROOT="$_OVER_PARENT/.zbuild/plugins"
+mkdir -p "$_INST_ROOT/persona/architect" "$_INST_ROOT/persona/generic" \
+         "$_INST_ROOT/persona/developer" "$_OVER_ROOT/persona/architect"
+
+cat > "$_INST_ROOT/persona/architect/manifest.yaml" <<'MEOF'
+id: architect
+name: Architect (installed)
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: "Installed perspective."
+MEOF
+cat > "$_INST_ROOT/persona/generic/manifest.yaml" <<'MEOF'
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+persona:
+  role: a baseline contributor
+  perspective: "Implement the task as specified."
+MEOF
+cat > "$_INST_ROOT/persona/developer/manifest.yaml" <<'MEOF'
+id: developer
+name: Developer
+kind: persona
+version: 0.1.0
+persona:
+  role: a software engineer
+  perspective: "Reason about correctness first."
+MEOF
+cat > "$_OVER_ROOT/persona/architect/manifest.yaml" <<'MEOF'
+id: architect
+name: Architect (overlay)
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: "Overlay perspective."
+MEOF
+
+export ZBUILD_PLUGINS_ROOT="$_INST_ROOT"
+export ZBUILD_REPO_ROOT="$_OVER_PARENT"
+export ZBUILD_BUILD_PERSONA="architect"
+
+set +e
+_over_dir="$(resolve_persona "build" 2>/dev/null)"; _rp5a_rc=$?
+set -e
+assert_eq "[SPEC-5] resolve_persona returns 0 when overlay has the requested persona" "0" "$_rp5a_rc"
+assert_contains "[SPEC-5] overlay persona overrides installed-tree entry for same id" \
+    "$_over_dir" "spec5-repo"
+
+# Installed-only: developer exists in installed tree, not in overlay
+export ZBUILD_BUILD_PERSONA="developer"
+set +e
+_inst_dir="$(resolve_persona "build" 2>/dev/null)"; _rp5b_rc=$?
+set -e
+assert_eq "[SPEC-5] resolve_persona returns 0 for persona present only in installed tree" "0" "$_rp5b_rc"
+assert_contains "[SPEC-5] persona present only in installed tree is found" \
+    "$_inst_dir" "spec5-installed"
+
+# Absent from both roots → generic fallback
+export ZBUILD_BUILD_PERSONA="no-such-persona"
+set +e
+_fallback_dir="$(resolve_persona "build" 2>/dev/null)"; _rp5c_rc=$?
+set -e
+assert_eq "[SPEC-5] resolve_persona returns 0 when persona absent from both roots (generic fallback)" "0" "$_rp5c_rc"
+assert_contains "[SPEC-5] persona absent from both roots falls back to generic" \
+    "$_fallback_dir" "generic"
+
+unset ZBUILD_BUILD_PERSONA 2>/dev/null || true
+unset ZBUILD_REPO_ROOT 2>/dev/null || true
+ZBUILD_PLUGINS_ROOT="$_orig_proot"
+
+# ── SPEC-6: silent-on-absent — repo overlay dir does not exist → no error ─────
+export ZBUILD_PLUGINS_ROOT="$_SPEC4_PROOT"
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/spec6-no-zbuild"
+mkdir -p "$ZBUILD_REPO_ROOT"
+# No .zbuild/plugins dir — resolver must proceed silently without error.
+
+set +e
+_silent_dir="$(resolve_persona "build" 2>/dev/null)"; _rp6_rc=$?
+set -e
+assert_eq "[SPEC-6] resolve_persona returns 0 when repo overlay dir is absent (silent-on-absent)" "0" "$_rp6_rc"
+assert_contains "[SPEC-6] resolver proceeds to generic when overlay dir is absent" \
+    "$_silent_dir" "generic"
+
+unset ZBUILD_REPO_ROOT 2>/dev/null || true
+ZBUILD_PLUGINS_ROOT="$_orig_proot"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

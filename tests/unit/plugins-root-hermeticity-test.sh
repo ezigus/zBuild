@@ -95,4 +95,66 @@ else
         "amendment heading not found in ${_adr#"$REPO_ROOT/"} — add it per #1274"
 fi
 
+# SPEC-7 [change]: ADR-024 hermeticity — resolve_persona must not mutate
+# ZBUILD_PLUGINS_ROOT when scanning the repo overlay. The overlay root is
+# derived from ZBUILD_REPO_ROOT/.zbuild/plugins via a LOCAL variable; the
+# installed-root var (ZBUILD_PLUGINS_ROOT) must remain unchanged throughout.
+# Fails at merge-base (resolve_persona does not exist yet); passes at HEAD.
+if ! declare -F resolve_persona >/dev/null 2>&1; then
+    source "$REPO_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
+fi
+
+if declare -F resolve_persona >/dev/null 2>&1; then
+    _spec7_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/spec7-hermeticity.XXXXXX")"
+    trap 'rm -rf "$_spec7_tmpdir"' EXIT
+
+    # Installed root with the generic persona.
+    _spec7_inst="$_spec7_tmpdir/installed"
+    mkdir -p "$_spec7_inst/persona/generic"
+    cat > "$_spec7_inst/persona/generic/manifest.yaml" <<'MEOF'
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+persona:
+  role: a baseline contributor
+  perspective: "Implement the task as specified."
+MEOF
+
+    # Repo root with an overlay dir (triggers the two-root scan).
+    _spec7_repo="$_spec7_tmpdir/repo"
+    mkdir -p "$_spec7_repo/.zbuild/plugins/persona/security"
+    cat > "$_spec7_repo/.zbuild/plugins/persona/security/manifest.yaml" <<'MEOF'
+id: security
+name: Security
+kind: persona
+version: 0.1.0
+persona:
+  role: a security engineer
+  perspective: "Examine trust boundaries."
+MEOF
+
+    _spec7_before="${_spec7_inst}"
+    export ZBUILD_PLUGINS_ROOT="$_spec7_before"
+    export ZBUILD_REPO_ROOT="$_spec7_repo"
+    unset ZBUILD_BUILD_PERSONA 2>/dev/null || true
+
+    # Run resolve_persona (will scan overlay) and then check ZBUILD_PLUGINS_ROOT.
+    resolve_persona "build" >/dev/null 2>&1 || true
+    _spec7_after="${ZBUILD_PLUGINS_ROOT:-}"
+
+    unset ZBUILD_REPO_ROOT 2>/dev/null || true
+    unset ZBUILD_PLUGINS_ROOT 2>/dev/null || true
+
+    if [[ "$_spec7_after" == "$_spec7_before" ]]; then
+        assert_pass "[SPEC-7] ZBUILD_PLUGINS_ROOT is unchanged after resolve_persona scans the overlay (ADR-024 hermeticity)"
+    else
+        assert_fail "[SPEC-7] ZBUILD_PLUGINS_ROOT is unchanged after resolve_persona scans the overlay (ADR-024 hermeticity)" \
+            "ZBUILD_PLUGINS_ROOT mutated: before='$_spec7_before' after='$_spec7_after' — overlay scan must use a local var, never touch ZBUILD_PLUGINS_ROOT"
+    fi
+else
+    assert_fail "[SPEC-7] resolve_persona is defined (persona-resolve.sh loaded)" \
+        "resolve_persona not found — scripts/lib/persona-resolve.sh may not exist or failed to source"
+fi
+
 print_test_results
