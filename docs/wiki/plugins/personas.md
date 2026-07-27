@@ -205,3 +205,23 @@ persona:
   role: a site-reliability engineer
   perspective: "Examine the change for production risk: failure modes and blast radius, missing observability (metrics, logs, traces), SLO impact, graceful degradation under partial failure, and whether a safe rollback or recovery path exists."
 ```
+
+---
+
+## generic
+
+The generic persona is the terminal fallback returned by `resolve_persona` when no env binding, per-stage template binding, or global template default is set. It carries a neutral directive so the stage framing remains well-formed; the assembler prepends it only when no other persona is configured.
+
+- **Kind:** `persona`
+- **Manifest:** `plugins/persona/generic/manifest.yaml`
+
+```yaml
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+summary: Terminal fallback persona — no behavioral framing beyond the task itself.
+persona:
+  role: a baseline contributor
+  perspective: "Implement the task as specified."
+```

@@ -34,6 +34,11 @@ source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # Sourced here so every routing plugin (all source route.sh) gets it by
 # construction, replacing the per-plugin hardcoded `${ZBUILD_<ID>_TIER:-Tn}`.
 source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
+# ADR-051 (#1305): resolve_persona + persona_text — resolve a stage persona from
+# the four-step precedence chain (env > template-stage > template-global > generic)
+# with two-root discovery (installed tree + per-repo overlay). Sourced here so
+# every routing plugin gets resolve_persona/persona_text by construction.
+source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
 # Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
 # can inject the advisory Intent preamble into every stage prompt.

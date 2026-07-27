@@ -1,0 +1,9 @@
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+summary: Terminal fallback persona — no behavioral framing beyond the task itself.
+persona:
+  role: a baseline contributor
+  # Single-line scalar: the minimal yaml_get reader does not parse folded/block scalars.
+  perspective: "Implement the task as specified."

@@ -317,6 +317,26 @@ rt_role="$(yaml_get "$REAL_MANIFEST" "persona.role" 2>/dev/null || true)"
 [[ -n "$rt_role" ]] && rt_role_present=1 || rt_role_present=0
 assert_eq "[SPEC-17] live red-team manifest has a non-empty persona.role" "1" "$rt_role_present"
 
+# ─── SPEC-8 [change]: live generic persona manifest passes validate_manifest ──
+# The generic persona (plugins/persona/generic/manifest.yaml) is the terminal
+# fallback added in issue #1305. It must pass validate_manifest — fails at
+# merge-base (the manifest does not exist yet) and passes at HEAD.
+REAL_GENERIC="$REPO_ROOT/plugins/persona/generic/manifest.yaml"
+if [[ -f "$REAL_GENERIC" ]]; then
+    set +e
+    validate_manifest "$REAL_GENERIC" >/dev/null 2>&1; rc=$?
+    set -e
+    assert_eq "[SPEC-8] live generic persona manifest passes validate_manifest" "0" "$rc"
+    # Verify kind and id are correct.
+    gen_kind="$(yaml_get "$REAL_GENERIC" "kind" 2>/dev/null || true)"
+    assert_eq "[SPEC-8] generic manifest declares kind:persona" "persona" "$gen_kind"
+    gen_id="$(yaml_get "$REAL_GENERIC" "id" 2>/dev/null || true)"
+    assert_eq "[SPEC-8] generic manifest declares id:generic" "generic" "$gen_id"
+else
+    assert_fail "[SPEC-8] live generic persona manifest passes validate_manifest" \
+        "plugins/persona/generic/manifest.yaml not found — create it per issue #1305"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
