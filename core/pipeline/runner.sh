@@ -292,6 +292,7 @@ _runner_validate_leaf_resolvability() {
 # that pass a non-empty string get exactly one synthetic violation; callers that pass
 # empty (or omit the arg) exercise only the real active_stages checks. Runtime call
 # sites in runner.sh pass no argument.
+# shellcheck disable=SC2120  # $1 is used by unit tests; runtime call sites pass no arg
 _runner_validate_startup_preflight() {
     local _violation_fixture="${1:-}"
     local mode="${ZBUILD_CONTRACT_VALIDATOR:-warn}"
