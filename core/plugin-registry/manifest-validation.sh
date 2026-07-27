@@ -112,10 +112,23 @@ yaml_get() {
     # contract distinguishes three cases that `v="$(...)"` alone would flatten:
     # missing file -> rc=2 + 0 bytes; missing key -> rc=0 + 0 bytes;
     # a present-but-empty value (`key:`) -> rc=0 + exactly one newline.
+    # `set +e` here is belt-and-braces, scoped to this subshell only (the caller's
+    # errexit is untouched). It guarantees the sentinel printf runs even if a
+    # future change makes the reader's failure trip errexit inside the capture.
+    # Measured, so the comment does not overclaim: with and without it, cached and
+    # uncached agree exactly under `set -euo pipefail` — a caught failure
+    # (`if yaml_get …` / `… || rc=$?`) yields rc=2 either way, and a BARE
+    # `v="$(yaml_get missing)"` terminates the caller either way, because under
+    # errexit an assignment from a failing command substitution is itself fatal.
+    # That last part is pre-existing bash behaviour, not something this cache
+    # introduced. SPEC-11 pins the parity.
     local raw rc
-    raw="$(_yaml_get_uncached "$file" "$key"; printf '\034%s' "$?")"
+    raw="$(set +e; _yaml_get_uncached "$file" "$key"; printf '\034%s' "$?")"
     rc="${raw##*$'\034'}"
     raw="${raw%$'\034'*}"
+    # Defensive: `return` on a non-numeric is fatal. Unreachable while the
+    # sentinel always fires; costs nothing to guarantee.
+    [[ "$rc" =~ ^[0-9]+$ ]] || rc=0
     _ZBUILD_YAML_OUT[$ck]="$raw"
     _ZBUILD_YAML_RC[$ck]="$rc"
     printf '%s' "$raw"

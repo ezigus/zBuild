@@ -225,6 +225,36 @@ _spec10_out="$(bash -c '
 assert_eq "[SPEC-10] function-scoped source keeps keys distinct (declare -gA)" \
     "s10-id|agent" "$_spec10_out"
 
-cleanup_test_env
+# ── SPEC-11: cached and uncached agree under `set -euo pipefail` ────────────
+# yaml_get is a sourced library that inherits the caller's flags, and much of the
+# engine runs errexit. The property that matters is PARITY: turning the cache on
+# must not change behaviour under errexit.
+#
+# Note what is NOT asserted: a bare `v="$(yaml_get missing)"` kills an errexit
+# caller — but it does so with the cache OFF too, because under `set -e` an
+# assignment from a failing command substitution is itself fatal. That is
+# pre-existing bash behaviour, not something the cache introduced, so pinning it
+# here would only enshrine a bash rule as if it were our contract.
+_spec11_probe() {
+    bash -c '
+        set -euo pipefail
+        export ZBUILD_YAML_CACHE="$3"
+        source "$1/core/plugin-registry/manifest-validation.sh"
+        if yaml_get "$1/definitely-not-here.yaml" id >/dev/null 2>&1; then b=then; else b=else; fi
+        yaml_get "$1/definitely-not-here.yaml" id >/dev/null 2>&1 || _c=$?
+        h="$(yaml_get "$2" id)"
+        printf "%s,%s,%s" "$b" "${_c:-unset}" "$h"
+    ' _ "$REPO_ROOT" "$1" "$2" 2>/dev/null
+}
+_s11_off="$(_spec11_probe "$FIX" 0)"
+_s11_on="$(_spec11_probe "$FIX" 1)"
+if [[ -n "$_s11_on" && "$_s11_on" == "$_s11_off" ]]; then
+    assert_pass "[SPEC-11] under set -euo pipefail, cache ON matches cache OFF exactly (${_s11_on})"
+else
+    assert_fail "[SPEC-11] errexit behaviour must be identical with the cache on and off" \
+        "cache-off=[${_s11_off}] cache-on=[${_s11_on}]"
+fi
+
+cleanup_test_envcleanup_test_env
 print_test_results
 exit $((FAIL > 0))
