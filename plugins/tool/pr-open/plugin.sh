@@ -56,7 +56,16 @@ pr_open_run() {
     # later read of it (and of state_dir/artifacts_dir derived from it) would
     # otherwise resolve against the new working directory.
     if [[ "$state_file" != /* ]]; then
-        state_file="$(cd "$(dirname "$state_file")" && pwd)/$(basename "$state_file")"
+        # Check the subshell: this library has no `set -e`, so a failing `cd`
+        # (directory not yet created) would leave state_file as "/<basename>" —
+        # an accidental root-relative path, read and written silently in the
+        # wrong place.
+        local _abs_dir
+        if ! _abs_dir="$(cd "$(dirname "$state_file")" 2>/dev/null && pwd)"; then
+            error "pr_open_run: cannot resolve state_file directory: $(dirname "$state_file")"
+            return 2
+        fi
+        state_file="$_abs_dir/$(basename "$state_file")"
     fi
     if [[ -n "${ZBUILD_REPO_ROOT:-}" ]]; then
         if [[ -d "$ZBUILD_REPO_ROOT" ]]; then

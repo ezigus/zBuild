@@ -92,6 +92,19 @@ assert_eq "[SPEC-7] a worktree inside the target repo is refused" "1" "$_in"
 zbuild_worktree_assert_outside "$HOME/.zbuild/worktrees/x" "/repo" >/dev/null 2>&1; _out=$?
 assert_eq "[SPEC-7] a worktree outside the target repo is accepted" "0" "$_out"
 
+# ── SPEC-8: the guard must not silently approve on empty arguments ──────────
+# A caller doing
+#   zbuild_worktree_assert_outside "$(zbuild_worktree_path)" "$ZBUILD_REPO_ROOT"
+# captures "" when zbuild_worktree_path fails (missing run_id). Returning 0 there
+# would approve exactly the run the guard exists to refuse — the same
+# passes-when-it-should-fail class as an inert test.
+zbuild_worktree_assert_outside "" "/repo" >/dev/null 2>&1; _e1=$?
+assert_eq "[SPEC-8] empty worktree path is refused (rc=2), not silently approved" "2" "$_e1"
+zbuild_worktree_assert_outside "/somewhere" "" >/dev/null 2>&1; _e2=$?
+assert_eq "[SPEC-8] empty repo path is refused (rc=2), not silently approved" "2" "$_e2"
+zbuild_worktree_assert_outside >/dev/null 2>&1; _e3=$?
+assert_eq "[SPEC-8] both args missing is refused (rc=2)" "2" "$_e3"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

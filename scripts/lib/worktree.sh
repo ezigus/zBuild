@@ -12,9 +12,6 @@
 [[ -n "${_ZBUILD_WORKTREE_LIB_LOADED:-}" ]] && return 0
 _ZBUILD_WORKTREE_LIB_LOADED=1
 
-_WT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_WT_ZBUILD_ROOT="$(cd "$_WT_LIB_DIR/../.." && pwd)"
-
 # ─── zbuild_worktree_root ────────────────────────────────────────────────────
 # Where per-run worktrees live. Precedence matches the rest of the engine
 # (env > template > default), the same shape as tier and persona resolution:
@@ -79,8 +76,14 @@ zbuild_worktree_enabled() {
 # Guard: a worktree nested inside the target repo defeats the purpose and
 # confuses every tree walk. Fail loudly rather than producing a subtly wrong run.
 zbuild_worktree_assert_outside() {
-    local wt="$1" repo="$2"
-    [[ -n "$wt" && -n "$repo" ]] || return 0
+    local wt="${1:-}" repo="${2:-}"
+    # Empty args must NOT pass. A caller doing
+    #   zbuild_worktree_assert_outside "$(zbuild_worktree_path)" "$ZBUILD_REPO_ROOT"
+    # captures "" when zbuild_worktree_path fails (missing run_id), and a guard
+    # that returns 0 there would approve exactly the run it exists to refuse —
+    # contradicting this function's own "fail loudly" contract.
+    [[ -n "$wt" ]]   || { printf 'zbuild_worktree_assert_outside: worktree path required\n' >&2; return 2; }
+    [[ -n "$repo" ]] || { printf 'zbuild_worktree_assert_outside: repo path required\n' >&2; return 2; }
     if [[ "$wt" == "$repo" || "$wt" == "$repo"/* ]]; then
         printf 'worktree: refusing a worktree inside the target repository\n' >&2
         printf '  worktree: %s\n' "$wt" >&2
