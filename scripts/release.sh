@@ -284,8 +284,14 @@ main() {
     #    and the existing [1.0.0] section (never clobbered). Path overridable
     #    for tests via ZBUILD_RELEASE_CHANGELOG. ─────────────────────────────────
     local changelog="${ZBUILD_RELEASE_CHANGELOG:-$REPO_ROOT/CHANGELOG.md}"
-    _release_prepend_changelog "$changelog" "$notes"
-    success "CHANGELOG.md updated for ${version}"
+    _release_prepend_changelog "$changelog" "$notes" "$version"
+    # Never claim a write the idempotency guard skipped — a false "updated" line is
+    # actively misleading when debugging a failed resume.
+    if [[ "${_RELEASE_CHANGELOG_SKIPPED:-0}" == "1" ]]; then
+        info "release: CHANGELOG.md already carries the ${version} section — prepend skipped (idempotent re-run)"
+    else
+        success "CHANGELOG.md updated for ${version}"
+    fi
 
     # ── Stamp VERSION file (overridable for tests via ZBUILD_RELEASE_VERSION_FILE) ──
     #    Stamp BEFORE building the tarball so the packaged VERSION matches the cut.
@@ -654,6 +660,16 @@ _release_ship() {
         error "release --ship: gh pr merge --squash failed"
         exit 1
     }
+    # #1601: main()'s pre-split body re-stamps CHANGELOG/VERSION on EVERY invocation,
+    # including a resume. When the resume runs from main (where the section is not yet
+    # present, so the idempotency guard cannot fire), those stamps sit uncommitted and
+    # block the checkout/pull below — the same class of failure as the duplicate section.
+    # The PR is merged at this point, so main carries the authoritative content and the
+    # local stamps are redundant by definition. Preflight guaranteed a clean tree at
+    # entry, so nothing discarded here can be user work. Tolerates failure: the paths
+    # are test-overridable and may sit outside the repo; a genuinely dirty tree still
+    # fails loudly at the checkout/pull below.
+    $git_cmd checkout -- "$changelog" "$version_file" 2>/dev/null || true
     $git_cmd checkout main || {
         error "release --ship: could not switch to main after merge"
         exit 1
@@ -729,13 +745,28 @@ _release_major_preflight() {
     info "release: major preflight passed — '${label}' exists with all issues closed"
 }
 
-# _release_prepend_changelog <changelog_path> <notes> — insert <notes> above the
-# first "## [" release section, keeping the file header intact. Atomic write.
+# _release_prepend_changelog <changelog_path> <notes> [version] — insert <notes>
+# above the first "## [" release section, keeping the file header intact. Atomic write.
+# Sets _RELEASE_CHANGELOG_SKIPPED=1 and no-ops when <version>'s section is already
+# present: a --ship resume re-runs main()'s pre-split body, and a duplicate section
+# dirties the tree and blocks the post-merge checkout (#1601).
+# The header match is ANCHORED at line start with the version's dots escaped, and
+# $version is format-checked first. An unanchored match would false-positive on prose
+# ("see ## [1.2.0.0] for details") and silently skip a legitimate prepend; a $version
+# carrying a newline would split the pattern into a fragment matching nearly every line.
 _release_prepend_changelog() {
-    local path="$1" notes="$2"
+    local path="$1" notes="$2" version="${3:-}"
+    _RELEASE_CHANGELOG_SKIPPED=0
     if [[ ! -f "$path" ]]; then
         error "release: CHANGELOG.md not found at $path"
         exit 1
+    fi
+    # Idempotency guard: if this version's section header already exists, skip.
+    local _v_esc="${version//./\\.}"
+    if [[ -n "$version" ]] && [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]] \
+       && grep -qE "^## \[${_v_esc}\]" "$path"; then
+        _RELEASE_CHANGELOG_SKIPPED=1
+        return 0
     fi
     # Create the temp file in the SAME directory as the target so the final `mv`
     # is a rename within one filesystem (atomic). A temp under $TMPDIR could be a
