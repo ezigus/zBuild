@@ -139,15 +139,20 @@ _run_case() {
 # pool) — #1571 guards the mktemp BEFORE the run, but nothing guarded the window
 # while main() executes, which is the leading theory for #1609's macOS F/G flake.
 #
-# The retry is deliberately narrow: if the dir still EXISTS and state is simply
-# missing, that is a logic failure and we do NOT retry — a real regression must
-# never be able to hide behind a retry. The warning is always printed so the flake
-# rate stays measurable instead of being silently papered over.
+# The retry is deliberately narrow: a vanished dir is the ONLY trigger. If the dir
+# still EXISTS and state is simply missing, that is a logic failure and we do NOT
+# retry — a real regression must never be able to hide behind a retry; _require_state
+# fails it loudly instead. The warning is always recorded so the flake rate stays
+# measurable instead of being silently papered over.
 _run_case_resilient() {
     local _rc="$1" _reason="$2" _verdict="$3"
     local _dir
     _dir="$(_run_case "$_rc" "$_reason" "$_verdict")"
-    if [[ ! -s "$_dir/state/pipeline-state.json" && ! -d "$_dir" ]]; then
+    # A missing state file is NOT part of this condition: if the dir is gone the file
+    # cannot exist, and if the dir is present we must not retry. `! -d` is the whole
+    # discriminator — pairing it with a state check would imply two independent
+    # signals where there is only one.
+    if [[ ! -d "$_dir" ]]; then
         local _msg
         _msg="WARN(#1609): case rc=${_rc} lost its temp dir mid-run (environment reap) — retried once"
         printf '  %s\n' "$_msg" >&2
