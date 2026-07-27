@@ -12,51 +12,64 @@
 [[ -n "${_ZBUILD_WORKTREE_LIB_LOADED:-}" ]] && return 0
 _ZBUILD_WORKTREE_LIB_LOADED=1
 
+# ─── zbuild_run_root <run_id> ────────────────────────────────────────────────
+# The single directory that owns everything for one run. Per-run state already
+# lives at <base>/runs/<run_id> (core/pipeline/runner.sh:1153, #887), so the
+# worktree goes under the SAME run directory rather than a parallel tree — one
+# place to find for resume, one to delete for cleanup.
+#
+# Base precedence: $ZBUILD_RUN_ROOT > $HOME/.zbuild.
+#
+# KNOWN GAP: co-location is only fully realised once CI stops pinning
+# ZBUILD_STATE_DIR to ${{ github.workspace }}/state. That puts pipeline state
+# INSIDE the target repo — the same category of mixing #1629 fixed for the
+# engine — and a worktree cannot follow it there (see
+# zbuild_worktree_assert_outside). Until that moves, state and worktree share a
+# layout shape but not a parent in CI.
+zbuild_run_root() {
+    local run_id="${1:-}"
+    [[ -n "$run_id" ]] || { printf 'zbuild_run_root: run_id required\n' >&2; return 2; }
+    printf '%s/runs/%s\n' "${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}" "$run_id"
+}
+
 # ─── zbuild_worktree_root ────────────────────────────────────────────────────
-# Where per-run worktrees live. Precedence matches the rest of the engine
-# (env > template > default), the same shape as tier and persona resolution:
+# Explicit override for where worktrees live, when co-location is not wanted.
+# Precedence matches the rest of the engine (env > template > default):
 #   1. $ZBUILD_WORKTREE_ROOT            (operator env override)
 #   2. template `config.worktree_root`  (declared data)
-#   3. $HOME/.zbuild/worktrees          (default)
+#   3. empty -> caller uses the co-located run root
 #
-# The default is deliberately NOT under $TMPDIR. On macOS that resolves into
-# /var/folders/..., which this repo has already been bitten by twice: entries
-# there can vanish mid-run under a saturated pool (#1571, and the empty-state
-# aborts that #1609/#1611 chased). A worktree holding in-flight work must not
-# live somewhere a reaper may collect. $HOME/.zbuild mirrors the existing
-# ZBUILD_STATE_ROOT convention and is writable on macOS, Linux and CI runners.
-#
-# It must also sit OUTSIDE the target repository. #888 proposed
-# runs/<run_id>/worktree/, but ZBUILD_STATE_DIR is ${{ github.workspace }}/state
-# in CI, which would nest a worktree inside the very tree it copies — anything
-# walking the tree (test discovery, scope/impact scanning, find sweeps) would
-# then see a duplicate of every file.
+# Any override must sit OUTSIDE the target repository, and must not be under
+# $TMPDIR on macOS: that resolves into /var/folders/..., where entries can vanish
+# mid-run (#1571, and the empty-state aborts #1609/#1611 chased). A worktree
+# holds in-flight work; it must not live where a reaper may collect it.
 zbuild_worktree_root() {
     if [[ -n "${ZBUILD_WORKTREE_ROOT:-}" ]]; then
         printf '%s\n' "$ZBUILD_WORKTREE_ROOT"
         return 0
     fi
-    local from_tpl=""
     if declare -F template_config_worktree_root >/dev/null 2>&1; then
+        local from_tpl
         from_tpl="$(template_config_worktree_root 2>/dev/null || true)"
+        [[ -n "$from_tpl" ]] && { printf '%s\n' "$from_tpl"; return 0; }
     fi
-    if [[ -n "$from_tpl" ]]; then
-        printf '%s\n' "$from_tpl"
-        return 0
-    fi
-    printf '%s\n' "${HOME}/.zbuild/worktrees"
+    return 0   # empty: co-locate under the run root
 }
 
 # ─── zbuild_worktree_path <run_id> ───────────────────────────────────────────
-# The worktree directory for one run. Keyed by run_id so concurrent runs cannot
-# collide, and so resume can re-derive the path from state alone.
+# Co-located by default: <run_root>/worktree. An explicit worktree root overrides
+# it, keyed by run_id so concurrent runs cannot collide either way, and so resume
+# can re-derive the path from state alone.
 zbuild_worktree_path() {
     local run_id="${1:-}"
-    if [[ -z "$run_id" ]]; then
-        printf 'zbuild_worktree_path: run_id required\n' >&2
-        return 2
+    [[ -n "$run_id" ]] || { printf 'zbuild_worktree_path: run_id required\n' >&2; return 2; }
+    local override
+    override="$(zbuild_worktree_root)"
+    if [[ -n "$override" ]]; then
+        printf '%s/%s\n' "${override%/}" "$run_id"
+        return 0
     fi
-    printf '%s/%s\n' "$(zbuild_worktree_root)" "$run_id"
+    printf '%s/worktree\n' "$(zbuild_run_root "$run_id")"
 }
 
 # ─── zbuild_worktree_enabled ─────────────────────────────────────────────────

@@ -31,14 +31,19 @@ unset ZBUILD_WORKTREE_ROOT ZBUILD_NO_WORKTREE _TPL_SOURCE_FILE 2>/dev/null || tr
 # macOS $TMPDIR is /var/folders/..., which this repo has been bitten by twice
 # (#1571, #1609/#1611): entries there can vanish mid-run. In-flight work must
 # not live somewhere a reaper may collect.
-assert_eq "[SPEC-1] default worktree root is \$HOME/.zbuild/worktrees" \
-    "$HOME/.zbuild/worktrees" "$(zbuild_worktree_root)"
+# Co-located by default: the worktree sits under the SAME run directory as
+# per-run state (<base>/runs/<run_id>), so resume has one place to look and
+# cleanup one place to delete.
+assert_eq "[SPEC-1] default worktree is co-located under the run root" \
+    "$HOME/.zbuild/runs/r1/worktree" "$(zbuild_worktree_path r1)"
+assert_eq "[SPEC-1] run root shape matches per-run state (<base>/runs/<run_id>)" \
+    "$HOME/.zbuild/runs/r1" "$(zbuild_run_root r1)"
 # Assert INDEPENDENCE from $TMPDIR rather than a path-prefix check: the test
 # harness sandboxes HOME underneath TMPDIR, so a prefix test fires spuriously
 # here while the production property still holds. Changing TMPDIR must not move
 # the default root.
-_root_a="$(zbuild_worktree_root)"
-_root_b="$(TMPDIR=/some/other/tmp zbuild_worktree_root)"
+_root_a="$(zbuild_worktree_path r1)"
+_root_b="$(TMPDIR=/some/other/tmp zbuild_worktree_path r1)"
 if [[ "$_root_a" == "$_root_b" ]]; then
     assert_pass "[SPEC-1] default root is independent of \$TMPDIR (not reapable on macOS)"
 else
@@ -54,13 +59,13 @@ stage_definitions:
   build: {}
 TPLEOF
 export _TPL_SOURCE_FILE="$_TPL"
-assert_eq "[SPEC-2] template config.worktree_root overrides the default" \
-    "/srv/zbuild-wt" "$(zbuild_worktree_root)"
+assert_eq "[SPEC-2] template config.worktree_root overrides co-location" \
+    "/srv/zbuild-wt/r1" "$(zbuild_worktree_path r1)"
 
 # ── SPEC-3: env beats template ──────────────────────────────────────────────
 export ZBUILD_WORKTREE_ROOT="/srv/from-env"
-assert_eq "[SPEC-3] ZBUILD_WORKTREE_ROOT beats the template (env > template > default)" \
-    "/srv/from-env" "$(zbuild_worktree_root)"
+assert_eq "[SPEC-3] ZBUILD_WORKTREE_ROOT beats the template (env > template > co-located)" \
+    "/srv/from-env/r1" "$(zbuild_worktree_path r1)"
 
 # ── SPEC-4: per-run path keyed by run_id ────────────────────────────────────
 assert_eq "[SPEC-4] per-run path is keyed by run_id" \
