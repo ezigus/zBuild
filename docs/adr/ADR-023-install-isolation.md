@@ -77,8 +77,32 @@ Pinned design (#595 implementation):
   running. Rejected — too easy to bypass, and worktrees already do this
   better for parallel use.
 - **Worktree-by-default**: have intake always checkout into a worktree.
-  Rejected for now (issue tracked separately). Even with worktrees, the
-  *binary* needs to be stable across the run; that's what this ADR provides.
+  Rejected at the time this ADR was written (issue tracked separately). Even
+  with worktrees, the *binary* needs to be stable across the run; that's what
+  this ADR provides.
+
+  **AMENDED (#888, 2026-07-27): worktree-by-default is now ACCEPTED.** Every
+  pipeline run works in a per-run worktree; `--no-worktree` opts out. The
+  original rejection assumed the two mechanisms were alternatives — they are
+  orthogonal, and the sentence above says why: engine stability and target
+  isolation solve different halves. This ADR keeps the engine stable; #888 keeps
+  one run's work out of another's.
+
+  The rejection also predated the discovery that the engine, the pipeline state
+  and the work were *all* living inside the target repository (#1629). One
+  principle covers all three: **nothing the pipeline owns lives inside the repo
+  it is working on.** Worktrees are how that applies to the work itself.
+
+  Layout: `<base>/runs/<run_id>/worktree`, co-located with the per-run state dir
+  (#887) so resume has one place to look and cleanup one place to delete.
+  Overridable via `ZBUILD_RUN_ROOT`, `ZBUILD_WORKTREE_ROOT`, or template
+  `config.worktree_root`. The default deliberately avoids `$TMPDIR`: on macOS
+  that resolves into `/var/folders/...`, where entries can vanish mid-run
+  (#1571, #1609/#1611), and a worktree holds in-flight work.
+
+  A branch already checked out elsewhere is **refused**, not forced: two trees on
+  one branch leaves a silently stale HEAD in the other, which is a worse failure
+  than stopping.
 - **Symlink with `realpath` capture**: pin `REPO_ROOT` to the symlink target
   *as resolved at process start*. Rejected — still mutable mid-run; doesn't
   fix the underlying class of bug.
