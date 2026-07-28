@@ -139,6 +139,32 @@ jobs:
             && echo "::notice::fetched prior state branch '${state}'" \
             || echo "::notice::no prior state branch '${state}' on origin (first run)"
 
+      - name: Resolve state directory (outside the workspace)
+        # #1638: state must NOT live inside the repository the run is editing.
+        # CI-5 originally pinned it to ${{ github.workspace }}/state for one
+        # reason: the upload step's path was workspace-relative and could not see
+        # $HOME/.zbuild/state. upload-artifact accepts absolute paths, so that
+        # constraint is gone — and with #1629 (engine outside) and #888 (work in
+        # a per-run worktree), state was the last part of the run still inside
+        # the target, which also split it from the worktree the work happens in.
+        #
+        # Exported via $GITHUB_ENV rather than a job-level `env:` because the
+        # `runner` context is not available there. One definition, consumed by
+        # both the pipeline step and the artifact upload, so the two can never
+        # drift apart (tests/unit/ci-state-isolation-test.sh pins that).
+        #
+        # `if: always()` is load-bearing, not defensive boilerplate. A step with
+        # no condition is SKIPPED once any earlier step has failed, so a failure
+        # in checkout/install would leave ZBUILD_STATE_DIR unset — and the upload
+        # below runs on always(), so it would receive an EMPTY `path:`. That is a
+        # config error rather than "no files found", turning an early failure into
+        # a second, more confusing one. This step is pure env bookkeeping with no
+        # side effects, so running it unconditionally is always safe.
+        if: always()
+        run: |
+          printf 'ZBUILD_STATE_DIR=%s\n' "$RUNNER_TEMP/zbuild-state" >> "$GITHUB_ENV"
+          echo "::notice::state dir: $RUNNER_TEMP/zbuild-state (outside $GITHUB_WORKSPACE)"
+
       - name: Run pipeline
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
@@ -148,11 +174,6 @@ jobs:
           # that's configured. `claude setup-token` mints CLAUDE_CODE_OAUTH_TOKEN.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # CI-5: pin state to the workspace so runner state, events, and the
-          # router's stage-io diagnostics land under ./state/ — which the Upload
-          # step captures. Default is $HOME/.zbuild/state (= /home/runner/...),
-          # which the workspace-relative upload path can never see.
-          ZBUILD_STATE_DIR: ${{ github.workspace }}/state
         run: |
           if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
             # OAuth token present → unset the API key so claude uses the
@@ -228,11 +249,18 @@ jobs:
       - name: Upload pipeline artifacts
         # CI-5: upload on FAILURE too — a failed run is exactly when the router's
         # diagnostic stderr (route.sh:459, *.raw-claude-stderr.txt) is needed.
-        # Capture the whole state/ tree (run dirs, events, stage-io diags), not
-        # just state/artifacts/, so model-call failures are debuggable from CI.
+        # Capture the whole state tree (run dirs, events, stage-io diags), not
+        # just artifacts/, so model-call failures are debuggable from CI.
+        # #1638: absolute path from $GITHUB_ENV — state lives outside the
+        # workspace now, so a workspace-relative `state/` would upload nothing.
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: "pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}"
-          path: state/
-          if-no-files-found: ignore
+          path: ${{ env.ZBUILD_STATE_DIR }}
+          # `warn`, not `ignore`: the path is now computed rather than a literal,
+          # so a wrong one would upload nothing and say nothing — the run would
+          # look fine and the diagnostics would just be missing. warn surfaces it
+          # as an annotation without failing runs that legitimately produce no
+          # state (dry runs, aborts before the first stage).
+          if-no-files-found: warn
