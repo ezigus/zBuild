@@ -15,6 +15,9 @@ _INTAKE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_INTAKE_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/output/stage-io.sh
 source "$_INTAKE_ROOT/core/output/stage-io.sh"
+# #888: per-run worktree isolation (zbuild_worktree_enabled / _prepare).
+# shellcheck source=../../../scripts/lib/worktree.sh
+source "$_INTAKE_ROOT/scripts/lib/worktree.sh"
 
 # ─── Goal sanitization (ported verbatim from legacy/scripts/lib/goal-sanitize.sh)
 # Bash 3.2 safe: %% operator only, no regex, no associative arrays.
@@ -383,6 +386,50 @@ _intake_create_workspace_branch() {
         target="$override"
     else
         target="$(_intake_derive_branch_name "$issue" "$title")"
+    fi
+
+    # ── #888: work in a per-run worktree so concurrent runs stop racing one
+    #    working tree's .git/index and refs. Default-on; ZBUILD_NO_WORKTREE=1 opts
+    #    out. The worktree is created DETACHED and the existing checkout below
+    #    runs inside it — that keeps intake's four branch paths (create /
+    #    reuse-local / adopt-remote / noop) as the single source of truth instead
+    #    of duplicating branch selection into the worktree helper.
+    #
+    #    Ordering matters: the dirty-tree preflight above deliberately still runs
+    #    against the MAIN tree, before this cd. With a worktree the main tree is
+    #    untouched so that check is arguably unnecessary friction, but keeping it
+    #    means worktree-mode is not quietly more permissive than in-place mode.
+    #    Worktree isolation is a PER-RUN concept, so it requires a run id. With
+    #    ZBUILD_RUN_ID unset every invocation would share one path (the earlier
+    #    `${ZBUILD_RUN_ID:-manual}` default did exactly that) — the second run
+    #    finds the worktree on the first run's branch and fails. A shared worktree
+    #    is worse than none, so fall back to in-place instead. The runner always
+    #    exports ZBUILD_RUN_ID (core/pipeline/runner.sh:1189); direct callers and
+    #    unit tests that do not are the case this covers.
+    if declare -F zbuild_worktree_enabled >/dev/null 2>&1 && zbuild_worktree_enabled \
+       && [[ -n "${ZBUILD_RUN_ID:-}" ]]; then
+        # ONE call. stderr is deliberately NOT captured — the helper's messages
+        # (branch held elsewhere, git's own refusal) belong in the run log where a
+        # reader will see them, not swallowed into a variable.
+        local _wt_path=""
+        _wt_path="$(zbuild_worktree_prepare "$ZBUILD_RUN_ID" "$target")" || _wt_path=""
+        if [[ -z "$_wt_path" ]]; then
+            error "intake_branch: could not prepare the per-run worktree (see above)"
+            emit_event "intake.refused.worktree_prepare_failed" \
+                "plugin=intake" "branch=$target" "run_id=$ZBUILD_RUN_ID"
+            return 2
+        fi
+        cd "$_wt_path" || {
+            error "intake_branch: cannot cd into worktree $_wt_path"
+            return 2
+        }
+        # Downstream stages resolve their tree from ZBUILD_REPO_ROOT; pr-open was
+        # anchored to it in the same issue so the PR pushes from here, not $PWD.
+        export ZBUILD_REPO_ROOT="$_wt_path"
+        printf '%s\n' "$_wt_path" | atomic_write "$state_dir/intake-worktree.txt"
+        emit_event "intake.worktree.entered" \
+            "plugin=intake" "branch=$target" "worktree=$_wt_path" \
+            "run_id=$ZBUILD_RUN_ID"
     fi
 
     _intake_checkout_branch "$target" || return 2

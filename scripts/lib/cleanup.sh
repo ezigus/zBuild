@@ -468,3 +468,114 @@ _cleanup_render_plan() {
         fi
     done <<<"$data"
 }
+
+# ─── _cleanup_scan_worktrees <age_days> ──────────────────────────────────────
+# Emit reclaimable per-run worktrees, one per line: "<path>\t<branch>\t<age_days>".
+#
+# Per-run worktrees (#888) are the largest artifact a run leaves — a full working
+# tree each. Reuses the existing porcelain parsing and safety predicates in this
+# file rather than adding a second worktree scanner.
+#
+# KEEPS (never emits) a worktree that:
+#   - belongs to the currently-active run ($ZBUILD_RUN_ID) — resume needs it;
+#   - is newer than <age_days>;
+#   - has uncommitted work, or commits not yet pushed. Reclaiming either would
+#     destroy work, and a pruner that can eat work is worse than none.
+_cleanup_scan_worktrees() {
+    local age_days="${1:-14}"
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_days * 86400 ))
+    # MUST be called from inside the target repository: the git invocations below
+    # operate on $PWD. A caller in the wrong directory gets an empty scan with no
+    # error — the same silent-no-op shape as the canonicalisation bug. Resolve the
+    # repo once and use -C everywhere rather than relying on the caller's cwd.
+    local repo_root
+    if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+        printf '_cleanup_scan_worktrees: not inside a git repository\n' >&2
+        return 2
+    fi
+
+    # BOTH layouts, because zbuild_worktree_path supports both:
+    #   co-located (default): <run_root>/<run_id>/worktree
+    #   override:             $ZBUILD_WORKTREE_ROOT/<run_id>   (no /worktree suffix)
+    # Matching only the first made cleanup a silent no-op for override installs.
+    local run_root="${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}/runs"
+    local override_root=""
+    if declare -F zbuild_worktree_root >/dev/null 2>&1; then
+        override_root="$(zbuild_worktree_root 2>/dev/null || true)"
+    else
+        override_root="${ZBUILD_WORKTREE_ROOT:-}"
+    fi
+    [[ -d "$run_root" || -n "$override_root" ]] || return 0
+    # CANONICALISE. `git worktree list` reports resolved paths (/private/tmp/... on
+    # macOS, where /tmp and /var are symlinks), so comparing against an unresolved
+    # run root silently matches nothing and the scanner reports no candidates —
+    # a pruner that appears to work and reclaims nothing.
+    run_root="$( (cd "$run_root" 2>/dev/null && pwd -P) || printf '%s' "$run_root" )"
+    [[ -n "$override_root" ]] && override_root="$( (cd "$override_root" 2>/dev/null && pwd -P) || printf '%s' "$override_root" )"
+
+    local wt branch mtime age_d
+    while IFS= read -r wt; do
+        [[ -n "$wt" && -d "$wt" ]] || continue
+        # Ours under either layout.
+        local _mine=0
+        case "$wt" in "$run_root"/*/worktree) _mine=1 ;; esac
+        [[ -n "$override_root" ]] && case "$wt" in "$override_root"/*) _mine=1 ;; esac
+        [[ "$_mine" -eq 1 ]] || continue
+        # Never the active run.
+        if [[ -n "${ZBUILD_RUN_ID:-}" ]] \
+           && { [[ "$wt" == "$run_root/${ZBUILD_RUN_ID}/worktree" ]] \
+                || { [[ -n "$override_root" ]] && [[ "$wt" == "$override_root/${ZBUILD_RUN_ID}" ]]; }; }; then
+            continue
+        fi
+        mtime="$(stat -c %Y "$wt" 2>/dev/null || stat -f %m "$wt" 2>/dev/null || echo 0)"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        [[ "$mtime" -gt "$cutoff" ]] && continue
+        branch="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+        # Refuse anything holding work.
+        if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+            continue
+        fi
+        if [[ -n "$branch" && "$branch" != "HEAD" ]] \
+           && declare -F _cleanup_has_unpushed_commits >/dev/null 2>&1 \
+           && _cleanup_has_unpushed_commits "$branch"; then
+            continue
+        fi
+        age_d=$(( (now - mtime) / 86400 ))
+        printf '%s\t%s\t%s\n' "$wt" "${branch:-<detached>}" "$age_d"
+    done < <(git -C "$repo_root" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
+}
+
+# ─── _cleanup_apply_worktree_plan <path>... ──────────────────────────────────
+# Remove each worktree, then its now-empty run dir. `git worktree remove` is used
+# (not rm -rf) so git's administrative entry under .git/worktrees goes too;
+# rm -rf alone would leave a registration that `git worktree list` still reports.
+# MUST be called from inside the target repository (see _cleanup_scan_worktrees):
+# `git worktree remove`/`prune` act on the repo resolved from $PWD.
+_cleanup_apply_worktree_plan() {
+    local wt rc=0
+    local repo_root
+    if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+        printf '_cleanup_apply_worktree_plan: not inside a git repository\n' >&2
+        return 2
+    fi
+    for wt in "$@"; do
+        [[ -n "$wt" ]] || continue
+        local err
+        if ! err="$(git -C "$repo_root" worktree remove --force "$wt" 2>&1)"; then
+            printf 'cleanup: could not remove worktree %s: %s\n' "$wt" "${err:-<no git output>}" >&2
+            rc=1
+            continue
+        fi
+        # Layout-aware. Co-located ($wt = <run_root>/<id>/worktree): the parent IS
+        # the per-run dir, so removing it when empty is correct. Override layout
+        # ($wt = $ZBUILD_WORKTREE_ROOT/<id>): the parent is the operator's
+        # CONFIGURED ROOT — rmdir'ing that would silently delete their directory
+        # once the last worktree went, and `|| true` would hide it.
+        case "$wt" in
+            */worktree) rmdir "$(dirname "$wt")" 2>/dev/null || true ;;
+        esac
+    done
+    git -C "$repo_root" worktree prune 2>/dev/null || true
+    return $rc
+}
