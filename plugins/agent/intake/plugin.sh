@@ -399,16 +399,24 @@ _intake_create_workspace_branch() {
     #    against the MAIN tree, before this cd. With a worktree the main tree is
     #    untouched so that check is arguably unnecessary friction, but keeping it
     #    means worktree-mode is not quietly more permissive than in-place mode.
-    if declare -F zbuild_worktree_enabled >/dev/null 2>&1 && zbuild_worktree_enabled; then
+    #    Worktree isolation is a PER-RUN concept, so it requires a run id. With
+    #    ZBUILD_RUN_ID unset every invocation would share one path (the earlier
+    #    `${ZBUILD_RUN_ID:-manual}` default did exactly that) — the second run
+    #    finds the worktree on the first run's branch and fails. A shared worktree
+    #    is worse than none, so fall back to in-place instead. The runner always
+    #    exports ZBUILD_RUN_ID (core/pipeline/runner.sh:1189); direct callers and
+    #    unit tests that do not are the case this covers.
+    if declare -F zbuild_worktree_enabled >/dev/null 2>&1 && zbuild_worktree_enabled \
+       && [[ -n "${ZBUILD_RUN_ID:-}" ]]; then
         # ONE call. stderr is deliberately NOT captured — the helper's messages
         # (branch held elsewhere, git's own refusal) belong in the run log where a
         # reader will see them, not swallowed into a variable.
         local _wt_path=""
-        _wt_path="$(zbuild_worktree_prepare "${ZBUILD_RUN_ID:-manual}" "$target")" || _wt_path=""
+        _wt_path="$(zbuild_worktree_prepare "$ZBUILD_RUN_ID" "$target")" || _wt_path=""
         if [[ -z "$_wt_path" ]]; then
             error "intake_branch: could not prepare the per-run worktree (see above)"
             emit_event "intake.refused.worktree_prepare_failed" \
-                "plugin=intake" "branch=$target" "run_id=${ZBUILD_RUN_ID:-manual}"
+                "plugin=intake" "branch=$target" "run_id=$ZBUILD_RUN_ID"
             return 2
         fi
         cd "$_wt_path" || {
@@ -421,7 +429,7 @@ _intake_create_workspace_branch() {
         printf '%s\n' "$_wt_path" | atomic_write "$state_dir/intake-worktree.txt"
         emit_event "intake.worktree.entered" \
             "plugin=intake" "branch=$target" "worktree=$_wt_path" \
-            "run_id=${ZBUILD_RUN_ID:-manual}"
+            "run_id=$ZBUILD_RUN_ID"
     fi
 
     _intake_checkout_branch "$target" || return 2
