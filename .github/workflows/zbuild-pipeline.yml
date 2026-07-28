@@ -152,6 +152,15 @@ jobs:
         # `runner` context is not available there. One definition, consumed by
         # both the pipeline step and the artifact upload, so the two can never
         # drift apart (tests/unit/ci-state-isolation-test.sh pins that).
+        #
+        # `if: always()` is load-bearing, not defensive boilerplate. A step with
+        # no condition is SKIPPED once any earlier step has failed, so a failure
+        # in checkout/install would leave ZBUILD_STATE_DIR unset — and the upload
+        # below runs on always(), so it would receive an EMPTY `path:`. That is a
+        # config error rather than "no files found", turning an early failure into
+        # a second, more confusing one. This step is pure env bookkeeping with no
+        # side effects, so running it unconditionally is always safe.
+        if: always()
         run: |
           printf 'ZBUILD_STATE_DIR=%s\n' "$RUNNER_TEMP/zbuild-state" >> "$GITHUB_ENV"
           echo "::notice::state dir: $RUNNER_TEMP/zbuild-state (outside $GITHUB_WORKSPACE)"

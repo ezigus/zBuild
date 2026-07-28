@@ -12,7 +12,8 @@
 # SPEC-2[change]: the artifact upload path is the SAME value, so the two cannot drift
 # SPEC-3[guard]:  artifacts still upload on failure (if: always())
 # SPEC-4[change]: no workflow anywhere pins the state dir under github.workspace
-# SPEC-5[change]: an empty upload is reported (if-no-files-found != ignore)
+# SPEC-5[change]: an empty upload is reported (if-no-files-found == warn)
+# SPEC-6[change]: the resolve step still runs after an earlier step fails
 #
 # SPEC-1 executes the YAML's shell rather than pattern-matching it: a textual
 # assertion would pass against a step that sets the variable and is never reached.
@@ -51,11 +52,16 @@ mkdir -p "$_FAKE_WS" "$_FAKE_TMP"
 _GH_ENV="$TEST_TEMP_DIR/github_env"
 : > "$_GH_ENV"
 
+# Keep the execution rc: "the block failed" and "there is no block" are different
+# faults with the same symptom (an empty state dir), and reporting them the same
+# way sends the reader after the wrong one.
+_EXEC_RC="n/a"
 if [[ -n "$_BLOCK" ]]; then
     (
         export RUNNER_TEMP="$_FAKE_TMP" GITHUB_WORKSPACE="$_FAKE_WS" GITHUB_ENV="$_GH_ENV"
         bash -c "$_BLOCK"
     ) >/dev/null 2>&1
+    _EXEC_RC=$?
 fi
 _STATE_DIR="$(grep -m1 '^ZBUILD_STATE_DIR=' "$_GH_ENV" 2>/dev/null | cut -d= -f2-)"
 
@@ -63,8 +69,20 @@ if [[ -n "$_STATE_DIR" && "$_STATE_DIR" != "$_FAKE_WS"* ]]; then
     assert_pass "[SPEC-1] the resolved state dir is outside the workspace"
 else
     assert_fail "[SPEC-1] CI must not place run state inside the repo it is editing" \
-        "resolved=[$_STATE_DIR] workspace=[$_FAKE_WS] block_found=$([[ -n "$_BLOCK" ]] && echo yes || echo NO)"
+        "resolved=[$_STATE_DIR] workspace=[$_FAKE_WS] block_found=$([[ -n "$_BLOCK" ]] && echo yes || echo NO) exec_rc=$_EXEC_RC"
 fi
+
+# ── SPEC-6: the resolve step is not skipped when an earlier step fails ──────
+# A step with no `if:` is skipped once anything before it has failed. The upload
+# below runs on always(), so without this the upload would get an EMPTY path — a
+# config error, not "no files found" — turning one early failure into two.
+_RESOLVE_IF="$(awk '
+    /^      - name: Resolve state directory/ { instep = 1; next }
+    instep && /^      - name: /              { exit }
+    instep && /^        if: /                { sub(/^        if: /, ""); print; exit }
+' "$WF")"
+assert_eq "[SPEC-6] the state dir is resolved even when an earlier step failed" \
+    "always()" "$_RESOLVE_IF"
 
 # ── SPEC-2: the upload path is the same value, not a second literal ─────────
 # Two independent literals would drift: the state moves, the upload keeps pointing
@@ -97,12 +115,11 @@ _NOTFOUND="$(awk '
     /^      - name: Upload pipeline artifacts/ { instep = 1 }
     instep && /^          if-no-files-found: / { sub(/^          if-no-files-found: /, ""); print; exit }
 ' "$WF")"
-if [[ "$_NOTFOUND" != "ignore" ]]; then
-    assert_pass "[SPEC-5] an empty artifact upload is reported, not silently ignored"
-else
-    assert_fail "[SPEC-5] a wrong state path must not upload nothing in silence" \
-        "if-no-files-found=[$_NOTFOUND]"
-fi
+# Pin the exact value, not merely "not ignore". `error` is also not `ignore` but
+# would FAIL runs that legitimately produce no state (dry runs, aborts before the
+# first stage) — the opposite of the intent, and a loose check would wave it through.
+assert_eq "[SPEC-5] an empty artifact upload is reported, not silently ignored" \
+    "warn" "$_NOTFOUND"
 
 # ── SPEC-4: no workflow pins state under the workspace ──────────────────────
 _OFFENDERS="$(grep -rn 'ZBUILD_STATE_DIR' "$REPO_ROOT/.github/workflows/" 2>/dev/null \
