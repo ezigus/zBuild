@@ -567,7 +567,14 @@ _cleanup_apply_worktree_plan() {
             rc=1
             continue
         fi
-        rmdir "$(dirname "$wt")" 2>/dev/null || true   # run dir, if now empty
+        # Layout-aware. Co-located ($wt = <run_root>/<id>/worktree): the parent IS
+        # the per-run dir, so removing it when empty is correct. Override layout
+        # ($wt = $ZBUILD_WORKTREE_ROOT/<id>): the parent is the operator's
+        # CONFIGURED ROOT — rmdir'ing that would silently delete their directory
+        # once the last worktree went, and `|| true` would hide it.
+        case "$wt" in
+            */worktree) rmdir "$(dirname "$wt")" 2>/dev/null || true ;;
+        esac
     done
     git -C "$repo_root" worktree prune 2>/dev/null || true
     return $rc

@@ -187,6 +187,19 @@ fi
 assert_eq "[SPEC-8] outside a git repo the scanner errors (rc=2), not a silent empty scan" \
     "2" "$_rc_norepo"
 
+# ── SPEC-9: applying to an override-layout worktree must NOT delete the root ──
+# For the override layout the parent of $wt is the operator's configured root, not
+# a per-run dir. rmdir'ing it would silently remove their directory once the last
+# worktree went — and `|| true` would hide it. SPEC-7 scanned this layout but never
+# applied to it, which is how the bug survived.
+(cd "$R" && ZBUILD_WORKTREE_ROOT="$OVR" _cleanup_apply_worktree_plan "$OVR/ovr-run") >/dev/null 2>&1
+if [[ ! -d "$OVR/ovr-run" && -d "$OVR" ]]; then
+    assert_pass "[SPEC-9] override-layout apply removes the worktree but keeps the configured root"
+else
+    assert_fail "[SPEC-9] the operator's ZBUILD_WORKTREE_ROOT must survive cleanup" \
+        "worktree_gone=$([[ ! -d "$OVR/ovr-run" ]] && echo yes || echo no) root_exists=$([[ -d "$OVR" ]] && echo yes || echo NO)"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
