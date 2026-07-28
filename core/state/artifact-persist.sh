@@ -24,13 +24,6 @@ _artifact_persist_branch() {
     local issue="${1:-0}"
     printf 'zbuild/state/issue-%s' "$issue"
 }
-
-# ─── _artifact_persist_snapshot <state_dir> <issue> [repo_root] ─────────────
-# Commit the current artifact area onto the state branch WITHOUT touching the
-# working tree or the real index (uses a throwaway GIT_INDEX_FILE + plumbing).
-# Snapshots state/artifacts/** plus a few top-level state docs if present.
-# Returns 0 on success (or clean no-op when there is nothing to snapshot), 1 on
-# any git failure. Never disturbs the caller's checkout.
 # ─── _artifact_persist_git_dir <repo_root> ───────────────────────────────────
 # Resolve the git dir to use for plumbing. NOT "$repo_root/.git": in a linked
 # worktree that path is a FILE (`gitdir: …/.git/worktrees/<name>`), and while git
@@ -50,6 +43,13 @@ _artifact_persist_git_dir() {
     esac
 }
 
+
+# ─── _artifact_persist_snapshot <state_dir> <issue> [repo_root] ─────────────
+# Commit the current artifact area onto the state branch WITHOUT touching the
+# working tree or the real index (uses a throwaway GIT_INDEX_FILE + plumbing).
+# Snapshots state/artifacts/** plus a few top-level state docs if present.
+# Returns 0 on success (or clean no-op when there is nothing to snapshot), 1 on
+# any git failure. Never disturbs the caller's checkout.
 _artifact_persist_snapshot() {
     local state_dir="$1" issue="${2:-0}" repo_root="${3:-$(git rev-parse --show-toplevel 2>/dev/null)}"
     # Resolve the SHARED git dir before the guard uses it. The guard previously
