@@ -127,6 +127,39 @@ else
         "rc=$_rc2 head=$_head2 wt_file=$([[ -f "$SD2/intake-worktree.txt" ]] && echo present || echo absent)"
 fi
 
+# ── SPEC-7/8: resume re-derives the worktree, and fails closed when it is gone ──
+# Without this, a resumed run works in the MAIN tree while the previous stages'
+# commits and artifacts live in the worktree — wrong files, no error.
+# shellcheck disable=SC1091
+source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null || true
+# runner.sh sets errexit. This file runs `set -uo pipefail` (no -e) and asserts on
+# INTENTIONAL non-zero returns below, so restore the lenient mode — otherwise the
+# first expected failure kills the test before print_test_results and the run looks
+# like a pass-with-no-summary.
+set +e
+
+if declare -F _runner_restore_worktree >/dev/null 2>&1; then
+    # Present worktree -> ZBUILD_REPO_ROOT restored, rc=0
+    _r7="$(
+        unset ZBUILD_REPO_ROOT
+        _runner_restore_worktree "$SD1" >/dev/null 2>&1 && printf '%s' "${ZBUILD_REPO_ROOT:-}"
+    )"
+    assert_eq "[SPEC-7] resume restores ZBUILD_REPO_ROOT from intake-worktree.txt" "$_wt1" "$_r7"
+
+    # Recorded worktree missing -> fail closed (rc=1), do NOT fall back silently
+    SDX="$TEST_TEMP_DIR/state-gone"; mkdir -p "$SDX"
+    printf '%s\n' "$TEST_TEMP_DIR/definitely-not-here" > "$SDX/intake-worktree.txt"
+    ( _runner_restore_worktree "$SDX" ) >/dev/null 2>&1; _rc8=$?
+    assert_eq "[SPEC-8] a missing recorded worktree fails closed (rc=1), not a silent fallback" "1" "$_rc8"
+
+    # No record at all (in-place run) -> rc=0, nothing exported
+    SDY="$TEST_TEMP_DIR/state-inplace-none"; mkdir -p "$SDY"
+    ( _runner_restore_worktree "$SDY" ) >/dev/null 2>&1; _rc9=$?
+    assert_eq "[SPEC-8] no worktree record is fine (in-place run)" "0" "$_rc9"
+else
+    assert_fail "[SPEC-7] _runner_restore_worktree must exist" "not defined after sourcing runner.sh"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

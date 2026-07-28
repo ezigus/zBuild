@@ -768,6 +768,35 @@ _runner_clear_stale_global_event_artifacts() {
           "$g/events.db" "$g/events.db.lock" 2>/dev/null || true
 }
 
+# ─── _runner_restore_worktree <state_dir> ────────────────────────────────────
+# #888: a resumed run MUST land in the worktree its earlier stages worked in.
+# intake records the path in intake-worktree.txt; without reading it back, a resume
+# would silently operate on the main tree while the previous stages' commits and
+# artifacts live in the worktree — wrong files, no error. That is the same
+# silently-wrong class as the artifact-persist no-op fixed in this issue.
+#
+# Fail-CLOSED when the recorded worktree is gone (ADR-001): continuing in the main
+# tree would quietly diverge from the work already done. Better to stop and say so.
+_runner_restore_worktree() {
+    local state_dir="${1:-}"
+    [[ -n "$state_dir" ]] || return 0
+    local f="$state_dir/intake-worktree.txt"
+    [[ -f "$f" ]] || return 0            # in-place run, or intake never reached
+    local wt; wt="$(<"$f")"; wt="${wt%%$'\n'*}"
+    [[ -n "$wt" ]] || return 0
+    if [[ ! -d "$wt" ]]; then
+        error "resume: the run's worktree is missing: $wt"
+        error "  earlier stages worked there; continuing in the main tree would use the wrong files."
+        error "  recreate it, or start a fresh run with --no-resume."
+        emit_event "pipeline.resume.worktree_missing" "worktree=$wt" 2>/dev/null || true
+        return 1
+    fi
+    export ZBUILD_REPO_ROOT="$wt"
+    info "resume: continuing in the run's worktree $wt"
+    emit_event "pipeline.resume.worktree_restored" "worktree=$wt" 2>/dev/null || true
+    return 0
+}
+
 main() {
     local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
@@ -1136,6 +1165,12 @@ main() {
                 resume_mode=false
                 ;;
         esac
+    fi
+
+    # #888: re-derive the worktree BEFORE any stage dispatch, so every stage sees
+    # the same tree the earlier ones used. Covers both resume paths above.
+    if $resume_mode; then
+        _runner_restore_worktree "$(dirname "$state_file")" || return 1
     fi
 
     if ! $resume_mode; then
