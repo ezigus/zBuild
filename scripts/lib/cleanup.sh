@@ -468,3 +468,74 @@ _cleanup_render_plan() {
         fi
     done <<<"$data"
 }
+
+# ─── _cleanup_scan_worktrees <age_days> ──────────────────────────────────────
+# Emit reclaimable per-run worktrees, one per line: "<path>\t<branch>\t<age_days>".
+#
+# Per-run worktrees (#888) are the largest artifact a run leaves — a full working
+# tree each. Reuses the existing porcelain parsing and safety predicates in this
+# file rather than adding a second worktree scanner.
+#
+# KEEPS (never emits) a worktree that:
+#   - belongs to the currently-active run ($ZBUILD_RUN_ID) — resume needs it;
+#   - is newer than <age_days>;
+#   - has uncommitted work, or commits not yet pushed. Reclaiming either would
+#     destroy work, and a pruner that can eat work is worse than none.
+_cleanup_scan_worktrees() {
+    local age_days="${1:-14}"
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_days * 86400 ))
+    local run_root="${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}/runs"
+    [[ -d "$run_root" ]] || return 0
+    # CANONICALISE. `git worktree list` reports resolved paths (/private/tmp/... on
+    # macOS, where /tmp and /var are symlinks), so comparing against an unresolved
+    # run root silently matches nothing and the scanner reports no candidates —
+    # a pruner that appears to work and reclaims nothing.
+    run_root="$( (cd "$run_root" 2>/dev/null && pwd -P) || printf '%s' "$run_root" )"
+
+    local wt branch mtime age_d
+    while IFS= read -r wt; do
+        [[ -n "$wt" && -d "$wt" ]] || continue
+        # Only ours: <run_root>/<run_id>/worktree
+        case "$wt" in "$run_root"/*/worktree) ;; *) continue ;; esac
+        # Never the active run.
+        if [[ -n "${ZBUILD_RUN_ID:-}" && "$wt" == "$run_root/${ZBUILD_RUN_ID}/worktree" ]]; then
+            continue
+        fi
+        mtime="$(stat -c %Y "$wt" 2>/dev/null || stat -f %m "$wt" 2>/dev/null || echo 0)"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        [[ "$mtime" -gt "$cutoff" ]] && continue
+        branch="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+        # Refuse anything holding work.
+        if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+            continue
+        fi
+        if [[ -n "$branch" && "$branch" != "HEAD" ]] \
+           && declare -F _cleanup_has_unpushed_commits >/dev/null 2>&1 \
+           && _cleanup_has_unpushed_commits "$branch"; then
+            continue
+        fi
+        age_d=$(( (now - mtime) / 86400 ))
+        printf '%s\t%s\t%s\n' "$wt" "${branch:-<detached>}" "$age_d"
+    done < <(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
+}
+
+# ─── _cleanup_apply_worktree_plan <path>... ──────────────────────────────────
+# Remove each worktree, then its now-empty run dir. `git worktree remove` is used
+# (not rm -rf) so git's administrative entry under .git/worktrees goes too;
+# rm -rf alone would leave a registration that `git worktree list` still reports.
+_cleanup_apply_worktree_plan() {
+    local wt rc=0
+    for wt in "$@"; do
+        [[ -n "$wt" ]] || continue
+        local err
+        if ! err="$(git worktree remove --force "$wt" 2>&1)"; then
+            printf 'cleanup: could not remove worktree %s: %s\n' "$wt" "${err:-<no git output>}" >&2
+            rc=1
+            continue
+        fi
+        rmdir "$(dirname "$wt")" 2>/dev/null || true   # run dir, if now empty
+    done
+    git worktree prune 2>/dev/null || true
+    return $rc
+}
