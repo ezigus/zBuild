@@ -163,6 +163,30 @@ else
         "dir_gone=$_gone unregistered=$_unregistered"
 fi
 
+# ── SPEC-7: the ZBUILD_WORKTREE_ROOT override layout is also reclaimed ───────
+# zbuild_worktree_path supports two layouts; the scanner originally matched only
+# the co-located one, so cleanup was a silent no-op for override installs —
+# worktrees piling up forever with no error. Regression guard for that.
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/lib/worktree.sh" 2>/dev/null || true
+OVR="$TEST_TEMP_DIR/ovr"
+mkdir -p "$OVR"
+git -C "$R" worktree add -q "$OVR/ovr-run" -b zbuild/issue-7-ovr 2>/dev/null
+git -C "$OVR/ovr-run" push -q -u origin zbuild/issue-7-ovr 2>/dev/null
+_backdate "$OVR/ovr-run" 30
+_ovr_out="$(cd "$R" && ZBUILD_WORKTREE_ROOT="$OVR" _cleanup_scan_worktrees 14)"
+if grep -qF "$(_canon "$OVR/ovr-run")" <<< "$_ovr_out"; then
+    assert_pass "[SPEC-7] worktrees under ZBUILD_WORKTREE_ROOT are reclaimable too"
+else
+    assert_fail "[SPEC-7] the override layout must not be a silent cleanup no-op" \
+        "scan: $_ovr_out"
+fi
+
+# ── SPEC-8: called outside a git repo, the scanner errors rather than returning empty ──
+( cd "$TEST_TEMP_DIR" && _cleanup_scan_worktrees 14 ) >/dev/null 2>&1; _rc_norepo=$?
+assert_eq "[SPEC-8] outside a git repo the scanner errors (rc=2), not a silent empty scan" \
+    "2" "$_rc_norepo"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
