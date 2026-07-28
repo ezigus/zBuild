@@ -87,7 +87,18 @@ _scan() { (cd "$R" && _cleanup_scan_worktrees "${1:-14}"); }
 # The scanner reports git's RESOLVED paths; $TEST_TEMP_DIR is under the macOS
 # /var -> /private/var symlink. Compare canonically or every match silently fails.
 _canon() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"; }
-_scan_has() { _scan "${2:-14}" | grep -qF "$(_canon "$1")"; }
+# String-only canonicalisation for paths that no longer exist (post-removal checks):
+# resolve the parent, which still does, and re-attach the basename.
+_canon_str() {
+    local d b; d="$(dirname "$1")"; b="$(basename "$1")"
+    printf '%s/%s' "$( (cd "$d" 2>/dev/null && pwd -P) || printf '%s' "$d" )" "$b"
+}
+# Capture then match: `producer | grep -q` SIGPIPEs the producer when grep exits
+# early (#1015/#1260), which under pipefail turns a correct scan into a failure.
+_scan_has() {
+    local _out; _out="$(_scan "${2:-14}")"
+    grep -qF "$(_canon "$1")" <<< "$_out"
+}
 
 # ── SPEC-1: old, clean, PUSHED worktree is a candidate ──────────────────────
 # The branch must genuinely be pushed. A branch with no upstream cannot be proven
@@ -143,7 +154,8 @@ fi
 (cd "$R" && _cleanup_apply_worktree_plan "$WT_OLD") >/dev/null 2>&1
 _gone=0; [[ ! -d "$WT_OLD" ]] && _gone=1
 _unregistered=0
-git -C "$R" worktree list --porcelain 2>/dev/null | grep -q "$WT_OLD" || _unregistered=1
+_wt_list="$(git -C "$R" worktree list --porcelain 2>/dev/null)"
+grep -qF "$(_canon_str "$WT_OLD")" <<< "$_wt_list" || _unregistered=1
 if [[ "$_gone" -eq 1 && "$_unregistered" -eq 1 ]]; then
     assert_pass "[SPEC-6] applying removes the worktree and its git registration"
 else
