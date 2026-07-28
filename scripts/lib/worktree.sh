@@ -185,3 +185,62 @@ zbuild_worktree_enter() {
     printf '%s\n' "$wt"
     return 0
 }
+
+# ─── zbuild_worktree_prepare <run_id> <target_branch> ────────────────────────
+# Prepare the per-run worktree and print its path, WITHOUT deciding the branch.
+#
+# Deliberately creates a DETACHED worktree and leaves the branch work to the
+# caller. intake already has four correct branch paths (create / reuse-local /
+# adopt-remote / noop) with their own preflight, verification and events; making
+# this function pick a branch would duplicate that logic and give two places to
+# keep in sync. Instead the caller cd's into the returned path and runs its
+# existing checkout unchanged — the checkout then lands in the worktree, which is
+# the whole point, and is legal because the main tree is not holding the branch.
+#
+# Resume: an existing worktree already ON <target_branch> is reused, and so is a
+# detached one (the caller will check the branch out). Anything else is rc=4
+# rather than a silent surprise.
+zbuild_worktree_prepare() {
+    local run_id="${1:-}" target_branch="${2:-}"
+    [[ -n "$run_id" ]] || { printf 'zbuild_worktree_prepare: run_id required\n' >&2; return 2; }
+    [[ -n "$target_branch" ]] || { printf 'zbuild_worktree_prepare: target_branch required\n' >&2; return 2; }
+
+    local repo_root wt
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    wt="$(zbuild_worktree_path "$run_id")" || return 2
+    zbuild_worktree_assert_outside "$wt" "$repo_root" || return 2
+
+    if [[ -d "$wt" ]]; then
+        local head
+        head="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+        if [[ "$head" == "$target_branch" || "$head" == "HEAD" ]]; then
+            printf '%s\n' "$wt"          # on target, or detached — caller proceeds
+            return 0
+        fi
+        printf 'zbuild_worktree_prepare: %s exists but is on "%s", not "%s" or detached\n' \
+            "$wt" "${head:-<not a worktree>}" "$target_branch" >&2
+        return 4
+    fi
+
+    # Refuse rather than --force: two trees on one branch leaves a silently stale
+    # HEAD in the other, which is worse than stopping.
+    local holder
+    holder="$(git worktree list --porcelain 2>/dev/null \
+        | awk -v b="refs/heads/$target_branch" '/^worktree /{w=$2} /^branch /{if ($2==b) print w}' \
+        | head -1)"
+    if [[ -n "$holder" ]]; then
+        printf 'zbuild_worktree_prepare: branch "%s" is already checked out at %s\n' \
+            "$target_branch" "$holder" >&2
+        return 3
+    fi
+
+    mkdir -p "$(dirname "$wt")" || return 2
+    local git_err
+    if ! git_err="$(git worktree add --detach "$wt" 2>&1 1>/dev/null)"; then
+        printf 'zbuild_worktree_prepare: git worktree add --detach failed (%s): %s\n' \
+            "$wt" "${git_err:-<no git output>}" >&2
+        return 5
+    fi
+    printf '%s\n' "$wt"
+    return 0
+}

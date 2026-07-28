@@ -11,6 +11,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# #888: this file asserts IN-PLACE branch semantics (the main tree's HEAD moves,
+# main-tree strays are visible). Worktree isolation is default-on and changes both
+# — correctly: the branch lands in the per-run worktree and the developer's tree is
+# left untouched. Pin this file to in-place mode so it keeps testing what it was
+# written to test; worktree-mode behaviour is covered by
+# tests/integration/intake-worktree-isolation-test.sh.
+export ZBUILD_NO_WORKTREE=1
+
 
 print_test_header "intake branch creation — subprocess + real git repo (#484)"
 
