@@ -15,9 +15,6 @@ _INTAKE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_INTAKE_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/output/stage-io.sh
 source "$_INTAKE_ROOT/core/output/stage-io.sh"
-# #888: per-run worktree isolation (zbuild_worktree_enabled / _prepare).
-# shellcheck source=../../../scripts/lib/worktree.sh
-source "$_INTAKE_ROOT/scripts/lib/worktree.sh"
 
 # ─── Goal sanitization (ported verbatim from legacy/scripts/lib/goal-sanitize.sh)
 # Bash 3.2 safe: %% operator only, no regex, no associative arrays.
@@ -176,6 +173,13 @@ _intake_validate_branch_name() {
 # _intake_check_preflight
 # Validates the working-tree state before any branch op. Emits a refusal
 # event on failure and returns 2; returns 0 if all clear.
+#
+# ADR-052 (#1640): targets the MAIN checkout, not $PWD. Since the engine re-roots
+# into the run's worktree before intake runs, $PWD is a tree the engine just
+# created — always clean, never mid-rebase — so preflighting it would be vacuous
+# and would quietly make worktree mode more permissive than the in-place path.
+# The operator's tree is the one whose state should stop a run. Falls back to $PWD
+# when ZBUILD_MAIN_REPO_ROOT is unset (in-place runs, direct callers, unit tests).
 _intake_check_preflight() {
     # 1) git binary present
     if ! command -v git >/dev/null 2>&1; then
@@ -184,8 +188,10 @@ _intake_check_preflight() {
             "plugin=intake" "reason=git_not_found"
         return 2
     fi
+    local _pf_root="${ZBUILD_MAIN_REPO_ROOT:-$PWD}"
+    [[ -d "$_pf_root" ]] || _pf_root="$PWD"
     # 2) inside a git repo
-    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    if ! git -C "$_pf_root" rev-parse --git-dir >/dev/null 2>&1; then
         error "intake_branch: not inside a git repository"
         emit_event "intake.refused.git_unavailable" \
             "plugin=intake" "reason=not_a_git_repo"
@@ -193,7 +199,14 @@ _intake_check_preflight() {
     fi
     # 3) repo not mid-rebase/bisect/merge
     local git_dir
-    git_dir="$(git rev-parse --git-dir 2>/dev/null)"
+    # --absolute-git-dir needs git >= 2.13; on older git it exits non-zero and the
+    # 2>/dev/null would leave git_dir empty, silently disabling every mid-state
+    # guard below. Fall back to --git-dir, which with -C returns a path RELATIVE to
+    # $_pf_root (verified: it prints a bare ".git"), so absolutize it or the -d/-f
+    # tests would resolve against the worktree CWD (PR #1643 review).
+    git_dir="$(git -C "$_pf_root" rev-parse --absolute-git-dir 2>/dev/null \
+               || git -C "$_pf_root" rev-parse --git-dir 2>/dev/null)"
+    [[ -z "$git_dir" || "$git_dir" == /* ]] || git_dir="${_pf_root%/}/$git_dir"
     local mid_state=""
     if [[ -d "$git_dir/rebase-merge" || -d "$git_dir/rebase-apply" ]]; then
         mid_state="rebase"
@@ -212,7 +225,7 @@ _intake_check_preflight() {
     #    non-empty output means tracked changes or untracked files exist.
     if [[ "${ZBUILD_INTAKE_ALLOW_DIRTY:-0}" != "1" ]]; then
         local dirty
-        dirty="$(git status --porcelain 2>/dev/null)"
+        dirty="$(git -C "$_pf_root" status --porcelain 2>/dev/null)"
         if [[ -n "$dirty" ]]; then
             error "intake_branch: refusing — working tree is dirty (set ZBUILD_INTAKE_ALLOW_DIRTY=1 to override)"
             emit_event "intake.refused.dirty_tree" \
@@ -388,50 +401,12 @@ _intake_create_workspace_branch() {
         target="$(_intake_derive_branch_name "$issue" "$title")"
     fi
 
-    # ── #888: work in a per-run worktree so concurrent runs stop racing one
-    #    working tree's .git/index and refs. Default-on; ZBUILD_NO_WORKTREE=1 opts
-    #    out. The worktree is created DETACHED and the existing checkout below
-    #    runs inside it — that keeps intake's four branch paths (create /
-    #    reuse-local / adopt-remote / noop) as the single source of truth instead
-    #    of duplicating branch selection into the worktree helper.
-    #
-    #    Ordering matters: the dirty-tree preflight above deliberately still runs
-    #    against the MAIN tree, before this cd. With a worktree the main tree is
-    #    untouched so that check is arguably unnecessary friction, but keeping it
-    #    means worktree-mode is not quietly more permissive than in-place mode.
-    #    Worktree isolation is a PER-RUN concept, so it requires a run id. With
-    #    ZBUILD_RUN_ID unset every invocation would share one path (the earlier
-    #    `${ZBUILD_RUN_ID:-manual}` default did exactly that) — the second run
-    #    finds the worktree on the first run's branch and fails. A shared worktree
-    #    is worse than none, so fall back to in-place instead. The runner always
-    #    exports ZBUILD_RUN_ID (core/pipeline/runner.sh:1189); direct callers and
-    #    unit tests that do not are the case this covers.
-    if declare -F zbuild_worktree_enabled >/dev/null 2>&1 && zbuild_worktree_enabled \
-       && [[ -n "${ZBUILD_RUN_ID:-}" ]]; then
-        # ONE call. stderr is deliberately NOT captured — the helper's messages
-        # (branch held elsewhere, git's own refusal) belong in the run log where a
-        # reader will see them, not swallowed into a variable.
-        local _wt_path=""
-        _wt_path="$(zbuild_worktree_prepare "$ZBUILD_RUN_ID" "$target")" || _wt_path=""
-        if [[ -z "$_wt_path" ]]; then
-            error "intake_branch: could not prepare the per-run worktree (see above)"
-            emit_event "intake.refused.worktree_prepare_failed" \
-                "plugin=intake" "branch=$target" "run_id=$ZBUILD_RUN_ID"
-            return 2
-        fi
-        cd "$_wt_path" || {
-            error "intake_branch: cannot cd into worktree $_wt_path"
-            return 2
-        }
-        # Downstream stages resolve their tree from ZBUILD_REPO_ROOT; pr-open was
-        # anchored to it in the same issue so the PR pushes from here, not $PWD.
-        export ZBUILD_REPO_ROOT="$_wt_path"
-        printf '%s\n' "$_wt_path" | atomic_write "$state_dir/intake-worktree.txt"
-        emit_event "intake.worktree.entered" \
-            "plugin=intake" "branch=$target" "worktree=$_wt_path" \
-            "run_id=$ZBUILD_RUN_ID"
-    fi
-
+    # ADR-052 (#1640): intake knows nothing about worktrees. The engine has already
+    # put this process in the run's own tree, so the checkout below simply lands
+    # there — which is why intake's four branch paths stay the single source of
+    # truth for branch selection. #888 had intake acquire the worktree itself; its
+    # cd and export died with this dispatch subshell and every later stage fell
+    # back to the main checkout, on whatever branch it held.
     _intake_checkout_branch "$target" || return 2
 
     # State writes — atomic single-line file + optional pipeline-state JSON

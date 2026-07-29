@@ -60,6 +60,10 @@ source "$_ZBUILD_ROOT/core/pipeline/parallel-orchestrator.sh"
 # to the state branch (zbuild/state/issue-<N>). The runner restores prior artifacts
 # once at startup and snapshots at each stage boundary; it names no stage.
 source "$_ZBUILD_ROOT/core/state/artifact-persist.sh"
+# ADR-052 (#1640): the per-run worktree is engine-owned run infrastructure, so
+# the runner — not any plugin — acquires it before the first stage dispatches.
+# shellcheck source=../../scripts/lib/worktree.sh
+source "$_ZBUILD_ROOT/scripts/lib/worktree.sh"
 
 _usage() {
     # Usage shown on error or --help. Unix convention: stderr (#619).
@@ -768,32 +772,105 @@ _runner_clear_stale_global_event_artifacts() {
           "$g/events.db" "$g/events.db.lock" 2>/dev/null || true
 }
 
-# ─── _runner_restore_worktree <state_dir> ────────────────────────────────────
-# #888: a resumed run MUST land in the worktree its earlier stages worked in.
-# intake records the path in intake-worktree.txt; without reading it back, a resume
-# would silently operate on the main tree while the previous stages' commits and
-# artifacts live in the worktree — wrong files, no error. That is the same
-# silently-wrong class as the artifact-persist no-op fixed in this issue.
-#
-# Fail-CLOSED when the recorded worktree is gone (ADR-001): continuing in the main
-# tree would quietly diverge from the work already done. Better to stop and say so.
-_runner_restore_worktree() {
+# ─── _runner_worktree_record <state_dir> ─────────────────────────────────────
+# Where a run records the tree it works in. ADR-052 renamed this from
+# intake-worktree.txt — the engine writes it now, not intake — but a run started
+# by an older engine may still be mid-flight, so the legacy name is read back.
+_runner_worktree_record() {
     local state_dir="${1:-}"
-    [[ -n "$state_dir" ]] || return 0
-    local f="$state_dir/intake-worktree.txt"
-    [[ -f "$f" ]] || return 0            # in-place run, or intake never reached
-    local wt; wt="$(<"$f")"; wt="${wt%%$'\n'*}"
-    [[ -n "$wt" ]] || return 0
-    if [[ ! -d "$wt" ]]; then
-        error "resume: the run's worktree is missing: $wt"
-        error "  earlier stages worked there; continuing in the main tree would use the wrong files."
-        error "  recreate it, or start a fresh run with --no-resume."
-        emit_event "pipeline.resume.worktree_missing" "worktree=$wt" 2>/dev/null || true
-        return 1
+    [[ -n "$state_dir" ]] || return 1
+    if [[ -f "$state_dir/run-worktree.txt" ]]; then
+        printf '%s\n' "$state_dir/run-worktree.txt"; return 0
     fi
+    if [[ -f "$state_dir/intake-worktree.txt" ]]; then
+        printf '%s\n' "$state_dir/intake-worktree.txt"; return 0
+    fi
+    return 1
+}
+
+# ─── _runner_enter_worktree <state_dir> <run_id> ─────────────────────────────
+# ADR-052 (#1640): put the runner in the run's own worktree BEFORE the first
+# stage dispatches, so every stage inherits it and no stage has to know it exists.
+#
+# The predecessor design (#888) had intake create the worktree and cd into it.
+# intake's cd and export die with its dispatch subshell, so every LATER stage fell
+# back to `git rev-parse --show-toplevel` from the runner's untouched CWD — the
+# main checkout, on whatever branch it held. build then committed there. Nothing
+# refused, nothing warned; `pr_open` caught it at the very end of the run, or on a
+# run that died earlier, nothing caught it at all (#1640: 3h49m of work lost in CI,
+# and a stray commit on `main` locally).
+#
+# So the fix is not to notice intake's worktree after the fact — that keeps the
+# engine coupled to one plugin's artifact and keeps a window where stages run in
+# the wrong tree. The worktree is run infrastructure, acquired from run_id alone,
+# exactly like state_dir. Being branch-free is what lets the engine own it: intake
+# still decides the branch, and checks it out here.
+#
+# Ordering: called AFTER the engine's own bookkeeping (state, events, artifact
+# restore, self-host snapshot — all of which belong in the main checkout) and
+# BEFORE any stage dispatch.
+#
+# Fail-CLOSED throughout (ADR-001). A recorded worktree that has vanished, or an
+# acquire that fails, both abort: continuing in the main checkout is precisely the
+# damage this exists to prevent, and it is silent damage.
+_runner_enter_worktree() {
+    local state_dir="${1:-}" run_id="${2:-}"
+
+    # The main checkout stays addressable after the re-root. intake's dirty-tree
+    # preflight targets it deliberately (a freshly-acquired worktree is always
+    # clean, so preflighting THAT would be a vacuous check that silently made
+    # worktree mode more permissive than the in-place path).
+    #
+    # An inherited ZBUILD_REPO_ROOT is honoured — callers legitimately use it to
+    # target a repo other than $PWD (scripts/release.sh, most plugin tests). But a
+    # value pointing at a LINKED worktree is a leak from an earlier run in the same
+    # process tree, not a target: adopting it would make the preflight read a
+    # pipeline-created tree (always clean) instead of the operator's (PR #1643
+    # review). A linked worktree's git-dir sits under `.git/worktrees/<name>`,
+    # which is portable to detect — unlike --path-format, which needs git >= 2.31.
+    if [[ -z "${ZBUILD_MAIN_REPO_ROOT:-}" ]]; then
+        local _mrr="${ZBUILD_REPO_ROOT:-}"
+        if [[ -n "$_mrr" ]]; then
+            local _gd; _gd="$(git -C "$_mrr" rev-parse --git-dir 2>/dev/null || true)"
+            [[ "$_gd" == *"/.git/worktrees/"* ]] && _mrr=""
+        fi
+        [[ -n "$_mrr" ]] || _mrr="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        export ZBUILD_MAIN_REPO_ROOT="$_mrr"
+    fi
+
+    # An already-recorded worktree wins over acquiring a new one, and wins even
+    # when worktrees are now disabled: a resume of a worktree run must land in the
+    # tree its earlier stages worked in, whatever the current env says.
+    local rec wt=""
+    if rec="$(_runner_worktree_record "$state_dir")"; then
+        wt="$(<"$rec")"; wt="${wt%%$'\n'*}"
+        if [[ -n "$wt" && ! -d "$wt" ]]; then
+            error "the run's worktree is missing: $wt"
+            error "  earlier stages worked there; continuing in the main checkout would use the wrong files."
+            error "  recreate it, or start a fresh run with --no-resume."
+            emit_event "pipeline.worktree.missing" "worktree=$wt" 2>/dev/null || true
+            return 1
+        fi
+    fi
+
+    if [[ -z "$wt" ]]; then
+        declare -F zbuild_worktree_enabled >/dev/null 2>&1 || return 0
+        zbuild_worktree_enabled || return 0
+        # Worktree isolation is a PER-RUN concept and needs a run id to key the
+        # path. The runner always has one; this guards direct callers only.
+        [[ -n "$run_id" ]] || return 0
+        if ! wt="$(zbuild_worktree_acquire "$run_id" "$ZBUILD_MAIN_REPO_ROOT")"; then
+            error "could not acquire the run's worktree (see above)"
+            emit_event "pipeline.worktree.acquire_failed" "run_id=$run_id" 2>/dev/null || true
+            return 1
+        fi
+        printf '%s\n' "$wt" > "$state_dir/run-worktree.txt"
+    fi
+
+    cd "$wt" || { error "cannot cd into the run's worktree: $wt"; return 1; }
     export ZBUILD_REPO_ROOT="$wt"
-    info "resume: continuing in the run's worktree $wt"
-    emit_event "pipeline.resume.worktree_restored" "worktree=$wt" 2>/dev/null || true
+    info "Working in the run's worktree $wt"
+    emit_event "pipeline.worktree.entered" "worktree=$wt" "run_id=$run_id" 2>/dev/null || true
     return 0
 }
 
@@ -1167,12 +1244,6 @@ main() {
         esac
     fi
 
-    # #888: re-derive the worktree BEFORE any stage dispatch, so every stage sees
-    # the same tree the earlier ones used. Covers both resume paths above.
-    if $resume_mode; then
-        _runner_restore_worktree "$(dirname "$state_file")" || return 1
-    fi
-
     if ! $resume_mode; then
         # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
         # to prevent path traversal when run_id is used in report-${run_id}.md filenames
@@ -1224,6 +1295,16 @@ main() {
     export ZBUILD_RUN_ID="$_runner_run_id"
     export ZBUILD_ISSUE="$_runner_issue"
     export ZBUILD_GOAL="${goal:-}"
+    # ADR-052 (#1640): absolutize BEFORE anything derives a path from state_dir.
+    # The runner cd's into the run's worktree further down, and a state_dir given
+    # relative (an operator's `ZBUILD_STATE_DIR=state`) would silently resolve
+    # against the new CWD from that point on — half the run's artifacts in one
+    # place, half in another. Resolved here, once, while CWD is still the caller's.
+    if [[ -n "$state_dir" && "$state_dir" != /* ]]; then
+        state_dir="$(cd "$state_dir" 2>/dev/null && pwd)" || state_dir="$PWD/${state_dir#./}"
+        state_file="$state_dir/$(basename "$state_file")"
+        _runner_state_file="$state_file"
+    fi
     # #618: child plugins (e.g. core/router/route.sh:route_to_model_loop, which
     # reads $ZBUILD_STATE_DIR/intake-baseline-ref.txt per #617) need to see
     # the resolved state_dir. Without this export the var is unset in plugin
@@ -1299,6 +1380,12 @@ main() {
             warn "self-host: contract-lib snapshot failed; readers fall back to installed grammar"
         fi
     fi
+
+    # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
+    # engine bookkeeping that belongs in the main checkout (state, events,
+    # artifact restore, the self-host snapshot of the operator's working tree);
+    # everything below is stage work, which belongs in the run's own tree.
+    _runner_enter_worktree "$state_dir" "$_runner_run_id" || return 1
 
     # Mark pipeline as in_progress
     _set_pipeline_status "$state_file" "in_progress"

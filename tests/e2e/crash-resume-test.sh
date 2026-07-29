@@ -14,6 +14,12 @@ print_test_header "crash-resume — SIGKILL mid-run then zbuild pipeline resume 
 setup_test_env "e2e-crash-resume"
 
 export ZBUILD_TEST_TMP="$TEST_TEMP_DIR"
+# ADR-052 (#1640): the engine acquires a per-run worktree before the first stage,
+# and `git worktree add` cannot work against the mock_git shim below — it exits 0
+# without creating anything, which the acquire post-condition correctly refuses.
+# This test is about crash-safety of the state file, not worktrees, so opt out the
+# way an operator would. Worktree behavior: worktree-run-isolation-test.sh.
+export ZBUILD_NO_WORKTREE=1
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
