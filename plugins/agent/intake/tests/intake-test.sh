@@ -41,10 +41,20 @@ set +e
 validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
 rc=$?
 set -e
-assert_eq "[SPEC-1] intake manifest validates" "0" "$rc"
+assert_eq "intake manifest validates" "0" "$rc"
 
 discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "intake discovered in plugin registry" "$discovered" "agent/intake"
+
+# ─── SPEC-1/2/3/4: lib/ files exist (change-behavior — fail at baseline) ─────
+assert_file_exists "[SPEC-1] lib/sanitize.sh extracted from plugin.sh" \
+    "$PLUGIN_DIR/lib/sanitize.sh"
+assert_file_exists "[SPEC-2] lib/issue-state.sh extracted from plugin.sh" \
+    "$PLUGIN_DIR/lib/issue-state.sh"
+assert_file_exists "[SPEC-3] lib/branch-names.sh extracted from plugin.sh" \
+    "$PLUGIN_DIR/lib/branch-names.sh"
+assert_file_exists "[SPEC-4] lib/branch-ops.sh extracted from plugin.sh" \
+    "$PLUGIN_DIR/lib/branch-ops.sh"
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
 # shellcheck source=../../../../plugins/agent/intake/plugin.sh
@@ -102,9 +112,9 @@ assert_eq "sentinel-strip run returns rc=0" "0" "$rc"
 intake_content="$(cat "$STATE_DIR/intake.md")"
 assert_contains "intake.md has original prefix" "$intake_content" "fix the login flow"
 if grep -q "Plan Summary" <<< "$intake_content"; then
-    assert_fail "[SPEC-2] sentinel ## Plan Summary should be stripped from intake.md"
+    assert_fail "sentinel ## Plan Summary should be stripped from intake.md"
 else
-    assert_pass "[SPEC-2] sentinel ## Plan Summary stripped from intake.md"
+    assert_pass "sentinel ## Plan Summary stripped from intake.md"
 fi
 
 # ─── Test 5: platforms.json drives scope-manifest lines ──────────────────────
@@ -122,7 +132,7 @@ set -e
 assert_eq "platform-aware run returns rc=0" "0" "$rc"
 assert_file_exists "scope-manifest.md created" "$STATE_DIR/scope-manifest.md"
 scope="$(cat "$STATE_DIR/scope-manifest.md")"
-assert_contains "[SPEC-4] scope-manifest has + ios/" "$scope" "+ ios/"
+assert_contains "scope-manifest has + ios/" "$scope" "+ ios/"
 assert_contains "scope-manifest has + node/" "$scope" "+ node/"
 
 # Each entry must be a "+" line (format consumed by scope-redaction.sh:73)
@@ -340,7 +350,7 @@ t456a_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "[SPEC-3] T_456_a: CLOSED/COMPLETED returns rc=2" "2" "$rc"
+assert_eq "T_456_a: CLOSED/COMPLETED returns rc=2" "2" "$rc"
 assert_contains "T_456_a: stderr mentions #42" "$t456a_err" "#42"
 assert_contains "T_456_a: stderr mentions CLOSED" "$t456a_err" "CLOSED"
 assert_contains "T_456_a: stderr mentions COMPLETED" "$t456a_err" "COMPLETED"
