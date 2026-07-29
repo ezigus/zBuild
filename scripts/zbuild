@@ -455,21 +455,12 @@ UPHELP
                 # Path-based, not $ZBUILD_FROM_INSTALL-based: running
                 # `bash $ZBUILD_HOME/scripts/zbuild` directly is a legitimate
                 # installed engine even though the shim did not export the flag.
-                # Both roots are CANONICALISED (#1641) before comparing. `pwd` returns
-                # the LOGICAL path (symlinks intact) while `git rev-parse
-                # --show-toplevel` returns the PHYSICAL one, so for the SAME directory
-                # reached through any symlink the two strings differ and this guard
-                # silently did not fire. That is not a corner case: macOS `$TMPDIR` and
-                # `/tmp` live under `/var` -> `/private/var`, so the pipeline's own test
-                # staging copy always hit it, and a symlinked checkout path (e.g.
-                # ~/code -> /Volumes/.../code) disables the guard for everything beneath.
-                # `pwd -P` on both sides makes the comparison about the directory rather
-                # than about how it was spelled.
+                # `pwd -P` on BOTH sides (#1641): pwd is logical, git rev-parse is
+                # physical, so the same directory under a symlink compared unequal and
+                # this guard silently did not fire.
                 _engine_root="$(cd "$SCRIPT_DIR/.." && pwd -P)"
                 _target_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-                # git's output is already physical; re-canonicalising is idempotent and
-                # also covers the `|| pwd` fallback, which is logical. Fall back to the
-                # raw value if it is not a reachable directory.
+                # Idempotent for git's output; load-bearing for the `|| pwd` fallback.
                 _target_root="$(cd "$_target_root" 2>/dev/null && pwd -P || printf '%s' "$_target_root")"
                 if [[ "$_engine_root" == "$_target_root" || "$_engine_root" == "$_target_root"/* ]]; then
                     if [[ "${dev_engine:-false}" == true || "${ZBUILD_DEV_ENGINE:-0}" == "1" ]]; then
