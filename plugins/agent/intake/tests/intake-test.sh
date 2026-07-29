@@ -41,7 +41,7 @@ set +e
 validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
 rc=$?
 set -e
-assert_eq "intake manifest validates" "0" "$rc"
+assert_eq "[SPEC-1] intake manifest validates" "0" "$rc"
 
 discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "intake discovered in plugin registry" "$discovered" "agent/intake"
@@ -102,9 +102,9 @@ assert_eq "sentinel-strip run returns rc=0" "0" "$rc"
 intake_content="$(cat "$STATE_DIR/intake.md")"
 assert_contains "intake.md has original prefix" "$intake_content" "fix the login flow"
 if grep -q "Plan Summary" <<< "$intake_content"; then
-    assert_fail "sentinel ## Plan Summary should be stripped from intake.md"
+    assert_fail "[SPEC-2] sentinel ## Plan Summary should be stripped from intake.md"
 else
-    assert_pass "sentinel ## Plan Summary stripped from intake.md"
+    assert_pass "[SPEC-2] sentinel ## Plan Summary stripped from intake.md"
 fi
 
 # ─── Test 5: platforms.json drives scope-manifest lines ──────────────────────
@@ -122,7 +122,7 @@ set -e
 assert_eq "platform-aware run returns rc=0" "0" "$rc"
 assert_file_exists "scope-manifest.md created" "$STATE_DIR/scope-manifest.md"
 scope="$(cat "$STATE_DIR/scope-manifest.md")"
-assert_contains "scope-manifest has + ios/" "$scope" "+ ios/"
+assert_contains "[SPEC-4] scope-manifest has + ios/" "$scope" "+ ios/"
 assert_contains "scope-manifest has + node/" "$scope" "+ node/"
 
 # Each entry must be a "+" line (format consumed by scope-redaction.sh:73)
@@ -166,7 +166,7 @@ assert_contains "generic fallback writes + ./" "$scope" "+ ./"
 
 # ─── Test 7: plugin.run.complete event emitted ───────────────────────────────
 run_complete_count=$(grep -c '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
-assert_gt "plugin.run.complete event emitted" "$run_complete_count" "0"
+assert_gt "[SPEC-5] plugin.run.complete event emitted" "$run_complete_count" "0"
 
 plugin_field="$(grep '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="plugin.run.complete") | .data.plugin // empty' 2>/dev/null | tail -1 || true)"
@@ -340,7 +340,7 @@ t456a_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "T_456_a: CLOSED/COMPLETED returns rc=2" "2" "$rc"
+assert_eq "[SPEC-3] T_456_a: CLOSED/COMPLETED returns rc=2" "2" "$rc"
 assert_contains "T_456_a: stderr mentions #42" "$t456a_err" "#42"
 assert_contains "T_456_a: stderr mentions CLOSED" "$t456a_err" "CLOSED"
 assert_contains "T_456_a: stderr mentions COMPLETED" "$t456a_err" "COMPLETED"

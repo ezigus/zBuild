@@ -127,7 +127,7 @@ _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "fix the branch creation" \
     > /tmp/intake-branch-test-out.$$ 2>&1
 rc=$?
-assert_eq "first run rc=0" "0" "$rc"
+assert_eq "[SPEC-6] first run rc=0" "0" "$rc"
 
 cur="$(git symbolic-ref --short HEAD 2>/dev/null)"
 assert_eq "branch checked out" "zbuild/issue-484-fix-the-branch-creation" "$cur"
