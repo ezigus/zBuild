@@ -13,6 +13,8 @@
 # SPEC-4: ZBUILD_DEV_ENGINE=1 is an equivalent escape hatch
 # SPEC-5: an engine OUTSIDE the target repo is permitted (the installed shape)
 # SPEC-6: other subcommands are unaffected — the guard is scoped to pipeline start
+# SPEC-7: a symlinked path to the engine must not silently disable the guard (#1641)
+# SPEC-8: --dev-engine still works in that spelling (the hole is closed, not the door)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,6 +97,39 @@ if [[ "$_ver_rc" -eq 0 ]] && ! grep -q "engine isolation" <<< "$_ver_out"; then
 else
     assert_fail "[SPEC-6] the guard must be scoped to pipeline start" \
         "rc=$_ver_rc output: $_ver_out"
+fi
+
+# ── SPEC-7: a symlinked path must not defeat the guard ─────────────────────
+# The engine root came from `pwd` (LOGICAL — symlinks intact) and the target root
+# from `git rev-parse --show-toplevel` (PHYSICAL). For the SAME directory reached
+# through a symlink the two spellings differ, the string compare failed, and the
+# guard silently did not fire (#1641).
+#
+# This is what made the file above fail inside the pipeline's own test staging
+# copy: `plugins/tool/test/plugin.sh` stages into $TMPDIR, and on macOS that is
+# under /var -> /private/var. So SPEC-1..4 passed from the repo and failed for
+# every dogfood run. Symlinking the repo reproduces it without copying the tree.
+LINK="$TEST_TEMP_DIR/engine-via-symlink"
+ln -s "$REPO_ROOT" "$LINK"
+_sl_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue 999 --dry-run 2>&1)"
+_sl_rc=$?
+if [[ "$_sl_rc" -eq 2 ]] && grep -q "engine isolation" <<< "$_sl_out"; then
+    assert_pass "[SPEC-7] the guard still refuses when the engine is reached via a symlink"
+else
+    assert_fail "[SPEC-7] a symlinked path must not silently disable engine isolation" \
+        "rc=$_sl_rc link=$LINK -> $(cd "$LINK" && pwd -P) output: ${_sl_out:0:400}"
+fi
+
+# ── SPEC-8: the escape hatch still works through a symlink ─────────────────
+# Canonicalising must not make --dev-engine unreachable in the spelling where the
+# guard newly fires — otherwise SPEC-7 would trade a silent hole for a hard block.
+_sl_dev_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue 999 --dry-run --dev-engine 2>&1)"
+_sl_dev_rc=$?
+if [[ "$_sl_dev_rc" -ne 2 ]] && grep -q "dev-engine" <<< "$_sl_dev_out"; then
+    assert_pass "[SPEC-8] --dev-engine still permits the run via a symlinked path"
+else
+    assert_fail "[SPEC-8] the override must work in the spelling where the guard fires" \
+        "rc=$_sl_dev_rc output: ${_sl_dev_out:0:400}"
 fi
 
 cleanup_test_env

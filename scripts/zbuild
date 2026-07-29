@@ -455,8 +455,13 @@ UPHELP
                 # Path-based, not $ZBUILD_FROM_INSTALL-based: running
                 # `bash $ZBUILD_HOME/scripts/zbuild` directly is a legitimate
                 # installed engine even though the shim did not export the flag.
-                _engine_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+                # `pwd -P` on BOTH sides (#1641): pwd is logical, git rev-parse is
+                # physical, so the same directory under a symlink compared unequal and
+                # this guard silently did not fire.
+                _engine_root="$(cd "$SCRIPT_DIR/.." && pwd -P)"
                 _target_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+                # Idempotent for git's output; load-bearing for the `|| pwd` fallback.
+                _target_root="$(cd "$_target_root" 2>/dev/null && pwd -P || printf '%s' "$_target_root")"
                 if [[ "$_engine_root" == "$_target_root" || "$_engine_root" == "$_target_root"/* ]]; then
                     if [[ "${dev_engine:-false}" == true || "${ZBUILD_DEV_ENGINE:-0}" == "1" ]]; then
                         warn "dev-engine: running the engine from the target working tree ($_engine_root)."
