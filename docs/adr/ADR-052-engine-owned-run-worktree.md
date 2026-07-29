@@ -125,3 +125,31 @@ dangerous case (#1611).
 `run-worktree.txt` replaces `intake-worktree.txt`. The legacy name is still read back, so a run
 started by the previous engine and resumed by this one lands in its existing tree instead of being
 stranded in the main checkout.
+
+## Implementation Notes (#1640)
+
+**Seams.**
+
+- `scripts/lib/worktree.sh` — `zbuild_worktree_acquire`. Reuse requires the path to be a real work
+  tree (`git -C "$wt" rev-parse --show-toplevel` must resolve to `$wt`), so a plain directory
+  squatting on the path is rc=4 rather than a silent wrong-tree run. Creation carries a
+  post-condition: a `git` that exits 0 without creating the tree (a PATH shim) is rc=5 with a
+  message naming the cause, instead of a confusing `cannot cd` from the caller.
+- `core/pipeline/runner.sh` — `_runner_enter_worktree`, plus `_runner_worktree_record` for the
+  new/legacy record-name fallback. Replaces `_runner_restore_worktree` and its `if $resume_mode`
+  call site; one function now serves fresh and resume alike.
+- `state_dir` is absolutized immediately before the exports that derive from it. The runner `cd`s
+  later, and a relative `ZBUILD_STATE_DIR` would otherwise resolve against the new CWD from that
+  point on — half a run's artifacts in one place, half in another.
+
+**Events.** `pipeline.worktree.entered` / `.missing` / `.acquire_failed` replace
+`pipeline.resume.worktree_restored` / `.worktree_missing` and `intake.worktree.entered` /
+`intake.refused.worktree_prepare_failed` in `config/event-schema.json`. The names lose their
+`resume.` and `intake.` prefixes because the mechanism belongs to neither.
+
+**Environments where worktrees cannot work.** `tests/golden/parity/run-fixture.sh` shims `git` on
+PATH, so `git worktree add` exits 0 without creating anything. It opts out with
+`ZBUILD_NO_WORKTREE=1`, the same way it already opts out of intake's branch path with
+`ZBUILD_INTAKE_SKIP_BRANCH=1`. The engine deliberately does **not** infer a silent in-place
+fallback from a failed acquire: falling back quietly to the main checkout is the exact behaviour
+this ADR exists to remove.
