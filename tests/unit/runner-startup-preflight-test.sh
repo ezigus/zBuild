@@ -40,7 +40,7 @@ _run_preflight_empty() {
 }
 
 # ─── SPEC-1: function exists and collects all violations before rendering ─────
-assert_pass "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" \
+assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" "ok" \
     "$(declare -f _runner_validate_startup_preflight >/dev/null 2>&1 && echo ok || echo missing)"
 
 # ─── SPEC-2: warn mode — violations present → rc=0 ───────────────────────────
@@ -78,12 +78,14 @@ assert_pass "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh
 
 # ─── SPEC-5: function is called in the startup sequence (wired in runner.sh) ──
 {
-    # Structural wiring check: grep for the call-site inside runner.sh.
-    if grep -q "_runner_validate_startup_preflight" "$REPO_ROOT/core/pipeline/runner.sh"; then
+    # Structural wiring check: grep for the negated call-site inside runner.sh.
+    # "if ! _runner_validate_startup_preflight" only appears at the call site (line ~1047),
+    # NOT in the function definition — so this assertion fails if only the wiring is reverted.
+    if grep -q "if ! _runner_validate_startup_preflight" "$REPO_ROOT/core/pipeline/runner.sh"; then
         assert_pass "[SPEC-5] _runner_validate_startup_preflight is wired in runner.sh"
     else
         assert_fail "[SPEC-5] _runner_validate_startup_preflight is NOT wired in runner.sh" \
-            "call-site absent"
+            "call-site absent (if ! _runner_validate_startup_preflight)"
     fi
 }
 
