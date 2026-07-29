@@ -76,17 +76,35 @@ assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" 
     assert_eq "[SPEC-4] enforce+clean: rc=0" "0" "${_pf_rc_ok_enf:-1}"
 }
 
-# ─── SPEC-5: function is called in the startup sequence (wired in runner.sh) ──
+# ─── SPEC-5: wiring — _runner_startup_preflight_gate calls preflight when active ──
 {
-    # Structural wiring check: grep for the negated call-site inside runner.sh.
-    # "if ! _runner_validate_startup_preflight" only appears at the call site (line ~1047),
-    # NOT in the function definition — so this assertion fails if only the wiring is reverted.
-    if grep -q "if ! _runner_validate_startup_preflight" "$REPO_ROOT/core/pipeline/runner.sh"; then
-        assert_pass "[SPEC-5] _runner_validate_startup_preflight is wired in runner.sh"
+    # Behavioral wiring test via the extracted gateway function (_runner_startup_preflight_gate,
+    # added to runner.sh as part of this change). The gate wraps the dry-run/resume exemption
+    # logic so it's testable without running the full pipeline startup sequence.
+    if ! declare -f _runner_startup_preflight_gate >/dev/null 2>&1; then
+        assert_fail "[SPEC-5] _runner_startup_preflight_gate not defined — wiring gate missing from runner.sh"
     else
-        assert_fail "[SPEC-5] _runner_validate_startup_preflight is NOT wired in runner.sh" \
-            "call-site absent (if ! _runner_validate_startup_preflight)"
+        _spec5_called=0
+        _spec5_saved=$(declare -f _runner_validate_startup_preflight)
+        _runner_validate_startup_preflight() { _spec5_called=$((_spec5_called + 1)); return 0; }
+
+        # Normal mode (not dry-run, not resume): preflight MUST be invoked.
+        _spec5_called=0
+        _runner_startup_preflight_gate false false
+        assert_eq "[SPEC-5] wiring: preflight called in normal (non-dry-run, non-resume) mode" \
+            "1" "$_spec5_called"
+
+        # --dry-run: preflight MUST be skipped (matching leaf_resolvability exemption).
+        _spec5_called=0
+        _runner_startup_preflight_gate true false
+        assert_eq "[SPEC-5] wiring: preflight exempt in --dry-run" "0" "$_spec5_called"
+
+        eval "$_spec5_saved"
     fi
+    # Structural check: call-site in main() — fails if wiring is removed from runner.sh
+    # even when the gate function itself is kept. Fails at baseline (pattern absent there).
+    assert_eq "[SPEC-5] call-site: _runner_startup_preflight_gate wired in main()" \
+        "1" "$(grep -c "if ! _runner_startup_preflight_gate" "$REPO_ROOT/core/pipeline/runner.sh")"
 }
 
 # ─── SPEC-6: off mode — complete no-op, rc=0, no output ──────────────────────

@@ -387,6 +387,18 @@ _runner_validate_startup_preflight() {
     return 2
 }
 
+# _runner_startup_preflight_gate <dry_run> <resume_mode> (ADR-051 §warn-first, #1318)
+# Testable gateway: calls _runner_validate_startup_preflight only when neither
+# --dry-run nor --resume is active, matching the leaf_resolvability exemption.
+# Extracted so the call-site condition is independently unit-testable (SPEC-5).
+_runner_startup_preflight_gate() {
+    local dry_run="${1:-false}" resume_mode="${2:-false}"
+    if ! $dry_run && ! $resume_mode; then
+        _runner_validate_startup_preflight || return $?
+    fi
+    return 0
+}
+
 # ─── _runner_pipeline_duration_token (#525) ──────────────────────────────────
 # Parallel to _runner_duration_token but for the pipeline-wide window. No stage
 # argument — reads _RUNNER_PIPELINE_START_MS directly. Returns "?s" on cache
@@ -1155,19 +1167,17 @@ main() {
     }
 
     # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
-    # Exempt in --dry-run and --resume (matching _runner_validate_leaf_resolvability at
-    # lines 884-888). Default mode is warn (unlike leaf_resolvability which defaults to enforce).
-    if ! $dry_run && ! $resume_mode; then
-        if ! _runner_validate_startup_preflight; then
-            error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
-            _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
-            _runner_issue="${_runner_issue:-${issue:-0}}"
-            : "${_RUNNER_PIPELINE_START_MS:=$(_runner_now_ms)}"
-            eb_emit_event "pipeline.end" "status=preflight_failed" \
-                "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
-            _render_pipeline_end "preflight_failed"
-            return 2
-        fi
+    # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
+    # exemption logic is testable independently of the full pipeline startup sequence.
+    if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
+        error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
+        _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+        _runner_issue="${_runner_issue:-${issue:-0}}"
+        : "${_RUNNER_PIPELINE_START_MS:=$(_runner_now_ms)}"
+        eb_emit_event "pipeline.end" "status=preflight_failed" \
+            "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+        _render_pipeline_end "preflight_failed"
+        return 2
     fi
 
     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
