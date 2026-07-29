@@ -76,10 +76,9 @@ zbuild_worktree_path() {
 # Whether this run should work inside a per-run worktree.
 # Returns 0 (enabled) / 1 (disabled). Disable with ZBUILD_NO_WORKTREE=1.
 #
-# NOTE: the intake-side creation that consumes this is not implemented yet, so
-# nothing enables a worktree in practice today — see #888. This predicate and
-# the path resolver land first so the location contract is settled and tested
-# before any stage starts moving the working tree around.
+# Consumed by the ENGINE, before the first stage dispatches (ADR-052, #1640) —
+# not by any plugin. Worktree acquisition is run infrastructure, like run_id and
+# state_dir, so there is no window in which a stage runs in the wrong tree.
 zbuild_worktree_enabled() {
     [[ "${ZBUILD_NO_WORKTREE:-0}" == "1" ]] && return 1
     return 0
@@ -104,6 +103,69 @@ zbuild_worktree_assert_outside() {
         printf '  set ZBUILD_WORKTREE_ROOT (or template config.worktree_root) to a path outside it.\n' >&2
         return 1
     fi
+    return 0
+}
+
+# ─── zbuild_worktree_acquire <run_id> [main_repo_root] ───────────────────────
+# Create-or-reuse the per-run worktree and print its path. Takes NO branch.
+#
+# ADR-052 (#1640): the engine calls this before the first stage dispatches, so
+# every stage — intake included — is already standing in the run's own tree. The
+# predecessor design had intake create the worktree, which meant the tree only
+# became correct partway through the run and only for stages that knew to look;
+# in practice nothing looked, and build committed to whatever branch the shared
+# checkout held (see ADR-052 §Context).
+#
+# Branch-free by construction. The engine knows run_id but not the work branch —
+# that is intake's decision, made later. A DETACHED worktree needs neither: intake
+# then runs its existing checkout inside this tree, unchanged and unaware.
+#
+# Reuse is what makes resume work: the path is keyed by run_id, so re-acquiring
+# for the same run lands in the tree the earlier stages worked in, whatever branch
+# they left checked out. A non-worktree directory squatting on the path is rc=4
+# rather than a silent surprise.
+zbuild_worktree_acquire() {
+    local run_id="${1:-}" repo_root="${2:-}"
+    [[ -n "$run_id" ]] || { printf 'zbuild_worktree_acquire: run_id required\n' >&2; return 2; }
+    [[ -n "$repo_root" ]] || repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+    local wt
+    wt="$(zbuild_worktree_path "$run_id")" || return 2
+    zbuild_worktree_assert_outside "$wt" "$repo_root" || return 2
+
+    if [[ -d "$wt" ]]; then
+        # Reuse only a real work tree. `rev-parse --show-toplevel` from inside the
+        # path is the check that matters: it succeeds for a registered worktree and
+        # fails for a plain directory. Comparing against $wt (not just rc=0) refuses
+        # a subdirectory of some OTHER repo, which would silently work on the wrong
+        # tree — the exact class of failure this whole contract exists to prevent.
+        local top
+        top="$(git -C "$wt" rev-parse --show-toplevel 2>/dev/null || echo "")"
+        if [[ -n "$top" ]] && [[ "$top" == "$wt" || "$(cd "$wt" 2>/dev/null && pwd -P)" == "$top" ]]; then
+            printf '%s\n' "$wt"
+            return 0
+        fi
+        printf 'zbuild_worktree_acquire: %s exists but is not a git worktree\n' "$wt" >&2
+        return 4
+    fi
+
+    mkdir -p "$(dirname "$wt")" || return 2
+    local git_err
+    if ! git_err="$(git -C "$repo_root" worktree add --detach "$wt" 2>&1 1>/dev/null)"; then
+        printf 'zbuild_worktree_acquire: git worktree add --detach failed (%s): %s\n' \
+            "$wt" "${git_err:-<no git output>}" >&2
+        return 5
+    fi
+    # Post-condition, not paranoia: a `git` that exits 0 without creating the tree
+    # (a PATH shim, a wrapper) would otherwise be reported as a successful acquire,
+    # and the caller would fail later with a confusing "cannot cd". Say what is
+    # actually wrong, here, where the reason is still known.
+    if [[ ! -d "$wt" ]]; then
+        printf 'zbuild_worktree_acquire: git reported success but %s does not exist\n' "$wt" >&2
+        printf '  (is `git` shimmed on PATH? set ZBUILD_NO_WORKTREE=1 to run in place.)\n' >&2
+        return 5
+    fi
+    printf '%s\n' "$wt"
     return 0
 }
 
@@ -186,61 +248,3 @@ zbuild_worktree_enter() {
     return 0
 }
 
-# ─── zbuild_worktree_prepare <run_id> <target_branch> ────────────────────────
-# Prepare the per-run worktree and print its path, WITHOUT deciding the branch.
-#
-# Deliberately creates a DETACHED worktree and leaves the branch work to the
-# caller. intake already has four correct branch paths (create / reuse-local /
-# adopt-remote / noop) with their own preflight, verification and events; making
-# this function pick a branch would duplicate that logic and give two places to
-# keep in sync. Instead the caller cd's into the returned path and runs its
-# existing checkout unchanged — the checkout then lands in the worktree, which is
-# the whole point, and is legal because the main tree is not holding the branch.
-#
-# Resume: an existing worktree already ON <target_branch> is reused, and so is a
-# detached one (the caller will check the branch out). Anything else is rc=4
-# rather than a silent surprise.
-zbuild_worktree_prepare() {
-    local run_id="${1:-}" target_branch="${2:-}"
-    [[ -n "$run_id" ]] || { printf 'zbuild_worktree_prepare: run_id required\n' >&2; return 2; }
-    [[ -n "$target_branch" ]] || { printf 'zbuild_worktree_prepare: target_branch required\n' >&2; return 2; }
-
-    local repo_root wt
-    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    wt="$(zbuild_worktree_path "$run_id")" || return 2
-    zbuild_worktree_assert_outside "$wt" "$repo_root" || return 2
-
-    if [[ -d "$wt" ]]; then
-        local head
-        head="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
-        if [[ "$head" == "$target_branch" || "$head" == "HEAD" ]]; then
-            printf '%s\n' "$wt"          # on target, or detached — caller proceeds
-            return 0
-        fi
-        printf 'zbuild_worktree_prepare: %s exists but is on "%s", not "%s" or detached\n' \
-            "$wt" "${head:-<not a worktree>}" "$target_branch" >&2
-        return 4
-    fi
-
-    # Refuse rather than --force: two trees on one branch leaves a silently stale
-    # HEAD in the other, which is worse than stopping.
-    local holder
-    holder="$(git worktree list --porcelain 2>/dev/null \
-        | awk -v b="refs/heads/$target_branch" '/^worktree /{w=$2} /^branch /{if ($2==b) print w}' \
-        | head -1)"
-    if [[ -n "$holder" ]]; then
-        printf 'zbuild_worktree_prepare: branch "%s" is already checked out at %s\n' \
-            "$target_branch" "$holder" >&2
-        return 3
-    fi
-
-    mkdir -p "$(dirname "$wt")" || return 2
-    local git_err
-    if ! git_err="$(git worktree add --detach "$wt" 2>&1 1>/dev/null)"; then
-        printf 'zbuild_worktree_prepare: git worktree add --detach failed (%s): %s\n' \
-            "$wt" "${git_err:-<no git output>}" >&2
-        return 5
-    fi
-    printf '%s\n' "$wt"
-    return 0
-}

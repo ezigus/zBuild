@@ -213,6 +213,12 @@ export ZBUILD_TEST_CMD="true"                 # test stage runs this in tmp dir
 # test is about engine env-agnosticism, not branch behavior — skip it here.
 # Dedicated branch tests cover the new code path.
 export ZBUILD_INTAKE_SKIP_BRANCH=1
+# ADR-052 (#1640): same reasoning one step earlier. The engine acquires a per-run
+# worktree before the first stage, and `git worktree add` cannot work against the
+# PATH shim above — it exits 0 without creating anything. This fixture asserts the
+# engine is environmentally agnostic, not that worktrees work, so opt out the way
+# an operator would. Worktree behavior is covered by worktree-run-isolation-test.sh.
+export ZBUILD_NO_WORKTREE=1
 
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
