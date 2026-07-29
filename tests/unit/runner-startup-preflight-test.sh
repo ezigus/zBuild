@@ -101,10 +101,10 @@ assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" 
 
         eval "$_spec5_saved"
     fi
-    # Structural check: call-site in main() — fails if wiring is removed from runner.sh
-    # even when the gate function itself is kept. Fails at baseline (pattern absent there).
-    assert_eq "[SPEC-5] call-site: _runner_startup_preflight_gate wired in main()" \
-        "1" "$(grep -c "if ! _runner_startup_preflight_gate" "$REPO_ROOT/core/pipeline/runner.sh")"
+    # Structural check: call-site in main() passes plugins_root — fails if wiring is
+    # removed from runner.sh or reverted to the pre-plugins_root signature.
+    assert_eq "[SPEC-5] call-site: _runner_startup_preflight_gate wired in main() with plugins_root" \
+        "1" "$(grep -c "if ! _runner_startup_preflight_gate.*plugins_root" "$REPO_ROOT/core/pipeline/runner.sh")"
 }
 
 # ─── SPEC-6: off mode — complete no-op, rc=0, no output ──────────────────────
