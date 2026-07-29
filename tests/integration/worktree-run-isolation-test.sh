@@ -18,7 +18,8 @@
 #
 # SPEC-1: after a fresh two-stage run, the main checkout's HEAD is unmoved
 # SPEC-2: after a fresh two-stage run, the main checkout's BRANCH is unmoved
-# SPEC-3: the second stage's commit lands on the work branch, in the run's worktree
+# SPEC-3a: the second stage's commit lands on the work branch, in the run's worktree
+# SPEC-3b: the second stage RESOLVES its repo root to the worktree (the merge-base tell)
 # SPEC-4: the engine records the worktree it entered, outside the target repo
 # SPEC-5: a run that FAILS before any pr stage still leaves the main checkout intact
 # SPEC-6: ZBUILD_NO_WORKTREE=1 still works in place (the opt-out is unchanged)
@@ -126,9 +127,9 @@ _build_root="$(cat "$SD_FRESH/build-repo-root.txt" 2>/dev/null || echo "")"
 _branch_sha="$(git -C "$TARGET" rev-parse "$WORK_BRANCH" 2>/dev/null || echo "")"
 if [[ -n "$_wt_path" && "$_branch_sha" != "$_BEFORE_HEAD" && -n "$_branch_sha" ]] \
    && git -C "$TARGET" cat-file -e "$WORK_BRANCH:built.txt" 2>/dev/null; then
-    assert_pass "[SPEC-3] the build stage's commit landed on $WORK_BRANCH"
+    assert_pass "[SPEC-3a] the build stage's commit landed on $WORK_BRANCH"
 else
-    assert_fail "[SPEC-3] the build stage must commit to the work branch" \
+    assert_fail "[SPEC-3a] the build stage must commit to the work branch" \
         "rc=$_rc_fresh wt=$_wt_path build_root=$_build_root branch_sha=$_branch_sha base=$_BEFORE_HEAD"
 fi
 
@@ -136,9 +137,9 @@ fi
 # assertion that fails at the merge-base: pre-fix, build_root IS the main checkout.
 if [[ -n "$_build_root" && -n "$_wt_path" ]] \
    && [[ "$(cd "$_build_root" 2>/dev/null && pwd -P)" == "$(cd "$_wt_path" 2>/dev/null && pwd -P)" ]]; then
-    assert_pass "[SPEC-3] stage 2 resolved its repo root to the run's worktree"
+    assert_pass "[SPEC-3b] stage 2 resolved its repo root to the run's worktree"
 else
-    assert_fail "[SPEC-3] stage 2 must resolve its repo root to the run's worktree" \
+    assert_fail "[SPEC-3b] stage 2 must resolve its repo root to the run's worktree" \
         "build_root=$_build_root worktree=$_wt_path"
 fi
 

@@ -199,7 +199,14 @@ _intake_check_preflight() {
     fi
     # 3) repo not mid-rebase/bisect/merge
     local git_dir
-    git_dir="$(git -C "$_pf_root" rev-parse --absolute-git-dir 2>/dev/null)"
+    # --absolute-git-dir needs git >= 2.13; on older git it exits non-zero and the
+    # 2>/dev/null would leave git_dir empty, silently disabling every mid-state
+    # guard below. Fall back to --git-dir, which with -C returns a path RELATIVE to
+    # $_pf_root (verified: it prints a bare ".git"), so absolutize it or the -d/-f
+    # tests would resolve against the worktree CWD (PR #1643 review).
+    git_dir="$(git -C "$_pf_root" rev-parse --absolute-git-dir 2>/dev/null \
+               || git -C "$_pf_root" rev-parse --git-dir 2>/dev/null)"
+    [[ -z "$git_dir" || "$git_dir" == /* ]] || git_dir="${_pf_root%/}/$git_dir"
     local mid_state=""
     if [[ -d "$git_dir/rebase-merge" || -d "$git_dir/rebase-apply" ]]; then
         mid_state="rebase"

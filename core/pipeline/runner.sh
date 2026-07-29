@@ -820,8 +820,22 @@ _runner_enter_worktree() {
     # preflight targets it deliberately (a freshly-acquired worktree is always
     # clean, so preflighting THAT would be a vacuous check that silently made
     # worktree mode more permissive than the in-place path).
+    #
+    # An inherited ZBUILD_REPO_ROOT is honoured — callers legitimately use it to
+    # target a repo other than $PWD (scripts/release.sh, most plugin tests). But a
+    # value pointing at a LINKED worktree is a leak from an earlier run in the same
+    # process tree, not a target: adopting it would make the preflight read a
+    # pipeline-created tree (always clean) instead of the operator's (PR #1643
+    # review). A linked worktree's git-dir sits under `.git/worktrees/<name>`,
+    # which is portable to detect — unlike --path-format, which needs git >= 2.31.
     if [[ -z "${ZBUILD_MAIN_REPO_ROOT:-}" ]]; then
-        export ZBUILD_MAIN_REPO_ROOT="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+        local _mrr="${ZBUILD_REPO_ROOT:-}"
+        if [[ -n "$_mrr" ]]; then
+            local _gd; _gd="$(git -C "$_mrr" rev-parse --git-dir 2>/dev/null || true)"
+            [[ "$_gd" == *"/.git/worktrees/"* ]] && _mrr=""
+        fi
+        [[ -n "$_mrr" ]] || _mrr="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        export ZBUILD_MAIN_REPO_ROOT="$_mrr"
     fi
 
     # An already-recorded worktree wins over acquiring a new one, and wins even

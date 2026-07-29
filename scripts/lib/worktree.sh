@@ -134,18 +134,27 @@ zbuild_worktree_acquire() {
     zbuild_worktree_assert_outside "$wt" "$repo_root" || return 2
 
     if [[ -d "$wt" ]]; then
-        # Reuse only a real work tree. `rev-parse --show-toplevel` from inside the
-        # path is the check that matters: it succeeds for a registered worktree and
-        # fails for a plain directory. Comparing against $wt (not just rc=0) refuses
-        # a subdirectory of some OTHER repo, which would silently work on the wrong
-        # tree — the exact class of failure this whole contract exists to prevent.
-        local top
-        top="$(git -C "$wt" rev-parse --show-toplevel 2>/dev/null || echo "")"
-        if [[ -n "$top" ]] && [[ "$top" == "$wt" || "$(cd "$wt" 2>/dev/null && pwd -P)" == "$top" ]]; then
+        # Reuse only a worktree REGISTERED TO $repo_root. `rev-parse
+        # --show-toplevel` is not sufficient on its own: it also succeeds for a
+        # standalone `git init` at this path, and reusing that would run the whole
+        # pipeline against a repo sharing no history with the target — silently.
+        # The registration round-trip is the authoritative check (PR #1643 review).
+        # Paths are canonicalized because `worktree list` prints resolved paths
+        # (/private/var vs /var on macOS) while $wt comes from config.
+        local wt_real listed found=0
+        wt_real="$(cd "$wt" 2>/dev/null && pwd -P)" || wt_real=""
+        if [[ -n "$wt_real" ]]; then
+            while IFS= read -r listed; do
+                [[ "$listed" == worktree\ * ]] || continue
+                listed="${listed#worktree }"
+                [[ "$(cd "$listed" 2>/dev/null && pwd -P)" == "$wt_real" ]] && { found=1; break; }
+            done < <(git -C "$repo_root" worktree list --porcelain 2>/dev/null || true)
+        fi
+        if [[ "$found" -eq 1 ]]; then
             printf '%s\n' "$wt"
             return 0
         fi
-        printf 'zbuild_worktree_acquire: %s exists but is not a git worktree\n' "$wt" >&2
+        printf 'zbuild_worktree_acquire: %s exists but is not a worktree of %s\n' "$wt" "$repo_root" >&2
         return 4
     fi
 
