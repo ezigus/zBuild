@@ -342,7 +342,16 @@ _runner_validate_startup_preflight() {
                 local _pf_req_plugin
                 while IFS= read -r _pf_req_plugin; do
                     [[ -z "$_pf_req_plugin" ]] && continue
-                    # Discoverable by id (manifest_graph_collect) or by role (find_plugin_for_role).
+                    # APPROXIMATION, pending #1321 (D4). Checks the id against the manifest
+                    # graph, then falls back to find_persona — which asks whether the id
+                    # resolves as a PERSONA, not as a plugin. A requires.plugins entry naming
+                    # an ordinary plugin therefore fails both checks and raises a spurious
+                    # PLUGIN_MISSING.
+                    #
+                    # Do NOT "fix" this by swapping in find_plugin_for_role: its signature is
+                    # <role> <backend_alias> [plugins_root] and no role is available here. A
+                    # correct plugin-id-existence lookup has to be designed, which is #1321's
+                    # scope.
                     if ! manifest_graph_collect "$plugins_root" "$_pf_req_plugin" >/dev/null 2>&1 \
                         && ! find_persona "$_pf_req_plugin" "$plugins_root" >/dev/null 2>&1; then
                         violations+=("$_pf_stage|PLUGIN_MISSING|$_pf_req_plugin|requires.plugins entry '$_pf_req_plugin' not found under plugins root")
