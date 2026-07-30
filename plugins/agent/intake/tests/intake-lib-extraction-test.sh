@@ -19,10 +19,26 @@
 # SPEC-6: sourcing plugin.sh still exposes every extracted function, and branch
 #         derivation is byte-identical — the movement preserved behaviour
 set -uo pipefail
+# Deliberately NOT `set -e`, matching intake-branch-test.sh in this directory.
+# assert_fail's last statement is `[[ -n "$detail" ]] && echo …`, so it returns
+# NON-ZERO whenever it is called without a detail argument. Under -e that aborts
+# the file mid-run, before print_test_results — a failing test that exits 0 and
+# reads as a pass. Verified: the statement after such an assert_fail never runs.
+# The setup-failure case -e would have caught is handled explicitly below.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
+# Explicit source guard (PR #1646 review): without -e a failed source would let
+# the file run on with every helper undefined, producing a cascade of
+# "command not found" instead of naming the missing dependency. Fail loudly here.
+for _dep in scripts/lib/helpers.sh scripts/lib/test-helpers.sh; do
+    if [[ ! -f "$REPO_ROOT/$_dep" ]]; then
+        printf 'intake-lib-extraction-test: required dependency missing: %s\n' \
+            "$REPO_ROOT/$_dep" >&2
+        exit 2
+    fi
+done
 # shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../../../scripts/lib/test-helpers.sh
