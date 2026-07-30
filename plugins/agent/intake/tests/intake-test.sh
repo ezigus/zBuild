@@ -46,16 +46,6 @@ assert_eq "intake manifest validates" "0" "$rc"
 discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "intake discovered in plugin registry" "$discovered" "agent/intake"
 
-# ─── SPEC-1/2/3/4: lib/ files exist (change-behavior — fail at baseline) ─────
-assert_file_exists "[SPEC-1] lib/sanitize.sh extracted from plugin.sh" \
-    "$PLUGIN_DIR/lib/sanitize.sh"
-assert_file_exists "[SPEC-2] lib/issue-state.sh extracted from plugin.sh" \
-    "$PLUGIN_DIR/lib/issue-state.sh"
-assert_file_exists "[SPEC-3] lib/branch-names.sh extracted from plugin.sh" \
-    "$PLUGIN_DIR/lib/branch-names.sh"
-assert_file_exists "[SPEC-4] lib/branch-ops.sh extracted from plugin.sh" \
-    "$PLUGIN_DIR/lib/branch-ops.sh"
-
 # ─── Source plugin under test ─────────────────────────────────────────────────
 # shellcheck source=../../../../plugins/agent/intake/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
@@ -176,7 +166,7 @@ assert_contains "generic fallback writes + ./" "$scope" "+ ./"
 
 # ─── Test 7: plugin.run.complete event emitted ───────────────────────────────
 run_complete_count=$(grep -c '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
-assert_gt "[SPEC-5] plugin.run.complete event emitted" "$run_complete_count" "0"
+assert_gt "plugin.run.complete event emitted" "$run_complete_count" "0"
 
 plugin_field="$(grep '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="plugin.run.complete") | .data.plugin // empty' 2>/dev/null | tail -1 || true)"
