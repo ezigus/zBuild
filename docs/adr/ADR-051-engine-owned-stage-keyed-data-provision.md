@@ -162,13 +162,16 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
   template (§7).
 - **E (#1325 / #1351)** — lens charters as persona `perspective` data over the `agents` map; the
   router injects (§1/§3). Multi-persona design (#1351) composes generic personas per element.
-- **#1318** — `_runner_validate_startup_preflight` warn-first skeleton (§warn-first): aggregates
-  persona-binding and `requires.plugins` violations across `active_stages[]` at startup, renders
-  all violations at once (same render-all-at-once pattern as `_contract_validate_pipeline`), and
-  defaults to `warn` mode so operators see failures before enforcement is mandatory. Gated by
-  `ZBUILD_CONTRACT_VALIDATOR`; exempted in `--dry-run` / `--resume` (matching
-  `_runner_validate_leaf_resolvability`). Implemented via `_runner_startup_preflight_gate`
-  (testable gateway) in `core/pipeline/runner.sh`.
+- **#1318** — `_runner_validate_startup_preflight` warn-first **skeleton** (§warn-first): owns the
+  violation aggregation and the render-all-at-once block (same pattern as
+  `_contract_validate_pipeline`), and defaults to `warn` mode so operators see failures before
+  enforcement is mandatory. Gated by `ZBUILD_CONTRACT_VALIDATOR` (`warn` / `enforce` / `off`);
+  exempted in `--dry-run` / `--resume` (matching `_runner_validate_leaf_resolvability`).
+  Implemented via `_runner_startup_preflight_gate` (testable gateway) in
+  `core/pipeline/runner.sh`. It contributes **no checks of its own** — the concrete producers
+  land in **#1320** (persona-binding existence) and **#1321** (`requires.plugins` resolution),
+  each against the discriminating fixtures **#1605** pre-stages, so neither ships without a test
+  that reddens at merge-base. Until then the live startup path renders nothing and returns 0.
 - **Non-goals here:** tier/model resolution (EPIC #1308) and any change to `core/pipeline`
   mechanics (they stay agnostic; the binding is opaque declared data).
 

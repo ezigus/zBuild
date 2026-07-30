@@ -281,21 +281,30 @@ _runner_validate_leaf_resolvability() {
 }
 
 # ─── _runner_validate_startup_preflight [violation_fixture] (ADR-051 §warn-first) ──
-# Aggregates persona-binding and requires.plugins violations across all stages in
-# the global `active_stages[]` and renders them all at once (same render-all-at-once
-# pattern as _contract_validate_pipeline). Separate gate from _runner_validate_leaf_
-# resolvability — covers non-contract elements not addressed by the DAG validator.
+# Aggregation SKELETON (#1318 / D1): owns the violations[]/fail_count collection,
+# the render-all-at-once block (same pattern as _contract_validate_pipeline) and the
+# warn/enforce/off mode dispatch. Separate gate from _runner_validate_leaf_
+# resolvability — it covers non-contract elements the DAG validator does not address.
+#
+# It deliberately contributes NO checks of its own yet. The concrete producers land
+# downstream, each against the discriminating fixtures #1605 pre-stages:
+#   - persona-binding existence (PERSONA_MISSING) → #1320 (D3)
+#   - requires.plugins resolution (PLUGIN_MISSING) → #1321 (D4)
+# An earlier draft carried both checks here, untested; the requires.plugins one was
+# an acknowledged approximation that raised spurious PLUGIN_MISSING for any entry
+# naming an ordinary plugin. Shipping checks no test discriminates is the green-but-
+# inert shape #1605 exists to prevent, so they were removed rather than carried.
 #
 # Deliberate divergence from _runner_validate_leaf_resolvability: the DEFAULT mode
 # here is WARN (not enforce). This lands warn-first so operators see failures before
 # enforcement is mandatory. Set ZBUILD_CONTRACT_VALIDATOR=enforce to fail-closed.
 # ZBUILD_CONTRACT_VALIDATOR=off is a full no-op (skips all checks, emits nothing).
 #
-# The optional first argument is a synthetic violation fixture used by unit tests to
-# inject a pre-formed violation string without standing up a real plugin tree. Callers
-# that pass a non-empty string get exactly one synthetic violation; callers that pass
-# empty (or omit the arg) exercise only the real active_stages checks. Runtime call
-# sites in runner.sh pass no argument.
+# The optional first argument is a synthetic violation fixture: it injects one
+# pre-formed violation so the aggregation, rendering and mode dispatch are testable
+# before any real producer exists. A non-empty string yields exactly one violation;
+# empty (or omitted) yields none. Runtime call sites in runner.sh pass no argument,
+# so until D3/D4 land the live path always renders nothing and returns 0.
 # shellcheck disable=SC2120  # $1 is used by unit tests; runtime call sites pass no arg
 _runner_validate_startup_preflight() {
     local _violation_fixture="${1:-}"
@@ -308,7 +317,6 @@ _runner_validate_startup_preflight() {
     # off = complete no-op, no output
     [[ "$mode" == "off" ]] && return 0
 
-    local plugins_root="${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}"
     local -a violations=()
     local fail_count=0
 
@@ -318,49 +326,9 @@ _runner_validate_startup_preflight() {
         fail_count=$((fail_count + 1))
     fi
 
-    # Real checks against global active_stages (populated by run_pipeline before call).
-    if declare -p active_stages >/dev/null 2>&1; then
-        local _pf_stage _pf_safe _pf_persona_var _pf_persona_id
-        for _pf_stage in "${active_stages[@]+"${active_stages[@]}"}"; do
-            [[ -z "$_pf_stage" ]] && continue
-            _pf_safe="${_pf_stage//-/_}"
-
-            # (a) Persona binding: if _TPL_STAGE_PERSONA_<safe> is declared, verify it resolves.
-            _pf_persona_var="_TPL_STAGE_PERSONA_${_pf_safe}"
-            _pf_persona_id="${!_pf_persona_var:-}"
-            if [[ -n "$_pf_persona_id" ]]; then
-                if ! find_persona "$_pf_persona_id" "$plugins_root" >/dev/null 2>&1; then
-                    violations+=("$_pf_stage|PERSONA_MISSING|$_pf_persona_id|persona '$_pf_persona_id' declared for stage '$_pf_stage' but not found under plugins root")
-                    fail_count=$((fail_count + 1))
-                fi
-            fi
-
-            # (b) requires.plugins: find plugin manifest and check each required plugin id.
-            local _pf_manifest
-            _pf_manifest="$(manifest_graph_collect "$plugins_root" "$_pf_stage" 2>/dev/null || true)"
-            if [[ -n "$_pf_manifest" && -f "$_pf_manifest" ]]; then
-                local _pf_req_plugin
-                while IFS= read -r _pf_req_plugin; do
-                    [[ -z "$_pf_req_plugin" ]] && continue
-                    # APPROXIMATION, pending #1321 (D4). Checks the id against the manifest
-                    # graph, then falls back to find_persona — which asks whether the id
-                    # resolves as a PERSONA, not as a plugin. A requires.plugins entry naming
-                    # an ordinary plugin therefore fails both checks and raises a spurious
-                    # PLUGIN_MISSING.
-                    #
-                    # Do NOT "fix" this by swapping in find_plugin_for_role: its signature is
-                    # <role> <backend_alias> [plugins_root] and no role is available here. A
-                    # correct plugin-id-existence lookup has to be designed, which is #1321's
-                    # scope.
-                    if ! manifest_graph_collect "$plugins_root" "$_pf_req_plugin" >/dev/null 2>&1 \
-                        && ! find_persona "$_pf_req_plugin" "$plugins_root" >/dev/null 2>&1; then
-                        violations+=("$_pf_stage|PLUGIN_MISSING|$_pf_req_plugin|requires.plugins entry '$_pf_req_plugin' not found under plugins root")
-                        fail_count=$((fail_count + 1))
-                    fi
-                done < <(_yaml_get_requires_plugins_list "$_pf_manifest" 2>/dev/null || true)
-            fi
-        done
-    fi
+    # Check producers append to violations[]/fail_count here — see #1320 (persona
+    # binding) and #1321 (requires.plugins). Until one lands, the only source of a
+    # violation is the test fixture above.
 
     # No violations → clean
     [[ $fail_count -eq 0 ]] && return 0

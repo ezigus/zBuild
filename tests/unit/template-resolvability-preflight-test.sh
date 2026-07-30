@@ -270,7 +270,7 @@ set +e
 _runner_validate_leaf_resolvability _residual_leaves "$REAL_PLUGINS" >/dev/null 2>&1
 _residual_pf_rc=$?
 set -e
-assert_eq "[SPEC-7] residual — swapped resolvable leaves still resolve (accepted, rc=0)" "0" "$_residual_pf_rc"
+assert_eq "SPEC-7: residual — swapped resolvable leaves still resolve (accepted, rc=0)" "0" "$_residual_pf_rc"
 
 cleanup_test_env
 print_test_results
