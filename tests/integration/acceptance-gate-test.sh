@@ -284,5 +284,37 @@ EOF
 set +e; _run_gate "$REPO14"; set -e
 assert_eq "S14: not_passing_at_head → route_target absent (build-fixable)" "" "$(jq -r '.route_target // ""' <<<"$RESULT")"
 
+  # exits with $FAIL
+
+# ── S10b (#1649): a design's PROMISE is still enforced — just later ───────────
+# #1649 removed the design-gate's on-disk existence check, because design runs
+# before anything is built and rejecting a proposed new test file forced every
+# design onto a pre-existing crowded file. That removal is only safe because the
+# promise is enforced HERE, after build has had its chance to create the file.
+# This pins that guarantee: a [change] SPEC whose declared testfile was never
+# created must fail as no_testfile. Without it, "declared but never written"
+# would sail through both gates unnoticed.
+REPO10B="$(_build_repo gate-unfulfilled '#!/usr/bin/env bash
+# [SPEC-1] x
+exit 0')"
+cat > "$REPO10B/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: promised in design, never created by build
+TESTFILES:
+SPEC-1: tests/never-written-test.sh
+```
+EOF
+set +e; _run_gate "$REPO10B"; set -e
+FAILURES_10B="$(jq -rc .failures <<<"$RESULT")"
+assert_eq "S10b: an unfulfilled testfile promise → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+# Reported by the ADR-036 tagging check, which fires ahead of negctl's
+# no_testfile arm: with the file absent there is no [SPEC-1] assertion to find.
+# Either class is a correct refusal; this pins the one that actually happens.
+assert_contains "S10b: names the offending SPEC" "$FAILURES_10B" "SPEC-1"
+# recoverable, not terminal — the build cycle gets to go and write the file,
+# which is the right disposition for "promised it, did not create it".
+assert_eq "S10b: unfulfilled promise is recoverable (cycle re-iterates)" \
+    "recoverable" "$(jq -r .disposition <<<"$RESULT")"
+
 cleanup_test_env
-print_test_results  # exits with $FAIL
+print_test_results
