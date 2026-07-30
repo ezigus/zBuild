@@ -284,7 +284,6 @@ EOF
 set +e; _run_gate "$REPO14"; set -e
 assert_eq "S14: not_passing_at_head → route_target absent (build-fixable)" "" "$(jq -r '.route_target // ""' <<<"$RESULT")"
 
-cleanup_test_env
   # exits with $FAIL
 
 # ── S10b (#1649): a design's PROMISE is still enforced — just later ───────────
@@ -317,4 +316,5 @@ assert_contains "S10b: names the offending SPEC" "$FAILURES_10B" "SPEC-1"
 assert_eq "S10b: unfulfilled promise is recoverable (cycle re-iterates)" \
     "recoverable" "$(jq -r .disposition <<<"$RESULT")"
 
+cleanup_test_env
 print_test_results

@@ -361,5 +361,7 @@ SPEC-1: /etc/passwd-test.sh
 ```
 '
 assert_eq "[SPEC-15] an absolute testfile path → verdict=fail" "fail" "$VERDICT"
+assert_contains "[SPEC-15] a dropped absolute path also surfaces as MISSING_TESTFILE_FOR_SPEC" \
+    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
 
 print_test_results

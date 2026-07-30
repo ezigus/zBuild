@@ -111,26 +111,11 @@ design_gate_run() {
         # via its per-SPEC binding or the global pool, and each declared path must
         # be a sane repo-relative path.
         #
-        # #1649: deliberately does NOT require the path to exist yet. design runs
-        # BEFORE anything is built, so a design proposing a new dedicated test file
-        # was rejected for correctly describing the future — and its only escape
-        # was to abandon that proposal and attach its checks to some pre-existing
-        # file. That forced retreat caused both #1624 (landed in a file whose
-        # unrelated neighbours fail in the acceptance sandbox, #1644) and #1636
-        # (landed in the plugin's own regression suite, which the issue expressly
-        # forbade editing). #1532 was the same shape.
-        #
-        # The promise is verified where it becomes answerable: acceptance-negctl
-        # fails a SPEC whose declared testfile is still absent at gate time
-        # (`NEGCTL FAIL <spec> no_testfile`), i.e. after build has had its chance
-        # to create it. Checking here only asked the question too early.
-        #
-        # Path SHAPE needs no check here: acceptance-block.sh already drops any
-        # absolute or ".."-containing path while parsing (see its lines 173/190/
-        # 260/265 and the "never surfaces an absolute or '..'-containing path"
-        # guarantee), so such a path arrives as no path at all and is caught by
-        # the MISSING_TESTFILE_FOR_SPEC arm below. A duplicate guard here would
-        # be unreachable.
+        # #1649: existence is deliberately NOT checked — design runs before build,
+        # so requiring the file forced every design off its own proposed test file
+        # and onto a crowded one. The promise is enforced at the acceptance-gate,
+        # after build could have kept it. Traversal is already handled by
+        # acceptance-block.sh, so a guard here would be unreachable.
         if [[ $_has_change -eq 1 ]]; then
             local _spec_c4
             while IFS= read -r _spec_c4; do
