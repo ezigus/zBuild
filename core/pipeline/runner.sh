@@ -280,6 +280,102 @@ _runner_validate_leaf_resolvability() {
     [[ $_ok -eq 1 ]]
 }
 
+# ─── _runner_validate_startup_preflight [violation_fixture] (ADR-051 §warn-first) ──
+# Aggregation SKELETON (#1318 / D1): owns the violations[]/fail_count collection,
+# the render-all-at-once block (same pattern as _contract_validate_pipeline) and the
+# warn/enforce/off mode dispatch. Separate gate from _runner_validate_leaf_
+# resolvability — it covers non-contract elements the DAG validator does not address.
+#
+# It deliberately contributes NO checks of its own yet. The concrete producers land
+# downstream, each against the discriminating fixtures #1605 pre-stages:
+#   - persona-binding existence (PERSONA_MISSING) → #1320 (D3)
+#   - requires.plugins resolution (PLUGIN_MISSING) → #1321 (D4)
+# An earlier draft carried both checks here, untested; the requires.plugins one was
+# an acknowledged approximation that raised spurious PLUGIN_MISSING for any entry
+# naming an ordinary plugin. Shipping checks no test discriminates is the green-but-
+# inert shape #1605 exists to prevent, so they were removed rather than carried.
+#
+# Deliberate divergence from _runner_validate_leaf_resolvability: the DEFAULT mode
+# here is WARN (not enforce). This lands warn-first so operators see failures before
+# enforcement is mandatory. Set ZBUILD_CONTRACT_VALIDATOR=enforce to fail-closed.
+# ZBUILD_CONTRACT_VALIDATOR=off is a full no-op (skips all checks, emits nothing).
+#
+# The optional first argument is a synthetic violation fixture: it injects one
+# pre-formed violation so the aggregation, rendering and mode dispatch are testable
+# before any real producer exists. A non-empty string yields exactly one violation;
+# empty (or omitted) yields none. Runtime call sites in runner.sh pass no argument,
+# so until D3/D4 land the live path always renders nothing and returns 0.
+# shellcheck disable=SC2120  # $1 is used by unit tests; runtime call sites pass no arg
+_runner_validate_startup_preflight() {
+    local _violation_fixture="${1:-}"
+    local mode="${ZBUILD_CONTRACT_VALIDATOR:-warn}"
+    case "$mode" in
+        warn|enforce|off) ;;
+        *) mode="warn" ;;
+    esac
+
+    # off = complete no-op, no output
+    [[ "$mode" == "off" ]] && return 0
+
+    local -a violations=()
+    local fail_count=0
+
+    # Synthetic violation fixture for unit tests — non-empty arg injects one violation.
+    if [[ -n "$_violation_fixture" ]]; then
+        violations+=("${_violation_fixture}|SYNTHETIC|fixture|synthetic violation injected by test fixture")
+        fail_count=$((fail_count + 1))
+    fi
+
+    # Check producers append to violations[]/fail_count here — see #1320 (persona
+    # binding) and #1321 (requires.plugins). Until one lands, the only source of a
+    # violation is the test fixture above.
+
+    # No violations → clean
+    [[ $fail_count -eq 0 ]] && return 0
+
+    # Render all violations in a single block (render-all-at-once pattern).
+    {
+        printf '\n'
+        printf '⚠ Startup preflight: persona bindings or required plugins are unresolvable:\n\n'
+        local _pf_v _pf_vs _pf_vc _pf_vid _pf_vmsg
+        for _pf_v in "${violations[@]}"; do
+            IFS='|' read -r _pf_vs _pf_vc _pf_vid _pf_vmsg <<< "$_pf_v"
+            printf '  %s: %s (id=%s)\n    %s\n\n' "$_pf_vs" "$_pf_vc" "$_pf_vid" "$_pf_vmsg"
+        done
+        printf 'Fix: ensure the declared persona id exists under plugins/persona/<id>/manifest.yaml\n'
+        printf '     and that each requires.plugins entry names an installable plugin.\n'
+        printf '     See docs/adr/ADR-051-engine-owned-stage-keyed-data-provision.md.\n\n'
+    } >&2
+
+    # Emit event (best-effort)
+    if declare -F eb_emit_event >/dev/null 2>&1; then
+        eb_emit_event "pipeline.preflight.fail" \
+            "reason=startup_preflight" \
+            "violation_count=$fail_count" \
+            "mode=$mode" 2>/dev/null || true
+    fi
+
+    if [[ "$mode" == "warn" ]]; then
+        printf '  ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite startup preflight violations. Set =enforce to fail-fast.\n\n' >&2
+        return 0
+    fi
+
+    # enforce: fail-closed
+    return 2
+}
+
+# _runner_startup_preflight_gate <dry_run> <resume_mode> (ADR-051 §warn-first, #1318)
+# Testable gateway: calls _runner_validate_startup_preflight only when neither
+# --dry-run nor --resume is active, matching the leaf_resolvability exemption.
+# Extracted so the call-site condition is independently unit-testable (SPEC-5).
+_runner_startup_preflight_gate() {
+    local dry_run="${1:-false}" resume_mode="${2:-false}"
+    if ! $dry_run && ! $resume_mode; then
+        _runner_validate_startup_preflight || return $?
+    fi
+    return 0
+}
+
 # ─── _runner_pipeline_duration_token (#525) ──────────────────────────────────
 # Parallel to _runner_duration_token but for the pipeline-wide window. No stage
 # argument — reads _RUNNER_PIPELINE_START_MS directly. Returns "?s" on cache
@@ -1046,6 +1142,20 @@ main() {
             return 2
         fi
     }
+
+    # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
+    # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
+    # exemption logic is testable independently of the full pipeline startup sequence.
+    if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
+        error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
+        _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+        _runner_issue="${_runner_issue:-${issue:-0}}"
+        : "${_RUNNER_PIPELINE_START_MS:=$(_runner_now_ms)}"
+        eb_emit_event "pipeline.end" "status=preflight_failed" \
+            "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+        _render_pipeline_end "preflight_failed"
+        return 2
+    fi
 
     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
     # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
