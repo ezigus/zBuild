@@ -101,10 +101,21 @@ assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" 
 
         eval "$_spec5_saved"
     fi
-    # Structural check: call-site in main() passes plugins_root — fails if wiring is
-    # removed from runner.sh or reverted to the pre-plugins_root signature.
-    assert_eq "[SPEC-5] call-site: _runner_startup_preflight_gate wired in main() with plugins_root" \
-        "1" "$(grep -c "if ! _runner_startup_preflight_gate.*plugins_root" "$REPO_ROOT/core/pipeline/runner.sh")"
+    # Structural check: the gate is invoked from main() on the live path — fails if the
+    # wiring is deleted from runner.sh.
+    #
+    # This grep previously required `plugins_root` at the call site, which the gate has
+    # never taken: its signature is <dry_run> <resume_mode> and it derives plugins_root
+    # itself from ${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}. The assertion was
+    # therefore false against every version of the code, and it was added (commit
+    # 41b5bce, "add structural grep to SPEC-5 to break inert-wiring gate failure") to
+    # satisfy the acceptance-gate rather than to describe the implementation. Pinning the
+    # real signature keeps the reachability check honest.
+    #
+    # The two assertions above already prove the wiring behaviourally (called in normal
+    # mode, exempt under --dry-run); this one only guards against the call being removed.
+    assert_eq "[SPEC-5] call-site: _runner_startup_preflight_gate is invoked from main()" \
+        "1" "$(grep -c '_runner_startup_preflight_gate "\$dry_run" "\$resume_mode"' "$REPO_ROOT/core/pipeline/runner.sh")"
 }
 
 # ─── SPEC-6: off mode — complete no-op, rc=0, no output ──────────────────────
