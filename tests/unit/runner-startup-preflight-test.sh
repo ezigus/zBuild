@@ -26,18 +26,11 @@ setup_test_env "runner-startup-preflight"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/runner.sh"
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-# _run_preflight <mode> <violation_fn> — calls _runner_validate_startup_preflight
-# with a synthetic violations[] array injected via the violation_fn callback,
-# returns its rc. The violation_fn is called inside the function's scope via
-# a test shim set via ZBUILD_PREFLIGHT_VIOLATION_FIXTURE.
-_run_preflight_empty() {
-    local mode="${1:-warn}"
-    local _out _rc
-    ZBUILD_CONTRACT_VALIDATOR="$mode" ZBUILD_PREFLIGHT_VIOLATION_FIXTURE="" \
-        _out="$(_runner_validate_startup_preflight "" 2>&1)" || true
-    return 0
-}
+# No helper shim: the SPECs below call _runner_validate_startup_preflight directly and
+# inject a violation through its positional fixture argument. An earlier draft carried a
+# `_run_preflight_empty` wrapper keyed on ZBUILD_PREFLIGHT_VIOLATION_FIXTURE — an env var
+# the implementation never reads, in a function nothing ever called. Removed rather than
+# left to imply a contract that does not exist.
 
 # ─── SPEC-1: function exists and collects all violations before rendering ─────
 assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" "ok" \
@@ -99,6 +92,14 @@ assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" 
         _runner_startup_preflight_gate true false
         assert_eq "[SPEC-5] wiring: preflight exempt in --dry-run" "0" "$_spec5_called"
 
+        # The gate exempts BOTH dry-run and resume (`! $dry_run && ! $resume_mode`).
+        # Testing only the dry-run arm would let a regression in the resume arm through —
+        # and resume is the path where re-running preflight is most likely to be wrong,
+        # since the state it would validate was already accepted by the original run.
+        _spec5_called=0
+        _runner_startup_preflight_gate false true
+        assert_eq "[SPEC-5] wiring: preflight exempt on --resume" "0" "$_spec5_called"
+
         eval "$_spec5_saved"
     fi
     # Structural check: the gate is invoked from main() on the live path — fails if the
@@ -114,6 +115,7 @@ assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" 
     #
     # The two assertions above already prove the wiring behaviourally (called in normal
     # mode, exempt under --dry-run); this one only guards against the call being removed.
+    # shellcheck disable=SC2016  # the literal '$dry_run' text is the thing being matched
     assert_eq "[SPEC-5] call-site: _runner_startup_preflight_gate is invoked from main()" \
         "1" "$(grep -c '_runner_startup_preflight_gate "\$dry_run" "\$resume_mode"' "$REPO_ROOT/core/pipeline/runner.sh")"
 }
