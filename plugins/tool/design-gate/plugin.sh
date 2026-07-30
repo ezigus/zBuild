@@ -107,8 +107,30 @@ design_gate_run() {
         done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
 
         # C4: only enforced when the change set is non-empty (a guard-only design
-        # need declare no testfile). Each [change] SPEC must have ≥1 testfile
-        # via its per-SPEC binding or the global pool, and each path must exist.
+        # need declare no testfile). Each [change] SPEC must declare ≥1 testfile
+        # via its per-SPEC binding or the global pool, and each declared path must
+        # be a sane repo-relative path.
+        #
+        # #1649: deliberately does NOT require the path to exist yet. design runs
+        # BEFORE anything is built, so a design proposing a new dedicated test file
+        # was rejected for correctly describing the future — and its only escape
+        # was to abandon that proposal and attach its checks to some pre-existing
+        # file. That forced retreat caused both #1624 (landed in a file whose
+        # unrelated neighbours fail in the acceptance sandbox, #1644) and #1636
+        # (landed in the plugin's own regression suite, which the issue expressly
+        # forbade editing). #1532 was the same shape.
+        #
+        # The promise is verified where it becomes answerable: acceptance-negctl
+        # fails a SPEC whose declared testfile is still absent at gate time
+        # (`NEGCTL FAIL <spec> no_testfile`), i.e. after build has had its chance
+        # to create it. Checking here only asked the question too early.
+        #
+        # Path SHAPE needs no check here: acceptance-block.sh already drops any
+        # absolute or ".."-containing path while parsing (see its lines 173/190/
+        # 260/265 and the "never surfaces an absolute or '..'-containing path"
+        # guarantee), so such a path arrives as no path at all and is caught by
+        # the MISSING_TESTFILE_FOR_SPEC arm below. A duplicate guard here would
+        # be unreachable.
         if [[ $_has_change -eq 1 ]]; then
             local _spec_c4
             while IFS= read -r _spec_c4; do
@@ -118,7 +140,6 @@ design_gate_run() {
                 while IFS= read -r _stf; do
                     [[ -z "$_stf" ]] && continue
                     _stf_count=$((_stf_count + 1))
-                    [[ -f "$repo_root/$_stf" ]] || violations+=("MISSING_TESTFILE $_stf (declared testfile absent on disk)")
                 done < <(acceptance_list_testfiles_for_spec "$design_md" "$_spec_c4" 2>/dev/null || true)
                 [[ $_stf_count -eq 0 ]] && violations+=("MISSING_TESTFILE_FOR_SPEC $_spec_c4 (no testfile declared for [change] SPEC)")
             done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)

@@ -150,8 +150,12 @@ assert_eq "[SPEC-4] incomplete-scope design → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-4] violation names SCOPE_MISSING" \
     "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "SCOPE_MISSING"
 
-# ─── SPEC-5 (C4 change-has-testfile): a [change] SPEC whose declared TESTFILE ─
-# does not exist on disk → verdict=fail.
+# ─── SPEC-5 (#1649): a [change] SPEC may declare a testfile that does not ────
+# exist YET — design runs before anything is built, so proposing a new dedicated
+# test file must NOT be a violation. The promise is verified downstream, where it
+# becomes answerable: acceptance-negctl fails `no_testfile` if the file is still
+# absent at gate time. Requiring it here forced every design to abandon its own
+# proposal and attach to a pre-existing file (#1624, #1636, #1532).
 _run_gate_with_md '# Design
 
 ```scope
@@ -165,9 +169,9 @@ tests/does-not-exist-test.sh
 WIRING: scripts/wire.sh
 ```
 '
-assert_eq "[SPEC-5] [change] SPEC without existing testfile → verdict=fail" "fail" "$VERDICT"
-assert_contains "[SPEC-5] violation names MISSING_TESTFILE" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE"
+assert_eq "[SPEC-5] a not-yet-created testfile is NOT a design-time violation" "pass" "$VERDICT"
+assert_eq "[SPEC-5] declaring a future testfile yields zero violations" \
+    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-6 (happy path): a CLEAN design → verdict=pass, proceeds to build ────
 _run_gate_with_md "$_clean_md"
@@ -176,19 +180,22 @@ assert_eq "[SPEC-6] clean design → zero violations" \
     "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-7 (report-all): MANY violations reported in ONE pass ───────────────
-# scope empty (C1) + a [change] SPEC whose testfile is missing (C4) +
+# scope empty (C1) + a [change] SPEC that declares NO testfile at all (C4) +
 # an unclassified SPEC (C3) + no WIRING (C5) all at once → all four classes
 # named in a single run (no whack-a-mole).
+# #1649: the C4 arm is now "declared nothing", not "declared something absent" —
+# a not-yet-created path is legitimate and no longer a violation.
 _run_gate_with_md '# Design
 
 ```scope
 ```
 
 ```acceptance
-SPEC-1[change]: missing testfile
+SPEC-1[change]: has a per-SPEC binding
 SPEC-2: unclassified
+SPEC-3[change]: declares no testfile of its own
 TESTFILES:
-tests/does-not-exist-test.sh
+SPEC-1: tests/does-not-exist-test.sh
 ```
 '
 _all="$(jq -r '.violations|join(" ")' "$RESULT_JSON")"
@@ -196,7 +203,7 @@ assert_eq "[SPEC-7] multi-violation design → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-7] reports SCOPE_MISSING in one pass"    "$_all" "SCOPE_MISSING"
 assert_contains "[SPEC-7] reports UNCLASSIFIED in one pass"     "$_all" "UNCLASSIFIED"
 assert_contains "[SPEC-7] reports WIRING_MISSING in one pass"   "$_all" "WIRING_MISSING"
-assert_contains "[SPEC-7] reports MISSING_TESTFILE in one pass" "$_all" "MISSING_TESTFILE"
+assert_contains "[SPEC-7] reports MISSING_TESTFILE_FOR_SPEC in one pass" "$_all" "MISSING_TESTFILE_FOR_SPEC"
 
 # ─── SPEC-8 (verdict-in-artifact): design_gate_run ALWAYS returns rc=0 ────────
 # Even on a failing verdict the plugin returns 0 — the verdict lives in the
@@ -286,9 +293,9 @@ TESTFILES:
 SPEC-1: tests/does-not-exist-per-spec-test.sh
 ```
 '
-assert_eq "[SPEC-4] SPEC-13: per-SPEC binding missing file → verdict=fail" "fail" "$VERDICT"
-assert_contains "[SPEC-4] SPEC-13: violation names MISSING_TESTFILE" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE"
+assert_eq "[SPEC-4] SPEC-13: per-SPEC binding to a future file → verdict=pass (#1649)" "pass" "$VERDICT"
+assert_eq "[SPEC-4] SPEC-13: per-SPEC binding to a future file → zero violations" \
+    "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-14 (C4 per-SPEC binding upgrade): a [change] SPEC with NO binding ───
 # and no global bare-path fallback must be caught. This is the case the OLD
@@ -315,5 +322,44 @@ assert_eq "[SPEC-4] SPEC-14: [change] SPEC with no binding of its own → verdic
     "fail" "$VERDICT"
 assert_contains "[SPEC-4] SPEC-14: violation attributes the gap to SPEC-2" \
     "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC SPEC-2"
+
+# ─── SPEC-15 (#1649): dropping the existence check opens no traversal hole ───
+# acceptance-block.sh already refuses absolute and ".."-containing paths while
+# parsing, so such a declaration never reaches C4 as a path. A duplicate guard in
+# the gate would be unreachable; this pins the real, end-to-end behaviour instead.
+_run_gate_with_md '# Design
+
+```scope
+scripts/wire.sh
+```
+
+```acceptance
+SPEC-1[change]: the thing works
+WIRING: scripts/wire.sh
+TESTFILES:
+SPEC-1: ../outside-the-repo-test.sh
+```
+'
+assert_eq "[SPEC-15] a traversing testfile path → verdict=fail" "fail" "$VERDICT"
+# The parser drops it while reading the block, so it reaches C4 as NO path at
+# all — hence MISSING_TESTFILE_FOR_SPEC rather than a dedicated path violation.
+# Pinning it here proves dropping the existence check opened no traversal hole.
+assert_contains "[SPEC-15] a dropped traversing path surfaces as MISSING_TESTFILE_FOR_SPEC" \
+    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
+
+_run_gate_with_md '# Design
+
+```scope
+scripts/wire.sh
+```
+
+```acceptance
+SPEC-1[change]: the thing works
+WIRING: scripts/wire.sh
+TESTFILES:
+SPEC-1: /etc/passwd-test.sh
+```
+'
+assert_eq "[SPEC-15] an absolute testfile path → verdict=fail" "fail" "$VERDICT"
 
 print_test_results
