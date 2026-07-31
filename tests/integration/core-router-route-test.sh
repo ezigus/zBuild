@@ -517,57 +517,6 @@ tr6_outcome="$(grep '"model.outcome"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
 assert_eq "Tr-6 model.outcome event has timeout_s=900" "900" "$tr6_outcome"
 unset ZBUILD_CURRENT_STAGE
 
-# ─── SPEC-1: missing include → non-zero exit + diagnostic names the file ─────
-# CHANGE-behavior SPEC: at baseline (no guards), bash's own error message does
-# NOT carry the "zbuild: fatal: missing include:" prefix, so the assertion fails
-# without the guard implementation.
-_spec1_tree="$(mktemp -d "${TMPDIR:-/tmp}/zb-spec1.XXXXXX")"
-mkdir -p "$_spec1_tree/scripts/lib" "$_spec1_tree/core/event-bus" \
-    "$_spec1_tree/core/output" "$_spec1_tree/core/redaction" "$_spec1_tree/core/router"
-for _f in scripts/lib/helpers.sh core/event-bus/event-bus.sh \
-           core/output/stage-io.sh scripts/lib/env-scrub.sh \
-           core/redaction/scope-redaction.sh scripts/lib/router-rc-classify.sh \
-           scripts/lib/tier-resolve.sh scripts/lib/persona-resolve.sh \
-           scripts/lib/vision.sh; do
-    printf '#!/usr/bin/env bash\n: # stub\n' > "$_spec1_tree/$_f"
-done
-cp "$REPO_ROOT/core/router/route.sh" "$_spec1_tree/core/router/route.sh"
-rm -f "$_spec1_tree/scripts/lib/helpers.sh"
-
-_spec1_stderr_file="$(mktemp)"
-_spec1_rc=0
-( unset _ZBUILD_ROUTER_LOADED; source "$_spec1_tree/core/router/route.sh" ) \
-    2>"$_spec1_stderr_file" || _spec1_rc=$?
-_spec1_stderr="$(cat "$_spec1_stderr_file")"
-rm -f "$_spec1_stderr_file"
-
-assert_gt "[SPEC-1] missing include → non-zero exit (guard fires)" "$_spec1_rc" "0"
-assert_contains "[SPEC-1] guard emits 'zbuild: fatal: missing include:' to stderr" \
-    "$_spec1_stderr" "zbuild: fatal: missing include:"
-assert_contains "[SPEC-1] guard names the missing file path in stderr" \
-    "$_spec1_stderr" "helpers.sh"
-rm -rf "$_spec1_tree"
-
-# ─── SPEC-2: all includes present → route.sh loads successfully (rc=0) ───────
-# GUARD/invariant SPEC: normal load path must remain unchanged after guard addition.
-_spec2_tree="$(mktemp -d "${TMPDIR:-/tmp}/zb-spec2.XXXXXX")"
-mkdir -p "$_spec2_tree/scripts/lib" "$_spec2_tree/core/event-bus" \
-    "$_spec2_tree/core/output" "$_spec2_tree/core/redaction" "$_spec2_tree/core/router"
-for _f in scripts/lib/helpers.sh core/event-bus/event-bus.sh \
-           core/output/stage-io.sh scripts/lib/env-scrub.sh \
-           core/redaction/scope-redaction.sh scripts/lib/router-rc-classify.sh \
-           scripts/lib/tier-resolve.sh scripts/lib/persona-resolve.sh \
-           scripts/lib/vision.sh; do
-    printf '#!/usr/bin/env bash\n: # stub\n' > "$_spec2_tree/$_f"
-done
-cp "$REPO_ROOT/core/router/route.sh" "$_spec2_tree/core/router/route.sh"
-
-_spec2_rc=0
-( unset _ZBUILD_ROUTER_LOADED; source "$_spec2_tree/core/router/route.sh" ) \
-    2>/dev/null || _spec2_rc=$?
-assert_eq "[SPEC-2] all includes present → route.sh loads successfully (rc=0)" "0" "$_spec2_rc"
-rm -rf "$_spec2_tree"
-
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

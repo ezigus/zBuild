@@ -10,56 +10,68 @@ _ZBUILD_ROUTER_LOADED=1
 _ROUTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "$_ROUTER_DIR/../.." && pwd)"
 
-[[ -f "$_ZBUILD_ROOT/scripts/lib/helpers.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/scripts/lib/helpers.sh" >&2; exit 1; }
+# ─── base-include guard (#1624) ──────────────────────────────────────────────
+# route.sh is the base include for EVERY routing plugin, so one bad library here
+# takes down all dispatch at once. One helper rather than nine inline copies, so
+# the policy cannot drift between call sites.
+#
+# `exit`, not `return`: no caller checks `source route.sh`'s status (verified —
+# all 8+ call sites are a bare `source`), so returning would let a plugin run on
+# with the router half-loaded, which is the silent failure this issue exists to
+# remove.
+#
+# Syntax is checked with `bash -n` rather than `source X || …`: source returns
+# the LAST command's status, so a well-formed library ending in a merely-falsy
+# statement would be misreported as broken. `bash -n` parses without executing.
+_zbuild_route_require() {
+    local _p="$1"
+    [[ -f "$_p" ]] \
+        || { printf 'zbuild: fatal: missing include: %s\n' "$_p" >&2; exit 1; }
+    bash -n "$_p" 2>/dev/null \
+        || { printf 'zbuild: fatal: broken include: %s\n' "$_p" >&2; exit 1; }
+}
+
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
-[[ -f "$_ZBUILD_ROOT/core/event-bus/event-bus.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/core/event-bus/event-bus.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 source "$_ZBUILD_ROOT/core/event-bus/event-bus.sh"
 # ADR-015 v1 (#438): stage-io chokepoint — capture LLM prompt/response when
 # the current stage declares io.destinations. Sourced library is idempotent.
-[[ -f "$_ZBUILD_ROOT/core/output/stage-io.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/core/output/stage-io.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/core/output/stage-io.sh"
 source "$_ZBUILD_ROOT/core/output/stage-io.sh"
 # ADR-024 / #671 (Wave 13-B): fresh-user-shell helper for the claude spawn
 # subshells below (the 4 spawn sites in _route_call_claude + the loop).
-[[ -f "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
 source "$_ZBUILD_ROOT/scripts/lib/env-scrub.sh"
 # ADR-043 (redaction by construction): the router owns the redaction step, so
 # apply_scope_redaction must be available BY CONSTRUCTION in the model-call
 # path (single-shot + loop). Idempotent source; plugins that also source it
 # hit the load guard. See _route_redact_prompt / _route_ensure_redaction.
-[[ -f "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
 source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh"
 # #1237: rate-limit detection + honest reporting. The claude CLI reports a
 # rate/session limit as rc=1 with a misleading subtype:"success" envelope
 # (is_error:true + api_error_status ∈ {429,529}). _router_is_rate_limit /
 # _router_rate_limit_message let the router surface an honest disposition
 # instead of the opaque "claude CLI failed (rc=1)". Idempotent source.
-[[ -f "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # #1231 (ADR-003): resolve_tier — manifest config.tier_default is the single
 # source of truth for a plugin's tier (operator override ZBUILD_<ID>_TIER wins).
 # Sourced here so every routing plugin (all source route.sh) gets it by
 # construction, replacing the per-plugin hardcoded `${ZBUILD_<ID>_TIER:-Tn}`.
-[[ -f "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
 # ADR-051 (#1305): resolve_persona + persona_text — resolve a stage persona from
 # the four-step precedence chain (env > template-stage > template-global > generic)
 # with two-root discovery (installed tree + per-repo overlay). Sourced here so
 # every routing plugin gets resolve_persona/persona_text by construction.
-[[ -f "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
 # Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
 # can inject the advisory Intent preamble into every stage prompt.
-[[ -f "$_ZBUILD_ROOT/scripts/lib/vision.sh" ]] \
-    || { printf 'zbuild: fatal: missing include: %s\n' "$_ZBUILD_ROOT/scripts/lib/vision.sh" >&2; exit 1; }
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
