@@ -122,6 +122,13 @@ unset CI CI_MODE
 # All state-changing tests run in the parent shell so HEAD changes persist.
 cd "$REPO" || exit 1
 
+# ── Test: _intake_resolve_default_branch resolves 'main' in this repo ──
+# This repo has refs/heads/main (local fallback) and no remote.
+# [SPEC-3] verifies the new helper is present and returns the correct name.
+resolved_branch="$(_intake_resolve_default_branch 2>/dev/null)"
+assert_eq "[SPEC-3] _intake_resolve_default_branch resolves 'main' in main-default repo" \
+    "main" "$resolved_branch"
+
 # ── Test: first run creates branch ──
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "fix the branch creation" \
