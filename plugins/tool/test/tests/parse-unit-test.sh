@@ -417,4 +417,39 @@ else
     assert_pass "S6: 'total' aggregate is not shown as a suite"
 fi
 
+# ─── S7 (#1613): TIMEOUT is a non-passing marker, equal to FAIL ──────────────
+# run-tests.sh labels a file killed at its per-file bound TIMEOUT rather than
+# FAIL so a hang is distinguishable from an assertion failure. The parser must
+# still treat it as a failure: recognising only FAIL would under-count failures
+# and drop the timed-out file from the red set, so the targeted rerun would
+# never re-run the very file that hung.
+TIMEOUT_FIXTURE="$(cat <<'EOF'
+unit: TIMEOUT /repo/tests/unit/hang-test.sh (exceeded 480s, rc=124)
+unit: FAIL /repo/tests/unit/broken-test.sh
+unit: 10/12 passed (1 timed out)
+lint: FAIL (npm run lint)
+total: 10/12 passed
+EOF
+)"
+OUT="$(_split "$TIMEOUT_FIXTURE" 1)"
+IFS='|' read -r v p f s r <<< "$OUT"
+assert_eq "[SPEC-5] recognized=1 with a TIMEOUT marker present" "1" "$r"
+assert_eq "[SPEC-5] verdict=fail when a file timed out" "fail" "$v"
+# 3 markers: the TIMEOUT, the unit FAIL, and the file-less lint FAIL.
+assert_eq "[SPEC-5] TIMEOUT counts toward the failure count" "3" "$f"
+assert_contains "[SPEC-5] summary names the timed-out suite" "$s" "unit"
+
+# Red set: the timed-out file must be present. Its line ends in
+# `(exceeded 480s, rc=124)`, so a $NF-based extractor would yield `rc=124)`.
+RED="$(_test_extract_failing_files "$TIMEOUT_FIXTURE")"
+assert_contains "[SPEC-5] red set keeps the timed-out file" "$RED" "/repo/tests/unit/hang-test.sh"
+assert_contains "[SPEC-5] red set keeps the genuinely failing file" "$RED" "/repo/tests/unit/broken-test.sh"
+assert_eq "[SPEC-5] red set holds exactly the two real paths" "2" \
+    "$(printf '%s\n' "$RED" | grep -c '/')"
+if grep -q 'rc=' <<< "$RED"; then
+    assert_fail "[SPEC-5] red set must not capture the TIMEOUT suffix" "got: $RED"
+else
+    assert_pass "[SPEC-5] red set does not capture the TIMEOUT suffix"
+fi
+
 print_test_results

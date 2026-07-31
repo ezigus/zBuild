@@ -27,12 +27,50 @@ if [[ "$_RT_FILE_TIMEOUT" != "0" ]]; then
   fi
 fi
 
+# _rt_is_timeout_rc <rc> — true when the rc is the shape a killed file exits
+# with (#1613). 124 = GNU timeout/gtimeout gave up; 137 = SIGKILL (128+9);
+# 143 = SIGTERM (128+15), which is what the file sees when `timeout` signals it.
+# A test that deliberately exits one of these is indistinguishable — accepted:
+# the bound is the far likelier cause, and mislabelling a hang as an assertion
+# failure is the failure mode this exists to stop.
+_rt_is_timeout_rc() {
+  case "${1:-}" in 124|137|143) return 0 ;; *) return 1 ;; esac
+}
+
+# _rt_report_failure <tier> <file> <rc> <out_file> — emit the one-line marker for
+# a non-passing file, then replay its captured output (#1613).
+#
+# A bound-exceeded file gets `TIMEOUT` naming the bound instead of `FAIL`, and its
+# output is fenced with a warning: those assertions ran against a process being
+# torn down, so they are noise, not findings. Conflating the two is what made
+# #1609 unsolvable — two investigations chased fabricated assertion failures that
+# were only a timeout, one of them filing a bogus durability bug against
+# core/state/atomic.sh.
+#
+# The marker SHAPE is load-bearing: plugins/tool/test/lib/parse.sh matches
+# `^<tier>: (FAIL|TIMEOUT) <path>` for its failure count, its failing-suite list,
+# and the red set that drives targeted rerun. Changing either side alone breaks
+# the other.
+_rt_report_failure() {
+  local _name="$1" _file="$2" _rc="$3" _out="$4"
+  if _rt_is_timeout_rc "$_rc"; then
+    echo "$_name: TIMEOUT $_file (exceeded ${_RT_FILE_TIMEOUT}s, rc=$_rc)" >&2
+    echo "--- output below ran against a process being killed at its time bound;" >&2
+    echo "--- any assertion failures in it are UNTRUSTWORTHY (#1613) ---" >&2
+  else
+    echo "$_name: FAIL $_file" >&2
+  fi
+  [[ -n "$_out" && -f "$_out" ]] && { cat "$_out" >&2 || true; }
+  return 0
+}
+
 # _rt_run <test_file> <out_file> — run one test file in isolation:
 #   - stdin from /dev/null  → a file that reads stdin gets EOF, never blocks
 #   - fd 3 → /dev/null      → #586 stage-io load-time guard (LOAD-BEARING)
 #   - time-bounded          → a hung/looping file is killed (rc 124/137/143),
 #                             which lands in the caller's failure branch (the
 #                             honest outcome for a hang), never an infinite wait
+#                             — reported as TIMEOUT, not FAIL (#1613)
 # Returns the child's exit code.
 # Optional 3rd arg: a per-invocation trace file. When set, fd 9 is opened to it
 # so a child bash with BASH_XTRACEFD=9 (coverage mode — see --coverage-trace
@@ -100,7 +138,7 @@ _rt_tier_budget() {
 # the test plugin's verdict parser and red-set extractor recognise it.
 if [[ "${1:-}" == "--files" ]]; then
   shift
-  _tf_passed=0; _tf_failed=0; _tf_total=0
+  _tf_passed=0; _tf_failed=0; _tf_total=0; _tf_timedout=0
   for _tf in "$@"; do
     [[ -n "$_tf" ]] || continue
     # #929: only execute *-test.sh files. The targeted-rerun list can include
@@ -123,13 +161,18 @@ if [[ "${1:-}" == "--files" ]]; then
     fi
     _tf_total=$((_tf_total + 1))
     _tf_out="$(mktemp -t zbuild-test-targeted.XXXXXX)"
-    if _rt_run "$_tf" "$_tf_out"; then
+    _tf_rc=0
+    _rt_run "$_tf" "$_tf_out" || _tf_rc=$?
+    if [[ "$_tf_rc" -eq 0 ]]; then
       _tf_passed=$((_tf_passed + 1)); rm -f "$_tf_out"
     else
-      _tf_failed=$((_tf_failed + 1)); echo "unit: FAIL $_tf" >&2; cat "$_tf_out" >&2 || true; rm -f "$_tf_out"
+      _tf_failed=$((_tf_failed + 1))
+      _rt_is_timeout_rc "$_tf_rc" && _tf_timedout=$((_tf_timedout + 1))
+      _rt_report_failure "unit" "$_tf" "$_tf_rc" "$_tf_out"
+      rm -f "$_tf_out"
     fi
   done
-  echo "unit: $_tf_passed/$_tf_total passed"
+  echo "unit: $_tf_passed/$_tf_total passed$( [[ $_tf_timedout -gt 0 ]] && printf ' (%d timed out)' "$_tf_timedout" )"
   [[ $_tf_failed -eq 0 ]] && exit 0 || exit 1
 fi
 
@@ -239,15 +282,16 @@ _rt_is_serial_pinned() {
 _rt_run_serial_file() {
     local name="$1" f="$2" cov_dir="$3"
     total=$((total + 1))
-    local out
+    local out rc=0
     out="$(mktemp -t "zbuild-test-$name.XXXXXX")"
-    if _rt_run "$f" "$out" "${cov_dir:+$cov_dir/s$total.trace}"; then
+    _rt_run "$f" "$out" "${cov_dir:+$cov_dir/s$total.trace}" || rc=$?
+    if [[ "$rc" -eq 0 ]]; then
         passed=$((passed + 1))
         rm -f "$out"
     else
         failed=$((failed + 1))
-        echo "$name: FAIL $f" >&2
-        cat "$out" >&2 || true
+        _rt_is_timeout_rc "$rc" && timedout=$((timedout + 1))
+        _rt_report_failure "$name" "$f" "$rc" "$out"
         rm -f "$out"
     fi
 }
@@ -259,8 +303,12 @@ _rt_run_serial_file() {
 # suffix is appended AFTER the "P/T passed" token so existing parsers (the
 # build_test_cycle verdict parser, the --tier all aggregation) are unaffected.
 # Reads and clears the per-tier ZBUILD_TEST_SKIP_LOG.
+# #1613: a 4th arg carries the tier's timeout count. Appended to the SAME
+# parenthetical as the skip note, AFTER the "P/T passed" token, so the
+# `^<name>: N/M passed` anchor every parser keys on is untouched — a timed-out
+# file must never be mistakable for an ordinary assertion failure in the summary.
 _rt_emit_summary() {
-    local _name="$1" _passed="$2" _total="$3" _sk=0 _note=""
+    local _name="$1" _passed="$2" _total="$3" _to="${4:-0}" _sk=0 _note=""
     if [[ -n "${ZBUILD_TEST_SKIP_LOG:-}" && -f "${ZBUILD_TEST_SKIP_LOG}" ]]; then
         # NB: `grep -c` PRINTS "0" and EXITS non-zero on zero matches, so the old
         # `|| echo 0` appended a SECOND "0" → "0\n0" → an arithmetic syntax error
@@ -270,7 +318,13 @@ _rt_emit_summary() {
         _sk="$(grep -c . "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || true)"
         rm -f "$ZBUILD_TEST_SKIP_LOG"
     fi
-    [[ "${_sk:-0}" -gt 0 ]] && _note=" ($_sk skipped)"
+    local -a _bits=()
+    [[ "${_sk:-0}" -gt 0 ]] && _bits+=("$_sk skipped")
+    [[ "${_to:-0}" -gt 0 ]] && _bits+=("$_to timed out")
+    if [[ ${#_bits[@]} -gt 0 ]]; then
+        local IFS=', '
+        _note=" (${_bits[*]})"
+    fi
     echo "$_name: $_passed/$_total passed$_note"
 }
 
@@ -290,7 +344,7 @@ _rt_emit_tier_time() {
 run_tier() {
   local name="$1"
   local dir="$TESTS_DIR/$name"
-  local passed=0 failed=0 total=0
+  local passed=0 failed=0 total=0 timedout=0
 
   # #1058 Phase A: per-tier wall-clock. Captured at entry, emitted just before
   # each return (parallel + serial paths) via _rt_emit_tier_time. Gated on
@@ -470,8 +524,8 @@ run_tier() {
         passed=$((passed + 1))
       else
         failed=$((failed + 1))
-        echo "$name: FAIL $_file" >&2
-        cat "$_job_dir/$_i.out" >&2 || true
+        _rt_is_timeout_rc "$_rc" && timedout=$((timedout + 1))
+        _rt_report_failure "$name" "$_file" "$_rc" "$_job_dir/$_i.out"
       fi
     done
     rm -rf "$_job_dir"
@@ -479,7 +533,7 @@ run_tier() {
       cat "$_cov_dir"/*.trace > "$_RT_COVERAGE_TRACE" 2>/dev/null || :
       rm -rf "$_cov_dir"
     fi
-    _rt_emit_summary "$name" "$passed" "$total"
+    _rt_emit_summary "$name" "$passed" "$total" "$timedout"
     _rt_emit_tier_time "$name" "$_rt_tier_t0"
     [[ $failed -eq 0 ]]
     return
@@ -501,7 +555,7 @@ run_tier() {
     cat "$_cov_dir"/*.trace > "$_RT_COVERAGE_TRACE" 2>/dev/null || :
     rm -rf "$_cov_dir"
   fi
-  _rt_emit_summary "$name" "$passed" "$total"
+  _rt_emit_summary "$name" "$passed" "$total" "$timedout"
   _rt_emit_tier_time "$name" "$_rt_tier_t0"
   [[ $failed -eq 0 ]]
 }
