@@ -80,6 +80,44 @@ _intake_check_preflight() {
     return 0
 }
 
+# _intake_resolve_default_branch [repo] — resolve the remote default branch name.
+# Resolution order: (1) refs/remotes/origin/HEAD symbolic-ref stripped of
+# "origin/", (2) recognized remote refs: main/master/develop/trunk in order,
+# (3) local refs/heads/main then refs/heads/master. Returns empty string (no
+# output, rc=0) when nothing resolves — caller emits ahead_count=unknown.
+#
+# Every git call is anchored with `git -C` so the repo is explicit rather than
+# whatever $PWD happens to be, matching _intake_check_preflight's ZBUILD_MAIN_
+# REPO_ROOT handling. Defaults to $PWD, so bare calls behave as before.
+#
+# The prefix strip is `#origin/` (not `##*/`) on purpose: the symbolic-ref query
+# is pinned to refs/remotes/origin/HEAD, so the answer is always "origin/<name>",
+# and <name> may itself contain slashes (e.g. "release/v2"). Stripping to the
+# last slash would truncate those to "v2".
+_intake_resolve_default_branch() {
+    local repo="${1:-$PWD}"
+    local ref
+    ref="$(git -C "$repo" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"
+    if [[ -n "$ref" ]]; then
+        printf '%s\n' "${ref#origin/}"
+        return 0
+    fi
+    local candidate
+    for candidate in main master develop trunk; do
+        if git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$candidate" 2>/dev/null; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    for candidate in main master; do
+        if git -C "$repo" show-ref --verify --quiet "refs/heads/$candidate" 2>/dev/null; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 0
+}
+
 # _intake_checkout_branch <branch>
 # Idempotent checkout with error classification. Emits:
 #   - intake.branch.noop      (already on target)
@@ -137,8 +175,13 @@ _intake_checkout_branch() {
                 "plugin=intake" "branch=$target" "reason=post_checkout_mismatch"
             return 2
         fi
-        local ahead_count
-        ahead_count="$(git rev-list --count "main..$target" 2>/dev/null || echo 0)"
+        local default_branch ahead_count
+        default_branch="$(_intake_resolve_default_branch "$PWD")"
+        if [[ -z "$default_branch" ]]; then
+            ahead_count="unknown"
+        else
+            ahead_count="$(git rev-list --count "${default_branch}..$target" 2>/dev/null || echo unknown)"
+        fi
         emit_event "intake.branch.reused" \
             "plugin=intake" "branch=$target" "base=$base_sha" \
             "previous_head=$previous_head" "ahead_count=$ahead_count"
@@ -172,8 +215,13 @@ _intake_checkout_branch() {
                 "plugin=intake" "branch=$target" "reason=post_checkout_mismatch"
             return 2
         fi
-        local ahead_count
-        ahead_count="$(git rev-list --count "main..$target" 2>/dev/null || echo 0)"
+        local default_branch ahead_count
+        default_branch="$(_intake_resolve_default_branch "$PWD")"
+        if [[ -z "$default_branch" ]]; then
+            ahead_count="unknown"
+        else
+            ahead_count="$(git rev-list --count "${default_branch}..$target" 2>/dev/null || echo unknown)"
+        fi
         emit_event "intake.branch.adopted" \
             "plugin=intake" "branch=$target" "base=$base_sha" \
             "previous_head=$previous_head" "ahead_count=$ahead_count" "source=remote"
