@@ -120,31 +120,19 @@ resolve_persona() {
     local _overlay_blocked=0
 
     if [[ "$_persona_id_source" == "template" || "$_persona_id_source" == "config" ]]; then
-        # Installed-wins path: check installed first; accept overlay only if not found there.
-        local _inst_mf=""
-        _inst_mf="$(_find_persona_in_root "$persona_id" "$_installed_root" 2>/dev/null || true)"
-        if [[ -n "$_inst_mf" ]]; then
-            _found_mf="$_inst_mf"
-            # Check if overlay also has this id (for audit event).
-            if [[ -n "$_overlay_root" ]]; then
-                local _ovr_check=""
-                _ovr_check="$(_find_persona_in_root "$persona_id" "$_overlay_root" 2>/dev/null || true)"
-                if [[ -n "$_ovr_check" ]]; then
-                    _overlay_blocked=1
-                fi
+        # Installed-wins path: find_persona with prefer_installed=1 (ADR-051 §4, #1621).
+        # Installed root wins if it has the id; overlay only adds absent ids.
+        _found_mf="$(find_persona "$persona_id" "$_installed_root" "$_overlay_root" "1" 2>/dev/null || true)"
+        # Detect overlay-blocked (installed had it) vs overlay-used (only overlay had it).
+        if [[ -n "$_overlay_root" ]]; then
+            local _inst_check="" _ovr_check=""
+            _inst_check="$(_find_persona_in_root "$persona_id" "$_installed_root" 2>/dev/null || true)"
+            _ovr_check="$(_find_persona_in_root "$persona_id" "$_overlay_root" 2>/dev/null || true)"
+            if [[ -n "$_inst_check" && -n "$_ovr_check" ]]; then
+                _overlay_blocked=1
+            elif [[ -z "$_inst_check" && -n "$_ovr_check" && "$_found_mf" == "$_ovr_check" ]]; then
+                _overlay_used=1
             fi
-        else
-            # Not in installed: check overlay (additive persona).
-            if [[ -n "$_overlay_root" ]]; then
-                local _ovr_mf=""
-                _ovr_mf="$(_find_persona_in_root "$persona_id" "$_overlay_root" 2>/dev/null || true)"
-                if [[ -n "$_ovr_mf" ]]; then
-                    _found_mf="$_ovr_mf"
-                    _overlay_used=1
-                fi
-            fi
-            # If still not found, fall back to installed generic later.
-            [[ -z "$_found_mf" ]] && _found_mf="$(_find_persona_in_root "$persona_id" "$_installed_root" 2>/dev/null || true)"
         fi
     else
         # Env-override or generic-fallback: overlay wins on same id (original behavior).

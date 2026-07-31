@@ -38,23 +38,33 @@ _find_persona_in_root() {
     return 1
 }
 
-# ─── find_persona <id> [plugins_root] [overlay_root] ────────────────────────
+# ─── find_persona <id> [plugins_root] [overlay_root] [prefer_installed] ─────
 # Prints the manifest path of the kind:persona plugin with the given id.
-# When overlay_root is provided, it is scanned after plugins_root; if the same
-# id is found in the overlay, the overlay manifest wins (ADR-051 §4, #1305).
+# When overlay_root is provided and prefer_installed is unset/empty, the overlay
+# wins on the same id (original overlay-wins behavior, ADR-051 §4, #1305).
+# When prefer_installed=1 (ADR-051 §4 amendment, #1621 installed-wins policy):
+#   the installed root wins if it has the id; overlay only adds absent ids.
 # Returns 1 if no such persona is discoverable in either root.
 find_persona() {
     local want_id="$1"
     local plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}}"
     local overlay_root="${3:-}"
+    local prefer_installed="${4:-}"
     [[ -z "$want_id" ]] && return 1
     local _inst_mf="" _ovr_mf=""
     _inst_mf="$(_find_persona_in_root "$want_id" "$plugins_root" 2>/dev/null || true)"
     if [[ -n "$overlay_root" ]]; then
         _ovr_mf="$(_find_persona_in_root "$want_id" "$overlay_root" 2>/dev/null || true)"
     fi
-    if [[ -n "$_ovr_mf" ]]; then printf '%s\n' "$_ovr_mf"; return 0; fi
-    if [[ -n "$_inst_mf" ]]; then printf '%s\n' "$_inst_mf"; return 0; fi
+    if [[ "$prefer_installed" == "1" ]]; then
+        # Installed-wins: installed root has priority; overlay only adds absent ids.
+        if [[ -n "$_inst_mf" ]]; then printf '%s\n' "$_inst_mf"; return 0; fi
+        if [[ -n "$_ovr_mf" ]]; then printf '%s\n' "$_ovr_mf"; return 0; fi
+    else
+        # Original overlay-wins behavior.
+        if [[ -n "$_ovr_mf" ]]; then printf '%s\n' "$_ovr_mf"; return 0; fi
+        if [[ -n "$_inst_mf" ]]; then printf '%s\n' "$_inst_mf"; return 0; fi
+    fi
     return 1
 }
 
