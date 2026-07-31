@@ -23,12 +23,18 @@ _ZBUILD_ROOT="$(cd "$_ROUTER_DIR/../.." && pwd)"
 # Syntax is checked with `bash -n` rather than `source X || …`: source returns
 # the LAST command's status, so a well-formed library ending in a merely-falsy
 # statement would be misreported as broken. `bash -n` parses without executing.
+#
+# bash's own parse error carries the line and token; it is captured and FORWARDED
+# rather than discarded. Sending it to /dev/null would name the broken file while
+# deleting the only text saying what is broken about it — strictly worse for the
+# operator than the unguarded original, on an issue whose whole point is
+# diagnosability (PR #1651 review; the pattern #1631 exists to lint for).
 _zbuild_route_require() {
-    local _p="$1"
+    local _p="$1" _err
     [[ -f "$_p" ]] \
         || { printf 'zbuild: fatal: missing include: %s\n' "$_p" >&2; exit 1; }
-    bash -n "$_p" 2>/dev/null \
-        || { printf 'zbuild: fatal: broken include: %s\n' "$_p" >&2; exit 1; }
+    _err="$(bash -n "$_p" 2>&1)" \
+        || { printf 'zbuild: fatal: broken include: %s\n%s\n' "$_p" "$_err" >&2; exit 1; }
 }
 
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/helpers.sh"

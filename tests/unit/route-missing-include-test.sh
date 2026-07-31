@@ -109,9 +109,15 @@ assert_contains "[SPEC-2] the diagnostic names the broken file" \
     "$_LOAD_STDERR" "scripts/lib/tier-resolve.sh"
 assert_contains "[SPEC-2] the diagnostic is zbuild's, not a bare bash error" \
     "$_LOAD_STDERR" "zbuild: fatal: broken include:"
+# Naming the file is not enough: bash's parse error carries the line and token,
+# and discarding it would leave the operator worse off than before the guard.
+assert_contains "[SPEC-2] bash's parse detail is forwarded, not swallowed" \
+    "$_LOAD_STDERR" "syntax error"
 
 # ─── SPEC-3: the caller does not continue past a bad include ────────────────
 # The whole point: dispatch must stop, not proceed half-loaded.
+# $_LOAD_OUT is still SPEC-2's load (the broken tier-resolve.sh) — reused on
+# purpose, so do not reorder these blocks without adding a _load call here.
 # NB: there is no assert_not_contains in test-helpers.sh. Calling one would print
 # "command not found" and still leave the file reporting all-passed — an inert
 # assertion. Spelled out with pass/fail instead.
@@ -137,7 +143,7 @@ for _inc in "${_INCLUDES[@]}"; do
     _t="$(_stub_tree)"; rm -f "$_t/$_inc"
     _load "$_t"
     if [[ "$_LOAD_RC" -eq 0 ]] || ! grep -qF "missing include" <<<"$_LOAD_STDERR"; then
-        _unguarded="$_unguarded $_inc"
+        _unguarded="${_unguarded:+$_unguarded }$_inc"
     fi
 done
 if [[ -z "$_unguarded" ]]; then
