@@ -176,7 +176,7 @@ _intake_checkout_branch() {
             return 2
         fi
         local default_branch ahead_count
-        default_branch="$(_intake_resolve_default_branch)"
+        default_branch="$(_intake_resolve_default_branch "$PWD")"
         if [[ -z "$default_branch" ]]; then
             ahead_count="unknown"
         else
@@ -216,7 +216,7 @@ _intake_checkout_branch() {
             return 2
         fi
         local default_branch ahead_count
-        default_branch="$(_intake_resolve_default_branch)"
+        default_branch="$(_intake_resolve_default_branch "$PWD")"
         if [[ -z "$default_branch" ]]; then
             ahead_count="unknown"
         else
