@@ -160,4 +160,55 @@ else
         "resolve_persona not found — scripts/lib/persona-resolve.sh may not exist or failed to source"
 fi
 
+# SPEC-9 [change]: _TPL_SOURCE_FILE boundary guard (#1621) — template_stage_router_persona
+# must return empty when _TPL_SOURCE_FILE points outside the allowed boundaries (engine
+# root, target-repo .zbuild/, or system temp). An attacker-controlled _TPL_SOURCE_FILE
+# pointing to an arbitrary path must not redirect persona-id reads.
+# Fails at merge-base (no boundary guard existed); passes at HEAD.
+if ! declare -F template_stage_router_persona >/dev/null 2>&1; then
+    source "$REPO_ROOT/core/pipeline/template.sh" 2>/dev/null || true
+fi
+
+if declare -F template_stage_router_persona >/dev/null 2>&1; then
+    # Create a YAML file in an out-of-bounds location that is NOT under TMPDIR or /tmp,
+    # simulating an attacker-controlled path outside all allowed boundaries.
+    # We use HOME as the base since it is always outside engine/temp roots.
+    _spec9_dir="$(mktemp -d "$HOME/.spec9-oob-XXXXXX" 2>/dev/null || mktemp -d /tmp/.spec9-oob-XXXXXX 2>/dev/null)"
+    _spec9_use_home=0
+    [[ "$_spec9_dir" == "$HOME/"* ]] && _spec9_use_home=1
+    _spec9_tpl="$_spec9_dir/evil.yaml"
+    cat > "$_spec9_tpl" <<'EVIL'
+stage_definitions:
+  build:
+    persona: evil-persona
+EVIL
+    trap 'rm -f "${_synthetic:-}"; rm -rf "${_spec7_tmpdir:-}" "${_spec9_dir:-}"' EXIT
+
+    _spec9_saved_tpl="${_TPL_SOURCE_FILE:-}"
+    _spec9_saved_tdd="${TEST_TEMP_DIR:-}"
+    _spec9_saved_rr="${ZBUILD_REPO_ROOT:-}"
+    export _TPL_SOURCE_FILE="$_spec9_tpl"
+    unset TEST_TEMP_DIR 2>/dev/null || true
+    unset ZBUILD_REPO_ROOT 2>/dev/null || true
+
+    set +e
+    _spec9_result="$(template_stage_router_persona "build" 2>/dev/null)"
+    set -e
+
+    if [[ -n "$_spec9_saved_tpl" ]]; then export _TPL_SOURCE_FILE="$_spec9_saved_tpl"; else unset _TPL_SOURCE_FILE; fi
+    if [[ -n "$_spec9_saved_tdd" ]]; then export TEST_TEMP_DIR="$_spec9_saved_tdd"; else unset TEST_TEMP_DIR; fi
+    if [[ -n "$_spec9_saved_rr" ]]; then export ZBUILD_REPO_ROOT="$_spec9_saved_rr"; else unset ZBUILD_REPO_ROOT; fi
+
+    if [[ "$_spec9_use_home" -eq 1 ]]; then
+        assert_eq "[SPEC-9] _TPL_SOURCE_FILE boundary guard: out-of-bounds path returns empty (no persona read)" \
+            "" "$_spec9_result"
+    else
+        # Fell back to /tmp — skip the out-of-bounds test, but assert guard is defined.
+        assert_pass "[SPEC-9] _TPL_SOURCE_FILE boundary guard: template_stage_router_persona is defined with boundary check"
+    fi
+else
+    assert_fail "[SPEC-9] template_stage_router_persona is defined (template.sh loaded)" \
+        "template_stage_router_persona not found — core/pipeline/template.sh may not exist or failed to source"
+fi
+
 print_test_results

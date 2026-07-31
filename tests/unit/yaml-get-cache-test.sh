@@ -255,6 +255,42 @@ else
         "cache-off=[${_s11_off}] cache-on=[${_s11_on}]"
 fi
 
+# ── SPEC-6 [change]: awk literal matching — metacharacter in key must not
+# cross-match a different key (#1621 awk injection fix) ──────────────────────
+# Before the fix, _yaml_get_uncached used `$0 ~ "^"key":"` which treats key as
+# an ERE. A key containing '.' (matches any char) or '+' would cross-match
+# unrelated lines. After the fix, index()-based literal matching is used, so
+# "b.d" only matches the literal "b.d:", never "bad:" or "bcd:".
+_META_FIX="$TEST_TEMP_DIR/metachar.yaml"
+mkdir -p "$(dirname "$_META_FIX")"
+cat > "$_META_FIX" <<'EOF'
+bad: wrong-value
+b.d: correct-value
+EOF
+
+yaml_cache_flush
+set +e
+_meta_val="$(yaml_get "$_META_FIX" "b.d")"
+set -e
+assert_eq "[SPEC-6] key with regex metachar '.' returns correct literal match, not cross-match" \
+    "correct-value" "$_meta_val"
+
+# Nested key with metacharacter parent: "ho.ks.init" must NOT match "hooks:"
+_META_NESTED="$TEST_TEMP_DIR/metachar-nested.yaml"
+cat > "$_META_NESTED" <<'EOF'
+hooks:
+  init: nested-hooks-init
+ho.ks:
+  init: nested-literal-init
+EOF
+
+yaml_cache_flush
+set +e
+_meta_nested="$(yaml_get "$_META_NESTED" "ho.ks.init")"
+set -e
+assert_eq "[SPEC-6] nested key with metachar parent matches the literal parent, not hooks" \
+    "nested-literal-init" "$_meta_nested"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

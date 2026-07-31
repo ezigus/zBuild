@@ -628,6 +628,121 @@ assert_eq "[SPEC-16] empty stage_id falls back to ZBUILD_CURRENT_STAGE (design->
 unset ZBUILD_CURRENT_STAGE
 if [[ -n "$_spec12_prev_tpl" ]]; then export _TPL_SOURCE_FILE="$_spec12_prev_tpl"; else unset _TPL_SOURCE_FILE; fi
 
+# ── SPEC-7 [change]: installed-wins-for-pinned-ids — hostile overlay cannot
+# substitute a template-pinned persona (ADR-051 §4 amendment, #1621) ──────────
+# A template declares 'persona: architect'. The overlay ships its own 'architect'
+# manifest (a hostile replacement). resolve_persona must return the INSTALLED
+# architect, not the overlay one, because the id was sourced from the template.
+_SPEC7_INST="$TEST_TEMP_DIR/spec7-installed"
+_SPEC7_REPO="$TEST_TEMP_DIR/spec7-repo"
+_SPEC7_OVER="$_SPEC7_REPO/.zbuild/plugins"
+mkdir -p "$_SPEC7_INST/persona/architect" "$_SPEC7_INST/persona/generic" \
+         "$_SPEC7_OVER/persona/architect"
+cat > "$_SPEC7_INST/persona/architect/manifest.yaml" <<'MEOF'
+id: architect
+name: Architect (installed)
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: "Installed legitimate perspective."
+MEOF
+cat > "$_SPEC7_INST/persona/generic/manifest.yaml" <<'MEOF'
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+persona:
+  role: a baseline contributor
+  perspective: "Implement the task as specified."
+MEOF
+cat > "$_SPEC7_OVER/persona/architect/manifest.yaml" <<'MEOF'
+id: architect
+name: Architect (hostile overlay)
+kind: persona
+version: 0.1.0
+persona:
+  role: a software architect
+  perspective: "Hostile injected perspective."
+MEOF
+
+# Template that pins the architect persona for the build stage.
+_SPEC7_TPL="$TEST_TEMP_DIR/spec7-tpl.yaml"
+cat > "$_SPEC7_TPL" <<'TPLEOF'
+stage_definitions:
+  build:
+    persona: architect
+TPLEOF
+
+_spec7_prev_tpl="${_TPL_SOURCE_FILE:-}"
+_spec7_prev_proot="${ZBUILD_PLUGINS_ROOT:-}"
+export _TPL_SOURCE_FILE="$_SPEC7_TPL"
+export ZBUILD_PLUGINS_ROOT="$_SPEC7_INST"
+export ZBUILD_REPO_ROOT="$_SPEC7_REPO"
+unset ZBUILD_BUILD_PERSONA 2>/dev/null || true
+
+set +e
+_spec7_dir="$(resolve_persona "build" 2>/dev/null)"; _spec7_rc=$?
+set -e
+assert_eq "[SPEC-7] resolve_persona returns 0 for template-pinned id" "0" "$_spec7_rc"
+# The resolved path must point to the INSTALLED root, not the overlay.
+assert_contains "[SPEC-7] installed persona wins over hostile overlay for template-pinned id" \
+    "$_spec7_dir" "spec7-installed"
+# Explicitly assert the overlay path is NOT used.
+case "$_spec7_dir" in
+    *spec7-repo*) _spec7_overlay_used=1 ;;
+    *)            _spec7_overlay_used=0 ;;
+esac
+assert_eq "[SPEC-7] hostile overlay path is NOT used when installed has the pinned id" \
+    "0" "$_spec7_overlay_used"
+
+# Restore env.
+if [[ -n "$_spec7_prev_tpl" ]]; then export _TPL_SOURCE_FILE="$_spec7_prev_tpl"; else unset _TPL_SOURCE_FILE; fi
+ZBUILD_PLUGINS_ROOT="$_spec7_prev_proot"
+unset ZBUILD_REPO_ROOT 2>/dev/null || true
+
+# ── SPEC-8 [change]: ZBUILD_REPO_ROOT traversal guard (#1621) ─────────────────
+# A ZBUILD_REPO_ROOT containing '..' path components must be rejected; the
+# resolver must NOT scan the constructed overlay path (which would point outside
+# the legitimate tree). Resolver proceeds silently without error, falling back
+# to generic from the installed root only.
+_SPEC8_INST="$TEST_TEMP_DIR/spec8-installed"
+mkdir -p "$_SPEC8_INST/persona/generic"
+cat > "$_SPEC8_INST/persona/generic/manifest.yaml" <<'MEOF'
+id: generic
+name: Generic
+kind: persona
+version: 0.1.0
+persona:
+  role: a baseline contributor
+  perspective: "Implement the task as specified."
+MEOF
+
+_spec8_prev_proot="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$_SPEC8_INST"
+# Set a ZBUILD_REPO_ROOT with '..' traversal components.
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/../../etc"
+unset ZBUILD_BUILD_PERSONA 2>/dev/null || true
+unset _TPL_SOURCE_FILE 2>/dev/null || true
+
+set +e
+_spec8_dir="$(resolve_persona "build" 2>/dev/null)"; _spec8_rc=$?
+set -e
+assert_eq "[SPEC-8] resolve_persona returns 0 when ZBUILD_REPO_ROOT has traversal components (falls back to generic)" \
+    "0" "$_spec8_rc"
+assert_contains "[SPEC-8] traversal ZBUILD_REPO_ROOT is rejected; generic from installed root is used" \
+    "$_spec8_dir" "generic"
+# The resolved path must be within the installed root, not outside.
+case "$_spec8_dir" in
+    */etc/*) _spec8_escaped=1 ;;
+    *)       _spec8_escaped=0 ;;
+esac
+assert_eq "[SPEC-8] resolver does not escape to /etc via '..' in ZBUILD_REPO_ROOT" \
+    "0" "$_spec8_escaped"
+
+ZBUILD_PLUGINS_ROOT="$_spec8_prev_proot"
+unset ZBUILD_REPO_ROOT 2>/dev/null || true
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

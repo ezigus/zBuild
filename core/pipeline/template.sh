@@ -2657,24 +2657,50 @@ template_stage_router_tier() {
 template_stage_router_persona() {
     local stage_id="$1"
     [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    # _TPL_SOURCE_FILE boundary guard: must be within the engine root, the target
+    # repo's .zbuild/ directory, or the system temp directory. A path outside these
+    # boundaries returns empty without error, closing the file-redirect attack surface.
+    local _tpl_ok=0
+    if [[ "${_TPL_SOURCE_FILE}" == "${_ZBUILD_ROOT}"/* ]] || \
+       [[ -n "${ZBUILD_REPO_ROOT:-}" && "${_TPL_SOURCE_FILE}" == "${ZBUILD_REPO_ROOT}/.zbuild/"* ]] || \
+       [[ "${_TPL_SOURCE_FILE}" == "${TMPDIR:-/tmp}"/* ]] || \
+       [[ "${_TPL_SOURCE_FILE}" == "/tmp/"* ]] || \
+       [[ -n "${TEST_TEMP_DIR:-}" && "${_TPL_SOURCE_FILE}" == "${TEST_TEMP_DIR}"/* ]]; then
+        _tpl_ok=1
+    fi
+    [[ "$_tpl_ok" -eq 1 ]] || return 0
+    # Use index()-based literal matching to prevent ERE metacharacter injection
+    # from stage_id values containing '.', '*', '[', '+', etc.
     awk -v stage="$stage_id" '
         function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
-        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
-        $0 ~ "^[[:space:]]*-[[:space:]]+id:[[:space:]]*"stage"[[:space:]]*$" {
-            in_block = 1; block_ind = indent($0); in_defs = 0; next
+        function lit_top(line,   rest) {
+            if (index(line, stage":") != 1) return 0
+            rest = substr(line, length(stage) + 2)
+            return (rest ~ /^[[:space:]]*$/)
         }
+        function lit_listitem(line,   rest) {
+            if (line !~ /^[[:space:]]*-[[:space:]]+id:[[:space:]]*/) return 0
+            rest = line; sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", rest)
+            sub(/[[:space:]]*$/, "", rest); return (rest == stage)
+        }
+        function lit_defs(line,   prefix, rest) {
+            prefix = "  " stage ":"
+            if (index(line, prefix) != 1) return 0
+            rest = substr(line, length(prefix) + 1)
+            return (rest ~ /^[[:space:]]*$/)
+        }
+        lit_top($0) { in_block = 1; block_ind = 0; in_defs = 0; next }
+        lit_listitem($0) { in_block = 1; block_ind = indent($0); in_defs = 0; next }
         /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
         in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
-        in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" {
-            in_block = 1; block_ind = 2; in_defs = 0; next
-        }
+        in_defs && !in_block && lit_defs($0) { in_block = 1; block_ind = 2; in_defs = 0; next }
         in_block {
             ind = indent($0)
-            if ($0 ~ /[^[:space:]]/ && ind <= block_ind && $0 !~ "^"stage":") {
+            if ($0 ~ /[^[:space:]]/ && ind <= block_ind && index($0, stage":") != 1) {
                 in_block = 0
             }
         }
-        in_block && $0 ~ "^[[:space:]]+persona:[[:space:]]" {
+        in_block && /^[[:space:]]+persona:[[:space:]]/ {
             sub(/^[[:space:]]+persona:[[:space:]]*/, "")
             sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
             print; exit
@@ -2701,6 +2727,15 @@ template_config_worktree_root() {
 
 template_config_persona() {
     [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    local _tpl_ok=0
+    if [[ "${_TPL_SOURCE_FILE}" == "${_ZBUILD_ROOT}"/* ]] || \
+       [[ -n "${ZBUILD_REPO_ROOT:-}" && "${_TPL_SOURCE_FILE}" == "${ZBUILD_REPO_ROOT}/.zbuild/"* ]] || \
+       [[ "${_TPL_SOURCE_FILE}" == "${TMPDIR:-/tmp}"/* ]] || \
+       [[ "${_TPL_SOURCE_FILE}" == "/tmp/"* ]] || \
+       [[ -n "${TEST_TEMP_DIR:-}" && "${_TPL_SOURCE_FILE}" == "${TEST_TEMP_DIR}"/* ]]; then
+        _tpl_ok=1
+    fi
+    [[ "$_tpl_ok" -eq 1 ]] || return 0
     awk '
         /^config:[[:space:]]*$/ { in_config = 1; next }
         in_config && /^[a-zA-Z_]/ { in_config = 0 }

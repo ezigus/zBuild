@@ -87,8 +87,25 @@ repo, following the established `.zbuild/<category>/` convention of
 [ADR-016](ADR-016-per-repository-template-resolution.md) (templates) and
 [ADR-032](ADR-032-per-repo-prompt-overrides.md) (prompts): resolve the repo root as
 `${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}`, read the overlay
-silent-on-absent, and let the repo overlay **override** the installed entry for the same id. This
-makes personas user-extensible like any other plugin. Today `find_persona` scans a single root
+silent-on-absent.
+
+**Amendment (#1621) — installed-wins-for-pinned-ids policy:** When a persona id is resolved from
+the template binding (precedence steps 2 or 3 of §5), the **installed root wins** if it carries
+that id: the overlay may only supply ids absent from the installed tree (overlay-extends, not
+overlay-substitutes). This prevents a target repo's `.zbuild/plugins/persona/<id>/manifest.yaml`
+from silently substituting an attacker-controlled manifest for a template-pinned persona.
+For env-override ids (step 1), the overlay is still accepted — the operator's explicit choice
+takes precedence. When an overlay persona is used (accepted or blocked), `resolve_persona` emits a
+`persona.overlay.used` audit event with fields: `stage_id`, `persona_id`, `overlay_path`,
+`blocked` (true when the installed root blocked the overlay, false when the overlay was accepted).
+This makes all overlay activity operator-visible. Supersedes the earlier "overlay wins on same id"
+normative clause.
+
+`ZBUILD_REPO_ROOT` used to derive the overlay root is validated before use: it must be non-empty,
+start with `/`, and contain no `..` path components. An invalid value yields an empty overlay root
+(fail-open, matching the silent-on-absent contract for a missing overlay dir).
+
+This makes personas user-extensible like any other plugin. Today `find_persona` scans a single root
 and cannot see a repo-local persona (`core/plugin-registry/persona.sh:24`); closing that gap is
 net-new work in the resolver (#1305). The overlay must be an **additional** scan root, never
 leaked via `ZBUILD_PLUGINS_ROOT` into nested runners — preserving

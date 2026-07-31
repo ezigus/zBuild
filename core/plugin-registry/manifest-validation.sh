@@ -138,30 +138,44 @@ yaml_get() {
 _yaml_get_uncached() {
     local file="$1"
     local key="$2"
-    if [[ "$key" == *.* ]]; then
-        # Nested key like hooks.init: find "<parent>:" then indented "<child>:"
-        local parent="${key%.*}"
-        local child="${key#*.}"
-        awk -v parent="$parent" -v child="$child" '
-        $0 ~ "^"parent":" { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/ { in_block = 0 }
-        in_block && $0 ~ "^[[:space:]]+"child":" {
-            sub(/^[[:space:]]+[^:]+:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, "")
-            gsub(/^["'"'"']|["'"'"']$/, "")
-            print
-            exit
-        }
-        ' "$file" 2>/dev/null
-    else
-        # Top-level scalar
-        awk -v key="$key" '
-        $0 ~ "^"key":" {
+    # Try literal top-level match first — handles both plain keys AND literal dotted
+    # keys like "b.d:" that exist at the top level of the YAML file.
+    # Use index()-based matching to prevent ERE metacharacter injection from
+    # key values containing '.', '*', '[', '+', etc. (#1621).
+    # awk signals "found" vs "not-found" via exit code (0/1); missing file stays rc=2.
+    # Output is streamed directly (not captured) to preserve empty-value newlines.
+    awk -v key="$key" '
+        index($0, key":") == 1 {
             sub(/^[^:]+:[[:space:]]*/, "")
             sub(/[[:space:]]*#.*/, "")
             gsub(/^["'"'"']|["'"'"']$/, "")
-            print
-            exit
+            print; found=1; exit
+        }
+        END { exit !found }
+    ' "$file" 2>/dev/null
+    local _top_rc=$?
+    # rc=0: found as literal top-level key — done.
+    # rc=2: file is missing — propagate rc without trying nested.
+    [[ "$_top_rc" -eq 0 || "$_top_rc" -eq 2 ]] && return "$_top_rc"
+    # rc=1: key not found as literal top-level. If it contains a dot, try nested:
+    # "hooks.init" → parent="hooks", child="init".
+    # Use %/* (strip last dot+suffix) and ##*. (strip longest prefix+dot) so a
+    # dotted parent like "ho.ks.init" splits as parent="ho.ks", child="init".
+    if [[ "$key" == *.* ]]; then
+        local parent="${key%.*}"
+        local child="${key##*.}"
+        awk -v parent="$parent" -v child="$child" '
+        index($0, parent":") == 1 { in_block = 1; next }
+        in_block && /^[a-zA-Z_]/ { in_block = 0 }
+        in_block {
+            s = $0; sub(/^[[:space:]]+/, "", s)
+            if (index(s, child":") == 1) {
+                sub(/^[[:space:]]+[^:]+:[[:space:]]*/, "")
+                sub(/[[:space:]]*#.*/, "")
+                gsub(/^["'"'"']|["'"'"']$/, "")
+                print
+                exit
+            }
         }
         ' "$file" 2>/dev/null
     fi
