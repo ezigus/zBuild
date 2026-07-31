@@ -70,7 +70,7 @@ case "$out" in
     *) assert_fail "G2: stdin-reading test should pass" "out: $out" ;;
 esac
 
-# ─── G3: an infinite-loop *-test.sh is killed by the per-file timeout → FAIL ──
+# ─── G3: an infinite-loop *-test.sh is killed by the per-file timeout ─────────
 # Requires a REAL enforcing timeout — run-tests.sh degrades to no-timeout when
 # none exists, so there is nothing to assert on such a host. Gate accordingly.
 if [[ -n "$_REAL_TIMEOUT" ]]; then
@@ -81,9 +81,15 @@ if [[ -n "$_REAL_TIMEOUT" ]]; then
     # what stopped it — the per-file timeout (3s) should. rc=124 here would mean
     # the outer bound fired = the per-file timeout did NOT work = still wedged.
     assert_eq "G3: infinite-loop test failed via per-file timeout, not outer bound" "1" "$rc"
+    # #1613: this file is killed at its bound, so the marker is TIMEOUT, not FAIL.
+    # G3's subject is unchanged — the hung file must SURFACE rather than wedge the
+    # run — but asserting `FAIL` here would now be asserting the exact conflation
+    # #1613 exists to remove, since a reader could not tell this from an assertion
+    # failure. The bound is named so the line is self-explaining.
     case "$out" in
-        *"unit: FAIL $FX/infinite-loop-test.sh"*) assert_pass "G3: hung test surfaced as FAIL (not a hang)" ;;
-        *) assert_fail "G3: infinite-loop test must surface as FAIL" "out: $out" ;;
+        *"unit: TIMEOUT $FX/infinite-loop-test.sh (exceeded 3s,"*)
+            assert_pass "G3: hung test surfaced as TIMEOUT naming the bound (not a hang)" ;;
+        *) assert_fail "G3: infinite-loop test must surface as TIMEOUT" "out: $out" ;;
     esac
 else
     assert_pass "G3: skipped — no real gtimeout/timeout on host (run-tests.sh degrades to no-timeout)"
