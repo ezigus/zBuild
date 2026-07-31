@@ -29,6 +29,10 @@ source "$_ACCEPTANCE_NEGCTL_DIR/acceptance-block.sh"
 source "$_ACCEPTANCE_NEGCTL_DIR/acceptance-coverage.sh"
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_NEGCTL_DIR/merge-base.sh"
+# #1644: the sandbox below scrubs runner state via the SAME contract the test
+# stage uses, instead of a second, partial hand-list that keeps falling behind.
+# shellcheck source=env-scrub.sh
+source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh"
 
 # A timeout leaves the run's true pass/fail unknown, so it is an INFRASTRUCTURE
 # signal, never a control/violation (ADR-036 #1188): `timeout` exits 124 when it
@@ -53,29 +57,19 @@ _negctl_run() {
     fi
     (
         cd "$cwd" || exit 2
-        unset ZBUILD_TEST_QUIET
-        # #983: the negctl sandbox must never inherit test-runner parallelism from
-        # the pipeline env. A tagged TESTFILE that invokes run-tests.sh could
-        # otherwise fan a non-parallel-safe tier out and deadlock — the #983
-        # fork-bomb hit BOTH the test-stage AND this sandbox. The test stage scrubs
-        # via _zbuild_make_fresh_shell (plugins/tool/test/plugin.sh); _negctl_run
-        # does not, so scrub the parallelism knobs explicitly here.
-        unset ZBUILD_TEST_PARALLEL_JOBS ZBUILD_PARALLEL_SAFE_TIERS
-        # #1211/#1567: the sandbox must not inherit ANY ZBUILD_STAGE_IO_* banner
-        # control from the pipeline env. Two failure modes this scrub covers:
-        #  - fd channel (#1211): the runner exports ZBUILD_STAGE_IO_FD=3 (banners
-        #    survive `2>/dev/null`). A nested TESTFILE's banners would then escape
-        #    to the terminal via inherited fd 3, bypassing this sandbox's capture.
-        #  - render steering (#1567): the pipeline sets ZBUILD_STAGE_IO_SEQ_LABEL
-        #    (hierarchical seq like "5.1.1") and ZBUILD_STAGE_IO_PERSONA. A tagged
-        #    TESTFILE that asserts a fresh banner (e.g. seq=1) then fails at HEAD
-        #    purely from the leaked label — a false not_passing_at_head.
-        # Scrub the whole family by prefix so a new sibling var is covered without
-        # editing this list; the fd-3 redirect below closes the escaped channel.
-        # Sibling #1127 = the general isolation.
-        for _sio_var in "${!ZBUILD_STAGE_IO_@}"; do
-            unset "$_sio_var"
-        done
+        # #1644: scrub ALL runner state, not a hand-picked subset. This list grew
+        # once per outage — #983 (test-runner parallelism, a fork-bomb), #1211
+        # (ZBUILD_STAGE_IO_FD escaping via inherited fd 3), #1567 (banner labels)
+        # — and each time the NEXT leaked variable was found the same way: a
+        # correct change rejected with a false not_passing_at_head. #1644 was the
+        # fourth, ZBUILD_RUN_ID, which flips the router into its in-a-run branch
+        # and fails 21 unrelated assertions in any TESTFILE that calls it.
+        #
+        # env-scrub.sh already settled this argument for the test stage: "per-var
+        # scrub doesn't generalize" (#645/Wave 11A missed ZBUILD_RUN_ID for the
+        # same reason). Using the same contract here means a new runner variable
+        # cannot leak into a TESTFILE without someone deliberately exempting it.
+        _zbuild_make_fresh_shell
         if [[ -n "$logfile" ]]; then
             "${runner[@]}" >>"$logfile" 2>&1 3>>"$logfile"
         else
