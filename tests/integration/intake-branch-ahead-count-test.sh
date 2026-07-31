@@ -55,24 +55,31 @@ _make_master_repo() {
     git -C "$bare" symbolic-ref HEAD "refs/heads/master" 2>/dev/null
 
     # Seed bare via a throwaway clone: add an initial commit and push.
+    # The subshell's rc is checked — a silently-failed seed would otherwise leave
+    # an empty bare repo, and the failure would surface much later as a baffling
+    # assertion mismatch instead of "setup failed".
     git clone "$bare" "$tmp_init" >/dev/null 2>&1
     (
+        set -e
         cd "$tmp_init"
         git config user.email "test@zbuild.local"
         git config user.name "zbuild-test"
         git config commit.gpgsign false
-        # Ensure we're on master
-        cur="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
-        [[ "$cur" != "master" ]] && git checkout -b master 2>/dev/null
+        # Unborn HEAD: -b names the branch regardless of init.defaultBranch.
+        git checkout -q -b master 2>/dev/null || git symbolic-ref HEAD refs/heads/master
         echo "seed" > seed.txt
         git add seed.txt
         git commit -q -m "seed"
         git push -q origin HEAD:"refs/heads/master"
-    ) >/dev/null 2>&1
+    ) >/dev/null 2>&1 || { printf '' ; return 1; }
     rm -rf "$tmp_init"
 
+    # The bare repo MUST now carry master; a bare `.git` check downstream cannot
+    # tell "seeded" from "empty", and an unborn HEAD makes `checkout master` a no-op.
+    git -C "$bare" show-ref --verify --quiet refs/heads/master || { printf ''; return 1; }
+
     # Clone for the test; git sets origin/HEAD → origin/master automatically.
-    git clone "$bare" "$work" >/dev/null 2>&1
+    git clone "$bare" "$work" >/dev/null 2>&1 || { printf ''; return 1; }
     (
         cd "$work"
         git config user.email "test@zbuild.local"
@@ -163,14 +170,12 @@ mkdir -p "$REPO_C"
     git config user.email "test@zbuild.local"
     git config user.name "zbuild-test"
     git config commit.gpgsign false
-    # Use a non-standard branch so no local fallback (main/master) matches.
-    cur="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
-    [[ -z "$cur" || "$cur" == "main" || "$cur" == "master" ]] \
-        && git checkout -q -b customdev 2>/dev/null
+    # Name the branch on the UNBORN HEAD, before the first commit: no main/master
+    # ref is ever created, so the helper's local fallback has nothing to match and
+    # must return empty. Doing this up front makes the fixture independent of the
+    # host's init.defaultBranch — the earlier conditional-rename dance was not.
+    git checkout -q -b customdev 2>/dev/null || git symbolic-ref HEAD refs/heads/customdev
     echo "seed" > seed.txt && git add seed.txt && git commit -q -m "seed"
-    # Rename to customdev if git defaulted to main/master.
-    cur2="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
-    [[ "$cur2" != "customdev" ]] && git branch -m "$cur2" customdev 2>/dev/null
     # Feature branch 1 commit ahead.
     git checkout -q -b zbuild/issue-1648-unresolvable
     echo "x" > x.txt && git add x.txt && git commit -q -m "x"
