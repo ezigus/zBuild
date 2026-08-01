@@ -92,13 +92,13 @@ _ABORTED_LINE=""
 while IFS= read -r _ln; do
     [[ "$_ln" == *ABORTED* ]] && _ABORTED_LINE="$_ln" && break
 done <<< "$_MUT_OUT"
-if ! printf '%s\n' "$_ABORTED_LINE" | grep -qE '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed'; then
+if ! grep -qE '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed' <<< "$_ABORTED_LINE"; then
     assert_pass "[SPEC-2] ABORTED line does not match passed-count regex"
 else
     assert_fail "[SPEC-2] ABORTED line must not match passed-count regex" \
         "line: $_ABORTED_LINE"
 fi
-if ! printf '%s\n' "$_ABORTED_LINE" | grep -qE '^[A-Za-z][A-Za-z0-9_-]*: (FAIL|TIMEOUT) '; then
+if ! grep -qE '^[A-Za-z][A-Za-z0-9_-]*: (FAIL|TIMEOUT) ' <<< "$_ABORTED_LINE"; then
     assert_pass "[SPEC-2] ABORTED line does not match FAIL/TIMEOUT marker regex"
 else
     assert_fail "[SPEC-2] ABORTED line must not match FAIL/TIMEOUT marker regex" \
@@ -116,7 +116,7 @@ assert_contains "[SPEC-3] clean tree + empty dir → 'mutation: 0/0 passed'" \
 # Clean tree → _assert_clean_targets passes → script proceeds normally (spec
 # fails at structural gate). ABORTED must be absent from stdout.
 _run_mut "$SPEC_MUT"
-if ! printf '%s\n' "$_MUT_OUT" | grep -q "ABORTED"; then
+if ! grep -q "ABORTED" <<< "$_MUT_OUT"; then
     assert_pass "[SPEC-3] clean tree + non-empty dir → ABORTED absent from stdout"
 else
     assert_fail "[SPEC-3] ABORTED must not appear when tree is clean" \
