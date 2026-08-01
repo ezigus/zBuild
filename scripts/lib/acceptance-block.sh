@@ -252,8 +252,10 @@ _acceptance_timeout_prefix() {
     local kill_grace="${ZBUILD_NEGCTL_KILL_GRACE:-10}"
     _ACCEPTANCE_TOUT=()
     local bin=""
-    if   command -v timeout  >/dev/null 2>&1; then bin="timeout"
-    elif command -v gtimeout >/dev/null 2>&1; then bin="gtimeout"
+    # gtimeout first, same order as run-tests.sh: where both exist gtimeout is
+    # unambiguously GNU, while `timeout` may be a thinner platform build.
+    if   command -v gtimeout >/dev/null 2>&1; then bin="gtimeout"
+    elif command -v timeout  >/dev/null 2>&1; then bin="timeout"
     else return 0
     fi
     if [[ -z "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" ]]; then

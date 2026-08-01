@@ -464,20 +464,25 @@ fi
 # plain TERM-only bound.
 _FAKE_BIN="$TEST_TEMP_DIR/fakebin"
 mkdir -p "$_FAKE_BIN"
-cat > "$_FAKE_BIN/timeout" <<'FEOF'
+# Shadow BOTH names: the helper resolves gtimeout first, so stubbing only
+# `timeout` would leave a coreutils host running the real gtimeout.
+cat > "$_FAKE_BIN/gtimeout" <<'FEOF'
 #!/usr/bin/env bash
 [[ "$1" == "-k" ]] && { echo "timeout: invalid option -- 'k'" >&2; exit 125; }
 exit 0
 FEOF
-chmod +x "$_FAKE_BIN/timeout"
+chmod +x "$_FAKE_BIN/gtimeout"
+cp "$_FAKE_BIN/gtimeout" "$_FAKE_BIN/timeout"
 (
     PATH="$_FAKE_BIN:$PATH"
     unset _ACCEPTANCE_TIMEOUT_KILL_OK
     _acceptance_timeout_prefix 33
-    printf '%s\n' "${_ACCEPTANCE_TOUT[*]}" > "$TEST_TEMP_DIR/nok.out"
+    # Only the flags matter here; the binary name varies by host.
+    _joined="${_ACCEPTANCE_TOUT[*]}"
+    printf '%s\n' "${_joined#* }" > "$TEST_TEMP_DIR/nok.out"
 )
 assert_eq "NC-P3: timeout without -k support → TERM-only bound, no -k in argv" \
-    "timeout 33" "$(cat "$TEST_TEMP_DIR/nok.out")"
+    "33" "$(cat "$TEST_TEMP_DIR/nok.out")"
 
 # ── NC-Q: [SPEC-4] a TESTFILE that exits rc=137 → NEGCTL ERROR timeout, not
 # not_passing_at_head (end-to-end through acceptance_negctl_check) ─────────────
