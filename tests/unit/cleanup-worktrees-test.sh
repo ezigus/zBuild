@@ -37,6 +37,14 @@
 # is not permanently excluded for some unrelated reason — a real and different
 # failure mode. They are NOT mutation verification, which varies the CODE.
 #
+# #1634 adds a THIRD companion per guard, and it closes a gap the other two
+# cannot. Both existing forms are still satisfied by a scanner that examined
+# nothing at all — absence proves the worktree was not reclaimed, never that it
+# was considered. Since #1634 the scanner emits `<path>\tskip\t<reason>` for every
+# worktree it examined and kept, so each SPEC additionally asserts the NAMED guard
+# fired. Note this changes what the scan output contains: `_scan_has` now requires
+# a `prune` decision, because a path alone now also appears on skip lines.
+#
 # SPEC-4: the ACTIVE run's worktree is kept (resume needs it)
 # SPEC-5: worktrees outside the zbuild run root are ignored entirely
 # SPEC-6: applying removes the worktree AND its git registration (not just rm -rf)
@@ -108,9 +116,20 @@ _canon_str() {
 }
 # Capture then match: `producer | grep -q` SIGPIPEs the producer when grep exits
 # early (#1015/#1260), which under pipefail turns a correct scan into a failure.
+# Matches the PRUNE decision, not merely the path. Since #1634 the scanner also
+# emits `skip` lines for worktrees it examined and kept, so a path-only match is
+# satisfied by a worktree the scanner REFUSED to reclaim — which would invert the
+# meaning of every `! _scan_has` assertion below.
 _scan_has() {
+    local _out _line; _out="$(_scan "${2:-14}")"
+    _line="$(grep -F "$(_canon "$1")" <<< "$_out" || true)"
+    grep -qF $'\tprune\t' <<< "$_line"
+}
+
+# The decision+reason for one worktree, or "" when the scanner never examined it.
+_scan_line() {
     local _out; _out="$(_scan "${2:-14}")"
-    grep -qF "$(_canon "$1")" <<< "$_out"
+    grep -F "$(_canon "$1")" <<< "$_out" || true
 }
 
 # ── SPEC-1: old, clean, PUSHED worktree is a candidate ──────────────────────
@@ -141,6 +160,17 @@ else
     assert_fail "[SPEC-2] WT_NEW must appear at age_days=0; something other than age excludes it" \
         "scan0: $(_scan 0)"
 fi
+# #1634 reason assertion. The two above prove the worktree is not reclaimed and
+# that age is what excludes it. Neither can tell "kept, because too new" from
+# "never examined" — the silence this issue exists to remove. Assert the named
+# guard, so an empty scan can no longer satisfy SPEC-2.
+_new_line="$(_scan_line "$WT_NEW" 14)"
+if grep -qF $'\tskip\t' <<< "$_new_line" && grep -qF "newer than" <<< "$_new_line"; then
+    assert_pass "[SPEC-2] the fresh worktree is reported as skip:newer-than, not silently absent"
+else
+    assert_fail "[SPEC-2] a kept-because-fresh worktree must emit skip with the age reason" \
+        "line: ${_new_line:-<worktree never examined>}"
+fi
 
 # ── SPEC-3: uncommitted work is kept, however old ───────────────────────────
 WT_DIRTY="$(_mk dirty-run zbuild/issue-3-dirty 0)"
@@ -150,6 +180,15 @@ if ! _scan_has "$WT_DIRTY" 14; then
     assert_pass "[SPEC-3] a worktree with uncommitted work is kept"
 else
     assert_fail "[SPEC-3] never reclaim a worktree holding uncommitted work" "scan: $(_scan 14)"
+fi
+# #1634 reason assertion — see the SPEC-2 note above. Asserted BEFORE the
+# positive flip below, which deletes the untracked file the dirty guard fires on.
+_dirty_line="$(_scan_line "$WT_DIRTY" 14)"
+if grep -qF $'\tskip\t' <<< "$_dirty_line" && grep -qF "uncommitted" <<< "$_dirty_line"; then
+    assert_pass "[SPEC-3] the dirty worktree is reported as skip:uncommitted, not silently absent"
+else
+    assert_fail "[SPEC-3] a kept-because-dirty worktree must emit skip with the uncommitted reason" \
+        "line: ${_dirty_line:-<worktree never examined>}"
 fi
 # Positive-flip: remove the untracked file so the worktree becomes clean; re-backdate
 # because rm touches the parent directory. The now-clean old worktree must appear —
@@ -167,10 +206,18 @@ fi
 WT_ACTIVE="$(_mk active-run zbuild/issue-4-active 0)"
 _backdate "$WT_ACTIVE" 30
 _out_active="$(cd "$R" && ZBUILD_RUN_ID=active-run _cleanup_scan_worktrees 14)"
-if ! grep -qF "$(_canon "$WT_ACTIVE")" <<< "$_out_active"; then
+_active_line="$(grep -F "$(_canon "$WT_ACTIVE")" <<< "$_out_active" || true)"
+if ! grep -qF $'\tprune\t' <<< "$_active_line"; then
     assert_pass "[SPEC-4] the active run's worktree is kept (resume needs it)"
 else
     assert_fail "[SPEC-4] must never reclaim the active run's worktree" "scan: $_out_active"
+fi
+# #1634 reason assertion — see the SPEC-2 note above.
+if grep -qF $'\tskip\t' <<< "$_active_line" && grep -qF "active run" <<< "$_active_line"; then
+    assert_pass "[SPEC-4] the active run's worktree is reported as skip:active-run"
+else
+    assert_fail "[SPEC-4] the active run must emit skip naming it as the reason" \
+        "line: ${_active_line:-<worktree never examined>}"
 fi
 
 # ── SPEC-5: worktrees outside the run root are ignored ──────────────────────
@@ -233,6 +280,9 @@ else
 fi
 
 # ── SPEC-3 (change): applier defence-in-depth — refuses dirty worktree ───────
+# The [SPEC-3] tag is deliberately reused: one invariant ("never reclaim a
+# worktree holding work"), enforced independently at two layers. The assertion
+# text names which layer failed.
 # The scanner already excludes dirty worktrees; this verifies the applier has
 # its own pre-check so a hand-crafted plan or race cannot force-remove work.
 # At merge-base _cleanup_apply_worktree_plan used --force with no pre-check;
