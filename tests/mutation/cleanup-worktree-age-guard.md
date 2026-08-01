@@ -14,8 +14,8 @@ p = pathlib.Path("scripts/lib/cleanup.sh")
 src = p.read_text()
 marker = "_cleanup_scan_worktrees()"
 i = src.index(marker)
-old = '        [[ "$mtime" -gt "$cutoff" ]] && continue\n'
-new = '        : # MUTATED: age guard removed\n'
+old = '        if [[ "$mtime" -gt "$cutoff" ]]; then\n'
+new = '        if false; then # MUTATED: age guard removed\n'
 # Scope the replacement to _cleanup_scan_worktrees — the identical line also
 # appears in _cleanup_scan_state_files, and mutating that one proves nothing here.
 assert old in src[i:], "age-guard target not found inside _cleanup_scan_worktrees"

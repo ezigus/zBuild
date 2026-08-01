@@ -458,16 +458,17 @@ _cleanup_render_plan() {
         local target rest decision reason
         target="${line%%$'\t'*}"
         rest="${line#*$'\t'}"
-        if [[ "$kind" == "branches" || "$kind" == "stashes" || "$kind" == "tmpdirs" ]]; then
+        if [[ "$kind" == "branches" || "$kind" == "stashes" || "$kind" == "tmpdirs" \
+              || "$kind" == "worktrees" ]]; then
             decision="${rest%%$'\t'*}"
             reason="${rest#*$'\t'}"
-            printf '  %-40s  %-6s  %s\n' "$target" "$decision" "$reason"
-        elif [[ "$kind" == "worktrees" ]]; then
-            # scan emits: <path>\t<branch>\t<age_days>   (age is a bare integer)
-            local wt_branch wt_age
-            wt_branch="${rest%%$'\t'*}"
-            wt_age="${rest#*$'\t'}"
-            printf '  %-60s  branch=%s age=%s\n' "$target" "$wt_branch" "$wt_age"
+            # Worktree targets are absolute paths and routinely exceed 40 chars,
+            # which would push the decision column out of alignment on every real
+            # invocation. Keep the 60-wide column worktrees rendered with before
+            # they joined this shared decision/reason format (#1634).
+            local _w=40
+            [[ "$kind" == "worktrees" ]] && _w=60
+            printf '  %-*s  %-6s  %s\n' "$_w" "$target" "$decision" "$reason"
         else
             reason="$rest"
             printf '  %-60s  %s\n' "$target" "$reason"
@@ -476,17 +477,30 @@ _cleanup_render_plan() {
 }
 
 # ─── _cleanup_scan_worktrees <age_days> ──────────────────────────────────────
-# Emit reclaimable per-run worktrees, one per line: "<path>\t<branch>\t<age_days>".
+# Emit one decision per examined per-run worktree: "<path>\t<decision>\t<reason>",
+# where <decision> is `prune` (reclaimable; reason carries branch + age) or `skip`
+# (kept; reason names the guard that fired).
+#
+# #1634: reporting only the selected entries made a clean scan and a BROKEN scan
+# indistinguishable — "no candidates because everything is protected" and "no
+# candidates because the filter matched nothing" produced identical empty output.
+# Four defects shipped behind that silence (path canonicalisation, run-id reuse,
+# an ignored ZBUILD_WORKTREE_ROOT, an unconditional rmdir of the operator's root);
+# none announced itself, because doing nothing looked exactly like success.
+# Naming the guard that fired is what makes the difference visible.
+#
+# Callers that ACT on this must filter to `decision == prune` — see scripts/zbuild.
 #
 # Per-run worktrees (#888) are the largest artifact a run leaves — a full working
 # tree each. Reuses the existing porcelain parsing and safety predicates in this
 # file rather than adding a second worktree scanner.
 #
-# KEEPS (never emits) a worktree that:
+# KEEPS (emits `skip`, never `prune`) a worktree that:
 #   - belongs to the currently-active run ($ZBUILD_RUN_ID) — resume needs it;
 #   - is newer than <age_days>;
 #   - has uncommitted work, or commits not yet pushed. Reclaiming either would
 #     destroy work, and a pruner that can eat work is worse than none.
+# Worktrees outside the run root are not ours and are filtered silently.
 _cleanup_scan_worktrees() {
     local age_days="${1:-14}"
     local now; now="$(date +%s)"
@@ -523,7 +537,9 @@ _cleanup_scan_worktrees() {
     local wt branch mtime age_d
     while IFS= read -r wt; do
         [[ -n "$wt" && -d "$wt" ]] || continue
-        # Ours under either layout.
+        # Ours under either layout. Anything outside the zbuild run root is not
+        # ours to examine, so it is filtered silently — no skip line. Every
+        # worktree that IS ours produces a decision from here on (#1634).
         local _mine=0
         case "$wt" in "$run_root"/*/worktree) _mine=1 ;; esac
         [[ -n "$override_root" ]] && case "$wt" in "$override_root"/*) _mine=1 ;; esac
@@ -532,23 +548,33 @@ _cleanup_scan_worktrees() {
         if [[ -n "${ZBUILD_RUN_ID:-}" ]] \
            && { [[ "$wt" == "$run_root/${ZBUILD_RUN_ID}/worktree" ]] \
                 || { [[ -n "$override_root" ]] && [[ "$wt" == "$override_root/${ZBUILD_RUN_ID}" ]]; }; }; then
+            # Strip separators from the interpolated id: these lines are
+            # tab-delimited and feed a delete path, so a run id carrying a tab
+            # must not be able to shift a caller's field split.
+            local _rid="${ZBUILD_RUN_ID//[$'\t\n']/ }"
+            printf '%s\tskip\tactive run (ZBUILD_RUN_ID=%s)\n' "$wt" "$_rid"
             continue
         fi
         mtime="$(stat -c %Y "$wt" 2>/dev/null || stat -f %m "$wt" 2>/dev/null || echo 0)"
         [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
-        [[ "$mtime" -gt "$cutoff" ]] && continue
+        if [[ "$mtime" -gt "$cutoff" ]]; then
+            printf '%s\tskip\tnewer than %sd\n' "$wt" "$age_days"
+            continue
+        fi
         branch="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
         # Refuse anything holding work.
         if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+            printf '%s\tskip\tuncommitted work\n' "$wt"
             continue
         fi
         if [[ -n "$branch" && "$branch" != "HEAD" ]] \
            && declare -F _cleanup_has_unpushed_commits >/dev/null 2>&1 \
            && _cleanup_has_unpushed_commits "$branch"; then
+            printf '%s\tskip\tunpushed commits\n' "$wt"
             continue
         fi
         age_d=$(( (now - mtime) / 86400 ))
-        printf '%s\t%s\t%s\n' "$wt" "${branch:-<detached>}" "$age_d"
+        printf '%s\tprune\tbranch=%s age=%sd\n' "$wt" "${branch:-<detached>}" "$age_d"
     done < <(git -C "$repo_root" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
 }
 

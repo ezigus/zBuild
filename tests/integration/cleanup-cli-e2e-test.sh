@@ -194,14 +194,27 @@ fi
 # [SPEC-1]: --worktrees --dry-run lists the reclaimable worktree
 out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --worktrees --dry-run 2>&1)"; rc=$?
 assert_exit_code "[SPEC-1] --worktrees dry-run exits 0" 0 "$rc"
-if grep -qF "dead-run-1" <<< "$out"; then
-    assert_pass "[SPEC-1] --worktrees dry-run reports the dead-run worktree"
+# #1634: match the DECISION, not just the path. The scanner now also emits `skip`
+# lines, so a path-only grep is satisfied by a worktree it refused to reclaim —
+# the assertion would pass for the opposite of what it claims.
+_dead_line="$(grep -F "dead-run-1" <<< "$out" || true)"
+if grep -qE '\bprune\b' <<< "$_dead_line"; then
+    assert_pass "[SPEC-1] --worktrees dry-run reports the dead-run worktree as prune"
 else
-    assert_fail "[SPEC-1] --worktrees dry-run must list the reclaimable dead-run worktree" \
-        "output: $out"
+    assert_fail "[SPEC-1] --worktrees dry-run must list the dead-run worktree with a prune decision" \
+        "line: $_dead_line / output: $out"
 fi
 
-# [SPEC-2]: --worktrees --apply removes the dead-run worktree
+# [SPEC-2]: --worktrees --apply removes the dead-run worktree but NOT a fresh one.
+# A fresh (too-new) worktree is added here so the prune-decision filter in the
+# zbuild apply loop is exercised: without the `decision == prune` guard the fresh
+# worktree's skip line would be fed to _cleanup_apply_worktree_plan and it would
+# be wrongly removed, failing the second assertion.
+mkdir -p "$WTS_RUN_ROOT/runs/fresh-run-1"
+ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" zbuild_worktree_enter "fresh-run-1" "zbuild/issue-402-wt" "create" >/dev/null 2>&1
+git push -q -u origin zbuild/issue-402-wt 2>/dev/null
+# Do NOT backdate fresh-run-1; its mtime is ~now, so the scanner emits skip:newer-than.
+
 out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --worktrees --apply 2>&1)"; rc=$?
 assert_exit_code "[SPEC-2] --worktrees --apply exits 0" 0 "$rc"
 if [[ ! -d "$WTS_RUN_ROOT/runs/dead-run-1/worktree" ]]; then
@@ -209,6 +222,12 @@ if [[ ! -d "$WTS_RUN_ROOT/runs/dead-run-1/worktree" ]]; then
 else
     assert_fail "[SPEC-2] --worktrees --apply must remove the dead-run worktree" \
         "worktree still present at $WTS_RUN_ROOT/runs/dead-run-1/worktree"
+fi
+if [[ -d "$WTS_RUN_ROOT/runs/fresh-run-1/worktree" ]]; then
+    assert_pass "[SPEC-2] --worktrees --apply leaves the too-new worktree untouched (prune filter)"
+else
+    assert_fail "[SPEC-2] --worktrees --apply must NOT remove a worktree newer than age-days" \
+        "fresh worktree was wrongly removed at $WTS_RUN_ROOT/runs/fresh-run-1/worktree"
 fi
 
 # [SPEC-5] (guard): default-all does NOT reclaim worktrees — --worktrees is opt-in.

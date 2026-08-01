@@ -755,8 +755,11 @@ UPHELP
                 if [[ "$cl_dry_run" != "true" && -n "$cl_wt_plan" ]]; then
                     cl_wt_paths=()
                     cl_wt_line=""
+                    cl_wt_decision=""
                     while IFS= read -r cl_wt_line; do
                         [[ -z "$cl_wt_line" ]] && continue
+                        cl_wt_decision="${cl_wt_line#*$'\t'}"; cl_wt_decision="${cl_wt_decision%%$'\t'*}"
+                        [[ "$cl_wt_decision" == "prune" ]] || continue
                         cl_wt_paths+=("${cl_wt_line%%$'\t'*}")
                     done <<< "$cl_wt_plan"
                     if [[ ${#cl_wt_paths[@]} -gt 0 ]]; then
