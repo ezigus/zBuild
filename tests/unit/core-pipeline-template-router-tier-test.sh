@@ -229,6 +229,37 @@ assert_eq "[SPEC-6c] stage_definitions: review router max_turns via row-based ac
 assert_eq "[SPEC-6d] stage_definitions: review router retries via row-based accessor" \
     "2" "${_TPL_STAGE_ROUTER_RETRIES_review:-}"
 
+# ── SPEC-7/SPEC-8: awk metacharacter safety in template_stage_router_tier ────
+# template_stage_router_tier uses awk literal string matching (index/substr) after
+# the #1621 security hardening. A stage_id containing ERE metacharacters must not
+# cross-match a different stage's block or the stage_definitions sub-block.
+# We set _TPL_SOURCE_FILE directly (without load_template) because stage IDs that
+# contain dot/plus/etc. are valid YAML keys and valid awk inputs but are not valid
+# bash variable name components (load_template stores role arrays by stage id).
+FIX_META="$TEST_TEMP_DIR/metachar.yaml"
+cat > "$FIX_META" <<'EOF'
+id: metachar-test
+name: metachar test
+build:
+  gate: auto
+  roles: [builder]
+  router:
+    tier: T1
+build.plus:
+  gate: auto
+  roles: [builder]
+  router:
+    tier: T3
+EOF
+_TPL_SOURCE_FILE="$FIX_META"
+# SPEC-7: stage_id "build" must not cross-match "build.plus" block (ERE: . = any char)
+assert_eq "[SPEC-7] metachar: 'build' stage reads its own tier (not build.plus)" \
+    "T1" "$(template_stage_router_tier build)"
+# SPEC-8: stage_id "build.plus" must match its own block literally (dot is not any-char)
+assert_eq "[SPEC-8] metachar: 'build.plus' reads its own tier, dot matched literally" \
+    "T3" "$(template_stage_router_tier build.plus)"
+unset _TPL_SOURCE_FILE
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
