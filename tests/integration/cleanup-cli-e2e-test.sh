@@ -197,8 +197,13 @@ assert_exit_code "[SPEC-1] --worktrees dry-run exits 0" 0 "$rc"
 # #1634: match the DECISION, not just the path. The scanner now also emits `skip`
 # lines, so a path-only grep is satisfied by a worktree it refused to reclaim —
 # the assertion would pass for the opposite of what it claims.
+#
+# This greps the RENDERED plan, which _cleanup_render_plan pads with SPACES —
+# there is no tab here to anchor on the way the unit test's _scan_has does.
+# Anchor on the column instead: leading indent, the path as one non-space token,
+# then the decision. A path that merely contains "prune" cannot satisfy it.
 _dead_line="$(grep -F "dead-run-1" <<< "$out" || true)"
-if grep -qE '\bprune\b' <<< "$_dead_line"; then
+if grep -qE '^[[:space:]]+[^[:space:]]+[[:space:]]+prune([[:space:]]|$)' <<< "$_dead_line"; then
     assert_pass "[SPEC-1] --worktrees dry-run reports the dead-run worktree as prune"
 else
     assert_fail "[SPEC-1] --worktrees dry-run must list the dead-run worktree with a prune decision" \
