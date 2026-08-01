@@ -379,3 +379,34 @@ disposition makes the `build_test_cycle` re-iterate, feeding build the flagged i
 mechanical negative-control re-verifies each iteration and `max_iterations` bounds it, so an un-fixable
 case exhausts the budget and terminates cleanly. A genuinely terminal class (e.g.
 `malformed_acceptance_block` — design-authored, build cannot fix) still OUTRANKS recoverable and halts.
+
+## Amendment (#1660, 2026-08-01) — the bound only binds if it escalates to KILL
+
+The #1188 amendment above says each SPEC test runs "under `timeout ${ZBUILD_NEGCTL_TIMEOUT}`" and
+enumerates rc 124/143. That description was accurate and the mechanism was still unsound: plain
+`timeout` sends **TERM only**, so a child that traps or ignores TERM outruns its bound entirely.
+
+This is not hypothetical for *this* gate specifically. The negative control runs the declared TESTFILE
+at the **merge-base**, where the defect under test is present by construction — so any issue whose
+subject is signal handling has a baseline that can defeat the gate's own TERM. #1611 was exactly that
+(a test harness whose TERM trap cleaned up and fell through), and it hung run `20260731204401-66454`
+for 9h22m.
+
+`_negctl_run` / `_reachability_run` / `run-tests.sh` now bound each run with `-k <grace>`
+(`ZBUILD_NEGCTL_KILL_GRACE` / `ZBUILD_TEST_KILL_GRACE`, default 10s), escalating to SIGKILL after the
+grace. Worst-case per-run wall clock becomes `timeout + grace`.
+
+Two things make that safe, and both are load-bearing:
+
+- **rc 137 joins 124/143 as an infrastructure timeout.** Adding `-k` *without* this would be worse
+  than the hang it replaces: the escalated exit would fall through to the ordinary control comparison
+  and be reported as `tautology` / `not_passing_at_head` — a silently wrong verdict condemning a
+  correct change. A hang at least announces itself. (rc 137 is also an external OOM kill; both mean
+  the run's true pass/fail is unknown, which is the same INFRA disposition either way.)
+- **`-k` support is probed, not assumed.** A `timeout` lacking the flag exits 125 on it, which is
+  likewise not a timeout rc — every bounded run would be condemned rather than run. Support is
+  verified once per process; a binary without it degrades to the old TERM-only bound.
+
+Both gates build the bound through one helper, `_acceptance_timeout_prefix` (`acceptance-block.sh`),
+which also resolves `gtimeout` — previously only `run-tests.sh` did, leaving the acceptance gates
+effectively unbounded on a macOS host with GNU coreutils but no POSIX `timeout`.

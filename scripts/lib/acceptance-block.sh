@@ -228,6 +228,49 @@ _acceptance_build_run_cmd() {
     return 0
 }
 
+# _acceptance_timeout_prefix <timeout_s>  (#1660)
+# Fills the global array _ACCEPTANCE_TOUT with the `timeout` prefix tokens that
+# bound one testfile run — empty when no usable timeout binary exists
+# (best-effort, same convention as core/router/route.sh). Always returns 0.
+#
+# Sets a global rather than printing because the probe below is memoized, and a
+# `$(...)`/`< <(...)` caller would run it in a subshell where the memo dies.
+#
+# `-k` is what makes the bound real: plain `timeout` sends TERM only, so a child
+# that traps or ignores TERM runs unbounded — the 9h22m hang in #1611. The grace
+# is ZBUILD_NEGCTL_KILL_GRACE (default 10s).
+#
+# `-k` is probed, not assumed. GNU coreutils has had it since 7.0, but a
+# `timeout` lacking it exits 125 on the unknown flag, and 125 is not a timeout rc
+# — every bounded run would fall through to the ordinary control comparison and
+# report `tautology`/`not_passing_at_head`, condemning correct changes. That is
+# strictly worse than the hang this replaces, so support is verified once before
+# the flag is used, and a `timeout` without it degrades to the old TERM-only
+# bound instead of failing every run.
+_acceptance_timeout_prefix() {
+    local timeout_s="$1"
+    local kill_grace="${ZBUILD_NEGCTL_KILL_GRACE:-10}"
+    _ACCEPTANCE_TOUT=()
+    local bin=""
+    # gtimeout first, same order as run-tests.sh: where both exist gtimeout is
+    # unambiguously GNU, while `timeout` may be a thinner platform build.
+    if   command -v gtimeout >/dev/null 2>&1; then bin="gtimeout"
+    elif command -v timeout  >/dev/null 2>&1; then bin="timeout"
+    else return 0
+    fi
+    if [[ -z "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" ]]; then
+        if "$bin" -k 1 1 true >/dev/null 2>&1; then
+            _ACCEPTANCE_TIMEOUT_KILL_OK=yes
+        else
+            _ACCEPTANCE_TIMEOUT_KILL_OK=no
+        fi
+    fi
+    _ACCEPTANCE_TOUT=("$bin")
+    [[ "$_ACCEPTANCE_TIMEOUT_KILL_OK" == "yes" ]] && _ACCEPTANCE_TOUT+=("-k" "$kill_grace")
+    _ACCEPTANCE_TOUT+=("$timeout_s")
+    return 0
+}
+
 # acceptance_list_testfiles <design_md>  (ADR-036 / #922)
 # Prints the repo-relative TESTFILES paths from the ```acceptance block, one
 # per line. Includes both bare paths AND paths declared with a SPEC-n: prefix

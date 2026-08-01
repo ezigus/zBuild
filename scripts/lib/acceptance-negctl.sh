@@ -36,8 +36,9 @@ source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh"
 
 # A timeout leaves the run's true pass/fail unknown, so it is an INFRASTRUCTURE
 # signal, never a control/violation (ADR-036 #1188): `timeout` exits 124 when it
-# TERMs the child, 143 when the child dies from that SIGTERM.
-_negctl_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 143 ]]; }
+# TERMs the child, 143 when the child dies from that SIGTERM, 137 when a
+# -k kill-after SIGKILL lands or an external OOM kill reaches the child (128+9).
+_negctl_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 137 || "$1" -eq 143 ]]; }
 
 # _negctl_run <testfile_abs> <cwd> [logfile]  → echoes nothing, returns the rc.
 # Runs with ZBUILD_TEST_QUIET unset (so labeled output is produced) under an
@@ -52,8 +53,9 @@ _negctl_run() {
     local -a runner=()
     while IFS= read -r -d '' _tok; do runner+=("$_tok"); done \
         < <(_acceptance_build_run_cmd "$template" "$testfile")
-    if command -v timeout >/dev/null 2>&1; then
-        runner=(timeout "$timeout_s" "${runner[@]}")
+    _acceptance_timeout_prefix "$timeout_s"
+    if [[ ${#_ACCEPTANCE_TOUT[@]} -gt 0 ]]; then
+        runner=("${_ACCEPTANCE_TOUT[@]}" "${runner[@]}")
     fi
     (
         cd "$cwd" || exit 2

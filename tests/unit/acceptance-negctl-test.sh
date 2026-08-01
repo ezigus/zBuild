@@ -414,5 +414,116 @@ unset ZBUILD_STAGE_IO_SEQ_LABEL ZBUILD_STAGE_IO_PERSONA ZBUILD_STAGE_IO_FD
 assert_eq "NC-N: _negctl_run scrubs inherited ZBUILD_STAGE_IO_* (probe sees none → rc 0)" \
     "0" "$RC_N"
 
+# ── NC-O: [SPEC-1] rc=137 (SIGKILL) is classified as an infra timeout ────────
+# Before this change, _negctl_is_timeout_rc did not recognise rc=137. A process
+# killed by SIGKILL after a -k kill-after sequence (or an OOM kill) would have
+# been misclassified as not_passing_at_head instead of an infrastructure timeout.
+set +e; _negctl_is_timeout_rc 137; _rc_137=$?; set -e
+assert_eq "[SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)" \
+    "0" "$_rc_137"
+
+# ── NC-P: [SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE is escalated to SIGKILL
+# The loop traps SIGTERM (ignores it) and runs 30 sleep-1 iterations.
+# At HEAD  (-k 2, timeout 1): SIGTERM at 1s ignored; SIGKILL at 3s → rc=137.
+# At baseline (no -k, timeout 1): SIGTERM ignored; bash loops to completion (≈30s)
+# and exits 0 — assertion "137" vs "0" fails at baseline, proves the wiring.
+# The guard must mirror what _acceptance_timeout_prefix actually resolves —
+# gtimeout OR timeout. Checking only `timeout` would silently drop this coverage
+# on a macOS coreutils host, which is exactly where the bound is exercised.
+if command -v gtimeout >/dev/null 2>&1 || command -v timeout >/dev/null 2>&1; then
+    _trap_sh="$TEST_TEMP_DIR/trap-sigterm-loop.sh"
+    cat > "$_trap_sh" <<'TEOF'
+#!/usr/bin/env bash
+trap "" SIGTERM
+for _i in {1..30}; do sleep 1 || true; done
+TEOF
+    chmod +x "$_trap_sh"
+    _rc_spec2=0
+    ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_KILL_GRACE=2 \
+        _negctl_run "$_trap_sh" "$TEST_TEMP_DIR" 2>/dev/null || _rc_spec2=$?
+    assert_eq "[SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)" \
+        "137" "$_rc_spec2"
+else
+    assert_pass "[SPEC-2] skipped — neither gtimeout nor timeout available"
+fi
+
+# ── NC-P2: the kill grace is operator-tunable, not a hardcoded literal ────────
+# _acceptance_timeout_prefix is the single place both acceptance gates build
+# their bound, so assert the built argv directly — no process needs to be run.
+ZBUILD_NEGCTL_KILL_GRACE=7 _acceptance_timeout_prefix 33
+_TOUT_JOINED="${_ACCEPTANCE_TOUT[*]}"
+if [[ "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" == "yes" ]]; then
+    assert_eq "NC-P2: ZBUILD_NEGCTL_KILL_GRACE feeds -k in the built bound" \
+        "-k 7 33" "${_TOUT_JOINED#* }"
+else
+    assert_pass "NC-P2: skipped — host timeout does not support -k"
+fi
+
+# ── NC-P3: a `timeout` without -k support degrades instead of failing every run
+# A timeout binary lacking -k exits 125 on the unknown flag. 125 is not a
+# timeout rc, so every bounded run would fall through to the ordinary control
+# comparison and be reported as tautology/not_passing_at_head — silently
+# condemning correct changes. The probe must catch that and drop back to the
+# plain TERM-only bound.
+_FAKE_BIN="$TEST_TEMP_DIR/fakebin"
+mkdir -p "$_FAKE_BIN"
+# Shadow BOTH names: the helper resolves gtimeout first, so stubbing only
+# `timeout` would leave a coreutils host running the real gtimeout.
+cat > "$_FAKE_BIN/gtimeout" <<'FEOF'
+#!/usr/bin/env bash
+[[ "$1" == "-k" ]] && { echo "timeout: invalid option -- 'k'" >&2; exit 125; }
+exit 0
+FEOF
+chmod +x "$_FAKE_BIN/gtimeout"
+cp "$_FAKE_BIN/gtimeout" "$_FAKE_BIN/timeout"
+(
+    PATH="$_FAKE_BIN:$PATH"
+    unset _ACCEPTANCE_TIMEOUT_KILL_OK
+    _acceptance_timeout_prefix 33
+    # Only the flags matter here; the binary name varies by host.
+    _joined="${_ACCEPTANCE_TOUT[*]}"
+    printf '%s\n' "${_joined#* }" > "$TEST_TEMP_DIR/nok.out"
+)
+assert_eq "NC-P3: timeout without -k support → TERM-only bound, no -k in argv" \
+    "33" "$(cat "$TEST_TEMP_DIR/nok.out")"
+
+# ── NC-Q: [SPEC-4] a TESTFILE that exits rc=137 → NEGCTL ERROR timeout, not
+# not_passing_at_head (end-to-end through acceptance_negctl_check) ─────────────
+# Simulates a process killed by SIGKILL (-k kill-after or OOM).
+# At baseline (137 unrecognised): rc_base=137 unrecognised → not_passing_at_head.
+# At HEAD   (137 in classifier): both runs classified as timeout → ERROR timeout.
+REPO_Q="$(setup_git_temp_repo negctl-repo-q)"
+(
+    cd "$REPO_Q"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] sigkill-rc fixture\nexit 137\n' > tests/sigkill-test.sh
+    chmod +x tests/sigkill-test.sh impl.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: rc=137 fixture"
+)
+DM_Q="$REPO_Q/design.md"
+cat > "$DM_Q" <<'EOF'
+```acceptance
+SPEC-1: sigkill-rc fixture
+TESTFILES:
+tests/sigkill-test.sh
+```
+EOF
+set +e; OUT_Q="$(acceptance_negctl_check "$DM_Q" "$REPO_Q")"; RC_Q=$?; set -e
+assert_eq "[SPEC-4] rc=137 TESTFILE → NEGCTL ERROR timeout:SPEC-1 (not not_passing_at_head)" \
+    "NEGCTL ERROR timeout:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_Q")"
+assert_eq "[SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head" \
+    "" "$(grep 'not_passing_at_head' <<<"$OUT_Q")"
+
+# ── NC-R: [SPEC-2] run-tests.sh also wires -k for SIGKILL escalation ─────────
+# The same SIGTERM-ignoring defect can hang run-tests.sh per-file timeouts.
+# Structural: the _rt_tout assignment in scripts/run-tests.sh must carry -k.
+# In the reachability worktree, REPO_ROOT → worktree; run-tests.sh at baseline
+# has no -k → grep returns 0 ≠ 1 → test flips → reachability gate passes.
+# (Behavioural proof of the same wiring lives in run-tests-timeout-report-test.sh.)
+assert_eq "[SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation" "1" \
+    "$(grep -cF '"-k" "$_RT_KILL_GRACE"' "$REPO_ROOT/scripts/run-tests.sh")"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
