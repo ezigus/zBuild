@@ -55,8 +55,10 @@ done
 if [[ $_setup_ok -eq 0 ]]; then
     kill "$CHILD_PID" 2>/dev/null || true
     wait "$CHILD_PID" 2>/dev/null && true || true
-    assert_fail "[SPEC-1] child setup completed before timeout" "timed out"
-    assert_fail "[SPEC-1] child setup completed before timeout" "timed out"
+    # Two failures, standing in for the two SPEC-1 assertions that cannot run
+    # when setup never completed — so a setup timeout is not mistaken for a pass.
+    assert_fail "[SPEC-1] SIGTERM exit code — child setup timed out" "setup timeout"
+    assert_fail "[SPEC-1] no bogus failures — child setup timed out" "setup timeout"
     print_test_results
     exit $((FAIL > 0))
 fi
@@ -88,7 +90,8 @@ assert_eq "[SPEC-1] SIGTERM yields exit code 143 (128+SIGTERM)" "143" "$CHILD_RC
 
 # SPEC-1b: no spurious assertion-failure (✗) lines after TERM fires
 SPURIOUS_FAILS="$(grep -c '✗' "$CHILD_OUTPUT" 2>/dev/null || true)"
-assert_eq "[SPEC-1] no bogus assertion-failure lines in output after SIGTERM" "0" "$SPURIOUS_FAILS"
+assert_eq "[SPEC-1] no bogus assertion-failure lines in output after SIGTERM" \
+    "0" "${SPURIOUS_FAILS:-0}"
 
 # AUTO_TEST_TEMP_DIR must be cleaned by the TERM trap (SPEC-1)
 CHILD_TEMPDIR="$(cat "$CHILD_TEMPDIR_FILE" 2>/dev/null || true)"
