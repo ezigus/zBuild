@@ -20,10 +20,26 @@ CORE_DIR="${ZBUILD_CORE_DIR:-$REPO_ROOT/core}"
 # no headroom for runner-speed variance. 480 gives margin without masking a real
 # hang (a genuinely wedged file still fails, just later). Overridable as before.
 _RT_FILE_TIMEOUT="${ZBUILD_TEST_FILE_TIMEOUT:-480}"
+# #1660: plain `timeout` sends TERM only, so a file that traps or ignores TERM
+# outruns its bound entirely. `-k` escalates to KILL after a grace period
+# (ZBUILD_TEST_KILL_GRACE, default 10s), making the bound real; worst-case
+# per-file wall-clock becomes _RT_FILE_TIMEOUT + the grace. The flag is probed,
+# not assumed — a `timeout` that lacks it would exit 125 on every single file
+# rather than running it, so an unsupporting binary degrades to the TERM-only
+# bound instead of failing the suite.
+_RT_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
 _rt_tout=()
 if [[ "$_RT_FILE_TIMEOUT" != "0" ]]; then
-  if   command -v gtimeout >/dev/null 2>&1; then _rt_tout=("gtimeout" "-k" "10" "$_RT_FILE_TIMEOUT")
-  elif command -v timeout  >/dev/null 2>&1; then _rt_tout=("timeout"  "-k" "10" "$_RT_FILE_TIMEOUT")
+  _rt_tout_bin=""
+  if   command -v gtimeout >/dev/null 2>&1; then _rt_tout_bin="gtimeout"
+  elif command -v timeout  >/dev/null 2>&1; then _rt_tout_bin="timeout"
+  fi
+  if [[ -n "$_rt_tout_bin" ]]; then
+    if "$_rt_tout_bin" -k 1 1 true >/dev/null 2>&1; then
+      _rt_tout=("$_rt_tout_bin" "-k" "$_RT_KILL_GRACE" "$_RT_FILE_TIMEOUT")
+    else
+      _rt_tout=("$_rt_tout_bin" "$_RT_FILE_TIMEOUT")
+    fi
   fi
 fi
 

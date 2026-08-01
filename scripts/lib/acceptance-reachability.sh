@@ -40,8 +40,9 @@ _reachability_run() {
     local -a runner=()
     while IFS= read -r -d '' _tok; do runner+=("$_tok"); done \
         < <(_acceptance_build_run_cmd "$template" "$testfile")
-    if command -v timeout >/dev/null 2>&1; then
-        runner=(timeout -k 10 "$timeout_s" "${runner[@]}")
+    _acceptance_timeout_prefix "$timeout_s"
+    if [[ ${#_ACCEPTANCE_TOUT[@]} -gt 0 ]]; then
+        runner=("${_ACCEPTANCE_TOUT[@]}" "${runner[@]}")
     fi
     (
         cd "$cwd" || exit 2

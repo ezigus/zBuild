@@ -423,25 +423,61 @@ assert_eq "[SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)
     "0" "$_rc_137"
 
 # ── NC-P: [SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE is escalated to SIGKILL
-# The loop traps SIGTERM (ignores it) and runs 15 sleep-1 iterations.
-# At HEAD  (-k 10, timeout 1): SIGTERM at 1s ignored; SIGKILL at 11s → rc=137.
-# At baseline (no -k, timeout 1): SIGTERM ignored; bash loops to completion (≈15s)
+# The loop traps SIGTERM (ignores it) and runs 30 sleep-1 iterations.
+# At HEAD  (-k 2, timeout 1): SIGTERM at 1s ignored; SIGKILL at 3s → rc=137.
+# At baseline (no -k, timeout 1): SIGTERM ignored; bash loops to completion (≈30s)
 # and exits 0 — assertion "137" vs "0" fails at baseline, proves the wiring.
 if command -v timeout >/dev/null 2>&1; then
     _trap_sh="$TEST_TEMP_DIR/trap-sigterm-loop.sh"
     cat > "$_trap_sh" <<'TEOF'
 #!/usr/bin/env bash
 trap "" SIGTERM
-for _i in {1..15}; do sleep 1 || true; done
+for _i in {1..30}; do sleep 1 || true; done
 TEOF
     chmod +x "$_trap_sh"
     _rc_spec2=0
-    ZBUILD_NEGCTL_TIMEOUT=1 _negctl_run "$_trap_sh" "$TEST_TEMP_DIR" || _rc_spec2=$?
+    ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_KILL_GRACE=2 \
+        _negctl_run "$_trap_sh" "$TEST_TEMP_DIR" 2>/dev/null || _rc_spec2=$?
     assert_eq "[SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)" \
         "137" "$_rc_spec2"
 else
     assert_pass "[SPEC-2] skipped — timeout binary not available"
 fi
+
+# ── NC-P2: the kill grace is operator-tunable, not a hardcoded literal ────────
+# _acceptance_timeout_prefix is the single place both acceptance gates build
+# their bound, so assert the built argv directly — no process needs to be run.
+ZBUILD_NEGCTL_KILL_GRACE=7 _acceptance_timeout_prefix 33
+_TOUT_JOINED="${_ACCEPTANCE_TOUT[*]}"
+if [[ "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" == "yes" ]]; then
+    assert_eq "NC-P2: ZBUILD_NEGCTL_KILL_GRACE feeds -k in the built bound" \
+        "-k 7 33" "${_TOUT_JOINED#* }"
+else
+    assert_pass "NC-P2: skipped — host timeout does not support -k"
+fi
+
+# ── NC-P3: a `timeout` without -k support degrades instead of failing every run
+# A timeout binary lacking -k exits 125 on the unknown flag. 125 is not a
+# timeout rc, so every bounded run would fall through to the ordinary control
+# comparison and be reported as tautology/not_passing_at_head — silently
+# condemning correct changes. The probe must catch that and drop back to the
+# plain TERM-only bound.
+_FAKE_BIN="$TEST_TEMP_DIR/fakebin"
+mkdir -p "$_FAKE_BIN"
+cat > "$_FAKE_BIN/timeout" <<'FEOF'
+#!/usr/bin/env bash
+[[ "$1" == "-k" ]] && { echo "timeout: invalid option -- 'k'" >&2; exit 125; }
+exit 0
+FEOF
+chmod +x "$_FAKE_BIN/timeout"
+(
+    PATH="$_FAKE_BIN:$PATH"
+    unset _ACCEPTANCE_TIMEOUT_KILL_OK
+    _acceptance_timeout_prefix 33
+    printf '%s\n' "${_ACCEPTANCE_TOUT[*]}" > "$TEST_TEMP_DIR/nok.out"
+)
+assert_eq "NC-P3: timeout without -k support → TERM-only bound, no -k in argv" \
+    "timeout 33" "$(cat "$TEST_TEMP_DIR/nok.out")"
 
 # ── NC-Q: [SPEC-4] a TESTFILE that exits rc=137 → NEGCTL ERROR timeout, not
 # not_passing_at_head (end-to-end through acceptance_negctl_check) ─────────────
@@ -472,13 +508,14 @@ assert_eq "[SPEC-4] rc=137 TESTFILE → NEGCTL ERROR timeout:SPEC-1 (not not_pas
 assert_eq "[SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head" \
     "" "$(grep 'not_passing_at_head' <<<"$OUT_Q")"
 
-# ── NC-R: [SPEC-2] run-tests.sh also wires -k 10 for SIGKILL escalation ─────
+# ── NC-R: [SPEC-2] run-tests.sh also wires -k for SIGKILL escalation ─────────
 # The same SIGTERM-ignoring defect can hang run-tests.sh per-file timeouts.
-# Structural: both _rt_tout assignments in scripts/run-tests.sh must carry -k.
+# Structural: the _rt_tout assignment in scripts/run-tests.sh must carry -k.
 # In the reachability worktree, REPO_ROOT → worktree; run-tests.sh at baseline
-# has no -k → grep returns 0 ≠ 2 → test flips → reachability gate passes.
-assert_eq "[SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation (2 lines)" "2" \
-    "$(grep -cF '"-k"' "$REPO_ROOT/scripts/run-tests.sh")"
+# has no -k → grep returns 0 ≠ 1 → test flips → reachability gate passes.
+# (Behavioural proof of the same wiring lives in run-tests-timeout-report-test.sh.)
+assert_eq "[SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation" "1" \
+    "$(grep -cF '"-k" "$_RT_KILL_GRACE"' "$REPO_ROOT/scripts/run-tests.sh")"
 
 cleanup_test_env
 print_test_results  # exits with $FAIL
