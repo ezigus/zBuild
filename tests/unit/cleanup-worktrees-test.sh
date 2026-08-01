@@ -258,12 +258,34 @@ mkdir -p "$OVR2"
 git -C "$R" worktree add -q "$OVR2/worktree" -b zbuild/issue-10-ovr2-wt 2>/dev/null
 git -C "$OVR2/worktree" push -q -u origin zbuild/issue-10-ovr2-wt 2>/dev/null
 _backdate "$OVR2/worktree" 30
+# OVR2 sits OUTSIDE the run root, so the protection here comes from the path
+# comparison (dirname($OVR2) != run root) — not from ZBUILD_WORKTREE_ROOT being
+# set. SPEC-11 below covers the case where that comparison alone is not enough.
 (cd "$R" && ZBUILD_WORKTREE_ROOT="$OVR2" _cleanup_apply_worktree_plan "$OVR2/worktree") >/dev/null 2>&1
 if [[ ! -d "$OVR2/worktree" && -d "$OVR2" ]]; then
     assert_pass "[SPEC-10] run_id=worktree in override layout: worktree gone, configured root survives"
 else
     assert_fail "[SPEC-10] run_id='worktree' must not cause the configured root to be rmdir'd" \
         "worktree_gone=$([[ ! -d "$OVR2/worktree" ]] && echo yes || echo no) root_exists=$([[ -d "$OVR2" ]] && echo yes || echo NO)"
+fi
+
+# ── SPEC-11: an override root NESTED under the run root must still survive ───
+# The natural operator choice `ZBUILD_WORKTREE_ROOT=$ZBUILD_RUN_ROOT/runs/wt`
+# defeats every path-SHAPE test: the parent is the configured root AND its
+# grandparent is the run root, so "grandparent == run_root" says co-located and
+# rmdir's the operator's directory. Only knowing the configured root — rather
+# than inferring the layout — distinguishes them.
+OVR3="$RUNS/wt-overrides"
+mkdir -p "$OVR3"
+git -C "$R" worktree add -q "$OVR3/some-run" -b zbuild/issue-11-nested 2>/dev/null
+git -C "$OVR3/some-run" push -q -u origin zbuild/issue-11-nested 2>/dev/null
+_backdate "$OVR3/some-run" 30
+(cd "$R" && ZBUILD_WORKTREE_ROOT="$OVR3" _cleanup_apply_worktree_plan "$OVR3/some-run") >/dev/null 2>&1
+if [[ ! -d "$OVR3/some-run" && -d "$OVR3" ]]; then
+    assert_pass "[SPEC-11] override root nested under the run root survives reclamation"
+else
+    assert_fail "[SPEC-11] a configured worktree root inside the run root must never be rmdir'd" \
+        "worktree_gone=$([[ ! -d "$OVR3/some-run" ]] && echo yes || echo no) root_exists=$([[ -d "$OVR3" ]] && echo yes || echo NO)"
 fi
 
 cleanup_test_env
