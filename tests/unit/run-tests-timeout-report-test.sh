@@ -21,6 +21,11 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
+# Capture the real timeout command before setup_test_env may prepend a stub.
+_REAL_TIMEOUT=""
+if   command -v gtimeout >/dev/null 2>&1; then _REAL_TIMEOUT="$(command -v gtimeout)"
+elif command -v timeout  >/dev/null 2>&1; then _REAL_TIMEOUT="$(command -v timeout)"; fi
+
 print_test_header "run-tests.sh timeout reporting (#1613)"
 setup_test_env "run-tests-timeout-report"
 
@@ -110,6 +115,39 @@ assert_eq "[SPEC-6] both notes render with a comma AND a space" "1" \
 
 assert_eq "[SPEC-6] the two notes are not run together without a space" "0" \
     "$(printf '%s\n' "$OUT" | grep -c 'skipped,1 timed out')"
+
+# ─── RT-K: SIGTERM-ignoring file is escalated to SIGKILL via -k 10 ─────────────
+# Proves the -k 10 wiring in _rt_tout is load-bearing. Without -k, `timeout`
+# hangs indefinitely after sending SIGTERM to a TERM-ignoring child; with -k 10
+# SIGKILL fires 10s later → rc=137 → run-tests reports TIMEOUT with rc=137.
+# At baseline (no -k): outer 20s fires → no rc=137 TIMEOUT line → grep=0 → FAIL.
+# At HEAD   (-k 10): SIGKILL at ~12s → rc=137 TIMEOUT line → grep=1 → PASS.
+if [[ -n "$_REAL_TIMEOUT" ]]; then
+    FIX_TRAP="$TEST_TEMP_DIR/fix-trap"
+    mkdir -p "$FIX_TRAP/unit"
+    cat > "$FIX_TRAP/unit/trap-sigterm-test.sh" <<'TRAPFIX'
+#!/usr/bin/env bash
+trap "" SIGTERM
+for _i in {1..30}; do sleep 1 || true; done
+TRAPFIX
+    chmod +x "$FIX_TRAP/unit/trap-sigterm-test.sh"
+    _trap_out=""
+    _trap_rc=0
+    set +e
+    _trap_out="$("$_REAL_TIMEOUT" 20 \
+        env ZBUILD_TESTS_DIR="$FIX_TRAP" \
+            ZBUILD_PLUGINS_DIR="$EMPTY" \
+            ZBUILD_CORE_DIR="$EMPTY" \
+            ZBUILD_TEST_FILE_TIMEOUT=2 \
+            ZBUILD_TEST_PARALLEL_JOBS=0 \
+            bash "$RUN_TESTS" --tier unit 2>&1)"
+    _trap_rc=$?
+    set -e
+    assert_eq "RT-K: SIGTERM-ignoring file escalated to SIGKILL via -k 10 (rc=137 in TIMEOUT)" "1" \
+        "$(printf '%s\n' "$_trap_out" | grep -cE 'TIMEOUT .*trap-sigterm-test\.sh \(exceeded 2s, rc=137\)$')"
+else
+    assert_pass "RT-K: skipped — no real timeout binary on host"
+fi
 
 cleanup_test_env
 print_test_results
