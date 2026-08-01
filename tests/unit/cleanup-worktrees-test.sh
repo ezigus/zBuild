@@ -7,23 +7,36 @@
 # worse than none, so most of these SPECs assert what it REFUSES to touch.
 #
 # SPEC-1: an old, clean, pushed worktree is a candidate
-# SPEC-2: a worktree newer than the age threshold is kept   [NOT mutation-verified]
-# SPEC-3: a worktree with uncommitted work is kept          [NOT mutation-verified]
+# SPEC-2: a worktree newer than the age threshold is kept   [mutation-verified — see below]
+# SPEC-3: a worktree with uncommitted work is kept          [mutation-verified — see below]
 #
-# HONEST CAVEAT on SPEC-2 and SPEC-3: both are ABSENCE-based ("the scanner must not
-# report X"), and absence is produced by every guard, not just the one under test.
-# Removing the age guard and the dirty guard individually — verified applied, inside
-# _cleanup_scan_worktrees specifically — did NOT redden either assertion, so
-# something else is also excluding those fixtures and these two currently prove
-# less than they claim. The fixtures themselves were checked and are correct
-# (pushed, upstream set, dirty file present, ages 0d/30d).
+# #1635 CORRECTION. That issue reported SPEC-2/3 as inert: "removing the age guard
+# and the dirty guard individually reddened NEITHER", concluding some unexplained
+# third exclusion was masking them. THAT OBSERVATION WAS WRONG. Re-running the
+# mutation by hand — neutering each guard inside _cleanup_scan_worktrees (and
+# nowhere else), against BOTH this revision and the merge-base — reddens the
+# matching assertion every time:
 #
-# SPEC-1, SPEC-4, SPEC-5 and SPEC-6 ARE meaningful: SPEC-4 is mutation-verified,
-# SPEC-1 asserts presence (a scanner that finds nothing fails it), SPEC-6 asserts
-# the git registration is gone.
+#   age guard   -> `[SPEC-2] a fresh worktree must not be reclaimed`   FAILS
+#   dirty guard -> `[SPEC-3] never reclaim a worktree holding ...`     FAILS
 #
-# Do not treat SPEC-2/3 as protection until the exclusion is explained. Tracked as
-# a follow-up rather than left as a green tick implying coverage.
+# Both were already load-bearing before #1635 changed anything. The likeliest
+# cause of the original mis-observation is mutating a copy the test never reads —
+# the installed engine under ~/.local/share/zbuild, or a stale
+# $TMPDIR/zbuild-tier-buf.* harness buffer — since this file sources
+# $REPO_ROOT/scripts/lib/cleanup.sh. Mutate the repo copy, and confirm the
+# mutation is present in the tree the test actually sources.
+#
+# The claim is no longer a comment anyone has to trust: it is enforced by the
+# mutation tier on every CI run —
+#   tests/mutation/cleanup-worktree-age-guard.md
+#   tests/mutation/cleanup-worktree-dirty-guard.md
+#
+# The positive-flip companions below are kept, but note what they do and do NOT
+# prove. They vary the INPUT (age=0; remove the dirty file) and show the fixture
+# is not permanently excluded for some unrelated reason — a real and different
+# failure mode. They are NOT mutation verification, which varies the CODE.
+#
 # SPEC-4: the ACTIVE run's worktree is kept (resume needs it)
 # SPEC-5: worktrees outside the zbuild run root are ignored entirely
 # SPEC-6: applying removes the worktree AND its git registration (not just rm -rf)
@@ -120,6 +133,14 @@ if ! _scan_has "$WT_NEW" 14; then
 else
     assert_fail "[SPEC-2] a fresh worktree must not be reclaimed" "scan: $(_scan 14)"
 fi
+# Positive-flip: at age_days=0 the threshold drops to zero; WT_NEW (brand-new, clean,
+# pushed) must appear, proving the age guard above was the only exclusion mechanism.
+if _scan_has "$WT_NEW" 0; then
+    assert_pass "[SPEC-2] positive flip: WT_NEW appears at age_days=0 — age guard was the barrier"
+else
+    assert_fail "[SPEC-2] WT_NEW must appear at age_days=0; something other than age excludes it" \
+        "scan0: $(_scan 0)"
+fi
 
 # ── SPEC-3: uncommitted work is kept, however old ───────────────────────────
 WT_DIRTY="$(_mk dirty-run zbuild/issue-3-dirty 0)"
@@ -129,6 +150,17 @@ if ! _scan_has "$WT_DIRTY" 14; then
     assert_pass "[SPEC-3] a worktree with uncommitted work is kept"
 else
     assert_fail "[SPEC-3] never reclaim a worktree holding uncommitted work" "scan: $(_scan 14)"
+fi
+# Positive-flip: remove the untracked file so the worktree becomes clean; re-backdate
+# because rm touches the parent directory. The now-clean old worktree must appear —
+# proving the dirty check above was the only exclusion mechanism.
+rm -f "$WT_DIRTY/uncommitted.txt"
+_backdate "$WT_DIRTY" 30
+if _scan_has "$WT_DIRTY" 14; then
+    assert_pass "[SPEC-3] positive flip: once clean, worktree appears — dirty check was the barrier"
+else
+    assert_fail "[SPEC-3] a now-clean, old worktree must be reclaimable" \
+        "scan: $(_scan 14)"
 fi
 
 # ── SPEC-4: the active run is kept ──────────────────────────────────────────
@@ -214,6 +246,46 @@ if [[ -d "$WT_APPLIER_DIRTY" ]]; then
 else
     assert_fail "[SPEC-3] applier must not force-remove a worktree with uncommitted work" \
         "worktree removed despite uncommitted files"
+fi
+
+# ── SPEC-10: override layout with run_id='worktree' must not delete the root ──
+# When run_id='worktree' the path is $ZBUILD_WORKTREE_ROOT/worktree, which matches
+# */worktree. The old suffix check would rmdir $ZBUILD_WORKTREE_ROOT once the
+# worktree was removed — silently deleting the operator's configured root.
+# SPEC-9 used run_id='ovr-run' so the suffix never matched and the bug survived.
+OVR2="$TEST_TEMP_DIR/ovr2"
+mkdir -p "$OVR2"
+git -C "$R" worktree add -q "$OVR2/worktree" -b zbuild/issue-10-ovr2-wt 2>/dev/null
+git -C "$OVR2/worktree" push -q -u origin zbuild/issue-10-ovr2-wt 2>/dev/null
+_backdate "$OVR2/worktree" 30
+# OVR2 sits OUTSIDE the run root, so the protection here comes from the path
+# comparison (dirname($OVR2) != run root) — not from ZBUILD_WORKTREE_ROOT being
+# set. SPEC-11 below covers the case where that comparison alone is not enough.
+(cd "$R" && ZBUILD_WORKTREE_ROOT="$OVR2" _cleanup_apply_worktree_plan "$OVR2/worktree") >/dev/null 2>&1
+if [[ ! -d "$OVR2/worktree" && -d "$OVR2" ]]; then
+    assert_pass "[SPEC-10] run_id=worktree in override layout: worktree gone, configured root survives"
+else
+    assert_fail "[SPEC-10] run_id='worktree' must not cause the configured root to be rmdir'd" \
+        "worktree_gone=$([[ ! -d "$OVR2/worktree" ]] && echo yes || echo no) root_exists=$([[ -d "$OVR2" ]] && echo yes || echo NO)"
+fi
+
+# ── SPEC-11: an override root NESTED under the run root must still survive ───
+# The natural operator choice `ZBUILD_WORKTREE_ROOT=$ZBUILD_RUN_ROOT/runs/wt`
+# defeats every path-SHAPE test: the parent is the configured root AND its
+# grandparent is the run root, so "grandparent == run_root" says co-located and
+# rmdir's the operator's directory. Only knowing the configured root — rather
+# than inferring the layout — distinguishes them.
+OVR3="$RUNS/wt-overrides"
+mkdir -p "$OVR3"
+git -C "$R" worktree add -q "$OVR3/some-run" -b zbuild/issue-11-nested 2>/dev/null
+git -C "$OVR3/some-run" push -q -u origin zbuild/issue-11-nested 2>/dev/null
+_backdate "$OVR3/some-run" 30
+(cd "$R" && ZBUILD_WORKTREE_ROOT="$OVR3" _cleanup_apply_worktree_plan "$OVR3/some-run") >/dev/null 2>&1
+if [[ ! -d "$OVR3/some-run" && -d "$OVR3" ]]; then
+    assert_pass "[SPEC-11] override root nested under the run root survives reclamation"
+else
+    assert_fail "[SPEC-11] a configured worktree root inside the run root must never be rmdir'd" \
+        "worktree_gone=$([[ ! -d "$OVR3/some-run" ]] && echo yes || echo no) root_exists=$([[ -d "$OVR3" ]] && echo yes || echo NO)"
 fi
 
 cleanup_test_env

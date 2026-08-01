@@ -565,6 +565,22 @@ _cleanup_apply_worktree_plan() {
         printf '_cleanup_apply_worktree_plan: not inside a git repository\n' >&2
         return 2
     fi
+    # Resolved once: the co-located run root, used below to tell a per-run dir
+    # (safe to rmdir when empty) from the operator's configured worktree root.
+    local _run_root_l; _run_root_l="${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}/runs"
+    _run_root_l="$( (cd "$_run_root_l" 2>/dev/null && pwd -P) || printf '%s' "$_run_root_l" )"
+    # The configured override root, resolved the same way _cleanup_scan_worktrees
+    # resolves it. This is KNOWN, not inferred: no path-shape test can tell
+    # $ZBUILD_WORKTREE_ROOT/<id> from <run_root>/<id>/worktree once the operator
+    # points the override root inside the run root (e.g. ~/.zbuild/runs/wt), and
+    # inferring there deletes the very directory they configured.
+    local _ovr_root_l=""
+    if declare -F zbuild_worktree_root >/dev/null 2>&1; then
+        _ovr_root_l="$(zbuild_worktree_root 2>/dev/null || true)"
+    else
+        _ovr_root_l="${ZBUILD_WORKTREE_ROOT:-}"
+    fi
+    [[ -n "$_ovr_root_l" ]] && _ovr_root_l="$( (cd "$_ovr_root_l" 2>/dev/null && pwd -P) || printf '%s' "$_ovr_root_l" )"
     for wt in "$@"; do
         [[ -n "$wt" ]] || continue
         # Defence-in-depth: re-check for uncommitted work at delete-time, mirroring
@@ -586,14 +602,23 @@ _cleanup_apply_worktree_plan() {
             rc=1
             continue
         fi
-        # Layout-aware. Co-located ($wt = <run_root>/<id>/worktree): the parent IS
-        # the per-run dir, so removing it when empty is correct. Override layout
-        # ($wt = $ZBUILD_WORKTREE_ROOT/<id>): the parent is the operator's
-        # CONFIGURED ROOT — rmdir'ing that would silently delete their directory
-        # once the last worktree went, and `|| true` would hide it.
-        case "$wt" in
-            */worktree) rmdir "$(dirname "$wt")" 2>/dev/null || true ;;
-        esac
+        # Layout-aware: only rmdir the parent when it is a per-run dir under the
+        # run root (co-located layout). In override layout the parent IS the
+        # operator's configured root — never rmdir it. The old */worktree suffix
+        # check fired on override paths with run_id='worktree', silently deleting
+        # the configured root once the last worktree went.
+        # $_run_root_l is loop-invariant — resolved once above, not per worktree.
+        # If the run root does not resolve (never created), the raw string stays
+        # and the comparison simply fails to match: the fail-safe direction, since
+        # a missed rmdir leaves an empty dir behind while a wrong one deletes the
+        # operator's configured root.
+        local wt_parent; wt_parent="$(dirname "$wt")"
+        local _wt_pc; _wt_pc="$( (cd "$wt_parent" 2>/dev/null && pwd -P) || printf '%s' "$wt_parent" )"
+        if [[ -n "$_ovr_root_l" && "$_wt_pc" == "$_ovr_root_l" ]]; then
+            : # the parent IS the operator's configured root — never rmdir it
+        elif [[ "$(dirname "$_wt_pc")" == "$_run_root_l" ]]; then
+            rmdir "$wt_parent" 2>/dev/null || true
+        fi
     done
     git -C "$repo_root" worktree prune 2>/dev/null || true
     return $rc
