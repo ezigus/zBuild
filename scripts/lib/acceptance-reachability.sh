@@ -26,8 +26,9 @@ source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh"
 source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh"
 
 # A timeout leaves the run's true pass/fail unknown → INFRASTRUCTURE, never a
-# flip (ADR-036 #1188): `timeout` exits 124 (TERM sent), 143 (child died of it).
-_reachability_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 143 ]]; }
+# flip (ADR-036 #1188): `timeout` exits 124 (TERM sent), 143 (child died of it),
+# 137 when a -k kill-after SIGKILL lands or an external OOM kill (128+9).
+_reachability_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 137 || "$1" -eq 143 ]]; }
 
 # _reachability_run <testfile_abs> <cwd> [logfile]  → returns the test's rc.
 # When <logfile> is given the combined output is appended for diagnosability.
@@ -40,7 +41,7 @@ _reachability_run() {
     while IFS= read -r -d '' _tok; do runner+=("$_tok"); done \
         < <(_acceptance_build_run_cmd "$template" "$testfile")
     if command -v timeout >/dev/null 2>&1; then
-        runner=(timeout "$timeout_s" "${runner[@]}")
+        runner=(timeout -k 10 "$timeout_s" "${runner[@]}")
     fi
     (
         cd "$cwd" || exit 2

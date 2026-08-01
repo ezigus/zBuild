@@ -414,5 +414,63 @@ unset ZBUILD_STAGE_IO_SEQ_LABEL ZBUILD_STAGE_IO_PERSONA ZBUILD_STAGE_IO_FD
 assert_eq "NC-N: _negctl_run scrubs inherited ZBUILD_STAGE_IO_* (probe sees none → rc 0)" \
     "0" "$RC_N"
 
+# ── NC-O: [SPEC-1] rc=137 (SIGKILL) is classified as an infra timeout ────────
+# Before this change, _negctl_is_timeout_rc did not recognise rc=137. A process
+# killed by SIGKILL after a -k kill-after sequence (or an OOM kill) would have
+# been misclassified as not_passing_at_head instead of an infrastructure timeout.
+set +e; _negctl_is_timeout_rc 137; _rc_137=$?; set -e
+assert_eq "[SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)" \
+    "0" "$_rc_137"
+
+# ── NC-P: [SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE is escalated to SIGKILL
+# The loop traps SIGTERM (ignores it) and runs 15 sleep-1 iterations.
+# At HEAD  (-k 10, timeout 1): SIGTERM at 1s ignored; SIGKILL at 11s → rc=137.
+# At baseline (no -k, timeout 1): SIGTERM ignored; bash loops to completion (≈15s)
+# and exits 0 — assertion "137" vs "0" fails at baseline, proves the wiring.
+if command -v timeout >/dev/null 2>&1; then
+    _trap_sh="$TEST_TEMP_DIR/trap-sigterm-loop.sh"
+    cat > "$_trap_sh" <<'TEOF'
+#!/usr/bin/env bash
+trap "" SIGTERM
+for _i in {1..15}; do sleep 1 || true; done
+TEOF
+    chmod +x "$_trap_sh"
+    _rc_spec2=0
+    ZBUILD_NEGCTL_TIMEOUT=1 _negctl_run "$_trap_sh" "$TEST_TEMP_DIR" || _rc_spec2=$?
+    assert_eq "[SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)" \
+        "137" "$_rc_spec2"
+else
+    assert_pass "[SPEC-2] skipped — timeout binary not available"
+fi
+
+# ── NC-Q: [SPEC-4] a TESTFILE that exits rc=137 → NEGCTL ERROR timeout, not
+# not_passing_at_head (end-to-end through acceptance_negctl_check) ─────────────
+# Simulates a process killed by SIGKILL (-k kill-after or OOM).
+# At baseline (137 unrecognised): rc_base=137 unrecognised → not_passing_at_head.
+# At HEAD   (137 in classifier): both runs classified as timeout → ERROR timeout.
+REPO_Q="$(setup_git_temp_repo negctl-repo-q)"
+(
+    cd "$REPO_Q"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] sigkill-rc fixture\nexit 137\n' > tests/sigkill-test.sh
+    chmod +x tests/sigkill-test.sh impl.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: rc=137 fixture"
+)
+DM_Q="$REPO_Q/design.md"
+cat > "$DM_Q" <<'EOF'
+```acceptance
+SPEC-1: sigkill-rc fixture
+TESTFILES:
+tests/sigkill-test.sh
+```
+EOF
+set +e; OUT_Q="$(acceptance_negctl_check "$DM_Q" "$REPO_Q")"; RC_Q=$?; set -e
+assert_eq "[SPEC-4] rc=137 TESTFILE → NEGCTL ERROR timeout:SPEC-1 (not not_passing_at_head)" \
+    "NEGCTL ERROR timeout:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_Q")"
+assert_eq "[SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head" \
+    "" "$(grep 'not_passing_at_head' <<<"$OUT_Q")"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
