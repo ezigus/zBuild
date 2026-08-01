@@ -11,9 +11,12 @@
 #      mutants are isolated and the run parallelizes (#992).
 #
 # Safety invariants:
-#   - Refuses to run if any mutation-target dir (core/plugins/scripts/tests)
-#     has uncommitted tracked changes OR untracked files. The live tree is
-#     never mutated; per-mutant worktrees are checked out from HEAD.
+#   - When specs exist (n_specs > 0), refuses to run if any mutation-target
+#     dir (core/plugins/scripts/tests) has uncommitted tracked changes OR
+#     untracked files. When no specs exist the check is skipped and
+#     `mutation: 0/0 passed` is emitted immediately (nothing to protect).
+#     The live tree is never mutated; per-mutant worktrees are checked out
+#     from HEAD.
 #   - Worktrees are torn down per-mutant (RETURN trap) and swept again on exit.
 #   - Accounting is byte-for-byte identical to the prior serial runner: the
 #     result lines and final `mutation: P/T passed` are emitted in glob order.
@@ -222,6 +225,7 @@ _assert_clean_targets() {
         [[ -n "$dirty" ]]     && echo "  modified:" >&2 && echo "$dirty"     | sed 's/^/    /' >&2
         [[ -n "$untracked" ]] && echo "  untracked:" >&2 && echo "$untracked" | sed 's/^/    /' >&2
         echo "  Commit or stash them first." >&2
+        echo "mutation: ABORTED (working tree dirty in ${MUTATE_DIRS[*]}; commit or stash)"
         exit 1
     fi
 }
@@ -364,8 +368,6 @@ trap '_mut_teardown' EXIT INT TERM
 
 # ─── Main loop ──────────────────────────────────────────────────────────────
 
-_assert_clean_targets
-
 job_dir="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut-jobs.XXXXXX")"
 _par_jobs="$(_mut_resolve_jobs)"
 
@@ -445,6 +447,7 @@ for doc in "$MUTATION_DIR"/*.md; do
     idx=$((idx + 1))
 done
 n_specs=$idx
+(( n_specs > 0 )) && _assert_clean_targets
 
 # ── Phase B: bounded-parallel worktree execution over the dispatch worklist.
 #    FIFO pool capped at $_par_jobs (bash-3.2-safe; no `wait -n`). ──
