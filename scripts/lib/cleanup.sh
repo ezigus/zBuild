@@ -462,6 +462,12 @@ _cleanup_render_plan() {
             decision="${rest%%$'\t'*}"
             reason="${rest#*$'\t'}"
             printf '  %-40s  %-6s  %s\n' "$target" "$decision" "$reason"
+        elif [[ "$kind" == "worktrees" ]]; then
+            # scan emits: <path>\t<branch>\t<age_days>d
+            local wt_branch wt_age
+            wt_branch="${rest%%$'\t'*}"
+            wt_age="${rest#*$'\t'}"
+            printf '  %-60s  branch=%s age=%s\n' "$target" "$wt_branch" "$wt_age"
         else
             reason="$rest"
             printf '  %-60s  %s\n' "$target" "$reason"
@@ -561,6 +567,16 @@ _cleanup_apply_worktree_plan() {
     fi
     for wt in "$@"; do
         [[ -n "$wt" ]] || continue
+        # Defence-in-depth: re-check for uncommitted work at delete-time, mirroring
+        # _cleanup_apply_branch_plan. The scanner already excludes dirty worktrees,
+        # but a race or a hand-crafted plan can bypass that. The pre-check here is
+        # the work-safety gate; --force is still passed so git's own concept of
+        # "locked" worktrees (separate from dirty) does not block clean ones.
+        if [[ -d "$wt" && -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+            printf 'cleanup: refusing to remove worktree with uncommitted work: %s\n' "$wt" >&2
+            rc=1
+            continue
+        fi
         local err
         if ! err="$(git -C "$repo_root" worktree remove --force "$wt" 2>&1)"; then
             printf 'cleanup: could not remove worktree %s: %s\n' "$wt" "${err:-<no git output>}" >&2

@@ -160,10 +160,46 @@ _intake_checkout_branch() {
 
     # Does local branch exist?
     if git show-ref --verify --quiet "refs/heads/$target"; then
-        if ! git checkout "$target" >/dev/null 2>&1; then
-            error "intake_branch: checkout of existing branch '$target' failed"
-            emit_event "intake.error" \
-                "plugin=intake" "branch=$target" "reason=checkout_failed"
+        local _co_err=""
+        # Capture stderr (2>&1 >/dev/null): stderr → $() pipe, stdout discarded.
+        if ! _co_err="$(git checkout "$target" 2>&1 >/dev/null)"; then
+            # Detect branch held by another worktree. Git's phrasing varies by version:
+            #   < 2.31: "fatal: '<b>' is already checked out at '<path>'"
+            #   ≥ 2.31: "fatal: '<b>' is already used by worktree at '<path>'"
+            local _holder=""
+            case "$_co_err" in
+                *"is already checked out at"*|*"is already used by worktree at"*)
+                    # First try porcelain (authoritative); fall back to stderr parse.
+                    _holder="$(git worktree list --porcelain 2>/dev/null \
+                        | awk -v b="refs/heads/$target" \
+                              '/^worktree /{w=$2} /^branch /{if ($2==b) print w}' \
+                        | head -1)"
+                    if [[ -z "$_holder" ]]; then
+                        # Extract path from git's own error message.
+                        _holder="$(printf '%s\n' "$_co_err" \
+                            | /usr/bin/grep -oE "(already checked out|already used by worktree) at '([^']+)'" \
+                            | /usr/bin/sed "s/.*at '//;s/'$//" \
+                            | head -1)"
+                    fi
+                    ;;
+            esac
+            if [[ -n "$_holder" ]]; then
+                local _dead_run_id="${_holder##*/}"
+                # Co-located layout: .../runs/<run_id>/worktree → extract run_id
+                if [[ "$_dead_run_id" == "worktree" ]]; then
+                    _dead_run_id="${_holder%/worktree}"; _dead_run_id="${_dead_run_id##*/}"
+                fi
+                error "intake_branch: branch '$target' is already checked out at $_holder"
+                error "  dead run: ${_dead_run_id:-unknown}"
+                error "  reclaim:  zbuild cleanup --worktrees --apply"
+                emit_event "intake.error" \
+                    "plugin=intake" "branch=$target" \
+                    "reason=branch_held_by_worktree" "holder=$_holder"
+            else
+                error "intake_branch: checkout of existing branch '$target' failed"
+                emit_event "intake.error" \
+                    "plugin=intake" "branch=$target" "reason=checkout_failed"
+            fi
             return 2
         fi
         # Verify post-checkout

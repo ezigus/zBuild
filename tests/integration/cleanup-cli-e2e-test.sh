@@ -173,4 +173,59 @@ else
     assert_fail "current branch NEVER deleted"
 fi
 
+# ── [SPEC-1]/[SPEC-2]/[SPEC-5]: --worktrees flag — scan/apply dead-run worktrees ─
+# Set up a per-run worktree under a dedicated run root, backdate it > 14 days.
+# Push its branch so the unpushed-commits guard does not block reclamation.
+WTS_RUN_ROOT="$TEST_TEMP_DIR/wts-run-root"
+mkdir -p "$WTS_RUN_ROOT/runs/dead-run-1"
+git worktree add -q "$WTS_RUN_ROOT/runs/dead-run-1/worktree" -b zbuild/issue-400-wt 2>/dev/null
+git push -q -u origin zbuild/issue-400-wt 2>/dev/null
+
+# Backdate the worktree directory so it is older than the 14-day default threshold.
+_ts_old=$(( $(date +%s) - 15 * 86400 ))
+if touch -d "@$_ts_old" "$WTS_RUN_ROOT/runs/dead-run-1/worktree" 2>/dev/null; then :; else
+    _ts_fmt="$(date -r "$_ts_old" '+%Y%m%d%H%M.%S' 2>/dev/null \
+               || date -d "@$_ts_old" '+%Y%m%d%H%M.%S' 2>/dev/null || echo '202401010000.00')"
+    touch -t "$_ts_fmt" "$WTS_RUN_ROOT/runs/dead-run-1/worktree" 2>/dev/null || true
+fi
+
+# [SPEC-1]: --worktrees --dry-run lists the reclaimable worktree
+out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --worktrees --dry-run 2>&1)"; rc=$?
+assert_exit_code "[SPEC-1] --worktrees dry-run exits 0" 0 "$rc"
+if printf '%s\n' "$out" | grep -qF "dead-run-1"; then
+    assert_pass "[SPEC-1] --worktrees dry-run reports the dead-run worktree"
+else
+    assert_fail "[SPEC-1] --worktrees dry-run must list the reclaimable dead-run worktree" \
+        "output: $out"
+fi
+
+# [SPEC-2]: --worktrees --apply removes the dead-run worktree
+out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --worktrees --apply 2>&1)"; rc=$?
+assert_exit_code "[SPEC-2] --worktrees --apply exits 0" 0 "$rc"
+if [[ ! -d "$WTS_RUN_ROOT/runs/dead-run-1/worktree" ]]; then
+    assert_pass "[SPEC-2] --worktrees --apply removes the dead-run worktree"
+else
+    assert_fail "[SPEC-2] --worktrees --apply must remove the dead-run worktree" \
+        "worktree still present at $WTS_RUN_ROOT/runs/dead-run-1/worktree"
+fi
+
+# [SPEC-5]: default-all includes worktrees (no explicit --worktrees flag)
+mkdir -p "$WTS_RUN_ROOT/runs/dead-run-2"
+git worktree add -q "$WTS_RUN_ROOT/runs/dead-run-2/worktree" -b zbuild/issue-401-wt 2>/dev/null
+git push -q -u origin zbuild/issue-401-wt 2>/dev/null
+_ts_old2=$(( $(date +%s) - 15 * 86400 ))
+if touch -d "@$_ts_old2" "$WTS_RUN_ROOT/runs/dead-run-2/worktree" 2>/dev/null; then :; else
+    _ts_fmt2="$(date -r "$_ts_old2" '+%Y%m%d%H%M.%S' 2>/dev/null \
+                || date -d "@$_ts_old2" '+%Y%m%d%H%M.%S' 2>/dev/null || echo '202401010000.00')"
+    touch -t "$_ts_fmt2" "$WTS_RUN_ROOT/runs/dead-run-2/worktree" 2>/dev/null || true
+fi
+out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --apply 2>&1)"; rc=$?
+assert_exit_code "[SPEC-5] default-all cleanup exits 0" 0 "$rc"
+if [[ ! -d "$WTS_RUN_ROOT/runs/dead-run-2/worktree" ]]; then
+    assert_pass "[SPEC-5] default-all includes --worktrees (dead-run-2 removed)"
+else
+    assert_fail "[SPEC-5] default-all must include worktree reclamation" \
+        "worktree still present at $WTS_RUN_ROOT/runs/dead-run-2/worktree"
+fi
+
 print_test_results
