@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # Unit: #1611 — test-harness TERM/INT trap re-raise fix
 # SPEC-1: SIGTERM delivered mid-test exits with rc=143, no bogus assertion failures
-# SPEC-2: SIGTERM triggers cleanup of AUTO_TEST_TEMP_DIR before exit
+# SPEC-2: SIGINT delivered mid-test exits with rc=130, no bogus assertion failures
+# SPEC-3 (guard, in test-helpers-cleanup-test.sh): normal EXIT cleanup unchanged
+#
+# The design declared SPEC-2 as the INT half of the fix. The first implementation
+# tagged [SPEC-2] onto a SIGTERM temp-dir-cleanup assertion instead, which left
+# INT/130 — a whole branch of the trap — asserted by nothing. Cleanup-on-TERM is
+# still checked below, under SPEC-1 where it belongs.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,8 +24,8 @@ print_test_header "test-harness TERM trap: rc=143, no bogus failures, temp clean
 WITNESS_DIR="$AUTO_TEST_TEMP_DIR/witness"
 mkdir -p "$WITNESS_DIR"
 
-# ─── SPEC-1 + SPEC-2: fork interruptible child, deliver SIGTERM ──────────────
-print_test_section "SPEC-1/SPEC-2: fork child that installs harness, interrupt with SIGTERM"
+# ─── SPEC-1: fork interruptible child, deliver SIGTERM ───────────────────────
+print_test_section "SPEC-1: fork child that installs harness, interrupt with SIGTERM"
 
 CHILD_OUTPUT="$WITNESS_DIR/child-output.txt"
 CHILD_TEMPDIR_FILE="$WITNESS_DIR/child-tempdir.txt"
@@ -50,13 +56,28 @@ if [[ $_setup_ok -eq 0 ]]; then
     kill "$CHILD_PID" 2>/dev/null || true
     wait "$CHILD_PID" 2>/dev/null && true || true
     assert_fail "[SPEC-1] child setup completed before timeout" "timed out"
-    assert_fail "[SPEC-2] child setup completed before timeout" "timed out"
+    assert_fail "[SPEC-1] child setup completed before timeout" "timed out"
     print_test_results
     exit $((FAIL > 0))
 fi
 
 # Deliver SIGTERM to the child bash process
 kill -TERM "$CHILD_PID" 2>/dev/null || true
+
+# Bounded wait, then escalate. At the MERGE-BASE the child swallows TERM and
+# loops forever, so a bare `wait` here hangs this file indefinitely — which is
+# precisely how this issue's own acceptance gate hung for 9h22m in run
+# 20260731204401-66454 (see #1660). Escalating to KILL makes the baseline produce
+# a clean FAILING control (rc=137, which is not 143) instead of a timeout, so the
+# negative control can actually judge this SPEC rather than reporting infra.
+_wait_ticks=0
+while kill -0 "$CHILD_PID" 2>/dev/null && [[ $_wait_ticks -lt 50 ]]; do
+    sleep 0.1
+    _wait_ticks=$((_wait_ticks + 1))
+done
+if kill -0 "$CHILD_PID" 2>/dev/null; then
+    kill -KILL "$CHILD_PID" 2>/dev/null || true
+fi
 
 # Capture child exit status (128+15=143 expected).
 # Use && ... || $? pattern: set -e ignores failure in the left side of ||.
@@ -69,19 +90,47 @@ assert_eq "[SPEC-1] SIGTERM yields exit code 143 (128+SIGTERM)" "143" "$CHILD_RC
 SPURIOUS_FAILS="$(grep -c '✗' "$CHILD_OUTPUT" 2>/dev/null || true)"
 assert_eq "[SPEC-1] no bogus assertion-failure lines in output after SIGTERM" "0" "$SPURIOUS_FAILS"
 
-# SPEC-2: AUTO_TEST_TEMP_DIR must be cleaned by the TERM trap
+# AUTO_TEST_TEMP_DIR must be cleaned by the TERM trap (SPEC-1)
 CHILD_TEMPDIR="$(cat "$CHILD_TEMPDIR_FILE" 2>/dev/null || true)"
 if [[ -z "$CHILD_TEMPDIR" ]]; then
-    assert_fail "[SPEC-2] child surfaced AUTO_TEST_TEMP_DIR path" "no path in witness file"
+    assert_fail "[SPEC-1] child surfaced AUTO_TEST_TEMP_DIR path" "no path in witness file"
 elif [[ -d "$CHILD_TEMPDIR" ]]; then
-    assert_fail "[SPEC-2] AUTO_TEST_TEMP_DIR cleaned on SIGTERM" \
+    assert_fail "[SPEC-1] AUTO_TEST_TEMP_DIR cleaned on SIGTERM" \
         "directory still exists: $CHILD_TEMPDIR"
     rm -rf "$CHILD_TEMPDIR" 2>/dev/null || true
 else
-    assert_pass "[SPEC-2] AUTO_TEST_TEMP_DIR cleaned on SIGTERM"
+    assert_pass "[SPEC-1] AUTO_TEST_TEMP_DIR cleaned on SIGTERM"
 fi
 
 # ─── Normal-exit guard: EXIT path cleans up and exits 0 ─────────────────────
+# ─── SPEC-2: SIGINT mid-test exits 130, no bogus assertion failures ──────────
+# The child signals ITSELF from a backgrounded sleeper rather than being signalled
+# from here. Bash sets SIGINT to IGNORE in a background child when job control is
+# off, so `kill -INT` from the parent would never be delivered and this would pass
+# vacuously. Self-signalling reproduces a real Ctrl-C, which arrives at a
+# foreground process.
+print_test_section "SPEC-2: child installs harness, receives SIGINT"
+
+CHILD3_OUTPUT="$WITNESS_DIR/child3-output.txt"
+
+set +e
+bash -c "
+    source '$REPO_ROOT/scripts/lib/helpers.sh'
+    source '$REPO_ROOT/scripts/lib/test-helpers.sh'
+    assert_pass 'T0: pre-signal assertion (expected in output)'
+    ( sleep 1; kill -INT \$\$ ) &
+    sleep 5
+    assert_fail 'POST-SIGNAL BOGUS FAILURE (must never appear)'
+    print_test_results
+" >"$CHILD3_OUTPUT" 2>&1
+CHILD3_RC=$?
+set -e
+
+assert_eq "[SPEC-2] SIGINT yields exit code 130 (128+SIGINT)" "130" "$CHILD3_RC"
+_c3_bogus="$(grep -c 'POST-SIGNAL BOGUS FAILURE' "$CHILD3_OUTPUT" 2>/dev/null || true)"
+assert_eq "[SPEC-2] no bogus assertion-failure lines in output after SIGINT" \
+    "0" "${_c3_bogus:-0}"
+
 print_test_section "Normal exit: EXIT trap cleans up and child exits 0"
 
 CHILD2_OUTPUT="$WITNESS_DIR/child2-output.txt"
