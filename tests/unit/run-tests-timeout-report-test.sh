@@ -116,6 +116,12 @@ assert_eq "[SPEC-6] both notes render with a comma AND a space" "1" \
 assert_eq "[SPEC-6] the two notes are not run together without a space" "0" \
     "$(printf '%s\n' "$OUT" | grep -c 'skipped,1 timed out')"
 
+# ─── RT-K-STRUCT: unconditional structural wiring check ──────────────────────
+# Both _rt_tout array assignments in run-tests.sh must wire "-k" so a
+# SIGTERM-ignoring child is escalated to SIGKILL. Runs without a timeout binary.
+assert_eq "RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation (2 assignment lines)" "2" \
+    "$(grep -cF '"-k"' "$RUN_TESTS")"
+
 # ─── RT-K: SIGTERM-ignoring file is escalated to SIGKILL via -k 10 ─────────────
 # Proves the -k 10 wiring in _rt_tout is load-bearing. Without -k, `timeout`
 # hangs indefinitely after sending SIGTERM to a TERM-ignoring child; with -k 10
