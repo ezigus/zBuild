@@ -86,24 +86,76 @@ assert_eq "[SPEC-2] dirty tree + non-empty dir → exit 1" "1" "$_MUT_RC"
 assert_contains "[SPEC-2] stderr contains 'refusing'" "$_MUT_ERR" "refusing"
 assert_contains "[SPEC-2] stdout contains ABORTED line" "$_MUT_OUT" "ABORTED"
 
-# The ABORTED line must not match either aggregator marker regex so the
-# run-tests.sh concurrent-output parser never confuses it for a tier result.
+# The ABORTED line must not match either aggregator marker contract, so no
+# consumer can miscount it as a tier result or as a failing test file.
+#
+# Both patterns are read from the REAL sources at run time rather than copied
+# here. A copy asserts only that this file agrees with itself: whoever later
+# widens the aggregator regex gets a green test and a silently miscounted tier —
+# the green-but-inert class ADR-036 exists to catch. Reading the live definitions
+# means the assertion moves when the contract moves.
 _ABORTED_LINE=""
 while IFS= read -r _ln; do
     [[ "$_ln" == *ABORTED* ]] && _ABORTED_LINE="$_ln" && break
 done <<< "$_MUT_OUT"
-if ! grep -qE '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed' <<< "$_ABORTED_LINE"; then
-    assert_pass "[SPEC-2] ABORTED line does not match passed-count regex"
+[[ -n "$_ABORTED_LINE" ]] \
+    && assert_pass "[SPEC-2] an ABORTED line was actually captured" \
+    || assert_fail "[SPEC-2] an ABORTED line was actually captured" "none found"
+
+# (a) The tier-summary aggregator in scripts/run-tests.sh. The regex lives
+# inside a `[[ =~ ]]` test; pull the literal out by content, never by line
+# number, and unescape the `\ ` that bash's =~ syntax requires.
+_AGG_SRC_LINE="$(grep -m1 -F 'passed(\ \(([0-9]+)\ skipped\))?' "$REPO_ROOT/scripts/run-tests.sh")"
+_AGG_RE="${_AGG_SRC_LINE#*=~ }"
+_AGG_RE="${_AGG_RE%% ]]*}"
+_AGG_RE="${_AGG_RE//\\ / }"
+[[ -n "$_AGG_RE" ]] \
+    && assert_pass "[SPEC-2] aggregator regex extracted from run-tests.sh (not a copy)" \
+    || assert_fail "[SPEC-2] aggregator regex extracted from run-tests.sh (not a copy)" "empty"
+if grep -qE "$_AGG_RE" <<< "$_ABORTED_LINE"; then
+    assert_fail "[SPEC-2] ABORTED line must not match the live tier-summary regex" \
+        "re: $_AGG_RE / line: $_ABORTED_LINE"
 else
-    assert_fail "[SPEC-2] ABORTED line must not match passed-count regex" \
-        "line: $_ABORTED_LINE"
+    assert_pass "[SPEC-2] ABORTED line does not match the live tier-summary regex"
 fi
-if ! grep -qE '^[A-Za-z][A-Za-z0-9_-]*: (FAIL|TIMEOUT) ' <<< "$_ABORTED_LINE"; then
-    assert_pass "[SPEC-2] ABORTED line does not match FAIL/TIMEOUT marker regex"
+
+# (b) _TEST_FAIL_MARKER_RE — the red set that drives targeted rerun. It is a
+# plain assignment in parse.sh, so read it straight from the file (sourcing
+# parse.sh would pull in the whole pattern bank).
+_FAIL_RE_SRC="$(grep -m1 '^_TEST_FAIL_MARKER_RE=' "$REPO_ROOT/plugins/tool/test/lib/parse.sh")"
+_FAIL_RE="${_FAIL_RE_SRC#*=}"
+_FAIL_RE="${_FAIL_RE#\'}"; _FAIL_RE="${_FAIL_RE%\'}"
+[[ -n "$_FAIL_RE" ]] \
+    && assert_pass "[SPEC-2] _TEST_FAIL_MARKER_RE extracted from parse.sh (not a copy)" \
+    || assert_fail "[SPEC-2] _TEST_FAIL_MARKER_RE extracted from parse.sh (not a copy)" "empty"
+if grep -qE "$_FAIL_RE" <<< "$_ABORTED_LINE"; then
+    assert_fail "[SPEC-2] ABORTED line must not match the live fail-marker regex" \
+        "re: $_FAIL_RE / line: $_ABORTED_LINE"
 else
-    assert_fail "[SPEC-2] ABORTED line must not match FAIL/TIMEOUT marker regex" \
-        "line: $_ABORTED_LINE"
+    assert_pass "[SPEC-2] ABORTED line does not match the live fail-marker regex"
 fi
+
+# Both extractions must be live patterns, not empty strings that would make the
+# two negative assertions above vacuous.
+if grep -qE "$_AGG_RE" <<< "mutation: 0/0 passed"; then
+    assert_pass "[SPEC-2] extracted aggregator regex is live (matches a real summary line)"
+else
+    assert_fail "[SPEC-2] extracted aggregator regex failed to match a known-good summary" \
+        "re: $_AGG_RE"
+fi
+if grep -qE "$_FAIL_RE" <<< "unit: FAIL tests/unit/x-test.sh"; then
+    assert_pass "[SPEC-2] extracted fail-marker regex is live (matches a real FAIL line)"
+else
+    assert_fail "[SPEC-2] extracted fail-marker regex failed to match a known-good FAIL line" \
+        "re: $_FAIL_RE"
+fi
+
+# ── job_dir must not leak on the abort path ─────────────────────────────────
+# The clean-tree check now runs AFTER `mktemp -d` creates $job_dir, so the abort
+# path exits with a temp dir already allocated. _mut_teardown removes it via the
+# EXIT trap; assert that mechanically rather than by reading the trap.
+_JOBDIRS_AFTER="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'zb-mut-jobs.*' -newer "$RUN_SCRIPT" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[SPEC-2] abort path leaves no zb-mut-jobs.* temp dir behind" "0" "$_JOBDIRS_AFTER"
 
 # ── Case 3 [SPEC-3]: clean tree + empty mutation dir ────────────────────────
 _make_clean
@@ -122,6 +174,19 @@ else
     assert_fail "[SPEC-3] ABORTED must not appear when tree is clean" \
         "stdout: $_MUT_OUT"
 fi
+
+# ── Case 4b: SPEC_MUT really does count as n_specs > 0 ──────────────────────
+# Case 2 only proves the gate fires for SPEC_MUT; it cannot distinguish "the
+# gate fired because specs were counted" from "the gate fired for some other
+# reason". The fixture is a STRUCTURALLY-INVALID spec, and today Phase A
+# increments idx before every structural `continue` — so it counts. If that
+# ordering ever changes, n_specs would silently drop to 0, the gate would be
+# bypassed, and Case 2 would fail with a confusing exit-code mismatch rather
+# than naming the cause. This run is clean, so the tier summary is reached:
+# a counted spec yields a non-zero denominator.
+[[ -n "$(grep -oE 'mutation: [0-9]+/[1-9][0-9]* passed' <<< "$_MUT_OUT")" ]] \
+    && assert_pass "SPEC_MUT counts toward n_specs (Phase A counts invalid specs too — Case 2 depends on it)" \
+    || assert_fail "SPEC_MUT counts toward n_specs (Phase A counts invalid specs too)" "denominator was 0: $_MUT_OUT"
 
 cleanup_test_env
 print_test_results
