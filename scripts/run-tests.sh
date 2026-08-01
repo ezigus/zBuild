@@ -318,13 +318,12 @@ _rt_emit_summary() {
         _sk="$(grep -c . "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || true)"
         rm -f "$ZBUILD_TEST_SKIP_LOG"
     fi
-    local -a _bits=()
-    [[ "${_sk:-0}" -gt 0 ]] && _bits+=("$_sk skipped")
-    [[ "${_to:-0}" -gt 0 ]] && _bits+=("$_to timed out")
-    if [[ ${#_bits[@]} -gt 0 ]]; then
-        local IFS=', '
-        _note=" (${_bits[*]})"
-    fi
+    # Built by concatenation, NOT `IFS=', '` + "${arr[*]}": that join uses only
+    # the FIRST character of IFS, so two notes rendered as "(1 skipped,1 timed out)"
+    # with no space. Only observable when a tier has both in one run.
+    [[ "${_sk:-0}" -gt 0 ]] && _note="$_sk skipped"
+    [[ "${_to:-0}" -gt 0 ]] && _note="${_note:+$_note, }$_to timed out"
+    [[ -n "$_note" ]] && _note=" ($_note)"
     echo "$_name: $_passed/$_total passed$_note"
 }
 

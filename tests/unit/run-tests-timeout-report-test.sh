@@ -45,7 +45,7 @@ _run_unit_tier() {
            ZBUILD_CORE_DIR="$EMPTY" \
            ZBUILD_MUTATION_DIR="$EMPTY" \
            ZBUILD_TEST_FILE_TIMEOUT="$bound" \
-           ZBUILD_TEST_JOBS=1 \
+           ZBUILD_TEST_PARALLEL_JOBS=0 \
            bash "$RUN_TESTS" --tier unit 2>&1)"
     RC=$?
     set -e
@@ -90,6 +90,26 @@ rm -f "$FIX/unit/c-hang-test.sh"
 _run_unit_tier 0
 assert_eq "[SPEC-4b] no timeouts → summary carries no timeout note" "1" \
     "$(printf '%s\n' "$OUT" | grep -cE '^unit: 1/2 passed$')"
+
+# ─── SPEC-6: skipped AND timed out in the same tier render as one readable note ─
+# The combination was untested when the note was first written, and the original
+# `IFS=', '` + "${arr[*]}" join silently produced "(1 skipped,1 timed out)" —
+# ${arr[*]} joins on the FIRST character of IFS only. Neither single-note path
+# could expose it. Restore the hanging file and add a file that reports a skip.
+printf '#!/usr/bin/env bash\necho "MARKER_BEFORE_HANG"\nsleep 30\n' > "$FIX/unit/c-hang-test.sh"
+cat > "$FIX/unit/d-skip-test.sh" <<'SKIPFIX'
+#!/usr/bin/env bash
+# Records a skip the way skip_on_platform does: one line in ZBUILD_TEST_SKIP_LOG.
+[[ -n "${ZBUILD_TEST_SKIP_LOG:-}" ]] && echo "d-skip-test.sh: skipped" >> "$ZBUILD_TEST_SKIP_LOG"
+exit 0
+SKIPFIX
+chmod +x "$FIX/unit/c-hang-test.sh" "$FIX/unit/d-skip-test.sh"
+_run_unit_tier 2
+assert_eq "[SPEC-6] both notes render with a comma AND a space" "1" \
+    "$(printf '%s\n' "$OUT" | grep -cE '^unit: [0-9]+/[0-9]+ passed \(1 skipped, 1 timed out\)$')"
+
+assert_eq "[SPEC-6] the two notes are not run together without a space" "0" \
+    "$(printf '%s\n' "$OUT" | grep -c 'skipped,1 timed out')"
 
 cleanup_test_env
 print_test_results
