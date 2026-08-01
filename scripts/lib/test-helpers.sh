@@ -109,7 +109,17 @@ _kill_test_children() {
 _test_cleanup_hook() { :; }
 
 # ─── Master trap — kills children, calls hook, removes auto temp dir ─────────
+# _HARNESS_SIGNAL: set by dedicated INT/TERM wrappers before calling cleanup,
+# so _test_harness_cleanup can re-raise and exit 128+signal instead of
+# returning into the interrupted test body (which would produce bogus failures).
+# _HARNESS_CLEANED_UP: idempotency guard — prevents double cleanup when both
+# a signal handler and the EXIT trap would otherwise call the body.
+_HARNESS_SIGNAL=""
+_HARNESS_CLEANED_UP=0
+
 _test_harness_cleanup() {
+    [[ "${_HARNESS_CLEANED_UP:-0}" == "1" ]] && return 0
+    _HARNESS_CLEANED_UP=1
     _kill_test_children
     _test_cleanup_hook
     if [[ -n "${AUTO_TEST_TEMP_DIR:-}" && -d "$AUTO_TEST_TEMP_DIR" ]]; then
@@ -130,11 +140,29 @@ _test_harness_cleanup() {
         [[ "$_trk" == "$_ZB_TEST_TMP_ROOT"/* ]] || continue
         [[ -d "$_trk" ]] && rm -rf "$_trk" 2>/dev/null || true
     done
+    # Signal-triggered teardown: clear both the signal trap and EXIT so the
+    # re-raised signal exits with 128+N (143/130) without running EXIT again.
+    if [[ -n "${_HARNESS_SIGNAL:-}" ]]; then
+        trap - "${_HARNESS_SIGNAL}" EXIT
+        kill -"${_HARNESS_SIGNAL}" $$
+    fi
 }
+
+# Thin wrappers installed for TERM and INT: record the in-flight signal name
+# then call the shared cleanup body. The cleanup body re-raises at the tail
+# so the process exits 128+signal instead of returning into the test body.
+_harness_signal_handler() {
+    local _sig="$1"
+    _HARNESS_SIGNAL="$_sig"
+    _test_harness_cleanup
+}
+
 # Wave 19-L: initialize the tracking array (declared here so setup_test_env
 # can += without `unbound variable` under set -u).
 _TRACKED_TEST_TEMP_DIRS=()
-trap '_test_harness_cleanup' EXIT INT TERM
+trap '_test_harness_cleanup' EXIT
+trap '_harness_signal_handler INT'  INT
+trap '_harness_signal_handler TERM' TERM
 
 # ─── Assertions ──────────────────────────────────────────────────────────────
 

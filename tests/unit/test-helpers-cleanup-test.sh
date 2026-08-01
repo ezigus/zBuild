@@ -55,12 +55,12 @@ assert_pass "T1: child surfaced its TEST_TEMP_DIR path ($CHILD_TEMPDIR)"
 if [[ -d "$CHILD_TEMPDIR" ]]; then
     # Diagnostic — show what's still there.
     leaked_size="$(du -sh "$CHILD_TEMPDIR" 2>/dev/null | awk '{print $1}')"
-    assert_fail "T2: named TEST_TEMP_DIR cleaned by master EXIT trap" \
+    assert_fail "[SPEC-3] T2: named TEST_TEMP_DIR cleaned by master EXIT trap" \
         "leaked at $CHILD_TEMPDIR ($leaked_size)"
     # Clean it up so this test itself doesn't contribute.
     rm -rf "$CHILD_TEMPDIR" 2>/dev/null || true
 else
-    assert_pass "T2: named TEST_TEMP_DIR cleaned by master EXIT trap"
+    assert_pass "[SPEC-3] T2: named TEST_TEMP_DIR cleaned by master EXIT trap"
 fi
 
 # T3: AUTO_TEST_TEMP_DIR cleanup is also exercised (regression guard).
