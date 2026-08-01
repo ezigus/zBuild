@@ -200,6 +200,22 @@ else
         "worktree_gone=$([[ ! -d "$OVR/ovr-run" ]] && echo yes || echo no) root_exists=$([[ -d "$OVR" ]] && echo yes || echo NO)"
 fi
 
+# ── SPEC-3 (change): applier defence-in-depth — refuses dirty worktree ───────
+# The scanner already excludes dirty worktrees; this verifies the applier has
+# its own pre-check so a hand-crafted plan or race cannot force-remove work.
+# At merge-base _cleanup_apply_worktree_plan used --force with no pre-check;
+# this assertion FAILS there and passes after the hardening. (change-behavior)
+WT_APPLIER_DIRTY="$(_mk applier-dirty zbuild/issue-30-applier-dirty 0)"
+printf 'uncommitted\n' > "$WT_APPLIER_DIRTY/uncommitted.txt"
+_backdate "$WT_APPLIER_DIRTY" 30
+(cd "$R" && _cleanup_apply_worktree_plan "$WT_APPLIER_DIRTY") >/dev/null 2>&1
+if [[ -d "$WT_APPLIER_DIRTY" ]]; then
+    assert_pass "[SPEC-3] applier refuses worktree with uncommitted work (defence-in-depth)"
+else
+    assert_fail "[SPEC-3] applier must not force-remove a worktree with uncommitted work" \
+        "worktree removed despite uncommitted files"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

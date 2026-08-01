@@ -71,8 +71,10 @@ Commands:
   cleanup                Prune stale zbuild/issue-* branches + old state files
                          + zb-applycheck-* stashes + leaked zbuild tmpdirs
                          (patterns: ZBUILD_TMPDIR_PATTERNS in lib/cleanup.sh).
-                         Also prunes worktree orphans.
-                         [--branches] [--state-dirs] [--stashes] [--tmpdirs]
+                         --worktrees reclaims dead-run worktrees (opt-in, never
+                         part of the default set; honours --age-days, so use
+                         --age-days 0 to reclaim a run that died today).
+                         [--branches] [--state-dirs] [--stashes] [--tmpdirs] [--worktrees]
                          [--dry-run|--apply|--force]
                          [--age-days N]    (state files; default 14)
                          [--age-hours N]   (stashes + tmpdirs; default 1)
@@ -628,6 +630,7 @@ UPHELP
         cl_state_dirs=false
         cl_stashes=false
         cl_tmpdirs=false
+        cl_worktrees=false
         cl_dry_run=""
         cl_force=false
         cl_age_days=14
@@ -640,6 +643,7 @@ UPHELP
                 --state-dirs) cl_state_dirs=true; shift ;;
                 --stashes)    cl_stashes=true; shift ;;
                 --tmpdirs)    cl_tmpdirs=true; shift ;;
+                --worktrees)  cl_worktrees=true; shift ;;
                 --dry-run)    cl_dry_run=true; shift ;;
                 --apply)      cl_dry_run=false; shift ;;
                 --force)      cl_force=true; cl_dry_run="${cl_dry_run:-false}"; shift ;;
@@ -664,7 +668,7 @@ UPHELP
                 --quiet) cl_quiet=true; shift ;;
                 *)
                     error "Unknown cleanup flag: $1"
-                    echo "Usage: zbuild cleanup [--branches] [--state-dirs] [--stashes] [--tmpdirs]" >&2
+                    echo "Usage: zbuild cleanup [--branches] [--state-dirs] [--stashes] [--tmpdirs] [--worktrees]" >&2
                     echo "                       [--dry-run|--apply|--force]" >&2
                     echo "                       [--age-days N] [--age-hours N] [--quiet]" >&2
                     echo "                       [--restore-stash <index> --apply]" >&2
@@ -693,7 +697,10 @@ UPHELP
         # Default = dry-run when neither --apply nor --force specified.
         [[ -z "$cl_dry_run" ]] && cl_dry_run=true
         # Default categories: all when no category flag was set.
-        if ! $cl_branches && ! $cl_state_dirs && ! $cl_stashes && ! $cl_tmpdirs; then
+        # --worktrees is deliberately NOT in the default set: reclaiming a worktree
+        # discards a whole checkout, a strictly larger blast radius than the other
+        # categories, so it stays opt-in (design SPEC-5).
+        if ! $cl_branches && ! $cl_state_dirs && ! $cl_stashes && ! $cl_tmpdirs && ! $cl_worktrees; then
             cl_branches=true
             cl_state_dirs=true
             cl_stashes=true
@@ -734,6 +741,29 @@ UPHELP
             # read ZBUILD_TMPDIR_PATTERNS — an inline whitelist here drifted
             # from the scanner twice (#628, #749).
             _cleanup_apply_tmpdir_plan "$cl_tmp_plan" "$cl_dry_run"
+        fi
+
+        if $cl_worktrees; then
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                # Unsuppressed, like every other lib source here: worktree.sh
+                # supplies zbuild_worktree_root, and a silent failure would make
+                # the scan skip override-root installs while reporting success.
+                # shellcheck source=lib/worktree.sh
+                source "$SCRIPT_DIR/lib/worktree.sh"
+                cl_wt_plan="$(_cleanup_scan_worktrees "$cl_age_days" || true)"
+                _cleanup_render_plan "worktrees" "$cl_wt_plan" "$cl_dry_run" "$cl_quiet"
+                if [[ "$cl_dry_run" != "true" && -n "$cl_wt_plan" ]]; then
+                    cl_wt_paths=()
+                    cl_wt_line=""
+                    while IFS= read -r cl_wt_line; do
+                        [[ -z "$cl_wt_line" ]] && continue
+                        cl_wt_paths+=("${cl_wt_line%%$'\t'*}")
+                    done <<< "$cl_wt_plan"
+                    if [[ ${#cl_wt_paths[@]} -gt 0 ]]; then
+                        _cleanup_apply_worktree_plan "${cl_wt_paths[@]}"
+                    fi
+                fi
+            fi
         fi
 
         # Auto-prune worktree orphans (cheap, idempotent; only inside a repo).

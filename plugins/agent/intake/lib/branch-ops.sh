@@ -160,10 +160,60 @@ _intake_checkout_branch() {
 
     # Does local branch exist?
     if git show-ref --verify --quiet "refs/heads/$target"; then
-        if ! git checkout "$target" >/dev/null 2>&1; then
-            error "intake_branch: checkout of existing branch '$target' failed"
-            emit_event "intake.error" \
-                "plugin=intake" "branch=$target" "reason=checkout_failed"
+        local _co_err=""
+        # LC_ALL=C pins git's stderr to English: both the case-match below and the
+        # fallback parse read that message, and a translated locale would silently
+        # degrade the diagnostic back to the generic checkout_failed path.
+        # Capture stderr (2>&1 >/dev/null): stderr → $() pipe, stdout discarded.
+        if ! _co_err="$(LC_ALL=C git checkout "$target" 2>&1 >/dev/null)"; then
+            # Detect branch held by another worktree. Git's phrasing varies by version:
+            #   < 2.31: "fatal: '<b>' is already checked out at '<path>'"
+            #   ≥ 2.31: "fatal: '<b>' is already used by worktree at '<path>'"
+            local _holder=""
+            case "$_co_err" in
+                *"is already checked out at"*|*"is already used by worktree at"*)
+                    # First try porcelain (authoritative); fall back to stderr parse.
+                    # The branch goes in via ENVIRON, not -v: awk expands backslash
+                    # escapes in a -v assignment, so a crafted branch name would
+                    # corrupt the comparison. `exit` on the first hit replaces a
+                    # `| head -1` that could SIGPIPE awk under pipefail.
+                    # `export` INSIDE the substitution subshell, not a `VAR=val cmd`
+                    # prefix: a prefix assignment scopes to the first command of a
+                    # pipeline only, so awk would never see it and this authoritative
+                    # branch would silently always return empty.
+                    _holder="$(export _zb_b="refs/heads/$target"
+                        git worktree list --porcelain 2>/dev/null \
+                        | awk '/^worktree /{w=$2} /^branch /{if ($2==ENVIRON["_zb_b"]) {print w; exit}}')"
+                    if [[ -z "$_holder" ]]; then
+                        # Extract the path from git's own error message with pure
+                        # bash — no grep/sed, which pins neither PATH nor semantics.
+                        # Longest-prefix strip so the LAST " at '" wins — the path
+                        # is always the final quoted field of the message.
+                        local _tail="${_co_err##* at \'}"
+                        [[ "$_tail" != "$_co_err" ]] && _holder="${_tail%%\'*}"
+                    fi
+                    ;;
+            esac
+            if [[ -n "$_holder" ]]; then
+                local _dead_run_id="${_holder##*/}"
+                # Co-located layout: .../runs/<run_id>/worktree → extract run_id
+                if [[ "$_dead_run_id" == "worktree" ]]; then
+                    _dead_run_id="${_holder%/worktree}"; _dead_run_id="${_dead_run_id##*/}"
+                fi
+                error "intake_branch: branch '$target' is already checked out at $_holder"
+                error "  dead run: ${_dead_run_id:-unknown}"
+                # --age-days 0 is REQUIRED, not decorative: the scanner's default
+                # is 14 days, so the bare form reclaims nothing for a run that
+                # died today — which is exactly the case that lands here.
+                error "  reclaim:  zbuild cleanup --worktrees --age-days 0 --apply"
+                emit_event "intake.error" \
+                    "plugin=intake" "branch=$target" \
+                    "reason=branch_held_by_worktree" "holder=$_holder"
+            else
+                error "intake_branch: checkout of existing branch '$target' failed"
+                emit_event "intake.error" \
+                    "plugin=intake" "branch=$target" "reason=checkout_failed"
+            fi
             return 2
         fi
         # Verify post-checkout
