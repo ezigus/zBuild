@@ -177,7 +177,12 @@ _intake_checkout_branch() {
                     # escapes in a -v assignment, so a crafted branch name would
                     # corrupt the comparison. `exit` on the first hit replaces a
                     # `| head -1` that could SIGPIPE awk under pipefail.
-                    _holder="$(_zb_b="refs/heads/$target" git worktree list --porcelain 2>/dev/null \
+                    # `export` INSIDE the substitution subshell, not a `VAR=val cmd`
+                    # prefix: a prefix assignment scopes to the first command of a
+                    # pipeline only, so awk would never see it and this authoritative
+                    # branch would silently always return empty.
+                    _holder="$(export _zb_b="refs/heads/$target"
+                        git worktree list --porcelain 2>/dev/null \
                         | awk '/^worktree /{w=$2} /^branch /{if ($2==ENVIRON["_zb_b"]) {print w; exit}}')"
                     if [[ -z "$_holder" ]]; then
                         # Extract the path from git's own error message with pure
