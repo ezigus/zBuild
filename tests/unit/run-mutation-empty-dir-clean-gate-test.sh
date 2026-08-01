@@ -54,11 +54,19 @@ cat > "$SPEC_MUT/test-spec.md" <<'EOF'
 # Not a valid mutation spec — no required sections
 EOF
 
+# run-mutation.sh derives both $job_dir and its worktrees from ${TMPDIR:-/tmp}.
+# Pin it per-test: the leak probe below counts zb-mut-jobs.* dirs, and scanning
+# the host-wide tmp would both couple this test to whatever else is running and
+# flake under the parallel tier runner, where a real mutation tier legitimately
+# has one open.
+MUT_TMP="$TEST_TEMP_DIR/mut-tmp"
+mkdir -p "$MUT_TMP"
+
 _MUT_OUT="" _MUT_ERR="" _MUT_RC=0
 _run_mut() {
     local dir="$1"
     _MUT_OUT="" _MUT_ERR="" _MUT_RC=0
-    ZBUILD_MUTATION_DIR="$dir" ZBUILD_MUTATION_PARALLEL_JOBS=1 \
+    TMPDIR="$MUT_TMP" ZBUILD_MUTATION_DIR="$dir" ZBUILD_MUTATION_PARALLEL_JOBS=1 \
         bash "$RUN_SCRIPT" \
         >"$TEST_TEMP_DIR/_mut.out" 2>"$TEST_TEMP_DIR/_mut.err" || _MUT_RC=$?
     _MUT_OUT="$(cat "$TEST_TEMP_DIR/_mut.out")"
@@ -153,9 +161,15 @@ fi
 # ── job_dir must not leak on the abort path ─────────────────────────────────
 # The clean-tree check now runs AFTER `mktemp -d` creates $job_dir, so the abort
 # path exits with a temp dir already allocated. _mut_teardown removes it via the
-# EXIT trap; assert that mechanically rather than by reading the trap.
-_JOBDIRS_AFTER="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'zb-mut-jobs.*' -newer "$RUN_SCRIPT" 2>/dev/null | wc -l | tr -d ' ')"
+# EXIT trap; assert that mechanically rather than by reading the trap. $MUT_TMP
+# is this test's own tmp root, so the count is exact — no host-wide scan, and
+# nothing another tier is doing concurrently can appear in it.
+_JOBDIRS_AFTER="$(find "$MUT_TMP" -maxdepth 1 -name 'zb-mut-jobs.*' 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "[SPEC-2] abort path leaves no zb-mut-jobs.* temp dir behind" "0" "$_JOBDIRS_AFTER"
+# A count of 0 is only meaningful while job_dir is still built from $TMPDIR under
+# that name — otherwise the probe above passes by looking in the wrong place.
+assert_contains "[SPEC-2] job_dir is still derived from \$TMPDIR (keeps the leak probe honest)" \
+    "$(grep -F 'job_dir="$(mktemp -d' "$RUN_SCRIPT")" 'TMPDIR:-/tmp}/zb-mut-jobs'
 
 # ── Case 3 [SPEC-3]: clean tree + empty mutation dir ────────────────────────
 _make_clean
