@@ -7,13 +7,35 @@
 # worse than none, so most of these SPECs assert what it REFUSES to touch.
 #
 # SPEC-1: an old, clean, pushed worktree is a candidate
-# SPEC-2: a worktree newer than the age threshold is kept   [mutation-verified via positive flip]
-# SPEC-3: a worktree with uncommitted work is kept          [mutation-verified via positive flip]
+# SPEC-2: a worktree newer than the age threshold is kept   [mutation-verified — see below]
+# SPEC-3: a worktree with uncommitted work is kept          [mutation-verified — see below]
 #
-# SPEC-2/3 each have a positive-flip companion: after the absence check, we verify
-# the SAME fixture appears under a condition that removes the named guard (age=0
-# for SPEC-2; clean worktree for SPEC-3). If something else were excluding the
-# fixture the positive flip would fail, exposing the inert test.
+# #1635 CORRECTION. That issue reported SPEC-2/3 as inert: "removing the age guard
+# and the dirty guard individually reddened NEITHER", concluding some unexplained
+# third exclusion was masking them. THAT OBSERVATION WAS WRONG. Re-running the
+# mutation by hand — neutering each guard inside _cleanup_scan_worktrees (and
+# nowhere else), against BOTH this revision and the merge-base — reddens the
+# matching assertion every time:
+#
+#   age guard   -> `[SPEC-2] a fresh worktree must not be reclaimed`   FAILS
+#   dirty guard -> `[SPEC-3] never reclaim a worktree holding ...`     FAILS
+#
+# Both were already load-bearing before #1635 changed anything. The likeliest
+# cause of the original mis-observation is mutating a copy the test never reads —
+# the installed engine under ~/.local/share/zbuild, or a stale
+# $TMPDIR/zbuild-tier-buf.* harness buffer — since this file sources
+# $REPO_ROOT/scripts/lib/cleanup.sh. Mutate the repo copy, and confirm the
+# mutation is present in the tree the test actually sources.
+#
+# The claim is no longer a comment anyone has to trust: it is enforced by the
+# mutation tier on every CI run —
+#   tests/mutation/cleanup-worktree-age-guard.md
+#   tests/mutation/cleanup-worktree-dirty-guard.md
+#
+# The positive-flip companions below are kept, but note what they do and do NOT
+# prove. They vary the INPUT (age=0; remove the dirty file) and show the fixture
+# is not permanently excluded for some unrelated reason — a real and different
+# failure mode. They are NOT mutation verification, which varies the CODE.
 #
 # SPEC-4: the ACTIVE run's worktree is kept (resume needs it)
 # SPEC-5: worktrees outside the zbuild run root are ignored entirely
