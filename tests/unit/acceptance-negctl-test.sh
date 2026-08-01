@@ -472,5 +472,13 @@ assert_eq "[SPEC-4] rc=137 TESTFILE → NEGCTL ERROR timeout:SPEC-1 (not not_pas
 assert_eq "[SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head" \
     "" "$(grep 'not_passing_at_head' <<<"$OUT_Q")"
 
+# ── NC-R: [SPEC-2] run-tests.sh also wires -k 10 for SIGKILL escalation ─────
+# The same SIGTERM-ignoring defect can hang run-tests.sh per-file timeouts.
+# Structural: both _rt_tout assignments in scripts/run-tests.sh must carry -k.
+# In the reachability worktree, REPO_ROOT → worktree; run-tests.sh at baseline
+# has no -k → grep returns 0 ≠ 2 → test flips → reachability gate passes.
+assert_eq "[SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation (2 lines)" "2" \
+    "$(grep -cF '"-k"' "$REPO_ROOT/scripts/run-tests.sh")"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
