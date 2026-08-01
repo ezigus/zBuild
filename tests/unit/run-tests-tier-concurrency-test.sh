@@ -83,6 +83,9 @@ _all() {
   # (ZBUILD_LINT_CMD=true) to keep this concurrency test hermetic — without this
   # the lint tier would shell out to the real `npm run lint` (shellcheck over the
   # whole tree) on every _all invocation, defeating the fake-tier design.
+  # #1661: ZBUILD_MUTATION_DIR="$EMPTY_MUT" ensures n_specs=0 so run-mutation.sh
+  # skips the clean-tree gate even when the live worktree is dirty — the gate is
+  # now gated on spec count, so the concurrency test's hermeticity is preserved.
   env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
       -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u UPDATE_GOLDEN \
       ZBUILD_TESTS_DIR="$td" \
@@ -127,6 +130,9 @@ fi
 # `total: N/N passed` LAST. The stubbed lint (ZBUILD_LINT_CMD=true) passes 1/1.
 _expected_stdout="$(printf 'unit: 1/1 passed\nintegration: 1/1 passed\ne2e: 1/1 passed\ngolden: 1/1 passed\nmutation: 0/0 passed\nlint: 1/1 passed\n\ntotal: 5/5 passed')"
 assert_eq "[SPEC-2b] concurrent stdout matches canonical order + total" "$_expected_stdout" "$_conc_out"
+# [SPEC-3] issue #1661: empty ZBUILD_MUTATION_DIR keeps n_specs=0 → gate skipped.
+assert_contains "[SPEC-3] empty mutation dir → 'mutation: 0/0 passed' (gate gated on spec count, #1661)" \
+    "$_conc_out" "mutation: 0/0 passed"
 
 # FAIL lines land on STDERR (not stdout), in canonical tier order.
 _all "$FAILF"
