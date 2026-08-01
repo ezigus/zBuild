@@ -586,14 +586,18 @@ _cleanup_apply_worktree_plan() {
             rc=1
             continue
         fi
-        # Layout-aware. Co-located ($wt = <run_root>/<id>/worktree): the parent IS
-        # the per-run dir, so removing it when empty is correct. Override layout
-        # ($wt = $ZBUILD_WORKTREE_ROOT/<id>): the parent is the operator's
-        # CONFIGURED ROOT — rmdir'ing that would silently delete their directory
-        # once the last worktree went, and `|| true` would hide it.
-        case "$wt" in
-            */worktree) rmdir "$(dirname "$wt")" 2>/dev/null || true ;;
-        esac
+        # Layout-aware: only rmdir the parent when it is a per-run dir under the
+        # run root (co-located layout). In override layout the parent IS the
+        # operator's configured root — never rmdir it. The old */worktree suffix
+        # check fired on override paths with run_id='worktree', silently deleting
+        # the configured root once the last worktree went.
+        local wt_parent; wt_parent="$(dirname "$wt")"
+        local _run_root_l; _run_root_l="${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}/runs"
+        _run_root_l="$( (cd "$_run_root_l" 2>/dev/null && pwd -P) || printf '%s' "$_run_root_l" )"
+        local _wt_pc; _wt_pc="$( (cd "$wt_parent" 2>/dev/null && pwd -P) || printf '%s' "$wt_parent" )"
+        if [[ "$(dirname "$_wt_pc")" == "$_run_root_l" ]]; then
+            rmdir "$wt_parent" 2>/dev/null || true
+        fi
     done
     git -C "$repo_root" worktree prune 2>/dev/null || true
     return $rc
