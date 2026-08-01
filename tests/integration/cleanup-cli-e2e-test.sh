@@ -211,7 +211,9 @@ else
         "worktree still present at $WTS_RUN_ROOT/runs/dead-run-1/worktree"
 fi
 
-# [SPEC-5]: default-all includes worktrees (no explicit --worktrees flag)
+# [SPEC-5] (guard): default-all does NOT reclaim worktrees — --worktrees is opt-in.
+# Reclaiming a worktree discards a whole checkout; folding that into the bare
+# `zbuild cleanup --apply` default would silently widen its blast radius.
 mkdir -p "$WTS_RUN_ROOT/runs/dead-run-2"
 ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" zbuild_worktree_enter "dead-run-2" "zbuild/issue-401-wt" "create" >/dev/null 2>&1
 git push -q -u origin zbuild/issue-401-wt 2>/dev/null
@@ -223,11 +225,21 @@ if touch -d "@$_ts_old2" "$WTS_RUN_ROOT/runs/dead-run-2/worktree" 2>/dev/null; t
 fi
 out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --apply 2>&1)"; rc=$?
 assert_exit_code "[SPEC-5] default-all cleanup exits 0" 0 "$rc"
-if [[ ! -d "$WTS_RUN_ROOT/runs/dead-run-2/worktree" ]]; then
-    assert_pass "[SPEC-5] default-all includes --worktrees (dead-run-2 removed)"
+if [[ -d "$WTS_RUN_ROOT/runs/dead-run-2/worktree" ]]; then
+    assert_pass "[SPEC-5] default-all leaves worktrees alone (--worktrees is opt-in)"
 else
-    assert_fail "[SPEC-5] default-all must include worktree reclamation" \
-        "worktree still present at $WTS_RUN_ROOT/runs/dead-run-2/worktree"
+    assert_fail "[SPEC-5] default-all must NOT reclaim worktrees without --worktrees" \
+        "worktree was removed at $WTS_RUN_ROOT/runs/dead-run-2/worktree"
+fi
+
+# ...and the same reclaimable worktree IS removed once --worktrees is asked for,
+# so SPEC-5 proves opt-in-ness rather than just an inert scanner.
+out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --worktrees --apply 2>&1)"; rc=$?
+if [[ ! -d "$WTS_RUN_ROOT/runs/dead-run-2/worktree" ]]; then
+    assert_pass "[SPEC-5] the same worktree IS reclaimed with an explicit --worktrees"
+else
+    assert_fail "[SPEC-5] explicit --worktrees must reclaim the worktree default-all skipped" \
+        "output: $out"
 fi
 
 print_test_results

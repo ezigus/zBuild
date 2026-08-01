@@ -161,8 +161,11 @@ _intake_checkout_branch() {
     # Does local branch exist?
     if git show-ref --verify --quiet "refs/heads/$target"; then
         local _co_err=""
+        # LC_ALL=C pins git's stderr to English: both the case-match below and the
+        # fallback parse read that message, and a translated locale would silently
+        # degrade the diagnostic back to the generic checkout_failed path.
         # Capture stderr (2>&1 >/dev/null): stderr → $() pipe, stdout discarded.
-        if ! _co_err="$(git checkout "$target" 2>&1 >/dev/null)"; then
+        if ! _co_err="$(LC_ALL=C git checkout "$target" 2>&1 >/dev/null)"; then
             # Detect branch held by another worktree. Git's phrasing varies by version:
             #   < 2.31: "fatal: '<b>' is already checked out at '<path>'"
             #   ≥ 2.31: "fatal: '<b>' is already used by worktree at '<path>'"
@@ -170,16 +173,19 @@ _intake_checkout_branch() {
             case "$_co_err" in
                 *"is already checked out at"*|*"is already used by worktree at"*)
                     # First try porcelain (authoritative); fall back to stderr parse.
-                    _holder="$(git worktree list --porcelain 2>/dev/null \
-                        | awk -v b="refs/heads/$target" \
-                              '/^worktree /{w=$2} /^branch /{if ($2==b) print w}' \
-                        | head -1)"
+                    # The branch goes in via ENVIRON, not -v: awk expands backslash
+                    # escapes in a -v assignment, so a crafted branch name would
+                    # corrupt the comparison. `exit` on the first hit replaces a
+                    # `| head -1` that could SIGPIPE awk under pipefail.
+                    _holder="$(_zb_b="refs/heads/$target" git worktree list --porcelain 2>/dev/null \
+                        | awk '/^worktree /{w=$2} /^branch /{if ($2==ENVIRON["_zb_b"]) {print w; exit}}')"
                     if [[ -z "$_holder" ]]; then
-                        # Extract path from git's own error message.
-                        _holder="$(printf '%s\n' "$_co_err" \
-                            | /usr/bin/grep -oE "(already checked out|already used by worktree) at '([^']+)'" \
-                            | /usr/bin/sed "s/.*at '//;s/'$//" \
-                            | head -1)"
+                        # Extract the path from git's own error message with pure
+                        # bash — no grep/sed, which pins neither PATH nor semantics.
+                        # Longest-prefix strip so the LAST " at '" wins — the path
+                        # is always the final quoted field of the message.
+                        local _tail="${_co_err##* at \'}"
+                        [[ "$_tail" != "$_co_err" ]] && _holder="${_tail%%\'*}"
                     fi
                     ;;
             esac
@@ -191,7 +197,10 @@ _intake_checkout_branch() {
                 fi
                 error "intake_branch: branch '$target' is already checked out at $_holder"
                 error "  dead run: ${_dead_run_id:-unknown}"
-                error "  reclaim:  zbuild cleanup --worktrees --apply"
+                # --age-days 0 is REQUIRED, not decorative: the scanner's default
+                # is 14 days, so the bare form reclaims nothing for a run that
+                # died today — which is exactly the case that lands here.
+                error "  reclaim:  zbuild cleanup --worktrees --age-days 0 --apply"
                 emit_event "intake.error" \
                     "plugin=intake" "branch=$target" \
                     "reason=branch_held_by_worktree" "holder=$_holder"

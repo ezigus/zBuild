@@ -88,11 +88,14 @@ else
     fi
 fi
 
-# (c) output must mention zbuild cleanup --worktrees
-if grep -qF "zbuild cleanup --worktrees" <<< "$_diag_out"; then
-    assert_pass "[SPEC-4] diagnostic mentions the reclaim command (zbuild cleanup --worktrees)"
+# (c) output must mention the reclaim command — INCLUDING --age-days 0. The
+# scanner's default age gate is 14 days, so a bare `--worktrees --apply` reclaims
+# nothing for the run that just died, which is precisely the case that lands here.
+# Advice that silently no-ops is worse than no advice.
+if grep -qF "zbuild cleanup --worktrees --age-days 0 --apply" <<< "$_diag_out"; then
+    assert_pass "[SPEC-4] diagnostic mentions a reclaim command that clears the age gate"
 else
-    assert_fail "[SPEC-4] diagnostic must mention zbuild cleanup --worktrees" \
+    assert_fail "[SPEC-4] diagnostic must mention 'zbuild cleanup --worktrees --age-days 0 --apply'" \
         "output: $_diag_out"
 fi
 
