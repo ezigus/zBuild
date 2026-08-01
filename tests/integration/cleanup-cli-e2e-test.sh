@@ -200,10 +200,12 @@ assert_exit_code "[SPEC-1] --worktrees dry-run exits 0" 0 "$rc"
 #
 # This greps the RENDERED plan, which _cleanup_render_plan pads with SPACES —
 # there is no tab here to anchor on the way the unit test's _scan_has does.
-# Anchor on the column instead: leading indent, the path as one non-space token,
-# then the decision. A path that merely contains "prune" cannot satisfy it.
+# Anchor on the END of the known path instead, so the decision must be the very
+# next field. That rejects a skip line, rejects a path that merely contains
+# "prune", and — unlike anchoring on the path as one non-space token — stays
+# correct if the temp path ever contains a space.
 _dead_line="$(grep -F "dead-run-1" <<< "$out" || true)"
-if grep -qE '^[[:space:]]+[^[:space:]]+[[:space:]]+prune([[:space:]]|$)' <<< "$_dead_line"; then
+if grep -qE 'dead-run-1/worktree[[:space:]]+prune([[:space:]]|$)' <<< "$_dead_line"; then
     assert_pass "[SPEC-1] --worktrees dry-run reports the dead-run worktree as prune"
 else
     assert_fail "[SPEC-1] --worktrees dry-run must list the dead-run worktree with a prune decision" \
