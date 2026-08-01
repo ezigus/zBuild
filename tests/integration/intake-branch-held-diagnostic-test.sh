@@ -22,6 +22,8 @@ done
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/worktree.sh
+source "$REPO_ROOT/scripts/lib/worktree.sh"
 
 print_test_header "intake: branch-held-by-worktree diagnostic (#1658)"
 setup_test_env "intake-branch-held-diagnostic"
@@ -48,7 +50,7 @@ git init -q -b main "$REPO" 2>/dev/null
     git checkout -q main
 
     # Add a worktree on the target branch — this "holds" it
-    git worktree add -q "$WT_HOLDER" zbuild/issue-1658-held
+    ZBUILD_WORKTREE_ROOT="$TEST_TEMP_DIR" zbuild_worktree_enter "wt-holder" "zbuild/issue-1658-held" "adopt_local" >/dev/null 2>&1
 )
 
 # Canonicalise the holder path so the grep below survives macOS symlinks.
@@ -74,11 +76,11 @@ else
 fi
 
 # (b) output must name the holding path
-if printf '%s\n' "$_diag_out" | grep -qF "$_canon_holder"; then
+if grep -qF "$_canon_holder" <<< "$_diag_out"; then
     assert_pass "[SPEC-4] diagnostic names the holding worktree path"
 else
     # Accept the non-canonicalised path as well (e.g. on Linux where /tmp is not a symlink)
-    if printf '%s\n' "$_diag_out" | grep -qF "$WT_HOLDER"; then
+    if grep -qF "$WT_HOLDER" <<< "$_diag_out"; then
         assert_pass "[SPEC-4] diagnostic names the holding worktree path (non-canonical)"
     else
         assert_fail "[SPEC-4] diagnostic must name the holding worktree path" \
@@ -87,7 +89,7 @@ else
 fi
 
 # (c) output must mention zbuild cleanup --worktrees
-if printf '%s\n' "$_diag_out" | grep -qF "zbuild cleanup --worktrees"; then
+if grep -qF "zbuild cleanup --worktrees" <<< "$_diag_out"; then
     assert_pass "[SPEC-4] diagnostic mentions the reclaim command (zbuild cleanup --worktrees)"
 else
     assert_fail "[SPEC-4] diagnostic must mention zbuild cleanup --worktrees" \

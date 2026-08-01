@@ -9,6 +9,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/worktree.sh
+source "$REPO_ROOT/scripts/lib/worktree.sh"
 
 print_test_header "zbuild cleanup CLI e2e (#570)"
 setup_test_env "cleanup-cli-e2e"
@@ -178,7 +180,7 @@ fi
 # Push its branch so the unpushed-commits guard does not block reclamation.
 WTS_RUN_ROOT="$TEST_TEMP_DIR/wts-run-root"
 mkdir -p "$WTS_RUN_ROOT/runs/dead-run-1"
-git worktree add -q "$WTS_RUN_ROOT/runs/dead-run-1/worktree" -b zbuild/issue-400-wt 2>/dev/null
+ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" zbuild_worktree_enter "dead-run-1" "zbuild/issue-400-wt" "create" >/dev/null 2>&1
 git push -q -u origin zbuild/issue-400-wt 2>/dev/null
 
 # Backdate the worktree directory so it is older than the 14-day default threshold.
@@ -192,7 +194,7 @@ fi
 # [SPEC-1]: --worktrees --dry-run lists the reclaimable worktree
 out="$(ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" "$ZBUILD" cleanup --worktrees --dry-run 2>&1)"; rc=$?
 assert_exit_code "[SPEC-1] --worktrees dry-run exits 0" 0 "$rc"
-if printf '%s\n' "$out" | grep -qF "dead-run-1"; then
+if grep -qF "dead-run-1" <<< "$out"; then
     assert_pass "[SPEC-1] --worktrees dry-run reports the dead-run worktree"
 else
     assert_fail "[SPEC-1] --worktrees dry-run must list the reclaimable dead-run worktree" \
@@ -211,7 +213,7 @@ fi
 
 # [SPEC-5]: default-all includes worktrees (no explicit --worktrees flag)
 mkdir -p "$WTS_RUN_ROOT/runs/dead-run-2"
-git worktree add -q "$WTS_RUN_ROOT/runs/dead-run-2/worktree" -b zbuild/issue-401-wt 2>/dev/null
+ZBUILD_RUN_ROOT="$WTS_RUN_ROOT" zbuild_worktree_enter "dead-run-2" "zbuild/issue-401-wt" "create" >/dev/null 2>&1
 git push -q -u origin zbuild/issue-401-wt 2>/dev/null
 _ts_old2=$(( $(date +%s) - 15 * 86400 ))
 if touch -d "@$_ts_old2" "$WTS_RUN_ROOT/runs/dead-run-2/worktree" 2>/dev/null; then :; else
