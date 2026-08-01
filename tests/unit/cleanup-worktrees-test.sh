@@ -280,6 +280,9 @@ else
 fi
 
 # ── SPEC-3 (change): applier defence-in-depth — refuses dirty worktree ───────
+# The [SPEC-3] tag is deliberately reused: one invariant ("never reclaim a
+# worktree holding work"), enforced independently at two layers. The assertion
+# text names which layer failed.
 # The scanner already excludes dirty worktrees; this verifies the applier has
 # its own pre-check so a hand-crafted plan or race cannot force-remove work.
 # At merge-base _cleanup_apply_worktree_plan used --force with no pre-check;
