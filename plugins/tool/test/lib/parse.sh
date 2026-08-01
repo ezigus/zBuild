@@ -29,6 +29,16 @@
 [[ -n "${_ZBUILD_TEST_PARSE_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_PARSE_LOADED=1
 
+# Per-file non-passing markers emitted by scripts/run-tests.sh, matched by SHAPE
+# so any suite name is recognized (#1229). Two verbs (#1613):
+#   <name>: FAIL <path>                                  — assertions failed
+#   <name>: TIMEOUT <path> (exceeded Ns, rc=N)           — killed at its bound
+# ONE definition, because three consumers below must agree: the failing-suite
+# fold, the fail_files count, and _test_extract_failing_files (the red set that
+# drives targeted rerun). A verb recognized by some but not all silently drops
+# files from the rerun set.
+_TEST_FAIL_MARKER_RE='^[A-Za-z][A-Za-z0-9_-]*: (FAIL|TIMEOUT) '
+
 # ─── _test_pattern_runall ─────────────────────────────────────────────────────
 # Matches zbuild's scripts/run-tests.sh aggregated output, counted by SHAPE so
 # ANY suite name is recognized (repo-agnostic, #1229 — new tiers like `lint`
@@ -61,15 +71,20 @@ _test_pattern_runall() {
         [[ "$n" -lt "$m" ]] && failing="${failing}${suite} "
     done < <(printf '%s\n' "$raw" | grep -E '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed')
 
-    # Fold in suite names carried by explicit FAIL markers (dedup against above).
+    # Fold in suite names carried by explicit failure markers (dedup against above).
+    # #1613: run-tests.sh reports a file killed at its per-file time bound as
+    # `TIMEOUT`, not `FAIL`, so a reader can tell a hang from an assertion failure.
+    # Both shapes are non-passing and MUST count here — matching only FAIL would
+    # under-report the failure count and, worse, drop the timed-out file from the
+    # red set below so the targeted rerun never re-runs it.
     local fline fsuite
     while IFS= read -r fline; do
         [[ -n "$fline" ]] || continue
         fsuite="$(printf '%s' "$fline" | awk -F'[: ]+' '{print $1}')"
         case " $failing " in *" $fsuite "*) : ;; *) failing="${failing}${fsuite} " ;; esac
-    done < <(printf '%s\n' "$raw" | grep -E '^[A-Za-z][A-Za-z0-9_-]*: FAIL ')
+    done < <(printf '%s\n' "$raw" | grep -E "$_TEST_FAIL_MARKER_RE")
 
-    fail_files="$(printf '%s\n' "$raw" | grep -cE '^[A-Za-z][A-Za-z0-9_-]*: FAIL ')"
+    fail_files="$(printf '%s\n' "$raw" | grep -cE "$_TEST_FAIL_MARKER_RE")"
     [[ "$fail_files" =~ ^[0-9]+$ ]] || fail_files=0
 
     local failed=$((total_count - total_passed))
@@ -203,20 +218,30 @@ _test_pattern_cargo() {
 # ─── _test_extract_failing_files ─────────────────────────────────────────────
 # Parses raw test output for zbuild runall FAIL markers and echoes the unique
 # sorted list of test file paths that failed (ADR-034 / issue #846).
-# Pattern matched by SHAPE (repo-agnostic, #1229): ^<name>: FAIL <path>
+# Pattern matched by SHAPE (repo-agnostic, #1229): ^<name>: (FAIL|TIMEOUT) <path>
 # Outputs one absolute path per line, sorted, deduplicated.
-# Outputs nothing when no FAIL lines are present (empty → no red set to grow).
-# $NF is filtered to path-like tokens (must contain `/`) so a non-file suffix
-# such as `lint: FAIL (npm run lint)` → `lint)` is never injected into the
-# build-cycle red set (a failing suite with no file has no path to grow).
+# Outputs nothing when no markers are present (empty → no red set to grow).
+# The path is taken as the token AFTER the verb, not $NF (#1613): a TIMEOUT line
+# ends in `(exceeded 480s, rc=124)`, so $NF would yield `rc=124)` and the timed-out
+# file would silently vanish from the rerun set. The token is still filtered to
+# path-like values (must contain `/`) so a non-file suffix such as
+# `lint: FAIL (npm run lint)` → `(npm` is never injected into the build-cycle red
+# set (a failing suite with no file has no path to grow).
 # Usage: _test_extract_failing_files <raw_output>
 _test_extract_failing_files() {
     local raw="$1"
     # `grep ... || true`: when no FAIL lines exist grep exits 1; the `|| true`
     # keeps the pipeline exit code at 0 so callers with `set -e` do not abort.
     printf '%s\n' "$raw" \
-        | grep -E '^[A-Za-z][A-Za-z0-9_-]*: FAIL ' \
-        | awk '{ if ($NF ~ /\//) print $NF }' \
+        | grep -E "$_TEST_FAIL_MARKER_RE" \
+        | awk '{
+              for (i = 1; i < NF; i++) {
+                  if ($i == "FAIL" || $i == "TIMEOUT") {
+                      if ($(i+1) ~ /\//) print $(i+1)
+                      break
+                  }
+              }
+          }' \
         | sort -u \
         || true
 }
