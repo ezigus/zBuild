@@ -427,7 +427,10 @@ assert_eq "[SPEC-1] _negctl_is_timeout_rc 137 → true (SIGKILL = infra timeout)
 # At HEAD  (-k 2, timeout 1): SIGTERM at 1s ignored; SIGKILL at 3s → rc=137.
 # At baseline (no -k, timeout 1): SIGTERM ignored; bash loops to completion (≈30s)
 # and exits 0 — assertion "137" vs "0" fails at baseline, proves the wiring.
-if command -v timeout >/dev/null 2>&1; then
+# The guard must mirror what _acceptance_timeout_prefix actually resolves —
+# gtimeout OR timeout. Checking only `timeout` would silently drop this coverage
+# on a macOS coreutils host, which is exactly where the bound is exercised.
+if command -v gtimeout >/dev/null 2>&1 || command -v timeout >/dev/null 2>&1; then
     _trap_sh="$TEST_TEMP_DIR/trap-sigterm-loop.sh"
     cat > "$_trap_sh" <<'TEOF'
 #!/usr/bin/env bash
@@ -441,7 +444,7 @@ TEOF
     assert_eq "[SPEC-2] _negctl_run SIGTERM-ignoring TESTFILE escalated to SIGKILL (rc=137)" \
         "137" "$_rc_spec2"
 else
-    assert_pass "[SPEC-2] skipped — timeout binary not available"
+    assert_pass "[SPEC-2] skipped — neither gtimeout nor timeout available"
 fi
 
 # ── NC-P2: the kill grace is operator-tunable, not a hardcoded literal ────────
