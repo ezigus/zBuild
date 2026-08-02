@@ -16,6 +16,8 @@
 #                 run and NO timing lines leak onto either stream
 # SPEC-4  CHANGE  ms values are non-negative integers (a `sleep`-ing file reads > 0)
 # SPEC-5  GUARD   timing failure (unwritable path) never changes rc or output
+# (The CI-wiring guard for ZBUILD_TEST_TIMING_FILE lives in run-tests-parallel-test.sh
+#  as [SPEC-17c] — it must sit in the TESTFILE the acceptance contract binds. #1664)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

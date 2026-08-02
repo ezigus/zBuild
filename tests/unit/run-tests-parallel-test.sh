@@ -37,6 +37,9 @@
 # SPEC-14 CHANGE  a ZBUILD_SERIAL_TESTS-matched file runs in the SERIAL bucket, not the pool (#991)
 # SPEC-15 CHANGE  gh-automation-idempotency-log-test.sh is serial-pinned in _ZBUILD_SERIAL_PIN (#1425)
 # SPEC-16 GUARD   unit tier routes a ZBUILD_SERIAL_TESTS-pinned file to the serial bucket (#1425)
+# SPEC-17 GUARD   _ZBUILD_SERIAL_PIN entry count is <= 7 (ADR-053 ratchet cap)
+# SPEC-17b GUARD  the cap is demonstrated to bite at 8 and to miscount nothing (#1664)
+# SPEC-17c GUARD  ZBUILD_TEST_TIMING_FILE is wired in CI for unit+integration (ADR-053 §6)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -280,6 +283,96 @@ case "$_LAST_STDOUT" in
   *"unit: 4/6 passed"*) assert_pass "[SPEC-16c] serial-pin is routing-only; unit accounting unchanged (4/6)" ;;
   *) assert_fail "[SPEC-16c] unit-tier accounting must remain 4/6 with one file pinned" "stdout: $_LAST_STDOUT" ;;
 esac
+
+# ─── [SPEC-17] GUARD: _ZBUILD_SERIAL_PIN entry count is <= 7 (ADR-053 ratchet) ─
+# Counts the entries in the _ZBUILD_SERIAL_PIN array of run-tests.sh and fails
+# when an 8th is added without amending ADR-053 §5 and raising the cap here.
+#
+# _count_pins <file> — shared by the live check and the self-test below, so the
+# counter that guards the cap is the same one proven correct by SPEC-17b.
+# Three things the naive version got wrong, all reproduced before this rewrite:
+#   - a commented-out entry was counted as active  → false failure at the cap
+#   - a double-quoted entry was not counted at all → cap silently unenforced
+#   - `/^\)/` missed an indented `)`, so the scan ran past the array into the
+#     next one and counted unrelated entries
+# Strip the comment first, accept either quote style, and end the block on a
+# `)` at any indentation.
+# Prints the entry count, or the literal NOBLOCK when the array was never found.
+# NOBLOCK is not 0: a rename, a deletion, or a format change the regex no longer
+# matches would otherwise report 0 and satisfy `0 <= 7` — the cap would pass
+# vacuously at the exact moment it stopped being enforced.
+_count_pins() {
+  awk '
+    /_ZBUILD_SERIAL_PIN=\(/ { in_block=1; seen=1; next }
+    in_block && /^[[:space:]]*\)/ { in_block=0 }
+    in_block {
+      line=$0
+      sub(/#.*$/, "", line)                       # drop trailing comment
+      if (line ~ /"[^"]*\.sh"/ || line ~ /'"'"'[^'"'"']*\.sh'"'"'/) count++
+    }
+    END { if (!seen) print "NOBLOCK"; else print count+0 }
+  ' "$1"
+}
+
+_pin_entry_count=$(_count_pins "$RUN_TESTS")
+if [[ "$_pin_entry_count" == "NOBLOCK" ]]; then
+  assert_fail "[SPEC-17] _ZBUILD_SERIAL_PIN array not found in run-tests.sh — the ADR-053 cap is unenforceable" \
+    "the counter found no _ZBUILD_SERIAL_PIN=( block; renamed, removed, or reformatted?"
+elif [[ "$_pin_entry_count" -le 7 ]]; then
+  assert_pass "[SPEC-17] _ZBUILD_SERIAL_PIN count ($_pin_entry_count) is within the ADR-053 cap of 7"
+else
+  assert_fail "[SPEC-17] _ZBUILD_SERIAL_PIN cap is 7 (ADR-053); found $_pin_entry_count — remove an entry or amend ADR-053" \
+    "count=$_pin_entry_count cap=7"
+fi
+
+# ─── [SPEC-17b] GUARD: the cap is DEMONSTRATED to bite, not merely asserted ────
+# #1664 acceptance: "SPEC-17 fails when an 8th entry is added and passes at 7 —
+# demonstrated, not asserted." A cap nobody has seen fail is a cap nobody knows
+# works. Run the real counter against synthetic arrays covering the boundary and
+# the three miscount modes above; each case names what it would let through.
+_pin_fixture() { printf '%s\n' "$@" > "$TEST_TEMP_DIR/pinfix.sh"; printf '%s' "$TEST_TEMP_DIR/pinfix.sh"; }
+
+_f7=$(_pin_fixture "_ZBUILD_SERIAL_PIN=(" "  'a.sh'" "  'b.sh'" "  'c.sh'" "  'd.sh'" "  'e.sh'" "  'f.sh'" "  'g.sh'" ")")
+assert_eq "[SPEC-17b] exactly 7 entries counts 7 (at the cap, must pass)" "7" "$(_count_pins "$_f7")"
+
+_f8=$(_pin_fixture "_ZBUILD_SERIAL_PIN=(" "  'a.sh'" "  'b.sh'" "  'c.sh'" "  'd.sh'" "  'e.sh'" "  'f.sh'" "  'g.sh'" "  'h.sh'" ")")
+assert_eq "[SPEC-17b] an 8th entry counts 8 — the cap bites (this is the demonstration)" "8" "$(_count_pins "$_f8")"
+
+_fc=$(_pin_fixture "_ZBUILD_SERIAL_PIN=(" "  'a.sh'" "  # 'retired.sh' removed, kept for history" ")")
+assert_eq "[SPEC-17b] a commented-out entry is NOT counted (else a false cap failure)" "1" "$(_count_pins "$_fc")"
+
+_fq=$(_pin_fixture "_ZBUILD_SERIAL_PIN=(" '  "a.sh"' '  "b.sh"' ")")
+assert_eq "[SPEC-17b] double-quoted entries ARE counted (else the cap is blind)" "2" "$(_count_pins "$_fq")"
+
+_fi=$(_pin_fixture "_ZBUILD_SERIAL_PIN=(" "  'a.sh'" "  )" "OTHER_ARRAY=(" "  'x.sh'" "  'y.sh'" ")")
+assert_eq "[SPEC-17b] an indented ')' ends the block (else it counts the next array)" "1" "$(_count_pins "$_fi")"
+
+_fn=$(_pin_fixture "SOMETHING_ELSE=(" "  'a.sh'" ")")
+assert_eq "[SPEC-17b] a missing array reports NOBLOCK, not 0 (else the cap passes vacuously)" \
+  "NOBLOCK" "$(_count_pins "$_fn")"
+
+# ─── [SPEC-17c] GUARD: CI yaml wires ZBUILD_TEST_TIMING_FILE (ADR-053 §6) ──────
+# ADR-053 §6 requires ZBUILD_TEST_TIMING_FILE in both the unit and integration CI
+# jobs so a timing baseline accrues; this catches a silent removal.
+#
+# It lives HERE, not in run-tests-timing-test.sh where it is more topical,
+# because this file is the TESTFILE the acceptance contract binds — the guard has
+# to be in a declared TESTFILE to be load-bearing. That constraint is itself the
+# subject of #1686: `.github/workflows/test.yml` is not on any dispatch path, so
+# a static read of it is the only shape the reachability gate can accept.
+_ci_yml="$REPO_ROOT/.github/workflows/test.yml"
+if [[ ! -f "$_ci_yml" ]]; then
+  assert_fail "[SPEC-17c] CI workflow not found — cannot verify the timing wiring" "missing: $_ci_yml"
+else
+  _unit_tf=$(grep -c 'ZBUILD_TEST_TIMING_FILE.*zbuild-unit-timing' "$_ci_yml" || true)
+  _int_tf=$(grep -c 'ZBUILD_TEST_TIMING_FILE.*zbuild-integration-timing' "$_ci_yml" || true)
+  if [[ "$_unit_tf" -ge 1 && "$_int_tf" -ge 1 ]]; then
+    assert_pass "[SPEC-17c] ZBUILD_TEST_TIMING_FILE is wired in CI for unit and integration (ADR-053 §6)"
+  else
+    assert_fail "[SPEC-17c] ZBUILD_TEST_TIMING_FILE must be set in .github/workflows/test.yml for unit+integration (ADR-053 §6)" \
+      "unit_hits=$_unit_tf integration_hits=$_int_tf in $_ci_yml"
+  fi
+fi
 
 cleanup_test_env
 print_test_results
