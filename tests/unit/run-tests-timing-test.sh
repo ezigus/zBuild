@@ -16,7 +16,8 @@
 #                 run and NO timing lines leak onto either stream
 # SPEC-4  CHANGE  ms values are non-negative integers (a `sleep`-ing file reads > 0)
 # SPEC-5  GUARD   timing failure (unwritable path) never changes rc or output
-# SPEC-6  GUARD   .github/workflows/test.yml sets ZBUILD_TEST_TIMING_FILE for unit+integration
+# (The CI-wiring guard for ZBUILD_TEST_TIMING_FILE lives in run-tests-parallel-test.sh
+#  as [SPEC-17c] — it must sit in the TESTFILE the acceptance contract binds. #1664)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -127,19 +128,6 @@ esac
 _unit "$TEST_TEMP_DIR/nonexistent-dir/timing.log"
 assert_eq "[SPEC-5] unwritable timing path → still exit 0" "0" "$_RC"
 assert_eq "[SPEC-5b] unwritable timing path → summary unchanged" "unit: 2/2 passed" "$_OUT"
-
-# ─── [SPEC-6] GUARD: CI yaml sets ZBUILD_TEST_TIMING_FILE for both jobs ──────────
-# Static file check: verifies the wiring added by ADR-053 §6 is present in the
-# CI workflow so it cannot silently regress without a failing test.
-_ci_yml="$REPO_ROOT/.github/workflows/test.yml"
-_unit_timing=$(grep -c 'ZBUILD_TEST_TIMING_FILE.*zbuild-unit-timing' "$_ci_yml" 2>/dev/null || true)
-_int_timing=$(grep -c 'ZBUILD_TEST_TIMING_FILE.*zbuild-integration-timing' "$_ci_yml" 2>/dev/null || true)
-if [[ "$_unit_timing" -ge 1 && "$_int_timing" -ge 1 ]]; then
-  assert_pass "[SPEC-6] ZBUILD_TEST_TIMING_FILE is set in CI for both unit and integration jobs (ADR-053 §6)"
-else
-  assert_fail "[SPEC-6] ZBUILD_TEST_TIMING_FILE must be set in .github/workflows/test.yml for unit and integration (ADR-053 §6)" \
-    "unit_hits=$_unit_timing integration_hits=$_int_timing in $_ci_yml"
-fi
 
 cleanup_test_env
 print_test_results
