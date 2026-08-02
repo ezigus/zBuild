@@ -43,7 +43,7 @@ while IFS= read -r _name; do
     _checked=$((_checked + 1))
     if [[ -f "$ITDIR/$_name" ]] || [[ -f "$UTDIR/$_name" ]]; then
         :  # file exists — fine
-    elif echo "$_serial_pins" | grep -qxF "$_name"; then
+    elif grep -qxF "$_name" <<< "$_serial_pins"; then
         :  # declared as a serial pin before the test file is written — allowed
     else
         _missing=1; echo "  missing: $_name"

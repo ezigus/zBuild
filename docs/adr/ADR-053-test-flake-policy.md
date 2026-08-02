@@ -91,3 +91,14 @@ the load-tolerance follow-up (§2 step 2): without real CI timing data, any prop
 
 The analysis and threshold decisions for converting pinned tests to load-tolerant assertions are
 **deferred to a follow-up issue** once at least 10 CI runs of baseline data exist.
+
+## Implementation Notes
+
+**Seams.**
+
+- `scripts/run-tests.sh` — `_ZBUILD_SERIAL_PIN` array: the authoritative list of serially-pinned
+  test files. Each entry must have a one-line reason comment and an open issue link (§3).
+- `tests/unit/run-tests-parallel-test.sh` — SPEC-17 assertion counts non-comment, non-blank
+  entries in `_ZBUILD_SERIAL_PIN` and asserts the count is ≤ 7 (§4 ratchet cap).
+- `.github/workflows/test.yml` — `ZBUILD_TEST_TIMING_FILE` env var wired into both the unit and
+  integration run steps; timing logs uploaded as CI artifacts (SPEC-18, SPEC-19).
