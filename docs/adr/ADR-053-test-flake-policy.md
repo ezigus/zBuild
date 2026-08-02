@@ -118,11 +118,19 @@ starts the clock on data collection.
   and integration jobs; timing files are uploaded as CI artifacts. Activates existing instrumentation
   from `scripts/run-tests.sh` with zero behavioral changes when the path is unwritable (SPEC-5 in
   `tests/unit/run-tests-timing-test.sh`).
-- `tests/unit/run-tests-timing-test.sh` — SPEC-6 (guard) statically verifies that both CI jobs
-  set `ZBUILD_TEST_TIMING_FILE`, keeping the wiring from silently regressing.
+- `tests/unit/run-tests-parallel-test.sh` — SPEC-17c (guard) statically verifies that both CI
+  jobs set `ZBUILD_TEST_TIMING_FILE`, keeping the wiring from silently regressing. It lives in
+  that file rather than the more topical `run-tests-timing-test.sh` because the acceptance
+  contract binds it there; see the comment at its definition.
 
 ## Verification
 
 - SPEC-17 in `tests/unit/run-tests-parallel-test.sh` — static source grep counts non-comment
   entries inside `_ZBUILD_SERIAL_PIN` and asserts the count is ≤ 7. The assertion carries the ADR
   number and cap so any CI failure names the governing policy directly.
+- SPEC-17b in `tests/unit/run-tests-parallel-test.sh` — runs that same counter against synthetic
+  fixtures to DEMONSTRATE the cap: it bites at 8, passes at 7, ignores commented-out entries,
+  counts both quote styles, and stops at an indented `)`. Without this the cap is only asserted,
+  never shown to work — SPEC-17 is a `[guard]`, so the acceptance gate skips its negative control.
+- SPEC-17c in `tests/unit/run-tests-parallel-test.sh` — statically verifies both CI jobs set
+  `ZBUILD_TEST_TIMING_FILE` (§6), catching a silent removal of the wiring.

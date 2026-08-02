@@ -39,6 +39,7 @@
 # SPEC-16 GUARD   unit tier routes a ZBUILD_SERIAL_TESTS-pinned file to the serial bucket (#1425)
 # SPEC-17 GUARD   _ZBUILD_SERIAL_PIN entry count is <= 7 (ADR-053 ratchet cap)
 # SPEC-17b GUARD  the cap is demonstrated to bite at 8 and to miscount nothing (#1664)
+# SPEC-17c GUARD  ZBUILD_TEST_TIMING_FILE is wired in CI for unit+integration (ADR-053 §6)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
