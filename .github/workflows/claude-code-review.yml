@@ -80,6 +80,9 @@ jobs:
 
             Post specific issues as inline comments. Use a top-level comment only for a summary.
             If no significant issues are found, say so clearly — do not invent findings.
+
+            End your review comment with `<!-- verdict: findings -->` if you found significant
+            issues, or `<!-- verdict: clean -->` if you found none.
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
@@ -93,28 +96,7 @@ jobs:
           REVIEW_OUTCOME: ${{ steps.claude-review.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          set -uo pipefail
-          sha="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid -q .headRefOid 2>/dev/null || echo '')"
-          short="${sha:0:7}"
-          exec_file="${RUNNER_TEMP}/claude-execution-output.json"
-          denials=0; is_error=false
-          if [[ -f "$exec_file" ]]; then
-            denials="$(jq -rs '[.. | objects | select(has("permission_denials_count")) | .permission_denials_count] | last // 0' "$exec_file" 2>/dev/null || echo 0)"
-            is_error="$(jq -rs '[.. | objects | select(has("is_error")) | .is_error] | last // false' "$exec_file" 2>/dev/null || echo false)"
-          fi
-          [[ "$denials" =~ ^[0-9]+$ ]] || denials=0
-          n_inline="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/comments" \
-            --jq "[.[] | select(.commit_id==\"${sha}\")] | length" 2>/dev/null || echo '?')"
-
-          if [[ "$REVIEW_OUTCOME" != "success" || "$is_error" == "true" ]]; then
-            status="❌ **Claude review did not complete** for \`${short}\` — see the run log."
-          elif [[ "$denials" -gt 0 ]]; then
-            status="⚠️ **Claude review may be incomplete** for \`${short}\` — ${denials} tool-permission denial(s); results may be partial."
-          elif [[ "$n_inline" == "0" ]]; then
-            status="✅ **Claude review of \`${short}\`: no findings.**"
-          else
-            status="🔎 **Claude review of \`${short}\`: ${n_inline} inline comment(s) posted above.**"
-          fi
-          # shellcheck disable=SC2016
-          printf '%s\n\n_Reviewed on push of `%s` · [run log](%s)_\n' \
-            "$status" "$short" "$RUN_URL" | gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file -
+          set -euo pipefail
+          # shellcheck source=scripts/lib/ci-review-outcome.sh
+          source "${GITHUB_WORKSPACE}/scripts/lib/ci-review-outcome.sh"
+          post_review_outcome
