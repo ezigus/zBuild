@@ -37,6 +37,7 @@
 # SPEC-14 CHANGE  a ZBUILD_SERIAL_TESTS-matched file runs in the SERIAL bucket, not the pool (#991)
 # SPEC-15 CHANGE  gh-automation-idempotency-log-test.sh is serial-pinned in _ZBUILD_SERIAL_PIN (#1425)
 # SPEC-16 GUARD   unit tier routes a ZBUILD_SERIAL_TESTS-pinned file to the serial bucket (#1425)
+# SPEC-17 GUARD   _ZBUILD_SERIAL_PIN entry count is <= 7 (ADR-053 ratchet cap)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -280,6 +281,23 @@ case "$_LAST_STDOUT" in
   *"unit: 4/6 passed"*) assert_pass "[SPEC-16c] serial-pin is routing-only; unit accounting unchanged (4/6)" ;;
   *) assert_fail "[SPEC-16c] unit-tier accounting must remain 4/6 with one file pinned" "stdout: $_LAST_STDOUT" ;;
 esac
+
+# ─── [SPEC-17] GUARD: _ZBUILD_SERIAL_PIN entry count is <= 7 (ADR-053 ratchet) ─
+# Static source check: count quoted .sh entries inside the _ZBUILD_SERIAL_PIN
+# array block of run-tests.sh. Fails CI when an 8th entry is added without
+# amending ADR-053 and raising the cap there and here.
+_pin_entry_count=$(awk '
+  /_ZBUILD_SERIAL_PIN=\(/ { in_block=1; next }
+  in_block && /^\)/ { exit }
+  in_block && /'"'"'[^'"'"']*\.sh'"'"'/ { count++ }
+  END { print count+0 }
+' "$RUN_TESTS")
+if [[ "$_pin_entry_count" -le 7 ]]; then
+  assert_pass "[SPEC-17] _ZBUILD_SERIAL_PIN count ($_pin_entry_count) is within the ADR-053 cap of 7"
+else
+  assert_fail "[SPEC-17] _ZBUILD_SERIAL_PIN cap is 7 (ADR-053); found $_pin_entry_count — remove an entry or amend ADR-053" \
+    "count=$_pin_entry_count cap=7"
+fi
 
 cleanup_test_env
 print_test_results

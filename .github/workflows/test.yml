@@ -84,6 +84,7 @@ jobs:
           exit "${PIPESTATUS[0]}"
         env:
           ZBUILD_TEST_TMP: ""
+          ZBUILD_TEST_TIMING_FILE: /tmp/zbuild-unit-timing.txt
       - name: Upload unit results
         uses: actions/upload-artifact@v7
         if: always()
@@ -91,7 +92,9 @@ jobs:
           # Per-OS name: two matrix legs uploading the same artifact name collide
           # on upload-artifact@v4+. Nothing downloads this (coverage re-runs).
           name: unit-results-${{ matrix.os }}
-          path: /tmp/zbuild-unit-results.txt
+          path: |
+            /tmp/zbuild-unit-results.txt
+            /tmp/zbuild-unit-timing.txt
           if-no-files-found: ignore
 
   integration:
@@ -134,6 +137,8 @@ jobs:
           # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
           bash scripts/run-tests.sh --tier integration 2>&1 | tee /tmp/zbuild-integration-results.txt
           exit "${PIPESTATUS[0]}"
+        env:
+          ZBUILD_TEST_TIMING_FILE: /tmp/zbuild-integration-timing.txt
       - name: Upload integration results
         uses: actions/upload-artifact@v7
         if: always()
@@ -141,7 +146,9 @@ jobs:
           # Per-OS name: two matrix legs uploading the same artifact name collide
           # on upload-artifact@v4+ (cf. the unit job).
           name: integration-results-${{ matrix.os }}
-          path: /tmp/zbuild-integration-results.txt
+          path: |
+            /tmp/zbuild-integration-results.txt
+            /tmp/zbuild-integration-timing.txt
           if-no-files-found: ignore
 
   e2e-mocked:
