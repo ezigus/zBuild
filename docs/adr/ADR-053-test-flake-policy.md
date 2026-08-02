@@ -107,6 +107,20 @@ entries (#1047, #1425) without the timing data needed to prove they are safe to 
 instrumentation already exists and has zero cost when unset. Activating it in CI costs nothing and
 starts the clock on data collection.
 
+## Implementation Notes (#1664)
+
+**Seams.**
+
+- `tests/unit/run-tests-parallel-test.sh` — SPEC-17 counts non-comment quoted `.sh` entries inside
+  the `_ZBUILD_SERIAL_PIN=(...)` block of `scripts/run-tests.sh` via `awk` and asserts the count is
+  ≤ 7. Any PR that adds an 8th entry fails CI with a message citing this ADR and the cap number.
+- `.github/workflows/test.yml` — `ZBUILD_TEST_TIMING_FILE` added to the `env:` block of the unit
+  and integration jobs; timing files are uploaded as CI artifacts. Activates existing instrumentation
+  from `scripts/run-tests.sh` with zero behavioral changes when the path is unwritable (SPEC-5 in
+  `tests/unit/run-tests-timing-test.sh`).
+- `tests/unit/run-tests-timing-test.sh` — SPEC-6 (guard) statically verifies that both CI jobs
+  set `ZBUILD_TEST_TIMING_FILE`, keeping the wiring from silently regressing.
+
 ## Verification
 
 - SPEC-17 in `tests/unit/run-tests-parallel-test.sh` — static source grep counts non-comment
