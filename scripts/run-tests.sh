@@ -652,7 +652,23 @@ case "$tier" in
     # unguarded `rm -rf ""` errors (and could perturb the trap's exit). The
     # `[[ -z ]] ||` form is a no-op (rc 0) when buf_dir is empty.
     _tier_pids=()
-    trap 'rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"; [[ -z "${buf_dir:-}" ]] || rm -rf "$buf_dir"; for _ep in "${_tier_pids[@]+"${_tier_pids[@]}"}"; do kill -TERM "$_ep" 2>/dev/null || true; done' EXIT
+    # Declared unconditionally: the presence check only populates it on the
+    # concurrent path, but the `total:` emission below reads it on both, and
+    # this script runs under `set -u`.
+    _rt_abort_lines=()
+    # A function, not an inline trap string: the loop variable inside a quoted
+    # trap body reads as unassigned to shellcheck (SC2154), and that warning is
+    # invisible to `npm run lint` — it only lints scripts/lib, not scripts/ —
+    # so it surfaces for the first time in CI. See #1682.
+    _rt_all_cleanup() {
+      rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"
+      [[ -z "${buf_dir:-}" ]] || rm -rf "$buf_dir"
+      local _ep
+      for _ep in "${_tier_pids[@]+"${_tier_pids[@]}"}"; do
+        kill -TERM "$_ep" 2>/dev/null || true
+      done
+    }
+    trap '_rt_all_cleanup' EXIT
     # INT/TERM handler: send TERM to all tracked tier PIDs, wait, then re-raise so
     # the caller sees a proper signal-exit status (#1662). Idempotency flag prevents
     # double-print when a signal arrives while we are already inside the handler.
@@ -662,7 +678,8 @@ case "$tier" in
       _rt_abort_fired=1
       local _p; for _p in "${_tier_pids[@]+"${_tier_pids[@]}"}"; do kill -TERM "$_p" 2>/dev/null || true; done
       wait 2>/dev/null || true
-      overall_rc=1
+      # No overall_rc here: the re-raise below ends the process, so any exit-code
+      # bookkeeping would be dead. The caller's status comes from the signal.
       echo "total: ABORTED — interrupted" >&2
       trap - INT TERM
       kill -TERM $$ 2>/dev/null || exit 143
@@ -722,20 +739,38 @@ case "$tier" in
       ) > "$buf_dir/lint.out" 2> "$buf_dir/lint.err" &
       _tier_pids+=($!)
       wait
-      # Presence check (#1662): any tier killed before writing its rc_file entry is
-      # reported as ABORTED — silently exiting 0 when a tier never ran is the bug.
-      _rt_abort_found=0
+      # Presence check (#1662). A tier subshell killed before writing its rc line
+      # contributes 0 to both accumulators, so `total_passed -ne $total_count`
+      # stays false and the run exits 0 with a silently smaller M.
+      #
+      # Only COLLECT here. The verdicts are printed at the `total:` line below so
+      # the tiers that DID finish still report — an abort you cannot diagnose is
+      # barely an improvement on a silent pass, and the EXIT trap deletes buf_dir
+      # on the way out, so anything not replayed is gone for good.
+      declare -A _rt_seen_rc=()
+      while read -r _name _rc; do
+        [[ -n "$_name" ]] && _rt_seen_rc["$_name"]="$_rc"
+      done < "$rc_file"
+      _rt_abort_lines=()
       for _t in "${_TIER_ALL_MANIFEST[@]}"; do
-        if ! /usr/bin/grep -q "^$_t " "$rc_file" 2>/dev/null; then
-          echo "$_t: ABORTED (killed before summary)" >&2
-          _rt_abort_found=1
+        # Each subshell writes its summary to stdout BEFORE appending its rc line,
+        # so the two absences are distinguishable and mean different things.
+        _has_sum=0
+        grep -q "^$_t: " "$buf_dir/$_t.out" 2>/dev/null && _has_sum=1
+        _has_rc=0
+        [[ -n "${_rt_seen_rc[$_t]+x}" ]] && _has_rc=1
+        if [[ "$_has_rc" -eq 0 && "$_has_sum" -eq 0 ]]; then
+          _rt_abort_lines+=("total: ABORTED — tier $_t produced no result")
+        elif [[ "$_has_rc" -eq 1 && "$_has_sum" -eq 0 ]]; then
+          _rt_abort_lines+=("total: ABORTED — tier $_t exited ${_rt_seen_rc[$_t]} without a summary")
+        elif [[ "$_has_rc" -eq 0 ]]; then
+          # Summary written, rc line lost — killed in the window between the two.
+          # #1662 does not name this case (it assumed the opposite ordering); it is
+          # the narrow one that is actually reachable, so it gets its own wording
+          # rather than being folded into "produced no result", which would be a lie.
+          _rt_abort_lines+=("total: ABORTED — tier $_t recorded no exit code")
         fi
       done
-      if [[ "$_rt_abort_found" -eq 1 ]]; then
-        echo
-        echo "total: ABORTED — one or more tiers did not complete"
-        exit 1
-      fi
     fi
     while IFS= read -r line; do
       echo "$line"
@@ -782,6 +817,13 @@ case "$tier" in
       overall_rc=1
     fi
     echo
+    # An aborted tier makes the N/M line a lie, so print the abort verdict INSTEAD
+    # of it (#1662) — a green `total:` anywhere in the stream is exactly what people
+    # grep for. One line per aborted tier, naming the tier and why.
+    if [[ "${#_rt_abort_lines[@]}" -gt 0 ]]; then
+      printf '%s\n' "${_rt_abort_lines[@]}"
+      exit 1
+    fi
     _ts_note=""; [[ "${total_skipped:-0}" -gt 0 ]] && _ts_note=" (${total_skipped} skipped)"
     echo "total: $total_passed/$total_count passed${_ts_note}"
     exit $overall_rc
