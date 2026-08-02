@@ -299,6 +299,20 @@ else
     "count=$_pin_entry_count cap=7"
 fi
 
+# ─── [SPEC-17c] GUARD: CI yaml wires ZBUILD_TEST_TIMING_FILE (ADR-053 §3) ──────
+# ADR-053 §3 requires ZBUILD_TEST_TIMING_FILE to be set in both the unit and
+# integration CI jobs so a timing baseline accrues. Static file check so any PR
+# that removes the wiring breaks this test.
+_ci_yml="$REPO_ROOT/.github/workflows/test.yml"
+_unit_tf=$(grep -c 'ZBUILD_TEST_TIMING_FILE.*zbuild-unit-timing' "$_ci_yml" 2>/dev/null || true)
+_int_tf=$(grep -c 'ZBUILD_TEST_TIMING_FILE.*zbuild-integration-timing' "$_ci_yml" 2>/dev/null || true)
+if [[ "$_unit_tf" -ge 1 && "$_int_tf" -ge 1 ]]; then
+  assert_pass "[SPEC-17c] ZBUILD_TEST_TIMING_FILE is wired in CI for unit and integration (ADR-053 §3)"
+else
+  assert_fail "[SPEC-17c] ZBUILD_TEST_TIMING_FILE must be set in .github/workflows/test.yml for unit+integration (ADR-053 §3)" \
+    "unit_hits=$_unit_tf integration_hits=$_int_tf in $_ci_yml"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
