@@ -130,7 +130,8 @@ starts the clock on data collection.
   number and cap so any CI failure names the governing policy directly.
 - SPEC-17b in `tests/unit/run-tests-parallel-test.sh` — runs that same counter against synthetic
   fixtures to DEMONSTRATE the cap: it bites at 8, passes at 7, ignores commented-out entries,
-  counts both quote styles, and stops at an indented `)`. Without this the cap is only asserted,
+  counts both quote styles, stops at an indented `)`, and reports NOBLOCK — not 0 — when the
+  array is missing, so a rename cannot make the cap pass vacuously. Without this the cap is only asserted,
   never shown to work — SPEC-17 is a `[guard]`, so the acceptance gate skips its negative control.
 - SPEC-17c in `tests/unit/run-tests-parallel-test.sh` — statically verifies both CI jobs set
   `ZBUILD_TEST_TIMING_FILE` (§6), catching a silent removal of the wiring.

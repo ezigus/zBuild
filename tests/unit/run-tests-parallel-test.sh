@@ -297,21 +297,28 @@ esac
 #     next one and counted unrelated entries
 # Strip the comment first, accept either quote style, and end the block on a
 # `)` at any indentation.
+# Prints the entry count, or the literal NOBLOCK when the array was never found.
+# NOBLOCK is not 0: a rename, a deletion, or a format change the regex no longer
+# matches would otherwise report 0 and satisfy `0 <= 7` — the cap would pass
+# vacuously at the exact moment it stopped being enforced.
 _count_pins() {
   awk '
-    /_ZBUILD_SERIAL_PIN=\(/ { in_block=1; next }
-    in_block && /^[[:space:]]*\)/ { exit }
+    /_ZBUILD_SERIAL_PIN=\(/ { in_block=1; seen=1; next }
+    in_block && /^[[:space:]]*\)/ { in_block=0 }
     in_block {
       line=$0
       sub(/#.*$/, "", line)                       # drop trailing comment
       if (line ~ /"[^"]*\.sh"/ || line ~ /'"'"'[^'"'"']*\.sh'"'"'/) count++
     }
-    END { print count+0 }
+    END { if (!seen) print "NOBLOCK"; else print count+0 }
   ' "$1"
 }
 
 _pin_entry_count=$(_count_pins "$RUN_TESTS")
-if [[ "$_pin_entry_count" -le 7 ]]; then
+if [[ "$_pin_entry_count" == "NOBLOCK" ]]; then
+  assert_fail "[SPEC-17] _ZBUILD_SERIAL_PIN array not found in run-tests.sh — the ADR-053 cap is unenforceable" \
+    "the counter found no _ZBUILD_SERIAL_PIN=( block; renamed, removed, or reformatted?"
+elif [[ "$_pin_entry_count" -le 7 ]]; then
   assert_pass "[SPEC-17] _ZBUILD_SERIAL_PIN count ($_pin_entry_count) is within the ADR-053 cap of 7"
 else
   assert_fail "[SPEC-17] _ZBUILD_SERIAL_PIN cap is 7 (ADR-053); found $_pin_entry_count — remove an entry or amend ADR-053" \
@@ -339,6 +346,10 @@ assert_eq "[SPEC-17b] double-quoted entries ARE counted (else the cap is blind)"
 
 _fi=$(_pin_fixture "_ZBUILD_SERIAL_PIN=(" "  'a.sh'" "  )" "OTHER_ARRAY=(" "  'x.sh'" "  'y.sh'" ")")
 assert_eq "[SPEC-17b] an indented ')' ends the block (else it counts the next array)" "1" "$(_count_pins "$_fi")"
+
+_fn=$(_pin_fixture "SOMETHING_ELSE=(" "  'a.sh'" ")")
+assert_eq "[SPEC-17b] a missing array reports NOBLOCK, not 0 (else the cap passes vacuously)" \
+  "NOBLOCK" "$(_count_pins "$_fn")"
 
 # ─── [SPEC-17c] GUARD: CI yaml wires ZBUILD_TEST_TIMING_FILE (ADR-053 §6) ──────
 # ADR-053 §6 requires ZBUILD_TEST_TIMING_FILE in both the unit and integration CI
