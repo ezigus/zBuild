@@ -24,6 +24,14 @@ export REVIEW_OUTCOME="success"
 export RUN_URL="https://github.com/owner/repo/actions/runs/1"
 export RUNNER_TEMP="/tmp"
 
+# ─── Wiring reachability: workflow must source the helper ───────────────────
+# Reverting .github/workflows/claude-code-review.yml to merge-base removes the
+# source line; this assertion flips fail → proves the wiring is load-bearing.
+workflow_yml="$REPO_ROOT/.github/workflows/claude-code-review.yml"
+wf_content="$(cat "$workflow_yml")"
+assert_contains "[SPEC-1] workflow run: block sources ci-review-outcome.sh" \
+    "$wf_content" "ci-review-outcome.sh"
+
 # ─── T1 / SPEC-1: top-level findings → NOT "no findings" ───────────────────
 # When Claude posts findings exclusively via gh pr comment (top-level issue
 # comments), n_inline == 0 but n_top > 0.  The old baseline reported
