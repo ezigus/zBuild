@@ -127,6 +127,25 @@ _unit "$TEST_TEMP_DIR/nonexistent-dir/timing.log"
 assert_eq "[SPEC-5] unwritable timing path → still exit 0" "0" "$_RC"
 assert_eq "[SPEC-5b] unwritable timing path → summary unchanged" "unit: 2/2 passed" "$_OUT"
 
+# ─── [SPEC-18] CHANGE: CI unit step sets ZBUILD_TEST_TIMING_FILE ─────────────
+# Fails at merge-base (test.yml unit step has no ZBUILD_TEST_TIMING_FILE entry).
+WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
+if grep -q 'ZBUILD_TEST_TIMING_FILE.*zbuild-unit-timing' "$WORKFLOW"; then
+    assert_pass "[SPEC-18] CI unit tier sets ZBUILD_TEST_TIMING_FILE"
+else
+    assert_fail "[SPEC-18] CI unit tier must set ZBUILD_TEST_TIMING_FILE" \
+        "not found in $WORKFLOW — add to env: block of 'Run unit tier' step"
+fi
+
+# ─── [SPEC-19] CHANGE: CI integration step sets ZBUILD_TEST_TIMING_FILE ──────
+# Fails at merge-base (test.yml integration step has no ZBUILD_TEST_TIMING_FILE entry).
+if grep -q 'ZBUILD_TEST_TIMING_FILE.*zbuild-integration-timing' "$WORKFLOW"; then
+    assert_pass "[SPEC-19] CI integration tier sets ZBUILD_TEST_TIMING_FILE"
+else
+    assert_fail "[SPEC-19] CI integration tier must set ZBUILD_TEST_TIMING_FILE" \
+        "not found in $WORKFLOW — add to env: block of 'Run integration tier' step"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

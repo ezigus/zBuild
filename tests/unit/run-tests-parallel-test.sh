@@ -281,6 +281,24 @@ case "$_LAST_STDOUT" in
   *) assert_fail "[SPEC-16c] unit-tier accounting must remain 4/6 with one file pinned" "stdout: $_LAST_STDOUT" ;;
 esac
 
+# ─── [SPEC-17] GUARD: _ZBUILD_SERIAL_PIN entry count must not exceed 7 ─────────
+# ADR-053 §4: ratchet cap. Count non-comment, non-blank quoted entries inside the
+# _ZBUILD_SERIAL_PIN=( ... ) block in scripts/run-tests.sh. Must be ≤ 7.
+_pin_count=$(awk '
+  /^_ZBUILD_SERIAL_PIN=\(/ { in_block=1; next }
+  in_block && /^\)/ { in_block=0 }
+  in_block && /^[[:space:]]*#/ { next }
+  in_block && /^[[:space:]]*$/ { next }
+  in_block { count++ }
+  END { print count+0 }
+' "$REPO_ROOT/scripts/run-tests.sh")
+if [[ "$_pin_count" -le 7 ]]; then
+    assert_pass "[SPEC-17] serial-pin cap ≤ 7 (count=$_pin_count, ADR-053 §4)"
+else
+    assert_fail "[SPEC-17] serial-pin count exceeds ADR-053 §4 cap of 7" \
+        "count=$_pin_count — remove an entry or amend ADR-053 to raise the cap"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

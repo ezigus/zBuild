@@ -122,11 +122,14 @@ the bounded FIFO pool. Two pool/stability changes accompanied the flip:
   | Test | Reason |
   |------|--------|
   | `core-pipeline-runner-test.sh` | sleep-stub + kill-mid-run timing; ~193 s long-pole |
+  | `compound-quality-pipeline-test.sh` *(planned)* | heavy full-pipeline timing under load |
   | `full-pipeline-sigint-test.sh` | asserts pipeline halts within 6–8 s (already bumped for slow runners) |
   | `sigint-aborts-pipeline-test.sh` | asserts total wall-clock < 4 s |
   | `sigterm-aborts-pipeline-test.sh` | asserts wall-clock ≤ 5 s |
   | `manifest-sync-similarity-test.sh` | MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (surfaced on CI #1047) |
   | `gh-automation-idempotency-log-test.sh` *(unit tier)* | unconditional `sleep 1` in G8 mtime assertion — load-sensitive under a saturated unit pool (#1425) |
+
+  The 7-entry cap on `_ZBUILD_SERIAL_PIN` is now policy (ADR-053 §4) and enforced by SPEC-17.
 
   These are **not** hermeticity bugs (each is isolated via `setup_test_env`); they are
   inherently load-sensitive. Follow-up: make their budgets load-tolerant (scale by a load factor
