@@ -82,7 +82,7 @@ Current entries (7/7 as of this issue):
 | File | Reason | Follow-up |
 |------|--------|-----------|
 | `core-pipeline-runner-test.sh` | sleep-stub + kill-mid-run timing (~193s) | §3 baseline |
-| `compound-quality-pipeline-test.sh` | heavy full-pipeline timing under load | §3 baseline |
+| `compound-quality-pipeline-test.sh` | heavy full-pipeline timing under load | **STALE — no such file exists; matches nothing. Remove under §4.** |
 | `full-pipeline-sigint-test.sh` | asserts pipeline halts within 6–8s | §3 baseline |
 | `sigint-aborts-pipeline-test.sh` | asserts total wall-clock < 4s | §3 baseline |
 | `sigterm-aborts-pipeline-test.sh` | asserts wall-clock <= 5s | §3 baseline |

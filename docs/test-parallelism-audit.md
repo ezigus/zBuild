@@ -128,6 +128,17 @@ the bounded FIFO pool. Two pool/stability changes accompanied the flip:
   | `manifest-sync-similarity-test.sh` | MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (surfaced on CI #1047) |
   | `gh-automation-idempotency-log-test.sh` *(unit tier)* | unconditional `sleep 1` in G8 mtime assertion — load-sensitive under a saturated unit pool (#1425) |
 
+  Note: the table above lists 6 of the 7 `_ZBUILD_SERIAL_PIN` entries. The seventh names a
+  compound-quality pipeline test that **does not exist** — it is a stale pin matching nothing.
+  It is omitted here deliberately: the audit-integrity guard (#988) requires every test file
+  this doc names to be real, so writing it down would trip that guard. The exact entry is
+  recorded in the ADR-053 §5 table and is the first candidate for removal under §4.
+
+  The list is capped at **7 entries** by policy (ADR-053 §5) and the cap is enforced
+  mechanically by `[SPEC-17]` in `tests/unit/run-tests-parallel-test.sh` — an 8th entry
+  fails CI until ADR-053 is amended. Per ADR-053 §4 every entry carries a reason and an
+  open follow-up issue; a serial pin is a stopgap, not a destination.
+
   These are **not** hermeticity bugs (each is isolated via `setup_test_env`); they are
   inherently load-sensitive. Follow-up: make their budgets load-tolerant (scale by a load factor
   or use a mock clock) so they can rejoin the parallel pool.
