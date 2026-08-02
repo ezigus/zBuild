@@ -75,7 +75,7 @@ fi
 # TC-4 [SPEC-4]: scripts/run-tests.sh specifically appears in local find result.
 # ---------------------------------------------------------------------------
 run_tests="$REPO_ROOT/scripts/run-tests.sh"
-if echo "$npm_files" | grep -qxF "$run_tests"; then
+if grep -qxF "$run_tests" <<< "$npm_files"; then
     assert_pass "[SPEC-4] scripts/run-tests.sh is in local lint file set"
 else
     assert_fail "[SPEC-4] scripts/run-tests.sh is in local lint file set" \
