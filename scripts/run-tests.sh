@@ -639,6 +639,11 @@ case "$tier" in
     # buf_dir holds each tier's separately-captured stdout/stderr/trace for the
     # concurrent path; empty (and never created) on the serial path.
     buf_dir=""
+    # Single authoritative tier list: first 4 are file-tiers (run concurrently as
+    # background subshells AND in the serial fallback), last 2 are mutation and lint.
+    # Every subsequent roster enumeration (launch loop, replay, presence check)
+    # references this array rather than hand-repeated word lists.
+    _TIER_ALL_MANIFEST=(unit integration e2e golden mutation lint)
     # Also clean the coverage BASH_ENV temp file here: this EXIT trap replaces the
     # one the --coverage-trace setup installed above, so fold its cleanup in to
     # avoid leaking that temp file on the `--tier all --coverage-trace` path (#993
@@ -646,7 +651,23 @@ case "$tier" in
     # Guard the buf_dir cleanup: on the serial path buf_dir is "" and an
     # unguarded `rm -rf ""` errors (and could perturb the trap's exit). The
     # `[[ -z ]] ||` form is a no-op (rc 0) when buf_dir is empty.
-    trap 'rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"; [[ -z "${buf_dir:-}" ]] || rm -rf "$buf_dir"' EXIT
+    _tier_pids=()
+    trap 'rm -f "$rc_file" "${_RT_BASH_ENV_FILE:-}"; [[ -z "${buf_dir:-}" ]] || rm -rf "$buf_dir"; for _ep in "${_tier_pids[@]+"${_tier_pids[@]}"}"; do kill -TERM "$_ep" 2>/dev/null || true; done' EXIT
+    # INT/TERM handler: send TERM to all tracked tier PIDs, wait, then re-raise so
+    # the caller sees a proper signal-exit status (#1662). Idempotency flag prevents
+    # double-print when a signal arrives while we are already inside the handler.
+    _rt_abort_fired=0
+    _rt_signal_abort() {
+      [[ "$_rt_abort_fired" -eq 1 ]] && return
+      _rt_abort_fired=1
+      local _p; for _p in "${_tier_pids[@]+"${_tier_pids[@]}"}"; do kill -TERM "$_p" 2>/dev/null || true; done
+      wait 2>/dev/null || true
+      overall_rc=1
+      echo "total: ABORTED — interrupted" >&2
+      trap - INT TERM
+      kill -TERM $$ 2>/dev/null || exit 143
+    }
+    trap '_rt_signal_abort' INT TERM
     if [[ $_tier_conc -eq 1 ]]; then
       # Split the job budget: unit gets floor(B/2), mutation gets the rest. The
       # other three file-tiers run serial within themselves (JOBS=0) — they are
@@ -664,8 +685,10 @@ case "$tier" in
       # collisions now that tiers run at once — nested UNDER buf_dir so it is
       # portable (mkdir -p, no templateless `mktemp -d` which fails on BSD/macOS)
       # and swept by the EXIT trap (no leak).
-      for t in unit integration e2e golden; do
+      for t in "${_TIER_ALL_MANIFEST[@]:0:4}"; do
         (
+          # Test hook: simulate a tier subshell killed before rc_file write (#1662).
+          [[ "${_ZBUILD_TEST_ABORT_TIER:-}" == "$t" ]] && exit 137
           export TMPDIR="$buf_dir/tmp-$t"; mkdir -p "$TMPDIR"
           if [[ "$t" == unit ]]; then
             export ZBUILD_TEST_PARALLEL_JOBS=$_ujobs
@@ -679,21 +702,40 @@ case "$tier" in
           if run_tier "$t"; then rc=0; else rc=$?; fi
           echo "$t $rc" >> "$rc_file"
         ) > "$buf_dir/$t.out" 2> "$buf_dir/$t.err" &
+        _tier_pids+=($!)
       done
       (
+        [[ "${_ZBUILD_TEST_ABORT_TIER:-}" == "mutation" ]] && exit 137
         export TMPDIR="$buf_dir/tmp-mutation"; mkdir -p "$TMPDIR"
         export ZBUILD_MUTATION_PARALLEL_JOBS=$_mjobs
         if bash "$SCRIPT_DIR/run-mutation.sh"; then rc=0; else rc=$?; fi
         echo "mutation $rc" >> "$rc_file"
       ) > "$buf_dir/mutation.out" 2> "$buf_dir/mutation.err" &
+      _tier_pids+=($!)
       # #1129 Change C: lint as a concurrent suite tier (ADR-012). Cheap (shellcheck)
       # so no job-budget split — runs alongside the file tiers and mutation.
       (
+        [[ "${_ZBUILD_TEST_ABORT_TIER:-}" == "lint" ]] && exit 137
         export TMPDIR="$buf_dir/tmp-lint"; mkdir -p "$TMPDIR"
         if run_lint_tier; then rc=0; else rc=$?; fi
         echo "lint $rc" >> "$rc_file"
       ) > "$buf_dir/lint.out" 2> "$buf_dir/lint.err" &
+      _tier_pids+=($!)
       wait
+      # Presence check (#1662): any tier killed before writing its rc_file entry is
+      # reported as ABORTED — silently exiting 0 when a tier never ran is the bug.
+      _rt_abort_found=0
+      for _t in "${_TIER_ALL_MANIFEST[@]}"; do
+        if ! /usr/bin/grep -q "^$_t " "$rc_file" 2>/dev/null; then
+          echo "$_t: ABORTED (killed before summary)" >&2
+          _rt_abort_found=1
+        fi
+      done
+      if [[ "$_rt_abort_found" -eq 1 ]]; then
+        echo
+        echo "total: ABORTED — one or more tiers did not complete"
+        exit 1
+      fi
     fi
     while IFS= read -r line; do
       echo "$line"
@@ -706,10 +748,9 @@ case "$tier" in
       if [[ $_tier_conc -eq 1 ]]; then
         # Replay captured STDOUT in canonical tier order so summary lines + the
         # accumulator sums are byte-identical to the serial path.
-        cat "$buf_dir/unit.out" "$buf_dir/integration.out" "$buf_dir/e2e.out" \
-            "$buf_dir/golden.out" "$buf_dir/mutation.out" "$buf_dir/lint.out"
+        for _t in "${_TIER_ALL_MANIFEST[@]}"; do cat "$buf_dir/$_t.out"; done
       else
-        for t in unit integration e2e golden; do
+        for t in "${_TIER_ALL_MANIFEST[@]:0:4}"; do
           if run_tier "$t"; then rc=0; else rc=$?; fi
           echo "$t $rc" >> "$rc_file"
         done
@@ -723,7 +764,7 @@ case "$tier" in
     if [[ $_tier_conc -eq 1 ]]; then
       # Replay captured STDERR (FAIL lines + child output) to fd 2 in canonical
       # order — these streamed live in the serial path and were never buffered.
-      for t in unit integration e2e golden mutation lint; do
+      for t in "${_TIER_ALL_MANIFEST[@]}"; do
         cat "$buf_dir/$t.err" >&2 2>/dev/null || true
       done
       # Concatenate per-tier coverage traces in canonical order (mutation has no
