@@ -110,5 +110,46 @@ set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C9: mixed → rc=1 (only the untagged change flagged)" "1" "$rc"
 assert_eq "C9: flags only SPEC-3, not the guard SPEC-1" "UNTAGGED SPEC-3" "$out"
 
+# ── C10: [SPEC-2] acceptance_find_assertion_label — label found in testfile ────
+printf '#!/usr/bin/env bash\n# [SPEC-1] the feature works correctly\nassert_eq "ok" 1 1\n' \
+    > "$ROOT/tests/labeled-test.sh"
+set +e
+c10_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/labeled-test.sh")"
+set -e
+assert_eq "[SPEC-2] C10: label extracted from testfile" \
+    "# [SPEC-1] the feature works correctly" "$c10_label"
+
+# ── C11: [SPEC-2] acceptance_find_assertion_label — empty when tag absent ──────
+printf '#!/usr/bin/env bash\n# no tag here\nassert_eq "ok" 1 1\n' \
+    > "$ROOT/tests/untagged-test.sh"
+set +e
+c11_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/untagged-test.sh")"
+c11_rc=$?
+set -e
+assert_eq "[SPEC-2] C11: no tag returns 0" "0" "$c11_rc"
+assert_eq "[SPEC-2] C11: no tag returns empty string" "" "$c11_label"
+
+# ── C12: [SPEC-2] acceptance_find_assertion_label — truncates at 60 chars ──────
+# Create a testfile whose [SPEC-1] line is 61 characters:
+# "# [SPEC-1] " (11) + "abcdefghijklmnopqrstuvwxyz " (27) + "ABCDEFGHIJKLMNOPQRSTUVW" (23) = 61
+printf '#!/usr/bin/env bash\n# [SPEC-1] abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVW\nassert_eq "ok" 1 1\n' \
+    > "$ROOT/tests/long-label-test.sh"
+set +e
+c12_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/long-label-test.sh")"
+set -e
+c12_len="$(printf '%s' "$c12_label" | wc -c | tr -d ' ')"
+assert_eq "[SPEC-2] C12: long label truncated (len <= 63 bytes: 60 chars + 3-byte ellipsis)" \
+    "1" "$(( c12_len <= 63 ? 1 : 0 ))"
+assert_contains "[SPEC-2] C12: truncated label ends with ellipsis" "$c12_label" "…"
+
+# ── C13: [SPEC-2] acceptance_find_assertion_label — first match wins across files
+printf '#!/usr/bin/env bash\n# [SPEC-1] first file match\n' > "$ROOT/tests/first-test.sh"
+printf '#!/usr/bin/env bash\n# [SPEC-1] second file match\n' > "$ROOT/tests/second-test.sh"
+set +e
+c13_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" \
+    "tests/first-test.sh" "tests/second-test.sh")"
+set -e
+assert_eq "[SPEC-2] C13: first file match returned" "# [SPEC-1] first file match" "$c13_label"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

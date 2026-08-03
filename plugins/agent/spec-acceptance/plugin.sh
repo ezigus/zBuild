@@ -301,7 +301,25 @@ acceptance_gate_run() {
     {
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
-            summary_lines+=("$line")  # #1211: one operator line per SPEC
+            # Enrich NEGCTL PASS/FAIL/SKIP lines with SPEC desc and assertion label (#1684)
+            local _e_enriched="$line" _e_eid=""
+            if [[ "$line" =~ ^NEGCTL\ (PASS|FAIL|SKIP)\ (SPEC-[0-9]+) ]]; then
+                _e_eid="${BASH_REMATCH[2]}"
+            elif [[ "$line" =~ ^NEGCTL\ SKIP\ guard_spec\ (SPEC-[0-9]+) ]]; then
+                _e_eid="${BASH_REMATCH[1]}"
+            fi
+            if [[ -n "$_e_eid" ]]; then
+                local _e_desc _e_label _e_tf_line
+                _e_desc="$(acceptance_spec_desc "$design_md" "$_e_eid")"
+                local -a _e_tf=()
+                while IFS= read -r _e_tf_line; do
+                    [[ -n "$_e_tf_line" ]] && _e_tf+=("$_e_tf_line")
+                done < <(acceptance_list_testfiles_for_spec "$design_md" "$_e_eid")
+                _e_label="$(acceptance_find_assertion_label "$repo_root" "$_e_eid" "${_e_tf[@]+"${_e_tf[@]}"}")"
+                [[ -z "$_e_label" ]] && _e_label="<none found>"
+                _e_enriched="${line} — ${_e_desc} (${_e_label})"
+            fi
+            summary_lines+=("$_e_enriched")  # #1211: one operator line per SPEC (enriched)
             case "$line" in
                 "NEGCTL PASS "*) : ;;  # control confirmed
                 "NEGCTL SKIP "*) : ;;  # no_impl_delta — legitimate skip

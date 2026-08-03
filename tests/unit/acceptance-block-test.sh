@@ -461,6 +461,88 @@ assert_eq "[SPEC-5] TC-18: global-only design: union lists second path" \
 assert_eq "[SPEC-5] TC-18: for_spec fallback equals global pool (first path)" \
     "1" "$(echo "$tc18_spec" | grep -c 'classic-test.sh')"
 
+# ── TC-19: [SPEC-1] acceptance_spec_desc — plain SPEC text extracted ──────────
+tc19_file="$WORK_DIR/tc19_design.md"
+cat > "$tc19_file" <<'EOF'
+```acceptance
+SPEC-1: feature is implemented
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc19_out="$(acceptance_spec_desc "$tc19_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-19: plain SPEC text returned" "feature is implemented" "$tc19_out"
+
+# ── TC-20: [SPEC-1] acceptance_spec_desc — [change]-classified SPEC text ──────
+tc20_file="$WORK_DIR/tc20_design.md"
+cat > "$tc20_file" <<'EOF'
+```acceptance
+SPEC-1[change]: new behavior introduced
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc20_out="$(acceptance_spec_desc "$tc20_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-20: [change]-classified SPEC text returned" "new behavior introduced" "$tc20_out"
+
+# ── TC-21: [SPEC-1] acceptance_spec_desc — text truncated at 60 chars ─────────
+tc21_file="$WORK_DIR/tc21_design.md"
+# 61-character description: a-z (26) + space (1) + A-Z (26) + space (1) + "1234567" (7) = 61
+cat > "$tc21_file" <<'EOF'
+```acceptance
+SPEC-1: abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc21_out="$(acceptance_spec_desc "$tc21_file" "SPEC-1")"
+set -e
+# First 60 chars: a-z (26) + space (1) + A-Z (26) + space (1) + "123456" (6) = 60
+assert_eq "[SPEC-1] TC-21: 61-char desc truncated to 60 chars with ellipsis suffix" \
+    "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 123456…" \
+    "$tc21_out"
+assert_eq "[SPEC-1] TC-21: truncated text byte length is 63 (60 ASCII chars + 3-byte UTF-8 ellipsis)" \
+    "63" "$(printf '%s' "$tc21_out" | wc -c | tr -d ' ')"
+
+# ── TC-22: [SPEC-1] acceptance_spec_desc — missing spec_id returns empty ───────
+tc22_file="$WORK_DIR/tc22_design.md"
+cat > "$tc22_file" <<'EOF'
+```acceptance
+SPEC-1: some feature
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc22_out="$(acceptance_spec_desc "$tc22_file" "SPEC-99")"
+tc22_rc=$?
+set -e
+assert_eq "[SPEC-1] TC-22: missing spec_id returns 0" "0" "$tc22_rc"
+assert_eq "[SPEC-1] TC-22: missing spec_id returns empty string" "" "$tc22_out"
+
+# ── TC-23: [SPEC-1] acceptance_spec_desc — SPEC in TESTFILES not misidentified ─
+# A SPEC-n: binding line inside TESTFILES must not be returned as desc text.
+tc23_file="$WORK_DIR/tc23_design.md"
+cat > "$tc23_file" <<'EOF'
+```acceptance
+SPEC-1[change]: real description
+TESTFILES:
+SPEC-1: tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc23_out="$(acceptance_spec_desc "$tc23_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-23: TESTFILES binding line not misidentified as desc" \
+    "real description" "$tc23_out"
+assert_eq "[SPEC-1] TC-23: testfile path not leaked into desc output" \
+    "0" "$(printf '%s' "$tc23_out" | grep -c 'foo-test.sh' || true)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -33,6 +33,30 @@ _build_repo() {  # _build_repo <name> <head_test_body>
     printf '%s' "$repo"
 }
 
+# Variant that also captures the operator summary emitted to fd 2.
+# Defines template_stage_io_dests to enable summary output. Sets SUMMARY in
+# addition to RC, RESULT, EVENTS.
+_run_gate_with_summary() {
+    local repo="$1"
+    local state_dir="$repo/.zbuild-state"
+    mkdir -p "$state_dir/artifacts"
+    export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
+    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+    cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
+    unset _ZBUILD_ACCEPTANCE_GATE_LOADED
+    local _sf; _sf="$(mktemp)"
+    # Define stub AFTER source so it overrides the template.sh lookup-based version
+    # that stage-io.sh transitively loads when the plugin is sourced.
+    ( cd "$repo" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+          && template_stage_io_dests() { printf 'stdout\n'; } \
+          && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" ) 2>"$_sf"
+    RC=$?
+    RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
+    EVENTS="$ZBUILD_EVENTS_JSONL"
+    SUMMARY="$(cat "$_sf")"
+    rm -f "$_sf"
+}
+
 _run_gate() {  # _run_gate <repo> → sets RC, RESULT, EVENTS
     local repo="$1"
     local state_dir="$repo/.zbuild-state"
@@ -357,6 +381,48 @@ assert_contains "[SPEC-3] S15: failures[] contains wiring_not_on_path" \
     "$(jq -rc .failures <<<"$RESULT15")" "wiring_not_on_path"
 assert_event_emitted "[SPEC-3] S15: wiring_not_on_path event emitted" \
     "$EVENTS15" "acceptance.gate.wiring_not_on_path"
+
+# ── S16 (#1684): NEGCTL summary lines are enriched with desc and label ─────────
+# [SPEC-3] acceptance_gate_run enriches each NEGCTL PASS line with the SPEC
+# description from design.md and the [SPEC-n]-tagged assertion label from
+# the declared testfile.
+# Also verifies <none found> appears when no [SPEC-n] tag exists in the testfile.
+REPO16="$(_build_repo gate-enrich-pass '#!/usr/bin/env bash
+# [SPEC-1] feature works as expected
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
+[[ -f "$impl" ]] || exit 1
+source "$impl"; my_feature')"
+cat > "$REPO16/design.md" <<'EOF'
+```acceptance
+SPEC-1: feature works as expected
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate_with_summary "$REPO16"; set -e
+assert_eq "[SPEC-3] S16: load-bearing enriched → rc=0" "0" "$RC"
+assert_eq "[SPEC-3] S16: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_contains "[SPEC-3] S16: summary contains SPEC desc enrichment" \
+    "$SUMMARY" "feature works as expected"
+assert_contains "[SPEC-3] S16: summary contains assertion label enrichment" \
+    "$SUMMARY" "# [SPEC-1] feature works as expected"
+
+# Verify <none found> when the testfile has no [SPEC-n] tag.
+# Use a guard SPEC so Level-1 coverage check is exempt (guard SPECs skip negctl).
+REPO16B="$(_build_repo gate-enrich-nolabel '#!/usr/bin/env bash
+# no spec tag in this file
+exit 0')"
+cat > "$REPO16B/design.md" <<'EOF'
+```acceptance
+SPEC-1[guard]: some invariant
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate_with_summary "$REPO16B"; set -e
+assert_eq "[SPEC-3] S16b: guard SPEC with no tag → rc=0 (skip)" "0" "$RC"
+assert_contains "[SPEC-3] S16b: summary shows <none found> when no assertion tag" \
+    "$SUMMARY" "<none found>"
 
 cleanup_test_env
 print_test_results

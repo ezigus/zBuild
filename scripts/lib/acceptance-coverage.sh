@@ -36,6 +36,31 @@ acceptance_coverage_spec_tagged() {
     return 1
 }
 
+# acceptance_find_assertion_label <repo_root> <spec_id> <testfiles...>  (#1684)
+# Scans each declared testfile for the first line containing the literal tag
+# [<spec_id>] and returns it (stripped of leading whitespace) truncated to
+# 60 characters with '…'. Returns empty string when no matching line is found.
+acceptance_find_assertion_label() {
+    local repo_root="${1:-}" spec_id="${2:-}"; shift 2
+    local tf abs match
+    for tf in "$@"; do
+        [[ -z "$tf" ]] && continue
+        abs="$repo_root/$tf"
+        [[ -f "$abs" ]] || continue
+        match="$(grep -m1 -F "[$spec_id]" "$abs" 2>/dev/null || true)"
+        if [[ -n "$match" ]]; then
+            match="${match#"${match%%[![:space:]]*}"}"
+            if [[ ${#match} -gt 60 ]]; then
+                printf '%s…\n' "${match:0:60}"
+            else
+                printf '%s\n' "$match"
+            fi
+            return 0
+        fi
+    done
+    return 0
+}
+
 # acceptance_coverage_check <design_md> <repo_root>
 # Level-1 gate over the [change] SPEC-n ids in the design's acceptance block.
 # Prints one "UNTAGGED <spec_id>" line per spec with no backing tagged
