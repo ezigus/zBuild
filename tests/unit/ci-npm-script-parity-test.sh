@@ -50,7 +50,20 @@ fi
 
 # Resolve each argument list against the repo, from the repo root (both sources
 # use repo-relative roots).
-_resolve() { ( cd "$REPO_ROOT" && eval "find $1" 2>/dev/null | sort -u ); }
+# eval is needed to honour the quoting in the extracted arguments ('*.sh' must
+# reach find unexpanded). Guard it: require the string to consist ONLY of the
+# characters a find argument list legitimately uses, so a future refactor
+# introducing command substitution or a subshell fails loudly here rather than
+# being evaluated. Hyphen is last in the class so it is literal, not a range.
+_FIND_ARG_CHARS="^[A-Za-z0-9_/.*'\" -]+\$"
+_resolve() {
+    if ! [[ "$1" =~ $_FIND_ARG_CHARS ]]; then
+        printf 'unsafe characters in extracted find args: %s\n' "$1" >&2
+        return 1
+    fi
+    ( cd "$REPO_ROOT" && eval "find $1" 2>/dev/null | sort -u )
+}
+
 _npm_files="$(_resolve "$_npm_args")"
 _ci_files="$(_resolve "$_ci_args")"
 

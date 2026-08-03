@@ -7,7 +7,7 @@
 # the CI copy runs under Actions' bash `run:`, so its `[[ ]]` was correct there,
 # but npm runs scripts with /bin/sh (dash on Linux), where `[[` does not exist.
 # A bash script with a shebang is immune to the caller's shell either way.
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${ZBUILD_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
