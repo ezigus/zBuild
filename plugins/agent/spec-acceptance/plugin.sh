@@ -362,7 +362,8 @@ acceptance_gate_run() {
                         local target="${line#REACHABILITY FAIL wiring_not_on_path }"
                         failures+=("wiring_not_on_path:$target")
                         verdict="fail"
-                        eb_emit_event "acceptance.gate.wiring_not_on_path" "stage=acceptance-gate" \
+                        local _wnp_ev="acceptance.gate.wiring_not_on_path"
+                        eb_emit_event "$_wnp_ev" "stage=acceptance-gate" \
                             "target=$target"
                         ;;
                     "REACHABILITY ERROR "*)
