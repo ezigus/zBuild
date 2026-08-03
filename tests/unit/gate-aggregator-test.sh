@@ -217,7 +217,7 @@ fi
 # a blocking fail (recoverable blocks convergence, only advisory is non-blocking).
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-printf '{"verdict":"fail","disposition":"recoverable","route_target":"design","reason":"WIRING .github/workflows/ci.yml not in this commit'\''s diff — declare WIRING: none or name the correct target","failures":["wiring_not_on_path:.github/workflows/ci.yml"]}\n' \
+printf '{"verdict":"fail","disposition":"recoverable","route_target":"design","reason":"WIRING .github/workflows/ci.yml referenced by no declared TESTFILE — declare WIRING: none or name a target the tests actually load","failures":["wiring_not_on_path:.github/workflows/ci.yml"]}\n' \
     > "$AD/acceptance-gate-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "[SPEC-3] wiring_not_on_path route_target=design → verdict=route_design" \

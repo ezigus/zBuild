@@ -413,20 +413,32 @@ effectively unbounded on a macOS host with GNU coreutils but no POSIX `timeout`.
 
 ## Amendment (#1686, 2026-08-03) — wiring_not_on_path: distinct class + first live route_target activation
 
-**Problem.** When a declared WIRING target was absent from `git diff --name-only` (the file exists but
-was not touched by this commit), `acceptance_reachability_check` still ran the full worktree flip-
-detection. The worktree was created at merge-base and ALL changed files (except the target) were
-overlaid from HEAD — but since the target was never changed, baseline == HEAD for it. No testfile
-could flip. The result was `REACHABILITY FAIL inert_wiring`, which is the wrong class: `inert_wiring`
-means the wiring IS in the diff but the test suite fails to exercise it (a build-fixable test gap);
-here the cause is that the author named a file unrelated to this commit (a design error).
+**Problem.** When a declared WIRING target is one that **no declared TESTFILE can load**,
+`acceptance_reachability_check` still ran the full worktree flip-detection, found no flip, and
+emitted `REACHABILITY FAIL inert_wiring`. That is the wrong class. `inert_wiring` means the target IS
+exercisable but the suite fails to exercise it — a build-fixable test gap. Here the target cannot be
+loaded at all, so no assertion build could write would make it load-bearing; the author named a file
+the tests cannot reach (a design error).
+
+The canonical case is #1664 (run `20260801225808-15285`): a policy ADR + CI-config change declared
+`WIRING: .github/workflows/test.yml`. No shell testfile loads workflow YAML, so `inert_wiring` was
+structurally guaranteed. Because `inert_wiring` is build-fixable, the cycle handed build a defect it
+could not repair, leaving one lever — make the declaration true — and build wrote a static grep of
+the YAML in two test files, which the issue had explicitly forbidden. Two iterations were burned.
+
+Note the predicate is **reachability, not diff membership**. `.github/workflows/test.yml` WAS in
+#1664's diff (PR #1680, `+9/-2`), so a "target absent from `git diff --name-only`" check misses the
+exact case this amendment exists for.
 
 **Fix.**
 
-1. **`scripts/lib/acceptance-reachability.sh`** — before creating each target's worktree, check
-   whether the target appears in `changed_files`. If absent, emit
-   `REACHABILITY FAIL wiring_not_on_path <target>`, set `rc=1`, and `continue` (skip the
-   expensive revert run).
+1. **`scripts/lib/acceptance-reachability.sh`** — before creating each target's worktree, grep every
+   declared TESTFILE's content for the target path string. If none reference it, emit
+   `REACHABILITY FAIL wiring_not_on_path <target>`, set `rc=1`, and `continue` (skipping the
+   expensive revert run). One level only: transitive traversal of libs a TESTFILE sources is not
+   implemented, which is sufficient for the practical cases (CI YAML, docs) and cannot produce a
+   false positive for a target a TESTFILE names directly. Guarded on a non-empty TESTFILE set so an
+   empty array cannot condemn every target.
 
 2. **`plugins/agent/spec-acceptance/plugin.sh`** — parse the new line in the Level-3 loop;
    accumulate `wiring_not_on_path:<target>` in `failures[]`; emit

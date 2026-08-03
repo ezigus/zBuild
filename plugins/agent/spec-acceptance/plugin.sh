@@ -92,7 +92,11 @@ _ag_classify_disposition() {
             # by re-authoring the assertion (#1583). The mechanical negative control
             # re-verifies each iteration, and max_iterations bounds it — an
             # un-fixable case exhausts the budget and terminates cleanly.
-            untagged_spec:* | tautology:* | inert_wiring:* | wiring_not_on_path:*)  had_recoverable=1 ;;
+            untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
+            # #1686: design-rooted, but NOT terminal — the cycle must reach the
+            # gate-aggregator for route_target=design to become verdict=route_design
+            # and fire the route_back edge. Terminal would halt before the rewind.
+            wiring_not_on_path:*)                           had_recoverable=1 ;;
             negctl_error:* | reachability_error:*)           had_advisory=1 ;;
             "")                                              : ;;
             # Genuinely terminal (e.g. malformed_acceptance_block — design-authored,
@@ -141,7 +145,7 @@ _ag_build_reason() {
     [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged") untagged — add a matching [SPEC-n] assertion in TESTFILES")
     [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf") missing a tagged TESTFILE")
     [[ -n "$inert"    ]] && clauses+=("WIRING $(_ag_join_ids "$inert") inert — reverting it breaks no TESTFILE")
-    [[ -n "$notpath"  ]] && clauses+=("WIRING $(_ag_join_ids "$notpath") not in this commit's diff — declare WIRING: none or name the correct target")
+    [[ -n "$notpath"  ]] && clauses+=("WIRING $(_ag_join_ids "$notpath") referenced by no declared TESTFILE — declare WIRING: none or name a target the tests actually load")
     [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
     [[ -n "$infra"    ]] && clauses+=("infra: $(_ag_join_ids "$infra")")
     local out="" c
@@ -362,8 +366,7 @@ acceptance_gate_run() {
                         local target="${line#REACHABILITY FAIL wiring_not_on_path }"
                         failures+=("wiring_not_on_path:$target")
                         verdict="fail"
-                        local _wnp_ev="acceptance.gate.wiring_not_on_path"
-                        eb_emit_event "$_wnp_ev" "stage=acceptance-gate" \
+                        eb_emit_event "acceptance.gate.wiring_not_on_path" "stage=acceptance-gate" \
                             "target=$target"
                         ;;
                     "REACHABILITY ERROR "*)
@@ -411,10 +414,7 @@ acceptance_gate_run() {
         disposition="none"
     fi
     # First live activation of the dormant route_target carrier (ADR-036 #1583):
-    # wiring_not_on_path is design-rooted — the declared WIRING file was not in
-    # this commit's diff, which only the design stage can correct by updating the
-    # WIRING declaration. The gate-aggregator rolls route_target=design up into
-    # verdict=route_design, firing the route_back edge to design_verify_cycle.
+    # only design can fix a WIRING declaration, so route back instead of blaming build.
     local f
     for f in "${failures[@]:-}"; do
         [[ "$f" == wiring_not_on_path:* ]] && route_target="design" && break

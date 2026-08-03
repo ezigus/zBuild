@@ -139,20 +139,24 @@ acceptance_reachability_check() {
     local rc=0
 
     for target in "${wiring_targets[@]}"; do
-        # A WIRING target absent from this commit's diff cannot be load-bearing for
-        # this change — the file was not modified here, so no testfile can flip when
-        # it is reverted to baseline (baseline == HEAD for that file). This is a
-        # design error: the author declared a WIRING file unrelated to the change.
-        # Emit a distinct class so the plugin can route back to design instead of
-        # blaming the test suite with the misleading inert_wiring signal.
-        local _in_diff=0
-        for _cf in "${changed_files[@]:-}"; do
-            [[ "$_cf" == "$target" ]] && _in_diff=1 && break
-        done
-        if [[ "$_in_diff" -eq 0 ]]; then
-            printf 'REACHABILITY FAIL wiring_not_on_path %s\n' "$target"
-            rc=1
-            continue
+        # #1686: a target no declared TESTFILE even mentions cannot be load-bearing —
+        # reverting it flips nothing, so `inert_wiring` (build-fixable) is the wrong
+        # signal; only design can correct the declaration. Guarded on a non-empty
+        # testfile set so an empty array cannot condemn every target (#1697 review).
+        if [[ ${#testfiles[@]} -gt 0 ]]; then
+            local _t_norm="${target#./}" _referenced=0 _tf
+            for _tf in "${testfiles[@]}"; do
+                [[ -z "$_tf" ]] && continue
+                if grep -qF -- "$_t_norm" "$repo_root/$_tf" 2>/dev/null; then
+                    _referenced=1
+                    break
+                fi
+            done
+            if [[ "$_referenced" -eq 0 ]]; then
+                printf 'REACHABILITY FAIL wiring_not_on_path %s\n' "$target"
+                rc=1
+                continue
+            fi
         fi
 
         # Create detached worktree at baseline.
