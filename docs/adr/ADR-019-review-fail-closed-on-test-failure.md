@@ -237,7 +237,7 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 
 | Verdict (raw)                                | Class | Glyph | Color  |
 | -------------------------------------------- | ----- | ----- | ------ |
-| `pass`, `approve`                            | pass  | `✓`   | GREEN  |
+| `pass`, `approve`, `complete`, `skip`        | pass  | `✓`   | GREEN  |
 | `request_changes`                            | warn  | `⚠`   | YELLOW |
 | `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
 | missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |

@@ -66,6 +66,32 @@ done
 got="$(verdict_classify "inert_build")"
 assert_eq "[SPEC-1] verdict_classify(inert_build) -> fail" "fail" "$got"
 
+# [SPEC-1] complete classifies as pass (CHANGE — was "unknown" before #1687;
+# impact's terminal "no gaps" success verdict).
+got="$(verdict_classify "complete")"
+assert_eq "[SPEC-1] verdict_classify(complete) -> pass" "pass" "$got"
+
+# [SPEC-2] skip classifies as pass (CHANGE — was "unknown" before #1687;
+# gates' "not-applicable this run" verdict — declining to apply is not failure).
+got="$(verdict_classify "skip")"
+assert_eq "[SPEC-2] verdict_classify(skip) -> pass" "pass" "$got"
+
+# [SPEC-3] runner_read_stage_verdict must NOT emit pipeline.indicator.unknown_verdict
+# for complete or skip (both now classify as pass — no unknown_verdict path).
+print_test_section "[SPEC-3] no unknown_verdict event for complete or skip"
+: > "$ZBUILD_EVENTS_JSONL"
+spec3_dir="$TEST_TEMP_DIR/plugins/impact"
+_make_manifest "$spec3_dir" "impact" "${ART_DIR}/impact-result.json" "impact_result"
+
+printf '%s' '{"verdict":"complete"}' > "$ART_DIR/impact-result.json"
+runner_read_stage_verdict "$STATE_DIR" "$spec3_dir/manifest.yaml" "impact" 0 >/dev/null
+
+printf '%s' '{"verdict":"skip"}' > "$ART_DIR/impact-result.json"
+runner_read_stage_verdict "$STATE_DIR" "$spec3_dir/manifest.yaml" "impact" 0 >/dev/null
+
+unk_count=$(grep -c '"pipeline.indicator.unknown_verdict"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
+assert_eq "[SPEC-3] no pipeline.indicator.unknown_verdict emitted for complete or skip" "0" "$unk_count"
+
 # ─── Test: rc != 0 always wins ───────────────────────────────────────────────
 print_test_section "rc != 0 overrides verdict"
 m_dir="$TEST_TEMP_DIR/plugins/test"
