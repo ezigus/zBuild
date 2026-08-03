@@ -61,7 +61,11 @@ for ev in cycle.feedback.missing cycle.config.invalid \
     assert_contains "HIGH event $ev produces banner" "$bout" "$ev"
 done
 
-# ─── T6: indent is two spaces (nests under cycle divider) ────────────────────
+# ─── T6: cycle.feedback.absent is NOT a HIGH event — no banner (SPEC-4 guard) ──
+out_absent="$(_emit_high_event_banner "cycle.feedback.absent" "src=/tmp/x" 2>&1 >/dev/null)"
+assert_eq "[SPEC-4] cycle.feedback.absent is not HIGH → no banner emitted" "" "$out_absent"
+
+# ─── T7: indent is two spaces (nests under cycle divider) ────────────────────
 out6="$(_emit_high_event_banner "cycle.metric.invalid" "metric=foo" 2>&1 >/dev/null)"
 # Strip ANSI to inspect the leading whitespace.
 clean="$(printf '%s' "$out6" | sed $'s/\033\\[[0-9;]*m//g')"

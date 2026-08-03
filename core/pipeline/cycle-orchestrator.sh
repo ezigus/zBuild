@@ -1163,16 +1163,21 @@ _cycle_apply_feedback() {
         src="$(_cycle_resolve_from_path "$state_dir" "$from_stage" "$from_output")"
         local dst="$fb_dir/${to_field}.txt"
         if [[ ! -e "$src" ]]; then
-            _cycle_emit "cycle.feedback.missing" \
-                "iter_next=$iter_next" "from_stage=$from_stage" \
-                "from_output=$from_output" "to_stage=$to_stage" \
-                "to_field=$to_field" "required=$required" \
-                "src=$src"
-            # required=true → fail-closed; abort by signalling rc!=0
             if [[ "$required" == "true" ]]; then
+                _cycle_emit "cycle.feedback.missing" \
+                    "iter_next=$iter_next" "from_stage=$from_stage" \
+                    "from_output=$from_output" "to_stage=$to_stage" \
+                    "to_field=$to_field" "required=$required" \
+                    "src=$src"
                 return 1
+            else
+                _cycle_emit "cycle.feedback.absent" \
+                    "iter_next=$iter_next" "from_stage=$from_stage" \
+                    "from_output=$from_output" "to_stage=$to_stage" \
+                    "to_field=$to_field" "required=$required" \
+                    "src=$src"
+                continue
             fi
-            continue
         fi
         if ! cp "$src" "$dst" 2>/dev/null; then
             _cycle_emit "cycle.feedback.missing" \

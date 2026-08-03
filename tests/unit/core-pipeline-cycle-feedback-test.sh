@@ -37,19 +37,46 @@ rm -f "$STATE_DIR/artifacts/test/primary.txt"
 _CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:true")
 set +e; _cycle_apply_feedback 3 "$STATE_DIR"; rc=$?; set -e
 assert_eq "missing required from-field → rc=1 (fail-closed)" "1" "$rc"
-assert_contains "emits cycle.feedback.missing" "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.missing"
+assert_contains "[SPEC-2] required=true absent emits cycle.feedback.missing" "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.missing"
 
-# T3: from-artifact MISSING + required=false → rc=0 (warn only), event still emitted
+# T3: from-artifact MISSING + required=false → rc=0, emits cycle.feedback.absent (not .missing)
 : > "$ZBUILD_EVENTS_JSONL"
 _CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:false")
 set +e; _cycle_apply_feedback 4 "$STATE_DIR"; rc=$?; set -e
 assert_eq "missing optional from-field → rc=0 (continue)" "0" "$rc"
-assert_contains "still emits cycle.feedback.missing event" "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.missing"
+assert_contains "[SPEC-1] optional absent emits cycle.feedback.absent" "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.absent"
 
 # T4: empty feedback list → rc=0, no events
 : > "$ZBUILD_EVENTS_JSONL"
 _CYCLE_FEEDBACK=()
 set +e; _cycle_apply_feedback 5 "$STATE_DIR"; rc=$?; set -e
 assert_eq "empty feedback list → rc=0" "0" "$rc"
+
+# T5: SPEC-5 regression — optional absent fires no ⚠ banner (cycle.feedback.absent is not HIGH)
+# At baseline this fails: cycle.feedback.missing fires for optional absent AND is bannered.
+: > "$ZBUILD_EVENTS_JSONL"
+_CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:false")
+err5="$(_cycle_apply_feedback 6 "$STATE_DIR" 2>&1 >/dev/null || true)"
+if grep -qF "⚠" <<< "$err5"; then
+    assert_fail "[SPEC-5] optional absent → no ⚠ banner on stderr" "banner appeared: $err5"
+else
+    assert_pass "[SPEC-5] optional absent → no ⚠ banner on stderr"
+fi
+
+# T6: SPEC-6 guard — cp-failure path always emits cycle.feedback.missing + rc=1
+# regardless of required flag (structural error, not an expected absence).
+STATE_DIR6="$TEST_TEMP_DIR/state6"
+mkdir -p "$STATE_DIR6/artifacts/test"
+echo "cp test artifact" > "$STATE_DIR6/artifacts/test/primary.txt"
+_CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:false")
+fb_dir6="$STATE_DIR6/cycle-build-test/iter-7/feedback"
+mkdir -p "$fb_dir6"
+chmod 000 "$fb_dir6"
+: > "$ZBUILD_EVENTS_JSONL"
+set +e; _cycle_apply_feedback 7 "$STATE_DIR6"; rc=$?; set -e
+chmod 755 "$fb_dir6"
+assert_eq "[SPEC-6] cp-failure → rc=1 (fail-closed regardless of required)" "1" "$rc"
+assert_contains "[SPEC-6] cp-failure emits cycle.feedback.missing (reason=copy_failed)" \
+    "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.missing"
 
 print_test_results
