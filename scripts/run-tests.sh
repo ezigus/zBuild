@@ -53,8 +53,7 @@ _rt_is_timeout_rc() {
   case "${1:-}" in 124|137|143) return 0 ;; *) return 1 ;; esac
 }
 
-# Sole renderer of a summary line's note; concatenated, not IFS-joined (that join
-# uses only IFS's first char and drops the space). Defined above --files, its first caller.
+# Sole renderer of a summary note; concatenated, not IFS-joined (that join uses only IFS's first char and drops the space).
 _rt_build_note() {
     local _sk="${1:-0}" _to="${2:-0}" _note=""
     [[ "${_sk:-0}" -gt 0 ]] && _note="$_sk skipped"

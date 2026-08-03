@@ -16,6 +16,7 @@
 # SPEC-6  GUARD   timeout-only tier's PER-TIER line stays bare (N timed out) (#1613)
 # SPEC-6b CHANGE  timeout-only tier reaches the total: line — new accumulator
 # SPEC-7  GUARD   parse.sh still parses the widened total: line unchanged
+# SPEC-8  GUARD   --files renders its note via the helper (defn must precede it)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -157,6 +158,24 @@ assert_eq "[SPEC-6] timeout-only tier emits bare (1 timed out), no skip clause" 
 # never carry a timeout — with or without an accompanying skip.
 assert_eq "[SPEC-6b] total: line is bare (1 timed out) with no skips anywhere" "1" \
     "$(printf '%s\n' "$_OUT" | grep -cE '^total: [0-9]+/[0-9]+ passed \(1 timed out\)$')"
+
+# ─── [SPEC-8] GUARD: --files renders its note through the helper ─────────────
+# The --files block executes BEFORE the rest of the script is parsed, so
+# _rt_build_note must be defined above it. If it is moved back down beside its
+# siblings, the call resolves to nothing, the command substitution yields empty,
+# and the summary silently loses its note — verified by hand: the line degrades
+# from "unit: 0/1 passed (1 timed out)" to "unit: 0/1 passed" with no error on
+# stdout. run-tests-files-guard-test.sh does NOT catch it (it asserts on the
+# TIMEOUT marker, not the summary note), so this assertion is the only guard.
+_HANGDIR="$TEST_TEMP_DIR/filesfix"
+mkdir -p "$_HANGDIR"
+printf '#!/usr/bin/env bash\nsleep 30\n' > "$_HANGDIR/h-test.sh"
+chmod +x "$_HANGDIR/h-test.sh"
+_FILES_OUT="$(ZBUILD_TEST_FILE_TIMEOUT=2 ZBUILD_TEST_KILL_GRACE=1 \
+    bash "$RUN_TESTS" --files "$_HANGDIR/h-test.sh" 2>/dev/null || true)"
+
+assert_eq "[SPEC-8] --files summary carries the timed-out note (helper is in scope)" "1" \
+    "$(printf '%s\n' "$_FILES_OUT" | grep -cE '^unit: 0/1 passed \(1 timed out\)$')"
 
 # ─── [SPEC-7] GUARD: parse.sh still consumes the widened total: line ─────────
 # The issue requires the test plugin's parser to be unaffected by the format
