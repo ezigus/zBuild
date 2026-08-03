@@ -12,6 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "claude-code-review-outcome — issue #1618 outcome accuracy"
+setup_test_env "claude-code-review-outcome"
 
 # Source the helper under test.
 # shellcheck source=../../scripts/lib/ci-review-outcome.sh
@@ -22,7 +23,13 @@ export GITHUB_REPOSITORY="owner/repo"
 export PR="42"
 export REVIEW_OUTCOME="success"
 export RUN_URL="https://github.com/owner/repo/actions/runs/1"
-export RUNNER_TEMP="/tmp"
+# Own directory, not /tmp: _reviewer_ran() keys on the presence of the action's
+# execution log here, so a stray /tmp/claude-execution-output.json from any other
+# process would silently decide these cases. Default state is "the reviewer ran";
+# SPEC-7 below points RUNNER_TEMP at an empty dir to exercise the opposite.
+export RUNNER_TEMP="$TEST_TEMP_DIR/runner"
+mkdir -p "$RUNNER_TEMP"
+printf '{}' > "$RUNNER_TEMP/claude-execution-output.json"
 
 # ─── Wiring reachability: workflow must source the helper ───────────────────
 # Reverting .github/workflows/claude-code-review.yml to merge-base removes the
@@ -98,6 +105,74 @@ if /usr/bin/grep -q "no findings" <<< "$result"; then
     assert_fail "[SPEC-5] combined count > 0 must not produce 'no findings' status" "got: $result"
 else
     assert_pass "[SPEC-5] combined count > 0 must not produce 'no findings' status"
+fi
+
+# ─── T6 / SPEC-6: the FILTERS run for real, against real-shaped payloads ────
+# T1-T5 above stub _gh_inline_count/_gh_top_count/_gh_verdict, which is right for
+# exercising compute_review_status's branching — but it means the jq that decides
+# WHOSE comments count never executes. That is precisely how this file shipped
+# filtering on `github-actions[bot]` (the summary poster) instead of the reviewer:
+# every SPEC passed against constants while the real lookups returned zero on
+# every real PR. These cases drive filter_top_count/filter_verdict directly, so
+# the login is covered by an executed line. See #1694.
+#
+# Payload shape is copied from a real `gh api repos/:o/:r/issues/:n/comments`
+# response: the reviewer posts as claude[bot]; the outcome summary this very
+# file writes posts as github-actions[bot].
+# Two reviewer comments and one summary, so the expected count (2) differs from
+# what the wrong login would yield (1) — a 1-vs-1 fixture cannot tell them apart.
+_payload_findings_in_comment='[
+  {"user":{"login":"claude[bot]"},"body":"## Review\n\nFirst pass."},
+  {"user":{"login":"github-actions[bot]"},"body":"✅ **Claude review of `abc1234`: no findings.**"},
+  {"user":{"login":"claude[bot]"},"body":"## Review\n\nOne real finding.\n\n<!-- verdict: findings -->"}
+]'
+_payload_clean='[
+  {"user":{"login":"claude[bot]"},"body":"Nothing significant.\n\n<!-- verdict: clean -->"},
+  {"user":{"login":"github-actions[bot]"},"body":"✅ **Claude review of `abc1234`: no findings.**"}
+]'
+
+assert_eq "[SPEC-6] filter_top_count counts the REVIEWER's comments, not the summary bot's" \
+    "2" "$(filter_top_count <<< "$_payload_findings_in_comment")"
+assert_eq "[SPEC-6] filter_verdict reads the marker from the reviewer's comment" \
+    "<!-- verdict: findings -->" "$(filter_verdict <<< "$_payload_findings_in_comment")"
+assert_eq "[SPEC-6] filter_verdict reads a clean marker" \
+    "<!-- verdict: clean -->" "$(filter_verdict <<< "$_payload_clean")"
+# The regression in one line: had the filter kept github-actions[bot], the count
+# would be 1 (the summary) and the verdict empty — a findings review read as clean.
+assert_eq "[SPEC-6] outcome-summary comments are excluded by construction" \
+    "0" "$(filter_top_count <<< '[{"user":{"login":"github-actions[bot]"},"body":"✅ no findings."}]')"
+
+# ─── T7 / SPEC-7: reviewer never ran → not reported as clean ────────────────
+# The action skips outright when the workflow file differs from the default
+# branch's copy — every PR editing this workflow — yet the STEP still reports
+# outcome=success. PR #1690 did exactly this to itself: a green "no findings"
+# for a review that never executed.
+export RUNNER_TEMP="$TEST_TEMP_DIR/noexec"
+mkdir -p "$RUNNER_TEMP"     # deliberately no claude-execution-output.json
+_gh_inline_count() { echo "0"; }
+_gh_top_count()    { echo "0"; }
+_gh_verdict()      { echo ""; }
+result="$(compute_review_status "pqr4444444444")"
+if /usr/bin/grep -q "no findings" <<< "$result"; then
+    assert_fail "[SPEC-7] a skipped review must not be reported as 'no findings'" "got: $result"
+else
+    assert_pass "[SPEC-7] a skipped review must not be reported as 'no findings'"
+fi
+assert_contains "[SPEC-7] a skipped review says so explicitly" "$result" "did not run"
+
+# ─── T8 / SPEC-8: a PARTIAL API failure is not a clean result ───────────────
+# Requiring BOTH counts to be '?' let _safe_add coerce the failed side to 0 and
+# report a confident "no findings" built on one successful query.
+printf '{}' > "$RUNNER_TEMP/claude-execution-output.json"   # reviewer DID run
+_gh_inline_count() { echo "?"; }
+_gh_top_count()    { echo "0"; }
+_gh_verdict()      { echo ""; }
+result="$(compute_review_status "stu5555555555")"
+assert_contains "[SPEC-8] one failed lookup → 'outcome unknown'" "$result" "outcome unknown"
+if /usr/bin/grep -q "no findings" <<< "$result"; then
+    assert_fail "[SPEC-8] a partial API failure must not produce 'no findings'" "got: $result"
+else
+    assert_pass "[SPEC-8] a partial API failure must not produce 'no findings'"
 fi
 
 print_test_results

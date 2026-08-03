@@ -6,8 +6,33 @@
 [[ -n "${_CI_REVIEW_OUTCOME_LOADED:-}" ]] && return 0
 _CI_REVIEW_OUTCOME_LOADED=1
 
-# Patterns matching outcome-summary comments this step emits; excluded from reviewer-comment count.
-_OUTCOME_BODY_PATTERN="Claude review did not complete|Claude review may be incomplete|Claude review of"
+# The REVIEWER's identity — the account whose comments carry the findings and the
+# verdict marker. NOT github-actions[bot], which is the account that posts the
+# outcome summary at the bottom of this file. Getting the two backwards makes
+# every lookup here return zero and silently reproduces the bug this file exists
+# to fix: verified against PR #1679, where a review reporting a real correctness
+# regression in a top-level comment scored top_count=0, verdict="".
+_REVIEWER_LOGIN="claude[bot]"
+
+# ─── Pure filters — stdin is the raw `gh api` comments JSON ─────────────────
+# Split from the fetch so the filter logic is executable, and therefore testable,
+# with no network. Stubbing the fetchers wholesale is what hid the wrong-login
+# defect from the entire suite on the first pass (see #1694).
+
+filter_top_count() {
+    # Reviewer comments only. The outcome summaries are posted by a DIFFERENT
+    # account, so filtering on the reviewer excludes them by construction — no
+    # body-pattern match needed, which also removes a jq-injection vector.
+    jq --arg login "$_REVIEWER_LOGIN" '[.[] | select(.user.login == $login)] | length' 2>/dev/null || echo '?'
+}
+
+filter_verdict() {
+    # The last reviewer comment that actually CARRIES a marker — not merely the
+    # last reviewer comment, which on a re-review may predate the marker.
+    jq -r --arg login "$_REVIEWER_LOGIN" \
+        '[.[] | select(.user.login == $login) | .body
+           | match("<!-- verdict: [a-z]+ -->").string? // empty] | last // ""' 2>/dev/null || true
+}
 
 _gh_inline_count() {
     local repo="$1" pr="$2"
@@ -16,16 +41,23 @@ _gh_inline_count() {
 
 _gh_top_count() {
     local repo="$1" pr="$2"
-    gh api "repos/${repo}/issues/${pr}/comments" \
-        --jq "[.[] | select(.user.login == \"github-actions[bot]\") | select(.body | test(\"${_OUTCOME_BODY_PATTERN}\") | not)] | length" \
-        2>/dev/null || echo '?'
+    gh api "repos/${repo}/issues/${pr}/comments" 2>/dev/null | filter_top_count
 }
 
 _gh_verdict() {
     local repo="$1" pr="$2"
-    gh api "repos/${repo}/issues/${pr}/comments" \
-        --jq '[.[] | select(.user.login == "github-actions[bot]") | .body] | last // ""' \
-        2>/dev/null | /usr/bin/grep -o '<!-- verdict: [a-z]* -->' | tail -1 || true
+    gh api "repos/${repo}/issues/${pr}/comments" 2>/dev/null | filter_verdict
+}
+
+# Did the reviewer actually RUN? The action skips outright when the workflow file
+# differs from the default branch's copy — i.e. on every PR that edits this
+# workflow — and the STEP still reports outcome=success. Without this guard the
+# summary claims a clean review of a review that never happened; PR #1690 did
+# exactly that to itself. The action writes its execution log whenever it runs,
+# so absence is the signal.
+_reviewer_ran() {
+    local exec_file="${RUNNER_TEMP:-/tmp}/claude-execution-output.json"
+    [[ -s "$exec_file" ]]
 }
 
 _safe_add() {
@@ -63,7 +95,15 @@ compute_review_status() {
         status="🔎 **Claude review of \`${short}\`: findings posted** (${total} comment(s))."
     elif [[ "$verdict" == "<!-- verdict: clean -->" ]]; then
         status="✅ **Claude review of \`${short}\`: no findings.**"
-    elif [[ "$n_inline" == '?' && "$n_top" == '?' ]]; then
+    elif ! _reviewer_ran; then
+        # No verdict AND no execution log: the action never ran (workflow-validation
+        # skip). "No findings" here would be a claim about a review that did not
+        # happen — the #1618 failure, one layer up.
+        status="⚠️ **Claude review of \`${short}\`: did not run** — the action was skipped (workflow validation), so this is NOT a clean result."
+    elif [[ "$n_inline" == '?' || "$n_top" == '?' ]]; then
+        # EITHER lookup failing is enough to make a count meaningless. Requiring
+        # both to fail let _safe_add coerce the failed side to 0 and report a
+        # confident "no findings" built on one successful query.
         status="⚠️ **Claude review of \`${short}\`: outcome unknown** — could not fetch comment counts."
     else
         local total; total="$(_safe_add "$n_inline" "$n_top")"
