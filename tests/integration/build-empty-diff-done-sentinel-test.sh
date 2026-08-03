@@ -37,6 +37,13 @@ assert_eq "verdict_classify('request_changes') = warn" "warn" "$(verdict_classif
 assert_eq "verdict_classify('fail') = fail" "fail" "$(verdict_classify fail)"
 assert_eq "verdict_classify('scope_violation') = fail" "fail" "$(verdict_classify scope_violation)"
 
+# [SPEC-3] complete and skip must classify as pass — no unknown_verdict path
+# (CHANGE — both returned "unknown" before #1687 and triggered spurious events).
+assert_eq "[SPEC-3] verdict_classify(complete) = pass — no unknown_verdict path" \
+    "pass" "$(verdict_classify complete)"
+assert_eq "[SPEC-3] verdict_classify(skip) = pass — no unknown_verdict path" \
+    "pass" "$(verdict_classify skip)"
+
 print_test_section "2. build plugin sets verdict=empty_diff when done_sentinel + 0 files"
 
 # Set up a minimal fixture repo + scope manifest so the build plugin can run.

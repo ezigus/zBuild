@@ -7,7 +7,7 @@
 # stage; now reflects the plugin's actual verdict).
 #
 # Verdict table (PINNED — see ADR-019 / ADR-020 amendment):
-#   pass, approve                                 → ✓ GREEN
+#   pass, approve, complete, skip                 → ✓ GREEN
 #   request_changes                               → ⚠ YELLOW
 #   fail, error, block, scope_violation,
 #   corrupt_diff                                  → ✗ RED
@@ -50,6 +50,14 @@ verdict_classify() {
     local raw="${1:-}"
     case "$raw" in
         pass|approve)
+            echo "pass" ;;
+        # complete is impact's "no gaps" terminal success verdict (declared in
+        # plugins/agent/impact/manifest.yaml as a valid_verdict). skip is gates'
+        # "not-applicable this run" verdict (shape-floor, lint-gate, coverage-gate,
+        # mutation-gate, secret-scan) — declining to apply is not a failure. Both map
+        # to pass (✓ GREEN). Without this both fall through to *) → unknown, emitting
+        # spurious pipeline.indicator.unknown_verdict events on every dispatch.
+        complete|skip)
             echo "pass" ;;
         # #775: `incomplete` is impact's "cycle has not converged yet" verdict
         # (analogous to review's `request_changes`) — iterating, not done.
