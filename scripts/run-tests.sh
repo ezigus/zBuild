@@ -312,6 +312,18 @@ _rt_run_serial_file() {
     fi
 }
 
+# Build the optional note suffix " (N skipped, N timed out)" for a summary line.
+# Prints nothing when both args are 0 so the caller's echo produces a bare line.
+# Built by concatenation, NOT `IFS=', '` + "${arr[*]}": that join uses only the
+# FIRST character of IFS, so two notes rendered as "(1 skipped,1 timed out)" with
+# no space. Only observable when a tier has both in one run (#1613).
+_rt_build_note() {
+    local _sk="${1:-0}" _to="${2:-0}" _note=""
+    [[ "${_sk:-0}" -gt 0 ]] && _note="$_sk skipped"
+    [[ "${_to:-0}" -gt 0 ]] && _note="${_note:+$_note, }$_to timed out"
+    [[ -n "$_note" ]] && printf ' (%s)' "$_note"
+}
+
 # #1063 follow-up: emit a tier summary, appending "(N skipped)" when test files
 # reported platform/capability skips during this tier (e.g. #996's
 # skip_on_platform macos). A skipped file exits 0 and is tallied as a pass, so
@@ -324,7 +336,7 @@ _rt_run_serial_file() {
 # `^<name>: N/M passed` anchor every parser keys on is untouched — a timed-out
 # file must never be mistakable for an ordinary assertion failure in the summary.
 _rt_emit_summary() {
-    local _name="$1" _passed="$2" _total="$3" _to="${4:-0}" _sk=0 _note=""
+    local _name="$1" _passed="$2" _total="$3" _to="${4:-0}" _sk=0
     if [[ -n "${ZBUILD_TEST_SKIP_LOG:-}" && -f "${ZBUILD_TEST_SKIP_LOG}" ]]; then
         # NB: `grep -c` PRINTS "0" and EXITS non-zero on zero matches, so the old
         # `|| echo 0` appended a SECOND "0" → "0\n0" → an arithmetic syntax error
@@ -334,13 +346,7 @@ _rt_emit_summary() {
         _sk="$(grep -c . "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || true)"
         rm -f "$ZBUILD_TEST_SKIP_LOG"
     fi
-    # Built by concatenation, NOT `IFS=', '` + "${arr[*]}": that join uses only
-    # the FIRST character of IFS, so two notes rendered as "(1 skipped,1 timed out)"
-    # with no space. Only observable when a tier has both in one run.
-    [[ "${_sk:-0}" -gt 0 ]] && _note="$_sk skipped"
-    [[ "${_to:-0}" -gt 0 ]] && _note="${_note:+$_note, }$_to timed out"
-    [[ -n "$_note" ]] && _note=" ($_note)"
-    echo "$_name: $_passed/$_total passed$_note"
+    echo "$_name: $_passed/$_total passed$(_rt_build_note "${_sk:-0}" "${_to:-0}")"
 }
 
 # #1058 Phase A: append one `tier <ms> <name>` line for a finished tier. Gated on
@@ -624,6 +630,7 @@ case "$tier" in
     total_passed=0
     total_count=0
     total_skipped=0
+    total_timedout=0
     # Per-tier rc is written to this file from inside the subshell so an
     # aborted runner (no summary line emitted) is still reflected in the
     # overall exit code — relying only on parsed totals would mask infra
@@ -774,10 +781,16 @@ case "$tier" in
     fi
     while IFS= read -r line; do
       echo "$line"
-      if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed(\ \(([0-9]+)\ skipped\))? ]]; then
-        total_passed=$((total_passed + BASH_REMATCH[1]))
-        total_count=$((total_count + BASH_REMATCH[2]))
-        total_skipped=$((total_skipped + ${BASH_REMATCH[4]:-0}))
+      if [[ "$line" =~ ^([a-z][a-z0-9-]*):\ ([0-9]+)/([0-9]+)\ passed(\ \((.+)\))?$ ]]; then
+        total_passed=$((total_passed + BASH_REMATCH[2]))
+        total_count=$((total_count + BASH_REMATCH[3]))
+        _note="${BASH_REMATCH[5]}"
+        if [[ "$_note" =~ ([0-9]+)\ skipped ]]; then
+          total_skipped=$((total_skipped + BASH_REMATCH[1]))
+        fi
+        if [[ "$_note" =~ ([0-9]+)\ timed\ out ]]; then
+          total_timedout=$((total_timedout + BASH_REMATCH[1]))
+        fi
       fi
     done < <(
       if [[ $_tier_conc -eq 1 ]]; then
@@ -824,8 +837,7 @@ case "$tier" in
       printf '%s\n' "${_rt_abort_lines[@]}"
       exit 1
     fi
-    _ts_note=""; [[ "${total_skipped:-0}" -gt 0 ]] && _ts_note=" (${total_skipped} skipped)"
-    echo "total: $total_passed/$total_count passed${_ts_note}"
+    echo "total: $total_passed/$total_count passed$(_rt_build_note "${total_skipped:-0}" "${total_timedout:-0}")"
     exit $overall_rc
     ;;
   *)
