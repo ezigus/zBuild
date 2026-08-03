@@ -75,29 +75,35 @@ else
         "ci=$(wc -l <<< "$_ci_files" | tr -d ' ') npm=$(wc -l <<< "$_npm_files" | tr -d ' ')"
 fi
 
-# ─── the actual parity assertion: local ⊇ CI ─────────────────────────────────
-# comm -13 = lines only in CI. Anything here is a file CI lints and local does
-# not — the exact shape of the original bug.
-_only_in_ci="$(comm -13 <(printf '%s\n' "$_npm_files") <(printf '%s\n' "$_ci_files"))"
-if [[ -z "$_only_in_ci" ]]; then
-    assert_pass "[SPEC-1] npm lint file set is a superset of the CI lint file set"
+# ─── the actual parity assertion: sets must match ────────────────────────────
+# Only meaningful when both sets actually resolved. Without this guard the
+# failure path asserts PASS: `printf '%s\n' ""` emits a newline, so comm sees two
+# identical one-line streams, finds no difference, and reports a clean superset
+# over nothing — the vacuous pass this whole guard exists to prevent.
+if [[ -z "$_ci_files" || -z "$_npm_files" ]]; then
+    assert_fail "[SPEC-1] parity comparison skipped — a prior extraction or resolution step failed" \
+        "refusing to compare empty sets; see the failures above"
 else
-    assert_fail "[SPEC-1] CI lints files that npm run lint does not — local must be the superset" \
-        "only in CI: $(printf '%s' "$_only_in_ci" | tr '\n' ' ')"
-fi
+    # comm -13 = only in CI: files CI lints that local does not. The dangerous
+    # direction, and the exact shape of the original bug.
+    _only_in_ci="$(comm -13 <(printf '%s\n' "$_npm_files") <(printf '%s\n' "$_ci_files"))"
+    if [[ -z "$_only_in_ci" ]]; then
+        assert_pass "[SPEC-1] npm lint file set is a superset of the CI lint file set"
+    else
+        assert_fail "[SPEC-1] CI lints files that npm run lint does not — local must be the superset" \
+            "only in CI: $(printf '%s' "$_only_in_ci" | tr '\n' ' ')"
+    fi
 
-# The reverse direction: files local lints that CI does not. `local ⊇ CI` still
-# holds here, so this is not the dangerous direction — but it is still DRIFT, and
-# #1682 asks the guard to fail when the two resolve to different sets. Today they
-# are exactly equal. If CI is ever deliberately narrower or broader (a matrix leg,
-# say), update this assertion and record why at BOTH sites, as the issue requires
-# — do not silently let the sets part.
-_only_in_npm="$(comm -23 <(printf '%s\n' "$_npm_files") <(printf '%s\n' "$_ci_files"))"
-if [[ -z "$_only_in_npm" ]]; then
-    assert_pass "[SPEC-1] the two file sets are exactly equal (no drift in either direction)"
-else
-    assert_fail "[SPEC-1] npm and CI resolve to different file sets — reconcile, or record the deliberate difference at both sites" \
-        "only in npm: $(printf '%s' "$_only_in_npm" | tr '\n' ' ')"
+    # The reverse: still drift, and #1682 asks the guard to fail when the two
+    # resolve to different sets. Today they are exactly equal. If CI is ever
+    # deliberately narrower or broader, update this and record why at BOTH sites.
+    _only_in_npm="$(comm -23 <(printf '%s\n' "$_npm_files") <(printf '%s\n' "$_ci_files"))"
+    if [[ -z "$_only_in_npm" ]]; then
+        assert_pass "[SPEC-1] the two file sets are exactly equal (no drift in either direction)"
+    else
+        assert_fail "[SPEC-1] npm and CI resolve to different file sets — reconcile, or record the deliberate difference at both sites" \
+            "only in npm: $(printf '%s' "$_only_in_npm" | tr '\n' ' ')"
+    fi
 fi
 
 # ─── SPEC-2: the file the original bug hid behind ────────────────────────────

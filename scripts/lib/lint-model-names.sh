@@ -23,9 +23,31 @@ _ROOTS=(core/ plugins/ scripts/)
 # searched roots). A linter that fails on its own definition is not a linter.
 _SELF="$(basename "${BASH_SOURCE[0]}")"
 
+# Verify the roots BEFORE scanning. The obvious check — trust grep's exit code,
+# 1 for "no matches" and 2 for a real failure — is not portable: BSD grep on
+# macOS returns 1 for a MISSING DIRECTORY too, conflating it with a clean scan,
+# while GNU grep (Linux/CI) returns 2. Measured on both. So a vanished root would
+# be invisible here and reported on CI, which is precisely the local/CI split
+# #1682 exists to remove. An explicit existence check behaves the same everywhere
+# and names the missing root instead of inferring it from an exit code.
+for _root in "${_ROOTS[@]}"; do
+    [[ -d "$_root" ]] || {
+        echo "ERROR: model-name scan root does not exist: $_root" >&2
+        echo "  (renamed or removed? the scan would otherwise report a false OK)" >&2
+        exit 2
+    }
+done
+
+# Secondary net: honour rc>=2 where the local grep reports it (GNU, ugrep).
+# Harmless on BSD grep, which never sets it for this case.
+_rc=0
 _hits="$(grep -rEn "$_MODEL_RE" "${_ROOTS[@]}" \
     --include='*.sh' --include='*.yaml' --include='*.json' \
-    --exclude-dir='.git' --exclude="$_SELF" 2>/dev/null || true)"
+    --exclude-dir='.git' --exclude="$_SELF")" || _rc=$?
+if (( _rc >= 2 )); then
+    echo "ERROR: model-name scan failed (grep rc=$_rc) — roots: ${_ROOTS[*]}" >&2
+    exit 2
+fi
 
 if [[ -n "$_hits" ]]; then
     _count="$(printf '%s\n' "$_hits" | wc -l | tr -d ' ')"
