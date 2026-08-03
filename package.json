@@ -19,7 +19,7 @@
     "test:e2e": "bash scripts/run-tests.sh --tier e2e",
     "test:golden": "bash scripts/run-tests.sh --tier golden",
     "test:mutation": "bash scripts/run-tests.sh --tier mutation",
-    "lint": "count=$(grep -rEn 'claude-haiku|claude-sonnet|claude-opus|gpt-[0-9]|llama-[0-9]|mistral-' core/ plugins/ scripts/ --include='*.sh' --include='*.yaml' --include='*.json' --exclude-dir='.git' | wc -l | tr -d ' '); if [[ \"$count\" -gt 0 ]]; then echo \"ERROR: $count hardcoded model name(s) found (ADR-003 violation)\"; exit 1; fi && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh"
+    "lint": "bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh"
   },
   "engines": {
     "bash": ">=5.0.0",

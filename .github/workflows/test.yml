@@ -23,26 +23,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Forbidden model names (haiku/sonnet/opus literals)
-        run: |
-          # Fail if any hardcoded model names found (ADR-003)
-          count=$(grep -rEn 'claude-haiku|claude-sonnet|claude-opus|gpt-[0-9]|llama-[0-9]|mistral-' \
-            core/ plugins/ scripts/ \
-            --include="*.sh" --include="*.yaml" --include="*.json" \
-            --exclude-dir=".git" | wc -l | tr -d ' ')
-          if [[ "$count" -gt 0 ]]; then
-            echo "ERROR: $count hardcoded model name(s) found (ADR-003 violation)"
-            grep -rEn 'claude-haiku|claude-sonnet|claude-opus|gpt-[0-9]|llama-[0-9]|mistral-' \
-              core/ plugins/ scripts/ --include="*.sh" --include="*.yaml" --include="*.json"
-            exit 1
-          fi
-          echo "OK: no hardcoded model names in core/plugins/scripts"
+      - name: Forbidden model names (ADR-003)
+        # ONE definition, shared with `npm run lint` (#1682). Do not inline the
+        # grep here again — the duplicate copies are what drifted.
+        run: bash scripts/lib/lint-model-names.sh
       - name: Shellcheck (.sh files)
         if: always()
         run: |
           sudo apt-get install -y shellcheck
           find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 \
-            | xargs -0 shellcheck --severity=warning
+            | xargs -0 shellcheck -x --severity=warning
+        # -x matches `npm run lint` (#1682): follow `source` directives so a
+        # sourced-only defect cannot pass CI and fail locally, or vice versa.
 
   unit:
     name: Unit tests
