@@ -209,6 +209,23 @@ else
     assert_pass "TC-13: feedback is NOT the empty 'no structured detail' fallback"
 fi
 
+# ── TC-14 (#1686, [SPEC-3]): wiring_not_on_path + route_target=design → route_design ─
+# First live activation of the dormant route_target carrier (ADR-036 #1583):
+# the acceptance-gate writes route_target=design when wiring_not_on_path fires.
+# The aggregator must roll it up to verdict=route_design and write design-feedback.md.
+# disposition=recoverable (not terminal) — gate-aggregator must still treat it as
+# a blocking fail (recoverable blocks convergence, only advisory is non-blocking).
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","disposition":"recoverable","route_target":"design","reason":"WIRING .github/workflows/ci.yml not in this commit'\''s diff — declare WIRING: none or name the correct target","failures":["wiring_not_on_path:.github/workflows/ci.yml"]}\n' \
+    > "$AD/acceptance-gate-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "[SPEC-3] wiring_not_on_path route_target=design → verdict=route_design" \
+    "$OUT" '.verdict' "route_design"
+assert_json_key "[SPEC-3] route_target mirrored into aggregate" "$OUT" '.route_target' "design"
+assert_contains "[SPEC-3] failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
+assert_file_exists "[SPEC-3] design-feedback.md written on route_design" "$AD/design-feedback.md"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

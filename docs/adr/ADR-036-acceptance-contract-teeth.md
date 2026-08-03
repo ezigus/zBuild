@@ -254,8 +254,8 @@ precedence highest-first):
 
 | disposition   | failure classes                                                            | engine effect                                             |
 | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `terminal`    | tautology, not_passing_at_head, inert_wiring, no_testfile, malformed_acceptance_block | HALT — cycle does not converge (rc=8), pipeline.end=failed |
-| `recoverable` | untagged_spec:* (only)                                                     | NON-terminal; #951 build feedback loop (cycle re-iterates) |
+| `terminal`    | not_passing_at_head, no_testfile, malformed_acceptance_block               | HALT — cycle does not converge (rc=8), pipeline.end=failed |
+| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, wiring_not_on_path:*         | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path also sets route_target=design |
 | `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
 | `none`        | (verdict=pass)                                                             | n/a                                                        |
 
@@ -410,3 +410,38 @@ Two things make that safe, and both are load-bearing:
 Both gates build the bound through one helper, `_acceptance_timeout_prefix` (`acceptance-block.sh`),
 which also resolves `gtimeout` — previously only `run-tests.sh` did, leaving the acceptance gates
 effectively unbounded on a macOS host with GNU coreutils but no POSIX `timeout`.
+
+## Amendment (#1686, 2026-08-03) — wiring_not_on_path: distinct class + first live route_target activation
+
+**Problem.** When a declared WIRING target was absent from `git diff --name-only` (the file exists but
+was not touched by this commit), `acceptance_reachability_check` still ran the full worktree flip-
+detection. The worktree was created at merge-base and ALL changed files (except the target) were
+overlaid from HEAD — but since the target was never changed, baseline == HEAD for it. No testfile
+could flip. The result was `REACHABILITY FAIL inert_wiring`, which is the wrong class: `inert_wiring`
+means the wiring IS in the diff but the test suite fails to exercise it (a build-fixable test gap);
+here the cause is that the author named a file unrelated to this commit (a design error).
+
+**Fix.**
+
+1. **`scripts/lib/acceptance-reachability.sh`** — before creating each target's worktree, check
+   whether the target appears in `changed_files`. If absent, emit
+   `REACHABILITY FAIL wiring_not_on_path <target>`, set `rc=1`, and `continue` (skip the
+   expensive revert run).
+
+2. **`plugins/agent/spec-acceptance/plugin.sh`** — parse the new line in the Level-3 loop;
+   accumulate `wiring_not_on_path:<target>` in `failures[]`; emit
+   `acceptance.gate.wiring_not_on_path`. Classify `wiring_not_on_path:*` as **`recoverable`**
+   (same row as `inert_wiring:*` and `tautology:*`). After classifying, scan `failures[]` for
+   `wiring_not_on_path:*` and set `route_target="design"` — the **first live activation** of the
+   dormant carrier that #1583 retained. The gate-aggregator rolls this up to `verdict=route_design`,
+   and `simple.yaml`'s `route_back` clause rewinds to `design_verify_cycle`.
+
+3. **`config/event-schema.json`** — registers `acceptance.gate.wiring_not_on_path`.
+
+**Why recoverable, not terminal?** `wiring_not_on_path` is design-rooted (only the design stage can
+correct the WIRING declaration), but it must be `recoverable` for the route_back to fire: a `terminal`
+disposition halts the `build_test_cycle` with `member_terminal_failure` (rc=8) BEFORE the
+gate-aggregator can read `route_target` and emit `route_design`. `recoverable` lets the aggregator
+run, read `route_target=design`, and produce `verdict=route_design` — which the cycle runner's
+`route_back` guard matches, rewinding to `design_verify_cycle`. The cycle budget (`max_iterations`)
+bounds the rewind depth.

@@ -196,6 +196,7 @@
     "acceptance.gate.baseline_resolve_failed",
     "acceptance.gate.worktree_failed",
     "acceptance.gate.inert_wiring",
+    "acceptance.gate.wiring_not_on_path",
     "acceptance.gate.wiring_exempt",
     "acceptance.gate.negctl_timeout",
     "acceptance.gate.reachability_timeout",

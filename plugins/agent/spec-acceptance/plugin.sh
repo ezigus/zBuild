@@ -92,7 +92,7 @@ _ag_classify_disposition() {
             # by re-authoring the assertion (#1583). The mechanical negative control
             # re-verifies each iteration, and max_iterations bounds it — an
             # un-fixable case exhausts the budget and terminates cleanly.
-            untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
+            untagged_spec:* | tautology:* | inert_wiring:* | wiring_not_on_path:*)  had_recoverable=1 ;;
             negctl_error:* | reachability_error:*)           had_advisory=1 ;;
             "")                                              : ;;
             # Genuinely terminal (e.g. malformed_acceptance_block — design-authored,
@@ -122,7 +122,7 @@ _ag_join_ids() {
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" infra="" malformed=0
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0
     for f in "$@"; do
         case "$f" in
             tautology:*)            taut="$taut ${f#tautology:}" ;;
@@ -130,6 +130,7 @@ _ag_build_reason() {
             untagged_spec:*)        untagged="$untagged ${f#untagged_spec:}" ;;
             no_testfile:*)          notf="$notf ${f#no_testfile:}" ;;
             inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
+            wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
             malformed_acceptance_block) malformed=1 ;;
             negctl_error:* | reachability_error:*) infra="$infra $f" ;;
         esac
@@ -140,6 +141,7 @@ _ag_build_reason() {
     [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged") untagged — add a matching [SPEC-n] assertion in TESTFILES")
     [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf") missing a tagged TESTFILE")
     [[ -n "$inert"    ]] && clauses+=("WIRING $(_ag_join_ids "$inert") inert — reverting it breaks no TESTFILE")
+    [[ -n "$notpath"  ]] && clauses+=("WIRING $(_ag_join_ids "$notpath") not in this commit's diff — declare WIRING: none or name the correct target")
     [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
     [[ -n "$infra"    ]] && clauses+=("infra: $(_ag_join_ids "$infra")")
     local out="" c
@@ -356,6 +358,13 @@ acceptance_gate_run() {
                         eb_emit_event "acceptance.gate.inert_wiring" "stage=acceptance-gate" \
                             "target=$target"
                         ;;
+                    "REACHABILITY FAIL wiring_not_on_path "*)
+                        local target="${line#REACHABILITY FAIL wiring_not_on_path }"
+                        failures+=("wiring_not_on_path:$target")
+                        verdict="fail"
+                        eb_emit_event "acceptance.gate.wiring_not_on_path" "stage=acceptance-gate" \
+                            "target=$target"
+                        ;;
                     "REACHABILITY ERROR "*)
                         local detail="${line#REACHABILITY ERROR }"
                         failures+=("reachability_error:$detail")
@@ -400,6 +409,15 @@ acceptance_gate_run() {
     else
         disposition="none"
     fi
+    # First live activation of the dormant route_target carrier (ADR-036 #1583):
+    # wiring_not_on_path is design-rooted — the declared WIRING file was not in
+    # this commit's diff, which only the design stage can correct by updating the
+    # WIRING declaration. The gate-aggregator rolls route_target=design up into
+    # verdict=route_design, firing the route_back edge to design_verify_cycle.
+    local f
+    for f in "${failures[@]:-}"; do
+        [[ "$f" == wiring_not_on_path:* ]] && route_target="design" && break
+    done
 
     # ── Operator summary (#1211) ─────────────────────────────────────────────
     # Surface the concise per-check verdict lines the operator actually needs;

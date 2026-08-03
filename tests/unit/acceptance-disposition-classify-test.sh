@@ -37,6 +37,14 @@ assert_eq "tautology + inert_wiring (the #1576 shape) → recoverable" "recovera
 assert_eq "tautology + untagged → recoverable" "recoverable" \
     "$(_ag_classify_disposition "tautology:SPEC-1" "untagged_spec:SPEC-2")"
 
+# ── wiring_not_on_path: recoverable (routes to design) ──────────────────────
+assert_eq "[SPEC-2] wiring_not_on_path only → recoverable" "recoverable" \
+    "$(_ag_classify_disposition "wiring_not_on_path:.github/workflows/ci.yml")"
+assert_eq "[SPEC-2] wiring_not_on_path + inert_wiring → recoverable (both build-class)" "recoverable" \
+    "$(_ag_classify_disposition "wiring_not_on_path:foo.yml" "inert_wiring:bar.sh")"
+assert_eq "[SPEC-2] wiring_not_on_path + terminal class → terminal outranks" "terminal" \
+    "$(_ag_classify_disposition "wiring_not_on_path:foo.yml" "malformed_acceptance_block")"
+
 # ── a genuine terminal class OUTRANKS recoverable ────────────────────────────
 assert_eq "tautology + malformed → terminal (terminal outranks)" "terminal" \
     "$(_ag_classify_disposition "tautology:SPEC-1" "malformed_acceptance_block")"
