@@ -316,30 +316,24 @@ assert_contains "S10b: names the offending SPEC" "$FAILURES_10B" "SPEC-1"
 assert_eq "S10b: unfulfilled promise is recoverable (cycle re-iterates)" \
     "recoverable" "$(jq -r .disposition <<<"$RESULT")"
 
-# ── S15 (#1686): WIRING target no TESTFILE can load → wiring_not_on_path ────────
-# Regression guard for #1686, modelling the REAL #1664 shape: PR #1680 DID change
-# .github/workflows/test.yml (+9/-2), so the target was in the diff — a
-# diff-membership predicate misses it. No shell testfile can load workflow YAML,
-# so nothing can flip. The gate must emit verdict=fail, disposition=recoverable and
+# ── S15 (#1686): WIRING target not in this commit's diff → wiring_not_on_path ───
+# A WIRING file declared in design.md that this commit never touched cannot flip
+# when reverted. The gate must emit verdict=fail, disposition=recoverable and
 # route_target=design, so the aggregator fires route_design and route_back rewinds
-# to design_verify_cycle.
+# to design_verify_cycle — the first live activation of the dormant carrier.
+#
+# NOT the #1664 shape: PR #1680 DID change .github/workflows/test.yml (+9/-2), so
+# that target was in the diff and still lands on inert_wiring. See #1711.
 REPO15="$(setup_git_temp_repo gate-nopath)"
 (
     cd "$REPO15"
     "$GIT" checkout -q -b feature
-    mkdir -p scripts tests .github/workflows
-    printf 'jobs:\n  test:\n    steps:\n      - run: npm test\n' > .github/workflows/test.yml
+    mkdir -p scripts tests
     printf '#!/usr/bin/env bash\nmy_script() { return 0; }\n' > scripts/helper.sh
     printf '#!/usr/bin/env bash\n# [SPEC-1] change: helper is present\n[[ -f "$(dirname "$0")/../scripts/helper.sh" ]] || exit 1\nsource "$(dirname "$0")/../scripts/helper.sh"; my_script\n' \
         > tests/helper-test.sh
     chmod +x scripts/helper.sh tests/helper-test.sh
-    "$GIT" add -A; "$GIT" commit -q -m base
-    # Feature commit modifies the workflow — the target IS in the diff, as in #1680.
-    printf 'jobs:\n  test:\n    steps:\n      - run: npm test\n      - run: echo cap\n' \
-        > .github/workflows/test.yml
-    printf '#!/usr/bin/env bash\nmy_script() { return 0; }\nmy_script2() { return 0; }\n' \
-        > scripts/helper.sh
-    "$GIT" add -A; "$GIT" commit -q -m "feat: helper + CI config (workflow IS in diff)"
+    "$GIT" add -A; "$GIT" commit -q -m "feat: add helper (workflow file never touched)"
 ) >/dev/null 2>&1
 cat > "$REPO15/design.md" <<'EOF'
 ```acceptance
