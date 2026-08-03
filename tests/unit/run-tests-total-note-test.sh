@@ -12,7 +12,10 @@
 # SPEC-2  CHANGE  timed-out count from combined-note tier appears in total: line
 # SPEC-3  GUARD   bare-(N skipped) tier still accumulates skip count correctly
 # SPEC-4  (in run-tests-tier-concurrency-test.sh — no-note case verified there)
-# SPEC-5  CHANGE  _rt_build_note helper function is present in run-tests.sh
+# SPEC-5  CHANGE  note rendering lives in exactly one helper (single-definition)
+# SPEC-6  GUARD   timeout-only tier's PER-TIER line stays bare (N timed out) (#1613)
+# SPEC-6b CHANGE  timeout-only tier reaches the total: line — new accumulator
+# SPEC-7  GUARD   parse.sh still parses the widened total: line unchanged
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,10 +67,11 @@ chmod +x "$FIX/unit/c-hang-test.sh"
 # (serial path) so the hang in unit doesn't race the other tiers, and with a
 # short per-file timeout so the test finishes in ~2–3 s total.
 _all_fix() {
+    local fix_dir="${1:-$FIX}"
     local out_f="$TEST_TEMP_DIR/o.txt" rc=0
     env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
         -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u UPDATE_GOLDEN \
-        ZBUILD_TESTS_DIR="$FIX" \
+        ZBUILD_TESTS_DIR="$fix_dir" \
         ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
         ZBUILD_CORE_DIR="$EMPTY_DIR" \
         ZBUILD_MUTATION_DIR="$EMPTY_MUT" \
@@ -89,8 +93,10 @@ _all_fix
 # unit emits "(1 skipped, 1 timed out)"; old regex missed this tier's skip count.
 # Baseline: total shows only integration's 1 skip → "1 skipped" in total:.
 # HEAD: both unit and integration contribute → "2 skipped" in total:.
+# Scoped to the total: line — an unrelated per-tier line containing "2 skipped"
+# would otherwise satisfy (or, at 2 matches, spuriously fail) this assertion.
 assert_eq "[SPEC-1] skip from combined-note tier accumulates: total: shows 2 skipped" "1" \
-    "$(printf '%s\n' "$_OUT" | grep -cF '2 skipped')"
+    "$(printf '%s\n' "$_OUT" | grep '^total:' | grep -cF '2 skipped')"
 
 # ─── [SPEC-2] CHANGE: combined-note tier's timed-out count appears in total: ──
 # Baseline: total_timedout accumulator didn't exist → total: never shows timed out.
@@ -108,11 +114,72 @@ assert_eq "[SPEC-2b] total: line format: N/M passed (2 skipped, 1 timed out)" "1
 assert_eq "[SPEC-3] integration tier emits bare-(1 skipped) summary" "1" \
     "$(printf '%s\n' "$_OUT" | grep -cE '^integration: 2/2 passed \(1 skipped\)$')"
 
-# ─── [SPEC-5] CHANGE: _rt_build_note helper function exists in run-tests.sh ──
-# Structural guard: the refactor extracted the note-building logic into a named
-# function. At merge-base this function does not exist.
-assert_eq "[SPEC-5] _rt_build_note function defined in run-tests.sh" "1" \
+# ─── [SPEC-5] CHANGE: note rendering lives in EXACTLY one helper ─────────────
+# The acceptance criterion is single-definition, not mere existence: asserting
+# only that the function exists would still pass with a second inline renderer
+# left behind, which is the duplication that caused this bug in the first place.
+assert_eq "[SPEC-5] exactly one _rt_build_note definition" "1" \
     "$(grep -cF '_rt_build_note()' "$RUN_TESTS")"
+
+# No inline note construction survives anywhere else in the script. The old
+# third copy in the --files targeted-rerun path built its suffix with a literal
+# printf; if any renderer reappears, this reddens.
+assert_eq "[SPEC-5b] no inline '(N timed out)' printf renderer remains" "0" \
+    "$(grep -cF "printf ' (%d timed out)'" "$RUN_TESTS")"
+
+# All three emit sites route through the helper: --files, per-tier, and total:.
+# Match the call SHAPE `$(_rt_build_note ` so the helper's own doc comment and
+# definition are not counted as call sites.
+assert_eq "[SPEC-5c] all three summary emit sites call _rt_build_note" "3" \
+    "$(grep -cF '$(_rt_build_note ' "$RUN_TESTS")"
+
+# ─── [SPEC-6/6b] a timeout-only tier renders a bare (N timed out) ────────────
+# SPEC-6 is a GUARD: #1613 already made the PER-TIER line correct, and it stays
+# correct here. SPEC-6b is the CHANGE: that count reaching the total: line is new.
+# The combined-note fixture above never exercises a tier that timed out WITHOUT
+# skipping — the shape the original issue named first. Separate fixture so the
+# counts pinned by SPEC-1/2b above are undisturbed.
+FIX2="$TEST_TEMP_DIR/fix2"
+for t in unit integration e2e golden; do
+    mkdir -p "$FIX2/$t"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$FIX2/$t/a-pass-test.sh"
+    chmod +x "$FIX2/$t/a-pass-test.sh"
+done
+printf '#!/usr/bin/env bash\nsleep 30\n' > "$FIX2/unit/c-hang-test.sh"
+chmod +x "$FIX2/unit/c-hang-test.sh"
+
+_all_fix "$FIX2"
+
+assert_eq "[SPEC-6] timeout-only tier emits bare (1 timed out), no skip clause" "1" \
+    "$(printf '%s\n' "$_OUT" | grep -cE '^unit: 1/2 passed \(1 timed out\)$')"
+
+# Baseline had no total_timedout accumulator at all, so the total: line could
+# never carry a timeout — with or without an accompanying skip.
+assert_eq "[SPEC-6b] total: line is bare (1 timed out) with no skips anywhere" "1" \
+    "$(printf '%s\n' "$_OUT" | grep -cE '^total: [0-9]+/[0-9]+ passed \(1 timed out\)$')"
+
+# ─── [SPEC-7] GUARD: parse.sh still consumes the widened total: line ─────────
+# The issue requires the test plugin's parser to be unaffected by the format
+# change. Its fixtures only ever carried the two OLD total: shapes, so feed it
+# the new one directly and assert the contract it actually promises: counts come
+# from per-suite lines (total: is skipped, #1234) and rc stays authoritative.
+# shellcheck source=../../plugins/tool/test/lib/parse.sh
+source "$REPO_ROOT/plugins/tool/test/lib/parse.sh"
+_PARSE_RAW="$(printf '%s\n' \
+    'unit: 2/3 passed (1 skipped, 1 timed out)' \
+    'unit: TIMEOUT tests/unit/c-hang-test.sh (exceeded 2s, rc=124)' \
+    'integration: 2/2 passed (1 skipped)' \
+    '' \
+    'total: 4/5 passed (2 skipped, 1 timed out)')"
+_PARSE_OUT="$(_test_parse_summary "$_PARSE_RAW" 1)"
+
+# passed = 2+2 from the per-suite lines only; the total: line must NOT be summed.
+assert_eq "[SPEC-7] parse.sh sums per-suite lines and skips the total: aggregate" "4" \
+    "$(printf '%s' "$_PARSE_OUT" | cut -d'|' -f2)"
+assert_eq "[SPEC-7b] parse.sh recognises the widened summary (no fail-safe)" "1" \
+    "$(printf '%s' "$_PARSE_OUT" | cut -d'|' -f5)"
+assert_eq "[SPEC-7c] parse.sh honours rc as authoritative on the new shape" "fail" \
+    "$(printf '%s' "$_PARSE_OUT" | cut -d'|' -f1)"
 
 cleanup_test_env
 print_test_results
