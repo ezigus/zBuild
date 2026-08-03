@@ -113,7 +113,7 @@ done <<< "$_MUT_OUT"
 # (a) The tier-summary aggregator in scripts/run-tests.sh. The regex lives
 # inside a `[[ =~ ]]` test; pull the literal out by content, never by line
 # number, and unescape the `\ ` that bash's =~ syntax requires.
-_AGG_SRC_LINE="$(grep -m1 -F 'passed(\ \(([0-9]+)\ skipped\))?' "$REPO_ROOT/scripts/run-tests.sh")"
+_AGG_SRC_LINE="$(grep -m1 -F 'passed(\ \((.+)\))?$' "$REPO_ROOT/scripts/run-tests.sh")"
 _AGG_RE="${_AGG_SRC_LINE#*=~ }"
 _AGG_RE="${_AGG_RE%% ]]*}"
 _AGG_RE="${_AGG_RE//\\ / }"

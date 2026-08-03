@@ -53,6 +53,15 @@ _rt_is_timeout_rc() {
   case "${1:-}" in 124|137|143) return 0 ;; *) return 1 ;; esac
 }
 
+# Sole renderer of a summary note; concatenated, not IFS-joined (that join uses only IFS's first char and drops the space).
+_rt_build_note() {
+    local _sk="${1:-0}" _to="${2:-0}" _note=""
+    [[ "${_sk:-0}" -gt 0 ]] && _note="$_sk skipped"
+    [[ "${_to:-0}" -gt 0 ]] && _note="${_note:+$_note, }$_to timed out"
+    [[ -n "$_note" ]] && printf ' (%s)' "$_note"
+    return 0
+}
+
 # _rt_report_failure <tier> <file> <rc> <out_file> — emit the one-line marker for
 # a non-passing file, then replay its captured output (#1613).
 #
@@ -188,7 +197,9 @@ if [[ "${1:-}" == "--files" ]]; then
       rm -f "$_tf_out"
     fi
   done
-  echo "unit: $_tf_passed/$_tf_total passed$( [[ $_tf_timedout -gt 0 ]] && printf ' (%d timed out)' "$_tf_timedout" )"
+  # Skips are 0 here, not counted: this path never arms ZBUILD_TEST_SKIP_LOG, so a
+  # skipped file is invisible to it. Rendering still goes through the one helper.
+  echo "unit: $_tf_passed/$_tf_total passed$(_rt_build_note 0 "$_tf_timedout")"
   [[ $_tf_failed -eq 0 ]] && exit 0 || exit 1
 fi
 
@@ -324,7 +335,7 @@ _rt_run_serial_file() {
 # `^<name>: N/M passed` anchor every parser keys on is untouched — a timed-out
 # file must never be mistakable for an ordinary assertion failure in the summary.
 _rt_emit_summary() {
-    local _name="$1" _passed="$2" _total="$3" _to="${4:-0}" _sk=0 _note=""
+    local _name="$1" _passed="$2" _total="$3" _to="${4:-0}" _sk=0
     if [[ -n "${ZBUILD_TEST_SKIP_LOG:-}" && -f "${ZBUILD_TEST_SKIP_LOG}" ]]; then
         # NB: `grep -c` PRINTS "0" and EXITS non-zero on zero matches, so the old
         # `|| echo 0` appended a SECOND "0" → "0\n0" → an arithmetic syntax error
@@ -334,13 +345,7 @@ _rt_emit_summary() {
         _sk="$(grep -c . "$ZBUILD_TEST_SKIP_LOG" 2>/dev/null || true)"
         rm -f "$ZBUILD_TEST_SKIP_LOG"
     fi
-    # Built by concatenation, NOT `IFS=', '` + "${arr[*]}": that join uses only
-    # the FIRST character of IFS, so two notes rendered as "(1 skipped,1 timed out)"
-    # with no space. Only observable when a tier has both in one run.
-    [[ "${_sk:-0}" -gt 0 ]] && _note="$_sk skipped"
-    [[ "${_to:-0}" -gt 0 ]] && _note="${_note:+$_note, }$_to timed out"
-    [[ -n "$_note" ]] && _note=" ($_note)"
-    echo "$_name: $_passed/$_total passed$_note"
+    echo "$_name: $_passed/$_total passed$(_rt_build_note "${_sk:-0}" "${_to:-0}")"
 }
 
 # #1058 Phase A: append one `tier <ms> <name>` line for a finished tier. Gated on
@@ -624,6 +629,7 @@ case "$tier" in
     total_passed=0
     total_count=0
     total_skipped=0
+    total_timedout=0
     # Per-tier rc is written to this file from inside the subshell so an
     # aborted runner (no summary line emitted) is still reflected in the
     # overall exit code — relying only on parsed totals would mask infra
@@ -774,10 +780,27 @@ case "$tier" in
     fi
     while IFS= read -r line; do
       echo "$line"
-      if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed(\ \(([0-9]+)\ skipped\))? ]]; then
-        total_passed=$((total_passed + BASH_REMATCH[1]))
-        total_count=$((total_count + BASH_REMATCH[2]))
-        total_skipped=$((total_skipped + ${BASH_REMATCH[4]:-0}))
+      # The note is captured WHOLE, then re-matched: a tier can emit "(N skipped)",
+      # "(N timed out)", both, or "(empty tier)", and one optional group per shape
+      # does not scale. Every BASH_REMATCH read below is hoisted into a named var
+      # IMMEDIATELY, because each `=~` clobbers the array — the outer match's
+      # groups are GONE inside the inner ifs, and bash scores arithmetic on a
+      # non-numeric string as 0, so a mis-indexed read corrupts totals silently.
+      # Plain assignment, not `local`: this loop is top-level script, not a function.
+      if [[ "$line" =~ ^[a-z][a-z0-9-]*:\ ([0-9]+)/([0-9]+)\ passed(\ \((.+)\))?$ ]]; then
+        _agg_passed="${BASH_REMATCH[1]}"
+        _agg_count="${BASH_REMATCH[2]}"
+        _agg_note="${BASH_REMATCH[4]}"
+        total_passed=$((total_passed + _agg_passed))
+        total_count=$((total_count + _agg_count))
+        if [[ "$_agg_note" =~ ([0-9]+)\ skipped ]]; then
+          _agg_n="${BASH_REMATCH[1]}"
+          total_skipped=$((total_skipped + _agg_n))
+        fi
+        if [[ "$_agg_note" =~ ([0-9]+)\ timed\ out ]]; then
+          _agg_n="${BASH_REMATCH[1]}"
+          total_timedout=$((total_timedout + _agg_n))
+        fi
       fi
     done < <(
       if [[ $_tier_conc -eq 1 ]]; then
@@ -824,8 +847,7 @@ case "$tier" in
       printf '%s\n' "${_rt_abort_lines[@]}"
       exit 1
     fi
-    _ts_note=""; [[ "${total_skipped:-0}" -gt 0 ]] && _ts_note=" (${total_skipped} skipped)"
-    echo "total: $total_passed/$total_count passed${_ts_note}"
+    echo "total: $total_passed/$total_count passed$(_rt_build_note "${total_skipped:-0}" "${total_timedout:-0}")"
     exit $overall_rc
     ;;
   *)
