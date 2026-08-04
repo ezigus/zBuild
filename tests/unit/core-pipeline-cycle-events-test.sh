@@ -22,6 +22,7 @@ required_events=(
     "cycle.aborted"
     "cycle.config.invalid"
     "cycle.feedback.missing"
+    "cycle.feedback.absent"
     "cycle.iteration.verdict_missing"
     "cycle.history.lost"
     "cycle.metric.invalid"
@@ -36,5 +37,12 @@ for ev in "${required_events[@]}"; do
         assert_fail "event registered: $ev" "missing from known_types"
     fi
 done
+
+# SPEC-3: cycle.feedback.absent must be registered (new event splitting optional absent).
+if jq -e --arg t "cycle.feedback.absent" '.known_types | index($t)' "$SCHEMA" >/dev/null 2>&1; then
+    assert_pass "[SPEC-3] cycle.feedback.absent registered in event-schema.json"
+else
+    assert_fail "[SPEC-3] cycle.feedback.absent registered in event-schema.json" "missing from known_types"
+fi
 
 print_test_results

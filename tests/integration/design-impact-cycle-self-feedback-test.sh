@@ -110,9 +110,9 @@ else
     assert_pass "T4: no prior_design.txt written when source missing"
 fi
 
-# T4: the orchestrator still records the miss as an event for forensics.
-assert_contains "T4: cycle.feedback.missing event emitted for forensics" \
-    "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.missing"
+# T4: the orchestrator records the optional miss as cycle.feedback.absent (not .missing).
+assert_contains "[SPEC-1] T4: cycle.feedback.absent event emitted for optional miss" \
+    "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.absent"
 
 # ─── T5: required=true symmetric — missing with required=true → rc!=0 ───────
 STATE_DIR3="$TEST_TEMP_DIR/state3"
@@ -125,7 +125,7 @@ _CYCLE_FEEDBACK=(
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; _cycle_apply_feedback 2 "$STATE_DIR3"; rc=$?; set -e
 assert_eq "T5: missing required=true self-edge → rc!=0 (fail-closed)" "1" "$rc"
-assert_contains "T5: cycle.feedback.missing event emitted" \
+assert_contains "[SPEC-2] T5: cycle.feedback.missing event emitted for required=true" \
     "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.feedback.missing"
 
 cleanup_test_env

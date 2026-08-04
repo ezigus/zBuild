@@ -75,4 +75,20 @@ else
     assert_pass "informational event has no banner"
 fi
 
+# ─── S6: optional absent → cycle.feedback.absent, NO ⚠ banner ───────────────
+# SPEC-4: cycle.feedback.absent is not in _HIGH_EVENT_TYPES, so no banner fires.
+# At baseline this fails: required=false absent emitted cycle.feedback.missing (HIGH).
+: > "$ZBUILD_EVENTS_JSONL"
+_CYCLE_TRAP_ITER=2
+_CYCLE_FEEDBACK=("test:primary.txt|build:prior_test_result:false")
+err6="$(_cycle_apply_feedback 4 "$STATE_DIR" 2>&1 >/dev/null || true)"
+jsonl6="$(cat "$ZBUILD_EVENTS_JSONL")"
+assert_contains "[SPEC-4] optional absent → cycle.feedback.absent JSONL event" "$jsonl6" "cycle.feedback.absent"
+if grep -qF "⚠" <<< "$err6"; then
+    assert_fail "[SPEC-4] optional absent → no ⚠ banner (cycle.feedback.absent is not HIGH)" \
+        "banner appeared: $err6"
+else
+    assert_pass "[SPEC-4] optional absent → no ⚠ banner (cycle.feedback.absent is not HIGH)"
+fi
+
 print_test_results

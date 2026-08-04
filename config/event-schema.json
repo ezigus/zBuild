@@ -63,6 +63,7 @@
     "cycle.aborted",
     "cycle.config.invalid",
     "cycle.feedback.missing",
+    "cycle.feedback.absent",
     "cycle.iteration.verdict_missing",
     "cycle.history.lost",
     "cycle.metric.invalid",
