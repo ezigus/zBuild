@@ -454,5 +454,33 @@ assert_eq "[SPEC-3] S16b: guard SPEC with no tag → rc=0 (skip)" "0" "$RC"
 assert_contains "[SPEC-3] S16b: summary shows <none found> when no assertion tag" \
     "$SUMMARY" "<none found>"
 
+# ── S16d (#1684): the FAIL line is enriched too, and still classified as FAIL ──
+# The enrichment branch is shared by PASS/FAIL/SKIP, but only PASS and SKIP were
+# driven end-to-end. A FAIL line is the one where enrichment could do real damage:
+# `case "$line"` downstream classifies the failure, and it must keep matching on
+# the ORIGINAL line, not the enriched one, or a tautology stops being recorded.
+REPO16D="$(_build_repo gate-enrich-fail '#!/usr/bin/env bash
+# [SPEC-1] always true
+exit 0')"
+cat > "$REPO16D/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: this assertion is tautological and must be caught
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate_with_summary "$REPO16D"; set -e
+assert_eq "[SPEC-3] S16d: tautological SPEC → rc=1" "1" "$RC"
+assert_eq "[SPEC-3] S16d: verdict=fail (enrichment did not break classification)" \
+    "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_event_emitted "[SPEC-3] S16d: tautology still recorded" \
+    "$EVENTS" "acceptance.gate.tautology"
+assert_eq "[SPEC-3] S16d: FAIL verdict token still leads its own line" \
+    "1" "$(printf '%s\n' "$SUMMARY" | grep -c '^ *NEGCTL FAIL SPEC-1 tautology$')"
+assert_contains "[SPEC-3] S16d: FAIL line carries the design text" \
+    "$SUMMARY" "design : this assertion is tautological and must be caught"
+assert_contains "[SPEC-3] S16d: FAIL line carries the asserted label" \
+    "$SUMMARY" "asserts: # [SPEC-1] always true"
+
 cleanup_test_env
 print_test_results
