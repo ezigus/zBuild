@@ -121,6 +121,39 @@ set -e
 assert_contains "[SPEC-7] multiple shape-change files → SHAPE_FLOOR FAIL (exemption not applied)" \
     "$_spec7_out" "SHAPE_FLOOR FAIL"
 
+# ─── SPEC-2 (plugin): out-of-scope escalation → route_target=design ──────────
+# When shape_floor_run finds ALL missing floor files outside the build's scope,
+# it must write route_target=design into shape-floor-result.json.
+# CHANGE: fails at baseline (before route_target injection in shape_floor_run).
+
+_sr_oos="$TEST_TEMP_DIR/oos-plugin-repo"
+mkdir -p "$_sr_oos/config" "$_sr_oos/tests/golden/oosspec"
+printf 'config/templates/*.yaml\n' > "$_sr_oos/config/shape-change-paths.txt"
+printf 'golden-event-content\n' > "$_sr_oos/tests/golden/oosspec/event-sequence.golden"
+
+_sf_art_oos="$TEST_TEMP_DIR/sf-oos-artifacts"
+mkdir -p "$_sf_art_oos"
+
+# shellcheck source=../../plugins/tool/shape-floor/plugin.sh
+source "$REPO_ROOT/plugins/tool/shape-floor/plugin.sh"
+
+set +e
+ZBUILD_DIFF_CMD="printf 'config/templates/simple.yaml\n'" \
+ZBUILD_SCHEMA_DIFF_CMD="" \
+ZBUILD_SHAPE_FLOOR_SCOPE="scripts/lib/helpers.sh" \
+ZBUILD_REPO_ROOT="$_sr_oos" \
+ZBUILD_ARTIFACT_DIR="$_sf_art_oos" \
+    shape_floor_run "shape-floor" ""
+set -e
+
+_sf_oos_result="$_sf_art_oos/shape-floor-result.json"
+_sf_oos_rt=""
+[[ -f "$_sf_oos_result" ]] \
+    && _sf_oos_rt="$(jq -r '.route_target // empty' "$_sf_oos_result" 2>/dev/null)"
+
+assert_eq "[SPEC-2] out-of-scope missing floor files → route_target=design in artifact" \
+    "design" "$_sf_oos_rt"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

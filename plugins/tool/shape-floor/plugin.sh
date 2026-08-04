@@ -105,11 +105,11 @@ shape_floor_run() {
     fi
 
     if [[ -n "$route_target" ]]; then
-        jq -n --arg v "$verdict" --arg d "$detail" --arg rt "$route_target" \
-            '{"verdict":$v,"detail":$d,"route_target":$rt}' | atomic_write "$result_path"
+        jq -n --arg v "$verdict" --arg r "$detail" --arg rt "$route_target" \
+            '{"verdict":$v,"reason":$r,"route_target":$rt}' | atomic_write "$result_path"
     else
-        jq -n --arg v "$verdict" --arg d "$detail" \
-            '{"verdict":$v,"detail":$d}' | atomic_write "$result_path"
+        jq -n --arg v "$verdict" --arg r "$detail" \
+            '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"
     fi
 
     _sf_emit "plugin.run.complete" "plugin=shape-floor" "verdict=$verdict"
