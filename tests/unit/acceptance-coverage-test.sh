@@ -110,5 +110,89 @@ set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C9: mixed → rc=1 (only the untagged change flagged)" "1" "$rc"
 assert_eq "C9: flags only SPEC-3, not the guard SPEC-1" "UNTAGGED SPEC-3" "$out"
 
+# ── C10: [SPEC-2] acceptance_find_assertion_label — label found in testfile ────
+printf '#!/usr/bin/env bash\n# [SPEC-1] the feature works correctly\nassert_eq "ok" 1 1\n' \
+    > "$ROOT/tests/labeled-test.sh"
+set +e
+c10_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/labeled-test.sh")"
+set -e
+assert_eq "[SPEC-2] C10: label extracted from testfile" \
+    "# [SPEC-1] the feature works correctly" "$c10_label"
+
+# ── C11: [SPEC-2] acceptance_find_assertion_label — empty when tag absent ──────
+printf '#!/usr/bin/env bash\n# no tag here\nassert_eq "ok" 1 1\n' \
+    > "$ROOT/tests/untagged-test.sh"
+set +e
+c11_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/untagged-test.sh")"
+c11_rc=$?
+set -e
+assert_eq "[SPEC-2] C11: no tag returns 0" "0" "$c11_rc"
+assert_eq "[SPEC-2] C11: no tag returns empty string" "" "$c11_label"
+
+# ── C12: [SPEC-2] acceptance_find_assertion_label — truncates at 100 chars ─────
+# [SPEC-1] line body is 120 chars, comfortably past the 100-char bound.
+printf '#!/usr/bin/env bash\n# [SPEC-1] %s\nassert_eq "ok" 1 1\n' \
+    "$(printf 'x%.0s' $(seq 1 120))" > "$ROOT/tests/long-label-test.sh"
+set +e
+c12_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/long-label-test.sh")"
+set -e
+c12_len="$(printf '%s' "$c12_label" | wc -c | tr -d ' ')"
+assert_eq "[SPEC-2] C12: long label truncated (len <= 103 bytes: 100 chars + 3-byte ellipsis)" \
+    "1" "$(( c12_len <= 103 ? 1 : 0 ))"
+assert_contains "[SPEC-2] C12: truncated label ends with ellipsis" "$c12_label" "…"
+
+# ── C13: [SPEC-2] acceptance_find_assertion_label — first match wins across files
+printf '#!/usr/bin/env bash\n# [SPEC-1] first file match\n' > "$ROOT/tests/first-test.sh"
+printf '#!/usr/bin/env bash\n# [SPEC-1] second file match\n' > "$ROOT/tests/second-test.sh"
+set +e
+c13_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" \
+    "tests/first-test.sh" "tests/second-test.sh")"
+set -e
+assert_eq "[SPEC-2] C13: first file match returned" "# [SPEC-1] first file match" "$c13_label"
+
+# ── C14: [SPEC-2] an asserting line BEATS an earlier fixture line ──────────────
+# The defect this pass ordering exists for. A tests-of-the-gate file carries the
+# tag as fixture text (a sandbox repo body it writes out) BEFORE any real
+# assertion. First-textual-match reports the fixture — a label that was never
+# asserted, which reads as confirmation. Pass 1 must skip it.
+cat > "$ROOT/tests/fixture-first-test.sh" <<'C14EOF'
+#!/usr/bin/env bash
+_build_repo gate-x '#!/usr/bin/env bash
+# [SPEC-1] fixture body, never asserted
+exit 0'
+printf 'assert_eq "[SPEC-1] also a fixture" 1 1\n' > "$ROOT/tests/generated.sh"
+assert_eq "[SPEC-1] the real assertion" 1 1
+C14EOF
+set +e
+c14_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/fixture-first-test.sh")"
+set -e
+assert_eq "[SPEC-2] C14: asserting line wins over earlier fixture lines" \
+    'assert_eq "[SPEC-1] the real assertion" 1 1' "$c14_label"
+assert_eq "[SPEC-2] C14: the fixture comment is not reported" \
+    "0" "$(printf '%s' "$c14_label" | grep -c 'fixture body' || true)"
+assert_eq "[SPEC-2] C14: the printf-generated fixture is not reported" \
+    "0" "$(printf '%s' "$c14_label" | grep -c 'also a fixture' || true)"
+
+# ── C15: [SPEC-2] assert-pass spans ALL files before falling back ──────────────
+# The asserting line may live in a later declared testfile than the fixture.
+# Pass 1 must exhaust every file before pass 2 accepts a non-asserting line.
+printf '#!/usr/bin/env bash\n# [SPEC-1] fixture only, no assertion here\n' \
+    > "$ROOT/tests/c15-first.sh"
+printf '#!/usr/bin/env bash\nassert_eq "[SPEC-1] real one in the second file" 1 1\n' \
+    > "$ROOT/tests/c15-second.sh"
+set +e
+c15_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" \
+    "tests/c15-first.sh" "tests/c15-second.sh")"
+set -e
+assert_eq "[SPEC-2] C15: later file's assertion beats earlier file's fixture" \
+    'assert_eq "[SPEC-1] real one in the second file" 1 1' "$c15_label"
+
+# ── C16: [SPEC-2] fallback still reports when NO file has an asserting line ────
+set +e
+c16_label="$(acceptance_find_assertion_label "$ROOT" "SPEC-1" "tests/c15-first.sh")"
+set -e
+assert_eq "[SPEC-2] C16: falls back to the tagged line when no assertion exists" \
+    "# [SPEC-1] fixture only, no assertion here" "$c16_label"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

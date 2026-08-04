@@ -461,6 +461,102 @@ assert_eq "[SPEC-5] TC-18: global-only design: union lists second path" \
 assert_eq "[SPEC-5] TC-18: for_spec fallback equals global pool (first path)" \
     "1" "$(echo "$tc18_spec" | grep -c 'classic-test.sh')"
 
+# ── TC-19: [SPEC-1] acceptance_spec_desc — plain SPEC text extracted ──────────
+tc19_file="$WORK_DIR/tc19_design.md"
+cat > "$tc19_file" <<'EOF'
+```acceptance
+SPEC-1: feature is implemented
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc19_out="$(acceptance_spec_desc "$tc19_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-19: plain SPEC text returned" "feature is implemented" "$tc19_out"
+
+# ── TC-20: [SPEC-1] acceptance_spec_desc — [change]-classified SPEC text ──────
+tc20_file="$WORK_DIR/tc20_design.md"
+cat > "$tc20_file" <<'EOF'
+```acceptance
+SPEC-1[change]: new behavior introduced
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc20_out="$(acceptance_spec_desc "$tc20_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-20: [change]-classified SPEC text returned" "new behavior introduced" "$tc20_out"
+
+# ── TC-21: [SPEC-1] acceptance_spec_desc — text truncated at 100 chars ────────
+tc21_file="$WORK_DIR/tc21_design.md"
+# 101-char description: 100 'x' + one trailing 'y' that must be cut.
+tc21_desc="$(printf 'x%.0s' $(seq 1 100))y"
+{
+    printf '```acceptance\n'
+    printf 'SPEC-1: %s\n' "$tc21_desc"
+    printf 'TESTFILES:\ntests/unit/foo-test.sh\n```\n'
+} > "$tc21_file"
+set +e
+tc21_out="$(acceptance_spec_desc "$tc21_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-21: 101-char desc truncated to 100 chars with ellipsis suffix" \
+    "$(printf 'x%.0s' $(seq 1 100))…" "$tc21_out"
+assert_eq "[SPEC-1] TC-21: truncated text byte length is 103 (100 ASCII chars + 3-byte UTF-8 ellipsis)" \
+    "103" "$(printf '%s' "$tc21_out" | wc -c | tr -d ' ')"
+
+# ── TC-21b: [SPEC-1] a 100-char desc is NOT truncated (boundary) ───────────────
+# 60 was too tight: the clause that distinguishes one SPEC from another routinely
+# sits past char 60, so the readout truncated away the very thing it exists to
+# show. Pin the boundary so the bound cannot silently regress.
+tc21b_file="$WORK_DIR/tc21b_design.md"
+tc21b_desc="$(printf 'y%.0s' $(seq 1 100))"
+{
+    printf '```acceptance\n'
+    printf 'SPEC-1: %s\n' "$tc21b_desc"
+    printf 'TESTFILES:\ntests/unit/foo-test.sh\n```\n'
+} > "$tc21b_file"
+set +e
+tc21b_out="$(acceptance_spec_desc "$tc21b_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-21b: exactly-100-char desc is returned whole, no ellipsis" \
+    "$tc21b_desc" "$tc21b_out"
+
+# ── TC-22: [SPEC-1] acceptance_spec_desc — missing spec_id returns empty ───────
+tc22_file="$WORK_DIR/tc22_design.md"
+cat > "$tc22_file" <<'EOF'
+```acceptance
+SPEC-1: some feature
+TESTFILES:
+tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc22_out="$(acceptance_spec_desc "$tc22_file" "SPEC-99")"
+tc22_rc=$?
+set -e
+assert_eq "[SPEC-1] TC-22: missing spec_id returns 0" "0" "$tc22_rc"
+assert_eq "[SPEC-1] TC-22: missing spec_id returns empty string" "" "$tc22_out"
+
+# ── TC-23: [SPEC-1] acceptance_spec_desc — SPEC in TESTFILES not misidentified ─
+# A SPEC-n: binding line inside TESTFILES must not be returned as desc text.
+tc23_file="$WORK_DIR/tc23_design.md"
+cat > "$tc23_file" <<'EOF'
+```acceptance
+SPEC-1[change]: real description
+TESTFILES:
+SPEC-1: tests/unit/foo-test.sh
+```
+EOF
+set +e
+tc23_out="$(acceptance_spec_desc "$tc23_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-23: TESTFILES binding line not misidentified as desc" \
+    "real description" "$tc23_out"
+assert_eq "[SPEC-1] TC-23: testfile path not leaked into desc output" \
+    "0" "$(printf '%s' "$tc23_out" | grep -c 'foo-test.sh' || true)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
