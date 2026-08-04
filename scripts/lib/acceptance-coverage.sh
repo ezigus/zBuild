@@ -36,27 +36,50 @@ acceptance_coverage_spec_tagged() {
     return 1
 }
 
+# _acceptance_trim_label <line>  (#1684)
+# Strips leading whitespace and truncates to 100 chars with '…'.
+_acceptance_trim_label() {
+    local s="${1-}"
+    s="${s#"${s%%[![:space:]]*}"}"
+    if [[ ${#s} -gt 100 ]]; then
+        printf '%s…\n' "${s:0:100}"
+    else
+        printf '%s\n' "$s"
+    fi
+}
+
 # acceptance_find_assertion_label <repo_root> <spec_id> <testfiles...>  (#1684)
-# Scans each declared testfile for the first line containing the literal tag
-# [<spec_id>] and returns it (stripped of leading whitespace) truncated to
-# 60 characters with '…'. Returns empty string when no matching line is found.
+# Echoes the label of an assertion that actually runs for <spec_id>, trimmed by
+# _acceptance_trim_label. Empty string when the tag appears nowhere.
+#
+# Two passes, and the reason is the whole point of this function. These testfiles
+# routinely contain [<spec_id>] as FIXTURE text — tests-of-the-gate write sandbox
+# repos whose bodies carry tags, and a fixture line is not an assertion. Taking
+# the first textual match therefore reports a label that was never asserted,
+# which is worse than reporting nothing: it reads as confirmation. Pass 1 takes
+# the first line that INVOKES an assertion helper; only when no declared file has
+# one does pass 2 fall back to any tagged line.
+#
+# Residual: SPEC ids are file-global, so a file carrying the same id for a
+# DIFFERENT design's SPEC can still win pass 1 — see #1691.
 acceptance_find_assertion_label() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
-    local tf abs match
-    for tf in "$@"; do
-        [[ -z "$tf" ]] && continue
-        abs="$repo_root/$tf"
-        [[ -f "$abs" ]] || continue
-        match="$(grep -m1 -F "[$spec_id]" "$abs" 2>/dev/null || true)"
-        if [[ -n "$match" ]]; then
-            match="${match#"${match%%[![:space:]]*}"}"
-            if [[ ${#match} -gt 60 ]]; then
-                printf '%s…\n' "${match:0:60}"
+    local pass tf abs match
+    for pass in assert any; do
+        for tf in "$@"; do
+            [[ -z "$tf" ]] && continue
+            abs="$repo_root/$tf"
+            [[ -f "$abs" ]] || continue
+            if [[ "$pass" == "assert" ]]; then
+                match="$(grep -m1 -E "^[[:space:]]*assert[a-z_]*[[:space:]].*\[$spec_id\]" "$abs" 2>/dev/null || true)"
             else
-                printf '%s\n' "$match"
+                match="$(grep -m1 -F "[$spec_id]" "$abs" 2>/dev/null || true)"
             fi
-            return 0
-        fi
+            if [[ -n "$match" ]]; then
+                _acceptance_trim_label "$match"
+                return 0
+            fi
+        done
     done
     return 0
 }

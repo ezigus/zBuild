@@ -315,9 +315,15 @@ acceptance_gate_run() {
                 while IFS= read -r _e_tf_line; do
                     [[ -n "$_e_tf_line" ]] && _e_tf+=("$_e_tf_line")
                 done < <(acceptance_list_testfiles_for_spec "$design_md" "$_e_eid")
+                [[ -z "$_e_desc" ]] && _e_desc="<no description>"
                 _e_label="$(acceptance_find_assertion_label "$repo_root" "$_e_eid" "${_e_tf[@]+"${_e_tf[@]}"}")"
                 [[ -z "$_e_label" ]] && _e_label="<none found>"
-                _e_enriched="${line} — ${_e_desc} (${_e_label})"
+                # #1684: the design's claim and the asserted label go on their
+                # own lines, aligned. A mismatch between them is the failure this
+                # readout exists to expose, and it is only legible side by side —
+                # appended to the verdict line the pair runs past the terminal
+                # edge and wraps, which is where the #1662 mismatch hid.
+                _e_enriched="${line}"$'\n'"      design : ${_e_desc}"$'\n'"      asserts: ${_e_label}"
             fi
             summary_lines+=("$_e_enriched")  # #1211: one operator line per SPEC (enriched)
             case "$line" in
@@ -450,6 +456,15 @@ acceptance_gate_run() {
         fi
     fi
     if [[ ${#summary_lines[@]} -gt 0 ]]; then
+        # #1684: persist BEFORE emitting. The emit above is a write to a terminal
+        # fd and is gated on this stage having a stdout destination — on a
+        # file-only install it produces nothing at all, and even when it fires it
+        # survives only as long as the scrollback. The review lenses and any
+        # post-hoc audit of a finished run read artifacts, so without this file
+        # the design-vs-assertion pairing is visible to nobody after the run ends.
+        mkdir -p "$state_dir/artifacts" 2>/dev/null || true
+        printf '%s\n' "${summary_lines[@]}" \
+            | atomic_write "$state_dir/artifacts/acceptance-summary.txt" 2>/dev/null || true
         _ag_emit_operator_summary "${_stage_id:-acceptance-gate}" "${summary_lines[@]}"
     fi
 

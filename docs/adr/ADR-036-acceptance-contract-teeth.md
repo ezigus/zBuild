@@ -466,3 +466,45 @@ Separating them requires a second measurement rather than a better guess: let `i
 first occurrence so build gets a real attempt, and escalate the same still-inert target to
 `route_target=design` on a later iteration. Tracked in #1711 as the general case — a stage handed a
 problem it cannot solve needs an escalation path, not a workaround.
+
+## Amendment (#1684, 2026-08-04) — the summary states what each SPEC claims and what was asserted, and it persists
+
+The concise operator summary above (#1211) reports a verdict per SPEC id and nothing about *what was
+tested*. `NEGCTL PASS SPEC-2` asserts that some tagged assertion failed at the baseline and passes at
+HEAD — not that the assertion has anything to do with what SPEC-2 claims. On run
+`20260801225757-5482` it did not: design's `SPEC-2[change]` described a SIGTERM trap path, build
+tagged an unrelated "killed tier prints ABORTED" assertion with the same id, and every mechanical
+check was satisfied while the riskiest code in the change shipped with zero coverage.
+
+That gap is not mechanically decidable in general (see #1670, #1675, #1691 for the cases where it
+partly is). This amendment makes it **visible** instead, and costs one rendering change plus one
+artifact write.
+
+**1. Each per-SPEC line carries the design's claim and the asserted label, on their own lines.**
+
+```
+NEGCTL PASS SPEC-2
+      design : SIGTERM to the --tier all orchestrator … exits non-zero (INT/TERM trap path)
+      asserts: assert_eq "[SPEC-2] killed mutation tier → 'mutation: ABORTED' on stderr" …
+```
+
+The verdict token remains the leading content of its own line, so existing parsers and the
+one-line-per-SPEC count are unaffected. Both strings are truncated at 100 chars with `…` — the
+earlier 60 cut away the clause that distinguishes one SPEC from another, which is the only reason to
+print it. Absent values render as `<no description>` / `<none found>`, never as a blank gap.
+
+**2. The label is the first line that INVOKES an assertion helper, not the first textual match.**
+These testfiles routinely carry `[SPEC-n]` as fixture text — tests-of-the-gate write sandbox repos
+whose bodies contain tags. Taking the first match reported a label that was never asserted, which is
+worse than reporting nothing because it reads as confirmation. Two passes: assertion-shaped lines
+across all declared testfiles first, any tagged line only as fallback.
+
+*Residual:* SPEC ids are file-global, so a testfile carrying the same id for a **different** design's
+SPEC can still win pass 1. Not solvable without per-design id namespacing — tracked in #1691.
+
+**3. The summary is written to `artifacts/acceptance-summary.txt`.** `_ag_emit_operator_summary`
+writes to a terminal fd and is io-gated on the stage having a `stdout` destination: on a file-only
+install it produces nothing, and when it does fire it survives only as long as the scrollback. The
+review lenses and any post-hoc audit of a finished run read artifacts. Without the file the
+design-vs-assertion pairing is visible to nobody once the run ends — which is precisely when someone
+goes looking for why a green run shipped an untested requirement.

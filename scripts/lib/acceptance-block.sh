@@ -353,9 +353,11 @@ acceptance_spec_has_binding() {
 # acceptance_spec_desc <design_md> <spec_id>  (#1684)
 # Echoes the description text from the SPEC-n line in the acceptance block —
 # the text after the colon on the matching `SPEC-<id>[classifier]: <text>` line.
-# Truncates to 60 characters with '…' when longer. Returns empty string (not
-# an error) when the SPEC id is not found. Stops scanning at TESTFILES: to
-# avoid misidentifying per-SPEC binding lines in the TESTFILES section.
+# Truncates to 100 characters with '…' when longer — long enough that the
+# clause distinguishing one SPEC from another survives, which is the point of
+# showing it. Returns empty string (not an error) when the SPEC id is not found.
+# Stops scanning at TESTFILES: to avoid misidentifying per-SPEC binding lines
+# in the TESTFILES section.
 acceptance_spec_desc() {
     local design_md="${1:-}" spec_id="${2:-}"
     [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 0
@@ -366,8 +368,8 @@ acceptance_spec_desc() {
         [[ "$line" == "TESTFILES:" ]] && break
         if [[ "$line" =~ ^${spec_id}(\[[a-z]+\])?:[[:space:]]*(.*) ]]; then
             local text="${BASH_REMATCH[2]}"
-            if [[ ${#text} -gt 60 ]]; then
-                printf '%s…\n' "${text:0:60}"
+            if [[ ${#text} -gt 100 ]]; then
+                printf '%s…\n' "${text:0:100}"
             else
                 printf '%s\n' "$text"
             fi

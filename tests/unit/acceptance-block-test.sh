@@ -489,25 +489,39 @@ tc20_out="$(acceptance_spec_desc "$tc20_file" "SPEC-1")"
 set -e
 assert_eq "[SPEC-1] TC-20: [change]-classified SPEC text returned" "new behavior introduced" "$tc20_out"
 
-# ── TC-21: [SPEC-1] acceptance_spec_desc — text truncated at 60 chars ─────────
+# ── TC-21: [SPEC-1] acceptance_spec_desc — text truncated at 100 chars ────────
 tc21_file="$WORK_DIR/tc21_design.md"
-# 61-character description: a-z (26) + space (1) + A-Z (26) + space (1) + "1234567" (7) = 61
-cat > "$tc21_file" <<'EOF'
-```acceptance
-SPEC-1: abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567
-TESTFILES:
-tests/unit/foo-test.sh
-```
-EOF
+# 101-char description: 100 'x' + one trailing 'y' that must be cut.
+tc21_desc="$(printf 'x%.0s' $(seq 1 100))y"
+{
+    printf '```acceptance\n'
+    printf 'SPEC-1: %s\n' "$tc21_desc"
+    printf 'TESTFILES:\ntests/unit/foo-test.sh\n```\n'
+} > "$tc21_file"
 set +e
 tc21_out="$(acceptance_spec_desc "$tc21_file" "SPEC-1")"
 set -e
-# First 60 chars: a-z (26) + space (1) + A-Z (26) + space (1) + "123456" (6) = 60
-assert_eq "[SPEC-1] TC-21: 61-char desc truncated to 60 chars with ellipsis suffix" \
-    "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 123456…" \
-    "$tc21_out"
-assert_eq "[SPEC-1] TC-21: truncated text byte length is 63 (60 ASCII chars + 3-byte UTF-8 ellipsis)" \
-    "63" "$(printf '%s' "$tc21_out" | wc -c | tr -d ' ')"
+assert_eq "[SPEC-1] TC-21: 101-char desc truncated to 100 chars with ellipsis suffix" \
+    "$(printf 'x%.0s' $(seq 1 100))…" "$tc21_out"
+assert_eq "[SPEC-1] TC-21: truncated text byte length is 103 (100 ASCII chars + 3-byte UTF-8 ellipsis)" \
+    "103" "$(printf '%s' "$tc21_out" | wc -c | tr -d ' ')"
+
+# ── TC-21b: [SPEC-1] a 100-char desc is NOT truncated (boundary) ───────────────
+# 60 was too tight: the clause that distinguishes one SPEC from another routinely
+# sits past char 60, so the readout truncated away the very thing it exists to
+# show. Pin the boundary so the bound cannot silently regress.
+tc21b_file="$WORK_DIR/tc21b_design.md"
+tc21b_desc="$(printf 'y%.0s' $(seq 1 100))"
+{
+    printf '```acceptance\n'
+    printf 'SPEC-1: %s\n' "$tc21b_desc"
+    printf 'TESTFILES:\ntests/unit/foo-test.sh\n```\n'
+} > "$tc21b_file"
+set +e
+tc21b_out="$(acceptance_spec_desc "$tc21b_file" "SPEC-1")"
+set -e
+assert_eq "[SPEC-1] TC-21b: exactly-100-char desc is returned whole, no ellipsis" \
+    "$tc21b_desc" "$tc21b_out"
 
 # ── TC-22: [SPEC-1] acceptance_spec_desc — missing spec_id returns empty ───────
 tc22_file="$WORK_DIR/tc22_design.md"

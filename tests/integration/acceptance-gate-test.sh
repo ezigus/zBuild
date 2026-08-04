@@ -403,9 +403,39 @@ set +e; _run_gate_with_summary "$REPO16"; set -e
 assert_eq "[SPEC-3] S16: load-bearing enriched → rc=0" "0" "$RC"
 assert_eq "[SPEC-3] S16: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 assert_contains "[SPEC-3] S16: summary contains SPEC desc enrichment" \
-    "$SUMMARY" "feature works as expected"
+    "$SUMMARY" "design : feature works as expected"
 assert_contains "[SPEC-3] S16: summary contains assertion label enrichment" \
-    "$SUMMARY" "# [SPEC-1] feature works as expected"
+    "$SUMMARY" "asserts: # [SPEC-1] feature works as expected"
+# The verdict token must remain the leading content of its own line — parsers
+# (and acceptance-gate-quiet-test.sh's one-NEGCTL-line-per-SPEC count) key on it.
+assert_eq "[SPEC-3] S16: verdict token still leads its line" \
+    "1" "$(printf '%s\n' "$SUMMARY" | grep -c '^ *NEGCTL PASS SPEC-1$')"
+# #1684: the pairing must outlive the run. The fd-2 emit is ephemeral and
+# io-gated; without the artifact no lens and no post-hoc audit can ever see it.
+assert_eq "[SPEC-3] S16: summary persisted to an artifact" \
+    "1" "$([[ -f "$REPO16/.zbuild-state/artifacts/acceptance-summary.txt" ]] && echo 1 || echo 0)"
+assert_contains "[SPEC-3] S16: persisted artifact carries the design/asserts pair" \
+    "$(cat "$REPO16/.zbuild-state/artifacts/acceptance-summary.txt" 2>/dev/null)" \
+    "asserts: # [SPEC-1] feature works as expected"
+
+# ── S16c (#1684): a SPEC with no description text renders an explicit marker ───
+# Empty desc previously rendered as a blank gap, indistinguishable from a
+# rendering bug. <none found> covered the label but never the description.
+REPO16C="$(_build_repo gate-enrich-nodesc '#!/usr/bin/env bash
+# [SPEC-1] x
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
+[[ -f "$impl" ]] || exit 1
+source "$impl"; my_feature')"
+cat > "$REPO16C/design.md" <<'EOF'
+```acceptance
+SPEC-1:
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate_with_summary "$REPO16C"; set -e
+assert_contains "[SPEC-3] S16c: empty SPEC text renders <no description>" \
+    "$SUMMARY" "design : <no description>"
 
 # Verify <none found> when the testfile has no [SPEC-n] tag.
 # Use a guard SPEC so Level-1 coverage check is exempt (guard SPECs skip negctl).
