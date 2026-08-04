@@ -229,6 +229,7 @@
     "shape_floor.pass",
     "shape_floor.fail",
     "shape_floor.skip",
+    "shape_floor.oos_escalation",
     "secret_scan.pass",
     "secret_scan.fail",
     "secret_scan.skip",

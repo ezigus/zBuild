@@ -71,6 +71,56 @@ set -e
 assert_contains "[SPEC-4] shape change + golden in diff → SHAPE_FLOOR PASS" \
     "$_spec4_out" "SHAPE_FLOOR PASS"
 
+# ─── SPEC-5: append-only event-schema.json → SHAPE_FLOOR SKIP ────────────────
+# When config/event-schema.json is the SOLE shape-change match AND the diff has
+# no removed lines, shape-floor treats it as no shape change (SKIP).
+# CHANGE: fails at baseline (before _sf_is_schema_append_only exemption is wired).
+
+_sr2="$TEST_TEMP_DIR/schema-append-repo"
+mkdir -p "$_sr2/config" "$_sr2/tests/golden/mytest"
+printf 'config/event-schema.json\n' > "$_sr2/config/shape-change-paths.txt"
+printf 'golden-event-content\n' > "$_sr2/tests/golden/mytest/event-sequence.golden"
+
+set +e
+_spec5_out="$(ZBUILD_DIFF_CMD="printf 'config/event-schema.json\n'" \
+    ZBUILD_SCHEMA_DIFF_CMD="printf '+  \"shape_floor.new_event\",\n'" \
+    _sf_shape_floor "$_sr2")"
+set -e
+
+assert_contains "[SPEC-5] append-only known_types addition → SHAPE_FLOOR SKIP" \
+    "$_spec5_out" "SHAPE_FLOOR SKIP"
+
+# ─── SPEC-6 (GUARD): non-append-only schema diff → SHAPE_FLOOR FAIL ──────────
+# When the event-schema.json diff has removed lines, the exemption must NOT fire.
+# Golden file absent → FAIL (same as without the exemption).
+
+set +e
+_spec6_out="$(ZBUILD_DIFF_CMD="printf 'config/event-schema.json\n'" \
+    ZBUILD_SCHEMA_DIFF_CMD="printf '-  \"old.event\",\n+  \"new.event\",\n'" \
+    _sf_shape_floor "$_sr2")"
+set -e
+
+assert_contains "[SPEC-6] non-append-only event-schema diff → SHAPE_FLOOR FAIL (not SKIP)" \
+    "$_spec6_out" "SHAPE_FLOOR FAIL"
+
+# ─── SPEC-7 (GUARD): multiple shape-change files → exemption does not apply ───
+# When event-schema.json AND another shape-change file are both in the diff, the
+# append-only exemption must not suppress the floor check.
+
+_sr3="$TEST_TEMP_DIR/multi-shape-repo"
+mkdir -p "$_sr3/config" "$_sr3/tests/golden/mytest"
+printf 'config/event-schema.json\nconfig/templates/*.yaml\n' > "$_sr3/config/shape-change-paths.txt"
+printf 'golden-event-content\n' > "$_sr3/tests/golden/mytest/event-sequence.golden"
+
+set +e
+_spec7_out="$(ZBUILD_DIFF_CMD="printf 'config/event-schema.json\nconfig/templates/simple.yaml\n'" \
+    ZBUILD_SCHEMA_DIFF_CMD="printf '+  \"shape_floor.new_event\",\n'" \
+    _sf_shape_floor "$_sr3")"
+set -e
+
+assert_contains "[SPEC-7] multiple shape-change files → SHAPE_FLOOR FAIL (exemption not applied)" \
+    "$_spec7_out" "SHAPE_FLOOR FAIL"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

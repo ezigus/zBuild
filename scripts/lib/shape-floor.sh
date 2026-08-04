@@ -46,8 +46,65 @@ _sf_diff_files() {
     git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true
 }
 
+# ─── _sf_schema_diff <repo_root> ─────────────────────────────────────────────
+# Prints the unified diff for config/event-schema.json between merge-base and HEAD.
+# ZBUILD_SCHEMA_DIFF_CMD overrides for testability.
+_sf_schema_diff() {
+    local repo_root="$1"
+    local schema_diff_cmd="${ZBUILD_SCHEMA_DIFF_CMD:-}"
+    if [[ -n "$schema_diff_cmd" ]]; then
+        bash -c "$schema_diff_cmd" 2>/dev/null || true
+        return
+    fi
+    local base_sha
+    base_sha="$(zbuild_resolve_merge_base "$repo_root")"
+    [[ -z "$base_sha" ]] && return
+    git -C "$repo_root" diff "$base_sha" HEAD -- config/event-schema.json 2>/dev/null || true
+}
+
+# ─── _sf_is_schema_append_only <repo_root> ────────────────────────────────────
+# Returns rc=0 when config/event-schema.json diff has only additions (no removed
+# lines), indicating a safe append-only change to known_types.
+# ZBUILD_SCHEMA_DIFF_CMD overrides the diff call for testability.
+_sf_is_schema_append_only() {
+    local repo_root="$1"
+    local diff_out
+    diff_out="$(_sf_schema_diff "$repo_root")"
+    [[ -z "$diff_out" ]] && return 1
+    # Fail if any content line was removed (lines starting with '-' but not '---' header)
+    if printf '%s\n' "$diff_out" | grep -qE '^-[^-]'; then
+        return 1
+    fi
+    # Must have at least one added content line (not just headers)
+    printf '%s\n' "$diff_out" | grep -qE '^\+[^+]'
+}
+
+# ─── _sf_collect_missing_floor_files <repo_root> <diff_files_text> ───────────
+# Prints repo-relative paths of event-sequence.golden and _TPL_STAGES[N]-indexed
+# test files that are absent from the supplied diff_files_text (one path per line).
+_sf_collect_missing_floor_files() {
+    local repo_root="$1"
+    local diff_files="$2"
+    local tests_root="$repo_root/tests"
+    local f
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        if ! printf '%s\n' "$diff_files" | grep -qxF "$f"; then
+            printf '%s\n' "$f"
+        fi
+    done < <(_impact_list_event_goldens "$tests_root")
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        if ! printf '%s\n' "$diff_files" | grep -qxF "$f"; then
+            printf '%s\n' "$f"
+        fi
+    done < <(_impact_list_order_assertions "$tests_root")
+}
+
 # ─── _sf_shape_floor <repo_root> ─────────────────────────────────────────────
 # If any diff file matches config/shape-change-paths.txt → shape change detected.
+# Exception: when config/event-schema.json is the SOLE matched file and its diff
+# is append-only (no removals), the change is treated as no shape change (SKIP).
 # Then verifies event-sequence.golden files AND _TPL_STAGES[N]-indexed test files
 # are also in the diff. Missing any → SHAPE_FLOOR FAIL missing_floor_files.
 # Reuses _impact_list_event_goldens and _impact_list_order_assertions (impact-prefilter.sh).
@@ -58,8 +115,9 @@ _sf_shape_floor() {
     local diff_files
     diff_files="$(_sf_diff_files "$repo_root")"
 
-    # Detect shape change.
+    # Detect shape change — track all matched files to support append-only exemption.
     local shape_change=0
+    local _matched_files=""
     if [[ -f "$paths_file" && -n "$diff_files" ]]; then
         local pattern pf
         while IFS= read -r pattern; do
@@ -70,7 +128,7 @@ _sf_shape_floor() {
                 # shellcheck disable=SC2053
                 if [[ "$pf" == $pattern ]]; then
                     shape_change=1
-                    break 2
+                    _matched_files+="$pf"$'\n'
                 fi
             done <<< "$diff_files"
         done < "$paths_file"
@@ -78,6 +136,19 @@ _sf_shape_floor() {
 
     if [[ $shape_change -eq 0 ]]; then
         printf 'SHAPE_FLOOR SKIP no_shape_change\n'
+        return 0
+    fi
+
+    # Append-only exemption: config/event-schema.json sole match + additive diff → SKIP.
+    local _mf _matched_count=0 _schema_matched=0
+    while IFS= read -r _mf; do
+        [[ -z "$_mf" ]] && continue
+        _matched_count=$(( _matched_count + 1 ))
+        [[ "$_mf" == "config/event-schema.json" ]] && _schema_matched=1
+    done <<< "$_matched_files"
+    if [[ $_schema_matched -eq 1 && $_matched_count -eq 1 ]] \
+        && _sf_is_schema_append_only "$repo_root"; then
+        printf 'SHAPE_FLOOR SKIP schema_append_only\n'
         return 0
     fi
 

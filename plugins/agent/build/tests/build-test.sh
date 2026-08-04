@@ -151,6 +151,7 @@ assert_contains "prompt mentions LOOP_COMPLETE sentinel"      "$_captured_prompt
 assert_contains "prompt mentions scope (plan.files[])"        "$_captured_prompt" "plan.files[]"
 assert_contains "prompt lists the in-scope file"              "$_captured_prompt" "build-test-dummy.txt"
 assert_contains "prompt forbids out-of-scope edits"           "$_captured_prompt" "out-of-scope"
+assert_contains "prompt includes BLOCKED escape-hatch rule"   "$_captured_prompt" "BLOCKED:"
 
 # ─── T_PROMPT_2: Real edit produces non-empty diff.patch ─────────────────────
 print_test_section "T_PROMPT_2: agent edit → non-empty diff.patch"

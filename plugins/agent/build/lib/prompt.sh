@@ -76,6 +76,7 @@ when there is nothing left to do.
   publish, tag, push, or otherwise mutate state), run it in \`--dry-run\` mode.
   Do everything you can to verify behavior without side effects.
 - Keep changes minimal and aligned with the plan.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit \`BLOCKED: <gate> requires <file> (out of scope)\` and stop.
 
 ### Commit message (#608)
 Before the final \`LOOP_COMPLETE\` line, emit a single line of the form:
