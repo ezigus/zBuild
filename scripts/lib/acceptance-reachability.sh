@@ -136,9 +136,32 @@ acceptance_reachability_check() {
         [[ -n "$cf" ]] && changed_files+=("$cf")
     done < <(git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true)
 
+    # An empty diff with head != base means the git call failed (shallow clone,
+    # unresolvable base). Fail closed: without it every target reads as off-diff.
+    if [[ ${#changed_files[@]} -eq 0 ]]; then
+        printf 'REACHABILITY ERROR diff_failed\n'
+        return 1
+    fi
+
     local rc=0
 
     for target in "${wiring_targets[@]}"; do
+        # #1686: a target absent from this commit's diff was not changed here, so
+        # reverting it is a no-op and no testfile can flip. Design named a file
+        # unrelated to the change; only design can fix the declaration.
+        # NOTE: this does NOT cover a target that IS in the diff but no test can
+        # load (the #1664 CI-config shape) — that still reads as inert_wiring. No
+        # static rule separates those two cases; see #1711.
+        local _t_norm="${target#./}" _in_diff=0 _cf
+        for _cf in "${changed_files[@]}"; do
+            [[ "${_cf#./}" == "$_t_norm" ]] && _in_diff=1 && break
+        done
+        if [[ "$_in_diff" -eq 0 ]]; then
+            printf 'REACHABILITY FAIL wiring_not_on_path %s\n' "$target"
+            rc=1
+            continue
+        fi
+
         # Create detached worktree at baseline.
         local wt_dir; wt_dir="$(mktemp -d "${TMPDIR:-/tmp}/zb-reach.XXXXXX")"
         # shellcheck disable=SC2064

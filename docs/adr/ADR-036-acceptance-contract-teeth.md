@@ -254,8 +254,8 @@ precedence highest-first):
 
 | disposition   | failure classes                                                            | engine effect                                             |
 | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `terminal`    | tautology, not_passing_at_head, inert_wiring, no_testfile, malformed_acceptance_block | HALT — cycle does not converge (rc=8), pipeline.end=failed |
-| `recoverable` | untagged_spec:* (only)                                                     | NON-terminal; #951 build feedback loop (cycle re-iterates) |
+| `terminal`    | not_passing_at_head, no_testfile, malformed_acceptance_block               | HALT — cycle does not converge (rc=8), pipeline.end=failed |
+| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, wiring_not_on_path:*         | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path also sets route_target=design |
 | `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
 | `none`        | (verdict=pass)                                                             | n/a                                                        |
 
@@ -410,3 +410,59 @@ Two things make that safe, and both are load-bearing:
 Both gates build the bound through one helper, `_acceptance_timeout_prefix` (`acceptance-block.sh`),
 which also resolves `gtimeout` — previously only `run-tests.sh` did, leaving the acceptance gates
 effectively unbounded on a macOS host with GNU coreutils but no POSIX `timeout`.
+
+## Amendment (#1686, 2026-08-03) — wiring_not_on_path: distinct class + first live route_target activation
+
+**Problem.** When a declared WIRING target was absent from `git diff --name-only` (the file exists but
+was not touched by this commit), `acceptance_reachability_check` still ran the full worktree flip-
+detection. Since the target was never changed, baseline == HEAD for it, so no testfile could flip and
+the result was `REACHABILITY FAIL inert_wiring`. That is the wrong class: `inert_wiring` means the
+target IS in the diff but the suite fails to exercise it (a build-fixable test gap); here the author
+named a file unrelated to this commit, which only design can correct.
+
+**Fix.**
+
+1. **`scripts/lib/acceptance-reachability.sh`** — before creating each target's worktree, check
+   whether the target appears in `changed_files` (leading `./` normalised on both sides). If absent,
+   emit `REACHABILITY FAIL wiring_not_on_path <target>`, set `rc=1`, and `continue`, skipping the
+   expensive revert run. An empty `changed_files` with `head != base` means the `git diff` call
+   failed (shallow clone, unresolvable base) and fails closed as `REACHABILITY ERROR diff_failed` —
+   without that guard every target would read as off-diff and rewind every run to design.
+
+2. **`plugins/agent/spec-acceptance/plugin.sh`** — parse the new line in the Level-3 loop;
+   accumulate `wiring_not_on_path:<target>` in `failures[]`; emit
+   `acceptance.gate.wiring_not_on_path`. Classify `wiring_not_on_path:*` as **`recoverable`**
+   (same row as `inert_wiring:*` and `tautology:*`). After classifying, scan `failures[]` for
+   `wiring_not_on_path:*` and set `route_target="design"` — the **first live activation** of the
+   dormant carrier that #1583 retained. The gate-aggregator rolls this up to `verdict=route_design`,
+   and `simple.yaml`'s `route_back` clause rewinds to `design_verify_cycle`.
+
+3. **`config/event-schema.json`** — registers `acceptance.gate.wiring_not_on_path`.
+
+**Why recoverable, not terminal?** `wiring_not_on_path` is design-rooted (only the design stage can
+correct the WIRING declaration), but it must be `recoverable` for the route_back to fire: a `terminal`
+disposition halts the `build_test_cycle` with `member_terminal_failure` (rc=8) BEFORE the
+gate-aggregator can read `route_target` and emit `route_design`. `recoverable` lets the aggregator
+run, read `route_target=design`, and produce `verdict=route_design` — which the cycle runner's
+`route_back` guard matches, rewinding to `design_verify_cycle`. The cycle budget (`max_iterations`)
+bounds the rewind depth.
+
+**Known gap — the #1664 shape is NOT covered (#1711).** This amendment separates *"the target is not
+part of this change"* from *"the target is part of this change but untested"*. It does **not** separate
+*"untested but testable"* from *"untestable"*. #1664 (run `20260801225808-15285`) is the latter: a
+policy ADR + CI-config change declared `WIRING: .github/workflows/test.yml`, which **was** in PR
+#1680's diff (`+9/-2`), so it lands on `inert_wiring` — build-fixable — even though no shell testfile
+can load workflow YAML. Build's only lever was to make the declaration true, and it wrote a static
+grep of the YAML, which the issue had explicitly forbidden.
+
+No static predicate separates those two cases. A bash file no test happens to reference yet (build
+should write the assertion) and a YAML file no test can ever load (design should declare
+`WIRING: none`) are structurally identical to any inspection of the repository; the only difference
+is whether the test runner can load the file as code, and encoding that in the engine is exactly the
+target knowledge ADR-049 forbids. Nor can it be settled at design time, when build has not yet
+written the assertions.
+
+Separating them requires a second measurement rather than a better guess: let `inert_wiring` stand on
+first occurrence so build gets a real attempt, and escalate the same still-inert target to
+`route_target=design` on a later iteration. Tracked in #1711 as the general case — a stage handed a
+problem it cannot solve needs an escalation path, not a workaround.

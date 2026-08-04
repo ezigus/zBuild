@@ -316,5 +316,47 @@ assert_contains "S10b: names the offending SPEC" "$FAILURES_10B" "SPEC-1"
 assert_eq "S10b: unfulfilled promise is recoverable (cycle re-iterates)" \
     "recoverable" "$(jq -r .disposition <<<"$RESULT")"
 
+# ── S15 (#1686): WIRING target not in this commit's diff → wiring_not_on_path ───
+# A WIRING file declared in design.md that this commit never touched cannot flip
+# when reverted. The gate must emit verdict=fail, disposition=recoverable and
+# route_target=design, so the aggregator fires route_design and route_back rewinds
+# to design_verify_cycle — the first live activation of the dormant carrier.
+#
+# NOT the #1664 shape: PR #1680 DID change .github/workflows/test.yml (+9/-2), so
+# that target was in the diff and still lands on inert_wiring. See #1711.
+REPO15="$(setup_git_temp_repo gate-nopath)"
+(
+    cd "$REPO15"
+    "$GIT" checkout -q -b feature
+    mkdir -p scripts tests
+    printf '#!/usr/bin/env bash\nmy_script() { return 0; }\n' > scripts/helper.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] change: helper is present\n[[ -f "$(dirname "$0")/../scripts/helper.sh" ]] || exit 1\nsource "$(dirname "$0")/../scripts/helper.sh"; my_script\n' \
+        > tests/helper-test.sh
+    chmod +x scripts/helper.sh tests/helper-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: add helper (workflow file never touched)"
+) >/dev/null 2>&1
+cat > "$REPO15/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: helper is present
+WIRING:
+.github/workflows/test.yml
+TESTFILES:
+tests/helper-test.sh
+```
+EOF
+set +e; _run_gate "$REPO15"; set -e
+RC15="$RC"; RESULT15="$RESULT"; EVENTS15="$EVENTS"
+
+assert_eq "[SPEC-3] S15: wiring_not_on_path → rc=1" "1" "$RC15"
+assert_eq "[SPEC-3] S15: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT15")"
+assert_eq "[SPEC-3] S15: disposition=recoverable (design-rewind, not terminal halt)" \
+    "recoverable" "$(jq -r .disposition <<<"$RESULT15")"
+assert_eq "[SPEC-3] S15: route_target=design (first live activation of dormant carrier)" \
+    "design" "$(jq -r '.route_target // ""' <<<"$RESULT15")"
+assert_contains "[SPEC-3] S15: failures[] contains wiring_not_on_path" \
+    "$(jq -rc .failures <<<"$RESULT15")" "wiring_not_on_path"
+assert_event_emitted "[SPEC-3] S15: wiring_not_on_path event emitted" \
+    "$EVENTS15" "acceptance.gate.wiring_not_on_path"
+
 cleanup_test_env
 print_test_results
