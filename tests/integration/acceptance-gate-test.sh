@@ -570,7 +570,7 @@ else
     assert_pass "[SPEC-1] S17: skipped (no 'timeout' binary available)"
 fi
 
-# ── S18 [SPEC-1]: no_impl_delta path emits per-SPEC SKIP with enrichment ─────────
+# ── S18 [SPEC-2]: no_impl_delta path emits per-SPEC SKIP with enrichment ─────────
 # When merge-base == HEAD the gate previously emitted a single bare SKIP line.
 # Now it emits one NEGCTL SKIP SPEC-n no_impl_delta per declared SPEC, which the
 # enrichment regex already matches — giving the operator the design/asserts pair.
@@ -591,11 +591,41 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate_with_summary "$REPO18"; set -e
-assert_eq "[SPEC-1] S18: no_impl_delta gate → rc=0" "0" "$RC"
-assert_contains "[SPEC-1] S18: summary contains per-SPEC SKIP line" \
+assert_eq "[SPEC-2] S18: no_impl_delta gate → rc=0" "0" "$RC"
+assert_contains "[SPEC-2] S18: summary contains per-SPEC SKIP line" \
     "$SUMMARY" "NEGCTL SKIP SPEC-1 no_impl_delta"
-assert_contains "[SPEC-1] S18: SKIP line carries design enrichment" \
+assert_contains "[SPEC-2] S18: SKIP line carries design enrichment" \
     "$SUMMARY" "design : feature is implemented"
+
+# ── S19 [SPEC-3]: no_prod_delta path emits per-SPEC SKIP with enrichment ─────────
+# The no_prod_delta twin of S18. NC-K/NC-K2 prove the emitter's per-SPEC lines,
+# but the acceptance criterion is about what the GATE SUMMARY renders — that the
+# lines survive the plugin's enrichment pass — and only an end-to-end run shows it.
+REPO19="$(setup_git_temp_repo gate-no-prod-delta)"
+(
+    cd "$REPO19"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\n# [SPEC-1] test hygiene only\nexit 0\n' \
+        > tests/hygiene-test.sh
+    chmod +x tests/hygiene-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "test: test-only diff"
+)
+cat > "$REPO19/design.md" <<'EOF'
+```acceptance
+SPEC-1: test hygiene only
+TESTFILES:
+tests/hygiene-test.sh
+```
+EOF
+set +e; _run_gate_with_summary "$REPO19"; set -e
+assert_eq "[SPEC-3] S19: no_prod_delta gate → rc=0" "0" "$RC"
+assert_contains "[SPEC-3] S19: summary contains per-SPEC SKIP line" \
+    "$SUMMARY" "NEGCTL SKIP SPEC-1 no_prod_delta"
+assert_contains "[SPEC-3] S19: SKIP line carries design enrichment" \
+    "$SUMMARY" "design : test hygiene only"
+assert_contains "[SPEC-3] S19: SKIP line carries assertion label" \
+    "$SUMMARY" "asserts: # [SPEC-1] test hygiene only"
 
 cleanup_test_env
 print_test_results

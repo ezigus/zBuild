@@ -86,7 +86,8 @@ never passes is rejected (`not_passing_at_head`). Granularity is per-TESTFILE;
 author one SPEC per assertion for precise attribution.
 
 When the merge-base equals HEAD (no implementation delta) the control is
-skipped, not failed (`NEGCTL SKIP no_impl_delta`).
+skipped, not failed (`NEGCTL SKIP <spec_id> no_impl_delta`, one line per declared
+SPEC — see the #1715 amendment).
 
 ### 4. Composability — declarative preconditions, no-op when unmet
 
@@ -558,6 +559,42 @@ negctl diagnosis and let build re-author the assertion (build has owned assertio
 #1477). Terminal would strand it — there is no `route_target` for this class, so the run could only
 die at `max_iterations`.
 
-**Backward compatibility.** The `NEGCTL SKIP` tokens `no_impl_delta` and `no_prod_delta` are
-unchanged. `NEGCTL SKIP guard_spec` is no longer emitted; its enrichment arm in the plugin is removed
+**Backward compatibility.** The `NEGCTL SKIP` reason tokens `no_impl_delta` and `no_prod_delta` are
+unchanged (their *line shape* changed in the #1715 amendment below, which landed after this one).
+`NEGCTL SKIP guard_spec` is no longer emitted; its enrichment arm in the plugin is removed
 with it (noted on #1715, which documents that surface).
+
+## Amendment (#1715, 2026-08-05) — whole-run skips name their SPECs; timeout lines are enriched
+
+**Problem.** #1684 gave every `NEGCTL PASS|FAIL|SKIP <spec_id>` line the design's SPEC text and the
+label of the assertion that ran. Two emission paths carried a SPEC id, or should have, and still
+rendered bare:
+
+1. `NEGCTL ERROR timeout:<spec_id>` names its SPEC inside the detail token, after a colon rather than
+   as a standalone word, so the enrichment regex never captured it. A SPEC whose negative control
+   *timed out* is the one case where the gate could form no opinion at all — and it was the one case
+   that printed nothing but an id.
+2. `NEGCTL SKIP no_impl_delta` / `no_prod_delta` were emitted once for the whole run, before the
+   per-SPEC loop, naming no SPEC. On any test-only diff the entire contract summary was one line, and
+   the roster of SPECs that went unverified was invisible.
+
+The skip reasons are legitimate; the point is not to fail them. *"We verified nothing"* and *"we
+verified nothing, and here is the list of what we did not verify"* are different operator messages,
+and only the second is actionable.
+
+**Decision.**
+
+- Whole-run skips emit one `NEGCTL SKIP <spec_id> <reason>` per declared SPEC. The reason is
+  run-wide; the roster is not. SPEC-id-first matches the convention the #1670 amendment above already
+  adopted for `guard_untested` / `guard_regressed`, so the #1684 enrichment regex matches with no new
+  branch and the classifier's existing `NEGCTL SKIP *` no-op arm is unchanged.
+- **The bare `NEGCTL SKIP <reason>` line is retained as a fallback** when the SPEC roster cannot be
+  read. Emitting nothing would turn the skip into silence, which reads identically to the check never
+  having run — a strictly worse signal than the bare line this amendment replaces.
+- Enrichment gains one arm for `^NEGCTL ERROR timeout:(SPEC-[0-9]+)`, extracting the id from the
+  detail token.
+
+Both are rendering changes: the gate `verdict` and `failures[]` are unaffected in all three cases.
+
+**Not covered.** `REACHABILITY SKIP no_impl_delta` (Level 3) still emits one bare line naming no
+WIRING target — the same defect at the other level. Tracked separately.

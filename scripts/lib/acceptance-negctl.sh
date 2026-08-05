@@ -108,6 +108,22 @@ _negctl_bound_log() {
     fi
 }
 
+# _negctl_emit_whole_run_skip <design_md> <reason> — #1715: a whole-run skip's
+# reason is run-wide but the roster of unverified SPECs is not, so emit one line
+# per declared SPEC. Falls back to the pre-#1715 bare line when the roster cannot
+# be read: emitting nothing would turn "we verified nothing, here is what" into
+# silence, which reads identically to the check never having run.
+_negctl_emit_whole_run_skip() {
+    local design_md="$1" reason="$2" spec_id emitted=0
+    while IFS= read -r spec_id; do
+        [[ -z "$spec_id" ]] && continue
+        printf 'NEGCTL SKIP %s %s\n' "$spec_id" "$reason"
+        emitted=1
+    done < <(acceptance_list_spec_ids "$design_md" || true)
+    [[ "$emitted" -eq 0 ]] && printf 'NEGCTL SKIP %s\n' "$reason"
+    return 0
+}
+
 # acceptance_negctl_check <design_md> <repo_root>
 # Prints one verdict line per SPEC-n:
 #   NEGCTL PASS <spec_id>      — ≥1 tagged testfile fails at baseline, passes at HEAD
@@ -117,8 +133,11 @@ _negctl_bound_log() {
 #   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
 #                                worktree_failed, timeout:<spec_id>,
 #                                harness:<spec_id>)
-#   NEGCTL SKIP <detail>       — no negative control possible (no_impl_delta,
-#                                no_prod_delta)
+#   NEGCTL SKIP <spec_id> <detail> — no negative control possible for that SPEC
+#                                (no_impl_delta, no_prod_delta). #1715: the
+#                                reason is run-wide but the roster is not, so
+#                                these emit once per declared SPEC.
+#   NEGCTL SKIP <detail>       — same, when the SPEC roster is unavailable
 #   NEGCTL SKIP <spec_id> guard_untested — [guard] with no tagged assertion (#1255)
 #
 # #1670 — [change] vs [guard] at the merge-base. A [change] SPEC's assertion must
@@ -139,12 +158,9 @@ acceptance_negctl_check() {
     fi
     local head_sha; head_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
     if [[ -n "$head_sha" && "$base_sha" == "$head_sha" ]]; then
-        # No commits ahead of the default branch → emit one SKIP per declared
-        # SPEC so the operator sees the full roster and enrichment applies.
-        while IFS= read -r spec_id; do
-            [[ -z "$spec_id" ]] && continue
-            printf 'NEGCTL SKIP %s no_impl_delta\n' "$spec_id"
-        done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+        # No commits ahead of the default branch → no implementation delta to
+        # control against. Skip (not a failure): cannot prove load-bearing.
+        _negctl_emit_whole_run_skip "$design_md" no_impl_delta
         return 0
     fi
 
@@ -164,10 +180,7 @@ acceptance_negctl_check() {
             fi
         done
         if [[ "$_nd_all_test" -eq 1 ]]; then
-            while IFS= read -r spec_id; do
-                [[ -z "$spec_id" ]] && continue
-                printf 'NEGCTL SKIP %s no_prod_delta\n' "$spec_id"
-            done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+            _negctl_emit_whole_run_skip "$design_md" no_prod_delta
             return 0
         fi
     fi
