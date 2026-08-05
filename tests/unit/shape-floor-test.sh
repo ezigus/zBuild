@@ -219,6 +219,35 @@ assert_eq "[SPEC-9] in-scope missing floor file → verdict=fail" \
 assert_eq "[SPEC-9] in-scope missing floor file → no route_target field" \
     "absent" "$_sf_ins_rt"
 
+# ─── SPEC-11 (GUARD): the fail EVENT names the failure the same as the artifact
+# The artifact writes `reason`; the event must not call the same value `detail`.
+# Captured by stubbing eb_emit_event (which _sf_emit dispatches to when defined)
+# rather than grepping the source — a source grep would pass on a comment.
+
+_sf_ev_capture="$TEST_TEMP_DIR/sf-events.txt"
+: > "$_sf_ev_capture"
+eb_emit_event() { printf '%s\n' "$*" >> "$_sf_ev_capture"; }
+
+_sf_art_ev="$TEST_TEMP_DIR/sf-event-artifacts"
+mkdir -p "$_sf_art_ev"
+
+set +e
+ZBUILD_DIFF_CMD="printf 'config/templates/simple.yaml\n'" \
+ZBUILD_SCHEMA_DIFF_CMD="" \
+ZBUILD_SHAPE_FLOOR_SCOPE="" \
+ZBUILD_SCOPE_ALLOWLIST="" \
+ZBUILD_REPO_ROOT="$_sr_oos" \
+ZBUILD_ARTIFACT_DIR="$_sf_art_ev" \
+    shape_floor_run "shape-floor" ""
+set -e
+unset -f eb_emit_event
+
+_sf_fail_ev="$(grep '^shape_floor.fail' "$_sf_ev_capture" 2>/dev/null || true)"
+_sf_art_reason="$(jq -r '.reason // empty' "$_sf_art_ev/shape-floor-result.json" 2>/dev/null)"
+
+assert_contains "[SPEC-11] shape_floor.fail event names the failure 'reason=', matching the artifact" \
+    "$_sf_fail_ev" "reason=$_sf_art_reason"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

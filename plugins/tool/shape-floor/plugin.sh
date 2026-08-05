@@ -71,7 +71,9 @@ shape_floor_run() {
         *"SHAPE_FLOOR FAIL"*)
             verdict="fail"
             detail="${_shape_out##*SHAPE_FLOOR FAIL }"
-            _sf_emit "shape_floor.fail" "detail=$detail"
+            # Key matches the artifact's `reason` field — an event and the artifact
+            # describing the same failure must not name it two different things.
+            _sf_emit "shape_floor.fail" "reason=$detail"
             ;;
         *)
             verdict="skip"
