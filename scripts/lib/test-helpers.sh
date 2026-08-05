@@ -302,11 +302,15 @@ setup_test_env() {
     # ORIG_HOME/ORIG_PATH/ORIG_STATE_DIR already saved at source time.
     export HOME="$TEST_TEMP_DIR/home"
     export PATH="$TEST_TEMP_DIR/bin:$PATH"
-    # Redirect state and artifact dirs so any stage-io writes land in the
-    # sandbox, not in the outer pipeline's state directory (#1713).
-    mkdir -p "$TEST_TEMP_DIR/home/.zbuild/state/artifacts"
-    export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state"
-    export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/home/.zbuild/state/artifacts"
+    # Unset ZBUILD_STATE_DIR and ZBUILD_ARTIFACT_DIR so any ambient pipeline
+    # values do not leak into this test process (#1713). stage-io falls back to
+    # ${HOME}/.zbuild/state (sandboxed above) when both are unset, landing all
+    # writes in the sandbox. We unset rather than redirect to avoid perturbing
+    # plan_context_recover_sidecar_reasoning (which uses these vars when set)
+    # and other callers that manage their own artifact paths after setup.
+    mkdir -p "$TEST_TEMP_DIR/home/.zbuild/state"
+    unset ZBUILD_STATE_DIR
+    unset ZBUILD_ARTIFACT_DIR
     export NO_GITHUB=true
     export GIT_TERMINAL_PROMPT=0
 
