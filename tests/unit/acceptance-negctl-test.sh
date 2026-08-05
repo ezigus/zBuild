@@ -253,6 +253,10 @@ assert_eq "[SPEC-3] NC-F4a: guard baseline rc=127 → NEGCTL ERROR harness:SPEC-
     "NEGCTL ERROR harness:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3d")"
 assert_eq "[SPEC-3] NC-F4a: a harness error is NOT a guard_regressed violation" \
     "" "$(grep 'guard_regressed' <<<"$OUT3d")"
+# rc=1 matches the timeout path (NC-G): the LIBRARY reports "I could not form an
+# opinion". Non-blocking is the plugin's job, via disposition=advisory (S6c) —
+# the two layers are pinned separately so neither can drift silently.
+assert_eq "[SPEC-3] NC-F4a: harness error yields rc=1, as the timeout path does" "1" "$RC3d"
 
 REPO3f="$(setup_git_temp_repo negctl-repo3f)"
 (
@@ -280,6 +284,7 @@ OUT3f="$(acceptance_negctl_check "$DM3f" "$REPO3f")"; RC3f=$?
 set -e
 assert_eq "[SPEC-3] NC-F4b: unparseable guard baseline → NEGCTL ERROR harness:SPEC-1" \
     "NEGCTL ERROR harness:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3f")"
+assert_eq "[SPEC-3] NC-F4b: harness error yields rc=1, as the timeout path does" "1" "$RC3f"
 
 # ── NC-F6: [SPEC-7] untagged [guard] SPEC → SKIP, not FAIL (#1255 contract) ──────
 # #1255 exempts [guard] SPECs from the design-gate's tag-coverage rule, so a

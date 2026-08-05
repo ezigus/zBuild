@@ -169,10 +169,9 @@ assert_eq "S6: guard SPEC with always-passing test → rc=0" "0" "$RC"
 assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── S6b: [SPEC-1][SPEC-2] guard SPEC with invariant regression → verdict=fail ────
-# A [guard]-classified SPEC whose test FAILS at baseline (invariant already broken)
-# must yield verdict=fail, guard_regressed in failures[], disposition=terminal.
-# At the merge-base (old code): guard SKIP → rc=0, verdict=pass (assertions fail).
-# At HEAD (new code): baseline check runs, fails → guard_regressed → terminal fail.
+# A [guard]-classified SPEC whose assertion FAILS at baseline must yield
+# verdict=fail with guard_regressed in failures[] and disposition=recoverable —
+# the assertion contradicts its own SPEC, and #1583 routes that to build.
 REPO6b="$(_build_repo gate-guard-regressed '#!/usr/bin/env bash
 # [SPEC-1] guard: invariant broken (exits 1 to simulate regression at baseline)
 exit 1')"
@@ -195,6 +194,31 @@ assert_eq "[SPEC-2] S6b: guard_regressed disposition=recoverable (build re-autho
     "recoverable" "$(jq -r .disposition <<<"$RESULT")"
 assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic failure" \
     "$(jq -r .reason <<<"$RESULT")" "mislabelled"
+
+# ── S6c: [SPEC-3] guard whose baseline run ERRORS → advisory, does not block ────
+# #1670's third criterion: a guard test that cannot RUN at the merge-base proves
+# nothing about the invariant, so it must warn rather than block. The unit tests
+# pin the emitted token; this pins the consequence that actually matters — the
+# gate declares disposition=advisory, which gate-aggregator demotes from a
+# blocking fail to a satisfied member (plugin.sh:195,243).
+REPO6c="$(_build_repo gate-guard-harness '#!/usr/bin/env bash
+set -euo pipefail
+# [SPEC-1] guard: invariant
+helper_added_by_this_change')"
+cat > "$REPO6c/design.md" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate "$REPO6c"; set -e
+assert_contains "[SPEC-3] S6c: an unrunnable guard baseline is an infra class, not a violation" \
+    "$(jq -rc .failures <<<"$RESULT")" "negctl_error:harness"
+assert_eq "[SPEC-3] S6c: guard harness error does NOT become guard_regressed" \
+    "false" "$(jq -r '[.failures[]|test("guard_regressed")]|any' <<<"$RESULT")"
+assert_eq "[SPEC-3] S6c: disposition=advisory (warns, does not block the cycle)" \
+    "advisory" "$(jq -r .disposition <<<"$RESULT")"
 
 # ── S7: change SPEC with tautological test still caught ───────────────────────
 # A [change]-classified SPEC with a tautological test must still fail (negctl
