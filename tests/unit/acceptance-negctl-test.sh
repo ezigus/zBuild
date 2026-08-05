@@ -114,8 +114,9 @@ REPO2="$(setup_git_temp_repo negctl-repo2)"
 DM2="$REPO2/design.md"
 printf '```acceptance\nSPEC-1: x\nTESTFILES:\ntests/x-test.sh\n```\n' > "$DM2"
 set +e; OUT2="$(acceptance_negctl_check "$DM2" "$REPO2")"; RC2=$?; set -e
-assert_eq "NC-E: merge-base==HEAD → SKIP no_impl_delta" "NEGCTL SKIP no_impl_delta" "$OUT2"
-assert_eq "NC-E: skip is not a failure (rc=0)" "0" "$RC2"
+assert_eq "[SPEC-2] NC-E: merge-base==HEAD → per-SPEC SKIP no_impl_delta" \
+    "NEGCTL SKIP SPEC-1 no_impl_delta" "$(grep 'SPEC-1' <<<"$OUT2")"
+assert_eq "[SPEC-2] NC-E: skip is not a failure (rc=0)" "0" "$RC2"
 
 # ── NC-F: [SPEC-1][SPEC-4] guard-classified SPEC passing at baseline → NEGCTL PASS ─
 # Build a repo with a guard SPEC whose test always passes at baseline.
@@ -535,9 +536,62 @@ tests/nc-k-test.sh
 ```
 EOF
 set +e; OUT_K="$(acceptance_negctl_check "$DM_K" "$REPO_K")"; RC_K=$?; set -e
-assert_eq "[SPEC-1] test-only diff → NEGCTL SKIP no_prod_delta" \
-    "NEGCTL SKIP no_prod_delta" "$OUT_K"
-assert_eq "[SPEC-2] test-only diff skip yields rc=0" "0" "$RC_K"
+assert_eq "[SPEC-3] test-only diff → NEGCTL SKIP SPEC-1 no_prod_delta" \
+    "NEGCTL SKIP SPEC-1 no_prod_delta" "$(grep 'SPEC-1' <<<"$OUT_K")"
+assert_eq "[SPEC-3] test-only diff skip yields rc=0" "0" "$RC_K"
+
+# ── NC-K2: [SPEC-3] multi-SPEC test-only diff → one SKIP line per declared SPEC ──
+REPO_K2="$(setup_git_temp_repo negctl-repo-k2)"
+(
+    cd "$REPO_K2"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    cat > tests/nc-k2a-test.sh <<'EOF'
+#!/usr/bin/env bash
+# [SPEC-1] test-only spec one
+exit 0
+EOF
+    cat > tests/nc-k2b-test.sh <<'EOF'
+#!/usr/bin/env bash
+# [SPEC-2] test-only spec two
+exit 0
+EOF
+    chmod +x tests/nc-k2a-test.sh tests/nc-k2b-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: test-only two-SPEC change"
+)
+DM_K2="$REPO_K2/design.md"
+cat > "$DM_K2" <<'EOF'
+```acceptance
+SPEC-1: test-only spec one
+SPEC-2: test-only spec two
+TESTFILES:
+tests/nc-k2a-test.sh
+tests/nc-k2b-test.sh
+```
+EOF
+set +e; OUT_K2="$(acceptance_negctl_check "$DM_K2" "$REPO_K2")"; RC_K2=$?; set -e
+# `grep -c` prints 0 AND exits 1 on no-match, so `|| echo 0` would emit "0\n0"
+# and make the mismatch message unreadable on the failure this asserts.
+assert_eq "[SPEC-3] NC-K2: two-SPEC no_prod_delta → exactly two SKIP lines" \
+    "2" "$(grep -c 'NEGCTL SKIP' <<<"$OUT_K2" || true)"
+assert_eq "[SPEC-3] NC-K2: SPEC-1 SKIP line present" \
+    "NEGCTL SKIP SPEC-1 no_prod_delta" "$(grep 'SPEC-1' <<<"$OUT_K2")"
+assert_eq "[SPEC-3] NC-K2: SPEC-2 SKIP line present" \
+    "NEGCTL SKIP SPEC-2 no_prod_delta" "$(grep 'SPEC-2' <<<"$OUT_K2")"
+assert_eq "[SPEC-3] NC-K2: rc=0 (no_prod_delta is not a failure)" "0" "$RC_K2"
+
+# ── NC-K3: [SPEC-2] unreadable SPEC roster still emits a whole-run SKIP line ─────
+# Per-SPEC emission must not be able to turn "we verified nothing, and here is
+# the roster" into silence — an empty section reads identically to the check
+# never having run. With no design.md the roster is unavailable, so the
+# pre-#1715 bare line is the required fallback, not zero lines.
+REPO_K3="$(setup_git_temp_repo negctl-repo-k3)"
+set +e
+OUT_K3="$(acceptance_negctl_check "$REPO_K3/nonexistent-design.md" "$REPO_K3")"; RC_K3=$?
+set -e
+assert_eq "[SPEC-2] NC-K3: unreadable roster → bare no_impl_delta fallback line" \
+    "NEGCTL SKIP no_impl_delta" "$OUT_K3"
+assert_eq "[SPEC-2] NC-K3: fallback is not a failure (rc=0)" "0" "$RC_K3"
 
 # ── NC-L: [SPEC-3] mixed diff (test + prod file) → full negctl runs, no skip ─────
 # When at least one changed path is outside tests/, no_prod_delta must NOT fire.
