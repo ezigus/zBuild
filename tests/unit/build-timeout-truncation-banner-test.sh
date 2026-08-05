@@ -94,16 +94,21 @@ while [[ \$# -gt 0 ]]; do
     esac
 done
 printf '%s' "\$prompt_text" > "$PROMPT_DIR_A/call-\${n}.prompt"
-# Call 1: exit 124 (timeout), no JSON output.
+# Call 1: leave a PARTIAL edit in the tree, then exit 124 (timeout), no JSON
+#   output. The partial edit is the whole point of #1685 — it makes prev_diff
+#   non-empty so iter-2 takes the cumulative-diff prompt branch, which is the
+#   shape the real failure had. Without it the test only ever exercises the
+#   empty-diff branch.
 # Call 2: emit LOOP_COMPLETE.
 if [[ "\$n" -eq 1 ]]; then
+    printf 'partial edit written before the turn was cut off\n' >> "$REPO/seed.txt"
     exit 124
 fi
 jq -n --arg r \$'done\nLOOP_COMPLETE' \
     '{type:"result",result:\$r,usage:{input_tokens:5,output_tokens:3}}'
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
-export PATH="$TEST_TEMP_DIR/bin:$PATH"
+# No PATH export here: setup_test_env already prepends $TEST_TEMP_DIR/bin.
 
 DRIVER_A="$TEST_TEMP_DIR/driver-a.sh"
 cat > "$DRIVER_A" <<EOF
@@ -152,6 +157,69 @@ else
     assert_pass "[SPEC-1] scenario-A: iter-1 prompt correctly has no banner"
 fi
 
+# The truncated turn left a partial edit, so iter-2 must take the CUMULATIVE-DIFF
+# prompt branch — the shape #1685 actually failed on — and carry the banner
+# there, not only in the empty-diff branch.
+if [[ "$iter2_prompt_a" == *"Cumulative diff so far"* \
+   && "$iter2_prompt_a" == *"partial edit written before the turn was cut off"* ]]; then
+    assert_pass "[SPEC-1] scenario-A: iter-2 carries the banner on the cumulative-diff branch (partial edit present)"
+else
+    assert_fail "[SPEC-1] scenario-A: iter-2 carries the banner on the cumulative-diff branch (partial edit present)" \
+        "prompt_tail=$(printf '%s' "$iter2_prompt_a" | tail -c 300)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scenario C: iter-1 times out (rc=124), iter-2 fails with a NON-timeout rc.
+# iter-3 must NOT carry the banner — the flag tracks the IMMEDIATELY preceding
+# iteration, so a rc=1 predecessor must clear it. Untagged (not a declared SPEC):
+# this guards the flag's reset path, which is invisible to SPEC-1 and SPEC-2.
+# ─────────────────────────────────────────────────────────────────────────────
+PROMPT_DIR_C="$TEST_TEMP_DIR/prompts-c"
+COUNTER_C="$TEST_TEMP_DIR/counter-c"
+mkdir -p "$PROMPT_DIR_C"
+: > "$COUNTER_C"
+
+cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
+#!/usr/bin/env bash
+n=\$(( \$(wc -l < "$COUNTER_C" 2>/dev/null | tr -d ' ') + 1 ))
+printf 'x\n' >> "$COUNTER_C"
+prompt_text=""
+while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+        -p) prompt_text="\${2:-}"; shift 2 ;;
+        *)  shift ;;
+    esac
+done
+printf '%s' "\$prompt_text" > "$PROMPT_DIR_C/call-\${n}.prompt"
+# Call 1: timeout. Call 2: non-timeout failure. Call 3: LOOP_COMPLETE.
+if [[ "\$n" -eq 1 ]]; then exit 124; fi
+if [[ "\$n" -eq 2 ]]; then exit 1; fi
+jq -n --arg r \$'done\nLOOP_COMPLETE' \
+    '{type:"result",result:\$r,usage:{input_tokens:5,output_tokens:3}}'
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+sed "s|$COUNTER_A|$COUNTER_C|g" "$DRIVER_A" > "$TEST_TEMP_DIR/driver-c.sh"
+bash "$TEST_TEMP_DIR/driver-c.sh" >/dev/null 2>/dev/null || true
+
+call_count_c="$(wc -l < "$COUNTER_C" | tr -d ' ')"
+assert_eq "scenario-C: mock claude invoked three times (124 → 1 → complete)" "3" "$call_count_c"
+
+iter2_prompt_c="$(cat "$PROMPT_DIR_C/call-2.prompt" 2>/dev/null || true)"
+if [[ "$iter2_prompt_c" == *"prior iteration timed out"* ]]; then
+    assert_pass "scenario-C: iter-2 carries the banner (its predecessor DID time out)"
+else
+    assert_fail "scenario-C: iter-2 carries the banner (its predecessor DID time out)" \
+        "prompt_head=$(printf '%s' "$iter2_prompt_c" | head -c 300)"
+fi
+
+iter3_prompt_c="$(cat "$PROMPT_DIR_C/call-3.prompt" 2>/dev/null || true)"
+if [[ "$iter3_prompt_c" == *"prior iteration timed out"* ]]; then
+    assert_fail "scenario-C: iter-3 must NOT carry the banner (its predecessor failed rc=1, not rc=124)" \
+        "prompt_head=$(printf '%s' "$iter3_prompt_c" | head -c 300)"
+else
+    assert_pass "scenario-C: iter-3 must NOT carry the banner (its predecessor failed rc=1, not rc=124)"
+fi
 
 cleanup_test_env
 print_test_results

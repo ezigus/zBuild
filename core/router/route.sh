@@ -1216,10 +1216,16 @@ route_to_model_loop() {
 "
         fi
         if [[ -z "$prev_diff" ]]; then
+            # The stock parenthetical asserts "this is the first iteration",
+            # which is false — and contradicts the banner — when a timed-out
+            # predecessor committed nothing.
+            local _no_diff_note="(No prior changes — this is the first iteration.)"
+            [[ -n "$_timeout_warn" ]] && \
+                _no_diff_note="(The tree is unchanged — the timed-out iteration committed nothing.)"
             iter_prompt="$static_prompt
 
 ## Iteration ${iter}/${max_iterations}${_timeout_warn}
-(No prior changes — this is the first iteration.)"
+${_no_diff_note}"
         else
             iter_prompt="$static_prompt
 
@@ -1615,6 +1621,11 @@ ${_diff_pointer}"
                     --metadata "error=true" \
                     >/dev/null 2>&1 || true
             fi
+            # Tracks the IMMEDIATELY preceding iteration only: clear on every
+            # error path first, so a rc=124 followed by a rc=1 does not leave
+            # the next iteration reading a banner about a timeout that was not
+            # its predecessor.
+            prev_iter_timed_out=false
             if [[ $rc -eq 124 ]]; then
                 prev_iter_timed_out=true
                 timeout_recur=$(( timeout_recur + 1 ))
