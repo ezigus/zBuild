@@ -70,6 +70,10 @@ FAILURES=()
 # Save originals now so cleanup_test_env() can always restore them.
 ORIG_HOME="${HOME}"
 ORIG_PATH="${PATH}"
+# Sandbox ZBUILD_STATE_DIR and ZBUILD_ARTIFACT_DIR so stage-io writes during
+# tests never escape to the outer pipeline's state directory (#1713).
+ORIG_STATE_DIR="${ZBUILD_STATE_DIR:-}"
+ORIG_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-}"
 # Track the auto-created temp dir separately so cleanup always removes it,
 # even if individual tests later reassign TEST_TEMP_DIR in their own setup_env.
 AUTO_TEST_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/zb-test-auto.XXXXXX")
@@ -295,9 +299,14 @@ setup_test_env() {
     mkdir -p "$TEST_TEMP_DIR/project"
     mkdir -p "$TEST_TEMP_DIR/logs"
 
-    # ORIG_HOME/ORIG_PATH already saved at source time
+    # ORIG_HOME/ORIG_PATH/ORIG_STATE_DIR already saved at source time.
     export HOME="$TEST_TEMP_DIR/home"
     export PATH="$TEST_TEMP_DIR/bin:$PATH"
+    # Redirect state and artifact dirs so any stage-io writes land in the
+    # sandbox, not in the outer pipeline's state directory (#1713).
+    mkdir -p "$TEST_TEMP_DIR/home/.zbuild/state/artifacts"
+    export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state"
+    export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/home/.zbuild/state/artifacts"
     export NO_GITHUB=true
     export GIT_TERMINAL_PROMPT=0
 
@@ -337,6 +346,18 @@ cleanup_test_env() {
     fi
     [[ -n "${ORIG_HOME:-}" ]] && export HOME="$ORIG_HOME" || true
     [[ -n "${ORIG_PATH:-}" ]] && export PATH="$ORIG_PATH" || true
+    # Restore ZBUILD_STATE_DIR and ZBUILD_ARTIFACT_DIR to pre-setup values
+    # (or unset them if they were not set before this test sourced the helpers).
+    if [[ -n "${ORIG_STATE_DIR:-}" ]]; then
+        export ZBUILD_STATE_DIR="$ORIG_STATE_DIR"
+    else
+        unset ZBUILD_STATE_DIR
+    fi
+    if [[ -n "${ORIG_ARTIFACT_DIR:-}" ]]; then
+        export ZBUILD_ARTIFACT_DIR="$ORIG_ARTIFACT_DIR"
+    else
+        unset ZBUILD_ARTIFACT_DIR
+    fi
 }
 
 # ─── Mock Helpers ────────────────────────────────────────────────────────────
