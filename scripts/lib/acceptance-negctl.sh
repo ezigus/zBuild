@@ -139,9 +139,12 @@ acceptance_negctl_check() {
     fi
     local head_sha; head_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
     if [[ -n "$head_sha" && "$base_sha" == "$head_sha" ]]; then
-        # No commits ahead of the default branch → no implementation delta to
-        # control against. Skip (not a failure): cannot prove load-bearing.
-        printf 'NEGCTL SKIP no_impl_delta\n'
+        # No commits ahead of the default branch → emit one SKIP per declared
+        # SPEC so the operator sees the full roster and enrichment applies.
+        while IFS= read -r spec_id; do
+            [[ -z "$spec_id" ]] && continue
+            printf 'NEGCTL SKIP %s no_impl_delta\n' "$spec_id"
+        done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
         return 0
     fi
 
@@ -161,7 +164,10 @@ acceptance_negctl_check() {
             fi
         done
         if [[ "$_nd_all_test" -eq 1 ]]; then
-            printf 'NEGCTL SKIP no_prod_delta\n'
+            while IFS= read -r spec_id; do
+                [[ -z "$spec_id" ]] && continue
+                printf 'NEGCTL SKIP %s no_prod_delta\n' "$spec_id"
+            done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
             return 0
         fi
     fi

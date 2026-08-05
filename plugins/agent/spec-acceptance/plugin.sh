@@ -313,6 +313,10 @@ acceptance_gate_run() {
             local _e_enriched="$line" _e_eid=""
             if [[ "$line" =~ ^NEGCTL\ (PASS|FAIL|SKIP)\ (SPEC-[0-9]+) ]]; then
                 _e_eid="${BASH_REMATCH[2]}"
+            # #1715: the SPEC id rides in the detail token after the colon, not
+            # as a standalone word, so the leading regex cannot capture it.
+            elif [[ "$line" =~ ^NEGCTL\ ERROR\ timeout:(SPEC-[0-9]+) ]]; then
+                _e_eid="${BASH_REMATCH[1]}"
             fi
             if [[ -n "$_e_eid" ]]; then
                 local _e_desc _e_label _e_tf_line

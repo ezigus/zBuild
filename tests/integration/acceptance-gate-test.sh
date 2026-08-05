@@ -541,5 +541,61 @@ assert_contains "[SPEC-3] S16d: FAIL line carries the design text" \
 assert_contains "[SPEC-3] S16d: FAIL line carries the asserted label" \
     "$SUMMARY" "asserts: # [SPEC-1] always true"
 
+# ── S17 [SPEC-1]: NEGCTL ERROR timeout line is enriched with desc and label ───────
+# A test that times out previously appeared as a bare ERROR line with no pairing.
+# After this change the operator sees the design description and assertion label
+# below it — the same enrichment PASS/FAIL/SKIP lines already carry.
+if command -v timeout >/dev/null 2>&1; then
+    REPO17="$(_build_repo gate-timeout-enrich '#!/usr/bin/env bash
+# [SPEC-1] slow feature that times out
+sleep 30')"
+    cat > "$REPO17/design.md" <<'EOF'
+```acceptance
+SPEC-1: slow feature that times out
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+    export ZBUILD_NEGCTL_TIMEOUT=1
+    set +e; _run_gate_with_summary "$REPO17"; set -e
+    unset ZBUILD_NEGCTL_TIMEOUT
+    assert_eq "[SPEC-1] S17: timeout → rc=1" "1" "$RC"
+    assert_contains "[SPEC-1] S17: summary contains ERROR timeout line" \
+        "$SUMMARY" "NEGCTL ERROR timeout:SPEC-1"
+    assert_contains "[SPEC-1] S17: timeout line carries design enrichment" \
+        "$SUMMARY" "design : slow feature that times out"
+    assert_contains "[SPEC-1] S17: timeout line carries assertion label" \
+        "$SUMMARY" "asserts: # [SPEC-1] slow feature that times out"
+else
+    assert_pass "[SPEC-1] S17: skipped (no 'timeout' binary available)"
+fi
+
+# ── S18 [SPEC-1]: no_impl_delta path emits per-SPEC SKIP with enrichment ─────────
+# When merge-base == HEAD the gate previously emitted a single bare SKIP line.
+# Now it emits one NEGCTL SKIP SPEC-n no_impl_delta per declared SPEC, which the
+# enrichment regex already matches — giving the operator the design/asserts pair.
+REPO18="$(setup_git_temp_repo gate-no-impl-delta)"
+(
+    cd "$REPO18"
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\n# [SPEC-1] feature is implemented\nexit 0\n' \
+        > tests/feature-test.sh
+    chmod +x tests/feature-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "on main (no impl delta)"
+)
+cat > "$REPO18/design.md" <<'EOF'
+```acceptance
+SPEC-1: feature is implemented
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate_with_summary "$REPO18"; set -e
+assert_eq "[SPEC-1] S18: no_impl_delta gate → rc=0" "0" "$RC"
+assert_contains "[SPEC-1] S18: summary contains per-SPEC SKIP line" \
+    "$SUMMARY" "NEGCTL SKIP SPEC-1 no_impl_delta"
+assert_contains "[SPEC-1] S18: SKIP line carries design enrichment" \
+    "$SUMMARY" "design : feature is implemented"
+
 cleanup_test_env
 print_test_results
