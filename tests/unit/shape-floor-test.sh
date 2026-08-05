@@ -245,6 +245,12 @@ unset -f eb_emit_event
 _sf_fail_ev="$(grep '^shape_floor.fail' "$_sf_ev_capture" 2>/dev/null || true)"
 _sf_art_reason="$(jq -r '.reason // empty' "$_sf_art_ev/shape-floor-result.json" 2>/dev/null)"
 
+# Pin the interpolated value first: an empty _sf_art_reason would silently reduce
+# the assertion below to "the line contains 'reason='", which a value mismatch
+# would then pass. The guard must not be able to weaken into a tautology.
+assert_eq "[SPEC-11] artifact carries a non-empty reason (pins the comparison below)" \
+    "missing_floor_files" "$_sf_art_reason"
+
 assert_contains "[SPEC-11] shape_floor.fail event names the failure 'reason=', matching the artifact" \
     "$_sf_fail_ev" "reason=$_sf_art_reason"
 
