@@ -40,6 +40,23 @@ source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh"
 # -k kill-after SIGKILL lands or an external OOM kill reaches the child (128+9).
 _negctl_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 137 || "$1" -eq 143 ]]; }
 
+# #1670: rc classes meaning "the runner could not execute the file" rather than
+# "an assertion failed" — 126 (found, not executable) and 127 (command not
+# found). These are POSIX shell conventions, so the discrimination holds for any
+# {files} runner configured via ZBUILD_ACCEPTANCE_RUN_CMD (#1478), not just bash.
+_negctl_is_harness_rc() { [[ "$1" -eq 126 || "$1" -eq 127 ]]; }
+
+# #1670: a baseline copy that does not PARSE never reached an assertion, so its
+# non-zero rc says nothing about the invariant. Only the default bash runner can
+# be parse-checked; a custom ZBUILD_ACCEPTANCE_RUN_CMD reports "parses" so its
+# behaviour is unchanged.
+_negctl_baseline_parses() {
+    local f="$1"
+    [[ -n "${ZBUILD_ACCEPTANCE_RUN_CMD:-}" ]] && return 0
+    [[ -f "$f" ]] || return 1
+    bash -n "$f" 2>/dev/null
+}
+
 # _negctl_run <testfile_abs> <cwd> [logfile]  → echoes nothing, returns the rc.
 # Runs with ZBUILD_TEST_QUIET unset (so labeled output is produced) under an
 # optional timeout (ZBUILD_NEGCTL_TIMEOUT, default 60s). When <logfile> is given
@@ -94,11 +111,21 @@ _negctl_bound_log() {
 # acceptance_negctl_check <design_md> <repo_root>
 # Prints one verdict line per SPEC-n:
 #   NEGCTL PASS <spec_id>      — ≥1 tagged testfile fails at baseline, passes at HEAD
-#   NEGCTL FAIL <spec_id> <reason>   reason ∈ {tautology, not_passing_at_head, no_testfile}
+#   NEGCTL PASS <spec_id> guard_spec — [guard]: the invariant holds at baseline
+#   NEGCTL FAIL <spec_id> <reason>   reason ∈ {tautology, not_passing_at_head,
+#                                no_testfile, guard_regressed}
 #   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
-#                                worktree_failed, timeout:<spec_id>)
+#                                worktree_failed, timeout:<spec_id>,
+#                                harness:<spec_id>)
 #   NEGCTL SKIP <detail>       — no negative control possible (no_impl_delta,
 #                                no_prod_delta)
+#   NEGCTL SKIP <spec_id> guard_untested — [guard] with no tagged assertion (#1255)
+#
+# #1670 — [change] vs [guard] at the merge-base. A [change] SPEC's assertion must
+# FAIL there (it describes behaviour that does not exist yet); a [guard] SPEC's
+# must PASS there (an invariant holds at the baseline by definition). A guard
+# assertion that fails at baseline is therefore not a guard: it is a mislabelled
+# [change], or an assertion inverted relative to its own SPEC text.
 # Returns 0 when every SPEC-n passes (or is legitimately skipped), 1 otherwise.
 acceptance_negctl_check() {
     local design_md="${1:-}" repo_root="${2:-}"
@@ -165,9 +192,68 @@ acceptance_negctl_check() {
     local spec_id rc=0
     while IFS= read -r spec_id; do
         [[ -z "$spec_id" ]] && continue
-        # Guard SPECs are invariants, not expected to fail at baseline; skip negctl.
+        # Guard SPECs are invariants: run only the baseline check.
+        # rc=0 at baseline → invariant holds (PASS); rc≠0 → already regressed (FAIL).
         if acceptance_spec_is_guard "$design_md" "$spec_id"; then
-            printf 'NEGCTL SKIP guard_spec %s\n' "$spec_id"
+            local _g_logfile=""
+            if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
+                mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
+                _g_logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-${spec_id}.log"
+                : > "$_g_logfile" 2>/dev/null || _g_logfile=""
+            fi
+            local -a _g_tfs=()
+            local _g_tf
+            if acceptance_spec_has_binding "$design_md" "$spec_id"; then
+                while IFS= read -r _g_tf; do
+                    [[ -n "$_g_tf" && -f "$repo_root/$_g_tf" ]] && _g_tfs+=("$_g_tf")
+                done < <(acceptance_list_testfiles_for_spec "$design_md" "$spec_id")
+            else
+                for _g_tf in "${testfiles[@]:-}"; do
+                    [[ -z "$_g_tf" ]] && continue
+                    grep -qF "[$spec_id]" "$repo_root/$_g_tf" 2>/dev/null || continue
+                    _g_tfs+=("$_g_tf")
+                done
+            fi
+            # #1255 exempts [guard] SPECs from the design-gate's tag-coverage
+            # rule, so an untagged guard is LEGAL input here. Failing it would
+            # deadlock the pipeline: design-gate admits the design, this gate
+            # halts the cycle, and no rewind edge exists for the class. Nothing
+            # tagged → nothing to measure → skip, exactly as before #1670.
+            if [[ ${#_g_tfs[@]} -eq 0 ]]; then
+                printf 'NEGCTL SKIP %s guard_untested\n' "$spec_id"; continue
+            fi
+            local _g_regressed=0 _g_timeout=0 _g_harness=0
+            for _g_tf in "${_g_tfs[@]}"; do
+                # A baseline run that never reached an assertion (unparseable at
+                # the merge-base, or a runner that could not execute it) proves
+                # nothing either way — warn, never block. Distinguishing this
+                # from a real assertion failure is what keeps a guard whose test
+                # depends on code this change introduces from being unlandable.
+                if ! _negctl_baseline_parses "$wt_dir/$_g_tf"; then
+                    _g_harness=1; break
+                fi
+                local _g_rc=0
+                [[ -n "$_g_logfile" ]] && printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$_g_logfile"
+                _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_logfile" || _g_rc=$?
+                if _negctl_is_timeout_rc "$_g_rc"; then
+                    _g_timeout=1; break
+                fi
+                if _negctl_is_harness_rc "$_g_rc"; then
+                    _g_harness=1; break
+                fi
+                if [[ "$_g_rc" -ne 0 ]]; then
+                    _g_regressed=1; break
+                fi
+            done
+            _negctl_bound_log "$_g_logfile"
+            # SPEC id leads every token, as on the [change] lines: the #1684
+            # summary enrichment and the plugin's generic FAIL parser both key
+            # off that position, so guard verdicts need no special-casing.
+            if   [[ "$_g_timeout"   -eq 1 ]]; then printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1
+            elif [[ "$_g_harness"   -eq 1 ]]; then printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1
+            elif [[ "$_g_regressed" -eq 1 ]]; then printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1
+            else                                    printf 'NEGCTL PASS %s guard_spec\n' "$spec_id"
+            fi
             continue
         fi
         local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0

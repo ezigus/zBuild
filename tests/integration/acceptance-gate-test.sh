@@ -150,9 +150,10 @@ set +e; _run_gate "$REPO5"; set -e
 assert_eq "S5: malformed block → rc=1 (fail closed, not skipped)" "1" "$RC"
 assert_eq "S5: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 
-# ── S6: guard SPEC with tautological test → verdict=pass (NEGCTL SKIP) ────────
-# A [guard]-classified SPEC with a test that always passes at baseline must
-# be accepted (negctl skips it) rather than rejected as tautological.
+# ── S6: guard SPEC with always-passing test → verdict=pass (NEGCTL PASS guard_spec) ─
+# A [guard]-classified SPEC with a test that passes at baseline must be accepted
+# (negctl runs the baseline check, sees pass, emits NEGCTL PASS guard_spec) and
+# not rejected as tautological (which is a [change]-SPEC rule, not a guard rule).
 REPO6="$(_build_repo gate-guard '#!/usr/bin/env bash
 # [SPEC-1] guard: invariant that must not regress
 exit 0')"
@@ -164,8 +165,36 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO6"; set -e
-assert_eq "S6: guard SPEC with tautological test → rc=0" "0" "$RC"
+assert_eq "S6: guard SPEC with always-passing test → rc=0" "0" "$RC"
 assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+
+# ── S6b: [SPEC-1][SPEC-2] guard SPEC with invariant regression → verdict=fail ────
+# A [guard]-classified SPEC whose test FAILS at baseline (invariant already broken)
+# must yield verdict=fail, guard_regressed in failures[], disposition=terminal.
+# At the merge-base (old code): guard SKIP → rc=0, verdict=pass (assertions fail).
+# At HEAD (new code): baseline check runs, fails → guard_regressed → terminal fail.
+REPO6b="$(_build_repo gate-guard-regressed '#!/usr/bin/env bash
+# [SPEC-1] guard: invariant broken (exits 1 to simulate regression at baseline)
+exit 1')"
+cat > "$REPO6b/design.md" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate "$REPO6b"; set -e
+assert_eq "[SPEC-1] S6b: guard SPEC with invariant regression → rc=1" "1" "$RC"
+assert_eq "[SPEC-1] S6b: guard regression yields verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_contains "[SPEC-2] S6b: guard_regressed in failures[]" \
+    "$(jq -rc .failures <<<"$RESULT")" "guard_regressed"
+# #1583 precedent: a wrong assertion is build-fixable, so the cycle re-iterates
+# and feeds the diagnosis to build. Terminal would strand it — no rewind edge
+# exists for this class, so the run could only die at max_iterations.
+assert_eq "[SPEC-2] S6b: guard_regressed disposition=recoverable (build re-authors the assertion)" \
+    "recoverable" "$(jq -r .disposition <<<"$RESULT")"
+assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic failure" \
+    "$(jq -r .reason <<<"$RESULT")" "mislabelled"
 
 # ── S7: change SPEC with tautological test still caught ───────────────────────
 # A [change]-classified SPEC with a tautological test must still fail (negctl

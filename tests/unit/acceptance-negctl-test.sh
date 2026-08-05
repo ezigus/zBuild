@@ -117,9 +117,9 @@ set +e; OUT2="$(acceptance_negctl_check "$DM2" "$REPO2")"; RC2=$?; set -e
 assert_eq "NC-E: merge-base==HEAD → SKIP no_impl_delta" "NEGCTL SKIP no_impl_delta" "$OUT2"
 assert_eq "NC-E: skip is not a failure (rc=0)" "0" "$RC2"
 
-# ── NC-F: guard-classified SPEC gets NEGCTL SKIP guard_spec ──────────────────
-# Build a repo with a guard SPEC whose test is tautological (always passes).
-# negctl must SKIP it (not report tautology), so overall rc=0.
+# ── NC-F: [SPEC-1][SPEC-4] guard-classified SPEC passing at baseline → NEGCTL PASS ─
+# Build a repo with a guard SPEC whose test always passes at baseline.
+# negctl must run the baseline check and emit PASS (not SKIP), rc=0.
 REPO3="$(setup_git_temp_repo negctl-repo3)"
 (
     cd "$REPO3"
@@ -144,9 +144,241 @@ EOF
 set +e
 OUT3="$(acceptance_negctl_check "$DM3" "$REPO3")"; RC3=$?
 set -e
-assert_eq "NC-F: guard SPEC → NEGCTL SKIP guard_spec" \
-    "NEGCTL SKIP guard_spec SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3")"
-assert_eq "NC-F: guard skip yields overall rc=0" "0" "$RC3"
+assert_eq "[SPEC-1] NC-F: guard SPEC passing at baseline → NEGCTL PASS guard_spec" \
+    "NEGCTL PASS SPEC-1 guard_spec" "$(grep 'SPEC-1' <<<"$OUT3")"
+assert_eq "NC-F: guard PASS yields overall rc=0" "0" "$RC3"
+assert_eq "[SPEC-4] NC-F: NEGCTL SKIP guard_spec is no longer emitted" \
+    "" "$(grep 'SKIP guard_spec' <<<"$OUT3")"
+# #1684's enrichment keys off "NEGCTL <verdict> <SPEC-n>"; the guard tokens must
+# occupy that shape or guard SPECs silently lose their design/asserts readout.
+assert_contains_regex "[SPEC-6] NC-F: guard PASS line puts the SPEC id where enrichment finds it" \
+    "$(grep 'SPEC-1' <<<"$OUT3")" '^NEGCTL (PASS|FAIL|SKIP) SPEC-[0-9]+'
+
+# ── NC-F2: [SPEC-2] guard SPEC failing at baseline → NEGCTL FAIL guard_spec regressed ─
+# When the guard invariant is already broken at the merge-base (test exits 1),
+# negctl must emit FAIL with reason=regressed and rc=1.
+REPO3b="$(setup_git_temp_repo negctl-repo3b)"
+(
+    cd "$REPO3b"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# guard fixture\n' > guard_impl.sh
+    # This guard test exits 1 — simulates an invariant already broken at baseline.
+    printf '#!/usr/bin/env bash\n# [SPEC-1] guard: invariant broken\nexit 1\n' > tests/guard-fail-test.sh
+    chmod +x tests/guard-fail-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec with broken invariant"
+)
+DM3b="$REPO3b/design.md"
+cat > "$DM3b" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/guard-fail-test.sh
+```
+EOF
+
+set +e
+OUT3b="$(acceptance_negctl_check "$DM3b" "$REPO3b")"; RC3b=$?
+set -e
+assert_eq "[SPEC-2] NC-F2: guard SPEC fails at baseline → NEGCTL FAIL guard_regressed" \
+    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3b")"
+assert_eq "[SPEC-2] NC-F2: guard FAIL guard_regressed yields rc=1" "1" "$RC3b"
+
+# ── NC-F3: [SPEC-3] guard SPEC timeout → NEGCTL ERROR timeout (advisory) ─────────
+# A timeout on the guard baseline run must be advisory (same as change-SPEC path),
+# not a false guard_regressed violation.
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+    REPO3c="$(setup_git_temp_repo negctl-repo3c)"
+    (
+        cd "$REPO3c"
+        "$GIT" checkout -q -b feature
+        mkdir -p tests
+        printf '# guard fixture\n' > guard_impl.sh
+        printf '#!/usr/bin/env bash\n# [SPEC-1] guard: slow\nsleep 30\n' > tests/guard-slow-test.sh
+        chmod +x tests/guard-slow-test.sh
+        "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec that times out"
+    )
+    DM3c="$REPO3c/design.md"
+    cat > "$DM3c" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/guard-slow-test.sh
+```
+EOF
+    set +e
+    OUT3c="$(ZBUILD_NEGCTL_TIMEOUT=1 acceptance_negctl_check "$DM3c" "$REPO3c")"; RC3c=$?
+    set -e
+    assert_eq "[SPEC-3] NC-F3: guard SPEC timeout → NEGCTL ERROR timeout:SPEC-1" \
+        "NEGCTL ERROR timeout:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3c")"
+    assert_eq "[SPEC-3] NC-F3: guard timeout is not guard_regressed" \
+        "" "$(grep 'guard_regressed' <<<"$OUT3c")"
+else
+    assert_pass "[SPEC-3] NC-F3: skipped — no timeout binary available"
+fi
+
+# ── NC-F4: [SPEC-3] guard baseline that ERRORS (never reached an assertion) ──────
+# The #1670 hazard: a guard whose test depends on something this change adds
+# cannot run at the merge-base. That rc says nothing about the invariant, so it
+# must be advisory (NEGCTL ERROR harness:) — never a guard_regressed violation,
+# which would make the guard unlandable.
+#
+# Two independent shapes, because they fail through different mechanisms:
+#   (a) the baseline copy does not PARSE  → caught by the bash -n preflight
+#   (b) the runner cannot execute it (127) → caught by the rc class
+REPO3d="$(setup_git_temp_repo negctl-repo3d)"
+(
+    cd "$REPO3d"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests scripts/lib
+    printf '# guard fixture\n' > guard_impl.sh
+    # Calls a helper this change introduces — absent at the merge-base → rc=127.
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n# [SPEC-1] guard: invariant\nhelper_added_by_this_change\n' \
+        > tests/guard-harness-test.sh
+    chmod +x tests/guard-harness-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec needing a new helper"
+)
+DM3d="$REPO3d/design.md"
+cat > "$DM3d" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/guard-harness-test.sh
+```
+EOF
+set +e
+OUT3d="$(acceptance_negctl_check "$DM3d" "$REPO3d")"; RC3d=$?
+set -e
+assert_eq "[SPEC-3] NC-F4a: guard baseline rc=127 → NEGCTL ERROR harness:SPEC-1" \
+    "NEGCTL ERROR harness:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3d")"
+assert_eq "[SPEC-3] NC-F4a: a harness error is NOT a guard_regressed violation" \
+    "" "$(grep 'guard_regressed' <<<"$OUT3d")"
+
+REPO3f="$(setup_git_temp_repo negctl-repo3f)"
+(
+    cd "$REPO3f"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# guard fixture\n' > guard_impl.sh
+    # Unparseable at baseline: the overlay copies this HEAD file into a worktree
+    # where the `fi` it depends on has no matching `if`.
+    printf '#!/usr/bin/env bash\n# [SPEC-1] guard: invariant\nif [[ 1 -eq 1 ]]; then\n  :\n' \
+        > tests/guard-syntax-test.sh
+    chmod +x tests/guard-syntax-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec that does not parse"
+)
+DM3f="$REPO3f/design.md"
+cat > "$DM3f" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/guard-syntax-test.sh
+```
+EOF
+set +e
+OUT3f="$(acceptance_negctl_check "$DM3f" "$REPO3f")"; RC3f=$?
+set -e
+assert_eq "[SPEC-3] NC-F4b: unparseable guard baseline → NEGCTL ERROR harness:SPEC-1" \
+    "NEGCTL ERROR harness:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3f")"
+
+# ── NC-F6: [SPEC-7] untagged [guard] SPEC → SKIP, not FAIL (#1255 contract) ──────
+# #1255 exempts [guard] SPECs from the design-gate's tag-coverage rule, so a
+# guard with no tagged assertion is legal input. Failing it here would deadlock:
+# design-gate admits the design and this gate halts the cycle over it.
+REPO3g="$(setup_git_temp_repo negctl-repo3g)"
+(
+    cd "$REPO3g"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# prod change\n' > guard_impl.sh
+    # Carries [SPEC-1] only — SPEC-2 (the guard) is deliberately untagged.
+    printf '#!/usr/bin/env bash\n# [SPEC-1] change: new behavior\ngrep -q "prod change" "$(git rev-parse --show-toplevel)/guard_impl.sh"\n' \
+        > tests/mixed-test.sh
+    chmod +x tests/mixed-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: change spec plus an untagged guard"
+)
+DM3g="$REPO3g/design.md"
+cat > "$DM3g" <<'EOF'
+```acceptance
+SPEC-1[change]: new behavior lands
+SPEC-2[guard]: the invariant nobody wrote an assertion for
+TESTFILES:
+tests/mixed-test.sh
+```
+EOF
+set +e
+OUT3g="$(acceptance_negctl_check "$DM3g" "$REPO3g")"; RC3g=$?
+set -e
+assert_eq "[SPEC-7] NC-F6: untagged guard SPEC → NEGCTL SKIP guard_untested" \
+    "NEGCTL SKIP SPEC-2 guard_untested" "$(grep 'SPEC-2' <<<"$OUT3g")"
+assert_eq "[SPEC-7] NC-F6: an untagged guard does not fail the gate" "0" "$RC3g"
+assert_eq "[SPEC-7] NC-F6: the [change] SPEC alongside it still gets a real control" \
+    "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3g")"
+
+# ── NC-F5: [SPEC-5] guard SPEC with per-SPEC binding → NEGCTL PASS guard_spec ────
+# When per-SPEC binding is declared for a guard SPEC, negctl must use only that
+# bound file and still run the inverted baseline check correctly.
+REPO3e="$(setup_git_temp_repo negctl-repo3e)"
+(
+    cd "$REPO3e"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# guard fixture\n' > guard_impl.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] guard: bound always passes\nexit 0\n' > tests/guard-bound-test.sh
+    chmod +x tests/guard-bound-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec with per-SPEC binding"
+)
+DM3e="$REPO3e/design.md"
+cat > "$DM3e" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+SPEC-1: tests/guard-bound-test.sh
+```
+EOF
+
+set +e
+OUT3e="$(acceptance_negctl_check "$DM3e" "$REPO3e")"; RC3e=$?
+set -e
+assert_eq "[SPEC-5] NC-F5: guard SPEC with per-SPEC binding → NEGCTL PASS guard_spec" \
+    "NEGCTL PASS SPEC-1 guard_spec" "$(grep 'SPEC-1' <<<"$OUT3e")"
+assert_eq "[SPEC-5] NC-F5: bound guard SPEC yields rc=0" "0" "$RC3e"
+
+# ── NC-F7: [SPEC-8] the #1658 shape — a guard asserting the OPPOSITE of its SPEC ──
+# The defect this whole check exists for. Design declared "cleanup WITHOUT
+# --worktrees does not reclaim worktrees"; build implemented the inverse and
+# tagged an assertion agreeing with its own implementation. The assertion is
+# true only at HEAD, so it reddens at the merge-base — which is exactly what
+# disqualifies it as a guard.
+REPO3h="$(setup_git_temp_repo negctl-repo3h)"
+(
+    cd "$REPO3h"
+    # Baseline (merge-base): worktrees are NOT part of the default set.
+    printf 'default_all="branches state stashes tmpdirs"\n' > cleanup_impl.sh
+    "$GIT" add -A; "$GIT" commit -q -m "baseline: worktrees are not reclaimable"
+    # HEAD folds worktree reclamation in — the inversion of what the SPEC claims.
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf 'default_all="branches state stashes tmpdirs worktrees"\n' > cleanup_impl.sh
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n# [SPEC-1] guard: default-all includes worktrees\ngrep -q "worktrees" "$(git rev-parse --show-toplevel)/cleanup_impl.sh"\n' \
+        > tests/inverted-guard-test.sh
+    chmod +x tests/inverted-guard-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: fold worktrees into default-all"
+)
+DM3h="$REPO3h/design.md"
+cat > "$DM3h" <<'EOF'
+```acceptance
+SPEC-1[guard]: cleanup without --worktrees does NOT reclaim worktrees
+TESTFILES:
+tests/inverted-guard-test.sh
+```
+EOF
+set +e
+OUT3h="$(acceptance_negctl_check "$DM3h" "$REPO3h")"; RC3h=$?
+set -e
+assert_eq "[SPEC-8] NC-F7: an inverted guard assertion reddens at the merge-base" \
+    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3h")"
+assert_eq "[SPEC-8] NC-F7: the inverted guard fails the gate (rc=1)" "1" "$RC3h"
 
 # ── NC-G: a test that outlives ZBUILD_NEGCTL_TIMEOUT → INFRA, not a violation ──
 # (ADR-036 #1188) A timeout on either run must classify as negctl_error:timeout,
