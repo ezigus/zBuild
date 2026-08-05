@@ -71,7 +71,9 @@ shape_floor_run() {
         *"SHAPE_FLOOR FAIL"*)
             verdict="fail"
             detail="${_shape_out##*SHAPE_FLOOR FAIL }"
-            _sf_emit "shape_floor.fail" "detail=$detail"
+            # Key matches the artifact's `reason` field — an event and the artifact
+            # describing the same failure must not name it two different things.
+            _sf_emit "shape_floor.fail" "reason=$detail"
             ;;
         *)
             verdict="skip"
@@ -80,8 +82,37 @@ shape_floor_run() {
             ;;
     esac
 
-    jq -n --arg v "$verdict" --arg d "$detail" \
-        '{"verdict":$v,"detail":$d}' | atomic_write "$result_path"
+    # Out-of-scope escalation: if every missing floor file is absent from build's scope,
+    # route back to design so scope can be expanded rather than spinning in build.
+    # Empty scope (pre-plan runs) is treated as unconstrained — no escalation.
+    local route_target=""
+    if [[ "$verdict" == "fail" ]]; then
+        local _scope="${ZBUILD_SHAPE_FLOOR_SCOPE:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
+        if [[ -n "$_scope" ]] && declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 \
+            && declare -f _sf_diff_files >/dev/null 2>&1; then
+            local _diff_files _total=0 _oos=0 _mf
+            _diff_files="$(_sf_diff_files "$repo_root")"
+            while IFS= read -r _mf; do
+                [[ -z "$_mf" ]] && continue
+                _total=$(( _total + 1 ))
+                if ! printf '%s' "$_scope" | tr ',' '\n' | grep -qxF "$_mf"; then
+                    _oos=$(( _oos + 1 ))
+                fi
+            done < <(_sf_collect_missing_floor_files "$repo_root" "$_diff_files")
+            if [[ $_total -gt 0 && $_oos -eq $_total ]]; then
+                route_target="design"
+                _sf_emit "shape_floor.oos_escalation"
+            fi
+        fi
+    fi
+
+    if [[ -n "$route_target" ]]; then
+        jq -n --arg v "$verdict" --arg r "$detail" --arg rt "$route_target" \
+            '{"verdict":$v,"reason":$r,"route_target":$rt}' | atomic_write "$result_path"
+    else
+        jq -n --arg v "$verdict" --arg r "$detail" \
+            '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"
+    fi
 
     _sf_emit "plugin.run.complete" "plugin=shape-floor" "verdict=$verdict"
     return 0
