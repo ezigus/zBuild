@@ -152,12 +152,15 @@ _sf_shape_floor() {
     fi
 
     # Append-only exemption: config/event-schema.json sole match + additive diff → SKIP.
+    # `sole match` means one distinct FILE. _matched_files accumulates one entry per
+    # (pattern, file) hit, so a file matching two globs would otherwise count twice and
+    # silently disable the exemption; dedupe before counting.
     local _mf _matched_count=0 _schema_matched=0
     while IFS= read -r _mf; do
         [[ -z "$_mf" ]] && continue
         _matched_count=$(( _matched_count + 1 ))
         [[ "$_mf" == "config/event-schema.json" ]] && _schema_matched=1
-    done <<< "$_matched_files"
+    done <<< "$(printf '%s' "$_matched_files" | sort -u)"
     if [[ $_schema_matched -eq 1 && $_matched_count -eq 1 ]] \
         && _sf_is_schema_append_only "$repo_root"; then
         printf 'SHAPE_FLOOR SKIP schema_append_only\n'

@@ -168,6 +168,25 @@ set -e
 assert_contains "[SPEC-8] additive structural schema key → SHAPE_FLOOR FAIL (exemption is known_types-only)" \
     "$_spec8_out" "SHAPE_FLOOR FAIL"
 
+# ─── SPEC-10 (GUARD): one file matching TWO globs is still a sole match ─────
+# _matched_files accumulates one entry per (pattern, file) hit. A single file
+# matching two globs must not inflate the count and disable the exemption —
+# "sole match" is about distinct files, not pattern hits.
+
+_sr4="$TEST_TEMP_DIR/dup-pattern-repo"
+mkdir -p "$_sr4/config" "$_sr4/tests/golden/mytest"
+printf 'config/event-schema.json\nconfig/*.json\n' > "$_sr4/config/shape-change-paths.txt"
+printf 'golden-event-content\n' > "$_sr4/tests/golden/mytest/event-sequence.golden"
+
+set +e
+_spec10_out="$(ZBUILD_DIFF_CMD="printf 'config/event-schema.json\n'" \
+    ZBUILD_SCHEMA_DIFF_CMD='printf "+  \"shape_floor.new_event\",\n"' \
+    _sf_shape_floor "$_sr4")"
+set -e
+
+assert_contains "[SPEC-10] one file matching two shape globs → SHAPE_FLOOR SKIP (dedup before counting)" \
+    "$_spec10_out" "SHAPE_FLOOR SKIP"
+
 # ─── SPEC-9 (GUARD): missing floor files IN scope → fail, NO route_target ────
 # Escalation is for demands build cannot legally satisfy. When the missing floor
 # file IS in build's scope, build owns the fix and the gate must stay a plain
