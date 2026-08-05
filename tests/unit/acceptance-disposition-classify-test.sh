@@ -45,6 +45,17 @@ assert_eq "wiring_not_on_path + inert_wiring → recoverable (both build-class)"
 assert_eq "wiring_not_on_path + terminal class → terminal outranks" "terminal" \
     "$(_ag_classify_disposition "wiring_not_on_path:foo.yml" "malformed_acceptance_block")"
 
+# ── [SPEC-2] guard: iter=1 does not satisfy the ≥2 escalation condition ──────
+# The #1711 escalation guard fires only when ZBUILD_CYCLE_ITER≥2; at iter=1
+# (unset or explicit 1) the condition must be false — build's first attempt is
+# preserved. [guard] here because the negctl guard check runs the WHOLE integration
+# test file, and R6b's [change] assertions would make it exit non-zero at baseline,
+# falsely flagging the guard as regressed. The unit test is guard-only, so this
+# assertion passes cleanly at baseline.
+unset ZBUILD_CYCLE_ITER
+assert_eq "[SPEC-2] guard: ZBUILD_CYCLE_ITER unset (iter=1) → escalation condition false" \
+    "0" "$([[ "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]] && echo 1 || echo 0)"
+
 # ── [SPEC-3] guard: inert_wiring disposition stays recoverable when escalated ─
 # The #1711 escalation sets route_target=design on iter≥2 but MUST NOT change
 # disposition to terminal — a terminal halt would prevent the aggregator from

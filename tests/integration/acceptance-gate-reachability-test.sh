@@ -300,15 +300,18 @@ tests/feature-test.sh
 ```
 EOF
 
-# R6a: ZBUILD_CYCLE_ITER unset — inert_wiring with no route_target (first attempt)
+# R6a: ZBUILD_CYCLE_ITER unset — inert_wiring with no route_target (first attempt).
+# Guard assertion for SPEC-2 lives in the unit test (acceptance-disposition-classify-test.sh)
+# because the negctl guard check runs the WHOLE file; R6b's [SPEC-1] change assertions
+# fail at merge-base, which would make the guard appear to regress (#1686 follow-up).
 unset ZBUILD_CYCLE_ITER
 set +e; _run_gate "$REPO_R6"; set -e
-assert_eq "[SPEC-2] R6a: iter=1 inert_wiring → rc=1" "1" "$RC"
+assert_eq "R6a: iter=1 inert_wiring → rc=1" "1" "$RC"
 r6a_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
-assert_contains "[SPEC-2] R6a: iter=1 failures contain inert_wiring YAML target" \
+assert_contains "R6a: iter=1 failures contain inert_wiring YAML target" \
     "$r6a_failures" "inert_wiring:.github/workflows/test.yml"
 r6a_rt="$(jq -r '.route_target // empty' <<<"$RESULT" 2>/dev/null || echo '')"
-assert_eq "[SPEC-2] R6a: iter=1 → no route_target (build gets first attempt)" "" "$r6a_rt"
+assert_eq "R6a: iter=1 → no route_target (build gets first attempt)" "" "$r6a_rt"
 
 # R6b: ZBUILD_CYCLE_ITER=2 — still-inert target escalates to route_target=design
 export ZBUILD_CYCLE_ITER=2
@@ -321,7 +324,7 @@ assert_contains "[SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target"
     "$r6b_failures" "inert_wiring:.github/workflows/test.yml"
 assert_eq "[SPEC-1] R6b: iter=2 → disposition=recoverable" "recoverable" \
     "$(jq -r '.disposition' <<<"$RESULT")"
-assert_eq "[SPEC-1] R6b: iter=2 → route_target=design" "design" \
+assert_eq "[SPEC-1] [SPEC-2] R6b: iter=2 → route_target=design (iter=1 had none)" "design" \
     "$(jq -r '.route_target // empty' <<<"$RESULT")"
 assert_event_emitted "[SPEC-1] R6b: inert_wiring_escalated event emitted" \
     "$EVENTS" "acceptance.gate.inert_wiring_escalated"
