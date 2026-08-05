@@ -119,6 +119,10 @@ _negctl_emit_whole_run_skip() {
         [[ -z "$spec_id" ]] && continue
         printf 'NEGCTL SKIP %s %s\n' "$spec_id" "$reason"
         emitted=1
+    # Deliberately NOT `2>/dev/null`, unlike the other acceptance_list_spec_ids
+    # call sites: on this path an unreadable design.md and a design.md declaring
+    # zero SPECs both produce the same fallback line, and stderr is the only
+    # thing that tells them apart. Do not "fix" this into consistency.
     done < <(acceptance_list_spec_ids "$design_md" || true)
     [[ "$emitted" -eq 0 ]] && printf 'NEGCTL SKIP %s\n' "$reason"
     return 0
