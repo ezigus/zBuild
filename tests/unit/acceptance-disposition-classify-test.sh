@@ -45,6 +45,13 @@ assert_eq "[SPEC-2] wiring_not_on_path + inert_wiring → recoverable (both buil
 assert_eq "[SPEC-2] wiring_not_on_path + terminal class → terminal outranks" "terminal" \
     "$(_ag_classify_disposition "wiring_not_on_path:foo.yml" "malformed_acceptance_block")"
 
+# ── [SPEC-3] guard: inert_wiring disposition stays recoverable when escalated ─
+# The #1711 escalation sets route_target=design on iter≥2 but MUST NOT change
+# disposition to terminal — a terminal halt would prevent the aggregator from
+# reading route_target and emitting route_design.
+assert_eq "[SPEC-3] inert_wiring disposition stays recoverable at any iter (escalation only changes route_target)" \
+    "recoverable" "$(_ag_classify_disposition "inert_wiring:.github/workflows/test.yml")"
+
 # ── a genuine terminal class OUTRANKS recoverable ────────────────────────────
 assert_eq "tautology + malformed → terminal (terminal outranks)" "terminal" \
     "$(_ag_classify_disposition "tautology:SPEC-1" "malformed_acceptance_block")"

@@ -465,6 +465,22 @@ acceptance_gate_run() {
     for f in "${failures[@]:-}"; do
         [[ "$f" == wiring_not_on_path:* ]] && route_target="design" && break
     done
+    # #1711: inert_wiring on iter≥2 escalates to route_target=design. First
+    # build attempt (iter=1) is preserved as a real try; a still-inert target
+    # on iter≥2 is unreachable by build and must be corrected by design.
+    # Disposition stays recoverable — terminal would halt before the aggregator
+    # reads route_target and emits route_design (same rationale as #1686).
+    if [[ -z "$route_target" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
+        for f in "${failures[@]:-}"; do
+            if [[ "$f" == inert_wiring:* ]]; then
+                route_target="design"
+                eb_emit_event "acceptance.gate.inert_wiring_escalated" \
+                    "stage=acceptance-gate" \
+                    "target=${f#inert_wiring:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
+                break
+            fi
+        done
+    fi
 
     # ── Operator summary (#1211) ─────────────────────────────────────────────
     # Surface the concise per-check verdict lines the operator actually needs;
