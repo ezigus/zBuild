@@ -219,6 +219,12 @@ assert_eq "[SPEC-3] S6c: guard harness error does NOT become guard_regressed" \
     "false" "$(jq -r '[.failures[]|test("guard_regressed")]|any' <<<"$RESULT")"
 assert_eq "[SPEC-3] S6c: disposition=advisory (warns, does not block the cycle)" \
     "advisory" "$(jq -r .disposition <<<"$RESULT")"
+# Pin BOTH halves of the two-layer contract: the gate still reports rc=1 ("I
+# could not form an opinion"), and only disposition=advisory demotes that to
+# non-blocking. Asserting the disposition alone would stay green if the gate
+# silently started returning rc=0, which would break the contract from the
+# other side. Same gap the review caught in NC-F4a/b.
+assert_eq "[SPEC-3] S6c: gate-level rc=1; the aggregator is what demotes it" "1" "$RC"
 
 # ── S7: change SPEC with tautological test still caught ───────────────────────
 # A [change]-classified SPEC with a tautological test must still fail (negctl
