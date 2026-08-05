@@ -99,12 +99,12 @@ fi
 assert_eq "[SPEC-2] canary ZBUILD_STATE_DIR has zero stage-io records after gate replay" \
     "0" "$_CANARY_IO_COUNT"
 
-# ── SPEC-3 (guard): cleanup_test_env restores ZBUILD_STATE_DIR ───────────────
-# Invariant: cleanup_test_env always leaves ZBUILD_STATE_DIR equal to the
-# value it had before setup_test_env was called. Passes at both baseline
-# (nothing changed) and after the fix (changed then restored).
+# ── SPEC-3 (change): cleanup_test_env restores ZBUILD_STATE_DIR ──────────────
+# New behavior: cleanup_test_env restores ZBUILD_STATE_DIR to the ORIG_STATE_DIR
+# value saved at source time. At merge-base ORIG_STATE_DIR is not defined in
+# test-helpers.sh, so the assertion fails there; with the fix it passes.
 cleanup_test_env
-assert_eq "[SPEC-3] cleanup_test_env restores ZBUILD_STATE_DIR to pre-setup value" \
-    "$_PRE_SETUP_STATE_DIR" "${ZBUILD_STATE_DIR:-}"
+assert_eq "[SPEC-3] cleanup_test_env restores ZBUILD_STATE_DIR to ORIG_STATE_DIR" \
+    "${ORIG_STATE_DIR:-not-saved}" "${ZBUILD_STATE_DIR:-}"
 
 print_test_results
