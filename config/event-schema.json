@@ -200,6 +200,8 @@
     "acceptance.gate.wiring_not_on_path",
     "acceptance.gate.wiring_exempt",
     "acceptance.gate.negctl_timeout",
+    "acceptance.gate.negctl_harness_error",
+    "acceptance.gate.guard_regressed",
     "acceptance.gate.reachability_timeout",
     "backend.degraded",
     "backend.missing",

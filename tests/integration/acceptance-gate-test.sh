@@ -150,9 +150,10 @@ set +e; _run_gate "$REPO5"; set -e
 assert_eq "S5: malformed block → rc=1 (fail closed, not skipped)" "1" "$RC"
 assert_eq "S5: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 
-# ── S6: guard SPEC with tautological test → verdict=pass (NEGCTL SKIP) ────────
-# A [guard]-classified SPEC with a test that always passes at baseline must
-# be accepted (negctl skips it) rather than rejected as tautological.
+# ── S6: guard SPEC with always-passing test → verdict=pass (NEGCTL PASS guard_spec) ─
+# A [guard]-classified SPEC with a test that passes at baseline must be accepted
+# (negctl runs the baseline check, sees pass, emits NEGCTL PASS guard_spec) and
+# not rejected as tautological (which is a [change]-SPEC rule, not a guard rule).
 REPO6="$(_build_repo gate-guard '#!/usr/bin/env bash
 # [SPEC-1] guard: invariant that must not regress
 exit 0')"
@@ -164,8 +165,66 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO6"; set -e
-assert_eq "S6: guard SPEC with tautological test → rc=0" "0" "$RC"
+assert_eq "S6: guard SPEC with always-passing test → rc=0" "0" "$RC"
 assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+
+# ── S6b: [SPEC-1][SPEC-2] guard SPEC with invariant regression → verdict=fail ────
+# A [guard]-classified SPEC whose assertion FAILS at baseline must yield
+# verdict=fail with guard_regressed in failures[] and disposition=recoverable —
+# the assertion contradicts its own SPEC, and #1583 routes that to build.
+REPO6b="$(_build_repo gate-guard-regressed '#!/usr/bin/env bash
+# [SPEC-1] guard: invariant broken (exits 1 to simulate regression at baseline)
+exit 1')"
+cat > "$REPO6b/design.md" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate "$REPO6b"; set -e
+assert_eq "[SPEC-1] S6b: guard SPEC with invariant regression → rc=1" "1" "$RC"
+assert_eq "[SPEC-1] S6b: guard regression yields verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+assert_contains "[SPEC-2] S6b: guard_regressed in failures[]" \
+    "$(jq -rc .failures <<<"$RESULT")" "guard_regressed"
+# #1583 precedent: a wrong assertion is build-fixable, so the cycle re-iterates
+# and feeds the diagnosis to build. Terminal would strand it — no rewind edge
+# exists for this class, so the run could only die at max_iterations.
+assert_eq "[SPEC-2] S6b: guard_regressed disposition=recoverable (build re-authors the assertion)" \
+    "recoverable" "$(jq -r .disposition <<<"$RESULT")"
+assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic failure" \
+    "$(jq -r .reason <<<"$RESULT")" "mislabelled"
+
+# ── S6c: [SPEC-3] guard whose baseline run ERRORS → advisory, does not block ────
+# #1670's third criterion: a guard test that cannot RUN at the merge-base proves
+# nothing about the invariant, so it must warn rather than block. The unit tests
+# pin the emitted token; this pins the consequence that actually matters — the
+# gate declares disposition=advisory, which gate-aggregator demotes from a
+# blocking fail to a satisfied member (plugin.sh:195,243).
+REPO6c="$(_build_repo gate-guard-harness '#!/usr/bin/env bash
+set -euo pipefail
+# [SPEC-1] guard: invariant
+helper_added_by_this_change')"
+cat > "$REPO6c/design.md" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+set +e; _run_gate "$REPO6c"; set -e
+assert_contains "[SPEC-3] S6c: an unrunnable guard baseline is an infra class, not a violation" \
+    "$(jq -rc .failures <<<"$RESULT")" "negctl_error:harness"
+assert_eq "[SPEC-3] S6c: guard harness error does NOT become guard_regressed" \
+    "false" "$(jq -r '[.failures[]|test("guard_regressed")]|any' <<<"$RESULT")"
+assert_eq "[SPEC-3] S6c: disposition=advisory (warns, does not block the cycle)" \
+    "advisory" "$(jq -r .disposition <<<"$RESULT")"
+# Pin BOTH halves of the two-layer contract: the gate still reports rc=1 ("I
+# could not form an opinion"), and only disposition=advisory demotes that to
+# non-blocking. Asserting the disposition alone would stay green if the gate
+# silently started returning rc=0, which would break the contract from the
+# other side. Same gap the review caught in NC-F4a/b.
+assert_eq "[SPEC-3] S6c: gate-level rc=1; the aggregator is what demotes it" "1" "$RC"
 
 # ── S7: change SPEC with tautological test still caught ───────────────────────
 # A [change]-classified SPEC with a tautological test must still fail (negctl

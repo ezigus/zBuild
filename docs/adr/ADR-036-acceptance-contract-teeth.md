@@ -508,3 +508,56 @@ install it produces nothing, and when it does fire it survives only as long as t
 review lenses and any post-hoc audit of a finished run read artifacts. Without the file the
 design-vs-assertion pairing is visible to nobody once the run ends — which is precisely when someone
 goes looking for why a green run shipped an untested requirement.
+
+## Amendment (#1670, 2026-08-04) — guard SPECs: inverted baseline check replaces SKIP
+
+**Problem.** `[guard]` SPECs were verified by one thing only: an assertion carrying the label exists.
+The negative control was skipped outright (`NEGCTL SKIP guard_spec`), so nothing connected the SPEC's
+English text to what its assertion actually asserted. Run `20260801085257-41853` shipped the exact
+inversion this permits: design wrote *"`cleanup` without `--worktrees` does **not** reclaim
+worktrees"*, build implemented the opposite and tagged an assertion agreeing with its own
+implementation. All eight gate checks passed, 552 tests were green, six review lenses missed it.
+
+**Decision.** An invariant holds at the merge-base *by definition*. So run the same baseline harness
+`[change]` SPECs already use and flip the expectation, rather than skipping:
+
+| SPEC class | expectation at the merge-base |
+|---|---|
+| `[change]` | the tagged assertion must **FAIL** there |
+| `[guard]`  | the tagged assertion must **PASS** there |
+
+A guard assertion that fails at baseline is not a guard — it is a mislabelled `[change]`, or an
+assertion inverted relative to its own SPEC text. Both are what the gate exists to catch.
+
+**Emission** (SPEC id leads every token, as on the `[change]` lines, so the #1684 summary enrichment
+and the plugin's generic `NEGCTL FAIL <spec_id> <reason>` parser need no special-casing):
+
+- `NEGCTL PASS <spec_id> guard_spec` — invariant holds at baseline → gate OK
+- `NEGCTL FAIL <spec_id> guard_regressed` — fails at baseline → gate fails
+- `NEGCTL ERROR timeout:<spec_id>` / `harness:<spec_id>` — advisory, non-blocking
+- `NEGCTL SKIP <spec_id> guard_untested` — no tagged assertion → nothing to measure
+
+**Two failure modes are NOT violations, and conflating them would make guards unlandable.**
+
+*The baseline run never reached an assertion.* A guard whose test depends on something the change
+introduces cannot execute at the merge-base, and its rc is then evidence of nothing. Two
+repo-agnostic signals separate this from a real assertion failure: a `bash -n` preflight on the
+baseline copy (unparseable there), and the POSIX "could not execute" rc classes 126/127. Both yield
+`NEGCTL ERROR harness:<spec_id>` → advisory. The check is skipped when a custom
+`ZBUILD_ACCEPTANCE_RUN_CMD` is configured (#1478), so non-bash runners behave as before.
+
+*The guard carries no tagged assertion.* #1255 exempts `[guard]` SPECs from the design-gate's
+tag-coverage rule, so an untagged guard is **legal input here**. Failing it would deadlock the
+pipeline outright: the design-gate admits the design, this gate halts the cycle, and no rewind edge
+exists for the class. It skips, exactly as before this amendment. The residual — a guard nobody wrote
+an assertion for is unverified — is the tradeoff #1255 already accepted, tracked in #1683.
+
+**Disposition is `recoverable`, not terminal.** A guard assertion that contradicts its SPEC is the
+same "weak test" symptom as tautology, and #1583 settled that class: route it to build with the
+negctl diagnosis and let build re-author the assertion (build has owned assertion bodies since
+#1477). Terminal would strand it — there is no `route_target` for this class, so the run could only
+die at `max_iterations`.
+
+**Backward compatibility.** The `NEGCTL SKIP` tokens `no_impl_delta` and `no_prod_delta` are
+unchanged. `NEGCTL SKIP guard_spec` is no longer emitted; its enrichment arm in the plugin is removed
+with it (noted on #1715, which documents that surface).

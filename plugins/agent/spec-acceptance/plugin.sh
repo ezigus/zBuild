@@ -97,6 +97,12 @@ _ag_classify_disposition() {
             # gate-aggregator for route_target=design to become verdict=route_design
             # and fire the route_back edge. Terminal would halt before the rewind.
             wiring_not_on_path:*)                           had_recoverable=1 ;;
+            # #1670: a guard assertion that fails at the merge-base is the same
+            # "weak test" symptom as tautology (#1583) — the assertion, not the
+            # design, is what is wrong — so it routes to build for re-authoring
+            # rather than halting the cycle. Terminal would strand it: no rewind
+            # edge exists for the class, so the run could only die at max_iterations.
+            guard_regressed:*)                               had_recoverable=1 ;;
             negctl_error:* | reachability_error:*)           had_advisory=1 ;;
             "")                                              : ;;
             # Genuinely terminal (e.g. malformed_acceptance_block — design-authored,
@@ -126,7 +132,7 @@ _ag_join_ids() {
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd=""
     for f in "$@"; do
         case "$f" in
             tautology:*)            taut="$taut ${f#tautology:}" ;;
@@ -135,6 +141,7 @@ _ag_build_reason() {
             no_testfile:*)          notf="$notf ${f#no_testfile:}" ;;
             inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
             wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
+            guard_regressed:*)      grd="$grd ${f#guard_regressed:}" ;;
             malformed_acceptance_block) malformed=1 ;;
             negctl_error:* | reachability_error:*) infra="$infra $f" ;;
         esac
@@ -146,6 +153,7 @@ _ag_build_reason() {
     [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf") missing a tagged TESTFILE")
     [[ -n "$inert"    ]] && clauses+=("WIRING $(_ag_join_ids "$inert") inert — reverting it breaks no TESTFILE")
     [[ -n "$notpath"  ]] && clauses+=("WIRING $(_ag_join_ids "$notpath") not in this commit's diff — declare WIRING: none or name a file this change actually touches")
+    [[ -n "$grd"      ]] && clauses+=("$(_ag_join_ids "$grd") tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]")
     [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
     [[ -n "$infra"    ]] && clauses+=("infra: $(_ag_join_ids "$infra")")
     local out="" c
@@ -305,8 +313,6 @@ acceptance_gate_run() {
             local _e_enriched="$line" _e_eid=""
             if [[ "$line" =~ ^NEGCTL\ (PASS|FAIL|SKIP)\ (SPEC-[0-9]+) ]]; then
                 _e_eid="${BASH_REMATCH[2]}"
-            elif [[ "$line" =~ ^NEGCTL\ SKIP\ guard_spec\ (SPEC-[0-9]+) ]]; then
-                _e_eid="${BASH_REMATCH[1]}"
             fi
             if [[ -n "$_e_eid" ]]; then
                 local _e_desc _e_label _e_tf_line
@@ -341,8 +347,15 @@ acceptance_gate_run() {
                     fi
                     failures+=("$reason:$sid")
                     verdict="fail"
-                    eb_emit_event "acceptance.gate.tautology" "stage=acceptance-gate" \
-                        "spec_id=$sid" "reason=$reason"
+                    # #1670: guard verdicts ride the same "<spec_id> <reason>"
+                    # shape as every other FAIL line, so only the event differs.
+                    if [[ "$reason" == "guard_regressed" ]]; then
+                        eb_emit_event "acceptance.gate.guard_regressed" "stage=acceptance-gate" \
+                            "spec_id=$sid"
+                    else
+                        eb_emit_event "acceptance.gate.tautology" "stage=acceptance-gate" \
+                            "spec_id=$sid" "reason=$reason"
+                    fi
                     ;;
                 "NEGCTL ERROR "*)
                     local detail="${line#NEGCTL ERROR }"
@@ -357,6 +370,11 @@ acceptance_gate_run() {
                             # INFRA (ADR-036 #1188): non-terminal, distinct from a violation.
                             eb_emit_event "acceptance.gate.negctl_timeout" "stage=acceptance-gate" \
                                 "spec_id=${detail#timeout:}" "timeout_s=${ZBUILD_NEGCTL_TIMEOUT:-60}" ;;
+                        harness:*)
+                            # #1670: the baseline run never reached an assertion,
+                            # so it is evidence of nothing. Advisory, like timeout.
+                            eb_emit_event "acceptance.gate.negctl_harness_error" "stage=acceptance-gate" \
+                                "spec_id=${detail#harness:}" ;;
                     esac
                     ;;
             esac
