@@ -154,6 +154,52 @@ _sf_oos_rt=""
 assert_eq "[SPEC-2] out-of-scope missing floor files → route_target=design in artifact" \
     "design" "$_sf_oos_rt"
 
+# ─── SPEC-8 (GUARD): additive but STRUCTURAL schema change → FAIL, not SKIP ──
+# The append-only exemption covers known_types entries only. A diff that adds a
+# new object KEY removes no lines, so a removals-only test would exempt it — but
+# a structural schema addition can change pipeline shape and must stay gated.
+
+set +e
+_spec8_out="$(ZBUILD_DIFF_CMD="printf 'config/event-schema.json\n'" \
+    ZBUILD_SCHEMA_DIFF_CMD='printf "+  \"required_stages\": [\"build\",\"test\"],\n"' \
+    _sf_shape_floor "$_sr2")"
+set -e
+
+assert_contains "[SPEC-8] additive structural schema key → SHAPE_FLOOR FAIL (exemption is known_types-only)" \
+    "$_spec8_out" "SHAPE_FLOOR FAIL"
+
+# ─── SPEC-9 (GUARD): missing floor files IN scope → fail, NO route_target ────
+# Escalation is for demands build cannot legally satisfy. When the missing floor
+# file IS in build's scope, build owns the fix and the gate must stay a plain
+# fail — routing back to design would rewind for work build can already do.
+# (This is the design's SPEC-3; tagged SPEC-9 because [SPEC-3] is already taken
+# in this file by an unrelated pre-existing assertion — see #1670.)
+
+_sf_art_ins="$TEST_TEMP_DIR/sf-inscope-artifacts"
+mkdir -p "$_sf_art_ins"
+
+set +e
+ZBUILD_DIFF_CMD="printf 'config/templates/simple.yaml\n'" \
+ZBUILD_SCHEMA_DIFF_CMD="" \
+ZBUILD_SHAPE_FLOOR_SCOPE="tests/golden/oosspec/event-sequence.golden" \
+ZBUILD_REPO_ROOT="$_sr_oos" \
+ZBUILD_ARTIFACT_DIR="$_sf_art_ins" \
+    shape_floor_run "shape-floor" ""
+set -e
+
+_sf_ins_result="$_sf_art_ins/shape-floor-result.json"
+_sf_ins_rt="absent"; _sf_ins_verdict=""
+if [[ -f "$_sf_ins_result" ]]; then
+    _sf_ins_verdict="$(jq -r '.verdict // empty' "$_sf_ins_result" 2>/dev/null)"
+    _sf_ins_rt="$(jq -r 'if has("route_target") then .route_target else "absent" end' \
+        "$_sf_ins_result" 2>/dev/null)"
+fi
+
+assert_eq "[SPEC-9] in-scope missing floor file → verdict=fail" \
+    "fail" "$_sf_ins_verdict"
+assert_eq "[SPEC-9] in-scope missing floor file → no route_target field" \
+    "absent" "$_sf_ins_rt"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

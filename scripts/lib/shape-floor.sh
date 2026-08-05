@@ -63,12 +63,17 @@ _sf_schema_diff() {
 }
 
 # ─── _sf_is_schema_append_only <repo_root> ────────────────────────────────────
-# Returns rc=0 when config/event-schema.json diff has only additions (no removed
-# lines), indicating a safe append-only change to known_types.
+# Returns rc=0 when the config/event-schema.json diff is a pure append of
+# known_types entries: no removed lines AND every added line is a bare JSON
+# array element ("some.event" / "some.event",). Appending a name to known_types
+# cannot change any recorded event SEQUENCE, so it must not demand golden
+# updates (#1711). An ADDITIVE but STRUCTURAL change — a new object key, a new
+# required field — CAN change pipeline shape and stays gated: a key carries a
+# colon, so it fails the element-shape test.
 # ZBUILD_SCHEMA_DIFF_CMD overrides the diff call for testability.
 _sf_is_schema_append_only() {
     local repo_root="$1"
-    local diff_out
+    local diff_out added
     diff_out="$(_sf_schema_diff "$repo_root")"
     [[ -z "$diff_out" ]] && return 1
     # Fail if any content line was removed (lines starting with '-' but not '---' header)
@@ -76,7 +81,14 @@ _sf_is_schema_append_only() {
         return 1
     fi
     # Must have at least one added content line (not just headers)
-    printf '%s\n' "$diff_out" | grep -qE '^\+[^+]'
+    added="$(printf '%s\n' "$diff_out" | grep -E '^\+[^+]' || true)"
+    [[ -z "$added" ]] && return 1
+    # Every added line must be a bare array element; any other added shape
+    # (an object key, a nested structure) is not a known_types append.
+    if printf '%s\n' "$added" | grep -qvE '^\+[[:space:]]*"[^"]+",?[[:space:]]*$'; then
+        return 1
+    fi
+    return 0
 }
 
 # ─── _sf_collect_missing_floor_files <repo_root> <diff_files_text> ───────────
