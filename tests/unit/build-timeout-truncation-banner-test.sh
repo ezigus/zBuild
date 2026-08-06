@@ -179,6 +179,20 @@ COUNTER_C="$TEST_TEMP_DIR/counter-c"
 mkdir -p "$PROMPT_DIR_C"
 : > "$COUNTER_C"
 
+# Its own throwaway repo: scenario A deliberately leaves an uncommitted partial
+# edit behind, and reusing that tree would hand scenario C a non-empty prev_diff
+# before any timeout has happened. The current assertions do not read the diff,
+# but a shared dirty tree is a trap for whoever extends them next.
+REPO_C="$TEST_TEMP_DIR/repo-c"
+mkdir -p "$REPO_C"
+( cd "$REPO_C" \
+    && git init -q \
+    && git config user.email t@t \
+    && git config user.name t \
+    && echo seed > seed.txt \
+    && git add seed.txt \
+    && git commit -q -m seed ) >/dev/null
+
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 n=\$(( \$(wc -l < "$COUNTER_C" 2>/dev/null | tr -d ' ') + 1 ))
@@ -199,7 +213,14 @@ jq -n --arg r \$'done\nLOOP_COMPLETE' \
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
-sed "s|$COUNTER_A|$COUNTER_C|g" "$DRIVER_A" > "$TEST_TEMP_DIR/driver-c.sh"
+# driver-a with $REPO swapped for $REPO_C. (An earlier revision generated this
+# by sed-ing $COUNTER_A → $COUNTER_C, which was a no-op: the counter path is
+# baked into the mock, not the driver.)
+# Match the QUOTED path: $REPO is a string prefix of $REPO_C, so an unquoted
+# substitution would also rewrite occurrences of repo-c itself.
+sed "s|\"$REPO\"|\"$REPO_C\"|g" "$DRIVER_A" > "$TEST_TEMP_DIR/driver-c.sh"
+grep -qF "$REPO_C" "$TEST_TEMP_DIR/driver-c.sh" \
+    || assert_fail "scenario-C: driver-c must target its own repo" "sed produced no substitution"
 bash "$TEST_TEMP_DIR/driver-c.sh" >/dev/null 2>/dev/null || true
 
 call_count_c="$(wc -l < "$COUNTER_C" | tr -d ' ')"
