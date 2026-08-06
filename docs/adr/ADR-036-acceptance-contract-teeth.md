@@ -256,7 +256,7 @@ precedence highest-first):
 | disposition   | failure classes                                                            | engine effect                                             |
 | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `terminal`    | not_passing_at_head, no_testfile, malformed_acceptance_block               | HALT — cycle does not converge (rc=8), pipeline.end=failed |
-| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, wiring_not_on_path:*         | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path also sets route_target=design |
+| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, wiring_not_on_path:*         | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring also sets route_target=design on ZBUILD_CYCLE_ITER≥2 (Amendment #1711) |
 | `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
 | `none`        | (verdict=pass)                                                             | n/a                                                        |
 
@@ -448,25 +448,8 @@ run, read `route_target=design`, and produce `verdict=route_design` — which th
 `route_back` guard matches, rewinding to `design_verify_cycle`. The cycle budget (`max_iterations`)
 bounds the rewind depth.
 
-**Known gap — the #1664 shape is NOT covered (#1711).** This amendment separates *"the target is not
-part of this change"* from *"the target is part of this change but untested"*. It does **not** separate
-*"untested but testable"* from *"untestable"*. #1664 (run `20260801225808-15285`) is the latter: a
-policy ADR + CI-config change declared `WIRING: .github/workflows/test.yml`, which **was** in PR
-#1680's diff (`+9/-2`), so it lands on `inert_wiring` — build-fixable — even though no shell testfile
-can load workflow YAML. Build's only lever was to make the declaration true, and it wrote a static
-grep of the YAML, which the issue had explicitly forbidden.
-
-No static predicate separates those two cases. A bash file no test happens to reference yet (build
-should write the assertion) and a YAML file no test can ever load (design should declare
-`WIRING: none`) are structurally identical to any inspection of the repository; the only difference
-is whether the test runner can load the file as code, and encoding that in the engine is exactly the
-target knowledge ADR-049 forbids. Nor can it be settled at design time, when build has not yet
-written the assertions.
-
-Separating them requires a second measurement rather than a better guess: let `inert_wiring` stand on
-first occurrence so build gets a real attempt, and escalate the same still-inert target to
-`route_target=design` on a later iteration. Tracked in #1711 as the general case — a stage handed a
-problem it cannot solve needs an escalation path, not a workaround.
+The #1664 shape (a WIRING target that is in the diff but structurally untestable by any shell
+testfile) is closed by Amendment #1711 below.
 
 ## Amendment (#1684, 2026-08-04) — the summary states what each SPEC claims and what was asserted, and it persists
 
@@ -598,3 +581,67 @@ Both are rendering changes: the gate `verdict` and `failures[]` are unaffected i
 
 **Not covered.** `REACHABILITY SKIP no_impl_delta` (Level 3) still emits one bare line naming no
 WIRING target — the same defect at the other level. Tracked separately.
+## Amendment (#1711, 2026-08-05) — inert_wiring iter≥2 escalation: second-measurement closes the #1664 shape
+
+**Problem.** Amendment #1686 separates *"WIRING target not in this change's diff"*
+(`wiring_not_on_path` → routes immediately to design) from *"WIRING target in diff but no test
+flips"* (`inert_wiring` → recoverable, build-fixable). It does **not** separate
+*"untested but testable"* from *"untestable"*. #1664 (run `20260801225808-15285`) is the latter: a
+CI-config change declared `WIRING: .github/workflows/test.yml`, which **was** in PR #1680's diff
+(`+9/-2`), so it lands on `inert_wiring` — build-fixable — even though no shell testfile can load
+workflow YAML. Build exhausted `max_iterations` writing static greps that the issue had explicitly
+forbidden.
+
+**Two static predicates were considered and rejected.**
+
+1. *File-extension heuristic* — reject YAML/JSON paths as non-sourceable. Encodes target-language
+   knowledge ADR-049 forbids; a `.yaml` test harness is a legal TESTFILE.
+2. *Load-attempt probe* — `source` or `bash -n` each WIRING target before the revert loop. A shell
+   that cannot parse the target would report an error; the gate would classify it differently.
+   Rejected: this is still target-knowledge (assumes bash is the only runner) and breaks the
+   `ZBUILD_ACCEPTANCE_RUN_CMD` seam.
+3. *Target not in this change's diff* — treat a WIRING target absent from the diff as unfixable by
+   build. Rejected because it does not fire on the motivating case at all: PR #1680 changed
+   `.github/workflows/test.yml` (`+9/-2`), so the #1664 target **is** in the diff and still lands on
+   `inert_wiring`. This predicate is already implemented, correctly, as the separate
+   `wiring_not_on_path` class (Amendment #1686) — a narrower design error, not this one.
+4. *No declared TESTFILE references the target* — the prescription in #1686's original body, built as
+   PR #1697. Rejected by execution: it breaks R2 in
+   `tests/integration/acceptance-gate-reachability-test.sh`, the #956 guard, where `inert-wiring.sh`
+   is a bash stub no test references. A testfile *could* source it, so `inert_wiring` (build-fixable)
+   is the correct verdict there. R2 and the #1664 shape are statically identical — "a file in the
+   repo that no test mentions" — so any predicate that routes one routes both.
+
+Predicates 3 and 4 are recorded here because each was attempted and shipped as a non-fix; they should
+not be re-attempted. They fail in opposite directions on the two cases, which is the tell that the
+distinction is not statically recoverable at all.
+
+No static predicate at design time separates *"untested because build hasn't written the assertion
+yet"* from *"untested because the target is structurally unloadable"*; they are byte-identical to any
+inspection of the repository.
+
+**Decision — second measurement rather than a better guess.** Separate the cases by observation, not
+prediction: let `inert_wiring` stand on the first iteration so build gets a genuine attempt. If the
+same target is still inert on a second (or later) iteration, build has already had its chance; design
+must correct the WIRING declaration (`WIRING: none`, or a different load-bearing file).
+
+**Mechanism.** In `plugins/agent/spec-acceptance/plugin.sh`, after the `wiring_not_on_path` scan,
+add an iteration guard: when `route_target` is not already set AND `${ZBUILD_CYCLE_ITER:-1} ≥ 2`
+AND any failure is `inert_wiring:*`, set `route_target="design"` and emit
+`acceptance.gate.inert_wiring_escalated`. `ZBUILD_CYCLE_ITER` is exported by the cycle orchestrator
+(`core/pipeline/cycle-orchestrator.sh`) — no engine or template plumbing is required.
+
+**Disposition stays `recoverable`.** A `terminal` disposition halts `build_test_cycle` before the
+gate-aggregator can read `route_target` and emit `route_design`. The same rationale governs
+`wiring_not_on_path` (Amendment #1686): `recoverable` lets the aggregator run, read
+`route_target=design`, and produce `verdict=route_design` — which the cycle runner's `route_back`
+guard matches, rewinding to `design_verify_cycle`. The global route_back budget bounds ping-pong.
+
+**First attempt is preserved.** iter=1 (ZBUILD_CYCLE_ITER unset or 1): `inert_wiring` is emitted
+with no `route_target` — the failure is recoverable and build re-iterates normally. iter≥2: the same
+still-inert target is now routed to design. This asymmetry is intentional: a build-fixable gap that
+build genuinely closes in one iteration never reaches the escalation guard.
+
+**Scope.** The escalation is implemented only for `inert_wiring:*`. The same guard pattern applies to
+`tautology:*` and `untagged_spec:*` in principle, but the acceptance criteria only test
+`inert_wiring`; generalisation is a follow-up if the pipeline owner wants it.

@@ -259,5 +259,78 @@ EOF
     assert_eq "[SPEC-7] R5: python3 {files} seam → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 fi
 
+# ── R6: inert_wiring at ZBUILD_CYCLE_ITER≥2 escalates to route_target=design ───
+# Setup: WIRING target is a CI YAML file in the diff (the #1664 shape).
+# The sole TESTFILE is a bash script that cannot source YAML, so no flip is
+# possible regardless of how many build iterations run. At ZBUILD_CYCLE_ITER unset
+# (iter=1), inert_wiring is emitted with no route_target — build gets a real try.
+# At ZBUILD_CYCLE_ITER=2, the same still-inert target escalates to
+# route_target=design via the #1711 second-measurement mechanism.
+REPO_R6="$(setup_git_temp_repo "reach-r6")"
+(
+    cd "$REPO_R6"
+    "$GIT" checkout -q -b feature
+    mkdir -p .github/workflows
+    printf 'name: test\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n' \
+        > .github/workflows/test.yml
+    printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+    chmod +x impl.sh
+    mkdir -p tests
+    cat > tests/feature-test.sh <<'TESTEOF'
+#!/usr/bin/env bash
+# [SPEC-1] impl provides my_feature (YAML wiring untestable by shell)
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+[[ -f "$repo_root/impl.sh" ]] || exit 1
+# shellcheck disable=SC1090
+source "$repo_root/impl.sh"
+my_feature
+TESTEOF
+    chmod +x tests/feature-test.sh
+    "$GIT" add -A
+    "$GIT" commit -q -m "feat: CI workflow + impl"
+) >/dev/null 2>&1
+
+cat > "$REPO_R6/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: impl provides my_feature
+WIRING:
+.github/workflows/test.yml
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+
+# R6a: ZBUILD_CYCLE_ITER unset — inert_wiring with no route_target (first attempt).
+# The [SPEC-2] guard for this half lives in its own file,
+# tests/integration/acceptance-gate-inert-wiring-iter1-test.sh: the guard negative
+# control runs a whole testfile and keys on the FILE's exit code, so a guard tagged
+# here would be reported guard_regressed by R6b's [SPEC-1] change assertions failing
+# at the merge-base — which is those assertions working correctly (#1737).
+# The assertions below stay untagged and are the local smoke check.
+unset ZBUILD_CYCLE_ITER
+set +e; _run_gate "$REPO_R6"; set -e
+assert_eq "R6a: iter=1 inert_wiring → rc=1" "1" "$RC"
+r6a_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
+assert_contains "R6a: iter=1 failures contain inert_wiring YAML target" \
+    "$r6a_failures" "inert_wiring:.github/workflows/test.yml"
+r6a_rt="$(jq -r '.route_target // empty' <<<"$RESULT" 2>/dev/null || echo '')"
+assert_eq "R6a: iter=1 → no route_target (build gets first attempt)" "" "$r6a_rt"
+
+# R6b: ZBUILD_CYCLE_ITER=2 — still-inert target escalates to route_target=design
+export ZBUILD_CYCLE_ITER=2
+set +e; _run_gate "$REPO_R6"; set -e
+unset ZBUILD_CYCLE_ITER
+assert_eq "[SPEC-1] R6b: iter=2 inert_wiring escalated → rc=1" "1" "$RC"
+assert_eq "[SPEC-1] R6b: iter=2 → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
+r6b_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
+assert_contains "[SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target" \
+    "$r6b_failures" "inert_wiring:.github/workflows/test.yml"
+assert_eq "[SPEC-1] R6b: iter=2 → disposition=recoverable" "recoverable" \
+    "$(jq -r '.disposition' <<<"$RESULT")"
+assert_eq "[SPEC-1] R6b: iter=2 → route_target=design (iter=1 had none)" "design" \
+    "$(jq -r '.route_target // empty' <<<"$RESULT")"
+assert_event_emitted "[SPEC-1] R6b: inert_wiring_escalated event emitted" \
+    "$EVENTS" "acceptance.gate.inert_wiring_escalated"
+
 cleanup_test_env
 print_test_results

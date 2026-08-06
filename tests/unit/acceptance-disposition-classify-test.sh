@@ -38,12 +38,27 @@ assert_eq "tautology + untagged → recoverable" "recoverable" \
     "$(_ag_classify_disposition "tautology:SPEC-1" "untagged_spec:SPEC-2")"
 
 # ── wiring_not_on_path: recoverable (routes to design) ──────────────────────
-assert_eq "[SPEC-2] wiring_not_on_path only → recoverable" "recoverable" \
+assert_eq "wiring_not_on_path only → recoverable" "recoverable" \
     "$(_ag_classify_disposition "wiring_not_on_path:.github/workflows/ci.yml")"
-assert_eq "[SPEC-2] wiring_not_on_path + inert_wiring → recoverable (both build-class)" "recoverable" \
+assert_eq "wiring_not_on_path + inert_wiring → recoverable (both build-class)" "recoverable" \
     "$(_ag_classify_disposition "wiring_not_on_path:foo.yml" "inert_wiring:bar.sh")"
-assert_eq "[SPEC-2] wiring_not_on_path + terminal class → terminal outranks" "terminal" \
+assert_eq "wiring_not_on_path + terminal class → terminal outranks" "terminal" \
     "$(_ag_classify_disposition "wiring_not_on_path:foo.yml" "malformed_acceptance_block")"
+
+# SPEC-2 (iter=1 sets no route_target) is NOT asserted here. The assertion that
+# used to sit at this spot re-derived the condition inside the test —
+#   assert_eq ... "0" "$([[ "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]] && echo 1 || echo 0)"
+# — which exercises bash's `-ge`, not the gate: it stayed green with the whole
+# escalation deleted from plugin.sh (verified). It now lives in
+# tests/integration/acceptance-gate-inert-wiring-iter1-test.sh, where it reads
+# route_target back out of the real result artifact and dies to a `-ge 1` mutant.
+
+# ── [SPEC-3] guard: inert_wiring disposition stays recoverable when escalated ─
+# The #1711 escalation sets route_target=design on iter≥2 but MUST NOT change
+# disposition to terminal — a terminal halt would prevent the aggregator from
+# reading route_target and emitting route_design.
+assert_eq "[SPEC-3] inert_wiring disposition stays recoverable at any iter (escalation only changes route_target)" \
+    "recoverable" "$(_ag_classify_disposition "inert_wiring:.github/workflows/test.yml")"
 
 # ── a genuine terminal class OUTRANKS recoverable ────────────────────────────
 assert_eq "tautology + malformed → terminal (terminal outranks)" "terminal" \
