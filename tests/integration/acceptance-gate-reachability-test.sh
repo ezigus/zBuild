@@ -301,9 +301,12 @@ tests/feature-test.sh
 EOF
 
 # R6a: ZBUILD_CYCLE_ITER unset — inert_wiring with no route_target (first attempt).
-# Guard assertion for SPEC-2 lives in the unit test (acceptance-disposition-classify-test.sh)
-# because the negctl guard check runs the WHOLE file; R6b's [SPEC-1] change assertions
-# fail at merge-base, which would make the guard appear to regress (#1686 follow-up).
+# The [SPEC-2] guard for this half lives in its own file,
+# tests/integration/acceptance-gate-inert-wiring-iter1-test.sh: the guard negative
+# control runs a whole testfile and keys on the FILE's exit code, so a guard tagged
+# here would be reported guard_regressed by R6b's [SPEC-1] change assertions failing
+# at the merge-base — which is those assertions working correctly (#1737).
+# The assertions below stay untagged and are the local smoke check.
 unset ZBUILD_CYCLE_ITER
 set +e; _run_gate "$REPO_R6"; set -e
 assert_eq "R6a: iter=1 inert_wiring → rc=1" "1" "$RC"
@@ -324,7 +327,7 @@ assert_contains "[SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target"
     "$r6b_failures" "inert_wiring:.github/workflows/test.yml"
 assert_eq "[SPEC-1] R6b: iter=2 → disposition=recoverable" "recoverable" \
     "$(jq -r '.disposition' <<<"$RESULT")"
-assert_eq "[SPEC-1] [SPEC-2] R6b: iter=2 → route_target=design (iter=1 had none)" "design" \
+assert_eq "[SPEC-1] R6b: iter=2 → route_target=design (iter=1 had none)" "design" \
     "$(jq -r '.route_target // empty' <<<"$RESULT")"
 assert_event_emitted "[SPEC-1] R6b: inert_wiring_escalated event emitted" \
     "$EVENTS" "acceptance.gate.inert_wiring_escalated"

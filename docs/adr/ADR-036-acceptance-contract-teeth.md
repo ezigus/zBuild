@@ -600,6 +600,21 @@ forbidden.
    that cannot parse the target would report an error; the gate would classify it differently.
    Rejected: this is still target-knowledge (assumes bash is the only runner) and breaks the
    `ZBUILD_ACCEPTANCE_RUN_CMD` seam.
+3. *Target not in this change's diff* — treat a WIRING target absent from the diff as unfixable by
+   build. Rejected because it does not fire on the motivating case at all: PR #1680 changed
+   `.github/workflows/test.yml` (`+9/-2`), so the #1664 target **is** in the diff and still lands on
+   `inert_wiring`. This predicate is already implemented, correctly, as the separate
+   `wiring_not_on_path` class (Amendment #1686) — a narrower design error, not this one.
+4. *No declared TESTFILE references the target* — the prescription in #1686's original body, built as
+   PR #1697. Rejected by execution: it breaks R2 in
+   `tests/integration/acceptance-gate-reachability-test.sh`, the #956 guard, where `inert-wiring.sh`
+   is a bash stub no test references. A testfile *could* source it, so `inert_wiring` (build-fixable)
+   is the correct verdict there. R2 and the #1664 shape are statically identical — "a file in the
+   repo that no test mentions" — so any predicate that routes one routes both.
+
+Predicates 3 and 4 are recorded here because each was attempted and shipped as a non-fix; they should
+not be re-attempted. They fail in opposite directions on the two cases, which is the tell that the
+distinction is not statically recoverable at all.
 
 No static predicate at design time separates *"untested because build hasn't written the assertion
 yet"* from *"untested because the target is structurally unloadable"*; they are byte-identical to any
