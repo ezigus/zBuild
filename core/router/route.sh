@@ -1194,7 +1194,7 @@ route_to_model_loop() {
     # shellcheck disable=SC2064
     trap "rm -rf '$_loop_tmp' 2>/dev/null || true" RETURN
 
-    local static_prompt prev_diff="" timeout_recur=0
+    local static_prompt prev_diff="" timeout_recur=0 prev_iter_timed_out=false
     static_prompt="$(cat "$prompt_file")"
     # #505: snapshot of prev_diff at start of THIS iteration, used to detect
     # an unchanged diff between iterations for the operator banner pointer.
@@ -1207,16 +1207,29 @@ route_to_model_loop() {
     for (( iter=1; iter <= max_iterations; iter++ )); do
         _ROUTE_LOOP_ITERATIONS=$iter
 
-        local iter_prompt
+        local iter_prompt _timeout_warn=""
+        if [[ "$prev_iter_timed_out" == "true" ]] && (( iter >= 2 )); then
+            _timeout_warn="
+> **WARNING — prior iteration timed out (rc=124):** The model's previous response
+> was cut off. LOOP_COMPLETE was NOT received. Re-verify the implementation
+> before emitting LOOP_COMPLETE.
+"
+        fi
         if [[ -z "$prev_diff" ]]; then
+            # The stock parenthetical asserts "this is the first iteration",
+            # which is false — and contradicts the banner — when a timed-out
+            # predecessor committed nothing.
+            local _no_diff_note="(No prior changes — this is the first iteration.)"
+            [[ -n "$_timeout_warn" ]] && \
+                _no_diff_note="(The tree is unchanged — the timed-out iteration committed nothing.)"
             iter_prompt="$static_prompt
 
-## Iteration ${iter}/${max_iterations}
-(No prior changes — this is the first iteration.)"
+## Iteration ${iter}/${max_iterations}${_timeout_warn}
+${_no_diff_note}"
         else
             iter_prompt="$static_prompt
 
-## Iteration ${iter}/${max_iterations}
+## Iteration ${iter}/${max_iterations}${_timeout_warn}
 ## Cumulative diff so far (\`git diff HEAD\`):
 ${prev_diff}"
         fi
@@ -1608,7 +1621,13 @@ ${_diff_pointer}"
                     --metadata "error=true" \
                     >/dev/null 2>&1 || true
             fi
+            # Tracks the IMMEDIATELY preceding iteration only: clear on every
+            # error path first, so a rc=124 followed by a rc=1 does not leave
+            # the next iteration reading a banner about a timeout that was not
+            # its predecessor.
+            prev_iter_timed_out=false
             if [[ $rc -eq 124 ]]; then
+                prev_iter_timed_out=true
                 timeout_recur=$(( timeout_recur + 1 ))
                 if [[ $timeout_recur -ge 3 ]]; then
                     # Issue #1208 / ADR-013 (router-loop): a per-turn timeout is
@@ -1641,6 +1660,7 @@ ${_diff_pointer}"
             continue
         fi
         timeout_recur=0
+        prev_iter_timed_out=false
         rm -f "$stderr_file"
 
         # Extract .result and token usage from claude JSON output.
