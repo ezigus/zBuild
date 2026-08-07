@@ -233,11 +233,11 @@ parallel_group_run() {
     _parallel_emit "parallel.group.start" \
         "members=${#members[@]}" "max_parallel=$max" "on_member_error=$on_err"
 
-    # ── Bounded-parallel FIFO pool (scripts/run-mutation.sh:367-379 model;
-    #    bash-3.2-safe — NO `wait -n`). Launch each member in its own subshell,
-    #    track its pid; once in-flight == max, wait on the OLDEST pid and shift
-    #    the array; drain the tail after the loop. on_member_error never
-    #    short-circuits — every member is launched regardless of sibling failure.
+    # ── Bounded-parallel FIFO pool (drain-oldest order). Launch each member in
+    #    its own subshell, track its pid; once in-flight == max, wait on the
+    #    OLDEST pid and shift the array; drain the tail after the loop.
+    #    on_member_error never short-circuits — every member is launched
+    #    regardless of sibling failure.
     _PARALLEL_PIDS=()
     local slot=0 m
     for m in "${members[@]}"; do

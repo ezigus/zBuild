@@ -134,5 +134,15 @@ else
 fi
 PATH="$_old_path"
 
+# ─── [SPEC-4] CHANGE: doctor.sh bash-4 no longer warns; below-5 is a FAIL ────
+# The old _check_bash_version had `elif (( major == 4 )); then _doc_warn "..."`
+# which was misleading now that the Bash 5 floor is enforced structurally.
+# After this change, any sub-5 version maps to _doc_fail; the warn branch is gone.
+# Fails at merge-base (where the "functional but 5 recommended" warn exists).
+_DOCTOR_SRC="$REPO_ROOT/scripts/lib/doctor.sh"
+_bash4_warn=$(grep -c 'functional but 5 recommended' "$_DOCTOR_SRC" 2>/dev/null || true)
+assert_eq "[SPEC-4] doctor.sh bash-4 'functional but 5 recommended' warn is removed" \
+    "0" "$_bash4_warn"
+
 print_test_results
 exit $((FAIL > 0))
