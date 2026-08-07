@@ -40,6 +40,7 @@
 # SPEC-17 GUARD   _ZBUILD_SERIAL_PIN entry count is <= 7 (ADR-053 ratchet cap)
 # SPEC-17b GUARD  the cap is demonstrated to bite at 8 and to miscount nothing (#1664)
 # SPEC-17c GUARD  ZBUILD_TEST_TIMING_FILE is wired in CI for unit+integration (ADR-053 §6)
+# SPEC-18 CHANGE  _waitn dead-code fallback removed; wait -n is unconditional (#1693)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -374,12 +375,12 @@ else
   fi
 fi
 
-# ─── [SPEC-2] CHANGE: _waitn dead-code removed; wait -n used unconditionally ──
+# ─── [SPEC-18] CHANGE: _waitn dead-code removed; wait -n used unconditionally ─
 # Verifies that the bash-4.3 fallback variable _waitn is gone from run-tests.sh.
 # Fails at merge-base (where _waitn exists as a branch guard) and passes once
 # the fallback is removed and wait -n is used unconditionally (Bash 5 floor).
 _waitn_count="$(grep -c '_waitn' "$RUN_TESTS" || true)"
-assert_eq "[SPEC-2] _waitn dead-code fallback removed from run-tests.sh (wait -n is unconditional)" \
+assert_eq "[SPEC-18] _waitn dead-code fallback removed from run-tests.sh (wait -n is unconditional)" \
   "0" "$_waitn_count"
 
 cleanup_test_env
