@@ -70,6 +70,16 @@ FAILURES=()
 # Save originals now so cleanup_test_env() can always restore them.
 ORIG_HOME="${HOME}"
 ORIG_PATH="${PATH}"
+# Sandbox ZBUILD_STATE_DIR and ZBUILD_ARTIFACT_DIR so stage-io writes during
+# tests never escape to the outer pipeline's state directory (#1713).
+# `+set` records SET-ness separately from the value: `${VAR:-}` collapses "unset"
+# and "set but empty" into the same "", and cleanup would then unset a variable
+# the caller had deliberately exported as empty. `${VAR-}` (no colon) keeps an
+# empty value as empty.
+ORIG_STATE_DIR_SET="${ZBUILD_STATE_DIR+set}"
+ORIG_STATE_DIR="${ZBUILD_STATE_DIR-}"
+ORIG_ARTIFACT_DIR_SET="${ZBUILD_ARTIFACT_DIR+set}"
+ORIG_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR-}"
 # Track the auto-created temp dir separately so cleanup always removes it,
 # even if individual tests later reassign TEST_TEMP_DIR in their own setup_env.
 AUTO_TEST_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/zb-test-auto.XXXXXX")
@@ -295,9 +305,18 @@ setup_test_env() {
     mkdir -p "$TEST_TEMP_DIR/project"
     mkdir -p "$TEST_TEMP_DIR/logs"
 
-    # ORIG_HOME/ORIG_PATH already saved at source time
+    # ORIG_HOME/ORIG_PATH/ORIG_STATE_DIR already saved at source time.
     export HOME="$TEST_TEMP_DIR/home"
     export PATH="$TEST_TEMP_DIR/bin:$PATH"
+    # Unset ZBUILD_STATE_DIR and ZBUILD_ARTIFACT_DIR so any ambient pipeline
+    # values do not leak into this test process (#1713). stage-io falls back to
+    # ${HOME}/.zbuild/state (sandboxed above) when both are unset, landing all
+    # writes in the sandbox. We unset rather than redirect to avoid perturbing
+    # plan_context_recover_sidecar_reasoning (which uses these vars when set)
+    # and other callers that manage their own artifact paths after setup.
+    mkdir -p "$TEST_TEMP_DIR/home/.zbuild/state"
+    unset ZBUILD_STATE_DIR
+    unset ZBUILD_ARTIFACT_DIR
     export NO_GITHUB=true
     export GIT_TERMINAL_PROMPT=0
 
@@ -337,6 +356,18 @@ cleanup_test_env() {
     fi
     [[ -n "${ORIG_HOME:-}" ]] && export HOME="$ORIG_HOME" || true
     [[ -n "${ORIG_PATH:-}" ]] && export PATH="$ORIG_PATH" || true
+    # Restore ZBUILD_STATE_DIR and ZBUILD_ARTIFACT_DIR to pre-setup values
+    # (or unset them if they were not set before this test sourced the helpers).
+    if [[ -n "${ORIG_STATE_DIR_SET:-}" ]]; then
+        export ZBUILD_STATE_DIR="$ORIG_STATE_DIR"
+    else
+        unset ZBUILD_STATE_DIR
+    fi
+    if [[ -n "${ORIG_ARTIFACT_DIR_SET:-}" ]]; then
+        export ZBUILD_ARTIFACT_DIR="$ORIG_ARTIFACT_DIR"
+    else
+        unset ZBUILD_ARTIFACT_DIR
+    fi
 }
 
 # ─── Mock Helpers ────────────────────────────────────────────────────────────
