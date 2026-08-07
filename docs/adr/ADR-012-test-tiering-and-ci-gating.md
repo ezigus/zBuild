@@ -88,6 +88,15 @@ Output format: `<tier>: N/M passed` — parseable by CI summary step.
 > CI per issue #372). Target: 70%. The floor is ratcheted upward as test
 > depth improves.
 
+> **Denominator correction (#1761, 2026-08-07):** the per-file loop used to
+> iterate the PS4 trace, so a file no test ever sourced contributed 0 to the
+> numerator *and* 0 to the denominator — a wholly untested new file could not
+> move the gate. The file set is now enumerated from disk under `core/` and
+> `scripts/lib/` (scan roots deliberately exclude the frozen `legacy/` import,
+> whose paths also match the `/scripts/lib/` include substring). Measured
+> figure moved 32.3% → 30.1%; the floor was left at 29. The arithmetic lives in
+> `scripts/lib/coverage-report.py` so it is directly testable.
+
 > **Coverage gating (#1129 Change C):** Unlike lint, coverage is **NOT** folded
 > into `--tier all`. `scripts/check-coverage.sh` works by re-invoking
 > `run-tests.sh --tier unit --coverage-trace` to gather an xtrace; running that
