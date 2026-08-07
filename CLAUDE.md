@@ -57,7 +57,7 @@ npm run lint       # shellcheck + lint
 ```
 
 - ALWAYS run tests after making code changes.
-- CI enforces a **29% statement coverage floor** on `core/` + `scripts/lib/` (issue #372, raised in Wave 4). Target is 70% — will be raised incrementally as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage.
+- CI enforces a **29% statement coverage floor** on `core/` + `scripts/lib/` (issue #372, raised in Wave 4). Target is 70% — will be raised incrementally as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage. The denominator counts every in-scope `.sh` file on disk, including ones no test ever sources (#1761) — a new untested file lowers the number rather than being invisible to it.
 - ALWAYS verify the relevant test passes before opening a PR.
 
 ## Security rules

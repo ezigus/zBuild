@@ -194,6 +194,11 @@ jobs:
         env:
           # Floor is 25% — reflects measured baseline (kcov never produced data).
           # Raised to 29% in Wave 4 (#372). Target: 70% after further test depth work.
+          # Re-baselined 2026-08-07 (#1761): never-executed files now count in the
+          # denominator, so the measured figure moved 32.3% (5746/17791) → 30.1%
+          # (5753/19107) — 5 wholly-untraced files, 1316 lines. The floor STAYS at
+          # 29: the corrected number clears it, and lowering it would weaken the
+          # gate this issue exists to sharpen.
           COVERAGE_FLOOR: "29"
         run: bash scripts/check-coverage.sh
 
