@@ -450,7 +450,7 @@ n_specs=$idx
 (( n_specs > 0 )) && _assert_clean_targets
 
 # ── Phase B: bounded-parallel worktree execution over the dispatch worklist.
-#    FIFO pool capped at $_par_jobs (bash-3.2-safe; no `wait -n`). ──
+#    FIFO pool capped at $_par_jobs (drain-oldest FIFO order). ──
 # Sweep stale worktree admin entries before dispatch so a leftover zb-mut.* from
 # an interrupted run doesn't aggravate the materialization race (#1184).
 git -C "$REPO_ROOT" worktree prune >/dev/null 2>&1 || true

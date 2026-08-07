@@ -289,7 +289,8 @@ acceptance_gate_run() {
     local line
     # #1220: SPEC ids flagged untagged at Level 1, so Level 2 can suppress the
     # redundant no_testfile it would emit for the SAME id (one root cause, one
-    # report). Space-delimited set (bash-3.2 safe): " SPEC-1 SPEC-2 ".
+    # report). Space-delimited set (" SPEC-1 SPEC-2 ") — membership via glob
+    # pattern `*" $sid "*`; simpler than declare -A for a small id set.
     local untagged_ids=" "
 
     # ── Level 1: SPEC-n tag-presence ─────────────────────────────────────────

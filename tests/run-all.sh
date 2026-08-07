@@ -16,6 +16,10 @@ set -euo pipefail
 _RUN_ALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _RUN_ALL_REPO_ROOT="$(cd "$_RUN_ALL_DIR/.." && pwd)"
 
+# Bash 5 floor check — fail fast before sourcing anything else.
+# shellcheck source=../scripts/lib/compat.sh
+source "$_RUN_ALL_REPO_ROOT/scripts/lib/compat.sh"
+
 # shellcheck source=./lib/test-harness.sh
 source "$_RUN_ALL_DIR/lib/test-harness.sh"
 

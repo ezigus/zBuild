@@ -483,19 +483,13 @@ run_tier() {
     done
     local _job_dir
     _job_dir="$(mktemp -d -t "zbuild-par-$name.XXXXXX")"
-    local -a _pids=()
     local _slot=0
     local _inflight=0
-    # #991: reap ANY finished slot via `wait -n` (bash 4.3+) instead of draining
-    # the OLDEST. A long test in the oldest slot (e.g. core-pipeline-runner ~193s)
-    # otherwise head-of-line-blocks the whole pool — capping the integration tier's
-    # parallel speedup at ~1.85x instead of ~5.5x. Falls back to drain-oldest on
-    # bash < 4.3. Aggregation below reads results BY SUBMISSION SLOT, so completion
-    # order never changes the output (#1011 review; this repo floors at bash 5).
-    local _waitn=0
-    if (( BASH_VERSINFO[0] > 4 || ( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3 ) )); then
-      _waitn=1
-    fi
+    # #991: reap ANY finished slot via `wait -n` instead of draining the OLDEST.
+    # A long test in the oldest slot (e.g. core-pipeline-runner ~193s) otherwise
+    # head-of-line-blocks the whole pool — capping the integration tier's parallel
+    # speedup at ~1.85x instead of ~5.5x. Aggregation below reads results BY
+    # SUBMISSION SLOT, so completion order never changes the output (#1011 review).
     for f in "${_parallel_files[@]+"${_parallel_files[@]}"}"; do
       _slot=$((_slot + 1))
       local _base="$_job_dir/$_slot"
@@ -511,28 +505,13 @@ run_tier() {
         fi
       ) &
       _inflight=$((_inflight + 1))
-      # Track pids only on the fallback path; `wait -n` needs no pid bookkeeping.
-      if [[ "$_waitn" -eq 0 ]]; then
-        _pids+=($!)
-      fi
       if [[ "$_inflight" -ge "$_par_jobs" ]]; then
-        if [[ "$_waitn" -eq 1 ]]; then
-          wait -n 2>/dev/null || true
-        else
-          wait "${_pids[0]}" 2>/dev/null || true
-          _pids=("${_pids[@]:1}")
-        fi
+        wait -n 2>/dev/null || true
         _inflight=$((_inflight - 1))
       fi
     done
     # drain remaining background jobs
-    if [[ "$_waitn" -eq 1 ]]; then
-      wait 2>/dev/null || true
-    else
-      for _pid in "${_pids[@]+"${_pids[@]}"}"; do
-        wait "$_pid" 2>/dev/null || true
-      done
-    fi
+    wait 2>/dev/null || true
     # serial aggregation in submission order
     local _i
     for _i in $(seq 1 $_slot); do

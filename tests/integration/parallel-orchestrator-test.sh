@@ -331,5 +331,16 @@ assert_eq "T5: members recorded in declaration order" \
 build 2
 impact 3" "$(cat "$HOOK_LOG")"
 
+# ── [SPEC-5] CHANGE: "bash-3.2-safe" label removed from parallel-orchestrator ──
+# The FIFO pool comment in core/pipeline/parallel-orchestrator.sh previously
+# carried "bash-3.2-safe — NO `wait -n`" — a claim that implied downward
+# compatibility that no longer applies once the Bash 5 floor is enforced.
+# After this change the label is gone; the comment is factual about drain order.
+# Fails at merge-base (where the label exists) and passes once it is removed.
+_ORCH="$REPO_ROOT/core/pipeline/parallel-orchestrator.sh"
+_bash32_label=$(grep -c 'bash-3\.2-safe' "$_ORCH" 2>/dev/null || true)
+assert_eq "[SPEC-5] 'bash-3.2-safe' label removed from parallel-orchestrator.sh FIFO pool comment" \
+    "0" "$_bash32_label"
+
 cleanup_test_env
 print_test_results

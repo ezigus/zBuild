@@ -22,17 +22,13 @@ _doc_fail() { error "  [FAIL] $*"; DOCTOR_FAIL=$((DOCTOR_FAIL + 1)); }
 # ─── Prerequisites ───────────────────────────────────────────────────────────
 
 _check_bash_version() {
-    # Note: helpers.sh (sourced above) hard-fails on Bash <5, so the bash 3/4
-    # branches below can only execute when this function is invoked from a
-    # Bash 5+ shell that is checking the *system default* bash version.
-    # In practice major will always be ≥5 when reached via normal sourcing.
+    # Note: helpers.sh (sourced above) hard-fails on Bash <5 via compat.sh,
+    # so major is always ≥5 in normal use. Anything below is a bug.
     local major="${BASH_VERSINFO[0]}"
     if (( major >= 5 )); then
         _doc_pass "bash ${BASH_VERSION}"
-    elif (( major == 4 )); then
-        _doc_warn "bash 4 functional but 5 recommended; Fix: brew install bash"
     else
-        _doc_fail "bash 3 not supported; Fix: brew install bash"
+        _doc_fail "bash ${BASH_VERSION} is below the Bash 5+ floor; Fix: brew install bash"
     fi
 }
 
