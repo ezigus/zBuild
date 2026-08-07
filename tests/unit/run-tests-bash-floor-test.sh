@@ -6,7 +6,7 @@
 #                (fails at merge-base: run-all.sh did not source compat.sh)
 # SPEC-3 CHANGE  _zbuild_check_bash in compat.sh rejects Bash major < 5
 #                (fails at merge-base: this test file did not exist)
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

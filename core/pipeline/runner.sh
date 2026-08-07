@@ -249,12 +249,18 @@ _runner_validate_leaf_resolvability() {
     # default is enforce, matching contract-validator's default; unknown modes
     # degrade to non-enforce, exactly as contract-validator degrades them to warn.)
     [[ "${ZBUILD_CONTRACT_VALIDATOR:-enforce}" == "enforce" ]] || return 0
-    # Validate the array name is a plain identifier BEFORE the eval below — never
-    # eval a name assembled from unvalidated input (Copilot #1290: injection
-    # footgun). Callers pass a literal ("active_stages"), so a non-identifier is a
-    # programming error, not runtime data.
+    # Validate the array name is a plain identifier before binding the nameref
+    # below — never bind a name assembled from unvalidated input (Copilot #1290:
+    # injection footgun). Callers pass a literal ("active_stages"), so a
+    # non-identifier is a programming error, not runtime data.
     if [[ ! "$_arr_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
         error "_runner_validate_leaf_resolvability: invalid array name '${_arr_name}'"
+        return 2
+    fi
+    # bash errors on a nameref that resolves to itself; reject it with our own
+    # message rather than a raw "circular name reference" from the shell.
+    if [[ "$_arr_name" == "_stages" ]]; then
+        error "_runner_validate_leaf_resolvability: array name '_stages' collides with the nameref"
         return 2
     fi
     local -n _stages="${_arr_name}"
