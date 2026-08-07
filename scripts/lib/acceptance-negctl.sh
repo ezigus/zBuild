@@ -89,8 +89,9 @@ _negctl_guard_log_check() {
     local clean tagged
     clean="$(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' "$logfile" 2>/dev/null)" || true
     [[ -z "$clean" ]] && return 2
+    # grep exits non-zero on no-match, which is the only way $tagged can be
+    # empty — a matched line always contains the tag.
     tagged="$(printf '%s\n' "$clean" | LC_ALL=C grep -F "[$spec_id]" 2>/dev/null)" || return 2
-    [[ -z "$tagged" ]] && return 2
     # ✗ wins over ✓: a guard with one failing and one passing tagged assertion
     # has regressed.
     printf '%s\n' "$tagged" | LC_ALL=C grep -qF '✗' 2>/dev/null && return 0
