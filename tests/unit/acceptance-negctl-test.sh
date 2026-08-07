@@ -880,5 +880,143 @@ assert_eq "[SPEC-1] NC-S: no guard_regressed token in output" \
     "" "$(grep 'guard_regressed' <<<"$OUT_S")"
 assert_eq "[SPEC-1] NC-S: overall rc=0 (both SPECs pass)" "0" "$RC_S"
 
+# ── NC-S2: [SPEC-1] NC-S again with ZBUILD_NEGCTL_ARTIFACT_DIR set ──────────────
+# The plugin ALWAYS exports this (spec-acceptance/plugin.sh:237), so this is the
+# production path. It was untested: the guard scan used to read the shared
+# per-SPEC log when the dir was set and a per-file scratch when it was not, so
+# the whole unit suite exercised the branch production never takes.
+LOGDIR_S2="$(mktemp -d)"
+set +e
+OUT_S2="$(ZBUILD_NEGCTL_ARTIFACT_DIR="$LOGDIR_S2" acceptance_negctl_check "$DM_S" "$REPO_S")"
+RC_S2=$?
+set -e
+assert_eq "[SPEC-1] NC-S2: verdict is identical with the artifact dir set" \
+    "NEGCTL PASS SPEC-2 guard_spec" "$(grep 'SPEC-2' <<<"$OUT_S2")"
+assert_eq "[SPEC-1] NC-S2: rc identical with the artifact dir set" "$RC_S" "$RC_S2"
+assert_eq "[SPEC-1] NC-S2: the per-SPEC diagnostic log still captures the run" "1" \
+    "$(grep -cF '[SPEC-2] guard_anchor.sh found' "$LOGDIR_S2/negctl-SPEC-2.log" 2>/dev/null || echo 0)"
+rm -rf "$LOGDIR_S2"
+
+# ── NC-T: [SPEC-2] a genuinely regressed guard is still condemned ───────────────
+# The safety half of #1737 and the case NC-F2 does NOT cover: NC-F2's fixture is
+# a bare `exit 1` whose [SPEC-1] tag sits in a shell comment, so it never reaches
+# stdout and only exercises the file-rc fallback. Here the guard's OWN assertion
+# prints a ✗ at the merge-base, alongside a failing sibling [change] assertion —
+# the shape that must not be excused as "a sibling caused the exit".
+REPO_T="$(setup_git_temp_repo negctl-repo-t)"
+(
+    cd "$REPO_T"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# change impl\n' > shared_impl.sh
+    # guard_anchor.sh is created only at HEAD, so the guard's own assertion
+    # genuinely fails at the merge-base — a real regression, not a sibling's.
+    printf '# guard anchor\n' > guard_anchor.sh
+    cat > tests/regressed-guard-test.sh <<'TEOF'
+#!/usr/bin/env bash
+_failed=0
+_root="$(git rev-parse --show-toplevel)"
+if [[ -f "$_root/shared_impl.sh" ]]; then
+    printf '  \xe2\x9c\x93 [SPEC-1] shared_impl.sh found\n'
+else
+    printf '  \xe2\x9c\x97 [SPEC-1] shared_impl.sh missing\n'
+    _failed=1
+fi
+if [[ -f "$_root/guard_anchor.sh" ]]; then
+    printf '  \xe2\x9c\x93 [SPEC-2] guard_anchor.sh found\n'
+else
+    printf '  \xe2\x9c\x97 [SPEC-2] guard_anchor.sh missing\n'
+    _failed=1
+fi
+exit "${_failed}"
+TEOF
+    chmod +x tests/regressed-guard-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: regressed-guard fixture"
+)
+DM_T="$REPO_T/design.md"
+cat > "$DM_T" <<'EOF'
+```acceptance
+SPEC-1[change]: shared_impl.sh present at HEAD
+SPEC-2[guard]: guard_anchor.sh always present
+TESTFILES:
+SPEC-1: tests/regressed-guard-test.sh
+SPEC-2: tests/regressed-guard-test.sh
+```
+EOF
+set +e; OUT_T="$(acceptance_negctl_check "$DM_T" "$REPO_T")"; RC_T=$?; set -e
+assert_eq "[SPEC-2] NC-T: guard whose own [spec_id] assertion carries ✗ at baseline → guard_regressed" \
+    "NEGCTL FAIL SPEC-2 guard_regressed" "$(grep 'SPEC-2' <<<"$OUT_T")"
+assert_eq "[SPEC-2] NC-T: a failing sibling does not excuse the guard's own ✗" "1" "$RC_T"
+
+# ── NC-U: [SPEC-2] a passing tagged line in ONE testfile cannot clear another ────
+# The per-SPEC diagnostic log accumulates every TESTFILE bound to the SPEC. If the
+# guard scan read that shared log instead of the failing file's own output, file
+# A's ✓ would clear file B's bare failure and the guard would silently pass.
+REPO_U="$(setup_git_temp_repo negctl-repo-u)"
+(
+    cd "$REPO_U"
+    printf '# guard anchor\n' > guard_anchor.sh
+    "$GIT" add guard_anchor.sh; "$GIT" commit -q -m "baseline: add guard anchor"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# change impl\n' > shared_impl.sh
+    # File A: the guard's assertion holds at baseline and prints its ✓.
+    cat > tests/guard-a-test.sh <<'UEOF'
+#!/usr/bin/env bash
+_root="$(git rev-parse --show-toplevel)"
+if [[ -f "$_root/guard_anchor.sh" ]]; then
+    printf '  \xe2\x9c\x93 [SPEC-2] guard_anchor.sh found\n'; exit 0
+fi
+printf '  \xe2\x9c\x97 [SPEC-2] guard_anchor.sh missing\n'; exit 1
+UEOF
+    # File B: bare non-zero exit, no tagged output at all → inconclusive → file rc.
+    printf '#!/usr/bin/env bash\nexit 1\n' > tests/guard-b-test.sh
+    chmod +x tests/guard-a-test.sh tests/guard-b-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: two-testfile guard fixture"
+)
+DM_U="$REPO_U/design.md"
+cat > "$DM_U" <<'EOF'
+```acceptance
+SPEC-1[change]: shared_impl.sh present at HEAD
+SPEC-2[guard]: guard_anchor.sh always present
+TESTFILES:
+SPEC-1: tests/guard-a-test.sh
+SPEC-2: tests/guard-a-test.sh tests/guard-b-test.sh
+```
+EOF
+LOGDIR_U="$(mktemp -d)"
+set +e
+OUT_U="$(ZBUILD_NEGCTL_ARTIFACT_DIR="$LOGDIR_U" acceptance_negctl_check "$DM_U" "$REPO_U")"
+set -e
+assert_eq "[SPEC-2] NC-U: a sibling TESTFILE's ✓ does not clear another file's bare failure" \
+    "NEGCTL FAIL SPEC-2 guard_regressed" "$(grep 'SPEC-2' <<<"$OUT_U")"
+rm -rf "$LOGDIR_U"
+
+# ── NC-V: [SPEC-3] the log scan is gated on the default bash runner ──────────────
+# #1691 rejected assertion parsing because ZBUILD_ACCEPTANCE_RUN_CMD (#1478) can
+# point negctl at pytest/jest/cargo, which emit nothing like ✓/✗. #1740 accepted
+# the mechanism only if gated on the default runner. Under a custom runner the
+# guard keeps the file-rc verdict it has today — same precedent as
+# _negctl_baseline_parses.
+LOGDIR_V="$(mktemp -d)"
+printf '  \xe2\x9c\x93 [SPEC-2] guard held\n' > "$LOGDIR_V/cap.log"
+set +e
+_negctl_guard_log_check "$LOGDIR_V/cap.log" "SPEC-2"; LV_DEFAULT=$?
+ZBUILD_ACCEPTANCE_RUN_CMD="pytest {files}" \
+    _negctl_guard_log_check "$LOGDIR_V/cap.log" "SPEC-2"; LV_CUSTOM=$?
+# A tag that appears only in a comment/header carries no ✓ or ✗ — not evidence
+# that the guard held, so it must stay inconclusive rather than clear the rc.
+printf '# [SPEC-2] this is a comment, not an assertion result\n' > "$LOGDIR_V/bare.log"
+_negctl_guard_log_check "$LOGDIR_V/bare.log" "SPEC-2"; LV_BARE=$?
+# Both markers present for the same SPEC → ✗ wins, the guard has regressed.
+printf '  \xe2\x9c\x93 [SPEC-2] a held\n  \xe2\x9c\x97 [SPEC-2] b broke\n' > "$LOGDIR_V/both.log"
+_negctl_guard_log_check "$LOGDIR_V/both.log" "SPEC-2"; LV_BOTH=$?
+set -e
+assert_eq "[SPEC-3] NC-V: default bash runner → ✓-marked tag reads as 'guard held' (1)" "1" "$LV_DEFAULT"
+assert_eq "[SPEC-3] NC-V: custom ZBUILD_ACCEPTANCE_RUN_CMD → inconclusive (2), file rc governs" "2" "$LV_CUSTOM"
+assert_eq "[SPEC-3] NC-V: tag present but unmarked → inconclusive (2), not a cleared guard" "2" "$LV_BARE"
+assert_eq "[SPEC-3] NC-V: ✗ outranks ✓ for the same SPEC → regressed (0)" "0" "$LV_BOTH"
+rm -rf "$LOGDIR_V"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

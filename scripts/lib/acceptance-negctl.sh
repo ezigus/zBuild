@@ -14,11 +14,13 @@
 # A SPEC-n is load-bearing iff ≥1 of its tagged TESTFILEs is a valid control.
 #
 # Granularity: [change] SPECs use per-TESTFILE rc (file-level exit code), not
-# per-assertion. [guard] SPECs use assertion-level granularity — only the guard's
-# own [spec_id]-tagged output line matters; a sibling [change] assertion failing
-# at baseline does not condemn the guard (#1737). Author one SPEC per test file
-# (or one tagged assertion per file) for precise attribution; a file mixing a
-# load-bearing and a tautological [change] SPEC is judged load-bearing.
+# per-assertion. [guard] SPECs additionally consult the guard's own
+# [spec_id]-tagged output line, so a sibling [change] assertion failing at
+# baseline does not condemn the guard (#1737) — but only under the default bash
+# runner, and only when that line carries an explicit ✓/✗ marker; every other
+# case keeps the file-rc verdict. Author one SPEC per test file (or one tagged
+# assertion per file) for precise attribution; a file mixing a load-bearing and a
+# tautological [change] SPEC is judged load-bearing.
 #
 # Source-only; no `set -e` at top level (would mutate caller options).
 
@@ -61,24 +63,39 @@ _negctl_baseline_parses() {
 }
 
 # _negctl_guard_log_check <logfile> <spec_id>
-# Scans captured baseline output for [spec_id]-tagged assertion lines after
-# stripping ANSI escape codes (LC_ALL=C sed, same pattern as test-output-sanitize.sh).
+# Scans ONE TESTFILE's captured baseline output for [spec_id]-tagged assertion
+# lines, after stripping ANSI escapes (LC_ALL=C sed, as test-output-sanitize.sh).
 # Returns:
-#   0 — a fail-marked (✗) line tagged [spec_id] is present → guard assertion failed
-#   1 — [spec_id] appears in log but no fail marker → sibling caused exit; guard OK
-#   2 — [spec_id] not found at all → bare exit or custom runner; caller falls back to file rc
+#   0 — a ✗-marked line tagged [spec_id] → the guard's own assertion failed
+#   1 — a ✓-marked line tagged [spec_id] and no ✗ → a sibling caused the exit
+#   2 — inconclusive: no marked [spec_id] line, empty capture, or a custom
+#       runner. The caller falls back to the file rc, which is pre-#1737
+#       behaviour — the safe direction.
+#
+# #1737: BOTH markers must be looked for, not just ✗. A bare `grep -v ✗` would
+# read "tag mentioned anywhere" as "the guard held", so a tag appearing only in a
+# comment, a header, or an unrelated stale assertion from an earlier issue would
+# clear a guard that asserted nothing. Requiring an explicit ✓ makes the evidence
+# an assertion result rather than a string match.
+#
+# #1691/#1740: gated on the default bash runner. A repo pointing
+# ZBUILD_ACCEPTANCE_RUN_CMD (#1478) at pytest/jest/cargo emits nothing like ✓/✗,
+# so parsing its output would be guesswork; those targets keep the file-rc
+# verdict they have today. Same precedent as _negctl_baseline_parses.
 _negctl_guard_log_check() {
     local logfile="$1" spec_id="$2"
+    [[ -n "${ZBUILD_ACCEPTANCE_RUN_CMD:-}" ]] && return 2
     [[ -f "$logfile" ]] || return 2
-    local clean
+    local clean tagged
     clean="$(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' "$logfile" 2>/dev/null)" || true
     [[ -z "$clean" ]] && return 2
-    printf '%s\n' "$clean" | LC_ALL=C grep -qF "[$spec_id]" 2>/dev/null || return 2
-    if printf '%s\n' "$clean" | LC_ALL=C grep -F "[$spec_id]" 2>/dev/null \
-            | LC_ALL=C grep -qF '✗' 2>/dev/null; then
-        return 0
-    fi
-    return 1
+    tagged="$(printf '%s\n' "$clean" | LC_ALL=C grep -F "[$spec_id]" 2>/dev/null)" || return 2
+    [[ -z "$tagged" ]] && return 2
+    # ✗ wins over ✓: a guard with one failing and one passing tagged assertion
+    # has regressed.
+    printf '%s\n' "$tagged" | LC_ALL=C grep -qF '✗' 2>/dev/null && return 0
+    printf '%s\n' "$tagged" | LC_ALL=C grep -qF '✓' 2>/dev/null && return 1
+    return 2
 }
 
 # _negctl_run <testfile_abs> <cwd> [logfile]  → echoes nothing, returns the rc.
@@ -276,36 +293,41 @@ acceptance_negctl_check() {
                     _g_harness=1; break
                 fi
                 local _g_rc=0
-                # Always capture baseline output so _negctl_guard_log_check can
-                # inspect it even when ZBUILD_NEGCTL_ARTIFACT_DIR is not set.
-                local _g_scratch="" _g_capfile
-                if [[ -n "$_g_logfile" ]]; then
-                    _g_capfile="$_g_logfile"
-                    printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$_g_logfile"
-                else
-                    _g_scratch="$(mktemp "${TMPDIR:-/tmp}/zb-negctl-guard.XXXXXX")"
-                    _g_capfile="$_g_scratch"
-                fi
+                # #1737: capture PER TESTFILE, never into the shared per-SPEC log.
+                # $_g_logfile accumulates every TESTFILE bound to this SPEC, so
+                # scanning it would let file A's passing ✓ clear file B's failure.
+                # The scratch is also what makes the artifact-dir-set and
+                # artifact-dir-unset paths identical — the production path (the
+                # plugin always exports ZBUILD_NEGCTL_ARTIFACT_DIR) and the path
+                # the unit tests take now run the same code.
+                local _g_capfile
+                _g_capfile="$(mktemp "${TMPDIR:-/tmp}/zb-negctl-guard.XXXXXX")" || _g_capfile=""
                 _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
+                # Fold the capture into the per-SPEC diagnostic log, preserving
+                # the pre-#1737 artifact shape operators read.
+                if [[ -n "$_g_logfile" ]]; then
+                    printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$_g_logfile"
+                    [[ -n "$_g_capfile" ]] && cat "$_g_capfile" >> "$_g_logfile" 2>/dev/null
+                fi
                 if _negctl_is_timeout_rc "$_g_rc"; then
-                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
+                    [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
                     _g_timeout=1; break
                 fi
                 if _negctl_is_harness_rc "$_g_rc"; then
-                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
+                    [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
                     _g_harness=1; break
                 fi
+                # lv=1 (a ✓-marked [spec_id] line, no ✗) is the ONLY outcome that
+                # clears a non-zero file rc: a sibling [change] assertion reddened
+                # the file while the guard's own assertion held. Everything else —
+                # ✗ found, nothing marked, custom runner — keeps the file-rc verdict.
+                local _g_lv=1
                 if [[ "$_g_rc" -ne 0 ]]; then
-                    local _g_lv
-                    _negctl_guard_log_check "$_g_capfile" "$spec_id"; _g_lv=$?
-                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
-                    # lv=1: [spec_id] in log but no fail marker → sibling [change]
-                    # assertion caused the exit; guard's own assertion passed. Not regressed.
-                    if [[ "$_g_lv" -ne 1 ]]; then
-                        _g_regressed=1; break
-                    fi
-                else
-                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
+                    _negctl_guard_log_check "$_g_capfile" "$spec_id" && _g_lv=0 || _g_lv=$?
+                fi
+                [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+                if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then
+                    _g_regressed=1; break
                 fi
             done
             _negctl_bound_log "$_g_logfile"
