@@ -1,113 +1,125 @@
 #!/usr/bin/env bash
-# Integration: guard that setup_test_env sandboxes ZBUILD_STATE_DIR so
-# stage-io writes during acceptance-gate test replay cannot escape to the
-# outer pipeline's state directory (#1713).
+# Integration: guard that setup_test_env sandboxes ZBUILD_STATE_DIR so stage-io
+# writes during a replayed test cannot escape into the outer pipeline's state
+# directory (#1713).
+#
+# All three SPECs are [change] and each must redden INDEPENDENTLY at the
+# merge-base. That matters here because the negative control — for [change]
+# (acceptance-negctl.sh: rc_base/rc_head) as well as for [guard] (#1737) — runs
+# the WHOLE testfile and keys on its exit code. A vacuous assertion in a file
+# whose siblings fail is credited by them and never noticed.
+#
+# That is not hypothetical: the first version of this file asserted SPEC-2
+# against an inline gate replay that wrote nothing to the canary even at the
+# merge-base. It passed there, which makes it inert — and NEGCTL PASSed anyway,
+# carried by SPEC-1 and SPEC-3. Verified at merge-base 00927cc, per assertion:
+#
+#   SPEC-1  FAIL   SPEC-2  pass (inert)   SPEC-3  FAIL
+#
+# SPEC-2 below is now the reproduction from the issue body, which is what the
+# issue asked for ("The repro above is the test"): 13 records at the merge-base,
+# 0 after the fix.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Establish a canary ZBUILD_STATE_DIR BEFORE sourcing test-helpers so that
-# ORIG_STATE_DIR at source time captures this value — matching the real
-# scenario where the pipeline exports ZBUILD_STATE_DIR before `npm test` runs.
+# Establish a canary ZBUILD_STATE_DIR BEFORE sourcing test-helpers, matching the
+# real scenario: the pipeline exports ZBUILD_STATE_DIR before `npm test` runs.
 CANARY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hermeticity-canary.XXXXXX")"
+REPRO_CANARY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hermeticity-repro.XXXXXX")"
 export ZBUILD_STATE_DIR="$CANARY_DIR"
+
+# Captured BEFORE sourcing test-helpers.sh, which prepends a mock bin dir to
+# PATH at SOURCE time (not in setup_test_env). SPEC-2's subprocess must see the
+# pristine environment the pipeline actually hands `npm test`; inheriting the
+# mock PATH makes the inner test fail for reasons unrelated to hermeticity.
+_PRISTINE_PATH="$PATH"
+_PRISTINE_HOME="$HOME"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-# CANARY_DIR is outside TEST_TEMP_DIR so the master trap does not remove it;
-# hook into the standard cleanup point so it is removed on exit/signal.
-_test_cleanup_hook() { rm -rf "$CANARY_DIR" 2>/dev/null || true; }
+# Both canaries live outside TEST_TEMP_DIR so the master trap does not remove
+# them; hook into the standard cleanup point so they go on exit/signal.
+_test_cleanup_hook() { rm -rf "$CANARY_DIR" "$REPRO_CANARY_DIR" 2>/dev/null || true; }
 
 print_test_header "acceptance-gate harness hermeticity (#1713)"
 
-# Snapshot the pre-setup value for SPEC-3's restore assertion.
-_PRE_SETUP_STATE_DIR="${ZBUILD_STATE_DIR:-}"
-
-# ── SPEC-1 (change): setup_test_env redirects ZBUILD_STATE_DIR into sandbox ──
-setup_test_env "hermeticity"
-
-if [[ "${ZBUILD_STATE_DIR:-}" == "$CANARY_DIR" ]]; then
-    assert_fail "[SPEC-1] setup_test_env must redirect ZBUILD_STATE_DIR away from the canary" \
-        "ZBUILD_STATE_DIR still == canary ($CANARY_DIR)"
-elif [[ -z "${ZBUILD_STATE_DIR:-}" || "${ZBUILD_STATE_DIR:-}" == "$TEST_TEMP_DIR"* ]]; then
-    # Unset is valid: stage-io falls back to ${HOME}/.zbuild/state (already
-    # sandboxed), so no writes reach the canary. Explicit sandbox path is also
-    # valid. Either way the canary is protected.
-    assert_pass "[SPEC-1] setup_test_env redirects ZBUILD_STATE_DIR away from canary (sandboxed)"
-else
-    assert_fail "[SPEC-1] ZBUILD_STATE_DIR points to unexpected location" \
-        "expected unset or prefix $TEST_TEMP_DIR, got ${ZBUILD_STATE_DIR:-<unset>}"
-fi
-
-# ── Run minimal acceptance-gate replay with file stage-io enabled ─────────────
-# The 'file' destination causes stage_io_end to write records under
-# ${ZBUILD_STATE_DIR}/artifacts/stage-io/. At the merge-base baseline these
-# land in the canary; after the fix they land in the sandbox (SPEC-2).
-export _TPL_STAGE_IO_DESTS_acceptance_gate="file,stdout"
-export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
-
-_GATE_REPO="$(setup_git_temp_repo "hermeticity-gate")"
-_GIT="$(command -v git)"
-
-(
-    cd "$_GATE_REPO"
-    "$_GIT" checkout -q -b feature
-    mkdir -p tests
-    printf '#!/usr/bin/env bash\nmy_fn() { return 0; }\n' > impl.sh
-    cat > tests/feature-test.sh << 'TESTEOF'
-#!/usr/bin/env bash
-# [SPEC-1] feature is implemented
-IMPL="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
-[[ -f "$IMPL" ]] || exit 1
-source "$IMPL"; my_fn
-TESTEOF
-    chmod +x tests/feature-test.sh impl.sh
-    "$_GIT" add -A; "$_GIT" commit -q -m "feat"
-) >/dev/null 2>&1
-
-cat > "$_GATE_REPO/design.md" << 'DESIGNEOF'
-```acceptance
-SPEC-1: feature is implemented
-TESTFILES:
-tests/feature-test.sh
-```
-DESIGNEOF
-
-_GATE_STATE="$_GATE_REPO/.zbuild-state"
-mkdir -p "$_GATE_STATE/artifacts"
-export ZBUILD_EVENTS_DIR="$_GATE_STATE/events"
-mkdir -p "$ZBUILD_EVENTS_DIR"
-export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-: > "$ZBUILD_EVENTS_JSONL"
-unset _ZBUILD_ACCEPTANCE_GATE_LOADED
-
+# ── SPEC-2 (change): the issue's reproduction, end to end ────────────────────
+# Run the real acceptance-gate integration test in a subprocess with BOTH
+# variables the bug needs: a canary ZBUILD_STATE_DIR and the inherited
+# _TPL_STAGE_IO_DESTS_* that makes template_stage_io_dests return a destination
+# list. Without the second variable this passes vacuously — the exact trap the
+# issue calls out. At the merge-base the replay writes its stage-io records
+# into the canary; after the fix the canary stays empty.
+#
+# Deliberately BEFORE setup_test_env: the subprocess must inherit this
+# process's real HOME and PATH, which is what the pipeline hands `npm test`.
+# Running it after the sandbox is installed makes the inner test inherit the
+# mock PATH and sandboxed HOME and fail for unrelated reasons (rc=2).
+_repro_rc=0
 set +e
-(
-    cd "$_GATE_REPO"
-    # shellcheck source=../../plugins/agent/spec-acceptance/plugin.sh
-    source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh"
-    acceptance_gate_run "acceptance-gate" "$_GATE_STATE/pipeline-state.json"
-) >/dev/null 2>&1
+# ZBUILD_TESTS_DIR takes the re-entrancy guard's documented exemption for
+# fixture-isolated nested runs (test-helpers.sh:29-34, #971). The guard exists to
+# stop the ablation gates fork-bombing the test stage; this is a single bounded
+# `bash <file>` with its own state dir, which is what the exemption is for. It
+# only feeds run-tests.sh's discovery root, and we do not go through run-tests.sh.
+env ZBUILD_STATE_DIR="$REPRO_CANARY_DIR" \
+    _TPL_STAGE_IO_DESTS_acceptance_gate="file,stdout" \
+    ZBUILD_TESTS_DIR="$REPO_ROOT/tests" \
+    PATH="$_PRISTINE_PATH" HOME="$_PRISTINE_HOME" \
+    bash "$REPO_ROOT/tests/integration/acceptance-gate-test.sh" >/dev/null 2>&1
+_repro_rc=$?
 set -e
 
-# ── SPEC-2 (change): canary dir has zero stage-io/*.json files ────────────────
-_CANARY_IO_COUNT=0
-if [[ -d "$CANARY_DIR" ]]; then
-    _CANARY_IO_COUNT="$(find "$CANARY_DIR" -name "*.json" -path "*/stage-io/*" 2>/dev/null | wc -l | tr -d ' ')"
-fi
-assert_eq "[SPEC-2] canary ZBUILD_STATE_DIR has zero stage-io records after gate replay" \
-    "0" "$_CANARY_IO_COUNT"
+_REPRO_IO_COUNT="$(find "$REPRO_CANARY_DIR" -name '*.json' -path '*/stage-io/*' 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[SPEC-2] a replayed acceptance-gate test writes no stage-io into the ambient state dir" \
+    "0" "$_REPRO_IO_COUNT"
 
-# ── SPEC-3 (change): cleanup_test_env restores ZBUILD_STATE_DIR ──────────────
-# New behavior: cleanup_test_env restores ZBUILD_STATE_DIR to the ORIG_STATE_DIR
-# value saved at source time. At merge-base ORIG_STATE_DIR is not defined in
-# test-helpers.sh, so the assertion fails there; with the fix it passes.
+# The replay itself must have actually run — a crashed subprocess would leave an
+# empty canary and make the assertion above pass for the wrong reason.
+assert_eq "[SPEC-2] guard: the replayed test actually ran (rc=0)" "0" "$_repro_rc"
+
+# Independent oracle for SPEC-1 and SPEC-3: what the CALLER had before setup.
+# Deliberately not test-helpers' own ORIG_STATE_DIR — asserting against the
+# implementation's private bookkeeping compares it to itself.
+_PRE_SETUP_STATE_DIR="${ZBUILD_STATE_DIR:-}"
+
+# ── SPEC-1 (change): setup_test_env diverts ZBUILD_STATE_DIR off the canary ──
+setup_test_env "hermeticity"
+_POST_SETUP_STATE_DIR="${ZBUILD_STATE_DIR:-<unset>}"
+
+if [[ "${ZBUILD_STATE_DIR:-<unset>}" == "$_PRE_SETUP_STATE_DIR" ]]; then
+    assert_fail "[SPEC-1] setup_test_env diverts ZBUILD_STATE_DIR away from the ambient canary" \
+        "still == canary ($CANARY_DIR)"
+elif [[ -z "${ZBUILD_STATE_DIR:-}" || "${ZBUILD_STATE_DIR:-}" == "$TEST_TEMP_DIR"* ]]; then
+    # Unset is a valid diversion: stage-io then falls back to ${HOME}/.zbuild/state,
+    # and setup_test_env has already sandboxed HOME. An explicit in-sandbox path
+    # is equally valid. Either way the ambient value is no longer in force.
+    assert_pass "[SPEC-1] setup_test_env diverts ZBUILD_STATE_DIR away from the ambient canary"
+else
+    assert_fail "[SPEC-1] ZBUILD_STATE_DIR points somewhere unexpected" \
+        "expected unset or under $TEST_TEMP_DIR, got ${ZBUILD_STATE_DIR:-<unset>}"
+fi
+
+# ── SPEC-3 (change): setup/cleanup is a round trip ──────────────────────────
+# Both halves, against the caller-side oracle: setup must have diverted the
+# value, and cleanup must put the caller's own value back. Asserting only the
+# second half would pass at the merge-base, where nothing diverted it and so
+# nothing needed restoring.
 cleanup_test_env
-assert_eq "[SPEC-3] cleanup_test_env restores ZBUILD_STATE_DIR to ORIG_STATE_DIR" \
-    "${ORIG_STATE_DIR:-not-saved}" "${ZBUILD_STATE_DIR:-}"
+_RESTORED_STATE_DIR="${ZBUILD_STATE_DIR:-<unset>}"
+
+if [[ "$_POST_SETUP_STATE_DIR" != "$_PRE_SETUP_STATE_DIR" \
+   && "$_RESTORED_STATE_DIR" == "$_PRE_SETUP_STATE_DIR" ]]; then
+    assert_pass "[SPEC-3] cleanup_test_env restores the caller's ZBUILD_STATE_DIR after setup diverted it"
+else
+    assert_fail "[SPEC-3] cleanup_test_env restores the caller's ZBUILD_STATE_DIR after setup diverted it" \
+        "pre=$_PRE_SETUP_STATE_DIR post_setup=$_POST_SETUP_STATE_DIR restored=$_RESTORED_STATE_DIR"
+fi
 
 print_test_results
+exit $((FAIL > 0))
