@@ -77,12 +77,28 @@ atomic_write() {
         free_mb=$(df -m "$dir" | tail -1 | awk '{print $4}')
     fi
     if (( free_mb < 50 )); then
+        # Drain stdin BEFORE reporting the refusal (#1773). Returning early left
+        # stdin unread: a payload smaller than the pipe buffer let the producer
+        # (`jq ... | atomic_write`) exit 0 while a larger one took SIGPIPE — so
+        # `PIPESTATUS[0]` reported the refusal only by payload size. Draining
+        # makes the producer's status uniformly 0 and this function's rc the one
+        # authoritative signal for all `| atomic_write` call sites.
+        cat > /dev/null
         error "atomic_write refusing: only ${free_mb}MB free at $dir (need >= 50MB)"
         return 1
     fi
 
-    local tmp; tmp="$(mktemp "${target}.tmp.XXXXXX")"
-    cat > "$tmp"
+    local tmp; tmp="$(mktemp "${target}.tmp.XXXXXX")" || {
+        error "atomic_write: cannot create temp file next to $target"
+        cat > /dev/null
+        return 1
+    }
+    # A short write here means the target was never updated — report it (#1773).
+    if ! cat > "$tmp"; then
+        error "atomic_write: failed writing payload to $tmp (target $target left unchanged)"
+        rm -f "$tmp"
+        return 1
+    fi
     # Rotate previous to .bak before replacing — atomic so a concurrent reader
     # never sees a torn .bak (the corruption-recovery source). Best-effort: a
     # failed rotation must NOT abort the main write (the `|| warn` keeps it from
@@ -91,7 +107,11 @@ atomic_write() {
         atomic_replace "$target" "${target}.bak" \
             || warn "atomic_write: .bak rotation failed for $target (best-effort, continuing)"
     fi
-    mv "$tmp" "$target"
+    if ! mv "$tmp" "$target"; then
+        error "atomic_write: failed to move $tmp into place at $target"
+        rm -f "$tmp"
+        return 1
+    fi
 }
 
 # ─── JSON validation with .bak recovery ─────────────────────────────────────
