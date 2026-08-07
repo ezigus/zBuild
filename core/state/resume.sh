@@ -68,6 +68,27 @@ init_state() {
             plugin_state: {},
             updated_at: $now
         }' | atomic_write "$state_file"
+    # ADR-006's resume contract starts here: an unchecked write leaves the run
+    # with no persisted state and nothing to resume from, and `emit_event`
+    # always returns 0 — so without this the caller sees success either way
+    # (#1773). Read both stages: the producer's rc AND the writer's.
+    #
+    # Caller contract: invoke this as `if ! init_state ...` (or `|| ...`). A
+    # bare call under `set -e` dies at the pipeline above, before these lines —
+    # so the diagnostic and the partial-file cleanup below never run. Both
+    # expansions must sit in ONE `local` so the first does not reset PIPESTATUS
+    # before the second reads it.
+    local _jq_rc="${PIPESTATUS[0]}" _write_rc="${PIPESTATUS[1]}"
+    if (( _jq_rc != 0 )) || (( _write_rc != 0 )); then
+        error "init_state: failed to write $state_file (jq rc=$_jq_rc, atomic_write rc=$_write_rc) — the run would proceed with no persisted state and nothing to resume from"
+        rm -f "$state_file"
+        return 1
+    fi
+    if [[ ! -s "$state_file" ]]; then
+        error "init_state: $state_file is missing or empty after a reportedly successful write — refusing to proceed stateless"
+        rm -f "$state_file"
+        return 1
+    fi
 
     emit_event "pipeline.init" "run_id=$run_id" "issue=$issue" "state_file=$state_file"
 }

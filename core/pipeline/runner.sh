@@ -1390,7 +1390,12 @@ main() {
             rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
         fi
         _runner_issue="${issue:-0}"
-        init_state "$state_file" "$_runner_run_id" "$_runner_issue"
+        # A refused state write means the ADR-006 resume contract has no origin
+        # point — abort rather than run the whole pipeline in memory (#1773).
+        if ! init_state "$state_file" "$_runner_run_id" "$_runner_issue"; then
+            error "Cannot initialize pipeline state at $state_file; aborting before any stage runs"
+            return 1
+        fi
         # Persist goal so resume can reconstruct the correct runner args.
         # Use jq --arg to safely encode user-supplied goal (prevents JSON injection
         # from embedded quotes or other special characters in the goal string).
