@@ -816,5 +816,69 @@ assert_eq "[SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head" \
 assert_eq "[SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation" "1" \
     "$(grep -cF '"-k" "$_RT_KILL_GRACE"' "$REPO_ROOT/scripts/run-tests.sh")"
 
+# ── NC-S: [SPEC-1] guard SPEC sharing testfile with failing [change] SPEC ────────
+# Before #1737: the guard arm judged entirely from the file's exit code, so when
+# the [change] SPEC's assertion failed at baseline (rc=1), the guard was falsely
+# condemned as guard_regressed even though its own assertion passed.
+# After #1737: _negctl_guard_log_check inspects [spec_id]-tagged output lines;
+# a non-zero file rc with no ✗ line for the guard's [spec_id] is classified as
+# "sibling caused exit" — the guard passes as guard_spec.
+REPO_S="$(setup_git_temp_repo negctl-repo-s)"
+(
+    cd "$REPO_S"
+    # guard_anchor.sh must be present at baseline (main) so the guard invariant
+    # holds there. Commit it to main before creating the feature branch.
+    printf '# guard anchor\n' > guard_anchor.sh
+    "$GIT" add guard_anchor.sh; "$GIT" commit -q -m "baseline: add guard anchor"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    # Production file present only at HEAD (makes the diff non-test-only so
+    # no_prod_delta does not skip the check before the guard path is reached).
+    printf '# change impl\n' > shared_impl.sh
+
+    # Shared testfile: emits [SPEC-1]/[SPEC-2]-tagged lines with ✓/✗ markers
+    # so _negctl_guard_log_check can distinguish which assertion failed.
+    cat > tests/shared-test.sh <<'SEOF'
+#!/usr/bin/env bash
+_failed=0
+_root="$(git rev-parse --show-toplevel)"
+# [SPEC-1] change assertion: absent at baseline, present at HEAD
+if [[ -f "$_root/shared_impl.sh" ]]; then
+    printf '  \xe2\x9c\x93 [SPEC-1] shared_impl.sh found\n'
+else
+    printf '  \xe2\x9c\x97 [SPEC-1] shared_impl.sh missing\n'
+    _failed=1
+fi
+# [SPEC-2] guard assertion: always present at baseline and HEAD
+if [[ -f "$_root/guard_anchor.sh" ]]; then
+    printf '  \xe2\x9c\x93 [SPEC-2] guard_anchor.sh found\n'
+else
+    printf '  \xe2\x9c\x97 [SPEC-2] guard_anchor.sh missing\n'
+    _failed=1
+fi
+exit "${_failed}"
+SEOF
+    chmod +x tests/shared-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: shared testfile fixture"
+)
+DM_S="$REPO_S/design.md"
+cat > "$DM_S" <<'EOF'
+```acceptance
+SPEC-1[change]: shared_impl.sh present at HEAD
+SPEC-2[guard]: guard_anchor.sh always present
+TESTFILES:
+SPEC-1: tests/shared-test.sh
+SPEC-2: tests/shared-test.sh
+```
+EOF
+set +e; OUT_S="$(acceptance_negctl_check "$DM_S" "$REPO_S")"; RC_S=$?; set -e
+assert_eq "[SPEC-1] NC-S: guard SPEC sharing testfile with failing change SPEC → NEGCTL PASS guard_spec" \
+    "NEGCTL PASS SPEC-2 guard_spec" "$(grep 'SPEC-2' <<<"$OUT_S")"
+assert_eq "[SPEC-1] NC-S: the [change] SPEC alongside the guard still passes the negctl check" \
+    "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_S")"
+assert_eq "[SPEC-1] NC-S: no guard_regressed token in output" \
+    "" "$(grep 'guard_regressed' <<<"$OUT_S")"
+assert_eq "[SPEC-1] NC-S: overall rc=0 (both SPECs pass)" "0" "$RC_S"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

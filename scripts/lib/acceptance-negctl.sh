@@ -13,9 +13,12 @@
 #   valid control ⇔ rc_base != 0 AND rc_head == 0.
 # A SPEC-n is load-bearing iff ≥1 of its tagged TESTFILEs is a valid control.
 #
-# Granularity is per-TESTFILE (file-level rc), not per-assertion. Author one
-# SPEC per test file (or one tagged assertion per file) for precise attribution;
-# a file mixing a load-bearing and a tautological SPEC is judged load-bearing.
+# Granularity: [change] SPECs use per-TESTFILE rc (file-level exit code), not
+# per-assertion. [guard] SPECs use assertion-level granularity — only the guard's
+# own [spec_id]-tagged output line matters; a sibling [change] assertion failing
+# at baseline does not condemn the guard (#1737). Author one SPEC per test file
+# (or one tagged assertion per file) for precise attribution; a file mixing a
+# load-bearing and a tautological [change] SPEC is judged load-bearing.
 #
 # Source-only; no `set -e` at top level (would mutate caller options).
 
@@ -55,6 +58,27 @@ _negctl_baseline_parses() {
     [[ -n "${ZBUILD_ACCEPTANCE_RUN_CMD:-}" ]] && return 0
     [[ -f "$f" ]] || return 1
     bash -n "$f" 2>/dev/null
+}
+
+# _negctl_guard_log_check <logfile> <spec_id>
+# Scans captured baseline output for [spec_id]-tagged assertion lines after
+# stripping ANSI escape codes (LC_ALL=C sed, same pattern as test-output-sanitize.sh).
+# Returns:
+#   0 — a fail-marked (✗) line tagged [spec_id] is present → guard assertion failed
+#   1 — [spec_id] appears in log but no fail marker → sibling caused exit; guard OK
+#   2 — [spec_id] not found at all → bare exit or custom runner; caller falls back to file rc
+_negctl_guard_log_check() {
+    local logfile="$1" spec_id="$2"
+    [[ -f "$logfile" ]] || return 2
+    local clean
+    clean="$(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' "$logfile" 2>/dev/null)" || true
+    [[ -z "$clean" ]] && return 2
+    printf '%s\n' "$clean" | LC_ALL=C grep -qF "[$spec_id]" 2>/dev/null || return 2
+    if printf '%s\n' "$clean" | LC_ALL=C grep -F "[$spec_id]" 2>/dev/null \
+            | LC_ALL=C grep -qF '✗' 2>/dev/null; then
+        return 0
+    fi
+    return 1
 }
 
 # _negctl_run <testfile_abs> <cwd> [logfile]  → echoes nothing, returns the rc.
@@ -252,16 +276,36 @@ acceptance_negctl_check() {
                     _g_harness=1; break
                 fi
                 local _g_rc=0
-                [[ -n "$_g_logfile" ]] && printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$_g_logfile"
-                _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_logfile" || _g_rc=$?
+                # Always capture baseline output so _negctl_guard_log_check can
+                # inspect it even when ZBUILD_NEGCTL_ARTIFACT_DIR is not set.
+                local _g_scratch="" _g_capfile
+                if [[ -n "$_g_logfile" ]]; then
+                    _g_capfile="$_g_logfile"
+                    printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$_g_logfile"
+                else
+                    _g_scratch="$(mktemp "${TMPDIR:-/tmp}/zb-negctl-guard.XXXXXX")"
+                    _g_capfile="$_g_scratch"
+                fi
+                _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
                 if _negctl_is_timeout_rc "$_g_rc"; then
+                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
                     _g_timeout=1; break
                 fi
                 if _negctl_is_harness_rc "$_g_rc"; then
+                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
                     _g_harness=1; break
                 fi
                 if [[ "$_g_rc" -ne 0 ]]; then
-                    _g_regressed=1; break
+                    local _g_lv
+                    _negctl_guard_log_check "$_g_capfile" "$spec_id"; _g_lv=$?
+                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
+                    # lv=1: [spec_id] in log but no fail marker → sibling [change]
+                    # assertion caused the exit; guard's own assertion passed. Not regressed.
+                    if [[ "$_g_lv" -ne 1 ]]; then
+                        _g_regressed=1; break
+                    fi
+                else
+                    [[ -n "$_g_scratch" ]] && rm -f "$_g_scratch"
                 fi
             done
             _negctl_bound_log "$_g_logfile"
