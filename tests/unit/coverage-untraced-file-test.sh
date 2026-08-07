@@ -34,6 +34,7 @@ setup_test_env "coverage-untraced-file"
 
 if [[ ! -f "$COV_REPORT" ]]; then
     assert_fail "coverage-report.py is present" "not found: $COV_REPORT"
+    cleanup_test_env
     print_test_results
     exit 1
 fi
@@ -118,14 +119,35 @@ done
 
 # ─── SPEC-5[guard] ──────────────────────────────────────────────────────────
 # legacy/scripts/lib/old.sh matches the '/scripts/lib/' INCLUDE substring, so
-# only the scan-root restriction keeps it out. Walking repo_root instead would
-# silently add every legacy file to the denominator.
+# it can reach the file set by TWO routes and both must be closed:
+#   (a) the disk walk — kept out by the scan-root restriction
+#   (b) the trace — kept out by '/legacy/' in EXCLUDE
+# Walking repo_root instead would silently add every legacy file to the
+# denominator; excluding only the scan root would leave (b) open.
 if grep -qF "legacy/scripts/lib/old.sh" "$_out"; then
-    assert_fail "SPEC-5: legacy/ is not swept into the denominator" \
+    assert_fail "SPEC-5: legacy/ is not swept in via the disk walk" \
         "legacy file appeared in the table: $_stdout"
 else
-    assert_pass "SPEC-5: legacy/ is not swept into the denominator"
+    assert_pass "SPEC-5: legacy/ is not swept in via the disk walk"
 fi
+
+# (b) same fixture, but now the legacy file IS in the trace.
+LEGACY_TRACE="$TEST_TEMP_DIR/legacy.trace"
+{
+    printf 'TRACE:%s/core/traced.sh:2:echo traced\n' "$FAKE_ROOT"
+    printf 'TRACE:%s/legacy/scripts/lib/old.sh:2:_r=1\n' "$FAKE_ROOT"
+} > "$LEGACY_TRACE"
+_legacy_out="$TEST_TEMP_DIR/legacy-out.txt"
+python3 "$COV_REPORT" "$LEGACY_TRACE" "$FAKE_ROOT" "0" >"$_legacy_out" 2>&1 || true
+if grep -qF "legacy/scripts/lib/old.sh" "$_legacy_out"; then
+    assert_fail "SPEC-5: a TRACED legacy file is still excluded" \
+        "legacy file appeared in the table: $(cat "$_legacy_out")"
+else
+    assert_pass "SPEC-5: a TRACED legacy file is still excluded"
+fi
+# Its lines must not reach the numerator or denominator either.
+assert_contains "SPEC-5: a traced legacy file changes neither total" \
+    "$(cat "$_legacy_out")" "Total: 1/6 lines"
 
 # ─── Floor semantics still work off the corrected total ─────────────────────
 # 1/6 = 16.7%. A floor of 50 must fail; a floor of 10 must pass.

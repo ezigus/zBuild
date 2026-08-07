@@ -19,17 +19,29 @@ import re
 import json
 from collections import defaultdict
 
+if len(sys.argv) != 4:
+    print(f"usage: {os.path.basename(sys.argv[0])} <trace_file> <repo_root> <floor>",
+          file=sys.stderr)
+    sys.exit(2)
+
 trace_file = sys.argv[1]
 repo_root  = sys.argv[2]
-floor      = int(sys.argv[3])
+try:
+    floor = int(sys.argv[3])
+except ValueError:
+    print(f"ERROR: floor must be an integer, got: {sys.argv[3]!r}", file=sys.stderr)
+    sys.exit(2)
 
 INCLUDE  = ['/core/', '/scripts/lib/']
-EXCLUDE  = ['/tests/', '-test.sh', '-unit-test.sh']
+# '/legacy/' is excluded on BOTH paths into the file set. legacy/ is a frozen
+# upstream import that is never executed and is not engine code (CLAUDE.md),
+# but `legacy/scripts/lib/*.sh` satisfies the INCLUDE substring — so it can
+# arrive either from the disk walk or from the trace, and restricting only the
+# scan roots would leave the trace path open (#1761).
+EXCLUDE  = ['/legacy/', '/tests/', '-test.sh', '-unit-test.sh']
 
 # Roots enumerated from disk. Deliberately NOT `repo_root` itself: walking the
-# whole tree matches `/scripts/lib/` under legacy/, which is a frozen upstream
-# import that is never executed and is not engine code (CLAUDE.md). Counting it
-# would add ~58 files of dead weight to the denominator (#1761).
+# whole tree would sweep in legacy/ (~58 files) as dead weight (#1761).
 SCAN_ROOTS = ['core', 'scripts/lib']
 
 
