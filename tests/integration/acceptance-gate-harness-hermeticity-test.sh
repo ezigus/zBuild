@@ -29,6 +29,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CANARY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hermeticity-canary.XXXXXX")"
 REPRO_CANARY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hermeticity-repro.XXXXXX")"
 export ZBUILD_STATE_DIR="$CANARY_DIR"
+# ZBUILD_ARTIFACT_DIR gets the same unset-then-restore treatment in the harness;
+# without an ambient value here its restore branch would never be exercised.
+export ZBUILD_ARTIFACT_DIR="$CANARY_DIR/artifacts"
 
 # Captured BEFORE sourcing test-helpers.sh, which prepends a mock bin dir to
 # PATH at SOURCE time (not in setup_test_env). SPEC-2's subprocess must see the
@@ -75,22 +78,27 @@ env ZBUILD_STATE_DIR="$REPRO_CANARY_DIR" \
 _repro_rc=$?
 set -e
 
+# Order matters: assert the replay RAN before asserting what it wrote. A crashed
+# subprocess leaves an empty canary, so the count assertion would log a
+# spurious PASS first and the reader would meet the real cause second. (Both
+# failure modes were hit while writing this: a mock PATH, then the re-entrancy
+# guard — each surfaced as rc=2 with an empty canary.)
+assert_eq "[SPEC-2] guard: the replayed test actually ran (rc=0)" "0" "$_repro_rc"
+
 _REPRO_IO_COUNT="$(find "$REPRO_CANARY_DIR" -name '*.json' -path '*/stage-io/*' 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "[SPEC-2] a replayed acceptance-gate test writes no stage-io into the ambient state dir" \
     "0" "$_REPRO_IO_COUNT"
-
-# The replay itself must have actually run — a crashed subprocess would leave an
-# empty canary and make the assertion above pass for the wrong reason.
-assert_eq "[SPEC-2] guard: the replayed test actually ran (rc=0)" "0" "$_repro_rc"
 
 # Independent oracle for SPEC-1 and SPEC-3: what the CALLER had before setup.
 # Deliberately not test-helpers' own ORIG_STATE_DIR — asserting against the
 # implementation's private bookkeeping compares it to itself.
 _PRE_SETUP_STATE_DIR="${ZBUILD_STATE_DIR:-}"
+_PRE_SETUP_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-}"
 
 # ── SPEC-1 (change): setup_test_env diverts ZBUILD_STATE_DIR off the canary ──
 setup_test_env "hermeticity"
 _POST_SETUP_STATE_DIR="${ZBUILD_STATE_DIR:-<unset>}"
+_POST_SETUP_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-<unset>}"
 
 if [[ "${ZBUILD_STATE_DIR:-<unset>}" == "$_PRE_SETUP_STATE_DIR" ]]; then
     assert_fail "[SPEC-1] setup_test_env diverts ZBUILD_STATE_DIR away from the ambient canary" \
@@ -119,6 +127,18 @@ if [[ "$_POST_SETUP_STATE_DIR" != "$_PRE_SETUP_STATE_DIR" \
 else
     assert_fail "[SPEC-3] cleanup_test_env restores the caller's ZBUILD_STATE_DIR after setup diverted it" \
         "pre=$_PRE_SETUP_STATE_DIR post_setup=$_POST_SETUP_STATE_DIR restored=$_RESTORED_STATE_DIR"
+fi
+
+# ZBUILD_ARTIFACT_DIR gets the identical unset-then-restore treatment, and
+# nothing asserted it. Untagged: not a declared SPEC, but the branch is real
+# code and this is the only thing that exercises it.
+_RESTORED_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-<unset>}"
+if [[ "$_POST_SETUP_ARTIFACT_DIR" != "$_PRE_SETUP_ARTIFACT_DIR" \
+   && "$_RESTORED_ARTIFACT_DIR" == "$_PRE_SETUP_ARTIFACT_DIR" ]]; then
+    assert_pass "ZBUILD_ARTIFACT_DIR takes the same divert-then-restore round trip"
+else
+    assert_fail "ZBUILD_ARTIFACT_DIR takes the same divert-then-restore round trip" \
+        "pre=$_PRE_SETUP_ARTIFACT_DIR post_setup=$_POST_SETUP_ARTIFACT_DIR restored=$_RESTORED_ARTIFACT_DIR"
 fi
 
 print_test_results
