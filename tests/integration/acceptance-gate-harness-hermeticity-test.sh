@@ -141,5 +141,27 @@ else
         "pre=$_PRE_SETUP_ARTIFACT_DIR post_setup=$_POST_SETUP_ARTIFACT_DIR restored=$_RESTORED_ARTIFACT_DIR"
 fi
 
+# An ambient EMPTY ZBUILD_STATE_DIR must come back SET-and-empty, not be dropped
+# to unset. "unset" and "set but empty" are different states, and the first
+# version of this sandboxing collapsed them: `${VAR:-}` at capture plus `-n` at
+# restore turned a deliberate `export ZBUILD_STATE_DIR=""` into an unset var.
+# No production consumer notices (they all read `${VAR:-...}`), but the harness
+# contract is "restore what the caller had", and at the merge-base — which never
+# touched the variable — an empty value did survive. This is the regression
+# guard for that.
+#
+# Runs in a subprocess because ORIG_* is captured at SOURCE time, so a single
+# process can only ever exercise one ambient value. `bash -c` keeps $0 as `bash`,
+# which the #971 re-entrancy guard deliberately exempts.
+_empty_probe="$(ZBUILD_STATE_DIR="" ZB_ROOT="$REPO_ROOT" bash -c '
+    source "$ZB_ROOT/scripts/lib/helpers.sh"
+    source "$ZB_ROOT/scripts/lib/test-helpers.sh"
+    setup_test_env "empty-state-dir-probe" >/dev/null 2>&1
+    cleanup_test_env >/dev/null 2>&1
+    printf "%s" "${ZBUILD_STATE_DIR+set}"
+' 2>/dev/null)"
+assert_eq "an ambient empty ZBUILD_STATE_DIR is restored as set, not dropped to unset" \
+    "set" "$_empty_probe"
+
 print_test_results
 exit $((FAIL > 0))
