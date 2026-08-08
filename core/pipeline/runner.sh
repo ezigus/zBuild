@@ -908,7 +908,6 @@ _runner_snapshot_contract_libs() {
 _runner_design_targets_contract_lib() {
     local design_md="${1:-}" src_lib="${2:-}"
     [[ -f "$design_md" ]] || return 1
-    declare -F acceptance_list_wiring >/dev/null 2>&1 || return 1
     local -A inset=()
     local _lib _t _base
     while IFS= read -r _lib; do
@@ -922,7 +921,13 @@ _runner_design_targets_contract_lib() {
         [[ "$_t" == *scripts/lib/* ]] || continue
         _base="${_t##*/}"
         [[ -n "${inset[$_base]:-}" ]] && { printf '%s\n' "$_t"; return 0; }
-    done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)
+    # The WIRING reader lives in acceptance-block.sh, which only PLUGINS source —
+    # and they run inside plugin_hook_call's subshell, so nothing it defines ever
+    # reaches the runner's shell. Source it in a subshell here: the detection then
+    # works regardless of load order, and the runner's shell stays unpolluted by
+    # grammar functions it has no other business owning.
+    done < <( ( source "$src_lib/acceptance-block.sh" >/dev/null 2>&1 \
+                  && acceptance_list_wiring "$design_md" 2>/dev/null ) || true )
     return 1
 }
 

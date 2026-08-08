@@ -96,8 +96,13 @@ assert_eq "[SPEC-3] a second snapshot picks up a changed lib (no once-guard)" \
 # ─── SPEC-4 / SPEC-5: declarative detection off the design's WIRING ──────────
 print_test_section "4. detection keys on the design's declared WIRING targets"
 
-# shellcheck source=/dev/null
-source "$LIB/acceptance-block.sh"
+# Deliberately NOT sourcing acceptance-block.sh here. Pre-sourcing it made these
+# assertions pass while the live path was dead: the WIRING reader is defined in
+# that lib, which only PLUGINS source, and they run inside a subshell whose
+# definitions never reach the runner. The detection must stand up in the shell
+# the runner actually has — which is this one.
+assert_eq "[SPEC-4] the WIRING reader is NOT pre-loaded (matches the live runner shell)" \
+    "" "$(declare -F acceptance_list_wiring 2>/dev/null || true)"
 
 mk_design() {
     local path="$1" target="$2"
