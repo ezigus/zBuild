@@ -826,25 +826,166 @@ _render_cycle_exit() {
     } >&2 2>/dev/null || true
 }
 
-# #963: snapshot the read-only acceptance-grammar libs into the run's state dir
-# for self-host dogfooding, so contract-reader stages read the TARGET working
-# tree's grammar while the installed engine tree stays immutable (ADR-023).
-# Snapshotted ONCE per run: an already-populated snapshot is never re-copied, so
-# a mid-run working-tree edit cannot mutate what the readers parse. merge-base.sh
-# is a transitive dependency of the negctl/reachability libs (they source it from
-# their own dir), so it is included to keep the snapshot a self-contained root.
+# ─── Contract-reader seam (#963, #1783) ──────────────────────────────────────
+# The acceptance/design contract readers source their grammar libs from
+# _ZBUILD_CONTRACT_LIB_DIR (plugin-bootstrap.sh), which normally points at the
+# INSTALLED engine — correct for ordinary runs, and required by ADR-023.
+#
+# It inverts for exactly one case: a run whose own change edits one of those
+# libs. Then the installed (pre-change) reader grades the fix, the verdict is
+# identical every iteration, and the cycle burns its whole budget on a phantom
+# the builder cannot fix. #1783.
+#
+# The entry points a seam consumer may source directly. The rest of the set is
+# DERIVED (see _runner_contract_lib_closure) rather than hand-listed: the old
+# hand-list had already drifted — acceptance-negctl.sh sources env-scrub.sh and
+# shape-floor.sh sources impact-prefilter.sh, neither of which was copied, and
+# both `source` lines are unguarded, so a snapshot missing them fails hard.
+_RUNNER_CONTRACT_LIB_ENTRYPOINTS=(
+    acceptance-block.sh
+    acceptance-coverage.sh
+    acceptance-negctl.sh
+    acceptance-reachability.sh
+    merge-base.sh
+    shape-floor.sh
+)
+
+# _runner_contract_lib_closure <src_lib> — echo the transitive set of lib
+# basenames the seam needs, one per line. Follows same-directory `source` lines
+# from each entry point so the snapshot is a self-contained root: a lib sourced
+# by a lib is resolved against the SNAPSHOT dir at read time, so it must be
+# present or the source fails.
+_runner_contract_lib_closure() {
+    local src_lib="${1:-}"
+    [[ -n "$src_lib" && -d "$src_lib" ]] || return 1
+    local -a queue=("${_RUNNER_CONTRACT_LIB_ENTRYPOINTS[@]}")
+    local -A seen=()
+    local cur dep
+    while (( ${#queue[@]} > 0 )); do
+        cur="${queue[0]}"; queue=("${queue[@]:1}")
+        [[ -n "${seen[$cur]:-}" ]] && continue
+        [[ -f "$src_lib/$cur" ]] || continue
+        seen[$cur]=1
+        # `source "$SOME_DIR/<file>.sh"` — same-dir refs only; an absolute or
+        # differently-rooted path is not part of this seam.
+        while IFS= read -r dep; do
+            [[ -n "$dep" ]] && queue+=("$dep")
+        done < <(grep -oE '^[[:space:]]*(source|\.)[[:space:]]+"\$[A-Za-z_][A-Za-z0-9_]*/[A-Za-z0-9._-]+\.sh"' \
+                    "$src_lib/$cur" 2>/dev/null | sed -E 's#.*/([A-Za-z0-9._-]+\.sh)"$#\1#')
+    done
+    printf '%s\n' "${!seen[@]}" | sort
+}
+
+# _runner_snapshot_contract_libs <src_lib> <snapshot_dir>
+# Copy the derived closure into the run's state dir. The installed engine tree
+# is never written to, so ADR-023 holds.
+#
+# NO once-guard (#1783): the whole point is that the snapshot tracks the tree as
+# build changes it. #963's guard implemented the opposite property — "a mid-run
+# edit cannot mutate what the readers parse" — which is exactly what makes a
+# dogfood of a grammar change unlandable.
 _runner_snapshot_contract_libs() {
     local src_lib="$1" snapshot_dir="$2"
     [[ -z "$src_lib" || -z "$snapshot_dir" ]] && return 2
-    # once-guard: a populated snapshot is authoritative for the whole run.
-    [[ -f "$snapshot_dir/acceptance-block.sh" ]] && return 0
+    [[ -d "$src_lib" ]] || return 1
     mkdir -p "$snapshot_dir" || return 1
-    local _lib
-    for _lib in acceptance-block.sh acceptance-coverage.sh acceptance-negctl.sh \
-                acceptance-reachability.sh merge-base.sh; do
-        [[ -f "$src_lib/$_lib" ]] && cp "$src_lib/$_lib" "$snapshot_dir/$_lib"
-    done
+    local _lib _copied=0
+    while IFS= read -r _lib; do
+        [[ -z "$_lib" ]] && continue
+        if cp -f "$src_lib/$_lib" "$snapshot_dir/$_lib" 2>/dev/null; then
+            _copied=$((_copied + 1))
+        fi
+    done < <(_runner_contract_lib_closure "$src_lib")
+    (( _copied > 0 )) || return 1
     return 0
+}
+
+# _runner_design_targets_contract_lib <design_md> <src_lib>
+# True when the design's declared WIRING targets intersect the contract-reader
+# set — i.e. this run modifies its own grader. Declarative detection: it reuses
+# data the design stage already publishes and the design-gate already verifies,
+# rather than inferring intent from the diff.
+_runner_design_targets_contract_lib() {
+    local design_md="${1:-}" src_lib="${2:-}"
+    [[ -f "$design_md" ]] || return 1
+    local -A inset=()
+    local _lib _t _base
+    while IFS= read -r _lib; do
+        [[ -n "$_lib" ]] && inset[$_lib]=1
+    done < <(_runner_contract_lib_closure "$src_lib")
+    (( ${#inset[@]} > 0 )) || return 1
+    while IFS= read -r _t; do
+        [[ -z "$_t" ]] && continue
+        # Only a target UNDER the lib dir counts; a same-named file elsewhere
+        # in the repo is not this seam.
+        [[ "$_t" == *scripts/lib/* ]] || continue
+        _base="${_t##*/}"
+        [[ -n "${inset[$_base]:-}" ]] && { printf '%s\n' "$_t"; return 0; }
+    # The WIRING reader lives in acceptance-block.sh, which only PLUGINS source —
+    # and they run inside plugin_hook_call's subshell, so nothing it defines ever
+    # reaches the runner's shell. Source it in a subshell here: the detection then
+    # works regardless of load order, and the runner's shell stays unpolluted by
+    # grammar functions it has no other business owning.
+    done < <( ( source "$src_lib/acceptance-block.sh" >/dev/null 2>&1 \
+                  && acceptance_list_wiring "$design_md" 2>/dev/null ) || true )
+    return 1
+}
+
+# _runner_refresh_contract_snapshot <state_dir>
+# Point the contract readers at the run's OWN tree when this run edits one of
+# their libs, and keep that snapshot current as build changes the tree.
+#
+# Idempotent and cheap (a handful of small files), so it is safe to call before
+# every cycle member dispatch — which is what guarantees a gate reads the copy
+# build just wrote rather than the one from the previous iteration.
+#
+# Enabled by either:
+#   * the operator's explicit --self-host / ZBUILD_SELF_HOST=1, or
+#   * the design declaring a WIRING target inside the contract-reader set.
+# Any other run leaves ZBUILD_CONTRACT_LIB_DIR unset and reads the installed
+# engine, byte-unchanged (ADR-023).
+_runner_refresh_contract_snapshot() {
+    local state_dir="${1:-}"
+    [[ -n "$state_dir" ]] || return 0
+
+    # The run's own tree — set when the engine entered the run worktree. Falling
+    # back to the engine root would re-create #963's bug (snapshotting the
+    # operator's checkout instead of the tree under test), so require it.
+    local _tree="${ZBUILD_REPO_ROOT:-}"
+    [[ -n "$_tree" && -d "$_tree/scripts/lib" ]] || return 0
+
+    local _snap="$state_dir/contract-lib-snapshot"
+    local _reason="${_RUNNER_SELF_GRADE_REASON:-}"
+
+    if [[ "${_RUNNER_SELF_GRADE:-0}" != "1" ]]; then
+        if [[ "${ZBUILD_SELF_HOST:-0}" == "1" ]]; then
+            _reason="operator"
+        else
+            local _hit
+            _hit="$(_runner_design_targets_contract_lib \
+                        "$state_dir/artifacts/design.md" "$_tree/scripts/lib" 2>/dev/null || true)"
+            [[ -n "$_hit" ]] || return 0
+            _reason="design_wiring:$_hit"
+        fi
+        _RUNNER_SELF_GRADE=1
+        _RUNNER_SELF_GRADE_REASON="$_reason"
+    fi
+
+    if _runner_snapshot_contract_libs "$_tree/scripts/lib" "$_snap"; then
+        export ZBUILD_CONTRACT_LIB_DIR="$_snap"
+        # Emit once per run, not once per dispatch — the refresh is routine, the
+        # decision to self-grade is the operator-visible fact.
+        if [[ "${_RUNNER_SELF_GRADE_ANNOUNCED:-0}" != "1" ]]; then
+            _RUNNER_SELF_GRADE_ANNOUNCED=1
+            eb_emit_event "selfhost.contract_lib.snapshot" \
+                "dir=$_snap" "src=$_tree/scripts/lib" "reason=$_reason" 2>/dev/null || true
+            info "self-grading: contract readers sourced from this run's tree ($_reason)"
+        fi
+        return 0
+    fi
+
+    warn "self-grading: contract-lib snapshot failed; readers fall back to the installed grammar"
+    return 1
 }
 
 # Remove a run's own event log + lock siblings so --no-resume starts from a
@@ -1485,17 +1626,17 @@ main() {
     # run's state dir so the installed engine tree stays immutable (ADR-023).
     # Non-self-host runs leave ZBUILD_CONTRACT_LIB_DIR unset → readers source from
     # the installed engine, unchanged.
+    # #1783: the snapshot USED to be taken here — before the run entered its
+    # worktree, from the operator's checkout, once. That is strictly too early:
+    # build writes the change minutes later into a different tree, so the
+    # snapshot never contained the fix and --self-host could not rescue the case
+    # it was built for. Enablement and refresh now happen per dispatch, from the
+    # run's own tree; see _runner_refresh_contract_snapshot.
+    #
+    # --self-host / ZBUILD_SELF_HOST=1 survives as the manual override, exported
+    # here so the per-dispatch refresh sees it regardless of how it was given.
     if $self_host; then
-        local _wt_root _snap_dir
-        _wt_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
-        _snap_dir="$state_dir/contract-lib-snapshot"
-        if _runner_snapshot_contract_libs "$_wt_root/scripts/lib" "$_snap_dir"; then
-            export ZBUILD_CONTRACT_LIB_DIR="$_snap_dir"
-            eb_emit_event "selfhost.contract_lib.snapshot" \
-                "dir=$_snap_dir" "src=$_wt_root/scripts/lib" 2>/dev/null || true
-        else
-            warn "self-host: contract-lib snapshot failed; readers fall back to installed grammar"
-        fi
+        export ZBUILD_SELF_HOST=1
     fi
 
     # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
@@ -1839,6 +1980,10 @@ main() {
         _CYCLE_DISPATCH_STATUS=""
         _CYCLE_DISPATCH_REASON=""
         local _cd_plugin_dir _cd_rc=0
+        # #1783: refresh the contract-reader snapshot before EVERY member, so a
+        # gate reads the lib copy build just wrote rather than the previous
+        # iteration's. No-op unless this run edits one of those libs.
+        _runner_refresh_contract_snapshot "$state_dir" || true
         # ADR-042: resolve role-then-id (uniform with leaf + parallel paths) so a
         # role-bound cycle member whose plugin id ≠ stage name resolves correctly.
         _cd_plugin_dir="$(resolve_stage_plugin "$_cd_stage" "$plugins_root" 2>/dev/null || true)"

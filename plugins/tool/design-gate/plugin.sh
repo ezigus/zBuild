@@ -21,8 +21,11 @@ _DG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# #1783: source the grammar lib from the contract-reader seam, not from the
+# engine root. This gate parses the design's acceptance block, so a run that
+# edits the block grammar must be gated by ITS copy, not the installed one.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
-source "$_DG_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when the event-bus is unavailable (unit-test isolation).
 _dg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
