@@ -134,5 +134,71 @@ REPO9="$(setup_git_temp_repo ss-repo9)"
 OUT9="$(run_scan "$REPO9")"
 assert_json_key "C9: inline pragma → verdict=pass" "$OUT9" '.verdict' "pass"
 
+# SPEC ids below are the design's ids. The acceptance gate binds per-SPEC
+# TESTFILEs by id, so an assertion carrying the wrong id leaves the SPEC it was
+# supposed to prove verified by nothing.
+
+# ── SPEC-1: unquoted bare shell form ─────────────────────────────────────────
+set +e; RULE10="$(_ss_scan_content "api_key=${CRED_VAL}")"; set -e
+assert_eq "[SPEC-1] C10: unquoted KEY=value → credential_assignment" "credential_assignment" "$RULE10"
+
+set +e; RULE11="$(_ss_scan_content "export secret=${CRED_VAL}")"; set -e
+assert_eq "[SPEC-1] C11: unquoted export KEY=value → credential_assignment" "credential_assignment" "$RULE11"
+
+# ── SPEC-2: YAML colon form ──────────────────────────────────────────────────
+set +e; RULE12="$(_ss_scan_content "token: ${CRED_VAL}")"; set -e
+assert_eq "[SPEC-2] C12: unquoted YAML token: value → credential_assignment" "credential_assignment" "$RULE12"
+
+# ── SPEC-5[guard]: the quoted form still matches — the change is additive ────
+set +e; RULE15="$(_ss_scan_content "api_key = \"${CRED_VAL}\"")"; set -e
+assert_eq "[SPEC-5] C15: quoted api_key = \"value\" still flagged" "credential_assignment" "$RULE15"
+
+# ── Corpus sweep: every fixture line is its own assertion ────────────────────
+# The corpora are the calibration record the issue asked for. Asserting per line
+# (rather than a count) means a failure names the exact line that moved.
+_CORPUS_DIR="$REPO_ROOT/tests/fixtures/secret-scan"
+
+_corpus_pos=0
+while IFS= read -r _cline || [[ -n "$_cline" ]]; do
+    [[ -z "$_cline" || "$_cline" == \#* ]] && continue
+    set +e; _crule="$(_ss_scan_content "$_cline")"; set -e
+    assert_eq "[SPEC-3] true-pos: ${_cline}" "credential_assignment" "$_crule"
+    _corpus_pos=$((_corpus_pos + 1))
+done < "$_CORPUS_DIR/corpus-true-pos.txt"
+
+_corpus_neg=0
+while IFS= read -r _cline || [[ -n "$_cline" ]]; do
+    [[ -z "$_cline" || "$_cline" == \#* ]] && continue
+    set +e; _crule="$(_ss_scan_content "$_cline")"; set -e
+    assert_eq "[SPEC-4] true-neg: ${_cline}" "" "$_crule"
+    _corpus_neg=$((_corpus_neg + 1))
+done < "$_CORPUS_DIR/corpus-true-neg.txt"
+
+# ── Documented limitation, pinned so a future change has to notice it ────────
+# Prose whose word right after the delimiter is >=8 characters still matches.
+# It is NOT fixable by rejecting all-alphabetic values: that would also stop
+# flagging `password=correcthorsebattery` (secret-scan:allow — prose, not a cred),
+# and a false negative in a gate has no
+# escape hatch while a false positive has the inline `secret-scan:allow` pragma.
+# If this ever starts returning empty, the calibration moved — re-check that
+# hand-written alphabetic passwords are still caught before accepting it.
+set +e; RULE16="$(_ss_scan_content "Rotate the token: instructions are in the runbook.")"; set -e  # secret-scan:allow
+assert_eq "C16: known limitation — long prose word after the delimiter is flagged" \
+    "credential_assignment" "$RULE16"
+set +e; RULE17="$(_ss_scan_content "password=correcthorsebattery")"; set -e  # secret-scan:allow
+assert_eq "C17: the reason for C16 — an all-alphabetic password is still caught" \
+    "credential_assignment" "$RULE17"
+
+# A corpus that silently emptied (bad path, comment-prefix change) would make
+# every SPEC-3/SPEC-4 assertion vacuously true, so assert it was actually read.
+# The floors are deliberately below the current counts: they catch "the sweep
+# stopped running", not "someone added a case".
+[[ "$_corpus_pos" -ge 10 ]] \
+    && assert_pass "[SPEC-3] true-pos corpus was non-empty ($_corpus_pos lines swept)" \
+    || assert_fail "[SPEC-3] true-pos corpus must sweep >=10 lines" "swept $_corpus_pos"
+[[ "$_corpus_neg" -ge 20 ]] \
+    && assert_pass "[SPEC-4] true-neg corpus was non-empty ($_corpus_neg lines swept)" \
+    || assert_fail "[SPEC-4] true-neg corpus must sweep >=20 lines" "swept $_corpus_neg"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
