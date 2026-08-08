@@ -269,7 +269,13 @@ rotate_update_sections() {
     local body_file="$1"
     local max_keep="${UPDATE_SECTION_RETAIN:-10}"
     local count
-    count="$(grep -cE '^## Update — ' "$body_file" 2>/dev/null || echo 0)"
+    # `grep -c` PRINTS 0 and EXITS 1 on no-match, so `|| echo 0` would append a
+    # second "0" and make $count the two-line string "0\n0" — which aborts the
+    # run at the arithmetic below under `set -e`. Use `|| true` (grep already
+    # emitted the count) and strip anything non-numeric defensively.
+    count="$(grep -cE '^## Update — ' "$body_file" 2>/dev/null || true)"
+    count="${count//[^0-9]/}"
+    count="${count:-0}"
     (( count <= max_keep )) && return 0
     local drop=$((count - max_keep))
     local tmp

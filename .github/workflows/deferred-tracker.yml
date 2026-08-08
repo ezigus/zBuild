@@ -97,6 +97,24 @@ jobs:
             exit 1
           fi
 
+      # A scheduled job has no consumer: it can fail every run and reach nobody
+      # (#1751 — five consecutive red runs went unnoticed). Surface the failure
+      # as an annotation AND in the job summary so it is visible from the
+      # Actions list without opening the log. Refs #1742.
+      - name: Surface failure to operator
+        if: failure()
+        run: |
+          echo "::error title=deferred-tracker failed::Scheduled deferred-tracker run ${{ github.run_id }} failed — see https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          {
+            echo "## ⚠️ deferred-tracker FAILED"
+            echo ""
+            echo "- **Run:** [${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo "- **Trigger:** \`${{ github.event_name }}\`"
+            echo ""
+            echo "This job is scheduled and has no human consumer. Repeated failures"
+            echo "mean deferred-work candidates are not being triaged at all."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Job summary
         if: always()
         run: |
