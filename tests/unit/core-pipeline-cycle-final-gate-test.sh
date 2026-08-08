@@ -160,6 +160,29 @@ set -e
 assert_eq "T10: ZBUILD_TEST_FULL_SUITE_GATE unset at cycle entry" \
     "" "${ZBUILD_TEST_FULL_SUITE_GATE:-}"
 
+# ─── T11: [SPEC-1] _cycle_arm_targeted_from_bsj arms ZBUILD_TEST_CHANGED_FILES ─
+print_test_section "T11. [SPEC-1] _cycle_arm_targeted_from_bsj arms ZBUILD_TEST_CHANGED_FILES intra-iter"
+# CHANGE-behavior: this function did not exist at baseline; assertion fails
+# without the #1709 implementation.
+unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+STATE_DIR_T11="$TEST_TEMP_DIR/state-t11"
+mkdir -p "$STATE_DIR_T11/artifacts"
+jq -n '{schema_version:1,verdict:"pass",files_changed:["core/foo.sh","plugins/bar/plugin.sh"]}' \
+    > "$STATE_DIR_T11/artifacts/build-summary.json"
+_cycle_arm_targeted_from_bsj "$STATE_DIR_T11"
+_t11_changed="${ZBUILD_TEST_CHANGED_FILES:-}"
+assert_contains "[SPEC-1] T11: ZBUILD_TEST_CHANGED_FILES contains foo.sh after intra-iter arm" \
+    "$_t11_changed" "foo.sh"
+assert_contains "T11: ZBUILD_TEST_CHANGED_FILES contains bar after intra-iter arm" \
+    "$_t11_changed" "bar"
+
+# Fail-closed: missing build-summary.json → var unset
+export ZBUILD_TEST_CHANGED_FILES="stale,value"
+rm -f "$STATE_DIR_T11/artifacts/build-summary.json"
+_cycle_arm_targeted_from_bsj "$STATE_DIR_T11"
+assert_eq "T11: missing bsj → ZBUILD_TEST_CHANGED_FILES unset (fail-closed)" \
+    "" "${ZBUILD_TEST_CHANGED_FILES:-}"
+
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 
