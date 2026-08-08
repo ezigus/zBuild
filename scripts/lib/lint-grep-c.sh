@@ -40,13 +40,14 @@ if [[ -z "${_SCAN_ROOTS[0]:-}" ]]; then
     _SCAN_REPO_ROOT_TOPLEVEL=1
 fi
 
-# A `grep -c` inside a command substitution, followed by `|| echo`.
-# The `-c` may be in any flag cluster, not just the first: `grep -cE PAT` and
-# `grep -E -c PAT` are both the bug. The `[^)]*` guards keep a match from
-# spanning two sibling substitutions on one line.
+# A counting `grep` inside a command substitution, followed by `|| echo`.
+# The count flag may be in any cluster, not just the first — `grep -cE PAT`,
+# `grep -E -c PAT` and the GNU long form `grep --count PAT` are all the bug.
+# The `[^)]*` guards keep a match from spanning two sibling substitutions on
+# one line.
 # Deliberately narrow: `|| true` and assignment-outside-substitution must both
 # keep passing.
-_PATTERN='\$\([^)]*grep[^)]*[[:space:]]-[a-zA-Z]*c[a-zA-Z]*[[:space:]][^)]*\|\|[[:space:]]*echo'
+_PATTERN='\$\([^)]*grep[^)]*[[:space:]](-[a-zA-Z]*c[a-zA-Z]*|--count)[[:space:]][^)]*\|\|[[:space:]]*echo'
 
 _failures=0
 

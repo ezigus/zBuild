@@ -56,6 +56,19 @@ rc=0
 bash "$CHECKER" "$FX_SPLIT" >/dev/null 2>&1 || rc=$?
 assert_eq "[SPEC-4] lint catches -c in a later flag cluster (grep -E -c)" "1" "$rc"
 
+# GNU long form is the same bug.
+LONG_LINE='count="$(grep --count '"'"'^x'"'"' "$f" 2>/dev/null || echo 0)"'
+FX_LONG="$TEST_TEMP_DIR/longform"
+mkdir -p "$FX_LONG"
+{
+    echo '#!/usr/bin/env bash'
+    echo "$LONG_LINE"
+} > "$FX_LONG/longform.sh"
+
+rc=0
+bash "$CHECKER" "$FX_LONG" >/dev/null 2>&1 || rc=$?
+assert_eq "[SPEC-4] lint catches the GNU long form (grep --count)" "1" "$rc"
+
 # ─── SPEC-5: only safe forms → rc=0 ──────────────────────────────────────────
 print_test_section "5. clean code: exit 0"
 
