@@ -1280,6 +1280,27 @@ _cycle_state_write_iter_atomic() {
           _ZB_CYCLE_FC _ZB_CYCLE_OVERALL
 }
 
+# ADR-034 / #1709: arm ZBUILD_TEST_CHANGED_FILES from build-summary.json so the
+# test stage in the SAME iteration can engage targeted mode.  Mirrors the
+# build-summary leg of _cycle_apply_feedback but is callable within the dispatch
+# loop before iteration end.  Missing or malformed artifact → var unset (fail-closed;
+# test falls back to full suite).
+_cycle_arm_targeted_from_bsj() {
+    local _state_dir="$1"
+    local _bsj="$_state_dir/artifacts/build-summary.json"
+    if [[ -f "$_bsj" ]]; then
+        local _changed_csv
+        _changed_csv="$(jq -r '[.files_changed[]? | tostring] | join(",")' "$_bsj" 2>/dev/null || true)"
+        if [[ -n "$_changed_csv" ]]; then
+            export ZBUILD_TEST_CHANGED_FILES="$_changed_csv"
+        else
+            unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+        fi
+    else
+        unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+    fi
+}
+
 # ─── _cycle_iter_dispatch <iter> <state_file> ────────────────────────────────
 # Dispatches each stage in _CYCLE_STAGES[] via the runner's existing per-stage
 # dispatch helper. F1 ships a HOOK-BASED stub: if the function
@@ -1715,6 +1736,24 @@ _cycle_iter_dispatch() {
         # already used in the predicate-evaluation blob), the rc the
         # dispatch returned, and the status string.
         _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+
+        # ADR-034 / #1709: intra-iter targeted-test arm. After any leaf stage
+        # that declares capabilities.produces_commits:true completes (abort paths
+        # returned early above), arm ZBUILD_TEST_CHANGED_FILES so the next stage
+        # in this same iteration (test) can engage targeted mode on iter 1.
+        # Fail-closed: missing manifest or missing/empty build-summary.json → var
+        # unset, test falls back to full suite.  ZBUILD_TEST_RED_SET is NOT armed
+        # here — there is no red-set until a test stage has run and reported
+        # failures (that remains the job of _cycle_apply_feedback, ADR-034 #846).
+        local _iarm_plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
+        _manifest_graph_ensure_yaml_get 2>/dev/null || true
+        local _iarm_mf; _iarm_mf="$(manifest_graph_resolve_member "$_iarm_plugins_root" "$s" 2>/dev/null || true)"
+        if [[ -n "$_iarm_mf" ]]; then
+            local _iarm_pc; _iarm_pc="$(yaml_get "$_iarm_mf" "capabilities.produces_commits" 2>/dev/null || true)"
+            if [[ "$_iarm_pc" == "true" ]]; then
+                _cycle_arm_targeted_from_bsj "$_state_dir"
+            fi
+        fi
 
         # CQ-3 / ADR-013 (#863): blocking member enforcement. If the member
         # is in the ADR-013 blocking table and returned non-zero, halt the

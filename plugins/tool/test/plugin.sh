@@ -273,8 +273,8 @@ _test_run_inner() {
     # it; review's redaction/prompt path is tolerant either way).
     diff_applied=false
 
-    # ── ADR-034 / #846: choose targeted or full-suite command ─────────────────
-    # On iter 2+, if ZBUILD_TEST_RED_SET or ZBUILD_TEST_CHANGED_FILES is set AND
+    # ── ADR-034 / #846 / #1709: choose targeted or full-suite command ───────────
+    # If ZBUILD_TEST_RED_SET or ZBUILD_TEST_CHANGED_FILES is set AND
     # ZBUILD_TEST_FULL_SUITE_GATE is NOT set, attempt a targeted run.
     # _test_compute_target_files uses $tmp (the rsync'd copy) as repo_root so
     # relative paths are stable between iters. The targeted-run COMMAND is
