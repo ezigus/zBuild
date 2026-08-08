@@ -305,6 +305,17 @@ if [[ -f "$BODY_FILE" ]]; then
         "$spec7_body" "<details><summary>2 more finding(s)</summary>"
     assert_contains "[SPEC-7] details block is closed" \
         "$spec7_body" "</details>"
+    # GitHub keeps consuming an HTML block until a blank line, so without one
+    # the next line renders as raw HTML instead of markdown. Matched with a
+    # bash glob, not assert_contains: grep -F is line-based, so a multi-line
+    # needle degrades into separate patterns (one of them empty, matching all).
+    _nl=$'\n'
+    if [[ "$spec7_body" == *"</details>${_nl}${_nl}**Test verdict:**"* ]]; then
+        assert_pass "[SPEC-7] a blank line separates </details> from the next line"
+    else
+        assert_fail "[SPEC-7] a blank line separates </details> from the next line" \
+            "no blank line after </details>; the next line would render as raw HTML"
+    fi
 else
     assert_fail "[SPEC-7] body captured from gh call" "BODY_FILE not written"
 fi
