@@ -246,6 +246,49 @@ jobs:
             fi
           fi
 
+      - name: Collect claude session transcripts (diagnostics)
+        # #1728: a SIGTERM'd stage emits zero bytes into stage-io, so the
+        # incrementally-written session JSONL is the only evidence of what the
+        # stage was doing. Collect it into the artifact tree on failure.
+        #
+        # These transcripts do NOT pass core/redaction/apply_scope_redaction:
+        # that redactor is an awk text substitution, and JSONL is structurally
+        # hostile to it — a bare-token regex misses secrets embedded mid-string
+        # inside a JSON value, and a substitution that did fire would corrupt the
+        # line's JSON syntax. The private-repository gate is the substituted
+        # access control (CLAUDE.md's chokepoint rule is about LLM-bound text;
+        # this is model *output* going to a non-public artifact store). If a
+        # JSONL-aware redactor ever lands, drop the gate and wire it here.
+        # Fails closed: an absent github.event.repository makes this false.
+        if: failure() && github.event.repository.private
+        run: |
+          src="${HOME}/.claude/projects"
+          dest="${ZBUILD_STATE_DIR}/claude-transcripts"
+          if [[ ! -d "$src" ]]; then
+            echo "::warning::no claude transcript dir at $src — nothing to collect"
+            exit 0
+          fi
+          mkdir -p "$dest"
+          # -type f excludes symlinks, so a planted link can't pull an arbitrary
+          # file into the upload. Session dirs are mirrored (not flattened) so
+          # two projects' identically-named sessions can't clobber each other.
+          # The 6h window covers any possible run: this job sets no
+          # timeout-minutes, so GitHub's 360-minute default is the hard ceiling.
+          # GitHub runs `run:` under `bash -e`; one unreadable transcript must not
+          # abort the loop and drop every later one, so each copy is soft-failed
+          # and counted instead.
+          n=0; bad=0
+          while IFS= read -r f; do
+            rel="${f#"$src"/}"
+            if mkdir -p "$dest/$(dirname "$rel")" && cp "$f" "$dest/$rel"; then
+              n=$((n + 1))
+            else
+              bad=$((bad + 1))
+            fi
+          done < <(find "$src" -type f -name '*.jsonl' -newermt '6 hours ago')
+          echo "::notice::collected $n claude session transcript(s) into claude-transcripts/"
+          [[ "$bad" -eq 0 ]] || echo "::warning::$bad transcript(s) could not be copied"
+
       - name: Upload pipeline artifacts
         # CI-5: upload on FAILURE too — a failed run is exactly when the router's
         # diagnostic stderr (route.sh:459, *.raw-claude-stderr.txt) is needed.
