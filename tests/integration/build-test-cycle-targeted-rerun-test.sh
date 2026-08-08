@@ -120,7 +120,7 @@ echo "--- run_modes ---"; cat "$RUN_MODES"
 iter2_mode="$(awk -F'run_mode=' '/iter=2 /{print $2}' "$RUN_MODES" | head -1)"
 iter3_mode="$(awk -F'run_mode=' '/iter=3 /{print $2}' "$RUN_MODES" | head -1)"
 
-assert_eq "T1: iter-2 test stage runs run_mode=targeted (red-set engaged)" "targeted" "$iter2_mode"
+assert_eq "[SPEC-2] T1: iter-2 test stage runs run_mode=targeted (red-set engaged)" "targeted" "$iter2_mode"
 assert_event_emitted "T2: cycle.test.full_suite_gate emitted on targeted convergence" \
     "$ZBUILD_EVENTS_JSONL" "cycle.test.full_suite_gate"
 assert_eq "T3: iter-3 (gate) runs full suite" "full" "$iter3_mode"
