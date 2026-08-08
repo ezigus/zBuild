@@ -66,7 +66,8 @@ _ss_scan_content() {
     # variable-reference exclusion is defeated — that alone flagged every
     # workflow env block in this repo. Parens and commas are excluded too: no
     # real credential contains them, but `token = substr(rest, RSTART)` does.
-    # 8-char minimum keeps bare `keyword=` references from matching.
+    # 8-char minimum keeps bare `keyword=` references from matching. The
+    # optional quote BEFORE the delimiter is for JSON keys: `"api_key": "v..."`.
     local _cred_re
     _cred_re=$'(api[_-]?key|secret|token|password|passwd)[\'"]?[[:space:]]*[:=][[:space:]]*[\'"]?[^$\'"[:space:](),][^[:space:]\'"(),]{7,}'
     if grep -qiE -- "$_cred_re" <<< "$content"; then

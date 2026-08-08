@@ -20,6 +20,10 @@ secret='aabbccddeeff112233'  # secret-scan:allow
 token: "ghp_1234567890abcdefghij"  # secret-scan:allow
 export API_KEY="aabbccddeeff112233"  # secret-scan:allow
 
+# ── JSON keys — what the optional quote BEFORE the delimiter is for ─────────
+"api_key": "aabbccddeeff112233"  # secret-scan:allow
+"token": "ghp_1234567890abcdefghij",  # secret-scan:allow
+
 # ── values containing characters real credentials do use ────────────────────
 api_key=abc+def/ghi=jklmnop  # secret-scan:allow
 token: a.b-c_d1234567890  # secret-scan:allow

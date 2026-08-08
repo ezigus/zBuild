@@ -35,8 +35,10 @@ token: abc123
 api_key="tiny"
 
 # ── prose and documentation mentions ─────────────────────────────────────────
+# NB: fixtures must not start with '#' — the sweep skips comment lines, so a
+# '#'-prefixed fixture is silently never asserted.
 The password is stored in the vault, ask an admin.
-# password: please contact the administrator for access
+password: please contact the administrator for access
 Set your api_key: see the docs for how to obtain one
 password = <your password here>
 
