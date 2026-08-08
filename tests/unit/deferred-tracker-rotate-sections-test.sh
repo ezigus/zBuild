@@ -129,10 +129,38 @@ _sep_hits="$(/usr/bin/grep -cF 'sep section 1' "$SEP_BODY" 2>/dev/null || true)"
 assert_eq "[SPEC-3] production-shape body drops the oldest section" "0" "${_sep_hits//[^0-9]/}"
 assert_contains "[SPEC-3] production-shape body retains section 2" "$SEP_AFTER" "sep section 2"
 assert_contains "[SPEC-3] production-shape body retains section 3" "$SEP_AFTER" "sep section 3"
-# One '---' per retained section — no orphan left behind by the dropped one.
-_rule_hits="$(/usr/bin/grep -cE '^---$' "$SEP_BODY" 2>/dev/null || true)"
-assert_eq "[SPEC-3] one '---' separator per retained section (no orphan)" \
-    "2" "${_rule_hits//[^0-9]/}"
+# A separator COUNT is not discriminative — dropping a section removes one
+# header and one '---' either way, so the count is 2 whether or not placement
+# is correct. Assert placement instead, two ways:
+#
+# (a) structural: every '---' is followed by a '## Update — ' header. An orphan
+#     separator (one left behind where a dropped section used to be) is exactly
+#     a '---' that no longer leads a section, so this arm is what would redden.
+_orphans="$(awk '
+    /^---$/ { if (pending) orphan++; pending = 1; next }
+    /^[[:space:]]*$/ { next }
+    { if (pending && $0 !~ /^## Update — /) orphan++; pending = 0 }
+    END { if (pending) orphan++; print orphan + 0 }
+' "$SEP_BODY")"
+assert_eq "[SPEC-3] every '---' still leads an update section (no orphan)" "0" "$_orphans"
+
+# (b) exact: the rotated body must be byte-identical to a body that only ever
+#     contained the retained sections, built through the same format. This is
+#     the strongest available statement that rotation preserves the shape
+#     format_update_section emits.
+SEP_EXPECTED="$TEST_TEMP_DIR/sep-expected.md"
+{
+    echo "# Deferred candidates"
+    echo ""
+    echo "...initial content..."
+    for n in 2 3; do
+        printf '\n\n---\n\n'
+        echo "## Update — 2026-08-0${n}"
+        echo "- [ ] PR #${n}0 — \`sep section ${n}\`"
+    done
+} > "$SEP_EXPECTED"
+assert_eq "[SPEC-3] rotated body is byte-identical to a natively-built body" \
+    "$(cat "$SEP_EXPECTED")" "$SEP_AFTER"
 
 cleanup_test_env
 print_test_results
