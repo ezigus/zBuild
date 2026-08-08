@@ -10,6 +10,15 @@
 # SPEC-3[change]: the condition gates on repository privacy, so a public repo skips the step
 # SPEC-4[change]: the collect step precedes "Upload pipeline artifacts" (or it lands in no artifact)
 # SPEC-7[change]: docs/wiki/Troubleshooting.md points CI operators at claude-transcripts/
+#
+# SPEC-5 and SPEC-6 are the design's [guard] SPECs (the upload step keeps
+# if: always() + path: ZBUILD_STATE_DIR; the resolve step still runs after an
+# earlier failure). They are deliberately NOT here — their TESTFILE is
+# tests/unit/ci-state-isolation-test.sh, which already asserts both.
+#
+# The run block is executed with GHA's own flags (`bash -eo pipefail`), not a
+# bare `bash -c`: a bare `mkdir -p` failure would merely be counted here but
+# aborts the real step, so the laxer shell would hide a live failure mode.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -98,6 +107,8 @@ else
     # GNU `date -d` first, BSD `date -v` second (same order as the stat -c/-f
     # precedent). `touch -d '8 hours ago'` is GNU-only and fails silently on BSD,
     # which would leave stale.jsonl recent and invert the assertion below.
+    # The block's own `find -newermt '6 hours ago'` needs no such fallback: BSD
+    # find was probed directly and does parse the relative form correctly.
     _stale_ts="$(date -d '8 hours ago' +%Y%m%d%H%M 2>/dev/null \
         || date -v-8H +%Y%m%d%H%M 2>/dev/null)"
     if [[ -z "$_stale_ts" ]] || ! touch -t "$_stale_ts" "$_FAKE_PROJECTS/stale.jsonl"; then
@@ -109,7 +120,7 @@ else
     _EXEC_OUT="$(
         export HOME="$_FAKE_HOME"
         export ZBUILD_STATE_DIR="$_FAKE_STATE"
-        bash -c "$_BLOCK" 2>&1
+        bash -eo pipefail -c "$_BLOCK" 2>&1
     )" || _EXEC_RC=$?
 
     if [[ "$_EXEC_RC" -eq 0 ]]; then
@@ -142,7 +153,7 @@ else
     (
         export HOME="$_FAKE_HOME"
         export ZBUILD_STATE_DIR="$_FAKE_STATE"
-        bash -c "$_BLOCK"
+        bash -eo pipefail -c "$_BLOCK"
     ) >/dev/null 2>&1
 
     if [[ -f "$_DEST/myrepo/recent.jsonl" && -f "$_DEST/otherrepo/recent.jsonl" ]]; then
@@ -159,7 +170,7 @@ else
     (
         export HOME="$_FAKE_HOME"
         export ZBUILD_STATE_DIR="$_FAKE_STATE"
-        bash -c "$_BLOCK"
+        bash -eo pipefail -c "$_BLOCK"
     ) >/dev/null 2>&1
 
     if [[ ! -e "$_DEST/myrepo/linked.jsonl" ]]; then
@@ -167,6 +178,34 @@ else
     else
         assert_fail "[SPEC-2] symlinked .jsonl must not be copied (find -type f)" \
             "linked.jsonl was collected from [$_FAKE_PROJECTS]"
+    fi
+
+    # The absent-source branch is the COMMON case for the failures this step
+    # exists to diagnose: a stage that dies before the CLI ever writes a session
+    # leaves no ~/.claude/projects at all. If that branch ever regresses to a
+    # non-zero exit it would mark the collect step — and so the job — failed.
+    _BARE_HOME="$TEST_TEMP_DIR/bare-home"
+    _BARE_STATE="$TEST_TEMP_DIR/bare-state"
+    mkdir -p "$_BARE_HOME" "$_BARE_STATE"
+    _BARE_RC=0
+    _BARE_OUT="$(
+        export HOME="$_BARE_HOME"
+        export ZBUILD_STATE_DIR="$_BARE_STATE"
+        bash -eo pipefail -c "$_BLOCK" 2>&1
+    )" || _BARE_RC=$?
+
+    if [[ "$_BARE_RC" -eq 0 ]]; then
+        assert_pass "[SPEC-2] a missing ~/.claude/projects exits 0 (does not fail the job)"
+    else
+        assert_fail "[SPEC-2] a missing ~/.claude/projects must exit 0" \
+            "rc=$_BARE_RC output=[$_BARE_OUT]"
+    fi
+
+    if grep -q 'nothing to collect' <<< "$_BARE_OUT"; then
+        assert_pass "[SPEC-2] a missing ~/.claude/projects says so rather than passing silently"
+    else
+        assert_fail "[SPEC-2] a missing ~/.claude/projects must emit a warning" \
+            "output=[$_BARE_OUT]"
     fi
 fi
 
