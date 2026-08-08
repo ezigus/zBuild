@@ -826,6 +826,101 @@ _render_cycle_exit() {
     } >&2 2>/dev/null || true
 }
 
+# ─── Engine provenance (#1791) ───────────────────────────────────────────────
+# Which engine graded this run? ADR-023 installs a FROZEN engine per run, so the
+# answer is not "whatever main is now" — and without it recorded, every
+# post-mortem starts by correlating wall-clock timestamps against `git log` by
+# hand. A run can die on a defect that was fixed and merged while it was still
+# running, and nothing in its artifacts says so.
+#
+# install.sh writes a lowercase `version` metadata file (sha=/branch=/...). On a
+# case-INSENSITIVE filesystem that path also resolves to the repo's semver
+# VERSION file, so this keys on the `sha=` line rather than on the filename —
+# the same collision scripts/zbuild guards against when reading the semver.
+_runner_engine_sha() {
+    local root="${1:-$_ZBUILD_ROOT}" sha=""
+    if [[ -f "$root/version" ]]; then
+        sha="$(grep -m1 '^sha=' "$root/version" 2>/dev/null | cut -d= -f2-)"
+    fi
+    # Source checkout or CI clone: no install metadata, ask git.
+    if [[ -z "$sha" || "$sha" == "unknown" ]]; then
+        sha="$(git -C "$root" rev-parse HEAD 2>/dev/null || true)"
+    fi
+    printf '%s' "${sha:-unknown}"
+}
+
+_runner_engine_branch() {
+    local root="${1:-$_ZBUILD_ROOT}" br=""
+    if [[ -f "$root/version" ]]; then
+        br="$(grep -m1 '^branch=' "$root/version" 2>/dev/null | cut -d= -f2-)"
+    fi
+    if [[ -z "$br" || "$br" == "unknown" ]]; then
+        br="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    fi
+    printf '%s' "${br:-unknown}"
+}
+
+# _runner_report_engine_drift <reason>
+# On a NON-TERMINAL failure, say whether the engine that graded this run has
+# since been superseded — a run can spend its whole budget on a defect that was
+# fixed and merged while it was still running.
+#
+# DELIBERATELY A DIAGNOSTIC, NOT A RETRY. Auto-requeuing a genuinely-broken issue
+# is worse than leaving it stale, so this states the fact and stops. Best-effort
+# throughout: it must never turn a failed run into a hung one, so every git call
+# is bounded and non-fatal, and ZBUILD_ENGINE_DRIFT_CHECK=0 disables it outright.
+_runner_report_engine_drift() {
+    local reason="${1:-}"
+    # Only the failures a newer engine could plausibly have changed. A terminal
+    # abort (signal, llm_unavailable) is not one of them.
+    case "$reason" in
+        blocked_on_scope|max_iterations|blocked_on_gate) ;;
+        *) return 0 ;;
+    esac
+    [[ "${ZBUILD_ENGINE_DRIFT_CHECK:-1}" == "1" ]] || return 0
+
+    local sha="${_RUNNER_ENGINE_SHA:-}"
+    [[ -n "$sha" && "$sha" != "unknown" ]] || return 0
+    local root="${_ZBUILD_ROOT:-}"
+    [[ -n "$root" ]] || return 0
+
+    local branch="${_RUNNER_ENGINE_BRANCH:-main}"
+    [[ "$branch" == "unknown" || -z "$branch" ]] && branch="main"
+
+    # Remote tip, without mutating the frozen engine tree.
+    local tip
+    tip="$(git -C "$root" ls-remote origin "$branch" 2>/dev/null | awk 'NR==1{print $1}')"
+    [[ -n "$tip" ]] || return 0
+    [[ "$tip" == "$sha" ]] && return 0
+
+    # The engine clone is --depth 1 (ADR-023), so the intervening commits are not
+    # present locally. Fetch them shallowly so the report can NAME what landed —
+    # "your engine is stale" is far less actionable than "the commit that fixes
+    # your failure is called X". Bounded depth, quiet, non-fatal.
+    #
+    # This adds objects to the clone's store; it does not touch HEAD or the
+    # working tree, so the engine's CODE is as frozen as it was — which is what
+    # ADR-023 is about.
+    git -C "$root" fetch --quiet --depth=25 origin "$branch" >/dev/null 2>&1 || true
+
+    local n="" subjects=""
+    n="$(git -C "$root" rev-list --count "$sha..$tip" 2>/dev/null || true)"
+    subjects="$(git -C "$root" log --oneline --no-decorate "$sha..$tip" 2>/dev/null | head -10 || true)"
+
+    eb_emit_event "pipeline.engine_drift" \
+        "run_id=${_runner_run_id:-}" "issue=${_runner_issue:-}" "reason=$reason" \
+        "engine_sha=$sha" "origin_sha=$tip" "commits=${n:-unknown}" 2>/dev/null || true
+
+    warn "This run was graded by engine ${sha:0:7}, but origin/$branch is now ${tip:0:7}${n:+ ($n commit(s) ahead)}."
+    warn "The failure (${reason}) may already be fixed — re-run before investigating."
+    if [[ -n "$subjects" ]]; then
+        printf '%s\n' "$subjects" | while IFS= read -r _l; do
+            [[ -n "$_l" ]] && warn "    $_l"
+        done
+    fi
+    return 0
+}
+
 # ─── Contract-reader seam (#963, #1783) ──────────────────────────────────────
 # The acceptance/design contract readers source their grammar libs from
 # _ZBUILD_CONTRACT_LIB_DIR (plugin-bootstrap.sh), which normally points at the
@@ -1533,7 +1628,12 @@ main() {
         _runner_issue="${issue:-0}"
         # A refused state write means the ADR-006 resume contract has no origin
         # point — abort rather than run the whole pipeline in memory (#1773).
-        if ! init_state "$state_file" "$_runner_run_id" "$_runner_issue"; then
+        # #1791: stamp the engine that will grade this run. ADR-023 froze it at
+        # install time, so it cannot be recovered from the artifacts afterwards.
+        _RUNNER_ENGINE_SHA="$(_runner_engine_sha)"
+        _RUNNER_ENGINE_BRANCH="$(_runner_engine_branch)"
+        if ! init_state "$state_file" "$_runner_run_id" "$_runner_issue" \
+                        "$_RUNNER_ENGINE_SHA" "$_RUNNER_ENGINE_BRANCH"; then
             error "Cannot initialize pipeline state at $state_file; aborting before any stage runs"
             return 1
         fi
@@ -1881,8 +1981,13 @@ main() {
             eb_emit_event "pipeline.skip_to_stage" "stage=$from_stage" "run_id=$_runner_run_id"
         fi
     else
-        eb_emit_event "pipeline.start" "run_id=$_runner_run_id" "issue=$_runner_issue"
-        info "Pipeline started — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template"
+        # #1791: the engine sha rides on pipeline.start and the banner so an
+        # operator can answer "which engine graded this?" without archaeology.
+        local _eng_sha="${_RUNNER_ENGINE_SHA:-$(_runner_engine_sha)}"
+        local _eng_br="${_RUNNER_ENGINE_BRANCH:-$(_runner_engine_branch)}"
+        eb_emit_event "pipeline.start" "run_id=$_runner_run_id" "issue=$_runner_issue" \
+            "engine_sha=$_eng_sha" "engine_branch=$_eng_br"
+        info "Pipeline started — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template engine=${_eng_sha:0:7}(${_eng_br})"
     fi
 
     # ── ADR-015 stage-io stdout channel ─────────────────────────────────────
@@ -2360,6 +2465,8 @@ main() {
                         _render_pipeline_end "failed"
                         _runner_ended=true
                         error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
+                        # #1791: a newer engine may already have fixed this.
+                        _runner_report_engine_drift "$_CYCLE_LAST_TERMINATED_REASON" || true
                         # Codex P2 on #616 / Wave 15-F: propagate rc=130 + rc=143
                         # distinctly so callers can distinguish Ctrl-C / kill from
                         # a generic cycle failure.
