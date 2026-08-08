@@ -134,5 +134,36 @@ REPO9="$(setup_git_temp_repo ss-repo9)"
 OUT9="$(run_scan "$REPO9")"
 assert_json_key "C9: inline pragma → verdict=pass" "$OUT9" '.verdict' "pass"
 
+# ── Cases 10–12: unquoted credential assignment forms → credential_assignment ──
+set +e; RULE10="$(_ss_scan_content "api_key=${CRED_VAL}")"; set -e
+assert_eq "[SPEC-1] C10: unquoted KEY=value → credential_assignment" "credential_assignment" "$RULE10"
+
+set +e; RULE11="$(_ss_scan_content "export secret=${CRED_VAL}")"; set -e
+assert_eq "[SPEC-2] C11: unquoted export KEY=value → credential_assignment" "credential_assignment" "$RULE11"
+
+set +e; RULE12="$(_ss_scan_content "token: ${CRED_VAL}")"; set -e
+assert_eq "[SPEC-3] C12: unquoted YAML token: value → credential_assignment" "credential_assignment" "$RULE12"
+
+# ── Case 13: variable reference is not flagged (guard) ───────────────────────
+set +e; RULE13="$(_ss_scan_content "token=\$SECRET_ENV")"; set -e
+assert_eq "[SPEC-4] C13: token=\$VAR not flagged" "" "$RULE13"
+
+# ── Case 14: bare keyword= with no value is not flagged (guard) ───────────────
+set +e; RULE14="$(_ss_scan_content "password=")"; set -e
+assert_eq "[SPEC-5] C14: bare password= not flagged" "" "$RULE14"
+
+# ── Corpus sweep: iterate fixture files, verify each line ─────────────────────
+_CORPUS_DIR="$REPO_ROOT/tests/fixtures/secret-scan"
+while IFS= read -r _cline || [[ -n "$_cline" ]]; do
+    [[ -z "$_cline" ]] && continue
+    set +e; _crule="$(_ss_scan_content "$_cline")"; set -e
+    assert_eq "corpus true-pos: credential_assignment detected" "credential_assignment" "$_crule"
+done < "$_CORPUS_DIR/corpus-true-pos.txt"
+while IFS= read -r _cline || [[ -n "$_cline" ]]; do
+    [[ -z "$_cline" ]] && continue
+    set +e; _crule="$(_ss_scan_content "$_cline")"; set -e
+    assert_eq "corpus true-neg: no match" "" "$_crule"
+done < "$_CORPUS_DIR/corpus-true-neg.txt"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

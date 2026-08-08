@@ -1,0 +1,3 @@
+api_key=aabbccddeeff112233  # secret-scan:allow
+export secret=aabbccddeeff112233  # secret-scan:allow
+token: aabbccddeeff112233  # secret-scan:allow

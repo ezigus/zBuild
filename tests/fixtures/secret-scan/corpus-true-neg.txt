@@ -1,0 +1,2 @@
+token=$SECRET_ENV
+password=

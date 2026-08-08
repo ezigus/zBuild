@@ -25,8 +25,8 @@ description: |
   conservative pattern set:
     - AWS access-key ids (AKIA + 16).
     - PEM private-key headers (-----BEGIN ... PRIVATE KEY-----).
-    - Quoted high-entropy credential assignments
-      (api_key/secret/token/password = "...").
+    - High-entropy credential assignments, quoted or unquoted
+      (api_key/secret/token/password = value).
     - .env file paths (.env, .env.local, ...; .env.example/.sample/.template excluded).
   Allowlist knobs (opt-in, to clear obvious test fixtures / example creds):
     - ZBUILD_SECRET_SCAN_ALLOWLIST_FILE: file of glob patterns, one per line
