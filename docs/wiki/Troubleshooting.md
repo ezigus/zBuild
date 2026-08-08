@@ -114,3 +114,37 @@ jq 'select(.type == "stage.complete") | {stage: .stage, verdict: .verdict}' \
 ```
 
 See [[mechanics/event-bus]] for the full event schema.
+
+### Diagnosing CI stage timeouts
+
+Stage timeouts surface as a non-zero exit code from the pipeline stage, but the
+_reason_ (turn count exhausted, wall-clock budget hit, SIGTERM mid-call vs
+mid-emit) is only visible in the Claude session transcript — not in the stage
+return code or raw output.
+
+**Local runs:** read the transcript directly from the Claude CLI's project
+directory:
+```
+~/.claude/projects/<repo-slug>/<session-id>.jsonl
+```
+Each line is a JSON object. Look for `turn_count`, elapsed-time fields, and
+whether the final assistant turn was cut off mid-emission.
+
+**CI runs (failed pipeline):** download the `pipeline-artifacts-issue-N-<run-id>`
+zip from the GitHub Actions run summary. The transcripts are copied into
+`claude-transcripts/` inside the artifact on failure:
+```
+pipeline-artifacts-issue-N-<run-id>/
+  claude-transcripts/
+    <encoded-cwd>/
+      <session-id>.jsonl
+      ...
+```
+The collect step only runs on failure, and only when the repository is private
+(JSONL is not redacted before upload — the private-repo boundary is the access
+control that stands in for redaction). A green run collects nothing, so artifact
+size is unaffected.
+
+**Key distinction:** the 300 s wall-clock budget and the per-stage turn cap
+are separate limits. A timeout that hits the turn cap looks different from one
+that hits the wall clock — the difference is only visible in the transcript.
