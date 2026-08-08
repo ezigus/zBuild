@@ -21,8 +21,10 @@ _SS_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_SS_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# #1783: source via the contract-reader seam — merge-base resolution decides the
+# baseline this scan diffs against, so it belongs to the same seam.
 # shellcheck source=../../../scripts/lib/merge-base.sh
-source "$_SS_ROOT/scripts/lib/merge-base.sh" 2>/dev/null || true
+source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _ss_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }

@@ -21,8 +21,10 @@ _SF_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_SF_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# #1783: source via the contract-reader seam so a run that edits the floor's own
+# lib is measured by its copy rather than the installed engine's.
 # shellcheck source=../../../scripts/lib/shape-floor.sh
-source "$_SF_ROOT/scripts/lib/shape-floor.sh" 2>/dev/null || true
+source "$_ZBUILD_CONTRACT_LIB_DIR/shape-floor.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _sf_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
