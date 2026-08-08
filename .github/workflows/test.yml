@@ -27,6 +27,10 @@ jobs:
         # ONE definition, shared with `npm run lint` (#1682). Do not inline the
         # grep here again — the duplicate copies are what drifted.
         run: bash scripts/lib/lint-model-names.sh
+      - name: grep -c || echo antipattern (#1751)
+        if: always()
+        # ONE definition, shared with `npm run lint` (#1682).
+        run: bash scripts/lib/lint-grep-c.sh
       - name: Shellcheck (.sh files)
         if: always()
         run: |

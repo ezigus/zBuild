@@ -214,7 +214,11 @@ _build_load_context() {
     if [[ "$_ctx_scope_source" == "design" ]]; then
         _ctx_scope_file_count=0
         if [[ -n "$plan_files_csv" ]]; then
-            _ctx_scope_file_count="$(printf '%s' "$plan_files_csv" | tr ',' '\n' | grep -c '.' 2>/dev/null || echo 0)"
+            # `|| true`, never `|| echo 0`: grep -c already prints its count, so
+            # the echo would append a second line and yield "0\n0" (#1751).
+            _ctx_scope_file_count="$(printf '%s' "$plan_files_csv" | tr ',' '\n' | grep -c '.' 2>/dev/null || true)"
+            _ctx_scope_file_count="${_ctx_scope_file_count//[^0-9]/}"
+            _ctx_scope_file_count="${_ctx_scope_file_count:-0}"
         fi
         emit_event "build.scope_injected" "plugin=build" \
             "source=$_ctx_scope_source" "file_count=$_ctx_scope_file_count" \
