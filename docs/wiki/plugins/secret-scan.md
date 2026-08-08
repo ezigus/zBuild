@@ -26,7 +26,10 @@ description: |
     - AWS access-key ids (AKIA + 16).
     - PEM private-key headers (-----BEGIN ... PRIVATE KEY-----).
     - High-entropy credential assignments, quoted or unquoted
-      (api_key/secret/token/password = value).
+      (api_key/secret/token/password = value). The value must be a contiguous
+      run of >=8 non-space chars, so variable references (token: ${SECRET})
+      and prose ("password = <your password here>") are not flagged; the
+      calibration corpus lives in tests/fixtures/secret-scan/.
     - .env file paths (.env, .env.local, ...; .env.example/.sample/.template excluded).
   Allowlist knobs (opt-in, to clear obvious test fixtures / example creds):
     - ZBUILD_SECRET_SCAN_ALLOWLIST_FILE: file of glob patterns, one per line

@@ -1,2 +1,46 @@
+# Every line below MUST produce NO match from _ss_scan_content.
+#
+# This half of the corpus is the one that earns its keep. Making the opening
+# quote optional (#1755) widened the pattern into three new false-positive
+# classes, and the gate blocks on a match — a false positive here is a build
+# that cannot merge. Each class below is represented deliberately.
+#
+# '#' comment lines and blank lines are skipped by the corpus sweep.
+
+# ── variable references, no space: the only negative the original had ────────
 token=$SECRET_ENV
+api_key=$MY_KEY_VAR
+
+# ── variable references WITH whitespace before the $ ─────────────────────────
+# `[[:space:]]*` can match zero characters, so a value class that permits a
+# space lets the leading `[^$...]` eat the space and match the $VAR anyway.
+# This class defeated the guard on every workflow env block in the repo.
+token: $SECRET_ENV
+token= $SECRET_ENV
+api_key = $MY_KEY_VAR
+password:  ${SECRET}
+secret:   ${{ secrets.ANTHROPIC_API_KEY }}
+GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+GH_TOKEN: ${{ github.token }}
+claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+# ── bare keyword with no value ───────────────────────────────────────────────
 password=
+token:
+api_key =
+
+# ── short values below the 8-char floor ──────────────────────────────────────
+password=short
+token: abc123
+api_key="tiny"
+
+# ── prose and documentation mentions ─────────────────────────────────────────
+The password is stored in the vault, ask an admin.
+# password: please contact the administrator for access
+Set your api_key: see the docs for how to obtain one
+password = <your password here>
+
+# ── code that merely assigns to a variable named like a credential ───────────
+            token  = substr(rest, RSTART, RLENGTH)
+local token = shift(args, offset)
+secret = compute(seed, salt)

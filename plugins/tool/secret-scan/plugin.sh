@@ -58,11 +58,17 @@ _ss_scan_content() {
         return 0
     fi
 
-    # High-entropy credential assignment (quoted or unquoted). First value char
-    # must not be $ (variable reference) or a quote; 8 chars minimum keeps bare
-    # keyword= references from matching.
+    # High-entropy credential assignment (quoted or unquoted, #1755). The value
+    # must be a single contiguous run of >=8 non-space characters, and the
+    # whitespace exclusion is what makes the rest of the guard hold:
+    # `[[:space:]]*` can match zero characters, so without it the leading
+    # `[^$...]` happily consumes the space in `token: ${{ secrets.X }}` and the
+    # variable-reference exclusion is defeated — that alone flagged every
+    # workflow env block in this repo. Parens and commas are excluded too: no
+    # real credential contains them, but `token = substr(rest, RSTART)` does.
+    # 8-char minimum keeps bare `keyword=` references from matching.
     local _cred_re
-    _cred_re=$'(api[_-]?key|secret|token|password|passwd)[\'"]?[[:space:]]*[:=][[:space:]]*[\'"]?[^$\'"][^\'"]{7,}'
+    _cred_re=$'(api[_-]?key|secret|token|password|passwd)[\'"]?[[:space:]]*[:=][[:space:]]*[\'"]?[^$\'"[:space:](),][^[:space:]\'"(),]{7,}'
     if grep -qiE -- "$_cred_re" <<< "$content"; then
         printf 'credential_assignment'
         return 0

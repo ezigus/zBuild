@@ -1,3 +1,25 @@
+# Every line below MUST be reported as credential_assignment by _ss_scan_content.
+# Lines carry the inline pragma so the gate does not flag this fixture itself;
+# _ss_scan_content does not honour the pragma (the caller does), so the pragma
+# is inert here and each line is still matched on its own merits.
+#
+# '#' comment lines and blank lines are skipped by the corpus sweep.
+
+# ── unquoted forms — the detection gap #1755 exists to close ─────────────────
 api_key=aabbccddeeff112233  # secret-scan:allow
 export secret=aabbccddeeff112233  # secret-scan:allow
 token: aabbccddeeff112233  # secret-scan:allow
+API_KEY=sk-abcdefghijklmnop  # secret-scan:allow
+password=hunter2hunter2  # secret-scan:allow
+passwd=aabbccddeeff112233  # secret-scan:allow
+api-key: ghp_1234567890abcdefghij  # secret-scan:allow
+
+# ── quoted forms — must keep matching; the change is strictly additive ───────
+api_key = "sk-abcdefghijklmnop"  # secret-scan:allow
+secret='aabbccddeeff112233'  # secret-scan:allow
+token: "ghp_1234567890abcdefghij"  # secret-scan:allow
+export API_KEY="aabbccddeeff112233"  # secret-scan:allow
+
+# ── values containing characters real credentials do use ────────────────────
+api_key=abc+def/ghi=jklmnop  # secret-scan:allow
+token: a.b-c_d1234567890  # secret-scan:allow
