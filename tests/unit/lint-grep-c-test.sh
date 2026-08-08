@@ -41,6 +41,21 @@ out="$(bash "$CHECKER" "$FX_BAD" 2>&1)" || rc=$?
 assert_eq "[SPEC-4] lint exits 1 when bad pattern is present" "1" "$rc"
 assert_contains "[SPEC-4] lint names the offending file and line" "$out" "offender.sh:2"
 
+# `-c` in a later flag cluster is the same bug and must not slip through
+# (review finding on PR #1785 — the first regex only looked at the cluster
+# immediately after `grep`).
+SPLIT_LINE='count="$(grep -E -c '"'"'^x'"'"' "$f" 2>/dev/null || echo 0)"'
+FX_SPLIT="$TEST_TEMP_DIR/split"
+mkdir -p "$FX_SPLIT"
+{
+    echo '#!/usr/bin/env bash'
+    echo "$SPLIT_LINE"
+} > "$FX_SPLIT/split-flags.sh"
+
+rc=0
+bash "$CHECKER" "$FX_SPLIT" >/dev/null 2>&1 || rc=$?
+assert_eq "[SPEC-4] lint catches -c in a later flag cluster (grep -E -c)" "1" "$rc"
+
 # ─── SPEC-5: only safe forms → rc=0 ──────────────────────────────────────────
 print_test_section "5. clean code: exit 0"
 

@@ -31,39 +31,55 @@ _REPO_ROOT="$(cd "$_SELF_DIR/../.." && pwd)"
 
 # Roots may be overridden for testing against a fixture tree.
 _SCAN_ROOTS=("${@:-}")
+_SCAN_REPO_ROOT_TOPLEVEL=0
 if [[ -z "${_SCAN_ROOTS[0]:-}" ]]; then
     _SCAN_ROOTS=("$_REPO_ROOT/scripts" "$_REPO_ROOT/core" "$_REPO_ROOT/plugins")
+    # Also the repo-root *.sh entrypoints (install.sh and friends). Scanned at
+    # depth 1 only — recursing from the repo root would drag in node_modules,
+    # .git and the frozen legacy/ import for no benefit.
+    _SCAN_REPO_ROOT_TOPLEVEL=1
 fi
 
-# A `grep -c` (any flag bundle containing c) inside a command substitution,
-# followed by `|| echo`. Deliberately narrow: `|| true` and assignment-outside-
-# substitution must both keep passing.
-_PATTERN='\$\(.*grep[[:space:]]+-[a-zA-Z]*c[a-zA-Z]*[[:space:]].*\|\|[[:space:]]*echo'
+# A `grep -c` inside a command substitution, followed by `|| echo`.
+# The `-c` may be in any flag cluster, not just the first: `grep -cE PAT` and
+# `grep -E -c PAT` are both the bug. The `[^)]*` guards keep a match from
+# spanning two sibling substitutions on one line.
+# Deliberately narrow: `|| true` and assignment-outside-substitution must both
+# keep passing.
+_PATTERN='\$\([^)]*grep[^)]*[[:space:]]-[a-zA-Z]*c[a-zA-Z]*[[:space:]][^)]*\|\|[[:space:]]*echo'
 
 _failures=0
 
-for _root in "${_SCAN_ROOTS[@]}"; do
-    [[ -d "$_root" ]] || continue
-    while IFS= read -r -d '' _file; do
-        case "$_file" in
-            */legacy/*) continue ;;
-            *-test.sh)  continue ;;
-            */tests/*)  continue ;;
-        esac
-        while IFS=: read -r _lineno _text; do
-            [[ -z "$_lineno" ]] && continue
-            # Trim leading whitespace for a readable report.
-            _text="${_text#"${_text%%[![:space:]]*}"}"
-            # A comment describing the antipattern is not an instance of it —
-            # this very file documents the bad form in its header.
-            [[ "$_text" == '#'* ]] && continue
-            printf 'lint-grep-c: %s:%s — `grep -c … || echo` yields "0\\n0" on no-match; use `|| true`\n' \
-                "${_file#"$_REPO_ROOT"/}" "$_lineno" >&2
-            printf '    %s\n' "$_text" >&2
-            _failures=$((_failures + 1))
-        done < <(/usr/bin/grep -nE "$_PATTERN" "$_file" 2>/dev/null || true)
-    done < <(find "$_root" -name '*.sh' -type f -print0 2>/dev/null)
-done
+_collect_files() {
+    local _r
+    for _r in "${_SCAN_ROOTS[@]}"; do
+        [[ -d "$_r" ]] || continue
+        find "$_r" -name '*.sh' -type f -print0 2>/dev/null
+    done
+    if [[ "$_SCAN_REPO_ROOT_TOPLEVEL" -eq 1 ]]; then
+        find "$_REPO_ROOT" -maxdepth 1 -name '*.sh' -type f -print0 2>/dev/null
+    fi
+}
+
+while IFS= read -r -d '' _file; do
+    case "$_file" in
+        */legacy/*) continue ;;
+        *-test.sh)  continue ;;
+        */tests/*)  continue ;;
+    esac
+    while IFS=: read -r _lineno _text; do
+        [[ -z "$_lineno" ]] && continue
+        # Trim leading whitespace for a readable report.
+        _text="${_text#"${_text%%[![:space:]]*}"}"
+        # A comment describing the antipattern is not an instance of it —
+        # this very file documents the bad form in its header.
+        [[ "$_text" == '#'* ]] && continue
+        printf 'lint-grep-c: %s:%s — `grep -c … || echo` yields "0\\n0" on no-match; use `|| true`\n' \
+            "${_file#"$_REPO_ROOT"/}" "$_lineno" >&2
+        printf '    %s\n' "$_text" >&2
+        _failures=$((_failures + 1))
+    done < <(/usr/bin/grep -nE "$_PATTERN" "$_file" 2>/dev/null || true)
+done < <(_collect_files)
 
 if [[ "$_failures" -gt 0 ]]; then
     printf '\nlint-grep-c: %d occurrence(s). `grep -c` already prints the count — replace `|| echo 0` with `|| true`.\n' \

@@ -101,6 +101,39 @@ assert_contains "[SPEC-3] section 3 retained" "$MANY_AFTER" "section 3 marker"
 assert_contains "[SPEC-3] section 4 retained" "$MANY_AFTER" "section 4 marker"
 assert_contains "[SPEC-3] section 5 retained" "$MANY_AFTER" "section 5 marker"
 
+# ─── SPEC-3: the shape format_update_section actually emits ──────────────────
+print_test_section "4. production body shape: separators stay well-formed"
+
+# format_update_section (deferred-tracker.sh:238) prefixes every section with
+# a blank-line-padded '---'. A fixture of bare headers would not exercise the
+# awk's `/^---$/ && suppress` arm at all, so rotation on a REAL body shape is
+# asserted here: each retained section keeps exactly one separator, and no
+# orphan separator is left where a dropped section used to be.
+SEP_BODY="$TEST_TEMP_DIR/sep-sections.md"
+{
+    echo "# Deferred candidates"
+    echo ""
+    echo "...initial content..."
+    for n in 1 2 3; do
+        printf '\n\n---\n\n'
+        echo "## Update — 2026-08-0${n}"
+        echo "- [ ] PR #${n}0 — \`sep section ${n}\`"
+    done
+} > "$SEP_BODY"
+
+rc=0
+( UPDATE_SECTION_RETAIN=2 rotate_update_sections "$SEP_BODY" ) >/dev/null 2>&1 || rc=$?
+SEP_AFTER="$(cat "$SEP_BODY")"
+
+_sep_hits="$(/usr/bin/grep -cF 'sep section 1' "$SEP_BODY" 2>/dev/null || true)"
+assert_eq "[SPEC-3] production-shape body drops the oldest section" "0" "${_sep_hits//[^0-9]/}"
+assert_contains "[SPEC-3] production-shape body retains section 2" "$SEP_AFTER" "sep section 2"
+assert_contains "[SPEC-3] production-shape body retains section 3" "$SEP_AFTER" "sep section 3"
+# One '---' per retained section — no orphan left behind by the dropped one.
+_rule_hits="$(/usr/bin/grep -cE '^---$' "$SEP_BODY" 2>/dev/null || true)"
+assert_eq "[SPEC-3] one '---' separator per retained section (no orphan)" \
+    "2" "${_rule_hits//[^0-9]/}"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
