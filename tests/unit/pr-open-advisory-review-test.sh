@@ -224,10 +224,13 @@ else
     assert_fail "[SPEC-3] body captured from gh call" "BODY_FILE not written"
 fi
 
-# ─── SPEC-4: high-severity advisory finding → rc=0, PR opens (ADR-040 guard) ─
-print_test_section "SPEC-4: high-severity advisory finding → rc=0 (ADR-040: advisory never blocks)"
+# ─── SPEC-4: blocking-review mode — verdict preserved, not replaced by advisory ─
+print_test_section "SPEC-4: review.json present with advisory report → body keeps blocking verdict"
 
 rm -f "$PR_RESULT_JSON" "$REVIEW_JSON" "$REVIEW_REPORT_JSON" "$BODY_FILE"
+cat > "$REVIEW_JSON" <<'JSON'
+{"schema_version":1,"verdict":"approve","summary":"looks good"}
+JSON
 cat > "$REVIEW_REPORT_JSON" <<'JSON'
 {
     "schema_version": 1,
@@ -278,12 +281,12 @@ spec4_rc=$?
 set -e
 unset -f git gh
 
-assert_exit_code "[SPEC-4] high-severity advisory finding: rc=0 (not blocked)" "0" "$spec4_rc"
+assert_exit_code "[SPEC-4] blocking-review mode with advisory report: rc=0" "0" "$spec4_rc"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec4_body="$(cat "$BODY_FILE")"
-    assert_contains "[SPEC-4] body contains finding count (advisory section rendered)" \
-        "$spec4_body" "finding(s)"
+    assert_contains "[SPEC-4] body still contains blocking verdict line when review.json present" \
+        "$spec4_body" "Review verdict:"
 else
     assert_fail "[SPEC-4] body captured from gh call" "BODY_FILE not written"
 fi
