@@ -54,7 +54,7 @@ for new_adr in "ADR-054-stage-contract.md" "ADR-055-inter-stage-data-contract-v2
     grep -q "^## Implementation Notes" "$f" 2>/dev/null
     rc=$?
     set -e
-    assert_eq "[SPEC-8] $new_adr has ## Implementation Notes" "0" "$rc"
+    assert_eq "[SPEC-8][change] $new_adr has ## Implementation Notes" "0" "$rc"
 done
 
 cleanup_test_env
