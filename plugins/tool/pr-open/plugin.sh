@@ -130,6 +130,12 @@ _pr_open_render_advisory_section() {
     # ANSI, flatten control chars, and escape markdown/HTML metacharacters so a
     # finding cannot inject active markup. Messages are truncated to bound the
     # body size - GitHub rejects a create over ~65 KB.
+    #
+    # Only \ [ ] < > are escaped, deliberately. Those are the ones that inject:
+    # escaping [ and ] already breaks "[text](url)" without touching the parens,
+    # and escaping < > blocks raw HTML. Backticks, _ and * are left alone
+    # because findings use them as prose formatting - escaping those too was
+    # measured and turned every message into backslash noise.
     local _jq_defs='
         def esc: tostring
             | gsub("\\e\\[[0-9;?]*[A-Za-z~]"; "")
