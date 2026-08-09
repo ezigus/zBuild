@@ -1717,6 +1717,10 @@ _cycle_iter_dispatch() {
         _zbuild_propagate_abort "$rc" || _propagate_rc=$?
         if [[ $_propagate_rc -ne 0 ]]; then
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+            # #1800: the leaf branch's own abort propagation (rc 6/9/10/130/143).
+            # Pairs the state write with the event on the same terms as the
+            # nested-cycle and parallel-group propagate-outward paths.
+            _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
             return "$_propagate_rc"
         fi
         # Wave 19-A (#717): prefer the RAW verdict for cycle predicate
