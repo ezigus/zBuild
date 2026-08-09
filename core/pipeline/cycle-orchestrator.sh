@@ -1551,11 +1551,13 @@ _cycle_iter_dispatch() {
                 6) # cycle_abort propagates outward immediately.
                    _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "cycle_abort" "aborted"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "cycle_abort" || true
                    _cycle_clear_traps
                    return 6 ;;
                 8) # blocking_member_failure propagates outward.
                    _CYCLE_LAST_TERMINATED_REASON="blocking_member_failure"
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "blocking_member_failure" "failed"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "failed" "blocking_member_failure" || true
                    _cycle_clear_traps
                    return 8 ;;
                 11) # #1217 (ADR-045): route_back propagates outward to the
@@ -1563,10 +1565,12 @@ _cycle_iter_dispatch() {
                     # inner cycle cannot rewind the outer loop.
                    _CYCLE_LAST_TERMINATED_REASON="route_back"
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "route_back" "failed"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "failed" "route_back" || true
                    _cycle_clear_traps
                    return 11 ;;
                 130|143)
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
                    _cycle_clear_traps
                    return "$rc" ;;
                 *) _CYCLE_DISPATCH_VERDICT="fail"
@@ -1629,6 +1633,7 @@ _cycle_iter_dispatch() {
                    _CYCLE_DISPATCH_STATUS="complete" ;;
                 130|143)
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
                    _cycle_clear_traps
                    return "$rc" ;;
                 *) _CYCLE_DISPATCH_VERDICT="fail"
@@ -1744,7 +1749,12 @@ _cycle_iter_dispatch() {
         # Persist classified verdict+status to the top-level stage maps so all
         # dispatched cycle members appear in stage_statuses / stage_verdicts.
         # Uses _CYCLE_DISPATCH_VERDICT (classified) not the raw `verdict` local.
-        _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
+        # Falls back to "missing" on the same terms as the predicate blob above:
+        # a hook that publishes only the raw channel would otherwise write an
+        # empty string here while the blob reads "missing", and the two records
+        # of the same dispatch would disagree.
+        _cycle_state_write_member_atomic "$state_file" "$s" \
+            "${_CYCLE_DISPATCH_STATUS:-missing}" "${_CYCLE_DISPATCH_VERDICT:-missing}" || true
 
         # CQ-3 / ADR-013 (#863): blocking member enforcement. If the member
         # is in the ADR-013 blocking table and returned non-zero, halt the

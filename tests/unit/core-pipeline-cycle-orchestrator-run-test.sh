@@ -247,6 +247,15 @@ assert_eq "N2: outer cycle_orchestrator_run BUBBLES rc=11 (NOT rc=4 collapse)" "
 assert_eq "N2: reason=route_back" "route_back" "$_CYCLE_LAST_TERMINATED_REASON"
 assert_eq "N2: route_back target=plan preserved through the outer loop" "plan" "$_CYCLE_ROUTE_BACK_TO"
 assert_eq "N2: edge-owner id = INNER cycle (so runner keys the inner's max)" "inner" "$_CYCLE_ROUTE_BACK_EDGE_ID"
+# #1800: the outer dispatches `inner` through the NESTED-cycle branch, and rc=11
+# takes its propagate-outward early return — the path where the member is
+# dispatched but the loop never reaches the bottom-of-branch write. The record
+# has to pair with the dispatch.complete event here too, or the one shape a
+# post-mortem most needs (why did the run rewind?) is the one state cannot show.
+n2_inner_ss="$(jq -r '.stage_statuses.inner // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-4] nested-cycle member in stage_statuses on route_back" "failed" "$n2_inner_ss"
+n2_inner_sv="$(jq -r '.stage_verdicts.inner // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-5] nested-cycle member in stage_verdicts on route_back" "route_back" "$n2_inner_sv"
 
 # T13: stage_statuses and stage_verdicts written per cycle member (#1800)
 # SPEC-4/5/6 fail at baseline: _cycle_iter_dispatch did not write stage_statuses
