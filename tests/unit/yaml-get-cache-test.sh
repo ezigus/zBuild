@@ -41,7 +41,7 @@ empty_val:
 quoted: "has spaces"
 piped: a|b
 hooks:
-  init: demo_init
+  run: demo_run
 description: |
   block line one
 EOF
@@ -68,7 +68,7 @@ _cases=(
     "empty-value:$FIX:empty_val"
     "quoted:$FIX:quoted"
     "pipe-in-value:$FIX:piped"
-    "nested-present:$FIX:hooks.init"
+    "nested-present:$FIX:hooks.run"
     "nested-absent:$FIX:hooks.nosuch"
     "block-scalar:$FIX:description"
 )

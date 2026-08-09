@@ -46,14 +46,6 @@ source "$_DESIGN_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
 
-# ─── init ───────────────────────────────────────────────────────────────────
-design_stage_init() {
-    export ZBUILD_PLUGIN="design"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=design"
-    return 0
-}
-
 # ─── run ────────────────────────────────────────────────────────────────────
 design_stage_run() {
     local state_file="${2:-}"
@@ -613,12 +605,6 @@ _extract_scope_from_design() {
         local IFS=','
         printf '%s' "${files[*]}"
     fi
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-design_stage_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=design"
-    return 0
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────

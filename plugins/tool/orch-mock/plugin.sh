@@ -191,11 +191,6 @@ orch_has_capability() {
 }
 
 # ─── Lifecycle hooks (used by plugin_hook_call) ───────────────────────────────
-orch_mock_init() {
-    mkdir -p "$ORCH_MOCK_DIR"
-    return 0
-}
-
 orch_mock_run() {
     # No-op for the mock; real backends would do daemon startup here.
     return 0

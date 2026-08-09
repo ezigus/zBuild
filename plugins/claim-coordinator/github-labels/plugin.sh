@@ -109,38 +109,6 @@ _ccgl_remove_label() {
     esac
 }
 
-# ─── Hook: init ───────────────────────────────────────────────────────────────
-claim_coordinator_init() {
-    local backend; backend="$(_ccgl_backend)"
-    case "$backend" in
-        gh)
-            if ! command -v gh >/dev/null 2>&1; then
-                error "claim-coordinator-github-labels: backend=gh but 'gh' CLI not in PATH" >&2 || true
-                return 1
-            fi
-            ;;
-        local-fs)
-            if [[ -z "${ZBUILD_CLAIM_STORE:-}" ]]; then
-                error "claim-coordinator-github-labels: backend=local-fs requires ZBUILD_CLAIM_STORE" >&2 || true
-                return 1
-            fi
-            # Fail fast if flock is unavailable — local-fs depends on it for
-            # atomicity. macOS without coreutils/util-linux is the common
-            # tripwire (#320 review L107).
-            if ! command -v flock >/dev/null 2>&1; then
-                error "claim-coordinator-github-labels: backend=local-fs requires 'flock' on PATH (install util-linux on macOS via 'brew install util-linux')" >&2 || true
-                return 1
-            fi
-            mkdir -p "$ZBUILD_CLAIM_STORE"
-            ;;
-        *)
-            error "claim-coordinator-github-labels: unknown backend: $backend" >&2 || true
-            return 1
-            ;;
-    esac
-    return 0
-}
-
 # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────
 # stdout: {"acquired": bool, "lease_id": "<machine>:<issue>"}
 # Exit codes:

@@ -8,9 +8,7 @@ description: |
   the ordered implementation steps, file estimates, and notes.
 
 hooks:
-  init: plan_init
   run: plan_run
-  finalize: plan_finalize
   cleanup: plan_cleanup
 
 requires:

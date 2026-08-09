@@ -110,22 +110,6 @@ coverage_gate_run() {
     return 0
 }
 
-# ─── coverage_gate_init ───────────────────────────────────────────────────────
-coverage_gate_init() {
-    export ZBUILD_PLUGIN="coverage-gate"
-    export ZBUILD_PLUGIN_KIND="tool"
-    _cg_emit "plugin.init.start" "plugin=coverage-gate"
-    _cg_emit "plugin.init.complete" "plugin=coverage-gate"
-    return 0
-}
-
-# ─── coverage_gate_finalize ───────────────────────────────────────────────────
-coverage_gate_finalize() {
-    _cg_emit "plugin.finalize.start" "plugin=coverage-gate"
-    _cg_emit "plugin.finalize.complete" "plugin=coverage-gate"
-    return 0
-}
-
 # ─── coverage_gate_cleanup ────────────────────────────────────────────────────
 coverage_gate_cleanup() {
     _cg_emit "plugin.cleanup.start" "plugin=coverage-gate"

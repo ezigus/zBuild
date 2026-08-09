@@ -507,6 +507,29 @@ rc=$?
 set -e
 assert_eq "validate_manifest rejects manifest with declared-but-empty usage (#1414)" "1" "$rc"
 
+# ─── SPEC-8: validate_manifest names the plugin when run hook is missing ─────
+# CHANGE: error message now names the specific plugin that is missing hooks.run.
+# Uses the existing no-run-hook fixture (id: no-run-hook).
+set +e
+_spec8_err="$(validate_manifest "$FIXTURE_ROOT/agent/no-run-hook/manifest.yaml" 2>&1)"
+set -e
+if grep -q "no-run-hook" <<< "$_spec8_err"; then
+    assert_pass "[SPEC-8] validate_manifest error names the missing-run plugin"
+else
+    assert_fail "[SPEC-8] validate_manifest error names the missing-run plugin" \
+        "got: $_spec8_err"
+fi
+
+# ─── SPEC-9: absent optional cleanup hook returns ZBUILD_HOOK_ABSENT (3) ─────
+# CHANGE: before ADR-054, absent cleanup returned 0; now it returns 3.
+# Uses the existing test-tool fixture (has run, no cleanup).
+set +e
+plugin_hook_call "$FIXTURE_ROOT/tool/test-tool" "cleanup" >/dev/null 2>&1
+_spec9_rc=$?
+set -e
+assert_eq "[SPEC-9] plugin_hook_call returns ZBUILD_HOOK_ABSENT (3) for absent cleanup" \
+    "3" "$_spec9_rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

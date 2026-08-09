@@ -22,9 +22,7 @@ description: |
   evidence-fed, isolated-call contract (ADR-038 §2).
 
 hooks:
-  init: review_lens_init
   run: review_lens_run
-  finalize: review_lens_finalize
   cleanup: review_lens_cleanup
 
 requires:

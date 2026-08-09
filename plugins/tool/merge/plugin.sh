@@ -21,14 +21,6 @@ source "$_MERGE_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../scripts/lib/git-remote.sh
 source "$_MERGE_ROOT/scripts/lib/git-remote.sh"
 
-# ─── merge_init ──────────────────────────────────────────────────────────────
-merge_init() {
-    export ZBUILD_PLUGIN="merge"
-    export ZBUILD_PLUGIN_KIND="tool"
-    emit_event "plugin.init.start" "plugin=merge"
-    return 0
-}
-
 # ─── merge_run ───────────────────────────────────────────────────────────────
 # Entry point invoked by pr-delivery when _TPL_MERGE_POLICY == auto.
 # Args: $1 = stage_id, $2 = state_file
@@ -223,12 +215,6 @@ _merge_run_inner() {
 
     emit_event "plugin.run.complete" "plugin=merge" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}"
-    return 0
-}
-
-# ─── merge_finalize ──────────────────────────────────────────────────────────
-merge_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=merge"
     return 0
 }
 

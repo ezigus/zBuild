@@ -13,9 +13,7 @@ description: |
   # legacy-citation: pipeline-stages-monitor.sh:6 (stage_validate)
 
 hooks:
-  init: validate_agent_init
   run: validate_agent_run
-  finalize: validate_agent_finalize
   cleanup: validate_agent_cleanup
 
 requires:

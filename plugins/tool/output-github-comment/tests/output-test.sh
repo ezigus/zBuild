@@ -54,8 +54,6 @@ export ZBUILD_RUN_ID="test-run-001"
 # precedence over stdout default introduced in #238).
 export ZBUILD_OUTPUT="$STATE_DIR/report-test-run-001.md"
 
-output_init >/dev/null 2>&1
-
 # ─── Test 2: No artifacts dir → local report with 0 findings ─────────────────
 unset ZBUILD_ISSUE 2>/dev/null || true
 rm -rf "$ARTIFACTS_DIR"
@@ -196,11 +194,6 @@ if [[ -n "$run_complete" ]]; then
 else
     assert_fail "plugin.run.complete missing findings_count"
 fi
-
-# ─── Test 10: output_finalize → plugin.finalize.complete event ───────────────
-output_finalize >/dev/null 2>&1
-finalize_count=$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
-assert_gt "plugin.finalize.complete event emitted" "$finalize_count" "0"
 
 # ─── Test 11: findings.json with stub:false field → ignored cleanly ──────────
 rm -f "$ARTIFACTS_DIR"/*.json

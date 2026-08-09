@@ -12,9 +12,7 @@ description: |
   # legacy-citation: pipeline-stages-delivery.sh:81 (stage_pr)
 
 hooks:
-  init: pr_stage_init
   run: pr_stage_run
-  finalize: pr_stage_finalize
   cleanup: pr_stage_cleanup
 
 requires:

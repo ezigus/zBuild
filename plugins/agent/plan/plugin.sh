@@ -92,14 +92,6 @@ WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
 EOF
 }
 
-# ─── init ───────────────────────────────────────────────────────────────────
-plan_init() {
-    export ZBUILD_PLUGIN="plan"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=plan"
-    return 0
-}
-
 # ─── run ────────────────────────────────────────────────────────────────────
 # Hook called by the pipeline runner: plan_run(stage, state_file)
 # Derives artifact paths from state_dir and delegates to the inner function.
@@ -856,12 +848,6 @@ $_plan_instructions"
     # ZBUILD_PLAN_CONTEXT_GC (default 1) and quota-bounded inside the helper.
     plan_context_gc 2>/dev/null || true
 
-    return 0
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-plan_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=plan"
     return 0
 }
 

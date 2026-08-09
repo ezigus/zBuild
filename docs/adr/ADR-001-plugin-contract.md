@@ -36,10 +36,8 @@ usage: |
   <invocation notes>                # OPTIONAL
 
 hooks:
-  init: <function-name>           # called once per pipeline run, before any run
-  run: <function-name>            # called by orchestrator (or kind-specific)
-  finalize: <function-name>       # called after all cycles complete
-  cleanup: <function-name>        # called on abnormal exit (kill, abort)
+  run: <function-name>            # called by orchestrator (or kind-specific) — REQUIRED
+  cleanup: <function-name>        # called on abnormal exit (kill, abort) — OPTIONAL
 
 requires:
   core: [redaction, event-bus, state, locks, github, ...]
@@ -69,7 +67,7 @@ outputs:
 
 state:
   persisted: [<keys plugins write via core/state>]
-  reconstructed: [<keys recomputed at init on resume>]
+  reconstructed: [<keys recomputed at start of run on resume>]
 ```
 
 ### Required hooks per kind
@@ -83,7 +81,7 @@ state:
 | `claim-coordinator` | `claim`, `release`, `heartbeat`, `list_claims` | issue id | acquired flag + lease id |
 | `daemon` | `tick` | poll interval | events to bus |
 
-All kinds may implement `init`, `finalize`, `cleanup`.
+All kinds may implement `cleanup` (ADR-054 removed `init` and `finalize`).
 
 ### The `convergence:` marker (optional — ADR-040)
 
@@ -100,7 +98,7 @@ discriminator for the convergence-path invariant (ADR-040 §5/§7), independent 
 
 ### Hook function signature
 
-All lifecycle hooks (`init`, `run`/kind-entry, `finalize`, `cleanup`) receive the same two positional arguments from `plugin_hook_call` (see `core/plugin-registry/registry.sh`):
+All lifecycle hooks (`run`/kind-entry, `cleanup`) receive the same two positional arguments from `plugin_hook_call` (see `core/plugin-registry/registry.sh`):
 
 ```
 <hook>(stage_id, state_file)
@@ -122,13 +120,9 @@ Plugins MUST use the defensive read `local state_file="${2:-}"` and return rc=2 
 
 ### Lifecycle ordering
 
-For each plugin discovered in a run:
-1. `init` — once per pipeline run, before any `run`/kind-entry. Reserve resources, validate config.
-2. Kind-specific entry — possibly many invocations.
-3. `finalize` — once at end-of-run; flush state, emit summary event.
-4. `cleanup` — on abnormal exit only; release locks, write tombstone event.
-
-The engine enforces ordering; plugins MUST be idempotent across re-runs of `init` (in case of resume).
+For each plugin discovered in a run (ADR-054 — two hooks only):
+1. `run` — kind-specific entry; possibly many invocations. State reconstruction on resume is the `run` preamble's responsibility (check `ZBUILD_RESUMING=1`).
+2. `cleanup` — on abnormal exit only; release locks, write tombstone event. Absent `cleanup` emits `plugin.cleanup.absent` and returns `ZBUILD_HOOK_ABSENT` (rc=3), distinguishable from success (rc=0).
 
 ### Error semantics
 

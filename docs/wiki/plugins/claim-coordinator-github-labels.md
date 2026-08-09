@@ -29,7 +29,6 @@ description: |
   instead of `gh`.
 
 hooks:
-  init: claim_coordinator_init
   claim: claim_coordinator_claim
   release: claim_coordinator_release
   heartbeat: claim_coordinator_heartbeat

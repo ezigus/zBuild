@@ -35,9 +35,7 @@ description: |
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
-  init: coverage_gate_init
   run: coverage_gate_run
-  finalize: coverage_gate_finalize
   cleanup: coverage_gate_cleanup
 
 requires:

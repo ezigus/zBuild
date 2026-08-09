@@ -21,9 +21,7 @@ description: |
   No LLM dependency — T0 tool stage (ADR-013).
 
 hooks:
-  init: pr_open_init
   run: pr_open_run
-  finalize: pr_open_finalize
   cleanup: pr_open_cleanup
 
 requires:

@@ -41,9 +41,7 @@ description: |
   artifact for the downstream test stage to validate and apply.
 
 hooks:
-  init: build_stage_init
   run: build_stage_run
-  finalize: build_stage_finalize
   cleanup: build_stage_cleanup
 
 requires:

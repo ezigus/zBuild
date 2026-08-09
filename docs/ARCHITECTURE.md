@@ -83,10 +83,8 @@ description: |
 
 # Lifecycle entry points (function names in plugin.sh)
 hooks:
-  init: security_lens_init        # called once per pipeline run
-  run: security_lens_run          # called by orchestrator with input artifact
-  finalize: security_lens_finalize # called after all cycles complete
-  cleanup: security_lens_cleanup  # called on abnormal exit (kill, abort)
+  run: security_lens_run          # called by orchestrator with input artifact — REQUIRED
+  cleanup: security_lens_cleanup  # called on abnormal exit (kill, abort) — OPTIONAL
 
 # Dependencies on core subsystems
 requires:
@@ -127,14 +125,12 @@ outputs:
 | `claim-coordinator` | `claim`, `release`, `heartbeat`, `list_claims` | issue id | acquired flag + lease id |
 | `daemon` | `tick` | poll interval | events to bus |
 
-### Lifecycle ordering
+### Lifecycle ordering (ADR-054 — two hooks only)
 
-For each plugin discovered in a run, the engine calls in this order:
+For each plugin discovered in a run, the engine calls:
 
-1. `init` — once per pipeline run, before any `run`. Reserve resources, validate config.
-2. `run` (or kind-specific entry: `classify`/`claim`/`tick`) — possibly many times.
-3. `finalize` — once at end-of-run; flush state, emit summary event.
-4. `cleanup` — on abnormal exit only; release locks, write tombstone event.
+1. `run` (or kind-specific entry: `classify`/`claim`/`tick`) — possibly many times. On resume, `ZBUILD_RESUMING=1` is set; the `run` preamble reconstructs any needed state.
+2. `cleanup` — on abnormal exit only; release locks, write tombstone event. Absent `cleanup` returns rc=3 (`ZBUILD_HOOK_ABSENT`) — distinguishable from success (rc=0).
 
 The engine is responsible for: discovery, manifest validation, lifecycle ordering, redaction enforcement, event emission. It does not call business logic directly.
 
@@ -192,7 +188,7 @@ zbuild pipeline start --issue 42
 [github.update_live_comment(pipeline-progress-marker, new_status)]
    │
    ▼
-[finalize all plugins → emit "pipeline.end" → release claim]
+[emit "pipeline.end" → release claim]
 ```
 
 Every box that emits LLM-bound text passes through `redaction.apply()`. There is no other path. If a plugin tries to call an LLM directly, the engine refuses to start it (lockfile check).
@@ -227,7 +223,7 @@ state:
   reconstructed: [git_diff, repo_hash]
 ```
 
-Engine validates: every key in `persisted` must be written via `core/state/atomic_write`; every key in `reconstructed` MUST have a regeneration path or the plugin's `init` MUST refuse to run on resume.
+Engine validates: every key in `persisted` must be written via `core/state/atomic_write`; every key in `reconstructed` MUST have a regeneration path — the `run` hook preamble reconstructs state on resume (checks `ZBUILD_RESUMING=1`).
 
 ### Redaction chokepoint
 
@@ -279,7 +275,7 @@ Required event types (lifted from legacy; carry forward):
 
 - `pipeline.{start,end,abort}`
 - `stage.{start,complete,fail,skip}`
-- `plugin.{init,run,finalize,cleanup,error}`
+- `plugin.{run,cleanup,error}` (ADR-054 removed `init` and `finalize`)
 - `redaction.{applied,refused}`
 - `model.{route,outcome}`
 - `recovery.{suggestion,action,exhausted}`

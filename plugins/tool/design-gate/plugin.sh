@@ -30,15 +30,6 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" 2>/dev/null || true
 # Resilient emit — no-op when the event-bus is unavailable (unit-test isolation).
 _dg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
-# ─── design_gate_init ─────────────────────────────────────────────────────────
-design_gate_init() {
-    export ZBUILD_PLUGIN="design-gate"
-    export ZBUILD_PLUGIN_KIND="tool"
-    _dg_emit "plugin.init.start" "plugin=design-gate"
-    _dg_emit "plugin.init.complete" "plugin=design-gate"
-    return 0
-}
-
 # _dg_scope_nonempty <design_md>
 # C1: returns 0 iff design.md carries a ```scope fence with ≥1 non-blank entry.
 _dg_scope_nonempty() {
@@ -174,13 +165,6 @@ design_gate_run() {
     fi
 
     _dg_emit "plugin.run.complete" "plugin=design-gate" "verdict=$verdict"
-    return 0
-}
-
-# ─── design_gate_finalize ─────────────────────────────────────────────────────
-design_gate_finalize() {
-    _dg_emit "plugin.finalize.start" "plugin=design-gate"
-    _dg_emit "plugin.finalize.complete" "plugin=design-gate"
     return 0
 }
 

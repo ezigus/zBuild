@@ -24,9 +24,7 @@ description: |
   Issue #757.
 
 hooks:
-  init: deploy_release_init
   run: deploy_release_run
-  finalize: deploy_release_finalize
   cleanup: deploy_release_cleanup
 
 requires:

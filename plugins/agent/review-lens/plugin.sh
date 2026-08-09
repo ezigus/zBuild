@@ -85,14 +85,6 @@ _review_lens_empty() {
         | atomic_write "$2"
 }
 
-# ─── review_lens_init ────────────────────────────────────────────────────────
-review_lens_init() {
-    export ZBUILD_PLUGIN="review-lens"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=review-lens"
-    return 0
-}
-
 # ─── review_lens_run ──────────────────────────────────────────────────────────
 # Hook: review_lens_run(stage, state_file). Derives the lens id + artifact paths
 # and delegates to the unit-testable inner function.
@@ -268,12 +260,6 @@ _review_lens_run_inner() {
     emit_event "plugin.run.complete" "plugin=review-lens" \
         "lens=$lens" "score=$score" "findings_count=$findings_count" \
         "router_rc=$router_rc"
-    return 0
-}
-
-# ─── review_lens_finalize ──────────────────────────────────────────────────────
-review_lens_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=review-lens"
     return 0
 }
 
