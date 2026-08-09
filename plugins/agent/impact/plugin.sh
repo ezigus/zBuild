@@ -43,14 +43,6 @@ source "$_IMPACT_ROOT/scripts/lib/prompt-overrides.sh"
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_IMPACT_ROOT/core/plugin-registry/registry.sh"
 
-# ─── init ───────────────────────────────────────────────────────────────────
-impact_init() {
-    export ZBUILD_PLUGIN="impact"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=impact"
-    return 0
-}
-
 # ─── run ────────────────────────────────────────────────────────────────────
 impact_run() {
     local state_file="${2:-}"
@@ -524,12 +516,6 @@ $_impact_instructions"
 
     emit_event "plugin.run.complete" "stage=impact" \
         "plugin=impact" "verdict=$verdict" "artifact=impact.json"
-    return 0
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-impact_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=impact"
     return 0
 }
 

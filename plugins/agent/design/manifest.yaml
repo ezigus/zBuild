@@ -11,9 +11,7 @@ description: |
   # legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design)
 
 hooks:
-  init: design_stage_init
   run: design_stage_run
-  finalize: design_stage_finalize
   cleanup: design_stage_cleanup
 
 requires:

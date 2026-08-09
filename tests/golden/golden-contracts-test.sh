@@ -50,9 +50,10 @@ fi
 # ─── G4: plugin lifecycle event types golden ────────────────────────────────
 # Verifies canonical hook outcome event names (plugin.*.complete, not *.done).
 # Any future drift from "complete" → "done" (or new suffix) fails this golden.
+# ADR-054: only run and cleanup remain as lifecycle hooks (init/finalize deleted).
 _lifecycle_types="$(jq -r '
   .known_types[]
-  | select(test("^plugin\\.(init|run|finalize|cleanup)\\.complete$"))
+  | select(test("^plugin\\.(run|cleanup)\\.complete$"))
 ' "$REPO_ROOT/config/event-schema.json" | sort)"
 set +e
 assert_golden "plugin-lifecycle-event-types" "$_lifecycle_types"
@@ -63,6 +64,19 @@ if [[ $g4_rc -eq 0 ]]; then
 else
     assert_fail "G4: canonical plugin lifecycle event types" "assert_golden returned $g4_rc"
 fi
+
+# ─── SPEC-6: init/finalize complete events must be absent from event schema ──
+# CHANGE: before ADR-054, plugin.init.complete and plugin.finalize.complete were
+# present in event-schema.json; this assertion fails at that baseline.
+_inf_count="$(jq -r '[.known_types[] | select(test("^plugin\\.(init|finalize)\\.complete$"))] | length' \
+    "$REPO_ROOT/config/event-schema.json" 2>/dev/null)"
+assert_eq "[SPEC-6] plugin.init/finalize complete events absent from event schema" "0" "$_inf_count"
+
+# ─── SPEC-7: golden file has exactly two lifecycle entries (run and cleanup) ──
+# CHANGE: before ADR-054 the golden had 4 entries (init, run, finalize, cleanup);
+# after removal it must have exactly 2.
+_golden_count="$(grep -c . "$REPO_ROOT/tests/golden/plugin-lifecycle-event-types.golden" 2>/dev/null || echo 0)"
+assert_eq "[SPEC-7] plugin lifecycle golden has exactly 2 event types (run + cleanup)" "2" "$_golden_count"
 
 # ─── G5: router success event sequence golden ────────────────────────────────
 # Verifies that a successful route_to_model T2 call emits events in the

@@ -131,13 +131,6 @@ _test_build_targeted_cmd() {
 
 # ─── test_init ────────────────────────────────────────────────────────────────
 # Sets plugin identity env vars and emits plugin.init.start.
-test_init() {
-    export ZBUILD_PLUGIN="test"
-    export ZBUILD_PLUGIN_KIND="tool"
-    emit_event "plugin.init.start" "plugin=test" "kind=tool"
-    return 0
-}
-
 # ─── test_run ─────────────────────────────────────────────────────────────────
 # Entry point called by the pipeline engine.
 # Usage: test_run <stage> <state_file>
@@ -790,12 +783,6 @@ _test_write_result() {
             "$exit_code_json" | atomic_write "$path"
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
     fi
-}
-
-# ─── test_finalize ────────────────────────────────────────────────────────────
-test_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=test" "kind=tool"
-    return 0
 }
 
 # ─── test_cleanup ─────────────────────────────────────────────────────────────

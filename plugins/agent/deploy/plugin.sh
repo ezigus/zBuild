@@ -32,14 +32,6 @@ _DEPLOY_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DEPLOY_ROOT/core/event-bus/event-bus.sh"
 
-# ─── init ────────────────────────────────────────────────────────────────────
-deploy_agent_init() {
-    export ZBUILD_PLUGIN="deploy"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=deploy"
-    return 0
-}
-
 # ─── run ─────────────────────────────────────────────────────────────────────
 deploy_agent_run() {
     local state_file="${2:-}"
@@ -128,12 +120,6 @@ _deploy_agent_run_inner() {
     printf '{"schema_version":1,"verdict":"error","reason":"deploy-release plugin missing"}\n' \
         > "$deploy_result_out"
     return 2
-}
-
-# ─── finalize ────────────────────────────────────────────────────────────────
-deploy_agent_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=deploy"
-    return 0
 }
 
 # ─── cleanup ─────────────────────────────────────────────────────────────────

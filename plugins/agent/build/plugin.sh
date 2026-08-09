@@ -66,14 +66,6 @@ source "$_BUILD_DIR/lib/commit.sh"
 # shellcheck source=lib/summary.sh
 source "$_BUILD_DIR/lib/summary.sh"
 
-# ─── init ───────────────────────────────────────────────────────────────────
-build_stage_init() {
-    export ZBUILD_PLUGIN="build"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=build"
-    return 0
-}
-
 # ─── run ────────────────────────────────────────────────────────────────────
 build_stage_run() {
     local state_file="${2:-}"
@@ -442,12 +434,6 @@ _build_stage_run_inner() {
 
     # #602: no more fail-CLOSED rc-wins path — the apply-check gate that
     # forced rc=1 on `verdict=corrupt_diff` was removed with the stash dance.
-    return 0
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-build_stage_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=build"
     return 0
 }
 

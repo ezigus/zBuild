@@ -29,9 +29,7 @@ description: |
   `review` stage still resolves to the legacy `review` plugin).
 
 hooks:
-  init: review_report_init
   run: review_report_run
-  finalize: review_report_finalize
 
 requires:
   core:

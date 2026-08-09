@@ -29,7 +29,6 @@ description: |
   (issue #220).
 
 hooks:
-  init: orch_mock_init
   run: orch_mock_run
 
 provides:

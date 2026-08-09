@@ -41,9 +41,7 @@ description: |
   group's aggregator and retires review-report's hand-rolled fan-out.
 
 hooks:
-  init: review_aggregator_init
   run: review_aggregator_run
-  finalize: review_aggregator_finalize
 
 requires:
   # `redaction` is mandatory for kind: agent (ADR-004 / validate_manifest), even

@@ -21,9 +21,7 @@ description: |
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
-  init: mutation_gate_init
   run: mutation_gate_run
-  finalize: mutation_gate_finalize
   cleanup: mutation_gate_cleanup
 
 requires:

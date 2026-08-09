@@ -44,14 +44,6 @@ _security_lens_envelope_schema_ok() {
     ' >/dev/null 2>&1
 }
 
-# ─── init ───────────────────────────────────────────────────────────────────
-security_lens_init() {
-    export ZBUILD_PLUGIN="security-lens"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=security-lens"
-    return 0
-}
-
 # ─── run ────────────────────────────────────────────────────────────────────
 # Hook called by the pipeline runner: security_lens_run(stage, state_file)
 # Derives artifact paths from state_dir and delegates to the inner function.
@@ -183,12 +175,6 @@ _security_lens_run_inner() {
     emit_event "plugin.run.complete" "plugin=security-lens" \
         "findings_count=$findings_count" \
         "router_rc=$router_rc"
-    return 0
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-security_lens_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=security-lens"
     return 0
 }
 

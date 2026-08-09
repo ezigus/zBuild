@@ -25,15 +25,6 @@ source "$_LG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _lg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
-# ─── lint_gate_init ───────────────────────────────────────────────────────────
-lint_gate_init() {
-    export ZBUILD_PLUGIN="lint-gate"
-    export ZBUILD_PLUGIN_KIND="tool"
-    _lg_emit "plugin.init.start" "plugin=lint-gate"
-    _lg_emit "plugin.init.complete" "plugin=lint-gate"
-    return 0
-}
-
 # ─── lint_gate_run ────────────────────────────────────────────────────────────
 # Reads $artifacts_dir/test-results.json, maps .lint.status → verdict, emits
 # lint_gate.{pass,fail,skip}, writes lint-result.json. Always rc=0.
@@ -88,13 +79,6 @@ lint_gate_run() {
         '{"verdict":$v,"status":$s,"detail":$d}' | atomic_write "$result_path"
 
     _lg_emit "plugin.run.complete" "plugin=lint-gate" "verdict=$verdict"
-    return 0
-}
-
-# ─── lint_gate_finalize ───────────────────────────────────────────────────────
-lint_gate_finalize() {
-    _lg_emit "plugin.finalize.start" "plugin=lint-gate"
-    _lg_emit "plugin.finalize.complete" "plugin=lint-gate"
     return 0
 }
 

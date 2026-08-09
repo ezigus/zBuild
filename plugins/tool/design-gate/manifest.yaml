@@ -36,9 +36,7 @@ description: |
   generic grep over the contract, no plugin/lang/path assumptions.
 
 hooks:
-  init: design_gate_init
   run: design_gate_run
-  finalize: design_gate_finalize
   cleanup: design_gate_cleanup
 
 requires:

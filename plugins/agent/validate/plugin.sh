@@ -32,14 +32,6 @@ _VALIDATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_VALIDATE_ROOT/core/event-bus/event-bus.sh"
 
-# ─── init ────────────────────────────────────────────────────────────────────
-validate_agent_init() {
-    export ZBUILD_PLUGIN="validate"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=validate"
-    return 0
-}
-
 # ─── run ─────────────────────────────────────────────────────────────────────
 validate_agent_run() {
     local state_file="${2:-}"
@@ -103,12 +95,6 @@ _validate_agent_run_inner() {
     printf '{"schema_version":1,"verdict":"error","reason":"health-check plugin missing"}\n' \
         > "$validate_result_out"
     return 2
-}
-
-# ─── finalize ────────────────────────────────────────────────────────────────
-validate_agent_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=validate"
-    return 0
 }
 
 # ─── cleanup ─────────────────────────────────────────────────────────────────

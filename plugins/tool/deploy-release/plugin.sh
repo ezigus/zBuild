@@ -14,14 +14,6 @@ _DR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DR_ROOT/core/event-bus/event-bus.sh"
 
-# ─── deploy_release_init ─────────────────────────────────────────────────────
-deploy_release_init() {
-    export ZBUILD_PLUGIN="deploy-release"
-    export ZBUILD_PLUGIN_KIND="tool"
-    emit_event "plugin.init.start" "plugin=deploy-release"
-    return 0
-}
-
 # ─── deploy_release_run ──────────────────────────────────────────────────────
 # Args: $1 = stage_id, $2 = state_file
 deploy_release_run() {
@@ -79,12 +71,6 @@ deploy_release_run() {
         '{schema_version:1,verdict:"deployed",tag:$tag,pr_url:$pr_url}' \
         | atomic_write "$deploy_result_out"
     emit_event "deploy.release.complete" "plugin=deploy-release" "tag=$tag_name"
-    return 0
-}
-
-# ─── deploy_release_finalize ─────────────────────────────────────────────────
-deploy_release_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=deploy-release"
     return 0
 }
 

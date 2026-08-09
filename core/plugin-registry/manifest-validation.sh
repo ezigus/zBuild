@@ -65,7 +65,7 @@ yaml_cache_flush() {
 _ZBUILD_YAML_PREWARM_KEYS=(
     id name kind version summary platform
     persona.role persona.perspective
-    hooks.init hooks.run hooks.finalize hooks.cleanup
+    hooks.run hooks.cleanup
     provides.role provides.artifact_type
 )
 
@@ -259,7 +259,7 @@ _yaml_get_requires_core_list() {
 
 # ─── _required_hooks_for_kind — ADR-001 §"Required hooks per kind" ──────────
 # Returns space-separated required hook names for the given plugin kind.
-# Empty output = "no specifically required hooks" (still allow init/finalize/cleanup).
+# Empty output = "no specifically required hooks" (still allow cleanup).
 _required_hooks_for_kind() {
     case "$1" in
         agent)             echo "run" ;;
@@ -352,11 +352,12 @@ validate_manifest() {
         if [[ -z "$provides_role" ]]; then
             local required_hooks; required_hooks="$(_required_hooks_for_kind "$kind")"
             if [[ -n "$required_hooks" ]]; then
+                local plugin_id_for_err; plugin_id_for_err="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
                 local h
                 for h in $required_hooks; do
                     local fn; fn="$(yaml_get "$manifest" "hooks.$h" 2>/dev/null || true)"
                     if [[ -z "$fn" ]]; then
-                        error "validate_manifest($manifest): kind: $kind requires hook '$h' (declare under hooks: in the manifest)"
+                        error "validate_manifest: plugin '${plugin_id_for_err:-unknown}' (kind: $kind) requires hook '$h' (declare under hooks: in the manifest)"
                         errors=$((errors + 1))
                     fi
                 done

@@ -155,15 +155,6 @@ _ga_gate_detail() {
     printf '\n'
 }
 
-# ─── gate_aggregator_init ─────────────────────────────────────────────────────
-gate_aggregator_init() {
-    export ZBUILD_PLUGIN="gate-aggregator"
-    export ZBUILD_PLUGIN_KIND="tool"
-    _ga_emit "plugin.init.start" "plugin=gate-aggregator"
-    _ga_emit "plugin.init.complete" "plugin=gate-aggregator"
-    return 0
-}
-
 # ─── _ga_read_gate_verdict ────────────────────────────────────────────────────
 # Reads one gate's recorded verdict from its result artifact. Echoes a status
 # token for the aggregate:
@@ -322,13 +313,6 @@ gate_aggregator_run() {
     fi
 
     _ga_emit "plugin.run.complete" "plugin=gate-aggregator" "verdict=$verdict"
-    return 0
-}
-
-# ─── gate_aggregator_finalize ─────────────────────────────────────────────────
-gate_aggregator_finalize() {
-    _ga_emit "plugin.finalize.start" "plugin=gate-aggregator"
-    _ga_emit "plugin.finalize.complete" "plugin=gate-aggregator"
     return 0
 }
 

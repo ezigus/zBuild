@@ -24,9 +24,7 @@ description: |
   Issue #757.
 
 hooks:
-  init: health_check_init
   run: health_check_run
-  finalize: health_check_finalize
   cleanup: health_check_cleanup
 
 requires:

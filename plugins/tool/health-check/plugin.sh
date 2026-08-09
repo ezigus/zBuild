@@ -14,14 +14,6 @@ _HC_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_HC_ROOT/core/event-bus/event-bus.sh"
 
-# ─── health_check_init ───────────────────────────────────────────────────────
-health_check_init() {
-    export ZBUILD_PLUGIN="health-check"
-    export ZBUILD_PLUGIN_KIND="tool"
-    emit_event "plugin.init.start" "plugin=health-check"
-    return 0
-}
-
 # ─── health_check_run ────────────────────────────────────────────────────────
 # Args: $1 = stage_id, $2 = state_file
 # Stdout: raw probe output (HTTP response or error message).
@@ -64,12 +56,6 @@ health_check_run() {
         printf '%s\n' "$probe_output"
         return "$probe_rc"
     fi
-}
-
-# ─── health_check_finalize ───────────────────────────────────────────────────
-health_check_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=health-check"
-    return 0
 }
 
 # ─── health_check_cleanup ────────────────────────────────────────────────────

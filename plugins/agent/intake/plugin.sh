@@ -25,14 +25,6 @@ source "$_INTAKE_DIR/lib/branch-names.sh"
 # shellcheck source=lib/branch-ops.sh
 source "$_INTAKE_DIR/lib/branch-ops.sh"
 
-# ─── init ────────────────────────────────────────────────────────────────────
-intake_init() {
-    export ZBUILD_PLUGIN="intake"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=intake"
-    return 0
-}
-
 # ─── run ─────────────────────────────────────────────────────────────────────
 # Args: $1 = stage_id, $2 = state_file
 # Reads: ZBUILD_GOAL (env), ZBUILD_ISSUE (env, optional)
@@ -160,11 +152,5 @@ intake_run() {
     emit_event "plugin.run.complete" "plugin=intake" \
         "goal_len=${#sanitized}" \
         "platform_count=${#platforms[@]}"
-    return 0
-}
-
-# ─── finalize ────────────────────────────────────────────────────────────────
-intake_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=intake"
     return 0
 }

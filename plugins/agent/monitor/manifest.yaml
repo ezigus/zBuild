@@ -15,9 +15,7 @@ description: |
   ADR-018 Pattern 1 (one-shot): assess → write report — no iteration loop.
 
 hooks:
-  init: monitor_stage_init
   run: monitor_stage_run
-  finalize: monitor_stage_finalize
   cleanup: monitor_stage_cleanup
 
 requires:

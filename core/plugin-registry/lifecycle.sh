@@ -154,12 +154,17 @@ scan_plugin_outputs() {
     return $((missing > 0))
 }
 
+# Exit code returned when an optional hook (cleanup) is absent.
+# Distinguishable from success (0) and plugin error codes (1=recoverable, 2=fatal).
+# Callers compare $rc -eq ZBUILD_HOOK_ABSENT to detect "never ran" vs $rc -eq 0 ("ran ok").
+ZBUILD_HOOK_ABSENT=3
+
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
 # Source the plugin's plugin.sh and call a lifecycle hook by name.
 # Plugin functions are isolated by sub-shell to prevent namespace pollution.
 plugin_hook_call() {
     local plugin_dir="$1"
-    local hook_name="$2"   # init | run | finalize | cleanup (or kind-specific)
+    local hook_name="$2"   # run | cleanup (or kind-specific)
     shift 2
     local manifest="$plugin_dir/manifest.yaml"
     local plugin_sh="$plugin_dir/plugin.sh"
@@ -171,8 +176,17 @@ plugin_hook_call() {
 
     local hook_fn; hook_fn="$(yaml_get "$manifest" "hooks.$hook_name")"
     if [[ -z "$hook_fn" ]]; then
-        # No-op for unimplemented optional hooks
-        return 0
+        local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
+        local kind; kind="$(yaml_get "$manifest" "kind")"
+        if [[ "$hook_name" == "cleanup" ]]; then
+            # Absent optional hook: emit sentinel event and return ZBUILD_HOOK_ABSENT.
+            emit_event "plugin.$hook_name.absent" "plugin=$plugin_id" "kind=$kind"
+            return "$ZBUILD_HOOK_ABSENT"
+        else
+            # Absent required hook: emit refused event and fail.
+            emit_event "plugin.$hook_name.refused" "plugin=$plugin_id" "kind=$kind" "reason=hook-not-declared"
+            return 1
+        fi
     fi
 
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"

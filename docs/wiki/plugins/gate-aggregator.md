@@ -49,9 +49,7 @@ description: |
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
-  init: gate_aggregator_init
   run: gate_aggregator_run
-  finalize: gate_aggregator_finalize
   cleanup: gate_aggregator_cleanup
 
 requires:
