@@ -141,6 +141,32 @@ _RUNNER_ENGINE_SHA="$(git -C "$UP" rev-parse HEAD)"
 _none="$(_runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
 assert_eq "[SPEC-5] an engine at the remote tip reports nothing" "" "$_none"
 
+# A TAG must never answer for a branch. `ls-remote origin <name>` matches any
+# ref whose last component is <name>, tags included. When a tag exists and the
+# BRANCH does not, an unqualified lookup returns the tag's sha and the check
+# compares against a ref that is not a branch tip at all — inventing drift, or
+# denying it, from an unrelated object.
+#
+# (A tag that merely SHARES a live branch's name is harmless here: refs/heads
+# sorts before refs/tags, so the branch wins. The tag-only case is the one that
+# discriminates, so that is what this asserts.)
+git -C "$UP" tag -f nosuchbranch "$_old" >/dev/null 2>&1 || true
+_RUNNER_ENGINE_BRANCH="nosuchbranch"
+_RUNNER_ENGINE_SHA="1111111111111111111111111111111111111111"
+_tagonly="$(_runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
+assert_eq "[SPEC-5] a tag with no matching branch is not treated as a branch tip" \
+    "" "$_tagonly"
+_RUNNER_ENGINE_BRANCH="main"
+_RUNNER_ENGINE_SHA="$_old"
+
+# Detached HEAD reports the literal "HEAD" as its branch; it must fall back to
+# main rather than asking the remote for its symbolic HEAD.
+_RUNNER_ENGINE_BRANCH="HEAD"
+_detached="$(_runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
+assert_contains "[SPEC-4] a detached-HEAD engine still resolves the branch tip" \
+    "$_detached" "origin/main is now"
+_RUNNER_ENGINE_BRANCH="main"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

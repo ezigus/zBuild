@@ -887,12 +887,20 @@ _runner_report_engine_drift() {
     local root="${_ZBUILD_ROOT:-}"
     [[ -n "$root" ]] || return 0
 
+    # `git rev-parse --abbrev-ref HEAD` returns the literal "HEAD" on a detached
+    # checkout — which the CI engine clone is. Left alone it would ask the remote
+    # for its symbolic HEAD, which is usually right by accident and wrong the
+    # moment the default branch is not main.
     local branch="${_RUNNER_ENGINE_BRANCH:-main}"
-    [[ "$branch" == "unknown" || -z "$branch" ]] && branch="main"
+    [[ "$branch" == "unknown" || "$branch" == "HEAD" || -z "$branch" ]] && branch="main"
 
-    # Remote tip, without mutating the frozen engine tree.
+    # Remote tip, without mutating the frozen engine tree. Fully-qualified ref:
+    # a bare name also matches refs/tags/<name>. A tag sharing a LIVE branch's
+    # name is harmless (refs/heads sorts first), but a tag with NO matching
+    # branch answers in its place — and then the drift check is comparing
+    # against an object that is not a branch tip at all.
     local tip
-    tip="$(git -C "$root" ls-remote origin "$branch" 2>/dev/null | awk 'NR==1{print $1}')"
+    tip="$(git -C "$root" ls-remote origin "refs/heads/$branch" 2>/dev/null | awk 'NR==1{print $1}')"
     [[ -n "$tip" ]] || return 0
     [[ "$tip" == "$sha" ]] && return 0
 
