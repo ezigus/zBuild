@@ -1280,6 +1280,30 @@ _cycle_state_write_iter_atomic() {
           _ZB_CYCLE_FC _ZB_CYCLE_OVERALL
 }
 
+# ─── _cycle_state_write_member_atomic ────────────────────────────────────────
+# Persists a cycle member's terminal status and classified verdict into the
+# top-level stage_statuses / stage_verdicts maps of pipeline-state.json.
+# Uses locked_state_update (same pattern as _cycle_state_write_iter_atomic).
+# All call sites use || true — a lock failure must never abort a cycle iter.
+_cycle_state_jq_write_member() {
+    jq --arg s "$_ZB_CYCLE_MEMBER" \
+       --arg st "$_ZB_CYCLE_MEMBER_STATUS" \
+       --arg v "$_ZB_CYCLE_MEMBER_VERDICT" \
+       --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       '(.stage_statuses //= {}) | .stage_statuses[$s] = $st
+        | (.stage_verdicts //= {}) | .stage_verdicts[$s] = $v
+        | .updated_at = $now'
+}
+
+_cycle_state_write_member_atomic() {
+    local state_file="$1" member="$2" status="$3" verdict="$4"
+    export _ZB_CYCLE_MEMBER="$member" \
+           _ZB_CYCLE_MEMBER_STATUS="$status" \
+           _ZB_CYCLE_MEMBER_VERDICT="$verdict"
+    locked_state_update "$state_file" "_cycle_state_jq_write_member" || return 1
+    unset _ZB_CYCLE_MEMBER _ZB_CYCLE_MEMBER_STATUS _ZB_CYCLE_MEMBER_VERDICT
+}
+
 # ─── _cycle_iter_dispatch <iter> <state_file> ────────────────────────────────
 # Dispatches each stage in _CYCLE_STAGES[] via the runner's existing per-stage
 # dispatch helper. F1 ships a HOOK-BASED stub: if the function
@@ -1559,6 +1583,7 @@ _cycle_iter_dispatch() {
             # Wave 19-D-1 (#731): nested-cycle dispatch.complete with verdict
             # mapped from the nested cycle's terminal rc.
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+            _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
             continue
         fi
         # ADR-039 (#1132, amends ADR-021): parallel-group-as-member branch.
@@ -1618,6 +1643,7 @@ _cycle_iter_dispatch() {
                 fail=$(( fail + 1 ))
             fi
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+            _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
             continue
         fi
         # ─── ADR-029 G3: per-stage max_turns escalation (#812) ───────────
@@ -1715,6 +1741,10 @@ _cycle_iter_dispatch() {
         # already used in the predicate-evaluation blob), the rc the
         # dispatch returned, and the status string.
         _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
+        # Persist classified verdict+status to the top-level stage maps so all
+        # dispatched cycle members appear in stage_statuses / stage_verdicts.
+        # Uses _CYCLE_DISPATCH_VERDICT (classified) not the raw `verdict` local.
+        _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
 
         # CQ-3 / ADR-013 (#863): blocking member enforcement. If the member
         # is in the ADR-013 blocking table and returned non-zero, halt the

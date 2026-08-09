@@ -248,4 +248,25 @@ assert_eq "N2: reason=route_back" "route_back" "$_CYCLE_LAST_TERMINATED_REASON"
 assert_eq "N2: route_back target=plan preserved through the outer loop" "plan" "$_CYCLE_ROUTE_BACK_TO"
 assert_eq "N2: edge-owner id = INNER cycle (so runner keys the inner's max)" "inner" "$_CYCLE_ROUTE_BACK_EDGE_ID"
 
+# T13: stage_statuses and stage_verdicts written per cycle member (#1800)
+# SPEC-4/5/6 fail at baseline: _cycle_iter_dispatch did not write stage_statuses
+# or stage_verdicts. After the fix, both maps contain one entry per dispatched
+# member with the classified verdict and terminal status. SPEC-7 is the guard —
+# it holds at the merge-base and must keep holding once the writes are added.
+_seed
+load_template "$FIXT/cycle-converges-iter2.yaml"
+MOCK_VERDICTS="build:pass;test:pass"
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t13=$?; set -e
+assert_eq "[SPEC-7] cycle still converges → rc=0" "0" "$rc_t13"
+t13_iter_status="$(jq -r '.cycle_iterations["build-test"].status // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-7] cycle_iterations status unaffected by member writes" "complete" "$t13_iter_status"
+build_ss="$(jq -r '.stage_statuses.build // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-4] build in stage_statuses after leaf dispatch" "complete" "$build_ss"
+build_sv="$(jq -r '.stage_verdicts.build // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-5] build in stage_verdicts after leaf dispatch" "pass" "$build_sv"
+ss_count="$(jq '.stage_statuses | length' "$STATE_FILE")"
+assert_eq "[SPEC-6] stage_statuses key count equals member count (2)" "2" "$ss_count"
+sv_count="$(jq '.stage_verdicts | length' "$STATE_FILE")"
+assert_eq "[SPEC-6] stage_verdicts key count equals member count (2)" "2" "$sv_count"
+
 print_test_results
