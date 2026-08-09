@@ -837,6 +837,8 @@ _render_cycle_exit() {
 # case-INSENSITIVE filesystem that path also resolves to the repo's semver
 # VERSION file, so this keys on the `sha=` line rather than on the filename —
 # the same collision scripts/zbuild guards against when reading the semver.
+# shellcheck disable=SC2120  # the root arg is optional by design: production
+# always wants the running engine ($_ZBUILD_ROOT), tests pass a fixture root.
 _runner_engine_sha() {
     local root="${1:-$_ZBUILD_ROOT}" sha=""
     if [[ -f "$root/version" ]]; then
@@ -849,6 +851,7 @@ _runner_engine_sha() {
     printf '%s' "${sha:-unknown}"
 }
 
+# shellcheck disable=SC2120  # optional root arg, as above.
 _runner_engine_branch() {
     local root="${1:-$_ZBUILD_ROOT}" br=""
     if [[ -f "$root/version" ]]; then
