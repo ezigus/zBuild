@@ -64,6 +64,15 @@ else
         "expected 'preflight_failed' substring in ADR-006"
 fi
 
+# TC-7 [SPEC-9]: ADR-020 is marked Superseded (by ADR-055, #1820).
+# Fails at baseline (Status was "Proposed") and passes once the superseded header is added.
+if grep -qE "Superseded" "$ADR" 2>/dev/null; then
+    assert_pass "[SPEC-9] TC-7: ADR-020 is marked Superseded"
+else
+    assert_fail "[SPEC-9] TC-7: ADR-020 is marked Superseded" \
+        "expected 'Superseded' in Status header of $ADR"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

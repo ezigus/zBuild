@@ -3,6 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-05-24
 **Amended by:** ADR-042 — a stage's flow-name need not equal its manifest `id`; stage→plugin resolution is role-then-id everywhere (leaf, cycle, parallel).
+**Amended:** 2026-08-09 (#1820, ADR-054) — hook lifecycle corrected: only run and cleanup are active at the stage-dispatch layer; init and finalize are never called there. rc table superseded: plugin rc is binary (0 success, 1 error); the rc=1→recovery routing never existed. See ADR-054.
 
 ## Context
 

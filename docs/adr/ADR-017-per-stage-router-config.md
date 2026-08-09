@@ -2,6 +2,7 @@
 
 **Status:** Accepted (2026-05-29)
 **Date:** 2026-05-29
+**Amended:** 2026-08-09 (#1820, ADR-054) — noting that #1816 inserts the manifest layer into ADR-017's resolution chain; per-stage router config is now resolved through the manifest-declared data path before falling through to the template/global config tiers documented here.
 
 ## Context
 
