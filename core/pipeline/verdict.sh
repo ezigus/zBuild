@@ -189,6 +189,111 @@ _verdict_read_stage_sidecar() {
     jq -r '.verdict // empty' "$sc" 2>/dev/null || true
 }
 
+# ─── _verdict_read_result <state_dir> <manifest> <stage> <rc> <out_prefix> ───
+# ADR-054 (#1821): resolve a stage's result ONCE and publish it on named vars,
+# so the three public readers stop each re-resolving and re-parsing the same
+# artifact (cycle_dispatch_stage calls all three per member).
+#
+# Publishes:
+#   <prefix>_state    ok | no_manifest | no_primary | absent | malformed | nonjson
+#   <prefix>_contract 1 (today's shape, the default when .result_contract is absent)
+#                     | 2 (the ADR-054 result contract)
+#
+# NB: the version key is `result_contract`, NOT `schema_version`. `schema_version`
+# is already taken and means the ARTIFACT's own schema, independently per artifact
+# type — build-summary.json is at 4 (#602, pinned by build-test.sh). Reusing it
+# would read every build summary as a v2 result and fail it for a missing
+# `disposition`; that false positive was caught by the local-vs-CI parity golden.
+#   <prefix>_verdict  raw verdict string ("" when the artifact carries none)
+#   <prefix>_disp     .disposition — v2 only. PARSED AND EXPOSED, NOT BRANCHED ON;
+#                     the vocabulary and the engine's response table are #1822.
+#   <prefix>_reason   .reason ("" when absent)
+#   <prefix>_viol     "" | contract_violation:<detail>
+#   <prefix>_path     resolved primary path ("" when unresolvable)
+#
+# Version-scoped strictness (#1821 decision): a MALFORMED primary on a clean
+# exit is a contract violation under BOTH versions — a stage that exits 0 and
+# writes unparseable JSON is wrong regardless of which contract it speaks. A v2
+# result MISSING a mandatory field is likewise a violation.
+#
+# An ABSENT artifact stays lenient (warn) for now, deliberately: the version
+# lives INSIDE the file, so a file that does not exist cannot declare itself v2.
+# Making absence strict needs the manifest to declare which contract the plugin
+# speaks — that is #1824's negotiation, turned on per plugin by its F issue.
+# Until then absence keeps today's semantics rather than guessing.
+#
+# The remaining leniency (no_manifest / no_primary / nonjson defaults) is removed
+# wholesale by #1850, which is NOT version-gated and therefore does not disappear
+# on its own as plugins migrate.
+#
+# Takes rc but never consults it: rc semantics belong to the callers. That is
+# what lets runner_read_stage_reason surface a reason on a FAILED dispatch.
+_verdict_read_result() {
+    local state_dir="$1" manifest="$2" stage="$3" _rc="$4" p="$5"
+    printf -v "${p}_state" '%s' "ok"
+    printf -v "${p}_contract" '%s' "1"
+    printf -v "${p}_verdict" '%s' ""
+    printf -v "${p}_disp" '%s' ""
+    printf -v "${p}_reason" '%s' ""
+    printf -v "${p}_viol" '%s' ""
+    printf -v "${p}_path" '%s' ""
+    printf -v "${p}_present" '%s' "0"
+
+    if [[ -z "$manifest" || ! -f "$manifest" ]]; then
+        printf -v "${p}_state" '%s' "no_manifest"; return 0
+    fi
+
+    local prim_path; prim_path="$(_verdict_primary_output_path "$manifest")"
+    if [[ -z "$prim_path" ]]; then
+        printf -v "${p}_state" '%s' "no_primary"; return 0
+    fi
+
+    local resolved; resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
+    printf -v "${p}_path" '%s' "$resolved"
+
+    case "$resolved" in
+        *.json) ;;
+        # A non-JSON primary stays `nonjson` whether or not it exists: its
+        # verdict rides the sidecar channel, which the caller consults FIRST
+        # (present-or-absent), exactly as before this refactor.
+        *)  printf -v "${p}_state" '%s' "nonjson"
+            [[ -s "$resolved" ]] && printf -v "${p}_present" '%s' "1"
+            return 0 ;;
+    esac
+
+    if [[ ! -s "$resolved" ]]; then
+        printf -v "${p}_state" '%s' "absent"; return 0
+    fi
+    if ! jq empty "$resolved" >/dev/null 2>&1; then
+        printf -v "${p}_state" '%s' "malformed"
+        printf -v "${p}_viol" '%s' "contract_violation:malformed_json"
+        return 0
+    fi
+
+    local _sv; _sv="$(jq -r '.result_contract // 1' "$resolved" 2>/dev/null || echo 1)"
+    [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
+    printf -v "${p}_contract" '%s' "$_sv"
+    printf -v "${p}_verdict" '%s' "$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
+    printf -v "${p}_reason" '%s' "$(jq -r '.reason // empty' "$resolved" 2>/dev/null || true)"
+
+    if [[ "$_sv" -ge 2 ]]; then
+        printf -v "${p}_disp" '%s' "$(jq -r '.disposition // empty' "$resolved" 2>/dev/null || true)"
+        # Every mandatory field must be present AND non-empty. `reason` counts:
+        # a result that cannot explain itself to an operator is incomplete.
+        local _f _missing=""
+        for _f in verdict disposition reason; do
+            if ! jq -e --arg f "$_f" 'has($f) and (.[$f] | type == "string") and (.[$f] | length > 0)' \
+                    "$resolved" >/dev/null 2>&1; then
+                _missing="$_f"; break
+            fi
+        done
+        if [[ -n "$_missing" ]]; then
+            printf -v "${p}_viol" '%s' "contract_violation:missing_field:${_missing}"
+        fi
+    fi
+    return 0
+}
+
 # ─── runner_read_stage_verdict <state_dir> <manifest> <stage> <rc> ───────────
 # Returns the verdict class. Side-effect: emits stage.verdict.missing when a
 # manifest declares a primary output but the artifact is missing/malformed.
@@ -200,61 +305,49 @@ runner_read_stage_verdict() {
         echo "fail"; return 0
     fi
 
-    # No manifest at all → contract-bypass path; caller decides indicator.
-    if [[ -z "$manifest" || ! -f "$manifest" ]]; then
-        echo "unknown"; return 0
+    local _r_state _r_contract _r_verdict _r_disp _r_reason _r_viol _r_path _r_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _r
+
+    # ADR-054 (#1821): a contract violation is a STRUCTURAL failure, not a warn.
+    # It returns raw `error` — already in the #550 pass-through set, so
+    # _cycle_detect_blocked halts on it with no predicate or template change —
+    # and carries its detail on the .reason channel.
+    if [[ -n "$_r_viol" ]]; then
+        eb_emit_event "stage.verdict.contract_violation" \
+            "stage=$stage" "reason=$_r_viol" "result_contract=$_r_contract" \
+            "path=$_r_path" 2>/dev/null || true
+        echo "error"; return 0
     fi
 
-    local prim_path
-    prim_path="$(_verdict_primary_output_path "$manifest")"
-    if [[ -z "$prim_path" ]]; then
+    case "$_r_state" in
+        # No manifest at all → contract-bypass path; caller decides indicator.
+        no_manifest) echo "unknown"; return 0 ;;
         # No primary declared — fall back to pass for rc=0 (rc-fallback path).
-        echo "pass"; return 0
-    fi
-
-    local resolved
-    resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
-
-    # ADR-047 §3: the mechanic names no stage. A stage PUSHES its verdict to the
-    # canonical channel — the primary artifact's `.verdict` when the primary is
-    # JSON, else the `<stage>-verdict.json` sidecar for a non-JSON primary. The
-    # normalizer overlays only what a stage cannot self-report: rc≠0→fail (above)
-    # and channel missing/malformed→warn (below). No per-name branches.
-    case "$resolved" in
-        *.json)
-            ;;
-        *)
-            # Non-JSON primary: verdict rides the sidecar channel (#1261 design
-            # did_not_finish). Absent sidecar → presence == pass; missing primary
-            # → warn (rc-fallback semantics preserved).
+        no_primary)  echo "pass";    return 0 ;;
+        # ADR-047 §3: the mechanic names no stage. A stage PUSHES its verdict to
+        # the canonical channel — the primary artifact's `.verdict` when the
+        # primary is JSON, else the `<stage>-verdict.json` sidecar for a non-JSON
+        # primary (#1261 design did_not_finish). No per-name branches.
+        nonjson)
             local _dv; _dv="$(_verdict_read_stage_sidecar "$state_dir" "$stage")"
             if [[ -n "$_dv" ]]; then verdict_classify "$_dv"; return 0; fi
-            if [[ ! -s "$resolved" ]]; then
+            if [[ "$_r_present" != "1" ]]; then
                 eb_emit_event "stage.verdict.missing" \
-                    "stage=$stage" "reason=artifact_absent" "path=$resolved" 2>/dev/null || true
+                    "stage=$stage" "reason=artifact_absent" "path=$_r_path" 2>/dev/null || true
                 echo "warn"; return 0
             fi
             echo "pass"; return 0 ;;
+        # JSON primary absent. v1 keeps the lenient warn (the sidecar is NOT a
+        # channel for a JSON primary); under v2 this is a violation, raised above.
+        absent)
+            eb_emit_event "stage.verdict.missing" \
+                "stage=$stage" "reason=artifact_absent" "path=$_r_path" 2>/dev/null || true
+            echo "warn"; return 0 ;;
     esac
 
-    # JSON primary — its .verdict IS the canonical channel.
-    if [[ ! -s "$resolved" ]]; then
-        eb_emit_event "stage.verdict.missing" \
-            "stage=$stage" "reason=artifact_absent" "path=$resolved" 2>/dev/null || true
-        echo "warn"; return 0
-    fi
-
-    # Parse JSON; malformed → warn + event.
-    if ! jq empty "$resolved" >/dev/null 2>&1; then
-        eb_emit_event "stage.verdict.missing" \
-            "stage=$stage" "reason=malformed_json" "path=$resolved" 2>/dev/null || true
-        echo "warn"; return 0
-    fi
-
-    # Read the pushed verdict; a JSON artifact with no .verdict (e.g. plan.json)
-    # is a clean pass when well-formed.
-    local raw_verdict
-    raw_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
+    # A JSON artifact with no .verdict (e.g. plan.json) is a clean pass when
+    # well-formed. Under v2 an empty verdict was already caught as a violation.
+    local raw_verdict="$_r_verdict"
     [[ -z "$raw_verdict" || "$raw_verdict" == "null" ]] && raw_verdict="pass"
 
     local cls
@@ -312,19 +405,18 @@ runner_read_stage_verdict() {
 # already covered diagnostic events for this dispatch pass.
 runner_read_stage_reason() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
-    if [[ "$rc" -ne 0 ]]; then echo ""; return 0; fi
-    if [[ -z "$manifest" || ! -f "$manifest" ]]; then echo ""; return 0; fi
-    local prim_path resolved
-    prim_path="$(_verdict_primary_output_path "$manifest")"
-    [[ -z "$prim_path" ]] && { echo ""; return 0; }
-    resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
-    [[ ! -s "$resolved" ]] && { echo ""; return 0; }
-    case "$resolved" in
-        *.json) ;;
-        *)      echo ""; return 0 ;;
-    esac
-    jq empty "$resolved" >/dev/null 2>&1 || { echo ""; return 0; }
-    jq -r '.reason // empty' "$resolved" 2>/dev/null || echo ""
+    # ADR-054 (#1821): the `rc != 0 → echo ""` early return is GONE. It discarded
+    # the reason for exactly the dispatches that needed explaining — a plugin
+    # that returns non-zero after writing a result (plan's `return 1`) left the
+    # engine holding only an integer. Read whenever a result exists; a dispatch
+    # that died before writing one still yields empty, which is the honest answer
+    # and is what #1823's fallback classification keys on.
+    local _n_state _n_contract _n_verdict _n_disp _n_reason _n_viol _n_path _n_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _n
+    # A contract violation explains itself on this channel too, so an operator
+    # reading the reason sees why the stage was failed rather than a blank.
+    if [[ -n "$_n_viol" ]]; then printf '%s' "$_n_viol"; return 0; fi
+    printf '%s' "$_n_reason"
 }
 
 runner_read_stage_verdict_raw() {
@@ -336,44 +428,45 @@ runner_read_stage_verdict_raw() {
         echo "fail"; return 0
     fi
 
-    if [[ -z "$manifest" || ! -f "$manifest" ]]; then
-        echo ""; return 0
-    fi
+    local _w_state _w_contract _w_verdict _w_disp _w_reason _w_viol _w_path _w_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _w
 
-    local prim_path
-    prim_path="$(_verdict_primary_output_path "$manifest")"
-    if [[ -z "$prim_path" ]]; then
+    # A contract violation surfaces as raw `error` here too, so the cycle's raw
+    # channel and the classified channel agree. Side-effect-free: the classified
+    # reader already emitted the event for this dispatch pass.
+    if [[ -n "$_w_viol" ]]; then echo "error"; return 0; fi
+
+    case "$_w_state" in
+        no_manifest) echo "";     return 0 ;;
         # No primary declared — rc-fallback semantics: pass.
-        echo "pass"; return 0
-    fi
-
-    local resolved
-    resolved="$(_verdict_resolve_path "$prim_path" "$state_dir")"
-
-    # ADR-047 §3: canonical verdict channel (same as the classified reader). The
-    # cycle orchestrator reads THIS raw channel for its reason-aware exhaustion
-    # halt, so a non-JSON primary's sidecar verdict (design did_not_finish, #1261)
-    # must surface here rather than collapsing to "pass".
-    case "$resolved" in
-        *.json)
-            ;;
-        *)
+        no_primary)  echo "pass"; return 0 ;;
+        # ADR-047 §3: canonical verdict channel (same as the classified reader).
+        # The cycle orchestrator reads THIS raw channel for its reason-aware
+        # exhaustion halt, so a non-JSON primary's sidecar verdict (design
+        # did_not_finish, #1261) must surface here rather than collapsing to "pass".
+        nonjson)
             local _dv; _dv="$(_verdict_read_stage_sidecar "$state_dir" "$stage")"
             if [[ -n "$_dv" ]]; then printf '%s' "$_dv"; return 0; fi
-            if [[ ! -s "$resolved" ]]; then echo ""; return 0; fi
+            [[ "$_w_present" == "1" ]] || { echo ""; return 0; }
             echo "pass"; return 0 ;;
+        absent)      echo "";     return 0 ;;
     esac
 
-    if [[ ! -s "$resolved" ]]; then
-        echo ""; return 0
-    fi
-
-    if ! jq empty "$resolved" >/dev/null 2>&1; then
-        echo ""; return 0
-    fi
-
-    local raw_verdict
-    raw_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
+    local raw_verdict="$_w_verdict"
     [[ -z "$raw_verdict" || "$raw_verdict" == "null" ]] && raw_verdict="pass"
     printf '%s' "$raw_verdict"
+}
+
+# ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────
+# ADR-054 (#1821): expose the v2 `.disposition` field. PARSED AND EXPOSED ONLY —
+# nothing in the engine branches on it yet. The closed vocabulary and the
+# engine's response table (interrupted / throttled / exhausted / unavailable /
+# broken) are #1822; this exists so the field is readable the moment a plugin
+# writes one, and so #1822 is a policy change rather than a plumbing change.
+# Empty for every v1 artifact.
+runner_read_stage_disposition() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _d
+    printf '%s' "$_d_disp"
 }

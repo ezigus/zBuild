@@ -13,6 +13,7 @@
     "stage.fail",
     "stage.skip",
     "stage.verdict.missing",
+    "stage.verdict.contract_violation",
     "stage.verdict.stale_artifact",
     "pipeline.indicator.unknown_verdict",
     "plugin.init.start",
