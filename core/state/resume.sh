@@ -25,6 +25,8 @@ source "$_ZBUILD_RESUME_DIR/atomic.sh"
 #   "schema_version": 1,
 #   "run_id": "uuid",
 #   "issue": 42,
+#   "engine_sha": "51f11cd...",              // #1791: which engine graded this run
+#   "engine_branch": "main",                 //        (ADR-023 freezes it per run)
 #   "stage_statuses": { "plan": "complete", "build": "in_progress", ... },
 #   "current_iteration": 3,                  // <-- explicitly persisted (fixes legacy resume gap)
 #   "self_heal_count": { "build": 1 },
@@ -42,6 +44,10 @@ init_state() {
     local state_file="$1"
     local run_id="${2:-$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "run-$$-$(date +%s)")}"
     local issue="${3:-0}"
+    # #1791: which engine graded this run. ADR-023 freezes the engine per run, so
+    # this is NOT recoverable after the fact from `git log` — record it or lose it.
+    local engine_sha="${4:-unknown}"
+    local engine_branch="${5:-unknown}"
 
     if [[ -f "$state_file" ]]; then
         warn "init_state: $state_file already exists; refusing to overwrite (use resume_state instead)"
@@ -54,11 +60,15 @@ init_state() {
     jq -n \
         --arg run_id "$run_id" \
         --argjson issue "$issue" \
+        --arg engine_sha "$engine_sha" \
+        --arg engine_branch "$engine_branch" \
         --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{
             schema_version: 1,
             run_id: $run_id,
             issue: $issue,
+            engine_sha: $engine_sha,
+            engine_branch: $engine_branch,
             stage_statuses: {},
             current_iteration: 0,
             self_heal_count: {},
