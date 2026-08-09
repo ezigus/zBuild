@@ -148,4 +148,13 @@ assert_event_emitted "T4: parallel.member.dispatch.complete emitted" \
 group_starts="$(grep -c '"parallel.group.start"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "T4: 2 parallel.group.start events (one per iter)" "2" "$group_starts"
 
+# ── T5 (#1800): the group's own dispatch record reaches the durable state maps.
+# The parallel-group branch of _cycle_iter_dispatch is a third write site,
+# distinct from the leaf and nested-cycle paths.
+print_test_section "T5: parallel-group member recorded in the durable state maps"
+gates_ss="$(jq -r '.stage_statuses.gates // "missing"' "$STATE_FILE")"
+assert_eq "T5: group in stage_statuses" "complete" "$gates_ss"
+gates_sv="$(jq -r '.stage_verdicts.gates // "missing"' "$STATE_FILE")"
+assert_eq "T5: group in stage_verdicts" "pass" "$gates_sv"
+
 print_test_results

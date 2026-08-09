@@ -247,5 +247,65 @@ assert_eq "N2: outer cycle_orchestrator_run BUBBLES rc=11 (NOT rc=4 collapse)" "
 assert_eq "N2: reason=route_back" "route_back" "$_CYCLE_LAST_TERMINATED_REASON"
 assert_eq "N2: route_back target=plan preserved through the outer loop" "plan" "$_CYCLE_ROUTE_BACK_TO"
 assert_eq "N2: edge-owner id = INNER cycle (so runner keys the inner's max)" "inner" "$_CYCLE_ROUTE_BACK_EDGE_ID"
+# #1800: the outer dispatches `inner` through the NESTED-cycle branch, and rc=11
+# takes its propagate-outward early return — the path where the member is
+# dispatched but the loop never reaches the bottom-of-branch write. The record
+# has to pair with the dispatch.complete event here too, or the one shape a
+# post-mortem most needs (why did the run rewind?) is the one state cannot show.
+n2_inner_ss="$(jq -r '.stage_statuses.inner // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-4] nested-cycle member in stage_statuses on route_back" "failed" "$n2_inner_ss"
+n2_inner_sv="$(jq -r '.stage_verdicts.inner // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-5] nested-cycle member in stage_verdicts on route_back" "route_back" "$n2_inner_sv"
+
+# T13: stage_statuses and stage_verdicts written per cycle member (#1800)
+# SPEC-4/5/6 fail at baseline: _cycle_iter_dispatch did not write stage_statuses
+# or stage_verdicts. After the fix, both maps contain one entry per dispatched
+# member with the classified verdict and terminal status. SPEC-7 is the guard —
+# it holds at the merge-base and must keep holding once the writes are added.
+_seed
+load_template "$FIXT/cycle-converges-iter2.yaml"
+MOCK_VERDICTS="build:pass;test:pass"
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t13=$?; set -e
+assert_eq "[SPEC-7] cycle still converges → rc=0" "0" "$rc_t13"
+t13_iter_status="$(jq -r '.cycle_iterations["build-test"].status // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-7] cycle_iterations status unaffected by member writes" "complete" "$t13_iter_status"
+build_ss="$(jq -r '.stage_statuses.build // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-4] build in stage_statuses after leaf dispatch" "complete" "$build_ss"
+build_sv="$(jq -r '.stage_verdicts.build // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-5] build in stage_verdicts after leaf dispatch" "pass" "$build_sv"
+ss_count="$(jq '.stage_statuses | length' "$STATE_FILE")"
+assert_eq "[SPEC-6] stage_statuses key count equals member count (2)" "2" "$ss_count"
+sv_count="$(jq '.stage_verdicts | length' "$STATE_FILE")"
+assert_eq "[SPEC-6] stage_verdicts key count equals member count (2)" "2" "$sv_count"
+
+# T14 (#1800): the LEAF branch's own abort propagation. _zbuild_propagate_abort
+# fires for rc 6/9/10/130/143 returned by a leaf dispatch and returns before the
+# bottom-of-loop write, so this path needs its own pairing — the same argument as
+# the nested-cycle early returns in N2, on the branch that dispatches most stages.
+_seed
+load_template "$FIXT/cycle-converges-iter2.yaml"
+# Shadow the shared mock: `test` aborts with rc=9 (llm_unavailable, #1024).
+cycle_dispatch_stage() {
+    local stage="$1"
+    if [[ "$stage" == "test" ]]; then
+        _CYCLE_DISPATCH_VERDICT="llm_unavailable"; _CYCLE_DISPATCH_STATUS="failed"
+        return 9
+    fi
+    _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t14=$?; set -e
+# _cycle_iter_dispatch returns 9, but cycle_orchestrator_run's catch-all collapses
+# every abort rc except 8/11/130 to rc=4 — the same collapse #1225 called out for
+# rc=11 and fixed only for rc=11. Pinned as-is: out of scope for #1800, and it is
+# exactly why the state record below has to carry the outcome on its own.
+assert_eq "T14: leaf abort rc collapses to 4 (pre-existing, see #1225)" "4" "$rc_t14"
+t14_ss="$(jq -r '.stage_statuses.test // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-4] leaf member in stage_statuses on abort propagation" "aborted" "$t14_ss"
+t14_sv="$(jq -r '.stage_verdicts.test // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-5] leaf member in stage_verdicts on abort propagation" "aborted" "$t14_sv"
+# The member dispatched before the abort still holds its own normal-path record.
+t14_build_ss="$(jq -r '.stage_statuses.build // "missing"' "$STATE_FILE")"
+assert_eq "[SPEC-6] earlier member's record survives the aborting sibling" "complete" "$t14_build_ss"
 
 print_test_results
