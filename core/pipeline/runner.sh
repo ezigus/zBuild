@@ -1219,6 +1219,13 @@ _runner_enter_worktree() {
     return 0
 }
 
+# Re-arm the runner's INT/TERM handlers after a nested orchestrator (cycle,
+# parallel) calls `trap - INT TERM` to clear its own handler layer.
+_runner_rearm_traps() {
+    trap '_runner_signal_trap INT' INT
+    trap '_runner_signal_trap TERM' TERM
+}
+
 main() {
     local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
@@ -1967,12 +1974,6 @@ main() {
     # `pipeline.aborted reason=sigterm`.
     trap '_runner_signal_trap INT' INT
     trap '_runner_signal_trap TERM' TERM
-    # Re-install the runner's INT/TERM handlers after a nested orchestrator
-    # (cycle, parallel) calls `trap - INT TERM` to clear its own layer.
-    _runner_rearm_traps() {
-        trap '_runner_signal_trap INT' INT
-        trap '_runner_signal_trap TERM' TERM
-    }
 
     # Detect platforms (writes state/platforms.json; returns "generic" if none found)
     local _DETECTED_PLATFORMS=()

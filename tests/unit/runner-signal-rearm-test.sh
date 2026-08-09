@@ -3,13 +3,13 @@
 # `trap - INT TERM` to clear its own handler layer, _runner_rearm_traps()
 # must restore _runner_signal_trap as the active INT/TERM handler.
 #
-# SPEC-1 (change): _runner_rearm_traps re-installs the runner handler after
-#   trap - INT TERM clears the nested layer. At merge-base the helper doesn't
-#   exist, so this test fails with "command not found".
+# SPEC-1 (change): _runner_rearm_traps is defined as a top-level function in
+#   runner.sh. At merge-base the helper does not exist at top level, so
+#   `declare -f _runner_rearm_traps` returns non-zero and this test fails.
 # SPEC-2 (change): after re-arm, the installed INT handler invokes
 #   _zbuild_arm_abort_sentinel (the sentinel write that is the first action of
 #   _runner_signal_trap). At merge-base _runner_rearm_traps doesn't exist so
-#   the handler is at default disposition and can't call the sentinel.
+#   the handler is at default disposition and the sentinel is never written.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,50 +21,18 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "runner _runner_rearm_traps after nested trap clear (#1759)"
 setup_test_env "runner-signal-rearm"
 
-# ─── SPEC-1: _runner_rearm_traps re-installs the handler after trap - INT TERM
+# Source runner.sh so _runner_rearm_traps is available if it is a top-level
+# function (which this change makes it). At merge-base the function is absent.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/core/pipeline/runner.sh"
 
-print_test_section "SPEC-1: re-arm restores runner INT/TERM handler"
+# ─── SPEC-1: _runner_rearm_traps exists as a top-level function ──────────────
 
-# Run in a subshell so trap mutations don't affect this test script.
-spec1_result=$(
-    (
-        _runner_signal_trap() { :; }
+print_test_section "SPEC-1: _runner_rearm_traps is defined in runner.sh (top-level)"
 
-        # Install runner traps — mirrors runner.sh lines 1857-1858.
-        trap '_runner_signal_trap INT' INT
-        trap '_runner_signal_trap TERM' TERM
-
-        # _runner_rearm_traps — the new helper added by this change.
-        _runner_rearm_traps() {
-            trap '_runner_signal_trap INT' INT
-            trap '_runner_signal_trap TERM' TERM
-        }
-
-        # Simulate nested orchestrator clearing its layer (cycle/parallel exit path).
-        trap - INT TERM
-
-        # Verify handler is gone before re-arm.
-        int_before=$(trap -p INT 2>/dev/null || true)
-        if echo "$int_before" | grep -q "_runner_signal_trap"; then
-            echo "handler_still_set_before_rearm"
-            exit 1
-        fi
-
-        # Re-arm.
-        _runner_rearm_traps
-
-        # Verify handler is restored.
-        int_after=$(trap -p INT 2>/dev/null || true)
-        if echo "$int_after" | grep -q "_runner_signal_trap"; then
-            echo "rearm_ok"
-        else
-            echo "rearm_failed"
-        fi
-    ) 2>/dev/null || true
-)
-
-assert_eq "[SPEC-1] _runner_rearm_traps restores INT handler after trap - INT TERM" \
-    "rearm_ok" "$spec1_result"
+assert_eq "[SPEC-1] _runner_rearm_traps is defined as a top-level function in runner.sh" \
+    "ok" \
+    "$(declare -f _runner_rearm_traps >/dev/null 2>&1 && echo ok || echo missing)"
 
 # ─── SPEC-2: after re-arm, the installed handler calls _zbuild_arm_abort_sentinel
 
@@ -89,20 +57,16 @@ spec2_result=$(
             case "$_sig" in TERM) exit 143;; *) exit 130;; esac
         }
 
-        # Install runner traps.
+        # Install runner traps — mirrors runner.sh initial trap install.
         trap '_runner_signal_trap INT' INT
         trap '_runner_signal_trap TERM' TERM
 
-        # _runner_rearm_traps helper.
-        _runner_rearm_traps() {
-            trap '_runner_signal_trap INT' INT
-            trap '_runner_signal_trap TERM' TERM
-        }
-
-        # Nested orchestrator clears the slot.
+        # Nested orchestrator clears the slot (simulates cycle/parallel exit path).
         trap - INT TERM
 
-        # Re-arm.
+        # Re-arm using the function sourced from runner.sh.
+        # At merge-base this call fails with "command not found" because
+        # _runner_rearm_traps is inside main() and not accessible after source.
         _runner_rearm_traps
 
         # Verify via trap -p that the handler is present after re-arm.
@@ -112,7 +76,7 @@ spec2_result=$(
             exit 1
         fi
 
-        # Invoke the handler directly (simulates SIGINT firing it) and verify
+        # Invoke the handler directly (simulating SIGINT firing it) and verify
         # _zbuild_arm_abort_sentinel runs. We call the function directly because
         # `kill -INT $$` inside a bash subshell targets the PARENT shell ($$
         # doesn't change in subshells), which would abort the whole test.
