@@ -217,6 +217,7 @@
     "memory.backend.init",
     "orch.contract.not_implemented",
     "pipeline.aborted",
+    "pipeline.engine_drift",
     "pipeline.skip_to_stage",
     "pipeline.state.error",
     "review.test_assessment.consumed",

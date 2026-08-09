@@ -92,7 +92,14 @@ fi
 # Normalize state.json: sort keys, redact run-instance fields that legitimately
 # vary across runs (updated_at timestamp; run_id is already fixed by fixture).
 _normalize_state() {
-    jq -S 'del(.updated_at)' "$1" 2>/dev/null
+    # #1791: engine_sha/engine_branch record WHICH engine graded the run — an
+    # environment fact, not a shape fact, and it changes with every commit and
+    # every checkout. Pin the VALUES so the golden is not machine-dependent, but
+    # keep the KEYS so the snapshot still proves the provenance is recorded.
+    jq -S 'del(.updated_at)
+           | if has("engine_sha")    then .engine_sha    = "__ENGINE_SHA__"    else . end
+           | if has("engine_branch") then .engine_branch = "__ENGINE_BRANCH__" else . end' \
+        "$1" 2>/dev/null
 }
 
 # ── Test 10: full normalized pipeline-state.json identical across modes ──────
