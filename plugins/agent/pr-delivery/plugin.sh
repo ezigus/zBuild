@@ -7,10 +7,8 @@
 # Produces: state/artifacts/pr-url.txt (canonical), pr-result.json (secondary)
 #
 # Lifecycle:
-#   pr_stage_init       — set env vars, emit plugin.run.start
 #   pr_stage_run        — derive paths, delegate to _pr_stage_run_inner
 #   _pr_stage_run_inner — read review.json verdict guard, write artifacts
-#   pr_stage_finalize   — emit plugin.run.complete
 #   pr_stage_cleanup    — no-op
 #
 # legacy-citation: pipeline-stages-delivery.sh:81 (stage_pr)

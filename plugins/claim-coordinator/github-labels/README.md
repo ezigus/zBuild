@@ -12,13 +12,10 @@ Default cross-machine claim coordinator for the zbuild daemon. Uses GitHub issue
 
 | Hook | Signature | stdout | Exit codes |
 |---|---|---|---|
-| `claim_coordinator_init` | `init` | — | 0 ok, 1 backend unavailable |
 | `claim_coordinator_claim` | `claim <issue_id>` | `{"acquired": bool, "lease_id": "<machine>:<issue>", ...}` | 0 attempted (check JSON), 1 backend error, 2 usage error |
 | `claim_coordinator_release` | `release <issue_id> [lease_id]` | — | 0 always |
 | `claim_coordinator_heartbeat` | `heartbeat <lease_id>` | — | 0 always (labels don't expire) |
 | `claim_coordinator_list_claims` | `list_claims` | `[{"issue": N, "holder": "...", "acquired_at": null}]` | 0 success, 1 backend error |
-
-`init` is optional in the ADR-005 contract. This plugin implements it to validate that the backend (`gh` or `local-fs`) is available before claiming begins.
 
 ## TOCTOU mitigation
 

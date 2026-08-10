@@ -61,17 +61,6 @@ route_to_model() {
     return "$MOCK_ROUTE_RC"
 }
 
-# ─── [SPEC-1] monitor_stage_init sets ZBUILD_PLUGIN=monitor ──────────────────
-print_test_section "[SPEC-1] init sets ZBUILD_PLUGIN=monitor and ZBUILD_PLUGIN_KIND=agent"
-
-unset ZBUILD_PLUGIN ZBUILD_PLUGIN_KIND
-monitor_stage_init >/dev/null 2>&1
-
-assert_eq "[SPEC-1] monitor_stage_init sets ZBUILD_PLUGIN=monitor" \
-    "monitor" "${ZBUILD_PLUGIN:-}"
-assert_eq "[SPEC-1] monitor_stage_init sets ZBUILD_PLUGIN_KIND=agent" \
-    "agent" "${ZBUILD_PLUGIN_KIND:-}"
-
 # ─── [SPEC-2] ZBUILD_DRY_RUN=1 writes mock artifacts without route_to_model ──
 print_test_section "[SPEC-2] dry-run writes mock monitor-report.json (verdict embedded) without route_to_model"
 
@@ -155,16 +144,6 @@ if [[ "$rc_fail" -ne 0 ]]; then
 else
     assert_fail "[SPEC-4] plugin should return non-zero rc on model error"
 fi
-
-# ─── [SPEC-5] finalize runs cleanly ──────────────────────────────────────────
-print_test_section "[SPEC-5] monitor_stage_finalize returns rc=0"
-
-set +e
-monitor_stage_finalize >/dev/null 2>&1
-rc_fin=$?
-set -e
-
-assert_eq "[SPEC-5] monitor_stage_finalize returns rc=0" "0" "$rc_fin"
 
 # ─── [SPEC-6] config/event-schema.json registers monitor.* events ─────────────
 print_test_section "[SPEC-6] event-schema.json registers monitor.started, monitor.check, monitor.alert"

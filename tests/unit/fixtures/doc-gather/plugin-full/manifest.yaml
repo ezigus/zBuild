@@ -11,9 +11,7 @@ usage: |
   call doc_gather_plugin_bundle <plugin-id> [plugins_root] [wiki_root].
 
 hooks:
-  init: fixture_init
   run: fixture_run
-  finalize: fixture_finalize
   cleanup: fixture_cleanup
 
 requires:

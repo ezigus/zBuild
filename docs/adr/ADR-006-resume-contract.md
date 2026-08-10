@@ -30,7 +30,7 @@ This isn't a bug per se; it's a contract that was never written down. Plugins in
 
 ## Decision
 
-zBuild's resume contract is explicit. Two tiers: **persisted** (engine guarantees survival) and **reconstructed** (engine or plugin recomputes on `init` after resume).
+zBuild's resume contract is explicit. Two tiers: **persisted** (engine guarantees survival) and **reconstructed** (engine or plugin recomputes at the start of `run` after resume — ADR-056 deleted the `init` hook that used to own this).
 
 ### Persisted (engine-managed, atomic_write + .bak rotation)
 
@@ -54,13 +54,13 @@ All persisted state is written via `core/state/atomic_write`, which:
 
 Reads use `validate_json`; corruption triggers `.bak` recovery. (KEEPERS §C additions 1–2 lift these into the hot path.)
 
-### Reconstructed (computed on init after resume)
+### Reconstructed (computed at the start of `run` after resume)
 
 | Key | Owner | How |
 |---|---|---|
 | `git_diff` | per-stage | `git diff` against baseline |
 | `repo_hash` | core/state | hash of `git rev-parse HEAD` |
-| `env_snapshot` | per-stage | captured at `init` |
+| `env_snapshot` | per-stage | captured in the `run` preamble |
 | `router_recommendations` | core/router | recomputed from cost ledger + outcomes |
 | `scope_violations_history` | per-stage | replayed from event bus |
 | `loop_state_md` | debug | regenerated each iteration |
@@ -72,21 +72,21 @@ Every plugin's `manifest.yaml` MUST declare:
 ```yaml
 state:
   persisted: [findings, last_cycle_score]    # keys to write via core/state
-  reconstructed: [git_diff, repo_hash]        # keys to recompute on init
+  reconstructed: [git_diff, repo_hash]        # keys to recompute in the run preamble
 ```
 
 The engine validates:
 1. Every key in `persisted` has a corresponding `core/state/write_plugin_state <plugin_id> <key> <value>` call in `plugin.sh` (greppable; loose but catches obvious omissions).
-2. Every key in `reconstructed` is set in `init` before any `run` invocation. Asserted at runtime: missing keys → plugin refuses to run.
+2. Every key in `reconstructed` is set by the `run` preamble before the stage does any work. Asserted at runtime: missing keys → plugin refuses to run.
 
-### Idempotency scope for `init`
+### Idempotency scope for `run`
 
-"Plugins MUST be idempotent across re-runs of `init`" means:
+"Plugins MUST be idempotent across re-runs of `run`" means:
 
-- **In scope (A — what is guaranteed):** within a *single resume operation* on a *single pipeline-state.json*, the engine may call `init` more than once (e.g., the engine retries init after a transient failure). The plugin MUST tolerate this: side-effects must be writable-or-reread without duplication. Concretely: writing to `core/state/write_plugin_state` is idempotent because the engine de-duplicates; writing to an external sink (Slack, GitHub comment) is NOT idempotent and MUST be guarded by a sentinel key in persisted state.
-- **Out of scope (B — what is NOT guaranteed):** idempotency across *different* pipeline runs (run A resumes, then unrelated run B starts). Run B starts fresh; the plugin's `init` may legitimately re-emit side-effects from run B even if run A already did so. Cross-run de-duplication is the calling system's concern (e.g., GitHub issue body de-dup belongs in the output-destination layer, not in the plugin).
+- **In scope (A — what is guaranteed):** within a *single resume operation* on a *single pipeline-state.json*, the engine may call `run` more than once (e.g., the cycle re-enters the stage after a transient failure). The plugin MUST tolerate this: side-effects must be writable-or-reread without duplication. Concretely: writing to `core/state/write_plugin_state` is idempotent because the engine de-duplicates; writing to an external sink (Slack, GitHub comment) is NOT idempotent and MUST be guarded by a sentinel key in persisted state.
+- **Out of scope (B — what is NOT guaranteed):** idempotency across *different* pipeline runs (run A resumes, then unrelated run B starts). Run B starts fresh; the plugin's `run` may legitimately re-emit side-effects from run B even if run A already did so. Cross-run de-duplication is the calling system's concern (e.g., GitHub issue body de-dup belongs in the output-destination layer, not in the plugin).
 
-**Worked example.** `security-lens` declares `persisted: [last_pr_comment_id]`. On first `init`, it posts a comment, captures the comment ID, writes it via `core/state/write_plugin_state`. On second `init` *within the same resume*, it reads the persisted ID, sees the comment exists, skips the post. On `init` for a different run, it has no persisted ID for that run and posts again — that's correct, because the runs are independent artifacts.
+**Worked example.** `security-lens` declares `persisted: [last_pr_comment_id]`. On its first `run`, it posts a comment, captures the comment ID, writes it via `core/state/write_plugin_state`. On a second `run` *within the same resume*, it reads the persisted ID, sees the comment exists, skips the post. On a `run` for a different pipeline run, it has no persisted ID for that run and posts again — that's correct, because the runs are independent artifacts.
 
 ### Resume sequence
 
@@ -94,7 +94,8 @@ The engine validates:
 1. core/state load(pipeline-state.json) → on error: try .bak; on .bak error: refuse to resume
 2. core/state restore persisted state into runtime
 3. For each plugin in dependency order:
-   a. call plugin.init (with hint: "resume" mode)
+   a. call plugin.run with ZBUILD_RESUMING=1 (ADR-056 deleted the init hook;
+      reconstruction is the run preamble's job)
    b. plugin reads persisted state via core/state/read_plugin_state
    c. plugin recomputes reconstructed state
    d. plugin refuses to continue if any reconstructed key is missing
@@ -111,7 +112,7 @@ Resume is best-effort, not transparent. The engine guarantees:
 
 The engine does NOT guarantee:
 - Identical behavior to an uninterrupted run (LLM nondeterminism makes this impossible).
-- Cost equivalence (resume re-runs `init` and may re-route models).
+- Cost equivalence (resume re-enters `run` and may re-route models).
 - Wall-clock continuity (the resume adds startup latency).
 
 ## Consequences

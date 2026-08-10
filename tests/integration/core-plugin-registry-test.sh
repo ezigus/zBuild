@@ -225,13 +225,13 @@ name: Agent Missing Run Hook
 kind: agent
 version: 0.0.1
 hooks:
-  init: nr_init
+  cleanup: nr_cleanup
 requires:
   core:
     - redaction
 EOF
 cat > "$FIXTURE_ROOT/agent/no-run-hook/plugin.sh" <<'EOF'
-nr_init() { :; }
+nr_cleanup() { :; }
 EOF
 set +e
 validate_manifest "$FIXTURE_ROOT/agent/no-run-hook/manifest.yaml" >/dev/null 2>&1
@@ -247,7 +247,7 @@ name: Tool Missing Run
 kind: tool
 version: 0.0.1
 hooks:
-  init: t_init
+  cleanup: t_cleanup
 EOF
 set +e
 validate_manifest "$FIXTURE_ROOT/tool/no-run-tool/manifest.yaml" >/dev/null 2>&1

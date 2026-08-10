@@ -168,7 +168,7 @@ A plugin's `requires.plugins` list is enforced at discovery time: the engine ref
 **Open questions deferred:**
 - Versioning across breaking manifest changes — start with `schema_version` in manifest; bump policy TBD.
 - Hot-reload of plugins during a long-running pipeline — out of scope for Phase 0.
-- Plugin **bootstrap/teardown** lifecycle (`zbuild bootstrap` / `zbuild teardown` commands and their interaction with plugin `init`/`cleanup` hooks at CI boundary) is deferred to Phase 1.  See [PHASE-DEFERRALS.md](PHASE-DEFERRALS.md) and ADR-010 §Implementation Notes.
+- Plugin **bootstrap/teardown** lifecycle (`zbuild bootstrap` / `zbuild teardown` commands and their interaction with the plugin `cleanup` hook at CI boundary) is deferred to Phase 1.  See [PHASE-DEFERRALS.md](PHASE-DEFERRALS.md) and ADR-010 §Implementation Notes.
 
 ## Implementation Notes (Phase 0.5 — issue #291)
 

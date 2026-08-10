@@ -8,10 +8,8 @@
 # Produces: state/artifacts/design.md with embedded ```scope fenced block
 #
 # Lifecycle:
-#   design_stage_init        — set env vars, emit plugin.init.start
 #   design_stage_run         — derive paths, delegate to _design_stage_run_inner
 #   _design_stage_run_inner  — redact → route_to_model_loop → assert scope block
-#   design_stage_finalize    — emit plugin.finalize.complete
 #   design_stage_cleanup     — emit plugin.cleanup.complete
 #
 # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design function)

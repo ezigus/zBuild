@@ -129,8 +129,6 @@ _test_build_targeted_cmd() {
     printf '%s' "${template/\{files\}/$_files_q}"
 }
 
-# ─── test_init ────────────────────────────────────────────────────────────────
-# Sets plugin identity env vars and emits plugin.init.start.
 # ─── test_run ─────────────────────────────────────────────────────────────────
 # Entry point called by the pipeline engine.
 # Usage: test_run <stage> <state_file>

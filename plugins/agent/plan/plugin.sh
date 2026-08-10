@@ -7,10 +7,8 @@
 # Produces: state/artifacts/plan.json
 #
 # Lifecycle:
-#   plan_init        — set env vars, emit plugin.init.start
 #   plan_run         — derive paths, delegate to _plan_run_inner
 #   _plan_run_inner  — redact → route → validate → emit stage.complete
-#   plan_finalize    — emit plugin.finalize.complete
 #   plan_cleanup     — emit plugin.cleanup.complete, return 0
 
 [[ -n "${_ZBUILD_PLAN_LOADED:-}" ]] && return 0

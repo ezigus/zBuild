@@ -23,8 +23,6 @@ source "$_PR_OPEN_ROOT/scripts/lib/git-remote.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_PR_OPEN_ROOT/scripts/lib/merge-base.sh"
 
-# ─── pr_open_init ────────────────────────────────────────────────────────────
-# Sets plugin identity env vars and emits plugin.init.start.
 # ─── pr_open_run ─────────────────────────────────────────────────────────────
 # Entry point invoked by the pipeline runner.
 # Args: $1 = stage_id, $2 = state_file

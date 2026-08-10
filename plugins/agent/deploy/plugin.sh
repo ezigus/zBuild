@@ -14,10 +14,8 @@
 # Role: deploy_agent — guard pr-url input + gate verdict; delegate to deploy-release tool.
 #
 # Lifecycle:
-#   deploy_agent_init       — set env vars, emit plugin.init.start
 #   deploy_agent_run        — validate state_file, delegate to _deploy_agent_run_inner
 #   _deploy_agent_run_inner — read inputs, check gate, delegate to deploy-release tool
-#   deploy_agent_finalize   — emit plugin.finalize.complete
 #   deploy_agent_cleanup    — no-op
 #
 # legacy-citation: pipeline-stages-delivery.sh:950 (stage_deploy)

@@ -128,7 +128,6 @@ export PATH="$PATH"
 
 load_template "$TEST_TEMP_DIR/template.yaml"
 export ZBUILD_CURRENT_STAGE=build
-build_stage_init >/dev/null 2>&1 || true
 build_stage_run "ignored" "$STATE_FILE"
 EOF
 

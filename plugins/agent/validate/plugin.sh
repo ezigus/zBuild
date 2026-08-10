@@ -14,10 +14,8 @@
 # Role: validate_agent — read deploy-result input; delegate health probe to health-check tool.
 #
 # Lifecycle:
-#   validate_agent_init       — set env vars, emit plugin.init.start
 #   validate_agent_run        — validate state_file, delegate to _validate_agent_run_inner
 #   _validate_agent_run_inner — read deploy-result, delegate to health-check tool
-#   validate_agent_finalize   — emit plugin.finalize.complete
 #   validate_agent_cleanup    — no-op
 #
 # legacy-citation: pipeline-stages-monitor.sh:6 (stage_validate)

@@ -67,7 +67,6 @@ subprocess_err="$(
         set -euo pipefail
         source '$REPO_ROOT/scripts/lib/helpers.sh'
         source '$REPO_ROOT/plugins/agent/intake/plugin.sh'
-        intake_init >/dev/null 2>&1
         unset ZBUILD_GOAL
         intake_run 'intake' '$STATE_FILE'
     " 2>&1 >/dev/null

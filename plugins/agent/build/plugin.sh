@@ -7,10 +7,8 @@
 # Produces: state/artifacts/diff.patch AND state/artifacts/build-summary.json
 #
 # Lifecycle:
-#   build_stage_init        — set env vars, emit plugin.init.start
 #   build_stage_run         — derive paths, delegate to _build_stage_run_inner
 #   _build_stage_run_inner  — redact → route_to_model_loop → git diff → write
-#   build_stage_finalize    — emit plugin.finalize.complete
 #   build_stage_cleanup     — emit plugin.cleanup.complete
 #
 # CRITICAL: diff.patch is NEVER applied here — it is the working-tree diff

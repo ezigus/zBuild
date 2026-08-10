@@ -26,9 +26,7 @@ flow:
 
 | Hook       | Function         |
 |------------|-----------------|
-| `init`     | `impact_init`    |
 | `run`      | `impact_run`     |
-| `finalize` | `impact_finalize`|
 | `cleanup`  | `impact_cleanup` |
 
 ### Requires

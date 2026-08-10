@@ -10,8 +10,7 @@
 #            (#979: repointed from the retired standard.yaml — the assertion is
 #            "pr is the terminal leaf of the shipped roster", template-agnostic)
 #   [SPEC-2] plugins/agent/pr-delivery/{plugin.sh,manifest.yaml} exist; id=pr-delivery
-#   [SPEC-3] dry-run: real plugin writes pr-url.txt + pr-result.json, exits 0,
-#            emits plugin.init.start plugin=pr-delivery
+#   [SPEC-3] dry-run: real plugin writes pr-url.txt + pr-result.json, exits 0
 #   [SPEC-4] verdict=block guard: real plugin refuses (rc=1), no pr-url.txt
 #   [SPEC-5] delegation: non-dry-run threads the state file to pr-open, which
 #            writes pr-url.txt from the (mocked) gh pr create — locks the
@@ -73,7 +72,7 @@ _setup_run() {
     printf '%s' "$d/pipeline-state.json"
 }
 
-# ─── SPEC-3: dry-run writes both artifacts, exits 0, emits plugin.init.start ──
+# ─── SPEC-3: dry-run writes both artifacts and exits 0 ───────────────────────
 print_test_section "SPEC-3: dry-run produces artifacts via the real plugin"
 _sf3="$(_setup_run approve s3)"
 : > "$ZBUILD_EVENTS_JSONL"

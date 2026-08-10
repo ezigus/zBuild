@@ -54,7 +54,6 @@ unset GITHUB_STEP_SUMMARY 2>/dev/null || true
 
 # shellcheck source=../../../../plugins/tool/output-github-comment/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
-output_init >/dev/null 2>&1
 
 # ─── Test 1: Manifest validates + plugin discoverable ────────────────────────
 set +e

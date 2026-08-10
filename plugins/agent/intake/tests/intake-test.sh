@@ -49,7 +49,6 @@ assert_contains "intake discovered in plugin registry" "$discovered" "agent/inta
 # ─── Source plugin under test ─────────────────────────────────────────────────
 # shellcheck source=../../../../plugins/agent/intake/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
-intake_init >/dev/null 2>&1
 
 # ─── Test 1b: manifest declares outputs[] with scope-manifest.md first ────────
 first_output="$(awk '
@@ -171,12 +170,6 @@ assert_gt "plugin.run.complete event emitted" "$run_complete_count" "0"
 plugin_field="$(grep '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="plugin.run.complete") | .data.plugin // empty' 2>/dev/null | tail -1 || true)"
 assert_eq "plugin.run.complete has plugin=intake" "intake" "$plugin_field"
-
-# ─── Test 8: plugin.finalize.complete event after finalize ───────────────────
-intake_finalize >/dev/null 2>&1
-
-finalize_count=$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
-assert_gt "plugin.finalize.complete event emitted" "$finalize_count" "0"
 
 # ─── Test 9: empty ZBUILD_GOAL + ZBUILD_ISSUE=0 → rc=2 ──────────────────────
 export ZBUILD_GOAL=""
