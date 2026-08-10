@@ -203,12 +203,15 @@ spec3_result=$(
             exit 1
         fi
 
+        # Report BEFORE invoking: the sim handler exits 143, so anything echoed
+        # after it never runs and the diagnostic is permanently empty. That dead
+        # variable shipped in the first cut and was caught in review.
+        echo "cycle_handler_owned_slot"
+
         # Invoke the cycle handler directly (simulating SIGTERM during a cycle).
         # `kill -TERM $$` inside a bash subshell targets the PARENT shell ($$
         # does not change in subshells), so direct invocation is used instead.
         _cycle_on_signal_sim 2>/dev/null || true
-
-        echo "cycle_handler_owned_slot"
     ) 2>/dev/null || true
 )
 

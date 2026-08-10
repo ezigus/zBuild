@@ -82,9 +82,15 @@ fi
 # to top level. That is why this asserts install-site parity rather than calling
 # the handler and observing the ADR-025 sentinel write.
 _runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
-# The startup installs: the FIRST pair of `trap '...' INT|TERM` lines in the file.
-_startup_int="$(grep -m1 -oE "trap '[^']+' INT" "$_runner_sh" || true)"
-_startup_term="$(grep -m1 -oE "trap '[^']+' TERM" "$_runner_sh" || true)"
+# The startup installs are the ones INSIDE main(). Anchor past the `main()`
+# definition: a bare `grep -m1` matches _runner_rearm_traps' OWN body first
+# (it is defined above main()), which would compare the function against itself
+# and pass no matter how far the startup site drifted. That tautology shipped in
+# the first cut of this test and was caught in review.
+_startup_int="$(awk '/^main\(\) \{/{f=1} f && /trap .* INT$/{print; exit}' "$_runner_sh" \
+    | grep -oE "trap '[^']+' INT" || true)"
+_startup_term="$(awk '/^main\(\) \{/{f=1} f && /trap .* TERM$/{print; exit}' "$_runner_sh" \
+    | grep -oE "trap '[^']+' TERM" || true)"
 # What the promoted helper installs, taken from the live function body.
 _rearm_body="$(declare -f _runner_rearm_traps 2>/dev/null || true)"
 _rearm_int="$(grep -m1 -oE "trap '[^']+' INT" <<< "$_rearm_body" || true)"
