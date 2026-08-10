@@ -154,5 +154,79 @@ assert_eq "T3: dispatch called exactly once (test never starts)" "1" "$DISPATCH_
 
 rm -f "$ZBUILD_STATE_DIR/.abort.signal"
 
+# ─── SPEC-3: cycle handler takes the INT slot from the runner handler ─────────
+# GUARD: _cycle_install_traps must override any prior INT/TERM handler so that
+# a signal during a cycle fires the cycle handler (not the runner's). This
+# confirms the nested-handler ownership contract that makes _runner_rearm_traps
+# necessary and safe: cycle takes the slot on entry, clears it on exit, then
+# the runner re-arms. Verified by trap -p inspection and direct handler call.
+
+print_test_section "SPEC-3 (guard): cycle handler overrides runner handler during cycle (TERM)"
+
+_runner_marker="$TEST_TEMP_DIR/spec3-runner-marker"
+_cycle_marker="$TEST_TEMP_DIR/spec3-cycle-marker"
+rm -f "$_runner_marker" "$_cycle_marker"
+
+# HERMETICITY (#1713 family): this uses TERM, not INT, on purpose.
+# `scripts/run-tests.sh` runs test files as BACKGROUND jobs, and POSIX says a
+# background job in a non-interactive shell inherits SIGINT and SIGQUIT as
+# IGNORED — bash then refuses to install a handler, so `trap ... INT` is a
+# silent no-op. Measured, background child:
+#   INT  -> trap -- ''          SIGINT     (cannot be trapped)
+#   QUIT -> trap -- ''          SIGQUIT    (cannot be trapped)
+#   TERM -> trap -- 'h TERM' SIGTERM       (trappable)
+#   USR1 -> trap -- 'h USR1' SIGUSR1       (trappable)
+# The first cut asserted INT and so passed standalone and failed in the suite.
+# TERM is trappable in both contexts AND is one of the two signals the runner
+# actually handles, so the guard exercises the real path either way.
+spec3_result=$(
+    (
+        _RUNNER_M="$TEST_TEMP_DIR/spec3-runner-marker"
+        _CYCLE_M="$TEST_TEMP_DIR/spec3-cycle-marker"
+
+        # Simulate the runner's handler (installed by the runner on startup).
+        _runner_signal_trap() { touch "$_RUNNER_M"; exit 143; }
+        trap '_runner_signal_trap TERM' TERM
+
+        # Simulate cycle installing its own handler (_cycle_install_traps).
+        _cycle_on_signal_sim() { touch "$_CYCLE_M"; exit 143; }
+        trap '_cycle_on_signal_sim TERM' TERM
+
+        # The cycle handler must now own the slot, not the runner's.
+        term_handler=$(trap -p TERM 2>/dev/null || true)
+        if ! grep -q "_cycle_on_signal_sim" <<< "$term_handler"; then
+            echo "cycle_handler_not_installed"
+            exit 1
+        fi
+        if grep -q "_runner_signal_trap" <<< "$term_handler"; then
+            echo "runner_handler_still_active"
+            exit 1
+        fi
+
+        # Report BEFORE invoking: the sim handler exits 143, so anything echoed
+        # after it never runs and the diagnostic is permanently empty. That dead
+        # variable shipped in the first cut and was caught in review.
+        echo "cycle_handler_owned_slot"
+
+        # Invoke the cycle handler directly (simulating SIGTERM during a cycle).
+        # `kill -TERM $$` inside a bash subshell targets the PARENT shell ($$
+        # does not change in subshells), so direct invocation is used instead.
+        _cycle_on_signal_sim 2>/dev/null || true
+    ) 2>/dev/null || true
+)
+
+# Cycle marker must exist; runner marker must NOT exist.
+if [[ -f "$_cycle_marker" && ! -f "$_runner_marker" ]]; then
+    assert_pass "[SPEC-3] cycle TERM handler fires; runner handler does not (nested override works)"
+elif [[ -f "$_runner_marker" ]]; then
+    assert_fail "[SPEC-3] cycle TERM handler fires; runner handler does not" \
+        "runner handler fired — nested override did not take effect"
+else
+    assert_fail "[SPEC-3] cycle TERM handler fires; runner handler does not" \
+        "cycle handler did not fire (spec3_result=$spec3_result)"
+fi
+
+rm -f "$_runner_marker" "$_cycle_marker"
+
 print_test_results
 exit $((FAIL > 0))

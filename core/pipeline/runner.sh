@@ -1219,6 +1219,13 @@ _runner_enter_worktree() {
     return 0
 }
 
+# Re-arm the runner's INT/TERM handlers after a nested orchestrator (cycle,
+# parallel) calls `trap - INT TERM` to clear its own handler layer.
+_runner_rearm_traps() {
+    trap '_runner_signal_trap INT' INT
+    trap '_runner_signal_trap TERM' TERM
+}
+
 main() {
     local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
@@ -2311,6 +2318,7 @@ main() {
                     # cycle.complete and where cycle.unconverged should have emitted.)
                     cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file" && _rc=0 || _rc=$?
                     unset ZBUILD_SEQ_PREFIX
+                    _runner_rearm_traps
                     # #1217 (ADR-045): rc=11 = route_back — a CONTINUE-with-bounded-
                     # rewind class (NOT a halt; deliberately absent from the halt-case
                     # below). Resolve the stashed target to a dispatch-unit index; if
@@ -2537,6 +2545,7 @@ main() {
                     # `&& _rc=0 || _rc=$?` captures the rc without tripping set -e.
                     parallel_group_run "$_pg_id" "$state_dir" "$state_file" && _rc=0 || _rc=$?
                     unset ZBUILD_SEQ_PREFIX
+                    _runner_rearm_traps
                     if [[ $_rc -eq 130 || $_rc -eq 143 ]]; then
                         local _pg_abort_reason="sigint"
                         [[ $_rc -eq 143 ]] && _pg_abort_reason="sigterm"
