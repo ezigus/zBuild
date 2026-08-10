@@ -26,6 +26,14 @@ The pattern is one defect, not three: **a declaration nothing enforces.** An unk
 
 ADR-054 fixes the call and response surfaces — hooks, arguments, exit codes, the result file, and the verdict/disposition split. ADR-055 fixes the data and declaration surfaces. Together they are the interface Phase 0 enforces.
 
+### Why this precedes the rest of Initiative 1.3
+
+Initiative 1.3 (#1818) is one defect wearing different clothes across seven phases: the engine and its stages have no enforced interface. Phase 1 (#1794) makes a failing leaf stage stop the run — the single most valuable change in the milestone, and **unshippable without this contract**.
+
+Today a router timeout surfaces as `verdict=error`. Make a failing verdict terminal without first separating *what happened* from *what to do about it*, and a network hiccup on `intake` or `impact` becomes a dead run. `interrupted` and `throttled` exist so that the same event can stop a run that is genuinely broken and retry one that merely stalled. That is the whole reason the disposition vocabulary (§6) is a declared field rather than a string the engine re-interprets.
+
+The same dependency runs through the rest: Phase 3 cannot enforce declarations that were never load-bearing (ADR-055), Phase 4 cannot safely delete code whose reachability nothing can prove, and Phase 5's acceptance work measures assertions against a result file whose shape this ADR fixes. **Every phase either depends on this contract or is a consequence of not having had one.**
+
 ## Decision
 
 ### 1. The call surface: two hooks
@@ -117,6 +125,8 @@ Conflating these is the defect this section exists to prevent — `pass|warn|fai
 | `broken` | Halt; it is a defect |
 
 Recoverability is therefore a **declared field**, not a guess re-derived from a verdict string. `did_not_finish`, `empty_diff`, `scope_too_large` and `inert_build` migrate out of `verdict` into `disposition` (#1832).
+
+This is the section Phase 1 (#1794) waits on. A stage that timed out and a stage that is broken both surface as `verdict=error` today; make that terminal without this split and a transient failure on `intake` kills the run. `interrupted`/`throttled` are what let the engine retry the first and halt the second — and #1823 gates on it for exactly that reason.
 
 This supersedes the informally-inherited `pass|warn|fail|unknown|error|corrupt_diff|block` vocabulary that accumulated across ADR-013, ADR-021 and ADR-045, in which one string had to carry both axes at once. Delivered by #1822.
 

@@ -87,6 +87,23 @@ rc=$?
 set -e
 assert_eq "[SPEC-4] TC-7: ADR-054 cites #1708 for valid_verdicts enforcement" "0" "$rc"
 
+# TC-9 [SPEC-4]: the ADR carries WHY this contract precedes the rest of the
+# initiative — 59 issues across Phases 1-7 cite it, and the ordering constraint is
+# the thing they most need. Phase 1 (#1794) makes a failing stage terminal; without
+# the disposition split a router timeout on intake becomes a dead run. A contract
+# stating only its rules, not the consequence of skipping it, gets skipped.
+set +e
+grep -q "#1794" "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-4] TC-9: ADR-054 names the Phase 1 dependency it gates" "0" "$rc"
+
+set +e
+grep -qiE "transient|timed out|timeout on .intake|network hiccup" "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-4] TC-9: ADR-054 states the transient-vs-broken consequence" "0" "$rc"
+
 # TC-8 [SPEC-4]: ADR-056 already owns the init/finalize deletion and the hook
 # lifecycle. Two Accepted ADRs must not independently specify the same surface.
 set +e
