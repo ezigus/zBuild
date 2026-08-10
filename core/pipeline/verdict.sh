@@ -38,6 +38,13 @@ if ! declare -F eb_emit_event >/dev/null 2>&1; then
     # shellcheck source=../event-bus/event-bus.sh
     source "$_ZBUILD_VERDICT_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 fi
+# #1822: the closed disposition set. NOT `|| true` — without it the reader would
+# silently stop validating dispositions, which is the unenforced-declaration
+# failure ADR-054 exists to end.
+if ! declare -F disposition_is_valid >/dev/null 2>&1; then
+    # shellcheck source=./disposition.sh
+    source "$_ZBUILD_VERDICT_ROOT/core/pipeline/disposition.sh"
+fi
 if [[ -z "${GREEN:-}${YELLOW:-}${RED:-}" ]]; then
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$_ZBUILD_VERDICT_ROOT/scripts/lib/helpers.sh" 2>/dev/null || true
@@ -277,7 +284,8 @@ _verdict_read_result() {
     printf -v "${p}_reason" '%s' "$(jq -r '.reason // empty' "$resolved" 2>/dev/null || true)"
 
     if [[ "$_sv" -ge 2 ]]; then
-        printf -v "${p}_disp" '%s' "$(jq -r '.disposition // empty' "$resolved" 2>/dev/null || true)"
+        local _decl_disp; _decl_disp="$(jq -r '.disposition // empty' "$resolved" 2>/dev/null || true)"
+        printf -v "${p}_disp" '%s' "$_decl_disp"
         # Every mandatory field must be present AND non-empty. `reason` counts:
         # a result that cannot explain itself to an operator is incomplete.
         local _f _missing=""
@@ -289,6 +297,14 @@ _verdict_read_result() {
         done
         if [[ -n "$_missing" ]]; then
             printf -v "${p}_viol" '%s' "contract_violation:missing_field:${_missing}"
+        elif ! disposition_is_valid "$_decl_disp"; then
+            # #1822: `disposition` is a CLOSED set (ADR-054 §6). A word outside
+            # it is a STRUCTURAL failure — the engine never invents a default,
+            # because a default is exactly how "unrecognized is never a failure"
+            # grows back. The offending word rides the reason channel so an
+            # operator sees what the stage actually said, and <prefix>_disp keeps
+            # that same word rather than a substituted member.
+            printf -v "${p}_viol" '%s' "contract_violation:unknown_disposition:${_decl_disp}"
         fi
     fi
     return 0
@@ -458,15 +474,64 @@ runner_read_stage_verdict_raw() {
 }
 
 # ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────
-# ADR-054 (#1821): expose the v2 `.disposition` field. PARSED AND EXPOSED ONLY —
-# nothing in the engine branches on it yet. The closed vocabulary and the
-# engine's response table (interrupted / throttled / exhausted / unavailable /
-# broken) are #1822; this exists so the field is readable the moment a plugin
-# writes one, and so #1822 is a policy change rather than a plumbing change.
-# Empty for every v1 artifact.
+# ADR-054 §6 (#1821 exposed the field; #1822 gave it a vocabulary). Resolves the
+# disposition for one dispatch. Four outcomes, in precedence order:
+#
+#   0. The result VIOLATED the contract — a word off the closed set, or any
+#      missing mandatory field → `broken`. A stage that wrote an invalid result
+#      is defective, and the two channels must not disagree: were this to return
+#      the declared word, a caller reading only this channel would be told
+#      "throttled, retry" about a result the engine has already rejected as
+#      structurally invalid, and would retry it forever. That is precisely the
+#      infinite-retry regression #1822's guard names. Nothing is lost — the
+#      offending word survives verbatim on the reason channel as
+#      `contract_violation:unknown_disposition:<word>`. This is not the invented
+#      default the issue forbids: the engine is not guessing a plausible value in
+#      order to carry on, it is concluding a defect and halting.
+#   1. The stage DECLARED a valid one (v2 result) → that word, verbatim.
+#   2. The dispatch DIED and left no readable result → `broken`. This is the
+#      engine's own conclusion, not a value read from anywhere — a stage that
+#      explained nothing cannot be distinguished from a defective one, and
+#      guessing "probably transient" is how a real defect retries forever.
+#      Nothing is written back to the stage's artifact directory; the conclusion
+#      lives on this return value and on the dispatch event.
+#   3. Otherwise → empty. A v1 result declares no disposition, so the response
+#      table is not consulted and today's verdict-driven control flow is
+#      untouched. That is the versioned coexistence ADR-054 §5 requires, and it
+#      is also what keeps ADR-021's unrelated `.disposition` vocabulary
+#      (terminal|recoverable|advisory|none) inert — those artifacts are v1.
+#
+# Note the ordering against rc: a stage that wrote a result and THEN returned
+# non-zero keeps its declared word (`plan`'s hand-rolled `return 1` is exactly
+# this shape). rc never overwrites a declaration; it only fills the silence.
 runner_read_stage_disposition() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _d
-    printf '%s' "$_d_disp"
+
+    if [[ -n "$_d_viol" ]]; then
+        printf '%s' "broken"; return 0
+    fi
+    if [[ -n "$_d_disp" ]]; then
+        printf '%s' "$_d_disp"; return 0
+    fi
+    if [[ "$rc" -ne 0 ]] && ! _verdict_result_was_readable "$_d_state" "$_d_present"; then
+        printf '%s' "broken"; return 0
+    fi
+    printf '%s' ""
+}
+
+# ─── _verdict_result_was_readable <state> <present> ─────────────────────────
+# Did this dispatch leave a result the engine could actually read? `ok` means a
+# JSON primary parsed; `nonjson` with a file on disk means the stage's declared
+# primary exists on the sidecar channel. Everything else — no manifest, no
+# declared primary, absent, unparseable — means the stage left the engine
+# holding nothing, which is #1822's `broken`.
+_verdict_result_was_readable() {
+    local state="$1" present="$2"
+    case "$state" in
+        ok)      return 0 ;;
+        nonjson) [[ "$present" == "1" ]] ;;
+        *)       return 1 ;;
+    esac
 }

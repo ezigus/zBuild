@@ -2102,6 +2102,7 @@ main() {
         _CYCLE_DISPATCH_VERDICT_RAW=""
         _CYCLE_DISPATCH_STATUS=""
         _CYCLE_DISPATCH_REASON=""
+        _CYCLE_DISPATCH_DISPOSITION=""
         local _cd_plugin_dir _cd_rc=0
         # #1783: refresh the contract-reader snapshot before EVERY member, so a
         # gate reads the lib copy build just wrote rather than the previous
@@ -2114,6 +2115,12 @@ main() {
             _CYCLE_DISPATCH_VERDICT="error"
             _CYCLE_DISPATCH_VERDICT_RAW="error"
             _CYCLE_DISPATCH_STATUS="failed"
+            # #1822: a member whose plugin does not resolve is a dispatch that
+            # returned non-zero and left no result — ADR-054 §6's `broken`.
+            # Stated here because this path returns before the reader below;
+            # runner_read_stage_disposition would reach the same conclusion from
+            # the absent manifest, and the two must not disagree by omission.
+            _CYCLE_DISPATCH_DISPOSITION="broken"
             return 1
         fi
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
@@ -2145,6 +2152,12 @@ main() {
         # (infra-failure → counts toward fast-abandon threshold) from other
         # error reasons (don't burn the abandon budget).
         _CYCLE_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
+        # #1822 (ADR-054 §6): the recoverability channel. Empty for a v1 stage
+        # (which declares no disposition), the declared word for a v2 one, and
+        # `broken` when this dispatch died leaving nothing to read. Consumed by
+        # the dispatch event; the response table that interprets it lives in
+        # core/pipeline/disposition.sh, never in a plugin.
+        _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else
