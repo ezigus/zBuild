@@ -24,7 +24,7 @@ setup_test_env "plugin-hook-contract"
 # this assertion fails at that baseline.
 _init_count=0
 while IFS= read -r _mf; do
-    if grep -qE "^\s+init:" "$_mf" 2>/dev/null; then
+    if grep -qE "^[[:space:]]+init:" "$_mf" 2>/dev/null; then
         _init_count=$((_init_count + 1))
     fi
 done < <(find "$REPO_ROOT/plugins" -name "manifest.yaml" 2>/dev/null)
@@ -35,7 +35,7 @@ assert_eq "[SPEC-1] no plugin manifest declares hooks.init (ADR-056)" "0" "$_ini
 # this assertion fails at that baseline.
 _fin_count=0
 while IFS= read -r _mf; do
-    if grep -qE "^\s+finalize:" "$_mf" 2>/dev/null; then
+    if grep -qE "^[[:space:]]+finalize:" "$_mf" 2>/dev/null; then
         _fin_count=$((_fin_count + 1))
     fi
 done < <(find "$REPO_ROOT/plugins" -name "manifest.yaml" 2>/dev/null)
@@ -126,14 +126,34 @@ cat > "$_spec5_dir/plugin.sh" <<'EOF'
 s5_cleanup() { echo "cleanup"; }
 EOF
 
+_spec5_events="$TEST_TEMP_DIR/spec5-events.jsonl"
+_old_events_dir="${ZBUILD_EVENTS_DIR:-}"
+_old_events_jsonl="${ZBUILD_EVENTS_JSONL:-}"
+_old_events_db="${ZBUILD_EVENTS_DB:-}"
+ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
+ZBUILD_EVENTS_JSONL="$_spec5_events"
+ZBUILD_EVENTS_DB="/dev/null"
+
 set +e
 plugin_hook_call "$_spec5_dir" "run" >/dev/null 2>&1
 _spec5_rc=$?
 set -e
+
+ZBUILD_EVENTS_DIR="$_old_events_dir"
+ZBUILD_EVENTS_JSONL="$_old_events_jsonl"
+ZBUILD_EVENTS_DB="$_old_events_db"
+
 if [[ "$_spec5_rc" -ne 0 ]]; then
     assert_pass "[SPEC-5] absent required hook (run) returns non-zero"
 else
     assert_fail "[SPEC-5] absent required hook (run) returns non-zero" "got rc=0"
+fi
+# The refusal must be observable on the bus, not only in the exit code.
+if [[ -f "$_spec5_events" ]] && grep -q '"plugin.run.refused"' "$_spec5_events"; then
+    assert_pass "[SPEC-5] absent required hook emits plugin.run.refused event"
+else
+    assert_fail "[SPEC-5] absent required hook emits plugin.run.refused event" \
+        "events: $(cat "$_spec5_events" 2>/dev/null || echo 'none')"
 fi
 
 cleanup_test_env

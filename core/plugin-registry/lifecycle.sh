@@ -174,23 +174,20 @@ plugin_hook_call() {
         return 1
     fi
 
+    local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
+    local kind; kind="$(yaml_get "$manifest" "kind")"
+
     local hook_fn; hook_fn="$(yaml_get "$manifest" "hooks.$hook_name")"
     if [[ -z "$hook_fn" ]]; then
-        local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
-        local kind; kind="$(yaml_get "$manifest" "kind")"
         if [[ "$hook_name" == "cleanup" ]]; then
             # Absent optional hook: emit sentinel event and return ZBUILD_HOOK_ABSENT.
             emit_event "plugin.$hook_name.absent" "plugin=$plugin_id" "kind=$kind"
             return "$ZBUILD_HOOK_ABSENT"
-        else
-            # Absent required hook: emit refused event and fail.
-            emit_event "plugin.$hook_name.refused" "plugin=$plugin_id" "kind=$kind" "reason=hook-not-declared"
-            return 1
         fi
+        # Absent required hook: emit refused event and fail.
+        emit_event "plugin.$hook_name.refused" "plugin=$plugin_id" "kind=$kind" "reason=hook-not-declared"
+        return 1
     fi
-
-    local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
-    local kind; kind="$(yaml_get "$manifest" "kind")"
 
     # Pre-source tamper check (#290). Honors ZBUILD_STRICT_PLUGIN_LOCK.
     if ! verify_plugin_for_source "$manifest"; then
