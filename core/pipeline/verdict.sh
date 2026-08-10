@@ -364,36 +364,13 @@ runner_read_stage_verdict() {
     esac
     if [[ "$cls" == "unknown" ]]; then
         eb_emit_event "pipeline.indicator.unknown_verdict" \
-            "stage=$stage" "raw_verdict=$raw_verdict" "path=$resolved" 2>/dev/null || true
+            "stage=$stage" "raw_verdict=$raw_verdict" "path=$_r_path" 2>/dev/null || true
         # Unknown verdict on a declared primary → warn (informational drift).
         echo "warn"; return 0
     fi
     echo "$cls"
 }
 
-# ─── runner_read_stage_verdict_raw <state_dir> <manifest> <stage> <rc> ───────
-# Wave 19-A (#717): returns the RAW verdict string from the plugin's primary
-# output JSON (e.g. "approve", "request_changes", "block", "pass"), without
-# collapsing approve→pass / request_changes→warn.
-#
-# Why a sibling of runner_read_stage_verdict: the original function returns
-# the CLASSIFIED verdict (pass|warn|fail|unknown + structural-failure
-# pass-through) which is correct for the operator-facing indicator glyph,
-# but the cycle orchestrator's exit_when/abort_when/until predicates compare
-# against the RAW value declared in the template (e.g. `value: approve`).
-# Without the raw read, exit_when on review.verdict==approve never matches
-# because the dispatch blob stores "pass" not "approve" — the dogfood
-# 20260605055348-2232 symptom: review approved, but pipeline ran to
-# max_iterations instead of converging via exit_when.
-#
-# Side-effects: NONE here (no events). Callers are expected to ALSO call
-# runner_read_stage_verdict in the same dispatch pass (which is what
-# cycle_dispatch_stage at runner.sh:~1115 does today: populates
-# _CYCLE_DISPATCH_VERDICT via the classified call AND
-# _CYCLE_DISPATCH_VERDICT_RAW via this raw call). That ordering ensures
-# diagnostic events (stage.verdict.missing, pipeline.indicator.unknown_verdict)
-# fire exactly once for the artifact — emitting them here too would double-
-# count.
 # ─── runner_read_stage_reason <state_dir> <manifest> <stage> <rc> ───────────
 # ADR-029 G2 (#810): when a stage produced verdict=error, return the .reason
 # string from its primary output JSON. Used by the cycle orchestrator's
@@ -419,6 +396,29 @@ runner_read_stage_reason() {
     printf '%s' "$_n_reason"
 }
 
+# ─── runner_read_stage_verdict_raw <state_dir> <manifest> <stage> <rc> ───────
+# Wave 19-A (#717): returns the RAW verdict string from the plugin's primary
+# output JSON (e.g. "approve", "request_changes", "block", "pass"), without
+# collapsing approve→pass / request_changes→warn.
+#
+# Why a sibling of runner_read_stage_verdict: the original function returns
+# the CLASSIFIED verdict (pass|warn|fail|unknown + structural-failure
+# pass-through) which is correct for the operator-facing indicator glyph,
+# but the cycle orchestrator's exit_when/abort_when/until predicates compare
+# against the RAW value declared in the template (e.g. `value: approve`).
+# Without the raw read, exit_when on review.verdict==approve never matches
+# because the dispatch blob stores "pass" not "approve" — the dogfood
+# 20260605055348-2232 symptom: review approved, but pipeline ran to
+# max_iterations instead of converging via exit_when.
+#
+# Side-effects: NONE here (no events). Callers are expected to ALSO call
+# runner_read_stage_verdict in the same dispatch pass (which is what
+# cycle_dispatch_stage at runner.sh:~1115 does today: populates
+# _CYCLE_DISPATCH_VERDICT via the classified call AND
+# _CYCLE_DISPATCH_VERDICT_RAW via this raw call). That ordering ensures
+# diagnostic events (stage.verdict.missing, pipeline.indicator.unknown_verdict)
+# fire exactly once for the artifact — emitting them here too would double-
+# count.
 runner_read_stage_verdict_raw() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
 

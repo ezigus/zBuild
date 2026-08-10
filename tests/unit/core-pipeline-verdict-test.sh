@@ -312,6 +312,30 @@ _write_v2 pass complete ""
 assert_eq "v2 empty .reason -> error" \
     "error" "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
 
+print_test_section "unknown verdict emits a diagnostic that names the artifact"
+# The existing SPEC-3 test only asserts the event is NOT emitted for complete/skip.
+# Nothing asserted the POSITIVE path, so a refactor could leave the event firing
+# with an empty path and every test stayed green — which is exactly what happened:
+# the first cut of this PR emitted "path=$resolved" after $resolved had been
+# refactored away, and `2>/dev/null || true` swallowed it. An operator would get
+# a drift warning naming no file. Assert the payload, not just the event count.
+: > "$ZBUILD_EVENTS_JSONL"
+printf '%s' '{"verdict":"xyzzy"}' > "$_v2_result"
+assert_eq "unrecognised verdict -> warn" \
+    "warn" "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
+_uv_line="$(grep '"pipeline.indicator.unknown_verdict"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+if grep -q 'v2-result.json' <<< "$_uv_line"; then
+    assert_pass "unknown_verdict event carries a non-empty artifact path"
+else
+    assert_fail "unknown_verdict event carries a non-empty artifact path" \
+        "path missing/empty in: ${_uv_line:-<no event>}"
+fi
+if grep -q 'xyzzy' <<< "$_uv_line"; then
+    assert_pass "unknown_verdict event carries the offending token"
+else
+    assert_fail "unknown_verdict event carries the offending token" "raw_verdict absent"
+fi
+
 print_test_section "the contract key is NOT schema_version (regression guard)"
 # CAUGHT BY THE local-vs-CI PARITY GOLDEN, not by review: the first cut of this
 # reader keyed the contract version off `.schema_version >= 2`. But
