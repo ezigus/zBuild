@@ -38,63 +38,62 @@ assert_eq "[SPEC-1] _runner_rearm_traps is defined as a top-level function in ru
 
 print_test_section "SPEC-2: handler installed by re-arm calls _zbuild_arm_abort_sentinel"
 
-spec2_sentinel="$TEST_TEMP_DIR/spec2-sentinel"
-rm -f "$spec2_sentinel"
+# HERMETICITY (#1713 family): this must NOT assert the OS-level trap
+# disposition. `scripts/run-tests.sh` executes test files as BACKGROUND jobs,
+# and a background job in a non-interactive shell inherits SIGINT/SIGTERM as
+# IGNORED — bash then refuses to install a handler for them, so `trap ... INT`
+# is a silent no-op and `trap -p INT` reports `trap -- '' SIGINT`. Measured:
+#   foreground child -> trap -- 'f INT' SIGINT
+#   background child -> trap -- ''      SIGINT
+# The first cut asserted the read-back and so passed standalone and failed in
+# the suite. Production runner.sh runs in the foreground, where the install
+# works; the harness cannot reproduce that, so assert what the function DOES —
+# shadow the `trap` builtin with a function (functions outrank builtins) and
+# record the calls. Deterministic under any signal disposition.
 
-spec2_result=$(
-    (
-        _SENTINEL="$spec2_sentinel"
+spec2_calls="$(
+    trap() { printf '%s\n' "trap|$*"; }
+    _runner_rearm_traps
+)"
 
-        # Stand-in for _zbuild_arm_abort_sentinel.
-        _zbuild_arm_abort_sentinel() {
-            touch "$_SENTINEL"
-        }
-
-        # Minimal _runner_signal_trap (mirrors the real one: arms sentinel then exits).
-        _runner_signal_trap() {
-            local _sig="${1:-INT}"
-            _zbuild_arm_abort_sentinel
-            case "$_sig" in TERM) exit 143;; *) exit 130;; esac
-        }
-
-        # Install runner traps — mirrors runner.sh initial trap install.
-        trap '_runner_signal_trap INT' INT
-        trap '_runner_signal_trap TERM' TERM
-
-        # Nested orchestrator clears the slot (simulates cycle/parallel exit path).
-        trap - INT TERM
-
-        # Re-arm using the function sourced from runner.sh.
-        # At merge-base this call fails with "command not found" because
-        # _runner_rearm_traps is inside main() and not accessible after source.
-        _runner_rearm_traps
-
-        # Verify via trap -p that the handler is present after re-arm.
-        int_after=$(trap -p INT 2>/dev/null || true)
-        if ! grep -q "_runner_signal_trap" <<< "$int_after"; then
-            echo "handler_not_installed"
-            exit 1
-        fi
-
-        # Invoke the handler directly (simulating SIGINT firing it) and verify
-        # _zbuild_arm_abort_sentinel runs. We call the function directly because
-        # `kill -INT $$` inside a bash subshell targets the PARENT shell ($$
-        # doesn't change in subshells), which would abort the whole test.
-        _runner_signal_trap INT 2>/dev/null || true
-
-        echo "handler_invoked"
-    ) 2>/dev/null || true
-)
-
-if [[ -f "$spec2_sentinel" ]]; then
-    assert_pass "[SPEC-2] handler installed by re-arm calls _zbuild_arm_abort_sentinel (sentinel written)"
+if grep -q "^trap|_runner_signal_trap INT INT$" <<< "$spec2_calls"; then
+    assert_pass "[SPEC-2] re-arm installs _runner_signal_trap on INT"
 else
-    # Report WHICH branch the subshell took. Discarding spec2_result made an
-    # in-suite failure indistinguishable from a handler that ran but wrote
-    # nothing, which cost a full diagnostic cycle.
-    assert_fail "[SPEC-2] handler installed by re-arm calls _zbuild_arm_abort_sentinel" \
-        "sentinel not written; subshell reported: '${spec2_result:-<empty>}'"
+    assert_fail "[SPEC-2] re-arm installs _runner_signal_trap on INT" \
+        "recorded calls: ${spec2_calls:-<none>}"
 fi
+
+if grep -q "^trap|_runner_signal_trap TERM TERM$" <<< "$spec2_calls"; then
+    assert_pass "[SPEC-3] re-arm installs _runner_signal_trap on TERM"
+else
+    assert_fail "[SPEC-3] re-arm installs _runner_signal_trap on TERM" \
+        "recorded calls: ${spec2_calls:-<none>}"
+fi
+
+# SPEC-4 (parity, not a source tautology): the handler _runner_rearm_traps
+# installs must be byte-identical to the one main() installs at startup. If the
+# two sites drift, re-arming would silently restore a DIFFERENT handler than the
+# one the nested layer cleared — which is the class of bug #1759 exists to close.
+# Both sides are derived from runner.sh at run time; nothing is hardcoded, so
+# renaming the handler keeps this test honest instead of quietly passing.
+#
+# NB: the handler itself (_runner_signal_trap) is still nested inside main(), so
+# it cannot be introspected after sourcing. Only _runner_rearm_traps was promoted
+# to top level. That is why this asserts install-site parity rather than calling
+# the handler and observing the ADR-025 sentinel write.
+_runner_sh="$REPO_ROOT/core/pipeline/runner.sh"
+# The startup installs: the FIRST pair of `trap '...' INT|TERM` lines in the file.
+_startup_int="$(grep -m1 -oE "trap '[^']+' INT" "$_runner_sh" || true)"
+_startup_term="$(grep -m1 -oE "trap '[^']+' TERM" "$_runner_sh" || true)"
+# What the promoted helper installs, taken from the live function body.
+_rearm_body="$(declare -f _runner_rearm_traps 2>/dev/null || true)"
+_rearm_int="$(grep -m1 -oE "trap '[^']+' INT" <<< "$_rearm_body" || true)"
+_rearm_term="$(grep -m1 -oE "trap '[^']+' TERM" <<< "$_rearm_body" || true)"
+
+assert_eq "[SPEC-4] re-arm INT handler matches the startup install" \
+    "${_startup_int:-<startup-not-found>}" "${_rearm_int:-<rearm-not-found>}"
+assert_eq "[SPEC-5] re-arm TERM handler matches the startup install" \
+    "${_startup_term:-<startup-not-found>}" "${_rearm_term:-<rearm-not-found>}"
 
 cleanup_test_env
 print_test_results

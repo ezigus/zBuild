@@ -161,40 +161,51 @@ rm -f "$ZBUILD_STATE_DIR/.abort.signal"
 # necessary and safe: cycle takes the slot on entry, clears it on exit, then
 # the runner re-arms. Verified by trap -p inspection and direct handler call.
 
-print_test_section "SPEC-3 (guard): cycle handler overrides runner handler during cycle"
+print_test_section "SPEC-3 (guard): cycle handler overrides runner handler during cycle (TERM)"
 
 _runner_marker="$TEST_TEMP_DIR/spec3-runner-marker"
 _cycle_marker="$TEST_TEMP_DIR/spec3-cycle-marker"
 rm -f "$_runner_marker" "$_cycle_marker"
 
-# Run in a subshell to isolate trap mutations from the outer test.
+# HERMETICITY (#1713 family): this uses TERM, not INT, on purpose.
+# `scripts/run-tests.sh` runs test files as BACKGROUND jobs, and POSIX says a
+# background job in a non-interactive shell inherits SIGINT and SIGQUIT as
+# IGNORED — bash then refuses to install a handler, so `trap ... INT` is a
+# silent no-op. Measured, background child:
+#   INT  -> trap -- ''          SIGINT     (cannot be trapped)
+#   QUIT -> trap -- ''          SIGQUIT    (cannot be trapped)
+#   TERM -> trap -- 'h TERM' SIGTERM       (trappable)
+#   USR1 -> trap -- 'h USR1' SIGUSR1       (trappable)
+# The first cut asserted INT and so passed standalone and failed in the suite.
+# TERM is trappable in both contexts AND is one of the two signals the runner
+# actually handles, so the guard exercises the real path either way.
 spec3_result=$(
     (
         _RUNNER_M="$TEST_TEMP_DIR/spec3-runner-marker"
         _CYCLE_M="$TEST_TEMP_DIR/spec3-cycle-marker"
 
         # Simulate the runner's handler (installed by the runner on startup).
-        _runner_signal_trap() { touch "$_RUNNER_M"; exit 130; }
-        trap '_runner_signal_trap INT' INT
+        _runner_signal_trap() { touch "$_RUNNER_M"; exit 143; }
+        trap '_runner_signal_trap TERM' TERM
 
         # Simulate cycle installing its own handler (_cycle_install_traps).
-        _cycle_on_signal_sim() { touch "$_CYCLE_M"; exit 130; }
-        trap '_cycle_on_signal_sim INT' INT
+        _cycle_on_signal_sim() { touch "$_CYCLE_M"; exit 143; }
+        trap '_cycle_on_signal_sim TERM' TERM
 
-        # Verify via trap -p that the cycle handler now owns INT (not the runner's).
-        int_handler=$(trap -p INT 2>/dev/null || true)
-        if ! grep -q "_cycle_on_signal_sim" <<< "$int_handler"; then
+        # The cycle handler must now own the slot, not the runner's.
+        term_handler=$(trap -p TERM 2>/dev/null || true)
+        if ! grep -q "_cycle_on_signal_sim" <<< "$term_handler"; then
             echo "cycle_handler_not_installed"
             exit 1
         fi
-        if grep -q "_runner_signal_trap" <<< "$int_handler"; then
+        if grep -q "_runner_signal_trap" <<< "$term_handler"; then
             echo "runner_handler_still_active"
             exit 1
         fi
 
-        # Invoke the cycle handler directly (simulating SIGINT during a cycle).
-        # Using kill -INT $$ inside a bash subshell would target the PARENT shell
-        # ($$  doesn't change in subshells), so direct invocation is used instead.
+        # Invoke the cycle handler directly (simulating SIGTERM during a cycle).
+        # `kill -TERM $$` inside a bash subshell targets the PARENT shell ($$
+        # does not change in subshells), so direct invocation is used instead.
         _cycle_on_signal_sim 2>/dev/null || true
 
         echo "cycle_handler_owned_slot"
@@ -203,12 +214,12 @@ spec3_result=$(
 
 # Cycle marker must exist; runner marker must NOT exist.
 if [[ -f "$_cycle_marker" && ! -f "$_runner_marker" ]]; then
-    assert_pass "[SPEC-3] cycle INT handler fires; runner handler does not (nested override works)"
+    assert_pass "[SPEC-3] cycle TERM handler fires; runner handler does not (nested override works)"
 elif [[ -f "$_runner_marker" ]]; then
-    assert_fail "[SPEC-3] cycle INT handler fires; runner handler does not" \
+    assert_fail "[SPEC-3] cycle TERM handler fires; runner handler does not" \
         "runner handler fired — nested override did not take effect"
 else
-    assert_fail "[SPEC-3] cycle INT handler fires; runner handler does not" \
+    assert_fail "[SPEC-3] cycle TERM handler fires; runner handler does not" \
         "cycle handler did not fire (spec3_result=$spec3_result)"
 fi
 
