@@ -44,6 +44,10 @@ scan_plugin_outputs() {
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
     local kind; kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
     local artifact_type; artifact_type="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null || true)"
+    # Some plugins (e.g. build) legitimately produce zero-byte artifacts (empty
+    # diff when no code changed). Honor the capability flag so those plugins
+    # don't trip the -s check — fall back to existence-only for them.
+    local empty_diff_ok; empty_diff_ok="$(yaml_get "$manifest" "capabilities.empty_diff_legitimate" 2>/dev/null || true)"
 
     # Compute substitution roots from state_file.
     local state_dir="" artifact_dir=""
@@ -107,7 +111,13 @@ scan_plugin_outputs() {
         resolved="${resolved//\$\{artifact_dir\}/$artifact_dir}"
         resolved="${resolved//\$\{artifacts_dir\}/$artifact_dir}"
 
-        if [[ ! -s "$resolved" ]]; then
+        local _artifact_absent=0
+        if [[ "$empty_diff_ok" == "true" ]]; then
+            [[ ! -e "$resolved" ]] && _artifact_absent=1
+        else
+            [[ ! -s "$resolved" ]] && _artifact_absent=1
+        fi
+        if [[ $_artifact_absent -eq 1 ]]; then
             error "scan_plugin_outputs: plugin=$plugin_id declared output missing: $resolved (template: $raw_path)"
             emit_event "plugin.artifact.missing" \
                 "plugin=$plugin_id" \

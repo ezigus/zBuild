@@ -47,16 +47,18 @@ rc=$?
 set -e
 assert_eq "[SPEC-1] required:true output absent with no artifact_type returns 1" "1" "$rc"
 
-# ── SPEC-2: required:true WITH artifact_type — absent output → returns 1 ──────
-# GUARD: existing behavior preserved — artifact_type path was already enforced.
-mkdir -p "$FIXTURE_ROOT/agent/with-type-required"
-cat > "$FIXTURE_ROOT/agent/with-type-required/manifest.yaml" <<'EOF'
-id: with-type-required
-name: With Artifact Type Required Output
+# ── SPEC-2: required:true output exists but is zero-bytes → returns 1 ──────────
+# CHANGE: at baseline the scanner uses -e (existence only), which passes for a
+# zero-byte file. The fix changes to -s so zero-byte files are rejected even
+# when the file was created (empty) on disk.
+mkdir -p "$FIXTURE_ROOT/agent/zero-byte-required"
+cat > "$FIXTURE_ROOT/agent/zero-byte-required/manifest.yaml" <<'EOF'
+id: zero-byte-required
+name: Zero Byte Required Output
 kind: agent
 version: 0.0.1
 hooks:
-  run: wtr_run
+  run: zbr_run
 requires:
   core:
     - redaction
@@ -69,15 +71,17 @@ outputs:
     path: ${artifact_dir}/findings.json
     required: true
 EOF
-cat > "$FIXTURE_ROOT/agent/with-type-required/plugin.sh" <<'EOF'
-wtr_run() { :; }
+cat > "$FIXTURE_ROOT/agent/zero-byte-required/plugin.sh" <<'EOF'
+zbr_run() { :; }
 EOF
 
+# Pre-create the artifact as a zero-byte file — the scanner must still reject it.
+: > "$STATE_DIR/artifacts/findings.json"
 set +e
-scan_plugin_outputs "$FIXTURE_ROOT/agent/with-type-required" "$STATE_FILE" 2>/dev/null
+scan_plugin_outputs "$FIXTURE_ROOT/agent/zero-byte-required" "$STATE_FILE" 2>/dev/null
 rc=$?
 set -e
-assert_eq "[SPEC-2] required:true output absent WITH artifact_type returns 1" "1" "$rc"
+assert_eq "[SPEC-2] required:true output exists but is zero-bytes returns 1" "1" "$rc"
 
 cleanup_test_env
 print_test_results
