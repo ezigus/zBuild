@@ -531,6 +531,43 @@ set -e
 assert_eq "[SPEC-9] plugin_hook_call returns ZBUILD_HOOK_ABSENT (3) for absent cleanup" \
     "3" "$_spec9_rc"
 
+# ── SPEC-3: required:false output absent returns 0 ────────────────────────────
+# GUARD: the awk already skips required:false entries, so the scanner is a no-op
+# for absent optional outputs regardless of whether artifact_type is set.
+mkdir -p "$FIXTURE_ROOT/tool/optional-output"
+cat > "$FIXTURE_ROOT/tool/optional-output/manifest.yaml" <<'EOF'
+id: optional-output
+name: Optional Output
+kind: tool
+version: 0.0.1
+hooks:
+  run: oo_run
+outputs:
+  - name: optional
+    path: ${artifact_dir}/optional.json
+    required: false
+EOF
+cat > "$FIXTURE_ROOT/tool/optional-output/plugin.sh" <<'EOF'
+oo_run() { :; }
+EOF
+
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/tool/optional-output" "$PLUG_STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-3] required:false output absent returns 0" "0" "$rc"
+
+# ── SPEC-4: zero-byte output returns 1 even when the file exists ──────────────
+# CHANGE: at baseline the scanner uses -e (existence only), which passes for a
+# zero-byte file. The fix changes to -s so zero-byte files are rejected.
+# Uses the existing declares-output fixture (artifact_type: findings.json).
+: > "$PLUG_STATE_DIR/artifacts/findings.json"
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/agent/declares-output" "$PLUG_STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-4] zero-byte output returns 1 even when file exists" "1" "$rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

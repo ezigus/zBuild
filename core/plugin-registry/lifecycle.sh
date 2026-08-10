@@ -45,9 +45,6 @@ scan_plugin_outputs() {
     local kind; kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
     local artifact_type; artifact_type="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null || true)"
 
-    # If the plugin does not advertise a typed artifact, nothing to scan.
-    [[ -z "$artifact_type" ]] && return 0
-
     # Compute substitution roots from state_file.
     local state_dir="" artifact_dir=""
     if [[ -n "$state_file" ]]; then
@@ -98,7 +95,7 @@ scan_plugin_outputs() {
         END { flush() }
     ' "$manifest" 2>/dev/null)"
 
-    [[ -z "$paths" ]] && return 0
+    [[ -z "$paths" ]] && [[ -z "$artifact_type" ]] && return 0
 
     local missing=0
     local raw_path resolved
@@ -110,7 +107,7 @@ scan_plugin_outputs() {
         resolved="${resolved//\$\{artifact_dir\}/$artifact_dir}"
         resolved="${resolved//\$\{artifacts_dir\}/$artifact_dir}"
 
-        if [[ ! -e "$resolved" ]]; then
+        if [[ ! -s "$resolved" ]]; then
             error "scan_plugin_outputs: plugin=$plugin_id declared output missing: $resolved (template: $raw_path)"
             emit_event "plugin.artifact.missing" \
                 "plugin=$plugin_id" \
