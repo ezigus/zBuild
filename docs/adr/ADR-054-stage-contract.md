@@ -75,9 +75,9 @@ Run-time context is passed via env vars exported by the runner — never via pos
 
 `ZBUILD_CURRENT_STAGE` (PR #438) is the key the per-stage router knob resolver uses to look up `router.timeout_s`, `router.max_turns`, `router.max_iterations`, `router.retries`, and `router.tier` (ADR-017).
 
-### 4. Plugin exit codes (rc)
+### 4. Exit codes (rc)
 
-At the stage-dispatch layer, plugin exit codes are **binary**:
+Exit codes are **binary — everywhere, not only at the plugin boundary**:
 
 | rc | Meaning |
 |----|---------|
@@ -88,7 +88,13 @@ ADR-001 §"Error semantics" declared `rc=1` routes to `kind: recovery` plugins a
 
 `rc=0` means "my result file is on disk, read it." `rc=1` means "I failed — read my result if present; if it is absent I died, and I am `broken`." **`rc=0` with a missing or unparseable result is a structural failure, not a warning.**
 
-Everything a stage needs to say beyond those two facts belongs in the result file (§5), not in an exit code. The runner today still synthesizes further codes for its own internal signalling — `5` blocked, `6` cycle_abort, `8` blocking_member_failure, `9` llm_unavailable, `10` scope_too_large, `11` route_back, `130`/`143` signal. Those are **runner-internal**, never part of the plugin-to-runner contract, and #1823 narrows the plugin side to {0,1}.
+Everything anything needs to say beyond those two facts belongs in the result file (§5), not in an exit code.
+
+**This binds engine-internal paths too.** The engine currently signals through a private rc vocabulary — `5` blocked, `6` cycle_abort, `8` blocking_member_failure, `9` llm_unavailable, `10` scope_too_large, `11` route_back, `130`/`143` signal. It is a vocabulary that grew one caller at a time, each reader mapping it differently, and it fails the same way the plugin-side table did: `cycle_orchestrator_run` special-cases only `8`, `11` and `130` and collapses every other abort rc to `4` (`config_invalid`), so a `cycle_abort` and a SIGTERM both surface as a configuration error. #1225 fixed that collapse for `11` alone.
+
+An integer channel with no declared vocabulary cannot be enforced, which is the defect this whole ADR exists to remove — exempting the engine from its own contract would reproduce it one layer down.
+
+So the control flow those codes carry moves onto declared channels: `disposition` (§6) for recoverability, and explicit routing state for the bounded backward edge (ADR-045) and blocking-member halt (ADR-013). Those mechanisms keep working; what changes is that a reader consults a declared field instead of re-interpreting a number. **#1823 owns the narrowing and the designs that re-home each signal**, and its acceptance is the enforcing check: no engine path returns or interprets an rc outside {0,1}, with a guard test enumerating the call sites.
 
 ### 5. The result file
 

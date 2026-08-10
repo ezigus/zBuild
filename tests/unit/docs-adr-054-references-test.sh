@@ -87,6 +87,16 @@ rc=$?
 set -e
 assert_eq "[SPEC-4] TC-7: ADR-054 cites #1708 for valid_verdicts enforcement" "0" "$rc"
 
+# TC-10 [SPEC-6]: rc is binary on EVERY path, engine-internal included. Exempting
+# the engine would leave an undeclared integer vocabulary — the exact defect this
+# ADR removes — one layer down. #1823 owns re-homing route_back and the
+# blocking-member halt onto declared channels.
+set +e
+grep -qE "engine-internal paths too|not only at the plugin boundary" "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-6] TC-10: ADR-054 binds rc {0,1} on engine-internal paths" "0" "$rc"
+
 # TC-9 [SPEC-4]: the ADR carries WHY this contract precedes the rest of the
 # initiative — 59 issues across Phases 1-7 cite it, and the ordering constraint is
 # the thing they most need. Phase 1 (#1794) makes a failing stage terminal; without
