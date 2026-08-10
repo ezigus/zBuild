@@ -1,6 +1,7 @@
 # ADR-020: Inter-Stage Data Contract + Pre-flight Validator
 
-**Status:** Proposed (2026-05-30)
+**Status:** Superseded by ADR-055 (#1820) — replaced by an Accepted contract; the mismatch-check stub and warn-default are documented there. Kept for history.
+**Status (original):** Proposed
 **Issue:** #496
 **Date:** 2026-05-30
 **Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013

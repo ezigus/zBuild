@@ -18,6 +18,8 @@
 - **[ADR-009 — Platform-Aware Modularity](adr/ADR-009-platform-aware-modularity.md)** — Platform identity in manifest, role-based templates with fallback chain, declarative detection signals, three orchestration strategies (fanout/composite/sequential).
 - **[ADR-010 — CI / CLI Parity](adr/ADR-010-ci-cli-parity.md)** — `zbuild bootstrap`/`teardown` lifecycle, state cache backends, output destination abstraction. Same command behaves identically on laptop and in CI regardless of target repo platform.
 - **[ADR-011 — Pluggable Backends](adr/ADR-011-pluggable-backends.md)** — Memory, orchestrator, cache backends as plugins. Defaults work with zero external deps; ruflo (HNSW, hive-mind) drops in via config.
+- **[ADR-054 — Stage Contract](adr/ADR-054-stage-contract.md)** — active hooks (run, cleanup), hook signature, env-var context, binary rc, disposition vocabulary, fail-closed scanner, per-stage router surface. Amends ADR-001.
+- **[ADR-055 — Inter-Stage Data Contract v2](adr/ADR-055-inter-stage-data-contract-v2.md)** — clean v2 of the producer–consumer declaration model, closed templating-var set, external-sources allowlist, cycle_feedback discriminator, output-uniqueness rule, resume-mode artifact-existence check. Supersedes ADR-020.
 
 ## Conventions
 
