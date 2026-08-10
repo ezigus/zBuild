@@ -48,6 +48,12 @@ done
 
 # SPEC-8: ADR-054 and ADR-055 conform to the Implementation Notes structure requirement.
 # These assertions fail at baseline (files absent) and pass once the ADRs are authored.
+#
+# NOT redundant with TC-1, which loops over a glob of the files that EXIST: delete
+# an ADR and TC-1 iterates one fewer file and reports nothing. Naming the two files
+# is what makes their ABSENCE detectable, and "no ADR file was deleted" is an
+# acceptance criterion of #1820. Verified by removing ADR-054: TC-1 stayed green,
+# SPEC-8 was the only failure. Same vacuous-pass shape as #1772.
 for new_adr in "ADR-054-stage-contract.md" "ADR-055-inter-stage-data-contract-v2.md"; do
     f="$ADR_DIR/$new_adr"
     set +e
