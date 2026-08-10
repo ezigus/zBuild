@@ -188,7 +188,12 @@ _cycle_emit_member_dispatch_start() {
 _cycle_emit_member_dispatch_complete() {
     local position="$1" member="$2" rc="$3" verdict="$4" status="$5"
     local _disp="${_CYCLE_DISPATCH_DISPOSITION:-}" _disp_resp=""
-    [[ -n "$_disp" ]] && _disp_resp="$(disposition_response "$_disp" 2>/dev/null || true)"
+    # Spelled as an `if` rather than `[[ ... ]] && ...`: under errexit a failing
+    # && list is only safe because another command follows it, which is a
+    # property of the surrounding code rather than of this line.
+    if [[ -n "$_disp" ]]; then
+        _disp_resp="$(disposition_response "$_disp" 2>/dev/null || true)"
+    fi
     eb_emit_event "cycle.member.dispatch.complete" \
         "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
         "iter=${_CYCLE_TRAP_ITER:-0}" \
