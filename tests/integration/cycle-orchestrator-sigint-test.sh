@@ -183,11 +183,11 @@ spec3_result=$(
 
         # Verify via trap -p that the cycle handler now owns INT (not the runner's).
         int_handler=$(trap -p INT 2>/dev/null || true)
-        if ! echo "$int_handler" | grep -q "_cycle_on_signal_sim"; then
+        if ! grep -q "_cycle_on_signal_sim" <<< "$int_handler"; then
             echo "cycle_handler_not_installed"
             exit 1
         fi
-        if echo "$int_handler" | grep -q "_runner_signal_trap"; then
+        if grep -q "_runner_signal_trap" <<< "$int_handler"; then
             echo "runner_handler_still_active"
             exit 1
         fi

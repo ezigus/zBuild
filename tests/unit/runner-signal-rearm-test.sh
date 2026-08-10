@@ -71,7 +71,7 @@ spec2_result=$(
 
         # Verify via trap -p that the handler is present after re-arm.
         int_after=$(trap -p INT 2>/dev/null || true)
-        if ! echo "$int_after" | grep -q "_runner_signal_trap"; then
+        if ! grep -q "_runner_signal_trap" <<< "$int_after"; then
             echo "handler_not_installed"
             exit 1
         fi
@@ -89,8 +89,11 @@ spec2_result=$(
 if [[ -f "$spec2_sentinel" ]]; then
     assert_pass "[SPEC-2] handler installed by re-arm calls _zbuild_arm_abort_sentinel (sentinel written)"
 else
+    # Report WHICH branch the subshell took. Discarding spec2_result made an
+    # in-suite failure indistinguishable from a handler that ran but wrote
+    # nothing, which cost a full diagnostic cycle.
     assert_fail "[SPEC-2] handler installed by re-arm calls _zbuild_arm_abort_sentinel" \
-        "sentinel not written — handler did not run or _zbuild_arm_abort_sentinel was not called"
+        "sentinel not written; subshell reported: '${spec2_result:-<empty>}'"
 fi
 
 cleanup_test_env
