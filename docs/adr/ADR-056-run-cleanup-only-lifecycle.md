@@ -1,4 +1,4 @@
-# ADR-054: run+cleanup-only plugin lifecycle
+# ADR-056: run+cleanup-only plugin lifecycle
 
 **Status:** Accepted
 **Issue:** #1828
@@ -70,3 +70,18 @@ See `docs/RESUME-CONTRACT.md` for the updated pattern.
 - All six `plugin.{init,finalize}.{start,complete,error}` event types are removed from
   the schema; any downstream consumer that filtered on them receives nothing.
 - Tests that called `_init` / `_finalize` functions directly are removed.
+
+## Implementation Notes (Phase 0/D1 — issue #1828)
+
+- `core/plugin-registry/lifecycle.sh` — `ZBUILD_HOOK_ABSENT=3`; `plugin_hook_call`
+  branches on the hook name when `hooks.<name>` is undeclared: `cleanup` emits
+  `plugin.cleanup.absent` and returns 3, anything else emits `plugin.<hook>.refused`
+  and returns 1.
+- `core/plugin-registry/manifest-validation.sh` — the missing-required-hook error names
+  the plugin id; `_ZBUILD_YAML_PREWARM_KEYS` drops `hooks.init` / `hooks.finalize`.
+- `config/event-schema.json` — the six `plugin.{init,finalize}.*` types are gone;
+  `plugin.cleanup.absent` and `plugin.run.refused` are added.
+- Guard: `tests/unit/plugin-hook-contract-test.sh` greps every `plugins/**/manifest.yaml`
+  for `init:` / `finalize:` and fails on any hit, so the pair cannot come back.
+- The ~20 orphaned `cleanup` implementations are **not** touched here — #E1 gives them a
+  caller, and deleting them now would delete the thing that issue is about to wire up.

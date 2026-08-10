@@ -27,7 +27,6 @@ version: 0.0.1
 description: |
   Fixture for registry tests.
 hooks:
-  init: test_lens_init
   run: test_lens_run
 requires:
   core:
@@ -36,7 +35,6 @@ requires:
 EOF
 
 cat > "$FIXTURE_ROOT/agent/test-lens/plugin.sh" <<'EOF'
-test_lens_init() { echo "init called"; }
 test_lens_run() { echo "run called: $*"; }
 EOF
 
@@ -181,7 +179,6 @@ fi
 
 # Restore plugin.sh so the later dispatch tests see a clean file.
 cat > "$FIXTURE_ROOT/agent/test-lens/plugin.sh" <<'EOF'
-test_lens_init() { echo "init called"; }
 test_lens_run() { echo "run called: $*"; }
 EOF
 lockfile_write "$FIXTURE_ROOT" "$ZBUILD_LOCKFILE"
@@ -197,9 +194,13 @@ rc=$?
 set -e
 assert_eq "lockfile_validate flags legacy single-hash records (#290 migration)" "1" "$rc"
 
-# Hook dispatch: call init on test-lens
-output="$(plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "init" 2>&1)"
-assert_contains "plugin_hook_call dispatches init hook" "$output" "init called"
+# Hook dispatch: an undeclared required hook is refused, not silently no-op'd
+# (ADR-056: init/finalize are gone, so "init" is now just an undeclared hook).
+set +e
+plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "init" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "plugin_hook_call refuses an undeclared required hook" "1" "$rc"
 
 # Hook dispatch: pass args to run
 output="$(plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "run" "arg1" "arg2" 2>&1)"
@@ -521,7 +522,7 @@ else
 fi
 
 # ─── SPEC-9: absent optional cleanup hook returns ZBUILD_HOOK_ABSENT (3) ─────
-# CHANGE: before ADR-054, absent cleanup returned 0; now it returns 3.
+# CHANGE: before ADR-056, absent cleanup returned 0; now it returns 3.
 # Uses the existing test-tool fixture (has run, no cleanup).
 set +e
 plugin_hook_call "$FIXTURE_ROOT/tool/test-tool" "cleanup" >/dev/null 2>&1

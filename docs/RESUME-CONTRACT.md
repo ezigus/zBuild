@@ -4,7 +4,7 @@ Operational reference for what state survives `kill -9` and what doesn't. Full r
 
 ## TL;DR
 
-zBuild persists **only** what plugins declare in their manifest's `state.persisted`. Everything else is reconstructed on resume by the plugin's `run` hook preamble (ADR-054 removed `init`; `run` is now responsible for detecting `ZBUILD_RESUMING=1` and reconstructing state before proceeding).
+zBuild persists **only** what plugins declare in their manifest's `state.persisted`. Everything else is reconstructed on resume by the plugin's `run` hook preamble (ADR-056 removed `init`; `run` is now responsible for detecting `ZBUILD_RESUMING=1` and reconstructing state before proceeding).
 
 ## Persisted state (engine guarantees survival)
 

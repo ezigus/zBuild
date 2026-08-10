@@ -159,18 +159,18 @@ printf 'https://github.com/example/repo/pull/42\n' > "$ARTIFACTS_DIR/pr-url.txt"
 jq -n '{schema_version:1,verdict:"pass"}' > "$ARTIFACTS_DIR/gate-aggregator-result.json"
 
 # ─── SPEC-3 + SPEC-9 (deploy): run + behavior preservation ───────────────────
-# CHANGE: ADR-054 removed init/finalize; deploy_agent_init and deploy_agent_finalize
+# CHANGE: ADR-056 removed init/finalize; deploy_agent_init and deploy_agent_finalize
 # no longer exist. Sourcing the plugin and checking function absence proves the
-# removal. Before ADR-054, declare -F deploy_agent_init returned 0; now it returns 1.
+# removal. Before ADR-056, declare -F deploy_agent_init returned 0; now it returns 1.
 
 # Source the deploy plugin (guard prevents double-load across sourced files)
 # shellcheck source=../../plugins/agent/deploy/plugin.sh
 source "$REPO_ROOT/plugins/agent/deploy/plugin.sh"
 
 if declare -F deploy_agent_init >/dev/null 2>&1; then
-    assert_fail "[SPEC-3] deploy_agent_init must not exist after ADR-054 (init hook removed)" ""
+    assert_fail "[SPEC-3] deploy_agent_init must not exist after ADR-056 (init hook removed)" ""
 else
-    assert_pass "[SPEC-3] deploy_agent_init does not exist (ADR-054: init removed)"
+    assert_pass "[SPEC-3] deploy_agent_init does not exist (ADR-056: init removed)"
 fi
 
 set +e
@@ -192,9 +192,9 @@ assert_eq "[SPEC-9] deploy-result.json verdict=deployed" "deployed" "$_deploy_ve
 source "$REPO_ROOT/plugins/agent/validate/plugin.sh"
 
 if declare -F validate_agent_init >/dev/null 2>&1; then
-    assert_fail "[SPEC-4] validate_agent_init must not exist after ADR-054 (init hook removed)" ""
+    assert_fail "[SPEC-4] validate_agent_init must not exist after ADR-056 (init hook removed)" ""
 else
-    assert_pass "[SPEC-4] validate_agent_init does not exist (ADR-054: init removed)"
+    assert_pass "[SPEC-4] validate_agent_init does not exist (ADR-056: init removed)"
 fi
 
 set +e
@@ -216,9 +216,9 @@ assert_eq "[SPEC-9] validate-result.json verdict=healthy" "healthy" "$_validate_
 source "$REPO_ROOT/plugins/agent/monitor/plugin.sh"
 
 if declare -F monitor_stage_init >/dev/null 2>&1; then
-    assert_fail "[SPEC-5] monitor_stage_init must not exist after ADR-054 (init hook removed)" ""
+    assert_fail "[SPEC-5] monitor_stage_init must not exist after ADR-056 (init hook removed)" ""
 else
-    assert_pass "[SPEC-5] monitor_stage_init does not exist (ADR-054: init removed)"
+    assert_pass "[SPEC-5] monitor_stage_init does not exist (ADR-056: init removed)"
 fi
 
 set +e

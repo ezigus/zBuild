@@ -81,7 +81,7 @@ state:
 | `claim-coordinator` | `claim`, `release`, `heartbeat`, `list_claims` | issue id | acquired flag + lease id |
 | `daemon` | `tick` | poll interval | events to bus |
 
-All kinds may implement `cleanup` (ADR-054 removed `init` and `finalize`).
+All kinds may implement `cleanup` (ADR-056 removed `init` and `finalize`).
 
 ### The `convergence:` marker (optional — ADR-040)
 
@@ -120,7 +120,7 @@ Plugins MUST use the defensive read `local state_file="${2:-}"` and return rc=2 
 
 ### Lifecycle ordering
 
-For each plugin discovered in a run (ADR-054 — two hooks only):
+For each plugin discovered in a run (ADR-056 — two hooks only):
 1. `run` — kind-specific entry; possibly many invocations. State reconstruction on resume is the `run` preamble's responsibility (check `ZBUILD_RESUMING=1`).
 2. `cleanup` — on abnormal exit only; release locks, write tombstone event. Absent `cleanup` emits `plugin.cleanup.absent` and returns `ZBUILD_HOOK_ABSENT` (rc=3), distinguishable from success (rc=0).
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: ADR-054 — run+cleanup-only lifecycle contract (issue #1828)
+# Tests: ADR-056 — run+cleanup-only lifecycle contract (issue #1828)
 # Covers SPEC-1 through SPEC-5.
 set -euo pipefail
 
@@ -15,12 +15,12 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
-print_test_header "plugin-hook-contract — ADR-054 run+cleanup-only lifecycle"
+print_test_header "plugin-hook-contract — ADR-056 run+cleanup-only lifecycle"
 
 setup_test_env "plugin-hook-contract"
 
 # ─── SPEC-1: hooks.init absent from all plugin manifests ─────────────────────
-# CHANGE: before ADR-054, 27+ plugin manifests declared hooks.init;
+# CHANGE: before ADR-056, 27+ plugin manifests declared hooks.init;
 # this assertion fails at that baseline.
 _init_count=0
 while IFS= read -r _mf; do
@@ -28,10 +28,10 @@ while IFS= read -r _mf; do
         _init_count=$((_init_count + 1))
     fi
 done < <(find "$REPO_ROOT/plugins" -name "manifest.yaml" 2>/dev/null)
-assert_eq "[SPEC-1] no plugin manifest declares hooks.init (ADR-054)" "0" "$_init_count"
+assert_eq "[SPEC-1] no plugin manifest declares hooks.init (ADR-056)" "0" "$_init_count"
 
 # ─── SPEC-2: hooks.finalize absent from all plugin manifests ─────────────────
-# CHANGE: before ADR-054, plugin manifests declared hooks.finalize;
+# CHANGE: before ADR-056, plugin manifests declared hooks.finalize;
 # this assertion fails at that baseline.
 _fin_count=0
 while IFS= read -r _mf; do
@@ -39,10 +39,10 @@ while IFS= read -r _mf; do
         _fin_count=$((_fin_count + 1))
     fi
 done < <(find "$REPO_ROOT/plugins" -name "manifest.yaml" 2>/dev/null)
-assert_eq "[SPEC-2] no plugin manifest declares hooks.finalize (ADR-054)" "0" "$_fin_count"
+assert_eq "[SPEC-2] no plugin manifest declares hooks.finalize (ADR-056)" "0" "$_fin_count"
 
 # ─── SPEC-3: validate_manifest names the plugin when hooks.run is missing ────
-# CHANGE: before ADR-054, validate_manifest error was generic; now it names the
+# CHANGE: before ADR-056, validate_manifest error was generic; now it names the
 # specific plugin that is missing the required hook.
 _spec3_dir="$TEST_TEMP_DIR/spec3"
 mkdir -p "$_spec3_dir"
@@ -67,7 +67,7 @@ else
 fi
 
 # ─── SPEC-4: absent optional cleanup hook → rc=ZBUILD_HOOK_ABSENT (3) + event ─
-# CHANGE: before ADR-054, absent cleanup returned 0 (indistinguishable from
+# CHANGE: before ADR-056, absent cleanup returned 0 (indistinguishable from
 # success). Now it returns 3 and emits plugin.cleanup.absent.
 _spec4_dir="$TEST_TEMP_DIR/spec4"
 mkdir -p "$_spec4_dir"
@@ -110,7 +110,8 @@ else
 fi
 
 # ─── SPEC-5: absent required hook (run) → non-zero exit ──────────────────────
-# GUARD: plugin_hook_call must return non-zero when a required hook is absent.
+# CHANGE: before ADR-056 an absent hook returned 0 for every hook name; a required
+# hook that is not declared must now be a failure, not a silent no-op.
 _spec5_dir="$TEST_TEMP_DIR/spec5"
 mkdir -p "$_spec5_dir"
 cat > "$_spec5_dir/manifest.yaml" <<'EOF'

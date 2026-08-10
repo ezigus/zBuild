@@ -125,7 +125,7 @@ outputs:
 | `claim-coordinator` | `claim`, `release`, `heartbeat`, `list_claims` | issue id | acquired flag + lease id |
 | `daemon` | `tick` | poll interval | events to bus |
 
-### Lifecycle ordering (ADR-054 — two hooks only)
+### Lifecycle ordering (ADR-056 — two hooks only)
 
 For each plugin discovered in a run, the engine calls:
 
@@ -275,7 +275,7 @@ Required event types (lifted from legacy; carry forward):
 
 - `pipeline.{start,end,abort}`
 - `stage.{start,complete,fail,skip}`
-- `plugin.{run,cleanup,error}` (ADR-054 removed `init` and `finalize`)
+- `plugin.{run,cleanup,error}` (ADR-056 removed `init` and `finalize`)
 - `redaction.{applied,refused}`
 - `model.{route,outcome}`
 - `recovery.{suggestion,action,exhausted}`
