@@ -61,6 +61,9 @@ source "$_CYCLE_ORCH_ROOT/scripts/lib/manifest-graph.sh"
 # sourced; parallel-orchestrator.sh does NOT source us back (no cycle).
 # shellcheck source=./parallel-orchestrator.sh
 source "$_CYCLE_ORCH_ROOT/core/pipeline/parallel-orchestrator.sh"
+# #1822: the disposition response table, for the dispatch event.
+# shellcheck source=./disposition.sh
+source "$_CYCLE_ORCH_ROOT/core/pipeline/disposition.sh"
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 # HARDCODED ceiling — checked BEFORE the template's max_iterations value (silent-
@@ -173,13 +176,25 @@ _cycle_emit_member_dispatch_start() {
         2>/dev/null || true
 }
 
+# #1822 (ADR-054 §6): the dispatch event carries the resolved `disposition` and the
+# engine's response to it, so an operator can see WHY a stage was treated as
+# recoverable — or why it was not — without inferring it from an rc.
+#
+# Read off the _CYCLE_DISPATCH_DISPOSITION channel rather than taken as a sixth
+# positional arg: this function has nine call sites, most of them abort paths
+# that have no disposition to pass, and the channel is how cycle_id/iter already
+# reach here. An empty value is reported as empty — a v1 stage declares no
+# disposition, and the event must not invent one.
 _cycle_emit_member_dispatch_complete() {
     local position="$1" member="$2" rc="$3" verdict="$4" status="$5"
+    local _disp="${_CYCLE_DISPATCH_DISPOSITION:-}" _disp_resp=""
+    [[ -n "$_disp" ]] && _disp_resp="$(disposition_response "$_disp" 2>/dev/null || true)"
     eb_emit_event "cycle.member.dispatch.complete" \
         "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
         "iter=${_CYCLE_TRAP_ITER:-0}" \
         "position=$position" "member=$member" \
         "rc=$rc" "verdict=$verdict" "status=$status" \
+        "disposition=$_disp" "disposition_response=$_disp_resp" \
         2>/dev/null || true
 }
 
@@ -1398,6 +1413,9 @@ _cycle_iter_dispatch() {
         _CYCLE_DISPATCH_VERDICT_RAW=""
         _CYCLE_DISPATCH_STATUS=""
         _CYCLE_DISPATCH_REASON=""
+        # #1822: same defensive clear. A stale disposition bleeding into the
+        # next member's dispatch event would misreport why THAT member stopped.
+        _CYCLE_DISPATCH_DISPOSITION=""
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by the runner's SIGINT trap between this stage and the last.
         # Bail before spawning the next child so the abort observes at the
