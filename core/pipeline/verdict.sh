@@ -475,12 +475,20 @@ runner_read_stage_verdict_raw() {
 
 # ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────
 # ADR-054 §6 (#1821 exposed the field; #1822 gave it a vocabulary). Resolves the
-# disposition for one dispatch. Three outcomes, in precedence order:
+# disposition for one dispatch. Four outcomes, in precedence order:
 #
-#   1. The stage DECLARED one (v2 result) → that word, verbatim. Even when the
-#      word is off the closed set: the violation is already raised on the verdict
-#      and reason channels, and substituting a valid member here would be the
-#      invented default #1822 exists to forbid.
+#   0. The result VIOLATED the contract — a word off the closed set, or any
+#      missing mandatory field → `broken`. A stage that wrote an invalid result
+#      is defective, and the two channels must not disagree: were this to return
+#      the declared word, a caller reading only this channel would be told
+#      "throttled, retry" about a result the engine has already rejected as
+#      structurally invalid, and would retry it forever. That is precisely the
+#      infinite-retry regression #1822's guard names. Nothing is lost — the
+#      offending word survives verbatim on the reason channel as
+#      `contract_violation:unknown_disposition:<word>`. This is not the invented
+#      default the issue forbids: the engine is not guessing a plausible value in
+#      order to carry on, it is concluding a defect and halting.
+#   1. The stage DECLARED a valid one (v2 result) → that word, verbatim.
 #   2. The dispatch DIED and left no readable result → `broken`. This is the
 #      engine's own conclusion, not a value read from anywhere — a stage that
 #      explained nothing cannot be distinguished from a defective one, and
@@ -501,6 +509,9 @@ runner_read_stage_disposition() {
     local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _d
 
+    if [[ -n "$_d_viol" ]]; then
+        printf '%s' "broken"; return 0
+    fi
     if [[ -n "$_d_disp" ]]; then
         printf '%s' "$_d_disp"; return 0
     fi

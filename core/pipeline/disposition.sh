@@ -136,6 +136,12 @@ disposition_retryable() {
 disposition_wait_s() {
     local d="${1-}"
     disposition_is_valid "$d" || return 1
+    # A wait is meaningless for a disposition that is not going to be retried,
+    # and answering "0" for one is actively dangerous: a caller that skipped
+    # `disposition_retryable` would read "0 seconds until retry" for `broken`
+    # and re-dispatch a halted stage immediately. Refuse instead of returning a
+    # plausible-looking number.
+    disposition_retryable "$d" || return 1
     if [[ "$d" != "throttled" ]]; then
         printf '0'
         return 0

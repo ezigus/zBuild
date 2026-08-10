@@ -142,6 +142,16 @@ done
 assert_eq "interrupted retries immediately (no wait)" "0" "$(disposition_wait_s interrupted)"
 assert_gt "throttled waits before retrying" "$(disposition_wait_s throttled)" "0"
 
+# A wait is meaningless for a disposition that will not be retried, and
+# answering "0" for one is a footgun: a caller that skipped the retryable check
+# would read "0 seconds until retry" for `broken` and immediately re-dispatch a
+# halted stage. Refusing is the only safe answer.
+for _d in complete exhausted unavailable broken; do
+    assert_exit_code "\`$_d\` has no wait — the call is refused" 1 \
+        "$(_rc_of disposition_wait_s "$_d")"
+    assert_eq "\`$_d\` prints no wait value" "" "$(disposition_wait_s "$_d" 2>/dev/null || true)"
+done
+
 # ═══ 4. Guard: `broken` still halts — no infinite-retry regression ══════════
 print_test_section "guard: broken halts and can never be retried"
 
@@ -164,6 +174,13 @@ assert_exit_code "disposition_response refuses an unknown word" 1 \
     "$(_rc_of disposition_response "wedged")"
 assert_eq "disposition_response prints nothing for an unknown word" "" \
     "$(disposition_response wedged 2>/dev/null || true)"
+# rc 2, not 1: "I cannot answer" is a different statement from "it does not
+# halt" / "it is not retryable". A caller that collapsed them would read an
+# unrecognized word as a benign, non-halting one.
+assert_exit_code "disposition_halts returns 2 (not 1) for an unknown word" 2 \
+    "$(_rc_of disposition_halts "wedged")"
+assert_exit_code "disposition_retryable returns 2 (not 1) for an unknown word" 2 \
+    "$(_rc_of disposition_retryable "wedged")"
 
 unk_dir="$TEST_TEMP_DIR/plugins/unkstage"
 _make_manifest "$unk_dir" "unkstage" "${ART_DIR}/unk-result.json"
@@ -177,10 +194,25 @@ assert_eq "the raw channel agrees it is a structural failure" \
 assert_contains "the violation names the offending word on the reason channel" \
     "$(runner_read_stage_reason "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)" \
     "wedged"
-# "No default is invented" — the reader must not silently substitute `broken`
-# or `complete` for the unrecognized word and carry on.
-assert_eq "an off-list disposition never resolves to a valid member" \
-    "wedged" "$(runner_read_stage_disposition "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
+# A violated result resolves to `broken` on the disposition channel, so the two
+# channels agree. Returning the declared word here would tell a caller reading
+# only this channel "throttled, retry" about a result the engine has already
+# rejected — the infinite-retry regression this issue exists to guard against.
+# Nothing is lost: the offending word survives verbatim on the reason channel
+# (asserted above). This is not an invented default — the engine is concluding a
+# defect and halting, not guessing a value in order to carry on.
+assert_eq "an off-list disposition resolves to broken (channels agree)" \
+    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
+
+# The same rule for a violation on a DIFFERENT mandatory field: a valid
+# disposition on an otherwise-invalid result is still untrustworthy, because
+# nothing about the missing field is confined to the field it is missing from.
+jq -nc '{result_contract:2,disposition:"throttled",reason:"verdict is missing"}' \
+    > "$ART_DIR/unk-result.json"
+assert_eq "a valid disposition on a result missing its verdict -> broken" \
+    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
+assert_eq "...and that result is a structural failure on the verdict channel" \
+    "error" "$(runner_read_stage_verdict "$STATE_DIR" "$unk_dir/manifest.yaml" "unkstage" 0)"
 
 # ═══ 6. A stage that died with no result is `broken` ════════════════════════
 # The engine's own conclusion. It does NOT backfill the stage's artifact —
@@ -267,6 +299,25 @@ _cycle_emit_member_dispatch_complete 0 "build" 0 "pass" "complete"
 assert_eq "a v1 dispatch reports an empty disposition, not a default" "" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition // ""' \
         "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+
+# An off-list word reaching the event (it should not, since the reader resolves
+# a violation to `broken` — but the emitter must not fabricate a response for
+# one if it ever does).
+: > "$ZBUILD_EVENTS_JSONL"
+_CYCLE_DISPATCH_DISPOSITION="wedged"
+_cycle_emit_member_dispatch_complete 0 "build" 1 "error" "failed"
+assert_eq "an off-list word is reported verbatim on the event" "wedged" \
+    "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition // ""' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "...with no response invented for it" "" \
+    "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition_response // ""' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+
+# The nested-cycle leak — an outer cycle inheriting its inner cycle's last leaf
+# disposition — is covered BEHAVIOURALLY, against a real two-level cycle, in
+# tests/integration/cycle-member-dispatch-events-test.sh section 3. It is not
+# duplicated here as a source grep: a test that asserts a line of code exists
+# passes for a line that does nothing.
 
 cleanup_test_env
 print_test_results

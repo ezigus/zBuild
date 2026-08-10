@@ -247,6 +247,10 @@ cycle_dispatch_stage() {
             ;;
     esac
     _CYCLE_DISPATCH_STATUS="complete"
+    # #1822: every INNER leaf publishes a disposition, exactly as the runner's
+    # real dispatch hook does. The outer's nested-cycle member must not inherit
+    # it — see the assertion below.
+    _CYCLE_DISPATCH_DISPOSITION="interrupted"
     return 0
 }
 
@@ -265,6 +269,21 @@ assert_eq "inner_cycle dispatch.complete rc=8 (#1208: exhausted with failing tes
 inner_member_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
 assert_eq "inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)" \
     "blocking_member_failure" "$inner_member_complete_verdict"
+
+# #1822: the disposition channel is a global, and every inner leaf above set it
+# to `interrupted`. A nested cycle is not a plugin and declares no disposition,
+# so the outer's event for this member must be EMPTY — not the inner cycle's
+# last leaf value. Same leak class Wave 19-C-2 (#726) fixed for the verdict
+# channel; without the clear, a nested-cycle failure would be reported to an
+# operator as retryable purely because its last inner member happened to be.
+inner_member_complete_disp=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.disposition // ""' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+assert_eq "inner_cycle dispatch.complete disposition is EMPTY (no inner-member leak)" \
+    "" "$inner_member_complete_disp"
+# And the inner cycle's OWN leaf members do carry theirs — proving the clear is
+# scoped to the nested-cycle member, not a blanket suppression.
+inner_leaf_disp=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="build") | .data.disposition // ""' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+assert_eq "an inner LEAF member still reports its own disposition" \
+    "interrupted" "$inner_leaf_disp"
 
 # The KEY #1208 ASSERTION: a failing inner cycle HALTS the outer — review is NOT
 # reached (no advisory rescue of failing tests).

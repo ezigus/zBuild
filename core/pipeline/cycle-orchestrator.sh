@@ -1549,6 +1549,13 @@ _cycle_iter_dispatch() {
             _CYCLE_PLATEAU_WINDOW="$_outer_plateau_w"
             _CYCLE_DIVERGENCE_WINDOW="$_outer_diverg_w"
             _CYCLE_VELOCITY_PLATEAU_WINDOW="$_outer_velopl_w"
+            # #1822: the same leak Wave 19-C-2 (#726) fixed for the verdict
+            # channel, one channel over. The inner run dispatches its own leaf
+            # members, each publishing _CYCLE_DISPATCH_DISPOSITION; on return the
+            # outer would emit this nested-cycle member's dispatch event carrying
+            # the INNER cycle's last leaf disposition. A nested cycle is not a
+            # plugin and declares no disposition — empty is the honest value.
+            _CYCLE_DISPATCH_DISPOSITION=""
             [[ $_had_e -eq 1 ]] && set -e
             # Map nested-cycle terminal rc → outer verdict/status.
             # Wave 19-C-2 (#726): set RAW symmetrically with the classified
