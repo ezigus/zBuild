@@ -26,9 +26,7 @@ description: |
   # legacy-citation: pipeline-stages-delivery.sh:950 (stage_deploy)
 
 hooks:
-  init: deploy_agent_init
   run: deploy_agent_run
-  finalize: deploy_agent_finalize
   cleanup: deploy_agent_cleanup
 
 requires:

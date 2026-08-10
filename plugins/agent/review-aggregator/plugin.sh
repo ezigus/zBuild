@@ -332,14 +332,6 @@ _ra_aggregate() {
     || printf '{"schema_version":1,"merge_readiness":"advisory","lenses":[],"findings":[],"summary":"Report unavailable: aggregation error."}'
 }
 
-# ─── review_aggregator_init ─────────────────────────────────────────────────
-review_aggregator_init() {
-    export ZBUILD_PLUGIN="review-aggregator"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=review-aggregator"
-    return 0
-}
-
 # ─── review_aggregator_run ──────────────────────────────────────────────────
 # Hook: review_aggregator_run(stage, state_file). Derives artifact paths and
 # delegates to the unit-testable inner function.
@@ -422,11 +414,5 @@ _review_aggregator_run_inner() {
         "merge_readiness=$merge_readiness" \
         "lens_count=$lens_count" \
         "discovery=$discovery"
-    return 0
-}
-
-# ─── review_aggregator_finalize ─────────────────────────────────────────────
-review_aggregator_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=review-aggregator"
     return 0
 }

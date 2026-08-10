@@ -79,13 +79,12 @@ echo "some random text that mentions auth and credential leaks" > "$INPUT"
 
 OUTPUT="$TEST_TEMP_DIR/findings.json"
 
-# Source plugin and call init
+# Source plugin
 # shellcheck source=../../../../plugins/agent/security-lens/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 # shellcheck source=../../../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
-security_lens_init >/dev/null
 
 # ADR-043: redaction is owned by route_to_model, which reads the manifest from
 # ZBUILD_SCOPE_MANIFEST (runner-exported per-stage). Fail-closed is preserved AT
@@ -132,15 +131,6 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
     fi
 else
     assert_fail "events.jsonl was not created"
-fi
-
-# ─── Finalize ───────────────────────────────────────────────────────────────
-security_lens_finalize >/dev/null
-finalize_count=$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" || true)
-if [[ "$finalize_count" -ge 1 ]]; then
-    assert_pass "plugin.finalize.complete event emitted"
-else
-    assert_fail "expected plugin.finalize.complete event"
 fi
 
 # ─── Router tests ────────────────────────────────────────────────────────────

@@ -53,14 +53,6 @@ _monitor_write_report() {
         | atomic_write "$out"
 }
 
-# ─── init ───────────────────────────────────────────────────────────────────
-monitor_stage_init() {
-    export ZBUILD_PLUGIN="monitor"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=monitor"
-    return 0
-}
-
 # ─── run ────────────────────────────────────────────────────────────────────
 # Dispatch convention (lifecycle.sh): $1=stage id, $2=state_file.
 monitor_stage_run() {
@@ -155,12 +147,6 @@ _monitor_stage_run_inner() {
         emit_event "monitor.alert" "plugin=monitor" "verdict=$verdict"
         return 1
     fi
-    return 0
-}
-
-# ─── finalize ─────────────────────────────────────────────────────────────────
-monitor_stage_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=monitor"
     return 0
 }
 

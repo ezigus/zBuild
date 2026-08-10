@@ -165,7 +165,6 @@ STATE_FILE="$STATE_DIR/pipeline-state.json"
 echo '{"schema_version":1,"run_id":"rl-hook-001","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
 printf '+ core/\n' > "$STATE_DIR/scope-manifest.md"
 printf 'diff --git a/core/a.sh b/core/a.sh\n+ change\n' > "$STATE_DIR/artifacts/diff.patch"
-review_lens_init >/dev/null
 set +e
 ZBUILD_REVIEW_LENS_ID="red-team" review_lens_run "review-lens" "$STATE_FILE" >/dev/null 2>&1
 _rc_hook=$?

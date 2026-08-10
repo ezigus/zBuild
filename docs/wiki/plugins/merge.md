@@ -24,9 +24,7 @@ description: |
   No LLM dependency — T0 tool stage (ADR-013).
 
 hooks:
-  init: merge_init
   run: merge_run
-  finalize: merge_finalize
   cleanup: merge_cleanup
 
 requires:

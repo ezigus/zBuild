@@ -35,14 +35,6 @@ PLUGIN_DIR="$REPO_ROOT/plugins/tool/pr-open"
 # shellcheck source=../../../../plugins/tool/pr-open/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
-# ─── Test 1: pr_open_init sets env vars ──────────────────────────────────────
-print_test_section "1. pr_open_init sets ZBUILD_PLUGIN env vars"
-
-pr_open_init >/dev/null 2>&1
-
-assert_eq "pr_open_init sets ZBUILD_PLUGIN=pr-open" "pr-open" "$ZBUILD_PLUGIN"
-assert_eq "pr_open_init sets ZBUILD_PLUGIN_KIND=tool" "tool" "$ZBUILD_PLUGIN_KIND"
-
 # ─── Test 2: blocked when review verdict=block ───────────────────────────────
 print_test_section "2. Blocked when review verdict is 'block'"
 
@@ -246,16 +238,6 @@ fi
 
 unset -f git
 unset -f gh
-
-# ─── Test 5: pr_open_finalize runs cleanly ───────────────────────────────────
-print_test_section "5. pr_open_finalize runs cleanly"
-
-set +e
-pr_open_finalize >/dev/null 2>&1
-rc=$?
-set -e
-
-assert_exit_code "pr_open_finalize returns rc=0" "0" "$rc"
 
 # ─── Test 6: pr_open_cleanup runs cleanly ────────────────────────────────────
 print_test_section "6. pr_open_cleanup runs cleanly"

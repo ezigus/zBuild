@@ -29,15 +29,6 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/shape-floor.sh" 2>/dev/null || true
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _sf_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
-# ─── shape_floor_init ─────────────────────────────────────────────────────────
-shape_floor_init() {
-    export ZBUILD_PLUGIN="shape-floor"
-    export ZBUILD_PLUGIN_KIND="tool"
-    _sf_emit "plugin.init.start" "plugin=shape-floor"
-    _sf_emit "plugin.init.complete" "plugin=shape-floor"
-    return 0
-}
-
 # ─── shape_floor_run ──────────────────────────────────────────────────────────
 # Runs _sf_shape_floor, parses the SHAPE_FLOOR verdict, emits shape_floor.{pass,
 # fail,skip}, and writes the verdict to shape-floor-result.json. Always rc=0.
@@ -117,13 +108,6 @@ shape_floor_run() {
     fi
 
     _sf_emit "plugin.run.complete" "plugin=shape-floor" "verdict=$verdict"
-    return 0
-}
-
-# ─── shape_floor_finalize ─────────────────────────────────────────────────────
-shape_floor_finalize() {
-    _sf_emit "plugin.finalize.start" "plugin=shape-floor"
-    _sf_emit "plugin.finalize.complete" "plugin=shape-floor"
     return 0
 }
 

@@ -29,15 +29,6 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" 2>/dev/null || true
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _ss_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
-# ─── secret_scan_init ─────────────────────────────────────────────────────────
-secret_scan_init() {
-    export ZBUILD_PLUGIN="secret-scan"
-    export ZBUILD_PLUGIN_KIND="tool"
-    _ss_emit "plugin.init.start" "plugin=secret-scan"
-    _ss_emit "plugin.init.complete" "plugin=secret-scan"
-    return 0
-}
-
 # ─── _ss_scan_content ─────────────────────────────────────────────────────────
 # Conservative secret matcher for a single added line. Echoes a rule name and
 # returns 0 on a match, returns 1 (silent) otherwise. The PEM header pattern is
@@ -235,13 +226,6 @@ secret_scan_run() {
         | atomic_write "$result_path"
     _ss_emit "secret_scan.pass"
     _ss_emit "plugin.run.complete" "plugin=secret-scan" "verdict=pass"
-    return 0
-}
-
-# ─── secret_scan_finalize ─────────────────────────────────────────────────────
-secret_scan_finalize() {
-    _ss_emit "plugin.finalize.start" "plugin=secret-scan"
-    _ss_emit "plugin.finalize.complete" "plugin=secret-scan"
     return 0
 }
 

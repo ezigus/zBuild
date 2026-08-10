@@ -40,7 +40,6 @@ version: 0.1.0
 description: |
   Fixture for lockfile tamper-detection integration test (#386).
 hooks:
-  init: guard_agent_init
   run: guard_agent_run
 requires:
   core:
@@ -49,7 +48,6 @@ requires:
 EOF
 
 cat > "$FIXTURE_ROOT/agent/guard-agent/plugin.sh" <<'EOF'
-guard_agent_init() { echo "guard-agent init"; }
 guard_agent_run()  { echo "guard-agent run: $*"; }
 EOF
 
@@ -116,7 +114,6 @@ assert_eq "validate detects plugin.sh-only mutation (non-zero exit — #290)" "1
 
 # ─── 5. Restore plugin.sh → validate passes again ────────────────────────────
 cat > "$PLUGIN_SH" <<'EOF'
-guard_agent_init() { echo "guard-agent init"; }
 guard_agent_run()  { echo "guard-agent run: $*"; }
 EOF
 

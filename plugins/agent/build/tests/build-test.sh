@@ -208,13 +208,6 @@ MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 
-# ─── Test 1: build_stage_init sets env ───────────────────────────────────────
-print_test_section "T1: build_stage_init sets ZBUILD_PLUGIN=build"
-
-build_stage_init >/dev/null 2>&1
-assert_eq "build_stage_init: ZBUILD_PLUGIN=build" "build" "$ZBUILD_PLUGIN"
-assert_eq "build_stage_init: ZBUILD_PLUGIN_KIND=agent" "agent" "$ZBUILD_PLUGIN_KIND"
-
 # ─── Test 2: missing plan.json returns rc=2 ───────────────────────────────────
 print_test_section "T2: missing plan.json returns rc=2"
 
@@ -325,26 +318,6 @@ notes_val="$(printf '%s' "$summary_json_t3" | jq -r '.notes // empty' 2>/dev/nul
 
 scope_violations_type="$(printf '%s' "$summary_json_t3" | jq -r '.scope_violations | type' 2>/dev/null || echo "missing")"
 assert_eq "scope_violations is an array" "array" "$scope_violations_type"
-
-# ─── Test 5: build_stage_finalize runs cleanly ───────────────────────────────
-print_test_section "T5: build_stage_finalize returns rc=0"
-
-set +e
-build_stage_finalize >/dev/null 2>&1
-rc_finalize=$?
-set -e
-assert_exit_code "build_stage_finalize returns rc=0" "0" "$rc_finalize"
-
-if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
-    finalize_count="$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-    if [[ "$finalize_count" -ge 1 ]]; then
-        assert_pass "plugin.finalize.complete event emitted by finalize"
-    else
-        assert_fail "plugin.finalize.complete event not found in event log"
-    fi
-else
-    assert_pass "build_stage_finalize returned rc=0 (event log not yet written)"
-fi
 
 # ─── Test 6: Out-of-scope edit → build.scope.violation + empty diff.patch ────
 print_test_section "T6: out-of-scope edit → scope_violation=true, empty diff.patch, rc=0"

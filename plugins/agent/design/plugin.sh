@@ -8,10 +8,8 @@
 # Produces: state/artifacts/design.md with embedded ```scope fenced block
 #
 # Lifecycle:
-#   design_stage_init        — set env vars, emit plugin.init.start
 #   design_stage_run         — derive paths, delegate to _design_stage_run_inner
 #   _design_stage_run_inner  — redact → route_to_model_loop → assert scope block
-#   design_stage_finalize    — emit plugin.finalize.complete
 #   design_stage_cleanup     — emit plugin.cleanup.complete
 #
 # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design function)
@@ -45,14 +43,6 @@ source "$_DESIGN_ROOT/core/plugin-registry/registry.sh"
 # #963: read-only grammar lib from _ZBUILD_CONTRACT_LIB_DIR (self-host redirect).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
-
-# ─── init ───────────────────────────────────────────────────────────────────
-design_stage_init() {
-    export ZBUILD_PLUGIN="design"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=design"
-    return 0
-}
 
 # ─── run ────────────────────────────────────────────────────────────────────
 design_stage_run() {
@@ -613,12 +603,6 @@ _extract_scope_from_design() {
         local IFS=','
         printf '%s' "${files[*]}"
     fi
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-design_stage_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=design"
-    return 0
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────

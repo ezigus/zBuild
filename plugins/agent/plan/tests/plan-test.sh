@@ -84,12 +84,6 @@ route_to_model() {
     return 0
 }
 
-# ─── Test 1: plan_init sets env vars ─────────────────────────────────────────
-plan_init >/dev/null 2>&1
-
-assert_eq "plan_init sets ZBUILD_PLUGIN=plan" "plan" "${ZBUILD_PLUGIN:-}"
-assert_eq "plan_init sets ZBUILD_PLUGIN_KIND=agent" "agent" "${ZBUILD_PLUGIN_KIND:-}"
-
 # ─── Test 2: plan_run produces plan.json ─────────────────────────────────────
 export ZBUILD_GOAL="test goal"
 
@@ -750,14 +744,6 @@ if [[ -n "$_ORIG_PSF" ]]; then eval "$_ORIG_PSF"; fi
 # Restore CANNED_PLAN so the following sections run against the canonical fixture
 # (this block overwrote it, mirroring the SPEC-5 restore above).
 CANNED_PLAN="$_SAVED_CANNED_PLAN"
-
-# ─── Test 5: plan_finalize runs cleanly ──────────────────────────────────────
-set +e
-plan_finalize >/dev/null 2>&1
-rc=$?
-set -e
-
-assert_eq "plan_finalize returns rc=0" "0" "$rc"
 
 # ─── Bonus: plan_cleanup runs cleanly ────────────────────────────────────────
 set +e

@@ -27,7 +27,6 @@ version: 0.0.1
 description: |
   Fixture for registry tests.
 hooks:
-  init: test_lens_init
   run: test_lens_run
 requires:
   core:
@@ -36,7 +35,6 @@ requires:
 EOF
 
 cat > "$FIXTURE_ROOT/agent/test-lens/plugin.sh" <<'EOF'
-test_lens_init() { echo "init called"; }
 test_lens_run() { echo "run called: $*"; }
 EOF
 
@@ -181,7 +179,6 @@ fi
 
 # Restore plugin.sh so the later dispatch tests see a clean file.
 cat > "$FIXTURE_ROOT/agent/test-lens/plugin.sh" <<'EOF'
-test_lens_init() { echo "init called"; }
 test_lens_run() { echo "run called: $*"; }
 EOF
 lockfile_write "$FIXTURE_ROOT" "$ZBUILD_LOCKFILE"
@@ -197,9 +194,13 @@ rc=$?
 set -e
 assert_eq "lockfile_validate flags legacy single-hash records (#290 migration)" "1" "$rc"
 
-# Hook dispatch: call init on test-lens
-output="$(plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "init" 2>&1)"
-assert_contains "plugin_hook_call dispatches init hook" "$output" "init called"
+# Hook dispatch: an undeclared required hook is refused, not silently no-op'd
+# (ADR-056: init/finalize are gone, so "init" is now just an undeclared hook).
+set +e
+plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "init" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "plugin_hook_call refuses an undeclared required hook" "1" "$rc"
 
 # Hook dispatch: pass args to run
 output="$(plugin_hook_call "$FIXTURE_ROOT/agent/test-lens" "run" "arg1" "arg2" 2>&1)"
@@ -224,13 +225,13 @@ name: Agent Missing Run Hook
 kind: agent
 version: 0.0.1
 hooks:
-  init: nr_init
+  cleanup: nr_cleanup
 requires:
   core:
     - redaction
 EOF
 cat > "$FIXTURE_ROOT/agent/no-run-hook/plugin.sh" <<'EOF'
-nr_init() { :; }
+nr_cleanup() { :; }
 EOF
 set +e
 validate_manifest "$FIXTURE_ROOT/agent/no-run-hook/manifest.yaml" >/dev/null 2>&1
@@ -246,7 +247,7 @@ name: Tool Missing Run
 kind: tool
 version: 0.0.1
 hooks:
-  init: t_init
+  cleanup: t_cleanup
 EOF
 set +e
 validate_manifest "$FIXTURE_ROOT/tool/no-run-tool/manifest.yaml" >/dev/null 2>&1
@@ -506,6 +507,29 @@ validate_manifest "$FIXTURE_ROOT/tool/doc-fields-empty-usage/manifest.yaml" >/de
 rc=$?
 set -e
 assert_eq "validate_manifest rejects manifest with declared-but-empty usage (#1414)" "1" "$rc"
+
+# ─── SPEC-8: validate_manifest names the plugin when run hook is missing ─────
+# CHANGE: error message now names the specific plugin that is missing hooks.run.
+# Uses the existing no-run-hook fixture (id: no-run-hook).
+set +e
+_spec8_err="$(validate_manifest "$FIXTURE_ROOT/agent/no-run-hook/manifest.yaml" 2>&1)"
+set -e
+if grep -q "no-run-hook" <<< "$_spec8_err"; then
+    assert_pass "[SPEC-8] validate_manifest error names the missing-run plugin"
+else
+    assert_fail "[SPEC-8] validate_manifest error names the missing-run plugin" \
+        "got: $_spec8_err"
+fi
+
+# ─── SPEC-9: absent optional cleanup hook returns ZBUILD_HOOK_ABSENT (3) ─────
+# CHANGE: before ADR-056, absent cleanup returned 0; now it returns 3.
+# Uses the existing test-tool fixture (has run, no cleanup).
+set +e
+plugin_hook_call "$FIXTURE_ROOT/tool/test-tool" "cleanup" >/dev/null 2>&1
+_spec9_rc=$?
+set -e
+assert_eq "[SPEC-9] plugin_hook_call returns ZBUILD_HOOK_ABSENT (3) for absent cleanup" \
+    "3" "$_spec9_rc"
 
 cleanup_test_env
 print_test_results

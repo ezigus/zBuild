@@ -100,22 +100,6 @@ mutation_gate_run() {
     return 0
 }
 
-# ─── mutation_gate_init ───────────────────────────────────────────────────────
-mutation_gate_init() {
-    export ZBUILD_PLUGIN="mutation-gate"
-    export ZBUILD_PLUGIN_KIND="tool"
-    _mg_emit "plugin.init.start" "plugin=mutation-gate"
-    _mg_emit "plugin.init.complete" "plugin=mutation-gate"
-    return 0
-}
-
-# ─── mutation_gate_finalize ───────────────────────────────────────────────────
-mutation_gate_finalize() {
-    _mg_emit "plugin.finalize.start" "plugin=mutation-gate"
-    _mg_emit "plugin.finalize.complete" "plugin=mutation-gate"
-    return 0
-}
-
 # ─── mutation_gate_cleanup ────────────────────────────────────────────────────
 mutation_gate_cleanup() {
     _mg_emit "plugin.cleanup.start" "plugin=mutation-gate"

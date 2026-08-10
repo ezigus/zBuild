@@ -7,10 +7,8 @@
 # Produces: state/artifacts/diff.patch AND state/artifacts/build-summary.json
 #
 # Lifecycle:
-#   build_stage_init        — set env vars, emit plugin.init.start
 #   build_stage_run         — derive paths, delegate to _build_stage_run_inner
 #   _build_stage_run_inner  — redact → route_to_model_loop → git diff → write
-#   build_stage_finalize    — emit plugin.finalize.complete
 #   build_stage_cleanup     — emit plugin.cleanup.complete
 #
 # CRITICAL: diff.patch is NEVER applied here — it is the working-tree diff
@@ -65,14 +63,6 @@ source "$_BUILD_DIR/lib/scope.sh"
 source "$_BUILD_DIR/lib/commit.sh"
 # shellcheck source=lib/summary.sh
 source "$_BUILD_DIR/lib/summary.sh"
-
-# ─── init ───────────────────────────────────────────────────────────────────
-build_stage_init() {
-    export ZBUILD_PLUGIN="build"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=build"
-    return 0
-}
 
 # ─── run ────────────────────────────────────────────────────────────────────
 build_stage_run() {
@@ -442,12 +432,6 @@ _build_stage_run_inner() {
 
     # #602: no more fail-CLOSED rc-wins path — the apply-check gate that
     # forced rc=1 on `verdict=corrupt_diff` was removed with the stash dance.
-    return 0
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-build_stage_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=build"
     return 0
 }
 

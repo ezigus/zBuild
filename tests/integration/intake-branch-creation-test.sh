@@ -71,7 +71,6 @@ subprocess_out="$(
         source '$REPO_ROOT/scripts/lib/helpers.sh'
         source '$REPO_ROOT/core/event-bus/event-bus.sh'
         source '$REPO_ROOT/plugins/agent/intake/plugin.sh'
-        intake_init >/dev/null 2>&1
         intake_run 'intake' '$STATE_FILE'
     " 2>&1
 )"
@@ -124,7 +123,6 @@ bash -c "
     source '$REPO_ROOT/scripts/lib/helpers.sh'
     source '$REPO_ROOT/core/event-bus/event-bus.sh'
     source '$REPO_ROOT/plugins/agent/intake/plugin.sh'
-    intake_init >/dev/null 2>&1
     intake_run 'intake' '$STATE_FILE'
 " > /dev/null 2>&1
 rc2=$?

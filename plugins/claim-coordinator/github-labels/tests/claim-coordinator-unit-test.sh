@@ -29,11 +29,6 @@ export ZBUILD_CLAIM_MACHINE_ID="test-machine-1"
 # shellcheck source=../../../../plugins/claim-coordinator/github-labels/plugin.sh
 source "$REPO_ROOT/plugins/claim-coordinator/github-labels/plugin.sh"
 
-# ── claim_coordinator_init → exit 0 ──────────────────────────────────────────
-: > "$ZBUILD_EVENTS_JSONL"
-set +e; claim_coordinator_init; rc=$?; set -e
-assert_eq "claim_coordinator_init → rc=0" "0" "$rc"
-
 # ── claim issue 42 → rc=0 ─────────────────────────────────────────────────────
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; claim_coordinator_claim "42"; rc=$?; set -e

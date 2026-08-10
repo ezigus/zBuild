@@ -14,10 +14,8 @@
 # Role: validate_agent — read deploy-result input; delegate health probe to health-check tool.
 #
 # Lifecycle:
-#   validate_agent_init       — set env vars, emit plugin.init.start
 #   validate_agent_run        — validate state_file, delegate to _validate_agent_run_inner
 #   _validate_agent_run_inner — read deploy-result, delegate to health-check tool
-#   validate_agent_finalize   — emit plugin.finalize.complete
 #   validate_agent_cleanup    — no-op
 #
 # legacy-citation: pipeline-stages-monitor.sh:6 (stage_validate)
@@ -31,14 +29,6 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _VALIDATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_VALIDATE_ROOT/core/event-bus/event-bus.sh"
-
-# ─── init ────────────────────────────────────────────────────────────────────
-validate_agent_init() {
-    export ZBUILD_PLUGIN="validate"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=validate"
-    return 0
-}
 
 # ─── run ─────────────────────────────────────────────────────────────────────
 validate_agent_run() {
@@ -103,12 +93,6 @@ _validate_agent_run_inner() {
     printf '{"schema_version":1,"verdict":"error","reason":"health-check plugin missing"}\n' \
         > "$validate_result_out"
     return 2
-}
-
-# ─── finalize ────────────────────────────────────────────────────────────────
-validate_agent_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=validate"
-    return 0
 }
 
 # ─── cleanup ─────────────────────────────────────────────────────────────────

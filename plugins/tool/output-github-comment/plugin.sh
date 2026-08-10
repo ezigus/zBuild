@@ -23,14 +23,6 @@ _md_cell() {
     printf '%s' "$1" | tr -d '\r' | tr '\n' ' ' | sed 's/|/\\|/g'
 }
 
-# ─── init ────────────────────────────────────────────────────────────────────
-output_init() {
-    export ZBUILD_PLUGIN="output-github-comment"
-    export ZBUILD_PLUGIN_KIND="tool"
-    emit_event "plugin.init.start" "plugin=output-github-comment"
-    return 0
-}
-
 # ─── run ─────────────────────────────────────────────────────────────────────
 # Args: $1 = stage_id (unused), $2 = state_file
 # Reads: ZBUILD_ISSUE (env, optional), ZBUILD_RUN_ID (env, optional)
@@ -138,11 +130,5 @@ output_run() {
 
     emit_event "plugin.run.complete" "plugin=output-github-comment" \
         "findings_count=$count" "dest=$dest"
-    return 0
-}
-
-# ─── finalize ────────────────────────────────────────────────────────────────
-output_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=output-github-comment"
     return 0
 }

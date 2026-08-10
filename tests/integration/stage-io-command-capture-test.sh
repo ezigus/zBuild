@@ -81,7 +81,6 @@ chmod +x "$TEST_TEMP_DIR/bin/gh"
 # ─── Source intake plugin ─────────────────────────────────────────────────────
 # shellcheck source=../../plugins/agent/intake/plugin.sh
 source "$REPO_ROOT/plugins/agent/intake/plugin.sh"
-intake_init >/dev/null 2>&1 || true
 
 STATE_DIR="$TEST_TEMP_DIR/intake-state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"

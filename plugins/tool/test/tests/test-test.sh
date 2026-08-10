@@ -53,18 +53,6 @@ _json_key() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Test 1: test_init sets ZBUILD_PLUGIN env
-# ═══════════════════════════════════════════════════════════════════════════════
-print_test_section "1. test_init sets env"
-
-unset ZBUILD_PLUGIN ZBUILD_PLUGIN_KIND 2>/dev/null || true
-
-test_init >/dev/null 2>&1
-
-assert_eq "ZBUILD_PLUGIN set to 'test'" "test" "${ZBUILD_PLUGIN:-}"
-assert_eq "ZBUILD_PLUGIN_KIND set to 'tool'" "tool" "${ZBUILD_PLUGIN_KIND:-}"
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # Test 2: missing diff.patch → error artifact, plugin exits 0
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "2. missing diff.patch → error artifact"
@@ -460,22 +448,6 @@ verdict12="$(_json_key "$OUT_JSON_12" '.verdict')"
 diff_applied12="$(_json_key "$OUT_JSON_12" '.diff_applied')"
 assert_eq "#548: verdict=pass (patch applied against clean HEAD)" "pass" "$verdict12"
 assert_eq "W12-C: diff_applied=false (deprecated)" "false" "$diff_applied12"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Test 5: test_finalize runs cleanly
-# ═══════════════════════════════════════════════════════════════════════════════
-print_test_section "5. test_finalize runs cleanly"
-
-set +e
-test_finalize >/dev/null 2>&1
-rc5=$?
-set -e
-
-assert_exit_code "test_finalize exits 0" "0" "$rc5"
-
-# Verify the finalize event was emitted
-finalize_count="$(grep -c '"plugin.finalize.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-assert_gt "plugin.finalize.complete event emitted" "$finalize_count" "0"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tests T13-T17: ADR-034 / #846 — targeted test re-run helpers

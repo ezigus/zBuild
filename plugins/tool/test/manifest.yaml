@@ -18,9 +18,7 @@ description: |
   (LLM context) and operators (audit).
 
 hooks:
-  init: test_init
   run: test_run
-  finalize: test_finalize
   cleanup: test_cleanup
 
 requires:

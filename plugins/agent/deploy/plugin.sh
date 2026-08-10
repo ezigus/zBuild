@@ -14,10 +14,8 @@
 # Role: deploy_agent — guard pr-url input + gate verdict; delegate to deploy-release tool.
 #
 # Lifecycle:
-#   deploy_agent_init       — set env vars, emit plugin.init.start
 #   deploy_agent_run        — validate state_file, delegate to _deploy_agent_run_inner
 #   _deploy_agent_run_inner — read inputs, check gate, delegate to deploy-release tool
-#   deploy_agent_finalize   — emit plugin.finalize.complete
 #   deploy_agent_cleanup    — no-op
 #
 # legacy-citation: pipeline-stages-delivery.sh:950 (stage_deploy)
@@ -31,14 +29,6 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _DEPLOY_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DEPLOY_ROOT/core/event-bus/event-bus.sh"
-
-# ─── init ────────────────────────────────────────────────────────────────────
-deploy_agent_init() {
-    export ZBUILD_PLUGIN="deploy"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=deploy"
-    return 0
-}
 
 # ─── run ─────────────────────────────────────────────────────────────────────
 deploy_agent_run() {
@@ -128,12 +118,6 @@ _deploy_agent_run_inner() {
     printf '{"schema_version":1,"verdict":"error","reason":"deploy-release plugin missing"}\n' \
         > "$deploy_result_out"
     return 2
-}
-
-# ─── finalize ────────────────────────────────────────────────────────────────
-deploy_agent_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=deploy"
-    return 0
 }
 
 # ─── cleanup ─────────────────────────────────────────────────────────────────

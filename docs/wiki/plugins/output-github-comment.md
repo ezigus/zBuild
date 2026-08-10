@@ -23,9 +23,7 @@ description: |
   tracked in #213.
 
 hooks:
-  init: output_init
   run: output_run
-  finalize: output_finalize
 
 requires:
   core:

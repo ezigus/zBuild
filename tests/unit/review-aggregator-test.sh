@@ -157,7 +157,6 @@ STATE_FILE="$STATE_DIR/pipeline-state.json"
 echo '{"schema_version":1,"run_id":"ra-hook-001","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
 write_lens "$STATE_DIR/artifacts" "edge-case" \
     '{"schema_version":1,"name":"edge-case","score":8,"findings":[]}'
-review_aggregator_init >/dev/null
 set +e
 review_aggregator_run "review-aggregator" "$STATE_FILE" >/dev/null 2>&1
 _rc_hook=$?

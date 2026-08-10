@@ -7,10 +7,8 @@
 # Produces: state/artifacts/plan.json
 #
 # Lifecycle:
-#   plan_init        — set env vars, emit plugin.init.start
 #   plan_run         — derive paths, delegate to _plan_run_inner
 #   _plan_run_inner  — redact → route → validate → emit stage.complete
-#   plan_finalize    — emit plugin.finalize.complete
 #   plan_cleanup     — emit plugin.cleanup.complete, return 0
 
 [[ -n "${_ZBUILD_PLAN_LOADED:-}" ]] && return 0
@@ -90,14 +88,6 @@ WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
   (70% of the ${budget_s}s budget). A partial plan with gaps in \`notes\` BEATS a hard
   SIGTERM that produces no output at all — never spend the full budget exploring.
 EOF
-}
-
-# ─── init ───────────────────────────────────────────────────────────────────
-plan_init() {
-    export ZBUILD_PLUGIN="plan"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=plan"
-    return 0
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
@@ -856,12 +846,6 @@ $_plan_instructions"
     # ZBUILD_PLAN_CONTEXT_GC (default 1) and quota-bounded inside the helper.
     plan_context_gc 2>/dev/null || true
 
-    return 0
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-plan_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=plan"
     return 0
 }
 

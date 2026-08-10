@@ -27,9 +27,7 @@ description: |
   the verdict lives in secret-scan-result.json, never an exit code.
 
 hooks:
-  init: secret_scan_init
   run: secret_scan_run
-  finalize: secret_scan_finalize
   cleanup: secret_scan_cleanup
 
 requires:

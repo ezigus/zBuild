@@ -35,14 +35,6 @@ source "$_RR_ROOT/scripts/lib/call-graph.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_RR_ROOT/scripts/lib/merge-base.sh"
 
-# ─── review_report_init ─────────────────────────────────────────────────────
-review_report_init() {
-    export ZBUILD_PLUGIN="review-report"
-    export ZBUILD_PLUGIN_KIND="agent"
-    emit_event "plugin.init.start" "plugin=review-report"
-    return 0
-}
-
 # ─── review_report_run ──────────────────────────────────────────────────────
 # Hook: review_report_run(stage, state_file). Derives artifact paths and
 # delegates to the unit-testable inner function.
@@ -131,11 +123,5 @@ _rr_run_inner() {
         "plugin=review-report" \
         "merge_readiness=$merge_readiness" \
         "lens_count=$lens_count"
-    return 0
-}
-
-# ─── review_report_finalize ─────────────────────────────────────────────────
-review_report_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=review-report"
     return 0
 }

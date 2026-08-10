@@ -26,7 +26,7 @@ print_test_header "claim-coordinator race (ADR-005, issue #308)"
 
 setup_test_env "claim-race"
 # Linux-only AND needs `flock`: the local-fs claim backend requires it for
-# atomicity (claim_coordinator_init hard-fails without it), so SKIP cleanly on a
+# atomicity, so SKIP cleanly on a
 # Linux host lacking util-linux rather than surfacing a confusing failure.
 skip_unless_platform linux
 skip_unless_capable "flock unavailable — local-fs claim backend requires it" command -v flock
@@ -67,7 +67,6 @@ _race_one() {
             # shellcheck disable=SC1090,SC1091
             source "$REPO_ROOT/scripts/lib/helpers.sh"
             source "$PLUGIN_DIR/plugin.sh"
-            claim_coordinator_init >/dev/null
             claim_coordinator_claim "$issue" \
                 > "$outdir/m${i}.json" \
                 2> "$outdir/m${i}.err"
@@ -142,7 +141,6 @@ ISSUE_SOLO=99
     export ZBUILD_CLAIM_MACHINE_ID="solo"
     # shellcheck disable=SC1090,SC1091
     source "$PLUGIN_DIR/plugin.sh"
-    claim_coordinator_init >/dev/null
     claim_coordinator_claim "$ISSUE_SOLO"
 ) > "$TEST_TEMP_DIR/solo.json"
 solo_got="$(jq -r '.acquired' "$TEST_TEMP_DIR/solo.json")"
@@ -174,7 +172,6 @@ ISSUE_REL=55
     export ZBUILD_CLAIM_MACHINE_ID="releaser"
     # shellcheck disable=SC1090,SC1091
     source "$PLUGIN_DIR/plugin.sh"
-    claim_coordinator_init >/dev/null
     claim_coordinator_claim "$ISSUE_REL" >/dev/null
     claim_coordinator_release "$ISSUE_REL"
 )
@@ -192,7 +189,6 @@ ISSUE_LIST=88
     export ZBUILD_CLAIM_MACHINE_ID="lister"
     # shellcheck disable=SC1090,SC1091
     source "$PLUGIN_DIR/plugin.sh"
-    claim_coordinator_init >/dev/null
     claim_coordinator_claim "$ISSUE_LIST" >/dev/null
 )
 list_out="$(

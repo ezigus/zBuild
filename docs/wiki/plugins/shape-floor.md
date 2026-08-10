@@ -37,9 +37,7 @@ description: |
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
-  init: shape_floor_init
   run: shape_floor_run
-  finalize: shape_floor_finalize
   cleanup: shape_floor_cleanup
 
 requires:

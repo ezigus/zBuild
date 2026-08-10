@@ -4,7 +4,7 @@ Operational reference for what state survives `kill -9` and what doesn't. Full r
 
 ## TL;DR
 
-zBuild persists **only** what plugins declare in their manifest's `state.persisted`. Everything else is reconstructed on resume by the plugin's `init` hook. The engine refuses to resume if a `reconstructed` key isn't set before any `run` invocation.
+zBuild persists **only** what plugins declare in their manifest's `state.persisted`. Everything else is reconstructed on resume by the plugin's `run` hook preamble (ADR-056 removed `init`; `run` is now responsible for detecting `ZBUILD_RESUMING=1` and reconstructing state before proceeding).
 
 ## Persisted state (engine guarantees survival)
 
@@ -20,7 +20,7 @@ Written via `core/state/atomic_write` (with `.bak` rotation). Survives `kill -9`
 | `claim_lease_id` | engine | required for claim-coordinator heartbeat after resume |
 | `plugin_state[<id>]` | per-plugin | YOU write this via `set_state_field` |
 
-## Reconstructed state (you recompute on `init`)
+## Reconstructed state (you recompute at the start of `run`)
 
 Cheap to recompute, expensive to persist, OR derivable from other persisted state.
 
@@ -55,59 +55,60 @@ my_plugin_run() {
 
 DO NOT write your own state files. They won't be backed up; they won't be cleaned up; they won't survive resume reliably.
 
-### 3. Reconstruct in `init`
+### 3. Reconstruct at the start of `run`
 
 ```bash
 # In plugin.sh:
-my_plugin_init() {
+my_plugin_run() {
     if [[ "${ZBUILD_RESUMING:-0}" == "1" ]]; then
-        # Recompute reconstructed state
+        # Recompute reconstructed state before doing any real work
         MY_GIT_DIFF="$(git diff --name-only)"
         if [[ -z "$MY_GIT_DIFF" ]]; then
             error "my-plugin: required reconstructed state missing"
-            return 1
+            return 2
         fi
     fi
+    # ... rest of run logic
 }
 ```
 
 ### 4. Refuse to run if reconstructed state is missing
 
-The engine doesn't enforce this with type checking — you do. Refusing in `init` produces a loud, immediate failure instead of a silent wrong-answer later.
+The engine doesn't enforce this with type checking — you do. Returning rc=2 (fatal) from `run` produces a loud, immediate failure instead of a silent wrong-answer later.
 
 ## What the engine guarantees on resume
 
 1. All `persisted` keys are restored before any plugin observes them.
 2. The engine emits `pipeline.resume` event.
-3. The engine sets `ZBUILD_RESUMING=1` in the environment of all `init` calls.
-4. If `init` fails, the engine refuses to continue (no silent half-resume).
-5. If `pipeline-state.json` is corrupt, the engine recovers from `.bak` via `validate_json`. If both are corrupt, the engine refuses to resume.
+3. The engine sets `ZBUILD_RESUMING=1` in the environment of all `run` calls on resume.
+4. If `pipeline-state.json` is corrupt, the engine recovers from `.bak` via `validate_json`. If both are corrupt, the engine refuses to resume.
 
 ## What the engine does NOT guarantee
 
 - Identical behavior to an uninterrupted run. LLM nondeterminism makes this impossible. Plugins that depend on identical-behavior-across-resume are broken by design.
-- Cost equivalence. Resume re-runs `init`, may re-route models, may re-pay for some computation.
-- Wall-clock continuity. Resume adds startup latency proportional to `state.persisted` size and `init` cost.
+- Cost equivalence. Resume may re-route models, may re-pay for some computation.
+- Wall-clock continuity. Resume adds startup latency proportional to `state.persisted` size and reconstruction cost.
 
 ## Testing your plugin's resume behavior
 
 Minimum test (lift from `tests/core-state-test.sh`):
 
 ```bash
-# Step 1: init + write some persisted state
-my_plugin_init
+# Step 1: run + write some persisted state
 my_plugin_run "$@"  # writes plugin_state."my-plugin".last_score
 
 # Step 2: simulate kill + restart
 unset _MY_PLUGIN_LOADED  # force re-source
 source plugins/agent/my-plugin/plugin.sh
 export ZBUILD_RESUMING=1
-my_plugin_init
 
-# Step 3: verify reconstructed state is set
+# Step 3: run again — preamble must reconstruct state
+my_plugin_run "$@"
+
+# Step 4: verify reconstructed state was set by the run preamble
 assert_eq "git_diff reconstructed" "non-empty" "$([[ -n "$MY_GIT_DIFF" ]] && echo non-empty || echo empty)"
 
-# Step 4: verify persisted state still readable
+# Step 5: verify persisted state still readable
 score="$(get_state_field "$ZBUILD_STATE_FILE" '.plugin_state."my-plugin".last_score' '0')"
 assert_eq "last_score persisted across resume" "95" "$score"
 ```

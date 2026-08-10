@@ -7,10 +7,8 @@
 # Produces: state/artifacts/pr-url.txt (canonical), pr-result.json (secondary)
 #
 # Lifecycle:
-#   pr_stage_init       — set env vars, emit plugin.run.start
 #   pr_stage_run        — derive paths, delegate to _pr_stage_run_inner
 #   _pr_stage_run_inner — read review.json verdict guard, write artifacts
-#   pr_stage_finalize   — emit plugin.run.complete
 #   pr_stage_cleanup    — no-op
 #
 # legacy-citation: pipeline-stages-delivery.sh:81 (stage_pr)
@@ -26,16 +24,6 @@ _PR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_PR_ROOT/core/redaction/scope-redaction.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_PR_ROOT/core/event-bus/event-bus.sh"
-
-# ─── init ───────────────────────────────────────────────────────────────────
-pr_stage_init() {
-    export ZBUILD_PLUGIN="pr-delivery"
-    export ZBUILD_PLUGIN_KIND="agent"
-    # The framework (plugin_hook_call) emits plugin.run.start/complete; init only
-    # emits plugin.init.start, matching the review/build/test_assessment agents.
-    emit_event "plugin.init.start" "plugin=pr-delivery"
-    return 0
-}
 
 # ─── run ────────────────────────────────────────────────────────────────────
 pr_stage_run() {
@@ -160,12 +148,6 @@ _pr_stage_run_inner() {
         jq -nc --arg branch "$branch" '{status:"error",branch:$branch}' | atomic_write "$pr_result_out"
         return 1
     fi
-}
-
-# ─── finalize ───────────────────────────────────────────────────────────────
-pr_stage_finalize() {
-    emit_event "plugin.finalize.complete" "plugin=pr-delivery"
-    return 0
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
