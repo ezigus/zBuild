@@ -34,27 +34,66 @@ rc=$?
 set -e
 assert_eq "[SPEC-4] TC-2: ADR-054 references ADR-001" "0" "$rc"
 
-# TC-3 [SPEC-5]: ADR-054 documents the hook signature (stage_id, state_file).
-set +e
-grep -q "stage_id" "$ADR" 2>/dev/null
-rc=$?
-set -e
-assert_eq "[SPEC-5] TC-3: ADR-054 documents stage_id hook argument" "0" "$rc"
+# Every assertion below anchors to a code fence or a leading table cell. A bare
+# grep for a contract word is inert here: "run", "cleanup", "pass", "fail" and
+# "error" all occur in ordinary prose, so a bare-word check passes on any
+# technical document and would survive deleting the section it claims to pin.
 
-set +e
-grep -q "state_file" "$ADR" 2>/dev/null
-rc=$?
-set -e
-assert_eq "[SPEC-5] TC-3: ADR-054 documents state_file hook argument" "0" "$rc"
-
-# TC-4 [SPEC-6]: ADR-054 documents the disposition vocabulary (pass, warn, fail, error).
-for disposition in pass warn fail error; do
+# TC-3 [SPEC-5]: the two hook signatures, including resolved_inputs and scope.
+for sig in "run(stage_id, state_file, resolved_inputs)" "cleanup(stage_id, state_file, scope)"; do
     set +e
-    grep -q "$disposition" "$ADR" 2>/dev/null
+    grep -qF "$sig" "$ADR" 2>/dev/null
     rc=$?
     set -e
-    assert_eq "[SPEC-6] TC-4: ADR-054 documents disposition '$disposition'" "0" "$rc"
+    assert_eq "[SPEC-5] TC-3: ADR-054 specifies '$sig'" "0" "$rc"
 done
+
+# TC-4 [SPEC-6]: the disposition vocabulary is the engine-response set, NOT the
+# verdict class. pass|warn|fail|error is the verdict class; naming it
+# "disposition" is the confusion this ADR exists to end, so assert the six words
+# that each carry a distinct engine response.
+for disposition in complete interrupted throttled exhausted unavailable broken; do
+    set +e
+    grep -q "^| \`$disposition\` |" "$ADR" 2>/dev/null
+    rc=$?
+    set -e
+    assert_eq "[SPEC-6] TC-4: ADR-054 tabulates disposition '$disposition'" "0" "$rc"
+done
+
+# TC-5 [SPEC-6]: the result file's version key is result_contract, not
+# schema_version — schema_version is the artifact's OWN schema (build-summary.json
+# has been at 4 since #602), and conflating them reinterprets every artifact.
+set +e
+grep -q "^| \`result_contract\` |" "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-6] TC-5: ADR-054 tabulates result_contract as the version key" "0" "$rc"
+
+# TC-6 [SPEC-6]: cleanup carries a scope, and release never deletes. An
+# abort-only cleanup is what forces every plugin to invent a second teardown path.
+for scope in release purge; do
+    set +e
+    grep -q "^| \`$scope\` |" "$ADR" 2>/dev/null
+    rc=$?
+    set -e
+    assert_eq "[SPEC-6] TC-6: ADR-054 tabulates cleanup scope '$scope'" "0" "$rc"
+done
+
+# TC-7 [SPEC-4]: valid_verdicts is recorded as a gap to CLOSE (#1708), not a
+# field to delete — the engine reads it under this contract.
+set +e
+grep -q "1708" "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-4] TC-7: ADR-054 cites #1708 for valid_verdicts enforcement" "0" "$rc"
+
+# TC-8 [SPEC-4]: ADR-056 already owns the init/finalize deletion and the hook
+# lifecycle. Two Accepted ADRs must not independently specify the same surface.
+set +e
+grep -q "ADR-056" "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-4] TC-8: ADR-054 defers the hook lifecycle to ADR-056" "0" "$rc"
 
 cleanup_test_env
 print_test_results

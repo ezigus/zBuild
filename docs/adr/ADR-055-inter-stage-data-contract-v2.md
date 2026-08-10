@@ -35,18 +35,21 @@ outputs:
     path: ${artifact_dir}/<filename>
 ```
 
-A consumer stage references a producer output by `source: stage:<producer-id>` in its inputs block:
+A consumer declares **only** the reference and whether it needs it:
 
 ```yaml
 inputs:
-  - id: <consumer-local-id>   # matches the producer's output id
-    type: <type>
-    source: stage:<producer-id> | external | cycle_feedback
+  - from: <producer-stage>.<output_id>
     required: true | false
-    path: ${artifact_dir}/<filename>   # optional; for file-typed inputs
 ```
 
-The engine resolves, validates order, and enforces the graph at load time via the pre-flight validator (`core/pipeline/contract-validator.sh`).
+**A consumer never restates `path` or `type`.** Restating them is what let `scope-manifest.md` be declared in `intake/manifest.yaml`, redeclared in `build/manifest.yaml` *with a different type*, and hardcoded a third time in `build/plugin.sh` — where only the third was load-bearing. A declaration that can disagree with the thing it declares is not a contract.
+
+The engine resolves the reference, verifies the artifact is present **before** dispatch, and refuses a wiring whose producer and consumer types disagree — the check stubbed at `contract-validator.sh:289`. Declared outputs become a boundary, not a description (#1809).
+
+Delivered by #1825 (`from:` references), #1826 (engine resolves and hands inputs to `run`), #1827 (type agreement). Until they land, consumers use the current form — `source: stage:<producer-id>` with a restated `path` and `type` — and the engine validates order only, via the pre-flight validator (`core/pipeline/contract-validator.sh`). The 17 F-wave migrations (#1833–#1849) move the plugins one per PR.
+
+`source: external` and `source: cycle_feedback` keep their own forms (§3, §4); `from:` addresses stage-produced data only.
 
 ### 2. Closed templating-var set
 

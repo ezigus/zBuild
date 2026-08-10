@@ -50,6 +50,23 @@ rc=$?
 set -e
 assert_eq "[SPEC-7] TC-4: ADR-055 cross-references ADR-006" "0" "$rc"
 
+# TC-5 [SPEC-7]: the consumer reference form is `from: <stage>.<output_id>`.
+# Anchored to the code fence, not a bare "from:" — that word appears in prose
+# throughout, so a bare grep could not tell the v2 form from the v1 one.
+set +e
+grep -qE '^ *- from: <producer-stage>\.<output_id>' "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-7] TC-5: ADR-055 specifies the from: consumer reference" "0" "$rc"
+
+# TC-6 [SPEC-7]: a consumer never restates path or type — the property that
+# stopped scope-manifest.md being declared three times with two different types.
+set +e
+grep -q "never restates" "$ADR" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-7] TC-6: ADR-055 states a consumer never restates path or type" "0" "$rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -4,49 +4,54 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amends:**
-- ADR-001 — hook lifecycle corrected: only `run` and `cleanup` are active at the stage-dispatch layer; `init` and `finalize` are never called there. rc table superseded: plugin rc is binary (0 success, 1 error); the rc=1→recovery routing never existed. See §4.
-- ADR-021 — disposition vocabulary (§6) supersedes the informally-inherited `pass|warn|fail|unknown|error|corrupt_diff|block` set.
-- ADR-025 — abort/trap ownership clarified: runner owns the trap; plugin `cleanup` hook is the abnormal-exit notification surface, not a second `run`. See §7.
-- ADR-045 — disposition vocabulary `pass|warn|fail|error` (§6) replaces the bounded-route verdict set.
-**Related:** ADR-001 (plugin contract), ADR-017 (per-stage router config), ADR-047 (stage-agnostic mechanics), ADR-013 (canonical stage list)
+- ADR-001 — the stage contract is two hooks (§1), rc ∈ {0,1} (§4), and one result file (§5). The rc=1→`kind: recovery` routing is deleted; it was never implemented and no recovery plugin was ever registered.
+- ADR-021 — verdict and disposition are separated (§6); the informally-inherited `pass|warn|fail|unknown|error|corrupt_diff|block` set, which carried both axes in one string, is replaced.
+- ADR-025 — the runner still owns the trap, but `cleanup` is no longer an abort-only notification: it is dispatched by a `teardown` stage with a `scope` (§7).
+- ADR-045 — superseded by the same verdict/disposition split (§6).
+**Related:** ADR-001 (plugin contract), ADR-013 (canonical stage list), ADR-017 (per-stage router config), ADR-047 (stage-agnostic mechanics — the parent principle this extends), ADR-055 (inter-stage data contract v2), ADR-056 (run+cleanup-only lifecycle)
 
 ## Context
 
-ADR-001 defines the general plugin contract: manifest schema, hooks (`init`, `run`, `finalize`, `cleanup`), and error semantics for all plugin kinds. The stage-specific subset — the `(stage_id, state_file)` dispatch signature, the env-var runtime context table, the fail-closed artifact scanner contract, the per-stage router configuration surface, and the disposition/verdict channel — was never extracted into a dedicated record.
+**This ADR is a specification, not a description.** It states the contract Phase 0 (#1819) implements; each section names the issue that delivers it. Where the engine does not yet behave this way, that is recorded as the gap it is — the whole reason for writing it down.
 
-This created two concrete gaps:
+ADR-001 defined the general plugin contract for all plugin kinds. The stage-bound subset was never extracted, and the parts of ADR-001 that touched it were aspirational in a way nothing ever reconciled:
 
-**1. Phantom hooks.** ADR-001 §"Lifecycle ordering" declares four hooks (`init`, `run`, `finalize`, `cleanup`), but only `run` and `cleanup` are called at the stage-dispatch layer. `plugin_hook_call` in `core/plugin-registry/registry.sh` has never invoked `init` or `finalize` at the stage-dispatch layer. Plugin authors who implemented `init` or `finalize` for stage-bound work executed dead code.
+| ADR-001 said | The engine did |
+|---|---|
+| Four hooks: `init`, `run`, `finalize`, `cleanup` | Five `plugin_hook_call` sites, **all `run`**. Three of the four were never called — including `cleanup`, which 20+ plugins nevertheless implement. |
+| `rc=1` routes to `kind: recovery` plugins; `rc=2` is fatal | **No recovery plugin has ever been registered.** Stages return 5, 8, 9, 10, 11, 143. |
+| `valid_verdicts` declares a plugin's vocabulary | **No engine code reads it.** Adoption: 1 of 25. |
 
-**2. Phantom rc routing.** ADR-001 §"Error semantics" declared that `rc=1` from a plugin routes to `kind: recovery` plugins for classification + action. No recovery plugin has ever been registered, and the routing path was never implemented at the stage-dispatch layer. `rc=1` has always been treated as a terminal error at that layer.
+The pattern is one defect, not three: **a declaration nothing enforces.** An unknown verdict draws a yellow glyph; an undeclared hook returns `0` silently; a zero-byte artifact passes the fail-closed scanner. Unrecognized is never a failure, so the document and the engine were free to drift apart for the life of the project.
 
-**3. valid_verdicts.** The manifest schema carried a `valid_verdicts` field that was declared and never read by the engine. The disposition vocabulary is governed by the v2 result file contract, not a per-manifest allowlist.
-
-ADR-054 extracts the stage-bound subclaim from ADR-001, names what was actually implemented, and formally records the gaps between the schema and the code.
+ADR-054 fixes the call and response surfaces — hooks, arguments, exit codes, the result file, and the verdict/disposition split. ADR-055 fixes the data and declaration surfaces. Together they are the interface Phase 0 enforces.
 
 ## Decision
 
-### 1. Active hooks at the stage-dispatch layer
+### 1. The call surface: two hooks
 
-Exactly **two** hooks are active at the stage-dispatch layer:
+The contract has exactly **two** hooks:
 
-| Hook | When called | Purpose |
-|------|-------------|---------|
-| `run` | Every stage dispatch | Primary work entry point |
-| `cleanup` | Abnormal exit (kill, abort, trap signal) | Abnormal-exit notification; release locks, write tombstone event |
+| Hook | Required | Invoked by |
+|------|----------|------------|
+| `run` | Yes | Every stage dispatch |
+| `cleanup` | No | A `teardown` stage, with a `scope` (§7) |
 
-`init` and `finalize` are specified in ADR-001 §"Manifest schema" and §"Lifecycle ordering" as part of the general plugin contract. They are **never called** at the stage-dispatch layer. A stage-bound plugin that implements them executes dead code at this layer. The ADR-001 hook lifecycle table and rc table are amended accordingly (back-pointer added to ADR-001).
+`init` and `finalize` are deleted from the contract. ADR-056 (#1828) carries out that deletion and owns the resulting lifecycle — including registration-time enforcement of `run` and the `rc=3` sentinel that distinguishes an absent optional hook from one that ran. This ADR does not restate those rules; it specifies the two surviving hooks' arguments (§2) and `cleanup`'s trigger and scope (§7).
 
-### 2. Hook function signature
+**What was true before this contract.** Three of the four hooks ADR-001 documented were never called: there are five `plugin_hook_call` sites in the engine and every one passes `run`. `init` and `finalize` were dead. `cleanup` was also dead — never dispatched by anything — yet **20+ plugins ship one**, written to a documented interface and drifting untested for the life of the project. That is the failure mode this ADR exists to end: a document describing a lifecycle the engine implemented one fifth of, with nothing reconciling the two.
 
-All active stage-bound hooks receive the same two positional arguments:
+### 2. Hook signatures
 
 ```
-<hook>(stage_id, state_file)
+run(stage_id, state_file, resolved_inputs)
+cleanup(stage_id, state_file, scope)
 ```
 
-- `$1` — `stage_id` (string, informational; most plugins ignore it).
-- `$2` — `state_file` (absolute path to `pipeline-state.json`). Plugins derive `state_dir = dirname($2)` and `artifacts_dir = $state_dir/artifacts`.
+- `stage_id` — the dispatching stage's id.
+- `state_file` — absolute path to `pipeline-state.json`. Plugins derive `state_dir = dirname($2)` and `artifacts_dir = $state_dir/artifacts`.
+- `resolved_inputs` — the engine resolves every input the manifest declares and hands them over. **A plugin never rebuilds a path.** Delivered by #1826; until then a plugin reads its declared inputs itself.
+- `scope` — `release` or `purge` (§7).
 
 ### 3. Runtime environment
 
@@ -73,42 +78,70 @@ At the stage-dispatch layer, plugin exit codes are **binary**:
 
 ADR-001 §"Error semantics" declared `rc=1` routes to `kind: recovery` plugins and `rc=2` is fatal. This routing was **never implemented** at the stage-dispatch layer. No recovery plugin has ever been registered. `rc=1` at the stage-dispatch layer has always been a terminal error. The rc table in ADR-001 is superseded.
 
-The runner synthesizes the following additional codes for its own signalling — these are **not** part of the plugin-to-runner contract:
+`rc=0` means "my result file is on disk, read it." `rc=1` means "I failed — read my result if present; if it is absent I died, and I am `broken`." **`rc=0` with a missing or unparseable result is a structural failure, not a warning.**
 
-| Runner rc | Meaning |
-|-----------|---------|
-| `5` | Scope violation (build stage) |
-| `8` | Verdict blocked |
-| `9` | LLM unavailable |
-| `10` | Contract validation failure |
-| `11` | Inert wiring detected |
-| `143` | Signal kill (SIGTERM, translated by runner) |
+Everything a stage needs to say beyond those two facts belongs in the result file (§5), not in an exit code. The runner today still synthesizes further codes for its own internal signalling — `5` blocked, `6` cycle_abort, `8` blocking_member_failure, `9` llm_unavailable, `10` scope_too_large, `11` route_back, `130`/`143` signal. Those are **runner-internal**, never part of the plugin-to-runner contract, and #1823 narrows the plugin side to {0,1}.
 
-### 5. Verdict channel: v2 result file
+### 5. The result file
 
-Per ADR-047 §3, the canonical verdict channel for a stage is the **v2 result file** — the primary artifact declared in the stage's manifest (`outputs[primary: true]`). The runner reads this file after `run` completes with `rc=0` to derive the stage verdict.
+One file. The primary artifact declared in the stage's manifest (`outputs[primary: true]`), read after `run` returns. Mandatory keys:
 
-### 6. Disposition vocabulary
+| Key | Meaning |
+|-----|---------|
+| `result_contract` | Version of **this contract** the file speaks |
+| `verdict` | The stage's own word for what happened (§6) |
+| `disposition` | What the engine should do about it (§6) |
+| `reason` | Mandatory free text — rendered to logs and terminal, **never branched on** |
 
-The stage disposition set is:
+Plus `data: {}` — open, namespaced, and never interpreted by the engine.
 
-| Disposition | Meaning |
-|-------------|---------|
-| `pass` | Stage completed successfully |
-| `warn` | Stage completed with advisory findings |
-| `fail` | Stage completed with blocking findings |
-| `error` | Stage encountered a runtime error |
+`result_contract` is **not** `schema_version`. `schema_version` is the artifact's own schema version and is independent: `build-summary.json` has been at `4` since #602. Conflating the two silently reinterprets every existing artifact.
 
-Structural-failure verdicts (`error`, `corrupt_diff`, `block`) are passed through unclassified from the primary artifact field per ADR-020 amendment #550, so the cycle-blocked predicate (`_cycle_detect_blocked`, ADR-021) can distinguish them from `fail`. This disposition set **supersedes** the informally-inherited `pass|warn|fail|unknown|error|corrupt_diff|block` vocabulary that accumulated across ADR-013, ADR-021, ADR-045.
+Delivered by #1821 (landed); version negotiation by #1824.
 
-### 7. Abort/trap ownership
+### 6. Verdict and disposition are different axes
 
-The runner owns the process trap (`core/pipeline/runner.sh`). On abnormal exit:
-1. The runner's trap fires.
-2. The runner calls the current stage plugin's `cleanup` hook (if declared in manifest).
-3. `cleanup` is the plugin's abnormal-exit notification surface — it MUST NOT perform the final teardown; that belongs to the runner's trap.
+Conflating these is the defect this section exists to prevent — `pass|warn|fail|error` is the **verdict class**, and naming it "disposition" is what left the engine re-deriving recoverability from a word that never encoded it.
 
-ADR-025 (abort propagation) covers the full trap lifecycle; this ADR amends it to name `cleanup` explicitly as the plugin's notification surface, not a second `run`.
+**`verdict`** is the stage's own vocabulary — `approve`, `request_changes`, `incomplete`, `empty_diff`, whatever that stage means. It is **declared per-plugin** in the manifest's `valid_verdicts`, and a verdict outside a plugin's declared set is a structural failure (#1708). The engine does not hold a global verdict list.
+
+**`disposition`** is a closed set, owned by the engine. Each word exists only because the engine acts differently on it:
+
+| Disposition | Engine response |
+|-------------|-----------------|
+| `complete` | Nothing went wrong |
+| `interrupted` | Retry as-is |
+| `throttled` | Wait, then retry |
+| `exhausted` | More budget, or the work must shrink |
+| `unavailable` | Halt; operator action required |
+| `broken` | Halt; it is a defect |
+
+Recoverability is therefore a **declared field**, not a guess re-derived from a verdict string. `did_not_finish`, `empty_diff`, `scope_too_large` and `inert_build` migrate out of `verdict` into `disposition` (#1832).
+
+This supersedes the informally-inherited `pass|warn|fail|unknown|error|corrupt_diff|block` vocabulary that accumulated across ADR-013, ADR-021 and ADR-045, in which one string had to carry both axes at once. Delivered by #1822.
+
+### 7. Teardown and clean: one code path, two triggers
+
+`cleanup` is **not** an abnormal-exit notification. Scoping it to aborts is precisely what forces every plugin to invent a second teardown path — one for the normal end of work, one for the trap — and the two then drift.
+
+```
+plugin.cleanup(scope)      ← only the stage knows what it spawned
+      ↑ invoked by
+  teardown stage           ← an ordinary plugin, dispatched like any other
+      ↑ composed by
+  clean.yaml               ← a template
+```
+
+Two scopes, one discriminator — **can this be done tomorrow?**
+
+| Scope | Trigger | Does | Never does |
+|-------|---------|------|------------|
+| `release` | Automatic, at end of work | Frees live resources: kills spawned process groups, closes handles, releases locks | **Deletes nothing** |
+| `purge` | Operator-invoked only | Deletes artifacts and staging trees | — |
+
+No → `release`. Yes → `purge`. The rule exists because the inverse destroys evidence: `plugins/tool/test/plugin.sh` `rm -rf`s its staging dir on return and kills nothing, which is exactly backwards — orphaned suites keep running against a deleted tree (#1748).
+
+The runner still owns the process trap (ADR-025); a trap firing does not turn into a `cleanup` dispatch by itself. Delivered by #1829, which depends on #1759 giving the signal traps a single owner.
 
 ### 8. Fail-closed artifact scanner contract
 
@@ -130,32 +163,50 @@ The following router knobs are available per-stage (resolved via ADR-017):
 
 ### 10. Phantom declarations (for the record)
 
-The following were declared in the manifest schema or contract documentation and were **never read** by the engine:
+Declared somewhere and read by nothing. Recording them is the point of this ADR: an unenforced declaration is how the contract became fiction.
 
-- **`valid_verdicts`** — declared in the manifest schema; never read by the runner or dispatch layer. Disposition vocabulary is governed by the v2 result file contract (§6), not a per-manifest allowlist.
-- **`rc=1 → recovery routing`** — declared in ADR-001 §"Error semantics"; never implemented at the stage-dispatch layer.
-- **`init` and `finalize` at stage-dispatch** — declared in ADR-001 §"Lifecycle ordering"; never called at the stage-dispatch layer.
+| Declaration | Status |
+|-------------|--------|
+| `valid_verdicts` | In manifests, adoption 1 of 25, **no engine code reads it**. This contract makes it load-bearing (§6) — enforced by #1708. It is a gap to close, **not** a field to delete. |
+| `rc=1 → recovery routing` | ADR-001 §"Error semantics". No `kind: recovery` plugin has ever been registered; the path was never implemented. Deleted by §4. |
+| `init`, `finalize` | ADR-001 §"Lifecycle ordering". Never called. Deleted by ADR-056 (#1828). |
+| `cleanup` | Documented since ADR-001 and implemented by 20+ plugins; **never dispatched**. Given a caller by #1829 (§7). |
+| `in_type` mismatch check | `contract-validator.sh:289` — parsed, assigned, deliberately unused. Activated by #1827 (ADR-055). |
+
+The distinction that matters: `rc=1` routing and `init`/`finalize` are deleted because nothing needs them. `valid_verdicts`, `cleanup` and the `in_type` check are **kept and wired up**, because the contract depends on each. Deleting an unenforced declaration and enforcing it are both honest; leaving it declared and unread is not.
 
 ## Consequences
 
 **Positive:**
-- Stage-bound plugin authors have a single document specifying the actual call surface.
-- The gap between ADR-001's general contract and the stage-bound reality is now explicit.
-- Disposition vocabulary is normalized; semantic drift across ADR-013/021/045 is resolved.
+- One document specifies the stage call and response surface; every Phase 0 issue cites it instead of re-deriving it.
+- Recoverability becomes a declared field (`disposition`) rather than a guess re-derived from a verdict string.
+- `verdict` becomes per-plugin data (`valid_verdicts`) instead of a global list the engine has to keep guessing at.
+- Unrecognized stops being free: an undeclared verdict, an absent required hook, and an `rc=0` with no result are all structural failures.
 
 **Negative / costs:**
-- Plugins that implemented `init`/`finalize` for stage-bound work need to be audited and migrated to `run` or `cleanup` as appropriate.
-- Recovery plugins declared in ADR-001 as a target for `rc=1` have never been invoked; the routing path should be explicitly removed or implemented in a follow-up.
+- Every plugin manifest and most `plugin.sh` files change. The F-wave migrations (#1833–#1849) carry that, one plugin per PR.
+- The engine must read v1 and v2 results concurrently until the last plugin migrates; #1850 removes the v1 path and the no-result fallbacks together.
+- Stricter contracts surface latent breakage: runs that previously continued on an unparseable result now fail. That is the intent, and it is why #1821–#1823 gate #1798.
 
 ## Implementation Notes (issue #1820)
 
-This ADR documents the current state as of 2026-08-09. No code changes are introduced in this issue; the phantom declarations (§10) are recorded as-found. Removal of dead code and recovery-routing implementation are deferred to follow-up issues.
+**No code changes in this issue.** This ADR is the specification; the table below is the delivery map. A section describing behaviour the engine does not yet have is a specification, not a claim about today.
 
-Relevant code sites:
-- `core/plugin-registry/registry.sh` — `plugin_hook_call` dispatches `run` and `cleanup` at the stage layer; `init`/`finalize` calls are absent at this layer.
-- `core/pipeline/runner.sh` — synthesizes rc 5/8/9/10/11/143; owns the trap; calls `cleanup` on abnormal exit.
-- `core/router/route.sh` — `_route_resolve_knob`, `_route_resolve_timeout`, `_route_resolve_max_turns`, `_route_resolve_max_iterations`, `_route_resolve_retries`.
-- `core/pipeline/template.sh` — `template_stage_router_*` accessors; name-mangled env vars for per-stage knobs.
+| § | Contract | Delivered by |
+|---|----------|--------------|
+| 1 | Two hooks; `init`/`finalize` deleted | ADR-056 / #1828 — landed |
+| 2 | `run(stage_id, state_file, resolved_inputs)` | #1826 |
+| 4 | rc ∈ {0,1}; classify an `rc=1` that left no result | #1823 |
+| 5 | One result file, `result_contract` version key | #1821 — landed; negotiation #1824 |
+| 6 | Disposition vocabulary + engine response table | #1822; verdict migration #1832; `valid_verdicts` enforcement #1708 |
+| 7 | `cleanup(scope)`; teardown stage; `clean.yaml` | #1829, after single-owner traps #1759 |
+
+Relevant code sites as of writing:
+- `core/plugin-registry/lifecycle.sh` — `plugin_hook_call`; the only hook dispatcher.
+- `core/pipeline/verdict.sh` — result reading and verdict classification.
+- `core/pipeline/runner.sh` — owns the signal traps; synthesizes the runner-internal rcs listed in §4.
+- `core/router/route.sh` — `_route_resolve_knob` and the per-knob resolvers (§9).
+- `core/pipeline/template.sh` — `template_stage_router_*` accessors.
 
 ## References
 
@@ -164,4 +215,6 @@ Relevant code sites:
 - [ADR-021](ADR-021-pipeline-cycle-semantics.md) — cycle semantics; disposition vocabulary cross-reference.
 - [ADR-025](ADR-025-abort-propagation.md) — abort/trap lifecycle; amended by this ADR (cleanup hook ownership clarification).
 - [ADR-045](ADR-045-bounded-typed-backward-route.md) — bounded route; disposition vocabulary cross-reference.
-- [ADR-047](ADR-047-stage-agnostic-mechanics.md) — stage-agnostic mechanics; v2 result file (§3).
+- [ADR-047](ADR-047-stage-agnostic-mechanics.md) — stage-agnostic mechanics; the parent principle. Its thesis — the mechanics read declared data, never stage names — is this contract one level up.
+- [ADR-055](ADR-055-inter-stage-data-contract-v2.md) — the data and declaration surfaces; written with this ADR.
+- [ADR-056](ADR-056-run-cleanup-only-lifecycle.md) — carries out the `init`/`finalize` deletion and owns the resulting hook lifecycle (§1).
