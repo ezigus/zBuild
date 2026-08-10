@@ -2115,6 +2115,12 @@ main() {
             _CYCLE_DISPATCH_VERDICT="error"
             _CYCLE_DISPATCH_VERDICT_RAW="error"
             _CYCLE_DISPATCH_STATUS="failed"
+            # #1822: a member whose plugin does not resolve is a dispatch that
+            # returned non-zero and left no result — ADR-054 §6's `broken`.
+            # Stated here because this path returns before the reader below;
+            # runner_read_stage_disposition would reach the same conclusion from
+            # the absent manifest, and the two must not disagree by omission.
+            _CYCLE_DISPATCH_DISPOSITION="broken"
             return 1
         fi
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e

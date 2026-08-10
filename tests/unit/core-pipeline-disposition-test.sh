@@ -228,6 +228,15 @@ assert_eq "died (rc=1) with no result -> broken" \
 assert_file_not_exists "the engine did not fabricate a result file" \
     "$ART_DIR/dead-result.json"
 
+# No manifest at all — a member whose plugin does not resolve. This is the rule
+# `cycle_dispatch_stage`'s no-plugin early return mirrors explicitly: that path
+# returns before reaching the reader, so it states `broken` itself rather than
+# letting the two disagree by omission.
+assert_eq "died (rc=1) with no manifest to read -> broken" \
+    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "" "noplugin" 1)"
+assert_eq "...but a CLEAN exit with no manifest declares nothing (v1 contract-bypass)" \
+    "" "$(runner_read_stage_disposition "$STATE_DIR" "" "noplugin" 0)"
+
 # A result that exists but is unparseable is a defect too — the stage claimed
 # to have written an answer and did not.
 printf '{not json' > "$ART_DIR/dead-result.json"
