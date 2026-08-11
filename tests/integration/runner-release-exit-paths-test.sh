@@ -86,7 +86,12 @@ build_run() {
     fi
     return "${BUILD_RC:-0}"
 }
-build_cleanup() { printf 'build:%s\n' "${3:-NOSCOPE}" >> "${RELEASE_MARKER}"; return 0; }
+build_cleanup() {
+    printf 'build:%s\n' "${3:-NOSCOPE}" >> "${RELEASE_MARKER}"
+    # A hook that never returns — used to prove the dispatch is bounded.
+    [[ "${BLOCK_CLEANUP:-0}" == "1" ]] && sleep 120
+    return 0
+}
 PLUG
 cat > "$PLUGINS_ROOT/tool/test/plugin.sh" <<'PLUG'
 test_run() { return 0; }
@@ -210,6 +215,28 @@ else
     set -e
     for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
     _assert_released "SPEC-5"
+fi
+
+# ── SPEC-6: a blocking cleanup hook cannot hold the exit open ────────────────
+# The dispatch runs inside the EXIT trap, so an unbounded hook would turn a
+# normal exit into a hang — the same class of bug (a process that outlives the
+# run) that this mechanism exists to prevent.
+print_test_section "SPEC-6: a cleanup hook that blocks cannot hang the runner"
+_prep blocking
+export BUILD_RC=0 BLOCK_CLEANUP=1 ZBUILD_RELEASE_TIMEOUT=3
+_t0=$(date +%s)
+set +e
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-blocking" ) \
+    >"$CASE_DIR/out" 2>&1
+set -e
+_elapsed=$(( $(date +%s) - _t0 ))
+unset BLOCK_CLEANUP ZBUILD_RELEASE_TIMEOUT
+# The blocking hook sleeps 120s; the 3s bound must cut it short. Allow generous
+# headroom for a loaded host while still failing an unbounded wait.
+if [[ "$_elapsed" -lt 60 ]]; then
+    assert_pass "[SPEC-6] blocking cleanup is bounded (runner exited in ${_elapsed}s)"
+else
+    assert_fail "[SPEC-6] blocking cleanup is bounded" "runner took ${_elapsed}s"
 fi
 
 cleanup_test_env

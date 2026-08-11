@@ -87,7 +87,7 @@ teardown_run() {
         [[ $_rc -eq "$ZBUILD_HOOK_ABSENT" ]] && continue
 
         if [[ $_rc -ne 0 ]]; then
-            emit_event "stage.cleanup.release.failed" \
+            emit_event "stage.cleanup.failed" \
                 "stage=$_stage" "scope=$_scope" "rc=$_rc" 2>/dev/null || true
             _any_failed=1
         fi

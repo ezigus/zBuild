@@ -124,10 +124,10 @@ EOF
 
     assert_eq "[SPEC-2] teardown_run returns 0 even when cleanup hook fails" "0" "$_spec2_result"
 
-    if [[ -f "$_spec2_events" ]] && grep -q '"stage.cleanup.release.failed"' "$_spec2_events" 2>/dev/null; then
-        assert_pass "[SPEC-2] stage.cleanup.release.failed event emitted on non-zero cleanup"
+    if [[ -f "$_spec2_events" ]] && grep -q '"stage.cleanup.failed"' "$_spec2_events" 2>/dev/null; then
+        assert_pass "[SPEC-2] stage.cleanup.failed event emitted on non-zero cleanup"
     else
-        assert_fail "[SPEC-2] stage.cleanup.release.failed event emitted on non-zero cleanup" \
+        assert_fail "[SPEC-2] stage.cleanup.failed event emitted on non-zero cleanup" \
             "event not found in: $(cat "$_spec2_events" 2>/dev/null | head -5 || echo none)"
     fi
 fi
@@ -160,7 +160,7 @@ print_test_section "SPEC-3: scope=release kills PGID, staging dir remains intact
     # Write a long-running background process and record its PID.
     sleep 60 &
     _spec3_bgpid=$!
-    printf '%s' "$_spec3_bgpid" > "$_spec3_runtime_dir/test-stage.pgid"
+    printf '%s' "$_spec3_bgpid" > "$_spec3_runtime_dir/test-stage.pid"
     printf '%s' "$_spec3_staging" > "$_spec3_runtime_dir/test-staging-path"
 
     # Call release cleanup.
@@ -252,10 +252,10 @@ EOF
     ) || _spec4_result=$?
 
     assert_eq "[SPEC-4] teardown_run returns 0 when stage has no cleanup hook" "0" "$_spec4_result"
-    # No stage.cleanup.release.failed event should be emitted (ZBUILD_HOOK_ABSENT is not a failure).
-    if [[ -f "$_spec4_events" ]] && grep -q '"stage.cleanup.release.failed"' "$_spec4_events" 2>/dev/null; then
+    # No stage.cleanup.failed event should be emitted (ZBUILD_HOOK_ABSENT is not a failure).
+    if [[ -f "$_spec4_events" ]] && grep -q '"stage.cleanup.failed"' "$_spec4_events" 2>/dev/null; then
         assert_fail "[SPEC-4] absent cleanup hook emits no failure event" \
-            "unexpected stage.cleanup.release.failed event found"
+            "unexpected stage.cleanup.failed event found"
     else
         assert_pass "[SPEC-4] absent cleanup hook emits no failure event (ZBUILD_HOOK_ABSENT=3 is a no-op)"
     fi

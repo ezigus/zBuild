@@ -200,12 +200,12 @@ _test_run_inner() {
     local _runtime_dir; _runtime_dir="$(_test_runtime_dir "$(dirname "$(dirname "$output_json")")")"
     mkdir -p "$_runtime_dir" 2>/dev/null || true
     local _staging_path_file="$_runtime_dir/test-staging-path"
-    local _pgid_file="$_runtime_dir/test-stage.pgid"
+    local _pid_file="$_runtime_dir/test-stage.pid"
     printf '%s' "$tmp" > "$_staging_path_file" 2>/dev/null || true
     # #1829: RETURN trap kills any lingering eval subshell PGID; does NOT
     # rm -rf the staging dir — that is test_cleanup(purge)'s responsibility.
     # shellcheck disable=SC2064
-    trap "_test_kill_staging_pgid '$_pgid_file'" RETURN
+    trap "_test_kill_staging_pid '$_pid_file'" RETURN
     local verdict="error"
     local exit_code=2
     local diff_applied=false
@@ -354,7 +354,7 @@ _test_run_inner() {
         [[ -n "$_zbt_results_json" ]] && export ZBUILD_TEST_RESULTS_JSON="$_zbt_results_json"
         # #1829 (ADR-054 §7): record this subshell's PID so the RETURN trap
         # can kill it on an interrupted return path.
-        printf '%s' "$BASHPID" > "$_pgid_file" 2>/dev/null || true
+        printf '%s' "$BASHPID" > "$_pid_file" 2>/dev/null || true
         eval "$actual_test_cmd" 2>&1
     )" || test_rc=$?
 
@@ -801,10 +801,19 @@ _test_runtime_dir() {
     printf '%s' "${1%/}/runtime"
 }
 
-# ─── _test_kill_staging_pgid <pgid_file> ─────────────────────────────────────
-# Best-effort: read PID from <pgid_file> and send TERM then KILL to stop
-# any lingering eval subshell. Used by the RETURN trap (#1829, ADR-054 §7).
-_test_kill_staging_pgid() {
+# ─── _test_kill_staging_pid <pid_file> ───────────────────────────────────────
+# Best-effort: read the PID from <pid_file> and TERM-then-KILL the eval
+# subshell (#1829, ADR-054 §7).
+#
+# Single PID, deliberately — NOT a process group. `_test_run_inner` does not
+# enable job control, so the `$( )` subshell that runs the suite shares the
+# RUNNER's process group; `kill -- -$pgid` here would take down the whole
+# pipeline, not the test tree. The cost is honest and bounded: a suite that
+# forks its own children (a node/pytest tree) can outlive this kill. Giving
+# those children their own group is a `set -m` change to the eval site, which
+# is a larger change than this issue carries — the file is named `.pid` rather
+# than `.pgid` so the limitation is legible at the call site.
+_test_kill_staging_pid() {
     local _pf="${1:-}"
     [[ -f "$_pf" ]] || return 0
     local _pid; _pid="$(cat "$_pf" 2>/dev/null || true)"
@@ -832,8 +841,8 @@ test_cleanup() {
     case "$_scope" in
         release)
             # Kill any lingering test subprocess; do NOT delete the staging dir.
-            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-stage.pgid" ]]; then
-                _test_kill_staging_pgid "$_runtime_dir/test-stage.pgid"
+            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-stage.pid" ]]; then
+                _test_kill_staging_pid "$_runtime_dir/test-stage.pid"
             fi
             emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=release" \
                 2>/dev/null || true

@@ -1,6 +1,6 @@
 # teardown
 
-The teardown plugin iterates over all stages that executed in the current pipeline run and dispatches `cleanup` with `scope=release` to each stage's plugin. It always returns 0 — cleanup failures are recorded as `stage.cleanup.release.failed` events, never propagated as verdict changes.
+The teardown plugin iterates over all stages that executed in the current pipeline run and dispatches `cleanup` with `scope=release` to each stage's plugin. It always returns 0 — cleanup failures are recorded as `stage.cleanup.failed` events, never propagated as verdict changes.
 
 **Teardown Plugin**
 
@@ -24,7 +24,7 @@ hooks:
 `teardown_run` reads the `stage_statuses` map in `pipeline-state.json`, collects every stage recorded as `complete` or `failed`, resolves each stage's plugin directory, and calls `plugin_hook_call cleanup <stage> <state_file> <scope>` for each.
 
 - `ZBUILD_HOOK_ABSENT` (rc=3) — plugin has no `cleanup` hook; treated as a supported no-op, no error emitted.
-- Any other non-zero rc — emits `stage.cleanup.release.failed` event and continues; teardown still returns 0.
+- Any other non-zero rc — emits `stage.cleanup.failed` event and continues; teardown still returns 0.
 - The teardown stage itself is skipped to prevent circular dispatch.
 
 ## Scope contract (ADR-054 §7)
@@ -47,7 +47,7 @@ Consequence, by construction: **a failed run leaves all of its evidence on disk.
 | `teardown.start` | At the start of `teardown_run` |
 | `teardown.complete` | After all stages have been processed |
 | `teardown.scope.invalid` | An unrecognised scope was requested; `release` used instead |
-| `stage.cleanup.release.failed` | When a plugin's `cleanup` hook returns non-zero |
+| `stage.cleanup.failed` | When a plugin's `cleanup` hook returns non-zero |
 
 ## Wiring
 

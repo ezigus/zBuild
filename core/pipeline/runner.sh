@@ -1827,14 +1827,23 @@ main() {
         [[ -d "$_td_dir" ]] || return 0
         # Subshell contains the export; `|| true` because a cleanup failure is
         # recorded as an event and must never change the run's exit status.
-        # Deliberately NOT wrapped in gtimeout: plugin_hook_call is a shell
-        # function, and a timeout binary can only exec a command — the wrapper
-        # would fail with "command not found" and silently skip every release.
-        # `release` frees handles and signals process groups; it is expected to
-        # be non-blocking. A hook that blocks here holds the exit open.
+        #
+        # Bounded, because this runs inside the EXIT trap: a cleanup hook that
+        # blocks would turn a Ctrl-C into a hang — the exact class of bug this
+        # mechanism exists to prevent. A timeout BINARY cannot be used here
+        # (plugin_hook_call is a shell function; timeout can only exec a
+        # command, so the wrapper would fail with "command not found" and
+        # silently skip every release). The bound is therefore a watchdog that
+        # is CANCELLED on the normal path, so no stray `sleep` outlives the run.
         (
             export ZBUILD_TEARDOWN_SCOPE=release
-            plugin_hook_call "$_td_dir" run teardown "$_runner_state_file"
+            plugin_hook_call "$_td_dir" run teardown "$_runner_state_file" &
+            _td_pid=$!
+            ( sleep "${ZBUILD_RELEASE_TIMEOUT:-30}"; kill -TERM "$_td_pid" 2>/dev/null || true ) &
+            _wd_pid=$!
+            wait "$_td_pid" 2>/dev/null || true
+            kill -TERM "$_wd_pid" 2>/dev/null || true
+            wait "$_wd_pid" 2>/dev/null || true
         ) >/dev/null 2>&1 || true
         return 0
     }
