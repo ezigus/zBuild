@@ -424,12 +424,15 @@ hook_rc=$?
 set -e
 assert_eq "plugin_hook_call returns 0 when scanner passes" "0" "$hook_rc"
 
-# Tool plugin without provides.artifact_type → scanner is no-op (always passes).
+# ── SPEC-3: scanner is a no-op for plugins with neither outputs nor artifact_type ─
+# GUARD: existing behavior — a plugin with no outputs section and no
+# provides.artifact_type must not be scanned (returns 0). Uses test-tool which
+# has no outputs: and no provides.artifact_type.
 set +e
 scan_plugin_outputs "$FIXTURE_ROOT/tool/test-tool" "$PLUG_STATE_FILE" 2>/dev/null
 rc=$?
 set -e
-assert_eq "scanner no-op for plugins without provides.artifact_type" "0" "$rc"
+assert_eq "[SPEC-3] scanner no-op for plugin with no outputs and no artifact_type" "0" "$rc"
 
 # ─── Optional doc fields: summary + usage (issue #1414) ─────────────────────
 # (a) manifest with both fields present and non-empty passes.
@@ -530,6 +533,35 @@ _spec9_rc=$?
 set -e
 assert_eq "[SPEC-9] plugin_hook_call returns ZBUILD_HOOK_ABSENT (3) for absent cleanup" \
     "3" "$_spec9_rc"
+
+# ── SPEC-4: required:false output absent returns 0 even when artifact_type is set ─
+# GUARD: the awk skips required:false entries, so absent optional outputs are
+# never flagged even when the plugin declares provides.artifact_type — this is
+# the #511 F2 regression guard.
+mkdir -p "$FIXTURE_ROOT/tool/optional-output"
+cat > "$FIXTURE_ROOT/tool/optional-output/manifest.yaml" <<'EOF'
+id: optional-output
+name: Optional Output
+kind: tool
+version: 0.0.1
+hooks:
+  run: oo_run
+provides:
+  artifact_type: optional.json
+outputs:
+  - name: optional
+    path: ${artifact_dir}/optional.json
+    required: false
+EOF
+cat > "$FIXTURE_ROOT/tool/optional-output/plugin.sh" <<'EOF'
+oo_run() { :; }
+EOF
+
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/tool/optional-output" "$PLUG_STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-4] required:false output absent returns 0 even when artifact_type set" "0" "$rc"
 
 cleanup_test_env
 print_test_results

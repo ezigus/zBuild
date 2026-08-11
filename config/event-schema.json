@@ -120,6 +120,7 @@
     "detection.conflict",
     "plugin.contract.violated",
     "plugin.artifact.missing",
+    "plugin.artifact.empty",
     "plugin.run.artifact_check_failed",
     "plugin.tamper.detected",
     "intake.refused.issue_closed",

@@ -89,6 +89,10 @@ mechanic reads the flag:
 - `provides_detailed_failure_count` — the cycle prefers a structured failure count over a
   generic fail.
 - `produces_commits` + `empty_diff_legitimate` — the cycle's no-committed-changes policy.
+  *Amendment (#1803):* `empty_diff_legitimate` also exempts the stage's **non-primary**
+  outputs from the artifact scanner's non-empty check (build's zero-byte `diff.patch`).
+  It never exempts a `primary: true` output, so a stage cannot use the flag to pass an
+  empty verdict artifact.
 - `feedback_fields` — how a stage's feedback is formatted into the cycle digest.
 
 ### 5. Membership + order are fail-closed, manifest-derived preflights

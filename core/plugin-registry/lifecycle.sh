@@ -30,8 +30,10 @@ _ZBUILD_REGISTRY_LIFECYCLE_LOADED=1
 #      `plugin.artifact.missing` event per missing path.
 #
 # Path-template substitution (Phase 0.5): supports ${state_dir} and
-# ${artifact_dir} / ${artifacts_dir}. Other env vars are best-effort:
-# unsubstituted references remain literal (and will fail the existence check).
+# ${artifact_dir} / ${artifacts_dir}. Any other ${VAR} resolves from the work
+# unit's exported environment (#1803) — per-member outputs such as review-lens's
+# `lens-${ZBUILD_REVIEW_LENS_ID}.json` (ADR-047 §2) are only checkable once the
+# element var is expanded. A var that is unset stays literal and fails the check.
 scan_plugin_outputs() {
     local plugin_dir="$1"
     local state_file="${2:-}"
@@ -44,9 +46,11 @@ scan_plugin_outputs() {
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
     local kind; kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
     local artifact_type; artifact_type="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null || true)"
-
-    # If the plugin does not advertise a typed artifact, nothing to scan.
-    [[ -z "$artifact_type" ]] && return 0
+    # ADR-047 §4 capability flag: build legitimately writes a zero-byte diff.patch
+    # when a turn changed no code. The exemption is deliberately narrow — it never
+    # covers a `primary: true` output, so a stage cannot mask an empty verdict
+    # artifact (e.g. build-summary.json) by declaring the flag in its own manifest.
+    local empty_diff_ok; empty_diff_ok="$(yaml_get "$manifest" "capabilities.empty_diff_legitimate" 2>/dev/null || true)"
 
     # Compute substitution roots from state_file.
     local state_dir="" artifact_dir=""
@@ -69,12 +73,12 @@ scan_plugin_outputs() {
     # violation on every passing run, breaking the parity goldens.
     local paths
     paths="$(awk '
-        BEGIN { in_block = 0; cur_path = ""; cur_required = "" }
+        BEGIN { in_block = 0; cur_path = ""; cur_required = ""; cur_primary = "" }
         function flush() {
             if (cur_path != "" && cur_required != "false") {
-                print cur_path
+                print cur_path "\t" cur_primary
             }
-            cur_path = ""; cur_required = ""
+            cur_path = ""; cur_required = ""; cur_primary = ""
         }
         /^outputs:[[:space:]]*$/ { in_block = 1; next }
         in_block && /^[a-zA-Z_]/ { flush(); in_block = 0 }
@@ -95,24 +99,63 @@ scan_plugin_outputs() {
             cur_required = line
             next
         }
+        in_block && /^[[:space:]]+primary:[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]+primary:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            # Case-folded: a manifest writing `primary: True` must not read as
+            # non-primary and so slip past the empty-artifact guard below.
+            # `required` is deliberately NOT folded — a non-canonical value there
+            # already fails closed (treated as required).
+            cur_primary = tolower(line)
+            next
+        }
         END { flush() }
     ' "$manifest" 2>/dev/null)"
 
     [[ -z "$paths" ]] && return 0
 
     local missing=0
-    local raw_path resolved
-    while IFS= read -r raw_path; do
+    local raw_path raw_primary resolved _violation _event _var _expansions
+    while IFS=$'\t' read -r raw_path raw_primary; do
         [[ -z "$raw_path" ]] && continue
         resolved="$raw_path"
         # Phase 0.5 substitutions.
         resolved="${resolved//\$\{state_dir\}/$state_dir}"
         resolved="${resolved//\$\{artifact_dir\}/$artifact_dir}"
         resolved="${resolved//\$\{artifacts_dir\}/$artifact_dir}"
+        # Remaining ${VAR} tokens come from the work unit's exported env (the
+        # template's `as:` mapping, e.g. ZBUILD_REVIEW_LENS_ID). Indirect
+        # expansion only — never eval — so a manifest cannot inject a command.
+        # Bounded, and an unset var is left literal so the check fails loudly.
+        _expansions=0
+        while [[ $_expansions -lt 16 ]] && [[ "$resolved" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
+            _var="${BASH_REMATCH[1]}"
+            [[ -z "${!_var+x}" ]] && break
+            resolved="${resolved//\$\{$_var\}/${!_var}}"
+            _expansions=$((_expansions + 1))
+        done
 
+        # An absent output always violates; a zero-byte one violates unless the
+        # plugin declared the empty-diff capability AND this is not its primary.
+        _violation=""
         if [[ ! -e "$resolved" ]]; then
-            error "scan_plugin_outputs: plugin=$plugin_id declared output missing: $resolved (template: $raw_path)"
-            emit_event "plugin.artifact.missing" \
+            _violation="absent"
+            _event="plugin.artifact.missing"
+        elif [[ ! -s "$resolved" ]] &&
+             ! { [[ "$empty_diff_ok" == "true" ]] && [[ "$raw_primary" != "true" ]]; }; then
+            _violation="empty"
+            _event="plugin.artifact.empty"
+        fi
+
+        if [[ -n "$_violation" ]]; then
+            if [[ "$_violation" == "absent" ]]; then
+                error "scan_plugin_outputs: plugin=$plugin_id declared output missing: $resolved (template: $raw_path)"
+            else
+                error "scan_plugin_outputs: plugin=$plugin_id declared output is empty (zero bytes): $resolved (template: $raw_path)"
+            fi
+            emit_event "$_event" \
                 "plugin=$plugin_id" \
                 "kind=$kind" \
                 "artifact_type=$artifact_type" \
@@ -135,15 +178,21 @@ scan_plugin_outputs() {
                     --arg plugin "$plugin_id" \
                     --arg artifact_type "$artifact_type" \
                     --arg path "$resolved" \
+                    --arg violation "$_violation" \
                     '{
                         schema_version: 1,
                         findings: [{
                             id: "artifact-contract-violated",
-                            title: ("Plugin contract violated: " + $plugin + " declared provides.artifact_type=" + $artifact_type + " but wrote no artifact"),
+                            title: ("Plugin contract violated: " + $plugin +
+                                    (if $violation == "empty"
+                                     then " wrote an empty (zero-byte) required output"
+                                     else " declared a required output but wrote no artifact" end)),
                             severity: "blocking",
                             stage: $stage,
                             plugin: $plugin,
-                            detail: ("Expected artifact at: " + $path)
+                            detail: ("Expected artifact at: " + $path +
+                                     (if $artifact_type == "" then ""
+                                      else " (provides.artifact_type=" + $artifact_type + ")" end))
                         }]
                     }' > "$_findings_file" 2>/dev/null || true
             fi
