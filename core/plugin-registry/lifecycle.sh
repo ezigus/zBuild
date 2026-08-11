@@ -104,7 +104,11 @@ scan_plugin_outputs() {
             sub(/^[[:space:]]+primary:[[:space:]]*/, "", line)
             sub(/[[:space:]]*#.*/, "", line)
             gsub(/^["'"'"']|["'"'"']$/, "", line)
-            cur_primary = line
+            # Case-folded: a manifest writing `primary: True` must not read as
+            # non-primary and so slip past the empty-artifact guard below.
+            # `required` is deliberately NOT folded — a non-canonical value there
+            # already fails closed (treated as required).
+            cur_primary = tolower(line)
             next
         }
         END { flush() }

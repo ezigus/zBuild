@@ -159,6 +159,18 @@ else
     assert_fail "[SPEC-6/7] real build plugin manifest present" "not found at $BUILD_PLUGIN"
 fi
 
+# ── SPEC-10: a non-canonical `primary: True` must still count as primary ──────
+# The exemption check compares strings; if `True` read as non-primary, a plugin
+# holding the capability flag would silently regain the zero-byte pass it is
+# supposed to be denied. Fails OPEN if unhandled, hence a guard.
+_write_exempt_plugin exempt-primary-caps exempt-primary-caps True
+: > "$STATE_DIR/artifacts/exempt-primary-caps.json"
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/agent/exempt-primary-caps" "$STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-10] 'primary: True' still counts as primary (zero-byte rejected)" "1" "$rc"
+
 # ── SPEC-8/9: per-member output paths (${ZBUILD_REVIEW_LENS_ID}) ──────────────
 # review-lens declares `lens-${ZBUILD_REVIEW_LENS_ID}.json` required:true and has
 # no provides.artifact_type — it was exempt from the scanner before #1803. Once
