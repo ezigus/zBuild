@@ -2,7 +2,7 @@
 # Integration: cleanup(scope) — release frees live resources, purge is operator-only
 # ADR-054 §7 (issue #1829)
 #
-# Covers SPEC-1 through SPEC-4 and SPEC-6.
+# Covers SPEC-1 through SPEC-4, SPEC-6 and SPEC-7.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
