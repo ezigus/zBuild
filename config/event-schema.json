@@ -264,6 +264,9 @@
     "validate.health_check.rejected",
     "monitor.started",
     "monitor.check",
-    "monitor.alert"
+    "monitor.alert",
+    "teardown.start",
+    "teardown.complete",
+    "stage.cleanup.release.failed"
   ]
 }
