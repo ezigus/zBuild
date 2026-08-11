@@ -83,6 +83,109 @@ rc=$?
 set -e
 assert_eq "[SPEC-2] required:true output exists but is zero-bytes returns 1" "1" "$rc"
 
+# ── empty_diff_legitimate exemption: scope and limits ─────────────────────────
+# ADR-047 §4 lets a plugin declare that an empty artifact is legitimate (build's
+# diff.patch when a turn changed no code). SPEC-3/4/5 pin how far that reaches.
+_write_exempt_plugin() {   # $1=dir  $2=id  $3=primary value for the output
+    mkdir -p "$FIXTURE_ROOT/agent/$1"
+    cat > "$FIXTURE_ROOT/agent/$1/manifest.yaml" <<EOF
+id: $2
+name: Exempt $2
+kind: agent
+version: 0.0.1
+hooks:
+  run: ${2//-/_}_run
+outputs:
+  - name: out
+    path: \${artifact_dir}/$2.json
+    required: true
+    primary: $3
+capabilities:
+  empty_diff_legitimate: true
+EOF
+    echo "${2//-/_}_run() { :; }" > "$FIXTURE_ROOT/agent/$1/plugin.sh"
+}
+
+# SPEC-3: the flag exempts a NON-primary zero-byte output — build's empty diff.patch
+# must keep passing, otherwise the fix breaks every no-code-change build turn.
+_write_exempt_plugin exempt-nonprimary exempt-nonprimary false
+: > "$STATE_DIR/artifacts/exempt-nonprimary.json"
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/agent/exempt-nonprimary" "$STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-3] empty_diff_legitimate exempts a zero-byte NON-primary output (rc 0)" "0" "$rc"
+
+# SPEC-4: the flag must NOT exempt a primary output — a plugin cannot mask an
+# empty verdict artifact by declaring the capability in its own manifest.
+_write_exempt_plugin exempt-primary exempt-primary true
+: > "$STATE_DIR/artifacts/exempt-primary.json"
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/agent/exempt-primary" "$STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-4] empty_diff_legitimate does NOT exempt a zero-byte PRIMARY output (rc 1)" "1" "$rc"
+
+# SPEC-5: the flag downgrades emptiness only — an absent output still fails.
+_write_exempt_plugin exempt-absent exempt-absent false
+rm -f "$STATE_DIR/artifacts/exempt-absent.json"
+set +e
+scan_plugin_outputs "$FIXTURE_ROOT/agent/exempt-absent" "$STATE_FILE" 2>/dev/null
+rc=$?
+set -e
+assert_eq "[SPEC-5] empty_diff_legitimate still fails an ABSENT output (rc 1)" "1" "$rc"
+
+# ── SPEC-6/7: the real build manifest, not a fixture ──────────────────────────
+# Production check: build declares empty_diff_legitimate and two required
+# outputs — diff.patch (non-primary, legitimately empty) and build-summary.json
+# (primary). The empty diff must pass; an empty summary must not.
+BUILD_PLUGIN="$REPO_ROOT/plugins/agent/build"
+if [[ -f "$BUILD_PLUGIN/manifest.yaml" ]]; then
+    : > "$STATE_DIR/artifacts/diff.patch"
+    echo '{"verdict":"pass"}' > "$STATE_DIR/artifacts/build-summary.json"
+    set +e
+    scan_plugin_outputs "$BUILD_PLUGIN" "$STATE_FILE" 2>/dev/null
+    rc=$?
+    set -e
+    assert_eq "[SPEC-6] real build plugin: empty diff.patch + written summary passes" "0" "$rc"
+
+    : > "$STATE_DIR/artifacts/build-summary.json"
+    set +e
+    scan_plugin_outputs "$BUILD_PLUGIN" "$STATE_FILE" 2>/dev/null
+    rc=$?
+    set -e
+    assert_eq "[SPEC-7] real build plugin: zero-byte primary build-summary.json fails" "1" "$rc"
+else
+    assert_fail "[SPEC-6/7] real build plugin manifest present" "not found at $BUILD_PLUGIN"
+fi
+
+# ── SPEC-8/9: per-member output paths (${ZBUILD_REVIEW_LENS_ID}) ──────────────
+# review-lens declares `lens-${ZBUILD_REVIEW_LENS_ID}.json` required:true and has
+# no provides.artifact_type — it was exempt from the scanner before #1803. Once
+# required:true is enforced, the element var MUST expand or the stage fails on
+# every run (the work unit exports it per ADR-047 §2).
+LENS_PLUGIN="$REPO_ROOT/plugins/agent/review-lens"
+if [[ -f "$LENS_PLUGIN/manifest.yaml" ]]; then
+    export ZBUILD_REVIEW_LENS_ID="security"
+    echo '{"lens":"security"}' > "$STATE_DIR/artifacts/lens-security.json"
+    set +e
+    scan_plugin_outputs "$LENS_PLUGIN" "$STATE_FILE" 2>/dev/null
+    rc=$?
+    set -e
+    assert_eq "[SPEC-8] real review-lens: \${ZBUILD_REVIEW_LENS_ID} expands and passes" "0" "$rc"
+
+    # Same plugin, the element's artifact absent → still fails (enforcement real).
+    rm -f "$STATE_DIR/artifacts/lens-security.json"
+    set +e
+    scan_plugin_outputs "$LENS_PLUGIN" "$STATE_FILE" 2>/dev/null
+    rc=$?
+    set -e
+    assert_eq "[SPEC-9] real review-lens: absent per-lens artifact still fails" "1" "$rc"
+    unset ZBUILD_REVIEW_LENS_ID
+else
+    assert_fail "[SPEC-8/9] real review-lens manifest present" "not found at $LENS_PLUGIN"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
