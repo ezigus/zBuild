@@ -6,9 +6,13 @@ description: |
   Iterates over all stages that executed in the current pipeline run,
   resolves each stage's plugin directory, and calls plugin_hook_call cleanup
   with scope=release for each. Always returns 0 — cleanup failures are
-  recorded via stage.cleanup.release.failed events, never propagated.
-  Dispatched by the runner at every pipeline exit path.
-  Never dispatches scope=purge — that is operator-only (future CLI subcommand).
+  recorded via stage.cleanup.failed events, never propagated.
+  Dispatched by the runner from its EXIT trap at every pipeline exit path
+  (success, non-zero rc, SIGINT, SIGTERM, timeout) with scope pinned to
+  release. No run path can select scope=purge: the runner exports
+  release, overriding any ambient value, and an unrecognised scope
+  degrades to release. purge is reachable only via clean.yaml, by an
+  operator who asks for it.
 
 hooks:
   run: teardown_run
