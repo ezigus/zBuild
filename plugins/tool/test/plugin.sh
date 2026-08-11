@@ -192,14 +192,20 @@ _test_run_inner() {
 
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
-    # #628: function-scoped RETURN trap self-cleans the staging dir on every
-    # exit path (missing-diff guard, apply-fail return, success). No conflict
-    # with the runner's SCRIPT-level EXIT trap (_runner_abort_trap) — RETURN
-    # fires per-function-frame only. Single-quoted body: $tmp is expanded at
-    # trap-install time and "frozen" into the trap action so reassigning
-    # $tmp later (never happens here, but defensively) wouldn't redirect rm.
+    # ADR-054 §7 (#1829): persist staging path + child PID so cleanup can find
+    # them from a later stage (a different process). These live under
+    # state_dir/runtime/, NOT artifacts/ — a PID and a mktemp path are live
+    # process bookkeeping, not stage outputs, and their contents differ by
+    # machine, which would break the local-vs-CI parity contract by construction.
+    local _runtime_dir; _runtime_dir="$(_test_runtime_dir "$(dirname "$(dirname "$output_json")")")"
+    mkdir -p "$_runtime_dir" 2>/dev/null || true
+    local _staging_path_file="$_runtime_dir/test-staging-path"
+    local _pid_file="$_runtime_dir/test-stage.pid"
+    printf '%s' "$tmp" > "$_staging_path_file" 2>/dev/null || true
+    # #1829: RETURN trap kills any lingering eval subshell PGID; does NOT
+    # rm -rf the staging dir — that is test_cleanup(purge)'s responsibility.
     # shellcheck disable=SC2064
-    trap "rm -rf '$tmp' 2>/dev/null || true" RETURN
+    trap "_test_kill_staging_pid '$_pid_file'" RETURN
     local verdict="error"
     local exit_code=2
     local diff_applied=false
@@ -346,6 +352,9 @@ _test_run_inner() {
         # evaluated later at parse time (outside this fresh shell) and needs no
         # re-export here. Absent when the repo declares no contract.
         [[ -n "$_zbt_results_json" ]] && export ZBUILD_TEST_RESULTS_JSON="$_zbt_results_json"
+        # #1829 (ADR-054 §7): record this subshell's PID so the RETURN trap
+        # can kill it on an interrupted return path.
+        printf '%s' "$BASHPID" > "$_pid_file" 2>/dev/null || true
         eval "$actual_test_cmd" 2>&1
     )" || test_rc=$?
 
@@ -783,8 +792,76 @@ _test_write_result() {
     fi
 }
 
+# ─── _test_runtime_dir <state_dir> ───────────────────────────────────────────
+# Live-resource bookkeeping (child PIDs, staging paths) lives here, deliberately
+# NOT under artifacts/: a PID and a mktemp path are machine-specific, so putting
+# them in the artifact tree breaks the local-vs-CI parity contract and misfiles
+# scratch state as a stage output (#1829).
+_test_runtime_dir() {
+    printf '%s' "${1%/}/runtime"
+}
+
+# ─── _test_kill_staging_pid <pid_file> ───────────────────────────────────────
+# Best-effort: read the PID from <pid_file> and TERM-then-KILL the eval
+# subshell (#1829, ADR-054 §7).
+#
+# Single PID, deliberately — NOT a process group. `_test_run_inner` does not
+# enable job control, so the `$( )` subshell that runs the suite shares the
+# RUNNER's process group; `kill -- -$pgid` here would take down the whole
+# pipeline, not the test tree. The cost is honest and bounded: a suite that
+# forks its own children (a node/pytest tree) can outlive this kill. Giving
+# those children their own group is a `set -m` change to the eval site, which
+# is a larger change than this issue carries — the file is named `.pid` rather
+# than `.pgid` so the limitation is legible at the call site.
+_test_kill_staging_pid() {
+    local _pf="${1:-}"
+    [[ -f "$_pf" ]] || return 0
+    local _pid; _pid="$(cat "$_pf" 2>/dev/null || true)"
+    [[ -n "$_pid" && "$_pid" =~ ^[0-9]+$ ]] || return 0
+    kill -TERM "$_pid" 2>/dev/null || true
+    kill -KILL "$_pid" 2>/dev/null || true
+}
+
 # ─── test_cleanup ─────────────────────────────────────────────────────────────
+# ADR-054 §7 (#1829): accepts (stage_id, state_file, scope).
+# scope=release — kill any lingering test subprocess PGID; leave staging dir intact.
+# scope=purge   — delete the staging directory.
+# Called by the teardown plugin at pipeline exit; never by the RETURN trap.
+# Usage: test_cleanup <stage_id> <state_file> [scope]
 test_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool"
+    local _stage_id="${1:-test}"
+    local _state_file="${2:-}"
+    local _scope="${3:-release}"
+
+    local _runtime_dir=""
+    if [[ -n "$_state_file" ]]; then
+        _runtime_dir="$(_test_runtime_dir "$(dirname "$_state_file")")"
+    fi
+
+    case "$_scope" in
+        release)
+            # Kill any lingering test subprocess; do NOT delete the staging dir.
+            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-stage.pid" ]]; then
+                _test_kill_staging_pid "$_runtime_dir/test-stage.pid"
+            fi
+            emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=release" \
+                2>/dev/null || true
+            ;;
+        purge)
+            # Delete the staging directory located by the persisted path.
+            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-staging-path" ]]; then
+                local _staging; _staging="$(cat "$_runtime_dir/test-staging-path" 2>/dev/null || true)"
+                if [[ -n "$_staging" && -d "$_staging" ]]; then
+                    rm -rf "$_staging" 2>/dev/null || true
+                fi
+            fi
+            emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=purge" \
+                2>/dev/null || true
+            ;;
+        *)
+            emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=$_scope" \
+                2>/dev/null || true
+            ;;
+    esac
     return 0
 }

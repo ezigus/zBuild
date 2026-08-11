@@ -1808,7 +1808,50 @@ main() {
         set -m
     fi
 
+    # ── ADR-054 §7 (#1829): cleanup(release) on EVERY exit path ──────────────
+    # Success, non-zero rc, SIGINT, SIGTERM and timeout all funnel through the
+    # EXIT trap below, which is why the dispatch lives there and not at the end
+    # of main() — an exit path that skipped it would leak whatever the stage
+    # spawned. #1759 is the prerequisite: without re-armed INT/TERM traps there
+    # is no signal path for this to hang off.
+    #
+    # Scope is pinned to `release`: free live resources (process groups, locks,
+    # handles) and delete NOTHING, so a failed run keeps all of its evidence on
+    # disk. `purge` is operator-only and unreachable from any run path — the
+    # export below overrides any ambient ZBUILD_TEARDOWN_SCOPE.
+    _runner_dispatch_release() {
+        [[ "${_RUNNER_RELEASE_DISPATCHED:-0}" == "1" ]] && return 0
+        _RUNNER_RELEASE_DISPATCHED=1
+        [[ -n "${_runner_state_file:-}" && -f "${_runner_state_file}" ]] || return 0
+        local _td_dir="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}/tool/teardown"
+        [[ -d "$_td_dir" ]] || return 0
+        # Subshell contains the export; `|| true` because a cleanup failure is
+        # recorded as an event and must never change the run's exit status.
+        #
+        # Bounded, because this runs inside the EXIT trap: a cleanup hook that
+        # blocks would turn a Ctrl-C into a hang — the exact class of bug this
+        # mechanism exists to prevent. A timeout BINARY cannot be used here
+        # (plugin_hook_call is a shell function; timeout can only exec a
+        # command, so the wrapper would fail with "command not found" and
+        # silently skip every release). The bound is therefore a watchdog that
+        # is CANCELLED on the normal path, so no stray `sleep` outlives the run.
+        (
+            export ZBUILD_TEARDOWN_SCOPE=release
+            plugin_hook_call "$_td_dir" run teardown "$_runner_state_file" &
+            _td_pid=$!
+            ( sleep "${ZBUILD_RELEASE_TIMEOUT:-30}"; kill -TERM "$_td_pid" 2>/dev/null || true ) &
+            _wd_pid=$!
+            wait "$_td_pid" 2>/dev/null || true
+            kill -TERM "$_wd_pid" 2>/dev/null || true
+            wait "$_wd_pid" 2>/dev/null || true
+        ) >/dev/null 2>&1 || true
+        return 0
+    }
+
     _runner_abort_trap() {
+        # #1829: free live resources first, while the state file and the
+        # process tree are still intact.
+        _runner_dispatch_release
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
         # zbuild invocation in the same state_dir never sees a stale
