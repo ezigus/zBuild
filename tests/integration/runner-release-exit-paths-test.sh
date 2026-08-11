@@ -51,8 +51,9 @@ mock_plugin_factory "intake" "agent" 0 >/dev/null
 mock_plugin_factory "build"  "agent" 0 >/dev/null
 mock_plugin_factory "test"   "tool"  0 >/dev/null
 
-# Declare the optional cleanup hook — without it plugin_hook_call returns
-# ZBUILD_HOOK_ABSENT (3) and the stage is a no-op rather than a witness.
+# Declare the optional cleanup hook — without it plugin_hook_call emits
+# `plugin.cleanup.absent`, returns 0 (#1823: rc is binary), and the stage is a
+# no-op rather than a witness.
 # Re-emit the manifest rather than appending: `cleanup:` has to sit inside the
 # contiguous `hooks:` block, and mock_plugin_factory already wrote `requires:`
 # after it.
