@@ -284,5 +284,13 @@ plugin_hook_call() {
     else
         emit_event "plugin.$hook_name.error" "plugin=$plugin_id" "kind=$kind" "rc=$rc"
     fi
+
+    # #1823 (ADR-054 §4): the plugin's raw status passes through UNCHANGED, and
+    # deliberately so during versioned coexistence. A v1 plugin has no result
+    # field in which to say what its rc says — `plan`'s rc=10 IS its only way to
+    # report `scope_too_large` — so narrowing here would destroy the meaning of
+    # every unmigrated plugin at once. The narrowing is gated on the result
+    # contract at the dispatch boundary instead (see cycle_dispatch_stage), and
+    # becomes unconditional in #1850 when the last v1 reader is dropped.
     return $rc
 }

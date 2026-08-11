@@ -90,7 +90,13 @@ _dispatch() {
     _LAST_OBSERVATION="$(dispatch_rc_observation "$raw")"
     _LAST_RATE_LIMITED=0
     if _router_throttle_observed; then _LAST_RATE_LIMITED=1; fi
-    _LAST_NARROW_RC="$(dispatch_rc_narrow "$raw")"
+    # The version gate, exactly as the boundary applies it: v1 passes its rc
+    # through untouched, only v2 is narrowed.
+    _LAST_CONTRACT="$(runner_read_stage_contract "$ZBUILD_STATE_DIR" "$dir/manifest.yaml" "$id" "$raw")"
+    _LAST_NARROW_RC="$raw"
+    if [[ "$_LAST_CONTRACT" =~ ^[0-9]+$ ]] && [[ "$_LAST_CONTRACT" -ge 2 ]]; then
+        _LAST_NARROW_RC="$(dispatch_rc_narrow "$raw")"
+    fi
     _LAST_DISPOSITION="$(runner_read_stage_disposition \
         "$ZBUILD_STATE_DIR" "$dir/manifest.yaml" "$id" \
         "$_LAST_NARROW_RC" "$_LAST_OBSERVATION" "$_LAST_RATE_LIMITED")"
@@ -106,7 +112,15 @@ _dispatch "$_d" sigterm_stage
 # normally, every assertion below would still pass while testing nothing.
 assert_eq "[SPEC-1] the subshell really died by SIGTERM (raw rc 143)" "143" "$_LAST_RAW_RC"
 assert_eq "[SPEC-1] the boundary observes a signal" "signal" "$_LAST_OBSERVATION"
-assert_eq "[SPEC-1] rc narrows to 1 at the contract boundary" "1" "$_LAST_NARROW_RC"
+# This stub is v1 (it writes no result), so its rc is NOT narrowed — the runner
+# still sees 143 and its existing abort handling is untouched. The narrowing is
+# v2-only until #1850; section 7 pins both halves of that rule.
+assert_eq "[SPEC-1] a v1 stage's rc is NOT narrowed (coexistence)" "143" "$_LAST_NARROW_RC"
+# The classification is additive and applies either way — which is the whole
+# point: an unmigrated stage gets an honest disposition today without any
+# change to the rc it reports.
+assert_eq "[SPEC-1] but the disposition is classified regardless of version" \
+    "interrupted" "$_LAST_DISPOSITION"
 assert_eq "[SPEC-1] a killed stage is interrupted, NOT broken" "interrupted" "$_LAST_DISPOSITION"
 assert_eq "[SPEC-1] and therefore the engine retries rather than halting" \
     "retry" "$(disposition_response "$_LAST_DISPOSITION")"
@@ -206,6 +220,70 @@ _d="$(_mkstage after_throttle_stage 'return 1;')"
 _dispatch "$_d" after_throttle_stage
 assert_eq "[SPEC-6] the marker did NOT leak into the next dispatch" "0" "$_LAST_RATE_LIMITED"
 assert_eq "[SPEC-6] so the next unexplained failure is broken again" "broken" "$_LAST_DISPOSITION"
+
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "7. v1 keeps its rc; only v2 is narrowed"
+
+# The coexistence rule. A v1 plugin's exit code is still its ONLY channel —
+# `plan` reports scope_too_large as rc=10 and has no result field to say it in —
+# so narrowing every plugin today would delete the meaning of all 25 at once.
+# v2 stages declare a `disposition`, so they have somewhere else to say
+# everything the rc was carrying, and only they are held to {0,1}.
+#
+# Without this gate the change is not additive: `plan`'s rc=10 would arrive at
+# the runner as 1, the scope_too_large abort would never fire, and an oversized
+# scope would run on instead of stopping. No existing test covers that path
+# through the runner, so nothing would have caught it.
+
+_d="$(_mkstage v1_scope_stage 'return 10;')"
+_dispatch "$_d" v1_scope_stage
+assert_eq "[SPEC-7] a v1 stage declares contract 1" "1" "$_LAST_CONTRACT"
+assert_eq "[SPEC-7] and its rc=10 passes through UNCHANGED" "10" "$_LAST_NARROW_RC"
+# The legacy meaning is still recoverable as a word, so a reader that wants the
+# declared vocabulary can have it without the number.
+assert_eq "[SPEC-7] while rc=10 still maps to the exhausted disposition" \
+    "exhausted" "$(dispatch_rc_legacy_disposition "$_LAST_RAW_RC")"
+assert_eq "[SPEC-7] and to its declared reason word" \
+    "scope_too_large" "$(dispatch_rc_legacy_reason "$_LAST_RAW_RC")"
+
+# A v2 stage returning the same rc IS narrowed — it declared a disposition, so
+# nothing is lost by dropping the number.
+_d="$(_mkstage v2_scope_stage '
+    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"exhausted\",\"reason\":\"scope too large\"}" \
+        > "$ZBUILD_STATE_DIR/artifacts/v2_scope_stage-result.json"
+    return 10;')"
+_dispatch "$_d" v2_scope_stage
+assert_eq "[SPEC-7] a v2 stage declares contract 2" "2" "$_LAST_CONTRACT"
+assert_eq "[SPEC-7] its raw rc really was 10" "10" "$_LAST_RAW_RC"
+assert_eq "[SPEC-7] and it IS narrowed to 1" "1" "$_LAST_NARROW_RC"
+assert_eq "[SPEC-7] with the meaning carried by its declared word" \
+    "exhausted" "$_LAST_DISPOSITION"
+
+# And the dictionary is enforced for v2 only. An off-set word is a structural
+# failure (#1822); the engine never substitutes a plausible member.
+_d="$(_mkstage v2_bogus_stage '
+    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"wedged\",\"reason\":\"x\"}" \
+        > "$ZBUILD_STATE_DIR/artifacts/v2_bogus_stage-result.json"
+    return 1;')"
+_dispatch "$_d" v2_bogus_stage
+assert_eq "[SPEC-7] a v2 word outside the dictionary resolves to broken" \
+    "broken" "$_LAST_DISPOSITION"
+assert_contains "[SPEC-7] and is reported as a contract violation naming the word" \
+    "$(runner_read_stage_reason "$ZBUILD_STATE_DIR" "$_d/manifest.yaml" v2_bogus_stage 1)" \
+    "unknown_disposition:wedged"
+
+# A v1 stage is NOT held to the dictionary — it declares no disposition at all,
+# and absence is not an off-set word. This is what lets 25 unmigrated plugins
+# keep running while the F-wave converts them one PR at a time.
+_d="$(_mkstage v1_plain_stage '
+    printf %s "{\"verdict\":\"fail\"}" \
+        > "$ZBUILD_STATE_DIR/artifacts/v1_plain_stage-result.json"
+    return 1;')"
+_dispatch "$_d" v1_plain_stage
+assert_eq "[SPEC-7] a v1 result is not judged against the dictionary" "1" "$_LAST_CONTRACT"
+assert_eq "[SPEC-7] and yields no disposition rather than a violation" "" "$_LAST_DISPOSITION"
+assert_eq "[SPEC-7] its reason channel carries no contract violation" \
+    "" "$(runner_read_stage_reason "$ZBUILD_STATE_DIR" "$_d/manifest.yaml" v1_plain_stage 1)"
 
 cleanup_test_env
 print_test_results

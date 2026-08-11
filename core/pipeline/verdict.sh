@@ -480,6 +480,29 @@ runner_read_stage_verdict_raw() {
     printf '%s' "$raw_verdict"
 }
 
+# ─── runner_read_stage_contract <state_dir> <manifest> <stage> <rc> ─────────
+# #1823: which version of the RESULT CONTRACT this stage's result speaks — `1`
+# for today's shape (and for no result at all), `2`+ for ADR-054's.
+#
+# The rc narrowing is gated on this. A v1 plugin has no field in which to say
+# what its exit code says: `plan`'s rc=10 IS its only way to report
+# `scope_too_large`, and `design`/`validate`/`monitor` all `return 2` for a
+# missing state_file per ADR-001. Narrowing those to 1 today would delete the
+# meaning of every unmigrated plugin in one step, so v1 keeps passing its rc
+# through exactly as before and only a v2 stage — which declares a `disposition`
+# and therefore has somewhere else to say it — is held to rc ∈ {0,1}.
+#
+# This is the same versioned coexistence #1822 used for the vocabulary: the
+# closed set is consulted at `result_contract >= 2` and nowhere else. #1850
+# drops the v1 reader and the gate together, at which point the narrowing is
+# unconditional and the guard's enumerated inventory goes to zero.
+runner_read_stage_contract() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local _c_state _c_contract _c_verdict _c_disp _c_reason _c_viol _c_path _c_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _c
+    printf '%s' "${_c_contract:-1}"
+}
+
 # ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────
 # ADR-054 §6 (#1821 exposed the field; #1822 gave it a vocabulary). Resolves the
 # disposition for one dispatch. Four outcomes, in precedence order:

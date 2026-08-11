@@ -2180,17 +2180,26 @@ main() {
         # retry loop on an unrelated defect.
         _router_clear_throttle_marker
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
-        # #1823: read the RAW wait status once, here, then narrow to {0,1}. The
-        # observation is the one fact worth keeping across the narrowing — it is
-        # what separates a stage that was killed from one that is defective, and
-        # it is knowable only at this boundary.
+        local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+        # #1823: read the RAW wait status once, here. The observation is the one
+        # fact worth keeping across the narrowing — it separates a stage that was
+        # killed from one that is defective, and it is knowable only here.
         local _cd_observation; _cd_observation="$(dispatch_rc_observation "$_cd_rc")"
         # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
         # last command in the list and DOES trip it. (#1822 review finding.)
         local _cd_rate_limited=0
         if _router_throttle_observed; then _cd_rate_limited=1; fi
-        _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
-        local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+        # Narrow ONLY a v2 stage. A v1 plugin's rc is still its only channel —
+        # plan says `scope_too_large` with rc=10 and has nowhere else to say it —
+        # so v1 passes through exactly as before and nothing unmigrated changes
+        # behaviour. A v2 stage declares a `disposition`, so it has somewhere
+        # else to say everything its rc was carrying, and is held to {0,1}.
+        # #1850 drops the gate with the v1 reader.
+        local _cd_contract
+        _cd_contract="$(runner_read_stage_contract "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || printf '1')"
+        if [[ "$_cd_contract" =~ ^[0-9]+$ ]] && [[ "$_cd_contract" -ge 2 ]]; then
+            _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
+        fi
         # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
         # unknown + structural-failure pass-through) — used for .stage_verdicts
         # persistence (state_helpers.sh: verdict_class contract) and the

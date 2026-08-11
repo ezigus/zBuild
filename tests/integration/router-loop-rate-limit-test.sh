@@ -127,7 +127,7 @@ assert_contains "[SPEC-2] the reset time reaches the event stream" \
     "$_events" "resets 10:30am"
 # The pre-#1823 reason. Its absence is what proves the new branch was taken
 # rather than merely added.
-if printf '%s' "$_events" | grep -q 'claude_rc_nonzero'; then
+if grep -q 'claude_rc_nonzero' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_fail "[SPEC-2] a rate limit must NOT be reported as claude_rc_nonzero" \
         "events: $_events"
 else
@@ -173,7 +173,7 @@ assert_eq "[SPEC-4] its reason is max_iterations, not a rate limit" \
     "max_iterations" "$_ROUTE_LOOP_TERMINATED_REASON"
 assert_eq "[SPEC-4] no throttle marker is armed" \
     "1" "$( _rc=0; _router_throttle_observed || _rc=$?; printf '%s' "$_rc" )"
-if printf '%s' "$(cat "$ZBUILD_EVENTS_JSONL")" | grep -q 'router.rate_limited'; then
+if grep -q 'router.rate_limited' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_fail "[SPEC-4] a genuine failure must NOT emit router.rate_limited"
 else
     assert_pass "[SPEC-4] a genuine failure does not emit router.rate_limited"
