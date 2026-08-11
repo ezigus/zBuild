@@ -2,7 +2,7 @@
 # Integration: cleanup(scope) — release frees live resources, purge is operator-only
 # ADR-054 §7 (issue #1829)
 #
-# Covers SPEC-1 through SPEC-4 and SPEC-6.
+# Covers SPEC-1 through SPEC-4, SPEC-6 and SPEC-7.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,6 +24,26 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 TEARDOWN_DIR="$REPO_ROOT/plugins/tool/teardown"
 TEST_PLUGIN_DIR="$REPO_ROOT/plugins/tool/test"
+
+# ─── SPEC-7: the teardown plugin is self-contained ───────────────────────────
+# Every other SPEC here stubs resolve_stage_plugin to isolate the dispatch loop,
+# which is exactly what let a missing `source dispatch.sh` hide: sourced outside
+# the runner, resolve_stage_plugin was undefined, every stage hit `continue`,
+# and teardown returned 0 having freed nothing. Assert the plugin brings its own
+# dependencies rather than inheriting the runner's scope.
+print_test_section "SPEC-7: teardown plugin sources its own dependencies"
+_spec7_out="$(bash -c '
+    source "'"$TEARDOWN_DIR"'/plugin.sh" >/dev/null 2>&1
+    for _fn in resolve_stage_plugin plugin_hook_call emit_event; do
+        declare -F "$_fn" >/dev/null || { printf "MISSING:%s\n" "$_fn"; exit 0; }
+    done
+    printf "ALL_DEFINED\n"
+' 2>/dev/null || true)"
+if [[ "$_spec7_out" == "ALL_DEFINED" ]]; then
+    assert_pass "[SPEC-7] teardown defines its own deps when sourced standalone"
+else
+    assert_fail "[SPEC-7] teardown defines its own deps when sourced standalone" "$_spec7_out"
+fi
 
 # ─── SPEC-1: teardown_run dispatches cleanup with scope=release for completed stages ─
 # CHANGE: at baseline the teardown plugin does not exist.

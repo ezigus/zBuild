@@ -21,6 +21,10 @@ _ZBUILD_TEARDOWN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_ZBUILD_TEARDOWN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_ZBUILD_TEARDOWN_ROOT/core/plugin-registry/registry.sh"
+# shellcheck source=../../../core/pipeline/dispatch.sh
+# resolve_stage_plugin lives here; declare it rather than inherit the runner's
+# scope — without it any other caller frees nothing and still returns 0.
+source "$_ZBUILD_TEARDOWN_ROOT/core/pipeline/dispatch.sh"
 
 # ─── teardown_run ────────────────────────────────────────────────────────────
 # Entry point called by the pipeline engine.
