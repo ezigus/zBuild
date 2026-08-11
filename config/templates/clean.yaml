@@ -1,0 +1,11 @@
+# ADR-054 §7 clean flow — dispatched by the runner at every pipeline exit path
+# with scope=release so each plugin can kill its spawned process groups and
+# release locks without deleting anything.
+# A future operator-CLI subcommand will dispatch with scope=purge; that is
+# explicitly NOT done via this template.
+id: clean
+name: Clean Flow
+description: "Release live resources for all executed stages (scope=release only)"
+
+stages:
+  - teardown
