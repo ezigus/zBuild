@@ -114,12 +114,28 @@ assert_eq "[SPEC-1] interrupted does not halt the run" \
     "1" "$(_rc_of disposition_halts "$_LAST_DISPOSITION")"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "2. SIGINT — the Ctrl-C shape"
+print_test_section "2. SIGINT — why it is NOT raised for real here"
 
-_d="$(_mkstage sigint_stage 'kill -INT $BASHPID; sleep 5;')"
-_dispatch "$_d" sigint_stage
-assert_eq "[SPEC-2] the subshell really died by SIGINT (raw rc 130)" "130" "$_LAST_RAW_RC"
-assert_eq "[SPEC-2] a Ctrl-C'd stage is interrupted" "interrupted" "$_LAST_DISPOSITION"
+# SIGINT deliberately gets no real-signal case. POSIX has a shell set SIGINT (and
+# SIGQUIT) to SIG_IGN in a job it starts in the background, and children inherit
+# that — so inside `scripts/run-tests.sh`, which backgrounds the parallel-safe
+# tiers, `kill -INT $BASHPID` is a NO-OP: the stub survives and exits 0. Verified
+# directly: the same stub yields rc=130 in the foreground and rc=0 backgrounded.
+# SIGTERM and SIGKILL are unaffected, which is why sections 1 and 3 use them.
+#
+# Writing the case anyway would produce a test that passes standalone and fails
+# under `npm test` — a harness artefact indistinguishable, at a glance, from the
+# regression it was meant to catch.
+#
+# Nothing is lost. The classification keys on `rc > 128`, one branch for every
+# signal, and sections 1 and 3 drive that branch with two real deaths. SIGINT's
+# own rc is pinned at the unit level in tests/unit/dispatch-rc-test.sh
+# ("[SPEC-2] rc 130 (SIGINT) observes a signal"), where no process is spawned
+# and the harness cannot interfere.
+assert_eq "[SPEC-2] rc 130 still classifies as a signal death" \
+    "signal" "$(dispatch_rc_observation 130)"
+assert_eq "[SPEC-2] and therefore as interrupted" \
+    "interrupted" "$(dispatch_rc_failure_disposition "$(dispatch_rc_observation 130)")"
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "3. SIGKILL — the OOM-killer shape"
