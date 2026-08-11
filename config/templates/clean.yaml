@@ -1,11 +1,15 @@
-# ADR-054 §7 clean flow — dispatched by the runner at every pipeline exit path
-# with scope=release so each plugin can kill its spawned process groups and
-# release locks without deleting anything.
-# A future operator-CLI subcommand will dispatch with scope=purge; that is
-# explicitly NOT done via this template.
+# ADR-054 §7 clean flow — the OPERATOR-invoked entry point to the teardown
+# stage. This template is not what makes `release` automatic: the runner
+# dispatches the teardown plugin directly from its EXIT trap so that every exit
+# path (success, failure, signal, timeout) frees live resources (#1829).
+#
+# Scope comes from ZBUILD_TEARDOWN_SCOPE and defaults to `release`. `purge` —
+# the scope that deletes persisted artifacts and staging trees — is reachable
+# ONLY here, by an operator who asks for it; no run path can select it. The
+# operator CLI subcommand that sets it is #E5.
 id: clean
 name: Clean Flow
-description: "Release live resources for all executed stages (scope=release only)"
+description: "Teardown stage entry point for operators (release by default; purge only on request)"
 
 stages:
   - teardown

@@ -59,7 +59,7 @@ EOF
     _spec1_state_dir="$TEST_TEMP_DIR/spec1-state"
     mkdir -p "$_spec1_state_dir"
     _spec1_state_file="$_spec1_state_dir/pipeline-state.json"
-    printf '{"stages":{"spec1-mock":{"status":"complete"}}}' > "$_spec1_state_file"
+    printf '{"stage_statuses":{"spec1-mock":"complete"}}' > "$_spec1_state_file"
 
     # Source the teardown plugin with an override for resolve_stage_plugin.
     # We source in a subshell so the override doesn't leak.
@@ -109,7 +109,7 @@ EOF
     _spec2_state_dir="$TEST_TEMP_DIR/spec2-state"
     mkdir -p "$_spec2_state_dir"
     _spec2_state_file="$_spec2_state_dir/pipeline-state.json"
-    printf '{"stages":{"spec2-mock":{"status":"complete"}}}' > "$_spec2_state_file"
+    printf '{"stage_statuses":{"spec2-mock":"complete"}}' > "$_spec2_state_file"
 
     _spec2_events="$TEST_TEMP_DIR/spec2-events.jsonl"
     _spec2_result=0
@@ -140,24 +140,40 @@ print_test_section "SPEC-3: scope=release kills PGID, staging dir remains intact
     source "$TEST_PLUGIN_DIR/plugin.sh"
 
     _spec3_state_dir="$TEST_TEMP_DIR/spec3-state"
-    mkdir -p "$_spec3_state_dir/artifacts"
+    mkdir -p "$_spec3_state_dir/artifacts" "$_spec3_state_dir/runtime"
     _spec3_state_file="$_spec3_state_dir/pipeline-state.json"
     printf '{}' > "$_spec3_state_file"
-    _spec3_artifact_dir="$_spec3_state_dir/artifacts"
+    # Live-resource bookkeeping lives under runtime/, not artifacts/ (#1829).
+    _spec3_runtime_dir="$_spec3_state_dir/runtime"
 
-    # Create a staging directory simulating what _test_run_inner would create.
+    # Create a staging directory simulating what _test_run_inner would create,
+    # populated so "deletes nothing" can be asserted as a tree diff, not just
+    # a directory-exists check.
     _spec3_staging="$TEST_TEMP_DIR/spec3-staging"
-    mkdir -p "$_spec3_staging"
+    mkdir -p "$_spec3_staging/nested"
     printf 'sentinel' > "$_spec3_staging/sentinel.txt"
+    printf 'evidence' > "$_spec3_staging/nested/failure.log"
+    _spec3_before="$(cd "$_spec3_staging" && find . -type f | sort | while read -r _f; do
+        printf '%s %s\n' "$_f" "$(wc -c < "$_f" | tr -d ' ')"
+    done)"
 
     # Write a long-running background process and record its PID.
     sleep 60 &
     _spec3_bgpid=$!
-    printf '%s' "$_spec3_bgpid" > "$_spec3_artifact_dir/.test-stage.pgid"
-    printf '%s' "$_spec3_staging" > "$_spec3_artifact_dir/.test-staging-path"
+    printf '%s' "$_spec3_bgpid" > "$_spec3_runtime_dir/test-stage.pgid"
+    printf '%s' "$_spec3_staging" > "$_spec3_runtime_dir/test-staging-path"
 
     # Call release cleanup.
     test_cleanup "test" "$_spec3_state_file" "release" >/dev/null 2>&1 || true
+
+    _spec3_after="$(cd "$_spec3_staging" 2>/dev/null && find . -type f | sort | while read -r _f; do
+        printf '%s %s\n' "$_f" "$(wc -c < "$_f" | tr -d ' ')"
+    done)"
+    if [[ "$_spec3_before" == "$_spec3_after" ]]; then
+        printf 'SPEC3_TREE_IDENTICAL\n'
+    else
+        printf 'SPEC3_TREE_CHANGED\n'
+    fi
 
     # The background sleep should be dead.
     sleep 0.2 2>/dev/null || true
@@ -189,6 +205,14 @@ else
     assert_fail "[SPEC-3] scope=release does not delete the staging directory" \
         "staging dir was deleted by release"
 fi
+# The acceptance asks for this positively: diff the populated tree, so a
+# release that deleted a nested file (but left the dir) cannot pass.
+if grep -q 'SPEC3_TREE_IDENTICAL' <<< "$_spec3_out"; then
+    assert_pass "[SPEC-3] scope=release leaves the populated staging tree byte-identical"
+else
+    assert_fail "[SPEC-3] scope=release leaves the populated staging tree byte-identical" \
+        "file list/sizes changed across release"
+fi
 
 # ─── SPEC-4: absent cleanup hook → ZBUILD_HOOK_ABSENT=3 → teardown no-op (no error) ─
 # CHANGE: at baseline teardown plugin doesn't exist; absent hook semantics not tested here.
@@ -214,7 +238,7 @@ EOF
     _spec4_state_dir="$TEST_TEMP_DIR/spec4-state"
     mkdir -p "$_spec4_state_dir"
     _spec4_state_file="$_spec4_state_dir/pipeline-state.json"
-    printf '{"stages":{"spec4-no-cleanup":{"status":"complete"}}}' > "$_spec4_state_file"
+    printf '{"stage_statuses":{"spec4-no-cleanup":"complete"}}' > "$_spec4_state_file"
 
     _spec4_events="$TEST_TEMP_DIR/spec4-events.jsonl"
     _spec4_result=0
@@ -269,7 +293,7 @@ EOF
     _spec6_state_dir="$TEST_TEMP_DIR/spec6-state"
     mkdir -p "$_spec6_state_dir"
     _spec6_state_file="$_spec6_state_dir/pipeline-state.json"
-    printf '{"stages":{"spec6-mock":{"status":"complete"}}}' > "$_spec6_state_file"
+    printf '{"stage_statuses":{"spec6-mock":"complete"}}' > "$_spec6_state_file"
 
     (
         source "$TEARDOWN_DIR/plugin.sh"

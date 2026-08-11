@@ -156,8 +156,13 @@ print_test_section "4. [SPEC-5] test_cleanup(purge) is the lifecycle-correct rm-
 SPEC5_STAGING="$ISOLATED_TMP/spec5-staging"
 mkdir -p "$SPEC5_STAGING"
 printf 'sentinel' > "$SPEC5_STAGING/sentinel.txt"
-# Write the staging path so test_cleanup(purge) can find it.
-printf '%s' "$SPEC5_STAGING" > "$ARTIFACT_DIR/.test-staging-path"
+# Write the staging path so test_cleanup(purge) can find it. This lives under
+# state_dir/runtime/, not artifacts/ — a live staging path is machine-specific
+# bookkeeping, and keeping it in artifacts/ broke the local-vs-CI parity
+# contract by construction (#1829).
+SPEC5_RUNTIME="$(dirname "$_STATE_FILE")/runtime"
+mkdir -p "$SPEC5_RUNTIME"
+printf '%s' "$SPEC5_STAGING" > "$SPEC5_RUNTIME/test-staging-path"
 
 test_cleanup "test" "$_STATE_FILE" "purge" >/dev/null 2>&1 || true
 

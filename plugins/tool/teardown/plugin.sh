@@ -30,7 +30,17 @@ teardown_run() {
     local _stage_id="${1:-teardown}"
     local _state_file="${2:-}"
 
+    # Fail-safe: an unrecognised scope degrades to `release`, the scope that
+    # deletes nothing. The destructive scope is never the fallback.
     local _scope="${ZBUILD_TEARDOWN_SCOPE:-release}"
+    case "$_scope" in
+        release|purge) ;;
+        *)
+            emit_event "teardown.scope.invalid" \
+                "requested=$_scope" "used=release" 2>/dev/null || true
+            _scope="release"
+            ;;
+    esac
     local _plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_TEARDOWN_ROOT/plugins}"
 
     local _state_dir=""
@@ -42,10 +52,15 @@ teardown_run() {
         local _s
         while IFS= read -r _s; do
             [[ -n "$_s" ]] && _executed+=("$_s")
+        # NB: the durable key is `stage_statuses` and its values are plain
+        # strings, not objects. Reading `.stages[].status` (which no state file
+        # has ever had) yields an empty list, which makes teardown a silent
+        # no-op that still reports success — verified against a real run's
+        # pipeline-state.json before this was corrected.
         done < <(jq -r '
-            .stages // {} |
+            .stage_statuses // {} |
             to_entries[] |
-            select(.value.status == "complete" or .value.status == "failed") |
+            select(.value == "complete" or .value == "failed") |
             .key
         ' "$_state_file" 2>/dev/null || true)
     fi

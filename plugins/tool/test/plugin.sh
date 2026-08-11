@@ -192,12 +192,15 @@ _test_run_inner() {
 
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
-    # ADR-054 §7 (#1829): persist staging path so test_cleanup(purge) can find it
-    # without a subshell copy of the local variable, and so test_cleanup(release)
-    # can kill any lingering process without deleting the tree.
-    local _artifact_dir; _artifact_dir="$(dirname "$output_json")"
-    local _staging_path_file="$_artifact_dir/.test-staging-path"
-    local _pgid_file="$_artifact_dir/.test-stage.pgid"
+    # ADR-054 §7 (#1829): persist staging path + child PID so cleanup can find
+    # them from a later stage (a different process). These live under
+    # state_dir/runtime/, NOT artifacts/ — a PID and a mktemp path are live
+    # process bookkeeping, not stage outputs, and their contents differ by
+    # machine, which would break the local-vs-CI parity contract by construction.
+    local _runtime_dir; _runtime_dir="$(_test_runtime_dir "$(dirname "$(dirname "$output_json")")")"
+    mkdir -p "$_runtime_dir" 2>/dev/null || true
+    local _staging_path_file="$_runtime_dir/test-staging-path"
+    local _pgid_file="$_runtime_dir/test-stage.pgid"
     printf '%s' "$tmp" > "$_staging_path_file" 2>/dev/null || true
     # #1829: RETURN trap kills any lingering eval subshell PGID; does NOT
     # rm -rf the staging dir — that is test_cleanup(purge)'s responsibility.
@@ -789,6 +792,15 @@ _test_write_result() {
     fi
 }
 
+# ─── _test_runtime_dir <state_dir> ───────────────────────────────────────────
+# Live-resource bookkeeping (child PIDs, staging paths) lives here, deliberately
+# NOT under artifacts/: a PID and a mktemp path are machine-specific, so putting
+# them in the artifact tree breaks the local-vs-CI parity contract and misfiles
+# scratch state as a stage output (#1829).
+_test_runtime_dir() {
+    printf '%s' "${1%/}/runtime"
+}
+
 # ─── _test_kill_staging_pgid <pgid_file> ─────────────────────────────────────
 # Best-effort: read PID from <pgid_file> and send TERM then KILL to stop
 # any lingering eval subshell. Used by the RETURN trap (#1829, ADR-054 §7).
@@ -812,24 +824,24 @@ test_cleanup() {
     local _state_file="${2:-}"
     local _scope="${3:-release}"
 
-    local _artifact_dir=""
+    local _runtime_dir=""
     if [[ -n "$_state_file" ]]; then
-        _artifact_dir="$(dirname "$_state_file")/artifacts"
+        _runtime_dir="$(_test_runtime_dir "$(dirname "$_state_file")")"
     fi
 
     case "$_scope" in
         release)
             # Kill any lingering test subprocess; do NOT delete the staging dir.
-            if [[ -n "$_artifact_dir" && -f "$_artifact_dir/.test-stage.pgid" ]]; then
-                _test_kill_staging_pgid "$_artifact_dir/.test-stage.pgid"
+            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-stage.pgid" ]]; then
+                _test_kill_staging_pgid "$_runtime_dir/test-stage.pgid"
             fi
             emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=release" \
                 2>/dev/null || true
             ;;
         purge)
             # Delete the staging directory located by the persisted path.
-            if [[ -n "$_artifact_dir" && -f "$_artifact_dir/.test-staging-path" ]]; then
-                local _staging; _staging="$(cat "$_artifact_dir/.test-staging-path" 2>/dev/null || true)"
+            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-staging-path" ]]; then
+                local _staging; _staging="$(cat "$_runtime_dir/test-staging-path" 2>/dev/null || true)"
                 if [[ -n "$_staging" && -d "$_staging" ]]; then
                     rm -rf "$_staging" 2>/dev/null || true
                 fi

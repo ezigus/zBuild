@@ -109,13 +109,17 @@ assert_eq "full pipeline-state.json identical after normalization" \
     "$local_state_norm" "$ci_state_norm"
 
 # ── Test 11: artifact tree (relative paths) identical across modes ──────────
-# Excludes runtime state files (events/, *.lock, *.bak, *.db) — keepers are
-# stage outputs under artifacts/ and the top-level produced files.
+# Excludes runtime state files (events/, runtime/, *.lock, *.bak, *.db) —
+# keepers are stage outputs under artifacts/ and the top-level produced files.
+# runtime/ holds live-resource bookkeeping for cleanup(release) (#1829): child
+# PIDs and staging paths, which are machine-specific by nature and so can never
+# be identical across modes. It is excluded for the same reason events/ is.
 _artifact_paths() {
     local dir="$1"
     ( cd "$dir" && \
       find . -type f \
         -not -path './events/*' \
+        -not -path './runtime/*' \
         -not -name '*.lock' \
         -not -name '*.bak' \
         -not -name '*.db' \

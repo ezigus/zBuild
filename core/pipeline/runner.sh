@@ -1808,7 +1808,41 @@ main() {
         set -m
     fi
 
+    # ── ADR-054 §7 (#1829): cleanup(release) on EVERY exit path ──────────────
+    # Success, non-zero rc, SIGINT, SIGTERM and timeout all funnel through the
+    # EXIT trap below, which is why the dispatch lives there and not at the end
+    # of main() — an exit path that skipped it would leak whatever the stage
+    # spawned. #1759 is the prerequisite: without re-armed INT/TERM traps there
+    # is no signal path for this to hang off.
+    #
+    # Scope is pinned to `release`: free live resources (process groups, locks,
+    # handles) and delete NOTHING, so a failed run keeps all of its evidence on
+    # disk. `purge` is operator-only and unreachable from any run path — the
+    # export below overrides any ambient ZBUILD_TEARDOWN_SCOPE.
+    _runner_dispatch_release() {
+        [[ "${_RUNNER_RELEASE_DISPATCHED:-0}" == "1" ]] && return 0
+        _RUNNER_RELEASE_DISPATCHED=1
+        [[ -n "${_runner_state_file:-}" && -f "${_runner_state_file}" ]] || return 0
+        local _td_dir="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}/tool/teardown"
+        [[ -d "$_td_dir" ]] || return 0
+        # Subshell contains the export; `|| true` because a cleanup failure is
+        # recorded as an event and must never change the run's exit status.
+        # Deliberately NOT wrapped in gtimeout: plugin_hook_call is a shell
+        # function, and a timeout binary can only exec a command — the wrapper
+        # would fail with "command not found" and silently skip every release.
+        # `release` frees handles and signals process groups; it is expected to
+        # be non-blocking. A hook that blocks here holds the exit open.
+        (
+            export ZBUILD_TEARDOWN_SCOPE=release
+            plugin_hook_call "$_td_dir" run teardown "$_runner_state_file"
+        ) >/dev/null 2>&1 || true
+        return 0
+    }
+
     _runner_abort_trap() {
+        # #1829: free live resources first, while the state file and the
+        # process tree are still intact.
+        _runner_dispatch_release
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
         # zbuild invocation in the same state_dir never sees a stale
