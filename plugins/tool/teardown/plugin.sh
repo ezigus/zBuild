@@ -21,6 +21,14 @@ _ZBUILD_TEARDOWN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_ZBUILD_TEARDOWN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_ZBUILD_TEARDOWN_ROOT/core/plugin-registry/registry.sh"
+# shellcheck source=../../../core/pipeline/dispatch.sh
+# resolve_stage_plugin lives here. Sourced explicitly rather than inherited:
+# the runner happens to have it in scope, so teardown worked without this — but
+# any other caller got an undefined function, `continue` on every stage, and
+# rc=0. A cleanup mechanism that silently frees nothing is the failure this
+# issue exists to end, so the dependency is declared, not assumed.
+# (dispatch.sh is guard-idempotent and sources nothing itself.)
+source "$_ZBUILD_TEARDOWN_ROOT/core/pipeline/dispatch.sh"
 
 # ─── teardown_run ────────────────────────────────────────────────────────────
 # Entry point called by the pipeline engine.
