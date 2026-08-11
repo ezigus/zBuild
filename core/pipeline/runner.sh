@@ -52,6 +52,13 @@ source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
 source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
 # #507 verdict-driven stage-complete indicator (ADR-019 / ADR-020 amendment).
 source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
+# #1823 (ADR-054 §4): rc ∈ {0,1} — the narrowing, the observation captured before
+# it, and the one place a legacy engine rc becomes a word.
+source "$_ZBUILD_ROOT/core/pipeline/dispatch-rc.sh"
+# #1823: the throttle marker the router arms and this dispatch boundary reads.
+# Sourced for the marker helpers, not the classifier — the router's own detector
+# runs inside the plugin subshell and cannot hand its finding back any other way.
+source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # ADR-021 (#512) outer-cycle orchestrator (F1, flag-gated by ZBUILD_CYCLES_ENABLED).
 source "$_ZBUILD_ROOT/core/pipeline/cycle-orchestrator.sh"
 # ADR-039 (#1131) parallel stage-group executor (sibling of the cycle orchestrator).
@@ -2166,7 +2173,23 @@ main() {
             _CYCLE_DISPATCH_DISPOSITION="broken"
             return 1
         fi
+        # #1823 (ADR-054 §4): clear the throttle marker BEFORE dispatching, so a
+        # marker found afterwards belongs to THIS member. A marker left by an
+        # earlier stage would classify this member's unexplained failure as
+        # `throttled`, and `throttled` retries — one rate limit would become a
+        # retry loop on an unrelated defect.
+        _router_clear_throttle_marker
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
+        # #1823: read the RAW wait status once, here, then narrow to {0,1}. The
+        # observation is the one fact worth keeping across the narrowing — it is
+        # what separates a stage that was killed from one that is defective, and
+        # it is knowable only at this boundary.
+        local _cd_observation; _cd_observation="$(dispatch_rc_observation "$_cd_rc")"
+        # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
+        # last command in the list and DOES trip it. (#1822 review finding.)
+        local _cd_rate_limited=0
+        if _router_throttle_observed; then _cd_rate_limited=1; fi
+        _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
         local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
         # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
         # unknown + structural-failure pass-through) — used for .stage_verdicts
@@ -2200,7 +2223,7 @@ main() {
         # `broken` when this dispatch died leaving nothing to read. Consumed by
         # the dispatch event; the response table that interprets it lives in
         # core/pipeline/disposition.sh, never in a plugin.
-        _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
+        _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else

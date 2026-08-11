@@ -37,21 +37,36 @@ validate_manifest: plugin 'my-plugin' (kind: agent) requires hook 'run'
 (declare under hooks: in the manifest)
 ```
 
-### 3. Return a distinct exit code for an absent optional hook
+### 3. Record an absent optional hook on the event stream
+
+> **Amended 2026-08-11 (#1823, ADR-054 §4).** As accepted, this section returned exit
+> code `3` (`ZBUILD_HOOK_ABSENT=3`) for an absent `cleanup`, justified on the grounds
+> that "the sentinel does not collide with plugin exit-code semantics (0=ok,
+> 1=recoverable, 2=fatal)" — the ADR-001 rc table that **ADR-054 §4 supersedes**. rc is
+> binary everywhere, so the sentinel is removed. The requirement it served is unchanged
+> and still met; only the channel changes.
 
 When `plugin_hook_call` is called with `cleanup` and `hooks.cleanup` is absent from the
-manifest, return exit code `3` (named constant `ZBUILD_HOOK_ABSENT=3`) instead of `0`.
-Callers compare `$rc -eq 3` to detect "never ran" vs `$rc -eq 0` ("ran and succeeded").
-The sentinel does not collide with plugin exit-code semantics (0=ok, 1=recoverable,
-2=fatal). The event `plugin.cleanup.absent` is emitted so the absence is visible in the
-event stream.
+manifest, emit `plugin.cleanup.absent` and return `0`. The absence is visible in the
+event stream, which is where a consumer that needs to tell "skipped" from "ran cleanly"
+reads it.
+
+Two channels carrying one fact is the defect ADR-054 exists to end, and between the
+two, the rc is the one nothing can enforce — no engine code ever compared against the
+`3`. The event was always the load-bearing half: #1828's acceptance asked that an absent
+hook be "distinguishable in the engine's **records** from a hook that ran and returned
+0", and the event satisfies that on its own.
+
+Consumers: #1829 (teardown dispatch) and #1830 (the teardown stage) read
+`plugin.cleanup.absent`. Neither issue asks for an exit code — both state the
+requirement as recording the absence.
 
 ## Lifecycle after this ADR
 
 | Hook | Required? | Absent behavior |
 |------|-----------|-----------------|
 | `run` | Yes (agent, tool, orchestrator) | `plugin.run.refused` emitted; rc=1 |
-| `cleanup` | No (all kinds) | `plugin.cleanup.absent` emitted; rc=3 |
+| `cleanup` | No (all kinds) | `plugin.cleanup.absent` emitted; rc=0 (amended #1823) |
 
 `init` and `finalize` no longer exist in the contract.
 
@@ -65,18 +80,19 @@ See `docs/RESUME-CONTRACT.md` for the updated pattern.
 ## Consequences
 
 - Plugin authors implement fewer hooks (run + optional cleanup).
-- The absent-cleanup sentinel (rc=3) lets orchestrators distinguish "cleanup skipped"
-  from "cleanup ran cleanly" without parsing events.
+- Orchestrators distinguish "cleanup skipped" from "cleanup ran cleanly" by reading
+  `plugin.cleanup.absent`. (As accepted this said the rc=3 sentinel let them do it
+  "without parsing events"; #1823 removed the sentinel — see the amendment in §3.)
 - All six `plugin.{init,finalize}.{start,complete,error}` event types are removed from
   the schema; any downstream consumer that filtered on them receives nothing.
 - Tests that called `_init` / `_finalize` functions directly are removed.
 
 ## Implementation Notes (Phase 0/D1 — issue #1828)
 
-- `core/plugin-registry/lifecycle.sh` — `ZBUILD_HOOK_ABSENT=3`; `plugin_hook_call`
-  branches on the hook name when `hooks.<name>` is undeclared: `cleanup` emits
-  `plugin.cleanup.absent` and returns 3, anything else emits `plugin.<hook>.refused`
-  and returns 1.
+- `core/plugin-registry/lifecycle.sh` — `plugin_hook_call` branches on the hook name
+  when `hooks.<name>` is undeclared: `cleanup` emits `plugin.cleanup.absent` and returns
+  0, anything else emits `plugin.<hook>.refused` and returns 1. (As accepted this
+  returned `ZBUILD_HOOK_ABSENT=3`; the constant was deleted by #1823 — see §3.)
 - `core/plugin-registry/manifest-validation.sh` — the missing-required-hook error names
   the plugin id; `_ZBUILD_YAML_PREWARM_KEYS` drops `hooks.init` / `hooks.finalize`.
 - `config/event-schema.json` — the six `plugin.{init,finalize}.*` types are gone;

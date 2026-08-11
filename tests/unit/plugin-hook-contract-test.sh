@@ -66,9 +66,16 @@ else
         "got: $_spec3_err"
 fi
 
-# ─── SPEC-4: absent optional cleanup hook → rc=ZBUILD_HOOK_ABSENT (3) + event ─
-# CHANGE: before ADR-056, absent cleanup returned 0 (indistinguishable from
-# success). Now it returns 3 and emits plugin.cleanup.absent.
+# ─── SPEC-4: absent optional cleanup hook → rc=0 + plugin.cleanup.absent ─────
+# HISTORY: before ADR-056 an absent cleanup returned 0 and emitted nothing, so it
+# was indistinguishable from a hook that ran. ADR-056 fixed that with TWO
+# channels at once — an rc=3 sentinel AND the event. #1823 (ADR-054 §4) removes
+# the rc half: rc is binary everywhere, and the engine never read the 3. The
+# absence is still fully distinguishable, on the event — which is what #1828's
+# acceptance actually required ("distinguishable in the engine's RECORDS").
+#
+# Both assertions below matter together: rc=0 alone would be the pre-ADR-056
+# regression, and it is only NOT that because the event assertion holds.
 _spec4_dir="$TEST_TEMP_DIR/spec4"
 mkdir -p "$_spec4_dir"
 cat > "$_spec4_dir/manifest.yaml" <<'EOF'
@@ -101,7 +108,7 @@ ZBUILD_EVENTS_DIR="$_old_events_dir"
 ZBUILD_EVENTS_JSONL="$_old_events_jsonl"
 ZBUILD_EVENTS_DB="$_old_events_db"
 
-assert_eq "[SPEC-4] absent cleanup returns ZBUILD_HOOK_ABSENT (3)" "3" "$_spec4_rc"
+assert_eq "[SPEC-4] absent optional cleanup returns rc=0 (rc is binary — ADR-054 §4)" "0" "$_spec4_rc"
 if [[ -f "$_spec4_events" ]] && grep -q '"plugin.cleanup.absent"' "$_spec4_events"; then
     assert_pass "[SPEC-4] absent cleanup emits plugin.cleanup.absent event"
 else

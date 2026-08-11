@@ -96,6 +96,29 @@ An integer channel with no declared vocabulary cannot be enforced, which is the 
 
 So the control flow those codes carry moves onto declared channels: `disposition` (§6) for recoverability, and explicit routing state for the bounded backward edge (ADR-045) and blocking-member halt (ADR-013). Those mechanisms keep working; what changes is that a reader consults a declared field instead of re-interpreting a number. **#1823 owns the narrowing and the designs that re-home each signal**, and its acceptance is the enforcing check: no engine path returns or interprets an rc outside {0,1}, with a guard test enumerating the call sites.
 
+#### 4a. Where each signal goes (delivered by #1823)
+
+The destination is never new. Every one of these already had a declared channel the engine was setting alongside the number; the re-homing is to *read the word instead of the integer*, which is why `dispatch_rc_legacy_reason` names the vocabulary rather than inventing one.
+
+| rc | Re-homes onto | Owner |
+|----|---------------|-------|
+| `130`/`143` signal | `interrupted` (§6) — and the ADR-025 `.abort.signal` sentinel, which already carries abort across subshells | #1823 |
+| `124` timeout | `interrupted` (§6). Never reaches the runner today: the router absorbs it and publishes `_ROUTE_LOOP_TERMINATED_REASON=router_timeout` | #1823 |
+| rate limit | `throttled` (§6), via the detector's second caller on the loop path (#1723) | #1823 |
+| `9` llm_unavailable | `unavailable` (§6) — "halt; operator action required" is what rc=9 already meant | #1823 |
+| `10` scope_too_large | `exhausted` (§6) — "more budget, or the work must shrink". The matching *verdict* string migrates in #1832 | #1823 / #1832 |
+| `11` route_back | ADR-045 routing state (`_CYCLE_ROUTE_BACK_*`, `cycle.route_back`). The `route_target` vocabulary is #1767 | ADR-045 / #1767 |
+| `8` blocking_member_failure | ADR-013's `blocking:true` halt and ADR-021's `disposition: terminal` member contract | ADR-013 / ADR-021 |
+| `5` blocked | `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}` + `cycle.blocked` (ADR-021 #528/#1265) | ADR-021 |
+| `6` cycle_abort | `_CYCLE_LAST_TERMINATED_REASON=cycle_abort` + `cycle.complete reason=` | ADR-021 |
+| `4` config_invalid | `cycle.config.invalid` at load; the runtime collapse-to-4 catch-all has no channel and is a known gap | ADR-021 |
+
+**`5`, `6`, `8`, `11` and `4` deliberately map to NO disposition.** They are control-flow decisions the cycle made, not statements about whether a stage got far enough to produce a verdict worth reading. Forcing them into §6's set would be exactly the invented default this ADR forbids.
+
+**Two recorded discrepancies, neither resolved here.** ADR-026 says `cycle_abort` is rc=5 in four places, while ADR-045, this ADR and the code all say 6 — no issue owns the correction. And `_cycle_handle_terminal_rc` has a `130)` arm but no `143)` arm, so a SIGTERM falls to `*) reason="error"` and is reported as an ordinary error; `dispatch_rc_legacy_reason` maps both to `aborted` so the two signals agree at the boundary, but the orchestrator's own table is still asymmetric.
+
+**Coexistence.** The legacy numbers still flow inside the engine, interpreted in exactly one place (`core/pipeline/dispatch-rc.sh`). #1850 deletes that mapping together with the v1 result reader, at which point the guard's enumerated inventory goes to zero and becomes the plain rule stated above. Until then `tests/unit/dispatch-rc-guard-test.sh` ratchets it: a count may fall, never rise.
+
 ### 5. The result file
 
 One file. The primary artifact declared in the stage's manifest (`outputs[primary: true]`), read after `run` returns. Mandatory keys:
@@ -216,7 +239,7 @@ The distinction that matters: `rc=1` routing and `init`/`finalize` are deleted b
 |---|----------|--------------|
 | 1 | Two hooks; `init`/`finalize` deleted | ADR-056 / #1828 — landed |
 | 2 | `run(stage_id, state_file, resolved_inputs)` | #1826 |
-| 4 | rc ∈ {0,1}; classify an `rc=1` that left no result | #1823 |
+| 4 | rc ∈ {0,1}; classify an `rc=1` that left no result | #1823 — landed; legacy mapping removed by #1850 |
 | 5 | One result file, `result_contract` version key | #1821 — landed; negotiation #1824 |
 | 6 | Disposition vocabulary + engine response table | #1822; verdict migration #1832; `valid_verdicts` enforcement #1708 |
 | 7 | `cleanup(scope)`; teardown stage; `clean.yaml` | #1829, after single-owner traps #1759 |

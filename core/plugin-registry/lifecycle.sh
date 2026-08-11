@@ -203,11 +203,6 @@ scan_plugin_outputs() {
     return $((missing > 0))
 }
 
-# Exit code returned when an optional hook (cleanup) is absent.
-# Distinguishable from success (0) and plugin error codes (1=recoverable, 2=fatal).
-# Callers compare $rc -eq ZBUILD_HOOK_ABSENT to detect "never ran" vs $rc -eq 0 ("ran ok").
-ZBUILD_HOOK_ABSENT=3
-
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
 # Source the plugin's plugin.sh and call a lifecycle hook by name.
 # Plugin functions are isolated by sub-shell to prevent namespace pollution.
@@ -229,9 +224,20 @@ plugin_hook_call() {
     local hook_fn; hook_fn="$(yaml_get "$manifest" "hooks.$hook_name")"
     if [[ -z "$hook_fn" ]]; then
         if [[ "$hook_name" == "cleanup" ]]; then
-            # Absent optional hook: emit sentinel event and return ZBUILD_HOOK_ABSENT.
+            # #1823 (ADR-054 §4): an absent OPTIONAL hook had nothing to do and
+            # did it — rc 0. The absence is not lost: it rides
+            # `plugin.cleanup.absent`, a declared channel, which is what #1828's
+            # own acceptance asked for ("distinguishable in the engine's
+            # RECORDS"). ADR-056 additionally returned rc=3 for this, justified
+            # against ADR-001's "0=ok, 1=recoverable, 2=fatal" — the very table
+            # ADR-054 §4 supersedes. Nothing in the engine ever read it.
+            #
+            # Consumers that need to tell "skipped" from "ran cleanly" — #1829's
+            # teardown dispatch and #1830's teardown stage — read the event.
+            # Two channels carrying one fact is the defect this contract exists
+            # to end, and the rc is the one that cannot be enforced.
             emit_event "plugin.$hook_name.absent" "plugin=$plugin_id" "kind=$kind"
-            return "$ZBUILD_HOOK_ABSENT"
+            return 0
         fi
         # Absent required hook: emit refused event and fail.
         emit_event "plugin.$hook_name.refused" "plugin=$plugin_id" "kind=$kind" "reason=hook-not-declared"

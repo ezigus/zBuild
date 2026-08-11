@@ -45,6 +45,13 @@ if ! declare -F disposition_is_valid >/dev/null 2>&1; then
     # shellcheck source=./disposition.sh
     source "$_ZBUILD_VERDICT_ROOT/core/pipeline/disposition.sh"
 fi
+# #1823: the fallback classification for a dispatch that left no result. NOT
+# `|| true` — without it the reader would silently fall back to nothing at all
+# for exactly the dispatches that need explaining.
+if ! declare -F dispatch_rc_failure_disposition >/dev/null 2>&1; then
+    # shellcheck source=./dispatch-rc.sh
+    source "$_ZBUILD_VERDICT_ROOT/core/pipeline/dispatch-rc.sh"
+fi
 if [[ -z "${GREEN:-}${YELLOW:-}${RED:-}" ]]; then
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$_ZBUILD_VERDICT_ROOT/scripts/lib/helpers.sh" 2>/dev/null || true
@@ -489,12 +496,23 @@ runner_read_stage_verdict_raw() {
 #      default the issue forbids: the engine is not guessing a plausible value in
 #      order to carry on, it is concluding a defect and halting.
 #   1. The stage DECLARED a valid one (v2 result) → that word, verbatim.
-#   2. The dispatch DIED and left no readable result → `broken`. This is the
-#      engine's own conclusion, not a value read from anywhere — a stage that
-#      explained nothing cannot be distinguished from a defective one, and
+#   2. The dispatch DIED and left no readable result → the engine CLASSIFIES it
+#      from what it observed (#1823, ADR-054 §4): a rate limit seen on either
+#      router path → `throttled`; death by signal or a timeout → `interrupted`;
+#      anything else → `broken`. This is the only place the engine is permitted
+#      to infer, and it infers a disposition, not a verdict. Before #1823 every
+#      one of these was flatly `broken`, which halted a run that had merely been
+#      interrupted — the exact failure ADR-054 §6 says `interrupted`/`throttled`
+#      exist to prevent. Absent any observation it is still `broken`: a stage
+#      that explained nothing cannot be distinguished from a defective one, and
 #      guessing "probably transient" is how a real defect retries forever.
 #      Nothing is written back to the stage's artifact directory; the conclusion
 #      lives on this return value and on the dispatch event.
+#
+#      The observation arrives as an argument rather than being re-derived from
+#      rc, because by the time this reader runs rc has already been narrowed to
+#      {0,1} and the raw wait status is gone. That narrowing is the point of
+#      #1823; the observation is how the one fact worth keeping survives it.
 #   3. Otherwise → empty. A v1 result declares no disposition, so the response
 #      table is not consulted and today's verdict-driven control flow is
 #      untouched. That is the versioned coexistence ADR-054 §5 requires, and it
@@ -506,6 +524,7 @@ runner_read_stage_verdict_raw() {
 # this shape). rc never overwrites a declaration; it only fills the silence.
 runner_read_stage_disposition() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local observation="${5-}" rate_limited="${6:-0}"
     local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _d
 
@@ -516,7 +535,7 @@ runner_read_stage_disposition() {
         printf '%s' "$_d_disp"; return 0
     fi
     if [[ "$rc" -ne 0 ]] && ! _verdict_result_was_readable "$_d_state" "$_d_present"; then
-        printf '%s' "broken"; return 0
+        printf '%s' "$(dispatch_rc_failure_disposition "$observation" "$rate_limited")"; return 0
     fi
     printf '%s' ""
 }

@@ -788,6 +788,11 @@ _route_call_claude() {
         if _router_is_rate_limit "$response"; then
             _sync_rate_limited=1
             _sync_rl_msg="$(_router_rate_limit_message "$response")"
+            # #1823: arm the durable marker so the engine can classify a dispatch
+            # that dies after this as `throttled`. Both router paths write the
+            # same channel — the engine must not have to know which path a stage
+            # happened to take to learn that it was rate-limited.
+            _router_arm_throttle_marker "$_sync_rl_msg"
         fi
         # #762: surface error_max_turns to the terminal with a human-readable
         # one-liner. Falls back to the legacy stderr-snip message otherwise.
@@ -1582,10 +1587,28 @@ ${_diff_pointer}"
                 _diag_subtype="$(jq -r '.subtype // empty' "$_diag_json_path" 2>/dev/null || true)"
                 _diag_cost="$(jq -r '.total_cost_usd // empty' "$_diag_json_path" 2>/dev/null || true)"
             fi
+            # #1823 (absorbs #1723): the rate-limit detector's SECOND caller.
+            # `_route_call_claude` has detected a 429/529 envelope since #1237,
+            # but this loop does not go through `_route_call_claude` — it spawns
+            # claude directly — so the one path that could name the failure never
+            # saw it. A rate limit surfaced here as `reason=claude_rc_nonzero` and
+            # then `continue`d, re-spawning against the same limit until
+            # max_iterations returned 1 at zero output. That is the whole of
+            # #1723: iterations burned to learn nothing.
+            #
+            # Detect on the envelope COPY (`_diag_json_path`), because the
+            # original `$json_file` is removed on every error path below.
+            local _loop_rate_limited=0 _loop_rl_msg=""
+            if [[ -n "$_diag_json_path" ]] && _router_is_rate_limit "$(cat "$_diag_json_path" 2>/dev/null || true)"; then
+                _loop_rate_limited=1
+                _loop_rl_msg="$(_router_rate_limit_message "$(cat "$_diag_json_path" 2>/dev/null || true)")"
+            fi
             # #762: surface error_max_turns subtype with a human-readable line.
             # Falls back to the legacy stderr-snip warning otherwise.
             local snip; snip="$(head -c 200 "$stderr_file" 2>/dev/null || true)"
-            if [[ "$_diag_subtype" == "error_max_turns" ]]; then
+            if [[ "$_loop_rate_limited" == "1" ]]; then
+                error "$_loop_rl_msg (model=$_ROUTE_MODEL_ID iter=$iter) — diagnostic: ${_diag_json_path:-absent}"
+            elif [[ "$_diag_subtype" == "error_max_turns" ]]; then
                 error "claude max_turns reached (turns=${_diag_num_turns:-?}, output_tokens=${_diag_out_tokens:-?}, cost=\$${_diag_cost:-?}) — diagnostic: ${_diag_json_path:-absent}"
             else
                 warn "route_to_model_loop: claude rc=$rc iter=$iter${snip:+: $snip}"
@@ -1593,7 +1616,14 @@ ${_diff_pointer}"
             eb_emit_event "loop.iteration.error" \
                 "iteration=$iter" "rc=$rc" \
                 "model_id=$_ROUTE_MODEL_ID" \
-                "reason=claude_rc_nonzero" 2>/dev/null || true
+                "reason=$([[ "$_loop_rate_limited" == "1" ]] && printf 'router_rate_limited' || printf 'claude_rc_nonzero')" 2>/dev/null || true
+            if [[ "$_loop_rate_limited" == "1" ]]; then
+                eb_emit_event "router.rate_limited" \
+                    "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
+                    "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
+                    "iteration=$iter" \
+                    "message=$_loop_rl_msg" 2>/dev/null || true
+            fi
             eb_emit_event "router.loop.iter.error.diagnostic" \
                 "iteration=$iter" "rc=$rc" \
                 "stage=${_iter_stage_id:-unknown}" \
@@ -1620,6 +1650,20 @@ ${_diff_pointer}"
                     --metadata "iter=$iter" \
                     --metadata "error=true" \
                     >/dev/null 2>&1 || true
+            fi
+            # #1823: a rate limit ENDS the loop rather than iterating into it.
+            # Retrying against a limit that has not reset yet cannot change the
+            # outcome — every further iteration spends budget to be refused
+            # again. The marker is armed so the engine's fallback classification
+            # can resolve this dispatch to `throttled` (wait, then retry) instead
+            # of `broken` (halt), which is the difference between a run that
+            # resumes when the limit resets and one that is dead.
+            if [[ "$_loop_rate_limited" == "1" ]]; then
+                _ROUTE_LOOP_TERMINATED_REASON="router_rate_limited"
+                _router_arm_throttle_marker "$_loop_rl_msg"
+                rm -f "$stderr_file" "$json_file"
+                _route_loop_clear_traps
+                return 1
             fi
             # Tracks the IMMEDIATELY preceding iteration only: clear on every
             # error path first, so a rc=124 followed by a rc=1 does not leave
