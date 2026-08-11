@@ -146,6 +146,28 @@ assert_eq "success: artifact written" \
 assert_eq "success: no zbuild-test-stage.* leaked in TMPDIR" \
     "0" "$(_count_leaked)"
 
+# ───────────────────────────────────────────────────────────────────────────
+print_test_section "4. [SPEC-5] test_cleanup(purge) is the lifecycle-correct rm-rf path"
+# ───────────────────────────────────────────────────────────────────────────
+# At baseline (pre-#1829) test_cleanup did not exist; the RETURN trap did
+# rm -rf. Post-#1829: RETURN trap only kills PGID; purge is test_cleanup's
+# responsibility. This assertion fails at baseline because test_cleanup is new.
+
+SPEC5_STAGING="$ISOLATED_TMP/spec5-staging"
+mkdir -p "$SPEC5_STAGING"
+printf 'sentinel' > "$SPEC5_STAGING/sentinel.txt"
+# Write the staging path so test_cleanup(purge) can find it.
+printf '%s' "$SPEC5_STAGING" > "$ARTIFACT_DIR/.test-staging-path"
+
+test_cleanup "test" "$_STATE_FILE" "purge" >/dev/null 2>&1 || true
+
+if [[ -d "$SPEC5_STAGING" ]]; then
+    assert_fail "[SPEC-5] test_cleanup(purge) removes the staging directory" \
+        "dir still exists after purge"
+else
+    assert_pass "[SPEC-5] test_cleanup(purge) removes the staging directory"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
