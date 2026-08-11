@@ -879,7 +879,7 @@ $_plan_instructions"
         fi
     fi
 
-    emit_event "plugin.run.complete" "stage=plan" \
+    emit_event "plugin.result" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \
         "scope_violations=$scope_violations" \

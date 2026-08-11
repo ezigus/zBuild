@@ -44,8 +44,6 @@ lint_gate_run() {
     local result_path="$artifacts_dir/lint-result.json"
     local results_json="$artifacts_dir/test-results.json"
 
-    _lg_emit "plugin.run.start" "plugin=lint-gate"
-
     # Read the lint.status field. Absent file / missing block → "" → skip.
     local status=""
     if [[ -f "$results_json" ]]; then
@@ -78,7 +76,7 @@ lint_gate_run() {
     jq -n --arg v "$verdict" --arg s "$status" --arg d "$detail" \
         '{"verdict":$v,"status":$s,"detail":$d}' | atomic_write "$result_path"
 
-    _lg_emit "plugin.run.complete" "plugin=lint-gate" "verdict=$verdict"
+    _lg_emit "plugin.result" "plugin=lint-gate" "verdict=$verdict"
     return 0
 }
 

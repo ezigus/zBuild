@@ -478,7 +478,7 @@ _pr_open_run_inner() {
           pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
         > "$output_pr_result_json"
 
-    emit_event "plugin.run.complete" "plugin=pr-open" \
+    emit_event "plugin.result" "plugin=pr-open" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}" "action=${pr_status}"
     return 0
 }

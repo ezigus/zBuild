@@ -118,16 +118,16 @@ assert_eq "findings.json plugin_id=security-lens" "security-lens" "$plugin_id"
 # ─── Events emitted during the run ──────────────────────────────────────────
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
     redaction_count=$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" || true)
-    run_complete=$(grep -c '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" || true)
+    run_complete=$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" || true)
     if [[ "$redaction_count" -ge 1 ]]; then
         assert_pass "redaction.applied event emitted (chokepoint observable)"
     else
         assert_fail "expected redaction.applied event in event log"
     fi
     if [[ "$run_complete" -ge 1 ]]; then
-        assert_pass "plugin.run.complete event emitted"
+        assert_pass "[SPEC-2] plugin.result event emitted"
     else
-        assert_fail "expected plugin.run.complete event in event log"
+        assert_fail "expected plugin.result event in event log"
     fi
 else
     assert_fail "events.jsonl was not created"

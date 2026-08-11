@@ -70,8 +70,6 @@ design_gate_run() {
     # repo_root = the working tree where declared TESTFILES / WIRING paths live.
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo "$_DG_ROOT")}"
 
-    _dg_emit "plugin.run.start" "plugin=design-gate"
-
     local -a violations=()
 
     # ── C1 SCOPE: non-empty ```scope block ──────────────────────────────────
@@ -164,7 +162,7 @@ design_gate_run() {
         _dg_emit "design_gate.pass" "plugin=design-gate"
     fi
 
-    _dg_emit "plugin.run.complete" "plugin=design-gate" "verdict=$verdict"
+    _dg_emit "plugin.result" "plugin=design-gate" "verdict=$verdict"
     return 0
 }
 

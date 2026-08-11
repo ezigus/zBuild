@@ -187,12 +187,12 @@ unset ZBUILD_ISSUE 2>/dev/null || true
 
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 
-run_complete=$(grep '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.complete" and .data.plugin=="output-github-comment") | .data.findings_count // empty' 2>/dev/null | tail -1 || true)
+run_complete=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result" and .data.plugin=="output-github-comment") | .data.findings_count // empty' 2>/dev/null | tail -1 || true)
 if [[ -n "$run_complete" ]]; then
-    assert_pass "plugin.run.complete event has findings_count field"
+    assert_pass "[SPEC-2] plugin.result event has findings_count field"
 else
-    assert_fail "plugin.run.complete missing findings_count"
+    assert_fail "plugin.result missing findings_count"
 fi
 
 # ─── Test 11: findings.json with stub:false field → ignored cleanly ──────────

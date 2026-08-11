@@ -514,7 +514,7 @@ $_impact_instructions"
             ;;
     esac
 
-    emit_event "plugin.run.complete" "stage=impact" \
+    emit_event "plugin.result" "stage=impact" \
         "plugin=impact" "verdict=$verdict" "artifact=impact.json"
     return 0
 }

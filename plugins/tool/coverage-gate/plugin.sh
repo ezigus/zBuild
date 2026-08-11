@@ -59,8 +59,6 @@ coverage_gate_run() {
     local result_path="$artifacts_dir/coverage-result.json"
     local results_json="$artifacts_dir/test-results.json"
 
-    _cg_emit "plugin.run.start" "plugin=coverage-gate"
-
     # Read status, pct, floor in one jq pass. Absent file / block → all empty.
     local status="" pct="" floor=""
     if [[ -f "$results_json" ]]; then
@@ -106,7 +104,7 @@ coverage_gate_run() {
     jq -n --arg v "$verdict" --arg s "$status" --arg p "$pct" --arg f "$floor" --arg d "$detail" \
         '{"verdict":$v,"status":$s,"pct":$p,"floor":$f,"detail":$d}' | atomic_write "$result_path"
 
-    _cg_emit "plugin.run.complete" "plugin=coverage-gate" "verdict=$verdict"
+    _cg_emit "plugin.result" "plugin=coverage-gate" "verdict=$verdict"
     return 0
 }
 

@@ -128,7 +128,7 @@ output_run() {
     dest="$(IFS=,; printf '%s' "${dest_parts[*]}")"
     [[ -z "$dest" ]] && dest="none"
 
-    emit_event "plugin.run.complete" "plugin=output-github-comment" \
+    emit_event "plugin.result" "plugin=output-github-comment" \
         "findings_count=$count" "dest=$dest"
     return 0
 }

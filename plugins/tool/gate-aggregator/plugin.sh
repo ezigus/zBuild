@@ -213,8 +213,6 @@ gate_aggregator_run() {
     # shared and durable) → design reads it on replay.
     local design_feedback_path="$artifacts_dir/design-feedback.md"
 
-    _ga_emit "plugin.run.start" "plugin=gate-aggregator"
-
     # ADR-040 §2: discover the must-pass roster (cycle-driven or legacy fallback).
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_GA_ROOT/plugins}"
     _ga_build_roster "$plugins_root"
@@ -312,7 +310,7 @@ gate_aggregator_run() {
         _ga_emit "gate_aggregator.fail" "failed=${failed[*]}" "verdict=$verdict"
     fi
 
-    _ga_emit "plugin.run.complete" "plugin=gate-aggregator" "verdict=$verdict"
+    _ga_emit "plugin.result" "plugin=gate-aggregator" "verdict=$verdict"
     return 0
 }
 

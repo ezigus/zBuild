@@ -176,8 +176,6 @@ secret_scan_run() {
     mkdir -p "$artifacts_dir"
     local result_path="$artifacts_dir/secret-scan-result.json"
 
-    _ss_emit "plugin.run.start" "plugin=secret-scan"
-
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo)}"
     local base=""
     [[ -n "$repo_root" ]] && base="$(zbuild_resolve_merge_base "$repo_root")"
@@ -187,7 +185,7 @@ secret_scan_run() {
         printf '{"verdict":"skip","reason":"no_baseline","baseline":"","finding_count":0,"findings":[]}\n' \
             | atomic_write "$result_path"
         _ss_emit "secret_scan.skip" "reason=no_baseline"
-        _ss_emit "plugin.run.complete" "plugin=secret-scan" "verdict=skip"
+        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
         return 0
     fi
 
@@ -199,7 +197,7 @@ secret_scan_run() {
         printf '{"verdict":"skip","reason":"empty_diff","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
             | atomic_write "$result_path"
         _ss_emit "secret_scan.skip" "reason=empty_diff"
-        _ss_emit "plugin.run.complete" "plugin=secret-scan" "verdict=skip"
+        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
         return 0
     fi
 
@@ -218,14 +216,14 @@ secret_scan_run() {
             '{verdict:"fail", reason:"secret_found", baseline:$base, finding_count:$n, findings:$f}' \
             | atomic_write "$result_path"
         _ss_emit "secret_scan.fail" "finding_count=$count"
-        _ss_emit "plugin.run.complete" "plugin=secret-scan" "verdict=fail"
+        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=fail"
         return 0
     fi
 
     printf '{"verdict":"pass","reason":"clean","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
         | atomic_write "$result_path"
     _ss_emit "secret_scan.pass"
-    _ss_emit "plugin.run.complete" "plugin=secret-scan" "verdict=pass"
+    _ss_emit "plugin.result" "plugin=secret-scan" "verdict=pass"
     return 0
 }
 

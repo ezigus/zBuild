@@ -48,8 +48,6 @@ shape_floor_run() {
     local result_path="$artifacts_dir/shape-floor-result.json"
     local repo_root="${ZBUILD_REPO_ROOT:-$_SF_ROOT}"
 
-    _sf_emit "plugin.run.start" "plugin=shape-floor"
-
     local _shape_out=""
     if declare -f _sf_shape_floor >/dev/null 2>&1; then
         _shape_out="$(_sf_shape_floor "$repo_root")"
@@ -108,7 +106,7 @@ shape_floor_run() {
             '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"
     fi
 
-    _sf_emit "plugin.run.complete" "plugin=shape-floor" "verdict=$verdict"
+    _sf_emit "plugin.result" "plugin=shape-floor" "verdict=$verdict"
     return 0
 }
 

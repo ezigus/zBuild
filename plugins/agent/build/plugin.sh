@@ -414,7 +414,7 @@ _build_stage_run_inner() {
     _build_rewrite_cumulative_diff "$scope_violation" "$artifact_dir" "$repo_root" \
         "$output_diff_patch" "$_diff_failure" || true
 
-    emit_event "plugin.run.complete" "stage=build" \
+    emit_event "plugin.result" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \
         "lines_added=$lines_added" \

@@ -18,6 +18,7 @@
     "pipeline.indicator.unknown_verdict",
     "plugin.run.start",
     "plugin.run.complete",
+    "plugin.result",
     "plugin.run.error",
     "plugin.cleanup.start",
     "plugin.cleanup.complete",

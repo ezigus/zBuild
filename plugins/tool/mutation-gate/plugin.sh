@@ -49,8 +49,6 @@ mutation_gate_run() {
     local result_path="$artifacts_dir/mutation-result.json"
     local results_json="$artifacts_dir/test-results.json"
 
-    _mg_emit "plugin.run.start" "plugin=mutation-gate"
-
     # Read status, score, floor in one jq pass. Absent file / block → all empty.
     local status="" score="" floor=""
     if [[ -f "$results_json" ]]; then
@@ -96,7 +94,7 @@ mutation_gate_run() {
     jq -n --arg v "$verdict" --arg s "$status" --arg sc "$score" --arg f "$floor" --arg d "$detail" \
         '{"verdict":$v,"status":$s,"score":$sc,"floor":$f,"detail":$d}' | atomic_write "$result_path"
 
-    _mg_emit "plugin.run.complete" "plugin=mutation-gate" "verdict=$verdict"
+    _mg_emit "plugin.result" "plugin=mutation-gate" "verdict=$verdict"
     return 0
 }
 

@@ -220,6 +220,8 @@ plugin_hook_call() {
 
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
     local kind; kind="$(yaml_get "$manifest" "kind")"
+    local -x ZBUILD_PLUGIN="$plugin_id"
+    local -x ZBUILD_PLUGIN_KIND="$kind"
 
     # ADR-054 §3 (#1862): the engine states, for exactly the span of one
     # dispatch, which stage this is and which plugin serves it.

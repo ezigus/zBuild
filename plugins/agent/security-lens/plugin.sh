@@ -172,7 +172,7 @@ _security_lens_run_inner() {
             stub: false
         }' | atomic_write "$output"
 
-    emit_event "plugin.run.complete" "plugin=security-lens" \
+    emit_event "plugin.result" "plugin=security-lens" \
         "findings_count=$findings_count" \
         "router_rc=$router_rc"
     return 0

@@ -213,7 +213,7 @@ _merge_run_inner() {
           pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
         > "$pr_result_out"
 
-    emit_event "plugin.run.complete" "plugin=merge" \
+    emit_event "plugin.result" "plugin=merge" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}"
     return 0
 }

@@ -563,7 +563,7 @@ DESIGN_PROMPT
     # Atomically finalize design.md (#507 contract).
     cat "$output_design_md" | atomic_write "$output_design_md"
 
-    emit_event "plugin.run.complete" "stage=design" \
+    emit_event "plugin.result" "stage=design" \
         "plugin=design" \
         "artifact=design.md"
 

@@ -216,7 +216,7 @@ _test_run_inner() {
         _test_write_result "$output_json" \
             "error" 2 0 0 "" "false" "$test_cmd"
         # #628: $tmp cleanup handled by RETURN trap above.
-        emit_event "plugin.run.complete" "plugin=test" "verdict=error" "reason=missing_diff_patch"
+        emit_event "plugin.result" "plugin=test" "verdict=error" "reason=missing_diff_patch"
         return 0
     fi
 
@@ -494,7 +494,7 @@ _test_run_inner() {
         "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
-    emit_event "plugin.run.complete" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \
+    emit_event "plugin.result" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \
         "run_mode=${run_mode}"
     return 0
 }

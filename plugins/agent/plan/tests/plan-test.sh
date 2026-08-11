@@ -215,8 +215,8 @@ assert_eq "in-scope plan returns rc=0" "0" "$rc"
 assert_file_exists "in-scope plan.json written" "$ARTIFACTS_DIR/plan.json"
 violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "in-scope plan emits no violation events" "0" "$violation_count"
-sv="$(jq -r 'select(.type=="plugin.run.complete" and .data.stage=="plan") | .data.scope_violations' "$EVENTS_FILE" 2>/dev/null | tail -1)"
-assert_eq "in-scope plugin.run.complete payload.scope_violations=0" "0" "${sv:-MISSING}"
+sv="$(jq -r 'select(.type=="plugin.result" and .data.stage=="plan") | .data.scope_violations' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+assert_eq "[SPEC-2] in-scope plugin.result payload.scope_violations=0" "0" "${sv:-MISSING}"
 
 # ─── Test 7: out-of-scope single path — one violation, plan.json still written ─
 : > "$EVENTS_FILE"
@@ -233,8 +233,8 @@ reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_
 assert_eq "violation reason=out_of_scope" "out_of_scope" "$reason"
 voff="$(jq -r 'select(.type=="plan.scope.violation") | .data.path' "$EVENTS_FILE" 2>/dev/null | head -1)"
 assert_eq "violation path reports offender" "legacy/foo.sh" "$voff"
-sv="$(jq -r 'select(.type=="plugin.run.complete" and .data.stage=="plan") | .data.scope_violations' "$EVENTS_FILE" 2>/dev/null | tail -1)"
-assert_eq "scope_violations=1 in run.complete" "1" "$sv"
+sv="$(jq -r 'select(.type=="plugin.result" and .data.stage=="plan") | .data.scope_violations' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+assert_eq "scope_violations=1 in plugin.result" "1" "$sv"
 
 # ─── Test 8: multiple out-of-scope — one event per offender ─────────────────
 : > "$EVENTS_FILE"
