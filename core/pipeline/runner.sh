@@ -3147,7 +3147,7 @@ main() {
             # output. Glyph + color reflect the actual verdict, not just rc=0.
             local _verdict_manifest="" _verdict_class="pass"
             local _verdict_plugin_dir=""
-            _verdict_plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" 2>/dev/null || true)"
+            _verdict_plugin_dir="$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)"
             if [[ -n "$_verdict_plugin_dir" ]]; then
                 _verdict_manifest="$_verdict_plugin_dir/manifest.yaml"
             fi
