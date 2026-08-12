@@ -132,6 +132,25 @@ case "$bad_out" in
     *) assert_fail "[SPEC-7] TC-8: refusal names the plugin and the range" "got: $bad_out" ;;
 esac
 
+# TC-9 [SPEC-5]: the #1850 one-line drop has to work THROUGH validate_manifest,
+# not just through the library. TC-6 proves the lib refuses an absent
+# declaration once MIN rises; this proves the validator does too. The two are
+# only equivalent if validate_manifest checks unconditionally — short-circuiting
+# on an empty declaration passes every undeclared plugin, and those are exactly
+# the ones #1850 must catch. Run in a subshell so the raised floor cannot leak.
+(
+    _ZBUILD_CONTRACT_MIN=2
+    set +e
+    out_none="$(validate_manifest "$TEST_TEMP_DIR/none.yaml" 2>&1)"; rc_none=$?
+    out_v2="$(validate_manifest "$TEST_TEMP_DIR/ok.yaml" 2>&1)";     rc_v2=$?
+    set -e
+    # undeclared → refused; declared v2 → still fine.
+    [[ "$rc_none" -eq 1 && "$out_none" == *"none-plugin"*"2..2"* && "$rc_v2" -eq 0 ]] && exit 0
+    printf 'none rc=%s out=%s | v2 rc=%s\n' "$rc_none" "$out_none" "$rc_v2" >&2
+    exit 1
+)
+assert_eq "[SPEC-5] TC-9: raising MIN refuses undeclared plugins at load, keeps v2" "0" "$?"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

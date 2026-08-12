@@ -360,15 +360,22 @@ validate_manifest() {
     # is taken and versions the ARTIFACT's own schema, independently per artifact
     # type (build-summary.json is at 4, #602). Same distinction verdict.sh:209
     # draws for the result file's own key.
+    # Checked UNCONDITIONALLY — an absent declaration is a declaration of v1, and
+    # it has to travel the same path as a stated one. Short-circuiting on empty
+    # looks equivalent today (v1 is in range, so both accept) and stops being
+    # equivalent the moment #1850 raises the floor: the undeclared plugins are
+    # exactly the ones that must then be refused, and a guard here would wave
+    # every one of them through while the declared stragglers got caught. That
+    # would make the acceptance — "an absent version becomes a structural failure
+    # when the v1 reader is dropped" — quietly false, and #1850 would no longer
+    # be a one-line change. contract_version_check owns the absent case.
     local _decl_contract
     _decl_contract="$(yaml_get "$manifest" "provides.result_contract" 2>/dev/null || true)"
-    if [[ -n "$_decl_contract" ]]; then
-        local _pid_c; _pid_c="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
-        local _msg
-        if ! _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"; then
-            error "validate_manifest($manifest): $_msg"
-            errors=$((errors + 1))
-        fi
+    local _pid_c; _pid_c="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+    local _msg
+    if ! _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"; then
+        error "validate_manifest($manifest): $_msg"
+        errors=$((errors + 1))
     fi
 
     # ─── #287/#294: hooks per kind ──────────────────────────────────────────
