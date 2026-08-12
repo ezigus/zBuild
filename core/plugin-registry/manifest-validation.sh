@@ -11,6 +11,12 @@
 [[ -n "${_ZBUILD_REGISTRY_MANIFEST_LOADED:-}" ]] && return 0
 _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 
+# The engine's declared result-contract range (#1824). Sourced, not duplicated —
+# validate_manifest refuses a plugin whose declared contract falls outside it.
+_ZB_MV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../contract/version.sh
+source "$_ZB_MV_DIR/../contract/version.sh"
+
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
 # no plugin.sh and no hooks. See _required_hooks_for_kind (returns "" for it) and
@@ -338,6 +344,29 @@ validate_manifest() {
             errors=$((errors + 1))
         elif [[ "$persona_perspective" =~ $_block_scalar_re ]]; then
             error "validate_manifest($manifest): 'persona.perspective' must be a single-line string, not a block scalar ('$persona_perspective'); use a plain value on the same line as the key"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    # ─── #1824: result-contract version negotiation ─────────────────────────
+    # A plugin declares which result contract it writes; the engine declares the
+    # range it can read (core/contract/version.sh). Refused HERE, at load, so an
+    # unreadable plugin cannot register — not at dispatch, where the run has
+    # already paid for the stage and the misread looks like a bad result rather
+    # than an unspeakable one. Never a warning: a version the engine cannot read
+    # means every verdict it produces is uninterpretable.
+    #
+    # NB `provides.result_contract`, NOT `provides.schema_version` — the latter
+    # is taken and versions the ARTIFACT's own schema, independently per artifact
+    # type (build-summary.json is at 4, #602). Same distinction verdict.sh:209
+    # draws for the result file's own key.
+    local _decl_contract
+    _decl_contract="$(yaml_get "$manifest" "provides.result_contract" 2>/dev/null || true)"
+    if [[ -n "$_decl_contract" ]]; then
+        local _pid_c; _pid_c="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+        local _msg
+        if ! _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"; then
+            error "validate_manifest($manifest): $_msg"
             errors=$((errors + 1))
         fi
     fi
