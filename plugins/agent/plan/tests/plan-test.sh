@@ -285,7 +285,7 @@ plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "malformed files[] non-string returns rc=1" "1" "$rc"
-err_reason="$(jq -r 'select(.type=="plugin.run.error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+err_reason="$(jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
 assert_eq "malformed plan error reason=schema_violation (#476)" "schema_violation" "$err_reason"
 
 # ─── Test 13: empty files[] — allowed, no violation ─────────────────────────
@@ -311,7 +311,7 @@ plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "empty .result returns rc=1 (#476)" "1" "$rc"
-empty_reason="$(jq -r 'select(.type=="plugin.run.error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
+empty_reason="$(jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason' "$EVENTS_FILE" 2>/dev/null | tail -1)"
 assert_eq "empty .result emits reason=empty_result_envelope (#476)" "empty_result_envelope" "$empty_reason"
 
 # ─── Test 13c (#478): prose-prefixed JSON survives via parser-side helper ───

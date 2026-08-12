@@ -100,12 +100,29 @@ complete_count=$(grep -c '"type":"plugin\.run\.complete"' "$EVENTS_LOG" 2>/dev/n
 assert_eq "[SPEC-4] engine emits exactly 2 plugin.run.start events (one per call)" "2" "$start_count"
 assert_eq "[SPEC-4] plugin.run.complete emitted on every successful call" "2" "$complete_count"
 
-# ── SPEC-5: no plugin self-emits engine-owned lifecycle event names ───────────
-# GUARD: the fixture emits only plugin.result; any plugin.run.start in the log
-# comes from the engine (always exactly 2). A self-emitting plugin would raise
-# start_count above 2. This invariant holds before and after the fix.
-self_emit_starts=$(( start_count - 2 ))
-assert_eq "[SPEC-5] no self-emitted plugin.run.start from fixture plugin" "0" "$self_emit_starts"
+# ── SPEC-5: no SHIPPED plugin emits an engine-owned lifecycle event name ──────
+# GUARD, repo-wide. This is a static scan rather than a fixture assertion for
+# two reasons: a fixture can only speak for itself, and the mocked full run
+# (tests/e2e/plugin-event-balance-full-run-test.sh) dispatches ~7 plugins while
+# 15+ carried the original collision — the ones never dispatched would regress
+# silently. The engine owns the whole plugin.<hook>.* lifecycle family;
+# plugins report domain outcomes as plugin.result (verdict=error for failures).
+#
+# `error` is scanned alongside start/complete because it is the SAME defect:
+# the engine emits plugin.run.error for a non-zero hook rc while 8 plugins were
+# emitting it for domain failures, so the name could not distinguish "the hook
+# crashed" from "the work legitimately concluded it could not proceed".
+# `|| true`: grep exits 1 on no-match — the HEALTHY case — and with pipefail
+# that aborts the script before the assertion ever runs.
+_self_emitters="$(
+    { grep -rln 'emit_event "plugin\.run\.\(start\|complete\|error\)"' "$REPO_ROOT/plugins" 2>/dev/null || true; } | tr '\n' ' '
+)"
+if [[ -z "$_self_emitters" ]]; then
+    assert_pass "[SPEC-5] no shipped plugin emits plugin.run.start/complete/error"
+else
+    assert_fail "[SPEC-5] no shipped plugin emits plugin.run.start/complete/error" \
+        "self-emitting: $_self_emitters"
+fi
 
 # ── SPEC-1: ZBUILD_PLUGIN and ZBUILD_PLUGIN_KIND are exported to plugin subshell
 # CHANGE: at baseline (before local -x exports in lifecycle.sh) the fixture

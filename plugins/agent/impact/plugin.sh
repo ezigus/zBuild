@@ -103,7 +103,7 @@ _impact_run_inner() {
 
     if [[ ! -f "$design_md_path" ]]; then
         error "_impact_run_inner: design.md not found at $design_md_path"
-        emit_event "plugin.run.error" "plugin=impact" "reason=missing_design_md"
+        emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=missing_design_md"
         return 2
     fi
 
@@ -331,11 +331,11 @@ $_impact_instructions"
         local _rc_verdict _rc_reason
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_impact_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
-        emit_event "plugin.run.error" "plugin=impact" "reason=$_rc_reason" "router_rc=$router_rc"
+        emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=$_rc_reason" "router_rc=$router_rc"
         # #937: a TIMEOUT (rc=124, reason=router_timeout) is RECOVERABLE — fall
         # through to the #892 best-effort verdict=incomplete path (re-iterate)
         # rather than writing an empty verdict=error that wastes the iteration.
-        # The plugin.run.error event above already preserves reason=router_timeout
+        # The plugin.result verdict=error event above already preserves reason=router_timeout
         # for postmortems. Genuine infra errors (OOM rc=137, claude crash) keep
         # verdict=error so the cycle's blocked-predicate can flag them.
         if [[ "$_rc_verdict" == "error" && "$_rc_reason" != "router_timeout" ]]; then
@@ -390,11 +390,11 @@ $_impact_instructions"
 
     if [[ -z "$impact_json" ]]; then
         error "_impact_run_inner: empty or malformed response from LLM"
-        emit_event "plugin.run.error" "plugin=impact" "reason=empty_response"
+        emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=empty_response"
         return 1
     fi
 
-    # Copilot #747: strict schema validation — fail with plugin.run.error
+    # Copilot #747: strict schema validation — fail with plugin.result verdict=error
     # rather than silently degrading. impact.json drives cycle convergence,
     # so a malformed response that grants verdict=incomplete via the soft
     # default could let max_iterations=3 + on_max=continue ship a
@@ -419,7 +419,7 @@ $_impact_instructions"
                 "recovered_bytes=${#_recovered}" "artifact=impact.json"
         else
             error "_impact_run_inner: impact.json schema violation (requires schema_version=1, verdict ∈ {complete,incomplete,error}, missing[], impact_feedback_md string)"
-            emit_event "plugin.run.error" "plugin=impact" "reason=schema_violation"
+            emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=schema_violation"
             return 1
         fi
     fi
@@ -443,7 +443,7 @@ $_impact_instructions"
             ($forced - $present | unique)
         ' 2>/dev/null)"; then
             error "_impact_run_inner: prefilter floor merge (jq) failed — refusing to ship LLM verdict unchanged (#781)"
-            emit_event "plugin.run.error" "plugin=impact" "reason=prefilter_merge_failed"
+            emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=prefilter_merge_failed"
             return 1
         fi
         if [[ "$_missing_golden_json" != "[]" ]] && [[ -n "$_missing_golden_json" ]]; then
@@ -458,7 +458,7 @@ $_impact_instructions"
                 }]
             ' 2>/dev/null)"; then
                 error "_impact_run_inner: prefilter floor injection (jq) failed — refusing to ship (#781)"
-                emit_event "plugin.run.error" "plugin=impact" "reason=prefilter_inject_failed"
+                emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=prefilter_inject_failed"
                 return 1
             fi
         fi

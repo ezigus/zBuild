@@ -97,7 +97,7 @@ _merge_run_inner() {
     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
     if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
         error "merge_run: refusing to merge from branch '${current_branch}' — use a feature branch"
-        emit_event "plugin.run.error" "plugin=merge" \
+        emit_event "plugin.result" "verdict=error" "plugin=merge" \
             "reason=branch_is_main" "branch=${current_branch}"
         jq -n --arg branch "$current_branch" \
             '{"schema_version":1,"status":"error","reason":("refusing to merge from: "+$branch)}' \

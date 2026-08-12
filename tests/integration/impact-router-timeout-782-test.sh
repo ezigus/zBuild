@@ -5,14 +5,14 @@
 # #937 amends #782: a TIMEOUT (rc=124) is RECOVERABLE — impact writes a
 # best-effort verdict=incomplete (re-iterate) instead of an empty verdict=error,
 # mirroring #892's rc=1 handling. reason=router_timeout is preserved in the
-# plugin.run.error event AND the impact.json reason for postmortems. Genuine
+# plugin.result event AND the impact.json reason for postmortems. Genuine
 # infra errors (OOM rc=137) keep verdict=error so the cycle blocked-predicate
 # can flag them.
 #
 # Pinned assertions:
 #   I1: rc=124 → plugin returns rc=0 (graceful)
 #   I2: rc=124 → impact.json verdict=incomplete (best-effort), reason=router_timeout
-#   I3: plugin.run.error event emitted with reason=router_timeout
+#   I3: plugin.result event emitted with reason=router_timeout
 #   I4: impact.verdict.incomplete event emitted (cycle re-iterates with signal)
 #   I5: rc=1 (max_turns) → best-effort verdict=incomplete (#892)
 #   I6: rc=137 (OOM) → verdict=error (error class preserved for genuine infra fail)
@@ -83,10 +83,10 @@ fi
 
 events="$(cat "$ZBUILD_EVENTS_JSONL")"
 case "$events" in
-    *'"type":"plugin.run.error"'*'"reason":"router_timeout"'*)
-        assert_pass "I3: plugin.run.error reason=router_timeout emitted" ;;
+    *'"type":"plugin.result"'*'"reason":"router_timeout"'*)
+        assert_pass "I3: plugin.result reason=router_timeout emitted" ;;
     *)
-        assert_fail "I3: plugin.run.error event missing reason=router_timeout: $events" ;;
+        assert_fail "I3: plugin.result event missing reason=router_timeout: $events" ;;
 esac
 
 case "$events" in

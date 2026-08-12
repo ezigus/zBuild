@@ -172,9 +172,9 @@ rc=$?
 set -e
 
 assert_eq "gh failure returns plugin rc=1" "1" "$rc"
-error_reason=$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
-assert_eq "plugin.run.error emitted with gh_failed" "gh_failed" "$error_reason"
+error_reason=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "plugin.result emitted with gh_failed" "gh_failed" "$error_reason"
 unset ZBUILD_ISSUE
 
 # ─── Test 9: plugin.run.complete event with findings_count ───────────────────

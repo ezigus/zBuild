@@ -109,7 +109,7 @@ _build_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_build_stage_run_inner: plan.json not found at $plan_json_path"
-        emit_event "plugin.run.error" "plugin=build" "reason=missing_plan_json"
+        emit_event "plugin.result" "verdict=error" "plugin=build" "reason=missing_plan_json"
         return 2
     fi
 

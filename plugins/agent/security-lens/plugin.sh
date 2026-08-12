@@ -151,7 +151,7 @@ _security_lens_run_inner() {
         warn "security_lens_run: router rc=1 (recoverable); using empty findings"
     elif [[ $router_rc -ne 0 ]]; then
         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
-        emit_event "plugin.run.error" "plugin=security-lens" \
+        emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
             "reason=router_fatal" "router_rc=$router_rc"
         return 1
     fi

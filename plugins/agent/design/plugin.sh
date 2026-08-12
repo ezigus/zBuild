@@ -184,7 +184,7 @@ _design_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_design_stage_run_inner: plan.json not found at $plan_json_path"
-        emit_event "plugin.run.error" "plugin=design" "reason=missing_plan_json"
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_plan_json"
         return 2
     fi
 
@@ -453,7 +453,7 @@ DESIGN_PROMPT
     # masking it with rc=0 and leaving the cycle with no artifact.
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_timeout" ]]; then
         error "_design_stage_run_inner: router loop timed out (reason=router_timeout) — writing gate-failing marker to re-iterate"
-        emit_event "plugin.run.error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
         mkdir -p "$artifact_dir"
         if printf '# Design incomplete — router timeout, re-iterating\n\nDesign did not complete (reason=router_timeout). No acceptance block is emitted, so the design-gate rejects this artifact and the design cycle re-iterates.\n' \
                 > "$output_design_md"; then
@@ -474,7 +474,7 @@ DESIGN_PROMPT
             return 0
         fi
         error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
-        emit_event "plugin.run.error" "plugin=design" "reason=marker_write_failed" "rc=$router_rc"
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=marker_write_failed" "rc=$router_rc"
         return 1
     fi
 
@@ -486,7 +486,7 @@ DESIGN_PROMPT
         local _rc_verdict _rc_reason
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
-        emit_event "plugin.run.error" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
         return 1
     fi
 
@@ -517,7 +517,7 @@ DESIGN_PROMPT
     # Assert the scope block is present in design.md.
     if [[ ! -f "$output_design_md" ]]; then
         error "_design_stage_run_inner: design.md not produced at $output_design_md"
-        emit_event "plugin.run.error" "plugin=design" "reason=missing_design_md"
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_design_md"
         return 1
     fi
 
@@ -528,7 +528,7 @@ DESIGN_PROMPT
     # below already uses the unescaped form, so this aligns the two.
     if ! grep -q '^```scope' "$output_design_md" 2>/dev/null; then
         warn "_design_stage_run_inner: design.md missing scope block — design output incomplete"
-        emit_event "plugin.run.error" "plugin=design" "reason=missing_scope_block"
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_scope_block"
         # Failure path: don't override the banner output; let the deferred
         # close (if any) flush claude's stdout summary so the operator sees
         # the LLM's diagnostic message rather than a missing-file artifact.
@@ -541,7 +541,7 @@ DESIGN_PROMPT
     # Assert the acceptance block is present in design.md.
     if ! extract_acceptance_block "$output_design_md" >/dev/null 2>&1; then
         warn "_design_stage_run_inner: design.md missing acceptance block — design output incomplete"
-        emit_event "plugin.run.error" "plugin=design" "reason=missing_acceptance_block"
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_acceptance_block"
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
             _route_loop_close_final_banner || true
         fi

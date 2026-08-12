@@ -680,7 +680,7 @@ $_plan_instructions"
     # still have emitted (from raw_response AND the router's max_turns sidecar
     # .result); (2) if the failure is specifically error_max_turns/timeout/oom,
     # turn it into a TERMINAL scope_too_large signal (rc=10) instead of an empty
-    # plugin.run.error; (3) otherwise keep the existing claude_cli_failed path.
+    # plugin.result verdict=error; (3) otherwise keep the existing claude_cli_failed path.
     if [[ -z "$plan_json" ]]; then
         # (a) Envelope recovery — ONLY on a router FAILURE (rc != 0), i.e. the
         # budget-exhaustion / crash path. A model that hit max_turns may still
@@ -727,7 +727,7 @@ $_plan_instructions"
             # (b) No recoverable plan. The failure becomes the terminal
             # scope_too_large abort iff the model exhausted its turn budget
             # (sidecar subtype=error_max_turns). Anything else stays the existing
-            # claude_cli_failed / plugin.run.error path.
+            # claude_cli_failed / plugin.result verdict=error path.
             local _stl_subtype=""
             # Resolve the sidecar dir from the SAME expression route.sh writes it
             # to, so a caller that set ZBUILD_ARTIFACT_DIR differently from the
@@ -831,7 +831,7 @@ $_plan_instructions"
             [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
             [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
             error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
-            emit_event "plugin.run.error" "plugin=plan" "reason=$_reason"
+            emit_event "plugin.result" "verdict=error" "plugin=plan" "reason=$_reason"
             return 1
         fi
     fi

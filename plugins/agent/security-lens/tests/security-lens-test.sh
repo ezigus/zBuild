@@ -223,9 +223,9 @@ ZBUILD_SECURITY_LENS_TIER=T9 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUT
 rc=$?
 set -e
 assert_eq "R7: router rc=2 (fatal tier) returns plugin rc=1 (propagates)" "1" "$rc"
-r7_error_event=$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
-assert_eq "R7: plugin.run.error event emitted with router_fatal reason" "router_fatal" "$r7_error_event"
+r7_error_event=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "R7: plugin.result event emitted with router_fatal reason" "router_fatal" "$r7_error_event"
 
 # ─── R8: .findings key missing from valid JSON object (envelope-wrapped #476) ─
 install_envelope_mock_claude '{"schema_version":1}'
