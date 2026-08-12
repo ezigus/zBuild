@@ -101,7 +101,7 @@ set -e
 ZBUILD_EVENTS_DIR="$_old_dir"; ZBUILD_EVENTS_JSONL="$_old_jsonl"; ZBUILD_EVENTS_DB="$_old_db"
 
 _SEEN="$TEST_TEMP_DIR/idf-seen.txt"
-_seen() { /usr/bin/grep "^$1=" "$_SEEN" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen() { grep "^$1=" "$_SEEN" 2>/dev/null | head -1 | cut -d= -f2-; }
 
 assert_eq "[SETUP] fixture dispatch succeeded" "0" "$_dispatch_rc"
 
@@ -146,8 +146,13 @@ fi
 # Asserted as a PAIR — "unset afterwards" is vacuously true at the merge-base,
 # where it was never set at all. The transition is the claim, so the assertion
 # has to carry both halves or it is a guard nothing verifies.
+# ZBUILD_CURRENT_STAGE is included: this file unsets it at the top and no outer
+# export exists here, so the `local -x` scoping claim is checkable for all FOUR
+# variables. In production a caller owns that one (cycle-orchestrator.sh:1466)
+# and the unwind restores its value rather than clearing it — which is the
+# behaviour SPEC-6 of dispatch-rc-signal-boundary-test.sh depends on.
 _after_unset=1
-for _v in ZBUILD_PLUGIN ZBUILD_PLUGIN_KIND ZBUILD_PLUGIN_DIR; do
+for _v in ZBUILD_PLUGIN ZBUILD_PLUGIN_KIND ZBUILD_PLUGIN_DIR ZBUILD_CURRENT_STAGE; do
     if [[ -v "$_v" ]]; then _after_unset=0; fi
 done
 _bleed="set_during=$([[ "$(_seen plugin)" != "<unset>" ]] && echo yes || echo no)"
@@ -186,7 +191,7 @@ set -e
 ZBUILD_EVENTS_JSONL="$_old_jsonl2"; ZBUILD_EVENTS_DB="$_old_db2"
 
 _SEEN2="$TEST_TEMP_DIR/idf2-seen.txt"
-_seen2() { /usr/bin/grep "^$1=" "$_SEEN2" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen2() { grep "^$1=" "$_SEEN2" 2>/dev/null | head -1 | cut -d= -f2-; }
 assert_eq "[SPEC-4] a second dispatch sees its own stage, not the first's" "second_stage" "$(_seen2 stage)"
 assert_eq "[SPEC-4] a second dispatch sees its own plugin id" "identity-fixture-2" "$(_seen2 plugin)"
 assert_eq "[SPEC-4] a second dispatch sees its own kind" "tool" "$(_seen2 kind)"
@@ -254,7 +259,7 @@ set -e
 ZBUILD_EVENTS_JSONL="$_old_jsonl3"; ZBUILD_EVENTS_DB="$_old_db3"
 
 _SEEN3="$TEST_TEMP_DIR/idf3-seen.txt"
-_seen3() { /usr/bin/grep "^$1=" "$_SEEN3" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen3() { grep "^$1=" "$_SEEN3" 2>/dev/null | head -1 | cut -d= -f2-; }
 
 assert_eq "[SPEC-7] generated map work unit ran" "0" "$_wu_rc"
 assert_eq "[SPEC-7] a map member receives the group's stage name" "$_MAP_STAGE" "$(_seen3 stage)"

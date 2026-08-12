@@ -250,8 +250,15 @@ plugin_hook_call() {
     #
     # Stage id is $1 post-shift for both hooks — run(stage_id, state_file, ...)
     # and cleanup(stage_id, state_file, scope), ADR-054 §2. Same assumption
-    # scan_plugin_outputs already makes below. Falls back to the ambient value
-    # so a caller that passes no stage does not blank an outer one.
+    # scan_plugin_outputs already makes below.
+    #
+    # `:-` is deliberate and deliberately unlike `stage_arg="${1:-}"` below: an
+    # empty $1 keeps the ambient stage rather than blanking it. A caller with no
+    # stage to name must not erase the one its own caller established — the
+    # throttle marker's path is keyed on this value and is written inside the
+    # dispatch but read outside it (router-rc-classify.sh:154), so a blank here
+    # would split the key across the boundary. scan_plugin_outputs has no such
+    # cross-boundary reader and wants the literal argument.
     local -x ZBUILD_CURRENT_STAGE="${1:-${ZBUILD_CURRENT_STAGE:-}}"
     local -x ZBUILD_PLUGIN="$plugin_id"
     local -x ZBUILD_PLUGIN_KIND="$kind"
