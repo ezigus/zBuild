@@ -78,13 +78,28 @@ assert_eq "[SPEC-5] TC-6: raising MIN alone retires v1 and the absent default" "
 # how a range becomes advisory — the reader drifts from the validator and each
 # is individually defensible. Anchored to assignments, so prose and `$_ZBUILD_*`
 # references don't false-positive.
-dupes="$(grep -rnE '^[[:space:]]*_ZBUILD_CONTRACT_(MIN|MAX|V2)=' \
+dupes="$(grep -rnE '^[[:space:]]*_ZBUILD_CONTRACT_(MIN|MAX|V2|DEFAULT)=' \
     "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" 2>/dev/null \
     | grep -v '/core/contract/version.sh:' || true)"
 if [[ -z "$dupes" ]]; then
     assert_pass "[SPEC-6] TC-7: contract bounds assigned only in core/contract/version.sh"
 else
     assert_fail "[SPEC-6] TC-7: contract bounds assigned only in core/contract/version.sh" "second copy: $dupes"
+fi
+
+# TC-7b [SPEC-6]: a bare NUMERIC comparison against the v2 boundary is also a
+# second copy — and the more likely one. Assignments are obvious; an inline
+# `-ge 2` reads as ordinary code. #1823 landed three of them (verdict.sh plus two
+# in runner.sh's dispatch gate) while this issue was open, which is exactly how a
+# range stops being one place. Anchored to a contract-ish variable so unrelated
+# arithmetic doesn't false-positive.
+lits="$(grep -rnE '\$\{?_?[A-Za-z_]*(contract|_sv|_cd_contract|_pd_contract)[A-Za-z_]*\}?"?[[:space:]]+-(ge|gt|lt|le|eq)[[:space:]]+[0-9]' \
+    "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" 2>/dev/null \
+    | grep -v '/core/contract/version.sh:' || true)"
+if [[ -z "$lits" ]]; then
+    assert_pass "[SPEC-6] TC-7b: no bare numeric comparison against the contract boundary"
+else
+    assert_fail "[SPEC-6] TC-7b: no bare numeric comparison against the contract boundary" "literal boundary: $lits"
 fi
 
 # TC-8 [SPEC-7]: validate_manifest refuses an unreadable plugin at LOAD, and
