@@ -139,8 +139,24 @@ _router_rc_classify() {
 # _router_throttle_marker_path — resolve from ZBUILD_STATE_DIR. Empty when unset,
 # so the helpers degrade to no-ops rather than fabricating a path under cwd
 # (mirrors _zbuild_abort_sentinel_path).
+#
+# The path is scoped PER STAGE. Parallel group members run concurrently in
+# forked subshells (parallel-orchestrator.sh `_parallel_run_member`) but share
+# one ZBUILD_STATE_DIR, so a single shared filename would let one member's
+# pre-dispatch clear wipe a sibling's live marker, and let a sibling's rate
+# limit be attributed to the wrong member. Both mis-report which stage needs to
+# wait. ZBUILD_CURRENT_STAGE is exported per member (parallel-orchestrator.sh:146)
+# and per stage on the linear path, so it is the right key.
+#
+# The stage id is interpolated into a filesystem path, so it is constrained to
+# a plain id — the same guard _verdict_read_stage_sidecar applies. Anything else
+# falls back to the unscoped name rather than escaping the state dir.
 _router_throttle_marker_path() {
-    if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+    [[ -z "${ZBUILD_STATE_DIR:-}" ]] && return 0
+    local _stage="${ZBUILD_CURRENT_STAGE:-}"
+    if [[ "$_stage" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+        printf '%s/.throttled.%s.signal' "$ZBUILD_STATE_DIR" "$_stage"
+    else
         printf '%s/.throttled.signal' "$ZBUILD_STATE_DIR"
     fi
 }

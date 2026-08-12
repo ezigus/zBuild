@@ -1598,10 +1598,15 @@ ${_diff_pointer}"
             #
             # Detect on the envelope COPY (`_diag_json_path`), because the
             # original `$json_file` is removed on every error path below.
-            local _loop_rate_limited=0 _loop_rl_msg=""
-            if [[ -n "$_diag_json_path" ]] && _router_is_rate_limit "$(cat "$_diag_json_path" 2>/dev/null || true)"; then
+            # Read the envelope ONCE. Two `$(cat ...)` substitutions would fork
+            # twice per failing iteration for the same bytes (review finding).
+            local _loop_rate_limited=0 _loop_rl_msg="" _loop_envelope=""
+            if [[ -n "$_diag_json_path" ]]; then
+                _loop_envelope="$(cat "$_diag_json_path" 2>/dev/null || true)"
+            fi
+            if [[ -n "$_loop_envelope" ]] && _router_is_rate_limit "$_loop_envelope"; then
                 _loop_rate_limited=1
-                _loop_rl_msg="$(_router_rate_limit_message "$(cat "$_diag_json_path" 2>/dev/null || true)")"
+                _loop_rl_msg="$(_router_rate_limit_message "$_loop_envelope")"
             fi
             # #762: surface error_max_turns subtype with a human-readable line.
             # Falls back to the legacy stderr-snip warning otherwise.

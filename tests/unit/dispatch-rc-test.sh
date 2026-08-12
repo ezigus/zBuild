@@ -310,6 +310,41 @@ assert_eq "[SPEC-7] observing without a state dir reports nothing" \
 export ZBUILD_STATE_DIR="$_saved_state_dir"
 [[ -e "$PWD/.throttled.signal" ]] && assert_fail "[SPEC-7] no marker fabricated under cwd" "found $PWD/.throttled.signal"
 
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "8. A legacy rc outranks the observation-based fallback"
+
+# Review finding: a v1 stage exiting 9 or 10 with no result resolved to `broken`
+# because the legacy mapping was computed and never consulted. Both still halt,
+# so no control flow changed — but `broken` tells an operator "this is our own
+# defect" for what is actually a service outage or an oversized scope, and that
+# distinction is the entire reason `unavailable` and `broken` are separate words
+# (#1822: they differ in what is reported, not in the stopping).
+rm -f "$_sd/artifacts/fx-result.json"
+
+assert_eq "[SPEC-8] rc=9 with no result → unavailable, not broken" "unavailable" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 9 "" 0)"
+assert_eq "[SPEC-8] rc=10 with no result → exhausted, not broken" "exhausted" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 10 "" 0)"
+assert_eq "[SPEC-8] rc=143 with no result → interrupted" "interrupted" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 143 "" 0)"
+
+# Each drives a genuinely different operator-facing response.
+assert_eq "[SPEC-8] unavailable halts for an OPERATOR, not as a defect" \
+    "halt_unavailable" "$(disposition_response unavailable)"
+assert_eq "[SPEC-8] exhausted escalates rather than halting" \
+    "escalate" "$(disposition_response exhausted)"
+
+# A legacy code with no §6 word still falls through to the observation table.
+assert_eq "[SPEC-8] rc=5 (blocked) has no word, so it stays broken" "broken" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 5 "" 0)"
+assert_eq "[SPEC-8] rc=8 likewise stays broken" "broken" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 8 "" 0)"
+
+# A rate limit still wins: it is evidence about THIS dispatch, where a legacy rc
+# is a coexistence-era translation.
+assert_eq "[SPEC-8] an observed rate limit outranks a legacy rc" "throttled" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 9 "" 1)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

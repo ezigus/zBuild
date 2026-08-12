@@ -252,6 +252,12 @@ _verdict_read_result() {
     printf -v "${p}_viol" '%s' ""
     printf -v "${p}_path" '%s' ""
     printf -v "${p}_present" '%s' "0"
+    # #1823: reset with the rest. Every early return below (no_manifest,
+    # no_primary, nonjson, absent, malformed) leaves the file's version unknown,
+    # and "unknown" must read as v1 — not as whatever the PREVIOUS stage
+    # declared. A stale 2 here would narrow a v1 stage's rc and silently delete
+    # its meaning, which is the cross-member leak #1822 fixed one channel over.
+    _ZBUILD_LAST_RESULT_CONTRACT="1"
 
     if [[ -z "$manifest" || ! -f "$manifest" ]]; then
         printf -v "${p}_state" '%s' "no_manifest"; return 0
@@ -287,6 +293,14 @@ _verdict_read_result() {
     local _sv; _sv="$(jq -r '.result_contract // 1' "$resolved" 2>/dev/null || echo 1)"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
     printf -v "${p}_contract" '%s' "$_sv"
+    # #1823: also publish on a well-known global so the dispatch boundary can
+    # learn the contract version from a read that ALREADY happened. Asking via
+    # runner_read_stage_contract would be a FIFTH full re-resolve-and-reparse per
+    # member — this function already runs four times per dispatch (#1821's header
+    # says so), each spawning several jq processes, and the runner is under an
+    # external timeout on the abort paths. Correct but slower is still a
+    # regression when something is racing a clock.
+    _ZBUILD_LAST_RESULT_CONTRACT="$_sv"
     printf -v "${p}_verdict" '%s' "$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
     printf -v "${p}_reason" '%s' "$(jq -r '.reason // empty' "$resolved" 2>/dev/null || true)"
 
@@ -558,6 +572,34 @@ runner_read_stage_disposition() {
         printf '%s' "$_d_disp"; return 0
     fi
     if [[ "$rc" -ne 0 ]] && ! _verdict_result_was_readable "$_d_state" "$_d_present"; then
+        # A legacy rc that ADR-054 §6 has an exact word for outranks the
+        # observation-based fallback. Review finding: without this a v1 stage
+        # exiting 9 (llm_unavailable) or 10 (scope_too_large) with no result
+        # resolved to `broken` — technically a halt either way, but it reports
+        # "this is our own defect" for a service outage or an oversized scope,
+        # which is what an operator reads to decide whether to act. `unavailable`
+        # and `broken` differ in exactly that, not in the stopping (#1822).
+        #
+        # This is the mapping's whole point and it was previously computed and
+        # never consulted. It is a v1-boundary read: a v2 stage declares its own
+        # disposition and returned above, and #1850 deletes this with the rest.
+        # Precedence: DIRECT EVIDENCE about this dispatch beats a translation of
+        # a number. A 429 envelope was actually seen on the wire; a legacy rc is
+        # a coexistence-era reading of an integer that will not exist after
+        # #1850. It also gives the better answer where the two disagree — rc=9
+        # fires after N consecutive CLI failures, and when those failures WERE
+        # rate limits, `throttled` (wait, then retry) is right and `unavailable`
+        # (halt for an operator) strands a run that only needed to wait.
+        if [[ "$rate_limited" == "1" ]]; then
+            printf '%s' "$(dispatch_rc_failure_disposition "$observation" 1)"; return 0
+        fi
+        # `$rc` is the RAW status here: the dispatch boundary narrows at its own
+        # return, after this reader, precisely so the number is still legible.
+        local _d_legacy
+        _d_legacy="$(dispatch_rc_legacy_disposition "$rc" 2>/dev/null || true)"
+        if [[ -n "$_d_legacy" ]]; then
+            printf '%s' "$_d_legacy"; return 0
+        fi
         printf '%s' "$(dispatch_rc_failure_disposition "$observation" "$rate_limited")"; return 0
     fi
     printf '%s' ""
