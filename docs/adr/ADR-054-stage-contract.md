@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
+**Amended:** 2026-08-12 (#1862) — §3.1 added: the engine exports dispatch identity (`ZBUILD_CURRENT_STAGE`, `ZBUILD_PLUGIN`, `ZBUILD_PLUGIN_KIND`, `ZBUILD_PLUGIN_DIR`) at `plugin_hook_call`, scoped to one dispatch. A plugin is self-defining about what it is and can never be self-defining about which stage it serves. `ZBUILD_PLUGINS_ROOT` is explicitly excluded; identity is scrubbed by `env-scrub` per ADR-024, not exempted from it.
 **Amends:**
 - ADR-001 — the stage contract is two hooks (§1), rc ∈ {0,1} (§4), and one result file (§5). The rc=1→`kind: recovery` routing is deleted; it was never implemented and no recovery plugin was ever registered.
 - ADR-021 — verdict and disposition are separated (§6); the informally-inherited `pass|warn|fail|unknown|error|corrupt_diff|block` set, which carried both axes in one string, is replaced.
@@ -71,9 +72,37 @@ Run-time context is passed via env vars exported by the runner — never via pos
 | `ZBUILD_ISSUE` | runner | all hooks (empty string when absent) |
 | `ZBUILD_RUN_ID` | runner | all hooks |
 | `ZBUILD_TARGET_PLATFORM` | runner (fanout strategy) | role-resolved hooks only |
-| `ZBUILD_CURRENT_STAGE` | runner | all stage-bound hooks |
+| `ZBUILD_CURRENT_STAGE` | `plugin_hook_call` (§3.1) | all stage-bound hooks |
+| `ZBUILD_PLUGIN` | `plugin_hook_call` (§3.1) | all stage-bound hooks |
+| `ZBUILD_PLUGIN_KIND` | `plugin_hook_call` (§3.1) | all stage-bound hooks |
+| `ZBUILD_PLUGIN_DIR` | `plugin_hook_call` (§3.1) | all stage-bound hooks |
 
 `ZBUILD_CURRENT_STAGE` (PR #438) is the key the per-stage router knob resolver uses to look up `router.timeout_s`, `router.max_turns`, `router.max_iterations`, `router.retries`, and `router.tier` (ADR-017).
+
+#### 3.1 Dispatch identity — amended 2026-08-12 (#1862)
+
+**The engine states, for exactly the span of one dispatch, which stage this is and which plugin serves it.** The single export point is `plugin_hook_call` (`core/plugin-registry/lifecycle.sh`).
+
+| Variable | Value | Source |
+|---|---|---|
+| `ZBUILD_CURRENT_STAGE` | the dispatching stage's name | `stage_id` — `$1` of the hook signature (§2) |
+| `ZBUILD_PLUGIN` | the serving plugin's `id` | `$plugin_dir/manifest.yaml` |
+| `ZBUILD_PLUGIN_KIND` | the serving plugin's `kind` | `$plugin_dir/manifest.yaml` |
+| `ZBUILD_PLUGIN_DIR` | the serving plugin's directory | `$1` of `plugin_hook_call` |
+
+**Why the engine and not the plugin.** A plugin is self-defining about *what it is* — `scripts/lib/plugin-bootstrap.sh` resolves `_ZBUILD_PLUGIN_DIR` from the plugin's own `BASH_SOURCE`, needing no engine. It can never be self-defining about *which stage it is currently serving*. Stage name, role and plugin id are three distinct namespaces and only the template holds the mapping: `review_lenses` (stage) is served by `review-lens` (plugin id) via role `review_lens`, and under `map:` all six lens members receive that one stage name. Everything keyed to the flow — the run timeline, `stage_statuses`, the per-stage router knobs — needs the stage name; introspection yields only the plugin id.
+
+The engine's answer cannot differ from the plugin's own: `plugin_hook_call` sources `plugin.sh` from the same directory it stamps, and reads `id`/`kind` from the same manifest the plugin would. It is the plugin's answer plus the axis the plugin cannot reach.
+
+**Why `plugin_hook_call`.** It is the only site reaching all four dispatch arms. The `map:` arm executes a generated standalone script (`core/pipeline/strategies/common.sh`) that the runner cannot export into — but `plugin_hook_call` is that script's last line.
+
+**Lifetime is one dispatch.** Declared `local -x`, not `export`. This reaches the lifecycle's own `plugin.*` emits (which fire outside the plugin subshell), reaches the subshell and anything it spawns, and unsets on return. Identity from stage *N* must not be visible during stage *N+1*; a plain `export` would trade a blank field for a stale one.
+
+**Two owners, two questions, deliberately not merged.** `_ZBUILD_PLUGIN_DIR` (plugin-owned, set at source time) answers *where are my files on disk* and must keep working when a plugin is sourced with no engine present. `ZBUILD_PLUGIN_DIR` (engine-owned, set at dispatch) answers *who is this dispatch for*. In production they are always equal. Plugin code uses the former to locate its own assets; shared engine libraries use the latter to know whom they serve.
+
+**`ZBUILD_PLUGINS_ROOT` is not identity and is not set here.** Every reader spells it `${ZBUILD_PLUGINS_ROOT:-<repo default>}` — it is an operator override, and ADR-024 / `scripts/lib/persona-resolve.sh` forbid relying on it as a root. Engine-setting it would convert an override into a permanent pin. Derive from `ZBUILD_PLUGIN_DIR`.
+
+**Identity does not survive `env-scrub`.** Per ADR-024 the claude spawn is a fresh-user-shell subprocess that must not see `ZBUILD_*` pipeline state, and identity is pipeline state. Every consumer — the router's knob resolver, `stage_io_begin`, envelope stamping — runs in the parent scope before the spawn. `_zbuild_make_fresh_shell` scrubs identity along with everything else, and a regression guard asserts it.
 
 ### 4. Exit codes (rc)
 

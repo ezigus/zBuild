@@ -81,6 +81,15 @@ EOF
 # take the observation, narrow, then ask the reader.
 _dispatch() {
     local dir="$1" id="$2" raw=0
+    # #1862: the runner's caller exports the member stage BEFORE the sequence
+    # below — cycle-orchestrator.sh:1466 `export ZBUILD_CURRENT_STAGE="$s"`,
+    # then :1714 `cycle_dispatch_stage "$s"`. This helper omitted it, which was
+    # the "convenient approximation" the comment above warns against: the
+    # throttle marker's path is keyed on the stage (router-rc-classify.sh:154),
+    # so clear/observe ran unscoped here while production runs them scoped.
+    # Exporting it makes the key identical inside and outside the dispatch,
+    # which is what production does.
+    export ZBUILD_CURRENT_STAGE="$id"
     _router_clear_throttle_marker
     set +e
     plugin_hook_call "$dir" run "$id" "$ZBUILD_STATE_DIR/pipeline-state.json" >/dev/null 2>&1

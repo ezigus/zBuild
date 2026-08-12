@@ -221,6 +221,49 @@ plugin_hook_call() {
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id")"
     local kind; kind="$(yaml_get "$manifest" "kind")"
 
+    # ADR-054 §3 (#1862): the engine states, for exactly the span of one
+    # dispatch, which stage this is and which plugin serves it.
+    #
+    # A plugin IS self-defining about what it is — plugin-bootstrap.sh resolves
+    # _ZBUILD_PLUGIN_DIR from its own BASH_SOURCE, and 18 plugins do. It can
+    # never be self-defining about which STAGE it is: `review_lenses`
+    # (simple.yaml) is served by plugin `review-lens` via role `review_lens` —
+    # three namespaces the template alone maps, and under `map:` all six lens
+    # members receive that one stage name. Everything keyed to the flow (the
+    # timeline, stage_statuses, the per-stage router knobs) needs the stage
+    # name; introspection can only ever yield the plugin id.
+    #
+    # `local -x`, not `export`, for three reasons: it reaches the emit_event
+    # calls below, which fire OUTSIDE the plugin subshell (the blank envelope
+    # .plugin/.kind of #1705); it reaches the subshell and anything it spawns;
+    # and it unsets on return, so stage N's identity cannot bleed into stage
+    # N+1 — a plain export would trade a blank field for a stale one.
+    #
+    # This is the only site that reaches all four dispatch arms. The `map:` arm
+    # runs a generated standalone script (strategies/common.sh) the runner
+    # cannot export into — but plugin_hook_call is its last line.
+    #
+    # ZBUILD_PLUGINS_ROOT is deliberately NOT set: it is an operator override
+    # every reader spells `${ZBUILD_PLUGINS_ROOT:-<default>}`, and ADR-024 /
+    # persona-resolve.sh forbid relying on it as a root. Derive from
+    # ZBUILD_PLUGIN_DIR instead.
+    #
+    # Stage id is $1 post-shift for both hooks — run(stage_id, state_file, ...)
+    # and cleanup(stage_id, state_file, scope), ADR-054 §2. Same assumption
+    # scan_plugin_outputs already makes below.
+    #
+    # `:-` is deliberate and deliberately unlike `stage_arg="${1:-}"` below: an
+    # empty $1 keeps the ambient stage rather than blanking it. A caller with no
+    # stage to name must not erase the one its own caller established — the
+    # throttle marker's path is keyed on this value and is written inside the
+    # dispatch but read outside it (router-rc-classify.sh:154), so a blank here
+    # would split the key across the boundary. scan_plugin_outputs has no such
+    # cross-boundary reader and wants the literal argument.
+    local -x ZBUILD_CURRENT_STAGE="${1:-${ZBUILD_CURRENT_STAGE:-}}"
+    local -x ZBUILD_PLUGIN="$plugin_id"
+    local -x ZBUILD_PLUGIN_KIND="$kind"
+    local -x ZBUILD_PLUGIN_DIR="$plugin_dir"
+
     local hook_fn; hook_fn="$(yaml_get "$manifest" "hooks.$hook_name")"
     if [[ -z "$hook_fn" ]]; then
         if [[ "$hook_name" == "cleanup" ]]; then
