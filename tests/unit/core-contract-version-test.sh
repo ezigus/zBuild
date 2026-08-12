@@ -56,7 +56,7 @@ case "$msg" in
     *) assert_fail "[SPEC-4] TC-5: message names the plugin" "got: $msg" ;;
 esac
 case "$msg" in
-    *" 7"*) assert_pass "[SPEC-4] TC-5: message names the declared version" ;;
+    *"contract 7"*) assert_pass "[SPEC-4] TC-5: message names the declared version" ;;
     *) assert_fail "[SPEC-4] TC-5: message names the declared version" "got: $msg" ;;
 esac
 case "$msg" in

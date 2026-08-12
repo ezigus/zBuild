@@ -13,9 +13,9 @@ _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 
 # The engine's declared result-contract range (#1824). Sourced, not duplicated —
 # validate_manifest refuses a plugin whose declared contract falls outside it.
-_ZB_MV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ZBUILD_MANIFEST_VALIDATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../contract/version.sh
-source "$_ZB_MV_DIR/../contract/version.sh"
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../contract/version.sh"
 
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
@@ -72,7 +72,7 @@ _ZBUILD_YAML_PREWARM_KEYS=(
     id name kind version summary platform
     persona.role persona.perspective
     hooks.run hooks.cleanup
-    provides.role provides.artifact_type
+    provides.role provides.artifact_type provides.result_contract
 )
 
 # yaml_cache_prewarm [plugins_root] — fill the cache IN THE CALLING SHELL.
