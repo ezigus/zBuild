@@ -173,5 +173,18 @@ else
         "clear=${_clear_line:-absent} dispatch=${_hook_line:-absent}"
 fi
 
+# Both stage-dispatch boundaries apply the v2 gate. A contract that held at one
+# of them would make a v2 stage's rc depend on which kind of group it was
+# composed into — and "the rule wired into one of two call sites" is the exact
+# defect this PR hit three times.
+_cyc_narrow="$($SYSGREP -c '_cd_rc="$(dispatch_rc_narrow "$_cd_rc")"' "$_runner" 2>/dev/null)" || _cyc_narrow=0
+_par_narrow="$($SYSGREP -c '_pd_rc="$(dispatch_rc_narrow "$_pd_rc")"' "$_runner" 2>/dev/null)" || _par_narrow=0
+assert_eq "[SPEC-3] cycle_dispatch_stage applies the v2 narrowing gate" "1" "${_cyc_narrow//[$'\n\r ']/}"
+assert_eq "[SPEC-3] parallel_dispatch_stage applies it too" "1" "${_par_narrow//[$'\n\r ']/}"
+
+# And both clear the throttle marker before dispatching.
+_clear_count="$($SYSGREP -c '_router_clear_throttle_marker' "$_runner" 2>/dev/null)" || _clear_count=0
+assert_eq "[SPEC-3] both dispatch boundaries clear the throttle marker" "2" "${_clear_count//[$'\n\r ']/}"
+
 print_test_results
 exit $((FAIL > 0))

@@ -546,10 +546,14 @@ runner_read_stage_contract() {
 #      Nothing is written back to the stage's artifact directory; the conclusion
 #      lives on this return value and on the dispatch event.
 #
-#      The observation arrives as an argument rather than being re-derived from
-#      rc, because by the time this reader runs rc has already been narrowed to
-#      {0,1} and the raw wait status is gone. That narrowing is the point of
-#      #1823; the observation is how the one fact worth keeping survives it.
+#      The observation arrives as an argument rather than being re-derived here
+#      because only the dispatch boundary can take it: `dispatch_rc_observation`
+#      needs the raw wait status, and the boundary is where that status exists.
+#      This reader does still see a raw rc — the narrowing happens at
+#      `cycle_dispatch_stage`'s return, AFTER this pass — which is what lets the
+#      legacy-rc branch below read the number. Passing the observation in keeps
+#      the two independent: the reader never has to know whether the rc it was
+#      handed has been narrowed yet.
 #   3. Otherwise → empty. A v1 result declares no disposition, so the response
 #      table is not consulted and today's verdict-driven control flow is
 #      untouched. That is the versioned coexistence ADR-054 §5 requires, and it

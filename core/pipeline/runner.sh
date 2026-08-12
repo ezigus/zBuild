@@ -2301,6 +2301,22 @@ main() {
         else
             _PARALLEL_DISPATCH_STATUS="failed"
         fi
+        # #1823 (ADR-054 §4b): the same v2 gate the cycle boundary applies. Both
+        # are stage-dispatch boundaries, and a contract that held at one of them
+        # would mean a v2 stage's rc depended on which kind of group it happened
+        # to be composed into. Review flagged the asymmetry as "presumably
+        # deferred"; it was not deferred, it was the rule applied to one of two
+        # call sites — the same gap as the throttle-marker clear on this very
+        # function.
+        #
+        # This channel carries no disposition yet (ADR-039 §4 owns the parallel
+        # group-verdict collapse), so nothing here reads the word a v2 stage
+        # declared. The narrowing is still correct: a v2 stage HAS somewhere else
+        # to say what its rc was carrying, which is the whole condition for it.
+        if [[ "${_ZBUILD_LAST_RESULT_CONTRACT:-1}" =~ ^[0-9]+$ ]] &&
+           [[ "${_ZBUILD_LAST_RESULT_CONTRACT:-1}" -ge 2 ]]; then
+            _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
+        fi
         return $_pd_rc
     }
 
