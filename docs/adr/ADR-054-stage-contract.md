@@ -96,6 +96,46 @@ An integer channel with no declared vocabulary cannot be enforced, which is the 
 
 So the control flow those codes carry moves onto declared channels: `disposition` (§6) for recoverability, and explicit routing state for the bounded backward edge (ADR-045) and blocking-member halt (ADR-013). Those mechanisms keep working; what changes is that a reader consults a declared field instead of re-interpreting a number. **#1823 owns the narrowing and the designs that re-home each signal**, and its acceptance is the enforcing check: no engine path returns or interprets an rc outside {0,1}, with a guard test enumerating the call sites.
 
+#### 4a. Where each signal goes (delivered by #1823)
+
+The destination is never new. Every one of these already had a declared channel the engine was setting alongside the number; the re-homing is to *read the word instead of the integer*, which is why `dispatch_rc_legacy_reason` names the vocabulary rather than inventing one.
+
+| rc | Re-homes onto | Owner |
+|----|---------------|-------|
+| `130`/`143` signal | `interrupted` (§6) — and the ADR-025 `.abort.signal` sentinel, which already carries abort across subshells | #1823 |
+| `124` timeout | `interrupted` (§6). Never reaches the runner today: the router absorbs it and publishes `_ROUTE_LOOP_TERMINATED_REASON=router_timeout` | #1823 |
+| rate limit | `throttled` (§6), via the detector's second caller on the loop path (#1723) | #1823 |
+| `9` llm_unavailable | `unavailable` (§6) — "halt; operator action required" is what rc=9 already meant | #1823 |
+| `10` scope_too_large | `exhausted` (§6) — "more budget, or the work must shrink". The matching *verdict* string migrates in #1832 | #1823 / #1832 |
+| `11` route_back | ADR-045 routing state (`_CYCLE_ROUTE_BACK_*`, `cycle.route_back`). The `route_target` vocabulary is #1767 | ADR-045 / #1767 |
+| `8` blocking_member_failure | ADR-013's `blocking:true` halt and ADR-021's `disposition: terminal` member contract | ADR-013 / ADR-021 |
+| `5` blocked | `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}` + `cycle.blocked` (ADR-021 #528/#1265) | ADR-021 |
+| `6` cycle_abort | `_CYCLE_LAST_TERMINATED_REASON=cycle_abort` + `cycle.complete reason=` | ADR-021 |
+| `4` config_invalid | `cycle.config.invalid` at load; the runtime collapse-to-4 catch-all has no channel and is a known gap | ADR-021 |
+
+**`5`, `6`, `8`, `11` and `4` deliberately map to NO disposition.** They are control-flow decisions the cycle made, not statements about whether a stage got far enough to produce a verdict worth reading. Forcing them into §6's set would be exactly the invented default this ADR forbids.
+
+**Two recorded discrepancies, neither resolved here.** ADR-026 says `cycle_abort` is rc=5 in four places, while ADR-045, this ADR and the code all say 6 — no issue owns the correction. And `_cycle_handle_terminal_rc` has a `130)` arm but no `143)` arm, so a SIGTERM falls to `*) reason="error"` and is reported as an ordinary error; `dispatch_rc_legacy_reason` maps both to `aborted` so the two signals agree at the boundary, but the orchestrator's own table is still asymmetric.
+
+#### 4b. Coexistence: v1 keeps its rc, v2 is narrowed
+
+**The narrowing is gated on `result_contract`, not applied to every plugin at once.**
+
+A v1 plugin's exit code is still its *only* channel. `plan` reports `scope_too_large` as rc=10 and has no result field in which to say it; `design`, `validate` and `monitor` all `return 2` for a missing `state_file` per ADR-001 §Runtime. Narrowing every plugin today would delete the meaning of all 25 in a single step, and the engine would keep running past conditions that currently stop it — an oversized scope would no longer abort.
+
+So:
+
+| Stage speaks | rc | Held to the `disposition` dictionary? |
+|---|---|---|
+| `result_contract: 1` (today's 25 plugins) | passes through **unchanged** | No — it declares no disposition, and absence is not an off-set word |
+| `result_contract: 2` | narrowed to **{0,1}** | Yes — an off-set word is a structural failure carrying `contract_violation:unknown_disposition:<word>` |
+
+A v2 stage has somewhere else to say everything its rc was carrying, which is precisely what makes narrowing safe for it and unsafe for the others. This is the same versioned coexistence §6 already uses for the vocabulary — consulted at `result_contract >= 2` and nowhere else — and the same one §5 uses for strictness.
+
+The classification of an `rc=1` that left no result (§4a) is **additive and applies to both versions**: an unmigrated stage gets an honest `interrupted`/`throttled`/`broken` on the disposition channel today, with no change to the rc it reports.
+
+**End state.** #1850 drops the v1 reader, the version gate and the legacy mapping together. At that point narrowing is unconditional, every stage is held to the dictionary, and the guard's enumerated inventory goes to zero — becoming the plain rule stated in §4. Until then `tests/unit/dispatch-rc-guard-test.sh` ratchets it: a count may fall, never rise, so the vocabulary cannot grow while it is being retired.
+
 ### 5. The result file
 
 One file. The primary artifact declared in the stage's manifest (`outputs[primary: true]`), read after `run` returns. Mandatory keys:
@@ -216,7 +256,7 @@ The distinction that matters: `rc=1` routing and `init`/`finalize` are deleted b
 |---|----------|--------------|
 | 1 | Two hooks; `init`/`finalize` deleted | ADR-056 / #1828 — landed |
 | 2 | `run(stage_id, state_file, resolved_inputs)` | #1826 |
-| 4 | rc ∈ {0,1}; classify an `rc=1` that left no result | #1823 |
+| 4 | rc ∈ {0,1}; classify an `rc=1` that left no result | #1823 — landed; legacy mapping removed by #1850 |
 | 5 | One result file, `result_contract` version key | #1821 — landed; negotiation #1824 |
 | 6 | Disposition vocabulary + engine response table | #1822; verdict migration #1832; `valid_verdicts` enforcement #1708 |
 | 7 | `cleanup(scope)`; teardown stage; `clean.yaml` | #1829, after single-owner traps #1759 |

@@ -23,7 +23,7 @@ hooks:
 
 `teardown_run` reads the `stage_statuses` map in `pipeline-state.json`, collects every stage recorded as `complete` or `failed`, resolves each stage's plugin directory, and calls `plugin_hook_call cleanup <stage> <state_file> <scope>` for each.
 
-- `ZBUILD_HOOK_ABSENT` (rc=3) — plugin has no `cleanup` hook; treated as a supported no-op, no error emitted.
+- rc=0 plus a `plugin.cleanup.absent` event — plugin has no `cleanup` hook; treated as a supported no-op, no error emitted. The absence is recorded on the event, not in the exit code, because rc carries only "succeeded" and "failed" (ADR-054 §4).
 - Any other non-zero rc — emits `stage.cleanup.failed` event and continues; teardown still returns 0.
 - The teardown stage itself is skipped to prevent circular dispatch.
 

@@ -130,7 +130,7 @@ outputs:
 For each plugin discovered in a run, the engine calls:
 
 1. `run` (or kind-specific entry: `classify`/`claim`/`tick`) — possibly many times. On resume, `ZBUILD_RESUMING=1` is set; the `run` preamble reconstructs any needed state.
-2. `cleanup` — on abnormal exit only; release locks, write tombstone event. Absent `cleanup` returns rc=3 (`ZBUILD_HOOK_ABSENT`) — distinguishable from success (rc=0).
+2. `cleanup` — dispatched by a `teardown` stage with a `scope` (ADR-054 §7); release locks, write tombstone event. Absent `cleanup` emits `plugin.cleanup.absent` and returns rc=0 — the absence is distinguishable on the event, since rc is binary (ADR-054 §4).
 
 The engine is responsible for: discovery, manifest validation, lifecycle ordering, redaction enforcement, event emission. It does not call business logic directly.
 

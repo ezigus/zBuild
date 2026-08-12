@@ -123,20 +123,34 @@ Plugins MUST use the defensive read `local state_file="${2:-}"` and return rc=2 
 
 For each plugin discovered in a run (ADR-056 — two hooks only):
 1. `run` — kind-specific entry; possibly many invocations. State reconstruction on resume is the `run` preamble's responsibility (check `ZBUILD_RESUMING=1`).
-2. `cleanup` — on abnormal exit only; release locks, write tombstone event. Absent `cleanup` emits `plugin.cleanup.absent` and returns `ZBUILD_HOOK_ABSENT` (rc=3), distinguishable from success (rc=0).
+2. `cleanup` — released by a `teardown` stage with a `scope` (ADR-054 §7); release locks, write tombstone event. Absent `cleanup` emits `plugin.cleanup.absent` and returns rc=0 — the absence is distinguishable on the event, not on the exit code (#1823, ADR-054 §4).
 
 ### Error semantics
 
-Plugin exit codes:
-- `0` — success.
-- `1` — recoverable error. Engine routes to `kind: recovery` plugins for classification + action.
-- `2` — fatal. Engine logs, emits `plugin.error`, aborts the run (after `cleanup`).
+> **Superseded by [ADR-054](ADR-054-stage-contract.md) §4; prose replaced 2026-08-11 (#1823).**
+> The rc 0/1/2 table below described a `kind: recovery` routing layer that **was never
+> implemented** — no recovery plugin has ever been registered — while stages actually
+> returned 5, 8, 9, 10, 11 and 143. Leaving the fiction in place is what let the document
+> and the engine drift for the life of the project, so it is replaced rather than annotated.
 
-Plugins MAY emit `recovery.suggestion` events with structured payloads:
-```json
-{ "category": "auth|api|context|build|unknown", "suggested_action": "retry|backtrack|escalate" }
-```
-The engine forwards these to recovery plugins and respects the action verb returned.
+Plugin exit codes are **binary**:
+- `0` — my result file is on disk, read it.
+- `1` — I failed. Read my result if present; if it is absent I died.
+
+`rc=0` with a missing or unparseable result is a structural failure, not a warning.
+Everything a plugin needs to say beyond those two facts belongs in its result file —
+`verdict` (its own declared vocabulary), `disposition` (the engine's closed set), and
+`reason` (free text, never branched on). See ADR-054 §5 and §6.
+
+The `rc=2 → fatal` and `rc=1 → kind: recovery` **routing rules** are deleted (ADR-054
+§10). No recovery plugin has ever been registered and the dispatch path was never
+implemented; recoverability is now a declared field (`disposition`), not a number the
+engine re-interprets.
+
+This deletes the *routing*, not the *idea*: `kind: recovery` remains a keeper
+(`.github/issues/keepers-manifest.yaml`), and `recovery.suggestion` stays declared in
+`config/event-schema.json` with no emitter today. A future recovery layer reads
+`disposition` — the field that already answers the question its rc was guessing at.
 
 ### Fail-closed scanner contract
 

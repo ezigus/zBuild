@@ -52,6 +52,13 @@ source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
 source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
 # #507 verdict-driven stage-complete indicator (ADR-019 / ADR-020 amendment).
 source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
+# #1823 (ADR-054 §4): rc ∈ {0,1} — the narrowing, the observation captured before
+# it, and the one place a legacy engine rc becomes a word.
+source "$_ZBUILD_ROOT/core/pipeline/dispatch-rc.sh"
+# #1823: the throttle marker the router arms and this dispatch boundary reads.
+# Sourced for the marker helpers, not the classifier — the router's own detector
+# runs inside the plugin subshell and cannot hand its finding back any other way.
+source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # ADR-021 (#512) outer-cycle orchestrator (F1, flag-gated by ZBUILD_CYCLES_ENABLED).
 source "$_ZBUILD_ROOT/core/pipeline/cycle-orchestrator.sh"
 # ADR-039 (#1131) parallel stage-group executor (sibling of the cycle orchestrator).
@@ -2166,8 +2173,27 @@ main() {
             _CYCLE_DISPATCH_DISPOSITION="broken"
             return 1
         fi
+        # #1823 (ADR-054 §4): clear the throttle marker BEFORE dispatching, so a
+        # marker found afterwards belongs to THIS member. A marker left by an
+        # earlier stage would classify this member's unexplained failure as
+        # `throttled`, and `throttled` retries — one rate limit would become a
+        # retry loop on an unrelated defect.
+        _router_clear_throttle_marker
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
         local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+        # #1823: read the RAW wait status once, here. The observation is the one
+        # fact worth keeping across the narrowing — it separates a stage that was
+        # killed from one that is defective, and it is knowable only here.
+        local _cd_observation; _cd_observation="$(dispatch_rc_observation "$_cd_rc")"
+        # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
+        # last command in the list and DOES trip it. (#1822 review finding.)
+        local _cd_rate_limited=0
+        if _router_throttle_observed; then _cd_rate_limited=1; fi
+        # The readers below take the RAW rc. That is not an oversight: every one
+        # of them only ever tests `rc -ne 0`, which is identical for a raw 10 and
+        # a narrowed 1, so narrowing before them would change nothing. The only
+        # consumer of the distinction is this function's RETURN value, so the
+        # narrowing happens there — after the readers, at the bottom.
         # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
         # unknown + structural-failure pass-through) — used for .stage_verdicts
         # persistence (state_helpers.sh: verdict_class contract) and the
@@ -2200,11 +2226,26 @@ main() {
         # `broken` when this dispatch died leaving nothing to read. Consumed by
         # the dispatch event; the response table that interprets it lives in
         # core/pipeline/disposition.sh, never in a plugin.
-        _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
+        _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else
             _CYCLE_DISPATCH_STATUS="failed"
+        fi
+        # #1823 (ADR-054 §4b): narrow ONLY a v2 stage, and only here. A v1
+        # plugin's rc is still its sole channel — `plan` says `scope_too_large`
+        # with rc=10 and has nowhere else to put it — so v1 returns exactly what
+        # it always did and nothing unmigrated changes behaviour. A v2 stage
+        # declared a `disposition`, so it has somewhere else to say everything
+        # its rc was carrying, and is held to {0,1}. #1850 drops the gate.
+        #
+        # The version comes back on STDOUT from a cheap probe. It must NOT ride a
+        # global: the readers above are all invoked as `x="$(...)"`, and a `$()`
+        # is a subshell whose assignments never reach here — a global would have
+        # read its default forever and this gate would never have fired.
+        local _cd_contract; _cd_contract="$(_verdict_probe_contract "$state_dir" "$_cd_manifest")"
+        if [[ "$_cd_contract" =~ ^[0-9]+$ ]] && [[ "$_cd_contract" -ge 2 ]]; then
+            _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
         fi
         return $_cd_rc
     }
@@ -2232,6 +2273,17 @@ main() {
             _PARALLEL_DISPATCH_STATUS="failed"
             return 1
         fi
+        # #1823: same pre-dispatch clear as the cycle path. Review finding — the
+        # marker helper's contract says "MUST run before every dispatch" and this
+        # boundary was not honouring it, so a parallel member inherited whatever
+        # marker an earlier stage left; `throttled` retries, so one rate limit
+        # could make an unrelated member's failure look retryable.
+        #
+        # Safe to clear concurrently because the marker path is keyed on
+        # ZBUILD_CURRENT_STAGE, which the parallel orchestrator exports per
+        # member. With one shared filename this clear would race — a member
+        # could wipe a live sibling's marker.
+        _router_clear_throttle_marker
         set +e; plugin_hook_call "$_pd_plugin_dir" run "$_pd_stage" "$_pd_state"; _pd_rc=$?; set -e
         local _pd_manifest="$_pd_plugin_dir/manifest.yaml"
         # CLASSIFIED verdict (pass|warn|fail|…) — authoritative for the
@@ -2247,6 +2299,22 @@ main() {
             _PARALLEL_DISPATCH_STATUS="complete"
         else
             _PARALLEL_DISPATCH_STATUS="failed"
+        fi
+        # #1823 (ADR-054 §4b): the same v2 gate the cycle boundary applies. Both
+        # are stage-dispatch boundaries, and a contract that held at one of them
+        # would mean a v2 stage's rc depended on which kind of group it happened
+        # to be composed into. Review flagged the asymmetry as "presumably
+        # deferred"; it was not deferred, it was the rule applied to one of two
+        # call sites — the same gap as the throttle-marker clear on this very
+        # function.
+        #
+        # This channel carries no disposition yet (ADR-039 §4 owns the parallel
+        # group-verdict collapse), so nothing here reads the word a v2 stage
+        # declared. The narrowing is still correct: a v2 stage HAS somewhere else
+        # to say what its rc was carrying, which is the whole condition for it.
+        local _pd_contract; _pd_contract="$(_verdict_probe_contract "$state_dir" "$_pd_manifest")"
+        if [[ "$_pd_contract" =~ ^[0-9]+$ ]] && [[ "$_pd_contract" -ge 2 ]]; then
+            _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
         fi
         return $_pd_rc
     }

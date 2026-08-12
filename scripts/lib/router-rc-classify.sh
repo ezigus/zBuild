@@ -120,3 +120,72 @@ _router_rc_classify() {
             ;;
     esac
 }
+
+# ─── Throttle marker (#1823, ADR-054 §4) ────────────────────────────────────
+# The detector above runs INSIDE the plugin's `run` hook, which `plugin_hook_call`
+# isolates in a subshell. A global set there dies at that boundary, so the engine
+# — which has to classify an rc=1 that left no result — could never see that the
+# failure was a 429.
+#
+# Same problem ADR-025 solved for aborts, so the same answer: a file. The
+# filesystem survives a subshell exit and `_zbuild_make_fresh_shell`'s env scrub
+# (ADR-024); an env var survives neither.
+#
+# The marker records an OBSERVATION ("a rate limit was seen during this
+# dispatch"), never a disposition. `dispatch_rc_failure_disposition` in
+# core/pipeline/dispatch-rc.sh owns turning it into a word — the engine keeps its
+# response table in one place, and the router does not get a vote on it.
+
+# _router_throttle_marker_path — resolve from ZBUILD_STATE_DIR. Empty when unset,
+# so the helpers degrade to no-ops rather than fabricating a path under cwd
+# (mirrors _zbuild_abort_sentinel_path).
+#
+# The path is scoped PER STAGE. Parallel group members run concurrently in
+# forked subshells (parallel-orchestrator.sh `_parallel_run_member`) but share
+# one ZBUILD_STATE_DIR, so a single shared filename would let one member's
+# pre-dispatch clear wipe a sibling's live marker, and let a sibling's rate
+# limit be attributed to the wrong member. Both mis-report which stage needs to
+# wait. ZBUILD_CURRENT_STAGE is exported per member (parallel-orchestrator.sh:146)
+# and per stage on the linear path, so it is the right key.
+#
+# The stage id is interpolated into a filesystem path, so it is constrained to
+# a plain id — the same guard _verdict_read_stage_sidecar applies. Anything else
+# falls back to the unscoped name rather than escaping the state dir.
+_router_throttle_marker_path() {
+    [[ -z "${ZBUILD_STATE_DIR:-}" ]] && return 0
+    local _stage="${ZBUILD_CURRENT_STAGE:-}"
+    if [[ "$_stage" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+        printf '%s/.throttled.%s.signal' "$ZBUILD_STATE_DIR" "$_stage"
+    else
+        printf '%s/.throttled.signal' "$ZBUILD_STATE_DIR"
+    fi
+}
+
+# _router_arm_throttle_marker [message] — record that this dispatch hit a rate
+# limit. Best-effort: failing to write the marker must never fail the dispatch,
+# because the marker is a diagnostic refinement — without it the engine still
+# concludes `broken` and halts, which is safe, just less honest.
+_router_arm_throttle_marker() {
+    local _m; _m="$(_router_throttle_marker_path)"
+    [[ -z "$_m" ]] && return 0
+    printf '%s\n' "${1:-rate limited}" > "$_m" 2>/dev/null || true
+    return 0
+}
+
+# _router_throttle_observed — rc 0 when a marker is present for this dispatch.
+_router_throttle_observed() {
+    local _m; _m="$(_router_throttle_marker_path)"
+    [[ -n "$_m" && -e "$_m" ]]
+}
+
+# _router_clear_throttle_marker — MUST run before every dispatch. A marker left
+# over from an earlier stage would make the next unexplained failure read as
+# `throttled`, and `throttled` retries — so a stale marker turns one rate limit
+# into a retry loop on an unrelated defect. This is the cross-member leak #1822
+# fixed for the disposition channel, one channel over.
+_router_clear_throttle_marker() {
+    local _m; _m="$(_router_throttle_marker_path)"
+    [[ -z "$_m" ]] && return 0
+    rm -f "$_m" 2>/dev/null || true
+    return 0
+}

@@ -234,9 +234,13 @@ else
         "file list/sizes changed across release"
 fi
 
-# ─── SPEC-4: absent cleanup hook → ZBUILD_HOOK_ABSENT=3 → teardown no-op (no error) ─
+# ─── SPEC-4: absent cleanup hook → rc=0 + event → teardown no-op (no error) ──
 # CHANGE: at baseline teardown plugin doesn't exist; absent hook semantics not tested here.
-print_test_section "SPEC-4: absent cleanup hook is a no-op (ZBUILD_HOOK_ABSENT=3)"
+# #1823: the sentinel this used to key on (ZBUILD_HOOK_ABSENT=3) is gone — rc is
+# binary (ADR-054 §4). An absent optional hook returns 0 and records itself on
+# `plugin.cleanup.absent`. The behavioural assertions below are unchanged, which
+# is the point: teardown never needed the rc, only the absence of a failure.
+print_test_section "SPEC-4: absent cleanup hook is a no-op (rc=0 + plugin.cleanup.absent)"
 
 if [[ ! -d "$TEARDOWN_DIR" || ! -f "$TEARDOWN_DIR/plugin.sh" ]]; then
     assert_fail "[SPEC-4] teardown plugin exists" "missing"
@@ -272,12 +276,23 @@ EOF
     ) || _spec4_result=$?
 
     assert_eq "[SPEC-4] teardown_run returns 0 when stage has no cleanup hook" "0" "$_spec4_result"
-    # No stage.cleanup.failed event should be emitted (ZBUILD_HOOK_ABSENT is not a failure).
+    # No stage.cleanup.failed event should be emitted — nothing to free is not a failure.
     if [[ -f "$_spec4_events" ]] && grep -q '"stage.cleanup.failed"' "$_spec4_events" 2>/dev/null; then
         assert_fail "[SPEC-4] absent cleanup hook emits no failure event" \
             "unexpected stage.cleanup.failed event found"
     else
-        assert_pass "[SPEC-4] absent cleanup hook emits no failure event (ZBUILD_HOOK_ABSENT=3 is a no-op)"
+        assert_pass "[SPEC-4] absent cleanup hook emits no failure event"
+    fi
+    # #1823: the absence must still be RECORDED. With the rc=3 sentinel removed,
+    # this event is the ONLY thing distinguishing "no cleanup hook" from "cleanup
+    # ran and succeeded" — dropping it would restore the pre-ADR-056 ambiguity
+    # that #1828 existed to fix. Asserted here, at teardown's own dispatch, not
+    # only in the registry unit test.
+    if [[ -f "$_spec4_events" ]] && grep -q '"plugin.cleanup.absent"' "$_spec4_events" 2>/dev/null; then
+        assert_pass "[SPEC-4] the absence is recorded on plugin.cleanup.absent"
+    else
+        assert_fail "[SPEC-4] the absence is recorded on plugin.cleanup.absent" \
+            "events: $(cat "$_spec4_events" 2>/dev/null || echo none)"
     fi
 fi
 

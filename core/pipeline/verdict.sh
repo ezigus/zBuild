@@ -45,6 +45,13 @@ if ! declare -F disposition_is_valid >/dev/null 2>&1; then
     # shellcheck source=./disposition.sh
     source "$_ZBUILD_VERDICT_ROOT/core/pipeline/disposition.sh"
 fi
+# #1823: the fallback classification for a dispatch that left no result. NOT
+# `|| true` — without it the reader would silently fall back to nothing at all
+# for exactly the dispatches that need explaining.
+if ! declare -F dispatch_rc_failure_disposition >/dev/null 2>&1; then
+    # shellcheck source=./dispatch-rc.sh
+    source "$_ZBUILD_VERDICT_ROOT/core/pipeline/dispatch-rc.sh"
+fi
 if [[ -z "${GREEN:-}${YELLOW:-}${RED:-}" ]]; then
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$_ZBUILD_VERDICT_ROOT/scripts/lib/helpers.sh" 2>/dev/null || true
@@ -280,6 +287,13 @@ _verdict_read_result() {
     local _sv; _sv="$(jq -r '.result_contract // 1' "$resolved" 2>/dev/null || echo 1)"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
     printf -v "${p}_contract" '%s' "$_sv"
+    # NOTE: do NOT try to publish the version on a global from here. Every
+    # public reader is invoked as `x="$(runner_read_stage_...)"`, and a `$()` is
+    # a SUBSHELL — an assignment inside it never reaches the parent. A gate
+    # reading such a global would silently always see the default and never
+    # fire: green, and inert. That is exactly what #1823 shipped for one commit
+    # before review caught it. The dispatch boundary uses
+    # `_verdict_probe_contract` instead, whose answer comes back on stdout.
     printf -v "${p}_verdict" '%s' "$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
     printf -v "${p}_reason" '%s' "$(jq -r '.reason // empty' "$resolved" 2>/dev/null || true)"
 
@@ -473,6 +487,57 @@ runner_read_stage_verdict_raw() {
     printf '%s' "$raw_verdict"
 }
 
+# ─── runner_read_stage_contract <state_dir> <manifest> <stage> <rc> ─────────
+# #1823: which version of the RESULT CONTRACT this stage's result speaks — `1`
+# for today's shape (and for no result at all), `2`+ for ADR-054's.
+#
+# The rc narrowing is gated on this. A v1 plugin has no field in which to say
+# what its exit code says: `plan`'s rc=10 IS its only way to report
+# `scope_too_large`, and `design`/`validate`/`monitor` all `return 2` for a
+# missing state_file per ADR-001. Narrowing those to 1 today would delete the
+# meaning of every unmigrated plugin in one step, so v1 keeps passing its rc
+# through exactly as before and only a v2 stage — which declares a `disposition`
+# and therefore has somewhere else to say it — is held to rc ∈ {0,1}.
+#
+# This is the same versioned coexistence #1822 used for the vocabulary: the
+# closed set is consulted at `result_contract >= 2` and nowhere else. #1850
+# drops the v1 reader and the gate together, at which point the narrowing is
+# unconditional and the guard's enumerated inventory goes to zero.
+# ─── _verdict_probe_contract <state_dir> <manifest> ─────────────────────────
+# #1823: the CHEAP contract-version probe the dispatch boundary uses, and the
+# answer comes back on STDOUT — never on a global. Every public reader is called
+# as `x="$(runner_read_stage_...)"`, and a `$()` is a subshell whose assignments
+# do not reach the parent, so a global would have made the narrowing gate read
+# its default forever.
+#
+# One manifest scan plus one jq, versus `_verdict_read_result`'s six-ish jq
+# invocations. The full read is what pushed `runner-release-exit-paths` SPEC-5
+# over its 6-second external timeout on ubuntu when this ran as a fifth pass per
+# dispatch; the boundary needs one number, so it pays for one number.
+#
+# Prints `1` for anything unreadable — no manifest, no declared primary, a
+# non-JSON primary, an absent or unparseable file. "I cannot tell" must read as
+# v1: v1 is the version that changes nothing.
+_verdict_probe_contract() {
+    local state_dir="$1" manifest="$2"
+    [[ -n "$manifest" && -f "$manifest" ]] || { printf '1'; return 0; }
+    local prim; prim="$(_verdict_primary_output_path "$manifest")"
+    [[ -n "$prim" ]] || { printf '1'; return 0; }
+    local resolved; resolved="$(_verdict_resolve_path "$prim" "$state_dir")"
+    case "$resolved" in *.json) ;; *) printf '1'; return 0 ;; esac
+    [[ -s "$resolved" ]] || { printf '1'; return 0; }
+    local sv; sv="$(jq -r '.result_contract // 1' "$resolved" 2>/dev/null)" || sv=1
+    [[ "$sv" =~ ^[0-9]+$ ]] || sv=1
+    printf '%s' "$sv"
+}
+
+runner_read_stage_contract() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local _c_state _c_contract _c_verdict _c_disp _c_reason _c_viol _c_path _c_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _c
+    printf '%s' "${_c_contract:-1}"
+}
+
 # ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────
 # ADR-054 §6 (#1821 exposed the field; #1822 gave it a vocabulary). Resolves the
 # disposition for one dispatch. Four outcomes, in precedence order:
@@ -489,12 +554,27 @@ runner_read_stage_verdict_raw() {
 #      default the issue forbids: the engine is not guessing a plausible value in
 #      order to carry on, it is concluding a defect and halting.
 #   1. The stage DECLARED a valid one (v2 result) → that word, verbatim.
-#   2. The dispatch DIED and left no readable result → `broken`. This is the
-#      engine's own conclusion, not a value read from anywhere — a stage that
-#      explained nothing cannot be distinguished from a defective one, and
+#   2. The dispatch DIED and left no readable result → the engine CLASSIFIES it
+#      from what it observed (#1823, ADR-054 §4): a rate limit seen on either
+#      router path → `throttled`; death by signal or a timeout → `interrupted`;
+#      anything else → `broken`. This is the only place the engine is permitted
+#      to infer, and it infers a disposition, not a verdict. Before #1823 every
+#      one of these was flatly `broken`, which halted a run that had merely been
+#      interrupted — the exact failure ADR-054 §6 says `interrupted`/`throttled`
+#      exist to prevent. Absent any observation it is still `broken`: a stage
+#      that explained nothing cannot be distinguished from a defective one, and
 #      guessing "probably transient" is how a real defect retries forever.
 #      Nothing is written back to the stage's artifact directory; the conclusion
 #      lives on this return value and on the dispatch event.
+#
+#      The observation arrives as an argument rather than being re-derived here
+#      because only the dispatch boundary can take it: `dispatch_rc_observation`
+#      needs the raw wait status, and the boundary is where that status exists.
+#      This reader does still see a raw rc — the narrowing happens at
+#      `cycle_dispatch_stage`'s return, AFTER this pass — which is what lets the
+#      legacy-rc branch below read the number. Passing the observation in keeps
+#      the two independent: the reader never has to know whether the rc it was
+#      handed has been narrowed yet.
 #   3. Otherwise → empty. A v1 result declares no disposition, so the response
 #      table is not consulted and today's verdict-driven control flow is
 #      untouched. That is the versioned coexistence ADR-054 §5 requires, and it
@@ -506,6 +586,7 @@ runner_read_stage_verdict_raw() {
 # this shape). rc never overwrites a declaration; it only fills the silence.
 runner_read_stage_disposition() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local observation="${5-}" rate_limited="${6:-0}"
     local _d_state _d_contract _d_verdict _d_disp _d_reason _d_viol _d_path _d_present
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _d
 
@@ -516,7 +597,35 @@ runner_read_stage_disposition() {
         printf '%s' "$_d_disp"; return 0
     fi
     if [[ "$rc" -ne 0 ]] && ! _verdict_result_was_readable "$_d_state" "$_d_present"; then
-        printf '%s' "broken"; return 0
+        # A legacy rc that ADR-054 §6 has an exact word for outranks the
+        # observation-based fallback. Review finding: without this a v1 stage
+        # exiting 9 (llm_unavailable) or 10 (scope_too_large) with no result
+        # resolved to `broken` — technically a halt either way, but it reports
+        # "this is our own defect" for a service outage or an oversized scope,
+        # which is what an operator reads to decide whether to act. `unavailable`
+        # and `broken` differ in exactly that, not in the stopping (#1822).
+        #
+        # This is the mapping's whole point and it was previously computed and
+        # never consulted. It is a v1-boundary read: a v2 stage declares its own
+        # disposition and returned above, and #1850 deletes this with the rest.
+        # Precedence: DIRECT EVIDENCE about this dispatch beats a translation of
+        # a number. A 429 envelope was actually seen on the wire; a legacy rc is
+        # a coexistence-era reading of an integer that will not exist after
+        # #1850. It also gives the better answer where the two disagree — rc=9
+        # fires after N consecutive CLI failures, and when those failures WERE
+        # rate limits, `throttled` (wait, then retry) is right and `unavailable`
+        # (halt for an operator) strands a run that only needed to wait.
+        if [[ "$rate_limited" == "1" ]]; then
+            printf '%s' "$(dispatch_rc_failure_disposition "$observation" 1)"; return 0
+        fi
+        # `$rc` is the RAW status here: the dispatch boundary narrows at its own
+        # return, after this reader, precisely so the number is still legible.
+        local _d_legacy
+        _d_legacy="$(dispatch_rc_legacy_disposition "$rc" 2>/dev/null || true)"
+        if [[ -n "$_d_legacy" ]]; then
+            printf '%s' "$_d_legacy"; return 0
+        fi
+        printf '%s' "$(dispatch_rc_failure_disposition "$observation" "$rate_limited")"; return 0
     fi
     printf '%s' ""
 }

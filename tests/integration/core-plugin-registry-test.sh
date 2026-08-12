@@ -524,15 +524,19 @@ else
         "got: $_spec8_err"
 fi
 
-# ─── SPEC-9: absent optional cleanup hook returns ZBUILD_HOOK_ABSENT (3) ─────
-# CHANGE: before ADR-056, absent cleanup returned 0; now it returns 3.
+# ─── SPEC-9: absent optional cleanup hook returns rc=0 (ADR-054 §4) ──────────
+# HISTORY: ADR-056 made this return 3 to distinguish "never ran" from "ran ok".
+# #1823 narrows rc to {0,1} everywhere and drops the sentinel — the distinction
+# lives on `plugin.cleanup.absent`, asserted in
+# tests/unit/plugin-hook-contract-test.sh SPEC-4. Nothing in the engine ever
+# compared against the 3.
 # Uses the existing test-tool fixture (has run, no cleanup).
 set +e
 plugin_hook_call "$FIXTURE_ROOT/tool/test-tool" "cleanup" >/dev/null 2>&1
 _spec9_rc=$?
 set -e
-assert_eq "[SPEC-9] plugin_hook_call returns ZBUILD_HOOK_ABSENT (3) for absent cleanup" \
-    "3" "$_spec9_rc"
+assert_eq "[SPEC-9] plugin_hook_call returns rc=0 for an absent optional cleanup" \
+    "0" "$_spec9_rc"
 
 # ── SPEC-4: required:false output absent returns 0 even when artifact_type is set ─
 # GUARD: the awk skips required:false entries, so absent optional outputs are

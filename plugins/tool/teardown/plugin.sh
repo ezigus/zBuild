@@ -5,7 +5,8 @@
 # Dispatched by the runner at every pipeline exit path with scope=release.
 # Iterates over stages that executed (status=complete or status=failed) from
 # pipeline-state.json and calls plugin_hook_call cleanup for each.
-# ZBUILD_HOOK_ABSENT (rc=3) from a plugin with no cleanup hook is a no-op.
+# A plugin with no cleanup hook returns 0 and emits `plugin.cleanup.absent`
+# (#1823) — nothing to free is not a failure, so it needs no special case here.
 # Always exits 0 — teardown failures are events, not verdict changes.
 
 [[ -n "${_ZBUILD_TEARDOWN_LOADED:-}" ]] && return 0
@@ -87,9 +88,13 @@ teardown_run() {
         _rc=$?
         set -e
 
-        # ZBUILD_HOOK_ABSENT=3 means no cleanup hook declared — supported no-op.
-        [[ $_rc -eq "$ZBUILD_HOOK_ABSENT" ]] && continue
-
+        # #1823: an absent cleanup hook now returns 0 (rc is binary — ADR-054 §4)
+        # and records itself on `plugin.cleanup.absent`. The former
+        # `[[ $_rc -eq $ZBUILD_HOOK_ABSENT ]] && continue` guard existed only to
+        # keep rc=3 out of the failure branch below; with rc=0 that branch
+        # already declines it, so the guard was dead weight and is gone. An
+        # absent hook is still fully distinguishable from one that ran — on the
+        # event, which is where #1828's acceptance asked for it.
         if [[ $_rc -ne 0 ]]; then
             emit_event "stage.cleanup.failed" \
                 "stage=$_stage" "scope=$_scope" "rc=$_rc" 2>/dev/null || true
