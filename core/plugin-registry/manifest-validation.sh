@@ -11,6 +11,12 @@
 [[ -n "${_ZBUILD_REGISTRY_MANIFEST_LOADED:-}" ]] && return 0
 _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 
+# The engine's declared result-contract range (#1824). Sourced, not duplicated —
+# validate_manifest refuses a plugin whose declared contract falls outside it.
+_ZBUILD_MANIFEST_VALIDATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../contract/version.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../contract/version.sh"
+
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
 # no plugin.sh and no hooks. See _required_hooks_for_kind (returns "" for it) and
@@ -66,7 +72,7 @@ _ZBUILD_YAML_PREWARM_KEYS=(
     id name kind version summary platform
     persona.role persona.perspective
     hooks.run hooks.cleanup
-    provides.role provides.artifact_type
+    provides.role provides.artifact_type provides.result_contract
 )
 
 # yaml_cache_prewarm [plugins_root] — fill the cache IN THE CALLING SHELL.
@@ -340,6 +346,36 @@ validate_manifest() {
             error "validate_manifest($manifest): 'persona.perspective' must be a single-line string, not a block scalar ('$persona_perspective'); use a plain value on the same line as the key"
             errors=$((errors + 1))
         fi
+    fi
+
+    # ─── #1824: result-contract version negotiation ─────────────────────────
+    # A plugin declares which result contract it writes; the engine declares the
+    # range it can read (core/contract/version.sh). Refused HERE, at load, so an
+    # unreadable plugin cannot register — not at dispatch, where the run has
+    # already paid for the stage and the misread looks like a bad result rather
+    # than an unspeakable one. Never a warning: a version the engine cannot read
+    # means every verdict it produces is uninterpretable.
+    #
+    # NB `provides.result_contract`, NOT `provides.schema_version` — the latter
+    # is taken and versions the ARTIFACT's own schema, independently per artifact
+    # type (build-summary.json is at 4, #602). Same distinction verdict.sh:209
+    # draws for the result file's own key.
+    # Checked UNCONDITIONALLY — an absent declaration is a declaration of v1, and
+    # it has to travel the same path as a stated one. Short-circuiting on empty
+    # looks equivalent today (v1 is in range, so both accept) and stops being
+    # equivalent the moment #1850 raises the floor: the undeclared plugins are
+    # exactly the ones that must then be refused, and a guard here would wave
+    # every one of them through while the declared stragglers got caught. That
+    # would make the acceptance — "an absent version becomes a structural failure
+    # when the v1 reader is dropped" — quietly false, and #1850 would no longer
+    # be a one-line change. contract_version_check owns the absent case.
+    local _decl_contract
+    _decl_contract="$(yaml_get "$manifest" "provides.result_contract" 2>/dev/null || true)"
+    local _pid_c; _pid_c="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+    local _msg
+    if ! _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"; then
+        error "validate_manifest($manifest): $_msg"
+        errors=$((errors + 1))
     fi
 
     # ─── #287/#294: hooks per kind ──────────────────────────────────────────

@@ -33,6 +33,12 @@ _ZBUILD_VERDICT_LOADED=1
 _ZBUILD_VERDICT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_VERDICT_ROOT="$(cd "$_ZBUILD_VERDICT_DIR/../.." && pwd)"
 
+# #1824: the engine's declared contract range. NOT `|| true` — the v2 branch
+# below keys off _ZBUILD_CONTRACT_V2, and a silently-missing bound would read
+# every result as v1 and skip disposition validation entirely.
+# shellcheck source=../contract/version.sh
+source "$_ZBUILD_VERDICT_ROOT/core/contract/version.sh"
+
 # Defensive sources so the file is usable in isolation (unit tests).
 if ! declare -F eb_emit_event >/dev/null 2>&1; then
     # shellcheck source=../event-bus/event-bus.sh
@@ -297,7 +303,7 @@ _verdict_read_result() {
     printf -v "${p}_verdict" '%s' "$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
     printf -v "${p}_reason" '%s' "$(jq -r '.reason // empty' "$resolved" 2>/dev/null || true)"
 
-    if [[ "$_sv" -ge 2 ]]; then
+    if [[ "$_sv" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
         local _decl_disp; _decl_disp="$(jq -r '.disposition // empty' "$resolved" 2>/dev/null || true)"
         printf -v "${p}_disp" '%s' "$_decl_disp"
         # Every mandatory field must be present AND non-empty. `reason` counts:

@@ -7,6 +7,9 @@ set -euo pipefail
 _RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "$_RUNNER_DIR/../.." && pwd)"
 
+# shellcheck source=../contract/version.sh
+source "$_ZBUILD_ROOT/core/contract/version.sh"
+
 source "$_ZBUILD_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/vision.sh
 source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
@@ -2244,7 +2247,7 @@ main() {
         # is a subshell whose assignments never reach here — a global would have
         # read its default forever and this gate would never have fired.
         local _cd_contract; _cd_contract="$(_verdict_probe_contract "$state_dir" "$_cd_manifest")"
-        if [[ "$_cd_contract" =~ ^[0-9]+$ ]] && [[ "$_cd_contract" -ge 2 ]]; then
+        if [[ "$_cd_contract" =~ ^[0-9]+$ ]] && [[ "$_cd_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
             _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
         fi
         return $_cd_rc
@@ -2313,7 +2316,7 @@ main() {
         # declared. The narrowing is still correct: a v2 stage HAS somewhere else
         # to say what its rc was carrying, which is the whole condition for it.
         local _pd_contract; _pd_contract="$(_verdict_probe_contract "$state_dir" "$_pd_manifest")"
-        if [[ "$_pd_contract" =~ ^[0-9]+$ ]] && [[ "$_pd_contract" -ge 2 ]]; then
+        if [[ "$_pd_contract" =~ ^[0-9]+$ ]] && [[ "$_pd_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
             _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
         fi
         return $_pd_rc
