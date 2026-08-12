@@ -2239,13 +2239,12 @@ main() {
         # declared a `disposition`, so it has somewhere else to say everything
         # its rc was carrying, and is held to {0,1}. #1850 drops the gate.
         #
-        # The version comes off _ZBUILD_LAST_RESULT_CONTRACT, published by the
-        # reader pass just above, rather than from a fresh
-        # runner_read_stage_contract call: that would be a fifth full
-        # resolve-and-reparse per member, and the abort paths race an external
-        # timeout.
-        if [[ "${_ZBUILD_LAST_RESULT_CONTRACT:-1}" =~ ^[0-9]+$ ]] &&
-           [[ "${_ZBUILD_LAST_RESULT_CONTRACT:-1}" -ge 2 ]]; then
+        # The version comes back on STDOUT from a cheap probe. It must NOT ride a
+        # global: the readers above are all invoked as `x="$(...)"`, and a `$()`
+        # is a subshell whose assignments never reach here — a global would have
+        # read its default forever and this gate would never have fired.
+        local _cd_contract; _cd_contract="$(_verdict_probe_contract "$state_dir" "$_cd_manifest")"
+        if [[ "$_cd_contract" =~ ^[0-9]+$ ]] && [[ "$_cd_contract" -ge 2 ]]; then
             _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
         fi
         return $_cd_rc
@@ -2313,8 +2312,8 @@ main() {
         # group-verdict collapse), so nothing here reads the word a v2 stage
         # declared. The narrowing is still correct: a v2 stage HAS somewhere else
         # to say what its rc was carrying, which is the whole condition for it.
-        if [[ "${_ZBUILD_LAST_RESULT_CONTRACT:-1}" =~ ^[0-9]+$ ]] &&
-           [[ "${_ZBUILD_LAST_RESULT_CONTRACT:-1}" -ge 2 ]]; then
+        local _pd_contract; _pd_contract="$(_verdict_probe_contract "$state_dir" "$_pd_manifest")"
+        if [[ "$_pd_contract" =~ ^[0-9]+$ ]] && [[ "$_pd_contract" -ge 2 ]]; then
             _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
         fi
         return $_pd_rc

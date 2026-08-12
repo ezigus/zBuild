@@ -90,9 +90,14 @@ _dispatch() {
     _LAST_OBSERVATION="$(dispatch_rc_observation "$raw")"
     _LAST_RATE_LIMITED=0
     if _router_throttle_observed; then _LAST_RATE_LIMITED=1; fi
-    # The version gate, exactly as the boundary applies it: v1 passes its rc
-    # through untouched, only v2 is narrowed.
-    _LAST_CONTRACT="$(runner_read_stage_contract "$ZBUILD_STATE_DIR" "$dir/manifest.yaml" "$id" "$raw")"
+    # Mirror the runner's ACTUAL sequence, not a convenient approximation. The
+    # readers below run inside `$()` exactly as cycle_dispatch_stage runs them,
+    # because that is what makes the difference: a version smuggled out of a
+    # reader on a global dies at the subshell boundary, and the gate then reads
+    # its default forever. #1823 shipped precisely that for one commit — the
+    # gate was inert and every test still passed, because this helper was
+    # calling a reader directly instead of doing what the runner does.
+    _LAST_CONTRACT="$(_verdict_probe_contract "$ZBUILD_STATE_DIR" "$dir/manifest.yaml")"
     _LAST_NARROW_RC="$raw"
     if [[ "$_LAST_CONTRACT" =~ ^[0-9]+$ ]] && [[ "$_LAST_CONTRACT" -ge 2 ]]; then
         _LAST_NARROW_RC="$(dispatch_rc_narrow "$raw")"
@@ -284,6 +289,54 @@ assert_eq "[SPEC-7] a v1 result is not judged against the dictionary" "1" "$_LAS
 assert_eq "[SPEC-7] and yields no disposition rather than a violation" "" "$_LAST_DISPOSITION"
 assert_eq "[SPEC-7] its reason channel carries no contract violation" \
     "" "$(runner_read_stage_reason "$ZBUILD_STATE_DIR" "$_d/manifest.yaml" v1_plain_stage 1)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "8. The version cannot travel on a global (inert-gate guard)"
+
+# THE regression this section exists for. For one commit the gate read
+# `_ZBUILD_LAST_RESULT_CONTRACT`, set inside _verdict_read_result — which every
+# public reader invokes from inside `$(...)`. A `$()` is a subshell, so the
+# assignment never reached the caller, the gate always saw the default, and v2
+# narrowing NEVER FIRED. Every test still passed: the unit tests called the
+# readers directly, and the guard test asserted the gate LINES existed, which a
+# line that does nothing satisfies perfectly.
+#
+# So this asserts the mechanism, not the text: the version must survive being
+# fetched the way the runner fetches it.
+
+_d="$(_mkstage inert_probe_stage '
+    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"broken\",\"reason\":\"x\"}" \
+        > "$ZBUILD_STATE_DIR/artifacts/inert_probe_stage-result.json"
+    return 1;')"
+
+# Demonstrate the trap directly: a global set inside a command substitution is
+# invisible to the caller. If this ever starts passing, bash changed and the
+# whole concern is moot — but it will not.
+_ZBUILD_PROBE_CANARY=""
+_canary_setter() { _ZBUILD_PROBE_CANARY="set-inside"; printf 'output'; }
+_ignored="$(_canary_setter)"
+assert_eq "[SPEC-8] a global assigned inside \$() does NOT reach the caller" \
+    "" "$_ZBUILD_PROBE_CANARY"
+
+# End to end through the dispatch helper, which now mirrors the runner. The
+# dispatch has to happen FIRST — the stage writes its result when the hook runs,
+# so probing before it would read an absent file and correctly answer 1.
+_dispatch "$_d" inert_probe_stage
+
+# The real thing: the probe returns the version through stdout, so it survives
+# the same boundary that swallowed the global.
+assert_eq "[SPEC-8] the contract probe returns 2 through stdout" \
+    "2" "$(_verdict_probe_contract "$ZBUILD_STATE_DIR" "$_d/manifest.yaml")"
+assert_eq "[SPEC-8] the boundary sees contract 2" "2" "$_LAST_CONTRACT"
+assert_eq "[SPEC-8] so a v2 stage's rc IS narrowed — the gate actually fires" \
+    "1" "$_LAST_NARROW_RC"
+
+# The negative half: a v1 stage in the same helper must NOT be narrowed. Without
+# this, an implementation that narrowed everything would satisfy the above.
+_d="$(_mkstage inert_probe_v1_stage 'return 10;')"
+_dispatch "$_d" inert_probe_v1_stage
+assert_eq "[SPEC-8] a v1 stage still reports contract 1" "1" "$_LAST_CONTRACT"
+assert_eq "[SPEC-8] and its rc survives un-narrowed" "10" "$_LAST_NARROW_RC"
 
 cleanup_test_env
 print_test_results

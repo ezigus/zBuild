@@ -252,12 +252,6 @@ _verdict_read_result() {
     printf -v "${p}_viol" '%s' ""
     printf -v "${p}_path" '%s' ""
     printf -v "${p}_present" '%s' "0"
-    # #1823: reset with the rest. Every early return below (no_manifest,
-    # no_primary, nonjson, absent, malformed) leaves the file's version unknown,
-    # and "unknown" must read as v1 — not as whatever the PREVIOUS stage
-    # declared. A stale 2 here would narrow a v1 stage's rc and silently delete
-    # its meaning, which is the cross-member leak #1822 fixed one channel over.
-    _ZBUILD_LAST_RESULT_CONTRACT="1"
 
     if [[ -z "$manifest" || ! -f "$manifest" ]]; then
         printf -v "${p}_state" '%s' "no_manifest"; return 0
@@ -293,14 +287,13 @@ _verdict_read_result() {
     local _sv; _sv="$(jq -r '.result_contract // 1' "$resolved" 2>/dev/null || echo 1)"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
     printf -v "${p}_contract" '%s' "$_sv"
-    # #1823: also publish on a well-known global so the dispatch boundary can
-    # learn the contract version from a read that ALREADY happened. Asking via
-    # runner_read_stage_contract would be a FIFTH full re-resolve-and-reparse per
-    # member — this function already runs four times per dispatch (#1821's header
-    # says so), each spawning several jq processes, and the runner is under an
-    # external timeout on the abort paths. Correct but slower is still a
-    # regression when something is racing a clock.
-    _ZBUILD_LAST_RESULT_CONTRACT="$_sv"
+    # NOTE: do NOT try to publish the version on a global from here. Every
+    # public reader is invoked as `x="$(runner_read_stage_...)"`, and a `$()` is
+    # a SUBSHELL — an assignment inside it never reaches the parent. A gate
+    # reading such a global would silently always see the default and never
+    # fire: green, and inert. That is exactly what #1823 shipped for one commit
+    # before review caught it. The dispatch boundary uses
+    # `_verdict_probe_contract` instead, whose answer comes back on stdout.
     printf -v "${p}_verdict" '%s' "$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
     printf -v "${p}_reason" '%s' "$(jq -r '.reason // empty' "$resolved" 2>/dev/null || true)"
 
@@ -510,6 +503,34 @@ runner_read_stage_verdict_raw() {
 # closed set is consulted at `result_contract >= 2` and nowhere else. #1850
 # drops the v1 reader and the gate together, at which point the narrowing is
 # unconditional and the guard's enumerated inventory goes to zero.
+# ─── _verdict_probe_contract <state_dir> <manifest> ─────────────────────────
+# #1823: the CHEAP contract-version probe the dispatch boundary uses, and the
+# answer comes back on STDOUT — never on a global. Every public reader is called
+# as `x="$(runner_read_stage_...)"`, and a `$()` is a subshell whose assignments
+# do not reach the parent, so a global would have made the narrowing gate read
+# its default forever.
+#
+# One manifest scan plus one jq, versus `_verdict_read_result`'s six-ish jq
+# invocations. The full read is what pushed `runner-release-exit-paths` SPEC-5
+# over its 6-second external timeout on ubuntu when this ran as a fifth pass per
+# dispatch; the boundary needs one number, so it pays for one number.
+#
+# Prints `1` for anything unreadable — no manifest, no declared primary, a
+# non-JSON primary, an absent or unparseable file. "I cannot tell" must read as
+# v1: v1 is the version that changes nothing.
+_verdict_probe_contract() {
+    local state_dir="$1" manifest="$2"
+    [[ -n "$manifest" && -f "$manifest" ]] || { printf '1'; return 0; }
+    local prim; prim="$(_verdict_primary_output_path "$manifest")"
+    [[ -n "$prim" ]] || { printf '1'; return 0; }
+    local resolved; resolved="$(_verdict_resolve_path "$prim" "$state_dir")"
+    case "$resolved" in *.json) ;; *) printf '1'; return 0 ;; esac
+    [[ -s "$resolved" ]] || { printf '1'; return 0; }
+    local sv; sv="$(jq -r '.result_contract // 1' "$resolved" 2>/dev/null)" || sv=1
+    [[ "$sv" =~ ^[0-9]+$ ]] || sv=1
+    printf '%s' "$sv"
+}
+
 runner_read_stage_contract() {
     local state_dir="$1" manifest="$2" stage="$3" rc="$4"
     local _c_state _c_contract _c_verdict _c_disp _c_reason _c_viol _c_path _c_present

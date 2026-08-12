@@ -186,5 +186,33 @@ assert_eq "[SPEC-3] parallel_dispatch_stage applies it too" "1" "${_par_narrow//
 _clear_count="$($SYSGREP -c '_router_clear_throttle_marker' "$_runner" 2>/dev/null)" || _clear_count=0
 assert_eq "[SPEC-3] both dispatch boundaries clear the throttle marker" "2" "${_clear_count//[$'\n\r ']/}"
 
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "4. The version gate cannot be fed by a subshell global"
+
+# #1823 shipped this bug for one commit: the gate read a global set inside
+# _verdict_read_result, which every public reader invokes from within `$(...)`.
+# A `$()` is a subshell, so the assignment never reached the caller — the gate
+# saw its default forever and v2 narrowing NEVER FIRED. Green, and inert.
+#
+# Nothing caught it. The unit tests called the readers directly; the integration
+# helper called a reader directly; and section 3's assertions above only check
+# that the gate LINES exist, which a line that does nothing satisfies perfectly.
+#
+# This is a source-level check, and deliberately so: `cycle_dispatch_stage` is
+# defined INSIDE `main()` in runner.sh, so no test can invoke the real one — a
+# behavioural test can only exercise a reproduction of it, which is exactly how
+# the bug slipped through. What can be enforced is that the broken MECHANISM
+# never comes back.
+if $SYSGREP -q '_ZBUILD_LAST_RESULT_CONTRACT' "$_runner" "$REPO_ROOT/core/pipeline/verdict.sh" 2>/dev/null; then
+    assert_fail "[SPEC-4] no gate reads a contract global" \
+        "_ZBUILD_LAST_RESULT_CONTRACT is back; a global assigned inside \$() never reaches the caller, so the gate would read its default and never fire"
+else
+    assert_pass "[SPEC-4] no gate reads a contract global"
+fi
+
+# The version must arrive on stdout, at BOTH boundaries.
+_probe_uses="$($SYSGREP -c '_verdict_probe_contract "$state_dir"' "$_runner" 2>/dev/null)" || _probe_uses=0
+assert_eq "[SPEC-4] both boundaries fetch the version via stdout" "2" "${_probe_uses//[$'\n\r ']/}"
+
 print_test_results
 exit $((FAIL > 0))
