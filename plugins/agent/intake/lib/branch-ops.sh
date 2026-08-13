@@ -4,6 +4,8 @@
 [[ -n "${_ZBUILD_INTAKE_BRANCH_OPS_LOADED:-}" ]] && return 0
 _ZBUILD_INTAKE_BRANCH_OPS_LOADED=1
 
+_ZBUILD_INTAKE_BRANCH_OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Issue #484 — Branch operations (fail-closed)
 #
@@ -118,12 +120,80 @@ _intake_resolve_default_branch() {
     return 0
 }
 
+# _intake_branch_holder <branch> <checkout_stderr>
+# The worktree holding <branch>, or "" when the checkout failed for any other
+# reason. Git's phrasing varies by version:
+#   < 2.31: "fatal: '<b>' is already checked out at '<path>'"
+#   ≥ 2.31: "fatal: '<b>' is already used by worktree at '<path>'"
+_intake_branch_holder() {
+    local target="$1" co_err="$2"
+    case "$co_err" in
+        *"is already checked out at"*|*"is already used by worktree at"*) ;;
+        *) return 0 ;;
+    esac
+    # Porcelain first (authoritative); fall back to parsing git's message.
+    # The branch goes in via ENVIRON, not -v: awk expands backslash escapes in a
+    # -v assignment, so a crafted branch name would corrupt the comparison.
+    # `exit` on the first hit replaces a `| head -1` that could SIGPIPE awk under
+    # pipefail. `export` INSIDE the substitution subshell, not a `VAR=val cmd`
+    # prefix: a prefix assignment scopes to the first command of a pipeline only,
+    # so awk would never see it and this authoritative branch would silently
+    # always return empty.
+    local holder
+    holder="$(export _zb_b="refs/heads/$target"
+        git worktree list --porcelain 2>/dev/null \
+        | awk '/^worktree /{w=$2} /^branch /{if ($2==ENVIRON["_zb_b"]) {print w; exit}}')"
+    if [[ -z "$holder" ]]; then
+        # Extract the path from git's own error message with pure bash — no
+        # grep/sed, which pins neither PATH nor semantics. Longest-prefix strip
+        # so the LAST " at '" wins — the path is always the final quoted field.
+        local _tail="${co_err##* at \'}"
+        [[ "$_tail" != "$co_err" ]] && holder="${_tail%%\'*}"
+    fi
+    printf '%s' "$holder"
+}
+
+# _intake_reclaim_holder <branch> <holder_path>
+# Release a finished run's worktree so <branch> can be checked out here. rc=0
+# only when the tree is gone. Emits intake.branch.reclaimed / .reclaim_refused.
+#
+# Intake owns WHICH branch; the engine owns worktrees (ADR-052), so the decision
+# to release one is delegated whole rather than reimplemented here — this asks
+# for it and reports, and knows nothing about run layout or liveness.
+_intake_reclaim_holder() {
+    local target="$1" holder="$2"
+    if ! declare -F zbuild_worktree_reclaim_dead >/dev/null 2>&1; then
+        # shellcheck source=../../../../scripts/lib/worktree.sh
+        source "$_ZBUILD_INTAKE_BRANCH_OPS_DIR/../../../../scripts/lib/worktree.sh" 2>/dev/null || true
+    fi
+    if ! declare -F zbuild_worktree_reclaim_dead >/dev/null 2>&1; then
+        emit_event "intake.branch.reclaim_refused" \
+            "plugin=intake" "branch=$target" "holder=$holder" "reason=helper_unavailable"
+        return 1
+    fi
+    local _rc=0 _why=""
+    _why="$(zbuild_worktree_reclaim_dead "$holder" 2>&1)" || _rc=$?
+    if [[ $_rc -ne 0 ]]; then
+        # The refusal reason is the operator's next move (live run vs uncommitted
+        # work vs unknown run), so it is surfaced, not just counted.
+        [[ -n "$_why" ]] && warn "intake_branch: $_why"
+        emit_event "intake.branch.reclaim_refused" \
+            "plugin=intake" "branch=$target" "holder=$holder" "rc=$_rc"
+        return 1
+    fi
+    info "intake_branch: reclaimed the worktree of a finished run at $holder"
+    emit_event "intake.branch.reclaimed" \
+        "plugin=intake" "branch=$target" "holder=$holder"
+    return 0
+}
+
 # _intake_checkout_branch <branch>
 # Idempotent checkout with error classification. Emits:
 #   - intake.branch.noop      (already on target)
 #   - intake.branch.reused    (local branch existed)
 #   - intake.branch.adopted   (remote branch fetched and checked out)
 #   - intake.branch.created   (new local branch)
+#   - intake.branch.reclaimed (a finished run's worktree released to free it)
 #   - intake.error            (checkout/fetch failures)
 # Sets _INTAKE_BRANCH_OUTCOME to one of: noop|reused|adopted|created
 _intake_checkout_branch() {
@@ -166,55 +236,50 @@ _intake_checkout_branch() {
         # degrade the diagnostic back to the generic checkout_failed path.
         # Capture stderr (2>&1 >/dev/null): stderr → $() pipe, stdout discarded.
         if ! _co_err="$(LC_ALL=C git checkout "$target" 2>&1 >/dev/null)"; then
-            # Detect branch held by another worktree. Git's phrasing varies by version:
-            #   < 2.31: "fatal: '<b>' is already checked out at '<path>'"
-            #   ≥ 2.31: "fatal: '<b>' is already used by worktree at '<path>'"
             local _holder=""
-            case "$_co_err" in
-                *"is already checked out at"*|*"is already used by worktree at"*)
-                    # First try porcelain (authoritative); fall back to stderr parse.
-                    # The branch goes in via ENVIRON, not -v: awk expands backslash
-                    # escapes in a -v assignment, so a crafted branch name would
-                    # corrupt the comparison. `exit` on the first hit replaces a
-                    # `| head -1` that could SIGPIPE awk under pipefail.
-                    # `export` INSIDE the substitution subshell, not a `VAR=val cmd`
-                    # prefix: a prefix assignment scopes to the first command of a
-                    # pipeline only, so awk would never see it and this authoritative
-                    # branch would silently always return empty.
-                    _holder="$(export _zb_b="refs/heads/$target"
-                        git worktree list --porcelain 2>/dev/null \
-                        | awk '/^worktree /{w=$2} /^branch /{if ($2==ENVIRON["_zb_b"]) {print w; exit}}')"
-                    if [[ -z "$_holder" ]]; then
-                        # Extract the path from git's own error message with pure
-                        # bash — no grep/sed, which pins neither PATH nor semantics.
-                        # Longest-prefix strip so the LAST " at '" wins — the path
-                        # is always the final quoted field of the message.
-                        local _tail="${_co_err##* at \'}"
-                        [[ "$_tail" != "$_co_err" ]] && _holder="${_tail%%\'*}"
-                    fi
-                    ;;
-            esac
-            if [[ -n "$_holder" ]]; then
-                local _dead_run_id="${_holder##*/}"
-                # Co-located layout: .../runs/<run_id>/worktree → extract run_id
-                if [[ "$_dead_run_id" == "worktree" ]]; then
-                    _dead_run_id="${_holder%/worktree}"; _dead_run_id="${_dead_run_id##*/}"
+            _holder="$(_intake_branch_holder "$target" "$_co_err")"
+            # A branch held by a run that has already finished is the ordinary
+            # shape of "re-run the same issue": the previous attempt left its
+            # tree behind, and the branch — with whatever it committed — is
+            # exactly what this run wants to continue. Release it and retry,
+            # once. Refusals fall through to the diagnostic below unchanged.
+            local _reclaimed=0 _released=0
+            if [[ -n "$_holder" ]] && _intake_reclaim_holder "$target" "$_holder"; then
+                _released=1
+                if _co_err="$(LC_ALL=C git checkout "$target" 2>&1 >/dev/null)"; then
+                    _reclaimed=1
                 fi
-                error "intake_branch: branch '$target' is already checked out at $_holder"
-                error "  dead run: ${_dead_run_id:-unknown}"
-                # --age-days 0 is REQUIRED, not decorative: the scanner's default
-                # is 14 days, so the bare form reclaims nothing for a run that
-                # died today — which is exactly the case that lands here.
-                error "  reclaim:  zbuild cleanup --worktrees --age-days 0 --apply"
-                emit_event "intake.error" \
-                    "plugin=intake" "branch=$target" \
-                    "reason=branch_held_by_worktree" "holder=$_holder"
-            else
-                error "intake_branch: checkout of existing branch '$target' failed"
-                emit_event "intake.error" \
-                    "plugin=intake" "branch=$target" "reason=checkout_failed"
             fi
-            return 2
+            if [[ $_reclaimed -eq 0 ]]; then
+                if [[ $_released -eq 1 ]]; then
+                    # The holder is GONE, so the branch-held diagnostic below would
+                    # name a path that no longer exists and advise reclaiming a tree
+                    # already reclaimed. Whatever git objected to the second time is
+                    # the only useful thing left to say.
+                    error "intake_branch: released the holding worktree but checkout of '$target' still failed"
+                    error "  git: ${_co_err:-<no git output>}"
+                    emit_event "intake.error" \
+                        "plugin=intake" "branch=$target" \
+                        "reason=checkout_failed_after_reclaim" "holder=$_holder"
+                elif [[ -n "$_holder" ]]; then
+                    local _dead_run_id
+                    _dead_run_id="$(zbuild_worktree_run_id "$_holder" 2>/dev/null || true)"
+                    error "intake_branch: branch '$target' is already checked out at $_holder"
+                    error "  holding run: ${_dead_run_id:-unknown}"
+                    # --age-days 0 is REQUIRED, not decorative: the scanner's default
+                    # is 14 days, so the bare form reclaims nothing for a run that
+                    # died today — which is exactly the case that lands here.
+                    error "  reclaim:  zbuild cleanup --worktrees --age-days 0 --apply"
+                    emit_event "intake.error" \
+                        "plugin=intake" "branch=$target" \
+                        "reason=branch_held_by_worktree" "holder=$_holder"
+                else
+                    error "intake_branch: checkout of existing branch '$target' failed"
+                    emit_event "intake.error" \
+                        "plugin=intake" "branch=$target" "reason=checkout_failed"
+                fi
+                return 2
+            fi
         fi
         # Verify post-checkout
         local after

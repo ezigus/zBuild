@@ -184,6 +184,54 @@ increment_iteration() {
     echo "$next"
 }
 
+# ─── _zbuild_iso8601_to_epoch <ts> ──────────────────────────────────────────
+# Both branches must interpret the string as UTC — otherwise every age boundary
+# computed from it drifts by the local timezone offset (#299). Unparseable input
+# prints 0, which makes the caller's age look enormous (i.e. stale, not fresh).
+_zbuild_iso8601_to_epoch() {
+    local ts="${1:-}"
+    [[ -n "$ts" ]] || { printf '0\n'; return 0; }
+    if date -u -d "$ts" +%s >/dev/null 2>&1; then
+        date -u -d "$ts" +%s 2>/dev/null || printf '0\n'   # GNU date
+    else
+        TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s 2>/dev/null || printf '0\n'   # BSD date
+    fi
+}
+
+# ─── zbuild_run_is_live <state_file> ────────────────────────────────────────
+# rc=0 when <state_file> describes a PROVABLY-live run: status=in_progress AND a
+# fresh (<24h) updated_at. rc=1 otherwise — including every case where liveness
+# cannot be established (missing file, no status, absent/unparseable timestamp).
+#
+# "Provably" is the whole contract, and the asymmetry is deliberate: liveness is
+# what lets one run refuse to disturb another, so it must rest on positive
+# evidence rather than on the absence of evidence. Same rule the SPEC-G
+# collision guard applies to state writes (core/state/atomic.sh, #1215) and the
+# same 24h gate get_resume_recommendation applies below — named once here so a
+# caller that needs the question answered no longer has to re-derive it.
+#
+# Callers act on rc=1 in ways that are hard to reverse (reclaiming a dead run's
+# worktree), so each is responsible for its OWN safety guard on the artifact it
+# touches. This predicate answers "is a process still working here?", never
+# "is destroying this safe?".
+zbuild_run_is_live() {
+    local state_file="${1:-}"
+    [[ -n "$state_file" && -f "$state_file" ]] || return 1
+
+    local status updated_at
+    status="$(get_state_field "$state_file" '.status' '')"
+    [[ "$status" == "in_progress" ]] || return 1
+
+    updated_at="$(get_state_field "$state_file" '.updated_at' '')"
+    [[ -n "$updated_at" ]] || return 1
+
+    local updated_epoch now_epoch age_seconds
+    updated_epoch="$(_zbuild_iso8601_to_epoch "$updated_at")"
+    now_epoch="$(date -u +%s)"
+    age_seconds=$(( now_epoch - updated_epoch ))
+    [[ $age_seconds -lt 86400 ]]
+}
+
 # ─── get_resume_recommendation ──────────────────────────────────────────────
 # Returns one of: auto_resume, manual_resume_only, fresh_start
 #
@@ -222,17 +270,7 @@ get_resume_recommendation() {
                 return 0
             fi
             local updated_epoch now_epoch age_seconds
-            # Parse ISO-8601 'Z' timestamp to epoch seconds.
-            # Both branches must interpret the string as UTC — otherwise the
-            # 24h boundary drifts by the local timezone offset (#299 surfaced).
-            if date -u -d "$updated_at" +%s >/dev/null 2>&1; then
-                # GNU date
-                updated_epoch="$(date -u -d "$updated_at" +%s 2>/dev/null || echo 0)"
-            else
-                # BSD date (macOS) — force UTC interpretation with TZ=UTC so
-                # 'Z'-suffixed ISO strings parse to the right epoch.
-                updated_epoch="$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$updated_at" +%s 2>/dev/null || echo 0)"
-            fi
+            updated_epoch="$(_zbuild_iso8601_to_epoch "$updated_at")"
             now_epoch="$(date -u +%s)"
             age_seconds=$(( now_epoch - updated_epoch ))
             if [[ $age_seconds -lt 86400 ]]; then

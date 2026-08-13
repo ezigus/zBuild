@@ -173,6 +173,8 @@
     "intake.branch.adopted",
     "intake.branch.noop",
     "intake.branch.from_detached",
+    "intake.branch.reclaimed",
+    "intake.branch.reclaim_refused",
     "pipeline.worktree.entered",
     "pipeline.worktree.missing",
     "pipeline.worktree.acquire_failed",

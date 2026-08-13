@@ -4,6 +4,15 @@
 # worktree path and the reclaim command) when the target branch is already
 # checked out in another worktree. (change-behavior — fails at merge-base where
 # only a generic reason=checkout_failed is emitted.)
+#
+# #1869 note — WHY this holder is still refused rather than reclaimed. Intake now
+# releases the tree of a run it can prove has finished, so the refusal path is
+# reached only when it cannot: here the holder ("wt-holder") is a bare worktree
+# with no pipeline-state.json at all, so its liveness is unknowable and reclaim
+# returns rc=4. That is the case this file pins — the diagnostic an operator
+# gets when the engine will NOT act for them. The two cases where it does decide
+# (finished run → reclaim, live run → refuse) are covered by
+# tests/integration/intake-branch-reclaim-test.sh.
 set -uo pipefail
 # Deliberately NOT `set -e`: assert_fail returns non-zero, which aborts under -e
 # before print_test_results, making a failing test appear to pass.

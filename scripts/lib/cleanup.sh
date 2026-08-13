@@ -498,8 +498,10 @@ _cleanup_render_plan() {
 # KEEPS (emits `skip`, never `prune`) a worktree that:
 #   - belongs to the currently-active run ($ZBUILD_RUN_ID) — resume needs it;
 #   - is newer than <age_days>;
-#   - has uncommitted work, or commits not yet pushed. Reclaiming either would
-#     destroy work, and a pruner that can eat work is worse than none.
+#   - has uncommitted work, or sits on a detached HEAD carrying commits no ref
+#     points at. Those are the two kinds of work a removal genuinely destroys,
+#     and a pruner that can eat work is worse than none. Committed work on a
+#     named branch is NOT in that set — see the note at the check itself.
 # Worktrees outside the run root are not ours and are filtered silently.
 _cleanup_scan_worktrees() {
     local age_days="${1:-14}"
@@ -567,11 +569,24 @@ _cleanup_scan_worktrees() {
             printf '%s\tskip\tuncommitted work\n' "$wt"
             continue
         fi
-        if [[ -n "$branch" && "$branch" != "HEAD" ]] \
-           && declare -F _cleanup_has_unpushed_commits >/dev/null 2>&1 \
-           && _cleanup_has_unpushed_commits "$branch"; then
-            printf '%s\tskip\tunpushed commits\n' "$wt"
-            continue
+        # Committed work on a NAMED branch is not at risk here and must not block:
+        # the ref lives in the repository, not in the worktree, so removing the
+        # tree leaves the branch and every commit on it exactly where they were.
+        # Gating on unpushed-ness (as this once did) made a branch that was never
+        # pushed permanently unreclaimable — and a run that dies before its first
+        # push is precisely the run whose tree needs reclaiming, so the guard
+        # fired hardest on the only case that mattered (#1869).
+        #
+        # A DETACHED head is the real exception: commits made there are reachable
+        # from no ref, so removing the tree strands them. Keep those.
+        if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
+            local _unref
+            _unref="$(git -C "$wt" rev-list --count HEAD --not --branches --tags --remotes 2>/dev/null || echo 0)"
+            [[ "$_unref" =~ ^[0-9]+$ ]] || _unref=1   # unparseable → fail closed
+            if [[ "$_unref" -gt 0 ]]; then
+                printf '%s\tskip\tdetached commits reachable from no ref\n' "$wt"
+                continue
+            fi
         fi
         age_d=$(( (now - mtime) / 86400 ))
         printf '%s\tprune\tbranch=%s age=%sd\n' "$wt" "${branch:-<detached>}" "$age_d"
