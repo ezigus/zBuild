@@ -3170,10 +3170,10 @@ main() {
             # stage's own detection output. `intake` declares this capability; the
             # runner keys on the flag, not the stage name.
             _manifest_graph_ensure_yaml_get 2>/dev/null || true
-            local _msov_manifest=""
-            [[ -n "$_verdict_plugin_dir" ]] && _msov_manifest="$_verdict_plugin_dir/manifest.yaml"
-            if [[ -f "$state_dir/scope-override.md" && -n "$_msov_manifest" ]] \
-               && [[ "$(yaml_get "$_msov_manifest" "capabilities.merges_scope_override" 2>/dev/null)" == "true" ]]; then
+            # Same manifest the verdict was read from: since the leaf loop
+            # resolves role-then-id (#1770), one resolution serves both.
+            if [[ -f "$state_dir/scope-override.md" && -n "$_verdict_manifest" ]] \
+               && [[ "$(yaml_get "$_verdict_manifest" "capabilities.merges_scope_override" 2>/dev/null)" == "true" ]]; then
                 local scope_manifest="$state_dir/scope-manifest.md"
                 # Extract only '+ <path>' lines from the override file and append.
                 # Intentional fail-open: scope-override.md may not exist (no --scope flag used)

@@ -104,6 +104,11 @@ else
 fi
 
 # ─── SPEC-4: the emitted verdict is real, not "unknown" ─────────────────────
+# grep+sed rather than jq: eb_emit_event flattens `key=val` args into the
+# envelope, and the exact nesting is an event-bus implementation detail this
+# test should not encode. The pattern covers every verdict token in the closed
+# vocabulary; if a future verdict stops matching, the assertion fails loudly
+# rather than silently extracting nothing, because "" never equals "pass".
 _verdict="$(grep '"stage.complete"' "$EVENTS_JSONL" \
     | grep "\"$STAGE_NAME\"" \
     | sed -n 's/.*"verdict"[": ]*"\([a-z_]*\)".*/\1/p' | tail -1)"
