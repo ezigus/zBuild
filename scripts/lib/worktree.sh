@@ -12,6 +12,8 @@
 [[ -n "${_ZBUILD_WORKTREE_LIB_LOADED:-}" ]] && return 0
 _ZBUILD_WORKTREE_LIB_LOADED=1
 
+_ZBUILD_WORKTREE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ─── zbuild_run_root <run_id> ────────────────────────────────────────────────
 # The single directory that owns everything for one run. Per-run state already
 # lives at <base>/runs/<run_id> (core/pipeline/runner.sh:1153, #887), so the
@@ -254,6 +256,88 @@ zbuild_worktree_enter() {
         return 5
     fi
     printf '%s\n' "$wt"
+    return 0
+}
+
+# ─── zbuild_worktree_run_id <worktree_path> ─────────────────────────────────
+# The run that owns <worktree_path>, inverting zbuild_worktree_path's two
+# layouts: co-located <run_root>/<run_id>/worktree, or <override_root>/<run_id>.
+# Prints nothing (rc=1) when the path carries no run id.
+zbuild_worktree_run_id() {
+    local wt="${1:-}"
+    [[ -n "$wt" ]] || return 1
+    wt="${wt%/}"
+    local leaf="${wt##*/}"
+    if [[ "$leaf" == "worktree" ]]; then
+        local parent="${wt%/worktree}"
+        leaf="${parent##*/}"
+    fi
+    [[ -n "$leaf" && "$leaf" != "/" ]] || return 1
+    printf '%s\n' "$leaf"
+}
+
+# ─── zbuild_worktree_reclaim_dead <holder_path> [repo_root] ─────────────────
+# Release the worktree of a run that is no longer working, so its branch can be
+# checked out again (#1869). Without this, a run that aborted held its branch
+# forever and every re-run of the same issue died at intake.
+# rc=0 reclaimed; non-zero refused, with the reason on stderr:
+#   2 usage   3 holder run is live   4 liveness unprovable   5 git refused
+#
+# Why reclaiming is not a destructive act: a branch ref lives in the repository,
+# not in the worktree that has it checked out. Removing a clean tree therefore
+# leaves the branch and every commit on it intact — the next run checks the same
+# branch out and continues from where the dead run stopped. The only work that
+# CANNOT survive is work that was never committed, and `git worktree remove`
+# refuses that by itself. That refusal is why this deliberately never passes
+# --force: git's own guard is the safety property, not a check we could get
+# subtly wrong, and downgrading it to a warning is how uncommitted work gets
+# eaten (see tests/mutation/cleanup-worktree-dirty-guard.md).
+#
+# Liveness is asked of the run, not the directory: an in-progress run's tree is
+# off limits however clean it looks, because two runs on one branch leave a
+# silently stale HEAD in one of them. Unprovable liveness refuses too (rc=4) —
+# a worktree whose state has been swept is rare, an operator can still clear it
+# with `zbuild cleanup --worktrees`, and guessing "probably dead" here would put
+# a live run's tree at risk to save one command.
+zbuild_worktree_reclaim_dead() {
+    local holder="${1:-}" repo_root="${2:-}"
+    [[ -n "$holder" ]] || { printf 'zbuild_worktree_reclaim_dead: holder path required\n' >&2; return 2; }
+    [[ -n "$repo_root" ]] || repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+    local run_id
+    if ! run_id="$(zbuild_worktree_run_id "$holder")"; then
+        printf 'zbuild_worktree_reclaim_dead: %s carries no run id\n' "$holder" >&2
+        return 4
+    fi
+
+    # Lazily sourced so the predicate has ONE definition (core/state/resume.sh)
+    # while this library stays usable by callers that never load the state layer.
+    if ! declare -F zbuild_run_is_live >/dev/null 2>&1; then
+        # shellcheck source=../../core/state/resume.sh
+        source "$_ZBUILD_WORKTREE_LIB_DIR/../../core/state/resume.sh" 2>/dev/null || true
+    fi
+    if ! declare -F zbuild_run_is_live >/dev/null 2>&1; then
+        printf 'zbuild_worktree_reclaim_dead: liveness predicate unavailable; refusing\n' >&2
+        return 4
+    fi
+
+    local state_file="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/$run_id/pipeline-state.json"
+    if [[ ! -f "$state_file" ]]; then
+        printf 'zbuild_worktree_reclaim_dead: no state for run %s at %s — cannot prove it finished\n' \
+            "$run_id" "$state_file" >&2
+        return 4
+    fi
+    if zbuild_run_is_live "$state_file"; then
+        printf 'zbuild_worktree_reclaim_dead: run %s is still in progress; refusing\n' "$run_id" >&2
+        return 3
+    fi
+
+    local git_err
+    if ! git_err="$(git -C "$repo_root" worktree remove "$holder" 2>&1)"; then
+        printf 'zbuild_worktree_reclaim_dead: git refused to remove %s: %s\n' \
+            "$holder" "${git_err:-<no git output>}" >&2
+        return 5
+    fi
     return 0
 }
 

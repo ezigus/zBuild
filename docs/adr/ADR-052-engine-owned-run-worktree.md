@@ -92,6 +92,41 @@ in-place runs and direct callers.
 `zbuild_worktree_prepare` is deleted: it existed only for intake's call site, and its documented
 contract ("the caller cd's into the returned path") is no longer true of anyone.
 
+## Amendment (#1869) — releasing a finished run's tree
+
+**Status:** Accepted (2026-08-13)
+
+The decision above leaves one gap it did not anticipate. Nothing releases a run's worktree when the
+run ends, so an aborted run keeps its branch checked out indefinitely. Since every `pipeline start`
+mints a new run and a new tree, the *next* run of the same issue found its branch held and died at
+intake — a bare re-run collided with its own predecessor, permanently.
+
+Only intake can detect this: the collision surfaces when it checks the branch out, and which branch
+that is remains intake's decision (§Decision 1). But whether a worktree may be released is a
+question about run infrastructure, which is the engine's.
+
+**Amended rule.** When its checkout is refused because another worktree holds the branch, intake may
+ask the engine to release **that specific holder**, by path, and retry once —
+`zbuild_worktree_reclaim_dead <holder>` in `scripts/lib/worktree.sh`. It never creates, enters,
+chooses, or locates a worktree, and the path it passes is one git handed it in the refusal. The
+engine decides alone, and refuses unless it can prove the holding run has finished.
+
+This narrows "no plugin knows worktrees exist" (§Consequences for intake, which removed intake's
+`worktree.sh` import) to: **no plugin decides which tree it works in.** That was always the property
+under threat — #888's defect was intake choosing and entering a tree, not intake naming one.
+
+**Safety.** Reclaiming is not destructive: a branch ref lives in the repository, not in the worktree
+holding it, so removing a clean tree leaves the branch and its commits intact and the next run
+continues from where the dead one stopped. The refusals carry the weight — a run that is
+`in_progress` with a fresh `updated_at` ([ADR-006](ADR-006-resume-contract.md)'s staleness gate,
+named once as `zbuild_run_is_live`); a run whose liveness cannot be established at all; and a tree
+holding uncommitted work, which `git worktree remove` refuses on its own because this deliberately
+never passes `--force`.
+
+**Events.** `intake.branch.reclaimed` / `intake.branch.reclaim_refused`. These *do* keep the
+`intake.` prefix — unlike the acquisition events above — because they record what intake did about
+its own branch, not how the engine manages trees.
+
 ## Alternatives considered
 
 **Drop the `if $resume_mode` guard and re-root at the top of each dispatch loop.** This is the fix

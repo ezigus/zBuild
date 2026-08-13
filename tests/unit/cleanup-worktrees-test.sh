@@ -48,6 +48,9 @@
 # SPEC-4: the ACTIVE run's worktree is kept (resume needs it)
 # SPEC-5: worktrees outside the zbuild run root are ignored entirely
 # SPEC-6: applying removes the worktree AND its git registration (not just rm -rf)
+# SPEC-12: a clean worktree on a NEVER-PUSHED branch is reclaimable      (#1869)
+# SPEC-13: a detached worktree holding unreferenced commits is kept      (#1869)
+# SPEC-14: reclaiming leaves the branch and its unpushed commit intact   (#1869)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -132,11 +135,11 @@ _scan_line() {
     grep -F "$(_canon "$1")" <<< "$_out" || true
 }
 
-# ── SPEC-1: old, clean, PUSHED worktree is a candidate ──────────────────────
-# The branch must genuinely be pushed. A branch with no upstream cannot be proven
-# pushed, and _cleanup_has_unpushed_commits correctly refuses those — the first
-# draft of this SPEC asserted the opposite and was wrong about the code, not the
-# code wrong about the branch.
+# ── SPEC-1: an old, clean worktree is a candidate ───────────────────────────
+# The fixture is pushed because _mk pushes everything, but since #1869 that is
+# incidental rather than load-bearing: pushed-ness no longer gates worktree
+# reclamation, because removing a tree cannot touch commits the branch ref
+# holds. SPEC-12 asserts the never-pushed twin is equally reclaimable.
 WT_OLD="$(_mk old-run zbuild/issue-1-old 0)"
 _backdate "$WT_OLD" 30   # after _mk's push: git touches the directory
 if _scan_has "$WT_OLD" 14; then
@@ -336,6 +339,77 @@ if [[ ! -d "$OVR3/some-run" && -d "$OVR3" ]]; then
 else
     assert_fail "[SPEC-11] a configured worktree root inside the run root must never be rmdir'd" \
         "worktree_gone=$([[ ! -d "$OVR3/some-run" ]] && echo yes || echo no) root_exists=$([[ -d "$OVR3" ]] && echo yes || echo NO)"
+fi
+
+# ── SPEC-12: a NEVER-PUSHED branch's worktree is reclaimable (change) ────────
+# Every fixture above is pushed, which is what let the old unpushed-commits guard
+# look harmless: it never fired in this file. In the field it fired constantly.
+# A run that dies at plan or build has pushed nothing, so its branch has no
+# upstream, so the guard called it "unpushed" and kept the tree — permanently,
+# at any --age-days, with no --force to override. The one case the reclaimer
+# exists for was the one case it refused (#1869).
+#
+# Keeping it was never protecting the commits: a branch ref lives in the
+# repository, not in the worktree, so removal cannot touch them. SPEC-14 below
+# asserts exactly that on this fixture. (change-behavior: FAILS at merge-base,
+# where this worktree is reported skip:unpushed-commits.)
+WT_UNPUSHED="$RUNS/unpushed-run/worktree"
+mkdir -p "$RUNS/unpushed-run"
+git -C "$R" worktree add -q "$WT_UNPUSHED" -b zbuild/issue-12-unpushed 2>/dev/null
+printf 'work\n' > "$WT_UNPUSHED/work.txt"
+git -C "$WT_UNPUSHED" add -A
+git -C "$WT_UNPUSHED" commit -qm "work the dead run committed" 2>/dev/null
+_backdate "$WT_UNPUSHED" 30
+if _scan_has "$WT_UNPUSHED" 14; then
+    assert_pass "[SPEC-12] a clean worktree on a never-pushed branch is reclaimable"
+else
+    assert_fail "[SPEC-12] a never-pushed branch must not lock its worktree forever" \
+        "line: $(_scan_line "$WT_UNPUSHED" 14)"
+fi
+
+# ── SPEC-13 [guard]: detached commits reachable from no ref are KEPT ─────────
+# The one kind of committed work removal really does strand. Nothing but the
+# worktree's own HEAD points at it, so `git worktree remove` makes it garbage.
+WT_DETACHED="$RUNS/detached-run/worktree"
+mkdir -p "$RUNS/detached-run"
+git -C "$R" worktree add -q --detach "$WT_DETACHED" 2>/dev/null
+printf 'orphan\n' > "$WT_DETACHED/orphan.txt"
+git -C "$WT_DETACHED" add -A
+git -C "$WT_DETACHED" commit -qm "committed on a detached head" 2>/dev/null
+_backdate "$WT_DETACHED" 30
+_det_line="$(_scan_line "$WT_DETACHED" 14)"
+if grep -qF $'\tskip\t' <<< "$_det_line" && grep -qF "detached" <<< "$_det_line"; then
+    assert_pass "[SPEC-13] a detached worktree holding unreferenced commits is kept"
+else
+    assert_fail "[SPEC-13] never strand commits no ref points at" \
+        "line: ${_det_line:-<worktree never examined>}"
+fi
+# Positive flip: a detached worktree sitting on a commit that IS referenced
+# (main's tip) strands nothing and must be reclaimable — so SPEC-13 pins
+# "unreferenced commits", not "detached" as such.
+WT_DET_CLEAN="$RUNS/detached-clean/worktree"
+mkdir -p "$RUNS/detached-clean"
+git -C "$R" worktree add -q --detach "$WT_DET_CLEAN" 2>/dev/null
+_backdate "$WT_DET_CLEAN" 30
+if _scan_has "$WT_DET_CLEAN" 14; then
+    assert_pass "[SPEC-13] positive flip: a detached tree on a referenced commit is reclaimable"
+else
+    assert_fail "[SPEC-13] detachment alone must not block reclamation" \
+        "line: $(_scan_line "$WT_DET_CLEAN" 14)"
+fi
+
+# ── SPEC-14: reclaiming SPEC-12's worktree leaves the branch and its commit ──
+# The justification for SPEC-12, asserted rather than argued: apply the plan to
+# the never-pushed fixture and the unpushed commit is still on the branch.
+_unpushed_sha="$(git -C "$R" rev-parse zbuild/issue-12-unpushed 2>/dev/null)"
+(cd "$R" && _cleanup_apply_worktree_plan "$WT_UNPUSHED") >/dev/null 2>&1
+_unpushed_after="$(git -C "$R" rev-parse zbuild/issue-12-unpushed 2>/dev/null || echo MISSING)"
+if [[ ! -d "$WT_UNPUSHED" && "$_unpushed_after" == "$_unpushed_sha" \
+      && "$(git -C "$R" show zbuild/issue-12-unpushed:work.txt 2>/dev/null)" == "work" ]]; then
+    assert_pass "[SPEC-14] reclaiming a never-pushed branch's tree preserves branch + commit"
+else
+    assert_fail "[SPEC-14] the unpushed commit must survive its worktree's removal" \
+        "gone=$([[ ! -d "$WT_UNPUSHED" ]] && echo yes || echo no) before=$_unpushed_sha after=$_unpushed_after"
 fi
 
 cleanup_test_env
