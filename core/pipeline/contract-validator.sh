@@ -451,7 +451,7 @@ _contract_validate_pipeline() {
                         #
                         # So the branch is correct and reachable, and held behind
                         # this flag until the drift it found is resolved. Set
-                        # ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED=1 to see them.
+                        # ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED=1 to see them. Tracked by #1865.
                         if [[ $_wired -eq 0 && "${ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED:-0}" == "1" ]]; then
                             violations+=("$stage|CYCLE_FB_UNWIRED|$in_id|input declares source:cycle_feedback but no cycles[].feedback.to wires it [#511]")
                             fail_count=$((fail_count + 1))
