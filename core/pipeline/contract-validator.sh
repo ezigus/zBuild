@@ -313,14 +313,36 @@ _contract_validate_pipeline() {
                 fi
             fi
 
-            # If optional, presence of source is informational only.
-            if [[ "$in_required" == "false" ]]; then
-                # Still merge what's available (no enforcement on optional misses).
-                continue
-            fi
+            # #1768: the source switch below runs for EVERY input, matching the
+            # CI lint (scripts/lib/lint-contract.sh), which has never gated it.
+            #
+            # This gate used to skip the whole switch for `required: false`, so
+            # 33 of 50 inputs — two thirds of the tree — reached no source check
+            # at all. Three consequences, all live before this change:
+            #   - `source: artifacts` was unrecognised AND unvalidated: it would
+            #     have hard-failed as BAD_SOURCE, and escaped only because every
+            #     use is optional.
+            #   - CYCLE_FB_DIR and CYCLE_FB_UNWIRED could never fire, since
+            #     cycle_feedback is REQUIRED to be optional. lint-contract.sh
+            #     :236-239 delegates the unwired check here ("runtime validator
+            #     owns that"), so it was enforced by neither.
+            #   - a malformed source on an optional input was invisible.
+            #
+            # Only the output-id existence check stays gated on required, in the
+            # stage:* arm below. That one is load-bearing: an optional input may
+            # be a glob fan-in over a producer GROUP, naming the producer for
+            # ordering rather than a single output id (review-aggregator's
+            # lens_results globs lens-*.json across the review-lens members).
+            # lint-contract.sh:225-231 documents the same carve-out.
+            local _in_optional=0
+            [[ "$in_required" == "false" ]] && _in_optional=1
 
-            # Required input: must declare a valid source.
+            # A required input must declare a source. An optional one need not —
+            # but if it declares one, it is validated like any other.
             if [[ -z "$in_source" ]]; then
+                if [[ $_in_optional -eq 1 ]]; then
+                    continue
+                fi
                 violations+=("$stage|MISSING_SOURCE|$in_id|required input has no source: declared|$in_path")
                 fail_count=$((fail_count + 1))
                 continue
@@ -333,11 +355,41 @@ _contract_validate_pipeline() {
                         fail_count=$((fail_count + 1))
                     fi
                     ;;
+                artifacts)
+                    # #1768: recognised here so the gate above can be opened
+                    # without refusing 9 live inputs (2 in design, 7 in
+                    # gate-aggregator) and halting every run at pre-flight.
+                    # The CI lint has always tolerated this value
+                    # (lint-contract.sh:194); only this validator did not, which
+                    # is the divergence #1768 is about.
+                    #
+                    # TRANSITIONAL. ADR-055 §1 retires this kind: the reads it
+                    # covers become ordinary name-matched inputs, and a backwards
+                    # edge is legalised by the template's declared re-entry
+                    # (§1.3) rather than by an untyped read of the shared
+                    # artifact directory. #1825 removes it. Validating the path
+                    # shape here is deliberately NOT added — it would pick a
+                    # convention (7 of the 9 use a bare filename, 2 use
+                    # ${artifact_dir}/) for a kind that is being deleted, and
+                    # every one of these paths is decorative today because the
+                    # plugin rebuilds it in code.
+                    :
+                    ;;
                 cycle_feedback)
                     # ADR-020 amendment (#511 / F2): cycle_feedback inputs are
                     # OPTIONAL by construction (cross-iter only meaningful when
-                    # the cycle runs more than once). required:true is a
-                    # contradiction caught above; an unreachable branch here.
+                    # the cycle runs more than once).
+                    #
+                    # #1768: the note that used to sit here — "required:true is a
+                    # contradiction caught above; an unreachable branch here" —
+                    # was half right and hid the larger problem. The branch was
+                    # unreachable, but so was this ENTIRE case: the required-only
+                    # gate above meant an input that must be optional could never
+                    # reach its own validation. CYCLE_FB_DIR and CYCLE_FB_UNWIRED
+                    # were dead, and lint-contract.sh:236-239 delegates UNWIRED
+                    # here, so nothing enforced it. Opening the gate revives all
+                    # three; the CYCLE_FB_REQUIRED branch below stays genuinely
+                    # unreachable, and stays as the explicit statement of the rule.
                     if [[ "$in_required" == "true" ]]; then
                         violations+=("$stage|CYCLE_FB_REQUIRED|$in_id|source: cycle_feedback cannot be required:true (#511)")
                         fail_count=$((fail_count + 1))
@@ -411,14 +463,29 @@ _contract_validate_pipeline() {
                         continue
                     fi
                     # Does producer declare this output id?
-                    if [[ -z "${_CV_STAGE_OUTPUTS_OK[$producer:$in_id]:-}" ]]; then
+                    #
+                    # #1768: this is the ONE check that stays gated on required,
+                    # and the gate is load-bearing rather than an oversight. An
+                    # OPTIONAL input may be a glob fan-in over a producer GROUP —
+                    # review-aggregator's `lens_results` globs `lens-*.json`
+                    # across the review-lens map members — naming the producer
+                    # for ordering, not a single output id. Enforcing id-match
+                    # there is a false positive: review-lens declares
+                    # `lens_result` (one file per member) and the consumer names
+                    # `lens_results` (the set). Mirrors the same carve-out and
+                    # rationale at lint-contract.sh:225-231 (#1279, ADR-047 §5).
+                    if [[ $_in_optional -eq 0 && -z "${_CV_STAGE_OUTPUTS_OK[$producer:$in_id]:-}" ]]; then
                         violations+=("$stage|MISSING_OUTPUT|$in_id|source declared: stage:$producer; status: stage '$producer' does NOT declare output id '$in_id'")
                         fail_count=$((fail_count + 1))
                         continue
                     fi
                     ;;
                 *)
-                    violations+=("$stage|BAD_SOURCE|$in_id|source: '$in_source' is malformed (must be 'stage:<name>' or 'external')")
+                    # #1768: the message used to read "must be 'stage:<name>' or
+                    # 'external'", omitting two kinds the switch accepts seven
+                    # and thirty lines above it. An author hitting this was told
+                    # their valid value was not an option.
+                    violations+=("$stage|BAD_SOURCE|$in_id|source: '$in_source' is not a recognised kind (must be 'stage:<name>', 'external', 'artifacts' or 'cycle_feedback')")
                     fail_count=$((fail_count + 1))
                     ;;
             esac

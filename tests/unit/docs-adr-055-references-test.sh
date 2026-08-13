@@ -50,14 +50,34 @@ rc=$?
 set -e
 assert_eq "[SPEC-7] TC-4: ADR-055 cross-references ADR-006" "0" "$rc"
 
-# TC-5 [SPEC-7]: the consumer reference form is `from: <stage>.<output_id>`.
-# Anchored to the code fence, not a bare "from:" — that word appears in prose
-# throughout, so a bare grep could not tell the v2 form from the v1 one.
+# TC-5 [SPEC-7]: the consumer declares the artifact NAME and nothing else.
+#
+# #1768 amended ADR-055 §1: this asserted `from: <producer-stage>.<output_id>`,
+# the form where a consumer names its producer. That was removed — the producer
+# name is redundant given output-id uniqueness (§5) and could not express a
+# backwards edge, which is what forced the untyped `source: artifacts` hatch.
+#
+# Asserted as a PAIR: the new form is present AND the retired one is gone.
+# Presence alone would still pass if both forms were documented, which is the
+# ambiguity the amendment exists to remove.
 set +e
+grep -qE '^ *- id: <output-id> +# the same artifact name' "$ADR" 2>/dev/null
+_has_new=$?
 grep -qE '^ *- from: <producer-stage>\.<output_id>' "$ADR" 2>/dev/null
+_has_old=$?
+set -e
+_tc5="new=$([[ $_has_new -eq 0 ]] && echo yes || echo no) old_gone=$([[ $_has_old -ne 0 ]] && echo yes || echo no)"
+assert_eq "[SPEC-7] TC-5: consumer declares the artifact name, and the from: form is gone" \
+    "new=yes old_gone=yes" "$_tc5"
+
+# TC-5b [SPEC-7]: the consumer names no producer stage. The property that makes
+# a plugin portable across templates (ADR-042), and the reason the amendment
+# happened at all.
+set +e
+grep -q "It names no other stage" "$ADR" 2>/dev/null
 rc=$?
 set -e
-assert_eq "[SPEC-7] TC-5: ADR-055 specifies the from: consumer reference" "0" "$rc"
+assert_eq "[SPEC-7] TC-5b: ADR-055 states a stage names no other stage" "0" "$rc"
 
 # TC-6 [SPEC-7]: a consumer never restates path or type — the property that
 # stopped scope-manifest.md being declared three times with two different types.

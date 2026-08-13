@@ -44,7 +44,12 @@ fi
 # is hardcoded here and mirrored in ADR-020 §External Sources Allowlist; CI
 # lint cross-references both to prevent drift.
 manifest_graph_external_allowlist() {
-    echo "gh_issue_body gh_issue_view goal_string scope_paths working_tree git_branch"
+    # gh_comments (#1768, ADR-055 §3): `external` is the declared route for
+    # everything a stage takes from outside the pipeline, replacing direct
+    # environment reads. #1729 is its first consumer — intake reads only the
+    # issue title and body today, so every correction made in comments is
+    # invisible to the pipeline.
+    echo "gh_issue_body gh_issue_view gh_comments goal_string scope_paths working_tree git_branch"
 }
 
 # ─── ADR-020 closed templating var set (decision #5) ──────────────────────────
