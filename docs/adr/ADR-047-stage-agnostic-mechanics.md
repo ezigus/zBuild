@@ -154,6 +154,12 @@ golden-parity + characterization gates (a "remove/rename a stage" change cannot 
 dogfooded through the pipeline itself — the running pipeline is the artifact being
 modified — so confidence is substituted by these deterministic gates):
 
+> **Generalised 2026-08-12 (ADR-057 §2, gate 2).** The parenthetical above is one of three
+> criteria that had grown up in separate documents — here, in ADR-036's self-hosting note, and
+> in #1819's sequencing section — with no single place stating when work is dogfooded, hand-built,
+> or blocked on a decision. ADR-057 consolidates them and adds a fourth (blast radius on merge)
+> that none of the three named. The rule stated here is unchanged; it is now gate 2's third clause.
+
 - **A** (#1278) — this ADR + amendments + agnostic base-prompt scrub.
 - **E** (#1279) — lint-contract scope derived from manifest contract-participation (§5 rule).
 - **B** (#1280) — verdict push channel (§3).
