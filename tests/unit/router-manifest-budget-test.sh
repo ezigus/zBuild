@@ -23,8 +23,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-# shellcheck source=../../core/plugin-registry/manifest-validation.sh
-source "$REPO_ROOT/core/plugin-registry/manifest-validation.sh"
+# route.sh ONLY — deliberately not manifest-validation.sh. The reader has to
+# arrive with the router, because _route_manifest_knob degrades to the constant
+# when it is missing: a test that sourced it here would stay green with the
+# manifest layer unreachable in production. SPEC-0 asserts the arrival.
 # shellcheck source=../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
@@ -97,6 +99,33 @@ config:
   tier_default: T1
 EOF
 
+# The shape the issue actually asks for: the number and the reasoning in one
+# place. Comments on the block headers, on the values, and a following
+# top-level key that must close the block.
+mkdir -p "$_FIX/commented"
+cat > "$_FIX/commented/manifest.yaml" <<'EOF'
+id: commented
+kind: agent
+config:   # my own defaults
+  tier_default: T2
+  router:  # #1242: T2 per-turn latency drove the wall clock up, not the flow
+    timeout_s: 600   # matches `design`, the comparable tool-heavy T2 sibling
+    max_turns: 45
+provides:
+  artifact_type: findings.json
+  timeout_s: 7
+EOF
+
+# ─── SPEC-0 the reader arrives with the router ───────────────────────────────
+print_test_section "[SPEC-0] sourcing route.sh alone provides the manifest reader"
+
+if declare -F manifest_router_knob >/dev/null 2>&1; then
+    assert_pass "route.sh brings manifest_router_knob by construction"
+else
+    assert_fail "route.sh brings manifest_router_knob by construction" \
+        "the manifest layer would be inert in any process that sources only route.sh"
+fi
+
 # ─── SPEC-1 regression guard: a silent manifest resolves as it does today ────
 print_test_section "[SPEC-1] a manifest with no config.router block is byte-identical to today"
 
@@ -139,6 +168,13 @@ assert_eq "a partial declaration leaves the undeclared knobs on the constant" \
 
 assert_eq "a top-level router: block is NOT the plugin's declaration" \
     "300" "$(ZBUILD_PLUGIN_DIR="$_FIX/nested" _route_resolve_timeout)"
+
+assert_eq "comments on config:/router:/the value do not hide the declaration" \
+    "600" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_timeout)"
+assert_eq "a later top-level key closes the block (provides.timeout_s is not it)" \
+    "45" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_max_turns)"
+assert_eq "an undeclared knob in a commented block still falls to the constant" \
+    "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_retries)"
 
 # ─── SPEC-3 env beats the manifest ───────────────────────────────────────────
 print_test_section "[SPEC-3] the operator env knob still wins over the manifest"

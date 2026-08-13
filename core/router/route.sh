@@ -68,6 +68,16 @@ source "$_ZBUILD_ROOT/scripts/lib/router-rc-classify.sh"
 # construction, replacing the per-plugin hardcoded `${ZBUILD_<ID>_TIER:-Tn}`.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh"
+# #1816 (ADR-017 §11): manifest_router_knob — the plugin's own declared budget.
+# Sourced BY CONSTRUCTION rather than left to whether some other lib happened to
+# pull manifest-validation.sh in first: _route_manifest_knob degrades to the
+# compile-time constant when the reader is missing, so an unreachable reader
+# would make every declaration silently inert instead of failing. Idempotent —
+# the file's own load guard makes a repeat source a no-op.
+if ! declare -F manifest_router_knob >/dev/null 2>&1; then
+    _zbuild_route_require "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
+    source "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
+fi
 # ADR-051 (#1305): resolve_persona + persona_text — resolve a stage persona from
 # the four-step precedence chain (env > template-stage > template-global > generic)
 # with two-root discovery (installed tree + per-repo overlay). Sourced here so

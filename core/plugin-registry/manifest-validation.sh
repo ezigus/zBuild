@@ -308,10 +308,13 @@ _manifest_router_block() {
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
     awk '
         function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
-        /^config:[[:space:]]*$/ { in_cfg = 1; in_router = 0; next }
+        # A trailing comment on the block header is legal YAML and is exactly
+        # where a manifest explains WHY the numbers below it are what they are —
+        # the reasoning this block exists to keep next to the value.
+        /^config:[[:space:]]*(#.*)?$/ { in_cfg = 1; in_router = 0; next }
         # Any other column-0 key closes `config:` (and with it `router:`).
         in_cfg && /^[^[:space:]#]/ { in_cfg = 0; in_router = 0 }
-        in_cfg && !in_router && /^[[:space:]]+router:[[:space:]]*$/ {
+        in_cfg && !in_router && /^[[:space:]]+router:[[:space:]]*(#.*)?$/ {
             in_router = 1; router_ind = indent($0); next
         }
         # A line at or shallower than `router:` ends the block; it may itself be
