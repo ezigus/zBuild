@@ -5,6 +5,8 @@
 **Depends on:** ADR-021 (pipeline cycle semantics / rc table), ADR-027 (recursive flow template format / acyclicity), ADR-040 (composable gate/lens taxonomy — advisory stages never drive loops)
 **Amends:** ADR-021 (adds rc=11 route_back to the terminal-rc table as a NON-halt class), ADR-027 (adds a carve-out to the membership-acyclicity contract for the bounded backward edge)
 **Extended:** 2026-08-12 (#1768, ADR-055 §1.3) — a declared `route_back` edge now also legalises a backwards **data** edge, not only a backwards control edge. Where a consumer's producer runs later in the flow, the pre-flight ordering check consults the `route_back` declaration rather than refusing the wiring as misordered. This required no new vocabulary: `route_back.to` and `route_back.when.stage` already name both ends. It retires the untyped `source: artifacts` workaround that existed only because control could rewind and data could not follow.
+>
+> **This does not block #1339** (retire the `route_back` primitive). ADR-055 §1.3 is stated over *re-entry declared by the template*, of which `route_back` is one form and shared cycle membership is another. If this primitive is retired once nested cycles replace the jump, the backwards data edge it currently legalises is satisfied by cycle membership instead, with no change to the data contract.
 
 ## Context
 

@@ -73,9 +73,16 @@ This replaces four kinds plus a large body of undeclared environment reads. `sou
 
 #### 1.3 Ordering, and the backwards edge
 
-A producer must appear earlier in the resolved flow **or** be connected to the consumer by a declared `route_back` edge (ADR-045).
+A producer must appear earlier in the resolved flow, **or the template must declare a re-entry that reaches the consumer again after the producer has run.**
 
-That second clause is what makes a backwards data edge expressible. `design` (flow position 3) consumes a file written by `gate-aggregator` (position 5), which works because a `route_design` verdict rewinds to `design_verify_cycle` and the file is present on the second pass. Forward-ordering alone rejects that as misordered, and the workaround was an untyped `source: artifacts` read — no producer, no ordering, no validation (#1768). The rewind is **already declared in the template**, so the ordering check consults data that exists rather than requiring new vocabulary. ADR-046, which prescribed the workaround, is amended accordingly.
+The rule is stated over *re-entry*, not over any one construct, because the constructs change. Two satisfy it today:
+
+- **a `route_back` edge** (ADR-045) — `route_back.to` and `route_back.when.stage` already name both ends
+- **shared cycle membership** — a cycle re-runs its own members, so any member may consume any other member's output
+
+Either is a declaration the template already carries, so the ordering check reads data that exists rather than needing new vocabulary. **Nothing in this contract depends on `route_back` specifically**: if #1339 retires the primitive once nested cycles replace the jump, the `design_feedback` edge becomes intra-cycle and satisfies the rule through the second clause instead. That is a deliberate choice — an earlier draft of this section named `route_back` alone and would have made this ADR a new blocker on #1339.
+
+The case that motivated it: `design` (flow position 3) consumes a file written by `gate-aggregator` (position 5), which works because a `route_design` verdict rewinds to `design_verify_cycle` and the file is present on the second pass. Forward-ordering alone rejects that as misordered, and the workaround was an untyped `source: artifacts` read — no producer, no ordering, no validation (#1768). ADR-046, which prescribed the workaround, is amended accordingly.
 
 #### 1.4 Map producers
 
