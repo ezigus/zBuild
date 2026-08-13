@@ -2,6 +2,8 @@
 
 **Status:** Accepted (2026-07-23)
 
+**Confirmed unchanged:** 2026-08-12 (#1768, ADR-055 §1.2) — ADR-055's data contract was reviewed against this one and prior-work reuse is deliberately **outside the input model**. It is not a declared input, not a third source kind, and not `external`. §1 below is the reason: a stage detects *its own* prior artifact in its own working area, so there is no producer to resolve and no wire to declare. Modelling it as an input would require the engine to know that `build`'s prior `build_summary` belongs to `build` — exactly what §1 forbids. No change to this ADR.
+
 > **Memory type.** This ADR governs **prior-work memory** — the durable output of a
 > prior run of the _same issue_ (a design.md, a work branch, an open PR) that a
 > later run reuses as advisory seed. It is distinct from the **pipeline-resume

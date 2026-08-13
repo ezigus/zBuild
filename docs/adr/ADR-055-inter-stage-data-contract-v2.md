@@ -4,7 +4,8 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Supersedes:** ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
-**Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013 (canonical stages), ADR-015 §v4 (stage I/O capture), ADR-019 (review fail-closed), ADR-047 (stage-agnostic mechanics)
+**Amended:** 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
+**Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013 (canonical stages), ADR-015 §v4 (stage I/O capture), ADR-019 (review fail-closed), ADR-042 (stage portability — completed by §1), ADR-045 (bounded typed backward route — legalises a backwards data edge, §1.3), ADR-046 (design-verify shift-left — the cross-cycle feedback edge this ADR previously failed to account for), ADR-047 (stage-agnostic mechanics)
 
 ## Context
 
@@ -24,32 +25,67 @@ ADR-055 presents the same contract as a clean v2 at its current stable state. AD
 
 ### 1. Producer–consumer declaration model
 
-A producer stage declares each output **once** in its manifest:
+**A stage declares the artifact names it needs and the artifacts it produces. It names no other stage.**
+
+A producer declares each output **once**:
 
 ```yaml
 outputs:
-  - id: <output-id>           # referenced by downstream consumers
+  - id: <output-id>           # the artifact's name, unique across the flow (§5)
     type: <type>
     required: true | false
     primary: true | false     # exactly one output per manifest declares primary: true
     path: ${artifact_dir}/<filename>
 ```
 
-A consumer declares **only** the reference and whether it needs it:
+A consumer declares **only the name and whether it needs it**:
 
 ```yaml
 inputs:
-  - from: <producer-stage>.<output_id>
+  - id: <output-id>           # the same artifact name. No stage, no path, no type.
     required: true | false
 ```
 
-**A consumer never restates `path` or `type`.** Restating them is what let `scope-manifest.md` be declared in `intake/manifest.yaml`, redeclared in `build/manifest.yaml` *with a different type*, and hardcoded a third time in `build/plugin.sh` — where only the third was load-bearing. A declaration that can disagree with the thing it declares is not a contract.
+The engine resolves each input name to the single stage in the flow that produces it, verifies presence **before** dispatch, and hands the resolved paths to `run` (#1826). The template declares the flow; **wiring is derived, not written.** A template may bind an input explicitly to disambiguate, but no case in the tree needs it.
 
-The engine resolves the reference, verifies the artifact is present **before** dispatch, and refuses a wiring whose producer and consumer types disagree — the check stubbed at `contract-validator.sh:289`. Declared outputs become a boundary, not a description (#1809).
+#### 1.1 Why the consumer does not name its producer
 
-Delivered by #1825 (`from:` references), #1826 (engine resolves and hands inputs to `run`), #1827 (type agreement). Until they land, consumers use the current form — `source: stage:<producer-id>` with a restated `path` and `type` — and the engine validates order only, via the pre-flight validator (`core/pipeline/contract-validator.sh`). The 17 F-wave migrations (#1833–#1849) move the plugins one per PR.
+Two independent reasons.
 
-`source: external` and `source: cycle_feedback` keep their own forms (§3, §4); `from:` addresses stage-produced data only.
+**It is redundant.** §5 already requires each output `id` to be claimed by exactly one stage across a resolved flow, enforced with violation code `OUTPUT_DUP`. Measured against `simple.yaml`'s resolved flow: 29 output ids, zero duplicates. An input naming `scope_manifest` therefore identifies its producer already. The pre-flight validator confirms the name was always doing the work — it used the producer name only for self-reference, in-template and ordering checks, while the actual match was *does that stage declare an output whose id equals this input's id*.
+
+**It couples a plugin to a flow position.** ADR-042 established that a stage's flow-name need not equal its plugin `id`, so a plugin is portable across templates. A consumer that hardcodes `intake` re-couples it from the other side: the plugin then only works in a template that happens to name a stage `intake`. Naming the artifact instead completes ADR-042 rather than undoing it, and extends ADR-047's thesis — the mechanics already name no stage; now neither do plugins.
+
+**A consumer never restates `path` or `type`.** Restating them is what let `scope-manifest.md` be declared in `intake/manifest.yaml`, redeclared in `build/manifest.yaml` *with a different type*, and hardcoded a third time in `build/plugin.sh` — where only the third was load-bearing. A declaration that can disagree with the thing it declares is not a contract. Under this model there is no second declaration to disagree, which is why #1827's cross-check largely dissolves rather than being implemented.
+
+#### 1.2 Two input kinds
+
+| Kind | Declared as | Meaning |
+|---|---|---|
+| stage output | `id: <name>` (default) | an artifact some stage in the flow produces |
+| external | `id: <name>` + `source: external` | something from outside the pipeline (§3) |
+
+This replaces four kinds plus a large body of undeclared environment reads. `source: artifacts` (9 uses) and `source: cycle_feedback` (6 uses) both become ordinary stage outputs — the only thing that made them distinct was the assumption that data flows forward, which §1.3 removes. The `stage:` prefix on the remaining 33 is dropped.
+
+**Stages stop reading the environment for data.** One stage declares an external input today while ten plugins read `ZBUILD_ISSUE` directly. Data a stage consumes is declared and resolved; **engine context is not data** and stays ambient — run id, current stage, the plugin identity of ADR-054 §3.1, cycle iteration, map element, target platform. The test is whether the value describes *the work* (declare it) or *the invocation* (ambient).
+
+**Prior-run reuse is deliberately not a third kind.** ADR-050 §1 defines it as self-detection: *"A stage knows only ITS OWN artifact. It asks 'is my prior output present in my working area?'"* There is no producer to resolve and no wire to declare, because the producer is the consuming stage itself in an earlier run — the engine restores the artifact area generically and never learns what any artifact means. Modelling it as an input would require the engine to know that `build`'s prior `build_summary` belongs to `build`, which is exactly what ADR-050 §1 forbids. It stays outside the input model.
+
+#### 1.3 Ordering, and the backwards edge
+
+A producer must appear earlier in the resolved flow **or** be connected to the consumer by a declared `route_back` edge (ADR-045).
+
+That second clause is what makes a backwards data edge expressible. `design` (flow position 3) consumes a file written by `gate-aggregator` (position 5), which works because a `route_design` verdict rewinds to `design_verify_cycle` and the file is present on the second pass. Forward-ordering alone rejects that as misordered, and the workaround was an untyped `source: artifacts` read — no producer, no ordering, no validation (#1768). The rewind is **already declared in the template**, so the ordering check consults data that exists rather than requiring new vocabulary. ADR-046, which prescribed the workaround, is amended accordingly.
+
+#### 1.4 Map producers
+
+When the producing stage is a `map` group, the consumer receives the set of its members' outputs. This retires the `lens-*.json` wildcard in `review-aggregator` and the corresponding exemption both checkers carry for it.
+
+#### 1.5 Load-time refusal
+
+Every declared input name must resolve to **exactly one** producer in the flow. Zero producers or two is a refused template, not a runtime surprise — consistent with ADR-047 §5's fail-closed preflights.
+
+Delivered by #1825 (name-matched inputs), #1826 (engine resolves and hands inputs to `run`), #1827 (types declared once by the producer, versioned). Until they land, consumers use the current form — `source: stage:<producer-id>` with a restated `path` and `type` — and the engine validates order only. The 17 F-wave migrations (#1833–#1849) move the plugins one per PR.
 
 ### 2. Closed templating-var set
 
@@ -68,29 +104,42 @@ Any other `${var}` reference is a load-time error.
 Inputs declared `source: external` MUST use an id from this hardcoded set:
 
 ```
-gh_issue_body  gh_issue_view  goal_string  scope_paths  working_tree  git_branch
+gh_issue_body  gh_issue_view  gh_comments  goal_string  scope_paths  working_tree  git_branch
 ```
 
 CI lint (`scripts/lib/lint-contract.sh`) rejects `source: external` for ids outside this allowlist.
 
-### 4. Cycle feedback discriminator
+`gh_comments` added 2026-08-12 (#1768). §1.2 makes `external` the declared route for everything a stage takes from outside the pipeline, replacing direct environment reads. #1729 — *intake reads only the issue title and body, so every correction made in comments is invisible to the pipeline* — is the first consumer: the correction channel becomes a declared input rather than a missing environment variable.
 
-Inter-iter feedback uses `source: cycle_feedback`:
+### 4. Cycle feedback — retired into the stage-output kind
+
+**Amended 2026-08-12 (#1768).** `source: cycle_feedback` is retired. Inter-iteration feedback is an ordinary stage output whose wire runs backwards, made legal by §1.3 rather than by a separate kind:
 
 ```yaml
 inputs:
   - id: prior_test_failures
-    type: text/plain
-    path: "${cycle_feedback_dir}/prior_test_failures.txt"
-    source: cycle_feedback
     required: false
 ```
 
-Rules: `source: cycle_feedback` with `required: true` is a contradiction. The path MUST use `${cycle_feedback_dir}`. Every `cycle_feedback` input MUST be referenced by a `cycles[].feedback.to.input` binding, and every such binding MUST land on a declared `cycle_feedback` input. Violation codes: `CYCLE_FB_REQUIRED`, `CYCLE_FB_DIR`, `CYCLE_FB_UNWIRED`, `CYCLE_FB_UNDECLARED`.
+The consumer names the artifact; the engine resolves it to the producing stage; the backwards direction is legal because the cycle declares the edge. Requiredness stays the consumer's property, and feedback is `required: false` because it is absent on the first iteration — a property of the data, not of a special kind.
+
+**Why it was separate, and why that reason is gone.** The discriminator existed because a cycle's feedback arrives from a stage that has not run yet in forward order, which the ordering check rejected. §1.3 makes that legal for every backwards edge, so the kind carried no information the wire did not already have.
+
+**What this fixes as a side effect.** Three of the four violation codes below could never fire. `CYCLE_FB_REQUIRED`, `CYCLE_FB_DIR` and `CYCLE_FB_UNWIRED` all sit inside the runtime validator's source switch, which `contract-validator.sh:317` reaches only for `required: true` inputs — and this kind was *required to be optional*. `CYCLE_FB_UNWIRED` was the worst case: `scripts/lib/lint-contract.sh:236-239` explicitly delegates it to the runtime validator (*"runtime validator owns that"*), which could never reach it, so it was enforced by neither. Only `CYCLE_FB_UNDECLARED` — in a separate pass over cycles — was live.
+
+**Superseded codes:** `CYCLE_FB_REQUIRED`, `CYCLE_FB_DIR`, `CYCLE_FB_UNWIRED`, `CYCLE_FB_UNDECLARED`. The wiring integrity they were meant to protect is now §1.5's single rule: every declared input name resolves to exactly one producer, checked for every input regardless of requiredness.
+
+The `${cycle_feedback_dir}` templating var (§2) is retained for the producer side while cycle feedback is written there.
 
 ### 5. Output-uniqueness rule
 
 Each output `id` value MUST be claimed by exactly one stage manifest across the template's resolved stage set. Duplicate output declarations across two stages are refused at pre-flight. Violation code: `OUTPUT_DUP`.
+
+**Amended 2026-08-12 (#1768): this rule is now load-bearing.** It was a de-duplication guard; §1 makes it the mechanism by which an input name identifies its producer. Two consequences follow.
+
+First, `OUTPUT_DUP` can no longer be relaxed without replacing the resolution model — it is the reason a consumer need not name a stage.
+
+Second, uniqueness is scoped to a **resolved flow**, not to the plugin tree. `pr_url` is declared by `merge`, `pr` and `pr-delivery`; `review_report` by both `review-aggregator` and `review-report`. These are alternative implementations selected per template, so each resolved flow still claims every id exactly once — verified: `simple.yaml`'s flow has 29 output ids and no duplicates. A template that admits two producers of one name is refused, which is the correct outcome: the name would be ambiguous.
 
 ### 6. Resume-mode artifact-existence check
 
@@ -110,7 +159,7 @@ The keystone integration test that verifies enforce-mode behavior is `tests/inte
 
 The following ADR-020 content is **not** carried forward into the v2 contract and is noted here for clarity:
 
-- **Type-mismatch check stub** (`contract-validator.sh:289`, `# in_type captured for future schema-aware checks`) — the validator captured the input type but never compared it against the producer's declared type. This remains unimplemented; a follow-up issue will either implement it or remove the stub.
+- **Type-mismatch check stub** (`contract-validator.sh:289`, `# in_type captured for future schema-aware checks`) — the validator captured the input type but never compared it against the producer's declared type. ~~This remains unimplemented; a follow-up issue will either implement it or remove the stub.~~ **Amended 2026-08-12 (#1768): the stub is to be removed, not implemented.** §1 removes the consumer-declared type, so there is no second declaration to compare against and the mismatch it guarded cannot occur. #1827 shrinks accordingly — from building a cross-check to versioning the producer's single declaration.
 - **`valid_verdicts` field** — declared in the manifest schema under `outputs:`; never read by the runner or the pre-flight validator. The verdict vocabulary is governed by the v2 result file contract and ADR-054 §6.
 - **`warn` default note** — ADR-020 originally shipped with `warn` as the first-release default and a note to flip to `enforce`. The flip landed in Wave 12-E (#664). The v2 contract treats `enforce` as the operative default.
 
@@ -136,7 +185,7 @@ Relevant code sites:
 - `core/pipeline/runner.sh` — validator integration point after `load_template`.
 - `tests/integration/pipeline-preflight-missing-stage-test.sh` — keystone integration test for enforce-mode behavior.
 - `tests/unit/core-pipeline-contract-validator-test.sh` — unit coverage of the validator.
-- `tests/unit/preflight-lint-parity-test.sh` — asserts runtime and CI lint produce identical results on the same fixture set.
+- `tests/unit/preflight-lint-parity-test.sh` — **this claim was wrong and is corrected 2026-08-12 (#1768).** The test does *not* compare the two implementations' results. It asserts that both files contain the string `manifest-graph.sh` and that the shared parser returns non-empty output for one fixture. It is a parser-wiring check, not a parity check — which is why the two implementations were free to diverge on the source vocabulary and on which inputs they validate at all, undetected. #1768 makes it compare verdicts.
 
 ## References
 

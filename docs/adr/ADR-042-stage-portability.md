@@ -5,7 +5,8 @@
 - ADR-001 (plugin contract — a stage's flow-name need not equal its manifest `id`; resolution is role-then-id everywhere)
 - ADR-021 (pipeline cycle semantics — cycle members resolve role-then-id via the shared helper, not id-only)
 - ADR-039 (parallel stage groups — parallel members resolve role-then-id via the shared helper, not id-only)
-**Related:** ADR-027 (recursive-flow template format), ADR-040 (composable gate/lens taxonomy)
+**Completed:** 2026-08-12 (#1768, ADR-055 §1) — this ADR decoupled a plugin from its flow position on the *dispatch* side (flow-name need not equal manifest `id`; resolution is role-then-id). ADR-020/ADR-055 then re-coupled it on the *data* side, because a consumer's manifest hardcoded the producer's flow name in `source: stage:<X>`. A plugin declaring `source: stage:intake` only worked in a template that happened to name a stage `intake`. ADR-055 §1 removes that: a consumer declares the artifact name and the engine resolves the producer, so a plugin now names no other stage on either side and the portability thesis holds end to end.
+**Related:** ADR-027 (recursive-flow template format), ADR-040 (composable gate/lens taxonomy), ADR-055 §1 (inter-stage data contract — the data-side half of portability)
 **Completed-by:** ADR-047 (#1277) — role-then-id resolution is stage-agnostic; ADR-047 extends
 the same principle to the remaining mechanics (verdict-read, cycle capability decisions,
 membership/order validation, post-stage hooks) so nothing under `core/pipeline/` names a stage.
