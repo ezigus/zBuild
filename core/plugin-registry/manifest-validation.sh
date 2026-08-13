@@ -16,6 +16,11 @@ _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 _ZBUILD_MANIFEST_VALIDATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../contract/version.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../contract/version.sh"
+# ADR-017 §11 (#1816): the config.router.* reader + its ranges. Sourced here so
+# every existing reader of this file — validate_manifest below, and route.sh,
+# which loads this file to reach the reader — gets it unchanged.
+# shellcheck source=./manifest-router-budget.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-router-budget.sh"
 
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
@@ -454,6 +459,26 @@ validate_manifest() {
             errors=$((errors + 1))
         fi
     done
+
+    # ─── Optional config.router budget block — ADR-017 §11 (#1816) ──────────
+    # A declared budget is load-bearing at dispatch, so it is checked here
+    # rather than at read time: the resolver ignores anything it cannot use,
+    # and an ignored budget is a stage silently running on the wrong one.
+    local _rk _rv _rrange
+    while read -r _rk _rv; do
+        [[ -n "$_rk" ]] || continue
+        _rrange="$(_manifest_router_range "$_rk")"
+        if [[ -z "$_rrange" ]]; then
+            error "validate_manifest($manifest): unknown key '$_rk' under config.router (valid: $_ZBUILD_MANIFEST_ROUTER_KNOBS)"
+            errors=$((errors + 1))
+            continue
+        fi
+        local _min="${_rrange% *}" _max="${_rrange#* }"
+        if ! [[ "$_rv" =~ ^[0-9]+$ ]] || [[ "$_rv" -lt "$_min" ]] || [[ "$_rv" -gt "$_max" ]]; then
+            error "validate_manifest($manifest): config.router.$_rk must be an integer in $_min..$_max, got: ${_rv:-<empty>}"
+            errors=$((errors + 1))
+        fi
+    done < <(_manifest_router_block "$manifest")
 
     return $((errors > 0))
 }

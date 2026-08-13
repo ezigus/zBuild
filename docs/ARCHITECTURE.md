@@ -103,6 +103,10 @@ provides:
 config:
   tier_default: T3      # T0–T4 routing tier; resolved by core router
   max_findings: 50
+  router:               # ADR-017 §11: my own budget defaults (a template still wins)
+    timeout_s: 600      # 1..3600   (constant: 300)
+    max_turns: 45       # 0..200    (constant: 25)
+    retries: 1          # 0..10     (constant: 0)
 
 # I/O contract (declared, not enforced — useful for compatibility checks)
 inputs:

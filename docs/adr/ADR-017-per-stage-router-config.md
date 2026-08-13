@@ -365,3 +365,65 @@ cross-iteration `timeout_recur` breaker). The retry-on-timeout escalation
 semantics are specified in ADR-029. New events
 `router.timeout.retry` + `router.retries.override_ignored` added to
 `config/event-schema.json::known_types`.
+
+## Amendment §11 — a plugin declares its own budget (#1816)
+
+`timeout_s`, `max_turns` and `retries` resolved only from the template, so a
+stage's budget was a property of whichever flow happened to run it rather than
+of the work it does. The reasoning behind each number already lived in the
+plugin's manifest — `plugins/agent/impact/manifest.yaml` explains a
+`timeout_s` of 600 in a comment above `tier_default`, a value the manifest was
+not allowed to hold — and the number itself was duplicated into the template,
+where the justification argues from plugin-intrinsic facts.
+
+The manifest becomes a fourth layer, below env and above the compile-time
+constant:
+
+```
+template accessor  →  environment variable  →  manifest config.router.*  →  constant
+```
+
+Ordering rationale: the template still wins, so a flow can right-size a stage
+for a fast lane; env stays the operator escape hatch; the manifest replaces the
+compile-time constant as the **default**, which is what it always was — a
+default nobody could state per stage.
+
+| knob      | manifest key               | range  | constant |
+| --------- | -------------------------- | ------ | -------- |
+| timeout_s | `config.router.timeout_s`  | 1..3600 | 300     |
+| max_turns | `config.router.max_turns`  | 0..200  | 25      |
+| retries   | `config.router.retries`    | 0..10   | 0       |
+
+Ranges are the template's ranges, deliberately: one value, two places it can be
+written, one notion of "valid". `max_iterations` is **not** in the set — the
+issue scopes to the three knobs that bound a single model call; how many times
+a cycle re-enters a stage is a property of the cycle, and a plugin placed in
+two different cycles has no answer for it.
+
+- Reader: `manifest_router_knob <manifest> <knob>`
+  (`core/plugin-registry/manifest-router-budget.sh`, sourced by
+  `manifest-validation.sh` so every existing reader reaches it), addressing the block by
+  PATH — a top-level `router:` is a different key and is not read. `yaml_get`
+  cannot express this: its nested form is one level deep and would match a
+  `timeout_s:` at any depth under `config:`.
+- Resolver: `_route_manifest_knob` feeding `_route_resolve_knob`'s new fifth
+  argument. Which plugin is being served comes from `ZBUILD_PLUGIN_DIR`, the
+  dispatch identity the engine exports at `plugin_hook_call` (ADR-054 §3,
+  #1862) — route.sh serves 25 plugins and, before that, had no way to reach the
+  manifest of the one it was serving.
+- Validator: `validate_manifest` rejects a non-numeric or out-of-range value
+  and an unknown key inside `config.router`. A typo'd budget is inert rather
+  than merely wrong, so it fails at the boundary.
+
+**A manifest that declares nothing behaves exactly as before.** An absent
+`config.router` block resolves to the same constant, byte-identical; no plugin
+is required to migrate, and none does in this change. That fallback is what
+keeps this one change rather than fourteen.
+
+The `router.*.override_ignored` audit events are unchanged: they report the
+env-vs-template conflict only. A manifest default losing to env or template is
+not a conflict — it is the design — and eventing it would make every declaring
+plugin noisy on every dispatch. The one record that did change is
+`router.max_turns` telemetry: a plugin declaring the `0` sentinel now
+classifies as `manifest` rather than `default`, which is the one source it is
+not.
