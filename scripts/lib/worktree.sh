@@ -276,6 +276,37 @@ zbuild_worktree_run_id() {
     printf '%s\n' "$leaf"
 }
 
+# ─── _zbuild_worktree_state_file <run_id> ───────────────────────────────────
+# The state file belonging to <run_id>, or rc=1 if none can be identified.
+#
+# Two layouts, because the runner writes two. A default-state run re-roots into
+# <base>/runs/<run_id>/ (#887); a run given an explicit ZBUILD_STATE_DIR — which
+# CI still pins to the workspace — keeps its state FLAT at that path, and skips
+# the re-root entirely (core/pipeline/runner.sh, `_state_is_default`). Searching
+# only the per-run layout finds nothing under CI's configuration, and a caller
+# that reads "no state" as "cannot prove it finished" would then refuse forever.
+#
+# The `.run_id` match is required, not decorative: the flat layout is ONE file
+# that any run may own, so identifying it by path alone would answer a liveness
+# question about a different run — and a wrong "not live" there authorises
+# removing a working tree.
+_zbuild_worktree_state_file() {
+    local run_id="${1:-}"
+    [[ -n "$run_id" ]] || return 1
+    declare -F get_state_field >/dev/null 2>&1 || return 1
+    local base cand
+    for base in "${ZBUILD_STATE_DIR:-}" "${ZBUILD_STATE_ROOT:-}" "$HOME/.zbuild/state"; do
+        [[ -n "$base" ]] || continue
+        for cand in "$base/runs/$run_id/pipeline-state.json" "$base/pipeline-state.json"; do
+            [[ -f "$cand" ]] || continue
+            [[ "$(get_state_field "$cand" '.run_id' '')" == "$run_id" ]] || continue
+            printf '%s\n' "$cand"
+            return 0
+        done
+    done
+    return 1
+}
+
 # ─── zbuild_worktree_reclaim_dead <holder_path> [repo_root] ─────────────────
 # Release the worktree of a run that is no longer working, so its branch can be
 # checked out again (#1869). Without this, a run that aborted held its branch
@@ -321,10 +352,10 @@ zbuild_worktree_reclaim_dead() {
         return 4
     fi
 
-    local state_file="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/$run_id/pipeline-state.json"
-    if [[ ! -f "$state_file" ]]; then
-        printf 'zbuild_worktree_reclaim_dead: no state for run %s at %s — cannot prove it finished\n' \
-            "$run_id" "$state_file" >&2
+    local state_file
+    if ! state_file="$(_zbuild_worktree_state_file "$run_id")"; then
+        printf 'zbuild_worktree_reclaim_dead: no state for run %s — cannot prove it finished\n' \
+            "$run_id" >&2
         return 4
     fi
     if zbuild_run_is_live "$state_file"; then

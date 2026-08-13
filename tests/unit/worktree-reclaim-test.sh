@@ -15,6 +15,8 @@
 # SPEC-4 [guard]: a run whose liveness cannot be established is refused
 # SPEC-5: an abandoned in_progress run (stale timestamp) is not "live"
 # SPEC-6: run-id recovery covers both worktree layouts
+# SPEC-7: state is found under an explicit (flat) ZBUILD_STATE_DIR
+# SPEC-8 [guard]: a flat state file owned by a DIFFERENT run proves nothing
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -188,6 +190,54 @@ if [[ "$_rc" -eq 0 && ! -d "$WT_STALE" ]]; then
     assert_pass "[SPEC-5] an in_progress run stale by 48h is reclaimed, not live forever"
 else
     assert_fail "[SPEC-5] a stale in_progress run must not hold its branch forever" \
+        "rc=$_rc out=$_out"
+fi
+
+# ── SPEC-7: state is found under an explicit ZBUILD_STATE_DIR (flat layout) ──
+# A run given ZBUILD_STATE_DIR — which CI pins to the workspace — skips the
+# per-run re-root and keeps its state FLAT at that path. Searching only the
+# runs/<id>/ layout finds nothing there, and "no state" means "refuse", so the
+# whole reclaim would be a silent no-op under CI's configuration. (PR #1871
+# review finding.)
+WT_FLAT="$(_mk_run flat-1 zbuild/issue-7-flat)"
+FLAT_DIR="$TEST_TEMP_DIR/flat-state"
+mkdir -p "$FLAT_DIR"
+printf '{"schema_version":1,"run_id":"flat-1","issue":1,"status":"aborted","updated_at":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$FLAT_DIR/pipeline-state.json"
+_out="$( (cd "$R" && ZBUILD_STATE_ROOT="" ZBUILD_STATE_DIR="$FLAT_DIR" \
+    zbuild_worktree_reclaim_dead "$WT_FLAT") 2>&1 )"; _rc=$?
+if [[ "$_rc" -eq 0 && ! -d "$WT_FLAT" ]]; then
+    assert_pass "[SPEC-7] a flat ZBUILD_STATE_DIR state file is found and honoured"
+else
+    assert_fail "[SPEC-7] reclaim must not be a no-op when ZBUILD_STATE_DIR is set" \
+        "rc=$_rc out=$_out"
+fi
+
+# ── SPEC-8 [guard]: a flat state file for a DIFFERENT run proves nothing ────
+# The flat layout is ONE file that any run may own. Identifying it by path alone
+# would answer the liveness question about someone else's run — and a wrong
+# "not live" there authorises deleting a working tree. The run_id must match.
+WT_OTHER="$(_mk_run other-1 zbuild/issue-8-other)"
+printf '{"schema_version":1,"run_id":"somebody-else","issue":1,"status":"aborted","updated_at":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$FLAT_DIR/pipeline-state.json"
+_out="$( (cd "$R" && ZBUILD_STATE_ROOT="" ZBUILD_STATE_DIR="$FLAT_DIR" \
+    zbuild_worktree_reclaim_dead "$WT_OTHER") 2>&1 )"; _rc=$?
+if [[ "$_rc" -eq 4 && -d "$WT_OTHER" ]]; then
+    assert_pass "[SPEC-8] another run's state file does not authorise reclamation"
+else
+    assert_fail "[SPEC-8] must never judge liveness from a different run's state" \
+        "rc=$_rc present=$([[ -d "$WT_OTHER" ]] && echo yes || echo NO) out=$_out"
+fi
+# Positive flip: same file, same path, run_id corrected → reclaimed. Proves the
+# id match was the barrier, not the flat layout itself.
+printf '{"schema_version":1,"run_id":"other-1","issue":1,"status":"aborted","updated_at":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$FLAT_DIR/pipeline-state.json"
+_out="$( (cd "$R" && ZBUILD_STATE_ROOT="" ZBUILD_STATE_DIR="$FLAT_DIR" \
+    zbuild_worktree_reclaim_dead "$WT_OTHER") 2>&1 )"; _rc=$?
+if [[ "$_rc" -eq 0 && ! -d "$WT_OTHER" ]]; then
+    assert_pass "[SPEC-8] positive flip: with the matching run_id it is reclaimed"
+else
+    assert_fail "[SPEC-8] a matching flat state file must authorise reclamation" \
         "rc=$_rc out=$_out"
 fi
 

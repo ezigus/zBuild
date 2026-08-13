@@ -243,14 +243,25 @@ _intake_checkout_branch() {
             # tree behind, and the branch — with whatever it committed — is
             # exactly what this run wants to continue. Release it and retry,
             # once. Refusals fall through to the diagnostic below unchanged.
-            local _reclaimed=0
+            local _reclaimed=0 _released=0
             if [[ -n "$_holder" ]] && _intake_reclaim_holder "$target" "$_holder"; then
+                _released=1
                 if _co_err="$(LC_ALL=C git checkout "$target" 2>&1 >/dev/null)"; then
                     _reclaimed=1
                 fi
             fi
             if [[ $_reclaimed -eq 0 ]]; then
-                if [[ -n "$_holder" ]]; then
+                if [[ $_released -eq 1 ]]; then
+                    # The holder is GONE, so the branch-held diagnostic below would
+                    # name a path that no longer exists and advise reclaiming a tree
+                    # already reclaimed. Whatever git objected to the second time is
+                    # the only useful thing left to say.
+                    error "intake_branch: released the holding worktree but checkout of '$target' still failed"
+                    error "  git: ${_co_err:-<no git output>}"
+                    emit_event "intake.error" \
+                        "plugin=intake" "branch=$target" \
+                        "reason=checkout_failed_after_reclaim" "holder=$_holder"
+                elif [[ -n "$_holder" ]]; then
                     local _dead_run_id
                     _dead_run_id="$(zbuild_worktree_run_id "$_holder" 2>/dev/null || true)"
                     error "intake_branch: branch '$target' is already checked out at $_holder"
