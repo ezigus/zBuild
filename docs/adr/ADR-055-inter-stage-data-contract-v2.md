@@ -170,6 +170,20 @@ The following ADR-020 content is **not** carried forward into the v2 contract an
 - **`valid_verdicts` field** — declared in the manifest schema under `outputs:`; never read by the runner or the pre-flight validator. The verdict vocabulary is governed by the v2 result file contract and ADR-054 §6.
 - **`warn` default note** — ADR-020 originally shipped with `warn` as the first-release default and a note to flip to `enforce`. The flip landed in Wave 12-E (#664). The v2 contract treats `enforce` as the operative default.
 
+## Alternatives considered for §1 (added 2026-08-12, #1768)
+
+Recorded because the reasoning is not recoverable from the decision alone, and a durability check found it living only in a local, gitignored store.
+
+**A — keep `from: <producer-stage>.<output_id>`** (this ADR as originally written). Rejected on two counts. It couples a plugin to a flow name, undoing on the data side what ADR-042 bought on the dispatch side — a plugin declaring `from: intake.scope_manifest` only works in a template that happens to name a stage `intake`. And it cannot express a producer that runs later, so it still requires the untyped `source: artifacts` escape hatch for the rewind case, which is the defect #1768 opened with.
+
+**B — the consumer names the producing stage but not the output** (`from: intake`, receiving whatever `intake` declares). Better than A: no restated path or type, and a consumer takes what it needs by output id. Still rejected — it keeps the flow-name coupling, and a backwards edge is still refused, so the escape hatch survives.
+
+**C — the template writes every wire explicitly**, with manifests declaring named slots. Fully decoupled and it handles backwards edges natively, being what `cycles[].feedback` already does. Rejected as redundant rather than wrong: with output ids unique per flow (§5), the wire the template would state is exactly the one the engine can derive, so writing it creates a second source of truth that can drift from the first. Retained as the **explicit override** in §1 for a case where derivation is genuinely ambiguous; no case in the tree is.
+
+**D — no input declaration at all**, the template being the only source. Rejected because nothing would then declare what a stage *needs*, so a forgotten wire could not be caught at load — only when the stage runs and fails, which for an LLM stage is a wasted model call. Phase 0 exists to move failures earlier, not later.
+
+**What was chosen** keeps C's decoupling and D's minimal manifest while preserving load-time enforcement: the stage declares names (so the engine knows what to check), and nothing declares wires (so nothing can drift).
+
 ## Consequences
 
 **Positive:**
