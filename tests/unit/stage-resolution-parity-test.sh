@@ -102,5 +102,25 @@ _miss_rc=$?
 set -e
 assert_eq "[SPEC-4] unknown stage returns rc=1 (miss)" "1" "$_miss_rc"
 
+# ─── SPEC-5: fail-closed — role declared but unresolved → rc=1, no id-match ─
+# CHANGE: before fail-closed, a ghost role falls through to id-match (finds the
+# build plugin, rc=0). After fail-closed, rc=1 immediately — id-match is NOT
+# attempted when the stage has declared roles.
+_tsr_saved="$(declare -f template_stage_roles)"
+template_stage_roles() { [[ "$1" == "build" ]] && printf '%s\n' "ghost_role_spec5_xyz"; }
+set +e
+resolve_stage_plugin "build" "$PLUGINS_ROOT" >/dev/null 2>&1
+_spec5_rc=$?
+set -e
+eval "$_tsr_saved"
+assert_eq "[SPEC-5] fail-closed: ghost role declared → rc=1 (no id-match fallback)" "1" "$_spec5_rc"
+
+# ─── SPEC-7: pr stage resolves to pr-delivery (role: pr), not pr-open ────────
+# CHANGE: before step-2, pr-delivery had role: pr_delivery (not pr), so
+# role-match failed and id-match returned pr-open (id: pr, rc=0). After step-2,
+# pr-delivery provides role: pr → role-match returns pr-delivery.
+assert_eq "[SPEC-7] pr stage resolves to pr-delivery (role: pr, not id-match to pr-open)" \
+    "pr-delivery" "$(_resolve pr)"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 print_test_results

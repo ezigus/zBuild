@@ -24,7 +24,7 @@ requires:
 
 provides:
   artifact_type: pr-url.txt
-  role: pr_delivery
+  role: pr
   schema_version: 1
 
 config:

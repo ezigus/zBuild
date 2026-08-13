@@ -169,10 +169,9 @@ stages:
     gate: auto
   - id: pr
     gate: auto
-    # #756: dispatch the pr stage by role so it resolves to the pr-delivery
-    # agent (id: pr-delivery) and not the pr-open tool (id: pr), mirroring
-    # the production shipped template. Other stages still resolve by stage id.
-    roles: [pr_delivery]
+    # pr-delivery now provides role: pr (canonical, ADR-042). Other stages
+    # still resolve by stage id (no roles declared).
+    roles: [pr]
 TPL
 
 # ── Mock repo for the test stage to copy and apply diffs against ─────────────
