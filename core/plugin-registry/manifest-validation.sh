@@ -263,6 +263,73 @@ _yaml_get_requires_core_list() {
     ' "$file" 2>/dev/null
 }
 
+# ─── manifest router budget — ADR-017 §11 (#1816) ───────────────────────────
+# A plugin declares its own resource needs in `config.router.*`, alongside the
+# `config.tier_default` precedent. The knob set is closed and mirrors the
+# template's: anything else under that block is a typo, and a typo'd budget is
+# inert rather than merely wrong — so the validator refuses it.
+#
+# The ranges are the template's ranges (_tpl_validate_io_knobs), deliberately:
+# one value, two places it can be written, one notion of "valid".
+_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns retries"
+
+# _manifest_router_range <knob> → "<min> <max>", empty for an unknown knob.
+_manifest_router_range() {
+    case "$1" in
+        timeout_s) echo "1 3600" ;;   # ADR-017 (#455)
+        max_turns) echo "0 200" ;;    # ADR-018 (#466); 0 = omit --max-turns (#762)
+        retries)   echo "0 10" ;;     # ADR-029 (#1230); 0 = opt-out
+        *)         echo "" ;;
+    esac
+}
+
+# ─── manifest_router_knob <manifest> <knob> ─────────────────────────────────
+# Read `config.router.<knob>` from a plugin manifest. Prints the raw value, or
+# nothing when the file, the block, or the key is absent — absence is the
+# common case (no plugin is required to declare anything) and must never be an
+# error. Addressed BY PATH: a top-level `router:` block is a different key and
+# is not read. yaml_get cannot express this — its nested form is one level deep
+# (`parent.child`) and would match a `timeout_s:` at any depth under `config:`.
+manifest_router_knob() {
+    local manifest="${1:-}" knob="${2:-}"
+    [[ -n "$manifest" && -f "$manifest" && -n "$knob" ]] || return 0
+    case " $_ZBUILD_MANIFEST_ROUTER_KNOBS " in *" $knob "*) ;; *) return 0 ;; esac
+    _manifest_router_block "$manifest" | awk -v knob="$knob" '
+        $1 == knob { print $2; exit }
+    '
+}
+
+# ─── _manifest_router_block <manifest> → "<key> <value>" per line ───────────
+# The single parse of the `config:` → `router:` sub-block. Both readers above
+# it (the accessor and the validator) go through this, so "which keys are
+# declared" and "what did key K resolve to" can never disagree.
+_manifest_router_block() {
+    local manifest="${1:-}"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 0
+    awk '
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        /^config:[[:space:]]*$/ { in_cfg = 1; in_router = 0; next }
+        # Any other column-0 key closes `config:` (and with it `router:`).
+        in_cfg && /^[^[:space:]#]/ { in_cfg = 0; in_router = 0 }
+        in_cfg && !in_router && /^[[:space:]]+router:[[:space:]]*$/ {
+            in_router = 1; router_ind = indent($0); next
+        }
+        # A line at or shallower than `router:` ends the block; it may itself be
+        # another config key, so this rule only clears the flag and falls through.
+        in_router && /[^[:space:]]/ && indent($0) <= router_ind { in_router = 0 }
+        in_router && /^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:/ {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            key = line; sub(/:.*$/, "", key)
+            val = line; sub(/^[^:]*:[[:space:]]*/, "", val)
+            sub(/[[:space:]]*#.*/, "", val)
+            gsub(/^["'"'"']|["'"'"']$/, "", val)
+            gsub(/[[:space:]]/, "", val)
+            printf "%s %s\n", key, val
+        }
+    ' "$manifest" 2>/dev/null
+}
+
 # ─── _required_hooks_for_kind — ADR-001 §"Required hooks per kind" ──────────
 # Returns space-separated required hook names for the given plugin kind.
 # Empty output = "no specifically required hooks" (still allow cleanup).
@@ -454,6 +521,26 @@ validate_manifest() {
             errors=$((errors + 1))
         fi
     done
+
+    # ─── Optional config.router budget block — ADR-017 §11 (#1816) ──────────
+    # A declared budget is load-bearing at dispatch, so it is checked here
+    # rather than at read time: the resolver ignores anything it cannot use,
+    # and an ignored budget is a stage silently running on the wrong one.
+    local _rk _rv _rrange
+    while read -r _rk _rv; do
+        [[ -n "$_rk" ]] || continue
+        _rrange="$(_manifest_router_range "$_rk")"
+        if [[ -z "$_rrange" ]]; then
+            error "validate_manifest($manifest): unknown key '$_rk' under config.router (valid: $_ZBUILD_MANIFEST_ROUTER_KNOBS)"
+            errors=$((errors + 1))
+            continue
+        fi
+        local _min="${_rrange% *}" _max="${_rrange#* }"
+        if ! [[ "$_rv" =~ ^[0-9]+$ ]] || [[ "$_rv" -lt "$_min" ]] || [[ "$_rv" -gt "$_max" ]]; then
+            error "validate_manifest($manifest): config.router.$_rk must be an integer in $_min..$_max, got: ${_rv:-<empty>}"
+            errors=$((errors + 1))
+        fi
+    done < <(_manifest_router_block "$manifest")
 
     return $((errors > 0))
 }
