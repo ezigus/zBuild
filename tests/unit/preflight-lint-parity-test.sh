@@ -112,18 +112,58 @@ else
         "lint: [$(echo "$_lint_kinds" | tr '\n' ' ')] validator: [$(echo "$_val_kinds" | tr '\n' ' ')]"
 fi
 
-# The gating difference itself. The lint has never gated its source switch on
-# requiredness; the validator did, leaving 33 of 50 inputs unchecked. Only the
-# output-id existence check may be gated, and both must gate that one — it is
-# the glob fan-in carve-out (lint-contract.sh:225-231, #1279 / ADR-047 §5).
-_gated_output_check() {
-    grep -cE '_in_optional -eq 0 && -z "\$\{_CV_STAGE_OUTPUTS_OK|eff_required" == "true" && -z "\$\{_LC_STAGE_OUTPUTS' "$1" 2>/dev/null || echo 0
-}
-if [[ "$(_gated_output_check "$_LINT")" -ge 1 && "$(_gated_output_check "$_VALIDATOR")" -ge 1 ]]; then
-    assert_pass "TC-4: both gate ONLY the output-id check on requiredness"
+# The gating difference itself, asserted BEHAVIOURALLY rather than by matching
+# code shape — an earlier version of this grepped for a specific expression and
+# broke the moment the guard was refactored, which is the failure mode a parity
+# test must not have.
+#
+# The property: an OPTIONAL input still reaches the source-kind check (so a
+# malformed source is caught), but NOT the template-aware checks (so a glob
+# fan-in over a producer group is not a false positive). Both implementations
+# must agree on it.
+_PARITY_PL="$TEST_TEMP_DIR/parity-plugins"
+mkdir -p "$_PARITY_PL/agent/pp-consumer"
+cat > "$_PARITY_PL/agent/pp-consumer/manifest.yaml" <<'EOF'
+id: pp-consumer
+name: Parity Consumer
+kind: agent
+version: 0.0.1
+hooks:
+  run: pp_run
+inputs:
+  - id: bogus_optional
+    source: definitely_not_a_kind
+    required: false
+EOF
+printf 'pp_run() { :; }\n' > "$_PARITY_PL/agent/pp-consumer/plugin.sh"
+
+# shellcheck source=../../core/pipeline/contract-validator.sh
+source "$REPO_ROOT/core/pipeline/contract-validator.sh"
+set +e
+_val_out="$(ZBUILD_CONTRACT_VALIDATOR=warn _contract_validate_pipeline \
+    "pp-consumer" "$_PARITY_PL" "$TEST_TEMP_DIR/parity-state.json" 2>&1)"
+set -e
+if grep -q "BAD_SOURCE" <<< "$_val_out"; then
+    assert_pass "TC-4: the validator checks the source kind of an OPTIONAL input"
 else
-    assert_fail "TC-4: both gate ONLY the output-id check on requiredness" \
-        "lint=$(_gated_output_check "$_LINT") validator=$(_gated_output_check "$_VALIDATOR") (want >=1 each)"
+    assert_fail "TC-4: the validator checks the source kind of an OPTIONAL input" \
+        "an unrecognised source on required:false produced no violation — the pre-#1768 gate is back"
+fi
+
+# The lint half is asserted STRUCTURALLY, not behaviourally, and the reason is
+# worth stating: the lint is not invocable against an isolated fixture root — it
+# derives its scan set from contract participation across the real tree, so a
+# standalone fixture plugin is simply not scanned and it exits silently. Driving
+# it would mean reshaping the lint, which is out of scope here.
+#
+# So: assert it has NO requiredness gate before its source switch. That is the
+# property the validator was diverging from, and it is what makes the two agree
+# on the fixture above in the real tree.
+if grep -qE '^[[:space:]]*if \[\[ "\$(eff_)?required" == "false" \]\]; then' "$_LINT"; then
+    assert_fail "TC-4: the CI lint has no requiredness gate before its source switch" \
+        "a required:false early-continue appeared in lint-contract.sh — the two implementations have swapped which one skips optional inputs"
+else
+    assert_pass "TC-4: the CI lint has no requiredness gate before its source switch"
 fi
 
 # And the validator must no longer skip the whole switch for optional inputs.

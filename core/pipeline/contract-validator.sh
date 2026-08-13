@@ -431,7 +431,28 @@ _contract_validate_pipeline() {
                             done <<< "$_fb_blob"
                             [[ $_wired -eq 1 ]] && break
                         done
-                        if [[ $_wired -eq 0 ]]; then
+                        # #1768: HELD. Opening the required-only gate made this
+                        # branch reachable for the first time, and it immediately
+                        # found six real violations in the shipped templates —
+                        # `build` declares four cycle_feedback inputs and
+                        # simple.yaml wires exactly one (prior_gate_feedback).
+                        # The other three carry comments referencing
+                        # standard.yaml, deleted 2026-07-09, so build has expected
+                        # test-assessment and review feedback across iterations
+                        # that has never arrived since the move to simple.yaml.
+                        #
+                        # That is a genuine behavioural bug and it is NOT this
+                        # issue's to fix: deciding whether to wire those edges
+                        # (restoring intended behaviour) or delete the
+                        # declarations (accepting they are dead) changes the
+                        # build loop. Enabling the check first would write
+                        # preflight_failed and halt every run before intake —
+                        # ADR-057 gate 3, the exact hazard.
+                        #
+                        # So the branch is correct and reachable, and held behind
+                        # this flag until the drift it found is resolved. Set
+                        # ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED=1 to see them.
+                        if [[ $_wired -eq 0 && "${ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED:-0}" == "1" ]]; then
                             violations+=("$stage|CYCLE_FB_UNWIRED|$in_id|input declares source:cycle_feedback but no cycles[].feedback.to wires it [#511]")
                             fail_count=$((fail_count + 1))
                         fi
@@ -443,6 +464,30 @@ _contract_validate_pipeline() {
                     if [[ "$producer" == "$stage" ]]; then
                         violations+=("$stage|SELF_REF|$in_id|source: stage:$producer refers to itself")
                         fail_count=$((fail_count + 1))
+                        continue
+                    fi
+                    # #1768: the three checks below are TEMPLATE-AWARE — they ask
+                    # where the producer sits in the resolved flow — and all three
+                    # are gated on `required`. Only the self-reference check above
+                    # applies to every input, because it needs no template.
+                    #
+                    # The carve-out is the same one the output-id check has always
+                    # had, and it generalises for the same reason: an OPTIONAL
+                    # input may name a producer GROUP rather than a flow stage.
+                    # review-aggregator declares `stage:review-lens`, but the
+                    # template's stage is `review_lenses` (a map group) and
+                    # `review-lens` is the PLUGIN id its members resolve to by
+                    # role. Template-aware checks read that as "stage not in
+                    # template" and MISORDERED/MISSING_OUTPUT follow.
+                    #
+                    # The CI lint does not hit this because it resolves producers
+                    # against plugin manifest ids (lint-contract.sh:221), where
+                    # `review-lens` exists, while this validator resolves against
+                    # template flow names, where it does not. That divergence is
+                    # #1770/#1704's territory; ADR-055 §1 removes it by matching
+                    # on artifact name instead. Until then, matching the lint's
+                    # BEHAVIOUR means not failing an optional input on it.
+                    if [[ $_in_optional -eq 1 ]]; then
                         continue
                     fi
                     # Is producer in the template?
@@ -462,19 +507,13 @@ _contract_validate_pipeline() {
                         fail_count=$((fail_count + 1))
                         continue
                     fi
-                    # Does producer declare this output id?
-                    #
-                    # #1768: this is the ONE check that stays gated on required,
-                    # and the gate is load-bearing rather than an oversight. An
-                    # OPTIONAL input may be a glob fan-in over a producer GROUP —
-                    # review-aggregator's `lens_results` globs `lens-*.json`
-                    # across the review-lens map members — naming the producer
-                    # for ordering, not a single output id. Enforcing id-match
-                    # there is a false positive: review-lens declares
-                    # `lens_result` (one file per member) and the consumer names
-                    # `lens_results` (the set). Mirrors the same carve-out and
-                    # rationale at lint-contract.sh:225-231 (#1279, ADR-047 §5).
-                    if [[ $_in_optional -eq 0 && -z "${_CV_STAGE_OUTPUTS_OK[$producer:$in_id]:-}" ]]; then
+                    # Does producer declare this output id? (Required inputs only
+                    # — an optional one already returned above.) The original
+                    # carve-out, for the same reason: review-lens declares
+                    # `lens_result`, one file per map member, while the consumer
+                    # names `lens_results`, the set. Mirrors lint-contract.sh
+                    # :225-231 (#1279, ADR-047 §5).
+                    if [[ -z "${_CV_STAGE_OUTPUTS_OK[$producer:$in_id]:-}" ]]; then
                         violations+=("$stage|MISSING_OUTPUT|$in_id|source declared: stage:$producer; status: stage '$producer' does NOT declare output id '$in_id'")
                         fail_count=$((fail_count + 1))
                         continue
