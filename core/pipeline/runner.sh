@@ -3147,7 +3147,7 @@ main() {
             # output. Glyph + color reflect the actual verdict, not just rc=0.
             local _verdict_manifest="" _verdict_class="pass"
             local _verdict_plugin_dir=""
-            _verdict_plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" 2>/dev/null || true)"
+            _verdict_plugin_dir="$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)"
             if [[ -n "$_verdict_plugin_dir" ]]; then
                 _verdict_manifest="$_verdict_plugin_dir/manifest.yaml"
             fi
@@ -3169,15 +3169,11 @@ main() {
             # after it completes, so the operator's paths ride alongside the
             # stage's own detection output. `intake` declares this capability; the
             # runner keys on the flag, not the stage name.
-            # Resolve the completed stage's manifest by role-then-id (ADR-042) — NOT
-            # the id-only $_verdict_manifest — so a role-bound stage (flow name ≠
-            # plugin id) that declares the capability is honored too.
             _manifest_graph_ensure_yaml_get 2>/dev/null || true
-            local _msov_dir _msov_manifest=""
-            _msov_dir="$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)"
-            [[ -n "$_msov_dir" ]] && _msov_manifest="$_msov_dir/manifest.yaml"
-            if [[ -f "$state_dir/scope-override.md" && -n "$_msov_manifest" ]] \
-               && [[ "$(yaml_get "$_msov_manifest" "capabilities.merges_scope_override" 2>/dev/null)" == "true" ]]; then
+            # Same manifest the verdict was read from: since the leaf loop
+            # resolves role-then-id (#1770), one resolution serves both.
+            if [[ -f "$state_dir/scope-override.md" && -n "$_verdict_manifest" ]] \
+               && [[ "$(yaml_get "$_verdict_manifest" "capabilities.merges_scope_override" 2>/dev/null)" == "true" ]]; then
                 local scope_manifest="$state_dir/scope-manifest.md"
                 # Extract only '+ <path>' lines from the override file and append.
                 # Intentional fail-open: scope-override.md may not exist (no --scope flag used)

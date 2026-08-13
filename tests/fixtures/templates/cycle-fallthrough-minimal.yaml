@@ -1,0 +1,38 @@
+id: cycle-fallthrough-minimal
+name: Cycle fall-through minimal (#1868)
+extends: simple
+
+# build-test-cycle-fallthrough-to-review-test.sh drives main() SEVEN times, once
+# per terminal cycle rc. It stubs cycle_orchestrator_run, _find_plugin_for_stage,
+# runner_read_stage_verdict and plugin_hook_call — so nothing in the roster is
+# actually exercised — yet it booted simple.yaml's full eight-unit flow (two
+# cycles, a parallel group, six leaves) every single time. Measured: 120s
+# unloaded against a 480s per-file bound, and a saturated macOS runner ate the
+# remaining margin. That is the whole of #1868, and of the #1609 flake before it.
+#
+# The behaviour under test is the rc→pipeline-status contract and whether the
+# review stage runs or is skipped on a halt path. That needs exactly two units:
+# a cycle whose stubbed rc drives the fall-through, and the `review` leaf the
+# assertions read. Same trick core-pipeline-verdict-indicators-test.sh uses to
+# turn ~13s per case into ~1.3s.
+stages:
+  - id: build_test_cycle
+    type: cycle
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 3
+    on_max: continue
+  - id: review
+    gate: auto
+
+# The cycle's members must be defined even though cycle_orchestrator_run is
+# stubbed: load_template validates the reference before anything is dispatched.
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]
