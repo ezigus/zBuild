@@ -206,6 +206,16 @@ that reverts the *wiring* instead of the implementation:
   Granularity is per-file; an in-file default must be extracted to a separable WIRING
   target (region-level `path:anchor` revert is deferred).
 
+> **Superseded 2026-08-12 (#1768, ADR-057 §5).** The self-hosting note below is **no longer
+> true** and is retained for history. It says a grammar-extending change must be hand-landed
+> because the contract reader is pinned to the install. **#1783 removed that constraint** —
+> `_runner_refresh_contract_snapshot` carries no once-guard precisely so the snapshot tracks
+> the tree as build changes it (`core/pipeline/runner.sh:996-999`: *"#963's guard implemented
+> the opposite property … which is exactly what makes a dogfood of a grammar change
+> unlandable"*). Such a change **is** dogfoodable; it is also **self-grading**, which ADR-057
+> gate 2 treats as `By-hand` by default rather than as forbidden, with the engine emitting
+> `_RUNNER_SELF_GRADE_REASON` once per run so the condition is visible.
+
 **Self-hosting note:** because Level 3 (and the `WIRING:` grammar) extends what the gate
 reads from `design.md`, a dogfood that *uses* the new grammar cannot be validated by the
 *installed* (pre-`WIRING`) engine in the same run — the contract reader is pinned to the

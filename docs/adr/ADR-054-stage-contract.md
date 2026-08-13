@@ -104,6 +104,19 @@ The engine's answer cannot differ from the plugin's own: `plugin_hook_call` sour
 
 **Identity does not survive `env-scrub`.** Per ADR-024 the claude spawn is a fresh-user-shell subprocess that must not see `ZBUILD_*` pipeline state, and identity is pipeline state. Every consumer — the router's knob resolver, `stage_io_begin`, envelope stamping — runs in the parent scope before the spawn. `_zbuild_make_fresh_shell` scrubs identity along with everything else, and a regression guard asserts it.
 
+#### 3.2 Context is not data — added 2026-08-12 (#1768)
+
+The variables in §3 and §3.1 are **engine context**: they describe *the invocation*, not *the work*. Everything a stage consumes that describes the work is a **declared input**, resolved by the engine and handed to `run` (ADR-055 §1).
+
+| | Examples | How a stage gets it |
+|---|---|---|
+| **Context** — describes the invocation | run id, issue number, current stage, plugin identity (§3.1), cycle iteration, map element, target platform, state dir | ambient environment |
+| **Data** — describes the work | a scope manifest, a plan, a diff, gate results, the issue body, the goal, the working tree | a declared input |
+
+The discriminator: **would a different template give this a different value for the same work?** Yes → context. No → data.
+
+This line matters because it was not drawn. Exactly one stage declares an external input today while ten plugins read `ZBUILD_ISSUE` straight from the environment — the issue body and the goal are *data*, arriving through the context channel, declared nowhere and checkable by nothing. ADR-055 §1.2 moves them; the variables above stay where they are.
+
 ### 4. Exit codes (rc)
 
 Exit codes are **binary — everywhere, not only at the plugin boundary**:

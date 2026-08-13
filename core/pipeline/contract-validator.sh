@@ -313,14 +313,21 @@ _contract_validate_pipeline() {
                 fi
             fi
 
-            # If optional, presence of source is informational only.
-            if [[ "$in_required" == "false" ]]; then
-                # Still merge what's available (no enforcement on optional misses).
-                continue
-            fi
+            # #1768: the switch below runs for EVERY input, matching the CI lint
+            # (lint-contract.sh), which has never gated it. This gate used to
+            # skip the whole switch for `required: false` — 33 of 50 inputs —
+            # so an unrecognised or malformed source on an optional input was
+            # invisible, and CYCLE_FB_DIR / CYCLE_FB_UNWIRED could never fire.
+            # Only the TEMPLATE-AWARE checks stay gated (see the stage:* arm).
+            local _in_optional=0
+            [[ "$in_required" == "false" ]] && _in_optional=1
 
-            # Required input: must declare a valid source.
+            # A required input must declare a source. An optional one need not —
+            # but if it declares one, it is validated like any other.
             if [[ -z "$in_source" ]]; then
+                if [[ $_in_optional -eq 1 ]]; then
+                    continue
+                fi
                 violations+=("$stage|MISSING_SOURCE|$in_id|required input has no source: declared|$in_path")
                 fail_count=$((fail_count + 1))
                 continue
@@ -333,11 +340,35 @@ _contract_validate_pipeline() {
                         fail_count=$((fail_count + 1))
                     fi
                     ;;
+                artifacts)
+                    # TRANSITIONAL (#1768, ADR-055 §1 retires this kind; #1825
+                    # removes it). Recognised so the gate above can open without
+                    # refusing 9 live inputs and halting every run at pre-flight.
+                    # The CI lint has always tolerated it (lint-contract.sh:194);
+                    # only this validator did not. No path-shape rule on purpose:
+                    # the 9 use two conventions and every path is decorative,
+                    # since the plugin rebuilds it in code.
+                    :
+                    ;;
                 cycle_feedback)
                     # ADR-020 amendment (#511 / F2): cycle_feedback inputs are
                     # OPTIONAL by construction (cross-iter only meaningful when
-                    # the cycle runs more than once). required:true is a
-                    # contradiction caught above; an unreachable branch here.
+                    # the cycle runs more than once).
+                    #
+                    # #1768: the note that used to sit here read "required:true is
+                    # a contradiction caught above; an unreachable branch here".
+                    # It was wrong on both counts. Nothing above catches it, and
+                    # CYCLE_FB_REQUIRED was always REACHABLE — a required:true
+                    # cycle_feedback input passed the old gate and fired it.
+                    # Verified against origin/main on a fixture.
+                    #
+                    # What WAS dead is the rest of this case. The old gate skipped
+                    # the switch for required:false, and CYCLE_FB_DIR and
+                    # CYCLE_FB_UNWIRED sit after the `continue` above, so they were
+                    # reachable for neither requiredness. Two codes, not three.
+                    # CYCLE_FB_UNWIRED was the worse of the pair:
+                    # lint-contract.sh:236-239 delegates it here ("runtime
+                    # validator owns that"), so nothing enforced it at all.
                     if [[ "$in_required" == "true" ]]; then
                         violations+=("$stage|CYCLE_FB_REQUIRED|$in_id|source: cycle_feedback cannot be required:true (#511)")
                         fail_count=$((fail_count + 1))
@@ -379,7 +410,28 @@ _contract_validate_pipeline() {
                             done <<< "$_fb_blob"
                             [[ $_wired -eq 1 ]] && break
                         done
-                        if [[ $_wired -eq 0 ]]; then
+                        # #1768: HELD. Opening the required-only gate made this
+                        # branch reachable for the first time, and it immediately
+                        # found six real violations in the shipped templates —
+                        # `build` declares four cycle_feedback inputs and
+                        # simple.yaml wires exactly one (prior_gate_feedback).
+                        # The other three carry comments referencing
+                        # standard.yaml, deleted 2026-07-09, so build has expected
+                        # test-assessment and review feedback across iterations
+                        # that has never arrived since the move to simple.yaml.
+                        #
+                        # That is a genuine behavioural bug and it is NOT this
+                        # issue's to fix: deciding whether to wire those edges
+                        # (restoring intended behaviour) or delete the
+                        # declarations (accepting they are dead) changes the
+                        # build loop. Enabling the check first would write
+                        # preflight_failed and halt every run before intake —
+                        # ADR-057 gate 3, the exact hazard.
+                        #
+                        # So the branch is correct and reachable, and held behind
+                        # this flag until the drift it found is resolved. Set
+                        # ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED=1 to see them. Tracked by #1865.
+                        if [[ $_wired -eq 0 && "${ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED:-0}" == "1" ]]; then
                             violations+=("$stage|CYCLE_FB_UNWIRED|$in_id|input declares source:cycle_feedback but no cycles[].feedback.to wires it [#511]")
                             fail_count=$((fail_count + 1))
                         fi
@@ -391,6 +443,30 @@ _contract_validate_pipeline() {
                     if [[ "$producer" == "$stage" ]]; then
                         violations+=("$stage|SELF_REF|$in_id|source: stage:$producer refers to itself")
                         fail_count=$((fail_count + 1))
+                        continue
+                    fi
+                    # #1768: the three checks below are TEMPLATE-AWARE — they ask
+                    # where the producer sits in the resolved flow — and all three
+                    # are gated on `required`. Only the self-reference check above
+                    # applies to every input, because it needs no template.
+                    #
+                    # The carve-out is the same one the output-id check has always
+                    # had, and it generalises for the same reason: an OPTIONAL
+                    # input may name a producer GROUP rather than a flow stage.
+                    # review-aggregator declares `stage:review-lens`, but the
+                    # template's stage is `review_lenses` (a map group) and
+                    # `review-lens` is the PLUGIN id its members resolve to by
+                    # role. Template-aware checks read that as "stage not in
+                    # template" and MISORDERED/MISSING_OUTPUT follow.
+                    #
+                    # The CI lint does not hit this because it resolves producers
+                    # against plugin manifest ids (lint-contract.sh:221), where
+                    # `review-lens` exists, while this validator resolves against
+                    # template flow names, where it does not. That divergence is
+                    # #1770/#1704's territory; ADR-055 §1 removes it by matching
+                    # on artifact name instead. Until then, matching the lint's
+                    # BEHAVIOUR means not failing an optional input on it.
+                    if [[ $_in_optional -eq 1 ]]; then
                         continue
                     fi
                     # Is producer in the template?
@@ -410,7 +486,12 @@ _contract_validate_pipeline() {
                         fail_count=$((fail_count + 1))
                         continue
                     fi
-                    # Does producer declare this output id?
+                    # Does producer declare this output id? (Required inputs only
+                    # — an optional one already returned above.) The original
+                    # carve-out, for the same reason: review-lens declares
+                    # `lens_result`, one file per map member, while the consumer
+                    # names `lens_results`, the set. Mirrors lint-contract.sh
+                    # :225-231 (#1279, ADR-047 §5).
                     if [[ -z "${_CV_STAGE_OUTPUTS_OK[$producer:$in_id]:-}" ]]; then
                         violations+=("$stage|MISSING_OUTPUT|$in_id|source declared: stage:$producer; status: stage '$producer' does NOT declare output id '$in_id'")
                         fail_count=$((fail_count + 1))
@@ -418,7 +499,11 @@ _contract_validate_pipeline() {
                     fi
                     ;;
                 *)
-                    violations+=("$stage|BAD_SOURCE|$in_id|source: '$in_source' is malformed (must be 'stage:<name>' or 'external')")
+                    # #1768: the message used to read "must be 'stage:<name>' or
+                    # 'external'", omitting two kinds the switch accepts seven
+                    # and thirty lines above it. An author hitting this was told
+                    # their valid value was not an option.
+                    violations+=("$stage|BAD_SOURCE|$in_id|source: '$in_source' is not a recognised kind (must be 'stage:<name>', 'external', 'artifacts' or 'cycle_feedback')")
                     fail_count=$((fail_count + 1))
                     ;;
             esac

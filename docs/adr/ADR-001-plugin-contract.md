@@ -4,6 +4,7 @@
 **Date:** 2026-05-24
 **Amended by:** ADR-042 — a stage's flow-name need not equal its manifest `id`; stage→plugin resolution is role-then-id everywhere (leaf, cycle, parallel).
 **Amended:** 2026-08-09 (#1820, ADR-054) — hook lifecycle corrected: only run and cleanup are active at the stage-dispatch layer; init and finalize are never called there. rc table superseded: plugin rc is binary (0 success, 1 error); the rc=1→recovery routing never existed. See ADR-054.
+**Amended:** 2026-08-12 (#1768, ADR-055 §1) — the manifest `inputs:`/`outputs:` shape is corrected. The example used `name:` where the engine has always read `id:`, and predates the source vocabulary entirely. A consumer now declares the artifact **name** it needs and nothing else — no producer stage, no path, no type — and the engine resolves it to the single stage in the flow producing it. ADR-055 owns the data surface; this ADR shows the shape only.
 
 ## Context
 
@@ -57,14 +58,19 @@ provides:
 config:
   <key>: <default>
 
-inputs:
-  - name: <name>
-    type: <type>
+inputs:                       # amended 2026-08-12 (#1768, ADR-055 §1)
+  - id: <artifact-name>       # the producer's output id. No stage, no path, no type.
+    required: true | false
+  - id: <artifact-name>       # from outside the pipeline (ADR-055 §3 allowlist)
+    source: external
+    required: true | false
 
 outputs:
-  - name: <name>
+  - id: <artifact-name>       # unique across the resolved flow (ADR-055 §5)
     path: <template-using-${vars}>
     type: <type>
+    required: true | false
+    primary: true | false
 
 state:
   persisted: [<keys plugins write via core/state>]

@@ -2,6 +2,8 @@
 
 **Status:** Accepted (2026-07-03, issue #1218, EPIC #1216)
 
+**Amended:** 2026-08-12 (#1768, ADR-055 §1) — the `source: artifacts` prescription for `prior_gate_feedback` is retired. The cross-cycle feedback edge is now an ordinary name-matched input, made legal by ADR-055 §1.3 (a declared `route_back` edge legalises a backwards data edge) rather than by an untyped read of the shared artifact directory. The *reasoning* below stands unchanged and was correct — this edge genuinely is not `cycle_feedback`; only the mechanism changes. ADR-055 did not enumerate `source: artifacts` at all, so this ADR was its sole specification and the two documents disagreed until now.
+
 **Related:**
 - amends: ADR-036 (acceptance-contract teeth) — Level-1 SPEC-tag-presence shifts LEFT to a PRE-build design-gate; the post-build acceptance-gate keeps Level-2 negative-control (tautology) + Level-3 reachability, which cannot shift left.
 - extends: ADR-037 (objective gates vs semantic judgment) / ADR-040 (composable gate/lens taxonomy) — design-gate is a new first-class `kind: tool`, `convergence: gate` T0 stage; the semantic sibling stays advisory.
@@ -123,8 +125,16 @@ re-authors the SPEC then the design-gate re-verifies it — closing the loop whe
 authored, not where the defect surfaced.
 
 Feedback path: the gate-aggregator writes a focused `design-feedback.md`; the design manifest gains a
-new input `prior_gate_feedback` (`source: artifacts`, `path: ${artifact_dir}/design-feedback.md`,
+new input `prior_gate_feedback` (~~`source: artifacts`, `path: ${artifact_dir}/design-feedback.md`~~,
 `required: false` — NOT `cycle_feedback`, which is intra-`design_verify_cycle`; this arrives from the
-OTHER cycle across the rewind). `design/plugin.sh` splices it into the prompt keyed on file PRESENCE
+OTHER cycle across the rewind).
+
+> **Amended 2026-08-12 (#1768).** The input is now declared by artifact name alone —
+> `- id: design_feedback` with `required: false` — and the engine resolves it to the
+> gate-aggregator, the single stage in the flow that produces it (ADR-055 §1, §5). The
+> backwards direction is legal because the `route_back` edge declared immediately above
+> is exactly the evidence the ordering check consults (ADR-055 §1.3). The struck-out
+> `source: artifacts` was an untyped escape hatch: no producer, no ordering, and — because
+> the runtime validator skipped optional inputs entirely — no validation of any kind. `design/plugin.sh` splices it into the prompt keyed on file PRESENCE
 (absent on the first pass → no-op). Bounded by ADR-045's per-edge `max: 1` + the global budget, so a
 still-tautological SPEC hard-fails cleanly after one re-author pass — no ping-pong.

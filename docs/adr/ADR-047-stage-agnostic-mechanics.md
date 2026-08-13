@@ -6,7 +6,8 @@
 - ADR-019 (fail-closed — re-expressed generically: an unresolved leaf or an unsatisfied upstream-input **errors at load**, for any repo's stages)
 - ADR-040 (§7 marker-discovery — extended from must-pass-set discovery to verdict-channel + capability metadata; the same "discovered, not hardcoded" principle)
 - ADR-042 (stage portability — completes the thesis: resolution is already role-then-id/stage-agnostic; the remaining mechanics — verdict-read, cycle capability decisions, membership/order validation, post-stage hooks — become stage-agnostic too)
-**Related:** ADR-032 (per-repo prompt overrides — mechanism preserved), ADR-020 (inter-stage data contract), ADR-039 (parallel groups), EPIC #966, EPIC #1277.
+**Amended:** 2026-08-12 (#1768, ADR-055 §1) — §5's upstream-input satisfaction preflight changes basis. It was expressed over `inputs[].source: stage:X`, requiring `X` to appear earlier in the resolved flow. Consumers no longer name a producer, so the check becomes **name resolution**: every declared input name must resolve to exactly one producer in the flow (ADR-055 §5), which must be ordered earlier **or** reachable by a declared `route_back` edge (ADR-055 §1.3). It stays fail-closed and gets strictly stronger — the old form ran only for `required: true` inputs, leaving 33 of 50 unchecked. This also **extends this ADR's thesis one layer out**: the mechanics already named no stage; now plugins name no stage either.
+**Related:** ADR-032 (per-repo prompt overrides — mechanism preserved), ADR-020 (inter-stage data contract), ADR-039 (parallel groups), ADR-055 §1 (extends this thesis to plugin manifests), EPIC #966, EPIC #1277.
 
 ## Context
 
@@ -104,9 +105,13 @@ load-time preflights, derived from installed manifests:
 - **Resolvability** — every leaf in a template `flow:` must resolve to a plugin
   (`resolve_stage_plugin`, role-then-id, ADR-042). An unresolved leaf **errors at load**
   (non-zero rc, actionable message naming the id). Replaces "reject unknown id".
-- **Upstream-input satisfaction** — for every manifest declaring `inputs[].source: stage:X`,
-  `X` must appear **earlier in the resolved flow order** (ADR-020 data-dependency DAG). An
-  unsatisfied/late dependency **errors at load**. Replaces canonical-order.
+- **Upstream-input satisfaction** — ~~for every manifest declaring `inputs[].source: stage:X`,
+  `X` must appear **earlier in the resolved flow order** (ADR-020 data-dependency DAG).~~
+  **Amended 2026-08-12 (#1768):** for every declared input, its **name** must resolve to exactly
+  one producer in the resolved flow (ADR-055 §5), and that producer must be ordered earlier **or**
+  reachable by a declared `route_back` edge (ADR-055 §1.3). An unresolvable, ambiguous or late
+  dependency **errors at load**. Replaces canonical-order. Strictly stronger than the struck-out
+  form, which ran only for `required: true` inputs and so left 33 of 50 unchecked.
 
 These **error**, not warn: the checks they replace are hard load gates, so the
 replacements must be at least as strict, or the change that removes the fence silently
@@ -148,6 +153,12 @@ Landed across child issues, each proving the invariant with the fictitious-stage
 golden-parity + characterization gates (a "remove/rename a stage" change cannot be
 dogfooded through the pipeline itself — the running pipeline is the artifact being
 modified — so confidence is substituted by these deterministic gates):
+
+> **Generalised 2026-08-12 (ADR-057 §2, gate 2).** The parenthetical above is one of three
+> criteria that had grown up in separate documents — here, in ADR-036's self-hosting note, and
+> in #1819's sequencing section — with no single place stating when work is dogfooded, hand-built,
+> or blocked on a decision. ADR-057 consolidates them and adds a fourth (blast radius on merge)
+> that none of the three named. The rule stated here is unchanged; it is now gate 2's third clause.
 
 - **A** (#1278) — this ADR + amendments + agnostic base-prompt scrub.
 - **E** (#1279) — lint-contract scope derived from manifest contract-participation (§5 rule).
