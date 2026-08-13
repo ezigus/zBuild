@@ -153,8 +153,8 @@ assert_eq "T4: 2 parallel.group.start events (one per iter)" "2" "$group_starts"
 # distinct from the leaf and nested-cycle paths.
 print_test_section "T5: parallel-group member recorded in the durable state maps"
 gates_ss="$(jq -r '.stage_statuses.gates // "missing"' "$STATE_FILE")"
-assert_eq "T5: group in stage_statuses" "complete" "$gates_ss"
+assert_eq "[SPEC-3] T5: parallel group recorded in stage_statuses (cycle-member path)" "complete" "$gates_ss"
 gates_sv="$(jq -r '.stage_verdicts.gates // "missing"' "$STATE_FILE")"
-assert_eq "T5: group in stage_verdicts" "pass" "$gates_sv"
+assert_eq "[SPEC-4] T5: parallel group recorded in stage_verdicts (cycle-member path)" "pass" "$gates_sv"
 
 print_test_results
