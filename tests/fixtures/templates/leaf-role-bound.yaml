@@ -1,0 +1,17 @@
+id: leaf-role-bound
+name: Role-bound leaf fixture (#1770)
+extends: simple
+defaults:
+  strategy: fanout
+
+# A SINGLE leaf stage whose flow name (`role-bound-leaf`) deliberately differs
+# from the id of the plugin that serves it — the binding is by role only. That
+# divergence is the whole point: an id-only lookup finds nothing and the leaf
+# loop hands runner_read_stage_verdict an empty manifest, which returns
+# "unknown" regardless of the plugin's real result (#1770).
+# leaf-dispatch-role-bound-verdict-test.sh supplies the plugin that claims the
+# role and asserts the emitted verdict is the plugin's own, not "unknown".
+stages:
+  - id: role-bound-leaf
+    gate: auto
+    roles: [rbl_role]
