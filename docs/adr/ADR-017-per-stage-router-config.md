@@ -401,7 +401,8 @@ a cycle re-enters a stage is a property of the cycle, and a plugin placed in
 two different cycles has no answer for it.
 
 - Reader: `manifest_router_knob <manifest> <knob>`
-  (`core/plugin-registry/manifest-validation.sh`), addressing the block by
+  (`core/plugin-registry/manifest-router-budget.sh`, sourced by
+  `manifest-validation.sh` so every existing reader reaches it), addressing the block by
   PATH — a top-level `router:` is a different key and is not read. `yaml_get`
   cannot express this: its nested form is one level deep and would match a
   `timeout_s:` at any depth under `config:`.

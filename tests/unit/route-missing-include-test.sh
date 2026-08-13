@@ -42,7 +42,7 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "route.sh base-include guards (#1624)"
 setup_test_env "route-missing-include"
 
-# The nine libraries route.sh loads at file scope.
+# The ten libraries route.sh loads at file scope.
 _INCLUDES=(
     scripts/lib/helpers.sh
     core/event-bus/event-bus.sh
@@ -51,6 +51,10 @@ _INCLUDES=(
     core/redaction/scope-redaction.sh
     scripts/lib/router-rc-classify.sh
     scripts/lib/tier-resolve.sh
+    # #1816: loaded under `if ! declare -F manifest_router_knob`, which is TRUE
+    # in this fixture (tier-resolve.sh is a stub and defines nothing), so the
+    # guard is exercised exactly like the unconditional nine.
+    core/plugin-registry/manifest-validation.sh
     scripts/lib/persona-resolve.sh
     scripts/lib/vision.sh
 )

@@ -116,6 +116,23 @@ provides:
   timeout_s: 7
 EOF
 
+# claude-review on PR #1870: a comment-only line at or shallower than `router:`
+# must not terminate the block. Comments carry no indentation meaning, and a
+# left-aligned one between two knobs would silently drop the second — the value
+# would be gone while the manifest still visibly declared it.
+mkdir -p "$_FIX/interleaved"
+cat > "$_FIX/interleaved/manifest.yaml" <<'EOF'
+id: interleaved
+kind: agent
+config:
+  router:
+    timeout_s: 600
+# a left-aligned comment, indent 0 — shallower than `router:`
+  # and one at the same indent as `router:` itself
+    max_turns: 45
+    retries: 2
+EOF
+
 # ─── SPEC-0 the reader arrives with the router ───────────────────────────────
 print_test_section "[SPEC-0] sourcing route.sh alone provides the manifest reader"
 
@@ -175,6 +192,13 @@ assert_eq "a later top-level key closes the block (provides.timeout_s is not it)
     "45" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_max_turns)"
 assert_eq "an undeclared knob in a commented block still falls to the constant" \
     "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/commented" _route_resolve_retries)"
+
+assert_eq "a comment BETWEEN knobs does not drop the ones after it" \
+    "600|45|2" \
+    "$(printf '%s|%s|%s' \
+        "$(ZBUILD_PLUGIN_DIR="$_FIX/interleaved" _route_resolve_timeout)" \
+        "$(ZBUILD_PLUGIN_DIR="$_FIX/interleaved" _route_resolve_max_turns)" \
+        "$(ZBUILD_PLUGIN_DIR="$_FIX/interleaved" _route_resolve_retries)")"
 
 # ─── SPEC-3 env beats the manifest ───────────────────────────────────────────
 print_test_section "[SPEC-3] the operator env knob still wins over the manifest"
@@ -242,6 +266,26 @@ print_test_section "[SPEC-7] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE still outranks all
 assert_eq "cycle-orchestrator escalation beats template, env AND manifest" \
     "88" "$(ZBUILD_PLUGIN_DIR="$_FIX/declares" ZBUILD_ROUTER_MAX_TURNS=7 \
         ZBUILD_ROUTER_MAX_TURNS_OVERRIDE=88 _route_resolve_max_turns)"
+
+# ─── SPEC-7b the 0-sentinel names the source that declared it ────────────────
+# ADR-018 Amendment N records WHICH layer set a max_turns of 0. Left
+# unclassified a plugin-declared 0 would be recorded as `default` — the one
+# source it is not, in a record whose entire purpose is naming the source.
+print_test_section "[SPEC-7b] a manifest-declared max_turns: 0 classifies as 'manifest'"
+
+mkdir -p "$_FIX/sentinel"
+printf 'id: sentinel\nkind: agent\nconfig:\n  router:\n    max_turns: 0\n' \
+    > "$_FIX/sentinel/manifest.yaml"
+
+assert_eq "the sentinel resolves to 0 from the manifest" \
+    "0" "$(ZBUILD_PLUGIN_DIR="$_FIX/sentinel" _route_resolve_max_turns)"
+assert_eq "and the telemetry names the manifest, not the default" \
+    "manifest" "$(ZBUILD_PLUGIN_DIR="$_FIX/sentinel" _route_classify_max_turns_source)"
+assert_eq "a plugin declaring nothing still classifies as default" \
+    "default" "$(ZBUILD_PLUGIN_DIR="$_FIX/silent" _route_classify_max_turns_source)"
+assert_eq "an env 0 still classifies as env, even with a manifest 0 present" \
+    "env" "$(ZBUILD_PLUGIN_DIR="$_FIX/sentinel" ZBUILD_ROUTER_MAX_TURNS=0 \
+        _route_classify_max_turns_source)"
 
 # ─── SPEC-8 the reader addresses the block by path ───────────────────────────
 print_test_section "[SPEC-8] manifest_router_knob reads config.router.<knob>"

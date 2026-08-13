@@ -16,6 +16,11 @@ _ZBUILD_REGISTRY_MANIFEST_LOADED=1
 _ZBUILD_MANIFEST_VALIDATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../contract/version.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../contract/version.sh"
+# ADR-017 §11 (#1816): the config.router.* reader + its ranges. Sourced here so
+# every existing reader of this file — validate_manifest below, and route.sh,
+# which loads this file to reach the reader — gets it unchanged.
+# shellcheck source=./manifest-router-budget.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-router-budget.sh"
 
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
@@ -261,76 +266,6 @@ _yaml_get_requires_core_list() {
             in_core = 0
         }
     ' "$file" 2>/dev/null
-}
-
-# ─── manifest router budget — ADR-017 §11 (#1816) ───────────────────────────
-# A plugin declares its own resource needs in `config.router.*`, alongside the
-# `config.tier_default` precedent. The knob set is closed and mirrors the
-# template's: anything else under that block is a typo, and a typo'd budget is
-# inert rather than merely wrong — so the validator refuses it.
-#
-# The ranges are the template's ranges (_tpl_validate_io_knobs), deliberately:
-# one value, two places it can be written, one notion of "valid".
-_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns retries"
-
-# _manifest_router_range <knob> → "<min> <max>", empty for an unknown knob.
-_manifest_router_range() {
-    case "$1" in
-        timeout_s) echo "1 3600" ;;   # ADR-017 (#455)
-        max_turns) echo "0 200" ;;    # ADR-018 (#466); 0 = omit --max-turns (#762)
-        retries)   echo "0 10" ;;     # ADR-029 (#1230); 0 = opt-out
-        *)         echo "" ;;
-    esac
-}
-
-# ─── manifest_router_knob <manifest> <knob> ─────────────────────────────────
-# Read `config.router.<knob>` from a plugin manifest. Prints the raw value, or
-# nothing when the file, the block, or the key is absent — absence is the
-# common case (no plugin is required to declare anything) and must never be an
-# error. Addressed BY PATH: a top-level `router:` block is a different key and
-# is not read. yaml_get cannot express this — its nested form is one level deep
-# (`parent.child`) and would match a `timeout_s:` at any depth under `config:`.
-manifest_router_knob() {
-    local manifest="${1:-}" knob="${2:-}"
-    [[ -n "$manifest" && -f "$manifest" && -n "$knob" ]] || return 0
-    case " $_ZBUILD_MANIFEST_ROUTER_KNOBS " in *" $knob "*) ;; *) return 0 ;; esac
-    _manifest_router_block "$manifest" | awk -v knob="$knob" '
-        $1 == knob { print $2; exit }
-    '
-}
-
-# ─── _manifest_router_block <manifest> → "<key> <value>" per line ───────────
-# The single parse of the `config:` → `router:` sub-block. Both readers above
-# it (the accessor and the validator) go through this, so "which keys are
-# declared" and "what did key K resolve to" can never disagree.
-_manifest_router_block() {
-    local manifest="${1:-}"
-    [[ -n "$manifest" && -f "$manifest" ]] || return 0
-    awk '
-        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
-        # A trailing comment on the block header is legal YAML and is exactly
-        # where a manifest explains WHY the numbers below it are what they are —
-        # the reasoning this block exists to keep next to the value.
-        /^config:[[:space:]]*(#.*)?$/ { in_cfg = 1; in_router = 0; next }
-        # Any other column-0 key closes `config:` (and with it `router:`).
-        in_cfg && /^[^[:space:]#]/ { in_cfg = 0; in_router = 0 }
-        in_cfg && !in_router && /^[[:space:]]+router:[[:space:]]*(#.*)?$/ {
-            in_router = 1; router_ind = indent($0); next
-        }
-        # A line at or shallower than `router:` ends the block; it may itself be
-        # another config key, so this rule only clears the flag and falls through.
-        in_router && /[^[:space:]]/ && indent($0) <= router_ind { in_router = 0 }
-        in_router && /^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:/ {
-            line = $0
-            sub(/^[[:space:]]+/, "", line)
-            key = line; sub(/:.*$/, "", key)
-            val = line; sub(/^[^:]*:[[:space:]]*/, "", val)
-            sub(/[[:space:]]*#.*/, "", val)
-            gsub(/^["'"'"']|["'"'"']$/, "", val)
-            gsub(/[[:space:]]/, "", val)
-            printf "%s %s\n", key, val
-        }
-    ' "$manifest" 2>/dev/null
 }
 
 # ─── _required_hooks_for_kind — ADR-001 §"Required hooks per kind" ──────────
