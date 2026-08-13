@@ -68,6 +68,12 @@ _require_state() {
     return 1
 }
 
+# #1868: the seven cases drive a TWO-unit fixture, not simple.yaml's eight. The
+# runner resolves --template from config/templates/ only, so the fixture rides in
+# as a per-repo overlay and each case runs with CWD set to that repo.
+CFT_OVERLAY_REPO="$(setup_git_temp_repo cycle-fallthrough-overlay)"
+install_template_overlay "$CFT_OVERLAY_REPO" cycle-fallthrough-minimal
+
 _run_case() {
     local _case_rc="$1" _case_reason="$2" _review_verdict="$3"
     # Hermeticity guard (#1571): the shared $TEST_TEMP_DIR is a /var/folders temp
@@ -126,7 +132,8 @@ _run_case() {
 
         # Keep the runner's output: discarding it to /dev/null is why #1609's
         # empty-state failures carried no diagnostic signal for months.
-        main --issue 999 --template simple >"$_case_tmp/runner.log" 2>&1
+        cd "$CFT_OVERLAY_REPO" || exit 1
+        main --issue 999 --template cycle-fallthrough-minimal >"$_case_tmp/runner.log" 2>&1
         printf '%s' "$?" > "$_case_tmp/runner.rc"
     )
     printf '%s' "$_case_tmp"
