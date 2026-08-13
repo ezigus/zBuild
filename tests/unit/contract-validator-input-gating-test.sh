@@ -120,6 +120,26 @@ else
         "got: ${_out4:-<no violations>}"
 fi
 
+# ─── SPEC-4b: CYCLE_FB_REQUIRED still fires, and always could ───────────────
+# Pinned because the validator carried a comment calling this "an unreachable
+# branch" and #1768's first draft repeated the error in a new form. It is not
+# unreachable: a required:true cycle_feedback input passed even the old gate.
+# Verified against origin/main on a fixture. Two codes were dead here, not three
+# — CYCLE_FB_DIR and CYCLE_FB_UNWIRED — and this assertion is what stops the
+# claim drifting again.
+_mk c4b '  - id: prior_required
+    type: text/plain
+    path: "${cycle_feedback_dir}/prior-required.txt"
+    source: cycle_feedback
+    required: true' ""
+_out4b="$(_validate producer c4b)"
+if grep -q "CYCLE_FB_REQUIRED" <<< "$_out4b"; then
+    assert_pass "[SPEC-4b] CYCLE_FB_REQUIRED fires on a required:true cycle_feedback input"
+else
+    assert_fail "[SPEC-4b] CYCLE_FB_REQUIRED fires on a required:true cycle_feedback input" \
+        "got: ${_out4b:-<no violations>}"
+fi
+
 # ─── SPEC-5: the glob fan-in exemption SURVIVES ─────────────────────────────
 # The one check that stays gated on required, deliberately. An optional input may
 # be a glob fan-in over a producer GROUP, naming the producer for ordering rather

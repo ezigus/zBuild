@@ -313,27 +313,12 @@ _contract_validate_pipeline() {
                 fi
             fi
 
-            # #1768: the source switch below runs for EVERY input, matching the
-            # CI lint (scripts/lib/lint-contract.sh), which has never gated it.
-            #
-            # This gate used to skip the whole switch for `required: false`, so
-            # 33 of 50 inputs — two thirds of the tree — reached no source check
-            # at all. Three consequences, all live before this change:
-            #   - `source: artifacts` was unrecognised AND unvalidated: it would
-            #     have hard-failed as BAD_SOURCE, and escaped only because every
-            #     use is optional.
-            #   - CYCLE_FB_DIR and CYCLE_FB_UNWIRED could never fire, since
-            #     cycle_feedback is REQUIRED to be optional. lint-contract.sh
-            #     :236-239 delegates the unwired check here ("runtime validator
-            #     owns that"), so it was enforced by neither.
-            #   - a malformed source on an optional input was invisible.
-            #
-            # Only the output-id existence check stays gated on required, in the
-            # stage:* arm below. That one is load-bearing: an optional input may
-            # be a glob fan-in over a producer GROUP, naming the producer for
-            # ordering rather than a single output id (review-aggregator's
-            # lens_results globs lens-*.json across the review-lens members).
-            # lint-contract.sh:225-231 documents the same carve-out.
+            # #1768: the switch below runs for EVERY input, matching the CI lint
+            # (lint-contract.sh), which has never gated it. This gate used to
+            # skip the whole switch for `required: false` — 33 of 50 inputs —
+            # so an unrecognised or malformed source on an optional input was
+            # invisible, and CYCLE_FB_DIR / CYCLE_FB_UNWIRED could never fire.
+            # Only the TEMPLATE-AWARE checks stay gated (see the stage:* arm).
             local _in_optional=0
             [[ "$in_required" == "false" ]] && _in_optional=1
 
@@ -356,23 +341,13 @@ _contract_validate_pipeline() {
                     fi
                     ;;
                 artifacts)
-                    # #1768: recognised here so the gate above can be opened
-                    # without refusing 9 live inputs (2 in design, 7 in
-                    # gate-aggregator) and halting every run at pre-flight.
-                    # The CI lint has always tolerated this value
-                    # (lint-contract.sh:194); only this validator did not, which
-                    # is the divergence #1768 is about.
-                    #
-                    # TRANSITIONAL. ADR-055 §1 retires this kind: the reads it
-                    # covers become ordinary name-matched inputs, and a backwards
-                    # edge is legalised by the template's declared re-entry
-                    # (§1.3) rather than by an untyped read of the shared
-                    # artifact directory. #1825 removes it. Validating the path
-                    # shape here is deliberately NOT added — it would pick a
-                    # convention (7 of the 9 use a bare filename, 2 use
-                    # ${artifact_dir}/) for a kind that is being deleted, and
-                    # every one of these paths is decorative today because the
-                    # plugin rebuilds it in code.
+                    # TRANSITIONAL (#1768, ADR-055 §1 retires this kind; #1825
+                    # removes it). Recognised so the gate above can open without
+                    # refusing 9 live inputs and halting every run at pre-flight.
+                    # The CI lint has always tolerated it (lint-contract.sh:194);
+                    # only this validator did not. No path-shape rule on purpose:
+                    # the 9 use two conventions and every path is decorative,
+                    # since the plugin rebuilds it in code.
                     :
                     ;;
                 cycle_feedback)
@@ -380,16 +355,20 @@ _contract_validate_pipeline() {
                     # OPTIONAL by construction (cross-iter only meaningful when
                     # the cycle runs more than once).
                     #
-                    # #1768: the note that used to sit here — "required:true is a
-                    # contradiction caught above; an unreachable branch here" —
-                    # was half right and hid the larger problem. The branch was
-                    # unreachable, but so was this ENTIRE case: the required-only
-                    # gate above meant an input that must be optional could never
-                    # reach its own validation. CYCLE_FB_DIR and CYCLE_FB_UNWIRED
-                    # were dead, and lint-contract.sh:236-239 delegates UNWIRED
-                    # here, so nothing enforced it. Opening the gate revives all
-                    # three; the CYCLE_FB_REQUIRED branch below stays genuinely
-                    # unreachable, and stays as the explicit statement of the rule.
+                    # #1768: the note that used to sit here read "required:true is
+                    # a contradiction caught above; an unreachable branch here".
+                    # It was wrong on both counts. Nothing above catches it, and
+                    # CYCLE_FB_REQUIRED was always REACHABLE — a required:true
+                    # cycle_feedback input passed the old gate and fired it.
+                    # Verified against origin/main on a fixture.
+                    #
+                    # What WAS dead is the rest of this case. The old gate skipped
+                    # the switch for required:false, and CYCLE_FB_DIR and
+                    # CYCLE_FB_UNWIRED sit after the `continue` above, so they were
+                    # reachable for neither requiredness. Two codes, not three.
+                    # CYCLE_FB_UNWIRED was the worse of the pair:
+                    # lint-contract.sh:236-239 delegates it here ("runtime
+                    # validator owns that"), so nothing enforced it at all.
                     if [[ "$in_required" == "true" ]]; then
                         violations+=("$stage|CYCLE_FB_REQUIRED|$in_id|source: cycle_feedback cannot be required:true (#511)")
                         fail_count=$((fail_count + 1))
