@@ -143,6 +143,17 @@ unset -f template_stage_roles resolve_plugin_for_role
 
 for _stage in intake plan impact review-aggregator pr deploy validate monitor; do
     _resolved_dir="$(resolve_stage_plugin "$_stage" "$REAL_PLUGINS_ROOT" 2>/dev/null || true)"
+    # Guard the empty case FIRST. Without it an empty resolution builds the path
+    # "/manifest.yaml" and the assertion silently interrogates the filesystem
+    # root — it would report "cannot find /manifest.yaml", sending the reader
+    # after a missing manifest when the real fault is that resolution returned
+    # nothing, and it would pass outright on any host where that path exists.
+    if [[ -z "$_resolved_dir" ]]; then
+        assert_fail "[SPEC-3] resolve_stage_plugin($_stage) returns a plugin dir" \
+            "resolution returned empty — no role binding and no id match under $REAL_PLUGINS_ROOT"
+        continue
+    fi
+    assert_pass "[SPEC-3] resolve_stage_plugin($_stage) returns a plugin dir"
     assert_file_exists \
         "[SPEC-3] resolve_stage_plugin($_stage) resolves to a dir with manifest.yaml" \
         "$_resolved_dir/manifest.yaml"
