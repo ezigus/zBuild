@@ -36,6 +36,7 @@ requires:
 
 provides:
   artifact_type: design.md
+  role: designer
   schema_version: 1
 
 config:

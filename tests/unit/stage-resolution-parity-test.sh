@@ -80,9 +80,8 @@ assert_eq "[SPEC-2] review-aggregator → review-aggregator (role review_aggrega
 assert_file_exists "[SPEC-2] resolved review-lens plugin dir has a manifest" "$(_resolve_raw review_lenses)/manifest.yaml"
 
 # ─── SPEC-3: regression invariant — current cycle members resolve to the SAME ─
-# plugin as before (id-match and role-match are identical for them). build has
-# NO provides.role (template role 'builder' has no plugin) → falls through to
-# id-match, exactly as the old id-only path did.
+# plugin as before (id-match and role-match are identical for them). build now
+# provides role: builder — role-match wins (same result: plugin id == stage name).
 assert_eq "[SPEC-3] test → test (role tester)"               "test"            "$(_resolve test)"
 assert_eq "[SPEC-3] shape-floor → shape-floor"               "shape-floor"     "$(_resolve shape-floor)"
 # acceptance-gate stage binds role acceptance_gate → served by the method-named
@@ -90,7 +89,7 @@ assert_eq "[SPEC-3] shape-floor → shape-floor"               "shape-floor"    
 assert_eq "[SPEC-3] acceptance-gate → spec-acceptance (role acceptance_gate)" "spec-acceptance" "$(_resolve acceptance-gate)"
 assert_eq "[SPEC-3] secret-scan → secret-scan"               "secret-scan"     "$(_resolve secret-scan)"
 assert_eq "[SPEC-3] gate-aggregator → gate-aggregator"       "gate-aggregator" "$(_resolve gate-aggregator)"
-assert_eq "[SPEC-3] build → build (role-miss falls to id-match)" "build"       "$(_resolve build)"
+assert_eq "[SPEC-3] build → build (role: builder)"           "build"           "$(_resolve build)"
 
 # ─── SPEC-4: unknown stage with no role and no id resolves to nothing ────────
 # Assert BOTH the empty stdout and the non-zero return code (rc=1 on a miss),
