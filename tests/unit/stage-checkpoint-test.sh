@@ -161,12 +161,12 @@ if declare -F _route_redact_prompt >/dev/null 2>&1; then
     ZBUILD_PLUGIN_DIR="$PLUGDIR2" ZBUILD_STATE_DIR="$STATE" ZBUILD_SCOPE_MANIFEST="" \
         _route_redact_prompt "$IN2" "$TEST_TEMP_DIR/prompt2.out" 0 "" >/dev/null 2>&1 || true
     if grep -qF 'STAGE CHECKPOINT' "$IN2" 2>/dev/null; then
-        assert_fail "[SPEC-2] a non-declaring stage gets no checkpoint block" \
+        assert_fail "[SPEC-7-guard] a non-declaring stage gets no checkpoint block" \
             "the block leaked into a stage that declared none"
     else
-        assert_pass "[SPEC-2] a non-declaring stage gets no checkpoint block"
+        assert_pass "[SPEC-7-guard] a non-declaring stage gets no checkpoint block"
     fi
-    assert_contains "[SPEC-2] and its own body is preserved" "$(cat "$IN2")" "UNTOUCHED BODY"
+    assert_contains "[SPEC-7-guard] and its own body is preserved" "$(cat "$IN2")" "UNTOUCHED BODY"
 else
     assert_fail "[SPEC-7] _route_redact_prompt is available to test" "function not defined after sourcing route.sh"
 fi
@@ -221,6 +221,53 @@ if declare -F manifest_router_knob >/dev/null 2>&1; then
         "" "$(manifest_router_knob "$REPO_ROOT/plugins/agent/impact/manifest.yaml" retry_on_exhaustion)"
 else
     assert_fail "[SPEC-10] manifest_router_knob is available" "missing"
+fi
+
+# ─── SPEC-11: the escalated budget actually REACHES claude ──────────────────
+# PR #1881 review found this the hard way: `_claude_args` is built ONCE, above
+# the retry loop, so updating `max_turns` inside the loop left the retry invoking
+# claude with the exact budget that had just been exhausted. The escalation was
+# inert and the retry near-pointless. SPEC-9/SPEC-10 could not catch it — they
+# test detection and opt-in, never the invocation. This does.
+print_test_section "11. the retry's escalated --max-turns reaches the argv"
+_args=(-p "PROMPT" --print --model m --max-turns 45 --dangerously-skip-permissions)
+_base=45
+_next=$(( _base + _base / 2 ))
+_cap=$(( _base * 2 ))
+[[ "$_next" -gt "$_cap" ]] && _next="$_cap"
+for _i in "${!_args[@]}"; do
+    if [[ "${_args[$_i]}" == "--max-turns" ]]; then _args[$((_i + 1))]="$_next"; break; fi
+done
+assert_eq "[SPEC-11] 45 escalates to 67 (+50%, under the 2x cap)" "67" "$_next"
+assert_contains "[SPEC-11] and the argv carries the escalated value" "${_args[*]}" "--max-turns 67"
+if [[ "${_args[*]}" == *"--max-turns 45"* ]]; then
+    assert_fail "[SPEC-11] the stale budget must not survive in the argv" "45 still present"
+else
+    assert_pass "[SPEC-11] the stale budget must not survive in the argv"
+fi
+# [guard] the cap is 2x the ORIGINAL budget, not 2x the current one — otherwise
+# it compounds across retries and diverges from _route_escalate_timeout's ceiling.
+_c1=$(( _base + _base / 2 )); [[ "$_c1" -gt $(( _base * 2 )) ]] && _c1=$(( _base * 2 ))
+_c2=$(( _c1 + _c1 / 2 ));     [[ "$_c2" -gt $(( _base * 2 )) ]] && _c2=$(( _base * 2 ))
+assert_eq "[SPEC-11] a second escalation is capped at 2x BASE, not 2x current" "90" "$_c2"
+# [guard] the 0 sentinel means unbounded and must stay 0.
+assert_eq "[SPEC-11] max_turns=0 (unbounded) stays 0" "0" "$(( 0 > 0 ? 0 + 0 / 2 : 0 ))"
+
+# ─── SPEC-12 [guard]: the real router applies it ────────────────────────────
+# The arithmetic above is the shape; this pins that route.sh actually rewrites
+# the argv rather than only the variable.
+print_test_section "12. route.sh rewrites the argv, not just the variable"
+_rt="$REPO_ROOT/core/router/route.sh"
+if grep -q '_claude_args\[\$((_ai + 1))\]="\$max_turns"' "$_rt"; then
+    assert_pass "[SPEC-12] the exhaustion retry rewrites --max-turns in _claude_args"
+else
+    assert_fail "[SPEC-12] the exhaustion retry rewrites --max-turns in _claude_args" \
+        "the escalation would not reach claude"
+fi
+if grep -q '_turn_cap=\$(( _exhaust_base_turns \* 2 ))' "$_rt"; then
+    assert_pass "[SPEC-12] the cap is computed against the original budget"
+else
+    assert_fail "[SPEC-12] the cap is computed against the original budget" "cap compounds across retries"
 fi
 
 cleanup_test_env

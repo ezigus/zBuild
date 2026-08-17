@@ -45,18 +45,26 @@ _checkpoint_declared_path() {
     local manifest="$1" state_dir="$2"
     [[ -f "$manifest" ]] || return 0
     local raw
+    # PR #1881 review: ORDER-INDEPENDENT. An earlier version printed on seeing
+    # `role: checkpoint` and so returned nothing when a manifest listed `role:`
+    # BEFORE `path:` — legal YAML, and it would have surfaced as the lint's
+    # confusing "resolves no path" on an entry that plainly declares one. Now the
+    # entry is buffered and emitted when it ends.
     raw="$(awk '
+        function flush_entry() {
+            if (role == "checkpoint" && path != "" && !done) { print path; done=1 }
+            path=""; role=""
+        }
         /^outputs:/ { in_out=1; next }
-        in_out && /^[a-zA-Z_]/ { in_out=0 }
-        in_out && /^[[:space:]]*-[[:space:]]*id:/ { path=""; next }
+        in_out && /^[a-zA-Z_]/ { flush_entry(); in_out=0 }
+        in_out && /^[[:space:]]*-[[:space:]]*id:/ { flush_entry(); next }
         in_out && /^[[:space:]]+path:[[:space:]]*/ {
             p=$0; sub(/^[[:space:]]+path:[[:space:]]*/, "", p)
-            gsub(/^["'"'"']|["'"'"']$/, "", p); path=p; next
+            gsub(/^["'"'"']|["'"'"']$/, "", p)
+            sub(/[[:space:]]*#.*$/, "", p); path=p; next
         }
-        in_out && /^[[:space:]]+role:[[:space:]]*checkpoint([[:space:]]|$|#)/ {
-            if (path != "") { print path; exit }
-            next
-        }
+        in_out && /^[[:space:]]+role:[[:space:]]*checkpoint([[:space:]]|$|#)/ { role="checkpoint"; next }
+        END { flush_entry() }
     ' "$manifest" 2>/dev/null)"
     [[ -n "$raw" ]] || return 0
 

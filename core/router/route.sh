@@ -791,6 +791,10 @@ _route_call_claude() {
     # (route_to_model_loop) implements its own intra-iteration retry.
     local _retries; _retries="$(_route_resolve_retries)"
     local _exhaust_retries; _exhaust_retries="$(_route_resolve_exhaustion_retries)"
+    # PR #1881 review: cap against the ORIGINAL budget, not the current one —
+    # capping against `max_turns` compounds across retries and diverges from the
+    # 2x-base ceiling _route_escalate_timeout enforces for seconds.
+    local _exhaust_base_turns="$max_turns"
     local _attempt=0 _local_secs="$secs"
     local stderr_file rc response
     while :; do
@@ -886,10 +890,22 @@ _route_call_claude() {
             "from_turns=$max_turns" "to_turns=$_next_turns" 2>/dev/null || true
         # ADR-029's +50%/cap-2x escalation shape, applied to turns rather than
         # seconds. 0 means "unbounded" and must stay 0.
+        #
+        # PR #1881 review, CRITICAL: `_claude_args` is built ONCE, above this loop.
+        # Updating `max_turns` alone left the retry invoking claude with the exact
+        # budget that had just been exhausted — the escalation was inert and the
+        # retry was near-pointless. The argv element must be rewritten too.
         if [[ "$max_turns" -gt 0 ]]; then
-            local _turn_cap=$(( max_turns * 2 ))
+            local _turn_cap=$(( _exhaust_base_turns * 2 ))
             [[ "$_next_turns" -gt "$_turn_cap" ]] && _next_turns="$_turn_cap"
             max_turns="$_next_turns"
+            local _ai
+            for _ai in "${!_claude_args[@]}"; do
+                if [[ "${_claude_args[$_ai]}" == "--max-turns" ]]; then
+                    _claude_args[$((_ai + 1))]="$max_turns"
+                    break
+                fi
+            done
         fi
         rm -f "$stderr_file"
         continue
