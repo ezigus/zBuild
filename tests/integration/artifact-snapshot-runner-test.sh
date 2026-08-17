@@ -47,10 +47,14 @@ mkdir -p "$TEST_TEMP_DIR/events"
 # A stub that WRITES A REAL ARTIFACT. Today's runner-level stubs write nothing,
 # which is exactly why they never exercised the snapshot path.
 _make_artifact_plugin() {
-    local id="$1" kind="${2:-agent}"
+    local id="$1" kind="${2:-agent}" role="${3:-$1}"
     local dir="$PLUGINS_ROOT/$kind/$id"
     mkdir -p "$dir"
     local fn; fn="${id//-/_}_run"
+    # provides.role is REQUIRED, not decorative: resolve_stage_plugin
+    # (core/pipeline/dispatch.sh) is fail-closed — when a template declares roles
+    # for a stage and none resolve, there is deliberately NO id-match fallback,
+    # so a role-less stub yields stage.fail rc=1 with no plugin.run.start.
     cat > "$dir/manifest.yaml" <<EOF
 id: $id
 name: Artifact-writing $id
@@ -58,6 +62,8 @@ kind: $kind
 version: 0.0.1
 hooks:
   run: $fn
+provides:
+  role: $role
 requires:
   core:
     - redaction
@@ -101,8 +107,8 @@ mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
 # ─── Fixture: a git repo carrying the template overlay ──────────────────────
 REPO="$(setup_git_temp_repo snapshot-cov-repo)"
 install_template_overlay "$REPO" artifact-snapshot-coverage
-_make_artifact_plugin "intake"  "agent"
-_make_artifact_plugin "cycled"  "agent"
+_make_artifact_plugin "intake"  "agent" "intake"
+_make_artifact_plugin "cycled"  "agent" "builder"   # the fixture's cycle member declares roles: [builder]
 
 SD="$TEST_TEMP_DIR/state-ok"
 _run_pipeline "$REPO" 1878 artifact-snapshot-coverage "$SD"
