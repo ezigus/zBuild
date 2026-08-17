@@ -109,6 +109,9 @@ EOF
 
 # Globals (not local) so EXIT trap can read them after main() returns.
 _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
+# #1878: last reported snapshot-failure reason, so a static precondition is
+# reported once rather than once per stage boundary.
+_RUNNER_LAST_SNAPSHOT_FAIL_REASON=""
 
 # ─── _runner_snapshot_artifacts <state_dir> <stage> (ADR-050, #1581/#1878) ───
 # Snapshot the artifact area onto the state branch at a stage boundary, so a
@@ -148,10 +151,19 @@ _runner_snapshot_artifacts() {
             # Loud, not fatal. This event is the whole point of #1878: the defect
             # went undiagnosed for the life of the feature because the failure had
             # no channel to surface on.
-            eb_emit_event "artifact.snapshot.failed" \
-                "stage=$_snap_stage" "issue=$_runner_issue" \
-                "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
-            warn "artifact snapshot failed at stage '$_snap_stage': ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+            #
+            # Deduped on the reason. Most failures are a STATIC precondition — no
+            # resolvable repository, a ref D/F conflict — so they recur identically
+            # at every stage boundary. Reporting the first occurrence keeps the
+            # signal; repeating it once per stage is noise that trains an operator
+            # to ignore the event. A CHANGED reason is always reported.
+            if [[ "${_ARTIFACT_PERSIST_LAST_REASON:-}" != "${_RUNNER_LAST_SNAPSHOT_FAIL_REASON:-}" ]]; then
+                _RUNNER_LAST_SNAPSHOT_FAIL_REASON="${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+                eb_emit_event "artifact.snapshot.failed" \
+                    "stage=$_snap_stage" "issue=$_runner_issue" \
+                    "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
+                warn "artifact snapshot failed at stage '$_snap_stage': ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+            fi
             ;;
         # empty / unchanged are not failures and are not events: emitting
         # `saved` for them is precisely the lie this change removes.
