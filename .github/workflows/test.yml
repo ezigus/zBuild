@@ -31,6 +31,12 @@ jobs:
         if: always()
         # ONE definition, shared with `npm run lint` (#1682).
         run: bash scripts/lib/lint-grep-c.sh
+      - name: Declared stage checkpoints resolve (#1879)
+        if: always()
+        # ONE definition, shared with `npm run lint` (#1682). A `role: checkpoint`
+        # output that the engine cannot resolve is a declaration nothing enforces
+        # — the exact defect class ADR-054 catalogues.
+        run: bash scripts/lib/lint-stage-checkpoint.sh
       - name: Manifest verdicts are classified (#1708)
         if: always()
         # ONE definition, shared with `npm run lint` (#1682). Asserts every
