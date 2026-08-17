@@ -64,8 +64,10 @@ resolve_stage_plugin() {
                 [[ -n "$plugin_dir" ]] && { echo "$plugin_dir"; return 0; }
             done <<< "$roles"
             # Fail-closed: roles were declared but none resolved — no id-match fallback.
+            # Roles arrive newline-separated; substitute rather than word-split so a
+            # role token containing a glob char cannot expand against the filesystem.
             printf 'resolve_stage_plugin: stage %s: unresolved declared roles: %s\n' \
-                "$stage" "$(printf '%s ' $roles)" >&2
+                "$stage" "${roles//$'\n'/ }" >&2
             return 1
         fi
     fi
