@@ -185,7 +185,7 @@ for _t in "${_corpus[@]}"; do
         printf '  corpus REGRESSION: %s has an unresolvable leaf\n' "$(basename "$_t")" >&2
     fi
 done
-assert_eq "SPEC-6: shipped corpus loads and every leaf resolves (preflight accepts, corpus=${#_corpus[@]})" "1" "$_corpus_ok"
+assert_eq "[SPEC-6] shipped corpus loads and every leaf resolves (preflight accepts, corpus=${#_corpus[@]})" "1" "$_corpus_ok"
 
 # Synthetic membership-violation templates: a genuinely-unresolvable leaf MUST be
 # rejected by the preflight (the teeth of the sole membership enforcement).
@@ -271,6 +271,29 @@ _runner_validate_leaf_resolvability _residual_leaves "$REAL_PLUGINS" >/dev/null 
 _residual_pf_rc=$?
 set -e
 assert_eq "SPEC-7: residual — swapped resolvable leaves still resolve (accepted, rc=0)" "0" "$_residual_pf_rc"
+
+# ─── SPEC-8: fail-closed — ghost role with id-matching plugin → rc!=0, error ─
+# CHANGE: before fail-closed, a ghost role falls to id-match (finds the
+# spec8test plugin by id, rc=0). After fail-closed, rc=1 immediately and the
+# error output names the unresolved role — id-match is NOT attempted.
+mkdir -p "$FIXROOT/tool/spec8test"
+cat > "$FIXROOT/tool/spec8test/manifest.yaml" <<'EOF'
+id: spec8test
+name: Spec8 Test Plugin
+kind: tool
+version: 0.0.1
+inputs: []
+outputs: []
+EOF
+_tsr_saved_s8="$(declare -f template_stage_roles)"
+template_stage_roles() { [[ "$1" == "spec8test" ]] && printf '%s\n' "ghost_role"; }
+set +e
+_spec8_out="$(resolve_stage_plugin "spec8test" "$FIXROOT" 2>&1)"
+_spec8_rc=$?
+set -e
+eval "$_tsr_saved_s8"
+assert_eq "[SPEC-8] fail-closed: ghost_role declared, id-match plugin exists → rc=1" "1" "$_spec8_rc"
+assert_contains "[SPEC-8] fail-closed error output names the unresolved role" "$_spec8_out" "ghost_role"
 
 cleanup_test_env
 print_test_results

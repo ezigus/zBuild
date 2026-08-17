@@ -36,11 +36,15 @@ _test_cleanup_hook() { cleanup_test_env; }
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 mkdir -p "$PLUGINS_ROOT/agent/intake" "$PLUGINS_ROOT/agent/security-lens" "$PLUGINS_ROOT/tool/output"
 
+# provides.role mirrors crash-resume-minimal.yaml: resolve_stage_plugin fails
+# closed on a stage that declares roles: but resolves none.
 cat > "$PLUGINS_ROOT/agent/intake/manifest.yaml" <<'YAML'
 id: intake
 name: Slow Intake
 kind: agent
 version: 0.0.1
+provides:
+  role: intake
 hooks:
   run: intake_run
 requires:
@@ -56,6 +60,8 @@ id: security-lens
 name: Fast SL
 kind: agent
 version: 0.0.1
+provides:
+  role: security-auditor
 hooks:
   run: security_lens_run
 requires:
@@ -71,6 +77,8 @@ id: output
 name: Fast Output
 kind: tool
 version: 0.0.1
+provides:
+  role: output
 hooks:
   run: output_run
 YAML

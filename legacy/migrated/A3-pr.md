@@ -10,7 +10,7 @@ The `stage_pr` function from `legacy/scripts/lib/pipeline-stages-delivery.sh`
 (lines 81–657) has been superseded by `plugins/agent/pr-delivery/` (kind:agent,
 T2). The plugin id is `pr-delivery` (not `pr`) to avoid colliding with the
 existing `plugins/tool/pr-open` tool plugin, whose manifest id is `pr`; the
-standard template's `pr` stage dispatches to it by role (`pr_delivery`).
+standard template's `pr` stage dispatches to it by role (`pr`).
 
 ## Function mapping
 

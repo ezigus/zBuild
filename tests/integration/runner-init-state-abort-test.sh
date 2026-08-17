@@ -36,8 +36,10 @@ export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$TEST_TEMP_DIR/events"
 
+# $3 is the fixture's declared role: resolve_stage_plugin fails closed on a
+# stage that declares roles: but resolves none, so a stub needs provides.role.
 _make_plugin() {
-    local id="$1" kind="${2:-agent}"
+    local id="$1" kind="${2:-agent}" role="$3"
     local dir="$PLUGINS_ROOT/$kind/$id"
     mkdir -p "$dir"
     local fn; fn="${id//-/_}_run"
@@ -46,6 +48,8 @@ id: $id
 name: Test $id
 kind: $kind
 version: 0.0.1
+provides:
+  role: $role
 hooks:
   run: $fn
 requires:
@@ -56,8 +60,9 @@ EOF
 ${fn}() { return 0; }
 EOF
 }
-_make_plugin "intake" "agent"
-_make_plugin "build"  "agent"
+# Roles mirror runner-state-dir-minimal.yaml's roles: declarations.
+_make_plugin "intake" "agent" "intake"
+_make_plugin "build"  "agent" "builder"
 
 OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
 install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal

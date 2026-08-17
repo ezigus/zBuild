@@ -288,11 +288,11 @@ assert_eq "[SPEC-13] _TPL_STAGES[3] == design-gate" "design-gate" "${_TPL_STAGES
 assert_eq "[SPEC-13] _TPL_STAGES[4] == impact" "impact" "${_TPL_STAGES[4]}"
 
 # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
-# GUARD: A3-pr adds plugins/agent/pr-delivery (role: pr_delivery) for standard.yaml only.
-# simple.yaml's pr stage keeps roles: [pr] — bound to the pr-open tool plugin,
-# not the new pr agent. This guard confirms the migration did not inadvertently
-# change simple.yaml's pr role binding.
-assert_eq "[SPEC-6] simple.yaml: pr roles remain pr (not pr_delivery, guard)" \
+# GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is
+# provided by plugins/agent/pr-delivery (it previously read pr_delivery, so the
+# role missed and id-match handed the stage to the pr-open tool instead). The
+# template side must stay `pr` for that binding to hold.
+assert_eq "[SPEC-6] simple.yaml: pr stage still declares roles: [pr] (guard)" \
     "pr" "${_TPL_STAGE_ROLES_pr}"
 
 # ─── SPEC-7 (I9-B): template_merge_policy() returns "auto_unless_flagged" for simple.yaml ─

@@ -54,6 +54,7 @@ requires:
 
 provides:
   artifact_type: build-summary.json
+  role: builder
   schema_version: 1
 
 config:

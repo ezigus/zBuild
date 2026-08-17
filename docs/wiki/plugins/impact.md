@@ -18,6 +18,7 @@ flow:
 ## Reference
 
 **Kind:** `agent`
+**Role:** `impact_analyzer`
 **Manifest:** `plugins/agent/impact/manifest.yaml`
 **Version:** 0.1.0
 **Tier default:** T2 (Sonnet)

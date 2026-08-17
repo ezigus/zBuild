@@ -5,7 +5,7 @@ The pr-delivery plugin is the pipeline's PR delivery agent, reading the review v
 **PR Stage**
 
 - **Kind:** `agent`
-- **Role:** `pr_delivery`
+- **Role:** `pr`
 - **Manifest:** `plugins/agent/pr-delivery/manifest.yaml`
 
 ## Manifest
@@ -37,7 +37,7 @@ requires:
 
 provides:
   artifact_type: pr-url.txt
-  role: pr_delivery
+  role: pr
   schema_version: 1
 
 config:

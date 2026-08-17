@@ -33,6 +33,7 @@ requires:
 
 provides:
   artifact_type: plan.json
+  role: planner
   schema_version: 1
 
 config:

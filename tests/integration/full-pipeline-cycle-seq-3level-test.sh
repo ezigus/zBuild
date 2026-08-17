@@ -77,8 +77,10 @@ _FIXTURE_TPL="$REPO_ROOT/tests/fixtures/templates/nested-cycle-seq.yaml"
 # Mock plugin factory: every plugin logs the seq label + the visibility of
 # ZBUILD_SEQ_PREFIX (so the assertions can pin both the recursive prefix shape
 # AND the no-leak-into-pre/post-cycle-stages contract).
+# $2 is the fixture's declared role: resolve_stage_plugin fails closed on a
+# stage that declares roles: but resolves none, so a stub needs provides.role.
 _make_plugin() {
-    local id="$1"
+    local id="$1" role="$2"
     local dir="$PLUGINS_ROOT/agent/$id"
     mkdir -p "$dir"
     local fn="${id//-/_}_run"
@@ -87,6 +89,8 @@ id: $id
 name: Test $id
 kind: agent
 version: 0.0.1
+provides:
+  role: $role
 hooks:
   run: $fn
 requires:
@@ -108,7 +112,7 @@ PLUGIN
 # Override for test: declares a primary output so exit_when can read the verdict,
 # and writes {"verdict":"pass"} so inner_cycle converges after iter 1.
 _make_verdict_plugin() {
-    local id="$1" verdict="$2"
+    local id="$1" verdict="$2" role="$3"
     local dir="$PLUGINS_ROOT/agent/$id"
     local fn="${id//-/_}_run"
     cat > "$dir/manifest.yaml" <<EOF
@@ -116,6 +120,8 @@ id: $id
 name: Test $id
 kind: agent
 version: 0.0.1
+provides:
+  role: $role
 hooks:
   run: $fn
 requires:
@@ -143,14 +149,23 @@ ${fn}() {
 PLUG
 }
 
-for s in intake plan design gate build test probe; do
-    _make_plugin "$s"
-done
+# Roles mirror nested-cycle-seq.yaml's per-stage roles: declarations.
+while read -r s r; do
+    _make_plugin "$s" "$r"
+done <<'STUBS'
+intake intake
+plan planner
+design designer
+gate shape_floor
+build builder
+test tester
+probe reviewer
+STUBS
 # design converges design_cycle (verdict=complete); test converges inner_cycle
 # (verdict=pass); probe converges outer_cycle (verdict=approve).
-_make_verdict_plugin design complete
-_make_verdict_plugin test pass
-_make_verdict_plugin probe approve
+_make_verdict_plugin design complete designer
+_make_verdict_plugin test pass tester
+_make_verdict_plugin probe approve reviewer
 
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 export ZBUILD_STATE_FILE="$STATE_DIR/pipeline-state.json"

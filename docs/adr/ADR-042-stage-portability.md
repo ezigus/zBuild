@@ -52,9 +52,10 @@ consolidation onto this helper, out of scope here). The rule:
    stage's declared roles (ADR-001) are resolved to a plugin — platform-specific
    then generic — first-match wins. Cycle/parallel members resolve a **single**
    plugin (they do not fan out).
-2. **Id fallback.** If no role resolves (or no role is declared), fall back to
+2. **Id fallback.** If **no roles are declared** for a stage, fall back to
    manifest-`id` match (`_find_plugin_for_stage`) — the legacy behavior,
-   preserved verbatim.
+   preserved verbatim. If roles ARE declared but none resolves, the resolver
+   fails closed (rc=1, error naming the unresolved roles) — no id-match fallback.
 
 A stage's **flow-name need not equal its plugin `id`**. Role binding (ADR-001) is
 authoritative; id-match exists only for backward compatibility with stages whose

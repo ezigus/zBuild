@@ -6,14 +6,14 @@ One page per **leaf node** (plugin). Each is generated from its `manifest.yaml` 
 
 | Plugin | Kind | Role |
 |---|---|---|
-| [[plugins/build]] | agent | — |
+| [[plugins/build]] | agent | builder |
 | [[plugins/deploy]] | agent | deploy_agent |
-| [[plugins/design]] | agent | — |
-| [[plugins/impact]] | agent | — |
+| [[plugins/design]] | agent | designer |
+| [[plugins/impact]] | agent | impact_analyzer |
 | [[plugins/intake]] | agent | intake |
 | [[plugins/monitor]] | agent | monitor |
-| [[plugins/plan]] | agent | — |
-| [[plugins/pr-delivery]] | agent | pr_delivery |
+| [[plugins/plan]] | agent | planner |
+| [[plugins/pr-delivery]] | agent | pr |
 | [[plugins/review-aggregator]] | agent | review_aggregator |
 | [[plugins/review-lens]] | agent | review_lens |
 | [[plugins/review-report]] | agent | review_report |

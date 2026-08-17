@@ -5,7 +5,7 @@ defaults:
   strategy: fanout
 
 # Template-agnostic artifact-contract probe (EPIC #966 / #978): a SINGLE leaf
-# stage. artifact-contract-test.sh binds a plugin (by id → intake) that declares
+# stage. artifact-contract-test.sh binds a plugin (by role → intake) that declares
 # provides.artifact_type but writes no artifact, and asserts the engine emits
 # plugin.contract.violated + a synthetic blocking findings.json. The contract
 # check is ENGINE behavior keyed off the plugin manifest, not roster-specific, so

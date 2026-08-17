@@ -63,9 +63,16 @@ resolve_stage_plugin() {
                 plugin_dir="$(resolve_plugin_for_role "$role" "" "$plugins_root" 2>/dev/null || true)"
                 [[ -n "$plugin_dir" ]] && { echo "$plugin_dir"; return 0; }
             done <<< "$roles"
+            # Fail-closed: roles were declared but none resolved — no id-match fallback.
+            # Roles arrive newline-separated; substitute rather than word-split so a
+            # role token containing a glob char cannot expand against the filesystem.
+            printf 'resolve_stage_plugin: stage %s: unresolved declared roles: %s\n' \
+                "$stage" "${roles//$'\n'/ }" >&2
+            return 1
         fi
     fi
     # Fallback: backward-compat id match (stage name == manifest id).
+    # Only reached when no roles are declared for this stage.
     plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" 2>/dev/null || true)"
     [[ -n "$plugin_dir" ]] && { echo "$plugin_dir"; return 0; }
     return 1

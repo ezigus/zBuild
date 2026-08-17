@@ -25,6 +25,7 @@ requires:
 
 provides:
   artifact_type: impact.json
+  role: impact_analyzer
   schema_version: 1
 
 config:

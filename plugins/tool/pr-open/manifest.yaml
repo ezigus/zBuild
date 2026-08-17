@@ -1,3 +1,8 @@
+# RETAINED, NOT STAGE-BOUND (#1704). This manifest's `id: pr` once bound the pr
+# stage by id-match; pr-delivery now provides `role: pr` and resolve_stage_plugin
+# fails closed on a declared role, so the pr stage can no longer reach this
+# plugin. It stays because pr-delivery's plugin.sh invokes pr_open_run as its
+# internal T0 delivery tool (ADR-013). Do not delete; do not give it a role.
 id: pr
 name: PR Open Stage
 kind: tool
