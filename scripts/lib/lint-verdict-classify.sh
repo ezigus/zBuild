@@ -94,6 +94,17 @@ _lvc_verdicts_state() {
                 exit
             }
             if (inline_empty || inline_other == "") { print "empty"; exit }
+            # YAML flow sequence: `valid_verdicts: [pass, fail]`. Valid YAML, so
+            # parse it rather than reject it — passing the raw "[pass, fail]"
+            # through would word-split into "[pass," and "fail]", and BOTH would
+            # classify unknown, failing a structurally correct manifest.
+            if (inline_other ~ /^\[.*\]$/) {
+                sub(/^\[[[:space:]]*/, "", inline_other)
+                sub(/[[:space:]]*\]$/, "", inline_other)
+                gsub(/[[:space:]]*,[[:space:]]*/, " ", inline_other)
+                gsub(/["'"'"']/, "", inline_other)
+                if (inline_other == "") { print "empty"; exit }
+            }
             print "list " inline_other
         }
     ' "$1"
@@ -120,7 +131,14 @@ while IFS= read -r manifest; do
             : # explicit "writes no verdict" — nothing to classify
             ;;
         list*)
-            for v in ${state#list }; do
+            # read -ra, not an unquoted `for v in ${state#list }`: word-splitting
+            # is wanted here but pathname expansion is NOT, and an unquoted
+            # expansion gets both. A verdict token containing * ? or [ would be
+            # globbed against the CWD before verdict_classify ever saw it.
+            # NOT `local` — this loop is at top level, where `local` is fatal.
+            _lvc_verdicts=()
+            read -ra _lvc_verdicts <<< "${state#list }"
+            for v in "${_lvc_verdicts[@]}"; do
                 cls="$(verdict_classify "$v")"
                 if [[ "$cls" == "unknown" ]]; then
                     echo "✗ $plugin_rel: declares verdict '$v', which verdict_classify does not classify" >&2

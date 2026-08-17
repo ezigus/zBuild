@@ -109,13 +109,6 @@ _mk_manifest "$R5/withprimary" primary pass
 _run_lint "$R5"; rc5=$LINT_RC
 assert_eq "[SPEC-5] a manifest with no primary output needs no declaration" "0" "$rc5"
 
-# ─── SPEC-7: a vacuous scan fails ───────────────────────────────────────────
-print_test_section "7. zero primary manifests -> rc=1, not a vacuous pass"
-R7="$TEST_TEMP_DIR/r7"
-_mk_manifest "$R7/only-nonprimary" noprimary NONE
-_run_lint "$R7"; rc7=$LINT_RC
-assert_eq "[SPEC-7] a scan finding no primary manifests fails" "1" "$rc7"
-
 # ─── SPEC-6 [guard]: the shipped tree is compliant ──────────────────────────
 # Holds at the merge-base ONLY after the backfill lands; before it, adoption was
 # 1-of-25. Tagged [guard] because from this commit forward it must never regress.
@@ -125,6 +118,54 @@ if [[ "$rc6" -eq 0 ]]; then
     assert_pass "[SPEC-6] every shipped manifest with a primary output is compliant"
 else
     assert_fail "[SPEC-6] every shipped manifest with a primary output is compliant" "$LINT_OUT"
+fi
+
+# ─── SPEC-7: a vacuous scan fails ───────────────────────────────────────────
+print_test_section "7. zero primary manifests -> rc=1, not a vacuous pass"
+R7="$TEST_TEMP_DIR/r7"
+_mk_manifest "$R7/only-nonprimary" noprimary NONE
+_run_lint "$R7"; rc7=$LINT_RC
+assert_eq "[SPEC-7] a scan finding no primary manifests fails" "1" "$rc7"
+
+# ─── SPEC-11: a YAML flow sequence is parsed, not mis-split ─────────────────
+# PR #1876 review: `valid_verdicts: [pass, fail]` is valid YAML. Passing the raw
+# string through word-splitting yields "[pass," and "fail]" — both unknown — so a
+# structurally CORRECT manifest would fail the lint. Parse the flow form instead.
+print_test_section "11. YAML flow-sequence declarations"
+_mk_flow() {
+    mkdir -p "$1"
+    printf 'id: %s\nkind: tool\n\nconfig:\n  valid_verdicts: %s\n\noutputs:\n  - id: r\n    path: ${artifact_dir}/r.json\n    primary: true\n' \
+        "$(basename "$1")" "$2" > "$1/manifest.yaml"
+}
+R11="$TEST_TEMP_DIR/r11"; _mk_flow "$R11/p" '[pass, fail]'
+_run_lint "$R11"; assert_eq "[SPEC-11] flow sequence [pass, fail] is accepted" "0" "$LINT_RC"
+R11b="$TEST_TEMP_DIR/r11b"; _mk_flow "$R11b/p" '["pass", "skip"]'
+_run_lint "$R11b"; assert_eq "[SPEC-11] quoted flow sequence is accepted" "0" "$LINT_RC"
+R11c="$TEST_TEMP_DIR/r11c"; _mk_flow "$R11c/p" '[ ]'
+_run_lint "$R11c"; assert_eq "[SPEC-11] '[ ]' is the empty declaration, not a verdict" "0" "$LINT_RC"
+R11d="$TEST_TEMP_DIR/r11d"; _mk_flow "$R11d/p" '[pass, nonsense_verdict]'
+_run_lint "$R11d"; assert_eq "[SPEC-11] a bad verdict inside a flow sequence still fails" "1" "$LINT_RC"
+assert_contains "[SPEC-11] and it names the offending token, not the raw list" \
+    "$LINT_OUT" "'nonsense_verdict'"
+
+# ─── SPEC-12: a verdict token is never glob-expanded ────────────────────────
+# PR #1876 review: the declared set was expanded unquoted, so a token containing
+# * ? or [ would be pathname-expanded against the CWD before classification.
+print_test_section "12. verdict tokens are not globbed against the filesystem"
+R12="$TEST_TEMP_DIR/r12"
+_mk_manifest "$R12/starry" primary 'pass*'
+# Decoys a leaked glob would expand onto. The lint MUST run with the decoy dir as
+# CWD — pathname expansion resolves against the process's working directory, so
+# running from anywhere else would let the assertion pass with the bug present.
+( cd "$TEST_TEMP_DIR" && touch pass_decoy_1 pass_decoy_2 )
+LINT_OUT="$(cd "$TEST_TEMP_DIR" && bash "$CHECKER" "$R12" 2>&1)" || true
+assert_contains "[SPEC-12] the literal token is reported, not a glob expansion" \
+    "$LINT_OUT" "'pass*'"
+if grep -q "pass_decoy" <<<"$LINT_OUT"; then
+    assert_fail "[SPEC-12] the token must not expand against the filesystem" \
+        "glob leaked: $LINT_OUT"
+else
+    assert_pass "[SPEC-12] the token must not expand against the filesystem"
 fi
 
 # ─── SPEC-8 / SPEC-9: the classifications this issue adds, and the backstop ──
