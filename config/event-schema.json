@@ -36,6 +36,7 @@
     "router.max_turns.override_ignored",
     "router.max_turns.flag_omitted",
     "router.timeout.retry",
+    "router.budget_exhausted.retry",
     "router.retries.override_ignored",
     "router.error",
     "router.error.diagnostic",

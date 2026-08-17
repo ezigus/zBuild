@@ -171,6 +171,58 @@ else
     assert_fail "[SPEC-7] _route_redact_prompt is available to test" "function not defined after sourcing route.sh"
 fi
 
+# ─── SPEC-9 / SPEC-10: the budget-exhaustion retry trigger ──────────────────
+# `retries` is rc=124/timeout-only, so a turn-budget exhaustion (rc=1) was never
+# retried — which is why the #1708 plan stage burned 46 turns, produced nothing,
+# and aborted the pipeline. The trigger is a SEPARATE opt-in knob so `impact`,
+# the one stage that sets `retries` today, keeps its exact current behaviour.
+print_test_section "9. budget exhaustion is detected, and opt-in per stage"
+# shellcheck source=../../scripts/lib/router-rc-classify.sh
+source "$REPO_ROOT/scripts/lib/router-rc-classify.sh" 2>/dev/null || true
+
+if declare -F _router_is_budget_exhausted >/dev/null 2>&1; then
+    _router_is_budget_exhausted '{"subtype":"error_max_turns"}' \
+        && assert_pass "[SPEC-9] subtype error_max_turns is exhaustion" \
+        || assert_fail "[SPEC-9] subtype error_max_turns is exhaustion" "not detected"
+    _router_is_budget_exhausted '{"terminal_reason":"max_turns"}' \
+        && assert_pass "[SPEC-9] terminal_reason max_turns is exhaustion" \
+        || assert_fail "[SPEC-9] terminal_reason max_turns is exhaustion" "not detected"
+    # [guard] a rate limit is NOT exhaustion: it must keep flowing to the
+    # rate-limit path, which deliberately does not auto-retry.
+    if _router_is_budget_exhausted '{"api_error_status":429,"is_error":true}'; then
+        assert_fail "[SPEC-9] a rate limit is not budget exhaustion" "429 misclassified as exhaustion"
+    else
+        assert_pass "[SPEC-9] a rate limit is not budget exhaustion"
+    fi
+    if _router_is_budget_exhausted '{"subtype":"success"}'; then
+        assert_fail "[SPEC-9] a success is not budget exhaustion" "misclassified"
+    else
+        assert_pass "[SPEC-9] a success is not budget exhaustion"
+    fi
+else
+    assert_fail "[SPEC-9] _router_is_budget_exhausted is defined" "missing"
+fi
+
+print_test_section "10. the opt-in is per stage, and impact is untouched"
+# shellcheck source=../../core/plugin-registry/manifest-router-budget.sh
+source "$REPO_ROOT/core/plugin-registry/manifest-router-budget.sh" 2>/dev/null || true
+if declare -F manifest_router_knob >/dev/null 2>&1; then
+    assert_eq "[SPEC-10] plan opts in to one exhaustion retry" \
+        "1" "$(manifest_router_knob "$REPO_ROOT/plugins/agent/plan/manifest.yaml" retry_on_exhaustion)"
+    # [guard] every other stage stays opted OUT — this must not become ambient.
+    _optins=""
+    for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
+        _v="$(manifest_router_knob "$_m" retry_on_exhaustion 2>/dev/null || true)"
+        [[ -n "$_v" && "$_v" != "0" ]] && _optins+="$(basename "$(dirname "$_m")") "
+    done
+    assert_eq "[SPEC-10] plan is the ONLY stage opted in" "plan " "$_optins"
+    # [guard] impact's `retries` is a different knob and is unchanged.
+    assert_eq "[SPEC-10] impact declares no exhaustion retry" \
+        "" "$(manifest_router_knob "$REPO_ROOT/plugins/agent/impact/manifest.yaml" retry_on_exhaustion)"
+else
+    assert_fail "[SPEC-10] manifest_router_knob is available" "missing"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
