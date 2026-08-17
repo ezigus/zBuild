@@ -1,0 +1,29 @@
+id: artifact-snapshot-coverage
+name: Artifact snapshot coverage (#1878)
+# Per-repo overlays must declare `extends:` (template-resolver requirement).
+extends: simple
+defaults:
+  strategy: fanout
+
+# A LEAF stage followed by a CYCLE, so one run exercises both snapshot call
+# sites. Before #1878 the snapshot lived only on the leaf path, so `cycled`
+# below — standing in for design / build / test, which is where most of a real
+# run's output is produced — never persisted anything.
+stages:
+  - id: intake
+    gate: auto
+    roles: [intake]
+  - id: cyc
+    type: cycle
+    stages: [cycled]
+    until:
+      stage: cycled
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 1
+    on_max: continue
+
+stage_definitions:
+  cycled:
+    roles: [builder]

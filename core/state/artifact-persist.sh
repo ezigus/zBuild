@@ -18,6 +18,30 @@
 [[ -n "${_ZBUILD_ARTIFACT_PERSIST_LOADED:-}" ]] && return 0
 _ZBUILD_ARTIFACT_PERSIST_LOADED=1
 
+# ─── Outcome channel (#1878) ─────────────────────────────────────────────────
+# rc alone cannot distinguish "persisted", "nothing to persist" and "failed" —
+# and it used to report the middle one as the first, so the runner emitted
+# artifact.snapshot.saved for a snapshot that saved nothing. rc stays ∈ {0,1}
+# (callers and existing tests depend on it); the detail rides these globals.
+#
+#   _ARTIFACT_PERSIST_LAST_STATUS  snapshot: saved | empty | unchanged | failed
+#                                  restore:  restored | empty | failed
+#   _ARTIFACT_PERSIST_LAST_REASON  on failed: the git op, its stderr, and the
+#                                  resolved repo_root/git-dir (the two values a
+#                                  silent failure used to hide)
+#   _ARTIFACT_PERSIST_LAST_SKIPPED count of files skipped but not fatal
+_ARTIFACT_PERSIST_LAST_STATUS=""
+_ARTIFACT_PERSIST_LAST_REASON=""
+_ARTIFACT_PERSIST_LAST_SKIPPED=0
+
+# Reset the outcome channel. Called at the top of every public entry point so a
+# caller can never read a stale status from a previous invocation.
+_artifact_persist_reset_status() {
+    _ARTIFACT_PERSIST_LAST_STATUS=""
+    _ARTIFACT_PERSIST_LAST_REASON=""
+    _ARTIFACT_PERSIST_LAST_SKIPPED=0
+}
+
 # ─── _artifact_persist_branch <issue> ───────────────────────────────────────
 # The state branch name for an issue. Sibling to the work branch; never merged.
 _artifact_persist_branch() {
@@ -51,29 +75,58 @@ _artifact_persist_git_dir() {
 # Returns 0 on success (or clean no-op when there is nothing to snapshot), 1 on
 # any git failure. Never disturbs the caller's checkout.
 _artifact_persist_snapshot() {
+    _artifact_persist_reset_status
     local state_dir="$1" issue="${2:-0}" repo_root="${3:-$(git rev-parse --show-toplevel 2>/dev/null)}"
     # Resolve the SHARED git dir before the guard uses it. The guard previously
     # tested `-d "$repo_root/.git"`, which is FALSE in a linked worktree (.git is
     # a file there), so persistence would silently no-op inside a worktree.
     local _gd=""
     [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
-    [[ -z "$repo_root" || ! -d "$_gd" ]] && return 0
+    # #1878: this is NOT "nothing to do" — it means we could not resolve a repo to
+    # persist INTO, which is a real failure the caller must be able to see. It
+    # used to `return 0`, which the runner reported as a successful snapshot.
+    if [[ -z "$repo_root" || ! -d "$_gd" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="unresolvable repo: repo_root=[${repo_root:-<empty>}] git_dir=[${_gd:-<empty>}] cwd=[$PWD]"
+        return 1
+    fi
     local art_dir="$state_dir/artifacts"
-    [[ -d "$art_dir" ]] || return 0
+    if [[ ! -d "$art_dir" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no artifact dir at $art_dir"
+        return 0
+    fi
 
     local branch; branch="$(_artifact_persist_branch "$issue")"
     # A NON-existent path: git initializes a fresh index there. A pre-created
     # empty file (plain mktemp) is rejected as "index file smaller than expected".
-    local tmp_index; tmp_index="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-idx.XXXXXX")" || return 1
+    local tmp_index
+    if ! tmp_index="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-idx.XXXXXX")"; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="mktemp for throwaway index failed (TMPDIR=${TMPDIR:-/tmp})"
+        return 1
+    fi
 
     # Build a tree from the artifact files under a stable prefix (artifacts/…),
     # plus a couple of top-level state docs, in a throwaway index.
-    local rc=0 added=0 f rel blob
+    #
+    # #1878: SKIP a file we cannot stage, do not abort the snapshot. This loop
+    # used to `break` on the first failure, discarding every artifact already
+    # staged — while the `extra` loop below has always skipped-and-continued. A
+    # file that vanished mid-scan (the artifact area has live writers) or is
+    # unreadable must cost us that one file, not the whole snapshot.
+    local added=0 skipped=0 f rel blob first_skip=""
     while IFS= read -r -d '' f; do
         rel="artifacts/${f#"$art_dir"/}"
-        blob="$(GIT_DIR="$_gd" git hash-object -w "$f" 2>/dev/null)" || { rc=1; break; }
-        GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" \
-            git update-index --add --cacheinfo "100644,$blob,$rel" 2>/dev/null || { rc=1; break; }
+        if ! blob="$(GIT_DIR="$_gd" git hash-object -w "$f" 2>/dev/null)"; then
+            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$rel (hash-object)"
+            continue
+        fi
+        if ! GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" \
+                git update-index --add --cacheinfo "100644,$blob,$rel" 2>/dev/null; then
+            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$rel (update-index)"
+            continue
+        fi
         added=$((added + 1))
     done < <(find "$art_dir" -type f -print0 2>/dev/null)
 
@@ -81,36 +134,100 @@ _artifact_persist_snapshot() {
     local extra
     for extra in scope-manifest.md intake.md; do
         [[ -f "$state_dir/$extra" ]] || continue
-        blob="$(GIT_DIR="$_gd" git hash-object -w "$state_dir/$extra" 2>/dev/null)" || continue
-        GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" \
-            git update-index --add --cacheinfo "100644,$blob,$extra" 2>/dev/null || true
+        if ! blob="$(GIT_DIR="$_gd" git hash-object -w "$state_dir/$extra" 2>/dev/null)"; then
+            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$extra (hash-object)"
+            continue
+        fi
+        # #1878: was `|| true` followed by an unconditional added++ — it counted a
+        # doc that update-index had just REFUSED, inflating `added` and letting a
+        # snapshot claim it staged something it had not.
+        if ! GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" \
+                git update-index --add --cacheinfo "100644,$blob,$extra" 2>/dev/null; then
+            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$extra (update-index)"
+            continue
+        fi
         added=$((added + 1))
     done
 
-    if [[ "$rc" -ne 0 || "$added" -eq 0 ]]; then
+    _ARTIFACT_PERSIST_LAST_SKIPPED="$skipped"
+
+    # Nothing staged at all. If files were SKIPPED that is a failure (we had work
+    # and lost it); if there were simply no files, it is an honest empty.
+    if [[ "$added" -eq 0 ]]; then
         rm -f "$tmp_index"
-        [[ "$added" -eq 0 ]] && return 0 || return 1
+        if [[ "$skipped" -gt 0 ]]; then
+            _ARTIFACT_PERSIST_LAST_STATUS="failed"
+            _ARTIFACT_PERSIST_LAST_REASON="all $skipped file(s) unstageable, first: $first_skip"
+            return 1
+        fi
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no files under $art_dir"
+        return 0
     fi
 
-    local tree parent commit
-    tree="$(GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" git write-tree 2>/dev/null)" \
-        || { rm -f "$tmp_index"; return 1; }
-    rm -f "$tmp_index"
+    # #1878: capture stderr from the terminal ops. They used to be 2>/dev/null
+    # followed by a bare `return 1`, so a failure named itself and destroyed its
+    # own explanation — the #1631 anti-pattern, and the reason this defect went
+    # undiagnosed for the life of the feature.
+    local tree parent commit err
+    if ! tree="$(GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" git write-tree 2>"$tmp_index.err")"; then
+        err="$(cat "$tmp_index.err" 2>/dev/null | tr '\n' ' ')"
+        rm -f "$tmp_index" "$tmp_index.err"
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="git write-tree failed: ${err:-<no stderr>} (git_dir=$_gd)"
+        return 1
+    fi
+    rm -f "$tmp_index" "$tmp_index.err"
 
     parent="$(GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" 2>/dev/null || true)"
     # Skip an empty commit when the tree is identical to the current tip.
     if [[ -n "$parent" ]]; then
         local parent_tree; parent_tree="$(GIT_DIR="$_gd" git rev-parse -q --verify "$parent^{tree}" 2>/dev/null || true)"
-        [[ "$parent_tree" == "$tree" ]] && return 0
+        if [[ "$parent_tree" == "$tree" ]]; then
+            _ARTIFACT_PERSIST_LAST_STATUS="unchanged"
+            _ARTIFACT_PERSIST_LAST_REASON="tree identical to $branch tip"
+            return 0
+        fi
     fi
 
     local msg="zbuild: persist artifacts for #$issue [skip ci]"
+    # PR #1880 review: guard the mktemp. An unguarded one leaves _ct_err empty,
+    # `2>""` then fails to open, and commit-tree fails for the WRONG reason with
+    # no captured stderr — a silent failure inside the code whose whole purpose is
+    # to stop silent failures. /dev/null is the honest fallback: we lose the
+    # stderr detail but still report the real git failure.
+    local _ct_err; _ct_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ct_err="/dev/null"
+    [[ -n "$_ct_err" ]] || _ct_err="/dev/null"
     if [[ -n "$parent" ]]; then
-        commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -p "$parent" -m "$msg" 2>/dev/null)" || return 1
+        commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -p "$parent" -m "$msg" 2>"$_ct_err")" || commit=""
     else
-        commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -m "$msg" 2>/dev/null)" || return 1
+        commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -m "$msg" 2>"$_ct_err")" || commit=""
     fi
-    GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$commit" 2>/dev/null || return 1
+    if [[ -z "$commit" ]]; then
+        err="$(cat "$_ct_err" 2>/dev/null | tr '\n' ' ')"
+        rm -f "$_ct_err"
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        # A missing committer identity lands here — the most likely cause on a
+        # fresh runner, and previously indistinguishable from every other failure.
+        _ARTIFACT_PERSIST_LAST_REASON="git commit-tree failed: ${err:-<no stderr>} (git_dir=$_gd)"
+        return 1
+    fi
+    rm -f "$_ct_err"
+
+    # PR #1880 review: guarded (see the _ct_err note above).
+    local _ur_err; _ur_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ur_err="/dev/null"
+    [[ -n "$_ur_err" ]] || _ur_err="/dev/null"
+    if ! GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$commit" 2>"$_ur_err"; then
+        err="$(cat "$_ur_err" 2>/dev/null | tr '\n' ' ')"
+        rm -f "$_ur_err"
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="git update-ref $branch failed: ${err:-<no stderr>} (git_dir=$_gd)"
+        return 1
+    fi
+    rm -f "$_ur_err"
+
+    _ARTIFACT_PERSIST_LAST_STATUS="saved"
+    _ARTIFACT_PERSIST_LAST_REASON="staged $added file(s), skipped $skipped"
     return 0
 }
 
@@ -120,6 +237,7 @@ _artifact_persist_snapshot() {
 # when only the fetched remote ref is present (CI). No-op (rc 0, empty dir) when
 # no state branch exists. Never touches the working tree.
 _artifact_persist_restore() {
+    _artifact_persist_reset_status
     local issue="${1:-0}" restored_dir="$2" repo_root="${3:-$(git rev-parse --show-toplevel 2>/dev/null)}"
     # Resolve the SHARED git dir (see _artifact_persist_git_dir). Two reasons:
     #   1. refs must be read from the shared store, not a per-worktree view;
@@ -128,8 +246,13 @@ _artifact_persist_restore() {
     #      prior artifacts would never come back, with no error to notice.
     local _gd=""
     [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
-    [[ -z "$restored_dir" ]] && return 2
-    [[ -z "$repo_root" || ! -d "$_gd" ]] && return 0
+    [[ -z "$restored_dir" ]] && { _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="no restored_dir given"; return 2; }
+    if [[ -z "$repo_root" || ! -d "$_gd" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="unresolvable repo: repo_root=[${repo_root:-<empty>}] git_dir=[${_gd:-<empty>}] cwd=[$PWD]"
+        return 1
+    fi
 
     local branch; branch="$(_artifact_persist_branch "$issue")"
     local ref=""
@@ -138,11 +261,39 @@ _artifact_persist_restore() {
     elif GIT_DIR="$_gd" git rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null 2>&1; then
         ref="refs/remotes/origin/$branch"
     else
+        # A first-ever run for this issue. Genuinely nothing to restore — the one
+        # early return here that is NOT a failure.
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no $branch locally or on origin (first run)"
         return 0
     fi
 
-    mkdir -p "$restored_dir" || return 1
+    if ! mkdir -p "$restored_dir"; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="mkdir -p $restored_dir failed"
+        return 1
+    fi
     # git archive streams the tree; tar unpacks it, no checkout / index change.
-    GIT_DIR="$_gd" git archive "$ref" 2>/dev/null | tar -x -C "$restored_dir" 2>/dev/null || return 1
+    # #1878: PIPESTATUS, not the pipeline rc — a failing `git archive` piped into
+    # a happy `tar` yields rc=0, so a broken restore reported success.
+    # PR #1880 review: guarded (see the _ct_err note above).
+    local _ar_err; _ar_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-restore-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
+    [[ -n "$_ar_err" ]] || _ar_err="/dev/null"
+    GIT_DIR="$_gd" git archive "$ref" 2>"$_ar_err" | tar -x -C "$restored_dir" 2>>"$_ar_err"
+    local _st=("${PIPESTATUS[@]}")
+    if [[ "${_st[0]}" -ne 0 || "${_st[1]}" -ne 0 ]]; then
+        local err; err="$(cat "$_ar_err" 2>/dev/null | tr '\n' ' ')"
+        rm -f "$_ar_err"
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="restore of $ref failed (archive rc=${_st[0]} tar rc=${_st[1]}): ${err:-<no stderr>}"
+        return 1
+    fi
+    rm -f "$_ar_err"
+    # PR #1880 review: "restored", NOT "saved". The same channel carries both
+    # operations' outcomes, so reusing "saved" would let a caller checking
+    # `== "saved"` to confirm a SNAPSHOT be satisfied by a restore that happened
+    # to run first — the restore runs once at startup, before any snapshot.
+    _ARTIFACT_PERSIST_LAST_STATUS="restored"
+    _ARTIFACT_PERSIST_LAST_REASON="restored from $ref"
     return 0
 }

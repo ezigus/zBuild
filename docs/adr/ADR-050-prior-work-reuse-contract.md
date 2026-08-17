@@ -75,6 +75,44 @@ leaves every completed stage recoverable); **push the state branch once at the e
 pass or fail (reusing the existing `if: always()` push step). Identical snapshots
 are no-ops (no empty commits).
 
+**Amendment (#1878) — the snapshot was never invoked at all.** As shipped in #1581
+its only call site sat inside the runner's **legacy linear stage loop**
+(`runner.sh`, the `for stage in "${active_stages[@]}"` loop). That loop is
+unreachable for every shipped template: a template containing a `cycle:`, `map:` or
+`parallel:` unit sets `_run_dispatch_units=1`, and every terminal branch of the
+dispatch-unit block above it returns. Both `simple.yaml` and `deployed.yaml` yield
+cycle units, so the linear loop never executes — and the store was therefore always
+empty, which is why the restore on the live path always found nothing. This is item
+1 of #1807.
+
+The snapshot is now one helper (`_runner_snapshot_artifacts`) invoked from the
+**live** dispatch-unit completion sites — the `stage:` arm (leaf stages: intake,
+plan, impact, pr), the parallel-group arm, the map-group arm — and from the cycle
+orchestrator's single member-completion funnel
+(`_cycle_emit_member_dispatch_complete`, rc=0 only, matching the leaf contract) so
+that `design`, `design-gate` and the whole of `build_test_cycle` are covered.
+
+The call in the legacy loop is left in place and now routes through the same helper:
+it is unreachable today, but leaving a *divergent* copy behind is how this class of
+defect is manufactured. #1807 owns removing the loop; until then the two paths agree.
+
+**Amendment (#1878) — persistence is advisory but never silent.** A snapshot
+reports one of `saved | empty | unchanged | failed` on
+`_ARTIFACT_PERSIST_LAST_STATUS`, and a failure carries the failing git operation
+and its stderr on `_ARTIFACT_PERSIST_LAST_REASON`. The engine emits
+`artifact.snapshot.failed` / `artifact.restore.failed` accordingly. Previously the
+call site swallowed stderr and the library returned `0` for genuine no-ops, so the
+engine reported `artifact.snapshot.saved` for a snapshot that had saved nothing —
+and a real failure produced no signal anywhere. A single unstageable file now
+skips-and-counts rather than discarding the whole snapshot.
+
+**Amendment (#1878) — push order.** The state-branch push runs **before** the
+work-branch push in `zbuild-pipeline.yml`. Both live in one `run:` block and the
+work push legitimately `exit 1`s on failure, which previously skipped the state
+push entirely — the durable store was sacrificed to a work-branch failure, which is
+precisely the case it exists to survive (observed on run 31798796692, where the work
+push was rejected under #1780).
+
 ### 5. The unified prior-output seam (one path for cycle AND restart)
 
 Consuming stages read prior work through a single helper

@@ -91,5 +91,131 @@ restored2="$TEST_TEMP_DIR/restored-none"
 _artifact_persist_restore 999 "$restored2" "$fx"
 assert_eq "T7 restore of absent issue returns 0" "0" "$?"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# #1878 — the outcome channel, and the production call shape
+#
+# Everything above passes repo_root EXPLICITLY (3-arg) and sets git user.* in the
+# fixture. Production (core/pipeline/runner.sh) passes TWO args and derives
+# repo_root from $(git rev-parse --show-toplevel) against the CWD. That shape was
+# covered by nothing, which is how a feature that never once produced a state
+# branch stayed green across three test layers.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── T8 [change]: the PRODUCTION 2-arg shape (repo_root derived from CWD) ─────
+print_test_section "T8 production call shape — 2 args, repo_root from CWD"
+sd8="$fx/state8"; mkdir -p "$sd8/artifacts"
+printf 'prod-shape\n' > "$sd8/artifacts/plan.json"
+# NOT a ( … ) subshell: the outcome channel is a shell global, and a subshell's
+# assignment would never reach us — the branch would still be created on disk, so
+# the test would look like it passed while asserting nothing about the status.
+_t8_prev_pwd="$PWD"
+cd "$fx" || assert_fail "[T8] could not cd into the fixture repo" "$fx"
+_artifact_persist_snapshot "$sd8" 881
+rc8=$?
+cd "$_t8_prev_pwd" || true
+assert_eq "[T8] 2-arg snapshot returns 0" "0" "$rc8"
+assert_eq "[T8] 2-arg snapshot reports saved" "saved" "$_ARTIFACT_PERSIST_LAST_STATUS"
+if git -C "$fx" rev-parse -q --verify refs/heads/zbuild/state/issue-881 >/dev/null 2>&1; then
+    assert_pass "[T8] 2-arg snapshot created the state branch in the shared ref store"
+else
+    assert_fail "[T8] 2-arg snapshot created the state branch" \
+        "no branch; reason=$_ARTIFACT_PERSIST_LAST_REASON"
+fi
+
+# ── T9 [change]: "nothing to snapshot" is `empty`, never `saved` ────────────
+# The old code returned 0 here, so the runner emitted artifact.snapshot.saved for
+# a snapshot that saved nothing — a success event for a no-op.
+print_test_section "T9 empty is not success"
+sd9="$fx/state9"; mkdir -p "$sd9"          # no artifacts/ subdir at all
+_artifact_persist_snapshot "$sd9" 882 "$fx"
+assert_eq "[T9] absent artifact dir returns 0" "0" "$?"
+assert_eq "[T9] absent artifact dir reports empty, not saved" "empty" "$_ARTIFACT_PERSIST_LAST_STATUS"
+mkdir -p "$sd9/artifacts"                  # present but with no files
+_artifact_persist_snapshot "$sd9" 882 "$fx"
+assert_eq "[T9] empty artifact dir reports empty, not saved" "empty" "$_ARTIFACT_PERSIST_LAST_STATUS"
+
+# ── T10 [change]: an identical re-snapshot is `unchanged`, not `saved` ──────
+print_test_section "T10 unchanged is distinguishable from saved"
+_artifact_persist_snapshot "$sd8" 881 "$fx"
+assert_eq "[T10] re-snapshot of an identical tree reports unchanged" \
+    "unchanged" "$_ARTIFACT_PERSIST_LAST_STATUS"
+
+# ── T11 [change]: one unstageable file is SKIPPED, the rest still commit ────
+# The main loop used to `break` on the first failure and discard everything
+# already staged, while the `extra` loop ten lines below skipped and continued.
+print_test_section "T11 one bad file does not discard the snapshot"
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    assert_pass "[T11] SKIPPED — running as root, chmod 000 cannot make a file unreadable"
+else
+    sd11="$fx/state11"; mkdir -p "$sd11/artifacts"
+    printf 'good-1\n' > "$sd11/artifacts/a.json"
+    printf 'good-2\n' > "$sd11/artifacts/b.json"
+    printf 'nope\n'   > "$sd11/artifacts/unreadable.json"
+    chmod 000 "$sd11/artifacts/unreadable.json"
+    _artifact_persist_snapshot "$sd11" 883 "$fx"
+    rc11=$?
+    chmod 644 "$sd11/artifacts/unreadable.json" 2>/dev/null || true
+    assert_eq "[T11] snapshot still succeeds" "0" "$rc11"
+    assert_eq "[T11] status is saved despite the skip" "saved" "$_ARTIFACT_PERSIST_LAST_STATUS"
+    assert_eq "[T11] the bad file is counted as skipped" "1" "$_ARTIFACT_PERSIST_LAST_SKIPPED"
+    t11_tree="$(git -C "$fx" ls-tree -r --name-only refs/heads/zbuild/state/issue-883 2>/dev/null)"
+    assert_contains "[T11] the readable files were still committed" "$t11_tree" "artifacts/a.json"
+fi
+
+# ── T12 [change]: a failure carries a reason naming the git operation ───────
+# Previously every git call was 2>/dev/null followed by a bare `return 1`, so a
+# failure named itself and destroyed its own explanation (#1631's anti-pattern).
+print_test_section "T12 a failure explains itself"
+sd12="$fx/state12"; mkdir -p "$sd12/artifacts"; printf 'x\n' > "$sd12/artifacts/p.json"
+_artifact_persist_snapshot "$sd12" 884 "$TEST_TEMP_DIR/definitely-not-a-repo"
+rc12=$?
+assert_eq "[T12] an unresolvable repo is a FAILURE, not a silent success" "1" "$rc12"
+assert_eq "[T12] status is failed" "failed" "$_ARTIFACT_PERSIST_LAST_STATUS"
+if [[ -n "$_ARTIFACT_PERSIST_LAST_REASON" ]]; then
+    assert_pass "[T12] the failure carries a non-empty reason"
+else
+    assert_fail "[T12] the failure carries a non-empty reason" "reason was empty"
+fi
+
+# ── T13 [guard]: restore still no-ops cleanly with no state branch ──────────
+print_test_section "T13 restore of an absent issue is empty, not failed"
+_artifact_persist_restore 999123 "$TEST_TEMP_DIR/restored-none-1878" "$fx"
+assert_eq "[T13] absent state branch returns 0" "0" "$?"
+assert_eq "[T13] absent state branch reports empty, not failed" \
+    "empty" "$_ARTIFACT_PERSIST_LAST_STATUS"
+
+# ── T14 [change]: a successful restore reports `restored`, NOT `saved` ──────
+# PR #1880 review: one status channel carries both operations. Reusing "saved"
+# for a restore would let a caller checking `== "saved"` to confirm a SNAPSHOT be
+# satisfied by the restore — which runs first, at startup, on every run.
+print_test_section "T14 restore and snapshot are distinguishable on one channel"
+_artifact_persist_restore 881 "$TEST_TEMP_DIR/restored-881" "$fx"
+assert_eq "[T14] a successful restore returns 0" "0" "$?"
+assert_eq "[T14] and reports 'restored', not 'saved'" \
+    "restored" "$_ARTIFACT_PERSIST_LAST_STATUS"
+
+# ── T15 [guard]: mktemp guards — a failure must not be attributed to git ────
+# PR #1880 review: an unguarded `mktemp -u` left the stderr path empty, `2>""`
+# then failed to open, and the git op failed for the WRONG reason with no
+# captured stderr — a silent failure inside the code whose purpose is to end
+# silent failures. Point TMPDIR at a non-writable location and assert the
+# snapshot still reports a coherent outcome rather than crashing.
+print_test_section "T15 an unusable TMPDIR does not corrupt the failure report"
+sd15="$fx/state15"; mkdir -p "$sd15/artifacts"; printf 'x\n' > "$sd15/artifacts/p.json"
+TMPDIR="/nonexistent-dir-for-1878" _artifact_persist_snapshot "$sd15" 885 "$fx"
+rc15=$?
+case "$_ARTIFACT_PERSIST_LAST_STATUS" in
+    saved|failed)
+        assert_pass "[T15] status is coherent under an unusable TMPDIR (got: $_ARTIFACT_PERSIST_LAST_STATUS, rc=$rc15)" ;;
+    *)
+        assert_fail "[T15] status is coherent under an unusable TMPDIR" \
+            "got: [$_ARTIFACT_PERSIST_LAST_STATUS] rc=$rc15" ;;
+esac
+if [[ "$_ARTIFACT_PERSIST_LAST_STATUS" == "failed" && -z "$_ARTIFACT_PERSIST_LAST_REASON" ]]; then
+    assert_fail "[T15] a failure still carries a reason" "reason was empty"
+else
+    assert_pass "[T15] a failure still carries a reason"
+fi
+
 cleanup_test_env
 print_test_results
