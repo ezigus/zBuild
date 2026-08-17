@@ -16,6 +16,9 @@ _ZBUILD_ROOT_FOR_EVENTS="$(cd "$_ZBUILD_EVENT_BUS_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/compat.sh
 source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/compat.sh"
+# The known-type set (#1717): engine config + every manifest's provides.events.
+# shellcheck source=known-types.sh
+source "$_ZBUILD_EVENT_BUS_DIR/known-types.sh"
 
 # ─── Locations ──────────────────────────────────────────────────────────────
 # An engine run (core/pipeline/runner.sh) ALWAYS pins these to its per-run dir
@@ -90,16 +93,14 @@ SQL
 
 # ─── _eb_known_type — schema-as-warn check ──────────────────────────────────
 # Returns 0 if known, 1 if unknown (but never blocks emission).
+#
+# #1717: this used to fork `jq` against ZBUILD_EVENT_SCHEMA on EVERY emit. The
+# known set now also spans every plugin manifest, so per-emit reading would have
+# multiplied that fork by plugin count. Composition happens once (per process,
+# and once per RUN via the file cache in known-types.sh); the check itself is an
+# associative-array lookup and forks nothing.
 _eb_known_type() {
-    local type="$1"
-    if [[ ! -f "$ZBUILD_EVENT_SCHEMA" ]]; then
-        return 0  # No schema yet; permissive.
-    fi
-    # Simple grep against the schema's known_types list.
-    if jq -e --arg t "$type" '.known_types | index($t)' "$ZBUILD_EVENT_SCHEMA" >/dev/null 2>&1; then
-        return 0
-    fi
-    return 1
+    eb_known_types_has "$1"
 }
 
 # _eb_strip_ansi — strip CSI + bare-ESC sequences from a string before JSONL emission.

@@ -194,14 +194,27 @@ else
 fi
 
 # ─── 9. schema registration ───────────────────────────────────────────────────
-print_test_section "9. test.result_write.fallback registered in event-schema.json"
+# #1717: `test.result_write.fallback` is the test plugin's OWN event, so it is
+# declared in the test plugin's manifest and composed into the known set — no
+# longer in the engine's config/event-schema.json. Asserting against the
+# manifest is the stronger statement: it pins the OWNER, not just membership.
+print_test_section "9. test.result_write.fallback declared by the test plugin's manifest"
 
-if jq -e '.known_types | index("test.result_write.fallback")' \
-        "$REPO_ROOT/config/event-schema.json" >/dev/null 2>&1; then
-    assert_pass "schema: test.result_write.fallback registered"
+source "$REPO_ROOT/core/event-bus/known-types.sh"
+
+if eb_manifest_events "$REPO_ROOT/plugins/tool/test/manifest.yaml" \
+        | grep -qxF "test.result_write.fallback"; then
+    assert_pass "schema: test.result_write.fallback declared in provides.events"
 else
-    assert_fail "schema: test.result_write.fallback registered" \
-        "not present in config/event-schema.json::.known_types"
+    assert_fail "schema: test.result_write.fallback declared in provides.events" \
+        "not present in plugins/tool/test/manifest.yaml::provides.events"
+fi
+
+if eb_compose_known_types | grep -qxF "test.result_write.fallback"; then
+    assert_pass "schema: test.result_write.fallback is in the composed known set"
+else
+    assert_fail "schema: test.result_write.fallback is in the composed known set" \
+        "composition (engine config + manifests) did not yield it"
 fi
 
 print_test_results

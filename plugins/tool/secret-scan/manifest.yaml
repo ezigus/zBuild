@@ -40,6 +40,12 @@ provides:
   role: secret_scan
   artifact_type: secret-scan-result.json
   schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - secret_scan.fail
+    - secret_scan.pass
+    - secret_scan.skip
 
 config:
   valid_verdicts:

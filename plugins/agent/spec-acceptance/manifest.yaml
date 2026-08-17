@@ -67,6 +67,24 @@ provides:
   role: acceptance_gate
   artifact_type: acceptance-gate-result.json
   schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - acceptance.gate.baseline_resolve_failed
+    - acceptance.gate.complete
+    - acceptance.gate.guard_regressed
+    - acceptance.gate.inert_wiring
+    - acceptance.gate.inert_wiring_escalated
+    - acceptance.gate.negctl_harness_error
+    - acceptance.gate.negctl_timeout
+    - acceptance.gate.reachability_timeout
+    - acceptance.gate.skipped
+    - acceptance.gate.start
+    - acceptance.gate.tautology
+    - acceptance.gate.untagged_spec
+    - acceptance.gate.wiring_exempt
+    - acceptance.gate.wiring_not_on_path
+    - acceptance.gate.worktree_failed
 
 config:
   valid_verdicts:

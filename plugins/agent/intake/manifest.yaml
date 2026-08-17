@@ -63,6 +63,26 @@ outputs:
 provides:
   artifact_type: [scope-manifest.md, intake.md]
   role: intake
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - intake.baseline.captured
+    - intake.branch.adopted
+    - intake.branch.created
+    - intake.branch.from_detached
+    - intake.branch.noop
+    - intake.branch.reclaim_refused
+    - intake.branch.reclaimed
+    - intake.branch.reused
+    - intake.error
+    - intake.override.closed_issue_allowed
+    - intake.refused.branch_exists_remote_only
+    - intake.refused.dirty_tree
+    - intake.refused.git_unavailable
+    - intake.refused.invalid_branch_name
+    - intake.refused.issue_closed
+    - intake.refused.repo_state
+    - intake.untracked_baseline.captured
 
 # ADR-047 §6: after this stage completes, the runner merges the operator's
 # --scope override (scope-override.md) into this stage's scope-manifest.md. The

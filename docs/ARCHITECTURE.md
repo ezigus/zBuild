@@ -343,7 +343,7 @@ zBuild has two distinct kinds of "memory." They share no storage and have indepe
 | `core/github/` | label contract, live-updating comment, claim coordination glue |
 | `plugins/<kind>/<name>/` | one plugin per directory, manifest-driven |
 | `config/models.json` | T0–T4 ordinal + model details (data, not code) |
-| `config/event-schema.json` | event types + payload schemas |
+| `config/event-schema.json` | ENGINE-emitted event types; a plugin's own events live in its manifest's `provides.events` and are composed in at load (ADR-001 §Declared events, #1717) |
 | `scripts/` | CLI entry (`zbuild`, `zb`) + shared lib |
 | `scripts/lib/` | `helpers.sh`, `compat.sh`, `test-helpers.sh` |
 | `tests/` | migrated + new tests; `tests/golden/` for snapshot diffs |

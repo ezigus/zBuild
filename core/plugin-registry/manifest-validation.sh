@@ -21,6 +21,13 @@ source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../contract/version.sh"
 # which loads this file to reach the reader — gets it unchanged.
 # shellcheck source=./manifest-router-budget.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-router-budget.sh"
+# ADR-001 §"Declared events" (#1717): `eb_manifest_events`, the ONE reader for
+# `provides.events`. The event-bus owns it because it composes the known set on
+# a path that cannot call back into this registry (see known-types.sh); the
+# validator borrows the same reader so a manifest is never validated by one
+# parser and read by another.
+# shellcheck source=../event-bus/known-types.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../event-bus/known-types.sh"
 
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
@@ -459,6 +466,20 @@ validate_manifest() {
             errors=$((errors + 1))
         fi
     done
+
+    # ─── Optional provides.events — ADR-001 §"Declared events" (#1717) ──────
+    # A declared event is load-bearing: it is what keeps the event-bus from
+    # warning on every firing, so a malformed entry must be a load-time failure
+    # rather than a name that silently never matches an emit.
+    local _ev
+    local _event_name_re='^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$'
+    while IFS= read -r _ev; do
+        [[ -n "$_ev" ]] || continue
+        if ! [[ "$_ev" =~ $_event_name_re ]]; then
+            error "validate_manifest($manifest): provides.events entry '$_ev' is not a valid event name (lowercase, dot-separated, e.g. 'shape_floor.pass')"
+            errors=$((errors + 1))
+        fi
+    done < <(eb_manifest_events "$manifest")
 
     # ─── Optional config.router budget block — ADR-017 §11 (#1816) ──────────
     # A declared budget is load-bearing at dispatch, so it is checked here

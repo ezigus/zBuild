@@ -24,6 +24,28 @@ provides:
   artifact_type: build-summary.json
   role: builder
   schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - build.aborted
+    - build.commit.created
+    - build.commit.skipped
+    - build.cycle.max_turns_clamped
+    - build.diff.binary_truncation_observed
+    - build.diff.empty_after_done_sentinel
+    - build.diff.trailing_newline_restored
+    - build.discrepancy.detected
+    - build.empty_diff
+    - build.git_diff_failed
+    - build.inert_build
+    - build.invariant.diff_is_stub
+    - build.invariant.hunk_count_mismatch
+    - build.numstat.precondition_failed
+    - build.numstat.truncated
+    - build.scope.violation
+    - build.scope_grant_applied
+    - build.scope_injected
+    - build.timeout.partial_work_preserved
 
 config:
   valid_verdicts:
