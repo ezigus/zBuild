@@ -60,6 +60,16 @@ outputs:
     path: ${artifact_dir}/plan-context.json
     type: plan-context.json
     required: false
+  # #1879: the engine-generic stage checkpoint. `role: checkpoint` is what the
+  # engine keys on — NOT the id, which must be unique across every stage in a
+  # template (core/pipeline/contract-validator.sh raises OUTPUT_DUP on a repeat),
+  # so a shared `id: checkpoint` across stages would fail validation.
+  # required:false because a stage that converges early writes nothing.
+  - id: plan-checkpoint
+    path: ${artifact_dir}/plan-checkpoint.md
+    type: checkpoint.md
+    required: false
+    role: checkpoint
 
 state:
   persisted: [last_plan_steps, plan_context_status]

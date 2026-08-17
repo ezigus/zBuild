@@ -84,6 +84,10 @@ fi
 # every routing plugin gets resolve_persona/persona_text by construction.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
+# #1879: the engine-generic stage checkpoint. Sourced here because
+# _route_redact_prompt — the shared single-shot + loop funnel — injects its block.
+# shellcheck source=../../scripts/lib/stage-checkpoint.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
 # Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
 # can inject the advisory Intent preamble into every stage prompt.
@@ -332,6 +336,31 @@ _route_redact_prompt() {
         if [[ -n "$_pre_tmp" ]]; then
             { printf '%s' "$_ROUTE_VISION_PREAMBLE"; cat "$input"; } > "$_pre_tmp" \
                 && mv "$_pre_tmp" "$input" 2>/dev/null || rm -f "$_pre_tmp" 2>/dev/null || true
+        fi
+    fi
+
+    # #1879: the stage-checkpoint block. Injected HERE for the same reason the
+    # vision preamble is — this is the shared funnel for BOTH the single-shot path
+    # and the agentic loop, and injecting before apply_scope_redaction means the
+    # block passes through the redaction chokepoint by construction (ADR-004).
+    #
+    # It is NOT injected from _llm_output_contract: only 3 of the 9 plugins that
+    # call route_to_model* use that builder, and `design` and `build` — the two
+    # heaviest exploration stages, i.e. the ones this feature exists for — are not
+    # among them.
+    #
+    # Appended rather than prepended: the vision preamble's guard is a first-line
+    # check, and prepending here would move its marker off line 1 and make it
+    # re-inject on every retry.
+    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" ]] && declare -F checkpoint_prompt_block >/dev/null 2>&1; then
+        local _cp_state_dir="${ZBUILD_STATE_DIR:-}"
+        local _cp_block=""
+        if [[ -n "$_cp_state_dir" ]]; then
+            _cp_block="$(checkpoint_prompt_block "$ZBUILD_PLUGIN_DIR/manifest.yaml" "$_cp_state_dir" 2>/dev/null || true)"
+        fi
+        # Idempotence: the loop redacts once per iteration against the same file.
+        if [[ -n "$_cp_block" ]] && ! grep -qF "$_ZB_CHECKPOINT_MARKER" "$input" 2>/dev/null; then
+            printf '\n\n%s\n' "$_cp_block" >> "$input" 2>/dev/null || true
         fi
     fi
 
