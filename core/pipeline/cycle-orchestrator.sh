@@ -201,6 +201,18 @@ _cycle_emit_member_dispatch_complete() {
         "rc=$rc" "verdict=$verdict" "status=$status" \
         "disposition=$_disp" "disposition_response=$_disp_resp" \
         2>/dev/null || true
+
+    # ADR-050 (#1878): a cycle member is a stage boundary, and this is the single
+    # funnel every member completion passes through. The snapshot used to live
+    # only on the LEAF path in runner.sh, so `design`, `build` and `test` — most
+    # of a real run's output under simple.yaml — were never persisted at all.
+    #
+    # rc=0 only, matching the leaf contract (which snapshots inside its `rc -eq 0`
+    # branch): a failed member has nothing worth carrying to the next run, and the
+    # abort paths (6/130/143) route through here too.
+    if [[ "$rc" -eq 0 ]] && declare -F _runner_snapshot_artifacts >/dev/null 2>&1; then
+        _runner_snapshot_artifacts "" "$member"
+    fi
 }
 
 # ─── Trap composition (silent-failure findings #5, #6) ───────────────────────

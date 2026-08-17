@@ -218,6 +218,31 @@ jobs:
           # pipeline-owned branch (zbuild/issue-N-ci) that each run regenerates.
           # Last-writer-wins is the intended behavior here — the current run's
           # work is always what we want on origin (#947 CI-7 fix).
+          # ADR-050 (#1581): push the STATE branch (durable prior-run artifacts:
+          # design.md/plan.json/etc.) pass OR fail, so completed-stage work
+          # survives the torn-down runner and the next run restores it. This
+          # branch is never merged into the work branch or main (it's a sibling),
+          # so it can't pollute the PR diff.
+          #
+          # #1878: this MUST come BEFORE the work-branch push. The work push
+          # legitimately `exit 1`s on failure, and because both live in one
+          # `run:` block that exit used to skip this push entirely — the opposite
+          # of the "pushed independently" this comment used to claim. Observed on
+          # run 31798796692: the work push was rejected under #1780 (App token
+          # lacks `workflows` permission) and the whole run's artifacts were lost
+          # with it. Durable state is the LAST thing that should be sacrificed to
+          # a work-branch failure, so it goes first.
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            state_branch="zbuild/state/issue-${ISSUE_NUMBER}"
+            if git rev-parse --verify --quiet "refs/heads/$state_branch" >/dev/null; then
+              git push --force origin "refs/heads/$state_branch:refs/heads/$state_branch" \
+                && echo "::notice::pushed state branch '$state_branch' to origin" \
+                || echo "::warning::failed to push state branch '$state_branch'"
+            else
+              echo "::notice::no state branch '$state_branch' to push (nothing was snapshotted)"
+            fi
+          fi
+
           if ! git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null; then
             echo "::warning::work branch '$branch' not found — pipeline aborted before intake created it; nothing to push"
           else
@@ -228,21 +253,6 @@ jobs:
               git push --force origin "refs/heads/$branch:refs/heads/$branch" \
                 && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
                 || { echo "::error::failed to push '$branch'"; exit 1; }
-            fi
-          fi
-
-          # ADR-050 (#1581): also push the STATE branch (durable prior-run
-          # artifacts: design.md/plan.json/etc.) pass OR fail, so completed-stage
-          # work survives the torn-down runner and the next run restores it. This
-          # branch is never merged into the work branch or main (it's a sibling),
-          # so it can't pollute the PR diff. Pushed independently of the work
-          # branch above — artifacts can exist even when build produced no commit.
-          if [[ -n "$ISSUE_NUMBER" ]]; then
-            state_branch="zbuild/state/issue-${ISSUE_NUMBER}"
-            if git rev-parse --verify --quiet "refs/heads/$state_branch" >/dev/null; then
-              git push --force origin "refs/heads/$state_branch:refs/heads/$state_branch" \
-                && echo "::notice::pushed state branch '$state_branch' to origin" \
-                || echo "::warning::failed to push state branch '$state_branch'"
             fi
           fi
 

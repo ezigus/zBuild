@@ -110,6 +110,56 @@ EOF
 # Globals (not local) so EXIT trap can read them after main() returns.
 _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
 
+# ─── _runner_snapshot_artifacts <state_dir> <stage> (ADR-050, #1581/#1878) ───
+# Snapshot the artifact area onto the state branch at a stage boundary, so a
+# completed stage's work survives a mid-run crash/rate-limit and is available to
+# the next run. Stage-agnostic (snapshots whatever files exist) and advisory —
+# never blocks a run.
+#
+# #1878: ONE definition, called from every stage-completion site on the LIVE
+# dispatch-unit path. It previously existed only inline in the legacy linear stage
+# loop below — which no shipped template ever reaches (any cycle/map/parallel unit
+# sets _run_dispatch_units=1, and every terminal branch of that block returns), so
+# the snapshot was never invoked at all and the store was always empty. That is
+# item 1 of #1807.
+#
+# #1878: also no longer swallows stderr. A snapshot that fails now says so, with
+# the failing git operation named, instead of returning 1 into a `2>/dev/null`
+# and leaving no trace anywhere.
+_runner_snapshot_artifacts() {
+    # $1 may be empty: the cycle-orchestrator call site is several frames from
+    # main(), and relying on main()'s `state_dir` local reaching it through
+    # dynamic scope is exactly the kind of implicit coupling that makes a call
+    # site silently no-op. The runner exports the resolved per-run value at
+    # runner.sh:1739, so fall back to that.
+    local _snap_state_dir="${1:-}" _snap_stage="${2:-unknown}"
+    [[ -n "$_snap_state_dir" ]] || _snap_state_dir="${ZBUILD_STATE_DIR:-}"
+    [[ -n "$_snap_state_dir" ]] || return 0
+    [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]] || return 0
+
+    _artifact_persist_snapshot "$_snap_state_dir" "$_runner_issue" || true
+    case "${_ARTIFACT_PERSIST_LAST_STATUS:-}" in
+        saved)
+            eb_emit_event "artifact.snapshot.saved" \
+                "stage=$_snap_stage" "issue=$_runner_issue" \
+                "skipped=${_ARTIFACT_PERSIST_LAST_SKIPPED:-0}" 2>/dev/null || true
+            ;;
+        failed)
+            # Loud, not fatal. This event is the whole point of #1878: the defect
+            # went undiagnosed for the life of the feature because the failure had
+            # no channel to surface on.
+            eb_emit_event "artifact.snapshot.failed" \
+                "stage=$_snap_stage" "issue=$_runner_issue" \
+                "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
+            warn "artifact snapshot failed at stage '$_snap_stage': ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+            ;;
+        # empty / unchanged are not failures and are not events: emitting
+        # `saved` for them is precisely the lie this change removes.
+        *) : ;;
+    esac
+    return 0
+}
+
 # ─── stage-start time cache (#508) ───────────────────────────────────────────
 # Populated immediately before _render_stage_divider for each stage; read at
 # the ✓/✗ complete/fail sites to compute the duration suffix. assoc array so
@@ -1736,8 +1786,17 @@ main() {
     # T4), so the seam's ZBUILD_RESTORED_ARTIFACTS_DIR points at that subdir.
     if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
         local _restored_root="$state_dir/restored-artifacts"
-        if _artifact_persist_restore "$_runner_issue" "$_restored_root" 2>/dev/null \
-           && [[ -d "$_restored_root/artifacts" ]] \
+        # #1878: no longer 2>/dev/null. A restore that FAILS (as opposed to
+        # finding no prior state) is now reported — the cross-run seam silently
+        # falling back to fresh is exactly how this went unnoticed.
+        _artifact_persist_restore "$_runner_issue" "$_restored_root" || true
+        if [[ "${_ARTIFACT_PERSIST_LAST_STATUS:-}" == "failed" ]]; then
+            eb_emit_event "artifact.restore.failed" \
+                "issue=$_runner_issue" \
+                "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
+            warn "prior-artifact restore failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+        fi
+        if [[ -d "$_restored_root/artifacts" ]] \
            && [[ -n "$(ls -A "$_restored_root/artifacts" 2>/dev/null)" ]]; then
             export ZBUILD_RESTORED_ARTIFACTS_DIR="$_restored_root/artifacts"
             eb_emit_event "artifact.restore.applied" \
@@ -2710,6 +2769,8 @@ main() {
                     _zbuild_state_set_stage_verdict "$state_file" "$_pg_id" "pass"
                     eb_emit_event "stage.complete" "stage=$_pg_id" "verdict=pass" \
                         || { _r=$?; warn "eb_emit_event stage.complete failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                    # #1878: a parallel group is a stage boundary like any other.
+                    _runner_snapshot_artifacts "$state_dir" "$_pg_id"
                     unset ZBUILD_CURRENT_STAGE
                     ;;
                 map:*)
@@ -2809,6 +2870,8 @@ main() {
                     _zbuild_state_set_stage_verdict "$state_file" "$_mg_id" "pass"
                     eb_emit_event "stage.complete" "stage=$_mg_id" "verdict=pass" \
                         || { _r=$?; warn "eb_emit_event stage.complete failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                    # #1878: a map group is a stage boundary like any other.
+                    _runner_snapshot_artifacts "$state_dir" "$_mg_id"
                     unset ZBUILD_CURRENT_STAGE
                     ;;
                 stage:*)
@@ -2882,6 +2945,10 @@ main() {
                     _zbuild_state_set_stage_verdict "$state_file" "$_ust" "${_CYCLE_DISPATCH_VERDICT:-pass}"
                     eb_emit_event "stage.complete" "stage=$_ust" "verdict=${_CYCLE_DISPATCH_VERDICT:-pass}" \
                         || { _r=$?; warn "eb_emit_event stage.complete failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                    # #1878: the LIVE leaf path. Under simple.yaml intake, plan,
+                    # impact and pr complete here — the legacy loop's copy of this
+                    # call has never executed for any shipped template (#1807).
+                    _runner_snapshot_artifacts "$state_dir" "$_ust"
                     ;;
             esac
         done
@@ -3201,16 +3268,12 @@ main() {
                 grep '^+ ' "$state_dir/scope-override.md" >> "$scope_manifest" 2>/dev/null || true
                 info "Appended scope override entries to $scope_manifest"
             fi
-            # ADR-050 (#1581): snapshot the artifact area onto the state branch at
-            # this stage boundary so a completed stage's work survives a mid-run
-            # crash/rate-limit and is available to the next run. Stage-agnostic
-            # (snapshots whatever files exist) and best-effort — never blocks.
-            if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
-                if _artifact_persist_snapshot "$state_dir" "$_runner_issue" 2>/dev/null; then
-                    eb_emit_event "artifact.snapshot.saved" \
-                        "stage=$stage" "issue=$_runner_issue" 2>/dev/null || true
-                fi
-            fi
+            # #1878/#1807: this is the LEGACY linear loop — unreachable for every
+            # shipped template, and the original (only) home of this call, which is
+            # why nothing was ever persisted. Kept and routed through the same
+            # helper rather than deleted: a divergent second copy is how this class
+            # of defect gets manufactured. #1807 owns removing the loop itself.
+            _runner_snapshot_artifacts "$state_dir" "$stage"
         elif [[ $rc -eq 2 ]]; then
             # Partial fanout: at least one platform succeeded and at least one failed.
             # State uses "failed" (ADR-006 enum); partial detail is in the event payload.
