@@ -42,6 +42,10 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - pass
+    - fail
+    - skip
   tier_default: T0
 
 # Zero-input gate: scans the git diff directly, consumes no upstream stage

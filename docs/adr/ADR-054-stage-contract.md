@@ -21,7 +21,7 @@ ADR-001 defined the general plugin contract for all plugin kinds. The stage-boun
 |---|---|
 | Four hooks: `init`, `run`, `finalize`, `cleanup` | Five `plugin_hook_call` sites, **all `run`**. Three of the four were never called — including `cleanup`, which 20+ plugins nevertheless implement. |
 | `rc=1` routes to `kind: recovery` plugins; `rc=2` is fatal | **No recovery plugin has ever been registered.** Stages return 5, 8, 9, 10, 11, 143. |
-| `valid_verdicts` declares a plugin's vocabulary | **No engine code reads it.** Adoption: 1 of 25. |
+| `valid_verdicts` declares a plugin's vocabulary | ~~**No engine code reads it.** Adoption: 1 of 25.~~ **Closed by #1708**: adoption is 25 of 25, and `scripts/lib/lint-verdict-classify.sh` fails the build when a declared verdict is not classified. |
 
 The pattern is one defect, not three: **a declaration nothing enforces.** An unknown verdict draws a yellow glyph; an undeclared hook returns `0` silently; a zero-byte artifact passes the fail-closed scanner. Unrecognized is never a failure, so the document and the engine were free to drift apart for the life of the project.
 
@@ -269,7 +269,7 @@ Declared somewhere and read by nothing. Recording them is the point of this ADR:
 
 | Declaration | Status |
 |-------------|--------|
-| `valid_verdicts` | In manifests, adoption 1 of 25, **no engine code reads it**. This contract makes it load-bearing (§6) — enforced by #1708. It is a gap to close, **not** a field to delete. |
+| `valid_verdicts` | Was: adoption 1 of 25, **no engine code reads it**. This contract makes it load-bearing (§6). **#1708 closed it**: every manifest with a `primary: true` output declares the key (an explicit `[]` when the plugin writes no verdict), and `scripts/lib/lint-verdict-classify.sh` — wired into CI's Lint job and `npm run lint` — fails the build on a declared verdict `verdict_classify` does not classify. It was a gap to close, **not** a field to delete. |
 | `rc=1 → recovery routing` | ADR-001 §"Error semantics". No `kind: recovery` plugin has ever been registered; the path was never implemented. Deleted by §4. |
 | `init`, `finalize` | ADR-001 §"Lifecycle ordering". Never called. Deleted by ADR-056 (#1828). |
 | `cleanup` | Documented since ADR-001 and implemented by 20+ plugins; **never dispatched**. Given a caller by #1829 (§7). |

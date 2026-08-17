@@ -69,6 +69,10 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - pass
+    - fail
+    - route_design
   tier_default: T1
 
 inputs:

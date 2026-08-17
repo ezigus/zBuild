@@ -33,6 +33,10 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - pass
+    - fail
+    - error
   tier_default: T0
   test_cmd_default: "npm test"
   # #846/ADR-034: targeted re-run command template ({files} placeholder, set via

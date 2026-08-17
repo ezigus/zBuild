@@ -27,6 +27,8 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - did_not_finish
   tier_default: T2
 
 inputs:

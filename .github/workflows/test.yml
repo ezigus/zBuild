@@ -31,6 +31,12 @@ jobs:
         if: always()
         # ONE definition, shared with `npm run lint` (#1682).
         run: bash scripts/lib/lint-grep-c.sh
+      - name: Manifest verdicts are classified (#1708)
+        if: always()
+        # ONE definition, shared with `npm run lint` (#1682). Asserts every
+        # manifest-declared verdict is classified by verdict_classify, so the
+        # table can no longer drift out from under the plugins.
+        run: bash scripts/lib/lint-verdict-classify.sh
       - name: Shellcheck (.sh files)
         if: always()
         run: |
