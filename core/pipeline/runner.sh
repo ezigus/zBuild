@@ -1802,13 +1802,23 @@ main() {
         # finding no prior state) is now reported — the cross-run seam silently
         # falling back to fresh is exactly how this went unnoticed.
         _artifact_persist_restore "$_runner_issue" "$_restored_root" || true
-        if [[ "${_ARTIFACT_PERSIST_LAST_STATUS:-}" == "failed" ]]; then
+        local _restore_status="${_ARTIFACT_PERSIST_LAST_STATUS:-}"
+        if [[ "$_restore_status" == "failed" ]]; then
             eb_emit_event "artifact.restore.failed" \
                 "issue=$_runner_issue" \
                 "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
             warn "prior-artifact restore failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
         fi
-        if [[ -d "$_restored_root/artifacts" ]] \
+        # PR #1880 review: gate the ADOPTION on the status, not just on the
+        # directory being non-empty. `git archive | tar` can fail MID-STREAM
+        # (disk full, permissions) leaving a partially-extracted tree — which
+        # satisfies a bare -d/-n check. Without this gate the run would emit
+        # artifact.restore.failed AND artifact.restore.applied for the same
+        # restore, and then feed the truncated tree to every stage's
+        # _read_prior_output seam as if it were complete prior work. Seeding a
+        # stage from a half-restored artifact set is worse than not seeding it.
+        if [[ "$_restore_status" != "failed" ]] \
+           && [[ -d "$_restored_root/artifacts" ]] \
            && [[ -n "$(ls -A "$_restored_root/artifacts" 2>/dev/null)" ]]; then
             export ZBUILD_RESTORED_ARTIFACTS_DIR="$_restored_root/artifacts"
             eb_emit_event "artifact.restore.applied" \

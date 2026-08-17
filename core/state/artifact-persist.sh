@@ -24,7 +24,8 @@ _ZBUILD_ARTIFACT_PERSIST_LOADED=1
 # artifact.snapshot.saved for a snapshot that saved nothing. rc stays ∈ {0,1}
 # (callers and existing tests depend on it); the detail rides these globals.
 #
-#   _ARTIFACT_PERSIST_LAST_STATUS  saved | empty | unchanged | failed
+#   _ARTIFACT_PERSIST_LAST_STATUS  snapshot: saved | empty | unchanged | failed
+#                                  restore:  restored | empty | failed
 #   _ARTIFACT_PERSIST_LAST_REASON  on failed: the git op, its stderr, and the
 #                                  resolved repo_root/git-dir (the two values a
 #                                  silent failure used to hide)
@@ -190,7 +191,13 @@ _artifact_persist_snapshot() {
     fi
 
     local msg="zbuild: persist artifacts for #$issue [skip ci]"
-    local _ct_err; _ct_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-err.XXXXXX")"
+    # PR #1880 review: guard the mktemp. An unguarded one leaves _ct_err empty,
+    # `2>""` then fails to open, and commit-tree fails for the WRONG reason with
+    # no captured stderr — a silent failure inside the code whose whole purpose is
+    # to stop silent failures. /dev/null is the honest fallback: we lose the
+    # stderr detail but still report the real git failure.
+    local _ct_err; _ct_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ct_err="/dev/null"
+    [[ -n "$_ct_err" ]] || _ct_err="/dev/null"
     if [[ -n "$parent" ]]; then
         commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -p "$parent" -m "$msg" 2>"$_ct_err")" || commit=""
     else
@@ -207,7 +214,9 @@ _artifact_persist_snapshot() {
     fi
     rm -f "$_ct_err"
 
-    local _ur_err; _ur_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-err.XXXXXX")"
+    # PR #1880 review: guarded (see the _ct_err note above).
+    local _ur_err; _ur_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ur_err="/dev/null"
+    [[ -n "$_ur_err" ]] || _ur_err="/dev/null"
     if ! GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$commit" 2>"$_ur_err"; then
         err="$(cat "$_ur_err" 2>/dev/null | tr '\n' ' ')"
         rm -f "$_ur_err"
@@ -267,7 +276,9 @@ _artifact_persist_restore() {
     # git archive streams the tree; tar unpacks it, no checkout / index change.
     # #1878: PIPESTATUS, not the pipeline rc — a failing `git archive` piped into
     # a happy `tar` yields rc=0, so a broken restore reported success.
-    local _ar_err; _ar_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-restore-err.XXXXXX")"
+    # PR #1880 review: guarded (see the _ct_err note above).
+    local _ar_err; _ar_err="$(mktemp -u "${TMPDIR:-/tmp}/zbuild-restore-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
+    [[ -n "$_ar_err" ]] || _ar_err="/dev/null"
     GIT_DIR="$_gd" git archive "$ref" 2>"$_ar_err" | tar -x -C "$restored_dir" 2>>"$_ar_err"
     local _st=("${PIPESTATUS[@]}")
     if [[ "${_st[0]}" -ne 0 || "${_st[1]}" -ne 0 ]]; then
@@ -278,7 +289,11 @@ _artifact_persist_restore() {
         return 1
     fi
     rm -f "$_ar_err"
-    _ARTIFACT_PERSIST_LAST_STATUS="saved"
+    # PR #1880 review: "restored", NOT "saved". The same channel carries both
+    # operations' outcomes, so reusing "saved" would let a caller checking
+    # `== "saved"` to confirm a SNAPSHOT be satisfied by a restore that happened
+    # to run first — the restore runs once at startup, before any snapshot.
+    _ARTIFACT_PERSIST_LAST_STATUS="restored"
     _ARTIFACT_PERSIST_LAST_REASON="restored from $ref"
     return 0
 }

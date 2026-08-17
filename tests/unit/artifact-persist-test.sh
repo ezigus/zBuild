@@ -184,5 +184,38 @@ assert_eq "[T13] absent state branch returns 0" "0" "$?"
 assert_eq "[T13] absent state branch reports empty, not failed" \
     "empty" "$_ARTIFACT_PERSIST_LAST_STATUS"
 
+# ── T14 [change]: a successful restore reports `restored`, NOT `saved` ──────
+# PR #1880 review: one status channel carries both operations. Reusing "saved"
+# for a restore would let a caller checking `== "saved"` to confirm a SNAPSHOT be
+# satisfied by the restore — which runs first, at startup, on every run.
+print_test_section "T14 restore and snapshot are distinguishable on one channel"
+_artifact_persist_restore 881 "$TEST_TEMP_DIR/restored-881" "$fx"
+assert_eq "[T14] a successful restore returns 0" "0" "$?"
+assert_eq "[T14] and reports 'restored', not 'saved'" \
+    "restored" "$_ARTIFACT_PERSIST_LAST_STATUS"
+
+# ── T15 [guard]: mktemp guards — a failure must not be attributed to git ────
+# PR #1880 review: an unguarded `mktemp -u` left the stderr path empty, `2>""`
+# then failed to open, and the git op failed for the WRONG reason with no
+# captured stderr — a silent failure inside the code whose purpose is to end
+# silent failures. Point TMPDIR at a non-writable location and assert the
+# snapshot still reports a coherent outcome rather than crashing.
+print_test_section "T15 an unusable TMPDIR does not corrupt the failure report"
+sd15="$fx/state15"; mkdir -p "$sd15/artifacts"; printf 'x\n' > "$sd15/artifacts/p.json"
+TMPDIR="/nonexistent-dir-for-1878" _artifact_persist_snapshot "$sd15" 885 "$fx"
+rc15=$?
+case "$_ARTIFACT_PERSIST_LAST_STATUS" in
+    saved|failed)
+        assert_pass "[T15] status is coherent under an unusable TMPDIR (got: $_ARTIFACT_PERSIST_LAST_STATUS, rc=$rc15)" ;;
+    *)
+        assert_fail "[T15] status is coherent under an unusable TMPDIR" \
+            "got: [$_ARTIFACT_PERSIST_LAST_STATUS] rc=$rc15" ;;
+esac
+if [[ "$_ARTIFACT_PERSIST_LAST_STATUS" == "failed" && -z "$_ARTIFACT_PERSIST_LAST_REASON" ]]; then
+    assert_fail "[T15] a failure still carries a reason" "reason was empty"
+else
+    assert_pass "[T15] a failure still carries a reason"
+fi
+
 cleanup_test_env
 print_test_results
