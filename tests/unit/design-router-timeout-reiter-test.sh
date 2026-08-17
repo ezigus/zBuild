@@ -276,10 +276,18 @@ _MOCK_ROUTER_RC=0
 _MOCK_TERMINATED_REASON="done_sentinel"
 
 # ─── Schema registration check ────────────────────────────────────────────────
-SCHEMA="$REPO_ROOT/config/event-schema.json"
-grep -q '"design.timeout.stub_written"' "$SCHEMA" \
-    && assert_pass "schema: design.timeout.stub_written registered in event-schema.json" \
-    || assert_fail "schema: design.timeout.stub_written missing from event-schema.json"
+# #1717: design.* is the design plugin's own namespace, so the event is declared
+# in the design manifest's provides.events and reaches the known set through
+# composition — not through the engine's config/event-schema.json.
+# shellcheck source=../../core/event-bus/known-types.sh
+source "$REPO_ROOT/core/event-bus/known-types.sh"
+grep -qxF "design.timeout.stub_written" \
+    <<< "$(eb_manifest_events "$REPO_ROOT/plugins/agent/design/manifest.yaml")" \
+    && assert_pass "schema: design.timeout.stub_written declared in the design manifest" \
+    || assert_fail "schema: design.timeout.stub_written missing from provides.events"
+grep -qxF "design.timeout.stub_written" <<< "$(eb_compose_known_types)" \
+    && assert_pass "schema: design.timeout.stub_written is in the composed known set" \
+    || assert_fail "schema: design.timeout.stub_written missing from the composed known set"
 
 _test_cleanup_hook() { cleanup_test_env; }
 

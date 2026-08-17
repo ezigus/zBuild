@@ -202,15 +202,17 @@ print_test_section "9. test.result_write.fallback declared by the test plugin's 
 
 source "$REPO_ROOT/core/event-bus/known-types.sh"
 
-if eb_manifest_events "$REPO_ROOT/plugins/tool/test/manifest.yaml" \
-        | grep -qxF "test.result_write.fallback"; then
+# Here-strings, not pipes: `producer | grep -q` SIGPIPEs the producer under
+# pipefail and turns a FOUND match into a failure (#1015, #1260).
+if grep -qxF "test.result_write.fallback" \
+        <<< "$(eb_manifest_events "$REPO_ROOT/plugins/tool/test/manifest.yaml")"; then
     assert_pass "schema: test.result_write.fallback declared in provides.events"
 else
     assert_fail "schema: test.result_write.fallback declared in provides.events" \
         "not present in plugins/tool/test/manifest.yaml::provides.events"
 fi
 
-if eb_compose_known_types | grep -qxF "test.result_write.fallback"; then
+if grep -qxF "test.result_write.fallback" <<< "$(eb_compose_known_types)"; then
     assert_pass "schema: test.result_write.fallback is in the composed known set"
 else
     assert_fail "schema: test.result_write.fallback is in the composed known set" \

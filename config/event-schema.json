@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "zBuild event-bus schema. Schema-as-warn: unknown types are logged but never block. ENGINE-EMITTED types only (#1717, ADR-001 \u00a7\"Declared events\") \u2014 a plugin declares the events it emits under provides.events in its OWN manifest, and core/event-bus/known-types.sh composes both legs into the known set. Source: docs/ARCHITECTURE.md \u00a76.",
+  "description": "zBuild event-bus schema. Schema-as-warn: unknown types are logged but never block. ENGINE-EMITTED types only (#1717, ADR-001 §\"Declared events\") — a plugin declares the events it emits under provides.events in its OWN manifest, and core/event-bus/known-types.sh composes both legs into the known set. Source: docs/ARCHITECTURE.md §6.",
   "known_types": [
     "pipeline.init",
     "pipeline.start",
