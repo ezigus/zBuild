@@ -38,7 +38,10 @@ eb_manifest_events() {
     /^provides:[[:space:]]*$/ { in_provides = 1; in_events = 0; next }
     in_provides && /^[a-zA-Z_]/ { in_provides = 0; in_events = 0 }
 
-    # Inline form: events: [a.b, c.d]
+    # Inline form: events: [a.b, c.d] — SINGLE-LINE only. A multi-line YAML flow
+    # sequence (`events: [` … `]` on later lines) is not supported: the block
+    # form below is the documented one, and a silently-empty parse is the reason
+    # this limitation is stated here rather than discovered.
     in_provides && /^[[:space:]]+events:[[:space:]]*\[/ {
         line = $0
         sub(/^[^[]*\[/, "", line)
@@ -59,6 +62,10 @@ eb_manifest_events() {
         next
     }
     in_events {
+        # A blank or comment-only line does NOT end the block — YAML allows both
+        # between sequence items, and closing on them would silently drop every
+        # event after the gap (the list would still parse, just short).
+        if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
         # A `- item` indented DEEPER than `events:` is a member; anything else
         # (a sibling key, a shallower list) ends the block.
         if (match($0, /^[[:space:]]+-[[:space:]]+/) && (index($0, "-") - 1) > events_indent) {
@@ -73,6 +80,20 @@ eb_manifest_events() {
         in_events = 0
     }
     ' "$@" 2>/dev/null
+}
+
+# ─── eb_manifest_events_invalid <manifest> ──────────────────────────────────
+# Print every `provides.events` entry that is not a well-formed event name, one
+# per line (nothing = the block is valid). Lives next to the reader on purpose:
+# a shape rule kept in the validator and a parser kept here would drift, and the
+# failure mode of that drift is a declared name that silently never matches an
+# emit. validate_manifest turns each line into a load-time error.
+eb_manifest_events_invalid() {
+    local ev
+    while IFS= read -r ev; do
+        [[ -n "$ev" ]] || continue
+        [[ "$ev" =~ ^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$ ]] || printf '%s\n' "$ev"
+    done < <(eb_manifest_events "$1")
 }
 
 # ─── eb_compose_known_types [schema] [plugins_root] ─────────────────────────
@@ -176,6 +197,11 @@ eb_known_types_load() {
             [[ -n "$t" ]] && types+=("$t")
         done < <(eb_compose_known_types "$schema" "$root")
         _ZBUILD_EB_COMPOSE_COUNT=$((_ZBUILD_EB_COMPOSE_COUNT + 1))
+        # An EMPTY composed set is deliberately not cached. Distinguishing
+        # "cached, and the answer is nothing" from "not cached yet" would need a
+        # sentinel, and the only way to reach it is a tree with neither a schema
+        # file nor a single manifest — which is also the permissive path, where
+        # the check answers 0 for everything anyway.
         [[ ${#types[@]} -gt 0 ]] && _eb_known_types_cache_write "$key" "${types[@]}"
     fi
 

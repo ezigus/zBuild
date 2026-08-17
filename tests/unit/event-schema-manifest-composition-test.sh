@@ -77,6 +77,54 @@ export ZBUILD_PLUGINS_ROOT="$FIXTURE_ROOT"
 # shellcheck source=../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
 
+# A manifest whose events: block is interrupted by a blank line and a comment —
+# both legal YAML between sequence items. The failure this pins is silent: the
+# list still parses, just SHORT, so every event after the gap goes unregistered
+# and warns at runtime with nothing pointing at the manifest.
+mkdir -p "$FIXTURE_ROOT/tool/fixture-gappy"
+cat > "$FIXTURE_ROOT/tool/fixture-gappy/manifest.yaml" <<'YAML'
+id: fixture-gappy
+name: Fixture Gappy
+kind: tool
+version: 0.1.0
+hooks:
+  run: fixture_gappy_run
+provides:
+  role: fixture_gappy
+  events:
+    - fixture_gappy.first
+
+    # a comment between items
+    - fixture_gappy.after_gap
+  schema_version: 1
+YAML
+
+# ─── SPEC-10: a blank/comment line inside events: does not truncate ─────────
+_gappy="$(eb_manifest_events "$FIXTURE_ROOT/tool/fixture-gappy/manifest.yaml" | sort | tr '\n' ' ')"
+assert_eq "[SPEC-10] blank + comment lines inside events: do not truncate the list" \
+    "fixture_gappy.after_gap fixture_gappy.first " "$_gappy"
+
+# ─── SPEC-11: a malformed entry is a load-time failure, not a silent no-match ─
+mkdir -p "$FIXTURE_ROOT/tool/fixture-bad"
+cat > "$FIXTURE_ROOT/tool/fixture-bad/manifest.yaml" <<'YAML'
+id: fixture-bad
+name: Fixture Bad
+kind: tool
+version: 0.1.0
+hooks:
+  run: fixture_bad_run
+provides:
+  role: fixture_bad
+  events:
+    - fixture_bad.ok
+    - NotAnEventName
+YAML
+_invalid="$(eb_manifest_events_invalid "$FIXTURE_ROOT/tool/fixture-bad/manifest.yaml" | tr '\n' ' ')"
+assert_eq "[SPEC-11] a malformed provides.events entry is reported" "NotAnEventName " "$_invalid"
+assert_eq "[SPEC-11] a well-formed manifest reports nothing" "" \
+    "$(eb_manifest_events_invalid "$FIXTURE_ROOT/tool/fixture-gate/manifest.yaml")"
+rm -rf "$FIXTURE_ROOT/tool/fixture-gappy" "$FIXTURE_ROOT/tool/fixture-bad"
+
 # ─── SPEC-9: both list forms parse ──────────────────────────────────────────
 _block="$(eb_manifest_events "$FIXTURE_ROOT/tool/fixture-gate/manifest.yaml" | sort | tr '\n' ' ')"
 assert_eq "[SPEC-9a] block list form parses" "fixture_gate.fail fixture_gate.pass " "$_block"
