@@ -737,9 +737,25 @@ $_plan_instructions"
             fi
 
             if [[ "$_is_scope_too_large" -eq 1 ]]; then
-                # Recover partial reasoning + num_turns from the sidecar.
-                local _stl_reasoning _stl_turns
-                _stl_reasoning="$_sidecar_blob"
+                # Recover partial reasoning + num_turns.
+                #
+                # #1879: prefer the MODEL-WRITTEN checkpoint over the sidecar
+                # distillation. The sidecar route cannot work: the CLI's
+                # error_max_turns envelope carries neither `.result` nor
+                # `.tool_uses` (verified against the real #1708 artifact), so
+                # plan_context_recover_sidecar_reasoning distils only
+                # "num_turns: N" — which is what made #1052's "re-running this
+                # issue will resume from it" an empty promise. The checkpoint is
+                # what the model actually recorded as it worked.
+                local _stl_reasoning _stl_turns _stl_checkpoint=""
+                if declare -F _checkpoint_declared_path >/dev/null 2>&1; then
+                    local _stl_cp_path
+                    _stl_cp_path="$(_checkpoint_declared_path "$_PLAN_DIR/manifest.yaml" \
+                        "${ZBUILD_STATE_DIR:-$(dirname "$artifact_dir")}" 2>/dev/null || true)"
+                    [[ -n "$_stl_cp_path" && -s "$_stl_cp_path" ]] && _stl_checkpoint="$(cat "$_stl_cp_path" 2>/dev/null || true)"
+                fi
+                _stl_reasoning="$_stl_checkpoint"
+                [[ -z "$_stl_reasoning" ]] && _stl_reasoning="$_sidecar_blob"
                 [[ -z "$_stl_reasoning" ]] && _stl_reasoning="$(plan_context_recover_sidecar_reasoning "${ZBUILD_CURRENT_STAGE:-plan}" "$artifact_dir" 2>/dev/null || true)"
                 _stl_turns="$(jq -r '.num_turns // ""' "$_stl_sidecar" 2>/dev/null || true)"
 
