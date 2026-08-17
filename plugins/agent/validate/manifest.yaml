@@ -29,6 +29,9 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - healthy
+    - error
   tier_default: T2
 
 inputs:

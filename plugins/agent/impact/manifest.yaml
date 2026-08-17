@@ -39,6 +39,11 @@ config:
   valid_verdicts:
     - complete
     - incomplete
+    # #1708: impact ALSO writes verdict=error on a non-timeout router failure
+    # (plugin.sh:342) so the cycle's blocked-predicate can flag it. The original
+    # declaration omitted it — the one manifest that adopted valid_verdicts was
+    # itself incomplete, which is the case for enforcing it rather than trusting it.
+    - error
 
 inputs:
   - id: scope_manifest

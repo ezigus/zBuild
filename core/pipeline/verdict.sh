@@ -7,12 +7,20 @@
 # stage; now reflects the plugin's actual verdict).
 #
 # Verdict table (PINNED — see ADR-019 / ADR-020 amendment):
-#   pass, approve, complete, skip                 → ✓ GREEN
-#   request_changes                               → ⚠ YELLOW
+#   pass, approve, complete, skip, skipped,
+#   healthy, deployed                             → ✓ GREEN
+#   request_changes, degraded                     → ⚠ YELLOW
 #   fail, error, block, scope_violation,
 #   corrupt_diff                                  → ✗ RED
 #   missing/malformed on declared-primary         → ⚠ YELLOW + stage.verdict.missing
 #   rc != 0 (any cause)                           → ✗ RED  (rc always wins)
+#
+# #1708: this table is no longer hand-maintained against drift. Every plugin
+# manifest with a `primary: true` output declares `config.valid_verdicts`, and
+# scripts/lib/lint-verdict-classify.sh fails the build when a declared verdict
+# is not classified here. The `*)` → unknown arm below stays as the RUNTIME
+# backstop for undeclared/malformed values; the lint means a shipped plugin can
+# no longer be the cause.
 #
 # Public API:
 #   runner_read_stage_verdict <state_dir> <manifest_path> <stage> <rc>
@@ -79,6 +87,18 @@ verdict_classify() {
         # spurious pipeline.indicator.unknown_verdict events on every dispatch.
         complete|skip)
             echo "pass" ;;
+        # #1708: terminal SUCCESS states of the deploy/validate stages.
+        #   skipped  — deploy declined to act because the gate was not pass. The
+        #              stage did its job (fail-closed); it is not a failure. Note
+        #              this is a DISTINCT string from the gates' `skip`.
+        #   healthy  — validate's health-check passed.
+        #   deployed — deploy / deploy-release completed the release.
+        # These stages are not in simple.yaml's flow today, so no run has ever
+        # surfaced them — the drift was already on disk waiting for the template
+        # to grow. Declared in their manifests' valid_verdicts and pinned by
+        # scripts/lib/lint-verdict-classify.sh.
+        skipped|healthy|deployed)
+            echo "pass" ;;
         # #775: `incomplete` is impact's "cycle has not converged yet" verdict
         # (analogous to review's `request_changes`) — iterating, not done.
         # Maps to warn, not fail. Without this, every impact-incomplete fired
@@ -88,7 +108,15 @@ verdict_classify() {
         # It is deliberately NOT in the structural-failure pass-through set
         # (error/corrupt_diff/block) so _cycle_detect_blocked never halts on it —
         # a timeout iterates, it does not block the cycle.
-        request_changes|incomplete|did_not_finish)
+        # #1708: `degraded` is monitor's "service is up but below threshold"
+        # verdict — deliberately warn, not fail. monitor normalises anything that
+        # is not `pass` to `degraded` (plugins/agent/monitor/plugin.sh:143), so
+        # classifying it fail would make an unparseable model response
+        # indistinguishable from a genuine outage and would halt a cycle on an
+        # infrastructure hiccup — the #1702 failure mode. The stage still returns
+        # rc=1 on degraded, and rc always wins, so a real halt is unaffected;
+        # this classification governs the INDICATOR only.
+        request_changes|incomplete|did_not_finish|degraded)
             echo "warn" ;;
         fail|error|block|scope_violation|corrupt_diff|empty_diff|scope_too_large|inert_build)
             echo "fail" ;;

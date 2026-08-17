@@ -25,6 +25,12 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - pass
+    - scope_violation
+    - did_not_finish
+    - empty_diff
+    - inert_build
   tier_default: T2
 
 inputs:

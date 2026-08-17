@@ -52,6 +52,10 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - pass
+    - fail
+    - route_design
   tier_default: T0
 
 # The gate results are read by filename from the shared artifacts dir (the same

@@ -52,6 +52,9 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - pass
+    - fail
   tier_default: T0
 
 inputs:

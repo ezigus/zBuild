@@ -35,6 +35,10 @@ provides:
   schema_version: 1
 
 config:
+  # Writes no .verdict on either verdict channel; the engine falls back to
+  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
+  # is a lint failure; the explicit [] is the claim (#1708).
+  valid_verdicts: []
   tier_default: T2
   # I6 fixed lens roster (the full cq+persona roster is #974). Each lens is a
   # SEPARATE LLM call (not one prompt with N sections — the cq-cycle trap

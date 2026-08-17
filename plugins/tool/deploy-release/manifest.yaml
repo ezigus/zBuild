@@ -26,6 +26,9 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - deployed
+    - error
   tier_default: T0
 
 inputs:

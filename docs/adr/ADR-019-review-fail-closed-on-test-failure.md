@@ -238,10 +238,34 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | Verdict (raw)                                | Class | Glyph | Color  |
 | -------------------------------------------- | ----- | ----- | ------ |
 | `pass`, `approve`, `complete`, `skip`        | pass  | `✓`   | GREEN  |
-| `request_changes`                            | warn  | `⚠`   | YELLOW |
+| `skipped`, `healthy`, `deployed`             | pass  | `✓`   | GREEN  |
+| `request_changes`, `incomplete`, `did_not_finish`, `degraded` | warn | `⚠` | YELLOW |
 | `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
+| `empty_diff`, `scope_too_large`, `inert_build` | fail | `✗`  | RED    |
 | missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |
 | `rc != 0` (any cause)                        | fail  | `✗`   | RED — rc always wins |
+
+**This table is no longer hand-maintained (#1708).** It drifted five times
+(#775, #1208, #1219, #1532, #1687), and every drift was discovered the same way:
+a spurious `pipeline.indicator.unknown_verdict` in a dogfood run, then a one-line
+patch after the fact. Every plugin manifest with a `primary: true` output now
+declares `config.valid_verdicts`, and `scripts/lib/lint-verdict-classify.sh`
+fails the build — in CI's Lint job and in `npm run lint` — when a declared
+verdict is not classified by `verdict_classify`. A plugin that writes no verdict
+declares an explicit `valid_verdicts: []`; an *absent* key is itself a failure,
+because optionality is why adoption sat at 1-of-25.
+
+The `*)` → `unknown` arm remains as the **runtime** backstop for undeclared or
+malformed values (a corrupt artifact, a target-repo-supplied string). The lint
+only guarantees that a *shipped plugin* can no longer be the cause.
+
+`skipped` (deploy declining to act because the gate was not `pass`) is a
+deliberately distinct string from the gates' `skip`; both classify `pass`.
+`degraded` is classified **warn, not fail**: `monitor` normalises any non-`pass`
+model response to `degraded`, so classifying it `fail` would make an unparseable
+response indistinguishable from a genuine outage (the #1702 failure mode). The
+stage still returns rc=1, and rc always wins, so a real halt is unaffected — the
+classification governs the indicator only.
 
 `security-lens` keeps its **informational** role: an emitted
 `security-findings.json` is always treated as `pass`, never as a stop.

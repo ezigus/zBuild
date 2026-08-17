@@ -32,6 +32,9 @@ provides:
   schema_version: 1
 
 config:
+  valid_verdicts:
+    - pass
+    - degraded
   tier_default: T1
 
 inputs:
