@@ -47,6 +47,9 @@ requires:
   core:
     - redaction
 provides:
+  # artifact-contract-minimal.yaml declares roles: [intake]; resolve_stage_plugin
+  # fails closed when a declared role resolves to nothing.
+  role: intake
   artifact_type: findings.json
 outputs:
   - name: findings
@@ -170,6 +173,7 @@ requires:
   core:
     - redaction
 provides:
+  role: intake
   artifact_type: findings.json
 EOF
 cat > "$B_PLUGINS/agent/noartifact-nopaths/plugin.sh" <<'EOF'
