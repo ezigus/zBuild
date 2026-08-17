@@ -2667,6 +2667,10 @@ main() {
                     local _pg_flow_csv="${!_pg_flow_var:-}"
                     local _pg_max_var="_TPL_PARALLEL_MAX_${_pg_safe}"
                     local _pg_max="${!_pg_max_var:-auto}"
+                    eb_emit_event "stage.start" "stage=$_pg_id" \
+                        || { _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                    _RUNNER_STAGE_START_MS[$_pg_id]="$(_runner_now_ms)"
+                    export ZBUILD_CURRENT_STAGE="$_pg_id"
                     _render_parallel_entry "$_pg_id" "$_pg_max" "$_pg_flow_csv"
                     export ZBUILD_SEQ_PREFIX="$_runner_cardinal"
                     # `&& _rc=0 || _rc=$?` captures the rc without tripping set -e.
@@ -2686,6 +2690,7 @@ main() {
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
                         _render_pipeline_end "failed"
                         _runner_ended=true
+                        unset ZBUILD_CURRENT_STAGE
                         error "Parallel group $_pg_id aborted (rc=$_rc)"
                         return "$_rc"
                     fi
@@ -2697,9 +2702,15 @@ main() {
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
                         _render_pipeline_end "failed"
                         _runner_ended=true
+                        unset ZBUILD_CURRENT_STAGE
                         error "Parallel group $_pg_id failed (rc=$_rc)"
                         return 1
                     fi
+                    _update_stage_status "$state_file" "$_pg_id" "complete"
+                    _zbuild_state_set_stage_verdict "$state_file" "$_pg_id" "pass"
+                    eb_emit_event "stage.complete" "stage=$_pg_id" "verdict=pass" \
+                        || { _r=$?; warn "eb_emit_event stage.complete failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                    unset ZBUILD_CURRENT_STAGE
                     ;;
                 map:*)
                     # issue #1295 (ADR-047 §2): a map group occupies ONE cardinal
@@ -2769,6 +2780,10 @@ main() {
                     local _mg_max="${!_mg_max_var:-auto}"
                     local _mg_on_err_var="_TPL_MAP_ON_ERR_${_mg_safe}"
                     local _mg_on_err="${!_mg_on_err_var:-continue}"
+                    eb_emit_event "stage.start" "stage=$_mg_id" \
+                        || { _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                    _RUNNER_STAGE_START_MS[$_mg_id]="$(_runner_now_ms)"
+                    export ZBUILD_CURRENT_STAGE="$_mg_id"
                     _render_parallel_entry "$_mg_id" "$_mg_max" "$_mg_elems_csv"
                     set +e
                     # #1312: pass max_parallel and on_member_error so _strategy_run_map
@@ -2786,9 +2801,15 @@ main() {
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
                         _render_pipeline_end "failed"
                         _runner_ended=true
+                        unset ZBUILD_CURRENT_STAGE
                         error "map group '$_mg_id' failed (rc=$_rc)"
                         return 1
                     fi
+                    _update_stage_status "$state_file" "$_mg_id" "complete"
+                    _zbuild_state_set_stage_verdict "$state_file" "$_mg_id" "pass"
+                    eb_emit_event "stage.complete" "stage=$_mg_id" "verdict=pass" \
+                        || { _r=$?; warn "eb_emit_event stage.complete failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                    unset ZBUILD_CURRENT_STAGE
                     ;;
                 stage:*)
                     local _ust="${_unit#stage:}"
