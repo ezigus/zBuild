@@ -54,6 +54,8 @@ requires:
 provides:
   artifact_type: <type>
   schema_version: <int>
+  events:                       # OPTIONAL — amended 2026-08-17 (#1717)
+    - <namespace>.<event>       # every event THIS plugin emits in its own namespace
 
 config:
   <key>: <default>
@@ -172,6 +174,59 @@ If a plugin declares `provides.artifact_type` but no artifact exists at `outputs
 ### Cross-plugin dependencies
 
 A plugin's `requires.plugins` list is enforced at discovery time: the engine refuses to start if a required plugin is missing or disabled. Cyclic dependencies are detected and refused.
+
+### Declared events (amended 2026-08-17 — #1717)
+
+A plugin declares the events it emits in its own manifest, under `provides.events`:
+
+```yaml
+provides:
+  role: shape_floor
+  events:
+    - shape_floor.pass
+    - shape_floor.fail
+```
+
+The engine composes the known-type set at load from `config/event-schema.json` **plus** every discovered
+manifest's `provides.events` (`core/event-bus/known-types.sh`). Before this, `config/event-schema.json`
+enumerated all 269 event names — about half of them plugins' — so a plugin could not register an event
+without editing a file in the engine's `config/` directory. That file is a shape-change path
+(`config/shape-change-paths.txt`), so plugin work that touched it was pushed into shape-change mode and
+the shape floor then demanded golden updates the plan had not scoped. On run `20260803093634-57718`
+(PR #1697) the build's only in-scope option was to **un-register the event it had just added** — which is
+how `acceptance.gate.wiring_not_on_path` came to be emitted but unknown. Adding an event now touches
+exactly one file, and it is always a file already in scope for the plugin being worked on.
+
+**Ownership rule.** Ownership is by *namespace*, with one exception:
+
+- **Engine** (`config/event-schema.json`): `pipeline.*`, `stage.*`, `stage_io.*`, `plugin.*`, `cycle.*`,
+  `router.*`, `loop.*`, `state.*`, `registry.*`, `parallel.*`, `redaction.*`, `template.*`, `strategy.*`,
+  `artifact.*`, `model.*`, `cost.*`, plus the engine's contract layers — `recovery.*` (the `kind: recovery`
+  dispatch contract), `orch.*` (`core/orch/contract.sh`), `memory.*` (`core/memory/contract.sh`),
+  `backend.*` (`core/config/config.sh`), `detection.*` (`core/detect`), `llm.*` (`scripts/lib/llm-agent.sh`),
+  `selfhost.*`. These are named by the *contract*, not by whichever backend plugin is bound to it: the
+  event means the same thing whichever `orch-*`/`memory-*` plugin is selected, so it cannot live in one
+  of them.
+- **Plugin** (its `provides.events`): every other namespace, resolved to the plugin that emits it —
+  `review.*` → `review-aggregator`, `test_assessment.*` → `test`, `claim.*` → the claim-coordinator
+  plugin, `validate.health_check.*` → `health-check` (not `validate` — the *emitter* decides when a
+  namespace spans plugins), `deploy.release.*` → `deploy-release`, `release.*` → `deploy-release`.
+- **Exception:** `plugin.pr_open.*` is engine-namespaced but names a single plugin, so it belongs to
+  `pr-open`.
+
+A plugin MAY emit an engine event (`plugin.run.complete`, `loop.git_diff_failed`) without declaring it —
+those are the engine's contract, declared centrally. It may NOT emit an event in its own namespace
+without declaring it; `tests/unit/event-schema-emitted-coverage-test.sh` [SPEC-1717-1] fails the build.
+
+**Cost.** `_eb_known_type` used to fork one `jq` **per emit**; composing from N manifests per emit would
+have multiplied that by plugin count. Composition happens once per process into an associative array,
+and once per **run** into `${ZBUILD_EVENTS_DIR}/known-event-types.cache` (keyed by schema path +
+plugins root, replaced atomically), so the steady-state check forks nothing at all. Pinned by
+`tests/unit/event-schema-manifest-composition-test.sh` [SPEC-4]/[SPEC-5].
+
+**Seams.** `ZBUILD_EVENT_SCHEMA` still substitutes the engine leg (~240 tests set it); `ZBUILD_PLUGINS_ROOT`
+substitutes the manifest leg. Severity is unchanged — schema-as-warn: an unknown type is logged and
+never blocks.
 
 ## Consequences
 

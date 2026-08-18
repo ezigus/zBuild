@@ -27,6 +27,17 @@ provides:
   artifact_type: impact.json
   role: impact_analyzer
   schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - impact.contract.violation
+    - impact.envelope.recovered
+    - impact.hallucination.filtered
+    - impact.scope.expanded
+    - impact.scope.plateau
+    - impact.verdict.complete
+    - impact.verdict.error
+    - impact.verdict.incomplete
 
 config:
   # T2 (sonnet), not T1 (haiku): impact is the most tool-heavy agentic stage

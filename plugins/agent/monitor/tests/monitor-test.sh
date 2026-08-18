@@ -145,23 +145,35 @@ else
     assert_fail "[SPEC-4] plugin should return non-zero rc on model error"
 fi
 
-# ─── [SPEC-6] config/event-schema.json registers monitor.* events ─────────────
-print_test_section "[SPEC-6] event-schema.json registers monitor.started, monitor.check, monitor.alert"
+# ─── [SPEC-6] the monitor manifest declares its own monitor.* events ─────────
+# #1717: monitor.* are the monitor plugin's events, so they live in the plugin's
+# own manifest (provides.events) and reach the known set through composition,
+# not through the engine's config/event-schema.json. Both legs are asserted: the
+# declaration (ownership) and the composed set (the engine actually sees it).
+print_test_section "[SPEC-6] monitor's manifest declares monitor.started, monitor.check, monitor.alert"
 
-_schema_file="$REPO_ROOT/config/event-schema.json"
-assert_file_exists "[SPEC-6] event-schema.json exists" "$_schema_file"
+_manifest_file="$REPO_ROOT/plugins/agent/monitor/manifest.yaml"
+assert_file_exists "[SPEC-6] monitor manifest exists" "$_manifest_file"
 
-_schema_has_started="$(jq -r 'if (.known_types | index("monitor.started")) then "yes" else "no" end' "$_schema_file" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-6] event-schema.json registers monitor.started" \
-    "yes" "$_schema_has_started"
+# shellcheck source=../../../../core/event-bus/known-types.sh
+source "$REPO_ROOT/core/event-bus/known-types.sh"
+_declared_events="$(eb_manifest_events "$_manifest_file")"
+_composed_events="$(eb_compose_known_types)"
 
-_schema_has_check="$(jq -r 'if (.known_types | index("monitor.check")) then "yes" else "no" end' "$_schema_file" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-6] event-schema.json registers monitor.check" \
-    "yes" "$_schema_has_check"
-
-_schema_has_alert="$(jq -r 'if (.known_types | index("monitor.alert")) then "yes" else "no" end' "$_schema_file" 2>/dev/null || echo 'error')"
-assert_eq "[SPEC-6] event-schema.json registers monitor.alert" \
-    "yes" "$_schema_has_alert"
+for _ev in monitor.started monitor.check monitor.alert; do
+    if grep -qxF "$_ev" <<< "$_declared_events"; then
+        assert_pass "[SPEC-6] manifest declares $_ev under provides.events"
+    else
+        assert_fail "[SPEC-6] manifest declares $_ev under provides.events" \
+            "absent from $_manifest_file"
+    fi
+    if grep -qxF "$_ev" <<< "$_composed_events"; then
+        assert_pass "[SPEC-6] $_ev is in the composed known set"
+    else
+        assert_fail "[SPEC-6] $_ev is in the composed known set" \
+            "composition (engine config + manifests) did not yield it"
+    fi
+done
 
 # ─── [SPEC-7] validate_manifest passes on manifest.yaml ──────────────────────
 print_test_section "[SPEC-7] validate_manifest passes on plugins/agent/monitor/manifest.yaml"

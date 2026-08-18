@@ -30,6 +30,11 @@ provides:
   # Notes for the canonical vs. secondary artifact convention.
   artifact_type: pr-url.txt
   schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - plugin.pr_open.branch_fallback_used
+    - plugin.pr_open.preflight_remote_has_work
 
 config:
   # Writes no .verdict on either verdict channel; the engine falls back to

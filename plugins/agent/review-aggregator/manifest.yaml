@@ -42,6 +42,16 @@ requires:
 provides:
   role: review_aggregator
   schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - review.acceptance_coverage.gap
+    - review.jq.parse_error
+    - review.scope.violation
+    - review.test_assessment.consumed
+    - review.test_status.coerced
+    - review.test_status.missing
+    - review_aggregator.no_lenses
 
 # Proximity-window de-dupe (lines): two findings on the same file+category
 # within this many lines collapse to one. Controlled at runtime via the

@@ -193,14 +193,22 @@ else
 fi
 unset MOCK_DESIGN_WRITE_PATH
 
-# ─── T5: events.design.stray.* registered in event-schema.json ──────────────
-SCHEMA="$REPO_ROOT/config/event-schema.json"
-grep -q '"design.stray.recovered"' "$SCHEMA" \
-    && assert_pass "T5: event-schema.json registers design.stray.recovered" \
-    || assert_fail "T5: design.stray.recovered missing from event-schema.json"
-grep -q '"design.stray.conflict"' "$SCHEMA" \
-    && assert_pass "T5: event-schema.json registers design.stray.conflict" \
-    || assert_fail "T5: design.stray.conflict missing from event-schema.json"
+# ─── T5: design.stray.* declared by the design plugin's own manifest ────────
+# #1717: design.* is the design plugin's namespace, so its events live in the
+# manifest's provides.events and are composed into the known set at load.
+# shellcheck source=../../core/event-bus/known-types.sh
+source "$REPO_ROOT/core/event-bus/known-types.sh"
+grep -qxF "design.stray.recovered" \
+    <<< "$(eb_manifest_events "$REPO_ROOT/plugins/agent/design/manifest.yaml")" \
+    && assert_pass "T5: the design manifest declares design.stray.recovered" \
+    || assert_fail "T5: design.stray.recovered missing from provides.events"
+grep -qxF "design.stray.recovered" <<< "$(eb_compose_known_types)" \
+    && assert_pass "T5b: design.stray.recovered is in the composed known set" \
+    || assert_fail "T5b: design.stray.recovered missing from the composed known set"
+grep -qxF "design.stray.conflict" \
+    <<< "$(eb_manifest_events "$REPO_ROOT/plugins/agent/design/manifest.yaml")" \
+    && assert_pass "T5c: the design manifest declares design.stray.conflict" \
+    || assert_fail "T5c: design.stray.conflict missing from provides.events"
 
 cleanup_test_env
 print_test_results

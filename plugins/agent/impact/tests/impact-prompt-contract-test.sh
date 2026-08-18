@@ -41,9 +41,15 @@ assert_contains "T2: parser switched to extract_json_and_surrounding_prose" \
     "$(cat "$PROMPT_FILE")" "extract_json_and_surrounding_prose"
 
 # T3: contract violation event registered
-SCHEMA_FILE="$REPO_ROOT/config/event-schema.json"
-assert_contains "T3: impact.contract.violation in event-schema.json" \
-    "$(cat "$SCHEMA_FILE")" "impact.contract.violation"
+# #1717: impact.* belongs to the impact plugin, so the event is declared in its
+# own manifest (provides.events) and composed into the engine's known set.
+# shellcheck source=../../../../core/event-bus/known-types.sh
+source "$REPO_ROOT/core/event-bus/known-types.sh"
+assert_contains "T3: impact.contract.violation declared in the impact manifest" \
+    "$(eb_manifest_events "$REPO_ROOT/plugins/agent/impact/manifest.yaml")" \
+    "impact.contract.violation"
+assert_contains "T3b: impact.contract.violation in the composed known set" \
+    "$(eb_compose_known_types)" "impact.contract.violation"
 
 # T4: fenced+prose input parses cleanly
 fenced_input='Based on my analysis:

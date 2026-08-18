@@ -23,6 +23,17 @@ provides:
   artifact_type: plan.json
   role: planner
   schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - plan.context.persisted
+    - plan.context.resume_skipped
+    - plan.context.resumed
+    - plan.dod_violation
+    - plan.envelope.recovered
+    - plan.flow_wiring_missing
+    - plan.scope.violation
+    - plan.scope_too_large
 
 config:
   # #1879: retry ONCE when the model runs out of turns. Worth taking only because
