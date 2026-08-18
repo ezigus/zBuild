@@ -184,7 +184,7 @@ orch_has_capability() {
     local caps
     caps="$(orch_capabilities)"
     # Simple grep-based check — no jq required for the mock.
-    if printf '%s' "$caps" | grep -qF "\"${cap}\""; then
+    if grep -qF "\"${cap}\"" <<< "$caps"; then
         return 0
     fi
     return 1

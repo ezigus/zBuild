@@ -77,7 +77,7 @@ _sf_is_schema_append_only() {
     diff_out="$(_sf_schema_diff "$repo_root")"
     [[ -z "$diff_out" ]] && return 1
     # Fail if any content line was removed (lines starting with '-' but not '---' header)
-    if printf '%s\n' "$diff_out" | grep -qE '^-[^-]'; then
+    if grep -qE '^-[^-]' <<< "$diff_out"; then
         return 1
     fi
     # Must have at least one added content line (not just headers)
@@ -85,7 +85,7 @@ _sf_is_schema_append_only() {
     [[ -z "$added" ]] && return 1
     # Every added line must be a bare array element; any other added shape
     # (an object key, a nested structure) is not a known_types append.
-    if printf '%s\n' "$added" | grep -qvE '^\+[[:space:]]*"[^"]+",?[[:space:]]*$'; then
+    if grep -qvE '^\+[[:space:]]*"[^"]+",?[[:space:]]*$' <<< "$added"; then
         return 1
     fi
     return 0
@@ -101,13 +101,13 @@ _sf_collect_missing_floor_files() {
     local f
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        if ! printf '%s\n' "$diff_files" | grep -qxF "$f"; then
+        if ! grep -qxF "$f" <<< "$diff_files"; then
             printf '%s\n' "$f"
         fi
     done < <(_impact_list_event_goldens "$tests_root")
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        if ! printf '%s\n' "$diff_files" | grep -qxF "$f"; then
+        if ! grep -qxF "$f" <<< "$diff_files"; then
             printf '%s\n' "$f"
         fi
     done < <(_impact_list_order_assertions "$tests_root")
@@ -172,7 +172,7 @@ _sf_shape_floor() {
     local missing=0 golden order_file
     while IFS= read -r golden; do
         [[ -z "$golden" ]] && continue
-        if ! printf '%s\n' "$diff_files" | grep -qxF "$golden"; then
+        if ! grep -qxF "$golden" <<< "$diff_files"; then
             missing=1; break
         fi
     done < <(_impact_list_event_goldens "$tests_root")
@@ -181,7 +181,7 @@ _sf_shape_floor() {
     if [[ $missing -eq 0 ]]; then
         while IFS= read -r order_file; do
             [[ -z "$order_file" ]] && continue
-            if ! printf '%s\n' "$diff_files" | grep -qxF "$order_file"; then
+            if ! grep -qxF "$order_file" <<< "$diff_files"; then
                 missing=1; break
             fi
         done < <(_impact_list_order_assertions "$tests_root")

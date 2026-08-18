@@ -411,7 +411,7 @@ _release_publish() {
         _skip_publish=true
     else
         # --force always re-tags: the merged commit is the release commit.
-        if $git_tag_cmd tag -l "$tag" 2>/dev/null | grep -qF "$tag"; then
+        if grep -qF "$tag" <<< "$($git_tag_cmd tag -l "$tag" 2>/dev/null)"; then
             info "release: tag $tag already exists — --force set, re-tagging"
             $git_tag_cmd tag -d "$tag" 2>/dev/null || true
         fi

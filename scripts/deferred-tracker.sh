@@ -58,7 +58,7 @@ match_signal_phrases() {
         # matches literally instead of being parsed as a capture group.
         escaped_phrase="$(printf '%s' "$lower_phrase" | sed 's/[][().*+?{}|^$\\]/\\&/g')"
         # Past-tense guard: skip if phrase appears only after past-tense markers
-        if printf '%s' "$lower_body" | grep -qE "(already|was|has been|have been) [a-z ]*${escaped_phrase}"; then
+        if grep -qE "(already|was|has been|have been) [a-z ]*${escaped_phrase}" <<< "$lower_body"; then
             # Tolerate when present-tense usage also exists in same body
             local total_hits past_hits
             total_hits="$(printf '%s' "$lower_body" | grep -oE "(^|[^a-z0-9])${escaped_phrase}([^a-z0-9]|$)" | wc -l | tr -d ' ')"
@@ -68,7 +68,7 @@ match_signal_phrases() {
             fi
         fi
         # Word-boundary check
-        if printf '%s' "$lower_body" | grep -qE "(^|[^a-z0-9])${escaped_phrase}([^a-z0-9]|$)"; then
+        if grep -qE "(^|[^a-z0-9])${escaped_phrase}([^a-z0-9]|$)" <<< "$lower_body"; then
             printf '%s\n' "$phrase"
         fi
     done
@@ -434,7 +434,7 @@ has_human_comments() {
     local issue_num="$1"
     local body comments
     body="$(gh issue view "$issue_num" --json body --jq '.body' 2>/dev/null || printf '')"
-    if printf '%s' "$body" | grep -qE '^[[:space:]]*- \[x\]'; then
+    if grep -qE '^[[:space:]]*- \[x\]' <<< "$body"; then
         return 0
     fi
     comments="$(gh issue view "$issue_num" --json comments \

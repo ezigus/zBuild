@@ -142,7 +142,7 @@ _artifact_md_escape_block() {
 # ─── _artifact_pick_fence <body> — pick triple or quadruple backtick fence ──
 _artifact_pick_fence() {
     local body="$1"
-    if printf '%s' "$body" | grep -qE '`{3,}'; then
+    if grep -qE '`{3,}' <<< "$body"; then
         printf '%s' '````'
     else
         printf '%s' '```'
@@ -334,7 +334,7 @@ render_diff_md() {
         printf '_no changes_'
         return 0
     fi
-    if ! printf '%s' "$input" | grep -q '^diff --git '; then
+    if ! grep -q '^diff --git ' <<< "$input"; then
         local fence; fence="$(_artifact_pick_fence "$input")"
         printf '%s diff\n%s\n%s' "$fence" "$input" "$fence"
         return 0

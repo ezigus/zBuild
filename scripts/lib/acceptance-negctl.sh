@@ -94,8 +94,8 @@ _negctl_guard_log_check() {
     tagged="$(printf '%s\n' "$clean" | LC_ALL=C grep -F "[$spec_id]" 2>/dev/null)" || return 2
     # ✗ wins over ✓: a guard with one failing and one passing tagged assertion
     # has regressed.
-    printf '%s\n' "$tagged" | LC_ALL=C grep -qF '✗' 2>/dev/null && return 0
-    printf '%s\n' "$tagged" | LC_ALL=C grep -qF '✓' 2>/dev/null && return 1
+    LC_ALL=C grep -qF '✗' <<< "$tagged" 2>/dev/null && return 0
+    LC_ALL=C grep -qF '✓' <<< "$tagged" 2>/dev/null && return 1
     return 2
 }
 

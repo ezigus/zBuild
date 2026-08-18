@@ -129,7 +129,7 @@ claim_coordinator_claim() {
         printf '{"acquired": false, "lease_id": "%s", "reason": "backend_read_error"}\n' "$lease_id"
         return 1
     fi
-    if echo "$existing" | grep -q "^claimed:" && ! echo "$existing" | grep -Fxq "$our_label"; then
+    if grep -q "^claimed:" <<< "$existing" && ! grep -Fxq "$our_label" <<< "$existing"; then
         printf '{"acquired": false, "lease_id": "%s", "reason": "already_claimed"}\n' "$lease_id"
         return 0
     fi
@@ -163,7 +163,7 @@ claim_coordinator_claim() {
     local claim_count
     claim_count="$(echo "$all_claims" | grep -c "^claimed:" || true)"
 
-    if ! echo "$all_claims" | grep -Fxq "$our_label"; then
+    if ! grep -Fxq "$our_label" <<< "$all_claims"; then
         printf '{"acquired": false, "lease_id": "%s", "reason": "our_label_missing_after_add"}\n' "$lease_id"
         return 0
     fi

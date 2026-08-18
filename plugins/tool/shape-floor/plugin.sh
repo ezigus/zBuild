@@ -88,7 +88,8 @@ shape_floor_run() {
             while IFS= read -r _mf; do
                 [[ -z "$_mf" ]] && continue
                 _total=$(( _total + 1 ))
-                if ! printf '%s' "$_scope" | tr ',' '\n' | grep -qxF "$_mf"; then
+                # #1884: the substitution completes before grep -q runs, so its early exit signals nobody.
+                if ! grep -qxF "$_mf" <<< "$(printf '%s' "$_scope" | tr ',' '\n')"; then
                     _oos=$(( _oos + 1 ))
                 fi
             done < <(_sf_collect_missing_floor_files "$repo_root" "$_diff_files")

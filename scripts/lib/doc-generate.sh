@@ -288,7 +288,7 @@ _doc_generate_page() {
         # to obey. Only strips when a `# ` heading is present (else write as-is so
         # a genuinely heading-less response is not silently emptied).
         local page="$trimmed"
-        if printf '%s\n' "$page" | grep -qE '^# '; then
+        if grep -qE '^# ' <<< "$page"; then
             page="$(printf '%s\n' "$page" | sed -n '/^# /,$p')"
         fi
         # Write the page atomically (no leftover .bak — #1492).

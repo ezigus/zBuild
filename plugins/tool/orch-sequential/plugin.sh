@@ -19,7 +19,7 @@ _ZBUILD_ORCH_SEQUENTIAL_LOADED=1
 _orch_seq_validate_pool_id() {
     local pool_id="$1"
     local caller="${2:-orch_sequential}"
-    if [[ "$pool_id" == ".." ]] || printf '%s' "$pool_id" | grep -qE '(/|\.\.|[[:space:]])'; then
+    if [[ "$pool_id" == ".." ]] || grep -qE '(/|\.\.|[[:space:]])' <<< "$pool_id"; then
         warn "${caller}: invalid pool_id (contains /, .., or whitespace): ${pool_id}" || true
         return 1
     fi
