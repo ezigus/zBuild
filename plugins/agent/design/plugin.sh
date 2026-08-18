@@ -10,7 +10,7 @@
 # Lifecycle:
 #   design_stage_run         — derive paths, delegate to _design_stage_run_inner
 #   _design_stage_run_inner  — redact → route_to_model_loop → assert scope block
-#   design_stage_cleanup     — emit plugin.cleanup.complete
+#   design_stage_cleanup     — no-op (the engine brackets the hook, #1705)
 #
 # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design function)
 # legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design helper)

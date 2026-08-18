@@ -9,7 +9,7 @@
 # Lifecycle:
 #   build_stage_run         — derive paths, delegate to _build_stage_run_inner
 #   _build_stage_run_inner  — redact → route_to_model_loop → git diff → write
-#   build_stage_cleanup     — emit plugin.cleanup.complete
+#   build_stage_cleanup     — no-op (the engine brackets the hook, #1705)
 #
 # CRITICAL: diff.patch is NEVER applied here — it is the working-tree diff
 # left by the agent loop, captured via `git diff HEAD` after the loop returns.

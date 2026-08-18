@@ -9,7 +9,7 @@
 # Lifecycle:
 #   plan_run         — derive paths, delegate to _plan_run_inner
 #   _plan_run_inner  — redact → route → validate → emit stage.complete
-#   plan_cleanup     — emit plugin.cleanup.complete, return 0
+#   plan_cleanup     — no-op (the engine brackets the hook, #1705), return 0
 
 [[ -n "${_ZBUILD_PLAN_LOADED:-}" ]] && return 0
 _ZBUILD_PLAN_LOADED=1
