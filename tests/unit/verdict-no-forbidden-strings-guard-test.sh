@@ -41,15 +41,11 @@ for dir in "${SEARCH_DIRS[@]}"; do
     fi
 done
 
-# [SPEC-14] The forbidden strings must not appear in .verdict positions in
-# any production source (core/ plugins/ config/). This assertion fails at the
-# merge-base baseline where all four strings appeared as verdict values.
-if [[ -z "$MATCHES" ]]; then
-    assert_pass "[SPEC-14] no forbidden verdict strings in core/plugins/config (ADR-054 §6)"
-else
-    assert_fail "[SPEC-14] forbidden verdict strings found in .verdict positions — ADR-054 §6 violation" \
-        "$MATCHES"
-fi
+# [SPEC-14] Change-behavior: the forbidden strings must not appear in .verdict
+# positions in any production source after the migration. Fails at merge-base
+# (where all four appear in verdict positions) and passes after migration.
+assert_eq "[SPEC-14] no forbidden verdict strings in core/plugins/config (ADR-054 §6)" \
+    "" "$MATCHES"
 
 print_test_results
 cleanup_test_env
