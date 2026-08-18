@@ -155,8 +155,20 @@ if [[ -f "$BUILD_PLUGIN/manifest.yaml" ]]; then
     rc=$?
     set -e
     assert_eq "[SPEC-7] real build plugin: zero-byte primary build-summary.json fails" "1" "$rc"
+
+    # [SPEC-11] (#1832, ADR-054 §6): lifecycle enforcement accepts verdict=fail (the new
+    # encoding for inert_build). scan_plugin_outputs checks artifact presence, not verdict
+    # vocabulary — the manifest's valid_verdicts update (inert_build→fail) is invisible here,
+    # so this is a guard: primary artifact present with any non-empty verdict JSON passes.
+    printf '{"result_contract":2,"verdict":"fail","disposition":"broken","data":{"build_kind":"inert_build"}}' \
+        > "$STATE_DIR/artifacts/build-summary.json"
+    set +e
+    scan_plugin_outputs "$BUILD_PLUGIN" "$STATE_FILE" 2>/dev/null
+    rc=$?
+    set -e
+    assert_eq "[SPEC-11] real build plugin: verdict=fail (inert_build encoding) accepted as valid primary output" "0" "$rc"
 else
-    assert_fail "[SPEC-6/7] real build plugin manifest present" "not found at $BUILD_PLUGIN"
+    assert_fail "[SPEC-6/7/11] real build plugin manifest present" "not found at $BUILD_PLUGIN"
 fi
 
 # ── SPEC-10: a non-canonical `primary: True` must still count as primary ──────

@@ -202,6 +202,11 @@ if grep -q '"reason":"converged"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_pass "[SPEC-1] did not converge on the empty timeout design"
 fi
+# [SPEC-9] (#1832, ADR-054): design timeout halts via disposition=interrupted predicate
+# (not old verdict=did_not_finish). The stub maps dnf→verdict=incomplete+disposition=interrupted;
+# at baseline the cycle checked verdict=="did_not_finish" and would miss this → no halt.
+assert_eq "[SPEC-9] design timeout halt fires on disposition=interrupted (not old verdict=did_not_finish)" \
+    "design_timeout_exhausted" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 
 # ─── SPEC-2 [guard]: CONTENT non-convergence keeps ADR-019 continue (rc=2) ────
 print_test_section "SPEC-2: design-gate fails on CONTENT 3x (no timeout) → rc=2 (on_max=continue, ADR-019 unchanged)"
