@@ -117,10 +117,13 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_REASON=""
     case "$_st_stage" in
         build)
-            printf '{"schema_version":1,"verdict":"empty_diff","iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
+            # ADR-054: new format — verdict=pass + disposition=complete + data.build_kind=empty_diff
+            printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
                 > "$_art/build-summary.json"
-            _CYCLE_DISPATCH_VERDICT="empty_diff"
-            _CYCLE_DISPATCH_VERDICT_RAW="empty_diff"
+            _CYCLE_DISPATCH_VERDICT="pass"
+            _CYCLE_DISPATCH_VERDICT_RAW="pass"
+            _CYCLE_DISPATCH_DISPOSITION="complete"
+            _CYCLE_DISPATCH_DATA_KIND="empty_diff"
             ;;
         test)
             printf '{"schema_version":1,"verdict":"pass","exit_code":0,"passed":1,"failed":0}' \

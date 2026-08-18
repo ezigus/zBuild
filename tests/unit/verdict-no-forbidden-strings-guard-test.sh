@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [SPEC-14] Guard: the four forbidden verdict strings must not appear in
+# [SPEC-14] Change-behavior: the four forbidden verdict strings must not appear in
 # .verdict positions in any plugin primary output (ADR-054 §6 / issue #1832).
 #
 # This test greps core/, plugins/, and config/ for the pattern
