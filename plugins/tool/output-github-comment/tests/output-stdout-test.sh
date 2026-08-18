@@ -99,7 +99,7 @@ else
     assert_pass "gh not called when both destination vars unset"
 fi
 
-# ─── Test 5: plugin.run.complete event has dest=stdout ───────────────────────
+# ─── Test 5: plugin.result event has dest=stdout ─────────────────────────────
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 
 dest_val=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \

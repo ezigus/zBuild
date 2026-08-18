@@ -231,7 +231,7 @@ _plan_validate_dod_discipline() {
 
 # Walk plan.json's steps[].files[] and emit one plan.scope.violation event per
 # offending path. Fail-soft: prints the violation count to stdout (caller adds
-# it to plugin.run.complete) and returns 0 even when violations are found.
+# it to plugin.result) and returns 0 even when violations are found.
 # Args:
 #   $1 = plan_json (string content)
 #   $2 = scope_manifest path
@@ -664,10 +664,10 @@ $_plan_instructions"
         #
         # `recovery_attempted`, NOT `recoverable`: this fires BEFORE recovery
         # runs, so it cannot claim the outcome. Pairing an optimistic
-        # `recoverable=1` with a later plugin.run.error would read as a
+        # `recoverable=1` with a later failure event would read as a
         # contradiction in the event log. The outcome is carried by the events
         # that follow — plan.envelope.recovered on success, plan.scope_too_large
-        # on a budget exhaustion, plugin.run.error otherwise.
+        # on a budget exhaustion, plugin.result verdict=error otherwise.
         warn "_plan_run_inner: router rc=$router_rc — trying recovery before failing"
         emit_event "plan.router_failed" "plugin=plan" \
             "reason=router_failed" "router_rc=$router_rc" "recovery_attempted=1" \

@@ -177,7 +177,7 @@ error_reason=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
 assert_eq "plugin.result emitted with gh_failed" "gh_failed" "$error_reason"
 unset ZBUILD_ISSUE
 
-# ─── Test 9: plugin.run.complete event with findings_count ───────────────────
+# ─── Test 9: plugin.result event with findings_count ─────────────────────────
 cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
 #!/usr/bin/env bash
 exit 0
