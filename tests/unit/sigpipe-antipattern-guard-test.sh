@@ -29,14 +29,35 @@ print_test_header "SIGPIPE antipattern guard — all tiers (#1015, #1260)"
 
 # `|| true`: grep exits 1 on no-match, which would abort under `set -e` before the assert.
 # Self-exclude this guard (it contains the pattern as a regex literal, not a real pipeline).
+#
+# #1884: the leading `(^|[^|])` is load-bearing. Without it the pattern matches
+# the SECOND `|` of `||`, so the entirely legitimate `cmd || grep -q ...` reads
+# as a pipe into grep. That false positive was invisible while the guard only
+# scanned tests — `||` before a grep is an engine idiom — and surfaced the
+# moment the scan was widened to production code.
 _offenders="$(
   {
-    grep -rnE '\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' \
+    grep -rnE '(^|[^|])\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' \
       "$REPO_ROOT/tests/unit" "$REPO_ROOT/tests/integration" "$REPO_ROOT/tests/e2e" 2>/dev/null || true
-    grep -rnE '\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' "$REPO_ROOT/plugins" "$REPO_ROOT/core" \
-      --include='*-test.sh' 2>/dev/null || true
+    # #1884: ENGINE code, not just tests. The guard protected the tests from a
+    # bug class that had 29 live instances in production — one of which
+    # (scripts/lib/artifact-render.sh:337) failed the Coverage job on PR #1883,
+    # on a file that PR did not touch. Coverage tracing runs slow enough to flip
+    # the race, which is exactly why this reads as a flake and gets re-run
+    # instead of fixed.
+    #
+    # The worst instances were in scripts/lib/shape-floor.sh — a GATE. A SIGPIPE
+    # there makes `if !` take the wrong branch, i.e. the gate decides the
+    # opposite of what it computed, in the permissive direction (cf. #1758).
+    #
+    # legacy/ is excluded: it is a frozen import and contractually never runs.
+    grep -rnE '(^|[^|])\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' \
+      "$REPO_ROOT/scripts" "$REPO_ROOT/core" "$REPO_ROOT/plugins" \
+      --include='*.sh' 2>/dev/null || true
   } | { grep -v '/sigpipe-antipattern-guard-test.sh:' || true; } \
-    | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; }
+    | { grep -v "^$REPO_ROOT/legacy/" || true; } \
+    | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
+    | sort -u
 )"
 # (second filter drops full-line COMMENTS that merely mention the pattern — e.g. a
 #  doc comment explaining the fix — so they don't read as real offenders.)
@@ -56,6 +77,34 @@ else
   assert_fail "all tiers free of the printf|grep -q SIGPIPE antipattern" \
     "found $_count occurrence(s); see list above (#1015, #1260)"
 fi
+
+# ─── #1884: pin the DETECTOR itself, not just the tree ───────────────────────
+# The scan above asserts "the tree is clean", which passes just as happily if the
+# regex has stopped matching anything. These fixtures pin what it must and must
+# not catch. The `||` case is a real regression: the pattern used to match the
+# second `|` of `||`, which was invisible while only tests were scanned and
+# produced two false positives the moment the scan reached engine code.
+_sp_re='(^|[^|])\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q'
+
+_sp_check() { grep -qE "$_sp_re" <<< "$1" && echo yes || echo no; }
+
+print_test_section "[#1884] the detector catches the hazard and nothing else"
+
+assert_eq "[#1884] printf | grep -q            -> offender" \
+    "yes" "$(_sp_check 'if printf "%s" "$v" | grep -q foo; then')"
+assert_eq "[#1884] echo | grep -q              -> offender" \
+    "yes" "$(_sp_check 'if echo "$v" | grep -qF foo; then')"
+assert_eq "[#1884] cmd | ENV=x grep -q         -> offender" \
+    "yes" "$(_sp_check 'printf "%s" "$v" | LC_ALL=C grep -qF foo')"
+assert_eq "[#1884] find | grep -q              -> offender" \
+    "yes" "$(_sp_check 'if find . -name x | grep -q .; then')"
+
+assert_eq "[#1884] cmd || grep -q              -> NOT an offender" \
+    "no"  "$(_sp_check 'grep -q a f || grep -qF "$b" g')"
+assert_eq "[#1884] here-string form            -> NOT an offender" \
+    "no"  "$(_sp_check 'if grep -q foo <<< "$v"; then')"
+assert_eq "[#1884] grep without -q             -> NOT an offender" \
+    "no"  "$(_sp_check 'printf "%s" "$v" | grep -E foo')"
 
 print_test_results
 exit $((FAIL > 0))

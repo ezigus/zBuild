@@ -61,7 +61,7 @@ cache_has_capability() {
         echo "$caps_json" | jq -e --arg c "$cap" '.capabilities | index($c) != null' >/dev/null 2>&1
     else
         # grep for the capability quoted inside the array, not just anywhere in JSON
-        echo "$caps_json" | grep -qE '"capabilities"\s*:\s*\[([^]]*"'"$cap"'"[^]]*)\]'
+        grep -qE '"capabilities"\s*:\s*\[([^]]*"'"$cap"'"[^]]*)\]' <<< "$caps_json"
     fi
 }
 

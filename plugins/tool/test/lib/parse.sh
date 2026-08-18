@@ -51,7 +51,7 @@ _TEST_FAIL_MARKER_RE='^[A-Za-z][A-Za-z0-9_-]*: (FAIL|TIMEOUT) '
 # token cannot precede ` :` — so a generic name class cannot cross-capture.
 _test_pattern_runall() {
     local raw="$1" rc="$2"
-    printf '%s' "$raw" | grep -qE '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed' || return 1
+    grep -qE '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed' <<< "$raw" || return 1
 
     local total_passed=0 total_count=0 fail_files=0 parts="" failing=""
     local line suite n m
@@ -135,7 +135,7 @@ _test_pattern_jest() {
 # Anchor: leading whitespace + `N passing` (distinguishes from jest's `passed`).
 _test_pattern_mocha() {
     local raw="$1" rc="$2"
-    printf '%s\n' "$raw" | grep -qE '^[[:space:]]+[0-9]+ passing' || return 1
+    grep -qE '^[[:space:]]+[0-9]+ passing' <<< "$raw" || return 1
 
     local passed failed
     passed="$(printf '%s\n' "$raw" | grep -oE '[0-9]+ passing' | tail -n1 | awk '{print $1}')"
@@ -175,7 +175,7 @@ _test_pattern_pytest() {
 # Anchor: `^(=== RUN|--- (PASS|FAIL):)`.
 _test_pattern_gotest() {
     local raw="$1" rc="$2"
-    printf '%s\n' "$raw" | grep -qE '^(=== RUN|--- (PASS|FAIL):)' || return 1
+    grep -qE '^(=== RUN|--- (PASS|FAIL):)' <<< "$raw" || return 1
 
     local passed failed
     passed="$(printf '%s\n' "$raw" | grep -cE '^--- PASS:')"
@@ -195,7 +195,7 @@ _test_pattern_gotest() {
 # Anchor: `^test result: (ok|FAILED)\. N passed`.
 _test_pattern_cargo() {
     local raw="$1" rc="$2"
-    printf '%s\n' "$raw" | grep -qE '^test result: (ok|FAILED)\. [0-9]+ passed' || return 1
+    grep -qE '^test result: (ok|FAILED)\. [0-9]+ passed' <<< "$raw" || return 1
 
     local passed failed
     passed="$(printf '%s\n' "$raw" \

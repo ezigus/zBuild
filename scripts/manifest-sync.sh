@@ -172,7 +172,7 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
     if [[ -z "$pr_body" || "$pr_body" == "null" ]]; then
         pr_body=""
     fi
-    if ! echo "$pr_body" | grep -qiE '(closes|fixes|resolves)[ ]+#[0-9]+'; then
+    if ! grep -qiE '(closes|fixes|resolves)[ ]+#[0-9]+' <<< "$pr_body"; then
         if gha_is_already_scanned "$pr_num" "$ORPHAN_PRS_LOG"; then
             continue
         fi

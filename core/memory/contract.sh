@@ -26,7 +26,7 @@ memory_has_capability() {
     fi
     local caps
     caps="$(memory_capabilities 2>/dev/null)" || return 1
-    if printf '%s' "$caps" | grep -qF "\"${cap}\"" 2>/dev/null; then
+    if grep -qF "\"${cap}\"" <<< "$caps" 2>/dev/null; then
         return 0
     fi
     return 1

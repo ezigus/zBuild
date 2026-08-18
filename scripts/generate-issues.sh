@@ -106,7 +106,7 @@ for i in $(seq 0 $((label_count - 1))); do
     name="$(yq ".labels[$i].name" "$MANIFEST")"
     color="$(yq ".labels[$i].color" "$MANIFEST")"
     desc="$(yq ".labels[$i].description" "$MANIFEST")"
-    if echo "$existing_labels" | grep -qx "$name"; then
+    if grep -qx "$name" <<< "$existing_labels"; then
         echo "  ${DIM}skip label (exists): $name${RESET}"
     else
         run_gh label create "$name" --color "$color" --description "$desc" 2>/dev/null && \
@@ -123,7 +123,7 @@ milestone_count=$(yq '.milestones | length' "$MANIFEST")
 for i in $(seq 0 $((milestone_count - 1))); do
     title="$(yq ".milestones[$i].title" "$MANIFEST")"
     desc="$(yq ".milestones[$i].description" "$MANIFEST")"
-    if echo "$existing_milestones" | grep -qFx "$title"; then
+    if grep -qFx "$title" <<< "$existing_milestones"; then
         echo "  ${DIM}skip milestone (exists): $title${RESET}"
     else
         if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -210,7 +210,7 @@ for i in $(seq 0 $((issue_count - 1))); do
         body="$(render_keeper_body "$i")"
     fi
 
-    if echo "$existing_titles" | grep -qFx "$title"; then
+    if grep -qFx "$title" <<< "$existing_titles"; then
         if [[ "$UPDATE_EXISTING" -eq 1 ]]; then
             # Find the issue number
             issue_num="$(gh issue list --state all --limit 500 --json number,title \

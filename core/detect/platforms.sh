@@ -78,7 +78,9 @@ _platform_detected_in_repo_legacy() {
     fi
     local IFS=':'
     for pattern in $indicators; do
-        if find "$repo_root" -maxdepth 3 -name "$pattern" 2>/dev/null | grep -q .; then
+        # #1884: `[[ -n "$(...)" ]]` rather than `find | grep -q .` — grep -q exits
+        # on the first hit while find is still walking, and find takes SIGPIPE.
+        if [[ -n "$(find "$repo_root" -maxdepth 3 -name "$pattern" 2>/dev/null)" ]]; then
             return 0
         fi
     done
@@ -150,7 +152,7 @@ _score_platform_signals() {
             local weight; weight="$(_strength_to_score "$str")"
             (( weight == 0 )) && continue
             local dir_pat="${pat%/}"
-            if find "$repo_root" -maxdepth 3 -type d -name "$dir_pat" 2>/dev/null | grep -q .; then
+            if [[ -n "$(find "$repo_root" -maxdepth 3 -type d -name "$dir_pat" 2>/dev/null)" ]]; then
                 total=$((total + weight))
             fi
         done < <(_parse_detect_signals "$manifest" "directories")

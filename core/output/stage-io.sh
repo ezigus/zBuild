@@ -308,7 +308,7 @@ stage_io_begin() {
     _STAGE_IO_START_NS[$key]="$(_stage_io_now_ms)"
 
     # Banner — only emit if stdout destination is configured.
-    if [[ -n "$dests_nl" ]] && printf '%s\n' "$dests_nl" | grep -qx "stdout"; then
+    if [[ -n "$dests_nl" ]] && grep -qx "stdout" <<< "$dests_nl"; then
         # Find metadata.artifact key if provided (so #470's input-side renderer
         # dispatch can run during the input phase, before end-time merge).
         local _artifact_id="" _i

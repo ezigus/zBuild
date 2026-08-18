@@ -145,13 +145,13 @@ _plan_validate_dod_discipline() {
 
     # Detect issue-body sections that trigger discipline.
     local has_dod=0 has_5test=0 has_antipatterns=0
-    if printf '%s' "$goal_text" | grep -Eqi '^#+[[:space:]]*(Definition of done|Acceptance criteria)\b'; then
+    if grep -Eqi '^#+[[:space:]]*(Definition of done|Acceptance criteria)\b' <<< "$goal_text"; then
         has_dod=1
     fi
-    if printf '%s' "$goal_text" | grep -Eqi '^#+[[:space:]]*5-test trial\b'; then
+    if grep -Eqi '^#+[[:space:]]*5-test trial\b' <<< "$goal_text"; then
         has_5test=1
     fi
-    if printf '%s' "$goal_text" | grep -Eqi '^#+[[:space:]]*Anti-patterns\b'; then
+    if grep -Eqi '^#+[[:space:]]*Anti-patterns\b' <<< "$goal_text"; then
         has_antipatterns=1
     fi
 
@@ -174,7 +174,7 @@ _plan_validate_dod_discipline() {
     # plausible to avoid spurious matches against benign use ("optionally").
     if [[ $has_dod -eq 1 || $has_antipatterns -eq 1 ]]; then
         local _forbidden_re='may be toggled off|may be disabled|declared but disabled|gated by config|future follow-up|may be optional|\boptional\b'
-        if printf '%s' "$plan_blob" | grep -Eqi "$_forbidden_re"; then
+        if grep -Eqi "$_forbidden_re" <<< "$plan_blob"; then
             local _matched
             _matched="$(printf '%s' "$plan_blob" | grep -Eoi "$_forbidden_re" | head -1)"
             emit_event "plan.dod_violation" "plugin=plan" \
@@ -202,7 +202,7 @@ _plan_validate_dod_discipline() {
         local _ap
         while IFS= read -r _ap; do
             [[ -z "$_ap" ]] && continue
-            if printf '%s' "$plan_blob" | grep -Fqi "$_ap"; then
+            if grep -Fqi "$_ap" <<< "$plan_blob"; then
                 emit_event "plan.dod_violation" "plugin=plan" \
                     "reason=anti_pattern_match" "pattern=$_ap" \
                     2>/dev/null || true
@@ -215,7 +215,7 @@ _plan_validate_dod_discipline() {
     # config/templates/standard.yaml (or any file under config/templates/).
     if [[ $has_5test -eq 1 ]]; then
         local _touches_template=0
-        if printf '%s' "$plan_json" | jq -r '.steps // [] | map(.files // []) | flatten | .[]' 2>/dev/null | grep -Eq '^config/templates/'; then
+        if grep -Eq '^config/templates/' <<< "$(printf '%s' "$plan_json" | jq -r '.steps // [] | map(.files // []) | flatten | .[]' 2>/dev/null)"; then
             _touches_template=1
         fi
         if [[ $_touches_template -eq 0 ]]; then

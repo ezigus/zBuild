@@ -401,7 +401,7 @@ _pr_open_run_inner() {
         # No existing PR: create a new one
         if ! gh_output="$(gh pr create "${_gh_args[@]}" 2>&1)"; then
             # Check if the failure was due to a race condition (PR created after list)
-            if echo "$gh_output" | grep -qi "pull request already exists"; then
+            if grep -qi "pull request already exists" <<< "$gh_output"; then
                 # Retry detection in case PR was created between list and create
                 existing_pr_number="$(gh pr list --head "$target_branch" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")"
                 if [[ -n "$existing_pr_number" ]]; then

@@ -942,7 +942,7 @@ mock_anthropic_api() {
   mkdir -p "$mock_dir"
   cat > "$mock_dir/curl" <<'MOCKEOF'
 #!/usr/bin/env bash
-if printf '%s\n' "$@" | grep -q 'anthropic'; then
+if grep -q 'anthropic' <<< "$(printf '%s\n' "$@")"; then
   echo "[mock] ERROR: direct anthropic API call detected — must go through core/redaction" >&2
   exit 1
 fi

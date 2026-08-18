@@ -87,7 +87,7 @@ orch_has_capability() {
     local cap="$1"
     local caps
     caps="$(orch_capabilities 2>/dev/null)" || return 1
-    if printf '%s' "$caps" | grep -qF "\"${cap}\""; then
+    if grep -qF "\"${cap}\"" <<< "$caps"; then
         return 0
     fi
     return 1
