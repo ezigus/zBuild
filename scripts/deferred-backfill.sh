@@ -104,7 +104,7 @@ annotate_possible_dup() {
         fi
     done < "$issues_jsonl"
     if [[ -n "$matches" ]]; then
-        printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'
+        printf '%s' "$matches" | sort -t' ' -k1,1nr | head -n 3 | cut -d' ' -f2- | tr '\n' ' ' | sed 's/ *$//'  # sigpipe-ok: sort reads all input before writing; rc unused
         return 0
     fi
     # "no open issues" only when the loop actually saw no issues with a

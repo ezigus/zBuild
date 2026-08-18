@@ -103,7 +103,7 @@ vision_init_draft() {
             local _first_line
             _first_line="$(head -1 "$_adr_file" 2>/dev/null || true)"
             [[ -n "$_first_line" ]] && adr_titles+="$_first_line"$'\n'
-        done < <(find "$repo_root/docs/adr" -maxdepth 1 -name "*.md" | sort | head -10)
+        done < <(find "$repo_root/docs/adr" -maxdepth 1 -name "*.md" | sort | head -10)  # sigpipe-ok: process substitution; rc never inspected
     fi
 
     local prompt

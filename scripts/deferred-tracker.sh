@@ -100,6 +100,7 @@ compute_since_anchor() {
     local log_path="$1"
     [[ -f "$log_path" ]] || { printf ''; return 0; }
     # Extract mergedAt timestamps from log; column 4 in our table format
+    # sigpipe-ok: explicit || printf '' fallback closes the pipeline
     awk -F'|' '/^\| #[0-9]+ \|/ { gsub(/^ +| +$/, "", $4); print $4 }' "$log_path" \
         | sort -r \
         | head -n 1 \

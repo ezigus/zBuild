@@ -797,7 +797,14 @@ _stage_io_tail() {
 # own line, even when the original content lacked a final newline.
 _stage_io_head() {
     local content="$1" n="$2"
-    printf '%s\n' "$content" | head -n "$n"
+    # mapfile, not `| head -n`: head exits at line n while printf is still
+    # writing, and this lib inherits the caller's `set -euo pipefail`
+    # (runner.sh:5 -> cycle-orchestrator.sh:53 -> here), so the SIGPIPE would
+    # abort the run mid-banner (#1886).
+    local -a _lines=()
+    mapfile -t -n "$n" _lines <<< "$content"
+    ((${#_lines[@]})) && printf '%s\n' "${_lines[@]}"
+    return 0
 }
 
 # ─── _stage_io_truncation_hint <total> <shown> <stage> <seq> ─────────────────
@@ -821,9 +828,10 @@ _stage_io_truncation_hint() {
 # Like _stage_io_head, plus a truncation hint when wc -l > n.
 _stage_io_head_with_hint() {
     local content="$1" n="$2" stage="${3:-}" seq="${4:-}"
-    local total
-    total="$(printf '%s\n' "$content" | wc -l | tr -d ' ')"
-    printf '%s\n' "$content" | head -n "$n"
+    local -a _all=()
+    mapfile -t _all <<< "$content"
+    local total="${#_all[@]}"
+    _stage_io_head "$content" "$n"
     _stage_io_truncation_hint "$total" "$n" "$stage" "$seq"
 }
 
@@ -831,8 +839,11 @@ _stage_io_head_with_hint() {
 # Like _stage_io_tail, plus a truncation hint when wc -l > n.
 _stage_io_tail_with_hint() {
     local content="$1" n="$2" stage="${3:-}" seq="${4:-}"
-    local total
-    total="$(printf '%s\n' "$content" | wc -l | tr -d ' ')"
+    local -a _all=()
+    mapfile -t _all <<< "$content"
+    local total="${#_all[@]}"
+    # tail reads all input, so it never signals the writer — the pipe is safe
+    # here; only the head side of this pair was the hazard (#1886).
     printf '%s\n' "$content" | tail -n "$n"
     _stage_io_truncation_hint "$total" "$n" "$stage" "$seq"
 }
@@ -1407,7 +1418,7 @@ _stage_io_to_gh_comment() {
         # mid-codepoint, ensuring GitHub API accepts the body. If iconv is
         # unavailable (empty result), fall back to the raw bytewise slice.
         local trimmed_rendered raw_slice
-        raw_slice="$(printf '%s' "$rendered_body" | head -c "$room")"
+        raw_slice="${rendered_body:0:$room}"
         trimmed_rendered="$(printf '%s' "$raw_slice" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)"
         if [[ -z "$trimmed_rendered" && -n "$raw_slice" ]]; then
             trimmed_rendered="$raw_slice"

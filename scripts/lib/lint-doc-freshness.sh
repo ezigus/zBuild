@@ -131,8 +131,8 @@ declare -A _persona_ids        # id → 1 for kind:persona plugins
 while IFS= read -r _manifest; do
     # Strip trailing whitespace/CR too: a CRLF manifest would otherwise yield
     # _kind="persona\r", silently mis-classifying the persona (review #1530).
-    _id="$(grep '^id:' "$_manifest" | head -1 | sed 's/^id:[[:space:]]*//; s/[[:space:]]*$//')"
-    _kind="$(grep '^kind:' "$_manifest" | head -1 | sed 's/^kind:[[:space:]]*//; s/[[:space:]]*$//')"
+    _id="$(grep -m1 '^id:' "$_manifest" | sed 's/^id:[[:space:]]*//; s/[[:space:]]*$//')"
+    _kind="$(grep -m1 '^kind:' "$_manifest" | sed 's/^kind:[[:space:]]*//; s/[[:space:]]*$//')"
     [[ -n "$_id" ]] && _plugin_manifests["$_id"]="$_manifest"
     [[ "$_kind" == "persona" ]] && [[ -n "$_id" ]] && _persona_ids["$_id"]=1
 done < <(find "$_REPO_ROOT/plugins" -name "manifest.yaml" | sort)

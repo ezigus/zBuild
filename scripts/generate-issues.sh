@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
             RECONCILE_ONLY=1; shift ;;
         --manifest) MANIFEST="$2"; shift 2 ;;
         -h|--help)
-            grep '^#' "$0" | head -30
+            grep -m30 '^#' "$0"
             exit 0
             ;;
         *) error "Unknown arg: $1"; exit 2 ;;
@@ -214,8 +214,7 @@ for i in $(seq 0 $((issue_count - 1))); do
         if [[ "$UPDATE_EXISTING" -eq 1 ]]; then
             # Find the issue number
             issue_num="$(gh issue list --state all --limit 500 --json number,title \
-                | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' \
-                | head -1)"
+                | jq -r --arg t "$title" 'first(.[] | select(.title == $t) | .number) // empty')"
             if [[ -z "$issue_num" ]]; then
                 warn "couldn't resolve issue number for: $title"
                 continue

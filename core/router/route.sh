@@ -931,7 +931,11 @@ _route_call_claude() {
         local _sync_is_error="" _sync_err_text="" _sync_num_turns="" _sync_subtype="" _sync_out_tokens="" _sync_cost="" _sync_api_status=""
         if [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
             _sync_is_error="$(jq -r '.is_error // empty' "$_sync_json_path" 2>/dev/null || true)"
-            _sync_err_text="$(jq -r '.error // empty' "$_sync_json_path" 2>/dev/null | head -c 200 || true)"
+            if _sync_err_text="$(jq -r '.error // empty' "$_sync_json_path" 2>/dev/null)"; then
+                _sync_err_text="${_sync_err_text:0:200}"
+            else
+                _sync_err_text="<unreadable>"
+            fi
             _sync_num_turns="$(jq -r '.num_turns // empty' "$_sync_json_path" 2>/dev/null || true)"
             _sync_subtype="$(jq -r '.subtype // empty' "$_sync_json_path" 2>/dev/null || true)"
             _sync_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_sync_json_path" 2>/dev/null || true)"
@@ -1411,7 +1415,9 @@ ${prev_diff}"
             _intake_ref="$(cat "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" 2>/dev/null || true)"
         fi
         if [[ -n "$_intake_ref" ]]; then
-            _commits="$(git -C "$cwd" log "${_intake_ref}..HEAD" --oneline 2>/dev/null | head -10 || true)"
+            if _commits="$(git -C "$cwd" log "${_intake_ref}..HEAD" --oneline -n 10 2>/dev/null)"; then :; else
+                _commits="<unreadable>"
+            fi
             _stat="$(git -C "$cwd" diff "${_intake_ref}..HEAD" --stat 2>/dev/null || true)"
             _short_head="$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null || echo unknown)"
             iter_prompt="${iter_prompt}
@@ -1742,7 +1748,11 @@ ${_diff_pointer}"
             local _diag_is_error="" _diag_err_text="" _diag_num_turns="" _diag_out_tokens="" _diag_subtype="" _diag_cost=""
             if [[ -n "$_diag_json_path" ]]; then
                 _diag_is_error="$(jq -r '.is_error // empty' "$_diag_json_path" 2>/dev/null || true)"
-                _diag_err_text="$(jq -r '.error // empty' "$_diag_json_path" 2>/dev/null | head -c 200 || true)"
+                if _diag_err_text="$(jq -r '.error // empty' "$_diag_json_path" 2>/dev/null)"; then
+                    _diag_err_text="${_diag_err_text:0:200}"
+                else
+                    _diag_err_text="<unreadable>"
+                fi
                 _diag_num_turns="$(jq -r '.num_turns // empty' "$_diag_json_path" 2>/dev/null || true)"
                 _diag_out_tokens="$(jq -r '.usage.output_tokens // empty' "$_diag_json_path" 2>/dev/null || true)"
                 _diag_subtype="$(jq -r '.subtype // empty' "$_diag_json_path" 2>/dev/null || true)"

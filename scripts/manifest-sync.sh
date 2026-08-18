@@ -150,7 +150,7 @@ fi
 # 2. Live issues that don't exist in the manifest
 declare -a ORPHAN_ISSUES=()
 while IFS=$'\t' read -r live_num live_title live_state; do
-    in_manifest="$(jq -r --arg t "$live_title" '.[] | select(.title == $t) | .id' "$TMP/manifest-entries.json" | head -1)"
+    in_manifest="$(jq -r --arg t "$live_title" 'first(.[] | select(.title == $t) | .id) // empty' "$TMP/manifest-entries.json")"
     if [[ -z "$in_manifest" ]]; then
         ORPHAN_ISSUES+=("$live_num|$live_state|$live_title")
     fi
@@ -178,7 +178,7 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
         fi
         ORPHAN_PRS+=("$pr_num|$pr_title")
     fi
-done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -30)
+done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -30)  # sigpipe-ok: process substitution; rc never inspected
 
 if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
     DRIFT_FOUND=1
@@ -318,7 +318,7 @@ for entry in "${TO_MARK_CLOSED[@]}"; do
     if [[ "$current_state" == "closed" ]]; then
         continue
     fi
-    closed_at="$(jq -r --arg t "$title" '.[] | select(.title == $t) | .closedAt' "$TMP/live-issues.json" | head -1)"
+    closed_at="$(jq -r --arg t "$title" 'first(.[] | select(.title == $t) | .closedAt) // empty' "$TMP/live-issues.json")"
     reason="Closed via GitHub (live state: closed at $closed_at). Recorded by manifest-sync."
     yq -i "(.issues[] | select(.id == \"$mid\")).state = \"closed\"" "$MANIFEST"
     yq -i "(.issues[] | select(.id == \"$mid\")).closed_reason = \"$reason\"" "$MANIFEST"

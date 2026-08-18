@@ -312,13 +312,14 @@ _llm_envelope_validate() {
     if [[ $_parse_rc -ne 0 ]]; then
         # Extract column from jq error if available (e.g. "line 1, column 3208").
         local _col=""
-        _col="$(printf '%s' "$_parse_err" | grep -oE 'column [0-9]+' | head -1 | awk '{print $2}')"
+        _col="$(grep -m1 -oE 'column [0-9]+' <<< "$_parse_err" | awk '{print $2}')"
         [[ -z "$_col" ]] && _col="?"
         # Surface 40-char context window around the column.
         local _ctx=""
         if [[ "$_col" =~ ^[0-9]+$ && -n "$json" ]]; then
             local _start=$(( _col > 20 ? _col - 20 : 0 ))
-            _ctx="$(printf '%s' "$json" | tail -c +$(( _start + 1 )) | head -c 40 | tr '\n' ' ')"
+            _ctx="${json:$_start:40}"
+            _ctx="${_ctx//$'\n'/ }"
         fi
         printf -v "$_err_var" 'parse: column %s context [%s]' "$_col" "$_ctx"
         return 2

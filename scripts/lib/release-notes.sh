@@ -24,7 +24,7 @@ _rn_repo_slug() {
     local slug=""
     if command -v gh >/dev/null 2>&1; then
         slug="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
-        [[ -z "$slug" ]] && slug="$(gh repo view 2>/dev/null | head -1 || true)"
+        [[ -z "$slug" ]] && slug="$(gh repo view 2>/dev/null | head -1 || true)"  # sigpipe-ok: || true supplies the fallback; slug is optional
     fi
     printf '%s' "${slug:-ezigus/zBuild}"
 }
@@ -42,6 +42,7 @@ release_notes_last_tag() {
     command -v git >/dev/null 2>&1 || { printf ''; return 0; }
     git rev-parse --git-dir >/dev/null 2>&1 || { printf ''; return 0; }
     # Newest tag by version order that looks like a release tag (vA.B.C or vA.B.C.D).
+    # sigpipe-ok: || true supplies the fallback; the tag lookup is optional
     git tag --sort=-version:refname 2>/dev/null \
         | grep -E '^v[0-9]+(\.[0-9]+){2,3}$' 2>/dev/null \
         | head -1 || true

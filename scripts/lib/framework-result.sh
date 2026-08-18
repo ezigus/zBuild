@@ -75,7 +75,8 @@ framework_run_lint() {
     else
         # Keep the tail (where most linters print the error count) within 200 bytes.
         local summary
-        summary="$(printf '%s\n' "$out" | tail -n 3 | tr '\n' ' ' | head -c 200)"
+        summary="$(printf '%s\n' "$out" | tail -n 3 | tr '\n' ' ')"
+        summary="${summary:0:200}"
         _fr_emit_lint "fail" "$rc" "$summary"
     fi
 }
@@ -136,6 +137,6 @@ framework_parse_mutation() {
         return 0
     fi
     local score
-    score="$(printf '%s' "$line" | grep -oE '[0-9]+/[0-9]+' | head -n1)"
+    score="$(grep -m1 -oE '[0-9]+/[0-9]+' <<< "$line")"
     _fr_emit_mutation "measured" "$score" "$floor"
 }
