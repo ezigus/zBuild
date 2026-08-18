@@ -88,9 +88,7 @@ shape_floor_run() {
             while IFS= read -r _mf; do
                 [[ -z "$_mf" ]] && continue
                 _total=$(( _total + 1 ))
-                # #1884: the substitution completes before grep runs, so the
-                # early exit cannot SIGPIPE the writer. tr reads all input, so
-                # keeping that inner pipe is safe.
+                # #1884: the substitution completes before grep -q runs, so its early exit signals nobody.
                 if ! grep -qxF "$_mf" <<< "$(printf '%s' "$_scope" | tr ',' '\n')"; then
                     _oos=$(( _oos + 1 ))
                 fi

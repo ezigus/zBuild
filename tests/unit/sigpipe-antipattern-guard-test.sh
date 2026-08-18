@@ -30,27 +30,14 @@ print_test_header "SIGPIPE antipattern guard — all tiers (#1015, #1260)"
 # `|| true`: grep exits 1 on no-match, which would abort under `set -e` before the assert.
 # Self-exclude this guard (it contains the pattern as a regex literal, not a real pipeline).
 #
-# #1884: the leading `(^|[^|])` is load-bearing. Without it the pattern matches
-# the SECOND `|` of `||`, so the entirely legitimate `cmd || grep -q ...` reads
-# as a pipe into grep. That false positive was invisible while the guard only
-# scanned tests — `||` before a grep is an engine idiom — and surfaced the
-# moment the scan was widened to production code.
+# #1884: the leading `(^|[^|])` is load-bearing — without it the pattern matches
+# the SECOND `|` of `||`, and the legitimate `cmd || grep -q ...` reads as a pipe.
 _offenders="$(
   {
     grep -rnE '(^|[^|])\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' \
       "$REPO_ROOT/tests/unit" "$REPO_ROOT/tests/integration" "$REPO_ROOT/tests/e2e" 2>/dev/null || true
-    # #1884: ENGINE code, not just tests. The guard protected the tests from a
-    # bug class that had 29 live instances in production — one of which
-    # (scripts/lib/artifact-render.sh:337) failed the Coverage job on PR #1883,
-    # on a file that PR did not touch. Coverage tracing runs slow enough to flip
-    # the race, which is exactly why this reads as a flake and gets re-run
-    # instead of fixed.
-    #
-    # The worst instances were in scripts/lib/shape-floor.sh — a GATE. A SIGPIPE
-    # there makes `if !` take the wrong branch, i.e. the gate decides the
-    # opposite of what it computed, in the permissive direction (cf. #1758).
-    #
-    # legacy/ is excluded: it is a frozen import and contractually never runs.
+    # #1884: ENGINE code too — the hazard is worse there (a SIGPIPE inside a gate
+    # makes `if !` take the wrong branch, permissively). legacy/ is frozen, so excluded.
     grep -rnE '(^|[^|])\|[[:space:]]*([A-Za-z_]+=[^[:space:]|]+[[:space:]]+)*grep[[:space:]]+-[[:alnum:]]*q' \
       "$REPO_ROOT/scripts" "$REPO_ROOT/core" "$REPO_ROOT/plugins" \
       --include='*.sh' 2>/dev/null || true

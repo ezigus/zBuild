@@ -176,7 +176,7 @@ _plan_validate_dod_discipline() {
         local _forbidden_re='may be toggled off|may be disabled|declared but disabled|gated by config|future follow-up|may be optional|\boptional\b'
         if grep -Eqi "$_forbidden_re" <<< "$plan_blob"; then
             local _matched
-            _matched="$(printf '%s' "$plan_blob" | grep -Eoi "$_forbidden_re" | head -1)"
+            _matched="$(grep -m1 -Eoi "$_forbidden_re" <<< "$plan_blob")"
             emit_event "plan.dod_violation" "plugin=plan" \
                 "reason=forbidden_phrase" "phrase=${_matched:-unknown}" \
                 2>/dev/null || true
