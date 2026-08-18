@@ -656,9 +656,15 @@ $_plan_instructions"
         # budget-exhaustion signal (rc=10 scope_too_large), or the existing
         # claude_cli_failed path (rc=1). What changes is that the decision is now
         # MADE rather than pre-empted.
+        # `recovery_attempted`, NOT `recoverable`: this fires BEFORE recovery
+        # runs, so it cannot claim the outcome. Pairing an optimistic
+        # `recoverable=1` with a later plugin.run.error would read as a
+        # contradiction in the event log. The outcome is carried by the events
+        # that follow — plan.envelope.recovered on success, plan.scope_too_large
+        # on a budget exhaustion, plugin.run.error otherwise.
         warn "_plan_run_inner: router rc=$router_rc — trying recovery before failing"
         emit_event "plugin.run.router_failed" "plugin=plan" \
-            "reason=router_failed" "router_rc=$router_rc" "recoverable=1" \
+            "reason=router_failed" "router_rc=$router_rc" "recovery_attempted=1" \
             2>/dev/null || true
     fi
 

@@ -791,10 +791,25 @@ fi
 # The diagnostic is not silently downgraded — a router failure still says so.
 _ev1727="$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 if grep -q "plugin.run.router_failed" <<< "$_ev1727"; then
-    assert_pass "[#1727] plugin.run.router_failed still records the rc"
+    assert_pass "[#1727] plugin.run.router_failed is emitted"
 else
-    assert_fail "[#1727] plugin.run.router_failed still records the rc" \
+    assert_fail "[#1727] plugin.run.router_failed is emitted" \
         "event absent; router failure was swallowed"
+fi
+# Assert the PAYLOAD, not just the event name — the claim is that the rc is
+# recorded, and an event that names no rc does not support it.
+if grep -qE '"router_rc":"?124"?|router_rc=124' <<< "$_ev1727"; then
+    assert_pass "[#1727] the event records router_rc=124"
+else
+    assert_fail "[#1727] the event records router_rc=124" \
+        "router_rc missing from the payload"
+fi
+# The optimistic field must not claim an outcome it cannot know yet.
+if grep -q "recovery_attempted" <<< "$_ev1727"; then
+    assert_pass "[#1727] event says recovery_attempted, not recoverable"
+else
+    assert_fail "[#1727] event says recovery_attempted, not recoverable" \
+        "field absent or still claims recoverability before recovery ran"
 fi
 # ...and it must NOT claim fatality any more.
 if grep -q '"reason":"router_fatal"' <<< "$_ev1727"; then
