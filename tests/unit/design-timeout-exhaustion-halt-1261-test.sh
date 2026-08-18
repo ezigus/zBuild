@@ -139,6 +139,8 @@ cycle_dispatch_stage() {
     done
     _CYCLE_DISPATCH_STATUS="complete"
     _CYCLE_DISPATCH_REASON=""
+    _CYCLE_DISPATCH_DISPOSITION=""
+    _CYCLE_DISPATCH_DATA_KIND=""
     case "$stage" in
         test)
             local tv="pass" nf=0
@@ -150,10 +152,14 @@ cycle_dispatch_stage() {
             ;;
         *)
             # design / design-gate / build — raw verdict drives the blob. The
-            # `dnf` plan token maps to the repo-neutral did_not_finish verdict
-            # (a router-timeout mid-flight resting point, #1208/#1261).
+            # `dnf` plan token maps to verdict=incomplete + disposition=interrupted
+            # (#1832: did_not_finish removed from verdict vocabulary per ADR-054 §6).
             local rv="$v"
-            [[ "$v" == "dnf" ]] && { rv="did_not_finish"; _CYCLE_DISPATCH_REASON="router_timeout"; }
+            if [[ "$v" == "dnf" ]]; then
+                rv="incomplete"
+                _CYCLE_DISPATCH_DISPOSITION="interrupted"
+                _CYCLE_DISPATCH_REASON="router_timeout"
+            fi
             _CYCLE_DISPATCH_VERDICT="$(verdict_classify "$rv" 2>/dev/null || echo warn)"
             _CYCLE_DISPATCH_VERDICT_RAW="$rv"
             ;;

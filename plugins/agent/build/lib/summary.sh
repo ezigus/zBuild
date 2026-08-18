@@ -103,26 +103,35 @@ _build_write_build_summary() {
     local _sum_scope_expansion_request_json=""
     local _sum_oos_paths
 
-    # Compute verdict.
+    # Compute verdict (ADR-054: v2 contract uses disposition+reason for recoverability).
     build_verdict="pass"
+    local build_disposition="" build_reason="" build_data_kind=""
     if [[ "${scope_violation:-false}" == "true" ]]; then
         build_verdict="scope_violation"
     elif [[ "${terminated_reason:-error}" == "router_timeout" || "${terminated_reason:-error}" == "error" ]]; then
-        build_verdict="did_not_finish"
+        build_verdict="incomplete"
+        build_disposition="interrupted"
+        build_reason="${terminated_reason:-error}"
     elif [[ "${terminated_reason:-}" == "done_sentinel" \
           && "${files_changed_count:-0}" -eq 0 ]]; then
-        build_verdict="empty_diff"
+        build_verdict="pass"
+        build_disposition="complete"
+        build_reason="build_complete_no_changes"
+        build_data_kind="empty_diff"
     fi
 
     # #1532: when done_sentinel + 0-diff but a declared acceptance TESTFILE still
     # fails at HEAD, the build falsely signals completion — override to inert_build.
     # shellcheck disable=SC2154  # _acceptance_testfiles, repo_root from caller scope
     local _inert_failing_testfile=""
-    if [[ "$build_verdict" == "empty_diff" && -n "${_acceptance_testfiles:-}" ]]; then
+    if [[ "$build_data_kind" == "empty_diff" && -n "${_acceptance_testfiles:-}" ]]; then
         _inert_failing_testfile="$(_build_guard_false_completion \
             "$_acceptance_testfiles" "${repo_root:-}" 2>/dev/null || true)"
         if [[ -n "$_inert_failing_testfile" ]]; then
-            build_verdict="inert_build"
+            build_verdict="fail"
+            build_disposition="broken"
+            build_reason="false_completion_detected"
+            build_data_kind="inert_build"
             emit_event "build.inert_build" "plugin=build" \
                 "failing_testfile=$_inert_failing_testfile" >/dev/null 2>&1 || true
             warn "build: inert_build — LOOP_COMPLETE 0-diff but acceptance testfile still red: $_inert_failing_testfile"
@@ -136,7 +145,7 @@ _build_write_build_summary() {
     fi
 
     # #792: post-LLM no-progress diagnostic.
-    if [[ "$build_verdict" == "empty_diff" && -n "${_feedback_body:-}" && -n "${plan_files_csv:-}" ]]; then
+    if [[ "$build_data_kind" == "empty_diff" && -n "${_feedback_body:-}" && -n "${plan_files_csv:-}" ]]; then
         _sum_oos_paths="$(_build_detect_out_of_scope_files "$_feedback_body" "$plan_files_csv")"
         if [[ -n "$_sum_oos_paths" ]]; then
             _sum_build_reason="no_progress_scope_blocked"
@@ -199,6 +208,9 @@ _build_write_build_summary() {
         --argjson scope_expansion_request "${_sum_scope_expansion_request_json:-null}" \
         --arg failing_acceptance_testfile "${_inert_failing_testfile:-}" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
+        --arg build_disposition "${build_disposition:-}" \
+        --arg build_reason_v2 "${build_reason:-}" \
+        --arg build_data_kind "${build_data_kind:-}" \
         '{
             schema_version: $schema_version,
             issue: $issue,
@@ -218,6 +230,8 @@ _build_write_build_summary() {
         + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
         + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
         + (if $failing_acceptance_testfile != "" then {failing_acceptance_testfile: $failing_acceptance_testfile} else {} end)
+        + (if $build_disposition != "" then {result_contract: 2, disposition: $build_disposition, reason: $build_reason_v2} else {} end)
+        + (if $build_data_kind != "" then {data: {build_kind: $build_data_kind}} else {} end)
         ' | atomic_write "$output_summary_json"
 }
 

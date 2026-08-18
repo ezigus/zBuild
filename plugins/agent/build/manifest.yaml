@@ -51,9 +51,8 @@ config:
   valid_verdicts:
     - pass
     - scope_violation
-    - did_not_finish
-    - empty_diff
-    - inert_build
+    - incomplete
+    - fail
   tier_default: T2
 
 inputs:

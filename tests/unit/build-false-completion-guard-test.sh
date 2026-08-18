@@ -115,6 +115,43 @@ else
 fi
 assert_eq "C: empty_out is empty (no testfiles)" "" "$empty_out"
 
+# ── SPEC-7 [change]: inert_build writes verdict=fail + data.build_kind (#1832) ─
+# Previously wrote verdict="inert_build"; now writes verdict="fail" +
+# data: {build_kind: "inert_build"} + disposition="broken" (ADR-054 §6).
+print_test_section "SPEC-7 [change]: inert_build → verdict=fail + data.build_kind=inert_build (#1832)"
+
+_spec7_summary="$TEST_TEMP_DIR/spec7-build-summary.json"
+# Set up the caller-scope variables that _build_write_build_summary reads.
+scope_violation="false"
+terminated_reason="done_sentinel"
+files_changed_count=0
+files_changed_json='[]'
+lines_added=0
+lines_removed=0
+iterations=1
+loop_input_tokens=0
+loop_output_tokens=0
+output_diff_patch=""
+output_summary_json="$_spec7_summary"
+_acceptance_testfiles="tests/unit/failing-test.sh"
+repo_root="$REPO"
+scope_violations=()
+scope_violations_created=()
+_feedback_body=""
+plan_files_csv=""
+issue=0
+router_rc=0
+build_verdict=""
+
+_build_write_build_summary 2>/dev/null
+
+_s7_verdict="$(jq -r '.verdict' "$_spec7_summary" 2>/dev/null)"
+_s7_kind="$(jq -r '.data.build_kind // ""' "$_spec7_summary" 2>/dev/null)"
+_s7_disp="$(jq -r '.disposition // ""' "$_spec7_summary" 2>/dev/null)"
+assert_eq "[SPEC-7] inert_build summary: verdict=fail (#1832)" "fail" "$_s7_verdict"
+assert_eq "[SPEC-7] inert_build summary: data.build_kind=inert_build (#1832)" "inert_build" "$_s7_kind"
+assert_eq "[SPEC-7] inert_build summary: disposition=broken (#1832)" "broken" "$_s7_disp"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
