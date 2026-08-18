@@ -56,12 +56,10 @@ teardown.start
 plugin.cleanup.absent
 plugin.cleanup.start
 plugin.cleanup.complete
-plugin.cleanup.complete
 plugin.cleanup.start
 plugin.cleanup.complete
-plugin.cleanup.complete
 plugin.cleanup.start
-plugin.cleanup.complete
+plugin.result
 plugin.cleanup.complete
 plugin.cleanup.absent
 plugin.cleanup.start

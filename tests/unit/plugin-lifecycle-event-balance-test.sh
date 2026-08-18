@@ -112,15 +112,28 @@ assert_eq "[SPEC-4] plugin.run.complete emitted on every successful call" "2" "$
 # the engine emits plugin.run.error for a non-zero hook rc while 8 plugins were
 # emitting it for domain failures, so the name could not distinguish "the hook
 # crashed" from "the work legitimately concluded it could not proceed".
+#
+# `cleanup` is scanned alongside `run` for the same reason: plugin_hook_call
+# brackets BOTH hooks with its own pair, and 16 plugins self-emitted a bare
+# plugin.cleanup.complete — most with no matching start, which is precisely the
+# uneven-skew mechanism the issue describes. A run-only scan left that half of
+# the namespace uncountable.
+#
+# The pattern matches the per-plugin wrapper form (`_sf_emit "…"`, `_cg_emit
+# "…"`) as well as emit_event, mirroring the emitted-coverage guard. The seven
+# gate plugins emit exclusively through those wrappers, so an emit_event-only
+# scan was structurally blind to them — it is what let the cleanup collision
+# survive the first pass at this issue.
 # `|| true`: grep exits 1 on no-match — the HEALTHY case — and with pipefail
 # that aborts the script before the assertion ever runs.
+_LIFECYCLE_RE='(emit_event|_[a-z][a-z0-9_]*_emit)[[:space:]]+"plugin\.(run|cleanup)\.(start|complete|error)"'
 _self_emitters="$(
-    { grep -rln 'emit_event "plugin\.run\.\(start\|complete\|error\)"' "$REPO_ROOT/plugins" 2>/dev/null || true; } | tr '\n' ' '
+    { grep -rlnE "$_LIFECYCLE_RE" "$REPO_ROOT/plugins" 2>/dev/null || true; } | tr '\n' ' '
 )"
 if [[ -z "$_self_emitters" ]]; then
-    assert_pass "[SPEC-5] no shipped plugin emits plugin.run.start/complete/error"
+    assert_pass "[SPEC-5] no shipped plugin emits plugin.<run|cleanup>.start/complete/error"
 else
-    assert_fail "[SPEC-5] no shipped plugin emits plugin.run.start/complete/error" \
+    assert_fail "[SPEC-5] no shipped plugin emits plugin.<run|cleanup>.start/complete/error" \
         "self-emitting: $_self_emitters"
 fi
 

@@ -112,7 +112,8 @@ shape_floor_run() {
 
 # ─── shape_floor_cleanup ──────────────────────────────────────────────────────
 shape_floor_cleanup() {
-    _sf_emit "plugin.cleanup.start" "plugin=shape-floor"
-    _sf_emit "plugin.cleanup.complete" "plugin=shape-floor"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second pair from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

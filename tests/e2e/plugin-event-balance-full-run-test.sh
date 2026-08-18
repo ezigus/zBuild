@@ -49,6 +49,14 @@ _count() { jq -r --arg t "$1" 'select(.type==$t)|.type' "$EVENTS" 2>/dev/null | 
 _starts="$(_count plugin.run.start)"
 _completes="$(_count plugin.run.complete)"
 
+# Both hooks plugin_hook_call brackets. `run` is what the issue enumerated;
+# `cleanup` carried the identical collision — 16 plugins self-emitted a bare
+# `plugin.cleanup.complete` (most without a matching `start`, which is the very
+# mechanism behind the audited run's uneven skew). Asserting only `run` left
+# that half of the namespace uncountable, and the imbalance was visible in this
+# suite's own parity golden: 4 cleanup starts against 7 completes.
+_HOOKS=(run cleanup)
+
 # ── SPEC-1: the pair balances ────────────────────────────────────────────────
 # CHANGE: at baseline plugins self-emitted `complete` (and only some a `start`),
 # so completes outnumbered starts and neither equalled the dispatch count.
@@ -57,25 +65,30 @@ if [[ "$_starts" -gt 0 ]]; then
 else
     assert_fail "[SPEC-1] the run dispatched at least one plugin" "0 plugin.run.start events"
 fi
-assert_eq "[SPEC-1] plugin.run.start count == plugin.run.complete count" "$_starts" "$_completes"
+for _hook in "${_HOOKS[@]}"; do
+    assert_eq "[SPEC-1] plugin.$_hook.start count == plugin.$_hook.complete count" \
+        "$(_count "plugin.$_hook.start")" "$(_count "plugin.$_hook.complete")"
+done
 
 # ── SPEC-2: it balances PER PLUGIN, not just in total ────────────────────────
 # A global total can balance while individual plugins are skewed; the audited
 # run's defect was per-plugin (only some plugins self-emitted a start).
-_skew="$(jq -rs '
-    (map(select(.type=="plugin.run.start"))    | group_by(.plugin) | map({k:.[0].plugin, s:length})) as $st
-  | (map(select(.type=="plugin.run.complete")) | group_by(.plugin) | map({k:.[0].plugin, c:length})) as $co
-  | ($st|map(.k)) + ($co|map(.k)) | unique
-  | map(. as $k
-        | (($st[]|select(.k==$k)|.s) // 0) as $s
-        | (($co[]|select(.k==$k)|.c) // 0) as $c
-        | select($s != $c) | "\($k):start=\($s),complete=\($c)")
-  | join(" ")' "$EVENTS" 2>/dev/null || echo "JQ_FAILED")"
-if [[ -z "$_skew" ]]; then
-    assert_pass "[SPEC-2] start/complete balance holds for every individual plugin"
-else
-    assert_fail "[SPEC-2] start/complete balance holds for every individual plugin" "$_skew"
-fi
+for _hook in "${_HOOKS[@]}"; do
+    _skew="$(jq -rs --arg h "$_hook" '
+        (map(select(.type=="plugin.\($h).start"))    | group_by(.plugin) | map({k:.[0].plugin, s:length})) as $st
+      | (map(select(.type=="plugin.\($h).complete")) | group_by(.plugin) | map({k:.[0].plugin, c:length})) as $co
+      | ($st|map(.k)) + ($co|map(.k)) | unique
+      | map(. as $k
+            | (($st[]|select(.k==$k)|.s) // 0) as $s
+            | (($co[]|select(.k==$k)|.c) // 0) as $c
+            | select($s != $c) | "\($k):start=\($s),complete=\($c)")
+      | join(" ")' "$EVENTS" 2>/dev/null || echo "JQ_FAILED")"
+    if [[ -z "$_skew" ]]; then
+        assert_pass "[SPEC-2] plugin.$_hook start/complete balance holds for every individual plugin"
+    else
+        assert_fail "[SPEC-2] plugin.$_hook start/complete balance holds for every individual plugin" "$_skew"
+    fi
+done
 
 # ── SPEC-3: the envelope identifies the plugin ───────────────────────────────
 # CHANGE: at baseline top-level .plugin/.kind were "" on every record, so a
@@ -100,13 +113,14 @@ fi
 # A plugin that resumed self-emitting under the old name would put a verdict on
 # it — which is precisely how the two meanings became indistinguishable.
 _domain_on_lifecycle="$(jq -r '
-    select(.type=="plugin.run.start" or .type=="plugin.run.complete")
+    select(.type=="plugin.run.start"     or .type=="plugin.run.complete"
+        or .type=="plugin.cleanup.start" or .type=="plugin.cleanup.complete")
   | select((.data|type=="object") and ((.data|keys) - ["plugin","kind"] | length) > 0)
   | .type' "$EVENTS" 2>/dev/null | sort -u | tr '\n' ' ')"
 if [[ -z "$_domain_on_lifecycle" ]]; then
-    assert_pass "[SPEC-4] no domain payload rides on the engine's lifecycle pair"
+    assert_pass "[SPEC-4] no domain payload rides on the engine's lifecycle pairs"
 else
-    assert_fail "[SPEC-4] no domain payload rides on the engine's lifecycle pair" \
+    assert_fail "[SPEC-4] no domain payload rides on the engine's lifecycle pairs" \
         "extra data keys on: $_domain_on_lifecycle"
 fi
 

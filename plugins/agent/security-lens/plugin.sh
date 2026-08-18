@@ -180,6 +180,8 @@ _security_lens_run_inner() {
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
 security_lens_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=security-lens"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second `complete` from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

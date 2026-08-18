@@ -838,13 +838,17 @@ test_cleanup() {
         _runtime_dir="$(_test_runtime_dir "$(dirname "$_state_file")")"
     fi
 
+    # `plugin.result`, not `plugin.cleanup.complete` (#1705): which scope was
+    # honoured is a DOMAIN result, and plugin_hook_call already brackets this
+    # hook with its own cleanup pair. `hook=cleanup` separates these from the
+    # run-hook results that share the name.
     case "$_scope" in
         release)
             # Kill any lingering test subprocess; do NOT delete the staging dir.
             if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-stage.pid" ]]; then
                 _test_kill_staging_pid "$_runtime_dir/test-stage.pid"
             fi
-            emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=release" \
+            emit_event "plugin.result" "plugin=test" "kind=tool" "hook=cleanup" "scope=release" \
                 2>/dev/null || true
             ;;
         purge)
@@ -855,11 +859,11 @@ test_cleanup() {
                     rm -rf "$_staging" 2>/dev/null || true
                 fi
             fi
-            emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=purge" \
+            emit_event "plugin.result" "plugin=test" "kind=tool" "hook=cleanup" "scope=purge" \
                 2>/dev/null || true
             ;;
         *)
-            emit_event "plugin.cleanup.complete" "plugin=test" "kind=tool" "scope=$_scope" \
+            emit_event "plugin.result" "plugin=test" "kind=tool" "hook=cleanup" "scope=$_scope" \
                 2>/dev/null || true
             ;;
     esac
