@@ -19,6 +19,7 @@
     "plugin.run.start",
     "plugin.run.complete",
     "plugin.run.error",
+    "plugin.run.router_failed",
     "plugin.cleanup.start",
     "plugin.cleanup.complete",
     "plugin.cleanup.error",
