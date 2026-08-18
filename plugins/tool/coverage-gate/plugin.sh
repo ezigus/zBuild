@@ -59,8 +59,6 @@ coverage_gate_run() {
     local result_path="$artifacts_dir/coverage-result.json"
     local results_json="$artifacts_dir/test-results.json"
 
-    _cg_emit "plugin.run.start" "plugin=coverage-gate"
-
     # Read status, pct, floor in one jq pass. Absent file / block → all empty.
     local status="" pct="" floor=""
     if [[ -f "$results_json" ]]; then
@@ -106,13 +104,14 @@ coverage_gate_run() {
     jq -n --arg v "$verdict" --arg s "$status" --arg p "$pct" --arg f "$floor" --arg d "$detail" \
         '{"verdict":$v,"status":$s,"pct":$p,"floor":$f,"detail":$d}' | atomic_write "$result_path"
 
-    _cg_emit "plugin.run.complete" "plugin=coverage-gate" "verdict=$verdict"
+    _cg_emit "plugin.result" "plugin=coverage-gate" "verdict=$verdict"
     return 0
 }
 
 # ─── coverage_gate_cleanup ────────────────────────────────────────────────────
 coverage_gate_cleanup() {
-    _cg_emit "plugin.cleanup.start" "plugin=coverage-gate"
-    _cg_emit "plugin.cleanup.complete" "plugin=coverage-gate"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second pair from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

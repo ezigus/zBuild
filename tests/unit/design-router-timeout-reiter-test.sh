@@ -14,10 +14,10 @@
 #   SPEC-1[change]: timeout yield → the produced design.md FAILS the real
 #                   design-gate (verdict=fail, ACCEPTANCE_MISSING) → re-iterate
 #   SPEC-2[change]: timeout yield → _design_stage_run_inner returns rc=0 (non-terminal)
-#   SPEC-3[change]: timeout yield → plugin.run.error emitted with reason=router_timeout
+#   SPEC-3[change]: timeout yield → plugin.result emitted with reason=router_timeout
 #   SPEC-4[change]: timeout yield → design.timeout.stub_written event emitted
 #   SPEC-5[guard]:  rc=137 (OOM) → returns rc=1 (terminal, unchanged)
-#   SPEC-6[guard]:  rc=137 (OOM) → plugin.run.error emitted with reason=router_oom_kill
+#   SPEC-6[guard]:  rc=137 (OOM) → plugin.result emitted with reason=router_oom_kill
 #   SPEC-7[guard]:  rc=137 (OOM) → no design.md written (terminal, unchanged)
 #   SPEC-8[guard]:  rc=0 with valid design.md → returns rc=0 (happy path unchanged)
 #   SPEC-9[change]: timeout yield but the marker write FAILS → returns rc=1
@@ -141,11 +141,11 @@ fi
 
 assert_eq "[SPEC-2] timeout yield → _design_stage_run_inner returns rc=0 (non-terminal)" "0" "$_rc"
 
-_ev_to="$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+_ev_to="$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 if grep -q '"reason":"router_timeout"' <<< "$_ev_to"; then
-    assert_pass "[SPEC-3] timeout yield → plugin.run.error emitted with reason=router_timeout"
+    assert_pass "[SPEC-3] timeout yield → plugin.result emitted with reason=router_timeout"
 else
-    assert_fail "[SPEC-3] timeout yield → plugin.run.error reason=router_timeout missing" \
+    assert_fail "[SPEC-3] timeout yield → plugin.result reason=router_timeout missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
 
@@ -198,11 +198,11 @@ set -e
 
 assert_eq "[SPEC-5] rc=137 → _design_stage_run_inner returns rc=1 (terminal)" "1" "$_rc"
 
-_ev137="$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+_ev137="$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 if grep -q '"reason":"router_oom_kill"' <<< "$_ev137"; then
-    assert_pass "[SPEC-6] rc=137 → plugin.run.error emitted with reason=router_oom_kill"
+    assert_pass "[SPEC-6] rc=137 → plugin.result emitted with reason=router_oom_kill"
 else
-    assert_fail "[SPEC-6] rc=137 → plugin.run.error reason=router_oom_kill missing" \
+    assert_fail "[SPEC-6] rc=137 → plugin.result reason=router_oom_kill missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
 
@@ -260,7 +260,7 @@ set -e
 assert_eq "[SPEC-9] timeout yield + failed marker write → returns rc=1 (terminal)" "1" "$_rc"
 
 if grep -q '"reason":"marker_write_failed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-9b] failed marker write → plugin.run.error reason=marker_write_failed"
+    assert_pass "[SPEC-9b] failed marker write → plugin.result reason=marker_write_failed"
 else
     assert_fail "[SPEC-9b] failed marker write → reason=marker_write_failed missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"

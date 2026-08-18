@@ -188,7 +188,7 @@ _pr_open_run_inner() {
     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
     if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
         error "pr_open: refusing to open PR from branch '${current_branch}' — use a feature branch"
-        emit_event "plugin.run.error" "plugin=pr-open" \
+        emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=branch_is_main" "branch=${current_branch}"
         jq -n \
             --arg branch "$current_branch" \
@@ -211,7 +211,7 @@ _pr_open_run_inner() {
         verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
         if [[ "$verdict" == "block" ]]; then
             error "pr_open: refusing to open PR — review verdict is 'block'"
-            emit_event "plugin.run.error" "plugin=pr-open" \
+            emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                 "reason=review_verdict_block" "verdict=${verdict}"
             jq -n \
                 --argjson draft "${_draft_bool}" \
@@ -223,7 +223,7 @@ _pr_open_run_inner() {
         warn "pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)"
     else
         error "pr_open: refusing to open PR — no review signal (neither review.json nor review-report.json; fail-closed per ADR-001)"
-        emit_event "plugin.run.error" "plugin=pr-open" \
+        emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=review_signal_missing" "path=${review_json_path}"
         jq -n \
             --argjson draft "${_draft_bool}" \
@@ -253,7 +253,7 @@ _pr_open_run_inner() {
     if [[ "$current_branch" != "$target_branch" ]]; then
         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
             error "pr_open: failed to create or switch to branch '${target_branch}'"
-            emit_event "plugin.run.error" "plugin=pr-open" \
+            emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                 "reason=branch_checkout_failed" "branch=${target_branch}"
             jq -n \
                 --arg branch "$target_branch" \
@@ -295,7 +295,7 @@ _pr_open_run_inner() {
                 # fall through to push (no-op on strictly-ahead remote) + PR reuse
             else
                 error "pr_open: refusing to open PR — no commits between merge-base and '${current_branch}', and origin/${target_branch} has no prior work either (nothing to ship anywhere)"
-                emit_event "plugin.run.error" "plugin=pr-open" \
+                emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                     "reason=no_committed_changes" "branch=${current_branch}"
                 jq -n \
                     --argjson draft "${_draft_bool}" \
@@ -313,7 +313,7 @@ _pr_open_run_inner() {
     # default branch — that plus the main/master refusal above is defense-in-depth.
     if ! zbuild_push_reconcile "$target_branch"; then
         error "pr_open: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
-        emit_event "plugin.run.error" "plugin=pr-open" \
+        emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=branch_push_failed" "branch=${target_branch}"
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
             --argjson draft "${_draft_bool}" \
@@ -385,7 +385,7 @@ _pr_open_run_inner() {
         # PR already exists: update it instead of creating
         if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
             error "pr_open: gh pr edit failed: $gh_output"
-            emit_event "plugin.run.error" "plugin=pr-open" \
+            emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                 "reason=gh_pr_edit_failed"
             jq -n \
                 --arg reason "$gh_output" \
@@ -408,7 +408,7 @@ _pr_open_run_inner() {
                     # Re-update the PR and treat as updated
                     if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
                         error "pr_open: gh pr edit (race recovery) failed: $gh_output"
-                        emit_event "plugin.run.error" "plugin=pr-open" \
+                        emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                             "reason=gh_pr_edit_failed"
                         jq -n \
                             --arg reason "$gh_output" \
@@ -421,7 +421,7 @@ _pr_open_run_inner() {
                     pr_number="$existing_pr_number"
                 else
                     error "pr_open: gh pr create failed and race recovery found no PR: $gh_output"
-                    emit_event "plugin.run.error" "plugin=pr-open" \
+                    emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                         "reason=gh_pr_create_failed"
                     jq -n \
                         --arg reason "$gh_output" \
@@ -432,7 +432,7 @@ _pr_open_run_inner() {
                 fi
             else
                 error "pr_open: gh pr create failed: $gh_output"
-                emit_event "plugin.run.error" "plugin=pr-open" \
+                emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                     "reason=gh_pr_create_failed"
                 jq -n \
                     --arg reason "$gh_output" \
@@ -478,13 +478,15 @@ _pr_open_run_inner() {
           pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
         > "$output_pr_result_json"
 
-    emit_event "plugin.run.complete" "plugin=pr-open" \
+    emit_event "plugin.result" "plugin=pr-open" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}" "action=${pr_status}"
     return 0
 }
 
 # ─── pr_open_cleanup ─────────────────────────────────────────────────────────
 pr_open_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=pr-open"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second `complete` from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

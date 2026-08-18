@@ -108,7 +108,7 @@ output_run() {
 
     if [[ $emit_rc -ne 0 ]]; then
         error "output_run: emit_output failed (rc=$emit_rc)"
-        emit_event "plugin.run.error" "plugin=output-github-comment" \
+        emit_event "plugin.result" "verdict=error" "plugin=output-github-comment" \
             "reason=gh_failed" "gh_rc=$emit_rc"
         return 1
     fi
@@ -128,7 +128,7 @@ output_run() {
     dest="$(IFS=,; printf '%s' "${dest_parts[*]}")"
     [[ -z "$dest" ]] && dest="none"
 
-    emit_event "plugin.run.complete" "plugin=output-github-comment" \
+    emit_event "plugin.result" "plugin=output-github-comment" \
         "findings_count=$count" "dest=$dest"
     return 0
 }

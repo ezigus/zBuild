@@ -190,7 +190,15 @@ verify_plugin_for_source() {
 
     local actual_pair; actual_pair="$(_hash_plugin_pair "$manifest")"
     if [[ "$actual_pair" != "$expected_pair" ]]; then
-        emit_event "plugin.tamper.detected" "plugin=$id" "manifest=$manifest_in_lock"
+        # kind carried for the envelope (#1705): the tamper check runs during
+        # discovery, outside plugin_hook_call's exported context. `:-unknown`
+        # matches contracts.sh — a manifest that fails to parse is exactly the
+        # case this check fires on, and an empty kind would leave the envelope
+        # blank for the one event most worth attributing.
+        local _kind; _kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+        emit_event "plugin.tamper.detected" "plugin=$id" \
+            "kind=${_kind:-unknown}" \
+            "manifest=$manifest_in_lock"
         if [[ "${ZBUILD_STRICT_PLUGIN_LOCK:-0}" == "1" ]]; then
             error "verify_plugin_for_source: $id — file hash mismatch (lockfile: $expected_pair, actual: $actual_pair). plugin.sh or manifest.yaml has changed since lock; refusing to source under ZBUILD_STRICT_PLUGIN_LOCK=1."
             return 1

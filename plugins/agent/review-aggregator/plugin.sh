@@ -409,7 +409,7 @@ _review_aggregator_run_inner() {
         fi
     fi
 
-    emit_event "plugin.run.complete" \
+    emit_event "plugin.result" \
         "plugin=review-aggregator" \
         "merge_readiness=$merge_readiness" \
         "lens_count=$lens_count" \

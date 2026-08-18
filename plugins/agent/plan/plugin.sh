@@ -9,7 +9,7 @@
 # Lifecycle:
 #   plan_run         — derive paths, delegate to _plan_run_inner
 #   _plan_run_inner  — redact → route → validate → emit stage.complete
-#   plan_cleanup     — emit plugin.cleanup.complete, return 0
+#   plan_cleanup     — no-op (the engine brackets the hook, #1705), return 0
 
 [[ -n "${_ZBUILD_PLAN_LOADED:-}" ]] && return 0
 _ZBUILD_PLAN_LOADED=1
@@ -231,7 +231,7 @@ _plan_validate_dod_discipline() {
 
 # Walk plan.json's steps[].files[] and emit one plan.scope.violation event per
 # offending path. Fail-soft: prints the violation count to stdout (caller adds
-# it to plugin.run.complete) and returns 0 even when violations are found.
+# it to plugin.result) and returns 0 even when violations are found.
 # Args:
 #   $1 = plan_json (string content)
 #   $2 = scope_manifest path
@@ -664,10 +664,10 @@ $_plan_instructions"
         #
         # `recovery_attempted`, NOT `recoverable`: this fires BEFORE recovery
         # runs, so it cannot claim the outcome. Pairing an optimistic
-        # `recoverable=1` with a later plugin.run.error would read as a
+        # `recoverable=1` with a later failure event would read as a
         # contradiction in the event log. The outcome is carried by the events
         # that follow — plan.envelope.recovered on success, plan.scope_too_large
-        # on a budget exhaustion, plugin.run.error otherwise.
+        # on a budget exhaustion, plugin.result verdict=error otherwise.
         warn "_plan_run_inner: router rc=$router_rc — trying recovery before failing"
         emit_event "plan.router_failed" "plugin=plan" \
             "reason=router_failed" "router_rc=$router_rc" "recovery_attempted=1" \
@@ -680,7 +680,7 @@ $_plan_instructions"
     # still have emitted (from raw_response AND the router's max_turns sidecar
     # .result); (2) if the failure is specifically error_max_turns/timeout/oom,
     # turn it into a TERMINAL scope_too_large signal (rc=10) instead of an empty
-    # plugin.run.error; (3) otherwise keep the existing claude_cli_failed path.
+    # plugin.result verdict=error; (3) otherwise keep the existing claude_cli_failed path.
     if [[ -z "$plan_json" ]]; then
         # (a) Envelope recovery — ONLY on a router FAILURE (rc != 0), i.e. the
         # budget-exhaustion / crash path. A model that hit max_turns may still
@@ -727,7 +727,7 @@ $_plan_instructions"
             # (b) No recoverable plan. The failure becomes the terminal
             # scope_too_large abort iff the model exhausted its turn budget
             # (sidecar subtype=error_max_turns). Anything else stays the existing
-            # claude_cli_failed / plugin.run.error path.
+            # claude_cli_failed / plugin.result verdict=error path.
             local _stl_subtype=""
             # Resolve the sidecar dir from the SAME expression route.sh writes it
             # to, so a caller that set ZBUILD_ARTIFACT_DIR differently from the
@@ -831,7 +831,7 @@ $_plan_instructions"
             [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
             [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
             error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
-            emit_event "plugin.run.error" "plugin=plan" "reason=$_reason"
+            emit_event "plugin.result" "verdict=error" "plugin=plan" "reason=$_reason"
             return 1
         fi
     fi
@@ -879,7 +879,7 @@ $_plan_instructions"
         fi
     fi
 
-    emit_event "plugin.run.complete" "stage=plan" \
+    emit_event "plugin.result" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \
         "scope_violations=$scope_violations" \
@@ -896,6 +896,8 @@ $_plan_instructions"
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
 plan_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=plan"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second `complete` from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

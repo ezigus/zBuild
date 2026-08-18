@@ -112,9 +112,9 @@ _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_D
 rc=$?
 set -e
 assert_eq "T2: missing acceptance block returns rc=1" "1" "$rc"
-if grep -q '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null && \
-   grep -q '"reason":"missing_acceptance_block"' <<< "$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL")"; then
-    assert_pass "T2: plugin.run.error reason=missing_acceptance_block emitted"
+if grep -q '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null && \
+   grep -q '"reason":"missing_acceptance_block"' <<< "$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL")"; then
+    assert_pass "T2: plugin.result reason=missing_acceptance_block emitted"
 else
     assert_fail "T2: missing_acceptance_block error not emitted" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"

@@ -118,16 +118,16 @@ assert_eq "findings.json plugin_id=security-lens" "security-lens" "$plugin_id"
 # ─── Events emitted during the run ──────────────────────────────────────────
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
     redaction_count=$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" || true)
-    run_complete=$(grep -c '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" || true)
+    run_complete=$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" || true)
     if [[ "$redaction_count" -ge 1 ]]; then
         assert_pass "redaction.applied event emitted (chokepoint observable)"
     else
         assert_fail "expected redaction.applied event in event log"
     fi
     if [[ "$run_complete" -ge 1 ]]; then
-        assert_pass "plugin.run.complete event emitted"
+        assert_pass "[SPEC-2] plugin.result event emitted"
     else
-        assert_fail "expected plugin.run.complete event in event log"
+        assert_fail "expected plugin.result event in event log"
     fi
 else
     assert_fail "events.jsonl was not created"
@@ -223,9 +223,9 @@ ZBUILD_SECURITY_LENS_TIER=T9 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUT
 rc=$?
 set -e
 assert_eq "R7: router rc=2 (fatal tier) returns plugin rc=1 (propagates)" "1" "$rc"
-r7_error_event=$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
-assert_eq "R7: plugin.run.error event emitted with router_fatal reason" "router_fatal" "$r7_error_event"
+r7_error_event=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "R7: plugin.result event emitted with router_fatal reason" "router_fatal" "$r7_error_event"
 
 # ─── R8: .findings key missing from valid JSON object (envelope-wrapped #476) ─
 install_envelope_mock_claude '{"schema_version":1}'

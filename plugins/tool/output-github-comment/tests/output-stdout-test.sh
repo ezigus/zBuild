@@ -99,13 +99,13 @@ else
     assert_pass "gh not called when both destination vars unset"
 fi
 
-# ─── Test 5: plugin.run.complete event has dest=stdout ───────────────────────
+# ─── Test 5: plugin.result event has dest=stdout ─────────────────────────────
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 
-dest_val=$(grep '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.complete" and .data.plugin=="output-github-comment") | .data.dest // empty' \
+dest_val=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result" and .data.plugin=="output-github-comment") | .data.dest // empty' \
     2>/dev/null | tail -1 || true)
-assert_eq "plugin.run.complete event has dest=stdout,local-report" "stdout,local-report" "$dest_val"
+assert_eq "[SPEC-2] plugin.result event has dest=stdout,local-report" "stdout,local-report" "$dest_val"
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env

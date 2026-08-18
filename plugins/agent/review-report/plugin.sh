@@ -119,7 +119,7 @@ _rr_run_inner() {
         [[ $gh_rc -ne 0 ]] && warn "review_report: gh pr comment failed (rc=$gh_rc); continuing"
     fi
 
-    emit_event "plugin.run.complete" \
+    emit_event "plugin.result" \
         "plugin=review-report" \
         "merge_readiness=$merge_readiness" \
         "lens_count=$lens_count"

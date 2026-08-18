@@ -163,13 +163,13 @@ assert_eq "generic fallback run returns rc=0" "0" "$rc"
 scope="$(cat "$STATE_DIR/scope-manifest.md")"
 assert_contains "generic fallback writes + ./" "$scope" "+ ./"
 
-# ─── Test 7: plugin.run.complete event emitted ───────────────────────────────
-run_complete_count=$(grep -c '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
-assert_gt "plugin.run.complete event emitted" "$run_complete_count" "0"
+# ─── Test 7: plugin.result event emitted ─────────────────────────────────────
+run_complete_count=$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
+assert_gt "[SPEC-2] plugin.result event emitted" "$run_complete_count" "0"
 
-plugin_field="$(grep '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.complete") | .data.plugin // empty' 2>/dev/null | tail -1 || true)"
-assert_eq "plugin.run.complete has plugin=intake" "intake" "$plugin_field"
+plugin_field="$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result") | .data.plugin // empty' 2>/dev/null | tail -1 || true)"
+assert_eq "plugin.result has plugin=intake" "intake" "$plugin_field"
 
 # ─── Test 9: empty ZBUILD_GOAL + ZBUILD_ISSUE=0 → rc=2 ──────────────────────
 export ZBUILD_GOAL=""

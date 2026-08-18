@@ -9,7 +9,7 @@
 # Lifecycle:
 #   build_stage_run         — derive paths, delegate to _build_stage_run_inner
 #   _build_stage_run_inner  — redact → route_to_model_loop → git diff → write
-#   build_stage_cleanup     — emit plugin.cleanup.complete
+#   build_stage_cleanup     — no-op (the engine brackets the hook, #1705)
 #
 # CRITICAL: diff.patch is NEVER applied here — it is the working-tree diff
 # left by the agent loop, captured via `git diff HEAD` after the loop returns.
@@ -109,7 +109,7 @@ _build_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_build_stage_run_inner: plan.json not found at $plan_json_path"
-        emit_event "plugin.run.error" "plugin=build" "reason=missing_plan_json"
+        emit_event "plugin.result" "verdict=error" "plugin=build" "reason=missing_plan_json"
         return 2
     fi
 
@@ -414,7 +414,7 @@ _build_stage_run_inner() {
     _build_rewrite_cumulative_diff "$scope_violation" "$artifact_dir" "$repo_root" \
         "$output_diff_patch" "$_diff_failure" || true
 
-    emit_event "plugin.run.complete" "stage=build" \
+    emit_event "plugin.result" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \
         "lines_added=$lines_added" \
@@ -437,6 +437,8 @@ _build_stage_run_inner() {
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
 build_stage_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=build"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second `complete` from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

@@ -208,7 +208,7 @@ _review_lens_run_inner() {
     if [[ $router_rc -ne 0 || -z "$raw_response" ]]; then
         emit_event "review_lens.failed" "lens=$lens" "router_rc=$router_rc"
         _review_lens_empty "$lens" "$out"
-        emit_event "plugin.run.complete" "plugin=review-lens" "lens=$lens" "score=0"
+        emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi
 
@@ -217,7 +217,7 @@ _review_lens_run_inner() {
     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
         emit_event "review_lens.unparseable" "lens=$lens"
         _review_lens_empty "$lens" "$out"
-        emit_event "plugin.run.complete" "plugin=review-lens" "lens=$lens" "score=0"
+        emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi
 
@@ -245,7 +245,7 @@ _review_lens_run_inner() {
     if [[ -z "$normalized" ]]; then
         emit_event "review_lens.unparseable" "lens=$lens"
         _review_lens_empty "$lens" "$out"
-        emit_event "plugin.run.complete" "plugin=review-lens" "lens=$lens" "score=0"
+        emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi
 
@@ -257,7 +257,7 @@ _review_lens_run_inner() {
     local score findings_count
     score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"
-    emit_event "plugin.run.complete" "plugin=review-lens" \
+    emit_event "plugin.result" "plugin=review-lens" \
         "lens=$lens" "score=$score" "findings_count=$findings_count" \
         "router_rc=$router_rc"
     return 0
@@ -265,6 +265,8 @@ _review_lens_run_inner() {
 
 # ─── review_lens_cleanup ───────────────────────────────────────────────────────
 review_lens_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=review-lens"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second `complete` from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

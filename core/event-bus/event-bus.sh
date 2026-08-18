@@ -125,12 +125,22 @@ eb_emit_event() {
         echo "[event-bus] WARN: unknown event type '$type' (run_id=${ZBUILD_RUN_ID:-})" >&2
     fi
 
-    # Build payload from key=val args
+    # Build payload from key=val args. plugin/kind are also captured here as a
+    # fallback for the envelope (#1705): emitters outside plugin_hook_call's
+    # dynamic extent — the contract checker, the tamper check — never see the
+    # exported ZBUILD_PLUGIN context, and left the envelope's advertised
+    # .plugin/.kind empty. Captured in this existing loop so the hot path gains
+    # no subprocess, and applied below only when the exported context is absent.
     local payload="{}"
     local key val
+    local _data_plugin="" _data_kind=""
     for arg in "$@"; do
         key="${arg%%=*}"
         val="$(_eb_strip_ansi "${arg#*=}")"
+        case "$key" in
+            plugin) _data_plugin="$val" ;;
+            kind)   _data_kind="$val" ;;
+        esac
         payload="$(echo "$payload" | jq --arg k "$key" --arg v "$val" '. + {($k): $v}')"
     done
 
@@ -146,6 +156,11 @@ eb_emit_event() {
     local issue="${ZBUILD_ISSUE:-0}"
     local plugin; plugin="$(_eb_strip_ansi "${ZBUILD_PLUGIN:-}")"
     local kind; kind="$(_eb_strip_ansi "${ZBUILD_PLUGIN_KIND:-}")"
+    # Fall back to the payload's own plugin/kind so the envelope is populated
+    # for every emitter, not only those dispatched through plugin_hook_call.
+    # Applied before the SQLite insert too, so both stores agree.
+    if [[ -z "$plugin" ]]; then plugin="$_data_plugin"; fi
+    if [[ -z "$kind" ]]; then kind="$_data_kind"; fi
     # ADR-004 / ADR-039 §3: stamp the active stage onto the envelope so the
     # router's C6 precondition can be scoped PER-STAGE. Parallel-group members
     # (parallel-orchestrator.sh) each export ZBUILD_CURRENT_STAGE inside their

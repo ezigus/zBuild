@@ -79,9 +79,9 @@ else
     assert_fail "pr-result.json written on halt" "file missing"
 fi
 if grep -q '"reason":"no_committed_changes"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "plugin.run.error reason=no_committed_changes emitted"
+    assert_pass "plugin.result verdict=error reason=no_committed_changes emitted"
 else
-    assert_fail "plugin.run.error reason=no_committed_changes emitted" "missing"
+    assert_fail "plugin.result verdict=error reason=no_committed_changes emitted" "missing"
 fi
 
 # ── (3) gh pr create was NEVER invoked (halt is BEFORE gh) ──────────────────

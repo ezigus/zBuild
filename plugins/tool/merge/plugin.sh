@@ -97,7 +97,7 @@ _merge_run_inner() {
     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
     if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
         error "merge_run: refusing to merge from branch '${current_branch}' — use a feature branch"
-        emit_event "plugin.run.error" "plugin=merge" \
+        emit_event "plugin.result" "verdict=error" "plugin=merge" \
             "reason=branch_is_main" "branch=${current_branch}"
         jq -n --arg branch "$current_branch" \
             '{"schema_version":1,"status":"error","reason":("refusing to merge from: "+$branch)}' \
@@ -213,13 +213,15 @@ _merge_run_inner() {
           pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
         > "$pr_result_out"
 
-    emit_event "plugin.run.complete" "plugin=merge" \
+    emit_event "plugin.result" "plugin=merge" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}"
     return 0
 }
 
 # ─── merge_cleanup ───────────────────────────────────────────────────────────
 merge_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=merge"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second `complete` from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

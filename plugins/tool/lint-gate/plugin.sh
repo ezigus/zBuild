@@ -44,8 +44,6 @@ lint_gate_run() {
     local result_path="$artifacts_dir/lint-result.json"
     local results_json="$artifacts_dir/test-results.json"
 
-    _lg_emit "plugin.run.start" "plugin=lint-gate"
-
     # Read the lint.status field. Absent file / missing block → "" → skip.
     local status=""
     if [[ -f "$results_json" ]]; then
@@ -78,13 +76,14 @@ lint_gate_run() {
     jq -n --arg v "$verdict" --arg s "$status" --arg d "$detail" \
         '{"verdict":$v,"status":$s,"detail":$d}' | atomic_write "$result_path"
 
-    _lg_emit "plugin.run.complete" "plugin=lint-gate" "verdict=$verdict"
+    _lg_emit "plugin.result" "plugin=lint-gate" "verdict=$verdict"
     return 0
 }
 
 # ─── lint_gate_cleanup ────────────────────────────────────────────────────────
 lint_gate_cleanup() {
-    _lg_emit "plugin.cleanup.start" "plugin=lint-gate"
-    _lg_emit "plugin.cleanup.complete" "plugin=lint-gate"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second pair from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

@@ -125,7 +125,7 @@ _run_case() {
             mkdir -p \"\$artdir\"
             if [[ \"\$stage\" == \"review\" ]]; then
                 printf '{\"schema_version\":1,\"verdict\":\"$_review_verdict\",\"confidence\":0.6,\"issues\":[],\"summary\":\"x\"}' > \"\$artdir/review.json\"
-                eb_emit_event \"plugin.run.complete\" \"plugin=review\" \"verdict=$_review_verdict\" 2>/dev/null || true
+                eb_emit_event \"plugin.result\" \"plugin=review\" \"verdict=$_review_verdict\" 2>/dev/null || true
             fi
             return 0
         }"

@@ -77,9 +77,13 @@ _check_artifact_contract() {
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
 
     # Emit plugin.contract.violated event
+    # kind is carried so the envelope's .kind is populated here too (#1705) —
+    # this checker runs outside plugin_hook_call, so there is no exported context.
+    local _kind; _kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
     eb_emit_event "plugin.contract.violated" \
         "stage=$stage" \
         "plugin=${plugin_id:-unknown}" \
+        "kind=${_kind:-unknown}" \
         "artifact_type=$artifact_type" \
         "expected_path=$resolved_path" \
         "reason=artifact_missing_or_empty"

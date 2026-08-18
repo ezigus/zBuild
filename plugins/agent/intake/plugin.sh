@@ -149,7 +149,7 @@ intake_run() {
         fi
     fi
 
-    emit_event "plugin.run.complete" "plugin=intake" \
+    emit_event "plugin.result" "plugin=intake" \
         "goal_len=${#sanitized}" \
         "platform_count=${#platforms[@]}"
     return 0

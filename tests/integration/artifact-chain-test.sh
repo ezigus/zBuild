@@ -111,39 +111,39 @@ out_rc=$?
 set -e
 assert_eq "output plugin exits 0" "0" "$out_rc"
 
-# ─── Assert plugin.run.complete events appear in intake → security-lens → output order ─
-intake_pos="$(grep -n '"plugin.run.complete"' "$EVENTS_JSONL" 2>/dev/null \
+# ─── Assert plugin.result events appear in intake → security-lens → output order ─
+intake_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
     | grep '"intake"' | head -1 | cut -d: -f1 || echo 0)"
-sl_pos="$(grep -n '"plugin.run.complete"' "$EVENTS_JSONL" 2>/dev/null \
+sl_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
     | grep '"security-lens"' | head -1 | cut -d: -f1 || echo 0)"
-output_pos="$(grep -n '"plugin.run.complete"' "$EVENTS_JSONL" 2>/dev/null \
+output_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
     | grep '"output-github-comment"' | head -1 | cut -d: -f1 || echo 0)"
 
 if [[ -n "$intake_pos" && -n "$sl_pos" && "$intake_pos" -gt 0 && "$sl_pos" -gt 0 ]]; then
     if [[ "$intake_pos" -lt "$sl_pos" ]]; then
-        assert_pass "event ordering: intake plugin.run.complete before security-lens"
+        assert_pass "[SPEC-2] event ordering: intake plugin.result before security-lens"
     else
-        assert_fail "event ordering: intake plugin.run.complete before security-lens" \
+        assert_fail "event ordering: intake plugin.result before security-lens" \
             "intake line=$intake_pos sl line=$sl_pos"
     fi
     # Also assert security-lens completes before output-github-comment when
     # the output event is present (full intake → sl → output chain).
     if [[ -n "$output_pos" && "$output_pos" -gt 0 ]]; then
         if [[ "$sl_pos" -lt "$output_pos" ]]; then
-            assert_pass "event ordering: security-lens plugin.run.complete before output-github-comment"
+            assert_pass "event ordering: security-lens plugin.result before output-github-comment"
         else
-            assert_fail "event ordering: security-lens plugin.run.complete before output-github-comment" \
+            assert_fail "event ordering: security-lens plugin.result before output-github-comment" \
                 "sl line=$sl_pos output line=$output_pos"
         fi
     fi
 else
-    # plugin.run.complete events emitted — verify via grep count
-    intake_complete="$(grep '"plugin.run.complete"' "$EVENTS_JSONL" 2>/dev/null \
+    # plugin.result events emitted — verify via grep count
+    intake_complete="$(grep '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
         | grep -c '"intake"' || true)"
-    sl_complete="$(grep '"plugin.run.complete"' "$EVENTS_JSONL" 2>/dev/null \
+    sl_complete="$(grep '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
         | grep -c '"security-lens"' || true)"
-    assert_gt "intake plugin.run.complete emitted" "$intake_complete" "0"
-    assert_gt "security-lens plugin.run.complete emitted" "$sl_complete" "0"
+    assert_gt "intake plugin.result emitted" "$intake_complete" "0"
+    assert_gt "security-lens plugin.result emitted" "$sl_complete" "0"
 fi
 
 _test_cleanup_hook() { cleanup_test_env; }

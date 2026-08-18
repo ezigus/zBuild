@@ -172,12 +172,12 @@ rc=$?
 set -e
 
 assert_eq "gh failure returns plugin rc=1" "1" "$rc"
-error_reason=$(grep '"plugin.run.error"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
-assert_eq "plugin.run.error emitted with gh_failed" "gh_failed" "$error_reason"
+error_reason=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
+assert_eq "plugin.result emitted with gh_failed" "gh_failed" "$error_reason"
 unset ZBUILD_ISSUE
 
-# ─── Test 9: plugin.run.complete event with findings_count ───────────────────
+# ─── Test 9: plugin.result event with findings_count ─────────────────────────
 cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
 #!/usr/bin/env bash
 exit 0
@@ -187,12 +187,12 @@ unset ZBUILD_ISSUE 2>/dev/null || true
 
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
 
-run_complete=$(grep '"plugin.run.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-    jq -r 'select(.type=="plugin.run.complete" and .data.plugin=="output-github-comment") | .data.findings_count // empty' 2>/dev/null | tail -1 || true)
+run_complete=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+    jq -r 'select(.type=="plugin.result" and .data.plugin=="output-github-comment") | .data.findings_count // empty' 2>/dev/null | tail -1 || true)
 if [[ -n "$run_complete" ]]; then
-    assert_pass "plugin.run.complete event has findings_count field"
+    assert_pass "[SPEC-2] plugin.result event has findings_count field"
 else
-    assert_fail "plugin.run.complete missing findings_count"
+    assert_fail "plugin.result missing findings_count"
 fi
 
 # ─── Test 11: findings.json with stub:false field → ignored cleanly ──────────

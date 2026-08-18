@@ -151,7 +151,7 @@ _security_lens_run_inner() {
         warn "security_lens_run: router rc=1 (recoverable); using empty findings"
     elif [[ $router_rc -ne 0 ]]; then
         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
-        emit_event "plugin.run.error" "plugin=security-lens" \
+        emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
             "reason=router_fatal" "router_rc=$router_rc"
         return 1
     fi
@@ -172,7 +172,7 @@ _security_lens_run_inner() {
             stub: false
         }' | atomic_write "$output"
 
-    emit_event "plugin.run.complete" "plugin=security-lens" \
+    emit_event "plugin.result" "plugin=security-lens" \
         "findings_count=$findings_count" \
         "router_rc=$router_rc"
     return 0
@@ -180,6 +180,8 @@ _security_lens_run_inner() {
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
 security_lens_cleanup() {
-    emit_event "plugin.cleanup.complete" "plugin=security-lens"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second `complete` from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }

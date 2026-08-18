@@ -70,8 +70,6 @@ design_gate_run() {
     # repo_root = the working tree where declared TESTFILES / WIRING paths live.
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo "$_DG_ROOT")}"
 
-    _dg_emit "plugin.run.start" "plugin=design-gate"
-
     local -a violations=()
 
     # ── C1 SCOPE: non-empty ```scope block ──────────────────────────────────
@@ -164,13 +162,14 @@ design_gate_run() {
         _dg_emit "design_gate.pass" "plugin=design-gate"
     fi
 
-    _dg_emit "plugin.run.complete" "plugin=design-gate" "verdict=$verdict"
+    _dg_emit "plugin.result" "plugin=design-gate" "verdict=$verdict"
     return 0
 }
 
 # ─── design_gate_cleanup ──────────────────────────────────────────────────────
 design_gate_cleanup() {
-    _dg_emit "plugin.cleanup.start" "plugin=design-gate"
-    _dg_emit "plugin.cleanup.complete" "plugin=design-gate"
+    # No self-emit (#1705): plugin_hook_call already brackets this hook with
+    # plugin.cleanup.start/complete. A second pair from here is the same
+    # two-emitters-one-name collision the run pair was filed for.
     return 0
 }
