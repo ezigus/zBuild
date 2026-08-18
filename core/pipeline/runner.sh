@@ -988,7 +988,9 @@ _runner_report_engine_drift() {
 
     local n="" subjects=""
     n="$(git -C "$root" rev-list --count "$sha..$tip" 2>/dev/null || true)"
-    subjects="$(git -C "$root" log --oneline --no-decorate "$sha..$tip" 2>/dev/null | head -10 || true)"
+    if subjects="$(git -C "$root" log --oneline --no-decorate -n 10 "$sha..$tip" 2>/dev/null)"; then :; else
+        subjects="<unreadable>"
+    fi
 
     eb_emit_event "pipeline.engine_drift" \
         "run_id=${_runner_run_id:-}" "issue=${_runner_issue:-}" "reason=$reason" \

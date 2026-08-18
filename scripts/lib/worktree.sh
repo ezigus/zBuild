@@ -226,7 +226,7 @@ zbuild_worktree_enter() {
     local holder
     holder="$(git worktree list --porcelain 2>/dev/null \
         | awk -v b="refs/heads/$branch" '/^worktree /{w=$2} /^branch /{if ($2==b) print w}' \
-        | head -1)"
+        | head -1)"  # sigpipe-ok: git guarantees at most one worktree per branch
     if [[ -n "$holder" ]]; then
         printf 'zbuild_worktree_enter: branch "%s" is already checked out at %s\n' "$branch" "$holder" >&2
         printf '  refusing --force: two trees on one branch leaves a silently stale HEAD.\n' >&2

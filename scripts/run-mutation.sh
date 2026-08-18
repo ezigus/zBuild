@@ -74,7 +74,7 @@ declare -a _mut_pids=()
 # and caps at 8 so a many-core host doesn't oversubscribe the bounded pool.
 _zb_default_jobs() {
     local n
-    n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
+    n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"  # sigpipe-ok: writer emits exactly one line
     [[ "$n" =~ ^[1-9][0-9]*$ ]] || n=4
     (( n > 8 )) && n=8
     printf '%s' "$n"

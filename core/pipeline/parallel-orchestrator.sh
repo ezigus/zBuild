@@ -59,7 +59,7 @@ _PARALLEL_TRAP_GROUP_ID=""
 # macOS `sysctl -n hw.ncpu`, fall back to 4, cap at 8.
 _parallel_default_jobs() {
     local n
-    n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
+    n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"  # sigpipe-ok: writer emits exactly one line
     [[ "$n" =~ ^[1-9][0-9]*$ ]] || n=4
     (( n > _PARALLEL_MAX_JOBS_CAP )) && n=$_PARALLEL_MAX_JOBS_CAP
     printf '%s' "$n"

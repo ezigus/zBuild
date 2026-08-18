@@ -54,6 +54,7 @@ call_graph_produce() {
 
         # Callers: source-tree grep for invocations (excludes tests/, legacy/, .git/).
         local _callers="[]"
+        # sigpipe-ok: every stage is || true-wrapped and the rc is discarded
         _callers="$(
             { grep -rn --include="*.sh" \
                 --exclude-dir=tests --exclude-dir=legacy --exclude-dir=.git \
@@ -69,6 +70,7 @@ call_graph_produce() {
         # Callees: distinct identifiers on added lines in the diff.
         local _callees="[]"
         _callees="$(
+            # sigpipe-ok: sort reads all input before writing; rc discarded via || _callees=[]
             { grep -E '^\+[^+]' "$_cg_diff" 2>/dev/null || true; } \
             | { grep -oE '\b[a-z_][a-z_0-9]{2,}\b' 2>/dev/null || true; } \
             | { grep -v "^${_fn}$" 2>/dev/null || true; } \

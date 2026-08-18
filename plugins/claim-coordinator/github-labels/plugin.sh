@@ -236,7 +236,7 @@ claim_coordinator_list_claims() {
                 [[ -d "$issue_dir" ]] || continue
                 issue="$(basename "$issue_dir")"
                 [[ -f "$issue_dir/labels.txt" ]] || continue
-                holder="$(grep "^claimed:" "$issue_dir/labels.txt" | head -1 | sed 's/^claimed://')"
+                holder="$(grep -m1 "^claimed:" "$issue_dir/labels.txt" | sed 's/^claimed://')"
                 [[ -z "$holder" ]] && continue
                 results="$(echo "$results" | jq --arg i "$issue" --arg h "$holder" \
                     '. + [{issue: ($i|tonumber), holder: $h, acquired_at: null}]')"

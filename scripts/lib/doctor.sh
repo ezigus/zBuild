@@ -42,7 +42,7 @@ _check_jq() {
 
 _check_git() {
     if command -v git >/dev/null 2>&1; then
-        _doc_pass "git $(git --version 2>/dev/null | head -1 || echo 'found')"
+        _doc_pass "git $(git --version 2>/dev/null | head -1 || echo 'found')"  # sigpipe-ok: || echo fallback supplies a value on any failure
     else
         _doc_fail "git not found; Fix: brew install git  /  apt install git"
     fi

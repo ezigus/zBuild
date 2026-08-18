@@ -93,5 +93,46 @@ assert_eq "[#1884] here-string form            -> NOT an offender" \
 assert_eq "[#1884] grep without -q             -> NOT an offender" \
     "no"  "$(_sp_check 'printf "%s" "$v" | grep -E foo')"
 
+# ─── #1886: `| head` is the same class, and was not covered ──────────────────
+# grep -q was one shape. Any reader that exits before its writer finishes has
+# the same hazard, and `| head -N` had 45 production instances — one of them in
+# the test-result parser, on the path that decides a stage verdict.
+#
+# Sites where the pipe is genuinely safe carry `# sigpipe-ok: <reason>`, on the
+# line itself or within the 8 lines above it (a line ending in `\` cannot take a
+# trailing comment, so the marker sits before the statement). Requiring a stated
+# reason is the point: a NEW `| head` cannot be added without saying why.
+print_test_section "[#1886] every '| head' is converted or justified"
+
+_head_offenders=""
+while IFS= read -r _hit; do
+    [[ -z "$_hit" ]] && continue
+    _hf="${_hit%%:*}"; _rest="${_hit#*:}"; _hl="${_rest%%:*}"
+    # marker on the line itself, or on any of the 8 lines above it
+    _from=$(( _hl > 8 ? _hl - 8 : 1 ))
+    if sed -n "${_from},${_hl}p" "$_hf" 2>/dev/null | grep -q 'sigpipe-ok'; then
+        continue
+    fi
+    _head_offenders+="$_hit"$'\n'
+done < <(
+    grep -rnE '(^|[^|])\|[[:space:]]*head[[:space:]]+-' \
+        "$REPO_ROOT/scripts" "$REPO_ROOT/core" "$REPO_ROOT/plugins" \
+        --include='*.sh' 2>/dev/null \
+    | { grep -v "^$REPO_ROOT/legacy/" || true; } \
+    | { grep -v -- '-test.sh:' || true; } \
+    | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
+    | sort -u
+)
+
+_head_offenders="${_head_offenders%$'\n'}"
+if [[ -z "$_head_offenders" ]]; then
+    assert_pass "[#1886] no unjustified '| head' in scripts/, core/ or plugins/"
+else
+    echo "  unjustified '| head' (convert, or add '# sigpipe-ok: <reason>'):" >&2
+    head -15 <<< "$_head_offenders" >&2
+    assert_fail "[#1886] no unjustified '| head' in scripts/, core/ or plugins/" \
+        "found $(grep -cE '.' <<< "$_head_offenders") occurrence(s)"
+fi
+
 print_test_results
 exit $((FAIL > 0))

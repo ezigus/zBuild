@@ -361,7 +361,8 @@ _test_run_inner() {
     # Truncate output to 10 KB to keep artifact manageable. Wave 15-C (#681)
     # sanitizes first so the head-c budget carries signal, not framework
     # decoration (banner pairs, ANSI color codes, redaction-tag wrappers).
-    test_output="$(printf '%s' "$raw_output" | _zbuild_sanitize_test_output | head -c 10240)"
+    test_output="$(_zbuild_sanitize_test_output <<< "$raw_output")"
+    test_output="${test_output:0:10240}"
 
     exit_code="$test_rc"
 
@@ -553,6 +554,7 @@ _test_emit_failures_summary() {
     # Extract failing test lines (best-effort across common formats).
     # We keep matched lines verbatim — the build agent reads them as-is.
     local extracted
+    # sigpipe-ok: || true, and an explicit empty-check plus absent-file pin follow
     extracted="$(printf '%s' "$raw_output" \
         | grep -E '(FAIL|✗|✘|Error:|Failure:|AssertionError|expected|Expected)' \
         | head -n 60 || true)"
@@ -560,7 +562,7 @@ _test_emit_failures_summary() {
     # If nothing matched but verdict says fail/error, fall back to first ~40
     # lines of raw output so the build agent at least sees something.
     if [[ -z "$extracted" ]]; then
-        extracted="$(printf '%s' "$raw_output" | head -n 40 || true)"
+        extracted="$(printf '%s' "$raw_output" | head -n 40 || true)"  # sigpipe-ok: || true, and an absent-file pin follows
     fi
 
     # Pin: if extraction still yields zero non-whitespace content, file must

@@ -198,7 +198,7 @@ _plan_validate_dod_discipline() {
             /^#+[[:space:]]*Anti-patterns/ { in_section=1; next }
             in_section && /^#+[[:space:]]/ { in_section=0; next }
             in_section { print }
-        ' | grep -Eo '❌[[:space:]]*"[^"]+"' | sed 's/^❌[[:space:]]*"//; s/"$//' | head -20)"
+        ' | grep -m20 -Eo '❌[[:space:]]*"[^"]+"' | sed 's/^❌[[:space:]]*"//; s/"$//')"
         local _ap
         while IFS= read -r _ap; do
             [[ -z "$_ap" ]] && continue

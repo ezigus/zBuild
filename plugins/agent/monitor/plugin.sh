@@ -96,7 +96,7 @@ _monitor_stage_run_inner() {
     fi
     local pr_block="(not available)"
     if [[ -f "$pr_url_txt" ]]; then
-        pr_block="$(tr -d '\r\n' < "$pr_url_txt" | head -c 500)"
+        pr_block="$(tr -d '\r\n' < "$pr_url_txt" | head -c 500)"  # sigpipe-ok: pr-url.txt is structurally a single short line
     fi
 
     # Single role-framing line (persona-migration-ready, EPIC #1302): a future

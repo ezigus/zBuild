@@ -113,12 +113,12 @@ _test_pattern_runall() {
 _test_pattern_jest() {
     local raw="$1" rc="$2"
     local line
-    line="$(printf '%s\n' "$raw" | grep -E '^Tests:[[:space:]]+.*[0-9]+ total' | head -n1)"
+    line="$(grep -m1 -E '^Tests:[[:space:]]+.*[0-9]+ total' <<< "$raw")"
     [[ -n "$line" ]] || return 1
 
     local passed failed
-    passed="$(printf '%s' "$line" | grep -oE '[0-9]+ passed' | head -n1 | awk '{print $1}')"
-    failed="$(printf '%s' "$line" | grep -oE '[0-9]+ failed' | head -n1 | awk '{print $1}')"
+    passed="$(grep -m1 -oE '[0-9]+ passed' <<< "$line" | awk '{print $1}')"
+    failed="$(grep -m1 -oE '[0-9]+ failed' <<< "$line" | awk '{print $1}')"
     [[ -z "$passed" ]] && passed=0
     [[ -z "$failed" ]] && failed=0
 
@@ -302,9 +302,10 @@ _test_parse_summary() {
 
     # Fail-safe — no pattern recognized this output. Do NOT guess counts.
     local first_fail summary
-    first_fail="$(printf '%s\n' "$raw" \
-        | grep -E 'FAIL|Error|✗|✘|AssertionError|panic|Exception' \
-        | head -n1)"
+    # grep -m1 stops at the first match itself, so nothing is left writing into
+    # a closed pipe (#1886). This is the fail-safe verdict path — a SIGPIPE here
+    # under the caller's pipefail loses the only diagnostic the operator gets.
+    first_fail="$(grep -m1 -E 'FAIL|Error|✗|✘|AssertionError|panic|Exception' <<< "$raw")"
     summary="exit=${rc} · summary unavailable (unrecognized test runner output)"
     [[ -n "$first_fail" ]] && summary="${summary} · first failure: ${first_fail}"
     printf 'error|null|null|%s|0\n' "$summary"

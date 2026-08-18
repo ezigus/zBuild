@@ -80,7 +80,7 @@ _validate_agent_run_inner() {
                     | atomic_write "$validate_result_out"
                 return 0
             fi
-            local hc_snippet; hc_snippet="$(printf '%s' "$hc_out" | head -c 500)"
+            local hc_snippet; hc_snippet="${hc_out:0:500}"
             emit_event "validate.probe.failed" "plugin=validate" "rc=$hc_rc"
             jq -n --argjson rc "$hc_rc" --arg detail "$hc_snippet" \
                 '{schema_version:1,verdict:"error",rc:$rc,detail:$detail}' \

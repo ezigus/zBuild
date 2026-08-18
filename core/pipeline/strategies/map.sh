@@ -65,7 +65,7 @@ _strategy_map_resolve_max() {
         if [[ "${ZBUILD_PARALLEL_JOBS:-}" =~ ^[1-9][0-9]*$ ]]; then
             max="$ZBUILD_PARALLEL_JOBS"
         else
-            max="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"
+            max="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"  # sigpipe-ok: writer emits exactly one line
             [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
         fi
     fi

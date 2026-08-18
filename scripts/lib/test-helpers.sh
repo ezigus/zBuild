@@ -768,7 +768,11 @@ assert_event_emitted() {
         return
     fi
     local found
-    found="$(jq -r --arg t "$event_type" 'select(.type == $t) | .type' "$events_file" 2>/dev/null | head -1 || true)"
+    if found="$(jq -r --arg t "$event_type" 'select(.type == $t) | .type' "$events_file" 2>/dev/null)"; then
+        found="${found%%$'\n'*}"
+    else
+        found=""
+    fi
     if [[ "$found" == "$event_type" ]]; then
         assert_pass "$desc"
     else
