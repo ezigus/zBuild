@@ -803,8 +803,14 @@ _stage_io_head() {
     # abort the run mid-banner (#1886).
     local -a _lines=()
     mapfile -t -n "$n" _lines <<< "$content"
-    ((${#_lines[@]})) && printf '%s\n' "${_lines[@]}"
-    return 0
+    # `if`, not `(( )) &&`: the arithmetic form's exit status is the last command
+    # in the && list, so an empty array makes the whole line non-zero and leans on
+    # version-specific `set -e` behaviour. (Measured: it does not abort on bash 5.3,
+    # and mapfile <<< always yields >=1 element so the branch is unreachable — this
+    # is for clarity and portability, not a live bug.)
+    if (( ${#_lines[@]} )); then
+        printf '%s\n' "${_lines[@]}"
+    fi
 }
 
 # ─── _stage_io_truncation_hint <total> <shown> <stage> <seq> ─────────────────
@@ -831,7 +837,11 @@ _stage_io_head_with_hint() {
     local -a _all=()
     mapfile -t _all <<< "$content"
     local total="${#_all[@]}"
-    _stage_io_head "$content" "$n"
+    # Slice the array we already built rather than re-reading $content in
+    # _stage_io_head — one pass over a banner that can be large.
+    if (( total )); then
+        printf '%s\n' "${_all[@]:0:$n}"
+    fi
     _stage_io_truncation_hint "$total" "$n" "$stage" "$seq"
 }
 
