@@ -753,6 +753,87 @@ set -e
 
 assert_eq "plan_cleanup returns rc=0" "0" "$rc"
 
+# ═══ #1727: a wall-clock timeout (rc=124) must reach the recovery path ═══════
+# At the merge-base `_plan_run_inner` returned 1 the moment router_rc != 0, and
+# that return sat ABOVE the #1052 recovery / state-save block — so for exactly
+# the rcs that block exists to serve (124 wall-clock, 137 OOM) it was
+# unreachable. One timeout aborted the whole run with nothing salvaged.
+#
+# Observed on runs 20260817184959-54622 and 20260817192215-57314 (issue #1832):
+# plan killed at 300s mid-tool-use, `reason=router_fatal router_rc=124`, then
+# `pipeline.abort`. Twice.
+print_test_section "[#1727] rc=124 falls through to recovery instead of aborting"
+
+_SAVED_CANNED_PLAN_1727="$CANNED_PLAN"
+_ORIG_RTM_1727="$(declare -f route_to_model)"
+
+# Router times out (rc=124) AND leaves a schema-valid plan in the captured
+# response — the shape a model that finished its plan but was killed during a
+# trailing tool call leaves behind. Recovery should salvage it.
+route_to_model() {
+    printf '%s' "$_SAVED_CANNED_PLAN_1727"
+    return 124
+}
+
+: > "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _rc1727=$?; set -e
+
+# THE ASSERTION THAT REDDENS AT THE MERGE-BASE: rc=124 used to return 1 here.
+assert_eq "[#1727] rc=124 with a recoverable plan -> rc=0 (was: fatal 1)" \
+    "0" "$_rc1727"
+if [[ -s "$ARTIFACTS_DIR/plan.json" ]]; then
+    assert_pass "[#1727] the salvaged plan.json was written"
+else
+    assert_fail "[#1727] the salvaged plan.json was written" "artifact absent"
+fi
+
+# The diagnostic is not silently downgraded — a router failure still says so.
+_ev1727="$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+if grep -q "plan.router_failed" <<< "$_ev1727"; then
+    assert_pass "[#1727] plan.router_failed is emitted"
+else
+    assert_fail "[#1727] plan.router_failed is emitted" \
+        "event absent; router failure was swallowed"
+fi
+# Assert the PAYLOAD, not just the event name — the claim is that the rc is
+# recorded, and an event that names no rc does not support it.
+if grep -qE '"router_rc":"?124"?|router_rc=124' <<< "$_ev1727"; then
+    assert_pass "[#1727] the event records router_rc=124"
+else
+    assert_fail "[#1727] the event records router_rc=124" \
+        "router_rc missing from the payload"
+fi
+# The optimistic field must not claim an outcome it cannot know yet.
+if grep -q "recovery_attempted" <<< "$_ev1727"; then
+    assert_pass "[#1727] event says recovery_attempted, not recoverable"
+else
+    assert_fail "[#1727] event says recovery_attempted, not recoverable" \
+        "field absent or still claims recoverability before recovery ran"
+fi
+# ...and it must NOT claim fatality any more.
+if grep -q '"reason":"router_fatal"' <<< "$_ev1727"; then
+    assert_fail "[#1727] router_fatal is no longer emitted" "still emitting router_fatal"
+else
+    assert_pass "[#1727] router_fatal is no longer emitted"
+fi
+
+# GUARD: a genuinely unrecoverable rc=124 must still fail — falling through is
+# about REACHING the decision, not about passing regardless.
+route_to_model() { printf '%s' 'not-a-plan'; return 124; }
+rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
+set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _rc1727b=$?; set -e
+if [[ "$_rc1727b" -ne 0 ]]; then
+    assert_pass "[#1727] guard: unrecoverable rc=124 still fails (rc=$_rc1727b)"
+else
+    assert_fail "[#1727] guard: unrecoverable rc=124 still fails" \
+        "rc=0 — the fall-through turned a real failure into a pass"
+fi
+
+unset -f route_to_model
+if [[ -n "$_ORIG_RTM_1727" ]]; then eval "$_ORIG_RTM_1727"; fi
+CANNED_PLAN="$_SAVED_CANNED_PLAN_1727"
+
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

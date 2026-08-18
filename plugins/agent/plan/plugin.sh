@@ -639,10 +639,39 @@ $_plan_instructions"
     elif [[ $router_rc -eq 1 ]]; then
         warn "_plan_run_inner: router rc=1 (recoverable); no plan produced"
     elif [[ $router_rc -ne 0 ]]; then
-        error "_plan_run_inner: router rc=$router_rc (fatal)"
-        emit_event "plugin.run.error" "plugin=plan" \
-            "reason=router_fatal" "router_rc=$router_rc"
-        return 1
+        # #1727: FALL THROUGH to the recovery block below instead of returning 1
+        # here. This `return 1` sat ABOVE the #1052 recovery/state-save path, so
+        # for exactly the rcs that path exists to serve — 124 (wall-clock
+        # timeout) and 137 (OOM kill) — it was unreachable, and a single timeout
+        # aborted the whole run with nothing persisted.
+        #
+        # Observed on runs 20260817184959-54622 / 20260817192215-57314 (#1832):
+        # plan killed at 300s mid-tool-use, `reason=router_fatal router_rc=124`,
+        # then `pipeline.abort`. route.sh now retries rc=124 once with an
+        # escalated timeout and the checkpoint re-injected (#1879); this makes
+        # the outcome AFTER that retry recoverable rather than terminal.
+        #
+        # Not silently downgraded: the diagnostic still fires, and the block
+        # below decides the real outcome — a recovered plan (success), a
+        # budget-exhaustion signal (rc=10 scope_too_large), or the existing
+        # claude_cli_failed path (rc=1). What changes is that the decision is now
+        # MADE rather than pre-empted.
+        # `plan.router_failed`, NOT `plugin.run.*`: this is emitted BY the plugin,
+        # and `plugin.*` is the ENGINE's namespace (lifecycle.sh). Plan already
+        # emitting into it is the pre-existing collision #1705 documents — 23
+        # starts vs 37 completes — so this does not add to it. Declared in the
+        # manifest's provides.events per #1717, which needs no engine-config edit.
+        #
+        # `recovery_attempted`, NOT `recoverable`: this fires BEFORE recovery
+        # runs, so it cannot claim the outcome. Pairing an optimistic
+        # `recoverable=1` with a later plugin.run.error would read as a
+        # contradiction in the event log. The outcome is carried by the events
+        # that follow — plan.envelope.recovered on success, plan.scope_too_large
+        # on a budget exhaustion, plugin.run.error otherwise.
+        warn "_plan_run_inner: router rc=$router_rc — trying recovery before failing"
+        emit_event "plan.router_failed" "plugin=plan" \
+            "reason=router_failed" "router_rc=$router_rc" "recovery_attempted=1" \
+            2>/dev/null || true
     fi
 
     # ─── Recovery + scope_too_large (Pillars C/D, #1052) ────────────────────
