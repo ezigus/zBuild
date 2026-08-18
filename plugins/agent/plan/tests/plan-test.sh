@@ -790,10 +790,10 @@ fi
 
 # The diagnostic is not silently downgraded — a router failure still says so.
 _ev1727="$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
-if grep -q "plugin.run.router_failed" <<< "$_ev1727"; then
-    assert_pass "[#1727] plugin.run.router_failed is emitted"
+if grep -q "plan.router_failed" <<< "$_ev1727"; then
+    assert_pass "[#1727] plan.router_failed is emitted"
 else
-    assert_fail "[#1727] plugin.run.router_failed is emitted" \
+    assert_fail "[#1727] plan.router_failed is emitted" \
         "event absent; router failure was swallowed"
 fi
 # Assert the PAYLOAD, not just the event name — the claim is that the rc is

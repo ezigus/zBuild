@@ -34,6 +34,7 @@ provides:
     - plan.flow_wiring_missing
     - plan.scope.violation
     - plan.scope_too_large
+    - plan.router_failed
 
 config:
   # #1879: retry ONCE when the model runs out of turns. Worth taking only because
