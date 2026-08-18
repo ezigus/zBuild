@@ -25,6 +25,13 @@ provides:
   schema_version: 1
 
 config:
+  # #1879: retry ONCE when the model runs out of turns. Worth taking only because
+  # `role: checkpoint` below means attempt 2 resumes from what attempt 1 explored
+  # — a retry on an empty context would just burn the budget twice (#1727).
+  # Distinct from `retries`, which is timeout/rc=124-only and never fires here:
+  # exhaustion surfaces as rc=1, which is why the #1708 run was never retried.
+  router:
+    retry_on_exhaustion: 1
   # Writes no .verdict on either verdict channel; the engine falls back to
   # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
   # is a lint failure; the explicit [] is the claim (#1708).
@@ -60,6 +67,16 @@ outputs:
     path: ${artifact_dir}/plan-context.json
     type: plan-context.json
     required: false
+  # #1879: the engine-generic stage checkpoint. `role: checkpoint` is what the
+  # engine keys on — NOT the id, which must be unique across every stage in a
+  # template (core/pipeline/contract-validator.sh raises OUTPUT_DUP on a repeat),
+  # so a shared `id: checkpoint` across stages would fail validation.
+  # required:false because a stage that converges early writes nothing.
+  - id: plan-checkpoint
+    path: ${artifact_dir}/plan-checkpoint.md
+    type: checkpoint.md
+    required: false
+    role: checkpoint
 
 state:
   persisted: [last_plan_steps, plan_context_status]

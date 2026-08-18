@@ -30,6 +30,27 @@ if [[ "${_ZBUILD_ROUTER_RC_CLASSIFY_LOADED:-}" == "1" ]]; then
 fi
 _ZBUILD_ROUTER_RC_CLASSIFY_LOADED=1
 
+# _router_is_budget_exhausted <claude_output_json> — returns 0 when the envelope
+# says the model ran OUT OF BUDGET rather than failing. Repo-agnostic: keys only
+# on the claude CLI's own fields.
+#
+# #1879: distinct from a rate limit and from a wall-clock timeout. The CLI
+# reports this as subtype `error_max_turns` (with terminal_reason `max_turns`),
+# and it surfaces as router rc=1 — so `retries`, which is rc=124-only, never sees
+# it. That is why the #1708 plan stage burned 46 turns, produced nothing, and was
+# never retried.
+_router_is_budget_exhausted() {
+    local json="${1:-}"
+    [[ -z "$json" ]] && return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    local subtype="" terminal=""
+    subtype="$(printf '%s' "$json" | jq -r '.subtype // empty' 2>/dev/null || true)"
+    terminal="$(printf '%s' "$json" | jq -r '.terminal_reason // empty' 2>/dev/null || true)"
+    [[ "$subtype"  == "error_max_turns" ]] && return 0
+    [[ "$terminal" == "max_turns"       ]] && return 0
+    return 1
+}
+
 # _router_is_rate_limit <claude_output_json> — returns 0 when the envelope
 # carries a rate/session/usage limit signal, 1 otherwise. Repo-agnostic: keys
 # only on the claude CLI's own fields, never on prompt/response content.

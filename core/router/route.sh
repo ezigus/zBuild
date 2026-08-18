@@ -84,6 +84,10 @@ fi
 # every routing plugin gets resolve_persona/persona_text by construction.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
+# #1879: the engine-generic stage checkpoint. Sourced here because
+# _route_redact_prompt — the shared single-shot + loop funnel — injects its block.
+# shellcheck source=../../scripts/lib/stage-checkpoint.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
 # Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
 # can inject the advisory Intent preamble into every stage prompt.
@@ -332,6 +336,31 @@ _route_redact_prompt() {
         if [[ -n "$_pre_tmp" ]]; then
             { printf '%s' "$_ROUTE_VISION_PREAMBLE"; cat "$input"; } > "$_pre_tmp" \
                 && mv "$_pre_tmp" "$input" 2>/dev/null || rm -f "$_pre_tmp" 2>/dev/null || true
+        fi
+    fi
+
+    # #1879: the stage-checkpoint block. Injected HERE for the same reason the
+    # vision preamble is — this is the shared funnel for BOTH the single-shot path
+    # and the agentic loop, and injecting before apply_scope_redaction means the
+    # block passes through the redaction chokepoint by construction (ADR-004).
+    #
+    # It is NOT injected from _llm_output_contract: only 3 of the 9 plugins that
+    # call route_to_model* use that builder, and `design` and `build` — the two
+    # heaviest exploration stages, i.e. the ones this feature exists for — are not
+    # among them.
+    #
+    # Appended rather than prepended: the vision preamble's guard is a first-line
+    # check, and prepending here would move its marker off line 1 and make it
+    # re-inject on every retry.
+    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" ]] && declare -F checkpoint_prompt_block >/dev/null 2>&1; then
+        local _cp_state_dir="${ZBUILD_STATE_DIR:-}"
+        local _cp_block=""
+        if [[ -n "$_cp_state_dir" ]]; then
+            _cp_block="$(checkpoint_prompt_block "$ZBUILD_PLUGIN_DIR/manifest.yaml" "$_cp_state_dir" 2>/dev/null || true)"
+        fi
+        # Idempotence: the loop redacts once per iteration against the same file.
+        if [[ -n "$_cp_block" ]] && ! grep -qF "$_ZB_CHECKPOINT_MARKER" "$input" 2>/dev/null; then
+            printf '\n\n%s\n' "$_cp_block" >> "$input" 2>/dev/null || true
         fi
     fi
 
@@ -646,6 +675,21 @@ _route_resolve_retries() {
     fi
 }
 
+# #1879: the count of retry-on-BUDGET-EXHAUSTION attempts. Deliberately its own
+# knob rather than a widening of `retries` (which is rc=124/timeout-only): the one
+# stage that sets `retries` today is `impact`, and quietly changing what that means
+# for it would be an unrequested behaviour change. Default 0 — opt in per stage.
+_route_resolve_exhaustion_retries() {
+    local v; v="$(_route_resolve_knob template_stage_router_retry_on_exhaustion \
+        ZBUILD_ROUTER_RETRY_ON_EXHAUSTION 0 \
+        router.retry_on_exhaustion.override_ignored retry_on_exhaustion)"
+    if [[ "$v" =~ ^[0-9]+$ ]] && [[ "$v" -ge 0 ]] && [[ "$v" -le 5 ]]; then
+        printf '%s' "$v"
+    else
+        printf '0'
+    fi
+}
+
 # ADR-029 (#1230): escalate a base timeout for retry attempt k (1-based).
 # secs = min(base * 1.5^k, 2*base) — ties the +50%/cap-2× rule ADR-029 already
 # uses for max_turns escalation. Guarantees strictly-increasing budgets that
@@ -746,6 +790,11 @@ _route_call_claude() {
     # is the lowest shared layer for the SINGLE-SHOT leaf path; the agentic loop
     # (route_to_model_loop) implements its own intra-iteration retry.
     local _retries; _retries="$(_route_resolve_retries)"
+    local _exhaust_retries; _exhaust_retries="$(_route_resolve_exhaustion_retries)"
+    # PR #1881 review: cap against the ORIGINAL budget, not the current one —
+    # capping against `max_turns` compounds across retries and diverges from the
+    # 2x-base ceiling _route_escalate_timeout enforces for seconds.
+    local _exhaust_base_turns="$max_turns"
     local _attempt=0 _local_secs="$secs"
     local stderr_file rc response
     while :; do
@@ -810,6 +859,54 @@ _route_call_claude() {
             "attempt=$_attempt" "retries=$_retries" \
             "from_secs=$_local_secs" "to_secs=$_next_secs" 2>/dev/null || true
         _local_secs="$_next_secs"
+        rm -f "$stderr_file"
+        continue
+    fi
+
+    # #1879: retry a BUDGET EXHAUSTION (subtype error_max_turns), which surfaces
+    # as rc=1 and so is invisible to the rc=124-only retry above. This is what
+    # killed the #1708 plan stage: 46 turns, no plan, no retry, pipeline aborted.
+    #
+    # A SEPARATE opt-in knob, not a widening of `retries`: `impact` already sets
+    # retries: 1 for timeouts, and silently changing what that means for it would
+    # be a behaviour change nobody asked for.
+    #
+    # The retry is only worth taking because the stage wrote a checkpoint as it
+    # worked — _route_redact_prompt splices it into the next attempt's prompt, so
+    # attempt 2 continues from the exploration instead of re-deriving it on an
+    # empty context. Without the checkpoint this would just burn the budget twice
+    # (the argument #1727 makes against a naive retry).
+    if [[ $rc -ne 0 && $_attempt -lt $_exhaust_retries ]] \
+        && declare -F _router_is_budget_exhausted >/dev/null 2>&1 \
+        && _router_is_budget_exhausted "$response"; then
+        _attempt=$(( _attempt + 1 ))
+        local _next_turns=$(( max_turns > 0 ? max_turns + max_turns / 2 : 0 ))
+        warn "router: ${ZBUILD_CURRENT_STAGE:-stage} exhausted its turn budget — retry ${_attempt}/${_exhaust_retries}, resuming from its checkpoint"
+        eb_emit_event "router.budget_exhausted.retry" \
+            "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+            "stage=${ZBUILD_CURRENT_STAGE:-unknown}" \
+            "path=single_shot" \
+            "attempt=$_attempt" "retries=$_exhaust_retries" \
+            "from_turns=$max_turns" "to_turns=$_next_turns" 2>/dev/null || true
+        # ADR-029's +50%/cap-2x escalation shape, applied to turns rather than
+        # seconds. 0 means "unbounded" and must stay 0.
+        #
+        # PR #1881 review, CRITICAL: `_claude_args` is built ONCE, above this loop.
+        # Updating `max_turns` alone left the retry invoking claude with the exact
+        # budget that had just been exhausted — the escalation was inert and the
+        # retry was near-pointless. The argv element must be rewritten too.
+        if [[ "$max_turns" -gt 0 ]]; then
+            local _turn_cap=$(( _exhaust_base_turns * 2 ))
+            [[ "$_next_turns" -gt "$_turn_cap" ]] && _next_turns="$_turn_cap"
+            max_turns="$_next_turns"
+            local _ai
+            for _ai in "${!_claude_args[@]}"; do
+                if [[ "${_claude_args[$_ai]}" == "--max-turns" ]]; then
+                    _claude_args[$((_ai + 1))]="$max_turns"
+                    break
+                fi
+            done
+        fi
         rm -f "$stderr_file"
         continue
     fi
