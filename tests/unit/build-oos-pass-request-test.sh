@@ -50,7 +50,7 @@ assert_eq "T1: evidence = old token present in file" "_TPL_STAGES[2] is impact" 
 REQ2="$(_build_pending_collateral_request "scope_violation" "$FEEDBACK" "$PLAN_CSV")"
 assert_eq "T2: verdict=scope_violation → empty" "" "$REQ2"
 REQ2b="$(_build_pending_collateral_request "empty_diff" "$FEEDBACK" "$PLAN_CSV")"
-assert_eq "T2b: verdict=empty_diff → empty (owned by Path A)" "" "$REQ2b"
+assert_eq "T2b: build_kind=empty_diff → empty (old verdict string, not pass, skipped by REC-1)" "" "$REQ2b"
 
 # ─── T3: no OOS file named in feedback → no request ──────────────────────────
 REQ3="$(_build_pending_collateral_request "pass" "all good, nothing to change" "$PLAN_CSV")"
