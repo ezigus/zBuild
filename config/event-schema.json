@@ -74,6 +74,8 @@
     "cycle.predicate.evaluated",
     "cycle.member.dispatch.start",
     "cycle.member.dispatch.complete",
+    "cycle.member.disposition.redispatch",
+    "cycle.member.disposition.halt",
     "cycle.member.timeout",
     "cycle.member.timeout_abandoned",
     "cycle.member.max_turns.escalated",

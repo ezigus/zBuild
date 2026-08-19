@@ -2228,6 +2228,30 @@ main() {
         _run_dispatch_units=1
     fi
 
+    # ─── _runner_disposition_redispatch_budget (#1887) ──────────────────────
+    # How many times the dispatch boundary may re-dispatch a member whose
+    # disposition says it is retryable. Default 1: one automatic second attempt
+    # is what turns a SIGTERM or a rate limit from a dead run into a recovered
+    # one, and a second failure means the first was not transient after all.
+    #
+    # A cycle already re-runs its members, so this is deliberately NOT a budget
+    # for grinding — it is the difference between "the stage was interrupted"
+    # and "the stage failed", which the cycle cannot tell on its own.
+    # Out-of-range values clamp to the default rather than being trusted.
+    _runner_disposition_redispatch_budget() {
+        local v="${ZBUILD_DISPOSITION_REDISPATCH:-1}"
+        # A number ABOVE the cap clamps to the CAP, not to the default: an
+        # operator who asks for more headroom should not silently get less than
+        # they asked for (#1887 review). A non-number is not a request at all,
+        # so it falls back to the default.
+        if [[ "$v" =~ ^[0-9]+$ ]]; then
+            (( v > 5 )) && v=5
+            printf '%s' "$v"
+        else
+            printf '1'
+        fi
+    }
+
     # cycle_dispatch_stage hook — F1 uses the same per-stage path that the
     # legacy stage loop uses. Returns the stage's rc; the orchestrator owns the
     # iteration semantics. Sets _CYCLE_DISPATCH_VERDICT / _CYCLE_DISPATCH_STATUS
@@ -2264,55 +2288,109 @@ main() {
         # earlier stage would classify this member's unexplained failure as
         # `throttled`, and `throttled` retries — one rate limit would become a
         # retry loop on an unrelated defect.
-        _router_clear_throttle_marker
-        set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
-        local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
-        # #1823: read the RAW wait status once, here. The observation is the one
-        # fact worth keeping across the narrowing — it separates a stage that was
-        # killed from one that is defective, and it is knowable only here.
-        local _cd_observation; _cd_observation="$(dispatch_rc_observation "$_cd_rc")"
-        # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
-        # last command in the list and DOES trip it. (#1822 review finding.)
-        local _cd_rate_limited=0
-        if _router_throttle_observed; then _cd_rate_limited=1; fi
-        # The readers below take the RAW rc. That is not an oversight: every one
-        # of them only ever tests `rc -ne 0`, which is identical for a raw 10 and
-        # a narrowed 1, so narrowing before them would change nothing. The only
-        # consumer of the distinction is this function's RETURN value, so the
-        # narrowing happens there — after the readers, at the bottom.
-        # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
-        # unknown + structural-failure pass-through) — used for .stage_verdicts
-        # persistence (state_helpers.sh: verdict_class contract) and the
-        # `stage.complete verdict=...` event emitted at runner.sh:1309 in the
-        # `stage:*` dispatch branch. Mutating this to raw values like "approve"
-        # would silently break the indicator-glyph + stage.verdicts contract.
-        _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
-        # Wave 19-A (#717): _CYCLE_DISPATCH_VERDICT_RAW is the parallel RAW
-        # verdict (e.g. "approve", "request_changes", "block") consumed by the
-        # cycle orchestrator's exit_when / abort_when / until predicates which
-        # compare against the RAW template-declared value. Without this
-        # separate channel, exit_when on review.verdict==approve never matches
-        # (the classifier collapses approve→pass) and build_review_cycle runs to
-        # max_iterations instead of converging cleanly (dogfood
-        # 20260605055348-2232 symptom: pipeline ran ~10m, review approved,
-        # then external interruption — but the cycle was structurally
-        # unconvergeable regardless of the interrupt). Diagnostic events
-        # (stage.verdict.missing, pipeline.indicator.unknown_verdict) are
-        # emitted by the CLASSIFIED runner_read_stage_verdict call above —
-        # the raw call here is side-effect-free and won't duplicate them.
-        _CYCLE_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
-        [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
-        # ADR-029 G2 (#810): expose the .reason channel when verdict=error so
-        # the cycle orchestrator can distinguish router_timeout / router_oom_kill
-        # (infra-failure → counts toward fast-abandon threshold) from other
-        # error reasons (don't burn the abandon budget).
-        _CYCLE_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
-        # #1822 (ADR-054 §6): the recoverability channel. Empty for a v1 stage
-        # (which declares no disposition), the declared word for a v2 one, and
-        # `broken` when this dispatch died leaving nothing to read. Consumed by
-        # the dispatch event; the response table that interprets it lives in
-        # core/pipeline/disposition.sh, never in a plugin.
-        _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
+        # #1887 (ADR-054 §6): retry is a property of the DISPOSITION, not of the
+        # stage. #1822 built the response table and #1823 made every dispatch
+        # resolve a disposition — but nothing consulted the table, so
+        # `disposition_retryable` had no production caller and recoverability
+        # was still decided by each stage's own `router.retries` knob. That is
+        # the per-stage divergence #1749 was closed to end, and it is why #1727
+        # had to add `router.retries: 1` to plan's manifest by hand.
+        #
+        # The re-dispatch lives HERE, at the dispatch boundary, because this is
+        # the first point at which a disposition EXISTS: the router's own retry
+        # (route.sh) runs inside a single call, before the plugin has written a
+        # result to have a disposition in.
+        local _cd_attempt=0 _cd_redispatch_max
+        # Declared outside the loop: bash function-scopes locals, so re-declaring
+        # them per iteration is harmless but reads as an intent to reset (#1887
+        # review). Hoisting makes the scope unambiguous.
+        local _cd_manifest _cd_observation _cd_rate_limited _cd_wait
+        _cd_redispatch_max="$(_runner_disposition_redispatch_budget)"
+        while :; do
+            _router_clear_throttle_marker
+            set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
+            _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+            # #1823: read the RAW wait status once, here. The observation is the one
+            # fact worth keeping across the narrowing — it separates a stage that was
+            # killed from one that is defective, and it is knowable only here.
+            _cd_observation="$(dispatch_rc_observation "$_cd_rc")"
+            # An `if`, not `[[ ... ]] && ...`: under errexit a failing && list is the
+            # last command in the list and DOES trip it. (#1822 review finding.)
+            _cd_rate_limited=0
+            if _router_throttle_observed; then _cd_rate_limited=1; fi
+            # The readers below take the RAW rc. That is not an oversight: every one
+            # of them only ever tests `rc -ne 0`, which is identical for a raw 10 and
+            # a narrowed 1, so narrowing before them would change nothing. The only
+            # consumer of the distinction is this function's RETURN value, so the
+            # narrowing happens there — after the readers, at the bottom.
+            # _CYCLE_DISPATCH_VERDICT holds the CLASSIFIED verdict (pass|warn|fail|
+            # unknown + structural-failure pass-through) — used for .stage_verdicts
+            # persistence (state_helpers.sh: verdict_class contract) and the
+            # `stage.complete verdict=...` event emitted at runner.sh:1309 in the
+            # `stage:*` dispatch branch. Mutating this to raw values like "approve"
+            # would silently break the indicator-glyph + stage.verdicts contract.
+            _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+            # Wave 19-A (#717): _CYCLE_DISPATCH_VERDICT_RAW is the parallel RAW
+            # verdict (e.g. "approve", "request_changes", "block") consumed by the
+            # cycle orchestrator's exit_when / abort_when / until predicates which
+            # compare against the RAW template-declared value. Without this
+            # separate channel, exit_when on review.verdict==approve never matches
+            # (the classifier collapses approve→pass) and build_review_cycle runs to
+            # max_iterations instead of converging cleanly (dogfood
+            # 20260605055348-2232 symptom: pipeline ran ~10m, review approved,
+            # then external interruption — but the cycle was structurally
+            # unconvergeable regardless of the interrupt). Diagnostic events
+            # (stage.verdict.missing, pipeline.indicator.unknown_verdict) are
+            # emitted by the CLASSIFIED runner_read_stage_verdict call above —
+            # the raw call here is side-effect-free and won't duplicate them.
+            _CYCLE_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "missing")"
+            [[ -z "$_CYCLE_DISPATCH_VERDICT_RAW" ]] && _CYCLE_DISPATCH_VERDICT_RAW="missing"
+            # ADR-029 G2 (#810): expose the .reason channel when verdict=error so
+            # the cycle orchestrator can distinguish router_timeout / router_oom_kill
+            # (infra-failure → counts toward fast-abandon threshold) from other
+            # error reasons (don't burn the abandon budget).
+            _CYCLE_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
+            # #1822 (ADR-054 §6): the recoverability channel. Empty for a v1 stage
+            # (which declares no disposition), the declared word for a v2 one, and
+            # `broken` when this dispatch died leaving nothing to read. Consumed by
+            # the dispatch event; the response table that interprets it lives in
+            # core/pipeline/disposition.sh, never in a plugin.
+            _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
+            # The table decides. `interrupted` re-dispatches at once; `throttled`
+            # waits first, because re-dispatching a throttled stage immediately is
+            # simply throttled again — a retry loop that burns budget to learn
+            # nothing. `exhausted`, `unavailable` and `broken` are not retryable and
+            # fall straight through; `complete` never reaches the test.
+            # A halting disposition is announced rather than inferred. The table
+            # guarantees nothing both halts and retries, so this cannot change which
+            # branch is taken — its job is that an operator reading the log sees the
+            # engine DECIDED to stop, and on which word, instead of reconstructing it
+            # from an rc. It is also what gives `disposition_halts` a caller on the
+            # dispatch path, which is the gap #1887 exists to close.
+            if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
+               && disposition_halts "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+                eb_emit_event "cycle.member.disposition.halt" \
+                    "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \
+                    "disposition=$_CYCLE_DISPATCH_DISPOSITION" "rc=$_cd_rc" \
+                    2>/dev/null || true
+            fi
+            if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
+               && (( _cd_attempt < _cd_redispatch_max )) \
+               && disposition_retryable "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+                _cd_wait="$(disposition_wait_s "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null || printf '0')"
+                _cd_attempt=$(( _cd_attempt + 1 ))
+                eb_emit_event "cycle.member.disposition.redispatch" \
+                    "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \
+                    "disposition=$_CYCLE_DISPATCH_DISPOSITION" "attempt=$_cd_attempt" \
+                    "of=$_cd_redispatch_max" "wait_s=${_cd_wait:-0}" "prior_rc=$_cd_rc" \
+                    2>/dev/null || true
+                if [[ "${_cd_wait:-0}" =~ ^[0-9]+$ ]] && (( _cd_wait > 0 )); then
+                    sleep "$_cd_wait"
+                fi
+                continue
+            fi
+            break
+        done
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else
@@ -2396,8 +2474,18 @@ main() {
         #
         # This channel carries no disposition yet (ADR-039 §4 owns the parallel
         # group-verdict collapse), so nothing here reads the word a v2 stage
-        # declared. The narrowing is still correct: a v2 stage HAS somewhere else
-        # to say what its rc was carrying, which is the whole condition for it.
+        # declared.
+        #
+        # #1887 deliberately does NOT add the cycle path's disposition-driven
+        # re-dispatch here, and the asymmetry is not an oversight: there is no
+        # disposition on this channel to act on. Wiring retry would first mean
+        # RESOLVING one per parallel member, which is the group-verdict collapse
+        # ADR-039 §4 owns — a different change with its own blast radius. Until
+        # then a parallel member is not re-dispatched on `interrupted` or
+        # `throttled`, which is worth knowing rather than discovering.
+        #
+        # The narrowing below is still correct: a v2 stage HAS somewhere else to
+        # say what its rc was carrying, which is the whole condition for it.
         local _pd_contract; _pd_contract="$(_verdict_probe_contract "$state_dir" "$_pd_manifest")"
         if [[ "$_pd_contract" =~ ^[0-9]+$ ]] && [[ "$_pd_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
             _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
