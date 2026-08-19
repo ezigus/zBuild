@@ -108,14 +108,18 @@ config:
     max_turns: 45       # 0..200    (constant: 25)
     retries: 1          # 0..10     (constant: 0)
 
-# I/O contract (declared, not enforced — useful for compatibility checks)
+# I/O contract (ADR-055 §1). The producer describes an artifact once; a consumer
+# names it and says whether it needs it — no producer stage, no path, no type.
+# The engine resolves each input name to the single stage producing it.
 inputs:
-  - name: changed_files
-    type: file_list
+  - id: changed_files
+    required: true
 outputs:
-  - name: findings
+  - id: findings
     path: ${artifact_dir}/security-findings.json
     type: findings.json
+    required: true
+    primary: true
 ```
 
 ### Required interfaces per `kind`
@@ -140,7 +144,10 @@ The engine is responsible for: discovery, manifest validation, lifecycle orderin
 
 ### Error semantics
 
-- Plugins return exit codes: `0` success, `1` recoverable error, `2` fatal (escalate).
+- Plugins return exit codes `0` or `1` only (ADR-054 §4). Everything a plugin used to
+  express with a third code — interrupted, throttled, exhausted, unavailable, broken —
+  is carried by `disposition` in the result file, and the engine's response table
+  decides recoverability (ADR-054 §6).
 - Plugins MAY emit `recovery.suggestion` events; the engine routes them to `kind: recovery` plugins for classification.
 - The engine MUST emit a synthetic blocking finding if a plugin declares `provides.artifact_type` but no artifact exists at `outputs[].path` after `run` completes. (Fail-closed scanner from Keepers §C.4.)
 
@@ -174,14 +181,14 @@ zbuild pipeline start --issue 42
 [event-bus.emit("pipeline.start", {issue:42, ...})]
    │
    ▼
-[pre-flight: contract-validator checks inter-stage data contract — see ADR-020]
+[pre-flight: contract-validator checks inter-stage data contract — see ADR-055]
    │
    ▼
 [engine traverses stages from template; per stage — see ADR-013 for canonical stage list]
    │
    ├─▶ [redaction.apply(prompt_text, scope_manifest) → wrapped text]
    ├─▶ [router.route(tier, complexity) → model selection]
-   ├─▶ [plugin.run(wrapped_text, model) → artifact]
+   ├─▶ [plugin.run(stage_id, state_file, resolved_inputs) → artifact + result — ADR-054 §2]
    ├─▶ [event-bus.emit("stage.complete", {stage, plugin, artifact_path})]
    ├─▶ [state.update(stage_status, CURRENT_ITERATION) → atomic_write + .bak]
    │
