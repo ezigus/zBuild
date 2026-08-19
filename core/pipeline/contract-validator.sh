@@ -170,8 +170,21 @@ _contract_validate_pipeline() {
     case "$mode" in
         warn|enforce|off) ;;
         *)
-            # Unknown mode: degrade to warn but log it.
-            mode="warn"
+            # #1888: FAIL CLOSED, and say so. This used to silently become
+            # `warn` under a comment promising a log line that was never
+            # written — so `ZBUILD_CONTRACT_VALIDATOR=enfoce` (or `Enforce`, or
+            # a trailing space from a CI yaml value) handed an operator the
+            # PERMISSIVE mode while they believed they had hardened the gate,
+            # with nothing in the run distinguishing that from a deliberate
+            # `warn`. A validator that cannot understand its own configuration
+            # is in no position to pick the weaker option on the operator's
+            # behalf. Same shape as #1760, opposite resolution: there the
+            # unmatched case silently never matched; here it silently downgraded.
+            error "contract-validator: unrecognised ZBUILD_CONTRACT_VALIDATOR='${mode}' (expected: enforce | warn | off)"
+            eb_emit_event "pipeline.preflight.config_invalid" \
+                "reason=unknown_validator_mode" "value=$mode" \
+                "accepted=enforce|warn|off" 2>/dev/null || true
+            return 2
             ;;
     esac
 

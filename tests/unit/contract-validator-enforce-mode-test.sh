@@ -88,6 +88,40 @@ ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "consumer" \
     "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
 assert_eq "TC-4: explicit enforce returns rc=2" "2" "$rc"
 
+# ═══ #1888: an unrecognised mode must FAIL CLOSED, not silently become warn ══
+# The `*)` arm used to set mode=warn under a comment reading "degrade to warn
+# but log it" — and no logging existed. So an operator who set the variable to
+# HARDEN the gate got the permissive mode instead, with nothing in the run
+# distinguishing that from a deliberate `warn`. These reddens at the merge-base:
+# before the fix a typo returned rc=0 (warn) on the same violating manifest.
+
+# TC-5: a typo'd mode is refused outright — not downgraded.
+rc=0
+err_out="$(ZBUILD_CONTRACT_VALIDATOR=enfoce _contract_validate_pipeline \
+    "consumer" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+assert_eq "[#1888] TC-5: typo'd mode 'enfoce' is refused (rc=2, was rc=0/warn)" "2" "$rc"
+assert_contains "[#1888] TC-5: the message names the rejected value" "$err_out" "enfoce"
+assert_contains "[#1888] TC-5: the message names the accepted set" "$err_out" "enforce | warn | off"
+
+# TC-6: case matters and is not silently forgiven — `Enforce` is not `enforce`.
+rc=0
+ZBUILD_CONTRACT_VALIDATOR=Enforce _contract_validate_pipeline "consumer" \
+    "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "[#1888] TC-6: 'Enforce' is refused rather than assumed" "2" "$rc"
+
+# TC-7: a trailing space (the shape a CI yaml value arrives in) is refused.
+rc=0
+ZBUILD_CONTRACT_VALIDATOR="enforce " _contract_validate_pipeline "consumer" \
+    "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "[#1888] TC-7: 'enforce ' with a trailing space is refused" "2" "$rc"
+
+# TC-8 GUARD: the three real modes are untouched. A refusal that also broke a
+# valid mode would trade one silent failure for a loud one.
+rc=0
+ZBUILD_CONTRACT_VALIDATOR=off _contract_validate_pipeline "consumer" \
+    "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "[#1888] TC-8: 'off' still short-circuits to rc=0" "0" "$rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
