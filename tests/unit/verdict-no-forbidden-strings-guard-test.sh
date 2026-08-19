@@ -52,8 +52,9 @@ for dir in "${SEARCH_DIRS[@]}"; do
 done
 
 # [SPEC-14] Change-behavior: the forbidden strings must not appear in .verdict
-# positions in any production source after the migration. Fails at merge-base
-# (where all four appear in verdict positions) and passes after migration.
+# positions in any production source after the migration. Fails at merge-base on
+# ONE line — design/plugin.sh's did_not_finish sidecar — and passes after it; see
+# the header for why the other three are invisible to a JSON-literal regex.
 assert_eq "[SPEC-14] no forbidden verdict strings in core/plugins/config (ADR-054 §6)" \
     "" "$MATCHES"
 
