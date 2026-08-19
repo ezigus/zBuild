@@ -71,15 +71,20 @@ err_out="$(ZBUILD_CONTRACT_VALIDATOR=warn _contract_validate_pipeline \
     "consumer" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
 assert_eq "TC-3: warn opt-out returns 0 even on violation" "0" "$rc"
 assert_contains "TC-3: warn mode still emits diagnostic" "$err_out" "Pipeline cannot start"
-# warn mode must NOT write a preflight_failed state stub
+# warn mode must NOT write a preflight_failed state stub.
+# The assertion is UNCONDITIONAL: it used to sit inside `if [[ -f ... ]]`, so on
+# the expected path — warn writes no file at all — the block was skipped and NO
+# assertion ran. A check that silently does not run reports the same green as one
+# that passed, which is the shape this whole file exists to catch (#1888 review).
+status_val=""
 if [[ -f "$STATE_FILE" ]]; then
     status_val="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || echo "")"
-    if [[ "$status_val" == "preflight_failed" ]]; then
-        assert_fail "TC-3: warn mode did NOT write preflight_failed stub" \
-            "got status=preflight_failed; warn mode should not fail-closed"
-    else
-        assert_pass "TC-3: warn mode did NOT write preflight_failed stub"
-    fi
+fi
+if [[ "$status_val" == "preflight_failed" ]]; then
+    assert_fail "TC-3: warn mode did NOT write preflight_failed stub" \
+        "got status=preflight_failed; warn mode should not fail-closed"
+else
+    assert_pass "TC-3: warn mode did NOT write preflight_failed stub (status='${status_val:-<no file>}')"
 fi
 
 # TC-4: Explicit ZBUILD_CONTRACT_VALIDATOR=enforce still rc=2 (back-compat)
@@ -87,6 +92,40 @@ rc=0
 ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "consumer" \
     "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
 assert_eq "TC-4: explicit enforce returns rc=2" "2" "$rc"
+
+# ═══ #1888: an unrecognised mode must FAIL CLOSED, not silently become warn ══
+# The `*)` arm used to set mode=warn under a comment reading "degrade to warn
+# but log it" — and no logging existed. So an operator who set the variable to
+# HARDEN the gate got the permissive mode instead, with nothing in the run
+# distinguishing that from a deliberate `warn`. These reddens at the merge-base:
+# before the fix a typo returned rc=0 (warn) on the same violating manifest.
+
+# TC-5: a typo'd mode is refused outright — not downgraded.
+rc=0
+err_out="$(ZBUILD_CONTRACT_VALIDATOR=enfoce _contract_validate_pipeline \
+    "consumer" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+assert_eq "[#1888] TC-5: typo'd mode 'enfoce' is refused (rc=2, was rc=0/warn)" "2" "$rc"
+assert_contains "[#1888] TC-5: the message names the rejected value" "$err_out" "enfoce"
+assert_contains "[#1888] TC-5: the message names the accepted set" "$err_out" "enforce | warn | off"
+
+# TC-6: case matters and is not silently forgiven — `Enforce` is not `enforce`.
+rc=0
+ZBUILD_CONTRACT_VALIDATOR=Enforce _contract_validate_pipeline "consumer" \
+    "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "[#1888] TC-6: 'Enforce' is refused rather than assumed" "2" "$rc"
+
+# TC-7: a trailing space (the shape a CI yaml value arrives in) is refused.
+rc=0
+ZBUILD_CONTRACT_VALIDATOR="enforce " _contract_validate_pipeline "consumer" \
+    "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "[#1888] TC-7: 'enforce ' with a trailing space is refused" "2" "$rc"
+
+# TC-8 GUARD: the three real modes are untouched. A refusal that also broke a
+# valid mode would trade one silent failure for a loud one.
+rc=0
+ZBUILD_CONTRACT_VALIDATOR=off _contract_validate_pipeline "consumer" \
+    "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "[#1888] TC-8: 'off' still short-circuits to rc=0" "0" "$rc"
 
 cleanup_test_env
 print_test_results
