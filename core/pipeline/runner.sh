@@ -2482,8 +2482,10 @@ main() {
         # RESOLVING one per parallel member, which is the group-verdict collapse
         # ADR-039 §4 owns — a different change with its own blast radius. Until
         # then a parallel member is not re-dispatched on `interrupted` or
-        # `throttled`, which is worth knowing rather than discovering. The narrowing is still correct: a v2 stage HAS somewhere else
-        # to say what its rc was carrying, which is the whole condition for it.
+        # `throttled`, which is worth knowing rather than discovering.
+        #
+        # The narrowing below is still correct: a v2 stage HAS somewhere else to
+        # say what its rc was carrying, which is the whole condition for it.
         local _pd_contract; _pd_contract="$(_verdict_probe_contract "$state_dir" "$_pd_manifest")"
         if [[ "$_pd_contract" =~ ^[0-9]+$ ]] && [[ "$_pd_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
             _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
