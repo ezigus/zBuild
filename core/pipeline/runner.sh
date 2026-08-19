@@ -55,6 +55,11 @@ source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
 source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
 # #507 verdict-driven stage-complete indicator (ADR-019 / ADR-020 amendment).
 source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
+# ADR-055 §1 / ADR-054 §2 (#1826): the runtime half of the input contract —
+# declared inputs become resolved paths and are handed to `run`. Every behaviour
+# it adds is gated on ZBUILD_INPUTS_RESOLVE (default 0); sourced unconditionally
+# because _runner_validate_startup_preflight delegates its renderer here.
+source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh"
 # #1823 (ADR-054 §4): rc ∈ {0,1} — the narrowing, the observation captured before
 # it, and the one place a legacy engine rc becomes a word.
 source "$_ZBUILD_ROOT/core/pipeline/dispatch-rc.sh"
@@ -408,18 +413,15 @@ _runner_validate_startup_preflight() {
     [[ $fail_count -eq 0 ]] && return 0
 
     # Render all violations in a single block (render-all-at-once pattern).
-    {
-        printf '\n'
-        printf '⚠ Startup preflight: persona bindings or required plugins are unresolvable:\n\n'
-        local _pf_v _pf_vs _pf_vc _pf_vid _pf_vmsg
-        for _pf_v in "${violations[@]}"; do
-            IFS='|' read -r _pf_vs _pf_vc _pf_vid _pf_vmsg <<< "$_pf_v"
-            printf '  %s: %s (id=%s)\n    %s\n\n' "$_pf_vs" "$_pf_vc" "$_pf_vid" "$_pf_vmsg"
-        done
-        printf 'Fix: ensure the declared persona id exists under plugins/persona/<id>/manifest.yaml\n'
-        printf '     and that each requires.plugins entry names an installable plugin.\n'
-        printf '     See docs/adr/ADR-051-engine-owned-stage-keyed-data-provision.md.\n\n'
-    } >&2
+    # #1826 moved the loop itself into _inputs_render_violations so the
+    # pre-dispatch input presence check reuses it instead of being a third
+    # aggregation loop; the rendered bytes are unchanged.
+    _inputs_render_violations \
+        "Startup preflight: persona bindings or required plugins are unresolvable:" \
+        "Fix: ensure the declared persona id exists under plugins/persona/<id>/manifest.yaml
+     and that each requires.plugins entry names an installable plugin.
+     See docs/adr/ADR-051-engine-owned-stage-keyed-data-provision.md." \
+        "${violations[@]}"
 
     # Emit event (best-effort)
     if declare -F eb_emit_event >/dev/null 2>&1; then
@@ -1413,6 +1415,13 @@ main() {
         return 2
     elif [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
         active_stages=("${_TPL_STAGES[@]}")
+        # #1826: _TPL_STAGES is an ARRAY and so cannot be exported, but the `map:`
+        # arm dispatches through a generated standalone script that inherits only
+        # the environment. This scalar is the resolved flow that script needs to
+        # build the producer index. Flag-gated: unset by default.
+        if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" ]]; then
+            export ZBUILD_INPUTS_FLOW="${_TPL_STAGES[*]}"
+        fi
         info "merge_policy: ${_TPL_MERGE_POLICY:-auto_unless_flagged}"
         # ADR-047 §5: resolvability preflight — the sole membership fence (the old
         # hardcoded-roster fence is deleted, #1299). Every leaf in the resolved
