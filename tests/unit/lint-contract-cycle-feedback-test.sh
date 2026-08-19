@@ -230,13 +230,19 @@ assert_eq "TC-7: real repo template + plugins pass cycle-feedback lint" "0" "$rc
 # shellcheck source=../../scripts/lib/manifest-graph.sh
 source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 print_test_section "#1865 — no unwired cycle_feedback declaration survives"
-_cfb_unwired=0; _cfb_rows=0; _cfb_detail=""
+_cfb_unwired=0; _cfb_rows=0; _cfb_detail=""; _id_re=""
 while IFS= read -r _m; do
     [[ -n "$_m" ]] || continue
     while IFS='|' read -r _id _t _src _req _p; do
         [[ "$_src" == "cycle_feedback" ]] || continue
         _cfb_rows=$((_cfb_rows + 1))
-        if ! grep -qE "input:[[:space:]]*${_id}([[:space:]]|$)" "$REPO_ROOT"/config/templates/*.yaml 2>/dev/null; then
+        # $_id is interpolated into an ERE, so it is escaped first. Today's ids
+        # are [a-z0-9_-] and cannot carry a metacharacter, but an unescaped id
+        # containing `.` or `+` would match something it should not and report a
+        # real unwired declaration as WIRED — the guard would fail open, which is
+        # the one direction a guard must never fail.
+        _id_re="$(printf '%s' "$_id" | sed 's/[.[\*^$+?(){}|]/\\&/g')"
+        if ! grep -qE "input:[[:space:]]*${_id_re}([[:space:]]|$)" "$REPO_ROOT"/config/templates/*.yaml 2>/dev/null; then
             _cfb_unwired=$((_cfb_unwired + 1))
             _cfb_detail+="$(basename "$(dirname "$_m")"):$_id "
         fi
