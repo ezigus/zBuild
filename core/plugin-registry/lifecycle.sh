@@ -264,6 +264,49 @@ plugin_hook_call() {
     local -x ZBUILD_PLUGIN_KIND="$kind"
     local -x ZBUILD_PLUGIN_DIR="$plugin_dir"
 
+    # ADR-055 §1 (#1826): the engine resolves what this stage DECLARED it needs
+    # and states where each artifact is, so a plugin stops hardcoding filenames.
+    # Same site and same `local -x` as the identity vars above, for the same two
+    # reasons: it is the only site reaching all four dispatch arms (the `map:` arm
+    # runs a generated standalone script the runner cannot export into, and this
+    # call is that script's last line), and `local -x` unsets on return so stage
+    # N's index cannot bleed into stage N+1.
+    #
+    # Gated OFF by default — with ZBUILD_INPUTS_RESOLVE unset the variable is
+    # never declared, so the dispatch is byte-identical to today.
+    #
+    # plugins_root is derived from plugin_dir (plugins/<kind>/<id>/), not read
+    # from ZBUILD_PLUGINS_ROOT — ADR-024 / persona-resolve.sh forbid relying on
+    # that override as a root, exactly as the block above says.
+    if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" && "$hook_name" == "run" ]]; then
+        if ! declare -F _inputs_resolve_stage >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/input-resolve.sh
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/input-resolve.sh" 2>/dev/null || true
+        fi
+        if declare -F _inputs_resolve_stage >/dev/null 2>&1; then
+            local _ir_proot; _ir_proot="$(cd "$plugin_dir/../.." 2>/dev/null && pwd)"
+            local _ir_state="${ZBUILD_STATE_DIR:-}"
+            if [[ -n "$_ir_state" && -n "$ZBUILD_CURRENT_STAGE" ]]; then
+                # Pre-dispatch: a missing `required: true` input means the stage
+                # is never launched — we return before plugin.sh is sourced, so
+                # its entrypoint does not run at all.
+                #
+                # rc=1, not a private code: ADR-054 §4 narrows this boundary to
+                # {0,1} and dispatch-rc-guard-test.sh ratchets it. "Which input,
+                # from which producer" rides the refusal render and the
+                # plugin.run.refused event — the declared channels — exactly as
+                # the lockfile-mismatch refusal below does.
+                if ! _inputs_check_required "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" "$manifest"; then
+                    emit_event "plugin.$hook_name.refused" "plugin=$plugin_id" "kind=$kind" \
+                        "reason=required-input-missing"
+                    return 1
+                fi
+                local -x ZBUILD_STAGE_INPUTS
+                ZBUILD_STAGE_INPUTS="$(_inputs_resolve_stage "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" "$manifest" 2>/dev/null || true)"
+            fi
+        fi
+    fi
+
     local hook_fn; hook_fn="$(yaml_get "$manifest" "hooks.$hook_name")"
     if [[ -z "$hook_fn" ]]; then
         if [[ "$hook_name" == "cleanup" ]]; then

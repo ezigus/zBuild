@@ -364,6 +364,29 @@ _route_redact_prompt() {
         fi
     fi
 
+    # #1826 (ADR-055 §1): the resolved input paths, as LITERAL text. An agent
+    # stage cannot read ZBUILD_STAGE_INPUTS — _zbuild_make_fresh_shell unsets the
+    # whole ZBUILD_* namespace before every claude spawn — so the handover the
+    # engine makes to `run` has to be restated here to reach the model. Injected
+    # at the same point as the vision preamble and the checkpoint block: before
+    # apply_scope_redaction, so it rides the ADR-004 chokepoint by construction.
+    # Marker-guarded for idempotence (the loop redacts once per iteration).
+    if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" && -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        # Lazy + flag-gated, so route.sh's load shape is unchanged by default.
+        if ! declare -F stage_inputs_prompt_block >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/input-resolve.sh
+            source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+        fi
+    fi
+    if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" && -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
+        && declare -F stage_inputs_prompt_block >/dev/null 2>&1; then
+        local _si_block=""
+        _si_block="$(stage_inputs_prompt_block "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        if [[ -n "$_si_block" ]] && ! grep -qF "$_ZB_STAGE_INPUTS_MARKER" "$input" 2>/dev/null; then
+            printf '\n\n%s\n' "$_si_block" >> "$input" 2>/dev/null || true
+        fi
+    fi
+
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
         # A configured manifest is authoritative: apply_scope_redaction handles a
         # missing/empty file itself by emitting redaction.refused (rc1, fail-closed)
