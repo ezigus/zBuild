@@ -113,6 +113,67 @@ else
     assert_fail "cycle.no_committed_changes terminal emitted" "missing"
 fi
 
+# ── SPEC-10 (#1832): empty_diff exemption reads _build_kind, not _build_verdict ─
+# When build writes verdict=pass + data.build_kind=empty_diff (the new ADR-054 §6
+# format), the no_committed_changes guard must be EXEMPT — "nothing to do" is a
+# valid resting point, not a failure to commit.
+# CHANGE-behavior: at baseline (old code: _build_verdict != "empty_diff"), a
+# verdict=pass stub was not exempted → no_committed_changes fired → rc=5.
+# After #1832 (new code: _build_kind != "empty_diff"), kind=empty_diff is exempt.
+#
+# This REDEFINES cycle_dispatch_stage, shadowing the definition above for the
+# rest of the file. That is intentional and safe only because SPEC-10 is the
+# last section — a new section appended below would silently inherit THIS mock
+# (which returns verdict=pass + kind=empty_diff) instead of the original.
+# Add new sections ABOVE this line, or give them their own redefinition.
+cycle_dispatch_stage() {
+    local stage="$1" state_file="$3"
+    local state_dir; state_dir="$(dirname "$state_file")"
+    local artdir="$state_dir/artifacts"; mkdir -p "$artdir"
+    local v="pass"
+    case "$stage" in
+        build)
+            # ADR-054: verdict=pass + disposition=complete + data.build_kind=empty_diff
+            printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
+                > "$artdir/build-summary.json"
+            v="pass"
+            _CYCLE_DISPATCH_DISPOSITION="complete"
+            _CYCLE_DISPATCH_DATA_KIND="empty_diff"
+            ;;
+        test)
+            printf '{"schema_version":1,"verdict":"pass","exit_code":0,"passed":10,"failed":0,"test_output":"total: 10/10 passed","diff_applied":true,"test_cmd":"npm test"}' \
+                > "$artdir/test-results.json"
+            v="pass"
+            ;;
+    esac
+    _CYCLE_DISPATCH_VERDICT="$v"
+    _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+
+ZBUILD_STATE_DIR2="$TEST_TEMP_DIR/state2"
+mkdir -p "$ZBUILD_STATE_DIR2/artifacts" "$ZBUILD_EVENTS_DIR"
+: > "$ZBUILD_EVENTS_JSONL"
+printf '{"schema_version":1,"status":"in_progress"}' > "$ZBUILD_STATE_DIR2/pipeline-state.json"
+# HEAD is still at baseline (build stub commits nothing) — _cycle_no_commits_ahead returns 0.
+cp "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" "$ZBUILD_STATE_DIR2/intake-baseline-ref.txt"
+cp "$ZBUILD_STATE_DIR/scope-manifest.md" "$ZBUILD_STATE_DIR2/scope-manifest.md"
+cp "$ARTIFACTS_DIR/plan.json" "$ZBUILD_STATE_DIR2/artifacts/plan.json"
+
+set +e
+cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR2" "$ZBUILD_STATE_DIR2/pipeline-state.json"
+RC10=$?
+set -e
+
+assert_eq "[SPEC-10] kind=empty_diff (verdict=pass) exempts no_committed_changes — converges rc=0" \
+    "0" "$RC10"
+if grep -q '"cycle.no_committed_changes"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_fail "[SPEC-10] no_committed_changes must NOT fire for kind=empty_diff resting point" \
+        "event emitted"
+else
+    assert_pass "[SPEC-10] no_committed_changes not emitted for kind=empty_diff resting point"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

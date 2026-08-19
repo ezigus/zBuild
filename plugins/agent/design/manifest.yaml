@@ -35,7 +35,7 @@ provides:
 
 config:
   valid_verdicts:
-    - did_not_finish
+    - incomplete
   tier_default: T2
 
 inputs:

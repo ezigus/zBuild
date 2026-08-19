@@ -156,28 +156,41 @@ else
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
 
-# SPEC-10 (#1261): timeout yield ALSO writes a did_not_finish verdict sidecar so
-# the design_verify_cycle sees the timeout uniformly (mirroring build/#1208) and,
-# at exhaustion, HALTS instead of falling through to build with an empty design.
+# [SPEC-8] (#1832, ADR-054): timeout yield writes verdict=incomplete +
+# disposition=interrupted in the sidecar (was verdict=did_not_finish).
+# Fails at baseline where sidecar had verdict=did_not_finish.
+# [SPEC-9] (#1832): sidecar verdict=incomplete is the new timeout signal.
 _sidecar="$_F_ARTIFACTS/design-verdict.json"
-if [[ -s "$_sidecar" ]] \
-    && [[ "$(jq -r '.verdict' "$_sidecar" 2>/dev/null)" == "did_not_finish" ]]; then
-    assert_pass "[SPEC-10] timeout yield → design-verdict.json sidecar verdict=did_not_finish"
+_sidecar_verdict="$(jq -r '.verdict // "MISSING"' "$_sidecar" 2>/dev/null || echo MISSING)"
+_sidecar_disp="$(jq -r '.disposition // "MISSING"' "$_sidecar" 2>/dev/null || echo MISSING)"
+if [[ -s "$_sidecar" ]] && [[ "$_sidecar_verdict" == "incomplete" ]]; then
+    assert_pass "[SPEC-8] timeout yield → design-verdict.json sidecar verdict=incomplete (ADR-054, #1832)"
 else
-    assert_fail "[SPEC-10] timeout yield → did_not_finish sidecar missing/wrong" \
+    assert_fail "[SPEC-8] timeout yield → sidecar should have verdict=incomplete" \
+        "sidecar=$(cat "$_sidecar" 2>/dev/null || echo ABSENT)"
+fi
+assert_eq "[SPEC-9] design sidecar disposition=interrupted for router-timeout (#1832)" \
+    "interrupted" "$_sidecar_disp"
+
+# SPEC-10 (#1261, updated #1832): the sidecar exists and carries the right shape.
+if [[ -s "$_sidecar" ]] && [[ "$_sidecar_verdict" == "incomplete" ]] \
+    && [[ "$_sidecar_disp" == "interrupted" ]]; then
+    assert_pass "[SPEC-10] timeout yield → design-verdict.json sidecar verdict=incomplete + disposition=interrupted"
+else
+    assert_fail "[SPEC-10] timeout yield → incomplete+interrupted sidecar missing/wrong" \
         "sidecar=$(cat "$_sidecar" 2>/dev/null || echo ABSENT)"
 fi
 
-# SPEC-11 (#1261): the REAL verdict readers surface did_not_finish for the design
-# stage from the sidecar (design.md is non-JSON → would otherwise read "pass").
+# SPEC-11 (#1261, updated #1832): the REAL verdict readers surface incomplete for
+# the design stage from the sidecar (design.md is non-JSON → would otherwise read "pass").
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh"
 _dm="$REPO_ROOT/plugins/agent/design/manifest.yaml"
 _raw="$(runner_read_stage_verdict_raw "$_F_STATE" "$_dm" "design" 0)"
-assert_eq "[SPEC-11] runner_read_stage_verdict_raw(design) reads did_not_finish from sidecar" \
-    "did_not_finish" "$_raw"
+assert_eq "[SPEC-11] runner_read_stage_verdict_raw(design) reads incomplete from sidecar (#1832)" \
+    "incomplete" "$_raw"
 _cls="$(runner_read_stage_verdict "$_F_STATE" "$_dm" "design" 0)"
-assert_eq "[SPEC-11b] runner_read_stage_verdict(design) classifies did_not_finish → warn" \
+assert_eq "[SPEC-11b] runner_read_stage_verdict(design) classifies incomplete → warn" \
     "warn" "$_cls"
 
 _MOCK_ROUTER_RC=0

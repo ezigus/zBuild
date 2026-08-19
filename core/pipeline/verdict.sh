@@ -116,9 +116,9 @@ verdict_classify() {
         # infrastructure hiccup — the #1702 failure mode. The stage still returns
         # rc=1 on degraded, and rc always wins, so a real halt is unaffected;
         # this classification governs the INDICATOR only.
-        request_changes|incomplete|did_not_finish|degraded)
+        request_changes|incomplete|degraded)
             echo "warn" ;;
-        fail|error|block|scope_violation|corrupt_diff|empty_diff|scope_too_large|inert_build)
+        fail|error|block|scope_violation|corrupt_diff)
             echo "fail" ;;
         # #1219 (ADR-045): a gate-aggregator route verdict (route_design, or any
         # future route_<target>) is a NON-pass, non-convergent outcome — classify

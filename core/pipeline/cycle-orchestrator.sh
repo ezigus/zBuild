@@ -1433,6 +1433,7 @@ _cycle_iter_dispatch() {
         # #1822: same defensive clear. A stale disposition bleeding into the
         # next member's dispatch event would misreport why THAT member stopped.
         _CYCLE_DISPATCH_DISPOSITION=""
+        _CYCLE_DISPATCH_DATA_KIND=""
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by the runner's SIGINT trap between this stage and the last.
         # Bail before spawning the next child so the abort observes at the
@@ -1568,6 +1569,7 @@ _cycle_iter_dispatch() {
             # the INNER cycle's last leaf disposition. A nested cycle is not a
             # plugin and declares no disposition — empty is the honest value.
             _CYCLE_DISPATCH_DISPOSITION=""
+            _CYCLE_DISPATCH_DATA_KIND=""
             [[ $_had_e -eq 1 ]] && set -e
             # Map nested-cycle terminal rc → outer verdict/status.
             # Wave 19-C-2 (#726): set RAW symmetrically with the classified
@@ -1783,7 +1785,8 @@ _cycle_iter_dispatch() {
             status="missing"
         fi
         blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
-            '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            --arg d "${_CYCLE_DISPATCH_DISPOSITION:-}" --arg k "${_CYCLE_DISPATCH_DATA_KIND:-}" \
+            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k}}' <<< "$blob" 2>/dev/null)" || blob="{}"
         if [[ $rc -ne 0 ]]; then
             fail=$(( fail + 1 ))
         fi
@@ -2285,18 +2288,20 @@ cycle_orchestrator_run() {
         # #1117: the build member's raw verdict, for the no-progress stall-break
         # below. Empty for cycles without a `build` member (naturally disables
         # the stall-break there).
-        local _build_verdict
+        local _build_verdict _build_disposition _build_kind
         _build_verdict="$(jq -r '.build.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
+        _build_disposition="$(jq -r '.build.disposition // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
+        _build_kind="$(jq -r '.build.kind // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
         # #1261: generic timeout-tail signal — did ANY member of THIS iteration
-        # surface the repo-neutral `did_not_finish` verdict (a router-timeout /
+        # surface the repo-neutral `interrupted` disposition (a router-timeout /
         # dispatch-interrupt mid-flight resting point: build's #1208 verdict,
-        # design's #1261 verdict)? Read from the RAW verdict blob — no plugin id /
-        # language / path. Consumed ONLY by the reason-aware exhaustion halt below;
-        # keying on the TERMINATING iteration is correct because #945 overwrites
-        # design.md with the empty timeout marker on each timeout, so a timeout
-        # TAIL means the final artifact is empty regardless of earlier content.
+        # design's #1261 verdict)? Read from the blob disposition field — no plugin
+        # id / language / path. Consumed ONLY by the reason-aware exhaustion halt
+        # below; keying on the TERMINATING iteration is correct because #945
+        # overwrites design.md with the empty timeout marker on each timeout, so a
+        # timeout TAIL means the final artifact is empty regardless of earlier content.
         local _iter_did_not_finish=0
-        if jq -e 'to_entries | any(.value.verdict == "did_not_finish")' \
+        if jq -e 'to_entries | any(.value.disposition == "interrupted")' \
                 <<< "$verdicts_blob" >/dev/null 2>&1; then
             _iter_did_not_finish=1
         fi
@@ -2326,7 +2331,7 @@ cycle_orchestrator_run() {
         # suppressed → it converges when the gate verification is green (a done
         # re-run passes on iter 1). GENERIC: keys only on the build member's
         # repo-neutral did_not_finish verdict — no runner/language/path/plugin.
-        if [[ "$converged" -eq 0 && "$_build_verdict" == "did_not_finish" ]]; then
+        if [[ "$converged" -eq 0 && "$_build_disposition" == "interrupted" ]]; then
             converged=1  # suppress: mid-flight build is not a clean resting point
             _cycle_emit "cycle.build_unfinished.suppressed_convergence" \
                 "iter=$iter" "build_verdict=$_build_verdict" \
@@ -2365,7 +2370,7 @@ cycle_orchestrator_run() {
         done
         local _no_committed_changes=0
         if [[ "$converged" -eq 0 && "$_has_build_member" -eq 1 \
-              && "$_build_verdict" != "empty_diff" ]] \
+              && "$_build_kind" != "empty_diff" ]] \
            && _cycle_no_commits_ahead "$state_dir"; then
             _no_committed_changes=1
             converged=1  # suppress: an empty branch is not a clean resting point

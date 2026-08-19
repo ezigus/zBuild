@@ -3,6 +3,10 @@
 # must produce a non-pass verdict so the cycle's plateau/divergence
 # detectors see real signal.
 #
+# Updated #1832 (ADR-054): empty_diff is now a disposition/kind value, not a
+# verdict string. The build writes verdict:"pass" + disposition:"complete" +
+# data.build_kind:"empty_diff". The cycle reads kind from the blob, not verdict.
+#
 # Dogfood 20260605140602-80831 (issue #12) iter 3: build emitted
 # done_sentinel with files_changed=0, but plugin verdict was "pass". The
 # cycle accepted this as progress, ran test (which failed same as iter 2),
@@ -23,12 +27,14 @@ setup_test_env "build-empty-diff-done-sentinel"
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh"
 
-print_test_section "1. verdict_classify maps empty_diff → fail"
+print_test_section "1. verdict_classify — empty_diff removed from table (#1832)"
 
-# Pre-condition: classifier must recognize empty_diff as a structural failure
-# so the cycle's verdict-blob accumulation registers it as no-progress.
+# [SPEC-6] After #1832 (ADR-054), empty_diff is NOT a verdict string and must
+# not appear in the classify table. It was removed from verdict.sh in this
+# migration. Fails at the merge-base baseline where it returned "fail".
 result=$(verdict_classify "empty_diff")
-assert_eq "verdict_classify('empty_diff') = fail" "fail" "$result"
+assert_eq "[SPEC-6] verdict_classify('empty_diff') = unknown (removed from table in #1832)" \
+    "unknown" "$result"
 
 # Regression-lock the rest of the verdict table.
 assert_eq "verdict_classify('pass') = pass" "pass" "$(verdict_classify pass)"
@@ -37,14 +43,13 @@ assert_eq "verdict_classify('request_changes') = warn" "warn" "$(verdict_classif
 assert_eq "verdict_classify('fail') = fail" "fail" "$(verdict_classify fail)"
 assert_eq "verdict_classify('scope_violation') = fail" "fail" "$(verdict_classify scope_violation)"
 
-# [SPEC-3] complete and skip must classify as pass — no unknown_verdict path
-# (CHANGE — both returned "unknown" before #1687 and triggered spurious events).
-assert_eq "[SPEC-3] verdict_classify(complete) = pass — no unknown_verdict path" \
+# complete and skip must classify as pass — no unknown_verdict path
+assert_eq "verdict_classify(complete) = pass — no unknown_verdict path" \
     "pass" "$(verdict_classify complete)"
-assert_eq "[SPEC-3] verdict_classify(skip) = pass — no unknown_verdict path" \
+assert_eq "verdict_classify(skip) = pass — no unknown_verdict path" \
     "pass" "$(verdict_classify skip)"
 
-print_test_section "2. build plugin sets verdict=empty_diff when done_sentinel + 0 files"
+print_test_section "2. build plugin writes verdict=pass + data.build_kind=empty_diff (#1832)"
 
 # Set up a minimal fixture repo + scope manifest so the build plugin can run.
 REPO_FIXTURE="$TEST_TEMP_DIR/repo"
@@ -63,20 +68,13 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 : > "$ZBUILD_EVENTS_JSONL"
 
-# We can't easily drive the full build loop here (it spawns claude). Instead
-# test the verdict-derivation logic directly by calling the build plugin's
-# helper that decides verdict from terminated_reason + files_count. The
-# plan section directs the implementer to a `_build_derive_verdict` helper.
-# For now we test the JSON shape post-fix: the build-summary.json's verdict
-# field reads "empty_diff" when files_changed=0 + terminated_reason=done_sentinel.
-
-# We synthesize the build-summary.json the way the build plugin would
-# AFTER the empty-diff fix, then assert the verdict field is "empty_diff".
-# The plugin code change is what makes this happen in production.
+# Synthesize the build-summary.json the way the build plugin produces it after
+# #1832: verdict=pass + disposition=complete + data.build_kind=empty_diff.
 SUMMARY_FIXTURE="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
 cat > "$SUMMARY_FIXTURE" <<'EOF'
 {
   "schema_version": 4,
+  "result_contract": 2,
   "issue": 12,
   "files_changed": [],
   "lines_added": 0,
@@ -84,7 +82,10 @@ cat > "$SUMMARY_FIXTURE" <<'EOF'
   "diff_patch_path": "/tmp/empty.patch",
   "iterations": 1,
   "terminated_reason": "done_sentinel",
-  "verdict": "empty_diff",
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "build_complete_no_changes",
+  "data": {"build_kind": "empty_diff"},
   "scope_violation": false,
   "scope_violations": [],
   "loop_input_tokens": 100,
@@ -93,42 +94,56 @@ cat > "$SUMMARY_FIXTURE" <<'EOF'
 }
 EOF
 
-# Verify reader infrastructure parses verdict correctly.
+# [SPEC-2] After #1832, build writes verdict=pass (not empty_diff) when
+# done_sentinel + 0 files. Fails at baseline where verdict was "empty_diff".
 verdict_from_json=$(jq -r '.verdict' "$SUMMARY_FIXTURE")
-assert_eq "build-summary.json verdict=empty_diff readable" "empty_diff" "$verdict_from_json"
+assert_eq "[SPEC-2] build-summary.json verdict=pass (empty_diff resting-point uses pass+kind)" \
+    "pass" "$verdict_from_json"
 
-# Verify runner_read_stage_verdict_raw returns the raw verdict and
-# classifies it to "fail" for cycle predicate consumption.
+# [SPEC-2] data.build_kind carries the "empty_diff" signal.
+kind_from_json=$(jq -r '.data.build_kind // ""' "$SUMMARY_FIXTURE")
+assert_eq "[SPEC-2] build-summary.json data.build_kind=empty_diff" "empty_diff" "$kind_from_json"
+
+# [SPEC-3] disposition=complete for the empty_diff resting point.
+# Fails at baseline where there was no disposition field.
+disposition_from_json=$(jq -r '.disposition // ""' "$SUMMARY_FIXTURE")
+assert_eq "[SPEC-3] build-summary.json disposition=complete for empty_diff case" \
+    "complete" "$disposition_from_json"
+
+# Verify runner_read_stage_verdict_raw returns the raw verdict ("pass") and
+# classifies it correctly.
 BUILD_MANIFEST="$REPO_ROOT/plugins/agent/build/manifest.yaml"
 if [[ -f "$BUILD_MANIFEST" ]]; then
     raw=$(runner_read_stage_verdict_raw "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo "missing")
-    assert_eq "runner_read_stage_verdict_raw returns 'empty_diff'" "empty_diff" "$raw"
+    assert_eq "runner_read_stage_verdict_raw returns 'pass' for new empty_diff format" "pass" "$raw"
 
     classified=$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo "missing")
-    assert_eq "runner_read_stage_verdict (classified) returns 'fail' for empty_diff" "fail" "$classified"
+    assert_eq "runner_read_stage_verdict (classified) returns 'pass' for new empty_diff format" "pass" "$classified"
 else
     assert_fail "build manifest not found at $BUILD_MANIFEST"
 fi
 
-print_test_section "3. build plugin code produces empty_diff verdict on done_sentinel + 0 files"
+print_test_section "3. build plugin source sets build_data_kind=empty_diff on done_sentinel + 0 files"
 
 # Look for the marker in the build plugin source — the fix must set
-# build_verdict="empty_diff" in the empty-diff branch (may be in lib/summary.sh after #1533).
-fix_present=$(grep -r 'build_verdict="empty_diff"' "$REPO_ROOT/plugins/agent/build/" 2>/dev/null | wc -l | tr -d ' ')
+# build_data_kind="empty_diff" in the empty-diff branch (lib/summary.sh).
+fix_present=$(grep -r 'build_data_kind="empty_diff"' "$REPO_ROOT/plugins/agent/build/" 2>/dev/null | wc -l | tr -d ' ')
 if [[ "${fix_present:-0}" -ge 1 ]]; then
-    assert_pass "build plugin sets build_verdict=empty_diff on done_sentinel + 0 files"
+    assert_pass "build plugin sets build_data_kind=empty_diff on done_sentinel + 0 files"
 else
-    assert_fail "build plugin should set build_verdict=empty_diff on done_sentinel + 0 files" "expected: at least 1 match"
+    assert_fail "build plugin should set build_data_kind=empty_diff on done_sentinel + 0 files" "expected: at least 1 match"
 fi
 
-print_test_section "4. inert_build verdict — #1532 false-completion guard"
+print_test_section "4. inert_build false-completion guard — new format (#1832)"
 
-# [SPEC-2] runner_read_stage_verdict returns fail for verdict=inert_build
-# (CHANGE — was "warn" via unknown_verdict path before inert_build was registered)
+# [SPEC-7 is in build-false-completion-guard-test.sh]
+# Here we verify the new build-summary format for the inert_build case:
+# verdict=fail + disposition=broken + data.build_kind=inert_build
 INERT_FIXTURE="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
 cat > "$INERT_FIXTURE" <<'EOF'
 {
   "schema_version": 4,
+  "result_contract": 2,
   "issue": 12,
   "files_changed": [],
   "lines_added": 0,
@@ -136,7 +151,10 @@ cat > "$INERT_FIXTURE" <<'EOF'
   "diff_patch_path": "/tmp/empty.patch",
   "iterations": 1,
   "terminated_reason": "done_sentinel",
-  "verdict": "inert_build",
+  "verdict": "fail",
+  "disposition": "broken",
+  "reason": "false_completion_detected",
+  "data": {"build_kind": "inert_build"},
   "failing_acceptance_testfile": "tests/unit/some-test.sh",
   "scope_violation": false,
   "scope_violations": [],
@@ -148,25 +166,26 @@ EOF
 
 if [[ -f "$BUILD_MANIFEST" ]]; then
     classified_inert=$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo "missing")
-    assert_eq "[SPEC-2] runner_read_stage_verdict returns fail for verdict=inert_build" "fail" "$classified_inert"
+    assert_eq "runner_read_stage_verdict returns fail for new inert_build format (verdict=fail)" "fail" "$classified_inert"
 
-    # [SPEC-3] runner_read_stage_verdict_raw returns raw "inert_build" (GUARD)
     raw_inert=$(runner_read_stage_verdict_raw "$ZBUILD_STATE_DIR" "$BUILD_MANIFEST" "build" 0 2>/dev/null || echo "missing")
-    assert_eq "[SPEC-3] runner_read_stage_verdict_raw returns raw inert_build" "inert_build" "$raw_inert"
+    assert_eq "runner_read_stage_verdict_raw returns 'fail' for new inert_build format" "fail" "$raw_inert"
 else
-    assert_fail "[SPEC-2] build manifest not found at $BUILD_MANIFEST"
-    assert_fail "[SPEC-3] build manifest not found at $BUILD_MANIFEST"
+    assert_fail "build manifest not found at $BUILD_MANIFEST"
 fi
 
-# [SPEC-4] failing_acceptance_testfile field is present and readable (GUARD)
+# failing_acceptance_testfile field is present and readable (guard)
 failing_field=$(jq -r '.failing_acceptance_testfile // empty' "$INERT_FIXTURE")
-assert_eq "[SPEC-4] failing_acceptance_testfile field is readable from inert_build summary" \
+assert_eq "failing_acceptance_testfile field is readable from inert_build summary" \
     "tests/unit/some-test.sh" "$failing_field"
 
-# [SPEC-5] verdict_classify("empty_diff") still returns fail — regression guard
-# (ensures adding inert_build to verdict.sh did not disturb the empty_diff arm)
-assert_eq "[SPEC-5] verdict_classify(empty_diff) still = fail after adding inert_build" \
-    "fail" "$(verdict_classify "empty_diff")"
+# data.build_kind field carries "inert_build" signal
+inert_kind=$(jq -r '.data.build_kind // ""' "$INERT_FIXTURE")
+assert_eq "data.build_kind=inert_build in new format" "inert_build" "$inert_kind"
+
+# disposition=broken for the false-completion case
+inert_disp=$(jq -r '.disposition // ""' "$INERT_FIXTURE")
+assert_eq "disposition=broken for inert_build case" "broken" "$inert_disp"
 
 print_test_section "5. build plugin PRODUCES the inert_build signal from a red acceptance testfile"
 

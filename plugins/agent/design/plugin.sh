@@ -468,9 +468,9 @@ DESIGN_PROMPT
             # is the load-bearing exhaustion-halt signal; silently dropping it
             # would degrade to the pre-#1261 empty-design fall-through with no
             # trace. Mirror the #945 marker-write's fail-loud handling via warn.
-            printf '{"schema_version":1,"verdict":"did_not_finish","reason":"router_timeout"}\n' \
+            printf '{"result_contract":2,"verdict":"incomplete","disposition":"interrupted","reason":"router_timeout"}\n' \
                 > "$design_verdict_sidecar" 2>/dev/null \
-                || warn "_design_stage_run_inner: failed to write did_not_finish sidecar $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
+                || warn "_design_stage_run_inner: failed to write incomplete sidecar $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
             return 0
         fi
         error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"

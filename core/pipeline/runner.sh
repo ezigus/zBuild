@@ -2263,6 +2263,7 @@ main() {
         _CYCLE_DISPATCH_STATUS=""
         _CYCLE_DISPATCH_REASON=""
         _CYCLE_DISPATCH_DISPOSITION=""
+        _CYCLE_DISPATCH_DATA_KIND=""
         local _cd_plugin_dir _cd_rc=0
         # #1783: refresh the contract-reader snapshot before EVERY member, so a
         # gate reads the lib copy build just wrote rather than the previous
@@ -2304,7 +2305,7 @@ main() {
         # Declared outside the loop: bash function-scopes locals, so re-declaring
         # them per iteration is harmless but reads as an intent to reset (#1887
         # review). Hoisting makes the scope unambiguous.
-        local _cd_manifest _cd_observation _cd_rate_limited _cd_wait
+        local _cd_manifest _cd_observation _cd_rate_limited _cd_wait _cd_primary _cd_resolved
         _cd_redispatch_max="$(_runner_disposition_redispatch_budget)"
         while :; do
             _router_clear_throttle_marker
@@ -2356,6 +2357,20 @@ main() {
             # the dispatch event; the response table that interprets it lives in
             # core/pipeline/disposition.sh, never in a plugin.
             _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
+            # ADR-054: read the data.build_kind field from the primary artifact so the
+            # cycle orchestrator can distinguish the empty_diff resting point from a
+            # true pass without reading the string "empty_diff" from the verdict channel.
+            # Inside the re-dispatch loop (#1887): a retried attempt writes a fresh
+            # artifact, so a kind read once before the loop would describe the
+            # attempt that was discarded.
+            _CYCLE_DISPATCH_DATA_KIND=""
+            _cd_primary="$(_verdict_primary_output_path "$_cd_manifest" 2>/dev/null || true)"
+            if [[ -n "$_cd_primary" ]]; then
+                _cd_resolved="$(_verdict_resolve_path "$_cd_primary" "$state_dir" 2>/dev/null || true)"
+                if [[ "$_cd_resolved" == *.json && -s "$_cd_resolved" ]]; then
+                    _CYCLE_DISPATCH_DATA_KIND="$(jq -r '.data.build_kind // ""' "$_cd_resolved" 2>/dev/null || true)"
+                fi
+            fi
             # The table decides. `interrupted` re-dispatches at once; `throttled`
             # waits first, because re-dispatching a throttled stage immediately is
             # simply throttled again — a retry loop that burns budget to learn

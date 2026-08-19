@@ -169,6 +169,11 @@ assert_eq "[SPEC-5] rc 6 → cycle_abort"              "cycle_abort" "$(dispatch
 assert_eq "[SPEC-5] rc 8 → blocking_member_failure"  "blocking_member_failure" "$(dispatch_rc_legacy_reason 8)"
 assert_eq "[SPEC-5] rc 9 → llm_unavailable"          "llm_unavailable" "$(dispatch_rc_legacy_reason 9)"
 assert_eq "[SPEC-5] rc 10 → scope_too_large"         "scope_too_large" "$(dispatch_rc_legacy_reason 10)"
+# [SPEC-13] (#1832, ADR-054 §6): scope_too_large remains as the rc=10 dispatch signal label.
+# The design decision keeps it as log/event vocabulary for the abort reason — it is a
+# dispatch-rc signal, NOT a verdict string. Guard: must not be removed from legacy mapping.
+assert_eq "[SPEC-13] rc 10 → scope_too_large (dispatch signal, not verdict; unchanged by #1832)" \
+    "scope_too_large" "$(dispatch_rc_legacy_reason 10)"
 assert_eq "[SPEC-5] rc 11 → route_back"              "route_back" "$(dispatch_rc_legacy_reason 11)"
 assert_eq "[SPEC-5] rc 4 → config_invalid"           "config_invalid" "$(dispatch_rc_legacy_reason 4)"
 

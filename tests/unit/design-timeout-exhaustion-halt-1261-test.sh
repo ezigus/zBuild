@@ -139,6 +139,8 @@ cycle_dispatch_stage() {
     done
     _CYCLE_DISPATCH_STATUS="complete"
     _CYCLE_DISPATCH_REASON=""
+    _CYCLE_DISPATCH_DISPOSITION=""
+    _CYCLE_DISPATCH_DATA_KIND=""
     case "$stage" in
         test)
             local tv="pass" nf=0
@@ -150,10 +152,14 @@ cycle_dispatch_stage() {
             ;;
         *)
             # design / design-gate / build — raw verdict drives the blob. The
-            # `dnf` plan token maps to the repo-neutral did_not_finish verdict
-            # (a router-timeout mid-flight resting point, #1208/#1261).
+            # `dnf` plan token maps to verdict=incomplete + disposition=interrupted
+            # (#1832: did_not_finish removed from verdict vocabulary per ADR-054 §6).
             local rv="$v"
-            [[ "$v" == "dnf" ]] && { rv="did_not_finish"; _CYCLE_DISPATCH_REASON="router_timeout"; }
+            if [[ "$v" == "dnf" ]]; then
+                rv="incomplete"
+                _CYCLE_DISPATCH_DISPOSITION="interrupted"
+                _CYCLE_DISPATCH_REASON="router_timeout"
+            fi
             _CYCLE_DISPATCH_VERDICT="$(verdict_classify "$rv" 2>/dev/null || echo warn)"
             _CYCLE_DISPATCH_VERDICT_RAW="$rv"
             ;;
@@ -196,6 +202,11 @@ if grep -q '"reason":"converged"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_pass "[SPEC-1] did not converge on the empty timeout design"
 fi
+# [SPEC-9] (#1832, ADR-054): design timeout halts via disposition=interrupted predicate
+# (not old verdict=did_not_finish). The stub maps dnf→verdict=incomplete+disposition=interrupted;
+# at baseline the cycle checked verdict=="did_not_finish" and would miss this → no halt.
+assert_eq "[SPEC-9] design timeout halt fires on disposition=interrupted (not old verdict=did_not_finish)" \
+    "design_timeout_exhausted" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 
 # ─── SPEC-2 [guard]: CONTENT non-convergence keeps ADR-019 continue (rc=2) ────
 print_test_section "SPEC-2: design-gate fails on CONTENT 3x (no timeout) → rc=2 (on_max=continue, ADR-019 unchanged)"

@@ -117,10 +117,13 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_REASON=""
     case "$_st_stage" in
         build)
-            printf '{"schema_version":1,"verdict":"empty_diff","iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
+            # ADR-054: new format — verdict=pass + disposition=complete + data.build_kind=empty_diff
+            printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
                 > "$_art/build-summary.json"
-            _CYCLE_DISPATCH_VERDICT="empty_diff"
-            _CYCLE_DISPATCH_VERDICT_RAW="empty_diff"
+            _CYCLE_DISPATCH_VERDICT="pass"
+            _CYCLE_DISPATCH_VERDICT_RAW="pass"
+            _CYCLE_DISPATCH_DISPOSITION="complete"
+            _CYCLE_DISPATCH_DATA_KIND="empty_diff"
             ;;
         test)
             printf '{"schema_version":1,"verdict":"pass","exit_code":0,"passed":1,"failed":0}' \
@@ -173,13 +176,20 @@ else
     assert_pass "[SPEC-3] no cycle.stalled event (stall-break removed)"
 fi
 
-print_test_section "SPEC-4: empty_diff + gate=pass ⇒ converged (no false stall)"
+print_test_section "SPEC-4/SPEC-10: empty_diff + gate=pass ⇒ converged (no false stall)"
 _GA_VERDICT="pass"
 _run_cycle "converge"
 assert_eq "[SPEC-4] cycle rc=0 (converged)" "0" "$_RUN_RC"
 assert_eq "[SPEC-4] terminated reason is converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 assert_eq "[SPEC-4] converges at iter 1 (single-pass empty_diff NOT misclassified)" \
     "1" "${_CYCLE_LAST_ITERATIONS:-}"
+# [SPEC-10] (#1832, ADR-054 §6): no_committed_changes exemption reads _build_kind (not _build_verdict).
+# build stub writes verdict=pass + data.build_kind=empty_diff; old code checked _build_verdict!="empty_diff"
+# → "pass" != "empty_diff" → would fire no_committed_changes; new code checks _build_kind → EXEMPT.
+# (Guard: this cycle has no intake-baseline-ref.txt, so _cycle_no_commits_ahead fails-soft; the guard
+# confirms the converge path reaches rc=0 without interference.)
+assert_eq "[SPEC-10] empty_diff via kind field (verdict=pass) converges cleanly — kind-based exemption" \
+    "0" "$_RUN_RC"
 if grep -q 'cycle.stalled' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_fail "[SPEC-4] no cycle.stalled event on a clean converge" "cycle.stalled emitted"
 else

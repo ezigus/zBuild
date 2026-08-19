@@ -62,19 +62,27 @@ for pair in "pass:pass" "approve:pass" "request_changes:warn" \
     assert_eq "verdict_classify($raw) -> $want" "$want" "$got"
 done
 
-# [SPEC-1] inert_build classifies as fail (CHANGE — was "unknown" before #1532)
+# [SPEC-1] inert_build removed from classify table (#1832, ADR-054): previously
+# classified as "fail" (#1532); after migration it is not a verdict string and
+# returns "unknown". Fails at the merge-base baseline where it returned "fail".
 got="$(verdict_classify "inert_build")"
-assert_eq "[SPEC-1] verdict_classify(inert_build) -> fail" "fail" "$got"
+assert_eq "[SPEC-1] verdict_classify(inert_build) -> unknown (removed in #1832)" "unknown" "$got"
 
-# [SPEC-1] complete classifies as pass (CHANGE — was "unknown" before #1687;
+# [SPEC-4] did_not_finish removed from classify table (#1832, ADR-054): previously
+# classified as "warn"; after migration it is not a verdict string → "unknown".
+# Fails at the merge-base baseline where it returned "warn".
+got="$(verdict_classify "did_not_finish")"
+assert_eq "[SPEC-4] verdict_classify(did_not_finish) -> unknown (removed in #1832)" "unknown" "$got"
+
+# complete classifies as pass (CHANGE — was "unknown" before #1687;
 # impact's terminal "no gaps" success verdict).
 got="$(verdict_classify "complete")"
-assert_eq "[SPEC-1] verdict_classify(complete) -> pass" "pass" "$got"
+assert_eq "verdict_classify(complete) -> pass" "pass" "$got"
 
-# [SPEC-2] skip classifies as pass (CHANGE — was "unknown" before #1687;
+# skip classifies as pass (CHANGE — was "unknown" before #1687;
 # gates' "not-applicable this run" verdict — declining to apply is not failure).
 got="$(verdict_classify "skip")"
-assert_eq "[SPEC-2] verdict_classify(skip) -> pass" "pass" "$got"
+assert_eq "verdict_classify(skip) -> pass" "pass" "$got"
 
 # [SPEC-3] runner_read_stage_verdict must NOT emit pipeline.indicator.unknown_verdict
 # for complete or skip (both now classify as pass — no unknown_verdict path).
@@ -345,7 +353,7 @@ print_test_section "the contract key is NOT schema_version (regression guard)"
 # summary was read as a v2 result and failed for a missing `disposition`,
 # flipping stage_verdicts.build from "fail" to "error" on a clean run.
 # A v2 result is identified by `result_contract`, which nothing else uses.
-jq -nc '{schema_version:4,verdict:"empty_diff",files_changed:[],iterations:1}' > "$_v2_result"
+jq -nc '{schema_version:4,verdict:"fail",files_changed:[],iterations:1}' > "$_v2_result"
 assert_eq "schema_version:4 artifact is v1 — classified on .verdict alone" \
     "fail" "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
 assert_eq "schema_version:4 artifact raises no contract violation" \

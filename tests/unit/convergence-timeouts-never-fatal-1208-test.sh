@@ -58,11 +58,11 @@ FIXT="$REPO_ROOT/tests/fixtures/templates"
 # missing from the plan defaults to pass. Verdicts:
 #   pass       — clean pass (build: LOOP_COMPLETE with changes)
 #   fail       — verdict=fail
-#   dnf        — build did_not_finish (router_timeout/error surfaced by Change 2)
+#   dnf        — build router-timeout/interrupt (disposition=interrupted, #1832)
 #   empty_diff — build clean empty diff via LOOP_COMPLETE (nothing-to-do)
 # The mock writes the real member artifacts so the orchestrator's failure_count
 # override (test-results.json .failed) and the mid-flight suppression
-# (build-summary.json .verdict) read honest data.
+# (build.disposition=interrupted) read honest data.
 cycle_dispatch_stage() {
     local stage="$1" iter="$2" state_file="$3"
     local sd; sd="$(dirname "$state_file")"
@@ -84,16 +84,27 @@ cycle_dispatch_stage() {
     done
     _CYCLE_DISPATCH_STATUS="complete"
     _CYCLE_DISPATCH_REASON=""
+    _CYCLE_DISPATCH_DISPOSITION=""
+    _CYCLE_DISPATCH_DATA_KIND=""
     case "$stage" in
         build)
             local bv="pass" tr="done_sentinel" fc="[{\"path\":\"a\"}]"
             case "$v" in
-                dnf)        bv="did_not_finish"; tr="router_timeout"; fc="[]" ;;
-                empty_diff) bv="empty_diff"; tr="done_sentinel"; fc="[]" ;;
+                dnf)
+                    # ADR-054 (#1832): disposition=interrupted is the new
+                    # signal for a mid-flight build (was verdict=did_not_finish).
+                    bv="incomplete"; tr="router_timeout"; fc="[]"
+                    _CYCLE_DISPATCH_DISPOSITION="interrupted"
+                    ;;
+                empty_diff)
+                    bv="pass"; tr="done_sentinel"; fc="[]"
+                    _CYCLE_DISPATCH_DISPOSITION="complete"
+                    _CYCLE_DISPATCH_DATA_KIND="empty_diff"
+                    ;;
                 fail)       bv="fail"; tr="done_sentinel" ;;
                 *)          bv="pass" ;;
             esac
-            printf '{"schema_version":4,"verdict":"%s","terminated_reason":"%s","files_changed":%s}' \
+            printf '{"schema_version":4,"result_contract":2,"verdict":"%s","terminated_reason":"%s","files_changed":%s}' \
                 "$bv" "$tr" "$fc" > "$art/build-summary.json"
             _CYCLE_DISPATCH_VERDICT="$(verdict_classify "$bv" 2>/dev/null || echo warn)"
             _CYCLE_DISPATCH_VERDICT_RAW="$bv"
@@ -145,8 +156,12 @@ else
     assert_pass "[SPEC-1] no cycle.member.timeout_abandoned (G2 abandon removed)"
 fi
 
-# ─── SPEC-2 + SPEC-9(timeout): no false converge on unfinished build ─────────
-print_test_section "SPEC-2: build did_not_finish + tests pass → NOT converged; suppression event"
+# ─── SPEC-2 + SPEC-5(timeout): no false converge on unfinished build ──────────
+# [SPEC-5] (#1832): the cycle reads disposition=interrupted (not old verdict=
+# did_not_finish) to determine a build is mid-flight. Fails at baseline where
+# the suppression event's build_verdict field carried "did_not_finish"; with the
+# new mock it carries "incomplete" (the new raw verdict for an interrupted build).
+print_test_section "SPEC-2/SPEC-5: build disposition=interrupted + tests pass → NOT converged; suppression event"
 _run "$FIXT/cycle-max-iter.yaml" "build:dnf,dnf,dnf;test:pass,pass,pass"
 assert_eq "[SPEC-2] not converged (mid-flight build) — rc=2" "2" "$RUN_RC"
 assert_contains "[SPEC-2] suppression event emitted" \
@@ -156,12 +171,27 @@ if grep -q '"reason":"converged"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_pass "[SPEC-2] never a false converge on unfinished build"
 fi
+# [SPEC-5] change assertion: suppression event now carries build_verdict=incomplete
+# (the new raw verdict for disposition=interrupted). Fails at baseline where the
+# event carried build_verdict=did_not_finish.
+_spec5_ev="$(grep '"cycle.build_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
+if grep -q '"build_verdict":"incomplete"' <<< "$_spec5_ev" 2>/dev/null; then
+    assert_pass "[SPEC-5] suppression event carries build_verdict=incomplete (disposition-based check, #1832)"
+else
+    assert_fail "[SPEC-5] suppression event should carry build_verdict=incomplete (ADR-054)" \
+        "event: $_spec5_ev"
+fi
 
 # ─── SPEC-3 / SPEC-9(stall): re-run nothing-to-do converges on iter 1 ────────
-print_test_section "SPEC-3: clean empty_diff (LOOP_COMPLETE) + tests green → converge iter 1"
+# [SPEC-9] guard: clean empty_diff (now kind=empty_diff + verdict=pass) still
+# converges on iter 1 — the disposition/kind migration did not break the
+# nothing-to-do convergence path.
+print_test_section "SPEC-3/SPEC-9: clean empty_diff (kind=empty_diff) + tests green → converge iter 1"
 _run "$FIXT/cycle-converges-iter2.yaml" "build:empty_diff;test:pass"
 assert_eq "[SPEC-3] converged (rc=0)" "0" "$RUN_RC"
 assert_eq "[SPEC-3] converged at iter 1 (nothing-to-do, not a stall)" "1" "${_CYCLE_LAST_ITERATIONS:-}"
+assert_eq "[SPEC-9] empty_diff resting-point converges at iter 1 (kind-based check, #1832)" \
+    "1" "${_CYCLE_LAST_ITERATIONS:-}"
 if grep -qE 'cycle.stalled|suppressed_convergence' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_fail "[SPEC-3] clean stall is NOT suppressed / stalled" "unexpected event"
 else

@@ -51,6 +51,11 @@ out2="$(plan_context_write "$GH" "stl-key" "scope_too_large" "" "ran out of turn
 assert_json_key "[SPEC-1] scope_too_large → candidate_split true" "$out2" ".candidate_split" "true"
 assert_json_key "[SPEC-1] non-numeric num_turns → null" "$out2" ".num_turns" "null"
 assert_json_key "[SPEC-1] scope_too_large status round-trips" "$out2" ".status" "scope_too_large"
+# [SPEC-12] (#1832, ADR-054 §6): scope_too_large as plan-context domain vocabulary is UNCHANGED.
+# It remains a valid .status value in plan-context.json (plan exits rc=10 with no artifact;
+# the context record's status field is domain vocabulary, NOT a stage verdict string).
+assert_json_key "[SPEC-12] scope_too_large as plan-context .status is domain vocabulary (unchanged by #1832)" \
+    "$out2" ".status" "scope_too_large"
 
 # ─── [SPEC-2] read_for_resume match / refusals ──────────────────────────────
 # Seed an incomplete (resumable) context.
