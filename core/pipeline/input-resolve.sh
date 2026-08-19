@@ -286,6 +286,19 @@ _inputs_resolve_stage() {
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
                 eff="$(_inputs_effective_path "$line")"
+                # A map input is a SET, and the per-element rule is the same one
+                # the scalar branch applies: a damaged member is not a usable
+                # member. Passing it through because its siblings are healthy is
+                # the silent degrade #1894 exists to close — the consumer cannot
+                # tell a truncated lens result from a complete one.
+                if _inputs_damaged "$eff"; then
+                    if declare -F eb_emit_event >/dev/null 2>&1; then
+                        eb_emit_event "stage.input.degraded" \
+                            "stage=$stage" "input=$id" "reason=damaged_member" \
+                            "format=$(_inputs_format_for "$eff")" "path=$eff" 2>/dev/null || true
+                    fi
+                    continue
+                fi
                 joined+="${eff}"$'\x1f'
             done <<< "$paths"
             tsv+="${id}"$'\t'"A"$'\t'"${joined}"$'\n'
@@ -298,7 +311,7 @@ _inputs_resolve_stage() {
             # omission is announced. A REQUIRED damaged input never reaches
             # here; _inputs_check_required refuses the dispatch first.
             if [[ "$req" != "true" ]] && _inputs_damaged "$eff"; then
-                if command -v eb_emit_event >/dev/null 2>&1; then
+                if declare -F eb_emit_event >/dev/null 2>&1; then
                     eb_emit_event "stage.input.degraded" \
                         "stage=$stage" "input=$id" "reason=damaged" \
                         "format=$(_inputs_format_for "$eff")" "path=$eff" 2>/dev/null || true
@@ -415,8 +428,16 @@ _inputs_check_required() {
             # the case #1894 opened with, and testing presence first silently
             # restores it.
             if _inputs_damaged "$eff"; then damaged="$eff"; continue; fi
-            [[ -s "$eff" ]] && { present=1; break; }
+            # A map input is a SET, so the loop does NOT stop at the first healthy
+            # member — one good element must not excuse a broken sibling. For a
+            # scalar there is only ever one path, so breaking is correct.
+            if [[ -s "$eff" ]]; then
+                present=1
+                [[ -z "${_IR_ISMAP[$id]:-}" ]] && break
+            fi
         done <<< "$paths"
+        # N-1 broken lens results would otherwise ride in on the strength of one.
+        [[ -n "${_IR_ISMAP[$id]:-}" && -n "$damaged" ]] && present=0
         if [[ $present -eq 0 && -n "$damaged" ]]; then
             violations+=("$stage|INPUT_DAMAGED|$id|producer '$producer' wrote output '$id' but it is unusable ($(_inputs_format_for "$damaged"), $(wc -c < "$damaged" 2>/dev/null | tr -d ' ') bytes); consumer '$stage' requires it: $damaged")
         elif [[ $present -eq 0 ]]; then

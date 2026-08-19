@@ -1,32 +1,29 @@
 #!/usr/bin/env bash
 # tests/unit/stage-input-resolve-test.sh — the engine resolves declared inputs
-# and hands them to `run` (#1826, ADR-055 §1 / ADR-054 §2).
+# and hands them to `run` (#1826/#1894, ADR-055 §1 / ADR-054 §2).
 #
-# Before this change `manifest_graph_get_inputs` had four call sites and all four
-# were static validators. No runtime path ever turned an input declaration into a
-# PATH, so every declaration was inert and 25 of 37 plugin.sh files hardcoded
+# Every input declaration was inert before this: manifest_graph_get_inputs had
+# four call sites, all static validators, so 25 of 37 plugin.sh files hardcoded
 # artifact filenames instead.
 #
-#   SPEC-1 [change]: a plugin reads a declared input WITHOUT knowing where it
-#                    lives — it opens the index and finds the path
-#   SPEC-2 [guard] : a missing `required: true` input aborts BEFORE dispatch —
-#                    the stage's own entrypoint never runs (sentinel absent)
-#   SPEC-3 [change]: the refusal names producer, output id and consumer
-#   SPEC-4 [change]: a `map` producer yields a JSON ARRAY of member paths under
-#                    the one input id (ADR-055 §1.4)
-#   SPEC-5 [change]: ${stage_io_dir} / ${cycle_feedback_dir} / ${run_id}
-#                    interpolate through _verdict_resolve_path
-#   SPEC-6 [guard] : with ZBUILD_INPUTS_RESOLVE=0 (the default) nothing is
-#                    written and ZBUILD_STAGE_INPUTS is unset
-#   SPEC-7 [guard] : role-resolved stages resolve to the manifest DISPATCH would
-#                    use — the id-only gap contract-validator.sh still carries
-#   SPEC-9 [guard] : a REQUIRED input that is present but DAMAGED refuses the
-#                    dispatch, and says damaged rather than absent (#1894)
-#   SPEC-10 [change]: an OPTIONAL input that is damaged is OMITTED from the
-#                    index — a missing key, not a path to a broken file — and
-#                    the omission is announced (#1894)
-#   SPEC-11 [guard]: the refusal resolves to a NON-RETRYABLE disposition, so a
-#                    missing input cannot become a retry storm under #1887
+#   1 [change] a plugin reads a declared input without knowing where it lives
+#   2 [guard]  a missing required input aborts BEFORE dispatch (sentinel absent)
+#   3 [change] the refusal names producer, output id and consumer
+#   4 [change] a `map` producer yields a JSON ARRAY of member paths (§1.4)
+#   5 [change] ${stage_io_dir}/${cycle_feedback_dir}/${run_id} interpolate
+#   6 [guard]  flag off (default) writes nothing and leaves the var unset
+#   7 [guard]  role-resolved stages resolve to the manifest DISPATCH would use
+#   8 [change] agent stages get the paths as prompt literals (env-scrub wall)
+#   9 [guard]  a REQUIRED damaged input refuses, saying damaged not absent
+#  10 [change] an OPTIONAL damaged input is OMITTED and announced
+#  11 [guard]  the refusal is NON-RETRYABLE — no retry storm under #1887
+#  12 [change] a damaged MAP member is excluded, not carried by its siblings
+#
+# 515 lines, over CLAUDE.md's 500 guideline, deliberately: 166 of them are one
+# shared fixture (three plugin manifests, a generated consumer, the template-flow
+# globals and the dispatch helper) that all twelve specs run against. Splitting
+# the 122 lines of damage specs into a sibling file would duplicate that fixture
+# or need a new shared helper — 166 lines of duplication to save 15.
 #
 # shellcheck disable=SC2016  # SPEC-5 passes literal ${var} text as the INPUT under test
 set -uo pipefail
@@ -124,8 +121,8 @@ outputs:
     primary: true
 EOF
 
-# The entrypoint writes a SENTINEL first. SPEC-2 asserts on its absence, which is
-# the difference between "the run failed" and "the stage was never launched".
+# The entrypoint writes a SENTINEL first: SPEC-2 asserts on its absence, which
+# separates "the run failed" from "the stage was never launched".
 {
     printf '_IRC_SENTINEL=%q\n' "$TEST_TEMP_DIR/irc-ran.txt"
     printf '_IRC_OUT=%q\n' "$TEST_TEMP_DIR/irc-seen.txt"
@@ -319,10 +316,8 @@ if load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1; then
     _c() { local p; p="$(manifest_graph_collect "$REPO_ROOT/plugins" "$1" 2>/dev/null || true)"; \
            [[ -n "$p" ]] && basename "$(dirname "$p")" || echo "<none>"; }
 
-    # The gap: contract-validator.sh:213 uses the id-only manifest_graph_collect,
-    # so these two stages resolve to NO manifest and are silently skipped, and
-    # `pr` lands on pr-open — which pr-open/manifest.yaml:1-5 documents as
-    # deliberately unreachable at dispatch (the real plugin is pr-delivery).
+    # The gap: contract-validator.sh:213's id-only collect skips these two
+    # entirely and lands `pr` on pr-open, documented as unreachable at dispatch.
     assert_eq "[SPEC-7-baseline] id-only finds no manifest for acceptance-gate" "<none>" "$(_c acceptance-gate)"
     assert_eq "[SPEC-7-baseline] id-only finds no manifest for review_lenses"   "<none>" "$(_c review_lenses)"
     assert_eq "[SPEC-7-baseline] id-only resolves pr to the unreachable pr-open" "pr-open" "$(_c pr)"
@@ -339,11 +334,10 @@ else
 fi
 
 # ─── SPEC-8: the prompt literal for agent stages ────────────────────────────
-# ZBUILD_STAGE_INPUTS cannot reach a model: _zbuild_make_fresh_shell unsets the
-# whole ZBUILD_* namespace before every claude spawn (env-scrub.sh, ADR-024/#671),
-# so an agent stage would see nothing. The paths therefore go into the prompt as
-# literal text, injected at _route_redact_prompt — BEFORE apply_scope_redaction,
-# so the block rides the ADR-004 chokepoint rather than bypassing it.
+# ZBUILD_STAGE_INPUTS cannot reach a model (env-scrub.sh unsets ZBUILD_* before
+# every claude spawn, ADR-024/#671), so paths go into the prompt as literal text
+# at _route_redact_prompt — before apply_scope_redaction, riding the ADR-004
+# chokepoint rather than bypassing it.
 print_test_section "8. an agent stage gets the paths as prompt literals"
 unset ZBUILD_PLUGIN_DIR 2>/dev/null || true   # keep the #1879 checkpoint block out of this
 # shellcheck source=../../core/router/route.sh
@@ -376,14 +370,9 @@ EOF
     assert_eq "[SPEC-8] exactly one block after the first pass" "1" "$_n1"
     assert_eq "[SPEC-8] still exactly one after the loop's second redaction" "1" "$_n2"
 
-    # [guard] a non-declaring stage and a flag-off run must both come out of the
-    # funnel identical to each other.
-    #
-    # Deliberately NOT asserted against the raw input: _route_redact_prompt also
-    # prepends the ADR-049 vision preamble, which is pre-existing behaviour and
-    # fires for every stage. Asserting byte-identity to the original would be
-    # asserting the vision preamble does not exist. Comparing the two runs to
-    # each other is the real claim — THIS feature contributes nothing to either.
+    # [guard] the two runs must match EACH OTHER, not the raw input:
+    # _route_redact_prompt also prepends the ADR-049 vision preamble, so
+    # byte-identity to the original would assert that preamble does not exist.
     IDX0="$TEST_TEMP_DIR/spec8-empty.json"
     printf '{"schema_version":1,"stage":"spec8b","inputs":{}}\n' > "$IDX0"
     IN0="$TEST_TEMP_DIR/spec8-empty-prompt.txt"; printf 'SPEC8 BASELINE BODY\n' > "$IN0"
@@ -409,14 +398,12 @@ fi
 
 # ─── SPEC-9: a REQUIRED input present-but-damaged refuses before dispatch ────
 print_test_section "9. a required input that is damaged refuses the dispatch"
-# SPEC-7 resolves against the LIVE plugin tree and leaves _TPL_STAGES holding the
-# real template's flow, in which none of this file's fixture stages appear. The
-# producer index is keyed on that flow, so without restoring it every input here
-# resolves to zero producers and these specs would pass for the wrong reason.
+# SPEC-7 leaves _TPL_STAGES holding the LIVE template's flow, and the producer
+# index is keyed on it — without restoring the fixture flow every input below
+# resolves to zero producers and passes for the wrong reason.
 _TPL_STAGES=(ir-producer ir_lenses ir-consumer)
 rm -f "$TEST_TEMP_DIR/irc-ran.txt" "$STATE/stage-inputs/ir-consumer.json"
-# Present, non-zero, and NOT valid JSON — the half-written file that passes an
-# existence test today and is copied downstream verbatim.
+# Non-zero but invalid JSON: the half-written file that passes -s today.
 printf '{"verdict":' > "$ART/producer-out.json"
 
 _err9="$TEST_TEMP_DIR/refusal9.txt"
@@ -436,8 +423,7 @@ else
     assert_pass "[SPEC-9] the entrypoint never ran"
 fi
 assert_contains "[SPEC-9] the refusal says DAMAGED, not absent" "$_ref9" "INPUT_DAMAGED"
-# [guard] the distinction is the point: reporting "absent" sends the operator to
-# the producer, when the producer DID write — it wrote something unusable.
+# [guard] "absent" would send the operator to the producer, which DID write.
 if grep -qF 'INPUT_MISSING' <<< "$_ref9"; then
     assert_fail "[SPEC-9] it does not also claim the artifact is absent" \
         "reported INPUT_MISSING for a file that exists"
@@ -462,8 +448,7 @@ if jq -e '.inputs | has("producer_hint")' "$_idx10" >/dev/null 2>&1; then
 else
     assert_pass "[SPEC-10] the damaged optional input is not indexed"
 fi
-# [guard] omission must be SELECTIVE — dropping every optional input would pass
-# the assertion above while destroying the feature.
+# [guard] omission must be SELECTIVE, or dropping everything would also pass.
 if jq -e '.inputs | has("ir_lens_result")' "$_idx10" >/dev/null 2>&1; then
     assert_pass "[SPEC-10] a healthy optional input is still indexed"
 else
@@ -476,10 +461,9 @@ assert_contains "[SPEC-10] the omission is announced" \
 
 # ─── SPEC-11: the refusal cannot become a retry storm (#1887) ────────────────
 print_test_section "11. a refused dispatch is not retryable"
-# #1887 wrapped cycle_dispatch_stage's plugin_hook_call in a disposition-driven
-# re-dispatch loop, which this change predates. A refusal returns rc=1 leaving no
-# result, which ADR-054 §6 calls `broken`; if `broken` were retryable a missing
-# input would re-dispatch until the budget ran out.
+# #1887 wraps plugin_hook_call in a disposition-driven re-dispatch loop. A
+# refusal is rc=1 with no result = ADR-054 §6 `broken`; were that retryable, a
+# missing input would re-dispatch until the budget ran out.
 # shellcheck source=../../core/pipeline/disposition.sh
 source "$REPO_ROOT/core/pipeline/disposition.sh"
 if disposition_retryable "broken" 2>/dev/null; then
@@ -500,6 +484,37 @@ else
     assert_fail "[SPEC-11] the retryable set is not simply empty" \
         "interrupted is not retryable either — the assertion above proves nothing"
 fi
+
+# ─── SPEC-12: a damaged MAP member is excluded, not carried ─────────────────
+# A map input is a SET: without the same rule the scalar branch applies, N-1
+# broken members ride in on one healthy sibling.
+print_test_section "12. a damaged map member is excluded and announced"
+_TPL_STAGES=(ir-producer ir_lenses ir-consumer)
+rm -f "$TEST_TEMP_DIR/irc-ran.txt" "$STATE/stage-inputs/ir-consumer.json"
+printf '{"verdict":"pass"}\n' > "$ART/producer-out.json"
+printf '{"hint":"ok"}\n'      > "$ART/producer-hint.json"
+printf '{"lens":"alpha"}\n'   > "$ART/irlens-alpha.json"   # healthy
+printf '{"lens":'             > "$ART/irlens-beta.json"    # truncated
+: > "$EVENTS"
+
+ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>&1
+_idx12="$STATE/stage-inputs/ir-consumer.json"
+_lens12="$(jq -r '.inputs.ir_lens_result // [] | join(" ")' "$_idx12" 2>/dev/null)"
+
+assert_eq "[SPEC-12] only the healthy member is indexed" "$ART/irlens-alpha.json" "$_lens12"
+if grep -qF 'irlens-beta.json' <<< "$_lens12"; then
+    assert_fail "[SPEC-12] the truncated member is excluded" "beta rode in on alpha's health"
+else
+    assert_pass "[SPEC-12] the truncated member is excluded"
+fi
+assert_contains "[SPEC-12] the exclusion is announced" \
+    "$(cat "$EVENTS" 2>/dev/null)" "damaged_member"
+# [guard] not vacuous — with BOTH members healthy the array keeps two entries.
+printf '{"lens":"beta"}\n' > "$ART/irlens-beta.json"
+rm -f "$STATE/stage-inputs/ir-consumer.json"
+ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>&1
+assert_eq "[SPEC-12] two healthy members both survive" "2" \
+    "$(jq -r '.inputs.ir_lens_result | length' "$STATE/stage-inputs/ir-consumer.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results
